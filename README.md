@@ -5,6 +5,7 @@
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [zh-TW](docs/ARCHITECTURE.zh-TW.md) · [zh-CN](docs/ARCHITECTURE.zh-CN.md)
 
 Fully local, offline, real-time speech translator: **system audio output -> capture -> ASR -> translate -> text**.
+It captures whatever the PC plays (the system output mix, not per-app). There is no network use at runtime; only setup / first-run model download uses the network.
 Nothing leaves your machine: no cloud APIs, no telemetry, no audio or transcripts written to disk.
 
 ```
@@ -134,14 +135,15 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | tinglongwu | MIT | this repo |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper weights (Systran CT2 conversions) | MIT | huggingface.co/Systran |
-| Silero VAD (bundled ONNX in faster-whisper) | MIT | github.com/snakers4/silero-vad |
+| Silero VAD (bundled ONNX in faster-whisper; Silero Team) | MIT | github.com/snakers4/silero-vad |
 | CTranslate2 | MIT | github.com/OpenNMT/CTranslate2 |
-| OPUS-MT models (via Argos packages) | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT, argosopentech/argospm-index |
+| OPUS-MT models (Helsinki-NLP; attribution required) | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT, argosopentech/argospm-index |
+| Argos Translate (model packaging / index) | MIT | github.com/argosopentech/argos-translate |
 | SentencePiece | Apache-2.0 | github.com/google/sentencepiece |
 | OpenCC (opencc-python-reimplemented) | Apache-2.0 | github.com/yichen0831/opencc-python |
 | soundcard | BSD-3 | github.com/bastibe/SoundCard |
 | soundfile / libsndfile | BSD-3 / LGPL-2.1 | github.com/bastibe/python-soundfile |
-| PyAV (FFmpeg libs) | BSD-3 / LGPL | github.com/PyAV-Org/PyAV |
+| PyAV (FFmpeg libs; source install only, the Windows exe stubs `av` out) | BSD-3 / LGPL | github.com/PyAV-Org/PyAV |
 | numpy, scipy, onnxruntime | BSD-3, BSD-3, MIT | |
 | psutil, huggingface_hub | BSD-3, Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0 (non-commercial) | not shipped, no code or setup option |

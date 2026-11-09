@@ -5,6 +5,7 @@
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [zh-TW](docs/ARCHITECTURE.zh-TW.md) · [zh-CN](docs/ARCHITECTURE.zh-CN.md)
 
 完全本地、离线的实时语音翻译器：**系统音频输出 -> 采集 -> 语音识别 -> 翻译 -> 文本**。
+会采集电脑播放的所有声音（系统输出，不是单个程序）。运行时完全不使用网络；只有安装／首次下载模型才会用到网络。
 数据不会离开你的电脑：不使用云端 API、没有遥测，音频和转写文本都不会写入磁盘。
 
 ```
@@ -132,14 +133,15 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | tlwu | MIT | 本项目 |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper 权重（Systran CT2 转换版） | MIT | huggingface.co/Systran |
-| Silero VAD（faster-whisper 内置 ONNX） | MIT | github.com/snakers4/silero-vad |
+| Silero VAD（faster-whisper 内置 ONNX，Silero Team） | MIT | github.com/snakers4/silero-vad |
 | CTranslate2 | MIT | github.com/OpenNMT/CTranslate2 |
-| OPUS-MT 模型（经 Argos 包） | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT、argosopentech/argospm-index |
+| OPUS-MT 模型（Helsinki-NLP，需注明出处） | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT、argosopentech/argospm-index |
+| Argos Translate（模型打包／索引） | MIT | github.com/argosopentech/argos-translate |
 | SentencePiece | Apache-2.0 | github.com/google/sentencepiece |
 | OpenCC（opencc-python-reimplemented） | Apache-2.0 | github.com/yichen0831/opencc-python |
 | soundcard | BSD-3 | github.com/bastibe/SoundCard |
 | soundfile / libsndfile | BSD-3 / LGPL-2.1 | github.com/bastibe/python-soundfile |
-| PyAV（FFmpeg 库） | BSD-3 / LGPL | github.com/PyAV-Org/PyAV |
+| PyAV（FFmpeg 库；仅源码安装使用，Windows exe 已用桩替换 `av`） | BSD-3 / LGPL | github.com/PyAV-Org/PyAV |
 | numpy、scipy、onnxruntime | BSD-3、BSD-3、MIT | |
 | psutil、huggingface_hub | BSD-3、Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未随附，无代码亦无安装选项 |

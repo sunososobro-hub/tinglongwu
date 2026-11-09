@@ -1,4 +1,4 @@
-"""Build the standalone Windows folder app (tlwu.exe) with Nuitka and zip it.
+r"""Build the standalone Windows folder app (tlwu.exe) with Nuitka and zip it.
 
 Run with the PACKAGING venv (never the project .venv):
     %USERPROFILE%\tlwu-eval\pack-venv\Scripts\python.exe packaging\build_windows.py [--post-only] [--lite]
@@ -33,8 +33,6 @@ CUDA_WHEELS = {"cublas": ["cublas64_12.dll", "cublasLt64_12.dll"],  # nvblas64_1
                "cuda_nvrtc": ["nvrtc64_120_0.dll", "nvrtc-builtins64_129.dll"],  # cuDNN runtime-compiled engines
                "cudnn": None}  # None = all DLLs
 LITE_SKIP = ("cuda_libs", "llama_cpp/lib/ggml-cuda.dll")  # CPU-only variant
-VC_RUNTIME = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll",
-              "concrt140.dll"]
 
 
 def nuitka_cmd() -> list[str]:
@@ -62,6 +60,35 @@ def run_nuitka() -> Path:
     return out
 
 
+NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososobro-hub/tinglongwu
+
+Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
+Silero VAD: MIT, Qwen3: Apache-2.0).
+Microsoft Visual C++ runtime is NOT bundled by us: install the Microsoft Visual C++ Redistributable 2015-2022 (x64).
+This package includes NVIDIA CUDA and cuDNN libraries (cuda_libs/) redistributed under the NVIDIA CUDA Toolkit EULA
+and the cuDNN Software License Agreement; see the NVIDIA-*.txt files in this folder.
+No GPL components: PyAV/FFmpeg is NOT included (stubbed out).
+
+Native components and their licenses
+- libsndfile (_soundfile_data/libsndfile_x64.dll): LGPL-2.1, full text in LICENSE-libsndfile-LGPL-2.1.txt.
+  Source: https://github.com/libsndfile/libsndfile . It is a separate DLL; you may replace it with your own build
+  of libsndfile (same ABI) by overwriting that file.
+- llama.cpp / ggml (llama_cpp/lib/*.dll): MIT, Copyright (c) The ggml authors. https://github.com/ggml-org/llama.cpp
+- Python runtime (python312.dll): Python Software Foundation License. https://docs.python.org/3/license.html
+- Tcl/Tk (tcl86t.dll, tk86t.dll): Tcl/Tk license (BSD-style). https://www.tcl.tk/software/tcltk/license.html
+- OpenSSL (libcrypto-3.dll): Apache-2.0. https://www.openssl.org/
+- SQLite (sqlite3.dll): public domain. https://www.sqlite.org/copyright.html
+- zlib (zlib1.dll): zlib license. https://zlib.net/zlib_license.html
+- Intel OpenMP runtime (libiomp5md.dll): Intel / LLVM OpenMP license (Apache-2.0 with LLVM exception).
+- OpenBLAS (numpy.libs, scipy.libs *openblas*.dll): BSD-3-Clause. https://github.com/OpenMathLib/OpenBLAS
+- Microsoft vcomp140 OpenMP runtime (sentencepiece.libs/vcomp140-*.dll, shipped inside the sentencepiece wheel) and
+  the msvcp140 copies inside numpy.libs / sentencepiece.libs (shipped inside those wheels): Microsoft Visual C++
+  redistributable terms.
+
+Python packages (name version: license as declared in package metadata)
+"""
+
+
 def copy_cuda(app: Path) -> list[str]:
     dst = app / "cuda_libs"
     dst.mkdir(exist_ok=True)
@@ -87,16 +114,6 @@ def copy_llama(app: Path) -> None:
             shutil.copy2(f, dst / f.name)
 
 
-def copy_vc_runtime(app: Path) -> list[str]:
-    got = []
-    sysdir = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
-    for n in VC_RUNTIME:
-        if not (app / n).exists() and (sysdir / n).exists():
-            shutil.copy2(sysdir / n, app / n)
-            got.append(n)
-    return got
-
-
 def write_licenses(app: Path) -> None:
     lic = app / "licenses"
     lic.mkdir(exist_ok=True)
@@ -108,14 +125,13 @@ def write_licenses(app: Path) -> None:
     for name in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc"):
         for f in (CUDA_SRC).glob(f"nvidia_{name}_cu12-*/licenses/*"):
             shutil.copy2(f, lic / f"NVIDIA-{name}-{f.name}")
-    (lic / "THIRD_PARTY_NOTICES.txt").write_text(
-        "tinglongWu bundles the following Python packages (name version: license as declared in package metadata).\n"
-        "Models are NOT bundled; they are downloaded on first run (Whisper: MIT, OPUS-MT/Argos: CC-BY-4.0/MIT, "
-        "Qwen3: Apache-2.0).\nNVIDIA CUDA runtime DLLs in cuda_libs/ are redistributed under the NVIDIA CUDA Toolkit "
-        "EULA (cudart, cuBLAS, NVRTC) and the cuDNN Software License Agreement; see the NVIDIA-*.txt files.\n"
-        "Microsoft Visual C++ runtime DLLs (vcruntime140*, msvcp140*) are redistributed under the Visual Studio "
-        "redistributable terms (app-local deployment).\nNo GPL components: PyAV/FFmpeg is NOT included.\n\n"
-        + "\n".join(rows) + "\n", "utf-8")
+    import importlib.util
+
+    spec = importlib.util.find_spec("soundfile")
+    cand = Path(spec.origin).parent.parent / "_soundfile_data" / "COPYING" if spec and spec.origin else None
+    if cand and cand.exists():
+        shutil.copy2(cand, lic / "LICENSE-libsndfile-LGPL-2.1.txt")
+    (lic / "THIRD_PARTY_NOTICES.txt").write_text(NOTICES_HEAD + "\n".join(rows) + "\n", "utf-8")
 
 
 def make_zip(app: Path, out: Path) -> None:
@@ -146,7 +162,6 @@ def main() -> int:
     if not (APP / "tlwu.exe").exists():
         raise SystemExit("run without --post-only first")
     copy_llama(APP)
-    print("vc runtime:", copy_vc_runtime(APP))
     print("cuda:", copy_cuda(APP))
     write_licenses(APP)
     shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
