@@ -149,6 +149,46 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 
 再散布模型前請自行確認上游授權。
 
+## 基準測試
+
+以 `scripts/bench/`（開發工具，不屬於產品）量測翻譯品質與速度。
+
+- 硬體：RTX 3050 8 GB。資料：FLORES-200 devtest（1012 句，俄文 -> 繁體中文，使用原文文字；50 句的列為前 50 句）。指標：chrF（sacrebleu）與 COMET（Unbabel/wmt22-comet-da）。延遲不含模型載入。Qwen 引擎為 Q4_K_M GGUF、2048 context。
+
+| engine | chrF | COMET | median s/sentence | peak VRAM (+MiB) |
+|---|---|---|---|---|
+| opus (default, CPU/GPU) | 23.6 | 0.824 | 0.14 | 424 |
+| m2m | 22.9 | 0.819 | 0.34 | 1724 |
+| qwen3-4b | 23.5 | 0.849 | 0.46 | 3062 |
+| qwen25-7b | 23.5 | 0.840 | 0.72 | 4682 |
+| madlad3b | 26.1 | 0.846 | 0.69 | 3552 |
+| qwen3-8b | 26.0 | 0.865 | 0.77 | 5148 |
+| qwen3-8b + context | 26.3 | 0.867 | 0.80 | 5150 |
+| Google Cloud Translation v2 (reference) | 29.8 | 0.879 | - | - |
+
+| direction (first 50 sentences) | engine | chrF | COMET | median s/sentence |
+|---|---|---|---|---|
+| en->zho_Hant | opus | 29.9 | 0.854 | 0.10 |
+| en->zho_Hant | qwen3-4b | 30.7 | 0.881 | 0.54 |
+| en->zho_Hant | qwen3-8b | 31.2 | 0.892 | 0.91 |
+| en->zho_Hant | Google | 37.2 | 0.900 | - |
+| ru->eng | opus | 62.2 | 0.867 | 0.07 |
+| ru->eng | qwen3-4b | 62.9 | 0.867 | 0.52 |
+| ru->eng | qwen3-8b | 64.3 | 0.870 | 0.81 |
+| ru->eng | Google | 67.2 | 0.883 | - |
+
+另以 FLEURS 200 句語音（ASR large-v3-turbo -> 翻譯）測得相同排序（opus 22.7、qwen3-8b 24.9、qwen3-4b 22.3、Google 28.5 chrF）。
+
+重現方式（需要 bench venv、`%USERPROFILE%/tlwu-eval` 下的資料；Google 欄需要 `google_key.txt` 內的 Cloud Translation 金鑰，可加 `--no-google` 略過）：
+
+```
+.venv-bench\Scripts\python scripts/bench/run.py --full --engines m2m,qwen3-8b,qwen3-8b+ctx,madlad3b,qwen3-4b,qwen25-7b
+.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair en-zh --engines qwen3-8b,qwen3-4b
+.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en --engines qwen3-8b,qwen3-4b
+```
+
+**Google 在所有測試方向的分數都高於所有離線引擎。** 離線引擎以部分品質換取無須網路、資料不離開本機。50 句樣本僅供參考。
+
 ## 已知限制
 - **延遲**約為段落長度加處理時間：停頓（VAD）後或達 `--chunk` 秒才出字。降低 `--chunk` 可更快，但準確度下降。
 - **英文中介**會損失術語與語氣（兩次有損轉換），人名、性別、敬語較差。

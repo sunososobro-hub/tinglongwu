@@ -147,6 +147,46 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 
 再分发模型前请自行确认上游许可证。
 
+## 基准测试
+
+用 `scripts/bench/`（开发工具，不属于产品）测量翻译质量与速度。
+
+- 硬件：RTX 3050 8 GB。数据：FLORES-200 devtest（1012 句，俄文 -> 繁体中文，使用原文文本；50 句的行为前 50 句）。指标：chrF（sacrebleu）与 COMET（Unbabel/wmt22-comet-da）。延迟不含模型加载。Qwen 引擎为 Q4_K_M GGUF、2048 context。
+
+| engine | chrF | COMET | median s/sentence | peak VRAM (+MiB) |
+|---|---|---|---|---|
+| opus (default, CPU/GPU) | 23.6 | 0.824 | 0.14 | 424 |
+| m2m | 22.9 | 0.819 | 0.34 | 1724 |
+| qwen3-4b | 23.5 | 0.849 | 0.46 | 3062 |
+| qwen25-7b | 23.5 | 0.840 | 0.72 | 4682 |
+| madlad3b | 26.1 | 0.846 | 0.69 | 3552 |
+| qwen3-8b | 26.0 | 0.865 | 0.77 | 5148 |
+| qwen3-8b + context | 26.3 | 0.867 | 0.80 | 5150 |
+| Google Cloud Translation v2 (reference) | 29.8 | 0.879 | - | - |
+
+| direction (first 50 sentences) | engine | chrF | COMET | median s/sentence |
+|---|---|---|---|---|
+| en->zho_Hant | opus | 29.9 | 0.854 | 0.10 |
+| en->zho_Hant | qwen3-4b | 30.7 | 0.881 | 0.54 |
+| en->zho_Hant | qwen3-8b | 31.2 | 0.892 | 0.91 |
+| en->zho_Hant | Google | 37.2 | 0.900 | - |
+| ru->eng | opus | 62.2 | 0.867 | 0.07 |
+| ru->eng | qwen3-4b | 62.9 | 0.867 | 0.52 |
+| ru->eng | qwen3-8b | 64.3 | 0.870 | 0.81 |
+| ru->eng | Google | 67.2 | 0.883 | - |
+
+另用 FLEURS 200 句语音（ASR large-v3-turbo -> 翻译）得到相同排序（opus 22.7、qwen3-8b 24.9、qwen3-4b 22.3、Google 28.5 chrF）。
+
+复现方法（需要 bench venv、`%USERPROFILE%/tlwu-eval` 下的数据；Google 列需要 `google_key.txt` 中的 Cloud Translation 密钥，可加 `--no-google` 跳过）：
+
+```
+.venv-bench\Scripts\python scripts/bench/run.py --full --engines m2m,qwen3-8b,qwen3-8b+ctx,madlad3b,qwen3-4b,qwen25-7b
+.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair en-zh --engines qwen3-8b,qwen3-4b
+.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en --engines qwen3-8b,qwen3-4b
+```
+
+**Google 在所有测试方向的分数都高于所有离线引擎。** 离线引擎以部分质量换取无需联网、数据不离开本机。50 句样本仅供参考。
+
 ## 已知限制
 - **延迟**约为段落长度加处理时间：停顿（VAD）后或达到 `--chunk` 秒才出字。减小 `--chunk` 可更快，但准确率下降。
 - **英文中转**会损失术语和语气（两次有损转换），人名、性别、敬语较差。

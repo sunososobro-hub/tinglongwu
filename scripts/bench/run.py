@@ -40,7 +40,17 @@ PY_RUNTIME = REPO / ".venv" / "Scripts" / "python.exe"
 PY_BENCH = REPO / ".venv-bench" / "Scripts" / "python.exe"
 RUNTIME_ENGINES = {"opus", "m2m"}
 ALL_ENGINES = ["opus", "m2m", "qwen3-8b", "qwen3-8b+ctx", "qwen3-4b", "qwen3-4b+ctx", "qwen25-7b", "qwen25-7b+ctx", "madlad3b"]
+PAIRS = {  # name -> (tlwu src, tlwu tgt, FLORES src, FLORES ref, Google src, Google tgt)
+    "ru-zh": ("ru", "zh", "rus_Cyrl", "zho_Hant", "ru", "zh-TW"),
+    "en-zh": ("en", "zh", "eng_Latn", "zho_Hant", "en", "zh-TW"),
+    "ru-en": ("ru", "en", "rus_Cyrl", "eng_Latn", "ru", "en"),
+}
+PAIR = "ru-zh"  # set from --pair; non-default pairs cache under mt_<tag>.<pair>
 PROMPT_V = hashlib.sha1(W.SYSTEM.encode()).hexdigest()[:6]
+
+
+def cache_name(engine: str) -> str:
+    return f"mt_{tag_of(engine)}" + ("" if PAIR == "ru-zh" else f".{PAIR}")
 
 
 def tag_of(engine: str) -> str:
@@ -81,8 +91,8 @@ def fleurs_rows(n: int):
 
 def flores_set(n: int):
     d = DATA / "flores200_dataset"
-    src = (d / "devtest" / "rus_Cyrl.devtest").read_text("utf-8").split("\n")[:1012]
-    ref = (d / "devtest" / "zho_Hant.devtest").read_text("utf-8").split("\n")[:1012]
+    src = (d / "devtest" / f"{PAIRS[PAIR][2]}.devtest").read_text("utf-8").split("\n")[:1012]
+    ref = (d / "devtest" / f"{PAIRS[PAIR][3]}.devtest").read_text("utf-8").split("\n")[:1012]
     docs = [l.split("\t")[0] for l in (d / "metadata_devtest.tsv").read_text("utf-8").splitlines()[1:]]
     ctx = [src[i - 1] if i and docs[i] == docs[i - 1] else None for i in range(len(src))]
     return src[:n], ref[:n], ctx[:n]
@@ -145,7 +155,7 @@ def asr(cache_root: Path, model: str, wavs: list[str], device: str):
 def mt(cache_root: Path, engine: str, items: list[dict], device: str, google_key: str | None):
     """items: [{"text", "ctx"}] -> list of {"o","s"} (cached by (tag, ctx-if-used, text))."""
     tag = tag_of(engine)
-    c = Cache(cache_root, f"mt_{tag}")
+    c = Cache(cache_root, cache_name(engine))
     use_ctx = engine.endswith("+ctx")
     keys = [key_of(tag, (it["ctx"] or "") if use_ctx else "", it["text"]) for it in items]
     miss = [i for i, k in enumerate(keys) if k not in c.d]
@@ -153,11 +163,13 @@ def mt(cache_root: Path, engine: str, items: list[dict], device: str, google_key
         if engine == "google":
             import google_ref
 
-            outs = google_ref.translate([items[i]["text"] for i in miss], google_key, "ru", "zh-TW")
+            outs = google_ref.translate([items[i]["text"] for i in miss], google_key, PAIRS[PAIR][4], PAIRS[PAIR][5])
+            print(f"  google chars sent: {sum(len(items[i]['text']) for i in miss)}", flush=True)
             c.add([{"k": keys[i], "o": o, "s": None} for i, o in zip(miss, outs)])
         else:
             py = PY_RUNTIME if engine in RUNTIME_ENGINES else PY_BENCH
-            res = run_worker(py, {"task": "mt", "engine": engine, "items": [items[i] for i in miss], "device": device})
+            res = run_worker(py, {"task": "mt", "engine": engine, "items": [items[i] for i in miss],
+                                  "device": device, "src": PAIRS[PAIR][0], "tgt": PAIRS[PAIR][1]})
             c.add([{"k": keys[i], "o": r["o"], "s": r["s"]} for i, r in zip(miss, res["results"])])
             c.meta_path().write_text(json.dumps(res["meta"]), "utf-8")
         print(f"  mt {engine}: {len(miss)} new, {len(keys) - len(miss)} cached", flush=True)
@@ -169,6 +181,8 @@ def mt(cache_root: Path, engine: str, items: list[dict], device: str, google_key
 def seed_google(cache_root: Path) -> None:
     """Import Google Translation v2 outputs from the previous bench run (same input text -> same key); no API calls."""
     c = Cache(cache_root, "mt_google")
+    if PAIR != "ru-zh":
+        return
     pairs = [(DATA / "flores" / "src.txt", DATA / "flores" / "hyp.google.txt"),
              (DATA / "fleurs" / "asr_large-v3-turbo.txt", DATA / "fleurs" / "mt_large-v3-turbo.google.txt")]
     rows = []
@@ -212,12 +226,28 @@ def table(title: str, scores: dict[str, dict], cache_root: Path, with_comet: boo
     L = [f"### {title}", "", "| engine | chrF |" + (" COMET |" if with_comet else "") + " median s/sent | p90 s | VRAM +MiB |",
          "|---|---|" + ("---|" if with_comet else "") + "---|---|---|"]
     for name, d in scores.items():
-        mp = Cache(cache_root, f"mt_{tag_of(name)}").meta_path()
+        mp = Cache(cache_root, cache_name(name)).meta_path()
         vram = json.loads(mp.read_text("utf-8")).get("vram_mib", "") if mp.exists() else ""
         L.append(f"| {name} | {d['chrF']:.1f} |" + (f" {d.get('COMET', float('nan')):.3f} |" if with_comet else "")
                  + (f" {d['med_s']:.2f} | {d['p90_s']:.2f} |" if "med_s" in d else " - | - |")
                  + f" {vram if name != 'google' else '-'} |")
     return "\n".join(L)
+
+
+def other_pair(a, engines, cache_root, gkey, t_start) -> int:
+    from comet import download_model, load_from_checkpoint
+
+    n = a.flores or 50
+    src, ref, _ = flores_set(n)
+    items = [{"text": s, "ctx": None} for s in src]
+    res = {e: mt(cache_root, e, items, a.device, gkey) for e in engines}
+    if gkey:
+        res["google"] = mt(cache_root, "google", items, a.device, gkey)
+    comet = load_from_checkpoint(download_model("Unbabel/wmt22-comet-da"))
+    print("\n" + table(f"FLORES-200 devtest {PAIR.replace('-', '->')}, gold text, first {len(src)} sentences",
+                       score(res, src, ref, comet), cache_root, True))
+    print(f"\nsmoke runtime: {time.time() - t_start:.0f} s")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -226,15 +256,20 @@ def main(argv=None) -> int:
     g.add_argument("--smoke", action="store_true")
     g.add_argument("--full", action="store_true")
     ap.add_argument("--engines", default="", help=f"comma list of extra engines besides opus: {','.join(ALL_ENGINES[1:])}")
+    ap.add_argument("--pair", default="ru-zh", choices=list(PAIRS),
+                    help="ru-zh (default; FLEURS + FLORES). en-zh / ru-en: FLORES devtest gold-text smoke only, "
+                         "first --flores sentences (default 50 for these pairs), chrF + COMET")
     ap.add_argument("--no-google", action="store_true", help="omit the Google column (no API calls)")
     ap.add_argument("--n", type=int, help="override the number of FLEURS utterances (smoke 20, full 200)")
-    ap.add_argument("--flores", type=int, default=1012, help="--full: FLORES devtest sentences (0 = skip)")
+    ap.add_argument("--flores", type=int, default=None, help="--full: FLORES devtest sentences (0 = skip)")
     ap.add_argument("--asr-model", default="large-v3-turbo")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--cache", default=str(DATA / "cache"))
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    global PAIR
+    PAIR = a.pair
     cache_root = Path(a.cache)
     cache_root.mkdir(parents=True, exist_ok=True)
     extra = [e for e in a.engines.split(",") if e]
@@ -247,6 +282,10 @@ def main(argv=None) -> int:
         gkey = Path(KEY_FILE).read_text("utf-8").strip()
         seed_google(cache_root)
     t_start = time.time()
+    if PAIR != "ru-zh":
+        return other_pair(a, engines, cache_root, gkey, t_start)
+    if a.flores is None:
+        a.flores = 1012
     comet = None
     n = a.n or (20 if a.smoke else 200)
     rows = fleurs_rows(n)

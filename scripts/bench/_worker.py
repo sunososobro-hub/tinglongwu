@@ -27,6 +27,19 @@ QWEN = {
     "qwen3-4b": (BASE / "qwen3-4b" / "Qwen3-4B-Q4_K_M.gguf", True),
     "qwen25-7b": (BASE / "qwen25-7b" / "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf", False),
 }
+LANG_NAME = {"en": "English", "ru": "Russian", "zh": "Traditional Chinese (繁體中文)"}
+MADLAD_TAG = {"en": "<2en>", "zh": "<2zh_Hant>", "ru": "<2ru>"}
+
+
+def system_for(src: str = "ru", tgt: str = "zh") -> str:
+    """The ru->zh prompt is kept byte-identical (cache keys); other pairs use the same wording."""
+    if (src, tgt) == ("ru", "zh"):
+        return SYSTEM
+    tail = (" as written in Taiwan, using natural Taiwan vocabulary and full-width punctuation" if tgt == "zh" else "")
+    return (f"You are a professional translator. Translate the user's {LANG_NAME[src].split(' (')[0]} text into "
+            f"{LANG_NAME[tgt]}{tail}. Output only the translation, nothing else.")
+
+
 MADLAD_DIR = BASE / "madlad3b-ct2"
 MADLAD_SRC = BASE / "madlad3b-src"
 SYSTEM = ("You are a professional translator. Translate the user's Russian text into Traditional Chinese "
@@ -112,9 +125,10 @@ def job_mt_tlwu(job):
     t0 = time.time()
     tr = PivotTranslator(models_dir(None), "tw", device=dev) if job["engine"] == "opus" \
         else M2mTranslator(models_dir(None), "tw", dev)
-    tr.preload("ru", "zh")
+    src, tgt = job.get("src", "ru"), job.get("tgt", "zh")
+    tr.preload(src, tgt)
     load = time.time() - t0
-    res = timed(lambda it: tr.translate(it["text"], "ru", "zh").text.replace("\n", " ") if it["text"].strip() else "",
+    res = timed(lambda it: tr.translate(it["text"], src, tgt).text.replace("\n", " ") if it["text"].strip() else "",
                 job["items"])
     return res, {"load_s": load, "vram_mib": vr.stop(), "device": dev}
 
@@ -132,6 +146,7 @@ def job_mt_qwen(job):
     name = job["engine"].split("+")[0]
     path, qwen3 = QWEN[name]
     use_ctx = job["engine"].endswith("+ctx")
+    system = system_for(job.get("src", "ru"), job.get("tgt", "zh"))
     vr = VramPeak()
     t0 = time.time()
     llm = Llama(model_path=str(path), n_gpu_layers=-1, n_ctx=2048, flash_attn=True, verbose=False)
@@ -144,7 +159,7 @@ def job_mt_qwen(job):
         if use_ctx and it.get("ctx"):
             user = (f"Previous sentence (context only, do not translate it):\n{it['ctx']}\n\n"
                     f"Translate this sentence:\n{it['text']}")
-        prompt = (f"<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n"
+        prompt = (f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n"
                   f"<|im_start|>assistant\n" + ("<think>\n\n</think>\n\n" if qwen3 else ""))
         r = llm.create_completion(prompt, max_tokens=300, temperature=0.0, stop=["<|im_end|>"])
         return r["choices"][0]["text"].strip().replace("\n", " ")
@@ -165,7 +180,7 @@ def job_mt_madlad(job):
     tr = ctranslate2.Translator(str(MADLAD_DIR), device=dev, compute_type="int8_float16" if dev == "cuda" else "int8")
     sp = sentencepiece.SentencePieceProcessor(model_file=str(MADLAD_DIR / "spiece.model"))
     load = time.time() - t0
-    tag = job.get("tag", "<2zh_Hant>")
+    tag = job.get("tag") or MADLAD_TAG[job.get("tgt", "zh")]
 
     def one(it):
         if not it["text"].strip():
