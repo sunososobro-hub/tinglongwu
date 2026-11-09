@@ -29,8 +29,11 @@ dev = ["pytest==9.2.0", "psutil==7.2.2"]
 tlwu = "tinglongwu.cli:main"
 tlwu-setup = "tinglongwu_setup.cli:main"
 
+[project.gui-scripts]
+tlwu-gui = "tinglongwu.gui:main"
+
 [tool.setuptools]
-packages = ["tinglongwu", "tinglongwu.capture", "tinglongwu_setup"]
+packages = ["tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu_setup"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

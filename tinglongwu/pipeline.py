@@ -25,7 +25,8 @@ POLL = 0.25
 
 def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
-        merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None) -> None:
+        merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
+        stop_event: threading.Event | None = None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     With a merger, ASR text is held until a sentence ends, or max_wait seconds passed (a timer wakes
@@ -79,6 +80,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         draft.start(stop)
     try:
         while True:
+            if stop_event is not None and stop_event.is_set():
+                break  # GUI Stop button
             timeout = POLL
             has_deadline = merger is not None and merger.deadline is not None and not audio_clock
             if has_deadline:

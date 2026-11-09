@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import warnings
 
 from .capture import select_backend
 from .models import ModelNotFound, models_dir
@@ -54,6 +53,8 @@ def parse_args(argv=None):
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
                         "given to the Qwen engine as required translations (OPUS/M2M ignore targets). "
                         "Explicit flag only; offline")
+    p.add_argument("--gui", action="store_true",
+                   help="open the graphical interface (floating subtitle bar + small control window)")
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
@@ -105,12 +106,11 @@ def _hard_exit(code: int) -> None:
         os._exit(code)
 
 
-def main(argv=None) -> int:
-    # soundcard warns on every capture glitch ("data discontinuity in recording"); harmless noise
-    warnings.filterwarnings("ignore", message=".*data discontinuity.*")
-    a = parse_args(argv)
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def run_session(a, sink=None, draft_factory=None, stop=None, status=None) -> None:
+    """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
+
+    sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
+    or None; stop: threading.Event that ends the run; status(str): progress notes (GUI)."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device
     from .merge import SentenceMerger
@@ -118,46 +118,73 @@ def main(argv=None) -> int:
     from .segment import Segmenter
     from .sink import TextSink, TranscriptSink
 
-    try:
-        mdir = models_dir(a.models_dir)
-        dev = resolve_device(a.compute)
-        glossary = None
-        if a.glossary:
-            from .glossary import load as load_glossary
+    note = status or (lambda m: None)
+    mdir = models_dir(a.models_dir)
+    dev = resolve_device(a.compute)
+    glossary = None
+    if a.glossary:
+        from .glossary import load as load_glossary
 
-            try:
-                glossary = load_glossary(a.glossary)
-            except (OSError, UnicodeDecodeError) as e:
-                raise RuntimeError(f"cannot read --glossary: {e}") from e
-            print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
-        asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary)
-        dev = asr.device  # may have fallen back to cpu
-        translator = None
-        if not a.transcript_only:
-            translator = make_translator(a.engine, mdir, a.zh_variant, dev)
-            if glossary is not None and hasattr(translator, "glossary"):
-                translator.glossary = glossary
-            if a.lang != "auto":
-                translator.preload(a.lang, a.to)
+        try:
+            glossary = load_glossary(a.glossary)
+        except (OSError, UnicodeDecodeError) as e:
+            raise RuntimeError(f"cannot read --glossary: {e}") from e
+        print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
+    note("loading speech model...")
+    asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary)
+    dev = asr.device  # may have fallen back to cpu
+    translator = None
+    if not a.transcript_only:
+        note("loading translation engine...")
+        translator = make_translator(a.engine, mdir, a.zh_variant, dev)
+        if glossary is not None and hasattr(translator, "glossary"):
+            translator.glossary = glossary
+        if a.lang != "auto":
+            translator.preload(a.lang, a.to)
+    if sink is None:
         sink = TranscriptSink() if a.transcript_only else TextSink()
-        if a.save is not None:
-            from .sink import JsonlSaveSink, default_save_path
+    if a.save is not None:
+        from .sink import JsonlSaveSink, default_save_path
 
-            save_path = a.save or default_save_path()
-            sink = JsonlSaveSink(sink, save_path)
-            print(f"tlwu: saving final lines to {os.path.abspath(save_path)}", file=sys.stderr)
-        source = select_backend(a.file, a.mic, a.device)
-        merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
-        segmenter = Segmenter(a.chunk, not a.no_vad)
-        draft = None
-        if a.stream:
-            draft = make_draft(asr, translator, segmenter, a.to, show_src=a.stream_src,
-                               debug_latency=a.debug_latency)
-            if draft is not None and a.file:
-                from .stream import PacedSource
+        save_path = a.save or default_save_path()
+        sink = JsonlSaveSink(sink, save_path)
+        print(f"tlwu: saving final lines to {os.path.abspath(save_path)}", file=sys.stderr)
+    if stop is not None and stop.is_set():
+        return
+    source = select_backend(a.file, a.mic, a.device)
+    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
+    segmenter = Segmenter(a.chunk, not a.no_vad)
+    draft = None
+    if draft_factory is not None:
+        draft = draft_factory(asr, translator, segmenter, a.to)
+    elif a.stream:
+        draft = make_draft(asr, translator, segmenter, a.to, show_src=a.stream_src,
+                           debug_latency=a.debug_latency)
+        if draft is not None and a.file:
+            from .stream import PacedSource
 
-                source = PacedSource(source)
-        run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft)
+            source = PacedSource(source)
+    note("listening")
+    run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
+        stop_event=stop)
+
+
+def main(argv=None) -> int:
+    # soundcard warns on every capture glitch ("data discontinuity in recording"); harmless noise.
+    # NB soundcard re-registers an "always" filter for its warning class when imported, so capture code
+    # calls suppress_capture_warnings() again right after importing it.
+    from .capture._soundcard import suppress_capture_warnings
+
+    suppress_capture_warnings()
+    a = parse_args(argv)
+    if a.gui:
+        from .gui import main as gui_main
+
+        return gui_main()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    try:
+        run_session(a)
     except (ModelNotFound, NotImplementedError, RuntimeError) as e:
         print(f"tlwu: {e}", file=sys.stderr)
         return 2
