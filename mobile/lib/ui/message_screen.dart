@@ -63,8 +63,9 @@ class MissingModelsScreen extends StatelessWidget {
               const SizedBox(height: 8),
               SelectableText(
                 'adb shell mkdir -p ${p.modelsDir}\n'
-                'adb push models\\mobile\\sherpa-ru ${p.modelsDir}/\n'
-                'adb push models\\mobile\\${ModelPaths.llmFileName} ${p.modelsDir}/',
+                'adb push models\\mobile\\gigaam3 ${p.modelsDir}/\n'
+                'adb push models\\mobile\\silero_vad.onnx ${p.modelsDir}/\n'
+                'adb push models\\mobile\\${ModelPaths.llmDefault} ${p.modelsDir}/',
                 style: mono,
               ),
               const SizedBox(height: 16),

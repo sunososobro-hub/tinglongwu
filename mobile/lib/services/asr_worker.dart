@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -21,11 +22,16 @@ class AsrPartial extends AsrEvent {
 }
 
 class AsrFinal extends AsrEvent {
-  const AsrFinal(this.text, {required this.forced});
+  const AsrFinal(this.text,
+      {required this.forced, this.decodeMs = 0, this.audioMs = 0});
   final String text;
 
-  /// True when committed because the utterance got too long (no endpoint).
+  /// True when the VAD cut the segment because it hit the max length.
   final bool forced;
+
+  /// Wall time of the offline decode, and the audio length it covered.
+  final int decodeMs;
+  final int audioMs;
 }
 
 class AsrError extends AsrEvent {
@@ -39,19 +45,22 @@ class AsrConfig {
     required this.decoder,
     required this.joiner,
     required this.tokens,
-    this.numThreads = 2,
-    this.maxWords = 24,
+    required this.vadModel,
+    this.testWavDir,
+    this.numThreads = 4,
   });
 
-  final String encoder, decoder, joiner, tokens;
-  final int numThreads;
-  final int maxWords;
+  final String encoder, decoder, joiner, tokens, vadModel;
 
-  /// Endpoint rules (seconds of trailing silence). Keep in sync with the
-  /// latency estimate in the pipeline.
-  static const rule1 = 1.6; // silence, nothing decoded yet
-  static const rule2 = 0.9; // silence after speech -> endpoint
-  static const rule3 = 14.0; // max utterance length
+  /// Debug: if this dir exists, every *.wav in it is decoded at startup and
+  /// emitted as a final (to exercise ASR + translation without a mic).
+  final String? testWavDir;
+  final int numThreads;
+
+  /// VAD rules (seconds). Speech end is detected after [vadMinSilence].
+  static const vadMinSilence = 0.6;
+  static const vadMinSpeech = 0.25;
+  static const vadMaxSpeech = 10.0;
 }
 
 /// Runs sherpa-onnx streaming ASR in a background isolate.
@@ -99,15 +108,39 @@ class AsrWorker {
     final out = args[0] as SendPort;
     final cfg = args[1] as AsrConfig;
     final inPort = ReceivePort();
-    sherpa.OnlineRecognizer? rec;
-    sherpa.OnlineStream? stream;
+    sherpa.OfflineRecognizer? rec;
+    sherpa.VoiceActivityDetector? vad;
     out.send(inPort.sendPort);
+
+    String decode(Float32List samples) {
+      final st = rec!.createStream();
+      try {
+        st.acceptWaveform(samples: samples, sampleRate: 16000);
+        rec.decode(st);
+        return SentenceSegmenter.normalize(rec.getResult(st).text);
+      } finally {
+        st.free();
+      }
+    }
+
+    void emit(Float32List samples, {required bool forced}) {
+      final sw = Stopwatch()..start();
+      final text = decode(samples);
+      final ms = sw.elapsedMilliseconds;
+      if (text.isNotEmpty) {
+        out.send(AsrFinal(text,
+            forced: forced,
+            decodeMs: ms,
+            audioMs: samples.length * 1000 ~/ 16000));
+      }
+    }
+
     try {
       sherpa.initBindings();
-      rec = sherpa.OnlineRecognizer(
-        sherpa.OnlineRecognizerConfig(
-          model: sherpa.OnlineModelConfig(
-            transducer: sherpa.OnlineTransducerModelConfig(
+      rec = sherpa.OfflineRecognizer(
+        sherpa.OfflineRecognizerConfig(
+          model: sherpa.OfflineModelConfig(
+            transducer: sherpa.OfflineTransducerModelConfig(
               encoder: cfg.encoder,
               decoder: cfg.decoder,
               joiner: cfg.joiner,
@@ -115,25 +148,56 @@ class AsrWorker {
             tokens: cfg.tokens,
             numThreads: cfg.numThreads,
             provider: 'cpu',
+            modelType: 'nemo_transducer',
             debug: false,
           ),
-          enableEndpoint: true,
-          rule1MinTrailingSilence: AsrConfig.rule1,
-          rule2MinTrailingSilence: AsrConfig.rule2,
-          rule3MinUtteranceLength: AsrConfig.rule3,
         ),
       );
-      stream = rec.createStream();
+      vad = sherpa.VoiceActivityDetector(
+        config: sherpa.VadModelConfig(
+          sileroVad: sherpa.SileroVadModelConfig(
+            model: cfg.vadModel,
+            threshold: 0.5,
+            minSilenceDuration: AsrConfig.vadMinSilence,
+            minSpeechDuration: AsrConfig.vadMinSpeech,
+            maxSpeechDuration: AsrConfig.vadMaxSpeech,
+          ),
+          sampleRate: 16000,
+          numThreads: 1,
+          debug: false,
+        ),
+        bufferSizeInSeconds: 30,
+      );
     } catch (e) {
       out.send(AsrError('ASR init failed: $e'));
       return;
     }
     out.send(const AsrReady());
 
-    var lastText = '';
+    // Debug wav files (decoded whole, no VAD).
+    final td = cfg.testWavDir;
+    if (td != null && Directory(td).existsSync()) {
+      final files = Directory(td)
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.wav'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+      for (final f in files) {
+        try {
+          final w = sherpa.readWave(f.path);
+          if (w.samples.isEmpty) continue;
+          emit(w.samples, forced: false);
+        } catch (e) {
+          out.send(AsrError('test wav ${f.path}: $e'));
+        }
+      }
+    }
+
+    var speaking = false;
     inPort.listen((m) {
       if (m == null) {
-        stream?.free();
+        vad?.free();
         rec?.free();
         inPort.close();
         return;
@@ -141,23 +205,17 @@ class AsrWorker {
       try {
         final samples =
             (m as TransferableTypedData).materialize().asFloat32List();
-        stream!.acceptWaveform(samples: samples, sampleRate: 16000);
-        while (rec!.isReady(stream)) {
-          rec.decode(stream);
+        vad!.acceptWaveform(samples);
+        final det = vad.isDetected();
+        if (det != speaking) {
+          speaking = det;
+          out.send(AsrPartial(det ? '…' : ''));
         }
-        final text = SentenceSegmenter.normalize(rec.getResult(stream).text);
-        if (text != lastText) {
-          lastText = text;
-          out.send(AsrPartial(text));
-        }
-        final endpoint = rec.isEndpoint(stream);
-        final forced =
-            !endpoint && SentenceSegmenter.shouldForceCommit(text, maxWords: cfg.maxWords);
-        if (endpoint || forced) {
-          if (text.isNotEmpty) out.send(AsrFinal(text, forced: forced));
-          rec.reset(stream);
-          lastText = '';
-          out.send(const AsrPartial(''));
+        while (!vad.isEmpty()) {
+          final seg = vad.front();
+          vad.pop();
+          final dur = seg.samples.length / 16000;
+          emit(seg.samples, forced: dur >= AsrConfig.vadMaxSpeech - 0.3);
         }
       } catch (e) {
         out.send(AsrError('ASR runtime error: $e'));

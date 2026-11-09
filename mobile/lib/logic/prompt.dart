@@ -10,8 +10,8 @@ class ContextPair {
 class PromptBuilder {
   static const system =
       'You are a live-subtitle translator. Translate Russian speech transcripts '
-      'into Traditional Chinese (繁體中文, Taiwan usage). The transcript has no '
-      'punctuation and may contain recognition errors; infer the intended '
+      'into Traditional Chinese (繁體中文, Taiwan usage). The transcript comes '
+      'from speech recognition and may contain errors; infer the intended '
       'meaning. Output ONLY the Chinese translation on one line. Never output '
       'Simplified Chinese, Russian, pinyin or explanations.';
 
@@ -24,8 +24,8 @@ class PromptBuilder {
   /// How many previous sentences are given as context.
   static const contextSentences = 2;
 
-  /// Builds a Qwen3 ChatML prompt with thinking disabled (empty think block
-  /// plus the /no_think soft switch).
+  /// Builds a Qwen3 ChatML prompt with thinking disabled via the empty think
+  /// block in the assistant turn (no "/no_think" text: small models echo it).
   static String build(
     String ru, {
     List<ContextPair> context = const [],
@@ -49,7 +49,7 @@ class PromptBuilder {
     b.write('Translate to Traditional Chinese:\n${ru.trim()}');
     if (strict) b.write(strictSuffix);
     b
-      ..write(' /no_think<|im_end|>\n')
+      ..write('<|im_end|>\n')
       ..write('<|im_start|>assistant\n')
       ..write('<think>\n\n</think>\n\n');
     return b.toString();
@@ -66,6 +66,7 @@ class PromptBuilder {
     var t = raw;
     t = t.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
     t = t.replaceAll(RegExp(r'</?think>'), '');
+    t = t.replaceAll(RegExp(r'\s*/no_think'), '');
     t = t.replaceAll(RegExp(r'<\|im_(start|end)\|>'), '');
     t = t.trim();
     final lines = t.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty);

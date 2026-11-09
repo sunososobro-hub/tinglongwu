@@ -12,6 +12,7 @@ class Translation {
     required this.firstTokenMs,
     required this.genMs,
     required this.retried,
+    required this.nCtx,
   });
 
   final String zh;
@@ -28,6 +29,10 @@ class Translation {
   final int genMs;
   final bool retried;
 
+  /// KV positions used by the last attempt (prompt + generated); the session
+  /// is cleared per request so this must stay small and constant.
+  final int nCtx;
+
   double get tokensPerSecond => genMs > 0 ? (tokens - 1) * 1000 / genMs : 0;
 }
 
@@ -43,7 +48,7 @@ class Translator {
     final engine = await LlamaEngine.spawn(
       modelParams: ModelParams(path: modelPath, gpuLayers: 0, useMmap: true),
       contextParams: ContextParams(
-        nCtx: 1024,
+        nCtx: 768,
         nBatch: 512,
         nUbatch: 512,
         nThreads: threads,
@@ -82,6 +87,7 @@ class Translator {
       firstTokenMs: attempt.firstTokenMs,
       genMs: attempt.genMs,
       retried: retried,
+      nCtx: attempt.nCtx,
     );
   }
 
@@ -92,17 +98,20 @@ class Translator {
     final buf = StringBuffer();
     var tokens = 0;
     var firstMs = 0;
+    var nCtx = 0;
     await for (final e in _session.generate(
       prompt: prompt,
       addSpecial: false,
       parseSpecial: true,
       sampler: const SamplerParams(greedy: true),
-      maxTokens: 120,
+      maxTokens: 100,
     )) {
       if (e is TokenEvent) {
         if (tokens == 0) firstMs = sw.elapsedMilliseconds;
         tokens++;
         buf.write(e.text);
+      } else if (e is DoneEvent) {
+        nCtx = e.committedPosition;
       }
     }
     final text = PromptBuilder.clean(buf.toString());
@@ -112,6 +121,7 @@ class Translator {
       tokens,
       firstMs,
       sw.elapsedMilliseconds - firstMs,
+      nCtx,
     );
   }
 
@@ -122,10 +132,12 @@ class Translator {
 }
 
 class _Attempt {
-  _Attempt(this.text, this.check, this.tokens, this.firstTokenMs, this.genMs);
+  _Attempt(this.text, this.check, this.tokens, this.firstTokenMs, this.genMs,
+      this.nCtx);
   final String text;
   final ZhCheck check;
   final int tokens;
   final int firstTokenMs;
   final int genMs;
+  final int nCtx;
 }

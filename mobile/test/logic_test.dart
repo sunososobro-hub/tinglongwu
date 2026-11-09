@@ -60,11 +60,12 @@ void main() {
   });
 
   group('PromptBuilder', () {
-    test('contains no_think, think block and Traditional instruction', () {
+    test('has empty think block, no /no_think, and Traditional instruction', () {
       final p = PromptBuilder.build('привет мир');
       expect(p, startsWith('<|im_start|>system\n'));
       expect(p, contains('Traditional Chinese'));
-      expect(p, contains('привет мир /no_think<|im_end|>'));
+      expect(p, contains('привет мир<|im_end|>'));
+      expect(p, isNot(contains('no_think')));
       expect(p, endsWith('<|im_start|>assistant\n<think>\n\n</think>\n\n'));
       expect(p, isNot(contains('Previous sentences')));
     });
@@ -78,7 +79,7 @@ void main() {
       final p = PromptBuilder.build('четыре', context: ctx);
       expect(p, isNot(contains('один')));
       expect(p.indexOf('два') < p.indexOf('три'), isTrue);
-      expect(p, contains('RU: три\nZH: 三'));
+      expect(p, contains('RU: три\n'));
       expect(p.indexOf('три') < p.indexOf('четыре'), isTrue);
     });
 
@@ -95,6 +96,7 @@ void main() {
       expect(PromptBuilder.clean('你好<|im_end|>'), '你好');
       expect(PromptBuilder.clean('第一行\n第二行'), '第一行');
       expect(PromptBuilder.clean('   '), '');
+      expect(PromptBuilder.clean('你好 /no_think'), '你好');
     });
   });
 
