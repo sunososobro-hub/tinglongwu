@@ -185,6 +185,8 @@ def main(argv=None) -> int:
                    help="M2M-100 1.2B direct translation (MIT): download + convert with ct2-transformers-converter")
     p.add_argument("--qwen", action="store_true",
                    help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
+    p.add_argument("--qwen4b", action="store_true",
+                   help="only Qwen3-4B Q4_K_M GGUF (~2.5 GB; for GPUs with < 6 GB free VRAM)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
@@ -206,8 +208,8 @@ def main(argv=None) -> int:
     if a.m2m:
         get_m2m(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
-    if a.qwen:
-        for name in QWEN_GGUF:
+    if a.qwen or a.qwen4b:
+        for name in (QWEN_GGUF if a.qwen else ["qwen3-4b"]):
             get_qwen(man, mdir, name)
             mf.write_text(json.dumps(man, indent=1), "utf-8")
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]

@@ -13,6 +13,16 @@ Nothing leaves your machine: no cloud APIs, no telemetry, no audio or transcript
 [ZH] 你好，你過得怎麼樣？
 ```
 
+## Quick install (Windows)
+
+For Windows 10/11 with an NVIDIA GPU (works without one, just slower). You need [Python 3.12](https://www.python.org/downloads/windows/) first (tick **Add python.exe to PATH** in its installer).
+
+1. On GitHub click **Code > Download ZIP**, then right-click the ZIP > **Extract All**.
+2. Open the folder and double-click **`install.bat`**. Wait (10-30 min, up to ~10 GB download; safe to re-run if interrupted).
+3. Double-click the new desktop shortcut **聽攏有 tinglongWu**.
+
+To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. The Qwen engine uses `requirements-qwen.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the OPUS engine automatically.
+
 ## Install / use split (read this first)
 
 One repo, two programs with a hard boundary:

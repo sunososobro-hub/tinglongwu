@@ -13,6 +13,16 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 [ZH] 你好，你過得怎麼樣？
 ```
 
+## 快速安裝（Windows）
+
+適用 Windows 10/11，有 NVIDIA 顯示卡最佳（沒有也能跑，只是較慢）。請先安裝 [Python 3.12](https://www.python.org/downloads/windows/)，安裝時勾選 **Add python.exe to PATH**。
+
+1. 在 GitHub 按 **Code > Download ZIP**，下載後對 ZIP 按右鍵 > **全部解壓縮**。
+2. 開啟資料夾，雙擊 **`install.bat`**，耐心等待（約 10–30 分鐘，最多下載約 10 GB；中斷後可重跑）。
+3. 雙擊桌面新出現的捷徑 **聽攏有 tinglongWu**。
+
+移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
+
 ## 安裝／使用分離（請先閱讀）
 
 同一個 repo、兩個程式，邊界明確：
