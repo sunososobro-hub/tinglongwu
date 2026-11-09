@@ -1,7 +1,7 @@
 """Build the standalone Windows folder app (tlwu.exe) with Nuitka and zip it.
 
 Run with the PACKAGING venv (never the project .venv):
-    C:\\Users\\user\\tlwu-eval\\pack-venv\\Scripts\\python.exe packaging\\build_windows.py [--post-only] [--lite]
+    %USERPROFILE%\tlwu-eval\pack-venv\Scripts\python.exe packaging\build_windows.py [--post-only] [--lite]
 
 pack-venv = requirements.txt (without av / psutil) + requirements-qwen.txt (llama-cpp-python CUDA wheel) + Nuitka.
 PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
@@ -138,6 +138,11 @@ def main() -> int:
         if APP.exists():
             shutil.rmtree(APP)
         shutil.copytree(src, APP)
+    elif not APP.exists():
+        built = BUILD / "tlwu.dist"
+        if not built.exists():
+            raise SystemExit(f"nothing to post-process: {built} missing; run without --post-only first")
+        shutil.copytree(built, APP)
     if not (APP / "tlwu.exe").exists():
         raise SystemExit("run without --post-only first")
     copy_llama(APP)

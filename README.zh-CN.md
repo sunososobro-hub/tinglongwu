@@ -129,7 +129,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 ## 许可证与来源
 | 组件 | 许可证 | 来源 |
 |---|---|---|
-| tlwu | 专有软件 | 本项目 |
+| tlwu | MIT | 本项目 |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper 权重（Systran CT2 转换版） | MIT | huggingface.co/Systran |
 | Silero VAD（faster-whisper 内置 ONNX） | MIT | github.com/snakers4/silero-vad |
@@ -143,7 +143,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | numpy、scipy、onnxruntime | BSD-3、BSD-3、MIT | |
 | psutil、huggingface_hub | BSD-3、Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未随附，无代码亦无安装选项 |
-| Piper TTS（路线图） | MIT | github.com/rhasspy/piper |
+| Piper TTS（仅路线图，未内置） | GPL-3.0 | github.com/OHF-Voice/piper1-gpl |
 
 再分发模型前请自行确认上游许可证。
 
@@ -206,4 +206,4 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 ## 测试
 `pip install -r requirements-dev.txt && pytest`（不需要模型和网络）。
 
-专有软件，保留所有权利。(c) 2026 sunososobro-hub。
+MIT 许可，见 [LICENSE](LICENSE)。(c) 2026 Alonso。

@@ -131,7 +131,7 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 ## Licenses and sources
 | Component | License | Source |
 |---|---|---|
-| tinglongwu | Proprietary | this repo |
+| tinglongwu | MIT | this repo |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper weights (Systran CT2 conversions) | MIT | huggingface.co/Systran |
 | Silero VAD (bundled ONNX in faster-whisper) | MIT | github.com/snakers4/silero-vad |
@@ -145,7 +145,7 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | numpy, scipy, onnxruntime | BSD-3, BSD-3, MIT | |
 | psutil, huggingface_hub | BSD-3, Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0 (non-commercial) | not shipped, no code or setup option |
-| Piper TTS (roadmap) | MIT | github.com/rhasspy/piper |
+| Piper TTS (roadmap only, not shipped) | GPL-3.0 | github.com/OHF-Voice/piper1-gpl |
 
 Verify upstream licenses yourself before redistributing models.
 
@@ -208,4 +208,4 @@ Mic -> zh -> ru translation -> Piper offline TTS -> virtual mic (VB-Cable / Blac
 ## Tests
 `pip install -r requirements-dev.txt && pytest` (no models or network needed).
 
-Proprietary. All rights reserved. (c) 2026 sunososobro-hub.
+MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.

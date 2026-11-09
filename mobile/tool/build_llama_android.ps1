@@ -8,7 +8,7 @@ $sdk = "$env:LOCALAPPDATA\Android\Sdk"
 $ndk = "$sdk\ndk\28.2.13676358"
 $env:PATH = "$sdk\cmake\3.22.1\bin;$env:PATH"   # cmake + ninja from the SDK
 $commit = 'afeebe103bd99cda8f5dfaefcabadf890db7fda7'
-$root = 'C:\Users\user\tlwu-eval\build'
+$root = if ($env:TLWU_BUILD_ROOT) { Join-Path $env:TLWU_BUILD_ROOT 'build' } else { Join-Path $env:USERPROFILE 'tlwu-eval' | Join-Path -ChildPath 'build' }
 $src = "$root\llama.cpp"; $b = "$root\llama-android\build"; $inst = "$root\llama-android\install"
 $stage = "$root\llama-android\aar"
 $mobile = Split-Path -Parent $PSScriptRoot
