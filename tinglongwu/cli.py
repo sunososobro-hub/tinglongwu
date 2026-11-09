@@ -106,11 +106,12 @@ def _hard_exit(code: int) -> None:
         os._exit(code)
 
 
-def run_session(a, sink=None, draft_factory=None, stop=None, status=None) -> None:
+def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
-    or None; stop: threading.Event that ends the run; status(str): progress notes (GUI)."""
+    or None; stop: threading.Event that ends the run; status(str): progress notes (GUI);
+    notice(str): a note that should stay visible (GUI), e.g. why the GPU is not used."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device
     from .merge import SentenceMerger
@@ -120,7 +121,16 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None) -> Non
 
     note = status or (lambda m: None)
     mdir = models_dir(a.models_dir)
-    dev = resolve_device(a.compute)
+    warned: list[str] = []
+
+    def warn(m: str) -> None:
+        print(m, file=sys.stderr)
+        warned.append(m)
+
+    dev = resolve_device(a.compute, warn=warn)
+    if notice is not None and dev == "cpu" and a.compute != "cpu":
+        why = warned[0] if warned else "沒有偵測到可用的 NVIDIA 顯示卡。"
+        notice(f"GPU 無法使用，已自動改用 CPU 模式（翻譯會比較慢）。\n原因：{why}")
     glossary = None
     if a.glossary:
         from .glossary import load as load_glossary

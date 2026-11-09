@@ -10,7 +10,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
-from .core import (ENGINES, LANGS, MODELS, TARGETS, QueueDraftRenderer, QueueSink, SubtitleState,
+from .core import (ENGINES, LANGS, MODELS, SOURCES, TARGETS, QueueDraftRenderer, QueueSink, SubtitleState,
                    clamp_font, load_settings, save_settings, settings_to_argv)
 
 POLL_MS = 50
@@ -181,25 +181,29 @@ class App:
         self.v_target = self._combo(1, "Translate to", "target", TARGETS)
         self.v_engine = self._combo(2, "Engine", "engine", ENGINES)
         self.v_model = self._combo(3, "Speech model", "model", MODELS)
-        ttk.Label(f, text="Glossary").grid(row=4, column=0, sticky="w", pady=2)
+        self.v_source = self._combo(4, "Audio source (system = PC sound)", "source", SOURCES)
+        ttk.Label(f, text="Glossary").grid(row=5, column=0, sticky="w", pady=2)
         self.v_gloss = tk.StringVar(value=s["glossary"])
-        ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=4, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=4, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=5, column=1, sticky="we", pady=2)
+        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=5, column=2, padx=(4, 0))
         self.v_save = tk.BooleanVar(value=s["save"])
-        ttk.Checkbutton(f, text="Save transcript", variable=self.v_save).grid(row=5, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f, text="Save transcript", variable=self.v_save).grid(row=6, column=0, sticky="w", pady=2)
         self.v_save_path = tk.StringVar(value=s["save_path"])
-        ttk.Entry(f, textvariable=self.v_save_path, width=22).grid(row=5, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=5, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_save_path, width=22).grid(row=6, column=1, sticky="we", pady=2)
+        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=6, column=2, padx=(4, 0))
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
         ttk.Checkbutton(f, text="Show source line", variable=self.var_show_src,
-                        command=self._src_toggled).grid(row=6, column=0, sticky="w")
+                        command=self._src_toggled).grid(row=7, column=0, sticky="w")
         self.v_live = tk.BooleanVar(value=s["live_draft"])
         ttk.Checkbutton(f, text="Live draft (uses more GPU)", variable=self.v_live).grid(
-            row=6, column=1, columnspan=2, sticky="w")
+            row=7, column=1, columnspan=2, sticky="w")
         self.btn = ttk.Button(f, text="Start", command=self.toggle)
-        self.btn.grid(row=7, column=0, columnspan=3, sticky="we", pady=(8, 2))
+        self.btn.grid(row=8, column=0, columnspan=3, sticky="we", pady=(8, 2))
         self.v_status = tk.StringVar(value="Ready. Fully offline.")
-        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=8, column=0, columnspan=3, sticky="w")
+        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=9, column=0, columnspan=3, sticky="w")
+        self.v_notice = tk.StringVar(value="")
+        ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
+            row=10, column=0, columnspan=3, sticky="w")
 
     def pick_glossary(self):
         p = filedialog.askopenfilename(title="Glossary (.txt)", filetypes=[("Text", "*.txt"), ("All", "*.*")])
@@ -223,7 +227,7 @@ class App:
         s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(),
                  model=self.v_model.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
-                 live_draft=self.v_live.get())
+                 live_draft=self.v_live.get(), source=self.v_source.get())
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------
@@ -238,6 +242,7 @@ class App:
         self.stop_ev = threading.Event()
         self.btn.configure(text="Stop")
         self.v_status.set("Starting...")
+        self.v_notice.set("")
         self.overlay.show()
         self.worker = threading.Thread(target=self._work, args=(dict(self.settings), self.stop_ev), daemon=True)
         self.worker.start()
@@ -257,7 +262,8 @@ class App:
                 return DraftEngine(asr, translator, QueueDraftRenderer(q), lambda: segmenter.live, tgt)
 
             run_session(a, sink=QueueSink(q), draft_factory=draft_factory, stop=stop,
-                        status=lambda m: q.put(("status", m)))
+                        status=lambda m: q.put(("status", m)),
+                        notice=lambda m: q.put(("notice", m)))
         except Exception as e:  # noqa: BLE001
             q.put(("error", str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"))
         finally:
@@ -276,6 +282,8 @@ class App:
                 kind = ev[0]
                 if kind == "status":
                     self.v_status.set(ev[1])
+                elif kind == "notice":
+                    self.v_notice.set(ev[1])
                 elif kind == "error":
                     self.v_status.set("Error: " + ev[1])
                 elif kind == "stopped":

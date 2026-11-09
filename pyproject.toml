@@ -33,7 +33,7 @@ tlwu-setup = "tinglongwu_setup.cli:main"
 tlwu-gui = "tinglongwu.gui:main"
 
 [tool.setuptools]
-packages = ["tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu.reverse", "tinglongwu_setup"]
+packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu.reverse", "tinglongwu_setup"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

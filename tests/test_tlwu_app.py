@@ -1,0 +1,231 @@
+"""tlwu.exe launcher: GPU tiers, setup planning, entry routing, CUDA fallback notice (no display, no network)."""
+import ast
+import sys
+from pathlib import Path
+
+import pytest
+
+from tlwu_app import main as app_main
+from tlwu_app import setup_gui, tiers
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def gpu(total):
+    return tiers.Gpu("Test GPU", total, total - 500)
+
+
+@pytest.mark.parametrize("total,name,whisper,qwen", [
+    (8192, "gpu-high", "large-v3-turbo", ("--qwen",)),
+    (7500, "gpu-high", "large-v3-turbo", ("--qwen",)),
+    (6144, "gpu-mid", "large-v3-turbo", ("--qwen4b",)),
+    (4096, "gpu-low", "small", ("--qwen4b",)),
+    (2048, "gpu-min", "small", ()),
+])
+def test_tier_by_total_vram_matches_install_ps1(total, name, whisper, qwen):
+    t = tiers.choose_tier(gpu(total))
+    assert (t.name, t.whisper, t.qwen) == (name, whisper, qwen)
+
+
+def test_no_gpu_or_forced_cpu_is_cpu_tier():
+    for t in (tiers.choose_tier(None), tiers.choose_tier(gpu(24000), force_cpu=True)):
+        assert (t.name, t.whisper, t.qwen) == ("cpu", "small", ())
+    assert tiers.T_CPU.downloader_args() == ["--whisper", "small", "--langs", "ru,ja,en", "--to", "zh"]
+    assert tiers.T_HIGH.downloader_args()[-1] == "--qwen"
+    assert "GB" in tiers.T_HIGH.size_text and "MB" in tiers.T_CPU.size_text
+
+
+def test_parse_smi_and_detect_gpu(monkeypatch):
+    assert tiers.parse_smi("NVIDIA GeForce RTX 3050, 8192, 7478\n") == tiers.Gpu("NVIDIA GeForce RTX 3050", 8192, 7478)
+    assert tiers.parse_smi("") is None and tiers.parse_smi("garbage") is None
+    monkeypatch.setattr(tiers, "_nvidia_smi", lambda: None)
+    assert tiers.detect_gpu() is None  # no nvidia-smi -> CPU tier
+    monkeypatch.setattr(tiers, "_nvidia_smi", lambda: "nvidia-smi")
+
+    class R:
+        stdout = "RTX, 6144, 6000\n"
+
+    assert tiers.detect_gpu(run=lambda *a, **k: R()).total_mb == 6144
+
+    def boom(*a, **k):
+        raise OSError("driver")
+
+    assert tiers.detect_gpu(run=boom) is None
+
+
+def _fake_models(d, whisper=("small",), opus=True):
+    for w in whisper:
+        (d / f"whisper-{w}").mkdir(parents=True)
+        (d / f"whisper-{w}" / "model.bin").write_bytes(b"x")
+    if opus:
+        (d / "opus" / "en-zh" / "model").mkdir(parents=True)
+        (d / "opus" / "en-zh" / "model" / "model.bin").write_bytes(b"x")
+
+
+def test_models_ready_and_best_installed(tmp_path):
+    assert not tiers.models_ready(tmp_path / "none")
+    _fake_models(tmp_path, ("small",), opus=False)
+    assert not tiers.models_ready(tmp_path)  # whisper without the translation pair
+    (tmp_path / "opus" / "en-zh" / "model").mkdir(parents=True)
+    (tmp_path / "opus" / "en-zh" / "model" / "model.bin").write_bytes(b"x")
+    assert tiers.models_ready(tmp_path)
+    assert tiers.best_installed_model(tmp_path, "large-v3-turbo") == "small"  # wanted one is missing
+    _fake_models(tmp_path.parent / "m2", ("small", "large-v3-turbo"))
+    assert tiers.best_installed_model(tmp_path.parent / "m2", "small") == "small"
+    assert tiers.best_installed_model(tmp_path.parent / "m2", None) == "large-v3-turbo"
+
+
+def test_progress_fraction_capped():
+    t = tiers.T_CPU
+    assert tiers.progress_fraction(0, t) == 0
+    assert tiers.progress_fraction(t.total_bytes * 5, t) == 0.99
+    assert 0.4 < tiers.progress_fraction(t.total_bytes // 2, t) < 0.6
+
+
+def test_dir_size(tmp_path):
+    (tmp_path / "a").write_bytes(b"1234")
+    (tmp_path / "s").mkdir()
+    (tmp_path / "s" / "b").write_bytes(b"12")
+    assert tiers.dir_size(tmp_path) == 6
+
+
+def test_default_models_dir_is_localappdata(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert tiers.default_models_dir() == tmp_path / "tinglongwu" / "models"
+
+
+def test_prepare_env_bundled_sets_models_and_cpu(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    for k in ("TLWU_MODELS", "TLWU_BUNDLED", "CUDA_VISIBLE_DEVICES"):
+        monkeypatch.delenv(k, raising=False)
+    import os
+
+    assert app_main.prepare_env(True, True) == tmp_path / "tinglongwu" / "models"
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "-1" and os.environ["TLWU_BUNDLED"] == "1"
+    monkeypatch.setenv("TLWU_MODELS", str(tmp_path / "mine"))  # explicit env wins
+    assert app_main.prepare_env(True, False) == tmp_path / "mine"
+    monkeypatch.delenv("TLWU_BUNDLED")
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
+
+
+def test_split_cpu():
+    assert app_main.split_cpu(["--cpu", "--file", "a"]) == (["--file", "a"], True)
+    assert app_main.split_cpu([]) == ([], False)
+
+
+def test_routing(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(app_main, "run_gui", lambda *a: calls.append(("gui", a[2], a[3])) or 0)
+    monkeypatch.setattr(app_main, "run_setup_worker", lambda a: calls.append(("setup", a)) or 0)
+    monkeypatch.setenv("TLWU_MODELS", str(tmp_path))
+    monkeypatch.delenv("TLWU_BUNDLED", raising=False)
+    assert app_main.main([]) == 0 and calls[-1] == ("gui", False, False)
+    app_main.main(["--cpu"])
+    assert calls[-1] == ("gui", True, False)
+    app_main.main(["--setup"])
+    assert calls[-1] == ("gui", False, True)
+    app_main.main(["--run-setup", "--verify"])
+    assert calls[-1] == ("setup", ["--verify"])
+    app_main.main(["setup", "--whisper", "small"])
+    assert calls[-1] == ("setup", ["--whisper", "small", "--models-dir", str(tmp_path)])
+    import os
+
+    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+
+
+def test_cli_flags_pass_through(monkeypatch, tmp_path):
+    seen = []
+    import tinglongwu.cli as cli
+
+    monkeypatch.setattr(cli, "main", lambda argv: seen.append(argv) or 0)
+    monkeypatch.setenv("TLWU_MODELS", str(tmp_path))
+    app_main.main(["--file", "x.wav", "--to", "zh"])
+    assert seen[-1] == ["--file", "x.wav", "--to", "zh"]
+    app_main.main(["--cpu", "--file", "x.wav"])
+    assert seen[-1] == ["--file", "x.wav", "--device", "cpu"]
+    import os
+
+    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+
+
+def test_worker_cmd():
+    d = Path("M")
+    assert setup_gui.worker_cmd(False, d, ["--whisper", "small"]) == [
+        sys.executable, "-m", "tlwu_app", "--run-setup", "--whisper", "small", "--models-dir", "M"]
+    c = setup_gui.worker_cmd(True, d, ["--qwen"])
+    assert c[1:] == ["--run-setup", "--qwen", "--models-dir", "M"]
+
+
+def test_last_line_handles_tqdm_carriage_returns():
+    assert setup_gui.last_line("a\r 10%\r 50%|#### |\n") == "50%|#### |"
+    assert setup_gui.last_line("\n\r") == ""
+
+
+def test_fix_gui_settings_picks_installed_model(monkeypatch, tmp_path):
+    from tinglongwu.gui import core
+
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    mdir = tmp_path / "models"
+    _fake_models(mdir, ("large-v3-turbo",))
+    app_main.fix_gui_settings(mdir, cpu_tier=True)  # first run, CPU tier
+    s = core.load_settings()
+    assert s["model"] == "large-v3-turbo" and s["live_draft"] is False
+    s["live_draft"] = True
+    core.save_settings(s)
+    app_main.fix_gui_settings(mdir, cpu_tier=True)  # not first run any more: user choice kept
+    assert core.load_settings()["live_draft"] is True
+
+
+def test_gui_source_setting_maps_to_mic():
+    from tinglongwu.gui import core
+
+    assert "--mic" not in core.settings_to_argv(core.load_settings(None))
+    s = dict(core.DEFAULTS, source="mic")
+    assert "--mic" in core.settings_to_argv(s)
+
+
+def test_run_session_notice_when_gpu_unusable(monkeypatch, tmp_path):
+    """CUDA libs missing -> CPU fallback with a visible notice (the GUI shows it)."""
+    from tinglongwu import cli, device
+
+    notes = []
+
+    def fake_resolve(choice="auto", **kw):
+        kw["warn"]("tlwu: CUDA device found but cublas64_12.dll missing; falling back to CPU.")
+        return "cpu"
+
+    monkeypatch.setattr(device, "resolve_device", fake_resolve)
+
+    class Stop(Exception):
+        pass
+
+    import tinglongwu.asr as asr
+
+    def boom(*a, **k):
+        raise Stop
+
+    monkeypatch.setattr(asr, "FasterWhisperRecognizer", boom)
+    a = cli.parse_args(["--models-dir", str(tmp_path)])
+    with pytest.raises(Stop):
+        cli.run_session(a, notice=notes.append)
+    assert notes and "CPU" in notes[0] and "cublas64_12.dll" in notes[0]
+
+
+def test_bundled_cuda_dir_registered(monkeypatch, tmp_path):
+    from tinglongwu import device
+
+    fake = tmp_path / "pkg" / "tinglongwu"
+    fake.mkdir(parents=True)
+    (tmp_path / "pkg" / "cuda_libs").mkdir()
+    monkeypatch.setattr(device, "__file__", str(fake / "device.py"))
+    assert device._bundled_dirs() == [tmp_path / "pkg" / "cuda_libs"]
+
+
+def test_launcher_keeps_network_and_runtime_apart():
+    """tlwu_app may not import tinglongwu / tinglongwu_setup at module import time (setup stays in a child process)."""
+    for f in (ROOT / "tlwu_app").glob("*.py"):
+        tree = ast.parse(f.read_text("utf-8"))
+        for node in tree.body:  # top level only
+            names = [a.name for a in node.names] if isinstance(node, ast.Import) else (
+                [node.module or ""] if isinstance(node, ast.ImportFrom) and not node.level else [])
+            assert not any(n.split(".")[0] in ("tinglongwu", "tinglongwu_setup") for n in names), (f, names)

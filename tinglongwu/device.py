@@ -30,9 +30,15 @@ def _nvidia_wheel_dirs() -> list[Path]:
     return out
 
 
+def _bundled_dirs() -> list[Path]:
+    """`cuda_libs/` next to the standalone build (tlwu.exe folder) that holds cuBLAS / cuDNN / cudart."""
+    d = Path(__file__).resolve().parent.parent / "cuda_libs"
+    return [d] if d.is_dir() else []
+
+
 def register_cuda_libs() -> None:
-    """Make DLLs from pip-installed nvidia-* wheels findable (no CUDA toolkit install needed)."""
-    for d in _nvidia_wheel_dirs():
+    """Make DLLs from the bundled cuda_libs/ or pip-installed nvidia-* wheels findable (no CUDA toolkit needed)."""
+    for d in _bundled_dirs() + _nvidia_wheel_dirs():
         if sys.platform == "win32":
             os.add_dll_directory(str(d))
             os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
@@ -68,6 +74,8 @@ def cuda_device_count() -> int:
 CUDA_HELP = ("install the CUDA 12 runtime libraries once (with network): "
              "`tlwu-setup --gpu`  (= pip install nvidia-cublas-cu12 nvidia-cudnn-cu12), "
              "plus an NVIDIA driver supporting CUDA 12+")
+if os.environ.get("TLWU_BUNDLED") == "1":  # standalone build ships the libs; only the driver can be the problem
+    CUDA_HELP = "update your NVIDIA graphics driver (CUDA 12 or newer) to use the GPU"
 
 
 def resolve_device(choice: str = "auto", *, count=cuda_device_count, missing=missing_cuda_libs,

@@ -2,7 +2,7 @@
 
 Worker threads only ever put tuples on a queue.Queue; the tkinter main thread polls it with after().
 Events: ("draft", src_text, translation) | ("final", src_text, target_text) | ("clear",) |
-        ("status", text) | ("error", text) | ("stopped",)
+        ("status", text) | ("notice", text) | ("error", text) | ("stopped",)
 """
 from __future__ import annotations
 
@@ -17,11 +17,12 @@ from ..stream import DraftRenderer
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None,
+    "x": None, "y": None, "source": "system",
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "qwen", "qwen4b", "opus"]
+SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 FONT_MIN, FONT_MAX = 10, 96
 
@@ -74,6 +75,8 @@ def settings_to_argv(s: dict) -> list[str]:
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
             "--engine", s.get("engine") or "auto", "--model", s.get("model") or "small"]
+    if s.get("source") == "mic":
+        argv += ["--mic"]
     if s.get("glossary"):
         argv += ["--glossary", s["glossary"]]
     if s.get("save"):

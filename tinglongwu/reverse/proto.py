@@ -4,7 +4,9 @@ Run (main .venv):
   python -m tinglongwu.reverse.proto --input C:\\...\\reverse\\input --out C:\\...\\reverse\\out \\
       --tts-python C:\\...\\tts-venv\\Scripts\\python.exe --tts-model C:\\...\\models\\qwen3-tts-0.6b-base \\
       --ref ref_ru.wav --ref-text "..." [--qwen qwen3-8b] [--device "CABLE Input"] [--no-play]
-All results (UTF-8) go to --report (JSON); nothing Cyrillic/CJK is printed to the console.
+All results (UTF-8) go to --report (JSON).
+Default = confirm-before-send: each utterance shows zh / ru / back-translation; Enter sends the Russian audio to
+--device, "r" or "x" + Enter discards it (--no-confirm = old automatic behaviour; --preview-device = also hear it).
 """
 from __future__ import annotations
 
@@ -88,10 +90,115 @@ class Player:
             self.t.join(60)
 
 
+def _file_items(wavs, sf, asr):
+    """(n, label, zh) for each wav file with recognised speech."""
+    for n, wav in enumerate(wavs, 1):
+        audio, sr = sf.read(str(wav), dtype="float32")
+        assert sr == 16000, f"{wav}: expected 16 kHz"
+        tr = asr.transcribe(audio)
+        if tr and tr.text:
+            yield n, wav.name, tr.text
+
+
+def _make_synth(tts):
+    from .logic import split_sentences
+
+    def synth(ru: str):
+        pcm, sr_out = [], 24000
+        for sent in split_sentences(ru):
+            for ev, data in tts.speak(sent):
+                if ev["t"] == "chunk":
+                    pcm.append(np.frombuffer(data, dtype=np.float32))
+                    sr_out = ev["sr"]
+        return (np.concatenate(pcm), sr_out) if pcm else None
+
+    return synth
+
+
+def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
+    """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
+    `items` yields (n, label, zh)."""
+    from .confirm import ConfirmSession, Utterance, back_translate
+    from .logic import translate_ru
+
+    sess = ConfirmSession(_make_synth(tts), player.push, previewer.push if previewer.enabled else None,
+                          out=lambda m: print(m, flush=True))
+    if sess_box is not None:
+        sess_box.append(sess)
+
+    def produce():
+        try:
+            for n, label, zh in items:
+                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
+                u = Utterance(n, zh, ru, back_translate(mt, ru), extra={"file": label, "cjk_retries": retries})
+                res["items"].append({"file": label, "zh": zh, "ru": ru, "back": u.back, "_u": u})
+                sess.submit(u)
+        except Exception as e:  # noqa: BLE001
+            print(f"input stopped: {e}", flush=True)
+        finally:
+            sess.finish()
+
+    th = threading.Thread(target=produce, daemon=True)
+    th.start()
+    sess.run()
+    th.join(5)
+    for it in res["items"]:
+        u = it.pop("_u", None)
+        it["decision"] = u.decision if u else ""
+
+
+def _run_auto_live(items, mt, tts, player, res) -> None:
+    """--no-confirm with live input: translate + speak every utterance as it arrives."""
+    from .logic import translate_ru
+
+    synth = _make_synth(tts)
+    for n, label, zh in items:
+        ru, _ = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
+        print(f"\n--- #{n} ---\nZH : {zh}\nRU : {ru}", flush=True)
+        out = synth(ru)
+        if out:
+            player.push(*out)
+        res["items"].append({"file": label, "zh": zh, "ru": ru, "decision": "sent" if out else "no_audio"})
+
+
+def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
+    """Mic -> VAD segments -> Whisper(zh) -> same pipeline. Ctrl+C stops capture and kills the TTS subprocess."""
+    from ..capture.mic import MicSource
+    from ..segment import Segmenter
+    from .live import capture_segments, recognize_utterances
+
+    stop = threading.Event()
+    items = ((n, "mic", zh) for n, zh in enumerate(
+        recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr), 1))
+    box: list = []
+    print("listening... speak Chinese; Ctrl+C to quit", flush=True)
+    try:
+        if confirm:
+            _run_confirm(a, items, mt, tts, player, previewer, res, box)
+        else:
+            _run_auto_live(items, mt, tts, player, res)
+    except KeyboardInterrupt:
+        print("\nstopping...", flush=True)
+    finally:
+        stop.set()
+        for sess in box:
+            sess.abort()
+        if tts is not None:
+            try:
+                tts.proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        player.enabled = False
+        previewer.enabled = False
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="tinglongwu.reverse.proto")
-    ap.add_argument("--input", required=True, help="dir of zh wavs (16 kHz mono) or one wav")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--input", default=None, help="dir of zh wavs (16 kHz mono) or one wav (not needed with --mic)")
+    ap.add_argument("--mic", nargs="?", const="", default=None, metavar="DEVICE",
+                    help="live microphone input (Chinese); optional device-name substring, default = system mic")
+    ap.add_argument("--list-mics", action="store_true", help="print input device names and exit")
+    ap.add_argument("--out", default=None, help="output dir (default: reverse_out)")
     ap.add_argument("--report", default=None, help="JSON result path (default <out>/result.json)")
     ap.add_argument("--models-dir", default=None)
     ap.add_argument("--whisper", default="large-v3-turbo")
@@ -104,9 +211,49 @@ def main(argv=None) -> int:
     ap.add_argument("--chunk", type=int, default=12)
     ap.add_argument("--device", default=None, help='output device name substring, e.g. "CABLE Input"')
     ap.add_argument("--out-sr", type=int, default=48000)
+    ap.add_argument("--no-confirm", action="store_true", help="send automatically (no confirmation step)")
+    ap.add_argument("--preview-device", default=None,
+                    help="also play the sent Russian audio on this device (your own headphones); default off")
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
     a = ap.parse_args(argv)
+    from .confirm import setup_console
+
+    setup_console()
+    if a.list_mics:
+        from .live import list_mic_names
+
+        for n in list_mic_names():
+            print(n)
+        return 0
+    live = a.mic is not None
+    if not live and not a.input:
+        ap.error("--input is required unless --mic is given")
+    a.out = a.out or "reverse_out"
+    a.chunk_s = 10.0
+    if live:  # feedback guard BEFORE loading any model
+        import soundcard as sc
+
+        from .live import check_mic_feedback, resolve_mic_name
+
+        dm = sc.default_microphone()
+        try:
+            a.mic_name = resolve_mic_name(a.mic or None, [m.name for m in sc.all_microphones(include_loopback=False)],
+                                          dm.name if dm else None)
+            spk = None
+            try:
+                from .logic import match_device
+
+                sp = sc.all_speakers()
+                k = match_device([x.name for x in sp], a.device)
+                spk = sp[k].name if k is not None else None
+            except LookupError:
+                pass
+            check_mic_feedback(a.mic_name, a.device, spk)
+        except (LookupError, ValueError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(f"microphone: {a.mic_name}", flush=True)
 
     if a.ref_text.startswith("@"):  # "@file.txt": read the transcript from a UTF-8 file (console-safe)
         a.ref_text = Path(a.ref_text[1:]).read_text(encoding="utf-8").strip()
@@ -122,8 +269,8 @@ def main(argv=None) -> int:
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    src = Path(a.input)
-    wavs = sorted(src.glob("*.wav")) if src.is_dir() else [src]
+    src = Path(a.input) if a.input else None
+    wavs = [] if live else (sorted(src.glob("*.wav")) if src.is_dir() else [src])
     mdir = models_dir(a.models_dir)
     res: dict = {"qwen": a.qwen, "whisper": a.whisper, "ref": a.ref, "xvec_only": a.xvec_only, "items": [],
                  "vram_mib": {"baseline": vram_used_mib()}}
@@ -143,14 +290,27 @@ def main(argv=None) -> int:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()
             res["tts_torch_peak_mib_after_warmup"] = tts.ready.get("vram_mib")
+        confirm = not a.no_confirm and tts is not None
         player = Player(a.device, a.out_sr, enabled=not (a.no_play or a.no_tts))
         res["speaker"] = player.speaker_name
+        previewer = Player(a.preview_device, a.out_sr, enabled=bool(a.preview_device) and tts is not None)
+        res["confirm"] = confirm
         # warm up ASR + MT so the first sentence is not penalised by lazy init
-        w0, _ = sf.read(str(wavs[0]), dtype="float32")
-        asr.transcribe(w0)
+        if wavs:
+            w0, _ = sf.read(str(wavs[0]), dtype="float32")
+            asr.transcribe(w0)
         mt.translate("你好。", "zh", "ru")
         mt.history.clear()
         asr._last = ""
+        if live:
+            if tts is None:
+                print("error: --mic needs TTS (drop --no-tts)", file=sys.stderr)
+                return 2
+            _live_main(a, asr, mt, tts, player, previewer, confirm, res)
+            wavs = []
+        elif confirm:
+            _run_confirm(a, _file_items(wavs, sf, asr), mt, tts, player, previewer, res)
+            wavs = []
         for n, wav in enumerate(wavs, 1):
             audio, sr = sf.read(str(wav), dtype="float32")
             assert sr == 16000, f"{wav}: expected 16 kHz"
@@ -190,8 +350,11 @@ def main(argv=None) -> int:
             print(f"[{n}/{len(wavs)}] {wav.name} first_audio={item['t_first_audio']}s done={item['t_tts_done']}s",
                   flush=True)
         player.close()
+        previewer.close()
         if tts:
             tts.close()
+    for it in res["items"]:
+        it.pop("_u", None)
     res["vram_mib"]["peak_sampled"] = vs.peak
     rp = Path(a.report) if a.report else out / "result.json"
     rp.write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
