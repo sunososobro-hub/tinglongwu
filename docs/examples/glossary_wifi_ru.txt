@@ -1,0 +1,14 @@
+# Topic glossary: Russian WiFi / home-network tutorial -> Traditional Chinese (Taiwan)
+# Usage: tlwu --lang ru --stream --glossary docs/examples/glossary_wifi_ru.txt
+# `source = target`; `a | b = target` adds mis-hearings as extra source spellings; no `=` = plain hint term.
+# Source terms are given to Whisper as hotwords; matching entries are given to Qwen (stem match: "частоте" -> частота).
+
+частота | чистота = 頻率
+диапазон = 頻段
+камера = 攝影機
+телефон = 手機
+вкладка = 分頁
+роутер = 路由器
+2.4 = 2.4 GHz
+5 ГГц = 5 GHz
+Wi-Fi

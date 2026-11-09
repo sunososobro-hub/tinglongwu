@@ -1,0 +1,10 @@
+# Dev-only benchmark tooling (NOT runtime deps of tinglongwu). Separate venv: .venv-bench
+# torch: install the CUDA build first, e.g.
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+sacrebleu
+unbabel-comet
+datasets<4
+soundfile
+transformers
+sentencepiece
+huggingface_hub

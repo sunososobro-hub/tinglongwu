@@ -1,0 +1,63 @@
+# Architecture
+
+[English](ARCHITECTURE.md) | [繁體中文](ARCHITECTURE.zh-TW.md) | [简体中文](ARCHITECTURE.zh-CN.md) | [README](../README.md)
+
+## 0. Install / use split
+
+`tinglongwu_setup` (entry point `tlwu-setup`) is the only networked code: dependency install, model download + SHA256 pinning, `--bundle` / `--from-bundle` for air-gapped machines. The runtime `tlwu` has no download or network code; `tests/test_no_network_code.py` statically scans `tinglongwu/` and fails on imports of requests, urllib.request, http.client, httpx, urllib3, huggingface_hub, argostranslate, pip, tinglongwu_setup, or socket (except `tinglongwu/offline.py`, the guard). `tinglongwu_setup` never imports `tinglongwu`.
+
+## 1. Data flow
+
+```mermaid
+flowchart LR
+  subgraph RT["Runtime: tlwu (network-free, socket guard on, HF/ARGOS offline env)"]
+    A["capture/ AudioSource<br/>float32 mono 16 kHz, RAM only"] --> B["segment.py Segmenter<br/>Silero VAD / fixed blocks"]
+    B --> C["asr.py Recognizer<br/>faster-whisper<br/>--device auto: GPU float16 / CPU int8"]
+    C --> MG["merge.py SentenceMerger<br/>sentence ends / max-wait 6 s"]
+    MG --> D{"engine"}
+    D -->|opus default| E["translate.py PivotTranslator<br/>src to en to target (OPUS-MT, CT2)"]
+    D -->|m2m optional MIT| F2["translate.py M2mTranslator<br/>direct, 1.2B"]
+    E --> G["OpenCC (target zh only)<br/>tw: s2twp / cn: t2s"]
+    F --> G
+    F2 --> G
+    G --> H["sink.py Sink<br/>stdout text"]
+  end
+  M[("models/ + manifest.json<br/>SHA256 pinned")] -. "read-only load" .-> C
+  M -. "read-only load" .-> E
+  M -. "read-only load" .-> F
+  M -. "read-only load" .-> F2
+  DL["tinglongwu_setup (tlwu-setup)<br/>ONLY networked program, run manually"] ==> M
+```
+
+Every box inside "Runtime" works without network. `tlwu-setup` is outside the runtime: it is a separate process, never imported by `tinglongwu`, run by hand once per model set. Audio exists only in RAM; the only output is stdout.
+
+## 2. Components
+
+| Tool / model | Role | Pin | License | Source | Implements | How to swap |
+|---|---|---|---|---|---|---|
+| soundcard | live loopback/mic capture | 0.4.6 | BSD-3 | github.com/bastibe/SoundCard | `tinglongwu/capture/_soundcard.py` `SoundcardSource` (subclassed by `wasapi.py` `WasapiLoopbackSource`, `pulse.py` `PulseMonitorSource`, `macos.py` `MacLoopbackSource`, `mic.py` `MicSource`) | Subclass `AudioSource` (`capture/base.py`, one method `frames()`), then add a branch in `select_backend()` in `capture/__init__.py` |
+| soundfile + PyAV | file decode (wav/flac/ogg; mp3/m4a), in memory | 0.14.0 / 19.0.2 | BSD-3 / BSD-3 (+LGPL libs) | github.com/bastibe/python-soundfile, github.com/PyAV-Org/PyAV | `capture/file.py` `FileSource` | Same as above |
+| scipy | resample to 16 kHz | 1.18.1 | BSD-3 | scipy.org | `capture/base.py` `to_mono_16k` | Edit that one function |
+| Silero VAD (in faster-whisper) | pause splitting | via faster-whisper 1.2.1 | MIT | github.com/snakers4/silero-vad | `segment.py` `silero_vad` used by `Segmenter` | Pass any `vad_fn(audio) -> [(start, end)]` to `Segmenter(vad_fn=...)` (built in `cli.py main`) |
+| faster-whisper + CTranslate2 | ASR | 1.2.1 / 4.8.5 | MIT / MIT | github.com/SYSTRAN/faster-whisper, github.com/OpenNMT/CTranslate2 | `asr.py` `FasterWhisperRecognizer` | Subclass `Recognizer` (`transcribe(audio) -> Transcript\|None`), instantiate it in `cli.py main` |
+| Whisper weights (Systran CT2) | ASR model | HF sha pinned in `models/manifest.json` on first download | MIT | huggingface.co/Systran/faster-whisper-* | loaded by `FasterWhisperRecognizer` | `--model`; new sizes: extend `choices` in `cli.py` and `tlwu-setup` |
+| OPUS-MT (Argos packages) + SentencePiece | default translation, src->en->target | models: URL + SHA256 pinned; sentencepiece 0.2.3 | CC-BY 4.0 / Apache-2.0 | github.com/Helsinki-NLP/Opus-MT, github.com/argosopentech/argospm-index | `translate.py` `OpusStep` inside `PivotTranslator` | Pass `step_factory(src, tgt) -> callable(str) -> str` to `PivotTranslator`, or subclass `Translator` |
+| M2M-100 (CT2, converted by tlwu-setup) | optional direct translation | HF sha pinned; converted weights SHA256 pinned | MIT | huggingface.co/facebook/m2m100_1.2B | `translate.py` `M2mTranslator` | `--engine m2m`; conversion needs dev-only torch+transformers (`TLWU_CONVERTER_PYTHON`) |
+| CUDA 12 libs (cuBLAS, cuDNN 9) | optional GPU runtime | pip pins in `requirements-gpu.txt` | NVIDIA CUDA EULA (not redistributed by this repo) | pypi.org/project/nvidia-cublas-cu12 | `device.py` | `tlwu-setup --gpu`; `--device auto|cpu|cuda` |
+| OpenCC (opencc-python-reimplemented) | zh script conversion | 0.1.7 | Apache-2.0 | github.com/yichen0831/opencc-python | `translate.py` `zh_convert` | Edit `zh_convert` (config names `s2twp`, `t2s`) |
+| (stdout) | output | n/a | n/a | n/a | `sink.py` `TextSink`, `TranscriptSink`; `TTSSink` is a stub (Piper, MIT, planned) | Subclass `Sink` (`write(Result)`), pick it in `cli.py main` |
+| huggingface_hub | model download only | 2.4.0 | Apache-2.0 | github.com/huggingface/huggingface_hub | used only by `tinglongwu_setup (tlwu-setup)` (and internally by faster-whisper, offline) | n/a |
+| psutil | connection monitor | 7.2.2 | BSD-3 | github.com/giampaolo/psutil | `scripts/verify_offline.py` | n/a |
+
+There is no plugin registry: the pipeline is assembled explicitly in `tinglongwu/cli.py main()`, so "registering" a component means constructing it there (and adding a CLI choice if users should select it).
+
+## 3. How we prove no data leaves
+
+Four independent layers; each covers a failure of the others.
+
+1. **In-process socket guard** (`tinglongwu/offline.py`): on `import tinglongwu`, `socket.connect`, `connect_ex`, `getaddrinfo`, `gethostbyname` are patched to raise `NetworkBlocked` for any non-loopback target. Always on. Tested in `tests/test_offline.py`. Limit: only protects Python-level sockets in this process (a native extension opening its own socket bypasses it).
+2. **Offline env flags** (same file, set before any HF/ctranslate2 import): `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HF_HUB_DISABLE_TELEMETRY=1`, `DO_NOT_TRACK=1`, `ARGOS_*`. Models load only from the local `models/` directory; missing models raise an error instead of downloading.
+3. **Process-tree connection monitor** (`scripts/verify_offline.py`): runs tinglongWu (or attaches to a PID) and polls the whole process tree with psutil every 50 ms; exit code 1 on any non-loopback connection. Limit: polling can miss a very short connection.
+4. **OS-level block** (README "Firewall block test"): Windows `New-NetFirewallRule`, Linux `unshare -n` / nftables, macOS `pf` / Little Snitch / LuLu. tlwu must keep working with the network physically denied. This is the layer that does not trust our code.
+
+Supply chain: dependencies are pinned with `==` (`pyproject.toml`, full lock in `requirements.txt`). Audit them periodically with `pip-audit -r requirements.txt` (run on a networked machine; it queries vulnerability databases) and review the dependency list in the README license table. Model files are SHA256-pinned in `models/manifest.json` and re-verified with `python tinglongwu_setup (tlwu-setup) --verify` (offline).

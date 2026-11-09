@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinglongwu"
+version = "0.1.0"
+description = "Fully local, offline real-time speech translator (system audio -> ASR -> translation -> text)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+dependencies = [
+  "faster-whisper==1.2.1",
+  "ctranslate2==4.8.5",
+  "sentencepiece==0.2.3",
+  "opencc-python-reimplemented==0.1.7",
+  "soundcard==0.4.6",
+  "soundfile==0.14.0",
+  "scipy==1.18.1",
+  "numpy==2.5.4",
+  "av==19.0.2",
+  "huggingface_hub==2.4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "psutil==7.2.2"]
+
+[project.scripts]
+tlwu = "tinglongwu.cli:main"
+tlwu-setup = "tinglongwu_setup.cli:main"
+
+[tool.setuptools]
+packages = ["tinglongwu", "tinglongwu.capture", "tinglongwu_setup"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

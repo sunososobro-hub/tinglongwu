@@ -1,0 +1,166 @@
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import warnings
+
+from .capture import select_backend
+from .models import ModelNotFound, models_dir
+
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(prog="tinglongwu", description="Offline real-time speech translator.")
+    p.add_argument("--file", help="translate an audio file instead of live system audio")
+    p.add_argument("--mic", action="store_true", help="capture the microphone instead of loopback")
+    p.add_argument("--capture-device", dest="device", help="capture device name substring")
+    p.add_argument("--model", default="small",
+                   choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"])
+    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], dest="compute",
+                   help="compute device for ASR+MT: auto = cuda if usable, else cpu (default)")
+    p.add_argument("--lang", default="auto", help="source language code or 'auto'")
+    p.add_argument("--to", default="zh", help="target language code (default zh)")
+    p.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
+                   help="Chinese output: tw = Traditional (OpenCC s2twp), cn = Simplified")
+    p.add_argument("--chunk", type=float, default=4.0,
+                   help="max segment seconds (default 4: low latency; larger = more context for Whisper)")
+    p.add_argument("--no-vad", action="store_true", help="fixed --chunk blocks instead of VAD")
+    p.add_argument("--models-dir", help="models directory (env TLWU_MODELS)")
+    p.add_argument("--transcript-only", action="store_true",
+                   help="print only source-language text, one segment per line (no translation)")
+    p.add_argument("--no-merge", action="store_true",
+                   help="translate every VAD segment separately (default: merge into sentences first)")
+    p.add_argument("--max-wait", type=float, default=1.5,
+                   help="sentence merging: max seconds a fragment not ending in sentence punctuation is held "
+                        "(default 1.5, so merging adds at most ~1.5 s)")
+    p.add_argument("--engine", choices=["auto", "qwen", "qwen4b", "opus", "m2m"], default="auto",
+                   help="auto (default): after Whisper loads, pick by free VRAM: Qwen3-8B (>=5.8 GB free), "
+                        "else Qwen3-4B (>=3.5 GB), else OPUS (also on CPU); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
+                        "(direct src->target LLM, needs `tlwu-setup --qwen`); opus: src->en->target OPUS-MT; "
+                        "m2m: M2M-100 1.2B direct")
+    p.add_argument("--stream", action="store_true",
+                   help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
+                        "audio and translate the whole partial text at once; shows ONE dim line (the "
+                        "translation) that the final line replaces (default off; needs a terminal; costs extra "
+                        "GPU work; --file is paced in real time)")
+    p.add_argument("--stream-src", action="store_true",
+                   help="with --stream: also show the dim source-language draft line above the translation")
+    p.add_argument("--debug-latency", action="store_true",
+                   help="with --stream: log to stderr the seconds from segment audio start to the first "
+                        "translated draft and to the final line")
+    p.add_argument("--glossary", metavar="PATH",
+                   help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
+                        "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
+                        "are given to Whisper as hotwords; entries found in the current sentence/context are "
+                        "given to the Qwen engine as required translations (OPUS/M2M ignore targets). "
+                        "Explicit flag only; offline")
+    p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
+                   help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
+                        "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    return p.parse_args(argv)
+
+
+def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
+    """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
+    from .qwen import build_qwen_with_fallback, choose_engine
+    from .translate import M2mTranslator, PivotTranslator
+
+    name, why = (choose or choose_engine)(engine, dev, mdir)
+    if name in ("qwen3-8b", "qwen3-4b"):
+        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev)
+        if tr is not None:
+            say(f"tlwu: translation engine = {got} ({why})" if got == name
+                else f"tlwu: translation engine = {got} ({name} failed to load, fell back)", file=sys.stderr)
+            return tr
+        name, why = "opus", "Qwen failed to load"
+    say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
+    if name == "m2m":
+        return M2mTranslator(mdir, zh_variant, dev)
+    return PivotTranslator(mdir, zh_variant, device=dev)
+
+
+def make_draft(asr, translator, segmenter, tgt: str, stream=None, show_src: bool = False,
+               debug_latency: bool = False):
+    """Build the --stream draft engine, or None (with a note) when stdout is not a terminal."""
+    from .stream import DraftEngine, DraftRenderer, enable_vt
+
+    out = stream or sys.stdout
+    if not getattr(out, "isatty", lambda: False)():
+        print("tlwu: --stream needs an interactive terminal (stdout is redirected); drafts disabled.",
+              file=sys.stderr)
+        return None
+    enable_vt()
+    log = (lambda m: print(m, file=sys.stderr, flush=True)) if debug_latency else None
+    return DraftEngine(asr, translator, DraftRenderer(out), lambda: segmenter.live, tgt,
+                       show_src=show_src, log=log)
+
+
+def _hard_exit(code: int) -> None:
+    """Exit now. After Ctrl+C the capture thread may sit in a blocking WASAPI/CUDA call and interpreter
+    teardown (llama.cpp / CTranslate2 destructors, non-daemon native threads) can hang for a long time."""
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os._exit(code)
+
+
+def main(argv=None) -> int:
+    # soundcard warns on every capture glitch ("data discontinuity in recording"); harmless noise
+    warnings.filterwarnings("ignore", message=".*data discontinuity.*")
+    a = parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    from .asr import FasterWhisperRecognizer
+    from .device import resolve_device
+    from .merge import SentenceMerger
+    from .pipeline import run
+    from .segment import Segmenter
+    from .sink import TextSink, TranscriptSink
+
+    try:
+        mdir = models_dir(a.models_dir)
+        dev = resolve_device(a.compute)
+        glossary = None
+        if a.glossary:
+            from .glossary import load as load_glossary
+
+            try:
+                glossary = load_glossary(a.glossary)
+            except (OSError, UnicodeDecodeError) as e:
+                raise RuntimeError(f"cannot read --glossary: {e}") from e
+            print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
+        asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary)
+        dev = asr.device  # may have fallen back to cpu
+        translator = None
+        if not a.transcript_only:
+            translator = make_translator(a.engine, mdir, a.zh_variant, dev)
+            if glossary is not None and hasattr(translator, "glossary"):
+                translator.glossary = glossary
+            if a.lang != "auto":
+                translator.preload(a.lang, a.to)
+        sink = TranscriptSink() if a.transcript_only else TextSink()
+        if a.save is not None:
+            from .sink import JsonlSaveSink, default_save_path
+
+            save_path = a.save or default_save_path()
+            sink = JsonlSaveSink(sink, save_path)
+            print(f"tlwu: saving final lines to {os.path.abspath(save_path)}", file=sys.stderr)
+        source = select_backend(a.file, a.mic, a.device)
+        merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
+        segmenter = Segmenter(a.chunk, not a.no_vad)
+        draft = None
+        if a.stream:
+            draft = make_draft(asr, translator, segmenter, a.to, show_src=a.stream_src,
+                               debug_latency=a.debug_latency)
+            if draft is not None and a.file:
+                from .stream import PacedSource
+
+                source = PacedSource(source)
+        run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft)
+    except (ModelNotFound, NotImplementedError, RuntimeError) as e:
+        print(f"tlwu: {e}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        _hard_exit(0)
+    return 0
