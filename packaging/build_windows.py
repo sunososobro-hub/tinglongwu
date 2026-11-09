@@ -129,6 +129,8 @@ def write_licenses(app: Path) -> None:
 
     spec = importlib.util.find_spec("soundfile")
     cand = Path(spec.origin).parent.parent / "_soundfile_data" / "COPYING" if spec and spec.origin else None
+    if not (cand and cand.exists()):
+        cand = REPO / ".venv" / "Lib" / "site-packages" / "_soundfile_data" / "COPYING"
     if cand and cand.exists():
         shutil.copy2(cand, lic / "LICENSE-libsndfile-LGPL-2.1.txt")
     (lic / "THIRD_PARTY_NOTICES.txt").write_text(NOTICES_HEAD + "\n".join(rows) + "\n", "utf-8")
