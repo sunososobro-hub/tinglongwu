@@ -1,0 +1,77 @@
+name: install-test
+# Runs the one-command installers on clean cloud machines, from the checked-out commit (not a release tag).
+on:
+  push:
+    branches: [main, dev]
+    paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
+  pull_request:
+    branches: [main, dev]
+    paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TLWU_NO_UPDATE: "1"
+  TLWU_UI_LANG: en
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Audio libs (the installer would ask y/N before apt; CI answers it up front)
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1 libpulse0
+      - name: Run scripts/install.sh from this commit
+        # install.sh clones TLWU_REPO at TLWU_REF; point it at the local checkout via a throwaway branch.
+        run: |
+          git checkout -B ci-install-test
+          TLWU_REPO="$GITHUB_WORKSPACE" TLWU_REF=ci-install-test TLWU_DIR="$RUNNER_TEMP/tlwu" bash scripts/install.sh </dev/null
+      - name: Smoke check
+        run: |
+          "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
+          "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run scripts/mac_install.sh from this commit
+        # TLWU_SKIP_BLACKHOLE / TLWU_SKIP_MODELS are CI-only switches in mac_install.sh.
+        run: |
+          git checkout -B ci-install-test
+          TLWU_REPO="$GITHUB_WORKSPACE" TLWU_BRANCH=ci-install-test TLWU_DIR="$RUNNER_TEMP/tlwu" \
+            TLWU_SKIP_BLACKHOLE=1 TLWU_SKIP_MODELS=1 bash scripts/mac_install.sh </dev/null
+      - name: Smoke check
+        run: |
+          "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
+          "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run scripts/bootstrap_windows.ps1 from this commit
+        # bootstrap only clones from github.com/<TLWU_REPO>, so point TLWU_DIR at this checkout (it is a git
+        # checkout: bootstrap fetches, checks out TLWU_REF = this commit, then runs install.ps1).
+        # TLWU_SKIP_MODELS / TLWU_SKIP_SHORTCUT are CI-only switches in install.ps1.
+        shell: powershell
+        env:
+          TLWU_DIR: ${{ github.workspace }}
+          TLWU_REF: ${{ github.sha }}
+          TLWU_SKIP_MODELS: "1"
+          TLWU_SKIP_SHORTCUT: "1"
+        run: |
+          & .\scripts\bootstrap_windows.ps1
+          if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
+      - name: Smoke check
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\.venv\Scripts\python.exe" -c "import tinglongwu; print('import ok')"
+          if ($LASTEXITCODE -ne 0) { throw "import failed" }
+          & "$env:GITHUB_WORKSPACE\.venv\Scripts\tlwu.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw "tlwu --help failed" }

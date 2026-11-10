@@ -15,6 +15,9 @@
 #   6. installs the `tlwu-menu` command in ~/.local/bin
 # The installer never asks about auto-update: the menu (tlwu-menu) asks once on its first run and stores the answer.
 # Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default: the release tag, or main), TLWU_REPO.
+# CI-only switches (used by .github/workflows/install-test.yml; leave unset for a normal install):
+#   TLWU_SKIP_BLACKHOLE=1  skip the BlackHole cask install (needs sudo/GUI approval)
+#   TLWU_SKIP_MODELS=1     skip the Kokoro voice and the model downloads (steps 5 and 6)
 # Written for macOS bash 3.2 (no arrays, no ${var,,}). UNTESTED on a real Mac when written: every step checks itself.
 
 set -u
@@ -116,7 +119,8 @@ say "3/8 安裝 BlackHole 虛擬音效裝置（2ch 用來聽、16ch 當你的虛
 info "接下來可能會跳出要你輸入「Mac 開機密碼」，輸入時畫面不會顯示字，輸完按 Enter。"
 BH_FAIL=0
 for c in blackhole-2ch blackhole-16ch; do
-  if brew list --cask "$c" >/dev/null 2>&1; then info "$c 已安裝"
+  if [ -n "${TLWU_SKIP_BLACKHOLE:-}" ]; then info "TLWU_SKIP_BLACKHOLE set: skipping $c"
+  elif brew list --cask "$c" >/dev/null 2>&1; then info "$c 已安裝"
   else
     info "安裝 $c ..."
     if ! brew install --cask "$c"; then
@@ -162,6 +166,8 @@ info "安裝 tinglongWu 套件（約 1-3 分鐘）..."
 
 # ---------------------------------------------------------------- 5. Kokoro (English voice)
 say "5/8 英文語音 Kokoro（獨立環境，因為它含 GPL 的 espeak，不放進主環境）"
+if [ -n "${TLWU_SKIP_MODELS:-}" ]; then info "TLWU_SKIP_MODELS set: skipping Kokoro and model downloads (steps 5-6)"
+else
 if [ ! -x "$KOKORO_VENV/bin/python" ]; then
   "$PYBREW" -m venv "$KOKORO_VENV" || die "建立 $KOKORO_VENV 失敗。"
 fi
@@ -196,6 +202,7 @@ fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 1-2 GB）"
 .venv/bin/tlwu-setup --whisper small --pair en-zh --pair zh-en \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
+fi
 
 # ---------------------------------------------------------------- 7. launcher
 say "7/8 安裝 tlwu-menu 指令"
