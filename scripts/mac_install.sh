@@ -111,7 +111,7 @@ for f in python@3.12 git; do
   fi
 done
 PYBREW="$(brew --prefix python@3.12 2>/dev/null)/bin/python3.12"
-[ -x "$PYBREW" ] || die "找不到 $PYBREW（python@3.12 安裝不完整）。可試：brew reinstall python@3.12"
+[ -x "$PYBREW" ] || die "找不到 ${PYBREW}（python@3.12 安裝不完整）。可試：brew reinstall python@3.12"
 GITBIN="$(command -v git)" || die "找不到 git。"
 info "python: $PYBREW ($("$PYBREW" --version 2>&1))"
 
@@ -131,13 +131,13 @@ for c in blackhole-2ch blackhole-16ch; do
 done
 
 # ---------------------------------------------------------------- 4. repo + venv
-say "4/8 下載 tinglongWu 並建立環境（$DIR）"
+say "4/8 下載 tinglongWu 並建立環境（${DIR}）"
 if [ -d "$DIR/.git" ]; then
   info "已存在，更新中..."
   if ! git -C "$DIR" fetch --quiet --tags origin 2>&1; then
     warn "更新失敗（網路？），先用現有版本繼續。"
   elif git -C "$DIR" rev-parse -q --verify "refs/tags/$BRANCH" >/dev/null 2>&1; then
-    git -C "$DIR" checkout --quiet "$BRANCH" 2>&1 || warn "$DIR 裡有本機改動，無法切到版本 $BRANCH；先用現有版本繼續。"
+    git -C "$DIR" checkout --quiet "$BRANCH" 2>&1 || warn "$DIR 裡有本機改動，無法切到版本 ${BRANCH}；先用現有版本繼續。"
   elif ! git -C "$DIR" merge --ff-only --quiet "origin/$BRANCH" 2>&1; then
     warn "$DIR 裡有本機改動，無法自動更新；先用現有版本繼續（想強制還原：cd $DIR && git stash && 再貼一次安裝指令）。"
   fi
@@ -184,11 +184,11 @@ fetch_model() {  # name expected_size expected_sha256(optional)
     if [ -z "$sha" ] || [ "$(sha256_of "$KOKORO_DIR/$name")" = "$sha" ]; then info "$name 已就緒"; return 0; fi
     info "$name 的 SHA256 不符，刪除後重新下載"; rm -f "$KOKORO_DIR/$name"
   fi
-  info "下載 $name（約 $((want / 1000000)) MB）..."
+  info "下載 ${name}（約 $((want / 1000000)) MB）..."
   rm -f "$KOKORO_DIR/$name.part"
   curl -fL --retry 3 --retry-delay 3 -o "$KOKORO_DIR/$name.part" "$KOKORO_BASE/$name"     || die "下載 $name 失敗（網路？）。"
   got="$(fsize "$KOKORO_DIR/$name.part")"
-  [ "$got" = "$want" ] || { rm -f "$KOKORO_DIR/$name.part"; die "$name 大小不符（拿到 $got，預期 $want），已刪除；請重貼指令。"; }
+  [ "$got" = "$want" ] || { rm -f "$KOKORO_DIR/$name.part"; die "$name 大小不符（拿到 ${got}，預期 ${want}），已刪除；請重貼指令。"; }
   if [ -n "$sha" ] && [ "$(sha256_of "$KOKORO_DIR/$name.part")" != "$sha" ]; then
     rm -f "$KOKORO_DIR/$name.part"; die "$name SHA256 不符，已刪除（拒絕使用）。"
   fi
@@ -217,7 +217,7 @@ chmod +x "$BIN_DIR/tlwu-menu" || die "無法設定 tlwu-menu 為可執行。"
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"  # added by tinglongWu'
 for rc in "$HOME/.zprofile" "$HOME/.zshrc"; do
   if ! grep -qs 'added by tinglongWu' "$rc" 2>/dev/null; then
-    printf '\n%s\n' "$PATH_LINE" >> "$rc" 2>/dev/null || warn "無法寫入 $rc；請自己把 $BIN_DIR 加進 PATH，或直接用完整路徑 $BIN_DIR/tlwu-menu。"
+    printf '\n%s\n' "$PATH_LINE" >> "$rc" 2>/dev/null || warn "無法寫入 ${rc}；請自己把 $BIN_DIR 加進 PATH，或直接用完整路徑 $BIN_DIR/tlwu-menu。"
   fi
 done
 
