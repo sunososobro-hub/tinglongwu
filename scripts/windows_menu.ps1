@@ -119,6 +119,22 @@ if ($mode -eq "2" -and ($speak -eq "ja" -or $speak -eq "follow")) {
         Invoke-Setup --hymt
     }
 }
+# The Russian voice model has no stated upstream license: opt-in only, never part of a default setup. Asked here
+# (default N) only when Russian speech is about to be used; declining = Russian stays subtitles only.
+function Test-Vosk {
+    if (Test-Path $script:voskModel) { return $true }
+    $d = & $py -c "from tinglongwu.models import models_dir, VOSK_TTS_RU_DIR; print(models_dir(None) / VOSK_TTS_RU_DIR)" 2>$null
+    if ($d -and (Test-Path "$d")) { $script:voskModel = "$d"; return $true }
+    return $false
+}
+$voskOff = $false
+if ($mode -eq "2" -and ($speak -eq "ru" -or ($speak -eq "follow" -and $followLangs -match "ru")) -and -not (Test-Vosk)) {
+    Write-Host (T 'VOSK_LICENSE')
+    $vans = ""
+    try { $vans = Read-Host (T 'ASK_VOSK') } catch { $vans = "" }
+    if ($vans -match '^(y|yes)$') { & $setupExe --vosk-tts-ru }
+    if (-not (Test-Vosk)) { Write-Host (T 'VOSK_OPTIN'); $voskOff = $true }
+}
 $hyNote = T 'HY_NOTE'
 if ($both) {
     $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en", "zh-en", "en-ru") } else { @("$L-en", "en-zh", "zh-en", "en-ru") }
@@ -129,7 +145,6 @@ if ($both) {
     }
     if ($speak -eq "follow") {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
-        if (-not (Test-Path $voskModel)) { Write-Host (T 'NO_VOSK' $voskModel); exit 1 }
     }
     # listen in its own window; speak in this one
     Remove-Item $followFile -ErrorAction SilentlyContinue
@@ -188,6 +203,7 @@ if ($speak -eq "follow") {
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,
              "--tts-model", $voskModel, "--speaker", $voice) + $wS
     $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ru") + $wS
+    if ($voskOff -and -not $both) { & $py @txt; exit }   # no Russian voice: subtitles only
 }
 if ($both) {
     $ac = Read-Host (T 'ASK_AUTOSEND')

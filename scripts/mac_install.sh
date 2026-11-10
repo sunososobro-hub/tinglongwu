@@ -247,7 +247,7 @@ cat <<EOF
  這次預設只裝了「英文」（聽英文 → 中文字幕；你說中文 → 英文語音）。
  之後要加：
    日文：開選單時按提示貼指令（需要 Hy-MT2：tlwu-menu 選日文時會告訴你要貼什麼）
-   俄文語音：需另外裝 Vosk-TTS（見 $DIR/README.zh-TW.md 的「Linux 反向模式」與 scripts/linux_menu.sh 開頭）
+   俄文語音（選用、預設不下載，模型上游未標示授權）：需另外裝 Vosk-TTS，再自行執行 tlwu-setup --vosk-tts-ru（選單會問 y/N，預設 N；見 $DIR/README.zh-TW.md）
 ========================================================================
 EOF
 if [ -n "$WARNINGS" ]; then

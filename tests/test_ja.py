@@ -206,8 +206,8 @@ def test_cli_to_ja_and_follow_langs():
     assert _parse(["--to", "ja", "--no-tts"]).to == "ja"
     a = _parse(["--to", "follow", "--tts-engine", "kokoro", "--tts-model", "k", "--follow-langs", "en,ja"])
     assert a.follow_set == ("en", "ja")  # no Vosk needed without ru
-    with pytest.raises(SystemExit):
-        _parse(["--to", "follow", "--tts-engine", "kokoro", "--tts-model", "k"])  # ru needs --vosk-model
+    a = _parse(["--to", "follow", "--tts-engine", "kokoro", "--tts-model", "k"])
+    assert a.ru_voice is False  # Russian voice model is opt-in: missing -> subtitles only, no error
     with pytest.raises(SystemExit):
         _parse(["--to", "follow", "--no-tts", "--follow-langs", "en,de"])
 

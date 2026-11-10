@@ -182,7 +182,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | llama-cpp-python（运行 Qwen3／Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
 | Hy-MT2-1.8B GGUF（腾讯；日语翻译） | Apache-2.0（repo 内 LICENSE.txt 为标准 Apache-2.0 全文，无额外限制） | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS（代码；俄语语音） | Apache-2.0 | github.com/alphacep/vosk-tts |
-| Vosk-TTS 俄语语音模型（vosk-model-tts-ru-0.7-multi，需自行下载） | **不明：上游未标示模型许可**（只有 vosk-tts 代码 repo 为 Apache-2.0；alphacephei.com 与 repo 均找不到模型许可；上游 README 现列 0.9-multi）。视为未知，用户自负责任 | github.com/alphacep/vosk-tts、alphacephei.com/vosk/models |
+| Vosk-TTS 俄语语音模型（vosk-model-tts-ru-0.7-multi，**可选、需主动启用**：默认绝不下载，只在执行 `tlwu-setup --vosk-tts-ru` 或自行下载时获取） | **不明：上游未标示模型许可**（只有 vosk-tts 代码 repo 为 Apache-2.0；alphacephei.com 与 repo 均找不到模型许可；上游 README 现列 0.9-multi）。视为未知，用户自负责任；没有此模型时，俄语发声会退回只显示字幕 | github.com/alphacep/vosk-tts、alphacephei.com/vosk/models |
 | kokoro-onnx（英／日语语音） | MIT | github.com/thewh1teagle/kokoro-onnx |
 | Kokoro 语音模型（Kokoro-82M，ONNX） | Apache-2.0（依 kokoro-onnx 说明） | github.com/thewh1teagle/kokoro-onnx |
 | espeak-ng（包在 `espeakng-loader` 内，由 kokoro-onnx 带入；只在 Kokoro 独立 venv，不进主进程也不进 exe） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
@@ -267,6 +267,7 @@ python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu
 
 - Linux 上程序会自动创建虚拟麦克风（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄语语音播放到 `tlwu_sink`，退出时卸载两个模块。在 Meet/Zoom 选择麦克风 `tlwu_mic`。`--no-vmic` 可关闭（改用 `--device <sink 子串>`）；`--list-speakers` 列出输出设备。Windows 仍使用 VB-CABLE。
 - 没有 CUDA 时，翻译改用 OPUS/Argos 枢纽 zh -> en -> ru（需上面四个 `--pair` 模型），Whisper 默认 `small`。`--mt qwen` 可强制使用 Qwen3（GPU）。
+- 俄语语音模型为**可选、需主动启用**（上游未标示许可）：任何安装程序或默认设置都不会下载。请执行 `tlwu-setup --vosk-tts-ru`（或在菜单回答 y/N，默认 N，会先显示许可未标示的提示）。没有模型时，说俄语只会显示字幕并提示启用方式。
 - 语音在 CPU 上使用内置固定语音：俄语用 Vosk-TTS（`--tts-engine vosk`，用 `--speaker` 选 0-4 号语音），英／日语用 Kokoro（`--tts-engine kokoro`），各自在独立 venv。没有参考音频的声音克隆功能。
 
 ## 合理使用／同意声明

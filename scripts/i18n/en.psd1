@@ -60,4 +60,7 @@
     UPD_OK_NEXT = 'Updated to the latest version (this run keeps the old one, the new one starts next time).'
     ASK_DOWNLOAD = 'Download it now? This connects to the internet, one time only. [y/N] '
     DOWNLOAD_DECLINED = 'Not downloaded. Run tlwu-setup yourself (see README), then start again.'
+    VOSK_LICENSE = 'Russian voice model license is not stated upstream; download at your own responsibility'
+    ASK_VOSK = 'Download the Russian voice model now (optional)? [y/N] '
+    VOSK_OPTIN = 'Russian voice model not installed (optional, opt-in): Russian will be subtitles only. To enable it later: tlwu-setup --vosk-tts-ru'
 }

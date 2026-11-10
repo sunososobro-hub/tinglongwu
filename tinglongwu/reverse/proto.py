@@ -173,6 +173,8 @@ class FollowTTS:
 
     def speak(self, text: str):
         if _CYR.search(text):
+            if "ru" not in self.factories:  # Russian voice model not installed (opt-in): subtitles only
+                return iter(())
             return self.client("ru").speak(text)
         if _JA.search(text):
             return self.client("en").speak(text, lang="ja")
@@ -315,6 +317,17 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", fo
     return mt
 
 
+def _ru_model_ok(path) -> bool:
+    return bool(path) and Path(path).is_dir()
+
+
+def _warn_no_ru_model() -> None:
+    from ..i18n import t
+
+    print(t("vosk_ru_license"), file=sys.stderr)
+    print(t("vosk_ru_missing"), file=sys.stderr, flush=True)
+
+
 def check_args(a) -> str | None:
     """Validate/normalise cross-option rules in place; returns an error message or None."""
     langs = tuple(x.strip() for x in getattr(a, "follow_langs", "en,ru").split(",") if x.strip())
@@ -322,11 +335,15 @@ def check_args(a) -> str | None:
     if bad or not langs:
         return f"--follow-langs takes en, ru, ja (comma separated), got {a.follow_langs!r}"
     a.follow_set = langs
+    a.ru_voice = getattr(a, "ru_voice", True)  # check_args may run twice; never re-enable
     if a.to == "follow":
         if not a.no_tts:
-            if a.tts_engine != "kokoro" or not a.tts_model or ("ru" in langs and not a.vosk_model):
+            if a.tts_engine != "kokoro" or not a.tts_model:
                 return ("--to follow needs --tts-engine kokoro (+ --tts-python/--tts-model for English and "
-                        "Japanese) and --vosk-python/--vosk-model for Russian, or --no-tts")
+                        "Japanese), or --no-tts")
+            if "ru" in langs and not _ru_model_ok(a.vosk_model):  # opt-in model absent: no Russian voice
+                _warn_no_ru_model()
+                a.ru_voice = False
         return None
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
@@ -334,6 +351,9 @@ def check_args(a) -> str | None:
         return "--tts-engine kokoro speaks English or Japanese only: use --to en or --to ja"
     if a.tts_engine == "vosk" and a.to != "ru" and not a.no_tts:
         return "--tts-engine vosk speaks Russian only: use --to ru (or --tts-engine kokoro for --to en)"
+    if a.tts_engine == "vosk" and a.to == "ru" and not a.no_tts and not _ru_model_ok(a.tts_model):
+        _warn_no_ru_model()  # no other installed engine speaks Russian: fall back to subtitles only
+        a.no_tts, a.ru_voice = True, False
     return None
 
 
@@ -503,11 +523,12 @@ def _main(argv, vm) -> int:
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
         if a.to == "follow" and not a.no_tts:
-            tts = FollowTTS({
-                "en": lambda: TTSClient(a.tts_python, a.tts_model, "kokoro",
-                                        0 if a.speaker is None else a.speaker),
-                "ru": lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model, "vosk",
-                                        4 if a.speaker is None else a.speaker)})
+            factories = {"en": lambda: TTSClient(a.tts_python, a.tts_model, "kokoro",
+                                                 0 if a.speaker is None else a.speaker)}
+            if getattr(a, "ru_voice", True):
+                factories["ru"] = lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model, "vosk",
+                                                    4 if a.speaker is None else a.speaker)
+            tts = FollowTTS(factories)
             tts.client("en")  # default language up front; ru loads when the other side first speaks it
             if a.speaker is not None:
                 tts.speaker = a.speaker

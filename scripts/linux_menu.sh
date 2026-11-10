@@ -120,6 +120,23 @@ if [ "$mode" = "2" ] && { [ "$SPEAK" = "ja" ] || [ "$SPEAK" = "follow" ]; }; the
     ask_setup --hymt
   fi
 fi
+# The Russian voice model has no stated upstream license: opt-in only, never part of a default setup. Asked here
+# (default N) only when Russian speech is about to be used; declining = Russian stays subtitles only.
+have_vosk() {
+  [ -d "$VOSK_MODEL" ] && return 0
+  local d; d="$(python -c "from tinglongwu.models import models_dir, VOSK_TTS_RU_DIR; print(models_dir(None) / VOSK_TTS_RU_DIR)" 2>/dev/null)" || return 1
+  [ -d "$d" ] && { VOSK_MODEL="$d"; return 0; }
+  return 1
+}
+VOSK_OFF=0
+if [ "$mode" = "2" ] && { [ "$SPEAK" = "ru" ] || { [ "$SPEAK" = "follow" ] && printf '%s' ",$FOLLOW_LANGS," | grep -q ,ru,; }; }; then
+  if ! have_vosk; then
+    m M_VOSK_LICENSE
+    vans=""; read -rp "$(mp M_ASK_VOSK)" vans || vans=""
+    case "$vans" in y|Y|yes|YES|Yes) tlwu-setup --vosk-tts-ru || true ;; esac
+    have_vosk || { m M_VOSK_OPTIN; VOSK_OFF=1; }
+  fi
+fi
 LISTEN_LANG=(--lang "$L"); [ "$L" = "auto" ] && LISTEN_LANG=(--lang auto --lang-candidates "$CANDS")
 HY_NOTE="$(mp M_HY_NOTE)"
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else m M_BANNER_SPEAK "$SPEAK"; fi
@@ -160,7 +177,6 @@ if [ "$SPEAK" = "follow" ]; then
        --vosk-python "$VOSK_PY" --vosk-model "$VOSK_MODEL" "${W_SPEAK[@]}")
   TXT=()
   [ -d "$KOKORO_MODEL" ] || { m M_NO_KOKORO_EN "$KOKORO_MODEL"; exit 1; }
-  [ -d "$VOSK_MODEL" ] || { m M_NO_VOSK "$VOSK_MODEL"; exit 1; }
 elif [ "$SPEAK" = "ja" ]; then
   # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to ja
@@ -184,6 +200,7 @@ else
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
        --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE" "${W_SPEAK[@]}")
   TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru "${W_SPEAK[@]}")
+  [ "$VOSK_OFF" = "1" ] && [ "$BOTH" != "1" ] && exec "${TXT[@]}"   # no Russian voice: subtitles only
 fi
 
 if [ "$BOTH" = "1" ]; then

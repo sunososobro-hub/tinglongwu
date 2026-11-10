@@ -189,7 +189,7 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | llama-cpp-python (runs Qwen3 / Hy-MT2) | MIT | github.com/abetlen/llama-cpp-python |
 | Hy-MT2-1.8B GGUF (Tencent; Japanese MT) | Apache-2.0 (LICENSE.txt in the repo is the plain Apache-2.0 text, no extra restrictions) | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS (code; Russian voice) | Apache-2.0 | github.com/alphacep/vosk-tts |
-| Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi; you download it yourself) | **Unclear: upstream states no license for the model** (only the vosk-tts code repo is Apache-2.0; no model license found on alphacephei.com or in the repo; the upstream README now lists 0.9-multi). Treat as unknown; users are responsible | github.com/alphacep/vosk-tts, alphacephei.com/vosk/models |
+| Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi; **optional, opt-in**: never downloaded by default, only via `tlwu-setup --vosk-tts-ru` or your own download) | **Unclear: upstream states no license for the model** (only the vosk-tts code repo is Apache-2.0; no model license found on alphacephei.com or in the repo; the upstream README now lists 0.9-multi). Treat as unknown; users are responsible. Without it Russian speech falls back to subtitles only | github.com/alphacep/vosk-tts, alphacephei.com/vosk/models |
 | kokoro-onnx (English/Japanese voice) | MIT | github.com/thewh1teagle/kokoro-onnx |
 | Kokoro voice model (Kokoro-82M, ONNX) | Apache-2.0 (as stated by kokoro-onnx) | github.com/thewh1teagle/kokoro-onnx |
 | espeak-ng (shipped inside `espeakng-loader`, pulled in by kokoro-onnx; Kokoro venv only, never in the main process or the exe) | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
@@ -274,6 +274,7 @@ python -m tinglongwu.reverse.proto --mic "<your mic substring>" --compute cpu --
 
 - On Linux the program creates a virtual microphone automatically (`pactl load-module module-null-sink sink_name=tlwu_sink` + `module-remap-source ... source_name=tlwu_mic`), plays the Russian audio to `tlwu_sink`, and unloads both modules on exit. In Meet/Zoom choose the microphone `tlwu_mic`. `--no-vmic` disables this (then pass `--device <sink substring>`); `--list-speakers` lists output devices. Windows keeps VB-CABLE.
 - Without CUDA, translation uses the OPUS/Argos pivot zh -> en -> ru (needs the four `--pair` models above); Whisper defaults to `small`. `--mt qwen` forces Qwen3 (GPU).
+- The Russian voice model is **optional and opt-in** (no upstream license): no installer or default setup fetches it. Get it with `tlwu-setup --vosk-tts-ru` (or the menu prompt, y/N, default N, which first prints "Russian voice model license is not stated upstream; download at your own responsibility"). Without it, speaking Russian shows subtitles only and prints how to enable it.
 - Speech uses fixed built-in voices on CPU: Vosk-TTS for Russian (`--tts-engine vosk`, voice ids 0-4 via `--speaker`) and Kokoro for English/Japanese (`--tts-engine kokoro`), each in its own venv. There is no reference-audio voice cloning.
 
 ## Acceptable Use / Consent

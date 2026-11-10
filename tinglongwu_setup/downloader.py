@@ -10,6 +10,7 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
       --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
   tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
+  tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
   tlwu-setup --verify          # offline integrity check
 """
 from __future__ import annotations
@@ -232,6 +233,49 @@ def get_gguf(man, mdir, name, repo, fname):
     pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
 
 
+VOSK_TTS_RU = "vosk-model-tts-ru-0.7-multi"  # keep in sync with tinglongwu.models.VOSK_TTS_RU_DIR
+VOSK_TTS_RU_URL = f"https://alphacephei.com/vosk/models/{VOSK_TTS_RU}.zip"
+VOSK_LICENSE_NOTE = {  # setup does not import tinglongwu, so the three UI languages live here too
+    "en": "Russian voice model license is not stated upstream; download at your own responsibility",
+    "ru": "Лицензия модели русского голоса не указана автором; скачивайте на свою ответственность",
+    "zh-TW": "俄文語音模型上游未標示授權；下載請自負責任",
+}
+
+
+def vosk_license_note() -> str:
+    lang = (os.environ.get("TLWU_UI_LANG") or "en").strip()
+    key = "zh-TW" if lang.lower().startswith("zh") else ("ru" if lang.lower().startswith("ru") else "en")
+    return VOSK_LICENSE_NOTE[key]
+
+
+def get_vosk_tts_ru(man, mdir, opener=_open):
+    """OPT-IN only (--vosk-tts-ru): Vosk-TTS Russian model -> models/vosk-model-tts-ru-0.7-multi/.
+    Upstream states no model license, so this is never called from a default setup. No committed pin exists:
+    the archive SHA256 is recorded on first download (pin-on-first-download) and re-verified by --verify."""
+    print(vosk_license_note())
+    dest = mdir / VOSK_TTS_RU
+    if dest.exists() and VOSK_TTS_RU in man:
+        return pin_or_verify(man, VOSK_TTS_RU, dest, {})
+    print(f"WARNING: {VOSK_TTS_RU} has no committed pin; trusting {VOSK_TTS_RU_URL} (pin-on-first-download only).")
+    with tempfile.TemporaryDirectory() as tmp:
+        z, work = Path(tmp) / "m.zip", Path(tmp) / "x"
+        with opener(VOSK_TTS_RU_URL, 600) as r, open(z, "wb") as f:
+            shutil.copyfileobj(r, f)
+        with zipfile.ZipFile(z) as zf:
+            for n in zf.namelist():  # zip-slip guard
+                if Path(n).is_absolute() or ".." in Path(n).parts:
+                    sys.exit(f"unsafe path in archive: {n}")
+            zf.extractall(work)
+        tops = [x for x in work.iterdir()]
+        root = tops[0] if len(tops) == 1 and tops[0].is_dir() else work
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(root, dest)
+        archive_sha = sha256(z)
+    pin_or_verify(man, VOSK_TTS_RU, dest, {"url": VOSK_TTS_RU_URL, "archive_sha256": archive_sha})
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
@@ -248,6 +292,9 @@ def main(argv=None) -> int:
     p.add_argument("--hymt", action="store_true",
                    help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
                         "Japanese listening/speaking (needs llama-cpp-python)")
+    p.add_argument("--vosk-tts-ru", action="store_true",
+                   help="OPT-IN: Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi). Upstream states no "
+                        "license for it; never downloaded by default, download at your own responsibility")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
@@ -279,6 +326,9 @@ def main(argv=None) -> int:
             mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt:
         get_hymt(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.vosk_tts_ru:
+        get_vosk_tts_ru(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
              + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])

@@ -22,6 +22,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report_opening": "Opening your browser with a pre-filled GitHub issue...",
         "report_manual": "If the browser did not open, copy this link:",
         "report_marked": "Marked as handled; you will not be asked about these again.",
+        "vosk_ru_license": "Russian voice model license is not stated upstream; download at your own responsibility",
+        "vosk_ru_missing": "Russian voice model not installed (optional, opt-in): showing subtitles only, nothing will be spoken in Russian. To enable it: run `tlwu-setup --vosk-tts-ru` (downloads vosk-model-tts-ru-0.7-multi; its license is not stated upstream), or point --vosk-model / VOSK_MODEL at a model you already have.",
     },
     "ru": {
         "guard_blocked": "\U0001F6E1 tlwu заблокировал исходящее соединение: {host}:{port} ({pkg}). "
@@ -32,6 +34,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report_opening": "Открываю браузер с заполненным issue на GitHub...",
         "report_manual": "Если браузер не открылся, скопируйте эту ссылку:",
         "report_marked": "Отмечено как обработанное; об этих записях больше не спросим.",
+        "vosk_ru_license": "Лицензия модели русского голоса не указана автором; скачивайте на свою ответственность",
+        "vosk_ru_missing": "Модель русского голоса не установлена (необязательная, включается отдельно): показываю только субтитры, по-русски ничего не произносится. Чтобы включить: выполните `tlwu-setup --vosk-tts-ru` (скачает vosk-model-tts-ru-0.7-multi; лицензия не указана автором) или укажите --vosk-model / VOSK_MODEL на уже имеющуюся модель.",
     },
     "zh-TW": {
         "guard_blocked": "\U0001F6E1 已擋下 tlwu 對外連線：{host}:{port}（{pkg}）。"
@@ -42,6 +46,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report_opening": "正在開啟瀏覽器，帶入預填好的 GitHub issue...",
         "report_manual": "如果瀏覽器沒有開啟，請複製這個連結：",
         "report_marked": "已標記為處理過，這些之後不會再問。",
+        "vosk_ru_license": "俄文語音模型上游未標示授權；下載請自負責任",
+        "vosk_ru_missing": "尚未安裝俄文語音模型（選用，需主動啟用）：目前只顯示字幕，不會用俄文發聲。啟用方式：執行 `tlwu-setup --vosk-tts-ru`（下載 vosk-model-tts-ru-0.7-multi，上游未標示授權），或用 --vosk-model / VOSK_MODEL 指到你已有的模型。",
     },
 }
 

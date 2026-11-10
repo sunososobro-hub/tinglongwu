@@ -57,4 +57,7 @@
     UPD_OK_NEXT = '已更新到最新版（這次先用舊版，下次啟動生效）。'
     ASK_DOWNLOAD = '現在下載嗎？會連上網路，只有這一次。[y/N] '
     DOWNLOAD_DECLINED = '沒有下載。請自行執行 tlwu-setup（見 README）後再啟動。'
+    VOSK_LICENSE = '俄文語音模型上游未標示授權；下載請自負責任'
+    ASK_VOSK = '現在下載俄文語音模型嗎（選用）？[y/N] '
+    VOSK_OPTIN = '尚未安裝俄文語音模型（選用，需主動啟用）：俄文只顯示字幕。之後要啟用：tlwu-setup --vosk-tts-ru'
 }
