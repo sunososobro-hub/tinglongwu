@@ -90,11 +90,79 @@ def run_vosk(a) -> int:
     return 0
 
 
+# Kokoro voice ids 0-4 (--speaker / v0-v4). Kept as a plain literal: tests read it with ast.
+KOKORO_VOICES = ["am_michael", "af_heart", "am_adam", "af_bella", "bm_george"]
+KOKORO_MODEL_FILE = "kokoro-v1.0.int8.onnx"
+KOKORO_VOICES_FILE = "voices-v1.0.bin"
+
+
+def kokoro_voice(speaker, available=None, warn=lambda m: print(m, file=sys.stderr, flush=True)) -> str:
+    """Voice name for speaker id 0-4; unknown id or a name missing from `available` falls back to am_michael."""
+    default = KOKORO_VOICES[0]
+    try:
+        name = KOKORO_VOICES[int(speaker)]
+        if int(speaker) < 0:
+            raise IndexError
+    except (IndexError, ValueError, TypeError):
+        warn(f"kokoro: unknown speaker {speaker!r}, using {default}")
+        return default
+    if available is not None and name not in available:
+        warn(f"kokoro: voice {name} not in voices file, using {default}")
+        return default
+    return name
+
+
+def run_kokoro(a) -> int:
+    """CPU path with kokoro-onnx (English). It bundles GPL espeak, so it only ever runs here, in its own venv.
+    Needs kokoro-v1.0.int8.onnx + voices-v1.0.bin in --model; a request may carry "speaker" (0-4)."""
+    import numpy as np
+    from kokoro_onnx import Kokoro
+
+    mdir = os.path.abspath(a.model)
+    onnx, voices = os.path.join(mdir, KOKORO_MODEL_FILE), os.path.join(mdir, KOKORO_VOICES_FILE)
+    for f in (onnx, voices):
+        if not os.path.isfile(f):
+            send({"t": "error", "id": None, "msg": f"missing local file: {f}"})
+            return 2
+    t0 = time.perf_counter()
+    k = Kokoro(onnx, voices)
+    try:
+        avail = set(k.get_voices())
+    except Exception:  # noqa: BLE001  (API not present: handle failures per request instead)
+        avail = None
+    send({"t": "ready", "load_s": round(time.perf_counter() - t0, 2), "vram_mib": 0, "device": "cpu",
+          "engine": "kokoro"})
+    for line in sys.stdin:
+        req = json.loads(line)
+        if req.get("cmd") == "quit":
+            break
+        try:
+            t1 = time.perf_counter()
+            voice = kokoro_voice(req.get("speaker", a.speaker), avail)
+            try:
+                samples, sr = k.create(req["text"], voice=voice, speed=1.0, lang="en-us")
+            except (KeyError, ValueError, AssertionError) as e:
+                if voice == KOKORO_VOICES[0]:
+                    raise
+                print(f"kokoro: voice {voice} failed ({e!r}), using {KOKORO_VOICES[0]}", file=sys.stderr, flush=True)
+                samples, sr = k.create(req["text"], voice=KOKORO_VOICES[0], speed=1.0, lang="en-us")
+            arr = np.asarray(samples, dtype=np.float32).reshape(-1)
+            gen = time.perf_counter() - t1
+            dur = arr.size / sr
+            send({"t": "chunk", "id": req["id"], "sr": int(sr), "ttfa_s": round(gen, 3)}, arr.tobytes())
+            send({"t": "done", "id": req["id"], "audio_s": round(dur, 3), "gen_s": round(gen, 3),
+                  "rtf": round(gen / dur, 3) if dur else None, "ttfa_s": round(gen, 3), "peak_vram_mib": 0})
+        except Exception as e:  # noqa: BLE001
+            send({"t": "error", "id": req.get("id"), "msg": repr(e)[:300]})
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--engine", default="qwen", choices=["qwen", "vosk"])
-    ap.add_argument("--speaker", type=int, default=4, help="vosk: built-in voice id (ru 0.7: 0-4)")
-    ap.add_argument("--model", required=True, help="local Qwen3-TTS Base dir / Vosk-TTS model dir")
+    ap.add_argument("--engine", default="qwen", choices=["qwen", "vosk", "kokoro"])
+    ap.add_argument("--speaker", type=int, default=4,
+                    help="vosk: built-in voice id (ru 0.7: 0-4); kokoro: 0-4 (default there: 0)")
+    ap.add_argument("--model", required=True, help="local Qwen3-TTS Base dir / Vosk-TTS model dir / Kokoro model dir")
     ap.add_argument("--ref", default="", help="reference wav (qwen)")
     ap.add_argument("--ref-text", default="")
     ap.add_argument("--xvec-only", action="store_true")
@@ -106,6 +174,9 @@ def main() -> int:
     os.environ["HF_HUB_OFFLINE"] = "1"
     if a.engine == "vosk":
         return run_vosk(a)
+    if a.engine == "kokoro":
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        return run_kokoro(a)
     if not a.ref:
         ap.error("--ref is required for the qwen engine")
     if a.device == "cpu":

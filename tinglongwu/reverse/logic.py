@@ -47,7 +47,9 @@ def resample(audio: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
 
 
 _CJK = re.compile(r"[⺀-鿿　-〿豈-﫿＀-￯]")
-RETRY_HINT = "\n(Reply in Russian only. Do not output any Chinese characters.)"
+RETRY_HINTS = {"ru": "\n(Reply in Russian only. Do not output any Chinese characters.)",
+               "en": "\n(Reply in English only. Do not output any Chinese characters.)"}
+RETRY_HINT = RETRY_HINTS["ru"]
 
 
 def has_cjk(text: str) -> bool:
@@ -61,10 +63,11 @@ def strip_cjk(text: str) -> str:
     return re.sub(r"\s{2,}", " ", t).strip(" ,;")
 
 
-def translate_ru(translate, zh: str) -> tuple[str, int]:
-    """translate(text)->str. Returns (russian, retries): one retry with a stricter hint when CJK leaks, then strip."""
+def translate_ru(translate, zh: str, lang: str = "ru") -> tuple[str, int]:
+    """translate(text)->str. Returns (translation, retries): one retry with a stricter hint when CJK leaks, then strip.
+    `lang` (ru|en) only picks the hint wording; the function name is historical."""
     ru = translate(zh)
     if not has_cjk(ru):
         return ru, 0
-    ru2 = translate(zh + RETRY_HINT)
+    ru2 = translate(zh + RETRY_HINTS.get(lang, RETRY_HINT))
     return (ru2 if not has_cjk(ru2) else strip_cjk(ru2 or ru)), 1

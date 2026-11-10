@@ -8,18 +8,23 @@ cd "$(dirname "$0")/.."
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 VOICE="${VOICE:-4}"
+KOKORO_PY="${KOKORO_PY:-$HOME/tts-kokoro/bin/python}"
+KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
+KOKORO_VOICE="${KOKORO_VOICE:-0}"
 
 echo "tinglongWu"
 echo "  Enter) 聽  英文 -> 中文字幕（預設）"
 echo "  1)     聽  其他語言 -> 中文字幕"
-echo "  2)     說  中文 -> 俄文語音"
+echo "  2)     說  中文 -> 英文語音"
+echo "  3)     說  中文 -> 俄文語音"
 read -rp "> " pick
 case "$pick" in
   "") mode=1; L=en ;;
   1) mode=1
      echo "語言代碼：ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
      read -rp "聽哪種語言 [Enter=en]: " L; L="${L:-en}" ;;
-  2) mode=2; L=ru ;;
+  2) mode=2; L=en ;;
+  3) mode=2; L=ru ;;
   *) echo "沒有這個選項"; exit 1 ;;
 esac
 if [ "$mode" = "1" ]; then echo "聽  $L -> 中文字幕"; else echo "說  中文 -> $L 語音"; fi
@@ -42,8 +47,20 @@ if [ "$mode" = "1" ]; then
   exec tlwu --lang "$L"
 fi
 
-REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
-     --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE")
+if [ "$L" = "en" ]; then
+  # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
+  if ! have_pairs zh-en en-zh; then
+    echo "還沒有 中文->英文 的翻譯模型，現在連網下載（只有這一次）..."
+    tlwu-setup --pair zh-en --pair en-zh
+  fi
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to en
+       --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to en)
+else
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
+       --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru)
+fi
 echo "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
 echo "  1) 送進 Meet（Meet 麥克風選 tlwu_mic）"
 echo "  2) 送進 Meet，自己耳機也聽得到"
@@ -54,6 +71,6 @@ case "$out" in
   1) exec "${REV[@]}" ;;
   2) exec "${REV[@]}" --preview-device Family ;;
   3) exec "${REV[@]}" --device Family ;;
-  4) exec python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus ;;
+  4) exec "${TXT[@]}" ;;
   *) echo "沒有這個選項"; exit 1 ;;
 esac

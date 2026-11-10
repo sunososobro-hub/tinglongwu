@@ -25,6 +25,7 @@ class Utterance:
     future: object = None
     decision: str = ""  # "sent" | "discarded" | "no_audio"
     extra: dict = field(default_factory=dict)
+    lang: str = "ru"  # language of `ru` (the translated text): ru | en
 
 
 def setup_console() -> None:
@@ -43,11 +44,11 @@ def setup_console() -> None:
             pass
 
 
-def back_translate(mt, ru: str) -> str:
-    """ru -> zh with the already loaded translator, leaving its zh->ru context (history/pair) untouched."""
+def back_translate(mt, ru: str, lang: str = "ru") -> str:
+    """(ru|en) -> zh with the already loaded translator, leaving its zh->ru context (history/pair) untouched."""
     hist, pair = list(mt.history), getattr(mt, "_pair", None)
     try:
-        return mt.translate(ru, "ru", "zh").text
+        return mt.translate(ru, lang, "zh").text
     except Exception as e:  # noqa: BLE001
         return f"(back-translation failed: {e})"
     finally:
@@ -83,7 +84,7 @@ class ConfirmSession:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
     def _show(self, u: Utterance) -> None:
-        self.out(f"\n--- #{u.n} ---\nZH : {u.zh}\nRU : {u.ru}\nBACK(zh): {u.back}")
+        self.out(f"\n--- #{u.n} ---\nZH : {u.zh}\n{u.lang.upper()} : {u.ru}\nBACK(zh): {u.back}")
 
     def _ask(self, u: Utterance) -> bool:
         """True = send. EOF on input counts as discard."""

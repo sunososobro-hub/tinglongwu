@@ -100,6 +100,9 @@ def _file_items(wavs, sf, asr):
             yield n, wav.name, tr.text
 
 
+VOICE_ENGINES = ("vosk", "kokoro")  # engines with built-in voices (v0-v4 switch)
+
+
 def _make_synth(tts):
     from .logic import split_sentences
 
@@ -115,27 +118,34 @@ def _make_synth(tts):
     return synth
 
 
+def _target(a) -> str:
+    return getattr(a, "to", "ru")
+
+
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
     """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
     `items` yields (n, label, zh)."""
     from .confirm import ConfirmSession, Utterance, back_translate
     from .logic import translate_ru
 
+    lang = _target(a)
+
     def set_voice(n: int) -> None:
         tts.speaker = n
 
     sess = ConfirmSession(_make_synth(tts), player.push, previewer.push if previewer.enabled else None,
                           out=lambda m: print(m, flush=True),
-                          set_voice=set_voice if getattr(tts, "engine", "") == "vosk" else None)
+                          set_voice=set_voice if getattr(tts, "engine", "") in VOICE_ENGINES else None)
     if sess_box is not None:
         sess_box.append(sess)
 
     def produce():
         try:
             for n, label, zh in items:
-                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
-                u = Utterance(n, zh, ru, back_translate(mt, ru), extra={"file": label, "cjk_retries": retries})
-                res["items"].append({"file": label, "zh": zh, "ru": ru, "back": u.back, "_u": u})
+                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+                u = Utterance(n, zh, ru, back_translate(mt, ru, lang), extra={"file": label, "cjk_retries": retries},
+                              lang=lang)
+                res["items"].append({"file": label, "zh": zh, lang: ru, "back": u.back, "_u": u})
                 sess.submit(u)
         except Exception as e:  # noqa: BLE001
             print(f"input stopped: {e}", flush=True)
@@ -151,18 +161,18 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
         it["decision"] = u.decision if u else ""
 
 
-def _run_auto_live(items, mt, tts, player, res) -> None:
+def _run_auto_live(items, mt, tts, player, res, lang: str = "ru") -> None:
     """--no-confirm with live input: translate + speak every utterance as it arrives."""
     from .logic import translate_ru
 
     synth = _make_synth(tts)
     for n, label, zh in items:
-        ru, _ = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
-        print(f"\n--- #{n} ---\nZH : {zh}\nRU : {ru}", flush=True)
+        ru, _ = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+        print(f"\n--- #{n} ---\nZH : {zh}\n{lang.upper()} : {ru}", flush=True)
         out = synth(ru)
         if out:
             player.push(*out)
-        res["items"].append({"file": label, "zh": zh, "ru": ru, "decision": "sent" if out else "no_audio"})
+        res["items"].append({"file": label, "zh": zh, lang: ru, "decision": "sent" if out else "no_audio"})
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
@@ -180,13 +190,14 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         if tts is None:  # text only: show zh -> ru, nothing is spoken
             from .logic import translate_ru
 
+            lang = _target(a)
             for _n, _src, zh in items:
-                ru, _r = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
-                print(f"[ZH] {zh}\n[RU] {ru}\n", flush=True)
+                ru, _r = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+                print(f"[ZH] {zh}\n[{lang.upper()}] {ru}\n", flush=True)
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
-            _run_auto_live(items, mt, tts, player, res)
+            _run_auto_live(items, mt, tts, player, res, _target(a))
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
@@ -202,9 +213,11 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         previewer.enabled = False
 
 
-def build_translator(kind: str, device: str, mdir, qwen: str):
-    """zh->ru translator. qwen (GPU, best) or opus (Argos/OPUS pivot zh->en->ru on CPU; needs
-    `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`). auto = qwen on CUDA, opus otherwise."""
+def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru"):
+    """zh->ru|en translator. qwen (GPU, best; any target) or opus (Argos/OPUS on CPU). ru = pivot zh->en->ru, needs
+    `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`; en = direct zh->en, needs
+    `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming).
+    auto = qwen on CUDA, opus otherwise."""
     if kind == "auto":
         kind = "qwen" if device == "cuda" else "opus"
     if kind == "qwen":
@@ -216,10 +229,23 @@ def build_translator(kind: str, device: str, mdir, qwen: str):
     from ..translate import PivotTranslator
 
     mt = PivotTranslator(mdir, "tw", device="cpu" if device != "cuda" else "cuda")
-    mt.preload("zh", "ru")  # fail early if the models are missing
-    mt.preload("ru", "zh")  # back-translation for the confirm step
+    mt.preload("zh", to)  # fail early if the models are missing
+    mt.preload(to, "zh")  # back-translation for the confirm step
     mt.history, mt._pair = [], None  # same surface as QwenTranslator for confirm.back_translate
     return mt
+
+
+def check_args(a) -> str | None:
+    """Validate/normalise cross-option rules in place; returns an error message or None."""
+    if a.speaker is None:
+        a.speaker = 0 if a.tts_engine == "kokoro" else 4
+    if a.tts_engine == "kokoro" and a.to != "en":
+        return "--tts-engine kokoro speaks English only: use --to en"
+    if a.tts_engine == "vosk" and a.to != "ru":
+        return "--tts-engine vosk speaks Russian only: use --to ru (or --tts-engine kokoro for --to en)"
+    if a.to == "en" and a.tts_engine == "qwen" and not a.no_tts:
+        return "--to en needs --tts-engine kokoro (the qwen TTS path is Russian-only)"
+    return None
 
 
 def main(argv=None) -> int:
@@ -243,15 +269,22 @@ def _main(argv, vm) -> int:
     ap.add_argument("--whisper", default=None, help="default: large-v3-turbo on CUDA, small on CPU")
     ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"],
                     help="where ASR/MT/TTS run; auto = CUDA if usable, else CPU")
+    ap.add_argument("--to", default="ru", choices=["ru", "en"],
+                    help="spoken language: ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
+                         "no pivot; use with --tts-engine kokoro)")
     ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
-                    help="translator; auto = Qwen3 on CUDA, OPUS/Argos pivot zh->en->ru on CPU")
+                    help="translator; auto = Qwen3 on CUDA, OPUS/Argos on CPU (ru: pivot zh->en->ru; en: direct zh->en)")
     ap.add_argument("--no-vmic", action="store_true",
                     help="Linux: do not create the tlwu_sink/tlwu_mic virtual microphone (use --device yourself)")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
     ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
-    ap.add_argument("--tts-engine", default="qwen", choices=["qwen", "vosk"],
-                    help="vosk = Vosk-TTS built-in voices, fast on CPU (--tts-model = vosk model dir)")
-    ap.add_argument("--speaker", type=int, default=4, help="vosk voice id (ru 0.7: 0-4); switch live with v0-v4")
+    ap.add_argument("--tts-engine", default="qwen", choices=["qwen", "vosk", "kokoro"],
+                    help="vosk = Vosk-TTS Russian built-in voices, fast on CPU (--tts-model = vosk model dir); "
+                         "kokoro = Kokoro English voices (--tts-model = dir with kokoro-v1.0.int8.onnx + "
+                         "voices-v1.0.bin; --tts-python = its own venv: GPL espeak stays out of this process)")
+    ap.add_argument("--speaker", type=int, default=None,
+                    help="built-in voice id 0-4 (vosk ru 0.7 default 4; kokoro default 0 = am_michael, 1 af_heart, "
+                         "2 am_adam, 3 af_bella, 4 bm_george); switch live with v0-v4")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
     ap.add_argument("--ref", default="")
@@ -266,6 +299,9 @@ def _main(argv, vm) -> int:
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
     a = ap.parse_args(argv)
+    err = check_args(a)
+    if err:
+        ap.error(err)
     from .confirm import setup_console
 
     setup_console()
@@ -350,7 +386,7 @@ def _main(argv, vm) -> int:
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()
-        mt = build_translator(a.mt, dev, mdir, a.qwen)
+        mt = build_translator(a.mt, dev, mdir, a.qwen, a.to)
         res["load_s"]["qwen"] = round(time.perf_counter() - t, 2)
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
@@ -369,7 +405,7 @@ def _main(argv, vm) -> int:
         if wavs:
             w0, _ = sf.read(str(wavs[0]), dtype="float32")
             asr.transcribe(w0)
-        mt.translate("你好。", "zh", "ru")
+        mt.translate("你好。", "zh", a.to)
         mt.history.clear()
         asr._last = ""
         if live:
@@ -387,11 +423,11 @@ def _main(argv, vm) -> int:
             zh = tr.text if tr else ""
             retries = 0
             if zh:
-                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
+                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", a.to).text, zh, a.to)
             else:
                 ru = ""
             t_mt = time.perf_counter() - t0
-            item = {"file": wav.name, "audio_s": round(len(audio) / sr, 2), "zh": zh, "ru": ru,
+            item = {"file": wav.name, "audio_s": round(len(audio) / sr, 2), "zh": zh, a.to: ru,
                     "t_asr": round(t_asr, 3), "cjk_retries": retries, "t_mt": round(t_mt, 3), "tts": []}
             first_audio = None
             tts_done = t_mt
@@ -409,7 +445,7 @@ def _main(argv, vm) -> int:
                         done = ev
                 tts_done = time.perf_counter() - t0
                 if pcm:
-                    sf.write(str(out / f"{wav.stem}_ru{k}.wav"), np.concatenate(pcm), sr_out)
+                    sf.write(str(out / f"{wav.stem}_{a.to}{k}.wav"), np.concatenate(pcm), sr_out)
                 item["tts"].append({"text": sent, **(done or {})})
             item["t_first_audio"] = round(first_audio, 3) if first_audio else None
             item["t_tts_done"] = round(tts_done, 3)

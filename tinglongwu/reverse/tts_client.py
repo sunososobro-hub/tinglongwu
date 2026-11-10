@@ -12,7 +12,9 @@ class TTSClient:
                  chunk: int = 12, device: str = "cuda", engine: str = "qwen", speaker: int = 4):
         worker = Path(__file__).with_name("tts_worker.py")
         self.engine, self.speaker = engine, speaker
-        if engine == "vosk":
+        if engine == "kokoro":
+            cmd = [tts_python, str(worker), "--engine", "kokoro", "--model", model, "--speaker", str(speaker)]
+        elif engine == "vosk":
             cmd = [tts_python, str(worker), "--engine", "vosk", "--model", model, "--speaker", str(speaker)]
         else:
             cmd = [tts_python, str(worker), "--model", model, "--ref", ref, "--chunk", str(chunk),
@@ -38,7 +40,7 @@ class TTSClient:
         """Generator of (event_dict, payload_bytes|None); ends after the 'done' (or 'error') event."""
         self._n += 1
         req = {"id": self._n, "text": text}
-        if self.engine == "vosk":
+        if self.engine in ("vosk", "kokoro"):
             req["speaker"] = self.speaker  # read per request, so set_voice() takes effect on the next sentence
         self.proc.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
         self.proc.stdin.flush()
