@@ -135,14 +135,15 @@ class LatencyController:
         if self.fast < self.stable:
             return None
         self.fast, self.probing = 0, False  # a full stable period: the current level is proven
-        if not self.downs:
-            return None
-        lad = self.downs.pop()
-        old = lad.label
-        lad.up()
-        self.probing = True
-        self._switched(lad, old, f"stable for {self.stable} lines, stepping back up")
-        return "up"
+        while self.downs:
+            lad = self.downs.pop()
+            old = lad.label
+            if not lad.up():  # already back at the top (its lower step was dropped as unusable): nothing to undo
+                continue
+            self.probing = True
+            self._switched(lad, old, f"stable for {self.stable} lines, stepping back up")
+            return "up"
+        return None
 
 
 def smaller_whisper(current: str, installed) -> list[str]:

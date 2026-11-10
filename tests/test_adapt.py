@@ -187,3 +187,16 @@ def test_real_opus_step_is_skipped_when_opus_is_not_installed(tmp_path):
     a = cli.parse_args(["--lang", "ru", "--model", "tiny"])
     asr, tr, ctl = cli.make_adaptive(a, ASR("tiny"), MT("hymt"), tmp_path, "cpu", log=lambda m: None)
     assert feed(ctl, [9] * 10) == [None] * 10 and tr.translate("a", "ru", "zh").text == "hymt:a"
+
+
+def test_no_fake_step_up_after_the_lower_engine_was_dropped():
+    """SwitchableTranslator drops a lower step that lacks the language pair; the controller must not later log
+    a 'stepping back up' for that ladder (it is already at the top)."""
+    mt = adapt.Ladder("translation engine", "hymt2", "TOP", [("opus", lambda: "LOW")])
+    logs = []
+    ctl = adapt.LatencyController([mt], n=1, stable=2, log=logs.append)
+    assert ctl.observe(5.0) == "down" and mt.label == "opus"
+    assert mt.drop_current() and mt.label == "hymt2"
+    for _ in range(ctl.n + 5):  # skip the post-switch lines, then a full stable period
+        assert ctl.observe(0.1) is None
+    assert len(logs) == 1 and ctl.downs == []
