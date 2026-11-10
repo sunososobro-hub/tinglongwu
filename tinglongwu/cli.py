@@ -66,7 +66,8 @@ def parse_args(argv=None):
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
-                        "given to the Qwen engine as required translations (OPUS/M2M ignore targets). "
+                        "given to the Qwen engine as required translations; with OPUS, `target ~ wrong | wrong` "
+                        "replaces known wrong renderings in the output. "
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
                    help="open the graphical interface (floating subtitle bar + small control window)")
@@ -176,8 +177,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if not a.transcript_only:
         note("loading translation engine...")
         translator = make_translator(a.engine, mdir, a.zh_variant, dev)
-        if glossary is not None and hasattr(translator, "glossary"):
-            translator.glossary = glossary
+        if glossary is not None:
+            for t in (translator, getattr(translator, "base", None)):  # JaRouter wraps the OPUS pivot
+                if hasattr(t, "glossary"):
+                    t.glossary = glossary
         if a.lang != "auto":
             translator.preload(a.lang, a.to)
         elif cands:  # fail early on missing models; the translator caches one step per language pair
