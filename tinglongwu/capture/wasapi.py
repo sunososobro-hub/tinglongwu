@@ -7,4 +7,5 @@ class WasapiLoopbackSource(SoundcardSource):
     def _pick_microphone(self, sc):
         if self.device:
             return find_by_name(sc, self.device)
-        return sc.get_microphone(sc.default_speaker().name, include_loopback=True)
+        # by id: a headset mic can share the speaker name, and a name lookup then returns the mic, not the loopback
+        return sc.get_microphone(sc.default_speaker().id, include_loopback=True)
