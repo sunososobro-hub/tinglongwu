@@ -175,7 +175,7 @@ tlwu --to ko --no-vad --chunk 8        # target Korean via ru->en->ko (needs en-
 tlwu --file talk.mp3 --transcript-only > hyp.txt     # 只輸出原文，每段一行
 python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CER）；--partial 對齊到最相符的參考片段並回報涵蓋率
 ```
-選項：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--quality auto|fast|balanced|quality`（沒指定 `--model` 時依這台電腦自動選語音模型；預設 auto＝建議值，可用 `--probe` 查看）、`--lang`、`--to`、`--preset meeting|chat`（預設 meeting）、`--chunk`（最長段落秒數，預設依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音訊裝置子字串）、`--device auto|cpu|cuda`（運算裝置）、`--engine auto|qwen|qwen4b|opus|m2m`、`--no-merge`、`--max-wait`（秒，預設依 preset）、`--stream`、`--stream-src`、`--debug-latency`。
+選項：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--quality auto|fast|balanced|quality`（沒指定 `--model` 時依這台電腦自動選語音模型；預設 auto＝建議值，可用 `--probe` 查看）、`--lang`、`--to`、`--preset meeting|chat`（預設 meeting）、`--chunk`（最長段落秒數，預設依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音訊裝置子字串）、`--device auto|cpu|cuda`（運算裝置）、`--engine auto|qwen|qwen4b|opus|m2m`、`--no-merge`、`--max-wait`（秒，預設依 preset）、`--stream`、`--stream-src`、`--debug-latency`、`--no-adapt`（固定使用選定的模型；預設在即時擷取時，若連續 3 行延遲超過 2 秒，先降翻譯引擎、再降語音模型，穩定一段時間後再升回）。
 
 **串流草稿**（`--stream`，預設關閉、實驗性）：句子還在說時，以 Whisper（greedy）重辨目前累積的音訊，並立刻翻譯整段暫時結果（沿用同一翻譯引擎），原地只顯示一行灰色譯文。`--stream-src` 另顯示原文行（已確認前綴正常亮度、其餘灰色；LocalAgreement 概念）。`--debug-latency` 於 stderr 記錄「段落音訊起點 → 第一次譯文草稿／最終行」秒數。段落結束後由正式輸出取代草稿。需互動式終端機（ANSI）；草稿讓位給正式 ASR/MT，會多吃 GPU；搭配 `--file` 時以真實速度播放。
 

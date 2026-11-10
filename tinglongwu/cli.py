@@ -70,6 +70,10 @@ def parse_args(argv=None):
                    help="log to stderr per-stage times: ASR ms per segment, MT ms (each OPUS step, e.g. "
                         "ru-en / en-zh) and queue wait per line; with --stream also the seconds from segment "
                         "audio start to the first translated draft and to the final line")
+    p.add_argument("--no-adapt", action="store_true",
+                   help="keep the chosen models even when lines arrive late (default: if speech end -> translated "
+                        "line stays over 2 s for 3 lines, step down the translation engine, then the speech "
+                        "model, and step back up after a stable period; one stderr line per switch)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -165,6 +169,45 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
     return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
 
 
+def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, make_opus=None,
+                  log=None):
+    """Wrap ASR / MT so the latency controller can swap models at run time (#80).
+    Returns (asr, translator, controller); controller is None when there is nothing to step down to."""
+    from .adapt import Ladder, LatencyController, Switchable, SwitchableTranslator, smaller_whisper
+    from .hymt import JaRouter
+    from .models import whisper_installed
+    from .translate import M2mTranslator, PivotTranslator
+
+    ladders = []
+    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator, M2mTranslator)):
+        def opus():
+            tr = JaRouter(PivotTranslator(mdir, a.zh_variant, device=dev), mdir, a.zh_variant, dev)
+            tr.base.glossary = glossary
+            for src in ([a.lang] if a.lang != "auto" else (cands or [])):
+                if src != a.to:
+                    tr.preload(src, a.to)  # ModelNotFound here = OPUS is not a candidate
+            if not (mdir / "opus").is_dir():
+                raise FileNotFoundError(mdir / "opus")
+            return tr
+
+        mt = Ladder("translation engine", getattr(translator, "name", type(translator).__name__), translator,
+                    [("opus", make_opus or opus)])
+        ladders.append(mt)
+        translator = SwitchableTranslator(mt)
+    if make_asr is None:
+        from .asr import FasterWhisperRecognizer
+
+        def make_asr(size):
+            return FasterWhisperRecognizer(mdir, size, a.lang, dev, glossary=glossary, candidates=cands,
+                                           lang_file=getattr(a, "lang_file", None))
+    lower = [(s, lambda s=s: make_asr(s)) for s in smaller_whisper(a.model, whisper_installed(mdir))]
+    if lower:
+        sp = Ladder("speech model", a.model, asr, lower)
+        ladders.append(sp)
+        asr = Switchable(sp)
+    return asr, translator, (LatencyController(ladders, log=log) if ladders else None)
+
+
 def make_draft(asr, translator, segmenter, tgt: str, stream=None, show_src: bool = False,
                debug_latency: bool = False):
     """Build the --stream draft engine, or None (with a note) when stdout is not a terminal."""
@@ -253,6 +296,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             for c in cands:
                 if c != a.to:
                     translator.preload(c, a.to)
+    ctl = None
+    if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
+        asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
     if sink is None:
         sink = TranscriptSink() if a.transcript_only else TextSink()
     if a.save is not None:
@@ -279,7 +325,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     note("listening")
     lat = (lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
-        stop_event=stop, log=lat)
+        stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None)
 
 
 def main(argv=None) -> int:
