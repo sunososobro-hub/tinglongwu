@@ -56,6 +56,19 @@ curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/downloa
 
 Windows 發行 zip **未簽章**，由維護者在本機以 Nuitka 建置，**不可重現建置**。其 SHA256 公布於 release 說明：執行前請用 `Get-FileHash tinglongwu-win64.zip` 比對。雜湊只證明你拿到的是維護者發布的那個檔案。若要真正的驗證，請從原始碼安裝（`install.bat` 或下方步驟）：原始碼、鎖版依賴與模型雜湊都可稽核。
 
+## 驗證狀態
+
+✅ 已在實機驗證，🧪 尚未驗證（連結至實測 issue）。
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| 一行安裝 | ✅ | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ |
+| 聆聽 | ✅ | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ |
+| 朗讀（虛擬麥克風） | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/6) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ |
+| 會議 | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/4) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ (own side) |
+| 防火牆封鎖離線 | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) |
+| exe | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/9) | — | — |
+
 ## 安裝／使用分離（請先閱讀）
 
 同一個 repo、兩個程式，邊界明確：
