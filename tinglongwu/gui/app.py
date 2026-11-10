@@ -1,4 +1,4 @@
-"""tkinter front end: floating subtitle bar + small control window. All widget calls happen on the main
+"""tkinter front end: control window with a scrolling subtitle log + optional floating subtitle bar. All widget calls happen on the main
 thread; the worker thread (model load + pipeline) only talks to us through `self.q`."""
 from __future__ import annotations
 
@@ -178,6 +178,7 @@ class Overlay:
         self.app.settings["show_src"] = self.var_src.get()
         self.app.var_show_src.set(self.var_src.get())
         self.render(self.app.state)
+        self.app.render_log()
 
     def on_pause(self):
         self.app.set_paused(self.var_pause.get())
@@ -189,7 +190,7 @@ class Overlay:
         show_src = self.app.settings["show_src"]
         t.configure(state="normal")
         t.delete("1.0", "end")
-        rows = state.history()
+        rows = state.history() or [("", text, d) for text, d in self.app.placeholder()]  # "Listening..."
         for i, (src, text, is_draft) in enumerate(rows):
             if show_src and src:
                 t.insert("end", src + "\n", "src")
@@ -226,6 +227,7 @@ class App:
         self.settings = load_settings()
         self.q: queue.Queue = queue.Queue()
         self.state = SubtitleState(HISTORY_LINES)
+        self.listening = False  # a session is running (Start pressed, worker not yet stopped)
         self.stop_ev = threading.Event()
         self.worker: threading.Thread | None = None
         self.closing = False
@@ -283,6 +285,9 @@ class App:
         if self.status_key:
             self.v_status.set(t(self.status_key))
         self.overlay.build_menu()
+        self.render_log()
+        if self.overlay.visible:
+            self.overlay.render(self.state)
 
     def _combo(self, row, label, key, values):
         self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
@@ -340,6 +345,83 @@ class App:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=13, column=2, sticky="e", pady=(8, 0))
+        self._build_log(f)
+
+    def _build_log(self, f):
+        """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
+        bar = ttk.Frame(f)
+        bar.grid(row=20, column=0, columnspan=3, sticky="we", pady=(10, 2))
+        self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
+        self._tx(ttk.Checkbutton(bar, variable=self.v_bar, command=self._bar_toggled), "gui_floating_bar").pack(
+            side="left")
+        ttk.Button(bar, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
+        ttk.Button(bar, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
+        box = tk.Frame(f, width=340, height=220, bg=BG)  # fixed pixel size: a bigger font must not grow the window
+        box.grid(row=21, column=0, columnspan=3, sticky="we")
+        box.pack_propagate(False)
+        sb = ttk.Scrollbar(box, orient="vertical")
+        self.log_text = tx = tk.Text(box, bg=BG, fg=FG_FINAL, bd=0, highlightthickness=0, wrap="word", padx=8,
+                                     pady=6, cursor="arrow", takefocus=0, yscrollcommand=sb.set)
+        sb.configure(command=tx.yview)
+        sb.pack(side="right", fill="y")
+        tx.pack(side="left", fill="both", expand=True)
+        tx.tag_configure("final", foreground=FG_FINAL, spacing3=4)
+        tx.tag_configure("draft", foreground=FG_DRAFT, spacing3=4)
+        tx.tag_configure("src", foreground=FG_SRC)
+        tx.configure(state="disabled")
+        tx.bind("<Control-MouseWheel>", lambda e: self.bump_log_font(2 if e.delta > 0 else -2))
+        tx.bind("<Control-Button-4>", lambda e: self.bump_log_font(2))
+        tx.bind("<Control-Button-5>", lambda e: self.bump_log_font(-2))
+        self.set_log_font(self.settings["log_font_size"])
+
+    def placeholder(self) -> list[tuple[str, bool]]:
+        """What to show before the first subtitle of a session: the user must see that it is listening."""
+        return [(t("gui_listening"), True)] if self.listening else []
+
+    def set_log_font(self, n):
+        self.settings["log_font_size"] = n = clamp_font(n, self.settings["log_font_size"])
+        for tag in ("final", "draft"):
+            self.log_text.tag_configure(tag, font=(FONT_FAMILY, n))
+        self.log_text.tag_configure("src", font=(FONT_FAMILY, max(8, n * 3 // 4)))
+
+    def bump_log_font(self, d: int):
+        follow = self._log_at_end()
+        self.set_log_font(self.settings["log_font_size"] + d)
+        if follow:
+            self._log_to_end()
+        return "break"  # Ctrl+wheel resizes; it must not also scroll
+
+    def _log_at_end(self) -> bool:
+        # yview fractions are estimates for wrapped lines; "the last line is on screen" is exact
+        return self.log_text.dlineinfo("end-1c") is not None or follow_newest(self.log_text.yview()[1])
+
+    def _log_to_end(self):
+        self.log_text.yview_moveto(1.0)
+
+    def render_log(self):
+        """Redraw the history; keep following the newest line unless the user scrolled up to re-read."""
+        tx = self.log_text
+        top, follow = tx.index("@0,0"), self._log_at_end()
+        rows = self.state.history() or [("", text, d) for text, d in self.placeholder()]
+        show_src = self.settings["show_src"]
+        tx.configure(state="normal")
+        tx.delete("1.0", "end")
+        for i, (src, text, is_draft) in enumerate(rows):
+            if show_src and src and src != text:
+                tx.insert("end", src + "\n", "src")
+            tx.insert("end", text + ("\n" if i < len(rows) - 1 else ""), "draft" if is_draft else "final")
+        tx.configure(state="disabled")
+        if follow:
+            self._log_to_end()
+        else:
+            tx.yview(top)
+
+    def _bar_toggled(self):
+        self.settings["floating_bar"] = self.v_bar.get()
+        if self.v_bar.get() and self.listening:
+            self.overlay.show()
+        else:
+            self.overlay.hide()
 
     def _spin(self, row, key, lo, hi, value, apply):
         """Numeric spinbox row; each valid value applies live (empty / non-numeric / out-of-range input is ignored)."""
@@ -375,6 +457,7 @@ class App:
         self.settings["show_src"] = self.var_show_src.get()
         self.overlay.var_src.set(self.var_show_src.get())
         self.overlay.render(self.state)
+        self.render_log()
 
     def report_problem(self):
         from ..report import open_report
@@ -388,7 +471,7 @@ class App:
         s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(),
                  model=self.v_model.get(), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
-                 live_draft=self.v_live.get(), source=self.v_source.get())
+                 live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get())
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------
@@ -406,9 +489,12 @@ class App:
         self.set_status("gui_starting")
         self.v_notice.set("")
         self.errored = False
-        self.overlay.show()
+        self.listening = True
         self.worker = threading.Thread(target=self._work, args=(dict(self.settings), self.stop_ev), daemon=True)
         self.worker.start()
+        self.render_log()  # shows "Listening..." at once, before the first line
+        if self.settings["floating_bar"]:
+            self.overlay.show()
 
     def _work(self, s: dict, stop: threading.Event):
         """Worker thread: no tkinter here, only self.q."""
@@ -454,13 +540,17 @@ class App:
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
                         self.set_status("gui_stopped")
+                    self.listening = False
                     self.overlay.hide()
+                    self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
                     changed |= self.state.apply(ev)
         except queue.Empty:
             pass
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
+        if changed:
+            self.render_log()
         self.root.after(POLL_MS, self.poll)
 
     def toggle_pause(self):
@@ -473,6 +563,8 @@ class App:
         self.btn_pause.configure(text=t("gui_resume" if paused else "gui_pause"))
         if not paused and self.overlay.visible:
             self.overlay.render(self.state)
+        if not paused:
+            self.render_log()
 
     def copy_last(self):
         text = self.state.last_text()

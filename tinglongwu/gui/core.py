@@ -18,6 +18,7 @@ DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
+    "floating_bar": False, "log_font_size": 14,
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -70,6 +71,7 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     return out
 
@@ -84,11 +86,11 @@ def save_settings(s: dict, path=None) -> bool:
         return False
 
 
-def clamp_font(n) -> int:
+def clamp_font(n, default=None) -> int:
     try:
         return max(FONT_MIN, min(FONT_MAX, int(n)))
     except (TypeError, ValueError):
-        return DEFAULTS["font_size"]
+        return DEFAULTS["font_size"] if default is None else default
 
 
 def clamp_rows(n) -> int:
