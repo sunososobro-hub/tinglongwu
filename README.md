@@ -28,7 +28,7 @@ Each release also lists `SHA256SUMS.txt`; to check a script before running it, d
 
 ## Quick install (Windows)
 
-For Windows 10/11 with an NVIDIA GPU (works without one, just slower). You need [Python 3.12](https://www.python.org/downloads/windows/) first (tick **Add python.exe to PATH** in its installer).
+For Windows 10/11 with an NVIDIA GPU (works without one, just slower). If Python 3.10-3.12 is missing, the installer installs Python 3.12 for your user account itself (no admin; SHA256-checked download from python.org).
 
 1. On GitHub click **Code > Download ZIP**, then right-click the ZIP > **Extract All**.
 2. Open the folder and double-click **`install.bat`**. Wait (10-30 min, up to ~10 GB download; safe to re-run if interrupted).

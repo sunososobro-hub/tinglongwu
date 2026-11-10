@@ -47,22 +47,35 @@ Info "Folder / 資料夾: $Root"
 
 # ---------------------------------------------------------------- 1. Python
 Step 1 '檢查 Python 3.10-3.12' 'Check Python 3.10-3.12'
-$Py = $null
-foreach ($v in '3.12', '3.11', '3.10') {
-    $p = Capture 'py' @("-$v", '-c', 'import sys;print(sys.executable)')
-    if ($p -and (Test-Path $p)) { $Py = $p; break }
-}
-if (-not $Py) {
+. (Join-Path $Root 'scripts\python_bootstrap.ps1')
+function FindPy {
+    foreach ($v in '3.12', '3.11', '3.10') {
+        $p = Capture 'py' @("-$v", '-c', 'import sys;print(sys.executable)')
+        if ($p -and (Test-Path $p)) { return $p }
+    }
     $p = Capture 'python' @('-c', 'import sys;print(sys.executable if (3,10)<=sys.version_info[:2]<=(3,12) else "")')
-    if ($p -and (Test-Path $p)) { $Py = $p }
+    if ($p -and (Test-Path $p)) { return $p }
+    return $null
 }
+$Py = FindPy
 if (-not $Py) {
-    Write-Host ""
-    Write-Host "  找不到 Python 3.10 ~ 3.12 / Python 3.10-3.12 not found." -ForegroundColor Red
-    Write-Host "  請到 https://www.python.org/downloads/windows/ 下載 Python 3.12，"
-    Write-Host "  安裝時務必勾選 'Add python.exe to PATH'，裝好後再按一次 install.bat。"
-    Write-Host "  Download Python 3.12 from python.org, TICK 'Add python.exe to PATH', then run install.bat again."
-    exit 1
+    # fresh Windows (#67): install Python ourselves, per-user, no admin (pinned python.org installer, SHA256-checked; winget as fallback)
+    Info "找不到 Python 3.10 ~ 3.12，自動安裝 Python 3.12（僅目前使用者，不需系統管理員）"
+    Info "Python 3.10-3.12 not found: installing Python 3.12 for this user (no admin needed)"
+    $Py = Install-TlwuPython -DryRun:$DryRun
+    if (-not $Py -and -not $DryRun) {   # installed somewhere else (e.g. winget): pick up the new user PATH and look again
+        $env:Path = "$([Environment]::GetEnvironmentVariable('Path', 'User'));$env:Path"
+        $Py = FindPy
+    }
+    if ($Py) { if (-not $DryRun) { [void]$Installed.Add('Python 3.12 (per-user)') } }
+    else {
+        Write-Host ""
+        Write-Host "  自動安裝 Python 失敗 / Could not install Python automatically." -ForegroundColor Red
+        Write-Host "  請到 https://www.python.org/downloads/windows/ 下載 Python 3.12，"
+        Write-Host "  安裝時務必勾選 'Add python.exe to PATH'，裝好後再按一次 install.bat。"
+        Write-Host "  Download Python 3.12 from python.org, TICK 'Add python.exe to PATH', then run install.bat again."
+        exit 1
+    }
 }
 Ok "Python: $Py  ($(Capture $Py @('--version')))"
 

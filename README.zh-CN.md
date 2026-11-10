@@ -28,7 +28,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 
 ## 快速安装（Windows）
 
-适用 Windows 10/11，有 NVIDIA 显卡最佳（没有也能运行，只是较慢）。请先安装 [Python 3.12](https://www.python.org/downloads/windows/)，安装时勾选 **Add python.exe to PATH**。
+适用 Windows 10/11，有 NVIDIA 显卡最佳（没有也能运行，只是较慢）。电脑没有 Python 3.10-3.12 时，安装程序会自动为当前用户安装 Python 3.12（不需管理员权限；从 python.org 下载并校验 SHA256）。
 
 1. 在 GitHub 点 **Code > Download ZIP**，下载后右键 ZIP > **全部解压缩**。
 2. 打开文件夹，双击 **`install.bat`**，耐心等待（约 10–30 分钟，最多下载约 10 GB；中断后可重跑）。
