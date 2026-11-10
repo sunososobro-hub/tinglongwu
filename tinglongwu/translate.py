@@ -221,9 +221,9 @@ class PivotTranslator(Translator):
         self.device = device  # already resolved: "cpu" or "cuda"
         self._factory = step_factory or (lambda s, t: OpusStep(models_dir, s, t, self.device))
         self._steps: dict[tuple[str, str], Callable[[str], str]] = {}
+        self.last_timing: list[tuple[str, float]] = []  # (pair, seconds) of the last translate(), --debug-latency
         self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output
         self._zh_words: dict[str, str] = {}
-        self.last_timing: list[tuple[str, float]] = []  # (pair, seconds) of the last translate(), --debug-latency
 
     def _step(self, s: str, t: str):
         if (s, t) not in self._steps:
