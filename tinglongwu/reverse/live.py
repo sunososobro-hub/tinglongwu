@@ -7,11 +7,35 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from typing import Iterable, Iterator
 
 import numpy as np
 
 POLL = 0.25
+TAIL_S = 0.8  # keep the mic gated this long after our own speech ends (room echo / reverb)
+
+
+class PlaybackGate:
+    """Half-duplex gate: busy while our TTS is queued/playing, plus a short tail after it ends."""
+
+    def __init__(self, tail: float = TAIL_S, clock=time.monotonic):
+        self.tail, self.clock = tail, clock
+        self._n, self._until = 0, 0.0
+        self._lock = threading.Lock()
+
+    def start(self) -> None:
+        with self._lock:
+            self._n += 1
+
+    def end(self) -> None:
+        with self._lock:
+            self._n = max(0, self._n - 1)
+            self._until = self.clock() + self.tail
+
+    def busy(self) -> bool:
+        with self._lock:
+            return self._n > 0 or self.clock() < self._until
 
 
 def list_mic_names(include_loopback: bool = False) -> list[str]:
@@ -82,11 +106,15 @@ def capture_segments(source, segmenter, stop: threading.Event) -> Iterator[np.nd
         yield item
 
 
-def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float = 1e-3) -> Iterator[str]:
-    """Each finished segment -> Chinese text (silence and Whisper stock hallucinations dropped)."""
+def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float = 1e-3,
+                         gate: PlaybackGate | None = None) -> Iterator[str]:
+    """Each finished segment -> Chinese text (silence, Whisper stock hallucinations and, with `gate`, segments
+    heard while our own TTS is playing are dropped)."""
     from ..hallucination import is_hallucination
 
     for seg in segments:
+        if gate is not None and gate.busy():
+            continue
         rms = float(np.sqrt(np.mean(np.square(seg)))) if len(seg) else 0.0
         if rms < silence_rms:
             continue
