@@ -11,6 +11,7 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
       --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
   tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
+  tlwu-setup --piper-ru        # Piper Russian voice dmitri (or: --piper-ru denis), CC0 data, ~60 MB
   tlwu-setup --verify          # offline integrity check
 """
 from __future__ import annotations
@@ -276,6 +277,38 @@ def get_vosk_tts_ru(man, mdir, opener=_open):
     pin_or_verify(man, VOSK_TTS_RU, dest, {"url": VOSK_TTS_RU_URL, "archive_sha256": archive_sha})
 
 
+PIPER_REPO = "rhasspy/piper-voices"  # official Piper voice repo (MIT code; each voice: MODEL_CARD + dataset license)
+# voice -> its two files. Only CC0 datasets (OHF-Voice/voice-datasets, #128): never irina (CC BY-NC-ND) / ruslan
+# (CC BY-NC-SA). Dir name keep in sync with tinglongwu.models.piper_ru_dir (setup does not import tinglongwu).
+PIPER_RU = {v: [f"ru/ru_RU/{v}/medium/ru_RU-{v}-medium.onnx", f"ru/ru_RU/{v}/medium/ru_RU-{v}-medium.onnx.json"]
+            for v in ("dmitri", "denis")}
+
+
+def piper_ru_dir(voice: str) -> str:
+    return f"piper-ru_RU-{voice}-medium"
+
+
+def get_piper_ru(man, mdir, voice="dmitri"):
+    """Piper Russian voice -> models/piper-ru_RU-<voice>-medium/ (HF commit sha + SHA256 of both files; a committed
+    pin from scripts/make_model_pins.py wins, else pin-on-first-download). The piper-tts engine itself (GPL-3) is
+    NOT installed here: it goes into its own TTS venv (see tinglongwu/reverse/tts_worker.py)."""
+    name, files = piper_ru_dir(voice), PIPER_RU[voice]
+    dest = mdir / name
+    if not (dest.exists() and name in man):
+        from huggingface_hub import snapshot_download
+
+        repo, rev, pf = resolve_hf(man, name, PIPER_REPO)
+        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=files)
+        src = {"repo": repo, "revision": rev}
+    else:
+        src = man[name]
+        pf = (load_pins()["models"].get(name) or {}).get("files")
+    missing = [f for f in files if not (dest / f).is_file()]
+    if missing:
+        sys.exit(f"{name}: download incomplete, missing {missing}")
+    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
@@ -295,6 +328,9 @@ def main(argv=None) -> int:
     p.add_argument("--vosk-tts-ru", action="store_true",
                    help="OPT-IN: Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi). Upstream states no "
                         "license for it; never downloaded by default, download at your own responsibility")
+    p.add_argument("--piper-ru", nargs="?", const="dmitri", default=None, choices=sorted(PIPER_RU),
+                   help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
+                        "piper-tts engine goes in its own TTS venv: pip install piper-tts")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
@@ -329,6 +365,9 @@ def main(argv=None) -> int:
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.vosk_tts_ru:
         get_vosk_tts_ru(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.piper_ru:
+        get_piper_ru(man, mdir, a.piper_ru)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
              + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])

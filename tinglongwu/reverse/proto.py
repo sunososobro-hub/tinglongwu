@@ -377,8 +377,34 @@ def _warn_no_ru_model() -> None:
     print(t("vosk_ru_missing"), file=sys.stderr, flush=True)
 
 
+def resolve_tts_engine(a) -> None:
+    """--tts-engine auto -> a concrete engine, in place (#128). Russian prefers Piper (CC0 voices) over Vosk (no
+    stated model license): an explicit --tts-model that holds a Piper voice, or with no --tts-model the installed
+    `tlwu-setup --piper-ru` voice; otherwise Vosk, as before (other targets still need --tts-engine kokoro).
+    --to follow: the Russian worker is Piper when --vosk-model is a Piper voice (or is empty and one is installed)."""
+    from ..models import default_piper_ru, piper_onnx
+
+    mdir = getattr(a, "models_dir", None)
+    if a.to == "follow":
+        if not a.vosk_model and (d := default_piper_ru(mdir)):
+            a.vosk_model = str(d)
+        a.ru_engine = "piper" if piper_onnx(a.vosk_model) else "vosk"
+        return
+    if a.tts_engine != "auto":
+        return
+    if a.to != "ru":
+        a.tts_engine = "vosk"  # unchanged default: rejected below unless --no-tts
+    elif piper_onnx(a.tts_model):
+        a.tts_engine = "piper"
+    elif not a.tts_model and (d := default_piper_ru(mdir)):
+        a.tts_engine, a.tts_model = "piper", str(d)
+    else:
+        a.tts_engine = "vosk"
+
+
 def check_args(a) -> str | None:
     """Validate/normalise cross-option rules in place; returns an error message or None."""
+    resolve_tts_engine(a)
     langs = tuple(x.strip() for x in getattr(a, "follow_langs", "en,ru").split(",") if x.strip())
     bad = [x for x in langs if x not in ("en", "ru", "ja")]
     if bad or not langs:
@@ -394,8 +420,15 @@ def check_args(a) -> str | None:
                 _warn_no_ru_model()
                 a.ru_voice = False
         return None
+    from ..models import piper_onnx
+
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
+    if a.tts_engine == "piper" and a.to != "ru" and not a.no_tts:
+        return "--tts-engine piper speaks Russian only: use --to ru (or --tts-engine kokoro for --to en/ja)"
+    if a.tts_engine == "piper" and not a.no_tts and not piper_onnx(a.tts_model):
+        _warn_no_ru_model()  # same fallback as a missing Vosk model: subtitles only
+        a.no_tts, a.ru_voice = True, False
     if a.tts_engine == "kokoro" and a.to not in ("en", "ja"):
         return "--tts-engine kokoro speaks English or Japanese only: use --to en or --to ja"
     if a.tts_engine == "vosk" and a.to != "ru" and not a.no_tts:
@@ -443,8 +476,12 @@ def _main(argv, vm) -> int:
                     help="Linux/macOS: do not create/select the virtual microphone (tlwu_mic / BlackHole 16ch); use --device yourself")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
     ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
-    ap.add_argument("--tts-engine", default="vosk", choices=["vosk", "kokoro"],
-                    help="vosk = Vosk-TTS Russian built-in voices, fast on CPU (--tts-model = vosk model dir); "
+    ap.add_argument("--tts-engine", default="auto", choices=["auto", "vosk", "kokoro", "piper"],
+                    help="auto (default) = piper when a Piper Russian voice is given/installed "
+                         "(`tlwu-setup --piper-ru`), else vosk (--to en/ja/follow need kokoro). "
+                         "piper = Piper Russian voice dmitri/denis, CC0, CPU (--tts-model = its dir; GPL piper-tts "
+                         "lives in the --tts-python venv); "
+                         "vosk = Vosk-TTS Russian built-in voices, fast on CPU (--tts-model = vosk model dir); "
                          "kokoro = Kokoro English voices (--tts-model = dir with kokoro-v1.0.int8.onnx + "
                          "voices-v1.0.bin; --tts-python = its own venv: GPL espeak stays out of this process)")
     ap.add_argument("--speaker", type=int, default=None,
@@ -455,8 +492,9 @@ def _main(argv, vm) -> int:
                          "$XDG_RUNTIME_DIR or the temp dir)")
     ap.add_argument("--follow-langs", default="en,ru", metavar="LIST",
                     help="--to follow: spoken languages to prepare, subset of en,ru,ja (default en,ru)")
-    ap.add_argument("--vosk-python", default="", help="--to follow: python of the Vosk (Russian) venv")
-    ap.add_argument("--vosk-model", default="", help="--to follow: Vosk Russian model dir")
+    ap.add_argument("--vosk-python", default="", help="--to follow: python of the Russian voice venv (Vosk or Piper)")
+    ap.add_argument("--vosk-model", default="",
+                    help="--to follow: Russian voice model dir, Vosk or Piper (default: installed Piper ru voice)")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
     ap.add_argument("--max-seg", type=float, default=6.0,
@@ -585,7 +623,8 @@ def _main(argv, vm) -> int:
             factories = {"en": lambda: TTSClient(a.tts_python, a.tts_model, "kokoro",
                                                  0 if a.speaker is None else a.speaker)}
             if getattr(a, "ru_voice", True):
-                factories["ru"] = lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model, "vosk",
+                factories["ru"] = lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model,
+                                                    getattr(a, "ru_engine", "vosk"),
                                                     4 if a.speaker is None else a.speaker)
             tts = FollowTTS(factories)
             tts.client("en")  # default language up front; ru loads when the other side first speaks it
