@@ -24,7 +24,8 @@ class TTSClient:
                 cmd.append("--xvec-only")
             else:
                 cmd += ["--ref-text", ref_text]
-        env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1"}
+        env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
+               "TLWU_MODE": "worker"}
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         self.ready = self._read_header()
         if self.ready.get("t") != "ready":

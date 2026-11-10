@@ -40,3 +40,4 @@ tinglongwu_setup = ["manifest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["offline: runs under the network guard; CI also runs these in a network-less namespace"]

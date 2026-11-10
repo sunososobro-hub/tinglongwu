@@ -15,6 +15,19 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
+
+# Same offline guard as the main process (the worker venv has no tinglongwu installed; load it from this checkout).
+# `tinglongwu/__init__` only imports tinglongwu.offline (stdlib), so no extra packages are needed.
+try:
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
+    from tinglongwu import offline as _offline  # noqa: E402
+
+    _offline.apply_env()
+    _offline.set_mode("worker")
+    _offline.install_guard()
+except Exception as _e:  # noqa: BLE001  (layout changed: say so, do not break speech)
+    print(f"tlwu worker: network guard NOT installed ({_e!r})", file=sys.stderr)
 
 _OUT = os.fdopen(os.dup(1), "wb", buffering=0)
 os.dup2(2, 1)  # anything printed by libraries goes to stderr

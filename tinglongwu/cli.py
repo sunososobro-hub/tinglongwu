@@ -219,6 +219,9 @@ def main(argv=None) -> int:
 
     suppress_capture_warnings()
     a = parse_args(argv)
+    from . import offline
+
+    offline.set_mode("gui" if a.gui else "listen")
     if a.gui:
         from .gui import main as gui_main
 

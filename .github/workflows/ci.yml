@@ -1,0 +1,28 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: System libraries (audio capture libs are imported by the package)
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1 libpulse0
+      - name: Install (this is the only step that needs the network)
+        run: pip install -e ".[dev]"
+      - name: Script syntax (bash 3.2 compatible subset is checked by bash -n)
+        run: |
+          for f in scripts/*.sh scripts/i18n/*.sh; do bash -n "$f"; done
+      - name: Tests, normal
+        run: python -m pytest -q
+      - name: Tests with the network physically disabled (offline suite + everything else)
+        # new empty network namespace: no interfaces except loopback. The in-process guard (tinglongwu.offline) is on
+        # as well, so a library that phones home fails the test twice over (blocked + no route).
+        run: bash scripts/ci_offline.sh python -m pytest -q

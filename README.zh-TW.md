@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scr
 
 安裝完最後會印出**唯一要手動做的一步**：在「音訊 MIDI 設定」建立多重輸出裝置（喇叭／耳機 + BlackHole 2ch）並設為系統輸出；Google Meet／Zoom 的麥克風選 **BlackHole 16ch**。第一次執行時 macOS 會問「終端機」要不要使用麥克風，請按「好」。
 
-之後只要開新的終端機視窗輸入 `tlwu-menu`。選單啟動時會自動 `git pull --ff-only` 更新（約 6 秒上限；離線或本機有改動時只印一行提示、照常使用目前版本）。Windows／Linux 選單也有同樣的自動更新；不想要時設定環境變數 `TLWU_NO_UPDATE=1`。
+之後只要開新的終端機視窗輸入 `tlwu-menu`。第一次開選單會問一次要不要每次開選單都檢查更新（`git pull --ff-only`，約 6 秒上限；離線或本機有改動時只印一行提示、照常使用目前版本）；選不要就完全不連網，要更新時在選單按 `U`。Windows／Linux 選單行為相同；`TLWU_NO_UPDATE=1` 強制關閉。
 
 音訊設計（為什麼用兩個 BlackHole）：**BlackHole 2ch** 只用來「聽」（系統聲音經多重輸出裝置同時進你的耳機與 tinglongWu）；**BlackHole 16ch** 只用來「說」（你的譯文語音送進 Meet 的麥克風）。兩者分開，你自己的 TTS 就不會被「聽」那一側收進去而迴圈。程式依名稱自動挑選，並拒絕把語音播到 BlackHole 2ch／多重輸出裝置。目前 Mac 版只預裝英文；日文、俄文語音之後再加。**此流程尚未在真實 Mac 上測試過。**
 
@@ -68,11 +68,14 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 
 - 音訊只存在記憶體；逐字稿只輸出到 stdout，不寫任何紀錄。
 - `import tinglongwu` 時（早於任何 HF/ctranslate2 匯入）強制設定離線環境變數：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
-- 執行期**網路防護**會攔截 `socket.connect/connect_ex/getaddrinfo/gethostbyname`，任何非 loopback 目標一律丟出例外，永遠開啟。
+- 執行期**網路防護**會攔截 `socket.connect/connect_ex/create_connection/getaddrinfo/gethostbyname`，任何非 loopback 目標一律丟出例外（loopback 與 AF_UNIX 放行）。`tlwu`、`tlwu --gui`、`python -m tinglongwu.reverse.proto` 與 TTS worker 子行程（Kokoro/Vosk）都會啟用；只影響我們自己的行程，不動作業系統防火牆。`tlwu-setup` 與更新（`git`）不啟用防護；`TLWU_ALLOW_NET=1` 可關閉。
+- 網路只用於**安裝/設定**（tlwu-setup、pip）與**更新**（git）。更新是自願的：第一次開選單會問一次「每次開選單要不要連 GitHub 檢查新版」（存在使用者設定檔：`~/.config/tinglongwu/config`、`~/Library/Application Support/tinglongwu/config`、`%APPDATA%	inglongwu\config`）；選不要就完全不連網，要更新時按 `U`。`TLWU_NO_UPDATE=1` 強制關閉。
+- 每次被擋下會印一行並在使用者紀錄目錄的 `netguard.jsonl` 追加一行 JSON（時間、主機、埠、模式、由呼叫堆疊推測的套件、不含任何內容的精簡堆疊、tlwu 版本、作業系統）。**絕不自動送出**：下次開選單會列出被擋的連線並問「要回報給開發者嗎？[y/N]」；選 y 會先顯示完整內容，再開瀏覽器帶入預填好的 GitHub issue，由你自己按送出。
+- 選單語言跟隨系統（預設英文，另有俄文、繁體中文）；用 `TLWU_UI_LANG=en|ru|zh-TW` 或選單的 `I` 覆寫。文字放在 `scripts/i18n/` 與 `tinglongwu/i18n.py`，加語言 = 加一個檔案。
 - 模型只從本機 `models/` 載入（`--models-dir` 或環境變數 `TLWU_MODELS`）；缺模型時會報錯並指向下載腳本，不會自動下載。
 - `tlwu-setup` (`tinglongwu_setup`) 是唯一會連網的程式。首次下載時「釘住」（HF commit sha／套件 URL 與每個檔案的 SHA256，版控內的釘選在 `tinglongwu_setup/manifest.json`，本機紀錄存於 `models/manifest.json`），之後每次都驗證（`--verify` 可離線執行）。
 - `scripts/verify_offline.py` 執行 tlwu 並以 psutil 輪詢整個行程樹，出現任何非 loopback 連線就失敗。
-- 程式內防護只是縱深防禦，**不是證明**：它只攔截 Python 層的 socket（`connect`、`connect_ex`、`sendto`、名稱解析）。原生函式庫自己開的 socket（ctranslate2、onnxruntime、llama.cpp 與其他 C 擴充）與子行程**不在**攔截範圍。下方防火牆測試才是真正的獨立證明。
+- 程式內防護只是縱深防禦，**不是證明**：它只攔截 Python 層的 socket（`connect`、`connect_ex`、`sendto`、名稱解析）。原生函式庫自己開的 socket（ctranslate2、onnxruntime、llama.cpp 與其他 C 擴充）與其他子行程**不在**攔截範圍（TTS worker 子行程會載入同一個防護）。CI 會在空的網路命名空間裡跑測試（`scripts/ci_offline.sh`）作為額外檢查。下方防火牆測試才是真正的獨立證明。
 
 ### 防火牆封鎖測試
 

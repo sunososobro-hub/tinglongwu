@@ -10,6 +10,7 @@
 #   4. English voice: ~/tts-kokoro (kokoro-onnx 0.6.1, own venv) + model in ~/models/kokoro
 #   5. downloads the speech/translation models (English listening, zh<->en speaking)
 #   6. installs the `tlwu-menu` command in ~/.local/bin
+# The installer never asks about auto-update: the menu (tlwu-menu) asks once on its first run and stores the answer.
 # Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default main), TLWU_REPO.
 # Written for macOS bash 3.2 (no arrays, no ${var,,}). UNTESTED on a real Mac when written: every step checks itself.
 

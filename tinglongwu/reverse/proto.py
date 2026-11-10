@@ -399,6 +399,9 @@ def _main(argv, vm) -> int:
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
     a = ap.parse_args(argv)
+    from .. import offline as _og
+
+    _og.set_mode("meeting" if getattr(a, "to", "") == "follow" else "speak")
     err = check_args(a)
     if err:
         ap.error(err)
