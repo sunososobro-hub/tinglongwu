@@ -17,8 +17,9 @@ $VGui = Join-Path $Venv 'Scripts\tlwu-gui.exe'
 $VSet = Join-Path $Venv 'Scripts\tlwu-setup.exe'
 $Installed = New-Object System.Collections.ArrayList
 $Warnings  = New-Object System.Collections.ArrayList
-$LlamaChk  = 'from tinglongwu.device import register_cuda_libs as r; r(); import llama_cpp as l; print(l.llama_supports_gpu_offload())'
+$LlamaChk  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[0])'   # loads, fits this CPU (#74), has GPU offload
 
+$LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[1])'
 function Step($n, $zh, $en) { Write-Host ""; Write-Host "[$n/7] $zh / $en" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
 function Info($m) { Write-Host "      $m" }
@@ -124,7 +125,11 @@ else {
             $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-qwen.txt', '--only-binary=:all:')
             if ($ok -and -not $DryRun) {
                 $ok = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True')
-                if (-not $ok) { Warn "llama-cpp-python installed but has no GPU offload." }
+                if (-not $ok) {   # same version already installed from another index (e.g. an AVX-512 build, #74): replace it
+                    [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-qwen.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
+                    $ok = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True')
+                }
+                if (-not $ok) { Warn "llama-cpp-python installed but failed the self-check: $(Capture $VPy @('-c', $LlamaWhy))" }
             }
             if ($ok) { $Engine = 'qwen'; [void]$Installed.Add('llama-cpp-python (CUDA wheel)') }
             else {

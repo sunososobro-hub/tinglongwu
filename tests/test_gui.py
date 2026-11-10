@@ -131,7 +131,7 @@ def test_overlay_constructs_headless_or_skips():
         a.state.apply(("final", "s", "字幕"))
         a.overlay.render(a.state)
         a.root.update()
-        assert a.overlay.labels[0].cget("text") == "字幕"
+        assert a.overlay.text.get("1.0", "end-1c") == "字幕"
         a.overlay.bump_font(4)
         assert a.settings["font_size"] == core.DEFAULTS["font_size"] + 4
     finally:
@@ -166,6 +166,57 @@ def test_paused_state_freezes_redraw_but_keeps_events():
     assert st.lines() == [("one", False), ("two", False)]  # ... but nothing was lost
 
 
+def test_subtitle_history_keeps_200_finals_and_draft_last():
+    """#72: the subtitle bar scrolls back through the last HISTORY_LINES finals; the draft is the newest row."""
+    st = core.SubtitleState(core.HISTORY_LINES)
+    for i in range(250):
+        st.apply(("final", f"s{i}", f"t{i}"))
+    st.apply(("draft", "sd", "td"))
+    h = st.history()
+    assert len(h) == core.HISTORY_LINES + 1
+    assert h[0] == ("s50", "t50", False)  # oldest 50 dropped
+    assert h[-2] == ("s249", "t249", False) and h[-1] == ("sd", "td", True)
+    st.apply(("final", "sd", "tf"))  # the draft is replaced in place by its final
+    assert st.history()[-1] == ("sd", "tf", False) and len(st.history()) == core.HISTORY_LINES
+
+
+def test_follow_newest_only_at_bottom():
+    assert core.follow_newest(1.0)
+    assert not core.follow_newest(0.8)  # user scrolled up to re-read: do not jump to the newest line
+
+
+def test_rows_after_drag_and_clamp():
+    assert core.rows_after_drag(3, -30, 30) == 4  # top edge dragged up 1 line -> 1 more row
+    assert core.rows_after_drag(3, 31, 30) == 2
+    assert core.rows_after_drag(4, -10_000, 30) == core.ROWS_MAX
+    assert core.rows_after_drag(4, 10_000, 30) == core.ROWS_MIN
+    assert core.rows_after_drag(4, -60, 0) == 4
+    assert (core.ROWS_MIN, core.ROWS_MAX, core.FONT_MIN, core.FONT_MAX) == (1, 5, 12, 72)
+
+
+def test_font_preset_nearest_label():
+    assert [core.font_preset(core.FONT_PRESETS[k]) for k in ("S", "M", "L", "XL")] == ["S", "M", "L", "XL"]
+    assert core.font_preset(30) == "M" and core.font_preset(90) == "XL" and core.font_preset(5) == "S"
+
+
+def test_overlay_lines_setting_persists_and_clamps(tmp_path):
+    p = tmp_path / "gui.json"
+    s = core.load_settings(p)
+    assert s["overlay_lines"] == 3  # default 3 lines
+    s.update(overlay_lines=1, font_size=14)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 1 and got["font_size"] == 14  # survive restart
+    s.update(overlay_lines=5, font_size=40)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 5 and got["font_size"] == 40
+    p.write_text(json.dumps({"font_size": 5}), "utf-8")
+    assert core.load_settings(p)["font_size"] == 12
+    p.write_text(json.dumps({"overlay_lines": 999}), "utf-8")
+    assert core.load_settings(p)["overlay_lines"] == core.ROWS_MAX
+
+
 def test_gui_strings_exist_in_all_three_languages():
     from tinglongwu import i18n
 
@@ -193,51 +244,3 @@ def test_gui_module_imports_and_language_names():
 
     assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
     assert core.DEFAULTS["theme"] == "dark"
-
-
-def test_lines_setting_clamped_persisted_and_applied(tmp_path):
-    assert core.DEFAULTS["lines"] == 3
-    p = tmp_path / "gui.json"
-    p.write_text(json.dumps({"lines": 99, "font_size": 5}), "utf-8")
-    got = core.load_settings(p)
-    assert got["lines"] == core.LINES_MAX and got["font_size"] == core.FONT_MIN == 12
-    got["lines"], got["font_size"] = 1, 40
-    core.save_settings(got, p)
-    again = core.load_settings(p)
-    assert (again["lines"], again["font_size"]) == (1, 40)  # survives restart
-    st = core.SubtitleState(5)
-    for i in range(5):
-        st.apply(("final", "s", f"t{i}"))
-    st.set_max_lines(1)
-    assert st.lines() == [("t4", False)]
-    st.set_max_lines(5)
-    st.apply(("final", "s", "t5"))
-    assert [x for x, _ in st.lines()] == ["t4", "t5"]
-
-
-def test_overlay_lines_and_font_apply_live():
-    tk = pytest.importorskip("tkinter")
-    try:
-        root = tk.Tk()
-    except tk.TclError:
-        pytest.skip("no display")
-    root.destroy()
-    from tinglongwu.gui import app
-
-    a = app.App()
-    try:
-        a.overlay.show()
-        for i in range(6):
-            a.state.apply(("final", "s", f"line{i}"))
-        a.overlay.set_lines(5)
-        a.root.update()
-        assert len(a.state.lines()) == 5 and sum(1 for lab in a.overlay.labels if lab.winfo_manager()) == 5
-        a.overlay.set_lines(1)
-        a.root.update()
-        assert sum(1 for lab in a.overlay.labels if lab.winfo_manager()) == 1
-        a.overlay.set_font(14)
-        assert a.settings["font_size"] == 14 and "14" in str(a.overlay.labels[0].cget("font"))
-        a.overlay.set_font(40)
-        assert a.settings["font_size"] == 40
-    finally:
-        a.root.destroy()
