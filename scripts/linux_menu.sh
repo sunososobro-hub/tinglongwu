@@ -26,7 +26,10 @@ echo "  Enter) 聽  英文 -> 中文字幕（預設）"
 echo "  1)     聽  其他語言 -> 中文字幕"
 echo "  2)     說  中文 -> 英文語音"
 echo "  3)     說  中文 -> 俄文語音"
+echo "  4)     開會：聽英文 + 說英文（同一個視窗，送進 Meet）"
+echo "  5)     開會：聽俄文 + 說俄文（同一個視窗，送進 Meet）"
 read -rp "> " pick
+BOTH=0
 case "$pick" in
   "") mode=1; L=en ;;
   1) mode=1
@@ -34,6 +37,8 @@ case "$pick" in
      read -rp "聽哪種語言 [Enter=en]: " L; L="${L:-en}" ;;
   2) mode=2; L=en ;;
   3) mode=2; L=ru ;;
+  4) mode=2; L=en; BOTH=1 ;;
+  5) mode=2; L=ru; BOTH=1 ;;
   *) echo "沒有這個選項"; exit 1 ;;
 esac
 if [ "$mode" = "1" ]; then echo "聽  $L -> 中文字幕"; else echo "說  中文 -> $L 語音"; fi
@@ -69,6 +74,22 @@ else
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
        --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE" "${W_SPEAK[@]}")
   TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru "${W_SPEAK[@]}")
+fi
+
+if [ "$BOTH" = "1" ]; then
+  if [ "$L" = "ru" ] && ! have_pairs ru-en en-zh; then
+    echo "還沒有 ru 的翻譯模型，現在連網下載（只有這一次）..."
+    tlwu-setup --langs ru --to zh
+  fi
+  read -rp "每句直接送、不確認？[Enter=要確認 / y=直接送]: " ac
+  AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)
+  # listen in the background (no keyboard), speak in the foreground; Ctrl+C stops both
+  tlwu --lang "$L" "${W_LISTEN[@]}" < /dev/null &
+  LISTEN_PID=$!
+  trap 'kill $LISTEN_PID 2>/dev/null' EXIT INT TERM
+  echo "開會模式：[$L]/[ZH] 是對方的話；你講中文會送進 Meet（麥克風選 tlwu_mic）。請戴耳機。"
+  "${REV[@]}" "${AUTO[@]}"
+  exit
 fi
 echo "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
 echo "  1) 送進 Meet（Meet 麥克風選 tlwu_mic）"
