@@ -71,6 +71,8 @@ def _common_cjk(ch: str) -> bool:
 def zh_garbage(text: str) -> bool:
     """True if `text` has CJK ideographs outside the common set (OPUS en-zh emits e.g. 珃瓳 for "Wow."), or a stray 曰."""
     for i, ch in enumerate(text):
+        if "\u0370" <= ch <= "\u03ff" or "\u0400" <= ch <= "\u04ff" or "\u3040" <= ch <= "\u30ff":
+            return True  # Greek / Cyrillic / Kana never belong in zh output (OPUS: "And life" -> 臨Τネ)
         if "一" <= ch <= "鿿" or "㐀" <= ch <= "䶿":
             if not _common_cjk(ch) or (ch == "曰" and (i == 0 or text[i - 1] not in _RARE_OK_AFTER)):
                 return True
