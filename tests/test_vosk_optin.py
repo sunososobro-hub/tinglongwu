@@ -102,3 +102,11 @@ def test_follow_without_ru_model_degrades(capsys, monkeypatch):
     assert a.ru_voice is False and "tlwu-setup --vosk-tts-ru" in capsys.readouterr().err
     f = FollowTTS({"en": lambda: (_ for _ in ()).throw(AssertionError("en must not load"))})
     assert list(f.speak("Привет")) == []  # Russian text: no crash, nothing spoken
+
+
+@pytest.mark.parametrize("lang", ["en", "ru", "zh-TW"])
+def test_listen_menu_save_transcript_default_off(lang):
+    sh = (ROOT / "scripts/linux_menu.sh").read_text("utf-8")
+    assert "M_ASK_SAVE=" in (ROOT / f"scripts/i18n/{lang}.sh").read_text("utf-8")
+    assert "SAVE=()" in sh and 'SAVE=(--save)' in sh and re.search(r"y\|Y\|yes", sh[sh.index("SAVE=()"):])
+    assert sh.count('"${SAVE[@]}"') == 2   # listen-only and meeting's background listener
