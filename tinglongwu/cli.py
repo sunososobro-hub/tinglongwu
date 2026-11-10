@@ -74,6 +74,9 @@ def parse_args(argv=None):
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    p.add_argument("--report", action="store_true",
+                   help="open the browser on a pre-filled GitHub issue (version, OS, recent log); "
+                        "nothing is uploaded, you review and submit it yourself")
     a = p.parse_args(argv)
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -224,6 +227,11 @@ def main(argv=None) -> int:
 
     suppress_capture_warnings()
     a = parse_args(argv)
+    if a.report:
+        from .report import open_report
+
+        open_report(info={"Mode": "cli", "Language pair": f"{a.lang} -> {a.to}", "Engine": a.engine})
+        return 0
     from . import offline
 
     offline.set_mode("gui" if a.gui else "listen")
