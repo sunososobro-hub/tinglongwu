@@ -113,15 +113,21 @@ def test_probe_recommends_cpu_tier_with_update_hint_for_old_driver():
     assert hwprobe.recommend(hwprobe.HwInfo("GeForce GTX 1650", 4096, 8192, 8)).name == "gpu"  # unknown: as before
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="shell stub is POSIX-only")
 def test_cli_probe_with_old_driver_stub(tmp_path):
-    stub = tmp_path / "nvidia-smi"
-    stub.write_text("#!/bin/sh\ncase \"$*\" in *driver_version*) echo 470.82;; "
-                    "*) echo 'NVIDIA GeForce GTX 1050, 4096';; esac\n")
-    stub.chmod(0o755)
-    env = dict(os.environ, PATH=f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}", TLWU_UI_LANG="en")
+    # the child process gets a fake nvidia-smi through sitecustomize (works on every OS, unlike a shell stub on PATH)
+    (tmp_path / "sitecustomize.py").write_text(
+        "import subprocess\n"
+        "_real = subprocess.run\n"
+        "def run(cmd, *a, **k):\n"
+        "    if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == 'nvidia-smi':\n"
+        "        out = '470.82\\n' if any('driver_version' in c for c in cmd) else 'NVIDIA GeForce GTX 1050, 4096\\n'\n"
+        "        return subprocess.CompletedProcess(cmd, 0, out, '')\n"
+        "    return _real(cmd, *a, **k)\n"
+        "subprocess.run = run\n", "utf-8")
+    env = dict(os.environ, PYTHONPATH=f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}".rstrip(os.pathsep),
+               TLWU_UI_LANG="en", PYTHONIOENCODING="utf-8")
     r = subprocess.run([sys.executable, "-m", "tinglongwu", "--probe"], capture_output=True, text=True,
-                       env=env, timeout=60)
+                       encoding="utf-8", env=env, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "CPU tier" in r.stdout and "470.82" in r.stdout and device.DRIVER_URL in r.stdout
 
