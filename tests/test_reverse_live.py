@@ -136,7 +136,7 @@ class FakePlayer:
 def test_live_wiring_auto_and_confirm(monkeypatch):
     """mic items -> translate -> (auto|confirm) -> TTS -> player, with mocked capture/ASR."""
     monkeypatch.setattr("tinglongwu.reverse.live.capture_segments", lambda src, seg, stop: iter([1, 2]))
-    monkeypatch.setattr("tinglongwu.reverse.live.recognize_utterances", lambda segs, asr: iter(["你好", "再見"]))
+    monkeypatch.setattr("tinglongwu.reverse.live.recognize_utterances", lambda segs, asr, gate=None: iter(["你好", "再見"]))
     monkeypatch.setattr("tinglongwu.capture.mic.MicSource", lambda name: object())
     a = SimpleNamespace(mic_name="Headset Mic", chunk_s=10.0)
     for confirm, keys in ((False, None), (True, iter(["", "r"]))):
@@ -152,3 +152,22 @@ def test_live_wiring_auto_and_confirm(monkeypatch):
             assert [r["decision"] for r in res["items"]] == ["sent", "sent"]
         assert res["items"][0]["ru"] == "privet-2"
     assert pl.enabled is False
+
+
+def test_tts_worker_ignores_sigint():
+    """Terminal Ctrl+C hits the TTS worker child too; it must not die with a traceback."""
+    import inspect
+
+    from tinglongwu.reverse import tts_worker
+
+    src = inspect.getsource(tts_worker.main)
+    assert "SIGINT" in src and "SIG_IGN" in src
+
+
+def test_main_swallows_second_ctrl_c(monkeypatch, capsys):
+    def boom(argv, vm):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(proto, "_main", boom)
+    assert proto.main([]) == 130
+    assert "stopping" in capsys.readouterr().out

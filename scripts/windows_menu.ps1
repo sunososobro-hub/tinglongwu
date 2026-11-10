@@ -169,7 +169,7 @@ if ($mode -eq "1") {
     & $tlwu @listenLang @wL
     exit
 }
-Write-Host (T 'BANNER_SPEAK' $speak)
+Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))
 
 if ($speak -eq "follow") {
     # both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk (ru) on the first Russian sentence

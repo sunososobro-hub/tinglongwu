@@ -152,7 +152,7 @@ def get_pair(man, mdir, pair):
         z = Path(tmp) / "pkg.zip"
         with _open(url, 300) as r, open(z, "wb") as f:
             shutil.copyfileobj(r, f)
-        if pin and sha256(z) != pin["archive_sha256"]:
+        if pin and pin.get("archive_sha256") and sha256(z) != pin["archive_sha256"]:
             sys.exit(f"SHA256 MISMATCH vs committed pin for the {key} package archive - refusing.")
         extract_argos(z, dest, Path(tmp) / "x")
     pin_or_verify(man, key, dest, {"url": url}, pin and pin["files"])

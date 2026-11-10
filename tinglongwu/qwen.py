@@ -174,22 +174,34 @@ def max_tokens_for(text: str) -> int:
 
 
 def _load_llama(path: Path, gpu: bool):
-    """Import llama.cpp (pip llama-cpp-python, CUDA build) and load a GGUF."""
+    """Import llama.cpp (pip llama-cpp-python, CUDA build) and load a GGUF.
+
+    A build compiled for instructions this CPU lacks (issue #74: AVX-512 wheel on an AVX2 CPU) raises
+    llamacheck.LlamaBuildError with the fix, instead of a bare 'Windows Error 0xc000001d'."""
+    from . import llamacheck
     from .device import register_cuda_libs
 
     register_cuda_libs()
     try:
         import llama_cpp
-    except ImportError as e:
-        raise RuntimeError(f"Qwen engine needs llama-cpp-python (CUDA build): {e}") from e
+    except (ImportError, OSError, RuntimeError) as e:  # not installed, or llama.dll / a CUDA DLL missing
+        raise RuntimeError(f"Qwen engine needs llama-cpp-python (CUDA build): {e}. "
+                           f"To fix: {llamacheck.FIX_HINT}") from e
     if sys.platform == "win32":
         lib = Path(llama_cpp.__file__).parent / "lib"
         if lib.is_dir():
             os.add_dll_directory(str(lib))
+    llamacheck.check_build(llama_cpp)
     from llama_cpp import Llama
 
-    return Llama(model_path=str(path), n_gpu_layers=-1 if gpu else 0, n_ctx=N_CTX, flash_attn=gpu,
-                 verbose=False)
+    try:
+        return Llama(model_path=str(path), n_gpu_layers=-1 if gpu else 0, n_ctx=N_CTX, flash_attn=gpu,
+                     verbose=False)
+    except OSError as e:
+        err = llamacheck.explain(e)
+        if err is e:
+            raise
+        raise err from e
 
 
 class QwenTranslator(Translator):
@@ -237,14 +249,17 @@ class QwenTranslator(Translator):
 
 
 def build_qwen_with_fallback(models_dir: Path, first: str, zh_variant: str, device: str,
-                             warn=lambda m: print(m, file=sys.stderr), factory=QwenTranslator):
+                             warn=lambda m: print(m, file=sys.stderr), factory=QwenTranslator,
+                             errors: list | None = None):
     """Load `first`; on load failure (e.g. CUDA OOM) step down 8b -> 4b. Returns (translator|None, name|None).
 
-    (None, None) means every Qwen tier failed: the caller falls back to OPUS.
+    (None, None) means every Qwen tier failed: the caller falls back to OPUS and must say so; the reason of
+    each failed tier is appended to `errors` ("name: error").
     A missing GGUF raises ModelNotFound (clear setup hint) instead of being swallowed.
     """
     chain = ["qwen3-8b", "qwen3-4b"]
-    for name in chain[chain.index(first):]:
+    todo = chain[chain.index(first):]
+    for i, name in enumerate(todo):
         try:
             tr = factory(models_dir, name, zh_variant, device)
             tr.preload()
@@ -252,5 +267,8 @@ def build_qwen_with_fallback(models_dir: Path, first: str, zh_variant: str, devi
         except ModelNotFound:
             raise
         except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors
-            warn(f"tlwu: {name} failed to load ({str(e)[:200]}); trying next fallback.")
+            if errors is not None:
+                errors.append(f"{name}: {e}")
+            if i + 1 < len(todo):
+                warn(f"tlwu: {name} failed to load ({str(e)[:200]}); trying {todo[i + 1]}.")
     return None, None

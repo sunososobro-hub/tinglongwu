@@ -22,6 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .. import fmt
+
 
 def vram_used_mib() -> int | None:
     try:
@@ -61,6 +63,9 @@ class Player:
         # macOS: BlackHole 16ch has 16 channels; a mono stream may reach only channel 1, so send identical L/R
         self.ch = 2 if sys.platform == "darwin" else 1
         self.speaker_name = None
+        from .live import PlaybackGate
+
+        self.gate = PlaybackGate()
         if enabled:
             import soundcard as sc
 
@@ -85,12 +90,16 @@ class Player:
                 item = self.q.get()
                 if item is None:
                     return
-                p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                try:
+                    p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                finally:
+                    self.gate.end()
 
     def push(self, audio: np.ndarray, sr: int) -> None:
         if self.enabled:
             from .logic import resample
 
+            self.gate.start()
             self.q.put(resample(audio, sr, self.out_sr))
 
     def close(self) -> None:
@@ -243,7 +252,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru") -> None:
     for n, label, zh in items:
         lg = lang() if callable(lang) else lang
         ru, _ = translate_ru(lambda x: mt.translate(x, "zh", lg).text, zh, lg)
-        print(f"\n--- #{n} ---\nZH : {zh}\n{lg.upper()} : {ru}", flush=True)
+        print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         out = synth(ru)
         if out:
             player.push(*out)
@@ -258,7 +267,8 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
 
     stop = threading.Event()
     items = ((n, "mic", zh) for n, zh in enumerate(
-        recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr), 1))
+        recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr,
+                         gate=getattr(player, "gate", None)), 1))
     box: list = []
     print("listening... speak Chinese; Ctrl+C to quit", flush=True)
     try:
@@ -268,7 +278,7 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
             for _n, _src, zh in items:
                 lang = _target(a)
                 ru, _r = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
-                print(f"[ZH] {zh}\n[{lang.upper()}] {ru}\n", flush=True)
+                print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
@@ -361,9 +371,15 @@ def main(argv=None) -> int:
     vm: list = []
     try:
         return _main(argv, vm)
+    except KeyboardInterrupt:  # second Ctrl+C during shutdown (or Ctrl+C while loading): quit quietly
+        print("\nstopping...", flush=True)
+        return 130
     finally:
         for v in vm:
-            v.close()
+            try:
+                v.close()
+            except KeyboardInterrupt:
+                pass
 
 
 def _main(argv, vm) -> int:

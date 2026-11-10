@@ -41,6 +41,8 @@ def nuitka_cmd() -> list[str]:
             "--output-folder-name=tlwu", f"--output-dir={BUILD}", "--remove-output",
             f"--report={EVAL / 'build' / 'nuitka-report.xml'}",
             "--include-package=tlwu_app", "--include-package=tinglongwu", "--include-package=tinglongwu_setup",
+            # filelock/huggingface_hub import submodules lazily (__getattr__), so Nuitka cannot see them (#36)
+            "--include-package=filelock", "--include-package=huggingface_hub",
             "--nofollow-import-to=tinglongwu.reverse", "--nofollow-import-to=pytest",
             "--nofollow-import-to=unittest",
             "--include-package-data=faster_whisper", "--include-package-data=opencc",

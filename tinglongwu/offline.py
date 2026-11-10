@@ -10,8 +10,8 @@ Every blocked attempt prints one localized line (tinglongwu.i18n) and appends on
 stack (module:function:line only, no source text, no user content), tlwu version/git sha, OS. Nothing is ever sent;
 tinglongwu.netreport lets the user choose to open a pre-filled GitHub issue.
 
-Limits (be honest about them): this is a Python-level guard. It patches socket.connect/connect_ex/sendto and
-name resolution, so it does NOT cover native code that opens sockets itself (ctranslate2, onnxruntime,
+Limits (be honest about them): this is a Python-level guard. It patches socket.connect/connect_ex/sendto/sendmsg and
+name resolution (getaddrinfo, gethostbyname[_ex], gethostbyaddr, getnameinfo), so it does NOT cover native code that opens sockets itself (ctranslate2, onnxruntime,
 llama.cpp, other C extensions) or subprocesses. The real proof is an OS firewall test (README, "Verify").
 """
 from __future__ import annotations
@@ -179,6 +179,10 @@ def install_guard() -> None:
     orig_gai = socket.getaddrinfo
     orig_ghbn = socket.gethostbyname
     orig_cc = socket.create_connection
+    orig_ghbn_ex = socket.gethostbyname_ex
+    orig_ghba = socket.gethostbyaddr
+    orig_gni = socket.getnameinfo
+    orig_sendmsg = getattr(socket.socket, "sendmsg", None)
 
     def _addr(addr):
         if isinstance(addr, tuple) and addr:
@@ -209,9 +213,32 @@ def install_guard() -> None:
         _check(*_addr(address))
         return orig_cc(address, *a, **k)
 
+    def gethostbyname_ex(host):
+        _check(host)
+        return orig_ghbn_ex(host)
+
+    def gethostbyaddr(host):
+        _check(host)
+        return orig_ghba(host)
+
+    def getnameinfo(sockaddr, flags):  # reverse DNS: sends the address to a resolver
+        _check(*_addr(sockaddr))
+        return orig_gni(sockaddr, flags)
+
+    def sendmsg(self, buffers, *rest):  # sendmsg(buffers[, ancdata[, flags[, address]]])
+        addr = rest[2] if len(rest) > 2 else None
+        if addr is not None:
+            _check(*_addr(addr))
+        return orig_sendmsg(self, buffers, *rest)
+
     socket.socket.connect = connect
     socket.socket.connect_ex = connect_ex
     socket.socket.sendto = sendto
     socket.getaddrinfo = getaddrinfo
     socket.gethostbyname = gethostbyname
     socket.create_connection = create_connection
+    socket.gethostbyname_ex = gethostbyname_ex
+    socket.gethostbyaddr = gethostbyaddr
+    socket.getnameinfo = getnameinfo
+    if orig_sendmsg is not None:  # not available on Windows
+        socket.socket.sendmsg = sendmsg

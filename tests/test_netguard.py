@@ -47,6 +47,57 @@ def test_hostname_logged_without_ip():
     assert e["host"] == "example.com" and e["ip"] is None and e["port"] == 443
 
 
+@pytest.mark.parametrize("call", [
+    lambda: socket.gethostbyname("example.com"),
+    lambda: socket.gethostbyname_ex("example.com"),
+    lambda: socket.gethostbyaddr("203.0.113.7"),
+    lambda: socket.getnameinfo(("203.0.113.7", 80), 0),
+    lambda: socket.getaddrinfo(b"example.com", 80, type=socket.SOCK_DGRAM),
+    lambda: socket.create_connection(("example.com", 80), timeout=1),
+    lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b"x", ("203.0.113.7", 53)),
+    lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b"x", 0, ("203.0.113.7", 53)),
+    lambda: socket.socket().connect(("203.0.113.7", 80)),
+    lambda: socket.socket().connect_ex(("203.0.113.7", 80)),
+], ids=["gethostbyname", "gethostbyname_ex", "gethostbyaddr", "getnameinfo", "getaddrinfo_bytes",
+        "create_connection_name", "sendto", "sendto_flags", "connect", "connect_ex"])
+def test_each_egress_api_blocked_and_logged(call):
+    with pytest.raises(offline.NetworkBlocked):
+        call()
+    assert len(entries()) == 1
+
+
+@pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="no sendmsg on this OS")
+def test_sendmsg_with_external_address_blocked():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    with pytest.raises(offline.NetworkBlocked):
+        s.sendmsg([b"x"], [], 0, ("203.0.113.7", 53))
+    assert len(entries()) == 1
+    s.close()
+
+
+@pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="no sendmsg on this OS")
+def test_sendmsg_loopback_allowed():
+    r = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    r.bind(("127.0.0.1", 0))
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.sendmsg([b"x"], [], 0, r.getsockname())
+    s.close()
+    r.close()
+    assert entries() == []
+
+
+def test_loopback_resolution_and_udp_allowed():
+    socket.gethostbyname_ex("localhost")
+    socket.getnameinfo(("127.0.0.1", 80), 0)
+    r = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    r.bind(("127.0.0.1", 0))
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.sendto(b"x", r.getsockname())
+    s.close()
+    r.close()
+    assert entries() == []
+
+
 def test_allows_loopback_and_unix(tmp_path):
     srv = socket.socket()
     srv.bind(("127.0.0.1", 0))
@@ -200,5 +251,5 @@ def test_pipeline_smoke_makes_no_network_attempts(wav, tmp_path):
     out = io.StringIO()
     run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), FakeASR(),
         PivotTranslator(tmp_path, "tw", lambda s, t: steps[(s, t)]), TextSink(out))
-    assert "[RU] привет мир" in out.getvalue()
+    assert "привет мир" in out.getvalue()
     assert entries() == []

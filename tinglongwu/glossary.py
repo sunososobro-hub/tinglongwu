@@ -4,6 +4,8 @@ Format (UTF-8, one entry per line):
     частота = 頻率           source = target translation
     чистота | частота = 頻率  `|` lists extra source spellings (common mis-hearings); first is the main one
     роутер                   no `=`: plain hint term (helps Whisper, kept as written by the LLM)
+    fading = 衰落 ~ 淡化 | 消散  `~` lists known wrong renderings: when the entry occurs in the sentence (source
+                             or English pivot), they are replaced by the target in the output (OPUS/M2M)
     # comment
 Used two ways: source terms go to Whisper (`hotwords`); entries whose source occurs in the current sentence
 or its context go into the Qwen prompt. Number entries (`2.4 = 2.4 GHz`) also normalize "2 и 4" -> "2.4".
@@ -14,6 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 HOTWORDS_MAX_CHARS = 200  # Whisper prompt budget: hotwords + previous text must stay far below 224 tokens
 MAX_PROMPT_ENTRIES = 8
@@ -37,6 +40,7 @@ def _stem(w: str) -> str:
 class Entry:
     sources: list[str]
     target: str | None = None
+    wrong: list[str] = field(default_factory=list)  # known wrong renderings of `target` (fixed after MT)
 
     @property
     def main(self) -> str:
@@ -88,6 +92,21 @@ class Glossary:
             parts.append("Keep these terms as written: " + ", ".join(keep) + ".")
         return " ".join(parts)
 
+    def fix_output(self, out: str, *texts: str, convert: Callable[[str], str] = lambda w: w) -> str:
+        """Replace the known wrong renderings (`~` list) of every entry that occurs in `texts` (the source line
+        and, for the OPUS pivot, its English intermediate) by the entry's target. `convert` maps glossary words
+        to the output script (e.g. Traditional/Simplified) so both sides compare in the same script."""
+        words = [_norm(w) for t in texts for w in _WORD.findall(t)]
+        for e in self.entries:
+            if not (e.target and e.wrong) or not e.matches(words):
+                continue
+            tgt = convert(e.target)
+            for w in sorted(e.wrong, key=len, reverse=True):  # longest first: 猶豫不決 before 猶豫
+                w = convert(w)
+                if w and w != tgt and tgt not in w:
+                    out = out.replace(w, tgt)
+        return out
+
     def normalize_numbers(self, text: str) -> str:
         """"2 и 4" / "2,4" -> "2.4", only for numbers listed in the glossary."""
         for e in self.entries:
@@ -108,9 +127,10 @@ def parse(text: str) -> list[Entry]:
             continue
         if "=" in line:
             src, tgt = (s.strip() for s in line.split("=", 1))
+            tgt, _, bad = (s.strip() for s in tgt.partition("~"))
             srcs = [s.strip() for s in src.split("|") if s.strip()]
             if srcs:
-                out.append(Entry(srcs, tgt or None))
+                out.append(Entry(srcs, tgt or None, [w.strip() for w in bad.split("|") if w.strip()]))
         else:
             srcs = [s.strip() for s in line.split("|") if s.strip()]
             if srcs:

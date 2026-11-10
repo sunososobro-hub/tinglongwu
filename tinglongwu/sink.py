@@ -21,17 +21,21 @@ class Sink(ABC):
 
 
 class TextSink(Sink):
-    def __init__(self, stream=None):
+    def __init__(self, stream=None, now=None):
         self.stream = stream
+        self.now = now
 
     def write(self, r: Result) -> None:
-        lines = [f"[{r.src.upper()}] {r.original}"]
+        from . import fmt
+
+        tr = []
         if r.pivot and r.src != "en" and r.tgt != "en":
-            lines.append(f"[EN] {r.pivot}")
+            tr.append(("EN", r.pivot))
         if r.src != r.tgt:
-            lines.append(f"[{r.tgt.upper()}] {r.target}")
+            tr.append((r.tgt.upper(), r.target))
         out = self.stream or sys.stdout
-        out.write("\n".join(lines) + "\n\n")
+        out.write(fmt.block("them", r.original, tr, now=self.now() if self.now else None,
+                            color=fmt.color_enabled(out)))
         out.flush()
 
 

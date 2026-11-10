@@ -42,7 +42,7 @@ def test_no_disk_writes(wav, tmp_path, monkeypatch):
     out = io.StringIO()
     run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), FakeASR(),
         PivotTranslator(tmp_path, "tw", fake_steps), TextSink(out))
-    assert out.getvalue().count("[RU] привет мир") >= 2
+    assert out.getvalue().count("◀ Them привет мир") >= 2
     assert "[ZH] 你好世界軟體" in out.getvalue()
     assert sorted(os.listdir(tmp_path)) == before
 

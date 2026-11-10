@@ -14,6 +14,18 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 [ZH] 你好，你过得怎么样？
 ```
 
+## 一行命令安装（Windows / Mac / Linux）
+
+每条命令都会安装最新 GitHub Release 的确切版本（`main` 为稳定版，`dev` 为开发版）。可重复运行。
+
+| 系统 | 命令 |
+|---|---|
+| Windows（PowerShell） | `irm https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.ps1 \| iex` |
+| macOS（终端） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
+| Linux（bash） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+
+每个 release 都附 `SHA256SUMS.txt`；想在运行前验证，可先下载脚本比对。Linux 安装程序在任何 `apt` 操作前都会问 y/N，且不会下载模型（菜单每次下载前都会问）。Windows 命令会把源码下载到 `%USERPROFILE%\tinglongwu`，再运行与下方相同的 `install.ps1`（执行策略绕过只作用于该子进程）。
+
 ## 快速安装（Windows）
 
 适用 Windows 10/11，有 NVIDIA 显卡最佳（没有也能运行，只是较慢）。请先安装 [Python 3.12](https://www.python.org/downloads/windows/)，安装时勾选 **Add python.exe to PATH**。
@@ -37,6 +49,19 @@ curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/downloa
 ## 发行版（运行前请先阅读）
 
 Windows 发行 zip **未签名**，由维护者在本机用 Nuitka 构建，**不可复现构建**。其 SHA256 公布在 release 说明中：运行前请用 `Get-FileHash tinglongwu-win64.zip` 比对。哈希只证明你拿到的是维护者发布的那个文件。若要真正的验证，请从源码安装（`install.bat` 或下面的步骤）：源码、锁版依赖和模型哈希都可审计。
+
+## 验证状态
+
+✅ 已在实机验证，🧪 尚未验证（链接至实测 issue）。
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| 一行安装 | ✅ | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ |
+| 聆听 | ✅ | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ |
+| 朗读（虚拟麦克风） | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/6) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ |
+| 会议 | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/4) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ (own side) |
+| 防火墙封锁离线 | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) |
+| exe | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/9) | — | — |
 
 ## 安装／使用分离（请先阅读）
 

@@ -59,19 +59,26 @@ def parse_args(argv=None):
     p.add_argument("--stream-src", action="store_true",
                    help="with --stream: also show the dim source-language draft line above the translation")
     p.add_argument("--debug-latency", action="store_true",
-                   help="with --stream: log to stderr the seconds from segment audio start to the first "
-                        "translated draft and to the final line")
+                   help="log to stderr per-stage times: ASR ms per segment, MT ms (each OPUS step, e.g. "
+                        "ru-en / en-zh) and queue wait per line; with --stream also the seconds from segment "
+                        "audio start to the first translated draft and to the final line")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
-                        "given to the Qwen engine as required translations (OPUS/M2M ignore targets). "
+                        "given to the Qwen engine as required translations; with OPUS, `target ~ wrong | wrong` "
+                        "replaces known wrong renderings in the output. "
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
                    help="open the graphical interface (floating subtitle bar + small control window)")
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    p.add_argument("--report", action="store_true",
+                   help="open the browser on a pre-filled GitHub issue (version, OS, recent log); "
+                        "nothing is uploaded, you review and submit it yourself")
+    p.add_argument("--probe", action="store_true",
+                   help="show this machine's GPU/VRAM, RAM and CPU and the recommended models, then exit (offline)")
     a = p.parse_args(argv)
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -86,11 +93,15 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
     if name in ("qwen3-8b", "qwen3-4b"):
-        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev)
+        errors: list = []
+        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev, errors=errors)
         if tr is not None:
             say(f"tlwu: translation engine = {got} ({why})" if got == name
                 else f"tlwu: translation engine = {got} ({name} failed to load, fell back)", file=sys.stderr)
             return tr
+        # loud on purpose (#74): OPUS translates much worse, the user must know it is not Qwen and why
+        say(f"tlwu: WARNING: Qwen engine failed to load, falling back to OPUS (lower translation quality). "
+            f"Reason: {errors[-1] if errors else 'unknown'}", file=sys.stderr)
         name, why = "opus", "Qwen failed to load"
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
     if name == "m2m":
@@ -175,8 +186,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if not a.transcript_only:
         note("loading translation engine...")
         translator = make_translator(a.engine, mdir, a.zh_variant, dev)
-        if glossary is not None and hasattr(translator, "glossary"):
-            translator.glossary = glossary
+        if glossary is not None:
+            for t in (translator, getattr(translator, "base", None)):  # JaRouter wraps the OPUS pivot
+                if hasattr(t, "glossary"):
+                    t.glossary = glossary
         if a.lang != "auto":
             translator.preload(a.lang, a.to)
         elif cands:  # fail early on missing models; the translator caches one step per language pair
@@ -207,8 +220,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
             source = PacedSource(source)
     note("listening")
+    lat = (lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
-        stop_event=stop)
+        stop_event=stop, log=lat)
 
 
 def main(argv=None) -> int:
@@ -219,6 +233,17 @@ def main(argv=None) -> int:
 
     suppress_capture_warnings()
     a = parse_args(argv)
+    if a.report:
+        from .report import open_report
+
+        open_report(info={"Mode": "cli", "Language pair": f"{a.lang} -> {a.to}", "Engine": a.engine})
+        return 0
+    if a.probe:
+        from .hwprobe import describe, probe, recommend
+
+        hw = probe()
+        print(describe(hw, recommend(hw)))
+        return 0
     from . import offline
 
     offline.set_mode("gui" if a.gui else "listen")

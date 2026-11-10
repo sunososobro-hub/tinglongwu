@@ -84,7 +84,10 @@ class ConfirmSession:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
     def _show(self, u: Utterance) -> None:
-        self.out(f"\n--- #{u.n} ---\nZH : {u.zh}\n{u.lang.upper()} : {u.ru}\nBACK(zh): {u.back}")
+        from .. import fmt
+
+        blk = fmt.block("me", u.zh, [(None, u.ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n")
+        self.out(f"\n{blk}\n{fmt.INDENT}← BACK(zh): {u.back}")
 
     def _ask(self, u: Utterance) -> bool:
         """True = send. EOF on input counts as discard."""

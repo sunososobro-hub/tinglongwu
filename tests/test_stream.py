@@ -271,9 +271,9 @@ def test_draft_replaced_by_final_in_pipeline():
     renderer.draw("EN", "hi", "there")  # a draft is on screen
     run(Frames(4), seg, FakeASR([]), mt, TextSink(out), "zh", None, draft=eng)
     s = out.getvalue()
-    assert "[EN] final text." in s and "[ZH] FINAL:final text." in s
+    assert "Them final text." in s and "[ZH] FINAL:final text." in s
     # the clear escape precedes the first final line
-    assert s.index("\x1b[J") < s.index("[EN] final text.")
+    assert s.index("\x1b[J") < s.index("Them final text.")
     assert renderer.rows == 0
 
 
@@ -310,6 +310,14 @@ def test_save_jsonl_finals_only(tmp_path):
     assert p.read_text(encoding="utf-8").strip()  # flushed before close
     rec = json.loads(p.read_text(encoding="utf-8").splitlines()[0])
     assert rec == {"t": 2.5, "wall": "2026-01-02T03:04:05", "lang": "ru", "src": "привет", "dst": "你好"}
-    assert "[RU] привет" in out.getvalue()
+    assert "Them привет" in out.getvalue()
     assert default_save_path(datetime.datetime(2026, 1, 2, 3, 4, 5)) == "transcripts/20260102-030405.jsonl"
     assert parse_args([]).save is None and parse_args(["--save"]).save == "" and parse_args(["--save", "a"]).save == "a"
+
+
+def test_draft_uses_final_line_labels():
+    out = io.StringIO()
+    r = DraftRenderer(out, columns=lambda: 80)
+    r.draw("RU", "привет", "мир", "ZH", "你好")
+    s = out.getvalue()
+    assert "◀" in s and "→ [ZH]" in s  # same labels as fmt.block, not the old bare "[RU]"/"[ZH]" prefix
