@@ -64,7 +64,7 @@ def test_resolve_cpu_and_auto_paths():
     msgs = []
 
     def rd(c, count, missing):
-        return device.resolve_device(c, count=count, missing=missing, warn=msgs.append)
+        return device.resolve_device(c, count=count, missing=missing, warn=msgs.append, driver=lambda: None)
 
     assert rd("cpu", lambda: 1, lambda: []) == "cpu"
     assert rd("auto", lambda: 0, lambda: []) == "cpu" and not msgs  # silent for auto
