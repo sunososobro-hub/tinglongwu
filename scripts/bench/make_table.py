@@ -27,7 +27,7 @@ def main() -> int:
     asr = {e: read(d / f"asr.{e}.txt") for e in engines}
     ref = {e: read(d / f"ref.{e}.txt") for e in engines}
     chrf = CHRF()
-    L = ["# MT comparison, ep138 (ru -> zh-TW), %d sentences" % len(src_asr), "",
+    L = ["# MT comparison, private ru test set (ru -> zh-TW), %d sentences" % len(src_asr), "",
          "Contains copyrighted text: keep outside the repo.", "",
          "## Metrics (read the caveats)", "",
          "| engine | robustness chrF(asr vs clean) | agreement chrF (others, clean text) | total time s (asr set) |", "|---|---|---|---|"]
