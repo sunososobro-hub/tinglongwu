@@ -164,3 +164,32 @@ def test_paused_state_freezes_redraw_but_keeps_events():
     assert st.apply(("final", "b", "two")) is False  # no redraw while paused ...
     st.paused = False
     assert st.lines() == [("one", False), ("two", False)]  # ... but nothing was lost
+
+
+def test_gui_strings_exist_in_all_three_languages():
+    from tinglongwu import i18n
+
+    gui_keys = {k for k in i18n.MESSAGES["en"] if k.startswith("gui_")}
+    assert gui_keys
+    for lang in ("en", "ru", "zh-TW"):
+        assert gui_keys <= set(i18n.MESSAGES[lang]), lang
+    assert len({i18n.MESSAGES[lg]["gui_start"] for lg in ("en", "ru", "zh-TW")}) == 3
+
+
+def test_set_ui_lang_switches_t_and_persists(tmp_path, monkeypatch):
+    from tinglongwu import i18n, userdirs
+
+    monkeypatch.setenv("TLWU_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(i18n, "_override", None)
+    for lang, start in (("zh-TW", "開始"), ("ru", "Старт"), ("en", "Start")):
+        assert i18n.set_ui_lang(lang) == lang
+        assert i18n.t("gui_start") == start
+        assert userdirs.read_config()["ui_lang"] == lang
+    assert i18n.t("gui_error", msg="boom") == "Error: boom"
+
+
+def test_gui_module_imports_and_language_names():
+    from tinglongwu.gui import app
+
+    assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
+    assert core.DEFAULTS["theme"] == "dark"
