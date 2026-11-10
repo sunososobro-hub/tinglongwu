@@ -324,5 +324,6 @@ Mic -> zh -> ru translation -> built-in-voice offline TTS (Vosk-TTS / Kokoro) ->
 - **No affiliation.** Not affiliated with or endorsed by Google, Microsoft, Apple, Zoom, Meet, Alibaba (Qwen), Tencent (Hunyuan / Hy-MT2), Meta, OpenAI, NVIDIA, VB-Audio, Existential Audio or any other third party named here. All trademarks belong to their owners.
 - **Network guard.** The network guard is best-effort and is not a guarantee that no data leaves your machine.
 - **Security.** See [SECURITY.md](SECURITY.md).
+- **Privacy.** See [PRIVACY.md](PRIVACY.md) ([繁體中文](PRIVACY.zh-TW.md)).
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.
