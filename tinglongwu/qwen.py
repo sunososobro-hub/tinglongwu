@@ -74,7 +74,23 @@ def model_path(models_dir: Path, name: str) -> Path:
     return models_dir / s.dirname / s.filename
 
 
-def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_vram_mib) -> tuple[str, str]:
+def _cpu_engine(models_dir: Path, cpu_choice=None) -> tuple[str, str]:
+    """CPU: OPUS unless the remembered speed test (`tlwu --probe --speed`, #79/#131) measured Hy-MT2 under the
+    owner's 1.0 s/sentence rule on this hardware and the GGUF is installed. No cache = OPUS (never probes here)."""
+    from .hymt import hymt_path
+
+    if cpu_choice is None:
+        from .speedprobe import cpu_choice
+    r = cpu_choice()
+    if r is None:
+        return "opus", "no usable CUDA GPU (CPU mode)"
+    if not hymt_path(models_dir).exists():
+        return "opus", f"CPU mode; speed test chose Hy-MT2 but {hymt_path(models_dir)} is missing"
+    return "hymt2", f"CPU mode; speed test: Hy-MT2 median {r.hymt_median_s:.2f} s/sentence"
+
+
+def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_vram_mib,
+                  cpu_choice=None) -> tuple[str, str]:
     """Return (engine, reason); engine in hymt2 | qwen3-8b | qwen3-4b | opus | m2m.
 
     auto: cuda + Hy-MT2 installed + free >= HYMT_MIN_FREE_MIB -> hymt2 (#66: same quality as Qwen3-8B, ~4x
@@ -92,7 +108,7 @@ def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_v
     if requested == "qwen4b":
         return "qwen3-4b", "requested"
     if device != "cuda":
-        return "opus", "no usable CUDA GPU (CPU mode)"
+        return _cpu_engine(models_dir, cpu_choice)
     free = free_mib()
     if free is None:
         return "opus", "could not read free VRAM"
