@@ -61,6 +61,11 @@ class SoundcardSource(AudioSource):
         raise NotImplementedError
 
     def frames(self) -> Iterator[np.ndarray]:
+        # Import BEFORE entering our COM scope: soundcard's import-time CoInitializeEx treats S_FALSE
+        # ("already initialized") as a fatal "Error 0x100000001". If the import happens on this thread it
+        # initializes COM itself (our call then gets S_FALSE, which is balanced); if it happened on another
+        # thread earlier, our call is what initializes this one.
+        import soundcard  # noqa: F401
         with com_initialized():
             yield from self._frames()
 
