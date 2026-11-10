@@ -42,6 +42,13 @@ def target_for_locale(tag: str | None) -> str:
     return "en"
 
 
+def report_info(s: dict) -> dict:
+    """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
+    return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",
+            "Engine": s.get("engine"), "Model": s.get("model"), "Source": s.get("source"),
+            "Live draft": "on" if s.get("live_draft") else "off"}
+
+
 def settings_path() -> Path:
     base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "tinglongwu" / "gui.json"
