@@ -18,11 +18,14 @@ DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
-    "floating_bar": False, "log_font_size": 14,
+    "floating_bar": False, "log_font_size": 14, "quality": "auto",
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt", "qwen", "qwen4b", "opus"]
+# auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
+# hardware; manual = the Engine + Speech model boxes decide (#81)
+QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
@@ -45,7 +48,7 @@ def target_for_locale(tag: str | None) -> str:
 def report_info(s: dict) -> dict:
     """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
     return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",
-            "Engine": s.get("engine"), "Model": s.get("model"), "Source": s.get("source"),
+            "Quality": s.get("quality"), "Engine": s.get("engine"), "Model": s.get("model"), "Source": s.get("source"),
             "Live draft": "on" if s.get("live_draft") else "off"}
 
 
@@ -87,6 +90,10 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    if out["quality"] not in QUALITIES:
+        out["quality"] = DEFAULTS["quality"]
+    if not fresh and "quality" not in data and (out["engine"], out["model"]) != (DEFAULTS["engine"], DEFAULTS["model"]):
+        out["quality"] = "manual"  # settings saved before #81 with a hand-picked engine/model: keep that choice
     if fresh:
         try:
             out["live_draft"] = bool(gpu())
@@ -151,8 +158,12 @@ def settings_to_argv(s: dict) -> list[str]:
     """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
-            "--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model")),
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
+    quality = s.get("quality") if s.get("quality") in QUALITIES else DEFAULTS["quality"]
+    if quality == "manual":
+        argv += ["--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model"))]
+    else:  # the CLI picks engine + speech model from the hardware probe
+        argv += ["--quality", quality]
     if s.get("source") == "mic":
         argv += ["--mic"]
     if s.get("glossary"):

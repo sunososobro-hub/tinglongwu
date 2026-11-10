@@ -12,7 +12,7 @@ from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
-from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, LANGS, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    rows_after_drag, save_settings, settings_to_argv)
 
@@ -292,59 +292,70 @@ class App:
     def _combo(self, row, label, key, values):
         self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
         var = tk.StringVar(value=self.settings[key])
-        ttk.Combobox(self.frm, textvariable=var, values=values, state="readonly", width=18).grid(
-            row=row, column=1, columnspan=2, sticky="we", pady=2)
+        self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=var, values=values, state="readonly", width=18)
+        cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
         return var
+
+    def _quality_changed(self):
+        """Engine / speech model are picked for the user unless Quality is 'manual' (#81)."""
+        state = "readonly" if self.v_quality.get() == "manual" else "disabled"
+        for key in ("engine", "model"):
+            if key in self.combos:
+                self.combos[key].configure(state=state)
 
     def _build_controls(self):
         s = self.settings
         self.frm = f = ttk.Frame(self.root, padding=10)
+        self.combos = {}
         f.pack()
         self.v_lang = self._combo(0, "gui_src_lang", "lang", LANGS)
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
-        self.v_engine = self._combo(2, "gui_engine", "engine", ENGINES)
-        self.v_model = self._combo(3, "gui_model", "model", MODELS)
-        self.v_source = self._combo(4, "gui_source", "source", SOURCES)
-        self.v_preset = self._combo(8, "gui_mode", "preset", PRESETS)
-        self._tx(ttk.Label(f), "gui_glossary").grid(row=5, column=0, sticky="w", pady=2)
+        self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
+        self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
+        self.v_model = self._combo(4, "gui_model", "model", MODELS)
+        self.v_quality.trace_add("write", lambda *_: self._quality_changed())
+        self._quality_changed()
+        self.v_source = self._combo(5, "gui_source", "source", SOURCES)
+        self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS)
+        self._tx(ttk.Label(f), "gui_glossary").grid(row=6, column=0, sticky="w", pady=2)
         self.v_gloss = tk.StringVar(value=s["glossary"])
-        ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=5, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=5, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=6, column=1, sticky="we", pady=2)
+        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=6, column=2, padx=(4, 0))
         self.v_save = tk.BooleanVar(value=s["save"])
-        self._tx(ttk.Checkbutton(f, variable=self.v_save), "gui_save").grid(row=6, column=0, sticky="w", pady=2)
+        self._tx(ttk.Checkbutton(f, variable=self.v_save), "gui_save").grid(row=7, column=0, sticky="w", pady=2)
         self.v_save_path = tk.StringVar(value=s["save_path"])
-        ttk.Entry(f, textvariable=self.v_save_path, width=22).grid(row=6, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=6, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_save_path, width=22).grid(row=7, column=1, sticky="we", pady=2)
+        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=7, column=2, padx=(4, 0))
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
         self._tx(ttk.Checkbutton(f, variable=self.var_show_src, command=self._src_toggled),
-                 "gui_show_src_line").grid(row=7, column=0, sticky="w")
+                 "gui_show_src_line").grid(row=8, column=0, sticky="w")
         self.v_live = tk.BooleanVar(value=s["live_draft"])
         self._tx(ttk.Checkbutton(f, variable=self.v_live), "gui_live_draft").grid(
-            row=7, column=1, columnspan=2, sticky="w")
-        self.v_lines = self._spin(14, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
+            row=8, column=1, columnspan=2, sticky="w")
+        self.v_lines = self._spin(15, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
                                   lambda n: self.overlay.set_rows(n))
-        self.v_font = self._spin(15, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
+        self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
                                  lambda n: self.overlay.set_font(n))
         self.btn = ttk.Button(f, text=t("gui_start"), command=self.toggle)
-        self.btn.grid(row=9, column=0, columnspan=2, sticky="we", pady=(8, 2))
+        self.btn.grid(row=10, column=0, columnspan=2, sticky="we", pady=(8, 2))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)
-        self.btn_pause.grid(row=9, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
+        self.btn_pause.grid(row=10, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
         self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(
-            row=12, column=0, columnspan=3, sticky="we", pady=(6, 0))
+            row=13, column=0, columnspan=3, sticky="we", pady=(6, 0))
         self.v_status = tk.StringVar(value=t("gui_ready"))
-        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=10, column=0, columnspan=3, sticky="w")
+        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
-            row=11, column=0, columnspan=3, sticky="w")
-        self._tx(ttk.Label(f), "gui_ui_lang").grid(row=13, column=0, sticky="w", pady=(8, 0))
+            row=12, column=0, columnspan=3, sticky="w")
+        self._tx(ttk.Label(f), "gui_ui_lang").grid(row=14, column=0, sticky="w", pady=(8, 0))
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         cb = ttk.Combobox(f, textvariable=self.v_ui_lang, values=list(UI_LANGS), state="readonly", width=12)
-        cb.grid(row=13, column=1, sticky="we", pady=(8, 0))
+        cb.grid(row=14, column=1, sticky="we", pady=(8, 0))
         cb.bind("<<ComboboxSelected>>", self.switch_lang)
         if sv_ttk is not None:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
-                row=13, column=2, sticky="e", pady=(8, 0))
+                row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
 
     def _build_log(self, f):
@@ -467,7 +478,7 @@ class App:
 
     def collect(self):
         s = self.settings
-        s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(),
+        s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
                  model=self.v_model.get(), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get())
