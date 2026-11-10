@@ -80,6 +80,11 @@ def parse_args(argv=None):
                         "nothing is uploaded, you review and submit it yourself")
     p.add_argument("--probe", action="store_true",
                    help="show this machine's GPU/VRAM, RAM and CPU and the recommended models, then exit (offline)")
+    p.add_argument("--speed", action="store_true",
+                   help="with --probe: also run the ~10 s translation speed test (CPU: Hy-MT2 vs OPUS); the "
+                        "result is remembered until the hardware changes")
+    p.add_argument("--reprobe", action="store_true",
+                   help="with --probe --speed: ignore the remembered result and measure again")
     a = p.parse_args(argv)
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -247,7 +252,16 @@ def main(argv=None) -> int:
         from .hwprobe import describe, probe, recommend
 
         hw = probe()
-        print(describe(hw, recommend(hw)))
+        tier = recommend(hw)
+        if a.speed or a.reprobe:
+            from . import speedprobe
+
+            r = speedprobe.run(hw, tier, models_dir(a.models_dir), force=a.reprobe)
+            tier = speedprobe.apply(tier, r)
+            print(describe(hw, tier))
+            print(f"Speed test{' (remembered)' if r.cached else ''}: {r.note}")
+            return 0
+        print(describe(hw, tier))
         return 0
     from . import offline
 
