@@ -111,6 +111,71 @@ def strip_unk(text: str) -> str:
     return out.strip()
 
 
+# OPUS en-zh glitches that have nothing to do with the source: a "(c)" / "©" prefix ("countries." -> "(c) 各國。")
+# and Wikipedia-style "(英語：Multiple OutPUT)" asides learned from its training data.
+_COPY = re.compile(r"[(（]\s*[cC]\s*[)）]|©")
+_LEAD_LETTER = re.compile(r"^\s*[(（][A-Za-z][)）]\s*")
+_WIKI_ASIDE = re.compile(r"\s*[(（]\s*(?:英[語语文]|English)\s*[:：][^()（）]*[)）]")
+
+
+def zh_artifacts(out: str, *sources: str) -> str:
+    """Strip MT artifacts from zh output unless the source line itself has them."""
+    src = " ".join(sources)
+    if not _COPY.search(src):
+        out = _COPY.sub("", out)
+    if not _LEAD_LETTER.match(sources[0] if sources else ""):
+        out = _LEAD_LETTER.sub("", out)
+    out = _WIKI_ASIDE.sub("", out)
+    return re.sub(r"^[\s,，、:：]+", "", out).strip()
+
+
+# ALL-CAPS acronyms (MIMO, OFDM, LTE, 5G) that OPUS en-zh turns into words ("What is MIMO?" -> 什麼是馬里奧).
+# Each is swapped for a number before en->zh (numbers are copied through) and put back afterwards; if a number
+# does not come back intact the unprotected translation is used instead, so this never makes a line worse.
+_ACRO = re.compile(r"(?<![\w-])(?=[A-Z0-9]*[A-Z][A-Z0-9]*[A-Z])[A-Z0-9]{2,6}(?![\w-])")
+_CAPS_WORD = re.compile(r"[A-Z][A-Z-]+")
+_PH_BASE = 9301
+_ACRO_SKIP = {"OK", "TV", "US", "USA", "UK", "EU", "UN"}  # plain words with good Chinese renderings
+
+
+def protect_acronyms(text: str) -> tuple[str, dict[str, str]]:
+    """Replace stand-alone acronyms with numeric placeholders. Acronyms inside a run of ALL-CAPS words
+    ("MULTIPLE INPUT MULTIPLE OUTPUT" - shouted ASR text, not an acronym) are left alone."""
+    toks = text.split()
+    words = [t.strip(".,!?;:()\"'") for t in toks]
+    caps = [bool(_CAPS_WORD.fullmatch(w)) for w in words]
+    shouted = [False] * len(toks)
+    i = 0
+    while i < len(toks):  # runs of ALL-CAPS words; a run with a long word is shouting, not acronyms
+        j = i
+        while j < len(toks) and caps[j]:
+            j += 1
+        if j > i and any(len(w) > 6 for w in words[i:j]):
+            shouted[i:j] = [True] * (j - i)
+        i = max(j, i + 1)
+    keep = [m.group(0) for t, sh in zip(toks, shouted) if not sh
+            for m in _ACRO.finditer(t) if m.group(0) not in _ACRO_SKIP]
+    mapping: dict[str, str] = {}
+    n = _PH_BASE
+    for a in dict.fromkeys(keep):
+        while str(n) in text:
+            n += 1
+        mapping[str(n)] = a
+        n += 1
+    for ph, a in mapping.items():
+        text = re.sub(rf"(?<![\w-]){re.escape(a)}(?![\w-])", ph, text)
+    return text, mapping
+
+
+def restore_acronyms(out: str, mapping: dict[str, str]) -> str | None:
+    """Put the acronyms back; None if any placeholder was lost or mangled by the model."""
+    for ph, a in mapping.items():
+        if len(re.findall(rf"(?<!\d){ph}(?!\d)", out)) != 1:
+            return None
+        out = re.sub(rf"(?<!\d){ph}(?!\d)", a, out)
+    return out
+
+
 class OpusStep:
     """One direction, e.g. ru->en, from models/opus/ru-en/ (ct2 model + sentencepiece)."""
 
@@ -155,23 +220,46 @@ class PivotTranslator(Translator):
         self.device = device  # already resolved: "cpu" or "cuda"
         self._factory = step_factory or (lambda s, t: OpusStep(models_dir, s, t, self.device))
         self._steps: dict[tuple[str, str], Callable[[str], str]] = {}
+        self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output
+        self._zh_words: dict[str, str] = {}
 
     def _step(self, s: str, t: str):
         if (s, t) not in self._steps:
             self._steps[(s, t)] = self._factory(s, t)
         return self._steps[(s, t)]
 
+    def _to(self, text: str, tgt: str) -> str:
+        """en -> tgt; for zh with acronym protection (falls back to the plain translation)."""
+        step = self._step("en", tgt)
+        if tgt == "zh":
+            prot, mapping = protect_acronyms(text)
+            if mapping:
+                back = restore_acronyms(step(prot), mapping)
+                if back is not None:
+                    return back
+        return step(text)
+
+    def _zh_word(self, w: str) -> str:
+        if w not in self._zh_words:
+            self._zh_words[w] = zh_convert(w, self.zh_variant)
+        return self._zh_words[w]
+
     def translate(self, text: str, src: str, tgt: str) -> Translation:
         if src == tgt:
             return Translation(None, text)
         pivot = None
-        if src == "en" or tgt == "en":
+        if src == "en":
+            out = self._to(text, tgt)
+        elif tgt == "en":
             out = self._step(src, tgt)(text)
         else:
             pivot = self._step(src, "en")(text)
-            out = self._step("en", tgt)(pivot)
+            out = self._to(pivot, tgt)
         if tgt == "zh":
-            out = zh_guard(text, zh_convert(out, self.zh_variant))
+            out = zh_artifacts(zh_convert(out, self.zh_variant), text, pivot or "")
+            if self.glossary:
+                out = self.glossary.fix_output(out, text, pivot or "", convert=self._zh_word)
+            out = zh_guard(text, out)
         return Translation(pivot, out)
 
     def preload(self, src: str, tgt: str) -> None:

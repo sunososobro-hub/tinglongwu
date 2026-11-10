@@ -1,0 +1,13 @@
+# Topic glossary: Russian radio / WiFi / telecom lectures -> Chinese (Traditional, Taiwan)
+# Usage: tlwu --lang ru --glossary docs/examples/glossary_telecom_ru.txt   (combine topics: put files in one folder)
+# `source = target`; `a | b = target` adds extra source spellings (mis-hearings, the English pivot word);
+# `= target ~ wrong | wrong` lists renderings that OPUS gets wrong: replaced by the target when the entry
+# occurs in the sentence (Russian source or the English pivot). Sources match by prefix (замирани -> замирания).
+
+замирание | замирани | fading = 衰落 ~ 淡化 | 消散 | 褪色
+многолучев | multipath = 多徑 ~ 多路徑 | 多條路徑
+дифрагированн | дифракци | diffracted | diffraction | defragmented = 繞射 ~ 碎片整理 | 碎片化 | 去碎片 | 衍射
+полоса пропускания | bandwidth = 頻寬
+колебл | fluctuates = 起伏 ~ 猶豫不決 | 猶豫
+MIMO
+OFDM
