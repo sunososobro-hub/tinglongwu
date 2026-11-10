@@ -21,26 +21,31 @@ KOKORO_PY="${KOKORO_PY:-$HOME/tts-kokoro/bin/python}"
 KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
 KOKORO_VOICE="${KOKORO_VOICE:-0}"
 
-echo "tinglongWu"
-echo "  Enter) 聽  英文 -> 中文字幕（預設）"
-echo "  1)     聽  其他語言 -> 中文字幕"
-echo "  2)     說  中文 -> 英文語音"
-echo "  3)     說  中文 -> 俄文語音"
-echo "  4)     開會：聽英文 + 說英文（同一個視窗，送進 Meet）"
-echo "  5)     開會：聽俄文 + 說俄文（同一個視窗，送進 Meet）"
-read -rp "> " pick
+L="${TLWU_LANG:-en}"
+lang_name() { case "$1" in en) echo 英文;; ru) echo 俄文;; ja) echo 日文;; ko) echo 韓文;; de) echo 德文;; fr) echo 法文;; es) echo 西文;; *) echo "$1";; esac; }
 BOTH=0
-case "$pick" in
-  "") mode=1; L=en ;;
-  1) mode=1
-     echo "語言代碼：ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
-     read -rp "聽哪種語言 [Enter=en]: " L; L="${L:-en}" ;;
-  2) mode=2; L=en ;;
-  3) mode=2; L=ru ;;
-  4) mode=2; L=en; BOTH=1 ;;
-  5) mode=2; L=ru; BOTH=1 ;;
-  *) echo "沒有這個選項"; exit 1 ;;
-esac
+while :; do
+  N="$(lang_name "$L")"
+  echo
+  echo "tinglongWu    對方語言：$N    （按 L 可改語言）"
+  echo "  Enter/1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
+  echo "  2)       純說  中文 -> ${N}語音"
+  echo "  3)       純聽  ${N} -> 中文字幕"
+  echo "  L)       改語言"
+  read -rp "> " pick
+  case "$pick" in
+    ""|1) mode=2; BOTH=1 ;;
+    2) mode=2 ;;
+    3) mode=1 ;;
+    l|L) echo "語言代碼：en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文（開會/純說目前只支援 en、ru）"
+         read -rp "對方說哪種語言 [Enter=en]: " L; L="${L:-en}"; continue ;;
+    *) echo "沒有這個選項"; continue ;;
+  esac
+  if [ "$mode" = "2" ] && [ "$L" != "en" ] && [ "$L" != "ru" ]; then
+    echo "$N 目前只能「純聽」；開會/純說只支援英文、俄文。"; continue
+  fi
+  break
+done
 if [ "$mode" = "1" ]; then echo "聽  $L -> 中文字幕"; else echo "說  中文 -> $L 語音"; fi
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)

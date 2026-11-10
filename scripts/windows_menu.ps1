@@ -21,25 +21,44 @@ $kokoroPy = if ($env:KOKORO_PY) { $env:KOKORO_PY } else { "$HOME\tts-kokoro\Scri
 $kokoroModel = if ($env:KOKORO_MODEL) { $env:KOKORO_MODEL } else { "$HOME\models\kokoro" }
 $kokoroVoice = if ($env:KOKORO_VOICE) { $env:KOKORO_VOICE } else { "0" }
 
-Write-Host "tinglongWu"
-Write-Host "  Enter) 聽  英文 -> 中文字幕（預設）"
-Write-Host "  1)     聽  其他語言 -> 中文字幕"
-Write-Host "  2)     說  中文 -> 英文語音"
-Write-Host "  3)     說  中文 -> 俄文語音"
-Write-Host "  4)     圖形介面（GUI）"
-$pick = Read-Host ">"
-if ($pick -eq "4") { & $tlwu --gui; exit }
-if (-not $pick) { $mode = "1"; $L = "en" }
-elseif ($pick -eq "1") {
-    $mode = "1"
-    Write-Host "語言代碼：ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
-    $L = Read-Host "聽哪種語言 [Enter=en]"; if (-not $L) { $L = "en" }
+$L = if ($env:TLWU_LANG) { $env:TLWU_LANG } else { "en" }
+$names = @{ en = "英文"; ru = "俄文"; ja = "日文"; ko = "韓文"; de = "德文"; fr = "法文"; es = "西文" }
+$both = $false
+while ($true) {
+    $N = if ($names.ContainsKey($L)) { $names[$L] } else { $L }
+    Write-Host ""
+    Write-Host "tinglongWu    對方語言：$N    （按 L 可改語言）"
+    Write-Host "  Enter/1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
+    Write-Host "  2)       純說  中文 -> ${N}語音"
+    Write-Host "  3)       純聽  $N -> 中文字幕"
+    Write-Host "  L)       改語言"
+    Write-Host "  G)       圖形介面（GUI）"
+    $pick = Read-Host ">"
+    if ($pick -eq "g") { & $tlwu --gui; exit }
+    if (-not $pick -or $pick -eq "1") { $mode = "2"; $both = $true }
+    elseif ($pick -eq "2") { $mode = "2" }
+    elseif ($pick -eq "3") { $mode = "1" }
+    elseif ($pick -eq "l") {
+        Write-Host "語言代碼：en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文（開會/純說目前只支援 en、ru）"
+        $L = Read-Host "對方說哪種語言 [Enter=en]"; if (-not $L) { $L = "en" }
+        continue
+    }
+    else { Write-Host "沒有這個選項"; continue }
+    if ($mode -eq "2" -and $L -ne "en" -and $L -ne "ru") { Write-Host "$N 目前只能「純聽」；開會/純說只支援英文、俄文。"; continue }
+    break
 }
-elseif ($pick -eq "2") { $mode = "2"; $L = "en" }
-elseif ($pick -eq "3") { $mode = "2"; $L = "ru" }
-else { Write-Host "沒有這個選項"; exit 1 }
 
 $havePairs = "import sys; from tinglongwu.models import models_dir; d = models_dir(None) / 'opus'; sys.exit(0 if all((d / p).is_dir() for p in sys.argv[1:]) else 1)"
+if ($both) {
+    $need = if ($L -eq "en") { @("en-zh") } else { @("$L-en", "en-zh") }
+    & $py -c $havePairs @need
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "還沒有 $L 的翻譯模型，現在連網下載（只有這一次）..."
+        if ($L -eq "en") { & .\.venv\Scripts\tlwu-setup.exe --to zh } else { & .\.venv\Scripts\tlwu-setup.exe --langs $L --to zh }
+    }
+    # listen in its own window; speak in this one
+    $listen = Start-Process -FilePath (Resolve-Path $tlwu) -ArgumentList (@("--lang", $L) + $wL) -PassThru
+}
 if ($mode -eq "1") {
     Write-Host "聽  $L -> 中文字幕"
     if ($L -eq "en") { $need = @("en-zh"); $setup = @("--to", "zh") } else { $need = @("$L-en", "en-zh"); $setup = @("--langs", $L, "--to", "zh") }
@@ -67,6 +86,14 @@ if ($L -eq "en") {
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,
              "--tts-model", $voskModel, "--speaker", $voice) + $wS
     $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ru") + $wS
+}
+if ($both) {
+    $ac = Read-Host "每句直接送、不確認？[Enter=要確認 / y=直接送]"
+    if ($ac -eq "y") { $rev += "--no-confirm" }
+    Write-Host "開會模式：另一個視窗是對方的話（中文字幕）；你在這裡講中文會送進 Meet（Meet 麥克風選 CABLE Output）。請戴耳機。"
+    try { & $py @rev --device "CABLE Input" }
+    finally { if ($listen -and -not $listen.HasExited) { Stop-Process -Id $listen.Id -Force } }
+    exit
 }
 Write-Host "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
 Write-Host "  1) 送進 Meet（需 VB-CABLE；Meet 麥克風選 CABLE Output）"
