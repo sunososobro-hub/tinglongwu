@@ -18,6 +18,8 @@ from .capture.base import SAMPLE_RATE, AudioSource
 from . import fmt  # noqa: F401  (registers the label_me/label_them strings)
 from .hallucination import is_hallucination
 from .i18n import t
+from .langfollow import script_lang
+from .translate import translate_checked
 
 DRAFT_INTERVAL = 0.6  # min seconds between partial passes (ASR and MT alternate on one thread)
 TRANSLATE_MIN_CHARS = 8  # re-translate when the partial grew by >= this many chars ...
@@ -234,6 +236,7 @@ class DraftEngine:
             t = None  # stock subtitle-credit line on music/silence: never draft it
         if t is None or not t.text.strip() or self.current_epoch() != epoch:
             return True  # nothing heard, or the segment ended meanwhile (the final line owns the display)
+        t.lang = script_lang(t.text, t.lang)  # kana labelled zh is Japanese (#86)
         conf, tail = self.agree.update(t.text, is_cjk_text(t.text, t.lang))
         text = t.text.strip()
         if self.can_translate(t.lang) and text != self._translated and self._due(text):
@@ -292,9 +295,12 @@ class DraftEngine:
                 self.dropped += 1
                 return True
             try:
-                out = self.translator.draft(text, lang, self.tgt).text
+                tr = translate_checked(self.translator, text, lang, self.tgt, draft=True)
             except Exception:  # noqa: BLE001 - a failed draft must never break the pipeline
                 return True
+            if tr is None:
+                return True  # untranslated Japanese left in the draft (#86): keep the previous draft line
+            out = tr.text
         finally:
             self.lock.release()
         if self.current_epoch() != epoch or epoch != self.epoch:
