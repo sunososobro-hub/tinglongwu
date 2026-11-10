@@ -39,12 +39,13 @@ def step_times(translator) -> str:
 def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
-        stop_event: threading.Event | None = None, log=None) -> None:
+        stop_event: threading.Event | None = None, log=None, on_latency=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
     segment never waits for MT of the previous one; on a slow CPU lines no longer arrive in bursts behind
     a backlog. log(str): --debug-latency, per-stage times (asr / queue wait / each MT step).
+    on_latency(seconds): called once per output line with ASR time + MT queue wait + MT time (#80).
 
     With a merger, ASR text is held until a sentence ends, or max_wait seconds passed (a timer wakes
     the loop even when no new segment arrives, so live latency stays bounded). audio_clock=True uses
@@ -87,6 +88,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     model_lock = draft.final_section if draft is not None else contextlib.nullcontext
 
     last_ep = [None]  # epoch of the newest segment handed to ASR (for --debug-latency)
+    last_asr = [0.0]  # seconds the newest segment spent in ASR
     say = log or (lambda m: None)
     if log is not None and draft is not None and getattr(draft, "log", None):
         say = lambda m: draft._log(m.removeprefix("latency: "))  # noqa: E731 - clears the draft block first
@@ -140,14 +142,16 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if item is _DONE or stop.is_set():
                 return
             try:
-                emit(*item)
+                emit(*item[:4])
+                if on_latency is not None:
+                    on_latency(item[4] + time.monotonic() - item[3])
             except BaseException as e:  # noqa: BLE001 - re-raised in the main thread
                 failed.append(e)
                 return
 
     def emit_units(units) -> None:
         for u in units:
-            mtq.put((u.text, u.lang, last_ep[0], time.monotonic()))
+            mtq.put((u.text, u.lang, last_ep[0], time.monotonic(), last_asr[0]))
 
     def check_worker() -> None:
         if failed:
@@ -184,7 +188,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             with model_lock():
                 t0 = time.monotonic()
                 t = asr.transcribe(seg)
-            say(f"latency: asr {(time.monotonic() - t0) * 1000:.0f} ms for {len(seg) / SAMPLE_RATE:.1f} s of audio"
+            last_asr[0] = time.monotonic() - t0
+            say(f"latency: asr {last_asr[0] * 1000:.0f} ms for {len(seg) / SAMPLE_RATE:.1f} s of audio"
                 f" ({mtq.qsize()} line(s) waiting for MT)")
             if t is None or is_hallucination(t.text, float(np.sqrt(np.mean(seg ** 2))), t.no_speech):
                 continue  # nothing heard, or a stock Whisper subtitle-credit line on music/silence
