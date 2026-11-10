@@ -12,3 +12,5 @@ def test_nuitka_includes_lazy_import_packages():
     cmd = mod.nuitka_cmd()
     assert "--include-package=filelock" in cmd
     assert "--include-package=huggingface_hub" in cmd
+    assert "--include-package=sv_ttk" in cmd
+    assert "--include-package-data=sv_ttk" in cmd  # #77: theme .tcl/png data
