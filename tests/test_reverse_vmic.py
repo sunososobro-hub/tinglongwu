@@ -74,3 +74,65 @@ def test_build_translator_opus_on_cpu(monkeypatch, tmp_path):
     mt = build_translator("auto", "cpu", tmp_path, "qwen3-4b")
     assert isinstance(mt, tr.PivotTranslator) and mt.device == "cpu"
     assert loaded == [("zh", "ru"), ("ru", "zh")] and mt.history == []
+
+
+# ---- macOS: BlackHole 16ch = virtual mic (speech out), BlackHole 2ch = system-audio capture ----
+def test_pick_mac_vmic():
+    names = ["MacBook Pro Speakers", "BlackHole 2ch", "BlackHole 16ch", "Multi-Output Device"]
+    assert vmic.pick_mac_vmic(names) == "BlackHole 16ch"
+    assert vmic.pick_mac_vmic(["x", "blackhole 16CH"]) == "blackhole 16CH"
+    with pytest.raises(RuntimeError, match="blackhole-16ch"):
+        vmic.pick_mac_vmic(["MacBook Pro Speakers", "BlackHole 2ch"])
+
+
+def test_loop_prone_output():
+    for bad in ("BlackHole 2ch", "Multi-Output Device", "多重輸出裝置", "tlwu-out", "Aggregate Device"):
+        assert vmic.loop_prone_output(bad), bad
+    for ok in ("BlackHole 16ch", "MacBook Pro Speakers", "AirPods Pro", None, ""):
+        assert not vmic.loop_prone_output(ok), ok
+
+
+def test_is_macos(monkeypatch):
+    monkeypatch.setattr(vmic.sys, "platform", "darwin")
+    assert vmic.is_macos() and not vmic.is_linux()
+
+
+def test_feedback_guard_refuses_blackhole_mic():
+    for n in ("BlackHole 16ch", "BlackHole 2ch"):
+        with pytest.raises(ValueError, match="feedback guard"):
+            check_mic_feedback(n, "BlackHole 16ch", same_name_ok=True)
+    check_mic_feedback("MacBook Pro Microphone", "BlackHole 16ch")  # real mic is fine
+
+
+def test_player_mac_stereo_and_loop_guard(monkeypatch):
+    import sys
+    import types
+
+    import numpy as np
+
+    from tinglongwu.reverse import proto
+
+    played = []
+
+    class Player:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def play(self, data):
+            played.append(data.shape)
+
+    def make_sc(names):
+        speakers = [types.SimpleNamespace(name=n, player=lambda **kw: Player()) for n in names]
+        return types.SimpleNamespace(all_speakers=lambda: speakers, default_speaker=lambda: speakers[0])
+
+    monkeypatch.setattr(proto.sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "soundcard", make_sc(["Multi-Output Device", "BlackHole 16ch"]))
+    p = proto.Player("BlackHole 16ch", 24000)
+    p.push(np.zeros(240, dtype=np.float32), 24000)
+    p.close()
+    assert p.speaker_name == "BlackHole 16ch" and played and played[0][1] == 2
+    with pytest.raises(RuntimeError, match="loop back"):
+        proto.Player(None, 24000)  # default output is the Multi-Output Device

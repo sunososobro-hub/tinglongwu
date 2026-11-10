@@ -39,6 +39,7 @@ def check_mic_feedback(mic_name: str, out_device: str | None, out_name: str | No
     listed separately ("Monitor of ..."), so a matching name there is the real mic, not a loopback."""
     m = mic_name.casefold()
     bad = ("cable output" in m or "tlwu_" in m  # VB-CABLE capture side / Linux virtual mic (tlwu_mic, tlwu_sink.monitor)
+           or "blackhole" in m  # macOS: BlackHole 2ch is system audio, 16ch is where our own speech goes
            or m.startswith("monitor of"))
     for o in (() if same_name_ok else (out_device, out_name)):
         if not o:

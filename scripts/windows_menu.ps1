@@ -9,6 +9,42 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 $env:PYTHONUTF8 = "1"
 $py = ".\.venv\Scripts\python.exe"
 $tlwu = ".\.venv\Scripts\tlwu.exe"
+
+# Quiet self-update: git fetch (6 s cap) + fast-forward; reinstall deps only if pyproject/requirements changed.
+# Never blocks or throws: any failure prints one line and the current version keeps running. Skip: $env:TLWU_NO_UPDATE=1
+function Update-Tlwu {
+    if ($env:TLWU_NO_UPDATE -eq "1") { return }
+    if (-not (Test-Path ".git")) { return }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+    $ErrorActionPreference = "Continue"
+    try {
+        $old = (git rev-parse HEAD 2>$null)
+        if ($LASTEXITCODE -ne 0 -or -not $old) { return }
+        $env:GIT_TERMINAL_PROMPT = "0"
+        $tmp = [System.IO.Path]::GetTempFileName()
+        $p = Start-Process -FilePath "git" -ArgumentList @("-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=5", "fetch", "--quiet", "origin") `
+            -NoNewWindow -PassThru -RedirectStandardOutput $tmp -RedirectStandardError "$tmp.err"
+        if (-not $p.WaitForExit(6000)) { try { $p.Kill() } catch {}; Write-Host "（自動更新略過：連不上網路，使用目前版本）"; return }
+        Remove-Item $tmp, "$tmp.err" -ErrorAction SilentlyContinue
+        if ($p.ExitCode -ne 0) { Write-Host "（自動更新略過：連不上網路，使用目前版本）"; return }
+        $up = (git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null)
+        if ($LASTEXITCODE -ne 0 -or -not $up) { $up = "origin/main" }
+        $new = (git rev-parse $up 2>$null)
+        if (-not $new -or $new -eq $old) { return }
+        git merge-base --is-ancestor $up HEAD 2>$null
+        if ($LASTEXITCODE -eq 0) { return }
+        git merge --ff-only --quiet $up 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Host "（自動更新略過：本機有改動或分支不同，無法快轉合併；使用目前版本）"; return }
+        $changed = (git diff --name-only $old HEAD 2>$null) -join "`n"
+        if ($changed -match "(?m)^(pyproject\.toml|requirements[^/]*\.txt)$") {
+            Write-Host "已更新到最新版，正在更新套件（約一分鐘）..."
+            & $py -m pip install -q -e . 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Host "（套件更新失敗，請稍後重跑 install.bat 修復；先用目前環境繼續）" }
+        } else { Write-Host "已更新到最新版（這次先用舊版，下次啟動生效）。" }
+    } catch { Write-Host "（自動更新略過：$($_.Exception.Message)）" }
+}
+Update-Tlwu
+$ErrorActionPreference = "Stop"
 $voskPy = if ($env:VOSK_PY) { $env:VOSK_PY } else { "$HOME\tts-vosk\Scripts\python.exe" }
 $voskModel = if ($env:VOSK_MODEL) { $env:VOSK_MODEL } else { "$HOME\vosk-model-tts-ru-0.7-multi" }
 $wL = @(); $wS = @()

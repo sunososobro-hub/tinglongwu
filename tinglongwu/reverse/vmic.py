@@ -2,7 +2,9 @@
 
 Creates a null sink `tlwu_sink` and a source `tlwu_mic` remapped from its monitor; the Russian TTS audio is
 played to `tlwu_sink`, and Google Meet / Zoom pick `tlwu_mic` as their microphone. The modules are unloaded on exit.
-Windows keeps VB-CABLE; macOS is not handled here.  EXPERIMENTAL: written without a Linux machine to test on.
+Windows keeps VB-CABLE.  macOS: no module loading; the TTS is played to the installed "BlackHole 16ch" device, which
+Meet/Zoom pick as their microphone ("BlackHole 2ch" is reserved for capturing system audio, see capture/macos.py).
+EXPERIMENTAL: written without a Linux or macOS machine to test on.
 """
 from __future__ import annotations
 
@@ -16,6 +18,33 @@ MIC = "tlwu_mic"
 
 def is_linux() -> bool:
     return sys.platform.startswith("linux")
+
+
+MAC_VMIC = "BlackHole 16ch"   # speak side: TTS goes here, Meet's microphone = this device
+MAC_CAPTURE = "BlackHole 2ch"  # listen side: system audio (Multi-Output Device) is recorded from this one
+# Output names that feed the listen side (or are not a real speaker): playing TTS there would loop into listening.
+_MAC_LOOP_PRONE = ("blackhole 2ch", "multi-output", "多重輸出", "多輸出", "aggregate", "聚集", "tlwu-out")
+
+
+def is_macos() -> bool:
+    return sys.platform == "darwin"
+
+
+def pick_mac_vmic(names: list[str], want: str = MAC_VMIC) -> str:
+    """Output device name to use as the macOS virtual microphone (first name containing `want`, case-insensitive)."""
+    for n in names:
+        if want.casefold() in n.casefold():
+            return n
+    raise RuntimeError(
+        f"virtual microphone {want!r} not found among the output devices {list(names)}.\n"
+        f"Install it with:  brew install --cask blackhole-16ch   (then restart the Mac so CoreAudio sees it); "
+        f"or use --no-vmic and choose --device yourself.")
+
+
+def loop_prone_output(name: str | None) -> bool:
+    """True if playing TTS on this macOS output would be recorded by the listen side (BlackHole 2ch / Multi-Output)."""
+    n = (name or "").casefold()
+    return any(k in n for k in _MAC_LOOP_PRONE)
 
 
 def load_commands(sink: str = SINK, mic: str = MIC) -> list[list[str]]:

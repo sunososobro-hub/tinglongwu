@@ -24,6 +24,22 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 
 移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
+## Mac 一行安裝
+
+Apple Silicon 與 Intel Mac 都適用（macOS 12 以上）。打開「終端機」，貼這一行：
+
+```
+curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
+```
+
+腳本會：檢查 Homebrew（沒有的話只印出官方安裝指令請你自己貼，不會偷偷安裝）、安裝 Python 3.12／git／BlackHole 2ch／BlackHole 16ch（中途會要你輸入一次 Mac 密碼）、把程式放到 `~/tinglongwu`、建立環境、下載英文語音（Kokoro）與語音辨識／翻譯模型（約 1–2 GB）、安裝 `tlwu-menu` 指令。可重複貼上：重貼 = 修復／更新。
+
+安裝完最後會印出**唯一要手動做的一步**：在「音訊 MIDI 設定」建立多重輸出裝置（喇叭／耳機 + BlackHole 2ch）並設為系統輸出；Google Meet／Zoom 的麥克風選 **BlackHole 16ch**。第一次執行時 macOS 會問「終端機」要不要使用麥克風，請按「好」。
+
+之後只要開新的終端機視窗輸入 `tlwu-menu`。選單啟動時會自動 `git pull --ff-only` 更新（約 6 秒上限；離線或本機有改動時只印一行提示、照常使用目前版本）。Windows／Linux 選單也有同樣的自動更新；不想要時設定環境變數 `TLWU_NO_UPDATE=1`。
+
+音訊設計（為什麼用兩個 BlackHole）：**BlackHole 2ch** 只用來「聽」（系統聲音經多重輸出裝置同時進你的耳機與 tinglongWu）；**BlackHole 16ch** 只用來「說」（你的譯文語音送進 Meet 的麥克風）。兩者分開，你自己的 TTS 就不會被「聽」那一側收進去而迴圈。程式依名稱自動挑選，並拒絕把語音播到 BlackHole 2ch／多重輸出裝置。目前 Mac 版只預裝英文；日文、俄文語音之後再加。**此流程尚未在真實 Mac 上測試過。**
+
 ## 發行版（執行前請先閱讀）
 
 Windows 發行 zip **未簽章**，由維護者在本機以 Nuitka 建置，**不可重現建置**。其 SHA256 公布於 release 說明：執行前請用 `Get-FileHash tinglongwu-win64.zip` 比對。雜湊只證明你拿到的是維護者發布的那個檔案。若要真正的驗證，請從原始碼安裝（`install.bat` 或下方步驟）：原始碼、鎖版依賴與模型雜湊都可稽核。

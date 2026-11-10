@@ -4,6 +4,16 @@
 set -e
 cd "$(dirname "$0")/.."
 . .venv/bin/activate
+IS_MAC=0; [ "$(uname -s)" = "Darwin" ] && IS_MAC=1
+
+# quiet self-update (git pull --ff-only, ~6 s cap, never blocks); restart once on this script if it changed
+if [ -f scripts/auto_update.sh ]; then
+  . scripts/auto_update.sh
+  if [ -z "${TLWU_UPDATED_ONCE:-}" ]; then
+    tlwu_auto_update || true
+    if [ -n "$TLWU_UPDATED" ]; then export TLWU_UPDATED_ONCE=1; exec bash "$0" "$@"; fi
+  fi
+fi
 
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
@@ -22,9 +32,11 @@ KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
 KOKORO_VOICE="${KOKORO_VOICE:-0}"
 
 L="${TLWU_LANG:-auto}"
+# macOS install skips the Russian voice: default to English unless the Vosk model is there
+if [ "$IS_MAC" = "1" ] && [ -z "${TLWU_LANG:-}" ] && [ ! -d "$VOSK_MODEL" ]; then L=en; fi
 CANDS="en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
 FOLLOW_LANGS="en,ru,ja"   # languages the speak side prepares in meeting mode
-FOLLOW_FILE="${XDG_RUNTIME_DIR:-/tmp}/tlwu_follow_lang"
+FOLLOW_FILE="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/tlwu_follow_lang"
 lang_name() { case "$1" in auto) echo "自動（英/俄/日）";; en) echo 英文;; ru) echo 俄文;; ja) echo 日文;; ko) echo 韓文;; de) echo 德文;; fr) echo 法文;; es) echo 西文;; *) echo "$1";; esac; }
 BOTH=0
 speak_ok() { case "$1" in auto|en|ru|ja) return 0;; *) return 1;; esac; }
@@ -164,12 +176,14 @@ if [ "$BOTH" = "1" ]; then
   tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" < /dev/null &
   LISTEN_PID=$!
   trap 'kill $LISTEN_PID 2>/dev/null' EXIT INT TERM
-  echo "開會模式：[EN]/[RU]/[JA]/[ZH] 是對方的話；你講中文會送進 Meet（麥克風選 tlwu_mic）。請戴耳機。"
+    if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
+  echo "開會模式：[EN]/[RU]/[JA]/[ZH] 是對方的話；你講中文會送進 Meet（麥克風選 $MM）。請戴耳機。"
   "${REV[@]}" "${AUTO[@]}"
   exit
 fi
+if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
 echo "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
-echo "  1) 送進 Meet（Meet 麥克風選 tlwu_mic）"
+echo "  1) 送進 Meet（Meet 麥克風選 $MEETMIC）"
 echo "  2) 送進 Meet，自己耳機也聽得到"
 echo "  3) 不進 Meet，直接從耳機/喇叭念出來"
 echo "  4) 只看翻譯文字（不發聲）"
@@ -178,6 +192,22 @@ AUTO=()
 if [ "$out" != "4" ]; then
   read -rp "每句直接送、不確認？[Enter=要確認 / y=直接送]: " ac
   [ "$ac" = "y" ] && AUTO=(--no-confirm)
+fi
+if [ "$IS_MAC" = "1" ] && { [ "$out" = "2" ] || [ "$out" = "3" ]; }; then
+  # must be a REAL output (headphones/speakers), never the Multi-Output Device / BlackHole 2ch: those are recorded by the listen side
+  echo "你的輸出裝置（不能選「多重輸出裝置」或 BlackHole 2ch）："
+  python -m tinglongwu.reverse.proto --list-speakers 2>/dev/null | sed 's/^/    /'
+  read -rp "裝置名稱（打一部分即可，例如 AirPods 或 MacBook）: " HP
+  [ -n "$HP" ] || { echo "沒有輸入裝置名稱"; exit 1; }
+fi
+if [ "$IS_MAC" = "1" ]; then
+  case "$out" in
+    1) exec "${REV[@]}" "${AUTO[@]}" ;;   # proto auto-selects BlackHole 16ch
+    2) exec "${REV[@]}" "${AUTO[@]}" --preview-device "$HP" ;;
+    3) exec "${REV[@]}" "${AUTO[@]}" --no-vmic --device "$HP" ;;
+    4) exec "${TXT[@]}" ;;
+    *) echo "沒有這個選項"; exit 1 ;;
+  esac
 fi
 case "$out" in
   1) exec "${REV[@]}" "${AUTO[@]}" ;;

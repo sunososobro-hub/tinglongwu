@@ -58,26 +58,34 @@ class Player:
 
     def __init__(self, device: str | None, out_sr: int = 48000, enabled: bool = True):
         self.out_sr, self.enabled, self.q = out_sr, enabled, queue.Queue()
+        # macOS: BlackHole 16ch has 16 channels; a mono stream may reach only channel 1, so send identical L/R
+        self.ch = 2 if sys.platform == "darwin" else 1
         self.speaker_name = None
         if enabled:
             import soundcard as sc
 
             from .logic import match_device
+            from .vmic import loop_prone_output
 
             speakers = sc.all_speakers()
             idx = match_device([s.name for s in speakers], device)
             spk = speakers[idx] if idx is not None else sc.default_speaker()
             self.speaker_name = spk.name
+            if sys.platform == "darwin" and loop_prone_output(spk.name):
+                raise RuntimeError(
+                    f"output device {spk.name!r} is the system-audio capture path (it would be heard by the "
+                    f"listen side and loop back). Pass --device with your headphones / 'BlackHole 16ch' "
+                    f"(see --list-speakers).")
             self.t = threading.Thread(target=self._run, args=(spk,), daemon=True)
             self.t.start()
 
     def _run(self, spk):
-        with spk.player(samplerate=self.out_sr, channels=1, blocksize=1024) as p:
+        with spk.player(samplerate=self.out_sr, channels=self.ch, blocksize=1024) as p:
             while True:
                 item = self.q.get()
                 if item is None:
                     return
-                p.play(item.reshape(-1, 1))
+                p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
 
     def push(self, audio: np.ndarray, sr: int) -> None:
         if self.enabled:
@@ -358,7 +366,7 @@ def _main(argv, vm) -> int:
     ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
                     help="translator; auto = Qwen3 on CUDA, OPUS/Argos on CPU (ru: pivot zh->en->ru; en: direct zh->en)")
     ap.add_argument("--no-vmic", action="store_true",
-                    help="Linux: do not create the tlwu_sink/tlwu_mic virtual microphone (use --device yourself)")
+                    help="Linux/macOS: do not create/select the virtual microphone (tlwu_mic / BlackHole 16ch); use --device yourself")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
     ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
     ap.add_argument("--tts-engine", default="qwen", choices=["qwen", "vosk", "kokoro"],
@@ -409,7 +417,7 @@ def _main(argv, vm) -> int:
         for sp in sc.all_speakers():
             print(sp.name)
         return 0
-    from .vmic import SINK, VirtualMic, is_linux
+    from .vmic import SINK, VirtualMic, is_linux, is_macos, loop_prone_output, pick_mac_vmic
 
     if is_linux() and not a.no_vmic and not (a.no_play or a.no_tts) and a.device is None:
         try:
@@ -420,6 +428,23 @@ def _main(argv, vm) -> int:
         a.device = SINK
         print(f"virtual microphone created: select 'tlwu_mic' as the microphone in Meet/Zoom "
               f"(removed when this program exits)", flush=True)
+    elif is_macos() and not a.no_vmic and not (a.no_play or a.no_tts) and a.device is None:
+        try:
+            import soundcard as sc
+
+            a.device = pick_mac_vmic([sp.name for sp in sc.all_speakers()])
+        except RuntimeError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(f"virtual microphone: speech goes to {a.device!r}; select it as the microphone in Meet/Zoom",
+              flush=True)
+    if is_macos():
+        for flag, val in (("--device", a.device), ("--preview-device", a.preview_device)):
+            if val and loop_prone_output(val):
+                print(f"error: {flag} {val!r} feeds the system-audio capture (BlackHole 2ch / Multi-Output): "
+                      f"the speech would be heard by the listen side. Use your headphones or BlackHole 16ch.",
+                      file=sys.stderr)
+                return 2
     live = a.mic is not None
     if not live and not a.input:
         ap.error("--input is required unless --mic is given")
