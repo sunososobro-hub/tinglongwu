@@ -34,6 +34,7 @@ class HwInfo:
     vram_mib: int | None  # total VRAM of GPU 0
     ram_mib: int | None  # physical RAM
     cores: int  # logical CPU cores
+    driver: str | None = None  # NVIDIA driver version ("457.49"), None if unknown
 
 
 @dataclass
@@ -83,9 +84,12 @@ def ram_mib() -> int | None:
         return None
 
 
-def probe(gpu=gpu_info, ram=ram_mib, cores=os.cpu_count) -> HwInfo:
+def probe(gpu=gpu_info, ram=ram_mib, cores=os.cpu_count, driver=None) -> HwInfo:
     name, vram = gpu()
-    return HwInfo(gpu=name, vram_mib=vram, ram_mib=ram(), cores=cores() or 1)
+    if driver is None:
+        from .device import driver_version as driver
+    return HwInfo(gpu=name, vram_mib=vram, ram_mib=ram(), cores=cores() or 1,
+                  driver=driver() if name else None)
 
 
 def recommend(hw: HwInfo) -> Tier:
@@ -101,16 +105,22 @@ def recommend(hw: HwInfo) -> Tier:
             if ASR_VRAM_MIB["large-v3-turbo"] + need > budget:
                 excluded[f"{mt} (GPU)"] = (f"needs ~{need} MiB VRAM next to Whisper turbo "
                                           f"({ASR_VRAM_MIB['large-v3-turbo']} MiB), {vram} MiB total")
-    if vram is not None and vram >= GPU_MIN_VRAM_MIB:
+    from .device import driver_too_old, gpu_problem
+
+    old_driver = driver_too_old(hw.driver)  # GPU is there but CUDA 12 cannot use it (#89): CPU tier + how to fix
+    if vram is not None and vram >= GPU_MIN_VRAM_MIB and not old_driver:
         return Tier("gpu", "cuda", "large-v3-turbo", "hymt2",
                     f"{hw.gpu} with {vram} MiB VRAM (>= {GPU_MIN_VRAM_MIB} MiB)", excluded)
     if vram is None:
         why = "no NVIDIA GPU found"
+    elif old_driver:
+        why = f"{hw.gpu}: {gpu_problem(hw.driver)}"
     else:
         why = f"{hw.gpu} has {vram} MiB VRAM (< {GPU_MIN_VRAM_MIB} MiB)"
     if hw.ram_mib is not None and hw.ram_mib < CPU_MIN_RAM_FOR_HYMT_MIB:
         excluded["hymt2 (CPU)"] = f"needs ~{HYMT_CPU_RAM_MIB} MiB RAM, {hw.ram_mib} MiB total"
-    return Tier("cpu", "cpu", "small", "opus", why + ": CPU mode", excluded)
+    return Tier("cpu", "cpu", "small", "opus", why + (" CPU mode until then" if old_driver else ": CPU mode"),
+                excluded)
 
 
 def describe(hw: HwInfo, tier: Tier) -> str:

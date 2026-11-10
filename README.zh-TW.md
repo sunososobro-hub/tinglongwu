@@ -141,7 +141,9 @@ tlwu-setup --whisper small --langs ru --to zh
 
 **選用 M2M-100 引擎（`--engine m2m`）**：不經英文中介，直接翻譯，**MIT 授權**（可商用）。`tlwu-setup --m2m` 會下載 facebook/m2m100_1.2B 並以 `ct2-transformers-converter` 轉換；轉換需要 `torch` 與 `transformers`，它們不是執行期相依套件：請在拋棄式 venv 安裝，並用 `TLWU_CONVERTER_PYTHON` 指向它。僅從 `models/m2m-1.2B/` 載入。 轉換只讀 `model.safetensors`（釘住 Hugging Face 官方 SFconvertbot PR 的 commit，因為 `main` 只有 pickle 的 `pytorch_model.bin`），不會反序列化任何 pickle；沒有釘住的 safetensors 版本時 `tlwu-setup` 拒絕轉換。
 
-**Qwen LLM 引擎（預設 `--engine auto`）**：本機 Qwen3 模型（llama.cpp、Q4_K_M GGUF）直接由來源語言翻成中文（不經英文中介、關閉思考模式、防重複迴圈），再依 `--zh-variant` 以 OpenCC 轉換。準確度遠高於 OPUS，極短句也不會出現亂碼。`tlwu-setup --qwen` 會把 Qwen3-8B 與 Qwen3-4B（約 7.5 GB）下載到模型目錄；另需安裝 `llama-cpp-python`（CUDA 版）。`auto` 會在 Whisper 載入後檢查剩餘 VRAM：剩 5.8 GB 以上用 Qwen3-8B，3.5 GB 以上用 Qwen3-4B，否則用 OPUS（CPU 模式或 Qwen 載入失敗時亦同）；啟動時會印一行說明選了哪個引擎。可用 `--engine qwen`（8B）、`qwen4b`、`opus`、`m2m` 強制指定。
+**GPU 預設引擎：Hy-MT2**（有可用 NVIDIA GPU 時的 `--engine auto`，或 `--engine hymt`）：騰訊 Hy-MT2-1.8B（llama.cpp、Q4_K_M GGUF，`tlwu-setup --hymt`，下載約 1.1 GB）直接由來源語言翻成目標語言，支援 zh/en/ru/ja/ko/de/fr/es。在我們的 200 句評測中品質與 Qwen3-8B 相當（COMET x100：ru 86.5 對 86.5、en 89.1 對 88.8、ja 88.3 對 87.8），速度約快 4 倍（每句 0.19 秒對 0.73 秒），VRAM 約 1.5 GB（Qwen3-8B 為 5.1 GB），所以 Whisper turbo + Hy-MT2 在 4 GB 顯示卡上就放得下。`auto` 需要 Whisper 載入後還剩約 2 GB VRAM；沒安裝 Hy-MT2 時退回下面的 Qwen 分級，再不行用 OPUS。CPU 模式預設仍是 OPUS。
+
+**Qwen LLM 引擎（選用，`--engine qwen`／`qwen4b`；只有沒安裝 Hy-MT2 時 `auto` 才會用）**：本機 Qwen3 模型（llama.cpp、Q4_K_M GGUF）直接由來源語言翻成中文（不經英文中介、關閉思考模式、防重複迴圈），再依 `--zh-variant` 以 OpenCC 轉換。準確度遠高於 OPUS，極短句也不會出現亂碼。`tlwu-setup --qwen` 會把 Qwen3-8B 與 Qwen3-4B（約 7.5 GB）下載到模型目錄；另需安裝 `llama-cpp-python`（CUDA 版）。`auto` 會在 Whisper 載入後檢查剩餘 VRAM：剩 5.8 GB 以上用 Qwen3-8B，3.5 GB 以上用 Qwen3-4B，否則用 OPUS（CPU 模式或 Qwen 載入失敗時亦同）；啟動時會印一行說明選了哪個引擎。可用 `--engine qwen`（8B）、`qwen4b`、`opus`、`m2m` 強制指定。
 
 
 #### 模型來源釘選

@@ -22,7 +22,9 @@ from .translate import Translation, Translator, zh_convert
 QWEN8B_MIN_FREE_MIB = 5800
 QWEN4B_MIN_FREE_MIB = 3500
 
-ENGINES = ("auto", "qwen", "qwen4b", "opus", "m2m")
+ENGINES = ("auto", "hymt", "qwen", "qwen4b", "opus", "m2m")
+# Hy-MT2-1.8B Q4_K_M uses ~1.5 GB VRAM (#66 benchmark; hwprobe.MT_VRAM_MIB) + 0.5 GB headroom (hwprobe.HEADROOM_MIB)
+HYMT_MIN_FREE_MIB = 2000
 
 
 @dataclass(frozen=True)
@@ -73,15 +75,18 @@ def model_path(models_dir: Path, name: str) -> Path:
 
 
 def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_vram_mib) -> tuple[str, str]:
-    """Return (engine, reason); engine in qwen3-8b | qwen3-4b | opus | m2m.
+    """Return (engine, reason); engine in hymt2 | qwen3-8b | qwen3-4b | opus | m2m.
 
-    auto: cuda + free >= 8B threshold -> qwen3-8b; free >= 4B threshold -> qwen3-4b; else opus.
-    A tier whose GGUF is not installed is skipped. Explicit engines are returned as asked.
+    auto: cuda + Hy-MT2 installed + free >= HYMT_MIN_FREE_MIB -> hymt2 (#66: same quality as Qwen3-8B, ~4x
+    faster, ~1.5 GB VRAM). Without the Hy-MT2 GGUF the older Qwen tiers still apply (8B, then 4B, by free
+    VRAM), else opus. A tier whose GGUF is not installed is skipped. Explicit engines are returned as asked.
     """
     if requested == "opus":
         return "opus", "requested"
     if requested == "m2m":
         return "m2m", "requested"
+    if requested == "hymt":
+        return "hymt2", "requested"
     if requested == "qwen":
         return "qwen3-8b", "requested"
     if requested == "qwen4b":
@@ -91,6 +96,13 @@ def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_v
     free = free_mib()
     if free is None:
         return "opus", "could not read free VRAM"
+    from .hymt import hymt_path
+
+    if free >= HYMT_MIN_FREE_MIB:
+        if hymt_path(models_dir).exists():
+            return "hymt2", f"{free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
+        print(f"tlwu: Hy-MT2 (the recommended GPU translation engine) is not installed "
+              f"({hymt_path(models_dir)} missing); run `tlwu-setup --hymt` once (with network).", file=sys.stderr)
     for name in ("qwen3-8b", "qwen3-4b"):
         spec = QWEN_SPECS[name]
         if free < spec.min_free_mib:
@@ -100,8 +112,8 @@ def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_v
                   f"run `tlwu-setup --qwen` once (with network).", file=sys.stderr)
             continue
         return name, f"{free} MiB VRAM free >= {spec.min_free_mib} MiB"
-    return "opus", (f"{free} MiB VRAM free: below {QWEN4B_MIN_FREE_MIB} MiB for qwen3-4b "
-                    "or no Qwen model installed")
+    return "opus", (f"{free} MiB VRAM free: below {HYMT_MIN_FREE_MIB} MiB for hymt2 "
+                    "or no Hy-MT2/Qwen model installed")
 
 
 def build_system_prompt(src: str, tgt: str, zh_variant: str = "tw") -> str:

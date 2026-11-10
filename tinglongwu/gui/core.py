@@ -22,7 +22,7 @@ DEFAULTS = {
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "qwen", "qwen4b", "opus"]
+ENGINES = ["auto", "hymt", "qwen", "qwen4b", "opus"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
@@ -42,14 +42,29 @@ def target_for_locale(tag: str | None) -> str:
     return "en"
 
 
+def report_info(s: dict) -> dict:
+    """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
+    return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",
+            "Engine": s.get("engine"), "Model": s.get("model"), "Source": s.get("source"),
+            "Live draft": "on" if s.get("live_draft") else "off"}
+
+
 def settings_path() -> Path:
     base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "tinglongwu" / "gui.json"
 
 
-def load_settings(path=None) -> dict:
-    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default."""
+def _gpu_usable() -> bool:
+    from ..device import cuda_device_count
+
+    return cuda_device_count() > 0
+
+
+def load_settings(path=None, gpu=_gpu_usable) -> dict:
+    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default.
+    First run (no saved file) without a usable GPU: live draft starts off, it doubles the work on a CPU."""
     out = dict(DEFAULTS)
+    fresh = True
     try:
         from ..i18n import _system_tag
 
@@ -59,6 +74,7 @@ def load_settings(path=None) -> dict:
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
         if isinstance(data, dict):
+            fresh = False
             for k, dv in DEFAULTS.items():
                 v = data.get(k)
                 if v is None:
@@ -71,6 +87,11 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    if fresh:
+        try:
+            out["live_draft"] = bool(gpu())
+        except Exception:  # noqa: BLE001
+            pass
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     return out
