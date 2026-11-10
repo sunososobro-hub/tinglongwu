@@ -127,6 +127,9 @@ tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --n
 pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
 ```
 `requirements.txt`（只有 `==` 鎖版、無雜湊）仍可使用。以 `python scripts/make_lock.py` 重新產生 lock。（`httpx2`/`httpcore2` 不是仿冒套件：它們是 Pydantic 維護的 httpx 分支，`huggingface_hub` 2.x 依賴它們。）
+
+更新 Windows 開發版（在 `dev` 分支上 git clone 的資料夾）：雙擊 **`update.bat`**，會快轉更新 `dev`、重裝鎖版套件並啟動圖形介面（有本機修改或不在 `dev` 分支時會顯示原因並停止）。
+
 - **Windows**：不需額外安裝（WASAPI 擷取預設喇叭）。
 - **Linux**：PipeWire（含 pipewire-pulse）或 PulseAudio。預設擷取預設輸出的 monitor；用 `pactl list sources short` 查看，以 `--capture-device <子字串>` 指定。
 - **macOS**：安裝 [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)，在「音訊 MIDI 設定」建立多重輸出裝置（喇叭＋BlackHole）並設為輸出。tlwu 會擷取名稱含 `BlackHole` 的裝置。ScreenCaptureKit 為未來選項。
