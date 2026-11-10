@@ -18,6 +18,7 @@ DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "theme": "dark",
+    "floating_bar": False, "log_font_size": 14,
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -26,6 +27,7 @@ PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); cha
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 FONT_MIN, FONT_MAX = 10, 96
+HISTORY_LINES = 200  # finals kept in the main-window subtitle log (scroll back to re-read)
 
 
 def target_for_locale(tag: str | None) -> str:
@@ -67,6 +69,7 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     return out
 
 
@@ -80,11 +83,17 @@ def save_settings(s: dict, path=None) -> bool:
         return False
 
 
-def clamp_font(n) -> int:
+def clamp_font(n, default=None) -> int:
     try:
         return max(FONT_MIN, min(FONT_MAX, int(n)))
     except (TypeError, ValueError):
-        return DEFAULTS["font_size"]
+        return DEFAULTS["font_size"] if default is None else default
+
+
+def follow_newest(yview_last: float) -> bool:
+    """Auto-scroll the subtitle log to the newest line only while the view already shows the bottom
+    (the user has not scrolled up to re-read something)."""
+    return yview_last >= 0.999
 
 
 def settings_to_argv(s: dict) -> list[str]:
@@ -177,3 +186,35 @@ class SubtitleState:
     def last_text(self) -> str:
         rows = self.lines()
         return rows[-1][0] if rows else ""
+
+
+class SubtitleLog:
+    """Scrolling subtitle history for the main window (CLI-like): the last `max_lines` finals, oldest first,
+    then the current draft, which its final replaces in place."""
+
+    def __init__(self, max_lines: int = HISTORY_LINES):
+        self.max_lines = max_lines
+        self.finals: list[tuple[str, str]] = []  # (src, target)
+        self.draft: tuple[str, str] | None = None
+
+    def apply(self, ev: tuple) -> bool:
+        """Apply a queue event; True if the log changed."""
+        kind = ev[0]
+        if kind == "draft":
+            self.draft = (ev[1], ev[2])
+        elif kind == "final":
+            self.draft = None
+            self.finals.append((ev[1], ev[2]))
+            del self.finals[:-self.max_lines]
+        elif kind == "clear" and self.draft is not None:
+            self.draft = None
+        else:
+            return False
+        return True
+
+    def rows(self) -> list[tuple[str, str, bool]]:
+        """[(src, target_text, is_draft)], oldest first; the draft (if any) is the last row."""
+        out = [(src, tgt, False) for src, tgt in self.finals]
+        if self.draft:
+            out.append((self.draft[0], self.draft[1], True))
+        return out
