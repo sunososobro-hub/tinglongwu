@@ -59,7 +59,7 @@ def test_main_refuses_cable_output_mic(monkeypatch, capsys):
 
 def test_main_requires_input_without_mic(capsys):
     with pytest.raises(SystemExit):
-        proto.main([])
+        proto.main(["--no-vmic"])  # Linux CI has no pactl: skip the virtual-mic step so the input check is what fires
 
 
 def test_list_mics(monkeypatch, capsys):
