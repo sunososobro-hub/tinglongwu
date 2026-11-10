@@ -106,6 +106,15 @@ def capture_segments(source, segmenter, stop: threading.Event) -> Iterator[np.nd
         yield item
 
 
+def is_source_zh(text: str) -> bool:
+    """False when the text has Latin/Cyrillic/kana letters but no Chinese characters (not our speaker's Chinese)."""
+    import re
+
+    from .logic import has_cjk
+
+    return has_cjk(text) or not re.search(r"[^\W\d_]", text)
+
+
 def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float = 1e-3,
                          gate: PlaybackGate | None = None) -> Iterator[str]:
     """Each finished segment -> Chinese text (silence, Whisper stock hallucinations and, with `gate`, segments
@@ -122,5 +131,7 @@ def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float
         if tr is None or not tr.text.strip():
             continue
         if is_hallucination(tr.text, rms, getattr(tr, "no_speech", 0.0)):
+            continue
+        if not is_source_zh(tr.text):  # the other side's speech leaked into the mic: Whisper(zh) "translated" it
             continue
         yield tr.text.strip()
