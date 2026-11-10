@@ -102,3 +102,14 @@ def test_follow_without_ru_model_degrades(capsys, monkeypatch):
     assert a.ru_voice is False and "tlwu-setup --vosk-tts-ru" in capsys.readouterr().err
     f = FollowTTS({"en": lambda: (_ for _ in ()).throw(AssertionError("en must not load"))})
     assert list(f.speak("Привет")) == []  # Russian text: no crash, nothing spoken
+
+
+@pytest.mark.parametrize("lang", ["en", "ru", "zh-TW"])
+def test_meeting_menu_preview_route_and_enter_hint(lang):
+    sh = (ROOT / "scripts/linux_menu.sh").read_text("utf-8")
+    i18n = (ROOT / f"scripts/i18n/{lang}.sh").read_text("utf-8")
+    for k in ("M_MEET_ASK_PREVIEW", "M_MEET_ROUTE", "M_MEET_OFF", "M_MEET_ENTER_HINT"):
+        assert f"{k}=" in i18n and k in sh
+    meet = sh[sh.index("PREV=()"):sh.index("  exit\nfi", sh.index("PREV=()"))]
+    assert '"${REV[@]}" "${AUTO[@]}" "${PREV[@]}"' in meet and "M_MEET_ROUTE" in meet
+    assert 'pv=""' in meet and "[ -n \"$pv\" ]" in meet   # default = no preview

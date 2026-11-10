@@ -217,8 +217,15 @@ if [ "$BOTH" = "1" ]; then
   LISTEN_PID=$!
   trap 'kill $LISTEN_PID 2>/dev/null' EXIT INT TERM
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
+  PREV=(); PVN="$(m M_MEET_OFF)"
+  if [ "$IS_MAC" != "1" ]; then   # optional local preview, default OFF (it would mix with the remote voice)
+    pv=""; read -rp "$(mp M_MEET_ASK_PREVIEW)" pv || pv=""
+    [ -n "$pv" ] && { PREV=(--preview-device "$pv"); PVN="$pv"; }
+  fi
   m M_MEETING_BANNER "$MM"
-  "${REV[@]}" "${AUTO[@]}"
+  m M_MEET_ROUTE "$MM" "$PVN"
+  [ "${#AUTO[@]}" -eq 0 ] && m M_MEET_ENTER_HINT
+  "${REV[@]}" "${AUTO[@]}" "${PREV[@]}"
   exit
 fi
 if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
