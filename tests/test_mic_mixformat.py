@@ -110,6 +110,9 @@ def test_capture_source_applies_the_patch(monkeypatch):
     """SoundcardSource.frames() on Windows records from a non-extensible microphone instead of raising."""
     import numpy as np
 
+    from tinglongwu.capture.base import to_mono_16k
+
+    to_mono_16k(np.zeros((480, 2), dtype=np.float32), sc.NATIVE_RATE)  # load the resampler (scipy) before faking win32
     mf, ptr, vtbl, _ = fake_backend(extensible=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sc, "_load_ole32", lambda: SimpleNamespace(CoInitializeEx=lambda *a: 0,
