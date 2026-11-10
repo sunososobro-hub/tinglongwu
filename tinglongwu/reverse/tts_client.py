@@ -9,9 +9,10 @@ from pathlib import Path
 
 class TTSClient:
     def __init__(self, tts_python: str, model: str, ref: str, ref_text: str = "", xvec_only: bool = False,
-                 chunk: int = 12):
+                 chunk: int = 12, device: str = "cuda"):
         worker = Path(__file__).with_name("tts_worker.py")
-        cmd = [tts_python, str(worker), "--model", model, "--ref", ref, "--chunk", str(chunk)]
+        cmd = [tts_python, str(worker), "--model", model, "--ref", ref, "--chunk", str(chunk),
+               "--device", device]
         if xvec_only:
             cmd.append("--xvec-only")
         else:

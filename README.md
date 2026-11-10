@@ -224,6 +224,23 @@ To reproduce (needs the bench venv, the data under `%USERPROFILE%/tlwu-eval`, an
 - **Traditional Chinese** is converted post-hoc with OpenCC from Simplified model output, so word choice is approximate.
 - Live capture backends are implemented but only `--file` is covered by automated tests (no audio hardware in CI).
 
+## Linux reverse mode (experimental, untested)
+
+> UNTESTED: written on Windows without a Linux machine; only the command construction is unit-tested. Expect rough edges.
+
+Reverse mode (you speak Chinese, Russian speech goes into Meet/Zoom) on a CPU-only Linux laptop, e.g. AMD Ryzen 7040:
+
+```
+sudo apt install pulseaudio-utils            # pactl (PipeWire: pipewire-pulse already provides it)
+tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # one-time, needs network
+python -m tinglongwu.reverse.proto --list-mics
+python -m tinglongwu.reverse.proto --mic "<your mic substring>" --compute cpu --mt opus     --tts-python /path/to/tts-venv/bin/python --tts-model /path/to/qwen3-tts-0.6b-base     --ref ref_ru.wav --ref-text "@ref_ru.txt"
+```
+
+- On Linux the program creates a virtual microphone automatically (`pactl load-module module-null-sink sink_name=tlwu_sink` + `module-remap-source ... source_name=tlwu_mic`), plays the Russian audio to `tlwu_sink`, and unloads both modules on exit. In Meet/Zoom choose the microphone `tlwu_mic`. `--no-vmic` disables this (then pass `--device <sink substring>`); `--list-speakers` lists output devices. Windows keeps VB-CABLE.
+- Without CUDA, translation uses the OPUS/Argos pivot zh -> en -> ru (needs the four `--pair` models above); Whisper defaults to `small`. `--mt qwen` forces Qwen3 (GPU).
+- CPU TTS (Qwen3-TTS 0.6B, Apache-2.0 license) works through plain `qwen_tts` but is slow: measured real-time factor about 4 (about 17 s to synthesize 4 s of speech) on a 14-thread Windows PC, so expect noticeable delay per sentence; faster Russian TTS engines are future work.
+
 ## Consent
 Get consent from participants before capturing calls or meetings; recording and transcription laws vary by jurisdiction.
 

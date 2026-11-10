@@ -192,7 +192,36 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         previewer.enabled = False
 
 
+def build_translator(kind: str, device: str, mdir, qwen: str):
+    """zh->ru translator. qwen (GPU, best) or opus (Argos/OPUS pivot zh->en->ru on CPU; needs
+    `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`). auto = qwen on CUDA, opus otherwise."""
+    if kind == "auto":
+        kind = "qwen" if device == "cuda" else "opus"
+    if kind == "qwen":
+        from ..qwen import QwenTranslator
+
+        mt = QwenTranslator(mdir, qwen, "tw", device)
+        mt.preload()
+        return mt
+    from ..translate import PivotTranslator
+
+    mt = PivotTranslator(mdir, "tw", device="cpu" if device != "cuda" else "cuda")
+    mt.preload("zh", "ru")  # fail early if the models are missing
+    mt.preload("ru", "zh")  # back-translation for the confirm step
+    mt.history, mt._pair = [], None  # same surface as QwenTranslator for confirm.back_translate
+    return mt
+
+
 def main(argv=None) -> int:
+    vm: list = []
+    try:
+        return _main(argv, vm)
+    finally:
+        for v in vm:
+            v.close()
+
+
+def _main(argv, vm) -> int:
     ap = argparse.ArgumentParser(prog="tinglongwu.reverse.proto")
     ap.add_argument("--input", default=None, help="dir of zh wavs (16 kHz mono) or one wav (not needed with --mic)")
     ap.add_argument("--mic", nargs="?", const="", default=None, metavar="DEVICE",
@@ -201,7 +230,14 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default=None, help="output dir (default: reverse_out)")
     ap.add_argument("--report", default=None, help="JSON result path (default <out>/result.json)")
     ap.add_argument("--models-dir", default=None)
-    ap.add_argument("--whisper", default="large-v3-turbo")
+    ap.add_argument("--whisper", default=None, help="default: large-v3-turbo on CUDA, small on CPU")
+    ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"],
+                    help="where ASR/MT/TTS run; auto = CUDA if usable, else CPU")
+    ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
+                    help="translator; auto = Qwen3 on CUDA, OPUS/Argos pivot zh->en->ru on CPU")
+    ap.add_argument("--no-vmic", action="store_true",
+                    help="Linux: do not create the tlwu_sink/tlwu_mic virtual microphone (use --device yourself)")
+    ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
     ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
@@ -226,6 +262,23 @@ def main(argv=None) -> int:
         for n in list_mic_names():
             print(n)
         return 0
+    if a.list_speakers:
+        import soundcard as sc
+
+        for sp in sc.all_speakers():
+            print(sp.name)
+        return 0
+    from .vmic import SINK, VirtualMic, is_linux
+
+    if is_linux() and not a.no_vmic and not (a.no_play or a.no_tts) and a.device is None:
+        try:
+            vm.append(VirtualMic().open())
+        except RuntimeError as e:
+            print(f"error: could not create the virtual microphone: {e}", file=sys.stderr)
+            return 2
+        a.device = SINK
+        print(f"virtual microphone created: select 'tlwu_mic' as the microphone in Meet/Zoom "
+              f"(removed when this program exits)", flush=True)
     live = a.mic is not None
     if not live and not a.input:
         ap.error("--input is required unless --mic is given")
@@ -263,10 +316,14 @@ def main(argv=None) -> int:
     from .. import offline  # noqa: F401  (applies offline env + network guard)
     from ..asr import FasterWhisperRecognizer
     from ..models import models_dir
-    from ..qwen import QwenTranslator
     from .logic import split_sentences, translate_ru
     from .tts_client import TTSClient
 
+    from ..device import resolve_device
+
+    dev = resolve_device(a.compute)
+    a.whisper = a.whisper or ("large-v3-turbo" if dev == "cuda" else "small")
+    print(f"compute device: {dev}", flush=True)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     src = Path(a.input) if a.input else None
@@ -276,16 +333,16 @@ def main(argv=None) -> int:
                  "vram_mib": {"baseline": vram_used_mib()}}
     with VramSampler() as vs:
         t = time.perf_counter()
-        asr = FasterWhisperRecognizer(mdir, a.whisper, "zh", "cuda")
+        asr = FasterWhisperRecognizer(mdir, a.whisper, "zh", dev)
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()
-        mt = QwenTranslator(mdir, a.qwen, "tw", "cuda")
-        mt.preload()
+        mt = build_translator(a.mt, dev, mdir, a.qwen)
         res["load_s"]["qwen"] = round(time.perf_counter() - t, 2)
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
-        tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only, a.chunk)
+        tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only, a.chunk,
+                                        "cuda" if dev == "cuda" else "cpu")
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()

@@ -224,6 +224,23 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 - **繁體中文**是以 OpenCC 對簡體模型輸出做事後轉換，用詞僅近似。
 - 即時擷取後端已實作，但自動測試只涵蓋 `--file`（無音訊硬體）。
 
+## Linux 反向模式（實驗性、未測試）
+
+> 未測試：在沒有 Linux 的 Windows 機器上撰寫，只有指令組裝有單元測試，可能有粗糙處。
+
+在無 NVIDIA GPU 的 Linux 筆電（如 AMD Ryzen 7040）上跑反向模式（你說中文、俄文語音送進 Meet/Zoom）：
+
+```
+sudo apt install pulseaudio-utils            # pactl（PipeWire 已由 pipewire-pulse 提供）
+tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # 一次性，需要網路
+python -m tinglongwu.reverse.proto --list-mics
+python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute cpu --mt opus     --tts-python /path/to/tts-venv/bin/python --tts-model /path/to/qwen3-tts-0.6b-base     --ref ref_ru.wav --ref-text "@ref_ru.txt"
+```
+
+- Linux 上程式會自動建立虛擬麥克風（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄文語音播到 `tlwu_sink`，結束時卸載兩個模組。在 Meet/Zoom 選麥克風 `tlwu_mic`。`--no-vmic` 可關閉（改用 `--device <sink 子字串>`）；`--list-speakers` 列出輸出裝置。Windows 仍用 VB-CABLE。
+- 沒有 CUDA 時，翻譯改用 OPUS/Argos 樞紐 zh -> en -> ru（需上面四個 `--pair` 模型），Whisper 預設 `small`。`--mt qwen` 可強制用 Qwen3（GPU）。
+- CPU 版 TTS（Qwen3-TTS 0.6B，Apache-2.0 授權）經由純 `qwen_tts` 可運作但偏慢：在 14 執行緒的 Windows 電腦實測即時係數約 4（合成 4 秒語音約 17 秒），每句會有明顯延遲；更快的俄語 TTS 引擎留待後續。
+
 ## 同意聲明
 擷取通話或會議前，請先取得參與者同意；各地對錄音與逐字轉錄的法規不同。
 
