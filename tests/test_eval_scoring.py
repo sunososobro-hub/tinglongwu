@@ -87,3 +87,13 @@ def test_overall_weighted_and_renormalised_when_a_metric_is_missing():
         sc.overall({"tts": 50})
     with pytest.raises(ValueError):
         sc.overall({"asr": None})
+
+
+def test_kana_guard_flags_zh_outputs_with_kana():
+    outs = ["今天天氣很好", "これは日本語です", "我去買ケーキ"]
+    assert sc.kana_rate(outs) == pytest.approx(66.67)
+    assert sc.kana_colour(sc.kana_rate(outs)) == "red"
+    clean = sc.kana_rate(["今天天氣很好", "謝謝"])
+    assert clean == 0 and sc.kana_colour(clean) == "green"
+    with pytest.raises(ValueError):
+        sc.kana_rate([])
