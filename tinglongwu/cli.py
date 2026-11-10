@@ -77,6 +77,8 @@ def parse_args(argv=None):
     p.add_argument("--report", action="store_true",
                    help="open the browser on a pre-filled GitHub issue (version, OS, recent log); "
                         "nothing is uploaded, you review and submit it yourself")
+    p.add_argument("--probe", action="store_true",
+                   help="show this machine's GPU/VRAM, RAM and CPU and the recommended models, then exit (offline)")
     a = p.parse_args(argv)
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -231,6 +233,12 @@ def main(argv=None) -> int:
         from .report import open_report
 
         open_report(info={"Mode": "cli", "Language pair": f"{a.lang} -> {a.to}", "Engine": a.engine})
+        return 0
+    if a.probe:
+        from .hwprobe import describe, probe, recommend
+
+        hw = probe()
+        print(describe(hw, recommend(hw)))
         return 0
     from . import offline
 
