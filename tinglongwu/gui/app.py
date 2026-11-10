@@ -9,9 +9,11 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
+from tkinter import font as tkfont
 
-from .core import (ENGINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer, QueueSink, SubtitleState,
-                   clamp_font, load_settings, save_settings, settings_to_argv)
+from .core import (ENGINES, FONT_PRESETS, HISTORY_LINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer,
+                   QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
+                   rows_after_drag, save_settings, settings_to_argv)
 
 POLL_MS = 50
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
@@ -19,7 +21,8 @@ FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefault
 
 
 class Overlay:
-    """Borderless always-on-top subtitle bar."""
+    """Borderless always-on-top subtitle bar with scroll-back: the last HISTORY_LINES finals stay in a Text
+    widget; the newest line is followed unless the user scrolled up (mouse wheel / scrollbar) to re-read."""
 
     def __init__(self, master: tk.Tk, app: "App"):
         self.app = app
@@ -34,12 +37,23 @@ class Overlay:
             pass
         w.configure(bg=BG)
         self.width = int(w.winfo_screenwidth() * 0.7)
-        tk.Frame(w, width=self.width, height=1, bg=BG).pack()  # fixes the bar width
-        wrap = self.width - 24
-        self.src = tk.Label(w, bg=BG, fg=FG_SRC, justify="center", wraplength=wrap)
-        self.l1 = tk.Label(w, bg=BG, fg=FG_FINAL, justify="center", wraplength=wrap)
-        self.l2 = tk.Label(w, bg=BG, fg=FG_FINAL, justify="center", wraplength=wrap)
-        self.labels = (self.l1, self.l2)
+        self.rows = clamp_rows(s.get("overlay_lines", 4))
+        # top edge: drag it to change how many rows are visible (the bar keeps its bottom edge)
+        self.grip = tk.Frame(w, height=6, bg="#2a2a2a", cursor="sb_v_double_arrow")
+        self.grip.pack(fill="x")
+        self.box = tk.Frame(w, width=self.width, height=100, bg=BG)
+        self.box.pack_propagate(False)
+        self.box.pack()
+        self.scroll = tk.Scrollbar(self.box, orient="vertical", width=10)
+        self.text = tk.Text(self.box, bg=BG, fg=FG_FINAL, bd=0, highlightthickness=0, wrap="word", padx=12,
+                            pady=4, cursor="arrow", takefocus=0, yscrollcommand=self.scroll.set)
+        self.scroll.configure(command=self.text.yview)
+        self.scroll.pack(side="right", fill="y")
+        self.text.pack(side="left", fill="both", expand=True)
+        self.text.tag_configure("final", foreground=FG_FINAL, justify="center", spacing3=4)
+        self.text.tag_configure("draft", foreground=FG_DRAFT, justify="center", spacing3=4)
+        self.text.tag_configure("src", foreground=FG_SRC, justify="center")
+        self.text.configure(state="disabled")
         self.bottom = None  # bottom edge kept when the bar grows (None once dragged: keep the top)
         self.set_font(s["font_size"])
         self.menu = tk.Menu(w, tearoff=0)
@@ -54,19 +68,24 @@ class Overlay:
         self.menu.add_checkbutton(label="Pause display", variable=self.var_pause, command=self.on_pause)
         self.menu.add_separator()
         self.menu.add_command(label="Quit", command=app.quit)
-        for wd in (w, self.src, self.l1, self.l2):
+        for wd in (w, self.box, self.text):
             wd.bind("<ButtonPress-1>", self._press)
             wd.bind("<B1-Motion>", self._drag)
             wd.bind("<ButtonRelease-1>", self._release)
             wd.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
-            wd.bind("<Control-MouseWheel>", lambda e: self.bump_font(2 if e.delta > 0 else -2))
-            wd.bind("<Control-Button-4>", lambda e: self.bump_font(2))
-            wd.bind("<Control-Button-5>", lambda e: self.bump_font(-2))
+            wd.bind("<Control-MouseWheel>", lambda e: self._font_wheel(2 if e.delta > 0 else -2))
+            wd.bind("<Control-Button-4>", lambda e: self._font_wheel(2))
+            wd.bind("<Control-Button-5>", lambda e: self._font_wheel(-2))
+        self.grip.bind("<ButtonPress-1>", self._grip_press)
+        self.grip.bind("<B1-Motion>", self._grip_drag)
+        self.grip.bind("<ButtonRelease-1>", lambda _e: self._release(None))
         for k in ("plus", "equal", "KP_Add"):
             w.bind(f"<KeyPress-{k}>", lambda e: self.bump_font(2))
         for k in ("minus", "KP_Subtract"):
             w.bind(f"<KeyPress-{k}>", lambda e: self.bump_font(-2))
         self._dx = self._dy = 0
+        self._grip_y = 0
+        self._grip_rows = self.rows
         self.visible = False
         self._place_initial()
 
@@ -89,25 +108,56 @@ class Overlay:
 
     def _press(self, e):
         self._dx, self._dy = e.x_root - self.win.winfo_x(), e.y_root - self.win.winfo_y()
+        return "break"  # no text selection: dragging the bar moves it
 
     def _drag(self, e):
         self.bottom = None
         self.win.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+        return "break"
 
     def _release(self, _e):
         self.app.settings["x"], self.app.settings["y"] = self.win.winfo_x(), self.win.winfo_y()
+        return "break"
+
+    def _grip_press(self, e):
+        self._grip_y, self._grip_rows = e.y_root, self.rows
+        self.bottom = self.win.winfo_y() + self.win.winfo_height()  # resize upwards, bottom edge stays put
+
+    def _grip_drag(self, e):
+        rows = rows_after_drag(self._grip_rows, e.y_root - self._grip_y, self._line_px())
+        if rows != self.rows:
+            self.set_rows(rows)
+
+    def _line_px(self) -> int:
+        return self.font.metrics("linespace") + 4  # + spacing3
+
+    def set_rows(self, n: int):
+        self.rows = clamp_rows(n)
+        self.app.settings["overlay_lines"] = self.rows
+        self.box.configure(height=self.rows * self._line_px() + 8)
+        self._reanchor()
+        if self._at_end():
+            self._to_end()
 
     # -- content ------------------------------------------------------------------------------
     def set_font(self, n: int):
         n = clamp_font(n)
         self.app.settings["font_size"] = n
-        for lab in self.labels:
-            lab.configure(font=(FONT_FAMILY, n, "bold"))
-        self.src.configure(font=(FONT_FAMILY, max(9, n * 2 // 3)))
+        self.font = tkfont.Font(family=FONT_FAMILY, size=n, weight="bold")
+        for tag in ("final", "draft"):
+            self.text.tag_configure(tag, font=self.font)
+        self.text.tag_configure("src", font=(FONT_FAMILY, max(9, n * 2 // 3)))
+        self.set_rows(self.rows)
+        size_var = getattr(self.app, "v_font", None)
+        if size_var is not None:
+            size_var.set(font_preset(n))
 
     def bump_font(self, d: int):
         self.set_font(self.app.settings["font_size"] + d)
-        self._reanchor()
+
+    def _font_wheel(self, d: int):
+        self.bump_font(d)
+        return "break"  # Ctrl+wheel resizes; it must not also scroll the history
 
     def on_toggle_src(self):
         self.app.settings["show_src"] = self.var_src.get()
@@ -118,17 +168,31 @@ class Overlay:
         self.app.set_paused(self.var_pause.get())
 
     def render(self, state: SubtitleState):
-        rows = state.lines()
-        for lab in self.labels:
-            lab.pack_forget()
-        self.src.pack_forget()
-        if self.app.settings["show_src"] and state.source():
-            self.src.configure(text=state.source())
-            self.src.pack(fill="x", padx=12, pady=(6, 0))
-        for lab, (text, is_draft) in zip(self.labels, rows):
-            lab.configure(text=text, fg=FG_DRAFT if is_draft else FG_FINAL)
-            lab.pack(fill="x", padx=12, pady=(2, 4))
-        self._reanchor()
+        t = self.text
+        top = t.index("@0,0")
+        follow = self._at_end()
+        show_src = self.app.settings["show_src"]
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        rows = state.history()
+        for i, (src, text, is_draft) in enumerate(rows):
+            if show_src and src:
+                t.insert("end", src + "\n", "src")
+            t.insert("end", text + ("\n" if i < len(rows) - 1 else ""), "draft" if is_draft else "final")
+        t.configure(state="disabled")
+        if follow:
+            self._to_end()
+        else:
+            t.yview(top)  # the user is reading older lines: keep the same line at the top, do not jump
+
+    def _at_end(self) -> bool:
+        # the yview fractions are estimates for wrapped lines; "is the last line on screen" is exact
+        return self.text.dlineinfo("end-1c") is not None or follow_newest(self.text.yview()[1])
+
+    def _to_end(self):
+        # wrapped-line heights are only known after layout, so scroll once now and once when Tk is idle
+        self.text.yview_moveto(1.0)
+        self.text.after_idle(lambda: self.text.yview_moveto(1.0))
 
     def show(self):
         if not self.visible:
@@ -146,7 +210,7 @@ class App:
     def __init__(self):
         self.settings = load_settings()
         self.q: queue.Queue = queue.Queue()
-        self.state = SubtitleState(2)
+        self.state = SubtitleState(HISTORY_LINES)
         self.stop_ev = threading.Event()
         self.worker: threading.Thread | None = None
         self.closing = False
@@ -195,6 +259,11 @@ class App:
         self.v_live = tk.BooleanVar(value=s["live_draft"])
         ttk.Checkbutton(f, text="Live draft (uses more GPU)", variable=self.v_live).grid(
             row=7, column=1, columnspan=2, sticky="w")
+        ttk.Label(f, text="Subtitle size").grid(row=13, column=0, sticky="w", pady=(6, 0))
+        self.v_font = tk.StringVar(value=font_preset(s["font_size"]))
+        cb = ttk.Combobox(f, textvariable=self.v_font, values=list(FONT_PRESETS), state="readonly", width=18)
+        cb.grid(row=13, column=1, columnspan=2, sticky="we", pady=(6, 0))
+        cb.bind("<<ComboboxSelected>>", lambda _e: self.overlay.set_font(FONT_PRESETS[self.v_font.get()]))
         self.btn = ttk.Button(f, text="Start", command=self.toggle)
         self.btn.grid(row=9, column=0, columnspan=2, sticky="we", pady=(8, 2))
         self.btn_pause = ttk.Button(f, text="Pause", command=self.toggle_pause)
@@ -247,7 +316,7 @@ class App:
             self.v_status.set("Stopping...")
             return
         self.collect()
-        self.state = SubtitleState(2)
+        self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
         self.btn.configure(text="Stop")
