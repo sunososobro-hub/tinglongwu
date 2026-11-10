@@ -162,7 +162,7 @@ tlwu --to ko --no-vad --chunk 8        # target Korean via ru->en->ko (needs en-
 tlwu --file talk.mp3 --transcript-only > hyp.txt     # 只输出原文，每段一行
 python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CER）；--partial 对齐到最匹配的参考片段并报告覆盖率
 ```
-选项：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--lang`、`--to`、`--preset meeting|chat`（默认 meeting）、`--chunk`（最长段落秒数，默认依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音频设备子串）、`--device auto|cpu|cuda`（计算设备）、`--engine opus|m2m`、`--no-merge`、`--max-wait`（秒，默认依 preset）、`--stream`、`--stream-src`、`--debug-latency`。
+选项：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--quality auto|fast|balanced|quality`（未指定 `--model` 时按这台电脑自动选语音模型；默认 auto＝推荐值，可用 `--probe` 查看）、`--lang`、`--to`、`--preset meeting|chat`（默认 meeting）、`--chunk`（最长段落秒数，默认依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音频设备子串）、`--device auto|cpu|cuda`（计算设备）、`--engine opus|m2m`、`--no-merge`、`--max-wait`（秒，默认依 preset）、`--stream`、`--stream-src`、`--debug-latency`。
 
 **流式草稿**（`--stream`，默认关闭、实验性）：句子还在说时，用 Whisper（greedy）重识别当前累积的音频，并立刻翻译整段暂时结果（沿用同一翻译引擎），原地只显示一行灰色译文。`--stream-src` 另显示原文行（已确认前缀正常亮度、其余灰色；LocalAgreement 思路）。`--debug-latency` 在 stderr 记录“段落音频起点 → 首次译文草稿/最终行”的秒数。段落结束后由正式输出取代草稿。需交互式终端（ANSI）；草稿让位于正式 ASR/MT，会多占 GPU；配合 `--file` 时按真实速度播放。
 

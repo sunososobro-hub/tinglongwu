@@ -71,7 +71,7 @@ def test_save_settings_unwritable(tmp_path):
 def test_settings_to_argv_parses():
     from tinglongwu.cli import parse_args
 
-    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", engine="opus", glossary="g.txt", save=True)
+    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="opus", glossary="g.txt", save=True)
     a = parse_args(core.settings_to_argv(s))
     assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "opus", "g.txt", "")
     a = parse_args(core.settings_to_argv(dict(core.DEFAULTS, target="en", save=True, save_path="o.jsonl")))

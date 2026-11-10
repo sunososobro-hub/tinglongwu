@@ -123,6 +123,34 @@ def recommend(hw: HwInfo) -> Tier:
                 excluded)
 
 
+QUALITY_LEVELS = ("auto", "fast", "balanced", "quality")
+# Speech model per level (#81). balanced = the recommended tier. Source: #63 WER table (en/ja/ru: small
+# 7.0/11.8/14.0, turbo 5.8/5.1/9.3) -> turbo is the accuracy step above small on any hardware; fast is one size
+# below the recommended model (GPU small, CPU base); GPU quality is large-v3 when it fits next to Hy-MT2.
+FAST_ASR = {"gpu": "small", "cpu": "base"}
+
+
+def preset(level: str, hw: HwInfo) -> Tier:
+    """Tier for a Fast / Balanced / Quality choice on this machine; auto and balanced = recommend(hw).
+    Translation stays the tier's engine (GPU Hy-MT2, CPU OPUS - owner rule #63); only the speech model moves."""
+    tier = recommend(hw)
+    if level == "fast":
+        tier.asr = FAST_ASR[tier.name]
+        tier.reason += "; fast: smaller speech model, lowest delay"
+    elif level == "quality":
+        if tier.name == "cpu":
+            tier.asr = "large-v3-turbo"
+            tier.reason += "; quality: larger speech model, slower on a CPU"
+        elif (hw.vram_mib or 0) >= ASR_VRAM_MIB["large-v3"] + MT_VRAM_MIB[tier.mt] + HEADROOM_MIB:
+            tier.asr = "large-v3"
+            tier.reason += "; quality: largest speech model"
+        else:
+            tier.reason += "; quality: large-v3 does not fit in this VRAM next to the translation model"
+    elif level not in ("auto", "balanced"):
+        raise ValueError(f"unknown quality level {level!r} (use one of {', '.join(QUALITY_LEVELS)})")
+    return tier
+
+
 def describe(hw: HwInfo, tier: Tier) -> str:
     gb = (lambda m: "unknown" if m is None else f"{m / 1024:.1f} GB")
     lines = [f"GPU: {hw.gpu or 'none'} ({gb(hw.vram_mib)} VRAM)" if hw.gpu else "GPU: none (no NVIDIA driver)",
