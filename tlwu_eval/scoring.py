@@ -159,3 +159,22 @@ def overall(scores: dict) -> dict:
     return {"overall": round(value, 1), "colour": colour(value),
             "metrics": {k: {"score": round(v, 1), "weight": WEIGHTS[k], "colour": colour(v)} for k, v in have.items()},
             "missing": sorted(set(WEIGHTS) - set(have))}
+
+
+# ---------------------------------------------------------------- kana guard (#119)
+def has_kana(text: str) -> bool:
+    """True if text has any hiragana/katakana (U+3040-U+30FF): a zh output with kana means untranslated Japanese."""
+    return any("぀" <= c <= "ヿ" for c in text or "")
+
+
+def kana_rate(zh_outputs) -> float:
+    """Share of zh outputs containing kana, x100 with two decimals (e.g. 1 of 3 -> 33.33). 0 is the only pass."""
+    out = list(zh_outputs)
+    if not out:
+        raise ValueError("no zh outputs")
+    return round(100.0 * sum(1 for t in out if has_kana(t)) / len(out), 2)
+
+
+def kana_colour(rate: float) -> str:
+    """#119: any kana in zh output is a failure (red), no yellow band."""
+    return "red" if rate > 0 else "green"
