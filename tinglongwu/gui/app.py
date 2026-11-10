@@ -461,10 +461,9 @@ class App:
 
     def report_problem(self):
         from ..report import open_report
+        from .core import report_info
 
-        s = self.settings
-        open_report(info={"Mode": f"gui/{s['preset']}", "Language pair": f"{s['lang']} -> {s['target']}",
-                          "Engine": s["engine"]}, say=lambda m: self._status_text(t("gui_open_url", url=m[:80])))
+        open_report(info=report_info(self.settings), say=lambda m: self._status_text(t("gui_open_url", url=m[:80])))
 
     def collect(self):
         s = self.settings
