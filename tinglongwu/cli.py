@@ -59,8 +59,9 @@ def parse_args(argv=None):
     p.add_argument("--stream-src", action="store_true",
                    help="with --stream: also show the dim source-language draft line above the translation")
     p.add_argument("--debug-latency", action="store_true",
-                   help="with --stream: log to stderr the seconds from segment audio start to the first "
-                        "translated draft and to the final line")
+                   help="log to stderr per-stage times: ASR ms per segment, MT ms (each OPUS step, e.g. "
+                        "ru-en / en-zh) and queue wait per line; with --stream also the seconds from segment "
+                        "audio start to the first translated draft and to the final line")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -210,8 +211,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
             source = PacedSource(source)
     note("listening")
+    lat = (lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
-        stop_event=stop)
+        stop_event=stop, log=lat)
 
 
 def main(argv=None) -> int:

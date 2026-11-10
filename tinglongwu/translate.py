@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -222,22 +223,22 @@ class PivotTranslator(Translator):
         self._steps: dict[tuple[str, str], Callable[[str], str]] = {}
         self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output
         self._zh_words: dict[str, str] = {}
+        self.last_timing: list[tuple[str, float]] = []  # (pair, seconds) of the last translate(), --debug-latency
 
     def _step(self, s: str, t: str):
         if (s, t) not in self._steps:
             self._steps[(s, t)] = self._factory(s, t)
         return self._steps[(s, t)]
 
-    def _to(self, text: str, tgt: str) -> str:
+    def _to(self, text: str, tgt: str, timing: list) -> str:
         """en -> tgt; for zh with acronym protection (falls back to the plain translation)."""
-        step = self._step("en", tgt)
         if tgt == "zh":
             prot, mapping = protect_acronyms(text)
             if mapping:
-                back = restore_acronyms(step(prot), mapping)
+                back = restore_acronyms(self._timed("en", tgt, prot, timing), mapping)
                 if back is not None:
                     return back
-        return step(text)
+        return self._timed("en", tgt, text, timing)
 
     def _zh_word(self, w: str) -> str:
         if w not in self._zh_words:
@@ -248,19 +249,28 @@ class PivotTranslator(Translator):
         if src == tgt:
             return Translation(None, text)
         pivot = None
+        timing = []
         if src == "en":
-            out = self._to(text, tgt)
+            out = self._to(text, tgt, timing)
         elif tgt == "en":
-            out = self._step(src, tgt)(text)
+            out = self._timed(src, tgt, text, timing)
         else:
-            pivot = self._step(src, "en")(text)
-            out = self._to(pivot, tgt)
+            pivot = self._timed(src, "en", text, timing)
+            out = self._to(pivot, tgt, timing)
+        self.last_timing = timing
         if tgt == "zh":
             out = zh_artifacts(zh_convert(out, self.zh_variant), text, pivot or "")
             if self.glossary:
                 out = self.glossary.fix_output(out, text, pivot or "", convert=self._zh_word)
             out = zh_guard(text, out)
         return Translation(pivot, out)
+
+    def _timed(self, s: str, t: str, text: str, timing: list) -> str:
+        step = self._step(s, t)
+        t0 = time.monotonic()
+        out = step(text)
+        timing.append((f"{s}-{t}", time.monotonic() - t0))
+        return out
 
     def preload(self, src: str, tgt: str) -> None:
         """Load models up front so missing models fail before capture starts."""
