@@ -93,11 +93,15 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
     if name in ("qwen3-8b", "qwen3-4b"):
-        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev)
+        errors: list = []
+        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev, errors=errors)
         if tr is not None:
             say(f"tlwu: translation engine = {got} ({why})" if got == name
                 else f"tlwu: translation engine = {got} ({name} failed to load, fell back)", file=sys.stderr)
             return tr
+        # loud on purpose (#74): OPUS translates much worse, the user must know it is not Qwen and why
+        say(f"tlwu: WARNING: Qwen engine failed to load, falling back to OPUS (lower translation quality). "
+            f"Reason: {errors[-1] if errors else 'unknown'}", file=sys.stderr)
         name, why = "opus", "Qwen failed to load"
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
     if name == "m2m":

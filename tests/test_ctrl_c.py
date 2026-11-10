@@ -131,6 +131,7 @@ def test_speak_proto_second_ctrl_c_during_shutdown():
             except KeyboardInterrupt:
                 print("stopping", file=sys.stderr, flush=True)
             finally:
+                print("cleanup", file=sys.stderr, flush=True)
                 time.sleep(30)  # slow cleanup (models, audio devices)
             return 0
 
@@ -139,7 +140,9 @@ def test_speak_proto_second_ctrl_c_during_shutdown():
     """)
     wait_for(p.stderr, b"listening")
     p.send_signal(signal.SIGINT)
-    wait_for(p.stderr, b"stopping")
+    # wait until the child is inside the slow cleanup: a Ctrl+C that lands between printing "stopping" and
+    # entering `finally` is raised in the except block, and the 30 s cleanup then runs uninterrupted (CI race)
+    wait_for(p.stderr, b"cleanup")
     p.send_signal(signal.SIGINT)
     rc, err = finish(p)
     assert "Traceback" not in err, err
