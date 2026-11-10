@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,6 +156,7 @@ class PivotTranslator(Translator):
         self.device = device  # already resolved: "cpu" or "cuda"
         self._factory = step_factory or (lambda s, t: OpusStep(models_dir, s, t, self.device))
         self._steps: dict[tuple[str, str], Callable[[str], str]] = {}
+        self.last_timing: list[tuple[str, float]] = []  # (pair, seconds) of the last translate(), --debug-latency
 
     def _step(self, s: str, t: str):
         if (s, t) not in self._steps:
@@ -165,14 +167,23 @@ class PivotTranslator(Translator):
         if src == tgt:
             return Translation(None, text)
         pivot = None
+        timing = []
         if src == "en" or tgt == "en":
-            out = self._step(src, tgt)(text)
+            out = self._timed(src, tgt, text, timing)
         else:
-            pivot = self._step(src, "en")(text)
-            out = self._step("en", tgt)(pivot)
+            pivot = self._timed(src, "en", text, timing)
+            out = self._timed("en", tgt, pivot, timing)
+        self.last_timing = timing
         if tgt == "zh":
             out = zh_guard(text, zh_convert(out, self.zh_variant))
         return Translation(pivot, out)
+
+    def _timed(self, s: str, t: str, text: str, timing: list) -> str:
+        step = self._step(s, t)
+        t0 = time.monotonic()
+        out = step(text)
+        timing.append((f"{s}-{t}", time.monotonic() - t0))
+        return out
 
     def preload(self, src: str, tgt: str) -> None:
         """Load models up front so missing models fail before capture starts."""
