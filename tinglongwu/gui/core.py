@@ -137,9 +137,15 @@ class SubtitleState:
         self.max_lines = max_lines
         self.finals: list[tuple[str, str]] = []  # (src, target), oldest first
         self.draft: tuple[str, str] | None = None
+        self.paused = False  # frozen display: events still update the state (nothing is lost) but nothing is redrawn
 
     def apply(self, ev: tuple) -> bool:
-        """Apply an event; True if the display changed."""
+        """Apply an event; True if the display should be redrawn."""
+        if self._apply(ev):
+            return not self.paused
+        return False
+
+    def _apply(self, ev: tuple) -> bool:
         kind = ev[0]
         if kind == "draft":
             self.draft = (ev[1], ev[2])

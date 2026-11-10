@@ -115,9 +115,7 @@ class Overlay:
         self.render(self.app.state)
 
     def on_pause(self):
-        self.app.paused = self.var_pause.get()
-        if not self.app.paused:
-            self.render(self.app.state)
+        self.app.set_paused(self.var_pause.get())
 
     def render(self, state: SubtitleState):
         rows = state.lines()
@@ -151,7 +149,6 @@ class App:
         self.state = SubtitleState(2)
         self.stop_ev = threading.Event()
         self.worker: threading.Thread | None = None
-        self.paused = False
         self.closing = False
         self.sigint = False
         self.root = tk.Tk()
@@ -199,7 +196,9 @@ class App:
         ttk.Checkbutton(f, text="Live draft (uses more GPU)", variable=self.v_live).grid(
             row=7, column=1, columnspan=2, sticky="w")
         self.btn = ttk.Button(f, text="Start", command=self.toggle)
-        self.btn.grid(row=9, column=0, columnspan=3, sticky="we", pady=(8, 2))
+        self.btn.grid(row=9, column=0, columnspan=2, sticky="we", pady=(8, 2))
+        self.btn_pause = ttk.Button(f, text="Pause", command=self.toggle_pause)
+        self.btn_pause.grid(row=9, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
         self.v_status = tk.StringVar(value="Ready. Fully offline.")
         ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=10, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
@@ -240,6 +239,7 @@ class App:
             return
         self.collect()
         self.state = SubtitleState(2)
+        self.set_paused(False)
         self.stop_ev = threading.Event()
         self.btn.configure(text="Stop")
         self.v_status.set("Starting...")
@@ -292,13 +292,24 @@ class App:
                     if not self.v_status.get().startswith("Error"):
                         self.v_status.set("Stopped.")
                     self.overlay.hide()
-                elif not self.paused:
+                else:
                     changed |= self.state.apply(ev)
         except queue.Empty:
             pass
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
         self.root.after(POLL_MS, self.poll)
+
+    def toggle_pause(self):
+        self.set_paused(not self.state.paused)
+
+    def set_paused(self, paused: bool):
+        """Freeze/unfreeze the subtitle display (translation keeps running; resume shows the latest lines)."""
+        self.state.paused = paused
+        self.overlay.var_pause.set(paused)
+        self.btn_pause.configure(text="Resume" if paused else "Pause")
+        if not paused and self.overlay.visible:
+            self.overlay.render(self.state)
 
     def copy_last(self):
         text = self.state.last_text()
