@@ -16,7 +16,7 @@ STRONG = {
            "Transcribed by", "Translated by", "Captions by", "Closed captioning by",
            "To be continued", "www.mooji.org"],
     "ja": ["字幕作成", "字幕は", "次回に続く"],
-    "zh": ["字幕由", "字幕志愿者", "字幕志願者", "字幕製作", "字幕制作", "字幕提供", "中文字幕", "明鏡與點點欄目",
+    "zh": ["字幕by", "字幕由","字幕志愿者", "字幕志願者", "字幕製作", "字幕制作", "字幕提供", "中文字幕", "明鏡與點點欄目",
            "未完待續", "未完待续", "謝謝觀看", "谢谢观看"],
     "ko": ["자막 제공", "시청해 주셔서 감사합니다", "다음 영상에서 만나요"],
     "de": ["Untertitel der Amara.org-Community", "Untertitel von", "Untertitelung des ZDF", "Fortsetzung folgt"],

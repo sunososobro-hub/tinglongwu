@@ -89,3 +89,9 @@ def test_asr_compute_type_by_free_vram():
 def test_asr_compute_env_override(monkeypatch):
     monkeypatch.setenv("TLWU_ASR_COMPUTE", "float32")
     assert device.asr_compute_type("cuda", free_mib=7600) == "float32"
+
+
+def test_zh_subtitle_by_name_is_hallucination():
+    assert is_hallucination('字幕by索兰娅')
+    assert not is_hallucination('這個字幕by default 是開的，我們討論一下設定')
+
