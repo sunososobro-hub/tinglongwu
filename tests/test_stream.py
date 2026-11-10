@@ -313,3 +313,11 @@ def test_save_jsonl_finals_only(tmp_path):
     assert "Them привет" in out.getvalue()
     assert default_save_path(datetime.datetime(2026, 1, 2, 3, 4, 5)) == "transcripts/20260102-030405.jsonl"
     assert parse_args([]).save is None and parse_args(["--save"]).save == "" and parse_args(["--save", "a"]).save == "a"
+
+
+def test_draft_uses_final_line_labels():
+    out = io.StringIO()
+    r = DraftRenderer(out, columns=lambda: 80)
+    r.draw("RU", "привет", "мир", "ZH", "你好")
+    s = out.getvalue()
+    assert "◀" in s and "→ [ZH]" in s  # same labels as fmt.block, not the old bare "[RU]"/"[ZH]" prefix

@@ -15,7 +15,9 @@ import unicodedata
 import numpy as np
 
 from .capture.base import SAMPLE_RATE, AudioSource
+from . import fmt  # noqa: F401  (registers the label_me/label_them strings)
 from .hallucination import is_hallucination
+from .i18n import t
 
 DRAFT_INTERVAL = 0.6  # min seconds between partial passes (ASR and MT alternate on one thread)
 TRANSLATE_MIN_CHARS = 8  # re-translate when the partial grew by >= this many chars ...
@@ -132,7 +134,8 @@ class DraftRenderer:
         if not self.enabled:
             return
         width = max(20, self.columns() - 1)
-        head = f"[{src_tag}] "
+        label = t("label_them")  # same ◀ Them / → labels as the final lines (fmt.block); draft is the listen side
+        head = f"{label} [{src_tag}] "
         tail_s = (" " + tail if confirmed and tail and " " in (confirmed + tail) else tail)
         full = confirmed + tail_s
         text, cut = fit_tail(full, width - display_width(head))
@@ -141,8 +144,9 @@ class DraftRenderer:
         tail_vis = tail_s[max(0, cut - len(confirmed)):]
         lines = [f"{head}{pre}{conf_vis}{DIM}{tail_vis}{RESET}"] if show_src else []
         if translation:
-            t, _ = fit_tail(translation, width - display_width(f"[{tgt_tag}] "))
-            lines.append(f"{DIM}[{tgt_tag}] {t}{RESET}")
+            tgt_head = f"→ [{tgt_tag}] "
+            tr, _ = fit_tail(translation, width - display_width(tgt_head))
+            lines.append(f"{DIM}{tgt_head}{tr}{RESET}")
         if not lines:
             return  # translation-only mode and nothing translated yet: show nothing
         with self.lock:
