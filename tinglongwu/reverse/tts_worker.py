@@ -71,6 +71,8 @@ def run_cpu(a, np, torch) -> int:
 def run_vosk(a) -> int:
     """CPU path with Vosk-TTS (Apache-2.0, own G2P, no espeak). Fixed built-in voices; a request may carry
     "speaker" to switch voice on the fly. model_path is always local, so vosk never downloads anything."""
+    import atexit
+    import shutil
     import tempfile
     import wave
 
@@ -79,27 +81,40 @@ def run_vosk(a) -> int:
 
     t0 = time.perf_counter()
     synth = Synth(Model(model_path=a.model))
-    tmp = os.path.join(tempfile.mkdtemp(prefix="tlwu_vosk_"), "out.wav")
+    # vosk's synth() only writes a wav file. The synthesized speech is the user's own translation, so it is
+    # kept in a private (mkdtemp = owner-only) dir, deleted right after every read, and the dir removed on exit.
+    tdir = tempfile.mkdtemp(prefix="tlwu_vosk_")
+    atexit.register(shutil.rmtree, tdir, ignore_errors=True)
+    tmp = os.path.join(tdir, "out.wav")
     send({"t": "ready", "load_s": round(time.perf_counter() - t0, 2), "vram_mib": 0, "device": "cpu",
           "engine": "vosk"})
-    for line in sys.stdin:
-        req = json.loads(line)
-        if req.get("cmd") == "quit":
-            break
-        try:
-            t1 = time.perf_counter()
-            synth.synth(req["text"], tmp, speaker_id=int(req.get("speaker", a.speaker)))
-            with wave.open(tmp, "rb") as w:
-                sr = w.getframerate()
-                pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-            arr = (pcm.astype(np.float32) / 32768.0).reshape(-1)
-            gen = time.perf_counter() - t1
-            dur = arr.size / sr
-            send({"t": "chunk", "id": req["id"], "sr": sr, "ttfa_s": round(gen, 3)}, arr.tobytes())
-            send({"t": "done", "id": req["id"], "audio_s": round(dur, 3), "gen_s": round(gen, 3),
-                  "rtf": round(gen / dur, 3) if dur else None, "ttfa_s": round(gen, 3), "peak_vram_mib": 0})
-        except Exception as e:  # noqa: BLE001
-            send({"t": "error", "id": req.get("id"), "msg": repr(e)[:300]})
+    try:
+        for line in sys.stdin:
+            req = json.loads(line)
+            if req.get("cmd") == "quit":
+                break
+            try:
+                t1 = time.perf_counter()
+                try:
+                    synth.synth(req["text"], tmp, speaker_id=int(req.get("speaker", a.speaker)))
+                    with wave.open(tmp, "rb") as w:
+                        sr = w.getframerate()
+                        pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+                finally:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                arr = (pcm.astype(np.float32) / 32768.0).reshape(-1)
+                gen = time.perf_counter() - t1
+                dur = arr.size / sr
+                send({"t": "chunk", "id": req["id"], "sr": sr, "ttfa_s": round(gen, 3)}, arr.tobytes())
+                send({"t": "done", "id": req["id"], "audio_s": round(dur, 3), "gen_s": round(gen, 3),
+                      "rtf": round(gen / dur, 3) if dur else None, "ttfa_s": round(gen, 3), "peak_vram_mib": 0})
+            except Exception as e:  # noqa: BLE001
+                send({"t": "error", "id": req.get("id"), "msg": repr(e)[:300]})
+    finally:
+        shutil.rmtree(tdir, ignore_errors=True)
     return 0
 
 

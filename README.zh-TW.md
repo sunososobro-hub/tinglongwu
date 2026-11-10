@@ -66,7 +66,7 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 
 ## 隱私模型
 
-- 音訊只存在記憶體；逐字稿只輸出到 stdout，不寫任何紀錄。
+- 音訊只存在記憶體；逐字稿只輸出到 stdout，不寫任何紀錄（只有明確指定 `--save`、`--save-result PATH` 才會存檔）。
 - `import tinglongwu` 時（早於任何 HF/ctranslate2 匯入）強制設定離線環境變數：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
 - 執行期**網路防護**會攔截 `socket.connect/connect_ex/create_connection/getaddrinfo/gethostbyname`，任何非 loopback 目標一律丟出例外（loopback 與 AF_UNIX 放行）。`tlwu`、`tlwu --gui`、`python -m tinglongwu.reverse.proto` 與 TTS worker 子行程（Kokoro/Vosk）都會啟用；只影響我們自己的行程，不動作業系統防火牆。`tlwu-setup` 與更新（`git`）不啟用防護；`TLWU_ALLOW_NET=1` 可關閉。
 - 網路只用於**安裝/設定**（tlwu-setup、pip）與**更新**（git）。更新是自願的：第一次開選單會問一次「每次開選單要不要連 GitHub 檢查新版」（存在使用者設定檔：`~/.config/tinglongwu/config`、`~/Library/Application Support/tinglongwu/config`、`%APPDATA%	inglongwu\config`）；選不要就完全不連網，要更新時按 `U`。`TLWU_NO_UPDATE=1` 強制關閉。

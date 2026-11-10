@@ -60,7 +60,7 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在离线电脑上安装�
 
 ## 隐私模型
 
-- 音频只存在于内存；转写文本只输出到 stdout，不写任何日志。
+- 音频只存在于内存；转写文本只输出到 stdout，不写任何日志（只有明确指定 `--save`、`--save-result PATH` 才会存档）。
 - `import tinglongwu` 时（早于任何 HF/ctranslate2 导入）强制设置离线环境变量：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
 - 运行时**网络防护**会拦截 `socket.connect/connect_ex/getaddrinfo/gethostbyname`，任何非 loopback 目标一律抛出异常，始终开启。
 - 模型只从本地 `models/` 加载（`--models-dir` 或环境变量 `TLWU_MODELS`）；缺少模型时报错并指向下载脚本，不会自动下载。

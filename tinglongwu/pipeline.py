@@ -39,6 +39,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def counted(frames):
         for f in frames:
+            if stop.is_set():  # Stop pressed: end the capture generator even if no segment is ever emitted
+                return
             consumed[0] += len(f)
             yield f
 
@@ -47,11 +49,22 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             for seg in segmenter.segments(counted(source.frames())):
                 if stop.is_set():
                     return
-                q.put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
-                       bool(getattr(segmenter, "last_forced", False)), float(getattr(segmenter, "last_pause", 0.0))))
-            q.put(_DONE)
+                if not put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
+                       bool(getattr(segmenter, "last_forced", False)), float(getattr(segmenter, "last_pause", 0.0)))):
+                    return
+            put(_DONE)
         except BaseException as e:  # noqa: BLE001 - re-raised in the consumer
-            q.put(e)
+            put(e)
+
+    def put(item) -> bool:
+        """q.put that gives up once Stop is set (a full queue must not pin the producer thread)."""
+        while not stop.is_set():
+            try:
+                q.put(item, timeout=0.2)
+                return True
+            except queue.Full:
+                pass
+        return False
 
     # --stream: drafts share the models with this path; `model_lock` makes the final path win (drafts skip when busy)
     model_lock = draft.final_section if draft is not None else contextlib.nullcontext
@@ -83,7 +96,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         for u in units:
             emit(u.text, u.lang)
 
-    threading.Thread(target=produce, daemon=True).start()
+    producer = threading.Thread(target=produce, daemon=True)
+    producer.start()
     if draft is not None:
         draft.start(stop)
     try:
@@ -122,4 +136,5 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         stop.set()
         if draft is not None:
             draft.renderer.clear()
-        source.close()
+        source.close()  # releases the capture device (mic indicator off)
+        producer.join(timeout=1.0)

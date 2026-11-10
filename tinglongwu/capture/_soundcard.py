@@ -5,6 +5,7 @@ CoreAudio (macOS). It is imported lazily so the package imports everywhere.
 """
 from __future__ import annotations
 
+import threading
 import warnings
 from typing import Iterator
 
@@ -28,6 +29,7 @@ def suppress_capture_warnings() -> None:
 class SoundcardSource(AudioSource):
     def __init__(self, device: str | None = None):
         self.device = device
+        self._stop = threading.Event()
 
     def _pick_microphone(self, sc):  # overridden per platform
         raise NotImplementedError
@@ -38,8 +40,16 @@ class SoundcardSource(AudioSource):
         suppress_capture_warnings()
         mic = self._pick_microphone(sc)
         with mic.recorder(samplerate=NATIVE_RATE, channels=2) as rec:
-            while True:
-                yield to_mono_16k(rec.record(numframes=BLOCK), NATIVE_RATE)
+            # one 100 ms block per iteration: close() is noticed within a block even in total silence,
+            # and leaving the `with` releases the device (OS microphone indicator goes off).
+            while not self._stop.is_set():
+                data = rec.record(numframes=BLOCK)
+                if self._stop.is_set():
+                    break
+                yield to_mono_16k(data, NATIVE_RATE)
+
+    def close(self) -> None:
+        self._stop.set()
 
 
 def find_by_name(sc, name: str, include_loopback: bool = True):

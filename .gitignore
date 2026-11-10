@@ -28,3 +28,7 @@ docs/_*_draft.md
 google_key*.txt
 .env*
 *.log
+
+reverse_out/
+result.json
+transcripts/

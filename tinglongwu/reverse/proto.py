@@ -4,7 +4,7 @@ Run (main .venv):
   python -m tinglongwu.reverse.proto --input C:\\...\\reverse\\input --out C:\\...\\reverse\\out \\
       --tts-python C:\\...\\tts-venv\\Scripts\\python.exe --tts-model C:\\...\\models\\qwen3-tts-0.6b-base \\
       --ref ref_ru.wav --ref-text "..." [--qwen qwen3-8b] [--device "CABLE Input"] [--no-play]
-All results (UTF-8) go to --report (JSON).
+Results are written (UTF-8 JSON) only when --save-result PATH is given; nothing is saved by default.
 Default = confirm-before-send: each utterance shows zh / ru / back-translation; Enter sends the Russian audio to
 --device, "r" or "x" + Enter discards it (--no-confirm = old automatic behaviour; --preview-device = also hear it).
 """
@@ -354,8 +354,9 @@ def _main(argv, vm) -> int:
     ap.add_argument("--mic", nargs="?", const="", default=None, metavar="DEVICE",
                     help="live microphone input (Chinese); optional device-name substring, default = system mic")
     ap.add_argument("--list-mics", action="store_true", help="print input device names and exit")
-    ap.add_argument("--out", default=None, help="output dir (default: reverse_out)")
-    ap.add_argument("--report", default=None, help="JSON result path (default <out>/result.json)")
+    ap.add_argument("--out", default=None, help="dir for synthesized wavs of --input batch runs (default: none written)")
+    ap.add_argument("--save-result", "--report", dest="report", default=None, metavar="PATH",
+                    help="write a JSON result (transcripts + translations) to PATH. Off by default: nothing is saved")
     ap.add_argument("--models-dir", default=None)
     ap.add_argument("--whisper", default=None, help="default: large-v3-turbo on CUDA, small on CPU")
     ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"],
@@ -451,7 +452,6 @@ def _main(argv, vm) -> int:
     live = a.mic is not None
     if not live and not a.input:
         ap.error("--input is required unless --mic is given")
-    a.out = a.out or "reverse_out"
     a.chunk_s = a.max_seg
     if live:  # feedback guard BEFORE loading any model
         import soundcard as sc
@@ -493,8 +493,9 @@ def _main(argv, vm) -> int:
     dev = resolve_device(a.compute)
     a.whisper = a.whisper or ("large-v3-turbo" if dev == "cuda" else "small")
     print(f"compute device: {dev}", flush=True)
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = Path(a.out) if a.out else None
+    if out is not None:
+        out.mkdir(parents=True, exist_ok=True)
     src = Path(a.input) if a.input else None
     wavs = [] if live else (sorted(src.glob("*.wav")) if src.is_dir() else [src])
     mdir = models_dir(a.models_dir)
@@ -577,7 +578,7 @@ def _main(argv, vm) -> int:
                     else:
                         done = ev
                 tts_done = time.perf_counter() - t0
-                if pcm:
+                if pcm and out is not None:
                     sf.write(str(out / f"{wav.stem}_{tgt}{k}.wav"), np.concatenate(pcm), sr_out)
                 item["tts"].append({"text": sent, **(done or {})})
             item["t_first_audio"] = round(first_audio, 3) if first_audio else None
@@ -592,9 +593,11 @@ def _main(argv, vm) -> int:
     for it in res["items"]:
         it.pop("_u", None)
     res["vram_mib"]["peak_sampled"] = vs.peak
-    rp = Path(a.report) if a.report else out / "result.json"
-    rp.write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"peak VRAM {vs.peak} MiB; wrote {rp}")
+    print(f"peak VRAM {vs.peak} MiB")
+    if a.report:  # explicit opt-in only: the result holds transcripts and translations
+        rp = Path(a.report)
+        rp.write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"wrote {rp}")
     return 0
 
 
