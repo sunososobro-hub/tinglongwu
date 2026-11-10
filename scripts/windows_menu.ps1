@@ -13,8 +13,8 @@ $voskModel = if ($env:VOSK_MODEL) { $env:VOSK_MODEL } else { "$HOME\vosk-model-t
 $voice = if ($env:VOICE) { $env:VOICE } else { "4" }
 
 Write-Host "tinglongWu"
-Write-Host "  1) 聽：電腦播的外語 -> 中文字幕（預設）"
-Write-Host "  2) 說：你講中文 -> 外語語音"
+Write-Host "  1) 聽  外語 -> 字幕：中文（預設）"
+Write-Host "  2) 說  中文 -> 語音：外語"
 Write-Host "  3) 圖形介面（GUI）"
 $mode = Read-Host "選 1-3 [Enter=1]"
 if (-not $mode) { $mode = "1" }
@@ -23,13 +23,18 @@ if ($mode -eq "3") { & $tlwu --gui; exit }
 Write-Host "語言代碼：en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
 if ($mode -eq "1") {
     $L = Read-Host "聽哪種語言 [Enter=en]"; if (-not $L) { $L = "en" }
-    $d = Read-Host "第一次用這個語言？要先連網下載翻譯模型 [y/N]"
-    if ($d -eq "y") { & .\.venv\Scripts\tlwu-setup.exe --langs $L }
+    Write-Host "聽  $L -> 字幕：中文"
+    if ($L -eq "en") { $need = @("en-zh"); $setup = @("--to", "zh") } else { $need = @("$L-en", "en-zh"); $setup = @("--langs", $L, "--to", "zh") }
+    & $py -c "import sys; from tinglongwu.models import models_dir; d = models_dir(None) / 'opus'; sys.exit(0 if all((d / p).is_dir() for p in sys.argv[1:]) else 1)" @need
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "還沒有 $L 的翻譯模型，現在連網下載（只有這一次）..."
+        & .\.venv\Scripts\tlwu-setup.exe @setup
+    }
     & $tlwu --lang $L
     exit
 }
 if ($mode -ne "2") { Write-Host "沒有這個選項"; exit 1 }
-$L = Read-Host "翻成哪種語言 [Enter=ru，目前只有 ru]"; if (-not $L) { $L = "ru" }
+$L = Read-Host "說成哪種語言 [Enter=ru，目前只有 ru]"; if (-not $L) { $L = "ru" }; Write-Host "說  中文 -> 語音：$L"
 if ($L -ne "ru") { Write-Host "「說」目前只支援 ru（俄文）；其他語言還沒有語音模型。"; exit 1 }
 
 $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,

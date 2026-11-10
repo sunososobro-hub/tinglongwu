@@ -10,21 +10,35 @@ VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 VOICE="${VOICE:-4}"
 
 echo "tinglongWu"
-echo "  1) 聽：電腦播的外語 -> 中文字幕（預設）"
-echo "  2) 說：你講中文 -> 外語語音"
+echo "  1) 聽  外語 -> 字幕：中文（預設）"
+echo "  2) 說  中文 -> 語音：外語"
 read -rp "選 1-2 [Enter=1]: " mode
 mode="${mode:-1}"
 
 echo "語言代碼：en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
 if [ "$mode" = "1" ]; then
   read -rp "聽哪種語言 [Enter=en]: " L; L="${L:-en}"
+  echo "聽  $L -> 字幕：中文"
 else
-  read -rp "翻成哪種語言 [Enter=ru，目前只有 ru]: " L; L="${L:-ru}"
+  read -rp "說成哪種語言 [Enter=ru，目前只有 ru]: " L; L="${L:-ru}"
+  echo "說  中文 -> 語音：$L"
 fi
 
+have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
+  python - "$@" <<'PY'
+import sys
+from tinglongwu.models import models_dir
+d = models_dir(None) / "opus"
+sys.exit(0 if all((d / p).is_dir() for p in sys.argv[1:]) else 1)
+PY
+}
+
 if [ "$mode" = "1" ]; then
-  read -rp "第一次用這個語言？要先連網下載翻譯模型 [y/N]: " d
-  if [ "$d" = "y" ]; then tlwu-setup --langs "$L"; fi
+  if [ "$L" = "en" ]; then need=(en-zh); setup=(--to zh); else need=("$L-en" en-zh); setup=(--langs "$L" --to zh); fi
+  if ! have_pairs "${need[@]}"; then
+    echo "還沒有 $L 的翻譯模型，現在連網下載（只有這一次）..."
+    tlwu-setup "${setup[@]}"
+  fi
   exec tlwu --lang "$L"
 fi
 
