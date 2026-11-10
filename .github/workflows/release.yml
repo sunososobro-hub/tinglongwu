@@ -1,0 +1,45 @@
+name: release
+# Runs when a version tag is pushed. The tag must point at a commit that is on main.
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # only this job may create the Release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Tag format and branch check (tag must be vX.Y.Z[-suffix] and on main)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "bad tag: $TAG"; exit 1; }
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag $TAG is not on main"; exit 1; }
+      - name: Build install assets (embed the tag so each script installs the version it was released with)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir dist
+          cp scripts/install.sh dist/install.sh
+          cp scripts/mac_install.sh dist/mac_install.sh
+          cp scripts/bootstrap_windows.ps1 dist/install.ps1
+          sed -i "s/__TLWU_REF__/$TAG/g" dist/install.sh dist/mac_install.sh dist/install.ps1
+          ! grep -q "__TLWU_REF__" dist/*   # nothing may keep the placeholder
+          grep -q "\"$TAG\"" dist/install.sh
+          bash -n dist/install.sh
+          bash -n dist/mac_install.sh
+          cd dist && sha256sum install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt \
+            --verify-tag --generate-notes --title "$TAG"

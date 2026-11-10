@@ -1,7 +1,10 @@
 #!/bin/bash
 # tinglongWu one-line installer for macOS (Apple Silicon and Intel). Safe to re-run: re-running = repair/update.
 #
-#   curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
+#   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
+#
+# The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
+# version it was released with. Run straight from the repo (unreleased) it falls back to main.
 #
 # What it does (nothing outside your home folder except Homebrew packages):
 #   1. checks Homebrew (does NOT install Homebrew silently: prints the official command and stops if missing)
@@ -11,13 +14,18 @@
 #   5. downloads the speech/translation models (English listening, zh<->en speaking)
 #   6. installs the `tlwu-menu` command in ~/.local/bin
 # The installer never asks about auto-update: the menu (tlwu-menu) asks once on its first run and stores the answer.
-# Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default main), TLWU_REPO.
+# Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default: the release tag, or main), TLWU_REPO.
+# CI-only switches (used by .github/workflows/install-test.yml; leave unset for a normal install):
+#   TLWU_SKIP_BLACKHOLE=1  skip the BlackHole cask install (needs sudo/GUI approval)
+#   TLWU_SKIP_MODELS=1     skip the Kokoro voice and the model downloads (steps 5 and 6)
 # Written for macOS bash 3.2 (no arrays, no ${var,,}). UNTESTED on a real Mac when written: every step checks itself.
 
 set -u
 
 REPO_URL="${TLWU_REPO:-https://github.com/sunososobro-hub/tinglongwu.git}"
-BRANCH="${TLWU_BRANCH:-main}"
+REF_EMBEDDED="__TLWU_REF__"
+case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED=main ;; esac   # placeholder not substituted = unreleased
+BRANCH="${TLWU_BRANCH:-$REF_EMBEDDED}"
 DIR="${TLWU_DIR:-$HOME/tinglongwu}"
 KOKORO_VENV="$HOME/tts-kokoro"
 KOKORO_DIR="$HOME/models/kokoro"
@@ -103,7 +111,7 @@ for f in python@3.12 git; do
   fi
 done
 PYBREW="$(brew --prefix python@3.12 2>/dev/null)/bin/python3.12"
-[ -x "$PYBREW" ] || die "找不到 $PYBREW（python@3.12 安裝不完整）。可試：brew reinstall python@3.12"
+[ -x "$PYBREW" ] || die "找不到 ${PYBREW}（python@3.12 安裝不完整）。可試：brew reinstall python@3.12"
 GITBIN="$(command -v git)" || die "找不到 git。"
 info "python: $PYBREW ($("$PYBREW" --version 2>&1))"
 
@@ -111,7 +119,8 @@ say "3/8 安裝 BlackHole 虛擬音效裝置（2ch 用來聽、16ch 當你的虛
 info "接下來可能會跳出要你輸入「Mac 開機密碼」，輸入時畫面不會顯示字，輸完按 Enter。"
 BH_FAIL=0
 for c in blackhole-2ch blackhole-16ch; do
-  if brew list --cask "$c" >/dev/null 2>&1; then info "$c 已安裝"
+  if [ -n "${TLWU_SKIP_BLACKHOLE:-}" ]; then info "TLWU_SKIP_BLACKHOLE set: skipping $c"
+  elif brew list --cask "$c" >/dev/null 2>&1; then info "$c 已安裝"
   else
     info "安裝 $c ..."
     if ! brew install --cask "$c"; then
@@ -122,11 +131,13 @@ for c in blackhole-2ch blackhole-16ch; do
 done
 
 # ---------------------------------------------------------------- 4. repo + venv
-say "4/8 下載 tinglongWu 並建立環境（$DIR）"
+say "4/8 下載 tinglongWu 並建立環境（${DIR}）"
 if [ -d "$DIR/.git" ]; then
   info "已存在，更新中..."
-  if ! git -C "$DIR" fetch --quiet origin 2>&1; then
+  if ! git -C "$DIR" fetch --quiet --tags origin 2>&1; then
     warn "更新失敗（網路？），先用現有版本繼續。"
+  elif git -C "$DIR" rev-parse -q --verify "refs/tags/$BRANCH" >/dev/null 2>&1; then
+    git -C "$DIR" checkout --quiet "$BRANCH" 2>&1 || warn "$DIR 裡有本機改動，無法切到版本 ${BRANCH}；先用現有版本繼續。"
   elif ! git -C "$DIR" merge --ff-only --quiet "origin/$BRANCH" 2>&1; then
     warn "$DIR 裡有本機改動，無法自動更新；先用現有版本繼續（想強制還原：cd $DIR && git stash && 再貼一次安裝指令）。"
   fi
@@ -155,6 +166,8 @@ info "安裝 tinglongWu 套件（約 1-3 分鐘）..."
 
 # ---------------------------------------------------------------- 5. Kokoro (English voice)
 say "5/8 英文語音 Kokoro（獨立環境，因為它含 GPL 的 espeak，不放進主環境）"
+if [ -n "${TLWU_SKIP_MODELS:-}" ]; then info "TLWU_SKIP_MODELS set: skipping Kokoro and model downloads (steps 5-6)"
+else
 if [ ! -x "$KOKORO_VENV/bin/python" ]; then
   "$PYBREW" -m venv "$KOKORO_VENV" || die "建立 $KOKORO_VENV 失敗。"
 fi
@@ -171,11 +184,11 @@ fetch_model() {  # name expected_size expected_sha256(optional)
     if [ -z "$sha" ] || [ "$(sha256_of "$KOKORO_DIR/$name")" = "$sha" ]; then info "$name 已就緒"; return 0; fi
     info "$name 的 SHA256 不符，刪除後重新下載"; rm -f "$KOKORO_DIR/$name"
   fi
-  info "下載 $name（約 $((want / 1000000)) MB）..."
+  info "下載 ${name}（約 $((want / 1000000)) MB）..."
   rm -f "$KOKORO_DIR/$name.part"
   curl -fL --retry 3 --retry-delay 3 -o "$KOKORO_DIR/$name.part" "$KOKORO_BASE/$name"     || die "下載 $name 失敗（網路？）。"
   got="$(fsize "$KOKORO_DIR/$name.part")"
-  [ "$got" = "$want" ] || { rm -f "$KOKORO_DIR/$name.part"; die "$name 大小不符（拿到 $got，預期 $want），已刪除；請重貼指令。"; }
+  [ "$got" = "$want" ] || { rm -f "$KOKORO_DIR/$name.part"; die "$name 大小不符（拿到 ${got}，預期 ${want}），已刪除；請重貼指令。"; }
   if [ -n "$sha" ] && [ "$(sha256_of "$KOKORO_DIR/$name.part")" != "$sha" ]; then
     rm -f "$KOKORO_DIR/$name.part"; die "$name SHA256 不符，已刪除（拒絕使用）。"
   fi
@@ -189,6 +202,7 @@ fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 1-2 GB）"
 .venv/bin/tlwu-setup --whisper small --pair en-zh --pair zh-en \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
+fi
 
 # ---------------------------------------------------------------- 7. launcher
 say "7/8 安裝 tlwu-menu 指令"
@@ -203,7 +217,7 @@ chmod +x "$BIN_DIR/tlwu-menu" || die "無法設定 tlwu-menu 為可執行。"
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"  # added by tinglongWu'
 for rc in "$HOME/.zprofile" "$HOME/.zshrc"; do
   if ! grep -qs 'added by tinglongWu' "$rc" 2>/dev/null; then
-    printf '\n%s\n' "$PATH_LINE" >> "$rc" 2>/dev/null || warn "無法寫入 $rc；請自己把 $BIN_DIR 加進 PATH，或直接用完整路徑 $BIN_DIR/tlwu-menu。"
+    printf '\n%s\n' "$PATH_LINE" >> "$rc" 2>/dev/null || warn "無法寫入 ${rc}；請自己把 $BIN_DIR 加進 PATH，或直接用完整路徑 $BIN_DIR/tlwu-menu。"
   fi
 done
 

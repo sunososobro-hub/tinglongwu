@@ -5,6 +5,9 @@
 param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu)
 
 $ErrorActionPreference = 'Continue'
+# CI-only: TLWU_SKIP_MODELS=1 / TLWU_SKIP_SHORTCUT=1 behave like -SkipModels / -SkipShortcut (used by .github/workflows/install-test.yml)
+if ($env:TLWU_SKIP_MODELS) { $SkipModels = [switch]$true }
+if ($env:TLWU_SKIP_SHORTCUT) { $SkipShortcut = [switch]$true }
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
 $Venv = Join-Path $Root '.venv'

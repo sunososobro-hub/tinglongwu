@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Fully local, offline real-time speech translator (system audio -> ASR -> translation -> text)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 dependencies = [
   "faster-whisper==1.2.1",
   "ctranslate2==4.8.5",
