@@ -12,7 +12,7 @@ from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
-from .core import (ENGINES, FONT_PRESETS, HISTORY_LINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    rows_after_drag, save_settings, settings_to_argv)
 
@@ -44,7 +44,7 @@ class Overlay:
             pass
         w.configure(bg=BG)
         self.width = int(w.winfo_screenwidth() * 0.7)
-        self.rows = clamp_rows(s.get("overlay_lines", 4))
+        self.rows = clamp_rows(s.get("overlay_lines", 3))
         # top edge: drag it to change how many rows are visible (the bar keeps its bottom edge)
         self.grip = tk.Frame(w, height=6, bg="#2a2a2a", cursor="sb_v_double_arrow")
         self.grip.pack(fill="x")
@@ -146,6 +146,9 @@ class Overlay:
     def set_rows(self, n: int):
         self.rows = clamp_rows(n)
         self.app.settings["overlay_lines"] = self.rows
+        lines_var = getattr(self.app, "v_lines", None)
+        if lines_var is not None and lines_var.get() != str(self.rows):
+            lines_var.set(str(self.rows))
         self.box.configure(height=self.rows * self._line_px() + 8)
         self._reanchor()
         if self._at_end():
@@ -161,8 +164,8 @@ class Overlay:
         self.text.tag_configure("src", font=(FONT_FAMILY, max(9, n * 2 // 3)))
         self.set_rows(self.rows)
         size_var = getattr(self.app, "v_font", None)
-        if size_var is not None:
-            size_var.set(font_preset(n))
+        if size_var is not None and size_var.get() != str(n):
+            size_var.set(str(n))
 
     def bump_font(self, d: int):
         self.set_font(self.app.settings["font_size"] + d)
@@ -313,11 +316,10 @@ class App:
         self.v_live = tk.BooleanVar(value=s["live_draft"])
         self._tx(ttk.Checkbutton(f, variable=self.v_live), "gui_live_draft").grid(
             row=7, column=1, columnspan=2, sticky="w")
-        self._tx(ttk.Label(f), "gui_menu_font").grid(row=14, column=0, sticky="w", pady=(6, 0))
-        self.v_font = tk.StringVar(value=font_preset(s["font_size"]))
-        cb = ttk.Combobox(f, textvariable=self.v_font, values=list(FONT_PRESETS), state="readonly", width=12)
-        cb.grid(row=14, column=1, sticky="we", pady=(6, 0))
-        cb.bind("<<ComboboxSelected>>", lambda _e: self.overlay.set_font(FONT_PRESETS[self.v_font.get()]))
+        self.v_lines = self._spin(14, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
+                                  lambda n: self.overlay.set_rows(n))
+        self.v_font = self._spin(15, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
+                                 lambda n: self.overlay.set_font(n))
         self.btn = ttk.Button(f, text=t("gui_start"), command=self.toggle)
         self.btn.grid(row=9, column=0, columnspan=2, sticky="we", pady=(8, 2))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)
@@ -338,6 +340,24 @@ class App:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=13, column=2, sticky="e", pady=(8, 0))
+
+    def _spin(self, row, key, lo, hi, value, apply):
+        """Numeric spinbox row; each valid value applies live (empty / non-numeric / out-of-range input is ignored)."""
+        self._tx(ttk.Label(self.frm), key).grid(row=row, column=0, sticky="w", pady=2)
+        var = tk.StringVar(value=str(value))
+
+        def changed(*_):
+            try:
+                n = int(var.get())
+            except ValueError:
+                return
+            if lo <= n <= hi:
+                apply(n)
+
+        ttk.Spinbox(self.frm, from_=lo, to=hi, textvariable=var, width=6, command=changed).grid(
+            row=row, column=1, sticky="w", pady=2)
+        var.trace_add("write", changed)
+        return var
 
     def pick_glossary(self):
         p = filedialog.askopenfilename(title=t("gui_pick_glossary"), filetypes=[("Text", "*.txt"), ("All", "*.*")])
