@@ -16,7 +16,7 @@ from ..stream import DraftRenderer
 
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
-    "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
+    "save": False, "save_path": "", "show_src": False, "font_size": 28, "lines": 3, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "theme": "dark",
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
@@ -25,7 +25,8 @@ ENGINES = ["auto", "qwen", "qwen4b", "opus"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
-FONT_MIN, FONT_MAX = 10, 96
+FONT_MIN, FONT_MAX = 12, 72
+LINES_MIN, LINES_MAX = 1, 5
 
 
 def target_for_locale(tag: str | None) -> str:
@@ -67,6 +68,7 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    out["lines"] = clamp_lines(out["lines"])
     return out
 
 
@@ -85,6 +87,13 @@ def clamp_font(n) -> int:
         return max(FONT_MIN, min(FONT_MAX, int(n)))
     except (TypeError, ValueError):
         return DEFAULTS["font_size"]
+
+
+def clamp_lines(n) -> int:
+    try:
+        return max(LINES_MIN, min(LINES_MAX, int(n)))
+    except (TypeError, ValueError):
+        return DEFAULTS["lines"]
 
 
 def settings_to_argv(s: dict) -> list[str]:
@@ -138,6 +147,10 @@ class SubtitleState:
         self.finals: list[tuple[str, str]] = []  # (src, target), oldest first
         self.draft: tuple[str, str] | None = None
         self.paused = False  # frozen display: events still update the state (nothing is lost) but nothing is redrawn
+
+    def set_max_lines(self, n) -> None:
+        self.max_lines = clamp_lines(n)
+        del self.finals[:-self.max_lines]
 
     def apply(self, ev: tuple) -> bool:
         """Apply an event; True if the display should be redrawn."""

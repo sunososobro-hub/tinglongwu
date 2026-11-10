@@ -131,7 +131,7 @@ def test_overlay_constructs_headless_or_skips():
         a.state.apply(("final", "s", "字幕"))
         a.overlay.render(a.state)
         a.root.update()
-        assert a.overlay.l1.cget("text") == "字幕"
+        assert a.overlay.labels[0].cget("text") == "字幕"
         a.overlay.bump_font(4)
         assert a.settings["font_size"] == core.DEFAULTS["font_size"] + 4
     finally:
@@ -193,3 +193,51 @@ def test_gui_module_imports_and_language_names():
 
     assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
     assert core.DEFAULTS["theme"] == "dark"
+
+
+def test_lines_setting_clamped_persisted_and_applied(tmp_path):
+    assert core.DEFAULTS["lines"] == 3
+    p = tmp_path / "gui.json"
+    p.write_text(json.dumps({"lines": 99, "font_size": 5}), "utf-8")
+    got = core.load_settings(p)
+    assert got["lines"] == core.LINES_MAX and got["font_size"] == core.FONT_MIN == 12
+    got["lines"], got["font_size"] = 1, 40
+    core.save_settings(got, p)
+    again = core.load_settings(p)
+    assert (again["lines"], again["font_size"]) == (1, 40)  # survives restart
+    st = core.SubtitleState(5)
+    for i in range(5):
+        st.apply(("final", "s", f"t{i}"))
+    st.set_max_lines(1)
+    assert st.lines() == [("t4", False)]
+    st.set_max_lines(5)
+    st.apply(("final", "s", "t5"))
+    assert [x for x, _ in st.lines()] == ["t4", "t5"]
+
+
+def test_overlay_lines_and_font_apply_live():
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    root.destroy()
+    from tinglongwu.gui import app
+
+    a = app.App()
+    try:
+        a.overlay.show()
+        for i in range(6):
+            a.state.apply(("final", "s", f"line{i}"))
+        a.overlay.set_lines(5)
+        a.root.update()
+        assert len(a.state.lines()) == 5 and sum(1 for lab in a.overlay.labels if lab.winfo_manager()) == 5
+        a.overlay.set_lines(1)
+        a.root.update()
+        assert sum(1 for lab in a.overlay.labels if lab.winfo_manager()) == 1
+        a.overlay.set_font(14)
+        assert a.settings["font_size"] == 14 and "14" in str(a.overlay.labels[0].cget("font"))
+        a.overlay.set_font(40)
+        assert a.settings["font_size"] == 40
+    finally:
+        a.root.destroy()

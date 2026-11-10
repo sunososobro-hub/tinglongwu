@@ -12,7 +12,7 @@ from tkinter import filedialog, ttk
 
 from ..i18n import set_ui_lang, t, ui_lang
 from .core import (ENGINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer, QueueSink, SubtitleState,
-                   clamp_font, load_settings, save_settings, settings_to_argv)
+                   clamp_font, clamp_lines, FONT_MAX, FONT_MIN, LINES_MAX, LINES_MIN, load_settings, save_settings, settings_to_argv)
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -44,22 +44,15 @@ class Overlay:
         tk.Frame(w, width=self.width, height=1, bg=BG).pack()  # fixes the bar width
         wrap = self.width - 24
         self.src = tk.Label(w, bg=BG, fg=FG_SRC, justify="center", wraplength=wrap)
-        self.l1 = tk.Label(w, bg=BG, fg=FG_FINAL, justify="center", wraplength=wrap)
-        self.l2 = tk.Label(w, bg=BG, fg=FG_FINAL, justify="center", wraplength=wrap)
-        self.labels = (self.l1, self.l2)
+        self.wrap = wrap
+        self.labels: list[tk.Label] = []
         self.bottom = None  # bottom edge kept when the bar grows (None once dragged: keep the top)
+        self._ensure_labels(clamp_lines(s["lines"]))
         self.set_font(s["font_size"])
         self.var_src = tk.BooleanVar(value=s["show_src"])
         self.var_pause = tk.BooleanVar(value=False)
         self.build_menu()
-        for wd in (w, self.src, self.l1, self.l2):
-            wd.bind("<ButtonPress-1>", self._press)
-            wd.bind("<B1-Motion>", self._drag)
-            wd.bind("<ButtonRelease-1>", self._release)
-            wd.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
-            wd.bind("<Control-MouseWheel>", lambda e: self.bump_font(2 if e.delta > 0 else -2))
-            wd.bind("<Control-Button-4>", lambda e: self.bump_font(2))
-            wd.bind("<Control-Button-5>", lambda e: self.bump_font(-2))
+        self._bind_all()
         for k in ("plus", "equal", "KP_Add"):
             w.bind(f"<KeyPress-{k}>", lambda e: self.bump_font(2))
         for k in ("minus", "KP_Subtract"):
@@ -67,6 +60,28 @@ class Overlay:
         self._dx = self._dy = 0
         self.visible = False
         self._place_initial()
+
+    def _ensure_labels(self, n: int):
+        while len(self.labels) < n:
+            lab = tk.Label(self.win, bg=BG, fg=FG_FINAL, justify="center", wraplength=self.wrap)
+            lab.configure(font=(FONT_FAMILY, self.app.settings["font_size"], "bold"))
+            self.labels.append(lab)
+            if hasattr(self, "menu"):
+                self._bind_one(lab)
+
+    def _bind_all(self):
+        for wd in (self.win, self.src, *self.labels):
+            self._bind_one(wd)
+
+    def _bind_one(self, wd):
+        if True:
+            wd.bind("<ButtonPress-1>", self._press)
+            wd.bind("<B1-Motion>", self._drag)
+            wd.bind("<ButtonRelease-1>", self._release)
+            wd.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
+            wd.bind("<Control-MouseWheel>", lambda e: self.bump_font(2 if e.delta > 0 else -2))
+            wd.bind("<Control-Button-4>", lambda e: self.bump_font(2))
+            wd.bind("<Control-Button-5>", lambda e: self.bump_font(-2))
 
     def build_menu(self):
         """(Re)build the right-click menu in the current UI language."""
@@ -117,6 +132,13 @@ class Overlay:
             lab.configure(font=(FONT_FAMILY, n, "bold"))
         self.src.configure(font=(FONT_FAMILY, max(9, n * 2 // 3)))
 
+    def set_lines(self, n):
+        n = clamp_lines(n)
+        self.app.settings["lines"] = n
+        self.app.state.set_max_lines(n)
+        self._ensure_labels(n)
+        self.render(self.app.state)
+
     def bump_font(self, d: int):
         self.set_font(self.app.settings["font_size"] + d)
         self._reanchor()
@@ -137,7 +159,7 @@ class Overlay:
         if self.app.settings["show_src"] and state.source():
             self.src.configure(text=state.source())
             self.src.pack(fill="x", padx=12, pady=(6, 0))
-        for lab, (text, is_draft) in zip(self.labels, rows):
+        for lab, (text, is_draft) in zip(self.labels[:state.max_lines], rows):
             lab.configure(text=text, fg=FG_DRAFT if is_draft else FG_FINAL)
             lab.pack(fill="x", padx=12, pady=(2, 4))
         self._reanchor()
@@ -158,7 +180,7 @@ class App:
     def __init__(self):
         self.settings = load_settings()
         self.q: queue.Queue = queue.Queue()
-        self.state = SubtitleState(2)
+        self.state = SubtitleState(clamp_lines(self.settings["lines"]))
         self.stop_ev = threading.Event()
         self.worker: threading.Thread | None = None
         self.closing = False
@@ -260,6 +282,8 @@ class App:
         self.v_notice = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
             row=11, column=0, columnspan=3, sticky="w")
+        self.v_lines = self._spin(14, "gui_lines", LINES_MIN, LINES_MAX, "lines", lambda n: self.overlay.set_lines(n))
+        self.v_font = self._spin(15, "gui_font_size", FONT_MIN, FONT_MAX, "font_size", self._font_changed)
         self._tx(ttk.Label(f), "gui_ui_lang").grid(row=13, column=0, sticky="w", pady=(8, 0))
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         cb = ttk.Combobox(f, textvariable=self.v_ui_lang, values=list(UI_LANGS), state="readonly", width=12)
@@ -269,6 +293,28 @@ class App:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=13, column=2, sticky="e", pady=(8, 0))
+
+    def _spin(self, row, key, lo, hi, setting, apply):
+        """Numeric spinbox row; every valid edit/click applies live (out-of-range or non-numeric input is ignored)."""
+        self._tx(ttk.Label(self.frm), key).grid(row=row, column=0, sticky="w", pady=2)
+        var = tk.StringVar(value=str(self.settings[setting]))
+        ttk.Spinbox(self.frm, from_=lo, to=hi, textvariable=var, width=6, command=lambda: apply_(var.get())).grid(
+            row=row, column=1, sticky="w", pady=2)
+
+        def apply_(v):
+            try:
+                n = int(v)
+            except ValueError:
+                return
+            if lo <= n <= hi:
+                apply(n)
+
+        var.trace_add("write", lambda *_: apply_(var.get()))
+        return var
+
+    def _font_changed(self, n):
+        self.overlay.set_font(n)
+        self.overlay._reanchor()
 
     def pick_glossary(self):
         p = filedialog.askopenfilename(title=t("gui_pick_glossary"), filetypes=[("Text", "*.txt"), ("All", "*.*")])
@@ -310,7 +356,7 @@ class App:
             self.set_status("gui_stopping")
             return
         self.collect()
-        self.state = SubtitleState(2)
+        self.state = SubtitleState(clamp_lines(self.settings["lines"]))
         self.set_paused(False)
         self.stop_ev = threading.Event()
         self.btn.configure(text=t("gui_stop"))
