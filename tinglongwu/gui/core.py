@@ -43,9 +43,17 @@ def settings_path() -> Path:
     return Path(base) / "tinglongwu" / "gui.json"
 
 
-def load_settings(path=None) -> dict:
-    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default."""
+def _gpu_usable() -> bool:
+    from ..device import cuda_device_count
+
+    return cuda_device_count() > 0
+
+
+def load_settings(path=None, gpu=_gpu_usable) -> dict:
+    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default.
+    First run (no saved file) without a usable GPU: live draft starts off, it doubles the work on a CPU."""
     out = dict(DEFAULTS)
+    fresh = True
     try:
         from ..i18n import _system_tag
 
@@ -55,6 +63,7 @@ def load_settings(path=None) -> dict:
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
         if isinstance(data, dict):
+            fresh = False
             for k, dv in DEFAULTS.items():
                 v = data.get(k)
                 if v is None:
@@ -67,6 +76,11 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    if fresh:
+        try:
+            out["live_draft"] = bool(gpu())
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 

@@ -49,13 +49,14 @@ def test_subtitle_state_draft_replaced_by_final():
 
 def test_settings_roundtrip_and_corruption(tmp_path):
     p = tmp_path / "sub" / "gui.json"
-    assert core.load_settings(p) == core.DEFAULTS  # missing file
+    # missing file; gpu=True because the first-run live-draft default follows the GPU (#89)
+    assert core.load_settings(p, gpu=lambda: True) == core.DEFAULTS
     s = core.load_settings(p)
     s.update(lang="ru", target="en", save=True, save_path="x.jsonl", font_size=40, x=10, y=20)
     assert core.save_settings(s, p)
     assert core.load_settings(p) == s
     p.write_text("{not json", "utf-8")
-    assert core.load_settings(p) == core.DEFAULTS
+    assert core.load_settings(p, gpu=lambda: True) == core.DEFAULTS
     p.write_text(json.dumps({"lang": 5, "font_size": 9999, "save": "yes", "x": True}), "utf-8")
     got = core.load_settings(p)
     assert got["lang"] == "auto" and got["font_size"] == core.FONT_MAX and got["save"] is False and got["x"] is None
