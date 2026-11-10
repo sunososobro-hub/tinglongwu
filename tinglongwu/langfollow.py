@@ -6,11 +6,24 @@ before each sentence. Pure helpers, no models."""
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 
 DEFAULT_CANDIDATES = ("en", "ru", "ja", "zh")
 SPEAK_LANGS = ("en", "ru", "ja")  # languages the speak side can voice; zh segments never update the state file
+
+
+_KANA = re.compile("[\u3041-\u3096\u30a1-\u30fa]")  # hiragana + katakana letters (not the ・ ー marks)
+
+
+def has_kana(text: str) -> bool:
+    return bool(_KANA.search(text or ""))
+
+
+def script_lang(text: str, lang: str) -> str:
+    """Whisper labels kanji-heavy Japanese as zh; text with kana is never Chinese (#86): the script wins."""
+    return "ja" if lang == "zh" and has_kana(text) else lang
 
 
 def parse_candidates(s: str | None) -> tuple[str, ...]:

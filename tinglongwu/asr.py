@@ -11,7 +11,7 @@ import numpy as np
 
 from .device import asr_compute_type, resolve_device
 from .hallucination import is_hallucination
-from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, write_lang
+from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
 from .models import require
 from .repeat import collapse_repeats, has_loop
 
@@ -72,6 +72,7 @@ class FasterWhisperRecognizer(Recognizer):
             self.device = "cpu"
             self.model = WhisperModel(str(path), device="cpu", compute_type="int8")
         self.lang = None if lang == "auto" else lang  # auto: lock after first speech
+        self.auto = lang == "auto"
         # auto + candidates: re-detect every segment, restricted to the candidate set (never locks)
         self.candidates = tuple(candidates) if (candidates and lang == "auto") else None
         self.lang_file = lang_file if self.candidates else None  # last detected en/ru for `reverse.proto --to follow`
@@ -111,7 +112,8 @@ class FasterWhisperRecognizer(Recognizer):
         kept = [s for s in segs if s.text.strip()
                 and not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0)]
         text = self._post(" ".join(s.text.strip() for s in kept))
-        return Transcript(text, lang or info.language, max(s.no_speech_prob for s in kept)) if text else None
+        return Transcript(text, script_lang(text, lang or info.language),
+                          max(s.no_speech_prob for s in kept)) if text else None
 
     def _decode(self, audio: np.ndarray, retry: bool = False, lang: str | None = None):
         lang = self.lang if lang is None else lang
@@ -143,10 +145,13 @@ class FasterWhisperRecognizer(Recognizer):
         # context only when this output looks sane; a repeat/loop drops the prompt so it cannot propagate
         self._last = "" if looped or is_garbage(text, self._last) or is_hallucination(text) else text
         if getattr(self, "candidates", None):
+            lang = script_lang(text, lang)  # kana in a "zh" segment: it is Japanese (#86)
             self._cur = lang
             if lang in SPEAK_LANGS and getattr(self, "lang_file", None):
                 write_lang(self.lang_file, lang)  # zh segments leave the speak target alone
             return Transcript(text, lang, max(s.no_speech_prob for s in segs))
         if self.lang is None:
-            self.lang = info.language
-        return Transcript(text, self.lang, max(s.no_speech_prob for s in segs))
+            self.lang = script_lang(text, info.language)
+        elif getattr(self, "auto", False) and script_lang(text, self.lang) != self.lang:
+            self.lang = "ja"  # auto locked onto zh by a kanji-only first line; kana shows it is Japanese (#86)
+        return Transcript(text, script_lang(text, self.lang), max(s.no_speech_prob for s in segs))
