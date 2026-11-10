@@ -121,17 +121,24 @@ def _file_items(wavs, sf, asr):
 VOICE_ENGINES = ("vosk", "kokoro")  # engines with built-in voices (v0-v4 switch)
 
 
-def _make_synth(tts):
+def _synth_sentences(tts, ru: str):
+    """Yield (audio, sr) one sentence at a time, so the first sentence can play while the rest is synthesized."""
     from .logic import split_sentences
 
-    def synth(ru: str):
+    for sent in split_sentences(ru):
         pcm, sr_out = [], 24000
-        for sent in split_sentences(ru):
-            for ev, data in tts.speak(sent):
-                if ev["t"] == "chunk":
-                    pcm.append(np.frombuffer(data, dtype=np.float32))
-                    sr_out = ev["sr"]
-        return (np.concatenate(pcm), sr_out) if pcm else None
+        for ev, data in tts.speak(sent):
+            if ev["t"] == "chunk":
+                pcm.append(np.frombuffer(data, dtype=np.float32))
+                sr_out = ev["sr"]
+        if pcm:
+            yield np.concatenate(pcm), sr_out
+
+
+def _make_synth(tts):
+    def synth(ru: str):
+        parts = list(_synth_sentences(tts, ru))
+        return (np.concatenate([p for p, _ in parts]), parts[-1][1]) if parts else None
 
     return synth
 
@@ -209,7 +216,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
     `items` yields (n, label, zh)."""
     from .confirm import ConfirmSession, Utterance, back_translate
-    from .logic import translate_ru
+    from .logic import Lat, lat_line, translate_ru
 
     def set_voice(n: int) -> None:
         tts.speaker = n
@@ -220,15 +227,23 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     if sess_box is not None:
         sess_box.append(sess)
 
+    lat = getattr(a, "lat", None) or Lat()
+    show_lat = getattr(a, "debug_latency", False)
+    no_back = getattr(a, "no_back", False)
+
     def produce():
         try:
             for n, label, zh in items:
                 lang = _target(a)  # re-read per sentence (--to follow)
-                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
-                u = Utterance(n, zh, ru, back_translate(mt, ru, lang), extra={"file": label, "cjk_retries": retries},
-                              lang=lang)
-                res["items"].append({"file": label, "zh": zh, lang: ru, "back": u.back, "_u": u})
-                sess.submit(u)
+                ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+                u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
+                res["items"].append({"file": label, "zh": zh, lang: ru, "_u": u})
+                sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
+                if not no_back:
+                    sess.set_back(u, lat.timed("back", back_translate, mt, ru, lang))
+                u.extra["lat"] = lat.take()
+                if show_lat:
+                    print(lat_line(u.extra["lat"]), file=sys.stderr, flush=True)
         except Exception as e:  # noqa: BLE001
             print(f"input stopped: {e}", flush=True)
         finally:
@@ -241,22 +256,31 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     for it in res["items"]:
         u = it.pop("_u", None)
         it["decision"] = u.decision if u else ""
+        if u:
+            it["back"], it["lat"] = u.back, u.extra.get("lat", {})
 
 
-def _run_auto_live(items, mt, tts, player, res, lang="ru") -> None:
-    """--no-confirm with live input: translate + speak every utterance as it arrives.
+def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False) -> None:
+    """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
+    player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
-    from .logic import translate_ru
+    from .logic import Lat, lat_line, translate_ru
 
-    synth = _make_synth(tts)
+    lat = lat or Lat()
     for n, label, zh in items:
         lg = lang() if callable(lang) else lang
-        ru, _ = translate_ru(lambda x: mt.translate(x, "zh", lg).text, zh, lg)
+        ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, "zh", lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
-        out = synth(ru)
-        if out:
-            player.push(*out)
-        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if out else "no_audio"})
+        t0, sent = lat.clock(), 0
+        for audio, sr in _synth_sentences(tts, ru):
+            if not sent:
+                lat.set("tts", lat.clock() - t0)
+            player.push(audio, sr)
+            sent += 1
+        t = lat.take()
+        if show_lat:
+            print(lat_line(t), file=sys.stderr, flush=True)
+        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t})
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
@@ -265,7 +289,11 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     from ..segment import Segmenter
     from .live import capture_segments, recognize_utterances
 
+    from .logic import Lat, TimedASR
+
     stop = threading.Event()
+    a.lat = lat = Lat()
+    asr = TimedASR(asr, lat) if asr is not None else None
     items = ((n, "mic", zh) for n, zh in enumerate(
         recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr,
                          gate=getattr(player, "gate", None)), 1))
@@ -282,7 +310,8 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
-            _run_auto_live(items, mt, tts, player, res, lambda: _target(a))
+            _run_auto_live(items, mt, tts, player, res, lambda: _target(a), lat,
+                           getattr(a, "debug_latency", False))
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
@@ -425,6 +454,10 @@ def _main(argv, vm) -> int:
     ap.add_argument("--device", default=None, help='output device name substring, e.g. "CABLE Input"')
     ap.add_argument("--out-sr", type=int, default=48000)
     ap.add_argument("--no-confirm", action="store_true", help="send automatically (no confirmation step)")
+    ap.add_argument("--no-back", action="store_true",
+                    help="skip the back-translation shown while confirming (one MT pass less per sentence)")
+    ap.add_argument("--debug-latency", action="store_true",
+                    help="print one 'lat asr=.. mt=.. back=.. tts=.. total=..' line (seconds) per sentence on stderr")
     ap.add_argument("--preview-device", default=None,
                     help="also play the sent Russian audio on this device (your own headphones); default off")
     ap.add_argument("--no-play", action="store_true")
