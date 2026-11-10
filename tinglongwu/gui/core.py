@@ -117,11 +117,18 @@ def follow_newest(yview_last: float) -> bool:
     return yview_last >= 0.999
 
 
+def usable_model(wanted: str | None) -> str:
+    """The chosen Whisper model, or the best downloaded one when it is not on disk (#96)."""
+    from ..models import pick_whisper
+
+    return pick_whisper(wanted or "small")
+
+
 def settings_to_argv(s: dict) -> list[str]:
     """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
-            "--engine", s.get("engine") or "auto", "--model", s.get("model") or "small",
+            "--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model")),
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     if s.get("source") == "mic":
         argv += ["--mic"]

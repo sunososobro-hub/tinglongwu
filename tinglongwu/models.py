@@ -33,3 +33,27 @@ def require(path: Path, what: str, hint: str) -> Path:
             f"  tlwu-setup {hint}"
         )
     return path
+
+
+WHISPER_SIZES = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
+# fallback order when the wanted model is not downloaded: best quality per speed first (large-v3-turbo is the
+# recommended GPU model, README / #63), then smaller ones
+WHISPER_FALLBACK = ["large-v3-turbo", "small", "medium", "base", "large-v3", "tiny"]
+
+
+def whisper_installed(mdir: Path | None = None) -> list[str]:
+    """Whisper sizes that exist under the models dir (a `whisper-<size>` folder)."""
+    d = mdir or models_dir(None)
+    return [s for s in WHISPER_SIZES if (d / f"whisper-{s}").is_dir()]
+
+
+def pick_whisper(wanted: str | None, mdir: Path | None = None) -> str:
+    """`wanted` if it is downloaded, else the best downloaded one; `wanted` (or 'small') when nothing is
+    downloaded, so the normal 'run tlwu-setup' error still shows."""
+    have = whisper_installed(mdir)
+    if wanted and wanted in have:
+        return wanted
+    for s in WHISPER_FALLBACK:
+        if s in have:
+            return s
+    return wanted or "small"
