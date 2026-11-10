@@ -28,10 +28,10 @@ while :; do
   N="$(lang_name "$L")"
   echo
   echo "tinglongWu    對方語言：$N    （按 L 可改語言）"
-  echo "  Enter/1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
-  echo "  2)       純說  中文 -> ${N}語音"
-  echo "  3)       純聽  ${N} -> 中文字幕"
-  echo "  L)       改語言"
+  echo "  1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
+  echo "  2) 純說  中文 -> ${N}語音"
+  echo "  3) 純聽  ${N} -> 中文字幕"
+  echo "  L) 改語言"
   read -rp "> " pick
   case "$pick" in
     ""|1) mode=2; BOTH=1 ;;

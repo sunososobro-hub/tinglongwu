@@ -28,11 +28,11 @@ while ($true) {
     $N = if ($names.ContainsKey($L)) { $names[$L] } else { $L }
     Write-Host ""
     Write-Host "tinglongWu    對方語言：$N    （按 L 可改語言）"
-    Write-Host "  Enter/1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
-    Write-Host "  2)       純說  中文 -> ${N}語音"
-    Write-Host "  3)       純聽  $N -> 中文字幕"
-    Write-Host "  L)       改語言"
-    Write-Host "  G)       圖形介面（GUI）"
+    Write-Host "  1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
+    Write-Host "  2) 純說  中文 -> ${N}語音"
+    Write-Host "  3) 純聽  $N -> 中文字幕"
+    Write-Host "  L) 改語言"
+    Write-Host "  G) 圖形介面（GUI）"
     $pick = Read-Host ">"
     if ($pick -eq "g") { & $tlwu --gui; exit }
     if (-not $pick -or $pick -eq "1") { $mode = "2"; $both = $true }
