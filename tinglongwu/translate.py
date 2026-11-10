@@ -28,6 +28,20 @@ class Translator(ABC):
         return self.translate(text, src, tgt)
 
 
+def translate_checked(translator: "Translator", text: str, src: str, tgt: str, draft: bool = False) -> Translation | None:
+    """translate()/draft() that never lets Japanese through untranslated (#86): kana in a non-Japanese target
+    means the engine echoed (part of) the source. One retry (Hy-MT2 samples, so a second try usually works);
+    None when it still leaks. Drafts are not retried (the next draft comes in a moment anyway)."""
+    from .langfollow import has_kana
+
+    call = translator.draft if draft else translator.translate
+    for _ in range(1 if draft else 2):
+        tr = call(text, src, tgt)
+        if tgt == "ja" or not has_kana(tr.text):
+            return tr
+    return None
+
+
 # s2twp maps a few common words to Taiwan terms that are wrong in general speech (通过->透過 "through
 # means of", 支持->支援 "support = tech support"). Keep s2twp (it gives 軟體/網路/程式/記憶體 ...) and shield
 # these phrases from it: each (simplified, traditional) pair is swapped for a private-use placeholder

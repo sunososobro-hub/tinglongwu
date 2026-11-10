@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import queue
+import sys
 import threading
 import time
 
@@ -9,12 +10,15 @@ import numpy as np
 
 from .asr import Recognizer
 from .hallucination import is_hallucination
+from .i18n import t as _msg
 from .capture.base import SAMPLE_RATE, AudioSource
+from .langfollow import script_lang
 from .merge import SentenceMerger, Unit
+from .models import ModelNotFound
 from .repeat import collapse_repeats
 from .segment import Segmenter
 from .sink import Result, Sink
-from .translate import Translator
+from .translate import Translation, Translator, translate_checked
 
 SILENCE_RMS = 1e-3
 _DONE = object()
@@ -94,6 +98,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def emit(unit_text: str, lang: str, ep, queued: float) -> None:
         unit_text = collapse_repeats(unit_text)  # merged segments can loop across the seam
+        lang = script_lang(unit_text, lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
         if translator is None:  # transcript-only
             write(Result(lang, unit_text, None, "", tgt), ep)
             return
@@ -106,12 +111,21 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             return
         with model_lock():
             t0 = time.monotonic()
-            tr = translator.translate(unit_text, lang, tgt)
+            try:
+                tr = translate_checked(translator, unit_text, lang, tgt)
+            except ModelNotFound as e:  # a language turned up whose model is not installed: say so, keep running
+                if (lang, tgt) not in missing:
+                    missing.add((lang, tgt))
+                    print(f"tlwu: {e}", file=sys.stderr)
+                tr = Translation(None, _msg("mt_pair_missing", src=lang, tgt=tgt))
+            if tr is None:  # the engine echoed the source twice
+                tr = Translation(None, _msg("mt_untranslated"))
             dt = time.monotonic() - t0
             steps = step_times(translator)
         say(f"latency: mt {dt * 1000:.0f} ms{steps} (waited {(t0 - queued) * 1000:.0f} ms in queue)")
         write(Result(lang, unit_text, tr.pivot, tr.text, tgt), ep)
 
+    missing: set = set()  # (src, tgt) pairs already reported as not installed
     mtq: queue.Queue = queue.Queue()  # units waiting for MT + output; unbounded (short text)
     failed: list[BaseException] = []
 
