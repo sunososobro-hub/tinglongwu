@@ -25,6 +25,7 @@ scipy==1.18.1
 sentencepiece==0.2.3
 soundcard==0.4.6
 soundfile==0.14.0
+sv-ttk==2.6.1
 tokenizers==0.23.3
 tqdm==4.70.1
 truststore==0.10.5

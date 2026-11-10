@@ -24,6 +24,38 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report_marked": "Marked as handled; you will not be asked about these again.",
         "vosk_ru_license": "Russian voice model license is not stated upstream; download at your own responsibility",
         "vosk_ru_missing": "Russian voice model not installed (optional, opt-in): showing subtitles only, nothing will be spoken in Russian. To enable it: run `tlwu-setup --vosk-tts-ru` (downloads vosk-model-tts-ru-0.7-multi; its license is not stated upstream), or point --vosk-model / VOSK_MODEL at a model you already have.",
+        "gui_src_lang": "Source language",
+        "gui_target": "Translate to",
+        "gui_engine": "Engine",
+        "gui_model": "Speech model",
+        "gui_source": "Audio source (system = PC sound)",
+        "gui_mode": "Mode (meeting = full sentences, chat = faster)",
+        "gui_glossary": "Glossary",
+        "gui_save": "Save transcript",
+        "gui_show_src_line": "Show source line",
+        "gui_live_draft": "Live draft (uses more GPU)",
+        "gui_start": "Start",
+        "gui_stop": "Stop",
+        "gui_pause": "Pause",
+        "gui_resume": "Resume",
+        "gui_report": "Report a problem",
+        "gui_ready": "Ready. Fully offline.",
+        "gui_stopping": "Stopping...",
+        "gui_starting": "Starting...",
+        "gui_stopped": "Stopped.",
+        "gui_error": "Error: {msg}",
+        "gui_ui_lang": "Interface language",
+        "gui_dark": "Dark theme",
+        "gui_menu_show_src": "Show source text",
+        "gui_menu_font": "Font size",
+        "gui_menu_larger": "Larger (+)",
+        "gui_menu_smaller": "Smaller (-)",
+        "gui_menu_copy": "Copy last line",
+        "gui_menu_pause": "Pause display",
+        "gui_menu_quit": "Quit",
+        "gui_pick_glossary": "Glossary (.txt)",
+        "gui_pick_save": "Transcript file",
+        "gui_open_url": "Open this URL: {url}",
     },
     "ru": {
         "guard_blocked": "\U0001F6E1 tlwu заблокировал исходящее соединение: {host}:{port} ({pkg}). "
@@ -36,6 +68,38 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report_marked": "Отмечено как обработанное; об этих записях больше не спросим.",
         "vosk_ru_license": "Лицензия модели русского голоса не указана автором; скачивайте на свою ответственность",
         "vosk_ru_missing": "Модель русского голоса не установлена (необязательная, включается отдельно): показываю только субтитры, по-русски ничего не произносится. Чтобы включить: выполните `tlwu-setup --vosk-tts-ru` (скачает vosk-model-tts-ru-0.7-multi; лицензия не указана автором) или укажите --vosk-model / VOSK_MODEL на уже имеющуюся модель.",
+        "gui_src_lang": "Язык источника",
+        "gui_target": "Перевести на",
+        "gui_engine": "Движок",
+        "gui_model": "Модель речи",
+        "gui_source": "Источник звука (system = звук ПК)",
+        "gui_mode": "Режим (meeting = целые фразы, chat = быстрее)",
+        "gui_glossary": "Глоссарий",
+        "gui_save": "Сохранять расшифровку",
+        "gui_show_src_line": "Показывать оригинал",
+        "gui_live_draft": "Живой черновик (больше нагрузка на GPU)",
+        "gui_start": "Старт",
+        "gui_stop": "Стоп",
+        "gui_pause": "Пауза",
+        "gui_resume": "Продолжить",
+        "gui_report": "Сообщить о проблеме",
+        "gui_ready": "Готово. Полностью офлайн.",
+        "gui_stopping": "Остановка...",
+        "gui_starting": "Запуск...",
+        "gui_stopped": "Остановлено.",
+        "gui_error": "Ошибка: {msg}",
+        "gui_ui_lang": "Язык интерфейса",
+        "gui_dark": "Тёмная тема",
+        "gui_menu_show_src": "Показывать оригинал",
+        "gui_menu_font": "Размер шрифта",
+        "gui_menu_larger": "Крупнее (+)",
+        "gui_menu_smaller": "Мельче (-)",
+        "gui_menu_copy": "Копировать последнюю строку",
+        "gui_menu_pause": "Приостановить показ",
+        "gui_menu_quit": "Выход",
+        "gui_pick_glossary": "Глоссарий (.txt)",
+        "gui_pick_save": "Файл расшифровки",
+        "gui_open_url": "Откройте этот адрес: {url}",
     },
     "zh-TW": {
         "guard_blocked": "\U0001F6E1 已擋下 tlwu 對外連線：{host}:{port}（{pkg}）。"
@@ -48,6 +112,38 @@ MESSAGES: dict[str, dict[str, str]] = {
         "report_marked": "已標記為處理過，這些之後不會再問。",
         "vosk_ru_license": "俄文語音模型上游未標示授權；下載請自負責任",
         "vosk_ru_missing": "尚未安裝俄文語音模型（選用，需主動啟用）：目前只顯示字幕，不會用俄文發聲。啟用方式：執行 `tlwu-setup --vosk-tts-ru`（下載 vosk-model-tts-ru-0.7-multi，上游未標示授權），或用 --vosk-model / VOSK_MODEL 指到你已有的模型。",
+        "gui_src_lang": "來源語言",
+        "gui_target": "翻譯成",
+        "gui_engine": "引擎",
+        "gui_model": "語音模型",
+        "gui_source": "音訊來源（system = 電腦音效）",
+        "gui_mode": "模式（meeting = 完整句子，chat = 較快）",
+        "gui_glossary": "詞彙表",
+        "gui_save": "儲存逐字稿",
+        "gui_show_src_line": "顯示原文",
+        "gui_live_draft": "即時草稿（較耗 GPU）",
+        "gui_start": "開始",
+        "gui_stop": "停止",
+        "gui_pause": "暫停",
+        "gui_resume": "繼續",
+        "gui_report": "回報問題",
+        "gui_ready": "就緒，完全離線。",
+        "gui_stopping": "停止中...",
+        "gui_starting": "啟動中...",
+        "gui_stopped": "已停止。",
+        "gui_error": "錯誤：{msg}",
+        "gui_ui_lang": "介面語言",
+        "gui_dark": "深色主題",
+        "gui_menu_show_src": "顯示原文",
+        "gui_menu_font": "字體大小",
+        "gui_menu_larger": "放大 (+)",
+        "gui_menu_smaller": "縮小 (-)",
+        "gui_menu_copy": "複製最後一行",
+        "gui_menu_pause": "暫停顯示",
+        "gui_menu_quit": "結束",
+        "gui_pick_glossary": "詞彙表 (.txt)",
+        "gui_pick_save": "逐字稿檔案",
+        "gui_open_url": "請開啟此網址：{url}",
     },
 }
 
@@ -89,10 +185,25 @@ def _system_tag() -> str:
 
 
 _cached: str | None = None
+_override: str | None = None  # set by the GUI language dropdown; beats env/config for this process
+
+
+def set_ui_lang(lang: str, persist: bool = True) -> str:
+    """Switch the UI language now (GUI dropdown) and remember it in the config file."""
+    global _override
+    _override = normalize(lang)
+    if persist:
+        try:
+            userdirs.write_config_value("ui_lang", _override)
+        except OSError:
+            pass
+    return _override
 
 
 def ui_lang() -> str:
     global _cached
+    if _override:
+        return _override
     env = os.environ.get("TLWU_UI_LANG", "").strip()
     if env and env != "auto":
         return normalize(env)
