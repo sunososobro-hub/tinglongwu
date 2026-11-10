@@ -71,3 +71,53 @@ def translate_ru(translate, zh: str, lang: str = "ru") -> tuple[str, int]:
         return ru, 0
     ru2 = translate(zh + RETRY_HINTS.get(lang, RETRY_HINT))
     return (ru2 if not has_cjk(ru2) else strip_cjk(ru2 or ru)), 1
+
+
+class Lat:
+    """Per-utterance stage timings in seconds for the speak-mode `lat` line (#132).
+    Stages: asr, mt, back (back-translation), tts (MT done -> first audio handed to the output)."""
+    STAGES = ("asr", "mt", "back", "tts")
+
+    def __init__(self, clock=None):
+        import time
+
+        self.clock = clock or time.perf_counter
+        self.t: dict[str, float] = {}
+
+    def timed(self, name: str, fn, *a, **k):
+        t0 = self.clock()
+        try:
+            return fn(*a, **k)
+        finally:
+            self.t[name] = self.t.get(name, 0.0) + self.clock() - t0
+
+    def set(self, name: str, seconds: float) -> None:
+        self.t[name] = seconds
+
+    def take(self) -> dict[str, float]:
+        """Timings collected so far, rounded; the collector is emptied for the next utterance."""
+        out, self.t = {k: round(v, 3) for k, v in self.t.items()}, {}
+        return out
+
+
+def lat_line(t: dict) -> str:
+    """'lat asr=0.41 mt=0.20 back=- tts=0.35 total=0.96' ('-' = stage did not run; total excludes back, which
+    never delays the audio)."""
+    parts = [f"{k}={t[k]:.2f}" if k in t else f"{k}=-" for k in Lat.STAGES]
+    total = sum(t.get(k, 0.0) for k in ("asr", "mt", "tts"))
+    return "lat " + " ".join(parts) + f" total={total:.2f}"
+
+
+class TimedASR:
+    """Wraps an ASR object: transcribe() time lands in `lat` as 'asr' (last call wins: dropped segments are not
+    part of the utterance that follows)."""
+
+    def __init__(self, asr, lat: Lat):
+        self._asr, self._lat = asr, lat
+
+    def transcribe(self, *a, **k):
+        self._lat.t.pop("asr", None)
+        return self._lat.timed("asr", self._asr.transcribe, *a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self._asr, name)

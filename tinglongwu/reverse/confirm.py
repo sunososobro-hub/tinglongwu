@@ -1,13 +1,14 @@
 """Confirm-before-send controller for reverse mode (no GPU / audio hardware in here; everything is injected).
 
 Flow per utterance: submit() -> synthesis starts in the background (serial, one worker) -> review loop shows
-zh / ru / back-translation in submit order -> Enter sends the audio, "r" or "x" (+Enter) discards it.
+zh / ru / back-translation (set_back(), may arrive late) in submit order -> Enter sends the audio, "r" or "x" (+Enter) discards it.
 Nothing reaches the output device before a confirmation. New utterances queue up while one waits.
 """
 from __future__ import annotations
 
 import queue
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
@@ -70,11 +71,24 @@ class ConfirmSession:
         self._pool = ThreadPoolExecutor(max_workers=1)  # TTS pipe is serial
         self.items: list[Utterance] = []
         self._eof = False
+        self._lock = threading.Lock()
+        self._shown: set[int] = set()  # id() of utterances already printed (a late back-translation is appended)
 
     def submit(self, u: Utterance) -> None:
         u.future = self._pool.submit(self.synth, u.ru)  # starts now, in the background
         self.items.append(u)
         self._q.put(u)
+
+    def set_back(self, u: Utterance, text: str) -> None:
+        """Back-translation that arrives after submit() (#132: it must not delay synthesis). Printed with the
+        utterance when it is shown later, or as its own line when the utterance is already on screen."""
+        from .. import fmt
+
+        with self._lock:
+            u.back = text
+            late = id(u) in self._shown
+        if late and text:
+            self.out(f"{fmt.INDENT}← BACK(zh): {text}")
 
     def finish(self) -> None:
         self._q.put(None)
@@ -87,7 +101,10 @@ class ConfirmSession:
         from .. import fmt
 
         blk = fmt.block("me", u.zh, [(None, u.ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n")
-        self.out(f"\n{blk}\n{fmt.INDENT}← BACK(zh): {u.back}")
+        with self._lock:
+            back = u.back
+            self._shown.add(id(u))
+        self.out(f"\n{blk}" + (f"\n{fmt.INDENT}← BACK(zh): {back}" if back else ""))
 
     def _ask(self, u: Utterance) -> bool:
         """True = send. EOF on input counts as discard."""
