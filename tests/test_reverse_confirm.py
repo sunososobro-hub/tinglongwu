@@ -41,9 +41,9 @@ def test_enter_sends_r_and_x_discard_in_order():
     items = run(s, [Utterance(i, f"z{i}", f"r{i}", f"b{i}") for i in range(1, 5)])
     assert [u.decision for u in items] == ["sent", "discarded", "discarded", "sent"]
     assert len(sent) == 2 and prev == [24000, 24000]
-    shown = [m for m in log if m.startswith("\n--- #")]
-    assert [m.split("#")[1].split()[0] for m in shown] == ["1", "2", "3", "4"]
-    assert "ZH : z1" in shown[0] and "RU : r1" in shown[0] and "BACK(zh): b1" in shown[0]
+    shown = [m for m in log if "→ r" in m]
+    assert [m.split("→ r")[1].split()[0] for m in shown] == ["1", "2", "3", "4"]
+    assert " z1" in shown[0] and "→ r1" in shown[0] and "BACK(zh): b1" in shown[0]
 
 
 def test_voice_switch_resynthesises_then_sends_new_voice():

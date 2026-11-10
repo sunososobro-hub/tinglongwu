@@ -200,5 +200,5 @@ def test_pipeline_smoke_makes_no_network_attempts(wav, tmp_path):
     out = io.StringIO()
     run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), FakeASR(),
         PivotTranslator(tmp_path, "tw", lambda s, t: steps[(s, t)]), TextSink(out))
-    assert "[RU] привет мир" in out.getvalue()
+    assert "привет мир" in out.getvalue()
     assert entries() == []

@@ -22,6 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .. import fmt
+
 
 def vram_used_mib() -> int | None:
     try:
@@ -243,7 +245,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru") -> None:
     for n, label, zh in items:
         lg = lang() if callable(lang) else lang
         ru, _ = translate_ru(lambda x: mt.translate(x, "zh", lg).text, zh, lg)
-        print(f"\n--- #{n} ---\nZH : {zh}\n{lg.upper()} : {ru}", flush=True)
+        print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         out = synth(ru)
         if out:
             player.push(*out)
@@ -268,7 +270,7 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
             for _n, _src, zh in items:
                 lang = _target(a)
                 ru, _r = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
-                print(f"[ZH] {zh}\n[{lang.upper()}] {ru}\n", flush=True)
+                print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:

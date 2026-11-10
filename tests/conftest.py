@@ -9,6 +9,12 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
+@pytest.fixture(autouse=True)
+def _ui_lang_en(monkeypatch):
+    monkeypatch.setenv("TLWU_UI_LANG", "en")
+    monkeypatch.setenv("NO_COLOR", "1")
+
+
 @pytest.fixture
 def wav(tmp_path):
     import soundfile as sf

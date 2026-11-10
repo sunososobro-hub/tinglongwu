@@ -199,7 +199,7 @@ def test_pipeline_merges_segments(tmp_path):
     run(Src(3), Segmenter(chunk=1.0, use_vad=False), ScriptASR(["половина", "фразы.", "другая."]),
         _tr(tmp_path), TextSink(out), merger=SentenceMerger(), audio_clock=True)
     o = out.getvalue()
-    assert "[RU] половина фразы." in o and "[RU] другая." in o and o.count("[RU]") == 2
+    assert "Them половина фразы." in o and "Them другая." in o and o.count("Them") == 2
 
 
 def test_pipeline_timer_flushes_without_new_segment(tmp_path):
@@ -217,7 +217,7 @@ def test_pipeline_timer_flushes_without_new_segment(tmp_path):
 
     run(Src(1, hold=hold), Segmenter(chunk=1.0, use_vad=False), ScriptASR(["без точки"]),
         _tr(tmp_path), Sink(out), merger=SentenceMerger(max_wait=0.4))
-    assert "[RU] без точки" in out.getvalue()
+    assert "Them без точки" in out.getvalue()
     assert 0.3 <= seen["t"] < 2.5
 
 
