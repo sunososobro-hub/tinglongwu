@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -191,6 +192,12 @@ def main() -> int:
                     help="vosk: built-in voice id (ru 0.7: 0-4); kokoro: 0-4 (default there: 0)")
     ap.add_argument("--model", required=True, help="local Vosk-TTS model dir / Kokoro model dir")
     a = ap.parse_args()
+    # Ctrl+C in the terminal reaches this child too (same process group): it would die in `for line in sys.stdin`
+    # with a traceback. The parent ends us (quit command / stdin EOF / kill), so ignore the signal.
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except (ValueError, OSError):  # pragma: no cover - not the main thread / unsupported
+        pass
     os.environ["HF_HUB_OFFLINE"] = "1"
     if a.engine == "kokoro":
         os.environ["TRANSFORMERS_OFFLINE"] = "1"

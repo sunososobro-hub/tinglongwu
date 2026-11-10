@@ -139,7 +139,7 @@ if [ "$mode" = "2" ] && { [ "$SPEAK" = "ru" ] || { [ "$SPEAK" = "follow" ] && pr
 fi
 LISTEN_LANG=(--lang "$L"); [ "$L" = "auto" ] && LISTEN_LANG=(--lang auto --lang-candidates "$CANDS")
 HY_NOTE="$(mp M_HY_NOTE)"
-if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else m M_BANNER_SPEAK "$SPEAK"; fi
+if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
   python - "$@" <<'PY'

@@ -152,3 +152,22 @@ def test_live_wiring_auto_and_confirm(monkeypatch):
             assert [r["decision"] for r in res["items"]] == ["sent", "sent"]
         assert res["items"][0]["ru"] == "privet-2"
     assert pl.enabled is False
+
+
+def test_tts_worker_ignores_sigint():
+    """Terminal Ctrl+C hits the TTS worker child too; it must not die with a traceback."""
+    import inspect
+
+    from tinglongwu.reverse import tts_worker
+
+    src = inspect.getsource(tts_worker.main)
+    assert "SIGINT" in src and "SIG_IGN" in src
+
+
+def test_main_swallows_second_ctrl_c(monkeypatch, capsys):
+    def boom(argv, vm):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(proto, "_main", boom)
+    assert proto.main([]) == 130
+    assert "stopping" in capsys.readouterr().out

@@ -363,9 +363,15 @@ def main(argv=None) -> int:
     vm: list = []
     try:
         return _main(argv, vm)
+    except KeyboardInterrupt:  # second Ctrl+C during shutdown (or Ctrl+C while loading): quit quietly
+        print("\nstopping...", flush=True)
+        return 130
     finally:
         for v in vm:
-            v.close()
+            try:
+                v.close()
+            except KeyboardInterrupt:
+                pass
 
 
 def _main(argv, vm) -> int:
