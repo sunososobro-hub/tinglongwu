@@ -17,7 +17,7 @@ from ..stream import DraftRenderer
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 4, "theme": "dark",
+    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -25,10 +25,10 @@ ENGINES = ["auto", "qwen", "qwen4b", "opus"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
-FONT_MIN, FONT_MAX = 10, 96
+FONT_MIN, FONT_MAX = 12, 72
 FONT_PRESETS = {"S": 20, "M": 28, "L": 36, "XL": 48}  # subtitle size picker in the control window
 HISTORY_LINES = 200  # finals kept in the subtitle bar's scroll-back
-ROWS_MIN, ROWS_MAX = 2, 12  # visible text rows of the subtitle bar (drag its top edge to change)
+ROWS_MIN, ROWS_MAX = 1, 5  # visible text rows of the subtitle bar (drag its top edge to change)
 
 
 def target_for_locale(tag: str | None) -> str:

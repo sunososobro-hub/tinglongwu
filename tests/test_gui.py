@@ -186,11 +186,12 @@ def test_follow_newest_only_at_bottom():
 
 
 def test_rows_after_drag_and_clamp():
-    assert core.rows_after_drag(4, -60, 30) == 6  # top edge dragged up 2 lines -> 2 more rows
-    assert core.rows_after_drag(4, 31, 30) == 3
+    assert core.rows_after_drag(3, -30, 30) == 4  # top edge dragged up 1 line -> 1 more row
+    assert core.rows_after_drag(3, 31, 30) == 2
     assert core.rows_after_drag(4, -10_000, 30) == core.ROWS_MAX
     assert core.rows_after_drag(4, 10_000, 30) == core.ROWS_MIN
     assert core.rows_after_drag(4, -60, 0) == 4
+    assert (core.ROWS_MIN, core.ROWS_MAX, core.FONT_MIN, core.FONT_MAX) == (1, 5, 12, 72)
 
 
 def test_font_preset_nearest_label():
@@ -201,11 +202,17 @@ def test_font_preset_nearest_label():
 def test_overlay_lines_setting_persists_and_clamps(tmp_path):
     p = tmp_path / "gui.json"
     s = core.load_settings(p)
-    assert s["overlay_lines"] == 4
-    s.update(overlay_lines=7, font_size=core.FONT_PRESETS["XL"])
+    assert s["overlay_lines"] == 3  # default 3 lines
+    s.update(overlay_lines=1, font_size=14)
     core.save_settings(s, p)
     got = core.load_settings(p)
-    assert got["overlay_lines"] == 7 and got["font_size"] == 48
+    assert got["overlay_lines"] == 1 and got["font_size"] == 14  # survive restart
+    s.update(overlay_lines=5, font_size=40)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 5 and got["font_size"] == 40
+    p.write_text(json.dumps({"font_size": 5}), "utf-8")
+    assert core.load_settings(p)["font_size"] == 12
     p.write_text(json.dumps({"overlay_lines": 999}), "utf-8")
     assert core.load_settings(p)["overlay_lines"] == core.ROWS_MAX
 
