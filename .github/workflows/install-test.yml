@@ -69,7 +69,9 @@ jobs:
           TLWU_SKIP_MODELS: "1"
           TLWU_SKIP_SHORTCUT: "1"
         run: |
-          & .\scripts\bootstrap_windows.ps1
+          # run it as the user does (irm | iex = script text; the file has no BOM so PS 5.1 would misread it as a file)
+          # output redirected on purpose: regression cover for stderr -> NativeCommandError under PS 5.1
+          Get-Content -Raw -Encoding UTF8 .\scripts\bootstrap_windows.ps1 | Invoke-Expression *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\bootstrap.log"
           if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
       - name: Smoke check
         shell: powershell
