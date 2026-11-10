@@ -233,8 +233,8 @@ if [ "$out" != "4" ]; then
   read -rp "$(mp M_ASK_AUTOSEND)" ac
   [ "$ac" = "y" ] && AUTO=(--no-confirm)
 fi
-if [ "$IS_MAC" = "1" ] && { [ "$out" = "2" ] || [ "$out" = "3" ]; }; then
-  # must be a REAL output (headphones/speakers), never the Multi-Output Device / BlackHole 2ch: those are recorded by the listen side
+if [ "$out" = "2" ] || [ "$out" = "3" ]; then
+  # (Linux too, #38: never a hardcoded device name) must be a REAL output (headphones/speakers), never the Multi-Output Device / BlackHole 2ch: those are recorded by the listen side
   m M_MAC_OUTDEV
   python -m tinglongwu.reverse.proto --list-speakers 2>/dev/null | sed 's/^/    /'
   read -rp "$(mp M_ASK_DEVICE)" HP
@@ -251,8 +251,8 @@ if [ "$IS_MAC" = "1" ]; then
 fi
 case "$out" in
   1) exec "${REV[@]}" "${AUTO[@]}" ;;
-  2) exec "${REV[@]}" "${AUTO[@]}" --preview-device Family ;;
-  3) exec "${REV[@]}" "${AUTO[@]}" --device Family ;;
+  2) exec "${REV[@]}" "${AUTO[@]}" --preview-device "$HP" ;;
+  3) exec "${REV[@]}" "${AUTO[@]}" --device "$HP" ;;
   4) exec "${TXT[@]}" ;;
   *) m M_BAD_OPTION; exit 1 ;;
 esac
