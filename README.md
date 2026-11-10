@@ -1,4 +1,4 @@
-# tinglongWu — Taiwanese 聽攏有 (thiann lóng ū): "I understood it all". Real-time speech translation, 100% offline and verifiable.
+# tinglongWu — Taiwanese 聽攏有 (thiann lóng ū): "I understood it all". Real-time speech translation, offline at runtime and verifiable (install and model download need the network; the in-process guard is defence in depth, not proof, see Privacy model).
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
@@ -63,8 +63,8 @@ Bundles are platform-specific: build on the same OS, CPU architecture and Python
 - Audio lives in memory only. Transcripts go to stdout only; nothing is logged. Only the explicit opt-ins `--save` and `--save-result PATH` (speak mode) write text to disk.
 - On `import tinglongwu` (before any HF/ctranslate2 import) the env is forced offline: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `ARGOS_*`.
 - A runtime **network guard** patches `socket.connect/connect_ex/create_connection/getaddrinfo/gethostbyname` and raises on any non-loopback target (loopback and AF_UNIX pass). It is on in `tlwu`, `tlwu --gui`, `python -m tinglongwu.reverse.proto` and the TTS worker subprocesses (Kokoro/Vosk). Only our own processes are affected; no OS firewall is touched. `tlwu-setup` and the update step (`git`) do not use the guard; `TLWU_ALLOW_NET=1` disables it.
-- Network is for **install/setup** (tlwu-setup, pip) and **update** (git) only. Updating is opt-in: the first menu run asks once whether to check GitHub on every menu start (saved in the user config: `~/.config/tinglongwu/config`, `~/Library/Application Support/tinglongwu/config`, `%APPDATA%	inglongwu\config`); if off, the menu never touches the network and `U` updates on demand. `TLWU_NO_UPDATE=1` forces it off.
-- Every blocked attempt prints one line and appends a JSON line (time, host, port, mode, package guessed from the stack, trimmed stack without any content, tlwu version, OS) to `netguard.jsonl` in the user log dir (`~/.local/state/tinglongwu`, `~/Library/Logs/tinglongwu`, `%LOCALAPPDATA%	inglongwu`). Nothing is ever sent automatically: the next menu start shows what was blocked and asks "report to the developer? [y/N]"; `y` shows the exact text and opens a pre-filled GitHub issue in your browser that you submit yourself.
+- Network is for **install/setup** (tlwu-setup, pip) and **update** (git) only. Updating is opt-in: the first menu run asks once whether to check GitHub on every menu start (saved in the user config: `~/.config/tinglongwu/config`, `~/Library/Application Support/tinglongwu/config`, `%APPDATA%\tinglongwu\config`); if off, the menu never touches the network and `U` updates on demand. `TLWU_NO_UPDATE=1` forces it off.
+- Every blocked attempt prints one line and appends a JSON line (time, host, port, mode, package guessed from the stack, trimmed stack without any content, tlwu version, OS) to `netguard.jsonl` in the user log dir (`~/.local/state/tinglongwu`, `~/Library/Logs/tinglongwu`, `%LOCALAPPDATA%\tinglongwu`). Nothing is ever sent automatically: the next menu start shows what was blocked and asks "report to the developer? [y/N]"; `y` shows the exact text and opens a pre-filled GitHub issue in your browser that you submit yourself.
 - Menu language follows the system (English by default, Russian, Traditional Chinese); override with `TLWU_UI_LANG=en|ru|zh-TW` or `I` in the menu. Texts live in `scripts/i18n/` and `tinglongwu/i18n.py`; adding a language = adding a file.
 - Models load only from a local `models/` dir (`--models-dir` or `TLWU_MODELS`); missing models give an error pointing to the download script. Nothing is auto-downloaded.
 - `tlwu-setup` (`tinglongwu_setup`) is the **only** program that uses the network. It pins on first download (HF commit sha / package URL + SHA256 of every file; committed pins in `tinglongwu_setup/manifest.json`, local record in `models/manifest.json`) and verifies on every later run (`--verify` works offline).
@@ -185,7 +185,21 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | numpy, scipy, onnxruntime | BSD-3, BSD-3, MIT | |
 | psutil, huggingface_hub | BSD-3, Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0 (non-commercial) | not shipped, no code or setup option |
-| Piper TTS (roadmap only, not shipped) | GPL-3.0 | github.com/OHF-Voice/piper1-gpl |
+| Qwen3 LLM (GGUF; official Qwen repos) | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF (license from the model card metadata) |
+| llama-cpp-python (runs Qwen3 / Hy-MT2) | MIT | github.com/abetlen/llama-cpp-python |
+| Hy-MT2-1.8B GGUF (Tencent; Japanese MT) | Apache-2.0 | huggingface.co/tencent/Hy-MT2-1.8B-GGUF (model card metadata) |
+| Vosk-TTS (code; Russian voice) | Apache-2.0 | github.com/alphacep/vosk-tts |
+| Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi; you download it yourself) | TBD (not verified) | alphacephei.com/vosk/models |
+| kokoro-onnx (English/Japanese voice) | MIT | github.com/thewh1teagle/kokoro-onnx |
+| Kokoro voice model (Kokoro-82M, ONNX) | Apache-2.0 (as stated by kokoro-onnx) | github.com/thewh1teagle/kokoro-onnx |
+| espeak-ng (pulled in by kokoro-onnx; kept in a separate venv, never in the main process) | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| misaki (G2P for Kokoro, incl. Japanese) | Apache-2.0 | github.com/hexgrad/misaki |
+| pyopenjtalk-plus, fugashi, unidic-lite, jaconv, mojimoji (misaki[ja] extras, Kokoro venv) | TBD (not verified) | installed by the menu hint only |
+| GigaAM v3 (Russian ASR, mobile app only) | MIT (repo verified; license of the v3 ONNX export: TBD) | github.com/salute-developers/GigaAM |
+| sherpa-onnx (mobile app only) | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
+| llama.cpp (self-built AAR in `mobile/`) | MIT (per mobile/README) | github.com/ggml-org/llama.cpp |
+| BlackHole (macOS virtual audio device) | GPL-3.0 | github.com/ExistentialAudio/BlackHole. **You install it; this project does not bundle or distribute it.** |
+| VB-CABLE (Windows virtual audio cable) | Donationware, proprietary (VB-Audio); redistribution terms TBD | vb-audio.com/Cable. **You install it; this project does not bundle or distribute it.** |
 
 Verify upstream licenses yourself before redistributing models.
 
@@ -227,6 +241,8 @@ To reproduce (needs the bench venv, the data under `%USERPROFILE%/tlwu-eval`, an
 .venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en --engines qwen3-8b,qwen3-4b
 ```
 
+**Bench only; sends test sentences to that service.** `scripts/bench/run.py` and `google_ref.py` call Google Cloud Translation v2 (and, for the FLEURS run, Speech-to-Text v1, which receives the test audio) only when a key file exists and `--no-google` is not given. They are dev tools: the `tinglongwu` package never imports `scripts/`, and no normal `tlwu` / `tlwu-gui` / reverse-mode path calls them. `fetch_data.py` also downloads the test sets (FLORES-200, FLEURS) from the network.
+
 **Google scores higher than every offline engine** in every direction we tested. The offline engines trade some quality for working with no network and no data leaving the machine. Small samples (50 sentences) are indicative only.
 
 ## Known limitations
@@ -249,18 +265,20 @@ Reverse mode (you speak Chinese, Russian speech goes into Meet/Zoom) on a CPU-on
 sudo apt install pulseaudio-utils            # pactl (PipeWire: pipewire-pulse already provides it)
 tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # one-time, needs network
 python -m tinglongwu.reverse.proto --list-mics
-python -m tinglongwu.reverse.proto --mic "<your mic substring>" --compute cpu --mt opus     --tts-python /path/to/tts-venv/bin/python --tts-model /path/to/qwen3-tts-0.6b-base     --ref ref_ru.wav --ref-text "@ref_ru.txt"
+python -m tinglongwu.reverse.proto --mic "<your mic substring>" --compute cpu --mt opus     --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
 ```
 
 - On Linux the program creates a virtual microphone automatically (`pactl load-module module-null-sink sink_name=tlwu_sink` + `module-remap-source ... source_name=tlwu_mic`), plays the Russian audio to `tlwu_sink`, and unloads both modules on exit. In Meet/Zoom choose the microphone `tlwu_mic`. `--no-vmic` disables this (then pass `--device <sink substring>`); `--list-speakers` lists output devices. Windows keeps VB-CABLE.
 - Without CUDA, translation uses the OPUS/Argos pivot zh -> en -> ru (needs the four `--pair` models above); Whisper defaults to `small`. `--mt qwen` forces Qwen3 (GPU).
-- CPU TTS (Qwen3-TTS 0.6B, Apache-2.0 license) works through plain `qwen_tts` but is slow: measured real-time factor about 4 (about 17 s to synthesize 4 s of speech) on a 14-thread Windows PC, so expect noticeable delay per sentence; faster Russian TTS engines are future work.
+- Speech uses fixed built-in voices on CPU: Vosk-TTS for Russian (`--tts-engine vosk`, voice ids 0-4 via `--speaker`) and Kokoro for English/Japanese (`--tts-engine kokoro`), each in its own venv. There is no reference-audio voice cloning.
 
-## Consent
-Get consent from participants before capturing calls or meetings; recording and transcription laws vary by jurisdiction.
+## Acceptable Use / Consent
+- Get the consent of every participant before recording, capturing or transcribing a call or meeting; recording and transcription laws vary by jurisdiction.
+- Do not use this tool to circumvent DRM or other technical protection of content you have no right to copy.
+- Do not use it to impersonate another person. Reverse mode speaks with fixed built-in voices only; there is no voice cloning, and you must not present synthesized speech as someone else's voice.
 
 ## Roadmap
-Mic -> zh -> ru translation -> Piper offline TTS -> virtual mic (VB-Cable / BlackHole / PipeWire null-sink), with echo exclusion so synthesized speech is not re-captured.
+Mic -> zh -> ru translation -> built-in-voice offline TTS (Vosk-TTS / Kokoro) -> virtual mic (VB-Cable / BlackHole / PipeWire null-sink), with echo exclusion so synthesized speech is not re-captured.
 
 ## Tests
 `pip install -r requirements-dev.txt && pytest` (no models or network needed).

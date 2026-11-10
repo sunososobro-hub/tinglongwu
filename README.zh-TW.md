@@ -1,4 +1,4 @@
-# tinglongWu — 台語「聽攏有」(thiann lóng ū)：「我全都聽懂了」。即時語音翻譯，100% 離線、可驗證。
+# tinglongWu — 台語「聽攏有」(thiann lóng ū)：「我全都聽懂了」。即時語音翻譯，執行期離線、可驗證（安裝與下載模型需要網路；行程內防護只是縱深防禦，不是證明，見「隱私模型」）。
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
@@ -69,7 +69,7 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 - 音訊只存在記憶體；逐字稿只輸出到 stdout，不寫任何紀錄（只有明確指定 `--save`、`--save-result PATH` 才會存檔）。
 - `import tinglongwu` 時（早於任何 HF/ctranslate2 匯入）強制設定離線環境變數：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
 - 執行期**網路防護**會攔截 `socket.connect/connect_ex/create_connection/getaddrinfo/gethostbyname`，任何非 loopback 目標一律丟出例外（loopback 與 AF_UNIX 放行）。`tlwu`、`tlwu --gui`、`python -m tinglongwu.reverse.proto` 與 TTS worker 子行程（Kokoro/Vosk）都會啟用；只影響我們自己的行程，不動作業系統防火牆。`tlwu-setup` 與更新（`git`）不啟用防護；`TLWU_ALLOW_NET=1` 可關閉。
-- 網路只用於**安裝/設定**（tlwu-setup、pip）與**更新**（git）。更新是自願的：第一次開選單會問一次「每次開選單要不要連 GitHub 檢查新版」（存在使用者設定檔：`~/.config/tinglongwu/config`、`~/Library/Application Support/tinglongwu/config`、`%APPDATA%	inglongwu\config`）；選不要就完全不連網，要更新時按 `U`。`TLWU_NO_UPDATE=1` 強制關閉。
+- 網路只用於**安裝/設定**（tlwu-setup、pip）與**更新**（git）。更新是自願的：第一次開選單會問一次「每次開選單要不要連 GitHub 檢查新版」（存在使用者設定檔：`~/.config/tinglongwu/config`、`~/Library/Application Support/tinglongwu/config`、`%APPDATA%\tinglongwu\config`）；選不要就完全不連網，要更新時按 `U`。`TLWU_NO_UPDATE=1` 強制關閉。
 - 每次被擋下會印一行並在使用者紀錄目錄的 `netguard.jsonl` 追加一行 JSON（時間、主機、埠、模式、由呼叫堆疊推測的套件、不含任何內容的精簡堆疊、tlwu 版本、作業系統）。**絕不自動送出**：下次開選單會列出被擋的連線並問「要回報給開發者嗎？[y/N]」；選 y 會先顯示完整內容，再開瀏覽器帶入預填好的 GitHub issue，由你自己按送出。
 - 選單語言跟隨系統（預設英文，另有俄文、繁體中文）；用 `TLWU_UI_LANG=en|ru|zh-TW` 或選單的 `I` 覆寫。文字放在 `scripts/i18n/` 與 `tinglongwu/i18n.py`，加語言 = 加一個檔案。
 - 模型只從本機 `models/` 載入（`--models-dir` 或環境變數 `TLWU_MODELS`）；缺模型時會報錯並指向下載腳本，不會自動下載。
@@ -189,7 +189,21 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | numpy、scipy、onnxruntime | BSD-3、BSD-3、MIT | |
 | psutil、huggingface_hub | BSD-3、Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未隨附，無程式碼亦無安裝選項 |
-| Piper TTS（僅路線圖，未內建） | GPL-3.0 | github.com/OHF-Voice/piper1-gpl |
+| Qwen3 LLM（GGUF；Qwen 官方 repo） | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF（取自模型卡中繼資料） |
+| llama-cpp-python（執行 Qwen3／Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
+| Hy-MT2-1.8B GGUF（騰訊；日文翻譯） | Apache-2.0 | huggingface.co/tencent/Hy-MT2-1.8B-GGUF（模型卡中繼資料） |
+| Vosk-TTS（程式碼；俄語語音） | Apache-2.0 | github.com/alphacep/vosk-tts |
+| Vosk-TTS 俄語語音模型（vosk-model-tts-ru-0.7-multi，需自行下載） | 待確認 / TBD | alphacephei.com/vosk/models |
+| kokoro-onnx（英／日語語音） | MIT | github.com/thewh1teagle/kokoro-onnx |
+| Kokoro 語音模型（Kokoro-82M，ONNX） | Apache-2.0（依 kokoro-onnx 說明） | github.com/thewh1teagle/kokoro-onnx |
+| espeak-ng（kokoro-onnx 帶入；放在獨立 venv，不進主程序） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| misaki（Kokoro 的 G2P，含日文） | Apache-2.0 | github.com/hexgrad/misaki |
+| pyopenjtalk-plus、fugashi、unidic-lite、jaconv、mojimoji（misaki[ja] 附帶，Kokoro venv） | 待確認 / TBD | 僅由選單提示安裝 |
+| GigaAM v3（俄語 ASR，僅手機版） | MIT（已確認 repo；v3 ONNX 匯出權重授權：待確認） | github.com/salute-developers/GigaAM |
+| sherpa-onnx（僅手機版） | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
+| llama.cpp（`mobile/` 內自行建置的 AAR） | MIT（依 mobile/README） | github.com/ggml-org/llama.cpp |
+| BlackHole（macOS 虛擬音訊裝置） | GPL-3.0 | github.com/ExistentialAudio/BlackHole。**由你自行安裝，本專案不內建、不散布。** |
+| VB-CABLE（Windows 虛擬音訊線） | 捐贈制（donationware）、專有軟體（VB-Audio）；再散布條款待確認 / TBD | vb-audio.com/Cable。**由你自行安裝，本專案不內建、不散布。** |
 
 再散布模型前請自行確認上游授權。
 
@@ -231,6 +245,8 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 .venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en --engines qwen3-8b,qwen3-4b
 ```
 
+**僅限 bench；會把測試句子送到該服務。** `scripts/bench/run.py` 與 `google_ref.py` 只有在存在金鑰檔且未加 `--no-google` 時，才會呼叫 Google Cloud Translation v2（FLEURS 語音測試另會呼叫 Speech-to-Text v1，測試音訊會被送出）。這些是開發工具：`tinglongwu` 套件從不匯入 `scripts/`，一般的 `tlwu`／`tlwu-gui`／反向模式路徑也不會呼叫它們。`fetch_data.py` 另會從網路下載測試資料集（FLORES-200、FLEURS）。
+
 **Google 在所有測試方向的分數都高於所有離線引擎。** 離線引擎以部分品質換取無須網路、資料不離開本機。50 句樣本僅供參考。
 
 ## 已知限制
@@ -253,18 +269,20 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 sudo apt install pulseaudio-utils            # pactl（PipeWire 已由 pipewire-pulse 提供）
 tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # 一次性，需要網路
 python -m tinglongwu.reverse.proto --list-mics
-python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute cpu --mt opus     --tts-python /path/to/tts-venv/bin/python --tts-model /path/to/qwen3-tts-0.6b-base     --ref ref_ru.wav --ref-text "@ref_ru.txt"
+python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute cpu --mt opus     --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
 ```
 
 - Linux 上程式會自動建立虛擬麥克風（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄文語音播到 `tlwu_sink`，結束時卸載兩個模組。在 Meet/Zoom 選麥克風 `tlwu_mic`。`--no-vmic` 可關閉（改用 `--device <sink 子字串>`）；`--list-speakers` 列出輸出裝置。Windows 仍用 VB-CABLE。
 - 沒有 CUDA 時，翻譯改用 OPUS/Argos 樞紐 zh -> en -> ru（需上面四個 `--pair` 模型），Whisper 預設 `small`。`--mt qwen` 可強制用 Qwen3（GPU）。
-- CPU 版 TTS（Qwen3-TTS 0.6B，Apache-2.0 授權）經由純 `qwen_tts` 可運作但偏慢：在 14 執行緒的 Windows 電腦實測即時係數約 4（合成 4 秒語音約 17 秒），每句會有明顯延遲；更快的俄語 TTS 引擎留待後續。
+- 語音在 CPU 上使用內建固定語音：俄語用 Vosk-TTS（`--tts-engine vosk`，以 `--speaker` 選 0-4 號語音），英／日語用 Kokoro（`--tts-engine kokoro`），各自在獨立 venv。沒有參考音訊的聲音複製功能。
 
-## 同意聲明
-擷取通話或會議前，請先取得參與者同意；各地對錄音與逐字轉錄的法規不同。
+## 合理使用／同意聲明
+- 錄音、擷取或轉錄通話或會議前，須取得所有參與者的同意；各地對錄音與逐字轉錄的法規不同。
+- 不得用本工具規避 DRM 或其他對你無權複製之內容的技術保護措施。
+- 不得用來冒充他人。反向模式只使用內建固定語音，沒有聲音複製功能；也不得把合成語音當作他人的聲音。
 
 ## 路線圖
-麥克風 -> 中文 -> 俄文翻譯 -> Piper 離線 TTS -> 虛擬麥克風（VB-Cable／BlackHole／PipeWire null-sink），並做回音排除避免合成語音被重新擷取。
+麥克風 -> 中文 -> 俄文翻譯 -> 內建語音離線 TTS（Vosk-TTS／Kokoro） -> 虛擬麥克風（VB-Cable／BlackHole／PipeWire null-sink），並做回音排除避免合成語音被重新擷取。
 
 ## 測試
 `pip install -r requirements-dev.txt && pytest`（不需模型與網路）。

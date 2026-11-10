@@ -8,22 +8,12 @@ from pathlib import Path
 
 
 class TTSClient:
-    def __init__(self, tts_python: str, model: str, ref: str, ref_text: str = "", xvec_only: bool = False,
-                 chunk: int = 12, device: str = "cuda", engine: str = "qwen", speaker: int = 4,
-                 lang: str = "en"):
+    def __init__(self, tts_python: str, model: str, engine: str = "vosk", speaker: int = 4, lang: str = "en"):
         worker = Path(__file__).with_name("tts_worker.py")
         self.engine, self.speaker, self.lang = engine, speaker, lang  # lang: kokoro only (en | ja)
-        if engine == "kokoro":
-            cmd = [tts_python, str(worker), "--engine", "kokoro", "--model", model, "--speaker", str(speaker)]
-        elif engine == "vosk":
-            cmd = [tts_python, str(worker), "--engine", "vosk", "--model", model, "--speaker", str(speaker)]
-        else:
-            cmd = [tts_python, str(worker), "--model", model, "--ref", ref, "--chunk", str(chunk),
-                   "--device", device]
-            if xvec_only:
-                cmd.append("--xvec-only")
-            else:
-                cmd += ["--ref-text", ref_text]
+        if engine not in ("vosk", "kokoro"):
+            raise ValueError(f"unknown TTS engine {engine!r} (built-in fixed voices only: vosk, kokoro)")
+        cmd = [tts_python, str(worker), "--engine", engine, "--model", model, "--speaker", str(speaker)]
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
                "TLWU_MODE": "worker"}
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)

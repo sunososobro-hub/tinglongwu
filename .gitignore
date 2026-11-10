@@ -32,3 +32,12 @@ google_key*.txt
 reverse_out/
 result.json
 transcripts/
+
+# model weights / voice reference data (never commit)
+*.pt
+*.pth
+*.ckpt
+*.npy
+voices/
+ref/
+train_out/

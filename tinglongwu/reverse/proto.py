@@ -1,4 +1,4 @@
-"""Reverse-mode prototype: Chinese wav(s) -> Whisper (zh) -> Qwen3 zh->ru -> Qwen3-TTS (subprocess) -> speakers + wav.
+"""Reverse-mode prototype: Chinese wav(s) -> Whisper (zh) -> Qwen3 zh->ru -> built-in-voice TTS (Vosk-TTS / Kokoro, subprocess) -> speakers + wav.
 
 Run (main .venv):
   python -m tinglongwu.reverse.proto --input C:\\...\\reverse\\input --out C:\\...\\reverse\\out \\
@@ -332,10 +332,8 @@ def check_args(a) -> str | None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
     if a.tts_engine == "kokoro" and a.to not in ("en", "ja"):
         return "--tts-engine kokoro speaks English or Japanese only: use --to en or --to ja"
-    if a.tts_engine == "vosk" and a.to != "ru":
+    if a.tts_engine == "vosk" and a.to != "ru" and not a.no_tts:
         return "--tts-engine vosk speaks Russian only: use --to ru (or --tts-engine kokoro for --to en)"
-    if a.to in ("en", "ja") and a.tts_engine == "qwen" and not a.no_tts:
-        return f"--to {a.to} needs --tts-engine kokoro (the qwen TTS path is Russian-only)"
     return None
 
 
@@ -370,7 +368,7 @@ def _main(argv, vm) -> int:
                     help="Linux/macOS: do not create/select the virtual microphone (tlwu_mic / BlackHole 16ch); use --device yourself")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
     ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
-    ap.add_argument("--tts-engine", default="qwen", choices=["qwen", "vosk", "kokoro"],
+    ap.add_argument("--tts-engine", default="vosk", choices=["vosk", "kokoro"],
                     help="vosk = Vosk-TTS Russian built-in voices, fast on CPU (--tts-model = vosk model dir); "
                          "kokoro = Kokoro English voices (--tts-model = dir with kokoro-v1.0.int8.onnx + "
                          "voices-v1.0.bin; --tts-python = its own venv: GPL espeak stays out of this process)")
@@ -386,10 +384,6 @@ def _main(argv, vm) -> int:
     ap.add_argument("--vosk-model", default="", help="--to follow: Vosk Russian model dir")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
-    ap.add_argument("--ref", default="")
-    ap.add_argument("--ref-text", default="")
-    ap.add_argument("--xvec-only", action="store_true")
-    ap.add_argument("--chunk", type=int, default=12)
     ap.add_argument("--max-seg", type=float, default=6.0,
                     help="force-cut a sentence after this many seconds if no pause is heard (lower = less delay)")
     ap.add_argument("--device", default=None, help='output device name substring, e.g. "CABLE Input"')
@@ -477,9 +471,6 @@ def _main(argv, vm) -> int:
             return 2
         print(f"microphone: {a.mic_name}", flush=True)
 
-    if a.ref_text.startswith("@"):  # "@file.txt": read the transcript from a UTF-8 file (console-safe)
-        a.ref_text = Path(a.ref_text[1:]).read_text(encoding="utf-8").strip()
-
     import soundfile as sf
 
     from .. import offline  # noqa: F401  (applies offline env + network guard)
@@ -499,7 +490,7 @@ def _main(argv, vm) -> int:
     src = Path(a.input) if a.input else None
     wavs = [] if live else (sorted(src.glob("*.wav")) if src.is_dir() else [src])
     mdir = models_dir(a.models_dir)
-    res: dict = {"qwen": a.qwen, "whisper": a.whisper, "ref": a.ref, "xvec_only": a.xvec_only, "items": [],
+    res: dict = {"qwen": a.qwen, "whisper": a.whisper, "items": [],
                  "vram_mib": {"baseline": vram_used_mib()}}
     with VramSampler() as vs:
         t = time.perf_counter()
@@ -512,18 +503,16 @@ def _main(argv, vm) -> int:
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
         if a.to == "follow" and not a.no_tts:
-            dev_t = "cuda" if dev == "cuda" else "cpu"
             tts = FollowTTS({
-                "en": lambda: TTSClient(a.tts_python, a.tts_model, "", "", False, a.chunk, dev_t, "kokoro",
+                "en": lambda: TTSClient(a.tts_python, a.tts_model, "kokoro",
                                         0 if a.speaker is None else a.speaker),
-                "ru": lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model, "", "", False, a.chunk,
-                                        dev_t, "vosk", 4 if a.speaker is None else a.speaker)})
+                "ru": lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model, "vosk",
+                                        4 if a.speaker is None else a.speaker)})
             tts.client("en")  # default language up front; ru loads when the other side first speaks it
             if a.speaker is not None:
                 tts.speaker = a.speaker
         else:
-            tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only,
-                                                  a.chunk, "cuda" if dev == "cuda" else "cpu", a.tts_engine,
+            tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.tts_engine,
                                                   a.speaker, "ja" if a.to == "ja" else "en")
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)

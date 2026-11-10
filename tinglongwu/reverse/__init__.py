@@ -1,4 +1,4 @@
-"""Reverse mode prototype: Chinese speech -> Russian synthesized speech (ASR -> Qwen3 MT -> Qwen3-TTS).
+"""Reverse mode prototype: Chinese speech -> Russian synthesized speech (ASR -> Qwen3 MT -> built-in-voice TTS: Vosk-TTS / Kokoro).
 
-Separate from the main tlwu path. TTS runs in a subprocess with its own venv (torch cu128) over stdin/stdout pipes.
+Separate from the main tlwu path. TTS runs in a subprocess with its own venv over stdin/stdout pipes.
 """

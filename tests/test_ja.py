@@ -202,7 +202,7 @@ def test_cli_to_ja_and_follow_langs():
     with pytest.raises(SystemExit):
         _parse(["--to", "ja", "--tts-engine", "vosk"])
     with pytest.raises(SystemExit):
-        _parse(["--to", "ja"])  # default qwen TTS is Russian-only
+        _parse(["--to", "ja"])  # default vosk TTS is Russian-only
     assert _parse(["--to", "ja", "--no-tts"]).to == "ja"
     a = _parse(["--to", "follow", "--tts-engine", "kokoro", "--tts-model", "k", "--follow-langs", "en,ja"])
     assert a.follow_set == ("en", "ja")  # no Vosk needed without ru

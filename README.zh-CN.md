@@ -1,4 +1,4 @@
-# tinglongWu — 台语“听拢有”(thiann lóng ū)：“我全都听懂了”。实时语音翻译，100% 离线、可验证。
+# tinglongWu — 台语“听拢有”(thiann lóng ū)：“我全都听懂了”。实时语音翻译，运行时离线、可验证（安装与下载模型需要网络；进程内防护只是纵深防御，不是证明，见“隐私模型”）。
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
@@ -178,7 +178,21 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | numpy、scipy、onnxruntime | BSD-3、BSD-3、MIT | |
 | psutil、huggingface_hub | BSD-3、Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未随附，无代码亦无安装选项 |
-| Piper TTS（仅路线图，未内置） | GPL-3.0 | github.com/OHF-Voice/piper1-gpl |
+| Qwen3 LLM（GGUF；Qwen 官方 repo） | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF（取自模型卡元数据） |
+| llama-cpp-python（运行 Qwen3／Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
+| Hy-MT2-1.8B GGUF（腾讯；日语翻译） | Apache-2.0 | huggingface.co/tencent/Hy-MT2-1.8B-GGUF（模型卡元数据） |
+| Vosk-TTS（代码；俄语语音） | Apache-2.0 | github.com/alphacep/vosk-tts |
+| Vosk-TTS 俄语语音模型（vosk-model-tts-ru-0.7-multi，需自行下载） | 待确认 / TBD | alphacephei.com/vosk/models |
+| kokoro-onnx（英／日语语音） | MIT | github.com/thewh1teagle/kokoro-onnx |
+| Kokoro 语音模型（Kokoro-82M，ONNX） | Apache-2.0（依 kokoro-onnx 说明） | github.com/thewh1teagle/kokoro-onnx |
+| espeak-ng（kokoro-onnx 带入；放在独立 venv，不进主进程） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| misaki（Kokoro 的 G2P，含日语） | Apache-2.0 | github.com/hexgrad/misaki |
+| pyopenjtalk-plus、fugashi、unidic-lite、jaconv、mojimoji（misaki[ja] 附带，Kokoro venv） | 待确认 / TBD | 仅由菜单提示安装 |
+| GigaAM v3（俄语 ASR，仅手机版） | MIT（已确认 repo；v3 ONNX 导出权重许可：待确认） | github.com/salute-developers/GigaAM |
+| sherpa-onnx（仅手机版） | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
+| llama.cpp（`mobile/` 内自行构建的 AAR） | MIT（依 mobile/README） | github.com/ggml-org/llama.cpp |
+| BlackHole（macOS 虚拟音频设备） | GPL-3.0 | github.com/ExistentialAudio/BlackHole。**由你自行安装，本项目不内置、不分发。** |
+| VB-CABLE（Windows 虚拟音频线） | 捐赠制（donationware）、专有软件（VB-Audio）；再分发条款待确认 / TBD | vb-audio.com/Cable。**由你自行安装，本项目不内置、不分发。** |
 
 再分发模型前请自行确认上游许可证。
 
@@ -220,6 +234,8 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 .venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en --engines qwen3-8b,qwen3-4b
 ```
 
+**仅限 bench；会把测试句子发送到该服务。** `scripts/bench/run.py` 与 `google_ref.py` 只有在存在密钥文件且未加 `--no-google` 时，才会调用 Google Cloud Translation v2（FLEURS 语音测试另会调用 Speech-to-Text v1，测试音频会被发送）。这些是开发工具：`tinglongwu` 包从不导入 `scripts/`，常规的 `tlwu`／`tlwu-gui`／反向模式路径也不会调用它们。`fetch_data.py` 另会从网络下载测试数据集（FLORES-200、FLEURS）。
+
 **Google 在所有测试方向的分数都高于所有离线引擎。** 离线引擎以部分质量换取无需联网、数据不离开本机。50 句样本仅供参考。
 
 ## 已知限制
@@ -242,18 +258,20 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 sudo apt install pulseaudio-utils            # pactl（PipeWire 已由 pipewire-pulse 提供）
 tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # 一次性，需要网络
 python -m tinglongwu.reverse.proto --list-mics
-python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu --mt opus     --tts-python /path/to/tts-venv/bin/python --tts-model /path/to/qwen3-tts-0.6b-base     --ref ref_ru.wav --ref-text "@ref_ru.txt"
+python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu --mt opus     --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
 ```
 
 - Linux 上程序会自动创建虚拟麦克风（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄语语音播放到 `tlwu_sink`，退出时卸载两个模块。在 Meet/Zoom 选择麦克风 `tlwu_mic`。`--no-vmic` 可关闭（改用 `--device <sink 子串>`）；`--list-speakers` 列出输出设备。Windows 仍使用 VB-CABLE。
 - 没有 CUDA 时，翻译改用 OPUS/Argos 枢纽 zh -> en -> ru（需上面四个 `--pair` 模型），Whisper 默认 `small`。`--mt qwen` 可强制使用 Qwen3（GPU）。
-- CPU 版 TTS（Qwen3-TTS 0.6B，Apache-2.0 许可）通过纯 `qwen_tts` 可运行但偏慢：在 14 线程的 Windows 电脑实测实时系数约 4（合成 4 秒语音约 17 秒），每句会有明显延迟；更快的俄语 TTS 引擎留待后续。
+- 语音在 CPU 上使用内置固定语音：俄语用 Vosk-TTS（`--tts-engine vosk`，用 `--speaker` 选 0-4 号语音），英／日语用 Kokoro（`--tts-engine kokoro`），各自在独立 venv。没有参考音频的声音克隆功能。
 
-## 同意声明
-采集通话或会议前，请先取得参与者同意；各地对录音和转写的法规不同。
+## 合理使用／同意声明
+- 录音、采集或转写通话或会议前，须取得所有参与者的同意；各地对录音和转写的法规不同。
+- 不得用本工具规避 DRM 或其他对你无权复制之内容的技术保护措施。
+- 不得用来冒充他人。反向模式只使用内置固定语音，没有声音克隆功能；也不得把合成语音当作他人的声音。
 
 ## 路线图
-麦克风 -> 中文 -> 俄文翻译 -> Piper 离线 TTS -> 虚拟麦克风（VB-Cable／BlackHole／PipeWire null-sink），并做回声排除，避免合成语音被重新采集。
+麦克风 -> 中文 -> 俄文翻译 -> 内置语音离线 TTS（Vosk-TTS／Kokoro） -> 虚拟麦克风（VB-Cable／BlackHole／PipeWire null-sink），并做回声排除，避免合成语音被重新采集。
 
 ## 测试
 `pip install -r requirements-dev.txt && pytest`（不需要模型和网络）。

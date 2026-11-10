@@ -114,7 +114,7 @@ def test_kokoro_command_line_and_env(monkeypatch):
         return FakeProc()
 
     monkeypatch.setattr(tts_client.subprocess, "Popen", popen)
-    c = tts_client.TTSClient("/k/py", "/models/kokoro", "", engine="kokoro", speaker=2)
+    c = tts_client.TTSClient("/k/py", "/models/kokoro", engine="kokoro", speaker=2)
     assert seen["cmd"] == ["/k/py", str(WORKER), "--engine", "kokoro", "--model", "/models/kokoro",
                            "--speaker", "2"]
     assert seen["kw"]["env"]["HF_HUB_OFFLINE"] == "1"
@@ -150,3 +150,13 @@ def test_translate_hint_and_back_translation_use_target_language():
                          translate=lambda t, s, d: calls.append((s, d)) or SimpleNamespace(text="你好"))
     assert back_translate(mt, "Hello.", "en") == "你好" and calls == [("en", "zh")]
     assert Utterance(1, "你好", "Hello.", lang="en").lang == "en"
+
+
+def test_no_voice_cloning_engine():
+    """Reference-audio cloning was removed: only built-in fixed voices (vosk, kokoro) remain."""
+    with pytest.raises(SystemExit):
+        _parse(["--to", "ru", "--tts-engine", "qwen"])
+    with pytest.raises(SystemExit):
+        _parse(["--to", "ru", "--ref", "x.wav"])
+    with pytest.raises(ValueError):
+        tts_client.TTSClient("/py", "/m", engine="qwen")

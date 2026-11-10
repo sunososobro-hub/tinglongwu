@@ -43,9 +43,10 @@ flowchart LR
 | M2M-100（CT2，由 tlwu-setup 转换） | 可选直接翻译 | HF sha 与转换后权重 SHA256 均固定 | MIT | huggingface.co/facebook/m2m100_1.2B | `translate.py` `M2mTranslator` | `--engine m2m`；转换需仅用于开发的 torch+transformers（`TLWU_CONVERTER_PYTHON`） |
 | CUDA 12 库（cuBLAS、cuDNN 9） | 可选 GPU 运行时 | `requirements-gpu.txt` 固定版本 | NVIDIA CUDA EULA（本 repo 不分发） | pypi.org/project/nvidia-cublas-cu12 | `device.py` | `tlwu-setup --gpu`；`--device auto|cpu|cuda` |
 | OpenCC（opencc-python-reimplemented） | 中文字形转换 | 0.1.7 | Apache-2.0 | github.com/yichen0831/opencc-python | `translate.py` `zh_convert` | 修改 `zh_convert`（配置名 `s2twp`、`t2s`） |
-| （stdout） | 输出 | 无 | 无 | 无 | `sink.py` `TextSink`、`TranscriptSink`；`TTSSink` 为桩（计划 Piper，MIT） | 继承 `Sink`（`write(Result)`），在 `cli.py main` 选用 |
+| （stdout） | 输出 | 无 | 无 | 无 | `sink.py` `TextSink`、`TranscriptSink`；`TTSSink` 为桩（主包不含 TTS；反向模式的语音在独立 worker 子进程中运行） | 继承 `Sink`（`write(Result)`），在 `cli.py main` 选用 |
 | huggingface_hub | 仅用于下载模型 | 2.4.0 | Apache-2.0 | github.com/huggingface/huggingface_hub | 仅 `tinglongwu_setup (tlwu-setup)` 使用（faster-whisper 内部也引用，离线） | 无 |
 | psutil | 连接监控 | 7.2.2 | BSD-3 | github.com/giampaolo/psutil | `scripts/verify_offline.py` | 无 |
+| 反向模式（可选）：LLM＋TTS＋虚拟音频线 | zh->ru/en/ja 翻译、固定语音合成、导入会议软件 | 见 `requirements-qwen.txt`、`tinglongwu_setup/manifest.json` | Qwen3 Apache-2.0、llama-cpp-python MIT、Hy-MT2 Apache-2.0、Vosk-TTS Apache-2.0（俄语模型：待确认）、kokoro-onnx MIT、Kokoro 模型 Apache-2.0、espeak-ng GPL-3.0+（独立 venv）、misaki Apache-2.0、BlackHole GPL-3.0、VB-CABLE 捐赠制 | 见 README 许可证表（BlackHole／VB-CABLE 由用户自行安装，不内置） | `tinglongwu/reverse/`（`tts_worker.py` 运行 Vosk-TTS 或 Kokoro，仅内置固定语音，无声音克隆） | `--tts-engine vosk|kokoro`；新增引擎＝在 `tts_worker.py` 与 `tts_client.py` 加分支 |
 
 没有插件注册表：管线在 `tinglongwu/cli.py main()` 中显式组装，所谓“注册”就是在那里构造组件（若要让用户选择，再加 CLI choice）。
 
