@@ -23,6 +23,14 @@ fi
 # Blocked-connection reports from the network guard: asks; nothing is sent unless you say y and submit on GitHub.
 tlwu_report_check
 
+# Never download silently: every model download from this menu is confirmed first (default = no).
+ask_setup() {
+  local ans=""
+  read -rp "$(mp M_ASK_DOWNLOAD)" ans || ans=""
+  case "$ans" in y|Y|yes|YES|Yes) ;; *) m M_DOWNLOAD_DECLINED; exit 1 ;; esac
+  tlwu-setup "$@"
+}
+
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 WHISPER="${WHISPER:-}"   # empty = program default
@@ -31,7 +39,7 @@ if [ -n "$WHISPER" ]; then
   W_LISTEN=(--model "$WHISPER"); W_SPEAK=(--whisper "$WHISPER")
   if ! python -c "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / 'whisper-$WHISPER').is_dir() else 1)"; then
     m M_NO_WHISPER "$WHISPER"
-    tlwu-setup --whisper "$WHISPER"
+    ask_setup --whisper "$WHISPER"
   fi
 fi
 VOICE="${VOICE:-4}"
@@ -109,7 +117,7 @@ if [ "$mode" = "2" ] && { [ "$SPEAK" = "ja" ] || [ "$SPEAK" = "follow" ]; }; the
     CANDS="en,ru,zh"; FOLLOW_LANGS="en,ru"
   elif ! have_hymt_file; then
     m M_NO_HYMT
-    tlwu-setup --hymt
+    ask_setup --hymt
   fi
 fi
 LISTEN_LANG=(--lang "$L"); [ "$L" = "auto" ] && LISTEN_LANG=(--lang auto --lang-candidates "$CANDS")
@@ -135,7 +143,7 @@ if [ "$mode" = "1" ]; then
     [ "$L" = "ja" ] && echo "$HY_NOTE"; fi
   if ! have_pairs "${need[@]}"; then
     m M_NO_MODEL_FOR "$L"
-    tlwu-setup "${setup[@]}"
+    ask_setup "${setup[@]}"
   fi
   exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}"
 fi
@@ -144,7 +152,7 @@ if [ "$SPEAK" = "follow" ]; then
   # meeting + auto: both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk ru on first Russian sentence
   if ! have_pairs zh-en en-zh ru-en en-ru; then
     m M_NO_MODEL_EN_RU
-    tlwu-setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru
+    ask_setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru
   fi
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to follow --follow-file "$FOLLOW_FILE"
        --follow-langs "$FOLLOW_LANGS"
@@ -163,7 +171,7 @@ elif [ "$SPEAK" = "en" ]; then
   # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
   if ! have_pairs zh-en en-zh; then
     m M_NO_MODEL_ZH_EN
-    tlwu-setup --pair zh-en --pair en-zh
+    ask_setup --pair zh-en --pair en-zh
   fi
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to en
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
@@ -171,7 +179,7 @@ elif [ "$SPEAK" = "en" ]; then
 else
   if ! have_pairs zh-en en-ru ru-en en-zh; then
     m M_NO_MODEL_ZH_RU
-    tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
+    ask_setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
   fi
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
        --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE" "${W_SPEAK[@]}")
@@ -181,7 +189,7 @@ fi
 if [ "$BOTH" = "1" ]; then
   if [ "$L" = "ru" ] && ! have_pairs ru-en en-zh en-ru; then
     m M_NO_MODEL_FOR ru
-    tlwu-setup --langs ru --to zh --pair en-ru
+    ask_setup --langs ru --to zh --pair en-ru
   fi
   read -rp "$(mp M_ASK_AUTOSEND)" ac
   AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)

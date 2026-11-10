@@ -101,6 +101,12 @@ if ($L -eq "auto") {
     }
 }
 $setupExe = ".\.venv\Scripts\tlwu-setup.exe"
+function Invoke-Setup {  # never download silently: ask first (default = no)
+    $ans = ""
+    try { $ans = Read-Host (T 'ASK_DOWNLOAD') } catch { $ans = "" }
+    if ($ans -notmatch '^(y|yes)$') { Write-Host (T 'DOWNLOAD_DECLINED'); exit 1 }
+    & $setupExe @args
+}
 if ($mode -eq "2" -and ($speak -eq "ja" -or $speak -eq "follow")) {
     $missing = Get-JaMissing
     if ($missing) {
@@ -110,7 +116,7 @@ if ($mode -eq "2" -and ($speak -eq "ja" -or $speak -eq "follow")) {
         $listenLang = @("--lang", "auto", "--lang-candidates", $cands)
     } elseif (-not (Test-HymtFile)) {
         Write-Host (T 'NO_HYMT')
-        & $setupExe --hymt
+        Invoke-Setup --hymt
     }
 }
 $hyNote = T 'HY_NOTE'
@@ -119,7 +125,7 @@ if ($both) {
     & $py -c $havePairs @need
     if ($LASTEXITCODE -ne 0) {
         Write-Host (T 'NO_MODEL_FOR' $L)
-        if ($L -eq "en") { & $setupExe --to zh } elseif ($L -eq "auto") { & $setupExe --pair zh-en --pair en-zh --pair ru-en --pair en-ru } else { & $setupExe --langs $L --to zh --pair en-ru }
+        if ($L -eq "en") { Invoke-Setup --to zh } elseif ($L -eq "auto") { Invoke-Setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru } else { Invoke-Setup --langs $L --to zh --pair en-ru }
     }
     if ($speak -eq "follow") {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
@@ -143,7 +149,7 @@ if ($mode -eq "1") {
     & $py -c $havePairs @need
     if ($LASTEXITCODE -ne 0) {
         Write-Host (T 'NO_MODEL_FOR' $L)
-        & .\.venv\Scripts\tlwu-setup.exe @setup
+        Invoke-Setup @setup
     }
     & $tlwu @listenLang @wL
     exit
@@ -168,7 +174,7 @@ if ($speak -eq "follow") {
     & $py -c $havePairs zh-en en-zh
     if ($LASTEXITCODE -ne 0) {
         Write-Host (T 'NO_MODEL_ZH_EN')
-        & .\.venv\Scripts\tlwu-setup.exe --pair zh-en --pair en-zh
+        Invoke-Setup --pair zh-en --pair en-zh
     }
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "en", "--mt", "opus", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
@@ -177,7 +183,7 @@ if ($speak -eq "follow") {
     & $py -c $havePairs zh-en en-ru ru-en en-zh
     if ($LASTEXITCODE -ne 0) {
         Write-Host (T 'NO_MODEL_ZH_RU')
-        & $setupExe --pair zh-en --pair en-ru --pair ru-en --pair en-zh
+        Invoke-Setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
     }
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,
              "--tts-model", $voskModel, "--speaker", $voice) + $wS

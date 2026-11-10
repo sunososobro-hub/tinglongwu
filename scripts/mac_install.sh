@@ -24,6 +24,10 @@ KOKORO_DIR="$HOME/models/kokoro"
 KOKORO_BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 KOKORO_ONNX_SIZE=92361271
 KOKORO_VOICES_SIZE=28214398
+# SHA256 pins: fill in (lowercase hex) once computed from a verified copy. When set, a mismatch deletes the file
+# and aborts (fail closed); while empty, only the size is checked (NOT unpinned-proof, see README).
+KOKORO_ONNX_SHA256=""
+KOKORO_VOICES_SHA256=""
 BIN_DIR="$HOME/.local/bin"
 WARNINGS=""
 
@@ -159,20 +163,26 @@ fi
 "$KOKORO_VENV/bin/python" -c "import kokoro_onnx" || die "kokoro_onnx 匯入失敗。"
 
 mkdir -p "$KOKORO_DIR" || die "無法建立 $KOKORO_DIR"
-fetch_model() {  # name expected_size
-  local name="$1" want="$2" got
+sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+fetch_model() {  # name expected_size expected_sha256(optional)
+  local name="$1" want="$2" sha="${3:-}" got
   got="$(fsize "$KOKORO_DIR/$name")"
-  if [ -f "$KOKORO_DIR/$name" ] && [ "$got" = "$want" ]; then info "$name 已就緒"; return 0; fi
+  if [ -f "$KOKORO_DIR/$name" ] && [ "$got" = "$want" ]; then
+    if [ -z "$sha" ] || [ "$(sha256_of "$KOKORO_DIR/$name")" = "$sha" ]; then info "$name 已就緒"; return 0; fi
+    info "$name 的 SHA256 不符，刪除後重新下載"; rm -f "$KOKORO_DIR/$name"
+  fi
   info "下載 $name（約 $((want / 1000000)) MB）..."
   rm -f "$KOKORO_DIR/$name.part"
-  curl -fL --retry 3 --retry-delay 3 -o "$KOKORO_DIR/$name.part" "$KOKORO_BASE/$name" \
-    || die "下載 $name 失敗（網路？）。"
+  curl -fL --retry 3 --retry-delay 3 -o "$KOKORO_DIR/$name.part" "$KOKORO_BASE/$name"     || die "下載 $name 失敗（網路？）。"
   got="$(fsize "$KOKORO_DIR/$name.part")"
   [ "$got" = "$want" ] || { rm -f "$KOKORO_DIR/$name.part"; die "$name 大小不符（拿到 $got，預期 $want），已刪除；請重貼指令。"; }
+  if [ -n "$sha" ] && [ "$(sha256_of "$KOKORO_DIR/$name.part")" != "$sha" ]; then
+    rm -f "$KOKORO_DIR/$name.part"; die "$name SHA256 不符，已刪除（拒絕使用）。"
+  fi
   mv "$KOKORO_DIR/$name.part" "$KOKORO_DIR/$name" || die "無法儲存 $name"
 }
-fetch_model kokoro-v1.0.int8.onnx "$KOKORO_ONNX_SIZE"
-fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE"
+fetch_model kokoro-v1.0.int8.onnx "$KOKORO_ONNX_SIZE" "$KOKORO_ONNX_SHA256"
+fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 ( cd "$KOKORO_DIR" && shasum -a 256 kokoro-v1.0.int8.onnx voices-v1.0.bin > SHA256SUMS ) 2>/dev/null || true
 
 # ---------------------------------------------------------------- 6. models
