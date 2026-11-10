@@ -14,7 +14,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, LANGS, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
-                   rows_after_drag, save_settings, settings_to_argv)
+                   label_for_model, model_from_label, model_labels, rows_after_drag, save_settings, settings_to_argv)
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -312,7 +312,8 @@ class App:
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
         self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
-        self.v_model = self._combo(4, "gui_model", "model", MODELS)
+        self.v_model = self._combo(4, "gui_model", "model", model_labels())
+        self.v_model.set(label_for_model(self.settings["model"]))
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
         self.v_source = self._combo(5, "gui_source", "source", SOURCES)
@@ -479,7 +480,7 @@ class App:
     def collect(self):
         s = self.settings
         s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
-                 model=self.v_model.get(), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
+                 model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get())
         save_settings(s)
