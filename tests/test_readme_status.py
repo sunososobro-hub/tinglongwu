@@ -11,3 +11,12 @@ def test_readmes_have_status_table():
         assert head in s, name
         assert "| | Windows | macOS | Linux |" in s, name
         assert "issues/8" in s and "🧪" in s and "✅" in s, name
+
+
+def test_zh_cn_readme_has_all_one_line_installs():
+    en = (ROOT / "README.md").read_text("utf-8")
+    cn = (ROOT / "README.zh-CN.md").read_text("utf-8")
+    for cmd in ("irm https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.ps1",
+                "curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \\| bash"):
+        assert cmd in en
+        assert cmd in cn
