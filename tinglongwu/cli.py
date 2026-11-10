@@ -16,7 +16,8 @@ def parse_args(argv=None):
     p.add_argument("--file", help="translate an audio file instead of live system audio")
     p.add_argument("--mic", action="store_true", help="capture the microphone instead of loopback")
     p.add_argument("--capture-device", dest="device", help="capture device name substring")
-    p.add_argument("--model", default="small",
+    p.add_argument("--model", default=None,
+                   help="Whisper size (default: 'small' if downloaded, else the best downloaded one)",
                    choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"])
     p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], dest="compute",
                    help="compute device for ASR+MT: auto = cuda if usable, else cpu (default)")
@@ -153,6 +154,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
     note = status or (lambda m: None)
     mdir = models_dir(a.models_dir)
+    if a.model is None:
+        from .models import pick_whisper
+
+        a.model = pick_whisper("small", mdir)
     warned: list[str] = []
 
     def warn(m: str) -> None:
@@ -161,8 +166,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
     dev = resolve_device(a.compute, warn=warn)
     if notice is not None and dev == "cpu" and a.compute != "cpu":
-        why = warned[0] if warned else "沒有偵測到可用的 NVIDIA 顯示卡。"
-        notice(f"GPU 無法使用，已自動改用 CPU 模式（翻譯會比較慢）。\n原因：{why}")
+        from .i18n import t
+
+        why = warned[0].removeprefix("tlwu: ") if warned else t("gpu_none")
+        notice(t("gpu_fallback", why=why))
     glossary = None
     if a.glossary:
         from .glossary import load as load_glossary

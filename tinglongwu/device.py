@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -78,15 +80,61 @@ if os.environ.get("TLWU_BUNDLED") == "1":  # standalone build ships the libs; on
     CUDA_HELP = "update your NVIDIA graphics driver (CUDA 12 or newer) to use the GPU"
 
 
-def resolve_device(choice: str = "auto", *, count=cuda_device_count, missing=missing_cuda_libs,
-                   warn=lambda m: print(m, file=sys.stderr)) -> str:
-    """Return 'cuda' or 'cpu'. auto: cuda if CTranslate2 sees a device and the libs load."""
+# Oldest NVIDIA driver that can run CUDA 12.x (CTranslate2 4.x, cuBLAS 12, cuDNN 9). Source: NVIDIA "CUDA
+# Toolkit and Corresponding Driver Versions" (CUDA release notes, table "minimum required driver version for
+# CUDA minor version compatibility"): CUDA 12.x -> Linux >= 525.60.13, Windows >= 528.33.
+MIN_DRIVER = {"win32": (528, 33), "linux": (525, 60, 13)}
+DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
+
+
+def driver_version(run=subprocess.run) -> str | None:
+    """NVIDIA driver version of GPU 0 as nvidia-smi prints it ('457.49'); None: no NVIDIA GPU / no driver."""
+    try:
+        out = run(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"], capture_output=True,
+                  text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except Exception:  # noqa: BLE001 - no nvidia-smi, broken driver
+        return None
+    line = (out or "").strip().splitlines()[0].strip() if (out or "").strip() else ""
+    return line if re.fullmatch(r"\d+(\.\d+)+", line) else None
+
+
+def min_driver(platform: str | None = None) -> tuple[int, ...]:
+    return MIN_DRIVER["win32" if (platform or sys.platform) == "win32" else "linux"]
+
+
+def driver_too_old(version: str | None, platform: str | None = None) -> bool:
+    """True when an NVIDIA driver is installed but predates CUDA 12 (the GPU is there, CUDA cannot use it)."""
+    if not version:
+        return False
+    return tuple(int(x) for x in version.split(".")) < min_driver(platform)
+
+
+def gpu_problem(version: str | None, platform: str | None = None) -> str | None:
+    """Why CTranslate2 sees no CUDA device although nvidia-smi sees a GPU, in the UI language, with what to do.
+    None when there is no NVIDIA GPU at all (nothing to fix)."""
+    if not version:
+        return None
+    from .i18n import t
+
+    if driver_too_old(version, platform):
+        return t("gpu_driver_old", have=version, need=".".join(map(str, min_driver(platform))), url=DRIVER_URL)
+    return t("gpu_no_cuda", have=version)
+
+
+def resolve_device(choice: str = "auto", *, count=None, missing=None,
+                   warn=lambda m: print(m, file=sys.stderr), driver=None) -> str:
+    """Return 'cuda' or 'cpu'. auto: cuda if CTranslate2 sees a device and the libs load. A GPU that is present
+    but unusable (driver too old for CUDA 12) is never a silent CPU fallback: the real reason is warned."""
     if choice not in CHOICES:
         raise ValueError(f"device must be one of {CHOICES}")
     if choice == "cpu":
         return "cpu"
+    count, missing, driver = count or cuda_device_count, missing or missing_cuda_libs, driver or driver_version
     if count() == 0:
-        if choice == "cuda":
+        why = gpu_problem(driver())
+        if why:
+            warn(f"tlwu: {why}")
+        elif choice == "cuda":
             warn("tlwu: --device cuda requested but CTranslate2 reports no CUDA device; using CPU.")
         return "cpu"
     miss = missing()

@@ -18,6 +18,7 @@ DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
+    "floating_bar": False, "log_font_size": 14,
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -46,9 +47,17 @@ def settings_path() -> Path:
     return Path(base) / "tinglongwu" / "gui.json"
 
 
-def load_settings(path=None) -> dict:
-    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default."""
+def _gpu_usable() -> bool:
+    from ..device import cuda_device_count
+
+    return cuda_device_count() > 0
+
+
+def load_settings(path=None, gpu=_gpu_usable) -> dict:
+    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default.
+    First run (no saved file) without a usable GPU: live draft starts off, it doubles the work on a CPU."""
     out = dict(DEFAULTS)
+    fresh = True
     try:
         from ..i18n import _system_tag
 
@@ -58,6 +67,7 @@ def load_settings(path=None) -> dict:
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
         if isinstance(data, dict):
+            fresh = False
             for k, dv in DEFAULTS.items():
                 v = data.get(k)
                 if v is None:
@@ -70,6 +80,12 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    if fresh:
+        try:
+            out["live_draft"] = bool(gpu())
+        except Exception:  # noqa: BLE001
+            pass
+    out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     return out
 
@@ -84,11 +100,11 @@ def save_settings(s: dict, path=None) -> bool:
         return False
 
 
-def clamp_font(n) -> int:
+def clamp_font(n, default=None) -> int:
     try:
         return max(FONT_MIN, min(FONT_MAX, int(n)))
     except (TypeError, ValueError):
-        return DEFAULTS["font_size"]
+        return DEFAULTS["font_size"] if default is None else default
 
 
 def clamp_rows(n) -> int:
@@ -117,11 +133,18 @@ def follow_newest(yview_last: float) -> bool:
     return yview_last >= 0.999
 
 
+def usable_model(wanted: str | None) -> str:
+    """The chosen Whisper model, or the best downloaded one when it is not on disk (#96)."""
+    from ..models import pick_whisper
+
+    return pick_whisper(wanted or "small")
+
+
 def settings_to_argv(s: dict) -> list[str]:
     """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
-            "--engine", s.get("engine") or "auto", "--model", s.get("model") or "small",
+            "--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model")),
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     if s.get("source") == "mic":
         argv += ["--mic"]
