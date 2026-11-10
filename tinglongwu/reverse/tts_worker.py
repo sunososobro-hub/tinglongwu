@@ -92,15 +92,20 @@ def run_vosk(a) -> int:
 
 # Kokoro voice ids 0-4 (--speaker / v0-v4). Kept as a plain literal: tests read it with ast.
 KOKORO_VOICES = ["am_michael", "af_heart", "am_adam", "af_bella", "bm_george"]
+# Japanese voices for the same ids (best-graded first; Kokoro VOICES.md), used when a request has lang "ja".
+KOKORO_JA_VOICES = ["jf_alpha", "jf_gongitsune", "jf_tebukuro", "jf_nezumi", "jm_kumo"]
 KOKORO_MODEL_FILE = "kokoro-v1.0.int8.onnx"
 KOKORO_VOICES_FILE = "voices-v1.0.bin"
 
 
-def kokoro_voice(speaker, available=None, warn=lambda m: print(m, file=sys.stderr, flush=True)) -> str:
-    """Voice name for speaker id 0-4; unknown id or a name missing from `available` falls back to am_michael."""
-    default = KOKORO_VOICES[0]
+def kokoro_voice(speaker, available=None, warn=lambda m: print(m, file=sys.stderr, flush=True),
+                 voices=None) -> str:
+    """Voice name for speaker id 0-4 (`voices` = KOKORO_VOICES or KOKORO_JA_VOICES); unknown id or a name missing
+    from `available` falls back to the first voice of that list."""
+    voices = voices or KOKORO_VOICES
+    default = voices[0]
     try:
-        name = KOKORO_VOICES[int(speaker)]
+        name = voices[int(speaker)]
         if int(speaker) < 0:
             raise IndexError
     except (IndexError, ValueError, TypeError):
@@ -112,8 +117,23 @@ def kokoro_voice(speaker, available=None, warn=lambda m: print(m, file=sys.stder
     return name
 
 
-def run_kokoro(a) -> int:
-    """CPU path with kokoro-onnx (English). It bundles GPL espeak, so it only ever runs here, in its own venv.
+class JaPhonemizer:
+    """Japanese text -> Kokoro phonemes with misaki[ja] (pyopenjtalk + fugashi/unidic). Loaded on the first
+    Japanese request only. espeak's own "ja" is unusable (it spells kanji out), so it is never used for ja."""
+
+    def __init__(self):
+        self._g2p = None
+
+    def __call__(self, text: str) -> str:
+        if self._g2p is None:
+            from misaki import ja
+
+            self._g2p = ja.JAG2P()
+        return self._g2p(text)[0]
+
+
+def run_kokoro(a, ja_phonemizer=None) -> int:
+    """CPU path with kokoro-onnx (English + Japanese). It bundles GPL espeak, so it only ever runs here, in its own venv.
     Needs kokoro-v1.0.int8.onnx + voices-v1.0.bin in --model; a request may carry "speaker" (0-4)."""
     import numpy as np
     from kokoro_onnx import Kokoro
@@ -126,6 +146,7 @@ def run_kokoro(a) -> int:
             return 2
     t0 = time.perf_counter()
     k = Kokoro(onnx, voices)
+    ja_ph = ja_phonemizer or JaPhonemizer()
     try:
         avail = set(k.get_voices())
     except Exception:  # noqa: BLE001  (API not present: handle failures per request instead)
@@ -138,14 +159,20 @@ def run_kokoro(a) -> int:
             break
         try:
             t1 = time.perf_counter()
-            voice = kokoro_voice(req.get("speaker", a.speaker), avail)
+            ja = req.get("lang") == "ja"
+            voices = KOKORO_JA_VOICES if ja else KOKORO_VOICES
+            voice = kokoro_voice(req.get("speaker", a.speaker), avail, voices=voices)
+            if ja:
+                kw = dict(text=ja_ph(req["text"]), is_phonemes=True)
+            else:
+                kw = dict(text=req["text"], lang="en-us")
             try:
-                samples, sr = k.create(req["text"], voice=voice, speed=1.0, lang="en-us")
+                samples, sr = k.create(voice=voice, speed=1.0, **kw)
             except (KeyError, ValueError, AssertionError) as e:
-                if voice == KOKORO_VOICES[0]:
+                if voice == voices[0]:
                     raise
-                print(f"kokoro: voice {voice} failed ({e!r}), using {KOKORO_VOICES[0]}", file=sys.stderr, flush=True)
-                samples, sr = k.create(req["text"], voice=KOKORO_VOICES[0], speed=1.0, lang="en-us")
+                print(f"kokoro: voice {voice} failed ({e!r}), using {voices[0]}", file=sys.stderr, flush=True)
+                samples, sr = k.create(voice=voices[0], speed=1.0, **kw)
             arr = np.asarray(samples, dtype=np.float32).reshape(-1)
             gen = time.perf_counter() - t1
             dur = arr.size / sr

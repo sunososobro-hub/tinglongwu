@@ -45,7 +45,7 @@ def test_pick_candidate_restricts_to_set():
     assert pick_candidate(dict(probs), ("en",)) == "en"
     assert pick_candidate([("de", 1.0)], ("en", "ru"), fallback="ru") == "ru"
     assert parse_candidates("en, RU,en") == ("en", "ru")
-    assert parse_candidates(None) == ("en", "ru", "zh")
+    assert parse_candidates(None) == ("en", "ru", "ja", "zh")
 
 
 def test_asr_redetects_every_segment_and_does_not_lock(tmp_path):
@@ -111,12 +111,12 @@ def test_proto_target_follows_file(tmp_path):
             self.k, self.speaker = k, 0
             made.append(k)
 
-        def speak(self, t):
-            return self.k
+        def speak(self, t, lang=None):
+            return (self.k, lang)
 
     tts = FollowTTS({"en": lambda: C("en"), "ru": lambda: C("ru")})
-    assert tts.speak("hello") == "en" and made == ["en"]  # ru engine not loaded yet
-    assert tts.speak("привет") == "ru" and made == ["en", "ru"]
+    assert tts.speak("hello") == ("en", "en") and made == ["en"]  # ru engine not loaded yet
+    assert tts.speak("привет") == ("ru", None) and made == ["en", "ru"]
     tts.speaker = 3
     assert tts.clients["en"].speaker == tts.clients["ru"].speaker == 3
 

@@ -95,7 +95,10 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
     if name == "m2m":
         return M2mTranslator(mdir, zh_variant, dev)
-    return PivotTranslator(mdir, zh_variant, device=dev)
+    from .hymt import JaRouter
+
+    # OPUS has no usable Japanese: ja pairs go direct through Hy-MT2 when installed, else ja -> en -> zh pivot
+    return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
 
 
 def make_draft(asr, translator, segmenter, tgt: str, stream=None, show_src: bool = False,

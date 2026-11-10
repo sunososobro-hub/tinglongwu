@@ -22,16 +22,33 @@ $kokoroModel = if ($env:KOKORO_MODEL) { $env:KOKORO_MODEL } else { "$HOME\models
 $kokoroVoice = if ($env:KOKORO_VOICE) { $env:KOKORO_VOICE } else { "0" }
 
 $L = if ($env:TLWU_LANG) { $env:TLWU_LANG } else { "auto" }
-$cands = "en,ru,zh"   # auto: language follows whoever speaks, per sentence
+$cands = "en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
+$followLangs = "en,ru,ja"   # languages the speak side prepares in meeting mode
 $followFile = Join-Path $env:TEMP "tlwu_follow_lang"
-$names = @{ auto = "自動（英/俄）"; en = "英文"; ru = "俄文"; ja = "日文"; ko = "韓文"; de = "德文"; fr = "法文"; es = "西文" }
+$names = @{ auto = "自動（英/俄/日）"; en = "英文"; ru = "俄文"; ja = "日文"; ko = "韓文"; de = "德文"; fr = "法文"; es = "西文" }
 $both = $false
+function Test-SpeakOk($l) { return @("auto", "en", "ru", "ja") -contains $l }
+# Japanese needs Hy-MT2 (llama-cpp-python in .venv + the GGUF) and, for speaking, misaki[ja] in the Kokoro venv.
+$hymtRel = "hymt2-1.8b/Hy-MT2-1.8B-Q4_K_M.gguf"
+$haveHymtFile = "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / '$hymtRel').is_file() else 1)"
+function Test-HymtFile { & $py -c $haveHymtFile; return ($LASTEXITCODE -eq 0) }
+function Test-Llama { & $py -c "import llama_cpp" 2>$null; return ($LASTEXITCODE -eq 0) }
+function Test-HyReady { return ((Test-HymtFile) -and (Test-Llama)) }   # then ja is translated directly (no OPUS pivot)
+function Get-JaMissing {   # install commands the Japanese voice/translator still needs (empty = ready)
+    $out = @()
+    if (-not (Test-Llama)) { $out += "  & $py -m pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu" }
+    & $kokoroPy -c "import misaki.ja, fugashi, jaconv, unidic_lite" 2>$null
+    if ($LASTEXITCODE -ne 0) { $out += "  & `"$kokoroPy`" -m pip install misaki==0.9.4 pyopenjtalk-plus fugashi unidic-lite mojimoji jaconv addict regex" }
+    return $out
+}
+$hyNote = "（日文用 OPUS 英文轉接，品質較差；裝 Hy-MT2 可直譯：tlwu-setup --hymt，並在 .venv 裝 llama-cpp-python）"
 while ($true) {
     $N = if ($names.ContainsKey($L)) { $names[$L] } else { $L }
+    $ns = if (Test-SpeakOk $L) { "" } else { "（${N}暫不支援）" }
     Write-Host ""
     Write-Host "tinglongWu    對方語言：$N    （按 L 可改語言）"
-    Write-Host "  1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）"
-    if ($L -eq "auto") { Write-Host "  2) 純說  中文 -> 英文或俄文語音" } else { Write-Host "  2) 純說  中文 -> ${N}語音" }
+    Write-Host "  1) 開會  聽＋說，送進 Meet（要戴耳機麥克風）$ns"
+    if ($L -eq "auto") { Write-Host "  2) 純說  中文 -> 英文/俄文/日文語音" } else { Write-Host "  2) 純說  中文 -> ${N}語音$ns" }
     Write-Host "  3) 純聽  $N -> 中文字幕"
     Write-Host "  L) 改語言"
     Write-Host "  G) 圖形介面（GUI）"
@@ -41,12 +58,12 @@ while ($true) {
     elseif ($pick -eq "2") { $mode = "2" }
     elseif ($pick -eq "3") { $mode = "1" }
     elseif ($pick -eq "l") {
-        Write-Host "語言代碼：auto 自動（英/俄）、en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文（開會/純說目前只支援 auto、en、ru）"
+        Write-Host "語言代碼：auto 自動（英/俄/日）、en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文（開會/純說目前只支援 auto、en、ru、ja）"
         $L = Read-Host "對方說哪種語言 [Enter=auto]"; if (-not $L) { $L = "auto" }
         continue
     }
     else { Write-Host "沒有這個選項"; continue }
-    if ($mode -eq "2" -and $L -ne "auto" -and $L -ne "en" -and $L -ne "ru") { Write-Host "$N 目前只能「純聽」；開會/純說只支援英文、俄文。"; continue }
+    if ($mode -eq "2" -and -not (Test-SpeakOk $L)) { Write-Host "$N 暫不支援開會/純說，只能「純聽」；開會/純說支援英文、俄文、日文。請按 L 換語言或選 3。"; $both = $false; continue }
     break
 }
 
@@ -58,11 +75,23 @@ if ($L -eq "auto") {
     $listenLang = @("--lang", "auto", "--lang-candidates", $cands)
     if ($both) { $speak = "follow" }
     elseif ($mode -eq "2") {
-        $speak = Read-Host "你要說給對方的語言？[Enter=en 英文 / ru 俄文]"
-        if ($speak -ne "ru") { $speak = "en" }
+        $speak = Read-Host "你要說給對方的語言？[Enter=en 英文 / ru 俄文 / ja 日文]"
+        if ($speak -ne "ru" -and $speak -ne "ja") { $speak = "en" }
     }
 }
 $setupExe = ".\.venv\Scripts\tlwu-setup.exe"
+if ($mode -eq "2" -and ($speak -eq "ja" -or $speak -eq "follow")) {
+    $missing = Get-JaMissing
+    if ($missing) {
+        if ($speak -eq "ja") { Write-Host "日文語音/翻譯還缺（只需裝一次，裝好再跑）："; $missing | ForEach-Object { Write-Host $_ }; exit 1 }
+        Write-Host "日文先不啟用（缺套件，自動模式只做英/俄）。要日文請先裝："; $missing | ForEach-Object { Write-Host $_ }
+        $cands = "en,ru,zh"; $followLangs = "en,ru"
+        $listenLang = @("--lang", "auto", "--lang-candidates", $cands)
+    } elseif (-not (Test-HymtFile)) {
+        Write-Host "還沒有日文翻譯模型 Hy-MT2（約 1.1 GB），現在連網下載（只有這一次）..."
+        & $setupExe --hymt
+    }
+}
 if ($both) {
     $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en", "zh-en", "en-ru") } else { @("$L-en", "en-zh", "zh-en", "en-ru") }
     & $py -c $havePairs @need
@@ -82,7 +111,13 @@ if ($both) {
 }
 if ($mode -eq "1") {
     Write-Host "聽  $L -> 中文字幕"
-    if ($L -eq "en") { $need = @("en-zh"); $setup = @("--to", "zh") } elseif ($L -eq "auto") { $need = @("en-zh", "ru-en"); $setup = @("--langs", "ru", "--to", "zh") } else { $need = @("$L-en", "en-zh"); $setup = @("--langs", $L, "--to", "zh") }
+    if ($L -eq "en") { $need = @("en-zh"); $setup = @("--to", "zh") }
+    elseif ($L -eq "auto") {
+        $need = @("en-zh", "ru-en"); $setup = @("--langs", "ru", "--to", "zh")
+        if ($cands -match "ja" -and -not (Test-HyReady)) { $need += "ja-en"; $setup = @("--langs", "ru,ja", "--to", "zh"); Write-Host $hyNote }
+    }
+    elseif ($L -eq "ja" -and (Test-HyReady)) { $need = @(); $setup = @() }   # Hy-MT2: direct ja -> zh, no OPUS pair
+    else { $need = @("$L-en", "en-zh"); $setup = @("--langs", $L, "--to", "zh"); if ($L -eq "ja") { Write-Host $hyNote } }
     & $py -c $havePairs @need
     if ($LASTEXITCODE -ne 0) {
         Write-Host "還沒有 $L 的翻譯模型，現在連網下載（只有這一次）..."
@@ -94,11 +129,18 @@ if ($mode -eq "1") {
 Write-Host "說  中文 -> $speak 語音"
 
 if ($speak -eq "follow") {
-    # both directions; Kokoro (en) loads now, Vosk (ru) on the first Russian sentence
+    # both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk (ru) on the first Russian sentence
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "follow", "--follow-file", $followFile, "--mt", "opus",
+             "--follow-langs", $followLangs,
              "--tts-engine", "kokoro", "--tts-python", $kokoroPy, "--tts-model", $kokoroModel,
              "--vosk-python", $voskPy, "--vosk-model", $voskModel) + $wS
     $txt = @()
+} elseif ($speak -eq "ja") {
+    # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
+    if (-not (Test-Path $kokoroModel)) { Write-Host "找不到語音模型 $kokoroModel（Kokoro）"; exit 1 }
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "ja", "--mt", "opus", "--tts-engine", "kokoro",
+             "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ja", "--mt", "opus") + $wS
 } elseif ($speak -eq "en") {
     # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
     & $py -c $havePairs zh-en en-zh
@@ -122,7 +164,7 @@ if ($speak -eq "follow") {
 if ($both) {
     $ac = Read-Host "每句直接送、不確認？[Enter=要確認 / y=直接送]"
     if ($ac -eq "y") { $rev += "--no-confirm" }
-    Write-Host "開會模式：另一個視窗是對方的話（[EN]/[RU]/[ZH] 原文＋中文字幕）；你在這裡講中文會送進 Meet（Meet 麥克風選 CABLE Output）。請戴耳機。"
+    Write-Host "開會模式：另一個視窗是對方的話（[EN]/[RU]/[JA]/[ZH] 原文＋中文字幕）；你在這裡講中文會送進 Meet（Meet 麥克風選 CABLE Output）。請戴耳機。"
     try { & $py @rev --device "CABLE Input" }
     finally { if ($listen -and -not $listen.HasExited) { Stop-Process -Id $listen.Id -Force } }
     exit

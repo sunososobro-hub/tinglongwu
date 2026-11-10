@@ -9,8 +9,8 @@ import os
 import tempfile
 from pathlib import Path
 
-DEFAULT_CANDIDATES = ("en", "ru", "zh")
-SPEAK_LANGS = ("en", "ru")  # languages the speak side can voice; zh segments never update the state file
+DEFAULT_CANDIDATES = ("en", "ru", "ja", "zh")
+SPEAK_LANGS = ("en", "ru", "ja")  # languages the speak side can voice; zh segments never update the state file
 
 
 def parse_candidates(s: str | None) -> tuple[str, ...]:

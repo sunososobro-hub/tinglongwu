@@ -116,7 +116,7 @@ def test_make_translator_announces_and_falls_back_to_opus(tmp_path, capsys):
     from tinglongwu.translate import PivotTranslator
 
     t = cli.make_translator("auto", tmp_path, "tw", "cpu")
-    assert isinstance(t, PivotTranslator)
+    assert isinstance(t, PivotTranslator) or isinstance(t.base, PivotTranslator)  # JaRouter wraps OPUS
     assert "engine = opus" in capsys.readouterr().err
     with pytest.raises(ModelNotFound):  # chosen GGUF absent: clear setup error, not a crash later
         cli.make_translator("qwen", tmp_path, "tw", "cuda")

@@ -9,9 +9,10 @@ from pathlib import Path
 
 class TTSClient:
     def __init__(self, tts_python: str, model: str, ref: str, ref_text: str = "", xvec_only: bool = False,
-                 chunk: int = 12, device: str = "cuda", engine: str = "qwen", speaker: int = 4):
+                 chunk: int = 12, device: str = "cuda", engine: str = "qwen", speaker: int = 4,
+                 lang: str = "en"):
         worker = Path(__file__).with_name("tts_worker.py")
-        self.engine, self.speaker = engine, speaker
+        self.engine, self.speaker, self.lang = engine, speaker, lang  # lang: kokoro only (en | ja)
         if engine == "kokoro":
             cmd = [tts_python, str(worker), "--engine", "kokoro", "--model", model, "--speaker", str(speaker)]
         elif engine == "vosk":
@@ -36,12 +37,14 @@ class TTSClient:
             raise RuntimeError(f"TTS worker exited (code {self.proc.poll()})")
         return json.loads(line)
 
-    def speak(self, text: str):
+    def speak(self, text: str, lang: str | None = None):
         """Generator of (event_dict, payload_bytes|None); ends after the 'done' (or 'error') event."""
         self._n += 1
         req = {"id": self._n, "text": text}
         if self.engine in ("vosk", "kokoro"):
             req["speaker"] = self.speaker  # read per request, so set_voice() takes effect on the next sentence
+        if self.engine == "kokoro":
+            req["lang"] = lang or self.lang
         self.proc.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
         self.proc.stdin.flush()
         while True:

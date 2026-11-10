@@ -56,6 +56,7 @@ def main():
     models = {f"whisper-{s}": hf_pin(api, dl.whisper_repo(s)) for s in WHISPER}
     for name, (repo, fname) in dl.QWEN_GGUF.items():
         models[name] = hf_pin(api, repo, only={fname})
+    models[dl.HYMT_DIR] = hf_pin(api, dl.HYMT_GGUF[0], only={dl.HYMT_GGUF[1]})
     repo, rev, only = M2M
     models["m2m-1.2B"] = {**hf_pin(api, repo, rev, set(only)), "note": "SFconvertbot PR refs/pr/7 (safetensors)"}
     argos = {}

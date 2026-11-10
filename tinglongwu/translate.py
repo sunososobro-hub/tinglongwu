@@ -95,6 +95,20 @@ def cjk_clean(text: str) -> str:
     return re.sub(r"(?<=[^ -~]) (?=[^ -~])", "", text)
 
 
+_UNK = re.compile(r"<unk>|[\"'“”‘’「」『』]unk[\"'“”‘’「」『』]", re.I)
+
+
+def strip_unk(text: str) -> str:
+    """Remove SentencePiece unknown-token artifacts: a literal `<unk>`, and the quoted "unk" that the next
+    translation step makes out of it. Tidies the spaces that the removal leaves behind."""
+    if "unk" not in text.lower():
+        return text
+    out = _UNK.sub(" ", text)
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\s+([,.;:!?，。！？；：、])", r"\1", out)
+    return out.strip()
+
+
 class OpusStep:
     """One direction, e.g. ru->en, from models/opus/ru-en/ (ct2 model + sentencepiece)."""
 
@@ -120,7 +134,7 @@ class OpusStep:
             toks, beam_size=4, max_decoding_length=256,
             target_prefix=[[self.prefix]] * len(toks) if self.prefix else None)
         cut = 1 if self.prefix else 0
-        return self.join.join(self._detok(r.hypotheses[0][cut:]) for r in res)
+        return strip_unk(self.join.join(self._detok(r.hypotheses[0][cut:]) for r in res))
 
     def _detok(self, pieces: list[str]) -> str:
         # sp.decode() on a model whose output pieces are not in the source vocab (e.g. en->zh) leaves
@@ -218,8 +232,8 @@ class M2mTranslator(Translator):
         toks = [[s] + self._sp.encode(x, out_type=str) + ["</s>"] for x in sents]  # HF M2M100: __src__ + pieces + </s>
         res = self._tr.translate_batch(toks, target_prefix=[[t]] * len(toks), beam_size=4,
                                        max_decoding_length=256)
-        out = ("" if tgt in ("zh", "ja") else " ").join(
-            self._sp.decode(r.hypotheses[0][1:]).strip() for r in res)
+        out = strip_unk(("" if tgt in ("zh", "ja") else " ").join(
+            self._sp.decode(r.hypotheses[0][1:]).strip() for r in res))
         if tgt in ("zh", "ja"):
             out = cjk_clean(out)
         if tgt == "zh":

@@ -204,9 +204,21 @@ QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official
 }
 
 
+HYMT_DIR = "hymt2-1.8b"  # keep in sync with tinglongwu.hymt (setup does not import tinglongwu)
+HYMT_GGUF = ("tencent/Hy-MT2-1.8B-GGUF", "Hy-MT2-1.8B-Q4_K_M.gguf")  # Apache-2.0, ~1.1 GB: Japanese MT
+
+
 def get_qwen(man, mdir, name):
     """Qwen3 Q4_K_M GGUF -> models/<name>/<file>.gguf (pinned by HF commit sha + SHA256)."""
-    repo, fname = QWEN_GGUF[name]
+    get_gguf(man, mdir, name, *QWEN_GGUF[name])
+
+
+def get_hymt(man, mdir):
+    """Hy-MT2-1.8B Q4_K_M GGUF -> models/hymt2-1.8b/ (direct zh<->ja translation)."""
+    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF)
+
+
+def get_gguf(man, mdir, name, repo, fname):
     dest = mdir / name
     if not (dest.exists() and name in man):
         from huggingface_hub import snapshot_download
@@ -233,6 +245,9 @@ def main(argv=None) -> int:
                    help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
     p.add_argument("--qwen4b", action="store_true",
                    help="only Qwen3-4B Q4_K_M GGUF (~2.5 GB; for GPUs with < 6 GB free VRAM)")
+    p.add_argument("--hymt", action="store_true",
+                   help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
+                        "Japanese listening/speaking (needs llama-cpp-python)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
@@ -262,6 +277,9 @@ def main(argv=None) -> int:
         for name in (QWEN_GGUF if a.qwen else ["qwen3-4b"]):
             get_qwen(man, mdir, name)
             mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.hymt:
+        get_hymt(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
              + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])
     for pr in dict.fromkeys(pairs):

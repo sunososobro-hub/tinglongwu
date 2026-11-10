@@ -130,10 +130,12 @@ def _target(a) -> str:
 
 
 _CYR = re.compile("[Ѐ-ӿ]")
+_JA = re.compile("[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")  # kana / ideographs (en and ru output never has them)
 
 
 class FollowTTS:
-    """TTS front for --to follow: Russian (Cyrillic) text goes to the Vosk worker, anything else to Kokoro.
+    """TTS front for --to follow: Russian (Cyrillic) text goes to the Vosk worker, anything else to Kokoro
+    (Japanese text is Kokoro too, with lang "ja": same worker process, misaki loads on the first ja sentence).
     Each worker subprocess is started on first use (`factories`: {"en": callable, "ru": callable})."""
 
     engine = "vosk"  # both built-in-voice engines: v0-v4 switching works
@@ -162,7 +164,11 @@ class FollowTTS:
             c.speaker = n
 
     def speak(self, text: str):
-        return self.client("ru" if _CYR.search(text) else "en").speak(text)
+        if _CYR.search(text):
+            return self.client("ru").speak(text)
+        if _JA.search(text):
+            return self.client("en").speak(text, lang="ja")
+        return self.client("en").speak(text, lang="en")
 
     @property
     def proc(self):
@@ -272,10 +278,11 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         previewer.enabled = False
 
 
-def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru"):
+def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", follow_langs=("en", "ru")):
     """zh->ru|en translator. qwen (GPU, best; any target) or opus (Argos/OPUS on CPU). ru = pivot zh->en->ru, needs
     `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`; en = direct zh->en, needs
     `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming).
+    ja = direct zh<->ja through Hy-MT2 (`tlwu-setup --hymt`; OPUS has no usable Japanese), the rest stays OPUS.
     auto = qwen on CUDA, opus otherwise."""
     if kind == "auto":
         kind = "qwen" if device == "cuda" else "opus"
@@ -285,10 +292,15 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru"):
         mt = QwenTranslator(mdir, qwen, "tw", device)
         mt.preload()
         return mt
+    from ..hymt import JaRouter
     from ..translate import PivotTranslator
 
-    mt = PivotTranslator(mdir, "tw", device="cpu" if device != "cuda" else "cuda")
-    for t in (("en", "ru") if to == "follow" else (to,)):  # follow: both spoken languages
+    targets = tuple(follow_langs) if to == "follow" else (to,)
+    dev = "cpu" if device != "cuda" else "cuda"
+    mt = PivotTranslator(mdir, "tw", device=dev)
+    if "ja" in targets:
+        mt = JaRouter(mt, mdir, "tw", dev)
+    for t in targets:  # follow: every spoken language
         mt.preload("zh", t)  # fail early if the models are missing
         mt.preload(t, "zh")  # back-translation for the confirm step
     mt.history, mt._pair = [], None  # same surface as QwenTranslator for confirm.back_translate
@@ -297,20 +309,25 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru"):
 
 def check_args(a) -> str | None:
     """Validate/normalise cross-option rules in place; returns an error message or None."""
+    langs = tuple(x.strip() for x in getattr(a, "follow_langs", "en,ru").split(",") if x.strip())
+    bad = [x for x in langs if x not in ("en", "ru", "ja")]
+    if bad or not langs:
+        return f"--follow-langs takes en, ru, ja (comma separated), got {a.follow_langs!r}"
+    a.follow_set = langs
     if a.to == "follow":
         if not a.no_tts:
-            if a.tts_engine != "kokoro" or not a.tts_model or not a.vosk_model:
-                return ("--to follow needs --tts-engine kokoro (+ --tts-python/--tts-model for English) and "
-                        "--vosk-python/--vosk-model for Russian, or --no-tts")
+            if a.tts_engine != "kokoro" or not a.tts_model or ("ru" in langs and not a.vosk_model):
+                return ("--to follow needs --tts-engine kokoro (+ --tts-python/--tts-model for English and "
+                        "Japanese) and --vosk-python/--vosk-model for Russian, or --no-tts")
         return None
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
-    if a.tts_engine == "kokoro" and a.to != "en":
-        return "--tts-engine kokoro speaks English only: use --to en"
+    if a.tts_engine == "kokoro" and a.to not in ("en", "ja"):
+        return "--tts-engine kokoro speaks English or Japanese only: use --to en or --to ja"
     if a.tts_engine == "vosk" and a.to != "ru":
         return "--tts-engine vosk speaks Russian only: use --to ru (or --tts-engine kokoro for --to en)"
-    if a.to == "en" and a.tts_engine == "qwen" and not a.no_tts:
-        return "--to en needs --tts-engine kokoro (the qwen TTS path is Russian-only)"
+    if a.to in ("en", "ja") and a.tts_engine == "qwen" and not a.no_tts:
+        return f"--to {a.to} needs --tts-engine kokoro (the qwen TTS path is Russian-only)"
     return None
 
 
@@ -335,8 +352,8 @@ def _main(argv, vm) -> int:
     ap.add_argument("--whisper", default=None, help="default: large-v3-turbo on CUDA, small on CPU")
     ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"],
                     help="where ASR/MT/TTS run; auto = CUDA if usable, else CPU")
-    ap.add_argument("--to", default="ru", choices=["ru", "en", "follow"],
-                    help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en + Vosk ru voices, started on first use); ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
+    ap.add_argument("--to", default="ru", choices=["ru", "en", "ja", "follow"],
+                    help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
                          "no pivot; use with --tts-engine kokoro)")
     ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
                     help="translator; auto = Qwen3 on CUDA, OPUS/Argos on CPU (ru: pivot zh->en->ru; en: direct zh->en)")
@@ -354,6 +371,8 @@ def _main(argv, vm) -> int:
     ap.add_argument("--follow-file", default=None, metavar="PATH",
                     help="with --to follow: state file written by `tlwu --lang-file` (default: tlwu_follow_lang in "
                          "$XDG_RUNTIME_DIR or the temp dir)")
+    ap.add_argument("--follow-langs", default="en,ru", metavar="LIST",
+                    help="--to follow: spoken languages to prepare, subset of en,ru,ja (default en,ru)")
     ap.add_argument("--vosk-python", default="", help="--to follow: python of the Vosk (Russian) venv")
     ap.add_argument("--vosk-model", default="", help="--to follow: Vosk Russian model dir")
     ap.add_argument("--tts-python", default="")
@@ -459,7 +478,7 @@ def _main(argv, vm) -> int:
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()
-        mt = build_translator(a.mt, dev, mdir, a.qwen, a.to)
+        mt = build_translator(a.mt, dev, mdir, a.qwen, a.to, a.follow_set)
         res["load_s"]["qwen"] = round(time.perf_counter() - t, 2)
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
@@ -476,7 +495,7 @@ def _main(argv, vm) -> int:
         else:
             tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only,
                                                   a.chunk, "cuda" if dev == "cuda" else "cpu", a.tts_engine,
-                                                  a.speaker)
+                                                  a.speaker, "ja" if a.to == "ja" else "en")
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()

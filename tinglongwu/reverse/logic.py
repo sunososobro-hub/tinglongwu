@@ -15,10 +15,10 @@ def split_sentences(text: str, max_chars: int = 220) -> list[str]:
     for part in _END.split(text.strip()):
         part = part.strip()
         while len(part) > max_chars:
-            cut = max(part.rfind(c, 0, max_chars) for c in (",", ";", ":", " "))
+            cut = max(part.rfind(c, 0, max_chars) for c in (",", ";", ":", " ", "、", "，"))
             cut = cut if cut > 0 else max_chars
-            out.append(part[:cut].strip(" ,;:"))
-            part = part[cut:].strip(" ,;:")
+            out.append(part[:cut].strip(" ,;:、，"))
+            part = part[cut:].strip(" ,;:、，")
         if part:
             out.append(part)
     return [s for s in out if re.search(r"\w", s)]
@@ -67,7 +67,7 @@ def translate_ru(translate, zh: str, lang: str = "ru") -> tuple[str, int]:
     """translate(text)->str. Returns (translation, retries): one retry with a stricter hint when CJK leaks, then strip.
     `lang` (ru|en) only picks the hint wording; the function name is historical."""
     ru = translate(zh)
-    if not has_cjk(ru):
+    if lang == "ja" or not has_cjk(ru):  # Japanese output legitimately contains kanji: no leak check
         return ru, 0
     ru2 = translate(zh + RETRY_HINTS.get(lang, RETRY_HINT))
     return (ru2 if not has_cjk(ru2) else strip_cjk(ru2 or ru)), 1
