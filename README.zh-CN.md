@@ -180,21 +180,25 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未随附，无代码亦无安装选项 |
 | Qwen3 LLM（GGUF；Qwen 官方 repo） | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF（取自模型卡元数据） |
 | llama-cpp-python（运行 Qwen3／Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
-| Hy-MT2-1.8B GGUF（腾讯；日语翻译） | Apache-2.0 | huggingface.co/tencent/Hy-MT2-1.8B-GGUF（模型卡元数据） |
+| Hy-MT2-1.8B GGUF（腾讯；日语翻译） | Apache-2.0（repo 内 LICENSE.txt 为标准 Apache-2.0 全文，无额外限制） | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS（代码；俄语语音） | Apache-2.0 | github.com/alphacep/vosk-tts |
-| Vosk-TTS 俄语语音模型（vosk-model-tts-ru-0.7-multi，需自行下载） | 待确认 / TBD | alphacephei.com/vosk/models |
+| Vosk-TTS 俄语语音模型（vosk-model-tts-ru-0.7-multi，需自行下载） | **不明：上游未标示模型许可**（只有 vosk-tts 代码 repo 为 Apache-2.0；alphacephei.com 与 repo 均找不到模型许可；上游 README 现列 0.9-multi）。视为未知，用户自负责任 | github.com/alphacep/vosk-tts、alphacephei.com/vosk/models |
 | kokoro-onnx（英／日语语音） | MIT | github.com/thewh1teagle/kokoro-onnx |
 | Kokoro 语音模型（Kokoro-82M，ONNX） | Apache-2.0（依 kokoro-onnx 说明） | github.com/thewh1teagle/kokoro-onnx |
-| espeak-ng（kokoro-onnx 带入；放在独立 venv，不进主进程） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| espeak-ng（包在 `espeakng-loader` 内，由 kokoro-onnx 带入；只在 Kokoro 独立 venv，不进主进程也不进 exe） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| espeakng-loader（kokoro-onnx 带入） | MIT（它加载 espeak-ng 的 GPL 库） | github.com/thewh1teagle/espeakng-loader |
+| phonemizer（kokoro-onnx 0.6.1 带入；仅 Kokoro venv） | GPL-3.0（PyPI 元数据） | github.com/bootphon/phonemizer |
 | misaki（Kokoro 的 G2P，含日语） | Apache-2.0 | github.com/hexgrad/misaki |
-| pyopenjtalk-plus、fugashi、unidic-lite、jaconv、mojimoji（misaki[ja] 附带，Kokoro venv） | 待确认 / TBD | 仅由菜单提示安装 |
-| GigaAM v3（俄语 ASR，仅手机版） | MIT（已确认 repo；v3 ONNX 导出权重许可：待确认） | github.com/salute-developers/GigaAM |
+| pyopenjtalk-plus、fugashi、jaconv、mojimoji、addict、regex、unidic-lite（misaki[ja] 附带，仅 Kokoro venv，由你自行安装） | 依次 MIT、MIT AND BSD-3-Clause、MIT、Apache-2.0、MIT、Apache-2.0 AND CNRI-Python、MIT（均取自 PyPI 元数据；unidic-lite 内 UniDic 词典数据未另行核查） | pypi.org/project/<包名> |
+| GigaAM v3（俄语 ASR，仅手机版；k2-fsa/sherpa-onnx 导出的 ONNX，由你自行侧载） | MIT（GigaAM repo LICENSE 与 ai-sage/GigaAM-v3 模型卡；sherpa-onnx 导出说明指向同一份 GigaAM LICENSE） | github.com/salute-developers/GigaAM、huggingface.co/ai-sage/GigaAM-v3 |
 | sherpa-onnx（仅手机版） | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
 | llama.cpp（`mobile/` 内自行构建的 AAR） | MIT（依 mobile/README） | github.com/ggml-org/llama.cpp |
-| BlackHole（macOS 虚拟音频设备） | GPL-3.0 | github.com/ExistentialAudio/BlackHole。**由你自行安装，本项目不内置、不分发。** |
-| VB-CABLE（Windows 虚拟音频线） | 捐赠制（donationware）、专有软件（VB-Audio）；再分发条款待确认 / TBD | vb-audio.com/Cable。**由你自行安装，本项目不内置、不分发。** |
+| BlackHole（macOS 虚拟音频设备） | GPL-3.0；非 GPL-3.0 项目须向 Existential Audio 另取许可 | github.com/ExistentialAudio/BlackHole。**由你自行安装（`mac_install.sh` 在你的机器上调用 Homebrew）；本项目不内置、不再分发。** |
+| VB-CABLE（Windows 虚拟音频线） | 捐赠制（donationware）、专有软件（VB-Audio）；再分发须向 VB-Audio 取得许可 | vb-audio.com/Cable。**由你自行安装，本项目不内置、不再分发。** |
 
 再分发模型前请自行确认上游许可证。
+
+表格说明：（1）本 repo 与 Windows exe 均未内置任何 GPL 组件（exe 不含反向模式，所以没有 Kokoro、espeak-ng、phonemizer）。GPL 的部分（espeak-ng、phonemizer，由 kokoro-onnx 带入）只由你自己用 pip 装进独立的 Kokoro venv，由独立 worker 进程使用，主程序从不导入。（2）`tlwu-setup` 内置和下载的东西没有非商用许可；文中唯一的非商用模型 NLLB-200（CC-BY-NC）未随附。（3）Vosk-TTS 俄语语音模型上游未标示许可，请视为不明。本项目为非商用研究项目；你下载的一切内容的许可由你自行负责。
 
 ## 基准测试
 
@@ -275,5 +279,15 @@ python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu
 
 ## 测试
 `pip install -r requirements-dev.txt && pytest`（不需要模型和网络）。
+
+## 免责声明
+- **现状提供。** 本软件依 MIT 许可“按现状”提供，不附任何形式的担保，作者不对任何损害负责（见 [LICENSE](LICENSE)）。
+- **研究／教学演示。** 这是技术演示，不是经过认证或商业化的产品。
+- **输出可能有误。** 转写和翻译可能出错，请勿据以做法律、医疗、安全或财务决定。
+- **你的责任。** 你必须遵守适用于你的法律，并在录音或转写他人前取得同意；见[合理使用／同意声明](#合理使用同意声明)。
+- **第三方组件。** 模型、库和驱动程序各自适用其许可证，由你从上游来源自行安装；本 repo 不再分发它们（唯一提交的第三方二进制文件是 `mobile/` 内自行构建的 llama.cpp Android AAR（MIT）；Windows exe 内含的运行时库列于其 `licenses/THIRD_PARTY_NOTICES.txt`）。见[许可证与来源](#许可证与来源)。
+- **无从属关系。** 与 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴（Qwen）、腾讯（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方均无关联，亦未获其背书。所有商标归各自所有人。
+- **网络防护。** 网络防护是尽力而为，不保证没有任何数据离开你的机器。
+- **安全。** 见 [SECURITY.md](SECURITY.md)。
 
 MIT 许可，见 [LICENSE](LICENSE)。(c) 2026 Alonso。

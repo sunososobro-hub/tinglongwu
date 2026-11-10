@@ -191,21 +191,25 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未隨附，無程式碼亦無安裝選項 |
 | Qwen3 LLM（GGUF；Qwen 官方 repo） | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF（取自模型卡中繼資料） |
 | llama-cpp-python（執行 Qwen3／Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
-| Hy-MT2-1.8B GGUF（騰訊；日文翻譯） | Apache-2.0 | huggingface.co/tencent/Hy-MT2-1.8B-GGUF（模型卡中繼資料） |
+| Hy-MT2-1.8B GGUF（騰訊；日文翻譯） | Apache-2.0（repo 內 LICENSE.txt 為標準 Apache-2.0 全文，無額外限制） | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS（程式碼；俄語語音） | Apache-2.0 | github.com/alphacep/vosk-tts |
-| Vosk-TTS 俄語語音模型（vosk-model-tts-ru-0.7-multi，需自行下載） | 待確認 / TBD | alphacephei.com/vosk/models |
+| Vosk-TTS 俄語語音模型（vosk-model-tts-ru-0.7-multi，需自行下載） | **不明：上游未標示模型授權**（只有 vosk-tts 程式碼 repo 為 Apache-2.0；alphacephei.com 與 repo 皆找不到模型授權；上游 README 現列 0.9-multi）。視為未知，使用者自負責任 | github.com/alphacep/vosk-tts、alphacephei.com/vosk/models |
 | kokoro-onnx（英／日語語音） | MIT | github.com/thewh1teagle/kokoro-onnx |
 | Kokoro 語音模型（Kokoro-82M，ONNX） | Apache-2.0（依 kokoro-onnx 說明） | github.com/thewh1teagle/kokoro-onnx |
-| espeak-ng（kokoro-onnx 帶入；放在獨立 venv，不進主程序） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| espeak-ng（包在 `espeakng-loader` 內，由 kokoro-onnx 帶入；只在 Kokoro 獨立 venv，不進主程序也不進 exe） | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| espeakng-loader（kokoro-onnx 帶入） | MIT（它載入 espeak-ng 的 GPL 函式庫） | github.com/thewh1teagle/espeakng-loader |
+| phonemizer（kokoro-onnx 0.6.1 帶入；僅 Kokoro venv） | GPL-3.0（PyPI 中繼資料） | github.com/bootphon/phonemizer |
 | misaki（Kokoro 的 G2P，含日文） | Apache-2.0 | github.com/hexgrad/misaki |
-| pyopenjtalk-plus、fugashi、unidic-lite、jaconv、mojimoji（misaki[ja] 附帶，Kokoro venv） | 待確認 / TBD | 僅由選單提示安裝 |
-| GigaAM v3（俄語 ASR，僅手機版） | MIT（已確認 repo；v3 ONNX 匯出權重授權：待確認） | github.com/salute-developers/GigaAM |
+| pyopenjtalk-plus、fugashi、jaconv、mojimoji、addict、regex、unidic-lite（misaki[ja] 附帶，僅 Kokoro venv，由你自行安裝） | 依序 MIT、MIT AND BSD-3-Clause、MIT、Apache-2.0、MIT、Apache-2.0 AND CNRI-Python、MIT（皆取自 PyPI 中繼資料；unidic-lite 內 UniDic 辭典資料未另行查核） | pypi.org/project/<套件名> |
+| GigaAM v3（俄語 ASR，僅手機版；k2-fsa/sherpa-onnx 匯出的 ONNX，由你自行側載） | MIT（GigaAM repo LICENSE 與 ai-sage/GigaAM-v3 模型卡；sherpa-onnx 匯出說明指向同一份 GigaAM LICENSE） | github.com/salute-developers/GigaAM、huggingface.co/ai-sage/GigaAM-v3 |
 | sherpa-onnx（僅手機版） | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
 | llama.cpp（`mobile/` 內自行建置的 AAR） | MIT（依 mobile/README） | github.com/ggml-org/llama.cpp |
-| BlackHole（macOS 虛擬音訊裝置） | GPL-3.0 | github.com/ExistentialAudio/BlackHole。**由你自行安裝，本專案不內建、不散布。** |
-| VB-CABLE（Windows 虛擬音訊線） | 捐贈制（donationware）、專有軟體（VB-Audio）；再散布條款待確認 / TBD | vb-audio.com/Cable。**由你自行安裝，本專案不內建、不散布。** |
+| BlackHole（macOS 虛擬音訊裝置） | GPL-3.0；非 GPL-3.0 專案須向 Existential Audio 另取授權 | github.com/ExistentialAudio/BlackHole。**由你自行安裝（`mac_install.sh` 在你的機器上呼叫 Homebrew）；本專案不內建、不再散布。** |
+| VB-CABLE（Windows 虛擬音訊線） | 捐贈制（donationware）、專有軟體（VB-Audio）；再散布須向 VB-Audio 取得授權 | vb-audio.com/Cable。**由你自行安裝，本專案不內建、不再散布。** |
 
 再散布模型前請自行確認上游授權。
+
+表格說明：（1）本 repo 與 Windows exe 皆未內建任何 GPL 元件（exe 不含反向模式，所以沒有 Kokoro、espeak-ng、phonemizer）。GPL 的部分（espeak-ng、phonemizer，由 kokoro-onnx 帶入）只由你自己用 pip 裝進獨立的 Kokoro venv，由獨立 worker 程序使用，主程式從不匯入。（2）`tlwu-setup` 內建與下載的東西沒有非商用授權；文中唯一的非商用模型 NLLB-200（CC-BY-NC）未隨附。（3）Vosk-TTS 俄語語音模型上游未標示授權，請視為不明。本專案為非商用研究專案；你下載的一切內容之授權由你自行負責。
 
 ## 基準測試
 
@@ -286,5 +290,15 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 
 ## 測試
 `pip install -r requirements-dev.txt && pytest`（不需模型與網路）。
+
+## 免責聲明
+- **現狀提供。** 本軟體依 MIT 授權「按現狀」提供，不附任何形式的保證，作者不對任何損害負責（見 [LICENSE](LICENSE)）。
+- **研究／教學展示。** 這是技術展示，不是經過認證或商業化的產品。
+- **輸出可能有誤。** 逐字稿與翻譯可能出錯，請勿據以做法律、醫療、安全或財務決定。
+- **你的責任。** 你必須遵守適用於你的法律，並在錄音或轉錄他人前取得同意；見[合理使用／同意聲明](#合理使用同意聲明)。
+- **第三方元件。** 模型、函式庫與驅動程式各自適用其授權，由你從上游來源自行安裝；本 repo 不再散布它們（唯一提交的第三方二進位檔是 `mobile/` 內自行建置的 llama.cpp Android AAR（MIT）；Windows exe 內含的執行期函式庫列於其 `licenses/THIRD_PARTY_NOTICES.txt`）。見[授權與來源](#授權與來源)。
+- **無從屬關係。** 與 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴（Qwen）、騰訊（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方皆無關聯，亦未獲其背書。所有商標歸各自所有人。
+- **網路防護。** 網路防護是盡力而為，不保證沒有任何資料離開你的機器。
+- **安全。** 見 [SECURITY.md](SECURITY.md)。
 
 MIT 授權，見 [LICENSE](LICENSE)。(c) 2026 Alonso。

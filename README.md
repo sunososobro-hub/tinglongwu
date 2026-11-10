@@ -187,21 +187,25 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | NLLB-200 | CC-BY-NC 4.0 (non-commercial) | not shipped, no code or setup option |
 | Qwen3 LLM (GGUF; official Qwen repos) | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF (license from the model card metadata) |
 | llama-cpp-python (runs Qwen3 / Hy-MT2) | MIT | github.com/abetlen/llama-cpp-python |
-| Hy-MT2-1.8B GGUF (Tencent; Japanese MT) | Apache-2.0 | huggingface.co/tencent/Hy-MT2-1.8B-GGUF (model card metadata) |
+| Hy-MT2-1.8B GGUF (Tencent; Japanese MT) | Apache-2.0 (LICENSE.txt in the repo is the plain Apache-2.0 text, no extra restrictions) | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS (code; Russian voice) | Apache-2.0 | github.com/alphacep/vosk-tts |
-| Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi; you download it yourself) | TBD (not verified) | alphacephei.com/vosk/models |
+| Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi; you download it yourself) | **Unclear: upstream states no license for the model** (only the vosk-tts code repo is Apache-2.0; no model license found on alphacephei.com or in the repo; the upstream README now lists 0.9-multi). Treat as unknown; users are responsible | github.com/alphacep/vosk-tts, alphacephei.com/vosk/models |
 | kokoro-onnx (English/Japanese voice) | MIT | github.com/thewh1teagle/kokoro-onnx |
 | Kokoro voice model (Kokoro-82M, ONNX) | Apache-2.0 (as stated by kokoro-onnx) | github.com/thewh1teagle/kokoro-onnx |
-| espeak-ng (pulled in by kokoro-onnx; kept in a separate venv, never in the main process) | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| espeak-ng (shipped inside `espeakng-loader`, pulled in by kokoro-onnx; Kokoro venv only, never in the main process or the exe) | GPL-3.0-or-later | github.com/espeak-ng/espeak-ng |
+| espeakng-loader (pulled in by kokoro-onnx) | MIT (it loads the espeak-ng GPL libraries) | github.com/thewh1teagle/espeakng-loader |
+| phonemizer (pulled in by kokoro-onnx 0.6.1; Kokoro venv only) | GPL-3.0 (PyPI metadata) | github.com/bootphon/phonemizer |
 | misaki (G2P for Kokoro, incl. Japanese) | Apache-2.0 | github.com/hexgrad/misaki |
-| pyopenjtalk-plus, fugashi, unidic-lite, jaconv, mojimoji (misaki[ja] extras, Kokoro venv) | TBD (not verified) | installed by the menu hint only |
-| GigaAM v3 (Russian ASR, mobile app only) | MIT (repo verified; license of the v3 ONNX export: TBD) | github.com/salute-developers/GigaAM |
+| pyopenjtalk-plus, fugashi, jaconv, mojimoji, addict, regex, unidic-lite (misaki[ja] extras, Kokoro venv only; you install them) | MIT, MIT AND BSD-3-Clause, MIT, Apache-2.0, MIT, Apache-2.0 AND CNRI-Python, MIT respectively (all from PyPI metadata; the UniDic dictionary data inside unidic-lite was not checked separately) | pypi.org/project/<name> |
+| GigaAM v3 (Russian ASR, mobile app only; ONNX export by k2-fsa/sherpa-onnx, you side-load it) | MIT (GigaAM repo LICENSE and the ai-sage/GigaAM-v3 model card; the sherpa-onnx export card points to the same GigaAM LICENSE) | github.com/salute-developers/GigaAM, huggingface.co/ai-sage/GigaAM-v3 |
 | sherpa-onnx (mobile app only) | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
 | llama.cpp (self-built AAR in `mobile/`) | MIT (per mobile/README) | github.com/ggml-org/llama.cpp |
-| BlackHole (macOS virtual audio device) | GPL-3.0 | github.com/ExistentialAudio/BlackHole. **You install it; this project does not bundle or distribute it.** |
-| VB-CABLE (Windows virtual audio cable) | Donationware, proprietary (VB-Audio); redistribution terms TBD | vb-audio.com/Cable. **You install it; this project does not bundle or distribute it.** |
+| BlackHole (macOS virtual audio device) | GPL-3.0; Existential Audio requires a separate license for non-GPL-3.0 projects | github.com/ExistentialAudio/BlackHole. **You install it (`mac_install.sh` calls Homebrew on your machine); this project does not bundle or redistribute it.** |
+| VB-CABLE (Windows virtual audio cable) | Donationware, proprietary (VB-Audio); redistribution needs a license from VB-Audio | vb-audio.com/Cable. **You install it; this project does not bundle or redistribute it.** |
 
 Verify upstream licenses yourself before redistributing models.
+
+Notes on the table: (1) No GPL component is bundled in this repository or in the Windows exe (the exe build excludes reverse mode, so Kokoro, espeak-ng and phonemizer are not in it). The GPL pieces (espeak-ng, phonemizer, pulled in by kokoro-onnx) are only installed by you with pip into a separate Kokoro venv and are used by a separate worker process, never imported by the main program. (2) Nothing shipped or downloaded by `tlwu-setup` is non-commercial; NLLB-200 (CC-BY-NC) is the only NC model mentioned and it is not shipped. (3) The Vosk-TTS Russian voice model has no stated license upstream: treat it as unknown. This is a non-commercial research project and you are responsible for the licenses of everything you download.
 
 ## Benchmarks
 
@@ -282,5 +286,15 @@ Mic -> zh -> ru translation -> built-in-voice offline TTS (Vosk-TTS / Kokoro) ->
 
 ## Tests
 `pip install -r requirements-dev.txt && pytest` (no models or network needed).
+
+## Disclaimer
+- **As is.** This software is provided "AS IS" under the MIT license, without warranty of any kind and without liability of the author for any damages (see [LICENSE](LICENSE)).
+- **Research / educational demo.** It is a technology demonstration, not a certified or commercial product.
+- **Output can be wrong.** Transcription and translation may contain errors. Do not rely on it for legal, medical, safety or financial decisions.
+- **Your responsibility.** You must follow the laws that apply to you and get consent before recording or transcribing other people; see [Acceptable Use / Consent](#acceptable-use--consent).
+- **Third-party components.** Models, libraries and drivers are under their own licenses. You install them from the upstream sources; this repository does not redistribute them (the only third-party binaries committed are the self-built llama.cpp Android AAR under `mobile/`, MIT, and the Windows exe, which bundles the runtime libraries listed in its `licenses/THIRD_PARTY_NOTICES.txt`). See [Licenses and sources](#licenses-and-sources).
+- **No affiliation.** Not affiliated with or endorsed by Google, Microsoft, Apple, Zoom, Meet, Alibaba (Qwen), Tencent (Hunyuan / Hy-MT2), Meta, OpenAI, NVIDIA, VB-Audio, Existential Audio or any other third party named here. All trademarks belong to their owners.
+- **Network guard.** The network guard is best-effort and is not a guarantee that no data leaves your machine.
+- **Security.** See [SECURITY.md](SECURITY.md).
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.

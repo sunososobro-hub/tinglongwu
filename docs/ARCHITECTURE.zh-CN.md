@@ -46,7 +46,7 @@ flowchart LR
 | （stdout） | 输出 | 无 | 无 | 无 | `sink.py` `TextSink`、`TranscriptSink`；`TTSSink` 为桩（主包不含 TTS；反向模式的语音在独立 worker 子进程中运行） | 继承 `Sink`（`write(Result)`），在 `cli.py main` 选用 |
 | huggingface_hub | 仅用于下载模型 | 2.4.0 | Apache-2.0 | github.com/huggingface/huggingface_hub | 仅 `tinglongwu_setup (tlwu-setup)` 使用（faster-whisper 内部也引用，离线） | 无 |
 | psutil | 连接监控 | 7.2.2 | BSD-3 | github.com/giampaolo/psutil | `scripts/verify_offline.py` | 无 |
-| 反向模式（可选）：LLM＋TTS＋虚拟音频线 | zh->ru/en/ja 翻译、固定语音合成、导入会议软件 | 见 `requirements-qwen.txt`、`tinglongwu_setup/manifest.json` | Qwen3 Apache-2.0、llama-cpp-python MIT、Hy-MT2 Apache-2.0、Vosk-TTS Apache-2.0（俄语模型：待确认）、kokoro-onnx MIT、Kokoro 模型 Apache-2.0、espeak-ng GPL-3.0+（独立 venv）、misaki Apache-2.0、BlackHole GPL-3.0、VB-CABLE 捐赠制 | 见 README 许可证表（BlackHole／VB-CABLE 由用户自行安装，不内置） | `tinglongwu/reverse/`（`tts_worker.py` 运行 Vosk-TTS 或 Kokoro，仅内置固定语音，无声音克隆） | `--tts-engine vosk|kokoro`；新增引擎＝在 `tts_worker.py` 与 `tts_client.py` 加分支 |
+| 反向模式（可选）：LLM＋TTS＋虚拟音频线 | zh->ru/en/ja 翻译、固定语音合成、导入会议软件 | 见 `requirements-qwen.txt`、`tinglongwu_setup/manifest.json` | Qwen3 Apache-2.0、llama-cpp-python MIT、Hy-MT2 Apache-2.0、Vosk-TTS 代码 Apache-2.0（俄语语音模型：上游未标示许可，不明）、kokoro-onnx MIT、Kokoro 模型 Apache-2.0、espeak-ng GPL-3.0+ 与 phonemizer GPL-3.0（均由 kokoro-onnx 带入；仅 Kokoro 独立 venv，repo 与 exe 均不内置）、misaki Apache-2.0、BlackHole GPL-3.0、VB-CABLE 捐赠制／专有；misaki[ja] 附带包 MIT／Apache-2.0 | 见 README 许可证表（BlackHole／VB-CABLE 由用户自行安装，不内置） | `tinglongwu/reverse/`（`tts_worker.py` 运行 Vosk-TTS 或 Kokoro，仅内置固定语音，无声音克隆） | `--tts-engine vosk|kokoro`；新增引擎＝在 `tts_worker.py` 与 `tts_client.py` 加分支 |
 
 没有插件注册表：管线在 `tinglongwu/cli.py main()` 中显式组装，所谓“注册”就是在那里构造组件（若要让用户选择，再加 CLI choice）。
 
