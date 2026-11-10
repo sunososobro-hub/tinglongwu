@@ -291,6 +291,8 @@ def _main(argv, vm) -> int:
     ap.add_argument("--ref-text", default="")
     ap.add_argument("--xvec-only", action="store_true")
     ap.add_argument("--chunk", type=int, default=12)
+    ap.add_argument("--max-seg", type=float, default=6.0,
+                    help="force-cut a sentence after this many seconds if no pause is heard (lower = less delay)")
     ap.add_argument("--device", default=None, help='output device name substring, e.g. "CABLE Input"')
     ap.add_argument("--out-sr", type=int, default=48000)
     ap.add_argument("--no-confirm", action="store_true", help="send automatically (no confirmation step)")
@@ -332,7 +334,7 @@ def _main(argv, vm) -> int:
     if not live and not a.input:
         ap.error("--input is required unless --mic is given")
     a.out = a.out or "reverse_out"
-    a.chunk_s = 10.0
+    a.chunk_s = a.max_seg
     if live:  # feedback guard BEFORE loading any model
         import soundcard as sc
 
