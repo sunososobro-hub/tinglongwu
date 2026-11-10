@@ -199,6 +199,8 @@ class App:
         self.btn.grid(row=9, column=0, columnspan=2, sticky="we", pady=(8, 2))
         self.btn_pause = ttk.Button(f, text="Pause", command=self.toggle_pause)
         self.btn_pause.grid(row=9, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
+        ttk.Button(f, text="Report a problem", command=self.report_problem).grid(
+            row=12, column=0, columnspan=3, sticky="we", pady=(6, 0))
         self.v_status = tk.StringVar(value="Ready. Fully offline.")
         ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=10, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
@@ -221,6 +223,13 @@ class App:
         self.settings["show_src"] = self.var_show_src.get()
         self.overlay.var_src.set(self.var_show_src.get())
         self.overlay.render(self.state)
+
+    def report_problem(self):
+        from ..report import open_report
+
+        s = self.settings
+        open_report(info={"Mode": f"gui/{s['preset']}", "Language pair": f"{s['lang']} -> {s['target']}",
+                          "Engine": s["engine"]}, say=lambda m: self.v_status.set("Open this URL: " + m[:80]))
 
     def collect(self):
         s = self.settings
