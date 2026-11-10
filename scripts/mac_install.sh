@@ -1,7 +1,10 @@
 #!/bin/bash
 # tinglongWu one-line installer for macOS (Apple Silicon and Intel). Safe to re-run: re-running = repair/update.
 #
-#   curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
+#   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
+#
+# The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
+# version it was released with. Run straight from the repo (unreleased) it falls back to main.
 #
 # What it does (nothing outside your home folder except Homebrew packages):
 #   1. checks Homebrew (does NOT install Homebrew silently: prints the official command and stops if missing)
@@ -11,13 +14,15 @@
 #   5. downloads the speech/translation models (English listening, zh<->en speaking)
 #   6. installs the `tlwu-menu` command in ~/.local/bin
 # The installer never asks about auto-update: the menu (tlwu-menu) asks once on its first run and stores the answer.
-# Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default main), TLWU_REPO.
+# Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default: the release tag, or main), TLWU_REPO.
 # Written for macOS bash 3.2 (no arrays, no ${var,,}). UNTESTED on a real Mac when written: every step checks itself.
 
 set -u
 
 REPO_URL="${TLWU_REPO:-https://github.com/sunososobro-hub/tinglongwu.git}"
-BRANCH="${TLWU_BRANCH:-main}"
+REF_EMBEDDED="__TLWU_REF__"
+case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED=main ;; esac   # placeholder not substituted = unreleased
+BRANCH="${TLWU_BRANCH:-$REF_EMBEDDED}"
 DIR="${TLWU_DIR:-$HOME/tinglongwu}"
 KOKORO_VENV="$HOME/tts-kokoro"
 KOKORO_DIR="$HOME/models/kokoro"
@@ -125,8 +130,10 @@ done
 say "4/8 下載 tinglongWu 並建立環境（$DIR）"
 if [ -d "$DIR/.git" ]; then
   info "已存在，更新中..."
-  if ! git -C "$DIR" fetch --quiet origin 2>&1; then
+  if ! git -C "$DIR" fetch --quiet --tags origin 2>&1; then
     warn "更新失敗（網路？），先用現有版本繼續。"
+  elif git -C "$DIR" rev-parse -q --verify "refs/tags/$BRANCH" >/dev/null 2>&1; then
+    git -C "$DIR" checkout --quiet "$BRANCH" 2>&1 || warn "$DIR 裡有本機改動，無法切到版本 $BRANCH；先用現有版本繼續。"
   elif ! git -C "$DIR" merge --ff-only --quiet "origin/$BRANCH" 2>&1; then
     warn "$DIR 裡有本機改動，無法自動更新；先用現有版本繼續（想強制還原：cd $DIR && git stash && 再貼一次安裝指令）。"
   fi

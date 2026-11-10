@@ -29,7 +29,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 Apple Silicon 与 Intel Mac 均可（macOS 12 以上）。在“终端”粘贴：
 
 ```
-curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
+curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
 ```
 
 脚本检查 Homebrew（没有只会打印官方安装命令，不会静默安装）、安装 Python 3.12／git／BlackHole 2ch 与 16ch、克隆到 `~/tinglongwu`、建立环境、安装英文语音（Kokoro）并下载模型、安装 `tlwu-menu` 命令；可重复运行（即修复／更新）。最后会提示唯一的手动步骤：在“音频 MIDI 设置”创建多输出设备（扬声器/耳机 + BlackHole 2ch）并设为系统输出；Meet/Zoom 麦克风选 **BlackHole 16ch**（2ch 只用于“听”，16ch 只用于“说”，避免自己的语音回灌）。之后运行 `tlwu-menu`；各平台菜单启动时都会静默 `git pull --ff-only` 自动更新（约 6 秒上限，离线不影响，`TLWU_NO_UPDATE=1` 可关闭）。尚未在真实 Mac 上测试。
