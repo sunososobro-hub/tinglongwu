@@ -71,6 +71,10 @@ Write-Host "  2) 送進 Meet，自己耳機也聽得到"
 Write-Host "  3) 不進 Meet，直接從耳機/喇叭念出來"
 Write-Host "  4) 只看翻譯文字（不發聲）"
 $out = Read-Host "選 1-4"
+if ($out -ne "4") {
+    $ac = Read-Host "每句直接送、不確認？[Enter=要確認 / y=直接送]"
+    if ($ac -eq "y") { $rev += "--no-confirm" }
+}
 switch ($out) {
     "1" { & $py @rev --device "CABLE Input" }
     "2" {

@@ -67,10 +67,15 @@ echo "  2) 送進 Meet，自己耳機也聽得到"
 echo "  3) 不進 Meet，直接從耳機/喇叭念出來"
 echo "  4) 只看翻譯文字（不發聲）"
 read -rp "選 1-4: " out
+AUTO=()
+if [ "$out" != "4" ]; then
+  read -rp "每句直接送、不確認？[Enter=要確認 / y=直接送]: " ac
+  [ "$ac" = "y" ] && AUTO=(--no-confirm)
+fi
 case "$out" in
-  1) exec "${REV[@]}" ;;
-  2) exec "${REV[@]}" --preview-device Family ;;
-  3) exec "${REV[@]}" --device Family ;;
+  1) exec "${REV[@]}" "${AUTO[@]}" ;;
+  2) exec "${REV[@]}" "${AUTO[@]}" --preview-device Family ;;
+  3) exec "${REV[@]}" "${AUTO[@]}" --device Family ;;
   4) exec "${TXT[@]}" ;;
   *) echo "沒有這個選項"; exit 1 ;;
 esac
