@@ -136,3 +136,20 @@ def test_overlay_constructs_headless_or_skips():
         assert a.settings["font_size"] == core.DEFAULTS["font_size"] + 4
     finally:
         a.root.destroy()
+
+
+def test_target_follows_system_locale(tmp_path, monkeypatch):
+    from tinglongwu import i18n
+    from tinglongwu.gui.core import load_settings, save_settings, target_for_locale
+
+    assert target_for_locale("zh_CN.UTF-8") == "zh-cn"
+    assert target_for_locale("zh-Hant-TW") == "zh-tw"
+    assert target_for_locale("en_US.UTF-8") == "en"
+    assert target_for_locale("") == "zh-tw"
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    p = tmp_path / "gui.json"
+    assert load_settings(p)["target"] == "en"  # no saved file: follows locale
+    s = load_settings(p)
+    s["target"] = "zh-cn"
+    save_settings(s, p)
+    assert load_settings(p)["target"] == "zh-cn"  # saved choice wins

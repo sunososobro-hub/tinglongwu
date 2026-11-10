@@ -28,6 +28,16 @@ MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 FONT_MIN, FONT_MAX = 10, 96
 
 
+def target_for_locale(tag: str | None) -> str:
+    """OS locale tag -> default 'Translate to' value: zh-CN/SG -> zh-cn, other zh (and unknown/empty) -> zh-tw, else en."""
+    t = (tag or "").strip().lower().replace("_", "-").split(".")[0]
+    if not t or t in ("c", "posix"):
+        return DEFAULTS["target"]
+    if t.startswith("zh"):
+        return "zh-cn" if ("hans" in t or t.endswith(("-cn", "-sg"))) and "hant" not in t else "zh-tw"
+    return "en"
+
+
 def settings_path() -> Path:
     base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "tinglongwu" / "gui.json"
@@ -36,6 +46,12 @@ def settings_path() -> Path:
 def load_settings(path=None) -> dict:
     """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default."""
     out = dict(DEFAULTS)
+    try:
+        from ..i18n import _system_tag
+
+        out["target"] = target_for_locale(_system_tag())  # first run (no saved choice): follow the OS locale
+    except Exception:  # noqa: BLE001
+        pass
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
         if isinstance(data, dict):
