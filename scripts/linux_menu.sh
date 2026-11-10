@@ -139,6 +139,12 @@ if [ "$mode" = "2" ] && { [ "$SPEAK" = "ru" ] || { [ "$SPEAK" = "follow" ] && pr
 fi
 LISTEN_LANG=(--lang "$L"); [ "$L" = "auto" ] && LISTEN_LANG=(--lang auto --lang-candidates "$CANDS")
 HY_NOTE="$(mp M_HY_NOTE)"
+# Subtitles are never stored unless asked: default N, asked every start (audio is never saved)
+SAVE=()
+if [ "$mode" = "1" ] || [ "$BOTH" = "1" ]; then
+  sv=""; read -rp "$(mp M_ASK_SAVE)" sv || sv=""
+  case "$sv" in y|Y|yes|YES|Yes) SAVE=(--save) ;; esac
+fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
@@ -162,7 +168,7 @@ if [ "$mode" = "1" ]; then
     m M_NO_MODEL_FOR "$L"
     ask_setup "${setup[@]}"
   fi
-  exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}"
+  exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}"
 fi
 
 if [ "$SPEAK" = "follow" ]; then
@@ -213,7 +219,7 @@ if [ "$BOTH" = "1" ]; then
   # listen in the background (no keyboard), speak in the foreground; Ctrl+C stops both
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
-  tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" < /dev/null &
+  tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" < /dev/null &
   LISTEN_PID=$!
   trap 'kill $LISTEN_PID 2>/dev/null' EXIT INT TERM
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
