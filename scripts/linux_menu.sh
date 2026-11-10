@@ -9,7 +9,13 @@ VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 WHISPER="${WHISPER:-}"   # empty = program default
 W_LISTEN=(); W_SPEAK=()
-if [ -n "$WHISPER" ]; then W_LISTEN=(--model "$WHISPER"); W_SPEAK=(--whisper "$WHISPER"); fi
+if [ -n "$WHISPER" ]; then
+  W_LISTEN=(--model "$WHISPER"); W_SPEAK=(--whisper "$WHISPER")
+  if ! python -c "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / 'whisper-$WHISPER').is_dir() else 1)"; then
+    echo "還沒有語音模型 $WHISPER，現在連網下載（只有這一次）..."
+    tlwu-setup --whisper "$WHISPER"
+  fi
+fi
 VOICE="${VOICE:-4}"
 KOKORO_PY="${KOKORO_PY:-$HOME/tts-kokoro/bin/python}"
 KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
