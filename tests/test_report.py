@@ -34,3 +34,30 @@ def test_cli_report_opens_browser(monkeypatch, tmp_path):
     assert len(seen) == 1 and seen[0].startswith(report.ISSUE_URL)
     assert "ru" in parse_qs(urlparse(seen[0]).query)["body"][0]
     assert "hello log" in parse_qs(urlparse(seen[0]).query)["body"][0]
+
+
+def test_report_includes_environment_info(monkeypatch, tmp_path):
+    from tinglongwu import hwprobe
+
+    monkeypatch.setenv("TLWU_LOG_DIR", str(tmp_path))
+    monkeypatch.setattr(hwprobe, "gpu_info", lambda *a, **k: ("GeForce GTX 1050", 2048))
+    seen = []
+    import webbrowser
+
+    monkeypatch.setattr(webbrowser, "open", lambda u: seen.append(u) or True)
+    report.open_report(info={"Engine": "opus"})
+    body = parse_qs(urlparse(seen[0]).query)["body"][0]
+    for key in ("CPU:", "RAM MiB:", "GPU: GeForce GTX 1050 (2048 MiB)", "NVIDIA driver:",
+                "ctranslate2 CUDA devices:", "Packages:", "Engine: opus"):
+        assert key in body
+
+
+def test_pkg_versions_reads_dist_info_without_importing(monkeypatch, tmp_path):
+    import sys
+
+    (tmp_path / "ctranslate2-4.5.0.dist-info").mkdir()
+    (tmp_path / "faster_whisper-1.1.0.dist-info").mkdir()
+    monkeypatch.setattr(sys, "path", [str(tmp_path)])
+    out = report._pkg_versions()
+    assert "ctranslate2 4.5.0" in out and "faster-whisper 1.1.0" in out
+    assert "llama-cpp-python not installed" in out

@@ -9,6 +9,7 @@ import getpass
 import os
 import platform
 import re
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import quote
@@ -43,6 +44,69 @@ def redact(text: str) -> str:
     text = re.sub(r"(?i)([A-Z]:\\Users\\)[^\\\s]+", r"\1<user>", text)
     text = re.sub(r"(/(?:home|Users)/)[^/\s]+", r"\1<user>", text)
     return text
+
+
+def _cpu_features() -> str:
+    """CPU model + AVX2/AVX-512 flags (Linux /proc/cpuinfo; elsewhere just the platform string)."""
+    model, flags = platform.processor() or platform.machine(), ""
+    try:
+        for line in Path("/proc/cpuinfo").read_text("utf-8", errors="replace").splitlines():
+            if line.startswith("model name") and ":" in line:
+                model = line.split(":", 1)[1].strip()
+            elif line.startswith("flags") and ":" in line:
+                flags = line.split(":", 1)[1]
+                break
+    except OSError:
+        pass
+    fl = set(flags.split())
+    feats = [n for n, f in (("AVX2", "avx2"), ("AVX-512", "avx512f")) if f in fl]
+    return f"{model} [{', '.join(feats) or 'AVX2/AVX-512 unknown or absent'}]"
+
+
+def _pkg_versions(names=("ctranslate2", "faster-whisper", "llama-cpp-python")) -> str:
+    """Versions from <name>-<ver>.dist-info folder names on sys.path (never imports the packages: a broken
+    wheel such as the AVX-512 llama-cpp one can crash the interpreter on import)."""
+    found = {}
+    for entry in sys.path:
+        try:
+            for d in Path(entry or ".").glob("*.dist-info"):
+                stem = d.name[: -len(".dist-info")]
+                name, _, ver = stem.rpartition("-")
+                found.setdefault(name.lower().replace("_", "-"), ver)
+        except OSError:
+            continue
+    return ", ".join(f"{n} {found[n]}" if n in found else f"{n} not installed" for n in names)
+
+
+def _gpu_summary() -> dict:
+    from . import hwprobe
+
+    info = {}
+    name, vram = hwprobe.gpu_info()
+    info["GPU"] = f"{name} ({vram} MiB)" if name else "none (no nvidia-smi)"
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=10).stdout.strip().splitlines()
+        info["NVIDIA driver"] = out[0].strip() if out else "unknown"
+    except Exception:  # noqa: BLE001
+        info["NVIDIA driver"] = "unknown"
+    try:
+        import ctranslate2
+
+        info["ctranslate2 CUDA devices"] = str(ctranslate2.get_cuda_device_count())
+    except Exception as e:  # noqa: BLE001
+        info["ctranslate2 CUDA devices"] = f"unavailable ({type(e).__name__})"
+    return info
+
+
+def env_info() -> dict:
+    """Environment facts that make a report actionable. Local only; no subtitle/translation text."""
+    from . import hwprobe
+
+    info = {"CPU": _cpu_features(), "Cores": str(os.cpu_count()), "RAM MiB": str(hwprobe.ram_mib())}
+    info.update(_gpu_summary())
+    info["Packages"] = _pkg_versions()
+    return info
 
 
 def last_log_lines(n: int = LOG_LINES) -> list[str]:
@@ -93,7 +157,9 @@ def build_url(title: str = "[bug] ", info: dict | None = None, log_lines: list[s
 
 def open_report(info: dict | None = None, say=print) -> str:
     """Open the browser on the pre-filled issue; print the URL when no browser could be opened."""
-    url = build_url(info=info, log_lines=last_log_lines())
+    merged = dict(env_info())
+    merged.update(info or {})
+    url = build_url(info=merged, log_lines=last_log_lines(200))
     try:
         import webbrowser
 
