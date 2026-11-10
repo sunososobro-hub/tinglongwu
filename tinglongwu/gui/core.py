@@ -17,7 +17,7 @@ from ..stream import DraftRenderer
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None, "source": "system", "preset": "meeting", "theme": "dark",
+    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 4, "theme": "dark",
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -26,6 +26,9 @@ PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); cha
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 FONT_MIN, FONT_MAX = 10, 96
+FONT_PRESETS = {"S": 20, "M": 28, "L": 36, "XL": 48}  # subtitle size picker in the control window
+HISTORY_LINES = 200  # finals kept in the subtitle bar's scroll-back
+ROWS_MIN, ROWS_MAX = 2, 12  # visible text rows of the subtitle bar (drag its top edge to change)
 
 
 def target_for_locale(tag: str | None) -> str:
@@ -67,6 +70,7 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     return out
 
 
@@ -85,6 +89,32 @@ def clamp_font(n) -> int:
         return max(FONT_MIN, min(FONT_MAX, int(n)))
     except (TypeError, ValueError):
         return DEFAULTS["font_size"]
+
+
+def clamp_rows(n) -> int:
+    try:
+        return max(ROWS_MIN, min(ROWS_MAX, int(n)))
+    except (TypeError, ValueError):
+        return DEFAULTS["overlay_lines"]
+
+
+def font_preset(size) -> str:
+    """Nearest S/M/L/XL label for a font size (what the size picker shows for a custom Ctrl+wheel size)."""
+    n = clamp_font(size)
+    return min(FONT_PRESETS, key=lambda k: (abs(FONT_PRESETS[k] - n), FONT_PRESETS[k]))
+
+
+def rows_after_drag(start_rows: int, dy_px: float, line_px: float) -> int:
+    """Subtitle bar height while its top edge is dragged: up (dy < 0) adds rows, down removes them."""
+    if line_px <= 0:
+        return clamp_rows(start_rows)
+    return clamp_rows(start_rows + round(-dy_px / line_px))
+
+
+def follow_newest(yview_last: float) -> bool:
+    """Auto-scroll to the newest line only while the view already shows the bottom (the user has not
+    scrolled back to read something)."""
+    return yview_last >= 0.999
 
 
 def settings_to_argv(s: dict) -> list[str]:
@@ -173,6 +203,13 @@ class SubtitleState:
         if self.draft:
             return self.draft[0]
         return self.finals[-1][0] if self.finals else ""
+
+    def history(self) -> list[tuple[str, str, bool]]:
+        """[(src, target_text, is_draft)] for the scroll-back: every kept final, then the draft (if any)."""
+        rows = [(src, t, False) for src, t in self.finals]
+        if self.draft:
+            rows.append((self.draft[0], self.draft[1], True))
+        return rows
 
     def last_text(self) -> str:
         rows = self.lines()

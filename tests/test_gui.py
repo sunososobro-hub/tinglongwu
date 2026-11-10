@@ -131,7 +131,7 @@ def test_overlay_constructs_headless_or_skips():
         a.state.apply(("final", "s", "字幕"))
         a.overlay.render(a.state)
         a.root.update()
-        assert a.overlay.l1.cget("text") == "字幕"
+        assert a.overlay.text.get("1.0", "end-1c") == "字幕"
         a.overlay.bump_font(4)
         assert a.settings["font_size"] == core.DEFAULTS["font_size"] + 4
     finally:
@@ -164,6 +164,50 @@ def test_paused_state_freezes_redraw_but_keeps_events():
     assert st.apply(("final", "b", "two")) is False  # no redraw while paused ...
     st.paused = False
     assert st.lines() == [("one", False), ("two", False)]  # ... but nothing was lost
+
+
+def test_subtitle_history_keeps_200_finals_and_draft_last():
+    """#72: the subtitle bar scrolls back through the last HISTORY_LINES finals; the draft is the newest row."""
+    st = core.SubtitleState(core.HISTORY_LINES)
+    for i in range(250):
+        st.apply(("final", f"s{i}", f"t{i}"))
+    st.apply(("draft", "sd", "td"))
+    h = st.history()
+    assert len(h) == core.HISTORY_LINES + 1
+    assert h[0] == ("s50", "t50", False)  # oldest 50 dropped
+    assert h[-2] == ("s249", "t249", False) and h[-1] == ("sd", "td", True)
+    st.apply(("final", "sd", "tf"))  # the draft is replaced in place by its final
+    assert st.history()[-1] == ("sd", "tf", False) and len(st.history()) == core.HISTORY_LINES
+
+
+def test_follow_newest_only_at_bottom():
+    assert core.follow_newest(1.0)
+    assert not core.follow_newest(0.8)  # user scrolled up to re-read: do not jump to the newest line
+
+
+def test_rows_after_drag_and_clamp():
+    assert core.rows_after_drag(4, -60, 30) == 6  # top edge dragged up 2 lines -> 2 more rows
+    assert core.rows_after_drag(4, 31, 30) == 3
+    assert core.rows_after_drag(4, -10_000, 30) == core.ROWS_MAX
+    assert core.rows_after_drag(4, 10_000, 30) == core.ROWS_MIN
+    assert core.rows_after_drag(4, -60, 0) == 4
+
+
+def test_font_preset_nearest_label():
+    assert [core.font_preset(core.FONT_PRESETS[k]) for k in ("S", "M", "L", "XL")] == ["S", "M", "L", "XL"]
+    assert core.font_preset(30) == "M" and core.font_preset(90) == "XL" and core.font_preset(5) == "S"
+
+
+def test_overlay_lines_setting_persists_and_clamps(tmp_path):
+    p = tmp_path / "gui.json"
+    s = core.load_settings(p)
+    assert s["overlay_lines"] == 4
+    s.update(overlay_lines=7, font_size=core.FONT_PRESETS["XL"])
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 7 and got["font_size"] == 48
+    p.write_text(json.dumps({"overlay_lines": 999}), "utf-8")
+    assert core.load_settings(p)["overlay_lines"] == core.ROWS_MAX
 
 
 def test_gui_strings_exist_in_all_three_languages():
