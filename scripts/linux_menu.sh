@@ -10,19 +10,19 @@ VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 VOICE="${VOICE:-4}"
 
 echo "tinglongWu"
-echo "  1) 聽  外語 -> 字幕：中文（預設）"
-echo "  2) 說  中文 -> 語音：外語"
-read -rp "選 1-2 [Enter=1]: " mode
-mode="${mode:-1}"
-
-echo "語言代碼：en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
-if [ "$mode" = "1" ]; then
-  read -rp "聽哪種語言 [Enter=en]: " L; L="${L:-en}"
-  echo "聽  $L -> 字幕：中文"
-else
-  read -rp "說成哪種語言 [Enter=ru，目前只有 ru]: " L; L="${L:-ru}"
-  echo "說  中文 -> 語音：$L"
-fi
+echo "  Enter) 聽  英文 -> 中文字幕（預設）"
+echo "  1)     聽  其他語言 -> 中文字幕"
+echo "  2)     說  中文 -> 俄文語音"
+read -rp "> " pick
+case "$pick" in
+  "") mode=1; L=en ;;
+  1) mode=1
+     echo "語言代碼：ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文"
+     read -rp "聽哪種語言 [Enter=en]: " L; L="${L:-en}" ;;
+  2) mode=2; L=ru ;;
+  *) echo "沒有這個選項"; exit 1 ;;
+esac
+if [ "$mode" = "1" ]; then echo "聽  $L -> 中文字幕"; else echo "說  中文 -> $L 語音"; fi
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
   python - "$@" <<'PY'
@@ -40,12 +40,6 @@ if [ "$mode" = "1" ]; then
     tlwu-setup "${setup[@]}"
   fi
   exec tlwu --lang "$L"
-fi
-
-if [ "$mode" != "2" ]; then echo "沒有這個選項"; exit 1; fi
-if [ "$L" != "ru" ]; then
-  echo "「說」目前只支援 ru（俄文）；其他語言還沒有語音模型。"
-  exit 1
 fi
 
 REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
