@@ -244,3 +244,135 @@ def test_gui_module_imports_and_language_names():
 
     assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
     assert core.DEFAULTS["theme"] == "dark"
+
+
+# -- #72: subtitles inside the main window (scrolling log), floating bar optional and off by default ---------
+
+def test_floating_bar_off_by_default_and_log_font_persist(tmp_path):
+    p = tmp_path / "gui.json"
+    s = core.load_settings(p)
+    assert s["floating_bar"] is False and s["log_font_size"] == 14
+    s.update(floating_bar=True, log_font_size=22)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["floating_bar"] is True and got["log_font_size"] == 22
+    p.write_text(json.dumps({"log_font_size": 9999, "floating_bar": "yes"}), "utf-8")
+    got = core.load_settings(p)
+    assert got["log_font_size"] == core.FONT_MAX and got["floating_bar"] is False
+
+
+@pytest.fixture
+def gui_app(tmp_path, monkeypatch):
+    """A real App on a real (virtual) display with a worker that just waits for Stop; settings in tmp_path."""
+    tk = pytest.importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu import i18n
+    from tinglongwu.gui import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)  # never touch the real config
+    monkeypatch.setattr(i18n, "_override", "en")  # restored after the test
+
+    def fake_work(self, s, stop):
+        stop.wait(10)
+        self.q.put(("stopped",))
+
+    monkeypatch.setattr(app.App, "_work", fake_work)
+    a = app.App()
+    a.root.update()
+    yield a
+    a.stop_ev.set()
+    a.root.destroy()
+
+
+def _log(a):
+    a.root.update()
+    return a.log_text.get("1.0", "end-1c")
+
+
+def test_start_shows_listening_in_main_window_and_bar_stays_hidden(gui_app):
+    a = gui_app
+    assert _log(a) == ""
+    a.toggle()  # Start
+    assert _log(a) == "Listening..."
+    assert not a.overlay.visible and a.overlay.win.state() == "withdrawn"  # floating bar: default OFF
+    a.q.put(("final", "privet", "你好"))
+    a.q.put(("draft", "kak dela", "你好嗎"))
+    a.poll()
+    assert _log(a) == "你好\n你好嗎"
+    a.var_show_src.set(True)
+    a._src_toggled()
+    assert _log(a) == "privet\n你好\nkak dela\n你好嗎"
+    a.toggle()  # Stop
+    a.worker.join(5)
+    a.poll()
+    assert _log(a) == "privet\n你好\nkak dela\n你好嗎"  # the history stays readable after Stop
+    assert a.settings["floating_bar"] is False
+
+
+def test_floating_bar_toggle_shows_bar_with_listening(gui_app):
+    a = gui_app
+    a.v_bar.set(True)
+    a._bar_toggled()
+    assert not a.overlay.visible  # not running yet: nothing to show
+    a.toggle()
+    a.root.update()
+    assert a.overlay.visible and a.overlay.win.state() == "normal"
+    assert a.overlay.text.get("1.0", "end-1c") == "Listening..."
+    a.q.put(("final", "s", "字幕"))
+    a.poll()
+    a.root.update()
+    assert a.overlay.text.get("1.0", "end-1c") == "字幕"
+    a.v_bar.set(False)
+    a._bar_toggled()
+    assert not a.overlay.visible and _log(a) == "字幕"  # log keeps working without the bar
+    assert core.load_settings()["floating_bar"] is True  # saved at Start (settings live in tmp_path)
+
+
+def test_log_follows_newest_unless_scrolled_up(gui_app):
+    a = gui_app
+    a.toggle()
+    for i in range(250):
+        a.q.put(("final", f"s{i}", f"line {i}"))
+    a.poll()
+    text = _log(a)
+    assert text.startswith("line 50\n") and text.endswith("line 249")  # 200 kept
+    assert a.log_text.dlineinfo("end-1c") is not None  # newest line is on screen
+    a.log_text.yview("20.0")  # user scrolls back
+    a.root.update()
+    top = a.log_text.index("@0,0")
+    a.q.put(("draft", "", "newer draft"))
+    a.poll()
+    a.root.update()
+    assert a.log_text.index("@0,0") == top  # stays where the user is reading
+    assert a.log_text.dlineinfo("end-1c") is None
+    a.log_text.yview_moveto(1.0)  # back at the bottom: follows again
+    a.root.update()
+    a.q.put(("final", "", "newest"))
+    a.poll()
+    a.root.update()
+    assert a.log_text.dlineinfo("end-1c") is not None and _log(a).endswith("newest")
+
+
+def test_log_font_buttons_and_pause(gui_app):
+    a = gui_app
+    w0 = a.root.winfo_reqwidth()
+    a.bump_log_font(8)
+    a.root.update()
+    assert a.settings["log_font_size"] == 22 and a.root.winfo_reqwidth() == w0  # window does not grow
+    assert str(a.log_text.tag_cget("final", "font")).split()[-1] == "22"
+    a.toggle()
+    a.set_paused(True)
+    a.q.put(("final", "s", "while paused"))
+    a.poll()
+    assert _log(a) == "Listening..."  # frozen
+    a.set_paused(False)
+    assert _log(a) == "while paused"  # nothing lost
+    a.v_ui_lang.set("繁體中文")
+    a.state = core.SubtitleState(core.HISTORY_LINES)
+    a.switch_lang()
+    assert _log(a) == "聆聽中…"
