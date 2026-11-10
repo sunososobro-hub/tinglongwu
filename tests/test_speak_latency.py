@@ -1,6 +1,7 @@
 """#132 speak-mode latency: the back-translation must not delay TTS, sentences are sent one by one, and every
 stage is timed. Fake MT/TTS/player; the real proto / confirm / logic code runs."""
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -67,7 +68,23 @@ def test_confirm_mode_synthesis_starts_before_back_translation(monkeypatch, caps
     it = res["items"][0]
     assert it["decision"] == "sent" and it["back"] == "你好回譯" and player.log == [("push", 4)]
     assert "← BACK(zh): 你好回譯" in capsys.readouterr().out
-    assert set(it["lat"]) == {"mt", "back"} and all(v >= 0 for v in it["lat"].values())
+    assert set(it["lat"]) == {"mt", "back", "tts"} and all(v >= 0 for v in it["lat"].values())
+
+
+def test_confirm_mode_debug_latency_reports_tts(monkeypatch, capsys):
+    """#142: confirm mode (default) used to print tts=- and a total without synthesis time."""
+    class SlowTTS(TTS):
+        def speak(self, text):
+            time.sleep(0.05)
+            yield from super().speak(text)
+
+    res, _ = _confirm(monkeypatch, MT(), SlowTTS(), debug_latency=True)
+    err = capsys.readouterr().err
+    lat = res["items"][0]["lat"]
+    assert lat["tts"] >= 0.04
+    line = [ln for ln in err.splitlines() if ln.startswith("lat ")]
+    assert len(line) == 1 and "tts=-" not in line[0]
+    assert f"total={lat['mt'] + lat['tts']:.2f}" in line[0]
 
 
 def test_no_back_skips_the_second_mt_pass(monkeypatch, capsys):
