@@ -1,34 +1,50 @@
 name: Bug / 問題回報
 description: Something broke or looks wrong. / 有東西壞了或怪怪的
-labels: ["type:bug"]
+labels: ["bug"]
 body:
-  - type: textarea
-    id: did
-    attributes:
-      label: 做了什麼 / What did you do?
-      description: Steps, short. / 簡短步驟
-    validations:
-      required: true
-  - type: textarea
-    id: saw
-    attributes:
-      label: 看到什麼 / What did you see?
-      description: Paste the screen text, a screenshot or the output. / 貼畫面、截圖或輸出
-    validations:
-      required: true
-  - type: textarea
-    id: want
-    attributes:
-      label: 想要什麼 / What did you expect?
-    validations:
-      required: true
-  - type: input
-    id: os
-    attributes:
-      label: OS / 作業系統
-      placeholder: Windows 11 / macOS 14 / Ubuntu 24.04
   - type: input
     id: version
     attributes:
       label: Version / 版本
       placeholder: v0.1.0 (or commit)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS / 作業系統
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode / 模式
+      options: [listen, speak, meeting]
+    validations:
+      required: true
+  - type: input
+    id: langpair
+    attributes:
+      label: Language pair / 語言組合
+      placeholder: ja -> zh-TW
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened / 發生了什麼
+      description: Steps, short; paste screen text or a screenshot. / 簡短步驟，貼畫面文字或截圖
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected / 預期結果
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines (optional) / 日誌（選填）
+      render: text
