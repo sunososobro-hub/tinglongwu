@@ -36,6 +36,7 @@
         Write-Host ($M.dirty -f $Dir) -ForegroundColor Red; return
     }
     if ($git -and ($isGit -or -not $exists)) {
+        $ErrorActionPreference = 'Continue'   # git writes progress to stderr
         Write-Host $M.git
         if ($isGit) {
             & git -C $Dir fetch --quiet --tags origin
@@ -60,5 +61,8 @@
         } finally { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
     }
     Write-Host $M.run -ForegroundColor Cyan
+    # 'Stop' would turn any stderr line of the child (pip/setuptools warnings) into a terminating NativeCommandError under PS 5.1
+    $ErrorActionPreference = 'Continue'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Dir 'install.ps1')
+    if ($LASTEXITCODE -ne 0) { Write-Host ($M.fail -f $Ref) -ForegroundColor Red; return }
 }
