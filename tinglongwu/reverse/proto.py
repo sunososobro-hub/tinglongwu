@@ -173,7 +173,13 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     box: list = []
     print("listening... speak Chinese; Ctrl+C to quit", flush=True)
     try:
-        if confirm:
+        if tts is None:  # text only: show zh -> ru, nothing is spoken
+            from .logic import translate_ru
+
+            for _n, _src, zh in items:
+                ru, _r = translate_ru(lambda x: mt.translate(x, "zh", "ru").text, zh)
+                print(f"[ZH] {zh}\n[RU] {ru}\n", flush=True)
+        elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
             _run_auto_live(items, mt, tts, player, res)
@@ -360,9 +366,6 @@ def _main(argv, vm) -> int:
         mt.history.clear()
         asr._last = ""
         if live:
-            if tts is None:
-                print("error: --mic needs TTS (drop --no-tts)", file=sys.stderr)
-                return 2
             _live_main(a, asr, mt, tts, player, previewer, confirm, res)
             wavs = []
         elif confirm:
