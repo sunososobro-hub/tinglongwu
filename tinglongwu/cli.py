@@ -46,9 +46,11 @@ def parse_args(argv=None):
     p.add_argument("--max-wait", type=float, default=None,
                    help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
                         "is held (default from --preset; a pause of >= 0.8 s sends it earlier)")
-    p.add_argument("--engine", choices=["auto", "qwen", "qwen4b", "opus", "m2m"], default="auto",
-                   help="auto (default): after Whisper loads, pick by free VRAM: Qwen3-8B (>=5.8 GB free), "
-                        "else Qwen3-4B (>=3.5 GB), else OPUS (also on CPU); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
+    p.add_argument("--engine", choices=["auto", "hymt", "qwen", "qwen4b", "opus", "m2m"], default="auto",
+                   help="auto (default): after Whisper loads, on a usable GPU pick Hy-MT2 when it is installed "
+                        "(`tlwu-setup --hymt`, needs ~2 GB free VRAM); without it Qwen3-8B (>=5.8 GB free), "
+                        "else Qwen3-4B (>=3.5 GB); else OPUS (also on CPU); hymt = Hy-MT2 (direct src->target, "
+                        "fast, ~1.5 GB); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
                         "(direct src->target LLM, needs `tlwu-setup --qwen`); opus: src->en->target OPUS-MT; "
                         "m2m: M2M-100 1.2B direct")
     p.add_argument("--stream", action="store_true",
@@ -103,10 +105,27 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         say(f"tlwu: WARNING: Qwen engine failed to load, falling back to OPUS (lower translation quality). "
             f"Reason: {errors[-1] if errors else 'unknown'}", file=sys.stderr)
         name, why = "opus", "Qwen failed to load"
+    from .hymt import JaRouter
+
+    if name == "hymt2":
+        from .hymt import hymt_path
+        from .models import require
+
+        require(hymt_path(mdir), "Hy-MT2 translation model", "--hymt")  # explicit --engine hymt without the file
+        tr = JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev, all_pairs=True,
+                      warn=lambda m: say(m, file=sys.stderr))
+        try:
+            if tr.hy is None:
+                raise RuntimeError(tr.hy_error)
+            tr.hy.preload()
+            say(f"tlwu: translation engine = hymt2 ({why})", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: loud, like Qwen (#74)
+            tr._fallback(e)
+            say("tlwu: translation engine = opus (Hy-MT2 failed to load)", file=sys.stderr)
+        return tr
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
     if name == "m2m":
         return M2mTranslator(mdir, zh_variant, dev)
-    from .hymt import JaRouter
 
     # OPUS has no usable Japanese: ja pairs go direct through Hy-MT2 when installed, else ja -> en -> zh pivot
     return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)

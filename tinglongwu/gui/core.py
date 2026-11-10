@@ -21,7 +21,7 @@ DEFAULTS = {
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "qwen", "qwen4b", "opus"]
+ENGINES = ["auto", "hymt", "qwen", "qwen4b", "opus"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
