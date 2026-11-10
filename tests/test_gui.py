@@ -131,7 +131,7 @@ def test_overlay_constructs_headless_or_skips():
         a.state.apply(("final", "s", "字幕"))
         a.overlay.render(a.state)
         a.root.update()
-        assert a.overlay.l1.cget("text") == "字幕"
+        assert a.overlay.text.get("1.0", "end-1c") == "字幕"
         a.overlay.bump_font(4)
         assert a.settings["font_size"] == core.DEFAULTS["font_size"] + 4
     finally:
@@ -166,6 +166,57 @@ def test_paused_state_freezes_redraw_but_keeps_events():
     assert st.lines() == [("one", False), ("two", False)]  # ... but nothing was lost
 
 
+def test_subtitle_history_keeps_200_finals_and_draft_last():
+    """#72: the subtitle bar scrolls back through the last HISTORY_LINES finals; the draft is the newest row."""
+    st = core.SubtitleState(core.HISTORY_LINES)
+    for i in range(250):
+        st.apply(("final", f"s{i}", f"t{i}"))
+    st.apply(("draft", "sd", "td"))
+    h = st.history()
+    assert len(h) == core.HISTORY_LINES + 1
+    assert h[0] == ("s50", "t50", False)  # oldest 50 dropped
+    assert h[-2] == ("s249", "t249", False) and h[-1] == ("sd", "td", True)
+    st.apply(("final", "sd", "tf"))  # the draft is replaced in place by its final
+    assert st.history()[-1] == ("sd", "tf", False) and len(st.history()) == core.HISTORY_LINES
+
+
+def test_follow_newest_only_at_bottom():
+    assert core.follow_newest(1.0)
+    assert not core.follow_newest(0.8)  # user scrolled up to re-read: do not jump to the newest line
+
+
+def test_rows_after_drag_and_clamp():
+    assert core.rows_after_drag(3, -30, 30) == 4  # top edge dragged up 1 line -> 1 more row
+    assert core.rows_after_drag(3, 31, 30) == 2
+    assert core.rows_after_drag(4, -10_000, 30) == core.ROWS_MAX
+    assert core.rows_after_drag(4, 10_000, 30) == core.ROWS_MIN
+    assert core.rows_after_drag(4, -60, 0) == 4
+    assert (core.ROWS_MIN, core.ROWS_MAX, core.FONT_MIN, core.FONT_MAX) == (1, 5, 12, 72)
+
+
+def test_font_preset_nearest_label():
+    assert [core.font_preset(core.FONT_PRESETS[k]) for k in ("S", "M", "L", "XL")] == ["S", "M", "L", "XL"]
+    assert core.font_preset(30) == "M" and core.font_preset(90) == "XL" and core.font_preset(5) == "S"
+
+
+def test_overlay_lines_setting_persists_and_clamps(tmp_path):
+    p = tmp_path / "gui.json"
+    s = core.load_settings(p)
+    assert s["overlay_lines"] == 3  # default 3 lines
+    s.update(overlay_lines=1, font_size=14)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 1 and got["font_size"] == 14  # survive restart
+    s.update(overlay_lines=5, font_size=40)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 5 and got["font_size"] == 40
+    p.write_text(json.dumps({"font_size": 5}), "utf-8")
+    assert core.load_settings(p)["font_size"] == 12
+    p.write_text(json.dumps({"overlay_lines": 999}), "utf-8")
+    assert core.load_settings(p)["overlay_lines"] == core.ROWS_MAX
+
+
 def test_gui_strings_exist_in_all_three_languages():
     from tinglongwu import i18n
 
@@ -196,27 +247,6 @@ def test_gui_module_imports_and_language_names():
 
 
 # -- #72: subtitles inside the main window (scrolling log), floating bar optional and off by default ---------
-
-def test_subtitle_log_keeps_200_finals_and_draft_last():
-    log = core.SubtitleLog()
-    for i in range(250):
-        assert log.apply(("final", f"s{i}", f"t{i}"))
-    assert log.apply(("draft", "sd", "td"))
-    rows = log.rows()
-    assert len(rows) == core.HISTORY_LINES + 1 == 201
-    assert rows[0] == ("s50", "t50", False)  # oldest 50 dropped
-    assert rows[-2] == ("s249", "t249", False) and rows[-1] == ("sd", "td", True)
-    log.apply(("final", "sd", "tf"))  # the draft is replaced in place by its final
-    assert log.rows()[-1] == ("sd", "tf", False) and len(log.rows()) == core.HISTORY_LINES
-    log.apply(("draft", "x", "y"))
-    assert log.apply(("clear",)) and log.rows()[-1] == ("sd", "tf", False)
-    assert not log.apply(("clear",)) and not log.apply(("status", "hi"))
-
-
-def test_follow_newest_only_at_bottom():
-    assert core.follow_newest(1.0)
-    assert not core.follow_newest(0.8)  # scrolled up to re-read: do not jump to the newest line
-
 
 def test_floating_bar_off_by_default_and_log_font_persist(tmp_path):
     p = tmp_path / "gui.json"
@@ -292,11 +322,11 @@ def test_floating_bar_toggle_shows_bar_with_listening(gui_app):
     a.toggle()
     a.root.update()
     assert a.overlay.visible and a.overlay.win.state() == "normal"
-    assert a.overlay.l1.cget("text") == "Listening..."
+    assert a.overlay.text.get("1.0", "end-1c") == "Listening..."
     a.q.put(("final", "s", "字幕"))
     a.poll()
     a.root.update()
-    assert a.overlay.l1.cget("text") == "字幕"
+    assert a.overlay.text.get("1.0", "end-1c") == "字幕"
     a.v_bar.set(False)
     a._bar_toggled()
     assert not a.overlay.visible and _log(a) == "字幕"  # log keeps working without the bar
@@ -343,6 +373,6 @@ def test_log_font_buttons_and_pause(gui_app):
     a.set_paused(False)
     assert _log(a) == "while paused"  # nothing lost
     a.v_ui_lang.set("繁體中文")
-    a.log = core.SubtitleLog()
+    a.state = core.SubtitleState(core.HISTORY_LINES)
     a.switch_lang()
     assert _log(a) == "聆聽中…"

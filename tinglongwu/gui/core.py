@@ -17,7 +17,7 @@ from ..stream import DraftRenderer
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None, "source": "system", "preset": "meeting", "theme": "dark",
+    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14,
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
@@ -26,8 +26,10 @@ ENGINES = ["auto", "qwen", "qwen4b", "opus"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
-FONT_MIN, FONT_MAX = 10, 96
-HISTORY_LINES = 200  # finals kept in the main-window subtitle log (scroll back to re-read)
+FONT_MIN, FONT_MAX = 12, 72
+FONT_PRESETS = {"S": 20, "M": 28, "L": 36, "XL": 48}  # subtitle size picker in the control window
+HISTORY_LINES = 200  # finals kept in the subtitle bar's scroll-back
+ROWS_MIN, ROWS_MAX = 1, 5  # visible text rows of the subtitle bar (drag its top edge to change)
 
 
 def target_for_locale(tag: str | None) -> str:
@@ -70,6 +72,7 @@ def load_settings(path=None) -> dict:
         pass
     out["font_size"] = clamp_font(out["font_size"])
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
+    out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     return out
 
 
@@ -90,9 +93,29 @@ def clamp_font(n, default=None) -> int:
         return DEFAULTS["font_size"] if default is None else default
 
 
+def clamp_rows(n) -> int:
+    try:
+        return max(ROWS_MIN, min(ROWS_MAX, int(n)))
+    except (TypeError, ValueError):
+        return DEFAULTS["overlay_lines"]
+
+
+def font_preset(size) -> str:
+    """Nearest S/M/L/XL label for a font size (what the size picker shows for a custom Ctrl+wheel size)."""
+    n = clamp_font(size)
+    return min(FONT_PRESETS, key=lambda k: (abs(FONT_PRESETS[k] - n), FONT_PRESETS[k]))
+
+
+def rows_after_drag(start_rows: int, dy_px: float, line_px: float) -> int:
+    """Subtitle bar height while its top edge is dragged: up (dy < 0) adds rows, down removes them."""
+    if line_px <= 0:
+        return clamp_rows(start_rows)
+    return clamp_rows(start_rows + round(-dy_px / line_px))
+
+
 def follow_newest(yview_last: float) -> bool:
-    """Auto-scroll the subtitle log to the newest line only while the view already shows the bottom
-    (the user has not scrolled up to re-read something)."""
+    """Auto-scroll to the newest line only while the view already shows the bottom (the user has not
+    scrolled back to read something)."""
     return yview_last >= 0.999
 
 
@@ -183,38 +206,13 @@ class SubtitleState:
             return self.draft[0]
         return self.finals[-1][0] if self.finals else ""
 
+    def history(self) -> list[tuple[str, str, bool]]:
+        """[(src, target_text, is_draft)] for the scroll-back: every kept final, then the draft (if any)."""
+        rows = [(src, t, False) for src, t in self.finals]
+        if self.draft:
+            rows.append((self.draft[0], self.draft[1], True))
+        return rows
+
     def last_text(self) -> str:
         rows = self.lines()
         return rows[-1][0] if rows else ""
-
-
-class SubtitleLog:
-    """Scrolling subtitle history for the main window (CLI-like): the last `max_lines` finals, oldest first,
-    then the current draft, which its final replaces in place."""
-
-    def __init__(self, max_lines: int = HISTORY_LINES):
-        self.max_lines = max_lines
-        self.finals: list[tuple[str, str]] = []  # (src, target)
-        self.draft: tuple[str, str] | None = None
-
-    def apply(self, ev: tuple) -> bool:
-        """Apply a queue event; True if the log changed."""
-        kind = ev[0]
-        if kind == "draft":
-            self.draft = (ev[1], ev[2])
-        elif kind == "final":
-            self.draft = None
-            self.finals.append((ev[1], ev[2]))
-            del self.finals[:-self.max_lines]
-        elif kind == "clear" and self.draft is not None:
-            self.draft = None
-        else:
-            return False
-        return True
-
-    def rows(self) -> list[tuple[str, str, bool]]:
-        """[(src, target_text, is_draft)], oldest first; the draft (if any) is the last row."""
-        out = [(src, tgt, False) for src, tgt in self.finals]
-        if self.draft:
-            out.append((self.draft[0], self.draft[1], True))
-        return out
