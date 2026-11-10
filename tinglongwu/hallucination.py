@@ -42,7 +42,7 @@ WEAK = {
 # Lone filler words Whisper invents on silence; dropped regardless of energy (nobody transcribes a bare "you").
 LONE = {"you"}
 
-QUIET_RMS = 0.01      # segment RMS below this = "low energy" (speech normally sits well above)
+QUIET_RMS = 0.015     # segment RMS below this = "low energy" (speech normally sits well above)
 NO_SPEECH_MIN = 0.3   # Whisper no_speech_prob at/above this = "probably not speech"
 MIN_COVER = 0.6       # the phrase must make up at least this share of the text (else it is part of real speech)
 QUIET_COVER = 0.3     # ... or this share when the segment is quiet / no-speech
