@@ -51,6 +51,39 @@ def zh_convert(text: str, variant: str) -> str:
     return out
 
 
+_RARE_OK_AFTER = "子孔云曾孟曰"  # 曰 is real classical Chinese ("子曰"); elsewhere it is an OPUS en-zh glitch for 吧
+
+
+def _common_cjk(ch: str) -> bool:
+    """Common-character test with no extra data: GB2312 (~6.7k simplified) or Big5 level 1 (5401 traditional)."""
+    try:
+        ch.encode("gb2312")
+        return True
+    except UnicodeEncodeError:
+        pass
+    try:
+        b = ch.encode("big5")
+    except UnicodeEncodeError:
+        return False
+    return len(b) == 2 and 0xA440 <= (b[0] << 8 | b[1]) <= 0xC67E
+
+
+def zh_garbage(text: str) -> bool:
+    """True if `text` has CJK ideographs outside the common set (OPUS en-zh emits e.g. 珃瓳 for "Wow."), or a stray 曰."""
+    for i, ch in enumerate(text):
+        if "一" <= ch <= "鿿" or "㐀" <= ch <= "䶿":
+            if not _common_cjk(ch) or (ch == "曰" and (i == 0 or text[i - 1] not in _RARE_OK_AFTER)):
+                return True
+    return False
+
+
+def zh_guard(src_text: str, out: str, max_words: int = 4) -> str:
+    """Short interjection whose zh output is garbage: show the source text instead (better than 珃瓳)."""
+    if len(src_text.split()) <= max_words and len(src_text) <= 40 and zh_garbage(out):
+        return src_text
+    return out
+
+
 _FULLWIDTH = {",": "，", ".": "。", "!": "！", "?": "？", ";": "；", ":": "："}
 _SENT = re.compile(r"(?<=[.!?。！？…])\s+")
 
@@ -122,7 +155,7 @@ class PivotTranslator(Translator):
             pivot = self._step(src, "en")(text)
             out = self._step("en", tgt)(pivot)
         if tgt == "zh":
-            out = zh_convert(out, self.zh_variant)
+            out = zh_guard(text, zh_convert(out, self.zh_variant))
         return Translation(pivot, out)
 
     def preload(self, src: str, tgt: str) -> None:
@@ -190,5 +223,5 @@ class M2mTranslator(Translator):
         if tgt in ("zh", "ja"):
             out = cjk_clean(out)
         if tgt == "zh":
-            out = zh_convert(out, self.zh_variant)
+            out = zh_guard(text, zh_convert(out, self.zh_variant))
         return Translation(None, out)

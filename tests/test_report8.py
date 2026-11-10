@@ -95,3 +95,29 @@ def test_zh_subtitle_by_name_is_hallucination():
     assert is_hallucination('字幕by索兰娅')
     assert not is_hallucination('這個字幕by default 是開的，我們討論一下設定')
 
+
+
+# ---- lone "you" / sign-offs on silence ----
+def test_lone_you_always_dropped_thank_you_only_when_quiet():
+    for t in ["You", "you.", " You! "]:
+        assert is_hallucination(t, rms=0.1), t
+    assert not is_hallucination("Thank you.", rms=0.1, no_speech=0.0)
+    assert is_hallucination("Thank you.", rms=0.002)
+    assert is_hallucination("Thank you.", rms=0.1, no_speech=0.6)
+    assert is_hallucination("Bye.", rms=0.002) and not is_hallucination("Bye.", rms=0.1)
+    assert is_hallucination("謝謝觀看", rms=0.1)
+    assert not is_hallucination("Thank you for the help, see you tomorrow", rms=0.002)
+    assert not is_hallucination("you and me", rms=0.1)
+
+
+# ---- garbage zh output guard ----
+def test_zh_garbage_detection_and_fallback():
+    from tinglongwu.translate import zh_garbage, zh_guard
+    assert zh_garbage("珃瓳") and zh_garbage("進曰") and zh_garbage("嘿，試一下試曰。")
+    assert not zh_garbage("謝謝。") and not zh_garbage("嘿，試一下試吧。") and not zh_garbage("子曰：學而時習之")
+    assert not zh_garbage("你个") and not zh_garbage("hello 123")
+    assert zh_guard("Wow.", "珃瓳") == "Wow."
+    assert zh_guard("Let's go in.", "進曰。") == "Let's go in."
+    assert zh_guard("Wow.", "哇。") == "哇。"
+    long = "This is a much longer sentence that should not fall back"
+    assert zh_guard(long, "珃瓳") == "珃瓳"

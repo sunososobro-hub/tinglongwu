@@ -1,5 +1,6 @@
 ﻿# tinglongWu helper menu (Windows, PowerShell 5.1). Run from the repo:
 #   powershell -ExecutionPolicy Bypass -File scripts\windows_menu.ps1
+# Env WHISPER sets the speech model (empty = default), e.g.  $env:WHISPER="medium"; powershell -File scripts\windows_menu.ps1
 # "Speak" needs VB-CABLE (Meet microphone = "CABLE Output") and Vosk-TTS in its own venv:
 #   python -m venv $HOME\tts-vosk; & $HOME\tts-vosk\Scripts\pip install "vosk-tts==0.3.61"
 #   model: https://alphacephei.com/vosk/models/vosk-model-tts-ru-0.7-multi.zip -> $HOME\vosk-model-tts-ru-0.7-multi
@@ -10,6 +11,8 @@ $py = ".\.venv\Scripts\python.exe"
 $tlwu = ".\.venv\Scripts\tlwu.exe"
 $voskPy = if ($env:VOSK_PY) { $env:VOSK_PY } else { "$HOME\tts-vosk\Scripts\python.exe" }
 $voskModel = if ($env:VOSK_MODEL) { $env:VOSK_MODEL } else { "$HOME\vosk-model-tts-ru-0.7-multi" }
+$wL = @(); $wS = @()
+if ($env:WHISPER) { $wL = @("--model", $env:WHISPER); $wS = @("--whisper", $env:WHISPER) }
 $voice = if ($env:VOICE) { $env:VOICE } else { "4" }
 # English speech: Kokoro in its own venv (it bundles GPL espeak, so never install it into .venv):
 #   python -m venv $HOME\tts-kokoro; & $HOME\tts-kokoro\Scripts\pip install "kokoro-onnx==0.6.1"
@@ -45,7 +48,7 @@ if ($mode -eq "1") {
         Write-Host "還沒有 $L 的翻譯模型，現在連網下載（只有這一次）..."
         & .\.venv\Scripts\tlwu-setup.exe @setup
     }
-    & $tlwu --lang $L
+    & $tlwu --lang $L @wL
     exit
 }
 Write-Host "說  中文 -> $L 語音"
@@ -58,12 +61,12 @@ if ($L -eq "en") {
         & .\.venv\Scripts\tlwu-setup.exe --pair zh-en --pair en-zh
     }
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "en", "--mt", "opus", "--tts-engine", "kokoro",
-             "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice)
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "en", "--mt", "opus")
+             "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "en", "--mt", "opus") + $wS
 } else {
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,
-             "--tts-model", $voskModel, "--speaker", $voice)
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ru")
+             "--tts-model", $voskModel, "--speaker", $voice) + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ru") + $wS
 }
 Write-Host "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
 Write-Host "  1) 送進 Meet（需 VB-CABLE；Meet 麥克風選 CABLE Output）"

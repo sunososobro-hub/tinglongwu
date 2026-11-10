@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # tinglongWu helper menu (Linux). Run from the repo:  bash scripts/linux_menu.sh
-# Paths can be overridden with env vars before running.
+# Paths can be overridden with env vars before running; WHISPER sets the speech model, e.g.  WHISPER=medium bash scripts/linux_menu.sh
 set -e
 cd "$(dirname "$0")/.."
 . .venv/bin/activate
 
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
+WHISPER="${WHISPER:-}"   # empty = program default
+W_LISTEN=(); W_SPEAK=()
+if [ -n "$WHISPER" ]; then W_LISTEN=(--model "$WHISPER"); W_SPEAK=(--whisper "$WHISPER"); fi
 VOICE="${VOICE:-4}"
 KOKORO_PY="${KOKORO_PY:-$HOME/tts-kokoro/bin/python}"
 KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
@@ -44,7 +47,7 @@ if [ "$mode" = "1" ]; then
     echo "還沒有 $L 的翻譯模型，現在連網下載（只有這一次）..."
     tlwu-setup "${setup[@]}"
   fi
-  exec tlwu --lang "$L"
+  exec tlwu --lang "$L" "${W_LISTEN[@]}"
 fi
 
 if [ "$L" = "en" ]; then
@@ -54,12 +57,12 @@ if [ "$L" = "en" ]; then
     tlwu-setup --pair zh-en --pair en-zh
   fi
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to en
-       --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to en)
+       --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to en "${W_SPEAK[@]}")
 else
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
-       --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru)
+       --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE" "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru "${W_SPEAK[@]}")
 fi
 echo "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
 echo "  1) 送進 Meet（Meet 麥克風選 tlwu_mic）"

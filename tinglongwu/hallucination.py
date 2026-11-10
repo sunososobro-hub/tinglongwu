@@ -29,7 +29,7 @@ WEAK = {
            "Благодарю за внимание", "До новых встреч", "Пока пока"],
     "en": ["Thanks for watching", "Thank you for watching", "Thank you so much for watching",
            "Please subscribe", "Like and subscribe", "See you next time", "See you in the next video",
-           "Bye bye", "Thank you"],
+           "Bye bye", "Bye", "Thank you", "Thanks"],
     "ja": ["ご視聴ありがとうございました", "ご視聴ありがとうございます", "チャンネル登録", "最後までご視聴"],
     "zh": ["請不吝點贊", "请不吝点赞", "訂閱", "订阅我的频道", "感謝收看", "感谢收看", "謝謝大家", "谢谢大家",
            "歡迎訂閱", "点赞订阅", "點贊訂閱", "下期再見", "下期再见"],
@@ -38,6 +38,9 @@ WEAK = {
     "fr": ["Merci d'avoir regardé", "Merci de votre attention", "Abonnez-vous"],
     "es": ["Gracias por ver", "Gracias por ver el video", "Suscríbete"],
 }
+
+# Lone filler words Whisper invents on silence; dropped regardless of energy (nobody transcribes a bare "you").
+LONE = {"you"}
 
 QUIET_RMS = 0.01      # segment RMS below this = "low energy" (speech normally sits well above)
 NO_SPEECH_MIN = 0.3   # Whisper no_speech_prob at/above this = "probably not speech"
@@ -75,6 +78,8 @@ def is_hallucination(text: str, rms: float | None = None, no_speech: float = 0.0
     n = _norm(text)
     if not n:
         return False
+    if n in LONE:
+        return True
     cover, strong = _best_cover(n)
     if cover == 0:
         return False
