@@ -31,6 +31,17 @@ def test_feedback_guard_refuses(mic, out, spk):
         check_mic_feedback(mic, out, spk)
 
 
+def test_feedback_guard_linux_same_card_name_ok():
+    name = "Family 17h/19h HD Audio Controller Analog Stereo"
+    check_mic_feedback(name, "Family", name, same_name_ok=True)
+    with pytest.raises(ValueError):
+        check_mic_feedback(name, "Family", name)
+    with pytest.raises(ValueError):
+        check_mic_feedback("tlwu_mic", "tlwu_sink", None, same_name_ok=True)
+    with pytest.raises(ValueError):
+        check_mic_feedback("Monitor of " + name, "Family", None, same_name_ok=True)
+
+
 def test_feedback_guard_allows_real_mic():
     check_mic_feedback("Microphone (Realtek)", "CABLE Input", "CABLE Input (VB-Audio Virtual Cable)")
     check_mic_feedback("Headset Mic", None, None)

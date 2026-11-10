@@ -315,7 +315,7 @@ def _main(argv, vm) -> int:
                 spk = sp[k].name if k is not None else None
             except LookupError:
                 pass
-            check_mic_feedback(a.mic_name, a.device, spk)
+            check_mic_feedback(a.mic_name, a.device, spk, same_name_ok=is_linux())
         except (LookupError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
