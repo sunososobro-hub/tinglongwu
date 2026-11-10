@@ -153,3 +153,14 @@ def test_target_follows_system_locale(tmp_path, monkeypatch):
     s["target"] = "zh-cn"
     save_settings(s, p)
     assert load_settings(p)["target"] == "zh-cn"  # saved choice wins
+
+
+def test_paused_state_freezes_redraw_but_keeps_events():
+    from tinglongwu.gui.core import SubtitleState
+
+    st = SubtitleState(2)
+    assert st.apply(("final", "a", "one")) is True
+    st.paused = True
+    assert st.apply(("final", "b", "two")) is False  # no redraw while paused ...
+    st.paused = False
+    assert st.lines() == [("one", False), ("two", False)]  # ... but nothing was lost
