@@ -25,5 +25,5 @@ def test_nothing_downloaded_keeps_wanted_so_setup_hint_shows(tmp_path):
 def test_gui_argv_uses_downloaded_model(tmp_path, monkeypatch):
     _mk(tmp_path, "large-v3-turbo")
     monkeypatch.setenv("TLWU_MODELS", str(tmp_path))
-    argv = core.settings_to_argv({"model": "small"})
+    argv = core.settings_to_argv({"model": "small", "quality": "manual"})
     assert argv[argv.index("--model") + 1] == "large-v3-turbo"

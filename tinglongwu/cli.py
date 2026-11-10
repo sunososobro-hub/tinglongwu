@@ -19,6 +19,11 @@ def parse_args(argv=None):
     p.add_argument("--model", default=None,
                    help="Whisper size (default: 'small' if downloaded, else the best downloaded one)",
                    choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"])
+    p.add_argument("--quality", default="auto", choices=["auto", "fast", "balanced", "quality"],
+                   help="speech model picked for this machine when --model is not given: auto (default) = "
+                        "balanced = recommended for the detected hardware (see --probe); fast = smaller model, "
+                        "lowest delay; quality = larger model, more accurate, slower. A model that is not "
+                        "downloaded is replaced by the best downloaded one")
     p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], dest="compute",
                    help="compute device for ASR+MT: auto = cuda if usable, else cpu (default)")
     p.add_argument("--lang", default="auto", help="source language code or 'auto'")
@@ -87,6 +92,29 @@ def parse_args(argv=None):
     a.chunk = chunk if a.chunk is None else a.chunk
     a.max_wait = wait if a.max_wait is None else a.max_wait
     return a
+
+
+def auto_model(level: str, dev: str, mdir, hw=None, say=print) -> str:
+    """Speech model when --model is not given: the hardware tier's model for the quality level (#81), or the
+    best downloaded one when that model is not on disk (#96). `dev` is the device really in use: on "cpu" the
+    CPU tier applies even if a GPU is present (old driver, --device cpu)."""
+    from dataclasses import replace
+
+    from .hwprobe import preset, probe
+    from .models import pick_whisper
+
+    try:
+        hw = hw or probe()
+        if dev == "cpu":
+            hw = replace(hw, gpu=None, vram_mib=None, driver=None)
+        want = preset(level, hw).asr
+    except Exception as e:  # noqa: BLE001 - a broken probe must never stop a session
+        want = "small"
+        say(f"tlwu: hardware probe failed ({str(e)[:120]}); using the default speech model", file=sys.stderr)
+    got = pick_whisper(want, mdir)
+    note = "" if got == want else f" ({want} is not downloaded: `tlwu-setup --whisper {want}`)"
+    say(f"tlwu: speech model = {got} (quality {level}){note}", file=sys.stderr)
+    return got
 
 
 def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
@@ -173,10 +201,6 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
     note = status or (lambda m: None)
     mdir = models_dir(a.models_dir)
-    if a.model is None:
-        from .models import pick_whisper
-
-        a.model = pick_whisper("small", mdir)
     warned: list[str] = []
 
     def warn(m: str) -> None:
@@ -184,6 +208,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         warned.append(m)
 
     dev = resolve_device(a.compute, warn=warn)
+    if a.model is None:
+        a.model = auto_model(getattr(a, "quality", "auto"), dev, mdir)
     if notice is not None and dev == "cpu" and a.compute != "cpu":
         from .i18n import t
 
