@@ -63,6 +63,9 @@ class Player:
         # macOS: BlackHole 16ch has 16 channels; a mono stream may reach only channel 1, so send identical L/R
         self.ch = 2 if sys.platform == "darwin" else 1
         self.speaker_name = None
+        from .live import PlaybackGate
+
+        self.gate = PlaybackGate()
         if enabled:
             import soundcard as sc
 
@@ -87,12 +90,16 @@ class Player:
                 item = self.q.get()
                 if item is None:
                     return
-                p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                try:
+                    p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                finally:
+                    self.gate.end()
 
     def push(self, audio: np.ndarray, sr: int) -> None:
         if self.enabled:
             from .logic import resample
 
+            self.gate.start()
             self.q.put(resample(audio, sr, self.out_sr))
 
     def close(self) -> None:
@@ -260,7 +267,8 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
 
     stop = threading.Event()
     items = ((n, "mic", zh) for n, zh in enumerate(
-        recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr), 1))
+        recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr,
+                         gate=getattr(player, "gate", None)), 1))
     box: list = []
     print("listening... speak Chinese; Ctrl+C to quit", flush=True)
     try:
