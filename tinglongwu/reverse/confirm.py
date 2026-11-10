@@ -60,8 +60,10 @@ class ConfirmSession:
     """synth(ru) -> (audio, sr) | None ; send(audio, sr) ; preview(audio, sr) optional ; readline() -> str ('' = Enter)."""
 
     def __init__(self, synth: Callable, send: Callable, preview: Callable | None = None,
-                 out: Callable = print, readline: Callable[[], str] | None = None):
+                 out: Callable = print, readline: Callable[[], str] | None = None,
+                 set_voice: Callable[[int], None] | None = None):
         self.synth, self.send, self.preview, self.out = synth, send, preview, out
+        self.set_voice = set_voice  # "v<N>"+Enter switches voice and re-synthesises the current utterance
         self.readline = readline or (lambda: input())
         self._q: queue.Queue = queue.Queue()
         self._pool = ThreadPoolExecutor(max_workers=1)  # TTS pipe is serial
@@ -87,13 +89,21 @@ class ConfirmSession:
         """True = send. EOF on input counts as discard."""
         pending = self._q.qsize()
         extra = f" ({pending} queued)" if pending else ""
-        self.out(f"{HELP}{extra}")
-        try:
-            key = self.readline().strip().lower()
-        except EOFError:
-            self._eof = True
-            return False
-        return key == ""  # only a bare Enter sends; r/x/anything else discards
+        help_ = HELP + ("  [v0-v4]+Enter=change voice" if self.set_voice else "")
+        while True:
+            self.out(f"{help_}{extra}")
+            try:
+                key = self.readline().strip().lower()
+            except EOFError:
+                self._eof = True
+                return False
+            if self.set_voice and len(key) >= 2 and key[0] == "v" and key[1:].isdigit():
+                self.set_voice(int(key[1:]))
+                u.future.cancel()
+                u.future = self._pool.submit(self.synth, u.ru)  # same text, new voice
+                self.out(f"voice -> {key[1:]}")
+                continue
+            return key == ""  # only a bare Enter sends; r/x/anything else discards
 
     def run(self) -> list[Utterance]:
         """Review loop; returns when finish() was called and the queue is drained."""

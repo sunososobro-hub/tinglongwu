@@ -121,8 +121,12 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     from .confirm import ConfirmSession, Utterance, back_translate
     from .logic import translate_ru
 
+    def set_voice(n: int) -> None:
+        tts.speaker = n
+
     sess = ConfirmSession(_make_synth(tts), player.push, previewer.push if previewer.enabled else None,
-                          out=lambda m: print(m, flush=True))
+                          out=lambda m: print(m, flush=True),
+                          set_voice=set_voice if getattr(tts, "engine", "") == "vosk" else None)
     if sess_box is not None:
         sess_box.append(sess)
 
@@ -245,6 +249,9 @@ def _main(argv, vm) -> int:
                     help="Linux: do not create the tlwu_sink/tlwu_mic virtual microphone (use --device yourself)")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
     ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
+    ap.add_argument("--tts-engine", default="qwen", choices=["qwen", "vosk"],
+                    help="vosk = Vosk-TTS built-in voices, fast on CPU (--tts-model = vosk model dir)")
+    ap.add_argument("--speaker", type=int, default=4, help="vosk voice id (ru 0.7: 0-4); switch live with v0-v4")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
     ap.add_argument("--ref", default="")
@@ -348,7 +355,7 @@ def _main(argv, vm) -> int:
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
         tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only, a.chunk,
-                                        "cuda" if dev == "cuda" else "cpu")
+                                        "cuda" if dev == "cuda" else "cpu", a.tts_engine, a.speaker)
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()

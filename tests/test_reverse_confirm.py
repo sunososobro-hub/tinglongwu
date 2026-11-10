@@ -46,6 +46,23 @@ def test_enter_sends_r_and_x_discard_in_order():
     assert "ZH : z1" in shown[0] and "RU : r1" in shown[0] and "BACK(zh): b1" in shown[0]
 
 
+def test_voice_switch_resynthesises_then_sends_new_voice():
+    voice = {"v": 4}
+    s, sent, prev, log, calls = make(["v1", "", "v9x", ""],
+                                     synth=lambda ru: (np.full(voice["v"] + 1, 1, np.float32), 22050))
+    s.set_voice = lambda n: voice.__setitem__("v", n)
+    items = run(s, [Utterance(1, "z1", "r1"), Utterance(2, "z2", "r2")])
+    assert [u.decision for u in items] == ["sent", "discarded"]  # "v9x" is not a voice key -> discard
+    assert sent == [(2, 22050)]  # voice 1 -> length 2
+    assert "voice -> 1" in log
+
+
+def test_voice_keys_ignored_without_set_voice():
+    s, sent, *_ = make(["v1"])
+    items = run(s, [Utterance(1, "z", "r")])
+    assert items[0].decision == "discarded" and sent == []
+
+
 def test_nothing_sent_before_confirmation():
     gate = threading.Event()
     s, sent, *_ = make([])

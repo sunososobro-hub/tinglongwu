@@ -9,14 +9,18 @@ from pathlib import Path
 
 class TTSClient:
     def __init__(self, tts_python: str, model: str, ref: str, ref_text: str = "", xvec_only: bool = False,
-                 chunk: int = 12, device: str = "cuda"):
+                 chunk: int = 12, device: str = "cuda", engine: str = "qwen", speaker: int = 4):
         worker = Path(__file__).with_name("tts_worker.py")
-        cmd = [tts_python, str(worker), "--model", model, "--ref", ref, "--chunk", str(chunk),
-               "--device", device]
-        if xvec_only:
-            cmd.append("--xvec-only")
+        self.engine, self.speaker = engine, speaker
+        if engine == "vosk":
+            cmd = [tts_python, str(worker), "--engine", "vosk", "--model", model, "--speaker", str(speaker)]
         else:
-            cmd += ["--ref-text", ref_text]
+            cmd = [tts_python, str(worker), "--model", model, "--ref", ref, "--chunk", str(chunk),
+                   "--device", device]
+            if xvec_only:
+                cmd.append("--xvec-only")
+            else:
+                cmd += ["--ref-text", ref_text]
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1"}
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         self.ready = self._read_header()
@@ -33,7 +37,10 @@ class TTSClient:
     def speak(self, text: str):
         """Generator of (event_dict, payload_bytes|None); ends after the 'done' (or 'error') event."""
         self._n += 1
-        self.proc.stdin.write((json.dumps({"id": self._n, "text": text}) + "\n").encode("utf-8"))
+        req = {"id": self._n, "text": text}
+        if self.engine == "vosk":
+            req["speaker"] = self.speaker  # read per request, so set_voice() takes effect on the next sentence
+        self.proc.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
         self.proc.stdin.flush()
         while True:
             h = self._read_header()

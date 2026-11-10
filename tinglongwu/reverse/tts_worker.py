@@ -55,10 +55,47 @@ def run_cpu(a, np, torch) -> int:
     return 0
 
 
+def run_vosk(a) -> int:
+    """CPU path with Vosk-TTS (Apache-2.0, own G2P, no espeak). Fixed built-in voices; a request may carry
+    "speaker" to switch voice on the fly. model_path is always local, so vosk never downloads anything."""
+    import tempfile
+    import wave
+
+    import numpy as np
+    from vosk_tts import Model, Synth
+
+    t0 = time.perf_counter()
+    synth = Synth(Model(model_path=a.model))
+    tmp = os.path.join(tempfile.mkdtemp(prefix="tlwu_vosk_"), "out.wav")
+    send({"t": "ready", "load_s": round(time.perf_counter() - t0, 2), "vram_mib": 0, "device": "cpu",
+          "engine": "vosk"})
+    for line in sys.stdin:
+        req = json.loads(line)
+        if req.get("cmd") == "quit":
+            break
+        try:
+            t1 = time.perf_counter()
+            synth.synth(req["text"], tmp, speaker_id=int(req.get("speaker", a.speaker)))
+            with wave.open(tmp, "rb") as w:
+                sr = w.getframerate()
+                pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+            arr = (pcm.astype(np.float32) / 32768.0).reshape(-1)
+            gen = time.perf_counter() - t1
+            dur = arr.size / sr
+            send({"t": "chunk", "id": req["id"], "sr": sr, "ttfa_s": round(gen, 3)}, arr.tobytes())
+            send({"t": "done", "id": req["id"], "audio_s": round(dur, 3), "gen_s": round(gen, 3),
+                  "rtf": round(gen / dur, 3) if dur else None, "ttfa_s": round(gen, 3), "peak_vram_mib": 0})
+        except Exception as e:  # noqa: BLE001
+            send({"t": "error", "id": req.get("id"), "msg": repr(e)[:300]})
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True, help="local Qwen3-TTS Base dir")
-    ap.add_argument("--ref", required=True, help="reference wav")
+    ap.add_argument("--engine", default="qwen", choices=["qwen", "vosk"])
+    ap.add_argument("--speaker", type=int, default=4, help="vosk: built-in voice id (ru 0.7: 0-4)")
+    ap.add_argument("--model", required=True, help="local Qwen3-TTS Base dir / Vosk-TTS model dir")
+    ap.add_argument("--ref", default="", help="reference wav (qwen)")
     ap.add_argument("--ref-text", default="")
     ap.add_argument("--xvec-only", action="store_true")
     ap.add_argument("--lang", default="Russian")
@@ -66,6 +103,11 @@ def main() -> int:
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"],
                     help="cpu: no CUDA graphs / streaming, plain qwen_tts generation (one chunk per sentence)")
     a = ap.parse_args()
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    if a.engine == "vosk":
+        return run_vosk(a)
+    if not a.ref:
+        ap.error("--ref is required for the qwen engine")
     if a.device == "cpu":
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     os.environ["HF_HUB_OFFLINE"] = "1"
