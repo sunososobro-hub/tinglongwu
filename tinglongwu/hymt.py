@@ -1,4 +1,7 @@
-"""Tencent Hy-MT2-1.8B (Apache-2.0, Q4_K_M GGUF, llama.cpp): direct multilingual MT used for Japanese.
+"""Tencent Hy-MT2-1.8B (Apache-2.0, Q4_K_M GGUF, llama.cpp): direct multilingual MT.
+
+As the GPU default engine (`--engine auto` on CUDA / `--engine hymt`, #66) it translates every pair whose two
+languages it knows (`EN_NAMES`); other pairs go to the OPUS pivot. With the other engines it is used for Japanese:
 
 OPUS has no usable zh<->ja models (opus-mt-en-jap is Bible-trained; ja-en emits <unk>), so every pair that
 involves Japanese goes through this model, direct src -> tgt with no English pivot. Everything else keeps
@@ -38,6 +41,16 @@ def build_prompt(text: str, src: str, tgt: str) -> str:
             f"Note that you should only output the translated result without any additional explanation:\n\n{text}")
 
 
+def zh_script_guard(src_text: str, out: str, max_words: int = 4) -> str:
+    """Short line whose "Chinese" output still contains kana / Cyrillic / Greek (left untranslated or echoed):
+    show the source text instead. Same size limits as translate.zh_guard, but only the wrong-script test: its
+    rare-ideograph test is tuned for OPUS garbage and would reject valid Taiwan interjections (欸, 齁)."""
+    if len(src_text.split()) <= max_words and len(src_text) <= 40 and any(
+            "\u0370" <= c <= "\u03ff" or "\u0400" <= c <= "\u04ff" or "\u3040" <= c <= "\u30ff" for c in out):
+        return src_text
+    return out
+
+
 class HyMtTranslator(Translator):
     """Direct src -> tgt with a local Hy-MT2 GGUF; OpenCC afterwards when tgt is zh. No context memory
     (the card's single-message template), so history/_pair exist only for interface compatibility."""
@@ -69,17 +82,20 @@ class HyMtTranslator(Translator):
             max_tokens=max_tokens_for(text), **SAMPLING)
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
         if tgt == "zh":
-            out = zh_convert(out, self.zh_variant)
+            out = zh_script_guard(text, zh_convert(out, self.zh_variant))
         return Translation(None, out)
 
 
 class JaRouter(Translator):
     """Pairs with Japanese -> Hy-MT2 (direct); every other pair -> `base`. If Hy-MT2 is not installed (or fails
-    to load) ja -> X falls back to base's pivot; X -> ja then raises (there is no OPUS route to Japanese)."""
+    to load) ja -> X falls back to base's pivot; X -> ja then raises (there is no OPUS route to Japanese).
+
+    all_pairs=True (Hy-MT2 as the main engine, #66): every pair whose two languages Hy-MT2 knows goes direct
+    through it; a pair with an unknown language, or any pair after Hy-MT2 failed, goes to `base`."""
 
     def __init__(self, base: Translator, models_dir: Path, zh_variant: str = "tw", device: str = "cpu",
-                 factory=HyMtTranslator, warn=lambda m: print(m, file=sys.stderr)):
-        self.base, self.zh_variant = base, zh_variant
+                 factory=HyMtTranslator, warn=lambda m: print(m, file=sys.stderr), all_pairs: bool = False):
+        self.base, self.zh_variant, self.all_pairs = base, zh_variant, all_pairs
         self.history: list = []
         self._pair = None
         self._warn = warn
@@ -94,14 +110,20 @@ class JaRouter(Translator):
             self.hy_error = f"{hymt_path(models_dir)} missing (run `tlwu-setup --hymt`)"
 
     def _use_hy(self, src: str, tgt: str) -> bool:
-        return "ja" in (src, tgt) and self.hy is not None
+        if self.hy is None:
+            return False
+        if self.all_pairs:
+            return src in EN_NAMES and tgt in EN_NAMES
+        return "ja" in (src, tgt)
 
     def _guard(self, src: str, tgt: str) -> None:
         if tgt == "ja" and self.hy is None:
             raise RuntimeError(f"Japanese output needs the Hy-MT2 model: {self.hy_error}")
 
     def _fallback(self, e: Exception) -> None:
-        self._warn(f"tlwu: Hy-MT2 failed ({str(e)[:160]}); ja -> X falls back to the OPUS pivot.")
+        what = "translation" if self.all_pairs else "ja -> X"
+        self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); {what} falls back to the OPUS pivot "
+                   "(lower translation quality).")
         self.hy_error, self.hy = str(e), None
 
     def preload(self, src: str, tgt: str) -> None:
