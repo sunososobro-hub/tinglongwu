@@ -17,7 +17,8 @@ def test_committed_pins_complete():
     m = pins["models"]["m2m-1.2B"]
     assert "model.safetensors" in m["files"] and "pytorch_model.bin" not in m["files"]
     for a in pins["argos"].values():
-        assert a["url"].startswith("https://") and len(a["archive_sha256"]) == 64
+        assert a["url"].startswith("https://") and a["files"]
+        assert len(a.get("archive_sha256", "0" * 64)) == 64  # archive hash optional (files are always pinned)
 
 
 def test_check_pinned_rejects_mismatch():

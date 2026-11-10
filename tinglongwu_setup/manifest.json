@@ -132,6 +132,15 @@
     "model/shared_vocabulary.json": "c0b6e24705ec0489d5b810de365959c1013aecd644cfeca161b54ea1df6a7dc0",
     "sentencepiece.model": "872224b85a11edc9d769a94949fd387b67ea85b50708db9f91f32f5b497a9af3"
    }
+  },
+  "opus-ja-en": {
+   "url": "https://argos-net.com/v1/translate-ja_en-1_1.argosmodel",
+   "files": {
+    "metadata.json": "a1becb19cb8abfc25d15bd8978cf543215c596876fb4b6d5c2c2a50949ece416",
+    "model/model.bin": "5d2ac0b0e427aa368b635812853a70b09976d2318bf889a9327488968b501c83",
+    "model/shared_vocabulary.txt": "8e6872bdfa55e2d91334ec5cd24eb6dab86033129639b940c60cd955b0f7a8a7",
+    "sentencepiece.model": "af3f880c259f55c62ed6c77c1ebc3cf46d6a95cc7cd8e9fcc78ee75417b987ef"
+   }
   }
  }
 }
