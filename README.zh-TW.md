@@ -24,6 +24,10 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 
 移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
+## 發行版（執行前請先閱讀）
+
+Windows 發行 zip **未簽章**，由維護者在本機以 Nuitka 建置，**不可重現建置**。其 SHA256 公布於 release 說明：執行前請用 `Get-FileHash tinglongwu-win64.zip` 比對。雜湊只證明你拿到的是維護者發布的那個檔案。若要真正的驗證，請從原始碼安裝（`install.bat` 或下方步驟）：原始碼、鎖版依賴與模型雜湊都可稽核。
+
 ## 安裝／使用分離（請先閱讀）
 
 同一個 repo、兩個程式，邊界明確：
@@ -50,9 +54,9 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 - `import tinglongwu` 時（早於任何 HF/ctranslate2 匯入）強制設定離線環境變數：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
 - 執行期**網路防護**會攔截 `socket.connect/connect_ex/getaddrinfo/gethostbyname`，任何非 loopback 目標一律丟出例外，永遠開啟。
 - 模型只從本機 `models/` 載入（`--models-dir` 或環境變數 `TLWU_MODELS`）；缺模型時會報錯並指向下載腳本，不會自動下載。
-- `tlwu-setup` (`tinglongwu_setup`) 是唯一會連網的程式。首次下載時「釘住」（HF commit sha／套件 URL 與每個檔案的 SHA256，存於 `models/manifest.json`），之後每次都驗證（`--verify` 可離線執行）。
+- `tlwu-setup` (`tinglongwu_setup`) 是唯一會連網的程式。首次下載時「釘住」（HF commit sha／套件 URL 與每個檔案的 SHA256，版控內的釘選在 `tinglongwu_setup/manifest.json`，本機紀錄存於 `models/manifest.json`），之後每次都驗證（`--verify` 可離線執行）。
 - `scripts/verify_offline.py` 執行 tlwu 並以 psutil 輪詢整個行程樹，出現任何非 loopback 連線就失敗。
-- 程式內防護只是縱深防禦；下方防火牆測試才是獨立證明。
+- 程式內防護只是縱深防禦，**不是證明**：它只攔截 Python 層的 socket（`connect`、`connect_ex`、`sendto`、名稱解析）。原生函式庫自己開的 socket（ctranslate2、onnxruntime、llama.cpp 與其他 C 擴充）與子行程**不在**攔截範圍。下方防火牆測試才是真正的獨立證明。
 
 ### 防火牆封鎖測試
 
@@ -73,6 +77,12 @@ Python 3.10+（以 3.12 測試）。
 ```
 tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # 精確鎖版
 ```
+
+帶雜湊驗證的安裝（建議）：`requirements.lock.txt` 列出所有依賴（含間接依賴）及 PyPI 公布的全部 SHA256，pip 會拒絕被竄改或替換的檔案：
+```
+pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+```
+`requirements.txt`（只有 `==` 鎖版、無雜湊）仍可使用。以 `python scripts/make_lock.py` 重新產生 lock。（`httpx2`/`httpcore2` 不是仿冒套件：它們是 Pydantic 維護的 httpx 分支，`huggingface_hub` 2.x 依賴它們。）
 - **Windows**：不需額外安裝（WASAPI 擷取預設喇叭）。
 - **Linux**：PipeWire（含 pipewire-pulse）或 PulseAudio。預設擷取預設輸出的 monitor；用 `pactl list sources short` 查看，以 `--capture-device <子字串>` 指定。
 - **macOS**：安裝 [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)，在「音訊 MIDI 設定」建立多重輸出裝置（喇叭＋BlackHole）並設為輸出。tlwu 會擷取名稱含 `BlackHole` 的裝置。ScreenCaptureKit 為未來選項。
@@ -85,10 +95,22 @@ tlwu-setup --whisper small --langs ru --to zh
 
 任何有 OPUS-MT/Argos 套件的語言組合都能用：`--langs` 下載「來源->英文」，`--to` 下載「英文->目標」（例如 `--langs ru,ja --to zh,ko`），只抓你需要的。缺少某組合時，tlwu 會停止並指出該組合與確切的下載指令。
 
-**選用 M2M-100 引擎（`--engine m2m`）**：不經英文中介，直接翻譯，**MIT 授權**（可商用）。`tlwu-setup --m2m` 會下載 facebook/m2m100_1.2B 並以 `ct2-transformers-converter` 轉換；轉換需要 `torch` 與 `transformers`，它們不是執行期相依套件：請在拋棄式 venv 安裝，並用 `TLWU_CONVERTER_PYTHON` 指向它。僅從 `models/m2m-1.2B/` 載入。
+**選用 M2M-100 引擎（`--engine m2m`）**：不經英文中介，直接翻譯，**MIT 授權**（可商用）。`tlwu-setup --m2m` 會下載 facebook/m2m100_1.2B 並以 `ct2-transformers-converter` 轉換；轉換需要 `torch` 與 `transformers`，它們不是執行期相依套件：請在拋棄式 venv 安裝，並用 `TLWU_CONVERTER_PYTHON` 指向它。僅從 `models/m2m-1.2B/` 載入。 轉換只讀 `model.safetensors`（釘住 Hugging Face 官方 SFconvertbot PR 的 commit，因為 `main` 只有 pickle 的 `pytorch_model.bin`），不會反序列化任何 pickle；沒有釘住的 safetensors 版本時 `tlwu-setup` 拒絕轉換。
 
 **Qwen LLM 引擎（預設 `--engine auto`）**：本機 Qwen3 模型（llama.cpp、Q4_K_M GGUF）直接由來源語言翻成中文（不經英文中介、關閉思考模式、防重複迴圈），再依 `--zh-variant` 以 OpenCC 轉換。準確度遠高於 OPUS，極短句也不會出現亂碼。`tlwu-setup --qwen` 會把 Qwen3-8B 與 Qwen3-4B（約 7.5 GB）下載到模型目錄；另需安裝 `llama-cpp-python`（CUDA 版）。`auto` 會在 Whisper 載入後檢查剩餘 VRAM：剩 5.8 GB 以上用 Qwen3-8B，3.5 GB 以上用 Qwen3-4B，否則用 OPUS（CPU 模式或 Qwen 載入失敗時亦同）；啟動時會印一行說明選了哪個引擎。可用 `--engine qwen`（8B）、`qwen4b`、`opus`、`m2m` 強制指定。
 
+
+#### 模型來源釘選
+
+`tinglongwu_setup/manifest.json` 已納入版控：每個可下載模型都釘到確切的 Hugging Face commit 與各檔 SHA256。`tlwu-setup` 以 `revision=<釘住的 commit>` 下載，雜湊不符即中止；`tlwu-setup --verify` 可離線複驗。維護者用 `scripts/make_model_pins.py` 更新釘選（請審視差異）。
+
+| 模型 | 來源 repo | 維護者 | 備註 |
+|---|---|---|---|
+| Whisper tiny/base/small/medium/large-v3（CT2） | `Systran/faster-whisper-*` | SYSTRAN | MIT |
+| **Whisper large-v3-turbo（CT2）** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh（第三方，非 OpenAI、非 SYSTRAN）** | MIT；社群的 CTranslate2 轉換版，信任範圍僅限於釘住的 commit 與雜湊 |
+| Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen（阿里巴巴） | Apache-2.0 |
+| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT；**僅用 safetensors**（見上） |
+| OPUS-MT（Argos 套件） | `argos-net.com` | Argos Open Tech | CC-BY 4.0；`ru-en`、`en-zh` 以 URL＋壓縮檔 SHA256 釘住；其他語對首次使用時查詢可變動的 Argos 索引，之後才釘住（會印出警告） |
 
 ### GPU（選用，NVIDIA）
 `--device auto|cpu|cuda`（預設 `auto`：CTranslate2 偵測到 NVIDIA GPU 且函式庫可載入就用 CUDA，否則用 CPU）。GPU 上 Whisper 用 float16、OPUS/M2M 用 int8_float16；CPU 用 int8。需要的東西（一次性，需要網路）：
@@ -135,6 +157,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | tlwu | MIT | 本專案 |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper 權重（Systran CT2 轉換版） | MIT | huggingface.co/Systran |
+| Whisper large-v3-turbo 權重（第三方 mobiuslabsgmbh 的 CT2 轉換版） | MIT | huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo |
 | Silero VAD（faster-whisper 內建 ONNX，Silero Team） | MIT | github.com/snakers4/silero-vad |
 | CTranslate2 | MIT | github.com/OpenNMT/CTranslate2 |
 | OPUS-MT 模型（Helsinki-NLP，需標示出處） | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT、argosopentech/argospm-index |

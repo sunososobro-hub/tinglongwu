@@ -1,0 +1,130 @@
+{
+ "models": {
+  "whisper-tiny": {
+   "repo": "Systran/faster-whisper-tiny",
+   "revision": "d90ca5fe260221311c53c58e660288d3deb8d356",
+   "files": {
+    ".gitattributes": "db7c0371f46f0840b8f25794c1e3321c9b5820a8cb6ba9694a46fc64b8fae5a6",
+    "README.md": "29fb8444a02c1f133ab7e538525aa478ff68845964f21cf42500842b0e4a7b20",
+    "config.json": "a73a28cdfe1c43ccc7202fa333d1f89c202477271407ae9a7f19afa52039cac8",
+    "model.bin": "dcb76c6586fc06cbdac6dd21f14cfd129cc4cdd9dce19bf4ffa62e59cbe6e6d1",
+    "tokenizer.json": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+    "vocabulary.txt": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+   }
+  },
+  "whisper-base": {
+   "repo": "Systran/faster-whisper-base",
+   "revision": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+   "files": {
+    ".gitattributes": "db7c0371f46f0840b8f25794c1e3321c9b5820a8cb6ba9694a46fc64b8fae5a6",
+    "README.md": "b922acef3616e27b1d416260b63ba7114c732f0315012006781af2da69cd1ebf",
+    "config.json": "56a6d8110d311f19c8f0471e562832c7527f146b567275bfca59fcf7c184da9a",
+    "model.bin": "d01c3014881c9c6f3133c182f3d2887eb6ca1c789a7538c5c007196857a0a6a9",
+    "tokenizer.json": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+    "vocabulary.txt": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+   }
+  },
+  "whisper-small": {
+   "repo": "Systran/faster-whisper-small",
+   "revision": "536b0662742c02347bc0e980a01041f333bce120",
+   "files": {
+    ".gitattributes": "db7c0371f46f0840b8f25794c1e3321c9b5820a8cb6ba9694a46fc64b8fae5a6",
+    "README.md": "329373481008c7c38654aff8ecdcf0163c211557cc7ba8e2ef6f2f84b4f75ec8",
+    "config.json": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828",
+    "model.bin": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671",
+    "tokenizer.json": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+    "vocabulary.txt": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+   }
+  },
+  "whisper-medium": {
+   "repo": "Systran/faster-whisper-medium",
+   "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+   "files": {
+    ".gitattributes": "db7c0371f46f0840b8f25794c1e3321c9b5820a8cb6ba9694a46fc64b8fae5a6",
+    "README.md": "a30144a6232423e5e4e9e17952b5a543a506dc0cb9de02fd9d875d7ec40fef83",
+    "config.json": "3622a2ddc41ec0e0fd4e68c13c6830f03b90c38d89aaad184de02c8c642cf807",
+    "model.bin": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae",
+    "tokenizer.json": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+    "vocabulary.txt": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+   }
+  },
+  "whisper-large-v3": {
+   "repo": "Systran/faster-whisper-large-v3",
+   "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+   "files": {
+    ".gitattributes": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361",
+    "README.md": "39e96252229f5a3d0141dc81afb65a36fd205461ac21e5b70f2cd1248ef0082c",
+    "config.json": "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9",
+    "model.bin": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1",
+    "preprocessor_config.json": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+    "tokenizer.json": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca",
+    "vocabulary.json": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
+   }
+  },
+  "whisper-large-v3-turbo": {
+   "repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+   "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+   "files": {
+    ".gitattributes": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361",
+    "README.md": "b3068692728faed23580cce5cd569fc47ff76c690c032b2641ffd5554ea64d8f",
+    "config.json": "b0253ea6c0d3bea6b1e19e91a02acfd3b53f4467362efcb5a3e6b16c9b3a9b7e",
+    "model.bin": "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da",
+    "preprocessor_config.json": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+    "tokenizer.json": "297b13372ac43916285644fb9687add3cc62ee2a1adb60da3dc25cc94c1871fd",
+    "vocabulary.json": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
+   }
+  },
+  "qwen3-8b": {
+   "repo": "Qwen/Qwen3-8B-GGUF",
+   "revision": "7c41481f57cb95916b40956ab2f0b139b296d974",
+   "files": {
+    "Qwen3-8B-Q4_K_M.gguf": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"
+   }
+  },
+  "qwen3-4b": {
+   "repo": "Qwen/Qwen3-4B-GGUF",
+   "revision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
+   "files": {
+    "Qwen3-4B-Q4_K_M.gguf": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
+   }
+  },
+  "m2m-1.2B": {
+   "repo": "facebook/m2m100_1.2B",
+   "revision": "0d54e885bd182833d3b4342a9dd270fbb312d424",
+   "files": {
+    "config.json": "13b5191c92371b2d587baac6c9a04de018a5264d7179020d379a276769051f95",
+    "generation_config.json": "aed76366507333ddbb8bd49960f23c82fe6446b3319a46a54befdb45324ccf61",
+    "model.safetensors": "a0c140ef70a1f53bf73f6fcf9504c23f3c60317ceebb7ff86297b20cd711c75e",
+    "sentencepiece.bpe.model": "d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a",
+    "special_tokens_map.json": "c1a4f86c3874d279ae1b2a05162858db5dd6c61665d84223ed886cbcff08fda6",
+    "tokenizer_config.json": "1566a6cfa4f541a55594c9d5e090f530812d5de7c94882ea3af156962d9933ae",
+    "vocab.json": "b6e77e474aeea8f441363aca7614317c06381f3eacfe10fb9856d5081d1074cc"
+   },
+   "note": "SFconvertbot PR refs/pr/7 (safetensors)"
+  }
+ },
+ "argos": {
+  "opus-ru-en": {
+   "url": "https://argos-net.com/v1/translate-ru_en-1_9.argosmodel",
+   "archive_sha256": "e9ba8bf722d10a4a4c39f74289d5938fd47eac08dbe4ed0afd22d89445a5c3ac",
+   "files": {
+    "metadata.json": "2034d666010673068722bc15af5bb8561173665872867c89a1b99695f0fb25d0",
+    "model/config.json": "3f1a3cc20b961c1fe0e6007e8ca663730c4a8b82fa54073fde03edf1402c6726",
+    "model/model.bin": "026d5f34266b4235c13fc29c665f151b88d0c1b02b0be7f87734fe9c511e20bc",
+    "model/shared_vocabulary.json": "32d134b048b6a27a48ba7fad9154976743b9bed9cbef7080b952108374d1cea1",
+    "sentencepiece.model": "d324f59d3b5ba04d9b088e162b5e779e27a5eb72d56ec8e5e69a9efc1bf8f495"
+   }
+  },
+  "opus-en-zh": {
+   "url": "https://argos-net.com/v1/translate-en_zh-1_9.argosmodel",
+   "archive_sha256": "433e7c4f034d87fbe2353161e05f18646d7999452f801a4e1f0378522b9850ab",
+   "files": {
+    "metadata.json": "106086bc1b77d2d5c298aa38be69e8e87263eeb4167b4614b08a030c43d31b6a",
+    "model/config.json": "3a8660f12559a223969532ff191e5e6f50d4ff24164517edbd6a5090dc5144c6",
+    "model/model.bin": "1a039114d9456b6528fabb65b455b6f156319634a0f984b1f6018f7737d67598",
+    "model/shared_vocabulary.json": "c0b6e24705ec0489d5b810de365959c1013aecd644cfeca161b54ea1df6a7dc0",
+    "sentencepiece.model": "872224b85a11edc9d769a94949fd387b67ea85b50708db9f91f32f5b497a9af3"
+   }
+  }
+ }
+}

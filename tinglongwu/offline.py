@@ -2,6 +2,10 @@
 
 Importing :mod:`tinglongwu` calls :func:`apply_env` and :func:`install_guard` before any
 HF / ctranslate2 code is imported. Only loopback and AF_UNIX connections pass.
+
+Limits (be honest about them): this is a Python-level guard. It patches socket.connect/connect_ex/sendto and
+name resolution, so it does NOT cover native code that opens sockets itself (ctranslate2, onnxruntime,
+llama.cpp, other C extensions) or subprocesses. The real proof is an OS firewall test (README, "Verify").
 """
 from __future__ import annotations
 
@@ -54,6 +58,7 @@ def install_guard() -> None:
     _installed = True
     orig_connect = socket.socket.connect
     orig_connect_ex = socket.socket.connect_ex
+    orig_sendto = socket.socket.sendto
     orig_gai = socket.getaddrinfo
     orig_ghbn = socket.gethostbyname
 
@@ -68,6 +73,10 @@ def install_guard() -> None:
         _check(_addr_host(addr))
         return orig_connect_ex(self, addr)
 
+    def sendto(self, data, *rest):  # UDP: sendto(data, addr) / sendto(data, flags, addr)
+        _check(_addr_host(rest[-1]) if rest else None)
+        return orig_sendto(self, data, *rest)
+
     def getaddrinfo(host, *a, **k):
         _check(host)
         return orig_gai(host, *a, **k)
@@ -78,5 +87,6 @@ def install_guard() -> None:
 
     socket.socket.connect = connect
     socket.socket.connect_ex = connect_ex
+    socket.socket.sendto = sendto
     socket.getaddrinfo = getaddrinfo
     socket.gethostbyname = gethostbyname

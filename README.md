@@ -24,6 +24,10 @@ For Windows 10/11 with an NVIDIA GPU (works without one, just slower). You need 
 
 To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. The Qwen engine uses `requirements-qwen.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the OPUS engine automatically.
 
+## Releases (read before trusting a binary)
+
+The Windows release zip is **unsigned** and built locally by the maintainer with Nuitka; the build is **not reproducible**. Its SHA256 is published in the release notes: compare it with `Get-FileHash tinglongwu-win64.zip` before running. The hash only proves you got the file the maintainer published. If you want real verification, install from source (`install.bat` or the steps below): the source, pinned dependencies and model hashes are all auditable.
+
 ## Install / use split (read this first)
 
 One repo, two programs with a hard boundary:
@@ -50,9 +54,9 @@ Bundles are platform-specific: build on the same OS, CPU architecture and Python
 - On `import tinglongwu` (before any HF/ctranslate2 import) the env is forced offline: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `ARGOS_*`.
 - A runtime **network guard** patches `socket.connect/connect_ex/getaddrinfo/gethostbyname` and raises on any non-loopback target. It is always on.
 - Models load only from a local `models/` dir (`--models-dir` or `TLWU_MODELS`); missing models give an error pointing to the download script. Nothing is auto-downloaded.
-- `tlwu-setup` (`tinglongwu_setup`) is the **only** program that uses the network. It pins on first download (HF commit sha / package URL + SHA256 of every file, stored in `models/manifest.json`) and verifies on every later run (`--verify` works offline).
+- `tlwu-setup` (`tinglongwu_setup`) is the **only** program that uses the network. It pins on first download (HF commit sha / package URL + SHA256 of every file; committed pins in `tinglongwu_setup/manifest.json`, local record in `models/manifest.json`) and verifies on every later run (`--verify` works offline).
 - `scripts/verify_offline.py` runs tinglongWu and polls the whole process tree with psutil; fails on any non-loopback connection.
-- The guard is in-process defence in depth; the firewall test below is the independent proof.
+- The guard is in-process defence in depth, **not proof**. It only blocks Python-level sockets (`connect`, `connect_ex`, `sendto`, name resolution). Native libraries that open their own sockets (ctranslate2, onnxruntime, llama.cpp, other C extensions) and subprocesses are **not** covered. The firewall test below is the real, independent proof.
 
 ### Firewall block test (per platform)
 
@@ -73,6 +77,12 @@ Python 3.10+ (tested 3.12).
 ```
 tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # exact pins
 ```
+
+Hash-verified install (recommended): `requirements.lock.txt` lists every dependency (including transitive ones) with all PyPI SHA256 hashes, so pip refuses any tampered or substituted file:
+```
+pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+```
+`requirements.txt` (plain `==` pins, no hashes) keeps working. Regenerate the lock with `python scripts/make_lock.py` (`httpx2`/`httpcore2` are not typosquats: they are the Pydantic-maintained httpx fork that `huggingface_hub` 2.x depends on).
 - **Windows**: nothing extra (WASAPI loopback of the default speakers).
 - **Linux**: PipeWire (with pipewire-pulse) or PulseAudio. Default captures the monitor of the default sink; list with `pactl list sources short` and choose with `--capture-device <substring>`.
 - **macOS**: install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole), create a Multi-Output Device (speakers + BlackHole) in Audio MIDI Setup and make it the output. tlwu captures the device whose name contains `BlackHole`. ScreenCaptureKit audio capture is a possible future option.
@@ -85,10 +95,22 @@ Translation uses OPUS-MT models as packaged by Argos Translate, run directly on 
 
 Any language pair with an OPUS-MT/Argos package works: `--langs` fetches source->English, `--to` fetches English->target (e.g. `--langs ru,ja --to zh,ko`). Fetch only what you need. If a pair is missing, tinglongWu stops and names the pair and the exact download command.
 
-**Optional M2M-100 engine (`--engine m2m`)**: direct translation without the English pivot, **MIT licensed** (usable commercially). `tlwu-setup --m2m` downloads facebook/m2m100_1.2B and converts it with `ct2-transformers-converter`; the converter needs `torch` and `transformers`, which are NOT runtime dependencies: install them in a throwaway venv and point `TLWU_CONVERTER_PYTHON` at it. Loads from `models/m2m-1.2B/` only.
+**Optional M2M-100 engine (`--engine m2m`)**: direct translation without the English pivot, **MIT licensed** (usable commercially). `tlwu-setup --m2m` downloads facebook/m2m100_1.2B and converts it with `ct2-transformers-converter`; the converter needs `torch` and `transformers`, which are NOT runtime dependencies: install them in a throwaway venv and point `TLWU_CONVERTER_PYTHON` at it. Loads from `models/m2m-1.2B/` only.  The conversion reads only `model.safetensors` (pinned HF commit of Hugging Face's own SFconvertbot PR, since `main` has only the pickle `pytorch_model.bin`), so no pickle is ever unpickled. `tlwu-setup` refuses to convert without that pinned safetensors revision.
 
 **Qwen LLM engine (default `--engine auto`)**: a local Qwen3 model (llama.cpp, Q4_K_M GGUF) translates directly source -> Chinese (no English pivot, thinking mode off, repetition guarded), then OpenCC converts per `--zh-variant`. It is much more accurate than OPUS and does not produce garbage on very short lines. `tlwu-setup --qwen` downloads Qwen3-8B and Qwen3-4B (~7.5 GB) into the models dir; it also needs `llama-cpp-python` (CUDA build). `auto` checks free VRAM after Whisper has loaded: Qwen3-8B if >= 5.8 GB is free, else Qwen3-4B if >= 3.5 GB, else OPUS (also on CPU or if Qwen fails to load); one line at startup says which engine was chosen. Force one with `--engine qwen` (8B), `qwen4b`, `opus` or `m2m`.
 
+
+#### Pinned model sources
+
+`tinglongwu_setup/manifest.json` is committed: it pins every downloadable model to an exact Hugging Face commit and the SHA256 of each file. `tlwu-setup` downloads with `revision=<pinned commit>` and aborts on any hash mismatch; `tlwu-setup --verify` re-checks offline. Refresh pins with `scripts/make_model_pins.py` (maintainers; review the diff).
+
+| Model | Source repo | Maintainer | Notes |
+|---|---|---|---|
+| Whisper tiny/base/small/medium/large-v3 (CT2) | `Systran/faster-whisper-*` | SYSTRAN | MIT |
+| **Whisper large-v3-turbo (CT2)** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh (third party, not OpenAI or SYSTRAN)** | MIT; a community CTranslate2 conversion, trust is limited to its pinned commit and hashes |
+| Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen (Alibaba) | Apache-2.0 |
+| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT; **safetensors only** (see above) |
+| OPUS-MT (Argos packages) | `argos-net.com` | Argos Open Tech | CC-BY 4.0; `ru-en` and `en-zh` are pinned by URL + archive SHA256; other pairs are looked up in the mutable Argos index on first use and only pinned afterwards (a warning is printed) |
 
 ### GPU (optional, NVIDIA)
 `--device auto|cpu|cuda` (default `auto`: CUDA if CTranslate2 sees an NVIDIA GPU and the libraries load, else CPU). GPU runs Whisper in float16 and OPUS/M2M in int8_float16; CPU uses int8. What you need, once (with network):
@@ -135,6 +157,7 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | tinglongwu | MIT | this repo |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper weights (Systran CT2 conversions) | MIT | huggingface.co/Systran |
+| Whisper large-v3-turbo weights (third-party CT2 conversion by mobiuslabsgmbh) | MIT | huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo |
 | Silero VAD (bundled ONNX in faster-whisper; Silero Team) | MIT | github.com/snakers4/silero-vad |
 | CTranslate2 | MIT | github.com/OpenNMT/CTranslate2 |
 | OPUS-MT models (Helsinki-NLP; attribution required) | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT, argosopentech/argospm-index |

@@ -157,7 +157,7 @@ class Pipeline extends ChangeNotifier {
         ? now - f.decodeMs
         : now - f.decodeMs - (AsrConfig.vadMinSilence * 1000).round();
     _log.i('ASR final${f.forced ? " (forced)" : ""} '
-        'decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${f.text}');
+        'decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
     final sub = Subtitle(f.text);
     subtitles.add(sub);
     if (subtitles.length > keepSubtitles) subtitles.removeAt(0);
@@ -173,7 +173,7 @@ class Pipeline extends ChangeNotifier {
       final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs);
       _queue.addFirst(merged);
       dropped++;
-      _log.i('queue>$maxQueue, merged oldest two -> ${merged.ru}');
+      _log.i('queue>$maxQueue, merged oldest two -> ${AppLog.text(merged.ru)}');
     }
     queued = _queue.length + (_busy ? 1 : 0);
     notifyListeners();
@@ -199,7 +199,7 @@ class Pipeline extends ChangeNotifier {
           job.sub.zh = r.zh;
           job.sub.traditionalOk = r.check.isTraditional;
           _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
-              '${r.retried ? " retried" : ""}] ${r.zh} | '
+              '${r.retried ? " retried" : ""}] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '
               'ttft=${r.firstTokenMs}ms tok=${r.tokens} '
               'tps=${r.tokensPerSecond.toStringAsFixed(1)} n_ctx=${r.nCtx} '

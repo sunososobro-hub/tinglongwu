@@ -24,6 +24,10 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 
 卸载：删除文件夹和桌面快捷方式即可。`install.ps1 -DryRun` 只显示将执行的操作、不安装。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若没有合适的预编译 wheel，安装程序会自动改用 OPUS 引擎。
 
+## 发行版（运行前请先阅读）
+
+Windows 发行 zip **未签名**，由维护者在本机用 Nuitka 构建，**不可复现构建**。其 SHA256 公布在 release 说明中：运行前请用 `Get-FileHash tinglongwu-win64.zip` 比对。哈希只证明你拿到的是维护者发布的那个文件。若要真正的验证，请从源码安装（`install.bat` 或下面的步骤）：源码、锁版依赖和模型哈希都可审计。
+
 ## 安装／使用分离（请先阅读）
 
 同一个仓库、两个程序，边界明确：
@@ -50,9 +54,9 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在离线电脑上安装�
 - `import tinglongwu` 时（早于任何 HF/ctranslate2 导入）强制设置离线环境变量：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
 - 运行时**网络防护**会拦截 `socket.connect/connect_ex/getaddrinfo/gethostbyname`，任何非 loopback 目标一律抛出异常，始终开启。
 - 模型只从本地 `models/` 加载（`--models-dir` 或环境变量 `TLWU_MODELS`）；缺少模型时报错并指向下载脚本，不会自动下载。
-- `tlwu-setup` (`tinglongwu_setup`) 是唯一会联网的程序。首次下载时“固定”（HF commit sha／包 URL 以及每个文件的 SHA256，存于 `models/manifest.json`），之后每次都校验（`--verify` 可离线运行）。
+- `tlwu-setup` (`tinglongwu_setup`) 是唯一会联网的程序。首次下载时“固定”（HF commit sha／包 URL 以及每个文件的 SHA256，版本库内的固定在 `tinglongwu_setup/manifest.json`，本机记录存于 `models/manifest.json`），之后每次都校验（`--verify` 可离线运行）。
 - `scripts/verify_offline.py` 运行 tlwu 并用 psutil 轮询整个进程树，出现任何非 loopback 连接即失败。
-- 进程内防护只是纵深防御；下面的防火墙测试才是独立证明。
+- 进程内防护只是纵深防御，**不是证明**：它只拦截 Python 层的 socket（`connect`、`connect_ex`、`sendto`、名称解析）。原生库自己打开的 socket（ctranslate2、onnxruntime、llama.cpp 及其他 C 扩展）和子进程**不在**拦截范围。下面的防火墙测试才是真正的独立证明。
 
 ### 防火墙封锁测试
 
@@ -73,6 +77,12 @@ Python 3.10+（以 3.12 测试）。
 ```
 tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # 精确锁定版本
 ```
+
+带哈希校验的安装（推荐）：`requirements.lock.txt` 列出所有依赖（含间接依赖）及 PyPI 公布的全部 SHA256，pip 会拒绝被篡改或替换的文件：
+```
+pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+```
+`requirements.txt`（只有 `==` 锁版、无哈希）仍可使用。用 `python scripts/make_lock.py` 重新生成 lock。（`httpx2`/`httpcore2` 不是仿冒包：它们是 Pydantic 维护的 httpx 分支，`huggingface_hub` 2.x 依赖它们。）
 - **Windows**：无需额外安装（WASAPI 采集默认扬声器）。
 - **Linux**：PipeWire（含 pipewire-pulse）或 PulseAudio。默认采集默认输出的 monitor；用 `pactl list sources short` 查看，用 `--capture-device <子串>` 指定。
 - **macOS**：安装 [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)，在“音频 MIDI 设置”中创建多输出设备（扬声器＋BlackHole）并设为输出。tlwu 会采集名称包含 `BlackHole` 的设备。ScreenCaptureKit 为未来选项。
@@ -85,8 +95,20 @@ tlwu-setup --whisper small --langs ru --to zh
 
 任何有 OPUS-MT/Argos 包的语言组合都能用：`--langs` 下载“源语言->英文”，`--to` 下载“英文->目标”（例如 `--langs ru,ja --to zh,ko`），只下载你需要的。缺少某组合时，tlwu 会停止并指出该组合和确切的下载命令。
 
-**可选 M2M-100 引擎（`--engine m2m`）**：不经英文中转，直接翻译，**MIT 许可**（可商用）。`tlwu-setup --m2m` 会下载 facebook/m2m100_1.2B 并用 `ct2-transformers-converter` 转换；转换需要 `torch` 和 `transformers`，它们不是运行时依赖：请在一次性 venv 中安装，并用 `TLWU_CONVERTER_PYTHON` 指向它。仅从 `models/m2m-1.2B/` 加载。
+**可选 M2M-100 引擎（`--engine m2m`）**：不经英文中转，直接翻译，**MIT 许可**（可商用）。`tlwu-setup --m2m` 会下载 facebook/m2m100_1.2B 并用 `ct2-transformers-converter` 转换；转换需要 `torch` 和 `transformers`，它们不是运行时依赖：请在一次性 venv 中安装，并用 `TLWU_CONVERTER_PYTHON` 指向它。仅从 `models/m2m-1.2B/` 加载。 转换只读 `model.safetensors`（固定 Hugging Face 官方 SFconvertbot PR 的 commit，因为 `main` 只有 pickle 的 `pytorch_model.bin`），不会反序列化任何 pickle；没有固定的 safetensors 版本时 `tlwu-setup` 拒绝转换。
 
+
+#### 模型来源固定
+
+`tinglongwu_setup/manifest.json` 已纳入版本控制：每个可下载模型都固定到确切的 Hugging Face commit 与各文件 SHA256。`tlwu-setup` 以 `revision=<固定的 commit>` 下载，哈希不符即中止；`tlwu-setup --verify` 可离线复验。维护者用 `scripts/make_model_pins.py` 更新固定（请审阅差异）。
+
+| 模型 | 来源 repo | 维护者 | 备注 |
+|---|---|---|---|
+| Whisper tiny/base/small/medium/large-v3（CT2） | `Systran/faster-whisper-*` | SYSTRAN | MIT |
+| **Whisper large-v3-turbo（CT2）** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh（第三方，非 OpenAI、非 SYSTRAN）** | MIT；社区的 CTranslate2 转换版，信任范围仅限于固定的 commit 与哈希 |
+| Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen（阿里巴巴） | Apache-2.0 |
+| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT；**仅用 safetensors**（见上） |
+| OPUS-MT（Argos 包） | `argos-net.com` | Argos Open Tech | CC-BY 4.0；`ru-en`、`en-zh` 以 URL＋压缩包 SHA256 固定；其他语对首次使用时查询可变的 Argos 索引，之后才固定（会打印警告） |
 
 ### GPU（可选，NVIDIA）
 `--device auto|cpu|cuda`（默认 `auto`：CTranslate2 检测到 NVIDIA GPU 且库可加载就用 CUDA，否则用 CPU）。GPU 上 Whisper 用 float16、OPUS/M2M 用 int8_float16；CPU 用 int8。需要的东西（一次性，需要网络）：
@@ -133,6 +155,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | tlwu | MIT | 本项目 |
 | faster-whisper | MIT | github.com/SYSTRAN/faster-whisper |
 | Whisper 权重（Systran CT2 转换版） | MIT | huggingface.co/Systran |
+| Whisper large-v3-turbo 权重（第三方 mobiuslabsgmbh 的 CT2 转换版） | MIT | huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo |
 | Silero VAD（faster-whisper 内置 ONNX，Silero Team） | MIT | github.com/snakers4/silero-vad |
 | CTranslate2 | MIT | github.com/OpenNMT/CTranslate2 |
 | OPUS-MT 模型（Helsinki-NLP，需注明出处） | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT、argosopentech/argospm-index |

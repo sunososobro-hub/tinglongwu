@@ -44,7 +44,7 @@ def nuitka_cmd() -> list[str]:
             "--nofollow-import-to=tinglongwu.reverse", "--nofollow-import-to=pytest",
             "--nofollow-import-to=unittest",
             "--include-package-data=faster_whisper", "--include-package-data=opencc",
-            "--include-package-data=soundcard",
+            "--include-package-data=soundcard", "--include-package-data=tinglongwu_setup",
             "--product-name=tinglongWu", "--file-description=tinglongWu offline speech translator",
             "--file-version=0.1.0.0", "--product-version=0.1.0.0", str(REPO / "packaging" / "tlwu_entry.py")]
 
