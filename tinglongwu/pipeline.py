@@ -68,6 +68,13 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         if translator is None:  # transcript-only
             write(Result(lang, unit_text, None, "", tgt))
             return
+        if lang == tgt:  # e.g. Chinese heard while translating to zh: show as is (Traditional via OpenCC)
+            if tgt == "zh":
+                from .translate import zh_convert
+
+                unit_text = zh_convert(unit_text, getattr(translator, "zh_variant", "tw"))
+            write(Result(lang, unit_text, None, unit_text, tgt))
+            return
         with model_lock():
             tr = translator.translate(unit_text, lang, tgt)
         write(Result(lang, unit_text, tr.pivot, tr.text, tgt))

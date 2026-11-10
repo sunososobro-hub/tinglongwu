@@ -11,6 +11,7 @@ import numpy as np
 
 from .device import asr_compute_type, resolve_device
 from .hallucination import is_hallucination
+from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, write_lang
 from .models import require
 from .repeat import collapse_repeats, has_loop
 
@@ -55,7 +56,7 @@ class FasterWhisperRecognizer(Recognizer):
     NO_SPEECH = 0.6
 
     def __init__(self, models_dir: Path, size: str = "small", lang: str = "auto",
-                 device: str = "auto", glossary=None):
+                 device: str = "auto", glossary=None, candidates=None, lang_file=None):
         path = require(models_dir / f"whisper-{size}", f"Whisper model '{size}'",
                        f"--whisper {size}")
         from faster_whisper import WhisperModel
@@ -71,8 +72,24 @@ class FasterWhisperRecognizer(Recognizer):
             self.device = "cpu"
             self.model = WhisperModel(str(path), device="cpu", compute_type="int8")
         self.lang = None if lang == "auto" else lang  # auto: lock after first speech
+        # auto + candidates: re-detect every segment, restricted to the candidate set (never locks)
+        self.candidates = tuple(candidates) if (candidates and lang == "auto") else None
+        self.lang_file = lang_file if self.candidates else None  # last detected en/ru for `reverse.proto --to follow`
+        self._cur = None  # language of the latest segment (candidate mode)
+        if self.lang_file:
+            clear_lang(self.lang_file)  # no stale language from an earlier session
         self._last = ""  # previous good output -> initial_prompt for the next segment
         self.glossary = glossary  # topic terms -> Whisper hotwords; number normalization
+
+    def _lang_for(self, audio: np.ndarray, reuse: bool = False) -> str | None:
+        """Language to decode with: the fixed/locked one, or (candidate mode) the most probable candidate."""
+        cands = getattr(self, "candidates", None)
+        if not cands:
+            return self.lang
+        if reuse and getattr(self, "_cur", None):
+            return self._cur
+        _lang, _p, probs = self.model.detect_language(audio)
+        return pick_candidate(probs, cands, fallback=_lang if _lang in cands else cands[0])
 
     def _post(self, text: str) -> str:
         text = collapse_repeats(text)  # safety net: one copy of any phrase still looped
@@ -85,17 +102,19 @@ class FasterWhisperRecognizer(Recognizer):
 
     def partial(self, audio: np.ndarray) -> Transcript | None:
         """Streaming draft: greedy, no prompt, does not touch _last / the locked language."""
+        lang = self._lang_for(audio, reuse=True)
         segs, info = self.model.transcribe(
-            audio, language=self.lang, task="transcribe", beam_size=1, vad_filter=False,
+            audio, language=lang, task="transcribe", beam_size=1, vad_filter=False,
             condition_on_previous_text=False, no_speech_threshold=self.NO_SPEECH,
             log_prob_threshold=-1.0, compression_ratio_threshold=2.4, temperature=0.0,
             hotwords=self._hot())
         kept = [s for s in segs if s.text.strip()
                 and not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0)]
         text = self._post(" ".join(s.text.strip() for s in kept))
-        return Transcript(text, self.lang or info.language, max(s.no_speech_prob for s in kept)) if text else None
+        return Transcript(text, lang or info.language, max(s.no_speech_prob for s in kept)) if text else None
 
-    def _decode(self, audio: np.ndarray, retry: bool = False):
+    def _decode(self, audio: np.ndarray, retry: bool = False, lang: str | None = None):
+        lang = self.lang if lang is None else lang
         # Normal pass: temperature fallback (0 -> 0.2 -> 0.4) so faster-whisper's own compression-ratio /
         # logprob checks can re-decode a stuck window (a single temperature has no fallback: loop leaks).
         # Retry pass after a detected loop: no previous-text prompt (that is what feeds loops), hotter
@@ -103,16 +122,17 @@ class FasterWhisperRecognizer(Recognizer):
         kw = (dict(temperature=(0.3, 0.5, 0.7), repetition_penalty=1.1, initial_prompt=None) if retry
               else dict(temperature=(0.0, 0.2, 0.4), initial_prompt=make_prompt(self._last)))
         segs, info = self.model.transcribe(
-            audio, language=self.lang, task="transcribe", beam_size=5, vad_filter=False,
+            audio, language=lang, task="transcribe", beam_size=5, vad_filter=False,
             condition_on_previous_text=False, no_speech_threshold=self.NO_SPEECH,
             log_prob_threshold=-1.0, compression_ratio_threshold=2.4, hotwords=self._hot(), **kw)
         segs = [s for s in segs if not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0)]
         return segs, info, " ".join(s.text.strip() for s in segs if s.text.strip())
 
     def transcribe(self, audio: np.ndarray) -> Transcript | None:
-        segs, info, text = self._decode(audio)
+        lang = self._lang_for(audio)
+        segs, info, text = self._decode(audio, lang=lang)
         if text and has_loop(text):  # decoder got stuck: re-decode once without context, then collapse
-            segs2, info2, text2 = self._decode(audio, retry=True)
+            segs2, info2, text2 = self._decode(audio, retry=True, lang=lang)
             if text2 and not has_loop(text2):
                 segs, info, text = segs2, info2, text2
         looped = bool(text) and has_loop(text)  # still looped after the retry: collapsed below, no prompt
@@ -122,6 +142,11 @@ class FasterWhisperRecognizer(Recognizer):
             return None
         # context only when this output looks sane; a repeat/loop drops the prompt so it cannot propagate
         self._last = "" if looped or is_garbage(text, self._last) or is_hallucination(text) else text
+        if getattr(self, "candidates", None):
+            self._cur = lang
+            if lang in SPEAK_LANGS and getattr(self, "lang_file", None):
+                write_lang(self.lang_file, lang)  # zh segments leave the speak target alone
+            return Transcript(text, lang, max(s.no_speech_prob for s in segs))
         if self.lang is None:
             self.lang = info.language
         return Transcript(text, self.lang, max(s.no_speech_prob for s in segs))

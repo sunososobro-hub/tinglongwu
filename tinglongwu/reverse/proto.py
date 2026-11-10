@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -119,7 +120,64 @@ def _make_synth(tts):
 
 
 def _target(a) -> str:
-    return getattr(a, "to", "ru")
+    """Spoken language for the next sentence; with --to follow, whatever the other side spoke last (default en)."""
+    to = getattr(a, "to", "ru")
+    if to == "follow":
+        from ..langfollow import default_follow_path, read_lang
+
+        return read_lang(getattr(a, "follow_file", None) or default_follow_path(), "en")
+    return to
+
+
+_CYR = re.compile("[Ѐ-ӿ]")
+
+
+class FollowTTS:
+    """TTS front for --to follow: Russian (Cyrillic) text goes to the Vosk worker, anything else to Kokoro.
+    Each worker subprocess is started on first use (`factories`: {"en": callable, "ru": callable})."""
+
+    engine = "vosk"  # both built-in-voice engines: v0-v4 switching works
+    ready: dict = {}
+
+    def __init__(self, factories: dict):
+        self.factories, self.clients, self._speaker = factories, {}, None
+
+    def client(self, lang: str):
+        if lang not in self.clients:
+            print(f"loading {lang} voice...", flush=True)
+            c = self.factories[lang]()
+            if self._speaker is not None:
+                c.speaker = self._speaker
+            self.clients[lang] = c
+        return self.clients[lang]
+
+    @property
+    def speaker(self):
+        return self._speaker
+
+    @speaker.setter
+    def speaker(self, n: int) -> None:
+        self._speaker = n
+        for c in self.clients.values():
+            c.speaker = n
+
+    def speak(self, text: str):
+        return self.client("ru" if _CYR.search(text) else "en").speak(text)
+
+    @property
+    def proc(self):
+        return self
+
+    def kill(self) -> None:
+        for c in self.clients.values():
+            try:
+                c.proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def close(self) -> None:
+        for c in self.clients.values():
+            c.close()
 
 
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
@@ -127,8 +185,6 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     `items` yields (n, label, zh)."""
     from .confirm import ConfirmSession, Utterance, back_translate
     from .logic import translate_ru
-
-    lang = _target(a)
 
     def set_voice(n: int) -> None:
         tts.speaker = n
@@ -142,6 +198,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     def produce():
         try:
             for n, label, zh in items:
+                lang = _target(a)  # re-read per sentence (--to follow)
                 ru, retries = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
                 u = Utterance(n, zh, ru, back_translate(mt, ru, lang), extra={"file": label, "cjk_retries": retries},
                               lang=lang)
@@ -161,18 +218,20 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
         it["decision"] = u.decision if u else ""
 
 
-def _run_auto_live(items, mt, tts, player, res, lang: str = "ru") -> None:
-    """--no-confirm with live input: translate + speak every utterance as it arrives."""
+def _run_auto_live(items, mt, tts, player, res, lang="ru") -> None:
+    """--no-confirm with live input: translate + speak every utterance as it arrives.
+    `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
     from .logic import translate_ru
 
     synth = _make_synth(tts)
     for n, label, zh in items:
-        ru, _ = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
-        print(f"\n--- #{n} ---\nZH : {zh}\n{lang.upper()} : {ru}", flush=True)
+        lg = lang() if callable(lang) else lang
+        ru, _ = translate_ru(lambda x: mt.translate(x, "zh", lg).text, zh, lg)
+        print(f"\n--- #{n} ---\nZH : {zh}\n{lg.upper()} : {ru}", flush=True)
         out = synth(ru)
         if out:
             player.push(*out)
-        res["items"].append({"file": label, "zh": zh, lang: ru, "decision": "sent" if out else "no_audio"})
+        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if out else "no_audio"})
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
@@ -190,14 +249,14 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         if tts is None:  # text only: show zh -> ru, nothing is spoken
             from .logic import translate_ru
 
-            lang = _target(a)
             for _n, _src, zh in items:
+                lang = _target(a)
                 ru, _r = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
                 print(f"[ZH] {zh}\n[{lang.upper()}] {ru}\n", flush=True)
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
-            _run_auto_live(items, mt, tts, player, res, _target(a))
+            _run_auto_live(items, mt, tts, player, res, lambda: _target(a))
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
@@ -229,14 +288,21 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru"):
     from ..translate import PivotTranslator
 
     mt = PivotTranslator(mdir, "tw", device="cpu" if device != "cuda" else "cuda")
-    mt.preload("zh", to)  # fail early if the models are missing
-    mt.preload(to, "zh")  # back-translation for the confirm step
+    for t in (("en", "ru") if to == "follow" else (to,)):  # follow: both spoken languages
+        mt.preload("zh", t)  # fail early if the models are missing
+        mt.preload(t, "zh")  # back-translation for the confirm step
     mt.history, mt._pair = [], None  # same surface as QwenTranslator for confirm.back_translate
     return mt
 
 
 def check_args(a) -> str | None:
     """Validate/normalise cross-option rules in place; returns an error message or None."""
+    if a.to == "follow":
+        if not a.no_tts:
+            if a.tts_engine != "kokoro" or not a.tts_model or not a.vosk_model:
+                return ("--to follow needs --tts-engine kokoro (+ --tts-python/--tts-model for English) and "
+                        "--vosk-python/--vosk-model for Russian, or --no-tts")
+        return None
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
     if a.tts_engine == "kokoro" and a.to != "en":
@@ -269,8 +335,8 @@ def _main(argv, vm) -> int:
     ap.add_argument("--whisper", default=None, help="default: large-v3-turbo on CUDA, small on CPU")
     ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"],
                     help="where ASR/MT/TTS run; auto = CUDA if usable, else CPU")
-    ap.add_argument("--to", default="ru", choices=["ru", "en"],
-                    help="spoken language: ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
+    ap.add_argument("--to", default="ru", choices=["ru", "en", "follow"],
+                    help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en + Vosk ru voices, started on first use); ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
                          "no pivot; use with --tts-engine kokoro)")
     ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
                     help="translator; auto = Qwen3 on CUDA, OPUS/Argos on CPU (ru: pivot zh->en->ru; en: direct zh->en)")
@@ -285,6 +351,11 @@ def _main(argv, vm) -> int:
     ap.add_argument("--speaker", type=int, default=None,
                     help="built-in voice id 0-4 (vosk ru 0.7 default 4; kokoro default 0 = am_michael, 1 af_heart, "
                          "2 am_adam, 3 af_bella, 4 bm_george); switch live with v0-v4")
+    ap.add_argument("--follow-file", default=None, metavar="PATH",
+                    help="with --to follow: state file written by `tlwu --lang-file` (default: tlwu_follow_lang in "
+                         "$XDG_RUNTIME_DIR or the temp dir)")
+    ap.add_argument("--vosk-python", default="", help="--to follow: python of the Vosk (Russian) venv")
+    ap.add_argument("--vosk-model", default="", help="--to follow: Vosk Russian model dir")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
     ap.add_argument("--ref", default="")
@@ -392,8 +463,20 @@ def _main(argv, vm) -> int:
         res["load_s"]["qwen"] = round(time.perf_counter() - t, 2)
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
-        tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only, a.chunk,
-                                        "cuda" if dev == "cuda" else "cpu", a.tts_engine, a.speaker)
+        if a.to == "follow" and not a.no_tts:
+            dev_t = "cuda" if dev == "cuda" else "cpu"
+            tts = FollowTTS({
+                "en": lambda: TTSClient(a.tts_python, a.tts_model, "", "", False, a.chunk, dev_t, "kokoro",
+                                        0 if a.speaker is None else a.speaker),
+                "ru": lambda: TTSClient(a.vosk_python or a.tts_python, a.vosk_model, "", "", False, a.chunk,
+                                        dev_t, "vosk", 4 if a.speaker is None else a.speaker)})
+            tts.client("en")  # default language up front; ru loads when the other side first speaks it
+            if a.speaker is not None:
+                tts.speaker = a.speaker
+        else:
+            tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.ref, a.ref_text, a.xvec_only,
+                                                  a.chunk, "cuda" if dev == "cuda" else "cpu", a.tts_engine,
+                                                  a.speaker)
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()
@@ -407,7 +490,7 @@ def _main(argv, vm) -> int:
         if wavs:
             w0, _ = sf.read(str(wavs[0]), dtype="float32")
             asr.transcribe(w0)
-        mt.translate("你好。", "zh", a.to)
+        mt.translate("你好。", "zh", "en" if a.to == "follow" else a.to)
         mt.history.clear()
         asr._last = ""
         if live:
@@ -419,17 +502,18 @@ def _main(argv, vm) -> int:
         for n, wav in enumerate(wavs, 1):
             audio, sr = sf.read(str(wav), dtype="float32")
             assert sr == 16000, f"{wav}: expected 16 kHz"
+            tgt = _target(a)
             t0 = time.perf_counter()  # "end of Chinese speech": the segment is complete and handed over
             tr = asr.transcribe(audio)
             t_asr = time.perf_counter() - t0
             zh = tr.text if tr else ""
             retries = 0
             if zh:
-                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", a.to).text, zh, a.to)
+                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", tgt).text, zh, tgt)
             else:
                 ru = ""
             t_mt = time.perf_counter() - t0
-            item = {"file": wav.name, "audio_s": round(len(audio) / sr, 2), "zh": zh, a.to: ru,
+            item = {"file": wav.name, "audio_s": round(len(audio) / sr, 2), "zh": zh, tgt: ru,
                     "t_asr": round(t_asr, 3), "cjk_retries": retries, "t_mt": round(t_mt, 3), "tts": []}
             first_audio = None
             tts_done = t_mt
@@ -447,7 +531,7 @@ def _main(argv, vm) -> int:
                         done = ev
                 tts_done = time.perf_counter() - t0
                 if pcm:
-                    sf.write(str(out / f"{wav.stem}_{a.to}{k}.wav"), np.concatenate(pcm), sr_out)
+                    sf.write(str(out / f"{wav.stem}_{tgt}{k}.wav"), np.concatenate(pcm), sr_out)
                 item["tts"].append({"text": sent, **(done or {})})
             item["t_first_audio"] = round(first_audio, 3) if first_audio else None
             item["t_tts_done"] = round(tts_done, 3)

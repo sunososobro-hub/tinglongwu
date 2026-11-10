@@ -21,6 +21,13 @@ def parse_args(argv=None):
     p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], dest="compute",
                    help="compute device for ASR+MT: auto = cuda if usable, else cpu (default)")
     p.add_argument("--lang", default="auto", help="source language code or 'auto'")
+    p.add_argument("--lang-candidates", default=None, metavar="LIST",
+                   help="with --lang auto: re-detect the language of EVERY segment among these comma-separated "
+                        "codes (e.g. en,ru,zh) instead of locking after the first speech. zh segments are shown "
+                        "as is (no translation)")
+    p.add_argument("--lang-file", default=None, metavar="PATH",
+                   help="with --lang-candidates: write the last detected en/ru here (read by "
+                        "`python -m tinglongwu.reverse.proto --to follow`); default off")
     p.add_argument("--to", default="zh", help="target language code (default zh)")
     p.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
                    help="Chinese output: tw = Traditional (OpenCC s2twp), cn = Simplified")
@@ -152,7 +159,14 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             raise RuntimeError(f"cannot read --glossary: {e}") from e
         print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
     note("loading speech model...")
-    asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary)
+    cands = None
+    if a.lang == "auto" and getattr(a, "lang_candidates", None):
+        from .langfollow import parse_candidates
+
+        cands = parse_candidates(a.lang_candidates)
+        print(f"tlwu: language follows the speaker among {','.join(cands)}", file=sys.stderr)
+    asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
+                                  candidates=cands, lang_file=getattr(a, "lang_file", None))
     dev = asr.device  # may have fallen back to cpu
     translator = None
     if not a.transcript_only:
@@ -162,6 +176,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             translator.glossary = glossary
         if a.lang != "auto":
             translator.preload(a.lang, a.to)
+        elif cands:  # fail early on missing models; the translator caches one step per language pair
+            for c in cands:
+                if c != a.to:
+                    translator.preload(c, a.to)
     if sink is None:
         sink = TranscriptSink() if a.transcript_only else TextSink()
     if a.save is not None:
