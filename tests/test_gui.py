@@ -208,3 +208,32 @@ def test_overlay_lines_setting_persists_and_clamps(tmp_path):
     assert got["overlay_lines"] == 7 and got["font_size"] == 48
     p.write_text(json.dumps({"overlay_lines": 999}), "utf-8")
     assert core.load_settings(p)["overlay_lines"] == core.ROWS_MAX
+
+
+def test_gui_strings_exist_in_all_three_languages():
+    from tinglongwu import i18n
+
+    gui_keys = {k for k in i18n.MESSAGES["en"] if k.startswith("gui_")}
+    assert gui_keys
+    for lang in ("en", "ru", "zh-TW"):
+        assert gui_keys <= set(i18n.MESSAGES[lang]), lang
+    assert len({i18n.MESSAGES[lg]["gui_start"] for lg in ("en", "ru", "zh-TW")}) == 3
+
+
+def test_set_ui_lang_switches_t_and_persists(tmp_path, monkeypatch):
+    from tinglongwu import i18n, userdirs
+
+    monkeypatch.setenv("TLWU_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(i18n, "_override", None)
+    for lang, start in (("zh-TW", "開始"), ("ru", "Старт"), ("en", "Start")):
+        assert i18n.set_ui_lang(lang) == lang
+        assert i18n.t("gui_start") == start
+        assert userdirs.read_config()["ui_lang"] == lang
+    assert i18n.t("gui_error", msg="boom") == "Error: boom"
+
+
+def test_gui_module_imports_and_language_names():
+    from tinglongwu.gui import app
+
+    assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
+    assert core.DEFAULTS["theme"] == "dark"
