@@ -41,3 +41,6 @@ transcripts/
 voices/
 ref/
 train_out/
+
+# the one bundled audio file: synthetic (espeak-ng) English clip for `tlwu --selftest`
+!tinglongwu/data/selftest_en.wav

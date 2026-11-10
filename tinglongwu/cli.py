@@ -79,6 +79,9 @@ def parse_args(argv=None):
                         "nothing is uploaded, you review and submit it yourself")
     p.add_argument("--probe", action="store_true",
                    help="show this machine's GPU/VRAM, RAM and CPU and the recommended models, then exit (offline)")
+    p.add_argument("--selftest", action="store_true",
+                   help="load the models and translate one bundled test sentence with --model/--engine/--device, "
+                        "print OK/FAIL per step, downgrade (GPU -> CPU, Qwen -> OPUS) on failure, then exit (offline)")
     a = p.parse_args(argv)
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -253,6 +256,10 @@ def main(argv=None) -> int:
         return gui_main()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    if a.selftest:
+        from .selftest import main_from_args
+
+        return main_from_args(a)
     try:
         run_session(a)
     except (ModelNotFound, NotImplementedError, RuntimeError) as e:
