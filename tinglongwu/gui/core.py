@@ -17,11 +17,12 @@ from ..stream import DraftRenderer
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None, "source": "system",
+    "x": None, "y": None, "source": "system", "preset": "meeting",
 }
 LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "qwen", "qwen4b", "opus"]
+PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 FONT_MIN, FONT_MAX = 10, 96
@@ -74,7 +75,8 @@ def settings_to_argv(s: dict) -> list[str]:
     """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
-            "--engine", s.get("engine") or "auto", "--model", s.get("model") or "small"]
+            "--engine", s.get("engine") or "auto", "--model", s.get("model") or "small",
+            "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     if s.get("source") == "mic":
         argv += ["--mic"]
     if s.get("glossary"):

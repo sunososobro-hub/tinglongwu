@@ -15,6 +15,8 @@ _SPLIT = re.compile(r"(?<=[.!?…])\s+|(?<=[。！？])\s*")
 _END = re.compile(r"[.!?…。！？][\"'»”)\]]*\s*$")
 _ABBREV = re.compile(r"(?:^|\s)(?:\w{1,2}\.)$")  # "т.", "г.", "Mr." do not end a sentence
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
+_TRAIL_ELLIPSIS = re.compile(r"\s*(?:\.{2,}|…)+\s*$")
+PAUSE_SEND = 0.8  # seconds of VAD silence after a segment that means "the speaker stopped": send what we have
 _WORD = re.compile(r"\w+", re.UNICODE)
 
 
@@ -47,26 +49,36 @@ class SentenceMerger:
         self.buf = ""
         self.lang = ""
         self.since: float | None = None  # time the oldest buffered text arrived
+        self._cut = False  # previous segment was a forced mid-speech cut
         self._tail: list[str] = []  # last pushed words, for overlap de-duplication
 
     @property
     def deadline(self) -> float | None:
         return None if self.since is None else self.since + self.max_wait
 
-    def _dedupe(self, text: str) -> str:
+    def _dedupe(self, text: str, min_overlap: int | None = None) -> str:
         """Drop words at the start of `text` that repeat the end of the previous segment (VAD overlap)."""
         words = text.split()
         n_new = [_norm(w) for w in words]
-        for k in range(min(len(self._tail), len(words), 6), self.min_overlap - 1, -1):
+        lo = (self.min_overlap if min_overlap is None else min_overlap) - 1
+        for k in range(min(len(self._tail), len(words), 6), lo, -1):
             if [_norm(w) for w in self._tail[-k:]] == n_new[:k] and all(n_new[:k]):
                 return " ".join(words[k:])
         return text
 
-    def add(self, text: str, lang: str, now: float) -> list[Unit]:
+    def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0) -> list[Unit]:
+        """forced_cut: the segmenter cut mid-speech (chunk limit), not at a VAD pause, so a trailing
+        "..." from Whisper is only a cut artifact and not a sentence end. pause: seconds of silence that
+        followed the segment (>= PAUSE_SEND releases an unfinished buffer at once)."""
         out: list[Unit] = []
         if self.buf and lang != self.lang:
             out.append(self._take(forced=True))
-        text = self._dedupe(text.strip())
+        text = text.strip()
+        if forced_cut:
+            text = _TRAIL_ELLIPSIS.sub("", text)
+        # one repeated word is enough to dedupe right after a cut segment ("австралийскую..." | "австралийскую визу")
+        text = self._dedupe(text, 1 if self._cut else None)
+        self._cut = forced_cut
         if not text:
             return out + self.due(now)
         self._tail = (self._tail + text.split())[-8:]
@@ -91,6 +103,9 @@ class SentenceMerger:
             self.since = None
         elif sents:
             self.since = now  # remainder starts a fresh wait
+        if rest and not forced_cut and pause >= PAUSE_SEND:
+            out.append(self._take(forced=True))  # speaker paused: no point waiting for max_wait
+            return out
         return out + self.due(now)
 
     def due(self, now: float) -> list[Unit]:

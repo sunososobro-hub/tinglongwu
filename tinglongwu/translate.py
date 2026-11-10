@@ -27,12 +27,28 @@ class Translator(ABC):
         return self.translate(text, src, tgt)
 
 
+# s2twp maps a few common words to Taiwan terms that are wrong in general speech (通过->透過 "through
+# means of", 支持->支援 "support = tech support"). Keep s2twp (it gives 軟體/網路/程式/記憶體 ...) and shield
+# these phrases from it: each (simplified, traditional) pair is swapped for a private-use placeholder
+# before conversion and restored to the plain traditional form afterwards.
+_KEEP = (("通过", "通過"), ("支持", "支持"))
+_PH = {simp: chr(0xE000 + i) for i, (simp, _t) in enumerate(_KEEP)}
+
+
 def zh_convert(text: str, variant: str) -> str:
-    """Post-hoc script conversion: tw = Traditional (Taiwan phrases, OpenCC s2twp); cn = Simplified."""
+    """Post-hoc script conversion: tw = Traditional (Taiwan phrases, OpenCC s2twp + _KEEP fixes); cn = Simplified."""
     from opencc import OpenCC
 
     text = text.replace("妳", "你")  # LLMs sometimes write the feminine 妳; always use the neutral 你
-    return OpenCC("s2twp" if variant == "tw" else "t2s").convert(text)
+    if variant != "tw":
+        return OpenCC("t2s").convert(text)
+    for simp, trad in _KEEP:
+        ph = _PH[simp]
+        text = text.replace(simp, ph).replace(trad, ph)
+    out = OpenCC("s2twp").convert(text)
+    for simp, trad in _KEEP:
+        out = out.replace(_PH[simp], trad)
+    return out
 
 
 _FULLWIDTH = {",": "，", ".": "。", "!": "！", "?": "？", ";": "；", ":": "："}

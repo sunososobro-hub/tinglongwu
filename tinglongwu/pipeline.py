@@ -47,7 +47,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             for seg in segmenter.segments(counted(source.frames())):
                 if stop.is_set():
                     return
-                q.put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1))
+                q.put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
+                       bool(getattr(segmenter, "last_forced", False)), float(getattr(segmenter, "last_pause", 0.0))))
             q.put(_DONE)
         except BaseException as e:  # noqa: BLE001 - re-raised in the consumer
             q.put(e)
@@ -96,7 +97,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 break
             if isinstance(item, BaseException):
                 raise item
-            seg, stamp, last_ep[0] = item
+            seg, stamp, last_ep[0], forced_cut, pause = item
             if float(np.sqrt(np.mean(seg ** 2))) < SILENCE_RMS:
                 continue  # silence: skip (avoids Whisper hallucinations)
             with model_lock():
@@ -106,7 +107,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if merger is None or translator is None:
                 emit(t.text, t.lang)
                 continue
-            emit_units(merger.add(t.text, t.lang, stamp if audio_clock else time.monotonic()))
+            emit_units(merger.add(t.text, t.lang, stamp if audio_clock else time.monotonic(),
+                                   forced_cut=forced_cut, pause=pause))
         if merger is not None and translator is not None:
             emit_units(merger.flush())
     finally:

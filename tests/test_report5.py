@@ -16,7 +16,7 @@ from tests.test_qwen import FakeLlm, fake_models
 
 # 1. defaults / merge latency
 def test_defaults_low_latency():
-    a = cli.parse_args([])
+    a = cli.parse_args(["--preset", "chat"])
     assert a.chunk == 4.0 and a.max_wait == 1.5 and not a.no_merge
     assert cli.parse_args(["--chunk", "8", "--max-wait", "3", "--no-merge"]).max_wait == 3.0
 

@@ -8,6 +8,9 @@ from .capture import select_backend
 from .models import ModelNotFound, models_dir
 
 
+PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="tinglongwu", description="Offline real-time speech translator.")
     p.add_argument("--file", help="translate an audio file instead of live system audio")
@@ -21,17 +24,21 @@ def parse_args(argv=None):
     p.add_argument("--to", default="zh", help="target language code (default zh)")
     p.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
                    help="Chinese output: tw = Traditional (OpenCC s2twp), cn = Simplified")
-    p.add_argument("--chunk", type=float, default=4.0,
-                   help="max segment seconds (default 4: low latency; larger = more context for Whisper)")
+    p.add_argument("--preset", choices=sorted(PRESETS), default="meeting",
+                   help="meeting (default): --chunk 8 --max-wait 6, whole sentences, ~5-8 s latency; "
+                        "chat: --chunk 4 --max-wait 1.5, lower latency, more sentence fragments. "
+                        "An explicit --chunk / --max-wait overrides the preset")
+    p.add_argument("--chunk", type=float, default=None,
+                   help="max segment seconds (default from --preset; larger = more context for Whisper)")
     p.add_argument("--no-vad", action="store_true", help="fixed --chunk blocks instead of VAD")
     p.add_argument("--models-dir", help="models directory (env TLWU_MODELS)")
     p.add_argument("--transcript-only", action="store_true",
                    help="print only source-language text, one segment per line (no translation)")
     p.add_argument("--no-merge", action="store_true",
                    help="translate every VAD segment separately (default: merge into sentences first)")
-    p.add_argument("--max-wait", type=float, default=1.5,
-                   help="sentence merging: max seconds a fragment not ending in sentence punctuation is held "
-                        "(default 1.5, so merging adds at most ~1.5 s)")
+    p.add_argument("--max-wait", type=float, default=None,
+                   help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
+                        "is held (default from --preset; a pause of >= 0.8 s sends it earlier)")
     p.add_argument("--engine", choices=["auto", "qwen", "qwen4b", "opus", "m2m"], default="auto",
                    help="auto (default): after Whisper loads, pick by free VRAM: Qwen3-8B (>=5.8 GB free), "
                         "else Qwen3-4B (>=3.5 GB), else OPUS (also on CPU); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
@@ -58,7 +65,11 @@ def parse_args(argv=None):
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
-    return p.parse_args(argv)
+    a = p.parse_args(argv)
+    chunk, wait = PRESETS[a.preset]
+    a.chunk = chunk if a.chunk is None else a.chunk
+    a.max_wait = wait if a.max_wait is None else a.max_wait
+    return a
 
 
 def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):

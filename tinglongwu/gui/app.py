@@ -10,7 +10,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
-from .core import (ENGINES, LANGS, MODELS, SOURCES, TARGETS, QueueDraftRenderer, QueueSink, SubtitleState,
+from .core import (ENGINES, LANGS, MODELS, PRESETS, SOURCES, TARGETS, QueueDraftRenderer, QueueSink, SubtitleState,
                    clamp_font, load_settings, save_settings, settings_to_argv)
 
 POLL_MS = 50
@@ -182,6 +182,7 @@ class App:
         self.v_engine = self._combo(2, "Engine", "engine", ENGINES)
         self.v_model = self._combo(3, "Speech model", "model", MODELS)
         self.v_source = self._combo(4, "Audio source (system = PC sound)", "source", SOURCES)
+        self.v_preset = self._combo(8, "Mode (meeting = full sentences, chat = faster)", "preset", PRESETS)
         ttk.Label(f, text="Glossary").grid(row=5, column=0, sticky="w", pady=2)
         self.v_gloss = tk.StringVar(value=s["glossary"])
         ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=5, column=1, sticky="we", pady=2)
@@ -198,12 +199,12 @@ class App:
         ttk.Checkbutton(f, text="Live draft (uses more GPU)", variable=self.v_live).grid(
             row=7, column=1, columnspan=2, sticky="w")
         self.btn = ttk.Button(f, text="Start", command=self.toggle)
-        self.btn.grid(row=8, column=0, columnspan=3, sticky="we", pady=(8, 2))
+        self.btn.grid(row=9, column=0, columnspan=3, sticky="we", pady=(8, 2))
         self.v_status = tk.StringVar(value="Ready. Fully offline.")
-        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=9, column=0, columnspan=3, sticky="w")
+        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=10, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
-            row=10, column=0, columnspan=3, sticky="w")
+            row=11, column=0, columnspan=3, sticky="w")
 
     def pick_glossary(self):
         p = filedialog.askopenfilename(title="Glossary (.txt)", filetypes=[("Text", "*.txt"), ("All", "*.*")])
@@ -225,7 +226,7 @@ class App:
     def collect(self):
         s = self.settings
         s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(),
-                 model=self.v_model.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
+                 model=self.v_model.get(), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get())
         save_settings(s)

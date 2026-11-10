@@ -129,13 +129,13 @@ tlwu --to ko --no-vad --chunk 8        # target Korean via ru->en->ko (needs en-
 tlwu --file talk.mp3 --transcript-only > hyp.txt     # 只輸出原文，每段一行
 python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CER）；--partial 對齊到最相符的參考片段並回報涵蓋率
 ```
-選項：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--lang`、`--to`、`--chunk`（最長段落秒數，預設 4）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音訊裝置子字串）、`--device auto|cpu|cuda`（運算裝置）、`--engine auto|qwen|qwen4b|opus|m2m`、`--no-merge`、`--max-wait`（秒）、`--stream`、`--stream-src`、`--debug-latency`。
+選項：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--lang`、`--to`、`--preset meeting|chat`（預設 meeting）、`--chunk`（最長段落秒數，預設依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音訊裝置子字串）、`--device auto|cpu|cuda`（運算裝置）、`--engine auto|qwen|qwen4b|opus|m2m`、`--no-merge`、`--max-wait`（秒，預設依 preset）、`--stream`、`--stream-src`、`--debug-latency`。
 
 **串流草稿**（`--stream`，預設關閉、實驗性）：句子還在說時，以 Whisper（greedy）重辨目前累積的音訊，並立刻翻譯整段暫時結果（沿用同一翻譯引擎），原地只顯示一行灰色譯文。`--stream-src` 另顯示原文行（已確認前綴正常亮度、其餘灰色；LocalAgreement 概念）。`--debug-latency` 於 stderr 記錄「段落音訊起點 → 第一次譯文草稿／最終行」秒數。段落結束後由正式輸出取代草稿。需互動式終端機（ANSI）；草稿讓位給正式 ASR/MT，會多吃 GPU；搭配 `--file` 時以真實速度播放。
 
 可用 VRAM 小於 9 GB 的 GPU（例如 8 GB 顯卡同時載入 Qwen3-8B）上，Whisper 會以 int8_float16 載入（該情況下每次推論比 fp16 快約 4 倍；可用環境變數 `TLWU_ASR_COMPUTE` 覆寫）。音樂／靜音時 Whisper 常見的字幕署名幻覺（「Продолжение следует」、「Subtitles by」、「字幕由」等；清單在 `tinglongwu/hallucination.py`）會被丟棄，且輸出一律把「妳」改成「你」。
 
-**句子合併**：VAD 切出的段落常在句中結束。tlwu 會暫存 ASR 文字，在句尾（`.?!…。！？`）才翻譯；或在 `--max-wait` 秒（預設 1.5）／約 45 字後強制翻譯，先到者為準；`--no-merge` 則沿用逐段翻譯。即時模式下，句子中斷的文字最多多等 `--max-wait` 秒，句子已結束則不增加延遲。預設為低延遲（`--chunk 4`）。上下文：Qwen 引擎會看到前 2 句（原文＋譯文），讓被切開的句子讀起來連貫；Whisper 以前一段文字（≤100 字）作為 `initial_prompt`（出現重複／亂碼時自動丟棄）。Qwen 輸出會自動清理（多餘底線、markdown、引號、「Translation:」標籤）。Ctrl+C 約 1 秒內結束。
+**句子合併**：VAD 切出的段落常在句中結束。tlwu 會暫存 ASR 文字，在句尾（`.?!…。！？`）才翻譯；或說話者停頓 ≥ 0.8 秒（VAD 靜音）時送出；`--max-wait` 秒／約 45 字只是上限，先到者為準。因達到 chunk 上限而被硬切的段落，Whisper 加在句尾的「...」不算句尾，合併時也會去掉切點重複的字；`--no-merge` 則沿用逐段翻譯。**預設組合**：`--preset meeting`（預設）＝`--chunk 8 --max-wait 6`，優先保證完整句子，延遲約 5–8 秒；`--preset chat`＝`--chunk 4 --max-wait 1.5`，延遲較低但較多破碎句子（翻譯品質較差）。明確指定 `--chunk`／`--max-wait` 會覆蓋 preset；GUI 有「模式」選單。反向（說話即翻譯）模式有自己的設定。上下文：Qwen 引擎會看到前 2 句（原文＋譯文），讓被切開的句子讀起來連貫；Whisper 以前一段文字（≤100 字）作為 `initial_prompt`（出現重複／亂碼時自動丟棄）。Qwen 輸出會自動清理（多餘底線、markdown、引號、「Translation:」標籤）。Ctrl+C 約 1 秒內結束。
 
 ## 圖形介面（浮動字幕）
 
@@ -215,7 +215,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 **Google 在所有測試方向的分數都高於所有離線引擎。** 離線引擎以部分品質換取無須網路、資料不離開本機。50 句樣本僅供參考。
 
 ## 已知限制
-- **延遲**約為段落長度加處理時間：停頓（VAD）後或達 `--chunk` 秒才出字。降低 `--chunk` 可更快，但準確度下降。
+- **延遲**約為段落長度加處理時間：停頓（VAD）後或達 `--chunk` 秒才出字。改用 `--preset chat`（或降低 `--chunk`）可更快，但會有較多半句。
 - **英文中介**會損失術語與語氣（兩次有損轉換），人名、性別、敬語較差。
 - **Whisper 在靜音、音樂、雜訊時會幻聽**；以靜音閘門、no-speech／logprob 門檻與 `condition_on_previous_text=False` 減輕，無法根除。
 - **自動語言偵測**在第一個辨識段落後鎖定；混語串流請用 `--lang`。

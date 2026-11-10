@@ -92,7 +92,7 @@ def test_compute_types():
 
 def test_cli_device_and_merge_args():
     a = cli.parse_args([])
-    assert a.compute == "auto" and a.max_wait == 1.5 and a.chunk == 4.0 and not a.no_merge
+    assert a.compute == "auto" and a.max_wait == 6.0 and a.chunk == 8.0 and not a.no_merge
     assert cli.parse_args(["--device", "cuda"]).compute == "cuda"
     assert cli.parse_args(["--capture-device", "Speakers"]).device == "Speakers"
     assert cli.parse_args(["--model", "large-v3-turbo"]).model == "large-v3-turbo"
@@ -229,3 +229,78 @@ def test_pipeline_propagates_producer_error(tmp_path):
 
     with pytest.raises(RuntimeError, match="capture broke"):
         run(Bad(1), Segmenter(chunk=1.0, use_vad=False), ScriptASR([]), _tr(tmp_path), TextSink(io.StringIO()))
+
+
+# ---- presets, forced-cut ellipsis, adaptive pause, join dedupe, zh_convert ----
+def test_preset_defaults_and_override():
+    a = cli.parse_args([])
+    assert (a.chunk, a.max_wait) == (8.0, 6.0)
+    a = cli.parse_args(["--preset", "chat"])
+    assert (a.chunk, a.max_wait) == (4.0, 1.5)
+    a = cli.parse_args(["--preset", "chat", "--chunk", "6", "--max-wait", "3"])
+    assert (a.chunk, a.max_wait) == (6.0, 3.0)
+    assert cli.parse_args(["--preset", "meeting", "--max-wait", "2"]).chunk == 8.0
+
+
+def test_gui_settings_pass_preset():
+    from tinglongwu.gui.core import settings_to_argv
+
+    assert cli.parse_args(settings_to_argv({"preset": "chat"})).chunk == 4.0
+    assert cli.parse_args(settings_to_argv({})).chunk == 8.0
+
+
+def test_forced_cut_ellipsis_is_not_sentence_end():
+    m = SentenceMerger(max_wait=6)
+    assert m.add("пусть едут через Кита...", "ru", 0, forced_cut=True) == []
+    assert texts(m.add("Через Китай в Австралию.", "ru", 1)) == ["пусть едут через Кита Через Китай в Австралию."]
+    m2 = SentenceMerger()  # a real VAD pause keeps "..." as a sentence end
+    assert texts(m2.add("Ну не знаю…", "ru", 0, forced_cut=False)) == ["Ну не знаю…"]
+    m3 = SentenceMerger()  # but a real period on a forced cut still ends the sentence
+    assert texts(m3.add("Всё готово.", "ru", 0, forced_cut=True)) == ["Всё готово."]
+
+
+def test_pause_releases_unfinished_buffer_but_forced_cut_does_not():
+    m = SentenceMerger(max_wait=6)
+    u = m.add("я был в Австралии", "ru", 0, forced_cut=False, pause=0.9)
+    assert texts(u) == ["я был в Австралии"] and m.deadline is None
+    m2 = SentenceMerger(max_wait=6)
+    assert m2.add("я был в", "ru", 0, forced_cut=False, pause=0.5) == []
+    m3 = SentenceMerger(max_wait=6)
+    assert m3.add("я был в", "ru", 0, forced_cut=True, pause=2.0) == []  # forced cut: speech continues
+    assert m3.deadline == 6
+
+
+def test_join_dedupes_single_word_after_forced_cut():
+    m = SentenceMerger()
+    m.add("нужна австралийскую...", "ru", 0, forced_cut=True)
+    assert texts(m.add("австралийскую визу.", "ru", 1)) == ["нужна австралийскую визу."]
+    m2 = SentenceMerger()  # without a cut a single repeated word is kept
+    m2.add("очень", "ru", 0)
+    assert texts(m2.add("очень хорошо.", "ru", 1)) == ["очень очень хорошо."]
+
+
+def test_zh_convert_keeps_tongguo_zhichi_but_taiwan_terms():
+    from tinglongwu.translate import zh_convert
+
+    assert zh_convert("通过签证支持", "tw") == "通過簽證支持"
+    assert zh_convert("通過這個，不支持", "tw") == "通過這個，不支持"
+    assert zh_convert("软件和网络", "tw") == "軟體和網路"
+    assert zh_convert("通过支持", "cn") == "通过支持"
+
+
+def test_segmenter_reports_forced_cut_and_pause():
+    sr = 16000
+    frames = lambda n: (np.ones(sr // 2, np.float32) for _ in range(n))
+    # speech never pauses -> forced cuts
+    s = Segmenter(chunk=2, use_vad=True, vad_fn=lambda b: [(0, len(b))])
+    flags = []
+    for _ in s.segments(frames(10)):
+        flags.append((s.last_forced, s.last_pause))
+    assert flags and flags[0] == (True, 0.0)
+    # 1 s of speech then silence -> cut at a pause, with the silence length reported
+    s2 = Segmenter(chunk=8, use_vad=True, vad_fn=lambda b: [(0, min(len(b), sr))])
+    got = []
+    for _ in s2.segments(frames(6)):
+        got.append((s2.last_forced, round(s2.last_pause, 1)))
+        break
+    assert got == [(False, 0.5)] or got[0][0] is False and got[0][1] >= 0.6
