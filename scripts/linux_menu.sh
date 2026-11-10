@@ -8,32 +8,39 @@ cd "$(dirname "$0")/.."
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 VOICE="${VOICE:-4}"
+
+echo "tinglongWu"
+echo "  1) 聽：電腦播的外語 -> 中文字幕"
+echo "  2) 說：你講中文 -> 外語語音"
+read -rp "選 1-2: " mode
+
+read -rp "語言代碼（en 英文、ru 俄文、ja 日文、ko 韓文、de 德文、fr 法文、es 西文）: " L
+L="${L:-en}"
+
+if [ "$mode" = "1" ]; then
+  read -rp "第一次用這個語言？要先連網下載翻譯模型 [y/N]: " d
+  if [ "$d" = "y" ]; then tlwu-setup --langs "$L"; fi
+  exec tlwu --lang "$L"
+fi
+
+if [ "$mode" != "2" ]; then echo "沒有這個選項"; exit 1; fi
+if [ "$L" != "ru" ]; then
+  echo "「說」目前只支援 ru（俄文）；其他語言還沒有語音模型。"
+  exit 1
+fi
+
 REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
      --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE")
-
-cat <<'EOF'
-tinglongWu
-  聽（電腦播的聲音 -> 中文字幕）
-    1) 英文
-    2) 俄文
-    7) 其他語言（日文 ja、韓文 ko…；第一次要先下載翻譯模型）
-  說（你講中文 -> 俄文語音；每句先確認，Enter=送出 x=丟掉 v0-v4=換聲音）
-    3) 送進 Meet（Meet 麥克風選 tlwu_mic）
-    4) 送進 Meet，自己耳機也聽得到
-    5) 不進 Meet，直接從耳機/喇叭念出來
-  6) 只看翻譯文字（不發聲）
-EOF
-read -rp "選 1-7: " c
-case "$c" in
-  1) exec tlwu --lang en ;;
-  2) exec tlwu --lang ru ;;
-  3) exec "${REV[@]}" ;;
-  4) exec "${REV[@]}" --preview-device Family ;;
-  5) exec "${REV[@]}" --device Family ;;
-  6) exec python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus ;;
-  7) read -rp "語言代碼（ja=日文 ko=韓文 de=德文 fr=法文 es=西文）: " L
-     read -rp "第一次用這個語言？要先連網下載翻譯模型 [y/N]: " d
-     if [ "$d" = "y" ]; then tlwu-setup --langs "$L"; fi
-     exec tlwu --lang "$L" ;;
+echo "每句先確認：Enter=送出  x=丟掉  v0-v4=換聲音"
+echo "  1) 送進 Meet（Meet 麥克風選 tlwu_mic）"
+echo "  2) 送進 Meet，自己耳機也聽得到"
+echo "  3) 不進 Meet，直接從耳機/喇叭念出來"
+echo "  4) 只看翻譯文字（不發聲）"
+read -rp "選 1-4: " out
+case "$out" in
+  1) exec "${REV[@]}" ;;
+  2) exec "${REV[@]}" --preview-device Family ;;
+  3) exec "${REV[@]}" --device Family ;;
+  4) exec python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus ;;
   *) echo "沒有這個選項"; exit 1 ;;
 esac
