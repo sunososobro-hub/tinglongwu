@@ -5,6 +5,8 @@ CoreAudio (macOS). It is imported lazily so the package imports everywhere.
 """
 from __future__ import annotations
 
+import contextlib
+import sys
 import threading
 import warnings
 from typing import Iterator
@@ -26,6 +28,30 @@ def suppress_capture_warnings() -> None:
     warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"soundcard(\..*)?$")
 
 
+def _load_ole32():
+    import ctypes
+    return ctypes.OleDLL("ole32") if hasattr(ctypes, "OleDLL") else ctypes.windll.ole32
+
+
+@contextlib.contextmanager
+def com_initialized():
+    """Windows: initialize COM (MTA) on the calling thread. soundcard's mediafoundation only calls
+    CoInitializeEx on the thread that imported it, so a capture worker thread would otherwise fail with
+    0x800401F0 (CO_E_NOTINITIALIZED). S_FALSE (already initialized) still needs a matching
+    CoUninitialize; RPC_E_CHANGED_MODE (thread already STA) is not an error and needs none. No-op elsewhere."""
+    if sys.platform != "win32":
+        yield
+        return
+    ole32 = _load_ole32()
+    hr = ole32.CoInitializeEx(None, 0)  # COINIT_MULTITHREADED
+    ok = (hr & 0xFFFFFFFF) in (0, 1)  # S_OK / S_FALSE
+    try:
+        yield
+    finally:
+        if ok:
+            ole32.CoUninitialize()
+
+
 class SoundcardSource(AudioSource):
     def __init__(self, device: str | None = None):
         self.device = device
@@ -35,6 +61,15 @@ class SoundcardSource(AudioSource):
         raise NotImplementedError
 
     def frames(self) -> Iterator[np.ndarray]:
+        # Import BEFORE entering our COM scope: soundcard's import-time CoInitializeEx treats S_FALSE
+        # ("already initialized") as a fatal "Error 0x100000001". If the import happens on this thread it
+        # initializes COM itself (our call then gets S_FALSE, which is balanced); if it happened on another
+        # thread earlier, our call is what initializes this one.
+        import soundcard  # noqa: F401
+        with com_initialized():
+            yield from self._frames()
+
+    def _frames(self) -> Iterator[np.ndarray]:
         import soundcard as sc
 
         suppress_capture_warnings()
