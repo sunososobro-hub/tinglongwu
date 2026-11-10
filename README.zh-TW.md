@@ -2,6 +2,8 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
+全新 Linux / macOS / Windows 機器上的一鍵安裝測試： [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml)
+
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [zh-TW](docs/ARCHITECTURE.zh-TW.md) · [zh-CN](docs/ARCHITECTURE.zh-CN.md)
 
 完全本機、離線的即時語音翻譯器：**系統音訊輸出 -> 擷取 -> 語音辨識 -> 翻譯 -> 文字**。

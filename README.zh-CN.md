@@ -2,6 +2,8 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
+全新 Linux / macOS / Windows 机器上的一键安装测试： [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml)
+
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [zh-TW](docs/ARCHITECTURE.zh-TW.md) · [zh-CN](docs/ARCHITECTURE.zh-CN.md)
 
 完全本地、离线的实时语音翻译器：**系统音频输出 -> 采集 -> 语音识别 -> 翻译 -> 文本**。

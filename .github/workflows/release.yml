@@ -43,3 +43,13 @@ jobs:
         run: |
           gh release create "$TAG" dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt \
             --verify-tag --generate-notes --title "$TAG"
+
+  # Run the README one-liners against the assets just published (clean Linux / macOS / Windows runners).
+  # Called directly because a release created with the default token does not fire `release: published`.
+  install-test:
+    needs: release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/install-test.yml
+    with:
+      tag: ${{ github.ref_name }}

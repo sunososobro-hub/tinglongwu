@@ -2,6 +2,8 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
+One-command install on clean Linux / macOS / Windows runners: [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml)
+
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [zh-TW](docs/ARCHITECTURE.zh-TW.md) · [zh-CN](docs/ARCHITECTURE.zh-CN.md)
 
 Fully local, offline, real-time speech translator: **system audio output -> capture -> ASR -> translate -> text**.

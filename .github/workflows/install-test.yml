@@ -1,5 +1,11 @@
 name: install-test
-# Runs the one-command installers on clean cloud machines, from the checked-out commit (not a release tag).
+# Runs the one-command installers on clean cloud machines.
+#  - push / pull_request / manual run without a tag: from the checked-out commit (jobs linux, macos, windows,
+#    windows-no-python).
+#  - a published release (pre-releases too), release.yml (workflow_call) or a manual run WITH a tag: the README
+#    one-liners against that release's own assets (job release-assets).
+# A release created by release.yml with the default GITHUB_TOKEN does not fire `release: published` (GitHub does
+# not start workflows from that token), which is why release.yml calls this file directly as well.
 on:
   push:
     branches: [main, dev]
@@ -7,7 +13,19 @@ on:
   pull_request:
     branches: [main, dev]
     paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test (e.g. v0.3.0-beta.1). Empty = test the checked-out commit."
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,6 +36,7 @@ env:
 
 jobs:
   linux:
+    if: ${{ !inputs.tag && github.event_name != 'release' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -32,12 +51,14 @@ jobs:
         run: |
           git checkout -B ci-install-test
           TLWU_REPO="$GITHUB_WORKSPACE" TLWU_REF=ci-install-test TLWU_DIR="$RUNNER_TEMP/tlwu" bash scripts/install.sh </dev/null
+          echo "install took ${SECONDS}s (linux)" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Smoke check
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
 
   macos:
+    if: ${{ !inputs.tag && github.event_name != 'release' }}
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -48,12 +69,14 @@ jobs:
           git checkout -B ci-install-test
           TLWU_REPO="$GITHUB_WORKSPACE" TLWU_BRANCH=ci-install-test TLWU_DIR="$RUNNER_TEMP/tlwu" \
             TLWU_SKIP_BLACKHOLE=1 TLWU_SKIP_MODELS=1 bash scripts/mac_install.sh </dev/null
+          echo "install took ${SECONDS}s (macos)" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Smoke check
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
 
   windows:
+    if: ${{ !inputs.tag && github.event_name != 'release' }}
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -71,7 +94,9 @@ jobs:
         run: |
           # run it as the user does (irm | iex = script text; the file has no BOM so PS 5.1 would misread it as a file)
           # output redirected on purpose: regression cover for stderr -> NativeCommandError under PS 5.1
+          $sw = [Diagnostics.Stopwatch]::StartNew()
           Get-Content -Raw -Encoding UTF8 .\scripts\bootstrap_windows.ps1 | Invoke-Expression *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\bootstrap.log"
+          "install took $([int]$sw.Elapsed.TotalSeconds)s (windows)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
           if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
       - name: Smoke check
         shell: powershell
@@ -79,4 +104,114 @@ jobs:
           & "$env:GITHUB_WORKSPACE\.venv\Scripts\python.exe" -c "import tinglongwu; print('import ok')"
           if ($LASTEXITCODE -ne 0) { throw "import failed" }
           & "$env:GITHUB_WORKSPACE\.venv\Scripts\tlwu.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw "tlwu --help failed" }
+
+  # "Brand-new PC" cell (#67): same as the windows job, but Python is hidden first. The runner image ships Python
+  # (PATH entries + the py launcher in C:\Windows); a new PC has neither. Allowed to fail until the installer can
+  # provision Python by itself (#67): remove continue-on-error once this cell is green.
+  windows-no-python:
+    if: ${{ !inputs.tag && github.event_name != 'release' }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Hide the preinstalled Python (PATH entries and the py launcher)
+        shell: powershell
+        run: |
+          foreach ($n in 'py.exe', 'pyw.exe') {
+            $f = Join-Path $env:WINDIR $n
+            if (Test-Path $f) { Rename-Item $f "$n.hidden" }
+          }
+          # keep WindowsApps: its python.exe is the Store stub every new Windows has (and winget lives there)
+          $keep = $env:PATH -split ';' | Where-Object {
+            $_ -and ($_ -like '*\WindowsApps*' -or -not ((Test-Path (Join-Path $_ 'python.exe')) -or (Test-Path (Join-Path $_ 'py.exe'))))
+          }
+          $env:PATH = $keep -join ';'
+          "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $left = @(Get-Command python, python3, py -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike '*\WindowsApps\*' })
+          if ($left.Count) { $left | Format-Table Name, Source; throw "Python is still reachable" }
+          Write-Host "Python hidden: no python/py on PATH"
+      - name: Run scripts/bootstrap_windows.ps1 from this commit (no Python on the machine)
+        shell: powershell
+        env:
+          TLWU_DIR: ${{ github.workspace }}
+          TLWU_REF: ${{ github.sha }}
+          TLWU_SKIP_MODELS: "1"
+          TLWU_SKIP_SHORTCUT: "1"
+        run: |
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          Get-Content -Raw -Encoding UTF8 .\scripts\bootstrap_windows.ps1 | Invoke-Expression *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\bootstrap.log"
+          "install took $([int]$sw.Elapsed.TotalSeconds)s (windows, no Python)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
+      - name: Smoke check
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\.venv\Scripts\python.exe" -c "import tinglongwu; print('import ok')"
+          if ($LASTEXITCODE -ne 0) { throw "import failed" }
+          & "$env:GITHUB_WORKSPACE\.venv\Scripts\tlwu.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw "tlwu --help failed" }
+
+  # The README one-liners, run against the assets of one release (the tag's own install.sh / mac_install.sh /
+  # install.ps1, which install exactly that tag).
+  release-assets:
+    if: ${{ inputs.tag || github.event_name == 'release' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      REL_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      BASE: https://github.com/${{ github.repository }}/releases/download
+      TLWU_SKIP_MODELS: "1"
+      TLWU_SKIP_SHORTCUT: "1"
+      TLWU_SKIP_BLACKHOLE: "1"
+    steps:
+      - name: Tag format
+        shell: bash
+        run: |
+          [[ "$REL_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "bad tag: $REL_TAG"; exit 1; }
+      - name: Install dir (a temp folder instead of the home directory)
+        shell: pwsh
+        run: |
+          "TLWU_DIR=$(Join-Path $env:RUNNER_TEMP 'tlwu')" >> $env:GITHUB_ENV
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: runner.os == 'Linux'
+        with:
+          python-version: "3.12"
+      - name: Audio libs (Linux; the installer would ask y/N before apt)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1 libpulse0
+      - name: One-liner from the release (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL "$BASE/$REL_TAG/install.sh" | bash
+          echo "release $REL_TAG: install took ${SECONDS}s (linux)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: One-liner from the release (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -fsSL "$BASE/$REL_TAG/mac_install.sh" | bash
+          echo "release $REL_TAG: install took ${SECONDS}s (macos)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: One-liner from the release (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          irm "$env:BASE/$env:REL_TAG/install.ps1" | iex *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\bootstrap.log"
+          "release $($env:REL_TAG): install took $([int]$sw.Elapsed.TotalSeconds)s (windows)" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
+      - name: Smoke check (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          "$TLWU_DIR/.venv/bin/python" -c "import tinglongwu; print('import ok')"
+          "$TLWU_DIR/.venv/bin/tlwu" --help
+      - name: Smoke check (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          & "$env:TLWU_DIR\.venv\Scripts\python.exe" -c "import tinglongwu; print('import ok')"
+          if ($LASTEXITCODE -ne 0) { throw "import failed" }
+          & "$env:TLWU_DIR\.venv\Scripts\tlwu.exe" --help
           if ($LASTEXITCODE -ne 0) { throw "tlwu --help failed" }
