@@ -6,6 +6,7 @@ CoreAudio (macOS). It is imported lazily so the package imports everywhere.
 from __future__ import annotations
 
 import contextlib
+import struct
 import sys
 import threading
 import warnings
@@ -52,6 +53,62 @@ def com_initialized():
             ole32.CoUninitialize()
 
 
+WAVE_FORMAT_EXTENSIBLE = 0xFFFE
+_SUBTYPE_IEEE_FLOAT = bytes.fromhex("0300000000001000800000aa00389b71")  # KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+
+
+def float32_extensible(samplerate: int, channels: int) -> bytes:
+    """A packed 40-byte WAVEFORMATEXTENSIBLE describing interleaved float32 (what soundcard reads and writes)."""
+    mask = {1: 0x4, 2: 0x3}.get(channels, (1 << channels) - 1)  # front centre / front left+right
+    return struct.pack("<HHIIHHHHI16s", WAVE_FORMAT_EXTENSIBLE, channels, int(samplerate),
+                       int(samplerate) * channels * 4, channels * 4, 32, 22, 32, mask, _SUBTYPE_IEEE_FLOAT)
+
+
+def _init_own_format(mf, client, ptr, samplerate, channels, blocksize, isloopback, exclusive_mode=False) -> None:
+    """soundcard's _AudioClient.__init__ without the mix-format asserts: Initialize with our own float32 format.
+    Shared mode with AUTOCONVERTPCM + SRC lets WASAPI convert from whatever the device mixes in."""
+    client._ptr = ptr
+    client.channelmap = list(range(channels)) if isinstance(channels, int) else list(channels)
+    n = len(set(client.channelmap))
+    if blocksize is None:
+        blocksize = client.deviceperiod[0] * samplerate
+    buf = mf._ffi.new("char[]", float32_extensible(samplerate, n))  # must stay alive until Initialize returns
+    fmt = mf._ffi.cast("WAVEFORMATEXTENSIBLE*", buf)
+    share = mf._ole32.AUDCLNT_SHAREMODE_EXCLUSIVE if exclusive_mode else mf._ole32.AUDCLNT_SHAREMODE_SHARED
+    #       rate-adjust | autoconvert | better-SRC | nopersist   (same flags soundcard uses)
+    flags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000 | (0x00020000 if isloopback else 0)
+    hr = ptr[0][0].lpVtbl.Initialize(ptr[0], share, flags, int(blocksize / samplerate * 10000000), 0, fmt,
+                                     mf._ffi.NULL)
+    mf._com.check_error(hr)
+    client.samplerate = samplerate
+    client._idle_start_time = None
+
+
+def patch_mixformat(mf=None) -> bool:
+    """Windows (#130): soundcard 0.4.6 asserts that the device mix format is WAVE_FORMAT_EXTENSIBLE float and dies
+    with an empty AssertionError on devices that report a plain WAVEFORMATEX (e.g. "High Definition Audio
+    Device" microphones). Wrap _AudioClient.__init__ (recorders, loopback and players) so that those devices are
+    opened with our own format instead. The asserts run before soundcard touches the client, so the same
+    IAudioClient can still be initialized. Idempotent; a no-op when the WASAPI backend is not loaded."""
+    mf = mf or sys.modules.get("soundcard.mediafoundation")
+    cls = getattr(mf, "_AudioClient", None)
+    if cls is None:
+        return False
+    if getattr(cls, "_tlwu_mixformat", False):
+        return True
+    orig = cls.__init__
+
+    def init(self, ptr, samplerate, channels, blocksize, isloopback, exclusive_mode=False):
+        try:
+            orig(self, ptr, samplerate, channels, blocksize, isloopback, exclusive_mode)
+        except AssertionError:
+            _init_own_format(mf, self, ptr, samplerate, channels, blocksize, isloopback, exclusive_mode)
+
+    cls.__init__ = init
+    cls._tlwu_mixformat = True
+    return True
+
+
 class SoundcardSource(AudioSource):
     def __init__(self, device: str | None = None):
         self.device = device
@@ -66,6 +123,7 @@ class SoundcardSource(AudioSource):
         # initializes COM itself (our call then gets S_FALSE, which is balanced); if it happened on another
         # thread earlier, our call is what initializes this one.
         import soundcard  # noqa: F401
+        patch_mixformat()
         with com_initialized():
             yield from self._frames()
 

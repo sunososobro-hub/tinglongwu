@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -69,9 +70,11 @@ class Player:
         if enabled:
             import soundcard as sc
 
+            from ..capture._soundcard import patch_mixformat
             from .logic import match_device
             from .vmic import loop_prone_output
 
+            patch_mixformat()  # #130: players hit the same soundcard mix-format assert as recorders
             speakers = sc.all_speakers()
             idx = match_device([s.name for s in speakers], device)
             spk = speakers[idx] if idx is not None else sc.default_speaker()
@@ -205,6 +208,11 @@ class FollowTTS:
             c.close()
 
 
+def describe_error(e: BaseException) -> str:
+    """'Type: message' (just the type when the message is empty, e.g. a bare AssertionError)."""
+    return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+
+
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
     """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
     `items` yields (n, label, zh)."""
@@ -230,7 +238,9 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 res["items"].append({"file": label, "zh": zh, lang: ru, "back": u.back, "_u": u})
                 sess.submit(u)
         except Exception as e:  # noqa: BLE001
-            print(f"input stopped: {e}", flush=True)
+            # #130: never an empty message (AssertionError has none): name the exception and keep the traceback
+            print(f"input stopped: {describe_error(e)}", flush=True)
+            traceback.print_exc(file=sys.stderr)
         finally:
             sess.finish()
 
