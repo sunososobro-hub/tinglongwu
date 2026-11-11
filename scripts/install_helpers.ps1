@@ -86,7 +86,7 @@ function Get-TlwuRamMB {
     catch { return $null }
 }
 
-# Install the CPU Japanese translator (llama-cpp-python CPU build + Hy-MT2)? $ramMB may be $null (unknown).
+# Enough RAM (nominal 4 GB) for Hy-MT2 on the CPU? Below it the installer still installs it, with a warning (#301). $ramMB may be $null (unknown).
 function Test-TlwuCpuJapanese($ramMB) {
     if ($null -eq $ramMB) { return $true }
     return ([double]$ramMB -ge $script:TlwuJaMinRamMB)

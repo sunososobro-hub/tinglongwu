@@ -26,7 +26,7 @@ $LlamaWhyCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[1])
 # Qwen is no longer chosen by VRAM (#106): Hy-MT2 matches Qwen3-8B quality at ~4x the speed (#66); `tlwu-setup --qwen` opts in.
 $GpuMinMB  = 4096
 . (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
-$Gpu = $false; $ModelGB = 0; $JaHymt = $false
+$Gpu = $false; $ModelGB = 0; $HyCpu = $false
 function Step($n, $zh, $en) {
     Write-Host ""; Write-Host "[$n/8] $zh / $en" -ForegroundColor Cyan
     Write-Host "      $(Format-TlwuEstimate (Get-TlwuStepEstimate $n $Gpu $ModelGB))" -ForegroundColor DarkCyan
@@ -79,7 +79,7 @@ Ok "Python: $Py  ($(Capture $Py @('--version')))"
 
 # ---------------------------------------------------------------- 2. GPU
 Step 2 '偵測 NVIDIA 顯示卡' 'Detect NVIDIA GPU'
-$Gpu = $false; $FreeMB = 0; $TotalMB = 0; $GpuName = ''; $DriverOld = $false
+$Gpu = $false; $HyCpu = $false; $FreeMB = 0; $TotalMB = 0; $GpuName = ''; $DriverOld = $false
 $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($smi -and -not $Cpu) {
     $g = Get-TlwuGpu (Capture 'nvidia-smi' @('--query-gpu=name,memory.total,memory.free,driver_version', '--format=csv,noheader,nounits'))
@@ -94,21 +94,19 @@ if ($Gpu) {
     Ok ("GPU: {0}, {1} MB total, {2} MB free" -f $GpuName, $TotalMB, $FreeMB)
     # plan by TOTAL VRAM (free VRAM is noisy at install time; the runtime --engine auto re-checks free VRAM at start-up)
     if ($TotalMB -ge $GpuMinMB) { $Whisper = 'large-v3-turbo'; $MtFlag = '--hymt'; $MtTxt = 'Hy-MT2 1.8B (~1.1 GB)'; $SizeGB = '~3 GB'; $ModelGB = 3 }
-    else { $Whisper = 'small'; $MtFlag = $null; $MtTxt = "none (under $GpuMinMB MB VRAM: OPUS engine)"; $SizeGB = '~1 GB'; $ModelGB = 1 }
+    else { $Whisper = 'small'; $MtFlag = $null; $HyCpu = $true; $MtTxt = "Hy-MT2 1.8B on the CPU (~1.1 GB; under $GpuMinMB MB VRAM)"; $SizeGB = '~2 GB'; $ModelGB = 2 }
     Info "Tier chosen by total VRAM ($TotalMB MB; $FreeMB MB free now; the Hy-MT2 tier needs $GpuMinMB MB). 依顯示卡總容量選擇（Hy-MT2 需約 4 GB）。"
     Info "Tip: close GPU-heavy apps (games, browsers with video, other tlwu) before the first run. 首次執行前請關閉佔用 GPU 的程式。"
     Ok "GPU path / GPU 路線: whisper=$Whisper, translation=$MtTxt"
 } else {
-    if (-not $Cpu -and -not $DriverOld) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower, OPUS engine). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
-    $Whisper = 'small'; $MtFlag = $null; $MtTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1
-    # #126: OPUS cannot do Japanese; with enough RAM the CPU tier also gets Hy-MT2 (+ a CPU llama-cpp-python build)
+    if (-not $Cpu -and -not $DriverOld) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
+    # #276/#301: Hy-MT2 is the only default engine, also on the CPU (CPU llama-cpp-python build + the GGUF)
+    $Whisper = 'small'; $MtFlag = $null; $HyCpu = $true; $MtTxt = 'Hy-MT2 1.8B on the CPU (~1.1 GB)'; $SizeGB = '~2 GB'; $ModelGB = 2
     $RamMB = Get-TlwuRamMB
-    $JaHymt = Test-TlwuCpuJapanese $RamMB
-    if ($JaHymt) {
-        $MtTxt = 'none (CPU: OPUS engine; Japanese: Hy-MT2 1.8B ~1.1 GB)'; $SizeGB = '~2 GB'; $ModelGB = 2
-        Ok "CPU path / CPU 路線: whisper=$Whisper, $MtTxt"
+    if (-not (Test-TlwuCpuJapanese $RamMB)) {
+        Warn "Only ${RamMB} MB RAM: the Hy-MT2 translator needs about 4 GB, translation may be very slow or fail on this PC. 記憶體不足 4 GB：翻譯可能很慢或無法執行。"
     }
-    else { Warn "Only ${RamMB} MB RAM: Japanese translation is not supported on this PC (needs 4 GB); English and Russian work. 記憶體不足 4 GB：此電腦不支援日文翻譯，英文、俄文可用。" }
+    Ok "CPU path / CPU 路線: whisper=$Whisper, translation=$MtTxt"
 }
 if ($SkipModels) { $ModelGB = 0 }
 Info "Expected model download / 預計下載模型: $SizeGB (plus ~3 GB of Python packages / 另有約 3 GB 套件)"
@@ -133,33 +131,7 @@ Ok "Packages installed / 套件完成"
 # ---------------------------------------------------------------- 4. GPU libs + llama-cpp
 Step 4 'GPU 函式庫與 Hy-MT2 翻譯引擎' 'GPU libraries and Hy-MT2 translation engine'
 $Engine = 'opus'
-if (-not $Gpu -and -not $JaHymt) { Info "CPU path: skipped / CPU 路線略過" }
-elseif (-not $Gpu) {   # #126: CPU build of llama-cpp-python, only for Hy-MT2 Japanese translation
-    Info "CPU path: Japanese translation engine (llama-cpp-python, CPU build) / CPU 路線：安裝日文翻譯引擎"
-    $have = $false
-    if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True') }
-    if ($have) { Ok "llama-cpp-python already works / 已可用" }
-    else {
-        $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cpu.txt', '--only-binary=:all:')
-        if ($ok -and -not $DryRun) {
-            $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
-            if (-not $ok) {   # same version from another index (e.g. an AVX-512 CUDA build, #74): replace it
-                [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cpu.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
-                $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
-            }
-            if (-not $ok) {   # never leave a build behind that would crash tlwu on this CPU
-                Warn "llama-cpp-python failed the self-check: $(Capture $VPy @('-c', $LlamaWhyCpu))"
-                [void](Run $VPy @('-m', 'pip', 'uninstall', '-y', 'llama-cpp-python'))
-            }
-        }
-        if ($ok) { [void]$Installed.Add('llama-cpp-python (CPU build, for Japanese)') }
-        else {
-            $JaHymt = $false
-            Warn "No usable llama-cpp-python CPU build: Japanese falls back to the low-quality OPUS route. 日文翻譯引擎安裝失敗，日文改用品質較差的 OPUS 路線。"
-        }
-    }
-}
-else {
+if ($Gpu) {
     if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
     else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
     if (-not $DryRun) {   # #95: nvidia-smi said GPU; ask CTranslate2 itself (what tlwu will actually use)
@@ -183,12 +155,38 @@ else {
             }
             if ($ok) { $Engine = 'hymt2'; [void]$Installed.Add('llama-cpp-python (CUDA wheel)') }
             else {
-                Warn "No usable prebuilt llama-cpp-python CUDA wheel for this PC: using the OPUS engine (still works, less accurate). 找不到合適的預編譯 wheel，改用 OPUS 引擎。"
-                $MtFlag = $null
+                Warn "No usable prebuilt llama-cpp-python CUDA wheel for this PC: Hy-MT2 runs on the CPU instead. 找不到合適的預編譯 wheel，Hy-MT2 改用 CPU 執行。"
+                $MtFlag = $null; $HyCpu = $true
             }
             if ($DryRun) { $Engine = 'hymt2 (if the wheel installs)' }
         }
-    } else { Info "Under $GpuMinMB MB VRAM: Hy-MT2 skipped, OPUS engine / 顯存不足 4 GB，略過 Hy-MT2" }
+    } else { Info "Under $GpuMinMB MB VRAM: Hy-MT2 runs on the CPU / 顯存不足 4 GB，Hy-MT2 改用 CPU 執行" }
+}
+if ($HyCpu) {   # #126/#301: CPU build of llama-cpp-python for Hy-MT2 (no GPU, small GPU, or no CUDA wheel)
+    Info "Hy-MT2 on the CPU: translation engine (llama-cpp-python, CPU build) / 安裝 CPU 版翻譯引擎"
+    $have = $false
+    if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True') }
+    if ($have) { Ok "llama-cpp-python already works / 已可用"; $Engine = 'hymt2' }
+    else {
+        $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cpu.txt', '--only-binary=:all:')
+        if ($ok -and -not $DryRun) {
+            $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
+            if (-not $ok) {   # same version from another index (e.g. an AVX-512 CUDA build, #74): replace it
+                [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cpu.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
+                $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
+            }
+            if (-not $ok) {   # never leave a build behind that would crash tlwu on this CPU
+                Warn "llama-cpp-python failed the self-check: $(Capture $VPy @('-c', $LlamaWhyCpu))"
+                [void](Run $VPy @('-m', 'pip', 'uninstall', '-y', 'llama-cpp-python'))
+            }
+        }
+        if ($ok) { $Engine = 'hymt2'; [void]$Installed.Add('llama-cpp-python (CPU build)') }
+        else {
+            $HyCpu = $false
+            Warn "No usable llama-cpp-python CPU build: tlwu cannot translate until it is fixed (run '.venv\Scripts\tlwu-setup.exe --check-llama', or re-run install.bat). 翻譯引擎安裝失敗，請重跑 install.bat。"
+        }
+        if ($DryRun) { $Engine = 'hymt2 (if the wheel installs)' }
+    }
 }
 
 # ---------------------------------------------------------------- 5. models
@@ -201,13 +199,9 @@ else {
     $ok = Run $VSet @('--whisper', $Whisper, '--packs', $Packs, '--allow-unpinned')
     if ($ok) { [void]$Installed.Add("Whisper '$Whisper' + language packs $Packs") }
     else { Die '模型下載失敗（請確認網路後重跑）' 'model download failed (check internet, then re-run install.bat; finished parts are kept)' }
-    if ($MtFlag) {
-        if (Run $VSet @($MtFlag)) { [void]$Installed.Add("Hy-MT2 translation model ($MtTxt)") }
-        else { Warn "Hy-MT2 download failed; will use the OPUS engine. Re-run install.bat to retry. Hy-MT2 下載失敗，改用 OPUS。"; $Engine = 'opus' }
-    }
-    if ($JaHymt) {
-        if (Run $VSet @('--hymt')) { [void]$Installed.Add('Hy-MT2 1.8B (Japanese translation on CPU)') }
-        else { Warn "Hy-MT2 download failed: Japanese uses the low-quality OPUS route until you re-run install.bat. Hy-MT2 下載失敗，重跑 install.bat 可補裝。" }
+    if ($MtFlag -or $HyCpu) {   # #301: every path gets Hy-MT2, the only default engine (#276)
+        if (Run $VSet @('--hymt')) { [void]$Installed.Add("Hy-MT2 translation model ($MtTxt)") }
+        else { Warn "Hy-MT2 download failed: tlwu cannot translate until you re-run install.bat (finished parts are kept). Hy-MT2 下載失敗，請重跑 install.bat。"; $Engine = 'opus' }
     }
 }
 

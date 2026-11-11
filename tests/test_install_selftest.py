@@ -130,7 +130,7 @@ def test_install_dry_run_shows_the_selftest_as_last_step():
     assert r.returncode == 0, r.stdout + r.stderr
     step8 = next(i for i, x in enumerate(lines) if x.startswith("[8/8] "))
     st = [x for x in lines[step8:] if "[dry-run]" in x and "--selftest" in x]
-    assert len(st) == 1 and st[0].rstrip().endswith("--selftest --model small --engine opus --device cpu")
+    assert len(st) == 1 and st[0].rstrip().endswith("--selftest --model small --engine hymt --device cpu")  # #301: Hy-MT2 on the CPU
 
 
 # ---------------------------------------------------------------- exe: package data + first-run window
