@@ -48,10 +48,13 @@ def test_auto_on_gpu_prefers_hymt_over_qwen(tmp_path):
     assert choose_engine("auto", "cpu", m, free_mib=lambda: 99999)[0] == "opus"  # owner: CPU keeps OPUS
 
 
-def test_auto_without_hymt_keeps_qwen_and_says_how_to_get_hymt(tmp_path, capsys):
-    m = install(tmp_path, "qwen3-8b")
-    assert choose_engine("auto", "cuda", m, free_mib=lambda: 8000)[0] == "qwen3-8b"
+def test_auto_never_picks_qwen_and_says_how_to_get_hymt(tmp_path, capsys):
+    m = install(tmp_path, "qwen3-8b", "qwen3-4b")  # Qwen on disk, a >= 8 GB GPU, but no Hy-MT2 (#276)
+    name, why = choose_engine("auto", "cuda", m, free_mib=lambda: 9000)
+    assert not name.startswith("qwen")
+    assert name == "opus"
     assert "tlwu-setup --hymt" in capsys.readouterr().err
+    assert choose_engine("qwen", "cuda", m)[0] == "qwen3-8b"  # explicit opt-in still works
 
 
 def test_explicit_engines(tmp_path):
@@ -113,3 +116,12 @@ def test_short_line_left_in_kana_shows_source(tmp_path):
     assert zh_script_guard("Hey", "欸，齁") == "欸，齁"  # valid Taiwan interjections are kept
     long_src = "это довольно длинное предложение, которое модель перевела почти полностью"
     assert zh_script_guard(long_src, "這是一個相當長的句子 модель") == "這是一個相當長的句子 модель"
+
+
+def test_hymt_download_ships_apache_notice(tmp_path, monkeypatch):
+    from tinglongwu_setup import downloader
+
+    monkeypatch.setattr(downloader, "get_gguf", lambda *a, **k: None)
+    downloader.get_hymt({}, tmp_path)
+    text = (tmp_path / downloader.HYMT_DIR / "NOTICE").read_text(encoding="utf-8")
+    assert "Apache License, Version 2.0" in text and "Tencent" in text

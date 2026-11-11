@@ -32,13 +32,11 @@ def test_cli_engine_choices_default_auto():
         cli.parse_args(["--engine", "gpt"])
 
 
-@pytest.mark.parametrize("free,want", [(8000, "qwen3-8b"), (QWEN8B_MIN_FREE_MIB, "qwen3-8b"),
-                                       (QWEN8B_MIN_FREE_MIB - 1, "qwen3-4b"), (QWEN4B_MIN_FREE_MIB, "qwen3-4b"),
-                                       (QWEN4B_MIN_FREE_MIB - 1, "opus"), (0, "opus")])
-def test_auto_thresholds(tmp_path, free, want):
+@pytest.mark.parametrize("free", [8000, QWEN8B_MIN_FREE_MIB, QWEN8B_MIN_FREE_MIB - 1, QWEN4B_MIN_FREE_MIB, 0])
+def test_auto_never_picks_qwen(tmp_path, free):  # #276: Qwen is opt-in (--engine qwen/qwen4b) only
     m = fake_models(tmp_path, "qwen3-8b", "qwen3-4b")
     name, why = choose_engine("auto", "cuda", m, free_mib=lambda: free)
-    assert name == want and why
+    assert name == "opus" and why
 
 
 def test_auto_cpu_or_unknown_vram_is_opus(tmp_path):
@@ -47,11 +45,10 @@ def test_auto_cpu_or_unknown_vram_is_opus(tmp_path):
     assert choose_engine("auto", "cuda", m, free_mib=lambda: None)[0] == "opus"
 
 
-def test_auto_skips_missing_gguf(tmp_path, capsys):
+def test_auto_without_hymt_points_at_hymt_setup_not_qwen(tmp_path, capsys):
     m = fake_models(tmp_path, "qwen3-4b")
-    assert choose_engine("auto", "cuda", m, free_mib=lambda: 8000)[0] == "qwen3-4b"
-    assert "tlwu-setup --qwen" in capsys.readouterr().err
-    assert choose_engine("auto", "cuda", tmp_path / "none", free_mib=lambda: 8000)[0] == "opus"
+    assert choose_engine("auto", "cuda", m, free_mib=lambda: 8000)[0] == "opus"
+    assert "tlwu-setup --hymt" in capsys.readouterr().err
 
 
 def test_explicit_engines_ignore_vram(tmp_path):

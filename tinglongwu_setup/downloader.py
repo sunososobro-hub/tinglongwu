@@ -9,7 +9,8 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
   tlwu-setup --whisper small --langs ru,ja --to zh,ko
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
       --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
-  tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
+  tlwu-setup --hymt           # Hy-MT2-1.8B Q4_K_M GGUF: the default translation engine (Apache-2.0, ~1.1 GB)
+  tlwu-setup --qwen           # OPT-IN: Qwen3-8B/4B Q4_K_M GGUF (>= 8 GB GPU), used only with --engine qwen
   tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
   tlwu-setup --piper-ru        # Piper Russian voice dmitri (or: --piper-ru denis), CC0 data, ~60 MB
@@ -248,6 +249,21 @@ def get_qwen(man, mdir, name):
 def get_hymt(man, mdir):
     """Hy-MT2-1.8B Q4_K_M GGUF -> models/hymt2-1.8b/ (direct zh<->ja translation)."""
     get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF)
+    write_hymt_notice(mdir)
+
+
+HYMT_NOTICE = """Hy-MT2-1.8B (Q4_K_M GGUF)
+Copyright Tencent. Licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+Source: https://huggingface.co/tencent/Hy-MT2-1.8B and https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF
+Downloaded unmodified by tlwu-setup; this NOTICE is shipped with the model files as required by Apache-2.0 section 4.
+"""
+
+
+def write_hymt_notice(mdir):
+    """Apache-2.0 attribution next to the model files (#276). Local text only, no network."""
+    d = Path(mdir) / HYMT_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "NOTICE").write_text(HYMT_NOTICE, encoding="utf-8")
 
 
 def get_gguf(man, mdir, name, repo, fname):
@@ -425,7 +441,7 @@ def main(argv=None) -> int:
     p.add_argument("--m2m", action="store_true",
                    help="M2M-100 1.2B direct translation (MIT): download + convert with ct2-transformers-converter")
     p.add_argument("--qwen", action="store_true",
-                   help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
+                   help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF OPT-IN, only for --engine qwen/qwen4b; auto never picks it (~7.5 GB download)")
     p.add_argument("--qwen4b", action="store_true",
                    help="only Qwen3-4B Q4_K_M GGUF (~2.5 GB; for GPUs with < 6 GB free VRAM)")
     p.add_argument("--hymt", action="store_true",
