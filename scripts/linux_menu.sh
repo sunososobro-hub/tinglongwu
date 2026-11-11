@@ -177,6 +177,7 @@ if [ "$mode" = "1" ]; then
   case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
 fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
+SMT=opus; [ -n "$SPEAK" ] && SMT="$(python -m tinglongwu.menuopts speak "$SPEAK" || echo opus)"   # #227: Hy-MT2 in every speak mode when installed
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
   python - "$@" <<'PY'
@@ -208,7 +209,7 @@ if [ "$SPEAK" = "follow" ]; then
     m M_NO_MODEL_EN_RU
     ask_setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru
   fi
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to follow --follow-file "$FOLLOW_FILE"
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT" --to follow --follow-file "$FOLLOW_FILE"
        --follow-langs "$FOLLOW_LANGS"
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL"
        --vosk-python "$VOSK_PY" --vosk-model "$VOSK_MODEL" "${W_SPEAK[@]}")
@@ -216,13 +217,12 @@ if [ "$SPEAK" = "follow" ]; then
   ensure_kokoro
 elif [ "$SPEAK" = "ja" ]; then
   # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to ja
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT" --to ja
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ja "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to ja "${W_SPEAK[@]}")
   ensure_kokoro
 elif [ "$SPEAK" = "en" ]; then
   ensure_kokoro
-  SMT="$(python -m tinglongwu.menuopts speak en || echo opus)"
   # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
   if ! have_pairs zh-en en-zh; then
     m M_NO_MODEL_ZH_EN
@@ -232,7 +232,6 @@ elif [ "$SPEAK" = "en" ]; then
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
   TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to en "${W_SPEAK[@]}")
 else
-  SMT="$(python -m tinglongwu.menuopts speak ru || echo opus)"   # #227: Hy-MT2 direct zh->ru when installed
   if ! have_pairs zh-en en-ru ru-en en-zh; then
     m M_NO_MODEL_ZH_RU
     ask_setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh

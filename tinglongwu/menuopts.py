@@ -12,6 +12,7 @@ Offline: reads local files only; never downloads or probes speed.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Callable
@@ -51,14 +52,10 @@ def _engine_args(ask, say, device, mdir, cpu_choice, hymt_ready) -> list[str]:
 
     if device() != "cpu" or not hymt_ready(mdir) or cpu_choice() is not None:
         return []  # GPU: auto already prefers Hy-MT2; cached CPU choice: auto already uses it
-    try:
-        ans = ask(t("menu_cpu_mt_ask")).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = ""
-    if ans in ("h", "hymt"):
-        say(t("menu_cpu_mt_hymt"))
-        return ["--engine", "hymt"]
-    return []
+    if os.environ.get("TLWU_MT", "").lower() == "opus":
+        return []
+    say(t("menu_cpu_mt_hymt"))  # owner 2026-11-11 (#227): Hy-MT2 by default on CPU, no question
+    return ["--engine", "hymt"]
 
 
 def listen_args(ask: Callable[[str], str] | None = None, say: Callable[[str], None] | None = None,
@@ -93,8 +90,8 @@ def listen_args(ask: Callable[[str], str] | None = None, say: Callable[[str], No
 
 
 def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
-    """Translation engine for the speak side (#227): `hymt` or `opus`. With Hy-MT2 installed, zh->ru defaults to it
-    (Enter = Hy-MT2) and zh->en asks (Enter = OPUS); without it, OPUS plus a one-line install hint."""
+    """Translation engine for the speak side (#227): `hymt` whenever Hy-MT2 is installed (no question; env TLWU_MT=opus
+    overrides), else `opus` plus a one-line install hint. `to`/`ask` are kept for callers."""
     from .i18n import t
 
     say = say or (lambda m: print(m, file=sys.stderr, flush=True))
@@ -117,19 +114,12 @@ def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
     if not ready:
         say(t("menu_speak_mt_hint"))
         return "opus"
-    ru = to == "ru"
-    try:
-        ans = ask(t("menu_speak_mt_ask_ru" if ru else "menu_speak_mt_ask_en")).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = ""
-    if ru:
-        return "opus" if ans in ("o", "opus") else "hymt"
-    return "hymt" if ans in ("h", "hymt") else "opus"
+    return "opus" if os.environ.get("TLWU_MT", "").lower() == "opus" else "hymt"  # owner 2026-11-11: no question
 
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if len(argv) == 2 and argv[0] == "speak" and argv[1] in ("ru", "en"):
+    if len(argv) == 2 and argv[0] == "speak":
         print(speak_mt(argv[1]))
         return 0
     if argv != ["listen"]:
