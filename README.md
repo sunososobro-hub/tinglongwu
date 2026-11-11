@@ -106,6 +106,12 @@ Bundles are platform-specific: build on the same OS, CPU architecture and Python
 
 ### Firewall block test (per platform)
 
+One command runs listen, speak and meeting with the network cut and checks each still translates (Windows: admin terminal, adds and always removes an outbound block rule for the Python it uses; Linux: empty network namespace; macOS: block first, then add `--already-blocked`):
+```
+python scripts/firewall_test.py --listen-wav talk.wav --speak-wav zh.wav   # exit 0 = PASS
+```
+Add `--tts-python <kokoro venv python> --tts-model <kokoro dir>` to include speech synthesis. Manual steps:
+
 Windows (admin PowerShell), block outbound for the Python you use:
 ```powershell
 New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block -Program (Get-Command python).Source
