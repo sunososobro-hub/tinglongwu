@@ -106,7 +106,7 @@ def test_offline_only_pack_commands_still_run(monkeypatch, no_net, tmp_path, cap
     assert "zh  missing" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("entry", ["packs", "talk"])
+@pytest.mark.parametrize("entry", ["packs", "talk", "gui"])
 def test_installer_entry_points_opt_in_to_unpinned_pairs(monkeypatch, tmp_path, entry):
     """zh-en / en-ru have no committed pin yet: the pack and talk installers must pass --allow-unpinned explicitly
     (a bare tlwu-setup --pair zh-en is refused, see test_get_pair_unpinned_needs_flag)."""
@@ -116,6 +116,13 @@ def test_installer_entry_points_opt_in_to_unpinned_pairs(monkeypatch, tmp_path, 
         from tinglongwu_setup import packs
 
         packs.install("zh", tmp_path)
+    elif entry == "gui":  # tlwu_app first-run setup (tier downloader args, run in the setup worker process)
+        from tlwu_app import tiers
+
+        monkeypatch.setattr(dl, "get_whisper", lambda *a, **k: None)
+        monkeypatch.setattr(dl, "get_hymt", lambda *a, **k: None)
+        for t in (tiers.T_CPU, tiers.T_GPU):
+            assert dl.main([*t.downloader_args(), "--models-dir", str(tmp_path)]) == 0
     else:
         from types import SimpleNamespace
 
