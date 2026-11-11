@@ -54,7 +54,7 @@ It checks Homebrew (never installs it silently; prints the official command if m
 
 ## Releases (read before trusting a binary)
 
-The Windows release zip is **unsigned** and built locally by the maintainer with Nuitka; the build is **not reproducible**. Its SHA256 is published in the release notes: compare it with `Get-FileHash tinglongwu-win64.zip` before running. The hash only proves you got the file the maintainer published. If you want real verification, install from source (`install.bat` or the steps below): the source, pinned dependencies and model hashes are all auditable.
+The Windows release zip is unsigned and not reproducible; check its SHA256 or install from source. Details: [docs/install.md](docs/install.md#releases-read-before-trusting-a-binary).
 
 ## Languages
 
@@ -82,112 +82,13 @@ Focus languages are Japanese, English and Russian (Chinese is the base). Every o
 
 Windows modes verified on a real device so far: one-line install and Listen; Speak, Meeting and the firewall test are still pending (see the linked issues).
 
-## Install / use split (read this first)
+## Install / use split, privacy model
 
-One repo, two programs with a hard boundary:
-
-| | `tlwu-setup` (package `tinglongwu_setup`) | `tlwu` (package `tinglongwu`) |
-|---|---|---|
-| Network | **Yes** - the only networked code | **Never** - zero download/network code |
-| Does | installs pinned deps, downloads + SHA256-pins models, builds/installs offline bundles | captures audio, transcribes, translates, prints |
-| When | once, while online | every run, can be fully offline |
-
-`tests/test_no_network_code.py` statically scans `tinglongwu/` and fails if it imports requests, urllib.request, http.client, huggingface_hub, argostranslate, socket (except the guard module `tinglongwu/offline.py`) or `tinglongwu_setup`.
-
-```
-tlwu-setup --deps                                  # pip install the pinned requirements
-tlwu-setup --whisper small --langs ru --to zh      # download + pin models
-tlwu-setup --bundle tlwu-bundle.zip                 # pack wheels + models for an air-gapped machine
-tlwu-setup --from-bundle tlwu-bundle.zip            # on the offline machine: install + verify, no network
-```
-Bundles are platform-specific: build on the same OS, CPU architecture and Python minor version as the target.
-
-## Privacy model
-
-- Audio lives in memory only. Transcripts go to stdout only; nothing is logged. Only the explicit opt-ins `--save` and `--save-result PATH` (speak mode) write text to disk.
-- On `import tinglongwu` (before any HF/ctranslate2 import) the env is forced offline: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `ARGOS_*`.
-- A runtime **network guard** patches `socket.connect/connect_ex/create_connection/getaddrinfo/gethostbyname` and raises on any non-loopback target (loopback and AF_UNIX pass). It is on in `tlwu`, `tlwu --gui`, `python -m tinglongwu.reverse.proto` and the TTS worker subprocesses (Kokoro/Vosk). Only our own processes are affected; no OS firewall is touched. `tlwu-setup` and the update step (`git`) do not use the guard; `TLWU_ALLOW_NET=1` disables it.
-- Network is for **install/setup** (tlwu-setup, pip) and **update** (git) only. Updating is opt-in: the first menu run asks once whether to check GitHub on every menu start (saved in the user config: `~/.config/tinglongwu/config`, `~/Library/Application Support/tinglongwu/config`, `%APPDATA%\tinglongwu\config`); if off, the menu never touches the network and `U` updates on demand. `TLWU_NO_UPDATE=1` forces it off.
-- Every blocked attempt prints one line and appends a JSON line (time, host, port, mode, package guessed from the stack, trimmed stack without any content, tlwu version, OS) to `netguard.jsonl` in the user log dir (`~/.local/state/tinglongwu`, `~/Library/Logs/tinglongwu`, `%LOCALAPPDATA%\tinglongwu`). Nothing is ever sent automatically: the next menu start shows what was blocked and asks "report to the developer? [y/N]"; `y` shows the exact text and opens a pre-filled GitHub issue in your browser that you submit yourself.
-- Menu language follows the system (English by default, Russian, Traditional Chinese); override with `TLWU_UI_LANG=en|ru|zh-TW` or `I` in the menu. Texts live in `scripts/i18n/` and `tinglongwu/i18n.py`; adding a language = adding a file.
-- Models load only from a local `models/` dir (`--models-dir` or `TLWU_MODELS`); missing models give an error pointing to the download script. Nothing is auto-downloaded.
-- `tlwu-setup` (`tinglongwu_setup`) is the **only** program that uses the network. It pins on first download (HF commit sha / package URL + SHA256 of every file; committed pins in `tinglongwu_setup/manifest.json`, local record in `models/manifest.json`) and verifies on every later run (`--verify` works offline).
-- `scripts/verify_offline.py` runs tinglongWu and polls the whole process tree with psutil; fails on any non-loopback connection.
-- The guard is in-process defence in depth, **not proof**. It only blocks Python-level sockets (`connect`, `connect_ex`, `sendto`, name resolution; our TTS worker subprocesses load the same guard). Native libraries that open their own sockets (ctranslate2, onnxruntime, llama.cpp, other C extensions) and other subprocesses are **not** covered. CI runs the tests inside an empty network namespace (`scripts/ci_offline.sh`) as an extra check. The firewall test below is the real, independent proof.
-
-### Firewall block test (per platform)
-
-One command runs listen, speak and meeting with the network cut and checks each still translates (Windows: admin terminal, adds and always removes an outbound block rule for the Python it uses; Linux: empty network namespace; macOS: block first, then add `--already-blocked`):
-```
-python scripts/firewall_test.py --listen-wav talk.wav --speak-wav zh.wav   # exit 0 = PASS
-```
-Add `--tts-python <kokoro venv python> --tts-model <kokoro dir>` to include speech synthesis. Manual steps:
-
-Windows (admin PowerShell), block outbound for the Python you use:
-```powershell
-New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block -Program (Get-Command python).Source
-python -m tinglongwu --file talk.wav      # must still work
-Remove-NetFirewallRule -DisplayName "tlwu-block"
-```
-Linux: `unshare -n -r python -m tinglongwu --file talk.wav` (no network namespace; live capture via a unix socket still works only if PulseAudio is reachable - use `--file` for the test), or an nftables rule: `nft add rule inet filter output meta skuid $UID drop`.
-macOS: `pf` rule (`block drop out quick all user $USER` loaded with `pfctl -f`), or Little Snitch / LuLu set to deny the Python binary.
-
-Then `python scripts/verify_offline.py --file talk.wav`.
+`tlwu-setup` is the only networked program; `tlwu` never downloads anything and runs with a network guard (defence in depth, not proof). Details and the firewall block test: [docs/privacy.md](docs/privacy.md).
 
 ## Install
 
-Python 3.12 (the pinned numpy/scipy need >= 3.12; tested 3.12).
-```
-tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # exact pins
-```
-
-Hash-verified install (recommended): `requirements.lock.txt` lists every dependency (including transitive ones) with all PyPI SHA256 hashes, so pip refuses any tampered or substituted file:
-```
-pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
-```
-`requirements.txt` (plain `==` pins, no hashes) keeps working. Regenerate the lock with `python scripts/make_lock.py` (`httpx2`/`httpcore2` are not typosquats: they are the Pydantic-maintained httpx fork that `huggingface_hub` 2.x depends on).
-
-Updating a Windows dev checkout (git clone on the `dev` branch): double-click **`update.bat`**: it fast-forwards `dev`, reinstalls the pinned packages and starts the GUI (stops with a message on local changes or another branch).
-
-- **Windows**: nothing extra (WASAPI loopback of the default speakers).
-- **Linux**: PipeWire (with pipewire-pulse) or PulseAudio. Default captures the monitor of the default sink; list with `pactl list sources short` and choose with `--capture-device <substring>`.
-- **macOS**: install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole), create a Multi-Output Device (speakers + BlackHole) in Audio MIDI Setup and make it the output. tlwu captures the device whose name contains `BlackHole`. ScreenCaptureKit audio capture is a possible future option.
-
-### Models (one-time, needs network)
-```
-tlwu-setup --whisper small --langs ru --to zh
-```
-Translation uses OPUS-MT models as packaged by Argos Translate, run directly on CTranslate2 (no Argos/torch install). Route: source -> English -> Chinese; the English step is skipped when the source is English.
-
-Any language pair with an OPUS-MT/Argos package works: `--langs` fetches source->English, `--to` fetches English->target (e.g. `--langs ru,ja --to zh,ko`). Fetch only what you need. If a pair is missing, tinglongWu stops and names the pair and the exact download command.
-
-**Optional M2M-100 engine (`--engine m2m`)**: direct translation without the English pivot, **MIT licensed** (usable commercially). `tlwu-setup --m2m` downloads facebook/m2m100_1.2B and converts it with `ct2-transformers-converter`; the converter needs `torch` and `transformers`, which are NOT runtime dependencies: install them in a throwaway venv and point `TLWU_CONVERTER_PYTHON` at it. Loads from `models/m2m-1.2B/` only.  The conversion reads only `model.safetensors` (pinned HF commit of Hugging Face's own SFconvertbot PR, since `main` has only the pickle `pytorch_model.bin`), so no pickle is ever unpickled. `tlwu-setup` refuses to convert without that pinned safetensors revision.
-
-**Japanese (`--lang ja`, auto candidates en,ru,ja,zh, `reverse.proto --to ja`)**: OPUS has no usable Japanese, so every pair with Japanese is translated directly (no English pivot) by Tencent Hy-MT2-1.8B (Apache-2.0, Q4_K_M GGUF, ~1.1 GB): `tlwu-setup --hymt` plus `llama-cpp-python` (CPU wheel is fine). Without it, listening falls back to the OPUS ja->en->zh pivot (poor); speaking Japanese requires it. Japanese speech is Kokoro-82M v1.0 (Apache-2.0) in the same venv as the English voice; it additionally needs `misaki==0.9.4 pyopenjtalk-plus fugashi unidic-lite mojimoji jaconv addict regex` there (see `tinglongwu/reverse/tts_worker.py`).
-
-**Default GPU engine: Hy-MT2** (`--engine auto` on a usable NVIDIA GPU, or `--engine hymt`): Tencent Hy-MT2-1.8B (llama.cpp, Q4_K_M GGUF, `tlwu-setup --hymt`, ~1.1 GB download) translates directly source -> target for zh/en/ru/ja/ko/de/fr/es. On our 200-sentence benchmark it matches Qwen3-8B in quality (COMET x100: ru 86.5 vs 86.5, en 89.1 vs 88.8, ja 88.3 vs 87.8) at about 4x the speed (0.19 s vs 0.73 s per sentence) and ~1.5 GB VRAM instead of 5.1 GB, so Whisper turbo + Hy-MT2 fits a 4 GB card. `auto` needs ~2 GB of free VRAM after Whisper has loaded; if Hy-MT2 is not installed it falls back to the Qwen tiers below, then OPUS. On CPU the default stays OPUS.
-
-**Qwen LLM engine (optional, `--engine qwen` / `qwen4b`; used by `auto` only when Hy-MT2 is not installed)**: a local Qwen3 model (llama.cpp, Q4_K_M GGUF) translates directly source -> Chinese (no English pivot, thinking mode off, repetition guarded), then OpenCC converts per `--zh-variant`. It is much more accurate than OPUS and does not produce garbage on very short lines. `tlwu-setup --qwen` downloads Qwen3-8B and Qwen3-4B (~7.5 GB) into the models dir; it also needs `llama-cpp-python` (CUDA build). `auto` checks free VRAM after Whisper has loaded: Qwen3-8B if >= 5.8 GB is free, else Qwen3-4B if >= 3.5 GB, else OPUS (also on CPU or if Qwen fails to load); one line at startup says which engine was chosen. Force one with `--engine qwen` (8B), `qwen4b`, `opus` or `m2m`.
-
-
-#### Pinned model sources
-
-`tinglongwu_setup/manifest.json` is committed: it pins every downloadable model to an exact Hugging Face commit and the SHA256 of each file. `tlwu-setup` downloads with `revision=<pinned commit>` and aborts on any hash mismatch; `tlwu-setup --verify` re-checks offline. Refresh pins with `scripts/make_model_pins.py` (maintainers; review the diff).
-
-| Model | Source repo | Maintainer | Notes |
-|---|---|---|---|
-| Whisper tiny/base/small/medium/large-v3 (CT2) | `Systran/faster-whisper-*` | SYSTRAN | MIT |
-| **Whisper large-v3-turbo (CT2)** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh (third party, not OpenAI or SYSTRAN)** | MIT; a community CTranslate2 conversion, trust is limited to its pinned commit and hashes |
-| Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen (Alibaba) | Apache-2.0 |
-| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT; **safetensors only** (see above) |
-| OPUS-MT (Argos packages) | `argos-net.com` | Argos Open Tech | CC-BY 4.0; `ru-en` and `en-zh` are pinned by URL + archive SHA256; other pairs are looked up in the mutable Argos index on first use and only pinned afterwards (a warning is printed) |
-
-### GPU (optional, NVIDIA)
-`--device auto|cpu|cuda` (default `auto`: CUDA if CTranslate2 sees an NVIDIA GPU and the libraries load, else CPU). GPU runs Whisper in float16 and OPUS/M2M in int8_float16; CPU uses int8. What you need, once (with network):
-```
-tlwu-setup --gpu     # = pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 (CUDA 12 cuBLAS + cuDNN 9; no CUDA toolkit needed)
-```
-plus an NVIDIA driver that supports CUDA 12 or newer. If the GPU or these libraries are missing, tlwu prints a clear message and falls back to CPU (with `--device cuda` too). Models never leave your machine; the libraries are only loaded locally. `large-v3` in float16 needs about 4 GB of VRAM, `medium` about 2.5 GB.
+Source install (Python 3.12, hash-verified pins), audio setup per OS, GPU: [docs/install.md](docs/install.md). Models, engines and pinned sources: [docs/models.md](docs/models.md).
 
 ## Usage
 ```
