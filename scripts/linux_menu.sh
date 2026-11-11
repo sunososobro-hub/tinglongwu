@@ -62,6 +62,7 @@ KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
 KOKORO_VOICE="${KOKORO_VOICE:-0}"
 
 L="${TLWU_LANG:-auto}"
+python -m tinglongwu.langs --check "$L" || { m M_BAD_OPTION; L=auto; }   # #237: never pass a non-language to tlwu
 # macOS install skips the Russian voice: default to English unless the Vosk model is there
 if [ "$IS_MAC" = "1" ] && [ -z "${TLWU_LANG:-}" ] && [ ! -d "$VOSK_MODEL" ]; then L=en; fi
 CANDS="en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
@@ -110,7 +111,10 @@ while :; do
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
     l|L) python -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
-         read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"; continue ;;
+         read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"
+         # #237: only a real language code may reach tlwu/tlwu-setup (a menu digit like "3" used to become "3->en")
+         python -m tinglongwu.langs --check "$L" || { m M_BAD_OPTION; L=auto; }
+         continue ;;
     *) m M_BAD_OPTION; continue ;;
   esac
   if [ "$mode" = "2" ] && ! speak_ok "$L"; then
