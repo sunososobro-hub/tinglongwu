@@ -13,17 +13,25 @@ def _cfg(tmp_path, monkeypatch):
     monkeypatch.setenv("TLWU_UI_LANG", "en")
 
 
-def test_ru_defaults_to_hymt_when_installed():
-    assert menuopts.speak_mt("ru", ask=lambda p: "", say=lambda m: None, hymt_ready=lambda d: True) == "hymt"
-    assert menuopts.speak_mt("ru", ask=lambda p: "o", say=lambda m: None, hymt_ready=lambda d: True) == "opus"
+@pytest.mark.parametrize("to", ["ru", "en", "ja", "follow"])
+def test_installed_gives_hymt_without_asking(to, monkeypatch):
+    asked = []
+    assert menuopts.speak_mt(to, ask=lambda p: asked.append(p) or "o", say=lambda m: None,
+                             hymt_ready=lambda d: True) == "hymt" and asked == []
+    monkeypatch.setenv("TLWU_MT", "opus")
+    assert menuopts.speak_mt(to, say=lambda m: None, hymt_ready=lambda d: True) == "opus"
 
 
-def test_en_defaults_to_opus_h_picks_hymt():
-    assert menuopts.speak_mt("en", ask=lambda p: "", say=lambda m: None, hymt_ready=lambda d: True) == "opus"
-    assert menuopts.speak_mt("en", ask=lambda p: "h", say=lambda m: None, hymt_ready=lambda d: True) == "hymt"
+def test_listen_cpu_defaults_to_hymt_without_asking(monkeypatch):
+    asked = []
+    kw = dict(ask=lambda p: asked.append(p) or "", say=lambda m: None, device=lambda: "cpu", mdir=".",
+              cpu_choice=lambda: None, hymt_ready=lambda d: True)
+    assert menuopts.listen_args(**kw)[-2:] == ["--engine", "hymt"] and asked == []
+    monkeypatch.setenv("TLWU_MT", "opus")
+    assert "--engine" not in menuopts.listen_args(**kw)
 
 
-@pytest.mark.parametrize("to", ["ru", "en"])
+@pytest.mark.parametrize("to", ["ru", "en", "ja", "follow"])
 def test_not_installed_gives_opus_and_hint_without_asking(to):
     said, asked = [], []
     assert menuopts.speak_mt(to, ask=lambda p: asked.append(p) or "h", say=said.append,
