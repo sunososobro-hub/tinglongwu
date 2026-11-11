@@ -3,7 +3,8 @@
   tlwu.exe                      double-click: first-run setup if needed, then the GUI
   tlwu.exe --cpu                same, forcing the CPU path
   tlwu.exe --setup              open the model setup screen again
-  tlwu.exe setup <args>         tlwu-setup on the command line (network; e.g. setup --whisper small --langs ru --to zh)
+  tlwu.exe --smoke              clean-machine check: load every native library, no models, exit 1 on failure
+  tlwu.exe setup <args>        tlwu-setup on the command line (network; e.g. setup --whisper small --langs ru --to zh)
   tlwu.exe <any tlwu flag>      the normal command line (e.g. --file x.mp3 --to zh, --mic, --gui)
 """
 from __future__ import annotations
@@ -96,6 +97,10 @@ def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["--run-setup"]:
         return run_setup_worker(argv[1:])
+    if argv[:1] == ["--smoke"]:  # clean-machine check: import every native module, no models (#9)
+        from .smoke import check
+
+        return check()
     bundled = is_bundled()
     if argv[:1] == ["setup"]:  # terminal users: tlwu.exe setup --whisper small ...
         mdir = prepare_env(bundled, False)
