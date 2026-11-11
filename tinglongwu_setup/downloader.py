@@ -162,12 +162,15 @@ def extract_argos(z: Path, dest: Path, work: Path) -> None:
             (shutil.copytree if item.is_dir() else shutil.copy2)(item, dest / item.name)
 
 
-def get_pair(man, mdir, pair):
+def get_pair(man, mdir, pair, allow_unpinned=False):
     s, t = pair.split("-")
     key, dest = f"opus-{s}-{t}", mdir / "opus" / pair
     pin = load_pins()["argos"].get(key)
     if dest.exists() and key in man:
         return pin_or_verify(man, key, dest, {}, pin and pin["files"])
+    if not pin and not allow_unpinned:
+        sys.exit(f"{key} is not in the committed pin manifest; refusing to download it from the mutable Argos "
+                 f"index. Re-run with --allow-unpinned to pin-on-first-download anyway.")
     url = pin["url"] if pin else man.get(key, {}).get("url")
     if not pin:
         print(f"WARNING: {key} is not in the committed pin manifest; trusting the mutable Argos index "
@@ -442,6 +445,8 @@ def main(argv=None) -> int:
     p.add_argument("--piper-ru", nargs="?", const="dmitri", default=None, choices=sorted(PIPER_RU),
                    help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
                         "piper-tts engine goes in its own TTS venv: pip install piper-tts")
+    p.add_argument("--allow-unpinned", action="store_true",
+                   help="allow Argos pairs that are not in the committed pin manifest (mutable index, pin-on-first-use)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
@@ -493,7 +498,7 @@ def main(argv=None) -> int:
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
              + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])
     for pr in dict.fromkeys(pairs):
-        get_pair(man, mdir, pr)
+        get_pair(man, mdir, pr, a.allow_unpinned)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     return 0
 

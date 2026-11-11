@@ -65,3 +65,6 @@ M_ASK_KOKORO='尚未安裝英文語音（Kokoro，約 120 MB）。現在安裝�
 M_VOSK_LICENSE='俄文語音模型上游未標示授權；下載請自負責任'
 M_ASK_VOSK='現在下載俄文語音模型嗎（選用）？[y/N] '
 M_VOSK_OPTIN='尚未安裝俄文語音模型（選用，需主動啟用）：俄文只顯示字幕。之後要啟用：tlwu-setup --vosk-tts-ru'
+M_UPD_PKG_ASK='相依套件有變動。現在執行 "python -m pip install -e ."？[y/N] '
+M_OFFLINE_BANNER='[離線模式] TLWU_OFFLINE=1：不更新、不下載。'
+M_OFFLINE_MISSING='缺少項目，離線模式不會下載。請在有網路時自行執行：%s'

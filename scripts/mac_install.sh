@@ -200,7 +200,7 @@ fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 
 # ---------------------------------------------------------------- 6. models
 say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 1-2 GB）"
-.venv/bin/tlwu-setup --whisper small --pair en-zh --pair zh-en \
+.venv/bin/tlwu-setup --whisper small --pair en-zh --pair zh-en --allow-unpinned \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
 fi
 

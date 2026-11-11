@@ -93,6 +93,14 @@ def from_bundle(zpath: Path, mdir: Path) -> int:
     return downloader.main(["--verify", "--models-dir", str(mdir)])  # SHA256 vs manifest
 
 
+OFFLINE_SAFE = {"-h", "--help", "--selftest", "--check-llama", "--verify", "--from-bundle"}  # never touch the network
+
+
+def offline_refused(args: list[str]) -> bool:
+    """TLWU_OFFLINE=1: refuse any networked setup unless --online is given (offline-only flags are fine)."""
+    return os.environ.get("TLWU_OFFLINE") == "1" and "--online" not in args and not (OFFLINE_SAFE & set(args))
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="tlwu-setup", add_help=False, description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -115,6 +123,11 @@ def main(argv=None) -> int:
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     args = list(sys.argv[1:] if argv is None else argv)
+    if offline_refused(args):
+        print("TLWU_OFFLINE=1: tlwu-setup needs the network and refuses to run. Add --online to allow it "
+              "(or unset TLWU_OFFLINE).", file=sys.stderr)
+        return 2
+    args = [x for x in args if x != "--online"]
     if "--selftest" in args:  # forward the rest verbatim (argparse here would take --model as --models-dir)
         return run_selftest([x for x in args if x != "--selftest"])
     a, rest = p.parse_known_args(args)

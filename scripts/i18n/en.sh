@@ -67,3 +67,6 @@ M_ASK_KOKORO='English voice (Kokoro, ~120 MB) is not installed. Install it now? 
 M_VOSK_LICENSE='Russian voice model license is not stated upstream; download at your own responsibility'
 M_ASK_VOSK='Download the Russian voice model now (optional)? [y/N] '
 M_VOSK_OPTIN='Russian voice model not installed (optional, opt-in): Russian will be subtitles only. To enable it later: tlwu-setup --vosk-tts-ru'
+M_UPD_PKG_ASK='Dependencies changed. Run "python -m pip install -e ." now? [y/N] '
+M_OFFLINE_BANNER='[OFFLINE MODE] TLWU_OFFLINE=1: no updates, no downloads.'
+M_OFFLINE_MISSING='Missing, and offline mode does not download. Run this yourself when online: %s'
