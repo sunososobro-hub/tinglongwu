@@ -135,7 +135,7 @@ New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block 
 python -m tinglongwu --file talk.wav      # 必須仍可運作
 Remove-NetFirewallRule -DisplayName "tlwu-block"
 ```
-Linux：`unshare -n -r python -m tinglongwu --file talk.wav`（測試請用 `--file`），或 nftables：`nft add rule inet filter output meta skuid $UID drop`。
+Linux：`scripts/linux_offline_run.sh --file talk.wav`（Ubuntu 23.10+ 的 AppArmor 會讓 `unshare -rn` 失敗；腳本以 sudo unshare＋setpriv 切網路，無 sudo 時回退 firejail），或 `unshare -n -r python -m tinglongwu --file talk.wav`（測試請用 `--file`），或 nftables：`nft add rule inet filter output meta skuid $UID drop`。
 macOS：`pf` 規則（`block drop out quick all user $USER`，以 `pfctl -f` 載入），或用 Little Snitch／LuLu 禁止該 Python 連網。
 
 接著執行 `python scripts/verify_offline.py --file talk.wav`。
