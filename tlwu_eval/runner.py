@@ -142,12 +142,15 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks) -> dict:
     tts_rtf = tts_s / tts_audio_s if tts_audio_s else None
     elapsed = clock() - t_lang
     mt_pairs = [(c["ref_mt"], c["mt"]) for c in clips if c["ref_mt"]]
+    kana = scoring.kana_rate([c["mt"] for c in clips]) if tgt == "zh" else None
     return {
         "pair": f"{src}->{tgt}", "clips": clips, "audio_s": round(audio_s, 2), "elapsed_s": round(elapsed, 2),
         "seconds": {"load": round(load_s, 3), "asr": round(asr_s, 3), "mt": round(sum(mt_times), 3),
                     "tts": round(tts_s, 3) if eng.tts is not None else None},
         "asr_rtf": None if asr_rtf is None else round(asr_rtf, 3), "mt_median_s": round(mt_median, 3),
         "tts_rtf": None if tts_rtf is None else round(tts_rtf, 3),
+        # #119: kana in zh output = untranslated Japanese; share x100 (2 decimals), any > 0 is red
+        "kana_rate": kana,
         "error_rate": round(scoring.error_rate([(c["ref_text"], c["asr"]) for c in clips], src), 4),
         "chrf": round(scoring.chrf(mt_pairs), 2) if mt_pairs else None,
         "stages": {
@@ -156,6 +159,7 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks) -> dict:
             "mt": _stage(mt_median <= MT_MEDIAN_MAX_S and all(c["mt"] for c in clips)),
             "tts": _stage(None if eng.tts is None else tts_rtf is not None and tts_rtf <= TTS_RTF_MAX),
             "time": _stage(elapsed <= LANG_BUDGET_S),
+            "kana": _stage(None if kana is None else scoring.kana_colour(kana) != "red"),
         },
     }
 

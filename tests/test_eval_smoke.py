@@ -66,7 +66,7 @@ def test_smoke_report_per_stage_times_and_pass(tmp_path):
     assert len(en["clips"]) == 5  # 6 in the manifest, smoke takes 5 per language
     assert en["seconds"] == {"load": 1.0, "asr": pytest.approx(2.0), "mt": pytest.approx(1.0), "tts": None}
     assert en["asr_rtf"] == pytest.approx(0.2) and en["mt_median_s"] == pytest.approx(0.2)  # 0.4 s per 2 s clip
-    assert en["stages"] == {"asr": "PASS", "mt": "PASS", "tts": "SKIP", "time": "PASS"}
+    assert en["stages"] == {"asr": "PASS", "mt": "PASS", "tts": "SKIP", "time": "PASS", "kana": "PASS"}
     assert en["error_rate"] == 0 and en["chrf"] == 100.0 and en["clips"][0]["latency_s"] == pytest.approx(0.6)
     assert rep["peak_ram_mib"] == 2000 and rep["peak_vram_mib"] is None
     sc = rep["score"]
@@ -121,3 +121,15 @@ def test_manifest_errors_are_clear(tmp_path):
     (tmp_path / "manifest.jsonl").write_text('{"id": "a", "lang": "en"}\n', "utf-8")
     with pytest.raises(ValueError, match="missing wav, ref_text"):
         runner.load_manifest(tmp_path)
+
+
+def test_kana_in_zh_output_turns_smoke_red(tmp_path):
+    c0 = Clock()
+    ok = smoke(tmp_path, c0, fake_engines(c0))
+    assert ok["pass"] and all(lg["kana_rate"] == 0.0 for lg in ok["languages"] if lg["pair"].endswith("zh"))
+    clock = Clock()
+    bad = smoke(tmp_path, clock, fake_engines(clock, mt_text="貓さんが座った"))
+    ja = next(lg for lg in bad["languages"] if lg["pair"] == "ja->zh")
+    assert ja["kana_rate"] == 100.0 and ja["stages"]["kana"] == "FAIL" and not bad["pass"]
+    zh = next(lg for lg in bad["languages"] if lg["pair"] == "zh->en")
+    assert zh["kana_rate"] is None and zh["stages"]["kana"] == "SKIP"
