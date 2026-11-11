@@ -10,6 +10,7 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
       --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
   tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
+  tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
   tlwu-setup --piper-ru        # Piper Russian voice dmitri (or: --piper-ru denis), CC0 data, ~60 MB
   tlwu-setup --verify          # offline integrity check
@@ -338,6 +339,40 @@ def get_piper_ru(man, mdir, voice="dmitri"):
     pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
 
 
+KOKORO_DIR = "kokoro"  # models/kokoro/ (the files tinglongwu.reverse.tts_worker loads)
+KOKORO_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+KOKORO_FILES = {  # name: (bytes, SHA256) from the official release, measured in #124
+    "kokoro-v1.0.int8.onnx": (92361271, "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb"),
+    "voices-v1.0.bin": (28214398, "bca610b8308e8d99f32efe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"),
+}
+KOKORO_PINS = {n: h for n, (_, h) in KOKORO_FILES.items()}
+
+
+def get_kokoro(man, mdir, opener=_open):
+    """Kokoro v1.0 int8 model + voices -> models/kokoro/. Committed size + SHA256 pins: a good local file is kept
+    (re-runs download nothing), a bad local file is re-downloaded, a bad download is deleted and setup aborts."""
+    dest = mdir / KOKORO_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    for name, (size, sha) in KOKORO_FILES.items():
+        f = dest / name
+        if f.is_file() and f.stat().st_size == size and sha256(f) == sha:
+            continue
+        if f.exists():
+            print(f"{name}: size/SHA256 does not match the pin, downloading it again")
+            f.unlink()
+        part = f.with_name(name + ".part")
+        print(f"downloading {name} (~{size // 1_000_000} MB)")
+        with opener(f"{KOKORO_BASE}/{name}", 600) as r, open(part, "wb") as out:
+            shutil.copyfileobj(r, out)
+        got = part.stat().st_size
+        if got != size or sha256(part) != sha:
+            part.unlink()
+            sys.exit(f"SHA256 MISMATCH vs committed pin for {name} ({got} bytes, expected {size}) - deleted, "
+                     f"refusing. Check your connection and run setup again.")
+        part.replace(f)
+    pin_or_verify(man, KOKORO_DIR, dest, {"url": KOKORO_BASE}, KOKORO_PINS)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
@@ -354,6 +389,8 @@ def main(argv=None) -> int:
     p.add_argument("--hymt", action="store_true",
                    help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
                         "Japanese listening/speaking (needs llama-cpp-python)")
+    p.add_argument("--kokoro", action="store_true",
+                   help="Kokoro v1.0 int8 TTS model + voices (~120 MB, Apache-2.0) for talk mode, pinned by SHA256")
     p.add_argument("--vosk-tts-ru", action="store_true",
                    help="OPT-IN: Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi). Upstream states no "
                         "license for it; never downloaded by default, download at your own responsibility")
@@ -372,6 +409,8 @@ def main(argv=None) -> int:
         for key in man:
             d = mdir / ("opus/" + key[5:] if key.startswith("opus-") else key)
             pf = (pins["models"].get(key) or pins["argos"].get(key) or {}).get("files")
+            if key == KOKORO_DIR:
+                pf = KOKORO_PINS
             if key.startswith("m2m-"):
                 pf = None  # pins cover the HF source files, not the locally converted CT2 output
             pin_or_verify(man, key, d, {}, pf)
@@ -391,6 +430,9 @@ def main(argv=None) -> int:
             mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt:
         get_hymt(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.kokoro:
+        get_kokoro(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.vosk_tts_ru:
         get_vosk_tts_ru(man, mdir)

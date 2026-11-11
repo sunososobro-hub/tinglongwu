@@ -171,3 +171,10 @@ def test_main_swallows_second_ctrl_c(monkeypatch, capsys):
     monkeypatch.setattr(proto, "_main", boom)
     assert proto.main([]) == 130
     assert "stopping" in capsys.readouterr().out
+
+
+def test_resolve_mic_default_is_virtual_cable_picks_real_mic():
+    # #124: the talk launcher passes --mic without a name; a default input set to the cable must not be used
+    assert resolve_mic_name(None, NAMES, "CABLE Output (VB-Audio Virtual Cable)") == "Microphone (Realtek)"
+    assert resolve_mic_name(None, ["CABLE Output (VB-Audio Virtual Cable)"], "CABLE Output (VB-Audio Virtual Cable)") \
+        == "CABLE Output (VB-Audio Virtual Cable)"  # nothing better: the feedback guard refuses it later

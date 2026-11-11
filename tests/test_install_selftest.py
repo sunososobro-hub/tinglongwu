@@ -128,8 +128,8 @@ def test_install_dry_run_shows_the_selftest_as_last_step():
     if r.returncode != 0 and any("Python 3.10-3.12 not found" in x for x in lines):
         pytest.skip("no Python 3.10-3.12 on PATH for the installer's step 1")
     assert r.returncode == 0, r.stdout + r.stderr
-    step7 = next(i for i, x in enumerate(lines) if x.startswith("[7/7] "))
-    st = [x for x in lines[step7:] if "[dry-run]" in x and "--selftest" in x]
+    step8 = next(i for i, x in enumerate(lines) if x.startswith("[8/8] "))
+    st = [x for x in lines[step8:] if "[dry-run]" in x and "--selftest" in x]
     assert len(st) == 1 and st[0].rstrip().endswith("--selftest --model small --engine opus --device cpu")
 
 
