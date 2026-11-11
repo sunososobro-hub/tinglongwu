@@ -713,7 +713,10 @@ def _main(argv, vm) -> int:
     import soundfile as sf
 
     from .. import offline  # noqa: F401  (applies offline env + network guard)
+    from .. import threads as thread_budget
     from ..asr import FasterWhisperRecognizer
+
+    thread_budget.set_role("speak")  # #250: one `tlwu: threads ...` line before any model loads
     from ..models import models_dir
     from .logic import split_sentences, translate_ru
     from .tts_client import TTSClient

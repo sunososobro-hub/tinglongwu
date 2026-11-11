@@ -265,6 +265,7 @@ if [ "$BOTH" = "1" ]; then
   read -rp "$(mp M_ASK_AUTOSEND)" ac
   AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)
   # listen in the background (no keyboard), speak in the foreground; Ctrl+C stops both
+  export TLWU_BOTH=1   # #250: both processes split one CPU thread budget (tinglongwu/threads.py)
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
   tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}" < /dev/null &
