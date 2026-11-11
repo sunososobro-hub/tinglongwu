@@ -42,6 +42,12 @@ if [ -n "$WHISPER" ]; then
     ask_setup --whisper "$WHISPER"
   fi
 fi
+# Developer option, off by default. TLWU_DEV_MONITOR=1: speak modes take the speaker monitor as the mic
+# (play a Chinese clip, measure latency without speaking).
+if [ "${TLWU_DEV_MONITOR:-}" = "1" ]; then
+  W_SPEAK+=(--mic "Monitor of" --allow-monitor)
+  echo "[dev] TLWU_DEV_MONITOR=1: speak modes use 'Monitor of' as the microphone input (not your real mic)."
+fi
 VOICE="${VOICE:-4}"
 KOKORO_PY="${KOKORO_PY:-$HOME/tts-kokoro/bin/python}"
 KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"

@@ -57,14 +57,16 @@ def resolve_mic_name(needle: str | None, names: list[str], default_name: str | N
 
 
 def check_mic_feedback(mic_name: str, out_device: str | None, out_name: str | None = None,
-                       same_name_ok: bool = False) -> None:
+                       same_name_ok: bool = False, allow_monitor: bool = False) -> None:
     """Raise ValueError if the mic is (the capture side of) the output device or a virtual cable output.
     same_name_ok: Linux/PulseAudio names a card's mic and speaker identically and loopback monitors are
-    listed separately ("Monitor of ..."), so a matching name there is the real mic, not a loopback."""
+    listed separately ("Monitor of ..."), so a matching name there is the real mic, not a loopback.
+    allow_monitor (--allow-monitor): "Monitor of <real card>" is accepted as input (play a clip, measure latency
+    without speaking); our own tlwu_ sink/mic stays blocked, so there is no loop."""
     m = mic_name.casefold()
     bad = ("cable output" in m or "tlwu_" in m  # VB-CABLE capture side / Linux virtual mic (tlwu_mic, tlwu_sink.monitor)
            or "blackhole" in m  # macOS: BlackHole 2ch is system audio, 16ch is where our own speech goes
-           or m.startswith("monitor of"))
+           or (m.startswith("monitor of") and not allow_monitor))
     for o in (() if same_name_ok else (out_device, out_name)):
         if not o:
             continue
@@ -77,9 +79,10 @@ def check_mic_feedback(mic_name: str, out_device: str | None, out_name: str | No
             f"(output={out_device or out_name!r}); pick your real microphone with --mic (see --list-mics)")
 
 
-def capture_segments(source, segmenter, stop: threading.Event) -> Iterator[np.ndarray]:
+def capture_segments(source, segmenter, stop: threading.Event, lat=None) -> Iterator[np.ndarray]:
     """Capture + VAD segmentation in a background thread; yields finished utterances until `stop` is set.
-    The capture thread never blocks on slow consumers (bounded queue absorbs bursts)."""
+    The capture thread never blocks on slow consumers (bounded queue absorbs bursts).
+    `lat` (reverse.logic.Lat): the silence waited after each segment (the endpoint delay) is stored as 'vad' (#186)."""
     q: queue.Queue = queue.Queue(maxsize=32)
     done = object()
 
@@ -88,7 +91,7 @@ def capture_segments(source, segmenter, stop: threading.Event) -> Iterator[np.nd
             for seg in segmenter.segments(source.frames()):
                 if stop.is_set():
                     return
-                q.put(seg)
+                q.put((seg, getattr(segmenter, "last_pause", 0.0)))
             q.put(done)
         except BaseException as e:  # noqa: BLE001 - re-raised in the consumer
             q.put(e)
@@ -103,7 +106,10 @@ def capture_segments(source, segmenter, stop: threading.Event) -> Iterator[np.nd
             return
         if isinstance(item, BaseException):
             raise item
-        yield item
+        seg, pause = item
+        if lat is not None:
+            lat.set("vad", float(pause))
+        yield seg
 
 
 def is_source_zh(text: str) -> bool:
