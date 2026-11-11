@@ -130,6 +130,11 @@ if [ "$L" = "auto" ]; then
     [ "$SPEAK" = "ru" ] || [ "$SPEAK" = "ja" ] || SPEAK=en
   fi
 fi
+# Language packs (#178): the install has zh+en; picking ja / ru offers that pack once with its size (default no).
+# Declining is fine: the checks below still ask for just the pieces this mode needs.
+for pk in "$L" "$SPEAK"; do
+  case "$pk" in ja|ru) tlwu-setup --pack-prompt "$pk" || true ;; esac
+done
 if [ "$mode" = "2" ] && { [ "$SPEAK" = "ja" ] || [ "$SPEAK" = "follow" ]; }; then
   if ! MISSING="$(ja_missing)"; then
     if [ "$SPEAK" = "ja" ]; then

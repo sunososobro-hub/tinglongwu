@@ -18,7 +18,7 @@ MB = 1024 * 1024
 WHISPER_PREFERENCE = ("large-v3-turbo", "large-v3", "medium", "small", "base", "tiny")
 
 # approximate download sizes in bytes (from the pinned repos), used for the progress bar only
-SIZES = {"whisper-small": 464 * MB, "whisper-large-v3-turbo": 1640 * MB, "opus": 250 * MB,
+SIZES = {"whisper-small": 464 * MB, "whisper-large-v3-turbo": 1640 * MB, "opus": 200 * MB,
          "hymt2-1.8b": 1130 * MB}
 GPU_MIN_TOTAL_MB = 4096  # == tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (turbo 1600 + Hy-MT2 1500 + headroom)
 
@@ -41,7 +41,7 @@ class Tier:
         return f"約 {gb:.1f} GB" if gb >= 1 else f"約 {self.total_bytes // MB} MB"
 
     def downloader_args(self) -> list[str]:
-        return ["--whisper", self.whisper, "--langs", "ru,ja,en", "--to", "zh", *self.mt]
+        return ["--whisper", self.whisper, "--packs", "zh,en", *self.mt]  # #178: ja/ru packs on demand
 
 
 def _tier(name, whisper, mt, label, mparts):
