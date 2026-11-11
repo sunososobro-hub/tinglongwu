@@ -55,7 +55,8 @@ def parse_args(argv=None):
     p.add_argument("--engine", choices=["auto", "hymt", "qwen", "qwen4b", "opus", "m2m"], default="auto",
                    help="auto (default): after Whisper loads, on a usable GPU pick Hy-MT2 when it is installed "
                         "(`tlwu-setup --hymt`, needs ~2 GB free VRAM); without it Qwen3-8B (>=5.8 GB free), "
-                        "else Qwen3-4B (>=3.5 GB); else OPUS (also on CPU); hymt = Hy-MT2 (direct src->target, "
+                        "else Qwen3-4B (>=3.5 GB); else OPUS; on CPU OPUS unless `tlwu --probe --speed` measured Hy-MT2 "
+                        "under 1.0 s/sentence on this machine; hymt = Hy-MT2 (direct src->target, "
                         "fast, ~1.5 GB); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
                         "(direct src->target LLM, needs `tlwu-setup --qwen`); opus: src->en->target OPUS-MT; "
                         "m2m: M2M-100 1.2B direct")

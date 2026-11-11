@@ -141,6 +141,23 @@ def run(hw: HwInfo, tier: Tier, models_dir, *, force: bool = False, path=None, m
     return r
 
 
+def cpu_choice(hw: HwInfo | None = None, path=None, probe=None) -> SpeedResult | None:
+    """The remembered speed test when it chose Hy-MT2 for CPU on this hardware (#131), else None.
+    Only reads the cache, never measures, so start-up is never held up. A GPU-tier entry (no CPU median) does not
+    count: on a GPU machine that runs on CPU (old driver, --device cpu) Hy-MT2 was never timed on the CPU."""
+    try:
+        if hw is None:
+            from .hwprobe import probe as _probe
+
+            hw = (probe or _probe)()
+        r = load_cached(hw, path)
+    except Exception:  # noqa: BLE001 - a broken probe/cache only means "no remembered choice"
+        return None
+    if r is None or r.mt != "hymt2" or r.hymt_median_s is None or r.hymt_median_s >= HYMT_CPU_MAX_MEDIAN_S:
+        return None
+    return r
+
+
 def apply(tier: Tier, r: SpeedResult) -> Tier:
     """The tier with the measured translation choice."""
     return tier if r.mt == tier.mt else replace(tier, mt=r.mt, reason=f"{tier.reason}; {r.note}")
