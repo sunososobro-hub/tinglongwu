@@ -25,7 +25,8 @@ def make(keys, synth=None):
             raise EOFError
 
     s = ConfirmSession(synth or default_synth, lambda a, sr: sent.append((len(a), sr)),
-                       lambda a, sr: prev.append(sr), out=log.append, readline=rl, flush=lambda: None)
+                       lambda a, sr: prev.append(sr), out=log.append, readline=rl, flush=lambda: None,
+                       max_pending=100)  # these tests queue many sentences up front (cap: test_confirm_queue_*)
     return s, sent, prev, log, calls
 
 
