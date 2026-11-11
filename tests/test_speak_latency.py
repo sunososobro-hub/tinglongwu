@@ -53,7 +53,7 @@ class Player:
 
 
 def _confirm(monkeypatch, mt, tts, **flags):
-    monkeypatch.setattr("builtins.input", lambda *x: "")
+    monkeypatch.setattr("builtins.input", lambda *x: "y")
     res, player = {"items": []}, Player()
     proto._run_confirm(SimpleNamespace(to="en", **flags), iter([(1, "mic", "你好")]), mt, tts, player,
                        SimpleNamespace(enabled=False), res)
@@ -96,7 +96,7 @@ def test_no_back_skips_the_second_mt_pass(monkeypatch, capsys):
 
 def test_late_back_translation_is_printed_as_its_own_line():
     log, shown = [], threading.Event()
-    keys = iter([""])
+    keys = iter(["y"])
 
     def readline():
         shown.set()
@@ -212,12 +212,12 @@ def test_confirm_mode_sends_first_sentence_before_synthesizing_the_second(monkey
             super().push(audio, sr)
             pushed.set()
 
-    monkeypatch.setattr("builtins.input", lambda *x: "")
+    monkeypatch.setattr("builtins.input", lambda *x: "y")
     res = {"items": []}
     proto._run_confirm(SimpleNamespace(to="en", no_back=True), iter([(1, "mic", "你好")]),
                        MT(en="First sentence. Second sentence."), SlowTTS(log=log), Out(log),
                        SimpleNamespace(enabled=False), res)
-    # after Enter each sentence goes out as soon as it exists; before #139 the whole utterance was synthesized
+    # after "y" each sentence goes out as soon as it exists; before #139 the whole utterance was synthesized
     # first and sent as one concatenated push (tts, tts, push)
     assert [e[0] for e in log] == ["tts", "push", "tts", "push"]
     assert res["items"][0]["decision"] == "sent"
@@ -235,7 +235,7 @@ def test_confirm_session_streams_parts_and_reports_a_tts_error_after_partial_aud
         sent.append(len(a))
         first_sent.set()
 
-    s = ConfirmSession(synth, send, out=out.append, readline=lambda: "")
+    s = ConfirmSession(synth, send, out=out.append, readline=lambda: "y")
     u = Utterance(1, "你好", "A. B.")
     s.submit(u)
     s.finish()
