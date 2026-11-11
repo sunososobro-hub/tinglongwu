@@ -239,6 +239,21 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     show_lat = getattr(a, "debug_latency", False)
     no_back = getattr(a, "no_back", False)
     src = getattr(a, "src", "zh")  # language the user speaks (#134: en -> the other side hears zh)
+    gate, pend = threading.Lock(), {}  # per-utterance: the lat dict (produce thread) and tts seconds (synth thread)
+
+    def lat_done(u, key, val) -> None:
+        """#142: tts finishes after produce() has already taken the lat dict; whichever side arrives last merges
+        the two and prints/stores the complete line."""
+        with gate:
+            st = pend.setdefault(id(u), {})
+            st[key] = val
+            if "lat" not in st or "tts" not in st:
+                return
+            del pend[id(u)]
+        st["lat"]["tts"] = round(st["tts"], 3)
+        u.extra["lat"] = st["lat"]
+        if show_lat:
+            print(lat_line(st["lat"]), file=sys.stderr, flush=True)
 
     def produce():
         try:
@@ -247,12 +262,14 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
+                t0 = lat.clock()
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
+                u.future.add_done_callback(
+                    lambda f, u=u, t0=t0: None if f.cancelled() or f.exception() else lat_done(u, "tts", lat.clock() - t0))
                 if not no_back:
                     sess.set_back(u, lat.timed("back", back_translate, mt, ru, lang, src))
-                u.extra["lat"] = lat.take()
-                if show_lat:
-                    print(lat_line(u.extra["lat"]), file=sys.stderr, flush=True)
+                u.extra["lat"] = taken = lat.take()  # partial until tts lands (lat_done merges it)
+                lat_done(u, "lat", taken)
         except Exception as e:  # noqa: BLE001
             # #130: never an empty message (AssertionError has none): name the exception and keep the traceback
             print(f"input stopped: {describe_error(e)}", flush=True)
