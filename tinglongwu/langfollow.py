@@ -31,13 +31,26 @@ def parse_candidates(s: str | None) -> tuple[str, ...]:
     return out or DEFAULT_CANDIDATES
 
 
-def pick_candidate(probs, candidates, fallback: str | None = None) -> str:
-    """Most probable language among `candidates`. probs: iterable of (lang, prob) or a dict."""
+SWITCH_MARGIN = 0.2   # new language must beat the current one by this much probability to take over
+MIN_SWITCH_SECS = 1.5  # ...and the segment must be at least this long (short clips / noise do not flip the language)
+
+
+def pick_candidate(probs, candidates, fallback: str | None = None, current: str | None = None,
+                   seconds: float | None = None, margin: float = SWITCH_MARGIN,
+                   min_secs: float = MIN_SWITCH_SECS) -> str:
+    """Most probable language among `candidates`, with stickiness. probs: iterable of (lang, prob) or a dict.
+
+    With `current` (the previous segment's language, if it is a candidate) the winner only replaces it when
+    it is `margin` more probable and the segment lasts `seconds` >= `min_secs`; otherwise `current` is kept.
+    No `current` (first segment) or no `seconds`: plain argmax over the candidates."""
     items = probs.items() if hasattr(probs, "items") else probs
     p = {lang: prob for lang, prob in items}
     best = max(candidates, key=lambda c: p.get(c, -1.0))
     if p.get(best, -1.0) < 0 and fallback:
         return fallback
+    if current and current in candidates and best != current and seconds is not None:
+        if seconds < min_secs or p.get(best, -1.0) - p.get(current, 0.0) < margin:
+            return current
     return best
 
 
