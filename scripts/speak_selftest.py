@@ -4,7 +4,7 @@ player), record what lands on the virtual mic, and score completeness. Exit 0 = 
 
     python scripts/speak_selftest.py --clip clip.wav [--to en] [--json out.json] [--keep-wav rec.wav]
 
-How it works (Windows; VB-CABLE must be installed): the same `tinglongwu.reverse.proto` live path runs in a child
+How it works (Windows: VB-CABLE must be installed; Linux: PulseAudio/PipeWire, records the tlwu_mic virtual mic): the same `tinglongwu.reverse.proto` live path runs in a child
 process, with only the microphone replaced by the clip (paced in real time, so VAD / endpointing behave as with a
 voice). Its output goes to "CABLE Input" (what windows_menu.ps1 uses); this process records the other end, "CABLE
 Output", with soundcard. Test-only differences from a real session: the half-duplex playback gate is off (the clip
@@ -35,6 +35,11 @@ MIN_RMS_DBFS = -35.0        # FAIL if RMS of the recorded speech < -35 dBFS
 MAX_STREAM_GAP_S = 0.30     # #207: FAIL if streamed TTS pieces of one sentence leave a silence longer than this
 TAIL_S = 2.0                # keep recording this long after the pipeline is done
 CABLE_IN, CABLE_OUT = "CABLE Input", "CABLE Output"
+LINUX_MIC = "tlwu_mic"  # Linux: the pipeline creates tlwu_sink + tlwu_mic itself (vmic.py); we record tlwu_mic
+
+
+def record_name(platform: str | None = None) -> str:
+    return CABLE_OUT if (platform or sys.platform) == "win32" else LINUX_MIC
 
 
 def dbfs(x: float) -> float:
@@ -188,14 +193,21 @@ class CableRecorder(threading.Thread):
         try:
             import soundcard as sc
 
-            from tinglongwu.capture._soundcard import com_initialized, patch_mixformat
-
-            patch_mixformat()
-            with com_initialized():
-                mic = next(m for m in sc.all_microphones() if self.name.casefold() in m.name.casefold())
+            def loop():
+                mic = next(m for m in sc.all_microphones(include_loopback=sys.platform != "win32")
+                           if self.name.casefold() in m.name.casefold())
                 with mic.recorder(samplerate=self.sr, channels=1, blocksize=self.sr // 10) as rec:
                     while not self.stop_ev.is_set():
                         self.chunks.append(rec.record(numframes=self.sr // 10).reshape(-1))
+
+            if sys.platform == "win32":
+                from tinglongwu.capture._soundcard import com_initialized, patch_mixformat
+
+                patch_mixformat()
+                with com_initialized():
+                    loop()
+            else:
+                loop()
         except BaseException as e:  # noqa: BLE001
             self.err = f"{type(e).__name__}: {e}"
 
@@ -207,11 +219,15 @@ def _find(*cands: Path):
     return next((str(c) for c in cands if c.exists()), None)
 
 
-def _proto_args(a) -> list[str]:
+def _proto_args(a, platform: str | None = None) -> list[str]:
+    win = (platform or sys.platform) == "win32"
     home = Path.home()
-    kpy = a.tts_python or _find(home / "tts-kokoro" / "Scripts" / "python.exe") or ""
+    kpy = a.tts_python or _find(*([home / "tts-kokoro" / "Scripts" / "python.exe"] if win else
+                                  [home / "tts-kokoro" / "bin" / "python"])) or ""
     kmodel = a.tts_model or _find(Path(a.models_dir or ROOT / "models") / "kokoro", home / "models" / "kokoro") or ""
-    args = ["--mic", "--to", a.to, "--no-confirm", "--device", CABLE_IN, "--allow-monitor"]
+    args = ["--mic", "--to", a.to, "--no-confirm"]
+    if win:
+        args += ["--device", CABLE_IN, "--allow-monitor"]  # Linux: no --device, proto creates tlwu_sink/tlwu_mic
     if a.models_dir:
         args += ["--models-dir", a.models_dir]
     if a.to in ("en", "ja"):
@@ -222,7 +238,7 @@ def _proto_args(a) -> list[str]:
 
 def run(a) -> dict:
     out: dict = {"clip": Path(a.clip).name, "to": a.to}
-    rec = CableRecorder(CABLE_OUT)
+    rec = CableRecorder(record_name())
     cmd = [sys.executable, str(Path(__file__).resolve()), "--child", "--clip", a.clip, "--"] + _proto_args(a)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONPATH": str(ROOT)}
     lines: list[str] = []
@@ -252,7 +268,7 @@ def run(a) -> dict:
     m = re.search(r"^SELFTEST (\{.*\})$", text, re.M)
     child = json.loads(m.group(1)) if m else {}
     if rec.err:
-        out["error"] = f"recording {CABLE_OUT!r} failed: {rec.err}"
+        out["error"] = f"recording {rec.name!r} failed: {rec.err}"
     elif not m and "error" not in out:
         out["error"] = "speak pipeline did not finish: " + " | ".join(lines[-3:])[:300]
     audio = rec.audio()
@@ -295,7 +311,7 @@ def main(argv=None) -> int:
     ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"])
     ap.add_argument("--whisper", default=None)
     ap.add_argument("--models-dir", default=None)
-    ap.add_argument("--tts-python", default=None, help="default: ~/tts-kokoro/Scripts/python.exe")
+    ap.add_argument("--tts-python", default=None, help="default: ~/tts-kokoro/Scripts/python.exe (Windows) or ~/tts-kokoro/bin/python (Linux)")
     ap.add_argument("--tts-model", default=None, help="default: <models>/kokoro")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--json", default=None, metavar="PATH", help="also write the JSON here")
@@ -306,8 +322,8 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if a.child:
         return _child(a)
-    if sys.platform != "win32":
-        print("FAIL speak_selftest supports Windows + VB-CABLE only (Linux/Mac: follow-up)", file=sys.stderr)
+    if sys.platform not in ("win32", "linux"):
+        print("FAIL speak_selftest supports Windows (VB-CABLE) and Linux (PulseAudio/PipeWire) only", file=sys.stderr)
         return 1
     if not Path(a.clip).is_file():
         print(f"FAIL clip not found: {a.clip}", file=sys.stderr)

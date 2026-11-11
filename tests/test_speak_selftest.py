@@ -70,3 +70,34 @@ def test_parse_log_reads_timing_lines():
     assert r["sentences_tts"] == 1 and len(r["latencies"]) == 2
     assert r["latencies"][0] == {"vad": 0.6, "stt": 1.1, "mt": 0.2, "tts": 0.8, "total": 2.7}
     assert r["latencies"][1]["tts"] is None
+
+
+def _args(**kw):
+    import argparse
+    d = dict(to="en", mt="auto", whisper=None, models_dir=None, tts_python=None, tts_model=None)
+    return argparse.Namespace(**{**d, **kw})
+
+
+def test_linux_records_tlwu_mic_and_uses_pipeline_vmic():
+    assert st.record_name("linux") == "tlwu_mic"
+    assert st.record_name("win32") == "CABLE Output"
+    lin = st._proto_args(_args(), "linux")
+    assert "--device" not in lin and "--allow-monitor" not in lin and "--no-vmic" not in lin
+    win = st._proto_args(_args(), "win32")
+    assert win[win.index("--device") + 1] == "CABLE Input" and "--allow-monitor" in win
+
+
+def test_linux_default_kokoro_python_is_posix_path(tmp_path, monkeypatch):
+    py = tmp_path / "tts-kokoro" / "bin" / "python"
+    py.parent.mkdir(parents=True)
+    py.write_text("")
+    monkeypatch.setattr(st.Path, "home", classmethod(lambda cls: tmp_path))
+    a = st._proto_args(_args(), "linux")
+    assert a[a.index("--tts-python") + 1] == str(py)
+
+
+def test_main_no_longer_refuses_linux(tmp_path, capsys):
+    if not __import__("sys").platform.startswith("linux"):
+        pytest.skip("linux only")
+    assert st.main(["--clip", str(tmp_path / "missing.wav")]) == 1
+    assert "clip not found" in capsys.readouterr().err
