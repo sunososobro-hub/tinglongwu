@@ -241,7 +241,7 @@ const NOW=Date.parse(d.generated_at),DAY=864e5,sn0=d.snapshots||[];
 const snap7=()=>{const old=sn0.filter(s=>NOW-Date.parse(s.t)>=7*DAY);return old.length?old[old.length-1]:(sn0.length>1?sn0[0]:null)};
 const lastN=(a,n)=>a.slice(-n).map(x=>x[1]||0),sum=a=>a.reduce((x,y)=>x+y,0);
 const lastVal=a=>{for(let i=a.length-1;i>=0;i--)if(a[i][1]!=null)return a[i][1];return null};
-const badge=(ok,rule)=>{const t=ok==null?'na':ok?'ok':'bad',w=ok==null?'n/a':ok?'好':'要注意';return '<span class="bd '+t+'" title="'+rule+'">'+w+'</span><span class="rule">'+rule+'</span>'};
+const badge=(ok,rule)=>{const t=ok==null?'na':ok?'ok':'bad',w=ok==null?'n/a':ok?'OK':'Watch';return '<span class="bd '+t+'" title="'+rule+'">'+w+'</span><span class="rule">'+rule+'</span>'};
 const R={
  commits24:()=>[sum(lastN(d.commits_per_hour,24))>0,'Rule: commits in last 24h > 0'],
  commitsDays:()=>[lastN(d.commits_per_day,7).filter(x=>x>0).length>=3,'Rule: commits on at least 3 of the last 7 days'],
