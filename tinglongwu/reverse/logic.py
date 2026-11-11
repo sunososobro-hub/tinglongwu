@@ -133,9 +133,10 @@ def timing_line(t: dict, tts: bool = True) -> str:
 
 
 def live_endpoint(device: str, override=None, env=None) -> tuple[float, float]:
-    """(min_silence, step) seconds for the live Segmenter. The end-of-speech wait is min_silence rounded up to the
-    next step, so CPU (#186) uses 0.4 / 0.25 instead of 0.6 / 0.5. `override` (--end-silence) or env
-    TLWU_END_SILENCE wins; CUDA keeps the old defaults."""
+    """(min_silence, step) seconds for the live Segmenter. The end-of-speech wait is VAD pad + min_silence rounded up
+    to the next step. CPU (#186) uses 0.5 / 0.25 with a 0.1 s pad (live_vad_pad): about 0.6 s of real silence ends a
+    sentence, measured median wait 0.68 s (was 1.25 s with 0.6 / 0.5 and the 0.4 s pad). `override` (--end-silence)
+    or env TLWU_END_SILENCE wins; CUDA keeps the old defaults."""
     import os
 
     raw = override if override is not None else (os.environ if env is None else env).get("TLWU_END_SILENCE")
@@ -145,7 +146,22 @@ def live_endpoint(device: str, override=None, env=None) -> tuple[float, float]:
         sil = None
     if sil is not None and sil > 0:
         return sil, (0.5 if device == "cuda" else min(0.25, sil))
-    return (0.6, 0.5) if device == "cuda" else (0.4, 0.25)
+    return (0.6, 0.5) if device == "cuda" else (0.5, 0.25)
+
+
+def live_vad_pad(device: str, env=None) -> float | None:
+    """Silero span padding (s) for the live speak Segmenter, or None = library default 0.4 s (CUDA, unchanged).
+    The pad is pure waiting before a pause can be seen (the cut still keeps 0.5 s of overlap audio after the speech),
+    so CPU uses 0.1 s (#186). Env TLWU_VAD_PAD (seconds, >= 0) overrides on any device."""
+    import os
+
+    raw = (os.environ if env is None else env).get("TLWU_VAD_PAD")
+    try:
+        if raw not in (None, "") and float(raw) >= 0:
+            return float(raw)
+    except ValueError:
+        pass
+    return None if device == "cuda" else 0.1
 
 
 class TimedASR:
