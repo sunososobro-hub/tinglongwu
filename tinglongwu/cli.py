@@ -292,6 +292,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         warned.append(m)
 
     dev = resolve_device(a.compute, warn=warn)
+    from . import threads as thread_budget
+
+    thread_budget.set_role("listen")  # #250: one `tlwu: threads ...` line before any model loads
     if a.model is None:
         a.model = auto_model(getattr(a, "quality", "auto"), dev, mdir)
     if notice is not None and dev == "cpu" and a.compute != "cpu":

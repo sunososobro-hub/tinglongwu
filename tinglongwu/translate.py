@@ -225,8 +225,10 @@ class OpusStep:
         import ctranslate2
         import sentencepiece
 
+        from .threads import ct2_kwargs
+
         self.tr = ctranslate2.Translator(str(d / "model"), device=device,
-                                         compute_type=compute_type(device, "mt"))
+                                         compute_type=compute_type(device, "mt"), **ct2_kwargs(device))
         self.sp = sentencepiece.SentencePieceProcessor(model_file=str(d / "sentencepiece.model"))
         meta = json.loads((d / "metadata.json").read_text("utf-8")) if (d / "metadata.json").exists() else {}
         self.prefix = meta.get("target_prefix") or ""

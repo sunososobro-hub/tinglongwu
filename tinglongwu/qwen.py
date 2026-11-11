@@ -207,6 +207,7 @@ def _load_llama(path: Path, gpu: bool):
     A build compiled for instructions this CPU lacks (issue #74: AVX-512 wheel on an AVX2 CPU) raises
     llamacheck.LlamaBuildError with the fix, instead of a bare 'Windows Error 0xc000001d'."""
     from . import llamacheck
+    from . import threads as thread_budget
     from .device import register_cuda_libs
 
     register_cuda_libs()
@@ -223,8 +224,9 @@ def _load_llama(path: Path, gpu: bool):
     from llama_cpp import Llama
 
     try:
+        t = thread_budget.current()  # #250: explicit, so listen+speak can share the CPU (listen-only = old defaults)
         return Llama(model_path=str(path), n_gpu_layers=-1 if gpu else 0, n_ctx=N_CTX, flash_attn=gpu,
-                     verbose=False)
+                     n_threads=t["mt"], n_threads_batch=t["mt_batch"], verbose=False)
     except OSError as e:
         err = llamacheck.explain(e)
         if err is e:

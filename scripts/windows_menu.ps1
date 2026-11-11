@@ -159,6 +159,7 @@ if ($both) {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
     }
     # listen in its own window; speak in this one
+    $env:TLWU_BOTH = "1"   # #250: both processes split one CPU thread budget (tinglongwu/threads.py)
     Remove-Item $followFile -ErrorAction SilentlyContinue
     $listenArgs = $listenLang + $wL
     # Start-Process joins arguments with spaces: quote the ones that contain spaces (glossary folder under the profile)

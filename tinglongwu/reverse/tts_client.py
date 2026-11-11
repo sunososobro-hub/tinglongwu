@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from ..threads import tts_env
+
 
 class TTSClient:
     def __init__(self, tts_python: str, model: str, engine: str = "vosk", speaker: int = 4, lang: str = "en"):
@@ -15,7 +17,7 @@ class TTSClient:
             raise ValueError(f"unknown TTS engine {engine!r} (built-in fixed voices only: vosk, kokoro, piper)")
         cmd = [tts_python, str(worker), "--engine", engine, "--model", model, "--speaker", str(speaker)]
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
-               "TLWU_MODE": "worker"}
+               "TLWU_MODE": "worker", **tts_env()}  # #250: onnxruntime threads in listen+speak mode
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         self.ready = self._read_header()
         if self.ready.get("t") != "ready":
