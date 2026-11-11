@@ -20,8 +20,10 @@ $Warnings  = New-Object System.Collections.ArrayList
 $LlamaChk  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[0])'   # loads, fits this CPU (#74), has GPU offload
 
 $LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[1])'
+$LlamaChkCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[0])'   # CPU build for Japanese (#126)
+$LlamaWhyCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[1])'
 . (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
-$Gpu = $false; $ModelGB = 0
+$Gpu = $false; $ModelGB = 0; $JaHymt = $false
 function Step($n, $zh, $en) {
     Write-Host ""; Write-Host "[$n/7] $zh / $en" -ForegroundColor Cyan
     Write-Host "      $(Format-TlwuEstimate (Get-TlwuStepEstimate $n $Gpu $ModelGB))" -ForegroundColor DarkCyan
@@ -96,6 +98,14 @@ if ($Gpu) {
 } else {
     if (-not $Cpu) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower, OPUS engine). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
     $Whisper = 'small'; $QwenFlag = $null; $QwenTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1
+    # #126: OPUS cannot do Japanese; with enough RAM the CPU tier also gets Hy-MT2 (+ a CPU llama-cpp-python build)
+    $RamMB = Get-TlwuRamMB
+    $JaHymt = Test-TlwuCpuJapanese $RamMB
+    if ($JaHymt) {
+        $QwenTxt = 'none (CPU: OPUS engine; Japanese: Hy-MT2 1.8B ~1.1 GB)'; $SizeGB = '~2 GB'; $ModelGB = 2
+        Ok "CPU path / CPU 路線: whisper=$Whisper, $QwenTxt"
+    }
+    else { Warn "Only ${RamMB} MB RAM: Japanese translation is not supported on this PC (needs 4 GB); English and Russian work. 記憶體不足 4 GB：此電腦不支援日文翻譯，英文、俄文可用。" }
 }
 if ($SkipModels) { $ModelGB = 0 }
 Info "Expected model download / 預計下載模型: $SizeGB (plus ~3 GB of Python packages / 另有約 3 GB 套件)"
@@ -120,7 +130,32 @@ Ok "Packages installed / 套件完成"
 # ---------------------------------------------------------------- 4. GPU libs + llama-cpp
 Step 4 'GPU 函式庫與 Qwen 引擎' 'GPU libraries and Qwen engine'
 $Engine = 'opus'
-if (-not $Gpu) { Info "CPU path: skipped / CPU 路線略過" }
+if (-not $Gpu -and -not $JaHymt) { Info "CPU path: skipped / CPU 路線略過" }
+elseif (-not $Gpu) {   # #126: CPU build of llama-cpp-python, only for Hy-MT2 Japanese translation
+    Info "CPU path: Japanese translation engine (llama-cpp-python, CPU build) / CPU 路線：安裝日文翻譯引擎"
+    $have = $false
+    if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True') }
+    if ($have) { Ok "llama-cpp-python already works / 已可用" }
+    else {
+        $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cpu.txt', '--only-binary=:all:')
+        if ($ok -and -not $DryRun) {
+            $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
+            if (-not $ok) {   # same version from another index (e.g. an AVX-512 CUDA build, #74): replace it
+                [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cpu.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
+                $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
+            }
+            if (-not $ok) {   # never leave a build behind that would crash tlwu on this CPU
+                Warn "llama-cpp-python failed the self-check: $(Capture $VPy @('-c', $LlamaWhyCpu))"
+                [void](Run $VPy @('-m', 'pip', 'uninstall', '-y', 'llama-cpp-python'))
+            }
+        }
+        if ($ok) { [void]$Installed.Add('llama-cpp-python (CPU build, for Japanese)') }
+        else {
+            $JaHymt = $false
+            Warn "No usable llama-cpp-python CPU build: Japanese falls back to the low-quality OPUS route. 日文翻譯引擎安裝失敗，日文改用品質較差的 OPUS 路線。"
+        }
+    }
+}
 else {
     if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
     else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
@@ -159,6 +194,10 @@ else {
     if ($QwenFlag) {
         if (Run $VSet @($QwenFlag)) { [void]$Installed.Add("Qwen model ($QwenTxt)") }
         else { Warn "Qwen download failed; will use the OPUS engine. Re-run install.bat to retry."; $Engine = 'opus' }
+    }
+    if ($JaHymt) {
+        if (Run $VSet @('--hymt')) { [void]$Installed.Add('Hy-MT2 1.8B (Japanese translation on CPU)') }
+        else { Warn "Hy-MT2 download failed: Japanese uses the low-quality OPUS route until you re-run install.bat. Hy-MT2 下載失敗，重跑 install.bat 可補裝。" }
     }
 }
 

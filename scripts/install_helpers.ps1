@@ -69,3 +69,22 @@ function Invoke-TlwuNative([string]$exe, [string[]]$a) {
     $p.WaitForExit()
     return [int]$p.ExitCode
 }
+
+# #126: Japanese on the CPU tier. OPUS has no usable Japanese pairs, so a CPU PC gets Hy-MT2-1.8B (Q4_K_M GGUF,
+# ~1.1 GB on disk, ~1.5 GB RAM loaded) through a CPU llama-cpp-python wheel. Below a nominal 4 GB of RAM it does not
+# fit next to Whisper small and Windows, so Japanese is reported as unsupported instead. A "4 GB" PC reports about
+# 3.7-3.9 GB total (firmware / integrated-GPU reserve), hence 3584 MB. Unknown RAM: try it (tlwu falls back to OPUS).
+$script:TlwuJaMinRamMB = 3584
+
+# Physical RAM in MB, $null when it cannot be read. CI-only: TLWU_TEST_RAM_MB pretends a size (tests of the low-RAM path).
+function Get-TlwuRamMB {
+    if ($env:TLWU_TEST_RAM_MB) { return [int]$env:TLWU_TEST_RAM_MB }
+    try { return [int]((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB) }
+    catch { return $null }
+}
+
+# Install the CPU Japanese translator (llama-cpp-python CPU build + Hy-MT2)? $ramMB may be $null (unknown).
+function Test-TlwuCpuJapanese($ramMB) {
+    if ($null -eq $ramMB) { return $true }
+    return ([double]$ramMB -ge $script:TlwuJaMinRamMB)
+}
