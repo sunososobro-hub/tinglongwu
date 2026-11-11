@@ -144,9 +144,10 @@ def _synth_sentences(tts, ru: str, stats: list | None = None):
 
 
 def _make_synth(tts):
+    """Confirm-mode synth: a generator of sentence parts, run by the session's TTS worker; after Enter each part is
+    sent as soon as it exists, so sentence 1 plays while the rest is still synthesized (#139)."""
     def synth(ru: str):
-        parts = list(_synth_sentences(tts, ru))
-        return (np.concatenate([p for p, _ in parts]), parts[-1][1]) if parts else None
+        return _synth_sentences(tts, ru)
 
     return synth
 
@@ -327,24 +328,34 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
                              "pieces": sent, "gap_max": gaps.max})
 
 
+PAUSE_MIN, PAUSE_MAX = 0.3, 2.0  # silero_vad merges gaps < 300 ms (segment.py), so a shorter tail cannot be heard
+
+
+def make_segmenter(max_seg: float, dev: str = "cpu", pause=None, vad_fn=None, env=None):
+    """Live speak-mode VAD segmenter: an utterance ends after `pause` s of silence (--pause/--end-silence, #139;
+    None = live_endpoint's per-device default). Returns (segmenter, configured silence)."""
+    from ..segment import Segmenter
+    from .logic import live_endpoint, live_vad_pad
+
+    sil, step = live_endpoint(dev, pause, env)
+    extra = {"vad_fn": vad_fn} if vad_fn is not None else {}
+    return Segmenter(max_seg, True, min_silence=sil, step=step, vad_pad=live_vad_pad(dev, env), **extra), sil
+
+
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     """Mic -> VAD segments -> Whisper(zh) -> same pipeline. Ctrl+C stops capture and kills the TTS subprocess."""
     from ..capture.mic import MicSource
-    from ..segment import Segmenter
     from .live import capture_segments, recognize_utterances
 
-    from .logic import Lat, TimedASR, live_endpoint, live_vad_pad, timing_line
+    from .logic import Lat, TimedASR, timing_line
 
     stop = threading.Event()
     src = getattr(a, "src", "zh")
-    a.lat = lat = Lat()
+    seg, sil = make_segmenter(a.chunk_s, getattr(a, "dev", "cpu"), getattr(a, "end_silence", None))
+    a.lat = lat = Lat(fixed={"vad": sil})  # configured end-of-speech silence, shown as vad= in the lat line (#139)
     asr = TimedASR(asr, lat) if asr is not None else None
-    dev = getattr(a, "dev", "cpu")
-    sil, step = live_endpoint(dev, getattr(a, "end_silence", None))
     items = ((n, "mic", zh) for n, zh in enumerate(
-        recognize_utterances(capture_segments(MicSource(a.mic_name),
-                                              Segmenter(a.chunk_s, True, min_silence=sil, step=step,
-                                                        vad_pad=live_vad_pad(dev)), stop, lat), asr,
+        recognize_utterances(capture_segments(MicSource(a.mic_name), seg, stop, lat), asr,
                          gate=getattr(player, "gate", None), src=src), 1))
     box: list = []
     print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
@@ -377,19 +388,47 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         previewer.enabled = False
 
 
+def choose_speak_mt(kind: str, device: str, mdir, free_mib=None) -> tuple[str, str]:
+    """(engine, reason) for speak mode; engine in hymt | qwen | opus (#139).
+
+    auto = Hy-MT2 on CUDA when its GGUF is installed and free VRAM >= qwen.HYMT_MIN_FREE_MIB (the listen-mode rule,
+    qwen.choose_engine / #66), else OPUS. Qwen is used only when asked for (--mt qwen): Hy-MT2 matches Qwen3-8B
+    quality at ~4x the speed and ~1.5 GB VRAM, and speak mode is latency-bound."""
+    if kind != "auto":
+        return kind, "requested"
+    if device != "cuda":
+        return "opus", "no usable CUDA GPU (CPU mode)"
+    from ..hymt import hymt_path
+    from ..qwen import HYMT_MIN_FREE_MIB, free_vram_mib
+
+    if not hymt_path(mdir).exists():
+        print(f"Hy-MT2 (the recommended GPU translation engine) is not installed ({hymt_path(mdir)} missing); "
+              f"run `tlwu-setup --hymt` once (with network). Using OPUS; --mt qwen for Qwen3.", file=sys.stderr)
+        return "opus", "Hy-MT2 not installed"
+    free = (free_mib or free_vram_mib)()
+    if free is None:
+        return "opus", "could not read free VRAM"
+    if free < HYMT_MIN_FREE_MIB:
+        return "opus", f"{free} MiB VRAM free < {HYMT_MIN_FREE_MIB} MiB for Hy-MT2"
+    return "hymt", f"{free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
+
+
 def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", follow_langs=("en", "ru"),
-                     src: str = "zh"):
-    """zh->ru|en translator. qwen (GPU, best; any target) or opus (Argos/OPUS on CPU). ru = pivot zh->en->ru, needs
+                     src: str = "zh", free_mib=None, hy_factory=None):
+    """zh->ru|en|ja translator (and the reverse, for the back-translation shown while confirming).
+    hymt = Hy-MT2 direct for every pair (`tlwu-setup --hymt`; falls back to OPUS loudly if it fails to load);
+    qwen (GPU, any target); opus (Argos/OPUS on CPU): ru = pivot zh->en->ru, needs
     `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`; en = direct zh->en, needs
-    `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming).
-    ja = direct zh<->ja through Hy-MT2 (`tlwu-setup --hymt`; OPUS has no usable Japanese), the rest stays OPUS.
-    auto = qwen on CUDA, opus otherwise.
+    `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming);
+    ja = direct zh<->ja through Hy-MT2 (OPUS has no usable Japanese), the rest stays OPUS.
+    auto = see choose_speak_mt (Hy-MT2 on CUDA when installed, else OPUS).
     src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs;
     qwen only when asked for (--mt qwen)."""
     if src == "en" and kind == "auto":
-        kind = "opus"
-    if kind == "auto":
-        kind = "qwen" if device == "cuda" else "opus"
+        kind, why = "opus", "--from en: Hy-MT2 en<->zh when installed, else OPUS"
+    else:
+        kind, why = choose_speak_mt(kind, device, mdir, free_mib)
+    print(f"translation engine: {kind} ({why})", flush=True)
     if kind == "qwen":
         from ..qwen import QwenTranslator
 
@@ -402,7 +441,15 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", fo
     targets = tuple(follow_langs) if to == "follow" else (to,)
     dev = "cpu" if device != "cuda" else "cuda"
     mt = PivotTranslator(mdir, "tw", device=dev)
-    if src != "zh":
+    if kind == "hymt":
+        from ..hymt import hymt_path
+        from ..models import require
+
+        require(hymt_path(mdir), "Hy-MT2 translation model", "--hymt")  # explicit --mt hymt without the file
+        mt = JaRouter(mt, mdir, "tw", dev, all_pairs=True, **({"factory": hy_factory} if hy_factory else {}))
+        if mt.hy is None:
+            mt._fallback(RuntimeError(mt.hy_error))
+    elif src != "zh":
         mt = JaRouter(mt, mdir, "tw", dev, all_pairs=True)
     elif "ja" in targets:
         mt = JaRouter(mt, mdir, "tw", dev)
@@ -453,6 +500,9 @@ def check_args(a) -> str | None:
     """Validate/normalise cross-option rules in place; returns an error message or None."""
     if a.to is None:  # #134: --to follows --from (en -> zh); must be set before the TTS engine is resolved
         a.to = "zh" if getattr(a, "src", "zh") == "en" else "ru"
+    pause = getattr(a, "end_silence", None)
+    if pause is not None and not PAUSE_MIN <= pause <= PAUSE_MAX:
+        return f"--pause/--end-silence takes {PAUSE_MIN}-{PAUSE_MAX} seconds, got {pause}"
     resolve_tts_engine(a)
     langs = tuple(x.strip() for x in getattr(a, "follow_langs", "en,ru").split(",") if x.strip())
     bad = [x for x in langs if x not in ("en", "ru", "ja")]
@@ -529,8 +579,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--to", default=None, choices=["ru", "en", "ja", "zh", "follow"],
                     help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
                          "no pivot; use with --tts-engine kokoro)")
-    ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
-                    help="translator; auto = Qwen3 on CUDA, OPUS/Argos on CPU (ru: pivot zh->en->ru; en: direct zh->en)")
+    ap.add_argument("--mt", default="auto", choices=["auto", "hymt", "qwen", "opus"],
+                    help="translator; auto = Hy-MT2 on CUDA when installed (tlwu-setup --hymt), else OPUS/Argos "
+                         "(ru: pivot zh->en->ru; en: direct zh->en); hymt = Hy-MT2 direct; qwen = Qwen3 (--qwen)")
     ap.add_argument("--no-vmic", action="store_true",
                     help="Linux/macOS: do not create/select the virtual microphone (tlwu_mic / BlackHole 16ch); use --device yourself")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
@@ -556,9 +607,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="--to follow: Russian voice model dir, Vosk or Piper (default: installed Piper ru voice)")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
-    ap.add_argument("--end-silence", type=float, default=None, metavar="SEC",
-                    help="live: silence that ends a sentence (default 0.5 on CPU + 0.1 VAD pad, 0.6 on CUDA; env "
-                         "TLWU_END_SILENCE; pad: env TLWU_VAD_PAD)")
+    ap.add_argument("--end-silence", "--pause", dest="end_silence", type=float, default=None, metavar="SEC",
+                    help=f"live: silence that ends a sentence ({PAUSE_MIN}-{PAUSE_MAX} s; default 0.5 on CPU + 0.1 VAD "
+                         "pad, 0.6 on CUDA; env TLWU_END_SILENCE; pad: env TLWU_VAD_PAD). Lower = audio starts sooner, "
+                         "but a short breath may split a sentence (try 0.3/0.5/0.8)")
     ap.add_argument("--allow-monitor", action="store_true",
                     help="Linux: accept 'Monitor of <real sound card>' as the mic (e.g. --mic \"Monitor of\": play a clip "
                          "and measure latency without speaking). Our own tlwu_ devices stay blocked")
