@@ -31,6 +31,14 @@ ask_setup() {
   tlwu-setup "$@"
 }
 
+# Kokoro (English voice) is normally installed by install.sh; if it is missing, offer the same installer (default = no).
+ensure_kokoro() {
+  [ -x "$KOKORO_PY" ] && [ -f "$KOKORO_MODEL/kokoro-v1.0.int8.onnx" ] && [ -f "$KOKORO_MODEL/voices-v1.0.bin" ] && return 0
+  local ans=""
+  read -rp "$(mp M_ASK_KOKORO)" ans || ans=""
+  case "$ans" in y|Y|yes|YES|Yes) bash scripts/linux_kokoro.sh || exit 1 ;; *) m M_DOWNLOAD_DECLINED; exit 1 ;; esac
+}
+
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
 VOSK_MODEL="${VOSK_MODEL:-$HOME/vosk-model-tts-ru-0.7-multi}"
 WHISPER="${WHISPER:-}"   # empty = program default
@@ -198,14 +206,15 @@ if [ "$SPEAK" = "follow" ]; then
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL"
        --vosk-python "$VOSK_PY" --vosk-model "$VOSK_MODEL" "${W_SPEAK[@]}")
   TXT=()
-  [ -d "$KOKORO_MODEL" ] || { m M_NO_KOKORO_EN "$KOKORO_MODEL"; exit 1; }
+  ensure_kokoro
 elif [ "$SPEAK" = "ja" ]; then
   # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
   REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to ja
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
   TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ja "${W_SPEAK[@]}")
-  [ -d "$KOKORO_MODEL" ] || { m M_NO_KOKORO "$KOKORO_MODEL"; exit 1; }
+  ensure_kokoro
 elif [ "$SPEAK" = "en" ]; then
+  ensure_kokoro
   # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
   if ! have_pairs zh-en en-zh; then
     m M_NO_MODEL_ZH_EN
