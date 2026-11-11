@@ -339,5 +339,6 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 - **無從屬關係。** 與 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴（Qwen）、騰訊（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方皆無關聯，亦未獲其背書。所有商標歸各自所有人。
 - **網路防護。** 網路防護是盡力而為，不保證沒有任何資料離開你的機器。
 - **安全。** 見 [SECURITY.md](SECURITY.md)。
+- **隱私。** 見 [PRIVACY.zh-TW.md](PRIVACY.zh-TW.md)（[English](PRIVACY.md)）。
 
 MIT 授權，見 [LICENSE](LICENSE)。(c) 2026 Alonso。
