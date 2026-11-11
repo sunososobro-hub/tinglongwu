@@ -103,6 +103,12 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在离线电脑上安装�
 
 ### 防火墙封锁测试
 
+一行命令在断网状态下运行聆听、朗读、会议三种模式并检查都仍能翻译（Windows：管理员终端，自动添加并一定会删除该 Python 的出站封锁规则；Linux：空网络命名空间；macOS：先自行封锁再加 `--already-blocked`）：
+```
+python scripts/firewall_test.py --listen-wav talk.wav --speak-wav zh.wav   # 退出码 0 = 通过
+```
+加 `--tts-python <kokoro venv python> --tts-model <kokoro 目录>` 一并测试语音合成。手动步骤：
+
 Windows（管理员 PowerShell）：
 ```powershell
 New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block -Program (Get-Command python).Source
