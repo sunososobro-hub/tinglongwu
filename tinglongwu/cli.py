@@ -180,6 +180,13 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
     return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
 
 
+def apply_glossary(translator, glossary) -> None:
+    """Hand the --glossary to the MT engine: Qwen uses it in its prompt; JaRouter passes it on to Hy-MT2 and the
+    OPUS pivot, which apply its `~` wrong-rendering fixes to their zh output (#30, #174)."""
+    if hasattr(translator, "glossary"):
+        translator.glossary = glossary
+
+
 def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, make_opus=None,
                   log=None):
     """Wrap ASR / MT so the latency controller can swap models at run time (#80).
@@ -193,7 +200,7 @@ def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make
     if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator, M2mTranslator)):
         def opus():
             tr = JaRouter(PivotTranslator(mdir, a.zh_variant, device=dev), mdir, a.zh_variant, dev)
-            tr.base.glossary = glossary
+            tr.glossary = glossary  # Hy-MT2 and the OPUS pivot behind the router (#174)
             for src in ([a.lang] if a.lang != "auto" else (cands or [])):
                 if src != a.to:
                     tr.preload(src, a.to)  # ModelNotFound here = OPUS is not a candidate
@@ -298,9 +305,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         note("loading translation engine...")
         translator = make_translator(a.engine, mdir, a.zh_variant, dev)
         if glossary is not None:
-            for t in (translator, getattr(translator, "base", None)):  # JaRouter wraps the OPUS pivot
-                if hasattr(t, "glossary"):
-                    t.glossary = glossary
+            apply_glossary(translator, glossary)
         if a.lang != "auto":
             translator.preload(a.lang, a.to)
         elif cands:  # fail early on missing models; the translator caches one step per language pair
