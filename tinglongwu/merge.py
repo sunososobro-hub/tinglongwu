@@ -14,12 +14,17 @@ from dataclasses import dataclass
 _SPLIT = re.compile(r"(?<=[.!?…])\s+|(?<=[。！？])\s*")
 _END = re.compile(r"[.!?…。！？][\"'»”)\]]*\s*$")
 _ABBREV = re.compile(r"(?:^|\s)(?:\w{1,2}\.)$")  # "т.", "г.", "Mr." do not end a sentence
+# #288: lowercase 1-2 letter ASCII words ("up.", "it.", "so.") are ordinary words that end a sentence; only these
+# lowercase ones are real abbreviations ("vs.", "cf.", "ca.", "no." is not: "I said no." ends a sentence)
+_ABBREV_LOWER_ASCII = frozenset({"vs", "cf", "ca", "pp", "ed", "al"})
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 _TRAIL_ELLIPSIS = re.compile(r"\s*(?:\.{2,}|…)+\s*$")
 PAUSE_SEND = 0.8  # seconds of VAD silence after a segment that means "the speaker stopped": send what we have
 _WORD = re.compile(r"\w+", re.UNICODE)
 # #273 clause boundary for a timeout release in whole-sentence mode: after , ; : (Latin, then a space) or CJK ，；：
 _CLAUSE = re.compile(r"(?<=[,;:])\s+|(?<=[，；：])\s*")
+MIN_FINAL_UNITS = 4  # #288: a pause / timeout does not release a buffer shorter than this (a head, not a sentence)
+WHOLE_PAUSE_UNITS = 8  # #288: whole mode (drafts cover the wait): a pause releases only a buffer at least this long
 CLAUSE_MIN_UNITS = 3  # a clause shorter than this is not worth its own final line
 FUZZY_MIN = 3  # #273: an overlap this long is dropped even with one garbled word at the seam
 
@@ -59,7 +64,15 @@ def _overlap(tail: list[str], text: str, min_overlap: int) -> tuple[int, int]:
 
 def _is_end(text: str) -> bool:
     t = text.rstrip()
-    return bool(_END.search(t)) and not _ABBREV.search(re.sub(r"[\"'»”)\]]+$", "", t))
+    if not _END.search(t):
+        return False
+    core = re.sub(r"[\"'»”)\]]+$", "", t)
+    m = _ABBREV.search(core)
+    if not m:
+        return True
+    word = m.group(0).strip()[:-1]
+    # #288: "it." / "up." (ASCII, lowercase, 2 letters, not a known abbreviation) is a normal sentence end
+    return len(word) == 2 and word.isascii() and word.islower() and word not in _ABBREV_LOWER_ASCII
 
 
 @dataclass
@@ -143,15 +156,19 @@ class SentenceMerger:
             self.since = None
         elif sents:
             self.since = now  # remainder starts a fresh wait
-        if rest and not forced_cut and pause >= PAUSE_SEND:
+        if rest and not forced_cut and pause >= PAUSE_SEND \
+                and _units(rest) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
             out.append(self._take(forced=True))  # speaker paused: no point waiting for max_wait
             return out
         return out + self.due(now)
 
     def due(self, now: float) -> list[Unit]:
         """Release the buffer when it is too old or too long (whole mode: up to the last clause boundary)."""
-        if self.buf and ((self.since is not None and now - self.since >= self.max_wait)
-                         or _units(self.buf) >= self.max_words):
+        if not self.buf:
+            return []
+        # #288: a 1-3 word head ("Well, in the") waits up to twice as long for the rest of its sentence
+        wait = 2 * self.max_wait if self.whole and _units(self.buf) < MIN_FINAL_UNITS else self.max_wait
+        if (self.since is not None and now - self.since >= wait) or _units(self.buf) >= self.max_words:
             if self.whole:
                 head, rest = split_clause(self.buf)
                 if head:
