@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 import queue
+import sys
+import unicodedata
 from pathlib import Path
 
 from ..sink import Result, Sink
@@ -167,11 +169,83 @@ def label_for_model(name: str, mdir=None) -> str:
     return next((l for l in model_labels(mdir) if model_from_label(l) == name), name)
 
 
-def usable_model(wanted: str | None) -> str:
-    """The chosen Whisper model, or the best downloaded one when it is not on disk (#96)."""
+def hw_tier_name(probe=None) -> str | None:
+    """"gpu" / "cpu" from the hardware probe (#63), None when the probe fails (never stops a session)."""
+    try:
+        from ..hwprobe import probe as _probe, recommend
+
+        return recommend((probe or _probe)()).name
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def is_downloaded(model: str, mdir=None) -> bool:
+    from ..models import whisper_installed
+
+    return model in whisper_installed(mdir)
+
+
+def usable_model(wanted: str | None, mdir=None, tier=hw_tier_name) -> str:
+    """The chosen Whisper model, or the best downloaded one for this PC's hardware tier when it is not on disk
+    (#96). The probe (nvidia-smi) only runs when the chosen model is missing; `tier` = a name or a callable."""
     from ..models import pick_whisper
 
-    return pick_whisper(wanted or "small")
+    wanted = wanted or "small"
+    if is_downloaded(wanted, mdir):
+        return wanted
+    return pick_whisper(wanted, mdir, tier() if callable(tier) else tier)
+
+
+def text_width(s: str) -> int:
+    """Width in character cells (CJK = 2), for sizing a ttk.Combobox (`width` counts average characters)."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def combo_width(values, minimum: int = 18) -> int:
+    return max([minimum] + [text_width(v) + 1 for v in values])
+
+
+def download_cmd(model: str, mdir=None, bundled: bool | None = None) -> list[str]:
+    """Child process that downloads one Whisper model (#96 item 3). The network code lives in tinglongwu_setup and
+    runs only in this separate process after the user said yes; this package never downloads anything itself.
+    Bundled tlwu.exe: `tlwu.exe --run-setup ...` (tlwu_app.main); from source: `python -m tinglongwu_setup ...`."""
+    from ..models import models_dir
+
+    if bundled is None:
+        bundled = bool(getattr(sys, "frozen", False)) or os.environ.get("TLWU_BUNDLED") == "1"
+    base = [os.path.abspath(sys.argv[0]), "--run-setup"] if bundled else [sys.executable, "-m", "tinglongwu_setup"]
+    return [*base, "--whisper", model, "--models-dir", str(models_dir(str(mdir) if mdir else None))]
+
+
+def download_env(env=None) -> dict:
+    """Environment for the download child: this process's offline flags (HF_HUB_OFFLINE etc.) removed."""
+    from ..offline import OFFLINE_ENV
+
+    out = {k: v for k, v in (os.environ if env is None else env).items() if k not in OFFLINE_ENV}
+    out.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    return out
+
+
+def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+    """Run the download child (worker thread); `put` gets ("dl_line", text) per output line and
+    ("dl_done", model, returncode). Returns the return code (-1 if it could not start)."""
+    import subprocess
+
+    popen = popen or subprocess.Popen
+    try:
+        p = popen(download_cmd(model, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                  env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for raw in p.stdout:
+            line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
+            parts = [x.strip() for x in line.split("\n") if x.strip()]
+            if parts:
+                put(("dl_line", parts[-1][:90]))
+        rc = p.wait()
+    except Exception as e:  # noqa: BLE001
+        put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
+        rc = -1
+    put(("dl_done", model, rc))
+    return rc
 
 
 def settings_to_argv(s: dict) -> list[str]:
