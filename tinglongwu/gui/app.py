@@ -12,7 +12,8 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
-from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, LANGS, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
+from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download,
                    save_settings, settings_to_argv)
@@ -285,6 +286,8 @@ class App:
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         if self.status_key:
             self.v_status.set(t(self.status_key))
+        self.combos["lang"].configure(values=lang_labels())
+        self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
         self.render_log()
         if self.overlay.visible:
@@ -309,7 +312,8 @@ class App:
         self.frm = f = ttk.Frame(self.root, padding=10)
         self.combos = {}
         f.pack()
-        self.v_lang = self._combo(0, "gui_src_lang", "lang", LANGS)
+        self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
+        self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
         self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
@@ -507,7 +511,7 @@ class App:
 
     def collect(self):
         s = self.settings
-        s.update(lang=self.v_lang.get(), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
+        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get())

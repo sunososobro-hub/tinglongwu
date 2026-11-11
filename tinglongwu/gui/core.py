@@ -14,6 +14,7 @@ import unicodedata
 from pathlib import Path
 
 from ..sink import Result, Sink
+from ..langs import SOURCE_LANGS
 from ..stream import DraftRenderer
 
 DEFAULTS = {
@@ -22,7 +23,7 @@ DEFAULTS = {
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
 }
-LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
+LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt", "qwen", "qwen4b", "opus"]
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
