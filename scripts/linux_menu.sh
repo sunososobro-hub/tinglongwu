@@ -169,6 +169,13 @@ XL=()
 if [ "$mode" = "1" ] || [ "$BOTH" = "1" ]; then
   while IFS= read -r x; do XL+=("$x"); done < <(python -m tinglongwu.menuopts listen || true)
 fi
+# Live drafts (#60): re-runs Whisper + MT on the growing audio, so it costs CPU; default N, listen-only mode only
+# (the meeting listener runs in the background next to the speak side and must not redraw the terminal)
+STREAM=()
+if [ "$mode" = "1" ]; then
+  st=""; read -rp "$(mp M_ASK_STREAM)" st || st=""
+  case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
+fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
@@ -192,7 +199,7 @@ if [ "$mode" = "1" ]; then
     m M_NO_MODEL_FOR "$L"
     ask_setup "${setup[@]}"
   fi
-  exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
+  exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}" "${STREAM[@]}"
 fi
 
 if [ "$SPEAK" = "follow" ]; then
