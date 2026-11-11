@@ -201,7 +201,7 @@ fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 # ---------------------------------------------------------------- 6. models
 say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 1-2 GB）"
 # #178: core + language packs (default zh+en); ja / ru are offered with their size when first picked
-.venv/bin/tlwu-setup --whisper small --packs "${TLWU_PACKS:-zh,en}" \
+.venv/bin/tlwu-setup --whisper small --packs "${TLWU_PACKS:-zh,en}" --allow-unpinned \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
 fi
 

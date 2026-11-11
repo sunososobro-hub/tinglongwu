@@ -12,6 +12,7 @@ TLWU_MENU_SCRIPT="$0"; TLWU_MENU_ARGS=("$@")
 . scripts/tlwu_common.sh
 tlwu_load_i18n
 . scripts/auto_update.sh
+[ "${TLWU_OFFLINE:-}" = "1" ] && m M_OFFLINE_BANNER
 
 # Updating is opt-in: first run asks once (saved in the user config); then every menu start checks GitHub
 # (git fetch, ~6 s cap, never blocks) only if you said yes, otherwise press U. Restart once if the update changed this script.
@@ -26,15 +27,17 @@ tlwu_report_check
 # Never download silently: every model download from this menu is confirmed first (default = no).
 ask_setup() {
   local ans=""
+  if [ "${TLWU_OFFLINE:-}" = "1" ]; then m M_OFFLINE_MISSING "tlwu-setup --online $*"; exit 1; fi
   read -rp "$(mp M_ASK_DOWNLOAD)" ans || ans=""
   case "$ans" in y|Y|yes|YES|Yes) ;; *) m M_DOWNLOAD_DECLINED; exit 1 ;; esac
-  tlwu-setup "$@"
+  tlwu-setup --allow-unpinned "$@"   # consent given above; until every pair is pinned in manifest.json (#254)
 }
 
 # Kokoro (English voice) is normally installed by install.sh; if it is missing, offer the same installer (default = no).
 ensure_kokoro() {
   [ -x "$KOKORO_PY" ] && [ -f "$KOKORO_MODEL/kokoro-v1.0.int8.onnx" ] && [ -f "$KOKORO_MODEL/voices-v1.0.bin" ] && return 0
   local ans=""
+  if [ "${TLWU_OFFLINE:-}" = "1" ]; then m M_OFFLINE_MISSING "bash scripts/linux_kokoro.sh"; exit 1; fi
   read -rp "$(mp M_ASK_KOKORO)" ans || ans=""
   case "$ans" in y|Y|yes|YES|Yes) bash scripts/linux_kokoro.sh || exit 1 ;; *) m M_DOWNLOAD_DECLINED; exit 1 ;; esac
 }

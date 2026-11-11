@@ -19,6 +19,7 @@ Import-TlwuMessages
 # Updating is opt-in: first run asks once (saved in the user config); then every menu start checks GitHub
 # (git fetch, 6 s cap, never blocks) only if you said yes, otherwise press U. TLWU_NO_UPDATE=1 forces it off.
 Invoke-TlwuConsent
+if ($env:TLWU_OFFLINE -eq "1") { Write-Host (T 'OFFLINE_BANNER') }  # #254
 if (Test-TlwuAutoUpdate) { Update-Tlwu $py | Out-Null }
 $ErrorActionPreference = "Stop"
 # Blocked-connection reports from the network guard: asks; nothing is sent unless you say y and submit on GitHub.
@@ -109,9 +110,10 @@ $setupExe = ".\.venv\Scripts\tlwu-setup.exe"
 foreach ($pk in (@($L, $speak) | Select-Object -Unique)) { if ($pk -eq "ja" -or $pk -eq "ru") { & $setupExe --pack-prompt $pk } }
 function Invoke-Setup {  # never download silently: ask first (default = no)
     $ans = ""
+    if ($env:TLWU_OFFLINE -eq "1") { Write-Host (T 'OFFLINE_MISSING' "tlwu-setup --online $($args -join ' ')"); exit 1 }  # #254
     try { $ans = Read-Host (T 'ASK_DOWNLOAD') } catch { $ans = "" }
     if ($ans -notmatch '^(y|yes)$') { Write-Host (T 'DOWNLOAD_DECLINED'); exit 1 }
-    & $setupExe @args
+    & $setupExe --allow-unpinned @args  # consent given above; until every pair is pinned in manifest.json (#254)
 }
 if ($mode -eq "2" -and ($speak -eq "ja" -or $speak -eq "follow")) {
     $missing = Get-JaMissing

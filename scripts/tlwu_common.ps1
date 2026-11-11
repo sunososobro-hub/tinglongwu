@@ -116,6 +116,7 @@ function Invoke-TlwuReportCheck([string]$py) {
 # besides tlwu-setup/pip. Never blocks or throws. Runs at menu start only if auto-update is on, or on demand with U.
 # Returns: updated | uptodate | skipped | forced_off | nogit
 function Update-Tlwu([string]$py) {
+    if ($env:TLWU_OFFLINE -eq "1") { return "forced_off" }  # #254 offline mode: no git fetch at all
     if ($env:TLWU_NO_UPDATE -eq "1") { return "forced_off" }
     if (-not (Test-Path ".git")) { return "nogit" }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "nogit" }
@@ -140,9 +141,12 @@ function Update-Tlwu([string]$py) {
         if ($LASTEXITCODE -ne 0) { Write-Host (T 'UPD_SKIP_DIVERGED'); return "skipped" }
         $changed = (git diff --name-only $old HEAD 2>$null) -join "`n"
         if ($changed -match "(?m)^(pyproject\.toml|requirements[^/]*\.txt)$") {
-            Write-Host (T 'UPD_PKG')
-            & $py -m pip install -q -e . 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) { Write-Host (T 'UPD_PKG_FAIL') }
+            # #254: never pip install unasked; only an explicit y from a console (redirected input = no)
+            $ans = if ([Console]::IsInputRedirected) { "" } else { Read-Host (T 'UPD_PKG_ASK') }
+            if ($ans -match '^(y|yes)$') {
+                & $py -m pip install -q -e . 2>$null | Out-Null
+                if ($LASTEXITCODE -ne 0) { Write-Host (T 'UPD_PKG_FAIL') }
+            }
         } else { Write-Host (T 'UPD_OK_NEXT') }
         return "updated"
     } catch { Write-Host (T 'UPD_SKIP_ERR' $_.Exception.Message); return "skipped" }
