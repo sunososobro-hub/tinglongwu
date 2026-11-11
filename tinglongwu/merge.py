@@ -18,6 +18,10 @@ _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 _TRAIL_ELLIPSIS = re.compile(r"\s*(?:\.{2,}|…)+\s*$")
 PAUSE_SEND = 0.8  # seconds of VAD silence after a segment that means "the speaker stopped": send what we have
 _WORD = re.compile(r"\w+", re.UNICODE)
+# #273 clause boundary for a timeout release in whole-sentence mode: after , ; : (Latin, then a space) or CJK ，；：
+_CLAUSE = re.compile(r"(?<=[,;:])\s+|(?<=[，；：])\s*")
+CLAUSE_MIN_UNITS = 3  # a clause shorter than this is not worth its own final line
+FUZZY_MIN = 3  # #273: an overlap this long is dropped even with one garbled word at the seam
 
 
 def _units(text: str) -> int:
@@ -27,6 +31,30 @@ def _units(text: str) -> int:
 
 def _norm(w: str) -> str:
     return "".join(c for c in w.lower().replace("ё", "е") if c.isalnum())
+
+
+def dedupe_overlap(tail: list[str], text: str, min_overlap: int = 2) -> str:
+    """Drop words at the start of `text` that repeat the end of `tail` (the previous words; VAD / forced-cut audio
+    overlap makes Whisper say them twice). Exact match of >= min_overlap words; or (#273) a run of >= FUZZY_MIN
+    words when one garbled word sits at the seam: a cut-off word at the end of `tail` ("... and mathemat") or a
+    misheard word at the start of `text` ("planes linguistic and mathematical" after "... linguistic and
+    mathematical")."""
+    return " ".join(text.split()[_overlap(tail, text, min_overlap)[1]:]) if text.strip() else text
+
+
+def _overlap(tail: list[str], text: str, min_overlap: int) -> tuple[int, int]:
+    """-> (garbled words to drop from the end of tail: 0 or 1, words to drop from the start of text)."""
+    new = [_norm(w) for w in text.split()]
+    old = [_norm(w) for w in tail]
+    for k in range(min(len(old), len(new), 8), max(1, min_overlap) - 1, -1):
+        if old[-k:] == new[:k] and all(new[:k]):
+            return 0, k
+    for k in range(min(len(old), len(new), 8), FUZZY_MIN - 1, -1):
+        for skip_old, skip_new in ((1, 0), (0, 1), (1, 1)):
+            a = old[len(old) - k - skip_old: len(old) - skip_old]
+            if len(a) == k and a == new[skip_new: skip_new + k] and all(a):
+                return skip_old, skip_new + k
+    return 0, 0
 
 
 def _is_end(text: str) -> bool:
@@ -41,11 +69,24 @@ class Unit:
     forced: bool  # released by the cap / timeout / end of stream rather than a sentence boundary
 
 
+def split_clause(text: str) -> tuple[str, str]:
+    """(head up to the last clause boundary, rest) or ("", text) when there is none (or the head would be shorter
+    than CLAUSE_MIN_UNITS)."""
+    cuts = [m for m in _CLAUSE.finditer(text) if _units(text[:m.start()]) >= CLAUSE_MIN_UNITS]
+    if not cuts:
+        return "", text
+    m = cuts[-1]
+    return text[:m.start()].strip(), text[m.end():].strip()
+
+
 class SentenceMerger:
     """Push ASR segments, get translation units. Time is injected (seconds, any monotonic clock)."""
 
-    def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2):
+    def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False):
         self.max_wait, self.max_words, self.min_overlap = max_wait, max_words, min_overlap
+        # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
+        # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
+        self.whole = whole
         self.buf = ""
         self.lang = ""
         self.since: float | None = None  # time the oldest buffered text arrived
@@ -57,14 +98,13 @@ class SentenceMerger:
         return None if self.since is None else self.since + self.max_wait
 
     def _dedupe(self, text: str, min_overlap: int | None = None) -> str:
-        """Drop words at the start of `text` that repeat the end of the previous segment (VAD overlap)."""
-        words = text.split()
-        n_new = [_norm(w) for w in words]
-        lo = (self.min_overlap if min_overlap is None else min_overlap) - 1
-        for k in range(min(len(self._tail), len(words), 6), lo, -1):
-            if [_norm(w) for w in self._tail[-k:]] == n_new[:k] and all(n_new[:k]):
-                return " ".join(words[k:])
-        return text
+        """Drop words at the start of `text` that repeat the end of the previous segment (VAD overlap); a garbled
+        cut-off word at the end of the still-held buffer is dropped too (the new segment has it whole)."""
+        drop_old, drop_new = _overlap(self._tail, text, self.min_overlap if min_overlap is None else min_overlap)
+        if drop_old and self._tail and self.buf.endswith(self._tail[-1]):
+            self.buf = self.buf[:-len(self._tail[-1])].rstrip()
+            self._tail = self._tail[:-1]
+        return " ".join(text.split()[drop_new:])
 
     def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0) -> list[Unit]:
         """forced_cut: the segmenter cut mid-speech (chunk limit), not at a VAD pause, so a trailing
@@ -81,7 +121,7 @@ class SentenceMerger:
         self._cut = forced_cut
         if not text:
             return out + self.due(now)
-        self._tail = (self._tail + text.split())[-8:]
+        self._tail = (self._tail + text.split())[-10:]
         if not self.buf:
             self.since = now
         self.lang = lang
@@ -109,9 +149,14 @@ class SentenceMerger:
         return out + self.due(now)
 
     def due(self, now: float) -> list[Unit]:
-        """Release the buffer when it is too old or too long."""
+        """Release the buffer when it is too old or too long (whole mode: up to the last clause boundary)."""
         if self.buf and ((self.since is not None and now - self.since >= self.max_wait)
                          or _units(self.buf) >= self.max_words):
+            if self.whole:
+                head, rest = split_clause(self.buf)
+                if head:
+                    self.buf, self.since = rest, (now if rest else None)
+                    return [Unit(head, self.lang, True)]
             return [self._take(forced=True)]
         return []
 

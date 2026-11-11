@@ -66,7 +66,7 @@ function T {
 # tlwu arguments (@() or @("--stream")). Listen-only mode only: the meeting listener runs in its own window.
 function Get-TlwuStreamArgs {
     param($py = "python")
-    $on = $false   # #257: CPU listen-only = default on (decided by tinglongwu.menuopts.stream_default)
+    $on = $false   # #257/#273: listen-only = default on (decided by tinglongwu.menuopts.stream_default)
     try { $on = ((& $py -m tinglongwu.menuopts stream-default listen 2>$null) -eq "1") } catch { $on = $false }
     $ans = ""
     if ($on) {

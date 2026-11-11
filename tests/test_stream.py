@@ -58,7 +58,7 @@ def make(hyps, lang="en", live=None, interval=1.0):
     out = io.StringIO()
     mt = FakeMT()
     eng = DraftEngine(FakeASR(hyps, lang), mt, DraftRenderer(out, columns=lambda: 80), lambda: state["live"],
-                      "zh", interval=interval, clock=clock)
+                      "zh", interval=interval, clock=clock, mask_k=0)  # mask-k is tested in test_retranslation
     return eng, clock, state, out, mt
 
 
