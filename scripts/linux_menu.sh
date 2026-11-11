@@ -53,7 +53,11 @@ if [ "$IS_MAC" = "1" ] && [ -z "${TLWU_LANG:-}" ] && [ ! -d "$VOSK_MODEL" ]; the
 CANDS="en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
 FOLLOW_LANGS="en,ru,ja"   # languages the speak side prepares in meeting mode
 FOLLOW_FILE="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/tlwu_follow_lang"
-lang_name() { local k="M_LN_$1"; if [ -n "${!k:-}" ]; then printf '%s' "${!k}"; else printf '%s' "$1"; fi; }
+lang_name() {  # auto from the menu texts; languages from tinglongwu.langs (marks the experimental ones, #58)
+  local k="M_LN_$1" n=""
+  [ "$1" = "auto" ] || n="$(python -m tinglongwu.langs --name "$1" 2>/dev/null)" || n=""
+  if [ -n "$n" ]; then printf '%s' "$n"; elif [ -n "${!k:-}" ]; then printf '%s' "${!k}"; else printf '%s' "$1"; fi
+}
 BOTH=0
 speak_ok() { case "$1" in auto|en|ru|ja) return 0;; *) return 1;; esac; }
 
@@ -91,7 +95,7 @@ while :; do
     u|U) tlwu_manual_update || true; continue ;;
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
-    l|L) m M_LANG_HELP
+    l|L) python -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
          read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"; continue ;;
     *) m M_BAD_OPTION; continue ;;
   esac

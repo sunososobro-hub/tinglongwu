@@ -40,7 +40,10 @@ $L = if ($env:TLWU_LANG) { $env:TLWU_LANG } else { "auto" }
 $cands = "en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
 $followLangs = "en,ru,ja"   # languages the speak side prepares in meeting mode
 $followFile = Join-Path $env:TEMP "tlwu_follow_lang"
-function Get-LangName($l) { $k = "LN_$l"; if ($script:M.ContainsKey($k)) { return $script:M[$k] } else { return $l } }
+function Get-LangName($l) {  # auto from the menu texts; languages from tinglongwu.langs (marks the experimental ones, #58)
+    if ($l -ne "auto") { $n = & $py -m tinglongwu.langs --name $l 2>$null; if ($LASTEXITCODE -eq 0 -and $n) { return "$n" } }
+    $k = "LN_$l"; if ($script:M.ContainsKey($k)) { return $script:M[$k] } else { return $l }
+}
 $both = $false
 function Test-SpeakOk($l) { return @("auto", "en", "ru", "ja") -contains $l }
 # Japanese needs Hy-MT2 (llama-cpp-python in .venv + the GGUF) and, for speaking, misaki[ja] in the Kokoro venv.
@@ -79,7 +82,7 @@ while ($true) {
     elseif ($pick -eq "2") { $mode = "2"; $both = $false }
     elseif ($pick -eq "3") { $mode = "1"; $both = $false }
     elseif ($pick -eq "l") {
-        Write-Host (T 'LANG_HELP')
+        & $py -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
         $L = Read-Host (T 'ASK_LANG'); if (-not $L) { $L = "auto" }
         continue
     }

@@ -56,6 +56,17 @@ It checks Homebrew (never installs it silently; prints the official command if m
 
 The Windows release zip is **unsigned** and built locally by the maintainer with Nuitka; the build is **not reproducible**. Its SHA256 is published in the release notes: compare it with `Get-FileHash tinglongwu-win64.zip` before running. The hash only proves you got the file the maintainer published. If you want real verification, install from source (`install.bat` or the steps below): the source, pinned dependencies and model hashes are all auditable.
 
+## Languages
+
+Focus languages are Japanese, English and Russian (Chinese is the base). Every other language still works for Listen, but is **experimental**: less tested, and menus / the GUI label it so.
+
+| Language | Code | Status | Modes |
+|---|---|---|---|
+| Japanese | `ja` | focus | Listen, Speak, Meeting |
+| English | `en` | focus | Listen, Speak, Meeting |
+| Russian | `ru` | focus | Listen, Speak, Meeting |
+| Korean, German, French, Spanish, Italian, Portuguese, Vietnamese, Thai, Indonesian | `ko` `de` `fr` `es` `it` `pt` `vi` `th` `id` | experimental | Listen only |
+
 ## Verification status
 
 ✅ verified on a real device, 🧪 not yet verified (links go to the test issue).
