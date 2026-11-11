@@ -5,8 +5,8 @@ Run (main .venv):
       --tts-python C:\\...\\tts-venv\\Scripts\\python.exe --tts-model C:\\...\\models\\qwen3-tts-0.6b-base \\
       --ref ref_ru.wav --ref-text "..." [--qwen qwen3-8b] [--device "CABLE Input"] [--no-play]
 Results are written (UTF-8 JSON) only when --save-result PATH is given; nothing is saved by default.
-Default = confirm-before-send: each utterance shows zh / ru / back-translation; Enter sends the Russian audio to
---device, "r" or "x" + Enter discards it (--no-confirm = old automatic behaviour; --preview-device = also hear it).
+Default = confirm-before-send: each utterance shows zh / ru / back-translation; "y"+Enter sends the Russian audio to
+--device, a bare Enter (or "r"/"x") discards it (--no-confirm = old automatic behaviour; --preview-device = also hear it).
 """
 from __future__ import annotations
 
@@ -144,7 +144,7 @@ def _synth_sentences(tts, ru: str, stats: list | None = None):
 
 
 def _make_synth(tts):
-    """Confirm-mode synth: a generator of sentence parts, run by the session's TTS worker; after Enter each part is
+    """Confirm-mode synth: a generator of sentence parts, run by the session's TTS worker; after "y" each part is
     sent as soon as it exists, so sentence 1 plays while the rest is still synthesized (#139)."""
     def synth(ru: str):
         return _synth_sentences(tts, ru)

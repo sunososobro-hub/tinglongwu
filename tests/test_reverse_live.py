@@ -139,7 +139,7 @@ def test_live_wiring_auto_and_confirm(monkeypatch):
     monkeypatch.setattr("tinglongwu.reverse.live.recognize_utterances", lambda segs, asr, gate=None, src="zh": iter(["你好", "再見"]))
     monkeypatch.setattr("tinglongwu.capture.mic.MicSource", lambda name: object())
     a = SimpleNamespace(mic_name="Headset Mic", chunk_s=10.0)
-    for confirm, keys in ((False, None), (True, iter(["", "r"]))):
+    for confirm, keys in ((False, None), (True, iter(["y", "r"]))):
         res = {"items": []}
         pl, pv = FakePlayer(), FakePlayer()
         pv.enabled = False
