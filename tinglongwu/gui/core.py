@@ -27,7 +27,7 @@ DEFAULTS = {
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "hymt", "opus"]  # #276: Hy-MT2 is the engine; only Hy-MT2 and OPUS are offered
+ENGINES = ["auto", "hymt", "opus", "ollama", "fm"]  # #276: Hy-MT2 is the engine; only Hy-MT2 and OPUS are offered
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
 # hardware; manual = the Engine + Speech model boxes decide (#81)
 QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
