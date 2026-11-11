@@ -1,9 +1,11 @@
 """Confirm-before-send controller for reverse mode (no GPU / audio hardware in here; everything is injected).
 
 Flow per utterance: submit() -> synthesis starts in the background (serial, one worker) -> review loop shows
-zh / ru / back-translation (set_back(), may arrive late) in submit order -> Enter sends the audio, "r" or "x" (+Enter) discards it.
+zh / ru / back-translation (set_back(), may arrive late) in submit order -> "y"+Enter sends the audio; a bare Enter,
+"r", "x" or anything else discards it (#248: a stray Enter must never send). Keys typed ahead while the previous
+utterance was playing are flushed before every prompt, so they cannot answer the next one.
 Nothing reaches the output device before a confirmation. New utterances queue up while one waits.
-synth(ru) may return one (audio, sr) or an iterable of (audio, sr) sentence parts: after Enter each part is sent as
+synth(ru) may return one (audio, sr) or an iterable of (audio, sr) sentence parts: after "y" each part is sent as
 soon as it is synthesized, so sentence 1 plays while the rest is still in TTS (#139).
 """
 from __future__ import annotations
@@ -15,8 +17,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
-DISCARD_KEYS = ("r", "x")
-HELP = "[Enter]=send  [r]/[x]+Enter=discard"
+SEND_KEY = "y"  # the only answer that sends (case-insensitive); everything else, a bare Enter included, discards
+DISCARD_KEYS = ("", "r", "x")
+HELP = "[y]+Enter=send  [Enter]=discard"
 
 
 @dataclass
@@ -62,6 +65,32 @@ def back_translate(mt, ru: str, lang: str = "ru", src: str = "zh") -> str:
         mt._pair = pair
 
 
+def flush_input(stream=None) -> bool:
+    """Drop keys typed ahead on the terminal (#248) so an Enter pressed while the previous utterance was playing
+    cannot answer the next prompt. True when stdin is a TTY and was flushed; a non-TTY stdin (pipe, file,
+    pytest capture) is left alone and never raises."""
+    stream = sys.stdin if stream is None else stream
+    try:
+        fd = stream.fileno()
+        if not stream.isatty():
+            return False
+    except (AttributeError, OSError, ValueError):
+        return False
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            while msvcrt.kbhit():
+                msvcrt.getwch()
+        else:
+            import termios
+
+            termios.tcflush(fd, termios.TCIFLUSH)
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
 _END = None
 
 
@@ -88,14 +117,16 @@ def _job_error(fut) -> BaseException | None:
 
 
 class ConfirmSession:
-    """synth(ru) -> (audio, sr) | iterable of (audio, sr) | None ; send(audio, sr) ; preview(audio, sr) optional ; readline() -> str ('' = Enter)."""
+    """synth(ru) -> (audio, sr) | iterable of (audio, sr) | None ; send(audio, sr) ; preview(audio, sr) optional ;
+    readline() -> str ('' = Enter) ; flush() drops type-ahead before each prompt (default: flush_input on stdin)."""
 
     def __init__(self, synth: Callable, send: Callable, preview: Callable | None = None,
                  out: Callable = print, readline: Callable[[], str] | None = None,
-                 set_voice: Callable[[int], None] | None = None):
+                 set_voice: Callable[[int], None] | None = None, flush: Callable[[], object] | None = None):
         self.synth, self.send, self.preview, self.out = synth, send, preview, out
         self.set_voice = set_voice  # "v<N>"+Enter switches voice and re-synthesises the current utterance
         self.readline = readline or (lambda: input())
+        self.flush = flush or flush_input
         self._q: queue.Queue = queue.Queue()
         self._pool = ThreadPoolExecutor(max_workers=1)  # TTS pipe is serial
         self.items: list[Utterance] = []
@@ -140,11 +171,12 @@ class ConfirmSession:
         self.out(f"\n{blk}" + (f"\n{fmt.INDENT}← BACK(zh): {back}" if back else ""))
 
     def _ask(self, u: Utterance) -> bool:
-        """True = send. EOF on input counts as discard."""
+        """True = send: only "y" (any case). A bare Enter, r/x, anything else or EOF discards."""
         pending = self._q.qsize()
         extra = f" ({pending} queued)" if pending else ""
         help_ = HELP + ("  [v0-v4]+Enter=change voice" if self.set_voice else "")
         while True:
+            self.flush()  # #248: keys typed during the previous utterance must not answer this one
             self.out(f"{help_}{extra}")
             try:
                 key = self.readline().strip().lower()
@@ -157,7 +189,7 @@ class ConfirmSession:
                 self._start(u)  # same text, new voice
                 self.out(f"voice -> {key[1:]}")
                 continue
-            return key == ""  # only a bare Enter sends; r/x/anything else discards
+            return key == SEND_KEY  # only "y" sends; a bare Enter, r/x and anything else discard
 
     def _send_parts(self, u: Utterance) -> int:
         """Send (and preview) each part as soon as the worker has it; returns how many were sent."""
