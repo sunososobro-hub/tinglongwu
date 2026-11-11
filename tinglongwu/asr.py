@@ -13,7 +13,7 @@ from .device import asr_compute_type, cpu_threads, resolve_device
 from .hallucination import is_hallucination
 from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
 from .models import require
-from .repeat import collapse_repeats, has_loop
+from .repeat import collapse_repeats, filter_hallucination, has_loop
 
 
 @dataclass
@@ -99,7 +99,7 @@ class FasterWhisperRecognizer(Recognizer):
         return pick_candidate(probs, cands, fallback=_lang if _lang in cands else cands[0])
 
     def _post(self, text: str) -> str:
-        text = collapse_repeats(text)  # safety net: one copy of any phrase still looped
+        text = filter_hallucination(text)  # one copy of any looped phrase; drop what is still a loop
         g = getattr(self, "glossary", None)
         return g.normalize_numbers(text) if g else text
 
