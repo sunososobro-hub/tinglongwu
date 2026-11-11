@@ -154,8 +154,8 @@ def kokoro_request(text: str, lang: str | None, phonemizers: dict) -> tuple[list
     """(voice list, k.create kwargs) for one request: ja/zh go through misaki phonemes, anything else is en-us."""
     if lang in ("ja", "zh"):
         voices = KOKORO_JA_VOICES if lang == "ja" else KOKORO_ZH_VOICES
-        return voices, dict(text=phonemizers[lang](text), is_phonemes=True)
-    return KOKORO_VOICES, dict(text=text, lang="en-us")
+        return voices, {"text": phonemizers[lang](text), "is_phonemes": True}
+    return KOKORO_VOICES, {"text": text, "lang": "en-us"}
 
 
 def run_kokoro(a, ja_phonemizer=None, zh_phonemizer=None) -> int:

@@ -9,11 +9,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests.test_reverse_en import _parse
 from tinglongwu.reverse import proto
 from tinglongwu.reverse.confirm import back_translate
 from tinglongwu.reverse.live import is_source_lang, recognize_utterances
 from tinglongwu.reverse.logic import translate_ru
-from tests.test_reverse_en import _parse
 
 WORKER = Path(proto.__file__).with_name("tts_worker.py")
 
