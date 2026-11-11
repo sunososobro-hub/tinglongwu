@@ -185,12 +185,58 @@ def run_kokoro(a, ja_phonemizer=None) -> int:
     return 0
 
 
+def piper_model(mdir: str) -> str | None:
+    """First *.onnx under mdir that has its .onnx.json config next to it (same rule as tinglongwu.models.piper_onnx;
+    copied because this worker runs in a venv without tinglongwu's dependencies)."""
+    for f in sorted(Path(mdir).rglob("*.onnx")):
+        if f.with_name(f.name + ".json").is_file():
+            return str(f)
+    return None
+
+
+def run_piper(a) -> int:
+    """CPU path with Piper (piper-tts / piper1-gpl, GPL-3 with bundled espeak-ng): Russian dmitri/denis voices
+    (CC0). GPL, so it only ever runs here, in its own venv. Single-speaker voices: "speaker" is ignored.
+    Piper yields one chunk per sentence; each is sent as soon as it is ready."""
+    onnx = piper_model(os.path.abspath(a.model))
+    if not onnx:
+        send({"t": "error", "id": None, "msg": f"missing local file: {a.model}/*.onnx (+ .onnx.json)"})
+        return 2
+    import numpy as np
+    from piper import PiperVoice
+
+    t0 = time.perf_counter()
+    voice = PiperVoice.load(onnx, use_cuda=False, download_dir=os.path.dirname(onnx))
+    send({"t": "ready", "load_s": round(time.perf_counter() - t0, 2), "vram_mib": 0, "device": "cpu",
+          "engine": "piper"})
+    for line in sys.stdin:
+        req = json.loads(line)
+        if req.get("cmd") == "quit":
+            break
+        try:
+            t1 = time.perf_counter()
+            ttfa, dur, sr = None, 0.0, 22050
+            for ch in voice.synthesize(req["text"]):
+                arr = np.asarray(ch.audio_float_array, dtype=np.float32).reshape(-1)
+                sr = int(ch.sample_rate)
+                if ttfa is None:
+                    ttfa = round(time.perf_counter() - t1, 3)
+                dur += arr.size / sr
+                send({"t": "chunk", "id": req["id"], "sr": sr, "ttfa_s": ttfa}, arr.tobytes())
+            gen = time.perf_counter() - t1
+            send({"t": "done", "id": req["id"], "audio_s": round(dur, 3), "gen_s": round(gen, 3),
+                  "rtf": round(gen / dur, 3) if dur else None, "ttfa_s": ttfa, "peak_vram_mib": 0})
+        except Exception as e:  # noqa: BLE001
+            send({"t": "error", "id": req.get("id"), "msg": repr(e)[:300]})
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--engine", default="vosk", choices=["vosk", "kokoro"])
+    ap.add_argument("--engine", default="vosk", choices=["vosk", "kokoro", "piper"])
     ap.add_argument("--speaker", type=int, default=4,
                     help="vosk: built-in voice id (ru 0.7: 0-4); kokoro: 0-4 (default there: 0)")
-    ap.add_argument("--model", required=True, help="local Vosk-TTS model dir / Kokoro model dir")
+    ap.add_argument("--model", required=True, help="local Vosk-TTS / Kokoro / Piper model dir")
     a = ap.parse_args()
     # Ctrl+C in the terminal reaches this child too (same process group): it would die in `for line in sys.stdin`
     # with a traceback. The parent ends us (quit command / stdin EOF / kill), so ignore the signal.
@@ -202,6 +248,8 @@ def main() -> int:
     if a.engine == "kokoro":
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         return run_kokoro(a)
+    if a.engine == "piper":
+        return run_piper(a)
     return run_vosk(a)
 
 

@@ -25,6 +25,35 @@ def vosk_ru_installed(path: str | None = None) -> bool:
     return (Path(path) if path else models_dir(None) / VOSK_TTS_RU_DIR).is_dir()
 
 
+# Piper Russian voices (CC0 datasets, OHF-Voice/voice-datasets; #128). `tlwu-setup --piper-ru [dmitri|denis]`
+# downloads one to models/piper-ru_RU-<voice>-medium/ (keep in sync with tinglongwu_setup.downloader.PIPER_RU).
+# Never irina (CC BY-NC-ND) or ruslan (CC BY-NC-SA). Piper itself is GPL-3: it only runs in its own venv (tts_worker).
+PIPER_RU_VOICES = ("dmitri", "denis")
+
+
+def piper_ru_dir(voice: str) -> str:
+    return f"piper-ru_RU-{voice}-medium"
+
+
+def piper_onnx(path) -> Path | None:
+    """The Piper voice model (.onnx with its .onnx.json next to it) inside `path` (searched recursively), or None."""
+    if not path or not Path(path).is_dir():
+        return None
+    for f in sorted(Path(path).rglob("*.onnx")):
+        if f.with_name(f.name + ".json").is_file():
+            return f
+    return None
+
+
+def default_piper_ru(mdir: str | None = None) -> Path | None:
+    """Dir of the first installed Piper Russian voice (dmitri before denis) under the models dir, or None."""
+    for v in PIPER_RU_VOICES:
+        d = models_dir(mdir) / piper_ru_dir(v)
+        if piper_onnx(d):
+            return d
+    return None
+
+
 def require(path: Path, what: str, hint: str) -> Path:
     if not path.exists():
         raise ModelNotFound(
