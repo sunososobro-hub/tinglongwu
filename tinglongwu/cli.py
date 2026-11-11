@@ -9,6 +9,9 @@ from .models import ModelNotFound, models_dir
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
+# #60: on CPU, ASR + MT already add seconds per line; holding an unfinished fragment the full 6 s on top makes the
+# subtitle feel stuck. Used only when neither --preset nor --max-wait was given (an explicit choice is kept).
+CPU_MAX_WAIT = 3.0
 
 
 def parse_args(argv=None):
@@ -37,10 +40,11 @@ def parse_args(argv=None):
     p.add_argument("--to", default="zh", help="target language code (default zh)")
     p.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
                    help="Chinese output: tw = Traditional (OpenCC s2twp), cn = Simplified")
-    p.add_argument("--preset", choices=sorted(PRESETS), default="meeting",
+    p.add_argument("--preset", choices=sorted(PRESETS), default=None,
                    help="meeting (default): --chunk 8 --max-wait 6, whole sentences, ~5-8 s latency; "
                         "chat: --chunk 4 --max-wait 1.5, lower latency, more sentence fragments. "
-                        "An explicit --chunk / --max-wait overrides the preset")
+                        "An explicit --chunk / --max-wait overrides the preset. On CPU without --preset / "
+                        f"--max-wait the default max-wait is {CPU_MAX_WAIT:g} s")
     p.add_argument("--chunk", type=float, default=None,
                    help="max segment seconds (default from --preset; larger = more context for Whisper)")
     p.add_argument("--no-vad", action="store_true", help="fixed --chunk blocks instead of VAD")
@@ -51,7 +55,8 @@ def parse_args(argv=None):
                    help="translate every VAD segment separately (default: merge into sentences first)")
     p.add_argument("--max-wait", type=float, default=None,
                    help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
-                        "is held (default from --preset; a pause of >= 0.8 s sends it earlier)")
+                        "is held (default from --preset; on CPU without --preset / --max-wait: "
+                        f"{CPU_MAX_WAIT:g}; a pause of >= 0.8 s sends it earlier)")
     p.add_argument("--engine", choices=["auto", "hymt", "qwen", "qwen4b", "opus", "m2m"], default="auto",
                    help="auto (default): after Whisper loads, on a usable GPU pick Hy-MT2 when it is installed "
                         "(`tlwu-setup --hymt`, needs ~2 GB free VRAM); without it Qwen3-8B (>=5.8 GB free), "
@@ -98,10 +103,20 @@ def parse_args(argv=None):
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")
     a = p.parse_args(argv)
+    a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
+    a.preset = a.preset or "meeting"
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
     a.max_wait = wait if a.max_wait is None else a.max_wait
     return a
+
+
+def cpu_max_wait(a, dev: str, say=print) -> None:
+    """#60: on CPU use the shorter CPU_MAX_WAIT unless the user chose --preset or --max-wait (one stderr note)."""
+    if dev == "cpu" and getattr(a, "max_wait_default", False) and a.max_wait > CPU_MAX_WAIT:
+        a.max_wait = CPU_MAX_WAIT
+        say(f"tlwu: CPU mode: unfinished sentences are sent after at most {CPU_MAX_WAIT:g} s "
+            "(--max-wait / --preset to change)", file=sys.stderr)
 
 
 def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) -> str:
@@ -300,6 +315,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
                                   candidates=cands, lang_file=getattr(a, "lang_file", None))
     dev = asr.device  # may have fallen back to cpu
+    cpu_max_wait(a, dev)
     translator = None
     if not a.transcript_only:
         note("loading translation engine...")
