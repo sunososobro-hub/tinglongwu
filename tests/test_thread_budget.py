@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from tinglongwu import llamacheck, qwen, threads
+from tinglongwu import engines, llamacheck, threads
 
 BOTH = {"TLWU_BOTH": "1"}
 
@@ -73,7 +73,7 @@ def test_load_llama_passes_explicit_threads(monkeypatch, tmp_path, both, want):
     monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
     monkeypatch.setenv("TLWU_BOTH", "1") if both else monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
-    assert qwen._load_llama(tmp_path / "x.gguf", gpu=False) == "llm"
+    assert engines.load_llama(tmp_path / "x.gguf", gpu=False) == "llm"
     assert {k: made[0][k] for k in want} == want
 
 

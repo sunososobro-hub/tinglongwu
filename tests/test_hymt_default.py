@@ -3,7 +3,7 @@ import pytest
 
 from tinglongwu import cli
 from tinglongwu.hymt import HyMtTranslator, JaRouter, hymt_path, zh_script_guard
-from tinglongwu.qwen import HYMT_MIN_FREE_MIB, choose_engine, model_path
+from tinglongwu.engines import HYMT_MIN_FREE_MIB, choose_engine
 
 
 class FakeLlm:
@@ -33,7 +33,7 @@ class Base:
 
 def install(tmp_path, *names):
     for n in names:
-        p = hymt_path(tmp_path) if n == "hymt2" else model_path(tmp_path, n)
+        p = hymt_path(tmp_path) if n == "hymt2" else tmp_path / n / f"{n}.gguf"  # an old Qwen GGUF left on disk
         p.parent.mkdir(parents=True)
         p.write_bytes(b"x")
     return tmp_path

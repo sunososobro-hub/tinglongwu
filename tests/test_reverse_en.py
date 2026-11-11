@@ -160,3 +160,10 @@ def test_no_voice_cloning_engine():
         _parse(["--to", "ru", "--ref", "x.wav"])
     with pytest.raises(ValueError):
         tts_client.TTSClient("/py", "/m", engine="qwen")
+
+
+def test_speak_mt_qwen_is_gone_but_old_launchers_still_parse():
+    """#283: `--mt qwen` is rejected; installed tlwu-talk launchers still pass `--qwen qwen3-4b`, which must parse."""
+    with pytest.raises(SystemExit):
+        _parse(["--to", "en", "--tts-engine", "kokoro", "--mt", "qwen"])
+    assert _parse(["--to", "en", "--tts-engine", "kokoro", "--mt", "auto", "--qwen", "qwen3-4b"]).mt == "auto"

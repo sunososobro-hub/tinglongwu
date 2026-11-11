@@ -121,7 +121,7 @@ def main(argv=None) -> int:
     p.add_argument("--talk-launcher", default=str(ROOT / "tlwu-talk.ps1"))
     p.add_argument("--talk-whisper", default="small")
     p.add_argument("--talk-compute", default="auto", choices=["auto", "cpu", "cuda"])
-    p.add_argument("--talk-mt", default="opus", choices=["auto", "qwen", "opus"])
+    p.add_argument("--talk-mt", default="opus", choices=["auto", "opus"])
     p.add_argument("--requirements", default=str(ROOT / "requirements.txt"))
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")

@@ -7,11 +7,9 @@ import warnings
 import numpy as np
 import pytest
 
-from tinglongwu import asr, cli, pipeline, qwen
+from tinglongwu import asr, cli, pipeline
+from tinglongwu.engines import clean_output
 from tinglongwu.merge import SentenceMerger
-from tinglongwu.qwen import (CONTEXT_MAX_CHARS, QwenTranslator, build_prompt, clean_output,
-                             trim_context)
-from tests.test_qwen import FakeLlm, fake_models
 
 
 # 1. defaults / merge latency
@@ -31,26 +29,6 @@ def test_merge_holds_fragment_at_most_max_wait():
     # a complete sentence is released immediately (no added wait)
     assert [x.text for x in m.add("やま。", "ja", 5.0)] == ["やま。"]
 
-
-# 2. qwen context
-def test_context_in_prompt_and_capped(tmp_path):
-    m = fake_models(tmp_path, "qwen3-8b")
-    llm = FakeLlm("譯文")
-    t = QwenTranslator(m, "qwen3-8b", "tw", "cuda", loader=lambda p, gpu: llm)
-    t.translate("one", "ja", "zh")
-    assert "[Earlier]" not in llm.calls[0][0]
-    t.translate("two", "ja", "zh")
-    p2 = llm.calls[1][0]
-    assert "one => 譯文" in p2 and "ONLY" in p2 and p2.rstrip().endswith("two<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>".rstrip()) or "[Translate]\ntwo" in p2
-    for w in ("a", "b", "c"):
-        t.translate(w, "ja", "zh")
-    assert len(t.history) == qwen.CONTEXT_LINES
-    t.translate("x", "ru", "zh")  # language change resets context
-    assert "[Earlier]" not in llm.calls[-1][0]
-    big = [("x" * 400, "y" * 10), ("s", "t")]
-    assert trim_context(big) == [("s", "t")]
-    assert sum(len(a) + len(b) for a, b in trim_context([("a" * 100, "b" * 100)] * 5)) <= CONTEXT_MAX_CHARS
-    assert "[Earlier]" not in build_prompt("sys", "hi")
 
 
 # 3. whisper context

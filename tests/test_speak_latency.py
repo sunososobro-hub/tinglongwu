@@ -254,11 +254,10 @@ def _hymt_file(tmp_path):
 
 @pytest.mark.parametrize("kind,device,installed,free,want", [
     ("auto", "cuda", True, 4000, "hymt"),     # was qwen before #139
-    ("auto", "cuda", False, 4000, "opus"),    # Qwen only on request, even on a big GPU
-    ("auto", "cuda", True, 1500, "opus"),     # below qwen.HYMT_MIN_FREE_MIB
+    ("auto", "cuda", False, 4000, "opus"),    # no Hy-MT2 GGUF: OPUS, even on a big GPU
+    ("auto", "cuda", True, 1500, "opus"),     # below engines.HYMT_MIN_FREE_MIB
     ("auto", "cuda", True, None, "opus"),     # nvidia-smi unreadable
     ("auto", "cpu", True, 4000, "opus"),
-    ("qwen", "cuda", False, 4000, "qwen"),
     ("hymt", "cpu", True, None, "hymt"),
 ])
 def test_choose_speak_mt(tmp_path, kind, device, installed, free, want):

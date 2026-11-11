@@ -6,7 +6,7 @@ import sys
 
 from .capture import select_backend
 from .models import ModelNotFound, models_dir
-from .qwen import ENGINES
+from .engines import ENGINES
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
@@ -88,7 +88,7 @@ def parse_args(argv=None):
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
-                        "given to the Qwen engine as required translations; with OPUS, `target ~ wrong | wrong` "
+                        "given to Hy-MT2 as reference translations; with OPUS, `target ~ wrong | wrong` "
                         "replaces known wrong renderings in the output. "
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
@@ -162,22 +162,11 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) 
 
 def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
     """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
-    from .qwen import build_qwen_with_fallback, choose_engine
+    from .engines import choose_engine
+    from .hymt import JaRouter
     from .translate import PivotTranslator
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
-    if name in ("qwen3-8b", "qwen3-4b"):
-        errors: list = []
-        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev, errors=errors)
-        if tr is not None:
-            say(f"tlwu: translation engine = {got} ({why})" if got == name
-                else f"tlwu: translation engine = {got} ({name} failed to load, fell back)", file=sys.stderr)
-            return tr
-        # loud on purpose (#74): OPUS translates much worse, the user must know it is not Qwen and why
-        say(f"tlwu: WARNING: Qwen engine failed to load, falling back to OPUS (lower translation quality). "
-            f"Reason: {errors[-1] if errors else 'unknown'}", file=sys.stderr)
-        name, why = "opus", "Qwen failed to load"
-    from .hymt import JaRouter
 
     if name in ("hymt2", "hymt2-cpu"):
         from .hymt import hymt_path
@@ -206,7 +195,7 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
 
 
 def apply_glossary(translator, glossary) -> None:
-    """Hand the --glossary to the MT engine: Qwen uses it in its prompt; JaRouter passes it on to Hy-MT2 and the
+    """Hand the --glossary to the MT engine: JaRouter passes it on to Hy-MT2 (terms in its prompt) and the
     OPUS pivot, which apply its `~` wrong-rendering fixes to their zh output (#30, #174)."""
     if hasattr(translator, "glossary"):
         translator.glossary = glossary

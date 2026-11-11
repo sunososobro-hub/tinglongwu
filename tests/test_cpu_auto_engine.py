@@ -8,7 +8,7 @@ import pytest
 from tinglongwu import hwprobe, speedprobe
 from tinglongwu.hwprobe import HwInfo, recommend
 from tinglongwu.hymt import hymt_path
-from tinglongwu.qwen import choose_engine
+from tinglongwu.engines import choose_engine
 
 CPU = HwInfo(None, None, 16000, 8)
 GPU = HwInfo("RTX 3050", 8192, 16000, 8)
