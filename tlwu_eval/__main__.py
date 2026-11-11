@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import scoring
-from .runner import TOTAL_BUDGET_S, Engines, load_manifest, run_smoke
+from .runner import TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
+
+NHK_DIR_DEFAULT = r"C:\Users\user\tlwu-eval"  # outside the repo: copyrighted NHK ja clips (#119)
 
 
 def format_report(rep: dict) -> str:
@@ -17,7 +20,8 @@ def format_report(rep: dict) -> str:
         tts = "TTS skipped (not installed)" if s["tts"] is None else f"TTS {s['tts']:.1f}s RTF {lg['tts_rtf']} {st['tts']}"
         lines.append(f"{lg['pair']}: load {s['load']:.1f}s | ASR {s['asr']:.1f}s RTF {lg['asr_rtf']} {st['asr']} | "
                      f"MT {s['mt']:.1f}s median {lg['mt_median_s']}s {st['mt']} | {tts} | "
-                     f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}% chrF {lg['chrf']}")
+                     f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}% chrF {lg['chrf']}"
+                     + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}"))
     lines += [f"{p}: SKIP (no clips in the manifest)" for p in rep["skipped"]]
     mib = (lambda v: "n/a" if v is None else f"{v} MiB")
     lines.append(f"smoke: {'PASS' if rep['pass'] else 'FAIL'} - total {rep['total_s']:.0f}s (budget "
@@ -53,6 +57,8 @@ def main(argv=None, engines: Engines | None = None, totals=None, **run_kw) -> in
     p = argparse.ArgumentParser(prog="tlwu-eval", description="Local, offline evaluation of tinglongWu.")
     p.add_argument("--smoke", action="store_true", help="5 clips per focus language, per-stage time and PASS/FAIL")
     p.add_argument("--data", default="eval_data/smoke", help="folder with manifest.jsonl and the wav files")
+    p.add_argument("--nhk-dir", default=os.environ.get("TLWU_EVAL_DIR", NHK_DIR_DEFAULT),
+                   help="external folder with the NHK ja manifest (default: $TLWU_EVAL_DIR); skipped when absent")
     p.add_argument("--out", default="report.json", help="where the JSON report is written")
     p.add_argument("--model", default=None, help="Whisper size (default: like tlwu)")
     p.add_argument("--engine", default="auto", help="translation engine (default: auto, like tlwu)")
@@ -63,6 +69,7 @@ def main(argv=None, engines: Engines | None = None, totals=None, **run_kw) -> in
         p.error("only --smoke exists so far (the full run is a later part of #57)")
     try:
         rows = load_manifest(a.data)
+        run_kw.setdefault("ja_extra", load_extra(a.nhk_dir))
         rep = run_smoke(rows, engines or real_engines(a), totals=totals or machine_totals(), **run_kw)
     except (FileNotFoundError, ValueError, RuntimeError) as e:  # ModelNotFound is a RuntimeError/FileNotFoundError
         print(f"tlwu-eval: {e}", file=sys.stderr)

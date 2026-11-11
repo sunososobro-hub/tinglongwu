@@ -35,3 +35,25 @@ def test_missing_data_is_a_clear_setup_error(tmp_path):
     (tmp_path / "manifest.jsonl").write_text('{"id": "a", "lang": "en"}\n', "utf-8")
     with pytest.raises(ValueError, match="missing wav, ref_text"):
         runner.load_manifest(tmp_path)
+
+
+def test_cli_runs_external_nhk_ja_group_and_kana_turns_it_red(tmp_path, capsys):
+    data = make_data(tmp_path / "d", langs=("en",)) if (tmp_path / "d").mkdir() is None else None
+    ext = tmp_path / "ext"
+    ext.mkdir()
+    make_data(ext, langs=("ja",), n=2)
+    out = tmp_path / "r.json"
+    args = ["--smoke", "--data", str(data), "--out", str(out), "--nhk-dir", str(ext)]
+    clock = Clock()
+    assert main(args, engines=fake_engines(clock), totals=(16000, None), clock=clock) == 0
+    rep = json.loads(out.read_text("utf-8"))
+    nhk = next(lg for lg in rep["languages"] if lg["pair"] == "ja->zh[nhk]")
+    assert len(nhk["clips"]) == 2 and nhk["kana_rate"] == 0.0
+    assert "ja->zh[nhk]:" in capsys.readouterr().out
+    clock = Clock()
+    assert main(args, engines=fake_engines(clock, mt_text="貓さん"), totals=(16000, None), clock=clock) == 1
+    assert "kana 100.00 FAIL" in capsys.readouterr().out
+    # folder absent -> group silently not run (default smoke unchanged)
+    clock = Clock()
+    assert main(args[:-1] + [str(tmp_path / "none")], engines=fake_engines(clock), totals=(16000, None), clock=clock) == 0
+    assert all(lg["pair"] != "ja->zh[nhk]" for lg in json.loads(out.read_text("utf-8"))["languages"])
