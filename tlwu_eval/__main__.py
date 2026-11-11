@@ -1,12 +1,13 @@
-"""`python -m tlwu_eval --smoke [--data DIR] [--out report.json]` (run from the repository folder)."""
+"""`python -m tlwu_eval --smoke [--data DIR] [--out report.json] [--tier NAME]` and
+`python -m tlwu_eval --chart OUT.html REPORT.json...` (run from the repository folder)."""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 
-from . import scoring
-from .runner import TOTAL_BUDGET_S, Engines, load_manifest, run_smoke
+from . import scoring, tiers
+from .runner import CLIPS_PER_LANG, TOTAL_BUDGET_S, Engines, load_manifest, run_smoke
 
 
 def format_report(rep: dict) -> str:
@@ -48,28 +49,86 @@ def machine_totals():
     return hw.ram_mib, hw.vram_mib
 
 
-def main(argv=None, engines: Engines | None = None, totals=None, **run_kw) -> int:
-    """engines / totals / run_kw (clock, ram, vram) are injected by tests; the defaults measure this machine."""
+def load_comet():
+    try:
+        from comet import download_model, load_from_checkpoint
+    except ImportError as e:
+        raise RuntimeError("--comet needs the optional unbabel-comet package (pip install unbabel-comet)") from e
+    return load_from_checkpoint(download_model("Unbabel/wmt22-comet-da"))
+
+
+def chart(p, args) -> int:
+    out, reports = args[0], args[1:]
+    if not out.endswith(".html") or not reports:
+        p.error("--chart OUT.html REPORT.json [REPORT.json ...]")
+    sums = []
+    for path in reports:
+        try:
+            with open(path, encoding="utf-8") as f:
+                rep = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"tlwu-eval: cannot read {path}: {e}", file=sys.stderr)
+            return 2
+        if "tier" not in rep:
+            print(f"tlwu-eval: {path} has no tier summary (run it with --tier)", file=sys.stderr)
+            return 2
+        sums.append(rep["tier"])
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(tiers.render_chart(sums))
+    print(f"chart: {out}")
+    return 0
+
+
+def main(argv=None, engines: Engines | None = None, totals=None, comet_model=None, **run_kw) -> int:
+    """engines / totals / comet_model / run_kw (clock, ram, vram) are injected by tests; the defaults measure
+    this machine."""
     p = argparse.ArgumentParser(prog="tlwu-eval", description="Local, offline evaluation of tinglongWu.")
     p.add_argument("--smoke", action="store_true", help="5 clips per focus language, per-stage time and PASS/FAIL")
     p.add_argument("--data", default="eval_data/smoke", help="folder with manifest.jsonl and the wav files")
     p.add_argument("--out", default="report.json", help="where the JSON report is written")
-    p.add_argument("--model", default=None, help="Whisper size (default: like tlwu)")
-    p.add_argument("--engine", default="auto", help="translation engine (default: auto, like tlwu)")
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
+    p.add_argument("--model", default=None, help="Whisper size (default: like tlwu, or the --tier preset)")
+    p.add_argument("--engine", default=None, help="translation engine (default: auto like tlwu, or the --tier preset)")
+    p.add_argument("--device", default=None, choices=["auto", "cpu", "cuda"],
+                   help="default: auto, or the --tier preset")
     p.add_argument("--models-dir", default=None)
+    p.add_argument("--tier", choices=sorted(tiers.TIERS),
+                   help="hardware tier preset (#120); adds a 'tier' summary (chrF, COMET, hallucination, latency)")
+    p.add_argument("--per-lang", type=int, default=None, metavar="N",
+                   help=f"clips per language (default {CLIPS_PER_LANG}; the tier baseline uses 20)")
+    p.add_argument("--comet", action="store_true",
+                   help="with --tier: also score COMET (needs the optional unbabel-comet package + wmt22-comet-da)")
+    p.add_argument("--chart", nargs="+", metavar=("OUT.html", "REPORT.json"),
+                   help="draw the tier summaries of these reports side by side into OUT.html")
     a = p.parse_args(argv)
+    if a.chart:
+        return chart(p, a.chart)
     if not a.smoke:
-        p.error("only --smoke exists so far (the full run is a later part of #57)")
+        p.error("only --smoke and --chart exist so far (the full run is a later part of #57)")
+    preset = tiers.TIERS.get(a.tier, {})
+    a.model = a.model or preset.get("model")
+    a.engine = a.engine or preset.get("engine", "auto")
+    a.device = a.device or preset.get("device", "auto")
+    if a.per_lang is not None:
+        run_kw.setdefault("per_lang", a.per_lang)
     try:
         rows = load_manifest(a.data)
         rep = run_smoke(rows, engines or real_engines(a), totals=totals or machine_totals(), **run_kw)
+        if a.tier:
+            comet = tiers.comet_scores(rep["languages"], comet_model or load_comet(), gpus=int(a.device == "cuda")) \
+                if a.comet else None
+            rep["tier"] = tiers.summarize(rep, a.tier, comet)
     except (FileNotFoundError, ValueError, RuntimeError) as e:  # ModelNotFound is a RuntimeError/FileNotFoundError
         print(f"tlwu-eval: {e}", file=sys.stderr)
         return 2
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(rep, f, ensure_ascii=False, indent=2)
     print(format_report(rep))
+    if "tier" in rep:
+        t = rep["tier"]
+        h = t["hallucination"]
+        print(f"tier {t['tier']}: chrF {t['chrf']} COMET {t['comet']} hallucination {h['count']}/{h['total']} "
+              f"({h['rate']:.2f}) latency median {t['latency_s']['median']:.2f}s p90 {t['latency_s']['p90']:.2f}s "
+              f"(baseline {tiers.BASELINE['label']} {tiers.BASELINE['count']}/{tiers.BASELINE['total']})")
     print(f"report: {a.out}")
     return 0 if rep["pass"] else 1
 
