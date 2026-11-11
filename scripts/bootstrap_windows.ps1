@@ -20,10 +20,27 @@
     $lang = $env:TLWU_UI_LANG
     if (-not $lang) { $lang = (Get-UICulture).Name }
     $L = if ($lang -like 'ru*') { 'ru' } elseif ($lang -like 'zh*') { 'zh-TW' } else { 'en' }
+    # Non-English text is stored as base64 UTF-8 so this file stays pure ASCII: PS 5.1 reads BOM-less files as ANSI
+    # (garbles UTF-8), and a BOM is unsafe through irm | iex. Regenerate: [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('...'))
+    $u = { param($b) [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) }
     $Msgs = @{
         'en' = @{ start = 'Installing tinglongWu version {0} into {1}'; git = 'Using git clone'; zip = 'git not found (or folder is not a git checkout), downloading the zip of {0}'; fail = 'Download failed (network, or unknown version {0}).'; dirty = '{0} exists but is not a tinglongWu folder; rename it or set TLWU_DIR.'; run = 'Running the installer ...' }
-        'ru' = @{ start = 'Установка tinglongWu, версия {0}, в {1}'; git = 'Используется git clone'; zip = 'git не найден (или папка не git-репозиторий), скачивается zip версии {0}'; fail = 'Загрузка не удалась (сеть или неизвестная версия {0}).'; dirty = '{0} существует, но это не папка tinglongWu; переименуйте или задайте TLWU_DIR.'; run = 'Запуск установщика ...' }
-        'zh-TW' = @{ start = '安裝 tinglongWu 版本 {0} 到 {1}'; git = '使用 git clone'; zip = '找不到 git（或資料夾不是 git 版本），改下載 {0} 的 zip'; fail = '下載失敗（網路，或版本 {0} 不存在）。'; dirty = '{0} 已存在但不是 tinglongWu 資料夾；請改名或設定 TLWU_DIR。'; run = '執行安裝程式 ...' }
+        'ru' = @{
+            start = (& $u '0KPRgdGC0LDQvdC+0LLQutCwIHRpbmdsb25nV3UsINCy0LXRgNGB0LjRjyB7MH0sINCyIHsxfQ==')
+            git = (& $u '0JjRgdC/0L7Qu9GM0LfRg9C10YLRgdGPIGdpdCBjbG9uZQ==')
+            zip = (& $u 'Z2l0INC90LUg0L3QsNC50LTQtdC9ICjQuNC70Lgg0L/QsNC/0LrQsCDQvdC1IGdpdC3RgNC10L/QvtC30LjRgtC+0YDQuNC5KSwg0YHQutCw0YfQuNCy0LDQtdGC0YHRjyB6aXAg0LLQtdGA0YHQuNC4IHswfQ==')
+            fail = (& $u '0JfQsNCz0YDRg9C30LrQsCDQvdC1INGD0LTQsNC70LDRgdGMICjRgdC10YLRjCDQuNC70Lgg0L3QtdC40LfQstC10YHRgtC90LDRjyDQstC10YDRgdC40Y8gezB9KS4=')
+            dirty = (& $u 'ezB9INGB0YPRidC10YHRgtCy0YPQtdGCLCDQvdC+INGN0YLQviDQvdC1INC/0LDQv9C60LAgdGluZ2xvbmdXdTsg0L/QtdGA0LXQuNC80LXQvdGD0LnRgtC1INC40LvQuCDQt9Cw0LTQsNC50YLQtSBUTFdVX0RJUi4=')
+            run = (& $u '0JfQsNC/0YPRgdC6INGD0YHRgtCw0L3QvtCy0YnQuNC60LAgLi4u')
+        }
+        'zh-TW' = @{
+            start = (& $u '5a6J6KOdIHRpbmdsb25nV3Ug54mI5pysIHswfSDliLAgezF9')
+            git = (& $u '5L2/55SoIGdpdCBjbG9uZQ==')
+            zip = (& $u '5om+5LiN5YiwIGdpdO+8iOaIluizh+aWmeWkvuS4jeaYryBnaXQg54mI5pys77yJ77yM5pS55LiL6LyJIHswfSDnmoQgemlw')
+            fail = (& $u '5LiL6LyJ5aSx5pWX77yI57ay6Lev77yM5oiW54mI5pysIHswfSDkuI3lrZjlnKjvvInjgII=')
+            dirty = (& $u 'ezB9IOW3suWtmOWcqOS9huS4jeaYryB0aW5nbG9uZ1d1IOizh+aWmeWkvu+8m+iri+aUueWQjeaIluioreWumiBUTFdVX0RJUuOAgg==')
+            run = (& $u '5Z+36KGM5a6J6KOd56iL5byPIC4uLg==')
+        }
     }
     $M = $Msgs[$L]
 
