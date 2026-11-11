@@ -8,10 +8,19 @@ the safety net that keeps one copy of whatever is still repeated (also used befo
 from __future__ import annotations
 
 import re
+import zlib
 
 MAX_UNIT_WORDS = 40
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 _CHAR_LOOP = re.compile(r"(.{3,80}?)\1{2,}", re.S)
+# non-CJK char-level loop: one >= 2 char unit joined by "-" / spaces, 4+ copies ("по-по-по-по", "la-la-la-la")
+MIN_UNIT_CHARS = 2
+MIN_UNIT_REPEATS = 4
+_UNIT_LOOP = re.compile(r"(?<!\w)(\w{%d,20}?)(?:[-\u2013\s]+\1){%d,}(?!\w)" % (MIN_UNIT_CHARS, MIN_UNIT_REPEATS - 1),
+                        re.I)
+MAX_COMPRESSION_RATIO = 2.4  # Whisper's own compression-ratio limit for a decoder stuck in a loop
+MIN_RATIO_BYTES = 32  # below this the ratio is meaningless (zlib header overhead)
+MIN_KEEP_CHARS = 2  # a collapsed result with fewer letters/digits than this is noise
 
 
 def _norm(w: str) -> str:
@@ -56,7 +65,25 @@ def collapse_repeats(text: str) -> str:
     t = " ".join(text.split())
     if not t:
         return t
+    t = _UNIT_LOOP.sub(lambda m: m.group(1), t)
     return _collapse_chars(_collapse_words(t))
+
+
+def compression_ratio(text: str) -> float:
+    b = text.encode("utf-8")
+    return len(b) / max(1, len(zlib.compress(b)))
+
+
+def filter_hallucination(text: str) -> str:
+    """Collapse repeats; return "" (drop the sentence) when what is left is still a loop or too short."""
+    t = collapse_repeats(text)
+    if not t:
+        return t
+    if t != " ".join(text.split()) and sum(c.isalnum() for c in t) < MIN_KEEP_CHARS:
+        return ""
+    if len(t.encode("utf-8")) >= MIN_RATIO_BYTES and compression_ratio(t) > MAX_COMPRESSION_RATIO:
+        return ""
+    return t
 
 
 def has_loop(text: str) -> bool:

@@ -15,7 +15,7 @@ from .capture.base import SAMPLE_RATE, AudioSource
 from .langfollow import script_lang
 from .merge import SentenceMerger, Unit
 from .models import ModelNotFound
-from .repeat import collapse_repeats
+from .repeat import filter_hallucination
 from .segment import Segmenter
 from .sink import Result, Sink
 from .translate import Translation, Translator, translate_checked
@@ -158,7 +158,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def emit_units(units) -> None:
         for u in units:
-            text = collapse_repeats(u.text)  # merged segments can loop across the seam
+            text = filter_hallucination(u.text)  # merged segments can loop across the seam
+            if not text:
+                continue
             lang = script_lang(text, u.lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
             if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
                 sink.write_source(lang, text)  # #53: the source line now, its translation when MT is done
