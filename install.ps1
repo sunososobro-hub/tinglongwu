@@ -1,7 +1,7 @@
 ﻿# tinglongWu one-click installer (Windows PowerShell 5.1). Safe to re-run: finished steps are skipped.
 #   install.bat                     normal install
 #   install.ps1 -DryRun             detect only, print every command, install nothing
-#   -SkipModels  -SkipShortcut      skip step 5 / 6      -Cpu  force the CPU path
+#   -SkipModels  -SkipShortcut      skip steps 5-6 / 7   -Cpu  force the CPU path
 param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu)
 
 $ErrorActionPreference = 'Continue'
@@ -20,7 +20,7 @@ $Warnings  = New-Object System.Collections.ArrayList
 $LlamaChk  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[0])'   # loads, fits this CPU (#74), has GPU offload
 
 $LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[1])'
-function Step($n, $zh, $en) { Write-Host ""; Write-Host "[$n/7] $zh / $en" -ForegroundColor Cyan }
+function Step($n, $zh, $en) { Write-Host ""; Write-Host "[$n/8] $zh / $en" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
 function Info($m) { Write-Host "      $m" }
 function Warn($m) { Write-Host "  !!  $m" -ForegroundColor Yellow; [void]$Warnings.Add($m) }
@@ -155,28 +155,47 @@ else {
     }
 }
 
-# ---------------------------------------------------------------- 6. shortcut
-Step 6 '建立桌面捷徑' 'Create desktop shortcut'
+# ---------------------------------------------------------------- 6. talk mode
+Step 6 '說話模式（中文說、Kokoro 念英文給 Meet）' 'Talk mode (you speak Chinese, Kokoro speaks English into Meet)'
+$TalkPs1 = Join-Path $Root 'tlwu-talk.ps1'
+if ($SkipModels) { Info "-SkipModels: skipped / 略過" }
+else {
+    # Kokoro venv (~\tts-kokoro, own venv: it bundles GPL espeak) + SHA256-pinned model + smoke wav + tlwu-talk.ps1;
+    # finished parts are skipped on a re-run, a hash mismatch stops this step with the reason printed above.
+    $tc = if ($Gpu) { 'cuda' } else { 'cpu' }
+    $tm = if ($Engine -eq 'qwen') { 'auto' } else { 'opus' }
+    if (Run $VSet @('--talk', '--talk-whisper', $Whisper, '--talk-compute', $tc, '--talk-mt', $tm)) {
+        [void]$Installed.Add('Talk mode: Kokoro voice (~\tts-kokoro, models\kokoro, SHA256 verified) + tlwu-talk.ps1')
+    } else { Warn "Talk mode setup failed (see above); listening still works. Re-run install.bat to retry. 說話模式安裝失敗，重跑 install.bat 即可。" }
+}
+$Cable = $false
+try { $Cable = [bool](Get-CimInstance Win32_SoundDevice -ErrorAction Stop | Where-Object { $_.Name -match 'VB-Audio' }) } catch { }
+if ($Cable) { Ok "VB-CABLE found / 已偵測到 VB-CABLE" }
+else { Warn "VB-CABLE not found: talk mode needs it (free: https://vb-audio.com/Cable/), then Meet microphone = 'CABLE Output'. 說話模式需要 VB-CABLE。" }
+
+# ---------------------------------------------------------------- 7. shortcuts
+Step 7 '建立桌面捷徑' 'Create desktop shortcuts'
+function Make-Shortcut($name, $target, $arguments) {
+    $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) "$name.lnk"
+    if ($DryRun) { Write-Host "  [dry-run] shortcut: $lnk -> $target $arguments (start in $Root)" -ForegroundColor DarkGray; return }
+    try {
+        $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+        $s.TargetPath = $target; $s.Arguments = $arguments; $s.WorkingDirectory = $Root
+        $s.Description = "$name - offline speech translator"
+        $s.Save()
+        Ok "Shortcut: $lnk"; [void]$Installed.Add("Desktop shortcut '$name'")
+    } catch { Warn "Could not create the shortcut $lnk ($_). Start it from $target $arguments instead." }
+}
 if ($SkipShortcut) { Info "-SkipShortcut: skipped / 略過" }
 else {
-    $Desktop = [Environment]::GetFolderPath('Desktop')
-    $Lnk = Join-Path $Desktop '聽攏有 tinglongWu.lnk'
-    if (Test-Path $VGui) { $target = $VGui; $args2 = '' } else { $target = $VPyW; $args2 = '-m tinglongwu.gui' }
-    if ($DryRun) { Write-Host "  [dry-run] shortcut: $Lnk -> $target $args2 (start in $Root)" -ForegroundColor DarkGray }
-    else {
-        try {
-            $sh = New-Object -ComObject WScript.Shell
-            $s = $sh.CreateShortcut($Lnk)
-            $s.TargetPath = $target; $s.Arguments = $args2; $s.WorkingDirectory = $Root
-            $s.Description = '聽攏有 tinglongWu - offline speech translator'
-            $s.Save()
-            Ok "Shortcut: $Lnk"; [void]$Installed.Add('Desktop shortcut')
-        } catch { Warn "Could not create the shortcut ($_). Start it from $target instead." }
-    }
+    if (Test-Path $VGui) { Make-Shortcut '聽攏有 tinglongWu' $VGui '' } else { Make-Shortcut '聽攏有 tinglongWu' $VPyW '-m tinglongwu.gui' }
+    if ($DryRun -or (Test-Path $TalkPs1)) {
+        Make-Shortcut '聽攏有 說話模式' "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" "-NoExit -ExecutionPolicy Bypass -File `"$TalkPs1`""
+    } else { Info "No tlwu-talk.ps1 (talk mode not set up): talk shortcut skipped / 未建立說話模式捷徑" }
 }
 
-# ---------------------------------------------------------------- 7. summary
-Step 7 '完成' 'Summary'
+# ---------------------------------------------------------------- 8. summary
+Step 8 '完成' 'Summary'
 Write-Host ""
 Write-Host "  Installed / 已安裝:" -ForegroundColor White
 foreach ($i in $Installed) { Write-Host "    - $i" }
@@ -187,7 +206,8 @@ if ($Warnings.Count -gt 0) {
 }
 Write-Host ""
 Write-Host "  Launch / 啟動: double-click the desktop shortcut '聽攏有 tinglongWu' (or $VGui)" -ForegroundColor White
-Write-Host "  Uninstall / 移除: delete this folder ($Root; models are in its models\ folder) and the desktop shortcut."
+Write-Host "  Talk mode / 說話模式: desktop shortcut '聽攏有 說話模式' (Meet microphone = CABLE Output)" -ForegroundColor White
+Write-Host "  Uninstall / 移除: delete this folder ($Root; models are in its models\ folder), ~\tts-kokoro and the desktop shortcuts."
 Write-Host "                    刪除此資料夾（模型在 models\ 內）與桌面捷徑即可。"
 if ($DryRun) { Write-Host ""; Write-Host "  (dry run finished, nothing was changed / 試跑結束，未做任何更動)" -ForegroundColor Yellow }
 exit 0
