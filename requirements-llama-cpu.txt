@@ -1,0 +1,7 @@
+# CPU build of llama-cpp-python for Japanese translation (Hy-MT2) on PCs without an NVIDIA GPU (#126).
+# The plain PyPI package has no Windows binary and would try to compile, so take the prebuilt CPU wheel, binary only:
+#   pip install -r requirements-llama-cpu.txt --only-binary=:all:
+# (install.ps1 does this on the CPU tier.) The cpu index build of this version has no AVX-512 (#74, see
+# tinglongwu/llamacheck.py); check an install with: tlwu-setup --check-llama
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python==0.3.36

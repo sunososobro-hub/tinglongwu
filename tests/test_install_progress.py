@@ -104,4 +104,5 @@ def test_install_dry_run_prints_an_estimate_under_every_step():
     assert len(steps) == 7
     for i in steps:
         assert "預估" in lines[i + 1] and ("min" in lines[i + 1] or "minute" in lines[i + 1])
-    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 11-32 分鐘") for x in lines)
+    # CPU tier with RAM unknown/enough: ~1 GB models + Hy-MT2 for Japanese (#126) -> 2 GB
+    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 12-39 分鐘") for x in lines)
