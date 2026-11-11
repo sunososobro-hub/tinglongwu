@@ -38,9 +38,8 @@ def test_gpu_tier_threshold_is_the_hwprobe_one():
 def test_no_gpu_or_forced_cpu_is_cpu_tier():
     for t in (tiers.choose_tier(None), tiers.choose_tier(gpu(24000), force_cpu=True)):
         assert (t.name, t.whisper, t.mt) == ("cpu", "small", ())
-    assert tiers.T_CPU.downloader_args() == ["--whisper", "small", "--langs", "ru,ja,en", "--to", "zh"]
-    assert tiers.T_GPU.downloader_args() == ["--whisper", "large-v3-turbo", "--langs", "ru,ja,en", "--to", "zh",
-                                             "--hymt"]
+    assert tiers.T_CPU.downloader_args() == ["--whisper", "small", "--packs", "zh,en"]
+    assert tiers.T_GPU.downloader_args() == ["--whisper", "large-v3-turbo", "--packs", "zh,en", "--hymt"]
     assert "GB" in tiers.T_GPU.size_text and "MB" in tiers.T_CPU.size_text
     assert tiers.T_GPU.total_bytes < 3.5 * 1024 * tiers.MB  # turbo + OPUS + Hy-MT2, not the old ~10 GB Qwen tier
 
