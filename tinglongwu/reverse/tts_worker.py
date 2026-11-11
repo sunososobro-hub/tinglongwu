@@ -158,6 +158,18 @@ def kokoro_request(text: str, lang: str | None, phonemizers: dict) -> tuple[list
     return KOKORO_VOICES, {"text": text, "lang": "en-us"}
 
 
+def _kokoro(Kokoro, onnx: str, voices: str):
+    """Kokoro with TLWU_TTS_THREADS onnxruntime threads when the main process set it (#250 listen+speak budget)."""
+    n = os.environ.get("TLWU_TTS_THREADS", "")
+    if n.isdigit() and int(n) > 0 and hasattr(Kokoro, "from_session"):
+        import onnxruntime as ort
+
+        so = ort.SessionOptions()
+        so.intra_op_num_threads, so.inter_op_num_threads = int(n), 1
+        return Kokoro.from_session(ort.InferenceSession(onnx, so, providers=["CPUExecutionProvider"]), voices)
+    return Kokoro(onnx, voices)
+
+
 def run_kokoro(a, ja_phonemizer=None, zh_phonemizer=None) -> int:
     """CPU path with kokoro-onnx (English, Japanese, Chinese). It bundles GPL espeak, so it only ever runs here, in its own venv.
     Needs kokoro-v1.0.int8.onnx + voices-v1.0.bin in --model; a request may carry "speaker" (0-4)."""
@@ -171,7 +183,7 @@ def run_kokoro(a, ja_phonemizer=None, zh_phonemizer=None) -> int:
             send({"t": "error", "id": None, "msg": f"missing local file: {f}"})
             return 2
     t0 = time.perf_counter()
-    k = Kokoro(onnx, voices)
+    k = _kokoro(Kokoro, onnx, voices)
     phonemizers = {"ja": ja_phonemizer or JaPhonemizer(), "zh": zh_phonemizer or ZhPhonemizer()}
     try:
         avail = set(k.get_voices())
