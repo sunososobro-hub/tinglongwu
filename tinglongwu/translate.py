@@ -133,8 +133,31 @@ _LEAD_LETTER = re.compile(r"^\s*[(（][A-Za-z][)）]\s*")
 _WIKI_ASIDE = re.compile(r"\s*[(（]\s*(?:英[語语文]|English)\s*[:：][^()（）]*[)）]")
 
 
+# ASS/SSA subtitle override blocks ({\fnArial\fs16}, {\an8}, {\c&H00FFFF&}) and their line-break escapes (\N \n \h),
+# learned by OPUS / M2M from subtitle corpora (#43). In bilingual subtitle files such a block starts the *other*
+# subtitle line, so the text after a block in the middle of the output is a sentence unrelated to the source.
+_ASS_BLOCK = re.compile(r"\{\\[^{}]*\}")
+_ASS_ESC = re.compile(r"\\[Nnh]")
+
+
+def strip_subtitle_codes(out: str, *sources: str) -> str:
+    """Remove subtitle style codes from MT output (unless the source has them). A leading block is just dropped;
+    at a block after some text, the rest of the line is dropped too (hallucinated next subtitle line, #43)."""
+    if _ASS_BLOCK.search(" ".join(sources)):
+        return out
+    m = _ASS_BLOCK.search(out)
+    if not m:
+        return out
+    head = _ASS_ESC.sub(" ", out[:m.start()]).strip()
+    if head:
+        return head
+    rest = out[m.end():]
+    return strip_subtitle_codes(rest, *sources) if _ASS_BLOCK.search(rest) else _ASS_ESC.sub(" ", rest).strip()
+
+
 def zh_artifacts(out: str, *sources: str) -> str:
     """Strip MT artifacts from zh output unless the source line itself has them."""
+    out = strip_subtitle_codes(out, *sources)
     src = " ".join(sources)
     if not _COPY.search(src):
         out = _COPY.sub("", out)
@@ -277,6 +300,8 @@ class PivotTranslator(Translator):
             if self.glossary:
                 out = self.glossary.fix_output(out, text, pivot or "", convert=self._zh_word)
             out = zh_guard(text, out)
+            if not out and text.strip():  # nothing left but MT artifacts (#43): show the source line
+                out = text
         return Translation(pivot, out)
 
     def _timed(self, s: str, t: str, text: str, timing: list) -> str:
@@ -351,5 +376,5 @@ class M2mTranslator(Translator):
         if tgt in ("zh", "ja"):
             out = cjk_clean(out)
         if tgt == "zh":
-            out = zh_guard(text, zh_convert(out, self.zh_variant))
+            out = zh_guard(text, strip_subtitle_codes(zh_convert(out, self.zh_variant), text)) or text
         return Translation(None, out)
