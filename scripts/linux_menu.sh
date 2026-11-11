@@ -221,7 +221,8 @@ if [ "$BOTH" = "1" ]; then
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
   tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" < /dev/null &
   LISTEN_PID=$!
-  trap 'kill $LISTEN_PID 2>/dev/null' EXIT INT TERM
+  # `|| true`: under set -e a failing trap command (listener already gone) would turn a clean exit into exit 1
+  trap 'kill $LISTEN_PID 2>/dev/null || true' EXIT INT TERM
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
   m M_MEETING_BANNER "$MM"
   "${REV[@]}" "${AUTO[@]}"
