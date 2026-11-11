@@ -147,6 +147,26 @@ def follow_newest(yview_last: float) -> bool:
     return yview_last >= 0.999
 
 
+_MARK_OK, _MARK_MISSING = "\u2713 ", " (\u9700\u4e0b\u8f09 / not downloaded)"
+
+
+def model_labels(mdir=None) -> list[str]:
+    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96)."""
+    from ..models import whisper_installed
+
+    have = whisper_installed(mdir)
+    return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
+
+
+def model_from_label(label: str) -> str:
+    """The plain model name from a dropdown entry (also accepts a plain name)."""
+    return label.replace(_MARK_OK, "", 1).replace(_MARK_MISSING, "").strip()
+
+
+def label_for_model(name: str, mdir=None) -> str:
+    return next((l for l in model_labels(mdir) if model_from_label(l) == name), name)
+
+
 def usable_model(wanted: str | None) -> str:
     """The chosen Whisper model, or the best downloaded one when it is not on disk (#96)."""
     from ..models import pick_whisper
