@@ -157,11 +157,14 @@ if [ "$mode" = "2" ] && { [ "$SPEAK" = "ru" ] || { [ "$SPEAK" = "follow" ] && pr
 fi
 LISTEN_LANG=(--lang "$L"); [ "$L" = "auto" ] && LISTEN_LANG=(--lang auto --lang-candidates "$CANDS")
 HY_NOTE="$(mp M_HY_NOTE)"
-# Subtitles are never stored unless asked: default N, asked every start (audio is never saved)
+# Subtitles are never stored unless asked: default N, asked every start (audio only if asked: --record)
 SAVE=()
 if [ "$mode" = "1" ] || [ "$BOTH" = "1" ]; then
   sv=""; read -rp "$(mp M_ASK_SAVE)" sv || sv=""
   case "$sv" in y|Y|yes|YES|Yes) SAVE=(--save) ;; esac
+  # #239: audio is stored only if asked (default N, asked every start); stays on this computer
+  rv=""; read -rp "$(mp M_ASK_RECORD)" rv || rv=""
+  case "$rv" in y|Y|yes|YES|Yes) SAVE+=(--record) ;; esac
 fi
 # Listen side extras (#42): --glossary when the user glossary folder has .txt files; on CPU with Hy-MT2 installed,
 # ask whether to use it instead of OPUS (python -m tinglongwu.menuopts; questions on stderr, args on stdout)

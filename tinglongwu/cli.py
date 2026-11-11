@@ -92,6 +92,10 @@ def parse_args(argv=None):
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    p.add_argument("--record", nargs="?", const="", default=None, metavar="PATH",
+                   help="also record the captured audio to a local 16 kHz mono WAV; PATH defaults to "
+                        "./transcripts/<YYYYmmdd-HHMMSS>.wav (default off; nothing is uploaded; get the other "
+                        "side's consent first)")
     p.add_argument("--report", action="store_true",
                    help="open the browser on a pre-filled GitHub issue (version, OS, recent log); "
                         "nothing is uploaded, you review and submit it yourself")
@@ -334,8 +338,15 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     ctl = None
     if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
         asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
+    record = getattr(a, "record", None)
+    rec = ""
+    if record is not None:
+        from .record import consent_notice, rec_label
+
+        rec = rec_label()
+        print(f"tlwu: {consent_notice()}", file=sys.stderr)
     if sink is None:
-        sink = TranscriptSink() if a.transcript_only else TextSink()
+        sink = TranscriptSink(rec=rec) if a.transcript_only else TextSink(rec=rec)
     if a.save is not None:
         from .sink import JsonlSaveSink, default_save_path
 
@@ -345,6 +356,12 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
+    if record is not None:
+        from .record import RecordingSource, default_record_path
+
+        record_path = record or default_record_path()
+        source = RecordingSource(source, record_path)
+        print(f"tlwu: recording audio to {os.path.abspath(record_path)}", file=sys.stderr)
     merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
     segmenter = Segmenter(a.chunk, not a.no_vad)
     draft = None

@@ -282,7 +282,7 @@ def test_mac_menu_speak_mode_to_headphones_skips_the_virtual_mic(menu):
 def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     """Also: ending the session after the background listener already exited is a clean exit (the EXIT trap's
     kill of a finished pid used to turn it into exit 1 under set -e)."""
-    r, calls = menu("1\nn\nn\n")
+    r, calls = menu("1\nn\nn\nn\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
     assert "tlwu --lang en" in calls

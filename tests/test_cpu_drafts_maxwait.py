@@ -111,19 +111,19 @@ def _run_menu(tmp_path, answers: str):
 
 
 def test_linux_menu_listen_drafts_yes_passes_stream(tmp_path):
-    # 3 = listen only; Enter = do not save; y = live drafts
-    args, _ = _run_menu(tmp_path, "3\n\ny\n")
+    # 3 = listen only; Enter = do not save; Enter = do not record; y = live drafts
+    args, _ = _run_menu(tmp_path, "3\n\n\ny\n")
     assert args == ["--lang", "en", "--stream"]
 
 
-@pytest.mark.parametrize("answers", ["3\n\n\n", "3\n\nn\n", "3\n\n"])  # Enter, n, and stdin closed = no
+@pytest.mark.parametrize("answers", ["3\n\n\n\n", "3\n\n\nn\n", "3\n\n"])  # Enter, n, and stdin closed = no
 def test_linux_menu_listen_drafts_default_off(tmp_path, answers):
     args, _ = _run_menu(tmp_path, answers)
     assert args == ["--lang", "en"]
 
 
 def test_linux_menu_save_and_drafts_together(tmp_path):
-    args, _ = _run_menu(tmp_path, "3\ny\nyes\n")
+    args, _ = _run_menu(tmp_path, "3\ny\n\nyes\n")
     assert args == ["--lang", "en", "--save", "--stream"]
 
 
@@ -159,3 +159,13 @@ def test_windows_menu_drafts_question(tmp_path, ui, answer, want):
     assert f"ARGS={want}" in lines and f"COUNT={1 if want else 0}" in lines
     prompt = next(x for x in lines if x.startswith("PROMPT="))
     assert "y=" in prompt and "ASK_STREAM" not in prompt
+
+
+def test_linux_menu_record_question_default_off_and_yes_passes_record(tmp_path):
+    """#239: asked after the save question; Enter = no recording, y = --record."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    args, _ = _run_menu(tmp_path / "a", "3\n\n\n\n")
+    assert "--record" not in args
+    args, _ = _run_menu(tmp_path / "b", "3\n\ny\n\n")
+    assert args == ["--lang", "en", "--record"]

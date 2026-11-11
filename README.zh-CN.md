@@ -6,7 +6,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 
 完全本地、离线的实时语音翻译器：**系统音频输出 -> 采集 -> 语音识别 -> 翻译 -> 文本**。
 会采集电脑播放的所有声音（系统输出，不是单个程序）。运行时完全不使用网络；只有安装／首次下载模型才会用到网络。
-数据不会离开你的电脑：不使用云端 API、没有遥测，音频和转写文本都不会写入磁盘。
+数据不会离开你的电脑：不使用云端 API、没有遥测，默认不会把音频和转写文本写入磁盘；只有你选了存档（`--save`）或录音（`--record`）才会存在本机。
 
 ```
 [RU] Привет, как дела?
@@ -104,7 +104,7 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在离线电脑上安装�
 
 ## 隐私模型
 
-- 音频只存在于内存；转写文本只输出到 stdout，不写任何日志（只有明确指定 `--save`、`--save-result PATH` 才会存档）。
+- 音频默认只存在于内存（只有你选了 `--record` 才会存成本机 WAV）；转写文本只输出到 stdout，不写任何日志（只有明确指定 `--save`、`--save-result PATH` 才会存档）。
 - `import tinglongwu` 时（早于任何 HF/ctranslate2 导入）强制设置离线环境变量：`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`HF_HUB_DISABLE_TELEMETRY`、`DO_NOT_TRACK`、`ARGOS_*`。
 - 运行时**网络防护**会拦截 `socket.connect/connect_ex/getaddrinfo/gethostbyname`，任何非 loopback 目标一律抛出异常，始终开启。
 - 模型只从本地 `models/` 加载（`--models-dir` 或环境变量 `TLWU_MODELS`）；缺少模型时报错并指向下载脚本，不会自动下载。
