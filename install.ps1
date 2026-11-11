@@ -56,19 +56,20 @@ Info "Folder / 資料夾: $Root"
 Info "Whole install: about 10-65 min depending on your PC and connection (exact estimate after step 2). 全程約 10-65 分鐘，第 2 步後顯示準確預估。"
 
 # ---------------------------------------------------------------- 1. Python
-Step 1 '檢查 Python 3.10-3.12' 'Check Python 3.10-3.12'
+Step 1 '檢查 Python 3.12' 'Check Python 3.12'
 $Py = $null
-foreach ($v in '3.12', '3.11', '3.10') {
+# only 3.12: the pinned numpy 2.5.4 / scipy 1.18.1 have no wheels for 3.10/3.11 (#138)
+foreach ($v in @('3.12')) {
     $p = Capture 'py' @("-$v", '-c', 'import sys;print(sys.executable)')
     if ($p -and (Test-Path $p)) { $Py = $p; break }
 }
 if (-not $Py) {
-    $p = Capture 'python' @('-c', 'import sys;print(sys.executable if (3,10)<=sys.version_info[:2]<=(3,12) else "")')
+    $p = Capture 'python' @('-c', 'import sys;print(sys.executable if sys.version_info[:2]==(3,12) else "")')
     if ($p -and (Test-Path $p)) { $Py = $p }
 }
 if (-not $Py) {
     Write-Host ""
-    Write-Host "  找不到 Python 3.10 ~ 3.12 / Python 3.10-3.12 not found." -ForegroundColor Red
+    Write-Host "  找不到 Python 3.12 / Python 3.12 not found (3.10/3.11 cannot install the pinned numpy/scipy)." -ForegroundColor Red
     Write-Host "  請到 https://www.python.org/downloads/windows/ 下載 Python 3.12，"
     Write-Host "  安裝時務必勾選 'Add python.exe to PATH'，裝好後再按一次 install.bat。"
     Write-Host "  Download Python 3.12 from python.org, TICK 'Add python.exe to PATH', then run install.bat again."
