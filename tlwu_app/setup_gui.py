@@ -37,7 +37,8 @@ class SetupWindow:
         self.ok = False
         self.proc: subprocess.Popen | None = None
         self.q: queue.Queue = queue.Queue()
-        self.gpu = None if force_cpu else tiers.detect_gpu()
+        raw = None if force_cpu else tiers.probe_gpu()
+        self.gpu = None if tiers.driver_too_old(raw) else raw  # too-old driver = CPU tier + update hint (#95)
         self.tier = tiers.choose_tier(self.gpu, force_cpu)
         self.base_bytes = 0
         self.root = tk.Tk()
@@ -49,13 +50,7 @@ class SetupWindow:
         ttk.Label(f, text="歡迎使用聽攏有（離線即時翻譯）", font=("Microsoft JhengHei UI", 13, "bold")).pack(anchor="w")
         ttk.Label(f, text="第一次使用需要下載語音與翻譯模型。下載完成後，翻譯全程不需要網路。",
                   wraplength=420).pack(anchor="w", pady=(4, 8))
-        if self.gpu:
-            det = f"偵測到顯示卡：{self.gpu.name}（{self.gpu.total_mb / 1024:.1f} GB 顯存）"
-        elif force_cpu:
-            det = "已指定 CPU 模式。"
-        else:
-            det = "沒有偵測到 NVIDIA 顯示卡，將使用 CPU 模式（速度較慢，但一樣能用）。"
-        ttk.Label(f, text=det, wraplength=420).pack(anchor="w")
+        ttk.Label(f, text=tiers.detection_text(raw, force_cpu), wraplength=420).pack(anchor="w")
         self.v_plan = tk.StringVar()
         ttk.Label(f, textvariable=self.v_plan, wraplength=420, foreground="#1a4d8f").pack(anchor="w", pady=(4, 8))
         self.v_cpu = tk.BooleanVar(value=force_cpu or self.gpu is None)

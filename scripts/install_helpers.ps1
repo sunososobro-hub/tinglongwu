@@ -69,3 +69,23 @@ function Invoke-TlwuNative([string]$exe, [string[]]$a) {
     $p.WaitForExit()
     return [int]$p.ExitCode
 }
+
+# #95: a GPU whose driver predates CUDA 12 is not a GPU for us (CTranslate2 4.x / cuBLAS 12 cannot start on it), so
+# the installer must pick the CPU tier up front instead of the user finding out at run time. Same threshold as
+# tinglongwu/device.py MIN_DRIVER['win32'] (NVIDIA CUDA 12.x release notes: Windows driver >= 528.33).
+$script:TlwuMinDriver = '528.33'
+$script:TlwuDriverUrl = 'https://www.nvidia.com/Download/index.aspx'
+
+# First line of `nvidia-smi --query-gpu=name,memory.total,memory.free,driver_version --format=csv,noheader,nounits`
+# -> @{Name; TotalMB; FreeMB; Driver; DriverOld}, or $null when it cannot be parsed (no GPU).
+function Get-TlwuGpu([string]$smi) {
+    $line = (($smi -split "`r?`n") | Where-Object { $_.Trim() } | Select-Object -First 1)
+    if (-not $line) { return $null }
+    $f = @($line -split ',\s*' | ForEach-Object { $_.Trim() })
+    if ($f.Count -lt 3) { return $null }
+    $t = 0; $fr = 0
+    if (-not ([int]::TryParse($f[1], [ref]$t) -and [int]::TryParse($f[2], [ref]$fr))) { return $null }
+    $drv = ''; $old = $false
+    if ($f.Count -ge 4 -and $f[3] -match '^\d+(\.\d+){1,3}$') { $drv = $f[3]; $old = ([version]$drv) -lt ([version]$script:TlwuMinDriver) }
+    return [pscustomobject]@{ Name = $f[0]; TotalMB = $t; FreeMB = $fr; Driver = $drv; DriverOld = $old }
+}
