@@ -45,12 +45,19 @@ def _enable_vt() -> bool:
 
 def block(side: str, original: str, translations=(), now=None, color: bool = False) -> str:
     """side 'me' | 'them'. translations: iterable of (tag|None, text). Returns the block incl. trailing blank line."""
+    return head(side, original, now=now, color=color) + tail(translations)
+
+
+def head(side: str, original: str, now=None, color: bool = False) -> str:
+    """First line of a block ('12:03:10 ◀ Them original' + newline), printed alone while MT still runs (#53)."""
     label = t("label_me" if side == "me" else "label_them")
     stamp = (now or datetime.datetime.now()).strftime("%H:%M:%S")
     if color:
         label = f"{GREEN if side == 'me' else CYAN}{label}{RESET}"
         stamp = f"{DIM}{stamp}{RESET}"
-    lines = [f"{stamp} {label} {original}"]
-    for tag, text in translations:
-        lines.append(f"{INDENT}→ " + (f"[{tag}] " if tag else "") + text)
-    return "\n".join(lines) + "\n\n"
+    return f"{stamp} {label} {original}\n"
+
+
+def tail(translations=()) -> str:
+    """The '→ [TAG] text' lines under a head, plus the blank line that ends the block."""
+    return "".join(f"{INDENT}→ " + (f"[{tag}] " if tag else "") + text + "\n" for tag, text in translations) + "\n"
