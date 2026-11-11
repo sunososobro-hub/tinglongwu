@@ -108,6 +108,20 @@ def lat_line(t: dict) -> str:
     return "lat " + " ".join(parts) + f" total={total:.2f}"
 
 
+def latency_fields(asr: float, mt: float, first_audio, tts_done: float) -> dict:
+    """Batch-mode fields (#180), all in seconds from the end of Chinese speech: t_asr, t_mt (asr+mt), t_first_audio
+    (None if nothing was spoken) and t_tts_done."""
+    return {"t_asr": round(asr, 3), "t_mt": round(asr + mt, 3),
+            "t_first_audio": None if first_audio is None else round(asr + mt + first_audio, 3),
+            "t_tts_done": round(asr + mt + tts_done, 3)}
+
+
+def latency_line(f: dict) -> str:
+    """'latency asr=0.41s mt=0.61s first_audio=0.96s done=1.20s' ('-' when no audio was produced)."""
+    fa = "-" if f["t_first_audio"] is None else f"{f['t_first_audio']}"
+    return f"latency asr={f['t_asr']}s mt={f['t_mt']}s first_audio={fa}s done={f['t_tts_done']}s"
+
+
 class TimedASR:
     """Wraps an ASR object: transcribe() time lands in `lat` as 'asr' (last call wins: dropped segments are not
     part of the utterance that follows)."""
