@@ -199,10 +199,17 @@ fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 ( cd "$KOKORO_DIR" && shasum -a 256 kokoro-v1.0.int8.onnx voices-v1.0.bin > SHA256SUMS ) 2>/dev/null || true
 
 # ---------------------------------------------------------------- 6. models
-say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 1-2 GB）"
+say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 2-3 GB）"
 # #178: core + language packs (default zh+en); ja / ru are offered with their size when first picked
 .venv/bin/tlwu-setup --whisper small --packs "${TLWU_PACKS:-zh,en}" --allow-unpinned \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
+# #276/#301: Hy-MT2 1.8B is the only default translation engine (runs on the CPU here): llama-cpp-python + the GGUF.
+# No macOS wheel on the CPU index -> pip builds it from source with the Xcode command line tools (a few minutes).
+info "安裝翻譯引擎 Hy-MT2（llama-cpp-python，可能要編譯幾分鐘）..."
+.venv/bin/python -m pip install -r requirements-llama-cpu.txt \
+  || warn "llama-cpp-python 安裝失敗：翻譯無法使用。請把上面的錯誤訊息給維護者，或重貼安裝指令重試。"
+.venv/bin/tlwu-setup --hymt \
+  || die "Hy-MT2 翻譯模型下載失敗（網路？）。重貼安裝指令會從中斷處繼續。"
 fi
 
 # ---------------------------------------------------------------- 7. launcher

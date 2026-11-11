@@ -55,17 +55,21 @@ def test_cpu_tier_installs_llama_cpu_build_and_hymt():
     assert len(pip) == 1 and "--only-binary=:all:" in pip[0]
     assert any("[dry-run]" in x and x.rstrip().endswith("--hymt") for x in lines)
     assert not any("requirements-qwen.txt" in x for x in lines)  # the CUDA wheel stays GPU-only
-    assert any("Japanese: Hy-MT2" in x for x in lines)
+    assert any("translation=Hy-MT2 1.8B on the CPU" in x for x in lines)
+    assert any("Translation engine / 翻譯引擎: hymt2" in x for x in lines)
     assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 14-43 分鐘") for x in lines)  # +1.1 GB GGUF, +0.3 GB talk mode (#124)
 
 
 @needs_pwsh
-def test_low_ram_cpu_tier_says_japanese_is_unsupported_and_skips_hymt():
+def test_low_ram_cpu_tier_still_installs_hymt_and_warns():
+    """#301: Hy-MT2 is the only engine (#276), so a low-RAM PC gets it too, with a clear warning."""
     lines = _dry_run_cpu(TLWU_TEST_RAM_MB="3000")
-    assert not any("requirements-llama-cpu.txt" in x or x.rstrip().endswith("--hymt") for x in lines)
-    warn = [x for x in lines if "Japanese translation is not supported on this PC" in x]
+    assert any("[dry-run]" in x and "requirements-llama-cpu.txt" in x for x in lines)
+    assert any("[dry-run]" in x and x.rstrip().endswith("--hymt") for x in lines)
+    warn = [x for x in lines if "the Hy-MT2 translator needs about 4 GB" in x]
     assert warn and "3000 MB" in warn[0]
-    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 13-36 分鐘") for x in lines)  # incl. 0.3 GB talk mode (#124)
+    assert not any("OPUS engine" in x for x in lines)
+    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 14-43 分鐘") for x in lines)
 
 
 def test_cpu_requirements_pin_the_checked_llama_version_from_the_cpu_index():

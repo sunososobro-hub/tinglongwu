@@ -1,5 +1,5 @@
 """#106: the Windows installer picks Hy-MT2 for the GPU tier (>= 4 GB total VRAM, hwprobe.GPU_MIN_VRAM_MIB) instead of
-choosing Qwen by VRAM; below that it stays on OPUS. Runs `install.ps1 -DryRun` with a stubbed nvidia-smi and python.
+choosing Qwen by VRAM; below that (or without a GPU) Hy-MT2 runs on the CPU (#301). Runs `install.ps1 -DryRun` with a stubbed nvidia-smi and python.
 
 Needs `pwsh` (preinstalled on the GitHub ubuntu runners); skipped where it is missing."""
 from __future__ import annotations
@@ -34,7 +34,7 @@ def dry_run(tmp_path: Path, total_mb: int | None) -> str:
     if total_mb is not None:
         _exe(bin_dir / "nvidia-smi", f'echo "Test GPU, {total_mb}, {total_mb - 500}"')
     env = {k: v for k, v in os.environ.items() if k not in ("TLWU_SKIP_MODELS", "TLWU_SKIP_SHORTCUT")}
-    env["TLWU_TEST_RAM_MB"] = "2048"  # under the #126 CPU-Japanese RAM floor: the no-GPU path stays OPUS-only
+    env["TLWU_TEST_RAM_MB"] = "2048"  # low RAM: Hy-MT2 is still installed, with a warning (#301)
     env.update(PATH=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1",
                POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
     r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "install.ps1"), "-DryRun"],
@@ -60,10 +60,13 @@ def test_gpu_tier_downloads_hymt_not_qwen(tmp_path, total):
 
 
 @pytest.mark.parametrize("total", [hwprobe.GPU_MIN_VRAM_MIB - 1, 2048, None])
-def test_below_threshold_or_no_gpu_stays_on_opus(tmp_path, total):
+def test_below_threshold_or_no_gpu_runs_hymt_on_the_cpu(tmp_path, total):
+    """#301: Hy-MT2 is the only default engine (#276); below 4 GB VRAM or without a GPU it runs on the CPU."""
     out = dry_run(tmp_path, total)
     calls = _setup_calls(out)
-    assert not any("--hymt" in c or "--qwen" in c for c in calls), calls
+    assert any(c.rstrip().endswith("--hymt") for c in calls), calls
+    assert not any("--qwen" in c for c in calls), calls
     assert any("--whisper small" in c for c in calls), calls
-    assert "requirements-qwen.txt" not in out
-    assert "Translation engine / 翻譯引擎: opus" in out
+    assert "requirements-qwen.txt" not in out and "requirements-llama-cpu.txt" in out
+    assert "Translation engine / 翻譯引擎: hymt2" in out
+    assert "OPUS engine" not in out
