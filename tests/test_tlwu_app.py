@@ -156,6 +156,23 @@ def test_worker_cmd():
     assert c[1:] == ["--run-setup", "--qwen", "--models-dir", "M"]
 
 
+def test_selftest_cmd_after_download_runs_tlwu_selftest_offline():  # #99
+    d = Path("M")
+    gpu, cpu = tiers.choose_tier(tiers.Gpu("RTX", 8192, 8000)), tiers.choose_tier(None)
+    assert setup_gui.selftest_cmd(False, d, cpu) == [
+        sys.executable, "-m", "tlwu_app", "--selftest", "--model", cpu.whisper, "--models-dir", "M", "--device", "cpu"]
+    c = setup_gui.selftest_cmd(True, d, gpu)
+    assert c[1:] == ["--selftest", "--model", gpu.whisper, "--models-dir", "M"]
+
+
+def test_selftest_verdict_warns_only_on_a_real_failure():  # #99
+    assert setup_gui.selftest_verdict(0, "asr: OK") == ("下載完成，自我測試通過！", None)
+    old_tlwu = "usage: tlwu [-h]\ntlwu: error: unrecognized arguments: --selftest"
+    assert setup_gui.selftest_verdict(2, old_tlwu) == ("下載完成！", None)
+    status, warn = setup_gui.selftest_verdict(1, "mt: FAIL qwen: out of memory")
+    assert "自我測試失敗" in status and "install.log" in warn and "out of memory" in warn
+
+
 def test_last_line_handles_tqdm_carriage_returns():
     assert setup_gui.last_line("a\r 10%\r 50%|#### |\n") == "50%|#### |"
     assert setup_gui.last_line("\n\r") == ""

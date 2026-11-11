@@ -6,6 +6,7 @@
   tlwu-setup --piper-ru [dmitri|denis]                Piper Russian voice for speak mode (CC0 data; engine: own venv)
   tlwu-setup --gpu                                    pip install CUDA 12 libs (cuBLAS, cuDNN) for --device cuda
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Qwen / Hy-MT2) fit this CPU?
+  tlwu-setup --selftest [--model M --engine E]        offline: load the models, translate one test sentence (tlwu --selftest)
   tlwu-setup --verify                                 offline integrity check
   tlwu-setup --bundle out.zip                         pack wheels + models/ for an air-gapped machine
                                                      (run on the same OS/CPU/Python as the target)
@@ -27,6 +28,23 @@ from pathlib import Path
 from . import downloader
 
 ROOT = downloader.ROOT
+
+
+# `tlwu --selftest` runs in a child process: setup never imports the offline runtime package (same as --check-llama).
+SELFTEST_CMD = [sys.executable, "-m", "tinglongwu"]
+SELFTEST_UNAVAILABLE = 3  # exit code when the installed tlwu has no --selftest yet (installers print "skipped")
+
+
+def run_selftest(args: list[str]) -> int:
+    """Forward to `tlwu --selftest <args>`; 0 = the models work, 1 = they do not, 3 = this tlwu has no self-test."""
+    p = subprocess.run([*SELFTEST_CMD, "--selftest", *args], stderr=subprocess.PIPE, text=True,
+                       encoding="utf-8", errors="replace")
+    err = p.stderr or ""
+    if p.returncode == 2 and "unrecognized arguments" in err and "--selftest" in err:
+        print("self-test skipped: this tlwu version has no --selftest yet")
+        return SELFTEST_UNAVAILABLE
+    sys.stderr.write(err)
+    return p.returncode
 
 
 def _pip(*args: str) -> None:
@@ -81,11 +99,16 @@ def main(argv=None) -> int:
                    help="pip install requirements-gpu.txt (nvidia-cublas-cu12, nvidia-cudnn-cu12)")
     p.add_argument("--check-llama", action="store_true",
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
+    p.add_argument("--selftest", action="store_true",
+                   help="run `tlwu --selftest` (no network); --model/--engine/--device are forwarded")
     p.add_argument("--requirements", default=str(ROOT / "requirements.txt"))
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
-    a, rest = p.parse_known_args(argv)
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--selftest" in args:  # forward the rest verbatim (argparse here would take --model as --models-dir)
+        return run_selftest([x for x in args if x != "--selftest"])
+    a, rest = p.parse_known_args(args)
     if a.help:
         p.print_help()
         print("\nModel options (forwarded):\n")

@@ -222,7 +222,7 @@ for rc in "$HOME/.zprofile" "$HOME/.zshrc"; do
 done
 
 # ---------------------------------------------------------------- 8. self-check
-say "8/8 檢查音效裝置"
+say "8/8 檢查音效裝置與自我測試"
 SPK="$(.venv/bin/python -m tinglongwu.reverse.proto --list-speakers 2>/dev/null)"
 MICS="$(.venv/bin/python -m tinglongwu.reverse.proto --list-mics 2>/dev/null)"
 if printf '%s\n%s\n' "$SPK" "$MICS" | grep -qi 'BlackHole 2ch'; then info "BlackHole 2ch: 已偵測到"
@@ -230,6 +230,12 @@ else warn "還偵測不到 BlackHole 2ch。BlackHole 剛裝好時通常要「重
 if printf '%s\n' "$SPK" | grep -qi 'BlackHole 16ch'; then info "BlackHole 16ch: 已偵測到"
 else warn "還偵測不到 BlackHole 16ch（同上，重新開機後再檢查）。"; fi
 [ "$BH_FAIL" -eq 0 ] || warn "BlackHole 有安裝失敗，見上方訊息。"
+if [ -z "${TLWU_SKIP_MODELS:-}" ]; then   # #99: do the downloaded models load and translate? (offline)
+  # shellcheck source=tlwu_common.sh
+  . "$DIR/scripts/tlwu_common.sh"
+  tlwu_install_selftest .venv/bin/tlwu-setup --model small \
+    || warn "安裝完成但自我測試失敗，詳見 install.log（選單的「回報問題」會附上）；已安裝的檔案都保留。"
+fi
 
 cat <<EOF
 
