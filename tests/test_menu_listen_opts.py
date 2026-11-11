@@ -33,15 +33,9 @@ def _args(answer="", device="cpu", cached=None, ready=True, asked=None):
                                 cpu_choice=lambda: cached, hymt_ready=lambda d: ready)
 
 
-def test_cpu_with_hymt_asks_and_h_picks_hymt():
+def test_cpu_with_hymt_defaults_to_hymt_without_asking():
     asked = []
-    assert _args("h\n", asked=asked) == ["--engine", "hymt"]
-    assert len(asked) == 1 and "OPUS" in asked[0] and "[Enter=OPUS / h]" in asked[0]
-
-
-@pytest.mark.parametrize("answer", ["\n", "", "n", EOFError()])
-def test_default_keeps_auto(answer):
-    assert _args(answer) == []
+    assert _args("", asked=asked) == ["--engine", "hymt"] and asked == []
 
 
 @pytest.mark.parametrize("kw", [dict(device="cuda"), dict(cached=object()), dict(ready=False)])
@@ -100,7 +94,7 @@ def _fake_env(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="bash menu")
-@pytest.mark.parametrize("answer,engine", [("h", ["--engine", "hymt"]), ("", [])])
+@pytest.mark.parametrize("answer,engine", [("", ["--engine", "hymt"])])
 def test_linux_menu_listen_passes_glossary_and_cpu_engine(tmp_path, answer, engine):
     root, log, env, gl = _fake_env(tmp_path)
     # 3 = listen only; Enter = do not save subtitles; then the CPU engine question
@@ -110,7 +104,7 @@ def test_linux_menu_listen_passes_glossary_and_cpu_engine(tmp_path, answer, engi
     args = log.read_text("utf-8").split("\n")[:-1]
     assert args[:4] == ["--lang", "auto", "--lang-candidates", "en,ru,ja,zh"]
     assert args[4:] == ["--glossary", str(gl)] + engine
-    assert "Glossary: 1 file(s)" in r.stderr and "[Enter=OPUS / h]" in r.stderr
+    assert "Glossary: 1 file(s)" in r.stderr
 
 
 def test_negation_glossary_fix_through_opus_pivot():
