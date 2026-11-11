@@ -151,3 +151,152 @@ def test_cli_documents_the_new_flags(capsys):
         proto.main(["--help"])
     out = capsys.readouterr().out
     assert e.value.code == 0 and "--no-back" in out and "--debug-latency" in out
+
+
+# ---- #139: confirm mode streams sentences, --mt hymt / auto = Hy-MT2, --pause (VAD tail) ----
+def test_confirm_mode_sends_first_sentence_before_synthesizing_the_second(monkeypatch):
+    log, pushed = [], threading.Event()
+
+    class SlowTTS(TTS):  # sentence 2 takes until sentence 1 is on the output (or 2 s)
+        def speak(self, text):
+            if self.log:
+                pushed.wait(2)
+            yield from super().speak(text)
+
+    class Out(Player):
+        def push(self, audio, sr):
+            super().push(audio, sr)
+            pushed.set()
+
+    monkeypatch.setattr("builtins.input", lambda *x: "")
+    res = {"items": []}
+    proto._run_confirm(SimpleNamespace(to="en", no_back=True), iter([(1, "mic", "你好")]),
+                       MT(en="First sentence. Second sentence."), SlowTTS(log=log), Out(log),
+                       SimpleNamespace(enabled=False), res)
+    # after Enter each sentence goes out as soon as it exists; before #139 the whole utterance was synthesized
+    # first and sent as one concatenated push (tts, tts, push)
+    assert [e[0] for e in log] == ["tts", "push", "tts", "push"]
+    assert res["items"][0]["decision"] == "sent"
+
+
+def test_confirm_session_streams_parts_and_reports_a_tts_error_after_partial_audio():
+    sent, out, first_sent = [], [], threading.Event()
+
+    def synth(ru):
+        yield np.ones(3, np.float32), 24000
+        assert first_sent.wait(2)  # part 1 is already on the output while part 2 is synthesized
+        raise RuntimeError("tts died")
+
+    def send(a, sr):
+        sent.append(len(a))
+        first_sent.set()
+
+    s = ConfirmSession(synth, send, out=out.append, readline=lambda: "")
+    u = Utterance(1, "你好", "A. B.")
+    s.submit(u)
+    s.finish()
+    s.run()
+    assert sent == [3] and u.decision == "sent" and any("TTS error: tts died" in m for m in out)
+
+
+def _hymt_file(tmp_path):
+    from tinglongwu.hymt import hymt_path
+
+    f = hymt_path(tmp_path)
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"gguf")
+    return f
+
+
+@pytest.mark.parametrize("kind,device,installed,free,want", [
+    ("auto", "cuda", True, 4000, "hymt"),     # was qwen before #139
+    ("auto", "cuda", False, 4000, "opus"),    # Qwen only on request, even on a big GPU
+    ("auto", "cuda", True, 1500, "opus"),     # below qwen.HYMT_MIN_FREE_MIB
+    ("auto", "cuda", True, None, "opus"),     # nvidia-smi unreadable
+    ("auto", "cpu", True, 4000, "opus"),
+    ("qwen", "cuda", False, 4000, "qwen"),
+    ("hymt", "cpu", True, None, "hymt"),
+])
+def test_choose_speak_mt(tmp_path, kind, device, installed, free, want):
+    if installed:
+        _hymt_file(tmp_path)
+    assert proto.choose_speak_mt(kind, device, tmp_path, lambda: free)[0] == want
+
+
+def test_build_translator_auto_on_cuda_uses_hymt_direct_for_both_directions(tmp_path):
+    _hymt_file(tmp_path)
+
+    class Hy:
+        def __init__(self, *a):
+            self.calls = []
+
+        def preload(self, *a):
+            pass
+
+        def translate(self, text, src, tgt):
+            self.calls.append((src, tgt))
+            return SimpleNamespace(text=f"{tgt}:{text}")
+
+    mt = proto.build_translator("auto", "cuda", tmp_path, "qwen3-4b", "en", free_mib=lambda: 4000, hy_factory=Hy)
+    assert mt.translate("你好", "zh", "en").text == "en:你好" and mt.translate("Hi", "en", "zh").text == "zh:Hi"
+    assert mt.hy.calls == [("zh", "en"), ("en", "zh")] and mt.history == []
+
+
+def test_build_translator_explicit_hymt_without_the_model_says_how_to_install(tmp_path):
+    from tinglongwu.models import ModelNotFound
+
+    with pytest.raises(ModelNotFound, match="--hymt"):
+        proto.build_translator("hymt", "cuda", tmp_path, "qwen3-4b", "en")
+
+
+def _speech(sec):
+    return np.full(int(sec * 16000), 0.5, np.float32)
+
+
+def _silence(sec):
+    return np.zeros(int(sec * 16000), np.float32)
+
+
+def _nonzero_spans(buf):
+    idx = np.flatnonzero(buf)
+    if not len(idx):
+        return []
+    cuts = np.flatnonzero(np.diff(idx) > 1)
+    starts, ends = np.r_[idx[0], idx[cuts + 1]], np.r_[idx[cuts], idx[-1]] + 1
+    return list(zip(starts.tolist(), ends.tolist()))
+
+
+def _frames(*parts):
+    audio = np.concatenate(parts)
+    return [audio[i:i + 1600] for i in range(0, len(audio), 1600)]  # 0.1 s frames
+
+
+@pytest.mark.parametrize("pause,n_segments", [(0.3, 2), (0.6, 1)])
+def test_pause_sets_the_silence_that_ends_a_sentence(pause, n_segments):
+    seg = proto.make_segmenter(6.0, pause, vad_fn=_nonzero_spans)
+    out = list(seg.segments(_frames(_speech(1.0), _silence(0.55), _speech(1.0), _silence(1.0))))
+    assert len(out) == n_segments  # a 0.55 s breath ends the sentence at --pause 0.3, not at the 0.6 default
+
+
+def test_pause_range_is_checked():
+    a = SimpleNamespace(follow_langs="en", to="en", tts_engine="kokoro", speaker=None, no_tts=True, pause=0.1)
+    assert "--pause" in proto.check_args(a)
+    a.pause = 0.5
+    assert proto.check_args(a) is None
+
+
+def test_lat_line_reports_the_configured_vad_tail_in_the_total():
+    lat = Lat(clock=iter([0.0, 0.25]).__next__, fixed={"vad": 0.5})
+    lat.timed("mt", lambda: None)
+    lat.set("tts", 0.25)
+    t = lat.take()
+    assert t == {"vad": 0.5, "mt": 0.25, "tts": 0.25}
+    assert lat_line(t) == "lat vad=0.50 asr=- mt=0.25 back=- tts=0.25 total=1.00"
+    assert lat.take() == {"vad": 0.5}  # the tail is reported with every utterance
+
+
+def test_cli_accepts_hymt_and_pause(capsys):
+    with pytest.raises(SystemExit) as e:
+        proto.main(["--mt", "hymt", "--pause", "0.3", "--help"])
+    out = capsys.readouterr().out
+    assert e.value.code == 0 and "--pause" in out and "hymt" in out

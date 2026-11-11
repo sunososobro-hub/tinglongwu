@@ -300,7 +300,7 @@ python -m tinglongwu.reverse.proto --mic "<your mic substring>" --compute cpu --
 ```
 
 - On Linux the program creates a virtual microphone automatically (`pactl load-module module-null-sink sink_name=tlwu_sink` + `module-remap-source ... source_name=tlwu_mic`), plays the Russian audio to `tlwu_sink`, and unloads both modules on exit. In Meet/Zoom choose the microphone `tlwu_mic`. `--no-vmic` disables this (then pass `--device <sink substring>`); `--list-speakers` lists output devices. Windows keeps VB-CABLE.
-- Without CUDA, translation uses the OPUS/Argos pivot zh -> en -> ru (needs the four `--pair` models above); Whisper defaults to `small`. `--mt qwen` forces Qwen3 (GPU).
+- Without CUDA, translation uses the OPUS/Argos pivot zh -> en -> ru (needs the four `--pair` models above); Whisper defaults to `small`. With CUDA, `--mt auto` uses Hy-MT2 when installed (`tlwu-setup --hymt`), else OPUS; `--mt qwen` forces Qwen3 (GPU), `--mt hymt` Hy-MT2. `--pause 0.3`-`2.0` sets the silence that ends a sentence (default 0.6; lower = audio starts sooner).
 - The Russian voice model is **optional and opt-in** (no upstream license): no installer or default setup fetches it. Get it with `tlwu-setup --vosk-tts-ru` (or the menu prompt, y/N, default N, which first prints "Russian voice model license is not stated upstream; download at your own responsibility"). Without it, speaking Russian shows subtitles only and prints how to enable it.
 - Speech uses fixed built-in voices on CPU: Vosk-TTS for Russian (`--tts-engine vosk`, voice ids 0-4 via `--speaker`) and Kokoro for English/Japanese (`--tts-engine kokoro`), each in its own venv. There is no reference-audio voice cloning.
 
