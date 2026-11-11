@@ -178,7 +178,7 @@ if ($mode -eq "1") {
         Write-Host (T 'NO_MODEL_FOR' $L)
         Invoke-Setup @setup
     }
-    $stream = @(Get-TlwuStreamArgs)   # live drafts (#60), default no
+    $stream = @(Get-TlwuStreamArgs $py)   # live drafts (#60), default no
     & $tlwu @listenLang @wL @xl @stream
     exit
 }
