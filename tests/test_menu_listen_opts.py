@@ -97,13 +97,13 @@ def _fake_env(tmp_path):
 @pytest.mark.parametrize("answer,engine", [("", ["--engine", "hymt"])])
 def test_linux_menu_listen_passes_glossary_and_cpu_engine(tmp_path, answer, engine):
     root, log, env, gl = _fake_env(tmp_path)
-    # 3 = listen only; Enter = do not save subtitles; then the CPU engine question
+    # 3 = listen only; Enter = do not save subtitles; then the live-drafts question (CPU: Enter = on)
     r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input=f"3\n\n{answer}\n", env=env,
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     args = log.read_text("utf-8").split("\n")[:-1]
     assert args[:4] == ["--lang", "auto", "--lang-candidates", "en,ru,ja,zh"]
-    assert args[4:] == ["--glossary", str(gl)] + engine
+    assert args[4:] == ["--glossary", str(gl)] + engine + ["--stream"]   # #257: CPU listen-only, Enter = drafts on
     assert "Glossary: 1 file(s)" in r.stderr
 
 
@@ -120,3 +120,23 @@ def test_negation_glossary_fix_through_opus_pivot():
     # a line without the entry is left alone
     table.update({"Фильм хороший.": "The movie is good."})
     assert tr.translate("Фильм хороший.", "ru", "zh").text == "電影還不錯。"
+
+
+@pytest.mark.parametrize("device,both,expected", [("cpu", False, True), ("cpu", True, False),
+                                                  ("cuda", False, False), ("cuda", True, False)])
+def test_stream_default_menuopts(device, both, expected):  # #257
+    assert menuopts.stream_default(device, both) is expected
+
+
+def test_stream_default_cli_prints_flag():
+    r = subprocess.run([sys.executable, "-m", "tinglongwu.menuopts", "stream-default", "both"],
+                       capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 0 and r.stdout.strip() == "0"
+
+
+def test_linux_menu_drafts_n_turns_stream_off(tmp_path):  # #257 acceptance 3
+    root, log, env, gl = _fake_env(tmp_path)
+    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="3\n\nn\n", env=env,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "--stream" not in log.read_text("utf-8").split("\n")

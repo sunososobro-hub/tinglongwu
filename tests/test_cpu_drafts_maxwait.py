@@ -139,15 +139,19 @@ def test_drafts_prompt_translated_in_every_menu_language(lang):
 # ---------------------------------------------------------------- Windows menu: live drafts choice
 
 @pytest.mark.parametrize("ui", ["en", "ru", "zh-TW"])
-@pytest.mark.parametrize("answer, want", [("y", "--stream"), ("yes", "--stream"), ("", ""), ("n", "")])
-def test_windows_menu_drafts_question(tmp_path, ui, answer, want):
+@pytest.mark.parametrize("dflt, answer, want", [
+    ("0", "y", "--stream"), ("0", "yes", "--stream"), ("0", "", ""), ("0", "n", ""),      # GPU / unknown: default off
+    ("1", "", "--stream"), ("1", "y", "--stream"), ("1", "n", ""), ("1", "no", "")])      # #257 CPU listen-only: on
+def test_windows_menu_drafts_question(tmp_path, ui, dflt, answer, want):
     assert PWSH, "pwsh is needed for the Windows menu test (preinstalled on GitHub ubuntu runners)"
     common = ROOT / "scripts" / "tlwu_common.ps1"
     script = (f". '{common}'\n"
               "Import-TlwuMessages\n"
               # a function shadows the cmdlet: answer the question without a console
               f"function Read-Host {{ param($p) Write-Host ('PROMPT=' + $p); return '{answer}' }}\n"
-              "$s = @(Get-TlwuStreamArgs)\n"
+              # stub for `python -m tinglongwu.menuopts stream-default listen` (its logic is unit-tested separately)
+              f"function fakepy {{ '{dflt}' }}\n"
+              "$s = @(Get-TlwuStreamArgs fakepy)\n"
               "Write-Host ('COUNT=' + $s.Count)\n"
               "Write-Host ('ARGS=' + ($s -join ' '))\n")
     env = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off",
@@ -158,4 +162,4 @@ def test_windows_menu_drafts_question(tmp_path, ui, answer, want):
     lines = r.stdout.splitlines()
     assert f"ARGS={want}" in lines and f"COUNT={1 if want else 0}" in lines
     prompt = next(x for x in lines if x.startswith("PROMPT="))
-    assert "y=" in prompt and "ASK_STREAM" not in prompt
+    assert ("n=" if dflt == "1" else "y=") in prompt and "ASK_STREAM" not in prompt

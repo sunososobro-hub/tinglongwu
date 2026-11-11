@@ -177,8 +177,14 @@ fi
 # (the meeting listener runs in the background next to the speak side and must not redraw the terminal)
 STREAM=()
 if [ "$mode" = "1" ]; then
-  st=""; read -rp "$(mp M_ASK_STREAM)" st || st=""
-  case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
+  st=""
+  if [ "$(python -m tinglongwu.menuopts stream-default listen 2>/dev/null || echo 0)" = "1" ]; then   # #257: CPU = default on
+    read -rp "$(mp M_ASK_STREAM_ON)" st || st=""
+    case "$st" in n|N|no|NO|No) ;; *) STREAM=(--stream) ;; esac
+  else
+    read -rp "$(mp M_ASK_STREAM)" st || st=""
+    case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
+  fi
 fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
 SMT=opus; [ -n "$SPEAK" ] && SMT="$(python -m tinglongwu.menuopts speak "$SPEAK" || echo opus)"   # #227: Hy-MT2 in every speak mode when installed

@@ -257,7 +257,7 @@ def menu(tmp_path):
 
 
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
-    r, calls = menu("3\nn\n")
+    r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls == ["tlwu --lang en"]
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
