@@ -323,15 +323,17 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     from ..segment import Segmenter
     from .live import capture_segments, recognize_utterances
 
-    from .logic import Lat, TimedASR, live_endpoint, timing_line
+    from .logic import Lat, TimedASR, live_endpoint, live_vad_pad, timing_line
 
     stop = threading.Event()
     a.lat = lat = Lat()
     asr = TimedASR(asr, lat) if asr is not None else None
-    sil, step = live_endpoint(getattr(a, "dev", "cpu"), getattr(a, "end_silence", None))
+    dev = getattr(a, "dev", "cpu")
+    sil, step = live_endpoint(dev, getattr(a, "end_silence", None))
     items = ((n, "mic", zh) for n, zh in enumerate(
         recognize_utterances(capture_segments(MicSource(a.mic_name),
-                                              Segmenter(a.chunk_s, True, min_silence=sil, step=step), stop, lat), asr,
+                                              Segmenter(a.chunk_s, True, min_silence=sil, step=step,
+                                                        vad_pad=live_vad_pad(dev)), stop, lat), asr,
                          gate=getattr(player, "gate", None)), 1))
     box: list = []
     print("listening... speak Chinese; Ctrl+C to quit", flush=True)
@@ -525,7 +527,8 @@ def _main(argv, vm) -> int:
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
     ap.add_argument("--end-silence", type=float, default=None, metavar="SEC",
-                    help="live: silence that ends a sentence (default 0.4 on CPU, 0.6 on CUDA; env TLWU_END_SILENCE)")
+                    help="live: silence that ends a sentence (default 0.5 on CPU + 0.1 VAD pad, 0.6 on CUDA; env "
+                         "TLWU_END_SILENCE; pad: env TLWU_VAD_PAD)")
     ap.add_argument("--allow-monitor", action="store_true",
                     help="Linux: accept 'Monitor of <real sound card>' as the mic (e.g. --mic \"Monitor of\": play a clip "
                          "and measure latency without speaking). Our own tlwu_ devices stay blocked")
