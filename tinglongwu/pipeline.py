@@ -220,14 +220,14 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                                    forced_cut=forced_cut, pause=pause))
         if merger is not None and translator is not None:
             emit_units(merger.flush())
-        if draft is not None and hasattr(draft, "flicker_line"):
-            say("latency: " + draft.flicker_line())
         mtq.put(_DONE)
         while worker.is_alive():  # finish the queued lines (short waits: Ctrl+C stays responsive)
             if stop_event is not None and stop_event.is_set():
                 break
             worker.join(timeout=POLL)
         check_worker()
+        if draft is not None and hasattr(draft, "flicker_line"):  # after the MT worker drained: stays the last line
+            say("latency: " + draft.flicker_line())
     finally:
         stop.set()
         mtq.put(_DONE)

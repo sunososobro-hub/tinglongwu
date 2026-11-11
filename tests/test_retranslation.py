@@ -151,6 +151,28 @@ def test_pipeline_wires_whole_mode_and_keeps_latency_lines():
     assert logs[-1].startswith("latency: draft rewrites ")
 
 
+def test_flicker_line_is_last_even_with_slow_mt():
+    import time
+
+    class SlowMT(FakeMT):
+        def translate(self, text, src, tgt):
+            time.sleep(0.3)
+            return super().translate(text, src, tgt)
+
+    logs = []
+    out = io.StringIO()
+    seg = Segmenter(chunk=1.0, use_vad=False, overlap=0.1)
+    mt = SlowMT()
+    eng = DraftEngine(FakeASR(["hi there"]), mt, DraftRenderer(out, columns=lambda: 80), lambda: seg.live, "zh",
+                      clock=lambda: 0.0, log=logs.append)
+    eng.starts[0] = -1.0
+    run(Frames(4), seg, FakeASR([]), mt, TextSink(out), "zh", SentenceMerger(max_wait=1.5), draft=eng,
+        log=logs.append)
+    flick = [i for i, m in enumerate(logs) if m.startswith("latency: draft rewrites ")]
+    finals = [i for i, m in enumerate(logs) if m.startswith("latency: final")]
+    assert finals and flick and flick[-1] > max(finals)
+
+
 def test_cli_raises_max_wait_with_drafts_unless_explicit(monkeypatch, tmp_path):
     import tinglongwu.asr as asr
     import tinglongwu.pipeline as pipeline
