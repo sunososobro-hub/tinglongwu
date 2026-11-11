@@ -19,6 +19,16 @@ class FakeASR(Recognizer):
         return Transcript("привет мир", "ru")
 
 
+class CountingASR(Recognizer):
+    """Distinct text per segment (identical consecutive finals are collapsed, #318)."""
+
+    n = 0
+
+    def transcribe(self, audio):
+        self.n += 1
+        return Transcript(f"привет мир номер {['один', 'два', 'три', 'четыре'][(self.n - 1) % 4]}", "ru")
+
+
 def fake_steps(s, t):
     return {("ru", "en"): lambda x: "hello world", ("en", "zh"): lambda x: "你好世界软件"}[(s, t)]
 
@@ -40,7 +50,7 @@ def test_no_disk_writes(wav, tmp_path, monkeypatch):
     monkeypatch.setattr(builtins, "open", guarded_open)
     monkeypatch.setattr(os, "open", guarded_os_open)
     out = io.StringIO()
-    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), FakeASR(),
+    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), CountingASR(),
         PivotTranslator(tmp_path, "tw", fake_steps), TextSink(out))
     assert out.getvalue().count("◀ Them привет мир") >= 2
     assert "[ZH] 你好世界軟體" in out.getvalue()
@@ -80,3 +90,28 @@ def test_transcript_only_format(tmp_path):
     out = io.StringIO()
     TranscriptSink(out).write(Result("ru", "привет\nмир", None, ""))
     assert out.getvalue() == "привет мир\n"
+
+
+def test_identical_final_lines_collapse():
+    lines = iter(["мы можем готовить в следующем году.", "Мы можем готовить в следующем году",
+                  "МЫ МОЖЕМ готовить в следующем году!", "совсем другое предложение здесь"])
+
+    class Rep(Recognizer):
+        def transcribe(self, audio):
+            return Transcript(next(lines), "ru")
+
+    class Src:
+        def frames(self):
+            for _ in range(4):
+                yield np.full(16000, 0.3, dtype="float32")
+
+        def close(self):
+            pass
+
+    class OneSeg:
+        def segments(self, frames):
+            yield from frames
+
+    out = io.StringIO()
+    run(Src(), OneSeg(), Rep(), None, TranscriptSink(out), audio_clock=True)
+    assert out.getvalue().splitlines() == ["мы можем готовить в следующем году.", "совсем другое предложение здесь"]
