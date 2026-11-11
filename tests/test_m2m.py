@@ -20,8 +20,7 @@ def test_m2m_codes_and_dir(tmp_path):
 
 
 def test_cli_engines():
-    assert cli.parse_args(["--engine", "m2m"]).engine == "m2m"
-    for bad in (["--engine", "nllb"], ["--m2m-size", "418M"]):
+    for bad in (["--engine", "nllb"], ["--engine", "m2m"], ["--m2m-size", "418M"]):  # #276: m2m not a choice
         with pytest.raises(SystemExit):
             cli.parse_args(bad)
 

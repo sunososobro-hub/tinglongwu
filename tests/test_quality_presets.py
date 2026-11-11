@@ -82,3 +82,13 @@ def test_quality_choice_persists_and_old_hand_picked_settings_become_manual(tmp_
     assert core.load_settings(p)["quality"] == "auto"
     p.write_text(json.dumps({"quality": "nonsense"}), "utf-8")
     assert core.load_settings(p)["quality"] == "auto"
+
+
+@pytest.mark.parametrize("old", ["qwen", "qwen4b", "m2m"])
+def test_saved_removed_engine_becomes_auto_and_parses(tmp_path, old):
+    """#276: a GUI setting saved with an engine that is no longer a CLI choice must not crash the start."""
+    p = tmp_path / "gui.json"
+    p.write_text(json.dumps({"model": "small", "engine": old, "quality": "manual"}), "utf-8")
+    s = core.load_settings(p)
+    assert s["engine"] == "auto"
+    assert cli.parse_args(core.settings_to_argv(s)).engine == "auto"

@@ -6,6 +6,7 @@ import sys
 
 from .capture import select_backend
 from .models import ModelNotFound, models_dir
+from .qwen import ENGINES
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
@@ -60,14 +61,10 @@ def parse_args(argv=None):
                    help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
                         "is held (default from --preset; on CPU without --preset / --max-wait: "
                         f"{CPU_MAX_WAIT:g}; a pause of >= 0.8 s sends it earlier)")
-    p.add_argument("--engine", choices=["auto", "hymt", "qwen", "qwen4b", "opus", "m2m"], default="auto",
-                   help="auto (default): after Whisper loads, on a usable GPU pick Hy-MT2 when it is installed "
-                        "(`tlwu-setup --hymt`, needs ~2 GB free VRAM); without it Qwen3-8B (>=5.8 GB free), "
-                        "else Qwen3-4B (>=3.5 GB); else OPUS; on CPU OPUS unless `tlwu --probe --speed` measured Hy-MT2 "
-                        "under 1.0 s/sentence on this machine; hymt = Hy-MT2 (direct src->target, "
-                        "fast, ~1.5 GB); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
-                        "(direct src->target LLM, needs `tlwu-setup --qwen`); opus: src->en->target OPUS-MT; "
-                        "m2m: M2M-100 1.2B direct")
+    p.add_argument("--engine", choices=list(ENGINES), default="auto",
+                   help="auto (default) = hymt: Hy-MT2 1.8B (direct src->target, `tlwu-setup --hymt`), on the GPU "
+                        "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
+                        "command (no silent engine switch, #276); opus: src->en->target OPUS-MT, only when asked")
     p.add_argument("--stream", action="store_true",
                    help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
                         "audio and translate the whole partial text at once; shows ONE dim line (the "
@@ -180,21 +177,25 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         name, why = "opus", "Qwen failed to load"
     from .hymt import JaRouter
 
-    if name == "hymt2":
+    if name in ("hymt2", "hymt2-cpu"):
         from .hymt import hymt_path
-        from .models import require
 
-        require(hymt_path(mdir), "Hy-MT2 translation model", "--hymt")  # explicit --engine hymt without the file
+        if name == "hymt2-cpu":
+            name, dev = "hymt2", "cpu"
+        if not hymt_path(mdir).exists():  # #276: no fallback engine; say how to get it and stop
+            raise SystemExit(f"tlwu: the translation model Hy-MT2 is not installed ({hymt_path(mdir)} missing). "
+                             "Run `tlwu-setup --hymt` once (with network), then start again.")
         tr = JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev, all_pairs=True,
                       warn=lambda m: say(m, file=sys.stderr))
         try:
             if tr.hy is None:
                 raise RuntimeError(tr.hy_error)
             tr.hy.preload()
-            say(f"tlwu: translation engine = hymt2 ({why})", file=sys.stderr)
-        except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: loud, like Qwen (#74)
-            tr._fallback(e)
-            say("tlwu: translation engine = opus (Hy-MT2 failed to load)", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: stop, never switch engines
+            raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
+                             "`tlwu-setup --hymt` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
+                             "PC), or run with --engine opus.") from e
+        say(f"tlwu: translation engine = hymt2 on {dev} ({why})", file=sys.stderr)
         return tr
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
     if name == "m2m":

@@ -26,32 +26,20 @@ class FakeLlm:
 
 def test_cli_engine_choices_default_auto():
     assert cli.parse_args([]).engine == "auto"
-    for e in ("auto", "qwen", "qwen4b", "opus", "m2m"):
+    for e in ("auto", "hymt", "opus"):
         assert cli.parse_args(["--engine", e]).engine == e
-    with pytest.raises(SystemExit):
-        cli.parse_args(["--engine", "gpt"])
+    for bad in ("gpt", "qwen", "qwen4b", "m2m"):  # #276: Qwen / m2m are no longer user choices
+        with pytest.raises(SystemExit):
+            cli.parse_args(["--engine", bad])
 
 
-@pytest.mark.parametrize("free,want", [(8000, "qwen3-8b"), (QWEN8B_MIN_FREE_MIB, "qwen3-8b"),
-                                       (QWEN8B_MIN_FREE_MIB - 1, "qwen3-4b"), (QWEN4B_MIN_FREE_MIB, "qwen3-4b"),
-                                       (QWEN4B_MIN_FREE_MIB - 1, "opus"), (0, "opus")])
-def test_auto_thresholds(tmp_path, free, want):
+@pytest.mark.parametrize("free", [8000, QWEN8B_MIN_FREE_MIB, QWEN4B_MIN_FREE_MIB, 0, None])
+def test_auto_never_picks_qwen_even_when_it_fits(tmp_path, free):
+    """#276: Qwen GGUFs on disk and a big GPU, no Hy-MT2 -> still Hy-MT2 (the setup error comes later)."""
     m = fake_models(tmp_path, "qwen3-8b", "qwen3-4b")
     name, why = choose_engine("auto", "cuda", m, free_mib=lambda: free)
-    assert name == want and why
-
-
-def test_auto_cpu_or_unknown_vram_is_opus(tmp_path):
-    m = fake_models(tmp_path, "qwen3-8b")
-    assert choose_engine("auto", "cpu", m, free_mib=lambda: 99999)[0] == "opus"
-    assert choose_engine("auto", "cuda", m, free_mib=lambda: None)[0] == "opus"
-
-
-def test_auto_skips_missing_gguf(tmp_path, capsys):
-    m = fake_models(tmp_path, "qwen3-4b")
-    assert choose_engine("auto", "cuda", m, free_mib=lambda: 8000)[0] == "qwen3-4b"
-    assert "tlwu-setup --qwen" in capsys.readouterr().err
-    assert choose_engine("auto", "cuda", tmp_path / "none", free_mib=lambda: 8000)[0] == "opus"
+    assert name in ("hymt2", "hymt2-cpu") and why
+    assert choose_engine("auto", "cpu", m, free_mib=lambda: 99999)[0] == "hymt2-cpu"
 
 
 def test_explicit_engines_ignore_vram(tmp_path):
@@ -112,14 +100,14 @@ def test_oom_falls_back_8b_to_4b_to_opus(tmp_path):
     assert build_qwen_with_fallback(m, "qwen3-8b", "tw", "cuda", warn=warns.append, factory=Fac) == (None, None)
 
 
-def test_make_translator_announces_and_falls_back_to_opus(tmp_path, capsys):
-    from tinglongwu.translate import PivotTranslator
-
-    t = cli.make_translator("auto", tmp_path, "tw", "cpu")
-    assert isinstance(t, PivotTranslator) or isinstance(t.base, PivotTranslator)  # JaRouter wraps OPUS
-    assert "engine = opus" in capsys.readouterr().err
-    with pytest.raises(ModelNotFound):  # chosen GGUF absent: clear setup error, not a crash later
-        cli.make_translator("qwen", tmp_path, "tw", "cuda")
+def test_make_translator_auto_without_hymt_stops_with_setup_command(tmp_path):
+    fake_models(tmp_path, "qwen3-8b")  # #276: a Qwen on disk is never used instead
+    said = []
+    with pytest.raises(SystemExit, match="tlwu-setup --hymt"):
+        cli.make_translator("auto", tmp_path, "tw", "cpu", say=lambda m, **k: said.append(m))
+    assert not any("engine = opus" in m or "qwen" in m for m in said)
+    with pytest.raises(ModelNotFound):  # explicit (internal) Qwen without its GGUF: clear setup error
+        cli.make_translator("qwen", tmp_path / "none", "tw", "cuda")
 
 
 def test_setup_qwen_manifest_entries(monkeypatch, tmp_path):
