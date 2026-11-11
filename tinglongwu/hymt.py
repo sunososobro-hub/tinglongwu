@@ -5,7 +5,7 @@ languages it knows (`EN_NAMES`); other pairs go to the OPUS pivot. With the othe
 
 OPUS has no usable zh<->ja models (opus-mt-en-jap is Bible-trained; ja-en emits <unk>), so every pair that
 involves Japanese goes through this model, direct src -> tgt with no English pivot. Everything else keeps
-using whatever engine was chosen (OPUS pivot on CPU, Qwen on GPU). `JaRouter` does that routing and falls
+using whatever engine was chosen (OPUS pivot). `JaRouter` does that routing and falls
 back to the OPUS pivot for ja -> X when the GGUF (or llama-cpp-python) is missing.
 """
 from __future__ import annotations
@@ -14,7 +14,8 @@ import os
 import sys
 from pathlib import Path
 
-from .qwen import _load_llama, clean_output, max_tokens_for
+from .engines import clean_output, max_tokens_for
+from .engines import load_llama as _load_llama
 from .repeat import collapse_repeats
 from .translate import Translation, Translator, strip_unk, zh_convert
 
