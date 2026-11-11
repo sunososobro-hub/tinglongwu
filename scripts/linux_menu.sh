@@ -222,22 +222,24 @@ elif [ "$SPEAK" = "ja" ]; then
   ensure_kokoro
 elif [ "$SPEAK" = "en" ]; then
   ensure_kokoro
+  SMT="$(python -m tinglongwu.menuopts speak en || echo opus)"
   # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
   if ! have_pairs zh-en en-zh; then
     m M_NO_MODEL_ZH_EN
     ask_setup --pair zh-en --pair en-zh
   fi
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to en
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT" --to en
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to en "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to en "${W_SPEAK[@]}")
 else
+  SMT="$(python -m tinglongwu.menuopts speak ru || echo opus)"   # #227: Hy-MT2 direct zh->ru when installed
   if ! have_pairs zh-en en-ru ru-en en-zh; then
     m M_NO_MODEL_ZH_RU
     ask_setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
   fi
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT"
        --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE" "${W_SPEAK[@]}")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to ru "${W_SPEAK[@]}")
   [ "$VOSK_OFF" = "1" ] && [ "$BOTH" != "1" ] && exec "${TXT[@]}"   # no Russian voice: subtitles only
 fi
 
