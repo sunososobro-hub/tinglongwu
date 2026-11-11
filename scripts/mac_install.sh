@@ -32,10 +32,10 @@ KOKORO_DIR="$HOME/models/kokoro"
 KOKORO_BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 KOKORO_ONNX_SIZE=92361271
 KOKORO_VOICES_SIZE=28214398
-# SHA256 pins: fill in (lowercase hex) once computed from a verified copy. When set, a mismatch deletes the file
-# and aborts (fail closed); while empty, only the size is checked (NOT unpinned-proof, see README).
-KOKORO_ONNX_SHA256=""
-KOKORO_VOICES_SHA256=""
+# SHA256 pins (same as scripts/linux_kokoro.sh). A mismatch deletes the file and aborts (fail closed).
+# Env-overridable (tests only); setting a pin to empty skips the hash check and leaves only the size check.
+KOKORO_ONNX_SHA256="${KOKORO_ONNX_SHA256-6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb}"
+KOKORO_VOICES_SHA256="${KOKORO_VOICES_SHA256-bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d}"
 BIN_DIR="$HOME/.local/bin"
 WARNINGS=""
 
