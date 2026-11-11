@@ -26,7 +26,15 @@ jobs:
         with:
           python-version: "3.12"
       - name: Audio libs (the installer would ask y/N before apt; CI answers it up front)
-        run: for i in 1 2 3; do sudo apt-get update && sudo apt-get install -y libsndfile1 libpulse0 && break; [ "$i" = 3 ] && exit 1; sleep 15; done
+        # Fail fast on runner DNS/mirror outages (2026-11-11 azure.archive.ubuntu.com) instead of hanging the job.
+        timeout-minutes: 8
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for i in 1 2 3; do
+            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 && exit 0
+            sleep 15
+          done
+          exit 1
       - name: Run scripts/install.sh from this commit
         # install.sh clones TLWU_REPO at TLWU_REF; point it at the local checkout via a throwaway branch.
         run: |
