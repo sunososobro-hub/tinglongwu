@@ -1,8 +1,8 @@
 """CPU thread budget (#250): one function decides how many threads Whisper, the MT engine and TTS get.
 
-Listen+speak mode (the menus set TLWU_BOTH=1 for both processes) runs two processes side by side, and every library
-picks its own default: faster-whisper 4 (the speak side all physical cores, #186), llama.cpp half the logical CPUs
-for decode plus ALL of them for prompt processing, onnxruntime one per physical core. Together that is far more
+Listen+speak mode (TLWU_BOTH=1; since #285 one process: `reverse.proto --listen`, listen side in a thread) runs
+both sides at once, and every library picks its own default: faster-whisper 4 (the speak side all physical cores,
+#186), llama.cpp half the logical CPUs for decode plus ALL of them for prompt processing, onnxruntime one per physical core. Together that is far more
 threads than cores. In that mode the budget (TLWU_CPU_THREADS, else the logical CPU count) is split over the four
 pools that actually run at the same time:
 
@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 
 ROLES = ("listen", "speak")
 _role: str | None = None
+_local = threading.local()  # #285: listen+speak in one process, each side in its own thread
 
 
 def total(env=None, count=None) -> int:
@@ -89,13 +91,18 @@ def set_role(role: str, out=None) -> None:
     """Called once by each entry point (cli: listen, reverse.proto: speak); prints the threads line."""
     global _role
     plan(role)  # validates the role
-    _role = role
+    main = threading.current_thread() is threading.main_thread()
+    if not main:
+        _local.role = role  # e.g. the listen side started by `reverse.proto --listen` (#285)
+    if main or _role is None:
+        _role = role  # threads without a role of their own (MT worker, drafts) use the main thread's
     print(log_line(role), file=out or sys.stderr, flush=True)
 
 
 def current() -> dict:
     """Plan of this process (listen when no entry point set a role, e.g. the GUI before run_session)."""
-    return plan(_role or "listen")
+    own = None if threading.current_thread() is threading.main_thread() else getattr(_local, "role", None)
+    return plan(own or _role or "listen")
 
 
 def ct2_kwargs(device: str) -> dict:

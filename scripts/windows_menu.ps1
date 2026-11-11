@@ -160,14 +160,12 @@ if ($both) {
     if ($speak -eq "follow") {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
     }
-    # listen in its own window; speak in this one
-    $env:TLWU_BOTH = "1"   # #250: both processes split one CPU thread budget (tinglongwu/threads.py)
+    # #285: one window: the speak side runs the listen side in a thread (--listen, last on its command line),
+    # both directions share one Hy-MT2 and one CPU thread budget (TLWU_BOTH, tinglongwu/threads.py)
+    $env:TLWU_BOTH = "1"
     Remove-Item $followFile -ErrorAction SilentlyContinue
-    $listenArgs = $listenLang + $wL
-    # Start-Process joins arguments with spaces: quote the ones that contain spaces (glossary folder under the profile)
-    $listenArgs += @($xl | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
+    $listenArgs = @($listenLang) + @($wL) + @($xl)
     if ($L -eq "auto") { $listenArgs += @("--lang-file", $followFile) }
-    $listen = Start-Process -FilePath (Resolve-Path $tlwu) -ArgumentList $listenArgs -PassThru
 }
 if ($mode -eq "1") {
     Write-Host (T 'BANNER_LISTEN' $L)
@@ -241,8 +239,7 @@ if ($both) {
     $ac = Read-Host (T 'ASK_AUTOSEND')
     if ($ac -eq "y") { $rev += "--no-confirm" }
     Write-Host (T 'MEETING_BANNER')
-    try { & $py @rev --device "CABLE Input" }
-    finally { if ($listen -and -not $listen.HasExited) { Stop-Process -Id $listen.Id -Force } }
+    & $py @rev --device "CABLE Input" --listen @listenArgs
     exit
 }
 Write-Host (T 'CONFIRM_HELP')
