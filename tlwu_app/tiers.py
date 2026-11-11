@@ -1,6 +1,8 @@
 """GPU detection, model tiers and download planning for the first-run setup. Pure logic, no tkinter, no network.
 
 The tiers mirror install.ps1 (chosen by TOTAL VRAM): the runtime `--engine auto` re-checks free VRAM at start-up.
+GPU tier = tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (owner #63: main target is a 4-8 GB GPU with Hy-MT2; #66: Hy-MT2 is
+as accurate as Qwen3-8B and ~4x faster). Qwen is opt-in only (`tlwu-setup --qwen`), never picked by VRAM (#106).
 """
 from __future__ import annotations
 
@@ -17,14 +19,15 @@ WHISPER_PREFERENCE = ("large-v3-turbo", "large-v3", "medium", "small", "base", "
 
 # approximate download sizes in bytes (from the pinned repos), used for the progress bar only
 SIZES = {"whisper-small": 464 * MB, "whisper-large-v3-turbo": 1640 * MB, "opus": 250 * MB,
-         "qwen3-4b": 2460 * MB, "qwen3-8b": 4800 * MB}
+         "hymt2-1.8b": 1130 * MB}
+GPU_MIN_TOTAL_MB = 4096  # == tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (turbo 1600 + Hy-MT2 1500 + headroom)
 
 
 @dataclass(frozen=True)
 class Tier:
-    name: str            # gpu-high | gpu-mid | gpu-low | gpu-min | cpu
+    name: str            # gpu | gpu-min | cpu
     whisper: str
-    qwen: tuple[str, ...]  # downloader flags: ("--qwen",) | ("--qwen4b",) | ()
+    mt: tuple[str, ...]  # extra downloader flags for the translation model: ("--hymt",) | ()
     label_zh: str
     parts: tuple[str, ...]  # keys of SIZES
 
@@ -38,17 +41,15 @@ class Tier:
         return f"約 {gb:.1f} GB" if gb >= 1 else f"約 {self.total_bytes // MB} MB"
 
     def downloader_args(self) -> list[str]:
-        return ["--whisper", self.whisper, "--langs", "ru,ja,en", "--to", "zh", *self.qwen]
+        return ["--whisper", self.whisper, "--langs", "ru,ja,en", "--to", "zh", *self.mt]
 
 
-def _tier(name, whisper, qwen, label, qparts):
-    return Tier(name, whisper, qwen, label, (f"whisper-{whisper}", "opus", *qparts))
+def _tier(name, whisper, mt, label, mparts):
+    return Tier(name, whisper, mt, label, (f"whisper-{whisper}", "opus", *mparts))
 
 
-T_HIGH = _tier("gpu-high", "large-v3-turbo", ("--qwen",), "高階：最準確（Whisper large-v3-turbo + Qwen3-8B/4B）", ("qwen3-8b", "qwen3-4b"))
-T_MID = _tier("gpu-mid", "large-v3-turbo", ("--qwen4b",), "中階（Whisper large-v3-turbo + Qwen3-4B）", ("qwen3-4b",))
-T_LOW = _tier("gpu-low", "small", ("--qwen4b",), "入門（Whisper small + Qwen3-4B）", ("qwen3-4b",))
-T_MIN = _tier("gpu-min", "small", (), "精簡（Whisper small + OPUS 翻譯）", ())
+T_GPU = _tier("gpu", "large-v3-turbo", ("--hymt",), "GPU：最準確（Whisper large-v3-turbo + Hy-MT2 翻譯）", ("hymt2-1.8b",))
+T_MIN = _tier("gpu-min", "small", (), "精簡（Whisper small + OPUS 翻譯，顯示卡記憶體不足 4 GB）", ())
 T_CPU = _tier("cpu", "small", (), "CPU 模式（Whisper small + OPUS 翻譯，較慢但不需顯示卡）", ())
 
 
@@ -142,8 +143,7 @@ def detection_text(raw: Gpu | None, force_cpu: bool = False, platform: str | Non
 def choose_tier(gpu: Gpu | None, force_cpu: bool = False) -> Tier:
     if force_cpu or gpu is None:
         return T_CPU
-    t = gpu.total_mb
-    return T_HIGH if t >= 7500 else T_MID if t >= 5500 else T_LOW if t >= 3500 else T_MIN
+    return T_GPU if gpu.total_mb >= GPU_MIN_TOTAL_MB else T_MIN
 
 
 # ---------------------------------------------------------------- what is installed

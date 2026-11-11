@@ -50,14 +50,14 @@ def test_old_driver_gets_the_cpu_tier(monkeypatch):
     assert raw.driver == "457.49" and tiers.driver_too_old(raw, "win32")
     assert tiers.detect_gpu(run, platform="win32") is None
     assert tiers.choose_tier(tiers.detect_gpu(run, platform="win32")) is tiers.T_CPU
-    assert tiers.T_CPU.whisper == "small" and tiers.T_CPU.qwen == ()  # no Qwen download (owner #89: small, not base)
+    assert tiers.T_CPU.whisper == "small" and tiers.T_CPU.mt == ()  # no Qwen download (owner #89: small, not base)
 
 
 def test_new_driver_keeps_the_gpu_tier(monkeypatch):
     run, _ = _fake_smi(monkeypatch, NEW)
     gpu = tiers.detect_gpu(run, platform="win32")
     assert gpu is not None and gpu.driver == "560.94"
-    assert tiers.choose_tier(gpu) is tiers.T_HIGH
+    assert tiers.choose_tier(gpu) is tiers.T_GPU
     # exactly the minimum is fine; unknown driver is not treated as too old (nothing to tell the user)
     assert not tiers.driver_too_old(tiers.Gpu("x", 4096, 4000, "528.33"), "win32")
     assert tiers.driver_too_old(tiers.Gpu("x", 4096, 4000, "528.24"), "win32")
