@@ -44,13 +44,22 @@ def list_mic_names(include_loopback: bool = False) -> list[str]:
     return [m.name for m in sc.all_microphones(include_loopback=include_loopback)]
 
 
+def is_virtual_mic(name: str) -> bool:
+    """VB-CABLE capture side, BlackHole, our Linux virtual mic / monitors: never a person's microphone."""
+    m = name.casefold()
+    return "cable output" in m or "tlwu_" in m or "blackhole" in m or m.startswith("monitor of")
+
+
 def resolve_mic_name(needle: str | None, names: list[str], default_name: str | None) -> str:
-    """Name of the mic that will be used: first substring match, or the system default."""
+    """Name of the mic that will be used: first substring match, else the system default; when the default is a
+    virtual cable (e.g. Windows default input set to "CABLE Output"), the first real microphone instead."""
     if needle:
         for n in names:
             if needle.casefold() in n.casefold():
                 return n
         raise LookupError(f"no microphone matching {needle!r}; available: {names}")
+    if default_name and is_virtual_mic(default_name):
+        default_name = next((n for n in names if not is_virtual_mic(n)), default_name)
     if not default_name:
         raise LookupError("no default microphone found")
     return default_name

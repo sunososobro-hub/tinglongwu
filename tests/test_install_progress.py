@@ -83,13 +83,16 @@ def test_estimates_per_step_and_total():
             "Write-Host (Format-TlwuEstimate (Get-TlwuStepEstimate 4 $false 1))\n"
             "Write-Host (Format-TlwuEstimate (Get-TlwuStepEstimate 4 $true 10))\n"
             "Write-Host (Format-TlwuEstimate (Get-TlwuStepEstimate 5 $true 10))\n"
+            "Write-Host (Format-TlwuEstimate (Get-TlwuStepEstimate 6 $true 10))\n"
+            "Write-Host (Format-TlwuEstimate (Get-TlwuStepEstimate 6 $true 0))\n"
             "Write-Host (Format-TlwuEstimate (Get-TlwuTotalEstimate $false 1))\n"
             "Write-Host (Format-TlwuEstimate (Get-TlwuTotalEstimate $true 10))\n")
     assert r.returncode == 0, r.stderr
     got = r.stdout.splitlines()
-    assert got[0] == got[2] == "預估不到 1 分鐘 / under 1 minute"
-    want = ["7-23", "4-12", "15-70", "11-32", "27-106"]  # 3 GB pkgs, 1.5 GB GPU libs, 10 GB models, totals
-    for line, w in zip([got[1], *got[3:]], want):
+    assert got[0] == got[2] == got[6] == "預估不到 1 分鐘 / under 1 minute"  # step 6 with -SkipModels (0 GB)
+    # 3 GB pkgs, 1.5 GB GPU libs, 10 GB models, 0.3 GB talk mode (#124), totals
+    want = ["7-23", "4-12", "15-70", "2-4", "13-36", "29-110"]
+    for line, w in zip([got[1], got[3], got[4], got[5], got[7], got[8]], want):
         assert line == f"預估約 {w} 分鐘（視網路速度） / about {w} min, depending on your connection"
 
 
@@ -100,9 +103,9 @@ def test_install_dry_run_prints_an_estimate_under_every_step():
     if r.returncode != 0 and any("Python 3.10-3.12 not found" in x for x in lines):
         pytest.skip("no Python 3.10-3.12 on PATH for the installer's step 1")
     assert r.returncode == 0, r.stdout + r.stderr
-    steps = [i for i, x in enumerate(lines) if x.startswith("[") and "/7] " in x]
-    assert len(steps) == 7
+    steps = [i for i, x in enumerate(lines) if x.startswith("[") and "/8] " in x]
+    assert len(steps) == 8
     for i in steps:
         assert "預估" in lines[i + 1] and ("min" in lines[i + 1] or "minute" in lines[i + 1])
     # CPU tier with RAM unknown/enough: ~1 GB models + Hy-MT2 for Japanese (#126) -> 2 GB
-    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 12-39 分鐘") for x in lines)
+    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 14-43 分鐘") for x in lines)

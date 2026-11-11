@@ -6,6 +6,8 @@
 # wheels + the llama-cpp-python CUDA wheel). Speeds: a fast (100 Mbit/s) and a slow (20 Mbit/s) home connection.
 $script:TlwuPkgGB    = 3.0
 $script:TlwuGpuLibGB = 1.5
+# talk mode (#124): Kokoro model 0.12 GB (pinned sizes) + kokoro-onnx/onnxruntime wheels + the zh-en OPUS pair
+$script:TlwuTalkGB   = 0.3
 $script:TlwuFastMbps = 100
 $script:TlwuSlowMbps = 20
 
@@ -17,18 +19,19 @@ function Get-TlwuMinutes([double]$gb, [double]$fixedMin) {
     return ,@([math]::Max(1, $lo), [math]::Max(1, $hi))
 }
 
-# Estimate for step $n (1-7) as @(lo, hi) minutes; @(0, 0) = under a minute.
+# Estimate for step $n (1-8) as @(lo, hi) minutes; @(0, 0) = under a minute.
 function Get-TlwuStepEstimate([int]$n, [bool]$gpu, [double]$modelGB) {
     if ($n -eq 3) { return (Get-TlwuMinutes $script:TlwuPkgGB 2) }
     if ($n -eq 4 -and $gpu) { return (Get-TlwuMinutes $script:TlwuGpuLibGB 1) }
     if ($n -eq 5 -and $modelGB -gt 0) { return (Get-TlwuMinutes $modelGB 1) }
+    if ($n -eq 6 -and $modelGB -gt 0) { return (Get-TlwuMinutes $script:TlwuTalkGB 1) }
     return ,@(0, 0)
 }
 
 # Whole install (steps 3-5 plus a minute for the quick ones) for the chosen tier.
 function Get-TlwuTotalEstimate([bool]$gpu, [double]$modelGB) {
     $lo = 1; $hi = 1
-    foreach ($n in 3, 4, 5) { $r = Get-TlwuStepEstimate $n $gpu $modelGB; $lo += $r[0]; $hi += $r[1] }
+    foreach ($n in 3, 4, 5, 6) { $r = Get-TlwuStepEstimate $n $gpu $modelGB; $lo += $r[0]; $hi += $r[1] }
     return ,@($lo, $hi)
 }
 
