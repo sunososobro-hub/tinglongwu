@@ -136,7 +136,7 @@ Then `python scripts/verify_offline.py --file talk.wav`.
 
 ## Install
 
-Python 3.10+ (tested 3.12).
+Python 3.12 (the pinned numpy/scipy need >= 3.12; tested 3.12).
 ```
 tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # exact pins
 ```
