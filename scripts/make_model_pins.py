@@ -19,10 +19,6 @@ sys.path.insert(0, str(ROOT))
 from tinglongwu_setup import downloader as dl  # noqa: E402
 
 WHISPER = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
-# Hugging Face's own SFconvertbot PR (main has only pickle weights); pinned by commit sha.
-M2M = ("facebook/m2m100_1.2B", "0d54e885bd182833d3b4342a9dd270fbb312d424",
-       ["config.json", "generation_config.json", "model.safetensors", "sentencepiece.bpe.model", "vocab.json",
-        "tokenizer_config.json", "special_tokens_map.json"])
 ARGOS = {  # key -> package URL (taken from the Argos index once; pinned here from now on)
     "opus-ru-en": "https://argos-net.com/v1/translate-ru_en-1_9.argosmodel",
     "opus-en-zh": "https://argos-net.com/v1/translate-en_zh-1_9.argosmodel",
@@ -59,8 +55,6 @@ def main():
     models[dl.HYMT_DIR] = hf_pin(api, dl.HYMT_GGUF[0], only={dl.HYMT_GGUF[1]})
     for voice, files in dl.PIPER_RU.items():
         models[dl.piper_ru_dir(voice)] = hf_pin(api, dl.PIPER_REPO, only=set(files))
-    repo, rev, only = M2M
-    models["m2m-1.2B"] = {**hf_pin(api, repo, rev, set(only)), "note": "SFconvertbot PR refs/pr/7 (safetensors)"}
     argos = {}
     for key, url in ARGOS.items():
         with tempfile.TemporaryDirectory() as t:
