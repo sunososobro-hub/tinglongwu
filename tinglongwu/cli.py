@@ -105,6 +105,8 @@ def parse_args(argv=None):
     p.add_argument("--speakers", action="store_true",
                    help="label each sentence Speaker N in the log (local sherpa-onnx; needs requirements-speaker.txt "
                         "and tlwu-setup --speaker-model). Off by default")
+    p.add_argument("--force", action="store_true",
+                   help="run even on a CPU without AVX2 (below the minimum spec, see README)")
     a = p.parse_args(argv)
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.preset = a.preset or "meeting"
@@ -283,6 +285,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     from .segment import Segmenter
     from .sink import TextSink, TranscriptSink
 
+    from .minspec import SlowWatch, check_avx2
+
+    check_avx2(getattr(a, "force", False))  # #280: RuntimeError "not supported: CPU lacks AVX2" -> exit 2
     note = status or (lambda m: None)
     mdir = models_dir(a.models_dir)
     warned: list[str] = []
@@ -367,7 +372,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
         stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
-        speakers=labeler)
+        speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe)
 
 
 def main(argv=None) -> int:

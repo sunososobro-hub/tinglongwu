@@ -39,13 +39,15 @@ def step_times(translator) -> str:
 def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
-        stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None) -> None:
+        stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
+        on_work=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
     segment never waits for MT of the previous one; on a slow CPU lines no longer arrive in bursts behind
     a backlog. log(str): --debug-latency, per-stage times (asr / queue wait / each MT step).
     on_latency(seconds): called once per output line with ASR time + MT queue wait + MT time (#80).
+    on_work(asr_s, mt_s, seg_s): once per output line, pure compute (no queue wait) and the audio length (#280).
 
     With a merger, ASR text is held until a sentence ends, or max_wait seconds passed (a timer wakes
     the loop even when no new segment arrives, so live latency stays bounded). audio_clock=True uses
@@ -98,6 +100,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     last_ep = [None]  # epoch of the newest segment handed to ASR (for --debug-latency)
     last_asr = [0.0]  # seconds the newest segment spent in ASR
+    last_len = [0.0]  # seconds of audio in the newest segment
     say = log or (lambda m: None)
     if log is not None and draft is not None and getattr(draft, "log", None):
         say = lambda m: draft._log(m.removeprefix("latency: "))  # noqa: E731 - clears the draft block first
@@ -149,7 +152,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if item is _DONE or stop.is_set():
                 return
             try:
+                t_emit = time.monotonic()
                 emit(*item[:4])
+                if on_work is not None:
+                    on_work(item[4], time.monotonic() - t_emit, item[5])
                 if on_latency is not None:
                     on_latency(item[4] + time.monotonic() - item[3])
             except BaseException as e:  # noqa: BLE001 - re-raised in the main thread
@@ -164,7 +170,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             lang = script_lang(text, u.lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
             if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
                 sink.write_source(lang, text)  # #53: the source line now, its translation when MT is done
-            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0]))
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0]))
 
     def check_worker() -> None:
         if failed:
@@ -202,6 +208,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 t0 = time.monotonic()
                 t = asr.transcribe(seg)
             last_asr[0] = time.monotonic() - t0
+            last_len[0] = len(seg) / SAMPLE_RATE
             say(f"latency: asr {last_asr[0] * 1000:.0f} ms for {len(seg) / SAMPLE_RATE:.1f} s of audio"
                 f" ({mtq.qsize()} line(s) waiting for MT)")
             if t is None or is_hallucination(t.text, float(np.sqrt(np.mean(seg ** 2))), t.no_speech):

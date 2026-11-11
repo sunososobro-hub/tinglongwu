@@ -44,5 +44,8 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 - **Traditional Chinese** is converted post-hoc with OpenCC from Simplified model output, so word choice is approximate.
 - Live capture backends are implemented but only `--file` is covered by automated tests (no audio hardware in CI).
 
+## Minimum spec
+README "System requirements" is the supported spec. At startup a CPU without AVX2 exits with `tlwu: not supported: CPU lacks AVX2` (`--force` continues anyway; an unknown answer, e.g. Apple Silicon, never blocks). On CPU only, after the first 3 segments, if the (ASR + MT) p50 per segment is more than half the segment length, one warning says this machine is below the recommended spec and live subtitles will lag.
+
 ## Roadmap
 Mic -> zh -> ru translation -> built-in-voice offline TTS (Vosk-TTS / Kokoro) -> virtual mic (VB-Cable / BlackHole / PipeWire null-sink), with echo exclusion so synthesized speech is not re-captured.
