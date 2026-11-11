@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import queue
+import re
 import sys
 import threading
 import time
@@ -25,6 +26,11 @@ _DONE = object()
 # Ctrl+C: on Windows a blocking Queue.get() with no timeout is not interruptible, so the main thread
 # always waits in short slices and KeyboardInterrupt is delivered within ~POLL seconds.
 POLL = 0.25
+DUP_WINDOW = 10.0  # seconds: an identical final line this soon after the same one is dropped (Whisper repeats on silence)
+
+
+def _dup_key(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text.lower().replace("ё", "е"))
 
 
 def step_times(translator) -> str:
@@ -156,11 +162,17 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 failed.append(e)
                 return
 
+    last_final = ["", -1e9]  # normalized text and clock of the last emitted final line
+
     def emit_units(units) -> None:
         for u in units:
             text = filter_hallucination(u.text)  # merged segments can loop across the seam
             if not text:
                 continue
+            key, now = _dup_key(text), consumed[0] / SAMPLE_RATE if audio_clock else time.monotonic()
+            if key and key == last_final[0] and now - last_final[1] <= DUP_WINDOW:
+                continue  # identical final line again within the window: show it once
+            last_final[0], last_final[1] = key, now
             lang = script_lang(text, u.lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
             if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
                 sink.write_source(lang, text)  # #53: the source line now, its translation when MT is done
