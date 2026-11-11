@@ -65,7 +65,15 @@ function T {
 # Live drafts (#60): re-runs Whisper + MT on the growing audio, so it costs CPU. Default no; returns the extra
 # tlwu arguments (@() or @("--stream")). Listen-only mode only: the meeting listener runs in its own window.
 function Get-TlwuStreamArgs {
+    param($py = "python")
+    $on = $false   # #257: CPU listen-only = default on (decided by tinglongwu.menuopts.stream_default)
+    try { $on = ((& $py -m tinglongwu.menuopts stream-default listen 2>$null) -eq "1") } catch { $on = $false }
     $ans = ""
+    if ($on) {
+        try { $ans = Read-Host (T 'ASK_STREAM_ON') } catch { $ans = "" }
+        if ($ans -match '^(n|no)$') { return @() }
+        return @("--stream")
+    }
     try { $ans = Read-Host (T 'ASK_STREAM') } catch { $ans = "" }
     if ($ans -match '^(y|yes)$') { return @("--stream") }
     return @()
