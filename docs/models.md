@@ -10,7 +10,6 @@ Translation uses OPUS-MT models as packaged by Argos Translate, run directly on 
 
 Any language pair with an OPUS-MT/Argos package works: `--langs` fetches source->English, `--to` fetches English->target (e.g. `--langs ru,ja --to zh,ko`). Fetch only what you need. If a pair is missing, tinglongWu stops and names the pair and the exact download command.
 
-**Optional M2M-100 engine (`--engine m2m`)**: direct translation without the English pivot, **MIT licensed** (usable commercially). `tlwu-setup --m2m` downloads facebook/m2m100_1.2B and converts it with `ct2-transformers-converter`; the converter needs `torch` and `transformers`, which are NOT runtime dependencies: install them in a throwaway venv and point `TLWU_CONVERTER_PYTHON` at it. Loads from `models/m2m-1.2B/` only.  The conversion reads only `model.safetensors` (pinned HF commit of Hugging Face's own SFconvertbot PR, since `main` has only the pickle `pytorch_model.bin`), so no pickle is ever unpickled. `tlwu-setup` refuses to convert without that pinned safetensors revision.
 
 **Japanese (`--lang ja`, auto candidates en,ru,ja,zh, `reverse.proto --to ja`)**: OPUS has no usable Japanese, so every pair with Japanese is translated directly (no English pivot) by Tencent Hy-MT2-1.8B (Apache-2.0, Q4_K_M GGUF, ~1.1 GB): `tlwu-setup --hymt` plus `llama-cpp-python` (CPU wheel is fine). Without it, listening falls back to the OPUS ja->en->zh pivot (poor); speaking Japanese requires it. Japanese speech is Kokoro-82M v1.0 (Apache-2.0) in the same venv as the English voice; it additionally needs `misaki==0.9.4 pyopenjtalk-plus fugashi unidic-lite mojimoji jaconv addict regex` there (see `tinglongwu/reverse/tts_worker.py`).
 
@@ -28,5 +27,4 @@ Any language pair with an OPUS-MT/Argos package works: `--langs` fetches source-
 | Whisper tiny/base/small/medium/large-v3 (CT2) | `Systran/faster-whisper-*` | SYSTRAN | MIT |
 | **Whisper large-v3-turbo (CT2)** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh (third party, not OpenAI or SYSTRAN)** | MIT; a community CTranslate2 conversion, trust is limited to its pinned commit and hashes |
 | Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen (Alibaba) | Apache-2.0 |
-| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT; **safetensors only** (see above) |
 | OPUS-MT (Argos packages) | `argos-net.com` | Argos Open Tech | CC-BY 4.0; `ru-en` and `en-zh` are pinned by URL + archive SHA256; other pairs are looked up in the mutable Argos index on first use and only pinned afterwards (a warning is printed) |

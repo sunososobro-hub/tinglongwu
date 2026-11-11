@@ -8,7 +8,7 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
 
   tlwu-setup --whisper small --langs ru,ja --to zh,ko
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
-      --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
+      --pair s-t  : one explicit pair (repeatable)
   tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
   tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
@@ -190,47 +190,6 @@ def get_pair(man, mdir, pair, allow_unpinned=False):
             sys.exit(f"SHA256 MISMATCH vs committed pin for the {key} package archive - refusing.")
         extract_argos(z, dest, Path(tmp) / "x")
     pin_or_verify(man, key, dest, {"url": url}, pin and pin["files"])
-
-
-def get_m2m(man, mdir, size="1.2B"):
-    """M2M-100 1.2B (MIT): download facebook/m2m100_1.2B, convert to CTranslate2 int8 -> models/m2m-1.2B/.
-
-    Only model.safetensors is fetched (never the pickle pytorch_model.bin): the main branch has no safetensors
-    file, so the pin is Hugging Face's own SFconvertbot conversion PR (refs/pr/7), by commit sha + SHA256.
-
-    Conversion needs torch + transformers (dev-only, NOT runtime deps). They may live in another
-    interpreter: set TLWU_CONVERTER_PYTHON to its python.exe.
-    """
-    import subprocess
-
-    key, dest = f"m2m-{size}", mdir / f"m2m-{size}"
-    if dest.exists() and key in man:
-        return pin_or_verify(man, key, dest, {k: man[key][k] for k in ("repo", "revision")})
-    py = os.environ.get("TLWU_CONVERTER_PYTHON", sys.executable)
-    chk = subprocess.run([py, "-c", "import torch, transformers, ctranslate2"], capture_output=True)
-    if chk.returncode:
-        sys.exit("M2M-100 conversion needs torch + transformers + ctranslate2 in one interpreter "
-                 "(dev-only; a throwaway venv is fine): pip install torch transformers ctranslate2 sentencepiece, "
-                 "then set TLWU_CONVERTER_PYTHON=<that python> and rerun.")
-    from huggingface_hub import snapshot_download
-
-    repo, rev, pf = resolve_hf(man, key, f"facebook/m2m100_{size}")
-    if not pf or "model.safetensors" not in pf:
-        sys.exit("refusing to convert M2M-100 without a pinned safetensors revision (pickle weights are not loaded).")
-    files = ["sentencepiece.bpe.model", "vocab.json", "tokenizer_config.json", "special_tokens_map.json"]
-    with tempfile.TemporaryDirectory() as tmp:
-        src = Path(tmp) / "hf"
-        snapshot_download(repo, revision=rev, local_dir=str(src), allow_patterns=[
-            "config.json", "generation_config.json", "model.safetensors", *files])
-        check_pinned(pf, hash_tree(src), key)
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.mkdir(parents=True)
-        subprocess.check_call([py, "-m", "ctranslate2.converters.transformers", "--model", str(src),
-                               "--output_dir", str(dest / "model"), "--quantization", "int8",
-                               "--copy_files", *files[1:]])
-        shutil.copy2(src / "sentencepiece.bpe.model", dest / "sentencepiece.bpe.model")
-    pin_or_verify(man, key, dest, {"repo": repo, "revision": rev})
 
 
 QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official Qwen repos
@@ -425,8 +384,6 @@ def main(argv=None) -> int:
     p.add_argument("--pair", action="append", default=[], help="e.g. ru-en, en-zh")
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
-    p.add_argument("--m2m", action="store_true",
-                   help="M2M-100 1.2B direct translation (MIT): download + convert with ct2-transformers-converter")
     p.add_argument("--qwen", action="store_true",
                    help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
     p.add_argument("--qwen4b", action="store_true",
@@ -474,8 +431,6 @@ def main(argv=None) -> int:
                 pf = KOKORO_PINS
             if key == SPEAKER_DIR:
                 pf = {n: h for n, (_, h) in SPEAKER_FILES.items()}
-            if key.startswith("m2m-"):
-                pf = None  # pins cover the HF source files, not the locally converted CT2 output
             pin_or_verify(man, key, d, {}, pf)
         return 0
     for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
@@ -483,9 +438,6 @@ def main(argv=None) -> int:
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     for s in a.whisper:
         get_whisper(man, mdir, s)
-        mf.write_text(json.dumps(man, indent=1), "utf-8")
-    if a.m2m:
-        get_m2m(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.qwen or a.qwen4b:
         for name in (QWEN_GGUF if a.qwen else ["qwen3-4b"]):

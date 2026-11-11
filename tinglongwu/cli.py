@@ -161,7 +161,7 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) 
 def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
     """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
     from .qwen import build_qwen_with_fallback, choose_engine
-    from .translate import M2mTranslator, PivotTranslator
+    from .translate import PivotTranslator
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
     if name in ("qwen3-8b", "qwen3-4b"):
@@ -198,8 +198,6 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         say(f"tlwu: translation engine = hymt2 on {dev} ({why})", file=sys.stderr)
         return tr
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
-    if name == "m2m":
-        return M2mTranslator(mdir, zh_variant, dev)
 
     # OPUS has no usable Japanese: ja pairs go direct through Hy-MT2 when installed, else ja -> en -> zh pivot
     return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
@@ -219,10 +217,10 @@ def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make
     from .adapt import Ladder, LatencyController, Switchable, SwitchableTranslator, smaller_whisper
     from .hymt import JaRouter
     from .models import whisper_installed
-    from .translate import M2mTranslator, PivotTranslator
+    from .translate import PivotTranslator
 
     ladders = []
-    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator, M2mTranslator)):
+    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator)):
         def opus():
             tr = JaRouter(PivotTranslator(mdir, a.zh_variant, device=dev), mdir, a.zh_variant, dev)
             tr.glossary = glossary  # Hy-MT2 and the OPUS pivot behind the router (#174)

@@ -97,7 +97,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
         out["quality"] = DEFAULTS["quality"]
     if not fresh and "quality" not in data and (out["engine"], out["model"]) != (DEFAULTS["engine"], DEFAULTS["model"]):
         out["quality"] = "manual"  # settings saved before #81 with a hand-picked engine/model: keep that choice
-    if out["engine"] not in ENGINES:  # #276: a saved qwen / qwen4b / m2m is no longer a CLI choice
+    if out["engine"] not in ENGINES:  # #276: a saved removed engine (qwen / qwen4b / ...) is no longer a CLI choice
         out["engine"] = DEFAULTS["engine"]
     if fresh:
         try:

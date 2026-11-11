@@ -16,16 +16,13 @@ flowchart LR
     C --> MG["merge.py SentenceMerger<br/>sentence ends / max-wait 6 s"]
     MG --> D{"engine"}
     D -->|opus default| E["translate.py PivotTranslator<br/>src to en to target (OPUS-MT, CT2)"]
-    D -->|m2m optional MIT| F2["translate.py M2mTranslator<br/>direct, 1.2B"]
     E --> G["OpenCC (target zh only)<br/>tw: s2twp / cn: t2s"]
     F --> G
-    F2 --> G
     G --> H["sink.py Sink<br/>stdout text"]
   end
   M[("models/ + manifest.json<br/>SHA256 pinned")] -. "read-only load" .-> C
   M -. "read-only load" .-> E
   M -. "read-only load" .-> F
-  M -. "read-only load" .-> F2
   DL["tinglongwu_setup (tlwu-setup)<br/>ONLY networked program, run manually"] ==> M
 ```
 
@@ -42,7 +39,6 @@ Every box inside "Runtime" works without network. `tlwu-setup` is outside the ru
 | faster-whisper + CTranslate2 | ASR | 1.2.1 / 4.8.5 | MIT / MIT | github.com/SYSTRAN/faster-whisper, github.com/OpenNMT/CTranslate2 | `asr.py` `FasterWhisperRecognizer` | Subclass `Recognizer` (`transcribe(audio) -> Transcript\|None`), instantiate it in `cli.py main` |
 | Whisper weights (Systran CT2) | ASR model | HF sha pinned on first download (committed pins: `tinglongwu_setup/manifest.json`; local record: `models/manifest.json`) | MIT | huggingface.co/Systran/faster-whisper-* | loaded by `FasterWhisperRecognizer` | `--model`; new sizes: extend `choices` in `cli.py` and `tlwu-setup` |
 | OPUS-MT (Argos packages) + SentencePiece | default translation, src->en->target | models: URL + SHA256 pinned; sentencepiece 0.2.3 | CC-BY 4.0 / Apache-2.0 | github.com/Helsinki-NLP/Opus-MT, github.com/argosopentech/argospm-index | `translate.py` `OpusStep` inside `PivotTranslator` | Pass `step_factory(src, tgt) -> callable(str) -> str` to `PivotTranslator`, or subclass `Translator` |
-| M2M-100 (CT2, converted by tlwu-setup) | optional direct translation | HF sha pinned; converted weights SHA256 pinned | MIT | huggingface.co/facebook/m2m100_1.2B | `translate.py` `M2mTranslator` | `--engine m2m`; conversion needs dev-only torch+transformers (`TLWU_CONVERTER_PYTHON`) |
 | CUDA 12 libs (cuBLAS, cuDNN 9) | optional GPU runtime | pip pins in `requirements-gpu.txt` | NVIDIA CUDA EULA (not redistributed by this repo) | pypi.org/project/nvidia-cublas-cu12 | `device.py` | `tlwu-setup --gpu`; `--device auto|cpu|cuda` |
 | OpenCC (opencc-python-reimplemented) | zh script conversion | 0.1.7 | Apache-2.0 | github.com/yichen0831/opencc-python | `translate.py` `zh_convert` | Edit `zh_convert` (config names `s2twp`, `t2s`) |
 | (stdout) | output | n/a | n/a | n/a | `sink.py` `TextSink`, `TranscriptSink`; `TTSSink` is a stub (no TTS in the main package; reverse-mode speech runs in a separate worker subprocess) | Subclass `Sink` (`write(Result)`), pick it in `cli.py main` |

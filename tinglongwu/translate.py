@@ -136,7 +136,7 @@ _WIKI_ASIDE = re.compile(r"\s*[(（]\s*(?:英[語语文]|English)\s*[:：][^()�
 
 
 # ASS/SSA subtitle override blocks ({\fnArial\fs16}, {\an8}, {\c&H00FFFF&}) and their line-break escapes (\N \n \h),
-# learned by OPUS / M2M from subtitle corpora (#43). In bilingual subtitle files such a block starts the *other*
+# learned by OPUS from subtitle corpora (#43). In bilingual subtitle files such a block starts the *other*
 # subtitle line, so the text after a block in the middle of the output is a sentence unrelated to the source.
 _ASS_BLOCK = re.compile(r"\{\\[^{}]*\}")
 _ASS_ESC = re.compile(r"\\[Nnh]")
@@ -320,65 +320,3 @@ class PivotTranslator(Translator):
         pairs = [(src, tgt)] if "en" in (src, tgt) else [(src, "en"), ("en", tgt)]
         for p in pairs:
             self._step(*p)
-
-
-M2M_CODES = {k: f"__{k}__" for k in ("en", "zh", "ru", "ja", "ko", "de", "fr", "es", "it", "pt", "ar", "hi",
-                                     "tr", "vi", "th", "id", "uk", "pl", "nl")}
-M2M_DIR = "m2m-1.2B"
-
-
-def find_m2m(models_dir: Path) -> Path:
-    return require(models_dir / M2M_DIR, "M2M-100 1.2B model", "--m2m")
-
-
-class M2mTranslator(Translator):
-    """--engine m2m: M2M-100 1.2B (CTranslate2) direct src->tgt, no English pivot. MIT licence (usable commercially).
-
-    Loaded only from models/m2m-1.2B (tlwu-setup --m2m converts it).
-    """
-
-    SPM = "sentencepiece.bpe.model"
-    TABLE = M2M_CODES
-
-    def __init__(self, models_dir: Path, zh_variant: str = "tw", device: str = "cpu"):
-        self.zh_variant = zh_variant
-        self.device = device
-        self.dir = find_m2m(models_dir)
-        self._tr = self._sp = None
-
-    def _load(self):
-        if self._tr is None:
-            import ctranslate2
-            import sentencepiece
-
-            self._tr = ctranslate2.Translator(str(self.dir / "model"), device=self.device,
-                                              compute_type=compute_type(self.device, "mt"))
-            self._sp = sentencepiece.SentencePieceProcessor(model_file=str(self.dir / self.SPM))
-
-    @classmethod
-    def _code(cls, lang: str) -> str:
-        if lang not in cls.TABLE:
-            raise RuntimeError(f"{cls.__name__}: language {lang!r} not in tlwu's code table "
-                               f"({sorted(cls.TABLE)}); extend the table in tinglongwu/translate.py")
-        return cls.TABLE[lang]
-
-    def preload(self, src: str, tgt: str) -> None:
-        self._code(src), self._code(tgt)
-        self._load()
-
-    def translate(self, text: str, src: str, tgt: str) -> Translation:
-        if src == tgt:
-            return Translation(None, text)
-        self._load()
-        s, t = self._code(src), self._code(tgt)
-        sents = [x for x in _SENT.split(text) if x.strip()]
-        toks = [[s] + self._sp.encode(x, out_type=str) + ["</s>"] for x in sents]  # HF M2M100: __src__ + pieces + </s>
-        res = self._tr.translate_batch(toks, target_prefix=[[t]] * len(toks), beam_size=4,
-                                       max_decoding_length=256)
-        out = strip_unk(("" if tgt in ("zh", "ja") else " ").join(
-            self._sp.decode(r.hypotheses[0][1:]).strip() for r in res))
-        if tgt in ("zh", "ja"):
-            out = cjk_clean(out)
-        if tgt == "zh":
-            out = zh_guard(text, strip_subtitle_codes(zh_convert(out, self.zh_variant), text)) or text
-        return Translation(None, out)
