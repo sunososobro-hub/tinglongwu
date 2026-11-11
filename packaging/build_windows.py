@@ -169,6 +169,11 @@ def main() -> int:
     print("cuda:", copy_cuda(APP))
     write_licenses(APP)
     shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from clean_machine_check import cmd_deps
+
+    if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
+        print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
     return 0
