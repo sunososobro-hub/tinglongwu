@@ -3,6 +3,8 @@
 Flow per utterance: submit() -> synthesis starts in the background (serial, one worker) -> review loop shows
 zh / ru / back-translation (set_back(), may arrive late) in submit order -> Enter sends the audio, "r" or "x" (+Enter) discards it.
 Nothing reaches the output device before a confirmation. New utterances queue up while one waits.
+synth(ru) may return one (audio, sr) or an iterable of (audio, sr) sentence parts: after Enter each part is sent as
+soon as it is synthesized, so sentence 1 plays while the rest is still in TTS (#139).
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ class Utterance:
     decision: str = ""  # "sent" | "discarded" | "no_audio"
     extra: dict = field(default_factory=dict)
     lang: str = "ru"  # language of `ru` (the translated text): ru | en
+    parts: object = None  # queue of synthesized (audio, sr) parts, None-terminated (filled by the TTS worker)
 
 
 def setup_console() -> None:
@@ -58,8 +61,32 @@ def back_translate(mt, ru: str, lang: str = "ru") -> str:
         mt._pair = pair
 
 
+_END = None
+
+
+def _fill(synth: Callable, ru: str, parts: queue.Queue) -> None:
+    """TTS worker job: put every non-empty (audio, sr) part of synth(ru) on `parts` as it is produced, then _END."""
+    try:
+        r = synth(ru)
+        for audio, sr in ([r] if isinstance(r, tuple) else (r or ())):
+            if len(audio):
+                parts.put((audio, sr))
+    finally:
+        parts.put(_END)
+
+
+def _job_error(fut) -> BaseException | None:
+    """The TTS job's exception (its end marker is queued just before the future completes, so wait briefly)."""
+    from concurrent.futures import CancelledError, TimeoutError as FutTimeout
+
+    try:
+        return fut.exception(timeout=5)
+    except (CancelledError, FutTimeout):
+        return None
+
+
 class ConfirmSession:
-    """synth(ru) -> (audio, sr) | None ; send(audio, sr) ; preview(audio, sr) optional ; readline() -> str ('' = Enter)."""
+    """synth(ru) -> (audio, sr) | iterable of (audio, sr) | None ; send(audio, sr) ; preview(audio, sr) optional ; readline() -> str ('' = Enter)."""
 
     def __init__(self, synth: Callable, send: Callable, preview: Callable | None = None,
                  out: Callable = print, readline: Callable[[], str] | None = None,
@@ -74,8 +101,12 @@ class ConfirmSession:
         self._lock = threading.Lock()
         self._shown: set[int] = set()  # id() of utterances already printed (a late back-translation is appended)
 
+    def _start(self, u: Utterance) -> None:
+        u.parts = queue.Queue()
+        u.future = self._pool.submit(_fill, self.synth, u.ru, u.parts)
+
     def submit(self, u: Utterance) -> None:
-        u.future = self._pool.submit(self.synth, u.ru)  # starts now, in the background
+        self._start(u)  # synthesis starts now, in the background
         self.items.append(u)
         self._q.put(u)
 
@@ -121,10 +152,28 @@ class ConfirmSession:
             if self.set_voice and len(key) >= 2 and key[0] == "v" and key[1:].isdigit():
                 self.set_voice(int(key[1:]))
                 u.future.cancel()
-                u.future = self._pool.submit(self.synth, u.ru)  # same text, new voice
+                self._start(u)  # same text, new voice
                 self.out(f"voice -> {key[1:]}")
                 continue
             return key == ""  # only a bare Enter sends; r/x/anything else discards
+
+    def _send_parts(self, u: Utterance) -> int:
+        """Send (and preview) each part as soon as the worker has it; returns how many were sent."""
+        n = 0
+        while True:
+            try:
+                item = u.parts.get(timeout=0.25)  # timeout: Ctrl+C-able, and a cancelled job never ends the queue
+            except queue.Empty:
+                if u.future.done() and u.parts.empty():
+                    return n
+                continue
+            if item is _END:
+                return n
+            audio, sr = item
+            self.send(audio, sr)
+            if self.preview:
+                self.preview(audio, sr)
+            n += 1
 
     def run(self) -> list[Utterance]:
         """Review loop; returns when finish() was called and the queue is drained."""
@@ -141,19 +190,14 @@ class ConfirmSession:
                 u.decision = "discarded"
                 self.out("discarded")
                 continue
-            try:
-                res = u.future.result()
-            except Exception as e:  # noqa: BLE001
-                res = None
-                self.out(f"TTS error: {e}")
-            if not res or len(res[0]) == 0:
+            n = self._send_parts(u)
+            err = _job_error(u.future)
+            if err is not None:
+                self.out(f"TTS error: {err}")
+            if not n:
                 u.decision = "no_audio"
                 self.out("no audio produced")
                 continue
-            audio, sr = res
-            self.send(audio, sr)
-            if self.preview:
-                self.preview(audio, sr)
             u.decision = "sent"
             self.out("sent")
         self._pool.shutdown(wait=True)

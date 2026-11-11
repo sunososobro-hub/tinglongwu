@@ -332,7 +332,7 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 ```
 
 - Linux 上程式會自動建立虛擬麥克風（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄文語音播到 `tlwu_sink`，結束時卸載兩個模組。在 Meet/Zoom 選麥克風 `tlwu_mic`。`--no-vmic` 可關閉（改用 `--device <sink 子字串>`）；`--list-speakers` 列出輸出裝置。Windows 仍用 VB-CABLE。
-- 沒有 CUDA 時，翻譯改用 OPUS/Argos 樞紐 zh -> en -> ru（需上面四個 `--pair` 模型），Whisper 預設 `small`。`--mt qwen` 可強制用 Qwen3（GPU）。
+- 沒有 CUDA 時，翻譯改用 OPUS/Argos 樞紐 zh -> en -> ru（需上面四個 `--pair` 模型），Whisper 預設 `small`。有 CUDA 時 `--mt auto` 在已安裝 Hy-MT2（`tlwu-setup --hymt`）時用 Hy-MT2，否則用 OPUS；`--mt qwen` 可強制用 Qwen3（GPU），`--mt hymt` 強制 Hy-MT2。`--pause`（= `--end-silence`，0.3-2.0 秒）設定句尾靜音秒數（越小越快出聲）。
 - 俄語語音模型為**選用、需主動啟用**（上游未標示授權）：任何安裝程式或預設設定都不會下載。請執行 `tlwu-setup --vosk-tts-ru`（或在選單回答 y/N，預設 N，會先顯示「俄文語音模型上游未標示授權；下載請自負責任」）。沒有模型時，說俄文只會顯示字幕並提示啟用方式。
 - 語音在 CPU 上使用內建固定語音：俄語用 Vosk-TTS（`--tts-engine vosk`，以 `--speaker` 選 0-4 號語音），英／日語用 Kokoro（`--tts-engine kokoro`），各自在獨立 venv。沒有參考音訊的聲音複製功能。
 
