@@ -101,7 +101,7 @@ if ($L -eq "auto") {
     if ($both) { $speak = "follow" }
     elseif ($mode -eq "2") {
         $speak = Read-Host (T 'ASK_SPEAK')
-        if ($speak -ne "ru" -and $speak -ne "ja") { $speak = "en" }
+        if ($speak -ne "ru" -and $speak -ne "ja" -and $speak -ne "zh") { $speak = "en" }   # zh = I speak English (#134)
     }
 }
 $setupExe = ".\.venv\Scripts\tlwu-setup.exe"
@@ -197,6 +197,20 @@ if ($speak -eq "follow") {
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "ja", "--mt", "opus", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
     $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ja", "--mt", "opus") + $wS
+} elseif ($speak -eq "zh") {
+    # reverse direction (#134): you speak English, the other side hears Chinese (Hy-MT2 en->zh if installed, else
+    # OPUS en-zh; zh-en is the back-translation). Kokoro Chinese voices need misaki[zh] in the Kokoro venv.
+    & $py -c $havePairs en-zh zh-en
+    if ($LASTEXITCODE -ne 0 -and -not (Test-HyReady)) {
+        Write-Host (T 'NO_MODEL_ZH_EN')
+        Invoke-Setup --pair zh-en --pair en-zh
+    }
+    if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO' $kokoroModel); exit 1 }
+    & $kokoroPy -c "import misaki.zh, jieba, pypinyin, cn2an" 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "  & `"$kokoroPy`" -m pip install `"misaki[zh]==0.9.4`""; exit 1 }
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--from", "en", "--mt", "opus", "--tts-engine", "kokoro",
+             "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--from", "en", "--mt", "opus") + $wS
 } elseif ($speak -eq "en") {
     # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
     & $py -c $havePairs zh-en en-zh

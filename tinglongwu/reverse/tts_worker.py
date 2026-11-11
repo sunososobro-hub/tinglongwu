@@ -95,6 +95,8 @@ def run_vosk(a) -> int:
 KOKORO_VOICES = ["am_michael", "af_heart", "am_adam", "af_bella", "bm_george"]
 # Japanese voices for the same ids (best-graded first; Kokoro VOICES.md), used when a request has lang "ja".
 KOKORO_JA_VOICES = ["jf_alpha", "jf_gongitsune", "jf_tebukuro", "jf_nezumi", "jm_kumo"]
+# Mandarin voices for the same ids (lang "zh", #134; all eight zh voices of v1.0 share one grade in VOICES.md).
+KOKORO_ZH_VOICES = ["zf_xiaoxiao", "zm_yunxi", "zf_xiaoyi", "zm_yunjian", "zf_xiaobei"]
 KOKORO_MODEL_FILE = "kokoro-v1.0.int8.onnx"
 KOKORO_VOICES_FILE = "voices-v1.0.bin"
 
@@ -133,8 +135,31 @@ class JaPhonemizer:
         return self._g2p(text)[0]
 
 
-def run_kokoro(a, ja_phonemizer=None) -> int:
-    """CPU path with kokoro-onnx (English + Japanese). It bundles GPL espeak, so it only ever runs here, in its own venv.
+class ZhPhonemizer:
+    """Chinese text (Traditional is fine: misaki converts to pinyin via pypinyin/jieba) -> Kokoro v1.0 phonemes
+    with misaki[zh]. Loaded on the first Chinese request only; espeak's cmn voice is never used."""
+
+    def __init__(self):
+        self._g2p = None
+
+    def __call__(self, text: str) -> str:
+        if self._g2p is None:
+            from misaki import zh
+
+            self._g2p = zh.ZHG2P()
+        return self._g2p(text)[0]
+
+
+def kokoro_request(text: str, lang: str | None, phonemizers: dict) -> tuple[list, dict]:
+    """(voice list, k.create kwargs) for one request: ja/zh go through misaki phonemes, anything else is en-us."""
+    if lang in ("ja", "zh"):
+        voices = KOKORO_JA_VOICES if lang == "ja" else KOKORO_ZH_VOICES
+        return voices, {"text": phonemizers[lang](text), "is_phonemes": True}
+    return KOKORO_VOICES, {"text": text, "lang": "en-us"}
+
+
+def run_kokoro(a, ja_phonemizer=None, zh_phonemizer=None) -> int:
+    """CPU path with kokoro-onnx (English, Japanese, Chinese). It bundles GPL espeak, so it only ever runs here, in its own venv.
     Needs kokoro-v1.0.int8.onnx + voices-v1.0.bin in --model; a request may carry "speaker" (0-4)."""
     import numpy as np
     from kokoro_onnx import Kokoro
@@ -147,7 +172,7 @@ def run_kokoro(a, ja_phonemizer=None) -> int:
             return 2
     t0 = time.perf_counter()
     k = Kokoro(onnx, voices)
-    ja_ph = ja_phonemizer or JaPhonemizer()
+    phonemizers = {"ja": ja_phonemizer or JaPhonemizer(), "zh": zh_phonemizer or ZhPhonemizer()}
     try:
         avail = set(k.get_voices())
     except Exception:  # noqa: BLE001  (API not present: handle failures per request instead)
@@ -160,13 +185,8 @@ def run_kokoro(a, ja_phonemizer=None) -> int:
             break
         try:
             t1 = time.perf_counter()
-            ja = req.get("lang") == "ja"
-            voices = KOKORO_JA_VOICES if ja else KOKORO_VOICES
+            voices, kw = kokoro_request(req["text"], req.get("lang"), phonemizers)
             voice = kokoro_voice(req.get("speaker", a.speaker), avail, voices=voices)
-            if ja:
-                kw = dict(text=ja_ph(req["text"]), is_phonemes=True)
-            else:
-                kw = dict(text=req["text"], lang="en-us")
             try:
                 samples, sr = k.create(voice=voice, speed=1.0, **kw)
             except (KeyError, ValueError, AssertionError) as e:

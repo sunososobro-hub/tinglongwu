@@ -121,18 +121,26 @@ def capture_segments(source, segmenter, stop: threading.Event, lat=None) -> Iter
         yield seg
 
 
-def is_source_zh(text: str) -> bool:
-    """False when the text has Latin/Cyrillic/kana letters but no Chinese characters (not our speaker's Chinese)."""
+def is_source_lang(text: str, src: str = "zh") -> bool:
+    """Is `text` plausibly our speaker's language `src` (zh | en)? zh: False when it has Latin/Cyrillic/kana letters
+    but no Chinese characters. en (#134): False when it has any CJK/kana or Cyrillic letter (the other side's
+    Chinese leaked into the mic and Whisper(en) transcribed or translated it)."""
     import re
 
     from .logic import has_cjk
 
+    if src == "en":
+        return not has_cjk(text) and not re.search("[\u0400-\u04ff]", text)
     return has_cjk(text) or not re.search(r"[^\W\d_]", text)
 
 
+def is_source_zh(text: str) -> bool:
+    return is_source_lang(text, "zh")
+
+
 def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float = 1e-3,
-                         gate: PlaybackGate | None = None) -> Iterator[str]:
-    """Each finished segment -> Chinese text (silence, Whisper stock hallucinations and, with `gate`, segments
+                         gate: PlaybackGate | None = None, src: str = "zh") -> Iterator[str]:
+    """Each finished segment -> text in `src` (zh | en) (silence, Whisper stock hallucinations and, with `gate`, segments
     heard while our own TTS is playing are dropped)."""
     from ..hallucination import is_hallucination
 
@@ -147,6 +155,6 @@ def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float
             continue
         if is_hallucination(tr.text, rms, getattr(tr, "no_speech", 0.0)):
             continue
-        if not is_source_zh(tr.text):  # the other side's speech leaked into the mic: Whisper(zh) "translated" it
+        if not is_source_lang(tr.text, src):  # the other side's speech leaked in: Whisper "translated" it
             continue
         yield tr.text.strip()
