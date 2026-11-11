@@ -124,8 +124,9 @@ def test_speak_proto_second_ctrl_c_during_shutdown():
         from tinglongwu.reverse import proto
 
         def _main(argv, vm):
-            print("listening", file=sys.stderr, flush=True)
             try:
+                # inside `try`: a Ctrl+C landing right after this print must still reach `finally` (CI race)
+                print("listening", file=sys.stderr, flush=True)
                 while True:
                     time.sleep(0.05)
             except KeyboardInterrupt:
