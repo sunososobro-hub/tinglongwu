@@ -6,5 +6,7 @@ class MicSource(SoundcardSource):
 
     def _pick_microphone(self, sc):
         if self.device:
-            return find_by_name(sc, self.device, include_loopback=False)
+            # "Monitor of ..." (PulseAudio monitor, allowed upstream via allow_monitor) is only listed with loopback
+            mon = self.device.strip().lower().startswith("monitor of")
+            return find_by_name(sc, self.device, include_loopback=mon)
         return sc.default_microphone()
