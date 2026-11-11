@@ -134,7 +134,7 @@ def test_cli_talk_end_to_end(tmp_path, pins, monkeypatch):
     pairs = []
     monkeypatch.setattr(downloader, "_open", Opener())
     monkeypatch.setattr(downloader.get_kokoro, "__defaults__", (Opener(),))
-    monkeypatch.setattr(downloader, "get_pair", lambda man, mdir, pr: pairs.append(pr))
+    monkeypatch.setattr(downloader, "get_pair", lambda man, mdir, pr, allow_unpinned=False: pairs.append(pr))
     r = Runner()
     monkeypatch.setattr(talk.subprocess, "call", r)
     monkeypatch.setattr(talk.main, "__defaults__", (r,))

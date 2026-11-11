@@ -41,7 +41,8 @@ class Tier:
         return f"約 {gb:.1f} GB" if gb >= 1 else f"約 {self.total_bytes // MB} MB"
 
     def downloader_args(self) -> list[str]:
-        return ["--whisper", self.whisper, "--packs", "zh,en", *self.mt]  # #178: ja/ru packs on demand
+        # #178: ja/ru packs on demand; #254: zh-en has no committed pin yet, the GUI setup is the consent
+        return ["--whisper", self.whisper, "--packs", "zh,en", "--allow-unpinned", *self.mt]
 
 
 def _tier(name, whisper, mt, label, mparts):

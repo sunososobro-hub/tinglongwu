@@ -8,6 +8,7 @@
 
 tlwu_auto_update() {
   TLWU_UPDATED=""; TLWU_UPDATE_RESULT=skipped
+  if [ "${TLWU_OFFLINE:-}" = "1" ]; then TLWU_UPDATE_RESULT=forced_off; return 0; fi   # offline mode: no git fetch at all
   if [ "${TLWU_NO_UPDATE:-}" = "1" ]; then TLWU_UPDATE_RESULT=forced_off; return 0; fi
   command -v git >/dev/null 2>&1 || { TLWU_UPDATE_RESULT=nogit; return 0; }
   [ -d .git ] || { TLWU_UPDATE_RESULT=nogit; return 0; }
@@ -27,10 +28,12 @@ tlwu_auto_update() {
   if ! git merge --ff-only --quiet "$up" >/dev/null 2>&1; then m M_UPD_SKIP_DIVERGED; return 0; fi
   TLWU_UPDATED=1; TLWU_UPDATE_RESULT=updated
   if git diff --name-only "$old" HEAD 2>/dev/null | grep -Eq '^(pyproject\.toml|requirements[^/]*\.txt)$'; then
-    m M_UPD_PKG
-    if ! python -m pip install -q -e . >/dev/null 2>&1; then
-      m M_UPD_PKG_FAIL
-    fi
+    # never pip install unasked: print the command; run it only on an explicit y from a terminal (non-interactive = no)
+    local ans=""
+    if [ -t 0 ]; then read -rp "$(mp M_UPD_PKG_ASK)" ans || ans=""; fi
+    case "$ans" in
+      y|Y|yes|YES|Yes) python -m pip install -q -e . >/dev/null 2>&1 || m M_UPD_PKG_FAIL ;;
+    esac
   else
     m M_UPD_OK
   fi
