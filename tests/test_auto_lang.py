@@ -36,7 +36,7 @@ def make(probs, tmp_path=None, cands=("en", "ru", "zh")):
     return r
 
 
-AUDIO = np.zeros(16000, dtype=np.float32)
+AUDIO = np.zeros(32000, dtype=np.float32)  # 2 s: long enough to switch language (MIN_SWITCH_SECS)
 
 
 def test_pick_candidate_restricts_to_set():
@@ -182,3 +182,27 @@ def test_pipeline_zh_segment_passthrough_traditional():
     assert calls == ["en"]  # zh never translated
     assert sink.r[0].src == "zh" and sink.r[0].target == sink.r[0].original == "這個軟體很好。"
     assert sink.r[1].target == "X"
+
+
+def test_sticky_short_segment_keeps_current():
+    probs = {"en": 0.4, "ru": 0.55}
+    assert pick_candidate(probs, ("en", "ru"), current="en", seconds=0.8) == "en"  # too short
+    assert pick_candidate(probs, ("en", "ru"), current="en", seconds=3.0) == "en"  # margin 0.15 < 0.2
+
+
+def test_sticky_switches_when_clear_and_long():
+    probs = {"en": 0.2, "ru": 0.7}
+    assert pick_candidate(probs, ("en", "ru"), current="en", seconds=2.0) == "ru"
+
+
+def test_sticky_first_segment_unrestricted_and_candidates_only():
+    assert pick_candidate({"en": 0.4, "ru": 0.5}, ("en", "ru"), current=None, seconds=0.3) == "ru"
+    assert pick_candidate({"en": 0.1, "ru": 0.5, "fr": 0.9}, ("en", "ru"), current="en", seconds=5) == "ru"
+
+
+def test_recognizer_does_not_flip_on_short_audio():
+    m = FakeModel([{"en": 0.4, "ru": 0.6}, {"en": 0.2, "ru": 0.7}])
+    r = asr_mod.FasterWhisperRecognizer.__new__(asr_mod.FasterWhisperRecognizer)
+    r.candidates, r._cur, r.model, r.lang = ("en", "ru"), "en", m, None
+    assert r._lang_for(np.zeros(8000, dtype="float32")) == "en"   # 0.5 s
+    assert r._lang_for(np.zeros(48000, dtype="float32")) == "ru"  # 3 s and margin 0.5

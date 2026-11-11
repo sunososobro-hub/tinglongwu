@@ -65,6 +65,7 @@ L="${TLWU_LANG:-auto}"
 # macOS install skips the Russian voice: default to English unless the Vosk model is there
 if [ "$IS_MAC" = "1" ] && [ -z "${TLWU_LANG:-}" ] && [ ! -d "$VOSK_MODEL" ]; then L=en; fi
 CANDS="en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
+case "$L" in *,*) CANDS="$L"; L=auto ;; esac   # TLWU_LANG=en,ru,zh: auto detection limited to these
 FOLLOW_LANGS="en,ru,ja"   # languages the speak side prepares in meeting mode
 FOLLOW_FILE="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/tlwu_follow_lang"
 lang_name() {  # auto from the menu texts; languages from tinglongwu.langs (marks the experimental ones, #58)
