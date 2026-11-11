@@ -100,7 +100,7 @@ def test_capture_error_propagates():
 
 
 def test_recognize_filters_silence_and_hallucination():
-    loud = np.full(100, 0.3, np.float32)
+    loud = np.full(16000, 0.3, np.float32)  # 1 s: #249 drops segments shorter than gate.MIN_DUR_S
     asr = SimpleNamespace(transcribe=lambda a: SimpleNamespace(text="你好", no_speech=0.0))
     assert list(recognize_utterances([np.zeros(100, np.float32), loud], asr)) == ["你好"]
     asr2 = SimpleNamespace(transcribe=lambda a: None)
