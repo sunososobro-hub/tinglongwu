@@ -35,7 +35,7 @@ Each release also lists `SHA256SUMS.txt`; to check a script before running it, d
 For Windows 10/11 with an NVIDIA GPU (works without one, just slower). You need [Python 3.12](https://www.python.org/downloads/windows/) first (tick **Add python.exe to PATH** in its installer).
 
 1. On GitHub click **Code > Download ZIP**, then right-click the ZIP > **Extract All**.
-2. Open the folder and double-click **`install.bat`**. Wait (10-30 min, up to ~10 GB download; safe to re-run if interrupted).
+2. Open the folder and double-click **`install.bat`**. Wait (10-30 min, up to ~3 GB of models on an NVIDIA GPU with 4 GB+ VRAM, ~1 GB otherwise; safe to re-run if interrupted).
 3. Double-click the new desktop shortcut **聽攏有 tinglongWu**.
 
 **Using the menu.** The shortcut opens a menu: `1` Meeting (listen + speak into Meet/Zoom, wear a headset; set the meeting microphone to *CABLE Output*), `2` Speak only (Chinese -> English/Russian/Japanese voice), `3` Listen only (foreign speech -> Chinese subtitles), `L` change the other side's language, `G` graphical interface, `U` update now, `A` toggle auto-update at start, `I` menu language. Press the key and Enter; every model download asks y/N first.
