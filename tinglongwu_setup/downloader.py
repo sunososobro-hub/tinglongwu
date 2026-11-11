@@ -76,9 +76,9 @@ def sha256(p: Path) -> str:
     return h.hexdigest()
 
 
-def hash_tree(d: Path) -> dict[str, str]:
+def hash_tree(d: Path, skip: tuple = ()) -> dict[str, str]:
     return {p.relative_to(d).as_posix(): sha256(p) for p in sorted(d.rglob("*"))
-            if p.is_file() and ".cache" not in p.parts}
+            if p.is_file() and ".cache" not in p.parts and p.relative_to(d).as_posix() not in skip}
 
 
 def load_pins() -> dict:
@@ -96,8 +96,9 @@ def check_pinned(pin_files: dict, files: dict, key: str) -> None:
                  f"changed). Delete the model directory to re-download.")
 
 
-def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | None = None) -> None:
-    files = hash_tree(d)
+def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | None = None,
+                  skip: tuple = ()) -> None:
+    files = hash_tree(d, skip)
     if pin_files:
         check_pinned(pin_files, files, key)
     if key in man:
@@ -200,6 +201,7 @@ QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official
 
 HYMT_DIR = "hymt2-1.8b"  # keep in sync with tinglongwu.hymt (setup does not import tinglongwu)
 HYMT_GGUF = ("tencent/Hy-MT2-1.8B-GGUF", "Hy-MT2-1.8B-Q4_K_M.gguf")  # Apache-2.0, ~1.1 GB: Japanese MT
+HYMT_EXTRAS = ("LICENSE.txt",)  # upstream Apache-2.0 text, kept next to the model
 
 
 def get_qwen(man, mdir, name):
@@ -209,21 +211,30 @@ def get_qwen(man, mdir, name):
 
 def get_hymt(man, mdir):
     """Hy-MT2-1.8B Q4_K_M GGUF -> models/hymt2-1.8b/ (direct zh<->ja translation)."""
-    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF)
+    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF, extras=HYMT_EXTRAS)
 
 
-def get_gguf(man, mdir, name, repo, fname):
+def get_gguf(man, mdir, name, repo, fname, extras=()):
+    """extras: unpinned side files (license text) fetched at the same revision and left out of the SHA256 pins."""
     dest = mdir / name
     if not (dest.exists() and name in man):
         from huggingface_hub import snapshot_download
 
         repo, rev, pf = resolve_hf(man, name, repo)
-        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname])
+        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname, *extras])
         src = {"repo": repo, "revision": rev}
     else:
         src = man[name]
         pf = (load_pins()["models"].get(name) or {}).get("files")
-    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
+        missing = [e for e in extras if not (dest / e).exists()]
+        if missing:  # existing install: fetch only the side files, never the GGUF again
+            from huggingface_hub import snapshot_download
+
+            try:
+                snapshot_download(src["repo"], revision=src["revision"], local_dir=str(dest), allow_patterns=missing)
+            except Exception as e:  # noqa: BLE001 - a missing license file must not break an installed model
+                print(f"WARNING: could not fetch {missing} for {name}: {e}")
+    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf, skip=tuple(extras))
 
 
 VOSK_TTS_RU = "vosk-model-tts-ru-0.7-multi"  # keep in sync with tinglongwu.models.VOSK_TTS_RU_DIR
