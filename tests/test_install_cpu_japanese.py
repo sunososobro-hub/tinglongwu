@@ -56,7 +56,7 @@ def test_cpu_tier_installs_llama_cpu_build_and_hymt():
     assert any("[dry-run]" in x and x.rstrip().endswith("--hymt") for x in lines)
     assert not any("requirements-qwen.txt" in x for x in lines)  # the CUDA wheel stays GPU-only
     assert any("Japanese: Hy-MT2" in x for x in lines)
-    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 12-39 分鐘") for x in lines)  # +1.1 GB GGUF
+    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 14-43 分鐘") for x in lines)  # +1.1 GB GGUF, +0.3 GB talk mode (#124)
 
 
 @needs_pwsh
@@ -65,7 +65,7 @@ def test_low_ram_cpu_tier_says_japanese_is_unsupported_and_skips_hymt():
     assert not any("requirements-llama-cpu.txt" in x or x.rstrip().endswith("--hymt") for x in lines)
     warn = [x for x in lines if "Japanese translation is not supported on this PC" in x]
     assert warn and "3000 MB" in warn[0]
-    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 11-32 分鐘") for x in lines)
+    assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 13-36 分鐘") for x in lines)  # incl. 0.3 GB talk mode (#124)
 
 
 def test_cpu_requirements_pin_the_checked_llama_version_from_the_cpu_index():

@@ -5,6 +5,9 @@
   tlwu-setup --vosk-tts-ru                            OPT-IN Russian voice model (no upstream license; never default)
   tlwu-setup --piper-ru [dmitri|denis]                Piper Russian voice for speak mode (CC0 data; engine: own venv)
   tlwu-setup --gpu                                    pip install CUDA 12 libs (cuBLAS, cuDNN) for --device cuda
+  tlwu-setup --talk [--talk-whisper small --talk-compute cpu --talk-mt opus]
+                                                      talk mode: Kokoro venv (~/tts-kokoro) + pinned model + smoke wav
+                                                      + tlwu-talk.ps1 launcher (used by install.ps1)
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Qwen / Hy-MT2) fit this CPU?
   tlwu-setup --selftest [--model M --engine E]        offline: load the models, translate one test sentence (tlwu --selftest)
   tlwu-setup --verify                                 offline integrity check
@@ -25,7 +28,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from . import downloader
+from . import downloader, talk
 
 ROOT = downloader.ROOT
 
@@ -101,6 +104,12 @@ def main(argv=None) -> int:
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
     p.add_argument("--selftest", action="store_true",
                    help="run `tlwu --selftest` (no network); --model/--engine/--device are forwarded")
+    p.add_argument("--talk", action="store_true", help="set up talk mode (Kokoro TTS venv, model, launcher)")
+    p.add_argument("--talk-venv", default=str(talk.default_venv()))
+    p.add_argument("--talk-launcher", default=str(ROOT / "tlwu-talk.ps1"))
+    p.add_argument("--talk-whisper", default="small")
+    p.add_argument("--talk-compute", default="auto", choices=["auto", "cpu", "cuda"])
+    p.add_argument("--talk-mt", default="opus", choices=["auto", "qwen", "opus"])
     p.add_argument("--requirements", default=str(ROOT / "requirements.txt"))
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
@@ -116,6 +125,8 @@ def main(argv=None) -> int:
     if a.check_llama:  # separate process: setup never imports the offline runtime package
         return subprocess.call([sys.executable, "-m", "tinglongwu.llamacheck"])
     mdir = Path(a.models_dir)
+    if a.talk:
+        return talk.main(a, mdir)
     if a.from_bundle:
         return from_bundle(Path(a.from_bundle), mdir)
     if a.deps:

@@ -33,7 +33,8 @@ $voice = if ($env:VOICE) { $env:VOICE } else { "4" }
 #   python -m venv $HOME\tts-kokoro; & $HOME\tts-kokoro\Scripts\pip install "kokoro-onnx==0.6.1"
 #   model dir needs kokoro-v1.0.int8.onnx + voices-v1.0.bin
 $kokoroPy = if ($env:KOKORO_PY) { $env:KOKORO_PY } else { "$HOME\tts-kokoro\Scripts\python.exe" }
-$kokoroModel = if ($env:KOKORO_MODEL) { $env:KOKORO_MODEL } else { "$HOME\models\kokoro" }
+# install.ps1 (#124) puts the pinned model in the repo models\kokoro; a manual install may use $HOME\models\kokoro
+$kokoroModel = if ($env:KOKORO_MODEL) { $env:KOKORO_MODEL } elseif (Test-Path "$HOME\models\kokoro") { "$HOME\models\kokoro" } else { Join-Path (Get-Location) "models\kokoro" }
 $kokoroVoice = if ($env:KOKORO_VOICE) { $env:KOKORO_VOICE } else { "0" }
 
 $L = if ($env:TLWU_LANG) { $env:TLWU_LANG } else { "auto" }
