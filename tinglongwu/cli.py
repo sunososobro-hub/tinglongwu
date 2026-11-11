@@ -116,11 +116,12 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print) -> str:
         hw = hw or probe()
         if dev == "cpu":
             hw = replace(hw, gpu=None, vram_mib=None, driver=None)
-        want = preset(level, hw).asr
+        tier = preset(level, hw)
+        want, tier_name = tier.asr, tier.name
     except Exception as e:  # noqa: BLE001 - a broken probe must never stop a session
-        want = "small"
+        want, tier_name = "small", None
         say(f"tlwu: hardware probe failed ({str(e)[:120]}); using the default speech model", file=sys.stderr)
-    got = pick_whisper(want, mdir)
+    got = pick_whisper(want, mdir, tier_name)
     note = "" if got == want else f" ({want} is not downloaded: `tlwu-setup --whisper {want}`)"
     say(f"tlwu: speech model = {got} (quality {level}){note}", file=sys.stderr)
     return got
