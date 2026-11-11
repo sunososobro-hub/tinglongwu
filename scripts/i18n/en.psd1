@@ -37,6 +37,7 @@
     NO_VOSK = 'Russian voice model not found: {0} (Vosk)'
     NO_KOKORO = 'Voice model not found: {0} (Kokoro)'
     ASK_AUTOSEND = 'Send every sentence directly, no confirmation? [Enter=confirm / y=send directly]'
+    ASK_STREAM = 'Show live drafts while someone is still speaking (uses more CPU)? [Enter=no / y=show]'
     MEETING_BANNER = 'Meeting mode: the other window shows the other side (◀ original + Chinese subtitles), this one shows what you said (▶); what you say in Chinese here goes into Meet (pick CABLE Output as the Meet microphone). Please wear headphones.'
     CONFIRM_HELP = 'Confirm each sentence first: Enter=send  x=discard  v0-v4=change voice'
     OUT1 = '  1) Into Meet (needs VB-CABLE; pick CABLE Output as the Meet microphone)'

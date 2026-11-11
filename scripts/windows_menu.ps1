@@ -166,7 +166,8 @@ if ($mode -eq "1") {
         Write-Host (T 'NO_MODEL_FOR' $L)
         Invoke-Setup @setup
     }
-    & $tlwu @listenLang @wL
+    $stream = @(Get-TlwuStreamArgs)   # live drafts (#60), default no
+    & $tlwu @listenLang @wL @stream
     exit
 }
 Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))

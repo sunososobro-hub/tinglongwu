@@ -62,6 +62,15 @@ function T {
     return $f
 }
 
+# Live drafts (#60): re-runs Whisper + MT on the growing audio, so it costs CPU. Default no; returns the extra
+# tlwu arguments (@() or @("--stream")). Listen-only mode only: the meeting listener runs in its own window.
+function Get-TlwuStreamArgs {
+    $ans = ""
+    try { $ans = Read-Host (T 'ASK_STREAM') } catch { $ans = "" }
+    if ($ans -match '^(y|yes)$') { return @("--stream") }
+    return @()
+}
+
 function Test-TlwuAutoUpdate { return (($env:TLWU_NO_UPDATE -ne "1") -and ((Get-TlwuCfg "auto_update") -eq "1")) }
 
 # First run (no config yet): ask once. No answer possible (stdin closed) = stay off, nothing saved.
