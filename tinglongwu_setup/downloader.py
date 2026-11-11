@@ -29,12 +29,41 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent  # repo root  # repo root
 PINS_FILE = Path(__file__).with_name("manifest.json")
 ARGOS_INDEX = "https://raw.githubusercontent.com/argosopentech/argospm-index/main/index.json"
+MB = 1024 * 1024
 
 
 def _open(url: str, timeout: int = 60):
     # argos-net.com returns 403 for urllib's default User-Agent
     return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tlwu-setup/0.1"}),
                                   timeout=timeout)
+
+
+def copy_with_progress(src, dst, total: int | None, label: str, step: int = 5, chunk: int = 1 << 20) -> int:
+    """Copy a download stream to a file and print `label: 35% (87/250 MB)` every `step` percent, so a direct
+    download never leaves the installer screen silent (#87). Unknown size: print every 50 MB. Returns bytes copied."""
+    done, next_pct, next_mb = 0, step, 50
+    while True:
+        b = src.read(chunk)
+        if not b:
+            break
+        dst.write(b)
+        done += len(b)
+        if total:
+            pct = min(100, done * 100 // total)
+            if pct >= next_pct:
+                print(f"{label}: {pct}% ({done // MB}/{total // MB} MB)", flush=True)
+                next_pct = (pct // step + 1) * step
+        elif done // MB >= next_mb:
+            print(f"{label}: {done // MB} MB", flush=True)
+            next_mb += 50
+    return done
+
+
+def _size(r) -> int | None:
+    try:
+        return int(r.headers.get("Content-Length") or 0) or None
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def sha256(p: Path) -> str:
@@ -151,7 +180,7 @@ def get_pair(man, mdir, pair):
     with tempfile.TemporaryDirectory() as tmp:
         z = Path(tmp) / "pkg.zip"
         with _open(url, 300) as r, open(z, "wb") as f:
-            shutil.copyfileobj(r, f)
+            copy_with_progress(r, f, _size(r), f"download {key}")
         if pin and pin.get("archive_sha256") and sha256(z) != pin["archive_sha256"]:
             sys.exit(f"SHA256 MISMATCH vs committed pin for the {key} package archive - refusing.")
         extract_argos(z, dest, Path(tmp) / "x")
@@ -260,7 +289,7 @@ def get_vosk_tts_ru(man, mdir, opener=_open):
     with tempfile.TemporaryDirectory() as tmp:
         z, work = Path(tmp) / "m.zip", Path(tmp) / "x"
         with opener(VOSK_TTS_RU_URL, 600) as r, open(z, "wb") as f:
-            shutil.copyfileobj(r, f)
+            copy_with_progress(r, f, _size(r), f"download {VOSK_TTS_RU}")
         with zipfile.ZipFile(z) as zf:
             for n in zf.namelist():  # zip-slip guard
                 if Path(n).is_absolute() or ".." in Path(n).parts:

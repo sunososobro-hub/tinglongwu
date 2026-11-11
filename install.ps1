@@ -20,7 +20,12 @@ $Warnings  = New-Object System.Collections.ArrayList
 $LlamaChk  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[0])'   # loads, fits this CPU (#74), has GPU offload
 
 $LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[1])'
-function Step($n, $zh, $en) { Write-Host ""; Write-Host "[$n/7] $zh / $en" -ForegroundColor Cyan }
+. (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
+$Gpu = $false; $ModelGB = 0
+function Step($n, $zh, $en) {
+    Write-Host ""; Write-Host "[$n/7] $zh / $en" -ForegroundColor Cyan
+    Write-Host "      $(Format-TlwuEstimate (Get-TlwuStepEstimate $n $Gpu $ModelGB))" -ForegroundColor DarkCyan
+}
 function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
 function Info($m) { Write-Host "      $m" }
 function Warn($m) { Write-Host "  !!  $m" -ForegroundColor Yellow; [void]$Warnings.Add($m) }
@@ -33,8 +38,7 @@ function Run($exe, [string[]]$a) {
     $line = "$exe " + ($a -join ' ')
     if ($DryRun) { Write-Host "  [dry-run] $line" -ForegroundColor DarkGray; return $true }
     Write-Host "  > $line" -ForegroundColor DarkGray
-    & $exe @a
-    return ($LASTEXITCODE -eq 0)
+    return ((Invoke-TlwuNative $exe $a) -eq 0)   # output goes to the console, never into this return value (#87)
 }
 function Capture($exe, [string[]]$a) {   # stdout of a native command, '' on failure
     try { $o = & $exe @a 2>$null; if ($LASTEXITCODE -eq 0) { return (($o | Out-String).Trim()) } } catch { }
@@ -44,6 +48,7 @@ function Capture($exe, [string[]]$a) {   # stdout of a native command, '' on fai
 Write-Host "=== 聽攏有 tinglongWu installer ===" -ForegroundColor White
 if ($DryRun) { Write-Host "*** DRY RUN: nothing will be installed or downloaded / 試跑模式：不會安裝或下載任何東西 ***" -ForegroundColor Yellow }
 Info "Folder / 資料夾: $Root"
+Info "Whole install: about 10-110 min depending on your PC and connection (exact estimate after step 2). 全程約 10-110 分鐘，第 2 步後顯示準確預估。"
 
 # ---------------------------------------------------------------- 1. Python
 Step 1 '檢查 Python 3.10-3.12' 'Check Python 3.10-3.12'
@@ -81,18 +86,20 @@ if ($Cpu) { Info "-Cpu given: forcing CPU path / 已指定 -Cpu，走 CPU 路線
 if ($Gpu) {
     Ok ("GPU: {0}, {1} MB total, {2} MB free" -f $GpuName, $TotalMB, $FreeMB)
     # plan by TOTAL VRAM (free VRAM is noisy at install time; the runtime --engine auto re-checks free VRAM at start-up)
-    if     ($TotalMB -ge 7500) { $Whisper = 'large-v3-turbo'; $QwenFlag = '--qwen';  $QwenTxt = 'Qwen3-8B + Qwen3-4B (~7.5 GB)';  $SizeGB = '~10 GB' }
-    elseif ($TotalMB -ge 5500) { $Whisper = 'large-v3-turbo'; $QwenFlag = '--qwen4b'; $QwenTxt = 'Qwen3-4B only (~2.5 GB)';       $SizeGB = '~5 GB' }
-    elseif ($TotalMB -ge 3500) { $Whisper = 'small';          $QwenFlag = '--qwen4b'; $QwenTxt = 'Qwen3-4B only (~2.5 GB)';       $SizeGB = '~3.5 GB' }
-    else                       { $Whisper = 'small';          $QwenFlag = $null;      $QwenTxt = 'none (low VRAM: OPUS engine)'; $SizeGB = '~1 GB' }
+    if     ($TotalMB -ge 7500) { $Whisper = 'large-v3-turbo'; $QwenFlag = '--qwen';  $QwenTxt = 'Qwen3-8B + Qwen3-4B (~7.5 GB)';  $SizeGB = '~10 GB'; $ModelGB = 10 }
+    elseif ($TotalMB -ge 5500) { $Whisper = 'large-v3-turbo'; $QwenFlag = '--qwen4b'; $QwenTxt = 'Qwen3-4B only (~2.5 GB)';       $SizeGB = '~5 GB'; $ModelGB = 5 }
+    elseif ($TotalMB -ge 3500) { $Whisper = 'small';          $QwenFlag = '--qwen4b'; $QwenTxt = 'Qwen3-4B only (~2.5 GB)';       $SizeGB = '~3.5 GB'; $ModelGB = 3.5 }
+    else                       { $Whisper = 'small';          $QwenFlag = $null;      $QwenTxt = 'none (low VRAM: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1 }
     Info "Tier chosen by total VRAM ($TotalMB MB; $FreeMB MB free now). 依顯示卡總容量選擇。"
     Info "Tip: close GPU-heavy apps (games, browsers with video, other tlwu) before the first run. 首次執行前請關閉佔用 GPU 的程式。"
     Ok "GPU path / GPU 路線: whisper=$Whisper, Qwen=$QwenTxt"
 } else {
     if (-not $Cpu) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower, OPUS engine). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
-    $Whisper = 'small'; $QwenFlag = $null; $QwenTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'
+    $Whisper = 'small'; $QwenFlag = $null; $QwenTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1
 }
+if ($SkipModels) { $ModelGB = 0 }
 Info "Expected model download / 預計下載模型: $SizeGB (plus ~3 GB of Python packages / 另有約 3 GB 套件)"
+Write-Host "  Whole install / 全部安裝: $(Format-TlwuEstimate (Get-TlwuTotalEstimate $Gpu $ModelGB))" -ForegroundColor White
 
 # ---------------------------------------------------------------- 3. venv + packages
 Step 3 '建立 .venv 並安裝套件' 'Create .venv and install packages'
@@ -142,7 +149,7 @@ else {
 }
 
 # ---------------------------------------------------------------- 5. models
-Step 5 '下載模型（最花時間）' 'Download models (the slow part)'
+Step 5 '下載模型（最花時間，會顯示下載百分比）' 'Download models (the slow part; shows percent done)'
 if ($SkipModels) { Info "-SkipModels: skipped / 略過" }
 else {
     Info "Downloading $SizeGB. Already downloaded files are skipped. 已下載的會自動跳過。"
