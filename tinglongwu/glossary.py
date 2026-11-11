@@ -41,6 +41,7 @@ class Entry:
     sources: list[str]
     target: str | None = None
     wrong: list[str] = field(default_factory=list)  # known wrong renderings of `target` (fixed after MT)
+    asr_hint: bool = True  # False for the built-in list (#256): MT prompt / output only, never a Whisper hotword
 
     @property
     def main(self) -> str:
@@ -68,7 +69,7 @@ class Glossary:
         out, size = [], 0
         for e in self.entries:
             term = e.main
-            if _NUM_ENTRY.match(term):
+            if not e.asr_hint or _NUM_ENTRY.match(term):
                 continue
             if size + len(term) + 2 > max_chars:
                 break
@@ -152,3 +153,24 @@ def load(path) -> Glossary:
     for f in files:
         entries.extend(parse(f.read_text(encoding="utf-8-sig")))
     return Glossary(entries)
+
+
+BUILTIN_PATH = Path(__file__).parent / "data" / "tech-dev.txt"
+
+
+def load_builtin() -> Glossary:
+    """The built-in tech/dev list (#256). Its terms are not Whisper hotwords: biasing every talk towards
+    "daemon, driver, kernel, ..." would make Whisper hear them where they were not said."""
+    g = load(BUILTIN_PATH)
+    for e in g.entries:
+        e.asr_hint = False
+    return g
+
+
+def merge(user: Glossary | None, base: Glossary) -> Glossary:
+    """User entries first and win: a built-in entry sharing any source spelling with a user entry is dropped."""
+    if not user:
+        return Glossary(list(base.entries))
+    taken = {_norm(s) for e in user.entries for s in e.sources}
+    kept = [e for e in base.entries if not any(_norm(s) in taken for s in e.sources)]
+    return Glossary(list(user.entries) + kept)

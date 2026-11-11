@@ -82,6 +82,8 @@ def parse_args(argv=None):
                    help="keep the chosen models even when lines arrive late (default: if speech end -> translated "
                         "line stays over 2 s for 3 lines, step down the translation engine, then the speech "
                         "model, and step back up after a stable period; one stderr line per switch)")
+    p.add_argument("--builtin-glossary", action="store_true",
+                   help="also load the built-in tech/dev glossary (your --glossary entries win)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -316,6 +318,11 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         except (OSError, UnicodeDecodeError) as e:
             raise RuntimeError(f"cannot read --glossary: {e}") from e
         print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
+    if getattr(a, "builtin_glossary", False):
+        from .glossary import load_builtin, merge
+
+        glossary = merge(glossary, load_builtin())
+        print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     note("loading speech model...")
     cands = None
     if a.lang == "auto" and getattr(a, "lang_candidates", None):

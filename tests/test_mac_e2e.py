@@ -262,7 +262,7 @@ def menu(tmp_path):
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
     r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert calls == ["tlwu --lang en"]
+    assert calls == ["tlwu --lang en --builtin-glossary"]
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
 
 
@@ -288,7 +288,7 @@ def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     r, calls = menu("1\nn\nn\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
-    assert "tlwu --lang en" in calls
+    assert "tlwu --lang en --builtin-glossary" in calls
     [rev] = [c for c in calls if c.startswith("proto")]
     assert "--to en" in rev and "--tts-engine kokoro" in rev and "--device" not in rev
 
