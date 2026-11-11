@@ -273,6 +273,9 @@ class QueueSink(Sink):
     def __init__(self, q: queue.Queue):
         self.q = q
 
+    def write_source(self, src: str, original: str) -> None:
+        self.q.put(("source", original))  # shown dim until its "final" arrives (#53)
+
     def write(self, r: Result) -> None:
         self.q.put(("final", r.original, r.target if r.src != r.tgt and r.target else r.original))
 
@@ -302,6 +305,7 @@ class SubtitleState:
         self.max_lines = max_lines
         self.finals: list[tuple[str, str]] = []  # (src, target), oldest first
         self.draft: tuple[str, str] | None = None
+        self.pending: list[str] = []  # #53: sources heard, translation still running (newest one is the draft)
         self.paused = False  # frozen display: events still update the state (nothing is lost) but nothing is redrawn
 
     def apply(self, ev: tuple) -> bool:
@@ -314,8 +318,13 @@ class SubtitleState:
         kind = ev[0]
         if kind == "draft":
             self.draft = (ev[1], ev[2])
+        elif kind == "source":
+            self.pending.append(ev[1])
+            self.draft = ("", ev[1])  # same shape as a source-only live draft: the source text, dim
         elif kind == "final":
-            self.draft = None
+            if self.pending and self.pending[0] == ev[1]:
+                self.pending.pop(0)
+            self.draft = ("", self.pending[-1]) if self.pending else None
             self.finals.append((ev[1], ev[2]))
             del self.finals[:-self.max_lines]
         elif kind == "clear":
