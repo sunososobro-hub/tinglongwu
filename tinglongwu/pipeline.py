@@ -64,12 +64,21 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def produce():
         try:
-            for seg in segmenter.segments(counted(source.frames())):
-                if stop.is_set():
-                    return
-                if not put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
-                       bool(getattr(segmenter, "last_forced", False)), float(getattr(segmenter, "last_pause", 0.0)))):
-                    return
+            frames = source.frames()
+            try:
+                for seg in segmenter.segments(counted(frames)):
+                    if stop.is_set():
+                        return
+                    if not put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
+                           bool(getattr(segmenter, "last_forced", False)), float(getattr(segmenter, "last_pause", 0.0)))):
+                        return
+            finally:
+                # #10: end the capture generator here, on the thread that opened the recorder (owns its COM
+                # scope on Windows), so the device is released now. Relying on refcounting is not enough: an
+                # error's traceback pins the suspended generator until the cyclic GC runs (mic stays in use).
+                close = getattr(frames, "close", None)
+                if close is not None:
+                    close()
             put(_DONE)
         except BaseException as e:  # noqa: BLE001 - re-raised in the consumer
             put(e)
