@@ -68,3 +68,38 @@ def test_pick_microphone_uses_pactl_and_does_not_change_default(monkeypatch, cap
     PulseMonitorSource()._pick_microphone(sc)
     assert "set-default-sink alsa_output" in capsys.readouterr().err
     assert sc.asked == ("Whatever", True)
+
+
+PIPEWIRE = """Sink #0
+\tName: alsa_output.pci-0000_00_1f.3.analog-stereo
+\tDescription: Built-in Audio Analog Stereo
+\tDriver: PipeWire
+\tProperties:
+\t\tdevice.api = "alsa"
+Sink #1
+\tName: ru_voice
+\tDescription: Whatever
+\tDriver: PipeWire
+\tProperties:
+\t\tfactory.name = "support.null-audio-sink"
+"""
+
+
+def test_pipewire_null_sink_warns(monkeypatch, capsys):
+    monkeypatch.setattr(pulse, "_list_sinks", lambda: parse_sinks(PIPEWIRE))
+    PulseMonitorSource()._pick_microphone(FakeSc("Whatever", "ru_voice"))
+    assert "pactl set-default-sink alsa_output.pci-0000_00_1f.3.analog-stereo" in capsys.readouterr().err
+
+
+def test_named_tlwu_sink_warns_even_if_pactl_finds_nothing_null(monkeypatch, capsys):
+    monkeypatch.setattr(pulse, "_list_sinks", lambda: parse_sinks(PIPEWIRE.replace("ru_voice", "tlwu_sink")
+                                                                  .replace("support.null-audio-sink", "x")))
+    PulseMonitorSource()._pick_microphone(FakeSc("tlwu_sink", "tlwu_sink"))
+    assert "tlwu_sink" in capsys.readouterr().err
+
+
+def test_pipewire_physical_default_silent(monkeypatch, capsys):
+    monkeypatch.setattr(pulse, "_list_sinks", lambda: parse_sinks(PIPEWIRE))
+    PulseMonitorSource()._pick_microphone(FakeSc("Built-in Audio Analog Stereo",
+                                                 "alsa_output.pci-0000_00_1f.3.analog-stereo"))
+    assert capsys.readouterr().err == ""

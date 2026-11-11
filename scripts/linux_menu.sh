@@ -62,6 +62,7 @@ KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
 KOKORO_VOICE="${KOKORO_VOICE:-0}"
 
 L="${TLWU_LANG:-auto}"
+python -m tinglongwu.langs --check "$L" || { m M_BAD_OPTION; L=auto; }   # #237: never pass a non-language to tlwu
 # macOS install skips the Russian voice: default to English unless the Vosk model is there
 if [ "$IS_MAC" = "1" ] && [ -z "${TLWU_LANG:-}" ] && [ ! -d "$VOSK_MODEL" ]; then L=en; fi
 CANDS="en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
@@ -111,7 +112,10 @@ while :; do
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
     l|L) python -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
-         read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"; continue ;;
+         read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"
+         # #237: only a real language code may reach tlwu/tlwu-setup (a menu digit like "3" used to become "3->en")
+         python -m tinglongwu.langs --check "$L" || { m M_BAD_OPTION; L=auto; }
+         continue ;;
     *) m M_BAD_OPTION; continue ;;
   esac
   if [ "$mode" = "2" ] && ! speak_ok "$L"; then
@@ -127,6 +131,11 @@ if [ "$L" = "auto" ]; then
     [ "$SPEAK" = "ru" ] || [ "$SPEAK" = "ja" ] || SPEAK=en
   fi
 fi
+# Language packs (#178): the install has zh+en; picking ja / ru offers that pack once with its size (default no).
+# Declining is fine: the checks below still ask for just the pieces this mode needs.
+for pk in "$L" "$SPEAK"; do
+  case "$pk" in ja|ru) tlwu-setup --pack-prompt "$pk" || true ;; esac
+done
 if [ "$mode" = "2" ] && { [ "$SPEAK" = "ja" ] || [ "$SPEAK" = "follow" ]; }; then
   if ! MISSING="$(ja_missing)"; then
     if [ "$SPEAK" = "ja" ]; then
@@ -174,8 +183,14 @@ fi
 # (the meeting listener runs in the background next to the speak side and must not redraw the terminal)
 STREAM=()
 if [ "$mode" = "1" ]; then
-  st=""; read -rp "$(mp M_ASK_STREAM)" st || st=""
-  case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
+  st=""
+  if [ "$(python -m tinglongwu.menuopts stream-default listen 2>/dev/null || echo 0)" = "1" ]; then   # #257: CPU = default on
+    read -rp "$(mp M_ASK_STREAM_ON)" st || st=""
+    case "$st" in n|N|no|NO|No) ;; *) STREAM=(--stream) ;; esac
+  else
+    read -rp "$(mp M_ASK_STREAM)" st || st=""
+    case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
+  fi
 fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
 SMT=opus; [ -n "$SPEAK" ] && SMT="$(python -m tinglongwu.menuopts speak "$SPEAK" || echo opus)"   # #227: Hy-MT2 in every speak mode when installed

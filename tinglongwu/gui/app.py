@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
+from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
@@ -235,8 +236,10 @@ class App:
         self.closing = False
         self.errored = False
         self.sigint = False
+        set_app_id()
         self.root = tk.Tk()
         self.root.title("tinglongwu")
+        apply_icon(self.root)
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch

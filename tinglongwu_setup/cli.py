@@ -14,6 +14,8 @@
   tlwu-setup --bundle out.zip                         pack wheels + models/ for an air-gapped machine
                                                      (run on the same OS/CPU/Python as the target)
   tlwu-setup --from-bundle out.zip                    offline install from such a bundle
+  tlwu-setup --packs zh,en | --list | --pack-prompt ja language packs (see tinglongwu_setup/packs.py)
+  tlwu-setup --export-pack ja out.zip | --import-pack out.zip   move one language pack to an offline machine
 """
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from . import downloader, talk
+from . import downloader, packs, talk
 
 ROOT = downloader.ROOT
 
@@ -114,6 +116,10 @@ def main(argv=None) -> int:
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
+    p.add_argument("--list", action="store_true", help="offline: installed / missing language packs")
+    p.add_argument("--pack-prompt", metavar="LANG", help="offline check; ask before downloading a missing pack")
+    p.add_argument("--export-pack", nargs=2, metavar=("LANG", "OUT.zip"))
+    p.add_argument("--import-pack", metavar="PACK.zip")
     args = list(sys.argv[1:] if argv is None else argv)
     if "--selftest" in args:  # forward the rest verbatim (argparse here would take --model as --models-dir)
         return run_selftest([x for x in args if x != "--selftest"])
@@ -129,6 +135,16 @@ def main(argv=None) -> int:
         return talk.main(a, mdir)
     if a.from_bundle:
         return from_bundle(Path(a.from_bundle), mdir)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")  # pack prompts use non-ASCII; never crash on a legacy console
+    if a.list:
+        return packs.list_packs(mdir)
+    if a.pack_prompt:
+        return packs.prompt(a.pack_prompt, mdir)
+    if a.export_pack:
+        return packs.export(a.export_pack[0], Path(a.export_pack[1]), mdir)
+    if a.import_pack:
+        return packs.import_pack(Path(a.import_pack), mdir)
     if a.deps:
         _pip("install", "-r", a.requirements)
     if a.gpu:

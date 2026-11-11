@@ -196,8 +196,10 @@ Step 5 '下載模型（最花時間，會顯示下載百分比）' 'Download mod
 if ($SkipModels) { Info "-SkipModels: skipped / 略過" }
 else {
     Info "Downloading $SizeGB. Already downloaded files are skipped. 已下載的會自動跳過。"
-    $ok = Run $VSet @('--whisper', $Whisper, '--langs', 'ru,ja,en', '--to', 'zh')
-    if ($ok) { [void]$Installed.Add("Whisper '$Whisper' + OPUS translation ru/ja/en -> zh") }
+    # #178: core + language packs. Default zh+en; ja / ru are offered (with size) the first time they are picked.
+    $Packs = if ($env:TLWU_PACKS) { $env:TLWU_PACKS } else { 'zh,en' }
+    $ok = Run $VSet @('--whisper', $Whisper, '--packs', $Packs)
+    if ($ok) { [void]$Installed.Add("Whisper '$Whisper' + language packs $Packs") }
     else { Die '模型下載失敗（請確認網路後重跑）' 'model download failed (check internet, then re-run install.bat; finished parts are kept)' }
     if ($MtFlag) {
         if (Run $VSet @($MtFlag)) { [void]$Installed.Add("Hy-MT2 translation model ($MtTxt)") }
@@ -236,6 +238,8 @@ function Make-Shortcut($name, $target, $arguments) {
         $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
         $s.TargetPath = $target; $s.Arguments = $arguments; $s.WorkingDirectory = $Root
         $s.Description = "$name - offline speech translator"
+        $ico = Join-Path $Root 'tinglongwu\gui\assets\tinglongwu.ico'
+        if (Test-Path $ico) { $s.IconLocation = $ico }
         $s.Save()
         Ok "Shortcut: $lnk"; [void]$Installed.Add("Desktop shortcut '$name'")
     } catch { Warn "Could not create the shortcut $lnk ($_). Start it from $target $arguments instead." }

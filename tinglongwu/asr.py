@@ -13,7 +13,7 @@ from .device import asr_compute_type, cpu_threads, resolve_device
 from .hallucination import is_hallucination
 from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
 from .models import require
-from .repeat import collapse_repeats, has_loop
+from .repeat import collapse_repeats, filter_hallucination, has_loop
 
 
 @dataclass
@@ -21,6 +21,12 @@ class Transcript:
     text: str
     lang: str
     no_speech: float = 0.0  # Whisper no_speech_prob (max over kept pieces); feeds the hallucination filter
+    avg_logprob: float = 0.0  # Whisper avg_logprob (mean over kept pieces; 0.0 = unknown); speak-side gate (#249)
+
+
+def _logprob(segs) -> float:
+    lp = [s.avg_logprob for s in segs if getattr(s, "avg_logprob", None) is not None]
+    return sum(lp) / len(lp) if lp else 0.0
 
 
 PROMPT_MAX_CHARS = 100  # previous text handed to Whisper as initial_prompt
@@ -100,7 +106,7 @@ class FasterWhisperRecognizer(Recognizer):
                               current=getattr(self, "_cur", None), seconds=len(audio) / 16000.0)
 
     def _post(self, text: str) -> str:
-        text = collapse_repeats(text)  # safety net: one copy of any phrase still looped
+        text = filter_hallucination(text)  # one copy of any looped phrase; drop what is still a loop
         g = getattr(self, "glossary", None)
         return g.normalize_numbers(text) if g else text
 
@@ -120,7 +126,7 @@ class FasterWhisperRecognizer(Recognizer):
                 and not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0)]
         text = self._post(" ".join(s.text.strip() for s in kept))
         return Transcript(text, script_lang(text, lang or info.language),
-                          max(s.no_speech_prob for s in kept)) if text else None
+                          max(s.no_speech_prob for s in kept), _logprob(kept)) if text else None
 
     def _decode(self, audio: np.ndarray, retry: bool = False, lang: str | None = None):
         lang = self.lang if lang is None else lang
@@ -157,9 +163,9 @@ class FasterWhisperRecognizer(Recognizer):
             self._cur = lang
             if lang in SPEAK_LANGS and getattr(self, "lang_file", None):
                 write_lang(self.lang_file, lang)  # zh segments leave the speak target alone
-            return Transcript(text, lang, max(s.no_speech_prob for s in segs))
+            return Transcript(text, lang, max(s.no_speech_prob for s in segs), _logprob(segs))
         if self.lang is None:
             self.lang = script_lang(text, info.language)
         elif getattr(self, "auto", False) and script_lang(text, self.lang) != self.lang:
             self.lang = "ja"  # auto locked onto zh by a kanji-only first line; kana shows it is Japanese (#86)
-        return Transcript(text, script_lang(text, self.lang), max(s.no_speech_prob for s in segs))
+        return Transcript(text, script_lang(text, self.lang), max(s.no_speech_prob for s in segs), _logprob(segs))

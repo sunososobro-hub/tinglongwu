@@ -138,22 +138,35 @@ def is_source_zh(text: str) -> bool:
     return is_source_lang(text, "zh")
 
 
-def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float = 1e-3,
-                         gate: PlaybackGate | None = None, src: str = "zh") -> Iterator[str]:
-    """Each finished segment -> text in `src` (zh | en) (silence, Whisper stock hallucinations and, with `gate`, segments
-    heard while our own TTS is playing are dropped)."""
-    from ..hallucination import is_hallucination
+def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float | None = None,
+                         gate: PlaybackGate | None = None, src: str = "zh", sr: int = 16000,
+                         report=None) -> Iterator[str]:
+    """Each finished segment -> text in `src` (zh | en). Dropped: segments heard while our own TTS plays (`gate`),
+    anything the speak-side input gate rejects (#249: too short, quiet, no_speech / low logprob, too few characters,
+    compression loop, Whisper repeat hallucinations) and the other side's speech leaking in. Gate drops are counted
+    in `report` (gate.DropReport: one summary line per minute at most). silence_rms overrides gate.MIN_RMS."""
+    from .gate import DropReport, SegmentStats, gate_audio
+    from .gate import gate as input_gate
 
+    report = report or DropReport()
+    over = {} if silence_rms is None else {"min_rms": silence_rms}
     for seg in segments:
         if gate is not None and gate.busy():
             continue
         rms = float(np.sqrt(np.mean(np.square(seg)))) if len(seg) else 0.0
-        if rms < silence_rms:
+        dur = len(seg) / sr
+        ok, why = gate_audio(dur, rms, **over)
+        if not ok:
+            if why != "quiet":  # silence between phrases is normal, not worth a count
+                report.add(why)
             continue
         tr = asr.transcribe(seg)
         if tr is None or not tr.text.strip():
             continue
-        if is_hallucination(tr.text, rms, getattr(tr, "no_speech", 0.0)):
+        ok, why = input_gate(SegmentStats(dur, rms, tr.text, float(getattr(tr, "no_speech", 0.0) or 0.0),
+                                          float(getattr(tr, "avg_logprob", 0.0) or 0.0)), **over)
+        if not ok:
+            report.add(why)
             continue
         if not is_source_lang(tr.text, src):  # the other side's speech leaked in: Whisper "translated" it
             continue

@@ -45,6 +45,11 @@ def _ui(lang: str | None) -> str:
     return lang if lang in _TEXT else "en"
 
 
+def is_valid(code: str) -> bool:
+    """True only for a real source-language code (auto, ja, en, ru, zh, ...); never for menu digits like "3"."""
+    return code in SOURCE_LANGS
+
+
 def is_experimental(code: str) -> bool:
     return code in EXPERIMENTAL
 
@@ -92,6 +97,8 @@ def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--name"] and len(argv) == 2:  # menu header: python -m tinglongwu.langs --name ko
         print(display_name(argv[1]))
+    elif argv[:1] == ["--check"] and len(argv) == 2:  # menu: exit 0 only for a valid source-language code
+        return 0 if is_valid(argv[1]) else 1
     else:
         print(menu_help())
     return 0

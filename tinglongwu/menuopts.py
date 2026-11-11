@@ -117,13 +117,28 @@ def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
     return "opus" if os.environ.get("TLWU_MT", "").lower() == "opus" else "hymt"  # owner 2026-11-11: no question
 
 
+def stream_default(device: str, both: bool) -> bool:
+    """#257: default answer of the live-draft (`--stream`) question. On only for CPU in listen-only mode; GPU and the
+    listen+speak mode (background listener must not redraw the terminal) stay off."""
+    return device == "cpu" and not both
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    if len(argv) == 2 and argv[0] == "stream-default":  # arg: listen | both ; prints 1 (default on) or 0
+        from .device import resolve_device
+
+        try:
+            dev = resolve_device("auto", warn=lambda m: None)
+        except Exception:  # noqa: BLE001 - unknown device: keep the old default (off)
+            dev = "unknown"
+        print("1" if stream_default(dev, argv[1] == "both") else "0")
+        return 0
     if len(argv) == 2 and argv[0] == "speak":
         print(speak_mt(argv[1]))
         return 0
     if argv != ["listen"]:
-        print("usage: python -m tinglongwu.menuopts listen | speak ru|en", file=sys.stderr)
+        print("usage: python -m tinglongwu.menuopts listen | speak ru|en | stream-default listen|both", file=sys.stderr)
         return 2
     for x in listen_args():
         print(x)

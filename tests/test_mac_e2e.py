@@ -149,7 +149,7 @@ def test_mac_install_full_flow_then_rerun_is_a_repair(mac):
     for name, size in KOKORO_SIZES.items():
         assert (home / "models" / "kokoro" / name).stat().st_size == size
     # default models: English listening + zh<->en speaking
-    assert "tlwu-setup --whisper small --pair en-zh --pair zh-en" in calls
+    assert "tlwu-setup --whisper small --packs zh,en" in calls
     assert "tlwu-setup --selftest --model small" in calls  # last step: load the models, translate a test line (#99)
     # launcher + PATH line for zsh (the macOS default shell)
     menu = home / ".local" / "bin" / "tlwu-menu"
@@ -257,7 +257,7 @@ def menu(tmp_path):
 
 
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
-    r, calls = menu("3\nn\n")
+    r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls == ["tlwu --lang en"]
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
