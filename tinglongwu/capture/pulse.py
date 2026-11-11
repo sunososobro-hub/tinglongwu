@@ -25,9 +25,11 @@ def parse_sinks(text: str) -> list[dict]:
         key, _, val = line.strip().partition(":")
         val = val.strip()
         if key == "Name":
-            sinks.append({"name": val, "description": "", "driver": ""})
+            sinks.append({"name": val, "description": "", "driver": "", "factory": ""})
         elif sinks and key in ("Description", "Driver"):
             sinks[-1][key.casefold()] = val
+        elif sinks and key.startswith("factory.name"):  # PipeWire: Driver is "PipeWire" for every sink
+            sinks[-1]["factory"] = key.partition("=")[2].strip().strip('"')
     return sinks
 
 
@@ -39,13 +41,17 @@ def _list_sinks() -> list[dict] | None:
     return parse_sinks(out) or None
 
 
+def _is_null(sink: dict) -> bool:
+    return "null-sink" in sink["driver"] or "null-audio-sink" in sink.get("factory", "")
+
+
 def null_sink_warning(spk_name: str | None, sink_id: str | None, sinks: list[dict]) -> str | None:
     """Warning if the default sink is a module-null-sink (any name), else None. Never changes the default."""
     cur = next((s for s in sinks if sink_id and s["name"] == sink_id), None) \
         or next((s for s in sinks if spk_name and spk_name in (s["name"], s["description"])), None)
-    if cur is None or "null-sink" not in cur["driver"]:
+    if cur is None or not _is_null(cur):
         return None
-    real = [s for s in sinks if "null-sink" not in s["driver"] and not s["name"].endswith(".monitor")]
+    real = [s for s in sinks if not _is_null(s) and not s["name"].endswith(".monitor")]
     label = cur["name"]
     if real:
         names = ", ".join(f"{s['name']} ({s['description']})" if s["description"] else s["name"] for s in real)
@@ -68,7 +74,8 @@ class PulseMonitorSource(SoundcardSource):
         spk = sc.default_speaker()
         sink_id = getattr(spk, "id", None)
         sinks = _list_sinks()
-        msg = null_sink_warning(spk.name, sink_id, sinks) if sinks else virtual_sink_warning(spk.name, sink_id)
+        msg = (null_sink_warning(spk.name, sink_id, sinks) if sinks else None) \
+            or virtual_sink_warning(spk.name, sink_id)
         if msg:
             print(msg, file=sys.stderr, flush=True)
         return sc.get_microphone(spk.name, include_loopback=True)
