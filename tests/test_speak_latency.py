@@ -127,7 +127,34 @@ def test_auto_mode_sends_first_sentence_before_synthesizing_the_second(capsys):
     it = res["items"][0]
     assert it["decision"] == "sent" and set(it["lat"]) == {"mt", "tts"}
     err = capsys.readouterr().err
-    assert err.startswith("lat asr=- mt=0.") and " back=- tts=0." in err and "total=" in err
+    lat_lines = [x for x in err.splitlines() if x.startswith("lat ")]
+    assert lat_lines and lat_lines[0].startswith("lat asr=- mt=0.") and " back=- tts=0." in lat_lines[0]
+
+
+def test_live_auto_prints_one_batch_style_latency_line_matching_report(capsys):
+    import re
+    clock = iter([0.0, 0.2, 0.2, 0.5, 0.5, 0.6, 0.9, 1.0, 1.0, 1.1, 1.2, 1.3])
+    lat = Lat(clock=lambda: next(clock, 2.0))
+    lat.set("asr", 0.3)
+    res = {"items": []}
+    proto._run_auto_live(iter([(1, "mic", "你好")]), MT(), TTS(), Player(), res, "en", lat)
+    lines = [x for x in capsys.readouterr().err.splitlines() if x.startswith("latency ")]
+    assert len(lines) == 1
+    m = re.fullmatch(r"latency asr=([\d.]+)s mt=([\d.]+)s first_audio=([\d.]+)s done=([\d.]+)s", lines[0])
+    assert m, lines[0]
+    it = res["items"][0]
+    assert [float(x) for x in m.groups()] == [it["t_asr"], it["t_mt"], it["t_first_audio"], it["t_tts_done"]]
+    assert it["t_asr"] == 0.3 and it["t_asr"] <= it["t_mt"] <= it["t_first_audio"] <= it["t_tts_done"]
+
+
+def test_live_auto_latency_line_without_audio_has_dash(capsys):
+    class Mute:
+        def speak(self, text):
+            yield {"t": "done"}, None
+
+    res = {"items": []}
+    proto._run_auto_live(iter([(1, "mic", "你好")]), MT(), Mute(), Player(), res, "en")
+    assert " first_audio=-s " in capsys.readouterr().err and res["items"][0]["t_first_audio"] is None
 
 
 def test_auto_mode_without_audio_is_reported():

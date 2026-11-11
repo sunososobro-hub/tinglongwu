@@ -291,7 +291,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
-    from .logic import Lat, lat_line, translate_ru
+    from .logic import Lat, lat_line, latency_fields, latency_line, translate_ru
 
     lat = lat or Lat()
     for n, label, zh in items:
@@ -304,10 +304,14 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
                 lat.set("tts", lat.clock() - t0)
             player.push(audio, sr)
             sent += 1
+        tts_done = lat.clock() - t0
         t = lat.take()
+        # #180: one batch-style line per utterance (same fields as the --report items), always on
+        f = latency_fields(t.get("asr", 0.0), t.get("mt", 0.0), t.get("tts") if sent else None, tts_done)
+        print(latency_line(f), file=sys.stderr, flush=True)
         if show_lat:
             print(lat_line(t), file=sys.stderr, flush=True)
-        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t})
+        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t, **f})
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
