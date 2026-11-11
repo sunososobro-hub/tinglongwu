@@ -46,7 +46,9 @@ def translate_checked(translator: "Translator", text: str, src: str, tgt: str, d
 # means of", 支持->支援 "support = tech support"). Keep s2twp (it gives 軟體/網路/程式/記憶體 ...) and shield
 # these phrases from it: each (simplified, traditional) pair is swapped for a private-use placeholder
 # before conversion and restored to the plain traditional form afterwards.
-_KEEP = (("通过", "通過"), ("支持", "支持"))
+# 被发 -> 被髮: OpenCC's STPhrases table has "被发" (classical 被髮左衽 "hair loose"), so passive 被发明/被发射/
+# 被发送/被发布 ... come out as 被髮明 etc. Passive 被+發 is always 發 in modern text, so shield it too.
+_KEEP = (("通过", "通過"), ("支持", "支持"), ("被发", "被發"))
 _PH = {simp: chr(0xE000 + i) for i, (simp, _t) in enumerate(_KEEP)}
 
 
