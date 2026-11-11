@@ -1,13 +1,12 @@
 """#60: the menus offer live drafts (--stream), and on CPU an unfinished sentence is held at most CPU_MAX_WAIT s
 unless the user chose --preset / --max-wait.
 
-The PowerShell test needs `pwsh` (preinstalled on the GitHub ubuntu runners); it is skipped where it is missing."""
+The PowerShell test needs `pwsh` (preinstalled on the GitHub ubuntu runners, where CI runs pytest)."""
 from __future__ import annotations
 
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -111,21 +110,18 @@ def _run_menu(tmp_path, answers: str):
     return log.read_text().split("\n")[:-1], r.stdout
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="bash menu")
 def test_linux_menu_listen_drafts_yes_passes_stream(tmp_path):
     # 3 = listen only; Enter = do not save; y = live drafts
     args, _ = _run_menu(tmp_path, "3\n\ny\n")
     assert args == ["--lang", "en", "--stream"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="bash menu")
 @pytest.mark.parametrize("answers", ["3\n\n\n", "3\n\nn\n", "3\n\n"])  # Enter, n, and stdin closed = no
 def test_linux_menu_listen_drafts_default_off(tmp_path, answers):
     args, _ = _run_menu(tmp_path, answers)
     assert args == ["--lang", "en"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="bash menu")
 def test_linux_menu_save_and_drafts_together(tmp_path):
     args, _ = _run_menu(tmp_path, "3\ny\nyes\n")
     assert args == ["--lang", "en", "--save", "--stream"]
@@ -142,10 +138,10 @@ def test_drafts_prompt_translated_in_every_menu_language(lang):
 
 # ---------------------------------------------------------------- Windows menu: live drafts choice
 
-@pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 @pytest.mark.parametrize("ui", ["en", "ru", "zh-TW"])
 @pytest.mark.parametrize("answer, want", [("y", "--stream"), ("yes", "--stream"), ("", ""), ("n", "")])
 def test_windows_menu_drafts_question(tmp_path, ui, answer, want):
+    assert PWSH, "pwsh is needed for the Windows menu test (preinstalled on GitHub ubuntu runners)"
     common = ROOT / "scripts" / "tlwu_common.ps1"
     script = (f". '{common}'\n"
               "Import-TlwuMessages\n"
