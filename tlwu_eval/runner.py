@@ -60,6 +60,13 @@ def load_manifest(data_dir) -> list[dict]:
     return rows
 
 
+def load_extra(data_dir) -> list[dict]:
+    """The external NHK ja group (#119): [] when the folder or its manifest is absent (copyrighted, never in the repo)."""
+    if not data_dir or not (Path(data_dir) / "manifest.jsonl").is_file():
+        return []
+    return [r for r in load_manifest(data_dir) if r["lang"] == "ja"]
+
+
 def read_wav(path):
     from tinglongwu.capture.base import SAMPLE_RATE
     from tinglongwu.capture.file import FileSource
@@ -110,7 +117,7 @@ def _stage(ok: bool | None) -> str:
     return "SKIP" if ok is None else "PASS" if ok else "FAIL"
 
 
-def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks) -> dict:
+def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None) -> dict:
     t_lang = clock()
     asr = eng.load_asr(src)
     if hasattr(mt, "preload"):
@@ -144,7 +151,7 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks) -> dict:
     mt_pairs = [(c["ref_mt"], c["mt"]) for c in clips if c["ref_mt"]]
     kana = scoring.kana_rate([c["mt"] for c in clips]) if tgt == "zh" else None
     return {
-        "pair": f"{src}->{tgt}", "clips": clips, "audio_s": round(audio_s, 2), "elapsed_s": round(elapsed, 2),
+        "pair": label or f"{src}->{tgt}", "clips": clips, "audio_s": round(audio_s, 2), "elapsed_s": round(elapsed, 2),
         "seconds": {"load": round(load_s, 3), "asr": round(asr_s, 3), "mt": round(sum(mt_times), 3),
                     "tts": round(tts_s, 3) if eng.tts is not None else None},
         "asr_rtf": None if asr_rtf is None else round(asr_rtf, 3), "mt_median_s": round(mt_median, 3),
@@ -165,8 +172,10 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks) -> dict:
 
 
 def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, clock=time.perf_counter,
-              ram=ram_mib, vram=vram_mib, totals=None) -> dict:
-    """Run the smoke set and return the report dict. totals: (RAM MiB, VRAM MiB or None) of this machine."""
+              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None) -> dict:
+    """Run the smoke set and return the report dict. totals: (RAM MiB, VRAM MiB or None) of this machine.
+    ja_extra: ja clips from outside the repo (NHK, #119), run as an extra "ja->zh[nhk]" group; any kana in its zh
+    output turns the smoke red."""
     t0 = clock()
     peak_ram, peak_vram = _Peak(ram), _Peak(vram)
     mt = eng.load_mt()
@@ -178,6 +187,8 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
             skipped.append(f"{src}->{tgt}")
             continue
         langs.append(run_lang(mine, src, tgt, eng, mt, clock, (peak_ram, peak_vram)))
+    if ja_extra:
+        langs.append(run_lang(ja_extra[:per_lang], "ja", "zh", eng, mt, clock, (peak_ram, peak_vram), label="ja->zh[nhk]"))
     if not langs:
         raise ValueError("the manifest has no clip for any focus language (en, ja, ru, zh)")
     total_s = clock() - t0
