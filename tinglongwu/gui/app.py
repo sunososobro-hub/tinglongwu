@@ -8,13 +8,14 @@ import signal
 import sys
 import threading
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
 from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, LANGS, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
-                   label_for_model, model_from_label, model_labels, rows_after_drag, save_settings, settings_to_argv)
+                   combo_width, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download,
+                   save_settings, settings_to_argv)
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -314,6 +315,9 @@ class App:
         self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
         self.v_model = self._combo(4, "gui_model", "model", model_labels())
         self.v_model.set(label_for_model(self.settings["model"]))
+        self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
+        self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
+        self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
         self.v_source = self._combo(5, "gui_source", "source", SOURCES)
@@ -458,6 +462,30 @@ class App:
         if p:
             self.v_gloss.set(p)
 
+    def _model_picked(self):
+        """A model that is not on disk was picked: ask, and only on yes download it in a tlwu-setup child (#96)."""
+        m = model_from_label(self.v_model.get())
+        if self.downloading or is_downloaded(m):
+            return
+        if not messagebox.askyesno(t("gui_dl_title"), t("gui_dl_ask", model=m), parent=self.root):
+            return
+        self.downloading = m
+        self.btn.configure(state="disabled")
+        self.combos["model"].configure(state="disabled")
+        self._status_text(t("gui_dl_running", model=m))
+        threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
+
+    def _download_done(self, model: str, rc: int):
+        self.downloading = None
+        self.btn.configure(state="normal")
+        self._quality_changed()
+        labels = model_labels()
+        self.combos["model"].configure(values=labels, width=combo_width(labels))
+        if model_from_label(self.v_model.get()) == model:
+            self.v_model.set(label_for_model(model))
+        ok = rc == 0 and is_downloaded(model)
+        self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
+
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
                                          filetypes=[("JSON lines", "*.jsonl"), ("All", "*.*")])
@@ -544,6 +572,10 @@ class App:
                     self._status_text(ev[1])
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
+                elif kind == "dl_line":
+                    self._status_text(ev[1])
+                elif kind == "dl_done":
+                    self._download_done(ev[1], ev[2])
                 elif kind == "error":
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True

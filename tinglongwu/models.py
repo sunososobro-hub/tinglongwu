@@ -39,6 +39,12 @@ WHISPER_SIZES = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"
 # fallback order when the wanted model is not downloaded: best quality per speed first (large-v3-turbo is the
 # recommended GPU model, README / #63), then smaller ones
 WHISPER_FALLBACK = ["large-v3-turbo", "small", "medium", "base", "large-v3", "tiny"]
+# per hardware tier (#96 item 2), following hwprobe: CPU tier = small (balanced), base (fast), large-v3-turbo
+# (quality); medium / large-v3 run far slower than real time on a CPU, so they come last, after tiny.
+WHISPER_FALLBACK_BY_TIER = {
+    "gpu": WHISPER_FALLBACK,
+    "cpu": ["small", "base", "large-v3-turbo", "tiny", "medium", "large-v3"],
+}
 
 
 def whisper_installed(mdir: Path | None = None) -> list[str]:
@@ -47,13 +53,14 @@ def whisper_installed(mdir: Path | None = None) -> list[str]:
     return [s for s in WHISPER_SIZES if (d / f"whisper-{s}").is_dir()]
 
 
-def pick_whisper(wanted: str | None, mdir: Path | None = None) -> str:
-    """`wanted` if it is downloaded, else the best downloaded one; `wanted` (or 'small') when nothing is
-    downloaded, so the normal 'run tlwu-setup' error still shows."""
+def pick_whisper(wanted: str | None, mdir: Path | None = None, tier: str | None = None) -> str:
+    """`wanted` if it is downloaded, else the best downloaded one for the hardware `tier` ("gpu" / "cpu", see
+    hwprobe; unknown = the GPU order); `wanted` (or 'small') when nothing is downloaded, so the normal
+    'run tlwu-setup' error still shows."""
     have = whisper_installed(mdir)
     if wanted and wanted in have:
         return wanted
-    for s in WHISPER_FALLBACK:
+    for s in WHISPER_FALLBACK_BY_TIER.get(tier, WHISPER_FALLBACK):
         if s in have:
             return s
     return wanted or "small"
