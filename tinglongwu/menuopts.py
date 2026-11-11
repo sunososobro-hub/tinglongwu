@@ -92,10 +92,48 @@ def listen_args(ask: Callable[[str], str] | None = None, say: Callable[[str], No
     return out
 
 
+def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
+    """Translation engine for the speak side (#227): `hymt` or `opus`. With Hy-MT2 installed, zh->ru defaults to it
+    (Enter = Hy-MT2) and zh->en asks (Enter = OPUS); without it, OPUS plus a one-line install hint."""
+    from .i18n import t
+
+    say = say or (lambda m: print(m, file=sys.stderr, flush=True))
+    if ask is None:
+        def ask(prompt: str) -> str:
+            sys.stderr.write(prompt)
+            sys.stderr.flush()
+            line = sys.stdin.readline()
+            if not line:
+                raise EOFError
+            return line
+    if mdir is None:
+        from .models import models_dir
+
+        mdir = models_dir(None)
+    try:
+        ready = (hymt_ready or _hymt_ready)(mdir)
+    except Exception:  # noqa: BLE001
+        ready = False
+    if not ready:
+        say(t("menu_speak_mt_hint"))
+        return "opus"
+    ru = to == "ru"
+    try:
+        ans = ask(t("menu_speak_mt_ask_ru" if ru else "menu_speak_mt_ask_en")).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""
+    if ru:
+        return "opus" if ans in ("o", "opus") else "hymt"
+    return "hymt" if ans in ("h", "hymt") else "opus"
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    if len(argv) == 2 and argv[0] == "speak" and argv[1] in ("ru", "en"):
+        print(speak_mt(argv[1]))
+        return 0
     if argv != ["listen"]:
-        print("usage: python -m tinglongwu.menuopts listen", file=sys.stderr)
+        print("usage: python -m tinglongwu.menuopts listen | speak ru|en", file=sys.stderr)
         return 2
     for x in listen_args():
         print(x)
