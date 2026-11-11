@@ -228,8 +228,17 @@ def run_mode(m: Mode, blocker, timeout: float, run=subprocess.run) -> tuple[bool
     return m.check()
 
 
+USERNS_HINT = ("unprivileged user namespaces are denied (AppArmor, Ubuntu 23.10+). Alternatives: "
+               "(1) scripts/linux_offline_run.sh (sudo unshare + setpriv, firejail fallback), "
+               "(2) an AppArmor profile allowing userns for /usr/bin/unshare, "
+               "(3) firejail --noprofile --net=none; then re-run with --already-blocked")
+
+
 def probe(blocker, run=subprocess.run) -> str:
     r = run(blocker.wrap([sys.executable, "-I", "-c", PROBE]), capture_output=True, text=True, timeout=30)
+    err = getattr(r, "stderr", "") or ""
+    if r.returncode != 0 and "uid_map" in err and "Operation not permitted" in err:
+        raise SetupError(USERNS_HINT)
     return (r.stdout or "").strip().splitlines()[-1] if (r.stdout or "").strip() else "BLOCKED"
 
 

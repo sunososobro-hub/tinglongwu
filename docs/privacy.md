@@ -49,7 +49,7 @@ New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block 
 python -m tinglongwu --file talk.wav      # must still work
 Remove-NetFirewallRule -DisplayName "tlwu-block"
 ```
-Linux: `unshare -n -r python -m tinglongwu --file talk.wav` (no network namespace; live capture via a unix socket still works only if PulseAudio is reachable - use `--file` for the test), or an nftables rule: `nft add rule inet filter output meta skuid $UID drop`.
+Linux: `scripts/linux_offline_run.sh --file talk.wav` (Ubuntu 23.10+ AppArmor breaks `unshare -rn`; the script uses sudo unshare + setpriv, firejail fallback), or `unshare -n -r python -m tinglongwu --file talk.wav` (no network namespace; live capture via a unix socket still works only if PulseAudio is reachable - use `--file` for the test), or an nftables rule: `nft add rule inet filter output meta skuid $UID drop`.
 macOS: `pf` rule (`block drop out quick all user $USER` loaded with `pfctl -f`), or Little Snitch / LuLu set to deny the Python binary.
 
 Then `python scripts/verify_offline.py --file talk.wav`.
