@@ -64,6 +64,13 @@ class HyMtTranslator(Translator):
         self.llm = None
         self.history: list = []
         self._pair = None
+        self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output (#174)
+        self._zh_words: dict[str, str] = {}
+
+    def _zh_word(self, w: str) -> str:
+        if w not in self._zh_words:
+            self._zh_words[w] = zh_convert(w, self.zh_variant)
+        return self._zh_words[w]
 
     def _load(self):
         if self.llm is None:
@@ -82,7 +89,10 @@ class HyMtTranslator(Translator):
             max_tokens=max_tokens_for(text), **SAMPLING)
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
         if tgt == "zh":
-            out = zh_script_guard(text, zh_convert(out, self.zh_variant))
+            out = zh_convert(out, self.zh_variant)
+            if self.glossary:
+                out = self.glossary.fix_output(out, text, convert=self._zh_word)
+            out = zh_script_guard(text, out)
         return Translation(None, out)
 
 
@@ -101,6 +111,7 @@ class JaRouter(Translator):
         self._warn = warn
         self.hy = None
         self.hy_error = ""
+        self._glossary = None
         if hymt_path(models_dir).exists():
             try:
                 self.hy = factory(models_dir, zh_variant, device)
@@ -108,6 +119,18 @@ class JaRouter(Translator):
                 self.hy_error = str(e)
         else:
             self.hy_error = f"{hymt_path(models_dir)} missing (run `tlwu-setup --hymt`)"
+
+    @property
+    def glossary(self):
+        return self._glossary
+
+    @glossary.setter
+    def glossary(self, g) -> None:
+        """One glossary for both routes (#174): Hy-MT2 and the OPUS pivot both apply its `~` fixes."""
+        self._glossary = g
+        for t in (self.hy, self.base):
+            if t is not None and hasattr(t, "glossary"):
+                t.glossary = g
 
     def _use_hy(self, src: str, tgt: str) -> bool:
         if self.hy is None:
