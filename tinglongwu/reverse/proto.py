@@ -483,7 +483,7 @@ def main(argv=None) -> int:
                 pass
 
 
-def _main(argv, vm) -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="tinglongwu.reverse.proto")
     ap.add_argument("--input", default=None, help="dir of zh wavs (16 kHz mono) or one wav (not needed with --mic)")
     ap.add_argument("--mic", nargs="?", const="", default=None, metavar="DEVICE",
@@ -545,6 +545,11 @@ def _main(argv, vm) -> int:
                     help="also play the sent Russian audio on this device (your own headphones); default off")
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
+    return ap
+
+
+def _main(argv, vm) -> int:
+    ap = build_parser()
     a = ap.parse_args(argv)
     from .. import offline as _og
 
