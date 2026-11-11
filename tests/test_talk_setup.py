@@ -166,4 +166,5 @@ def test_install_dry_run_sets_up_talk_mode_and_both_shortcuts():
     talk = [x for x in lines[s6:s7] if "[dry-run]" in x and "--talk" in x]
     assert len(talk) == 1 and talk[0].rstrip().endswith("--talk --talk-whisper small --talk-compute cpu --talk-mt opus")
     lnk = [x for x in lines[s7:s8] if "[dry-run] shortcut:" in x]
-    assert len(lnk) == 2 and "聽攏有 說話模式.lnk" in lnk[1] and "tlwu-talk.ps1" in lnk[1]
+    # (Linux pwsh has no Desktop folder, so the .lnk path is empty there; the target is what matters)
+    assert len(lnk) == 2 and "-NoExit -ExecutionPolicy Bypass -File" in lnk[1] and "tlwu-talk.ps1" in lnk[1]
