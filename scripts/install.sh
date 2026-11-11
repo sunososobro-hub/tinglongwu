@@ -6,8 +6,9 @@
 # The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
 # version it was released with. Run straight from the repo (unreleased) it falls back to main.
 # What it does: git clone (or update) ~/tinglongwu at that tag, create .venv, pip install -e .
-# It asks y/N before any system-level step (apt, needs sudo; default = no) and never downloads models.
-# Override: TLWU_DIR (default ~/tinglongwu), TLWU_REF (tag or branch), TLWU_REPO, TLWU_UI_LANG=en|ru|zh-TW.
+# It asks y/N before any system-level step (apt, needs sudo; default = no). It also installs the Kokoro English voice
+# (scripts/linux_kokoro.sh: ~120 MB, SHA256-checked); TLWU_SKIP_MODELS=1 skips that. ASR/MT models are never downloaded here.
+# Override: TLWU_DIR (default ~/tinglongwu), TLWU_REF (tag or branch), TLWU_REPO, TLWU_UI_LANG=en|ru|zh-TW, TLWU_SKIP_MODELS=1.
 set -u
 
 REF_EMBEDDED="__TLWU_REF__"
@@ -119,6 +120,10 @@ main() {
   say "$(t pip)"
   .venv/bin/python -m pip install --upgrade pip >/dev/null 2>&1 || true
   .venv/bin/python -m pip install -e . || die "pip install failed (network?). Re-run this command to resume."
+
+  if [ -z "${TLWU_SKIP_MODELS:-}" ]; then
+    bash scripts/linux_kokoro.sh || die "Kokoro install failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
+  fi
 
   say "$(t done)"
   printf '\n    bash %s/scripts/linux_menu.sh\n\n' "$DIR"
