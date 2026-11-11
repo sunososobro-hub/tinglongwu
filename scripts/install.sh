@@ -37,12 +37,12 @@ t() {
     en:declined) echo "Not installed. Install them yourself, then run this command again." ;;
     ru:declined) echo "Не установлено. Установите сами и запустите команду снова." ;;
     zh-TW:declined) echo "未安裝。請自行安裝後再執行一次這個指令。" ;;
-    en:nogit)  echo "git, python3 (3.10-3.12 with venv) and curl are required; apt-get not found, install them manually." ;;
-    ru:nogit)  echo "Нужны git, python3 (3.10-3.12 с venv) и curl; apt-get не найден, установите вручную." ;;
-    zh-TW:nogit) echo "需要 git、python3（3.10-3.12，含 venv）與 curl；找不到 apt-get，請手動安裝。" ;;
-    en:badpy)  echo "python3 must be 3.10 to 3.12 (found %s). Install a matching Python and re-run." ;;
-    ru:badpy)  echo "Нужен python3 версии 3.10-3.12 (найден %s). Установите подходящий и запустите снова." ;;
-    zh-TW:badpy) echo "python3 必須是 3.10 到 3.12（目前 %s）。請安裝合適版本後重跑。" ;;
+    en:nogit)  echo "git, python3 (3.12 with venv) and curl are required; apt-get not found, install them manually." ;;
+    ru:nogit)  echo "Нужны git, python3 (3.12 с venv) и curl; apt-get не найден, установите вручную." ;;
+    zh-TW:nogit) echo "需要 git、python3（3.12，含 venv）與 curl；找不到 apt-get，請手動安裝。" ;;
+    en:badpy)  echo "python3 must be 3.12 (found %s): the pinned numpy/scipy need 3.12. Install Python 3.12 (e.g. apt install python3.12 python3.12-venv) and re-run." ;;
+    ru:badpy)  echo "Нужен python3 версии 3.12 (найден %s): закреплённые numpy/scipy требуют 3.12. Установите Python 3.12 и запустите снова." ;;
+    zh-TW:badpy) echo "python3 必須是 3.12（目前 %s）：釘選的 numpy/scipy 需要 3.12。請安裝 Python 3.12 後重跑。" ;;
     en:dirty)  echo "%s is not a tinglongWu git folder (or has local changes); rename it or set TLWU_DIR." ;;
     ru:dirty)  echo "%s не является git-папкой tinglongWu (или есть локальные правки); переименуйте или задайте TLWU_DIR." ;;
     zh-TW:dirty) echo "%s 不是 tinglongWu 的 git 資料夾（或有本機改動）；請改名或設定 TLWU_DIR。" ;;
@@ -62,8 +62,9 @@ say()  { printf '\n==> %s\n' "$*"; }
 die()  { printf '\n[x] %s\n' "$*" >&2; exit 1; }
 find_py() {
   PY=""
-  for c in python3.12 python3.11 python3.10 python3; do
-    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,12) else 1)' 2>/dev/null; then PY="$c"; break; fi
+  # only 3.12: requirements.txt pins numpy 2.5.4 / scipy 1.18.1, which publish wheels for Python >= 3.12 only (#138)
+  for c in python3.12 python3; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)' 2>/dev/null; then PY="$c"; break; fi
   done
 }
 

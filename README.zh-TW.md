@@ -125,7 +125,7 @@ macOS：`pf` 規則（`block drop out quick all user $USER`，以 `pfctl -f` 載
 
 ## 安裝
 
-Python 3.10+（以 3.12 測試）。
+Python 3.12（釘選的 numpy/scipy 需要 >= 3.12；以 3.12 測試）。
 ```
 tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # 精確鎖版
 ```
