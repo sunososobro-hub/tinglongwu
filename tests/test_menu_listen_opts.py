@@ -123,8 +123,8 @@ def test_negation_glossary_fix_through_opus_pivot():
 
 
 @pytest.mark.parametrize("device,both,expected", [("cpu", False, True), ("cpu", True, False),
-                                                  ("cuda", False, False), ("cuda", True, False)])
-def test_stream_default_menuopts(device, both, expected):  # #257
+                                                  ("cuda", False, True), ("cuda", True, False)])
+def test_stream_default_menuopts(device, both, expected):  # #257, #273: listen-only drafts on for GPU too
     assert menuopts.stream_default(device, both) is expected
 
 

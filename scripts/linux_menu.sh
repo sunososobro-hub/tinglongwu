@@ -183,7 +183,7 @@ fi
 STREAM=()
 if [ "$mode" = "1" ]; then
   st=""
-  if [ "$(python -m tinglongwu.menuopts stream-default listen 2>/dev/null || echo 0)" = "1" ]; then   # #257: CPU = default on
+  if [ "$(python -m tinglongwu.menuopts stream-default listen 2>/dev/null || echo 0)" = "1" ]; then   # #257/#273: listen-only = default on
     read -rp "$(mp M_ASK_STREAM_ON)" st || st=""
     case "$st" in n|N|no|NO|No) ;; *) STREAM=(--stream) ;; esac
   else

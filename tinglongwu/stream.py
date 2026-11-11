@@ -29,6 +29,18 @@ DIM, RESET = "\x1b[2m", "\x1b[0m"
 CLEAR_DOWN = "\x1b[J"
 ELLIPSIS = "..."
 CJK_LANGS = {"zh", "ja", "ko"}
+MASK_K = 2  # #273 mask-k: the last k not-yet-confirmed source tokens are left out of the draft translation
+
+
+def mask_tail(conf: str, tail: str, cjk: bool, k: int = MASK_K) -> str:
+    """Source text for a draft translation: the confirmed prefix plus the unconfirmed tail without its last k
+    tokens (they change most between partials and make the translation flicker). Nothing confirmed and the whole
+    tail masked: the full text, so the first draft is not delayed."""
+    toks = tokens(tail, cjk)
+    kept = toks[:max(0, len(toks) - k)]
+    if not conf and not kept:
+        kept = toks
+    return join_tokens([x for x in (conf, join_tokens(kept, cjk)) if x], cjk)
 
 
 def enable_vt() -> bool:
@@ -166,7 +178,8 @@ class DraftEngine:
 
     def __init__(self, asr, translator, renderer: DraftRenderer, live, tgt: str,
                  interval: float = DRAFT_INTERVAL, clock=time.monotonic, show_src: bool = False,
-                 min_chars: int = TRANSLATE_MIN_CHARS, min_gap: float = TRANSLATE_MIN_GAP, log=None):
+                 min_chars: int = TRANSLATE_MIN_CHARS, min_gap: float = TRANSLATE_MIN_GAP, log=None,
+                 mask_k: int = MASK_K):
         self.asr, self.translator, self.renderer, self.live, self.tgt = asr, translator, renderer, live, tgt
         self.interval, self.clock, self.show_src = interval, clock, show_src
         self.min_chars, self.min_gap, self.log = min_chars, min_gap, log  # log(str) = --debug-latency sink
@@ -188,6 +201,12 @@ class DraftEngine:
         self._slot_lock = threading.Lock()
         self._translated = ""  # hypothesis text last translated
         self._t_translated = -1e9
+        self.mask_k = mask_k
+        # held() -> (text, lang): ASR text the sentence merger still holds (set by pipeline.run). The draft translates
+        # it together with the live partial, so it stays on screen until the whole-sentence final replaces it (#273)
+        self.held = None
+        self.n_drafts = 0  # draft translations shown
+        self.rewrites = 0  # ... of which changed characters already shown (not a pure extension): flicker
 
     def current_epoch(self) -> int | None:
         cur = self.live()
@@ -237,8 +256,9 @@ class DraftEngine:
         if t is None or not t.text.strip() or self.current_epoch() != epoch:
             return True  # nothing heard, or the segment ended meanwhile (the final line owns the display)
         t.lang = script_lang(t.text, t.lang)  # kana labelled zh is Japanese (#86)
-        conf, tail = self.agree.update(t.text, is_cjk_text(t.text, t.lang))
-        text = t.text.strip()
+        cjk = is_cjk_text(t.text, t.lang)
+        conf, tail = self.agree.update(t.text, cjk)
+        text = self._with_held(mask_tail(conf, tail, cjk, self.mask_k), t.lang, cjk)
         if self.can_translate(t.lang) and text != self._translated and self._due(text):
             with self._slot_lock:
                 if self._slot is not None:
@@ -246,6 +266,21 @@ class DraftEngine:
                 self._slot = (epoch, text, t.lang)
         self._render((epoch, conf, tail, t.lang))
         return True
+
+    def _with_held(self, text: str, lang: str, cjk: bool) -> str:
+        """Prefix the merger's held text (same language), minus the words the new segment repeats (VAD overlap)."""
+        held = self.held() if self.held is not None else None
+        if not held or not held[0] or held[1] != lang:
+            return text
+        from .merge import dedupe_overlap
+
+        rest = dedupe_overlap(held[0].split()[-10:], text)
+        return held[0] + ("" if cjk else " ") + rest if rest else held[0]
+
+    def flicker_line(self) -> str:
+        """--debug-latency summary: average rewrites of already-shown draft characters per draft (#273)."""
+        n = self.n_drafts
+        return f"draft rewrites {self.rewrites / n if n else 0:.2f} per draft ({n} drafts, mask-k {self.mask_k})"
 
     def _due(self, text: str) -> bool:
         if not self.translation:
@@ -306,6 +341,9 @@ class DraftEngine:
         if self.current_epoch() != epoch or epoch != self.epoch:
             self.dropped += 1
             return True
+        self.n_drafts += 1
+        if self.translation and not out.startswith(self.translation):
+            self.rewrites += 1
         self._translated, self.translation, self._t_translated = text, out, self.clock()
         if self.shown and self.shown[0] == epoch:
             self._render(self.shown)

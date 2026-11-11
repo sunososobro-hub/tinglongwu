@@ -12,6 +12,9 @@ PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --m
 # #60: on CPU, ASR + MT already add seconds per line; holding an unfinished fragment the full 6 s on top makes the
 # subtitle feel stuck. Used only when neither --preset nor --max-wait was given (an explicit choice is kept).
 CPU_MAX_WAIT = 3.0
+# #273 re-translation: with live drafts on screen a final waits for the whole sentence (the draft hides the wait), so
+# the chat preset's 1.5 s cap (which cut finals mid-clause) is raised to this unless --max-wait was given. GPU only.
+RETRANS_MAX_WAIT = 6.0
 
 
 def parse_args(argv=None):
@@ -69,7 +72,9 @@ def parse_args(argv=None):
                    help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
                         "audio and translate the whole partial text at once; shows ONE dim line (the "
                         "translation) that the final line replaces (default off; needs a terminal; costs extra "
-                        "GPU work; --file is paced in real time)")
+                        "GPU work; --file is paced in real time). With drafts on, a final line waits for the whole sentence: "
+                        f"on GPU --max-wait is at least {RETRANS_MAX_WAIT:g} s unless given, and a timeout cuts at a "
+                        "comma, not mid-clause")
     p.add_argument("--stream-src", action="store_true",
                    help="with --stream: also show the dim source-language draft line above the translation")
     p.add_argument("--debug-latency", action="store_true",
@@ -107,6 +112,7 @@ def parse_args(argv=None):
                         "and tlwu-setup --speaker-model). Off by default")
     a = p.parse_args(argv)
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
+    a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -357,6 +363,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .stream import PacedSource
 
             source = PacedSource(source)
+    if draft is not None and merger is not None and dev != "cpu" and not getattr(a, "max_wait_explicit", False):
+        merger.max_wait = max(merger.max_wait, RETRANS_MAX_WAIT)
     labeler = None
     if getattr(a, "speakers", False):
         from .speaker_embed import make_labeler
