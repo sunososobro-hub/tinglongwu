@@ -136,6 +136,12 @@ if ($mode -eq "2" -and ($speak -eq "ru" -or ($speak -eq "follow" -and $followLan
     if (-not (Test-Vosk)) { Write-Host (T 'VOSK_OPTIN'); $voskOff = $true }
 }
 $hyNote = T 'HY_NOTE'
+# Listen side extras (#42): --glossary when the user glossary folder has .txt files; on CPU with Hy-MT2 installed,
+# ask whether to use it instead of OPUS (tinglongwu.menuopts: questions on stderr, one argument per line on stdout)
+$xl = @()
+if ($mode -eq "1" -or $both) {
+    try { $xl = @(& $py -m tinglongwu.menuopts listen | Where-Object { $_ }) } catch { $xl = @() }
+}
 if ($both) {
     $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en", "zh-en", "en-ru") } else { @("$L-en", "en-zh", "zh-en", "en-ru") }
     & $py -c $havePairs @need
@@ -149,6 +155,8 @@ if ($both) {
     # listen in its own window; speak in this one
     Remove-Item $followFile -ErrorAction SilentlyContinue
     $listenArgs = $listenLang + $wL
+    # Start-Process joins arguments with spaces: quote the ones that contain spaces (glossary folder under the profile)
+    $listenArgs += @($xl | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
     if ($L -eq "auto") { $listenArgs += @("--lang-file", $followFile) }
     $listen = Start-Process -FilePath (Resolve-Path $tlwu) -ArgumentList $listenArgs -PassThru
 }
@@ -166,7 +174,7 @@ if ($mode -eq "1") {
         Write-Host (T 'NO_MODEL_FOR' $L)
         Invoke-Setup @setup
     }
-    & $tlwu @listenLang @wL
+    & $tlwu @listenLang @wL @xl
     exit
 }
 Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))
