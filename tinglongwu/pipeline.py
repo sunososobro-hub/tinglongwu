@@ -108,8 +108,6 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         sink.write(r)
 
     def emit(unit_text: str, lang: str, ep, queued: float) -> None:
-        unit_text = collapse_repeats(unit_text)  # merged segments can loop across the seam
-        lang = script_lang(unit_text, lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
         if translator is None:  # transcript-only
             write(Result(lang, unit_text, None, "", tgt), ep)
             return
@@ -160,7 +158,11 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def emit_units(units) -> None:
         for u in units:
-            mtq.put((u.text, u.lang, last_ep[0], time.monotonic(), last_asr[0]))
+            text = collapse_repeats(u.text)  # merged segments can loop across the seam
+            lang = script_lang(text, u.lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
+            if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
+                sink.write_source(lang, text)  # #53: the source line now, its translation when MT is done
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0]))
 
     def check_worker() -> None:
         if failed:
