@@ -152,3 +152,19 @@ def load(path) -> Glossary:
     for f in files:
         entries.extend(parse(f.read_text(encoding="utf-8-sig")))
     return Glossary(entries)
+
+
+BUILTIN_PATH = Path(__file__).parent / "data" / "tech-dev.txt"
+
+
+def load_builtin() -> Glossary:
+    return load(BUILTIN_PATH)
+
+
+def merge(user: Glossary | None, base: Glossary) -> Glossary:
+    """User entries first and win: a built-in entry sharing any source spelling with a user entry is dropped."""
+    if not user:
+        return Glossary(list(base.entries))
+    taken = {_norm(s) for e in user.entries for s in e.sources}
+    kept = [e for e in base.entries if not any(_norm(s) in taken for s in e.sources)]
+    return Glossary(list(user.entries) + kept)
