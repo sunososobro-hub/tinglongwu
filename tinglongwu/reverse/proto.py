@@ -735,7 +735,7 @@ def _main(argv, vm) -> int:
     with VramSampler() as vs:
         t = time.perf_counter()
         asr = FasterWhisperRecognizer(mdir, a.whisper, a.src, dev,
-                                      fast=live and os.environ.get("TLWU_CPU_FAST", "1") != "0")
+                                      fast=live and os.environ.get("TLWU_CPU_FAST", "1") != "0", live=live)
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()
