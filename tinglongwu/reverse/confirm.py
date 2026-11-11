@@ -10,9 +10,11 @@ soon as it is synthesized, so sentence 1 plays while the rest is still in TTS (#
 """
 from __future__ import annotations
 
+import os
 import queue
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
@@ -20,6 +22,18 @@ from typing import Callable
 SEND_KEY = "y"  # the only answer that sends (case-insensitive); everything else, a bare Enter included, discards
 DISCARD_KEYS = ("", "r", "x")
 HELP = "[y]+Enter=send  [Enter]=discard"
+# #249: bound the queue of sentences waiting for confirmation. More than MAX_PENDING unseen sentences means the
+# speaker is far ahead of the review (the oldest is dropped); a sentence waiting longer than MAX_AGE_S is stale in a
+# live conversation (dropped when its turn comes). Overrides: TLWU_CONFIRM_MAX_PENDING, TLWU_CONFIRM_MAX_AGE.
+MAX_PENDING = 3
+MAX_AGE_S = 30.0
+
+
+def _env_num(name: str, default, cast=float):
+    try:
+        return cast(os.environ[name])
+    except (KeyError, ValueError):
+        return default
 
 
 @dataclass
@@ -33,6 +47,7 @@ class Utterance:
     extra: dict = field(default_factory=dict)
     lang: str = "ru"  # language of `ru` (the translated text): ru | en
     parts: object = None  # queue of synthesized (audio, sr) parts, None-terminated (filled by the TTS worker)
+    t: float = 0.0  # clock() at submit (#249 expiry)
 
 
 def setup_console() -> None:
@@ -122,7 +137,8 @@ class ConfirmSession:
 
     def __init__(self, synth: Callable, send: Callable, preview: Callable | None = None,
                  out: Callable = print, readline: Callable[[], str] | None = None,
-                 set_voice: Callable[[int], None] | None = None, flush: Callable[[], object] | None = None):
+                 set_voice: Callable[[int], None] | None = None, flush: Callable[[], object] | None = None,
+                 max_pending: int | None = None, max_age: float | None = None, clock: Callable[[], float] = time.monotonic):
         self.synth, self.send, self.preview, self.out = synth, send, preview, out
         self.set_voice = set_voice  # "v<N>"+Enter switches voice and re-synthesises the current utterance
         self.readline = readline or (lambda: input())
@@ -133,12 +149,31 @@ class ConfirmSession:
         self._eof = False
         self._lock = threading.Lock()
         self._shown: set[int] = set()  # id() of utterances already printed (a late back-translation is appended)
+        self.max_pending = max(1, max_pending if max_pending is not None
+                               else _env_num("TLWU_CONFIRM_MAX_PENDING", MAX_PENDING, int))
+        self.max_age = max_age if max_age is not None else _env_num("TLWU_CONFIRM_MAX_AGE", MAX_AGE_S)
+        self.clock = clock
+        self._submit_lock = threading.Lock()
 
     def _start(self, u: Utterance) -> None:
         u.parts = queue.Queue()
         u.future = self._pool.submit(_fill, self.synth, u.ru, u.parts)
 
+    def _drop(self, u: Utterance, reason: str) -> None:
+        if u.future is not None:
+            u.future.cancel()
+        u.decision = "dropped"
+        self.out(f"dropped ({reason}): {u.zh}")
+
     def submit(self, u: Utterance) -> None:
+        u.t = self.clock()
+        with self._submit_lock:
+            while self._q.qsize() >= self.max_pending:  # #249: queue full -> drop the oldest waiting sentence
+                try:
+                    old = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                self._drop(old, "queue full")
         self._start(u)  # synthesis starts now, in the background
         self.items.append(u)
         self._q.put(u)
@@ -218,6 +253,9 @@ class ConfirmSession:
                 continue
             if u is None:
                 break
+            if self.max_age and self.clock() - u.t > self.max_age:  # #249: waited too long, stale
+                self._drop(u, f"expired after {self.max_age:g} s")
+                continue
             self._show(u)
             if self._eof or not self._ask(u):
                 u.future.cancel()
