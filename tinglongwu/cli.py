@@ -276,6 +276,17 @@ def _hard_exit(code: int) -> None:
         os._exit(code)
 
 
+READY_LINE = "* ready - listening (start playback now)"
+
+
+def announce_ready(status=None) -> None:
+    """Models are loaded: tell the user (GUI: status callback; CLI: one flushed stdout line, since stderr is often redirected)."""
+    if status:
+        status("listening")
+    else:
+        print(READY_LINE, flush=True)
+
+
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
@@ -371,7 +382,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         note("loading speaker model...")
         labeler = make_labeler(mdir)
-    note("listening")
+    announce_ready(status)
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
         stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
