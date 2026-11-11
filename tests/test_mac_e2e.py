@@ -6,6 +6,7 @@ stands in for GitHub). This covers what the cloud macOS install-test skips (Blac
 setup, the BlackHole self-check) and what listen / speak / meeting modes launch on a Mac. What still needs a real
 Mac (CoreAudio sees BlackHole after reboot, Audio MIDI Setup routing, mic permission) is the short checklist in #8.
 """
+import hashlib
 import os
 import shutil
 import subprocess
@@ -81,6 +82,15 @@ def git(cwd, *a):
                    capture_output=True)
 
 
+def _zero_sha(size):
+    h, left = hashlib.sha256(), size
+    while left:
+        n = min(left, 1 << 20)
+        h.update(b"\0" * n)
+        left -= n
+    return h.hexdigest()
+
+
 @pytest.fixture
 def mac(tmp_path):
     """A fake Mac: HOME, stub PATH, and a local 'GitHub' repo with branch main + tag v9.9.9."""
@@ -108,7 +118,12 @@ def mac(tmp_path):
            "FAKE_MIC": "MacBook Pro Microphone|BlackHole 2ch|BlackHole 16ch"}
 
     def run(script=ROOT / "scripts" / "mac_install.sh", **extra):
-        r = subprocess.run(["bash", str(script)], env={**env, **extra}, stdin=subprocess.DEVNULL,
+        # the curl stub serves zero-filled files, so point the pins at their hashes (the real pins are for the real files)
+        pins = {"KOKORO_ONNX_SHA256": _zero_sha(KOKORO_SIZES["kokoro-v1.0.int8.onnx"]),
+                "KOKORO_VOICES_SHA256": _zero_sha(KOKORO_SIZES["voices-v1.0.bin"])}
+        full = {**env, **pins, **extra}
+        full = {k: v for k, v in full.items() if v is not None}
+        r = subprocess.run(["bash", str(script)], env=full, stdin=subprocess.DEVNULL,
                            capture_output=True, text=True, timeout=120)
         calls = log.read_text() if log.exists() else ""
         log.unlink(missing_ok=True)
@@ -273,3 +288,19 @@ def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     assert "tlwu --lang en" in calls
     [rev] = [c for c in calls if c.startswith("proto")]
     assert "--to en" in rev and "--tts-engine kokoro" in rev and "--device" not in rev
+
+
+def test_mac_install_kokoro_wrong_pin_deletes_file_and_fails(mac):
+    r, _ = mac(TLWU_BRANCH="main", KOKORO_ONNX_SHA256="0" * 64)
+    assert r.returncode != 0
+    assert "SHA256" in r.stdout + r.stderr
+    kdir = mac.home / "models" / "kokoro"
+    assert not (kdir / "kokoro-v1.0.int8.onnx").exists()
+    assert not (kdir / "kokoro-v1.0.int8.onnx.part").exists()
+
+
+def test_mac_install_kokoro_default_pins_reject_unverified_files(mac):
+    # no pin override: the built-in pins are active, so the stub's fake model file must be refused
+    r, _ = mac(TLWU_BRANCH="main", KOKORO_ONNX_SHA256=None, KOKORO_VOICES_SHA256=None)
+    assert r.returncode != 0
+    assert not (mac.home / "models" / "kokoro" / "kokoro-v1.0.int8.onnx").exists()
