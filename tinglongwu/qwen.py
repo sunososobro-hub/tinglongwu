@@ -22,7 +22,7 @@ from .translate import Translation, Translator, zh_convert
 QWEN8B_MIN_FREE_MIB = 5800
 QWEN4B_MIN_FREE_MIB = 3500
 
-ENGINES = ("auto", "hymt", "qwen", "qwen4b", "opus", "m2m")
+ENGINES = ("auto", "hymt", "opus")  # #276: Qwen / m2m are no longer user choices
 # Hy-MT2-1.8B Q4_K_M uses ~1.5 GB VRAM (#66 benchmark; hwprobe.MT_VRAM_MIB) + 0.5 GB headroom (hwprobe.HEADROOM_MIB)
 HYMT_MIN_FREE_MIB = 2000
 
@@ -74,28 +74,14 @@ def model_path(models_dir: Path, name: str) -> Path:
     return models_dir / s.dirname / s.filename
 
 
-def _cpu_engine(models_dir: Path, cpu_choice=None) -> tuple[str, str]:
-    """CPU: OPUS unless the remembered speed test (`tlwu --probe --speed`, #79/#131) measured Hy-MT2 under the
-    owner's 1.0 s/sentence rule on this hardware and the GGUF is installed. No cache = OPUS (never probes here)."""
-    from .hymt import hymt_path
-
-    if cpu_choice is None:
-        from .speedprobe import cpu_choice
-    r = cpu_choice()
-    if r is None:
-        return "opus", "no usable CUDA GPU (CPU mode)"
-    if not hymt_path(models_dir).exists():
-        return "opus", f"CPU mode; speed test chose Hy-MT2 but {hymt_path(models_dir)} is missing"
-    return "hymt2", f"CPU mode; speed test: Hy-MT2 median {r.hymt_median_s:.2f} s/sentence"
-
-
 def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_vram_mib,
                   cpu_choice=None) -> tuple[str, str]:
-    """Return (engine, reason); engine in hymt2 | qwen3-8b | qwen3-4b | opus | m2m.
+    """Return (engine, reason); engine in hymt2 | hymt2-cpu | opus (| the explicit Qwen/m2m engines #283/#284 delete).
 
-    auto: cuda + Hy-MT2 installed + free >= HYMT_MIN_FREE_MIB -> hymt2 (#66: same quality as Qwen3-8B, ~4x
-    faster, ~1.5 GB VRAM). Without the Hy-MT2 GGUF the older Qwen tiers still apply (8B, then 4B, by free
-    VRAM), else opus. A tier whose GGUF is not installed is skipped. Explicit engines are returned as asked.
+    auto (#276, owner 11/11): Hy-MT2 1.8B is the one default engine on every machine. CPU (~0.93 s/sentence on an
+    i5-13500, accepted by the owner) and a GPU with less than HYMT_MIN_FREE_MIB free both run it on the CPU
+    (hymt2-cpu). Never Qwen, never an OPUS fallback: a missing Hy-MT2 GGUF is a setup error (make_translator).
+    `cpu_choice` (the #131 speed test) is no longer consulted; the parameter stays for old callers.
     """
     if requested == "opus":
         return "opus", "requested"
@@ -108,28 +94,13 @@ def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_v
     if requested == "qwen4b":
         return "qwen3-4b", "requested"
     if device != "cuda":
-        return _cpu_engine(models_dir, cpu_choice)
+        return "hymt2-cpu", "default engine; no usable CUDA GPU (CPU mode)"
     free = free_mib()
     if free is None:
-        return "opus", "could not read free VRAM"
-    from .hymt import hymt_path
-
-    if free >= HYMT_MIN_FREE_MIB:
-        if hymt_path(models_dir).exists():
-            return "hymt2", f"{free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
-        print(f"tlwu: Hy-MT2 (the recommended GPU translation engine) is not installed "
-              f"({hymt_path(models_dir)} missing); run `tlwu-setup --hymt` once (with network).", file=sys.stderr)
-    for name in ("qwen3-8b", "qwen3-4b"):
-        spec = QWEN_SPECS[name]
-        if free < spec.min_free_mib:
-            continue
-        if not model_path(models_dir, name).exists():
-            print(f"tlwu: {name} would fit ({free} MiB free) but {model_path(models_dir, name)} is missing; "
-                  f"run `tlwu-setup --qwen` once (with network).", file=sys.stderr)
-            continue
-        return name, f"{free} MiB VRAM free >= {spec.min_free_mib} MiB"
-    return "opus", (f"{free} MiB VRAM free: below {HYMT_MIN_FREE_MIB} MiB for hymt2 "
-                    "or no Hy-MT2/Qwen model installed")
+        return "hymt2-cpu", "default engine; could not read free VRAM, running it on the CPU"
+    if free < HYMT_MIN_FREE_MIB:
+        return "hymt2-cpu", f"default engine; {free} MiB VRAM free < {HYMT_MIN_FREE_MIB} MiB, running it on the CPU"
+    return "hymt2", f"default engine; {free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
 
 
 def build_system_prompt(src: str, tgt: str, zh_variant: str = "tw") -> str:

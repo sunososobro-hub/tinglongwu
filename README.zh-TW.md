@@ -169,9 +169,9 @@ tlwu-setup --whisper small --langs ru --to zh
 
 **選用 M2M-100 引擎（`--engine m2m`）**：不經英文中介，直接翻譯，**MIT 授權**（可商用）。`tlwu-setup --m2m` 會下載 facebook/m2m100_1.2B 並以 `ct2-transformers-converter` 轉換；轉換需要 `torch` 與 `transformers`，它們不是執行期相依套件：請在拋棄式 venv 安裝，並用 `TLWU_CONVERTER_PYTHON` 指向它。僅從 `models/m2m-1.2B/` 載入。 轉換只讀 `model.safetensors`（釘住 Hugging Face 官方 SFconvertbot PR 的 commit，因為 `main` 只有 pickle 的 `pytorch_model.bin`），不會反序列化任何 pickle；沒有釘住的 safetensors 版本時 `tlwu-setup` 拒絕轉換。
 
-**GPU 預設引擎：Hy-MT2**（有可用 NVIDIA GPU 時的 `--engine auto`，或 `--engine hymt`）：騰訊 Hy-MT2-1.8B（llama.cpp、Q4_K_M GGUF，`tlwu-setup --hymt`，下載約 1.1 GB）直接由來源語言翻成目標語言，支援 zh/en/ru/ja/ko/de/fr/es。在我們的 200 句評測中品質與 Qwen3-8B 相當（COMET x100：ru 86.5 對 86.5、en 89.1 對 88.8、ja 88.3 對 87.8），速度約快 4 倍（每句 0.19 秒對 0.73 秒），VRAM 約 1.5 GB（Qwen3-8B 為 5.1 GB），所以 Whisper turbo + Hy-MT2 在 4 GB 顯示卡上就放得下。`auto` 需要 Whisper 載入後還剩約 2 GB VRAM；沒安裝 Hy-MT2 時退回下面的 Qwen 分級，再不行用 OPUS。CPU 模式預設仍是 OPUS。
+**唯一預設引擎：Hy-MT2**（`--engine auto`，或 `--engine hymt`）：騰訊 Hy-MT2-1.8B（llama.cpp、Q4_K_M GGUF，`tlwu-setup --hymt`，下載約 1.1 GB）直接由來源語言翻成目標語言，支援 zh/en/ru/ja/ko/de/fr/es。在我們的 200 句評測中品質與 Qwen3-8B 相當（COMET x100：ru 86.5 對 86.5、en 89.1 對 88.8、ja 88.3 對 87.8），速度約快 4 倍（每句 0.19 秒對 0.73 秒），VRAM 約 1.5 GB（Qwen3-8B 為 5.1 GB），所以 Whisper turbo + Hy-MT2 在 4 GB 顯示卡上就放得下。Whisper 載入後還剩約 2 GB VRAM 就在 GPU 上跑，否則（含 CPU 模式）在 CPU 上跑（i5-13500 約每句 0.93 秒）。沒安裝 Hy-MT2 或載入失敗時，tlwu 會印出 `tlwu-setup --hymt` 指令並結束，不會默默改用其他引擎（#276）；要用 OPUS 請明確指定 `--engine opus`。
 
-**Qwen LLM 引擎（選用，`--engine qwen`／`qwen4b`；只有沒安裝 Hy-MT2 時 `auto` 才會用）**：本機 Qwen3 模型（llama.cpp、Q4_K_M GGUF）直接由來源語言翻成中文（不經英文中介、關閉思考模式、防重複迴圈），再依 `--zh-variant` 以 OpenCC 轉換。準確度遠高於 OPUS，極短句也不會出現亂碼。`tlwu-setup --qwen` 會把 Qwen3-8B 與 Qwen3-4B（約 7.5 GB）下載到模型目錄；另需安裝 `llama-cpp-python`（CUDA 版）。`auto` 會在 Whisper 載入後檢查剩餘 VRAM：剩 5.8 GB 以上用 Qwen3-8B，3.5 GB 以上用 Qwen3-4B，否則用 OPUS（CPU 模式或 Qwen 載入失敗時亦同）；啟動時會印一行說明選了哪個引擎。可用 `--engine qwen`（8B）、`qwen4b`、`opus`、`m2m` 強制指定。
+**Qwen／M2M-100 引擎**：已不再是 `--engine` 選項（#276），程式碼將於 #283／#284 移除。
 
 
 #### 模型來源釘選
@@ -203,7 +203,7 @@ tlwu --to ko --no-vad --chunk 8        # target Korean via ru->en->ko (needs en-
 tlwu --file talk.mp3 --transcript-only > hyp.txt     # 只輸出原文，每段一行
 python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CER）；--partial 對齊到最相符的參考片段並回報涵蓋率
 ```
-選項：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--quality auto|fast|balanced|quality`（沒指定 `--model` 時依這台電腦自動選語音模型；預設 auto＝建議值，可用 `--probe` 查看）、`--lang`、`--to`、`--preset meeting|chat`（預設 meeting）、`--chunk`（最長段落秒數，預設依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音訊裝置子字串）、`--device auto|cpu|cuda`（運算裝置）、`--engine auto|qwen|qwen4b|opus|m2m`、`--no-merge`、`--max-wait`（秒，預設依 preset）、`--stream`、`--stream-src`、`--debug-latency`、`--no-adapt`（固定使用選定的模型；預設在即時擷取時，若連續 3 行延遲超過 2 秒，先降翻譯引擎、再降語音模型，穩定一段時間後再升回）。
+選項：`--model tiny|base|small|medium|large-v3|large-v3-turbo`、`--quality auto|fast|balanced|quality`（沒指定 `--model` 時依這台電腦自動選語音模型；預設 auto＝建議值，可用 `--probe` 查看）、`--lang`、`--to`、`--preset meeting|chat`（預設 meeting）、`--chunk`（最長段落秒數，預設依 preset）、`--no-vad`、`--models-dir`、`--mic`、`--capture-device`（音訊裝置子字串）、`--device auto|cpu|cuda`（運算裝置）、`--engine auto|hymt|opus`、`--no-merge`、`--max-wait`（秒，預設依 preset）、`--stream`、`--stream-src`、`--debug-latency`、`--no-adapt`（固定使用選定的模型；預設在即時擷取時，若連續 3 行延遲超過 2 秒，先降翻譯引擎、再降語音模型，穩定一段時間後再升回）。
 
 **串流草稿**（`--stream`，預設關閉、實驗性）：句子還在說時，以 Whisper（greedy）重辨目前累積的音訊，並立刻翻譯整段暫時結果（沿用同一翻譯引擎），原地只顯示一行灰色譯文。`--stream-src` 另顯示原文行（已確認前綴正常亮度、其餘灰色；LocalAgreement 概念）。`--debug-latency` 於 stderr 記錄「段落音訊起點 → 第一次譯文草稿／最終行」秒數。段落結束後由正式輸出取代草稿。需互動式終端機（ANSI）；草稿讓位給正式 ASR/MT，會多吃 GPU；搭配 `--file` 時以真實速度播放。
 
@@ -218,7 +218,7 @@ python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CE
 ## 主題詞庫（`--glossary PATH`）
 用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；原文出現在當前句子或前 2 行的條目（不分大小寫、容許俄文詞尾變化）會寫進 Qwen 提示，要求使用指定譯法（OPUS/M2M 忽略譯文）。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
 ```
-tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/examples/glossary_wifi_ru.txt
+tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary_wifi_ru.txt
 ```
 重複迴圈（Whisper 反覆輸出同一句）：最終辨識啟用溫度回退，偵測到迴圈時不帶前文提示重新解碼一次，剩餘重複在翻譯前收斂成一份。
 
