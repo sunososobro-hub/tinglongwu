@@ -168,7 +168,7 @@ ASR_FP16_MIN_FREE_MIB = 9000  # below this much free VRAM at load time Whisper u
 
 
 def asr_compute_type(device: str, free_mib=None) -> str:
-    """Whisper compute type. float16 normally; on a tight GPU (8 GB card that must also hold Qwen3-8B) fp16
+    """Whisper compute type. float16 normally; on a tight GPU (8 GB card that must also hold the MT model) fp16
     Whisper made every pass ~4x slower (1.7 s vs 0.35 s per 30 s window, measured on an RTX 3050 8 GB with
     large-v3-turbo + Qwen3-8B: the card runs at 7.6/8.2 GB and spills). int8_float16 halves the weights with
     negligible WER change. Env TLWU_ASR_COMPUTE overrides."""
@@ -180,7 +180,7 @@ def asr_compute_type(device: str, free_mib=None) -> str:
     if device != "cuda":
         return "int8"
     if free_mib is None:
-        from .qwen import free_vram_mib
+        from .engines import free_vram_mib
 
         free_mib = free_vram_mib()
     return "int8_float16" if free_mib is not None and free_mib < ASR_FP16_MIN_FREE_MIB else "float16"

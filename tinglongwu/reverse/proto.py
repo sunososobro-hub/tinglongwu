@@ -389,21 +389,19 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
 
 
 def choose_speak_mt(kind: str, device: str, mdir, free_mib=None) -> tuple[str, str]:
-    """(engine, reason) for speak mode; engine in hymt | qwen | opus (#139).
+    """(engine, reason) for speak mode; engine in hymt | opus (#139).
 
-    auto = Hy-MT2 on CUDA when its GGUF is installed and free VRAM >= qwen.HYMT_MIN_FREE_MIB (the listen-mode rule,
-    qwen.choose_engine / #66), else OPUS. Qwen is used only when asked for (--mt qwen): Hy-MT2 matches Qwen3-8B
-    quality at ~4x the speed and ~1.5 GB VRAM, and speak mode is latency-bound."""
+    auto = Hy-MT2 on CUDA when its GGUF is installed and free VRAM >= engines.HYMT_MIN_FREE_MIB (#66), else OPUS."""
     if kind != "auto":
         return kind, "requested"
     if device != "cuda":
         return "opus", "no usable CUDA GPU (CPU mode)"
     from ..hymt import hymt_path
-    from ..qwen import HYMT_MIN_FREE_MIB, free_vram_mib
+    from ..engines import HYMT_MIN_FREE_MIB, free_vram_mib
 
     if not hymt_path(mdir).exists():
         print(f"Hy-MT2 (the recommended GPU translation engine) is not installed ({hymt_path(mdir)} missing); "
-              f"run `tlwu-setup --hymt` once (with network). Using OPUS; --mt qwen for Qwen3.", file=sys.stderr)
+              f"run `tlwu-setup --hymt` once (with network). Using OPUS.", file=sys.stderr)
         return "opus", "Hy-MT2 not installed"
     free = (free_mib or free_vram_mib)()
     if free is None:
@@ -417,24 +415,18 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", fo
                      src: str = "zh", free_mib=None, hy_factory=None):
     """zh->ru|en|ja translator (and the reverse, for the back-translation shown while confirming).
     hymt = Hy-MT2 direct for every pair (`tlwu-setup --hymt`; falls back to OPUS loudly if it fails to load);
-    qwen (GPU, any target); opus (Argos/OPUS on CPU): ru = pivot zh->en->ru, needs
+    opus (Argos/OPUS on CPU): ru = pivot zh->en->ru, needs
     `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`; en = direct zh->en, needs
     `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming);
     ja = direct zh<->ja through Hy-MT2 (OPUS has no usable Japanese), the rest stays OPUS.
     auto = see choose_speak_mt (Hy-MT2 on CUDA when installed, else OPUS).
-    src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs;
-    qwen only when asked for (--mt qwen)."""
+    src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs.
+    `qwen` is unused (#283: kept for old callers)."""
     if src == "en" and kind == "auto":
         kind, why = "opus", "--from en: Hy-MT2 en<->zh when installed, else OPUS"
     else:
         kind, why = choose_speak_mt(kind, device, mdir, free_mib)
     print(f"translation engine: {kind} ({why})", flush=True)
-    if kind == "qwen":
-        from ..qwen import QwenTranslator
-
-        mt = QwenTranslator(mdir, qwen, "tw", device)
-        mt.preload()
-        return mt
     from ..hymt import JaRouter
     from ..translate import PivotTranslator
 
@@ -579,13 +571,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--to", default=None, choices=["ru", "en", "ja", "zh", "follow"],
                     help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
                          "no pivot; use with --tts-engine kokoro)")
-    ap.add_argument("--mt", default="auto", choices=["auto", "hymt", "qwen", "opus"],
+    ap.add_argument("--mt", default="auto", choices=["auto", "hymt", "opus"],
                     help="translator; auto = Hy-MT2 on CUDA when installed (tlwu-setup --hymt), else OPUS/Argos "
-                         "(ru: pivot zh->en->ru; en: direct zh->en); hymt = Hy-MT2 direct; qwen = Qwen3 (--qwen)")
+                         "(ru: pivot zh->en->ru; en: direct zh->en); hymt = Hy-MT2 direct")
     ap.add_argument("--no-vmic", action="store_true",
                     help="Linux/macOS: do not create/select the virtual microphone (tlwu_mic / BlackHole 16ch); use --device yourself")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")
-    ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"])
+    # #283: Qwen is gone; still accepted (ignored) because installed tlwu-talk launchers pass --qwen qwen3-4b
+    ap.add_argument("--qwen", default="qwen3-4b", choices=["qwen3-4b", "qwen3-8b"], help=argparse.SUPPRESS)
     ap.add_argument("--tts-engine", default="auto", choices=["auto", "vosk", "kokoro", "piper"],
                     help="auto (default) = piper when a Piper Russian voice is given/installed "
                          "(`tlwu-setup --piper-ru`), else vosk (--to en/ja/follow need kokoro). "

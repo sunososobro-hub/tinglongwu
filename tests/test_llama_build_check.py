@@ -5,7 +5,7 @@ import types
 
 import pytest
 
-from tinglongwu import cli, llamacheck, qwen
+from tinglongwu import engines, llamacheck
 from tinglongwu.llamacheck import LlamaBuildError
 
 # real llama_print_system_info() output of the two 0.3.36 Windows wheels (cu125 = bad on AVX2-only CPUs)
@@ -68,14 +68,14 @@ def test_load_llama_refuses_mismatched_build_before_touching_the_model(monkeypat
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama(INFO_AVX512, lambda **kw: made.append(kw)))
     monkeypatch.setattr(llamacheck, "cpu_features", lambda: CPU_AVX2)
     with pytest.raises(LlamaBuildError, match="AVX512"):
-        qwen._load_llama(tmp_path / "x.gguf", gpu=True)
+        engines.load_llama(tmp_path / "x.gguf", gpu=True)
     assert made == []  # never reached the native load that would crash
 
 
 def test_load_llama_loads_with_a_matching_build(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama(INFO_AVX2))
     monkeypatch.setattr(llamacheck, "cpu_features", lambda: CPU_AVX2)
-    tag, kw = qwen._load_llama(tmp_path / "x.gguf", gpu=False)
+    tag, kw = engines.load_llama(tmp_path / "x.gguf", gpu=False)
     assert tag == "loaded" and kw["n_gpu_layers"] == 0 and kw["model_path"].endswith("x.gguf")
 
 
@@ -87,50 +87,9 @@ def test_load_llama_explains_a_raw_illegal_instruction(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama(INFO_AVX512, boom))
     monkeypatch.setattr(llamacheck, "cpu_features", lambda: None)
     with pytest.raises(LlamaBuildError, match="illegal CPU instruction"):
-        qwen._load_llama(tmp_path / "x.gguf", gpu=True)
+        engines.load_llama(tmp_path / "x.gguf", gpu=True)
 
 
-def test_fallback_to_opus_is_one_loud_line_with_the_reason(monkeypatch, tmp_path):
-    from tinglongwu.translate import PivotTranslator
-
-    gguf = qwen.model_path(tmp_path, "qwen3-4b")
-    gguf.parent.mkdir(parents=True)
-    gguf.write_bytes(b"GGUF")
-
-    def crash(path, gpu):
-        raise llamacheck.explain(ILLEGAL)
-
-    monkeypatch.setattr(qwen, "_load_llama", crash)
-    said = []
-    tr = cli.make_translator("qwen4b", tmp_path, "tw", "cuda", say=lambda m, **k: said.append(m),
-                             choose=lambda *a: ("qwen3-4b", "requested"))
-    assert isinstance(tr, PivotTranslator) or isinstance(tr.base, PivotTranslator)
-    loud = [m for m in said if "WARNING" in m]
-    assert len(loud) == 1
-    assert "falling back to OPUS" in loud[0] and "qwen3-4b" in loud[0]
-    assert "0xc000001d" in loud[0] and "pip install --force-reinstall" in loud[0]  # why + how to fix
-    assert "\n" not in loud[0]
-    assert any("engine = opus" in m for m in said)
-
-
-def test_tiers_report_their_errors(tmp_path):
-    for n in ("qwen3-8b", "qwen3-4b"):
-        p = qwen.model_path(tmp_path, n)
-        p.parent.mkdir(parents=True)
-        p.write_bytes(b"GGUF")
-
-    class Fac(qwen.QwenTranslator):
-        def __init__(self, md, name, zh, dev):
-            super().__init__(md, name, zh, dev, loader=self.load)
-
-        def load(self, path, gpu):
-            raise ValueError(f"boom {self.name}")
-
-    warns, errors = [], []
-    assert qwen.build_qwen_with_fallback(tmp_path, "qwen3-8b", "tw", "cuda", warn=warns.append, factory=Fac,
-                                         errors=errors) == (None, None)
-    assert errors == ["qwen3-8b: boom qwen3-8b", "qwen3-4b: boom qwen3-4b"]
-    assert len(warns) == 1 and "trying qwen3-4b" in warns[0]  # the last tier is reported by the caller
 
 
 def test_self_check_and_setup_exit_code(monkeypatch, capsys):

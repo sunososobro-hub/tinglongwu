@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from tests.test_report5 import FakeSeg, FakeModel
-from tinglongwu import asr, cli, glossary, qwen
+from tinglongwu import asr, cli, glossary
 from tinglongwu.repeat import collapse_repeats, has_loop
 
 UNIT = "Если ваш роутер работает на частоте 5,4 ГГц, то"
@@ -66,14 +66,6 @@ def test_partial_collapses():
     assert r.partial(np.zeros(10, np.float32)).text == UNIT
 
 
-def test_qwen_translate_collapses_looped_source(tmp_path):
-    from tests.test_qwen import FakeLlm, fake_models
-
-    m = fake_models(tmp_path, "qwen3-8b")
-    llm = FakeLlm("如果您的路由器是以 5.4 GHz 頻率運作")
-    t = qwen.QwenTranslator(m, "qwen3-8b", loader=lambda p, g: llm)
-    t.translate(LOOP, "ru", "zh")
-    assert llm.calls[0][0].count(UNIT) == 1 and "если ваш роутер" not in llm.calls[0][0]
 
 
 # ---- glossary ----
@@ -115,23 +107,6 @@ def test_alias_misheard_source_matches(g):
     assert "частота = 頻率" in g.prompt_block("Проверьте чистоту сигнала")
 
 
-def test_context_entries_included_in_qwen_prompt(g, tmp_path):
-    from tests.test_qwen import FakeLlm, fake_models
-
-    m = fake_models(tmp_path, "qwen3-8b")
-    llm = FakeLlm("好的")
-    t = qwen.QwenTranslator(m, "qwen3-8b", loader=lambda p, gpu: llm)
-    t.glossary = g
-    t.translate("Откройте роутер.", "ru", "zh")
-    assert "роутер = 路由器" in llm.calls[0][0]
-    t.translate("Он работает дальше.", "ru", "zh")  # no term in the sentence, but in the context line
-    assert "роутер = 路由器" in llm.calls[1][0]
-    t.history.clear()
-    t.translate("Он работает дальше.", "ru", "zh")
-    assert "Use these translations" not in llm.calls[2][0]
-    t.glossary = None
-    t.translate("Откройте роутер.", "ru", "zh")
-    assert "Use these translations" not in llm.calls[3][0]
 
 
 def test_hotwords_budget_and_no_numbers(g):

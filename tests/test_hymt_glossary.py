@@ -3,7 +3,7 @@ import pytest
 
 from tinglongwu import cli, glossary
 from tinglongwu.hymt import HyMtTranslator, JaRouter, hymt_path
-from tinglongwu.qwen import choose_engine
+from tinglongwu.engines import choose_engine
 
 TELECOM = "docs/examples/glossary_telecom_ru.txt"
 
