@@ -112,6 +112,12 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 
 ### 防火牆封鎖測試
 
+一行指令在斷網狀態下跑聆聽、說話、會議三種模式並檢查都仍能翻譯（Windows：系統管理員終端機，自動新增並一定會移除這個 Python 的對外封鎖規則；Linux：空網路命名空間；macOS：先自行封鎖再加 `--already-blocked`）：
+```
+python scripts/firewall_test.py --listen-wav talk.wav --speak-wav zh.wav   # 結束碼 0 = 通過
+```
+加 `--tts-python <kokoro venv python> --tts-model <kokoro 目錄>` 一併測語音合成。手動步驟：
+
 Windows（系統管理員 PowerShell）：
 ```powershell
 New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block -Program (Get-Command python).Source
