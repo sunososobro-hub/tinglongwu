@@ -309,7 +309,6 @@ def make_segmenter(max_seg: float, pause: float = PAUSE_DEFAULT, vad_fn=None):
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     """Mic -> VAD segments -> Whisper(zh) -> same pipeline. Ctrl+C stops capture and kills the TTS subprocess."""
     from ..capture.mic import MicSource
-    from ..segment import Segmenter
     from .live import capture_segments, recognize_utterances
 
     from .logic import Lat, TimedASR

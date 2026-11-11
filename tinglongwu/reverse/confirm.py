@@ -77,7 +77,8 @@ def _fill(synth: Callable, ru: str, parts: queue.Queue) -> None:
 
 def _job_error(fut) -> BaseException | None:
     """The TTS job's exception (its end marker is queued just before the future completes, so wait briefly)."""
-    from concurrent.futures import CancelledError, TimeoutError as FutTimeout
+    from concurrent.futures import CancelledError
+    from concurrent.futures import TimeoutError as FutTimeout
 
     try:
         return fut.exception(timeout=5)
