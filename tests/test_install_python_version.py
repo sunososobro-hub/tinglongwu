@@ -72,3 +72,35 @@ def test_python_312_is_accepted(tmp_path):
     assert "must be 3.12" not in r.stdout + r.stderr
     assert git_log.exists(), r.stdout + r.stderr  # went past the Python check to the clone step
 
+
+# ---------------------------------------------------------------- Windows installer (install.ps1 -DryRun under pwsh)
+PWSH = shutil.which("pwsh")
+
+
+def _run_ps1(tmp_path: Path, version: tuple[int, int]):
+    """install.ps1 -DryRun where the only `python` on PATH reports `version` (no `py` launcher)."""
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    _fake_python(fake, "python", version)
+    env = {k: v for k, v in os.environ.items() if k not in ("TLWU_SKIP_MODELS", "TLWU_SKIP_SHORTCUT")}
+    env.update(PATH=f"{fake}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1", TLWU_TEST_RAM_MB="2048",
+               POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
+    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "install.ps1"), "-DryRun"],
+                       capture_output=True, text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
+    return r, r.stdout + r.stderr
+
+
+@pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
+@pytest.mark.parametrize("version", [(3, 10), (3, 11)])
+def test_install_ps1_refuses_python_310_311(tmp_path, version):
+    r, out = _run_ps1(tmp_path, version)
+    assert r.returncode == 1, out
+    assert "Python 3.12 not found" in out
+    assert "Detect NVIDIA GPU" not in out  # stopped at step 1
+
+
+@pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
+def test_install_ps1_accepts_python_312(tmp_path):
+    r, out = _run_ps1(tmp_path, (3, 12))
+    assert "Python 3.12 not found" not in out
+    assert "Detect NVIDIA GPU" in out, out  # went past step 1
