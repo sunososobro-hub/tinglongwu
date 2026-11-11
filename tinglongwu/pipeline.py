@@ -175,6 +175,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     worker = threading.Thread(target=mt_worker, daemon=True)
     worker.start()
     if draft is not None:
+        if merger is not None and hasattr(draft, "held"):  # #273 re-translation: drafts show, finals wait for a
+            merger.whole = True  # whole sentence (a timeout cuts at a clause boundary, never mid-clause)
+            draft.held = lambda: (merger.buf, merger.lang)
         draft.start(stop)
     try:
         while True:
@@ -217,6 +220,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                                    forced_cut=forced_cut, pause=pause))
         if merger is not None and translator is not None:
             emit_units(merger.flush())
+        if draft is not None and hasattr(draft, "flicker_line"):
+            say("latency: " + draft.flicker_line())
         mtq.put(_DONE)
         while worker.is_alive():  # finish the queued lines (short waits: Ctrl+C stays responsive)
             if stop_event is not None and stop_event.is_set():

@@ -118,9 +118,10 @@ def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
 
 
 def stream_default(device: str, both: bool) -> bool:
-    """#257: default answer of the live-draft (`--stream`) question. On only for CPU in listen-only mode; GPU and the
-    listen+speak mode (background listener must not redraw the terminal) stay off."""
-    return device == "cpu" and not both
+    """#257 / #273: default answer of the live-draft (`--stream`) question. On in listen-only mode on any device
+    (re-translation: drafts show within ~2 s, finals are whole sentences); the listen+speak mode (background listener
+    must not redraw the terminal) stays off."""
+    return not both
 
 
 def main(argv=None) -> int:
