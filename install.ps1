@@ -238,6 +238,8 @@ function Make-Shortcut($name, $target, $arguments) {
         $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
         $s.TargetPath = $target; $s.Arguments = $arguments; $s.WorkingDirectory = $Root
         $s.Description = "$name - offline speech translator"
+        $ico = Join-Path $Root 'tinglongwu\gui\assets\tinglongwu.ico'
+        if (Test-Path $ico) { $s.IconLocation = $ico }
         $s.Save()
         Ok "Shortcut: $lnk"; [void]$Installed.Add("Desktop shortcut '$name'")
     } catch { Warn "Could not create the shortcut $lnk ($_). Start it from $target $arguments instead." }
