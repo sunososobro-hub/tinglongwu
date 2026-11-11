@@ -85,7 +85,7 @@ def install(langs: str, mdir: Path) -> int:
     apply as for every other model."""
     from . import downloader
 
-    return downloader.main(["--packs", langs, "--models-dir", str(mdir)])
+    return downloader.main(["--packs", langs, "--allow-unpinned", "--models-dir", str(mdir)])
 
 
 def _ui_lang() -> str:
@@ -98,6 +98,10 @@ def prompt(lang: str, mdir: Path, ask=None) -> int:
     _langs(lang)
     if not missing(lang, mdir):
         return 0
+    if os.environ.get("TLWU_OFFLINE") == "1":  # #254: offline mode never downloads, it only says what is missing
+        print(f"pack {lang} missing ({', '.join(missing(lang, mdir))}); offline mode (TLWU_OFFLINE=1) does not "
+              f"download. When online: tlwu-setup --online --packs {lang}", file=sys.stderr)
+        return 1
     try:
         ans = (ask or input)(PROMPT[_ui_lang()].format(lang=lang, mb=pack_size_mb(lang)))
     except EOFError:

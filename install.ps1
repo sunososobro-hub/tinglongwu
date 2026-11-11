@@ -198,7 +198,7 @@ else {
     Info "Downloading $SizeGB. Already downloaded files are skipped. 已下載的會自動跳過。"
     # #178: core + language packs. Default zh+en; ja / ru are offered (with size) the first time they are picked.
     $Packs = if ($env:TLWU_PACKS) { $env:TLWU_PACKS } else { 'zh,en' }
-    $ok = Run $VSet @('--whisper', $Whisper, '--packs', $Packs)
+    $ok = Run $VSet @('--whisper', $Whisper, '--packs', $Packs, '--allow-unpinned')
     if ($ok) { [void]$Installed.Add("Whisper '$Whisper' + language packs $Packs") }
     else { Die '模型下載失敗（請確認網路後重跑）' 'model download failed (check internet, then re-run install.bat; finished parts are kept)' }
     if ($MtFlag) {
