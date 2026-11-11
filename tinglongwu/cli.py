@@ -103,7 +103,7 @@ def parse_args(argv=None):
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")
     p.add_argument("--speakers", action="store_true",
-                   help="label each sentence 說話者N in the log (local sherpa-onnx; needs requirements-speaker.txt "
+                   help="label each sentence Speaker N in the log (local sherpa-onnx; needs requirements-speaker.txt "
                         "and tlwu-setup --speaker-model). Off by default")
     a = p.parse_args(argv)
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
