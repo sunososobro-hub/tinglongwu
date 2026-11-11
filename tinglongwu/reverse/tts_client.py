@@ -11,8 +11,8 @@ class TTSClient:
     def __init__(self, tts_python: str, model: str, engine: str = "vosk", speaker: int = 4, lang: str = "en"):
         worker = Path(__file__).with_name("tts_worker.py")
         self.engine, self.speaker, self.lang = engine, speaker, lang  # lang: kokoro only (en | ja)
-        if engine not in ("vosk", "kokoro"):
-            raise ValueError(f"unknown TTS engine {engine!r} (built-in fixed voices only: vosk, kokoro)")
+        if engine not in ("vosk", "kokoro", "piper"):
+            raise ValueError(f"unknown TTS engine {engine!r} (built-in fixed voices only: vosk, kokoro, piper)")
         cmd = [tts_python, str(worker), "--engine", engine, "--model", model, "--speaker", str(speaker)]
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
                "TLWU_MODE": "worker"}

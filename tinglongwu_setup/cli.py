@@ -3,6 +3,7 @@
   tlwu-setup --deps                                   pip install pinned requirements
   tlwu-setup --whisper small --langs ru --to zh       download + pin models (see --help)
   tlwu-setup --vosk-tts-ru                            OPT-IN Russian voice model (no upstream license; never default)
+  tlwu-setup --piper-ru [dmitri|denis]                Piper Russian voice for speak mode (CC0 data; engine: own venv)
   tlwu-setup --gpu                                    pip install CUDA 12 libs (cuBLAS, cuDNN) for --device cuda
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Qwen / Hy-MT2) fit this CPU?
   tlwu-setup --verify                                 offline integrity check
