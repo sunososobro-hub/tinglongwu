@@ -48,7 +48,9 @@ def translate_checked(translator: "Translator", text: str, src: str, tgt: str, d
 # before conversion and restored to the plain traditional form afterwards.
 # 被发 -> 被髮: OpenCC's STPhrases table has "被发" (classical 被髮左衽 "hair loose"), so passive 被发明/被发射/
 # 被发送/被发布 ... come out as 被髮明 etc. Passive 被+發 is always 發 in modern text, so shield it too.
-_KEEP = (("通过", "通過"), ("支持", "支持"), ("被发", "被發"))
+# 家具有 -> 傢俱有: STPhrases has 家具 (furniture) so "音乐家具有" (musicians have) comes out 音樂傢俱有; 家具有 is
+# always 家+具有 in running text. 连接 -> 連線 is the network sense; as a plain "connect/link" (连接两个半球) it is 連接.
+_KEEP = (("通过", "通過"), ("支持", "支持"), ("被发", "被發"), ("家具有", "家具有"), ("连接", "連接"))
 _PH = {simp: chr(0xE000 + i) for i, (simp, _t) in enumerate(_KEEP)}
 
 
