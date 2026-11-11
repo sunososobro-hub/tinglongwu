@@ -105,6 +105,8 @@ if ($L -eq "auto") {
     }
 }
 $setupExe = ".\.venv\Scripts\tlwu-setup.exe"
+# Language packs (#178): the install has zh+en; picking ja / ru offers that pack once with its size (default no).
+foreach ($pk in (@($L, $speak) | Select-Object -Unique)) { if ($pk -eq "ja" -or $pk -eq "ru") { & $setupExe --pack-prompt $pk } }
 function Invoke-Setup {  # never download silently: ask first (default = no)
     $ans = ""
     try { $ans = Read-Host (T 'ASK_DOWNLOAD') } catch { $ans = "" }
