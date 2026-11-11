@@ -70,6 +70,15 @@ def test_proto_help_lists_latency_flags():
     assert "--allow-monitor" in out and "--end-silence" in out and "TLWU_VAD_PAD" in out
 
 
+def test_proto_parser_latency_flags_defaults_and_values():
+    """Parse through the real argparse parser: defaults off/None, flags reach the namespace."""
+    ap = proto.build_parser()
+    d = ap.parse_args([])
+    assert d.allow_monitor is False and d.end_silence is None
+    a = ap.parse_args(["--allow-monitor", "--end-silence", "0.3"])
+    assert a.allow_monitor is True and a.end_silence == 0.3
+
+
 SR = 16000
 
 
