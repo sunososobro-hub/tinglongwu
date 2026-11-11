@@ -35,7 +35,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 适用 Windows 10/11，有 NVIDIA 显卡最佳（没有也能运行，只是较慢）。请先安装 [Python 3.12](https://www.python.org/downloads/windows/)，安装时勾选 **Add python.exe to PATH**。
 
 1. 在 GitHub 点 **Code > Download ZIP**，下载后右键 ZIP > **全部解压缩**。
-2. 打开文件夹，双击 **`install.bat`**，耐心等待（约 10–30 分钟，最多下载约 10 GB；中断后可重跑）。
+2. 打开文件夹，双击 **`install.bat`**，耐心等待（约 10–30 分钟，4 GB 以上 NVIDIA 显卡下载约 3 GB 模型，其他约 1 GB；中断后可重跑）。
 3. 双击桌面新出现的快捷方式 **聽攏有 tinglongWu**。
 
 **菜单用法。** 快捷方式会打开菜单：`1` 会议（听 + 说进 Meet/Zoom，请戴耳机；会议麦克风选 *CABLE Output*）、`2` 只说（中文 -> 英／俄／日语音）、`3` 只听（外语 -> 中文字幕）、`L` 更换对方语言、`G` 图形界面、`U` 立即更新、`A` 切换启动时自动更新、`I` 菜单语言。按键后按 Enter；每次下载模型前都会先问 y/N。

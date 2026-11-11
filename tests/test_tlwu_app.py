@@ -15,24 +15,34 @@ def gpu(total):
     return tiers.Gpu("Test GPU", total, total - 500)
 
 
-@pytest.mark.parametrize("total,name,whisper,qwen", [
-    (8192, "gpu-high", "large-v3-turbo", ("--qwen",)),
-    (7500, "gpu-high", "large-v3-turbo", ("--qwen",)),
-    (6144, "gpu-mid", "large-v3-turbo", ("--qwen4b",)),
-    (4096, "gpu-low", "small", ("--qwen4b",)),
+@pytest.mark.parametrize("total,name,whisper,mt", [
+    (24576, "gpu", "large-v3-turbo", ("--hymt",)),
+    (8192, "gpu", "large-v3-turbo", ("--hymt",)),  # #106: no Qwen by VRAM any more, 8 GB gets Hy-MT2 too
+    (6144, "gpu", "large-v3-turbo", ("--hymt",)),
+    (4096, "gpu", "large-v3-turbo", ("--hymt",)),
+    (4095, "gpu-min", "small", ()),
     (2048, "gpu-min", "small", ()),
 ])
-def test_tier_by_total_vram_matches_install_ps1(total, name, whisper, qwen):
+def test_tier_by_total_vram_matches_install_ps1(total, name, whisper, mt):
     t = tiers.choose_tier(gpu(total))
-    assert (t.name, t.whisper, t.qwen) == (name, whisper, qwen)
+    assert (t.name, t.whisper, t.mt) == (name, whisper, mt)
+
+
+def test_gpu_tier_threshold_is_the_hwprobe_one():
+    from tinglongwu import hwprobe
+    assert tiers.GPU_MIN_TOTAL_MB == hwprobe.GPU_MIN_VRAM_MIB
+    hw = hwprobe.HwInfo(gpu="Test GPU", vram_mib=tiers.GPU_MIN_TOTAL_MB, ram_mib=16384, cores=8, driver="560.0")
+    assert hwprobe.recommend(hw).mt == "hymt2" and tiers.choose_tier(gpu(hw.vram_mib)).mt == ("--hymt",)
 
 
 def test_no_gpu_or_forced_cpu_is_cpu_tier():
     for t in (tiers.choose_tier(None), tiers.choose_tier(gpu(24000), force_cpu=True)):
-        assert (t.name, t.whisper, t.qwen) == ("cpu", "small", ())
+        assert (t.name, t.whisper, t.mt) == ("cpu", "small", ())
     assert tiers.T_CPU.downloader_args() == ["--whisper", "small", "--langs", "ru,ja,en", "--to", "zh"]
-    assert tiers.T_HIGH.downloader_args()[-1] == "--qwen"
-    assert "GB" in tiers.T_HIGH.size_text and "MB" in tiers.T_CPU.size_text
+    assert tiers.T_GPU.downloader_args() == ["--whisper", "large-v3-turbo", "--langs", "ru,ja,en", "--to", "zh",
+                                             "--hymt"]
+    assert "GB" in tiers.T_GPU.size_text and "MB" in tiers.T_CPU.size_text
+    assert tiers.T_GPU.total_bytes < 3.5 * 1024 * tiers.MB  # turbo + OPUS + Hy-MT2, not the old ~10 GB Qwen tier
 
 
 def test_parse_smi_and_detect_gpu(monkeypatch):

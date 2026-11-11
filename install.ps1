@@ -20,6 +20,9 @@ $Warnings  = New-Object System.Collections.ArrayList
 $LlamaChk  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[0])'   # loads, fits this CPU (#74), has GPU offload
 
 $LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[1])'
+# GPU tier threshold == tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (owner #63: Whisper turbo 1600 + Hy-MT2 1500 MiB + headroom).
+# Qwen is no longer chosen by VRAM (#106): Hy-MT2 matches Qwen3-8B quality at ~4x the speed (#66); `tlwu-setup --qwen` opts in.
+$GpuMinMB  = 4096
 . (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
 $Gpu = $false; $ModelGB = 0
 function Step($n, $zh, $en) {
@@ -48,7 +51,7 @@ function Capture($exe, [string[]]$a) {   # stdout of a native command, '' on fai
 Write-Host "=== 聽攏有 tinglongWu installer ===" -ForegroundColor White
 if ($DryRun) { Write-Host "*** DRY RUN: nothing will be installed or downloaded / 試跑模式：不會安裝或下載任何東西 ***" -ForegroundColor Yellow }
 Info "Folder / 資料夾: $Root"
-Info "Whole install: about 10-110 min depending on your PC and connection (exact estimate after step 2). 全程約 10-110 分鐘，第 2 步後顯示準確預估。"
+Info "Whole install: about 10-60 min depending on your PC and connection (exact estimate after step 2). 全程約 10-60 分鐘，第 2 步後顯示準確預估。"
 
 # ---------------------------------------------------------------- 1. Python
 Step 1 '檢查 Python 3.10-3.12' 'Check Python 3.10-3.12'
@@ -86,16 +89,14 @@ if ($Cpu) { Info "-Cpu given: forcing CPU path / 已指定 -Cpu，走 CPU 路線
 if ($Gpu) {
     Ok ("GPU: {0}, {1} MB total, {2} MB free" -f $GpuName, $TotalMB, $FreeMB)
     # plan by TOTAL VRAM (free VRAM is noisy at install time; the runtime --engine auto re-checks free VRAM at start-up)
-    if     ($TotalMB -ge 7500) { $Whisper = 'large-v3-turbo'; $QwenFlag = '--qwen';  $QwenTxt = 'Qwen3-8B + Qwen3-4B (~7.5 GB)';  $SizeGB = '~10 GB'; $ModelGB = 10 }
-    elseif ($TotalMB -ge 5500) { $Whisper = 'large-v3-turbo'; $QwenFlag = '--qwen4b'; $QwenTxt = 'Qwen3-4B only (~2.5 GB)';       $SizeGB = '~5 GB'; $ModelGB = 5 }
-    elseif ($TotalMB -ge 3500) { $Whisper = 'small';          $QwenFlag = '--qwen4b'; $QwenTxt = 'Qwen3-4B only (~2.5 GB)';       $SizeGB = '~3.5 GB'; $ModelGB = 3.5 }
-    else                       { $Whisper = 'small';          $QwenFlag = $null;      $QwenTxt = 'none (low VRAM: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1 }
-    Info "Tier chosen by total VRAM ($TotalMB MB; $FreeMB MB free now). 依顯示卡總容量選擇。"
+    if ($TotalMB -ge $GpuMinMB) { $Whisper = 'large-v3-turbo'; $MtFlag = '--hymt'; $MtTxt = 'Hy-MT2 (~1.1 GB)'; $SizeGB = '~3 GB'; $ModelGB = 3 }
+    else { $Whisper = 'small'; $MtFlag = $null; $MtTxt = "none (under $GpuMinMB MB VRAM: OPUS engine)"; $SizeGB = '~1 GB'; $ModelGB = 1 }
+    Info "Tier chosen by total VRAM ($TotalMB MB; $FreeMB MB free now; Hy-MT2 tier needs $GpuMinMB MB). 依顯示卡總容量選擇（Hy-MT2 需約 4 GB）。"
     Info "Tip: close GPU-heavy apps (games, browsers with video, other tlwu) before the first run. 首次執行前請關閉佔用 GPU 的程式。"
-    Ok "GPU path / GPU 路線: whisper=$Whisper, Qwen=$QwenTxt"
+    Ok "GPU path / GPU 路線: whisper=$Whisper, translation=$MtTxt"
 } else {
     if (-not $Cpu) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower, OPUS engine). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
-    $Whisper = 'small'; $QwenFlag = $null; $QwenTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1
+    $Whisper = 'small'; $MtFlag = $null; $MtTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1
 }
 if ($SkipModels) { $ModelGB = 0 }
 Info "Expected model download / 預計下載模型: $SizeGB (plus ~3 GB of Python packages / 另有約 3 GB 套件)"
@@ -118,16 +119,16 @@ if (-not $DryRun -and -not (Test-Path $VSet)) { Die '找不到 tlwu-setup.exe' '
 Ok "Packages installed / 套件完成"
 
 # ---------------------------------------------------------------- 4. GPU libs + llama-cpp
-Step 4 'GPU 函式庫與 Qwen 引擎' 'GPU libraries and Qwen engine'
+Step 4 'GPU 函式庫與 Hy-MT2 翻譯引擎' 'GPU libraries and Hy-MT2 translation engine'
 $Engine = 'opus'
 if (-not $Gpu) { Info "CPU path: skipped / CPU 路線略過" }
 else {
     if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
     else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
-    if ($QwenFlag) {
+    if ($MtFlag) {
         $have = $false
         if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True') }
-        if ($have) { Ok "llama-cpp-python (GPU) already works / 已可用"; $Engine = 'qwen' }
+        if ($have) { Ok "llama-cpp-python (GPU) already works / 已可用"; $Engine = 'hymt2' }
         else {
             $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-qwen.txt', '--only-binary=:all:')
             if ($ok -and -not $DryRun) {
@@ -138,14 +139,14 @@ else {
                 }
                 if (-not $ok) { Warn "llama-cpp-python installed but failed the self-check: $(Capture $VPy @('-c', $LlamaWhy))" }
             }
-            if ($ok) { $Engine = 'qwen'; [void]$Installed.Add('llama-cpp-python (CUDA wheel)') }
+            if ($ok) { $Engine = 'hymt2'; [void]$Installed.Add('llama-cpp-python (CUDA wheel)') }
             else {
                 Warn "No usable prebuilt llama-cpp-python CUDA wheel for this PC: using the OPUS engine (still works, less accurate). 找不到合適的預編譯 wheel，改用 OPUS 引擎。"
-                $QwenFlag = $null
+                $MtFlag = $null
             }
-            if ($DryRun) { $Engine = 'qwen (if the wheel installs)' }
+            if ($DryRun) { $Engine = 'hymt2 (if the wheel installs)' }
         }
-    } else { Info "Low VRAM: Qwen skipped, OPUS engine / 顯存不足，略過 Qwen" }
+    } else { Info "Low VRAM: Hy-MT2 skipped, OPUS engine / 顯存不足，略過 Hy-MT2" }
 }
 
 # ---------------------------------------------------------------- 5. models
@@ -156,9 +157,9 @@ else {
     $ok = Run $VSet @('--whisper', $Whisper, '--langs', 'ru,ja,en', '--to', 'zh')
     if ($ok) { [void]$Installed.Add("Whisper '$Whisper' + OPUS translation ru/ja/en -> zh") }
     else { Die '模型下載失敗（請確認網路後重跑）' 'model download failed (check internet, then re-run install.bat; finished parts are kept)' }
-    if ($QwenFlag) {
-        if (Run $VSet @($QwenFlag)) { [void]$Installed.Add("Qwen model ($QwenTxt)") }
-        else { Warn "Qwen download failed; will use the OPUS engine. Re-run install.bat to retry."; $Engine = 'opus' }
+    if ($MtFlag) {
+        if (Run $VSet @($MtFlag)) { [void]$Installed.Add("Hy-MT2 translation model ($MtTxt)") }
+        else { Warn "Hy-MT2 download failed; will use the OPUS engine. Re-run install.bat to retry."; $Engine = 'opus' }
     }
 }
 
