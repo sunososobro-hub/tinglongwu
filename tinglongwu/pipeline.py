@@ -39,7 +39,7 @@ def step_times(translator) -> str:
 def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
-        stop_event: threading.Event | None = None, log=None, on_latency=None) -> None:
+        stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -204,6 +204,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 f" ({mtq.qsize()} line(s) waiting for MT)")
             if t is None or is_hallucination(t.text, float(np.sqrt(np.mean(seg ** 2))), t.no_speech):
                 continue  # nothing heard, or a stock Whisper subtitle-credit line on music/silence
+            if speakers is not None:  # --speakers (#222): label this sentence, log only; output lines unchanged
+                who, spk = speakers.label(seg)
+                print(f"tlwu: {who}", file=sys.stderr, flush=True)
+                say(f"latency: spk {spk:.3f} s ({who})")
             if merger is None or translator is None:
                 emit_units([Unit(t.text, t.lang, False)])
                 continue

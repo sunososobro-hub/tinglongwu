@@ -102,6 +102,9 @@ def parse_args(argv=None):
                         "result is remembered until the hardware changes")
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")
+    p.add_argument("--speakers", action="store_true",
+                   help="label each sentence 說話者N in the log (local sherpa-onnx; needs requirements-speaker.txt "
+                        "and tlwu-setup --speaker-model). Off by default")
     a = p.parse_args(argv)
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.preset = a.preset or "meeting"
@@ -354,10 +357,17 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .stream import PacedSource
 
             source = PacedSource(source)
+    labeler = None
+    if getattr(a, "speakers", False):
+        from .speaker_embed import make_labeler
+
+        note("loading speaker model...")
+        labeler = make_labeler(mdir)
     note("listening")
-    lat = (lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
+    lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
-        stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None)
+        stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
+        speakers=labeler)
 
 
 def main(argv=None) -> int:
