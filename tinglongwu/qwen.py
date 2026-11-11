@@ -22,7 +22,7 @@ from .translate import Translation, Translator, zh_convert
 QWEN8B_MIN_FREE_MIB = 5800
 QWEN4B_MIN_FREE_MIB = 3500
 
-ENGINES = ("auto", "hymt", "opus")  # #276: Qwen / m2m are no longer user choices
+ENGINES = ("auto", "hymt", "opus")  # #276: Qwen is no longer a user choice
 # Hy-MT2-1.8B Q4_K_M uses ~1.5 GB VRAM (#66 benchmark; hwprobe.MT_VRAM_MIB) + 0.5 GB headroom (hwprobe.HEADROOM_MIB)
 HYMT_MIN_FREE_MIB = 2000
 
@@ -76,7 +76,7 @@ def model_path(models_dir: Path, name: str) -> Path:
 
 def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_vram_mib,
                   cpu_choice=None) -> tuple[str, str]:
-    """Return (engine, reason); engine in hymt2 | hymt2-cpu | opus (| the explicit Qwen/m2m engines #283/#284 delete).
+    """Return (engine, reason); engine in hymt2 | hymt2-cpu | opus (| the explicit Qwen engines #283 deletes).
 
     auto (#276, owner 11/11): Hy-MT2 1.8B is the one default engine on every machine. CPU (~0.93 s/sentence on an
     i5-13500, accepted by the owner) and a GPU with less than HYMT_MIN_FREE_MIB free both run it on the CPU
@@ -85,8 +85,6 @@ def choose_engine(requested: str, device: str, models_dir: Path, free_mib=free_v
     """
     if requested == "opus":
         return "opus", "requested"
-    if requested == "m2m":
-        return "m2m", "requested"
     if requested == "hymt":
         return "hymt2", "requested"
     if requested == "qwen":

@@ -167,11 +167,10 @@ tlwu-setup --whisper small --langs ru --to zh
 
 任何有 OPUS-MT/Argos 套件的語言組合都能用：`--langs` 下載「來源->英文」，`--to` 下載「英文->目標」（例如 `--langs ru,ja --to zh,ko`），只抓你需要的。缺少某組合時，tlwu 會停止並指出該組合與確切的下載指令。
 
-**選用 M2M-100 引擎（`--engine m2m`）**：不經英文中介，直接翻譯，**MIT 授權**（可商用）。`tlwu-setup --m2m` 會下載 facebook/m2m100_1.2B 並以 `ct2-transformers-converter` 轉換；轉換需要 `torch` 與 `transformers`，它們不是執行期相依套件：請在拋棄式 venv 安裝，並用 `TLWU_CONVERTER_PYTHON` 指向它。僅從 `models/m2m-1.2B/` 載入。 轉換只讀 `model.safetensors`（釘住 Hugging Face 官方 SFconvertbot PR 的 commit，因為 `main` 只有 pickle 的 `pytorch_model.bin`），不會反序列化任何 pickle；沒有釘住的 safetensors 版本時 `tlwu-setup` 拒絕轉換。
 
 **唯一預設引擎：Hy-MT2**（`--engine auto`，或 `--engine hymt`）：騰訊 Hy-MT2-1.8B（llama.cpp、Q4_K_M GGUF，`tlwu-setup --hymt`，下載約 1.1 GB）直接由來源語言翻成目標語言，支援 zh/en/ru/ja/ko/de/fr/es。在我們的 200 句評測中品質與 Qwen3-8B 相當（COMET x100：ru 86.5 對 86.5、en 89.1 對 88.8、ja 88.3 對 87.8），速度約快 4 倍（每句 0.19 秒對 0.73 秒），VRAM 約 1.5 GB（Qwen3-8B 為 5.1 GB），所以 Whisper turbo + Hy-MT2 在 4 GB 顯示卡上就放得下。Whisper 載入後還剩約 2 GB VRAM 就在 GPU 上跑，否則（含 CPU 模式）在 CPU 上跑（i5-13500 約每句 0.93 秒）。沒安裝 Hy-MT2 或載入失敗時，tlwu 會印出 `tlwu-setup --hymt` 指令並結束，不會默默改用其他引擎（#276）；要用 OPUS 請明確指定 `--engine opus`。
 
-**Qwen／M2M-100 引擎**：已不再是 `--engine` 選項（#276），程式碼將於 #283／#284 移除。
+**Qwen 引擎**：已不再是 `--engine` 選項（#276），程式碼將於 #283 移除。
 
 
 #### 模型來源釘選
@@ -183,7 +182,6 @@ tlwu-setup --whisper small --langs ru --to zh
 | Whisper tiny/base/small/medium/large-v3（CT2） | `Systran/faster-whisper-*` | SYSTRAN | MIT |
 | **Whisper large-v3-turbo（CT2）** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh（第三方，非 OpenAI、非 SYSTRAN）** | MIT；社群的 CTranslate2 轉換版，信任範圍僅限於釘住的 commit 與雜湊 |
 | Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen（阿里巴巴） | Apache-2.0 |
-| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT；**僅用 safetensors**（見上） |
 | OPUS-MT（Argos 套件） | `argos-net.com` | Argos Open Tech | CC-BY 4.0；`ru-en`、`en-zh` 以 URL＋壓縮檔 SHA256 釘住；其他語對首次使用時查詢可變動的 Argos 索引，之後才釘住（會印出警告） |
 
 ### GPU（選用，NVIDIA）

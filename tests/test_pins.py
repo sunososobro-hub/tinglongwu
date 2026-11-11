@@ -14,8 +14,7 @@ def test_committed_pins_complete():
         assert len(p["files"]["model.bin"]) == 64
     for name, (repo, fname) in dl.QWEN_GGUF.items():
         assert pins["models"][name]["repo"] == repo and fname in pins["models"][name]["files"]
-    m = pins["models"]["m2m-1.2B"]
-    assert "model.safetensors" in m["files"] and "pytorch_model.bin" not in m["files"]
+    assert "m2m-1.2B" not in pins["models"]  # #284: M2M-100 is gone
     for a in pins["argos"].values():
         assert a["url"].startswith("https://") and a["files"]
         assert len(a.get("archive_sha256", "0" * 64)) == 64  # archive hash optional (files are always pinned)
@@ -25,18 +24,6 @@ def test_check_pinned_rejects_mismatch():
     dl.check_pinned({"a": "1"}, {"a": "1", "b": "2"}, "k")
     with pytest.raises(SystemExit, match="MISMATCH"):
         dl.check_pinned({"a": "1"}, {"a": "x"}, "k")
-
-
-def test_m2m_refuses_without_safetensors_pin(monkeypatch, tmp_path):
-    import subprocess
-
-    class R:
-        returncode = 0
-
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
-    monkeypatch.setattr(dl, "resolve_hf", lambda man, key, repo: (repo, "x" * 40, None))
-    with pytest.raises(SystemExit, match="safetensors"):
-        dl.get_m2m({}, tmp_path)
 
 
 def test_guard_blocks_udp_sendto():

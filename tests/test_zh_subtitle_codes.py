@@ -1,4 +1,4 @@
-"""#43: OPUS (and M2M) sometimes emit ASS/SSA subtitle style codes such as {\fn..\fs..} in zh output, followed by a
+"""#43: OPUS sometimes emit ASS/SSA subtitle style codes such as {\fn..\fs..} in zh output, followed by a
 sentence that has nothing to do with the source (the next line of a bilingual subtitle file). They are stripped;
 the unrelated tail is dropped; genuine lines (also English-only speech) pass unchanged."""
 from __future__ import annotations

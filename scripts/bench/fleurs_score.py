@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import wer  # noqa: E402
 from sacrebleu.metrics import CHRF  # noqa: E402
 
-ENGINES = ["opus", "m2m-418M", "m2m-1.2B", "nllb", "google"]
+ENGINES = ["opus", "nllb", "google"]
 SOURCES = ["small", "medium", "large-v3-turbo", "large-v3", "google_stt", "gold"]
 
 

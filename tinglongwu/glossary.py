@@ -5,7 +5,7 @@ Format (UTF-8, one entry per line):
     чистота | частота = 頻率  `|` lists extra source spellings (common mis-hearings); first is the main one
     роутер                   no `=`: plain hint term (helps Whisper, kept as written by the LLM)
     fading = 衰落 ~ 淡化 | 消散  `~` lists known wrong renderings: when the entry occurs in the sentence (source
-                             or English pivot), they are replaced by the target in the output (OPUS/M2M)
+                             or English pivot), they are replaced by the target in the output (OPUS)
     # comment
 Used two ways: source terms go to Whisper (`hotwords`); entries whose source occurs in the current sentence
 or its context go into the Qwen prompt. Number entries (`2.4 = 2.4 GHz`) also normalize "2 и 4" -> "2.4".
