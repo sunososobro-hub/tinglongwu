@@ -45,11 +45,12 @@ def setup_console() -> None:
             pass
 
 
-def back_translate(mt, ru: str, lang: str = "ru") -> str:
-    """(ru|en) -> zh with the already loaded translator, leaving its zh->ru context (history/pair) untouched."""
+def back_translate(mt, ru: str, lang: str = "ru", src: str = "zh") -> str:
+    """(ru|en|..) -> `src` (zh; en when speaking English, #134) with the already loaded translator, leaving its
+    forward context (history/pair) untouched."""
     hist, pair = list(mt.history), getattr(mt, "_pair", None)
     try:
-        return mt.translate(ru, lang, "zh").text
+        return mt.translate(ru, lang, src).text
     except Exception as e:  # noqa: BLE001
         return f"(back-translation failed: {e})"
     finally:
