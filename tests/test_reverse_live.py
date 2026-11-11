@@ -136,7 +136,7 @@ class FakePlayer:
 def test_live_wiring_auto_and_confirm(monkeypatch):
     """mic items -> translate -> (auto|confirm) -> TTS -> player, with mocked capture/ASR."""
     monkeypatch.setattr("tinglongwu.reverse.live.capture_segments", lambda src, seg, stop: iter([1, 2]))
-    monkeypatch.setattr("tinglongwu.reverse.live.recognize_utterances", lambda segs, asr, gate=None: iter(["你好", "再見"]))
+    monkeypatch.setattr("tinglongwu.reverse.live.recognize_utterances", lambda segs, asr, gate=None, src="zh": iter(["你好", "再見"]))
     monkeypatch.setattr("tinglongwu.capture.mic.MicSource", lambda name: object())
     a = SimpleNamespace(mic_name="Headset Mic", chunk_s=10.0)
     for confirm, keys in ((False, None), (True, iter(["", "r"]))):

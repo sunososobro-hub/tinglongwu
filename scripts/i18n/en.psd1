@@ -22,7 +22,7 @@
     ASK_LANG = 'Which language does the other side speak? [Enter=auto]'
     BAD_OPTION = 'No such option'
     NO_SPEAK = '{0} is not supported for meeting / speak-only yet, only "Listen only"; meeting / speak-only support English, Russian and Japanese. Press L to change language or choose 3.'
-    ASK_SPEAK = 'Which language do you speak to the other side? [Enter=en English / ru Russian / ja Japanese]'
+    ASK_SPEAK = 'Which language do you speak to the other side? [Enter=en English / ru Russian / ja Japanese / zh = I speak English, they hear Chinese]'
     JA_MISSING_FATAL = 'Japanese voice/translation still needs a one-time install (then run again):'
     JA_MISSING_SKIP = 'Japanese is off for now (missing packages; auto mode will do English/Russian only). To get Japanese, install first:'
     NO_HYMT = 'No Japanese translation model Hy-MT2 yet (about 1.1 GB).'

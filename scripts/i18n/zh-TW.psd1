@@ -19,7 +19,7 @@
     ASK_LANG = '對方說哪種語言 [Enter=auto]'
     BAD_OPTION = '沒有這個選項'
     NO_SPEAK = '{0} 暫不支援開會/純說，只能「純聽」；開會/純說支援英文、俄文、日文。請按 L 換語言或選 3。'
-    ASK_SPEAK = '你要說給對方的語言？[Enter=en 英文 / ru 俄文 / ja 日文]'
+    ASK_SPEAK = '你要說給對方的語言？[Enter=en 英文 / ru 俄文 / ja 日文 / zh = 我講英文、對方聽中文]'
     JA_MISSING_FATAL = '日文語音/翻譯還缺（只需裝一次，裝好再跑）：'
     JA_MISSING_SKIP = '日文先不啟用（缺套件，自動模式只做英/俄）。要日文請先裝：'
     NO_HYMT = '還沒有日文翻譯模型 Hy-MT2（約 1.1 GB）。'

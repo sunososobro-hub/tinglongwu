@@ -65,9 +65,10 @@ def strip_cjk(text: str) -> str:
 
 def translate_ru(translate, zh: str, lang: str = "ru") -> tuple[str, int]:
     """translate(text)->str. Returns (translation, retries): one retry with a stricter hint when CJK leaks, then strip.
-    `lang` (ru|en) only picks the hint wording; the function name is historical."""
+    `lang` (ru|en) only picks the hint wording; the function name is historical. `zh` is the source text in
+    whatever language (#134: English when the target is zh)."""
     ru = translate(zh)
-    if lang == "ja" or not has_cjk(ru):  # Japanese output legitimately contains kanji: no leak check
+    if lang in ("ja", "zh") or not has_cjk(ru):  # Japanese/Chinese output legitimately contains CJK: no leak check
         return ru, 0
     ru2 = translate(zh + RETRY_HINTS.get(lang, RETRY_HINT))
     return (ru2 if not has_cjk(ru2) else strip_cjk(ru2 or ru)), 1

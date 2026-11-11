@@ -215,6 +215,7 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 | phonemizer（kokoro-onnx 0.6.1 带入；仅 Kokoro venv） | GPL-3.0（PyPI 元数据） | github.com/bootphon/phonemizer |
 | misaki（Kokoro 的 G2P，含日语） | Apache-2.0 | github.com/hexgrad/misaki |
 | pyopenjtalk-plus、fugashi、jaconv、mojimoji、addict、regex、unidic-lite（misaki[ja] 附带，仅 Kokoro venv，由你自行安装） | 依次 MIT、MIT AND BSD-3-Clause、MIT、Apache-2.0、MIT、Apache-2.0 AND CNRI-Python、MIT（均取自 PyPI 元数据；unidic-lite 内 UniDic 词典数据未另行核查） | pypi.org/project/<包名> |
+| jieba、pypinyin、pypinyin-dict、cn2an、ordered-set（misaki[zh] 附带，中文语音 `reverse.proto --from en` 用；仅 Kokoro venv，由你自行安装） | 均 MIT（取自 PyPI 元数据） | pypi.org/project/<包名> |
 | GigaAM v3（俄语 ASR，仅手机版；k2-fsa/sherpa-onnx 导出的 ONNX，由你自行侧载） | MIT（GigaAM repo LICENSE 与 ai-sage/GigaAM-v3 模型卡；sherpa-onnx 导出说明指向同一份 GigaAM LICENSE） | github.com/salute-developers/GigaAM、huggingface.co/ai-sage/GigaAM-v3 |
 | sherpa-onnx（仅手机版） | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
 | llama.cpp（`mobile/` 内自行构建的 AAR） | MIT（依 mobile/README） | github.com/ggml-org/llama.cpp |

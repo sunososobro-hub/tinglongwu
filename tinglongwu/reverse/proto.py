@@ -238,17 +238,18 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     lat = getattr(a, "lat", None) or Lat()
     show_lat = getattr(a, "debug_latency", False)
     no_back = getattr(a, "no_back", False)
+    src = getattr(a, "src", "zh")  # language the user speaks (#134: en -> the other side hears zh)
 
     def produce():
         try:
             for n, label, zh in items:
                 lang = _target(a)  # re-read per sentence (--to follow)
-                ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+                ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
-                res["items"].append({"file": label, "zh": zh, lang: ru, "_u": u})
+                res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
                 if not no_back:
-                    sess.set_back(u, lat.timed("back", back_translate, mt, ru, lang))
+                    sess.set_back(u, lat.timed("back", back_translate, mt, ru, lang, src))
                 u.extra["lat"] = lat.take()
                 if show_lat:
                     print(lat_line(u.extra["lat"]), file=sys.stderr, flush=True)
@@ -270,7 +271,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             it["back"], it["lat"] = u.back, u.extra.get("lat", {})
 
 
-def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False) -> None:
+def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False, src="zh") -> None:
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
@@ -279,7 +280,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
     lat = lat or Lat()
     for n, label, zh in items:
         lg = lang() if callable(lang) else lang
-        ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, "zh", lg).text, zh, lg)
+        ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         t0, sent = lat.clock(), 0
         for audio, sr in _synth_sentences(tts, ru):
@@ -290,7 +291,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         t = lat.take()
         if show_lat:
             print(lat_line(t), file=sys.stderr, flush=True)
-        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t})
+        res["items"].append({"file": label, src: zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t})
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
@@ -302,26 +303,27 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     from .logic import Lat, TimedASR
 
     stop = threading.Event()
+    src = getattr(a, "src", "zh")
     a.lat = lat = Lat()
     asr = TimedASR(asr, lat) if asr is not None else None
     items = ((n, "mic", zh) for n, zh in enumerate(
         recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr,
-                         gate=getattr(player, "gate", None)), 1))
+                         gate=getattr(player, "gate", None), src=src), 1))
     box: list = []
-    print("listening... speak Chinese; Ctrl+C to quit", flush=True)
+    print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
     try:
         if tts is None:  # text only: show zh -> ru, nothing is spoken
             from .logic import translate_ru
 
             for _n, _src, zh in items:
                 lang = _target(a)
-                ru, _r = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+                ru, _r = translate_ru(lambda x: mt.translate(x, src, lang).text, zh, lang)
                 print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
             _run_auto_live(items, mt, tts, player, res, lambda: _target(a), lat,
-                           getattr(a, "debug_latency", False))
+                           getattr(a, "debug_latency", False), src)
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
@@ -337,12 +339,17 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         previewer.enabled = False
 
 
-def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", follow_langs=("en", "ru")):
+def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", follow_langs=("en", "ru"),
+                     src: str = "zh"):
     """zh->ru|en translator. qwen (GPU, best; any target) or opus (Argos/OPUS on CPU). ru = pivot zh->en->ru, needs
     `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`; en = direct zh->en, needs
     `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming).
     ja = direct zh<->ja through Hy-MT2 (`tlwu-setup --hymt`; OPUS has no usable Japanese), the rest stays OPUS.
-    auto = qwen on CUDA, opus otherwise."""
+    auto = qwen on CUDA, opus otherwise.
+    src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs;
+    qwen only when asked for (--mt qwen)."""
+    if src == "en" and kind == "auto":
+        kind = "opus"
     if kind == "auto":
         kind = "qwen" if device == "cuda" else "opus"
     if kind == "qwen":
@@ -357,11 +364,13 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", fo
     targets = tuple(follow_langs) if to == "follow" else (to,)
     dev = "cpu" if device != "cuda" else "cuda"
     mt = PivotTranslator(mdir, "tw", device=dev)
-    if "ja" in targets:
+    if src != "zh":
+        mt = JaRouter(mt, mdir, "tw", dev, all_pairs=True)
+    elif "ja" in targets:
         mt = JaRouter(mt, mdir, "tw", dev)
     for t in targets:  # follow: every spoken language
-        mt.preload("zh", t)  # fail early if the models are missing
-        mt.preload(t, "zh")  # back-translation for the confirm step
+        mt.preload(src, t)  # fail early if the models are missing
+        mt.preload(t, src)  # back-translation for the confirm step
     mt.history, mt._pair = [], None  # same surface as QwenTranslator for confirm.back_translate
     return mt
 
@@ -385,6 +394,13 @@ def check_args(a) -> str | None:
         return f"--follow-langs takes en, ru, ja (comma separated), got {a.follow_langs!r}"
     a.follow_set = langs
     a.ru_voice = getattr(a, "ru_voice", True)  # check_args may run twice; never re-enable
+    src = getattr(a, "src", "zh")
+    if a.to is None:
+        a.to = "zh" if src == "en" else "ru"
+    if src == "en" and a.to != "zh":
+        return "--from en speaks Chinese to the other side: use --to zh (or leave --to out)"
+    if src == "zh" and a.to == "zh":
+        return "--to zh needs --from en (you speak English, the other side hears Chinese)"
     if a.to == "follow":
         if not a.no_tts:
             if a.tts_engine != "kokoro" or not a.tts_model:
@@ -396,8 +412,10 @@ def check_args(a) -> str | None:
         return None
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
-    if a.tts_engine == "kokoro" and a.to not in ("en", "ja"):
-        return "--tts-engine kokoro speaks English or Japanese only: use --to en or --to ja"
+    if a.tts_engine == "kokoro" and a.to not in ("en", "ja", "zh"):
+        return "--tts-engine kokoro speaks English, Japanese or Chinese only: use --to en, --to ja or --from en"
+    if a.to == "zh" and a.tts_engine != "kokoro" and not a.no_tts:
+        return "--from en needs --tts-engine kokoro (Chinese voices, misaki[zh] in the Kokoro venv) or --no-tts"
     if a.tts_engine == "vosk" and a.to != "ru" and not a.no_tts:
         return "--tts-engine vosk speaks Russian only: use --to ru (or --tts-engine kokoro for --to en)"
     if a.tts_engine == "vosk" and a.to == "ru" and not a.no_tts and not _ru_model_ok(a.tts_model):
@@ -434,7 +452,10 @@ def _main(argv, vm) -> int:
     ap.add_argument("--whisper", default=None, help="default: large-v3-turbo on CUDA, small on CPU")
     ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"],
                     help="where ASR/MT/TTS run; auto = CUDA if usable, else CPU")
-    ap.add_argument("--to", default="ru", choices=["ru", "en", "ja", "follow"],
+    ap.add_argument("--from", dest="src", default="zh", choices=["zh", "en"],
+                    help="language you speak (default zh); en = speak English, the other side hears Chinese "
+                         "(--to zh implied; Kokoro Chinese voices; MT Hy-MT2 en->zh if installed, else OPUS)")
+    ap.add_argument("--to", default=None, choices=["ru", "en", "ja", "zh", "follow"],
                     help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
                          "no pivot; use with --tts-engine kokoro)")
     ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"],
@@ -573,11 +594,11 @@ def _main(argv, vm) -> int:
                  "vram_mib": {"baseline": vram_used_mib()}}
     with VramSampler() as vs:
         t = time.perf_counter()
-        asr = FasterWhisperRecognizer(mdir, a.whisper, "zh", dev)
+        asr = FasterWhisperRecognizer(mdir, a.whisper, a.src, dev)
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()
-        mt = build_translator(a.mt, dev, mdir, a.qwen, a.to, a.follow_set)
+        mt = build_translator(a.mt, dev, mdir, a.qwen, a.to, a.follow_set, a.src)
         res["load_s"]["qwen"] = round(time.perf_counter() - t, 2)
         res["vram_mib"]["after_qwen"] = vram_used_mib()
         t = time.perf_counter()
@@ -593,7 +614,7 @@ def _main(argv, vm) -> int:
                 tts.speaker = a.speaker
         else:
             tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.tts_engine,
-                                                  a.speaker, "ja" if a.to == "ja" else "en")
+                                                  a.speaker, a.to if a.to in ("ja", "zh") else "en")
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()
@@ -607,7 +628,10 @@ def _main(argv, vm) -> int:
         if wavs:
             w0, _ = sf.read(str(wavs[0]), dtype="float32")
             asr.transcribe(w0)
-        mt.translate("你好。", "zh", "en" if a.to == "follow" else a.to)
+        if a.src == "en":
+            mt.translate("Hello.", "en", "zh")
+        else:
+            mt.translate("你好。", "zh", "en" if a.to == "follow" else a.to)
         mt.history.clear()
         asr._last = ""
         if live:
@@ -626,11 +650,11 @@ def _main(argv, vm) -> int:
             zh = tr.text if tr else ""
             retries = 0
             if zh:
-                ru, retries = translate_ru(lambda x: mt.translate(x, "zh", tgt).text, zh, tgt)
+                ru, retries = translate_ru(lambda x: mt.translate(x, a.src, tgt).text, zh, tgt)
             else:
                 ru = ""
             t_mt = time.perf_counter() - t0
-            item = {"file": wav.name, "audio_s": round(len(audio) / sr, 2), "zh": zh, tgt: ru,
+            item = {"file": wav.name, "audio_s": round(len(audio) / sr, 2), a.src: zh, tgt: ru,
                     "t_asr": round(t_asr, 3), "cjk_retries": retries, "t_mt": round(t_mt, 3), "tts": []}
             first_audio = None
             tts_done = t_mt

@@ -227,6 +227,7 @@ Repetition loops (Whisper repeating one phrase): finals use temperature fallback
 | phonemizer (pulled in by kokoro-onnx 0.6.1; Kokoro venv only) | GPL-3.0 (PyPI metadata) | github.com/bootphon/phonemizer |
 | misaki (G2P for Kokoro, incl. Japanese) | Apache-2.0 | github.com/hexgrad/misaki |
 | pyopenjtalk-plus, fugashi, jaconv, mojimoji, addict, regex, unidic-lite (misaki[ja] extras, Kokoro venv only; you install them) | MIT, MIT AND BSD-3-Clause, MIT, Apache-2.0, MIT, Apache-2.0 AND CNRI-Python, MIT respectively (all from PyPI metadata; the UniDic dictionary data inside unidic-lite was not checked separately) | pypi.org/project/<name> |
+| jieba, pypinyin, pypinyin-dict, cn2an, ordered-set (misaki[zh] extras for the Chinese voice, `reverse.proto --from en`; Kokoro venv only; you install them) | MIT (all, from PyPI metadata) | pypi.org/project/<name> |
 | GigaAM v3 (Russian ASR, mobile app only; ONNX export by k2-fsa/sherpa-onnx, you side-load it) | MIT (GigaAM repo LICENSE and the ai-sage/GigaAM-v3 model card; the sherpa-onnx export card points to the same GigaAM LICENSE) | github.com/salute-developers/GigaAM, huggingface.co/ai-sage/GigaAM-v3 |
 | sherpa-onnx (mobile app only) | Apache-2.0 | github.com/k2-fsa/sherpa-onnx |
 | llama.cpp (self-built AAR in `mobile/`) | MIT (per mobile/README) | github.com/ggml-org/llama.cpp |
