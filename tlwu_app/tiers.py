@@ -5,8 +5,10 @@ The tiers mirror install.ps1 (chosen by TOTAL VRAM): the runtime `--engine auto`
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,17 +57,23 @@ class Gpu:
     name: str
     total_mb: int
     free_mb: int
+    driver: str = ""  # nvidia-smi driver_version ('457.49'); '' when unknown
+
+
+SMI_ARGS = ["--query-gpu=name,memory.total,memory.free,driver_version", "--format=csv,noheader,nounits"]
 
 
 def parse_smi(text: str) -> Gpu | None:
-    """First line of `nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits`."""
+    """First line of `nvidia-smi --query-gpu=name,memory.total,memory.free[,driver_version] --format=csv,noheader,nounits`."""
     for line in (text or "").splitlines():
         f = [x.strip() for x in line.split(",")]
         if len(f) >= 3:
             try:
-                return Gpu(f[0], int(f[1]), int(f[2]))
+                total, free = int(f[1]), int(f[2])
             except ValueError:
                 return None
+            driver = f[3] if len(f) >= 4 and re.fullmatch(r"\d+(\.\d+)+", f[3]) else ""
+            return Gpu(f[0], total, free, driver)
     return None
 
 
@@ -81,17 +89,54 @@ def _nvidia_smi() -> str | None:
     return None
 
 
-def detect_gpu(run=subprocess.run) -> Gpu | None:
+def probe_gpu(run=subprocess.run) -> Gpu | None:
+    """What nvidia-smi reports (name, VRAM, driver), whether or not CUDA 12 can use it. None: no NVIDIA GPU."""
     exe = _nvidia_smi()
     if not exe:
         return None
     try:
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        out = run([exe, "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"],
-                  capture_output=True, text=True, timeout=15, creationflags=flags).stdout
+        out = run([exe, *SMI_ARGS], capture_output=True, text=True, timeout=15, creationflags=flags).stdout
     except Exception:  # noqa: BLE001 - driver missing / broken
         return None
     return parse_smi(out)
+
+
+def driver_too_old(gpu: Gpu | None, platform: str | None = None) -> bool:
+    """The GPU is there but its driver predates CUDA 12 (#89/#95): it cannot run the models, use the CPU tier.
+    Threshold: tinglongwu.device.MIN_DRIVER (Windows 528.33), the same check the runtime uses."""
+    if gpu is None or not gpu.driver:
+        return False
+    from tinglongwu.device import driver_too_old as too_old
+
+    return too_old(gpu.driver, platform or sys.platform)
+
+
+def detect_gpu(run=subprocess.run, platform: str | None = None) -> Gpu | None:
+    """A GPU the models can use, else None (CPU tier): no NVIDIA GPU, or a driver too old for CUDA 12."""
+    gpu = probe_gpu(run)
+    return None if driver_too_old(gpu, platform) else gpu
+
+
+def driver_hint(gpu: Gpu, platform: str | None = None) -> str:
+    from tinglongwu.device import DRIVER_URL, min_driver
+
+    need = ".".join(map(str, min_driver(platform or sys.platform)))
+    return (f"偵測到顯示卡 {gpu.name}，但 NVIDIA 驅動程式 {gpu.driver} 太舊（CUDA 12 需要 {need} 以上），"
+            f"先使用 CPU 模式。更新驅動程式後重新設定即可使用 GPU：{DRIVER_URL}\n"
+            f"NVIDIA driver {gpu.driver} is too old for CUDA 12 (needs {need}+): CPU mode for now. "
+            f"Update the driver to use the GPU.")
+
+
+def detection_text(raw: Gpu | None, force_cpu: bool = False, platform: str | None = None) -> str:
+    """First-run setup window line about the GPU (`raw` = probe_gpu())."""
+    if force_cpu:
+        return "已指定 CPU 模式。"
+    if raw is not None and driver_too_old(raw, platform):
+        return driver_hint(raw, platform)
+    if raw is not None:
+        return f"偵測到顯示卡：{raw.name}（{raw.total_mb / 1024:.1f} GB 顯存）"
+    return "沒有偵測到 NVIDIA 顯示卡，將使用 CPU 模式（速度較慢，但一樣能用）。"
 
 
 def choose_tier(gpu: Gpu | None, force_cpu: bool = False) -> Tier:
