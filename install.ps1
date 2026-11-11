@@ -75,14 +75,15 @@ Ok "Python: $Py  ($(Capture $Py @('--version')))"
 
 # ---------------------------------------------------------------- 2. GPU
 Step 2 '偵測 NVIDIA 顯示卡' 'Detect NVIDIA GPU'
-$Gpu = $false; $FreeMB = 0; $TotalMB = 0; $GpuName = ''
+$Gpu = $false; $FreeMB = 0; $TotalMB = 0; $GpuName = ''; $DriverOld = $false
 $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($smi -and -not $Cpu) {
-    $q = Capture 'nvidia-smi' @('--query-gpu=name,memory.total,memory.free', '--format=csv,noheader,nounits')
-    if ($q) {
-        $f = ($q -split "`r?`n")[0] -split ',\s*'
-        if ($f.Count -ge 3) { $GpuName = $f[0]; $TotalMB = [int]$f[1]; $FreeMB = [int]$f[2]; $Gpu = $true }
-    }
+    $g = Get-TlwuGpu (Capture 'nvidia-smi' @('--query-gpu=name,memory.total,memory.free,driver_version', '--format=csv,noheader,nounits'))
+    if ($g -and $g.DriverOld) {   # #95: CUDA 12 cannot run on it -> CPU tier now, not a surprise "switched to CPU" later
+        $DriverOld = $true
+        Warn ("NVIDIA driver {0} on {1} is too old for CUDA 12 (needs {2}+): CPU path. Update the driver to use the GPU, then re-run install.bat: {3}" -f $g.Driver, $g.Name, $TlwuMinDriver, $TlwuDriverUrl)
+        Warn ("NVIDIA 驅動程式 {0} 太舊（CUDA 12 需要 {1} 以上），先走 CPU 路線。更新驅動程式後重跑 install.bat 即可使用 GPU：{2}" -f $g.Driver, $TlwuMinDriver, $TlwuDriverUrl)
+    } elseif ($g) { $GpuName = $g.Name; $TotalMB = $g.TotalMB; $FreeMB = $g.FreeMB; $Gpu = $true }
 }
 if ($Cpu) { Info "-Cpu given: forcing CPU path / 已指定 -Cpu，走 CPU 路線" }
 if ($Gpu) {
@@ -96,7 +97,7 @@ if ($Gpu) {
     Info "Tip: close GPU-heavy apps (games, browsers with video, other tlwu) before the first run. 首次執行前請關閉佔用 GPU 的程式。"
     Ok "GPU path / GPU 路線: whisper=$Whisper, Qwen=$QwenTxt"
 } else {
-    if (-not $Cpu) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower, OPUS engine). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
+    if (-not $Cpu -and -not $DriverOld) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower, OPUS engine). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
     $Whisper = 'small'; $QwenFlag = $null; $QwenTxt = 'none (CPU: OPUS engine)'; $SizeGB = '~1 GB'; $ModelGB = 1
     # #126: OPUS cannot do Japanese; with enough RAM the CPU tier also gets Hy-MT2 (+ a CPU llama-cpp-python build)
     $RamMB = Get-TlwuRamMB
@@ -159,6 +160,11 @@ elseif (-not $Gpu) {   # #126: CPU build of llama-cpp-python, only for Hy-MT2 Ja
 else {
     if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
     else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
+    if (-not $DryRun) {   # #95: nvidia-smi said GPU; ask CTranslate2 itself (what tlwu will actually use)
+        $n = Capture $VPy @('-c', 'import ctranslate2; print(ctranslate2.get_cuda_device_count())')
+        if ($n -eq '0') { Warn "nvidia-smi sees $GpuName but CTranslate2 sees no CUDA device: tlwu will run on the CPU. Run '.venv\Scripts\tlwu.exe --probe' for the reason; updating the NVIDIA driver usually fixes it ($TlwuDriverUrl). 顯示卡偵測到了但 CUDA 無法使用，執行時會改用 CPU；通常更新 NVIDIA 驅動程式即可。" }
+        elseif ($n) { Ok "CTranslate2 sees $n CUDA device(s) / CUDA 可用" }
+    }
     if ($QwenFlag) {
         $have = $false
         if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True') }
