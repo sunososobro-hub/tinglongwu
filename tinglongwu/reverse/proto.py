@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import re
 import subprocess
@@ -224,7 +225,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
     `items` yields (n, label, zh)."""
     from .confirm import ConfirmSession, Utterance, back_translate
-    from .logic import Lat, lat_line, translate_ru
+    from .logic import Lat, lat_line, timing_line, translate_ru
 
     def set_voice(n: int) -> None:
         tts.speaker = n
@@ -251,6 +252,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             del pend[id(u)]
         st["lat"]["tts"] = round(st["tts"], 3)
         u.extra["lat"] = st["lat"]
+        print(timing_line(st["lat"]), file=sys.stderr, flush=True)  # #186 (stderr: the confirm prompt owns stdout)
         if show_lat:
             print(lat_line(st["lat"]), file=sys.stderr, flush=True)
 
@@ -291,7 +293,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
-    from .logic import Lat, lat_line, latency_fields, latency_line, translate_ru
+    from .logic import Lat, lat_line, latency_fields, latency_line, timing_line, translate_ru
 
     lat = lat or Lat()
     for n, label, zh in items:
@@ -302,6 +304,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         for audio, sr in _synth_sentences(tts, ru):
             if not sent:
                 lat.set("tts", lat.clock() - t0)
+                print(timing_line(lat.t), flush=True)  # #186: first audio is out; one line under the translation
             player.push(audio, sr)
             sent += 1
         tts_done = lat.clock() - t0
@@ -320,13 +323,15 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     from ..segment import Segmenter
     from .live import capture_segments, recognize_utterances
 
-    from .logic import Lat, TimedASR
+    from .logic import Lat, TimedASR, live_endpoint, timing_line
 
     stop = threading.Event()
     a.lat = lat = Lat()
     asr = TimedASR(asr, lat) if asr is not None else None
+    sil, step = live_endpoint(getattr(a, "dev", "cpu"), getattr(a, "end_silence", None))
     items = ((n, "mic", zh) for n, zh in enumerate(
-        recognize_utterances(capture_segments(MicSource(a.mic_name), Segmenter(a.chunk_s, True), stop), asr,
+        recognize_utterances(capture_segments(MicSource(a.mic_name),
+                                              Segmenter(a.chunk_s, True, min_silence=sil, step=step), stop, lat), asr,
                          gate=getattr(player, "gate", None)), 1))
     box: list = []
     print("listening... speak Chinese; Ctrl+C to quit", flush=True)
@@ -336,8 +341,9 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
 
             for _n, _src, zh in items:
                 lang = _target(a)
-                ru, _r = translate_ru(lambda x: mt.translate(x, "zh", lang).text, zh, lang)
+                ru, _r = lat.timed("mt", translate_ru, lambda x: mt.translate(x, "zh", lang).text, zh, lang)
                 print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
+                print(timing_line(lat.take(), tts=False), flush=True)  # #186
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
@@ -518,6 +524,11 @@ def _main(argv, vm) -> int:
                     help="--to follow: Russian voice model dir, Vosk or Piper (default: installed Piper ru voice)")
     ap.add_argument("--tts-python", default="")
     ap.add_argument("--tts-model", default="")
+    ap.add_argument("--end-silence", type=float, default=None, metavar="SEC",
+                    help="live: silence that ends a sentence (default 0.4 on CPU, 0.6 on CUDA; env TLWU_END_SILENCE)")
+    ap.add_argument("--allow-monitor", action="store_true",
+                    help="Linux: accept 'Monitor of <real sound card>' as the mic (e.g. --mic \"Monitor of\": play a clip "
+                         "and measure latency without speaking). Our own tlwu_ devices stay blocked")
     ap.add_argument("--max-seg", type=float, default=6.0,
                     help="force-cut a sentence after this many seconds if no pause is heard (lower = less delay)")
     ap.add_argument("--device", default=None, help='output device name substring, e.g. "CABLE Input"')
@@ -592,7 +603,7 @@ def _main(argv, vm) -> int:
 
         dm = sc.default_microphone()
         try:
-            a.mic_name = resolve_mic_name(a.mic or None, [m.name for m in sc.all_microphones(include_loopback=False)],
+            a.mic_name = resolve_mic_name(a.mic or None, [m.name for m in sc.all_microphones(include_loopback=a.allow_monitor)],
                                           dm.name if dm else None)
             spk = None
             try:
@@ -603,7 +614,7 @@ def _main(argv, vm) -> int:
                 spk = sp[k].name if k is not None else None
             except LookupError:
                 pass
-            check_mic_feedback(a.mic_name, a.device, spk, same_name_ok=is_linux())
+            check_mic_feedback(a.mic_name, a.device, spk, same_name_ok=is_linux(), allow_monitor=a.allow_monitor)
         except (LookupError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
@@ -621,6 +632,7 @@ def _main(argv, vm) -> int:
 
     dev = resolve_device(a.compute)
     a.whisper = a.whisper or ("large-v3-turbo" if dev == "cuda" else "small")
+    a.dev = dev
     print(f"compute device: {dev}", flush=True)
     out = Path(a.out) if a.out else None
     if out is not None:
@@ -632,7 +644,8 @@ def _main(argv, vm) -> int:
                  "vram_mib": {"baseline": vram_used_mib()}}
     with VramSampler() as vs:
         t = time.perf_counter()
-        asr = FasterWhisperRecognizer(mdir, a.whisper, "zh", dev)
+        asr = FasterWhisperRecognizer(mdir, a.whisper, "zh", dev,
+                                      fast=live and os.environ.get("TLWU_CPU_FAST", "1") != "0")
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()

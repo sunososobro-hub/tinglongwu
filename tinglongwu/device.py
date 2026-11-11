@@ -152,6 +152,18 @@ def compute_type(device: str, role: str = "asr") -> str:
     return "int8"
 
 
+def cpu_threads(count=None, env=None) -> int:
+    """Whisper threads for the CPU speak path (#186): half the logical CPUs (~ physical cores), 4..8.
+    faster-whisper's default is 4. Env TLWU_CPU_THREADS overrides."""
+    import os
+
+    raw = (os.environ if env is None else env).get("TLWU_CPU_THREADS")
+    if raw and raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    n = count if count is not None else (os.cpu_count() or 8)
+    return max(4, min(8, n // 2))
+
+
 ASR_FP16_MIN_FREE_MIB = 9000  # below this much free VRAM at load time Whisper uses int8_float16 (see asr_compute_type)
 
 

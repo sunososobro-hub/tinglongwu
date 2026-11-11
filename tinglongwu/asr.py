@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .device import asr_compute_type, resolve_device
+from .device import asr_compute_type, cpu_threads, resolve_device
 from .hallucination import is_hallucination
 from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
 from .models import require
@@ -56,21 +56,27 @@ class FasterWhisperRecognizer(Recognizer):
     NO_SPEECH = 0.6
 
     def __init__(self, models_dir: Path, size: str = "small", lang: str = "auto",
-                 device: str = "auto", glossary=None, candidates=None, lang_file=None):
+                 device: str = "auto", glossary=None, candidates=None, lang_file=None,
+                 fast: bool = False):
         path = require(models_dir / f"whisper-{size}", f"Whisper model '{size}'",
                        f"--whisper {size}")
         from faster_whisper import WhisperModel
 
         self.device = resolve_device(device)
+        # #186 fast: live CPU speak mode. Greedy decode, no timestamp tokens, all physical cores. CUDA never uses it.
+        self.fast = bool(fast) and self.device == "cpu"
+        self.beam = 1 if self.fast else 5
+        threads = {"cpu_threads": cpu_threads()} if self.fast else {}
         try:
             self.model = WhisperModel(str(path), device=self.device,
-                                      compute_type=asr_compute_type(self.device))
+                                      compute_type=asr_compute_type(self.device), **threads)
         except RuntimeError as e:  # e.g. CUDA out of memory / driver problem at load time
             if self.device != "cuda":
                 raise
             print(f"tlwu: GPU load failed ({e}); falling back to CPU.", file=sys.stderr)
             self.device = "cpu"
             self.model = WhisperModel(str(path), device="cpu", compute_type="int8")
+            self.fast, self.beam = False, 5
         self.lang = None if lang == "auto" else lang  # auto: lock after first speech
         self.auto = lang == "auto"
         # auto + candidates: re-detect every segment, restricted to the candidate set (never locks)
@@ -124,9 +130,10 @@ class FasterWhisperRecognizer(Recognizer):
         kw = (dict(temperature=(0.3, 0.5, 0.7), repetition_penalty=1.1, initial_prompt=None) if retry
               else dict(temperature=(0.0, 0.2, 0.4), initial_prompt=make_prompt(self._last)))
         segs, info = self.model.transcribe(
-            audio, language=lang, task="transcribe", beam_size=5, vad_filter=False,
+            audio, language=lang, task="transcribe", beam_size=getattr(self, "beam", 5), vad_filter=False,
             condition_on_previous_text=False, no_speech_threshold=self.NO_SPEECH,
-            log_prob_threshold=-1.0, compression_ratio_threshold=2.4, hotwords=self._hot(), **kw)
+            log_prob_threshold=-1.0, compression_ratio_threshold=2.4, hotwords=self._hot(),
+            without_timestamps=bool(getattr(self, "fast", False)), **kw)
         segs = [s for s in segs if not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0)]
         return segs, info, " ".join(s.text.strip() for s in segs if s.text.strip())
 

@@ -122,6 +122,32 @@ def latency_line(f: dict) -> str:
     return f"latency asr={f['t_asr']}s mt={f['t_mt']}s first_audio={fa}s done={f['t_tts_done']}s"
 
 
+def timing_line(t: dict, tts: bool = True) -> str:
+    """#186: '   [vad 0.60 | stt 1.10 | mt 0.20 | tts 0.80 | total 2.70 s]', all seconds from the end of speech:
+    vad = endpoint silence waited before the segment was cut, stt, mt, tts = MT done -> first audio.
+    A stage that did not run shows '-' (and is not in the total); tts=False (text mode) leaves tts out."""
+    names = (("vad", "vad"), ("asr", "stt"), ("mt", "mt")) + ((("tts", "tts"),) if tts else ())
+    parts = [f"{label} {t[k]:.2f}" if k in t else f"{label} -" for k, label in names]
+    total = sum(t.get(k, 0.0) for k, _ in names)
+    return f"   [{' | '.join(parts)} | total {total:.2f} s]"
+
+
+def live_endpoint(device: str, override=None, env=None) -> tuple[float, float]:
+    """(min_silence, step) seconds for the live Segmenter. The end-of-speech wait is min_silence rounded up to the
+    next step, so CPU (#186) uses 0.4 / 0.25 instead of 0.6 / 0.5. `override` (--end-silence) or env
+    TLWU_END_SILENCE wins; CUDA keeps the old defaults."""
+    import os
+
+    raw = override if override is not None else (os.environ if env is None else env).get("TLWU_END_SILENCE")
+    try:
+        sil = float(raw) if raw not in (None, "") else None
+    except ValueError:
+        sil = None
+    if sil is not None and sil > 0:
+        return sil, (0.5 if device == "cuda" else min(0.25, sil))
+    return (0.6, 0.5) if device == "cuda" else (0.4, 0.25)
+
+
 class TimedASR:
     """Wraps an ASR object: transcribe() time lands in `lat` as 'asr' (last call wins: dropped segments are not
     part of the utterance that follows)."""
