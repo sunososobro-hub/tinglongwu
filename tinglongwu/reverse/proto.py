@@ -328,7 +328,8 @@ def make_segmenter(max_seg: float, dev: str = "cpu", pause=None, vad_fn=None, en
     from .logic import live_endpoint, live_vad_pad
 
     sil, step = live_endpoint(dev, pause, env)
-    return Segmenter(max_seg, True, min_silence=sil, step=step, vad_pad=live_vad_pad(dev, env), vad_fn=vad_fn), sil
+    extra = {"vad_fn": vad_fn} if vad_fn is not None else {}
+    return Segmenter(max_seg, True, min_silence=sil, step=step, vad_pad=live_vad_pad(dev, env), **extra), sil
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
