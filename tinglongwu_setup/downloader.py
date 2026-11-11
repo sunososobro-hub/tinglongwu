@@ -360,9 +360,20 @@ def main(argv=None) -> int:
     p.add_argument("--piper-ru", nargs="?", const="dmitri", default=None, choices=sorted(PIPER_RU),
                    help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
                         "piper-tts engine goes in its own TTS venv: pip install piper-tts")
+    p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ru), see packs.py (#178)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
+    if a.packs:
+        from . import packs
+
+        for k in packs.keys_for(a.packs):
+            if k.startswith("opus-"):
+                a.pair.append(k[5:])
+            elif k == HYMT_DIR:
+                a.hymt = True
+            elif k == piper_ru_dir("dmitri"):
+                a.piper_ru = a.piper_ru or "dmitri"
     mdir = Path(a.models_dir)
     mdir.mkdir(parents=True, exist_ok=True)
     mf = mdir / "manifest.json"

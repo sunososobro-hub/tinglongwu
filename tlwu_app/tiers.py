@@ -14,7 +14,7 @@ MB = 1024 * 1024
 WHISPER_PREFERENCE = ("large-v3-turbo", "large-v3", "medium", "small", "base", "tiny")
 
 # approximate download sizes in bytes (from the pinned repos), used for the progress bar only
-SIZES = {"whisper-small": 464 * MB, "whisper-large-v3-turbo": 1640 * MB, "opus": 250 * MB,
+SIZES = {"whisper-small": 464 * MB, "whisper-large-v3-turbo": 1640 * MB, "opus": 200 * MB,
          "qwen3-4b": 2460 * MB, "qwen3-8b": 4800 * MB}
 
 
@@ -36,7 +36,7 @@ class Tier:
         return f"約 {gb:.1f} GB" if gb >= 1 else f"約 {self.total_bytes // MB} MB"
 
     def downloader_args(self) -> list[str]:
-        return ["--whisper", self.whisper, "--langs", "ru,ja,en", "--to", "zh", *self.qwen]
+        return ["--whisper", self.whisper, "--packs", "zh,en", *self.qwen]  # #178: ja/ru packs on demand
 
 
 def _tier(name, whisper, qwen, label, qparts):
