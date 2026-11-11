@@ -6,12 +6,16 @@ import sys
 
 from .capture import select_backend
 from .models import ModelNotFound, models_dir
+from .engines import ENGINES
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
 # #60: on CPU, ASR + MT already add seconds per line; holding an unfinished fragment the full 6 s on top makes the
 # subtitle feel stuck. Used only when neither --preset nor --max-wait was given (an explicit choice is kept).
 CPU_MAX_WAIT = 3.0
+# #273 re-translation: with live drafts on screen a final waits for the whole sentence (the draft hides the wait), so
+# the chat preset's 1.5 s cap (which cut finals mid-clause) is raised to this unless --max-wait was given. GPU only.
+RETRANS_MAX_WAIT = 6.0
 
 
 def parse_args(argv=None):
@@ -57,19 +61,17 @@ def parse_args(argv=None):
                    help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
                         "is held (default from --preset; on CPU without --preset / --max-wait: "
                         f"{CPU_MAX_WAIT:g}; a pause of >= 0.8 s sends it earlier)")
-    p.add_argument("--engine", choices=["auto", "hymt", "qwen", "qwen4b", "opus", "m2m"], default="auto",
-                   help="auto (default): after Whisper loads, on a usable GPU pick Hy-MT2 when it is installed "
-                        "(`tlwu-setup --hymt`, needs ~2 GB free VRAM); without it Qwen3-8B (>=5.8 GB free), "
-                        "else Qwen3-4B (>=3.5 GB); else OPUS; on CPU OPUS unless `tlwu --probe --speed` measured Hy-MT2 "
-                        "under 1.0 s/sentence on this machine; hymt = Hy-MT2 (direct src->target, "
-                        "fast, ~1.5 GB); qwen = Qwen3-8B, qwen4b = Qwen3-4B "
-                        "(direct src->target LLM, needs `tlwu-setup --qwen`); opus: src->en->target OPUS-MT; "
-                        "m2m: M2M-100 1.2B direct")
+    p.add_argument("--engine", choices=list(ENGINES), default="auto",
+                   help="auto (default) = hymt: Hy-MT2 1.8B (direct src->target, `tlwu-setup --hymt`), on the GPU "
+                        "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
+                        "command (no silent engine switch, #276); opus: src->en->target OPUS-MT, only when asked")
     p.add_argument("--stream", action="store_true",
                    help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
                         "audio and translate the whole partial text at once; shows ONE dim line (the "
                         "translation) that the final line replaces (default off; needs a terminal; costs extra "
-                        "GPU work; --file is paced in real time)")
+                        "GPU work; --file is paced in real time). With drafts on, a final line waits for the whole sentence: "
+                        f"on GPU --max-wait is at least {RETRANS_MAX_WAIT:g} s unless given, and a timeout cuts at a "
+                        "comma, not mid-clause")
     p.add_argument("--stream-src", action="store_true",
                    help="with --stream: also show the dim source-language draft line above the translation")
     p.add_argument("--debug-latency", action="store_true",
@@ -80,11 +82,13 @@ def parse_args(argv=None):
                    help="keep the chosen models even when lines arrive late (default: if speech end -> translated "
                         "line stays over 2 s for 3 lines, step down the translation engine, then the speech "
                         "model, and step back up after a stable period; one stderr line per switch)")
+    p.add_argument("--builtin-glossary", action="store_true",
+                   help="also load the built-in tech/dev glossary (your --glossary entries win)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
-                        "given to the Qwen engine as required translations; with OPUS, `target ~ wrong | wrong` "
+                        "given to Hy-MT2 as reference translations; with OPUS, `target ~ wrong | wrong` "
                         "replaces known wrong renderings in the output. "
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
@@ -107,6 +111,7 @@ def parse_args(argv=None):
                         "and tlwu-setup --speaker-model). Off by default")
     a = p.parse_args(argv)
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
+    a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
@@ -157,49 +162,40 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) 
 
 def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
     """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
-    from .qwen import build_qwen_with_fallback, choose_engine
-    from .translate import M2mTranslator, PivotTranslator
+    from .engines import choose_engine
+    from .hymt import JaRouter
+    from .translate import PivotTranslator
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
-    if name in ("qwen3-8b", "qwen3-4b"):
-        errors: list = []
-        tr, got = build_qwen_with_fallback(mdir, name, zh_variant, dev, errors=errors)
-        if tr is not None:
-            say(f"tlwu: translation engine = {got} ({why})" if got == name
-                else f"tlwu: translation engine = {got} ({name} failed to load, fell back)", file=sys.stderr)
-            return tr
-        # loud on purpose (#74): OPUS translates much worse, the user must know it is not Qwen and why
-        say(f"tlwu: WARNING: Qwen engine failed to load, falling back to OPUS (lower translation quality). "
-            f"Reason: {errors[-1] if errors else 'unknown'}", file=sys.stderr)
-        name, why = "opus", "Qwen failed to load"
-    from .hymt import JaRouter
 
-    if name == "hymt2":
+    if name in ("hymt2", "hymt2-cpu"):
         from .hymt import hymt_path
-        from .models import require
 
-        require(hymt_path(mdir), "Hy-MT2 translation model", "--hymt")  # explicit --engine hymt without the file
+        if name == "hymt2-cpu":
+            name, dev = "hymt2", "cpu"
+        if not hymt_path(mdir).exists():  # #276: no fallback engine; say how to get it and stop
+            raise SystemExit(f"tlwu: the translation model Hy-MT2 is not installed ({hymt_path(mdir)} missing). "
+                             "Run `tlwu-setup --hymt` once (with network), then start again.")
         tr = JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev, all_pairs=True,
                       warn=lambda m: say(m, file=sys.stderr))
         try:
             if tr.hy is None:
                 raise RuntimeError(tr.hy_error)
             tr.hy.preload()
-            say(f"tlwu: translation engine = hymt2 ({why})", file=sys.stderr)
-        except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: loud, like Qwen (#74)
-            tr._fallback(e)
-            say("tlwu: translation engine = opus (Hy-MT2 failed to load)", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: stop, never switch engines
+            raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
+                             "`tlwu-setup --hymt` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
+                             "PC), or run with --engine opus.") from e
+        say(f"tlwu: translation engine = hymt2 on {dev} ({why})", file=sys.stderr)
         return tr
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
-    if name == "m2m":
-        return M2mTranslator(mdir, zh_variant, dev)
 
     # OPUS has no usable Japanese: ja pairs go direct through Hy-MT2 when installed, else ja -> en -> zh pivot
     return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
 
 
 def apply_glossary(translator, glossary) -> None:
-    """Hand the --glossary to the MT engine: Qwen uses it in its prompt; JaRouter passes it on to Hy-MT2 and the
+    """Hand the --glossary to the MT engine: JaRouter passes it on to Hy-MT2 (terms in its prompt) and the
     OPUS pivot, which apply its `~` wrong-rendering fixes to their zh output (#30, #174)."""
     if hasattr(translator, "glossary"):
         translator.glossary = glossary
@@ -212,10 +208,10 @@ def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make
     from .adapt import Ladder, LatencyController, Switchable, SwitchableTranslator, smaller_whisper
     from .hymt import JaRouter
     from .models import whisper_installed
-    from .translate import M2mTranslator, PivotTranslator
+    from .translate import PivotTranslator
 
     ladders = []
-    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator, M2mTranslator)):
+    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator)):
         def opus():
             tr = JaRouter(PivotTranslator(mdir, a.zh_variant, device=dev), mdir, a.zh_variant, dev)
             tr.glossary = glossary  # Hy-MT2 and the OPUS pivot behind the router (#174)
@@ -292,6 +288,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         warned.append(m)
 
     dev = resolve_device(a.compute, warn=warn)
+    from . import threads as thread_budget
+
+    thread_budget.set_role("listen")  # #250: one `tlwu: threads ...` line before any model loads
     if a.model is None:
         a.model = auto_model(getattr(a, "quality", "auto"), dev, mdir)
     if notice is not None and dev == "cpu" and a.compute != "cpu":
@@ -308,6 +307,11 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         except (OSError, UnicodeDecodeError) as e:
             raise RuntimeError(f"cannot read --glossary: {e}") from e
         print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
+    if getattr(a, "builtin_glossary", False):
+        from .glossary import load_builtin, merge
+
+        glossary = merge(glossary, load_builtin())
+        print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     note("loading speech model...")
     cands = None
     if a.lang == "auto" and getattr(a, "lang_candidates", None):
@@ -357,6 +361,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .stream import PacedSource
 
             source = PacedSource(source)
+    if draft is not None and merger is not None and dev != "cpu" and not getattr(a, "max_wait_explicit", False):
+        merger.max_wait = max(merger.max_wait, RETRANS_MAX_WAIT)
     labeler = None
     if getattr(a, "speakers", False):
         from .speaker_embed import make_labeler

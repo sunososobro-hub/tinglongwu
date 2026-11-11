@@ -3,7 +3,7 @@ windows_menu.ps1 so both behave the same:
 
     python -m tinglongwu.menuopts listen    -> prints one argument per line on stdout (notes/questions on stderr)
 
-* Glossary: if the user glossary folder (<config dir>/glossary, e.g. %APPDATA%\\tinglongwu\\glossary or
+* Glossary: always `--builtin-glossary` (#256); if the user glossary folder (<config dir>/glossary, e.g. %APPDATA%\\tinglongwu\\glossary or
   ~/.config/tinglongwu/glossary) holds *.txt files, add `--glossary <folder>`. Putting files there is the opt-in.
 * CPU translation engine: without a usable GPU `--engine auto` uses OPUS (fast, but the ru->en->zh pivot can lose or
   flip meaning, e.g. negations) unless `tlwu --probe --speed` already chose Hy-MT2. When Hy-MT2 is installed and no
@@ -30,9 +30,9 @@ def _glossary_args(say) -> list[str]:
     d = glossary_dir()
     files = sorted(d.glob("*.txt")) if d.is_dir() else []
     if not files:
-        return []
+        return ["--builtin-glossary"]  # built-in tech/dev terms by default (#256)
     say(t("menu_glossary_on", n=len(files), dir=d))
-    return ["--glossary", str(d)]
+    return ["--glossary", str(d), "--builtin-glossary"]  # user entries win over built-in ones
 
 
 def _hymt_ready(mdir) -> bool:
@@ -118,9 +118,10 @@ def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
 
 
 def stream_default(device: str, both: bool) -> bool:
-    """#257: default answer of the live-draft (`--stream`) question. On only for CPU in listen-only mode; GPU and the
-    listen+speak mode (background listener must not redraw the terminal) stay off."""
-    return device == "cpu" and not both
+    """#257 / #273: default answer of the live-draft (`--stream`) question. On in listen-only mode on any device
+    (re-translation: drafts show within ~2 s, finals are whole sentences); the listen+speak mode (background listener
+    must not redraw the terminal) stays off."""
+    return not both
 
 
 def main(argv=None) -> int:

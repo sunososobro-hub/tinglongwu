@@ -8,7 +8,7 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
 
   tlwu-setup --whisper small --langs ru,ja --to zh,ko
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
-      --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
+      --pair s-t  : one explicit pair (repeatable)
   tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
   tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
@@ -76,9 +76,9 @@ def sha256(p: Path) -> str:
     return h.hexdigest()
 
 
-def hash_tree(d: Path) -> dict[str, str]:
+def hash_tree(d: Path, skip: tuple = ()) -> dict[str, str]:
     return {p.relative_to(d).as_posix(): sha256(p) for p in sorted(d.rglob("*"))
-            if p.is_file() and ".cache" not in p.parts}
+            if p.is_file() and ".cache" not in p.parts and p.relative_to(d).as_posix() not in skip}
 
 
 def load_pins() -> dict:
@@ -96,8 +96,9 @@ def check_pinned(pin_files: dict, files: dict, key: str) -> None:
                  f"changed). Delete the model directory to re-download.")
 
 
-def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | None = None) -> None:
-    files = hash_tree(d)
+def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | None = None,
+                  skip: tuple = ()) -> None:
+    files = hash_tree(d, skip)
     if pin_files:
         check_pinned(pin_files, files, key)
     if key in man:
@@ -162,12 +163,15 @@ def extract_argos(z: Path, dest: Path, work: Path) -> None:
             (shutil.copytree if item.is_dir() else shutil.copy2)(item, dest / item.name)
 
 
-def get_pair(man, mdir, pair):
+def get_pair(man, mdir, pair, allow_unpinned=False):
     s, t = pair.split("-")
     key, dest = f"opus-{s}-{t}", mdir / "opus" / pair
     pin = load_pins()["argos"].get(key)
     if dest.exists() and key in man:
         return pin_or_verify(man, key, dest, {}, pin and pin["files"])
+    if not pin and not allow_unpinned:
+        sys.exit(f"{key} is not in the committed pin manifest; refusing to download it from the mutable Argos "
+                 f"index. Re-run with --allow-unpinned to pin-on-first-download anyway.")
     url = pin["url"] if pin else man.get(key, {}).get("url")
     if not pin:
         print(f"WARNING: {key} is not in the committed pin manifest; trusting the mutable Argos index "
@@ -189,47 +193,6 @@ def get_pair(man, mdir, pair):
     pin_or_verify(man, key, dest, {"url": url}, pin and pin["files"])
 
 
-def get_m2m(man, mdir, size="1.2B"):
-    """M2M-100 1.2B (MIT): download facebook/m2m100_1.2B, convert to CTranslate2 int8 -> models/m2m-1.2B/.
-
-    Only model.safetensors is fetched (never the pickle pytorch_model.bin): the main branch has no safetensors
-    file, so the pin is Hugging Face's own SFconvertbot conversion PR (refs/pr/7), by commit sha + SHA256.
-
-    Conversion needs torch + transformers (dev-only, NOT runtime deps). They may live in another
-    interpreter: set TLWU_CONVERTER_PYTHON to its python.exe.
-    """
-    import subprocess
-
-    key, dest = f"m2m-{size}", mdir / f"m2m-{size}"
-    if dest.exists() and key in man:
-        return pin_or_verify(man, key, dest, {k: man[key][k] for k in ("repo", "revision")})
-    py = os.environ.get("TLWU_CONVERTER_PYTHON", sys.executable)
-    chk = subprocess.run([py, "-c", "import torch, transformers, ctranslate2"], capture_output=True)
-    if chk.returncode:
-        sys.exit("M2M-100 conversion needs torch + transformers + ctranslate2 in one interpreter "
-                 "(dev-only; a throwaway venv is fine): pip install torch transformers ctranslate2 sentencepiece, "
-                 "then set TLWU_CONVERTER_PYTHON=<that python> and rerun.")
-    from huggingface_hub import snapshot_download
-
-    repo, rev, pf = resolve_hf(man, key, f"facebook/m2m100_{size}")
-    if not pf or "model.safetensors" not in pf:
-        sys.exit("refusing to convert M2M-100 without a pinned safetensors revision (pickle weights are not loaded).")
-    files = ["sentencepiece.bpe.model", "vocab.json", "tokenizer_config.json", "special_tokens_map.json"]
-    with tempfile.TemporaryDirectory() as tmp:
-        src = Path(tmp) / "hf"
-        snapshot_download(repo, revision=rev, local_dir=str(src), allow_patterns=[
-            "config.json", "generation_config.json", "model.safetensors", *files])
-        check_pinned(pf, hash_tree(src), key)
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.mkdir(parents=True)
-        subprocess.check_call([py, "-m", "ctranslate2.converters.transformers", "--model", str(src),
-                               "--output_dir", str(dest / "model"), "--quantization", "int8",
-                               "--copy_files", *files[1:]])
-        shutil.copy2(src / "sentencepiece.bpe.model", dest / "sentencepiece.bpe.model")
-    pin_or_verify(man, key, dest, {"repo": repo, "revision": rev})
-
-
 QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official Qwen repos
     "qwen3-8b": ("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
     "qwen3-4b": ("Qwen/Qwen3-4B-GGUF", "Qwen3-4B-Q4_K_M.gguf"),
@@ -238,6 +201,7 @@ QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official
 
 HYMT_DIR = "hymt2-1.8b"  # keep in sync with tinglongwu.hymt (setup does not import tinglongwu)
 HYMT_GGUF = ("tencent/Hy-MT2-1.8B-GGUF", "Hy-MT2-1.8B-Q4_K_M.gguf")  # Apache-2.0, ~1.1 GB: Japanese MT
+HYMT_EXTRAS = ("LICENSE.txt",)  # upstream Apache-2.0 text, kept next to the model
 
 
 def get_qwen(man, mdir, name):
@@ -247,21 +211,30 @@ def get_qwen(man, mdir, name):
 
 def get_hymt(man, mdir):
     """Hy-MT2-1.8B Q4_K_M GGUF -> models/hymt2-1.8b/ (direct zh<->ja translation)."""
-    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF)
+    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF, extras=HYMT_EXTRAS)
 
 
-def get_gguf(man, mdir, name, repo, fname):
+def get_gguf(man, mdir, name, repo, fname, extras=()):
+    """extras: unpinned side files (license text) fetched at the same revision and left out of the SHA256 pins."""
     dest = mdir / name
     if not (dest.exists() and name in man):
         from huggingface_hub import snapshot_download
 
         repo, rev, pf = resolve_hf(man, name, repo)
-        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname])
+        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname, *extras])
         src = {"repo": repo, "revision": rev}
     else:
         src = man[name]
         pf = (load_pins()["models"].get(name) or {}).get("files")
-    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
+        missing = [e for e in extras if not (dest / e).exists()]
+        if missing:  # existing install: fetch only the side files, never the GGUF again
+            from huggingface_hub import snapshot_download
+
+            try:
+                snapshot_download(src["repo"], revision=src["revision"], local_dir=str(dest), allow_patterns=missing)
+            except Exception as e:  # noqa: BLE001 - a missing license file must not break an installed model
+                print(f"WARNING: could not fetch {missing} for {name}: {e}")
+    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf, skip=tuple(extras))
 
 
 VOSK_TTS_RU = "vosk-model-tts-ru-0.7-multi"  # keep in sync with tinglongwu.models.VOSK_TTS_RU_DIR
@@ -422,8 +395,6 @@ def main(argv=None) -> int:
     p.add_argument("--pair", action="append", default=[], help="e.g. ru-en, en-zh")
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
-    p.add_argument("--m2m", action="store_true",
-                   help="M2M-100 1.2B direct translation (MIT): download + convert with ct2-transformers-converter")
     p.add_argument("--qwen", action="store_true",
                    help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
     p.add_argument("--qwen4b", action="store_true",
@@ -443,6 +414,8 @@ def main(argv=None) -> int:
                    help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
                         "piper-tts engine goes in its own TTS venv: pip install piper-tts")
     p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ru), see packs.py (#178)")
+    p.add_argument("--allow-unpinned", action="store_true",
+                   help="allow Argos pairs that are not in the committed pin manifest (mutable index, pin-on-first-use)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
@@ -469,8 +442,6 @@ def main(argv=None) -> int:
                 pf = KOKORO_PINS
             if key == SPEAKER_DIR:
                 pf = {n: h for n, (_, h) in SPEAKER_FILES.items()}
-            if key.startswith("m2m-"):
-                pf = None  # pins cover the HF source files, not the locally converted CT2 output
             pin_or_verify(man, key, d, {}, pf)
         return 0
     for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
@@ -478,9 +449,6 @@ def main(argv=None) -> int:
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     for s in a.whisper:
         get_whisper(man, mdir, s)
-        mf.write_text(json.dumps(man, indent=1), "utf-8")
-    if a.m2m:
-        get_m2m(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.qwen or a.qwen4b:
         for name in (QWEN_GGUF if a.qwen else ["qwen3-4b"]):
@@ -504,7 +472,7 @@ def main(argv=None) -> int:
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
              + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])
     for pr in dict.fromkeys(pairs):
-        get_pair(man, mdir, pr)
+        get_pair(man, mdir, pr, a.allow_unpinned)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     return 0
 

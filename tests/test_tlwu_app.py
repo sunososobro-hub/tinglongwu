@@ -20,8 +20,8 @@ def gpu(total):
     (8192, "gpu", "large-v3-turbo", ("--hymt",)),  # #106: no Qwen by VRAM any more, 8 GB gets Hy-MT2 too
     (6144, "gpu", "large-v3-turbo", ("--hymt",)),
     (4096, "gpu", "large-v3-turbo", ("--hymt",)),
-    (4095, "gpu-min", "small", ()),
-    (2048, "gpu-min", "small", ()),
+    (4095, "gpu-min", "small", ("--hymt",)),  # #301: Hy-MT2 runs on the CPU below 4 GB VRAM
+    (2048, "gpu-min", "small", ("--hymt",)),
 ])
 def test_tier_by_total_vram_matches_install_ps1(total, name, whisper, mt):
     t = tiers.choose_tier(gpu(total))
@@ -37,10 +37,11 @@ def test_gpu_tier_threshold_is_the_hwprobe_one():
 
 def test_no_gpu_or_forced_cpu_is_cpu_tier():
     for t in (tiers.choose_tier(None), tiers.choose_tier(gpu(24000), force_cpu=True)):
-        assert (t.name, t.whisper, t.mt) == ("cpu", "small", ())
-    assert tiers.T_CPU.downloader_args() == ["--whisper", "small", "--packs", "zh,en"]
-    assert tiers.T_GPU.downloader_args() == ["--whisper", "large-v3-turbo", "--packs", "zh,en", "--hymt"]
-    assert "GB" in tiers.T_GPU.size_text and "MB" in tiers.T_CPU.size_text
+        assert (t.name, t.whisper, t.mt) == ("cpu", "small", ("--hymt",))
+    assert tiers.T_CPU.downloader_args() == ["--whisper", "small", "--packs", "zh,en", "--allow-unpinned", "--hymt"]
+    assert tiers.T_MIN.downloader_args() == ["--whisper", "small", "--packs", "zh,en", "--allow-unpinned", "--hymt"]
+    assert tiers.T_GPU.downloader_args() == ["--whisper", "large-v3-turbo", "--packs", "zh,en", "--allow-unpinned", "--hymt"]
+    assert "GB" in tiers.T_GPU.size_text and "GB" in tiers.T_CPU.size_text  # small + OPUS + Hy-MT2 ~1.8 GB
     assert tiers.T_GPU.total_bytes < 3.5 * 1024 * tiers.MB  # turbo + OPUS + Hy-MT2, not the old ~10 GB Qwen tier
 
 
@@ -62,13 +63,16 @@ def test_parse_smi_and_detect_gpu(monkeypatch):
     assert tiers.detect_gpu(run=boom) is None
 
 
-def _fake_models(d, whisper=("small",), opus=True):
+def _fake_models(d, whisper=("small",), opus=True, hymt=True):
     for w in whisper:
         (d / f"whisper-{w}").mkdir(parents=True)
         (d / f"whisper-{w}" / "model.bin").write_bytes(b"x")
     if opus:
         (d / "opus" / "en-zh" / "model").mkdir(parents=True)
         (d / "opus" / "en-zh" / "model" / "model.bin").write_bytes(b"x")
+    if hymt:
+        (d / "hymt2-1.8b").mkdir(parents=True, exist_ok=True)
+        (d / "hymt2-1.8b" / "Hy-MT2-1.8B-Q4_K_M.gguf").write_bytes(b"x")
 
 
 def test_models_ready_and_best_installed(tmp_path):
@@ -82,6 +86,14 @@ def test_models_ready_and_best_installed(tmp_path):
     _fake_models(tmp_path.parent / "m2", ("small", "large-v3-turbo"))
     assert tiers.best_installed_model(tmp_path.parent / "m2", "small") == "small"
     assert tiers.best_installed_model(tmp_path.parent / "m2", None) == "large-v3-turbo"
+
+
+def test_models_ready_needs_the_hymt_gguf(tmp_path):
+    """#301: an older install (Whisper + OPUS, no Hy-MT2) must reopen the first-run setup, tlwu stops without Hy."""
+    _fake_models(tmp_path, ("small",), hymt=False)
+    assert not tiers.models_ready(tmp_path)
+    _fake_models(tmp_path / "x", ("small",))
+    assert tiers.models_ready(tmp_path / "x")
 
 
 def test_progress_fraction_capped():

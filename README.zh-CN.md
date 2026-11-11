@@ -126,7 +126,7 @@ New-NetFirewallRule -DisplayName "tlwu-block" -Direction Outbound -Action Block 
 python -m tinglongwu --file talk.wav      # 必须仍能工作
 Remove-NetFirewallRule -DisplayName "tlwu-block"
 ```
-Linux：`unshare -n -r python -m tinglongwu --file talk.wav`（测试请用 `--file`），或 nftables：`nft add rule inet filter output meta skuid $UID drop`。
+Linux：`scripts/linux_offline_run.sh --file talk.wav`（Ubuntu 23.10+ 的 AppArmor 会让 `unshare -rn` 失败；脚本以 sudo unshare＋setpriv 切网络，无 sudo 时回退 firejail），或 `unshare -n -r python -m tinglongwu --file talk.wav`（测试请用 `--file`），或 nftables：`nft add rule inet filter output meta skuid $UID drop`。
 macOS：`pf` 规则（`block drop out quick all user $USER`，用 `pfctl -f` 加载），或用 Little Snitch／LuLu 禁止该 Python 联网。
 
 然后运行 `python scripts/verify_offline.py --file talk.wav`。
@@ -155,7 +155,6 @@ tlwu-setup --whisper small --langs ru --to zh
 
 任何有 OPUS-MT/Argos 包的语言组合都能用：`--langs` 下载“源语言->英文”，`--to` 下载“英文->目标”（例如 `--langs ru,ja --to zh,ko`），只下载你需要的。缺少某组合时，tlwu 会停止并指出该组合和确切的下载命令。
 
-**可选 M2M-100 引擎（`--engine m2m`）**：不经英文中转，直接翻译，**MIT 许可**（可商用）。`tlwu-setup --m2m` 会下载 facebook/m2m100_1.2B 并用 `ct2-transformers-converter` 转换；转换需要 `torch` 和 `transformers`，它们不是运行时依赖：请在一次性 venv 中安装，并用 `TLWU_CONVERTER_PYTHON` 指向它。仅从 `models/m2m-1.2B/` 加载。 转换只读 `model.safetensors`（固定 Hugging Face 官方 SFconvertbot PR 的 commit，因为 `main` 只有 pickle 的 `pytorch_model.bin`），不会反序列化任何 pickle；没有固定的 safetensors 版本时 `tlwu-setup` 拒绝转换。
 
 
 #### 模型来源固定
@@ -167,7 +166,6 @@ tlwu-setup --whisper small --langs ru --to zh
 | Whisper tiny/base/small/medium/large-v3（CT2） | `Systran/faster-whisper-*` | SYSTRAN | MIT |
 | **Whisper large-v3-turbo（CT2）** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh（第三方，非 OpenAI、非 SYSTRAN）** | MIT；社区的 CTranslate2 转换版，信任范围仅限于固定的 commit 与哈希 |
 | Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen（阿里巴巴） | Apache-2.0 |
-| M2M-100 1.2B | `facebook/m2m100_1.2B` | Meta | MIT；**仅用 safetensors**（见上） |
 | OPUS-MT（Argos 包） | `argos-net.com` | Argos Open Tech | CC-BY 4.0；`ru-en`、`en-zh` 以 URL＋压缩包 SHA256 固定；其他语对首次使用时查询可变的 Argos 索引，之后才固定（会打印警告） |
 
 ### GPU（可选，NVIDIA）

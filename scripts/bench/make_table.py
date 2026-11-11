@@ -22,7 +22,7 @@ def read(p):
 
 def main() -> int:
     d, out = Path(sys.argv[1]), Path(sys.argv[2])
-    engines = [e for e in ("opus", "m2m-418M", "m2m-1.2B", "nllb", "google") if (d / f"asr.{e}.txt").exists()]
+    engines = [e for e in ("opus", "nllb", "google") if (d / f"asr.{e}.txt").exists()]
     src_asr, src_ref = read(d / "units.asr.txt"), read(d / "units.ref.txt")
     asr = {e: read(d / f"asr.{e}.txt") for e in engines}
     ref = {e: read(d / f"ref.{e}.txt") for e in engines}

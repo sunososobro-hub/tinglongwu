@@ -150,6 +150,9 @@ def test_mac_install_full_flow_then_rerun_is_a_repair(mac):
         assert (home / "models" / "kokoro" / name).stat().st_size == size
     # default models: English listening + zh<->en speaking
     assert "tlwu-setup --whisper small --packs zh,en" in calls
+    # #301: Hy-MT2 is the only default engine: llama-cpp-python (CPU build) + the GGUF
+    assert "-m pip install -r requirements-llama-cpu.txt" in calls
+    assert "tlwu-setup --hymt" in calls
     assert "tlwu-setup --selftest --model small" in calls  # last step: load the models, translate a test line (#99)
     # launcher + PATH line for zsh (the macOS default shell)
     menu = home / ".local" / "bin" / "tlwu-menu"
@@ -259,7 +262,7 @@ def menu(tmp_path):
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
     r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert calls == ["tlwu --lang en"]
+    assert calls == ["tlwu --lang en --builtin-glossary"]
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
 
 
@@ -285,7 +288,7 @@ def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     r, calls = menu("1\nn\nn\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
-    assert "tlwu --lang en" in calls
+    assert "tlwu --lang en --builtin-glossary" in calls
     [rev] = [c for c in calls if c.startswith("proto")]
     assert "--to en" in rev and "--tts-engine kokoro" in rev and "--device" not in rev
 

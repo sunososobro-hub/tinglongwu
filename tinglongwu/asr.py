@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import threads as thread_budget
 from .device import asr_compute_type, cpu_threads, resolve_device
 from .hallucination import is_hallucination
 from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
@@ -72,7 +73,11 @@ class FasterWhisperRecognizer(Recognizer):
         # #186 fast: live CPU speak mode. Greedy decode, no timestamp tokens, all physical cores. CUDA never uses it.
         self.fast = bool(fast) and self.device == "cpu"
         self.beam = 1 if self.fast else 5
-        threads = {"cpu_threads": cpu_threads()} if self.fast else {}
+        threads = {}
+        if self.device == "cpu" and thread_budget.both():  # #250 listen+speak: this process's share of the budget
+            threads = {"cpu_threads": thread_budget.current()["asr"]}
+        elif self.fast:
+            threads = {"cpu_threads": cpu_threads()}
         try:
             self.model = WhisperModel(str(path), device=self.device,
                                       compute_type=asr_compute_type(self.device), **threads)

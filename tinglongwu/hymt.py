@@ -5,15 +5,17 @@ languages it knows (`EN_NAMES`); other pairs go to the OPUS pivot. With the othe
 
 OPUS has no usable zh<->ja models (opus-mt-en-jap is Bible-trained; ja-en emits <unk>), so every pair that
 involves Japanese goes through this model, direct src -> tgt with no English pivot. Everything else keeps
-using whatever engine was chosen (OPUS pivot on CPU, Qwen on GPU). `JaRouter` does that routing and falls
+using whatever engine was chosen (OPUS pivot). `JaRouter` does that routing and falls
 back to the OPUS pivot for ja -> X when the GGUF (or llama-cpp-python) is missing.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-from .qwen import _load_llama, clean_output, max_tokens_for
+from .engines import clean_output, max_tokens_for
+from .engines import load_llama as _load_llama
 from .repeat import collapse_repeats
 from .translate import Translation, Translator, strip_unk, zh_convert
 
@@ -22,6 +24,18 @@ HYMT_FILE = "Hy-MT2-1.8B-Q4_K_M.gguf"
 HYMT_REPO = "tencent/Hy-MT2-1.8B-GGUF"
 # Model card sampling for the 1.8B model.
 SAMPLING = dict(temperature=0.7, top_p=0.6, top_k=20, repeat_penalty=1.05)
+
+
+
+def sampling() -> dict:
+    """SAMPLING, with temperature overridable by env TLWU_HYMT_TEMP (e.g. 0 for repeatable terminology)."""
+    s = dict(SAMPLING)
+    try:
+        s["temperature"] = float(os.environ["TLWU_HYMT_TEMP"])
+    except (KeyError, ValueError):
+        pass
+    return s
+
 
 ZH_NAMES = {"zh": "中文", "ja": "日语", "en": "英语", "ru": "俄语", "ko": "韩语", "de": "德语", "fr": "法语",
             "es": "西班牙语"}
@@ -33,8 +47,12 @@ def hymt_path(models_dir: Path) -> Path:
     return Path(models_dir) / HYMT_DIR / HYMT_FILE
 
 
-def build_prompt(text: str, src: str, tgt: str) -> str:
-    """Model-card template; the Chinese one when Chinese is on either side, else the English one."""
+def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | None = None) -> str:
+    """Model-card template; the Chinese one when Chinese is on either side, else the English one.
+    `terms` (source, translation) pairs are prepended in the card's terminology-reference form; none = unchanged."""
+    if terms:
+        ref = "\n".join(f"{a} 翻译成 {b}" for a, b in terms)
+        return f"参考下面的翻译：\n{ref}\n\n" + build_prompt(text, src, tgt)
     if "zh" in (src, tgt):
         return (f"将以下文本翻译成{ZH_NAMES.get(tgt, tgt)}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}")
     return (f"Translate the following text into {EN_NAMES.get(tgt, tgt)}.\n"
@@ -72,6 +90,12 @@ class HyMtTranslator(Translator):
             self._zh_words[w] = zh_convert(w, self.zh_variant)
         return self._zh_words[w]
 
+    def _terms(self, text: str, tgt: str) -> list[tuple[str, str]]:
+        """Glossary entries occurring in the sentence, as (source, zh translation); only for zh output."""
+        if tgt != "zh" or not self.glossary:
+            return []
+        return [(e.main, self._zh_word(e.target)) for e in self.glossary.relevant(text) if e.target]
+
     def _load(self):
         if self.llm is None:
             self.llm = self._loader(self.path, self.device == "cuda")
@@ -85,8 +109,8 @@ class HyMtTranslator(Translator):
         text = collapse_repeats(text)
         self._load()
         r = self.llm.create_chat_completion(
-            [{"role": "user", "content": build_prompt(text, src, tgt)}],
-            max_tokens=max_tokens_for(text), **SAMPLING)
+            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt))}],
+            max_tokens=max_tokens_for(text), **sampling())
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
         if tgt == "zh":
             out = zh_convert(out, self.zh_variant)

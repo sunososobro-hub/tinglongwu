@@ -7,7 +7,7 @@ pack-venv = requirements.txt (without av / psutil) + requirements-qwen.txt (llam
 PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
 CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels of CUDA_SRC (default: the project .venv, read only).
 Steps: nuitka (needs MinGW-w64 gcc, which Nuitka downloads once) -> dist/tlwu -> cuda_libs/, llama DLLs,
-VC++ runtime, licenses, usage text -> dist/tinglongwu-win64.zip.
+VC++ runtime, licenses, usage text -> `tlwu.exe --smoke` (#310; --no-smoke skips) -> dist/tinglongwu-win64.zip.
 """
 from __future__ import annotations
 
@@ -35,6 +35,26 @@ CUDA_WHEELS = {"cublas": ["cublas64_12.dll", "cublasLt64_12.dll"],  # nvblas64_1
 LITE_SKIP = ("cuda_libs", "llama_cpp/lib/ggml-cuda.dll")  # CPU-only variant
 
 
+def lazy_includes() -> list[str]:
+    """--include-module for every submodule filelock loads through its module __getattr__ (#310: filelock._soft was
+    missing from a user's build). --include-package=filelock should already cover them; naming them makes Nuitka
+    fail loudly if one cannot be found in the pack-venv instead of shipping a build that breaks on first download."""
+    import filelock
+
+    lazy = getattr(filelock, "_LAZY_ATTRIBUTES", {})
+    mods = {f"filelock{m}" if m.startswith(".") else m for m in lazy.values()}
+    return [f"--include-module={m}" for m in sorted(mods)]
+
+
+def smoke(app: Path, run=subprocess.run) -> None:
+    """Run the built `tlwu.exe --smoke` (no models, no network): native DLLs and the lazy filelock /
+    huggingface_hub imports of the first-run download (#310). A failure stops the build before the zip."""
+    r = run([str(app / "tlwu.exe"), "--smoke"], cwd=app, capture_output=True, text=True, timeout=300)
+    print(r.stdout, end="")
+    if r.returncode != 0:
+        raise SystemExit(f"tlwu.exe --smoke failed (exit {r.returncode}), not zipping:\n{r.stdout}{r.stderr}")
+
+
 def nuitka_cmd() -> list[str]:
     return [sys.executable, "-m", "nuitka", "--standalone", "--assume-yes-for-downloads", "--jobs=16", "--lto=no",
             "--enable-plugin=tk-inter", "--windows-console-mode=hide", "--output-filename=tlwu.exe",
@@ -42,7 +62,7 @@ def nuitka_cmd() -> list[str]:
             f"--report={EVAL / 'build' / 'nuitka-report.xml'}",
             "--include-package=tlwu_app", "--include-package=tinglongwu", "--include-package=tinglongwu_setup",
             # filelock/huggingface_hub import submodules lazily (__getattr__), so Nuitka cannot see them (#36)
-            "--include-package=filelock", "--include-package=huggingface_hub",
+            "--include-package=filelock", "--include-package=huggingface_hub", *lazy_includes(),
             "--nofollow-import-to=tinglongwu.reverse", "--nofollow-import-to=pytest",
             "--nofollow-import-to=unittest",
             "--include-package-data=faster_whisper", "--include-package-data=opencc",
@@ -151,6 +171,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
     ap.add_argument("--lite", action="store_true", help="CPU-only variant: no CUDA libs / ggml-cuda.dll")
+    ap.add_argument("--no-smoke", action="store_true", help="skip the `tlwu.exe --smoke` check before zipping")
     a = ap.parse_args()
     DIST.mkdir(parents=True, exist_ok=True)
     if not a.post_only:
@@ -174,6 +195,8 @@ def main() -> int:
 
     if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
         print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")
+    if not a.no_smoke:
+        smoke(APP)
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
     return 0

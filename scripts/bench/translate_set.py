@@ -2,7 +2,7 @@
 """Translate a file of Russian sentences (one per line) with tlwu engines -> one output file per engine.
 
 Runs in the normal tlwu venv (.venv), using the real runtime translators and --device logic.
-  python scripts/bench/translate_set.py IN.txt OUTDIR --engines opus,m2m-418M,m2m-1.2B,nllb --device cuda --prefix flores
+  python scripts/bench/translate_set.py IN.txt OUTDIR --engines opus,nllb --device cuda --prefix flores
 Output: OUTDIR/<prefix>.<engine>.txt (one line per input line) and OUTDIR/<prefix>.<engine>.time (seconds).
 """
 from __future__ import annotations
@@ -16,14 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import tinglongwu  # noqa: E402,F401  (offline guard on)
 from tinglongwu.device import resolve_device  # noqa: E402
 from tinglongwu.models import models_dir  # noqa: E402
-from tinglongwu.translate import M2mTranslator, NllbTranslator, PivotTranslator  # noqa: E402
+from tinglongwu.translate import NllbTranslator, PivotTranslator  # noqa: E402
 
 
 def make(engine: str, mdir: Path, dev: str):
     if engine == "opus":
         return PivotTranslator(mdir, "tw", device=dev)
-    if engine.startswith("m2m-"):
-        return M2mTranslator(mdir, "tw", dev, engine[4:])
     if engine == "nllb":
         return NllbTranslator(mdir, "tw", dev)
     raise SystemExit(f"unknown engine {engine}")
@@ -33,7 +31,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("infile")
     ap.add_argument("outdir")
-    ap.add_argument("--engines", default="opus,m2m-418M,m2m-1.2B,nllb")
+    ap.add_argument("--engines", default="opus,nllb")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--prefix", default="out")
     ap.add_argument("--src", default="ru")

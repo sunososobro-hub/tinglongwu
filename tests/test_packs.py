@@ -23,7 +23,8 @@ def fake_net(monkeypatch):
             got.append(key(*a))
         return run
 
-    monkeypatch.setattr(downloader, "get_pair", fake(lambda p: "opus-" + p, lambda p: f"opus/{p}"))
+    pair = fake(lambda p: "opus-" + p, lambda p: f"opus/{p}")
+    monkeypatch.setattr(downloader, "get_pair", lambda man, mdir, p, allow_unpinned=False: pair(man, mdir, p))
     monkeypatch.setattr(downloader, "get_hymt", fake(lambda: "hymt2-1.8b", lambda: "hymt2-1.8b"))
     monkeypatch.setattr(downloader, "get_piper_ru",
                         fake(lambda v: downloader.piper_ru_dir(v), lambda v: downloader.piper_ru_dir(v)))

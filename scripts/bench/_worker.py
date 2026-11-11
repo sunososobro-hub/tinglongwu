@@ -118,13 +118,12 @@ def job_mt_tlwu(job):
     import tinglongwu  # noqa: F401
     from tinglongwu.device import resolve_device
     from tinglongwu.models import models_dir
-    from tinglongwu.translate import M2mTranslator, PivotTranslator
+    from tinglongwu.translate import PivotTranslator
 
     vr = VramPeak()
     dev = resolve_device(job["device"])
     t0 = time.time()
-    tr = PivotTranslator(models_dir(None), "tw", device=dev) if job["engine"] == "opus" \
-        else M2mTranslator(models_dir(None), "tw", dev)
+    tr = PivotTranslator(models_dir(None), "tw", device=dev)
     src, tgt = job.get("src", "ru"), job.get("tgt", "zh")
     tr.preload(src, tgt)
     load = time.time() - t0
@@ -201,7 +200,7 @@ def main() -> int:
     eng = job.get("engine", "")
     if job["task"] == "asr":
         res, meta = job_asr(job)
-    elif eng in ("opus", "m2m"):
+    elif eng == "opus":
         res, meta = job_mt_tlwu(job)
     elif eng.startswith("qwen"):
         res, meta = job_mt_qwen(job)

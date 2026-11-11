@@ -20,6 +20,7 @@ WHISPER_PREFERENCE = ("large-v3-turbo", "large-v3", "medium", "small", "base", "
 # approximate download sizes in bytes (from the pinned repos), used for the progress bar only
 SIZES = {"whisper-small": 464 * MB, "whisper-large-v3-turbo": 1640 * MB, "opus": 200 * MB,
          "hymt2-1.8b": 1130 * MB}
+HYMT_DIR, HYMT_FILE = "hymt2-1.8b", "Hy-MT2-1.8B-Q4_K_M.gguf"  # == tinglongwu.hymt (what tlwu loads)
 GPU_MIN_TOTAL_MB = 4096  # == tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (turbo 1600 + Hy-MT2 1500 + headroom)
 
 
@@ -41,7 +42,8 @@ class Tier:
         return f"約 {gb:.1f} GB" if gb >= 1 else f"約 {self.total_bytes // MB} MB"
 
     def downloader_args(self) -> list[str]:
-        return ["--whisper", self.whisper, "--packs", "zh,en", *self.mt]  # #178: ja/ru packs on demand
+        # #178: ja/ru packs on demand; #254: zh-en has no committed pin yet, the GUI setup is the consent
+        return ["--whisper", self.whisper, "--packs", "zh,en", "--allow-unpinned", *self.mt]
 
 
 def _tier(name, whisper, mt, label, mparts):
@@ -49,8 +51,10 @@ def _tier(name, whisper, mt, label, mparts):
 
 
 T_GPU = _tier("gpu", "large-v3-turbo", ("--hymt",), "GPU：最準確（Whisper large-v3-turbo + Hy-MT2 翻譯）", ("hymt2-1.8b",))
-T_MIN = _tier("gpu-min", "small", (), "精簡（Whisper small + OPUS 翻譯，顯示卡記憶體不足 4 GB）", ())
-T_CPU = _tier("cpu", "small", (), "CPU 模式（Whisper small + OPUS 翻譯，較慢但不需顯示卡）", ())
+# #276/#301: Hy-MT2 is the only default engine, so every tier downloads it (below 4 GB VRAM / no GPU it runs on the CPU)
+T_MIN = _tier("gpu-min", "small", ("--hymt",), "精簡（Whisper small + Hy-MT2 翻譯在 CPU 執行，顯示卡記憶體不足 4 GB）",
+              ("hymt2-1.8b",))
+T_CPU = _tier("cpu", "small", ("--hymt",), "CPU 模式（Whisper small + Hy-MT2 翻譯，較慢但不需顯示卡）", ("hymt2-1.8b",))
 
 
 @dataclass(frozen=True)
@@ -152,9 +156,10 @@ def installed_whisper(mdir: Path) -> list[str]:
 
 
 def models_ready(mdir: Path) -> bool:
-    """At least one Whisper model and the en->zh OPUS pair (the minimum for a working translation)."""
+    """At least one Whisper model, the en->zh OPUS pair and the Hy-MT2 GGUF (#301: tlwu stops without it, #276)."""
     mdir = Path(mdir)
-    return bool(installed_whisper(mdir)) and (mdir / "opus" / "en-zh" / "model" / "model.bin").is_file()
+    return (bool(installed_whisper(mdir)) and (mdir / "opus" / "en-zh" / "model" / "model.bin").is_file()
+            and (mdir / HYMT_DIR / HYMT_FILE).is_file())
 
 
 def best_installed_model(mdir: Path, wanted: str | None = None) -> str | None:

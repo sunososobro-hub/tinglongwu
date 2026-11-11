@@ -25,7 +25,7 @@ DEFAULTS = {
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "hymt", "qwen", "qwen4b", "opus"]
+ENGINES = ["auto", "hymt", "opus"]  # #276: Hy-MT2 is the engine; Qwen is no longer offered
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
 # hardware; manual = the Engine + Speech model boxes decide (#81)
 QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
@@ -97,6 +97,8 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
         out["quality"] = DEFAULTS["quality"]
     if not fresh and "quality" not in data and (out["engine"], out["model"]) != (DEFAULTS["engine"], DEFAULTS["model"]):
         out["quality"] = "manual"  # settings saved before #81 with a hand-picked engine/model: keep that choice
+    if out["engine"] not in ENGINES:  # #276: a saved removed engine (qwen / qwen4b / ...) is no longer a CLI choice
+        out["engine"] = DEFAULTS["engine"]
     if fresh:
         try:
             out["live_draft"] = bool(gpu())

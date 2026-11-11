@@ -35,22 +35,22 @@ def _args(answer="", device="cpu", cached=None, ready=True, asked=None):
 
 def test_cpu_with_hymt_defaults_to_hymt_without_asking():
     asked = []
-    assert _args("", asked=asked) == ["--engine", "hymt"] and asked == []
+    assert _args("", asked=asked) == ["--builtin-glossary", "--engine", "hymt"] and asked == []
 
 
 @pytest.mark.parametrize("kw", [dict(device="cuda"), dict(cached=object()), dict(ready=False)])
 def test_no_question_when_auto_already_decides(kw):
     asked = []
-    assert _args("h", asked=asked, **kw) == [] and asked == []
+    assert _args("h", asked=asked, **kw) == ["--builtin-glossary"] and asked == []
 
 
 def test_glossary_folder_with_txt_is_passed(tmp_path):
     d = tmp_path / "cfg" / "glossary"
     d.mkdir(parents=True)
-    assert _args(device="cuda") == []          # empty folder: nothing
+    assert _args(device="cuda") == ["--builtin-glossary"]          # empty folder: nothing
     (d / "wifi.txt").write_text("роутер = 路由器\n", "utf-8")
-    assert _args(device="cuda") == ["--glossary", str(d)]
-    assert _args("h") == ["--glossary", str(d), "--engine", "hymt"]
+    assert _args(device="cuda") == ["--glossary", str(d), "--builtin-glossary"]
+    assert _args("h") == ["--glossary", str(d), "--builtin-glossary", "--engine", "hymt"]
 
 
 def test_broken_device_check_never_stops_the_menu():
@@ -58,7 +58,7 @@ def test_broken_device_check_never_stops_the_menu():
         raise RuntimeError("probe exploded")
 
     assert menuopts.listen_args(ask=lambda p: "h", say=lambda m: None, device=boom, mdir=Path("."),
-                                cpu_choice=lambda: None, hymt_ready=lambda d: True) == []
+                                cpu_choice=lambda: None, hymt_ready=lambda d: True) == ["--builtin-glossary"]
 
 
 def _fake_env(tmp_path):
@@ -103,7 +103,7 @@ def test_linux_menu_listen_passes_glossary_and_cpu_engine(tmp_path, answer, engi
     assert r.returncode == 0, r.stdout + r.stderr
     args = log.read_text("utf-8").split("\n")[:-1]
     assert args[:4] == ["--lang", "auto", "--lang-candidates", "en,ru,ja,zh"]
-    assert args[4:] == ["--glossary", str(gl)] + engine + ["--stream"]   # #257: CPU listen-only, Enter = drafts on
+    assert args[4:] == ["--glossary", str(gl), "--builtin-glossary"] + engine + ["--stream"]   # #257 drafts on; #256 built-in terms
     assert "Glossary: 1 file(s)" in r.stderr
 
 
@@ -123,8 +123,8 @@ def test_negation_glossary_fix_through_opus_pivot():
 
 
 @pytest.mark.parametrize("device,both,expected", [("cpu", False, True), ("cpu", True, False),
-                                                  ("cuda", False, False), ("cuda", True, False)])
-def test_stream_default_menuopts(device, both, expected):  # #257
+                                                  ("cuda", False, True), ("cuda", True, False)])
+def test_stream_default_menuopts(device, both, expected):  # #257, #273: listen-only drafts on for GPU too
     assert menuopts.stream_default(device, both) is expected
 
 

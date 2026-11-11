@@ -134,7 +134,7 @@ def test_cli_talk_end_to_end(tmp_path, pins, monkeypatch):
     pairs = []
     monkeypatch.setattr(downloader, "_open", Opener())
     monkeypatch.setattr(downloader.get_kokoro, "__defaults__", (Opener(),))
-    monkeypatch.setattr(downloader, "get_pair", lambda man, mdir, pr: pairs.append(pr))
+    monkeypatch.setattr(downloader, "get_pair", lambda man, mdir, pr, allow_unpinned=False: pairs.append(pr))
     r = Runner()
     monkeypatch.setattr(talk.subprocess, "call", r)
     monkeypatch.setattr(talk.main, "__defaults__", (r,))
@@ -164,7 +164,7 @@ def test_install_dry_run_sets_up_talk_mode_and_both_shortcuts():
     s7 = next(i for i, x in enumerate(lines) if x.startswith("[7/8] "))
     s8 = next(i for i, x in enumerate(lines) if x.startswith("[8/8] "))
     talk = [x for x in lines[s6:s7] if "[dry-run]" in x and "--talk" in x]
-    assert len(talk) == 1 and talk[0].rstrip().endswith("--talk --talk-whisper small --talk-compute cpu --talk-mt opus")
+    assert len(talk) == 1 and talk[0].rstrip().endswith("--talk --talk-whisper small --talk-compute cpu --talk-mt auto")  # #301: Hy-MT2 on the CPU
     lnk = [x for x in lines[s7:s8] if "[dry-run] shortcut:" in x]
     # (Linux pwsh has no Desktop folder, so the .lnk path is empty there; the target is what matters)
     assert len(lnk) == 2 and "-NoExit -ExecutionPolicy Bypass -File" in lnk[1] and "tlwu-talk.ps1" in lnk[1]
