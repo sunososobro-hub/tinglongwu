@@ -14,6 +14,10 @@ Nothing leaves your machine: no cloud APIs, no telemetry, no audio or transcript
 [ZH] 你好，你過得怎麼樣？
 ```
 
+> **Before you use it in a meeting:** tell the other participants you are running live translation (it captures the call audio and transcribes it on your PC; nothing is uploaded). See [Acceptable Use / Consent](#acceptable-use--consent).
+
+<!-- TODO: 30-second demo GIF goes here (docs/demo.gif) -->
+
 ## One-command install (Windows / Mac / Linux)
 
 Each command installs the exact version of the latest GitHub Release (`main` is stable; `dev` is for development). Re-running is safe.
@@ -33,6 +37,8 @@ For Windows 10/11 with an NVIDIA GPU (works without one, just slower). You need 
 1. On GitHub click **Code > Download ZIP**, then right-click the ZIP > **Extract All**.
 2. Open the folder and double-click **`install.bat`**. Wait (10-30 min, up to ~10 GB download; safe to re-run if interrupted).
 3. Double-click the new desktop shortcut **聽攏有 tinglongWu**.
+
+**Using the menu.** The shortcut opens a menu: `1` Meeting (listen + speak into Meet/Zoom, wear a headset; set the meeting microphone to *CABLE Output*), `2` Speak only (Chinese -> English/Russian/Japanese voice), `3` Listen only (foreign speech -> Chinese subtitles), `L` change the other side's language, `G` graphical interface, `U` update now, `A` toggle auto-update at start, `I` menu language. Press the key and Enter; every model download asks y/N first.
 
 To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. The Qwen engine uses `requirements-qwen.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the OPUS engine automatically.
 
@@ -62,6 +68,8 @@ The Windows release zip is **unsigned** and built locally by the maintainer with
 | Meeting | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/4) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ (own side) |
 | Firewall-blocked offline | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) |
 | exe | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/9) | — | — |
+
+Windows modes verified on a real device so far: one-line install and Listen; Speak, Meeting and the firewall test are still pending (see the linked issues).
 
 ## Install / use split (read this first)
 

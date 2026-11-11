@@ -14,6 +14,10 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 [ZH] 你好，你過得怎麼樣？
 ```
 
+> **在會議中使用前：** 請告知其他與會者你正在使用即時翻譯（它會擷取通話音訊並在你的電腦上轉成文字，不會上傳）。見「合理使用／同意聲明」。
+
+<!-- TODO: 30 秒示範 GIF 放這裡 (docs/demo.gif) -->
+
 ## 一行指令安裝（Windows / Mac / Linux）
 
 每個指令都會安裝「最新 GitHub Release」的那個版本（`main` 為穩定版，`dev` 為開發用）。重貼一次是安全的（等於修復／更新）。
@@ -33,6 +37,8 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 1. 在 GitHub 按 **Code > Download ZIP**，下載後對 ZIP 按右鍵 > **全部解壓縮**。
 2. 開啟資料夾，雙擊 **`install.bat`**，耐心等待（約 10–30 分鐘，最多下載約 10 GB；中斷後可重跑）。
 3. 雙擊桌面新出現的捷徑 **聽攏有 tinglongWu**。
+
+**選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
 
 移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
@@ -68,6 +74,8 @@ Windows 發行 zip **未簽章**，由維護者在本機以 Nuitka 建置，**�
 | 會議 | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/4) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | ✅ (own side) |
 | 防火牆封鎖離線 | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) |
 | exe | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/9) | — | — |
+
+目前 Windows 實機已驗證：一行安裝與聆聽；朗讀、會議與防火牆測試仍待驗證（見連結的 issue）。
 
 ## 安裝／使用分離（請先閱讀）
 
