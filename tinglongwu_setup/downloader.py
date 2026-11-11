@@ -373,6 +373,48 @@ def get_kokoro(man, mdir, opener=_open):
     pin_or_verify(man, KOKORO_DIR, dest, {"url": KOKORO_BASE}, KOKORO_PINS)
 
 
+SPEAKER_DIR = "speaker"  # models/speaker/ (speaker-embedding model for diarization, #219/#220)
+SPEAKER_BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models"
+# 3D-Speaker models (Apache-2.0, https://github.com/modelscope/3D-Speaker). Size + SHA256 measured in #220.
+SPEAKER_FILES = {
+    "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx":
+        (28281164, "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"),
+}
+SPEAKER_FALLBACK = {  # only if the CAM++ license check fails; not downloaded by default
+    "3dspeaker_speech_eres2net_base_200k_sv_zh-cn_16k-common.onnx":
+        (39593765, "e2d2048292e055f7b61cdec3db010503f35369b245bf0b3bbad021c9a91e4053"),
+}
+SPEAKER_BANNED = ("cnceleb",)  # CN-Celeb-trained models: non-commercial data license, never download
+
+
+def get_speaker_model(man, mdir, opener=_open, files=None):
+    """Speaker-embedding ONNX -> models/speaker/, verified against committed size + SHA256. A good local file is
+    kept; a bad download is deleted and setup aborts. Names containing a banned marker are refused."""
+    files = SPEAKER_FILES if files is None else files
+    for name in files:
+        if any(b in name.lower() for b in SPEAKER_BANNED):
+            sys.exit(f"refusing {name}: cnceleb-series speaker models are banned (license)")
+    dest = mdir / SPEAKER_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    for name, (size, sha) in files.items():
+        f = dest / name
+        if f.is_file() and f.stat().st_size == size and sha256(f) == sha:
+            continue
+        if f.exists():
+            f.unlink()
+        part = f.with_name(name + ".part")
+        print(f"downloading {name} (~{size // 1_000_000} MB)")
+        with opener(f"{SPEAKER_BASE}/{name}", 600) as r, open(part, "wb") as out:
+            shutil.copyfileobj(r, out)
+        got = part.stat().st_size
+        if got != size or sha256(part) != sha:
+            part.unlink()
+            sys.exit(f"SHA256 MISMATCH vs committed pin for {name} ({got} bytes, expected {size}) - deleted, "
+                     f"refusing. Check your connection and run setup again.")
+        part.replace(f)
+    pin_or_verify(man, SPEAKER_DIR, dest, {"url": SPEAKER_BASE}, {n: h for n, (_, h) in files.items()})
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
@@ -391,6 +433,9 @@ def main(argv=None) -> int:
                         "Japanese listening/speaking (needs llama-cpp-python)")
     p.add_argument("--kokoro", action="store_true",
                    help="Kokoro v1.0 int8 TTS model + voices (~120 MB, Apache-2.0) for talk mode, pinned by SHA256")
+    p.add_argument("--speaker-model", action="store_true",
+                   help="speaker-embedding model for diarization (3D-Speaker CAM++, Apache-2.0, ~28 MB), "
+                        "pinned by SHA256, not bundled")
     p.add_argument("--vosk-tts-ru", action="store_true",
                    help="OPT-IN: Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi). Upstream states no "
                         "license for it; never downloaded by default, download at your own responsibility")
@@ -411,6 +456,8 @@ def main(argv=None) -> int:
             pf = (pins["models"].get(key) or pins["argos"].get(key) or {}).get("files")
             if key == KOKORO_DIR:
                 pf = KOKORO_PINS
+            if key == SPEAKER_DIR:
+                pf = {n: h for n, (_, h) in SPEAKER_FILES.items()}
             if key.startswith("m2m-"):
                 pf = None  # pins cover the HF source files, not the locally converted CT2 output
             pin_or_verify(man, key, d, {}, pf)
@@ -433,6 +480,9 @@ def main(argv=None) -> int:
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.kokoro:
         get_kokoro(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.speaker_model:
+        get_speaker_model(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.vosk_tts_ru:
         get_vosk_tts_ru(man, mdir)
