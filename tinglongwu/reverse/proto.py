@@ -125,16 +125,20 @@ def _file_items(wavs, sf, asr):
 VOICE_ENGINES = ("vosk", "kokoro")  # engines with built-in voices (v0-v4 switch)
 
 
-def _synth_sentences(tts, ru: str):
-    """Yield (audio, sr) one sentence at a time, so the first sentence can play while the rest is synthesized."""
-    from .logic import split_sentences
+def _synth_sentences(tts, ru: str, stats: list | None = None):
+    """Yield (audio, sr) one piece at a time, so the first piece can play while the rest is synthesized. #207: the
+    pieces are speech_pieces (a short first clause, then growing pieces), not whole sentences, so the first audio
+    does not wait for a long first sentence. The worker's 'done' events are appended to `stats` when given."""
+    from .logic import speech_pieces
 
-    for sent in split_sentences(ru):
+    for sent in speech_pieces(ru):
         pcm, sr_out = [], 24000
         for ev, data in tts.speak(sent):
             if ev["t"] == "chunk":
                 pcm.append(np.frombuffer(data, dtype=np.float32))
                 sr_out = ev["sr"]
+            elif ev["t"] == "done" and stats is not None:
+                stats.append(ev)
         if pcm:
             yield np.concatenate(pcm), sr_out
 
@@ -293,7 +297,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
-    from .logic import Lat, lat_line, latency_fields, latency_line, timing_line, translate_ru
+    from .logic import GapMeter, Lat, lat_line, latency_fields, latency_line, stream_line, timing_line, translate_ru
 
     lat = lat or Lat()
     for n, label, zh in items:
@@ -301,20 +305,25 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, "zh", lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         t0, sent = lat.clock(), 0
-        for audio, sr in _synth_sentences(tts, ru):
+        gaps, stats = GapMeter(lat.clock), []
+        for audio, sr in _synth_sentences(tts, ru, stats):
             if not sent:
                 lat.set("tts", lat.clock() - t0)
                 print(timing_line(lat.t), flush=True)  # #186: first audio is out; one line under the translation
+            gaps.push(len(audio) / sr)
             player.push(audio, sr)
             sent += 1
         tts_done = lat.clock() - t0
+        if sent:  # #207: how the streamed pieces kept up with playback
+            print(stream_line(sent, gaps.max, stats), file=sys.stderr, flush=True)
         t = lat.take()
         # #180: one batch-style line per utterance (same fields as the --report items), always on
         f = latency_fields(t.get("asr", 0.0), t.get("mt", 0.0), t.get("tts") if sent else None, tts_done)
         print(latency_line(f), file=sys.stderr, flush=True)
         if show_lat:
             print(lat_line(t), file=sys.stderr, flush=True)
-        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t, **f})
+        res["items"].append({"file": label, "zh": zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t, **f,
+                             "pieces": sent, "gap_max": gaps.max})
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:

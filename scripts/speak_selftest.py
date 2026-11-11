@@ -32,6 +32,7 @@ FRAME_S = 0.02
 SPEECH_DBFS = -50.0   # a 20 ms frame counts as speech above this RMS
 MIN_RECORDED_RATIO = 0.90   # FAIL if recorded speech < 90 % of TTS-produced speech
 MIN_RMS_DBFS = -35.0        # FAIL if RMS of the recorded speech < -35 dBFS
+MAX_STREAM_GAP_S = 0.30     # #207: FAIL if streamed TTS pieces of one sentence leave a silence longer than this
 TAIL_S = 2.0                # keep recording this long after the pipeline is done
 CABLE_IN, CABLE_OUT = "CABLE Input", "CABLE Output"
 
@@ -83,6 +84,7 @@ def score_wavs(tts_wav: str, rec_wav: str) -> dict:
 
 TIMING = re.compile(r"\[vad ([\d.-]+) \| stt ([\d.-]+) \| mt ([\d.-]+) \| tts ([\d.-]+) \| total ([\d.]+) s\]")
 LATENCY = re.compile(r"latency asr=\S+ mt=\S+ first_audio=(\S+)s done=\S+")
+STREAM = re.compile(r"stream pieces=(\d+) gap_max=([\d.]+)s rtf=(\S+)")
 
 
 def _num(s: str):
@@ -92,7 +94,26 @@ def _num(s: str):
 def parse_log(text: str) -> dict:
     lat = [dict(zip(("vad", "stt", "mt", "tts", "total"), map(_num, m.groups()))) for m in TIMING.finditer(text)]
     spoken = sum(1 for m in LATENCY.finditer(text) if m.group(1) != "-")
-    return {"latencies": lat, "sentences_tts": max(spoken, sum(1 for d in lat if d["tts"] is not None))}
+    streams = [{"pieces": int(m.group(1)), "gap_max": float(m.group(2)), "rtf": _num(m.group(3))}
+               for m in STREAM.finditer(text)]
+    return {"latencies": lat, "sentences_tts": max(spoken, sum(1 for d in lat if d["tts"] is not None)),
+            "streams": streams}
+
+
+def stage_table(latencies: list[dict]) -> dict:
+    """#207: {stage: {"p50": s, "max": s}} over the per-sentence [vad|stt|mt|tts|total] lines (stages that ran)."""
+    out = {}
+    for k in ("vad", "stt", "mt", "tts", "total"):
+        v = sorted(d[k] for d in latencies if d.get(k) is not None)
+        if v:
+            out[k] = {"p50": round(float(np.median(v)), 2), "max": round(v[-1], 2)}
+    return out
+
+
+def stream_gap_reason(streams: list[dict]):
+    """#207: FAIL reason when a streamed sentence had a silence > MAX_STREAM_GAP_S between its pieces, else None."""
+    worst = max((d["gap_max"] for d in streams), default=0.0)
+    return f"stream gap {worst:.2f}s > {MAX_STREAM_GAP_S:.2f}s" if worst > MAX_STREAM_GAP_S else None
 
 
 # ---------------------------------------------------------------- child: the real speak pipeline with the clip as mic
@@ -245,11 +266,16 @@ def run(a) -> dict:
     res = score(tts_speech, rs)
     if "error" in out:
         res = {**res, "verdict": "FAIL", "reasons": [out["error"]] + res["reasons"]}
+    gap = stream_gap_reason(log["streams"])
+    if gap:
+        res = {**res, "verdict": "FAIL", "reasons": res["reasons"] + [gap]}
     out.update({"sentences_in": child.get("segments", 0), "sentences_tts": log["sentences_tts"],
                 "expected_tts_speech_s": tts_speech, "tts_audio_s": child.get("tts_s", 0.0),
                 "recorded_speech_s": rs["speech_s"], "recorded_ratio": res["recorded_ratio"],
                 "peak_dbfs": rs["peak_dbfs"], "rms_dbfs": rs["rms_dbfs"], "rms_all_dbfs": rs["rms_all_dbfs"],
-                "latencies": log["latencies"], "verdict": res["verdict"], "reasons": res["reasons"]})
+                "latencies": log["latencies"], "stages": stage_table(log["latencies"]),
+                "stream_gap_max_s": max((d["gap_max"] for d in log["streams"]), default=0.0),
+                "tts_rtf": [d["rtf"] for d in log["streams"]], "verdict": res["verdict"], "reasons": res["reasons"]})
     return out
 
 
@@ -257,6 +283,8 @@ def summary(o: dict) -> str:
     return (f"{o['verdict']} in={o['sentences_in']} tts={o['sentences_tts']} "
             f"recorded={o['recorded_speech_s']}s/{o['expected_tts_speech_s']}s ({o['recorded_ratio'] * 100:.0f}%) "
             f"rms={o['rms_dbfs']}dBFS peak={o['peak_dbfs']}dBFS"
+            + "".join(f" {k}_p50={v['p50']}s" for k, v in o.get("stages", {}).items() if k in ("tts", "total"))
+            + f" gap_max={o.get('stream_gap_max_s', 0.0)}s"
             + (" reasons: " + "; ".join(o["reasons"]) if o["reasons"] else ""))
 
 

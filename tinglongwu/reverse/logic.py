@@ -24,6 +24,68 @@ def split_sentences(text: str, max_chars: int = 220) -> list[str]:
     return [s for s in out if re.search(r"\w", s)]
 
 
+_CLAUSE = re.compile(r"[,;:—–，、；：]")  # a cut right after one of these keeps natural prosody
+STREAM_FIRST_CHARS = 40  # #207: first TTS piece; Kokoro int8 4-core Linux: 40 chars -> 0.66 s gen (vs 3.2 s for 209)
+STREAM_GROW = 3  # each next piece <= 3x the previous one: Kokoro RTF 0.24-0.35 there, so it is ready before the
+#                  previous piece has finished playing (measured: scripts/bench_tts_stream.py, PR for #207)
+
+
+def _cut(part: str, budget: int) -> int:
+    """Index to cut `part` at so the head is <= budget chars: the last clause mark in range, else the last space
+    (len(part) when it already fits, or when there is nowhere to cut)."""
+    if len(part) <= budget:
+        return len(part)
+    marks = [m.end() for m in _CLAUSE.finditer(part, 0, budget + 1)]
+    if marks and marks[-1] >= 8:  # never a 1-3 word stub
+        return marks[-1]
+    sp = part.rfind(" ", 0, budget + 1)
+    return sp if sp >= 8 else len(part)
+
+
+def speech_pieces(text: str, first_chars: int = STREAM_FIRST_CHARS, grow: float = STREAM_GROW,
+                  max_chars: int = 220) -> list[str]:
+    """#207: TTS requests for one utterance, in order. Like split_sentences, but the first piece is cut at a clause
+    boundary to <= first_chars, so the first audio is out quickly, and each later piece is at most `grow` times the
+    previous one, so it is synthesized while the previous one is still playing (no silent gaps). Joined, the
+    pieces are the original text (minus whitespace at the cuts)."""
+    out: list[str] = []
+    budget = first_chars
+    for sent in split_sentences(text, max_chars):
+        while sent:
+            i = _cut(sent, int(budget))
+            head, sent = sent[:i].strip(), sent[i:].strip()
+            if re.search(r"\w", head):
+                out.append(head)
+                budget = min(max_chars, max(first_chars, grow * len(head)))
+            elif out:  # punctuation-only leftover: keep it with the previous piece
+                out[-1] += head
+    return out
+
+
+class GapMeter:
+    """#207: silence between streamed TTS pieces of one utterance, assuming the player starts each pushed chunk as
+    soon as the previous one has ended. push(seconds) returns the gap before this chunk (0.0 for the first)."""
+
+    def __init__(self, clock=None):
+        import time
+
+        self.clock = clock or time.perf_counter
+        self.end = None
+        self.gaps: list[float] = []
+
+    def push(self, seconds: float) -> float:
+        now = self.clock()
+        gap = 0.0 if self.end is None else max(0.0, now - self.end)
+        if self.end is not None:
+            self.gaps.append(gap)
+        self.end = max(now, self.end or now) + seconds
+        return gap
+
+    @property
+    def max(self) -> float:
+        return round(max(self.gaps, default=0.0), 3)
+
+
 def match_device(names: list[str], needle: str | None) -> int | None:
     """Index of the first device whose name contains `needle` (case-insensitive); no needle -> None (default)."""
     if not needle:
@@ -130,6 +192,15 @@ def timing_line(t: dict, tts: bool = True) -> str:
     parts = [f"{label} {t[k]:.2f}" if k in t else f"{label} -" for k, label in names]
     total = sum(t.get(k, 0.0) for k, _ in names)
     return f"   [{' | '.join(parts)} | total {total:.2f} s]"
+
+
+def stream_line(pieces: int, gap_max: float, stats: list) -> str:
+    """#207: 'stream pieces=3 gap_max=0.00s rtf=0.28' after each spoken utterance. rtf = worker synthesis time /
+    audio length over all pieces ('-' if the worker did not report it); gap_max = longest silence between pieces."""
+    gen = sum(float(e.get("gen_s") or 0) for e in stats)
+    dur = sum(float(e.get("audio_s") or 0) for e in stats)
+    rtf = f"{gen / dur:.2f}" if gen and dur else "-"
+    return f"stream pieces={pieces} gap_max={gap_max:.2f}s rtf={rtf}"
 
 
 def live_endpoint(device: str, override=None, env=None) -> tuple[float, float]:
