@@ -107,7 +107,8 @@ class FasterWhisperRecognizer(Recognizer):
         if reuse and getattr(self, "_cur", None):
             return self._cur
         _lang, _p, probs = self.model.detect_language(audio)
-        return pick_candidate(probs, cands, fallback=_lang if _lang in cands else cands[0])
+        return pick_candidate(probs, cands, fallback=_lang if _lang in cands else cands[0],
+                              current=getattr(self, "_cur", None), seconds=len(audio) / 16000.0)
 
     def _post(self, text: str) -> str:
         text = filter_hallucination(text)  # one copy of any looped phrase; drop what is still a loop
