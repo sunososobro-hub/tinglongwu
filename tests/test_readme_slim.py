@@ -7,8 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
-README_MAX_BYTES = 16 * 1024  # part 2 of #166 (part 1: 28 KB, was ~39 KB); goal 6 * 1024
-MOVED = ("licenses", "benchmarks", "linux-reverse", "disclaimer", "install", "models", "privacy")
+README_MAX_BYTES = 6 * 1024  # #166 goal reached in part 3 (part 1: 28 KB, part 2: 16 KB, was ~39 KB)
+MOVED = ("licenses", "benchmarks", "linux-reverse", "disclaimer", "install", "models", "privacy", "usage")
 
 
 def _slug(heading: str) -> str:
