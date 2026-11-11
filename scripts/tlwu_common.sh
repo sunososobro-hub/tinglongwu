@@ -103,3 +103,17 @@ tlwu_report_check() {
   else echo; fi
   return 0
 }
+
+tlwu_install_selftest() {  # tlwu_install_selftest TLWU_SETUP [args...]: last installer step (#99), offline
+  # Runs `tlwu-setup --selftest args` (loads the models, translates one test sentence). Returns 1 only when the
+  # self-test failed (the installer then warns; nothing is deleted); a tlwu without --selftest (exit 3) is skipped.
+  local bin="$1" rc; shift
+  printf '    %s\n' "自我測試：載入模型並翻譯一句測試句 / self-test: loading the models, translating one test sentence"
+  "$bin" --selftest "$@"; rc=$?
+  case "$rc" in
+    0) printf '    %s\n' "自我測試通過 / self-test passed" ;;
+    3) printf '    %s\n' "此版本尚無自我測試，略過 / this version has no self-test yet: skipped" ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
