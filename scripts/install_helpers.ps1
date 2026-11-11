@@ -88,3 +88,12 @@ function Test-TlwuCpuJapanese($ramMB) {
     if ($null -eq $ramMB) { return $true }
     return ([double]$ramMB -ge $script:TlwuJaMinRamMB)
 }
+
+# #99: last installer step. Runs `tlwu-setup --selftest <args>` with its output on the console and returns
+# 'ok' (exit 0), 'skipped' (exit 3: this tlwu has no --selftest yet) or 'failed' (anything else; nothing is deleted).
+function Invoke-TlwuSelftest([string]$setupExe, [string[]]$a) {
+    $rc = Invoke-TlwuNative $setupExe (@('--selftest') + @($a))
+    if ($rc -eq 0) { return 'ok' }
+    if ($rc -eq 3) { return 'skipped' }
+    return 'failed'
+}

@@ -93,6 +93,8 @@ def mac(tmp_path):
     upstream.mkdir()
     git(upstream, "init", "-q", "-b", "main")
     (upstream / "README.md").write_text("x\n")
+    (upstream / "scripts").mkdir()
+    shutil.copy(ROOT / "scripts" / "tlwu_common.sh", upstream / "scripts")  # sourced by the self-test step (#99)
     git(upstream, "add", ".")
     git(upstream, "commit", "-qm", "init")
     git(upstream, "tag", "v9.9.9")
@@ -133,6 +135,7 @@ def test_mac_install_full_flow_then_rerun_is_a_repair(mac):
         assert (home / "models" / "kokoro" / name).stat().st_size == size
     # default models: English listening + zh<->en speaking
     assert "tlwu-setup --whisper small --pair en-zh --pair zh-en" in calls
+    assert "tlwu-setup --selftest --model small" in calls  # last step: load the models, translate a test line (#99)
     # launcher + PATH line for zsh (the macOS default shell)
     menu = home / ".local" / "bin" / "tlwu-menu"
     assert os.access(menu, os.X_OK) and "scripts/linux_menu.sh" in menu.read_text()
@@ -215,7 +218,14 @@ def menu(tmp_path):
     (repo / ".venv" / "bin" / "activate").write_text(f'export PATH="{stubs}:$PATH"\n')
     for p in ("en-zh", "zh-en"):   # what mac_install.sh downloads
         (models / "opus" / p).mkdir(parents=True)
-    (tmp_path / "home" / "models" / "kokoro").mkdir(parents=True)
+    kokoro = tmp_path / "home" / "models" / "kokoro"   # what mac_install.sh installs (ensure_kokoro checks all 3)
+    kokoro.mkdir(parents=True)
+    for name in ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin"):
+        (kokoro / name).write_bytes(b"x")
+    kpy = tmp_path / "home" / "tts-kokoro" / "bin" / "python"
+    kpy.parent.mkdir(parents=True)
+    kpy.write_text("#!/bin/sh\nexit 0\n")
+    kpy.chmod(0o755)
     log = tmp_path / "calls.log"
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "home"), "LOG": str(log), "REALPY": sys.executable,
            "PYTHONPATH": str(ROOT), "TLWU_MODELS": str(models), "TLWU_NO_UPDATE": "1", "TLWU_UI_LANG": "en",

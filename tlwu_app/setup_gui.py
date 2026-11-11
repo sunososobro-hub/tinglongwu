@@ -25,6 +25,24 @@ def worker_cmd(bundled: bool, mdir: Path, args: list[str]) -> list[str]:
     return [*base, "--run-setup", *args, "--models-dir", str(mdir)]
 
 
+def selftest_cmd(bundled: bool, mdir: Path, tier: tiers.Tier) -> list[str]:
+    """Command line of the self-test child run after the download (#99): `tlwu --selftest`, offline."""
+    base = [os.path.abspath(sys.argv[0])] if bundled else [sys.executable, "-m", "tlwu_app"]
+    cmd = [*base, "--selftest", "--model", tier.whisper, "--models-dir", str(mdir)]
+    return cmd + (["--device", "cpu"] if tier.name == "cpu" else [])
+
+
+def selftest_verdict(rc: int, tail: str) -> tuple[str, str | None]:
+    """(status line, warning text or None) for the self-test child's exit code. Never blocks starting the app."""
+    if rc == 0:
+        return "下載完成，自我測試通過！", None
+    if rc == 2 and "--selftest" in tail:  # this tlwu has no --selftest yet (argparse: unrecognized arguments)
+        return "下載完成！", None
+    return ("下載完成，但自我測試失敗（詳見 install.log）。",
+            "模型已下載，但自我測試沒有通過，翻譯可能無法使用。\n已下載的檔案都保留；可用「回報問題」附上 install.log。\n\n"
+            + (tail.strip() or f"結束碼 {rc}")[-400:])
+
+
 def last_line(chunk: str) -> str:
     """Newest non-empty line of progress output (tqdm redraws with a carriage return)."""
     parts = [p.strip() for p in chunk.replace("\r", "\n").split("\n") if p.strip()]
@@ -35,6 +53,7 @@ class SetupWindow:
     def __init__(self, mdir: Path, bundled: bool, force_cpu: bool = False):
         self.mdir, self.bundled = Path(mdir), bundled
         self.ok = False
+        self.phase = "download"  # then "selftest" (#99)
         self.proc: subprocess.Popen | None = None
         self.q: queue.Queue = queue.Queue()
         self.gpu = None if force_cpu else tiers.detect_gpu()
@@ -121,11 +140,21 @@ class SetupWindow:
         self.root.after(500, self.poll)
 
     def finished(self, rc: int, tail: str):
+        if self.phase == "selftest":
+            status, warning = selftest_verdict(rc, tail)
+            self.v_status.set(status)
+            if warning:
+                messagebox.showwarning("自我測試失敗", warning)
+            self.root.after(600, self.root.destroy)
+            return
         if rc == 0 and tiers.models_ready(self.mdir):
             self.bar["value"] = 100
             self.ok = True
-            self.v_status.set("下載完成！")
-            self.root.after(600, self.root.destroy)
+            self.phase = "selftest"
+            self.v_status.set("下載完成，自我測試中（載入模型並翻譯一句測試句）…")
+            cmd = selftest_cmd(self.bundled, self.mdir, self.tier)
+            threading.Thread(target=self._run, args=(cmd,), daemon=True).start()
+            self.root.after(500, self.poll)
             return
         self.bar["value"] = 0
         self.btn.configure(state="normal", text="重試")

@@ -221,12 +221,31 @@ else {
     }
 }
 
-# ---------------------------------------------------------------- 7. summary
-Step 7 '完成' 'Summary'
+# ---------------------------------------------------------------- 7. self-test + summary
+Step 7 '自我測試與完成' 'Self-test and summary'
+# #99: load the installed models and translate one test sentence (tlwu --selftest, offline); a failure only warns.
+$SelfTest = 'skipped'
+if ($SkipModels) { Info "-SkipModels: self-test skipped / 未下載模型，略過自我測試" }
+else {
+    $StEngine = 'opus'
+    if ($Engine -like 'qwen*') { $StEngine = $(if ($QwenFlag -eq '--qwen4b') { 'qwen4b' } else { 'qwen' }) }
+    $StArgs = @('--model', $Whisper, '--engine', $StEngine)
+    if (-not $Gpu) { $StArgs += @('--device', 'cpu') }
+    if ($DryRun) { Write-Host "  [dry-run] $VSet --selftest $($StArgs -join ' ')" -ForegroundColor DarkGray }
+    else {
+        Info "Self-test: loading the models and translating one test sentence (offline) / 自我測試：載入模型並翻譯一句測試句"
+        $SelfTest = Invoke-TlwuSelftest $VSet $StArgs
+        if ($SelfTest -eq 'ok') { Ok "Self-test passed / 自我測試通過" }
+        elseif ($SelfTest -eq 'failed') {
+            Warn "Install finished but the self-test failed, see install.log (Report a problem attaches it); nothing was deleted. 安裝完成但自我測試失敗，詳見 install.log，已安裝的檔案都保留。"
+        } else { Info "This version has no self-test yet: skipped / 此版本尚無自我測試，略過" }
+    }
+}
 Write-Host ""
 Write-Host "  Installed / 已安裝:" -ForegroundColor White
 foreach ($i in $Installed) { Write-Host "    - $i" }
 Write-Host "  Translation engine / 翻譯引擎: $Engine" -ForegroundColor White
+Write-Host "  Self-test / 自我測試: $SelfTest" -ForegroundColor White
 if ($Warnings.Count -gt 0) {
     Write-Host "  Warnings / 注意:" -ForegroundColor Yellow
     foreach ($w in $Warnings) { Write-Host "    - $w" -ForegroundColor Yellow }
