@@ -55,6 +55,6 @@ Details: [docs/models.md](docs/models.md).
 | exe | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/9) | — | — |
 
 ## More docs
-[Privacy](docs/privacy.md) · [Models](docs/models.md) · [Install / GPU](docs/install.md) · [Benchmarks](docs/benchmarks.md) · [Licenses](docs/licenses.md) · [Linux reverse](docs/linux-reverse.md) · [Acceptable use](docs/acceptable-use.md) · [Tests](docs/testing.md) · [Disclaimer](docs/disclaimer.md) · [SECURITY](SECURITY.md) · [PRIVACY](PRIVACY.md)
+[Privacy](docs/privacy.md) · [Models](docs/models.md) · [Install / GPU](docs/install.md) · [Benchmarks](docs/benchmarks.md) · [Licenses](docs/licenses.md) · [Model notices](THIRD_PARTY_NOTICES.md) · [Linux reverse](docs/linux-reverse.md) · [Acceptable use](docs/acceptable-use.md) · [Tests](docs/testing.md) · [Disclaimer](docs/disclaimer.md) · [SECURITY](SECURITY.md) · [PRIVACY](PRIVACY.md)
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.
