@@ -230,3 +230,18 @@ def test_flush_input_non_tty_is_skipped_without_error(monkeypatch):
     assert confirm.flush_input(SimpleNamespace(fileno=lambda: 3, isatty=lambda: False)) is False
     assert confirm.flush_input(io.StringIO("x\n")) is False  # fileno() raises UnsupportedOperation
     assert confirm.flush_input(object()) is False
+
+
+def test_368_no_audio_line_says_why_when_tts_worker_errors():
+    """#368: confirm mode used to print a bare "no audio produced"; now the worker error is the reason."""
+    from tinglongwu.reverse import proto
+
+    class Broken:
+        def speak(self, text, lang=None):
+            yield {"t": "error", "msg": "KeyError('§')"}, None
+
+    s, sent, _prev, log, _calls = make(["y"], synth=proto._make_synth(Broken()))
+    items = run(s, [Utterance(1, "a", "Привет.")])
+    assert items[0].decision == "no_audio" and sent == []
+    assert "no audio produced: TTS error: KeyError('§')" in log
+    assert "no audio produced" not in log  # never the bare line

@@ -191,9 +191,13 @@ def warm_tts(tts, lang: str) -> None:
 def _make_synth(tts):
     """Confirm-mode synth: a generator of sentence parts, run by the session's TTS worker; after "y" each part is
     sent as soon as it exists, so sentence 1 plays while the rest is still synthesized (#139)."""
-    def synth(ru: str):
-        return _synth_sentences(tts, ru)
+    infos: dict = {}  # ru text -> info of its latest synthesis (#368: why no audio)
 
+    def synth(ru: str):
+        info = infos[ru] = {}
+        return _synth_sentences(tts, ru, info=info)
+
+    synth.no_audio_reason = lambda ru: no_audio_reason(infos.get(ru) or {})  # type: ignore[attr-defined]
     return synth
 
 
