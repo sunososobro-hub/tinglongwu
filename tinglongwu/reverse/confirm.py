@@ -278,7 +278,8 @@ class ConfirmSession:
                 self.out(f"TTS error: {err}")
             if not n:
                 u.decision = "no_audio"
-                self.out("no audio produced")
+                why = getattr(self.synth, "no_audio_reason", None)  # #368: say why (worker error, no text, ...)
+                self.out(f"no audio produced: {why(u.ru)}" if why else "no audio produced")
                 continue
             u.decision = "sent"
             self.out("sent")
