@@ -1,0 +1,122 @@
+name: hw-tests
+
+# Hardware-only checks on the owner's Windows PC (real audio devices, VB-CABLE, NVIDIA GPU) through a self-hosted runner
+# labelled [self-hosted, windows, tlwu-hw]. Covers the hardware part of #6 #139 #279 #207 #311 #90 #186 #313 (see the
+# step names). #4 (the other side's lines in a real call) and the Mac part of #8 stay with the owner.
+#
+# SECURITY: a self-hosted runner runs whatever the workflow says, so this file never runs for pull requests (no
+# pull_request / pull_request_target trigger) and only for pushes to dev by people with write access, or a manual
+# dispatch. Do not add other triggers.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      hymt7b:
+        description: "#279: also download Hy-MT2 7B (about 4.8 GB) and self-test it on the GPU"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hw-tests
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+  HW_CACHE: C:/actions-runner-tlwu/hw-cache
+
+jobs:
+  hw:
+    if: github.repository == 'sunososobro-hub/tinglongwu' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, windows, tlwu-hw]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      # The owner's default speakers are restored by the last step even if a test fails or is cancelled.
+      - name: Remember the default audio output device
+        run: |
+          out="$(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hw_audio_default.ps1 -Action Get)"
+          echo "default output: ${out#*|}"
+          echo "TLWU_HW_DEFAULT_ID=${out%%|*}" >> "$GITHUB_ENV"
+
+      - name: Hardware present (VB-CABLE, NVIDIA GPU)
+        run: |
+          nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+          powershell -NoProfile -Command "if (-not (Get-CimInstance Win32_SoundDevice | Where-Object Name -like '*VB-Audio*')) { Write-Error 'VB-CABLE is not installed'; exit 1 }"
+
+      - name: Python venv (kept between runs) + tlwu with GPU extras
+        run: |
+          mkdir -p "$HW_CACHE"
+          if [ ! -x "$HW_CACHE/venv/Scripts/python.exe" ]; then py -3.12 -m venv "$HW_CACHE/venv"; fi
+          echo "$(cygpath -w "$HW_CACHE/venv/Scripts")" >> "$GITHUB_PATH"
+          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -e ".[dev]"
+          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -r requirements-gpu.txt
+          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -r requirements-llama-cuda.txt --only-binary=:all: || echo "::warning::llama-cpp CUDA wheel not installed; --device cuda MT falls back"
+          echo "TLWU_MODELS=$HW_CACHE/models" >> "$GITHUB_ENV"
+
+      - name: Models (smoke set) + Kokoro voice venv + Russian voice
+        run: |
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
+          tlwu-setup --talk --talk-venv "$HW_CACHE/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
+          tlwu-setup --vosk-tts-ru --models-dir "$TLWU_MODELS"
+          echo "TLWU_KOKORO_PYTHON=$HW_CACHE/tts-kokoro/Scripts/python.exe" >> "$GITHUB_ENV"
+          echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
+          python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh.wav" --repeat 2
+
+      - name: "#90 #139 tlwu --selftest on the real GPU (normal GPU machine must finish in < 60 s)"
+        run: |
+          start=$SECONDS
+          python -m tinglongwu --selftest --device cuda
+          took=$((SECONDS - start)); echo "selftest --device cuda took ${took} s"
+          { echo "### #90 selftest cuda: ${took} s (limit 60)"; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$took" -lt 60 ]
+
+      - name: "#139 Hy-MT2 auto picks CUDA on an NVIDIA GPU"
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "from tinglongwu.device import resolve_device as r; d = r('auto', warn=print); print('device=' + d); assert d == 'cuda', d"
+          python -m tinglongwu --file tinglongwu/data/selftest_en.wav --to zh --device auto --models-dir "$TLWU_MODELS"
+
+      - name: "#6 #207 #311-4 speak_selftest through VB-CABLE (en), records CABLE Output"
+        if: ${{ !cancelled() }}
+        run: |
+          python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to en --models-dir "$TLWU_MODELS" \
+            --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL" --json "$RUNNER_TEMP/speak_en.json"
+          { echo '### speak_selftest en (owner PC, VB-CABLE) - #6 #207 #186'; echo '```'; cat "$RUNNER_TEMP/speak_en.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "#311 item 4 speak_selftest --to ru: Russian voice reaches CABLE Input"
+        if: ${{ !cancelled() }}
+        run: |
+          python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to ru --models-dir "$TLWU_MODELS" \
+            --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL" --json "$RUNNER_TEMP/speak_ru.json"
+          { echo '### speak_selftest ru (owner PC, VB-CABLE) - #311'; echo '```'; cat "$RUNNER_TEMP/speak_ru.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "#313 tlwu doctor on the owner PC (real GPU, real audio devices)"
+        if: ${{ !cancelled() }}
+        run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"
+
+      - name: "#90 #8 tlwu --selftest on the CPU path (same check as the hosted runners)"
+        if: ${{ !cancelled() }}
+        run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
+
+      - name: "#279 Hy-MT2 7B on the GPU (manual dispatch with hymt7b=true only)"
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.hymt7b }}
+        run: |
+          tlwu-setup --hymt7b --models-dir "$TLWU_MODELS"
+          python -m tinglongwu --selftest --device cuda --engine hymt7b
+
+      - name: Restore the default audio output device to the real speakers
+        if: ${{ always() }}
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hw_audio_default.ps1 -Action RestoreSpeakers -Id "$TLWU_HW_DEFAULT_ID"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hw_audio_default.ps1 -Action Get
