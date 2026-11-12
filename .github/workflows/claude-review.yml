@@ -1,0 +1,78 @@
+name: claude-review
+
+# Merge-gate code review by Claude (Opus). CodeRabbit gives the first pass;
+# this job posts one English PR comment ending in a VERDICT line.
+#
+# Security: uses the plain `pull_request` trigger only (no target variant), so fork PRs never
+# see secrets. Fork PRs are skipped by the job-level `if` below.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, edited, labeled, unlabeled]
+    branches: [dev, main]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}${{ !((github.event.action != 'edited' || ((github.event.changes.base != null || github.event.changes.body != null) && github.event.sender.type != 'Bot')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-opus')) && format('-ignored-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.action != 'edited' || ((github.event.changes.base != null || github.event.changes.body != null) && github.event.sender.type != 'Bot')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-opus'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Claude review
+        uses: anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1.0.271
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the workflow token (scoped by `permissions` above) instead of the Claude GitHub App.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --model opus
+            --max-turns 60
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git fetch:*),Bash(git merge-base:*)"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE BRANCH: ${{ github.event.pull_request.base.ref }}
+
+            You are the merge-gate reviewer for this repository. CodeRabbit already did a
+            first pass; focus on things that should block a merge. Be concrete and brief.
+            Use `gh pr view`, `gh pr diff` (and `--name-only`), `git log` / `git diff` against
+            `origin/${{ github.event.pull_request.base.ref }}`, and read files as needed.
+
+            Check, in this order:
+            1. Correctness bugs: logic errors, broken edge cases, crashes, wrong behavior,
+               missing/incorrect tests for changed behavior.
+            2. Packaging / release risks: pyproject.toml, requirements*.txt, lock files,
+               installer/, packaging/, install scripts, release workflows, version bumps,
+               anything that could break install or a release build.
+            3. Repo gates:
+               a. The PR body contains `Closes #N` or `Refs #N` (N a number). Missing => gate fails.
+               b. If `pyproject.toml` is changed, the PR must carry the `needs-opus` label
+                  (check `gh pr view --json labels`). Missing => gate fails.
+            4. Duplicate or conflicting changes against `${{ github.event.pull_request.base.ref }}`:
+               does the change duplicate code or work already on the base branch
+               (`git log origin/${{ github.event.pull_request.base.ref }}`), or overlap/conflict with
+               other open PRs (`gh pr list --state open --json number,title,headRefName,files`)?
+
+            Output: post EXACTLY ONE comment on the PR with
+            `gh pr comment ${{ github.event.pull_request.number }} --body "..."` (you cannot write files).
+            Write it in English, Markdown, with sections: Correctness, Packaging/release,
+            Repo gates (pass/fail per gate), Duplicates/conflicts, each with findings
+            (file:line where possible) or "None found". Do not post any other comments.
+            The final line of the comment must be exactly one of:
+            VERDICT: MERGE
+            VERDICT: FIX-FIRST
+            Use FIX-FIRST if any repo gate fails or any finding should block the merge.
