@@ -111,23 +111,22 @@ def test_auto_live_translates_en_to_zh_and_speaks():
     assert (it["en"], it["zh"], it["decision"]) == ("Hello.", "你好。", "sent")
 
 
-def test_build_translator_en_prefers_hymt_then_opus(monkeypatch, tmp_path):
+def test_build_translator_en_is_hymt_both_ways_never_opus(monkeypatch, tmp_path):
     import tinglongwu.translate as tr
-    from tinglongwu.hymt import JaRouter
+    from tinglongwu.models import ModelNotFound
 
+    monkeypatch.setattr(tr.PivotTranslator, "preload", lambda *a: pytest.fail("OPUS must not load"))
+    # no Hy-MT2 GGUF: one-line setup command (#331: no OPUS en-zh / zh-en pairs), even on CUDA
+    with pytest.raises(ModelNotFound, match="--hymt"):
+        proto.build_translator("auto", "cuda", tmp_path, "zh", src="en")
     loaded = []
-    monkeypatch.setattr(tr.PivotTranslator, "preload", lambda self, s, t: loaded.append((s, t)))
-    # no Hy-MT2 GGUF: OPUS en-zh / zh-en; auto never picks Qwen for --from en, even on CUDA
-    mt = proto.build_translator("auto", "cuda", tmp_path, "zh", src="en")
-    assert isinstance(mt, JaRouter) and mt.all_pairs and mt.hy is None
-    assert loaded == [("en", "zh"), ("zh", "en")]
 
     gguf = tmp_path / "hymt2-1.8b" / "Hy-MT2-1.8B-Q4_K_M.gguf"
     gguf.parent.mkdir()
     gguf.write_bytes(b"x")
     monkeypatch.setattr("tinglongwu.hymt.HyMtTranslator.preload", lambda self, s="", t="": None)
     loaded.clear()
-    mt = proto.build_translator("auto", "cpu", tmp_path, "zh", src="en")
+    mt = proto.build_translator("auto", "cpu", tmp_path, "zh", src="en", warn=lambda m: None)
     assert mt.hy is not None and mt._use_hy("en", "zh") and mt._use_hy("zh", "en") and loaded == []
 
 

@@ -197,7 +197,7 @@ def test_follow_tts_routes_japanese_to_kokoro_client():
 
 
 def test_cli_to_ja_and_follow_langs():
-    a = _parse(["--to", "ja", "--tts-engine", "kokoro", "--mt", "opus"])
+    a = _parse(["--to", "ja", "--tts-engine", "kokoro", "--mt", "hymt"])
     assert (a.to, a.speaker) == ("ja", 0)
     with pytest.raises(SystemExit):
         _parse(["--to", "ja", "--tts-engine", "vosk"])

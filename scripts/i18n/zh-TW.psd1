@@ -22,6 +22,7 @@
     JA_MISSING_FATAL = '日文語音/翻譯還缺（只需裝一次，裝好再跑）：'
     JA_MISSING_SKIP = '日文先不啟用（缺套件，自動模式只做英/俄）。要日文請先裝：'
     NO_HYMT = '還沒有日文翻譯模型 Hy-MT2（約 1.1 GB）。'
+    NO_HYMT_SPEAK = '還沒有 Hy-MT2 翻譯模型（約 1.1 GB），說話模式需要它。'
     HY_NOTE = '（日文用 OPUS 英文轉接，品質較差；裝 Hy-MT2 可直譯：tlwu-setup --hymt，並在 .venv 裝 llama-cpp-python）'
     BANNER_LISTEN = '聽  {0} -> 中文字幕'
     BANNER_SPEAK = '說  中文 -> {0} 語音'

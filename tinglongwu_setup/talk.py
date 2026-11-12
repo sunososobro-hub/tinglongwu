@@ -69,7 +69,7 @@ def _q(p) -> str:  # PowerShell single-quoted literal
 
 
 def render_launcher(root: Path, tts_python: Path, model_dir: Path, whisper: str = "small",
-                    compute: str = "auto", mt: str = "opus") -> str:
+                    compute: str = "auto", mt: str = "auto") -> str:
     """tlwu-talk.ps1: Chinese mic -> English -> Kokoro -> "CABLE Input" (Meet microphone = "CABLE Output").
     No microphone name is written: `--mic` without a name picks the system mic, skipping virtual cables."""
     args = ["-m", "tinglongwu.reverse.proto", "--mic", "--compute", compute, "--whisper", whisper, "--to", "en",
@@ -86,8 +86,8 @@ def render_launcher(root: Path, tts_python: Path, model_dir: Path, whisper: str 
 
 def main(a, mdir: Path, run=subprocess.call) -> int:
     """a: argparse namespace with talk_venv, talk_launcher, talk_whisper, talk_compute, talk_mt."""
-    # zh-en: the OPUS pair talk mode translates with (also the fallback when Hy-MT2 is unavailable)
-    man_rc = downloader.main(["--kokoro", "--pair", "zh-en", "--allow-unpinned", "--models-dir", str(mdir)])
+    # #331: talk mode translates with Hy-MT2 only (the launcher passes --mt auto), so fetch its GGUF, not an OPUS pair
+    man_rc = downloader.main(["--kokoro", "--hymt", "--models-dir", str(mdir)])
     if man_rc:
         return man_rc
     model_dir = mdir / downloader.KOKORO_DIR

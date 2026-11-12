@@ -155,7 +155,8 @@ def test_launcher_auto_mic_tier_args_and_quoting(tmp_path):
 
 
 def test_cli_talk_end_to_end(tmp_path, pins, monkeypatch):
-    pairs = []
+    pairs, hy = [], []
+    monkeypatch.setattr(downloader, "get_hymt", lambda man, mdir: hy.append(mdir))
     monkeypatch.setattr(downloader, "_open", Opener())
     monkeypatch.setattr(downloader.get_kokoro, "__defaults__", (Opener(),))
     monkeypatch.setattr(downloader, "get_pair", lambda man, mdir, pr, allow_unpinned=False: pairs.append(pr))
@@ -165,7 +166,7 @@ def test_cli_talk_end_to_end(tmp_path, pins, monkeypatch):
     launcher = tmp_path / "tlwu-talk.ps1"
     rc = cli.main(["--talk", "--models-dir", str(tmp_path / "models"), "--talk-venv", str(tmp_path / "venv"),
                    "--talk-launcher", str(launcher), "--talk-whisper", "small", "--talk-compute", "cpu"])
-    assert rc == 0 and pairs == ["zh-en"]
+    assert rc == 0 and pairs == [] and hy == [tmp_path / "models"]   # #331: Hy-MT2, no OPUS zh-en pair
     assert (tmp_path / "models" / "kokoro-smoke.wav").is_file()
     assert "kokoro" in json.loads((tmp_path / "models" / "manifest.json").read_text("utf-8"))
     assert launcher.read_bytes().startswith(b"\xef\xbb\xbf")  # BOM for PowerShell 5.1

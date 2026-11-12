@@ -92,8 +92,8 @@ def listen_args(ask: Callable[[str], str] | None = None, say: Callable[[str], No
 
 
 def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
-    """Translation engine for the speak side (#227): `hymt` whenever Hy-MT2 is installed (no question; env TLWU_MT=opus
-    overrides), else `opus` plus a one-line install hint. `to`/`ask` are kept for callers."""
+    """Translation engine for the speak side: always `hymt` (#331: Hy-MT2 is the only speak-mode engine, no OPUS);
+    when Hy-MT2 is not usable yet, also a one-line install hint. `to`/`ask` are kept for callers."""
     from .i18n import t
 
     say = say or (lambda m: print(m, file=sys.stderr, flush=True))
@@ -115,8 +115,7 @@ def speak_mt(to: str, ask=None, say=None, hymt_ready=None, mdir=None) -> str:
         ready = False
     if not ready:
         say(t("menu_speak_mt_hint"))
-        return "opus"
-    return "opus" if os.environ.get("TLWU_MT", "").lower() == "opus" else "hymt"  # owner 2026-11-11: no question
+    return "hymt"
 
 
 def stream_default(device: str, both: bool) -> bool:

@@ -329,13 +329,15 @@ tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary
 
 ```
 sudo apt install pulseaudio-utils            # pactl（PipeWire 已由 pipewire-pulse 提供）
-tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # 一次性，需要網路
+pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+tlwu-setup --whisper small --hymt                 # 一次性，需要網路（Hy-MT2 GGUF，約 1.1 GB）
 python -m tinglongwu.reverse.proto --list-mics
-python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute cpu --mt opus     --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
+python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute cpu --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
 ```
 
 - Linux 上程式會自動建立虛擬麥克風（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄文語音播到 `tlwu_sink`，結束時卸載兩個模組。在 Meet/Zoom 選麥克風 `tlwu_mic`。`--no-vmic` 可關閉（改用 `--device <sink 子字串>`）；`--list-speakers` 列出輸出裝置。Windows 仍用 VB-CABLE。
-- 沒有 CUDA 時，翻譯改用 OPUS/Argos 樞紐 zh -> en -> ru（需上面四個 `--pair` 模型），Whisper 預設 `small`。有 CUDA 時 `--mt auto` 在已安裝 Hy-MT2（`tlwu-setup --hymt`）時用 Hy-MT2，否則用 OPUS；`--mt qwen` 可強制用 Qwen3（GPU），`--mt hymt` 強制 Hy-MT2。`--pause`（= `--end-silence`，0.3-2.0 秒）設定句尾靜音秒數（越小越快出聲）。
+- 翻譯一律用 Hy-MT2 直譯（zh -> ru／en／ja 及反向，不經英文轉接），這是唯一引擎。需要主 venv 裡的 `llama-cpp-python` 與 `tlwu-setup --hymt`；缺任一項時程式會印出安裝指令並結束，不會改用其他引擎。有在用 CUDA（`--compute auto` 找到可用 GPU，或 `--compute cuda`）且 GPU 有 2 GB 空閒時在 CUDA 上跑，否則在 CPU 上跑。
+- CPU 預期：筆電 CPU 上 Hy-MT2 每句約 1-1.5 秒（i5-13500 為 0.93 秒，#66），所以講完後約 4 秒才出聲（#186）；程式啟動時會印出這個提示。沒有 CUDA 時 Whisper 預設 `small`。`--pause`（= `--end-silence`，0.3-2.0 秒）設定句尾靜音秒數（越小越快出聲）。
 - 俄語語音模型為**選用、需主動啟用**（上游未標示授權）：任何安裝程式或預設設定都不會下載。請執行 `tlwu-setup --vosk-tts-ru`（或在選單回答 y/N，預設 N，會先顯示「俄文語音模型上游未標示授權；下載請自負責任」）。沒有模型時，說俄文只會顯示字幕並提示啟用方式。
 - 語音在 CPU 上使用內建固定語音：俄語用 Vosk-TTS（`--tts-engine vosk`，以 `--speaker` 選 0-4 號語音），英／日語用 Kokoro（`--tts-engine kokoro`），各自在獨立 venv。沒有參考音訊的聲音複製功能。
 
