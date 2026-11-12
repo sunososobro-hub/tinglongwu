@@ -22,6 +22,7 @@ DEFAULTS = {
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
+    "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -52,7 +53,7 @@ def report_info(s: dict) -> dict:
     """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
     return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",
             "Quality": s.get("quality"), "Engine": s.get("engine"), "Model": s.get("model"), "Source": s.get("source"),
-            "Live draft": "on" if s.get("live_draft") else "off"}
+            "Live draft": "on" if s.get("live_draft") else "off", "Voice": "on" if s.get("voice") else "off"}
 
 
 def doctor_lang(source_lang: str | None) -> str:
@@ -293,7 +294,24 @@ def settings_to_argv(s: dict) -> list[str]:
         argv += ["--glossary", s["glossary"]]
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
+    if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
+        argv += ["--voice"] + (["--voice-device", s["voice_device"]] if s.get("voice_device") else [])
     return argv
+
+
+def voice_outputs(names=None) -> list[str]:
+    """#330: output devices offered for the GUI voice: real speakers/earphones only (virtual cables, BlackHole,
+    tlwu_sink and monitors are left out, the listen side could record them). names=None lists soundcard's."""
+    from ..voice import voice_output_problem
+
+    if names is None:
+        try:
+            import soundcard as sc
+
+            names = [sp.name for sp in sc.all_speakers()]
+        except Exception:  # noqa: BLE001 - no audio stack: only "default output" is offered
+            names = []
+    return [n for n in names if n and voice_output_problem(n, None) is None]
 
 
 class QueueSink(Sink):

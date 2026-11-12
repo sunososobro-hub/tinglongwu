@@ -91,9 +91,21 @@ class VoiceSink(Sink):
             except Exception as e:  # noqa: BLE001 - one bad line must not stop the voice or the subtitles
                 self.on_error(e)
 
-    def close(self, timeout: float | None = None) -> bool:
-        """Speak what is queued (at most max_backlog lines), then stop the worker. False if it is still speaking
+    def pending(self) -> int:
+        """Lines still waiting to be spoken (the stop sentinel is not a line)."""
+        with self.q.mutex:
+            return sum(1 for x in self.q.queue if x is not None)
+
+    def close(self, timeout: float | None = None, drop: bool = False) -> bool:
+        """Speak what is queued (at most max_backlog lines), then stop the worker. drop=True (Ctrl+C / Stop):
+        discard the waiting lines instead, only the line being spoken finishes. False if it is still speaking
         after `timeout` (the caller must then keep the TTS client and player open)."""
+        if drop:
+            while True:
+                try:
+                    self.q.get_nowait()
+                except queue.Empty:
+                    break
         self.q.put(None)
         self.t.join(CLOSE_TIMEOUT if timeout is None else timeout)
         return not self.t.is_alive()
@@ -127,12 +139,20 @@ def make_speaker(tts, player, drain_timeout: float = 60.0):
     line is skipped with an error (so Player.q stays bounded)."""
     from .reverse.proto import _synth_sentences
 
+    broken: list[str] = []
+
     def speak(text: str) -> None:
+        if broken:  # the worker's reply stream is out of sync: every later line would be garbage too
+            return
         if not wait_drained(player, drain_timeout):
             raise RuntimeError("playback stalled; line not spoken")
         info: dict = {}
-        for audio, sr in _synth_sentences(tts, text, info=info):
-            player.push(audio, sr)
+        try:
+            for audio, sr in _synth_sentences(tts, text, info=info):
+                player.push(audio, sr)
+        except (ValueError, KeyError) as e:  # garbled header from the Kokoro worker (bad JSON / missing field)
+            broken.append(str(e))
+            raise RuntimeError(f"Kokoro worker sent a garbled reply ({e}); voice off, subtitles continue") from e
         if not wait_drained(player, drain_timeout):
             raise RuntimeError("playback stalled; this line may not have been heard")
         if info.get("errors"):  # e.g. misaki[zh] missing in the Kokoro venv: say why instead of staying silent
@@ -176,15 +196,19 @@ def open_voice(a, mdir, inner: Sink, say) -> tuple[VoiceSink, callable]:
     py, model = kokoro_paths(mdir, a.tts_python, a.tts_model)
     try:
         tts = TTSClient(py, model, "kokoro", a.voice_speaker, lang)
-    except (OSError, RuntimeError) as e:
+    except (OSError, RuntimeError, ValueError) as e:  # ValueError: garbled ready header (worker already killed)
         player.close()
         raise RuntimeError(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk") from e
     say(f"tlwu: voice ({lang}, Kokoro) on {player.speaker_name}")
     sink = VoiceSink(inner, make_speaker(tts, player), on_error=lambda e: say(f"tlwu: voice error: {e}"))
 
-    def close() -> None:
-        if not sink.close():
-            say(f"tlwu: voice still speaking at exit ({sink.q.qsize()} line(s) left unspoken); left it running")
+    def close(drop: bool = False) -> None:
+        """drop=True on Ctrl+C / Stop: skip the waiting lines instead of speaking them first."""
+        done = sink.close(drop=drop)
+        if sink.dropped:
+            say(f"tlwu: voice skipped {sink.dropped} line(s) to keep up with live speech (subtitles have them)")
+        if not done:
+            say(f"tlwu: voice still speaking at exit ({sink.pending()} line(s) left unspoken); left it running")
             return
         player.close()
         tts.close()

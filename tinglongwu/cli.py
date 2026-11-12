@@ -446,7 +446,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         labeler = make_labeler(mdir)
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
-    close_voice = None
+    close_voice, interrupted = None, False
     try:
         if getattr(a, "voice", False):  # #330: opened last, so every exit path below closes it
             from .voice import open_voice
@@ -458,11 +458,14 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
             on_record=on_record)
+    except KeyboardInterrupt:
+        interrupted = True
+        raise
     finally:
         if rec_file is not None:
             rec_file.close()
-        if close_voice is not None:
-            close_voice()
+        if close_voice is not None:  # Ctrl+C / GUI Stop: do not keep talking through the backlog
+            close_voice(drop=interrupted or (stop is not None and stop.is_set()))
 
 
 def latency_recorder(path, log):
