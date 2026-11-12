@@ -21,11 +21,12 @@ KEYS = ("x", "y", "font_size", "overlay_lines", "show_src")  # what the bar chan
 
 
 class OverlaySink(QueueSink):
-    """Wraps the terminal sink: every line still prints, and also goes to the bar's queue."""
+    """Wraps the terminal sink: every line still prints, and also goes to the bar's queue.
+    prefix: put before each translation on the bar ('◀ ' = the other side, when speak shares the bar)."""
 
-    def __init__(self, inner, q: queue.Queue):
+    def __init__(self, inner, q: queue.Queue, prefix: str = ""):
         super().__init__(q)
-        self.inner = inner
+        self.inner, self.prefix = inner, prefix
 
     def write_source(self, src: str, original: str) -> None:
         self.inner.write_source(src, original)
@@ -33,7 +34,10 @@ class OverlaySink(QueueSink):
 
     def write(self, r: Result) -> None:
         self.inner.write(r)
-        super().write(r)  # same events as the GUI bar
+        if self.prefix:
+            self.q.put(("final", r.original, self.prefix + (r.target if r.src != r.tgt and r.target else r.original)))
+        else:
+            super().write(r)  # same events as the GUI bar
 
 
 def load(path=None) -> dict:
@@ -122,9 +126,10 @@ class Bar:
         self.root.destroy()
 
 
-def run_listen(work, path=None) -> int:
-    """Listen mode: Tk on the main thread, work(q, stop) (the pipeline) on a worker; the bar's Quit,
-    Ctrl+C or the end of the pipeline stops both."""
+def run_listen(work, path=None, join_s: float = 5.0) -> int:
+    """Tk on the main thread, work(q, stop) (the pipeline: listen, or speak in part 2) on a worker; the bar's
+    Quit, Ctrl+C or the end of the pipeline stops both. An int returned by work is the exit code. After the bar
+    closes the worker gets up to join_s to finish its own cleanup (speak: TTS subprocess, confirm prompt)."""
     import signal
 
     q: queue.Queue = queue.Queue()
@@ -138,7 +143,13 @@ def run_listen(work, path=None) -> int:
 
     def body():
         try:
-            work(q, stop)
+            r = work(q, stop)
+            if isinstance(r, int):
+                rc[0] = r
+        except SystemExit as e:  # argparse error / missing model inside the worker
+            if not isinstance(e.code, int) and e.code:
+                print(f"tlwu: {e.code}", file=sys.stderr, flush=True)
+            rc[0] = e.code if isinstance(e.code, int) else 2
         except BaseException as e:  # noqa: BLE001
             print(f"tlwu: {e}", file=sys.stderr, flush=True)
             rc[0] = 2
@@ -149,10 +160,13 @@ def run_listen(work, path=None) -> int:
         prev = signal.signal(signal.SIGINT, lambda *_: stop.set())
     except ValueError:
         prev = None
-    threading.Thread(target=body, name="tlwu-listen", daemon=True).start()
+    th = threading.Thread(target=body, name="tlwu-listen", daemon=True)
+    th.start()
     try:
         bar.run()
     finally:
+        stop.set()
+        th.join(join_s)
         if prev is not None:
             signal.signal(signal.SIGINT, prev)
     return rc[0]
