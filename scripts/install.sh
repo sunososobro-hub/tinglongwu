@@ -127,7 +127,10 @@ main() {
   fi
 
   if [ -d "$DIR/.git" ]; then
-    git -C "$DIR" fetch --quiet --tags origin || die "git fetch failed (network?)"
+    # --force: tags that were rewritten upstream must not block an update (#370)
+    if ! FETCH_ERR=$(git -C "$DIR" fetch --quiet --force --tags origin 2>&1); then
+      die "git fetch failed: ${FETCH_ERR:-unknown error}"
+    fi
     if ! git -C "$DIR" checkout --quiet "$REF" 2>/dev/null; then
       # shellcheck disable=SC2059
       die "$(printf "$(t dirty)" "$DIR")"

@@ -134,8 +134,8 @@ done
 say "4/8 下載 tinglongWu 並建立環境（${DIR}）"
 if [ -d "$DIR/.git" ]; then
   info "已存在，更新中..."
-  if ! git -C "$DIR" fetch --quiet --tags origin 2>&1; then
-    warn "更新失敗（網路？），先用現有版本繼續。"
+  if ! FETCH_ERR=$(git -C "$DIR" fetch --quiet --force --tags origin 2>&1); then
+    warn "更新失敗，先用現有版本繼續。git: ${FETCH_ERR}"
   elif git -C "$DIR" rev-parse -q --verify "refs/tags/$BRANCH" >/dev/null 2>&1; then
     git -C "$DIR" checkout --quiet "$BRANCH" 2>&1 || warn "$DIR 裡有本機改動，無法切到版本 ${BRANCH}；先用現有版本繼續。"
   elif ! git -C "$DIR" merge --ff-only --quiet "origin/$BRANCH" 2>&1; then
