@@ -335,6 +335,10 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 u.extra["lat"] = taken = lat.take()  # partial until tts lands (lat_done merges it)
                 lat_done(u, "lat", taken)
         except Exception as e:  # noqa: BLE001
+            from ..capture._soundcard import AudioDeviceLost
+            if isinstance(e, AudioDeviceLost):  # #317: the retries already explained it; one line, no traceback
+                print(f"tlwu: {e}", file=sys.stderr, flush=True)
+                return
             # #130: never an empty message (AssertionError has none): name the exception and keep the traceback
             print(f"input stopped: {describe_error(e)}", flush=True)
             traceback.print_exc(file=sys.stderr)
@@ -605,6 +609,12 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:  # second Ctrl+C during shutdown (or Ctrl+C while loading): quit quietly
         print("\nstopping...", flush=True)
         return 130
+    except RuntimeError as e:
+        from ..capture._soundcard import AudioDeviceLost
+        if not isinstance(e, AudioDeviceLost):
+            raise
+        print(f"tlwu: {e}", file=sys.stderr, flush=True)  # #317: one line, no traceback
+        return 2
     finally:
         for v in vm:
             try:
