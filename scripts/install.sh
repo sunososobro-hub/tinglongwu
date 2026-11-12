@@ -54,6 +54,15 @@ t() {
     en:dirty)  echo "%s is not a tinglongWu git folder (or has local changes); rename it or set TLWU_DIR." ;;
     ru:dirty)  echo "%s не является git-папкой tinglongWu (или есть локальные правки); переименуйте или задайте TLWU_DIR." ;;
     zh-TW:dirty) echo "%s 不是 tinglongWu 的 git 資料夾（或有本機改動）；請改名或設定 TLWU_DIR。" ;;
+    en:diverged) echo "Local history diverged from origin/%s; saved the old state as branch %s and reset to origin/%s." ;;
+    ru:diverged) echo "Локальная история разошлась с origin/%s; старое состояние сохранено в ветке %s, выполнен сброс на origin/%s." ;;
+    zh-TW:diverged) echo "本機歷史與 origin/%s 分岔；舊狀態已存成分支 %s，並重設到 origin/%s。" ;;
+    en:nff)    echo "Cannot fast-forward %s to origin/%s (not a network problem: the history diverged or the update cannot be applied)." ;;
+    ru:nff)    echo "Не удаётся обновить %s до origin/%s (не сеть: история разошлась или обновление нельзя применить)." ;;
+    zh-TW:nff) echo "無法把 %s 快轉到 origin/%s（不是網路問題：歷史分岔或更新無法套用）。" ;;
+    en:at)     echo "Updated to %s." ;;
+    ru:at)     echo "Обновлено до %s." ;;
+    zh-TW:at)  echo "已更新到 %s。" ;;
     en:pip)    echo "Installing Python packages (1-5 min) ..." ;;
     ru:pip)    echo "Установка Python-пакетов (1-5 мин) ..." ;;
     zh-TW:pip) echo "安裝 Python 套件（約 1-5 分鐘）..." ;;
@@ -91,6 +100,28 @@ prefetch_models() {
   say "$(t asrmt)"
   # shellcheck disable=SC2086
   .venv/bin/python -m tinglongwu_setup $args || die "ASR/MT model download failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
+}
+
+# After fetch+checkout of $REF in $DIR: fast-forward a branch ref; a tag stays as is.
+# Diverged (e.g. rewritten upstream history) + clean tree -> backup branch, reset to origin/$REF (#383).
+# Dirty tree -> stop. Never continue silently on stale code.
+update_branch() {
+  git -C "$DIR" show-ref --verify --quiet "refs/remotes/origin/$REF" || return 0
+  if ! git -C "$DIR" merge --ff-only --quiet "origin/$REF" 2>/dev/null; then
+    # shellcheck disable=SC2059
+    [ -z "$(git -C "$DIR" status --porcelain --untracked-files=no 2>/dev/null)" ] || die "$(printf "$(t dirty)" "$DIR")"
+    if git -C "$DIR" merge-base --is-ancestor HEAD "origin/$REF" 2>/dev/null; then
+      # shellcheck disable=SC2059
+      die "$(printf "$(t nff)" "$REF" "$REF")"
+    fi
+    local bk="backup-$(date +%Y%m%d-%H%M%S)"
+    git -C "$DIR" branch "$bk" HEAD >/dev/null 2>&1 || die "cannot create backup branch $bk"
+    git -C "$DIR" reset --hard --quiet "origin/$REF" || die "git reset failed"
+    # shellcheck disable=SC2059
+    printf "$(t diverged)\n" "$REF" "$bk" "$REF"
+  fi
+  # shellcheck disable=SC2059
+  printf "$(t at)\n" "$(git -C "$DIR" rev-parse --short HEAD)"
 }
 
 main() {
@@ -135,7 +166,7 @@ main() {
       # shellcheck disable=SC2059
       die "$(printf "$(t dirty)" "$DIR")"
     fi
-    git -C "$DIR" merge --ff-only --quiet "origin/$REF" 2>/dev/null || true   # branch ref only; a tag stays as is
+    update_branch
   elif [ -e "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
     # shellcheck disable=SC2059
     die "$(printf "$(t dirty)" "$DIR")"
