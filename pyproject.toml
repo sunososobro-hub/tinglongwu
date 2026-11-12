@@ -34,7 +34,8 @@ tlwu-setup = "tinglongwu_setup.cli:main"
 tlwu-gui = "tinglongwu.gui:main"
 
 [tool.setuptools]
-packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu.reverse", "tinglongwu_setup"]
+packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu.reverse", "tinglongwu.lang", "tinglongwu.lang.ja",
+            "tinglongwu_setup"]
 
 [tool.setuptools.package-data]
 tinglongwu_setup = ["manifest.json"]
