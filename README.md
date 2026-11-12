@@ -59,6 +59,12 @@ Focus languages are Japanese, English and Russian (Chinese is the base). Every o
 | Russian | `ru` | focus | Listen, Speak, Meeting |
 | Korean, German, French, Spanish, Italian, Portuguese, Vietnamese, Thai, Indonesian | `ko` `de` `fr` `es` `it` `pt` `vi` `th` `id` | experimental | Listen only |
 
+## Roadmap
+
+Shipped, in progress and planned work: **[tlwu roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html)**.
+
+[English](https://sunososobro-hub.github.io/tinglongwu/roadmap.html#en) | [繁體中文](https://sunososobro-hub.github.io/tinglongwu/roadmap.html#zh-tw) | [简体中文](https://sunososobro-hub.github.io/tinglongwu/roadmap.html#zh-cn) | [日本語](https://sunososobro-hub.github.io/tinglongwu/roadmap.html#ja) | [한국어](https://sunososobro-hub.github.io/tinglongwu/roadmap.html#ko) | [Русский](https://sunososobro-hub.github.io/tinglongwu/roadmap.html#ru)
+
 ## Verification status
 
 ✅ verified on a real device, 🧪 not yet verified (links go to the test issue).
