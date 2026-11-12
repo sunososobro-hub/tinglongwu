@@ -368,7 +368,7 @@ KOKORO_DIR = "kokoro"  # models/kokoro/ (the files tinglongwu.reverse.tts_worker
 KOKORO_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 KOKORO_FILES = {  # name: (bytes, SHA256) from the official release, measured in #124
     "kokoro-v1.0.int8.onnx": (92361271, "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb"),
-    "voices-v1.0.bin": (28214398, "bca610b8308e8d99f32efe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"),
+    "voices-v1.0.bin": (28214398, "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"),
 }
 KOKORO_PINS = {n: h for n, (_, h) in KOKORO_FILES.items()}
 
