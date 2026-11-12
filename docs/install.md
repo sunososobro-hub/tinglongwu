@@ -34,7 +34,7 @@ plus an NVIDIA driver that supports CUDA 12 or newer. If the GPU or these librar
 
 ## Quick install (Windows)
 
-For Windows 10/11 with an NVIDIA GPU (works without one, just slower). You need [Python 3.12](https://www.python.org/downloads/windows/) first (tick **Add python.exe to PATH** in its installer).
+For Windows 10/11 with an NVIDIA GPU (works without one, just slower). If Python 3.12 is missing, the installer installs Python 3.12 for your user account itself (no admin; SHA256-checked download from python.org, winget as fallback).
 
 1. On GitHub click **Code > Download ZIP**, then right-click the ZIP > **Extract All**.
 2. Open the folder and double-click **`install.bat`**. Wait (10-30 min, up to ~3 GB of models on an NVIDIA GPU with 4 GB+ VRAM, ~1 GB otherwise; safe to re-run if interrupted).

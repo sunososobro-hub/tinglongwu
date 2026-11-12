@@ -92,11 +92,14 @@ def _run_ps1(tmp_path: Path, version: tuple[int, int]):
 
 @pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 @pytest.mark.parametrize("version", [(3, 10), (3, 11)])
-def test_install_ps1_refuses_python_310_311(tmp_path, version):
+def test_install_ps1_does_not_use_python_310_311_and_plans_a_312_install(tmp_path, version):
+    # #138: 3.10/3.11 cannot install the pinned numpy/scipy; #67: instead of stopping, install 3.12 per-user
     r, out = _run_ps1(tmp_path, version)
-    assert r.returncode == 1, out
-    assert "Python 3.12 not found" in out
-    assert "Detect NVIDIA GPU" not in out  # stopped at step 1
+    assert r.returncode == 0, out
+    assert "Python 3.12 not found: installing Python 3.12" in out
+    assert "[dry-run] download https://www.python.org/ftp/python/3.12." in out
+    venv = next(line for line in out.splitlines() if "-m venv" in line)
+    assert "Python312" in venv and str(tmp_path / "bin") not in venv  # the 3.12 it installs, not the old python
 
 
 @pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
