@@ -45,6 +45,9 @@ t() {
     en:declined) echo "Not installed. Install them yourself, then run this command again." ;;
     ru:declined) echo "Не установлено. Установите сами и запустите команду снова." ;;
     zh-TW:declined) echo "未安裝。請自行安裝後再執行一次這個指令。" ;;
+    en:notk)   echo "tkinter (Tk for Python) is missing, so tlwu-gui will not start; install your distro's Tk package for Python (e.g. python3-tk / python3-tkinter / tk), or delete .venv and re-run this installer. The terminal menu works without it." ;;
+    ru:notk)   echo "Нет tkinter (Tk для Python), tlwu-gui не запустится; установите пакет Tk для Python вашего дистрибутива (например python3-tk / python3-tkinter / tk). Или удалите .venv и запустите установщик снова. Меню в терминале работает и без него." ;;
+    zh-TW:notk) echo "缺少 tkinter（Python 的 Tk），tlwu-gui 無法啟動；請安裝你發行版的 Python Tk 套件（例如 python3-tk / python3-tkinter / tk），或刪除 .venv 後重跑安裝程式。終端機選單不需要它。" ;;
     en:nogit)  echo "git, python3 (3.12 with venv) and curl are required; apt-get not found, install them manually." ;;
     ru:nogit)  echo "Нужны git, python3 (3.12 с venv) и curl; apt-get не найден, установите вручную." ;;
     zh-TW:nogit) echo "需要 git、python3（3.12，含 venv）與 curl；找不到 apt-get，請手動安裝。" ;;
@@ -142,6 +145,18 @@ main() {
   if command -v dpkg >/dev/null 2>&1; then
     for p in libsndfile1 libpulse0; do dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"; done
   fi
+  # tlwu-gui needs tkinter (#328); the venv uses the system Python's Tk, which Debian/Ubuntu ship separately
+  if [ -n "$PY" ] && "$PY" -c 'import tkinter' 2>/dev/null; then :
+  elif command -v apt-get >/dev/null 2>&1; then
+    # Ubuntu 24.04: python3 is 3.12 -> python3-tk; a separate python3.12 (e.g. deadsnakes) -> python3.12-tk
+    if [ "$PY" = "python3.12" ] && ! python3 -c 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)' 2>/dev/null; then
+      MISSING="$MISSING python3.12-tk"
+    else
+      MISSING="$MISSING python3-tk"
+    fi
+  else
+    printf '\n[!] %s\n' "$(t notk)" >&2
+  fi
   if [ -n "$MISSING" ]; then
     # shellcheck disable=SC2059
     printf "$(t missing)\n" "$MISSING"
@@ -179,6 +194,8 @@ main() {
   say "$(t pip)"
   .venv/bin/python -m pip install --upgrade pip >/dev/null 2>&1 || true
   .venv/bin/python -m pip install -e . || die "pip install failed (network?). Re-run this command to resume."
+  # an older .venv may come from another Python than $PY: check the interpreter tlwu-gui really runs (#328)
+  .venv/bin/python -c 'import tkinter' 2>/dev/null || printf '\n[!] %s\n' "$(t notk)" >&2
 
   if [ -z "${TLWU_SKIP_MODELS:-}" ]; then
     bash scripts/linux_kokoro.sh || die "Kokoro install failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."

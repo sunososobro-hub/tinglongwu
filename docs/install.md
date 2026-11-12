@@ -23,6 +23,7 @@ Updating a Windows dev checkout (git clone on the `dev` branch): double-click **
 
 - **Windows**: nothing extra (WASAPI loopback of the default speakers).
 - **Linux**: PipeWire (with pipewire-pulse) or PulseAudio. Default captures the monitor of the default sink; list with `pactl list sources short` and choose with `--capture-device <substring>`.
+- **Linux GUI** (`tlwu-gui`): tkinter, i.e. `python3-tk` on Debian/Ubuntu (`install.sh` checks for it and installs it with the other apt packages).
 - **macOS**: install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole), create a Multi-Output Device (speakers + BlackHole) in Audio MIDI Setup and make it the output. tlwu captures the device whose name contains `BlackHole`. ScreenCaptureKit audio capture is a possible future option.
 
 ### GPU (optional, NVIDIA)
