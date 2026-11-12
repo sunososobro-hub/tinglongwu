@@ -158,8 +158,9 @@ def _ctrlc_cmd(mode: str, work: Path, models: str | None) -> tuple[list[str], re
 
         x, sr = sf.read(str(CLIP_EN), dtype="float32")
         sf.write(str(en), np.concatenate([x] * 40), sr)  # still busy when Ctrl+C comes
-        # subtitles go to stdout once the models are loaded and lines are coming out
-        return [PY, "-m", "tinglongwu", "--file", str(en), "--to", "zh", "--device", "cpu", *md], re.compile(r"\S")
+        # the ready line comes once the models are loaded and the pipeline runs (stdout or stderr: both read here)
+        return ([PY, "-m", "tinglongwu", "--file", str(en), "--to", "zh", "--device", "cpu", *md],
+                re.compile(r"^\* ready - listening"))
     d = work / "zh"
     d.mkdir()
     for i in range(8):
@@ -167,6 +168,16 @@ def _ctrlc_cmd(mode: str, work: Path, models: str | None) -> tuple[list[str], re
     return ([PY, "-m", "tinglongwu.reverse.proto", "--input", str(d), "--to", "en", "--compute", "cpu",
              "--mt", MT, "--no-play", "--no-vmic", "--no-confirm", "--out", str(work / "tts"), *md,
              *whisper_args(), *kokoro_args()], re.compile(r"^\[1/\d+\]"))
+
+
+def _unload_vmic() -> None:
+    """A killed speak process skips its atexit cleanup: unload its tlwu_mic / tlwu_sink modules (mic first)."""
+    out = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True).stdout
+    rows = [ln.split("\t") for ln in out.splitlines()]
+    for key in ("source_name=tlwu_mic", "sink_name=tlwu_sink"):
+        for r in rows:
+            if len(r) > 2 and key in r[2]:
+                subprocess.run(["pactl", "unload-module", r[0]], check=False)
 
 
 def _descendants(pid: int) -> list[int]:
@@ -362,7 +373,7 @@ def cmd_doctor(a) -> int:
         check(f"doctor: '{name}' is ok on this runner", any(re.match(rf"\[\s*ok\] {re.escape(name)}", ln)
                                                             for ln in lines))
     fails = sum(1 for ln in status if "FAIL" in ln)
-    check("doctor exit code matches its FAIL lines", (r.returncode == 1) == (fails > 0), f"exit {r.returncode}")
+    check("doctor exit code matches its FAIL lines", r.returncode == (1 if fails else 0), f"exit {r.returncode}")
     return finish()
 
 
@@ -453,6 +464,7 @@ def cmd_monitor_live(a) -> int:
                     rc = p.wait(timeout=20)
                 except subprocess.TimeoutExpired:
                     p.kill()
+                    _unload_vmic()
                     rc = None
             time.sleep(1)
             out = "\n".join(buf)
@@ -476,6 +488,7 @@ def cmd_monitor_live(a) -> int:
                 print(tail(out, 30))
         else:
             p.kill()
+            _unload_vmic()
             print(tail("\n".join(buf), 30))
     return finish()
 
