@@ -402,3 +402,20 @@ def test_start_is_disabled_and_counts_seconds_until_models_are_ready(gui_app):
     a.worker.join(5)
     a.poll()
     assert str(a.btn.cget("state")) == "normal" and a.btn.cget("text") == "Start"
+
+
+def test_download_finishing_while_loading_keeps_the_button_disabled(gui_app, monkeypatch):
+    """#332 / CodeRabbit on #452: a model download that ends mid-load must not re-enable the Loading button."""
+    from tinglongwu import cli
+    from tinglongwu.gui import app as app_mod
+
+    monkeypatch.setattr(app_mod, "is_downloaded", lambda m: True)
+    a = gui_app
+    a.toggle()  # Start: loading
+    a._download_done("tiny", 0)
+    assert str(a.btn.cget("state")) == "disabled"
+    a.q.put(("status", f"{cli.READY_STATUS} - loaded in 1.0 s (speech model 1.0 s)"))
+    a.poll()
+    assert str(a.btn.cget("state")) == "normal"
+    a._download_done("tiny", 0)  # after ready: unchanged behaviour, the button works
+    assert str(a.btn.cget("state")) == "normal"

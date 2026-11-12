@@ -498,7 +498,7 @@ class App:
 
     def _download_done(self, model: str, rc: int):
         self.downloading = None
-        self.btn.configure(state="normal")
+        self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
         labels = model_labels()
         self.combos["model"].configure(values=labels, width=combo_width(labels))
