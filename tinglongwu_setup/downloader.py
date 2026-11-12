@@ -9,7 +9,6 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
   tlwu-setup --whisper small --langs ru,ja --to zh,ko
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
       --pair s-t  : one explicit pair (repeatable)
-  tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
   tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
   tlwu-setup --piper-ru        # Piper Russian voice dmitri (or: --piper-ru denis), CC0 data, ~60 MB
@@ -194,12 +193,6 @@ def get_pair(man, mdir, pair, allow_unpinned=False):
     pin_or_verify(man, key, dest, {"url": url}, pin and pin["files"])
 
 
-QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official Qwen repos
-    "qwen3-8b": ("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
-    "qwen3-4b": ("Qwen/Qwen3-4B-GGUF", "Qwen3-4B-Q4_K_M.gguf"),
-}
-
-
 HYMT_DIR = "hymt2-1.8b"  # keep in sync with tinglongwu.hymt (setup does not import tinglongwu)
 HYMT_GGUF = ("tencent/Hy-MT2-1.8B-GGUF", "Hy-MT2-1.8B-Q4_K_M.gguf")  # Apache-2.0, ~1.1 GB: Japanese MT
 HYMT_EXTRAS = ("LICENSE.txt",)  # upstream Apache-2.0 text, kept next to the model
@@ -235,11 +228,6 @@ def get_hymt7b(man, mdir, fetch_license=None):
         fetch_license()
     check_license(dest / HYMT_EXTRAS[0])
     get_gguf(man, mdir, HYMT7B_DIR, repo, fname, extras=HYMT_EXTRAS)
-
-
-def get_qwen(man, mdir, name):
-    """Qwen3 Q4_K_M GGUF -> models/<name>/<file>.gguf (pinned by HF commit sha + SHA256)."""
-    get_gguf(man, mdir, name, *QWEN_GGUF[name])
 
 
 def get_hymt(man, mdir):
@@ -447,10 +435,6 @@ def main(argv=None) -> int:
     p.add_argument("--pair", action="append", default=[], help="e.g. ru-en, en-zh")
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
-    p.add_argument("--qwen", action="store_true",
-                   help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
-    p.add_argument("--qwen4b", action="store_true",
-                   help="only Qwen3-4B Q4_K_M GGUF (~2.5 GB; for GPUs with < 6 GB free VRAM)")
     p.add_argument("--hymt", action="store_true",
                    help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
                         "Japanese listening/speaking (needs llama-cpp-python)")
@@ -505,10 +489,6 @@ def main(argv=None) -> int:
     for s in a.whisper:
         get_whisper(man, mdir, s)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
-    if a.qwen or a.qwen4b:
-        for name in (QWEN_GGUF if a.qwen else ["qwen3-4b"]):
-            get_qwen(man, mdir, name)
-            mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt:
         get_hymt(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")

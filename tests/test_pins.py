@@ -12,8 +12,8 @@ def test_committed_pins_complete():
         p = pins["models"][f"whisper-{size}"]
         assert p["repo"] == dl.whisper_repo(size) and len(p["revision"]) == 40
         assert len(p["files"]["model.bin"]) == 64
-    for name, (repo, fname) in dl.QWEN_GGUF.items():
-        assert pins["models"][name]["repo"] == repo and fname in pins["models"][name]["files"]
+    assert pins["models"][dl.HYMT_DIR]["repo"] == dl.HYMT_GGUF[0] and dl.HYMT_GGUF[1] in pins["models"][dl.HYMT_DIR]["files"]
+    assert not [k for k in pins["models"] if k.startswith("qwen")]  # #308: Qwen downloads are gone
     assert "m2m-1.2B" not in pins["models"]  # #284: M2M-100 is gone
     for a in pins["argos"].values():
         assert a["url"].startswith("https://") and a["files"]

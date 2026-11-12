@@ -124,7 +124,7 @@ def test_launcher_auto_mic_tier_args_and_quoting(tmp_path):
     args = [a.strip().strip("'") for a in run_line[len("$a = @("):-1].split("', '")]
     assert args[args.index("--mic") + 1] == "--compute"  # no microphone name written
     assert args[args.index("--whisper") + 1] == "large-v3-turbo" and args[args.index("--mt") + 1] == "auto"
-    assert args[args.index("--qwen") + 1] == "qwen3-4b" and args[args.index("--device") + 1] == "CABLE Input"
+    assert "--qwen" not in args and args[args.index("--device") + 1] == "CABLE Input"  # #308: Qwen is gone
     assert "Set-Location 'C:/Users/o''neil/tlwu'" in s.replace("\\", "/")
     assert s.splitlines()[2].startswith("param(")  # param() must be the first statement
     assert "--qwen" not in talk.render_launcher(Path("r"), Path("p"), Path("m"), "small", "cpu", "opus")
@@ -168,3 +168,12 @@ def test_install_dry_run_sets_up_talk_mode_and_both_shortcuts():
     lnk = [x for x in lines[s7:s8] if "[dry-run] shortcut:" in x]
     # (Linux pwsh has no Desktop folder, so the .lnk path is empty there; the target is what matters)
     assert len(lnk) == 2 and "-NoExit -ExecutionPolicy Bypass -File" in lnk[1] and "tlwu-talk.ps1" in lnk[1]
+
+
+def test_setup_rejects_qwen_flags(capsys):
+    """#308: the Qwen download flags are gone; argparse rejects them (exit 2)."""
+    for flag in ("--qwen", "--qwen4b"):
+        with pytest.raises(SystemExit) as e:
+            downloader.main([flag, "--models-dir", "unused"])
+        assert e.value.code == 2
+    assert not hasattr(downloader, "QWEN_GGUF") and not hasattr(downloader, "get_qwen")

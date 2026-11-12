@@ -8,7 +8,7 @@
   tlwu-setup --talk [--talk-whisper small --talk-compute cpu --talk-mt opus]
                                                       talk mode: Kokoro venv (~/tts-kokoro) + pinned model + smoke wav
                                                       + tlwu-talk.ps1 launcher (used by install.ps1)
-  tlwu-setup --check-llama                            offline: does llama-cpp-python (Qwen / Hy-MT2) fit this CPU?
+  tlwu-setup --check-llama                            offline: does llama-cpp-python (Hy-MT2) fit this CPU?
   tlwu-setup --selftest [--model M --engine E]        offline: load the models, translate one test sentence (tlwu --selftest)
   tlwu-setup --verify                                 offline integrity check
   tlwu-setup --bundle out.zip                         pack wheels + models/ for an air-gapped machine
