@@ -39,3 +39,15 @@ To reproduce (needs the bench venv, the data under `%USERPROFILE%/tlwu-eval`, an
 **Bench only; sends test sentences to that service.** `scripts/bench/run.py` and `google_ref.py` call Google Cloud Translation v2 (and, for the FLEURS run, Speech-to-Text v1, which receives the test audio) only when a key file exists and `--no-google` is not given. They are dev tools: the `tinglongwu` package never imports `scripts/`, and no normal `tlwu` / `tlwu-gui` / reverse-mode path calls them. `fetch_data.py` also downloads the test sets (FLORES-200, FLEURS) from the network.
 
 **Google scores higher than every offline engine** in every direction we tested. The offline engines trade some quality for working with no network and no data leaving the machine. Small samples (50 sentences) are indicative only.
+
+## Japanese eval set (ja -> zh-TW, #346)
+
+60 FLEURS ja_jp test utterances (read FLORES sentences) with the human FLORES-200 zho_Hant translation of the same sentence as the zh-TW reference. Licences: FLEURS CC-BY 4.0 (audio, ja transcript), FLORES-200 CC-BY-SA 4.0 (reference); the built folder carries a `LICENSE.txt`. The data is downloaded once and never committed.
+
+```
+python scripts/bench/fetch_data.py --out DATA --fleurs ja_jp
+python scripts/bench/make_ja_set.py --data DATA --out eval_data/ja
+python -m tlwu_eval --smoke --data eval_data/ja --per-lang 60 --out ja.json
+```
+
+FLEURS is read news/encyclopedia text, so it covers the broadcast-news style; anime-style dialogue is not in it. The chrF baseline and per-OS numbers are recorded on #346 once measured on GPU hardware.
