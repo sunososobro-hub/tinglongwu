@@ -335,8 +335,34 @@ def test_stalled_playback_skips_lines_instead_of_queuing_more_audio():
 
     player = _StuckPlayer()
     speak = voice.make_speaker(_Tts("py", "m", "kokoro", 0, "zh"), player, drain_timeout=0.05)
-    speak("第一句。")  # pushed; playback never drains, the wait times out
+    with pytest.raises(RuntimeError, match="stalled"):
+        speak("第一句。")  # pushed, then playback never drains: reported for this line too
     n = player.q.qsize()
     with pytest.raises(RuntimeError, match="stalled"):
         speak("第二句。")
     assert n > 0 and player.q.qsize() == n
+
+
+def test_open_voice_close_keeps_player_and_tts_open_while_still_speaking(fakes, tmp_path, monkeypatch):
+    gate, said = threading.Event(), []
+    monkeypatch.setattr(voice, "make_speaker", lambda tts, player: lambda text: gate.wait(5))
+    monkeypatch.setattr(voice, "CLOSE_TIMEOUT", 0.05)
+    a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
+    sink, close = voice.open_voice(a, tmp_path, _Lines(), said.append)
+    for t in ("一", "二"):
+        sink.write(_r(t))
+    close()
+    assert not fakes[0].closed and not _Tts.made[0].closed  # worker still speaking: nothing closed under it
+    assert any("left unspoken" in m for m in said)
+    gate.set()
+
+
+def test_unmatched_voice_device_is_a_one_line_error(monkeypatch, tmp_path):
+    from tinglongwu.reverse import proto
+
+    def no_match(device, out_sr=48000):
+        raise LookupError(f"no output device matching {device!r}")
+
+    monkeypatch.setattr(proto, "Player", no_match)
+    with pytest.raises(RuntimeError, match="--voice-device"):
+        voice.open_voice(cli.parse_args(["--voice", "--voice-device", "Nope"]), tmp_path, _Lines(), lambda m: None)

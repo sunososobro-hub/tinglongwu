@@ -46,6 +46,7 @@ def voice_output_problem(out_name: str | None, capture_name: str | None) -> str 
     return None
 
 
+CLOSE_TIMEOUT = 30.0  # seconds VoiceSink.close() waits for the backlog (<= MAX_BACKLOG lines) to be spoken
 MAX_BACKLOG = 2  # unspoken lines kept while one is being spoken; older ones are skipped (the subtitle has them)
 
 
@@ -90,11 +91,11 @@ class VoiceSink(Sink):
             except Exception as e:  # noqa: BLE001 - one bad line must not stop the voice or the subtitles
                 self.on_error(e)
 
-    def close(self, timeout: float = 30.0) -> bool:
+    def close(self, timeout: float | None = None) -> bool:
         """Speak what is queued (at most max_backlog lines), then stop the worker. False if it is still speaking
         after `timeout` (the caller must then keep the TTS client and player open)."""
         self.q.put(None)
-        self.t.join(timeout)
+        self.t.join(CLOSE_TIMEOUT if timeout is None else timeout)
         return not self.t.is_alive()
 
 
@@ -132,7 +133,8 @@ def make_speaker(tts, player, drain_timeout: float = 60.0):
         info: dict = {}
         for audio, sr in _synth_sentences(tts, text, info=info):
             player.push(audio, sr)
-        wait_drained(player, drain_timeout)
+        if not wait_drained(player, drain_timeout):
+            raise RuntimeError("playback stalled; this line may not have been heard")
         if info.get("errors"):  # e.g. misaki[zh] missing in the Kokoro venv: say why instead of staying silent
             raise RuntimeError(info["errors"][0])
 
@@ -163,7 +165,10 @@ def open_voice(a, mdir, inner: Sink, say) -> tuple[VoiceSink, callable]:
     lang = voice_lang(a.to)
     if lang is None:
         raise RuntimeError(f"--voice speaks {', '.join(VOICE_LANGS)} only (Kokoro voices); --to is {a.to!r}")
-    player = Player(a.voice_device, 48000)
+    try:
+        player = Player(a.voice_device, 48000)
+    except LookupError as e:  # no output device matches --voice-device
+        raise RuntimeError(f"--voice-device: {e}") from e
     problem = voice_output_problem(player.speaker_name, capture_device_name(a.file, a.mic, a.device))
     if problem:
         player.close()
@@ -179,7 +184,7 @@ def open_voice(a, mdir, inner: Sink, say) -> tuple[VoiceSink, callable]:
 
     def close() -> None:
         if not sink.close():
-            say("tlwu: voice still speaking at exit; left it running")
+            say(f"tlwu: voice still speaking at exit ({sink.q.qsize()} line(s) left unspoken); left it running")
             return
         player.close()
         tts.close()
