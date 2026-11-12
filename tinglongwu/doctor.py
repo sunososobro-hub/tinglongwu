@@ -159,6 +159,11 @@ def run_checks(lang: str = "ru", mdir: Path | None = None, *, platform: str = sy
             check_cable(platform, names), check_output(default), check_gpu(gpu())]
 
 
+def summary(checks: list[Check]) -> str:
+    bad = sum(c.status == FAIL for c in checks)
+    return "ready for a meeting" if not bad else f"{bad} problem(s): run the fix line(s) above, then check again"
+
+
 def main(argv=None) -> int:
     import argparse
 
@@ -171,6 +176,5 @@ def main(argv=None) -> int:
     checks = run_checks(a.to, Path(a.models_dir) if a.models_dir else None)
     for c in checks:
         print(c.line())
-    bad = sum(c.status == FAIL for c in checks)
-    print("ready for a meeting" if not bad else f"{bad} problem(s): run the fix line(s) above, then `tlwu doctor` again")
-    return 1 if bad else 0
+    print(summary(checks))
+    return 1 if any(c.status == FAIL for c in checks) else 0

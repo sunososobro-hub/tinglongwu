@@ -16,7 +16,7 @@ from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
-                   combo_width, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download,
+                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv)
 
 try:  # optional theme; the GUI works without it
@@ -352,8 +352,10 @@ class App:
         self.btn.grid(row=10, column=0, columnspan=2, sticky="we", pady=(8, 2))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)
         self.btn_pause.grid(row=10, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
+        self._tx(ttk.Button(f, command=self.check_setup), "gui_check_setup").grid(
+            row=13, column=0, sticky="we", pady=(6, 0))
         self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(
-            row=13, column=0, columnspan=3, sticky="we", pady=(6, 0))
+            row=13, column=1, columnspan=2, sticky="we", pady=(6, 0), padx=(4, 0))
         self.v_status = tk.StringVar(value=t("gui_ready"))
         ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
@@ -506,6 +508,16 @@ class App:
         self.overlay.render(self.state)
         self.render_log()
 
+    def check_setup(self):
+        """#313 part 2: run the `tlwu doctor` checks off the main thread; poll() shows the result."""
+        self.set_status("gui_checking")
+        lang = doctor_lang(lang_from_label(self.v_lang.get()))
+        threading.Thread(target=run_setup_check, args=(self.q, lang), daemon=True).start()
+
+    def _show_setup_check(self, text: str, ok: bool):
+        self.set_status("gui_check_ok" if ok else "gui_check_bad")
+        (messagebox.showinfo if ok else messagebox.showwarning)(t("gui_check_setup"), text, parent=self.root)
+
     def report_problem(self):
         from ..report import open_report
         from .core import report_info
@@ -581,6 +593,8 @@ class App:
                     self.v_notice.set(ev[1])
                 elif kind == "dl_line":
                     self._status_text(ev[1])
+                elif kind == "doctor":
+                    self._show_setup_check(ev[1], ev[2])
                 elif kind == "dl_done":
                     self._download_done(ev[1], ev[2])
                 elif kind == "error":
