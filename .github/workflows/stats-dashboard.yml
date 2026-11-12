@@ -1,0 +1,44 @@
+name: stats-dashboard
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # push to gh-pages with GITHUB_TOKEN
+
+concurrency:
+  group: stats-dashboard
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        # run script from the triggering commit (main); stats still collected for --branch dev
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Fetch previous gh-pages data (keeps snapshot history)
+        run: |
+          mkdir -p site
+          git fetch origin gh-pages --depth=1 || true
+          git show origin/gh-pages:data.json > site/data.json 2>/dev/null || true
+      - name: Build dashboard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/stats_dashboard.py site --repo "${{ github.repository }}" --branch dev
+      - name: Add static pages (roadmap)
+        run: cp docs/roadmap.html site/roadmap.html
+      - name: Publish to gh-pages
+        run: |
+          cd site
+          touch .nojekyll
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "stats dashboard $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
