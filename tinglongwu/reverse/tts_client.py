@@ -20,7 +20,8 @@ class TTSClient:
         cmd = [tts_python, str(worker), "--engine", engine, "--model", model, "--speaker", str(speaker)]
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
                "TLWU_MODE": "worker", **tts_env()}  # #250: onnxruntime threads in listen+speak mode
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env,
+                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))  # no console flash
         try:
             self.ready = self._read_header()
             if not isinstance(self.ready, dict) or self.ready.get("t") != "ready":
