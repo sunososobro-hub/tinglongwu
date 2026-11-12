@@ -30,6 +30,13 @@ These are the only hard rules, so this is exactly the bar. Everything else is ne
 - **MIT-compatible dependencies only.** Add new ones to [docs/licenses.md](docs/licenses.md) / [THIRD_PARTY.md](THIRD_PARTY.md) with their license.
 - **Never copy code from copyleft projects (GPL / AGPL).** Ideas are fine; code is not. When in doubt, ask.
 
+## Pull requests and credit
+
+- External PRs are welcome.
+- The default branch for PRs is `dev` (`main` only receives release PRs).
+- PRs are merged by rebase, so your authorship is kept in the commit history.
+- Contributors are credited in the release notes.
+
 ## Dev setup
 
 Python 3.12 is what CI uses.
