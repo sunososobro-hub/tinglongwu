@@ -22,7 +22,8 @@ def _stub(p: Path, body: str) -> None:
     p.chmod(0o755)
 
 
-def _run(tmp_path: Path, args=(), extra_env=None, dpkg_ok=False, tk_ok=True, system_py312=False):
+def _run(tmp_path: Path, args=(), extra_env=None, dpkg_ok=False, tk_ok=True, system_py312=False, venv_tk_ok=None):
+    venv_tk_ok = tk_ok if venv_tk_ok is None else venv_tk_ok  # the .venv python (an older .venv may differ)
     log = tmp_path / "calls.log"
     fake = tmp_path / "bin"
     d = tmp_path / "tlwu"
@@ -45,7 +46,8 @@ def _run(tmp_path: Path, args=(), extra_env=None, dpkg_ok=False, tk_ok=True, sys
     # the venv python: setup is logged, the tier probe runs the real tlwu_app.tiers
     _stub(d / ".venv" / "bin" / "python",
           f'case "$1" in\n -m) if [ "$2" = "tinglongwu_setup" ]; then echo "setup $*" >> "$TLWU_LOG"; fi; exit 0 ;;\n'
-          f' -c) PYTHONPATH="{ROOT}" exec "{sys.executable}" -c "$2" ;;\nesac\nexit 0')
+          f' -c) case "$2" in *"import tkinter"*) exit {0 if venv_tk_ok else 1} ;; esac\n'
+          f'     PYTHONPATH="{ROOT}" exec "{sys.executable}" -c "$2" ;;\nesac\nexit 0')
     env = {"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path), "TLWU_DIR": str(d), "TLWU_UI_LANG": "en",
            "TLWU_LOG": str(log), **(extra_env or {})}
     r = subprocess.run(["bash", str(ROOT / "scripts" / "install.sh"), *args], stdin=subprocess.DEVNULL,
@@ -125,3 +127,11 @@ def test_missing_tkinter_without_yes_asks_like_other_packages(tmp_path):
     out = r.stdout + r.stderr
     assert r.returncode == 1, out  # y/N prompt got EOF = default no
     assert "python3-tk" in out and "Not installed" in out and "sudo" not in calls
+
+
+def test_existing_venv_without_tkinter_warns(tmp_path):
+    # $PY has Tk but the reused .venv comes from another Python without it: say so instead of a silent broken GUI
+    r, calls = _run(tmp_path, dpkg_ok=True, tk_ok=True, venv_tk_ok=False, system_py312=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "apt-get" not in calls
+    assert "[!] tkinter (Tk for Python) is missing" in r.stderr and "delete .venv" in r.stderr

@@ -34,8 +34,18 @@ def test_tlwu_dash_gui_without_tkinter():
 
 def test_hint_names_apt_package_on_debian(monkeypatch):
     monkeypatch.setattr(gui.sys, "platform", "linux")
-    monkeypatch.setattr(gui.shutil, "which", lambda name: "/usr/bin/apt-get" if name == "apt-get" else None)
+    me = gui.os.path.realpath(getattr(sys, "_base_executable", None) or sys.executable)
+    monkeypatch.setattr(gui.shutil, "which", lambda name: {"apt-get": "/usr/bin/apt-get", "python3": me}.get(name))
     assert gui.tk_missing_hint() == "tkinter is missing. Install it with: sudo apt install python3-tk"
+
+
+def test_hint_names_versioned_package_for_a_separate_python(monkeypatch):
+    # e.g. deadsnakes python3.12 next to a system python3 of another version: python3-tk would not help
+    monkeypatch.setattr(gui.sys, "platform", "linux")
+    monkeypatch.setattr(gui.shutil, "which",
+                        lambda name: {"apt-get": "/usr/bin/apt-get", "python3": "/nonexistent/python3"}.get(name))
+    v = sys.version_info
+    assert gui.tk_missing_hint() == f"tkinter is missing. Install it with: sudo apt install python{v[0]}.{v[1]}-tk"
 
 
 def test_hint_is_generic_without_apt(monkeypatch):
