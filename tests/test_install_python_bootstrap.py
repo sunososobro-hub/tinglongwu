@@ -91,3 +91,24 @@ def test_install_ps1_dry_run_without_python_plans_the_install_instead_of_exiting
     assert "InstallAllUsers=0" in r.stdout and "winget install" in r.stdout
     assert "[3/8]" in r.stdout and "-m venv" in r.stdout   # went on to the next steps with the planned python
     assert not (work / ".venv").exists()                    # dry run installs nothing
+
+
+def test_installer_busy_1618_is_retried(tmp_path, monkeypatch):
+    """windows-latest (install-clean, 2026-11-12): the python.org installer returned 1618 (another installation in
+    progress) and the one-click install gave up. It now waits and tries again."""
+    monkeypatch.setenv("TLWU_TEST_NO_SLEEP", "1")
+    target = tmp_path / "py" / "python.exe"
+    count = tmp_path / "n.txt"
+    script = f"""
+. '{ROOT / "scripts" / "python_bootstrap.ps1"}'
+$r = Install-TlwuPython -Sha256 '{hashlib.sha256(FAKE).hexdigest()}' -Target '{target}' `
+    -Download {WRITE_FAKE} `
+    -RunInstaller {{ param($exe, $a) Add-Content -Path '{count}' -Value x; `
+        if (@(Get-Content '{count}').Count -lt 3) {{ 1618 }} else {{ New-Item -ItemType File -Force -Path '{target}' | Out-Null; 0 }} }} `
+    -Winget {{ param($a) Write-Host 'WINGET-CALLED' }}
+Write-Host "RESULT=[$r]"
+"""
+    r = ps(script, tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.count("retry") == 2 and f"RESULT=[{target}]" in r.stdout
+    assert "WINGET-CALLED" not in r.stdout and "exit code: 1618" not in r.stdout
