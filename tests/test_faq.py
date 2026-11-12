@@ -23,5 +23,5 @@ def test_table_has_at_most_6_data_rows():
 
 
 def test_readme_links_faq_in_one_line():
-    lines = [l for l in (ROOT / "README.md").read_text("utf-8").splitlines() if "docs/faq.md" in l]
+    lines = [l for l in (ROOT / "docs" / "details.md").read_text("utf-8").splitlines() if "(faq.md)" in l]  # #347: README links details.md
     assert len(lines) == 1

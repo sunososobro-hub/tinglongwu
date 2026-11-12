@@ -33,7 +33,7 @@ def test_vosk_marked_unknown_and_opt_in():
 
 
 def test_readme_links_notices():
-    assert "(THIRD_PARTY_NOTICES.md)" in (ROOT / "README.md").read_text("utf-8")
+    assert "(../THIRD_PARTY_NOTICES.md)" in (ROOT / "docs" / "details.md").read_text("utf-8")
 
 
 def test_version_flag_points_to_notices(capsys):

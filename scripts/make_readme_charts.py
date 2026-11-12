@@ -11,8 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "img"
-TXT, MUTE = "#768390", "#8b949e"
-OK, TODO, NA, BAR1, BAR2 = "#2da44e", "#d4a72c", "#6e7781", "#388bfd", "#a371f7"
+TXT, MUTE = "#6e7781", "#7d8590"
+OK, TODO, NA, BAR1, BAR2 = "#2da44e", "#bf8700", "#6e7781", "#388bfd", "#a371f7"
 FONT = 'font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif"'
 
 
@@ -56,11 +56,11 @@ def verification():
             if cell.startswith("—"):
                 fill, lab = NA, "n/a"
             elif cell.startswith("✅"):
-                fill, lab = OK, "verified"
+                fill, lab = OK, "own side" if "own side" in cell else "verified"
             else:
                 fill, lab = TODO, "not yet"
             b += (f'<rect x="{cx - 50}" y="{cy - 14}" width="100" height="28" rx="6" fill="{fill}" fill-opacity="0.85"/>'
-                  + text(cx, cy + 5, lab, "middle", "#ffffff", 13, "bold"))
+                  + text(cx, cy + 5, lab, "middle", "#1f2328" if fill == TODO else "#ffffff", 13, "bold"))
     ly = y0 + rh * len(rows) + 24
     b += f'<rect x="10" y="{ly - 11}" width="12" height="12" rx="3" fill="{OK}"/>' + text(28, ly, "verified on a real device", size=12)
     b += f'<rect x="208" y="{ly - 11}" width="12" height="12" rx="3" fill="{TODO}"/>' + text(226, ly, "not yet verified", size=12)
@@ -81,15 +81,15 @@ def latency():
     scale = mx / 3.5
     w, h = x0 + mx + 80, y0 + (bh + 12) * len(items) + 40
     b = text(10, 22, f"End-to-end latency in seconds ({date}, RTX 3050 8 GB, smoke runs, indicative)", size=13, fill=MUTE)
+    tx = x0 + 2.0 * scale
+    yb = y0 + (bh + 12) * len(items) - 4
+    b += f'<line x1="{tx}" y1="{y0 - 6}" x2="{tx}" y2="{yb}" stroke="{MUTE}" stroke-dasharray="4 4"/>'
     for i, (lab, sec, d) in enumerate(items):
         y = y0 + (bh + 12) * i
         b += text(10, y + 19, lab)
         b += (f'<rect x="{x0}" y="{y}" width="{sec * scale:.1f}" height="{bh}" rx="4" '
               f'fill="{BAR2 if d == "speak" else BAR1}" fill-opacity="0.85"/>')
-        b += text(x0 + sec * scale + 8, y + 19, f"{sec:.2f} s")
-    tx = x0 + 2.0 * scale
-    yb = y0 + (bh + 12) * len(items) - 4
-    b += f'<line x1="{tx}" y1="{y0 - 6}" x2="{tx}" y2="{yb}" stroke="{MUTE}" stroke-dasharray="4 4"/>'
+        b += text(x0 + sec * scale - 8, y + 19, f"{sec:.2f} s", "end", "#ffffff", 14, "bold")
     b += text(tx, yb + 18, "2 s target", "middle", MUTE, 12)
     (OUT / "latency.svg").write_text(svg(w, h, b, "End-to-end latency per language and preset"), "utf-8")
 

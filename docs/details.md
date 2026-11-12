@@ -4,6 +4,14 @@ Moved from the README (#347). The README shows charts only; this page holds the 
 
 tinglongWu (Taiwanese 聽攏有, thiann lóng ū: "I understood it all") is real-time speech translation, offline at runtime and verifiable. Install and model download need the network; the in-process guard is defence in depth, not proof (see [Privacy](privacy.md), "Privacy model").
 
+Example output:
+
+```
+[RU] Привет, как дела?
+[EN] Hello, how are you?
+[ZH] 你好，你過得怎麼樣？
+```
+
 Overview: [overview](overview.md). Telling meeting participants first: [consent](acceptable-use.md). Architecture: [ARCHITECTURE](ARCHITECTURE.md) · [zh-TW](ARCHITECTURE.zh-TW.md) · [zh-CN](ARCHITECTURE.zh-CN.md).
 
 Full Chinese translations of the previous long README: [繁體中文](readme-full.zh-TW.md) · [简体中文](readme-full.zh-CN.md).
