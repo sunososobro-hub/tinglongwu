@@ -24,9 +24,9 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 
 | 系统 | 命令 |
 |---|---|
-| Windows（PowerShell） | `irm https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.ps1 \| iex` |
-| macOS（终端） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
-| Linux（bash） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Windows（PowerShell） | `irm https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/bootstrap_windows.ps1 \| iex` |
+| macOS（终端） | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh \| bash` |
+| Linux（bash） | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh \| bash` |
 
 每个 release 都附 `SHA256SUMS.txt`；想在运行前验证，可先下载脚本比对。Linux 安装程序在任何 `apt` 操作前都会问 y/N，且不会下载模型（菜单每次下载前都会问）。Windows 命令会把源码下载到 `%USERPROFILE%\tinglongwu`，再运行与下方相同的 `install.ps1`（执行策略绕过只作用于该子进程）。
 
@@ -47,7 +47,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 Apple Silicon 与 Intel Mac 均可（macOS 12 以上）。在“终端”粘贴：
 
 ```
-curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
 ```
 
 脚本检查 Homebrew（没有只会打印官方安装命令，不会静默安装）、安装 Python 3.12／git／BlackHole 2ch 与 16ch、克隆到 `~/tinglongwu`、建立环境、安装英文语音（Kokoro）并下载模型、安装 `tlwu-menu` 命令；可重复运行（即修复／更新）。最后会提示唯一的手动步骤：在“音频 MIDI 设置”创建多输出设备（扬声器/耳机 + BlackHole 2ch）并设为系统输出；Meet/Zoom 麦克风选 **BlackHole 16ch**（2ch 只用于“听”，16ch 只用于“说”，避免自己的语音回灌）。之后运行 `tlwu-menu`；各平台菜单启动时都会静默 `git pull --ff-only` 自动更新（约 6 秒上限，离线不影响，`TLWU_NO_UPDATE=1` 可关闭）。尚未在真实 Mac 上测试。

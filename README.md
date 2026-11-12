@@ -12,9 +12,9 @@ Fully local and offline: [overview](docs/overview.md). Telling meeting participa
 ## One-command install (Windows / Mac / Linux)
 | OS | Command |
 |---|---|
-| Windows (PowerShell) | `irm https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.ps1 \| iex` |
-| macOS (Terminal) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
-| Linux (bash) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Windows (PowerShell) | `irm https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/bootstrap_windows.ps1 \| iex` |
+| macOS (Terminal) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh \| bash` |
+| Linux (bash) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh \| bash` |
 
 Unattended Linux (apt yes + default models): `... /install.sh | TLWU_YES=1 bash`. More (checksums, ZIP, GPU): [docs/install.md](docs/install.md).
 

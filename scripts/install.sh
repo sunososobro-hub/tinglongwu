@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tinglongWu installer for Linux. Safe to re-run (repair/update).
 #
-#   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh | bash
 #
 # The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
 # version it was released with. Run straight from the repo (unreleased) it falls back to main.
