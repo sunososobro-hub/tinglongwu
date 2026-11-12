@@ -205,6 +205,38 @@ HYMT_GGUF = ("tencent/Hy-MT2-1.8B-GGUF", "Hy-MT2-1.8B-Q4_K_M.gguf")  # Apache-2.
 HYMT_EXTRAS = ("LICENSE.txt",)  # upstream Apache-2.0 text, kept next to the model
 
 
+# #279: opt-in Hy-MT2 7B Q4_K_M (~4.8 GB) for GPUs with >= 8 GB; `tlwu --engine hymt7b` uses it, auto never does.
+# Plain Q4_K_M runs on stock llama.cpp (llama.cpp PR #22836 / STQ1_0 is only for the 1.25-bit GGUF).
+HYMT7B_DIR = "hymt2-7b"  # keep in sync with tinglongwu.hymt.HYMT_SIZES
+HYMT7B_GGUF = ("tencent/Hy-MT2-7B-GGUF", "Hy-MT2-7B-Q4_K_M.gguf")
+APACHE_MARK = "Apache License, Version 2.0"
+
+
+def check_license(path: Path, mark: str = APACHE_MARK) -> None:
+    """Refuse (exit) unless the upstream license file exists and is Apache-2.0 (#279: stop if it is not)."""
+    text = path.read_text("utf-8", errors="replace") if path.is_file() else ""
+    if mark not in text:
+        what = "missing" if not text else "not Apache-2.0"
+        sys.exit(f"{path.parent.name}: upstream license file {path.name} is {what}; refusing to download the model. "
+                 f"Read the model page and report it in issue #279.")
+
+
+def get_hymt7b(man, mdir, fetch_license=None):
+    """Hy-MT2-7B Q4_K_M GGUF -> models/hymt2-7b/. The license is fetched and checked BEFORE the 4.8 GB GGUF."""
+    dest = mdir / HYMT7B_DIR
+    repo, fname = HYMT7B_GGUF
+    if fetch_license is None:
+        def fetch_license():
+            from huggingface_hub import snapshot_download
+
+            r, rev, _ = resolve_hf(man, HYMT7B_DIR, repo)
+            snapshot_download(r, revision=rev, local_dir=str(dest), allow_patterns=list(HYMT_EXTRAS))
+    if not (dest / HYMT_EXTRAS[0]).is_file():
+        fetch_license()
+    check_license(dest / HYMT_EXTRAS[0])
+    get_gguf(man, mdir, HYMT7B_DIR, repo, fname, extras=HYMT_EXTRAS)
+
+
 def get_qwen(man, mdir, name):
     """Qwen3 Q4_K_M GGUF -> models/<name>/<file>.gguf (pinned by HF commit sha + SHA256)."""
     get_gguf(man, mdir, name, *QWEN_GGUF[name])
@@ -422,6 +454,9 @@ def main(argv=None) -> int:
     p.add_argument("--hymt", action="store_true",
                    help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
                         "Japanese listening/speaking (needs llama-cpp-python)")
+    p.add_argument("--hymt7b", action="store_true",
+                   help="OPT-IN: Tencent Hy-MT2-7B Q4_K_M GGUF (~4.8 GB) for GPUs with >= 8 GB VRAM; used only with "
+                        "`tlwu --engine hymt7b` (never by auto). Checks the upstream license is Apache-2.0 first")
     p.add_argument("--kokoro", action="store_true",
                    help="Kokoro v1.0 int8 TTS model + voices (~120 MB, Apache-2.0) for talk mode, pinned by SHA256")
     p.add_argument("--speaker-model", action="store_true",
@@ -476,6 +511,9 @@ def main(argv=None) -> int:
             mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt:
         get_hymt(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.hymt7b:
+        get_hymt7b(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.kokoro:
         get_kokoro(man, mdir)

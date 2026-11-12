@@ -23,6 +23,9 @@ from .translate import Translation, Translator, strip_unk, zh_convert
 HYMT_DIR = "hymt2-1.8b"
 HYMT_FILE = "Hy-MT2-1.8B-Q4_K_M.gguf"
 HYMT_REPO = "tencent/Hy-MT2-1.8B-GGUF"
+# #279: opt-in Hy-MT2 7B Q4_K_M (~4.8 GB, GPUs with >= 8 GB); same family, prompt and sampling as 1.8B.
+# Never chosen by auto: only `--engine hymt7b` after `tlwu-setup --hymt7b`.
+HYMT_SIZES = {"1.8b": ("hymt2-1.8b", HYMT_FILE, "--hymt"), "7b": ("hymt2-7b", "Hy-MT2-7B-Q4_K_M.gguf", "--hymt7b")}
 # Model card sampling for the 1.8B model.
 SAMPLING = dict(temperature=0.7, top_p=0.6, top_k=20, repeat_penalty=1.05)
 
@@ -44,8 +47,14 @@ EN_NAMES = {"zh": "Chinese", "ja": "Japanese", "en": "English", "ru": "Russian",
             "de": "German", "fr": "French", "es": "Spanish"}
 
 
-def hymt_path(models_dir: Path) -> Path:
-    return Path(models_dir) / HYMT_DIR / HYMT_FILE
+def hymt_path(models_dir: Path, size: str = "1.8b") -> Path:
+    d, f, _ = HYMT_SIZES[size]
+    return Path(models_dir) / d / f
+
+
+def setup_flag(size: str = "1.8b") -> str:
+    """The tlwu-setup flag that downloads this size."""
+    return HYMT_SIZES[size][2]
 
 
 def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | None = None) -> str:
@@ -74,11 +83,12 @@ class HyMtTranslator(Translator):
     """Direct src -> tgt with a local Hy-MT2 GGUF; OpenCC afterwards when tgt is zh. No context memory
     (the card's single-message template), so history/_pair exist only for interface compatibility."""
 
-    def __init__(self, models_dir: Path, zh_variant: str = "tw", device: str = "cpu", loader=None):
+    def __init__(self, models_dir: Path, zh_variant: str = "tw", device: str = "cpu", loader=None,
+                 size: str = "1.8b"):
         from .models import require
 
-        self.zh_variant, self.device = zh_variant, device
-        self.path = require(hymt_path(models_dir), "Hy-MT2 translation model (Japanese)", "--hymt")
+        self.zh_variant, self.device, self.size = zh_variant, device, size
+        self.path = require(hymt_path(models_dir, size), f"Hy-MT2 {size.upper()} translation model", setup_flag(size))
         self._loader = loader or _load_llama
         self.llm = None
         self.history: list = []
@@ -129,7 +139,8 @@ class JaRouter(Translator):
     through it; a pair with an unknown language, or any pair after Hy-MT2 failed, goes to `base`."""
 
     def __init__(self, base: Translator, models_dir: Path, zh_variant: str = "tw", device: str = "cpu",
-                 factory=HyMtTranslator, warn=lambda m: print(m, file=sys.stderr), all_pairs: bool = False):
+                 factory=HyMtTranslator, warn=lambda m: print(m, file=sys.stderr), all_pairs: bool = False,
+                 size: str = "1.8b"):
         self.base, self.zh_variant, self.all_pairs = base, zh_variant, all_pairs
         self.history: list = []
         self._pair = None
@@ -137,13 +148,14 @@ class JaRouter(Translator):
         self.hy = None
         self.hy_error = ""
         self._glossary = None
-        if hymt_path(models_dir).exists():
-            try:
-                self.hy = factory(models_dir, zh_variant, device)
+        if hymt_path(models_dir, size).exists():
+            try:  # the 1.8B call keeps the old 3-argument factory signature
+                self.hy = (factory(models_dir, zh_variant, device) if size == "1.8b"
+                           else factory(models_dir, zh_variant, device, size=size))
             except Exception as e:  # noqa: BLE001
                 self.hy_error = str(e)
         else:
-            self.hy_error = f"{hymt_path(models_dir)} missing (run `tlwu-setup --hymt`)"
+            self.hy_error = f"{hymt_path(models_dir, size)} missing (run `tlwu-setup {setup_flag(size)}`)"
 
     @property
     def glossary(self):
