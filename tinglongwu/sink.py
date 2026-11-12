@@ -14,6 +14,7 @@ class Result:
     pivot: str | None
     target: str
     tgt: str = "zh"
+    side: str = "them"  # #373: who spoke: "me" (mic) | "them" (system audio); fmt labels + the --save file carry it
 
 
 class Sink(ABC):
@@ -72,7 +73,7 @@ class TextSink(Sink):
             else:
                 if self._open is not None:
                     out.write("\n")  # another line came first: end the dangling source line
-                out.write(fmt.block("them", r.original, tr, now=self.now() if self.now else None,
+                out.write(fmt.block(r.side, r.original, tr, now=self.now() if self.now else None,
                                     color=fmt.color_enabled(out)))
             self._open = None
             if self._pending and not self._pending[0][1]:  # next heard line: its source now, translation later
@@ -103,7 +104,7 @@ class JsonlSaveSink(Sink):
 
         self.inner.write(r)
         rec = {"t": round(self.clock() - self.t0, 2), "wall": self.now().isoformat(timespec="seconds"),
-               "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
+               "lang": r.src, "side": r.side, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
         self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         self.f.flush()
 

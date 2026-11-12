@@ -309,7 +309,7 @@ def test_save_jsonl_finals_only(tmp_path):
     s.write(Result("ru", "привет", None, "你好", "zh"))
     assert p.read_text(encoding="utf-8").strip()  # flushed before close
     rec = json.loads(p.read_text(encoding="utf-8").splitlines()[0])
-    assert rec == {"t": 2.5, "wall": "2026-01-02T03:04:05", "lang": "ru", "src": "привет", "dst": "你好"}
+    assert rec == {"t": 2.5, "wall": "2026-01-02T03:04:05", "lang": "ru", "side": "them", "src": "привет", "dst": "你好"}
     assert "Them привет" in out.getvalue()
     assert default_save_path(datetime.datetime(2026, 1, 2, 3, 4, 5)) == "transcripts/20260102-030405.jsonl"
     assert parse_args([]).save is None and parse_args(["--save"]).save == "" and parse_args(["--save", "a"]).save == "a"
