@@ -403,8 +403,17 @@ def test_close_with_drop_skips_waiting_lines_and_returns_at_once():
         time.sleep(0.01)
     sink.write(_r("二。"))
     sink.write(_r("三。"))
+    result = []
+    closer = threading.Thread(target=lambda: result.append(sink.close(timeout=5, drop=True)))
+    closer.start()  # the worker is still blocked on "一。" while close drops the backlog
+    for _ in range(200):
+        with sink.q.mutex:
+            if list(sink.q.queue) == [None]:
+                break
+        time.sleep(0.01)
     gate.set()
-    assert sink.close(timeout=2, drop=True) is True
+    closer.join(5)
+    assert result == [True]
     assert spoken == ["一。"]  # only the line already being spoken finished
 
 
