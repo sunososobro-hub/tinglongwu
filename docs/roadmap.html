@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tlwu Roadmap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&display=swap">
+<style>
+/* Layout: one transit map; rows = product lines, columns = time (Shipped → Now → Next → Vision) */
+:root{
+  --bg:#f6f7f9; --fg:#1b2230; --muted:#5d6878; --rule:#d9dee6; --station:#ffffff; --chip:#e8ecf2;
+  --listen:#2f6fdb; --speak:#e2731f; --ear:#1f9d6b; --creator:#8a4fd1; --install:#6b7686;
+  --display:"Space Grotesk",system-ui,sans-serif;
+  --text:"Inter","Noto Sans TC","Noto Sans SC","Noto Sans JP","Noto Sans KR",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --fg:#e7ebf2; --muted:#9aa5b5; --rule:#2a313c; --station:#12161d; --chip:#1f2630;
+  --listen:#5b93ff; --speak:#ff9a4d; --ear:#3cc48f; --creator:#b07cf2; --install:#8d98a8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --fg:#e7ebf2; --muted:#9aa5b5; --rule:#2a313c; --station:#12161d; --chip:#1f2630;
+  --listen:#5b93ff; --speak:#ff9a4d; --ear:#3cc48f; --creator:#b07cf2; --install:#8d98a8; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--text);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+h1{font-family:var(--display);font-size:28px;margin:0;text-wrap:balance}
+.langs{display:flex;flex-wrap:wrap;gap:6px}
+.langs button{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--bg);color:var(--fg);
+  border-radius:999px;padding:5px 12px;cursor:pointer}
+.langs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.langs button:focus-visible{outline:2px solid var(--listen);outline-offset:2px}
+.lede{margin:0;color:var(--muted);max-width:62ch;line-height:1.55}
+.map{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--bg)}
+svg{display:block;min-width:960px;width:100%;height:auto}
+svg text{font-family:var(--text);fill:var(--fg)}
+.col{font-family:var(--display);font-size:13px;letter-spacing:.08em;fill:var(--muted)}
+.ln{font-size:15px;font-weight:700}
+.sc{font-size:11px;fill:var(--muted)}
+.st{font-size:12px;font-weight:600}
+.pf{font-size:10.5px;fill:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:18px;color:var(--muted);font-size:13px;align-items:center}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.dot{width:12px;height:12px;border-radius:50%;border:3px solid var(--fg);box-sizing:border-box}
+.dot.done{background:var(--fg)} .dot.now{background:var(--bg)} .dot.plan{border-style:dashed;background:var(--bg)}
+h2{font-family:var(--display);font-size:20px;margin:14px 0 0}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--rule);text-align:center}
+th:first-child,td:first-child{text-align:left}
+thead th{font-weight:600;color:var(--muted);font-size:12.5px}
+thead tr:first-child th{font-family:var(--display);letter-spacing:.06em;color:var(--fg);border-bottom:none}
+.sep{border-left:2px solid var(--rule)}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;border:1px solid currentColor;white-space:nowrap}
+.c1{color:var(--ear)} .c2{color:var(--listen)} .c3{color:var(--muted)}
+.y{color:var(--fg);font-size:17px} .w{color:var(--listen);font-size:17px} .p{color:var(--muted);font-size:17px} .n{color:var(--rule)}
+</style>
+<style>body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="head">
+    <h1 data-k="h1">tlwu roadmap</h1>
+    <div class="langs" id="langs" role="group" aria-label="Language"></div>
+  </div>
+  <p class="lede" data-k="lede">Offline speech translation that runs on your own machine. Each colored line is a product line; stations move left to right from shipped to vision. Numbers are GitHub issues.</p>
+
+  <div class="map">
+  <svg viewBox="0 0 1000 600" role="img" aria-label="tlwu roadmap">
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="300" y1="50" x2="300" y2="580"/><line x1="500" y1="50" x2="500" y2="580"/>
+      <line x1="700" y1="50" x2="700" y2="580"/><line x1="900" y1="50" x2="900" y2="580"/>
+    </g>
+    <text class="col" x="300" y="36" text-anchor="middle" data-k="c1">SHIPPED</text>
+    <text class="col" x="500" y="36" text-anchor="middle" data-k="c2">NOW</text>
+    <text class="col" x="700" y="36" text-anchor="middle" data-k="c3">NEXT</text>
+    <text class="col" x="900" y="36" text-anchor="middle" data-k="c4">VISION</text>
+
+    <text class="ln" x="16" y="100" style="fill:var(--listen)" data-k="l1">Listen</text>
+    <text class="sc" x="16" y="117" data-k="s1">Zoom / Meet, foreign videos</text>
+    <text class="ln" x="16" y="200" style="fill:var(--speak)" data-k="l2">Speak</text>
+    <text class="sc" x="16" y="217" data-k="s2">Reply in your own language</text>
+    <text class="ln" x="16" y="300" style="fill:var(--ear)" data-k="l3">Earphone</text>
+    <text class="sc" x="16" y="317" data-k="s3">Travel, family, caregivers</text>
+    <text class="ln" x="16" y="400" style="fill:var(--creator)" data-k="l4">Creator</text>
+    <text class="sc" x="16" y="417" data-k="s4">Streamers, video makers</text>
+    <text class="ln" x="16" y="500" style="fill:var(--install)" data-k="l5">Install</text>
+    <text class="sc" x="16" y="517" data-k="s5">First-time users</text>
+
+    <g fill="none" stroke-width="7" stroke-linecap="round">
+      <path d="M300 95 H700" stroke="var(--listen)"/>
+      <path d="M700 95 H900" stroke="var(--listen)" stroke-dasharray="2 12"/>
+      <path d="M300 195 H500" stroke="var(--speak)"/>
+      <path d="M500 195 H900" stroke="var(--speak)" stroke-dasharray="2 12"/>
+      <path d="M500 195 C600 195 610 95 690 95" stroke="var(--speak)" stroke-dasharray="2 12"/>
+      <path d="M500 195 C590 195 610 295 700 295 H900" stroke="var(--ear)" stroke-dasharray="2 12"/>
+      <path d="M300 95 C430 95 560 395 700 395 H900" stroke="var(--creator)" stroke-dasharray="2 12"/>
+      <path d="M300 495 H500" stroke="var(--install)"/>
+      <path d="M500 495 H900" stroke="var(--install)" stroke-dasharray="2 12"/>
+    </g>
+
+    <g stroke-width="4">
+      <circle cx="300" cy="95" r="10" fill="var(--listen)" stroke="var(--listen)"/>
+      <circle cx="500" cy="95" r="10" fill="var(--station)" stroke="var(--listen)"/>
+      <rect x="684" y="81" width="32" height="28" rx="14" fill="var(--station)" stroke="var(--fg)"/>
+      <circle cx="900" cy="95" r="10" fill="var(--station)" stroke="var(--listen)" stroke-dasharray="4 3"/>
+      <circle cx="300" cy="195" r="10" fill="var(--speak)" stroke="var(--speak)"/>
+      <circle cx="500" cy="195" r="10" fill="var(--station)" stroke="var(--speak)"/>
+      <circle cx="900" cy="195" r="10" fill="var(--station)" stroke="var(--speak)" stroke-dasharray="4 3"/>
+      <circle cx="700" cy="295" r="10" fill="var(--station)" stroke="var(--ear)" stroke-dasharray="4 3"/>
+      <circle cx="900" cy="295" r="10" fill="var(--station)" stroke="var(--ear)" stroke-dasharray="4 3"/>
+      <circle cx="900" cy="395" r="10" fill="var(--station)" stroke="var(--creator)" stroke-dasharray="4 3"/>
+      <circle cx="300" cy="495" r="10" fill="var(--install)" stroke="var(--install)"/>
+      <circle cx="500" cy="495" r="10" fill="var(--station)" stroke="var(--install)"/>
+      <circle cx="700" cy="495" r="10" fill="var(--station)" stroke="var(--install)" stroke-dasharray="4 3"/>
+      <circle cx="900" cy="495" r="10" fill="var(--station)" stroke="var(--install)" stroke-dasharray="4 3"/>
+    </g>
+
+    <g text-anchor="middle">
+      <text class="st" x="300" y="128" data-k="a1">Live subtitles, offline</text>
+      <text class="pf" x="300" y="143">Windows · Linux</text>
+      <text class="st" x="500" y="128" data-k="a2">Floating subtitles #322</text>
+      <text class="st" x="500" y="143" data-k="a3">Compact control bar #333</text>
+      <text class="pf" x="500" y="158">Windows · Linux · macOS</text>
+      <text class="st" x="700" y="66" data-k="a4">Meetings: Listen + Speak</text>
+      <text class="pf" x="700" y="80">#248 · #249</text>
+      <text class="st" x="900" y="128" data-k="a5">Any app,</text>
+      <text class="st" x="900" y="143" data-k="a6">any language</text>
+
+      <text class="st" x="300" y="228" data-k="b1">Voice that starts</text>
+      <text class="st" x="300" y="243" data-k="b2">in 0.65 s #207</text>
+      <text class="pf" x="300" y="258">CLI</text>
+      <text class="st" x="500" y="228" data-k="b3">Speak in the app #285</text>
+      <text class="pf" x="500" y="243">Windows · Linux</text>
+      <text class="st" x="900" y="228" data-k="b4">Two-way</text>
+      <text class="st" x="900" y="243" data-k="b5">meeting interpreter</text>
+
+      <text class="st" x="700" y="328" data-k="e1">Hear it translated</text>
+      <text class="st" x="700" y="343" data-k="e2">in your ear #330</text>
+      <text class="st" x="900" y="328" data-k="e3">Phone + Bluetooth</text>
+      <text class="st" x="900" y="343" data-k="e4">earbuds, offline</text>
+      <text class="pf" x="900" y="358">Android · iOS</text>
+
+      <text class="st" x="900" y="428" data-k="d1">Subtitles + dubbing</text>
+      <text class="st" x="900" y="443" data-k="d2">for your videos</text>
+
+      <text class="st" x="300" y="528" data-k="i1">Linux GUI fix #328</text>
+      <text class="st" x="500" y="528" data-k="i2">One-click install #294</text>
+      <text class="st" x="500" y="543" data-k="i3">Fast start on CPU #332</text>
+      <text class="st" x="700" y="528" data-k="i4">Signed Windows build</text>
+      <text class="st" x="700" y="543" data-k="i5">macOS support</text>
+      <text class="st" x="900" y="528" data-k="i6">App stores</text>
+    </g>
+  </svg>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot done"></i><b style="font-weight:400" data-k="g1">Shipped</b></span>
+    <span><i class="dot now"></i><b style="font-weight:400" data-k="g2">In progress</b></span>
+    <span><i class="dot plan"></i><b style="font-weight:400" data-k="g3">Planned</b></span>
+    <span data-k="g4">Dotted track = not built yet</span>
+  </div>
+
+  <h2 data-k="m0">Where it runs</h2>
+  <p class="lede" data-k="m1">Desktop first, phones next.</p>
+  <div class="tbl">
+  <table>
+    <thead>
+      <tr><th></th><th colspan="3" data-k="p1">Desktop</th><th colspan="2" class="sep" data-k="p2">Phone</th></tr>
+      <tr><th></th><th>Windows</th><th>macOS</th><th>Linux</th><th class="sep">Android</th><th>iOS</th></tr>
+    </thead>
+    <tbody>
+      <tr><td data-k="f1">Live subtitles</td><td class="y">●</td><td class="p">○</td><td class="y">●</td><td class="sep p">○</td><td class="p">○</td></tr>
+      <tr><td data-k="f2">Floating subtitles</td><td class="w">◐</td><td class="p">○</td><td class="w">◐</td><td class="sep n">—</td><td class="n">—</td></tr>
+      <tr><td data-k="f3">Speak (reply in your language)</td><td class="w">◐</td><td class="p">○</td><td class="w">◐</td><td class="sep p">○</td><td class="p">○</td></tr>
+      <tr><td data-k="f4">Earphone interpretation</td><td class="p">○</td><td class="p">○</td><td class="p">○</td><td class="sep p">○</td><td class="p">○</td></tr>
+      <tr><td data-k="f5">Video subtitles + dubbing</td><td class="p">○</td><td class="p">○</td><td class="p">○</td><td class="sep n">—</td><td class="n">—</td></tr>
+      <tr><td data-k="f6">One-click install</td><td class="w">◐</td><td class="p">○</td><td class="w">◐</td><td class="sep p">○</td><td class="p">○</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="legend">
+    <span><span class="y">●</span><span data-k="k1">Shipped</span></span>
+    <span><span class="w">◐</span><span data-k="k2">In progress</span></span>
+    <span><span class="p">○</span><span data-k="k3">Planned</span></span>
+    <span><span class="n">—</span><span data-k="k4">Not planned</span></span>
+  </div>
+
+  <h2 data-k="n0">Languages</h2>
+  <p class="lede" data-k="n1">Subtitles in the app: Traditional Chinese, Simplified Chinese or English. Native speakers, help us test your language.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th data-k="q1">Language</th><th data-k="q2">Listen</th><th data-k="q3">Speak voice</th><th data-k="q4">Status</th></tr></thead>
+    <tbody>
+      <tr><td>中文</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>English</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>日本語</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>Русский</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>한국어 · Deutsch · Français · Español</td><td class="y">●</td><td class="n">—</td><td><span class="chip c2" data-k="t2">Works, not tested yet</span></td></tr>
+      <tr><td>Italiano · Português · Tiếng Việt · ไทย · Bahasa Indonesia</td><td class="y">●</td><td class="n">—</td><td><span class="chip c3" data-k="t3">Experimental</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<script>
+const LANGS=[["en","English"],["zh-tw","繁體中文"],["zh-cn","简体中文"],["ja","日本語"],["ko","한국어"],["ru","Русский"]];
+const HTML_LANG={"en":"en","zh-tw":"zh-Hant","zh-cn":"zh-Hans","ja":"ja","ko":"ko","ru":"ru"};
+const T={
+"zh-tw":{h1:"tlwu 路線圖",lede:"在你自己的電腦上離線運作的語音翻譯。每條彩色線是一條產品線，站點由左到右，從已完成走到願景。編號是 GitHub issue。",
+ c1:"已完成",c2:"進行中",c3:"下一步",c4:"願景",l1:"聽",l2:"講",l3:"耳機",l4:"創作者",l5:"安裝",
+ s1:"Zoom / Meet、外語影片",s2:"用母語回話",s3:"旅行、家人、看護",s4:"實況主、影片創作者",s5:"第一次使用的人",
+ a1:"即時字幕，離線",a2:"浮動字幕 #322",a3:"精簡控制列 #333",a4:"雙向會議",a5:"任何 App、",a6:"任何語言",
+ b1:"語音輸出",b2:"0.65 秒開始 #207",b3:"App 內就能講 #285",b4:"雙向",b5:"會議口譯",
+ e1:"翻譯直接",e2:"送進耳朵 #330",e3:"手機＋藍牙",e4:"耳機，離線",d1:"字幕＋配音",d2:"給你的影片",
+ i1:"Linux 介面修正 #328",i2:"一鍵安裝 #294",i3:"純 CPU 也能快速啟動 #332",i4:"已簽章的 Windows 版",i5:"支援 macOS",i6:"上架應用商店",
+ g1:"已完成",g2:"進行中",g3:"規劃中",g4:"虛線＝還沒做"},
+"zh-cn":{h1:"tlwu 路线图",lede:"在你自己的电脑上离线运行的语音翻译。每条彩色线是一条产品线，站点从左到右，从已完成走向愿景。编号是 GitHub issue。",
+ c1:"已完成",c2:"进行中",c3:"下一步",c4:"愿景",l1:"听",l2:"说",l3:"耳机",l4:"创作者",l5:"安装",
+ s1:"Zoom / Meet、外语视频",s2:"用母语回话",s3:"旅行、家人、护工",s4:"主播、视频创作者",s5:"首次使用的用户",
+ a1:"实时字幕，离线",a2:"浮动字幕 #322",a3:"精简控制栏 #333",a4:"双向会议",a5:"任何应用、",a6:"任何语言",
+ b1:"语音输出",b2:"0.65 秒开始 #207",b3:"应用内直接说 #285",b4:"双向",b5:"会议口译",
+ e1:"翻译直接",e2:"送进耳朵 #330",e3:"手机＋蓝牙",e4:"耳机，离线",d1:"字幕＋配音",d2:"给你的视频",
+ i1:"Linux 界面修复 #328",i2:"一键安装 #294",i3:"纯 CPU 也能快速启动 #332",i4:"已签名的 Windows 版",i5:"支持 macOS",i6:"上架应用商店",
+ g1:"已完成",g2:"进行中",g3:"规划中",g4:"虚线＝尚未开发"},
+"ja":{h1:"tlwu ロードマップ",lede:"自分のパソコンでオフライン動作する音声翻訳。色付きの各線は製品ラインで、駅は左から右へ「リリース済み」から「ビジョン」へ進みます。番号は GitHub の issue です。",
+ c1:"リリース済み",c2:"進行中",c3:"次",c4:"ビジョン",l1:"聞く",l2:"話す",l3:"イヤホン",l4:"クリエイター",l5:"インストール",
+ s1:"Zoom / Meet、外国語の動画",s2:"自分の言葉で返事",s3:"旅行・家族・介護",s4:"配信者・動画クリエイター",s5:"はじめて使う人",
+ a1:"リアルタイム字幕（オフライン）",a2:"フローティング字幕 #322",a3:"コンパクトな操作バー #333",a4:"双方向の会議",a5:"どのアプリでも、",a6:"どの言語でも",
+ b1:"音声出力が",b2:"0.65 秒で開始 #207",b3:"アプリ内で話す #285",b4:"双方向の",b5:"会議通訳",
+ e1:"翻訳を",e2:"イヤホンで聞く #330",e3:"スマホ＋Bluetooth",e4:"イヤホン、オフライン",d1:"字幕＋吹き替え",d2:"自分の動画に",
+ i1:"Linux GUI 修正 #328",i2:"ワンクリックでインストール #294",i3:"CPU でも素早く起動 #332",i4:"署名付き Windows 版",i5:"macOS 対応",i6:"アプリストア",
+ g1:"リリース済み",g2:"進行中",g3:"予定",g4:"点線＝未着手"},
+"ko":{h1:"tlwu 로드맵",lede:"내 컴퓨터에서 오프라인으로 동작하는 음성 번역. 색깔별 선은 제품 라인이며, 역은 왼쪽에서 오른쪽으로 출시에서 비전까지 이어집니다. 번호는 GitHub 이슈입니다.",
+ c1:"출시됨",c2:"진행 중",c3:"다음",c4:"비전",l1:"듣기",l2:"말하기",l3:"이어폰",l4:"크리에이터",l5:"설치",
+ s1:"Zoom / Meet, 외국어 영상",s2:"내 언어로 대답",s3:"여행, 가족, 간병인",s4:"스트리머, 영상 제작자",s5:"처음 쓰는 사용자",
+ a1:"실시간 자막, 오프라인",a2:"떠 있는 자막 #322",a3:"간결한 제어 바 #333",a4:"양방향 회의",a5:"어떤 앱이든,",a6:"어떤 언어든",
+ b1:"음성 출력",b2:"0.65초 만에 시작 #207",b3:"앱에서 말하기 #285",b4:"양방향",b5:"회의 통역",
+ e1:"번역을",e2:"귀로 바로 #330",e3:"휴대폰 + 블루투스",e4:"이어폰, 오프라인",d1:"자막 + 더빙",d2:"내 영상에",
+ i1:"Linux GUI 수정 #328",i2:"원클릭 설치 #294",i3:"CPU에서도 빠른 시작 #332",i4:"서명된 Windows 빌드",i5:"macOS 지원",i6:"앱 스토어",
+ g1:"출시됨",g2:"진행 중",g3:"계획됨",g4:"점선 = 아직 개발 전"},
+"ru":{h1:"Дорожная карта tlwu",lede:"Офлайн-перевод речи, который работает на вашем компьютере. Каждая цветная линия — продуктовое направление; станции идут слева направо: от готового к видению. Номера — задачи на GitHub.",
+ c1:"ГОТОВО",c2:"СЕЙЧАС",c3:"ДАЛЕЕ",c4:"ВИДЕНИЕ",l1:"Слушать",l2:"Говорить",l3:"Наушники",l4:"Авторы",l5:"Установка",
+ s1:"Zoom / Meet, видео на иностранном",s2:"Отвечайте на родном языке",s3:"Поездки, семья, сиделки",s4:"Стримеры, авторы видео",s5:"Новые пользователи",
+ a1:"Живые субтитры офлайн",a2:"Плавающие субтитры #322",a3:"Компактная панель #333",a4:"Двусторонние встречи",a5:"Любое приложение,",a6:"любой язык",
+ b1:"Голос звучит",b2:"через 0,65 с #207",b3:"Речь в приложении #285",b4:"Двусторонний",b5:"переводчик встреч",
+ e1:"Перевод",e2:"прямо в ухо #330",e3:"Телефон + Bluetooth-",e4:"наушники, офлайн",d1:"Субтитры и озвучка",d2:"для ваших видео",
+ i1:"Исправлен GUI в Linux #328",i2:"Установка в один клик #294",i3:"Быстрый запуск на CPU #332",i4:"Подписанная сборка Windows",i5:"Поддержка macOS",i6:"Магазины приложений",
+ g1:"Готово",g2:"В работе",g3:"В планах",g4:"Пунктир — ещё не сделано"}
+};
+const M={
+"zh-tw":{m0:"在哪些平台上跑",m1:"先做電腦，再做手機。",p1:"電腦",p2:"手機",f1:"即時字幕",f2:"浮動字幕",f3:"講（用母語回話）",f4:"耳機口譯",f5:"影片字幕＋配音",f6:"一鍵安裝",k1:"已完成",k2:"進行中",k3:"規劃中",k4:"不在計畫內"},
+"zh-cn":{m0:"在哪些平台运行",m1:"先做电脑，再做手机。",p1:"电脑",p2:"手机",f1:"实时字幕",f2:"浮动字幕",f3:"说（用母语回话）",f4:"耳机口译",f5:"视频字幕＋配音",f6:"一键安装",k1:"已完成",k2:"进行中",k3:"规划中",k4:"不在计划内"},
+"ja":{m0:"対応プラットフォーム",m1:"まずパソコン、次にスマホ。",p1:"パソコン",p2:"スマホ",f1:"リアルタイム字幕",f2:"フローティング字幕",f3:"話す（自分の言葉で返事）",f4:"イヤホン通訳",f5:"動画の字幕＋吹き替え",f6:"ワンクリックでインストール",k1:"リリース済み",k2:"進行中",k3:"予定",k4:"予定なし"},
+"ko":{m0:"지원 플랫폼",m1:"먼저 컴퓨터, 다음은 휴대폰.",p1:"컴퓨터",p2:"휴대폰",f1:"실시간 자막",f2:"떠 있는 자막",f3:"말하기(내 언어로 대답)",f4:"이어폰 통역",f5:"영상 자막 + 더빙",f6:"원클릭 설치",k1:"출시됨",k2:"진행 중",k3:"계획됨",k4:"계획 없음"},
+"ru":{m0:"Где работает",m1:"Сначала компьютеры, потом телефоны.",p1:"Компьютер",p2:"Телефон",f1:"Живые субтитры",f2:"Плавающие субтитры",f3:"Речь (ответ на родном языке)",f4:"Перевод в наушниках",f5:"Субтитры и озвучка видео",f6:"Установка в один клик",k1:"Готово",k2:"В работе",k3:"В планах",k4:"Не планируется"}
+};
+Object.keys(M).forEach(k=>Object.assign(T[k],M[k]));
+const L={
+"zh-tw":{a4:"會議：聽＋講",n0:"支援語言",n1:"App 內字幕可選繁體中文、簡體中文或英文。母語者歡迎幫忙測試你的語言。",q1:"語言",q2:"聽",q3:"語音輸出",q4:"狀態",t1:"每晚實測",t2:"可用，尚未實測",t3:"實驗中"},
+"zh-cn":{a4:"会议：听＋说",n0:"支持语言",n1:"应用内字幕可选繁体中文、简体中文或英文。欢迎母语者帮忙测试你的语言。",q1:"语言",q2:"听",q3:"语音输出",q4:"状态",t1:"每晚实测",t2:"可用，尚未实测",t3:"实验中"},
+"ja":{a4:"会議：聞く＋話す",n0:"対応言語",n1:"アプリの字幕は繁体字中国語・簡体字中国語・英語から選べます。ネイティブの方、あなたの言語のテストにご協力ください。",q1:"言語",q2:"聞く",q3:"音声出力",q4:"状態",t1:"毎晩テスト済み",t2:"利用可能（未テスト）",t3:"実験的"},
+"ko":{a4:"회의: 듣기 + 말하기",n0:"지원 언어",n1:"앱 자막은 번체 중국어, 간체 중국어, 영어 중에서 고를 수 있습니다. 원어민이라면 여러분의 언어 테스트를 도와주세요.",q1:"언어",q2:"듣기",q3:"음성 출력",q4:"상태",t1:"매일 밤 테스트",t2:"사용 가능, 미테스트",t3:"실험적"},
+"ru":{a4:"Встречи: слушать + говорить",n0:"Языки",n1:"Субтитры в приложении: традиционный китайский, упрощённый китайский или английский. Носители языка, помогите протестировать ваш.",q1:"Язык",q2:"Слушать",q3:"Голос",q4:"Статус",t1:"Проверяется каждую ночь",t2:"Работает, не проверен",t3:"Экспериментально"}
+};
+Object.keys(L).forEach(k=>Object.assign(T[k],L[k]));
+const EN={};document.querySelectorAll("[data-k]").forEach(el=>EN[el.dataset.k]=el.textContent);
+const box=document.getElementById("langs");
+LANGS.forEach(([code,name])=>{const b=document.createElement("button");b.type="button";b.id="lang-"+code;
+  b.textContent=name;b.onclick=()=>{setLang(code);try{history.replaceState(null,"","#"+code)}catch(e){location.hash=code}};box.appendChild(b)});
+function setLang(code){
+  if(!LANGS.some(l=>l[0]===code))code="en";
+  const d=code==="en"?EN:T[code];
+  document.querySelectorAll("[data-k]").forEach(el=>{el.textContent=d[el.dataset.k]??EN[el.dataset.k]});
+  document.documentElement.lang=HTML_LANG[code];
+  box.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.id==="lang-"+code)));
+  try{localStorage.setItem("tlwu-roadmap-lang",code)}catch(e){}
+}
+function initial(){const h=location.hash.slice(1);if(h)return h;try{return localStorage.getItem("tlwu-roadmap-lang")||"en"}catch(e){return "en"}}
+window.addEventListener("hashchange",()=>setLang(location.hash.slice(1)));
+setLang(initial());
+</script>
+</body>
+</html>

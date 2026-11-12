@@ -28,11 +28,29 @@ class Translator(ABC):
         return self.translate(text, src, tgt)
 
 
+def translate_checked(translator: "Translator", text: str, src: str, tgt: str, draft: bool = False) -> Translation | None:
+    """translate()/draft() that never lets Japanese through untranslated (#86): kana in a non-Japanese target
+    means the engine echoed (part of) the source. One retry (Hy-MT2 samples, so a second try usually works);
+    None when it still leaks. Drafts are not retried (the next draft comes in a moment anyway)."""
+    from .langfollow import has_kana
+
+    call = translator.draft if draft else translator.translate
+    for _ in range(1 if draft else 2):
+        tr = call(text, src, tgt)
+        if tgt == "ja" or not has_kana(tr.text):
+            return tr
+    return None
+
+
 # s2twp maps a few common words to Taiwan terms that are wrong in general speech (通过->透過 "through
 # means of", 支持->支援 "support = tech support"). Keep s2twp (it gives 軟體/網路/程式/記憶體 ...) and shield
 # these phrases from it: each (simplified, traditional) pair is swapped for a private-use placeholder
 # before conversion and restored to the plain traditional form afterwards.
-_KEEP = (("通过", "通過"), ("支持", "支持"))
+# 被发 -> 被髮: OpenCC's STPhrases table has "被发" (classical 被髮左衽 "hair loose"), so passive 被发明/被发射/
+# 被发送/被发布 ... come out as 被髮明 etc. Passive 被+發 is always 發 in modern text, so shield it too.
+# 家具有 -> 傢俱有: STPhrases has 家具 (furniture) so "音乐家具有" (musicians have) comes out 音樂傢俱有; 家具有 is
+# always 家+具有 in running text. 连接 -> 連線 is the network sense; as a plain "connect/link" (连接两个半球) it is 連接.
+_KEEP = (("通过", "通過"), ("支持", "支持"), ("被发", "被發"), ("家具有", "家具有"), ("连接", "連接"))
 _PH = {simp: chr(0xE000 + i) for i, (simp, _t) in enumerate(_KEEP)}
 
 
@@ -119,8 +137,31 @@ _LEAD_LETTER = re.compile(r"^\s*[(（][A-Za-z][)）]\s*")
 _WIKI_ASIDE = re.compile(r"\s*[(（]\s*(?:英[語语文]|English)\s*[:：][^()（）]*[)）]")
 
 
+# ASS/SSA subtitle override blocks ({\fnArial\fs16}, {\an8}, {\c&H00FFFF&}) and their line-break escapes (\N \n \h),
+# learned by OPUS from subtitle corpora (#43). In bilingual subtitle files such a block starts the *other*
+# subtitle line, so the text after a block in the middle of the output is a sentence unrelated to the source.
+_ASS_BLOCK = re.compile(r"\{\\[^{}]*\}")
+_ASS_ESC = re.compile(r"\\[Nnh]")
+
+
+def strip_subtitle_codes(out: str, *sources: str) -> str:
+    """Remove subtitle style codes from MT output (unless the source has them). A leading block is just dropped;
+    at a block after some text, the rest of the line is dropped too (hallucinated next subtitle line, #43)."""
+    if _ASS_BLOCK.search(" ".join(sources)):
+        return out
+    m = _ASS_BLOCK.search(out)
+    if not m:
+        return out
+    head = _ASS_ESC.sub(" ", out[:m.start()]).strip()
+    if head:
+        return head
+    rest = out[m.end():]
+    return strip_subtitle_codes(rest, *sources) if _ASS_BLOCK.search(rest) else _ASS_ESC.sub(" ", rest).strip()
+
+
 def zh_artifacts(out: str, *sources: str) -> str:
     """Strip MT artifacts from zh output unless the source line itself has them."""
+    out = strip_subtitle_codes(out, *sources)
     src = " ".join(sources)
     if not _COPY.search(src):
         out = _COPY.sub("", out)
@@ -186,8 +227,10 @@ class OpusStep:
         import ctranslate2
         import sentencepiece
 
+        from .threads import ct2_kwargs
+
         self.tr = ctranslate2.Translator(str(d / "model"), device=device,
-                                         compute_type=compute_type(device, "mt"))
+                                         compute_type=compute_type(device, "mt"), **ct2_kwargs(device))
         self.sp = sentencepiece.SentencePieceProcessor(model_file=str(d / "sentencepiece.model"))
         meta = json.loads((d / "metadata.json").read_text("utf-8")) if (d / "metadata.json").exists() else {}
         self.prefix = meta.get("target_prefix") or ""
@@ -263,6 +306,8 @@ class PivotTranslator(Translator):
             if self.glossary:
                 out = self.glossary.fix_output(out, text, pivot or "", convert=self._zh_word)
             out = zh_guard(text, out)
+            if not out and text.strip():  # nothing left but MT artifacts (#43): show the source line
+                out = text
         return Translation(pivot, out)
 
     def _timed(self, s: str, t: str, text: str, timing: list) -> str:
@@ -277,65 +322,3 @@ class PivotTranslator(Translator):
         pairs = [(src, tgt)] if "en" in (src, tgt) else [(src, "en"), ("en", tgt)]
         for p in pairs:
             self._step(*p)
-
-
-M2M_CODES = {k: f"__{k}__" for k in ("en", "zh", "ru", "ja", "ko", "de", "fr", "es", "it", "pt", "ar", "hi",
-                                     "tr", "vi", "th", "id", "uk", "pl", "nl")}
-M2M_DIR = "m2m-1.2B"
-
-
-def find_m2m(models_dir: Path) -> Path:
-    return require(models_dir / M2M_DIR, "M2M-100 1.2B model", "--m2m")
-
-
-class M2mTranslator(Translator):
-    """--engine m2m: M2M-100 1.2B (CTranslate2) direct src->tgt, no English pivot. MIT licence (usable commercially).
-
-    Loaded only from models/m2m-1.2B (tlwu-setup --m2m converts it).
-    """
-
-    SPM = "sentencepiece.bpe.model"
-    TABLE = M2M_CODES
-
-    def __init__(self, models_dir: Path, zh_variant: str = "tw", device: str = "cpu"):
-        self.zh_variant = zh_variant
-        self.device = device
-        self.dir = find_m2m(models_dir)
-        self._tr = self._sp = None
-
-    def _load(self):
-        if self._tr is None:
-            import ctranslate2
-            import sentencepiece
-
-            self._tr = ctranslate2.Translator(str(self.dir / "model"), device=self.device,
-                                              compute_type=compute_type(self.device, "mt"))
-            self._sp = sentencepiece.SentencePieceProcessor(model_file=str(self.dir / self.SPM))
-
-    @classmethod
-    def _code(cls, lang: str) -> str:
-        if lang not in cls.TABLE:
-            raise RuntimeError(f"{cls.__name__}: language {lang!r} not in tlwu's code table "
-                               f"({sorted(cls.TABLE)}); extend the table in tinglongwu/translate.py")
-        return cls.TABLE[lang]
-
-    def preload(self, src: str, tgt: str) -> None:
-        self._code(src), self._code(tgt)
-        self._load()
-
-    def translate(self, text: str, src: str, tgt: str) -> Translation:
-        if src == tgt:
-            return Translation(None, text)
-        self._load()
-        s, t = self._code(src), self._code(tgt)
-        sents = [x for x in _SENT.split(text) if x.strip()]
-        toks = [[s] + self._sp.encode(x, out_type=str) + ["</s>"] for x in sents]  # HF M2M100: __src__ + pieces + </s>
-        res = self._tr.translate_batch(toks, target_prefix=[[t]] * len(toks), beam_size=4,
-                                       max_decoding_length=256)
-        out = strip_unk(("" if tgt in ("zh", "ja") else " ").join(
-            self._sp.decode(r.hypotheses[0][1:]).strip() for r in res))
-        if tgt in ("zh", "ja"):
-            out = cjk_clean(out)
-        if tgt == "zh":
-            out = zh_guard(text, zh_convert(out, self.zh_variant))
-        return Translation(None, out)

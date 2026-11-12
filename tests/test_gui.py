@@ -49,13 +49,14 @@ def test_subtitle_state_draft_replaced_by_final():
 
 def test_settings_roundtrip_and_corruption(tmp_path):
     p = tmp_path / "sub" / "gui.json"
-    assert core.load_settings(p) == core.DEFAULTS  # missing file
+    # missing file; gpu=True because the first-run live-draft default follows the GPU (#89)
+    assert core.load_settings(p, gpu=lambda: True) == core.DEFAULTS
     s = core.load_settings(p)
     s.update(lang="ru", target="en", save=True, save_path="x.jsonl", font_size=40, x=10, y=20)
     assert core.save_settings(s, p)
     assert core.load_settings(p) == s
     p.write_text("{not json", "utf-8")
-    assert core.load_settings(p) == core.DEFAULTS
+    assert core.load_settings(p, gpu=lambda: True) == core.DEFAULTS
     p.write_text(json.dumps({"lang": 5, "font_size": 9999, "save": "yes", "x": True}), "utf-8")
     got = core.load_settings(p)
     assert got["lang"] == "auto" and got["font_size"] == core.FONT_MAX and got["save"] is False and got["x"] is None
@@ -70,7 +71,7 @@ def test_save_settings_unwritable(tmp_path):
 def test_settings_to_argv_parses():
     from tinglongwu.cli import parse_args
 
-    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", engine="opus", glossary="g.txt", save=True)
+    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="opus", glossary="g.txt", save=True)
     a = parse_args(core.settings_to_argv(s))
     assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "opus", "g.txt", "")
     a = parse_args(core.settings_to_argv(dict(core.DEFAULTS, target="en", save=True, save_path="o.jsonl")))
@@ -186,11 +187,12 @@ def test_follow_newest_only_at_bottom():
 
 
 def test_rows_after_drag_and_clamp():
-    assert core.rows_after_drag(4, -60, 30) == 6  # top edge dragged up 2 lines -> 2 more rows
-    assert core.rows_after_drag(4, 31, 30) == 3
+    assert core.rows_after_drag(3, -30, 30) == 4  # top edge dragged up 1 line -> 1 more row
+    assert core.rows_after_drag(3, 31, 30) == 2
     assert core.rows_after_drag(4, -10_000, 30) == core.ROWS_MAX
     assert core.rows_after_drag(4, 10_000, 30) == core.ROWS_MIN
     assert core.rows_after_drag(4, -60, 0) == 4
+    assert (core.ROWS_MIN, core.ROWS_MAX, core.FONT_MIN, core.FONT_MAX) == (1, 5, 12, 72)
 
 
 def test_font_preset_nearest_label():
@@ -201,11 +203,17 @@ def test_font_preset_nearest_label():
 def test_overlay_lines_setting_persists_and_clamps(tmp_path):
     p = tmp_path / "gui.json"
     s = core.load_settings(p)
-    assert s["overlay_lines"] == 4
-    s.update(overlay_lines=7, font_size=core.FONT_PRESETS["XL"])
+    assert s["overlay_lines"] == 3  # default 3 lines
+    s.update(overlay_lines=1, font_size=14)
     core.save_settings(s, p)
     got = core.load_settings(p)
-    assert got["overlay_lines"] == 7 and got["font_size"] == 48
+    assert got["overlay_lines"] == 1 and got["font_size"] == 14  # survive restart
+    s.update(overlay_lines=5, font_size=40)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["overlay_lines"] == 5 and got["font_size"] == 40
+    p.write_text(json.dumps({"font_size": 5}), "utf-8")
+    assert core.load_settings(p)["font_size"] == 12
     p.write_text(json.dumps({"overlay_lines": 999}), "utf-8")
     assert core.load_settings(p)["overlay_lines"] == core.ROWS_MAX
 
@@ -237,3 +245,135 @@ def test_gui_module_imports_and_language_names():
 
     assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
     assert core.DEFAULTS["theme"] == "dark"
+
+
+# -- #72: subtitles inside the main window (scrolling log), floating bar optional and off by default ---------
+
+def test_floating_bar_off_by_default_and_log_font_persist(tmp_path):
+    p = tmp_path / "gui.json"
+    s = core.load_settings(p)
+    assert s["floating_bar"] is False and s["log_font_size"] == 14
+    s.update(floating_bar=True, log_font_size=22)
+    core.save_settings(s, p)
+    got = core.load_settings(p)
+    assert got["floating_bar"] is True and got["log_font_size"] == 22
+    p.write_text(json.dumps({"log_font_size": 9999, "floating_bar": "yes"}), "utf-8")
+    got = core.load_settings(p)
+    assert got["log_font_size"] == core.FONT_MAX and got["floating_bar"] is False
+
+
+@pytest.fixture
+def gui_app(tmp_path, monkeypatch):
+    """A real App on a real (virtual) display with a worker that just waits for Stop; settings in tmp_path."""
+    tk = pytest.importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu import i18n
+    from tinglongwu.gui import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)  # never touch the real config
+    monkeypatch.setattr(i18n, "_override", "en")  # restored after the test
+
+    def fake_work(self, s, stop):
+        stop.wait(10)
+        self.q.put(("stopped",))
+
+    monkeypatch.setattr(app.App, "_work", fake_work)
+    a = app.App()
+    a.root.update()
+    yield a
+    a.stop_ev.set()
+    a.root.destroy()
+
+
+def _log(a):
+    a.root.update()
+    return a.log_text.get("1.0", "end-1c")
+
+
+def test_start_shows_listening_in_main_window_and_bar_stays_hidden(gui_app):
+    a = gui_app
+    assert _log(a) == ""
+    a.toggle()  # Start
+    assert _log(a) == "Listening..."
+    assert not a.overlay.visible and a.overlay.win.state() == "withdrawn"  # floating bar: default OFF
+    a.q.put(("final", "privet", "你好"))
+    a.q.put(("draft", "kak dela", "你好嗎"))
+    a.poll()
+    assert _log(a) == "你好\n你好嗎"
+    a.var_show_src.set(True)
+    a._src_toggled()
+    assert _log(a) == "privet\n你好\nkak dela\n你好嗎"
+    a.toggle()  # Stop
+    a.worker.join(5)
+    a.poll()
+    assert _log(a) == "privet\n你好\nkak dela\n你好嗎"  # the history stays readable after Stop
+    assert a.settings["floating_bar"] is False
+
+
+def test_floating_bar_toggle_shows_bar_with_listening(gui_app):
+    a = gui_app
+    a.v_bar.set(True)
+    a._bar_toggled()
+    assert not a.overlay.visible  # not running yet: nothing to show
+    a.toggle()
+    a.root.update()
+    assert a.overlay.visible and a.overlay.win.state() == "normal"
+    assert a.overlay.text.get("1.0", "end-1c") == "Listening..."
+    a.q.put(("final", "s", "字幕"))
+    a.poll()
+    a.root.update()
+    assert a.overlay.text.get("1.0", "end-1c") == "字幕"
+    a.v_bar.set(False)
+    a._bar_toggled()
+    assert not a.overlay.visible and _log(a) == "字幕"  # log keeps working without the bar
+    assert core.load_settings()["floating_bar"] is True  # saved at Start (settings live in tmp_path)
+
+
+def test_log_follows_newest_unless_scrolled_up(gui_app):
+    a = gui_app
+    a.toggle()
+    for i in range(250):
+        a.q.put(("final", f"s{i}", f"line {i}"))
+    a.poll()
+    text = _log(a)
+    assert text.startswith("line 50\n") and text.endswith("line 249")  # 200 kept
+    assert a.log_text.dlineinfo("end-1c") is not None  # newest line is on screen
+    a.log_text.yview("20.0")  # user scrolls back
+    a.root.update()
+    top = a.log_text.index("@0,0")
+    a.q.put(("draft", "", "newer draft"))
+    a.poll()
+    a.root.update()
+    assert a.log_text.index("@0,0") == top  # stays where the user is reading
+    assert a.log_text.dlineinfo("end-1c") is None
+    a.log_text.yview_moveto(1.0)  # back at the bottom: follows again
+    a.root.update()
+    a.q.put(("final", "", "newest"))
+    a.poll()
+    a.root.update()
+    assert a.log_text.dlineinfo("end-1c") is not None and _log(a).endswith("newest")
+
+
+def test_log_font_buttons_and_pause(gui_app):
+    a = gui_app
+    w0 = a.root.winfo_reqwidth()
+    a.bump_log_font(8)
+    a.root.update()
+    assert a.settings["log_font_size"] == 22 and a.root.winfo_reqwidth() == w0  # window does not grow
+    assert str(a.log_text.tag_cget("final", "font")).split()[-1] == "22"
+    a.toggle()
+    a.set_paused(True)
+    a.q.put(("final", "s", "while paused"))
+    a.poll()
+    assert _log(a) == "Listening..."  # frozen
+    a.set_paused(False)
+    assert _log(a) == "while paused"  # nothing lost
+    a.v_ui_lang.set("繁體中文")
+    a.state = core.SubtitleState(core.HISTORY_LINES)
+    a.switch_lang()
+    assert _log(a) == "聆聽中…"

@@ -34,7 +34,7 @@ def test_parse_wrong_forms():
     assert (e.target, e.wrong) == ("路由器", [])
 
 
-def test_qwen_prompt_shows_target_without_wrong_forms(tg):
+def test_prompt_block_shows_target_without_wrong_forms(tg):
     b = tg.prompt_block("Это замирание сигнала")
     assert "замирание = 衰落." in b and "淡化" not in b
 

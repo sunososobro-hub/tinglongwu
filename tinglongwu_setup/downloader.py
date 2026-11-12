@@ -8,9 +8,10 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
 
   tlwu-setup --whisper small --langs ru,ja --to zh,ko
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
-      --pair s-t  : one explicit pair (repeatable)       --m2m : M2M-100 1.2B direct translation (MIT; conversion needs torch+transformers, see get_m2m)
-  tlwu-setup --qwen           # Qwen3-8B/4B Q4_K_M GGUF for the default LLM engine
+      --pair s-t  : one explicit pair (repeatable)
+  tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
+  tlwu-setup --piper-ru        # Piper Russian voice dmitri (or: --piper-ru denis), CC0 data, ~60 MB
   tlwu-setup --verify          # offline integrity check
 """
 from __future__ import annotations
@@ -20,6 +21,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -29,12 +31,41 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent  # repo root  # repo root
 PINS_FILE = Path(__file__).with_name("manifest.json")
 ARGOS_INDEX = "https://raw.githubusercontent.com/argosopentech/argospm-index/main/index.json"
+MB = 1024 * 1024
 
 
 def _open(url: str, timeout: int = 60):
     # argos-net.com returns 403 for urllib's default User-Agent
     return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tlwu-setup/0.1"}),
                                   timeout=timeout)
+
+
+def copy_with_progress(src, dst, total: int | None, label: str, step: int = 5, chunk: int = 1 << 20) -> int:
+    """Copy a download stream to a file and print `label: 35% (87/250 MB)` every `step` percent, so a direct
+    download never leaves the installer screen silent (#87). Unknown size: print every 50 MB. Returns bytes copied."""
+    done, next_pct, next_mb = 0, step, 50
+    while True:
+        b = src.read(chunk)
+        if not b:
+            break
+        dst.write(b)
+        done += len(b)
+        if total:
+            pct = min(100, done * 100 // total)
+            if pct >= next_pct:
+                print(f"{label}: {pct}% ({done // MB}/{total // MB} MB)", flush=True)
+                next_pct = (pct // step + 1) * step
+        elif done // MB >= next_mb:
+            print(f"{label}: {done // MB} MB", flush=True)
+            next_mb += 50
+    return done
+
+
+def _size(r) -> int | None:
+    try:
+        return int(r.headers.get("Content-Length") or 0) or None
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def sha256(p: Path) -> str:
@@ -45,9 +76,9 @@ def sha256(p: Path) -> str:
     return h.hexdigest()
 
 
-def hash_tree(d: Path) -> dict[str, str]:
+def hash_tree(d: Path, skip: tuple = ()) -> dict[str, str]:
     return {p.relative_to(d).as_posix(): sha256(p) for p in sorted(d.rglob("*"))
-            if p.is_file() and ".cache" not in p.parts}
+            if p.is_file() and ".cache" not in p.parts and p.relative_to(d).as_posix() not in skip}
 
 
 def load_pins() -> dict:
@@ -65,8 +96,9 @@ def check_pinned(pin_files: dict, files: dict, key: str) -> None:
                  f"changed). Delete the model directory to re-download.")
 
 
-def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | None = None) -> None:
-    files = hash_tree(d)
+def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | None = None,
+                  skip: tuple = ()) -> None:
+    files = hash_tree(d, skip)
     if pin_files:
         check_pinned(pin_files, files, key)
     if key in man:
@@ -131,12 +163,15 @@ def extract_argos(z: Path, dest: Path, work: Path) -> None:
             (shutil.copytree if item.is_dir() else shutil.copy2)(item, dest / item.name)
 
 
-def get_pair(man, mdir, pair):
+def get_pair(man, mdir, pair, allow_unpinned=False):
     s, t = pair.split("-")
     key, dest = f"opus-{s}-{t}", mdir / "opus" / pair
     pin = load_pins()["argos"].get(key)
     if dest.exists() and key in man:
         return pin_or_verify(man, key, dest, {}, pin and pin["files"])
+    if not pin and not allow_unpinned:
+        sys.exit(f"{key} is not in the committed pin manifest; refusing to download it from the mutable Argos "
+                 f"index. Re-run with --allow-unpinned to pin-on-first-download anyway.")
     url = pin["url"] if pin else man.get(key, {}).get("url")
     if not pin:
         print(f"WARNING: {key} is not in the committed pin manifest; trusting the mutable Argos index "
@@ -151,86 +186,76 @@ def get_pair(man, mdir, pair):
     with tempfile.TemporaryDirectory() as tmp:
         z = Path(tmp) / "pkg.zip"
         with _open(url, 300) as r, open(z, "wb") as f:
-            shutil.copyfileobj(r, f)
+            copy_with_progress(r, f, _size(r), f"download {key}")
         if pin and pin.get("archive_sha256") and sha256(z) != pin["archive_sha256"]:
             sys.exit(f"SHA256 MISMATCH vs committed pin for the {key} package archive - refusing.")
         extract_argos(z, dest, Path(tmp) / "x")
     pin_or_verify(man, key, dest, {"url": url}, pin and pin["files"])
 
 
-def get_m2m(man, mdir, size="1.2B"):
-    """M2M-100 1.2B (MIT): download facebook/m2m100_1.2B, convert to CTranslate2 int8 -> models/m2m-1.2B/.
-
-    Only model.safetensors is fetched (never the pickle pytorch_model.bin): the main branch has no safetensors
-    file, so the pin is Hugging Face's own SFconvertbot conversion PR (refs/pr/7), by commit sha + SHA256.
-
-    Conversion needs torch + transformers (dev-only, NOT runtime deps). They may live in another
-    interpreter: set TLWU_CONVERTER_PYTHON to its python.exe.
-    """
-    import subprocess
-
-    key, dest = f"m2m-{size}", mdir / f"m2m-{size}"
-    if dest.exists() and key in man:
-        return pin_or_verify(man, key, dest, {k: man[key][k] for k in ("repo", "revision")})
-    py = os.environ.get("TLWU_CONVERTER_PYTHON", sys.executable)
-    chk = subprocess.run([py, "-c", "import torch, transformers, ctranslate2"], capture_output=True)
-    if chk.returncode:
-        sys.exit("M2M-100 conversion needs torch + transformers + ctranslate2 in one interpreter "
-                 "(dev-only; a throwaway venv is fine): pip install torch transformers ctranslate2 sentencepiece, "
-                 "then set TLWU_CONVERTER_PYTHON=<that python> and rerun.")
-    from huggingface_hub import snapshot_download
-
-    repo, rev, pf = resolve_hf(man, key, f"facebook/m2m100_{size}")
-    if not pf or "model.safetensors" not in pf:
-        sys.exit("refusing to convert M2M-100 without a pinned safetensors revision (pickle weights are not loaded).")
-    files = ["sentencepiece.bpe.model", "vocab.json", "tokenizer_config.json", "special_tokens_map.json"]
-    with tempfile.TemporaryDirectory() as tmp:
-        src = Path(tmp) / "hf"
-        snapshot_download(repo, revision=rev, local_dir=str(src), allow_patterns=[
-            "config.json", "generation_config.json", "model.safetensors", *files])
-        check_pinned(pf, hash_tree(src), key)
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.mkdir(parents=True)
-        subprocess.check_call([py, "-m", "ctranslate2.converters.transformers", "--model", str(src),
-                               "--output_dir", str(dest / "model"), "--quantization", "int8",
-                               "--copy_files", *files[1:]])
-        shutil.copy2(src / "sentencepiece.bpe.model", dest / "sentencepiece.bpe.model")
-    pin_or_verify(man, key, dest, {"repo": repo, "revision": rev})
-
-
-QWEN_GGUF = {  # key == models/ subdirectory; Apache-2.0 GGUFs from the official Qwen repos
-    "qwen3-8b": ("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"),
-    "qwen3-4b": ("Qwen/Qwen3-4B-GGUF", "Qwen3-4B-Q4_K_M.gguf"),
-}
-
-
 HYMT_DIR = "hymt2-1.8b"  # keep in sync with tinglongwu.hymt (setup does not import tinglongwu)
 HYMT_GGUF = ("tencent/Hy-MT2-1.8B-GGUF", "Hy-MT2-1.8B-Q4_K_M.gguf")  # Apache-2.0, ~1.1 GB: Japanese MT
+HYMT_EXTRAS = ("LICENSE.txt",)  # upstream Apache-2.0 text, kept next to the model
 
 
-def get_qwen(man, mdir, name):
-    """Qwen3 Q4_K_M GGUF -> models/<name>/<file>.gguf (pinned by HF commit sha + SHA256)."""
-    get_gguf(man, mdir, name, *QWEN_GGUF[name])
+# #279: opt-in Hy-MT2 7B Q4_K_M (~4.8 GB) for GPUs with >= 8 GB; `tlwu --engine hymt7b` uses it, auto never does.
+# Plain Q4_K_M runs on stock llama.cpp (llama.cpp PR #22836 / STQ1_0 is only for the 1.25-bit GGUF).
+HYMT7B_DIR = "hymt2-7b"  # keep in sync with tinglongwu.hymt.HYMT_SIZES
+HYMT7B_GGUF = ("tencent/Hy-MT2-7B-GGUF", "Hy-MT2-7B-Q4_K_M.gguf")
+APACHE_MARK = "Apache License, Version 2.0"
+
+
+def check_license(path: Path, mark: str = APACHE_MARK) -> None:
+    """Refuse (exit) unless the upstream license file exists and is Apache-2.0 (#279: stop if it is not)."""
+    text = path.read_text("utf-8", errors="replace") if path.is_file() else ""
+    if mark not in text:
+        what = "missing" if not text else "not Apache-2.0"
+        sys.exit(f"{path.parent.name}: upstream license file {path.name} is {what}; refusing to download the model. "
+                 f"Read the model page and report it in issue #279.")
+
+
+def get_hymt7b(man, mdir, fetch_license=None):
+    """Hy-MT2-7B Q4_K_M GGUF -> models/hymt2-7b/. The license is fetched and checked BEFORE the 4.8 GB GGUF."""
+    dest = mdir / HYMT7B_DIR
+    repo, fname = HYMT7B_GGUF
+    if fetch_license is None:
+        def fetch_license():
+            from huggingface_hub import snapshot_download
+
+            r, rev, _ = resolve_hf(man, HYMT7B_DIR, repo)
+            snapshot_download(r, revision=rev, local_dir=str(dest), allow_patterns=list(HYMT_EXTRAS))
+    if not (dest / HYMT_EXTRAS[0]).is_file():
+        fetch_license()
+    check_license(dest / HYMT_EXTRAS[0])
+    get_gguf(man, mdir, HYMT7B_DIR, repo, fname, extras=HYMT_EXTRAS)
 
 
 def get_hymt(man, mdir):
     """Hy-MT2-1.8B Q4_K_M GGUF -> models/hymt2-1.8b/ (direct zh<->ja translation)."""
-    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF)
+    get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF, extras=HYMT_EXTRAS)
 
 
-def get_gguf(man, mdir, name, repo, fname):
+def get_gguf(man, mdir, name, repo, fname, extras=()):
+    """extras: unpinned side files (license text) fetched at the same revision and left out of the SHA256 pins."""
     dest = mdir / name
     if not (dest.exists() and name in man):
         from huggingface_hub import snapshot_download
 
         repo, rev, pf = resolve_hf(man, name, repo)
-        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname])
+        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname, *extras])
         src = {"repo": repo, "revision": rev}
     else:
         src = man[name]
         pf = (load_pins()["models"].get(name) or {}).get("files")
-    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
+        missing = [e for e in extras if not (dest / e).exists()]
+        if missing:  # existing install: fetch only the side files, never the GGUF again
+            from huggingface_hub import snapshot_download
+
+            try:
+                snapshot_download(src["repo"], revision=src["revision"], local_dir=str(dest), allow_patterns=missing)
+            except Exception as e:  # noqa: BLE001 - a missing license file must not break an installed model
+                print(f"WARNING: could not fetch {missing} for {name}: {e}")
+    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf, skip=tuple(extras))
 
 
 VOSK_TTS_RU = "vosk-model-tts-ru-0.7-multi"  # keep in sync with tinglongwu.models.VOSK_TTS_RU_DIR
@@ -260,7 +285,7 @@ def get_vosk_tts_ru(man, mdir, opener=_open):
     with tempfile.TemporaryDirectory() as tmp:
         z, work = Path(tmp) / "m.zip", Path(tmp) / "x"
         with opener(VOSK_TTS_RU_URL, 600) as r, open(z, "wb") as f:
-            shutil.copyfileobj(r, f)
+            copy_with_progress(r, f, _size(r), f"download {VOSK_TTS_RU}")
         with zipfile.ZipFile(z) as zf:
             for n in zf.namelist():  # zip-slip guard
                 if Path(n).is_absolute() or ".." in Path(n).parts:
@@ -276,6 +301,133 @@ def get_vosk_tts_ru(man, mdir, opener=_open):
     pin_or_verify(man, VOSK_TTS_RU, dest, {"url": VOSK_TTS_RU_URL, "archive_sha256": archive_sha})
 
 
+VOSK_TTS_PIP = "vosk-tts==0.3.61"  # Vosk-TTS engine for the model above (Apache-2.0); latest on PyPI 2026-11-12
+
+
+def ensure_vosk_tts(find=None, run=None) -> bool:
+    """#311: pip install the vosk-tts engine into this Python unless it already imports, so speak mode can use the
+    model right after `tlwu-setup --vosk-tts-ru`. Returns True if it is importable (or was just installed)."""
+    import importlib.util
+
+    find = find or importlib.util.find_spec
+    if find("vosk_tts") is not None:
+        return True
+    run = run or (lambda cmd: subprocess.call(cmd))
+    print(f"installing {VOSK_TTS_PIP} (Russian voice engine) into {sys.executable}")
+    if run([sys.executable, "-m", "pip", "install", VOSK_TTS_PIP]) != 0:
+        print(f"WARNING: pip install {VOSK_TTS_PIP} failed; run it yourself, else speak mode shows subtitles only")
+        return False
+    return True
+
+
+PIPER_REPO = "rhasspy/piper-voices"  # official Piper voice repo (MIT code; each voice: MODEL_CARD + dataset license)
+# voice -> its two files. Only CC0 datasets (OHF-Voice/voice-datasets, #128): never irina (CC BY-NC-ND) / ruslan
+# (CC BY-NC-SA). Dir name keep in sync with tinglongwu.models.piper_ru_dir (setup does not import tinglongwu).
+PIPER_RU = {v: [f"ru/ru_RU/{v}/medium/ru_RU-{v}-medium.onnx", f"ru/ru_RU/{v}/medium/ru_RU-{v}-medium.onnx.json"]
+            for v in ("dmitri", "denis")}
+
+
+def piper_ru_dir(voice: str) -> str:
+    return f"piper-ru_RU-{voice}-medium"
+
+
+def get_piper_ru(man, mdir, voice="dmitri"):
+    """Piper Russian voice -> models/piper-ru_RU-<voice>-medium/ (HF commit sha + SHA256 of both files; a committed
+    pin from scripts/make_model_pins.py wins, else pin-on-first-download). The piper-tts engine itself (GPL-3) is
+    NOT installed here: it goes into its own TTS venv (see tinglongwu/reverse/tts_worker.py)."""
+    name, files = piper_ru_dir(voice), PIPER_RU[voice]
+    dest = mdir / name
+    if not (dest.exists() and name in man):
+        from huggingface_hub import snapshot_download
+
+        repo, rev, pf = resolve_hf(man, name, PIPER_REPO)
+        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=files)
+        src = {"repo": repo, "revision": rev}
+    else:
+        src = man[name]
+        pf = (load_pins()["models"].get(name) or {}).get("files")
+    missing = [f for f in files if not (dest / f).is_file()]
+    if missing:
+        sys.exit(f"{name}: download incomplete, missing {missing}")
+    pin_or_verify(man, name, dest, {k: src[k] for k in ("repo", "revision")}, pf)
+
+
+KOKORO_DIR = "kokoro"  # models/kokoro/ (the files tinglongwu.reverse.tts_worker loads)
+KOKORO_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+KOKORO_FILES = {  # name: (bytes, SHA256) from the official release, measured in #124
+    "kokoro-v1.0.int8.onnx": (92361271, "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb"),
+    "voices-v1.0.bin": (28214398, "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"),
+}
+KOKORO_PINS = {n: h for n, (_, h) in KOKORO_FILES.items()}
+
+
+def get_kokoro(man, mdir, opener=_open):
+    """Kokoro v1.0 int8 model + voices -> models/kokoro/. Committed size + SHA256 pins: a good local file is kept
+    (re-runs download nothing), a bad local file is re-downloaded, a bad download is deleted and setup aborts."""
+    dest = mdir / KOKORO_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    for name, (size, sha) in KOKORO_FILES.items():
+        f = dest / name
+        if f.is_file() and f.stat().st_size == size and sha256(f) == sha:
+            continue
+        if f.exists():
+            print(f"{name}: size/SHA256 does not match the pin, downloading it again")
+            f.unlink()
+        part = f.with_name(name + ".part")
+        print(f"downloading {name} (~{size // 1_000_000} MB)")
+        with opener(f"{KOKORO_BASE}/{name}", 600) as r, open(part, "wb") as out:
+            shutil.copyfileobj(r, out)
+        got = part.stat().st_size
+        if got != size or sha256(part) != sha:
+            part.unlink()
+            sys.exit(f"SHA256 MISMATCH vs committed pin for {name} ({got} bytes, expected {size}) - deleted, "
+                     f"refusing. Check your connection and run setup again.")
+        part.replace(f)
+    pin_or_verify(man, KOKORO_DIR, dest, {"url": KOKORO_BASE}, KOKORO_PINS)
+
+
+SPEAKER_DIR = "speaker"  # models/speaker/ (speaker-embedding model for diarization, #219/#220)
+SPEAKER_BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models"
+# 3D-Speaker models (Apache-2.0, https://github.com/modelscope/3D-Speaker). Size + SHA256 measured in #220.
+SPEAKER_FILES = {
+    "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx":
+        (28281164, "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"),
+}
+SPEAKER_FALLBACK = {  # only if the CAM++ license check fails; not downloaded by default
+    "3dspeaker_speech_eres2net_base_200k_sv_zh-cn_16k-common.onnx":
+        (39593765, "e2d2048292e055f7b61cdec3db010503f35369b245bf0b3bbad021c9a91e4053"),
+}
+SPEAKER_BANNED = ("cnceleb",)  # CN-Celeb-trained models: non-commercial data license, never download
+
+
+def get_speaker_model(man, mdir, opener=_open, files=None):
+    """Speaker-embedding ONNX -> models/speaker/, verified against committed size + SHA256. A good local file is
+    kept; a bad download is deleted and setup aborts. Names containing a banned marker are refused."""
+    files = SPEAKER_FILES if files is None else files
+    for name in files:
+        if any(b in name.lower() for b in SPEAKER_BANNED):
+            sys.exit(f"refusing {name}: cnceleb-series speaker models are banned (license)")
+    dest = mdir / SPEAKER_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    for name, (size, sha) in files.items():
+        f = dest / name
+        if f.is_file() and f.stat().st_size == size and sha256(f) == sha:
+            continue
+        if f.exists():
+            f.unlink()
+        part = f.with_name(name + ".part")
+        print(f"downloading {name} (~{size // 1_000_000} MB)")
+        with opener(f"{SPEAKER_BASE}/{name}", 600) as r, open(part, "wb") as out:
+            shutil.copyfileobj(r, out)
+        got = part.stat().st_size
+        if got != size or sha256(part) != sha:
+            part.unlink()
+            sys.exit(f"SHA256 MISMATCH vs committed pin for {name} ({got} bytes, expected {size}) - deleted, "
+                     f"refusing. Check your connection and run setup again.")
+        part.replace(f)
+    pin_or_verify(man, SPEAKER_DIR, dest, {"url": SPEAKER_BASE}, {n: h for n, (_, h) in files.items()})
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
@@ -283,21 +435,39 @@ def main(argv=None) -> int:
     p.add_argument("--pair", action="append", default=[], help="e.g. ru-en, en-zh")
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
-    p.add_argument("--m2m", action="store_true",
-                   help="M2M-100 1.2B direct translation (MIT): download + convert with ct2-transformers-converter")
-    p.add_argument("--qwen", action="store_true",
-                   help="Qwen3-8B + Qwen3-4B Q4_K_M GGUF for --engine auto/qwen/qwen4b (~7.5 GB download)")
-    p.add_argument("--qwen4b", action="store_true",
-                   help="only Qwen3-4B Q4_K_M GGUF (~2.5 GB; for GPUs with < 6 GB free VRAM)")
     p.add_argument("--hymt", action="store_true",
                    help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
                         "Japanese listening/speaking (needs llama-cpp-python)")
+    p.add_argument("--hymt7b", action="store_true",
+                   help="OPT-IN: Tencent Hy-MT2-7B Q4_K_M GGUF (~4.8 GB) for GPUs with >= 8 GB VRAM; used only with "
+                        "`tlwu --engine hymt7b` (never by auto). Checks the upstream license is Apache-2.0 first")
+    p.add_argument("--kokoro", action="store_true",
+                   help="Kokoro v1.0 int8 TTS model + voices (~120 MB, Apache-2.0) for talk mode, pinned by SHA256")
+    p.add_argument("--speaker-model", action="store_true",
+                   help="speaker-embedding model for diarization (3D-Speaker CAM++, Apache-2.0, ~28 MB), "
+                        "pinned by SHA256, not bundled")
     p.add_argument("--vosk-tts-ru", action="store_true",
                    help="OPT-IN: Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi). Upstream states no "
                         "license for it; never downloaded by default, download at your own responsibility")
+    p.add_argument("--piper-ru", nargs="?", const="dmitri", default=None, choices=sorted(PIPER_RU),
+                   help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
+                        "piper-tts engine goes in its own TTS venv: pip install piper-tts")
+    p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ru), see packs.py (#178)")
+    p.add_argument("--allow-unpinned", action="store_true",
+                   help="allow Argos pairs that are not in the committed pin manifest (mutable index, pin-on-first-use)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
+    if a.packs:
+        from . import packs
+
+        for k in packs.keys_for(a.packs):
+            if k.startswith("opus-"):
+                a.pair.append(k[5:])
+            elif k == HYMT_DIR:
+                a.hymt = True
+            elif k == piper_ru_dir("dmitri"):
+                a.piper_ru = a.piper_ru or "dmitri"
     mdir = Path(a.models_dir)
     mdir.mkdir(parents=True, exist_ok=True)
     mf = mdir / "manifest.json"
@@ -307,8 +477,10 @@ def main(argv=None) -> int:
         for key in man:
             d = mdir / ("opus/" + key[5:] if key.startswith("opus-") else key)
             pf = (pins["models"].get(key) or pins["argos"].get(key) or {}).get("files")
-            if key.startswith("m2m-"):
-                pf = None  # pins cover the HF source files, not the locally converted CT2 output
+            if key == KOKORO_DIR:
+                pf = KOKORO_PINS
+            if key == SPEAKER_DIR:
+                pf = {n: h for n, (_, h) in SPEAKER_FILES.items()}
             pin_or_verify(man, key, d, {}, pf)
         return 0
     for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
@@ -317,23 +489,29 @@ def main(argv=None) -> int:
     for s in a.whisper:
         get_whisper(man, mdir, s)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
-    if a.m2m:
-        get_m2m(man, mdir)
-        mf.write_text(json.dumps(man, indent=1), "utf-8")
-    if a.qwen or a.qwen4b:
-        for name in (QWEN_GGUF if a.qwen else ["qwen3-4b"]):
-            get_qwen(man, mdir, name)
-            mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt:
         get_hymt(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.hymt7b:
+        get_hymt7b(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.kokoro:
+        get_kokoro(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.speaker_model:
+        get_speaker_model(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.vosk_tts_ru:
         get_vosk_tts_ru(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
+        ensure_vosk_tts()
+    if a.piper_ru:
+        get_piper_ru(man, mdir, a.piper_ru)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
     pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
              + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])
     for pr in dict.fromkeys(pairs):
-        get_pair(man, mdir, pr)
+        get_pair(man, mdir, pr, a.allow_unpinned)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     return 0
 

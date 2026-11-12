@@ -41,6 +41,17 @@ def pick_mac_vmic(names: list[str], want: str = MAC_VMIC) -> str:
         f"or use --no-vmic and choose --device yourself.")
 
 
+WIN_CABLE = "CABLE Input"  # VB-CABLE playback side; Meet/Zoom record its "CABLE Output" end
+
+
+def pick_win_cable(names: list[str], want: str = WIN_CABLE) -> str | None:
+    """Windows output device to speak into (#311): first name containing "CABLE Input" (case-insensitive), or None."""
+    for n in names:
+        if want.casefold() in n.casefold():
+            return n
+    return None
+
+
 def loop_prone_output(name: str | None) -> bool:
     """True if playing TTS on this macOS output would be recorded by the listen side (BlackHole 2ch / Multi-Output)."""
     n = (name or "").casefold()

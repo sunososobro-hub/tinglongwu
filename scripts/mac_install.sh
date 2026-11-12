@@ -1,7 +1,7 @@
 #!/bin/bash
 # tinglongWu one-line installer for macOS (Apple Silicon and Intel). Safe to re-run: re-running = repair/update.
 #
-#   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
 #
 # The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
 # version it was released with. Run straight from the repo (unreleased) it falls back to main.
@@ -32,10 +32,10 @@ KOKORO_DIR="$HOME/models/kokoro"
 KOKORO_BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 KOKORO_ONNX_SIZE=92361271
 KOKORO_VOICES_SIZE=28214398
-# SHA256 pins: fill in (lowercase hex) once computed from a verified copy. When set, a mismatch deletes the file
-# and aborts (fail closed); while empty, only the size is checked (NOT unpinned-proof, see README).
-KOKORO_ONNX_SHA256=""
-KOKORO_VOICES_SHA256=""
+# SHA256 pins (same as scripts/linux_kokoro.sh). A mismatch deletes the file and aborts (fail closed).
+# Env-overridable (tests only); setting a pin to empty skips the hash check and leaves only the size check.
+KOKORO_ONNX_SHA256="${KOKORO_ONNX_SHA256-6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb}"
+KOKORO_VOICES_SHA256="${KOKORO_VOICES_SHA256-bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d}"
 BIN_DIR="$HOME/.local/bin"
 WARNINGS=""
 
@@ -134,8 +134,8 @@ done
 say "4/8 下載 tinglongWu 並建立環境（${DIR}）"
 if [ -d "$DIR/.git" ]; then
   info "已存在，更新中..."
-  if ! git -C "$DIR" fetch --quiet --tags origin 2>&1; then
-    warn "更新失敗（網路？），先用現有版本繼續。"
+  if ! FETCH_ERR=$(git -C "$DIR" fetch --quiet --force --tags origin 2>&1); then
+    warn "更新失敗，先用現有版本繼續。git: ${FETCH_ERR}"
   elif git -C "$DIR" rev-parse -q --verify "refs/tags/$BRANCH" >/dev/null 2>&1; then
     git -C "$DIR" checkout --quiet "$BRANCH" 2>&1 || warn "$DIR 裡有本機改動，無法切到版本 ${BRANCH}；先用現有版本繼續。"
   elif ! git -C "$DIR" merge --ff-only --quiet "origin/$BRANCH" 2>&1; then
@@ -199,9 +199,20 @@ fetch_model voices-v1.0.bin "$KOKORO_VOICES_SIZE" "$KOKORO_VOICES_SHA256"
 ( cd "$KOKORO_DIR" && shasum -a 256 kokoro-v1.0.int8.onnx voices-v1.0.bin > SHA256SUMS ) 2>/dev/null || true
 
 # ---------------------------------------------------------------- 6. models
-say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 1-2 GB）"
-.venv/bin/tlwu-setup --whisper small --pair en-zh --pair zh-en \
+say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 2-3 GB）"
+# #178: core + language packs (default zh+en); ja / ru are offered with their size when first picked
+.venv/bin/tlwu-setup --whisper small --packs "${TLWU_PACKS:-zh,en}" --allow-unpinned \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
+# #276/#301: Hy-MT2 1.8B is the only default translation engine (runs on the CPU here): llama-cpp-python + the GGUF.
+# No macOS wheel on the CPU index -> pip builds it from source with the Xcode command line tools (a few minutes).
+info "安裝翻譯引擎 Hy-MT2（llama-cpp-python，可能要編譯幾分鐘）..."
+# shellcheck source=tlwu_common.sh
+. "$DIR/scripts/tlwu_common.sh"
+# #420: the CPU-index arm64 wheel can be a corrupt zip; tlwu_install_llama then builds the PyPI sdist instead.
+tlwu_install_llama .venv/bin/python requirements-llama-cpu.txt \
+  || warn "llama-cpp-python 安裝失敗：翻譯無法使用。請把上面的錯誤訊息給維護者，或重貼安裝指令重試。"
+.venv/bin/tlwu-setup --hymt \
+  || die "Hy-MT2 翻譯模型下載失敗（網路？）。重貼安裝指令會從中斷處繼續。"
 fi
 
 # ---------------------------------------------------------------- 7. launcher
@@ -222,7 +233,7 @@ for rc in "$HOME/.zprofile" "$HOME/.zshrc"; do
 done
 
 # ---------------------------------------------------------------- 8. self-check
-say "8/8 檢查音效裝置"
+say "8/8 檢查音效裝置與自我測試"
 SPK="$(.venv/bin/python -m tinglongwu.reverse.proto --list-speakers 2>/dev/null)"
 MICS="$(.venv/bin/python -m tinglongwu.reverse.proto --list-mics 2>/dev/null)"
 if printf '%s\n%s\n' "$SPK" "$MICS" | grep -qi 'BlackHole 2ch'; then info "BlackHole 2ch: 已偵測到"
@@ -230,6 +241,12 @@ else warn "還偵測不到 BlackHole 2ch。BlackHole 剛裝好時通常要「重
 if printf '%s\n' "$SPK" | grep -qi 'BlackHole 16ch'; then info "BlackHole 16ch: 已偵測到"
 else warn "還偵測不到 BlackHole 16ch（同上，重新開機後再檢查）。"; fi
 [ "$BH_FAIL" -eq 0 ] || warn "BlackHole 有安裝失敗，見上方訊息。"
+if [ -z "${TLWU_SKIP_MODELS:-}" ]; then   # #99: do the downloaded models load and translate? (offline)
+  # shellcheck source=tlwu_common.sh
+  . "$DIR/scripts/tlwu_common.sh"
+  tlwu_install_selftest .venv/bin/tlwu-setup --model small \
+    || warn "安裝完成但自我測試失敗，詳見 install.log（選單的「回報問題」會附上）；已安裝的檔案都保留。"
+fi
 
 cat <<EOF
 

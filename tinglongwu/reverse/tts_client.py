@@ -4,22 +4,30 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
+
+from ..threads import tts_env
 
 
 class TTSClient:
     def __init__(self, tts_python: str, model: str, engine: str = "vosk", speaker: int = 4, lang: str = "en"):
         worker = Path(__file__).with_name("tts_worker.py")
-        self.engine, self.speaker, self.lang = engine, speaker, lang  # lang: kokoro only (en | ja)
-        if engine not in ("vosk", "kokoro"):
-            raise ValueError(f"unknown TTS engine {engine!r} (built-in fixed voices only: vosk, kokoro)")
+        self.engine, self.speaker, self.lang = engine, speaker, lang  # lang: kokoro only (en | ja | zh)
+        if engine not in ("vosk", "kokoro", "piper"):
+            raise ValueError(f"unknown TTS engine {engine!r} (built-in fixed voices only: vosk, kokoro, piper)")
+        tts_python = tts_python or sys.executable  # #311: empty --tts-python = this Python (no WinError 87)
         cmd = [tts_python, str(worker), "--engine", engine, "--model", model, "--speaker", str(speaker)]
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
-               "TLWU_MODE": "worker"}
+               "TLWU_MODE": "worker", **tts_env()}  # #250: onnxruntime threads in listen+speak mode
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
-        self.ready = self._read_header()
-        if self.ready.get("t") != "ready":
-            raise RuntimeError(f"TTS worker failed to start: {self.ready}")
+        try:
+            self.ready = self._read_header()
+            if not isinstance(self.ready, dict) or self.ready.get("t") != "ready":
+                raise RuntimeError(f"TTS worker failed to start: {self.ready}")
+        except (RuntimeError, ValueError):  # no / garbled ready line: do not leave the worker process behind
+            self.proc.kill()
+            raise
         self._n = 0
 
     def _read_header(self) -> dict:

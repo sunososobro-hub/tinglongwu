@@ -2,6 +2,8 @@ name: stats-dashboard
 on:
   schedule:
     - cron: "17 * * * *"
+  push:
+    branches: [dev]   # GitHub throttles scheduled runs; also refresh on every dev push
   workflow_dispatch:
 
 permissions:
@@ -30,6 +32,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/stats_dashboard.py site --repo "${{ github.repository }}" --branch dev
+      - name: Add static pages (roadmap, docs)
+        run: |
+          cp docs/roadmap.html site/roadmap.html
+          pip install markdown==3.7
+          python scripts/build_docs_page.py site
       - name: Publish to gh-pages
         run: |
           cd site

@@ -22,7 +22,7 @@ def test_gate_busy_while_playing_and_during_tail():
 
 
 def test_segments_dropped_while_tts_playing():
-    loud = (np.ones(1600) * 0.1).astype(np.float32)
+    loud = (np.ones(16000) * 0.1).astype(np.float32)  # 1 s: #249 drops segments shorter than gate.MIN_DUR_S
     g = PlaybackGate(tail=0.0)
     g.start()
     assert list(recognize_utterances([loud], _Asr(), gate=g)) == []

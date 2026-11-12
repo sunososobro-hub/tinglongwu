@@ -103,3 +103,28 @@ tlwu_report_check() {
   else echo; fi
   return 0
 }
+
+tlwu_install_selftest() {  # tlwu_install_selftest TLWU_SETUP [args...]: last installer step (#99), offline
+  # Runs `tlwu-setup --selftest args` (loads the models, translates one test sentence). Returns 1 only when the
+  # self-test failed (the installer then warns; nothing is deleted); a tlwu without --selftest (exit 3) is skipped.
+  local bin="$1" rc; shift
+  printf '    %s\n' "自我測試：載入模型並翻譯一句測試句 / self-test: loading the models, translating one test sentence"
+  "$bin" --selftest "$@"; rc=$?
+  case "$rc" in
+    0) printf '    %s\n' "自我測試通過 / self-test passed" ;;
+    3) printf '    %s\n' "此版本尚無自我測試，略過 / this version has no self-test yet: skipped" ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
+# #420: install llama-cpp-python from a requirements file; if the index wheel fails (e.g. the 0.3.36 arm64 wheel on the
+# CPU index is a corrupt zip), build the PyPI sdist of the same pinned version instead.
+tlwu_install_llama() {  # tlwu_install_llama PYTHON REQUIREMENTS_FILE
+  local py="$1" req="$2" pin
+  "$py" -m pip install -r "$req" && return 0
+  pin="$(grep -E '^llama-cpp-python==' "$req" | head -n1 | tr -d '[:space:]')"
+  [ -n "$pin" ] || return 1
+  echo "    index wheel failed; building $pin from the PyPI sdist (a few minutes) ..."
+  "$py" -m pip install --no-binary llama-cpp-python "$pin"
+}

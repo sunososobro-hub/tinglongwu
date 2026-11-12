@@ -1,3 +1,4 @@
+import subprocess
 import sys
 
 from ._soundcard import SoundcardSource, find_by_name
@@ -17,6 +18,50 @@ def virtual_sink_warning(name: str | None, sink_id: str | None = None) -> str | 
             f"nothing. Switch with `pactl list sinks short` then `pactl set-default-sink <your speakers>`.")
 
 
+def parse_sinks(text: str) -> list[dict]:
+    """Parse `pactl list sinks` into [{'name','description','driver'}] (driver e.g. 'module-null-sink.c')."""
+    sinks: list[dict] = []
+    for line in text.splitlines():
+        key, _, val = line.strip().partition(":")
+        val = val.strip()
+        if key == "Name":
+            sinks.append({"name": val, "description": "", "driver": "", "factory": ""})
+        elif sinks and key in ("Description", "Driver"):
+            sinks[-1][key.casefold()] = val
+        elif sinks and key.startswith("factory.name"):  # PipeWire: Driver is "PipeWire" for every sink
+            sinks[-1]["factory"] = key.partition("=")[2].strip().strip('"')
+    return sinks
+
+
+def _list_sinks() -> list[dict] | None:
+    try:
+        out = subprocess.run(["pactl", "list", "sinks"], capture_output=True, text=True, timeout=5, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_sinks(out) or None
+
+
+def _is_null(sink: dict) -> bool:
+    return "null-sink" in sink["driver"] or "null-audio-sink" in sink.get("factory", "")
+
+
+def null_sink_warning(spk_name: str | None, sink_id: str | None, sinks: list[dict]) -> str | None:
+    """Warning if the default sink is a module-null-sink (any name), else None. Never changes the default."""
+    cur = next((s for s in sinks if sink_id and s["name"] == sink_id), None) \
+        or next((s for s in sinks if spk_name and spk_name in (s["name"], s["description"])), None)
+    if cur is None or not _is_null(cur):
+        return None
+    real = [s for s in sinks if not _is_null(s) and not s["name"].endswith(".monitor")]
+    label = cur["name"]
+    if real:
+        names = ", ".join(f"{s['name']} ({s['description']})" if s["description"] else s["name"] for s in real)
+        fix = f"Physical speakers: {names}. Fix: pactl set-default-sink {real[0]['name']}"
+    else:
+        fix = "No physical speaker found; list with `pactl list sinks short`."
+    return (f"warning: default output {label!r} is a null sink (module-null-sink): subtitles work but you will "
+            f"hear nothing. {fix}")
+
+
 class PulseMonitorSource(SoundcardSource):
     """Linux PipeWire/PulseAudio: monitor of the default sink (or --device substring).
 
@@ -27,7 +72,10 @@ class PulseMonitorSource(SoundcardSource):
         if self.device:
             return find_by_name(sc, self.device)
         spk = sc.default_speaker()
-        msg = virtual_sink_warning(spk.name, getattr(spk, "id", None))
+        sink_id = getattr(spk, "id", None)
+        sinks = _list_sinks()
+        msg = (null_sink_warning(spk.name, sink_id, sinks) if sinks else None) \
+            or virtual_sink_warning(spk.name, sink_id)
         if msg:
             print(msg, file=sys.stderr, flush=True)
         return sc.get_microphone(spk.name, include_loopback=True)

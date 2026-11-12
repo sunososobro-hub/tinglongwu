@@ -9,26 +9,34 @@ from __future__ import annotations
 import json
 import os
 import queue
+import sys
+import unicodedata
 from pathlib import Path
 
 from ..sink import Result, Sink
+from ..langs import SOURCE_LANGS
 from ..stream import DraftRenderer
 
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 4, "theme": "dark",
+    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
+    "floating_bar": False, "log_font_size": 14, "quality": "auto",
+    "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
 }
-LANGS = ["auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"]
+LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "qwen", "qwen4b", "opus"]
+ENGINES = ["auto", "hymt", "opus"]  # #276: Hy-MT2 is the engine; only Hy-MT2 and OPUS are offered
+# auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
+# hardware; manual = the Engine + Speech model boxes decide (#81)
+QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
 PRESETS = ["meeting", "chat"]  # meeting = whole sentences (~5-8 s latency); chat = lower latency, more fragments
 SOURCES = ["system", "mic"]  # system = whatever the PC is playing (loopback); mic = microphone
 MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
-FONT_MIN, FONT_MAX = 10, 96
+FONT_MIN, FONT_MAX = 12, 72
 FONT_PRESETS = {"S": 20, "M": 28, "L": 36, "XL": 48}  # subtitle size picker in the control window
 HISTORY_LINES = 200  # finals kept in the subtitle bar's scroll-back
-ROWS_MIN, ROWS_MAX = 2, 12  # visible text rows of the subtitle bar (drag its top edge to change)
+ROWS_MIN, ROWS_MAX = 1, 5  # visible text rows of the subtitle bar (drag its top edge to change)
 
 
 def target_for_locale(tag: str | None) -> str:
@@ -41,14 +49,55 @@ def target_for_locale(tag: str | None) -> str:
     return "en"
 
 
+def report_info(s: dict) -> dict:
+    """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
+    return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",
+            "Quality": s.get("quality"), "Engine": s.get("engine"), "Model": s.get("model"), "Source": s.get("source"),
+            "Live draft": "on" if s.get("live_draft") else "off", "Voice": "on" if s.get("voice") else "off"}
+
+
+def doctor_lang(source_lang: str | None) -> str:
+    """Voice language for 'Check setup' (#313): the language the other side speaks and hears; ru when unknown/auto."""
+    from ..doctor import VOICE_LANGS
+
+    return source_lang if source_lang in VOICE_LANGS else "ru"
+
+
+def setup_check(lang: str, run=None) -> tuple[str, bool]:
+    """'Check setup' button (#313 part 2): the `tlwu doctor` lines (one per check, with its fix) + summary, and
+    whether nothing FAILed. `run` is doctor.run_checks (injectable for tests)."""
+    from ..doctor import FAIL, run_checks, summary
+
+    checks = (run or run_checks)(lang)
+    return "\n".join([c.line() for c in checks] + [summary(checks)]), not any(c.status == FAIL for c in checks)
+
+
+def run_setup_check(q: queue.Queue, lang: str, run=None) -> None:
+    """Worker-thread body: probes may be slow (nvidia-smi, device listing), so the result goes on the GUI queue
+    as ("doctor", text, ok); a crash in a probe is reported, never raised into the thread."""
+    try:
+        text, ok = setup_check(lang, run)
+    except Exception as e:  # noqa: BLE001
+        text, ok = f"check failed: {type(e).__name__}: {e}", False
+    q.put(("doctor", text, ok))
+
+
 def settings_path() -> Path:
     base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "tinglongwu" / "gui.json"
 
 
-def load_settings(path=None) -> dict:
-    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default."""
+def _gpu_usable() -> bool:
+    from ..device import cuda_device_count
+
+    return cuda_device_count() > 0
+
+
+def load_settings(path=None, gpu=_gpu_usable) -> dict:
+    """Saved settings merged over DEFAULTS; wrong-typed or unreadable values fall back to the default.
+    First run (no saved file) without a usable GPU: live draft starts off, it doubles the work on a CPU."""
     out = dict(DEFAULTS)
+    fresh = True
     try:
         from ..i18n import _system_tag
 
@@ -58,6 +107,7 @@ def load_settings(path=None) -> dict:
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
         if isinstance(data, dict):
+            fresh = False
             for k, dv in DEFAULTS.items():
                 v = data.get(k)
                 if v is None:
@@ -70,6 +120,18 @@ def load_settings(path=None) -> dict:
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
+    if out["quality"] not in QUALITIES:
+        out["quality"] = DEFAULTS["quality"]
+    if not fresh and "quality" not in data and (out["engine"], out["model"]) != (DEFAULTS["engine"], DEFAULTS["model"]):
+        out["quality"] = "manual"  # settings saved before #81 with a hand-picked engine/model: keep that choice
+    if out["engine"] not in ENGINES:  # #276: a saved removed engine (an old LLM id) is no longer a CLI choice
+        out["engine"] = DEFAULTS["engine"]
+    if fresh:
+        try:
+            out["live_draft"] = bool(gpu())
+        except Exception:  # noqa: BLE001
+            pass
+    out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     return out
 
@@ -84,11 +146,11 @@ def save_settings(s: dict, path=None) -> bool:
         return False
 
 
-def clamp_font(n) -> int:
+def clamp_font(n, default=None) -> int:
     try:
         return max(FONT_MIN, min(FONT_MAX, int(n)))
     except (TypeError, ValueError):
-        return DEFAULTS["font_size"]
+        return DEFAULTS["font_size"] if default is None else default
 
 
 def clamp_rows(n) -> int:
@@ -117,19 +179,139 @@ def follow_newest(yview_last: float) -> bool:
     return yview_last >= 0.999
 
 
+_MARK_OK, _MARK_MISSING = "\u2713 ", " (\u9700\u4e0b\u8f09 / not downloaded)"
+
+
+def model_labels(mdir=None) -> list[str]:
+    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96)."""
+    from ..models import whisper_installed
+
+    have = whisper_installed(mdir)
+    return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
+
+
+def model_from_label(label: str) -> str:
+    """The plain model name from a dropdown entry (also accepts a plain name)."""
+    return label.replace(_MARK_OK, "", 1).replace(_MARK_MISSING, "").strip()
+
+
+def label_for_model(name: str, mdir=None) -> str:
+    return next((l for l in model_labels(mdir) if model_from_label(l) == name), name)
+
+
+def hw_tier_name(probe=None) -> str | None:
+    """"gpu" / "cpu" from the hardware probe (#63), None when the probe fails (never stops a session)."""
+    try:
+        from ..hwprobe import probe as _probe, recommend
+
+        return recommend((probe or _probe)()).name
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def is_downloaded(model: str, mdir=None) -> bool:
+    from ..models import whisper_installed
+
+    return model in whisper_installed(mdir)
+
+
+def usable_model(wanted: str | None, mdir=None, tier=hw_tier_name) -> str:
+    """The chosen Whisper model, or the best downloaded one for this PC's hardware tier when it is not on disk
+    (#96). The probe (nvidia-smi) only runs when the chosen model is missing; `tier` = a name or a callable."""
+    from ..models import pick_whisper
+
+    wanted = wanted or "small"
+    if is_downloaded(wanted, mdir):
+        return wanted
+    return pick_whisper(wanted, mdir, tier() if callable(tier) else tier)
+
+
+def text_width(s: str) -> int:
+    """Width in character cells (CJK = 2), for sizing a ttk.Combobox (`width` counts average characters)."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def combo_width(values, minimum: int = 18) -> int:
+    return max([minimum] + [text_width(v) + 1 for v in values])
+
+
+def download_cmd(model: str, mdir=None, bundled: bool | None = None) -> list[str]:
+    """Child process that downloads one Whisper model (#96 item 3). The network code lives in tinglongwu_setup and
+    runs only in this separate process after the user said yes; this package never downloads anything itself.
+    Bundled tlwu.exe: `tlwu.exe --run-setup ...` (tlwu_app.main); from source: `python -m tinglongwu_setup ...`."""
+    from ..models import models_dir
+
+    if bundled is None:
+        bundled = bool(getattr(sys, "frozen", False)) or os.environ.get("TLWU_BUNDLED") == "1"
+    base = [os.path.abspath(sys.argv[0]), "--run-setup"] if bundled else [sys.executable, "-m", "tinglongwu_setup"]
+    return [*base, "--whisper", model, "--models-dir", str(models_dir(str(mdir) if mdir else None))]
+
+
+def download_env(env=None) -> dict:
+    """Environment for the download child: this process's offline flags (HF_HUB_OFFLINE etc.) removed."""
+    from ..offline import OFFLINE_ENV
+
+    out = {k: v for k, v in (os.environ if env is None else env).items() if k not in OFFLINE_ENV}
+    out.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    return out
+
+
+def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+    """Run the download child (worker thread); `put` gets ("dl_line", text) per output line and
+    ("dl_done", model, returncode). Returns the return code (-1 if it could not start)."""
+    import subprocess
+
+    popen = popen or subprocess.Popen
+    try:
+        p = popen(download_cmd(model, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                  env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for raw in p.stdout:
+            line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
+            parts = [x.strip() for x in line.split("\n") if x.strip()]
+            if parts:
+                put(("dl_line", parts[-1][:90]))
+        rc = p.wait()
+    except Exception as e:  # noqa: BLE001
+        put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
+        rc = -1
+    put(("dl_done", model, rc))
+    return rc
+
+
 def settings_to_argv(s: dict) -> list[str]:
     """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
-            "--engine", s.get("engine") or "auto", "--model", s.get("model") or "small",
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
+    quality = s.get("quality") if s.get("quality") in QUALITIES else DEFAULTS["quality"]
+    if quality == "manual":
+        argv += ["--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model"))]
+    else:  # the CLI picks engine + speech model from the hardware probe
+        argv += ["--quality", quality]
     if s.get("source") == "mic":
         argv += ["--mic"]
     if s.get("glossary"):
         argv += ["--glossary", s["glossary"]]
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
+    if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
+        argv += ["--voice"] + (["--voice-device", s["voice_device"]] if s.get("voice_device") else [])
     return argv
+
+
+def voice_outputs(names=None) -> list[str]:
+    """#330: output devices offered for the GUI voice: real speakers/earphones only (virtual cables, BlackHole,
+    tlwu_sink and monitors are left out, the listen side could record them). names=None lists soundcard's."""
+    from ..voice import voice_output_problem
+
+    if names is None:
+        try:
+            import soundcard as sc
+
+            names = [sp.name for sp in sc.all_speakers()]
+        except Exception:  # noqa: BLE001 - no audio stack: only "default output" is offered
+            names = []
+    return [n for n in names if n and voice_output_problem(n, None) is None]
 
 
 class QueueSink(Sink):
@@ -137,6 +319,9 @@ class QueueSink(Sink):
 
     def __init__(self, q: queue.Queue):
         self.q = q
+
+    def write_source(self, src: str, original: str) -> None:
+        self.q.put(("source", original))  # shown dim until its "final" arrives (#53)
 
     def write(self, r: Result) -> None:
         self.q.put(("final", r.original, r.target if r.src != r.tgt and r.target else r.original))
@@ -167,6 +352,7 @@ class SubtitleState:
         self.max_lines = max_lines
         self.finals: list[tuple[str, str]] = []  # (src, target), oldest first
         self.draft: tuple[str, str] | None = None
+        self.pending: list[str] = []  # #53: sources heard, translation still running (newest one is the draft)
         self.paused = False  # frozen display: events still update the state (nothing is lost) but nothing is redrawn
 
     def apply(self, ev: tuple) -> bool:
@@ -179,8 +365,13 @@ class SubtitleState:
         kind = ev[0]
         if kind == "draft":
             self.draft = (ev[1], ev[2])
+        elif kind == "source":
+            self.pending.append(ev[1])
+            self.draft = ("", ev[1])  # same shape as a source-only live draft: the source text, dim
         elif kind == "final":
-            self.draft = None
+            if self.pending and self.pending[0] == ev[1]:
+                self.pending.pop(0)
+            self.draft = ("", self.pending[-1]) if self.pending else None
             self.finals.append((ev[1], ev[2]))
             del self.finals[:-self.max_lines]
         elif kind == "clear":

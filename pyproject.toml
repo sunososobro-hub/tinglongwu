@@ -7,7 +7,7 @@ name = "tinglongwu"
 version = "0.1.0"
 description = "Fully local, offline real-time speech translator (system audio -> ASR -> translation -> text)."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
   "faster-whisper==1.2.1",
@@ -34,10 +34,13 @@ tlwu-setup = "tinglongwu_setup.cli:main"
 tlwu-gui = "tinglongwu.gui:main"
 
 [tool.setuptools]
-packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu.reverse", "tinglongwu_setup"]
+packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "tinglongwu.reverse", "tinglongwu.lang", "tinglongwu.lang.ja",
+            "tinglongwu_setup"]
 
 [tool.setuptools.package-data]
 tinglongwu_setup = ["manifest.json"]
+"tinglongwu.gui" = ["assets/*.ico", "assets/*.png", "assets/*.svg"]
+tinglongwu = ["data/*.txt", "data/*.wav"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

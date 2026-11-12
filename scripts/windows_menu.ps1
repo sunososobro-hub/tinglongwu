@@ -19,6 +19,7 @@ Import-TlwuMessages
 # Updating is opt-in: first run asks once (saved in the user config); then every menu start checks GitHub
 # (git fetch, 6 s cap, never blocks) only if you said yes, otherwise press U. TLWU_NO_UPDATE=1 forces it off.
 Invoke-TlwuConsent
+if ($env:TLWU_OFFLINE -eq "1") { Write-Host (T 'OFFLINE_BANNER') }  # #254
 if (Test-TlwuAutoUpdate) { Update-Tlwu $py | Out-Null }
 $ErrorActionPreference = "Stop"
 # Blocked-connection reports from the network guard: asks; nothing is sent unless you say y and submit on GitHub.
@@ -33,21 +34,25 @@ $voice = if ($env:VOICE) { $env:VOICE } else { "4" }
 #   python -m venv $HOME\tts-kokoro; & $HOME\tts-kokoro\Scripts\pip install "kokoro-onnx==0.6.1"
 #   model dir needs kokoro-v1.0.int8.onnx + voices-v1.0.bin
 $kokoroPy = if ($env:KOKORO_PY) { $env:KOKORO_PY } else { "$HOME\tts-kokoro\Scripts\python.exe" }
-$kokoroModel = if ($env:KOKORO_MODEL) { $env:KOKORO_MODEL } else { "$HOME\models\kokoro" }
+# install.ps1 (#124) puts the pinned model in the repo models\kokoro; a manual install may use $HOME\models\kokoro
+$kokoroModel = if ($env:KOKORO_MODEL) { $env:KOKORO_MODEL } elseif (Test-Path "$HOME\models\kokoro") { "$HOME\models\kokoro" } else { Join-Path (Get-Location) "models\kokoro" }
 $kokoroVoice = if ($env:KOKORO_VOICE) { $env:KOKORO_VOICE } else { "0" }
 
 $L = if ($env:TLWU_LANG) { $env:TLWU_LANG } else { "auto" }
 $cands = "en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
 $followLangs = "en,ru,ja"   # languages the speak side prepares in meeting mode
 $followFile = Join-Path $env:TEMP "tlwu_follow_lang"
-function Get-LangName($l) { $k = "LN_$l"; if ($script:M.ContainsKey($k)) { return $script:M[$k] } else { return $l } }
+function Get-LangName($l) {  # auto from the menu texts; languages from tinglongwu.langs (marks the experimental ones, #58)
+    if ($l -ne "auto") { $n = & $py -m tinglongwu.langs --name $l 2>$null; if ($LASTEXITCODE -eq 0 -and $n) { return "$n" } }
+    $k = "LN_$l"; if ($script:M.ContainsKey($k)) { return $script:M[$k] } else { return $l }
+}
 $both = $false
 function Test-SpeakOk($l) { return @("auto", "en", "ru", "ja") -contains $l }
 # Japanese needs Hy-MT2 (llama-cpp-python in .venv + the GGUF) and, for speaking, misaki[ja] in the Kokoro venv.
 $hymtRel = "hymt2-1.8b/Hy-MT2-1.8B-Q4_K_M.gguf"
 $haveHymtFile = "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / '$hymtRel').is_file() else 1)"
 function Test-HymtFile { & $py -c $haveHymtFile; return ($LASTEXITCODE -eq 0) }
-function Test-Llama { & $py -c "import llama_cpp" 2>$null; return ($LASTEXITCODE -eq 0) }
+function Test-Llama { & $py -c "from tinglongwu.llamacheck import import_llama; import_llama()" 2>$null; return ($LASTEXITCODE -eq 0) }
 function Test-HyReady { return ((Test-HymtFile) -and (Test-Llama)) }   # then ja is translated directly (no OPUS pivot)
 function Get-JaMissing {   # install commands the Japanese voice/translator still needs (empty = ready)
     $out = @()
@@ -79,7 +84,7 @@ while ($true) {
     elseif ($pick -eq "2") { $mode = "2"; $both = $false }
     elseif ($pick -eq "3") { $mode = "1"; $both = $false }
     elseif ($pick -eq "l") {
-        Write-Host (T 'LANG_HELP')
+        & $py -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
         $L = Read-Host (T 'ASK_LANG'); if (-not $L) { $L = "auto" }
         continue
     }
@@ -97,15 +102,18 @@ if ($L -eq "auto") {
     if ($both) { $speak = "follow" }
     elseif ($mode -eq "2") {
         $speak = Read-Host (T 'ASK_SPEAK')
-        if ($speak -ne "ru" -and $speak -ne "ja") { $speak = "en" }
+        if ($speak -ne "ru" -and $speak -ne "ja" -and $speak -ne "zh") { $speak = "en" }   # zh = I speak English (#134)
     }
 }
 $setupExe = ".\.venv\Scripts\tlwu-setup.exe"
+# Language packs (#178): the install has zh+en; picking ja / ru offers that pack once with its size (default no).
+foreach ($pk in (@($L, $speak) | Select-Object -Unique)) { if ($pk -eq "ja" -or $pk -eq "ru") { & $setupExe --pack-prompt $pk } }
 function Invoke-Setup {  # never download silently: ask first (default = no)
     $ans = ""
+    if ($env:TLWU_OFFLINE -eq "1") { Write-Host (T 'OFFLINE_MISSING' "tlwu-setup --online $($args -join ' ')"); exit 1 }  # #254
     try { $ans = Read-Host (T 'ASK_DOWNLOAD') } catch { $ans = "" }
     if ($ans -notmatch '^(y|yes)$') { Write-Host (T 'DOWNLOAD_DECLINED'); exit 1 }
-    & $setupExe @args
+    & $setupExe --allow-unpinned @args  # consent given above; until every pair is pinned in manifest.json (#254)
 }
 if ($mode -eq "2" -and ($speak -eq "ja" -or $speak -eq "follow")) {
     $missing = Get-JaMissing
@@ -136,21 +144,29 @@ if ($mode -eq "2" -and ($speak -eq "ru" -or ($speak -eq "follow" -and $followLan
     if (-not (Test-Vosk)) { Write-Host (T 'VOSK_OPTIN'); $voskOff = $true }
 }
 $hyNote = T 'HY_NOTE'
+# Listen side extras (#42): --glossary when the user glossary folder has .txt files; on CPU with Hy-MT2 installed,
+# ask whether to use it instead of OPUS (tinglongwu.menuopts: questions on stderr, one argument per line on stdout)
+$xl = @()
+if ($mode -eq "1" -or $both) {
+    try { $xl = @(& $py -m tinglongwu.menuopts listen | Where-Object { $_ }) } catch { $xl = @() }
+}
 if ($both) {
-    $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en", "zh-en", "en-ru") } else { @("$L-en", "en-zh", "zh-en", "en-ru") }
+    # listen side pairs only; the speak side is Hy-MT2 (#331)
+    $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en") } else { @("$L-en", "en-zh") }
     & $py -c $havePairs @need
     if ($LASTEXITCODE -ne 0) {
         Write-Host (T 'NO_MODEL_FOR' $L)
-        if ($L -eq "en") { Invoke-Setup --to zh } elseif ($L -eq "auto") { Invoke-Setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru } else { Invoke-Setup --langs $L --to zh --pair en-ru }
+        if ($L -eq "en") { Invoke-Setup --to zh } elseif ($L -eq "auto") { Invoke-Setup --pair en-zh --pair ru-en } else { Invoke-Setup --langs $L --to zh }
     }
     if ($speak -eq "follow") {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
     }
-    # listen in its own window; speak in this one
+    # #285: one window: the speak side runs the listen side in a thread (--listen, last on its command line),
+    # both directions share one Hy-MT2 and one CPU thread budget (TLWU_BOTH, tinglongwu/threads.py)
+    $env:TLWU_BOTH = "1"
     Remove-Item $followFile -ErrorAction SilentlyContinue
-    $listenArgs = $listenLang + $wL
+    $listenArgs = @($listenLang) + @($wL) + @($xl)
     if ($L -eq "auto") { $listenArgs += @("--lang-file", $followFile) }
-    $listen = Start-Process -FilePath (Resolve-Path $tlwu) -ArgumentList $listenArgs -PassThru
 }
 if ($mode -eq "1") {
     Write-Host (T 'BANNER_LISTEN' $L)
@@ -166,40 +182,42 @@ if ($mode -eq "1") {
         Write-Host (T 'NO_MODEL_FOR' $L)
         Invoke-Setup @setup
     }
-    & $tlwu @listenLang @wL
+    $stream = @(Get-TlwuStreamArgs $py)   # live drafts (#60), default no
+    & $tlwu @listenLang @wL @xl @stream
     exit
 }
 Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))
 
+# #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
+if (-not (Test-Llama)) { Write-Host "  & $py -m pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"; exit 1 }
+if (-not (Test-HymtFile)) { Write-Host (T 'NO_HYMT_SPEAK'); Invoke-Setup --hymt }
 if ($speak -eq "follow") {
     # both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk (ru) on the first Russian sentence
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "follow", "--follow-file", $followFile, "--mt", "opus",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "follow", "--follow-file", $followFile, "--mt", "auto",
              "--follow-langs", $followLangs,
              "--tts-engine", "kokoro", "--tts-python", $kokoroPy, "--tts-model", $kokoroModel,
              "--vosk-python", $voskPy, "--vosk-model", $voskModel) + $wS
     $txt = @()
 } elseif ($speak -eq "ja") {
-    # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
+    # zh->ja and the back-translation ja->zh are both direct Hy-MT2; Kokoro speaks with misaki phonemes
     if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO' $kokoroModel); exit 1 }
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "ja", "--mt", "opus", "--tts-engine", "kokoro",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "ja", "--mt", "auto", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ja", "--mt", "opus") + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ja", "--mt", "auto") + $wS
+} elseif ($speak -eq "zh") {
+    # reverse direction (#134): you speak English, the other side hears Chinese (Hy-MT2 en->zh; zh-en is the
+    # back-translation). Kokoro Chinese voices need misaki[zh] in the Kokoro venv.
+    if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO' $kokoroModel); exit 1 }
+    & $kokoroPy -c "import misaki.zh, jieba, pypinyin, cn2an" 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "  & `"$kokoroPy`" -m pip install `"misaki[zh]==0.9.4`""; exit 1 }
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--from", "en", "--mt", "auto", "--tts-engine", "kokoro",
+             "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--from", "en", "--mt", "auto") + $wS
 } elseif ($speak -eq "en") {
-    # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
-    & $py -c $havePairs zh-en en-zh
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host (T 'NO_MODEL_ZH_EN')
-        Invoke-Setup --pair zh-en --pair en-zh
-    }
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "en", "--mt", "opus", "--tts-engine", "kokoro",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "en", "--mt", "auto", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "en", "--mt", "opus") + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "en", "--mt", "auto") + $wS
 } else {
-    & $py -c $havePairs zh-en en-ru ru-en en-zh
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host (T 'NO_MODEL_ZH_RU')
-        Invoke-Setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
-    }
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,
              "--tts-model", $voskModel, "--speaker", $voice) + $wS
     $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ru") + $wS
@@ -209,8 +227,7 @@ if ($both) {
     $ac = Read-Host (T 'ASK_AUTOSEND')
     if ($ac -eq "y") { $rev += "--no-confirm" }
     Write-Host (T 'MEETING_BANNER')
-    try { & $py @rev --device "CABLE Input" }
-    finally { if ($listen -and -not $listen.HasExited) { Stop-Process -Id $listen.Id -Force } }
+    & $py @rev --device "CABLE Input" --listen @listenArgs
     exit
 }
 Write-Host (T 'CONFIRM_HELP')

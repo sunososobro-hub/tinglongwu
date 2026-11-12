@@ -11,7 +11,8 @@ import re
 STRONG = {
     "ru": ["Продолжение следует", "Субтитры сделал DimaTorzok", "Субтитры создавал DimaTorzok",
            "Субтитры подогнал", "Субтитры добавил", "Редактор субтитров", "Корректор А.Егорова",
-           "Корректор А.Кулакова", "Субтитры делал", "Подписывайтесь на канал"],
+           "Корректор А.Кулакова", "Субтитры делал", "Подписывайтесь на канал",
+           "Спасибо за субтитры", "Благодарим за субтитры"],
     "en": ["Subtitles by", "Subtitles made by", "Subtitles by the Amara.org community",
            "Transcribed by", "Translated by", "Captions by", "Closed captioning by",
            "To be continued", "www.mooji.org"],

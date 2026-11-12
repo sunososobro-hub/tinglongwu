@@ -12,6 +12,7 @@ TLWU_MENU_SCRIPT="$0"; TLWU_MENU_ARGS=("$@")
 . scripts/tlwu_common.sh
 tlwu_load_i18n
 . scripts/auto_update.sh
+[ "${TLWU_OFFLINE:-}" = "1" ] && m M_OFFLINE_BANNER
 
 # Updating is opt-in: first run asks once (saved in the user config); then every menu start checks GitHub
 # (git fetch, ~6 s cap, never blocks) only if you said yes, otherwise press U. Restart once if the update changed this script.
@@ -26,9 +27,19 @@ tlwu_report_check
 # Never download silently: every model download from this menu is confirmed first (default = no).
 ask_setup() {
   local ans=""
+  if [ "${TLWU_OFFLINE:-}" = "1" ]; then m M_OFFLINE_MISSING "tlwu-setup --online $*"; exit 1; fi
   read -rp "$(mp M_ASK_DOWNLOAD)" ans || ans=""
   case "$ans" in y|Y|yes|YES|Yes) ;; *) m M_DOWNLOAD_DECLINED; exit 1 ;; esac
-  tlwu-setup "$@"
+  tlwu-setup --allow-unpinned "$@"   # consent given above; until every pair is pinned in manifest.json (#254)
+}
+
+# Kokoro (English voice) is normally installed by install.sh; if it is missing, offer the same installer (default = no).
+ensure_kokoro() {
+  [ -x "$KOKORO_PY" ] && [ -f "$KOKORO_MODEL/kokoro-v1.0.int8.onnx" ] && [ -f "$KOKORO_MODEL/voices-v1.0.bin" ] && return 0
+  local ans=""
+  if [ "${TLWU_OFFLINE:-}" = "1" ]; then m M_OFFLINE_MISSING "bash scripts/linux_kokoro.sh"; exit 1; fi
+  read -rp "$(mp M_ASK_KOKORO)" ans || ans=""
+  case "$ans" in y|Y|yes|YES|Yes) bash scripts/linux_kokoro.sh || exit 1 ;; *) m M_DOWNLOAD_DECLINED; exit 1 ;; esac
 }
 
 VOSK_PY="${VOSK_PY:-$HOME/tts-vosk/bin/python}"
@@ -42,25 +53,37 @@ if [ -n "$WHISPER" ]; then
     ask_setup --whisper "$WHISPER"
   fi
 fi
+# Developer option, off by default. TLWU_DEV_MONITOR=1: speak modes take the speaker monitor as the mic
+# (play a Chinese clip, measure latency without speaking).
+if [ "${TLWU_DEV_MONITOR:-}" = "1" ]; then
+  W_SPEAK+=(--mic "Monitor of" --allow-monitor)
+  echo "[dev] TLWU_DEV_MONITOR=1: speak modes use 'Monitor of' as the microphone input (not your real mic)."
+fi
 VOICE="${VOICE:-4}"
 KOKORO_PY="${KOKORO_PY:-$HOME/tts-kokoro/bin/python}"
 KOKORO_MODEL="${KOKORO_MODEL:-$HOME/models/kokoro}"
 KOKORO_VOICE="${KOKORO_VOICE:-0}"
 
 L="${TLWU_LANG:-auto}"
+python -m tinglongwu.langs --check "$L" || { m M_BAD_OPTION; L=auto; }   # #237: never pass a non-language to tlwu
 # macOS install skips the Russian voice: default to English unless the Vosk model is there
 if [ "$IS_MAC" = "1" ] && [ -z "${TLWU_LANG:-}" ] && [ ! -d "$VOSK_MODEL" ]; then L=en; fi
 CANDS="en,ru,ja,zh"   # auto: language follows whoever speaks, per sentence
+case "$L" in *,*) CANDS="$L"; L=auto ;; esac   # TLWU_LANG=en,ru,zh: auto detection limited to these
 FOLLOW_LANGS="en,ru,ja"   # languages the speak side prepares in meeting mode
 FOLLOW_FILE="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/tlwu_follow_lang"
-lang_name() { local k="M_LN_$1"; if [ -n "${!k:-}" ]; then printf '%s' "${!k}"; else printf '%s' "$1"; fi; }
+lang_name() {  # auto from the menu texts; languages from tinglongwu.langs (marks the experimental ones, #58)
+  local k="M_LN_$1" n=""
+  [ "$1" = "auto" ] || n="$(python -m tinglongwu.langs --name "$1" 2>/dev/null)" || n=""
+  if [ -n "$n" ]; then printf '%s' "$n"; elif [ -n "${!k:-}" ]; then printf '%s' "${!k}"; else printf '%s' "$1"; fi
+}
 BOTH=0
 speak_ok() { case "$1" in auto|en|ru|ja) return 0;; *) return 1;; esac; }
 
 # Japanese needs Hy-MT2 (llama-cpp-python in .venv + the GGUF) and, for speaking, misaki[ja] in the Kokoro venv.
 HYMT_FILE_REL="hymt2-1.8b/Hy-MT2-1.8B-Q4_K_M.gguf"
 have_hymt_file() { python -c "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / '$HYMT_FILE_REL').is_file() else 1)"; }
-have_llama() { python -c "import llama_cpp" 2>/dev/null; }
+have_llama() { python -c "from tinglongwu.llamacheck import import_llama; import_llama()" 2>/dev/null; }   # same import the app uses (CUDA libs registered first)
 hy_ready() { have_hymt_file && have_llama; }   # then ja is translated directly (no OPUS pivot)
 ja_missing() {  # prints the install commands the Japanese voice/translator still needs; returns 1 if any
   local out=""
@@ -91,8 +114,11 @@ while :; do
     u|U) tlwu_manual_update || true; continue ;;
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
-    l|L) m M_LANG_HELP
-         read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"; continue ;;
+    l|L) python -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
+         read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"
+         # #237: only a real language code may reach tlwu/tlwu-setup (a menu digit like "3" used to become "3->en")
+         python -m tinglongwu.langs --check "$L" || { m M_BAD_OPTION; L=auto; }
+         continue ;;
     *) m M_BAD_OPTION; continue ;;
   esac
   if [ "$mode" = "2" ] && ! speak_ok "$L"; then
@@ -108,6 +134,11 @@ if [ "$L" = "auto" ]; then
     [ "$SPEAK" = "ru" ] || [ "$SPEAK" = "ja" ] || SPEAK=en
   fi
 fi
+# Language packs (#178): the install has zh+en; picking ja / ru offers that pack once with its size (default no).
+# Declining is fine: the checks below still ask for just the pieces this mode needs.
+for pk in "$L" "$SPEAK"; do
+  case "$pk" in ja|ru) tlwu-setup --pack-prompt "$pk" || true ;; esac
+done
 if [ "$mode" = "2" ] && { [ "$SPEAK" = "ja" ] || [ "$SPEAK" = "follow" ]; }; then
   if ! MISSING="$(ja_missing)"; then
     if [ "$SPEAK" = "ja" ]; then
@@ -145,7 +176,31 @@ if [ "$mode" = "1" ] || [ "$BOTH" = "1" ]; then
   sv=""; read -rp "$(mp M_ASK_SAVE)" sv || sv=""
   case "$sv" in y|Y|yes|YES|Yes) SAVE=(--save) ;; esac
 fi
+# Listen side extras (#42): --glossary when the user glossary folder has .txt files; on CPU with Hy-MT2 installed,
+# ask whether to use it instead of OPUS (python -m tinglongwu.menuopts; questions on stderr, args on stdout)
+XL=()
+if [ "$mode" = "1" ] || [ "$BOTH" = "1" ]; then
+  while IFS= read -r x; do XL+=("$x"); done < <(python -m tinglongwu.menuopts listen || true)
+fi
+# Live drafts (#60): re-runs Whisper + MT on the growing audio, so it costs CPU; default N, listen-only mode only
+# (the meeting listener runs in the background next to the speak side and must not redraw the terminal)
+STREAM=()
+if [ "$mode" = "1" ]; then
+  st=""
+  if [ "$(python -m tinglongwu.menuopts stream-default listen 2>/dev/null || echo 0)" = "1" ]; then   # #257/#273: listen-only = default on
+    read -rp "$(mp M_ASK_STREAM_ON)" st || st=""
+    case "$st" in n|N|no|NO|No) ;; *) STREAM=(--stream) ;; esac
+  else
+    read -rp "$(mp M_ASK_STREAM)" st || st=""
+    case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
+  fi
+fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
+SMT=hymt   # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
+ensure_hymt() {  # llama-cpp-python missing: menuopts prints the pip line; GGUF missing: offer tlwu-setup --hymt
+  have_llama || { python -m tinglongwu.menuopts speak "$SPEAK" >/dev/null; exit 1; }
+  have_hymt_file || { m M_NO_HYMT_SPEAK; ask_setup --hymt; }
+}
 
 have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
   python - "$@" <<'PY'
@@ -168,64 +223,51 @@ if [ "$mode" = "1" ]; then
     m M_NO_MODEL_FOR "$L"
     ask_setup "${setup[@]}"
   fi
-  exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}"
+  exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}" "${STREAM[@]}"
 fi
 
+ensure_hymt
 if [ "$SPEAK" = "follow" ]; then
   # meeting + auto: both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk ru on first Russian sentence
-  if ! have_pairs zh-en en-zh ru-en en-ru; then
-    m M_NO_MODEL_EN_RU
-    ask_setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru
-  fi
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to follow --follow-file "$FOLLOW_FILE"
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT" --to follow --follow-file "$FOLLOW_FILE"
        --follow-langs "$FOLLOW_LANGS"
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL"
        --vosk-python "$VOSK_PY" --vosk-model "$VOSK_MODEL" "${W_SPEAK[@]}")
   TXT=()
-  [ -d "$KOKORO_MODEL" ] || { m M_NO_KOKORO_EN "$KOKORO_MODEL"; exit 1; }
+  ensure_kokoro
 elif [ "$SPEAK" = "ja" ]; then
-  # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to ja
+  # zh->ja and the back-translation ja->zh are both direct Hy-MT2; Kokoro speaks with misaki phonemes
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT" --to ja
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ja "${W_SPEAK[@]}")
-  [ -d "$KOKORO_MODEL" ] || { m M_NO_KOKORO "$KOKORO_MODEL"; exit 1; }
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to ja "${W_SPEAK[@]}")
+  ensure_kokoro
 elif [ "$SPEAK" = "en" ]; then
-  # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
-  if ! have_pairs zh-en en-zh; then
-    m M_NO_MODEL_ZH_EN
-    ask_setup --pair zh-en --pair en-zh
-  fi
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus --to en
+  ensure_kokoro
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT" --to en
        --tts-engine kokoro --tts-python "$KOKORO_PY" --tts-model "$KOKORO_MODEL" --speaker "$KOKORO_VOICE" "${W_SPEAK[@]}")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to en "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to en "${W_SPEAK[@]}")
 else
-  if ! have_pairs zh-en en-ru ru-en en-zh; then
-    m M_NO_MODEL_ZH_RU
-    ask_setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
-  fi
-  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt opus
+  REV=(python -m tinglongwu.reverse.proto --mic --compute cpu --mt "$SMT"
        --tts-engine vosk --tts-python "$VOSK_PY" --tts-model "$VOSK_MODEL" --speaker "$VOICE" "${W_SPEAK[@]}")
-  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt opus --to ru "${W_SPEAK[@]}")
+  TXT=(python -m tinglongwu.reverse.proto --mic --no-tts --no-vmic --compute cpu --mt "$SMT" --to ru "${W_SPEAK[@]}")
   [ "$VOSK_OFF" = "1" ] && [ "$BOTH" != "1" ] && exec "${TXT[@]}"   # no Russian voice: subtitles only
 fi
 
 if [ "$BOTH" = "1" ]; then
-  if [ "$L" = "ru" ] && ! have_pairs ru-en en-zh en-ru; then
+  if [ "$L" = "ru" ] && ! have_pairs ru-en en-zh; then   # listen side only; the speak side is Hy-MT2 (#331)
     m M_NO_MODEL_FOR ru
-    ask_setup --langs ru --to zh --pair en-ru
+    ask_setup --langs ru --to zh
   fi
   read -rp "$(mp M_ASK_AUTOSEND)" ac
   AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)
-  # listen in the background (no keyboard), speak in the foreground; Ctrl+C stops both
+  # #285: one process, one window: the speak side runs the listen side in a thread (--listen must come last),
+  # both directions share one Hy-MT2 and one CPU thread budget (TLWU_BOTH, tinglongwu/threads.py); Ctrl+C stops both
+  export TLWU_BOTH=1
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
-  tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" < /dev/null &
-  LISTEN_PID=$!
-  trap 'kill $LISTEN_PID 2>/dev/null' EXIT INT TERM
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
   m M_MEETING_BANNER "$MM"
-  "${REV[@]}" "${AUTO[@]}"
-  exit
+  exec "${REV[@]}" "${AUTO[@]}" --listen "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
 fi
 if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
 m M_CONFIRM_HELP

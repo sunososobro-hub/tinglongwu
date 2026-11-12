@@ -95,6 +95,8 @@ def run_vosk(a) -> int:
 KOKORO_VOICES = ["am_michael", "af_heart", "am_adam", "af_bella", "bm_george"]
 # Japanese voices for the same ids (best-graded first; Kokoro VOICES.md), used when a request has lang "ja".
 KOKORO_JA_VOICES = ["jf_alpha", "jf_gongitsune", "jf_tebukuro", "jf_nezumi", "jm_kumo"]
+# Mandarin voices for the same ids (lang "zh", #134; all eight zh voices of v1.0 share one grade in VOICES.md).
+KOKORO_ZH_VOICES = ["zf_xiaoxiao", "zm_yunxi", "zf_xiaoyi", "zm_yunjian", "zf_xiaobei"]
 KOKORO_MODEL_FILE = "kokoro-v1.0.int8.onnx"
 KOKORO_VOICES_FILE = "voices-v1.0.bin"
 
@@ -133,8 +135,43 @@ class JaPhonemizer:
         return self._g2p(text)[0]
 
 
-def run_kokoro(a, ja_phonemizer=None) -> int:
-    """CPU path with kokoro-onnx (English + Japanese). It bundles GPL espeak, so it only ever runs here, in its own venv.
+class ZhPhonemizer:
+    """Chinese text (Traditional is fine: misaki converts to pinyin via pypinyin/jieba) -> Kokoro v1.0 phonemes
+    with misaki[zh]. Loaded on the first Chinese request only; espeak's cmn voice is never used."""
+
+    def __init__(self):
+        self._g2p = None
+
+    def __call__(self, text: str) -> str:
+        if self._g2p is None:
+            from misaki import zh
+
+            self._g2p = zh.ZHG2P()
+        return self._g2p(text)[0]
+
+
+def kokoro_request(text: str, lang: str | None, phonemizers: dict) -> tuple[list, dict]:
+    """(voice list, k.create kwargs) for one request: ja/zh go through misaki phonemes, anything else is en-us."""
+    if lang in ("ja", "zh"):
+        voices = KOKORO_JA_VOICES if lang == "ja" else KOKORO_ZH_VOICES
+        return voices, {"text": phonemizers[lang](text), "is_phonemes": True}
+    return KOKORO_VOICES, {"text": text, "lang": "en-us"}
+
+
+def _kokoro(Kokoro, onnx: str, voices: str):
+    """Kokoro with TLWU_TTS_THREADS onnxruntime threads when the main process set it (#250 listen+speak budget)."""
+    n = os.environ.get("TLWU_TTS_THREADS", "")
+    if n.isdigit() and int(n) > 0 and hasattr(Kokoro, "from_session"):
+        import onnxruntime as ort
+
+        so = ort.SessionOptions()
+        so.intra_op_num_threads, so.inter_op_num_threads = int(n), 1
+        return Kokoro.from_session(ort.InferenceSession(onnx, so, providers=["CPUExecutionProvider"]), voices)
+    return Kokoro(onnx, voices)
+
+
+def run_kokoro(a, ja_phonemizer=None, zh_phonemizer=None) -> int:
+    """CPU path with kokoro-onnx (English, Japanese, Chinese). It bundles GPL espeak, so it only ever runs here, in its own venv.
     Needs kokoro-v1.0.int8.onnx + voices-v1.0.bin in --model; a request may carry "speaker" (0-4)."""
     import numpy as np
     from kokoro_onnx import Kokoro
@@ -146,8 +183,8 @@ def run_kokoro(a, ja_phonemizer=None) -> int:
             send({"t": "error", "id": None, "msg": f"missing local file: {f}"})
             return 2
     t0 = time.perf_counter()
-    k = Kokoro(onnx, voices)
-    ja_ph = ja_phonemizer or JaPhonemizer()
+    k = _kokoro(Kokoro, onnx, voices)
+    phonemizers = {"ja": ja_phonemizer or JaPhonemizer(), "zh": zh_phonemizer or ZhPhonemizer()}
     try:
         avail = set(k.get_voices())
     except Exception:  # noqa: BLE001  (API not present: handle failures per request instead)
@@ -160,13 +197,8 @@ def run_kokoro(a, ja_phonemizer=None) -> int:
             break
         try:
             t1 = time.perf_counter()
-            ja = req.get("lang") == "ja"
-            voices = KOKORO_JA_VOICES if ja else KOKORO_VOICES
+            voices, kw = kokoro_request(req["text"], req.get("lang"), phonemizers)
             voice = kokoro_voice(req.get("speaker", a.speaker), avail, voices=voices)
-            if ja:
-                kw = dict(text=ja_ph(req["text"]), is_phonemes=True)
-            else:
-                kw = dict(text=req["text"], lang="en-us")
             try:
                 samples, sr = k.create(voice=voice, speed=1.0, **kw)
             except (KeyError, ValueError, AssertionError) as e:
@@ -185,12 +217,58 @@ def run_kokoro(a, ja_phonemizer=None) -> int:
     return 0
 
 
+def piper_model(mdir: str) -> str | None:
+    """First *.onnx under mdir that has its .onnx.json config next to it (same rule as tinglongwu.models.piper_onnx;
+    copied because this worker runs in a venv without tinglongwu's dependencies)."""
+    for f in sorted(Path(mdir).rglob("*.onnx")):
+        if f.with_name(f.name + ".json").is_file():
+            return str(f)
+    return None
+
+
+def run_piper(a) -> int:
+    """CPU path with Piper (piper-tts / piper1-gpl, GPL-3 with bundled espeak-ng): Russian dmitri/denis voices
+    (CC0). GPL, so it only ever runs here, in its own venv. Single-speaker voices: "speaker" is ignored.
+    Piper yields one chunk per sentence; each is sent as soon as it is ready."""
+    onnx = piper_model(os.path.abspath(a.model))
+    if not onnx:
+        send({"t": "error", "id": None, "msg": f"missing local file: {a.model}/*.onnx (+ .onnx.json)"})
+        return 2
+    import numpy as np
+    from piper import PiperVoice
+
+    t0 = time.perf_counter()
+    voice = PiperVoice.load(onnx, use_cuda=False, download_dir=os.path.dirname(onnx))
+    send({"t": "ready", "load_s": round(time.perf_counter() - t0, 2), "vram_mib": 0, "device": "cpu",
+          "engine": "piper"})
+    for line in sys.stdin:
+        req = json.loads(line)
+        if req.get("cmd") == "quit":
+            break
+        try:
+            t1 = time.perf_counter()
+            ttfa, dur, sr = None, 0.0, 22050
+            for ch in voice.synthesize(req["text"]):
+                arr = np.asarray(ch.audio_float_array, dtype=np.float32).reshape(-1)
+                sr = int(ch.sample_rate)
+                if ttfa is None:
+                    ttfa = round(time.perf_counter() - t1, 3)
+                dur += arr.size / sr
+                send({"t": "chunk", "id": req["id"], "sr": sr, "ttfa_s": ttfa}, arr.tobytes())
+            gen = time.perf_counter() - t1
+            send({"t": "done", "id": req["id"], "audio_s": round(dur, 3), "gen_s": round(gen, 3),
+                  "rtf": round(gen / dur, 3) if dur else None, "ttfa_s": ttfa, "peak_vram_mib": 0})
+        except Exception as e:  # noqa: BLE001
+            send({"t": "error", "id": req.get("id"), "msg": repr(e)[:300]})
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--engine", default="vosk", choices=["vosk", "kokoro"])
+    ap.add_argument("--engine", default="vosk", choices=["vosk", "kokoro", "piper"])
     ap.add_argument("--speaker", type=int, default=4,
                     help="vosk: built-in voice id (ru 0.7: 0-4); kokoro: 0-4 (default there: 0)")
-    ap.add_argument("--model", required=True, help="local Vosk-TTS model dir / Kokoro model dir")
+    ap.add_argument("--model", required=True, help="local Vosk-TTS / Kokoro / Piper model dir")
     a = ap.parse_args()
     # Ctrl+C in the terminal reaches this child too (same process group): it would die in `for line in sys.stdin`
     # with a traceback. The parent ends us (quit command / stdin EOF / kill), so ignore the signal.
@@ -202,6 +280,8 @@ def main() -> int:
     if a.engine == "kokoro":
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         return run_kokoro(a)
+    if a.engine == "piper":
+        return run_piper(a)
     return run_vosk(a)
 
 

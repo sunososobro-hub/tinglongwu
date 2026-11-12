@@ -74,40 +74,12 @@
     "vocabulary.json": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
    }
   },
-  "qwen3-8b": {
-   "repo": "Qwen/Qwen3-8B-GGUF",
-   "revision": "7c41481f57cb95916b40956ab2f0b139b296d974",
-   "files": {
-    "Qwen3-8B-Q4_K_M.gguf": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"
-   }
-  },
-  "qwen3-4b": {
-   "repo": "Qwen/Qwen3-4B-GGUF",
-   "revision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
-   "files": {
-    "Qwen3-4B-Q4_K_M.gguf": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
-   }
-  },
   "hymt2-1.8b": {
    "repo": "tencent/Hy-MT2-1.8B-GGUF",
    "revision": "a0c709d9fac510f2c807aa3af52872340dc37a4a",
    "files": {
     "Hy-MT2-1.8B-Q4_K_M.gguf": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699"
    }
-  },
-  "m2m-1.2B": {
-   "repo": "facebook/m2m100_1.2B",
-   "revision": "0d54e885bd182833d3b4342a9dd270fbb312d424",
-   "files": {
-    "config.json": "13b5191c92371b2d587baac6c9a04de018a5264d7179020d379a276769051f95",
-    "generation_config.json": "aed76366507333ddbb8bd49960f23c82fe6446b3319a46a54befdb45324ccf61",
-    "model.safetensors": "a0c140ef70a1f53bf73f6fcf9504c23f3c60317ceebb7ff86297b20cd711c75e",
-    "sentencepiece.bpe.model": "d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a",
-    "special_tokens_map.json": "c1a4f86c3874d279ae1b2a05162858db5dd6c61665d84223ed886cbcff08fda6",
-    "tokenizer_config.json": "1566a6cfa4f541a55594c9d5e090f530812d5de7c94882ea3af156962d9933ae",
-    "vocab.json": "b6e77e474aeea8f441363aca7614317c06381f3eacfe10fb9856d5081d1074cc"
-   },
-   "note": "SFconvertbot PR refs/pr/7 (safetensors)"
   }
  },
  "argos": {

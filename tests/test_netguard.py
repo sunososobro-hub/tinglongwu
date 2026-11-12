@@ -104,8 +104,12 @@ def test_allows_loopback_and_unix(tmp_path):
     srv.listen(1)
     socket.create_connection(("127.0.0.1", srv.getsockname()[1]), timeout=2).close()
     srv.close()
-    s6 = socket.socket(socket.AF_INET6)
-    s6.close()
+    try:
+        s6 = socket.socket(socket.AF_INET6)
+    except OSError:  # host kernel has IPv6 disabled (Errno 97)
+        pass
+    else:
+        s6.close()
     if hasattr(socket, "AF_UNIX"):
         p = str(tmp_path / "s")
         u = socket.socket(socket.AF_UNIX)

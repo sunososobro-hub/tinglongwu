@@ -5,8 +5,7 @@ the speech/translation models to use and lists the ones that cannot fit, with a 
 to pick "simple / deluxe" by hand. The quick speed benchmark and runtime downgrade are separate steps.
 
 Footprints (MiB, model loaded + working memory):
-- MT, GPU: Qwen3-8B 5148 / Qwen3-4B 3062 (README benchmark table, peak VRAM, RTX 3050 8 GB);
-  Hy-MT2-1.8B ~1500 (#63 measurements, home RTX 3050).
+- MT, GPU: Hy-MT2-1.8B ~1500 (#63 measurements, home RTX 3050).
 - MT, CPU: Hy-MT2-1.8B RAM peak ~1900 (#63 owner CPU test, i5-13500).
 - ASR, GPU: large-v3 fp16 ~4000, medium ~2500 (README); large-v3-turbo has 4 decoder layers instead of 32,
   fp16 weights ~1.6 GB -> 1600 as a conservative upper bound (int8_float16 is smaller).
@@ -23,7 +22,7 @@ GPU_MIN_VRAM_MIB = 4096  # owner: "GPU threshold ~4 GB" (turbo 1600 + Hy-MT2 150
 HEADROOM_MIB = 512  # CUDA context, display, other apps
 
 ASR_VRAM_MIB = {"large-v3-turbo": 1600, "large-v3": 4000, "medium": 2500}
-MT_VRAM_MIB = {"hymt2": 1500, "qwen3-4b": 3062, "qwen3-8b": 5148}
+MT_VRAM_MIB = {"hymt2": 1500}
 HYMT_CPU_RAM_MIB = 1900
 CPU_MIN_RAM_FOR_HYMT_MIB = 4096  # Hy-MT2 peak 1.9 GB + Whisper small + the OS
 
@@ -34,6 +33,7 @@ class HwInfo:
     vram_mib: int | None  # total VRAM of GPU 0
     ram_mib: int | None  # physical RAM
     cores: int  # logical CPU cores
+    driver: str | None = None  # NVIDIA driver version ("457.49"), None if unknown
 
 
 @dataclass
@@ -83,9 +83,12 @@ def ram_mib() -> int | None:
         return None
 
 
-def probe(gpu=gpu_info, ram=ram_mib, cores=os.cpu_count) -> HwInfo:
+def probe(gpu=gpu_info, ram=ram_mib, cores=os.cpu_count, driver=None) -> HwInfo:
     name, vram = gpu()
-    return HwInfo(gpu=name, vram_mib=vram, ram_mib=ram(), cores=cores() or 1)
+    if driver is None:
+        from .device import driver_version as driver
+    return HwInfo(gpu=name, vram_mib=vram, ram_mib=ram(), cores=cores() or 1,
+                  driver=driver() if name else None)
 
 
 def recommend(hw: HwInfo) -> Tier:
@@ -101,16 +104,50 @@ def recommend(hw: HwInfo) -> Tier:
             if ASR_VRAM_MIB["large-v3-turbo"] + need > budget:
                 excluded[f"{mt} (GPU)"] = (f"needs ~{need} MiB VRAM next to Whisper turbo "
                                           f"({ASR_VRAM_MIB['large-v3-turbo']} MiB), {vram} MiB total")
-    if vram is not None and vram >= GPU_MIN_VRAM_MIB:
+    from .device import driver_too_old, gpu_problem
+
+    old_driver = driver_too_old(hw.driver)  # GPU is there but CUDA 12 cannot use it (#89): CPU tier + how to fix
+    if vram is not None and vram >= GPU_MIN_VRAM_MIB and not old_driver:
         return Tier("gpu", "cuda", "large-v3-turbo", "hymt2",
                     f"{hw.gpu} with {vram} MiB VRAM (>= {GPU_MIN_VRAM_MIB} MiB)", excluded)
     if vram is None:
         why = "no NVIDIA GPU found"
+    elif old_driver:
+        why = f"{hw.gpu}: {gpu_problem(hw.driver)}"
     else:
         why = f"{hw.gpu} has {vram} MiB VRAM (< {GPU_MIN_VRAM_MIB} MiB)"
     if hw.ram_mib is not None and hw.ram_mib < CPU_MIN_RAM_FOR_HYMT_MIB:
         excluded["hymt2 (CPU)"] = f"needs ~{HYMT_CPU_RAM_MIB} MiB RAM, {hw.ram_mib} MiB total"
-    return Tier("cpu", "cpu", "small", "opus", why + ": CPU mode", excluded)
+    return Tier("cpu", "cpu", "small", "opus", why + (" CPU mode until then" if old_driver else ": CPU mode"),
+                excluded)
+
+
+QUALITY_LEVELS = ("auto", "fast", "balanced", "quality")
+# Speech model per level (#81). balanced = the recommended tier. Source: #63 WER table (en/ja/ru: small
+# 7.0/11.8/14.0, turbo 5.8/5.1/9.3) -> turbo is the accuracy step above small on any hardware; fast is one size
+# below the recommended model (GPU small, CPU base); GPU quality is large-v3 when it fits next to Hy-MT2.
+FAST_ASR = {"gpu": "small", "cpu": "base"}
+
+
+def preset(level: str, hw: HwInfo) -> Tier:
+    """Tier for a Fast / Balanced / Quality choice on this machine; auto and balanced = recommend(hw).
+    Translation stays the tier's engine (GPU Hy-MT2, CPU OPUS - owner rule #63); only the speech model moves."""
+    tier = recommend(hw)
+    if level == "fast":
+        tier.asr = FAST_ASR[tier.name]
+        tier.reason += "; fast: smaller speech model, lowest delay"
+    elif level == "quality":
+        if tier.name == "cpu":
+            tier.asr = "large-v3-turbo"
+            tier.reason += "; quality: larger speech model, slower on a CPU"
+        elif (hw.vram_mib or 0) >= ASR_VRAM_MIB["large-v3"] + MT_VRAM_MIB[tier.mt] + HEADROOM_MIB:
+            tier.asr = "large-v3"
+            tier.reason += "; quality: largest speech model"
+        else:
+            tier.reason += "; quality: large-v3 does not fit in this VRAM next to the translation model"
+    elif level not in ("auto", "balanced"):
+        raise ValueError(f"unknown quality level {level!r} (use one of {', '.join(QUALITY_LEVELS)})")
+    return tier
 
 
 def describe(hw: HwInfo, tier: Tier) -> str:
