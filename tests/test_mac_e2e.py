@@ -236,6 +236,12 @@ def menu(tmp_path):
     (repo / ".venv" / "bin" / "activate").write_text(f'export PATH="{stubs}:$PATH"\n')
     for p in ("en-zh", "zh-en"):   # what mac_install.sh downloads
         (models / "opus" / p).mkdir(parents=True)
+    gguf = models / "hymt2-1.8b" / "Hy-MT2-1.8B-Q4_K_M.gguf"   # #301: mac_install.sh runs tlwu-setup --hymt
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x")
+    fake = tmp_path / "fakepkgs" / "llama_cpp"   # ... and installs llama-cpp-python (the menu's have_llama imports it)
+    fake.mkdir(parents=True)
+    (fake / "__init__.py").write_text("")
     kokoro = tmp_path / "home" / "models" / "kokoro"   # what mac_install.sh installs (ensure_kokoro checks all 3)
     kokoro.mkdir(parents=True)
     for name in ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin"):
@@ -246,8 +252,9 @@ def menu(tmp_path):
     kpy.chmod(0o755)
     log = tmp_path / "calls.log"
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "home"), "LOG": str(log), "REALPY": sys.executable,
-           "PYTHONPATH": str(ROOT), "TLWU_MODELS": str(models), "TLWU_NO_UPDATE": "1", "TLWU_UI_LANG": "en",
-           "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "TMPDIR": str(tmp_path), "LANG": "C.UTF-8"}
+           "PYTHONPATH": f"{ROOT}{os.pathsep}{tmp_path / 'fakepkgs'}", "TLWU_MODELS": str(models), "TLWU_NO_UPDATE": "1", "TLWU_UI_LANG": "en",
+           "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "TMPDIR": str(tmp_path), "LANG": "C.UTF-8",
+           "CUDA_VISIBLE_DEVICES": ""}   # a Mac has no CUDA: keep the device probe on CPU on a GPU test host too
 
     def run(keys: str):
         r = subprocess.run(["bash", str(repo / "scripts" / "linux_menu.sh")], env=env, input=keys,
@@ -262,7 +269,7 @@ def menu(tmp_path):
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
     r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert calls == ["tlwu --lang en --builtin-glossary"]
+    assert calls == ["tlwu --lang en --builtin-glossary --engine hymt"]   # #227: Hy-MT2 installed, CPU
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
 
 
@@ -290,7 +297,7 @@ def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     assert not [c for c in calls if c.startswith("tlwu")]
     [rev] = [c for c in calls if c.startswith("proto")]
     assert "--to en" in rev and "--tts-engine kokoro" in rev and "--device" not in rev
-    assert rev.endswith("--listen --lang en --builtin-glossary")
+    assert rev.endswith("--listen --lang en --builtin-glossary --engine hymt") and "--mt hymt" in rev   # #331
 
 
 def test_mac_install_kokoro_wrong_pin_deletes_file_and_fails(mac):

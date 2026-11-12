@@ -12,6 +12,10 @@ from pathlib import Path
 from . import downloader
 
 KOKORO_PIP = ["kokoro-onnx==0.6.1", "soundfile", "numpy"]  # 0.6.1: same pin as scripts/mac_install.sh
+# Chinese voice (#134, #330): ZhPhonemizer in reverse/tts_worker.py imports misaki.zh. Same pin as the #134 test notes.
+# Installed in a second pip call WITHOUT --only-binary: its jieba dependency ships only as an sdist.
+KOKORO_ZH_PIP = ["misaki[zh]==0.9.4"]
+ZH_CHECK = "import misaki.zh"
 SMOKE_TEXT = "Hello, this is a test."
 SMOKE_CODE = (  # runs with the Kokoro venv's python: argv = model dir, out wav
     "import sys, soundfile as sf\n"
@@ -32,19 +36,24 @@ def venv_python(venv: Path) -> Path:
 
 
 def ensure_venv(venv: Path, run=subprocess.call, base: str | None = None) -> Path:
-    """Create the Kokoro venv and pip install kokoro-onnx (binary wheels only) unless it already imports."""
+    """Create the Kokoro venv; pip install kokoro-onnx (binary wheels only) and misaki[zh] unless they already import."""
     py = venv_python(venv)
     if not py.exists():
         base = base or getattr(sys, "_base_executable", None) or sys.executable  # not this .venv's python
         if run([base, "-m", "venv", str(venv)]):
             sys.exit(f"could not create the Kokoro venv {venv}")
-    if run([str(py), "-c", "import kokoro_onnx, soundfile"]) == 0:
-        print(f"Kokoro venv ready: {venv}")
-        return py
-    if run([str(py), "-m", "pip", "install", "--only-binary=:all:", *KOKORO_PIP]):
-        sys.exit("pip install kokoro-onnx failed in the Kokoro venv (check your connection, then run setup again)")
-    if run([str(py), "-c", "import kokoro_onnx, soundfile"]):
-        sys.exit("kokoro_onnx was installed but does not import")
+    if run([str(py), "-c", "import kokoro_onnx, soundfile"]) != 0:
+        if run([str(py), "-m", "pip", "install", "--only-binary=:all:", *KOKORO_PIP]):
+            sys.exit("pip install kokoro-onnx failed in the Kokoro venv (check your connection, then run setup again)")
+        if run([str(py), "-c", "import kokoro_onnx, soundfile"]):
+            sys.exit("kokoro_onnx was installed but does not import")
+    if run([str(py), "-c", ZH_CHECK]) != 0:
+        if run([str(py), "-m", "pip", "install", *KOKORO_ZH_PIP]):
+            sys.exit("pip install misaki[zh] failed in the Kokoro venv (needed for the Chinese voice; "
+                     "check your connection, then run setup again)")
+        if run([str(py), "-c", ZH_CHECK]):
+            sys.exit("misaki[zh] was installed but misaki.zh does not import")
+    print(f"Kokoro venv ready: {venv}")
     return py
 
 
@@ -60,7 +69,7 @@ def _q(p) -> str:  # PowerShell single-quoted literal
 
 
 def render_launcher(root: Path, tts_python: Path, model_dir: Path, whisper: str = "small",
-                    compute: str = "auto", mt: str = "opus") -> str:
+                    compute: str = "auto", mt: str = "auto") -> str:
     """tlwu-talk.ps1: Chinese mic -> English -> Kokoro -> "CABLE Input" (Meet microphone = "CABLE Output").
     No microphone name is written: `--mic` without a name picks the system mic, skipping virtual cables."""
     args = ["-m", "tinglongwu.reverse.proto", "--mic", "--compute", compute, "--whisper", whisper, "--to", "en",
@@ -77,8 +86,8 @@ def render_launcher(root: Path, tts_python: Path, model_dir: Path, whisper: str 
 
 def main(a, mdir: Path, run=subprocess.call) -> int:
     """a: argparse namespace with talk_venv, talk_launcher, talk_whisper, talk_compute, talk_mt."""
-    # zh-en: the OPUS pair talk mode translates with (also the fallback when Hy-MT2 is unavailable)
-    man_rc = downloader.main(["--kokoro", "--pair", "zh-en", "--allow-unpinned", "--models-dir", str(mdir)])
+    # #331: talk mode translates with Hy-MT2 only (the launcher passes --mt auto), so fetch its GGUF, not an OPUS pair
+    man_rc = downloader.main(["--kokoro", "--hymt", "--models-dir", str(mdir)])
     if man_rc:
         return man_rc
     model_dir = mdir / downloader.KOKORO_DIR

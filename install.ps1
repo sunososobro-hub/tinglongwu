@@ -224,7 +224,7 @@ else {
     # Kokoro venv (~\tts-kokoro, own venv: it bundles GPL espeak) + SHA256-pinned model + smoke wav + tlwu-talk.ps1;
     # finished parts are skipped on a re-run, a hash mismatch stops this step with the reason printed above.
     $tc = if ($Gpu) { 'cuda' } else { 'cpu' }
-    $tm = if ($Engine -like 'hymt2*') { 'auto' } else { 'opus' }
+    $tm = 'auto'   # #331: Hy-MT2 is the only speak-mode engine
     if (Run $VSet @('--talk', '--talk-whisper', $Whisper, '--talk-compute', $tc, '--talk-mt', $tm)) {
         [void]$Installed.Add('Talk mode: Kokoro voice (~\tts-kokoro, models\kokoro, SHA256 verified) + tlwu-talk.ps1')
     } else { Warn "Talk mode setup failed (see above); listening still works. Re-run install.bat to retry. 說話模式安裝失敗，重跑 install.bat 即可。" }

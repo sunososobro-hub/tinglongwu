@@ -5,7 +5,7 @@
   tlwu-setup --vosk-tts-ru                            OPT-IN Russian voice model (no upstream license; never default)
   tlwu-setup --piper-ru [dmitri|denis]                Piper Russian voice for speak mode (CC0 data; engine: own venv)
   tlwu-setup --gpu                                    pip install CUDA 12 libs (cuBLAS, cuDNN) for --device cuda
-  tlwu-setup --talk [--talk-whisper small --talk-compute cpu --talk-mt opus]
+  tlwu-setup --talk [--talk-whisper small --talk-compute cpu --talk-mt auto]
                                                       talk mode: Kokoro venv (~/tts-kokoro) + pinned model + smoke wav
                                                       + tlwu-talk.ps1 launcher (used by install.ps1)
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Hy-MT2) fit this CPU?
@@ -121,7 +121,7 @@ def main(argv=None) -> int:
     p.add_argument("--talk-launcher", default=str(ROOT / "tlwu-talk.ps1"))
     p.add_argument("--talk-whisper", default="small")
     p.add_argument("--talk-compute", default="auto", choices=["auto", "cpu", "cuda"])
-    p.add_argument("--talk-mt", default="opus", choices=["auto", "opus"])
+    p.add_argument("--talk-mt", default="auto", choices=["auto", "hymt"])  # #331: no OPUS
     p.add_argument("--requirements", default=str(ROOT / "requirements.txt"))
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")

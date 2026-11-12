@@ -84,7 +84,7 @@ def test_linux_all_modes_pass(wav, zh_wav):
 def test_speak_wav_resampled_to_16k(zh_wav, tmp_path):
     import soundfile as sf
 
-    a = ft.argparse.Namespace(listen_wav=None, speak_wav=zh_wav, to="zh", mt="opus", compute="cpu",
+    a = ft.argparse.Namespace(listen_wav=None, speak_wav=zh_wav, to="zh", mt="auto", compute="cpu",
                               tts_python="", tts_model="")
     modes = ft.plan(a, tmp_path)
     w = Path(modes[0].cmd[modes[0].cmd.index("--input") + 1])

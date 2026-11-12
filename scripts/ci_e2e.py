@@ -411,7 +411,7 @@ def cmd_modes(a) -> int:
     sys.path.insert(0, str(ROOT / "scripts"))
     import firewall_test as fw
 
-    ns = argparse.Namespace(listen_wav=Path(a.listen_wav), speak_wav=Path(a.speak_wav), to="zh", mt="opus",
+    ns = argparse.Namespace(listen_wav=Path(a.listen_wav), speak_wav=Path(a.speak_wav), to="zh", mt=MT,  # #331: Hy-MT2 (opus was removed)
                             compute="cpu", tts_python=os.environ.get("TLWU_KOKORO_PYTHON", ""),
                             tts_model=os.environ.get("TLWU_KOKORO_MODEL", ""))
     with tempfile.TemporaryDirectory(prefix="tlwu-modes-") as td:
