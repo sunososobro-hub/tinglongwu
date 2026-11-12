@@ -19,6 +19,7 @@ import argparse
 import importlib.metadata as md
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
@@ -40,6 +41,30 @@ CUDA_WHEELS = {"cublas": ["cublas64_12.dll", "cublasLt64_12.dll"],  # nvblas64_1
                "cudnn": None}  # None = all DLLs
 # ggml-cuda.dll imports cudart + cuBLAS (cuBLAS imports cuBLASLt); missing -> "Could not find module llama.dll" (#398)
 LLAMA_CUDA_NEEDS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+# Microsoft VC++ 2015-2022 runtime, absent on a clean Windows: ctranslate2 / llama.cpp import msvcp140, onnxruntime
+# msvcp140_1, ggml vcomp140 (OpenMP). Copied as one matched set from the installed redistributable (System32) next
+# to tlwu.exe, replacing the older vcruntime140 Nuitka took from Python: msvcp140 must not be newer than vcruntime140.
+VC_RUNTIME = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll")
+# The bundled copy is used even where Windows has a newer one: an msvcp140 older than the toolset a wheel was built
+# with crashes (VS 17.10 std::mutex change), so the pack machine's redistributable must be at least 14.40.
+VC_MIN_VERSION = (14, 40)
+
+
+def pe_file_version(data: bytes) -> tuple[int, int, int, int] | None:
+    """FileVersion of a PE file from its VS_FIXEDFILEINFO resource (signature 0xFEEF04BD), None if it has none."""
+    i = data.find(b"\xbd\x04\xef\xfe")
+    if i < 0 or len(data) < i + 16:
+        return None
+    ms, ls = struct.unpack_from("<II", data, i + 8)
+    return ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF
+
+
+def pe_machine(data: bytes) -> int | None:
+    """IMAGE_FILE_HEADER.Machine (0x8664 = x64), None if not a PE file."""
+    if data[:2] != b"MZ" or len(data) < 0x40:
+        return None
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    return struct.unpack_from("<H", data, pe + 4)[0] if data[pe:pe + 4] == b"PE\0\0" else None
 
 
 def lazy_includes() -> list[str]:
@@ -102,7 +127,10 @@ NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososo
 
 Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
 Silero VAD: MIT, Qwen3: Apache-2.0).
-Microsoft Visual C++ runtime is NOT bundled by us: install the Microsoft Visual C++ Redistributable 2015-2022 (x64).
+Microsoft Visual C++ runtime files (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll, msvcp140_1.dll, vcomp140.dll
+in this folder, from the Visual C++ 2015-2022 x64 runtime): redistributable under the Microsoft Visual Studio license
+terms (Distributable Code). If tlwu.exe still does not start, install the Microsoft Visual C++ Redistributable
+2015-2022 (x64).
 """ + NVIDIA_NOTE + """No GPL components: PyAV/FFmpeg is NOT included (stubbed out).
 
 Native components and their licenses
@@ -123,6 +151,50 @@ Native components and their licenses
 
 Python packages (name version: license as declared in package metadata)
 """
+
+
+def vc_runtime_src() -> tuple[list[Path], bool]:
+    """(folders to take VC_RUNTIME from, True if they are the Visual Studio redist folders).
+    TLWU_VCREDIST_DIR (one folder or os.pathsep list), else the Visual Studio redist folders of VCToolsRedistDir
+    (set in a VS developer prompt: x64/Microsoft.VC14*.CRT + .OpenMP, the Distributable Code of the VS license),
+    else System32 of %SystemRoot% (same files, installed by the Redistributable; the build prints a warning)."""
+    if os.environ.get("TLWU_VCREDIST_DIR"):
+        return [Path(p) for p in os.environ["TLWU_VCREDIST_DIR"].split(os.pathsep) if p], True
+    redist = os.environ.get("VCToolsRedistDir")
+    if redist:
+        x64 = Path(redist) / "x64"
+        dirs = sorted(x64.glob("Microsoft.VC14*.CRT")) + sorted(x64.glob("Microsoft.VC14*.OpenMP"))
+        if dirs:
+            return dirs, True
+    return [Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"], False
+
+
+def copy_vc_runtime(app: Path, dirs: list[Path] | None = None) -> list[str]:
+    """Copy VC_RUNTIME (first match in dirs) into the app folder (on every DLL search path the app uses)."""
+    if dirs is None:
+        dirs, from_vs = vc_runtime_src()
+        if not from_vs:
+            print("WARNING: VC++ runtime taken from System32; for a release build run from a Visual Studio developer "
+                  "prompt (VCToolsRedistDir) or set TLWU_VCREDIST_DIR to the VS redist CRT and OpenMP folders")
+    src = {n: next((d / n for d in dirs if (d / n).is_file()), None) for n in VC_RUNTIME}
+    missing = [n for n, f in src.items() if f is None]
+    if missing:
+        raise SystemExit(f"VC++ runtime: {', '.join(missing)} not found in {', '.join(map(str, dirs))}; install "
+                         "the Microsoft Visual C++ Redistributable 2015-2022 (x64) or Build Tools on the pack machine, "
+                         "or set TLWU_VCREDIST_DIR")
+    found = []
+    for n, f in src.items():
+        data = f.read_bytes()
+        ver = pe_file_version(data)
+        if pe_machine(data) != 0x8664:
+            raise SystemExit(f"VC++ runtime: {f} is not an x64 DLL (32-bit Python reads SysWOW64?)")
+        if ver is None or ver[:2] < VC_MIN_VERSION:
+            raise SystemExit(f"VC++ runtime: {f} version {ver} is older than {VC_MIN_VERSION}; update the "
+                             "Microsoft Visual C++ Redistributable 2015-2022 (x64) on the pack machine")
+        found.append(f"{n} {'.'.join(map(str, ver))}")
+    for n, f in src.items():
+        shutil.copy2(f, app / n)
+    return found
 
 
 def find_cuda_src(candidates: list[Path] | None = None) -> Path | None:
@@ -270,6 +342,7 @@ def main() -> int:
         print(f"WARNING: {msg}; building a CPU-only package (--allow-cpu-only)")
     copy_llama(APP, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
     print("cuda:", copy_cuda(APP, cuda_src) if cuda_src else "none (CPU-only package)")
+    print("vc runtime:", copy_vc_runtime(APP))
     write_licenses(APP, cuda_src)
     shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
     sys.path.insert(0, str(Path(__file__).resolve().parent))

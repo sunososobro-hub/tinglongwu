@@ -2,6 +2,7 @@
 runtime DLLs that llama.cpp needs and a CPU llama build; the app falls back to it when CUDA cannot load."""
 import importlib.util
 import io
+import struct
 import sys
 import zipfile
 from pathlib import Path
@@ -147,6 +148,79 @@ def cpu_wheel(tmp_path):
         z.writestr("bin/llama-common.dll", b"cpu")
         z.writestr("llama_cpp/llama.py", b"")
     return whl
+
+
+def fake_vc_dll(name: str, version=(14, 51, 36247, 0), machine=0x8664) -> bytes:
+    """Minimal PE header + a VS_FIXEDFILEINFO block, enough for pe_machine / pe_file_version."""
+    head = bytearray(0x80)
+    head[:2] = b"MZ"
+    struct.pack_into("<I", head, 0x3C, 0x40)
+    head[0x40:0x44] = b"PE\0\0"
+    struct.pack_into("<H", head, 0x44, machine)
+    a, b, c, d = version
+    return bytes(head) + b"\xbd\x04\xef\xfe" + struct.pack("<III", 0x10000, a << 16 | b, c << 16 | d) + name.encode()
+
+
+def vc_dir(path, **kw):
+    path.mkdir()
+    for n in bw.VC_RUNTIME:
+        (path / n).write_bytes(fake_vc_dll(n, **kw))
+    return path
+
+
+def test_pe_file_version_and_machine():
+    data = fake_vc_dll("x.dll", (14, 42, 34438, 0), 0x14C)
+    assert bw.pe_file_version(data) == (14, 42, 34438, 0)
+    assert bw.pe_machine(data) == 0x14C
+    assert bw.pe_file_version(b"MZ") is None and bw.pe_machine(b"nope") is None
+
+
+def test_copy_vc_runtime_ships_the_matched_set(tmp_path):
+    src, app = vc_dir(tmp_path / "sys"), tmp_path / "app"
+    app.mkdir()
+    (app / "vcruntime140.dll").write_bytes(b"old")  # the one Nuitka took from Python is replaced
+    assert bw.copy_vc_runtime(app, [src]) == [f"{n} 14.51.36247.0" for n in bw.VC_RUNTIME]
+    for n in bw.VC_RUNTIME:
+        assert (app / n).read_bytes() == fake_vc_dll(n)
+
+
+@pytest.mark.parametrize("kw, err", [({"version": (14, 38, 33135, 0)}, "older than"),
+                                     ({"machine": 0x14C}, "not an x64 DLL")])
+def test_copy_vc_runtime_rejects_old_or_32_bit_dlls(tmp_path, kw, err):
+    src, app = vc_dir(tmp_path / "sys", **kw), tmp_path / "app"
+    app.mkdir()
+    with pytest.raises(SystemExit, match=err):
+        bw.copy_vc_runtime(app, [src])
+    assert not any(app.iterdir())  # nothing copied
+
+
+def test_copy_vc_runtime_stops_when_the_redist_is_missing(tmp_path, monkeypatch):
+    src = tmp_path / "sys"
+    src.mkdir()
+    (src / "vcruntime140.dll").write_bytes(b"x")
+    monkeypatch.setenv("TLWU_VCREDIST_DIR", str(src))
+    assert bw.vc_runtime_src() == ([src], True)
+    with pytest.raises(SystemExit, match="msvcp140.dll"):
+        bw.copy_vc_runtime(tmp_path)
+
+
+def test_vc_runtime_from_the_visual_studio_redist_folders(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("TLWU_VCREDIST_DIR", raising=False)
+    x64 = tmp_path / "MSVC" / "14.44.35112" / "x64"
+    crt, omp = x64 / "Microsoft.VC143.CRT", x64 / "Microsoft.VC143.OpenMP"
+    for d, names in ((crt, bw.VC_RUNTIME[:4]), (omp, ("vcomp140.dll",))):
+        d.mkdir(parents=True)
+        for n in names:
+            (d / n).write_bytes(fake_vc_dll(n))
+    monkeypatch.setenv("VCToolsRedistDir", str(x64.parent))
+    assert bw.vc_runtime_src() == ([crt, omp], True)
+    app = tmp_path / "app"
+    app.mkdir()
+    assert len(bw.copy_vc_runtime(app)) == len(bw.VC_RUNTIME)
+    assert "WARNING" not in capsys.readouterr().out
+    monkeypatch.delenv("VCToolsRedistDir")
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "win"))
+    assert bw.vc_runtime_src() == ([tmp_path / "win" / "System32"], False)
 
 
 def test_cpu_llama_dlls_from_a_local_wheel(tmp_path, monkeypatch):
