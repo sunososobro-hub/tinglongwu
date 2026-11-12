@@ -83,4 +83,4 @@ def test_cli_probe_prints_recommendation_and_exits(tmp_path):
                        env=env, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "RTX 2060" in r.stdout and "GPU tier" in r.stdout and "hymt2" in r.stdout
-    assert "hymt2 (GPU)" not in r.stdout.split("not used:")[-1]
+    assert "not used:" not in r.stdout

@@ -46,7 +46,6 @@ PAIRS = {  # name -> (tlwu src, tlwu tgt, FLORES src, FLORES ref, Google src, Go
     "ru-en": ("ru", "en", "rus_Cyrl", "eng_Latn", "ru", "en"),
 }
 PAIR = "ru-zh"  # set from --pair; non-default pairs cache under mt_<tag>.<pair>
-PROMPT_V = hashlib.sha1(W.SYSTEM.encode()).hexdigest()[:6]
 
 
 def cache_name(engine: str) -> str:
