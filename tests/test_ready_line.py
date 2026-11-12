@@ -46,3 +46,41 @@ def test_gui_status_callback_unchanged(capsys):
     assert seen == ["listening"]
     captured = capsys.readouterr()
     assert captured.out == "" and captured.err == ""
+
+
+def _stub_run_session(monkeypatch, tmp_path, tty):
+    """Run cli.run_session with every model/source/pipeline stubbed; return (stdout, stderr) text."""
+    import io
+    import sys
+    import types
+
+    from tinglongwu import asr as asr_mod
+    from tinglongwu import device as device_mod
+    from tinglongwu import minspec
+    from tinglongwu import pipeline as pipeline_mod
+
+    class _Asr:
+        device = "cpu"
+        live = False
+
+    class _Err(io.StringIO):
+        pass
+
+    monkeypatch.setattr(minspec, "check_avx2", lambda force=False: None)
+    monkeypatch.setattr(device_mod, "resolve_device", lambda compute, warn=None: "cpu")
+    monkeypatch.setattr(asr_mod, "FasterWhisperRecognizer", lambda *a, **k: _Asr())
+    monkeypatch.setattr(cli, "select_backend", lambda *a, **k: object())
+    monkeypatch.setattr(pipeline_mod, "run", lambda *a, **k: None)
+    out, err = _Tty(tty), _Err()
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    args = cli.parse_args(["--transcript-only", "--file", str(tmp_path / "in.wav"), "--model", "tiny",
+                           "--models-dir", str(tmp_path)])
+    cli.run_session(args)
+    return "".join(out.buf), err.getvalue()
+
+
+def test_run_session_transcript_only_keeps_ready_line_off_tty_stdout(monkeypatch, tmp_path):
+    out, err = _stub_run_session(monkeypatch, tmp_path, tty=True)
+    assert cli.READY_LINE not in out
+    assert cli.READY_LINE in err
