@@ -25,41 +25,83 @@ def split_sentences(text: str, max_chars: int = 220) -> list[str]:
 
 
 _CLAUSE = re.compile(r"[,;:—–，、；：]")  # a cut right after one of these keeps natural prosody
-STREAM_FIRST_CHARS = 40  # #207: first TTS piece; Kokoro int8 4-core Linux: 40 chars -> 0.66 s gen (vs 3.2 s for 209)
-STREAM_GROW = 3  # each next piece <= 3x the previous one: Kokoro RTF 0.24-0.35 there, so it is ready before the
-#                  previous piece has finished playing (measured: scripts/bench_tts_stream.py, PR for #207)
+STREAM_FIRST_CHARS = 24  # #207: first TTS piece, cut at a clause mark (else a space): Kokoro int8 i5-13500 8 threads
+#                          ~0.3-0.8 s for <= 24 chars vs 0.9-1.0 s for 34-40 (scripts/bench_tts_stream.py)
+STREAM_GROW = 3  # static plan only (speech_pieces): each next piece <= 3x the previous one. The live path sizes the
+#                  next piece from the measured synthesis speed instead (PiecePlanner.next with a budget)
+STREAM_SAFETY = 0.7  # live sizing: plan the next piece to need <= 70 % of the audio still queued ahead of it
+STREAM_MIN_CHARS = 12  # live sizing floor: a smaller piece costs mostly per-request overhead
 
 
 def _cut(part: str, budget: int) -> int:
-    """Index to cut `part` at so the head is <= budget chars: the last clause mark in range, else the last space
-    (len(part) when it already fits, or when there is nowhere to cut)."""
+    """Index to cut `part` at so the head is <= budget chars: the last clause mark in range, else the last space.
+    Heads are >= 8 chars (never a 1-3 word stub): with no cut in [8, budget], the first one after 8 (a small budget
+    must not turn into the whole rest of the sentence). len(part) when it fits or there is nowhere to cut."""
     if len(part) <= budget:
         return len(part)
     marks = [m.end() for m in _CLAUSE.finditer(part, 0, budget + 1)]
-    if marks and marks[-1] >= 8:  # never a 1-3 word stub
+    if marks and marks[-1] >= 8:
         return marks[-1]
     sp = part.rfind(" ", 0, budget + 1)
-    return sp if sp >= 8 else len(part)
+    if sp >= 8:
+        return sp
+    later = [i for i in (part.find(" ", 8), next((m.end() for m in _CLAUSE.finditer(part, 8)), -1)) if i > 0]
+    return min(later) if later else len(part)
+
+
+class PiecePlanner:
+    """#207: cuts one utterance into TTS requests, in order, one at a time. Pieces never span two sentences, a
+    sentence is cut at a clause mark (else a space) to fit the budget, and joined the pieces are the original text
+    (minus whitespace at the cuts). next(budget) -> the next piece (None when done); budget None = the static rule
+    (first_chars for the first piece, then `grow` times the previous one); a given budget is clamped to
+    [min_chars, max_chars]."""
+
+    def __init__(self, text: str, first_chars: int = STREAM_FIRST_CHARS, grow: float = STREAM_GROW,
+                 max_chars: int = 220, min_chars: int = STREAM_MIN_CHARS):
+        self.sents = split_sentences(text, max_chars)
+        self.first_chars, self.grow, self.max_chars, self.min_chars = first_chars, grow, max_chars, min_chars
+        self.budget = first_chars
+        self.count = 0
+
+    def next(self, budget: int | None = None) -> str | None:
+        b = self.budget if budget is None else min(self.max_chars, max(self.min_chars, int(budget)))
+        while self.sents:
+            sent = self.sents[0]
+            i = _cut(sent, int(b))
+            head, rest = sent[:i].strip(), sent[i:].strip()
+            if rest:
+                self.sents[0] = rest
+            else:
+                self.sents.pop(0)
+            if not re.search(r"\w", head):
+                continue  # punctuation-only leftover (split_sentences already drops those between sentences)
+            if rest and not re.search(r"\w", rest):  # only punctuation left in this sentence: keep it with the head
+                head += rest
+                self.sents.pop(0)
+            self.count += 1
+            self.budget = min(self.max_chars, max(self.first_chars, self.grow * len(head)))
+            return head
+        return None
 
 
 def speech_pieces(text: str, first_chars: int = STREAM_FIRST_CHARS, grow: float = STREAM_GROW,
                   max_chars: int = 220) -> list[str]:
-    """#207: TTS requests for one utterance, in order. Like split_sentences, but the first piece is cut at a clause
-    boundary to <= first_chars, so the first audio is out quickly, and each later piece is at most `grow` times the
-    previous one, so it is synthesized while the previous one is still playing (no silent gaps). Joined, the
-    pieces are the original text (minus whitespace at the cuts)."""
-    out: list[str] = []
-    budget = first_chars
-    for sent in split_sentences(text, max_chars):
-        while sent:
-            i = _cut(sent, int(budget))
-            head, sent = sent[:i].strip(), sent[i:].strip()
-            if re.search(r"\w", head):
-                out.append(head)
-                budget = min(max_chars, max(first_chars, grow * len(head)))
-            elif out:  # punctuation-only leftover: keep it with the previous piece
-                out[-1] += head
+    """#207: all TTS requests for one utterance with the static rule (PiecePlanner without measurements): the first
+    piece is cut at a clause boundary to <= first_chars, so the first audio is out quickly, and each later piece is
+    at most `grow` times the previous one."""
+    pl, out = PiecePlanner(text, first_chars, grow, max_chars), []
+    while (p := pl.next()) is not None:
+        out.append(p)
     return out
+
+
+def next_budget(queued_s: float, chars_per_s: float | None, safety: float = STREAM_SAFETY) -> int | None:
+    """#207 live sizing: how many characters the next piece may have so that it is synthesized before the audio
+    already queued ahead of it (`queued_s` seconds) has finished playing. None (= static rule) until the synthesis
+    speed of this worker is known."""
+    if not chars_per_s or chars_per_s <= 0:
+        return None
+    return int(max(0.0, queued_s) * chars_per_s * safety)  # PiecePlanner raises it to its min_chars
 
 
 class GapMeter:
@@ -188,10 +230,11 @@ def latency_line(f: dict) -> str:
 
 
 def timing_line(t: dict, tts: bool = True) -> str:
-    """#186: '   [vad 0.60 | stt 1.10 | mt 0.20 | tts 0.80 | total 2.70 s]', all seconds from the end of speech:
-    vad = endpoint silence waited before the segment was cut, stt, mt, tts = MT done -> first audio.
-    A stage that did not run shows '-' (and is not in the total); tts=False (text mode) leaves tts out."""
-    names = (("vad", "vad"), ("asr", "stt"), ("mt", "mt")) + ((("tts", "tts"),) if tts else ())
+    """#186: '   [vad 0.60 | stt 1.10 | mt 0.20 | tts_first 0.80 | total 2.70 s]', all seconds from the end of speech:
+    vad = endpoint silence waited before the segment was cut, stt, mt, tts_first = MT done -> first TTS audio ready
+    (#207; in confirm mode: ready to send). A stage that did not run shows '-' (and is not in the total);
+    tts=False (text mode) leaves tts_first out."""
+    names = (("vad", "vad"), ("asr", "stt"), ("mt", "mt")) + ((("tts", "tts_first"),) if tts else ())
     parts = [f"{label} {t[k]:.2f}" if k in t else f"{label} -" for k, label in names]
     total = sum(t.get(k, 0.0) for k, _ in names)
     return f"   [{' | '.join(parts)} | total {total:.2f} s]"

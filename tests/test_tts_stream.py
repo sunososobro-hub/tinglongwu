@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from tinglongwu.reverse import proto
 from tinglongwu.reverse.logic import GapMeter, Lat, speech_pieces, split_sentences, stream_line
@@ -17,8 +18,8 @@ def _norm(s):
 
 def test_first_piece_is_a_short_clause_and_nothing_is_lost():
     p = speech_pieces(LONG)
-    assert len(p) >= 2 and len(p[0]) <= 40
-    assert p[0] == "Today we will look at the quarterly"  # no comma within 40 chars -> last space
+    assert len(p) >= 2 and len(p[0]) <= 24
+    assert p[0] == "Today we will look at"  # no comma within 24 chars -> last space
     assert _norm(" ".join(p)) == _norm(LONG)
 
 
@@ -113,3 +114,151 @@ def test_selftest_parses_stream_lines_and_fails_on_gaps():
     assert st.stage_table(p["latencies"])["tts"] == {"p50": 0.9, "max": 1.0}
     assert st.stream_gap_reason(p["streams"]) == "stream gap 0.45s > 0.30s"
     assert st.stream_gap_reason(p["streams"][:1]) is None
+
+
+# ---------------------------------------------------------------- #207 part 2: adaptive sizing, first-audio timing
+from types import SimpleNamespace  # noqa: E402
+
+from tinglongwu.reverse.logic import PiecePlanner, next_budget  # noqa: E402
+
+
+def test_planner_budget_is_clamped_and_never_spans_sentences():
+    text = "Good morning, everyone. " + LONG
+    pl = PiecePlanner(text, first_chars=24, max_chars=220)
+    first = pl.next()
+    assert first == "Good morning, everyone."  # a whole short sentence; nothing of the next one
+    second = pl.next(5)
+    assert len(second) <= 12  # below min_chars -> min_chars
+    rest = [second]
+    while (p := pl.next(10_000)) is not None:  # above max_chars -> max_chars
+        rest.append(p)
+        assert len(p) <= 220
+    assert pl.next() is None and _norm(first + "".join(rest)) == _norm(text)
+    # nothing lost or reordered, whatever the budgets were
+    pl, got, budgets = PiecePlanner(text), [], iter([None, 30, 8, 500, 40, 100, 60, 200, 25] * 4)
+    while (p := pl.next(next(budgets))) is not None:
+        got.append(p)
+    assert _norm("".join(got)) == _norm(text)
+
+
+def test_next_budget():
+    assert next_budget(2.0, None) is None and next_budget(2.0, 0) is None  # speed unknown: static rule
+    assert next_budget(2.0, 40.0, safety=0.5) == 40
+    assert next_budget(-1.0, 40.0) == 0  # nothing queued (planner raises it to first_chars)
+
+
+class _FakeClockTTS:
+    """Synthesis takes len(text)/cps seconds of fake time; audio is 16 chars/s (~speech rate)."""
+
+    def __init__(self, cps=40.0, first_extra=0.0):
+        self.now, self.cps, self.texts, self.first_extra = 0.0, cps, [], first_extra
+
+    def clock(self):
+        return self.now
+
+    def speak(self, text, lang=None):
+        self.texts.append(text)
+        self.now += len(text) / self.cps + (self.first_extra if len(self.texts) == 1 else 0.0)
+        n = int(len(text) / 16 * 24000)
+        yield {"t": "chunk", "sr": 24000}, np.zeros(n, np.float32).tobytes()
+        yield {"t": "done", "gen_s": len(text) / self.cps, "audio_s": n / 24000}, None
+
+
+def _stream(tts, text):
+    """Consume like _run_auto_live: push each piece at once; return (pieces, first, GapMeter on the fake clock)."""
+    first, gaps = [], GapMeter(tts.clock)
+    pieces = []
+    for audio, sr in proto._synth_sentences(tts, text, clock=tts.clock, on_first=first.append):
+        pieces.append(audio)
+        gaps.push(len(audio) / sr)
+    return pieces, first, gaps
+
+
+def test_first_audio_callback_fires_once_after_the_short_first_piece():
+    tts = _FakeClockTTS(cps=40.0)
+    pieces, first, _ = _stream(tts, LONG)
+    assert len(first) == 1 and len(tts.texts[0]) <= 24
+    assert first[0] == pytest.approx(len(tts.texts[0]) / 40.0)  # only the first piece's synthesis, not the sentence
+    assert first[0] < len(split_sentences(LONG)[0]) / 40.0 / 4
+    assert len(pieces) == len(tts.texts) and _norm(" ".join(tts.texts)) == _norm(LONG)  # in order, nothing lost
+
+
+def test_live_sizing_leaves_no_gap_and_grows_pieces():
+    tts = _FakeClockTTS(cps=40.0)  # ~2.5x faster than real time
+    _, _, gaps = _stream(tts, LONG + " " + LONG)
+    assert gaps.max == 0.0
+    assert max(len(t) for t in tts.texts[1:]) > 3 * len(tts.texts[0])  # sized by the queue, not a fixed 3x
+    # a slow worker (RTF ~0.8): the static 3x rule would leave gaps; live sizing keeps the next piece small enough
+    tts = _FakeClockTTS(cps=20.0)
+    _, _, gaps = _stream(tts, LONG)
+    assert gaps.max == 0.0
+    t, end, worst = 0.0, None, 0.0
+    for p in speech_pieces(LONG):
+        t += len(p) / 20.0
+        worst = max(worst, 0.0 if end is None else t - end)
+        end = max(t, end or t) + len(p) / 16
+    assert worst > 0.3  # what the old fixed rule did on the same worker
+
+
+def test_slow_first_piece_does_not_make_the_next_one_huge():
+    tts = _FakeClockTTS(cps=40.0, first_extra=2.0)  # first request pays a one-off cost
+    _stream(tts, LONG)
+    assert len(tts.texts[1]) <= 40  # speed measured pessimistically from the slow piece
+
+
+def test_confirm_mode_reports_first_part_not_whole_utterance(monkeypatch, capsys):
+    import threading
+    import time
+
+    release = threading.Event()
+
+    class TwoPartTTS:
+        engine = "none"
+
+        def speak(self, text):
+            if not release.is_set():  # first piece: at once
+                release.set()
+            else:  # later pieces: slow
+                time.sleep(0.3)
+            yield {"t": "chunk", "sr": 24000}, np.ones(4, np.float32).tobytes()
+            yield {"t": "done"}, None
+
+    class P:
+        enabled = True
+
+        def push(self, a, sr):
+            pass
+
+    monkeypatch.setattr("builtins.input", lambda *x: "y")
+    res = {"items": []}
+    proto._run_confirm(SimpleNamespace(to="en", no_back=True), iter([(1, "mic", "你好")]), _MT(), TwoPartTTS(), P(),
+                       SimpleNamespace(enabled=False), res)
+    it = res["items"][0]
+    assert it["decision"] == "sent" and it["lat"]["tts"] < 0.25  # whole utterance took >= 0.3 s
+    assert "tts_first " in capsys.readouterr().err
+
+
+def test_warm_tts_speaks_once_in_the_target_language_and_never_raises():
+    seen = []
+
+    class T:
+        def speak(self, text):
+            seen.append(text)
+            yield {"t": "done"}, None
+
+    proto.warm_tts(T(), "ru")
+    proto.warm_tts(T(), "follow")
+    assert seen == [proto.WARM_TEXT["ru"], proto.WARM_EN]
+
+    class Broken:
+        def speak(self, text):
+            raise RuntimeError("worker gone")
+
+    proto.warm_tts(Broken(), "en")
+
+
+def test_selftest_parses_the_tts_first_label():
+    st = _selftest()
+    p = st.parse_log("   [vad 0.60 | stt 1.00 | mt 0.20 | tts_first 0.40 | total 2.20 s]\n"
+                     "   [vad 0.60 | stt 1.00 | mt 0.20 | tts_first - | total 1.80 s]\n")
+    assert [d["tts"] for d in p["latencies"]] == [0.4, None]
