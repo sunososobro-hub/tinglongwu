@@ -105,7 +105,7 @@ def python_programs(extra=()) -> list[str]:
     """Every interpreter that may run tlwu code: a Windows venv python.exe is a launcher that starts the base one."""
     seen, out = set(), []
     for p in (sys.executable, getattr(sys, "_base_executable", None), *extra):
-        for q in ((p, os.path.realpath(p)) if p else ()):
+        for q in ((os.path.normpath(p), os.path.realpath(p)) if p else ()):  # netsh wants C:\x, not C:/x
             k = os.path.normcase(q)
             if k not in seen and os.path.exists(q):
                 seen.add(k)

@@ -34,7 +34,10 @@ ZH_SENTENCES = ("今天天氣很好，我們去公園散步吧。", "請問會�
 CLIP_EN = ROOT / "tinglongwu" / "data" / "selftest_en.wav"
 WIN = sys.platform == "win32"
 PY = sys.executable
-ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "TLWU_NO_UPDATE": "1"}
+# unbuffered: readiness is detected from the child's output as it happens; faulthandler: native crash -> stack
+ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "TLWU_NO_UPDATE": "1", "PYTHONUNBUFFERED": "1",
+       "PYTHONFAULTHANDLER": "1"}
+CLEAN_RC = (0, 130, -2, 3221225786)  # done, KeyboardInterrupt handled (130 / SIGINT), STATUS_CONTROL_C_EXIT
 MT = os.environ.get("TLWU_E2E_MT", "auto")  # speak-mode engine (auto = what a user gets)
 results: list[tuple[str, bool, str]] = []
 
@@ -154,7 +157,7 @@ def _ctrlc_cmd(mode: str, work: Path, models: str | None) -> tuple[list[str], re
         import soundfile as sf
 
         x, sr = sf.read(str(CLIP_EN), dtype="float32")
-        sf.write(str(en), np.concatenate([x] * 12), sr)
+        sf.write(str(en), np.concatenate([x] * 40), sr)  # still busy when Ctrl+C comes
         # subtitles go to stdout once the models are loaded and lines are coming out
         return [PY, "-m", "tinglongwu", "--file", str(en), "--to", "zh", "--device", "cpu", *md], re.compile(r"\S")
     d = work / "zh"
@@ -194,7 +197,8 @@ def ctrlc_once(mode: str, models: str | None, ready_timeout: float, exit_timeout
         busy = _wait_ready(p, ready, ready_timeout, buf)
         kids = _descendants(p.pid)
         t0 = time.monotonic()
-        if p.poll() is None:
+        alive = p.poll() is None  # Ctrl+C must hit a running program, not one that already finished
+        if alive:
             if WIN:
                 os.kill(0, signal.CTRL_C_EVENT)  # every process on this console: the program and its children
             else:
@@ -207,7 +211,7 @@ def ctrlc_once(mode: str, models: str | None, ready_timeout: float, exit_timeout
         secs = time.monotonic() - t0
         time.sleep(1.0)
         out = "\n".join(buf)
-        return {"mode": mode, "busy": busy, "rc": rc, "exit_s": round(secs, 1), "children": len(kids),
+        return {"mode": mode, "busy": busy, "alive": alive, "rc": rc, "exit_s": round(secs, 1), "children": len(kids),
                 "left_over": len(_alive(kids)), "traceback": "Traceback (most recent call last)" in out,
                 "tail": tail(out, 15)}
 
@@ -241,8 +245,8 @@ def cmd_ctrlc(a) -> int:
         if a.inner:
             Path(a.result).write_text(json.dumps(r), encoding="utf-8")
             return 0
-    ok = r["busy"] and r["rc"] is not None and not r["traceback"] and not r["left_over"]
-    check(f"ctrl-c {a.mode}", ok, f"busy={r['busy']} rc={r['rc']} exit {r['exit_s']} s, child processes "
+    ok = (r["busy"] and r["alive"] and r["rc"] in CLEAN_RC and not r["traceback"] and not r["left_over"])
+    check(f"ctrl-c {a.mode}", ok, f"busy={r['busy']} running at Ctrl+C={r['alive']} rc={r['rc']} exit {r['exit_s']} s, child processes "
           f"{r['children']} (left running: {r['left_over']}), traceback={r['traceback']}")
     if not ok:
         print(r["tail"])
@@ -455,9 +459,9 @@ def cmd_monitor_live(a) -> int:
                 print(f"#186 runner CPU: median end-of-speech -> TTS start {med:.2f} s over {len(totals)} "
                       f"utterances (target 2.5 s is for the owner's CPU class; not gated here)")
                 results.append(("#186 median total (info)", True, f"{med:.2f} s over {len(totals)} utterances"))
-            check("Ctrl+C in live speak mode: clean exit (#5)", rc is not None and "Traceback" not in out
-                  and not _alive(kids), f"rc={rc}, children left: {len(_alive(kids))}")
-            if rc is None or "Traceback" in out:
+            ok = rc in CLEAN_RC and "Traceback" not in out and "Fatal Python error" not in out and not _alive(kids)
+            check("Ctrl+C in live speak mode: clean exit (#5)", ok, f"rc={rc}, children left: {len(_alive(kids))}")
+            if not ok:
                 print(tail(out, 30))
         else:
             p.kill()
