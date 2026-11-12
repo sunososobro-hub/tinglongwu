@@ -6,7 +6,7 @@ Run with the PACKAGING venv (never the project .venv):
 pack-venv = requirements.txt (without av / psutil) + requirements-qwen.txt (llama-cpp-python CUDA wheel) + Nuitka.
 PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
 CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements-gpu.txt), found in TLWU_CUDA_SRC, the
-pack-venv or the project .venv (read only). None found -> CPU-only package (same as --lite), loudly, never a
+pack-venv or the project .venv (read only). None found -> the build stops (--lite / --allow-cpu-only: CPU-only); never a
 package whose CUDA llama.dll cannot load (#398). A CPU llama.cpp build (the llama-cpp-python CPU wheel, downloaded
 once) goes to llama_cpp/lib_cpu/: the app uses it when the CUDA llama.dll cannot load (no NVIDIA GPU / driver).
 Steps: nuitka (needs MinGW-w64 gcc, which Nuitka downloads once) -> dist/tlwu -> cuda_libs/, llama DLLs,
@@ -53,7 +53,7 @@ def lazy_includes() -> list[str]:
     return [f"--include-module={m}" for m in sorted(mods)]
 
 
-def smoke(app: Path, run=subprocess.run) -> None:
+def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
     """Run the built `tlwu.exe --smoke` (no models, no network): native DLLs and the lazy filelock /
     huggingface_hub imports of the first-run download (#310). A failure stops the build before the zip.
     llama_cpp is optional in the smoke (a clean PC may lack the VC++ runtime), but not on the pack machine (#398)."""
@@ -63,6 +63,9 @@ def smoke(app: Path, run=subprocess.run) -> None:
         raise SystemExit(f"tlwu.exe --smoke failed (exit {r.returncode}), not zipping:\n{r.stdout}{r.stderr}")
     if "WARN llama_cpp" in r.stdout:
         raise SystemExit("tlwu.exe --smoke: llama_cpp does not load in the package (#398), not zipping")
+    if not lite and "CPU  llama_cpp" in r.stdout:  # the CUDA llama.dll is broken; the CPU fallback must not hide it
+        raise SystemExit("tlwu.exe --smoke: the CUDA llama build did not load on the pack machine (CPU line above), "
+                         "not zipping")
 
 
 def nuitka_cmd() -> list[str]:
@@ -240,6 +243,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
     ap.add_argument("--lite", action="store_true", help="CPU-only variant: no CUDA libs / ggml-cuda.dll")
+    ap.add_argument("--allow-cpu-only", action="store_true",
+                    help="no CUDA wheels found: build a CPU-only package instead of stopping")
     ap.add_argument("--no-smoke", action="store_true", help="skip the `tlwu.exe --smoke` check before zipping")
     a = ap.parse_args()
     DIST.mkdir(parents=True, exist_ok=True)
@@ -257,9 +262,12 @@ def main() -> int:
         raise SystemExit("run without --post-only first")
     cuda_src = None if a.lite else find_cuda_src()
     if cuda_src is None and not a.lite:
-        print("WARNING: no CUDA 12 DLLs (nvidia-cublas/cuda-runtime/cudnn/cuda-nvrtc -cu12 wheels) in "
-              f"{', '.join(map(str, CUDA_SRC_CANDIDATES))}; building a CPU-only package instead (#398). For the GPU "
-              "package: pip install -r requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
+        msg = ("no CUDA 12 DLLs (nvidia-cublas/cuda-runtime/cudnn/cuda-nvrtc -cu12 wheels) in "
+               f"{', '.join(map(str, CUDA_SRC_CANDIDATES))} (#398). For the GPU package: pip install -r "
+               "requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
+        if not a.allow_cpu_only:
+            raise SystemExit(f"{msg}; or pass --lite / --allow-cpu-only for a CPU-only package")
+        print(f"WARNING: {msg}; building a CPU-only package (--allow-cpu-only)")
     copy_llama(APP, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
     print("cuda:", copy_cuda(APP, cuda_src) if cuda_src else "none (CPU-only package)")
     write_licenses(APP, cuda_src)
@@ -275,7 +283,7 @@ def main() -> int:
     if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
         print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")
     if not a.no_smoke:
-        smoke(APP)
+        smoke(APP, lite=cuda_src is None)
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
     return 0

@@ -63,6 +63,9 @@ def bundled_llama_cpu_dir() -> Path | None:
     return d if (d / "llama.dll").is_file() else None
 
 
+llama_cpu_reason: str | None = None  # why the CUDA llama build was not used (set when the CPU build is selected)
+
+
 def use_llama_cpu_build(load=ctypes.CDLL) -> bool:
     """Point llama-cpp-python at the bundled CPU build (LLAMA_CPP_LIB_PATH) when the CUDA one cannot load here:
     no NVIDIA driver (nvcuda.dll) or CUDA runtime DLLs missing (#398). Call before `import llama_cpp`.
@@ -72,11 +75,13 @@ def use_llama_cpu_build(load=ctypes.CDLL) -> bool:
         return False
     if os.environ.get("LLAMA_CPP_LIB_PATH"):
         return Path(os.environ["LLAMA_CPP_LIB_PATH"]) == cpu
+    global llama_cpu_reason
     register_cuda_libs()
     for name in LLAMA_CUDA_DLLS:
         try:
             load(name)
-        except OSError:
+        except OSError as e:
+            llama_cpu_reason = f"{name}: {e}"
             break
     else:
         return False

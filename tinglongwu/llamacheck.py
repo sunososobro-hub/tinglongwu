@@ -8,8 +8,11 @@ reports (`llama_print_system_info`) with what the CPU supports before loading, a
 """
 from __future__ import annotations
 
+import logging
 import re
 import sys
+
+_log = logging.getLogger(__name__)
 
 LLAMA_VERSION = "0.3.36"
 INDEX = "https://abetlen.github.io/llama-cpp-python/whl"
@@ -94,6 +97,9 @@ def explain(e: BaseException) -> BaseException:
                            f"build does not match this CPU. To fix: {FIX_HINT}")
 
 
+cpu_fallback: str | None = None  # set by import_llama when it fell back to llama_cpp/lib_cpu: the CUDA error
+
+
 def import_llama():
     """`import llama_cpp` with the CUDA DLLs registered. In the standalone build, a CUDA llama.dll that cannot load
     (no NVIDIA driver, CUDA runtime DLLs missing) falls back to the bundled CPU build in llama_cpp/lib_cpu (#398)."""
@@ -101,16 +107,22 @@ def import_llama():
 
     from . import device
 
+    global cpu_fallback
     device.register_cuda_libs()
-    device.use_llama_cpu_build()
+    if device.use_llama_cpu_build():
+        cpu_fallback = device.llama_cpu_reason or "CUDA llama build not loadable"
     try:
         import llama_cpp
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError) as e:
         cpu = device.bundled_llama_cpu_dir()
         if cpu is None or os.environ.get("LLAMA_CPP_LIB_PATH") == str(cpu):
             raise
+        cpu_fallback = f"{type(e).__name__}: {e}"
         os.environ["LLAMA_CPP_LIB_PATH"] = str(cpu)  # a failed import leaves nothing in sys.modules: retry once
         import llama_cpp
+    if cpu_fallback:  # keep the CUDA error visible: a broken CUDA llama.dll must not hide behind the CPU build
+        _log.warning("llama_cpp: CUDA build not used (%s); using the CPU build in %s", cpu_fallback,
+                     os.environ.get("LLAMA_CPP_LIB_PATH"))
     return llama_cpp
 
 

@@ -92,6 +92,10 @@ def check(modules: list[tuple[str, bool]] | None = None, out=None, lazy=None) ->
         try:
             IMPORTERS.get(name, lambda: importlib.import_module(name))()
             line = f"OK   {name} ({time.perf_counter() - t0:.1f}s)"
+            if name == "llama_cpp":
+                reason = getattr(sys.modules.get("tinglongwu.llamacheck"), "cpu_fallback", None)
+                if reason:
+                    line += f"\nCPU  llama_cpp: CUDA build not used ({reason}); loaded llama_cpp/lib_cpu"
         except BaseException as e:  # noqa: BLE001 - a broken DLL can raise anything, even SystemExit
             if isinstance(e, KeyboardInterrupt):
                 raise

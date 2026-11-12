@@ -248,7 +248,7 @@ def test_no_bundle_no_change(monkeypatch):
     assert "LLAMA_CPP_LIB_PATH" not in os.environ
 
 
-def test_import_llama_retries_with_the_cpu_build(bundle, monkeypatch):
+def test_import_llama_retries_with_the_cpu_build(bundle, monkeypatch, caplog):
     import builtins
     import os
     import types
@@ -268,5 +268,53 @@ def test_import_llama_retries_with_the_cpu_build(bundle, monkeypatch):
         return real_import(name, *a, **k)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    assert llamacheck.import_llama().__name__ == "llama_cpp"
+    monkeypatch.setattr(llamacheck, "cpu_fallback", None)
+    with caplog.at_level("WARNING", logger="tinglongwu.llamacheck"):
+        assert llamacheck.import_llama().__name__ == "llama_cpp"
     assert seen == [None, str(cpu)]
+    assert "Failed to load shared library llama.dll" in llamacheck.cpu_fallback  # the CUDA error is kept
+    assert "Failed to load shared library llama.dll" in caplog.text
+
+
+def test_cpu_selection_keeps_the_reason(bundle, monkeypatch):
+    device, _ = bundle
+
+    def load(name):
+        raise OSError("module not found")
+
+    assert device.use_llama_cpu_build(load) is True
+    assert "module not found" in device.llama_cpu_reason
+
+
+def test_smoke_reports_the_cpu_fallback(monkeypatch):
+    import tinglongwu.llamacheck as lc
+    from tlwu_app import smoke as sm
+
+    monkeypatch.setattr(lc, "cpu_fallback", None)
+    monkeypatch.setitem(sm.IMPORTERS, "llama_cpp", lambda: setattr(lc, "cpu_fallback", "cudart64_12.dll: not found"))
+    out = io.StringIO()
+    sm.check([("llama_cpp", False)], out=out, lazy=[])
+    assert "CPU  llama_cpp: CUDA build not used (cudart64_12.dll: not found)" in out.getvalue()
+
+
+def test_pack_smoke_fails_on_the_cpu_fallback_unless_lite(tmp_path):
+    class R:
+        returncode, stderr = 0, ""
+        stdout = "OK   llama_cpp (0.1s)\nCPU  llama_cpp: CUDA build not used (x); loaded llama_cpp/lib_cpu\nsmoke: OK\n"
+
+    with pytest.raises(SystemExit, match="CUDA llama build did not load"):
+        bw.smoke(tmp_path, run=lambda *a, **k: R)
+    bw.smoke(tmp_path, run=lambda *a, **k: R, lite=True)
+
+
+def test_build_stops_without_cuda_wheels(tmp_path, monkeypatch):
+    app = tmp_path / "dist" / "tlwu"
+    app.mkdir(parents=True)
+    (app / "tlwu.exe").write_bytes(b"")
+    monkeypatch.setattr(bw, "DIST", tmp_path / "dist")
+    monkeypatch.setattr(bw, "APP", app)
+    monkeypatch.setattr(bw, "find_cuda_src", lambda *a: None)
+    monkeypatch.setattr(bw, "copy_llama", lambda *a, **k: pytest.fail("must stop before packing"))
+    monkeypatch.setattr(sys, "argv", ["build_windows.py", "--post-only"])
+    with pytest.raises(SystemExit, match="allow-cpu-only"):
+        bw.main()
