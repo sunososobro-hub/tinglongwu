@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="332" viewBox="0 0 560 332" role="img" aria-label="Verification matrix: feature by OS" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14">
+<title>Verification matrix: feature by OS</title>
+<text x="250.0" y="30" text-anchor="middle" fill="#768390" font-size="14" font-weight="bold">Windows</text>
+<text x="370.0" y="30" text-anchor="middle" fill="#768390" font-size="14" font-weight="bold">macOS</text>
+<text x="490.0" y="30" text-anchor="middle" fill="#768390" font-size="14" font-weight="bold">Linux</text>
+<text x="10" y="77" text-anchor="start" fill="#768390" font-size="14" font-weight="normal">One-line install</text>
+<rect x="200.0" y="58.0" width="100" height="28" rx="6" fill="#2da44e" fill-opacity="0.85"/><text x="250.0" y="77.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">verified</text>
+<rect x="320.0" y="58.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="370.0" y="77.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="440.0" y="58.0" width="100" height="28" rx="6" fill="#2da44e" fill-opacity="0.85"/><text x="490.0" y="77.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">verified</text>
+<text x="10" y="117" text-anchor="start" fill="#768390" font-size="14" font-weight="normal">Listen</text>
+<rect x="200.0" y="98.0" width="100" height="28" rx="6" fill="#2da44e" fill-opacity="0.85"/><text x="250.0" y="117.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">verified</text>
+<rect x="320.0" y="98.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="370.0" y="117.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="440.0" y="98.0" width="100" height="28" rx="6" fill="#2da44e" fill-opacity="0.85"/><text x="490.0" y="117.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">verified</text>
+<text x="10" y="157" text-anchor="start" fill="#768390" font-size="14" font-weight="normal">Speak (virtual mic)</text>
+<rect x="200.0" y="138.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="250.0" y="157.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="320.0" y="138.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="370.0" y="157.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="440.0" y="138.0" width="100" height="28" rx="6" fill="#2da44e" fill-opacity="0.85"/><text x="490.0" y="157.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">verified</text>
+<text x="10" y="197" text-anchor="start" fill="#768390" font-size="14" font-weight="normal">Meeting</text>
+<rect x="200.0" y="178.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="250.0" y="197.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="320.0" y="178.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="370.0" y="197.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="440.0" y="178.0" width="100" height="28" rx="6" fill="#2da44e" fill-opacity="0.85"/><text x="490.0" y="197.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">verified</text>
+<text x="10" y="237" text-anchor="start" fill="#768390" font-size="14" font-weight="normal">Firewall-blocked offline</text>
+<rect x="200.0" y="218.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="250.0" y="237.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="320.0" y="218.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="370.0" y="237.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="440.0" y="218.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="490.0" y="237.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<text x="10" y="277" text-anchor="start" fill="#768390" font-size="14" font-weight="normal">exe</text>
+<rect x="200.0" y="258.0" width="100" height="28" rx="6" fill="#d4a72c" fill-opacity="0.85"/><text x="250.0" y="277.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">not yet</text>
+<rect x="320.0" y="258.0" width="100" height="28" rx="6" fill="#6e7781" fill-opacity="0.85"/><text x="370.0" y="277.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">n/a</text>
+<rect x="440.0" y="258.0" width="100" height="28" rx="6" fill="#6e7781" fill-opacity="0.85"/><text x="490.0" y="277.0" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="bold">n/a</text>
+<rect x="10" y="305" width="12" height="12" rx="3" fill="#2da44e"/><text x="28" y="316" text-anchor="start" fill="#768390" font-size="12" font-weight="normal">verified on a real device</text>
+<rect x="208" y="305" width="12" height="12" rx="3" fill="#d4a72c"/><text x="226" y="316" text-anchor="start" fill="#768390" font-size="12" font-weight="normal">not yet verified</text>
+</svg>

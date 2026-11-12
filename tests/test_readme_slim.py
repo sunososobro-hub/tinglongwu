@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+DETAILS = ROOT / "docs" / "details.md"  # #347: README keeps charts only; details.md is the text hub, published on Pages
 README_MAX_BYTES = 6 * 1024  # #166 goal reached in part 3 (part 1: 28 KB, part 2: 16 KB, was ~39 KB)
 MOVED = ("licenses", "benchmarks", "linux-reverse", "disclaimer", "install", "models", "privacy", "usage")
 
@@ -52,11 +53,11 @@ def test_docs_links_and_anchors_resolve():
 
 
 def test_moved_sections_live_in_docs_and_readme_links_them():
-    links = _links(README)
+    links = _links(DETAILS)
     for name in MOVED:
         doc = ROOT / "docs" / f"{name}.md"
         assert doc.stat().st_size > 500, name
-        assert f"docs/{name}.md" in links, name
+        assert f"{name}.md" in links, name
 
 
 def test_slug_matches_github_rules():
@@ -85,3 +86,10 @@ def test_checker_detects_removed_heading_and_broken_link(tmp_path):
     (tmp_path / "a.md").write_text("# Kept\n[x](missing.md)\n", "utf-8")
     assert chk.missing_headings("# Kept\n## Gone\n", "# Kept\n", tmp_path) == ["Gone"]
     assert chk.broken_links([tmp_path / "a.md"]) == ["a.md: missing.md"]
+
+
+def test_readme_links_docs_page_and_charts_exist():  # #347
+    text = README.read_text("utf-8")
+    assert "https://sunososobro-hub.github.io/tinglongwu/docs.html" in text
+    for img in re.findall(r"\]\((docs/img/[^)\s]+)\)", text):
+        assert (ROOT / img).exists(), img
