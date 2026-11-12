@@ -76,8 +76,11 @@ def test_verify_offline_checks_kokoro_against_pins(tmp_path, pins):
 
 
 class Runner:
-    def __init__(self, imports_ok=False):
-        self.cmds, self.imports_ok = [], imports_ok
+    """Fake subprocess: `kokoro` / `zh` say which imports already work; a pip call makes its packages importable."""
+
+    def __init__(self, imports_ok=False, zh_ok=None):
+        self.cmds, self.kokoro_ok = [], imports_ok
+        self.zh_ok = imports_ok if zh_ok is None else zh_ok
 
     def __call__(self, cmd):
         cmd = [str(c) for c in cmd]
@@ -88,9 +91,12 @@ class Runner:
             py.write_text("")
             return 0
         if cmd[1] == "-c" and cmd[2].startswith("import kokoro_onnx"):
-            return 0 if self.imports_ok else 1
+            return 0 if self.kokoro_ok else 1
+        if cmd[1] == "-c" and cmd[2] == talk.ZH_CHECK:
+            return 0 if self.zh_ok else 1
         if cmd[1:3] == ["-m", "pip"]:
-            self.imports_ok = True
+            self.kokoro_ok = self.kokoro_ok or "kokoro-onnx==0.6.1" in cmd
+            self.zh_ok = self.zh_ok or "misaki[zh]==0.9.4" in cmd
             return 0
         if cmd[1] == "-c" and cmd[2] == talk.SMOKE_CODE:
             Path(cmd[4]).write_bytes(b"RIFF....")
@@ -103,10 +109,28 @@ def test_ensure_venv_creates_and_installs_binary_only_then_skips(tmp_path):
     py = talk.ensure_venv(tmp_path / "tts-kokoro", r, base="base-python")
     assert r.cmds[0] == ["base-python", "-m", "venv", str(tmp_path / "tts-kokoro")]
     pip = [c for c in r.cmds if c[1:3] == ["-m", "pip"]]
-    assert pip == [[str(py), "-m", "pip", "install", "--only-binary=:all:", "kokoro-onnx==0.6.1", "soundfile", "numpy"]]
+    assert pip == [[str(py), "-m", "pip", "install", "--only-binary=:all:", "kokoro-onnx==0.6.1", "soundfile", "numpy"],
+                   [str(py), "-m", "pip", "install", "misaki[zh]==0.9.4"]]  # #442: jieba is sdist-only, no binary flag
     r2 = Runner(imports_ok=True)
     talk.ensure_venv(tmp_path / "tts-kokoro", r2, base="base-python")
     assert [c for c in r2.cmds if "venv" in c or "pip" in c] == []
+
+
+def test_ensure_venv_reinstalls_when_misaki_zh_does_not_import(tmp_path):
+    """#442: a venv from before the Chinese voice (kokoro imports, misaki.zh does not) gets misaki[zh] only."""
+    r = Runner(imports_ok=True, zh_ok=False)
+    py = talk.ensure_venv(tmp_path / "tts-kokoro", r, base="base-python")
+    pip = [c for c in r.cmds if c[1:3] == ["-m", "pip"]]
+    assert pip == [[str(py), "-m", "pip", "install", "misaki[zh]==0.9.4"]]
+    assert [str(py), "-c", "import misaki.zh"] in r.cmds  # the import check covers misaki.zh
+
+
+def test_ensure_venv_zh_pip_failure_aborts(tmp_path):
+    r = Runner(imports_ok=True, zh_ok=False)
+    def run(cmd):
+        return 1 if "misaki[zh]==0.9.4" in [str(c) for c in cmd] else r(cmd)
+    with pytest.raises(SystemExit, match="misaki"):
+        talk.ensure_venv(tmp_path / "tts-kokoro", run, base="b")
 
 
 def test_ensure_venv_pip_failure_aborts(tmp_path):
