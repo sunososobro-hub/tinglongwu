@@ -44,7 +44,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-T
 
 **選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
 
-移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
+移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
 ## Mac 一行安裝
 

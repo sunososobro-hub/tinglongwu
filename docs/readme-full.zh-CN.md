@@ -42,7 +42,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-T
 
 **菜单用法。** 快捷方式会打开菜单：`1` 会议（听 + 说进 Meet/Zoom，请戴耳机；会议麦克风选 *CABLE Output*）、`2` 只说（中文 -> 英／俄／日语音）、`3` 只听（外语 -> 中文字幕）、`L` 更换对方语言、`G` 图形界面、`U` 立即更新、`A` 切换启动时自动更新、`I` 菜单语言。按键后按 Enter；每次下载模型前都会先问 y/N。
 
-卸载：删除文件夹和桌面快捷方式即可。`install.ps1 -DryRun` 只显示将执行的操作、不安装。Qwen 引擎使用 `requirements-qwen.txt`（CUDA 版 llama-cpp-python）；若没有合适的预编译 wheel，安装程序会自动改用 OPUS 引擎。
+卸载：删除文件夹和桌面快捷方式即可。`install.ps1 -DryRun` 只显示将执行的操作、不安装。Qwen 引擎使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若没有合适的预编译 wheel，安装程序会自动改用 OPUS 引擎。
 
 ## Mac 一行安装
 

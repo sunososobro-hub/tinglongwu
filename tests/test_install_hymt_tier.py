@@ -54,7 +54,7 @@ def test_gpu_tier_downloads_hymt_not_qwen(tmp_path, total):
     assert any(c.rstrip().endswith("--hymt") for c in calls), calls
     assert not any("--qwen" in c for c in calls), calls  # Qwen is opt-in only (tlwu-setup --qwen)
     assert any("--whisper large-v3-turbo" in c for c in calls), calls
-    assert "requirements-qwen.txt" in out  # llama-cpp-python CUDA wheel: Hy-MT2 runs on llama.cpp
+    assert "requirements-llama-cuda.txt" in out  # llama-cpp-python CUDA wheel: Hy-MT2 runs on llama.cpp
     assert "~3 GB" in out and "~10 GB" not in out
     assert "Translation engine / 翻譯引擎: hymt2" in out
 
@@ -67,6 +67,6 @@ def test_below_threshold_or_no_gpu_runs_hymt_on_the_cpu(tmp_path, total):
     assert any(c.rstrip().endswith("--hymt") for c in calls), calls
     assert not any("--qwen" in c for c in calls), calls
     assert any("--whisper small" in c for c in calls), calls
-    assert "requirements-qwen.txt" not in out and "requirements-llama-cpu.txt" in out
+    assert "requirements-llama-cuda.txt" not in out and "requirements-llama-cpu.txt" in out
     assert "Translation engine / 翻譯引擎: hymt2" in out
     assert "OPUS engine" not in out

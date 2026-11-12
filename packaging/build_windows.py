@@ -3,7 +3,7 @@ r"""Build the standalone Windows folder app (tlwu.exe) with Nuitka and zip it.
 Run with the PACKAGING venv (never the project .venv):
     %USERPROFILE%\tlwu-eval\pack-venv\Scripts\python.exe packaging\build_windows.py [--post-only] [--lite]
 
-pack-venv = requirements.txt (without av / psutil) + requirements-qwen.txt (llama-cpp-python CUDA wheel) + Nuitka.
+pack-venv = requirements.txt (without av / psutil) + requirements-llama-cuda.txt (llama-cpp-python CUDA wheel) + Nuitka.
 PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
 CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements-gpu.txt), found in TLWU_CUDA_SRC, the
 pack-venv or the project .venv (read only). None found -> the build stops (--lite / --allow-cpu-only: CPU-only); never a
