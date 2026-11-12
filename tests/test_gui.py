@@ -377,3 +377,35 @@ def test_log_font_buttons_and_pause(gui_app):
     a.state = core.SubtitleState(core.HISTORY_LINES)
     a.switch_lang()
     assert _log(a) == "聆聽中…"
+
+
+def test_engine_labels_hint_for_uninstalled(tmp_path):
+    from tinglongwu.gui.core import ENGINES, engine_from_label, engine_labels
+
+    labels = engine_labels(tmp_path)  # empty models dir: only auto is usable
+    assert labels[0] == "auto" and len(labels) == len(ENGINES)
+    assert "tlwu-setup --hymt" in labels[1] and "tlwu-setup --opus" in labels[2]
+    assert [engine_from_label(x) for x in labels] == ENGINES
+    from tinglongwu.hymt import hymt_path
+
+    p = hymt_path(tmp_path)
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"x")
+    (tmp_path / "opus" / "ru-en").mkdir(parents=True)
+    assert engine_labels(tmp_path) == ENGINES  # installed: plain names, no hint
+
+
+def test_engine_hidden_by_default_and_shown_when_advanced_expanded(gui_app):
+    a = gui_app
+    assert a.settings["advanced"] is False
+    assert not a.combos["engine"].winfo_ismapped()
+    a.v_adv.set(True)
+    a._adv_toggled()
+    a.root.update()
+    assert a.combos["engine"].winfo_ismapped()
+    a.collect()
+    assert core.load_settings()["advanced"] is True  # remembered
+    a.v_adv.set(False)
+    a._adv_toggled()
+    a.root.update()
+    assert not a.combos["engine"].winfo_ismapped()

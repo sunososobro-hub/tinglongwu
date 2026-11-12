@@ -14,7 +14,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (ENGINES, engine_from_label, engine_labels, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv)
@@ -303,6 +303,12 @@ class App:
         cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
         return var
 
+    def _adv_toggled(self):
+        """Show / hide the engine dropdown (Advanced, #399); the state is saved with the other settings."""
+        for w in self.engine_widgets:
+            w.grid() if self.v_adv.get() else w.grid_remove()
+        self.settings["advanced"] = self.v_adv.get()
+
     def _quality_changed(self):
         """Engine / speech model are picked for the user unless Quality is 'manual' (#81)."""
         state = "readonly" if self.v_quality.get() == "manual" else "disabled"
@@ -319,7 +325,13 @@ class App:
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
-        self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
+        self.v_adv = tk.BooleanVar(value=bool(s.get("advanced")))
+        self._tx(ttk.Checkbutton(f, variable=self.v_adv, command=self._adv_toggled), "gui_advanced").grid(
+            row=17, column=0, columnspan=3, sticky="w", pady=2)
+        self.v_engine = self._combo(18, "gui_engine", "engine", engine_labels())  # collapsed by default (#399)
+        self.v_engine.set(next((x for x in engine_labels() if engine_from_label(x) == s["engine"]), "auto"))
+        self.engine_widgets = [w for w in f.grid_slaves(row=18)]
+        self._adv_toggled()
         self.v_model = self._combo(4, "gui_model", "model", model_labels())
         self.v_model.set(label_for_model(self.settings["model"]))
         self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
@@ -526,7 +538,7 @@ class App:
 
     def collect(self):
         s = self.settings
-        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
+        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=engine_from_label(self.v_engine.get()), advanced=self.v_adv.get(), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get())

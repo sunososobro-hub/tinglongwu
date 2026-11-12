@@ -21,11 +21,38 @@ DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
-    "floating_bar": False, "log_font_size": 14, "quality": "auto",
+    "floating_bar": False, "log_font_size": 14, "quality": "auto", "advanced": False,
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt", "opus"]  # #276: Hy-MT2 is the engine; Qwen is no longer offered
+ENGINE_HINTS = {"hymt": "tlwu-setup --hymt", "opus": "tlwu-setup --opus"}
+
+
+def engine_installed(engine: str, mdir=None) -> bool:
+    """auto is always usable; hymt / opus need their model files on disk (#399)."""
+    from ..hymt import hymt_path
+    from ..models import models_dir
+
+    if engine not in ENGINE_HINTS:
+        return True
+    d = models_dir(str(mdir) if mdir else None)
+    if engine == "hymt":
+        return hymt_path(d).is_file()
+    od = d / "opus"
+    return od.is_dir() and any(p.is_dir() for p in od.iterdir())
+
+
+def engine_labels(mdir=None) -> list[str]:
+    """Advanced dropdown entries: uninstalled engines carry the setup command as a hint (#399)."""
+    return [e if engine_installed(e, mdir) else f"{e}  ({ENGINE_HINTS[e]})" for e in ENGINES]
+
+
+def engine_from_label(label: str) -> str:
+    name = (label or "").split()[0] if (label or "").strip() else "auto"
+    return name if name in ENGINES else "auto"
+
+
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
 # hardware; manual = the Engine + Speech model boxes decide (#81)
 QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
