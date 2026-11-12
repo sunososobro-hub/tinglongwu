@@ -117,3 +117,11 @@ tlwu_install_selftest() {  # tlwu_install_selftest TLWU_SETUP [args...]: last in
   esac
   return 0
 }
+
+# #371: speak mode sends every sentence directly (no confirm question). Confirm mode: `--confirm` argument or TLWU_CONFIRM=1.
+# tlwu_confirm_mode "$@" -> 0 if confirm mode was asked for
+tlwu_confirm_mode() {
+  [ "${TLWU_CONFIRM:-}" = "1" ] && return 0
+  local a; for a in "$@"; do [ "$a" = "--confirm" ] && return 0; done
+  return 1
+}
