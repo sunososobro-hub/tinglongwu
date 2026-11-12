@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: install-clean-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   TLWU_NO_UPDATE: "1"
   TLWU_UI_LANG: en
@@ -35,14 +39,14 @@ jobs:
           $target = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'
           if (Test-Path $target) { throw "per-user Python already present: $target" }
           # as a double-click does: cmd runs the .bat; `pause` at the end reads NUL and returns
-          cmd /c "install.bat < NUL" 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\install.log"
+          cmd /c "install.bat < NUL 2>&1" | Tee-Object -FilePath "$env:RUNNER_TEMP\install.log"
           if (-not (Test-Path $target)) { throw "FAIL: install.ps1 did not install Python 3.12 per-user at $target" }
           Write-Host "PASS: Python installed by the installer: $(& $target --version)"
           $cfg = Get-Content .venv\pyvenv.cfg -Raw
           if ($cfg -notmatch [regex]::Escape((Split-Path $target))) { throw "FAIL: .venv is not based on the new Python:`n$cfg" }
           & .venv\Scripts\python.exe -c "import tinglongwu, llama_cpp; print('PASS: import ok')"
           if ($LASTEXITCODE -ne 0) { throw "FAIL: import" }
-          & .venv\Scripts\tlwu.exe --help | Select-Object -First 3
+          $h = & .venv\Scripts\tlwu.exe --help   # read it all: closing the pipe early fails the exe
           if ($LASTEXITCODE -ne 0) { throw "FAIL: tlwu --help" }
           Write-Host "PASS #67: install.bat on a PC without Python"
 
@@ -80,7 +84,7 @@ jobs:
           $lnk = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter '*tinglongWu*.lnk'
           if (-not $lnk) { throw "FAIL: no Start-menu shortcut" }
           Write-Host "PASS: shortcuts: $($lnk.Name -join ', ')"
-          & "$app\.venv\Scripts\tlwu.exe" --help | Select-Object -First 3
+          $h = & "$app\.venv\Scripts\tlwu.exe" --help
           if ($LASTEXITCODE -ne 0) { throw "FAIL: tlwu --help" }
           $un = Get-ChildItem "$app\unins*.exe" | Select-Object -First 1
           if (-not $un) { throw "FAIL: no uninstaller" }

@@ -56,7 +56,7 @@ jobs:
           key: e2e-models-linux-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv
         run: |
-          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --models-dir "$TLWU_MODELS"
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/bin/python" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
@@ -142,7 +142,7 @@ jobs:
           key: e2e-models-windows-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv + opt-in Russian voice (#311)
         run: |
-          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --models-dir "$TLWU_MODELS"
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           tlwu-setup --vosk-tts-ru --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/Scripts/python.exe" >> "$GITHUB_ENV"
@@ -189,7 +189,7 @@ jobs:
           key: e2e-models-macos-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv
         run: |
-          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --models-dir "$TLWU_MODELS"
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/bin/python" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
