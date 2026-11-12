@@ -125,13 +125,19 @@ def _file_items(wavs, sf, asr):
 VOICE_ENGINES = ("vosk", "kokoro")  # engines with built-in voices (v0-v4 switch)
 
 
-def _synth_sentences(tts, ru: str, stats: list | None = None, clock=None, on_first=None):
+def _synth_sentences(tts, ru: str, stats: list | None = None, clock=None, on_first=None, info: dict | None = None):
     """Yield (audio, sr) one piece at a time, so the first piece can play while the rest is synthesized. #207: the
     first piece is a short clause (PiecePlanner), so the first audio does not wait for a long first sentence; each
     later piece is sized from this worker's measured speed (chars/s) so it is ready before the audio queued ahead
     of it has played (no gap), and is as long as that allows (fewer cuts). The worker's 'done' events are appended
-    to `stats` when given; on_first(seconds) is called once, when the first piece is ready (before it is yielded)."""
-    from .logic import PiecePlanner, next_budget
+    to `stats` when given; on_first(seconds) is called once, when the first piece is ready (before it is yielded).
+    #316: `info` (a dict, when given) gets "pieces" (TTS requests sent) and "errors" (worker error messages), so a
+    caller that got no audio can say why."""
+    from .logic import PiecePlanner, next_budget, tts_text
+
+    if info is not None:
+        info.setdefault("pieces", 0)
+        info.setdefault("errors", [])
 
     clock = clock or time.perf_counter
     t0 = clock()
@@ -140,12 +146,17 @@ def _synth_sentences(tts, ru: str, stats: list | None = None, clock=None, on_fir
     while (sent := plan.next(budget)) is not None:
         t1 = clock()
         pcm, sr_out = [], 24000
-        for ev, data in tts.speak(sent):
+        if info is not None:
+            info["pieces"] += 1
+        for ev, data in tts.speak(tts_text(sent)):
             if ev["t"] == "chunk":
-                pcm.append(np.frombuffer(data, dtype=np.float32))
+                if data:
+                    pcm.append(np.frombuffer(data, dtype=np.float32))
                 sr_out = ev["sr"]
             elif ev["t"] == "done" and stats is not None:
                 stats.append(ev)
+            elif ev["t"] == "error" and info is not None:
+                info["errors"].append(str(ev.get("msg") or "unknown error"))
         now = clock()
         if now > t1:  # wall time incl. the pipe: what the next piece will really cost
             c = len(sent) / (now - t1)
@@ -255,6 +266,15 @@ class FollowTTS:
             c.close()
 
 
+def no_audio_reason(info: dict) -> str:
+    """#316: one short reason why a translated utterance produced no audio (info from _synth_sentences)."""
+    if info.get("errors"):
+        return f"TTS error: {info['errors'][0]}"
+    if not info.get("pieces"):
+        return "no speakable text in the translation"
+    return "the voice returned no audio (voice for this language not installed?)"
+
+
 def describe_error(e: BaseException) -> str:
     """'Type: message' (just the type when the message is empty, e.g. a bare AssertionError)."""
     return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
@@ -344,8 +364,8 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         t0, sent = lat.clock(), 0
-        gaps, stats = GapMeter(lat.clock), []
-        for audio, sr in _synth_sentences(tts, ru, stats):
+        gaps, stats, info = GapMeter(lat.clock), [], {}
+        for audio, sr in _synth_sentences(tts, ru, stats, info=info):
             if not sent:
                 lat.set("tts", lat.clock() - t0)
                 print(timing_line(lat.t), flush=True)  # #186: first audio is out; one line under the translation
@@ -355,6 +375,8 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         tts_done = lat.clock() - t0
         if sent:  # #207: how the streamed pieces kept up with playback
             print(stream_line(sent, gaps.max, stats), file=sys.stderr, flush=True)
+        else:  # #316: never a silent "first_audio=-s"
+            print(f"[tts] nothing to speak: {no_audio_reason(info)}", flush=True)
         t = lat.take()
         # #180: one batch-style line per utterance (same fields as the --report items), always on
         f = latency_fields(t.get("asr", 0.0), t.get("mt", 0.0), t.get("tts") if sent else None, tts_done)
