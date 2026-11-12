@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """One-entry benchmark: ru -> Traditional Chinese speech translation quality + latency. Dev tool (run in .venv-bench).
 
-  .venv-bench\\Scripts\\python scripts\\bench\\run.py --smoke [--engines opus,qwen3-8b,madlad3b]
+  .venv-bench\\Scripts\\python scripts\\bench\\run.py --smoke [--engines opus,madlad3b]
   .venv-bench\\Scripts\\python scripts\\bench\\run.py --full  [--engines ...]
 
 --smoke  20 FLEURS ru utterances -> ASR (large-v3-turbo) -> MT; chrF only. Target < 3 minutes on an RTX 3050.
 --full   200 FLEURS utterances end to end (chrF + COMET) and the FLORES-200 devtest gold-text MT set (1012 sentences,
          chrF + COMET, with per-sentence latency); reuses every cached ASR/MT output from earlier runs.
 Columns: opus (default engine) + --engines + google (Cloud Translation v2; skipped without key; never printed).
-Engines: opus (tlwu venv .venv); qwen3-8b, qwen25-7b, qwen3-8b+ctx, qwen25-7b+ctx (llama.cpp, Q4_K_M GGUF);
-         madlad3b (CTranslate2 int8_float16). See _worker.py for paths.
+Engines: opus (tlwu venv .venv); madlad3b (CTranslate2 int8_float16). See _worker.py for paths.
 Cache: <data>/cache/*.jsonl keyed by (model/engine tag, sha256 of input); a rerun only computes what changed.
 Latency = per-sentence wall seconds in the engine loop (model load excluded), median / p90.
 Context ("+ctx" engines): previous sentence of the same FLORES article is given as context (FLORES only).
@@ -39,7 +38,7 @@ KEY_FILE = str(W.EVAL_DIR / "google_key.txt")
 PY_RUNTIME = REPO / ".venv" / "Scripts" / "python.exe"
 PY_BENCH = REPO / ".venv-bench" / "Scripts" / "python.exe"
 RUNTIME_ENGINES = {"opus"}
-ALL_ENGINES = ["opus", "qwen3-8b", "qwen3-8b+ctx", "qwen3-4b", "qwen3-4b+ctx", "qwen25-7b", "qwen25-7b+ctx", "madlad3b"]
+ALL_ENGINES = ["opus", "madlad3b"]
 PAIRS = {  # name -> (tlwu src, tlwu tgt, FLORES src, FLORES ref, Google src, Google tgt)
     "ru-zh": ("ru", "zh", "rus_Cyrl", "zho_Hant", "ru", "zh-TW"),
     "en-zh": ("en", "zh", "eng_Latn", "zho_Hant", "en", "zh-TW"),
@@ -54,8 +53,6 @@ def cache_name(engine: str) -> str:
 
 
 def tag_of(engine: str) -> str:
-    if engine.startswith("qwen"):
-        return f"{engine.split('+')[0]}-q4km-p{PROMPT_V}" + ("-ctx" if engine.endswith("+ctx") else "")
     return engine
 
 

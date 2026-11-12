@@ -1,9 +1,9 @@
-"""Reverse-mode prototype: Chinese wav(s) -> Whisper (zh) -> Qwen3 zh->ru -> built-in-voice TTS (Vosk-TTS / Kokoro, subprocess) -> speakers + wav.
+"""Reverse-mode prototype: Chinese wav(s) -> Whisper (zh) -> Hy-MT2/OPUS zh->ru -> built-in-voice TTS (Vosk-TTS / Kokoro, subprocess) -> speakers + wav.
 
 Run (main .venv):
   python -m tinglongwu.reverse.proto --input C:\\...\\reverse\\input --out C:\\...\\reverse\\out \\
-      --tts-python C:\\...\\tts-venv\\Scripts\\python.exe --tts-model C:\\...\\models\\qwen3-tts-0.6b-base \\
-      --ref ref_ru.wav --ref-text "..." [--qwen qwen3-8b] [--device "CABLE Input"] [--no-play]
+      --tts-python C:\\...\\tts-venv\\Scripts\\python.exe --tts-model C:\\...\\models\\tts-model \\
+      --ref ref_ru.wav --ref-text "..." [--device "CABLE Input"] [--no-play]
 Results are written (UTF-8 JSON) only when --save-result PATH is given; nothing is saved by default.
 Default = confirm-before-send: each utterance shows zh / ru / back-translation; "y"+Enter sends the Russian audio to
 --device, a bare Enter (or "r"/"x") discards it (--no-confirm = old automatic behaviour; --preview-device = also hear it).
@@ -503,7 +503,7 @@ def choose_speak_mt(kind: str, device: str, mdir, free_mib=None) -> tuple[str, s
     return "hymt", f"{free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
 
 
-def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", follow_langs=("en", "ru"),
+def build_translator(kind: str, device: str, mdir, to: str = "ru", follow_langs=("en", "ru"),
                      src: str = "zh", free_mib=None, hy_factory=None):
     """zh->ru|en|ja translator (and the reverse, for the back-translation shown while confirming).
     hymt = Hy-MT2 direct for every pair (`tlwu-setup --hymt`; falls back to OPUS loudly if it fails to load);
@@ -512,8 +512,7 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", fo
     `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming);
     ja = direct zh<->ja through Hy-MT2 (OPUS has no usable Japanese), the rest stays OPUS.
     auto = see choose_speak_mt (Hy-MT2 on CUDA when installed, else OPUS).
-    src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs.
-    `qwen` is unused (#283: kept for old callers)."""
+    src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs."""
     if src == "en" and kind == "auto":
         kind, why = "opus", "--from en: Hy-MT2 en<->zh when installed, else OPUS"
     else:
@@ -540,7 +539,7 @@ def build_translator(kind: str, device: str, mdir, qwen: str, to: str = "ru", fo
     for t in targets:  # follow: every spoken language
         mt.preload(src, t)  # fail early if the models are missing
         mt.preload(t, src)  # back-translation for the confirm step
-    mt.history, mt._pair = [], None  # same surface as QwenTranslator for confirm.back_translate
+    mt.history, mt._pair = [], None  # same surface as the other translators for confirm.back_translate
     return mt
 
 
@@ -912,7 +911,7 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
     src = Path(a.input) if a.input else None
     wavs = [] if live else (sorted(src.glob("*.wav")) if src.is_dir() else [src])
     mdir = models_dir(a.models_dir)
-    res: dict = {"qwen": a.qwen, "whisper": a.whisper, "items": [],
+    res: dict = {"whisper": a.whisper, "items": [],
                  "vram_mib": {"baseline": vram_used_mib()}}
     with VramSampler() as vs:
         t = time.perf_counter()
@@ -921,9 +920,9 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
         res["load_s"] = {"whisper": round(time.perf_counter() - t, 2)}
         res["vram_mib"]["after_whisper"] = vram_used_mib()
         t = time.perf_counter()
-        mt = build_translator(a.mt, dev, mdir, a.qwen, a.to, a.follow_set, a.src)
-        res["load_s"]["qwen"] = round(time.perf_counter() - t, 2)
-        res["vram_mib"]["after_qwen"] = vram_used_mib()
+        mt = build_translator(a.mt, dev, mdir, a.to, a.follow_set, a.src)
+        res["load_s"]["mt"] = round(time.perf_counter() - t, 2)
+        res["vram_mib"]["after_mt"] = vram_used_mib()
         t = time.perf_counter()
         if a.to == "follow" and not a.no_tts:
             factories = {"en": lambda: TTSClient(a.tts_python, a.tts_model, "kokoro",

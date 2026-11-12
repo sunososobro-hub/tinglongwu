@@ -118,7 +118,7 @@ def test_build_translator_en_prefers_hymt_then_opus(monkeypatch, tmp_path):
     loaded = []
     monkeypatch.setattr(tr.PivotTranslator, "preload", lambda self, s, t: loaded.append((s, t)))
     # no Hy-MT2 GGUF: OPUS en-zh / zh-en; auto never picks Qwen for --from en, even on CUDA
-    mt = proto.build_translator("auto", "cuda", tmp_path, "qwen3-4b", "zh", src="en")
+    mt = proto.build_translator("auto", "cuda", tmp_path, "zh", src="en")
     assert isinstance(mt, JaRouter) and mt.all_pairs and mt.hy is None
     assert loaded == [("en", "zh"), ("zh", "en")]
 
@@ -127,7 +127,7 @@ def test_build_translator_en_prefers_hymt_then_opus(monkeypatch, tmp_path):
     gguf.write_bytes(b"x")
     monkeypatch.setattr("tinglongwu.hymt.HyMtTranslator.preload", lambda self, s="", t="": None)
     loaded.clear()
-    mt = proto.build_translator("auto", "cpu", tmp_path, "qwen3-4b", "zh", src="en")
+    mt = proto.build_translator("auto", "cpu", tmp_path, "zh", src="en")
     assert mt.hy is not None and mt._use_hy("en", "zh") and mt._use_hy("zh", "en") and loaded == []
 
 
