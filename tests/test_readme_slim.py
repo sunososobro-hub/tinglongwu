@@ -62,3 +62,26 @@ def test_moved_sections_live_in_docs_and_readme_links_them():
 def test_slug_matches_github_rules():
     assert _slug("Acceptable Use / Consent") == "acceptable-use--consent"
     assert _slug("Linux reverse mode (experimental, untested)") == "linux-reverse-mode-experimental-untested"
+
+
+def _load_checker():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_readme_docs", ROOT / "scripts" / "check_readme_docs.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_readme_at_most_60_lines():  # #342
+    assert len(README.read_text("utf-8").splitlines()) <= 60
+
+
+def test_checker_script_ok_on_repo():  # #342: relative links in README + docs resolve (exit 0)
+    assert _load_checker().main([]) == 0
+
+
+def test_checker_detects_removed_heading_and_broken_link(tmp_path):
+    chk = _load_checker()
+    (tmp_path / "a.md").write_text("# Kept\n[x](missing.md)\n", "utf-8")
+    assert chk.missing_headings("# Kept\n## Gone\n", "# Kept\n", tmp_path) == ["Gone"]
+    assert chk.broken_links([tmp_path / "a.md"]) == ["a.md: missing.md"]
