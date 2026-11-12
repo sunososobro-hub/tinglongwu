@@ -35,14 +35,23 @@ def external_authors(prs, since, owner):
     return sorted(out, key=str.lower)
 
 
+def _trailer_login(name, email):
+    """Login for a Co-authored-by trailer; '' for AI/bot trailers (they are never credited)."""
+    email = email.strip().lower()
+    if email.endswith("@anthropic.com") or email.endswith("[bot]@users.noreply.github.com"):
+        return ""
+    m = re.fullmatch(r"(?:\d+\+)?([^@]+)@users\.noreply\.github\.com", email)
+    return m.group(1) if m else name
+
+
 def _commit_logins(pr):
     """Commit author logins and `Co-authored-by:` names from an optional pr["commits"] list."""
     names = []
     for c in pr.get("commits") or []:
         names.append((c.get("author") or {}).get("login", ""))
-        for m in re.finditer(r"^co-authored-by:\s*(.+?)\s*<", (c.get("commit") or {}).get("message", ""),
+        for m in re.finditer(r"^co-authored-by:\s*(.+?)\s*<([^>]*)>", (c.get("commit") or {}).get("message", ""),
                              re.IGNORECASE | re.MULTILINE):
-            names.append(m.group(1))
+            names.append(_trailer_login(m.group(1), m.group(2)))
     return [n for n in names if n]
 
 
