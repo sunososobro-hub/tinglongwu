@@ -159,6 +159,8 @@ jobs:
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#311 speak --to ru speaks Russian after tlwu-setup --vosk-tts-ru, no extra flags"
         run: python scripts/ci_e2e.py speak-ru --models-dir "$TLWU_MODELS"
+      - name: "#322 overlay stays above a fullscreen window on the Windows desktop (z-order, WS_EX_TOPMOST)"
+        run: python scripts/ci_e2e.py overlay-stack
       - name: "#7 firewall_test.py: real Windows Firewall outbound block (runner is admin)"
         run: |
           python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav tests/fixtures/zh_kokoro_16k.flac \

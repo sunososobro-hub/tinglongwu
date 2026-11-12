@@ -433,44 +433,109 @@ FS_APP = ("import tkinter as t; r=t.Tk(); r.title('tlwu-e2e-fullscreen'); r.conf
           "r.attributes('-fullscreen', True); r.after(60000, r.destroy); r.mainloop()")
 
 
-def _stack_index(disp, root, wid: int) -> int:
-    """Position of the top-level window containing `wid` among root's children (X stacking order, bottom first)."""
-    kids = root.query_tree().children
-    for i, k in enumerate(kids):
-        stack = [k]
-        while stack:
-            w = stack.pop()
-            if w.id == wid:
-                return i
-            try:
-                stack += w.query_tree().children
-            except Exception:  # noqa: BLE001
-                pass
-    return -1
+class _X11:
+    """X11 + a window manager (CI: Xvfb + openbox). Stacking = root's children order (bottom first)."""
+
+    def __init__(self):
+        from Xlib import display  # python-xlib (CI only)
+
+        self.disp = display.Display()
+        self.root = self.disp.screen().root
+
+    def find(self, title: str):
+        out = subprocess.run(["xdotool", "search", "--name", f"^{title}$"], capture_output=True, text=True).stdout
+        return int(out.split()[0]) if out.split() else None
+
+    def handle(self, tkwin) -> int:
+        return int(tkwin.wm_frame(), 16)
+
+    def activate(self, wid: int) -> None:  # the user clicks into the fullscreen browser
+        subprocess.run(["xdotool", "windowactivate", "--sync", str(wid)], timeout=10, check=False)
+        subprocess.run(["xdotool", "windowraise", str(wid)], timeout=10, check=False)
+
+    def _index(self, wid: int) -> int:
+        for i, k in enumerate(self.root.query_tree().children):
+            stack = [k]
+            while stack:
+                w = stack.pop()
+                if w.id == wid:
+                    return i
+                try:
+                    stack += w.query_tree().children
+                except Exception:  # noqa: BLE001
+                    pass
+        return -1
+
+    def above(self, ov: int, fs: int) -> tuple[bool, str]:
+        self.disp.sync()
+        i_ov, i_fs = self._index(ov), self._index(fs)
+        return i_ov > i_fs >= 0, f"stack index bar={i_ov} fullscreen={i_fs}"
+
+    def visible(self, ov: int) -> tuple[bool, str]:
+        g = self.disp.create_resource_object("window", ov).get_geometry()
+        return g.width > 0 and g.height > 0, f"{g.width}x{g.height}"
+
+
+class _Win32:
+    """Windows desktop: EnumWindows lists top-level windows in Z order, topmost first."""
+
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+
+        self.u = ctypes.windll.user32
+        self.ct, self.wt = ctypes, wintypes
+
+    def find(self, title: str):
+        h = self.u.FindWindowW(None, title)
+        return h or None
+
+    def handle(self, tkwin) -> int:
+        return int(tkwin.wm_frame(), 16)
+
+    def activate(self, h: int) -> None:
+        self.u.ShowWindow(h, 9)
+        self.u.BringWindowToTop(h)
+        self.u.SetForegroundWindow(h)
+
+    def _order(self) -> list[int]:
+        out: list[int] = []
+        proto = self.ct.WINFUNCTYPE(self.wt.BOOL, self.wt.HWND, self.wt.LPARAM)
+        self.u.EnumWindows(proto(lambda h, _l: out.append(int(h or 0)) or True), 0)
+        return out
+
+    def above(self, ov: int, fs: int) -> tuple[bool, str]:
+        order = self._order()
+        i_ov = order.index(ov) if ov in order else -1
+        i_fs = order.index(fs) if fs in order else -1
+        ex = self.u.GetWindowLongW(ov, -20)  # GWL_EXSTYLE
+        top = bool(ex & 0x8)  # WS_EX_TOPMOST
+        return 0 <= i_ov < i_fs and top, f"z-order bar={i_ov} fullscreen={i_fs} (0 = top), WS_EX_TOPMOST={top}"
+
+    def visible(self, ov: int) -> tuple[bool, str]:
+        r = self.wt.RECT()
+        self.u.GetWindowRect(ov, self.ct.byref(r))
+        w, h = r.right - r.left, r.bottom - r.top
+        return bool(self.u.IsWindowVisible(ov)) and w > 0 and h > 0, f"{w}x{h}"
 
 
 def cmd_overlay_stack(a) -> int:
     import queue
 
-    from Xlib import X, display  # python-xlib (CI only)
-
     sys.path.insert(0, str(ROOT))
     from tinglongwu import overlay
 
+    ws = _Win32() if WIN else _X11()
     fs = subprocess.Popen([PY, "-c", FS_APP])
     try:
-        disp = display.Display()
-        root = disp.screen().root
         fs_id = None
         for _ in range(100):
-            out = subprocess.run(["xdotool", "search", "--name", "^tlwu-e2e-fullscreen$"], capture_output=True,
-                                 text=True).stdout.split()
-            if out:
-                fs_id = int(out[0])
+            fs_id = ws.find("tlwu-e2e-fullscreen")
+            if fs_id:
                 break
             time.sleep(0.1)
-        check("fullscreen window is up", fs_id is not None)
-        if fs_id is None:
+        check("fullscreen window is up", bool(fs_id))
+        if not fs_id:
             return finish()
         time.sleep(1.0)
         with tempfile.TemporaryDirectory(prefix="tlwu-ov-") as td:
@@ -478,7 +543,7 @@ def cmd_overlay_stack(a) -> int:
             bar = overlay.Bar(queue.Queue(), threading.Event(), gj)
             try:
                 bar.root.update()
-                ov = int(bar.overlay.win.wm_frame(), 16)
+                ov = ws.handle(bar.overlay.win)
                 t0 = time.monotonic()
                 bar.q.put(("final", "hello", "你好"))
                 while "你好" not in bar.overlay.text.get("1.0", "end") and time.monotonic() - t0 < 2:
@@ -486,18 +551,15 @@ def cmd_overlay_stack(a) -> int:
                 dt = time.monotonic() - t0
                 check("line on the bar within 100 ms", dt < 0.1, f"{dt * 1000:.0f} ms")
                 for rnd in range(3):  # the user clicks into the fullscreen browser: it is raised and focused
-                    subprocess.run(["xdotool", "windowactivate", "--sync", str(fs_id)], timeout=10, check=False)
-                    subprocess.run(["xdotool", "windowraise", str(fs_id)], timeout=10, check=False)
+                    ws.activate(fs_id)
                     t1 = time.monotonic()
                     while time.monotonic() - t1 < 1.0:
                         bar.root.update()
                         time.sleep(0.03)
-                    disp.sync()
-                    i_ov, i_fs = _stack_index(disp, root, ov), _stack_index(disp, root, fs_id)
-                    check(f"bar stays above the fullscreen window (round {rnd + 1})", i_ov > i_fs >= 0,
-                          f"stack index bar={i_ov} fullscreen={i_fs}")
-                geo = disp.create_resource_object("window", ov).get_geometry()
-                check("bar is mapped and visible", geo.width > 0 and geo.height > 0, f"{geo.width}x{geo.height}")
+                    ok, detail = ws.above(ov, fs_id)
+                    check(f"bar stays above the fullscreen window (round {rnd + 1})", ok, detail)
+                ok, detail = ws.visible(ov)
+                check("bar is mapped and visible", ok, detail)
                 # drag position + font size persist across a restart (same gui.json)
                 bar.overlay.set_font(36)
                 bar.overlay.win.geometry("+40+50")
@@ -516,7 +578,6 @@ def cmd_overlay_stack(a) -> int:
                       (s.get("x"), s.get("y")) == (40, 50), f"font {s.get('font_size')} at {s.get('x')},{s.get('y')}")
             finally:
                 bar2.root.destroy()
-        del X
     finally:
         fs.kill()
     return finish()
