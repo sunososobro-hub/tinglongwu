@@ -12,9 +12,9 @@ from tinglongwu.reverse.logic import Lat, live_endpoint, timing_line
 
 def test_timing_line_format_and_total():
     t = {"vad": 0.6, "asr": 1.1, "mt": 0.2, "tts": 0.8}
-    assert timing_line(t) == "   [vad 0.60 | stt 1.10 | mt 0.20 | tts 0.80 | total 2.70 s]"
+    assert timing_line(t) == "   [vad 0.60 | stt 1.10 | mt 0.20 | tts_first 0.80 | total 2.70 s]"
     assert timing_line({"asr": 1.0, "mt": 0.5}, tts=False) == "   [vad - | stt 1.00 | mt 0.50 | total 1.50 s]"
-    assert "tts -" in timing_line({"vad": 0.4, "asr": 1.0, "mt": 0.5})
+    assert "tts_first -" in timing_line({"vad": 0.4, "asr": 1.0, "mt": 0.5})
 
 
 def test_live_endpoint_cpu_faster_cuda_unchanged_override_wins():

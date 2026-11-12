@@ -87,7 +87,8 @@ def score_wavs(tts_wav: str, rec_wav: str) -> dict:
     return {**score(ts["speech_s"], rs), "tts": ts, "recorded": rs}
 
 
-TIMING = re.compile(r"\[vad ([\d.-]+) \| stt ([\d.-]+) \| mt ([\d.-]+) \| tts ([\d.-]+) \| total ([\d.]+) s\]")
+# "tts_first" since #207 (plain "tts" before): MT done -> first TTS audio
+TIMING = re.compile(r"\[vad ([\d.-]+) \| stt ([\d.-]+) \| mt ([\d.-]+) \| tts(?:_first)? ([\d.-]+) \| total ([\d.]+) s\]")
 LATENCY = re.compile(r"latency asr=\S+ mt=\S+ first_audio=(\S+)s done=\S+")
 STREAM = re.compile(r"stream pieces=(\d+) gap_max=([\d.]+)s rtf=(\S+)")
 
