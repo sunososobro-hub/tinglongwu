@@ -1,45 +1,179 @@
 name: release
-# Runs when a version tag is pushed. The tag must point at a commit that is on main.
+# #414 one-click release. The owner merges the dev -> main release PR (opened by release-pr.yml); this workflow then
+#   plan    : is this push a merged 'release:' PR? which tag? (scripts/release_notes.py plan)
+#   windows : build tinglongwu-win64.zip on windows-latest with packaging/build_windows.py --allow-cpu-only
+#             (CUDA build; the runner has no GPU, so the smoke may use the CPU llama fallback), then
+#             packaging/release_check.py on the zip: size < 2 GiB, check_dist_dlls, --smoke, --selftest
+#   publish : tag the commit, publish the zip + SHA256 + install scripts as the latest GitHub Release
+# Other pushes to main publish nothing. A tag pushed by hand (vX.Y.Z on main) still releases that tag.
+# workflow_dispatch = dry run on any branch: plan + build + every check, never a tag or a Release.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions: {}
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  plan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
-      contents: write   # only this job may create the Release
+      contents: read
+      pull-requests: read   # which PR does this main commit belong to, and its labels
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      tag: ${{ steps.plan.outputs.tag }}
+      pr: ${{ steps.plan.outputs.pr }}
+      gpu_local: ${{ steps.plan.outputs.gpu_local }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Tag format and branch check (tag must be vX.Y.Z[-suffix] and on main)
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Plan
+        id: plan
         env:
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "bad tag: $TAG"; exit 1; }
+          python scripts/release_notes.py plan > plan.txt
+          cat plan.txt >> "$GITHUB_OUTPUT"
+          { echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: A hand-pushed tag must point at a commit on main
+        if: github.ref_type == 'tag'
+        run: |
           git fetch --no-tags origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag $TAG is not on main"; exit 1; }
-      - name: Build install assets (embed the tag so each script installs the version it was released with)
-        env:
-          TAG: ${{ github.ref_name }}
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag $GITHUB_REF_NAME is not on main"; exit 1; }
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      TLWU_BUILD_ROOT: ${{ github.workspace }}\..\tlwu-build
+      NUITKA_CACHE_DIR: ${{ github.workspace }}\..\nuitka-cache
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Nuitka compile cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ env.NUITKA_CACHE_DIR }}
+          key: nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-qwen.txt', 'requirements-gpu.txt') }}-${{ github.sha }}
+          restore-keys: |
+            nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-qwen.txt', 'requirements-gpu.txt') }}-
+            nuitka-release-${{ runner.os }}-
+      - name: Packaging venv (requirements.txt without av / psutil, CUDA llama-cpp-python, CUDA 12 wheels, Nuitka)
+        shell: pwsh
         run: |
-          mkdir dist
+          python -m venv "$env:RUNNER_TEMP\pack-venv"
+          $py = "$env:RUNNER_TEMP\pack-venv\Scripts\python.exe"
+          Get-Content requirements.txt | Where-Object { $_ -notmatch '^(av|psutil)==' } | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\req-pack.txt"
+          & $py -m pip install --upgrade pip
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install -r "$env:RUNNER_TEMP\req-pack.txt"
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install -r requirements-qwen.txt --only-binary=:all:
+          if ($LASTEXITCODE) { exit 1 }
+          # cuda_nvrtc: cuDNN runtime-compiled engines (build_windows.CUDA_WHEELS needs its bin folder)
+          & $py -m pip install -r requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install nuitka ordered-set zstandard
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m nuitka --version
+          "PACK_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Build (CUDA package; --allow-cpu-only because this runner has no NVIDIA driver)
+        shell: pwsh
+        run: |
+          & $env:PACK_PY packaging\build_windows.py --allow-cpu-only
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:TLWU_BUILD_ROOT\dist\tlwu\cuda_libs\cudart64_12.dll")) { Write-Error "not a CUDA package: cuda_libs missing"; exit 1 }
+      - name: Release checks on the zip (size, check_dist_dlls, --smoke, --selftest)
+        shell: pwsh
+        run: |
+          & $env:PACK_PY packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-win64
+          path: |
+            ${{ env.TLWU_BUILD_ROOT }}\dist\tinglongwu-win64.zip
+            ${{ env.TLWU_BUILD_ROOT }}\dist\tinglongwu-win64.zip.sha256
+            ${{ env.TLWU_BUILD_ROOT }}\dist\release-check.md
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: [plan, windows]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write   # only this job may create the tag and the Release
+      pull-requests: read   # release notes: merged PRs and the thanks list
+      issues: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-win64
+          path: dist
+      - name: Install assets (embed the tag so each script installs the version it was released with)
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
           cp scripts/install.sh dist/install.sh
           cp scripts/mac_install.sh dist/mac_install.sh
           cp scripts/bootstrap_windows.ps1 dist/install.ps1
           sed -i "s/__TLWU_REF__/$TAG/g" dist/install.sh dist/mac_install.sh dist/install.ps1
-          ! grep -q "__TLWU_REF__" dist/*   # nothing may keep the placeholder
+          ! grep -q "__TLWU_REF__" dist/install.sh dist/mac_install.sh dist/install.ps1   # nothing may keep the placeholder
           grep -q "\"$TAG\"" dist/install.sh
           bash -n dist/install.sh
           bash -n dist/mac_install.sh
-          cd dist && sha256sum install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
-      - name: Create the GitHub Release
+          cd dist
+          sha256sum -c tinglongwu-win64.zip.sha256   # the zip is the one release_check.py tested
+          [ "$(stat -c %s tinglongwu-win64.zip)" -lt 2147483648 ] || { echo "zip over the 2 GiB asset limit"; exit 1; }
+          sha256sum tinglongwu-win64.zip install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
+      - name: Release notes
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PR: ${{ needs.plan.outputs.pr }}
+          GPU_LOCAL: ${{ needs.plan.outputs.gpu_local }}
         run: |
-          gh release create "$TAG" dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt \
-            --verify-tag --generate-notes --title "$TAG"
+          gpu=(); [ "$GPU_LOCAL" = true ] && gpu=(--gpu-local)
+          python scripts/release_notes.py notes --version "$TAG" --verification dist/release-check.md "${gpu[@]}" --pr "$PR" --out notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Tag and publish the GitHub Release (latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          verify=(--target "$GITHUB_SHA"); [ "$GITHUB_REF_TYPE" = tag ] && verify=(--verify-tag)
+          gh release create "$TAG" dist/tinglongwu-win64.zip dist/install.sh dist/mac_install.sh dist/install.ps1 \
+            dist/SHA256SUMS.txt "${verify[@]}" --title "$TAG" --notes-file notes.md --latest

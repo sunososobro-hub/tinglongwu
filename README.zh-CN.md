@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scr
 
 ## 发行版（运行前请先阅读）
 
-Windows 发行 zip **未签名**，由维护者在本机用 Nuitka 构建，**不可复现构建**。其 SHA256 公布在 release 说明中：运行前请用 `Get-FileHash tinglongwu-win64.zip` 比对。哈希只证明你拿到的是维护者发布的那个文件。若要真正的验证，请从源码安装（`install.bat` 或下面的步骤）：源码、锁版依赖和模型哈希都可审计。
+Windows 发行 zip **未签名**，由 GitHub Actions 的 `release` workflow（windows-latest）从该 tag 的 commit 用 Nuitka 构建，**不可复现构建**。其 SHA256 公布在 release 说明中：运行前请用 `Get-FileHash tinglongwu-win64.zip` 比对。哈希只证明你拿到的是维护者发布的那个文件。若要真正的验证，请从源码安装（`install.bat` 或下面的步骤）：源码、锁版依赖和模型哈希都可审计。
 
 ## 语言
 

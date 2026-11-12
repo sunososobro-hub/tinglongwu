@@ -53,7 +53,12 @@ def lazy_includes() -> list[str]:
     return [f"--include-module={m}" for m in sorted(mods)]
 
 
-def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
+def has_nvidia_driver() -> bool:
+    """nvcuda.dll (installed by the NVIDIA display driver) is present: a CUDA llama.dll is expected to load here."""
+    return (Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "nvcuda.dll").is_file()
+
+
+def smoke(app: Path, run=subprocess.run, lite: bool = False, no_gpu_ok: bool = False) -> None:
     """Run the built `tlwu.exe --smoke` (no models, no network): native DLLs and the lazy filelock /
     huggingface_hub imports of the first-run download (#310). A failure stops the build before the zip.
     llama_cpp is optional in the smoke (a clean PC may lack the VC++ runtime), but not on the pack machine (#398)."""
@@ -64,6 +69,10 @@ def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
     if "WARN llama_cpp" in r.stdout:
         raise SystemExit("tlwu.exe --smoke: llama_cpp does not load in the package (#398), not zipping")
     if not lite and "CPU  llama_cpp" in r.stdout:  # the CUDA llama.dll is broken; the CPU fallback must not hide it
+        if no_gpu_ok:  # CI runner (#414): no NVIDIA driver, so CUDA cannot load; check_dist_dlls covers the CUDA deps
+            print("WARNING: CUDA llama build not loaded: no NVIDIA driver on this machine (--allow-cpu-only). "
+                  "The CPU fallback works; the GPU path is NOT validated by this build")
+            return
         raise SystemExit("tlwu.exe --smoke: the CUDA llama build did not load on the pack machine (CPU line above), "
                          "not zipping")
 
@@ -244,7 +253,8 @@ def main() -> int:
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
     ap.add_argument("--lite", action="store_true", help="CPU-only variant: no CUDA libs / ggml-cuda.dll")
     ap.add_argument("--allow-cpu-only", action="store_true",
-                    help="no CUDA wheels found: build a CPU-only package instead of stopping")
+                    help="no CUDA wheels found: build a CPU-only package instead of stopping; on a machine "
+                         "without an NVIDIA driver (CI runner) the smoke may also use the CPU llama fallback")
     ap.add_argument("--no-smoke", action="store_true", help="skip the `tlwu.exe --smoke` check before zipping")
     a = ap.parse_args()
     DIST.mkdir(parents=True, exist_ok=True)
@@ -283,7 +293,7 @@ def main() -> int:
     if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
         print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")
     if not a.no_smoke:
-        smoke(APP, lite=cuda_src is None)
+        smoke(APP, lite=cuda_src is None, no_gpu_ok=a.allow_cpu_only and not has_nvidia_driver())
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
     return 0

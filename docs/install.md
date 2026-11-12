@@ -4,7 +4,7 @@ Moved from the README (#166). Quick one-line installs stay in the [README](../RE
 
 ## Releases (read before trusting a binary)
 
-The Windows release zip is **unsigned** and built locally by the maintainer with Nuitka; the build is **not reproducible**. Its SHA256 is published in the release notes: compare it with `Get-FileHash tinglongwu-win64.zip` before running. The hash only proves you got the file the maintainer published. If you want real verification, install from source (`install.bat` or the steps below): the source, pinned dependencies and model hashes are all auditable.
+The Windows release zip is **unsigned** and built with Nuitka by the `release` workflow on GitHub Actions (windows-latest) from the tagged commit; the build is **not reproducible**. Its SHA256 is published in the release notes: compare it with `Get-FileHash tinglongwu-win64.zip` before running. The hash only proves you got the file the maintainer published. If you want real verification, install from source (`install.bat` or the steps below): the source, pinned dependencies and model hashes are all auditable.
 
 ## Install
 
