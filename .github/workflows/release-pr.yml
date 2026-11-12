@@ -74,7 +74,7 @@ jobs:
           } >> notes.md
           echo "num=$num" >> "$GITHUB_OUTPUT"
           echo "title=release: $ver" >> "$GITHUB_OUTPUT"
-          { echo "### release: $ver (PR ${num:-new})"; echo; cat notes.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### release: $ver (PR ${num:-new})"; echo; cat notes.md; } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Create or update the release PR
         if: steps.diff.outputs.ahead != '0' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
