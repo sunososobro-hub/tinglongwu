@@ -70,6 +70,12 @@ function Install-TlwuPython {
             if (Test-TlwuSha256 $exe $Sha256) {
                 Write-Host "      SHA256 OK. Installing Python for this user (no admin, about 1 minute) ..."
                 $code = @(& $RunInstaller $exe $TlwuPyInstallArgs)[-1]
+                for ($i = 1; "$code" -eq '1618' -and $i -le 4; $i++) {
+                    # 1618 = another installation is in progress (Windows Update, another setup): wait, try again
+                    Write-Host "      Another installation is running (1618); waiting 30 s, then retry $i/4 ..."
+                    if (-not $env:TLWU_TEST_NO_SLEEP) { Start-Sleep -Seconds 30 }
+                    $code = @(& $RunInstaller $exe $TlwuPyInstallArgs)[-1]
+                }
                 if ("$code" -ne '0' -and "$code" -ne '3010') {
                     Write-Host "  !!  Python installer exit code: $code" -ForegroundColor Yellow
                 }

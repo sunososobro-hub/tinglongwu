@@ -35,7 +35,7 @@ def test_real_pins_match_the_issue():
     assert downloader.KOKORO_FILES["kokoro-v1.0.int8.onnx"] == (
         92361271, "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb")
     assert downloader.KOKORO_FILES["voices-v1.0.bin"] == (
-        28214398, "bca610b8308e8d99f32efe4197e7ec01679264efed0cac9140fe9c29f1fbf7d")
+        28214398, "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d")
 
 
 def test_get_kokoro_downloads_pins_and_skips_on_rerun(tmp_path, pins):
