@@ -82,6 +82,7 @@ class Unit:
     text: str
     lang: str
     forced: bool  # released by the cap / timeout / end of stream rather than a sentence boundary
+    tag: object = None  # #323: add()'s tag of the newest segment whose text is in this unit (latency marks)
 
 
 def split_clause(text: str) -> tuple[str, str]:
@@ -107,6 +108,7 @@ class SentenceMerger:
         self.since: float | None = None  # time the oldest buffered text arrived
         self._cut = False  # previous segment was a forced mid-speech cut
         self._tail: list[str] = []  # last pushed words, for overlap de-duplication
+        self.tag: object = None  # tag of the newest segment whose text is buffered (#323)
 
     @property
     def deadline(self) -> float | None:
@@ -121,11 +123,12 @@ class SentenceMerger:
             self._tail = self._tail[:-1]
         return " ".join(text.split()[drop_new:])
 
-    def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0) -> list[Unit]:
+    def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0,
+            tag: object = None) -> list[Unit]:
         """forced_cut: the segmenter cut mid-speech (chunk limit), not at a VAD pause, so a trailing
         "..." from Whisper is only a cut artifact and not a sentence end. pause: seconds of silence that
         followed the segment (>= PAUSE_SEND, or the language's MERGE_PAUSE_SEND from tinglongwu/lang/, releases an
-        unfinished buffer at once)."""
+        unfinished buffer at once). tag: opaque, carried to every released unit that holds text of this segment."""
         out: list[Unit] = []
         if self.buf and lang != self.lang:
             out.append(self._take(forced=True))
@@ -138,6 +141,7 @@ class SentenceMerger:
         if not text:
             return out + self.due(now)
         self._tail = (self._tail + text.split())[-10:]
+        self.tag = tag
         if not self.buf:
             self.since = now
         self.lang = lang
@@ -153,7 +157,7 @@ class SentenceMerger:
         rest = ""
         if sents and not _is_end(sents[-1]):
             rest = sents.pop()
-        out += [Unit(s.strip(), lang, False) for s in sents]
+        out += [Unit(s.strip(), lang, False, tag) for s in sents]
         self.buf = rest
         if not rest:
             self.since = None
@@ -176,7 +180,7 @@ class SentenceMerger:
                 head, rest = split_clause(self.buf)
                 if head:
                     self.buf, self.since = rest, (now if rest else None)
-                    return [Unit(head, self.lang, True)]
+                    return [Unit(head, self.lang, True, self.tag)]
             return [self._take(forced=True)]
         return []
 
@@ -184,6 +188,6 @@ class SentenceMerger:
         return [self._take(forced=True)] if self.buf else []
 
     def _take(self, forced: bool) -> Unit:
-        u = Unit(self.buf.strip(), self.lang, forced)
+        u = Unit(self.buf.strip(), self.lang, forced, self.tag)
         self.buf, self.since = "", None
         return u
