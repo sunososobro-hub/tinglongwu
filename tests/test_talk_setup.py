@@ -35,7 +35,7 @@ def test_real_pins_match_the_issue():
     assert downloader.KOKORO_FILES["kokoro-v1.0.int8.onnx"] == (
         92361271, "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb")
     assert downloader.KOKORO_FILES["voices-v1.0.bin"] == (
-        28214398, "bca610b8308e8d99f32efe4197e7ec01679264efed0cac9140fe9c29f1fbf7d")
+        28214398, "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d")
 
 
 def test_get_kokoro_downloads_pins_and_skips_on_rerun(tmp_path, pins):
@@ -168,3 +168,14 @@ def test_install_dry_run_sets_up_talk_mode_and_both_shortcuts():
     lnk = [x for x in lines[s7:s8] if "[dry-run] shortcut:" in x]
     # (Linux pwsh has no Desktop folder, so the .lnk path is empty there; the target is what matters)
     assert len(lnk) == 2 and "-NoExit -ExecutionPolicy Bypass -File" in lnk[1] and "tlwu-talk.ps1" in lnk[1]
+
+
+def test_committed_sha256_pins_are_64_lowercase_hex():
+    """#422: a one-digit-short Kokoro pin made every fresh --talk download refuse; unit tests copied the typo."""
+    import re
+    pins = {}
+    for table in (downloader.KOKORO_FILES, downloader.SPEAKER_FILES, downloader.SPEAKER_FALLBACK):
+        pins.update({n: v[1] for n, v in table.items()})
+    assert pins
+    for name, sha in pins.items():
+        assert re.fullmatch(r"[0-9a-f]{64}", sha), f"{name}: bad SHA256 pin {sha!r} ({len(sha)} chars)"
