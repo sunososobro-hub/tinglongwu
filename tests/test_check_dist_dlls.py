@@ -149,6 +149,28 @@ def cpu_wheel(tmp_path):
     return whl
 
 
+def test_copy_vc_runtime_ships_the_matched_set(tmp_path):
+    src, app = tmp_path / "sys", tmp_path / "app"
+    src.mkdir()
+    app.mkdir()
+    (app / "vcruntime140.dll").write_bytes(b"old")  # the one Nuitka took from Python is replaced
+    for n in bw.VC_RUNTIME:
+        (src / n).write_bytes(n.encode())
+    assert bw.copy_vc_runtime(app, src) == list(bw.VC_RUNTIME)
+    for n in ("msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll", "vcruntime140.dll"):
+        assert (app / n).read_bytes() == n.encode()
+
+
+def test_copy_vc_runtime_stops_when_the_redist_is_missing(tmp_path, monkeypatch):
+    src = tmp_path / "sys"
+    src.mkdir()
+    (src / "vcruntime140.dll").write_bytes(b"x")
+    monkeypatch.setenv("TLWU_VCREDIST_DIR", str(src))
+    assert bw.vc_runtime_src() == src
+    with pytest.raises(SystemExit, match="msvcp140.dll"):
+        bw.copy_vc_runtime(tmp_path)
+
+
 def test_cpu_llama_dlls_from_a_local_wheel(tmp_path, monkeypatch):
     monkeypatch.setenv("TLWU_LLAMA_CPU_WHEEL", str(cpu_wheel(tmp_path)))
     dlls = bw.cpu_llama_dlls(tmp_path / "cache", run=lambda *a, **k: pytest.fail("no download with a local wheel"))

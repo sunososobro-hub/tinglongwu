@@ -40,6 +40,10 @@ CUDA_WHEELS = {"cublas": ["cublas64_12.dll", "cublasLt64_12.dll"],  # nvblas64_1
                "cudnn": None}  # None = all DLLs
 # ggml-cuda.dll imports cudart + cuBLAS (cuBLAS imports cuBLASLt); missing -> "Could not find module llama.dll" (#398)
 LLAMA_CUDA_NEEDS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+# Microsoft VC++ 2015-2022 runtime, absent on a clean Windows: ctranslate2 / llama.cpp import msvcp140, onnxruntime
+# msvcp140_1, ggml vcomp140 (OpenMP). Copied as one matched set from the installed redistributable (System32) next
+# to tlwu.exe, replacing the older vcruntime140 Nuitka took from Python: msvcp140 must not be newer than vcruntime140.
+VC_RUNTIME = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll")
 
 
 def lazy_includes() -> list[str]:
@@ -102,7 +106,9 @@ NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososo
 
 Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
 Silero VAD: MIT, Qwen3: Apache-2.0).
-Microsoft Visual C++ runtime is NOT bundled by us: install the Microsoft Visual C++ Redistributable 2015-2022 (x64).
+Microsoft Visual C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll, msvcp140_1.dll, vcomp140.dll in
+this folder): copied from the Microsoft Visual C++ Redistributable 2015-2022 (x64), redistributed under its license
+terms (Microsoft Visual Studio redistributable code). If tlwu.exe still does not start, install that Redistributable.
 """ + NVIDIA_NOTE + """No GPL components: PyAV/FFmpeg is NOT included (stubbed out).
 
 Native components and their licenses
@@ -123,6 +129,25 @@ Native components and their licenses
 
 Python packages (name version: license as declared in package metadata)
 """
+
+
+def vc_runtime_src() -> Path:
+    """Folder of the installed VC++ redistributable DLLs: TLWU_VCREDIST_DIR, else System32 of %SystemRoot%."""
+    if os.environ.get("TLWU_VCREDIST_DIR"):
+        return Path(os.environ["TLWU_VCREDIST_DIR"])
+    return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+
+
+def copy_vc_runtime(app: Path, src: Path | None = None) -> list[str]:
+    """Copy VC_RUNTIME from src into the app folder (the app folder is on every DLL search path the app uses)."""
+    src = vc_runtime_src() if src is None else src
+    missing = [n for n in VC_RUNTIME if not (src / n).is_file()]
+    if missing:
+        raise SystemExit(f"VC++ runtime: {', '.join(missing)} not found in {src}; install the Microsoft Visual C++ "
+                         "Redistributable 2015-2022 (x64) on the pack machine or set TLWU_VCREDIST_DIR")
+    for n in VC_RUNTIME:
+        shutil.copy2(src / n, app / n)
+    return list(VC_RUNTIME)
 
 
 def find_cuda_src(candidates: list[Path] | None = None) -> Path | None:
@@ -270,6 +295,7 @@ def main() -> int:
         print(f"WARNING: {msg}; building a CPU-only package (--allow-cpu-only)")
     copy_llama(APP, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
     print("cuda:", copy_cuda(APP, cuda_src) if cuda_src else "none (CPU-only package)")
+    print("vc runtime:", copy_vc_runtime(APP))
     write_licenses(APP, cuda_src)
     shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
