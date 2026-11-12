@@ -117,3 +117,14 @@ tlwu_install_selftest() {  # tlwu_install_selftest TLWU_SETUP [args...]: last in
   esac
   return 0
 }
+
+# #420: install llama-cpp-python from a requirements file; if the index wheel fails (e.g. the 0.3.36 arm64 wheel on the
+# CPU index is a corrupt zip), build the PyPI sdist of the same pinned version instead.
+tlwu_install_llama() {  # tlwu_install_llama PYTHON REQUIREMENTS_FILE
+  local py="$1" req="$2" pin
+  "$py" -m pip install -r "$req" && return 0
+  pin="$(grep -E '^llama-cpp-python==' "$req" | head -n1 | tr -d '[:space:]')"
+  [ -n "$pin" ] || return 1
+  echo "    index wheel failed; building $pin from the PyPI sdist (a few minutes) ..."
+  "$py" -m pip install --no-binary llama-cpp-python "$pin"
+}
