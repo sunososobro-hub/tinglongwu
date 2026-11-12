@@ -541,6 +541,15 @@ class _NoFallback:
     draft = translate
 
 
+def _router_warn(m: str, warn) -> None:
+    """JaRouter warnings under _NoFallback: the pivot wording is wrong here, so a mid-session Hy-MT2 failure becomes
+    one "Hy-MT2 stopped (reason)" line (#451); other pivot warnings are dropped."""
+    if "Hy-MT2 failed (" in m:
+        warn(f"tlwu: Hy-MT2 stopped ({m.split('Hy-MT2 failed (', 1)[1].split('); ', 1)[0]}); no fallback engine (#331)")
+    elif "pivot" not in m:
+        warn(m)
+
+
 def build_translator(kind: str, device: str, mdir, to: str = "ru", follow_langs=("en", "ru"),
                      src: str = "zh", free_mib=None, hy_factory=None, warn=None):
     """zh->ru|en|ja (or en->zh with src en, #134) translator plus the reverse pair for the back-translation shown
@@ -555,7 +564,7 @@ def build_translator(kind: str, device: str, mdir, to: str = "ru", follow_langs=
         warn(HYMT_CPU_NOTE)
     base = _NoFallback()
     # JaRouter's own "falls back to the ... pivot" warnings are wrong here: _NoFallback raises with the reason instead
-    mt = JaRouter(base, mdir, "tw", mt_dev, all_pairs=True, warn=lambda m: None if "pivot" in m else warn(m),
+    mt = JaRouter(base, mdir, "tw", mt_dev, all_pairs=True, warn=lambda m: _router_warn(m, warn),
                   **({"factory": hy_factory} if hy_factory else {}))
     base.router = mt
     targets = tuple(follow_langs) if to == "follow" else (to,)
