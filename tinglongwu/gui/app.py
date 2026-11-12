@@ -7,6 +7,7 @@ import queue
 import signal
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
@@ -272,6 +273,8 @@ class App:
         self.q: queue.Queue = queue.Queue()
         self.state = SubtitleState(HISTORY_LINES)
         self.listening = False  # a session is running (Start pressed, worker not yet stopped)
+        self.load_t0: float | None = None  # #332: monotonic time of Start while models load, else None
+        self.load_shown = 0
         self.stop_ev = threading.Event()
         self.worker: threading.Thread | None = None
         self.closing = False
@@ -326,7 +329,10 @@ class App:
     def relabel(self):
         for w, opt, key in self._tr:
             w.configure(**{opt: t(key)})
-        self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
+        if self.load_t0 is not None:
+            self.btn.configure(text=t("gui_loading", s=self.load_shown))
+        else:
+            self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         if self.status_key:
             self.v_status.set(t(self.status_key))
@@ -533,7 +539,7 @@ class App:
 
     def _download_done(self, model: str, rc: int):
         self.downloading = None
-        self.btn.configure(state="normal")
+        self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
         labels = model_labels()
         self.combos["model"].configure(values=labels, width=combo_width(labels))
@@ -592,7 +598,9 @@ class App:
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
-        self.btn.configure(text=t("gui_stop"))
+        self.load_t0 = time.monotonic()  # #332: Stop stays disabled ("Loading... N s") until the models are ready
+        self.load_shown = 0
+        self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
         self.v_notice.set("")
         self.errored = False
@@ -638,6 +646,11 @@ class App:
                 kind = ev[0]
                 if kind == "status":
                     self._status_text(ev[1])
+                    from ..cli import READY_STATUS  # already imported by the worker; not at GUI start (#332)
+
+                    if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
+                        self.load_t0 = None
+                        self.btn.configure(text=t("gui_stop"), state="normal")
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                 elif kind == "dl_line":
@@ -650,6 +663,7 @@ class App:
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True
                 elif kind == "stopped":
+                    self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
                         self.set_status("gui_stopped")
@@ -660,6 +674,11 @@ class App:
                     changed |= self.state.apply(ev)
         except queue.Empty:
             pass
+        if self.load_t0 is not None:  # tick the elapsed seconds so a slow CPU start never looks frozen
+            secs = int(time.monotonic() - self.load_t0)
+            if secs != self.load_shown:
+                self.load_shown = secs
+                self.btn.configure(text=t("gui_loading", s=secs))
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
         if changed:
