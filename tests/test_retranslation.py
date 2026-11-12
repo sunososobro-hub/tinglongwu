@@ -194,3 +194,38 @@ def test_cli_raises_max_wait_with_drafts_unless_explicit(monkeypatch, tmp_path):
     assert session(["--preset", "chat"]) == cli.RETRANS_MAX_WAIT == 6.0
     assert session(["--preset", "chat"], draft=False) == 1.5
     assert session(["--preset", "chat", "--max-wait", "2"]) == 2.0
+
+
+# ---- #288: sentence heads, tiny fragments, 1-2 letter words before a period ----
+def test_two_letter_word_ends_sentence_288():
+    from tinglongwu.merge import SentenceMerger, _is_end
+    assert _is_end("Please wrap it up.") and _is_end("We should do it.") and _is_end("I said so.")
+    for abbr in ("Mr.", "Dr.", "т.", "г.", "He met Dr.", "see Fig. 3 vs."):
+        assert not _is_end(abbr), abbr
+    m = SentenceMerger(max_wait=1.5)
+    out = m.add("So we wrapped it up. Then we left", "en", 0.0)
+    assert [u.text for u in out] == ["So we wrapped it up."] and not out[0].forced
+
+
+def test_short_head_not_released_on_pause_288():
+    from tinglongwu.merge import SentenceMerger
+    m = SentenceMerger(max_wait=1.5, whole=True)
+    assert m.add("Well, in the", "en", 0.0, pause=1.0) == []  # pause alone does not ship a 3-word head
+    out = m.add("in the last few decades, neuroscientists have studied it.", "en", 0.6)
+    assert [u.text for u in out] == ["Well, in the last few decades, neuroscientists have studied it."]
+
+
+def test_sentence_head_kept_after_cut_288():
+    from tinglongwu.merge import SentenceMerger
+    m = SentenceMerger(max_wait=1.5, whole=True)
+    assert m.add("And then put it all", "en", 0.0, pause=1.0) == []
+    out = m.add("And then put it all back together into unified musical experience.", "en", 0.5)
+    assert [u.text for u in out] == ["And then put it all back together into unified musical experience."]
+
+
+def test_short_head_released_after_double_wait_288():
+    from tinglongwu.merge import SentenceMerger
+    m = SentenceMerger(max_wait=1.5, whole=True)
+    m.add("Well, in the", "en", 0.0)
+    assert m.due(1.6) == []
+    assert [u.text for u in m.due(3.1)] == ["Well, in the"]
