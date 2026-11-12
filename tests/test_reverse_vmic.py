@@ -248,3 +248,26 @@ def test_unsupported_language_exits_without_an_install_hint(tmp_path):
                          warn=lambda m: None)
     msg = str(e.value)
     assert "not supported by Hy-MT2" in msg and "pip install" not in msg and "tlwu-setup" not in msg
+
+
+def test_hymt_mid_session_failure_prints_one_stopped_line(tmp_path):
+    _gguf(tmp_path)
+
+    class Hy:
+        def __init__(self, *a):
+            pass
+
+        def preload(self, *a):
+            pass
+
+        def translate(self, *a):
+            raise RuntimeError("llama crashed")
+
+    warned = []
+    mt = build_translator("auto", "cpu", tmp_path, hy_factory=Hy, warn=warned.append)
+    warned.clear()
+    for _ in range(3):
+        with pytest.raises(RuntimeError):
+            mt.translate("你好", "zh", "ru")
+    stopped = [w for w in warned if "Hy-MT2" in w]
+    assert len(stopped) == 1 and "llama crashed" in stopped[0]
