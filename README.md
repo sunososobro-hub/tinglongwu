@@ -16,8 +16,6 @@ Nothing leaves your machine: no cloud APIs, no telemetry, no audio or transcript
 
 > **Before you use it in a meeting:** tell the other participants you are running live translation (it captures the call audio and transcribes it on your PC; nothing is uploaded). See [Acceptable Use / Consent](#acceptable-use--consent).
 
-<!-- TODO: 30-second demo GIF goes here (docs/demo.gif) -->
-
 ## One-command install (Windows / Mac / Linux)
 
 Each command installs the exact version of the latest GitHub Release (`main` is stable; `dev` is for development). Re-running is safe.
@@ -31,6 +29,15 @@ Each command installs the exact version of the latest GitHub Release (`main` is 
 Each release also lists `SHA256SUMS.txt`; to check a script before running it, download it and compare. The Linux installer asks y/N before any `apt` step and downloads no models (the menu asks before every download). The Windows command downloads the source to `%USERPROFILE%\tinglongwu` and runs the same `install.ps1` as below (the execution-policy bypass is for that one child process only).
 
 Windows ZIP install (`install.bat`) and the menu keys, Mac details, source install, GPU: [docs/install.md](docs/install.md). The Windows release zip is unsigned and not reproducible: [read this first](docs/install.md#releases-read-before-trusting-a-binary).
+
+## System requirements
+
+| Platform | Status |
+|---|---|
+| Windows/Linux + NVIDIA GPU | primary |
+| Windows/Linux CPU only: 2020+ AVX2, 8+ threads, 16GB | supported |
+| Apple Silicon (M1+) | supported |
+| Intel Mac, pre-2019 CPU, no AVX2 | not supported (`--force`) |
 
 ## Usage
 ```
@@ -65,7 +72,7 @@ Focus languages are Japanese, English and Russian (Chinese is the base). Every o
 | Firewall-blocked offline | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/8) | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/7) |
 | exe | [🧪](https://github.com/sunososobro-hub/tinglongwu/issues/9) | — | — |
 
-Windows modes verified on a real device so far: one-line install and Listen; Speak, Meeting and the firewall test are still pending (see the linked issues).
+Windows verified so far: one-line install and Listen; the rest is pending (linked issues).
 
 ## More docs
 - [Privacy model](docs/privacy.md): `tlwu-setup` is the only networked program; `tlwu` runs with a network guard (defence in depth, not proof); firewall block test.
