@@ -1,6 +1,6 @@
 # tinglongWu Windows bootstrap (published as install.ps1 on each GitHub Release). PowerShell 5.1+.
 #
-#   irm https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/bootstrap_windows.ps1 | iex
 #
 # The release workflow replaces the ref placeholder below with the release tag, so this installs exactly the
 # version it was released with. Run straight from the repo (unreleased) it falls back to main.

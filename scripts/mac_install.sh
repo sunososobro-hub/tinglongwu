@@ -1,7 +1,7 @@
 #!/bin/bash
 # tinglongWu one-line installer for macOS (Apple Silicon and Intel). Safe to re-run: re-running = repair/update.
 #
-#   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh | bash
 #
 # The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
 # version it was released with. Run straight from the repo (unreleased) it falls back to main.
