@@ -288,6 +288,15 @@ def test_zh_convert_keeps_tongguo_zhichi_but_taiwan_terms():
     assert zh_convert("通过支持", "cn") == "通过支持"
 
 
+def test_zh_convert_289_no_phrase_corruption():
+    from tinglongwu.translate import zh_convert
+
+    assert zh_convert("音乐家具有更好的记忆", "tw") == "音樂家具有更好的記憶"
+    assert zh_convert("连接两个脑半球的桥梁", "tw") == "連接兩個腦半球的橋樑"
+    assert zh_convert("大脑连接", "tw") == "大腦連接"
+    assert zh_convert("软件和内存", "tw") == "軟體和記憶體"
+
+
 def test_segmenter_reports_forced_cut_and_pause():
     sr = 16000
     frames = lambda n: (np.ones(sr // 2, np.float32) for _ in range(n))
