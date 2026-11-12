@@ -82,7 +82,7 @@ Windows verified so far: one-line install and Listen; the rest is pending (linke
 
 ## More docs
 - [Privacy model](docs/privacy.md): `tlwu-setup` is the only networked program; `tlwu` runs with a network guard (defence in depth, not proof); firewall block test.
-- [Models](docs/models.md) · [Install / GPU / releases](docs/install.md) · [Benchmarks](docs/benchmarks.md) · [Licenses](docs/licenses.md) · [Linux reverse mode (experimental)](docs/linux-reverse.md)
+- [Models](docs/models.md) · [Install / GPU / releases](docs/install.md) · [Benchmarks](docs/benchmarks.md) · [Licenses](docs/licenses.md) · [Notices](THIRD_PARTY_NOTICES.md) · [Linux reverse mode (experimental)](docs/linux-reverse.md)
 
 ## Acceptable Use / Consent
 - Get the consent of every participant before recording, capturing or transcribing a call or meeting; recording and transcription laws vary by jurisdiction.

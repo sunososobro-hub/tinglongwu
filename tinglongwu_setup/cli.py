@@ -165,6 +165,7 @@ def main(argv=None) -> int:
     if a.gpu:
         _pip("install", "-r", str(ROOT / "requirements-gpu.txt"))
     if rest or not (a.deps or a.bundle or a.gpu):
+        print("Model licenses and attribution: THIRD_PARTY_NOTICES.md (https://github.com/sunososobro-hub/tinglongwu/blob/main/THIRD_PARTY_NOTICES.md)")
         rc = downloader.main([*rest, "--models-dir", str(mdir)])
         if rc:
             return rc
