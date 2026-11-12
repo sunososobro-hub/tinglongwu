@@ -284,6 +284,12 @@ def describe_error(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
 
 
+def _to_bar(a):
+    """#322: (zh, ru) -> the --overlay bar as one '▶ ' line (my side); a no-op without --overlay."""
+    q = getattr(a, "bar_q", None)
+    return (lambda zh, ru: q.put(("final", zh, "▶ " + ru))) if q is not None else (lambda zh, ru: None)
+
+
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
     """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
     `items` yields (n, label, zh)."""
@@ -300,6 +306,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
         sess_box.append(sess)
 
     lat = getattr(a, "lat", None) or Lat()
+    bar = _to_bar(a)
     show_lat = getattr(a, "debug_latency", False)
     no_back = getattr(a, "no_back", False)
     src = getattr(a, "src", "zh")  # language the user speaks (#134: en -> the other side hears zh)
@@ -330,6 +337,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
+                bar(zh, ru)
                 u.extra["_t0"] = lat.clock()
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
                 u.future.add_done_callback(  # no audio at all: report the line without tts_first
@@ -360,7 +368,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             it["back"], it["lat"] = u.back, u.extra.get("lat", {})
 
 
-def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False, src="zh") -> None:
+def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False, src="zh", bar=None) -> None:
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
@@ -371,6 +379,8 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         lg = lang() if callable(lang) else lang
         ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
+        if bar is not None:
+            bar(zh, ru)
         t0, sent = lat.clock(), 0
         gaps, stats, info = GapMeter(lat.clock), [], {}
         for audio, sr in _synth_sentences(tts, ru, stats, info=info):
@@ -416,8 +426,9 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
 
     from .logic import Lat, TimedASR, timing_line
 
-    stop = threading.Event()
+    stop = getattr(a, "ext_stop", None) or threading.Event()  # #322: --overlay's Quit / Ctrl+C sets it
     src = getattr(a, "src", "zh")
+    bar = _to_bar(a)
     seg, sil = make_segmenter(a.chunk_s, getattr(a, "dev", "cpu"), getattr(a, "end_silence", None))
     a.lat = lat = Lat(fixed={"vad": sil})  # configured end-of-speech silence, shown as vad= in the lat line (#139)
     asr = TimedASR(asr, lat) if asr is not None else None
@@ -426,6 +437,9 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
                          gate=getattr(player, "gate", None), src=src,
                          zh_variant=getattr(a, "zh_variant", "tw")), 1))
     box: list = []
+    cleanup = _stop_live(stop, box, tts, player, previewer)
+    if getattr(a, "ext_stop", None) is not None:  # #322: the bar's Quit must also end a pending confirm prompt
+        threading.Thread(target=lambda: (stop.wait(), cleanup()), name="tlwu-speak-stop", daemon=True).start()
     print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
     try:
         if tts is None:  # text only: show zh -> ru, nothing is spoken
@@ -435,15 +449,23 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
                 lang = _target(a)
                 ru, _r = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
+                bar(zh, ru)
                 print(timing_line(lat.take(), tts=False), flush=True)  # #186
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
         else:
             _run_auto_live(items, mt, tts, player, res, lambda: _target(a), lat,
-                           getattr(a, "debug_latency", False), src)
+                           getattr(a, "debug_latency", False), src, bar)
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
+        cleanup()
+
+
+def _stop_live(stop, box, tts, player, previewer):
+    """Stop capture, abort confirm sessions, kill the TTS subprocess, mute output. Safe to call twice: once from
+    the --overlay watcher (#322: the worker may sit in a confirm prompt) and once when _live_main returns."""
+    def cleanup() -> None:
         stop.set()
         for sess in box:
             sess.abort()
@@ -454,6 +476,8 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
                 pass
         player.enabled = False
         previewer.enabled = False
+
+    return cleanup
 
 
 def choose_speak_mt(kind: str, device: str, mdir, free_mib=None) -> tuple[str, str]:
@@ -609,6 +633,15 @@ def check_args(a) -> str | None:
 def main(argv=None) -> int:
     vm: list = []
     try:
+        ap = build_parser()
+        pre = ap.parse_args(argv)
+        if pre.overlay:  # #322: Tk owns the main thread, speak (+listen) runs on a worker
+            from ..overlay import run_listen
+
+            if pre.mic is None:
+                ap.error("--overlay needs live input (--mic)")
+
+            return run_listen(lambda q, stop: _main(argv, vm, q, stop))
         return _main(argv, vm)
     except KeyboardInterrupt:  # second Ctrl+C during shutdown (or Ctrl+C while loading): quit quietly
         print("\nstopping...", flush=True)
@@ -698,6 +731,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="also play the sent Russian audio on this device (your own headphones); default off")
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
+    ap.add_argument("--overlay", action="store_true",
+                    help="live (--mic): also show the subtitles in an always-on-top, draggable bar (▶ what you said, "
+                         "◀ the other side with --listen); position and font size are remembered in gui.json")
     ap.add_argument("--listen", nargs=argparse.REMAINDER, default=None, metavar="TLWU_ARGS",
                     help="listen+speak in one window (#285): everything after --listen is passed to the listen side "
                          "(same options as tlwu, e.g. --listen --lang auto); it runs in this process and shares the "
@@ -710,12 +746,14 @@ class ListenSide:
     (◀ Them) as the speak side's (▶ Me); close() stops it. Errors on the listen side are reported and leave
     the speak side running."""
 
-    def __init__(self, argv, run=None, parse=None):
+    def __init__(self, argv, run=None, parse=None, bar_q=None):
         from .. import cli
 
-        bad = [x for x in argv if x in ("--stream", "--gui", "--report", "--probe")]
+        bad = [x for x in argv if x in ("--stream", "--gui", "--report", "--probe", "--overlay")]
         if bad:
-            raise ValueError(f"--listen: {bad[0]} is not available next to the speak side")
+            hint = " (put --overlay before --listen: one bar shows both sides)" if bad[0] == "--overlay" else ""
+            raise ValueError(f"--listen: {bad[0]} is not available next to the speak side{hint}")
+        self.bar_q = bar_q
         self.args = (parse or cli.parse_args)(list(argv))
         self._run = run or cli.run_session
         self.stop = threading.Event()
@@ -724,7 +762,14 @@ class ListenSide:
 
     def _body(self) -> None:
         try:
-            self._run(self.args, stop=self.stop)
+            if self.bar_q is None:
+                self._run(self.args, stop=self.stop)
+            else:  # #322: the other side's lines also go to the shared bar, marked ◀
+                from ..overlay import OverlaySink
+                from ..sink import TextSink, TranscriptSink
+
+                base = TranscriptSink() if self.args.transcript_only else TextSink()
+                self._run(self.args, stop=self.stop, sink=OverlaySink(base, self.bar_q, prefix="◀ "))
         except BaseException as e:  # noqa: BLE001 - SystemExit from a missing model too: report, keep speaking
             self.error = e
             if not self.stop.is_set():
@@ -740,13 +785,14 @@ class ListenSide:
             self.thread.join(timeout)
 
 
-def _main(argv, vm) -> int:
+def _main(argv, vm, bar_q=None, stop=None) -> int:
     ap = build_parser()
     a = ap.parse_args(argv)
+    a.bar_q, a.ext_stop = bar_q, stop  # #322 --overlay (None otherwise)
     listen = None
     if a.listen is not None:  # #285: both sides in this process; split one CPU budget (threads.py)
         try:
-            listen = ListenSide(a.listen)
+            listen = ListenSide(a.listen, bar_q=bar_q)
         except ValueError as e:
             ap.error(str(e))
         os.environ["TLWU_BOTH"] = "1"
