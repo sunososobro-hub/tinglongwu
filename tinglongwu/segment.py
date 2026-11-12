@@ -83,5 +83,7 @@ class Segmenter:
     def _flush(self, buf, fresh):
         if self.use_vad:
             spans = self.vad(buf) if len(buf) else []
+            if spans:  # #323: the silence after the speech at end of input (shorter than min_silence)
+                self.last_pause = (len(buf) - spans[-1][1]) / SR + self.pad
             return buf[max(0, spans[0][0] - self.ov):] if spans else None
         return buf if fresh > SR // 2 else None

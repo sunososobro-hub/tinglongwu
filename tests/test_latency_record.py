@@ -29,9 +29,9 @@ TOL = 0.10
 class _Clip(AudioSource):
     """0.5 s of noise then silence; records the wall time each frame is handed on (after PacedSource's wait)."""
 
-    def __init__(self):
+    def __init__(self, clip_s=CLIP_S):
         rng = np.random.default_rng(0)
-        audio = np.zeros(int(CLIP_S * SAMPLE_RATE), np.float32)
+        audio = np.zeros(int(clip_s * SAMPLE_RATE), np.float32)
         audio[: int(SPEECH_S * SAMPLE_RATE)] = rng.uniform(-0.2, 0.2, int(SPEECH_S * SAMPLE_RATE))
         self.audio, self.released = audio, []
 
@@ -170,3 +170,44 @@ def test_run_session_unpaced_file_unchanged(monkeypatch, tmp_path):
     seen = _session(monkeypatch, tmp_path, [])
     assert not isinstance(seen["source"], PacedSource)
     assert seen["kw"]["audio_clock"] is True and seen["kw"]["on_record"] is None
+
+
+class _WriteOnlySink(Sink):
+    def __init__(self):
+        self.lines = []
+
+    def write(self, r):
+        self.lines.append((time.monotonic(), r))
+
+
+def test_eof_segment_keeps_its_trailing_silence():
+    """0.4 s of silence at the end of the file (< the 0.6 s VAD pause): the end-of-input flush cuts the segment; vad
+    is the time since the speech ended (0.4 s), not ~0."""
+    clip, sink, records = _Clip(SPEECH_S + 0.4), _WriteOnlySink(), []
+    run(_Stamped(PacedSource(clip), clip), Segmenter(chunk=10.0, use_vad=True, step=0.25, vad_fn=_vad), _Asr(),
+        _Mt(), sink, "zh", merger=None, audio_clock=False, on_record=records.append)
+    t_eos = clip.released[int(SPEECH_S * SAMPLE_RATE) // FRAME - 1]
+    assert records[0]["vad"] == pytest.approx(0.4, abs=TOL)
+    assert records[0]["total"] == pytest.approx(sink.lines[0][0] - t_eos, abs=TOL)
+
+
+def test_sink_without_source_line_has_no_t_source_shown():
+    clip, records = _Clip(), []
+    run(clip, Segmenter(chunk=10.0, use_vad=True, step=0.25, vad_fn=_vad), _Asr(), _Mt(), _WriteOnlySink(), "zh",
+        audio_clock=False, on_record=records.append)
+    assert records[0]["t_source_shown"] is None
+
+
+def test_merger_units_keep_their_own_segment_tag():
+    """A buffered unit released by a later segment (language change, timeout) keeps the earlier segment's tag."""
+    from tinglongwu.merge import SentenceMerger
+
+    m = SentenceMerger(max_wait=5.0)
+    assert m.add("so we went to the", "en", 0.0, tag="A") == []
+    out = m.add("Привет всем.", "ru", 1.0, tag="B")  # language change: the English buffer is released first
+    assert [(u.text, u.tag) for u in out] == [("so we went to the", "A"), ("Привет всем.", "B")]
+    m.add("and then", "en", 2.0, tag="C")
+    assert m.add("", "en", 3.0, tag="D") == []  # nothing new heard: buffer still C's
+    assert [(u.text, u.tag) for u in m.due(10.0)] == [("and then", "C")]
+    assert [(u.text, u.tag) for u in m.add("it rained. and", "en", 11.0, tag="E")] == [("it rained.", "E")]
+    assert [u.tag for u in m.flush()] == ["E"]

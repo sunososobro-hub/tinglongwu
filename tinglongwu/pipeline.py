@@ -67,7 +67,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     on_record(dict) (#323, live clock only): once per final line, seconds (3 decimals) from the end of speech:
     vad (end of speech -> segment cut), asr (cut -> ASR done, incl. waiting for the ASR thread), merge (held for a
     sentence end), mt (MT queue + translate + output), total (end of speech -> final line shown; the sum of the four),
-    t_source_shown (end of speech -> source line shown, None without one), plus lang and text. End of speech = the
+    t_source_shown (end of speech -> source line handed to a sink that shows it, None otherwise), plus lang and
+    text. A unit held by the merger keeps the marks of the newest segment whose text it holds. End of speech = the
     arrival time of the last speech sample the VAD saw (last frame arrival minus the silence after the speech).
 
     With a merger, ASR text is held until a sentence ends, or max_wait seconds passed (a timer wakes
@@ -127,6 +128,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     last_asr = [0.0]  # seconds the newest segment spent in ASR
     last_len = [0.0]  # seconds of audio in the newest segment
     last_marks = [None]  # (end of speech, cut, ASR done) of the newest transcribed segment (#323 on_record)
+    # #323: a sink that does not override write_source shows no source line, so it gets no t_source_shown
+    shows_source = getattr(type(sink), "write_source", Sink.write_source) is not Sink.write_source
     say = log or (lambda m: None)
     if log is not None and draft is not None and getattr(draft, "log", None):
         say = lambda m: draft._log(m.removeprefix("latency: "))  # noqa: E731 - clears the draft block first
@@ -205,8 +208,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             t_src = None
             if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
                 sink.write_source(lang, text)  # #53: the source line now, its translation when MT is done
-                t_src = time.monotonic()
-            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], last_marks[0], t_src))
+                t_src = time.monotonic() if shows_source else None
+            marks = u.tag if u.tag is not None else last_marks[0]  # the unit's own segment, not the newest one
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src))
 
     def check_worker() -> None:
         if failed:
@@ -259,10 +263,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 print(f"tlwu: {who}", file=sys.stderr, flush=True)
                 say(f"latency: spk {spk:.3f} s ({who})")
             if merger is None or translator is None:
-                emit_units([Unit(t.text, t.lang, False)])
+                emit_units([Unit(t.text, t.lang, False, marks)])
                 continue
             emit_units(merger.add(t.text, script_lang(t.text, t.lang), stamp if audio_clock else time.monotonic(),
-                                   forced_cut=forced_cut, pause=pause))
+                                   forced_cut=forced_cut, pause=pause, tag=marks))
         if merger is not None and translator is not None:
             emit_units(merger.flush())
         mtq.put(_DONE)
