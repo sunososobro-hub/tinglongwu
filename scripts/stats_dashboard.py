@@ -211,6 +211,8 @@ h1{font-size:20px}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minma
 @media(max-width:480px){.grid{grid-template-columns:1fr}}
 .c.w{grid-column:1/-1}.c{background:var(--card);border-radius:8px;padding:10px}.c h2{font-size:14px;margin:0 0 6px}.c div{position:relative;height:240px}
 small{color:var(--mut)}
+.bd{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff;vertical-align:middle;cursor:help}.bd.ok{background:#16a34a}.bd.bad{background:#dc2626}.bd.na{background:#6b7280}
+.rule{display:block;color:var(--mut);font-size:11px;font-weight:400;margin-top:2px}
 </style></head><body>
 <h1><a id="rn" style="color:inherit"></a> stats <small id="gen"></small></h1>
 <div class="kpis" id="kpis"></div>
@@ -234,8 +236,29 @@ Chart.defaults.color=css('--fg');Chart.defaults.borderColor=css('--grid');Chart.
 document.getElementById('rn').textContent=d.repo;document.getElementById('rn').href='https://github.com/'+d.repo;
 document.getElementById('gen').textContent='updated '+d.generated_at;
 const cm=d.community,hr=v=>v==null?'n/a':v+'h';
-[['Stars',d.stars],['Open issues',d.open_issues],['Median 1st response',hr(cm.median_first_response_h)],['Median PR merge',hr(cm.median_pr_merge_h)],['Contributors',cm.total_contributors]]
-.forEach(([l,v])=>{document.getElementById('kpis').insertAdjacentHTML('beforeend','<div class="k"><b>'+v+'</b><span>'+l+'</span></div>')});
+// ---- good / needs-attention markers (rules shown as tooltip + caption) ----
+const NOW=Date.parse(d.generated_at),DAY=864e5,sn0=d.snapshots||[];
+const snap7=()=>{const old=sn0.filter(s=>NOW-Date.parse(s.t)>=7*DAY);return old.length?old[old.length-1]:(sn0.length>1?sn0[0]:null)};
+const lastN=(a,n)=>a.slice(-n).map(x=>x[1]||0),sum=a=>a.reduce((x,y)=>x+y,0);
+const lastVal=a=>{for(let i=a.length-1;i>=0;i--)if(a[i][1]!=null)return a[i][1];return null};
+const badge=(ok,rule)=>{const t=ok==null?'na':ok?'ok':'bad',w=ok==null?'n/a':ok?'OK':'Watch';return '<span class="bd '+t+'" title="'+rule+'">'+w+'</span><span class="rule">'+rule+'</span>'};
+const R={
+ commits24:()=>[sum(lastN(d.commits_per_hour,24))>0,'Rule: commits in last 24h > 0'],
+ commitsDays:()=>[lastN(d.commits_per_day,7).filter(x=>x>0).length>=3,'Rule: commits on at least 3 of the last 7 days'],
+ stars:()=>{const o=snap7();return o?[d.stars>=o.stars,'Rule: stars not lower than 7 days ago']:[null,'Rule: stars not lower than 7 days ago (needs history)']},
+ growth:()=>{const o=snap7(),r='Rule: open issues grew <= 20% over 7d (and forks not down)';return o?[d.open_issues<=Math.max(o.open_issues*1.2,o.open_issues+1)&&d.forks>=o.forks,r]:[null,r+' (needs history)']},
+ resp:()=>{const v=lastVal(cm.first_response_h);return [v==null?null:v<=48,'Rule: latest weekly median first response <= 48h']},
+ merge:()=>{const v=lastVal(cm.pr_merge_h);return [v==null?null:v<=72,'Rule: latest weekly median PR merge <= 72h']},
+ contrib:()=>[sum(lastN(cm.new_contributors,4))>0,'Rule: at least 1 new contributor in last 4 weeks'],
+ oc:()=>[sum(lastN(cm.issues_closed,4))>=sum(lastN(cm.issues_opened,4)),'Rule: issues closed >= opened over last 4 weeks'],
+ rel:()=>[sum(lastN(cm.releases,4))>0,'Rule: at least 1 release/tag in last 4 weeks'],
+ p0:()=>{const n=d.open_issues_by_label.filter(x=>/^(p0|priority[: /-]*0|severity[: /-]*0)/i.test(x[0])).reduce((a,x)=>a+x[1],0);return [n===0,'Rule: open P0 issues == 0 (now '+n+')']}
+};
+const mk=k=>{const [ok,r]=R[k]();return badge(ok,r)};
+const mark=(cid,k)=>document.getElementById(cid).closest('.c').querySelector('h2').insertAdjacentHTML('beforeend',mk(k));
+[['Stars',d.stars,'stars'],['Open issues',d.open_issues,'growth'],['Median 1st response',hr(cm.median_first_response_h),'resp'],['Median PR merge',hr(cm.median_pr_merge_h),'merge'],['Contributors',cm.total_contributors,'contrib']]
+.forEach(([l,v,k])=>{document.getElementById('kpis').insertAdjacentHTML('beforeend','<div class="k"><b>'+v+'</b><span>'+l+mk(k)+'</span></div>')});
+[['ch','commits24'],['cd','commitsDays'],['st','stars'],['sn','growth'],['fr','resp'],['pm','merge'],['nc','contrib'],['oc','oc'],['rl','rel'],['lb','p0']].forEach(([c,k])=>mark(c,k));
 const lab=a=>a.map(x=>x[0]),val=a=>a.map(x=>x[1]);
 new Chart(ch,{type:'bar',data:{labels:lab(d.commits_per_hour).map(s=>s.slice(5,13).replace('T',' ')+'h'),datasets:[{data:val(d.commits_per_hour),backgroundColor:css('--c1')}]},options:{plugins:{legend:{display:false}}}});
 new Chart(cd,{type:'bar',data:{labels:lab(d.commits_per_day),datasets:[{data:val(d.commits_per_day),backgroundColor:css('--c2')}]},options:{plugins:{legend:{display:false}}}});
