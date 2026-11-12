@@ -52,6 +52,15 @@ def _record(item, t_shown: float) -> dict:
             "t_source_shown": None if item[7] is None else r(item[7] - eos), "lang": lang, "text": text}
 
 
+def sink_shows_source(sink) -> bool:
+    """#323: True if `sink` displays source lines (overrides write_source); a wrapper sink may say so itself via a
+    `shows_source` attribute (#330 VoiceSink forwards its inner sink's answer)."""
+    own = getattr(sink, "shows_source", None)
+    if own is not None:
+        return bool(own)
+    return getattr(type(sink), "write_source", Sink.write_source) is not Sink.write_source
+
+
 def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
@@ -129,7 +138,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     last_len = [0.0]  # seconds of audio in the newest segment
     last_marks = [None]  # (end of speech, cut, ASR done) of the newest transcribed segment (#323 on_record)
     # #323: a sink that does not override write_source shows no source line, so it gets no t_source_shown
-    shows_source = getattr(type(sink), "write_source", Sink.write_source) is not Sink.write_source
+    shows_source = sink_shows_source(sink)
     say = log or (lambda m: None)
     if log is not None and draft is not None and getattr(draft, "log", None):
         say = lambda m: draft._log(m.removeprefix("latency: "))  # noqa: E731 - clears the draft block first

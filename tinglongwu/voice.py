@@ -62,6 +62,12 @@ class VoiceSink(Sink):
         self.t = threading.Thread(target=self._run, name="tlwu-voice", daemon=True)
         self.t.start()
 
+    @property
+    def shows_source(self) -> bool:  # #323 t_source_shown: only if the subtitle sink really shows source lines
+        from .pipeline import sink_shows_source
+
+        return sink_shows_source(self.inner)
+
     def write_source(self, src: str, original: str) -> None:
         self.inner.write_source(src, original)
 
@@ -100,14 +106,26 @@ def kokoro_paths(mdir: Path, tts_python: str | None = None, tts_model: str | Non
     return tts_python, tts_model or str(Path(mdir) / "kokoro")
 
 
+def wait_drained(player, timeout: float = 60.0, poll: float = 0.02) -> None:
+    """Block until `player` has handed all queued audio to the device (Player.push does not wait), so the next line
+    waits in VoiceSink's bounded backlog instead of piling up as audio in Player.q."""
+    import time
+
+    q, end = getattr(player, "q", None), time.monotonic() + timeout
+    while q is not None and not q.empty() and time.monotonic() < end:
+        time.sleep(poll)
+
+
 def make_speaker(tts, player):
-    """speak(text) for VoiceSink: streamed Kokoro pieces (reverse/proto._synth_sentences) pushed to `player`."""
+    """speak(text) for VoiceSink: streamed Kokoro pieces (reverse/proto._synth_sentences) pushed to `player`;
+    returns when that audio has been handed to the device."""
     from .reverse.proto import _synth_sentences
 
     def speak(text: str) -> None:
         info: dict = {}
         for audio, sr in _synth_sentences(tts, text, info=info):
             player.push(audio, sr)
+        wait_drained(player)
         if info.get("errors"):  # e.g. misaki[zh] missing in the Kokoro venv: say why instead of staying silent
             raise RuntimeError(info["errors"][0])
 

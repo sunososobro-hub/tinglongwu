@@ -281,3 +281,40 @@ def test_close_keeps_the_voice_open_while_the_worker_is_still_speaking():
     assert sink.close(timeout=0.05) is False  # still speaking: caller must not close the TTS client/player
     gate.set()
     sink.t.join(5)
+
+
+def test_speak_waits_for_playback_so_audio_does_not_pile_up_behind_the_backlog():
+    """Synthesis faster than playback: speak() returns only once the player's queue is drained, so later lines wait
+    in VoiceSink's 2-line backlog (where stale ones are skipped) instead of queuing as audio."""
+    import queue as _queue
+
+    class _SlowPlayer(_Player):
+        def __init__(self):
+            super().__init__("Headphones")
+            self.q = _queue.Queue()
+            threading.Thread(target=self._play, daemon=True).start()
+
+        def push(self, audio, sr):
+            self.q.put(audio)
+
+        def _play(self):
+            while True:
+                self.q.get()
+                time.sleep(0.1)  # one piece takes 0.1 s to play
+                self.played = getattr(self, "played", 0) + 1
+
+    player = _SlowPlayer()
+    speak = voice.make_speaker(_Tts("py", "m", "kokoro", 0, "zh"), player)
+    speak("你好。")
+    assert player.q.empty()
+
+
+def test_voice_wrapper_reports_whether_the_subtitle_sink_shows_source_lines():
+    from tinglongwu.pipeline import sink_shows_source
+
+    class _NoSource(Sink):
+        def write(self, r):
+            pass
+
+    assert sink_shows_source(voice.VoiceSink(_Lines(), lambda t: None)) is True
+    assert sink_shows_source(voice.VoiceSink(_NoSource(), lambda t: None)) is False  # no false t_source_shown
