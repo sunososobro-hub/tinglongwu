@@ -84,10 +84,12 @@ class VoiceSink(Sink):
             except Exception as e:  # noqa: BLE001 - one bad line must not stop the voice or the subtitles
                 self.on_error(e)
 
-    def close(self, timeout: float = 30.0) -> None:
-        """Speak what is queued, then stop the worker."""
+    def close(self, timeout: float = 30.0) -> bool:
+        """Speak what is queued (at most max_backlog lines), then stop the worker. False if it is still speaking
+        after `timeout` (the caller must then keep the TTS client and player open)."""
         self.q.put(None)
         self.t.join(timeout)
+        return not self.t.is_alive()
 
 
 def kokoro_paths(mdir: Path, tts_python: str | None = None, tts_model: str | None = None) -> tuple[str, str]:
@@ -103,8 +105,11 @@ def make_speaker(tts, player):
     from .reverse.proto import _synth_sentences
 
     def speak(text: str) -> None:
-        for audio, sr in _synth_sentences(tts, text):
+        info: dict = {}
+        for audio, sr in _synth_sentences(tts, text, info=info):
             player.push(audio, sr)
+        if info.get("errors"):  # e.g. misaki[zh] missing in the Kokoro venv: say why instead of staying silent
+            raise RuntimeError(info["errors"][0])
 
     return speak
 
@@ -148,7 +153,9 @@ def open_voice(a, mdir, inner: Sink, say) -> tuple[VoiceSink, callable]:
     sink = VoiceSink(inner, make_speaker(tts, player), on_error=lambda e: say(f"tlwu: voice error: {e}"))
 
     def close() -> None:
-        sink.close()
+        if not sink.close():
+            say("tlwu: voice still speaking at exit; left it running")
+            return
         player.close()
         tts.close()
 

@@ -34,7 +34,7 @@ def test_voice_is_off_by_default():
 
 
 @pytest.mark.parametrize("argv", [["--voice", "--transcript-only"], ["--voice-device", "Headphones"],
-                                  ["--voice-speaker", "2"]])
+                                  ["--voice-speaker", "2"], ["--voice-speaker", "0"]])
 def test_voice_option_misuse_exits_2(argv):
     with pytest.raises(SystemExit) as e:
         cli.parse_args(argv)
@@ -256,3 +256,28 @@ def test_voice_skips_stale_lines_instead_of_falling_behind():
     sink.close()
     assert spoken == ["一", "四", "五"] and sink.dropped == 2
     assert inner.lines == ["一", "二", "三", "四", "五"]
+
+
+def test_worker_error_with_no_audio_is_reported_not_silent(fakes, tmp_path):
+    class _Broken(_Tts):
+        def speak(self, text, lang=None):
+            yield {"t": "error", "msg": "No module named 'misaki'"}, None
+
+    from tinglongwu.reverse import tts_client
+
+    tts_client.TTSClient = _Broken  # restored by the fixture's monkeypatch
+    said = []
+    a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
+    sink, close = voice.open_voice(a, tmp_path, _Lines(), said.append)
+    sink.write(_r("你好。"))
+    close()
+    assert any("misaki" in m for m in said) and fakes[0].pushed == []
+
+
+def test_close_keeps_the_voice_open_while_the_worker_is_still_speaking():
+    gate = threading.Event()
+    sink = voice.VoiceSink(_Lines(), lambda text: gate.wait(5))
+    sink.write(_r("長句。"))
+    assert sink.close(timeout=0.05) is False  # still speaking: caller must not close the TTS client/player
+    gate.set()
+    sink.t.join(5)

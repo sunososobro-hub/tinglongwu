@@ -121,7 +121,7 @@ def parse_args(argv=None):
                         "be the one being captured or a virtual cable (it would be translated again)")
     p.add_argument("--voice-device", default=None, metavar="NAME",
                    help="with --voice: output device name substring (default: the system default output)")
-    p.add_argument("--voice-speaker", type=int, default=0, metavar="N",
+    p.add_argument("--voice-speaker", type=int, default=None, metavar="N",
                    help="with --voice: Kokoro voice 0-4 of the target language (default 0)")
     p.add_argument("--tts-python", default="", help=argparse.SUPPRESS)
     p.add_argument("--tts-model", default="", help=argparse.SUPPRESS)
@@ -150,8 +150,9 @@ def parse_args(argv=None):
         p.error("--latency-jsonl with --file needs --paced (an unpaced file runs faster than real time)")
     if a.voice and a.transcript_only:
         p.error("--voice needs translations (not --transcript-only)")
-    if (a.voice_device or a.voice_speaker) and not a.voice:
+    if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
         p.error("--voice-device / --voice-speaker need --voice")
+    a.voice_speaker = 0 if a.voice_speaker is None else a.voice_speaker
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
