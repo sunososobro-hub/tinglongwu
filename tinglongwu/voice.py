@@ -46,15 +46,17 @@ def voice_output_problem(out_name: str | None, capture_name: str | None) -> str 
     return None
 
 
+MAX_BACKLOG = 2  # unspoken lines kept while one is being spoken; older ones are skipped (the subtitle has them)
+
+
 class VoiceSink(Sink):
     """Writes every line to `inner` (subtitles unchanged), then queues `r.target` for `speak(text)` on a worker
-    thread, so a slow voice never delays the next subtitle. Lines are spoken in order; on_spoken(text, seconds from
-    write to speak() start) is optional (latency logging)."""
+    thread, so a slow voice never delays the next subtitle. Lines are spoken in order; when more than
+    `max_backlog` are waiting, the oldest waiting ones are skipped (counted in `dropped`), so the voice stays close
+    to live speech instead of falling further behind."""
 
-    def __init__(self, inner: Sink, speak, clock=None, on_error=None):
-        import time
-
-        self.inner, self.speak, self.clock = inner, speak, clock or time.perf_counter
+    def __init__(self, inner: Sink, speak, on_error=None, max_backlog: int = MAX_BACKLOG):
+        self.inner, self.speak, self.max_backlog, self.dropped = inner, speak, max(1, max_backlog), 0
         self.on_error = on_error or (lambda e: None)
         self.q: queue.Queue = queue.Queue()
         self.t = threading.Thread(target=self._run, name="tlwu-voice", daemon=True)
@@ -67,6 +69,12 @@ class VoiceSink(Sink):
         self.inner.write(r)
         text = (r.target or "").strip()
         if text:
+            while self.q.qsize() >= self.max_backlog:
+                try:
+                    self.q.get_nowait()
+                    self.dropped += 1
+                except queue.Empty:
+                    break
             self.q.put(text)
 
     def _run(self) -> None:

@@ -41,7 +41,7 @@ def test_voice_option_misuse_exits_2(argv):
     assert e.value.code == 2
 
 
-def _session(monkeypatch, tmp_path, extra, opened):
+def _session(monkeypatch, tmp_path, extra, opened, run=None):
     from tinglongwu import asr as asr_mod
     from tinglongwu import device as device_mod
     from tinglongwu import minspec
@@ -66,8 +66,9 @@ def _session(monkeypatch, tmp_path, extra, opened):
     monkeypatch.setattr(asr_mod, "FasterWhisperRecognizer", lambda *a, **k: _A())
     monkeypatch.setattr(cli, "make_translator", lambda *a, **k: _T())
     monkeypatch.setattr(cli, "select_backend", lambda *a, **k: object())
-    monkeypatch.setattr(pipeline_mod, "run", lambda source, seg, asr, mt, sink, *a, **k: seen.update(sink=sink))
+    monkeypatch.setattr(pipeline_mod, "run", run or (lambda source, seg, asr, mt, sink, *a, **k: seen.update(sink=sink)))
     monkeypatch.setattr(voice, "open_voice", fake_open_voice)
+    monkeypatch.setattr(cli, "announce_ready", lambda *a, **k: opened.append("ready"))
     cli.run_session(cli.parse_args(["--file", str(tmp_path / "in.wav"), "--model", "tiny", "--lang", "ru",
                                     "--models-dir", str(tmp_path)] + extra), sink=_Lines())
     return seen
@@ -76,14 +77,25 @@ def _session(monkeypatch, tmp_path, extra, opened):
 def test_run_session_without_voice_never_opens_it(monkeypatch, tmp_path):
     opened = []
     seen = _session(monkeypatch, tmp_path, [], opened)
-    assert opened == [] and isinstance(seen["sink"], _Lines)
+    assert opened == ["ready"] and isinstance(seen["sink"], _Lines)
 
 
 def test_run_session_with_voice_wraps_the_subtitle_sink_and_closes_it(monkeypatch, tmp_path):
     opened = []
     seen = _session(monkeypatch, tmp_path, ["--voice"], opened)
     assert isinstance(seen["sink"], voice.VoiceSink) and isinstance(seen["sink"].inner, _Lines)
-    assert opened[-1] == "closed"
+    assert opened[1:] == ["ready", "closed"]  # ready is announced after the voice loaded
+
+
+def test_run_session_closes_the_voice_when_the_run_fails(monkeypatch, tmp_path):
+    opened = []
+
+    def boom(*a, **k):
+        raise RuntimeError("audio device lost")
+
+    with pytest.raises(RuntimeError):
+        _session(monkeypatch, tmp_path, ["--voice"], opened, run=boom)
+    assert opened[-1] == "closed"  # Kokoro worker and player are not leaked (GUI runs many sessions)
 
 
 # --- echo guard ---------------------------------------------------------------------------------------------------
@@ -183,18 +195,21 @@ def test_open_voice_speaks_chinese_on_the_earphones(fakes, tmp_path):
 
 def test_voice_sink_keeps_subtitles_identical_and_never_waits_for_the_voice():
     plain, voiced, spoken = _Lines(), _Lines(), []
-    gate = threading.Event()
+    gate, started = threading.Event(), threading.Event()
 
     def slow_speak(text):
+        started.set()
         gate.wait(5)
         spoken.append(text)
 
     sink = voice.VoiceSink(voiced, slow_speak)
     lines = ["第一句。", "", "第二句。", "第三句。"]
     t0 = time.perf_counter()
-    for t in lines:
+    for i, t in enumerate(lines):
         plain.write(_r(t))
         sink.write(_r(t))
+        if i == 0:
+            assert started.wait(5)  # the first line is being spoken (blocked) while the rest arrive
     sink.write_source("ru", "привет")
     assert time.perf_counter() - t0 < 0.2  # the voice is still blocked: subtitles were not delayed
     assert voiced.lines == plain.lines and voiced.sources == ["привет"]
@@ -221,3 +236,23 @@ def test_voice_error_on_one_line_does_not_stop_the_next():
 def test_kokoro_paths_default_to_talk_setup(tmp_path):
     py, model = voice.kokoro_paths(tmp_path)
     assert "tts-kokoro" in py and model == str(tmp_path / "kokoro")
+
+
+def test_voice_skips_stale_lines_instead_of_falling_behind():
+    """Translation faster than the voice: at most 2 lines wait; older waiting ones are skipped (subtitles keep all)."""
+    started, gate, spoken, inner = threading.Event(), threading.Event(), [], _Lines()
+
+    def speak(text):
+        started.set()
+        gate.wait(5)
+        spoken.append(text)
+
+    sink = voice.VoiceSink(inner, speak)
+    sink.write(_r("一"))
+    assert started.wait(5)  # "一" is being spoken
+    for t in ("二", "三", "四", "五"):
+        sink.write(_r(t))
+    gate.set()
+    sink.close()
+    assert spoken == ["一", "四", "五"] and sink.dropped == 2
+    assert inner.lines == ["一", "二", "三", "四", "五"]

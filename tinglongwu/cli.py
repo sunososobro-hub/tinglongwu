@@ -414,15 +414,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         save_path = a.save or default_save_path()
         sink = JsonlSaveSink(sink, save_path)
         print(f"tlwu: saving final lines to {os.path.abspath(save_path)}", file=sys.stderr)
-    close_voice = None
-    if getattr(a, "voice", False):  # #330: spoken translation; subtitles still go to `sink` first
-        from .voice import open_voice
-
-        note("loading voice...")
-        sink, close_voice = open_voice(a, mdir, sink, warn)
     if stop is not None and stop.is_set():
-        if close_voice is not None:
-            close_voice()
         return
     source = select_backend(a.file, a.mic, a.device)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
@@ -451,10 +443,16 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         note("loading speaker model...")
         labeler = make_labeler(mdir)
-    announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
+    close_voice = None
     try:
+        if getattr(a, "voice", False):  # #330: opened last, so every exit path below closes it
+            from .voice import open_voice
+
+            note("loading voice...")
+            sink, close_voice = open_voice(a, mdir, sink, warn)
+        announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
