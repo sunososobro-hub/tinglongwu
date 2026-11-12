@@ -283,14 +283,14 @@ def test_mac_menu_speak_mode_to_headphones_skips_the_virtual_mic(menu):
 
 
 def test_mac_menu_meeting_mode_listens_and_speaks(menu):
-    """Also: ending the session after the background listener already exited is a clean exit (the EXIT trap's
-    kill of a finished pid used to turn it into exit 1 under set -e)."""
+    """#285: one process: the speak side runs the listen side (--listen <tlwu args>), no background tlwu."""
     r, calls = menu("1\nn\nn\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
-    assert "tlwu --lang en --builtin-glossary" in calls
+    assert not [c for c in calls if c.startswith("tlwu")]
     [rev] = [c for c in calls if c.startswith("proto")]
     assert "--to en" in rev and "--tts-engine kokoro" in rev and "--device" not in rev
+    assert rev.endswith("--listen --lang en --builtin-glossary")
 
 
 def test_mac_install_kokoro_wrong_pin_deletes_file_and_fails(mac):

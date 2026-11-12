@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .engines import clean_output, max_tokens_for
 from .engines import load_llama as _load_llama
+from .engines import shared_llama
 from .repeat import collapse_repeats
 from .translate import Translation, Translator, strip_unk, zh_convert
 
@@ -98,7 +99,7 @@ class HyMtTranslator(Translator):
 
     def _load(self):
         if self.llm is None:
-            self.llm = self._loader(self.path, self.device == "cuda")
+            self.llm = shared_llama(self.path, self.device == "cuda", self._loader)  # one instance per process (#285)
 
     def preload(self, src: str = "", tgt: str = "") -> None:
         self._load()

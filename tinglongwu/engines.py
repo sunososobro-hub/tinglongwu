@@ -9,6 +9,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import weakref
 from pathlib import Path
 
 ENGINE_REGISTRY = {"hymt": "hymt2", "opus": "opus"}  # --engine choice -> engine name
@@ -108,3 +110,37 @@ def load_llama(path: Path, gpu: bool):
         if err is e:
             raise
         raise err from e
+
+
+class SharedLlama:
+    """One loaded GGUF used by several translators (#285: listen+speak in one process). llama.cpp contexts are
+    not thread-safe, so every completion runs under one lock: the two sides take turns, never overlap."""
+
+    def __init__(self, llm):
+        self.llm = llm
+        self.lock = threading.Lock()
+
+    def create_chat_completion(self, *a, **k):
+        with self.lock:
+            return self.llm.create_chat_completion(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self.llm, name)
+
+
+_SHARED: "weakref.WeakValueDictionary" = weakref.WeakValueDictionary()
+_SHARED_LOCK = threading.Lock()
+
+
+def shared_llama(path: Path, gpu: bool, loader=None) -> SharedLlama:
+    """`loader(path, gpu)` once per (model file, gpu, loader) in this process; later callers get the same
+    instance while any translator still holds it. The load itself runs under a lock, so two sides starting at
+    the same time still load the model once."""
+    loader = loader or load_llama
+    key = (str(Path(path).resolve()), bool(gpu), loader)
+    with _SHARED_LOCK:
+        llm = _SHARED.get(key)
+        if llm is None:
+            llm = SharedLlama(loader(path, gpu))
+            _SHARED[key] = llm
+        return llm
