@@ -514,6 +514,10 @@ def _mt_kind(v: str) -> str:
                                      "(re-run the installer to regenerate an old tlwu-talk launcher)")
 
 
+class _UnsupportedPair(RuntimeError):
+    """Hy-MT2 loaded, but a language of the pair is not one it translates."""
+
+
 class _NoFallback:
     """Base translator under JaRouter: Hy-MT2 is the only engine (#331), so a pair it cannot take, or a Hy-MT2 that
     failed mid-session, is an error with the reason instead of a silent engine switch."""
@@ -527,6 +531,8 @@ class _NoFallback:
         return f"Hy-MT2 cannot translate this ({err[:160]}); there is no fallback engine (#331)"
 
     def preload(self, src: str, tgt: str) -> None:
+        if getattr(self.router, "hy", None) is not None:
+            raise _UnsupportedPair(self._why())
         raise RuntimeError(self._why())
 
     def translate(self, text: str, src: str, tgt: str):
@@ -558,11 +564,13 @@ def build_translator(kind: str, device: str, mdir, to: str = "ru", follow_langs=
             mt.preload(src, t)  # fail early if the model cannot load
             mt.preload(t, src)  # back-translation for the confirm step
     except Exception as e:  # noqa: BLE001 - incl. OSError from a --to ja preload; KeyboardInterrupt passes
-        from ..llamacheck import FIX_HINT
+        if isinstance(e, _UnsupportedPair):  # Hy-MT2 is fine, the language is not (e.g. --follow-langs): no install hint
+            raise SystemExit(f"tlwu: {e}") from e
+        from ..llamacheck import FIX_HINT, INDEX, LLAMA_VERSION
 
-        raise SystemExit(f"tlwu: {e}. Not installed: pip install llama-cpp-python --only-binary=:all: "
-                         "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu && tlwu-setup --hymt. "
-                         f"Installed but broken: {FIX_HINT}") from e
+        wheel = f"{INDEX}/cu124" if mt_dev == "cuda" else f"{INDEX}/cpu"   # keep GPU support on a CUDA machine
+        raise SystemExit(f"tlwu: {e}. Not installed: pip install llama-cpp-python=={LLAMA_VERSION} --only-binary=:all: "
+                         f"--extra-index-url {wheel} && tlwu-setup --hymt. Installed but broken: {FIX_HINT}") from e
     mt.history, mt._pair = [], None  # same surface as the other translators for confirm.back_translate
     return mt
 

@@ -216,3 +216,35 @@ def test_build_translator_ja_preload_oserror_is_one_line_not_a_traceback(tmp_pat
     with pytest.raises(SystemExit) as e:
         build_translator("auto", "cpu", tmp_path, "ja", hy_factory=Hy, warn=lambda m: None)
     assert "llama.dll" in str(e.value) and "--force-reinstall" in str(e.value)
+
+
+@pytest.mark.parametrize("free,index", [(4000, "/cu124"), (500, "/cpu")])
+def test_install_hint_wheel_follows_where_hymt_would_run(tmp_path, free, index):
+    """Hy-MT2 on CUDA -> the CUDA wheel in the install line (the CPU wheel would drop GPU support); on CPU -> CPU wheel."""
+    _gguf(tmp_path)
+
+    def broken(*a):
+        raise ImportError("No module named 'llama_cpp'")
+
+    with pytest.raises(SystemExit) as e:
+        build_translator("auto", "cuda", tmp_path, hy_factory=broken, free_mib=lambda: free, warn=lambda m: None)
+    not_installed = str(e.value).split("Installed but broken:")[0]
+    assert f"llama-cpp-python/whl{index} && tlwu-setup --hymt" in not_installed
+
+
+def test_unsupported_language_exits_without_an_install_hint(tmp_path):
+    """Hy-MT2 loads fine but a --follow-langs language is unknown to it: say so, no misleading pip/setup line."""
+    _gguf(tmp_path)
+
+    class Hy:
+        def __init__(self, *a):
+            pass
+
+        def preload(self, *a):
+            pass
+
+    with pytest.raises(SystemExit) as e:
+        build_translator("auto", "cpu", tmp_path, "follow", follow_langs=("en", "xx"), hy_factory=Hy,
+                         warn=lambda m: None)
+    msg = str(e.value)
+    assert "not supported by Hy-MT2" in msg and "pip install" not in msg and "tlwu-setup" not in msg
