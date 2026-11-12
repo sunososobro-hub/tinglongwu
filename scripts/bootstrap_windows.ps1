@@ -56,7 +56,7 @@
         $ErrorActionPreference = 'Continue'   # git writes progress to stderr
         Write-Host $M.git
         if ($isGit) {
-            & git -C $Dir fetch --quiet --tags origin
+            & git -C $Dir fetch --quiet --force --tags origin
             & git -C $Dir checkout --quiet $Ref
         } else {
             & git clone --quiet --branch $Ref "https://github.com/$Repo.git" $Dir
