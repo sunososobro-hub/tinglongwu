@@ -8,10 +8,10 @@ name: install-clean
 on:
   push:
     branches: [dev]
-    paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-clean.yml']
+    paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
   pull_request:
     branches: [dev]
-    paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-clean.yml']
+    paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
   workflow_dispatch:
 
 permissions:
