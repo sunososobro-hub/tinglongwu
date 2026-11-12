@@ -309,7 +309,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="speak-mode self-test: clip -> speak pipeline -> virtual mic recording")
     ap.add_argument("--clip", required=True, help="Chinese test clip (wav/flac/mp3, ~20-40 s); reuse the same one each run")
     ap.add_argument("--to", default="en", choices=["en", "ru", "ja"])
-    ap.add_argument("--mt", default="auto", choices=["auto", "qwen", "opus"])
+    ap.add_argument("--mt", default="auto", choices=["auto", "hymt", "opus"])
     ap.add_argument("--whisper", default=None)
     ap.add_argument("--models-dir", default=None)
     ap.add_argument("--tts-python", default=None, help="default: ~/tts-kokoro/Scripts/python.exe (Windows) or ~/tts-kokoro/bin/python (Linux)")

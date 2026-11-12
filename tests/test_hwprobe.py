@@ -43,16 +43,16 @@ def test_probe_combines_readers():
 def test_8gb_gpu_gets_gpu_tier_with_hymt_and_turbo():
     t = recommend(HwInfo("NVIDIA GeForce RTX 3050", 8192, 32768, 20))
     assert (t.name, t.device, t.asr, t.mt) == ("gpu", "cuda", "large-v3-turbo", "hymt2")
-    assert t.excluded == {}  # 8 GB holds even turbo + Qwen3-8B (1600 + 5148 <= 8192 - 512)
+    assert t.excluded == {}  # 8 GB holds turbo + Hy-MT2 (1600 + 1500 <= 8192 - 512)
     t = recommend(HwInfo("RTX 2060", 6144, 16384, 12))
     assert (t.name, t.mt) == ("gpu", "hymt2")
-    assert list(t.excluded) == ["qwen3-8b (GPU)"]  # 1600 + 5148 > 6144 - 512; 4B still fits
+    assert t.excluded == {}  # 6 GB holds turbo + Hy-MT2 (1600 + 1500 <= 6144 - 512)
 
 
 def test_4gb_gpu_is_still_gpu_tier_but_excludes_large_models():
     t = recommend(HwInfo("GTX 1650", 4096, 8192, 8))
     assert (t.name, t.asr, t.mt) == ("gpu", "large-v3-turbo", "hymt2")
-    for m in ("whisper large-v3 (GPU)", "qwen3-4b (GPU)", "qwen3-8b (GPU)"):
+    for m in ("whisper large-v3 (GPU)",):
         assert m in t.excluded, m
     assert "hymt2 (GPU)" not in t.excluded
 
@@ -83,4 +83,4 @@ def test_cli_probe_prints_recommendation_and_exits(tmp_path):
                        env=env, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "RTX 2060" in r.stdout and "GPU tier" in r.stdout and "hymt2" in r.stdout
-    assert "not used: qwen3-8b (GPU)" in r.stdout
+    assert "qwen" not in r.stdout.lower()

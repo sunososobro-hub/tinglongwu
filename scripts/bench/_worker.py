@@ -22,11 +22,6 @@ sys.path.insert(0, str(REPO))
 
 EVAL_DIR = Path(os.environ.get("TLWU_EVAL_DIR") or (Path.home() / "tlwu-eval"))
 BASE = EVAL_DIR / "llm"
-QWEN = {
-    "qwen3-8b": (BASE / "qwen3-8b" / "Qwen3-8B-Q4_K_M.gguf", True),
-    "qwen3-4b": (BASE / "qwen3-4b" / "Qwen3-4B-Q4_K_M.gguf", True),
-    "qwen25-7b": (BASE / "qwen25-7b" / "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf", False),
-}
 LANG_NAME = {"en": "English", "ru": "Russian", "zh": "Traditional Chinese (繁體中文)"}
 MADLAD_TAG = {"en": "<2en>", "zh": "<2zh_Hant>", "ru": "<2ru>"}
 
@@ -132,41 +127,6 @@ def job_mt_tlwu(job):
     return res, {"load_s": load, "vram_mib": vr.stop(), "device": dev}
 
 
-def job_mt_qwen(job):
-    add_torch_dlls()
-    import ctypes
-
-    lib = Path(sys.prefix) / "Lib" / "site-packages" / "llama_cpp" / "lib"
-    os.add_dll_directory(str(lib))
-    for n in ("ggml-base", "ggml-cpu", "ggml-cuda", "ggml", "llama"):  # preload chain (see report)
-        ctypes.CDLL(str(lib / f"{n}.dll"))
-    from llama_cpp import Llama
-
-    name = job["engine"].split("+")[0]
-    path, qwen3 = QWEN[name]
-    use_ctx = job["engine"].endswith("+ctx")
-    system = system_for(job.get("src", "ru"), job.get("tgt", "zh"))
-    vr = VramPeak()
-    t0 = time.time()
-    llm = Llama(model_path=str(path), n_gpu_layers=-1, n_ctx=2048, flash_attn=True, verbose=False)
-    load = time.time() - t0
-
-    def one(it):
-        if not it["text"].strip():
-            return ""
-        user = it["text"]
-        if use_ctx and it.get("ctx"):
-            user = (f"Previous sentence (context only, do not translate it):\n{it['ctx']}\n\n"
-                    f"Translate this sentence:\n{it['text']}")
-        prompt = (f"<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n"
-                  f"<|im_start|>assistant\n" + ("<think>\n\n</think>\n\n" if qwen3 else ""))
-        r = llm.create_completion(prompt, max_tokens=300, temperature=0.0, stop=["<|im_end|>"])
-        return r["choices"][0]["text"].strip().replace("\n", " ")
-
-    one({"text": "Привет, как дела?", "ctx": None})  # warm-up (kernel init), not timed
-    res = timed(one, job["items"])
-    return res, {"load_s": load, "vram_mib": vr.stop(), "device": "cuda"}
-
 
 def job_mt_madlad(job):
     add_torch_dlls()
@@ -202,8 +162,6 @@ def main() -> int:
         res, meta = job_asr(job)
     elif eng == "opus":
         res, meta = job_mt_tlwu(job)
-    elif eng.startswith("qwen"):
-        res, meta = job_mt_qwen(job)
     elif eng.startswith("madlad"):
         res, meta = job_mt_madlad(job)
     else:

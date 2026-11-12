@@ -63,7 +63,7 @@ def hy_models(tmp_path, monkeypatch):
 def test_shared_mt_listen_and_speak_translators_load_hymt_once(hy_models, capsys):
     mdir, made = hy_models
     listen = cli.make_translator("hymt", mdir, "tw", "cpu")  # what run_session builds
-    speak = proto.build_translator("hymt", "cpu", mdir, "qwen3-4b", "en", src="zh")  # what proto._main builds
+    speak = proto.build_translator("hymt", "cpu", mdir, "en", src="zh")  # what proto._main builds
     assert len(made) == 1
     assert listen.hy.llm is speak.hy.llm
 
@@ -75,7 +75,7 @@ def test_shared_mt_concurrent_starts_still_load_once(hy_models):
     side = proto.ListenSide(["--lang", "ru", "--engine", "hymt"],
                             run=lambda a, stop: built.append(cli.make_translator(a.engine, mdir, "tw", "cpu")))
     side.start()
-    speak = proto.build_translator("hymt", "cpu", mdir, "qwen3-4b", "en", src="zh")
+    speak = proto.build_translator("hymt", "cpu", mdir, "en", src="zh")
     side.close()
     assert side.error is None and len(built) == 1
     assert len(made) == 1 and built[0].hy.llm is speak.hy.llm

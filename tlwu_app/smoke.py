@@ -15,7 +15,7 @@ import importlib
 import sys
 import time
 
-# (module, required). Optional = the app still runs without it (llama_cpp: Qwen only; ggml-cuda needs a GPU).
+# (module, required). Optional = the app still runs without it (llama_cpp: Hy-MT2 only; ggml-cuda needs a GPU).
 MODULES: list[tuple[str, bool]] = [
     ("numpy", True),
     ("scipy.signal", True),

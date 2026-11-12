@@ -247,7 +247,7 @@ def main(argv=None, run=subprocess.run, platform=sys.platform, admin=is_admin) -
     ap.add_argument("--listen-wav", type=Path)
     ap.add_argument("--speak-wav", type=Path, help="Chinese speech for speak + meeting mode")
     ap.add_argument("--to", default="zh", help="listen mode target language (default zh)")
-    ap.add_argument("--mt", default="opus", choices=["auto", "qwen", "opus"], help="speak/meeting MT (default opus)")
+    ap.add_argument("--mt", default="opus", choices=["auto", "hymt", "opus"], help="speak/meeting MT (default opus)")
     ap.add_argument("--compute", default="auto", choices=["auto", "cpu", "cuda"])
     ap.add_argument("--tts-python", default="", help="Kokoro venv python (adds speech synthesis to the test)")
     ap.add_argument("--tts-model", default="", help="Kokoro model dir")

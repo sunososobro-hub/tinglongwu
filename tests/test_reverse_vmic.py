@@ -71,7 +71,7 @@ def test_build_translator_opus_on_cpu(monkeypatch, tmp_path):
     import tinglongwu.translate as tr
     loaded = []
     monkeypatch.setattr(tr.PivotTranslator, "preload", lambda self, s, t: loaded.append((s, t)))
-    mt = build_translator("auto", "cpu", tmp_path, "qwen3-4b")
+    mt = build_translator("auto", "cpu", tmp_path)
     assert isinstance(mt, tr.PivotTranslator) and mt.device == "cpu"
     assert loaded == [("zh", "ru"), ("ru", "zh")] and mt.history == []
 

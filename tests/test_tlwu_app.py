@@ -173,8 +173,8 @@ def test_worker_cmd():
     d = Path("M")
     assert setup_gui.worker_cmd(False, d, ["--whisper", "small"]) == [
         sys.executable, "-m", "tlwu_app", "--run-setup", "--whisper", "small", "--models-dir", "M"]
-    c = setup_gui.worker_cmd(True, d, ["--qwen"])
-    assert c[1:] == ["--run-setup", "--qwen", "--models-dir", "M"]
+    c = setup_gui.worker_cmd(True, d, ["--hymt"])
+    assert c[1:] == ["--run-setup", "--hymt", "--models-dir", "M"]
 
 
 def test_selftest_cmd_after_download_runs_tlwu_selftest_offline():  # #99
