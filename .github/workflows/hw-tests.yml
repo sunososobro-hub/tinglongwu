@@ -77,7 +77,7 @@ jobs:
           tlwu-setup --vosk-tts-ru --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HW_CACHE/tts-kokoro/Scripts/python.exe" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
-          python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh.wav" --repeat 2
+          TLWU_KOKORO_PYTHON="$HW_CACHE/tts-kokoro/Scripts/python.exe" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \n            python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh.wav" --repeat 2
 
       - name: "#90 #139 tlwu --selftest on the real GPU (normal GPU machine must finish in < 60 s)"
         run: |
