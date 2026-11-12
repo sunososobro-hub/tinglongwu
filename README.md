@@ -16,7 +16,7 @@ Fully local and offline: [overview](docs/overview.md). Telling meeting participa
 | macOS (Terminal) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux (bash) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
-More (checksums, ZIP, GPU): [docs/install.md](docs/install.md).
+Unattended Linux (apt yes + default models): `... /install.sh | TLWU_YES=1 bash`. More (checksums, ZIP, GPU): [docs/install.md](docs/install.md).
 
 ## System requirements
 | Platform | Status |
