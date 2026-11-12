@@ -11,6 +11,6 @@ Browser-based captions and extensions work inside a browser tab and usually rely
 | No account | Often required | Yes |
 | Audio stays on your machine | Often sent to a cloud service | Yes, processed locally |
 | Speak-back voice | Not typical | Yes, speak mode |
-| Languages | Varies by product | See the [language table](../README.md#languages) |
+| Languages | Varies by product | See the [language table](details.md#languages) |
 
 Categories only: check any specific product's current behaviour yourself.

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="690" height="280" viewBox="0 0 690 280" role="img" aria-label="End-to-end latency per language and preset" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14">
+<title>End-to-end latency per language and preset</title>
+<text x="10" y="22" text-anchor="start" fill="#7d8590" font-size="13" font-weight="normal">End-to-end latency in seconds (2026-11-12, RTX 3050 8 GB, smoke runs, indicative)</text>
+<line x1="430.0" y1="34" x2="430.0" y2="236" stroke="#7d8590" stroke-dasharray="4 4"/><text x="10" y="59" text-anchor="start" fill="#6e7781" font-size="14" font-weight="normal">listen en meeting</text>
+<rect x="190" y="40" width="348.0" height="28" rx="4" fill="#388bfd" fill-opacity="0.85"/><text x="530.0" y="59" text-anchor="end" fill="#ffffff" font-size="14" font-weight="bold">2.90 s</text>
+<text x="10" y="99" text-anchor="start" fill="#6e7781" font-size="14" font-weight="normal">listen ru meeting</text>
+<rect x="190" y="80" width="295.2" height="28" rx="4" fill="#388bfd" fill-opacity="0.85"/><text x="477.2" y="99" text-anchor="end" fill="#ffffff" font-size="14" font-weight="bold">2.46 s</text>
+<text x="10" y="139" text-anchor="start" fill="#6e7781" font-size="14" font-weight="normal">listen en chat</text>
+<rect x="190" y="120" width="202.8" height="28" rx="4" fill="#388bfd" fill-opacity="0.85"/><text x="384.79999999999995" y="139" text-anchor="end" fill="#ffffff" font-size="14" font-weight="bold">1.69 s</text>
+<text x="10" y="179" text-anchor="start" fill="#6e7781" font-size="14" font-weight="normal">listen ru chat</text>
+<rect x="190" y="160" width="252.0" height="28" rx="4" fill="#388bfd" fill-opacity="0.85"/><text x="434.0" y="179" text-anchor="end" fill="#ffffff" font-size="14" font-weight="bold">2.10 s</text>
+<text x="10" y="219" text-anchor="start" fill="#6e7781" font-size="14" font-weight="normal">speak (first TTS audio)</text>
+<rect x="190" y="200" width="280.8" height="28" rx="4" fill="#a371f7" fill-opacity="0.85"/><text x="462.79999999999995" y="219" text-anchor="end" fill="#ffffff" font-size="14" font-weight="bold">2.34 s</text>
+<text x="430.0" y="254" text-anchor="middle" fill="#7d8590" font-size="12" font-weight="normal">2 s target</text>
+</svg>

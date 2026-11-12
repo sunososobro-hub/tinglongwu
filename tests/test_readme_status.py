@@ -4,9 +4,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_readmes_have_status_table():
-    for name, head in (("README.md", "## Verification status"),
-                       ("README.zh-TW.md", "## 驗證狀態"),
-                       ("README.zh-CN.md", "## 验证状态")):
+    # #347: READMEs show the verification chart; the table lives in docs/details.md and the full zh pages
+    for name, head in (("docs/details.md", "## Verification status"),
+                       ("docs/readme-full.zh-TW.md", "## 驗證狀態"),
+                       ("docs/readme-full.zh-CN.md", "## 验证状态")):
         s = (ROOT / name).read_text("utf-8")
         assert head in s, name
         assert "| | Windows | macOS | Linux |" in s, name
