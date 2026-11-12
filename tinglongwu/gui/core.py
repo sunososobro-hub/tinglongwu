@@ -55,6 +55,32 @@ def report_info(s: dict) -> dict:
             "Live draft": "on" if s.get("live_draft") else "off"}
 
 
+def doctor_lang(source_lang: str | None) -> str:
+    """Voice language for 'Check setup' (#313): the language the other side speaks and hears; ru when unknown/auto."""
+    from ..doctor import VOICE_LANGS
+
+    return source_lang if source_lang in VOICE_LANGS else "ru"
+
+
+def setup_check(lang: str, run=None) -> tuple[str, bool]:
+    """'Check setup' button (#313 part 2): the `tlwu doctor` lines (one per check, with its fix) + summary, and
+    whether nothing FAILed. `run` is doctor.run_checks (injectable for tests)."""
+    from ..doctor import FAIL, run_checks, summary
+
+    checks = (run or run_checks)(lang)
+    return "\n".join([c.line() for c in checks] + [summary(checks)]), not any(c.status == FAIL for c in checks)
+
+
+def run_setup_check(q: queue.Queue, lang: str, run=None) -> None:
+    """Worker-thread body: probes may be slow (nvidia-smi, device listing), so the result goes on the GUI queue
+    as ("doctor", text, ok); a crash in a probe is reported, never raised into the thread."""
+    try:
+        text, ok = setup_check(lang, run)
+    except Exception as e:  # noqa: BLE001
+        text, ok = f"check failed: {type(e).__name__}: {e}", False
+    q.put(("doctor", text, ok))
+
+
 def settings_path() -> Path:
     base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "tinglongwu" / "gui.json"
