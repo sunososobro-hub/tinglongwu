@@ -1,5 +1,5 @@
 # CodeRabbit: first-pass automated review. Cold Opus review remains the merge gate.
-language: zh-TW
+language: en-US
 reviews:
   profile: chill
   request_changes_workflow: false
