@@ -135,6 +135,50 @@ def patch_mixformat(mf=None) -> bool:
     return True
 
 
+# #317: WASAPI AUDCLNT_E_DEVICE_INVALIDATED / AUDCLNT_E_RESOURCES_INVALIDATED (soundcard raises
+# RuntimeError("Error 0x88890004")); the recorder's __exit__ then fails with "Error 0x100000001".
+DEVICE_LOST_CODES = ("0x88890004", "0x88890026")
+REOPEN_LIMIT = 5        # consecutive failed reopen attempts before giving up
+BACKOFF_FIRST = 0.5     # seconds, doubled per consecutive failure
+BACKOFF_MAX = 5.0
+
+
+class AudioDeviceLost(RuntimeError):
+    """The capture device went away and could not be reopened (one-line message, no traceback)."""
+
+
+def device_lost(e: BaseException) -> bool:
+    return isinstance(e, RuntimeError) and any(c in str(e).lower() for c in DEVICE_LOST_CODES)
+
+
+def backoff(failures: int) -> float:
+    """Wait before reopen attempt number `failures` (1-based): 0.5, 1, 2, 4, 5, 5 ... seconds."""
+    return min(BACKOFF_FIRST * 2 ** (failures - 1), BACKOFF_MAX)
+
+
+def _short(e: BaseException) -> str:
+    return (str(e) or type(e).__name__).splitlines()[0][:120]
+
+
+@contextlib.contextmanager
+def _recorder(mic):
+    """mic.recorder() whose __exit__ error (Error 0x100000001 on an invalidated device) never hides the device-loss
+    error that ended the block; on a normal exit its errors still surface."""
+    cm = mic.recorder(samplerate=NATIVE_RATE, channels=2)
+    rec = cm.__enter__()
+    try:
+        yield rec
+    except BaseException as e:
+        try:
+            cm.__exit__(type(e), e, e.__traceback__)
+        except Exception:  # noqa: BLE001 - the device is already gone; report the original error
+            if not device_lost(e):
+                raise
+        raise
+    else:
+        cm.__exit__(None, None, None)
+
+
 class SoundcardSource(AudioSource):
     def __init__(self, device: str | None = None):
         self.device = device
@@ -154,18 +198,55 @@ class SoundcardSource(AudioSource):
             yield from self._frames()
 
     def _frames(self) -> Iterator[np.ndarray]:
+        """Yield 100 ms blocks. #317: when the OS invalidates the device (default device switched, headset plugged,
+        Meet changing devices), close the recorder, re-pick the device and keep going; give up after
+        REOPEN_LIMIT consecutive failures with one clear AudioDeviceLost line."""
         import soundcard as sc
 
         suppress_capture_warnings()
-        mic = self._pick_microphone(sc)
-        with mic.recorder(samplerate=NATIVE_RATE, channels=2) as rec:
-            # one 100 ms block per iteration: close() is noticed within a block even in total silence,
-            # and leaving the `with` releases the device (OS microphone indicator goes off).
-            while not self._stop.is_set():
-                data = rec.record(numframes=BLOCK)
+        failures, last = 0, None
+        while not self._stop.is_set():
+            try:
+                mic = self._pick_microphone(sc) if failures == 0 else self._repick(sc)
+                with _recorder(mic) as rec:
+                    if failures:
+                        print(f"tlwu: audio device changed, reopened {getattr(mic, 'name', mic)}",
+                              file=sys.stderr, flush=True)
+                    # one 100 ms block per iteration: close() is noticed within a block even in total silence,
+                    # and leaving the `with` releases the device (OS microphone indicator goes off).
+                    while not self._stop.is_set():
+                        data = rec.record(numframes=BLOCK)
+                        if self._stop.is_set():
+                            break
+                        failures = 0  # a good block: the next invalidation starts a fresh retry budget
+                        yield to_mono_16k(data, NATIVE_RATE)
+                return
+            except Exception as e:  # noqa: BLE001 - only device loss is retried, everything else re-raised
                 if self._stop.is_set():
-                    break
-                yield to_mono_16k(data, NATIVE_RATE)
+                    return
+                if not (failures or device_lost(e)):
+                    raise
+                failures, last = failures + 1, e
+                if failures > REOPEN_LIMIT:
+                    raise AudioDeviceLost(f"audio device lost and could not be reopened after {REOPEN_LIMIT} "
+                                          f"tries (last error: {_short(last)})") from None
+                delay = backoff(failures)
+                print(f"tlwu: audio device lost ({_short(e)}), reopening in {delay:g} s "
+                      f"({failures}/{REOPEN_LIMIT})", file=sys.stderr, flush=True)
+                self._stop.wait(delay)
+
+    def _repick(self, sc):
+        """Re-pick after a device loss: the configured name first, the system default if that device is gone."""
+        try:
+            return self._pick_microphone(sc)
+        except RuntimeError:
+            if not self.device:
+                raise
+            saved, self.device = self.device, None
+            try:
+                return self._pick_microphone(sc)
+            finally:
+                self.device = saved
 
     def close(self) -> None:
         self._stop.set()
