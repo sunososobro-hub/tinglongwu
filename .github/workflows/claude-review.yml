@@ -67,7 +67,7 @@ jobs:
                other open PRs (`gh pr list --state open --json number,title,headRefName,files`)?
 
             Output: post EXACTLY ONE comment on the PR with
-            `gh pr comment ${{ github.event.pull_request.number }} --body-file <file>` or `--body`.
+            `gh pr comment ${{ github.event.pull_request.number }} --body "..."` (you cannot write files).
             Write it in English, Markdown, with sections: Correctness, Packaging/release,
             Repo gates (pass/fail per gate), Duplicates/conflicts, each with findings
             (file:line where possible) or "None found". Do not post any other comments.
