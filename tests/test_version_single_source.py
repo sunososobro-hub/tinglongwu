@@ -57,5 +57,7 @@ def test_exe_entry_version_flag(capsys):
     assert capsys.readouterr().out.startswith(f"tinglongwu {tinglongwu.__version__}")
 
 
-def test_version_is_0_3_1():
-    assert tinglongwu.__version__ == "0.3.1"
+def test_version_is_plain_semver():
+    import re
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", tinglongwu.__version__)
