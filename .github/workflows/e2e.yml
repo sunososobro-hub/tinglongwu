@@ -53,10 +53,10 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
-          key: e2e-models-v2-linux-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: e2e-models-v3-linux-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv
         run: |
-          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --allow-unpinned --models-dir "$TLWU_MODELS"
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/bin/python" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
@@ -151,10 +151,10 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
-          key: e2e-models-v2-windows-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: e2e-models-v3-windows-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv + opt-in Russian voice (#311)
         run: |
-          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --allow-unpinned --models-dir "$TLWU_MODELS"
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$(cygpath -m "$HOME/tts-kokoro")" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           tlwu-setup --vosk-tts-ru --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$(cygpath -m "$HOME/tts-kokoro/Scripts/python.exe")" >> "$GITHUB_ENV"
@@ -207,10 +207,10 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
-          key: e2e-models-v2-macos-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: e2e-models-v3-macos-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv
         run: |
-          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --allow-unpinned --models-dir "$TLWU_MODELS"
+          tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/bin/python" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
