@@ -280,7 +280,7 @@ def test_build_translator_auto_on_cuda_uses_hymt_direct_for_both_directions(tmp_
             self.calls.append((src, tgt))
             return SimpleNamespace(text=f"{tgt}:{text}")
 
-    mt = proto.build_translator("auto", "cuda", tmp_path, "qwen3-4b", "en", free_mib=lambda: 4000, hy_factory=Hy)
+    mt = proto.build_translator("auto", "cuda", tmp_path, None, "en", free_mib=lambda: 4000, hy_factory=Hy)
     assert mt.translate("你好", "zh", "en").text == "en:你好" and mt.translate("Hi", "en", "zh").text == "zh:Hi"
     assert mt.hy.calls == [("zh", "en"), ("en", "zh")] and mt.history == []
 
@@ -289,7 +289,7 @@ def test_build_translator_explicit_hymt_without_the_model_says_how_to_install(tm
     from tinglongwu.models import ModelNotFound
 
     with pytest.raises(ModelNotFound, match="--hymt"):
-        proto.build_translator("hymt", "cuda", tmp_path, "qwen3-4b", "en")
+        proto.build_translator("hymt", "cuda", tmp_path, None, "en")
 
 
 def _speech(sec):

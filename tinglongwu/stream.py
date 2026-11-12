@@ -171,7 +171,7 @@ class DraftRenderer:
 
 class DraftEngine:
     """Core of --stream, thread-free so it is testable. One worker thread alternates tick() (Whisper partial
-    of the live buffer) and translate_pending() (Qwen/OPUS draft of the WHOLE current partial hypothesis), so
+    of the live buffer) and translate_pending() (Hy-MT2/OPUS draft of the WHOLE current partial hypothesis), so
     neither starves the other and the Chinese appears right after each partial. The confirmed prefix
     (LocalAgreement) only drives the source line's bright/dim split; translation re-runs when the partial grew
     >= TRANSLATE_MIN_CHARS or >= TRANSLATE_MIN_GAP s passed. By default only the target-language line is shown."""

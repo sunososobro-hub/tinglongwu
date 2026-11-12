@@ -2,7 +2,7 @@
 
 The tiers mirror install.ps1 (chosen by TOTAL VRAM): the runtime `--engine auto` re-checks free VRAM at start-up.
 GPU tier = tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (owner #63: main target is a 4-8 GB GPU with Hy-MT2; #66: Hy-MT2 is
-as accurate as Qwen3-8B and ~4x faster). Qwen is opt-in only (`tlwu-setup --qwen`), never picked by VRAM (#106).
+as accurate as the former 8B engine and ~4x faster).
 """
 from __future__ import annotations
 

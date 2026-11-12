@@ -8,7 +8,7 @@ Format (UTF-8, one entry per line):
                              or English pivot), they are replaced by the target in the output (OPUS)
     # comment
 Used two ways: source terms go to Whisper (`hotwords`); entries whose source occurs in the current sentence
-or its context go into the Qwen prompt. Number entries (`2.4 = 2.4 GHz`) also normalize "2 и 4" -> "2.4".
+or its context go into the translation prompt. Number entries (`2.4 = 2.4 GHz`) also normalize "2 и 4" -> "2.4".
 Fully offline; reads local files only.
 """
 from __future__ import annotations

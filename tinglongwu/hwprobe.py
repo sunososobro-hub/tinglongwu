@@ -5,8 +5,7 @@ the speech/translation models to use and lists the ones that cannot fit, with a 
 to pick "simple / deluxe" by hand. The quick speed benchmark and runtime downgrade are separate steps.
 
 Footprints (MiB, model loaded + working memory):
-- MT, GPU: Qwen3-8B 5148 / Qwen3-4B 3062 (README benchmark table, peak VRAM, RTX 3050 8 GB);
-  Hy-MT2-1.8B ~1500 (#63 measurements, home RTX 3050).
+- MT, GPU: Hy-MT2-1.8B ~1500 (#63 measurements, home RTX 3050).
 - MT, CPU: Hy-MT2-1.8B RAM peak ~1900 (#63 owner CPU test, i5-13500).
 - ASR, GPU: large-v3 fp16 ~4000, medium ~2500 (README); large-v3-turbo has 4 decoder layers instead of 32,
   fp16 weights ~1.6 GB -> 1600 as a conservative upper bound (int8_float16 is smaller).
@@ -23,7 +22,7 @@ GPU_MIN_VRAM_MIB = 4096  # owner: "GPU threshold ~4 GB" (turbo 1600 + Hy-MT2 150
 HEADROOM_MIB = 512  # CUDA context, display, other apps
 
 ASR_VRAM_MIB = {"large-v3-turbo": 1600, "large-v3": 4000, "medium": 2500}
-MT_VRAM_MIB = {"hymt2": 1500, "qwen3-4b": 3062, "qwen3-8b": 5148}
+MT_VRAM_MIB = {"hymt2": 1500}
 HYMT_CPU_RAM_MIB = 1900
 CPU_MIN_RAM_FOR_HYMT_MIB = 4096  # Hy-MT2 peak 1.9 GB + Whisper small + the OS
 
