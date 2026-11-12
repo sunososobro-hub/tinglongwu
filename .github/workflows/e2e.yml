@@ -60,6 +60,8 @@ jobs:
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/bin/python" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
+          TLWU_KOKORO_PYTHON="$(grep TLWU_KOKORO_PYTHON "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \
+            python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh16k.wav"
       - name: PulseAudio with a null sink (speakers) whose monitor is a capture source
         run: |
           pulseaudio -D --exit-idle-time=-1
@@ -68,18 +70,24 @@ jobs:
           pactl set-default-sink e2e_speaker
           pactl list short sources
       - name: "#90 tlwu --selftest on the CPU (real models)"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
       - name: "#89 #90 old NVIDIA driver (fake nvidia-smi 457.49): update-driver advice, CPU downgrade"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py gpu-old --models-dir "$TLWU_MODELS"
       - name: "#313 tlwu doctor on a real machine: every problem has a fix line"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"
       - name: "#5 Ctrl+C (SIGINT to the process group) in listen and speak: no traceback"
+        if: ${{ !cancelled() }}
         run: |
           python scripts/ci_e2e.py ctrlc --mode listen --models-dir "$TLWU_MODELS"
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#192 #186 #5 speak mode with mic = 'Monitor of E2E-Speaker', clip played into the sink, Ctrl+C"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py monitor-live --models-dir "$TLWU_MODELS"
       - name: "#213 #207 speak_selftest.py on Linux (records the tlwu_mic virtual mic)"
+        if: ${{ !cancelled() }}
         run: |
           python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh.wav" --repeat 2
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to en --models-dir "$TLWU_MODELS" \
@@ -87,6 +95,7 @@ jobs:
           cat "$RUNNER_TEMP/speak.json"
           { echo '### speak_selftest (Linux runner CPU)'; echo '```'; cat "$RUNNER_TEMP/speak.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: "#258 scripts/linux_offline_run.sh for real (sudo unshare + setpriv): no network, still translates"
+        if: ${{ !cancelled() }}
         run: |
           shellcheck scripts/linux_offline_run.sh
           if scripts/linux_offline_run.sh "$(command -v python)" -I -c "import socket; socket.create_connection(('1.1.1.1', 443), timeout=5)"; then
@@ -98,12 +107,14 @@ jobs:
             --device cpu --models-dir "$TLWU_MODELS" --save "$RUNNER_TEMP/offline.jsonl"
           python -c "import json,sys; r=[json.loads(x) for x in open(sys.argv[1], encoding='utf-8') if x.strip()]; g=[x for x in r if x.get('dst')]; print(len(g), 'translated lines', g[:1]); sys.exit(0 if g else 1)" "$RUNNER_TEMP/offline.jsonl"
       - name: "#7 firewall_test.py: listen / speak / meeting with the network cut (network namespace)"
+        if: ${{ !cancelled() }}
         run: |
           # Ubuntu 24.04 denies unprivileged user namespaces by default (AppArmor); firewall_test uses `unshare -n -r`
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav tests/fixtures/zh_kokoro_16k.flac \
+          python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav "$RUNNER_TEMP/zh16k.wav" \
             --compute cpu --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL"
       - name: "#85 #322 #270 GUI tests on a real X display (they skip without one)"
+        if: ${{ !cancelled() }}
         run: |
           Xvfb :99 -screen 0 1920x1080x24 >/dev/null 2>&1 &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
@@ -116,6 +127,7 @@ jobs:
             tests/test_overlay_speak_322.py tests/test_gui_icon.py tests/test_focus_langs.py | tee "$RUNNER_TEMP/gui.txt"
           if grep -qi "skipped.*display" "$RUNNER_TEMP/gui.txt"; then echo "FAIL: GUI tests skipped (no display)"; exit 1; fi
       - name: "#322 overlay stays above a fullscreen window (openbox), line < 100 ms, settings persist"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py overlay-stack
 
   windows:
@@ -135,7 +147,7 @@ jobs:
           pip install -e ".[dev]"
           pip install -r requirements-llama-cpu.txt --only-binary=:all:
       - name: Models dir
-        run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
+        run: echo "TLWU_MODELS=$(cygpath -m "$HOME/tlwu-models")" >> "$GITHUB_ENV"   # C:/... form: env values reach native python as-is
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
@@ -143,27 +155,36 @@ jobs:
       - name: Models (smoke set) + Kokoro voice venv + opt-in Russian voice (#311)
         run: |
           tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --allow-unpinned --models-dir "$TLWU_MODELS"
-          tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
+          tlwu-setup --talk --talk-venv "$(cygpath -m "$HOME/tts-kokoro")" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           tlwu-setup --vosk-tts-ru --models-dir "$TLWU_MODELS"
-          echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/Scripts/python.exe" >> "$GITHUB_ENV"
+          echo "TLWU_KOKORO_PYTHON=$(cygpath -m "$HOME/tts-kokoro/Scripts/python.exe")" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
+          TLWU_KOKORO_PYTHON="$(grep TLWU_KOKORO_PYTHON "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \
+            python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh16k.wav"
       - name: "#90 tlwu --selftest on the CPU (real models)"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
       - name: "#89 #90 old NVIDIA driver (fake nvidia-smi.exe 457.49): installer + runtime + self-test advice"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py gpu-old --models-dir "$TLWU_MODELS"
       - name: "#313 tlwu doctor on a clean Windows: every problem has a fix line"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py doctor --to ru --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (ru)"
       - name: "#5 Ctrl+C (real CTRL_C_EVENT on a console) in listen and speak: no traceback, no leftover TTS worker"
+        if: ${{ !cancelled() }}
         run: |
           python scripts/ci_e2e.py ctrlc --mode listen --models-dir "$TLWU_MODELS"
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#311 speak --to ru speaks Russian after tlwu-setup --vosk-tts-ru, no extra flags"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py speak-ru --models-dir "$TLWU_MODELS"
       - name: "#322 overlay stays above a fullscreen window on the Windows desktop (z-order, WS_EX_TOPMOST)"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py overlay-stack
       - name: "#7 firewall_test.py: real Windows Firewall outbound block (runner is admin)"
+        if: ${{ !cancelled() }}
         run: |
-          python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav tests/fixtures/zh_kokoro_16k.flac \
+          python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav "$RUNNER_TEMP/zh16k.wav" \
             --compute cpu --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL"
 
   macos:
@@ -193,14 +214,20 @@ jobs:
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
           echo "TLWU_KOKORO_PYTHON=$HOME/tts-kokoro/bin/python" >> "$GITHUB_ENV"
           echo "TLWU_KOKORO_MODEL=$TLWU_MODELS/kokoro" >> "$GITHUB_ENV"
+          TLWU_KOKORO_PYTHON="$(grep TLWU_KOKORO_PYTHON "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \
+            python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh16k.wav"
       - name: "#8 tlwu --selftest on macOS (real models)"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
       - name: "#8 listen + speak (Kokoro voice) + meeting modes on audio files"
+        if: ${{ !cancelled() }}
         run: |
-          python scripts/ci_e2e.py modes --listen-wav tinglongwu/data/selftest_en.wav --speak-wav tests/fixtures/zh_kokoro_16k.flac
+          python scripts/ci_e2e.py modes --listen-wav tinglongwu/data/selftest_en.wav --speak-wav "$RUNNER_TEMP/zh16k.wav"
       - name: "#8 #5 Ctrl+C on macOS in listen and speak: no traceback"
+        if: ${{ !cancelled() }}
         run: |
           python scripts/ci_e2e.py ctrlc --mode listen --models-dir "$TLWU_MODELS"
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#313 tlwu doctor on macOS"
+        if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"

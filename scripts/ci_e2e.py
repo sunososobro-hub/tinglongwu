@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURE_ZH = ROOT / "tests" / "fixtures" / "zh_kokoro_16k.flac"  # Kokoro zf_xiaobei (Apache-2.0), 3 sentences
+ZH_SENTENCES = ("今天天氣很好，我們去公園散步吧。", "請問會議幾點開始？", "這個問題我們明天再討論。")
 CLIP_EN = ROOT / "tinglongwu" / "data" / "selftest_en.wav"
 WIN = sys.platform == "win32"
 PY = sys.executable
@@ -73,12 +73,49 @@ def kokoro_args() -> list[str]:
 
 
 # ---------------------------------------------------------------- test audio
+ZH_CODE = (  # runs with the Kokoro venv's python: argv = model dir, out wav, sentences...
+    "import sys, numpy as np, soundfile as sf\n"
+    "from kokoro_onnx import Kokoro\n"
+    "d = sys.argv[1]\n"
+    "k = Kokoro(d + '/kokoro-v1.0.int8.onnx', d + '/voices-v1.0.bin')\n"
+    "parts = []\n"
+    "for t in sys.argv[3:]:\n"
+    "    a, sr = k.create(t, voice='zf_xiaobei', speed=1.0, lang='cmn')\n"
+    "    parts += [a, np.zeros(int(sr * 1.2), a.dtype)]\n"
+    "sf.write(sys.argv[2], np.concatenate(parts), sr)\n")
+_zh_cache: list = []
+
+
+def zh_speech():
+    """Chinese test speech as float32 mono 16 kHz: three sentences synthesized by Kokoro (zf_xiaobei, Apache-2.0)
+    with the job's Kokoro venv, so no audio file has to live in the repo (*.wav / *.flac are git-ignored)."""
+    if _zh_cache:
+        return _zh_cache[0]
+    import numpy as np
+    import soundfile as sf
+    from scipy.signal import resample_poly
+
+    py, model = os.environ.get("TLWU_KOKORO_PYTHON", ""), os.environ.get("TLWU_KOKORO_MODEL", "")
+    if not (py and model):
+        sys.exit("TLWU_KOKORO_PYTHON / TLWU_KOKORO_MODEL must point at the Kokoro venv and model (tlwu-setup --talk)")
+    with tempfile.TemporaryDirectory(prefix="tlwu-zh-") as td:
+        raw = Path(td) / "zh24k.wav"
+        subprocess.run([py, "-c", ZH_CODE, model, str(raw), *ZH_SENTENCES], check=True)
+        x, sr = sf.read(str(raw), dtype="float32")
+    if sr != 16000:
+        from math import gcd
+
+        g = gcd(sr, 16000)
+        x = resample_poly(x, 16000 // g, sr // g).astype(np.float32)
+    _zh_cache.append(x)
+    return x
+
+
 def zh_wav(out: Path, repeat: int = 1, gap_s: float = 1.0) -> Path:
     import numpy as np
     import soundfile as sf
 
-    x, sr = sf.read(str(FIXTURE_ZH), dtype="float32")
-    assert sr == 16000, sr
+    x, sr = zh_speech(), 16000
     gap = np.zeros(int(gap_s * sr), np.float32)
     sf.write(str(out), np.concatenate([np.concatenate([x, gap]) for _ in range(max(1, repeat))]), sr)
     return out
@@ -313,7 +350,7 @@ def cmd_doctor(a) -> int:
     status = [ln for ln in lines if re.match(r"\[\s*(ok|warn|FAIL)\]", ln)]
     check("doctor prints one line per check", len(status) >= 6 and "Traceback" not in r.stderr, f"{len(status)} lines")
     for i, ln in enumerate(lines):
-        if re.match(r"\[\s*(warn|FAIL)\]", ln):
+        if re.match(r"\[\s*FAIL\]", ln):  # a FAIL must say what to do; a warn may be advice only (no GPU)
             nxt = lines[i + 1] if i + 1 < len(lines) else ""
             check(f"doctor: fix given for '{ln.split(']')[1].split(':')[0].strip()}'", nxt.strip().startswith("fix:"),
                   ln.strip())
