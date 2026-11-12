@@ -115,6 +115,16 @@ def parse_args(argv=None):
     p.add_argument("--overlay", action="store_true",
                    help="also show the subtitles in an always-on-top, draggable bar (position and font size are "
                         "remembered in gui.json); off by default")
+    p.add_argument("--voice", action="store_true",
+                   help="also speak each translated line (Kokoro zh/en/ja voice, CPU, its own venv from "
+                        "tlwu-setup --talk) on --voice-device, e.g. earphones; off by default. The device must not "
+                        "be the one being captured or a virtual cable (it would be translated again)")
+    p.add_argument("--voice-device", default=None, metavar="NAME",
+                   help="with --voice: output device name substring (default: the system default output)")
+    p.add_argument("--voice-speaker", type=int, default=0, metavar="N",
+                   help="with --voice: Kokoro voice 0-4 of the target language (default 0)")
+    p.add_argument("--tts-python", default="", help=argparse.SUPPRESS)
+    p.add_argument("--tts-model", default="", help=argparse.SUPPRESS)
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
@@ -138,6 +148,10 @@ def parse_args(argv=None):
         p.error("--paced needs --file (live capture is always real time)")
     if a.latency_jsonl and a.file and not a.paced:
         p.error("--latency-jsonl with --file needs --paced (an unpaced file runs faster than real time)")
+    if a.voice and a.transcript_only:
+        p.error("--voice needs translations (not --transcript-only)")
+    if (a.voice_device or a.voice_speaker) and not a.voice:
+        p.error("--voice-device / --voice-speaker need --voice")
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
@@ -400,7 +414,15 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         save_path = a.save or default_save_path()
         sink = JsonlSaveSink(sink, save_path)
         print(f"tlwu: saving final lines to {os.path.abspath(save_path)}", file=sys.stderr)
+    close_voice = None
+    if getattr(a, "voice", False):  # #330: spoken translation; subtitles still go to `sink` first
+        from .voice import open_voice
+
+        note("loading voice...")
+        sink, close_voice = open_voice(a, mdir, sink, warn)
     if stop is not None and stop.is_set():
+        if close_voice is not None:
+            close_voice()
         return
     source = select_backend(a.file, a.mic, a.device)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
@@ -440,6 +462,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     finally:
         if rec_file is not None:
             rec_file.close()
+        if close_voice is not None:
+            close_voice()
 
 
 def latency_recorder(path, log):
