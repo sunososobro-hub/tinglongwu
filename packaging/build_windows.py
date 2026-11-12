@@ -28,6 +28,25 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build" / "nuitka-tlwu"
+
+
+def read_version() -> str:
+    """tinglongwu.__version__ is the single source of truth (read as text: no import, so no offline guard side effects)."""
+    import re
+
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (REPO / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
+    if not m:
+        raise SystemExit("tinglongwu/__init__.py has no __version__")
+    return m.group(1)
+
+
+def win_version(v: str) -> str:
+    """'0.3.1' -> '0.3.1.0' (Windows file/product version has four numeric parts)."""
+    parts = (v.split("+")[0].split(".") + ["0"] * 4)[:4]
+    return ".".join(p if p.isdigit() else "0" for p in parts)
+
+
+WIN_VERSION = win_version(read_version())
 DIST = EVAL / "dist"
 APP = DIST / "tlwu"
 CUDA_SRC_CANDIDATES = [Path(p) for p in (os.environ.get("TLWU_CUDA_SRC"),) if p] + [
@@ -106,7 +125,7 @@ def nuitka_cmd() -> list[str]:
             "--include-package-data=faster_whisper", "--include-package-data=opencc",
             "--include-package-data=soundcard", "--include-package=sv_ttk", "--include-package-data=sv_ttk", "--include-package-data=tinglongwu_setup", "--include-package-data=tinglongwu",  # self-test clip data/selftest_en.wav (#99)
             "--product-name=tinglongWu", "--file-description=tinglongWu offline speech translator",
-            "--file-version=0.1.0.0", "--product-version=0.1.0.0", str(REPO / "packaging" / "tlwu_entry.py")]
+            f"--file-version={WIN_VERSION}", f"--product-version={WIN_VERSION}", str(REPO / "packaging" / "tlwu_entry.py")]
 
 
 def run_nuitka() -> Path:
