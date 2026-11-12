@@ -175,10 +175,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install tlwu + Hy-MT2 CPU engine (builds llama-cpp-python if no wheel, as mac_install.sh does)
+      - name: Install tlwu + Hy-MT2 CPU engine
         run: |
           pip install -e ".[dev]"
-          pip install -r requirements-llama-cpu.txt
+          # what mac_install.sh does first; on 2026-11-12 the index's macOS arm64 wheel of 0.3.36 is a corrupt zip
+          # (zlib "invalid block type"), so fall back to building the PyPI sdist (cmake, ~6 min)
+          pip install --no-cache-dir -r requirements-llama-cpu.txt             || pip install --no-cache-dir --no-binary llama-cpp-python "$(grep -E '^llama-cpp-python==' requirements-llama-cpu.txt)"
       - name: Models dir
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
