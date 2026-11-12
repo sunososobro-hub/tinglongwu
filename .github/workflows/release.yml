@@ -63,9 +63,12 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
-      TLWU_BUILD_ROOT: ${{ github.workspace }}\..\tlwu-build
-      NUITKA_CACHE_DIR: ${{ github.workspace }}\..\nuitka-cache
     steps:
+      - name: Build folders outside the checkout (absolute; upload-artifact rejects '..' in paths)
+        shell: pwsh
+        run: |
+          "TLWU_BUILD_ROOT=$env:RUNNER_TEMP\tlwu-build" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "NUITKA_CACHE_DIR=$env:RUNNER_TEMP\nuitka-cache" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -75,7 +78,7 @@ jobs:
       - name: Nuitka compile cache
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
-          path: ${{ env.NUITKA_CACHE_DIR }}
+          path: ${{ runner.temp }}\nuitka-cache
           key: nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-qwen.txt', 'requirements-gpu.txt') }}-${{ github.sha }}
           restore-keys: |
             nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-qwen.txt', 'requirements-gpu.txt') }}-
@@ -114,9 +117,9 @@ jobs:
         with:
           name: release-win64
           path: |
-            ${{ env.TLWU_BUILD_ROOT }}\dist\tinglongwu-win64.zip
-            ${{ env.TLWU_BUILD_ROOT }}\dist\tinglongwu-win64.zip.sha256
-            ${{ env.TLWU_BUILD_ROOT }}\dist\release-check.md
+            ${{ runner.temp }}\tlwu-build\dist\tinglongwu-win64.zip
+            ${{ runner.temp }}\tlwu-build\dist\tinglongwu-win64.zip.sha256
+            ${{ runner.temp }}\tlwu-build\dist\release-check.md
           retention-days: 3
           if-no-files-found: error
           compression-level: 0
