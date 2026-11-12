@@ -29,10 +29,21 @@ def external_authors(prs, since, owner):
         login = (pr.get("user") or {}).get("login", "")
         if not merged or (since and merged < since):
             continue
-        if not login or login.lower() == owner.lower() or login.endswith(BOT_SUFFIX):
-            continue
-        out.add(login)
+        for name in [login] + _commit_logins(pr):
+            if name and name.lower() != owner.lower() and not name.endswith(BOT_SUFFIX):
+                out.add(name)
     return sorted(out, key=str.lower)
+
+
+def _commit_logins(pr):
+    """Commit author logins and `Co-authored-by:` names from an optional pr["commits"] list."""
+    names = []
+    for c in pr.get("commits") or []:
+        names.append((c.get("author") or {}).get("login", ""))
+        for m in re.finditer(r"^co-authored-by:\s*(.+?)\s*<", (c.get("commit") or {}).get("message", ""),
+                             re.IGNORECASE | re.MULTILINE):
+            names.append(m.group(1))
+    return [n for n in names if n]
 
 
 def missing_credits(authors, *texts):
@@ -64,7 +75,7 @@ def main(argv=None):
     ap.add_argument("--credits", default="CREDITS.md")
     ap.add_argument("--notes", help="release notes file (optional)")
     ap.add_argument("--since", help="ISO date; default = date of the latest tag")
-    ap.add_argument("--prs-json", help="offline: JSON list of PRs (user.login, merged_at) instead of querying GitHub")
+    ap.add_argument("--prs-json", help="offline: JSON list of PRs (user.login, merged_at, optional commits[].author.login / commit.message) instead of querying GitHub")
     a = ap.parse_args(argv)
     try:
         if a.prs_json:
@@ -72,6 +83,9 @@ def main(argv=None):
         else:
             since = a.since if a.since is not None else last_tag_date(a.repo)
             prs = _gh(f"repos/{a.repo}/pulls?state=closed&per_page=100")
+            for pr in prs:
+                if pr.get("merged_at") and not (since and pr["merged_at"] < since):
+                    pr["commits"] = _gh(f"repos/{a.repo}/pulls/{pr['number']}/commits?per_page=100")
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as e:
         print(f"check_credits: cannot query GitHub: {e}", file=sys.stderr)
         return 2
