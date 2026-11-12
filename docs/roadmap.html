@@ -50,6 +50,8 @@ th:first-child,td:first-child{text-align:left}
 thead th{font-weight:600;color:var(--muted);font-size:12.5px}
 thead tr:first-child th{font-family:var(--display);letter-spacing:.06em;color:var(--fg);border-bottom:none}
 .sep{border-left:2px solid var(--rule)}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;border:1px solid currentColor;white-space:nowrap}
+.c1{color:var(--ear)} .c2{color:var(--listen)} .c3{color:var(--muted)}
 .y{color:var(--fg);font-size:17px} .w{color:var(--listen);font-size:17px} .p{color:var(--muted);font-size:17px} .n{color:var(--rule)}
 </style>
 <style>body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}</style>
@@ -90,6 +92,7 @@ thead tr:first-child th{font-family:var(--display);letter-spacing:.06em;color:va
       <path d="M700 95 H900" stroke="var(--listen)" stroke-dasharray="2 12"/>
       <path d="M300 195 H500" stroke="var(--speak)"/>
       <path d="M500 195 H900" stroke="var(--speak)" stroke-dasharray="2 12"/>
+      <path d="M500 195 C600 195 610 95 690 95" stroke="var(--speak)" stroke-dasharray="2 12"/>
       <path d="M500 195 C590 195 610 295 700 295 H900" stroke="var(--ear)" stroke-dasharray="2 12"/>
       <path d="M300 95 C430 95 560 395 700 395 H900" stroke="var(--creator)" stroke-dasharray="2 12"/>
       <path d="M300 495 H500" stroke="var(--install)"/>
@@ -99,7 +102,7 @@ thead tr:first-child th{font-family:var(--display);letter-spacing:.06em;color:va
     <g stroke-width="4">
       <circle cx="300" cy="95" r="10" fill="var(--listen)" stroke="var(--listen)"/>
       <circle cx="500" cy="95" r="10" fill="var(--station)" stroke="var(--listen)"/>
-      <circle cx="700" cy="95" r="10" fill="var(--station)" stroke="var(--listen)" stroke-dasharray="4 3"/>
+      <rect x="684" y="81" width="32" height="28" rx="14" fill="var(--station)" stroke="var(--fg)"/>
       <circle cx="900" cy="95" r="10" fill="var(--station)" stroke="var(--listen)" stroke-dasharray="4 3"/>
       <circle cx="300" cy="195" r="10" fill="var(--speak)" stroke="var(--speak)"/>
       <circle cx="500" cy="195" r="10" fill="var(--station)" stroke="var(--speak)"/>
@@ -119,7 +122,7 @@ thead tr:first-child th{font-family:var(--display);letter-spacing:.06em;color:va
       <text class="st" x="500" y="128" data-k="a2">Floating subtitles #322</text>
       <text class="st" x="500" y="143" data-k="a3">Compact control bar #333</text>
       <text class="pf" x="500" y="158">Windows · Linux · macOS</text>
-      <text class="st" x="700" y="66" data-k="a4">Two-sided meetings</text>
+      <text class="st" x="700" y="66" data-k="a4">Meetings: Listen + Speak</text>
       <text class="pf" x="700" y="80">#248 · #249</text>
       <text class="st" x="900" y="128" data-k="a5">Any app,</text>
       <text class="st" x="900" y="143" data-k="a6">any language</text>
@@ -182,6 +185,22 @@ thead tr:first-child th{font-family:var(--display);letter-spacing:.06em;color:va
     <span><span class="p">○</span><span data-k="k3">Planned</span></span>
     <span><span class="n">—</span><span data-k="k4">Not planned</span></span>
   </div>
+
+  <h2 data-k="n0">Languages</h2>
+  <p class="lede" data-k="n1">Subtitles in the app: Traditional Chinese, Simplified Chinese or English. Native speakers, help us test your language.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th data-k="q1">Language</th><th data-k="q2">Listen</th><th data-k="q3">Speak voice</th><th data-k="q4">Status</th></tr></thead>
+    <tbody>
+      <tr><td>中文</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>English</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>日本語</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>Русский</td><td class="y">●</td><td class="y">●</td><td><span class="chip c1" data-k="t1">Tested nightly</span></td></tr>
+      <tr><td>한국어 · Deutsch · Français · Español</td><td class="y">●</td><td class="n">—</td><td><span class="chip c2" data-k="t2">Works, not tested yet</span></td></tr>
+      <tr><td>Italiano · Português · Tiếng Việt · ไทย · Bahasa Indonesia</td><td class="y">●</td><td class="n">—</td><td><span class="chip c3" data-k="t3">Experimental</span></td></tr>
+    </tbody>
+  </table>
+  </div>
 </div>
 
 <script>
@@ -237,6 +256,14 @@ const M={
 "ru":{m0:"Где работает",m1:"Сначала компьютеры, потом телефоны.",p1:"Компьютер",p2:"Телефон",f1:"Живые субтитры",f2:"Плавающие субтитры",f3:"Речь (ответ на родном языке)",f4:"Перевод в наушниках",f5:"Субтитры и озвучка видео",f6:"Установка в один клик",k1:"Готово",k2:"В работе",k3:"В планах",k4:"Не планируется"}
 };
 Object.keys(M).forEach(k=>Object.assign(T[k],M[k]));
+const L={
+"zh-tw":{a4:"會議：聽＋講",n0:"支援語言",n1:"App 內字幕可選繁體中文、簡體中文或英文。母語者歡迎幫忙測試你的語言。",q1:"語言",q2:"聽",q3:"語音輸出",q4:"狀態",t1:"每晚實測",t2:"可用，尚未實測",t3:"實驗中"},
+"zh-cn":{a4:"会议：听＋说",n0:"支持语言",n1:"应用内字幕可选繁体中文、简体中文或英文。欢迎母语者帮忙测试你的语言。",q1:"语言",q2:"听",q3:"语音输出",q4:"状态",t1:"每晚实测",t2:"可用，尚未实测",t3:"实验中"},
+"ja":{a4:"会議：聞く＋話す",n0:"対応言語",n1:"アプリの字幕は繁体字中国語・簡体字中国語・英語から選べます。ネイティブの方、あなたの言語のテストにご協力ください。",q1:"言語",q2:"聞く",q3:"音声出力",q4:"状態",t1:"毎晩テスト済み",t2:"利用可能（未テスト）",t3:"実験的"},
+"ko":{a4:"회의: 듣기 + 말하기",n0:"지원 언어",n1:"앱 자막은 번체 중국어, 간체 중국어, 영어 중에서 고를 수 있습니다. 원어민이라면 여러분의 언어 테스트를 도와주세요.",q1:"언어",q2:"듣기",q3:"음성 출력",q4:"상태",t1:"매일 밤 테스트",t2:"사용 가능, 미테스트",t3:"실험적"},
+"ru":{a4:"Встречи: слушать + говорить",n0:"Языки",n1:"Субтитры в приложении: традиционный китайский, упрощённый китайский или английский. Носители языка, помогите протестировать ваш.",q1:"Язык",q2:"Слушать",q3:"Голос",q4:"Статус",t1:"Проверяется каждую ночь",t2:"Работает, не проверен",t3:"Экспериментально"}
+};
+Object.keys(L).forEach(k=>Object.assign(T[k],L[k]));
 const EN={};document.querySelectorAll("[data-k]").forEach(el=>EN[el.dataset.k]=el.textContent);
 const box=document.getElementById("langs");
 LANGS.forEach(([code,name])=>{const b=document.createElement("button");b.type="button";b.id="lang-"+code;
