@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -280,6 +281,25 @@ def get_vosk_tts_ru(man, mdir, opener=_open):
     pin_or_verify(man, VOSK_TTS_RU, dest, {"url": VOSK_TTS_RU_URL, "archive_sha256": archive_sha})
 
 
+VOSK_TTS_PIP = "vosk-tts==0.3.61"  # Vosk-TTS engine for the model above (Apache-2.0); latest on PyPI 2026-11-12
+
+
+def ensure_vosk_tts(find=None, run=None) -> bool:
+    """#311: pip install the vosk-tts engine into this Python unless it already imports, so speak mode can use the
+    model right after `tlwu-setup --vosk-tts-ru`. Returns True if it is importable (or was just installed)."""
+    import importlib.util
+
+    find = find or importlib.util.find_spec
+    if find("vosk_tts") is not None:
+        return True
+    run = run or (lambda cmd: subprocess.call(cmd))
+    print(f"installing {VOSK_TTS_PIP} (Russian voice engine) into {sys.executable}")
+    if run([sys.executable, "-m", "pip", "install", VOSK_TTS_PIP]) != 0:
+        print(f"WARNING: pip install {VOSK_TTS_PIP} failed; run it yourself, else speak mode shows subtitles only")
+        return False
+    return True
+
+
 PIPER_REPO = "rhasspy/piper-voices"  # official Piper voice repo (MIT code; each voice: MODEL_CARD + dataset license)
 # voice -> its two files. Only CC0 datasets (OHF-Voice/voice-datasets, #128): never irina (CC BY-NC-ND) / ruslan
 # (CC BY-NC-SA). Dir name keep in sync with tinglongwu.models.piper_ru_dir (setup does not import tinglongwu).
@@ -466,6 +486,7 @@ def main(argv=None) -> int:
     if a.vosk_tts_ru:
         get_vosk_tts_ru(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
+        ensure_vosk_tts()
     if a.piper_ru:
         get_piper_ru(man, mdir, a.piper_ru)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
