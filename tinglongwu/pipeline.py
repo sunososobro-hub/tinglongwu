@@ -235,7 +235,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if merger is None or translator is None:
                 emit_units([Unit(t.text, t.lang, False)])
                 continue
-            emit_units(merger.add(t.text, t.lang, stamp if audio_clock else time.monotonic(),
+            emit_units(merger.add(t.text, script_lang(t.text, t.lang), stamp if audio_clock else time.monotonic(),
                                    forced_cut=forced_cut, pause=pause))
         if merger is not None and translator is not None:
             emit_units(merger.flush())

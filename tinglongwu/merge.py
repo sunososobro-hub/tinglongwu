@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from . import lang as lang_patches
+
 # split after terminal punctuation: followed by whitespace (Latin/Cyrillic) or directly (CJK full-width)
 _SPLIT = re.compile(r"(?<=[.!?…])\s+|(?<=[。！？])\s*")
 _END = re.compile(r"[.!?…。！？][\"'»”)\]]*\s*$")
@@ -21,8 +23,8 @@ _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 _TRAIL_ELLIPSIS = re.compile(r"\s*(?:\.{2,}|…)+\s*$")
 PAUSE_SEND = 0.8  # seconds of VAD silence after a segment that means "the speaker stopped": send what we have
 _WORD = re.compile(r"\w+", re.UNICODE)
-# #273 clause boundary for a timeout release in whole-sentence mode: after , ; : (Latin, then a space) or CJK ，；：
-_CLAUSE = re.compile(r"(?<=[,;:])\s+|(?<=[，；：])\s*")
+# #273 clause boundary for a timeout release in whole-sentence mode: after , ; : (Latin, then a space) or CJK ，；：、
+_CLAUSE = re.compile(r"(?<=[,;:])\s+|(?<=[，；：、])\s*")
 MIN_FINAL_UNITS = 4  # #288: a pause / timeout does not release a buffer shorter than this (a head, not a sentence)
 WHOLE_PAUSE_UNITS = 8  # #288: whole mode (drafts cover the wait): a pause releases only a buffer at least this long
 CLAUSE_MIN_UNITS = 3  # a clause shorter than this is not worth its own final line
@@ -122,7 +124,8 @@ class SentenceMerger:
     def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0) -> list[Unit]:
         """forced_cut: the segmenter cut mid-speech (chunk limit), not at a VAD pause, so a trailing
         "..." from Whisper is only a cut artifact and not a sentence end. pause: seconds of silence that
-        followed the segment (>= PAUSE_SEND releases an unfinished buffer at once)."""
+        followed the segment (>= PAUSE_SEND, or the language's MERGE_PAUSE_SEND from tinglongwu/lang/, releases an
+        unfinished buffer at once)."""
         out: list[Unit] = []
         if self.buf and lang != self.lang:
             out.append(self._take(forced=True))
@@ -156,7 +159,7 @@ class SentenceMerger:
             self.since = None
         elif sents:
             self.since = now  # remainder starts a fresh wait
-        if rest and not forced_cut and pause >= PAUSE_SEND \
+        if rest and not forced_cut and pause >= lang_patches.setting(lang, "MERGE_PAUSE_SEND", PAUSE_SEND) \
                 and _units(rest) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
             out.append(self._take(forced=True))  # speaker paused: no point waiting for max_wait
             return out
