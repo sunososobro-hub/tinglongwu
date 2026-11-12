@@ -52,6 +52,9 @@ def parse_args(argv=None):
     p.add_argument("--chunk", type=float, default=None,
                    help="max segment seconds (default from --preset; larger = more context for Whisper)")
     p.add_argument("--no-vad", action="store_true", help="fixed --chunk blocks instead of VAD")
+    p.add_argument("--vad-pad", type=float, default=0.1, metavar="SEC",
+                   help="Silero speech-end padding in seconds (default 0.1; faster-whisper's own default 0.4 delays "
+                        "every subtitle cut by ~0.3 s; larger = fewer mid-sentence splits)")
     p.add_argument("--models-dir", help="models directory (env TLWU_MODELS)")
     p.add_argument("--transcript-only", action="store_true",
                    help="print only source-language text, one segment per line (no translation)")
@@ -367,7 +370,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         return
     source = select_backend(a.file, a.mic, a.device)
     merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
-    segmenter = Segmenter(a.chunk, not a.no_vad)
+    segmenter = Segmenter(a.chunk, not a.no_vad, step=0.25, vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)))
     draft = None
     if draft_factory is not None:
         draft = draft_factory(asr, translator, segmenter, a.to)

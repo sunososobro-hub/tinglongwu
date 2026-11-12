@@ -179,3 +179,16 @@ def test_live_main_wires_cpu_endpoint_and_pad(monkeypatch):
     off = types.SimpleNamespace(enabled=False)
     proto._live_main(a, None, None, None, off, off, False, {"items": []})
     assert made == {"chunk": 6.0, "min_silence": 0.5, "step": 0.25, "vad_pad": 0.1}
+
+
+def test_listen_vad_pad_option_and_wait(monkeypatch):
+    """#201: listen mode (cli) pads Silero spans by 0.1 s (<= 0.2) instead of 0.4 s, so a pause is seen sooner."""
+    from tinglongwu import segment
+    from tinglongwu.cli import parse_args
+
+    a = parse_args([])
+    assert a.vad_pad == 0.1 and parse_args(["--vad-pad", "0.2"]).vad_pad == 0.2
+    monkeypatch.setattr(segment, "silero_vad", _padded_energy_vad)
+    old_wait, _ = _wait_after_speech(lambda: segment.Segmenter(10, True))
+    new_wait, _ = _wait_after_speech(lambda: segment.Segmenter(10, True, step=0.25, vad_pad=a.vad_pad))
+    assert new_wait <= 0.9 and new_wait <= old_wait - 0.2
