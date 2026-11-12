@@ -5,9 +5,13 @@ Run with the PACKAGING venv (never the project .venv):
 
 pack-venv = requirements.txt (without av / psutil) + requirements-qwen.txt (llama-cpp-python CUDA wheel) + Nuitka.
 PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
-CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels of CUDA_SRC (default: the project .venv, read only).
+CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements-gpu.txt), found in TLWU_CUDA_SRC, the
+pack-venv or the project .venv (read only). None found -> CPU-only package (same as --lite), loudly, never a
+package whose CUDA llama.dll cannot load (#398). A CPU llama.cpp build (the llama-cpp-python CPU wheel, downloaded
+once) goes to llama_cpp/lib_cpu/: the app uses it when the CUDA llama.dll cannot load (no NVIDIA GPU / driver).
 Steps: nuitka (needs MinGW-w64 gcc, which Nuitka downloads once) -> dist/tlwu -> cuda_libs/, llama DLLs,
-VC++ runtime, licenses, usage text -> `tlwu.exe --smoke` (#310; --no-smoke skips) -> dist/tinglongwu-win64.zip.
+VC++ runtime, licenses, usage text -> scripts/check_dist_dlls.py (every DLL dependent resolves, #398) ->
+`tlwu.exe --smoke` (#310; --no-smoke skips) -> dist/tinglongwu-win64.zip.
 """
 from __future__ import annotations
 
@@ -25,14 +29,17 @@ EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build" / "nuitka-tlwu"
 DIST = EVAL / "dist"
 APP = DIST / "tlwu"
-CUDA_SRC = REPO / ".venv" / "Lib" / "site-packages"
+CUDA_SRC_CANDIDATES = [Path(p) for p in (os.environ.get("TLWU_CUDA_SRC"),) if p] + [
+    Path(sys.prefix) / "Lib" / "site-packages", REPO / ".venv" / "Lib" / "site-packages"]
+LLAMA_CPU = EVAL / "build" / "llama-cpu"  # CPU wheel download cache
 
 # cuBLAS/cuDNN for CTranslate2 (Whisper) and cudart/cuBLAS for llama.cpp (ggml-cuda.dll)
 CUDA_WHEELS = {"cublas": ["cublas64_12.dll", "cublasLt64_12.dll"],  # nvblas64_12.dll is not needed
                "cuda_runtime": ["cudart64_12.dll"],
                "cuda_nvrtc": ["nvrtc64_120_0.dll", "nvrtc-builtins64_129.dll"],  # cuDNN runtime-compiled engines
                "cudnn": None}  # None = all DLLs
-LITE_SKIP = ("cuda_libs", "llama_cpp/lib/ggml-cuda.dll")  # CPU-only variant
+# ggml-cuda.dll imports cudart + cuBLAS (cuBLAS imports cuBLASLt); missing -> "Could not find module llama.dll" (#398)
+LLAMA_CUDA_NEEDS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
 
 
 def lazy_includes() -> list[str]:
@@ -48,11 +55,14 @@ def lazy_includes() -> list[str]:
 
 def smoke(app: Path, run=subprocess.run) -> None:
     """Run the built `tlwu.exe --smoke` (no models, no network): native DLLs and the lazy filelock /
-    huggingface_hub imports of the first-run download (#310). A failure stops the build before the zip."""
+    huggingface_hub imports of the first-run download (#310). A failure stops the build before the zip.
+    llama_cpp is optional in the smoke (a clean PC may lack the VC++ runtime), but not on the pack machine (#398)."""
     r = run([str(app / "tlwu.exe"), "--smoke"], cwd=app, capture_output=True, text=True, timeout=300)
     print(r.stdout, end="")
     if r.returncode != 0:
         raise SystemExit(f"tlwu.exe --smoke failed (exit {r.returncode}), not zipping:\n{r.stdout}{r.stderr}")
+    if "WARN llama_cpp" in r.stdout:
+        raise SystemExit("tlwu.exe --smoke: llama_cpp does not load in the package (#398), not zipping")
 
 
 def nuitka_cmd() -> list[str]:
@@ -82,14 +92,15 @@ def run_nuitka() -> Path:
     return out
 
 
+NVIDIA_NOTE = """This package includes NVIDIA CUDA and cuDNN libraries (cuda_libs/) redistributed under the NVIDIA CUDA Toolkit EULA
+and the cuDNN Software License Agreement; see the NVIDIA-*.txt files in this folder.
+"""
 NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososobro-hub/tinglongwu
 
 Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
 Silero VAD: MIT, Qwen3: Apache-2.0).
 Microsoft Visual C++ runtime is NOT bundled by us: install the Microsoft Visual C++ Redistributable 2015-2022 (x64).
-This package includes NVIDIA CUDA and cuDNN libraries (cuda_libs/) redistributed under the NVIDIA CUDA Toolkit EULA
-and the cuDNN Software License Agreement; see the NVIDIA-*.txt files in this folder.
-No GPL components: PyAV/FFmpeg is NOT included (stubbed out).
+""" + NVIDIA_NOTE + """No GPL components: PyAV/FFmpeg is NOT included (stubbed out).
 
 Native components and their licenses
 - libsndfile (_soundfile_data/libsndfile_x64.dll): LGPL-2.1, full text in LICENSE-libsndfile-LGPL-2.1.txt.
@@ -111,32 +122,89 @@ Python packages (name version: license as declared in package metadata)
 """
 
 
-def copy_cuda(app: Path) -> list[str]:
+def find_cuda_src(candidates: list[Path] | None = None) -> Path | None:
+    """First site-packages that has every nvidia-*-cu12 wheel of CUDA_WHEELS with the DLLs llama.cpp needs.
+    #398: the source used to be the project .venv only; a pack from a checkout without it silently shipped
+    no cuda_libs/ and a CUDA llama.dll that cannot load."""
+    for sp in CUDA_SRC_CANDIDATES if candidates is None else candidates:
+        bins = [sp / "nvidia" / w / "bin" for w in CUDA_WHEELS]
+        have = {f.name.lower() for b in bins if b.is_dir() for f in b.glob("*.dll")}
+        if all(b.is_dir() for b in bins) and all(n.lower() in have for n in LLAMA_CUDA_NEEDS):
+            return sp
+    return None
+
+
+def copy_cuda(app: Path, src: Path) -> list[str]:
     dst = app / "cuda_libs"
     dst.mkdir(exist_ok=True)
     notes = []
     for wheel, names in CUDA_WHEELS.items():
-        bindir = CUDA_SRC / "nvidia" / wheel / "bin"
+        bindir = src / "nvidia" / wheel / "bin"
         for f in sorted(bindir.glob("*.dll")):
             if names is None or f.name in names:
                 shutil.copy2(f, dst / f.name)
                 notes.append(f"{f.name} ({f.stat().st_size >> 20} MB)")
+    missing = [n for n in LLAMA_CUDA_NEEDS if not (dst / n).is_file()]
+    if missing:
+        raise SystemExit(f"cuda_libs: {', '.join(missing)} not found in {src}")
     return notes
 
 
-def copy_llama(app: Path) -> None:
-    import importlib.util
+def cpu_llama_dlls(cache: Path = LLAMA_CPU, run=subprocess.check_call) -> list[Path]:
+    """llama_cpp/lib/*.dll of the CPU wheel of the same llama-cpp-python version (downloaded once into cache).
+    TLWU_LLAMA_CPU_WHEEL = a local wheel file to use instead of the download."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tinglongwu.llamacheck import INDEX, LLAMA_VERSION
 
-    # find_spec, not import: importing llama_cpp loads llama.dll, which fails without the CUDA DLLs on PATH
-    src = Path(importlib.util.find_spec("llama_cpp").origin).parent / "lib"  # from the pack-venv
+    wheel = os.environ.get("TLWU_LLAMA_CPU_WHEEL")
+    cache.mkdir(parents=True, exist_ok=True)
+    if not wheel:
+        pattern = f"llama_cpp_python-{LLAMA_VERSION}-*win_amd64.whl"
+        if not list(cache.glob(pattern)):
+            run([sys.executable, "-m", "pip", "download", f"llama-cpp-python=={LLAMA_VERSION}", "--no-deps",
+                 "--only-binary=:all:", "--index-url", f"{INDEX}/cpu", "-d", str(cache)])
+        found = sorted(cache.glob(pattern))
+        if not found:
+            raise SystemExit(f"no CPU llama-cpp-python {LLAMA_VERSION} wheel in {cache}")
+        wheel = str(found[-1])
+    out = cache / "lib"
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    with zipfile.ZipFile(wheel) as z:
+        for name in z.namelist():
+            if name.startswith("llama_cpp/lib/") and name.lower().endswith(".dll"):
+                (out / Path(name).name).write_bytes(z.read(name))
+    dlls = sorted(out.glob("*.dll"))
+    if not any(f.name.lower() == "llama.dll" for f in dlls):
+        raise SystemExit(f"{wheel} has no llama_cpp/lib/llama.dll")
+    return dlls
+
+
+def copy_llama(app: Path, lite: bool, cpu_dlls: list[Path], src: Path | None = None) -> None:
+    """llama_cpp/lib = the pack-venv build (CUDA), llama_cpp/lib_cpu = the CPU build (fallback, #398).
+    lite: llama_cpp/lib = the CPU build only (a CUDA ggml.dll imports ggml-cuda.dll, so it cannot run without it)."""
+    if src is None:
+        import importlib.util
+
+        # find_spec, not import: importing llama_cpp loads llama.dll, which fails without the CUDA DLLs on PATH
+        src = Path(importlib.util.find_spec("llama_cpp").origin).parent / "lib"  # from the pack-venv
     dst = app / "llama_cpp" / "lib"
+    if lite:
+        shutil.rmtree(dst, ignore_errors=True)
+        shutil.rmtree(app / "llama_cpp" / "lib_cpu", ignore_errors=True)
+        shutil.rmtree(app / "cuda_libs", ignore_errors=True)
     dst.mkdir(parents=True, exist_ok=True)
-    for f in src.glob("*.dll"):
-        if not (dst / f.name).exists():
-            shutil.copy2(f, dst / f.name)
+    for f in [] if lite else sorted(src.glob("*.dll")):
+        shutil.copy2(f, dst / f.name)
+    cpu = dst if lite else app / "llama_cpp" / "lib_cpu"
+    cpu.mkdir(parents=True, exist_ok=True)
+    for f in cpu_dlls:
+        shutil.copy2(f, cpu / f.name)
 
 
-def write_licenses(app: Path) -> None:
+def write_licenses(app: Path, cuda_src: Path | None) -> None:
     lic = app / "licenses"
     lic.mkdir(exist_ok=True)
     rows = []
@@ -144,8 +212,8 @@ def write_licenses(app: Path) -> None:
         n = d.metadata["Name"]
         if n and n.lower() not in ("nuitka", "ordered-set", "zstandard", "pip", "setuptools", "wheel"):
             rows.append(f"{n} {d.version}: {d.metadata.get('License-Expression') or d.metadata.get('License') or 'see package'}")
-    for name in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc"):
-        for f in (CUDA_SRC).glob(f"nvidia_{name}_cu12-*/licenses/*"):
+    for name in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc") if cuda_src else ():
+        for f in cuda_src.glob(f"nvidia_{name}_cu12-*/licenses/*"):
             shutil.copy2(f, lic / f"NVIDIA-{name}-{f.name}")
     import importlib.util
 
@@ -155,7 +223,8 @@ def write_licenses(app: Path) -> None:
         cand = REPO / ".venv" / "Lib" / "site-packages" / "_soundfile_data" / "COPYING"
     if cand and cand.exists():
         shutil.copy2(cand, lic / "LICENSE-libsndfile-LGPL-2.1.txt")
-    (lic / "THIRD_PARTY_NOTICES.txt").write_text(NOTICES_HEAD + "\n".join(rows) + "\n", "utf-8")
+    head = NOTICES_HEAD if cuda_src else NOTICES_HEAD.replace(NVIDIA_NOTE, "")
+    (lic / "THIRD_PARTY_NOTICES.txt").write_text(head + "\n".join(rows) + "\n", "utf-8")
 
 
 def make_zip(app: Path, out: Path) -> None:
@@ -186,12 +255,22 @@ def main() -> int:
         shutil.copytree(built, APP)
     if not (APP / "tlwu.exe").exists():
         raise SystemExit("run without --post-only first")
-    copy_llama(APP)
-    print("cuda:", copy_cuda(APP))
-    write_licenses(APP)
+    cuda_src = None if a.lite else find_cuda_src()
+    if cuda_src is None and not a.lite:
+        print("WARNING: no CUDA 12 DLLs (nvidia-cublas/cuda-runtime/cudnn/cuda-nvrtc -cu12 wheels) in "
+              f"{', '.join(map(str, CUDA_SRC_CANDIDATES))}; building a CPU-only package instead (#398). For the GPU "
+              "package: pip install -r requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
+    copy_llama(APP, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
+    print("cuda:", copy_cuda(APP, cuda_src) if cuda_src else "none (CPU-only package)")
+    write_licenses(APP, cuda_src)
     shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    sys.path.insert(0, str(REPO / "scripts"))
+    from check_dist_dlls import check as check_dlls
     from clean_machine_check import cmd_deps
+
+    if check_dlls(APP):  # a DLL dependent that does not resolve even on this machine: it cannot load anywhere (#398)
+        raise SystemExit("check_dist_dlls: unresolved DLL dependents (MISSING lines above), not zipping")
 
     if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
         print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")

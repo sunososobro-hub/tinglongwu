@@ -94,16 +94,27 @@ def explain(e: BaseException) -> BaseException:
                            f"build does not match this CPU. To fix: {FIX_HINT}")
 
 
-def _import_llama():
-    from .device import register_cuda_libs
+def import_llama():
+    """`import llama_cpp` with the CUDA DLLs registered. In the standalone build, a CUDA llama.dll that cannot load
+    (no NVIDIA driver, CUDA runtime DLLs missing) falls back to the bundled CPU build in llama_cpp/lib_cpu (#398)."""
+    import os
 
-    register_cuda_libs()
-    import llama_cpp
+    from . import device
 
+    device.register_cuda_libs()
+    device.use_llama_cpu_build()
+    try:
+        import llama_cpp
+    except (OSError, RuntimeError):
+        cpu = device.bundled_llama_cpu_dir()
+        if cpu is None or os.environ.get("LLAMA_CPP_LIB_PATH") == str(cpu):
+            raise
+        os.environ["LLAMA_CPP_LIB_PATH"] = str(cpu)  # a failed import leaves nothing in sys.modules: retry once
+        import llama_cpp
     return llama_cpp
 
 
-def self_check(gpu: bool = False, importer=_import_llama, cpu=None) -> tuple[bool, str]:
+def self_check(gpu: bool = False, importer=import_llama, cpu=None) -> tuple[bool, str]:
     """Load check without a model, for the installer / `tlwu-setup --check-llama`. Returns (ok, message)."""
     try:
         mod = importer()

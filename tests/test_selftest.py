@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from tinglongwu.selftest import CLIP_TEXT, apply_to_gui, load_clip, run_selftest, write_log
+from tinglongwu.translate import Translation
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,7 +31,7 @@ class FakeMt:
 
     def translate(self, text, src, tgt):
         assert (text, src, tgt) == (CLIP_TEXT, "en", "zh")
-        return SimpleNamespace(target=self.out)
+        return Translation(pivot=None, text=self.out)  # the real type: #398 selftest read a missing .target
 
 
 def run(tmp_path, *, cuda=True, gpu="NVIDIA GeForce RTX 3050", asr=None, mt=None, **kw):

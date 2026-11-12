@@ -26,7 +26,7 @@ PE_SUFFIXES = (".exe", ".dll", ".pyd")
 # DLLs every supported Windows 10/11 has. Not here on purpose: vcruntime140*.dll, msvcp140*.dll, vcomp140.dll,
 # concrt140.dll (VC++ redistributable, absent on a clean machine) - those must be shipped in the folder.
 SYSTEM_DLLS = frozenset("""
-advapi32 avrt bcrypt cabinet cfgmgr32 combase comctl32 comdlg32 credui crypt32 d2d1 d3d11 d3d12 d3d9 dbgcore dbghelp
+advapi32 avrt bcrypt bcryptprimitives cabinet cfgmgr32 combase comctl32 comdlg32 credui crypt32 d2d1 d3d11 d3d12 d3d9 dbgcore dbghelp
 dnsapi dwmapi dwrite dxgi gdi32 gdiplus glu32 hid imagehlp imm32 iphlpapi kernel32 kernelbase ksuser mf mfplat
 mfreadwrite mmdevapi mpr msimg32 msvcrt mswsock ncrypt netapi32 normaliz ntdll ole32 oleacc oleaut32 opengl32 pdh
 powrprof propsys psapi rpcrt4 secur32 setupapi shcore shell32 shlwapi sspicli ucrtbase urlmon user32 userenv usp10

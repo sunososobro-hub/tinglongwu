@@ -87,11 +87,9 @@ def load_llama(path: Path, gpu: bool):
     llamacheck.LlamaBuildError with the fix, instead of a bare 'Windows Error 0xc000001d'."""
     from . import llamacheck
     from . import threads as thread_budget
-    from .device import register_cuda_libs
 
-    register_cuda_libs()
     try:
-        import llama_cpp
+        llama_cpp = llamacheck.import_llama()  # CUDA build, or the bundled CPU build when CUDA cannot load (#398)
     except (ImportError, OSError, RuntimeError) as e:  # not installed, or llama.dll / a CUDA DLL missing
         raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e}. "
                            f"To fix: {llamacheck.FIX_HINT}") from e

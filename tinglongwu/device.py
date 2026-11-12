@@ -53,6 +53,37 @@ def register_cuda_libs() -> None:
                     pass
 
 
+# What the CUDA build of llama.cpp (ggml-cuda.dll) imports besides the bundle itself: CUDA runtime + driver (#398)
+LLAMA_CUDA_DLLS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "nvcuda.dll")
+
+
+def bundled_llama_cpu_dir() -> Path | None:
+    """`llama_cpp/lib_cpu/` of the standalone build: a CPU-only llama.cpp next to the CUDA one in llama_cpp/lib/."""
+    d = Path(__file__).resolve().parent.parent / "llama_cpp" / "lib_cpu"
+    return d if (d / "llama.dll").is_file() else None
+
+
+def use_llama_cpu_build(load=ctypes.CDLL) -> bool:
+    """Point llama-cpp-python at the bundled CPU build (LLAMA_CPP_LIB_PATH) when the CUDA one cannot load here:
+    no NVIDIA driver (nvcuda.dll) or CUDA runtime DLLs missing (#398). Call before `import llama_cpp`.
+    True when the CPU build is selected. Without a bundled CPU build (pip installs) nothing changes."""
+    cpu = bundled_llama_cpu_dir()
+    if cpu is None or sys.platform != "win32":
+        return False
+    if os.environ.get("LLAMA_CPP_LIB_PATH"):
+        return Path(os.environ["LLAMA_CPP_LIB_PATH"]) == cpu
+    register_cuda_libs()
+    for name in LLAMA_CUDA_DLLS:
+        try:
+            load(name)
+        except OSError:
+            break
+    else:
+        return False
+    os.environ["LLAMA_CPP_LIB_PATH"] = str(cpu)
+    return True
+
+
 def missing_cuda_libs() -> list[str]:
     register_cuda_libs()
     missing = []
