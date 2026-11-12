@@ -620,12 +620,58 @@ def build_parser() -> argparse.ArgumentParser:
                     help="also play the sent Russian audio on this device (your own headphones); default off")
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
+    ap.add_argument("--listen", nargs=argparse.REMAINDER, default=None, metavar="TLWU_ARGS",
+                    help="listen+speak in one window (#285): everything after --listen is passed to the listen side "
+                         "(same options as tlwu, e.g. --listen --lang auto); it runs in this process and shares the "
+                         "translation model; one Ctrl+C stops both. Must be the last option.")
     return ap
+
+
+class ListenSide:
+    """The `tlwu` listen pipeline in a thread of this process (#285). Its final lines go to the same console
+    (◀ Them) as the speak side's (▶ Me); close() stops it. Errors on the listen side are reported and leave
+    the speak side running."""
+
+    def __init__(self, argv, run=None, parse=None):
+        from .. import cli
+
+        bad = [x for x in argv if x in ("--stream", "--gui", "--report", "--probe")]
+        if bad:
+            raise ValueError(f"--listen: {bad[0]} is not available next to the speak side")
+        self.args = (parse or cli.parse_args)(list(argv))
+        self._run = run or cli.run_session
+        self.stop = threading.Event()
+        self.error: BaseException | None = None
+        self.thread = threading.Thread(target=self._body, name="tlwu-listen", daemon=True)
+
+    def _body(self) -> None:
+        try:
+            self._run(self.args, stop=self.stop)
+        except BaseException as e:  # noqa: BLE001 - SystemExit from a missing model too: report, keep speaking
+            self.error = e
+            if not self.stop.is_set():
+                print(f"tlwu: listen side stopped: {describe_error(e)}", file=sys.stderr, flush=True)
+
+    def start(self) -> "ListenSide":
+        self.thread.start()
+        return self
+
+    def close(self, timeout: float = 5.0) -> None:
+        self.stop.set()
+        if self.thread.is_alive():
+            self.thread.join(timeout)
 
 
 def _main(argv, vm) -> int:
     ap = build_parser()
     a = ap.parse_args(argv)
+    listen = None
+    if a.listen is not None:  # #285: both sides in this process; split one CPU budget (threads.py)
+        try:
+            listen = ListenSide(a.listen)
+        except ValueError as e:
+            ap.error(str(e))
+        os.environ["TLWU_BOTH"] = "1"
     from .. import offline as _og
 
     _og.set_mode("meeting" if getattr(a, "to", "") == "follow" else "speak")
@@ -710,6 +756,8 @@ def _main(argv, vm) -> int:
     from ..asr import FasterWhisperRecognizer
 
     thread_budget.set_role("speak")  # #250: one `tlwu: threads ...` line before any model loads
+    if listen is not None:  # loads while the speak side loads; Hy-MT2 is loaded once (engines.shared_llama)
+        vm.append(listen.start())
     from ..models import models_dir
     from .logic import split_sentences, translate_ru
     from .tts_client import TTSClient

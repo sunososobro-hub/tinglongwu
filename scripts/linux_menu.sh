@@ -268,18 +268,14 @@ if [ "$BOTH" = "1" ]; then
   fi
   read -rp "$(mp M_ASK_AUTOSEND)" ac
   AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)
-  # listen in the background (no keyboard), speak in the foreground; Ctrl+C stops both
-  export TLWU_BOTH=1   # #250: both processes split one CPU thread budget (tinglongwu/threads.py)
+  # #285: one process, one window: the speak side runs the listen side in a thread (--listen must come last),
+  # both directions share one Hy-MT2 and one CPU thread budget (TLWU_BOTH, tinglongwu/threads.py); Ctrl+C stops both
+  export TLWU_BOTH=1
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
-  tlwu "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}" < /dev/null &
-  LISTEN_PID=$!
-  # `|| true`: under set -e a failing trap command (listener already gone) would turn a clean exit into exit 1
-  trap 'kill $LISTEN_PID 2>/dev/null || true' EXIT INT TERM
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
   m M_MEETING_BANNER "$MM"
-  "${REV[@]}" "${AUTO[@]}"
-  exit
+  exec "${REV[@]}" "${AUTO[@]}" --listen "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
 fi
 if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
 m M_CONFIRM_HELP
