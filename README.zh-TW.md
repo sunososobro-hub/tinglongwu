@@ -28,7 +28,9 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 
 | macOS（終端機） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux（bash） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
-每個 release 都附 `SHA256SUMS.txt`；想在執行前驗證，可先下載腳本比對。Linux 安裝程式在任何 `apt` 動作前都會問 y/N，且不會下載模型（選單每次下載前都會問）。Windows 指令會把原始碼下載到 `%USERPROFILE%\tinglongwu`，再執行與下方相同的 `install.ps1`（執行原則繞過只作用於該子程序）。
+無人值守 Linux（apt 一律同意，並安裝程式、Kokoro、預設辨識/翻譯模型；俄語語音仍須自行啟用）：`curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | TLWU_YES=1 bash`
+
+每個 release 都附 `SHA256SUMS.txt`；想在執行前驗證，可先下載腳本比對。Linux 安裝程式在任何 `apt` 動作前都會問 y/N，且不會下載辨識/翻譯模型（選單每次下載前都會問）；加上 `TLWU_YES=1`（或 `--yes`）才會全程不問並預載預設模型。Windows 指令會把原始碼下載到 `%USERPROFILE%\tinglongwu`，再執行與下方相同的 `install.ps1`（執行原則繞過只作用於該子程序）。
 
 ## 快速安裝（Windows）
 

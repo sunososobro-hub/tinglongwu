@@ -7,8 +7,13 @@
 # version it was released with. Run straight from the repo (unreleased) it falls back to main.
 # What it does: git clone (or update) ~/tinglongwu at that tag, create .venv, pip install -e .
 # It asks y/N before any system-level step (apt, needs sudo; default = no). It also installs the Kokoro English voice
-# (scripts/linux_kokoro.sh: ~120 MB, SHA256-checked); TLWU_SKIP_MODELS=1 skips that. ASR/MT models are never downloaded here.
-# Override: TLWU_DIR (default ~/tinglongwu), TLWU_REF (tag or branch), TLWU_REPO, TLWU_UI_LANG=en|ru|zh-TW, TLWU_SKIP_MODELS=1.
+# (scripts/linux_kokoro.sh: ~120 MB, SHA256-checked); TLWU_SKIP_MODELS=1 skips that.
+# Unattended: TLWU_YES=1 (or --yes) answers yes to the apt prompt, asks nothing else, and also pre-downloads the default
+# first-run ASR/MT models (the same tier the first-run setup picks, SHA256-checked by tlwu-setup):
+#   curl -fsSL .../install.sh | TLWU_YES=1 bash
+# Without it ASR/MT models are never downloaded here. The Russian voice is opt-in (no upstream license) and never fetched.
+# Override: TLWU_DIR (default ~/tinglongwu), TLWU_REF (tag or branch), TLWU_REPO, TLWU_UI_LANG=en|ru|zh-TW, TLWU_SKIP_MODELS=1,
+# TLWU_YES=1.
 set -u
 
 REF_EMBEDDED="__TLWU_REF__"
@@ -16,6 +21,8 @@ case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED=main ;; esac   # placeholder not 
 REF="${TLWU_REF:-$REF_EMBEDDED}"
 REPO_URL="${TLWU_REPO:-https://github.com/sunososobro-hub/tinglongwu.git}"
 DIR="${TLWU_DIR:-$HOME/tinglongwu}"
+YES="${TLWU_YES:-}"
+for a in "$@"; do [ "$a" = "--yes" ] && YES=1; done
 
 # ---- messages (en / ru / zh-TW); the repo's scripts/i18n is not available before the clone, so they live here
 L="${TLWU_UI_LANG:-}"
@@ -56,6 +63,12 @@ t() {
     en:models) echo "Models are NOT downloaded yet; the menu asks (default no) before every download." ;;
     ru:models) echo "Модели пока НЕ скачаны; меню спросит (по умолчанию нет) перед каждой загрузкой." ;;
     zh-TW:models) echo "尚未下載任何模型；選單在每次下載前都會先問你（預設不下載）。" ;;
+    en:asrmt)  echo "Downloading the default ASR/MT models (SHA256-checked; large download) ..." ;;
+    ru:asrmt)  echo "Загрузка моделей ASR/MT по умолчанию (проверка SHA256; большой объём) ..." ;;
+    zh-TW:asrmt) echo "下載預設的語音辨識/翻譯模型（SHA256 驗證；檔案很大）..." ;;
+    en:ready)  echo "The default ASR/MT models are installed; the first start needs no download." ;;
+    ru:ready)  echo "Модели ASR/MT по умолчанию установлены; при первом запуске загрузка не нужна." ;;
+    zh-TW:ready) echo "預設的辨識/翻譯模型已安裝；第一次啟動不需要再下載。" ;;
     *) echo "$1" ;;
   esac
 }
@@ -69,9 +82,20 @@ find_py() {
   done
 }
 
+# TLWU_YES: pre-download the default first-run ASR/MT models = the tier tlwu_app.tiers picks (GPU/CPU), via tlwu-setup.
+prefetch_models() {
+  local args
+  # shellcheck disable=SC2016
+  args="$(.venv/bin/python -c 'from tlwu_app.tiers import choose_tier, detect_gpu; print(" ".join(choose_tier(detect_gpu()).downloader_args()))')" \
+    || die "cannot pick the model tier. Re-run this command to resume."
+  say "$(t asrmt)"
+  # shellcheck disable=SC2086
+  .venv/bin/python -m tinglongwu_setup $args || die "ASR/MT model download failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
+}
+
 main() {
-  # keep the keyboard for prompts even under `curl | bash`
-  if ( : </dev/tty ) 2>/dev/null; then exec </dev/tty; fi
+  # keep the keyboard for prompts even under `curl | bash` (not needed, and not wanted, when unattended)
+  if [ -z "$YES" ] && ( : </dev/tty ) 2>/dev/null; then exec </dev/tty; fi
   [ "$(id -u)" -ne 0 ] || die "$(t root)"
   [ "$(uname -s)" = "Linux" ] || die "Linux only (found $(uname -s)); on macOS use mac_install.sh."
   # shellcheck disable=SC2059
@@ -91,10 +115,10 @@ main() {
     # shellcheck disable=SC2059
     printf "$(t missing)\n" "$MISSING"
     command -v apt-get >/dev/null 2>&1 || die "$(t nogit)"
-    ans=""; read -rp "$(t ask)" ans || ans=""
+    if [ -n "$YES" ]; then ans=y; else ans=""; read -rp "$(t ask)" ans || ans=""; fi
     case "$ans" in y|Y|yes|YES|Yes) ;; *) t declined; exit 1 ;; esac
     # shellcheck disable=SC2086
-    sudo apt-get update && sudo apt-get install -y $MISSING || die "apt-get failed"
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get update && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y $MISSING || die "apt-get failed"
     find_py
   fi
   if [ -z "$PY" ]; then
@@ -126,9 +150,11 @@ main() {
     bash scripts/linux_kokoro.sh || die "Kokoro install failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
   fi
 
+  if [ -n "$YES" ] && [ -z "${TLWU_SKIP_MODELS:-}" ]; then prefetch_models; fi
+
   say "$(t done)"
   printf '\n    bash %s/scripts/linux_menu.sh\n\n' "$DIR"
-  t models
+  if [ -n "$YES" ] && [ -z "${TLWU_SKIP_MODELS:-}" ]; then t ready; else t models; fi
   exit 0
 }
-main "$@"
+[ -n "${TLWU_SOURCE_ONLY:-}" ] || main "$@"
