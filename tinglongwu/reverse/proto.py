@@ -356,7 +356,8 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     asr = TimedASR(asr, lat) if asr is not None else None
     items = ((n, "mic", zh) for n, zh in enumerate(
         recognize_utterances(capture_segments(MicSource(a.mic_name), seg, stop, lat), asr,
-                         gate=getattr(player, "gate", None), src=src), 1))
+                         gate=getattr(player, "gate", None), src=src,
+                         zh_variant=getattr(a, "zh_variant", "tw")), 1))
     box: list = []
     print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
     try:
@@ -569,6 +570,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--from", dest="src", default="zh", choices=["zh", "en"],
                     help="language you speak (default zh); en = speak English, the other side hears Chinese "
                          "(--to zh implied; Kokoro Chinese voices; MT Hy-MT2 en->zh if installed, else OPUS)")
+    ap.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
+                    help="how your Chinese is shown: tw = Traditional (OpenCC s2twp, same as listen mode), "
+                         "cn = Simplified")
     ap.add_argument("--to", default=None, choices=["ru", "en", "ja", "zh", "follow"],
                     help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
                          "no pivot; use with --tts-engine kokoro)")

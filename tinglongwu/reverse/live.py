@@ -140,11 +140,13 @@ def is_source_zh(text: str) -> bool:
 
 def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float | None = None,
                          gate: PlaybackGate | None = None, src: str = "zh", sr: int = 16000,
-                         report=None) -> Iterator[str]:
+                         report=None, zh_variant: str | None = None) -> Iterator[str]:
     """Each finished segment -> text in `src` (zh | en). Dropped: segments heard while our own TTS plays (`gate`),
     anything the speak-side input gate rejects (#249: too short, quiet, no_speech / low logprob, too few characters,
     compression loop, Whisper repeat hallucinations) and the other side's speech leaking in. Gate drops are counted
-    in `report` (gate.DropReport: one summary line per minute at most). silence_rms overrides gate.MIN_RMS."""
+    in `report` (gate.DropReport: one summary line per minute at most). silence_rms overrides gate.MIN_RMS.
+    zh_variant (tw | cn, src zh only; #312): the text goes through the same zh_convert as listen mode, so the
+    source line is Traditional (tw) or Simplified (cn) whatever script Whisper wrote."""
     from .gate import DropReport, SegmentStats, gate_audio
     from .gate import gate as input_gate
 
@@ -170,4 +172,9 @@ def recognize_utterances(segments: Iterable[np.ndarray], asr, silence_rms: float
             continue
         if not is_source_lang(tr.text, src):  # the other side's speech leaked in: Whisper "translated" it
             continue
-        yield tr.text.strip()
+        text = tr.text.strip()
+        if src == "zh" and zh_variant:
+            from ..translate import zh_convert
+
+            text = zh_convert(text, zh_variant)
+        yield text

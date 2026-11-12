@@ -11,6 +11,9 @@ Where the numbers come from:
   on the speak side a wrong sentence goes into someone else's meeting, so either one alone rejects it.
 - COMPRESSION_MAX 2.4: Whisper's compression_ratio_threshold (same as asr.is_garbage): above it the text is a loop.
 - MIN_CHARS 2: one letter/character ("嗯", "a") is a filler or a noise transcription, not a sentence to send.
+- FILLER (#312): text made only of filler syllables (哈/蛤/嗯/啊/欸 ..., "uh"/"um" ...) or one character/word said
+  FILLER_REPEAT (4) or more times ("他他他他他他 他"). 4 is repeat.py's own word-loop limit ("да да да" is speech,
+  4+ identical words is a loop); real reduplication stops at 3 (對對對, 走走走) and 謝謝 / 好好 stay sentences.
 """
 from __future__ import annotations
 
@@ -27,6 +30,12 @@ NO_SPEECH_MAX = 0.6
 LOGPROB_MIN = -1.0
 COMPRESSION_MAX = 2.4
 MIN_CHARS = 2
+FILLER_REPEAT = 4
+# #312: interjections / hesitation sounds that carry nothing to translate (simplified + traditional forms)
+FILLER_CHARS = frozenset("哈蛤嗯啊欸呃喔哦噢唉诶誒嘿呵恩额額哇呀")
+FILLER_WORDS = frozenset({"uh", "uhh", "um", "umm", "uhm", "hmm", "hm", "mm", "mhm", "ah", "oh", "er", "erm", "eh",
+                          "ha", "haha", "hahaha"})
+_UNIT = re.compile(r"[぀-ヿ㐀-鿿가-힯]|[^\W\d_぀-ヿ㐀-鿿가-힯]+|\d+")
 REPORT_EVERY_S = 60.0  # at most one summary line of gate drops per minute (no console flood)
 
 ENV = {"min_dur": ("TLWU_GATE_MIN_DUR", MIN_DUR_S), "min_rms": ("TLWU_GATE_MIN_RMS", MIN_RMS),
@@ -64,6 +73,17 @@ def _chars(text: str) -> int:
     return len(re.findall(r"[^\W_]", text))  # letters, digits and CJK; no spaces or punctuation
 
 
+def is_filler(text: str) -> bool:
+    """#312: True for an utterance with nothing to translate: only filler syllables ("蛤蛤蛤蛤蛤", "嗯啊", "uh um"),
+    or a single character / word repeated FILLER_REPEAT+ times ("他他他他他他 他"). CJK counts per character."""
+    units = [u.lower() for u in _UNIT.findall(text)]
+    if not units:
+        return False
+    if all(u in FILLER_CHARS or u in FILLER_WORDS for u in units):
+        return True
+    return len(units) >= FILLER_REPEAT and len(set(units)) == 1
+
+
 def gate_audio(duration: float, rms: float, env=None, **over) -> tuple[bool, str]:
     """The audio-only part of gate(), checked before ASR runs (no Whisper time spent on a click or on silence)."""
     lim = {**limits(env), **over}
@@ -76,7 +96,7 @@ def gate_audio(duration: float, rms: float, env=None, **over) -> tuple[bool, str
 
 def gate(s: SegmentStats, env=None, **over) -> tuple[bool, str]:
     """(True, "") when the segment may go to the confirm queue, else (False, reason).
-    reason in: too_short, quiet, no_speech, low_logprob, few_chars, compression, repeat.
+    reason in: too_short, quiet, no_speech, low_logprob, few_chars, compression, filler, repeat.
     `over` replaces single limits (keys of ENV), e.g. min_rms=..."""
     from ..hallucination import is_hallucination
     from ..repeat import has_loop
@@ -93,6 +113,8 @@ def gate(s: SegmentStats, env=None, **over) -> tuple[bool, str]:
         return False, "few_chars"
     if compression_ratio(s.text) > lim["compression"]:
         return False, "compression"
+    if is_filler(s.text):
+        return False, "filler"
     if has_loop(s.text) or is_hallucination(s.text, s.rms, s.no_speech):
         return False, "repeat"
     return True, ""
