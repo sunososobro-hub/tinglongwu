@@ -2,7 +2,7 @@
 
 會議與通話用的離線即時語音翻譯。
 
-[English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md)
 
 <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
 

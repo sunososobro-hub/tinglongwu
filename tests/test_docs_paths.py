@@ -18,4 +18,4 @@ def test_privacy_statements_exist_and_readmes_link_them():
     for readme, target in (("docs/details.md", "../PRIVACY.md"), ("docs/readme-full.zh-TW.md", "../PRIVACY.zh-TW.md")):  # #347
         links = re.findall(r"\]\(([^)#]+)\)", (ROOT / readme).read_text("utf-8"))
         assert target in links, readme
-        assert (ROOT / target.lstrip("./")).is_file()
+        assert (ROOT / "docs" / target).resolve().is_file()

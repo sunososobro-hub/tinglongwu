@@ -24,7 +24,7 @@ Full Chinese translations of the previous long README: [繁體中文](readme-ful
 | macOS (Terminal) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh \| bash` |
 | Linux (bash) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh \| bash` |
 
-Unattended Linux (apt yes + default models): `... /install.sh | TLWU_YES=1 bash`. More (checksums, ZIP, GPU): [install](install.md).
+Unattended Linux (apt yes + default models): `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh | TLWU_YES=1 bash`. More (checksums, ZIP, GPU): [install](install.md).
 
 ## System requirements
 

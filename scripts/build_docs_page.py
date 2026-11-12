@@ -20,10 +20,11 @@ def main(out: Path) -> None:
         u = m.group(1)
         if u.startswith(("http://", "https://", "mailto:", "#")):
             return m.group(0)
-        path = (src.parent / u.partition("#")[0]).resolve().relative_to(ROOT).as_posix()
-        return f'href="{BLOB}{path}"'
+        path, _, frag = u.partition("#")
+        path = (src.parent / path).resolve().relative_to(ROOT).as_posix()
+        return f'href="{BLOB}{path}{"#" + frag if frag else ""}"'
 
-    body = body.replace("\|", "|")  # python-markdown keeps the table-cell escape inside code
+    body = body.replace(r"\|", "|")  # python-markdown keeps the table-cell escape inside code
     body = re.sub(r'href="([^"]+)"', fix, body)
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

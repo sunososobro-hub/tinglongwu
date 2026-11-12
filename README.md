@@ -2,7 +2,7 @@
 
 Offline real-time speech translation for meetings and calls.
 
-[English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
 

@@ -2,7 +2,7 @@
 
 面向会议与通话的离线实时语音翻译。
 
-[English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | [繁體中文](README.zh-TW.md) | 简体中文
 
 <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
 
