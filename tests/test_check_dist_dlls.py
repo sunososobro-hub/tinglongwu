@@ -179,7 +179,7 @@ def test_copy_vc_runtime_ships_the_matched_set(tmp_path):
     src, app = vc_dir(tmp_path / "sys"), tmp_path / "app"
     app.mkdir()
     (app / "vcruntime140.dll").write_bytes(b"old")  # the one Nuitka took from Python is replaced
-    assert bw.copy_vc_runtime(app, src) == [f"{n} 14.51.36247.0" for n in bw.VC_RUNTIME]
+    assert bw.copy_vc_runtime(app, [src]) == [f"{n} 14.51.36247.0" for n in bw.VC_RUNTIME]
     for n in bw.VC_RUNTIME:
         assert (app / n).read_bytes() == fake_vc_dll(n)
 
@@ -190,7 +190,7 @@ def test_copy_vc_runtime_rejects_old_or_32_bit_dlls(tmp_path, kw, err):
     src, app = vc_dir(tmp_path / "sys", **kw), tmp_path / "app"
     app.mkdir()
     with pytest.raises(SystemExit, match=err):
-        bw.copy_vc_runtime(app, src)
+        bw.copy_vc_runtime(app, [src])
     assert not any(app.iterdir())  # nothing copied
 
 
@@ -199,9 +199,28 @@ def test_copy_vc_runtime_stops_when_the_redist_is_missing(tmp_path, monkeypatch)
     src.mkdir()
     (src / "vcruntime140.dll").write_bytes(b"x")
     monkeypatch.setenv("TLWU_VCREDIST_DIR", str(src))
-    assert bw.vc_runtime_src() == src
+    assert bw.vc_runtime_src() == ([src], True)
     with pytest.raises(SystemExit, match="msvcp140.dll"):
         bw.copy_vc_runtime(tmp_path)
+
+
+def test_vc_runtime_from_the_visual_studio_redist_folders(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("TLWU_VCREDIST_DIR", raising=False)
+    x64 = tmp_path / "MSVC" / "14.44.35112" / "x64"
+    crt, omp = x64 / "Microsoft.VC143.CRT", x64 / "Microsoft.VC143.OpenMP"
+    for d, names in ((crt, bw.VC_RUNTIME[:4]), (omp, ("vcomp140.dll",))):
+        d.mkdir(parents=True)
+        for n in names:
+            (d / n).write_bytes(fake_vc_dll(n))
+    monkeypatch.setenv("VCToolsRedistDir", str(x64.parent))
+    assert bw.vc_runtime_src() == ([crt, omp], True)
+    app = tmp_path / "app"
+    app.mkdir()
+    assert len(bw.copy_vc_runtime(app)) == len(bw.VC_RUNTIME)
+    assert "WARNING" not in capsys.readouterr().out
+    monkeypatch.delenv("VCToolsRedistDir")
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "win"))
+    assert bw.vc_runtime_src() == ([tmp_path / "win" / "System32"], False)
 
 
 def test_cpu_llama_dlls_from_a_local_wheel(tmp_path, monkeypatch):

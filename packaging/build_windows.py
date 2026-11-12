@@ -153,32 +153,47 @@ Python packages (name version: license as declared in package metadata)
 """
 
 
-def vc_runtime_src() -> Path:
-    """Folder of the installed VC++ redistributable DLLs: TLWU_VCREDIST_DIR, else System32 of %SystemRoot%."""
+def vc_runtime_src() -> tuple[list[Path], bool]:
+    """(folders to take VC_RUNTIME from, True if they are the Visual Studio redist folders).
+    TLWU_VCREDIST_DIR (one folder or os.pathsep list), else the Visual Studio redist folders of VCToolsRedistDir
+    (set in a VS developer prompt: x64/Microsoft.VC14*.CRT + .OpenMP, the Distributable Code of the VS license),
+    else System32 of %SystemRoot% (same files, installed by the Redistributable; the build prints a warning)."""
     if os.environ.get("TLWU_VCREDIST_DIR"):
-        return Path(os.environ["TLWU_VCREDIST_DIR"])
-    return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+        return [Path(p) for p in os.environ["TLWU_VCREDIST_DIR"].split(os.pathsep) if p], True
+    redist = os.environ.get("VCToolsRedistDir")
+    if redist:
+        x64 = Path(redist) / "x64"
+        dirs = sorted(x64.glob("Microsoft.VC14*.CRT")) + sorted(x64.glob("Microsoft.VC14*.OpenMP"))
+        if dirs:
+            return dirs, True
+    return [Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"], False
 
 
-def copy_vc_runtime(app: Path, src: Path | None = None) -> list[str]:
-    """Copy VC_RUNTIME from src into the app folder (the app folder is on every DLL search path the app uses)."""
-    src = vc_runtime_src() if src is None else src
-    missing = [n for n in VC_RUNTIME if not (src / n).is_file()]
+def copy_vc_runtime(app: Path, dirs: list[Path] | None = None) -> list[str]:
+    """Copy VC_RUNTIME (first match in dirs) into the app folder (on every DLL search path the app uses)."""
+    if dirs is None:
+        dirs, from_vs = vc_runtime_src()
+        if not from_vs:
+            print("WARNING: VC++ runtime taken from System32; for a release build run from a Visual Studio developer "
+                  "prompt (VCToolsRedistDir) or set TLWU_VCREDIST_DIR to the VS redist CRT and OpenMP folders")
+    src = {n: next((d / n for d in dirs if (d / n).is_file()), None) for n in VC_RUNTIME}
+    missing = [n for n, f in src.items() if f is None]
     if missing:
-        raise SystemExit(f"VC++ runtime: {', '.join(missing)} not found in {src}; install the Microsoft Visual C++ "
-                         "Redistributable 2015-2022 (x64) on the pack machine or set TLWU_VCREDIST_DIR")
+        raise SystemExit(f"VC++ runtime: {', '.join(missing)} not found in {', '.join(map(str, dirs))}; install "
+                         "the Microsoft Visual C++ Redistributable 2015-2022 (x64) or Build Tools on the pack machine, "
+                         "or set TLWU_VCREDIST_DIR")
     found = []
-    for n in VC_RUNTIME:
-        data = (src / n).read_bytes()
+    for n, f in src.items():
+        data = f.read_bytes()
         ver = pe_file_version(data)
         if pe_machine(data) != 0x8664:
-            raise SystemExit(f"VC++ runtime: {src / n} is not an x64 DLL (32-bit Python reads SysWOW64?)")
+            raise SystemExit(f"VC++ runtime: {f} is not an x64 DLL (32-bit Python reads SysWOW64?)")
         if ver is None or ver[:2] < VC_MIN_VERSION:
-            raise SystemExit(f"VC++ runtime: {src / n} version {ver} is older than {VC_MIN_VERSION}; update the "
+            raise SystemExit(f"VC++ runtime: {f} version {ver} is older than {VC_MIN_VERSION}; update the "
                              "Microsoft Visual C++ Redistributable 2015-2022 (x64) on the pack machine")
         found.append(f"{n} {'.'.join(map(str, ver))}")
-    for n in VC_RUNTIME:
-        shutil.copy2(src / n, app / n)
+    for n, f in src.items():
+        shutil.copy2(f, app / n)
     return found
 
 
