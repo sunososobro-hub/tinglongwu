@@ -292,12 +292,16 @@ def _hard_exit(code: int) -> None:
 READY_LINE = "* ready - listening (start playback now)"
 
 
-def announce_ready(status=None) -> None:
-    """Models are loaded: tell the user (GUI: status callback; CLI: one flushed stdout line, since stderr is often redirected)."""
+def announce_ready(status=None, transcript_only=False) -> None:
+    """Models are loaded: tell the user (GUI: status callback; CLI: one flushed line).
+    Stdout only when it is an interactive terminal and not --transcript-only; otherwise stderr, so
+    redirected stdout (hyp.txt, translations) carries only transcript/translation lines (#357)."""
     if status:
         status("listening")
-    else:
+    elif not transcript_only and sys.stdout.isatty():
         print(READY_LINE, flush=True)
+    else:
+        print(READY_LINE, file=sys.stderr, flush=True)
 
 
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None) -> None:
@@ -407,7 +411,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         note("loading speaker model...")
         labeler = make_labeler(mdir)
-    announce_ready(status)
+    announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
         stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
