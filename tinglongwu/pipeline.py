@@ -42,11 +42,21 @@ def step_times(translator) -> str:
     return ""
 
 
+def _record(item, t_shown: float) -> dict:
+    """#323: one latency record for a final line from its MT queue item and the time it was shown."""
+    text, lang, _ep, released = item[:4]
+    eos, cut, asr_done = item[6]
+    r = lambda v: round(v, 3)  # noqa: E731
+    return {"vad": r(cut - eos), "asr": r(asr_done - cut), "merge": r(released - asr_done),
+            "mt": r(t_shown - released), "total": r(t_shown - eos),
+            "t_source_shown": None if item[7] is None else r(item[7] - eos), "lang": lang, "text": text}
+
+
 def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
-        on_work=None) -> None:
+        on_work=None, on_record=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -54,6 +64,11 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     a backlog. log(str): --debug-latency, per-stage times (asr / queue wait / each MT step).
     on_latency(seconds): called once per output line with ASR time + MT queue wait + MT time (#80).
     on_work(asr_s, mt_s, seg_s): once per output line, pure compute (no queue wait) and the audio length (#280).
+    on_record(dict) (#323, live clock only): once per final line, seconds (3 decimals) from the end of speech:
+    vad (end of speech -> segment cut), asr (cut -> ASR done, incl. waiting for the ASR thread), merge (held for a
+    sentence end), mt (MT queue + translate + output), total (end of speech -> final line shown; the sum of the four),
+    t_source_shown (end of speech -> source line shown, None without one), plus lang and text. End of speech = the
+    arrival time of the last speech sample the VAD saw (last frame arrival minus the silence after the speech).
 
     With a merger, ASR text is held until a sentence ends, or max_wait seconds passed (a timer wakes
     the loop even when no new segment arrives, so live latency stays bounded). audio_clock=True uses
@@ -61,6 +76,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     """
     q: queue.Queue = queue.Queue(maxsize=8)
     consumed = [0]
+    frame_t = [0.0]  # monotonic arrival time of the newest frame (#323)
     stop = threading.Event()
 
     def counted(frames):
@@ -68,6 +84,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if stop.is_set():  # Stop pressed: end the capture generator even if no segment is ever emitted
                 return
             consumed[0] += len(f)
+            frame_t[0] = time.monotonic()
             yield f
 
     def produce():
@@ -77,8 +94,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 for seg in segmenter.segments(counted(frames)):
                     if stop.is_set():
                         return
+                    pause = float(getattr(segmenter, "last_pause", 0.0))
                     if not put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
-                           bool(getattr(segmenter, "last_forced", False)), float(getattr(segmenter, "last_pause", 0.0)))):
+                                bool(getattr(segmenter, "last_forced", False)), pause,
+                                (frame_t[0] - pause, time.monotonic()))):  # (end of speech, cut) for on_record
                         return
             finally:
                 # #10: end the capture generator here, on the thread that opened the recorder (owns its COM
@@ -107,6 +126,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     last_ep = [None]  # epoch of the newest segment handed to ASR (for --debug-latency)
     last_asr = [0.0]  # seconds the newest segment spent in ASR
     last_len = [0.0]  # seconds of audio in the newest segment
+    last_marks = [None]  # (end of speech, cut, ASR done) of the newest transcribed segment (#323 on_record)
     say = log or (lambda m: None)
     if log is not None and draft is not None and getattr(draft, "log", None):
         say = lambda m: draft._log(m.removeprefix("latency: "))  # noqa: E731 - clears the draft block first
@@ -160,6 +180,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             try:
                 t_emit = time.monotonic()
                 emit(*item[:4])
+                if on_record is not None and item[6] is not None:
+                    on_record(_record(item, time.monotonic()))
                 if on_work is not None:
                     on_work(item[4], time.monotonic() - t_emit, item[5])
                 if on_latency is not None:
@@ -180,9 +202,11 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 continue  # identical final line again within the window: show it once
             last_final[0], last_final[1] = key, now
             lang = script_lang(text, u.lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
+            t_src = None
             if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
                 sink.write_source(lang, text)  # #53: the source line now, its translation when MT is done
-            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0]))
+                t_src = time.monotonic()
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], last_marks[0], t_src))
 
     def check_worker() -> None:
         if failed:
@@ -216,18 +240,20 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 break
             if isinstance(item, BaseException):
                 raise item
-            seg, stamp, last_ep[0], forced_cut, pause = item
+            seg, stamp, last_ep[0], forced_cut, pause, (t_eos, t_cut) = item
             if float(np.sqrt(np.mean(seg ** 2))) < SILENCE_RMS:
                 continue  # silence: skip (avoids Whisper hallucinations)
             with model_lock():
                 t0 = time.monotonic()
                 t = asr.transcribe(seg)
             last_asr[0] = time.monotonic() - t0
+            marks = (t_eos, t_cut, t0 + last_asr[0])
             last_len[0] = len(seg) / SAMPLE_RATE
             say(f"latency: asr {last_asr[0] * 1000:.0f} ms for {len(seg) / SAMPLE_RATE:.1f} s of audio"
                 f" ({mtq.qsize()} line(s) waiting for MT)")
             if t is None or is_hallucination(t.text, float(np.sqrt(np.mean(seg ** 2))), t.no_speech):
                 continue  # nothing heard, or a stock Whisper subtitle-credit line on music/silence
+            last_marks[0] = marks
             if speakers is not None:  # --speakers (#222): label this sentence, log only; output lines unchanged
                 who, spk = speakers.label(seg)
                 print(f"tlwu: {who}", file=sys.stderr, flush=True)

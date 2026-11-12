@@ -89,6 +89,14 @@ def parse_args(argv=None):
                    help="log to stderr per-stage times: ASR ms per segment, MT ms (each OPUS step, e.g. "
                         "ru-en / en-zh) and queue wait per line; with --stream also the seconds from segment "
                         "audio start to the first translated draft and to the final line")
+    p.add_argument("--paced", action="store_true",
+                   help="with --file: release the audio in real time and use the live clock, like live capture "
+                        "(for latency measurements; output text is unchanged)")
+    p.add_argument("--latency-jsonl", metavar="PATH",
+                   help="append one JSON line per final line to PATH: seconds from the end of speech to the segment "
+                        "cut (vad), ASR done (asr), sentence-merge release (merge), translation shown (mt), the "
+                        "total and t_source_shown. Live capture, or --file with --paced; --debug-latency also "
+                        "prints them as 'latency: line {...}'")
     p.add_argument("--no-adapt", action="store_true",
                    help="keep the chosen models even when lines arrive late (default: if speech end -> translated "
                         "line stays over 2 s for 3 lines, step down the translation engine, then the speech "
@@ -126,6 +134,10 @@ def parse_args(argv=None):
     p.add_argument("--force", action="store_true",
                    help="run even on a CPU without AVX2 (below the minimum spec, see README)")
     a = p.parse_args(argv)
+    if a.paced and not a.file:
+        p.error("--paced needs --file (live capture is always real time)")
+    if a.latency_jsonl and a.file and not a.paced:
+        p.error("--latency-jsonl with --file needs --paced (an unpaced file runs faster than real time)")
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
@@ -391,6 +403,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
+    paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
+    audio_clock = bool(a.file) and not paced
     merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
     segmenter = Segmenter(a.chunk, not a.no_vad, step=0.25, vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)))
     draft = None
@@ -399,10 +413,14 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     elif a.stream:
         draft = make_draft(asr, translator, segmenter, a.to, show_src=a.stream_src,
                            debug_latency=a.debug_latency)
-        if draft is not None and a.file:
+        if draft is not None and a.file and not paced:  # --stream --file: real time, audio clock (unchanged)
             from .stream import PacedSource
 
             source = PacedSource(source)
+    if paced:
+        from .stream import PacedSource
+
+        source = PacedSource(source)
     if draft is not None and merger is not None and dev != "cpu" and not getattr(a, "max_wait_explicit", False):
         merger.max_wait = max(merger.max_wait, RETRANS_MAX_WAIT)
     labeler = None
@@ -413,9 +431,33 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         labeler = make_labeler(mdir)
     announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
-    run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=bool(a.file), draft=draft,
-        stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
-        speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe)
+    on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
+    try:
+        run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
+            stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
+            speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
+            on_record=on_record)
+    finally:
+        if rec_file is not None:
+            rec_file.close()
+
+
+def latency_recorder(path, log):
+    """#323: (on_record callback or None, open file or None) for --latency-jsonl PATH and/or --debug-latency."""
+    if not path and log is None:
+        return None, None
+    import json
+
+    fh = open(path, "a", encoding="utf-8") if path else None
+
+    def on_record(rec: dict) -> None:
+        line = json.dumps(rec, ensure_ascii=False)
+        if fh is not None:
+            fh.write(line + "\n")
+            fh.flush()
+        if log is not None:
+            log("latency: line " + line)
+    return on_record, fh
 
 
 def main(argv=None) -> int:
