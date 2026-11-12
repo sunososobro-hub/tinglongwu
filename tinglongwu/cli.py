@@ -104,6 +104,9 @@ def parse_args(argv=None):
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
                    help="open the graphical interface (floating subtitle bar + small control window)")
+    p.add_argument("--overlay", action="store_true",
+                   help="also show the subtitles in an always-on-top, draggable bar (position and font size are "
+                        "remembered in gui.json); off by default")
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
@@ -457,6 +460,15 @@ def main(argv=None) -> int:
         return gui_main()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    if a.overlay:  # #322: Tk owns the main thread, the pipeline runs on a worker
+        from .overlay import OverlaySink, run_listen
+        from .sink import TextSink, TranscriptSink
+
+        def work(q, stop):
+            base = TranscriptSink() if a.transcript_only else TextSink()
+            run_session(a, sink=OverlaySink(base, q), stop=stop)
+
+        _hard_exit(run_listen(work))  # a model may still be loading: do not wait for interpreter teardown
     try:
         run_session(a)
     except (ModelNotFound, NotImplementedError, RuntimeError) as e:
