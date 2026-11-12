@@ -1,5 +1,8 @@
 # Contributing to tinglongWu
 
+**Don't be afraid. Come and contribute. If it fits the project's principles, we will merge it.**
+**The default answer is yes: if your PR respects the principles below, we will work with you to get it merged. No contribution is too small, and first-timers are welcome.**
+
 Thanks for stopping by. You do not need to be an expert to help, and we would rather get a rough PR we can work on together than no PR at all.
 
 ## What we value
@@ -15,9 +18,9 @@ Thanks for stopping by. You do not need to be an expert to help, and we would ra
 - **Bigger work** (new feature, refactor, new dependency, anything touching the audio/ASR/translation pipeline): please open an issue or comment on an existing one first, so nobody wastes effort on something that cannot be merged.
 - **New here?** Look for the [good first issue](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue) label. Comment on the issue and say you are taking it.
 
-## Project principles
+## Project principles: the only hard rules
 
-A PR has to respect these. If you are unsure whether yours does, ask in the issue.
+These are the only hard rules, so this is exactly the bar. Everything else is negotiable and we will help you with it. If you are unsure whether your PR fits, ask in the issue.
 
 - **Fully offline by default.** Only `tlwu-setup` (install / model download) may use the network. See [docs/privacy.md](docs/privacy.md).
 - **No telemetry.** No analytics, no crash reporting, no "phone home".
