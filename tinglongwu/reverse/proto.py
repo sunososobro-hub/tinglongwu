@@ -557,10 +557,12 @@ def build_translator(kind: str, device: str, mdir, to: str = "ru", follow_langs=
         for t in targets:  # follow: every spoken language
             mt.preload(src, t)  # fail early if the model cannot load
             mt.preload(t, src)  # back-translation for the confirm step
-    except RuntimeError as e:
-        raise SystemExit(f"tlwu: {e}. Install it once (with network): pip install llama-cpp-python "
-                         "--only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu "
-                         "&& tlwu-setup --hymt") from e
+    except Exception as e:  # noqa: BLE001 - incl. OSError from a --to ja preload; KeyboardInterrupt passes
+        from ..llamacheck import FIX_HINT
+
+        raise SystemExit(f"tlwu: {e}. Not installed: pip install llama-cpp-python --only-binary=:all: "
+                         "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu && tlwu-setup --hymt. "
+                         f"Installed but broken: {FIX_HINT}") from e
     mt.history, mt._pair = [], None  # same surface as the other translators for confirm.back_translate
     return mt
 

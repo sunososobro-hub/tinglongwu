@@ -40,8 +40,11 @@ def test_not_installed_gives_hymt_and_hint_without_asking(to):
     assert "pip install llama-cpp-python --only-binary=:all:" in said[0] and "tlwu-setup --hymt" in said[0]
 
 
-def test_cli_prints_engine_and_survives_eof():
+def test_cli_prints_engine_and_survives_eof(tmp_path):
+    import os
+
+    env = {**os.environ, "TLWU_MODELS": str(tmp_path / "empty")}   # no Hy-MT2 GGUF: the hint must be printed
     r = subprocess.run([sys.executable, "-m", "tinglongwu.menuopts", "speak", "ru"], input="",
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
     assert r.returncode == 0 and r.stdout.strip() == "hymt"
-    assert "tlwu-setup --hymt" in r.stderr or r.stdout.strip() == "hymt"
+    assert "tlwu-setup --hymt" in r.stderr

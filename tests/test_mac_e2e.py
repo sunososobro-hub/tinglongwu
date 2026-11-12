@@ -253,7 +253,8 @@ def menu(tmp_path):
     log = tmp_path / "calls.log"
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "home"), "LOG": str(log), "REALPY": sys.executable,
            "PYTHONPATH": f"{ROOT}{os.pathsep}{tmp_path / 'fakepkgs'}", "TLWU_MODELS": str(models), "TLWU_NO_UPDATE": "1", "TLWU_UI_LANG": "en",
-           "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "TMPDIR": str(tmp_path), "LANG": "C.UTF-8"}
+           "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "TMPDIR": str(tmp_path), "LANG": "C.UTF-8",
+           "CUDA_VISIBLE_DEVICES": ""}   # a Mac has no CUDA: keep the device probe on CPU on a GPU test host too
 
     def run(keys: str):
         r = subprocess.run(["bash", str(repo / "scripts" / "linux_menu.sh")], env=env, input=keys,

@@ -83,7 +83,7 @@ speak_ok() { case "$1" in auto|en|ru|ja) return 0;; *) return 1;; esac; }
 # Japanese needs Hy-MT2 (llama-cpp-python in .venv + the GGUF) and, for speaking, misaki[ja] in the Kokoro venv.
 HYMT_FILE_REL="hymt2-1.8b/Hy-MT2-1.8B-Q4_K_M.gguf"
 have_hymt_file() { python -c "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / '$HYMT_FILE_REL').is_file() else 1)"; }
-have_llama() { python -c "import llama_cpp" 2>/dev/null; }
+have_llama() { python -c "from tinglongwu.llamacheck import import_llama; import_llama()" 2>/dev/null; }   # same import the app uses (CUDA libs registered first)
 hy_ready() { have_hymt_file && have_llama; }   # then ja is translated directly (no OPUS pivot)
 ja_missing() {  # prints the install commands the Japanese voice/translator still needs; returns 1 if any
   local out=""

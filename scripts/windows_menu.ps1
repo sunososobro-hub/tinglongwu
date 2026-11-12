@@ -52,7 +52,7 @@ function Test-SpeakOk($l) { return @("auto", "en", "ru", "ja") -contains $l }
 $hymtRel = "hymt2-1.8b/Hy-MT2-1.8B-Q4_K_M.gguf"
 $haveHymtFile = "import sys; from tinglongwu.models import models_dir; sys.exit(0 if (models_dir(None) / '$hymtRel').is_file() else 1)"
 function Test-HymtFile { & $py -c $haveHymtFile; return ($LASTEXITCODE -eq 0) }
-function Test-Llama { & $py -c "import llama_cpp" 2>$null; return ($LASTEXITCODE -eq 0) }
+function Test-Llama { & $py -c "from tinglongwu.llamacheck import import_llama; import_llama()" 2>$null; return ($LASTEXITCODE -eq 0) }
 function Test-HyReady { return ((Test-HymtFile) -and (Test-Llama)) }   # then ja is translated directly (no OPUS pivot)
 function Get-JaMissing {   # install commands the Japanese voice/translator still needs (empty = ready)
     $out = @()

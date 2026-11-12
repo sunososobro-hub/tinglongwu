@@ -106,9 +106,25 @@ def test_offline_only_pack_commands_still_run(monkeypatch, no_net, tmp_path, cap
     assert "zh  missing" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("entry", ["packs", "talk", "gui"])
+def test_talk_installer_fetches_hymt_and_no_opus_pair(monkeypatch, tmp_path):
+    """#331: talk mode translates with Hy-MT2 only, so tlwu-setup --talk fetches its GGUF and no OPUS pair."""
+    from types import SimpleNamespace
+
+    from tinglongwu_setup import talk
+
+    seen, hy = [], []
+    monkeypatch.setattr(dl, "get_pair", lambda man, mdir, pr, allow_unpinned=False: seen.append(pr))
+    monkeypatch.setattr(dl, "get_hymt", lambda man, mdir: hy.append(mdir))
+    monkeypatch.setattr(dl, "get_kokoro", lambda *a, **k: None)
+    monkeypatch.setattr(talk, "ensure_venv", lambda *a, **k: (_ for _ in ()).throw(StopIteration()))
+    with pytest.raises(StopIteration):
+        talk.main(SimpleNamespace(talk_venv=str(tmp_path / "v")), tmp_path)
+    assert seen == [] and hy == [tmp_path]
+
+
+@pytest.mark.parametrize("entry", ["packs", "gui"])
 def test_installer_entry_points_opt_in_to_unpinned_pairs(monkeypatch, tmp_path, entry):
-    """zh-en / en-ru have no committed pin yet: the pack and talk installers must pass --allow-unpinned explicitly
+    """zh-en / en-ru have no committed pin yet: the pack installer must pass --allow-unpinned explicitly
     (a bare tlwu-setup --pair zh-en is refused, see test_get_pair_unpinned_needs_flag)."""
     seen = []
     monkeypatch.setattr(dl, "get_pair", lambda man, mdir, pr, allow_unpinned=False: seen.append((pr, allow_unpinned)))
@@ -123,14 +139,5 @@ def test_installer_entry_points_opt_in_to_unpinned_pairs(monkeypatch, tmp_path, 
         monkeypatch.setattr(dl, "get_hymt", lambda *a, **k: None)
         for t in (tiers.T_CPU, tiers.T_GPU):
             assert dl.main([*t.downloader_args(), "--models-dir", str(tmp_path)]) == 0
-    else:
-        from types import SimpleNamespace
-
-        from tinglongwu_setup import talk
-
-        monkeypatch.setattr(dl, "get_kokoro", lambda *a, **k: None)
-        monkeypatch.setattr(talk, "ensure_venv", lambda *a, **k: (_ for _ in ()).throw(StopIteration()))
-        with pytest.raises(StopIteration):
-            talk.main(SimpleNamespace(talk_venv=str(tmp_path / "v")), tmp_path)
     assert seen and all(flag for _, flag in seen)
     assert ("zh-en", True) in seen

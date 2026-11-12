@@ -200,3 +200,19 @@ def test_player_mac_stereo_and_loop_guard(monkeypatch):
     assert p.speaker_name == "BlackHole 16ch" and played and played[0][1] == 2
     with pytest.raises(RuntimeError, match="loop back"):
         proto.Player(None, 24000)  # default output is the Multi-Output Device
+
+
+def test_build_translator_ja_preload_oserror_is_one_line_not_a_traceback(tmp_path):
+    """--to ja re-raises Hy-MT2 preload errors (no ja fallback); an OSError (bad llama.dll) still exits with one line."""
+    _gguf(tmp_path)
+
+    class Hy:
+        def __init__(self, *a):
+            pass
+
+        def preload(self, *a):
+            raise OSError("llama.dll: the specified module could not be found")
+
+    with pytest.raises(SystemExit) as e:
+        build_translator("auto", "cpu", tmp_path, "ja", hy_factory=Hy, warn=lambda m: None)
+    assert "llama.dll" in str(e.value) and "--force-reinstall" in str(e.value)

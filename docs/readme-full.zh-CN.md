@@ -318,7 +318,7 @@ python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu
 ```
 
 - Linux 上程序会自动创建虚拟麦克风（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄语语音播放到 `tlwu_sink`，退出时卸载两个模块。在 Meet/Zoom 选择麦克风 `tlwu_mic`。`--no-vmic` 可关闭（改用 `--device <sink 子串>`）；`--list-speakers` 列出输出设备。Windows 仍使用 VB-CABLE。
-- 翻译一律用 Hy-MT2 直译（zh -> ru／en／ja 及反向，不经英文转接），这是唯一引擎。需要主 venv 里的 `llama-cpp-python` 与 `tlwu-setup --hymt`；缺任一项时程序会打印安装命令并退出，不会改用其他引擎。GPU 有 2 GB 空闲时在 CUDA 上跑，否则在 CPU 上跑。
+- 翻译一律用 Hy-MT2 直译（zh -> ru／en／ja 及反向，不经英文转接），这是唯一引擎。需要主 venv 里的 `llama-cpp-python` 与 `tlwu-setup --hymt`；缺任一项时程序会打印安装命令并退出，不会改用其他引擎。在用 CUDA（`--compute auto` 找到可用 GPU，或 `--compute cuda`）且 GPU 有 2 GB 空闲时在 CUDA 上跑，否则在 CPU 上跑。
 - CPU 预期：笔记本 CPU 上 Hy-MT2 每句约 1-1.5 秒（i5-13500 为 0.93 秒，#66），所以说完后约 4 秒才出声（#186）；程序启动时会打印这个提示。没有 CUDA 时 Whisper 默认 `small`。`--pause`（= `--end-silence`，0.3-2.0 秒）设定句尾静音秒数（越小越快出声）。
 - 俄语语音模型为**可选、需主动启用**（上游未标示许可）：任何安装程序或默认设置都不会下载。请执行 `tlwu-setup --vosk-tts-ru`（或在菜单回答 y/N，默认 N，会先显示许可未标示的提示）。没有模型时，说俄语只会显示字幕并提示启用方式。
 - 语音在 CPU 上使用内置固定语音：俄语用 Vosk-TTS（`--tts-engine vosk`，用 `--speaker` 选 0-4 号语音），英／日语用 Kokoro（`--tts-engine kokoro`），各自在独立 venv。没有参考音频的声音克隆功能。
