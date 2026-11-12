@@ -311,13 +311,15 @@ tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/exa
 
 ```
 sudo apt install pulseaudio-utils            # pactl（PipeWire 已由 pipewire-pulse 提供）
-tlwu-setup --whisper small --pair zh-en --pair en-ru --pair ru-en --pair en-zh   # 一次性，需要网络
+pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+tlwu-setup --whisper small --hymt                 # 一次性，需要网络（Hy-MT2 GGUF，约 1.1 GB）
 python -m tinglongwu.reverse.proto --list-mics
-python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu --mt opus     --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
+python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu --tts-engine vosk --tts-python /path/to/tts-vosk/bin/python --tts-model /path/to/vosk-model-tts-ru-0.7-multi
 ```
 
 - Linux 上程序会自动创建虚拟麦克风（`pactl load-module module-null-sink sink_name=tlwu_sink` 加 `module-remap-source ... source_name=tlwu_mic`），把俄语语音播放到 `tlwu_sink`，退出时卸载两个模块。在 Meet/Zoom 选择麦克风 `tlwu_mic`。`--no-vmic` 可关闭（改用 `--device <sink 子串>`）；`--list-speakers` 列出输出设备。Windows 仍使用 VB-CABLE。
-- 没有 CUDA 时，翻译改用 OPUS/Argos 枢纽 zh -> en -> ru（需上面四个 `--pair` 模型），Whisper 默认 `small`。有 CUDA 时 `--mt auto` 在已安装 Hy-MT2（`tlwu-setup --hymt`）时用 Hy-MT2，否则用 OPUS；`--mt qwen` 可强制使用 Qwen3（GPU），`--mt hymt` 强制 Hy-MT2。`--pause`（= `--end-silence`，0.3-2.0 秒）设定句尾静音秒数（越小越快出声）。
+- 翻译一律用 Hy-MT2 直译（zh -> ru／en／ja 及反向，不经英文转接），这是唯一引擎。需要主 venv 里的 `llama-cpp-python` 与 `tlwu-setup --hymt`；缺任一项时程序会打印安装命令并退出，不会改用其他引擎。GPU 有 2 GB 空闲时在 CUDA 上跑，否则在 CPU 上跑。
+- CPU 预期：笔记本 CPU 上 Hy-MT2 每句约 1-1.5 秒（i5-13500 为 0.93 秒，#66），所以说完后约 4 秒才出声（#186）；程序启动时会打印这个提示。没有 CUDA 时 Whisper 默认 `small`。`--pause`（= `--end-silence`，0.3-2.0 秒）设定句尾静音秒数（越小越快出声）。
 - 俄语语音模型为**可选、需主动启用**（上游未标示许可）：任何安装程序或默认设置都不会下载。请执行 `tlwu-setup --vosk-tts-ru`（或在菜单回答 y/N，默认 N，会先显示许可未标示的提示）。没有模型时，说俄语只会显示字幕并提示启用方式。
 - 语音在 CPU 上使用内置固定语音：俄语用 Vosk-TTS（`--tts-engine vosk`，用 `--speaker` 选 0-4 号语音），英／日语用 Kokoro（`--tts-engine kokoro`），各自在独立 venv。没有参考音频的声音克隆功能。
 

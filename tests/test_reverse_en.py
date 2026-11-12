@@ -61,8 +61,8 @@ def test_default_is_russian_vosk_speaker_4():
 
 
 def test_to_en_kokoro_defaults_speaker_0():
-    a = _parse(["--to", "en", "--tts-engine", "kokoro", "--mt", "opus"])
-    assert (a.to, a.tts_engine, a.speaker, a.mt) == ("en", "kokoro", 0, "opus")
+    a = _parse(["--to", "en", "--tts-engine", "kokoro", "--mt", "hymt"])
+    assert (a.to, a.tts_engine, a.speaker, a.mt) == ("en", "kokoro", 0, "hymt")
     assert _parse(["--to", "en", "--tts-engine", "kokoro", "--speaker", "3"]).speaker == 3
 
 
@@ -160,6 +160,17 @@ def test_no_voice_cloning_engine():
         _parse(["--to", "ru", "--ref", "x.wav"])
     with pytest.raises(ValueError):
         tts_client.TTSClient("/py", "/m", engine="qwen")
+
+
+@pytest.mark.parametrize("mt", ["opus", "qwen"])
+def test_removed_mt_engines_exit_2_with_the_reason(mt):
+    """#331: Hy-MT2 is the only speak engine; the real CLI rejects --mt opus / qwen (exit 2) and says why."""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-m", "tinglongwu.reverse.proto", "--mt", mt, "--no-tts"],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 2 and "was removed (#331)" in r.stderr and "--mt auto" in r.stderr
 
 
 def test_speak_mt_qwen_is_gone_but_old_launchers_still_parse():

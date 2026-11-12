@@ -151,11 +151,12 @@ if ($mode -eq "1" -or $both) {
     try { $xl = @(& $py -m tinglongwu.menuopts listen | Where-Object { $_ }) } catch { $xl = @() }
 }
 if ($both) {
-    $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en", "zh-en", "en-ru") } else { @("$L-en", "en-zh", "zh-en", "en-ru") }
+    # listen side pairs only; the speak side is Hy-MT2 (#331)
+    $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en") } else { @("$L-en", "en-zh") }
     & $py -c $havePairs @need
     if ($LASTEXITCODE -ne 0) {
         Write-Host (T 'NO_MODEL_FOR' $L)
-        if ($L -eq "en") { Invoke-Setup --to zh } elseif ($L -eq "auto") { Invoke-Setup --pair zh-en --pair en-zh --pair ru-en --pair en-ru } else { Invoke-Setup --langs $L --to zh --pair en-ru }
+        if ($L -eq "en") { Invoke-Setup --to zh } elseif ($L -eq "auto") { Invoke-Setup --pair en-zh --pair ru-en } else { Invoke-Setup --langs $L --to zh }
     }
     if ($speak -eq "follow") {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
@@ -187,49 +188,36 @@ if ($mode -eq "1") {
 }
 Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))
 
+# #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
+if (-not (Test-Llama)) { Write-Host "  & $py -m pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"; exit 1 }
+if (-not (Test-HymtFile)) { Write-Host (T 'NO_HYMT_SPEAK'); Invoke-Setup --hymt }
 if ($speak -eq "follow") {
     # both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk (ru) on the first Russian sentence
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "follow", "--follow-file", $followFile, "--mt", "opus",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "follow", "--follow-file", $followFile, "--mt", "auto",
              "--follow-langs", $followLangs,
              "--tts-engine", "kokoro", "--tts-python", $kokoroPy, "--tts-model", $kokoroModel,
              "--vosk-python", $voskPy, "--vosk-model", $voskModel) + $wS
     $txt = @()
 } elseif ($speak -eq "ja") {
-    # zh->ja and the back-translation ja->zh are both direct Hy-MT2 (no OPUS pairs); Kokoro speaks with misaki phonemes
+    # zh->ja and the back-translation ja->zh are both direct Hy-MT2; Kokoro speaks with misaki phonemes
     if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO' $kokoroModel); exit 1 }
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "ja", "--mt", "opus", "--tts-engine", "kokoro",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "ja", "--mt", "auto", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ja", "--mt", "opus") + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ja", "--mt", "auto") + $wS
 } elseif ($speak -eq "zh") {
-    # reverse direction (#134): you speak English, the other side hears Chinese (Hy-MT2 en->zh if installed, else
-    # OPUS en-zh; zh-en is the back-translation). Kokoro Chinese voices need misaki[zh] in the Kokoro venv.
-    & $py -c $havePairs en-zh zh-en
-    if ($LASTEXITCODE -ne 0 -and -not (Test-HyReady)) {
-        Write-Host (T 'NO_MODEL_ZH_EN')
-        Invoke-Setup --pair zh-en --pair en-zh
-    }
+    # reverse direction (#134): you speak English, the other side hears Chinese (Hy-MT2 en->zh; zh-en is the
+    # back-translation). Kokoro Chinese voices need misaki[zh] in the Kokoro venv.
     if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO' $kokoroModel); exit 1 }
     & $kokoroPy -c "import misaki.zh, jieba, pypinyin, cn2an" 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Host "  & `"$kokoroPy`" -m pip install `"misaki[zh]==0.9.4`""; exit 1 }
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--from", "en", "--mt", "opus", "--tts-engine", "kokoro",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--from", "en", "--mt", "auto", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--from", "en", "--mt", "opus") + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--from", "en", "--mt", "auto") + $wS
 } elseif ($speak -eq "en") {
-    # zh->en is a direct OPUS pair; en-zh is only for the back-translation shown while confirming
-    & $py -c $havePairs zh-en en-zh
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host (T 'NO_MODEL_ZH_EN')
-        Invoke-Setup --pair zh-en --pair en-zh
-    }
-    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "en", "--mt", "opus", "--tts-engine", "kokoro",
+    $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--to", "en", "--mt", "auto", "--tts-engine", "kokoro",
              "--tts-python", $kokoroPy, "--tts-model", $kokoroModel, "--speaker", $kokoroVoice) + $wS
-    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "en", "--mt", "opus") + $wS
+    $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "en", "--mt", "auto") + $wS
 } else {
-    & $py -c $havePairs zh-en en-ru ru-en en-zh
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host (T 'NO_MODEL_ZH_RU')
-        Invoke-Setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh
-    }
     $rev = @("-m", "tinglongwu.reverse.proto", "--mic", "--tts-engine", "vosk", "--tts-python", $voskPy,
              "--tts-model", $voskModel, "--speaker", $voice) + $wS
     $txt = @("-m", "tinglongwu.reverse.proto", "--mic", "--no-tts", "--to", "ru") + $wS

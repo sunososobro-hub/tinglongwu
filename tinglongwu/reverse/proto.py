@@ -1,4 +1,4 @@
-"""Reverse-mode prototype: Chinese wav(s) -> Whisper (zh) -> Hy-MT2/OPUS zh->ru -> built-in-voice TTS (Vosk-TTS / Kokoro, subprocess) -> speakers + wav.
+"""Reverse-mode prototype: Chinese wav(s) -> Whisper (zh) -> Hy-MT2 zh->ru -> built-in-voice TTS (Vosk-TTS / Kokoro, subprocess) -> speakers + wav.
 
 Run (main .venv):
   python -m tinglongwu.reverse.proto --input C:\\...\\reverse\\input --out C:\\...\\reverse\\out \\
@@ -480,65 +480,87 @@ def _stop_live(stop, box, tts, player, previewer):
     return cleanup
 
 
-def choose_speak_mt(kind: str, device: str, mdir, free_mib=None) -> tuple[str, str]:
-    """(engine, reason) for speak mode; engine in hymt | opus (#139).
+# CPU expectation printed at startup (#331, acceptance 4b): Hy-MT2-1.8B Q4_K_M on a 4-core CPU takes about
+# 1.5 s per sentence (#227 menu text, #186 Linux CPU speak latency ~4 s end to end); minimum spec in #280.
+HYMT_CPU_NOTE = ("Hy-MT2 runs on the CPU here: expect about 1-1.5 s of translation per sentence "
+                 "(~4 s from end of speech to audio, #186); a CUDA GPU with 2 GB free VRAM is much faster.")
 
-    auto = Hy-MT2 on CUDA when its GGUF is installed and free VRAM >= engines.HYMT_MIN_FREE_MIB (#66), else OPUS."""
-    if kind != "auto":
-        return kind, "requested"
-    if device != "cuda":
-        return "opus", "no usable CUDA GPU (CPU mode)"
-    from ..hymt import hymt_path
+
+def choose_speak_mt(kind: str, device: str, mdir, free_mib=None) -> tuple[str, str, str]:
+    """(engine, mt_device, reason) for speak mode. Hy-MT2 is the only engine (#331).
+
+    Hy-MT2 runs on CUDA when the GPU has >= engines.HYMT_MIN_FREE_MIB free (#66), else on the CPU. A missing GGUF is
+    a ModelNotFound with the `tlwu-setup --hymt` command (no silent fallback)."""
     from ..engines import HYMT_MIN_FREE_MIB, free_vram_mib
+    from ..hymt import hymt_path
+    from ..models import require
 
-    if not hymt_path(mdir).exists():
-        print(f"Hy-MT2 (the recommended GPU translation engine) is not installed ({hymt_path(mdir)} missing); "
-              f"run `tlwu-setup --hymt` once (with network). Using OPUS.", file=sys.stderr)
-        return "opus", "Hy-MT2 not installed"
+    require(hymt_path(mdir), "Hy-MT2 translation model (the only speak-mode engine)", "--hymt")
+    if device != "cuda":
+        return "hymt", "cpu", "CPU mode"
     free = (free_mib or free_vram_mib)()
     if free is None:
-        return "opus", "could not read free VRAM"
+        return "hymt", "cpu", "could not read free VRAM: Hy-MT2 on the CPU"
     if free < HYMT_MIN_FREE_MIB:
-        return "opus", f"{free} MiB VRAM free < {HYMT_MIN_FREE_MIB} MiB for Hy-MT2"
-    return "hymt", f"{free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
+        return "hymt", "cpu", f"{free} MiB VRAM free < {HYMT_MIN_FREE_MIB} MiB: Hy-MT2 on the CPU"
+    return "hymt", "cuda", f"{free} MiB VRAM free >= {HYMT_MIN_FREE_MIB} MiB"
+
+
+def _mt_kind(v: str) -> str:
+    """--mt value: auto | hymt. opus / qwen were removed (#331, #283): argparse exits 2 with how to fix old launchers."""
+    if v in ("auto", "hymt"):
+        return v
+    raise argparse.ArgumentTypeError(f"{v!r} was removed (#331): Hy-MT2 is the only engine; use --mt auto "
+                                     "(re-run the installer to regenerate an old tlwu-talk launcher)")
+
+
+class _NoFallback:
+    """Base translator under JaRouter: Hy-MT2 is the only engine (#331), so a pair it cannot take, or a Hy-MT2 that
+    failed mid-session, is an error with the reason instead of a silent engine switch."""
+
+    def __init__(self):
+        self.router = None
+        self.glossary = None
+
+    def _why(self) -> str:
+        err = getattr(self.router, "hy_error", "") or "language not supported by Hy-MT2"
+        return f"Hy-MT2 cannot translate this ({err[:160]}); there is no fallback engine (#331)"
+
+    def preload(self, src: str, tgt: str) -> None:
+        raise RuntimeError(self._why())
+
+    def translate(self, text: str, src: str, tgt: str):
+        raise RuntimeError(self._why())
+
+    draft = translate
 
 
 def build_translator(kind: str, device: str, mdir, to: str = "ru", follow_langs=("en", "ru"),
-                     src: str = "zh", free_mib=None, hy_factory=None):
-    """zh->ru|en|ja translator (and the reverse, for the back-translation shown while confirming).
-    hymt = Hy-MT2 direct for every pair (`tlwu-setup --hymt`; falls back to OPUS loudly if it fails to load);
-    opus (Argos/OPUS on CPU): ru = pivot zh->en->ru, needs
-    `tlwu-setup --pair zh-en --pair en-ru --pair ru-en --pair en-zh`; en = direct zh->en, needs
-    `tlwu-setup --pair zh-en --pair en-zh` (en-zh only for the back-translation shown while confirming);
-    ja = direct zh<->ja through Hy-MT2 (OPUS has no usable Japanese), the rest stays OPUS.
-    auto = see choose_speak_mt (Hy-MT2 on CUDA when installed, else OPUS).
-    src en (#134, to zh): auto/opus = Hy-MT2 direct en<->zh when installed, else the OPUS en-zh / zh-en pairs."""
-    if src == "en" and kind == "auto":
-        kind, why = "opus", "--from en: Hy-MT2 en<->zh when installed, else OPUS"
-    else:
-        kind, why = choose_speak_mt(kind, device, mdir, free_mib)
-    print(f"translation engine: {kind} ({why})", flush=True)
+                     src: str = "zh", free_mib=None, hy_factory=None, warn=None):
+    """zh->ru|en|ja (or en->zh with src en, #134) translator plus the reverse pair for the back-translation shown
+    while confirming. Hy-MT2 direct for every pair (#331: no pivot, no other engine). Not installed -> ModelNotFound
+    with `tlwu-setup --hymt`; installed but not loadable (llama-cpp-python missing/broken) -> SystemExit, one line."""
     from ..hymt import JaRouter
-    from ..translate import PivotTranslator
 
+    kind, mt_dev, why = choose_speak_mt(kind, device, mdir, free_mib)
+    print(f"translation engine: {kind} on {mt_dev} ({why})", flush=True)
+    warn = warn or (lambda m: print(m, file=sys.stderr, flush=True))
+    if mt_dev == "cpu":
+        warn(HYMT_CPU_NOTE)
+    base = _NoFallback()
+    # JaRouter's own "falls back to the ... pivot" warnings are wrong here: _NoFallback raises with the reason instead
+    mt = JaRouter(base, mdir, "tw", mt_dev, all_pairs=True, warn=lambda m: None if "pivot" in m else warn(m),
+                  **({"factory": hy_factory} if hy_factory else {}))
+    base.router = mt
     targets = tuple(follow_langs) if to == "follow" else (to,)
-    dev = "cpu" if device != "cuda" else "cuda"
-    mt = PivotTranslator(mdir, "tw", device=dev)
-    if kind == "hymt":
-        from ..hymt import hymt_path
-        from ..models import require
-
-        require(hymt_path(mdir), "Hy-MT2 translation model", "--hymt")  # explicit --mt hymt without the file
-        mt = JaRouter(mt, mdir, "tw", dev, all_pairs=True, **({"factory": hy_factory} if hy_factory else {}))
-        if mt.hy is None:
-            mt._fallback(RuntimeError(mt.hy_error))
-    elif src != "zh":
-        mt = JaRouter(mt, mdir, "tw", dev, all_pairs=True)
-    elif "ja" in targets:
-        mt = JaRouter(mt, mdir, "tw", dev)
-    for t in targets:  # follow: every spoken language
-        mt.preload(src, t)  # fail early if the models are missing
-        mt.preload(t, src)  # back-translation for the confirm step
+    try:
+        for t in targets:  # follow: every spoken language
+            mt.preload(src, t)  # fail early if the model cannot load
+            mt.preload(t, src)  # back-translation for the confirm step
+    except RuntimeError as e:
+        raise SystemExit(f"tlwu: {e}. Install it once (with network): pip install llama-cpp-python "
+                         "--only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu "
+                         "&& tlwu-setup --hymt") from e
     mt.history, mt._pair = [], None  # same surface as the other translators for confirm.back_translate
     return mt
 
@@ -674,16 +696,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="where ASR/MT/TTS run; auto = CUDA if usable, else CPU")
     ap.add_argument("--from", dest="src", default="zh", choices=["zh", "en"],
                     help="language you speak (default zh); en = speak English, the other side hears Chinese "
-                         "(--to zh implied; Kokoro Chinese voices; MT Hy-MT2 en->zh if installed, else OPUS)")
+                         "(--to zh implied; Kokoro Chinese voices; MT Hy-MT2 en->zh)")
     ap.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
                     help="how your Chinese is shown: tw = Traditional (OpenCC s2twp, same as listen mode), "
                          "cn = Simplified")
     ap.add_argument("--to", default=None, choices=["ru", "en", "ja", "zh", "follow"],
-                    help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default; OPUS = pivot zh->en->ru) or en (OPUS = direct zh->en, "
-                         "no pivot; use with --tts-engine kokoro)")
-    ap.add_argument("--mt", default="auto", choices=["auto", "hymt", "opus"],
-                    help="translator; auto = Hy-MT2 on CUDA when installed (tlwu-setup --hymt), else OPUS/Argos "
-                         "(ru: pivot zh->en->ru; en: direct zh->en); hymt = Hy-MT2 direct")
+                    help="spoken language: follow = whatever the other side spoke last (read from --follow-file, default en; Kokoro en/ja + Vosk ru voices, started on first use); ja = Kokoro Japanese voices, zh->ja direct with Hy-MT2; ru (default) or en "
+                         "(use with --tts-engine kokoro); every pair is Hy-MT2 direct")
+    ap.add_argument("--mt", default="auto", type=_mt_kind, metavar="{auto,hymt}",
+                    help="translator: Hy-MT2 direct (tlwu-setup --hymt), on CUDA with >= 2 GB free VRAM, else on "
+                         "the CPU; auto and hymt are the same (#331: the other engines were removed)")
     ap.add_argument("--no-vmic", action="store_true",
                     help="Linux/macOS: do not create/select the virtual microphone (tlwu_mic / BlackHole 16ch); use --device yourself")
     ap.add_argument("--list-speakers", action="store_true", help="print output device names and exit")

@@ -67,13 +67,77 @@ def test_feedback_guard_refuses_virtual_mic():
         check_mic_feedback("Monitor of tlwu_sink", None)
 
 
-def test_build_translator_opus_on_cpu(monkeypatch, tmp_path):
+def _gguf(tmp_path):
+    from tinglongwu.hymt import hymt_path
+
+    f = hymt_path(tmp_path)
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"gguf")
+
+
+def test_build_translator_on_cpu_is_hymt_on_the_cpu_never_opus(monkeypatch, tmp_path):
+    """#331: CPU + Hy-MT2 installed -> Hy-MT2 direct on the CPU for zh->ru and the back-translation, no OPUS."""
     import tinglongwu.translate as tr
-    loaded = []
-    monkeypatch.setattr(tr.PivotTranslator, "preload", lambda self, s, t: loaded.append((s, t)))
-    mt = build_translator("auto", "cpu", tmp_path)
-    assert isinstance(mt, tr.PivotTranslator) and mt.device == "cpu"
-    assert loaded == [("zh", "ru"), ("ru", "zh")] and mt.history == []
+
+    monkeypatch.setattr(tr.PivotTranslator, "preload", lambda *a: pytest.fail("OPUS must not load"))
+    _gguf(tmp_path)
+    made = []
+
+    class Hy:
+        def __init__(self, mdir, variant, device):
+            made.append(device)
+
+        def preload(self, *a):
+            pass
+
+        def translate(self, text, src, tgt):
+            return SimpleNamespace(text=f"{src}>{tgt}:{text}")
+
+    warned = []
+    mt = build_translator("auto", "cpu", tmp_path, hy_factory=Hy, warn=warned.append)
+    assert made == ["cpu"] and mt.translate("你好", "zh", "ru").text == "zh>ru:你好"
+    assert mt.translate("привет", "ru", "zh").text == "ru>zh:привет" and mt.history == []
+    assert any("1.5 s" in w for w in warned)  # the CPU expectation is stated at startup
+
+
+def test_build_translator_on_cpu_without_hymt_says_how_to_install(tmp_path):
+    from tinglongwu.models import ModelNotFound
+
+    with pytest.raises(ModelNotFound, match="tlwu-setup --hymt"):
+        build_translator("auto", "cpu", tmp_path)
+
+
+def test_build_translator_hymt_that_cannot_load_exits_with_one_line(tmp_path):
+    """GGUF there but llama-cpp-python broken: exit with the reason and the setup command, no OPUS fallback."""
+    _gguf(tmp_path)
+
+    def broken(*a):
+        raise ImportError("No module named 'llama_cpp'")
+
+    with pytest.raises(SystemExit) as e:
+        build_translator("auto", "cpu", tmp_path, hy_factory=broken, warn=lambda m: None)
+    msg = str(e.value)
+    assert "llama_cpp" in msg and "tlwu-setup --hymt" in msg and "no fallback engine" in msg
+
+
+def test_hymt_failing_mid_session_raises_instead_of_switching_to_opus(tmp_path):
+    _gguf(tmp_path)
+
+    class Hy:
+        def __init__(self, *a):
+            pass
+
+        def preload(self, *a):
+            pass
+
+        def translate(self, *a):
+            raise RuntimeError("llama crashed")
+
+    warned = []
+    mt = build_translator("auto", "cpu", tmp_path, hy_factory=Hy, warn=warned.append)
+    with pytest.raises(RuntimeError, match="llama crashed.*no fallback engine"):
+        mt.translate("你好", "zh", "ru")
+    assert not any("pivot" in w for w in warned)
 
 
 # ---- macOS: BlackHole 16ch = virtual mic (speech out), BlackHole 2ch = system-audio capture ----

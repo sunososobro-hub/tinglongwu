@@ -24,6 +24,7 @@ M_JA_MISSING_FATAL='Japanese voice/translation still needs a one-time install (t
 M_JA_MISSING_SKIP='Japanese is off for now (missing packages; auto mode will do English/Russian only). To get Japanese, install first:\n%s\n'
 M_JA_VENV_HINT='(into .venv; paste as is if it is already activated)'
 M_NO_HYMT='No Japanese translation model Hy-MT2 yet (about 1.1 GB).'
+M_NO_HYMT_SPEAK='No Hy-MT2 translation model yet (about 1.1 GB); speak mode needs it.'
 M_HY_NOTE='(Japanese goes through English via OPUS, lower quality; install Hy-MT2 for direct translation: tlwu-setup --hymt, plus llama-cpp-python in .venv)'
 M_BANNER_LISTEN='Listening  %s -> Chinese subtitles'
 M_BANNER_SPEAK='Speaking  Chinese -> %s voice'

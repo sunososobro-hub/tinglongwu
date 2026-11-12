@@ -252,18 +252,24 @@ def _hymt_file(tmp_path):
     return f
 
 
-@pytest.mark.parametrize("kind,device,installed,free,want", [
-    ("auto", "cuda", True, 4000, "hymt"),     # was qwen before #139
-    ("auto", "cuda", False, 4000, "opus"),    # no Hy-MT2 GGUF: OPUS, even on a big GPU
-    ("auto", "cuda", True, 1500, "opus"),     # below engines.HYMT_MIN_FREE_MIB
-    ("auto", "cuda", True, None, "opus"),     # nvidia-smi unreadable
-    ("auto", "cpu", True, 4000, "opus"),
-    ("hymt", "cpu", True, None, "hymt"),
+@pytest.mark.parametrize("kind,device,free,want", [
+    ("auto", "cuda", 4000, ("hymt", "cuda")),  # was qwen before #139
+    ("auto", "cuda", 1500, ("hymt", "cpu")),   # below engines.HYMT_MIN_FREE_MIB: Hy-MT2 on the CPU (#331, was OPUS)
+    ("auto", "cuda", None, ("hymt", "cpu")),   # nvidia-smi unreadable
+    ("auto", "cpu", 4000, ("hymt", "cpu")),    # CPU mode: Hy-MT2 (#331, was OPUS)
+    ("hymt", "cpu", None, ("hymt", "cpu")),
 ])
-def test_choose_speak_mt(tmp_path, kind, device, installed, free, want):
-    if installed:
-        _hymt_file(tmp_path)
-    assert proto.choose_speak_mt(kind, device, tmp_path, lambda: free)[0] == want
+def test_choose_speak_mt(tmp_path, kind, device, free, want):
+    _hymt_file(tmp_path)
+    assert proto.choose_speak_mt(kind, device, tmp_path, lambda: free)[:2] == want
+
+
+@pytest.mark.parametrize("device", ["cuda", "cpu"])
+def test_choose_speak_mt_without_hymt_is_a_setup_error_not_opus(tmp_path, device):
+    from tinglongwu.models import ModelNotFound
+
+    with pytest.raises(ModelNotFound, match="tlwu-setup --hymt"):
+        proto.choose_speak_mt("auto", device, tmp_path, lambda: 4000)
 
 
 def test_build_translator_auto_on_cuda_uses_hymt_direct_for_both_directions(tmp_path):

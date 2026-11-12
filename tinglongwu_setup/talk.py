@@ -69,7 +69,7 @@ def _q(p) -> str:  # PowerShell single-quoted literal
 
 
 def render_launcher(root: Path, tts_python: Path, model_dir: Path, whisper: str = "small",
-                    compute: str = "auto", mt: str = "opus") -> str:
+                    compute: str = "auto", mt: str = "auto") -> str:
     """tlwu-talk.ps1: Chinese mic -> English -> Kokoro -> "CABLE Input" (Meet microphone = "CABLE Output").
     No microphone name is written: `--mic` without a name picks the system mic, skipping virtual cables."""
     args = ["-m", "tinglongwu.reverse.proto", "--mic", "--compute", compute, "--whisper", whisper, "--to", "en",
