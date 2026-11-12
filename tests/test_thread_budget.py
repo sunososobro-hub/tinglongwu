@@ -98,7 +98,14 @@ def test_opus_and_tts_threads_only_in_listen_speak_mode(monkeypatch):
     monkeypatch.setenv("TLWU_CPU_THREADS", "16")
     monkeypatch.setattr(threads, "_role", "speak")
     monkeypatch.delenv("TLWU_BOTH", raising=False)
-    assert threads.ct2_kwargs("cpu") == {} and threads.tts_env() == {}
+    monkeypatch.delenv("TLWU_TTS_THREADS", raising=False)
+    # #207: speak-only caps the TTS worker at min(8, logical // 2) (onnxruntime's own default is every core)
+    assert threads.ct2_kwargs("cpu") == {} and threads.tts_env() == {"TLWU_TTS_THREADS": "8", "OMP_NUM_THREADS": "8"}
+    monkeypatch.setenv("TLWU_CPU_THREADS", "4")
+    assert threads.tts_env()["TLWU_TTS_THREADS"] == "2"
+    monkeypatch.setenv("TLWU_TTS_THREADS", "3")  # the user's own setting wins in speak-only mode
+    assert threads.tts_env() == {}
+    monkeypatch.setenv("TLWU_CPU_THREADS", "16")
     monkeypatch.setenv("TLWU_BOTH", "1")
     assert threads.ct2_kwargs("cpu") == {"intra_threads": 6} and threads.ct2_kwargs("cuda") == {}
     assert threads.tts_env() == {"TLWU_TTS_THREADS": "2", "OMP_NUM_THREADS": "2"}

@@ -14,7 +14,9 @@ TTS gets 1/8 of the budget (short bursts), the rest is split in three with the r
 (the user waits on it). Below 4 threads every pool still gets 1.
 
 Listen-only and speak-only keep the libraries' defaults (now passed explicitly to llama.cpp), so nothing there
-gets fewer threads than before.
+gets fewer threads than before. Exception (#207): the speak-only TTS worker gets min(8, logical CPUs // 2)
+onnxruntime threads instead of onnxruntime's one per physical core. On hybrid CPUs that default includes the
+E-cores and is slower (Kokoro int8, i5-13500 6P+8E: 14 threads 1.8 s vs 8 threads 0.9 s for a 40-char piece).
 """
 from __future__ import annotations
 
@@ -47,7 +49,15 @@ def defaults(role: str, env=None, count=None) -> dict:
     n = count if count is not None else (os.cpu_count() or 4)
     speak = role == "speak"
     return {"asr": cpu_threads(n, env) if speak else 4, "mt": max(1, n // 2), "mt_batch": n,
-            "tts": max(1, n // 2) if speak else 0}
+            "tts": speak_tts_threads(n) if speak else 0}
+
+
+TTS_MAX_THREADS = 8  # #207: more onnxruntime threads than this made Kokoro slower, not faster (bench in threads doc)
+
+
+def speak_tts_threads(n: int) -> int:
+    """Speak-only TTS worker threads for `n` logical CPUs (#207)."""
+    return max(1, min(TTS_MAX_THREADS, n // 2))
 
 
 def split(n: int) -> dict:
@@ -103,9 +113,14 @@ def ct2_kwargs(device: str) -> dict:
     return {"intra_threads": current()["mt"]} if device == "cpu" and both() else {}
 
 
-def tts_env() -> dict:
-    """Env for the TTS worker process: in listen+speak mode, its onnxruntime thread count."""
-    if not both():
-        return {}
+def tts_env(env=None) -> dict:
+    """Env for the TTS worker process: its onnxruntime thread count. Listen+speak mode: the budget's share.
+    Speak-only (#207): speak_tts_threads(), unless TLWU_TTS_THREADS is already set (then the worker reads that)."""
+    env = os.environ if env is None else env
+    if not both(env):
+        if (env.get("TLWU_TTS_THREADS") or "").strip():
+            return {}
+        n = str(speak_tts_threads(total(env)))
+        return {"TLWU_TTS_THREADS": n, "OMP_NUM_THREADS": n}
     n = str(current()["tts"] or 1)
     return {"TLWU_TTS_THREADS": n, "OMP_NUM_THREADS": n}

@@ -125,13 +125,20 @@ def _file_items(wavs, sf, asr):
 VOICE_ENGINES = ("vosk", "kokoro")  # engines with built-in voices (v0-v4 switch)
 
 
-def _synth_sentences(tts, ru: str, stats: list | None = None):
+def _synth_sentences(tts, ru: str, stats: list | None = None, clock=None, on_first=None):
     """Yield (audio, sr) one piece at a time, so the first piece can play while the rest is synthesized. #207: the
-    pieces are speech_pieces (a short first clause, then growing pieces), not whole sentences, so the first audio
-    does not wait for a long first sentence. The worker's 'done' events are appended to `stats` when given."""
-    from .logic import speech_pieces
+    first piece is a short clause (PiecePlanner), so the first audio does not wait for a long first sentence; each
+    later piece is sized from this worker's measured speed (chars/s) so it is ready before the audio queued ahead
+    of it has played (no gap), and is as long as that allows (fewer cuts). The worker's 'done' events are appended
+    to `stats` when given; on_first(seconds) is called once, when the first piece is ready (before it is yielded)."""
+    from .logic import PiecePlanner, next_budget
 
-    for sent in speech_pieces(ru):
+    clock = clock or time.perf_counter
+    t0 = clock()
+    plan, end, cps = PiecePlanner(ru), None, None  # end: when the audio handed out so far finishes playing
+    budget = None
+    while (sent := plan.next(budget)) is not None:
+        t1 = clock()
         pcm, sr_out = [], 24000
         for ev, data in tts.speak(sent):
             if ev["t"] == "chunk":
@@ -139,8 +146,35 @@ def _synth_sentences(tts, ru: str, stats: list | None = None):
                 sr_out = ev["sr"]
             elif ev["t"] == "done" and stats is not None:
                 stats.append(ev)
+        now = clock()
+        if now > t1:  # wall time incl. the pipe: what the next piece will really cost
+            c = len(sent) / (now - t1)
+            cps = c if cps is None else min(c, 0.5 * (cps + c))  # pessimistic: a slow piece counts at once
         if pcm:
-            yield np.concatenate(pcm), sr_out
+            audio = np.concatenate(pcm)
+            if end is None and on_first is not None:
+                on_first(now - t0)
+            end = max(now, end or now) + len(audio) / sr_out
+            yield audio, sr_out
+        budget = next_budget((end or clock()) - clock(), cps)
+
+
+# A full-length sentence, not "Hello.": onnxruntime's first runs at a new input length are slower (allocations),
+# measured: the first real utterance after a 1-word warm-up still had a 0.6-0.7 s gap between its pieces
+WARM_TEXT = {"ru": "Здравствуйте, давайте начнём сегодняшнюю встречу и обсудим планы на следующую неделю.",
+             "ja": "皆さん、こんにちは。今日の会議を始めましょう。",
+             "zh": "大家好，我們現在開始今天的會議，先看一下上週的進度。"}
+WARM_EN = "Hello everyone, let's begin today's meeting and look at the plans for next week."
+
+
+def warm_tts(tts, lang: str) -> None:
+    """#207: one throw-away request at startup (phonemizer / onnxruntime first-run cost), so the first utterance of
+    the session is not slower than the rest. Failures are left to the real requests to report."""
+    try:
+        for _ in tts.speak(WARM_TEXT.get(lang, WARM_EN)):
+            pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _make_synth(tts):
@@ -246,6 +280,8 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     no_back = getattr(a, "no_back", False)
     src = getattr(a, "src", "zh")  # language the user speaks (#134: en -> the other side hears zh)
     gate, pend = threading.Lock(), {}  # per-utterance: the lat dict (produce thread) and tts seconds (synth thread)
+    # #207: tts = MT done -> first synthesized part ready to send (was: whole utterance synthesized)
+    sess.on_first_part = lambda u: lat_done(u, "tts", lat.clock() - u.extra["_t0"])
 
     def lat_done(u, key, val) -> None:
         """#142: tts finishes after produce() has already taken the lat dict; whichever side arrives last merges
@@ -256,7 +292,8 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             if "lat" not in st or "tts" not in st:
                 return
             del pend[id(u)]
-        st["lat"]["tts"] = round(st["tts"], 3)
+        if st["tts"] is not None:
+            st["lat"]["tts"] = round(st["tts"], 3)
         u.extra["lat"] = st["lat"]
         print(timing_line(st["lat"]), file=sys.stderr, flush=True)  # #186 (stderr: the confirm prompt owns stdout)
         if show_lat:
@@ -269,10 +306,10 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
-                t0 = lat.clock()
+                u.extra["_t0"] = lat.clock()
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
-                u.future.add_done_callback(
-                    lambda f, u=u, t0=t0: None if f.cancelled() or f.exception() else lat_done(u, "tts", lat.clock() - t0))
+                u.future.add_done_callback(  # no audio at all: report the line without tts_first
+                    lambda f, u=u: None if f.cancelled() or u.extra.get("_first_seen") else lat_done(u, "tts", None))
                 if not no_back:
                     sess.set_back(u, lat.timed("back", back_translate, mt, ru, lang, src))
                 u.extra["lat"] = taken = lat.take()  # partial until tts lands (lat_done merges it)
@@ -757,6 +794,12 @@ def _main(argv, vm) -> int:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()
             res["tts_torch_peak_mib_after_warmup"] = tts.ready.get("vram_mib")
+            warm_tts(tts, a.to)  # #207: the first real sentence must not pay the voice's lazy init
+            from .logic import resample
+
+            # #207: the player resamples every piece; importing scipy.signal there cost ~1 s on the first push
+            # (measured), i.e. a gap after the first piece of the session's first utterance
+            resample(np.zeros(480, np.float32), 24000, a.out_sr)
         confirm = not a.no_confirm and tts is not None
         player = Player(a.device, a.out_sr, enabled=not (a.no_play or a.no_tts))
         res["speaker"] = player.speaker_name

@@ -109,12 +109,16 @@ def flush_input(stream=None) -> bool:
 _END = None
 
 
-def _fill(synth: Callable, ru: str, parts: queue.Queue) -> None:
-    """TTS worker job: put every non-empty (audio, sr) part of synth(ru) on `parts` as it is produced, then _END."""
+def _fill(synth: Callable, ru: str, parts: queue.Queue, on_first: Callable[[], object] | None = None) -> None:
+    """TTS worker job: put every non-empty (audio, sr) part of synth(ru) on `parts` as it is produced, then _END.
+    on_first() runs once, just before the first part is queued (#207: first-audio latency)."""
     try:
         r = synth(ru)
         for audio, sr in ([r] if isinstance(r, tuple) else (r or ())):
             if len(audio):
+                if on_first is not None:
+                    on_first()
+                    on_first = None
                 parts.put((audio, sr))
     finally:
         parts.put(_END)
@@ -154,10 +158,16 @@ class ConfirmSession:
         self.max_age = max_age if max_age is not None else _env_num("TLWU_CONFIRM_MAX_AGE", MAX_AGE_S)
         self.clock = clock
         self._submit_lock = threading.Lock()
+        self.on_first_part: Callable[[Utterance], object] | None = None  # #207: called once per utterance
+
+    def _first(self, u: Utterance) -> None:
+        if self.on_first_part is not None and not u.extra.get("_first_seen"):
+            u.extra["_first_seen"] = True  # a voice switch re-synthesizes: report the first time only
+            self.on_first_part(u)
 
     def _start(self, u: Utterance) -> None:
         u.parts = queue.Queue()
-        u.future = self._pool.submit(_fill, self.synth, u.ru, u.parts)
+        u.future = self._pool.submit(_fill, self.synth, u.ru, u.parts, lambda: self._first(u))
 
     def _drop(self, u: Utterance, reason: str) -> None:
         if u.future is not None:
