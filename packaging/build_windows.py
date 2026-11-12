@@ -19,6 +19,7 @@ import argparse
 import importlib.metadata as md
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
@@ -44,6 +45,26 @@ LLAMA_CUDA_NEEDS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
 # msvcp140_1, ggml vcomp140 (OpenMP). Copied as one matched set from the installed redistributable (System32) next
 # to tlwu.exe, replacing the older vcruntime140 Nuitka took from Python: msvcp140 must not be newer than vcruntime140.
 VC_RUNTIME = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll")
+# The bundled copy is used even where Windows has a newer one: an msvcp140 older than the toolset a wheel was built
+# with crashes (VS 17.10 std::mutex change), so the pack machine's redistributable must be at least 14.40.
+VC_MIN_VERSION = (14, 40)
+
+
+def pe_file_version(data: bytes) -> tuple[int, int, int, int] | None:
+    """FileVersion of a PE file from its VS_FIXEDFILEINFO resource (signature 0xFEEF04BD), None if it has none."""
+    i = data.find(b"\xbd\x04\xef\xfe")
+    if i < 0 or len(data) < i + 16:
+        return None
+    ms, ls = struct.unpack_from("<II", data, i + 8)
+    return ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF
+
+
+def pe_machine(data: bytes) -> int | None:
+    """IMAGE_FILE_HEADER.Machine (0x8664 = x64), None if not a PE file."""
+    if data[:2] != b"MZ" or len(data) < 0x40:
+        return None
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    return struct.unpack_from("<H", data, pe + 4)[0] if data[pe:pe + 4] == b"PE\0\0" else None
 
 
 def lazy_includes() -> list[str]:
@@ -106,9 +127,10 @@ NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososo
 
 Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
 Silero VAD: MIT, Qwen3: Apache-2.0).
-Microsoft Visual C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll, msvcp140_1.dll, vcomp140.dll in
-this folder): copied from the Microsoft Visual C++ Redistributable 2015-2022 (x64), redistributed under its license
-terms (Microsoft Visual Studio redistributable code). If tlwu.exe still does not start, install that Redistributable.
+Microsoft Visual C++ runtime files (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll, msvcp140_1.dll, vcomp140.dll
+in this folder, from the Visual C++ 2015-2022 x64 runtime): redistributable under the Microsoft Visual Studio license
+terms (Distributable Code). If tlwu.exe still does not start, install the Microsoft Visual C++ Redistributable
+2015-2022 (x64).
 """ + NVIDIA_NOTE + """No GPL components: PyAV/FFmpeg is NOT included (stubbed out).
 
 Native components and their licenses
@@ -145,9 +167,19 @@ def copy_vc_runtime(app: Path, src: Path | None = None) -> list[str]:
     if missing:
         raise SystemExit(f"VC++ runtime: {', '.join(missing)} not found in {src}; install the Microsoft Visual C++ "
                          "Redistributable 2015-2022 (x64) on the pack machine or set TLWU_VCREDIST_DIR")
+    found = []
+    for n in VC_RUNTIME:
+        data = (src / n).read_bytes()
+        ver = pe_file_version(data)
+        if pe_machine(data) != 0x8664:
+            raise SystemExit(f"VC++ runtime: {src / n} is not an x64 DLL (32-bit Python reads SysWOW64?)")
+        if ver is None or ver[:2] < VC_MIN_VERSION:
+            raise SystemExit(f"VC++ runtime: {src / n} version {ver} is older than {VC_MIN_VERSION}; update the "
+                             "Microsoft Visual C++ Redistributable 2015-2022 (x64) on the pack machine")
+        found.append(f"{n} {'.'.join(map(str, ver))}")
     for n in VC_RUNTIME:
         shutil.copy2(src / n, app / n)
-    return list(VC_RUNTIME)
+    return found
 
 
 def find_cuda_src(candidates: list[Path] | None = None) -> Path | None:

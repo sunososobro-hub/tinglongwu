@@ -2,6 +2,7 @@
 runtime DLLs that llama.cpp needs and a CPU llama build; the app falls back to it when CUDA cannot load."""
 import importlib.util
 import io
+import struct
 import sys
 import zipfile
 from pathlib import Path
@@ -149,16 +150,48 @@ def cpu_wheel(tmp_path):
     return whl
 
 
+def fake_vc_dll(name: str, version=(14, 51, 36247, 0), machine=0x8664) -> bytes:
+    """Minimal PE header + a VS_FIXEDFILEINFO block, enough for pe_machine / pe_file_version."""
+    head = bytearray(0x80)
+    head[:2] = b"MZ"
+    struct.pack_into("<I", head, 0x3C, 0x40)
+    head[0x40:0x44] = b"PE\0\0"
+    struct.pack_into("<H", head, 0x44, machine)
+    a, b, c, d = version
+    return bytes(head) + b"\xbd\x04\xef\xfe" + struct.pack("<III", 0x10000, a << 16 | b, c << 16 | d) + name.encode()
+
+
+def vc_dir(path, **kw):
+    path.mkdir()
+    for n in bw.VC_RUNTIME:
+        (path / n).write_bytes(fake_vc_dll(n, **kw))
+    return path
+
+
+def test_pe_file_version_and_machine():
+    data = fake_vc_dll("x.dll", (14, 42, 34438, 0), 0x14C)
+    assert bw.pe_file_version(data) == (14, 42, 34438, 0)
+    assert bw.pe_machine(data) == 0x14C
+    assert bw.pe_file_version(b"MZ") is None and bw.pe_machine(b"nope") is None
+
+
 def test_copy_vc_runtime_ships_the_matched_set(tmp_path):
-    src, app = tmp_path / "sys", tmp_path / "app"
-    src.mkdir()
+    src, app = vc_dir(tmp_path / "sys"), tmp_path / "app"
     app.mkdir()
     (app / "vcruntime140.dll").write_bytes(b"old")  # the one Nuitka took from Python is replaced
+    assert bw.copy_vc_runtime(app, src) == [f"{n} 14.51.36247.0" for n in bw.VC_RUNTIME]
     for n in bw.VC_RUNTIME:
-        (src / n).write_bytes(n.encode())
-    assert bw.copy_vc_runtime(app, src) == list(bw.VC_RUNTIME)
-    for n in ("msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll", "vcruntime140.dll"):
-        assert (app / n).read_bytes() == n.encode()
+        assert (app / n).read_bytes() == fake_vc_dll(n)
+
+
+@pytest.mark.parametrize("kw, err", [({"version": (14, 38, 33135, 0)}, "older than"),
+                                     ({"machine": 0x14C}, "not an x64 DLL")])
+def test_copy_vc_runtime_rejects_old_or_32_bit_dlls(tmp_path, kw, err):
+    src, app = vc_dir(tmp_path / "sys", **kw), tmp_path / "app"
+    app.mkdir()
+    with pytest.raises(SystemExit, match=err):
+        bw.copy_vc_runtime(app, src)
+    assert not any(app.iterdir())  # nothing copied
 
 
 def test_copy_vc_runtime_stops_when_the_redist_is_missing(tmp_path, monkeypatch):
