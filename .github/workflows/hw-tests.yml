@@ -36,9 +36,9 @@ jobs:
     timeout-minutes: 90
     defaults:
       run:
-        # Git Bash by full path: plain `bash` on this PC resolves to WindowsApps/bash.exe (WSL), which cannot run the
+        # Git Bash by 8.3 path (the runner splits the shell value at the first space, so no spaces allowed): plain `bash` on this PC resolves to WindowsApps/bash.exe (WSL), which cannot run the
         # runner's C:/ temp scripts, so every step failed (first run after #459).
-        shell: '"C:/Program Files/Git/bin/bash.exe" --noprofile --norc -e -o pipefail {0}'
+        shell: 'C:/PROGRA~1/Git/bin/bash.exe --noprofile --norc -e -o pipefail {0}'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
