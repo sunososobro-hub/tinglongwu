@@ -377,3 +377,28 @@ def test_log_font_buttons_and_pause(gui_app):
     a.state = core.SubtitleState(core.HISTORY_LINES)
     a.switch_lang()
     assert _log(a) == "聆聽中…"
+
+
+def test_start_is_disabled_and_counts_seconds_until_models_are_ready(gui_app):
+    """#332: while models load the button reads "Loading... N s" and cannot be pressed; ready enables Stop."""
+    import time
+
+    from tinglongwu import cli
+
+    a = gui_app
+    a.toggle()  # Start
+    assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "Loading... 0 s"
+    a.q.put(("status", "loading speech model... (0.0 s)"))
+    a.load_t0 = time.monotonic() - 5.2  # 5 s into loading
+    a.poll()
+    assert a.v_status.get() == "loading speech model... (0.0 s)"
+    assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "Loading... 5 s"
+    a.q.put(("status", f"{cli.READY_STATUS} - loaded in 5.2 s (speech model 5.2 s)"))
+    a.poll()
+    assert str(a.btn.cget("state")) == "normal" and a.btn.cget("text") == "Stop"
+    a.poll()
+    assert a.btn.cget("text") == "Stop"  # the ticker stopped
+    a.toggle()  # Stop
+    a.worker.join(5)
+    a.poll()
+    assert str(a.btn.cget("state")) == "normal" and a.btn.cget("text") == "Start"
