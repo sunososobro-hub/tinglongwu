@@ -73,7 +73,9 @@ def parse_args(argv=None):
     p.add_argument("--engine", choices=list(ENGINES), default="auto",
                    help="auto (default) = hymt: Hy-MT2 1.8B (direct src->target, `tlwu-setup --hymt`), on the GPU "
                         "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
-                        "command (no silent engine switch, #276); opus: src->en->target OPUS-MT, only when asked")
+                        "command (no silent engine switch, #276); hymt7b: opt-in Hy-MT2 7B for GPUs with >= 8 GB "
+                        "(`tlwu-setup --hymt7b`, never picked by auto, #279); opus: src->en->target OPUS-MT, only "
+                        "when asked")
     p.add_argument("--stream", action="store_true",
                    help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
                         "audio and translate the whole partial text at once; shows ONE dim line (the "
@@ -179,25 +181,32 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
 
-    if name in ("hymt2", "hymt2-cpu"):
-        from .hymt import hymt_path
+    if name in ("hymt2", "hymt2-cpu", "hymt2-7b"):
+        from .hymt import hymt_path, setup_flag
 
+        size = "7b" if name == "hymt2-7b" else "1.8b"
         if name == "hymt2-cpu":
-            name, dev = "hymt2", "cpu"
-        if not hymt_path(mdir).exists():  # #276: no fallback engine; say how to get it and stop
-            raise SystemExit(f"tlwu: the translation model Hy-MT2 is not installed ({hymt_path(mdir)} missing). "
-                             "Run `tlwu-setup --hymt` once (with network), then start again.")
+            dev = "cpu"
+        name = "hymt2" if size == "1.8b" else name
+        flag = setup_flag(size)
+        if not hymt_path(mdir, size).exists():  # #276: no fallback engine; say how to get it and stop
+            raise SystemExit(f"tlwu: the translation model Hy-MT2 {size.upper()} is not installed "
+                             f"({hymt_path(mdir, size)} missing). Run `tlwu-setup {flag}` once (with network), "
+                             "then start again.")
+        if size == "7b" and dev != "cuda":
+            say("tlwu: WARNING: Hy-MT2 7B on the CPU is several times slower than 1.8B; it is meant for GPUs "
+                "with >= 8 GB VRAM (#279)", file=sys.stderr)
         tr = JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev, all_pairs=True,
-                      warn=lambda m: say(m, file=sys.stderr))
+                      warn=lambda m: say(m, file=sys.stderr), size=size)
         try:
             if tr.hy is None:
                 raise RuntimeError(tr.hy_error)
             tr.hy.preload()
         except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: stop, never switch engines
             raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
-                             "`tlwu-setup --hymt` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
+                             f"`tlwu-setup {flag}` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
                              "PC), or run with --engine opus.") from e
-        say(f"tlwu: translation engine = hymt2 on {dev} ({why})", file=sys.stderr)
+        say(f"tlwu: translation engine = {name} on {dev} ({why})", file=sys.stderr)
         return tr
     say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
 
