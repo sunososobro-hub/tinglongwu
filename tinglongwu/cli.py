@@ -418,6 +418,11 @@ def main(argv=None) -> int:
     from .capture._soundcard import suppress_capture_warnings
 
     suppress_capture_warnings()
+    args = sys.argv[1:] if argv is None else list(argv)
+    if args[:1] == ["doctor"]:  # #313: setup check before a meeting
+        from .doctor import main as doctor_main
+
+        return doctor_main(args[1:])
     a = parse_args(argv)
     if a.report:
         from .report import open_report
