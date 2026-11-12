@@ -233,7 +233,7 @@ def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make
 
         def make_asr(size):
             return FasterWhisperRecognizer(mdir, size, a.lang, dev, glossary=glossary, candidates=cands,
-                                           lang_file=getattr(a, "lang_file", None))
+                                           lang_file=getattr(a, "lang_file", None), live=dev == "cpu")
     lower = [(s, lambda s=s: make_asr(s)) for s in smaller_whisper(a.model, whisper_installed(mdir))]
     if lower:
         sp = Ladder("speech model", a.model, asr, lower)
@@ -327,6 +327,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
                                   candidates=cands, lang_file=getattr(a, "lang_file", None))
     dev = asr.device  # may have fallen back to cpu
+    asr.live = dev == "cpu" and not a.file  # #251: live CPU listening caps ASR retries and time per sentence
     cpu_max_wait(a, dev)
     translator = None
     if not a.transcript_only:
