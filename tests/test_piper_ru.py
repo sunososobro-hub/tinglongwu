@@ -158,3 +158,27 @@ def test_setup_refuses_hash_mismatch(tmp_path, monkeypatch):
 def test_only_cc0_voices_offered():
     assert set(dl.PIPER_RU) == {"dmitri", "denis"}
     assert all(piper_ru_dir(v) == dl.piper_ru_dir(v) for v in dl.PIPER_RU)
+
+
+def test_tts_client_spawns_worker_without_a_window(monkeypatch):
+    """#128: the TTS worker (Piper/Vosk/Kokoro venv python) must not flash a console window on Windows."""
+    import io
+    import subprocess
+
+    from tinglongwu.reverse import tts_client
+
+    seen = {}
+
+    class FakeProc:
+        stdin, stdout = io.BytesIO(), io.BytesIO(b'{"t": "ready"}\n')
+
+        def kill(self):
+            pass
+
+    def fake_popen(cmd, **kw):
+        seen.update(kw)
+        return FakeProc()
+
+    monkeypatch.setattr(tts_client.subprocess, "Popen", fake_popen)
+    tts_client.TTSClient("py", "m", "piper")
+    assert seen["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
