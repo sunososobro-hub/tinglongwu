@@ -41,10 +41,12 @@ def sampling() -> dict:
     return s
 
 
+# #335: it/pt/vi/th/id are on the Hy-MT2 model card's language list, so they go direct instead of the OPUS pivot.
 ZH_NAMES = {"zh": "中文", "ja": "日语", "en": "英语", "ru": "俄语", "ko": "韩语", "de": "德语", "fr": "法语",
-            "es": "西班牙语"}
+            "es": "西班牙语", "it": "意大利语", "pt": "葡萄牙语", "vi": "越南语", "th": "泰语", "id": "印尼语"}
 EN_NAMES = {"zh": "Chinese", "ja": "Japanese", "en": "English", "ru": "Russian", "ko": "Korean",
-            "de": "German", "fr": "French", "es": "Spanish"}
+            "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+            "vi": "Vietnamese", "th": "Thai", "id": "Indonesian"}
 
 
 def hymt_path(models_dir: Path, size: str = "1.8b") -> Path:
