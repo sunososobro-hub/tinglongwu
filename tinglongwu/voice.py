@@ -106,26 +106,33 @@ def kokoro_paths(mdir: Path, tts_python: str | None = None, tts_model: str | Non
     return tts_python, tts_model or str(Path(mdir) / "kokoro")
 
 
-def wait_drained(player, timeout: float = 60.0, poll: float = 0.02) -> None:
+def wait_drained(player, timeout: float = 60.0, poll: float = 0.02) -> bool:
     """Block until `player` has handed all queued audio to the device (Player.push does not wait), so the next line
-    waits in VoiceSink's bounded backlog instead of piling up as audio in Player.q."""
+    waits in VoiceSink's bounded backlog instead of piling up as audio in Player.q. At most the last piece is then
+    still playing (the next line's synthesis overlaps it: no gap). False if playback stalled for `timeout`."""
     import time
 
     q, end = getattr(player, "q", None), time.monotonic() + timeout
-    while q is not None and not q.empty() and time.monotonic() < end:
+    while q is not None and not q.empty():
+        if time.monotonic() >= end:
+            return False
         time.sleep(poll)
+    return True
 
 
-def make_speaker(tts, player):
+def make_speaker(tts, player, drain_timeout: float = 60.0):
     """speak(text) for VoiceSink: streamed Kokoro pieces (reverse/proto._synth_sentences) pushed to `player`;
-    returns when that audio has been handed to the device."""
+    returns when that audio has been handed to the device. While playback is stalled no more audio is pushed: the
+    line is skipped with an error (so Player.q stays bounded)."""
     from .reverse.proto import _synth_sentences
 
     def speak(text: str) -> None:
+        if not wait_drained(player, drain_timeout):
+            raise RuntimeError("playback stalled; line not spoken")
         info: dict = {}
         for audio, sr in _synth_sentences(tts, text, info=info):
             player.push(audio, sr)
-        wait_drained(player)
+        wait_drained(player, drain_timeout)
         if info.get("errors"):  # e.g. misaki[zh] missing in the Kokoro venv: say why instead of staying silent
             raise RuntimeError(info["errors"][0])
 

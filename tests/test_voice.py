@@ -318,3 +318,25 @@ def test_voice_wrapper_reports_whether_the_subtitle_sink_shows_source_lines():
 
     assert sink_shows_source(voice.VoiceSink(_Lines(), lambda t: None)) is True
     assert sink_shows_source(voice.VoiceSink(_NoSource(), lambda t: None)) is False  # no false t_source_shown
+
+
+def test_stalled_playback_skips_lines_instead_of_queuing_more_audio():
+    """The output device stops consuming audio: after the drain timeout the next line raises (reported via on_error)
+    and pushes nothing, so the player's queue does not grow."""
+    import queue as _queue
+
+    class _StuckPlayer(_Player):
+        def __init__(self):
+            super().__init__("Headphones")
+            self.q = _queue.Queue()
+
+        def push(self, audio, sr):
+            self.q.put(audio)
+
+    player = _StuckPlayer()
+    speak = voice.make_speaker(_Tts("py", "m", "kokoro", 0, "zh"), player, drain_timeout=0.05)
+    speak("第一句。")  # pushed; playback never drains, the wait times out
+    n = player.q.qsize()
+    with pytest.raises(RuntimeError, match="stalled"):
+        speak("第二句。")
+    assert n > 0 and player.q.qsize() == n
