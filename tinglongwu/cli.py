@@ -115,6 +115,16 @@ def parse_args(argv=None):
     p.add_argument("--overlay", action="store_true",
                    help="also show the subtitles in an always-on-top, draggable bar (position and font size are "
                         "remembered in gui.json); off by default")
+    p.add_argument("--voice", action="store_true",
+                   help="also speak each translated line (Kokoro zh/en/ja voice, CPU, its own venv from "
+                        "tlwu-setup --talk) on --voice-device, e.g. earphones; off by default. The device must not "
+                        "be the one being captured or a virtual cable (it would be translated again)")
+    p.add_argument("--voice-device", default=None, metavar="NAME",
+                   help="with --voice: output device name substring (default: the system default output)")
+    p.add_argument("--voice-speaker", type=int, default=None, metavar="N",
+                   help="with --voice: Kokoro voice 0-4 of the target language (default 0)")
+    p.add_argument("--tts-python", default="", help=argparse.SUPPRESS)
+    p.add_argument("--tts-model", default="", help=argparse.SUPPRESS)
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
@@ -138,6 +148,11 @@ def parse_args(argv=None):
         p.error("--paced needs --file (live capture is always real time)")
     if a.latency_jsonl and a.file and not a.paced:
         p.error("--latency-jsonl with --file needs --paced (an unpaced file runs faster than real time)")
+    if a.voice and a.transcript_only:
+        p.error("--voice needs translations (not --transcript-only)")
+    if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
+        p.error("--voice-device / --voice-speaker need --voice")
+    a.voice_speaker = 0 if a.voice_speaker is None else a.voice_speaker
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
@@ -429,10 +444,16 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         note("loading speaker model...")
         labeler = make_labeler(mdir)
-    announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
+    close_voice = None
     try:
+        if getattr(a, "voice", False):  # #330: opened last, so every exit path below closes it
+            from .voice import open_voice
+
+            note("loading voice...")
+            sink, close_voice = open_voice(a, mdir, sink, warn)
+        announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
@@ -440,6 +461,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     finally:
         if rec_file is not None:
             rec_file.close()
+        if close_voice is not None:
+            close_voice()
 
 
 def latency_recorder(path, log):
