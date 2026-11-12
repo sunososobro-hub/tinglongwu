@@ -84,6 +84,31 @@ def _init_own_format(mf, client, ptr, samplerate, channels, blocksize, isloopbac
     client._idle_start_time = None
 
 
+def patch_com_teardown(mf=None) -> bool:
+    """Windows (#312): soundcard's module-level `_com = _COMLibrary()` calls `_ole32.CoUninitialize()` in __del__.
+    At interpreter exit the module's globals are often cleared first, so it prints
+    "AttributeError: 'NoneType' object has no attribute 'CoUninitialize'" after every run. Wrap __del__ so that this
+    shutdown-only failure is silent (the process is ending; COM goes away with it). Normal teardown is unchanged.
+    Idempotent; a no-op when the WASAPI backend is not loaded."""
+    mf = mf or sys.modules.get("soundcard.mediafoundation")
+    cls = getattr(mf, "_COMLibrary", None)
+    if cls is None:
+        return False
+    if getattr(cls, "_tlwu_teardown", False):
+        return True
+    orig = cls.__del__
+
+    def _del(self):
+        try:
+            orig(self)
+        except (AttributeError, TypeError):  # module globals (_ole32) already None during interpreter shutdown
+            pass
+
+    cls.__del__ = _del
+    cls._tlwu_teardown = True
+    return True
+
+
 def patch_mixformat(mf=None) -> bool:
     """Windows (#130): soundcard 0.4.6 asserts that the device mix format is WAVE_FORMAT_EXTENSIBLE float and dies
     with an empty AssertionError on devices that report a plain WAVEFORMATEX (e.g. "High Definition Audio
@@ -91,6 +116,7 @@ def patch_mixformat(mf=None) -> bool:
     opened with our own format instead. The asserts run before soundcard touches the client, so the same
     IAudioClient can still be initialized. Idempotent; a no-op when the WASAPI backend is not loaded."""
     mf = mf or sys.modules.get("soundcard.mediafoundation")
+    patch_com_teardown(mf)  # #312: every soundcard user passes here once the backend is loaded
     cls = getattr(mf, "_AudioClient", None)
     if cls is None:
         return False
