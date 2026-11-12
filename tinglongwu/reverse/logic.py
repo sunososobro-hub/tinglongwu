@@ -24,6 +24,17 @@ def split_sentences(text: str, max_chars: int = 220) -> list[str]:
     return [s for s in out if re.search(r"\w", s)]
 
 
+# #316: Vosk-TTS ru splits words only at , . ? ! ; : " ( ) and space; any other punctuation stays inside the word,
+# becomes a "phone" (g2p.convert keeps unknown characters) and the worker fails with KeyError on phoneme_id_map,
+# so the utterance was never spoken (e.g. "сказать…"). Rewrite them to marks every engine reads the same way.
+_TTS_PUNCT = str.maketrans({"…": "...", "—": ", ", "–": ", ", "«": "", "»": "", "“": "", "”": "", "„": ""})
+
+
+def tts_text(piece: str) -> str:
+    """Text to send to the TTS worker for one piece: ellipsis -> '...', dashes -> comma, typographic quotes dropped."""
+    return re.sub(r" {2,}", " ", re.sub(r" +,", ",", piece.translate(_TTS_PUNCT))).strip().lstrip(", ")
+
+
 _CLAUSE = re.compile(r"[,;:—–，、；：]")  # a cut right after one of these keeps natural prosody
 STREAM_FIRST_CHARS = 24  # #207: first TTS piece, cut at a clause mark (else a space): Kokoro int8 i5-13500 8 threads
 #                          ~0.3-0.8 s for <= 24 chars vs 0.9-1.0 s for 34-40 (scripts/bench_tts_stream.py)
