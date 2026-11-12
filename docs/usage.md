@@ -1,6 +1,6 @@
 # Usage, GUI, glossary, limitations
 
-Moved from the README (#166). Quick start stays in the [README](../README.md#usage).
+Moved from the README (#166). Quick start commands (menu, live, file, GUI) are in the section below.
 
 ## Usage
 ```

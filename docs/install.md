@@ -1,6 +1,6 @@
 # Install (from source), releases and GPU
 
-Moved from the README (#166). Quick one-line installs stay in the [README](../README.md#one-command-install-windows--mac--linux).
+Moved from the README (#166). Quick one-line installs stay in the [README](../README.md).
 
 ## Releases (read before trusting a binary)
 
@@ -53,3 +53,10 @@ curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/downloa
 ```
 
 It checks Homebrew (never installs it silently; prints the official command if missing), installs Python 3.12, git, BlackHole 2ch and 16ch, clones to `~/tinglongwu`, creates the venv, sets up the English voice (Kokoro, own venv in `~/tts-kokoro`, model in `~/models/kokoro`), downloads the models, and installs `tlwu-menu`. Re-running is safe (repair/update). The one manual step it prints at the end: in Audio MIDI Setup create a Multi-Output Device (speakers/headphones + BlackHole 2ch) and set it as the system output; set the Meet/Zoom microphone to **BlackHole 16ch**. Audio design: BlackHole 2ch = capture of system audio (listening), BlackHole 16ch = virtual microphone for the synthesized speech, so your own TTS never loops into listening. Run `tlwu-menu` afterwards; on the first menu run it asks once whether to check GitHub for updates at every menu start (`git pull --ff-only`, about 6 s cap, offline-safe); if you say no, nothing touches the network and `U` in the menu updates on demand (`TLWU_NO_UPDATE=1` forces it off). Japanese/Russian speech are not part of the Mac install. Untested on real Macs so far.
+
+## One-command install details (moved from the README, #342)
+Each command installs the exact version of the latest GitHub Release (`main` is stable; `dev` is for development). Re-running is safe.
+
+Each release also lists `SHA256SUMS.txt`; to check a script before running it, download it and compare. The Linux installer asks y/N before any `apt` step and downloads no models (the menu asks before every download). The Windows command downloads the source to `%USERPROFILE%\tinglongwu` and runs the same `install.ps1` as below (the execution-policy bypass is for that one child process only).
+
+Windows ZIP install (`install.bat`) and the menu keys, Mac details, source install, GPU are described above. The Windows release zip is unsigned and not reproducible: [read this first](#releases-read-before-trusting-a-binary).
