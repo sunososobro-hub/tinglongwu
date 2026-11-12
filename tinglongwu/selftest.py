@@ -224,7 +224,7 @@ def run_selftest(mdir, model: str | None = None, engine: str = "auto", device: s
         res.engine = "hymt2" if eng.startswith("hymt2") else eng
         label = f"translation {res.engine} on {_where(on)}"
         try:
-            out = (make_mt(mdir, eng, zh_variant, dev).translate(CLIP_TEXT, "en", "zh").target or "").strip()
+            out = (make_mt(mdir, eng, zh_variant, dev).translate(CLIP_TEXT, "en", "zh").text or "").strip()
             if not _has_cjk(out):
                 raise RuntimeError(f"no Chinese in the output: {out[:80]!r}")
             steps.append(Step(label, True, clock() - t0, out))

@@ -41,7 +41,9 @@ def _hymt_ready(mdir) -> bool:
     if not hymt_path(mdir).is_file():
         return False
     try:
-        import llama_cpp  # noqa: F401 - same check as the menus' have_llama
+        from .llamacheck import import_llama
+
+        import_llama()  # same check as the menus' have_llama (CPU fallback in the standalone build, #398)
     except Exception:  # noqa: BLE001 - missing or broken build: Hy-MT2 cannot run here
         return False
     return True

@@ -33,6 +33,8 @@ MODULES: list[tuple[str, bool]] = [
     ("tinglongwu_setup.downloader", True),
     ("llama_cpp", False),
 ]
+# Modules the app never imports directly: llama_cpp goes through import_llama (CUDA DLLs + CPU fallback, #398)
+IMPORTERS = {"llama_cpp": lambda: importlib.import_module("tinglongwu.llamacheck").import_llama()}
 
 # (module, attributes, required). None = every lazy attribute the module declares (filelock: _LAZY_ATTRIBUTES).
 LAZY: list[tuple[str, tuple[str, ...] | None, bool]] = [
@@ -88,8 +90,12 @@ def check(modules: list[tuple[str, bool]] | None = None, out=None, lazy=None) ->
     for name, required in (MODULES if modules is None else modules):
         t0 = time.perf_counter()
         try:
-            importlib.import_module(name)
+            IMPORTERS.get(name, lambda: importlib.import_module(name))()
             line = f"OK   {name} ({time.perf_counter() - t0:.1f}s)"
+            if name == "llama_cpp":
+                reason = getattr(sys.modules.get("tinglongwu.llamacheck"), "cpu_fallback", None)
+                if reason:
+                    line += f"\nCPU  llama_cpp: CUDA build not used ({reason}); loaded llama_cpp/lib_cpu"
         except BaseException as e:  # noqa: BLE001 - a broken DLL can raise anything, even SystemExit
             if isinstance(e, KeyboardInterrupt):
                 raise
