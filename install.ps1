@@ -155,11 +155,11 @@ if ($Gpu) {
         if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True') }
         if ($have) { Ok "llama-cpp-python (GPU) already works / 已可用"; $Engine = 'hymt2' }
         else {
-            $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-qwen.txt', '--only-binary=:all:')
+            $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cuda.txt', '--only-binary=:all:')
             if ($ok -and -not $DryRun) {
                 $ok = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True')
                 if (-not $ok) {   # same version already installed from another index (e.g. an AVX-512 build, #74): replace it
-                    [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-qwen.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
+                    [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements-llama-cuda.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
                     $ok = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True')
                 }
                 if (-not $ok) { Warn "llama-cpp-python installed but failed the self-check: $(Capture $VPy @('-c', $LlamaWhy))" }

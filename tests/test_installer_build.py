@@ -29,7 +29,7 @@ needs_git = pytest.mark.skipif(not _git_ok(), reason="needs a git checkout")
 @needs_git
 def test_stage_ships_app_and_install_scripts_not_tests(tmp_path):
     files = bi.stage(tmp_path / "stage")
-    must = ["install.ps1", "install.bat", "pyproject.toml", "requirements.txt", "requirements-qwen.txt",
+    must = ["install.ps1", "install.bat", "pyproject.toml", "requirements.txt", "requirements-llama-cuda.txt",
             "LICENSE", "README.md", "tinglongwu/__init__.py", "tinglongwu_setup/cli.py", "tlwu_app/main.py",
             "installer/run_install.ps1"]
     for m in must:

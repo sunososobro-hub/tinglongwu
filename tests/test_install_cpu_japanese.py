@@ -54,7 +54,7 @@ def test_cpu_tier_installs_llama_cpu_build_and_hymt():
     pip = [x for x in lines if "[dry-run]" in x and "requirements-llama-cpu.txt" in x]
     assert len(pip) == 1 and "--only-binary=:all:" in pip[0]
     assert any("[dry-run]" in x and x.rstrip().endswith("--hymt") for x in lines)
-    assert not any("requirements-qwen.txt" in x for x in lines)  # the CUDA wheel stays GPU-only
+    assert not any("requirements-llama-cuda.txt" in x for x in lines)  # the CUDA wheel stays GPU-only
     assert any("translation=Hy-MT2 1.8B on the CPU" in x for x in lines)
     assert any("Translation engine / 翻譯引擎: hymt2" in x for x in lines)
     assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 14-43 分鐘") for x in lines)  # +1.1 GB GGUF, +0.3 GB talk mode (#124)
