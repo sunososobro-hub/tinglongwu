@@ -17,7 +17,7 @@ Any language pair with an OPUS-MT/Argos package works: `--langs` fetches source-
 
 **Opt-in: Hy-MT2 7B** (#279, `tlwu-setup --hymt7b`, then `tlwu --engine hymt7b`): Tencent Hy-MT2-7B Q4_K_M GGUF (~4.8 GB) for GPUs with >= 8 GB VRAM; `auto` never picks it. Setup downloads the upstream `LICENSE.txt` first and refuses unless it is Apache-2.0 (the Hy-MT2 GitHub repo `LICENSE.txt` is Apache-2.0). Q4_K_M runs on stock llama.cpp; llama.cpp PR #22836 (STQ1_0) is only needed by the 1.25-bit GGUF. Not shipped as a default until it beats 1.8B by >= 2 XCOMET with MT p50 <= 0.8 s on an 8 GB GPU (owner test).
 
-**Qwen LLM engine (optional, `--engine qwen` / `qwen4b`; used by `auto` only when Hy-MT2 is not installed)**: a local Qwen3 model (llama.cpp, Q4_K_M GGUF) translates directly source -> Chinese (no English pivot, thinking mode off, repetition guarded), then OpenCC converts per `--zh-variant`. It is much more accurate than OPUS and does not produce garbage on very short lines. `tlwu-setup --qwen` downloads Qwen3-8B and Qwen3-4B (~7.5 GB) into the models dir; it also needs `llama-cpp-python` (CUDA build). `auto` checks free VRAM after Whisper has loaded: Qwen3-8B if >= 5.8 GB is free, else Qwen3-4B if >= 3.5 GB, else OPUS (also on CPU or if Qwen fails to load); one line at startup says which engine was chosen. Force one with `--engine qwen` (8B), `qwen4b`, `opus` or `m2m`.
+**Qwen**: removed (#276, #283, #308). Hy-MT2 is the translation LLM; `tlwu-setup --qwen` no longer exists.
 
 
 ### Pinned model sources

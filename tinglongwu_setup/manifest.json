@@ -74,20 +74,6 @@
     "vocabulary.json": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
    }
   },
-  "qwen3-8b": {
-   "repo": "Qwen/Qwen3-8B-GGUF",
-   "revision": "7c41481f57cb95916b40956ab2f0b139b296d974",
-   "files": {
-    "Qwen3-8B-Q4_K_M.gguf": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"
-   }
-  },
-  "qwen3-4b": {
-   "repo": "Qwen/Qwen3-4B-GGUF",
-   "revision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
-   "files": {
-    "Qwen3-4B-Q4_K_M.gguf": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
-   }
-  },
   "hymt2-1.8b": {
    "repo": "tencent/Hy-MT2-1.8B-GGUF",
    "revision": "a0c709d9fac510f2c807aa3af52872340dc37a4a",
