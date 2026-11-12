@@ -17,7 +17,7 @@ from ..langs import from_label as lang_from_label, label as lang_label, labels a
 from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
-                   save_settings, settings_to_argv)
+                   save_settings, settings_to_argv, voice_outputs)
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -344,6 +344,12 @@ class App:
         self.v_live = tk.BooleanVar(value=s["live_draft"])
         self._tx(ttk.Checkbutton(f, variable=self.v_live), "gui_live_draft").grid(
             row=8, column=1, columnspan=2, sticky="w")
+        self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
+        self._tx(ttk.Checkbutton(f, variable=self.v_voice), "gui_voice").grid(row=17, column=0, sticky="w", pady=2)
+        self.voice_default = t("gui_voice_default")
+        self.v_voice_dev = tk.StringVar(value=s["voice_device"] or self.voice_default)
+        ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + voice_outputs(),
+                     state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
         self.v_lines = self._spin(15, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
                                   lambda n: self.overlay.set_rows(n))
         self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
@@ -529,7 +535,9 @@ class App:
         s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
-                 live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get())
+                 live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
+                 voice=self.v_voice.get(),
+                 voice_device="" if self.v_voice_dev.get() == self.voice_default else self.v_voice_dev.get())
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------

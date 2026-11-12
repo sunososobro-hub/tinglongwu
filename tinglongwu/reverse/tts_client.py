@@ -21,9 +21,13 @@ class TTSClient:
         env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUTF8": "1",
                "TLWU_MODE": "worker", **tts_env()}  # #250: onnxruntime threads in listen+speak mode
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
-        self.ready = self._read_header()
-        if self.ready.get("t") != "ready":
-            raise RuntimeError(f"TTS worker failed to start: {self.ready}")
+        try:
+            self.ready = self._read_header()
+            if not isinstance(self.ready, dict) or self.ready.get("t") != "ready":
+                raise RuntimeError(f"TTS worker failed to start: {self.ready}")
+        except (RuntimeError, ValueError):  # no / garbled ready line: do not leave the worker process behind
+            self.proc.kill()
+            raise
         self._n = 0
 
     def _read_header(self) -> dict:

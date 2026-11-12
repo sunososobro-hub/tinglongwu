@@ -59,7 +59,7 @@ def _session(monkeypatch, tmp_path, extra, opened, run=None):
 
     def fake_open_voice(a, mdir, inner, say):
         opened.append(inner)
-        return voice.VoiceSink(inner, lambda text: None), lambda: opened.append("closed")
+        return voice.VoiceSink(inner, lambda text: None), lambda drop=False: opened.append("closed-drop" if drop else "closed")
 
     monkeypatch.setattr(minspec, "check_avx2", lambda force=False: None)
     monkeypatch.setattr(device_mod, "resolve_device", lambda compute, warn=None: "cpu")
@@ -366,3 +366,140 @@ def test_unmatched_voice_device_is_a_one_line_error(monkeypatch, tmp_path):
     monkeypatch.setattr(proto, "Player", no_match)
     with pytest.raises(RuntimeError, match="--voice-device"):
         voice.open_voice(cli.parse_args(["--voice", "--voice-device", "Nope"]), tmp_path, _Lines(), lambda m: None)
+
+
+# --- #330 part 2: interrupt drops the backlog, honest counts, garbled worker replies ----------------------------
+
+def test_ctrl_c_closes_the_voice_without_speaking_the_backlog(monkeypatch, tmp_path):
+    opened = []
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _session(monkeypatch, tmp_path, ["--voice"], opened, run=interrupted)
+    assert opened[-1] == "closed-drop"
+
+
+def test_normal_end_still_speaks_the_backlog(monkeypatch, tmp_path):
+    opened = []
+    _session(monkeypatch, tmp_path, ["--voice"], opened)
+    assert opened[-1] == "closed"  # a file that ends normally: the last lines are still spoken
+
+
+def test_close_with_drop_skips_waiting_lines_and_returns_at_once():
+    gate, spoken = threading.Event(), []
+
+    def speak(text):
+        spoken.append(text)
+        if text == "一。":
+            gate.wait(5)
+
+    sink = voice.VoiceSink(_Lines(), speak, max_backlog=5)
+    sink.write(_r("一。"))
+    for _ in range(100):
+        if spoken:
+            break
+        time.sleep(0.01)
+    sink.write(_r("二。"))
+    sink.write(_r("三。"))
+    result = []
+    closer = threading.Thread(target=lambda: result.append(sink.close(timeout=5, drop=True)))
+    closer.start()  # the worker is still blocked on "一。" while close drops the backlog
+    for _ in range(200):
+        with sink.q.mutex:
+            if list(sink.q.queue) == [None]:
+                break
+        time.sleep(0.01)
+    gate.set()
+    closer.join(5)
+    assert result == [True]
+    assert spoken == ["一。"]  # only the line already being spoken finished
+
+
+def test_unspoken_count_excludes_the_stop_sentinel():
+    gate = threading.Event()
+    sink = voice.VoiceSink(_Lines(), lambda text: gate.wait(5))
+    sink.write(_r("一。"))
+    time.sleep(0.05)
+    sink.write(_r("二。"))
+    assert sink.close(timeout=0.05) is False
+    assert sink.pending() == 1  # "二。" only; the queued None is not a line
+    gate.set()
+    sink.t.join(5)
+
+
+def test_close_reports_lines_skipped_to_stay_live(fakes, tmp_path):
+    said = []
+    a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
+    sink, close = voice.open_voice(a, tmp_path, _Lines(), said.append)
+    sink.dropped = 3
+    close()
+    assert any("skipped 3 line" in m for m in said)
+
+
+def test_garbled_worker_reply_turns_the_voice_off_with_one_line(fakes, tmp_path):
+    class _Garbled(_Tts):
+        calls = 0
+
+        def speak(self, text, lang=None):
+            _Garbled.calls += 1
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+            yield  # pragma: no cover
+
+    from tinglongwu.reverse import tts_client
+
+    tts_client.TTSClient = _Garbled
+    said = []
+    a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
+    sink, close = voice.open_voice(a, tmp_path, _Lines(), said.append)
+    sink.write(_r("一。"))
+    for _ in range(100):
+        if any("garbled" in m for m in said):
+            break
+        time.sleep(0.01)
+    sink.write(_r("二。"))
+    close()
+    assert sum("garbled" in m for m in said) == 1 and _Garbled.calls == 1  # no retry on a desynced stream
+    assert fakes[0].closed and _Garbled.made[-1].closed  # worker and player still closed
+
+
+def test_garbled_ready_header_is_a_one_line_error_and_kills_the_worker(tmp_path):
+    import sys
+
+    from tinglongwu.reverse.tts_client import TTSClient
+
+    fake = tmp_path / "fake_python.py"
+    fake.write_text("import sys, time\nprint('not json', flush=True)\ntime.sleep(30)\n")
+    procs = []
+    import subprocess
+
+    real = subprocess.Popen
+
+    def popen(cmd, **k):
+        procs.append(real([sys.executable, str(fake)], **k))
+        return procs[-1]
+
+    import pytest as _p
+
+    mp = _p.MonkeyPatch()
+    mp.setattr(subprocess, "Popen", popen)
+    try:
+        with pytest.raises(ValueError):
+            TTSClient(sys.executable, str(tmp_path), "kokoro", 0, "zh")
+    finally:
+        mp.undo()
+    assert procs[0].wait(timeout=5) is not None  # killed, not left running
+
+
+def test_open_voice_turns_a_garbled_ready_header_into_a_runtime_error(fakes, tmp_path):
+    from tinglongwu.reverse import tts_client
+
+    def garbled(*a, **k):
+        raise ValueError("Expecting value")
+
+    tts_client.TTSClient = garbled
+    a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
+    with pytest.raises(RuntimeError, match="tlwu-setup --talk"):
+        voice.open_voice(a, tmp_path, _Lines(), lambda m: None)
+    assert fakes[0].closed
