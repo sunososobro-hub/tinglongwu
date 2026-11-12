@@ -25,6 +25,16 @@ def vosk_ru_installed(path: str | None = None) -> bool:
     return (Path(path) if path else models_dir(None) / VOSK_TTS_RU_DIR).is_dir()
 
 
+def default_vosk_ru(mdir: str | None = None) -> Path | None:
+    """Vosk Russian TTS model dir to use when --tts-model/--vosk-model is not given (#311): $VOSK_MODEL if it is a
+    dir, else the one `tlwu-setup --vosk-tts-ru` installed under the models dir, else None."""
+    env = os.environ.get("VOSK_MODEL")
+    if env and Path(env).is_dir():
+        return Path(env)
+    d = models_dir(mdir) / VOSK_TTS_RU_DIR
+    return d if d.is_dir() else None
+
+
 # Piper Russian voices (CC0 datasets, OHF-Voice/voice-datasets; #128). `tlwu-setup --piper-ru [dmitri|denis]`
 # downloads one to models/piper-ru_RU-<voice>-medium/ (keep in sync with tinglongwu_setup.downloader.PIPER_RU).
 # Never irina (CC BY-NC-ND) or ruslan (CC BY-NC-SA). Piper itself is GPL-3: it only runs in its own venv (tts_worker).

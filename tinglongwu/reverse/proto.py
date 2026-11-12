@@ -468,24 +468,25 @@ def resolve_tts_engine(a) -> None:
     stated model license): an explicit --tts-model that holds a Piper voice, or with no --tts-model the installed
     `tlwu-setup --piper-ru` voice; otherwise Vosk, as before (other targets still need --tts-engine kokoro).
     --to follow: the Russian worker is Piper when --vosk-model is a Piper voice (or is empty and one is installed)."""
-    from ..models import default_piper_ru, piper_onnx
+    from ..models import default_piper_ru, default_vosk_ru, piper_onnx
 
     mdir = getattr(a, "models_dir", None)
     if a.to == "follow":
-        if not a.vosk_model and (d := default_piper_ru(mdir)):
+        if not a.vosk_model and (d := default_piper_ru(mdir) or default_vosk_ru(mdir)):
             a.vosk_model = str(d)
         a.ru_engine = "piper" if piper_onnx(a.vosk_model) else "vosk"
         return
-    if a.tts_engine != "auto":
-        return
-    if a.to != "ru":
-        a.tts_engine = "vosk"  # unchanged default: rejected below unless --no-tts
-    elif piper_onnx(a.tts_model):
-        a.tts_engine = "piper"
-    elif not a.tts_model and (d := default_piper_ru(mdir)):
-        a.tts_engine, a.tts_model = "piper", str(d)
-    else:
-        a.tts_engine = "vosk"
+    if a.tts_engine == "auto":
+        if a.to != "ru":
+            a.tts_engine = "vosk"  # unchanged default: rejected below unless --no-tts
+        elif piper_onnx(a.tts_model):
+            a.tts_engine = "piper"
+        elif not a.tts_model and (d := default_piper_ru(mdir)):
+            a.tts_engine, a.tts_model = "piper", str(d)
+        else:
+            a.tts_engine = "vosk"
+    if a.tts_engine == "vosk" and a.to == "ru" and not a.tts_model and (d := default_vosk_ru(mdir)):
+        a.tts_model = str(d)  # #311: the model `tlwu-setup --vosk-tts-ru` installed (or VOSK_MODEL), no flag needed
 
 
 def check_args(a) -> str | None:
@@ -693,7 +694,7 @@ def _main(argv, vm) -> int:
         for sp in sc.all_speakers():
             print(sp.name)
         return 0
-    from .vmic import SINK, VirtualMic, is_linux, is_macos, loop_prone_output, pick_mac_vmic
+    from .vmic import SINK, VirtualMic, is_linux, is_macos, loop_prone_output, pick_mac_vmic, pick_win_cable
 
     if is_linux() and not a.no_vmic and not (a.no_play or a.no_tts) and a.device is None:
         try:
@@ -714,6 +715,20 @@ def _main(argv, vm) -> int:
             return 2
         print(f"virtual microphone: speech goes to {a.device!r}; select it as the microphone in Meet/Zoom",
               flush=True)
+    elif sys.platform == "win32" and not a.no_vmic and not (a.no_play or a.no_tts) and a.device is None:
+        try:
+            import soundcard as sc
+
+            a.device = pick_win_cable([sp.name for sp in sc.all_speakers()])  # #311: VB-CABLE if installed
+        except Exception:  # noqa: BLE001 - no device list: default speakers, warned below
+            a.device = None
+        if a.device:
+            print(f"output: speech goes to {a.device!r}; select CABLE Output as the microphone in Meet/Zoom",
+                  flush=True)
+        else:
+            print("warning: no 'CABLE Input' device found (VB-CABLE not installed?): the voice plays on the default "
+                  "speakers and Meet/Zoom will not hear it; install VB-CABLE or pass --device", file=sys.stderr,
+                  flush=True)
     if is_macos():
         for flag, val in (("--device", a.device), ("--preview-device", a.preview_device)):
             if val and loop_prone_output(val):
