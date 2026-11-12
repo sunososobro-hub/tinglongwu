@@ -51,6 +51,9 @@ def parse_args(argv=None):
                         f"--max-wait the default max-wait is {CPU_MAX_WAIT:g} s")
     p.add_argument("--chunk", type=float, default=None,
                    help="max segment seconds (default from --preset; larger = more context for Whisper)")
+    p.add_argument("--selftest", action="store_true",
+                   help="load the models and translate one bundled test sentence with --model/--engine/--device, "
+                        "print OK/FAIL per step, fall back GPU -> CPU on failure, then exit (offline)")
     p.add_argument("--no-vad", action="store_true", help="fixed --chunk blocks instead of VAD")
     p.add_argument("--vad-pad", type=float, default=0.1, metavar="SEC",
                    help="Silero speech-end padding in seconds (default 0.1; faster-whisper's own default 0.4 delays "
@@ -409,6 +412,10 @@ def main(argv=None) -> int:
 
         open_report(info={"Mode": "cli", "Language pair": f"{a.lang} -> {a.to}", "Engine": a.engine})
         return 0
+    if a.selftest:
+        from .selftest import main_from_args
+
+        return main_from_args(a)
     if a.probe:
         from .hwprobe import describe, probe, recommend
 
