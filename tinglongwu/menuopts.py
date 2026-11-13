@@ -5,14 +5,12 @@ windows_menu.ps1 so both behave the same:
 
 * Glossary: always `--builtin-glossary` (#256); if the user glossary folder (<config dir>/glossary, e.g. %APPDATA%\\tinglongwu\\glossary or
   ~/.config/tinglongwu/glossary) holds *.txt files, add `--glossary <folder>`. Putting files there is the opt-in.
-* CPU translation engine: without a usable GPU `--engine auto` uses OPUS (fast, but the ru->en->zh pivot can lose or
-  flip meaning, e.g. negations) unless `tlwu --probe --speed` already chose Hy-MT2. When Hy-MT2 is installed and no
-  remembered choice exists, ask once per start (default = keep auto); `h` adds `--engine hymt`.
+* CPU translation engine: Hy-MT2 is the only engine (#471, no OPUS); when it is installed, no GPU is usable and no
+  remembered speed-test choice exists, add `--engine hymt` and say it runs on the CPU (owner, #227).
 Offline: reads local files only; never downloads or probes speed.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Callable
@@ -54,8 +52,6 @@ def _engine_args(ask, say, device, mdir, cpu_choice, hymt_ready) -> list[str]:
 
     if device() != "cpu" or not hymt_ready(mdir) or cpu_choice() is not None:
         return []  # GPU: auto already prefers Hy-MT2; cached CPU choice: auto already uses it
-    if os.environ.get("TLWU_MT", "").lower() == "opus":
-        return []
     say(t("menu_cpu_mt_hymt"))  # owner 2026-11-11 (#227): Hy-MT2 by default on CPU, no question
     return ["--engine", "hymt"]
 

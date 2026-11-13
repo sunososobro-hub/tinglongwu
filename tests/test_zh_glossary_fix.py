@@ -100,9 +100,13 @@ def test_protect_acronyms_rules():
     assert restore_acronyms("A 93011 B", {"9301": "LTE"}) is None
 
 
-def test_cli_sets_glossary_on_opus_behind_ja_router(tmp_path, monkeypatch):
+def test_apply_glossary_reaches_hymt_behind_the_listen_router(tmp_path):
     from tinglongwu import hymt
 
-    tr = cli.make_translator("opus", tmp_path, "tw", "cpu", say=lambda *a, **k: None,
-                             choose=lambda e, d, m: ("opus", "test"))
-    assert isinstance(tr, hymt.JaRouter) and hasattr(tr.base, "glossary")
+    class Hy:
+        glossary = None
+
+    tr = hymt.JaRouter(None, tmp_path, "tw", "cpu", all_pairs=True)  # #471: no OPUS base in listen
+    tr.hy = Hy()
+    cli.apply_glossary(tr, "G")
+    assert tr.hy.glossary == "G" and tr.glossary == "G"

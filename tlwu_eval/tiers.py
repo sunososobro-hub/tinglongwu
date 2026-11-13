@@ -11,7 +11,7 @@ from . import scoring
 # large-v3 next to Hy-MT2. The eval harness never runs drafts (--stream), so "drafts off" needs no flag.
 # mid-gpu uses small (the owner's hallucination baseline model); pass --model large-v3-turbo for the turbo run.
 TIERS = {
-    "cpu-low": {"model": "base", "engine": "opus", "device": "cpu"},
+    "cpu-low": {"model": "base", "engine": "hymt", "device": "cpu"},  # #471: OPUS removed, Hy-MT2 on CPU
     "mid-gpu": {"model": "small", "engine": "hymt", "device": "cuda"},
     "high": {"model": "large-v3", "engine": "hymt", "device": "cuda"},
 }

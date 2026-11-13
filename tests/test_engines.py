@@ -7,7 +7,7 @@ from tinglongwu.engines import choose_engine, clean_output, max_tokens_for
 
 def test_cli_engine_choices_default_auto():
     assert cli.parse_args([]).engine == "auto"
-    for e in ("auto", "hymt", "opus"):
+    for e in ("auto", "hymt"):
         assert cli.parse_args(["--engine", e]).engine == e
     for bad in ("gpt", "qwen", "qwen4b", "m2m"):  # #276/#283: Qwen / m2m are gone
         with pytest.raises(SystemExit):
@@ -24,7 +24,7 @@ def test_auto_is_always_hymt(tmp_path, free):
 def test_explicit_engines_ignore_vram(tmp_path):
     boom = lambda: (_ for _ in ()).throw(AssertionError("vram read"))  # noqa: E731
     assert choose_engine("hymt", "cuda", tmp_path, free_mib=boom)[0] == "hymt2"
-    assert choose_engine("opus", "cuda", tmp_path, free_mib=boom)[0] == "opus"
+    assert choose_engine("hymt7b", "cuda", tmp_path, free_mib=boom)[0] == "hymt2-7b"
 
 
 def test_registry_entry_is_all_an_engine_needs_to_be_chosen(monkeypatch, tmp_path):
@@ -33,7 +33,17 @@ def test_registry_entry_is_all_an_engine_needs_to_be_chosen(monkeypatch, tmp_pat
     boom = lambda: (_ for _ in ()).throw(AssertionError("vram read"))  # noqa: E731
     assert choose_engine("fake", "cuda", tmp_path, free_mib=boom) == ("fake-engine-1", "requested")
     # module-level CLI choices (#279 adds hymt7b; #356 adds the opt-in ollama / fm)
-    assert set(engines.ENGINES) == {"auto", "hymt", "hymt7b", "opus", "ollama", "fm"}
+    assert set(engines.ENGINES) == {"auto", "hymt", "hymt7b", "ollama", "fm"}  # #471: opus removed
+
+
+def test_engine_opus_is_removed_and_says_how_to_fix(capsys):
+    """#471: `tlwu --engine opus` (an old launcher or habit) exits 2 naming `tlwu-setup --hymt`, even with --help."""
+    for argv in (["--engine", "opus"], ["--engine", "opus", "--help"]):
+        with pytest.raises(SystemExit) as e:
+            cli.parse_args(argv)
+        assert e.value.code == 2
+        err = capsys.readouterr().err
+        assert "tlwu-setup --hymt" in err and "--engine auto" in err
 
 
 def test_clean_output_and_max_tokens():
@@ -54,3 +64,13 @@ def test_make_translator_auto_without_hymt_stops_with_setup_command(tmp_path):
 def test_qwen_module_is_gone():
     with pytest.raises(ImportError):
         import tinglongwu.qwen  # noqa: F401
+
+
+def test_python_m_cli_engine_opus_exits_2():
+    """The #471 verify command: `python -m tinglongwu.cli --engine opus --help` exits 2 with the fix."""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-m", "tinglongwu.cli", "--engine", "opus", "--help"],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 2 and "tlwu-setup --hymt" in r.stderr

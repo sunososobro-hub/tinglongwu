@@ -119,6 +119,26 @@ def test_router_all_pairs_sends_unknown_language_to_base(tmp_path):
     assert ja_only.translate("Hello there", "en", "zh").text == "opus:Hello there"
 
 
+def test_listen_router_has_no_opus_fallback(tmp_path, monkeypatch):
+    """#471: the listen path builds Hy-MT2 with no OPUS pivot behind it: an unknown language, or a Hy-MT2 that fails
+    mid-session, is an error naming `tlwu-setup --hymt`, never a silent switch to OPUS."""
+    from tinglongwu.translate import PivotTranslator
+
+    m = install(tmp_path, "hymt2")
+    monkeypatch.setattr(PivotTranslator, "__init__", lambda *a, **k: pytest.fail("OPUS pivot built"))
+    llm = FakeLlm("你好")
+    monkeypatch.setattr("tinglongwu.hymt._load_llama", lambda path, gpu: llm)
+    warned = []
+    tr = cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: warned.append(msg))
+    assert tr.translate("Hello", "en", "zh").text == "你好"
+    with pytest.raises(RuntimeError, match="does not translate tr -> zh.*tlwu-setup --hymt"):
+        tr.preload("tr", "zh")  # Turkish is not in Hy-MT2's table: fails before capture starts
+    llm.create_chat_completion = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("llama crashed"))
+    with pytest.raises(RuntimeError, match="not available.*llama crashed"):
+        tr.translate("Hello", "en", "zh")
+    assert any("no fallback engine" in w for w in warned) and not any("OPUS" in w for w in warned)
+
+
 def test_short_line_left_in_kana_shows_source(tmp_path):
     m = install(tmp_path, "hymt2")
     tr = HyMtTranslator(m, "tw", "cpu", loader=lambda p, g: FakeLlm("ありがとうございます"))

@@ -71,9 +71,11 @@ def test_save_settings_unwritable(tmp_path):
 def test_settings_to_argv_parses():
     from tinglongwu.cli import parse_args
 
-    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="opus", glossary="g.txt", save=True)
+    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="hymt", glossary="g.txt", save=True)
     a = parse_args(core.settings_to_argv(s))
-    assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "opus", "g.txt", "")
+    assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "hymt", "g.txt", "")
+    assert core.ENGINES == ["auto", "hymt"]  # #471: OPUS is no longer offered
+    assert parse_args(core.settings_to_argv(dict(s, engine="opus"))).engine == "auto"  # old gui.json: no exit 2
     a = parse_args(core.settings_to_argv(dict(core.DEFAULTS, target="en", save=True, save_path="o.jsonl")))
     assert (a.to, a.save) == ("en", "o.jsonl")
     assert parse_args(["--gui"]).gui and not parse_args([]).gui

@@ -119,11 +119,12 @@ def test_router_falls_back_when_llm_fails_to_load(tmp_path):
         r2.translate("你好", "zh", "ja")
 
 
-def test_make_translator_opus_returns_router(tmp_path):
+def test_make_translator_no_longer_builds_opus(tmp_path):
     from tinglongwu import cli
 
-    tr = cli.make_translator("opus", tmp_path, "tw", "cpu", say=lambda *a, **k: None)
-    assert isinstance(tr, JaRouter) and isinstance(tr.base, PivotTranslator)
+    with pytest.raises(SystemExit, match="--engine auto"):  # #471: no OPUS pivot in the listen path
+        cli.make_translator("opus", tmp_path, "tw", "cpu", say=lambda *a, **k: None,
+                            choose=lambda e, d, m: ("opus", "test"))
 
 
 def test_translate_ru_no_cjk_retry_for_japanese():

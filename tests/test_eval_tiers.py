@@ -38,7 +38,7 @@ def run_tier(tmp_path, name, *extra, comet=None, n=6):
 def test_tier_preset_sets_engine_and_summary(tmp_path, capsys):
     code, rep, a = run_tier(tmp_path, "cpu-low")
     assert code == 0
-    assert (a.model, a.engine, a.device) == ("base", "opus", "cpu")
+    assert (a.model, a.engine, a.device) == ("base", "hymt", "cpu")
     t = rep["tier"]
     assert t["tier"] == "cpu-low" and t["chrf"] == 100.0 and t["comet"] is None
     assert t["hallucination"] == {"count": 0, "total": 10, "rate": 0.0}
