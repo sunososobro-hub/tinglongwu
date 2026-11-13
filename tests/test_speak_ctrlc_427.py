@@ -95,12 +95,12 @@ def test_ctrl_c_in_live_main_closes_mic_and_aborts_players(monkeypatch):
     player, previewer = Pl(), Pl()
     a = SimpleNamespace(mic_name="Monitor of E2E-Speaker", chunk_s=10.0, to="en")
     proto._live_main(a, None, None, tts, player, previewer, False, {"items": []})
-    assert mic.closed.is_set() and mic.released.wait(2)
-    assert not _capture_threads()
+    assert not _capture_threads()  # joined before _live_main returned (not merely told to stop)
+    assert mic.closed.is_set() and mic.released.is_set()
     assert killed.is_set() and player.aborted and previewer.aborted
 
 
-def _fake_soundcard(monkeypatch, play_s=0.0):
+def _fake_soundcard(monkeypatch, play_s=None):
     played = []
 
     class Stream:
@@ -111,7 +111,7 @@ def _fake_soundcard(monkeypatch, play_s=0.0):
             return False
 
         def play(self, data):
-            time.sleep(play_s)
+            time.sleep(play_s if play_s is not None else len(data) / 24000)  # real time unless play_s is given
             played.append(len(data))
 
     spk = types.SimpleNamespace(name="tlwu_sink", player=lambda **kw: Stream())
@@ -122,17 +122,17 @@ def _fake_soundcard(monkeypatch, play_s=0.0):
 
 def test_player_abort_drops_queued_audio_and_ends_the_playback_thread(monkeypatch):
     monkeypatch.setattr(proto.sys, "platform", "linux")
-    played = _fake_soundcard(monkeypatch, play_s=0.2)
+    played = _fake_soundcard(monkeypatch)
     p = proto.Player("tlwu_sink", 24000)
-    for _ in range(10):
-        p.push(np.zeros(2400, np.float32), 24000)
-    time.sleep(0.05)  # the first piece is playing
-    p.abort()
+    for _ in range(3):
+        p.push(np.zeros(24000 * 8, np.float32), 24000)  # 8 s pieces: longer than any join timeout
+    time.sleep(0.3)  # the first piece is playing
     t0 = time.monotonic()
+    p.abort()
     p.close()
-    assert not p.t.is_alive() and time.monotonic() - t0 < 2
-    assert len(played) <= 2  # the piece being played ends; the queued ones are dropped
-    assert not p.gate.busy() or p.gate._n == 0
+    assert not p.t.is_alive() and time.monotonic() - t0 < 1
+    assert sum(played) < 24000  # under 1 s of the 8 s piece was written; the queued pieces were dropped
+    assert p.gate._n == 0  # every pushed piece released the half-duplex gate
 
 
 def test_player_close_still_plays_everything_queued(monkeypatch):
@@ -140,6 +140,6 @@ def test_player_close_still_plays_everything_queued(monkeypatch):
     played = _fake_soundcard(monkeypatch)
     p = proto.Player("tlwu_sink", 24000)
     for _ in range(3):
-        p.push(np.zeros(240, np.float32), 24000)
+        p.push(np.zeros(3600, np.float32), 24000)
     p.close()
-    assert len(played) == 3 and not p.t.is_alive()
+    assert sum(played) == 3 * 3600 and not p.t.is_alive()

@@ -164,7 +164,12 @@ def stop_capture(source, th: threading.Thread, ended: threading.Event | None = N
             pass
     if th is not threading.current_thread():
         th.join(timeout)
-    return not th.is_alive()
+    if th.is_alive():
+        import sys
+
+        print("tlwu: audio capture did not stop in time", file=sys.stderr, flush=True)
+        return False
+    return True
 
 
 def is_source_lang(text: str, src: str = "zh") -> bool:

@@ -57,7 +57,8 @@ class VramSampler:
         self.t.join(2)
 
 
-ABORT_JOIN_S = 5.0  # after Ctrl+C: longest wait for the piece being played to end (pieces are a few seconds)
+PLAY_BLOCK_S = 0.1  # #427: a piece is written in blocks this long, so abort() is noticed within one block
+ABORT_JOIN_S = 2.0  # after abort(): wait for the playback thread (one PLAY_BLOCK_S block + closing the stream)
 
 
 class Player:
@@ -71,6 +72,7 @@ class Player:
         from .live import PlaybackGate
 
         self.gate = PlaybackGate()
+        self._abort = threading.Event()
         if enabled:
             import soundcard as sc
 
@@ -95,10 +97,18 @@ class Player:
         with spk.player(samplerate=self.out_sr, channels=self.ch, blocksize=1024) as p:
             while True:
                 item = self.q.get()
-                if item is None:
+                if item is None or self._abort.is_set():
+                    if item is not None:
+                        self.gate.end()
+                        continue  # drop what was queued before / during abort(); the None sentinel follows
                     return
                 try:
-                    p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                    data = np.repeat(item.reshape(-1, 1), self.ch, axis=1)
+                    step = max(1, int(self.out_sr * PLAY_BLOCK_S))
+                    for i in range(0, len(data), step):
+                        if self._abort.is_set():  # #427: leave a long piece within one block on Ctrl+C
+                            break
+                        p.play(data[i:i + step])
                 finally:
                     self.gate.end()
 
@@ -112,16 +122,9 @@ class Player:
     def abort(self) -> None:
         """#427 (Ctrl+C): mute, drop the queued audio and let the playback thread leave the output stream."""
         self.enabled = False
-        t = getattr(self, "t", None)
-        if t is None:
-            return
-        try:
-            while True:
-                self.q.get_nowait()
-                self.gate.end()
-        except queue.Empty:
-            pass
-        self.q.put(None)
+        self._abort.set()
+        if getattr(self, "t", None) is not None:
+            self.q.put(None)  # the thread drops anything queued before it (gate released per item)
 
     def close(self, timeout: float = 60) -> None:
         """Play what is queued, then stop the playback thread. After abort() it only waits for that thread (#427:
@@ -132,6 +135,8 @@ class Player:
         if self.enabled:
             self.q.put(None)
         t.join(timeout if self.enabled else min(timeout, ABORT_JOIN_S))
+        if t.is_alive():
+            print("tlwu: audio output did not stop in time", file=sys.stderr, flush=True)
 
 
 def _file_items(wavs, sf, asr):
@@ -551,8 +556,10 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
-        cleanup()
-        utterances.close()  # #427: ends capture_segments, which joins the capture thread (recorder released)
+        try:
+            cleanup()
+        finally:
+            utterances.close()  # #427: ends capture_segments, which joins the capture thread (recorder released)
 
 
 def _stop_live(stop, box, tts, player, previewer, source=None):
