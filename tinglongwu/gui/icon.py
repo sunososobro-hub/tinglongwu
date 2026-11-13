@@ -1,6 +1,8 @@
 """App icon: window icon (Tk) + Windows taskbar identity. Everything here is best-effort; a missing icon must never stop the GUI."""
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import sys
 from pathlib import Path
 
@@ -20,6 +22,7 @@ def set_app_id() -> None:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     except Exception:
+        _diag.swallowed(__name__)
         pass
 
 
@@ -29,6 +32,7 @@ def apply_icon(root) -> None:
         if sys.platform == "win32":
             root.iconbitmap(default=str(icon_path("tinglongwu.ico")))
     except Exception:
+        _diag.swallowed(__name__)
         pass
     try:
         import tkinter as tk
@@ -36,4 +40,5 @@ def apply_icon(root) -> None:
         root.iconphoto(True, img)
         root._tlwu_icon = img  # keep a reference, Tk drops unreferenced images
     except Exception:
+        _diag.swallowed(__name__)
         pass

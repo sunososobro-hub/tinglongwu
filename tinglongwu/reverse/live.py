@@ -5,6 +5,8 @@ Feedback guard: the mic may never be the virtual-cable capture side ("CABLE Outp
 """
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import queue
 import threading
 import time
@@ -161,6 +163,7 @@ def stop_capture(source, th: threading.Thread, ended: threading.Event | None = N
         try:
             close()
         except Exception:  # noqa: BLE001 - best effort on shutdown
+            _diag.swallowed(__name__)
             pass
     if th is not threading.current_thread():
         th.join(timeout)

@@ -2,6 +2,8 @@
 thread; the worker thread (model load + pipeline) only talks to us through `self.q`."""
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import os
 import queue
 import signal
@@ -325,6 +327,7 @@ class App:
             try:
                 sv_ttk.set_theme(name)
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
         st = ttk.Style(self.root)  # #455: tighter buttons keep the control bar within 420 px (per theme)
         for style in ("Bar.TButton", "Bar.Toolbutton"):
@@ -886,6 +889,7 @@ class App:
         try:
             self.collect()
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
         try:
             self.root.destroy()

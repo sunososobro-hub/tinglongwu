@@ -3,6 +3,8 @@
 Only UI text is translated; subtitle/translation target languages are unrelated to this module."""
 from __future__ import annotations
 
+from . import diag as _diag
+
 import os
 import re
 import subprocess
@@ -296,6 +298,7 @@ def _system_tag() -> str:
             if ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, 85):
                 return buf.value
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
         return ""
     if sys.platform == "darwin":
@@ -306,6 +309,7 @@ def _system_tag() -> str:
             if m:
                 return m.group(1)
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     for k in ("LC_ALL", "LC_MESSAGES", "LANG"):
         if os.environ.get(k):
