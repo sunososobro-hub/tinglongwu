@@ -73,6 +73,6 @@ End-to-end numbers and method: [latency](latency.md). Benchmarks: [benchmarks](b
 
 ## Docs
 
-[FAQ](faq.md) · [Privacy](privacy.md) · [Models](models.md) · [Install / GPU](install.md) · [Benchmarks](benchmarks.md) · [Latency](latency.md) · [Licenses](licenses.md) · [Model notices](../THIRD_PARTY_NOTICES.md) · [Linux reverse](linux-reverse.md) · [Acceptable use](acceptable-use.md) · [Tests](testing.md) · [Disclaimer](disclaimer.md) · [SECURITY](../SECURITY.md) · [PRIVACY](../PRIVACY.md)
+[FAQ](faq.md) · [Privacy](privacy.md) · [Models](models.md) · [Install / GPU](install.md) · [Benchmarks](benchmarks.md) · [Latency](latency.md) · [Licenses](licenses.md) · [Model notices](../THIRD_PARTY_NOTICES.md) · [Linux reverse](linux-reverse.md) · [Acceptable use](acceptable-use.md) · [Tests](testing.md) · [Support / releases](support.md) · [Disclaimer](disclaimer.md) · [SECURITY](../SECURITY.md) · [PRIVACY](../PRIVACY.md)
 
 MIT License. See [LICENSE](../LICENSE). (c) 2026 Alonso.

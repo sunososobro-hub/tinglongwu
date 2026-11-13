@@ -24,6 +24,6 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 ## Docs
 
-**[Docs (install options, requirements, privacy, FAQ, all guides)](https://sunososobro-hub.github.io/tinglongwu/docs.html)** · [docs/details.md](docs/details.md)
+**[Docs (install options, requirements, privacy, FAQ, all guides)](https://sunososobro-hub.github.io/tinglongwu/docs.html)** · [docs/details.md](docs/details.md) · [Platform support and release policy](docs/support.md)
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.
