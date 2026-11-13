@@ -42,7 +42,16 @@ class Translation {
 /// Same prompt as desktop `tinglongwu/hymt.py` (see [PromptBuilder]); one
 /// stateless request per sentence, like desktop (no context memory). Greedy
 /// decoding = desktop with TLWU_HYMT_TEMP=0 (repeatable output on the phone).
-class Translator {
+abstract class LineTranslator {
+  Future<Translation> translate(String ru, {String src = 'ru'});
+}
+
+/// The single call `Pipeline._drain` makes per queued line; forwards the
+/// ASR-detected language so a dropped `src` is observable in tests (#581).
+Future<Translation> translateLine(LineTranslator tr, String text, String lang) =>
+    tr.translate(text, src: lang);
+
+class Translator implements LineTranslator {
   Translator._(this._engine, this._session);
 
   final LlamaEngine _engine;
@@ -64,6 +73,7 @@ class Translator {
   }
 
   /// [src] is the ASR-detected source language code (see [PromptBuilder]).
+  @override
   Future<Translation> translate(String ru, {String src = 'ru'}) async {
     final sw = Stopwatch()..start();
     final pass = zhPassthrough(ru, src);

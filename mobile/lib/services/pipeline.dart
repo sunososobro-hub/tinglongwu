@@ -215,7 +215,7 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await _tr!.translate(job.ru, src: job.lang);
+          final r = await translateLine(_tr!, job.ru, job.lang);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;

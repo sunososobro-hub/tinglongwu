@@ -7,8 +7,16 @@ import 'package:mobile/logic/segmenter.dart';
 import 'package:mobile/logic/subtitle_trim.dart';
 import 'package:mobile/logic/zh_check.dart';
 import 'package:mobile/services/model_paths.dart';
+import 'package:mobile/services/translator.dart';
 
 void main() {
+  group('pipeline translate call (#581)', () {
+    test('translateLine forwards the detected language as src', () async {
+      final fake = _FakeTranslator();
+      await translateLine(fake, 'こんにちは', 'ja');
+      expect(fake.seenSrc, 'ja');
+    });
+  });
   group('zh passthrough (#581)', () {
     test('zh skips the LLM and is converted to zh-Hant', () async {
       var calls = 0;
@@ -285,4 +293,21 @@ void senseVoiceRoutingTests() {
       expect(PromptBuilder.userMessage('x', src: 'yue', tgt: 'en'), startsWith('将以下文本翻译成英语'));
     });
   });
+}
+
+class _FakeTranslator implements LineTranslator {
+  String? seenSrc;
+  @override
+  Future<Translation> translate(String ru, {String src = 'ru'}) async {
+    seenSrc = src;
+    return Translation(
+      zh: ru,
+      check: checkChinese(ru),
+      tokens: 0,
+      totalMs: 0,
+      firstTokenMs: 0,
+      genMs: 0,
+      nCtx: 0,
+    );
+  }
 }
