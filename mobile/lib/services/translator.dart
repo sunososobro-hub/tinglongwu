@@ -62,9 +62,10 @@ class Translator {
     return Translator._(engine, session);
   }
 
-  Future<Translation> translate(String ru) async {
+  /// [src] is the ASR-detected source language code (see [PromptBuilder]).
+  Future<Translation> translate(String ru, {String src = 'ru'}) async {
     final sw = Stopwatch()..start();
-    final prompt = PromptBuilder.build(ru.trim());
+    final prompt = PromptBuilder.build(ru.trim(), src: src);
     await _session.clear();
     final buf = StringBuffer();
     var tokens = 0;

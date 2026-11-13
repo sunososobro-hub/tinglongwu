@@ -7,6 +7,7 @@ import 'package:mobile/logic/zh_check.dart';
 import 'package:mobile/services/model_paths.dart';
 
 void main() {
+  senseVoiceRoutingTests();
   group('SentenceSegmenter', () {
     test('normalizes whitespace', () {
       expect(SentenceSegmenter.normalize('  привет   мир \n'), 'привет мир');
@@ -231,6 +232,34 @@ void main() {
       expect(ContextBudget.promptTokens(t) + ContextBudget.maxTokens(t),
           lessThan(ContextBudget.nCtx));
       expect(ContextBudget.maxTokens('я' * 2000), 1);
+    });
+  });
+}
+
+// #563: SenseVoice language routing into the MT prompt.
+void senseVoiceRoutingTests() {
+  group('SenseVoice language routing (#563)', () {
+    test('PromptBuilder.fromSenseVoiceLang maps <|xx|> tags, unknown -> en', () {
+      expect(PromptBuilder.fromSenseVoiceLang('<|en|>'), 'en');
+      expect(PromptBuilder.fromSenseVoiceLang('<|ja|>'), 'ja');
+      expect(PromptBuilder.fromSenseVoiceLang('<|ko|>'), 'ko');
+      expect(PromptBuilder.fromSenseVoiceLang('<|yue|>'), 'yue');
+      expect(PromptBuilder.fromSenseVoiceLang('<|zh|>'), 'zh');
+      expect(PromptBuilder.fromSenseVoiceLang(''), 'en');
+      expect(PromptBuilder.fromSenseVoiceLang('<|nospeech|>'), 'en');
+    });
+
+    test('detected en/ja/ko prompts carry the text and tgt zh', () {
+      for (final l in ['en', 'ja', 'ko', 'yue']) {
+        final p = PromptBuilder.build('hello', src: l);
+        expect(p, contains('将以下文本翻译成中文'));
+        expect(p, endsWith('hello${PromptBuilder.assistantTag}'));
+      }
+    });
+
+    test('non-Chinese target uses the source-independent English template', () {
+      expect(PromptBuilder.userMessage('x', src: 'ja', tgt: 'en'), startsWith('Translate the following text into English.'));
+      expect(PromptBuilder.userMessage('x', src: 'yue', tgt: 'en'), startsWith('将以下文本翻译成英语'));
     });
   });
 }

@@ -15,21 +15,29 @@ class PromptBuilder {
 
   /// Same tables as desktop `hymt.ZH_NAMES` / `hymt.EN_NAMES`.
   static const zhNames = <String, String>{
-    'zh': '中文', 'ja': '日语', 'en': '英语', 'ru': '俄语', 'ko': '韩语',
+    'zh': '中文', 'yue': '粤语', 'ja': '日语', 'en': '英语', 'ru': '俄语', 'ko': '韩语',
     'de': '德语', 'fr': '法语', 'es': '西班牙语', 'it': '意大利语',
     'pt': '葡萄牙语', 'vi': '越南语', 'th': '泰语', 'id': '印尼语',
   };
   static const enNames = <String, String>{
-    'zh': 'Chinese', 'ja': 'Japanese', 'en': 'English', 'ru': 'Russian',
+    'zh': 'Chinese', 'yue': 'Cantonese', 'ja': 'Japanese', 'en': 'English', 'ru': 'Russian',
     'ko': 'Korean', 'de': 'German', 'fr': 'French', 'es': 'Spanish',
     'it': 'Italian', 'pt': 'Portuguese', 'vi': 'Vietnamese', 'th': 'Thai',
     'id': 'Indonesian',
   };
 
+  /// SenseVoice reports its language as `<|en|>`; returns `zh`/`en`/`ja`/`ko`/`yue`
+  /// (anything else, or empty, falls back to `en`).
+  static String fromSenseVoiceLang(String raw) {
+    final c = raw.replaceAll(RegExp(r'[<>|\s]'), '').toLowerCase();
+    const ok = {'zh', 'en', 'ja', 'ko', 'yue'};
+    return ok.contains(c) ? c : 'en';
+  }
+
   /// Desktop `hymt.build_prompt(text, src, tgt)` (no glossary terms): the
   /// Chinese card template when Chinese is on either side, else the English one.
   static String userMessage(String text, {String src = 'ru', String tgt = 'zh'}) {
-    if (src == 'zh' || tgt == 'zh') {
+    if (src == 'zh' || src == 'yue' || tgt == 'zh') {
       return '将以下文本翻译成${zhNames[tgt] ?? tgt}，'
           '注意只需要输出翻译后的结果，不要额外解释：\n\n$text';
     }
