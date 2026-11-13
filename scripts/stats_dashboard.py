@@ -247,7 +247,7 @@ def merge_history(history, snap):
 
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>tlwu stats</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>tlwu stats</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
 <style>
 :root{--bg:#fff;--fg:#1d2329;--mut:#667;--bd:#d0d7de;--a:#2a7d4f;--grid:#e6e9ec}
 @media (prefers-color-scheme:dark){:root{--bg:#14181c;--fg:#e4e8ec;--mut:#9aa4ae;--bd:#30363d;--a:#4cc38a;--grid:#262c33}}
