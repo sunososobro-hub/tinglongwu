@@ -60,3 +60,67 @@ class SpeakerClusterer:
             best = len(self._sums) - 1
         self._last = f"{LABEL_PREFIX}{best + 1}"
         return self._last
+
+
+class SpeakerBook:
+    """#384: session-only speaker names and corrections (nothing is persisted; no voiceprint is kept).
+
+    add() one line's auto label (None if unknown) per final line, in order. Names and merges apply to past and
+    future lines through display(); relabel() changes one line only. apply() replays a saved correction event."""
+
+    def __init__(self):
+        self.names: dict[str, str] = {}  # label -> user-given name
+        self.alias: dict[str, str] = {}  # merged label -> the label it was merged into
+        self.lines: list[list] = []  # [auto label, corrected label] per line
+
+    def add(self, label: str | None) -> int:
+        self.lines.append([label, label])
+        return len(self.lines) - 1
+
+    def resolve(self, label: str | None) -> str | None:
+        while label in self.alias:  # merge() only links roots to other roots: no cycles
+            label = self.alias[label]
+        return label
+
+    def display(self, label: str | None) -> str | None:
+        label = self.resolve(label)
+        return self.names.get(label, label)
+
+    def new_label(self) -> str:
+        used = {lab for line in self.lines for lab in line if lab} | set(self.alias)
+        n = 1
+        while f"{LABEL_PREFIX}{n}" in used:
+            n += 1
+        return f"{LABEL_PREFIX}{n}"
+
+    def rename(self, label: str, name: str) -> None:
+        label = self.resolve(label)
+        if name.strip():
+            self.names[label] = name.strip()
+        else:
+            self.names.pop(label, None)
+
+    def relabel(self, index: int, label: str) -> None:
+        self.lines[index][1] = label
+
+    def merge(self, src: str, dst: str) -> None:
+        src, dst = self.resolve(src), self.resolve(dst)
+        if src != dst:
+            self.alias[src] = dst
+            name = self.names.pop(src, None)
+            if name and dst not in self.names:  # keep a name the user gave only to the merged-away speaker
+                self.names[dst] = name
+
+    def corrected(self, index: int) -> str | None:
+        return self.resolve(self.lines[index][1])
+
+    def apply(self, event: dict) -> None:
+        """{"rename": label, "name": str} | {"relabel": index, "speaker": label} | {"merge": label, "into": label}"""
+        if "rename" in event:
+            self.rename(event["rename"], event.get("name", ""))
+        elif "relabel" in event:
+            self.relabel(int(event["relabel"]), event["speaker"])
+        elif "merge" in event:
+            self.merge(event["merge"], event["into"])
+        else:
+            raise ValueError(f"unknown speaker correction: {event!r}")

@@ -14,13 +14,19 @@ class Result:
     pivot: str | None
     target: str
     tgt: str = "zh"
+    speaker: str | None = None  # #384 --speakers: auto label ("說話者2") of the line, None if off or unknown
+
+
+def pass_source(sink, src: str, original: str, speaker: str | None = None) -> None:
+    """#384: sink.write_source(); the speaker keyword only when set (sinks without --speakers support stay valid)."""
+    sink.write_source(src, original, **({"speaker": speaker} if speaker else {}))
 
 
 class Sink(ABC):
     @abstractmethod
     def write(self, r: Result) -> None: ...
 
-    def write_source(self, src: str, original: str) -> None:
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         """#53: ASR finished, `original` is queued for MT; its write() follows later, in the same order.
 
         Called from the capture thread while write() runs on the MT thread. Default: ignore."""
@@ -33,24 +39,29 @@ class TextSink(Sink):
     under it when MT finishes. Lines heard while MT is busy wait their turn: each source line is printed right
     after the block before it, so every block still reads source-then-translations and nothing is repeated."""
 
-    def __init__(self, stream=None, now=None):
+    def __init__(self, stream=None, now=None, names=None):
         self.stream = stream
         self.now = now
+        self.names = names  # #384: a speakers.SpeakerBook; its display() maps a label to the user-given name
         self._lock = threading.Lock()  # write_source (capture thread) vs write (MT thread)
-        self._pending: list[list] = []  # [original, shown] heard, translation not written yet, oldest first
+        self._pending: list[list] = []  # [original, shown, speaker] heard, translation not written yet, oldest first
         self._open: str | None = None  # source line printed last, its translations not yet under it
 
     def _head(self, out, entry) -> None:
         from . import fmt
 
-        out.write(fmt.head("them", entry[0], now=self.now() if self.now else None, color=fmt.color_enabled(out)))
+        out.write(fmt.head("them", entry[0], now=self.now() if self.now else None, color=fmt.color_enabled(out),
+                           who=self._who(entry[2])))
         entry[1] = True
         self._open = entry[0]
 
-    def write_source(self, src: str, original: str) -> None:
+    def _who(self, speaker):
+        return self.names.display(speaker) if self.names is not None and speaker else speaker
+
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         with self._lock:
             out = self.stream or sys.stdout
-            self._pending.append([original, False])
+            self._pending.append([original, False, speaker])
             if len(self._pending) == 1:  # MT idle: show it now
                 self._head(out, self._pending[0])
                 out.flush()
@@ -73,7 +84,7 @@ class TextSink(Sink):
                 if self._open is not None:
                     out.write("\n")  # another line came first: end the dangling source line
                 out.write(fmt.block("them", r.original, tr, now=self.now() if self.now else None,
-                                    color=fmt.color_enabled(out)))
+                                    color=fmt.color_enabled(out), who=self._who(r.speaker)))
             self._open = None
             if self._pending and not self._pending[0][1]:  # next heard line: its source now, translation later
                 self._head(out, self._pending[0])
@@ -95,8 +106,8 @@ class JsonlSaveSink(Sink):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = open(self.path, "a", encoding="utf-8")
 
-    def write_source(self, src: str, original: str) -> None:
-        self.inner.write_source(src, original)
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
+        pass_source(self.inner, src, original, speaker)
 
     def write(self, r: Result) -> None:
         import json
@@ -104,7 +115,17 @@ class JsonlSaveSink(Sink):
         self.inner.write(r)
         rec = {"t": round(self.clock() - self.t0, 2), "wall": self.now().isoformat(timespec="seconds"),
                "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
+        if r.speaker:
+            rec["speaker"] = r.speaker  # #384: the auto label; corrections follow as "fix" lines (write_fix)
         self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        self.f.flush()
+
+    def write_fix(self, event: dict) -> None:
+        """#384: append a speaker correction (speakers.SpeakerBook.apply format); a "relabel" index counts the
+        result lines of this file from 0. Replayed by scripts/eval_diarization.py --transcript."""
+        import json
+
+        self.f.write(json.dumps({"t": round(self.clock() - self.t0, 2), "fix": event}, ensure_ascii=False) + "\n")
         self.f.flush()
 
 
