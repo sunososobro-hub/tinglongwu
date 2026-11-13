@@ -35,7 +35,9 @@ def _nvidia_wheel_dirs() -> list[Path]:
 def _bundled_dirs() -> list[Path]:
     """`cuda_libs/` next to the standalone build (tlwu.exe folder) that holds cuBLAS / cuDNN / cudart."""
     d = Path(__file__).resolve().parent.parent / "cuda_libs"
-    return [d] if d.is_dir() else []
+    from .gpu_pack import pack_dir  # the separately installed GPU pack (#613); absent -> CPU path
+
+    return [x for x in ([d] if d.is_dir() else []) + [pack_dir()] if x is not None]
 
 
 def register_cuda_libs() -> None:
