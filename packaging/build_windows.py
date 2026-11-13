@@ -266,8 +266,11 @@ def make_gpu_pack(app: Path, out: Path, url: str) -> Path:
     from tinglongwu import gpu_pack
 
     src = app / "cuda_libs"
+    files = sorted(f for f in src.glob("*") if f.is_file()) if src.is_dir() else []
+    if not files:
+        raise SystemExit(f"gpu pack: no CUDA libraries in {src}")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for f in sorted(src.glob("*")):
+        for f in files:
             z.write(f, f.name)
     man_path = out.with_name(out.name + ".manifest.json")
     gpu_pack.write_manifest(gpu_pack.make_manifest(out, url), man_path)

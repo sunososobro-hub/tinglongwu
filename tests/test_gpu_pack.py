@@ -87,3 +87,43 @@ def test_build_script_writes_manifest(tmp_path):
     man_path = bw.make_gpu_pack(tmp_path, tmp_path / "gpu.zip", "https://example.invalid/gpu.zip")
     man = gpu_pack.load_manifest(man_path)
     gpu_pack.verify(tmp_path / "gpu.zip", man)
+
+
+def test_reinstall_replaces_old_pack(tmp_path):
+    dest = tmp_path / "gpu-pack"
+    z1 = make_zip(tmp_path / "a.zip", {"old.dll": b"1"})
+    gpu_pack.install_pack(z1, gpu_pack.make_manifest(z1, "u"), dest)
+    z2 = make_zip(tmp_path / "b.zip", {"new.dll": b"2"})
+    gpu_pack.install_pack(z2, gpu_pack.make_manifest(z2, "u"), dest)
+    assert sorted(p.name for p in dest.iterdir()) == ["new.dll"]
+    assert not (tmp_path / "gpu-pack.old").exists()
+
+
+def test_failed_reinstall_keeps_old_pack(tmp_path):
+    dest = tmp_path / "gpu-pack"
+    z1 = make_zip(tmp_path / "a.zip", {"old.dll": b"1"})
+    gpu_pack.install_pack(z1, gpu_pack.make_manifest(z1, "u"), dest)
+    z2 = make_zip(tmp_path / "b.zip", {"new.dll": b"2"})
+    man = gpu_pack.make_manifest(z2, "u")
+    man["sha256"] = "f" * 64
+    with pytest.raises(gpu_pack.PackError):
+        gpu_pack.install_pack(z2, man, dest)
+    assert (dest / "old.dll").read_bytes() == b"1"
+
+
+def test_relative_env_pack_dir_is_absolute(tmp_path, monkeypatch):
+    (tmp_path / "gp").mkdir()
+    (tmp_path / "gp" / "x.dll").write_bytes(b"x")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TLWU_GPU_PACK", "gp")
+    assert gpu_pack.pack_dir().is_absolute()
+
+
+def test_build_script_rejects_empty_cuda_libs(tmp_path):
+    spec = importlib.util.spec_from_file_location("build_windows", Path(__file__).parent.parent / "packaging/build_windows.py")
+    bw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bw)
+    (tmp_path / "cuda_libs").mkdir()
+    with pytest.raises(SystemExit):
+        bw.make_gpu_pack(tmp_path, tmp_path / "gpu.zip", "u")
+    assert not (tmp_path / "gpu.zip").exists()

@@ -68,8 +68,21 @@ def install_pack(archive: Path, man: dict, dest: Path) -> Path:
                 if not (root / n).resolve().is_relative_to(root):
                     raise PackError(f"unsafe path in pack: {n}")
             z.extractall(tmp)
-        shutil.rmtree(dest, ignore_errors=True)
-        tmp.rename(dest)
+        backup = None
+        if dest.exists():  # keep the old pack until the new one is in place
+            backup = dest.with_name(dest.name + ".old")
+            shutil.rmtree(backup, ignore_errors=True)
+            dest.rename(backup)
+        try:
+            tmp.rename(dest)
+        except OSError:
+            if backup is not None:
+                if dest.exists():
+                    shutil.rmtree(dest, ignore_errors=True)
+                backup.rename(dest)
+            raise
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
     except zipfile.BadZipFile as e:
         raise PackError(f"not a zip: {e}") from e
     finally:
@@ -83,7 +96,7 @@ def pack_dir(base: Path | None = None) -> Path | None:
                  else Path(__file__).resolve().parent.parent / PACK_NAME)
     try:
         if d.is_dir() and (any(d.glob("*.dll")) or any(d.glob("*.so*"))):
-            return d
+            return d.resolve()
     except OSError:
         pass
     return None
