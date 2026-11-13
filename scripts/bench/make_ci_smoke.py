@@ -252,6 +252,15 @@ def pin_clips(revision: str, per_lang: int, fetch=http_open, scan: int = 60) -> 
             "dataset": DATASET, "revision": revision, "license": "CC-BY-4.0", "clips": clips}
 
 
+def dump_pin(pin: dict) -> str:
+    """JSON with one clip per line (short, reviewable diffs when re-pinned)."""
+    head = {k: v for k, v in pin.items() if k != "clips"}
+    lines = [json.dumps(head, ensure_ascii=False)[:-1] + ', "clips": [']
+    lines += ["  " + json.dumps(c, ensure_ascii=False) + "," for c in pin["clips"]]
+    lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines) + "\n]}\n"
+
+
 def main(argv=None, fetch=http_open) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", help="folder for manifest.jsonl and the wav files (e.g. eval_data/smoke)")
@@ -264,7 +273,7 @@ def main(argv=None, fetch=http_open) -> int:
             if not a.revision:
                 ap.error("--pin needs --revision")
             pin = pin_clips(a.revision, a.pin, fetch)
-            Path(a.pins).write_text(json.dumps(pin, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+            Path(a.pins).write_text(dump_pin(pin), encoding="utf-8")
             print(f"pinned {len(pin['clips'])} clips -> {a.pins}")
             return 0
         if not a.out:
