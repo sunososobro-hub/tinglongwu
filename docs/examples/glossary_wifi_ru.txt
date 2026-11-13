@@ -1,7 +1,7 @@
 # Topic glossary: Russian WiFi / home-network tutorial -> Traditional Chinese (Taiwan)
 # Usage: tlwu --lang ru --stream --glossary docs/examples/glossary_wifi_ru.txt
 # `source = target`; `a | b = target` adds mis-hearings as extra source spellings; no `=` = plain hint term.
-# Source terms are given to Whisper as hotwords; matching entries go into the Hy-MT2 prompt (stem match: "частоте" -> частота).
+# Source terms are given to Whisper as hotwords; matching entries go into the Hy-MT2 prompt for Chinese output (stem match: "частоте" -> частота).
 
 частота | чистота = 頻率
 диапазон = 頻段

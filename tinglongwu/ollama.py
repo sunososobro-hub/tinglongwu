@@ -56,7 +56,7 @@ class OllamaTranslator(Translator):
         self._transport = transport or self._http  # (method, path, body|None) -> dict; injectable for tests
         self.history: deque = deque(maxlen=CONTEXT_LINES)
         self._pair: tuple[str, str] | None = None
-        self.glossary = None  # set by the CLI, same contract as QwenTranslator
+        self.glossary = None  # set by the CLI, same contract as the other LLM engines
 
     def _http(self, method: str, path: str, body: dict | None = None) -> dict:
         conn = http.client.HTTPConnection(self.host, self.port, timeout=TIMEOUT_S)

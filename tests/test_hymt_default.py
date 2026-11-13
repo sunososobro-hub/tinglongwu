@@ -1,4 +1,4 @@
-"""#66: Hy-MT2 is the default GPU translation engine (auto on CUDA), Qwen stays optional. No real models."""
+"""#66/#276: Hy-MT2 is the only translation LLM (auto on CUDA and CPU). No real models."""
 import pytest
 
 from tinglongwu import cli
