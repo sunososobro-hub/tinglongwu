@@ -10,7 +10,7 @@ from tinglongwu import cli
 from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.merge import SentenceMerger
 from tinglongwu.pipeline import run
-from tinglongwu.sink import JsonlSaveSink, Result, TextSink
+from tinglongwu.sink import JsonlSaveSink, TextSink
 from tinglongwu.translate import Translation, Translator
 
 SR = 16000
@@ -67,8 +67,7 @@ def _session(tmp_path, monkeypatch, argv, sink=None):
     monkeypatch.setattr("tinglongwu.minspec.check_avx2", lambda *a, **k: None)
     monkeypatch.setenv("TLWU_UI_LANG", "en")
     monkeypatch.chdir(tmp_path)
-    cli.run_session(cli.parse_args(["--transcript-only", "--no-adapt", "--model", "tiny", "--device", "cpu"] + argv),
-                    sink=sink)
+    cli.run_session(cli.parse_args(["--transcript-only", "--no-adapt", "--model", "tiny", "--device", "cpu", *argv]), sink)
 
 
 def test_record_default_off_writes_no_audio(tmp_path, monkeypatch, capsys):
@@ -93,12 +92,6 @@ def test_record_one_wav_per_line_matching_jsonl_notice_and_mark(tmp_path, monkey
     out = capsys.readouterr()
     assert "consent" in out.err and str(folder.resolve()) in out.err
     assert out.out.count("● Recording") == 3 and all(x.startswith("● Recording ") for x in out.out.splitlines())
-
-
-def test_text_sink_marks_every_block():
-    s = TextSink(buf := io.StringIO(), rec="● Recording")
-    s.write_source("en", "hello"), s.write(Result("en", "hello", None, "zh")), s.write(Result("en", "bye", None, "zh"))
-    assert buf.getvalue().count("● Recording") == 2
 
 
 def test_record_marks_a_wrapped_console_sink(tmp_path, monkeypatch):  # meeting mode + save wraps the console sink

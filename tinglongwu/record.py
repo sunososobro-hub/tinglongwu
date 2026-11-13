@@ -41,22 +41,18 @@ class Recorder:
     def line(self, clip, r) -> None:
         """Write `clip` as NNNN.wav and its jsonl row (r: the line's sink.Result)."""
         with self._lock:
-            if clip is not None and not self._f.closed:
-                self._write(clip, r)
-
-    def _write(self, clip, r) -> None:
-        self.n += 1
-        name = f"{self.n:04d}.wav"
-        with wave.open(str(self.dir / name), "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(SAMPLE_RATE)
-            w.writeframes((np.clip(clip[0], -1.0, 1.0) * 32767.0).astype("<i2").tobytes())
-        row = {"file": name, "start": round(clip[1], 2), "end": round(clip[2], 2),
-               "wall": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "lang": r.src,
-               "source": r.original, "translation": r.target if r.src != r.tgt else ""}
-        self._f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        self._f.flush()
+            if clip is None or self._f.closed:
+                return
+            self.n += 1
+            name = f"{self.n:04d}.wav"
+            with wave.open(str(self.dir / name), "wb") as w:
+                w.setnchannels(1), w.setsampwidth(2), w.setframerate(SAMPLE_RATE)
+                w.writeframes((np.clip(clip[0], -1.0, 1.0) * 32767.0).astype("<i2").tobytes())
+            row = {"file": name, "start": round(clip[1], 2), "end": round(clip[2], 2),
+                   "wall": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "lang": r.src,
+                   "source": r.original, "translation": r.target if r.src != r.tgt else ""}
+            self._f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            self._f.flush()
 
     def close(self) -> None:
         with self._lock:
