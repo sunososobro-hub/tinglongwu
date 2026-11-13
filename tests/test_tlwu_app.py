@@ -63,13 +63,10 @@ def test_parse_smi_and_detect_gpu(monkeypatch):
     assert tiers.detect_gpu(run=boom) is None
 
 
-def _fake_models(d, whisper=("small",), opus=True, hymt=True):
+def _fake_models(d, whisper=("small",), hymt=True):
     for w in whisper:
         (d / f"whisper-{w}").mkdir(parents=True)
         (d / f"whisper-{w}" / "model.bin").write_bytes(b"x")
-    if opus:
-        (d / "opus" / "en-zh" / "model").mkdir(parents=True)
-        (d / "opus" / "en-zh" / "model" / "model.bin").write_bytes(b"x")
     if hymt:
         (d / "hymt2-1.8b").mkdir(parents=True, exist_ok=True)
         (d / "hymt2-1.8b" / "Hy-MT2-1.8B-Q4_K_M.gguf").write_bytes(b"x")
@@ -77,11 +74,10 @@ def _fake_models(d, whisper=("small",), opus=True, hymt=True):
 
 def test_models_ready_and_best_installed(tmp_path):
     assert not tiers.models_ready(tmp_path / "none")
-    _fake_models(tmp_path, ("small",), opus=False)
-    assert not tiers.models_ready(tmp_path)  # whisper without the translation pair
-    (tmp_path / "opus" / "en-zh" / "model").mkdir(parents=True)
-    (tmp_path / "opus" / "en-zh" / "model" / "model.bin").write_bytes(b"x")
-    assert tiers.models_ready(tmp_path)
+    _fake_models(tmp_path, ("small",), hymt=False)
+    assert not tiers.models_ready(tmp_path)  # whisper without the Hy-MT2 GGUF
+    _fake_models(tmp_path / "y", ("small",))
+    assert tiers.models_ready(tmp_path / "y")  # #562: no OPUS pair needed
     assert tiers.best_installed_model(tmp_path, "large-v3-turbo") == "small"  # wanted one is missing
     _fake_models(tmp_path.parent / "m2", ("small", "large-v3-turbo"))
     assert tiers.best_installed_model(tmp_path.parent / "m2", "small") == "small"

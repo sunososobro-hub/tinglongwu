@@ -24,10 +24,10 @@ from pathlib import Path
 PIPER_RU_DEFAULT = "piper-ru_RU-dmitri-medium"  # keep in sync with downloader.piper_ru_dir("dmitri")
 # language -> model keys (keys of models/manifest.json). zh is the hub language; OPUS pivots through en.
 PACKS: dict[str, list[str]] = {
-    "zh": ["opus-en-zh", "opus-zh-en"],
-    "en": ["opus-en-zh", "opus-zh-en"],
-    "ja": ["hymt2-1.8b", "opus-ja-en"],
-    "ru": ["opus-ru-en", "opus-en-ru", PIPER_RU_DEFAULT],
+    "zh": [],   # #562: no OPUS pairs; the installer fetches Hy-MT2 itself (--hymt), ja/ru reuse it
+    "en": [],
+    "ja": ["hymt2-1.8b"],
+    "ru": ["hymt2-1.8b", PIPER_RU_DEFAULT],
 }
 DEFAULT_PACKS = ("zh", "en")
 # approximate download size per model in MB, only for the prompt: Argos OPUS packages are ~100 MB each, the Hy-MT2

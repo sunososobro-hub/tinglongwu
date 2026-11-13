@@ -93,7 +93,6 @@ while ($true) {
     break
 }
 
-$havePairs = "import sys; from tinglongwu.models import models_dir; d = models_dir(None) / 'opus'; sys.exit(0 if all((d / p).is_dir() for p in sys.argv[1:]) else 1)"
 # language we speak: en | ru | follow (= whatever the other side spoke last)
 $speak = $L
 $listenLang = @("--lang", $L)
@@ -151,12 +150,10 @@ if ($mode -eq "1" -or $both) {
     try { $xl = @(& $py -m tinglongwu.menuopts listen | Where-Object { $_ }) } catch { $xl = @() }
 }
 if ($both) {
-    # listen side pairs only; the speak side is Hy-MT2 (#331)
-    $need = if ($L -eq "en") { @("en-zh") } elseif ($L -eq "auto") { @("en-zh", "ru-en") } else { @("$L-en", "en-zh") }
-    & $py -c $havePairs @need
-    if ($LASTEXITCODE -ne 0) {
+    # #562: no OPUS pairs; Hy-MT2 (the speak side too) is the only translation model
+    if (-not (Test-HymtFile)) {
         Write-Host (T 'NO_MODEL_FOR' $L)
-        if ($L -eq "en") { Invoke-Setup --to zh } elseif ($L -eq "auto") { Invoke-Setup --pair en-zh --pair ru-en } else { Invoke-Setup --langs $L --to zh }
+        Invoke-Setup --hymt
     }
     if ($speak -eq "follow") {
         if (-not (Test-Path $kokoroModel)) { Write-Host (T 'NO_KOKORO_EN' $kokoroModel); exit 1 }
@@ -170,17 +167,9 @@ if ($both) {
 }
 if ($mode -eq "1") {
     Write-Host (T 'BANNER_LISTEN' $L)
-    if ($L -eq "en") { $need = @("en-zh"); $setup = @("--to", "zh") }
-    elseif ($L -eq "auto") {
-        $need = @("en-zh", "ru-en"); $setup = @("--langs", "ru", "--to", "zh")
-        if ($cands -match "ja" -and -not (Test-HyReady)) { $need += "ja-en"; $setup = @("--langs", "ru,ja", "--to", "zh"); Write-Host $hyNote }
-    }
-    elseif ($L -eq "ja" -and (Test-HyReady)) { $need = @(); $setup = @() }   # Hy-MT2: direct ja -> zh, no OPUS pair
-    else { $need = @("$L-en", "en-zh"); $setup = @("--langs", $L, "--to", "zh"); if ($L -eq "ja") { Write-Host $hyNote } }
-    & $py -c $havePairs @need
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-HymtFile)) {   # #562: Hy-MT2 is direct for every language, no OPUS pair
         Write-Host (T 'NO_MODEL_FOR' $L)
-        Invoke-Setup @setup
+        Invoke-Setup --hymt
     }
     $stream = @(Get-TlwuStreamArgs $py)   # live drafts (#60), default no
     & $tlwu @listenLang @wL @xl @stream

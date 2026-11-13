@@ -141,7 +141,7 @@ Ok "Packages installed / 套件完成"
 
 # ---------------------------------------------------------------- 4. GPU libs + llama-cpp
 Step 4 'GPU 函式庫與 Hy-MT2 翻譯引擎' 'GPU libraries and Hy-MT2 translation engine'
-$Engine = 'opus'
+$Engine = 'hymt'
 if ($Gpu) {
     if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
     else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
@@ -212,7 +212,7 @@ else {
     else { Die '模型下載失敗（請確認網路後重跑）' 'model download failed (check internet, then re-run install.bat; finished parts are kept)' }
     if ($MtFlag -or $HyCpu) {   # #301: every path gets Hy-MT2, the only default engine (#276)
         if (Run $VSet @('--hymt')) { [void]$Installed.Add("Hy-MT2 translation model ($MtTxt)") }
-        else { Warn "Hy-MT2 download failed: tlwu cannot translate until you re-run install.bat (finished parts are kept). Hy-MT2 下載失敗，請重跑 install.bat。"; $Engine = 'opus' }
+        else { Warn "Hy-MT2 download failed: tlwu cannot translate until you re-run install.bat (finished parts are kept). Hy-MT2 下載失敗，請重跑 install.bat。"; $Engine = 'none' }
     }
 }
 
@@ -263,8 +263,7 @@ Step 8 '自我測試與完成' 'Self-test and summary'
 $SelfTest = 'skipped'
 if ($SkipModels) { Info "-SkipModels: self-test skipped / 未下載模型，略過自我測試" }
 else {
-    $StEngine = 'opus'
-    if ($Engine -like 'hymt2*') { $StEngine = 'hymt' }
+    $StEngine = 'hymt'
     $StArgs = @('--model', $Whisper, '--engine', $StEngine)
     if (-not $Gpu) { $StArgs += @('--device', 'cpu') }
     if ($DryRun) { Write-Host "  [dry-run] $VSet --selftest $($StArgs -join ' ')" -ForegroundColor DarkGray }

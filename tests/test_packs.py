@@ -39,9 +39,8 @@ def listing(mdir):
 def test_zh_en_install_has_no_ja_or_ru_files(tmp_path, fake_net):
     assert cli.main(["--packs", "zh,en", "--models-dir", str(tmp_path)]) == 0
     files = listing(tmp_path)
-    assert "opus/en-zh/model.bin" in files and "opus/zh-en/model.bin" in files
     assert [f for f in files if any(m in f for m in JA_RU)] == []
-    assert sorted(fake_net) == ["opus-en-zh", "opus-zh-en"]  # zh and en share the pairs: fetched once
+    assert not any(f.startswith("opus") for f in files) and fake_net == []  # #562: no OPUS pairs
 
 
 def test_list_shows_installed_and_missing(tmp_path, fake_net, capsys):
@@ -50,7 +49,7 @@ def test_list_shows_installed_and_missing(tmp_path, fake_net, capsys):
     assert cli.main(["--list", "--models-dir", str(tmp_path)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert "zh  installed" in out and "en  installed" in out
-    assert any(line.startswith("ja  missing (~1200 MB)") for line in out)
+    assert any(line.startswith("ja  missing (~1100 MB)") for line in out)
 
 
 def test_selecting_ja_prompts_then_downloads(tmp_path, fake_net, monkeypatch, capsys):
@@ -58,7 +57,7 @@ def test_selecting_ja_prompts_then_downloads(tmp_path, fake_net, monkeypatch, ca
     asked = []
     monkeypatch.setattr("builtins.input", lambda q: asked.append(q) or "y")
     assert cli.main(["--pack-prompt", "ja", "--models-dir", str(tmp_path)]) == 0
-    assert asked == ["pack ja (~1200 MB) missing — download now? [y/N] "]
+    assert asked == ["pack ja (~1100 MB) missing — download now? [y/N] "]
     capsys.readouterr()
     cli.main(["--list", "--models-dir", str(tmp_path)])
     assert "ja  installed" in capsys.readouterr().out.splitlines()
@@ -76,7 +75,7 @@ def test_prompt_follows_ui_language(tmp_path, monkeypatch):
     monkeypatch.setenv("TLWU_UI_LANG", "zh-TW")
     asked = []
     assert packs.prompt("ru", tmp_path, ask=lambda q: asked.append(q) or "n") == 1
-    assert asked == ["語言包 ru（約 260 MB）尚未安裝 — 現在下載嗎？[y/N] "]
+    assert asked == ["語言包 ru（約 1160 MB）尚未安裝 — 現在下載嗎？[y/N] "]
 
 
 def test_unknown_pack_is_refused(tmp_path):

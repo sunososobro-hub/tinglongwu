@@ -8,7 +8,6 @@ Part of tinglongwu_setup, the only networked package. Does NOT import `tinglongw
 
   tlwu-setup --whisper small --langs ru,ja --to zh,ko
       --langs X,Y : source languages -> fetches X->en     --to A,B : targets -> fetches en->A
-      --pair s-t  : one explicit pair (repeatable)
   tlwu-setup --kokoro          # Kokoro TTS model files for talk mode (pinned SHA256, models/kokoro/)
   tlwu-setup --vosk-tts-ru     # OPT-IN Russian voice model (upstream states NO license; never part of a default setup)
   tlwu-setup --piper-ru        # Piper Russian voice dmitri (or: --piper-ru denis), CC0 data, ~60 MB
@@ -432,7 +431,6 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
                    choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"])
-    p.add_argument("--pair", action="append", default=[], help="e.g. ru-en, en-zh")
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
     p.add_argument("--hymt", action="store_true",
@@ -462,9 +460,7 @@ def main(argv=None) -> int:
         from . import packs
 
         for k in packs.keys_for(a.packs):
-            if k.startswith("opus-"):
-                a.pair.append(k[5:])
-            elif k == HYMT_DIR:
+            if k == HYMT_DIR:
                 a.hymt = True
             elif k == piper_ru_dir("dmitri"):
                 a.piper_ru = a.piper_ru or "dmitri"
@@ -508,11 +504,7 @@ def main(argv=None) -> int:
     if a.piper_ru:
         get_piper_ru(man, mdir, a.piper_ru)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
-    pairs = (a.pair + [f"{x}-en" for x in a.langs.split(",") if x and x != "en"]
-             + [f"en-{x}" for x in a.to.split(",") if x and x != "en"])
-    for pr in dict.fromkeys(pairs):
-        get_pair(man, mdir, pr, a.allow_unpinned)
-        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    # #562: no OPUS pair is downloaded any more; --langs/--to are accepted for old callers and ignored (Hy-MT2 is direct)
     return 0
 
 
