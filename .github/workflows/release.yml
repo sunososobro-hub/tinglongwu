@@ -44,9 +44,11 @@ jobs:
           # Draft first: it becomes `latest` only when windows-installer publishes it, after the wizard
           # that the README links is attached. A tag with a suffix (v1.2.3-beta.1) is a pre-release,
           # which never becomes `latest`. A re-run (release already exists) only replaces the files.
-          pre=(); [[ "$TAG" == *-* ]] && pre=(--prerelease)
+          pre=(); [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || pre=(--prerelease)
           files=(dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt)
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null); then
+            # never rewrite a published release: its SHA256SUMS.txt and wizard are what users verify against
+            [ "$draft" = true ] || { echo "release $TAG is already published; not touching it"; exit 1; }
             gh release upload "$TAG" "${files[@]}" --clobber
           else
             gh release create "$TAG" "${files[@]}" --draft "${pre[@]}" \

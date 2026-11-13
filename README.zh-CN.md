@@ -20,19 +20,21 @@
 | macOS | 🟡 | ⚪ | ⚪ | ⚪ | ⚪ |
 | Linux（Ubuntu 24.04） | 🟢 | 🟢 | 🟢 | ⚪ | 🟡 |
 
-🟢 已在实机测试 · 🟡 仅在 CI 测过安装（Windows：安装向导；便携版 zip 已在实机测试。纯 CPU：尚未在实体笔记本测延迟） · ⚪ 尚未测试
+| 语言 | 听得懂 | 译成中文 | 译成英文 | 念出来（语音） |
+|---|:-:|:-:|:-:|:-:|
+| 中文 | 🟢 | — | 🟢 | 🟢 |
+| 英文 | 🟢 | 🟢 | — | ⚪ |
+| 日文 | 🟢 | 🟢 | ⚪ | ⚪ |
+| 俄文 | 🟡 | 🟡 | ⚪ | 🟡 |
+| 韩文 | ⚪ | ⚪ | ⚪ | ⚪ |
+
+🟢 已在实机或发版关卡测试 · 🟡 仅在 CI 或评测测过，尚未上实机（Windows 安装：指安装向导；便携版 zip 已实机测试。纯 CPU：尚未在实体笔记本测延迟） · ⚪ 尚未测试或不支持 · — 同一语言
 
 第一次安装？先看[安装时可能看到的画面](docs/install.md#what-you-might-see-during-install)（未签名警告是正常的，英文）。
 
 感谢 4 位朋友一起打造：<a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=40" width="40" height="40" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=40" width="40" height="40" alt="cook1e0728"></a> <a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=40" width="40" height="40" alt="psgo555"></a> <a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=40" width="40" height="40" alt="jchodev"></a>
 
-## 验证状态
-
-![验证状态](docs/img/verification.svg)
-
 ![延迟](docs/img/latency.svg)
-
-![语言](docs/img/languages.svg)
 
 ## 文档
 

@@ -16,25 +16,26 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 | macOS | 🟡 | ⚪ | ⚪ | ⚪ | ⚪ |
 | Linux (Ubuntu 24.04) | 🟢 | 🟢 | 🟢 | ⚪ | 🟡 |
 
-🟢 tested on a real device · 🟡 install tested in CI only (Windows: the setup wizard; the portable zip is tested on a real PC. CPU-only: latency not yet measured on a real laptop) · ⚪ not tested yet
+| Language | Hear it | To Chinese | To English | Speak it (voice) |
+|---|:-:|:-:|:-:|:-:|
+| Chinese | 🟢 | — | 🟢 | 🟢 |
+| English | 🟢 | 🟢 | — | ⚪ |
+| Japanese | 🟢 | 🟢 | ⚪ | ⚪ |
+| Russian | 🟡 | 🟡 | ⚪ | 🟡 |
+| Korean | ⚪ | ⚪ | ⚪ | ⚪ |
+
+🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language
 
 Built with help from 4 people: <a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=40" width="40" height="40" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=40" width="40" height="40" alt="cook1e0728"></a> <a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=40" width="40" height="40" alt="psgo555"></a> <a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=40" width="40" height="40" alt="jchodev"></a>
 
 First time? See [what you might see during install](docs/install.md#what-you-might-see-during-install) (unsigned-app warnings are expected). <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
-## Verification status
-
-![Verification status](docs/img/verification.svg)
 
 ![Latency](docs/img/latency.svg)
 
-![Languages](docs/img/languages.svg)
-
 ## Docs
-
 **[Docs (install options, requirements, privacy, FAQ, all guides)](https://sunososobro-hub.github.io/tinglongwu/docs.html)** · [docs/details.md](docs/details.md)
 
 ## Contributors
-
 Contributions of any kind welcome — bug reports count too.
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->

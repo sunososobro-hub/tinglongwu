@@ -75,3 +75,9 @@ def test_support_table_and_contributor_avatars_under_install():
         assert "🟢" in top and "🟡" in top and "⚪" in top, name
         for login in logins:
             assert f"https://github.com/{login}.png?size=40" in top, (name, login)
+
+
+def test_language_table_right_after_the_device_table():
+    for name, row in (("README.md", "| Japanese |"), ("README.zh-CN.md", "| 日文 |"), ("README.zh-TW.md", "| 日文 |")):
+        s = (ROOT / name).read_text("utf-8")
+        assert s.index("| Linux (Ubuntu 24.04) |" if name == "README.md" else "| Linux（Ubuntu 24.04） |") < s.index(row) < s.index("github.com/jchodev.png"), name

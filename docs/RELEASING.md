@@ -30,12 +30,20 @@ To release:
       🟢 tested on a real device · 🟡 install tested in CI only (plus any caveat, e.g. CPU-only latency not measured) · ⚪ not tested yet
       ```
 
+   2b. Right after it, the language table (rows: languages; columns: what the user does). Every light needs evidence, listed in the developer section (step 5): 🟢 real-device or release-gate run, 🟡 CI/eval only or quality still being measured, ⚪ not supported or untested, — same language. Only list languages this tag actually supports:
+
+      ```
+      | Language | Hear it | To Chinese | To English | Speak it (voice) |
+      |---|:-:|:-:|:-:|:-:|
+      | Chinese | ... |
+      ```
+
    3. Contributors: `Built with help from N people:` and one avatar per login in `.all-contributorsrc` (all-time, reporters included; the list only grows),
       `<a href="https://github.com/LOGIN"><img src="https://github.com/LOGIN.png?size=40" width="40" height="40" alt="LOGIN"></a>`.
       No `@` text here: an @mention notifies the person, so mentioning everyone on every release is spam. @mention only people who are **new** in this release (first contribution or first report since the last release), once, in a `Thanks` line in step 5. GitHub's bottom "Contributors" block then lists only those new people; that is intended.
    4. `## What's new`: at most 3 plain-language bullets about what the user notices. No PR or issue numbers.
-   5. `<details><summary>For developers</summary>`: the full changelog with PR/issue links, every asset with its SHA-256, test and gate notes, known issues, a `Thanks` line that @mentions only this release's new contributors (count a PR only if it is in this tag: `git merge-base --is-ancestor <merge-commit> vX.Y.Z`), and a "How to contribute" link to `CONTRIBUTING.md` and the `good first issue` label.
+   5. `<details><summary>For developers</summary>`: the full changelog with PR/issue links, the evidence for each light in the language table, every asset with its SHA-256, test and gate notes, known issues, a `Thanks` line that @mentions only this release's new contributors (count a PR only if it is in this tag: `git merge-base --is-ancestor <merge-commit> vX.Y.Z`), and a "How to contribute" link to `CONTRIBUTING.md` and the `good first issue` label.
 
    The README top follows the same order with steps 1-3 only.
 
-If the workflow fails, re-run it: an existing release only has its files replaced, and the wizard lines in `SHA256SUMS.txt` are rewritten, not appended. If the tag itself is wrong (for example not on `main`), delete the draft release (`gh release delete vX.Y.Z`) and the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again.
+If the workflow fails before the release is published, re-run it: the draft only has its files replaced, and the wizard lines in `SHA256SUMS.txt` are rewritten, not appended. The workflow refuses to touch a release that is already published. Upload `tinglongwu-win64.zip` (and add its hash to `SHA256SUMS.txt`) only after the release is published. A tag with any suffix (`v1.2.3-beta.1`) is a pre-release, and `__version__` must carry the same suffix (`1.2.3-beta.1`) for the wizard name check. If the tag itself is wrong (for example not on `main`), delete the draft release (`gh release delete vX.Y.Z`) and the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again.
