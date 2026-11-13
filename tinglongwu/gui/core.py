@@ -238,8 +238,8 @@ def model_labels(mdir=None) -> list[str]:
     return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
 
 
-_ENGINE_DIR = {"hymt": "hymt2-1.8b", "opus": "opus"}  # models/<dir> per engine (auto needs no model of its own)
-_ENGINE_HINT = {"hymt": "tlwu-setup --hymt", "opus": "tlwu-setup --pair ru-en"}
+_ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
+_ENGINE_HINT = {"hymt": "tlwu-setup --hymt"}
 
 
 def engine_labels(mdir=None) -> list[str]:
