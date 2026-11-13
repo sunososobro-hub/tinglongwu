@@ -266,18 +266,20 @@ def repo() -> str:
     return os.environ.get("GITHUB_REPOSITORY") or gh_json("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
 
 
-def in_head(sha: str) -> bool:
-    return bool(sha) and subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=ROOT,
+def in_tip(sha: str, tip: str) -> bool:
+    return bool(sha) and subprocess.run(["git", "merge-base", "--is-ancestor", sha, tip or "HEAD"], cwd=ROOT,
                                         capture_output=True).returncode == 0
 
 
-def history(rep: str, tag: str):
+def history(rep: str, tag: str, tip: str = "HEAD"):
+    """tip: the released dev commit (the release PR head), so a squash/rebase merge to main still finds its PRs."""
     since = latest_tag([t for t in git_tags() if t != tag])
     date = git("log", "-1", "--format=%cI", since).strip() if since else ""
     changes = gh_json("pr", "list", "-R", rep, "--state", "merged", "--base", "dev", "-L", "500",
                       *(["--search", f"merged:>{date}"] if date else []), "--json", "number,title,mergeCommit")
-    # only PRs inside the released checkout: one merged to dev during the build is not in this release
-    changes = [c for c in changes if in_head((c.get("mergeCommit") or {}).get("oid", ""))]
+    # only PRs inside the released dev commit: one merged to dev during the build is not in this release
+    if subprocess.run(["git", "cat-file", "-e", f"{tip}^{{commit}}"], cwd=ROOT, capture_output=True).returncode == 0:
+        changes = [c for c in changes if in_tip((c.get("mergeCommit") or {}).get("oid", ""), tip)]
     prs = gh_json("pr", "list", "-R", rep, "--state", "all", "-L", "3000", "--json", "number,author,url")
     issues = gh_json("issue", "list", "-R", rep, "--state", "all", "-L", "3000", "--json", "number,author,url")
     return since, sorted(changes, key=lambda c: c["number"]), contributors(prs, issues, rep.split("/")[0])
@@ -326,7 +328,7 @@ def main(argv=None) -> int:
         print(f"release: {tag}")
         return 0
     pr_text = gh_json("pr", "view", a.pr, "-R", rep, "--json", "body")["body"] if a.pr else ""
-    since, changes, thanks = history(rep, a.version)
+    since, changes, thanks = history(rep, a.version, a.head or "HEAD")
     text = release_notes(read(a.base), pr_text, since, read(a.verification), a.hw_run, a.head, changes, thanks)
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
