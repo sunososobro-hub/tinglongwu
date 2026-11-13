@@ -31,6 +31,11 @@ CLAUSE_MIN_UNITS = 3  # a clause shorter than this is not worth its own final li
 FUZZY_MIN = 3  # #273: an overlap this long is dropped even with one garbled word at the seam
 
 
+def _join(a: str, b: str) -> str:
+    """Concatenate two pieces of text: no space before CJK text, one space otherwise."""
+    return a + b if _CJK.search(b[:1]) else f"{a} {b}"
+
+
 def _units(text: str) -> int:
     """Length for the cap: words, with every CJK character counting as a word."""
     return len(_WORD.sub("x", _CJK.sub(" x ", text)).split())
@@ -98,8 +103,12 @@ def split_clause(text: str) -> tuple[str, str]:
 class SentenceMerger:
     """Push ASR segments, get translation units. Time is injected (seconds, any monotonic clock)."""
 
-    def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False):
+    def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False,
+                 min_words: int = 0):
         self.max_wait, self.max_words, self.min_overlap = max_wait, max_words, min_overlap
+        # #389: a finished sentence shorter than this ("Максима Чижова.") is a fragment: it is joined to the previous
+        # sentence of the same release, else held (at most max_wait) and joined to the next one. 0 = off.
+        self.min_words = min_words
         # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
         # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
         self.whole = whole
@@ -157,6 +166,8 @@ class SentenceMerger:
         rest = ""
         if sents and not _is_end(sents[-1]):
             rest = sents.pop()
+        if self.min_words > 0:
+            sents, rest = self._merge_fragments(sents, rest)
         out += [Unit(s.strip(), lang, False, tag) for s in sents]
         self.buf = rest
         if not rest:
@@ -169,12 +180,32 @@ class SentenceMerger:
             return out
         return out + self.due(now)
 
+    def _is_fragment(self, text: str) -> bool:
+        # words only (_units also counts a lone CJK punctuation mark like "。" as one): each CJK character is a word
+        return len(_WORD.findall(_CJK.sub(" x ", text))) < self.min_words
+
+    def _merge_fragments(self, sents: list[str], rest: str) -> tuple[list[str], str]:
+        """#389: join each fragment sentence to its neighbour: to the next finished sentence, else to the previous
+        one; a fragment with no finished neighbour goes back into the buffer to wait for the next text."""
+        merged: list[str] = []
+        for s in sents:
+            if merged and (self._is_fragment(merged[-1]) or self._is_fragment(s)):
+                merged[-1] = _join(merged[-1], s)
+            else:
+                merged.append(s)
+        if merged and self._is_fragment(merged[-1]):  # only possible when it is the sole sentence: hold it
+            rest = _join(merged.pop(), rest) if rest else merged.pop()
+        return merged, rest
+
     def due(self, now: float) -> list[Unit]:
         """Release the buffer when it is too old or too long (whole mode: up to the last clause boundary)."""
         if not self.buf:
             return []
-        # #288: a 1-3 word head ("Well, in the") waits up to twice as long for the rest of its sentence
-        wait = 2 * self.max_wait if self.whole and _units(self.buf) < MIN_FINAL_UNITS else self.max_wait
+        # #288: a 1-3 word head ("Well, in the") waits up to twice as long for the rest of its sentence; a finished
+        # fragment held by min_words (#389) never waits longer than max_wait
+        held = any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())  # a finished fragment is held
+        head = self.whole and _units(self.buf) < MIN_FINAL_UNITS and not held
+        wait = 2 * self.max_wait if head else self.max_wait
         if (self.since is not None and now - self.since >= wait) or _units(self.buf) >= self.max_words:
             if self.whole:
                 head, rest = split_clause(self.buf)
