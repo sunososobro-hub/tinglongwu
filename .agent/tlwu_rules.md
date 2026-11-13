@@ -1,5 +1,7 @@
 # tlwu agent rules (override)
 
+This file overrides any routine prompt wherever they conflict (what to pick, whether to work, numbers).
+
 Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merge, S-hard, and the home-PC pipeline) reads this file from origin/dev at the start of each run. When it conflicts with the agent's own prompt, THIS FILE WINS. Owner-approved 2026-11-13.
 
 ## 1. Who does what
@@ -43,3 +45,39 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 
 ## 9. Health log
 - The S-hard health log line adds `conflicts_resolved=<n> conflicts_closed=<n>`.
+
+## 10. Ledger, picker, throttle (owner 2026-11-13)
+This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day ratio check wherever they conflict (the picker below replaces the 1.3x skip rule).
+
+### Throttle (faucet)
+- Every routine (and the home-PC worker) first reads the first line of issue #574 `[pipeline] throttle (faucet)`: `gh api repos/sunososobro-hub/tinglongwu/issues/574 --jq .body` -> first line `level: N`. Unreadable or missing -> assume `level: 2`. Obey the legend:
+  - 0 off: only merge green PRs; no picking, no new issues.
+  - 1 low: only P0/P1 items + merging; only worker slot A works (B, C, W-hard idle unless P0/P1).
+  - 2 normal: ledger + picker below, pace brake on: if this week's ledger minutes are ahead of the hour-of-week pace (week minutes so far / expected minutes at this hour of the week) by more than 10%, slots B and C skip this wake.
+  - 3 high: all slots work, up to 4 items per wake, no pace brake.
+  - 4 max (reset-credit week): as 3, plus the home-PC worker runs 3 at once and S-hard also works items after its sweep.
+- Mergers (R-merge, S-merge, R-hard) merge green PRs at every level.
+
+### Slots
+- Hourly Sonnet workers: slot A = S-easy (:13), slot B (:33), slot C (:53). Opus worker = W-hard (hourly :48 + dispatch).
+
+### Triage is not work
+- On `issues.opened`, W-easy only triages: adds `type` (bug / enhancement / eval / documentation / maint), `P0..P3`, `model:*` and one `area:*` label. It works the item immediately only if it is P0, or owner-authored and explicitly marked `urgent`. Everything else waits for the slot workers.
+
+### Ledger (S-hard, hourly)
+- Sum the `tlwu-usage: ... minutes=N` last line of PRs merged to dev in the last 48 h, grouped by the linked issue's type label. Post a new comment on the pinned `[health] pipeline check log` issue (#61; create and pin it if missing) with a table: `type | minutes | share | target | deficit` where deficit = target - share (percentage points).
+- Targets: bug 30, enhancement 30, eval 10, documentation 5, maint 5. QA 15 and ideas 5 run on fixed schedules (section 5) and are also logged in the table.
+
+### Picker (every worker)
+- P0/P1 always first.
+- Otherwise read the latest ledger comment on #61, pick the type with the largest deficit; inside a type order P0 -> P3, then lowest issue number. If that type has no eligible item, take the next-largest deficit. Never idle while any eligible item exists (subject to the throttle level).
+- No ledger comment in the last 3 h -> pick by priority then lowest number.
+
+### Supply (S-hard)
+- When a type has < 5 eligible todo items, open new ones only with evidence: failing test or QA spot check, crash log, user report, eval gap, or a merged change lacking docs. Features only from owner-approved proposals (`status:proposal` promoted by the owner). No evidence -> do not open.
+
+### Area lock
+- Each issue carries exactly one `area:*` label. A worker skips an issue whose area already has an open PR or a `status:doing` issue (P0 exempt). This tightens section 8 (file overlap) - both apply.
+
+### Usage line
+- Every PR body must keep `tlwu-usage: ... minutes=N` as its last line; it is the ledger input. PRs without it count as 0 minutes.
