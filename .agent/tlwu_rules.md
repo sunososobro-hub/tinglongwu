@@ -53,7 +53,7 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 - Every routine (and the home-PC worker) first reads the first line of issue #574 `[pipeline] throttle (faucet)`: `gh api repos/sunososobro-hub/tinglongwu/issues/574 --jq .body` -> first line `level: N`. Unreadable or missing -> assume `level: 2`. Obey the legend:
   - 0 off: only merge green PRs; no picking, no new issues.
   - 1 low: only P0/P1 items + merging; only worker slot A works (B, C, W-hard idle unless P0/P1).
-  - 2 normal: ledger + picker below, pace brake on: if this week's ledger minutes are ahead of the hour-of-week pace (week minutes so far / expected minutes at this hour of the week) by more than 10%, slots B and C skip this wake.
+  - 2 normal: ledger + picker below, pace brake on: if this week's ledger minutes are ahead of the hour-of-week pace by more than 10%, slots B and C skip this wake. Week = Monday 00:00 Asia/Taipei to now. Week minutes = `tlwu-usage` minutes of PRs merged to dev since then (plus QA/idea usage comments, as in the ledger). Weekly budget W = the same sum for the previous full week (no data -> brake off). Expected = W x hours elapsed this week / 168. Brake when week minutes > 1.10 x expected.
   - 3 high: all slots work, up to 4 items per wake, no pace brake.
   - 4 max (reset-credit week): as 3, plus the home-PC worker runs 3 at once and S-hard also works items after its sweep.
 - Mergers (R-merge, S-merge, R-hard) merge green PRs at every level.
@@ -67,6 +67,7 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 ### Ledger (S-hard, hourly)
 - Sum the `tlwu-usage: ... minutes=N` last line of PRs merged to dev in the last 48 h, grouped by the linked issue's type label. Post a new comment on the pinned `[health] pipeline check log` issue (#61; create and pin it if missing) with a table: `type | minutes | share | target | deficit` where deficit = target - share (percentage points).
 - Targets: bug 30, enhancement 30, eval 10, documentation 5, maint 5. QA 15 and ideas 5 run on fixed schedules (section 5) and are also logged in the table.
+- QA and ideas rows use the section 5 inputs over the same 48 h window: QA = `tlwu-usage` comments on #61 created in the last 48 h; ideas = `tlwu-usage` comments on `[idea]` issues created in the last 48 h. Shares are over the total of all rows (merged PRs + QA + ideas). Pickers do not pick QA or ideas; those rows are informational.
 
 ### Picker (every worker)
 - P0/P1 always first.
@@ -78,6 +79,8 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 
 ### Area lock
 - Each issue carries exactly one `area:*` label. A worker skips an issue whose area already has an open PR or a `status:doing` issue (P0 exempt). This tightens section 8 (file overlap) - both apply.
+- Race: after claiming (section 2) and adding `status:doing`, re-check the area. If another non-P0 `status:doing` issue or open PR in the same area exists with a lower issue number, release: delete branch `fix/N`, swap `status:doing` back to `status:todo`, take the next item.
+- Release: the area lock ends when the issue's PR is merged or closed and `status:doing` is removed (the merger or the watchdog removes it).
 
 ### Usage line
 - Every PR body must keep `tlwu-usage: ... minutes=N` as its last line; it is the ledger input. PRs without it count as 0 minutes.
