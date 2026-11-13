@@ -16,7 +16,7 @@ The runtime package `tinglongwu/` contains no network code; a Python-level netwo
 
 | # | What | When | What is sent | How to turn it off |
 |---|------|------|--------------|--------------------|
-| 1 | Model download by `tlwu-setup`: Hugging Face (Whisper, Qwen3 GGUF, Hy-MT2 GGUF; pinned commit + SHA256), Argos OPUS index on `raw.githubusercontent.com` and archives from argos-net.com (only `ru-en` and `en-zh` are pinned; other pairs are not) | Only when you run setup and answer yes | Ordinary HTTPS requests (your IP, user agent, the requested file) | Do not run setup / answer N |
+| 1 | Model download by `tlwu-setup`: Hugging Face (Whisper, Hy-MT2 GGUF; pinned commit + SHA256), Argos OPUS index on `raw.githubusercontent.com` and archives from argos-net.com (only `ru-en` and `en-zh` are pinned; other pairs are not) | Only when you run setup and answer yes | Ordinary HTTPS requests (your IP, user agent, the requested file) | Do not run setup / answer N |
 | 2 | Kokoro TTS model download in `scripts/mac_install.sh` (third-party GitHub release; size check only, no hash). Vosk Russian TTS model: manual download from alphacephei.com, no hash | macOS install / manual | Ordinary HTTPS requests | Skip the step |
 | 3 | Python dependencies: PyPI, plus a third-party index for the llama-cpp wheel (`requirements-llama-cuda.txt`) | `install.ps1`, `tlwu-setup --deps`, `mac_install.sh`, auto-update when requirements change | Ordinary HTTPS requests | Do not run the installers |
 | 4 | Opt-in auto-update: `git fetch` of the `main` branch on GitHub (6 s cap); may run `pip install -e .` if requirements changed | Asked once, default off | Git protocol requests | Answer no, or set `TLWU_NO_UPDATE=1` |

@@ -44,7 +44,7 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-T
 
 **選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
 
-移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Qwen 引擎使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
+移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
 ## Mac 一行安裝
 
@@ -172,9 +172,9 @@ tlwu-setup --whisper small --langs ru --to zh
 任何有 OPUS-MT/Argos 套件的語言組合都能用：`--langs` 下載「來源->英文」，`--to` 下載「英文->目標」（例如 `--langs ru,ja --to zh,ko`），只抓你需要的。缺少某組合時，tlwu 會停止並指出該組合與確切的下載指令。
 
 
-**唯一預設引擎：Hy-MT2**（`--engine auto`，或 `--engine hymt`）：騰訊 Hy-MT2-1.8B（llama.cpp、Q4_K_M GGUF，`tlwu-setup --hymt`，下載約 1.1 GB）直接由來源語言翻成目標語言，支援 zh/en/ru/ja/ko/de/fr/es。在我們的 200 句評測中品質與 Qwen3-8B 相當（COMET x100：ru 86.5 對 86.5、en 89.1 對 88.8、ja 88.3 對 87.8），速度約快 4 倍（每句 0.19 秒對 0.73 秒），VRAM 約 1.5 GB（Qwen3-8B 為 5.1 GB），所以 Whisper turbo + Hy-MT2 在 4 GB 顯示卡上就放得下。Whisper 載入後還剩約 2 GB VRAM 就在 GPU 上跑，否則（含 CPU 模式）在 CPU 上跑（i5-13500 約每句 0.93 秒）。沒安裝 Hy-MT2 或載入失敗時，tlwu 會印出 `tlwu-setup --hymt` 指令並結束，不會默默改用其他引擎（#276）；要用 OPUS 請明確指定 `--engine opus`。
+**唯一預設引擎：Hy-MT2**（`--engine auto`，或 `--engine hymt`）：騰訊 Hy-MT2-1.8B（llama.cpp、Q4_K_M GGUF，`tlwu-setup --hymt`，下載約 1.1 GB）直接由來源語言翻成目標語言，支援 zh/en/ru/ja/ko/de/fr/es。在我們的 200 句評測中品質與先前的 8B LLM 引擎相當（COMET x100：ru 86.5 對 86.5、en 89.1 對 88.8、ja 88.3 對 87.8），速度約快 4 倍（每句 0.19 秒對 0.73 秒），VRAM 約 1.5 GB（先前的 8B 引擎為 5.1 GB），所以 Whisper turbo + Hy-MT2 在 4 GB 顯示卡上就放得下。Whisper 載入後還剩約 2 GB VRAM 就在 GPU 上跑，否則（含 CPU 模式）在 CPU 上跑（i5-13500 約每句 0.93 秒）。沒安裝 Hy-MT2 或載入失敗時，tlwu 會印出 `tlwu-setup --hymt` 指令並結束，不會默默改用其他引擎（#276）；要用 OPUS 請明確指定 `--engine opus`。
 
-**Qwen 引擎**：已不再是 `--engine` 選項（#276），程式碼將於 #283 移除。
+**先前的 LLM 引擎**：已移除（#276、#283、#308）；Hy-MT2 是唯一的翻譯 LLM。
 
 
 #### 模型來源釘選
@@ -185,7 +185,7 @@ tlwu-setup --whisper small --langs ru --to zh
 |---|---|---|---|
 | Whisper tiny/base/small/medium/large-v3（CT2） | `Systran/faster-whisper-*` | SYSTRAN | MIT |
 | **Whisper large-v3-turbo（CT2）** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh（第三方，非 OpenAI、非 SYSTRAN）** | MIT；社群的 CTranslate2 轉換版，信任範圍僅限於釘住的 commit 與雜湊 |
-| Qwen3-8B / 4B Q4_K_M GGUF | `Qwen/Qwen3-*-GGUF` | Qwen（阿里巴巴） | Apache-2.0 |
+| Hy-MT2-1.8B Q4_K_M GGUF | `tencent/Hy-MT2-1.8B-GGUF` | 騰訊 | Apache-2.0 |
 | OPUS-MT（Argos 套件） | `argos-net.com` | Argos Open Tech | CC-BY 4.0；`ru-en`、`en-zh` 以 URL＋壓縮檔 SHA256 釘住；其他語對首次使用時查詢可變動的 Argos 索引，之後才釘住（會印出警告） |
 
 ### GPU（選用，NVIDIA）
@@ -209,16 +209,16 @@ python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CE
 
 **串流草稿**（`--stream`，預設關閉、實驗性）：句子還在說時，以 Whisper（greedy）重辨目前累積的音訊，並立刻翻譯整段暫時結果（沿用同一翻譯引擎），原地只顯示一行灰色譯文。`--stream-src` 另顯示原文行（已確認前綴正常亮度、其餘灰色；LocalAgreement 概念）。`--debug-latency` 於 stderr 記錄「段落音訊起點 → 第一次譯文草稿／最終行」秒數。段落結束後由正式輸出取代草稿。需互動式終端機（ANSI）；草稿讓位給正式 ASR/MT，會多吃 GPU；搭配 `--file` 時以真實速度播放。
 
-可用 VRAM 小於 9 GB 的 GPU（例如 8 GB 顯卡同時載入 Qwen3-8B）上，Whisper 會以 int8_float16 載入（該情況下每次推論比 fp16 快約 4 倍；可用環境變數 `TLWU_ASR_COMPUTE` 覆寫）。音樂／靜音時 Whisper 常見的字幕署名幻覺（「Продолжение следует」、「Subtitles by」、「字幕由」等；清單在 `tinglongwu/hallucination.py`）會被丟棄，且輸出一律把「妳」改成「你」。
+可用 VRAM 小於 9 GB 的 GPU（例如 8 GB 顯卡同時載入翻譯 LLM）上，Whisper 會以 int8_float16 載入（該情況下每次推論比 fp16 快約 4 倍；可用環境變數 `TLWU_ASR_COMPUTE` 覆寫）。音樂／靜音時 Whisper 常見的字幕署名幻覺（「Продолжение следует」、「Subtitles by」、「字幕由」等；清單在 `tinglongwu/hallucination.py`）會被丟棄，且輸出一律把「妳」改成「你」。
 
-**句子合併**：VAD 切出的段落常在句中結束。tlwu 會暫存 ASR 文字，在句尾（`.?!…。！？`）才翻譯；或說話者停頓 ≥ 0.8 秒（VAD 靜音）時送出；`--max-wait` 秒／約 45 字只是上限，先到者為準。因達到 chunk 上限而被硬切的段落，Whisper 加在句尾的「...」不算句尾，合併時也會去掉切點重複的字；`--no-merge` 則沿用逐段翻譯。**預設組合**：`--preset meeting`（預設）＝`--chunk 8 --max-wait 6`，優先保證完整句子，延遲約 5–8 秒；`--preset chat`＝`--chunk 4 --max-wait 1.5`，延遲較低但較多破碎句子（翻譯品質較差）。明確指定 `--chunk`／`--max-wait` 會覆蓋 preset；GUI 有「模式」選單。反向（說話即翻譯）模式有自己的設定。上下文：Qwen 引擎會看到前 2 句（原文＋譯文），讓被切開的句子讀起來連貫；Whisper 以前一段文字（≤100 字）作為 `initial_prompt`（出現重複／亂碼時自動丟棄）。Qwen 輸出會自動清理（多餘底線、markdown、引號、「Translation:」標籤）。Ctrl+C 約 1 秒內結束。
+**句子合併**：VAD 切出的段落常在句中結束。tlwu 會暫存 ASR 文字，在句尾（`.?!…。！？`）才翻譯；或說話者停頓 ≥ 0.8 秒（VAD 靜音）時送出；`--max-wait` 秒／約 45 字只是上限，先到者為準。因達到 chunk 上限而被硬切的段落，Whisper 加在句尾的「...」不算句尾，合併時也會去掉切點重複的字；`--no-merge` 則沿用逐段翻譯。**預設組合**：`--preset meeting`（預設）＝`--chunk 8 --max-wait 6`，優先保證完整句子，延遲約 5–8 秒；`--preset chat`＝`--chunk 4 --max-wait 1.5`，延遲較低但較多破碎句子（翻譯品質較差）。明確指定 `--chunk`／`--max-wait` 會覆蓋 preset；GUI 有「模式」選單。反向（說話即翻譯）模式有自己的設定。上下文：Hy-MT2 每句單獨翻譯、不看前文；選用的 ollama／fm 引擎會看到前 2 句（原文＋譯文），讓被切開的句子讀起來連貫；Whisper 以前一段文字（≤100 字）作為 `initial_prompt`（出現重複／亂碼時自動丟棄）。LLM 輸出（Hy-MT2、ollama、fm）會自動清理（多餘底線、markdown、引號、「Translation:」標籤）。Ctrl+C 約 1 秒內結束。
 
 ## 圖形介面（浮動字幕）
 
 `tlwu-gui`（不跳出終端機視窗）或 `tlwu --gui`，會開啟一個小控制視窗（來源語言、目標 繁中／簡中／英文、引擎、語音模型、詞庫檔、「儲存逐字稿」、開始／停止），以及一條無邊框、永遠置頂的字幕條（預設螢幕下方置中，約 70% 寬）。顯示最近 2 行；中文草稿為灰色，final 譯文出現後在原位換成白色。可拖曳移動；Ctrl+滾輪或 +/- 調整字體；右鍵選單：顯示／隱藏原文行、字體大小、複製最後一行、暫停顯示、結束。設定會記在 `%APPDATA%\tinglongwu\gui.json`。僅用標準庫 tkinter，完全離線；不加 `--gui` 時 CLI 行為不變。
 
 ## 主題詞庫（`--glossary PATH`）
-用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；原文出現在當前句子或前 2 行的條目（不分大小寫、容許俄文詞尾變化）會寫進 Qwen 提示，要求使用指定譯法（OPUS/M2M 忽略譯文）。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
+用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；目標為中文時，原文出現在當前句子的條目（不分大小寫、容許俄文詞尾變化）會以模型卡的術語參考格式寫進 Hy-MT2 提示；目標為其他語言時 Hy-MT2 不會收到譯文。中文輸出另會依條目的 `~` 錯誤譯法清單修正（Hy-MT2 與 OPUS 中轉皆適用）。選用的 ollama／fm 引擎則會收到原文出現在當前句子或前 2 行的條目，要求使用指定譯法。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
 ```
 tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary_wifi_ru.txt
 ```
@@ -246,8 +246,7 @@ tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary
 | numpy、scipy、onnxruntime | BSD-3、BSD-3、MIT | |
 | psutil、huggingface_hub | BSD-3、Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0（非商用） | 未隨附，無程式碼亦無安裝選項 |
-| Qwen3 LLM（GGUF；Qwen 官方 repo） | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF（取自模型卡中繼資料） |
-| llama-cpp-python（執行 Qwen3／Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
+| llama-cpp-python（執行 Hy-MT2） | MIT | github.com/abetlen/llama-cpp-python |
 | Hy-MT2-1.8B GGUF（騰訊；日文翻譯） | Apache-2.0（repo 內 LICENSE.txt 為標準 Apache-2.0 全文，無額外限制） | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS（程式碼；俄語語音） | Apache-2.0 | github.com/alphacep/vosk-tts |
 | Vosk-TTS 俄語語音模型（vosk-model-tts-ru-0.7-multi，**選用、需主動啟用**：預設絕不下載，只在執行 `tlwu-setup --vosk-tts-ru` 或自行下載時取得） | **不明：上游未標示模型授權**（只有 vosk-tts 程式碼 repo 為 Apache-2.0；alphacephei.com 與 repo 皆找不到模型授權；上游 README 現列 0.9-multi）。視為未知，使用者自負責任；沒有此模型時，俄文發聲會退回只顯示字幕 | github.com/alphacep/vosk-tts、alphacephei.com/vosk/models |
@@ -273,38 +272,38 @@ tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary
 
 以 `scripts/bench/`（開發工具，不屬於產品）量測翻譯品質與速度。
 
-- 硬體：RTX 3050 8 GB。資料：FLORES-200 devtest（1012 句，俄文 -> 繁體中文，使用原文文字；50 句的列為前 50 句）。指標：chrF（sacrebleu）與 COMET（Unbabel/wmt22-comet-da）。延遲不含模型載入。Qwen 引擎為 Q4_K_M GGUF、2048 context。
+- 硬體：RTX 3050 8 GB。資料：FLORES-200 devtest（1012 句，俄文 -> 繁體中文，使用原文文字；50 句的列為前 50 句）。指標：chrF（sacrebleu）與 COMET（Unbabel/wmt22-comet-da）。延遲不含模型載入。標為「previous engine」的列是歷史資料：Hy-MT2 之前使用的 4B／7B／8B LLM（Q4_K_M GGUF、2048 context），已移除（#276、#283、#308），bench 也已無法再跑（m2m 同樣已移除）。
 
 | engine | chrF | COMET | median s/sentence | peak VRAM (+MiB) |
 |---|---|---|---|---|
 | opus (default, CPU/GPU) | 23.6 | 0.824 | 0.14 | 424 |
 | m2m | 22.9 | 0.819 | 0.34 | 1724 |
-| qwen3-4b | 23.5 | 0.849 | 0.46 | 3062 |
-| qwen25-7b | 23.5 | 0.840 | 0.72 | 4682 |
+| previous engine: 4B LLM (removed) | 23.5 | 0.849 | 0.46 | 3062 |
+| previous engine: 7B LLM (removed) | 23.5 | 0.840 | 0.72 | 4682 |
 | madlad3b | 26.1 | 0.846 | 0.69 | 3552 |
-| qwen3-8b | 26.0 | 0.865 | 0.77 | 5148 |
-| qwen3-8b + context | 26.3 | 0.867 | 0.80 | 5150 |
+| previous engine: 8B LLM (removed) | 26.0 | 0.865 | 0.77 | 5148 |
+| previous engine: 8B LLM + context (removed) | 26.3 | 0.867 | 0.80 | 5150 |
 | Google Cloud Translation v2 (reference) | 29.8 | 0.879 | - | - |
 
 | direction (first 50 sentences) | engine | chrF | COMET | median s/sentence |
 |---|---|---|---|---|
 | en->zho_Hant | opus | 29.9 | 0.854 | 0.10 |
-| en->zho_Hant | qwen3-4b | 30.7 | 0.881 | 0.54 |
-| en->zho_Hant | qwen3-8b | 31.2 | 0.892 | 0.91 |
+| en->zho_Hant | previous engine: 4B LLM (removed) | 30.7 | 0.881 | 0.54 |
+| en->zho_Hant | previous engine: 8B LLM (removed) | 31.2 | 0.892 | 0.91 |
 | en->zho_Hant | Google | 37.2 | 0.900 | - |
 | ru->eng | opus | 62.2 | 0.867 | 0.07 |
-| ru->eng | qwen3-4b | 62.9 | 0.867 | 0.52 |
-| ru->eng | qwen3-8b | 64.3 | 0.870 | 0.81 |
+| ru->eng | previous engine: 4B LLM (removed) | 62.9 | 0.867 | 0.52 |
+| ru->eng | previous engine: 8B LLM (removed) | 64.3 | 0.870 | 0.81 |
 | ru->eng | Google | 67.2 | 0.883 | - |
 
-另以 FLEURS 200 句語音（ASR large-v3-turbo -> 翻譯）測得相同排序（opus 22.7、qwen3-8b 24.9、qwen3-4b 22.3、Google 28.5 chrF）。
+另以 FLEURS 200 句語音（ASR large-v3-turbo -> 翻譯）測得相同排序（opus 22.7、前代 8B LLM 24.9、前代 4B LLM 22.3、Google 28.5 chrF）。
 
 重現方式（需要 bench venv、`%USERPROFILE%/tlwu-eval` 下的資料；Google 欄需要 `google_key.txt` 內的 Cloud Translation 金鑰，可加 `--no-google` 略過）：
 
 ```
-.venv-bench\Scripts\python scripts/bench/run.py --full --engines m2m,qwen3-8b,qwen3-8b+ctx,madlad3b,qwen3-4b,qwen25-7b
-.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair en-zh --engines qwen3-8b,qwen3-4b
-.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en --engines qwen3-8b,qwen3-4b
+.venv-bench\Scripts\python scripts/bench/run.py --full --engines madlad3b
+.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair en-zh
+.venv-bench\Scripts\python scripts/bench/run.py --smoke --pair ru-en
 ```
 
 **僅限 bench；會把測試句子送到該服務。** `scripts/bench/run.py` 與 `google_ref.py` 只有在存在金鑰檔且未加 `--no-google` 時，才會呼叫 Google Cloud Translation v2（FLEURS 語音測試另會呼叫 Speech-to-Text v1，測試音訊會被送出）。這些是開發工具：`tinglongwu` 套件從不匯入 `scripts/`，一般的 `tlwu`／`tlwu-gui`／反向模式路徑也不會呼叫它們。`fetch_data.py` 另會從網路下載測試資料集（FLORES-200、FLEURS）。
@@ -358,7 +357,7 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 - **輸出可能有誤。** 逐字稿與翻譯可能出錯，請勿據以做法律、醫療、安全或財務決定。
 - **你的責任。** 你必須遵守適用於你的法律，並在錄音或轉錄他人前取得同意；見[合理使用／同意聲明](#合理使用同意聲明)。
 - **第三方元件。** 模型、函式庫與驅動程式各自適用其授權，由你從上游來源自行安裝；本 repo 不再散布它們（唯一提交的第三方二進位檔是 `mobile/` 內自行建置的 llama.cpp Android AAR（MIT）；Windows exe 內含的執行期函式庫列於其 `licenses/THIRD_PARTY_NOTICES.txt`）。見[授權與來源](#授權與來源)。
-- **無從屬關係。** 與 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴（Qwen）、騰訊（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方皆無關聯，亦未獲其背書。所有商標歸各自所有人。
+- **無從屬關係。** 與 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴、騰訊（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方皆無關聯，亦未獲其背書。所有商標歸各自所有人。
 - **網路防護。** 網路防護是盡力而為，不保證沒有任何資料離開你的機器。
 - **安全。** 見 [SECURITY.md](../SECURITY.md)。
 - **隱私。** 見 [PRIVACY.zh-TW.md](../PRIVACY.zh-TW.md)（[English](../PRIVACY.md)）。
