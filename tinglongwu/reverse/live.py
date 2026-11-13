@@ -91,16 +91,26 @@ def check_mic_feedback(mic_name: str, out_device: str | None, out_name: str | No
 def capture_segments(source, segmenter, stop: threading.Event, lat=None) -> Iterator[np.ndarray]:
     """Capture + VAD segmentation in a background thread; yields finished utterances until `stop` is set.
     The capture thread never blocks on slow consumers (bounded queue absorbs bursts).
-    `lat` (reverse.logic.Lat): the silence waited after each segment (the endpoint delay) is stored as 'vad' (#186)."""
+    `lat` (reverse.logic.Lat): the silence waited after each segment (the endpoint delay) is stored as 'vad' (#186),
+    and lat.marks gets "eos" (end of speech = arrival of the newest frame minus that silence) and "cut" (the time
+    the segment was cut), on lat's clock (#434 latency records)."""
     q: queue.Queue = queue.Queue(maxsize=32)
     done = object()
+    clock = getattr(lat, "clock", None) or time.perf_counter
+    frame_t = [0.0]
+
+    def stamped(frames):
+        for f in frames:
+            frame_t[0] = clock()
+            yield f
 
     def run():
         try:
-            for seg in segmenter.segments(source.frames()):
+            for seg in segmenter.segments(stamped(source.frames()) if lat is not None else source.frames()):
                 if stop.is_set():
                     return
-                q.put((seg, getattr(segmenter, "last_pause", 0.0)))
+                pause = float(getattr(segmenter, "last_pause", 0.0))
+                q.put((seg, pause, (frame_t[0] - pause, clock()) if lat is not None else None))
             q.put(done)
         except BaseException as e:  # noqa: BLE001 - re-raised in the consumer
             q.put(e)
@@ -115,9 +125,10 @@ def capture_segments(source, segmenter, stop: threading.Event, lat=None) -> Iter
             return
         if isinstance(item, BaseException):
             raise item
-        seg, pause = item
+        seg, pause, marks = item
         if lat is not None:
-            lat.set("vad", float(pause))
+            lat.set("vad", pause)
+            lat.marks = {"eos": marks[0], "cut": marks[1]}
         yield seg
 
 
