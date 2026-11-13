@@ -1,6 +1,6 @@
 # tinglongWu
 
-<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="240"><br><strong>聽龍 / TingLong, the listening dragon.</strong><br>Offline real-time speech translation for meetings and calls.</p>
+**Offline real-time speech translation for meetings and calls.** Runs on your own computer: no cloud, no recordings kept.
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) · 🗺️ [Roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [Progress of the next release](https://github.com/sunososobro-hub/tinglongwu/milestones)
 
@@ -17,3 +17,5 @@ Linux/macOS menu: speak mode sends each sentence directly; to confirm each one f
 ## [Docs](https://sunososobro-hub.github.io/tinglongwu/docs.html) (install options, requirements, privacy, FAQ, all guides) · [docs/details.md](docs/details.md) · [Platform support](docs/support.md)
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.
+
+<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="120"><br><strong>聽龍 / TingLong, the listening dragon.</strong><br>Offline real-time speech translation for meetings and calls.</p>
