@@ -9,7 +9,7 @@ Footprints (MiB, model loaded + working memory):
 - MT, CPU: Hy-MT2-1.8B RAM peak ~1900 (#63 owner CPU test, i5-13500).
 - ASR, GPU: large-v3 fp16 ~4000, medium ~2500 (README); large-v3-turbo has 4 decoder layers instead of 32,
   fp16 weights ~1.6 GB -> 1600 as a conservative upper bound (int8_float16 is smaller).
-Owner decision (#63, 2026-11-10): main target is a 4-8 GB GPU with Hy-MT2; CPU keeps OPUS by default.
+Owner decision (#63, 2026-11-10): main target is a 4-8 GB GPU with Hy-MT2; CPU uses Hy-MT2 on CPU (OPUS was removed, #471).
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class Tier:
     name: str  # "gpu" | "cpu"
     device: str  # "cuda" | "cpu"
     asr: str  # Whisper model name
-    mt: str  # "hymt2" | "opus"
+    mt: str  # "hymt2" | "hymt2-cpu"
     reason: str
     excluded: dict[str, str] = field(default_factory=dict)  # model -> why it cannot be used here
 
@@ -118,7 +118,7 @@ def recommend(hw: HwInfo) -> Tier:
         why = f"{hw.gpu} has {vram} MiB VRAM (< {GPU_MIN_VRAM_MIB} MiB)"
     if hw.ram_mib is not None and hw.ram_mib < CPU_MIN_RAM_FOR_HYMT_MIB:
         excluded["hymt2 (CPU)"] = f"needs ~{HYMT_CPU_RAM_MIB} MiB RAM, {hw.ram_mib} MiB total"
-    return Tier("cpu", "cpu", "small", "opus", why + (" CPU mode until then" if old_driver else ": CPU mode"),
+    return Tier("cpu", "cpu", "small", "hymt2-cpu", why + (" CPU mode until then" if old_driver else ": CPU mode"),
                 excluded)
 
 
@@ -131,7 +131,7 @@ FAST_ASR = {"gpu": "small", "cpu": "base"}
 
 def preset(level: str, hw: HwInfo) -> Tier:
     """Tier for a Fast / Balanced / Quality choice on this machine; auto and balanced = recommend(hw).
-    Translation stays the tier's engine (GPU Hy-MT2, CPU OPUS - owner rule #63); only the speech model moves."""
+    Translation stays the tier's engine (GPU Hy-MT2, CPU Hy-MT2 - owner rule #63); only the speech model moves."""
     tier = recommend(hw)
     if level == "fast":
         tier.asr = FAST_ASR[tier.name]
