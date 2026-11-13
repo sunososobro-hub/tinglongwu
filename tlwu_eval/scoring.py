@@ -26,7 +26,8 @@ LATENCY_AVG_SHARE = 0.5
 # meeting app + browser that run next to tlwu.
 RESOURCE_FREE_FRACTION, RESOURCE_FULL_FRACTION = 0.5, 1.0
 
-CHAR_LANGS = {"zh", "ja"}  # scored by characters (CER); everything else by words (WER) - spec v2 table
+CHAR_LANGS = {"zh", "ja", "th"}  # scored by characters (CER); everything else by words (WER) - spec v2 table
+# (th added for #472: Thai writes no spaces between words, so WER would count a whole sentence as one word)
 CHRF_ORDER, CHRF_BETA = 6, 2.0  # chrF2 with character 1..6-grams = the sacreBLEU default (Popovic 2015)
 
 

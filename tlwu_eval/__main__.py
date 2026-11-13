@@ -7,9 +7,9 @@ import json
 import os
 import sys
 
-from . import gate, history, scoring, tierchart, tiers
+from . import gate, history, langfloor, scoring, tierchart, tiers
 from . import noise as noise_mod
-from .runner import CLIPS_PER_LANG, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
+from .runner import CLIPS_PER_LANG, FOCUS_PAIRS, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
 NHK_DIR_DEFAULT = r"C:\Users\user\tlwu-eval"  # outside the repo: copyrighted NHK ja clips (#119)
 
@@ -90,7 +90,10 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     p.add_argument("--per-lang", "--clips", type=int, default=None, metavar="N",
                    help=f"clips per language (default {CLIPS_PER_LANG}; the tier baseline uses 20)")
     p.add_argument("--comet", action="store_true",
-                   help="with --tier: also score COMET (needs the optional unbabel-comet package + wmt22-comet-da)")
+                   help="also score COMET (needs the optional unbabel-comet package + wmt22-comet-da); with --langs "
+                        f"prints COMET x100 per language against the floor {langfloor.COMET_FLOOR:.2f} (#472)")
+    p.add_argument("--langs", default=None, metavar="it,pt,vi,th,id",
+                   help="source languages to run instead of the focus pairs, each -> zh (zh -> en); #472 Hy-MT2 check")
     p.add_argument("--chart", nargs="+", metavar=("OUT.html", "REPORT.json"),
                    help="draw the tier summaries of these reports side by side into OUT.html")
     p.add_argument("--gate", metavar="REPORT.json",
@@ -120,15 +123,26 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     a.engine = a.engine or preset.get("engine", "auto")
     a.device = a.device or preset.get("device", "auto")
     run_kw.setdefault("per_lang", a.per_lang or CLIPS_PER_LANG)
+    langs = list(dict.fromkeys(x.strip().lower() for x in a.langs.split(",") if x.strip())) if a.langs is not None else None
+    if langs == []:
+        p.error("--langs needs at least one language code, e.g. --langs it,pt,vi,th,id")
+    if langs:
+        run_kw.setdefault("pairs", tuple((x, "en" if x == "zh" else "zh") for x in langs))
+        run_kw.setdefault("ja_extra", [])  # the NHK ja group belongs to the focus run, not to a --langs check
     try:
         rows = load_manifest(a.data)
-        run_kw.setdefault("ja_extra", load_extra(a.nhk_dir))
+        if "ja_extra" not in run_kw:  # never read the NHK manifest when --langs already set it to []
+            run_kw["ja_extra"] = load_extra(a.nhk_dir)
         if not a.no_noise:
             run_kw.setdefault("noise", noise_mod.build_clips(a.noise_dir))
         rep = run_smoke(rows, engines or real_engines(a), totals=totals or machine_totals(), **run_kw)
+        cm = None
+        if a.comet and (a.tier or langs):
+            cm = tiers.comet_scores(rep["languages"], comet_model or load_comet(), int(a.device == "cuda"), exact=True)
         if a.tier:
-            cm = a.comet and tiers.comet_scores(rep["languages"], comet_model or load_comet(), int(a.device == "cuda"))
-            rep["tier"] = tiers.summarize(rep, a.tier, cm or None)
+            rep["tier"] = tiers.summarize(rep, a.tier, {k: round(v, 2) for k, v in cm.items()} if cm else None)
+        if langs and cm is not None:
+            rep["comet_floor"] = langfloor.verdicts(cm, run_kw.get("pairs", FOCUS_PAIRS))
     except (FileNotFoundError, ValueError, RuntimeError) as e:  # ModelNotFound is a RuntimeError/FileNotFoundError
         print(f"tlwu-eval: {e}", file=sys.stderr)
         return 2
@@ -139,6 +153,8 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     print(format_report(rep))
     if "tier" in rep:
         print(tiers.summary_line(rep["tier"]))
+    if "comet_floor" in rep:
+        print(langfloor.table(rep["comet_floor"]))
     print(f"report: {a.out}")
     return 0 if rep["pass"] else 1
 
