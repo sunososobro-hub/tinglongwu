@@ -30,3 +30,14 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 ## 6. Throughput
 - S-easy: take up to 4 items per run. S-merge: merge every ready PR in one run.
 - Concurrency ceiling across all agents: `status:doing` ≤ 10.
+
+## 7. Merge conflicts: resolve in place (added for #566)
+- When a PR is `dirty` (mergeable_state), the merger/reviewer first merges `origin/dev` into the PR branch (or `update_pull_request_branch`), resolves conflicts keeping both sides' intent, re-runs the tests, and pushes. Do not close + redo first.
+- Close + redo only if the resolution would touch > 50 lines or change the behaviour of the other PR.
+- The local `~/.claude/tlwu_pipeline/prompt.md` needs the same rule (out of repo scope; owner session to apply).
+
+## 8. Picker: avoid overlapping files (added for #566)
+- Before claiming, list files changed by every open PR (`gh api repos/<R>/pulls/N/files`). Skip an issue whose `area:*` or named files overlap an open PR's files, except P0/P1.
+
+## 9. Health log
+- The S-hard health log line adds `conflicts_resolved=<n> conflicts_closed=<n>`.
