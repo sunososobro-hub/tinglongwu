@@ -86,7 +86,7 @@ def fetch_fleurs(code: str, out: Path) -> Path:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--fleurs", default="ru_ru", help="comma-separated FLEURS configs (default ru_ru; #346: ja_jp)")
+    ap.add_argument("--fleurs", default="ru_ru", help="comma-separated FLEURS configs (default ru_ru; #346: ja_jp; \"\" = none, #606)")
     ap.add_argument("--tatoeba-ja", type=int, default=0, metavar="N",
                     help="also fetch N Tatoeba Japanese dialogue recordings for make_ja_set.py (#429: 40)")
     a = ap.parse_args(argv)
@@ -98,9 +98,10 @@ def main(argv=None) -> int:
         if not tgz.exists():
             download(FLORES_URL, tgz)
         safe_extract(tgz, out)
-    for code in a.fleurs.split(","):
-        fetch_fleurs(code.strip(), out)
-    print("flores:", fl, "\nfleurs:", ", ".join(str(fleurs_dir(out, c.strip())) for c in a.fleurs.split(",")))
+    codes = [c.strip() for c in a.fleurs.split(",") if c.strip()]  # #606: --fleurs "" = FLORES-200 only
+    for code in codes:
+        fetch_fleurs(code, out)
+    print("flores:", fl, "\nfleurs:", ", ".join(str(fleurs_dir(out, c)) for c in codes) or "-")
     if a.tatoeba_ja > 0:
         print("tatoeba:", fetch_tatoeba_ja(out, a.tatoeba_ja))
     return 0
