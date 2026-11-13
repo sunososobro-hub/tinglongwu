@@ -9,6 +9,7 @@ from tlwu_eval import langfloor, runner, scoring
 from tlwu_eval.__main__ import main
 
 from test_eval_smoke import Clock
+from test_eval_smoke import make_data as smoke_data
 
 REFS = {"it": "il gatto è sul tappeto", "pt": "o gato está no tapete", "vi": "con mèo ngồi trên thảm",
         "th": "แมวนั่งบนเสื่อ", "id": "kucing duduk di atas tikar"}
@@ -55,8 +56,10 @@ class Comet:
 
 def test_langs_run_new_pairs_and_print_comet_floor_table(tmp_path, capsys):
     data, out, clock = make_data(tmp_path), tmp_path / "r.json", Clock()
-    code = main(["--smoke", "--data", str(data), "--out", str(out), "--no-noise", "--langs", "it,pt,vi,th,id",
-                 "--comet"], engines=engines(clock), totals=(16000, None), clock=clock, comet_model=Comet())
+    (tmp_path / "nhk").mkdir()
+    nhk = smoke_data(tmp_path / "nhk", langs=("ja",))  # an NHK ja folder: must be ignored by --langs
+    code = main(["--smoke", "--data", str(data), "--out", str(out), "--no-noise", "--langs", "IT,pt,vi,th,id,it",
+                 "--nhk-dir", str(nhk), "--comet"], engines=engines(clock), totals=(16000, None), clock=clock, comet_model=Comet())
     printed = capsys.readouterr().out
     rep = json.loads(out.read_text("utf-8"))
     assert code == 0

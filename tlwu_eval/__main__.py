@@ -123,9 +123,10 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     a.engine = a.engine or preset.get("engine", "auto")
     a.device = a.device or preset.get("device", "auto")
     run_kw.setdefault("per_lang", a.per_lang or CLIPS_PER_LANG)
-    langs = [x.strip() for x in a.langs.split(",") if x.strip()] if a.langs else None
+    langs = list(dict.fromkeys(x.strip().lower() for x in a.langs.split(",") if x.strip())) if a.langs else None
     if langs:
         run_kw.setdefault("pairs", tuple((x, "en" if x == "zh" else "zh") for x in langs))
+        run_kw.setdefault("ja_extra", [])  # the NHK ja group belongs to the focus run, not to a --langs check
     try:
         rows = load_manifest(a.data)
         run_kw.setdefault("ja_extra", load_extra(a.nhk_dir))
