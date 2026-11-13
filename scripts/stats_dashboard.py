@@ -594,10 +594,10 @@ dim.value='status';showGroup();
 
 def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
-    return (PAGE.replace("__REPO__", html.escape(series["repo"]))
-            .replace("__BRANCH__", html.escape(series["branch"]))
-            .replace("__FLOW__", render_flow_section(series))
-            .replace("__DATA__", data))
+    values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
+              "__FLOW__": render_flow_section(series), "__DATA__": data}
+    # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
+    return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
 
 def run(outdir, repo, branch, api=http_api, now=None):

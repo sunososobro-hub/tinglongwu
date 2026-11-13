@@ -215,3 +215,12 @@ def test_run_without_faucet_or_usage_does_not_fail(tmp_path):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW)  # fake_api rejects #574 -> degraded
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "Faucet level unavailable" in page and "No quota minutes" in page
+
+
+def test_label_with_placeholder_is_not_substituted_again():
+    flow = sd.build_flow([{"model": "sonnet", "minutes": 5,
+                           "labels": ["mode:__DATA__<img src=x onerror=alert(1)>"]}])
+    series = {"repo": "o/r", "branch": "dev", "flow": flow, "faucet": None, "days": [], "created": "2026-11-10"}
+    page = sd.render_html(series)
+    head = page[:page.index('<script id="d"')]
+    assert "<img" not in head and "__DATA__" in head and "&lt;img" in head
