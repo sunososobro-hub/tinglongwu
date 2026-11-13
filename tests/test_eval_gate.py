@@ -77,6 +77,8 @@ def test_null_chrf_gates_latency_only_and_missing_report_chrf_fails(tmp_path, ca
     assert gate_cli(tmp_path, report(en_zh=(1.0, 3.0)), base, capsys)[0] == 1
     code, out = gate_cli(tmp_path, report(en_zh=(None, 0.5)), baseline(), capsys)
     assert code == 1 and "no chrF in the report" in out.out
+    code, out = gate_cli(tmp_path, report(en_zh=("bad", "slow")), baseline(), capsys)  # wrong types: FAIL, no crash
+    assert code == 1 and "| en->zh | n/a | 40.00 | n/a | n/a |" in out.out and "no MT median in the report" in out.out
 
 
 @pytest.mark.parametrize("mutate, msg", [

@@ -70,15 +70,15 @@ def compare(report: dict, baseline: dict) -> list[dict]:
             rows.append(row)
             continue
         why = []
-        row["chrf"], row["median"] = lg.get("chrf"), lg.get("mt_median_s")
+        row["chrf"], row["median"] = (v if _num(v) else None for v in (lg.get("chrf"), lg.get("mt_median_s")))
         if b["chrf"] is not None:
-            if not _num(row["chrf"]):
+            if row["chrf"] is None:
                 why.append("no chrF in the report")
             else:
                 row["delta"] = row["chrf"] - b["chrf"]
                 if row["chrf"] < b["chrf"] - b["chrf_margin"]:
                     why.append(f"chrF dropped more than {b['chrf_margin']:.2f}")
-        if not _num(row["median"]):
+        if row["median"] is None:
             why.append("no MT median in the report")
         elif row["median"] > b["mt_median_s_max"]:
             why.append(f"MT median over {b['mt_median_s_max']:g}s")
