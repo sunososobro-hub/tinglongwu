@@ -2,7 +2,8 @@ name: mobile-apk
 # Builds the Android preview APK (arm64) so the app can be installed from a phone, no computer needed.
 # On push to dev (or a manual run on dev) the APK is published to the rolling pre-release `mobile-latest`:
 # the tag is moved to the built commit and the APK asset is replaced. Other assets on that release
-# (the models zip) are kept. It is never marked Latest and never touches v* tags/releases (release.yml).
+# are kept; the models zip is rebuilt from official sources only when assets/models_manifest.json
+# changes. It is never marked Latest and never touches v* tags/releases (release.yml).
 on:
   push:
     branches: [dev]
@@ -108,7 +109,7 @@ jobs:
     needs: build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 40
     concurrency:
       group: mobile-latest-release
       cancel-in-progress: false
@@ -118,11 +119,13 @@ jobs:
       run:
         shell: bash
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mobile-apk
           path: out
       - name: Publish to the rolling pre-release mobile-latest
+        id: apk
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -149,7 +152,8 @@ jobs:
           RUN=${{ github.run_number }}
           PUBLISHED=$(gh release view "$TAG" --json body --jq .body 2>/dev/null | sed -n 's/.*<!-- tlwu-run:\([0-9]*\) -->.*/\1/p' | head -1 || true)
           if [ -n "$PUBLISHED" ] && [ "$RUN" -lt "$PUBLISHED" ]; then
-            echo "::notice::mobile-latest already has run $PUBLISHED (newer than $RUN); not publishing"; exit 0
+            echo "::notice::mobile-latest already has run $PUBLISHED (newer than $RUN); not publishing"
+            echo "stale=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "<!-- tlwu-run:$RUN -->" >> notes.md
           # Move (or create) the tag; only refs/tags/mobile-latest is touched.
@@ -167,3 +171,23 @@ jobs:
               --title "$TITLE" --notes-file notes.md --prerelease --latest=false
           fi
           gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
+      - name: Models zip on mobile-latest (rebuilt from official sources only when the manifest changes)
+        if: steps.apk.outputs.stale != 'true'   # an older run must not replace a newer bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: mobile-latest
+        run: |
+          set -euo pipefail
+          Z=tlwu-mobile-models.zip; W="$RUNNER_TEMP/models"
+          MH=$(sha256sum mobile/assets/models_manifest.json | cut -d' ' -f1)
+          if gh release download "$TAG" -p "$Z.sha256" -O "$RUNNER_TEMP/old.sha256" 2>/dev/null              && grep -q "manifest $MH" "$RUNNER_TEMP/old.sha256"; then
+            echo "$Z is up to date (manifest $MH)"; exit 0
+          fi
+          bash mobile/tool/fetch_models.sh "$W"
+          python3 -I mobile/tool/make_models_zip.py "$W/models" "$W/licenses" "$RUNNER_TEMP/$Z"
+          (cd "$RUNNER_TEMP" && sha256sum "$Z" > "$Z.sha256" && echo "manifest $MH" >> "$Z.sha256")
+          # zip first, then the sidecar that marks it current
+          gh release upload "$TAG" "$RUNNER_TEMP/$Z" --clobber
+          gh release upload "$TAG" "$RUNNER_TEMP/$Z.sha256" --clobber
+          gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'

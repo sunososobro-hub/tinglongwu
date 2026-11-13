@@ -29,3 +29,5 @@ hooks:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/models_manifest.json
