@@ -16,6 +16,8 @@ build/
 dist/
 .venv-bench/
 
+.idea
+
 .agent_report*.md
 .scan_report.md
 docs/_*_draft.md

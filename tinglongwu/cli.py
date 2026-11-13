@@ -76,7 +76,14 @@ def parse_args(argv=None):
                         "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
                         "command (no silent engine switch, #276); hymt7b: opt-in Hy-MT2 7B for GPUs with >= 8 GB "
                         "(`tlwu-setup --hymt7b`, never picked by auto, #279); opus: src->en->target OPUS-MT, only "
-                        "when asked")
+                        "when asked; ollama: a model served by your own local Ollama (opt-in, never installed or "
+                        "pulled by tlwu, #356); fm: Apple's on-device model via the macOS 27 `fm` command "
+                        "(opt-in, experimental)")
+    p.add_argument("--ollama-model", default=None, metavar="NAME",
+                   help="with --engine ollama: model name (env TLWU_OLLAMA_MODEL; default: the first model "
+                        "already installed in Ollama)")
+    p.add_argument("--ollama-url", default=None, metavar="URL",
+                   help="with --engine ollama: local server URL (env TLWU_OLLAMA_URL, default http://127.0.0.1:11434)")
     p.add_argument("--stream", action="store_true",
                    help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
                         "audio and translate the whole partial text at once; shows ONE dim line (the "
@@ -204,13 +211,27 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) 
     return got
 
 
-def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
+def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None,
+                    ollama_model=None, ollama_url=None):
     """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
     from .engines import choose_engine
     from .hymt import JaRouter
     from .translate import PivotTranslator
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
+
+    if name == "ollama":  # #356: opt-in only, a model the user runs in their own local Ollama
+        from .ollama import OllamaTranslator
+
+        tr = OllamaTranslator(ollama_model, ollama_url, zh_variant)
+        say(f"tlwu: translation engine = ollama ({tr.model or 'first installed model'} @ {tr.url})",
+            file=sys.stderr)
+        return tr
+    if name == "fm":  # #356: opt-in, experimental, macOS 27+ only
+        from .fm import FmTranslator
+
+        say("tlwu: translation engine = fm (Apple on-device model, experimental)", file=sys.stderr)
+        return FmTranslator(zh_variant)
 
     if name in ("hymt2", "hymt2-cpu", "hymt2-7b"):
         from .hymt import hymt_path, setup_flag
@@ -428,7 +449,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     translator = None
     if not a.transcript_only:
         prog.stage("translation engine")
-        translator = make_translator(a.engine, mdir, a.zh_variant, dev)
+        translator = make_translator(a.engine, mdir, a.zh_variant, dev,
+                                     ollama_model=getattr(a, "ollama_model", None),
+                                     ollama_url=getattr(a, "ollama_url", None))
         if glossary is not None:
             apply_glossary(translator, glossary)
         if a.lang != "auto":

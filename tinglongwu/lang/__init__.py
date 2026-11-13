@@ -6,15 +6,19 @@ in PATCHES below (a static map: no dynamic imports, see tests/test_no_network_co
 Known names:
 - MERGE_PAUSE_SEND (float, seconds): VAD silence after a non-forced segment that releases an unfinished merge
   buffer (core default: merge.PAUSE_SEND). #327.
+- LLM_TARGET_NAMES (dict, zh variant -> text): how the chat-LLM engines (llm_prompt.py) name this target language
+  in their system prompt (core default: the English language name). #356.
+- convert_output (callable(text, variant) -> text): post-processing of chat-LLM output in this target language
+  (core default: none). #356.
 """
 from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
 
-from . import ja
+from . import ja, zh
 
-PATCHES: dict[str, ModuleType] = {"ja": ja}
+PATCHES: dict[str, ModuleType] = {"ja": ja, "zh": zh}
 
 
 def _base(lang: str) -> str:
