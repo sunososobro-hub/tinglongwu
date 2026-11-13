@@ -4,7 +4,7 @@
 
 ## 0. Install / use split
 
-`tinglongwu_setup` (entry point `tlwu-setup`) is the only networked code: dependency install, model download + SHA256 pinning, `--bundle` / `--from-bundle` for air-gapped machines. The runtime `tlwu` has no download or network code; `tests/test_no_network_code.py` statically scans `tinglongwu/` and fails on imports of requests, urllib.request, http.client, httpx, urllib3, huggingface_hub, argostranslate, pip, tinglongwu_setup, or socket (except `tinglongwu/offline.py`, the guard). `tinglongwu_setup` never imports `tinglongwu`.
+`tinglongwu_setup` (entry point `tlwu-setup`) is the only networked code: dependency install, model download + SHA256 pinning, `--bundle` / `--from-bundle` for air-gapped machines. The runtime `tlwu` has no download or network code; `tests/test_no_network_code.py` statically scans `tinglongwu/` and fails on imports of requests, urllib.request, http.client, httpx, urllib3, huggingface_hub, argostranslate, pip, tinglongwu_setup, or socket (except `tinglongwu/offline.py`, the guard), or http.client (except `tinglongwu/ollama.py`, the loopback-only client of the opt-in `--engine ollama`, #356). `tinglongwu_setup` never imports `tinglongwu`.
 
 ## 1. Data flow
 

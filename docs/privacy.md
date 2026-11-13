@@ -12,7 +12,7 @@ One repo, two programs with a hard boundary:
 | Does | installs pinned deps, downloads + SHA256-pins models, builds/installs offline bundles | captures audio, transcribes, translates, prints |
 | When | once, while online | every run, can be fully offline |
 
-`tests/test_no_network_code.py` statically scans `tinglongwu/` and fails if it imports requests, urllib.request, http.client, huggingface_hub, argostranslate, socket (except the guard module `tinglongwu/offline.py`) or `tinglongwu_setup`.
+`tests/test_no_network_code.py` statically scans `tinglongwu/` and fails if it imports requests, urllib.request, http.client, huggingface_hub, argostranslate, socket (except the guard module `tinglongwu/offline.py`) or `tinglongwu_setup`. The one exception is `http.client` in `tinglongwu/ollama.py`: the opt-in `--engine ollama` (#356) talks to your own Ollama server and accepts loopback addresses only (the runtime network guard blocks anything else too).
 
 ```
 tlwu-setup --deps                                  # pip install the pinned requirements
