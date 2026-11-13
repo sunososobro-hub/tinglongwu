@@ -29,6 +29,8 @@ POLL_MS = 50
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+# #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
+DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
 
 
 class Overlay:
@@ -292,6 +294,8 @@ class App:
         self.run_source = "system"
         self._build_controls()
         self._build_quick()
+        self._build_bar()
+        self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
         self.apply_theme(self.settings.get("theme", "dark"))
         try:
@@ -321,6 +325,9 @@ class App:
                 sv_ttk.set_theme(name)
             except Exception:  # noqa: BLE001
                 pass
+        st = ttk.Style(self.root)  # #455: tighter buttons keep the control bar within 420 px (per theme)
+        for style in ("Bar.TButton", "Bar.Toolbutton"):
+            st.configure(style, padding=(4, 1))
 
     def _toggle_theme(self):
         self.apply_theme("dark" if self.v_dark.get() else "light")
@@ -376,9 +383,58 @@ class App:
             if key in self.combos:
                 self.combos[key].configure(state=state)
 
+    def _build_bar(self):
+        """#455: the main window is only this bar; every setting is in the "⚙ Adjust" panel."""
+        b = self.bar = ttk.Frame(self.root, padding=2)
+        b.pack()
+        self.v_mode = tk.StringVar(value="listen")  # Speak = the #294 "I speak" session (mic, my language out)
+        for key, val in (("gui_listen", "listen"), ("gui_speak", "speak")):
+            self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
+                     key).pack(side="left")
+        self.v_pair = tk.StringVar()
+        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
+        for v in (self.v_lang, self.v_target, self.v_mode):
+            v.trace_add("write", lambda *_: self._pair_changed())
+        self._pair_changed()
+        self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
+        self.btn.pack(side="left")
+        self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
+        self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
+        self.dot.pack(side="left", padx=2)
+        self.set_dot("idle")
+        self.btn_adjust = self._tx(ttk.Button(b, command=self.toggle_adjust, style="Bar.TButton", width=0), "gui_adjust")
+        self.btn_adjust.pack(side="left")
+
+    def _bar_start(self):
+        """Listen = a session with the saved settings (as the old Start); Speak = the #294 speak session."""
+        self.toggle("speak" if self.v_mode.get() == "speak" else None)
+
+    def _pair_changed(self):
+        """The direction the next Start runs: Speak flips it the #294 way (my language -> the other one)."""
+        s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
+        if self.v_mode.get() == "speak":
+            s = quick_settings(s, "speak")
+        self.v_pair.set(f"{s['lang']}→{s['target']}")
+
+    def set_dot(self, name: str):
+        self.dot_state = name
+        self.dot.itemconfigure(self.dot_oval, fill=DOT[name])
+
+    def toggle_adjust(self):
+        if self.panel.state() == "normal":
+            self.panel.withdraw()
+        else:
+            self.panel.deiconify()
+            self.panel.lift()
+
     def _build_controls(self):
         s = self.settings
-        self.frm = f = ttk.Frame(self.root, padding=10)
+        self.panel = p = tk.Toplevel(self.root)  # #455: the "⚙ Adjust" panel, hidden until the bar asks for it
+        p.withdraw()
+        p.title("tinglongwu")
+        p.resizable(False, False)
+        p.protocol("WM_DELETE_WINDOW", p.withdraw)
+        self.frm = f = ttk.Frame(p, padding=10)
         self.combos = {}
         f.pack()
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
@@ -428,10 +484,8 @@ class App:
                                   lambda n: self.overlay.set_rows(n))
         self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
                                  lambda n: self.overlay.set_font(n))
-        self.btn = ttk.Button(f, text=t("gui_start"), command=self.toggle)
-        self.btn.grid(row=10, column=0, columnspan=2, sticky="we", pady=(8, 2))
-        self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)
-        self.btn_pause.grid(row=10, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
+        self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
+        self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
         self._tx(ttk.Button(f, command=self.check_setup), "gui_check_setup").grid(
             row=13, column=0, sticky="we", pady=(6, 0))
         self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(
@@ -453,8 +507,9 @@ class App:
         self._build_log(f)
 
     def _build_quick(self):
-        """#294 first screen: pick my language once (remembered), then one big button starts the session."""
-        q = ttk.Frame(self.root, padding=(10, 10, 10, 0))
+        """#294 easy start: pick my language once (remembered), then one big button starts the session.
+        #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
+        q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
         q.pack(before=self.frm, fill="x")
         self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
         ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
@@ -665,6 +720,7 @@ class App:
         self.load_shown = 0
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
+        self.set_dot("loading")
         self.v_notice.set("")
         self.errored = False
         self.listening = True
@@ -716,6 +772,7 @@ class App:
                     if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
                         self.load_t0 = None
                         self.btn.configure(text=t("gui_stop"), state="normal")
+                        self.set_dot("on")
                         ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
@@ -730,11 +787,15 @@ class App:
                 elif kind == "error":
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True
+                    self.set_dot("error")
+                    self.panel.deiconify()  # the error text is in the Adjust panel; a red dot alone says nothing
+                    self.panel.lift()
                 elif kind == "stopped":
                     self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
                         self.set_status("gui_stopped")
+                        self.set_dot("idle")
                     self.listening = False
                     self.quick_mode = None
                     self._sync_quick()
