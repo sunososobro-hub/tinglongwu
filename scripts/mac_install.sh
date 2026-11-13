@@ -42,7 +42,7 @@ WARNINGS=""
 # --uninstall (#476): hand over to scripts/uninstall.sh (other args, e.g. --purge, pass through)
 for a in "$@"; do
   if [ "$a" = "--uninstall" ]; then
-    [ -f "$DIR/scripts/uninstall.sh" ] || { echo "[x] $DIR/scripts/uninstall.sh not found; nothing to uninstall (set TLWU_DIR?)" >&2; exit 1; }
+    [ -f "$DIR/scripts/uninstall.sh" ] || { echo "[x] $DIR/scripts/uninstall.sh not found (older install, or wrong TLWU_DIR). Re-run this installer once to update, then run it with --uninstall." >&2; exit 1; }
     exec bash "$DIR/scripts/uninstall.sh" "$@"
   fi
 done

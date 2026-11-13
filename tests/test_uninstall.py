@@ -21,6 +21,7 @@ def _home(tmp_path: Path) -> Path:
     (d / ".venv").mkdir()
     (d / "pyproject.toml").write_text("")
     (d / "scripts").mkdir()
+    (d / "scripts" / "linux_menu.sh").write_text("")
     shutil.copy(ROOT / "scripts" / "uninstall.sh", d / "scripts" / "uninstall.sh")
     (h / "tts-kokoro").mkdir()
     (h / "models" / "kokoro").mkdir(parents=True)
@@ -60,6 +61,7 @@ def test_refuses_foreign_folder(tmp_path):
     h = _home(tmp_path)
     (h / "tinglongwu" / ".git").rmdir()
     (h / "tinglongwu" / "pyproject.toml").unlink()
+    (h / "tinglongwu" / "scripts" / "linux_menu.sh").unlink()
     (h / "tinglongwu" / "precious.txt").write_text("x")
     r = _run(["bash", str(ROOT / "scripts" / "uninstall.sh")], h)
     assert r.returncode != 0
@@ -73,3 +75,35 @@ def test_installers_delegate_uninstall_flag(tmp_path, script):
     assert r.returncode == 0, r.stderr
     assert "uninstalled" in r.stdout
     assert not (h / "tinglongwu").exists()
+
+
+def test_refuses_home_as_target(tmp_path):
+    h = _home(tmp_path)
+    env_script = ["bash", str(ROOT / "scripts" / "uninstall.sh")]
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))}
+    env.update(HOME=str(h), TLWU_YES="1", KOKORO_VENV=str(h))
+    r = subprocess.run(env_script, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0
+    assert (h / "tinglongwu").exists() and (h / "models").exists()
+
+
+def test_failed_removal_is_not_reported_as_success(tmp_path):
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    h = _home(tmp_path)
+    (h / "tts-kokoro" / "f").write_text("x")
+    (h / "tts-kokoro").chmod(0o555)
+    try:
+        r = _run(["bash", str(ROOT / "scripts" / "uninstall.sh")], h)
+    finally:
+        (h / "tts-kokoro").chmod(0o755)
+    assert r.returncode != 0
+    assert "uninstalled" not in r.stdout
+
+
+def test_refuses_other_git_python_project(tmp_path):
+    h = _home(tmp_path)
+    (h / "tinglongwu" / "scripts" / "linux_menu.sh").unlink()
+    assert (h / "tinglongwu" / ".git").exists() and (h / "tinglongwu" / "pyproject.toml").exists()
+    assert _run(["bash", str(ROOT / "scripts" / "uninstall.sh")], h).returncode != 0
+    assert (h / "tinglongwu").exists()
