@@ -17,8 +17,7 @@
 | numpy, scipy, onnxruntime | BSD-3, BSD-3, MIT | |
 | psutil, huggingface_hub | BSD-3, Apache-2.0 | |
 | NLLB-200 | CC-BY-NC 4.0 (non-commercial) | not shipped, no code or setup option |
-| Qwen3 LLM (GGUF; official Qwen repos) | Apache-2.0 | huggingface.co/Qwen/Qwen3-4B-GGUF (license from the model card metadata) |
-| llama-cpp-python (runs Qwen3 / Hy-MT2) | MIT | github.com/abetlen/llama-cpp-python |
+| llama-cpp-python (runs Hy-MT2) | MIT | github.com/abetlen/llama-cpp-python |
 | Hy-MT2-1.8B GGUF (Tencent; Japanese MT) | Apache-2.0 (LICENSE.txt in the repo is the plain Apache-2.0 text, no extra restrictions) | huggingface.co/tencent/Hy-MT2-1.8B-GGUF |
 | Vosk-TTS (code; Russian voice) | Apache-2.0 | github.com/alphacep/vosk-tts |
 | Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi; **optional, opt-in**: never downloaded by default, only via `tlwu-setup --vosk-tts-ru` or your own download) | **Unclear: upstream states no license for the model** (only the vosk-tts code repo is Apache-2.0; no model license found on alphacephei.com or in the repo; the upstream README now lists 0.9-multi). Treat as unknown; users are responsible. Without it Russian speech falls back to subtitles only | github.com/alphacep/vosk-tts, alphacephei.com/vosk/models |

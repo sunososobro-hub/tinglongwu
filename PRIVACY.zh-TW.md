@@ -16,7 +16,7 @@ tinglongWu 在你自己的電腦上翻譯語音。本頁說明哪些資料只留
 
 | # | 項目 | 何時 | 送出什麼 | 如何關閉 |
 |---|------|------|----------|----------|
-| 1 | `tlwu-setup` 下載模型：Hugging Face（Whisper、Qwen3 GGUF、Hy-MT2 GGUF；固定 commit + SHA256）、`raw.githubusercontent.com` 上的 Argos OPUS 索引與 argos-net.com 的套件（只有 `ru-en`、`en-zh` 有固定，其他語言對沒有） | 只在你執行 setup 並回答 yes 時 | 一般 HTTPS 請求（你的 IP、user agent、要的檔案） | 不執行 setup／回答 N |
+| 1 | `tlwu-setup` 下載模型：Hugging Face（Whisper、Hy-MT2 GGUF；固定 commit + SHA256）、`raw.githubusercontent.com` 上的 Argos OPUS 索引與 argos-net.com 的套件（只有 `ru-en`、`en-zh` 有固定，其他語言對沒有） | 只在你執行 setup 並回答 yes 時 | 一般 HTTPS 請求（你的 IP、user agent、要的檔案） | 不執行 setup／回答 N |
 | 2 | `scripts/mac_install.sh` 下載 Kokoro TTS 模型（第三方 GitHub release，只檢查大小、無雜湊）；Vosk 俄語 TTS 模型：自行從 alphacephei.com 下載，無雜湊 | macOS 安裝／手動 | 一般 HTTPS 請求 | 略過該步驟 |
 | 3 | Python 相依套件：PyPI，加上 llama-cpp wheel 的第三方索引（`requirements-llama-cuda.txt`） | `install.ps1`、`tlwu-setup --deps`、`mac_install.sh`、需求變動時的自動更新 | 一般 HTTPS 請求 | 不執行安裝程式 |
 | 4 | 自選的自動更新：對 GitHub `main` 分支做 `git fetch`（上限 6 秒）；需求變動時可能執行 `pip install -e .` | 只問一次，預設關 | git 請求 | 回答否，或設 `TLWU_NO_UPDATE=1` |

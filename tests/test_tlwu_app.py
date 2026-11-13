@@ -17,7 +17,7 @@ def gpu(total):
 
 @pytest.mark.parametrize("total,name,whisper,mt", [
     (24576, "gpu", "large-v3-turbo", ("--hymt",)),
-    (8192, "gpu", "large-v3-turbo", ("--hymt",)),  # #106: no Qwen by VRAM any more, 8 GB gets Hy-MT2 too
+    (8192, "gpu", "large-v3-turbo", ("--hymt",)),  # #106: 8 GB gets Hy-MT2 too
     (6144, "gpu", "large-v3-turbo", ("--hymt",)),
     (4096, "gpu", "large-v3-turbo", ("--hymt",)),
     (4095, "gpu-min", "small", ("--hymt",)),  # #301: Hy-MT2 runs on the CPU below 4 GB VRAM
@@ -42,7 +42,7 @@ def test_no_gpu_or_forced_cpu_is_cpu_tier():
     assert tiers.T_MIN.downloader_args() == ["--whisper", "small", "--packs", "zh,en", "--allow-unpinned", "--hymt"]
     assert tiers.T_GPU.downloader_args() == ["--whisper", "large-v3-turbo", "--packs", "zh,en", "--allow-unpinned", "--hymt"]
     assert "GB" in tiers.T_GPU.size_text and "GB" in tiers.T_CPU.size_text  # small + OPUS + Hy-MT2 ~1.8 GB
-    assert tiers.T_GPU.total_bytes < 3.5 * 1024 * tiers.MB  # turbo + OPUS + Hy-MT2, not the old ~10 GB Qwen tier
+    assert tiers.T_GPU.total_bytes < 3.5 * 1024 * tiers.MB  # turbo + OPUS + Hy-MT2, not the old ~10 GB tier
 
 
 def test_parse_smi_and_detect_gpu(monkeypatch):
@@ -190,7 +190,7 @@ def test_selftest_verdict_warns_only_on_a_real_failure():  # #99
     assert setup_gui.selftest_verdict(0, "asr: OK") == ("下載完成，自我測試通過！", None)
     old_tlwu = "usage: tlwu [-h]\ntlwu: error: unrecognized arguments: --selftest"
     assert setup_gui.selftest_verdict(2, old_tlwu) == ("下載完成！", None)
-    status, warn = setup_gui.selftest_verdict(1, "mt: FAIL qwen: out of memory")
+    status, warn = setup_gui.selftest_verdict(1, "mt: FAIL hymt: out of memory")
     assert "自我測試失敗" in status and "install.log" in warn and "out of memory" in warn
 
 

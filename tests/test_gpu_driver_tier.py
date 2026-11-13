@@ -50,7 +50,7 @@ def test_old_driver_gets_the_cpu_tier(monkeypatch):
     assert raw.driver == "457.49" and tiers.driver_too_old(raw, "win32")
     assert tiers.detect_gpu(run, platform="win32") is None
     assert tiers.choose_tier(tiers.detect_gpu(run, platform="win32")) is tiers.T_CPU
-    assert tiers.T_CPU.whisper == "small" and tiers.T_CPU.mt == ("--hymt",)  # Hy-MT2 on the CPU (#301), no Qwen (owner #89: small, not base)
+    assert tiers.T_CPU.whisper == "small" and tiers.T_CPU.mt == ("--hymt",)  # Hy-MT2 on the CPU (#301) (owner #89: small, not base)
 
 
 def test_new_driver_keeps_the_gpu_tier(monkeypatch):
