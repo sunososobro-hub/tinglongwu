@@ -21,6 +21,9 @@ from . import scoring
 
 FOCUS_PAIRS = (("en", "zh"), ("ja", "zh"), ("ru", "zh"), ("zh", "en"))  # owner spec v2 on #57: en/ja/ru <-> zh
 CLIPS_PER_LANG = 5  # owner spec v2 on #57: "5 clips per focus language"
+# #472 (#335 part 3): the languages Hy-MT2 translates directly since #470, scored -> zh to decide Experimental vs
+# supported. Run with `--langs it,pt,vi,th,id`; the manifest needs their clips with `ref_zh`.
+HYMT_NEW_LANGS = ("it", "pt", "vi", "th", "id")
 
 # PASS/FAIL thresholds (speed only: quality is scored 0-100 by scoring.py, not gated here).
 ASR_RTF_MAX = 1.0  # real time by definition: recognising a clip must not take longer than the clip lasts
@@ -205,7 +208,8 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
 
         noise_rep = noise_mod.run_noise(eng.load_asr(pairs[0][0] if not langs else langs[0]["pair"].split("->")[0]), noise)
     if not langs:
-        raise ValueError("the manifest has no clip for any focus language (en, ja, ru, zh)")
+        raise ValueError("the manifest has no clip for any requested language ("
+                         + ", ".join(src for src, _ in pairs) + ")")
     total_s = clock() - t0
     clips = [c for lg in langs for c in lg["clips"]]
     total_ram, total_vram = totals or (None, None)

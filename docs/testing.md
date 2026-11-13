@@ -22,6 +22,18 @@ python -m tlwu_eval --gate r.json --baseline eval/baseline.json
 
 To record a baseline, copy each pair's `chrf` from `r.json` into `eval/baseline.json` and set `chrf_margin`.
 
+## Hy-MT2 new languages: Experimental vs supported (#472)
+
+Add 5 clips each for it, pt, vi, th and id to the smoke manifest (with `ref_zh`), install `unbabel-comet`, then:
+
+```
+python -m tlwu_eval --smoke --data eval_data/smoke --clips 5 --engine hymt --langs it,pt,vi,th,id --comet --out r472.json
+```
+
+It prints a table with COMET x100 (two decimals) per language. The floor, set in #472 before any run, is 75.00: a
+language at or above it may leave `langs.EXPERIMENTAL` (and join the README and roadmap tables); below it, it stays
+Experimental. Paste the table into the PR that moves the languages.
+
 ## Silence / noise hallucination (#121)
 
 `--smoke` also feeds four no-speech categories (silence, aircon, keyboard, distant babble; synthetic, seeded) to the ASR and prints the count and rate (x100, 2 decimals) per category with any text that would still be shown. Any count > 0 is red and fails the smoke. Put real recordings in `<dir>/{silence,aircon,keyboard,distant}/*.wav` (`--noise-dir` or `$TLWU_EVAL_NOISE_DIR`, outside the repo) to add them. `--no-noise` skips it.
