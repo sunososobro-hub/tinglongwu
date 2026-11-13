@@ -1,8 +1,8 @@
 name: mobile-apk
 # Builds the Android preview APK (arm64) so the app can be installed from a phone, no computer needed.
 # On push to dev (or a manual run on dev) the APK is published to the rolling pre-release `mobile-latest`:
-# the tag is moved to the built commit and the APK asset is replaced. Other assets on that release
-# are kept; the models zip is rebuilt from official sources only when assets/models_manifest.json
+# the tag is moved to the built commit and the APK asset is replaced. The release carries only the APK
+# and the models zip (hashes live in the body); stray .sha256 assets are deleted; the models zip is rebuilt from official sources only when assets/models_manifest.json
 # changes. It is never marked Latest and never touches v* tags/releases (release.yml).
 on:
   push:
@@ -97,7 +97,7 @@ jobs:
           rm -f "$RUNNER_TEMP/release.jks"
           mkdir -p "$RUNNER_TEMP/out"
           cp "$APK" "$RUNNER_TEMP/out/$APK_NAME"
-          (cd "$RUNNER_TEMP/out" && sha256sum "$APK_NAME" > "$APK_NAME.sha256" && cat "$APK_NAME.sha256")
+          (cd "$RUNNER_TEMP/out" && sha256sum "$APK_NAME" > "$APK_NAME.sha256" && cat "$APK_NAME.sha256")   # build-internal; not uploaded to the release
           echo "$TLWU_SIGNING" > "$RUNNER_TEMP/out/signing.txt"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -132,20 +132,40 @@ jobs:
           SHA: ${{ github.sha }}
           TAG: mobile-latest
           TITLE: tinglongWu mobile (preview)
+          ZIP: tlwu-mobile-models.zip
         run: |
           set -euo pipefail
           SIGNING=$(cat out/signing.txt); APK_SHA=$(cut -d' ' -f1 "out/$APK_NAME.sha256")
+          BASE="https://github.com/$GH_REPO/releases/download/$TAG"
+          OLD_BODY=$(gh release view "$TAG" --json body --jq .body 2>/dev/null || true)
+          # Carry over the models zip hash + manifest marker (kept in the body, not as .sha256 assets).
+          ZIP_SHA=$(printf '%s\n' "$OLD_BODY" | sed -n 's/^- models zip SHA256: `\([0-9a-f]*\)`.*/\1/p' | head -1 || true)
+          MANIFEST=$(printf '%s\n' "$OLD_BODY" | sed -n 's/.*<!-- tlwu-manifest:\([0-9a-f]*\) -->.*/\1/p' | head -1 || true)
+          if [ -z "$MANIFEST" ] && gh release download "$TAG" -p "$ZIP.sha256" -O "$RUNNER_TEMP/old.sha256" 2>/dev/null; then
+            ZIP_SHA=$(sed -n '1s/ .*//p' "$RUNNER_TEMP/old.sha256")
+            MANIFEST=$(sed -n 's/^manifest //p' "$RUNNER_TEMP/old.sha256" | head -1)
+          fi
           cat > notes.md <<EOF
-          Rolling preview of the Android app (arm64), rebuilt from \`dev\` on every change under \`mobile/\`.
-          This is not a versioned release; it is replaced each time.
+          **1. Install the app:** [$APK_NAME]($BASE/$APK_NAME)
 
-          **On the phone:** download \`$APK_NAME\` below, open it, allow "install unknown apps" for your browser,
-          install. Then download \`tlwu-mobile-models.zip\` (if listed below) and use **Import models** in the app.
-          Full steps: [mobile/README.md](https://github.com/$GH_REPO/blob/dev/mobile/README.md).
+          **2. Get the translation pack (1.4 GB, once):** [$ZIP]($BASE/$ZIP)
+
+          Open the app, tap **Import models**, pick the zip.
+
+          <details>
+          <summary>Details</summary>
+
+          Rolling preview of the Android app (arm64), rebuilt from \`dev\` on every change under \`mobile/\`.
+          This is a preview, not a versioned release; it is replaced each time.
+          Full steps: [mobile/README.md](https://github.com/$GH_REPO/blob/dev/mobile/README.md)
 
           - commit: $SHA
-          - APK SHA256: \`$APK_SHA\`
           - signed with: $SIGNING
+          - APK SHA256: \`$APK_SHA\`
+          - models zip SHA256: \`$ZIP_SHA\`
+          <!-- tlwu-manifest:$MANIFEST -->
+
+          </details>
           EOF
           # Never replace a newer preview with an older run (lower versionCode = not installable as an
           # update). The published run number is kept in the release notes; checked under the lock above.
@@ -164,12 +184,16 @@ jobs:
           fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             # assets first, then the notes (which carry the run marker), so a failed upload is retried
-            gh release upload "$TAG" "out/$APK_NAME" "out/$APK_NAME.sha256" --clobber
+            gh release upload "$TAG" "out/$APK_NAME" --clobber
             gh release edit "$TAG" --title "$TITLE" --notes-file notes.md --prerelease --latest=false
           else
-            gh release create "$TAG" "out/$APK_NAME" "out/$APK_NAME.sha256" --verify-tag \
+            gh release create "$TAG" "out/$APK_NAME" --verify-tag \
               --title "$TITLE" --notes-file notes.md --prerelease --latest=false
           fi
+          # drop the old separate .sha256 assets only after the notes (which now carry the hashes) are saved
+          gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".sha256"))' | while read -r n; do
+            gh release delete-asset "$TAG" "$n" --yes
+          done
           gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
       - name: Models zip on mobile-latest (rebuilt from official sources only when the manifest changes)
         if: steps.apk.outputs.stale != 'true'   # an older run must not replace a newer bundle
@@ -181,13 +205,16 @@ jobs:
           set -euo pipefail
           Z=tlwu-mobile-models.zip; W="$RUNNER_TEMP/models"
           MH=$(sha256sum mobile/assets/models_manifest.json | cut -d' ' -f1)
-          if gh release download "$TAG" -p "$Z.sha256" -O "$RUNNER_TEMP/old.sha256" 2>/dev/null              && grep -q "manifest $MH" "$RUNNER_TEMP/old.sha256"; then
+          gh release view "$TAG" --json body,assets --jq '.body' > "$RUNNER_TEMP/body.md"
+          HAVE_ZIP=$(gh release view "$TAG" --json assets --jq "[.assets[].name | select(. == \"$Z\")] | length")
+          if [ "$HAVE_ZIP" = 1 ] && grep -q "<!-- tlwu-manifest:$MH -->" "$RUNNER_TEMP/body.md"; then
             echo "$Z is up to date (manifest $MH)"; exit 0
           fi
           bash mobile/tool/fetch_models.sh "$W"
           python3 -I mobile/tool/make_models_zip.py "$W/models" "$W/licenses" "$RUNNER_TEMP/$Z"
-          (cd "$RUNNER_TEMP" && sha256sum "$Z" > "$Z.sha256" && echo "manifest $MH" >> "$Z.sha256")
-          # zip first, then the sidecar that marks it current
+          ZSHA=$(sha256sum "$RUNNER_TEMP/$Z" | cut -d' ' -f1)
           gh release upload "$TAG" "$RUNNER_TEMP/$Z" --clobber
-          gh release upload "$TAG" "$RUNNER_TEMP/$Z.sha256" --clobber
+          # record hash + manifest in the body (marks the zip current), after the zip is uploaded
+          sed -i -e "s/^- models zip SHA256: .*/- models zip SHA256: \`$ZSHA\`/"                  -e "s/<!-- tlwu-manifest:[0-9a-f]* -->/<!-- tlwu-manifest:$MH -->/" "$RUNNER_TEMP/body.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/body.md"
           gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'
