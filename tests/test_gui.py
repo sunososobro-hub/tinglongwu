@@ -441,11 +441,13 @@ def _bound_vars(top) -> set[str]:
 
 def test_control_bar_is_compact_in_every_ui_language(gui_app):
     """#455: the main window is a small bar (<= 420x60 at 100% scale), also while it counts "Loading... N s"."""
+    from tinglongwu.i18n import t
+
     a = gui_app
     for ui in ("English", "Русский", "繁體中文"):
         a.v_ui_lang.set(ui)
         a.switch_lang()
-        for text in (a.btn.cget("text"), "Loading... 120 s"):
+        for text in (a.btn.cget("text"), t("gui_loading", s=120)):  # the widest text the button shows
             a.btn.configure(text=text)
             a.root.update_idletasks()
             assert a.bar.winfo_reqwidth() <= 420 and a.bar.winfo_reqheight() <= 60, (ui, text)
