@@ -197,7 +197,7 @@ if [ "$mode" = "1" ]; then
   fi
 fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
-SMT=hymt   # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
+SMT=hymt   # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs)
 ensure_hymt() {  # llama-cpp-python missing: menuopts prints the pip line; GGUF missing: offer tlwu-setup --hymt
   have_llama || { python -m tinglongwu.menuopts speak "$SPEAK" >/dev/null; exit 1; }
   have_hymt_file || { m M_NO_HYMT_SPEAK; ask_setup --hymt; }

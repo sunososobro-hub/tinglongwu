@@ -188,7 +188,7 @@ if ($mode -eq "1") {
 }
 Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))
 
-# #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
+# #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs)
 if (-not (Test-Llama)) { Write-Host "  & $py -m pip install llama-cpp-python==0.3.36 --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"; exit 1 }
 if (-not (Test-HymtFile)) { Write-Host (T 'NO_HYMT_SPEAK'); Invoke-Setup --hymt }
 if ($speak -eq "follow") {
