@@ -1,3 +1,4 @@
+import os
 import json
 import sys
 from datetime import datetime, timezone
@@ -254,3 +255,34 @@ def test_speed_block_shows_medians_only_for_three_windows(tmp_path):
     assert sp["pr_all"] == sp["pr_7d"] == sp["pr_24h"] == 24.0
     # issue closed 11-11T10:00 is 26 h before NOW -> in 7d/all-time, not in 24 h
     assert sp["issue_all"] == sp["issue_7d"] == 24.0 and sp["issue_24h"] is None
+
+
+def test_every_activity_block_has_a_caption():
+    import re
+    page = sd.render_html(sd.build_series(fake_api, "o/r", "dev", NOW))
+    blocks = re.findall(r'<section class="blk">(.*?)</section>', page, re.S)
+    assert len(blocks) >= 8
+    for b in blocks:
+        assert re.search(r'<p class="cap1">[^<]+</p>', b), b[:80]
+
+
+def test_activity_grid_multi_column_on_desktop_no_hscroll_on_phone(tmp_path):
+    import pytest
+    pw = pytest.importorskip("playwright.sync_api")
+    series = sd.build_series(fake_api, "o/r", "dev", NOW)
+    f = tmp_path / "index.html"
+    f.write_text(sd.render_html(series), encoding="utf-8")
+    with pw.sync_playwright() as p:
+        try:
+            br = p.chromium.launch(executable_path=os.environ.get("TLWU_CHROMIUM") or None)
+        except Exception as e:  # Chromium missing
+            pytest.skip("chromium unavailable: %s" % e)
+        try:
+            pg = br.new_page(viewport={"width": 1440, "height": 900})
+            pg.goto(f.as_uri())
+            tops = pg.eval_on_selector_all(".blk", "els=>els.map(e=>Math.round(e.getBoundingClientRect().top))")
+            assert len(tops) != len(set(tops)), tops  # at least two blocks share a top offset
+            pg.set_viewport_size({"width": 390, "height": 844})
+            assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        finally:
+            br.close()
