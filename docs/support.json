@@ -1,5 +1,13 @@
 {
   "_about": "Single source for the support tables and the contributors block. Edit here, then run: python scripts/render_support.py (README files) / --notes TAG (release notes). Contributors come from .all-contributorsrc. Lights: 🟢 real device or release gate, 🟡 CI/eval only, ⚪ untested or unsupported, — same language. Evidence for each light goes in the release notes' developer section.",
+  "next_release": {
+    "version": "v0.3.2",
+    "milestone": "https://github.com/sunososobro-hub/tinglongwu/milestone/1",
+    "tag": {"en": "Next release", "zh-TW": "下一版", "zh-CN": "下一版"},
+    "headline": {"en": "Meeting mode tells you and the other side apart", "zh-TW": "會議模式分得出「你」和「對方」", "zh-CN": "会议模式分得出“你”和“对方”"},
+    "detail": {"en": "Subtitles label who is speaking: you or the other side.", "zh-TW": "字幕會標出誰在說話：你，還是對方。", "zh-CN": "字幕会标出谁在说话：你，还是对方。"},
+    "link": {"en": "See everything planned for v0.3.2", "zh-TW": "看 v0.3.2 的完整清單", "zh-CN": "看 v0.3.2 的完整清单"}
+  },
   "device": {
     "header": {
       "en": ["OS", "Install", "Translate subtitles", "Speak (voice)", "GPU", "CPU-only"],

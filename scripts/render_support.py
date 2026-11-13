@@ -30,6 +30,8 @@ C_BLOCK = re.compile(re.escape(C_START) + r".*?" + re.escape(C_END), re.S)
 ROADMAP = "docs/roadmap.html"
 G_START, G_END = "<!-- ROADMAP-GRID:START -->", "<!-- ROADMAP-GRID:END -->"
 GRID = re.compile(re.escape(G_START) + r".*?" + re.escape(G_END), re.S)
+N_START, N_END = "<!-- ROADMAP-NEXT:START -->", "<!-- ROADMAP-NEXT:END -->"
+NEXT = re.compile(re.escape(N_START) + r".*?" + re.escape(N_END), re.S)
 DOT = {"🟢": "ok", "🟡": "ci", "⚪": "no-"}
 
 
@@ -113,6 +115,23 @@ def roadmap_grid(src: dict) -> str:
     return "\n".join(out)
 
 
+def roadmap_next(src: dict) -> str:
+    """The "Next release" headline card at the top of docs/roadmap.html, markers included (text from support.json)."""
+    n = src["next_release"]
+    t = lambda k, cls, tag="span", extra="": (
+        f'<{tag} class="{cls}"{extra} data-en="{html.escape(n[k]["en"], quote=True)}" data-zh-cn="{html.escape(n[k]["zh-CN"], quote=True)}">'
+        f'{html.escape(n[k]["zh-TW"])}</{tag}>')
+    return "\n".join([
+        N_START,
+        '<section class="next" aria-label="Next release">',
+        f'  <div class="nt">{t("tag", "tag")} <b>{html.escape(n["version"])}</b></div>',
+        "  " + t("headline", "hl", "h2"),
+        "  " + t("detail", "dt", "p"),
+        "  " + t("link", "go", "a", f' href="{html.escape(n["milestone"], quote=True)}"'),
+        "</section>",
+        N_END])
+
+
 def notes(tag: str, src: dict, people: list[dict]) -> str:
     base = f"{REPO_URL}/releases/download/{tag}/"
     download = "\n".join(src["download"]).format(ver=tag.lstrip("v"), base=base)
@@ -165,6 +184,14 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
         stale.append(ROADMAP)
         if not a.check:
             rp.write_text(new, "utf-8", newline="\n")
+    old = rp.read_text("utf-8")
+    if len(NEXT.findall(old)) != 1:
+        raise SystemExit(f"{ROADMAP}: expected exactly one {N_START} ... {N_END} block")
+    new = NEXT.sub(lambda m: roadmap_next(src), old)
+    if new != old and ROADMAP not in stale:
+        stale.append(ROADMAP)
+    if new != old and not a.check:
+        rp.write_text(new, "utf-8", newline="\n")
     if a.check and stale:
         print("out of date (run python scripts/render_support.py):", ", ".join(stale))
         return 1

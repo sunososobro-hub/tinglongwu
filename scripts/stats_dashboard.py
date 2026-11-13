@@ -309,6 +309,7 @@ select{font:inherit;padding:4px 8px;background:var(--bg);color:var(--fg);border:
 small,p.n{color:var(--mut)}
 </style></head><body>
 <h1 style="font-size:20px">__REPO__ progress</h1>
+<p style="font-size:16px;margin:4px 0 12px"><a href="roadmap.html">&#x1F5FA;&#xFE0F; Roadmap</a> &middot; <a href="docs.html">Docs</a></p>
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
 <h2>Work finished per day</h2><div id="c_thru"></div>
