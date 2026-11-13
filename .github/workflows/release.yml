@@ -41,8 +41,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt \
-            --verify-tag --generate-notes --title "$TAG"
+          # Draft first: it becomes `latest` only when windows-installer publishes it, after the wizard
+          # that the README links is attached. A tag with a suffix (v1.2.3-beta.1) is a pre-release,
+          # which never becomes `latest`. A re-run (release already exists) only replaces the files.
+          pre=(); [[ "$TAG" == *-* ]] && pre=(--prerelease)
+          files=(dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" --draft "${pre[@]}" \
+              --verify-tag --generate-notes --title "$TAG"
+          fi
 
   windows-installer:
     # Attach the setup wizard under its versioned name and under the fixed name
@@ -73,11 +82,13 @@ jobs:
         run: |
           set -euo pipefail
           cd dist/installer
-          exe=$(ls tinglongwu-setup-*.exe)
-          [ "$(echo "$exe" | wc -l)" = 1 ] || { echo "expected one wizard, got: $exe"; exit 1; }
+          exe="tinglongwu-setup-${TAG#v}.exe"   # named after tinglongwu.__version__, which must match the tag
+          [ -f "$exe" ] || { echo "expected $exe (set __version__ in tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
           cp "$exe" tinglongwu-setup.exe
-          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O all.txt
+          grep -v ' tinglongwu-setup' all.txt > SHA256SUMS.txt || true   # a re-run replaces the wizard lines
           for f in "$exe" tinglongwu-setup.exe; do   # Git Bash prints "hash *file"; keep the "hash  file" format
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false   # only now can it become `latest`

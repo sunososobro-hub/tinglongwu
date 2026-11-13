@@ -10,7 +10,7 @@ LATEST = "https://github.com/sunososobro-hub/tinglongwu/releases/latest/download
 RAW_MAIN = "https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/"
 ASSETS = {"tinglongwu-setup.exe", "mac_install.sh", "install.sh"}
 DOCS = ("README.md", "README.zh-CN.md", "README.zh-TW.md", "docs/details.md", "docs/install.md",
-        "docs/readme-full.zh-TW.md", "docs/readme-full.zh-CN.md")
+        "docs/readme-full.zh-TW.md", "docs/readme-full.zh-CN.md", "PRIVACY.md", "PRIVACY.zh-TW.md")
 
 
 def _urls(name):
@@ -38,11 +38,26 @@ def test_no_doc_installs_from_raw_main():
 def test_install_table_is_at_the_top_of_the_readme():
     s = (ROOT / "README.md").read_text("utf-8")
     assert s.index(LATEST) < s.index("## ")
+    for name in ("README.zh-CN.md", "README.zh-TW.md"):  # right under the first heading (install)
+        s = (ROOT / name).read_text("utf-8")
+        first = s.index("\n## ")
+        assert s.index(LATEST) < s.index("\n## ", first + 1), name
 
 
 def test_release_workflow_attaches_the_fixed_name_wizard():
     wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
-    assert "tinglongwu-setup.exe" in wf and "SHA256SUMS.txt --clobber" in wf
+    iss = (ROOT / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
+    # the job looks for the wizard by the name the .iss gives it, with the version taken from the tag
+    assert "OutputBaseFilename=tinglongwu-setup-{#AppVersion}" in iss
+    assert 'exe="tinglongwu-setup-${TAG#v}.exe"' in wf
+    assert 'cp "$exe" tinglongwu-setup.exe' in wf
+    assert "grep -v ' tinglongwu-setup'" in wf  # a re-run must not append duplicate hashes
+
+
+def test_release_is_a_draft_until_the_wizard_is_attached():
+    wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
+    assert "--draft" in wf and "--prerelease" in wf
+    assert wf.index("--clobber", wf.index("windows-installer:")) < wf.index("--draft=false")
 
 
 def test_install_rows_are_windows_macos_linux():

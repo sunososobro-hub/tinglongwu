@@ -6,17 +6,17 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 | OS | Install (latest release) |
 |---|---|
-| Windows 10/11 (64-bit) | Download [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe), run it and keep clicking **Next** |
+| Windows 10/11 (64-bit) | Download [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe), run it, accept the license, then keep clicking **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux (x86_64, Ubuntu 24.04 tested) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
 | OS | Install | Translate subtitles | Speak (voice) | GPU | CPU-only |
 |---|:-:|:-:|:-:|:-:|:-:|
-| Windows 10/11 | 🟢 | 🟢 | 🟢 | 🟢 | 🟡 |
+| Windows 10/11 | 🟡 | 🟢 | ⚪ | 🟢 | 🟡 |
 | macOS | 🟡 | ⚪ | ⚪ | ⚪ | ⚪ |
-| Linux (Ubuntu 24.04) | 🟢 | ⚪ | ⚪ | ⚪ | 🟡 |
+| Linux (Ubuntu 24.04) | 🟢 | 🟢 | 🟢 | ⚪ | 🟡 |
 
-🟢 tested on a real device · 🟡 install tested in CI only (CPU-only: latency not yet measured on a real laptop) · ⚪ not tested yet
+🟢 tested on a real device · 🟡 install tested in CI only (Windows: the setup wizard; the portable zip is tested on a real PC. CPU-only: latency not yet measured on a real laptop) · ⚪ not tested yet
 
 Built with help from 4 people: <a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=40" width="40" height="40" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=40" width="40" height="40" alt="cook1e0728"></a> <a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=40" width="40" height="40" alt="psgo555"></a> <a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=40" width="40" height="40" alt="jchodev"></a>
 

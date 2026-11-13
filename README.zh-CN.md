@@ -10,17 +10,19 @@
 
 | 系统 | 命令 |
 |---|---|
-| Windows 10/11（64 位） | 下载 [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe)，运行后一直点 **Next** |
+| Windows 10/11（64 位） | 下载 [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe)，运行后勾选同意许可，再一直点 **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux（x86_64，已在 Ubuntu 24.04 测试） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
 | 系统 | 安装 | 翻译字幕 | 说话（语音） | GPU | 纯 CPU |
 |---|:-:|:-:|:-:|:-:|:-:|
-| Windows 10/11 | 🟢 | 🟢 | 🟢 | 🟢 | 🟡 |
+| Windows 10/11 | 🟡 | 🟢 | ⚪ | 🟢 | 🟡 |
 | macOS | 🟡 | ⚪ | ⚪ | ⚪ | ⚪ |
-| Linux（Ubuntu 24.04） | 🟢 | ⚪ | ⚪ | ⚪ | 🟡 |
+| Linux（Ubuntu 24.04） | 🟢 | 🟢 | 🟢 | ⚪ | 🟡 |
 
-🟢 已在实机测试 · 🟡 仅在 CI 测过安装（纯 CPU：尚未在实体笔记本测延迟） · ⚪ 尚未测试
+🟢 已在实机测试 · 🟡 仅在 CI 测过安装（Windows：安装向导；便携版 zip 已在实机测试。纯 CPU：尚未在实体笔记本测延迟） · ⚪ 尚未测试
+
+第一次安装？先看[安装时可能看到的画面](docs/install.md#what-you-might-see-during-install)（未签名警告是正常的，英文）。
 
 感谢 4 位朋友一起打造：<a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=40" width="40" height="40" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=40" width="40" height="40" alt="cook1e0728"></a> <a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=40" width="40" height="40" alt="psgo555"></a> <a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=40" width="40" height="40" alt="jchodev"></a>
 

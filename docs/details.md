@@ -20,7 +20,7 @@ Full Chinese translations of the previous long README: [繁體中文](readme-ful
 
 | OS | Command |
 |---|---|
-| Windows 10/11 (64-bit) | Download [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe), run it and keep clicking **Next** |
+| Windows 10/11 (64-bit) | Download [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe), run it, accept the license, then keep clicking **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux (x86_64, Ubuntu 24.04 tested) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
