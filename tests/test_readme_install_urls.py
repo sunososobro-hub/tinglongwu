@@ -74,7 +74,7 @@ def test_support_table_and_contributor_avatars_under_install():
         top = s[:s.index("## ", s.index(LATEST))]
         assert "🟢" in top and "🟡" in top and "⚪" in top, name
         for login in logins:
-            assert f"https://github.com/{login}.png?size=40" in top, (name, login)
+            assert f"https://github.com/{login}.png?size=60" in top, (name, login)
 
 
 def test_language_table_right_after_the_device_table():

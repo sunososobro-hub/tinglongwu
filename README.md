@@ -18,16 +18,15 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 | Language | Hear it | To 繁體中文 | To 简体中文 | To English | Speak it (voice) |
 |---|:-:|:-:|:-:|:-:|:-:|
-| 繁體中文 (zh-TW) | 🟢 | — | 🟡 | 🟢 | 🟢 |
-| 简体中文 (zh-CN) | 🟡 | 🟡 | — | 🟢 | ⚪ |
+| 中文 (zh) | 🟢 | — | — | 🟢 | 🟢 Windows |
 | English (en) | 🟢 | 🟢 | 🟡 | — | ⚪ |
 | 日本語 (ja) | 🟢 | 🟢 | 🟡 | ⚪ | ⚪ |
-| Русский (ru) | 🟡 | 🟡 | 🟡 | ⚪ | 🟡 |
+| Русский (ru) | 🟡 | 🟡 | 🟡 | ⚪ | 🟢 Linux |
 | 한국어 (ko) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language
 
-Built with help from 4 people: <a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=40" width="40" height="40" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=40" width="40" height="40" alt="cook1e0728"></a> <a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=40" width="40" height="40" alt="psgo555"></a> <a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=40" width="40" height="40" alt="jchodev"></a>
+<p><b>Built with help from 4 people</b></p><table><tr><td align="center"><a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=60" width="60" height="60" alt="sunososobro-hub"><br><sub><b>sunososobro-hub</b></sub></a><br>💻 📖 🚧</td><td align="center"><a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=60" width="60" height="60" alt="cook1e0728"><br><sub><b>cook1e0728</b></sub></a><br>💻</td><td align="center"><a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=60" width="60" height="60" alt="psgo555"><br><sub><b>psgo555</b></sub></a><br>🐛</td><td align="center"><a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=60" width="60" height="60" alt="jchodev"><br><sub><b>jchodev</b></sub></a><br>💻 🤔</td></tr></table><p><sub>AI helpers: 🤖 <a href="https://www.anthropic.com/claude">Claude</a> (Anthropic) · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a> (code review)</sub><br><sub>💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)</sub></p>
 
 First time? See [what you might see during install](docs/install.md#what-you-might-see-during-install) (unsigned-app warnings are expected). <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
 

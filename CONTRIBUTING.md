@@ -9,7 +9,7 @@ Thanks for stopping by. You do not need to be an expert to help, and we would ra
 
 - Small PRs: typo fixes, clearer docs, better error messages.
 - Translations of docs and UI strings.
-- **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](README.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
+- **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](docs/details.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
 - AI-assisted PRs are fine. You are the author: run the code and the tests yourself before opening the PR.
 
 ## Before you start

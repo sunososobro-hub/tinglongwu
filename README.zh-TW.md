@@ -22,23 +22,20 @@
 
 | 語言 | 聽得懂 | 譯成繁體中文 | 譯成簡體中文 | 譯成英文 | 念出來（語音） |
 |---|:-:|:-:|:-:|:-:|:-:|
-| 繁體中文 (zh-TW) | 🟢 | — | 🟡 | 🟢 | 🟢 |
-| 简体中文 (zh-CN) | 🟡 | 🟡 | — | 🟢 | ⚪ |
+| 中文 (zh) | 🟢 | — | — | 🟢 | 🟢 Windows |
 | English (en) | 🟢 | 🟢 | 🟡 | — | ⚪ |
 | 日本語 (ja) | 🟢 | 🟢 | 🟡 | ⚪ | ⚪ |
-| Русский (ru) | 🟡 | 🟡 | 🟡 | ⚪ | 🟡 |
+| Русский (ru) | 🟡 | 🟡 | 🟡 | ⚪ | 🟢 Linux |
 | 한국어 (ko) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 🟢 已在實機或發版關卡測試 · 🟡 只在 CI 或評測測過，尚未上實機（Windows 安裝：指安裝精靈；可攜版 zip 已實機測試。純 CPU：尚未在實體筆電量延遲） · ⚪ 尚未測試或不支援 · — 同一語言
 
 第一次安裝？先看[安裝時可能看到的畫面](docs/install.md#what-you-might-see-during-install)（未簽章警告是正常的，英文）。
 
-感謝 4 位朋友一起打造：<a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=40" width="40" height="40" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=40" width="40" height="40" alt="cook1e0728"></a> <a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=40" width="40" height="40" alt="psgo555"></a> <a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=40" width="40" height="40" alt="jchodev"></a>
+<p><b>感謝 4 位朋友一起打造</b></p><table><tr><td align="center"><a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=60" width="60" height="60" alt="sunososobro-hub"><br><sub><b>sunososobro-hub</b></sub></a><br>💻 📖 🚧</td><td align="center"><a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=60" width="60" height="60" alt="cook1e0728"><br><sub><b>cook1e0728</b></sub></a><br>💻</td><td align="center"><a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=60" width="60" height="60" alt="psgo555"><br><sub><b>psgo555</b></sub></a><br>🐛</td><td align="center"><a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=60" width="60" height="60" alt="jchodev"><br><sub><b>jchodev</b></sub></a><br>💻 🤔</td></tr></table><p><sub>AI 幫手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（程式碼審查）</sub><br><sub>💻 程式 · 🐛 回報問題 · 📖 文件 · 🤔 點子 · 🚧 維護 · 🤖 AI 工具（不算在人數內）</sub></p>
 
 ![延遲](docs/img/latency.svg)
 
-## 文件
-
-**[文件（安裝選項、系統需求、隱私、FAQ、全部指南）](https://sunososobro-hub.github.io/tinglongwu/docs.html)** · [完整舊版說明](docs/readme-full.zh-TW.md)
+## [文件](https://sunososobro-hub.github.io/tinglongwu/docs.html)（安裝選項、系統需求、隱私、FAQ、全部指南） · [完整舊版說明](docs/readme-full.zh-TW.md)
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.

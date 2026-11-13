@@ -27,22 +27,26 @@ To release:
       | macOS | ... |
       | Linux (Ubuntu 24.04) | ... |
 
-      🟢 tested on a real device · 🟡 install tested in CI only (plus any caveat, e.g. CPU-only latency not measured) · ⚪ not tested yet
+      (no legend here: one legend under the language table covers both tables)
       ```
 
-   2b. Right after it, the language table (rows: languages; columns: what the user does). Every light needs evidence, listed in the developer section (step 5): 🟢 real-device or release-gate run, 🟡 CI/eval only or quality still being measured, ⚪ not supported or untested, — same language. Only list languages this tag actually supports. Name each language by its native name plus code (`繁體中文 (zh-TW)`, `简体中文 (zh-CN)`, `English (en)`, `日本語 (ja)`, `Русский (ru)`, `한국어 (ko)`); no flag emoji anywhere, since flags map languages to countries:
+   2b. Right after it, the language table (rows: languages; columns: what the user does). Every light needs evidence, listed in the developer section (step 5): 🟢 real-device or release-gate run, 🟡 CI/eval only or quality still being measured, ⚪ not supported or untested, — same language. Only list languages this tag actually supports. Chinese is one row (speech has no script); Traditional and Simplified are output columns. If a light holds only on one OS, say so in the cell (`🟢 Windows`). Name each language by its native name plus code (`中文 (zh)`, `English (en)`, `日本語 (ja)`, `Русский (ru)`, `한국어 (ko)`); no flag emoji anywhere, since flags map languages to countries:
 
       ```
       | Language | Hear it | To 繁體中文 | To 简体中文 | To English | Speak it (voice) |
       |---|:-:|:-:|:-:|:-:|:-:|
-      | 繁體中文 (zh-TW) | ... |
-      | 简体中文 (zh-CN) | ... |
+      | 中文 (zh) | ... |
+      | English (en) | ... |
       | English (en) | ... |
       ```
 
-   3. Contributors: `Built with help from N people:` and one avatar per login in `.all-contributorsrc` (all-time, reporters included; the list only grows),
-      `<a href="https://github.com/LOGIN"><img src="https://github.com/LOGIN.png?size=40" width="40" height="40" alt="LOGIN"></a>`.
-      No `@` text here: an @mention notifies the person, so mentioning everyone on every release is spam. @mention only people who are **new** in this release (first contribution or first report since the last release), once, in a `Thanks` line in step 5. GitHub's bottom "Contributors" block then lists only those new people; that is intended.
+   3. Contributors, all-time and cumulative (`.all-contributorsrc`, reporters included; the list only grows): the bold line `Built with help from N people` (N = humans only), a single-row HTML table with one cell per person, then one small line for AI tools and one emoji legend line. Each cell has only the avatar, the login and the emoji, no caption:
+
+      ```
+      <td align="center"><a href="https://github.com/LOGIN"><img src="https://github.com/LOGIN.png?size=60" width="60" height="60" alt="LOGIN"><br><sub><b>LOGIN</b></sub></a><br>EMOJI</td>
+      ```
+
+      EMOJI are the person's `contributions` types (💻 code, 🐛 bug, 📖 doc, 🤔 ideas, 🚧 maintenance). Under the table: `AI helpers: 🤖 Claude (Anthropic) · 🤖 CodeRabbit (code review)`, as plain text links to their official sites (https://www.anthropic.com/claude, https://www.coderabbit.ai), no logos. Legend: `💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)`. Keep the whole block on one line in the README (its 60-line budget). No `@` text in the block: an @mention notifies the person, so mentioning everyone on every release is spam. @mention only people who are **new** in this release (first contribution or first report since the last release), once, in a `Thanks` line in step 5. GitHub's bottom "Contributors" block then lists only those new people; that is intended.
    4. `## What's new`: at most 3 plain-language bullets about what the user notices. No PR or issue numbers.
    5. `<details><summary>For developers</summary>`: the full changelog with PR/issue links, the evidence for each light in the language table, every asset with its SHA-256, test and gate notes, known issues, a `Thanks` line that @mentions only this release's new contributors (count a PR only if it is in this tag: `git merge-base --is-ancestor <merge-commit> vX.Y.Z`), and a "How to contribute" link to `CONTRIBUTING.md` and the `good first issue` label.
 
