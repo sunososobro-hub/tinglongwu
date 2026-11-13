@@ -67,10 +67,14 @@ jobs:
           TLWU_DIR: ${{ runner.temp }}/tlwu
           TLWU_SKIP_BLACKHOLE: "1"
           TLWU_SKIP_MODELS: "1"
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
         run: |
           START=$(date +%s)
           if [ "$RUNNER_OS" = "macOS" ]; then SCRIPT=mac_install.sh; else SCRIPT=install.sh; fi
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/$SCRIPT" | bash </dev/null
+          # release events test the release that fired (latest/ skips prereleases); manual runs use the README's latest/ URL
+          if [ -n "$RELEASE_TAG" ]; then BASE="releases/download/$RELEASE_TAG"; else BASE="releases/latest/download"; fi
+          curl -fsSL -o "$RUNNER_TEMP/$SCRIPT" "https://github.com/${{ github.repository }}/$BASE/$SCRIPT"
+          bash "$RUNNER_TEMP/$SCRIPT" </dev/null
           echo "install took $(( $(date +%s) - START )) s"
       - name: Smoke check
         run: |

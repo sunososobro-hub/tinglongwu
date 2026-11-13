@@ -21,7 +21,10 @@ def test_release_assets_job_runs_readme_one_liners():
     job = _wf()["jobs"]["release-assets"]
     assert "release" in job["if"]
     text = "\n".join(s.get("run", "") for s in job["steps"])
-    assert "releases/latest/download/$SCRIPT" in text
+    assert "releases/latest/download" in text  # manual runs: the README URL
+    assert "releases/download/$RELEASE_TAG" in text  # release events: the release that fired (latest/ skips prereleases)
+    assert "| bash" not in text  # `curl | bash </dev/null` would feed bash EOF instead of the script
+    assert 'bash "$RUNNER_TEMP/$SCRIPT" </dev/null' in text
     assert "install took" in text
 
 
