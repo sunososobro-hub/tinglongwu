@@ -38,6 +38,8 @@ M_ASK_SAVE='要把字幕文字存成檔案嗎？聲音永遠不會被存。[Ente
 M_ASK_STREAM='要在對方還在說話時先顯示即時草稿嗎（較耗 CPU）？[Enter=不要 / y=顯示]: '
 M_ASK_STREAM_ON='要在對方還在說話時先顯示即時草稿嗎（較耗 CPU）？[Enter=顯示 / n=不要]: '
 M_MEETING_BANNER='開會模式：▶ 我＝你說的、◀ 對方＝對方說的；你講中文會送進 Meet（麥克風選 %s）。請戴耳機。'
+M_MEET_ROUTE='聲音 -> %s，預聽 -> 關閉'
+M_MEET_DIRECT_HINT='每句講完就直接送出。想每句先確認（y+Enter=送出），請用 --confirm 或 TLWU_CONFIRM=1 啟動選單。'
 M_CONFIRM_HELP='每句先確認：y+Enter=送出  Enter=丟掉  v0-v4=換聲音'
 M_OUT1='  1) 送進 Meet（Meet 麥克風選 %s）'
 M_OUT2='  2) 送進 Meet，自己耳機也聽得到'

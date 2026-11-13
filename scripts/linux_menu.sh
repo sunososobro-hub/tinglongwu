@@ -266,7 +266,8 @@ if [ "$BOTH" = "1" ]; then
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
-  m M_MEETING_BANNER "$MM"
+  CF=0; [ "${#AUTO[@]}" -eq 0 ] && CF=1
+  tlwu_meeting_banner "$MM" "$CF"
   exec "${REV[@]}" "${AUTO[@]}" --listen "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
 fi
 if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
