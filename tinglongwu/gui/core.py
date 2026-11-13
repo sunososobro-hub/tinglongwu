@@ -6,6 +6,8 @@ Events: ("draft", src_text, translation) | ("final", src_text, target_text) | ("
 """
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import json
 import os
 import queue
@@ -137,6 +139,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
 
         out["target"] = target_for_locale(_system_tag())  # first run (no saved choice): follow the OS locale
     except Exception:  # noqa: BLE001
+        _diag.swallowed(__name__)
         pass
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
@@ -154,6 +157,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
                 elif type(dv) is float and isinstance(v, int) and not isinstance(v, bool):
                     out[k] = float(v)
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
+        _diag.swallowed(__name__)
         pass
     out["font_size"] = clamp_font(out["font_size"])
     if out["quality"] not in QUALITIES:
@@ -166,6 +170,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
         try:
             out["live_draft"] = bool(gpu())
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])

@@ -10,6 +10,8 @@ Default = confirm-before-send: each utterance shows zh / ru / back-translation; 
 """
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import argparse
 import json
 import os
@@ -212,6 +214,7 @@ def warm_tts(tts, lang: str) -> None:
         for _ in tts.speak(WARM_TEXT.get(lang, WARM_EN)):
             pass
     except Exception:  # noqa: BLE001
+        _diag.swallowed(__name__)
         pass
 
 
@@ -290,6 +293,7 @@ class FollowTTS:
             try:
                 c.proc.kill()
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
 
     def close(self) -> None:
@@ -598,6 +602,7 @@ def _stop_live(stop, box, tts, player, previewer, source=None):
             try:
                 source.close()
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
         for sess in box:
             sess.abort()
@@ -605,6 +610,7 @@ def _stop_live(stop, box, tts, player, previewer, source=None):
             try:
                 tts.proc.kill()
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
         for pl in (player, previewer):
             abort = getattr(pl, "abort", None)
