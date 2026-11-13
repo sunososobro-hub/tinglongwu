@@ -245,7 +245,7 @@ def test_pipeline_smoke_makes_no_network_attempts(wav, tmp_path):
     from tinglongwu.pipeline import run
     from tinglongwu.segment import Segmenter
     from tinglongwu.sink import TextSink
-    from tinglongwu.translate import PivotTranslator
+    from pivot_fake import PivotTranslator
 
     class FakeASR(Recognizer):
         def transcribe(self, audio):

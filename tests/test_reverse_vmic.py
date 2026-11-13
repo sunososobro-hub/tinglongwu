@@ -79,7 +79,6 @@ def test_build_translator_on_cpu_is_hymt_on_the_cpu_never_opus(monkeypatch, tmp_
     """#331: CPU + Hy-MT2 installed -> Hy-MT2 direct on the CPU for zh->ru and the back-translation, no OPUS."""
     import tinglongwu.translate as tr
 
-    monkeypatch.setattr(tr.PivotTranslator, "preload", lambda *a: pytest.fail("OPUS must not load"))
     _gguf(tmp_path)
     made = []
 

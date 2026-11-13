@@ -5,7 +5,8 @@ from tinglongwu import asr as asr_mod
 from tinglongwu.langfollow import (clear_lang, parse_candidates, pick_candidate, read_lang, write_lang)
 from tinglongwu.pipeline import run
 from tinglongwu.sink import Result, Sink
-from tinglongwu.translate import PivotTranslator, Translation
+from pivot_fake import PivotTranslator
+from tinglongwu.translate import Translation
 
 
 class Seg:
