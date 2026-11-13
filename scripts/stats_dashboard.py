@@ -511,7 +511,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <style>
 :root{--bg:#fff;--fg:#1d2329;--mut:#667;--bd:#d0d7de;--a:#2a7d4f;--grid:#e6e9ec}
 @media (prefers-color-scheme:dark){:root{--bg:#14181c;--fg:#e4e8ec;--mut:#9aa4ae;--bd:#30363d;--a:#4cc38a;--grid:#262c33}}
-body{font:14px/1.4 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:12px 16px;background:var(--bg);color:var(--fg)}
+body{font:14px/1.4 system-ui,sans-serif;max-width:1200px;margin:0 auto;padding:12px 16px;background:var(--bg);color:var(--fg)}
 .t{display:inline-block;margin:4px 4px 4px 0;padding:8px 14px;border:1px solid var(--bd);border-radius:6px}
 .t b{display:block;font-size:22px}h2{font-size:16px;margin:22px 0 4px}
 svg{width:100%;height:auto;display:block}svg text{fill:var(--mut);font-size:11px}
@@ -519,7 +519,9 @@ select{font:inherit;padding:4px 8px;background:var(--bg);color:var(--fg);border:
 .lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0;font-size:12px}
 .lg i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
 .pb{height:10px;background:var(--grid);border-radius:5px;overflow:hidden}.pb div{height:100%;background:var(--a)}
-small,p.n{color:var(--mut)}
+small,p.n,p.cap1{color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:0 24px}
+.blk{min-width:0}p.cap1{margin:2px 0 0;font-size:13px}
 .vs{border:1px solid var(--bd);border-radius:8px;padding:12px;margin:0 0 12px}
 .vs .cap{font-size:16px;font-weight:600;margin:0 0 8px}
 .vs .row{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
@@ -533,17 +535,26 @@ __VISION__
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
 __FLOW__
-<h2>Work finished per day</h2><div id="c_thru"></div>
+<div class="grid">
+<section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
-<h2>Commits per day</h2><div id="c_commits"></div>
-<h2>How fast things get done</h2><div id="speed"></div>
-<h2>Milestone progress</h2><div id="ms"></div>
-<h2>Open issues over time</h2><div id="c_open"></div>
-<h2>Open issues by <select id="dim"></select></h2>
+<p class="cap1">Pull requests merged and issues closed each day.</p></section>
+<section class="blk"><h2>Commits per day</h2><div id="c_commits"></div>
+<p class="cap1">Commits landed on the main development branch each day.</p></section>
+<section class="blk"><h2>How fast things get done</h2><div id="speed"></div>
+<p class="cap1">Typical time from opened to done, for issues and PRs.</p></section>
+<section class="blk"><h2>Milestone progress</h2><div id="ms"></div>
+<p class="cap1">Closed versus open issues in each milestone.</p></section>
+<section class="blk"><h2>Open issues over time</h2><div id="c_open"></div>
+<p class="cap1">How many issues are waiting, day by day.</p></section>
+<section class="blk"><h2>Open issues by <select id="dim"></select></h2>
 <p class="n" id="lnote"></p><div id="c_grp"></div><div class="lg" id="lg"></div>
-<div id="cur"></div>
-<h2>Stars</h2><div id="c_stars"></div>
-<h2>Forks</h2><div id="c_forks"></div>
+<div id="cur"></div><p class="cap1">Open issues split by the chosen label group.</p></section>
+<section class="blk"><h2>Stars</h2><div id="c_stars"></div>
+<p class="cap1">Total GitHub stars over time.</p></section>
+<section class="blk"><h2>Forks</h2><div id="c_forks"></div>
+<p class="cap1">Total forks over time.</p></section>
+</div>
 <script id="d" type="application/json">__DATA__</script>
 <script>
 const D=JSON.parse(document.getElementById('d').textContent);
