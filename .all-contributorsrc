@@ -1,0 +1,55 @@
+{
+  "projectName": "tinglongwu",
+  "projectOwner": "sunososobro-hub",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 80,
+  "commit": false,
+  "commitConvention": "none",
+  "contributorsPerLine": 7,
+  "linkToUsage": false,
+  "contributors": [
+    {
+      "login": "sunososobro-hub",
+      "name": "sunososobro-hub",
+      "avatar_url": "https://avatars.githubusercontent.com/u/243713070?v=4",
+      "profile": "https://github.com/sunososobro-hub",
+      "contributions": [
+        "code",
+        "doc",
+        "maintenance"
+      ]
+    },
+    {
+      "login": "cook1e0728",
+      "name": "cook1e0728",
+      "avatar_url": "https://avatars.githubusercontent.com/u/202496468?v=4",
+      "profile": "https://github.com/cook1e0728",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "psgo555",
+      "name": "psgo555",
+      "avatar_url": "https://avatars.githubusercontent.com/u/59055362?v=4",
+      "profile": "https://github.com/psgo555",
+      "contributions": [
+        "bug"
+      ]
+    },
+    {
+      "login": "jchodev",
+      "name": "jchodev",
+      "avatar_url": "https://avatars.githubusercontent.com/u/100594737?v=4",
+      "profile": "https://github.com/jchodev",
+      "contributions": [
+        "code",
+        "ideas"
+      ]
+    }
+  ]
+}
