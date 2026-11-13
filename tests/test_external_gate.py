@@ -11,6 +11,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import external_gate as eg  # noqa: E402
 
 PR108 = ROOT / "tests" / "fixtures" / "pr108_files.json"
+@pytest.fixture(autouse=True)
+def _empty_base_checkout(tmp_path, monkeypatch):
+    """Rules are tested against an empty base checkout; the risky-file rule gets its own files below."""
+    monkeypatch.setattr(eg, "ROOT", tmp_path)
+    return tmp_path
+
+
 GREEN = [{"name": "test", "status": "completed", "conclusion": "success"},
          {"name": "hw", "status": "completed", "conclusion": "skipped"}]
 
@@ -42,7 +49,8 @@ def test_pr108_replay_is_auto_merge():
 def test_cli_pr108_exit_codes(tmp_path):
     checks = tmp_path / "checks.json"
     checks.write_text(json.dumps({"check_runs": GREEN}), encoding="utf-8")
-    cmd = [sys.executable, str(ROOT / "scripts" / "external_gate.py"), "--files", str(PR108), "--checks", str(checks)]
+    cmd = [sys.executable, str(ROOT / "scripts" / "external_gate.py"), "--files", str(PR108), "--checks", str(checks),
+           "--root", str(tmp_path)]
     ok = subprocess.run(cmd + ["--review", "PASS"], capture_output=True, text=True)
     assert ok.returncode == 0 and json.loads(ok.stdout)["lane"] == "auto-merge"
     no = subprocess.run(cmd, capture_output=True, text=True)  # no review verdict -> owner lane
@@ -247,4 +255,37 @@ def test_r3_line_separator_chars_do_not_hide_added_code(ch):
 def test_r3_multiline_or_aliased_eval_exec_compile_fail(patch):
     files = _ok_files()
     files[0]["patch"] = "@@ -1 +1,2 @@\n-a = 1\n" + patch
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+
+@pytest.mark.parametrize("body", ["import subprocess\n", "from asyncio import open_connection\n",
+                                  "import os\nos.system('')\n", "    import ctypes\n"])
+def test_r2_editing_a_file_that_already_runs_processes_fails(_empty_base_checkout, body):
+    (_empty_base_checkout / "tinglongwu").mkdir()
+    (_empty_base_checkout / "tinglongwu" / "fm.py").write_text(body + "cmd = ['tool', 'respond']\n")
+    files = _ok_files() + [_f("tinglongwu/fm.py", "@@ -2 +2 @@\n-cmd = ['tool', 'respond']\n+cmd = ['sh', '-c', x]\n",
+                              add=1, dele=1)]
+    r = _lane(files)
+    assert r["failed"] == ["r2_paths"] and "already runs processes" in r["reasons"]["r2_paths"]
+
+
+def test_r2_plain_existing_file_passes(_empty_base_checkout):
+    (_empty_base_checkout / "tinglongwu").mkdir()
+    (_empty_base_checkout / "tinglongwu" / "fmt.py").write_text("def f():\n    return 1\n")
+    assert _lane(_ok_files())["lane"] == "auto-merge"
+
+
+def test_real_repo_process_modules_are_owner_only():
+    real = Path(__file__).resolve().parent.parent
+    assert eg.runs_processes_or_network(real, "tinglongwu/fm.py")
+    assert eg.runs_processes_or_network(real, "tinglongwu/device.py")
+    assert not eg.runs_processes_or_network(real, "tinglongwu/capture/wasapi.py")  # #108 still auto-merges
+
+
+@pytest.mark.parametrize("line", ["r, w = asyncio.run(asyncio.open_connection('h', 80))", "import ssl",
+                                  "import webbrowser", "from xmlrpc import client", "import smtplib"])
+def test_r3_more_network_modules_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
     assert _lane(files)["failed"] == ["r3_denylist"]

@@ -9,7 +9,8 @@ Decides the lane for an external PR:
 Rules (script first; the LLM review can only block, never override a failed rule):
   r0_snapshot  (--pr) head and base SHA are the same before and after reading files + check runs
   r1_size      total changed lines (additions + deletions) <= MAX_CHANGED_LINES
-  r2_paths     only `tinglongwu/**/*.py` and `tests/**/*.py`; none of PROTECTED_FILES; no deleted files;
+  r2_paths     only `tinglongwu/**/*.py` and `tests/**/*.py`; none of PROTECTED_FILES; no file that already
+               imports subprocess/network/ctypes on the base checkout (--root); no deleted files;
                with --pr, the file list must be complete (== changed_files), else fail closed
   r3_denylist  added lines contain no network / process / dynamic-code primitive (DENYLIST); every
                changed file has a readable patch (a binary or truncated diff cannot be inspected)
@@ -35,6 +36,7 @@ import subprocess
 import sys
 import unicodedata
 from fnmatch import fnmatchcase
+from pathlib import Path
 
 REPO = "sunososobro-hub/tinglongwu"
 MAX_CHANGED_LINES = 50  # number from #352 rule 1
@@ -55,9 +57,25 @@ DENYLIST = ("socket", "urllib", "requests", "http", "subprocess", "os.system", "
             "__import__", "importlib", "pickle", "base64", "ctypes")  # list from #352 rule 3
 _DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\b", r"\bos\s*\.\s*system\b",
                        r"\bsystem\b", r"popen", r"spawn", r"\bfork\b", r"\bexec[lv]p?e?\b",
-                       r"\bgetattr\s*\(", r"\bglobals\s*\(", r"\bvars\s*\(", r"__builtins__"]),
+                       r"\bgetattr\s*\(", r"\bglobals\s*\(", r"\bvars\s*\(", r"__builtins__",
+                       r"asyncio", r"\bssl\b", r"ftplib", r"smtplib", r"telnetlib", r"xmlrpc", r"webbrowser",
+                       r"open_connection", r"create_connection", r"start_server", r"multiprocessing"]),
                       re.IGNORECASE)  # extra patterns catch "eval (x)" and "os . system" (whitespace is legal Python)
 GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
+ROOT = Path(__file__).resolve().parent.parent
+# A file that ALREADY runs processes or opens connections is owner-only: an edit to an argument list or a
+# runner= default on another line changes what runs without adding any denylisted word. Checked against
+# the base checkout the gate runs from (--root), so the list never goes stale.
+_RISKY_FILE_RX = re.compile(r"^\s*(?:import|from)\s+(?:subprocess|socket|http|urllib|asyncio|ssl|multiprocessing|"
+                            r"ctypes|webbrowser|ftplib|smtplib|telnetlib|xmlrpc)\b|\bos\.(?:system|popen|exec|spawn)",
+                            re.MULTILINE)
+
+
+def runs_processes_or_network(root: Path, name: str) -> bool:
+    try:
+        return bool(_RISKY_FILE_RX.search((root / name).read_text(encoding="utf-8", errors="replace")))
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        return False  # a new file: every line of it is an added line and goes through r3
 
 
 def _names(f: dict) -> list[str]:
@@ -67,7 +85,8 @@ def _names(f: dict) -> list[str]:
     return names
 
 
-def path_problems(files: list[dict]) -> list[str]:
+def path_problems(files: list[dict], root: Path | None = None) -> list[str]:
+    root = ROOT if root is None else root
     out = []
     for f in files:
         if f.get("status") == "removed":
@@ -76,6 +95,8 @@ def path_problems(files: list[dict]) -> list[str]:
         for name in _names(f):
             if name in PROTECTED_FILES or name.rsplit("/", 1)[-1] == "conftest.py":  # any conftest can skip all tests
                 out.append(f"{name}: protected file")
+            elif runs_processes_or_network(root, name):
+                out.append(f"{name}: already runs processes or opens connections on the base branch")
             elif not any(fnmatchcase(name, g) for g in ALLOWED_GLOBS):
                 out.append(f"{name}: outside tinglongwu/**/*.py and tests/**/*.py")
     return out
@@ -119,7 +140,8 @@ def checks_green(check_runs: list[dict] | None) -> tuple[bool, str]:
     return True, ""
 
 
-def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | None, pr: dict | None = None) -> dict:
+def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | None, pr: dict | None = None,
+             root: Path | None = None) -> dict:
     """pr: the GET pulls/N object, when known. Its totals win over the file list, and a file list shorter than
     pr["changed_files"] (API truncation) fails closed: unseen files cannot be checked."""
     reasons: dict[str, str] = {}
@@ -134,7 +156,7 @@ def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | Non
         reasons["r2_paths"] = f"file list has {len(files)} files, PR reports {pr.get('changed_files')}"
     elif not files:
         reasons["r2_paths"] = "no changed files"
-    elif p := path_problems(files):
+    elif p := path_problems(files, root):
         reasons["r2_paths"] = "; ".join(p)
     if d := denylist_hits(files):
         reasons["r3_denylist"] = "; ".join(d)
@@ -184,6 +206,7 @@ def main(argv=None) -> int:
     src.add_argument("--pr", type=int, help="read files + check runs of this PR with `gh api`")
     ap.add_argument("--checks", help="JSON of GET commits/SHA/check-runs (with --files)")
     ap.add_argument("--review", default=None, help="AI review verdict; only PASS can allow auto-merge")
+    ap.add_argument("--root", default=str(ROOT), help="checkout of the BASE branch (default: this repo)")
     a = ap.parse_args(argv)
     pr = None
     if a.pr is not None:
@@ -194,7 +217,7 @@ def main(argv=None) -> int:
         if a.checks:
             c = _load(a.checks)
             runs = c.get("check_runs", []) if isinstance(c, dict) else c
-    res = evaluate(files, runs, a.review, pr)
+    res = evaluate(files, runs, a.review, pr, Path(a.root))
     print(json.dumps(res, ensure_ascii=False))
     return 0 if res["lane"] == "auto-merge" else 1
 
