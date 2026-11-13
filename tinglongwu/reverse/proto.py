@@ -291,14 +291,20 @@ def _to_bar(a):
     q = getattr(a, "bar_q", None)
     save = getattr(a, "me_save", None)
 
-    def bar(zh, ru, lang=None) -> None:
-        if q is not None:
-            q.put(("final", zh, "▶ " + ru))
+    def record(zh, ru, lang=None) -> None:
         if save is not None:
             from ..sink import Result
 
             save(Result(getattr(a, "src", "zh"), zh, None, ru, tgt=lang or _target(a), side="me"))
 
+    def bar(zh, ru, lang=None, record_row=True) -> None:
+        """record_row=False (confirm mode, #494): overlay only; the row is written by bar.record when shown."""
+        if q is not None:
+            q.put(("final", zh, "▶ " + ru))
+        if record_row:
+            record(zh, ru, lang)
+
+    bar.record = record
     return bar
 
 
@@ -325,6 +331,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     gate, pend = threading.Lock(), {}  # per-utterance: the lat dict (produce thread) and tts seconds (synth thread)
     # #207: tts = MT done -> first synthesized part ready to send (was: whole utterance synthesized)
     sess.on_first_part = lambda u: lat_done(u, "tts", lat.clock() - u.extra["_t0"])
+    sess.on_show = lambda u: bar.record(u.zh, u.ru, u.lang)  # #494: a dropped/expired line never reaches --save
 
     def lat_done(u, key, val) -> None:
         """#142: tts finishes after produce() has already taken the lat dict; whichever side arrives last merges
@@ -349,7 +356,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
-                bar(zh, ru, lang)
+                bar(zh, ru, lang, record_row=False)  # #494: the save row waits until the line is shown
                 u.extra["_t0"] = lat.clock()
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
                 u.future.add_done_callback(  # no audio at all: report the line without tts_first

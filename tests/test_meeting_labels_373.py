@@ -121,3 +121,43 @@ def test_linux_menu_meeting_save_goes_to_the_listen_side(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     args = proto_log.read_text("utf-8").split("\n")[:-1]
     assert "--save" in args[args.index("--listen") + 1:]
+
+
+def _confirm_with_save(utts, keys, now=None, **kw):
+    """ConfirmSession wired the way proto._run_confirm wires the save row (#494): written only when shown."""
+    import numpy as np
+
+    from tinglongwu.reverse.confirm import ConfirmSession
+
+    rows = []
+    bar = proto._to_bar(SimpleNamespace(me_save=rows.append, src="zh", to="ru"))
+    it = iter(keys)
+    clock = (lambda: now[0]) if now else (lambda: 0.0)
+    sess = ConfirmSession(lambda ru: (np.ones(4, dtype=np.float32), 24000), lambda a, sr: None, out=lambda m: None,
+                          readline=lambda: next(it, ""), flush=lambda: None, clock=clock, **kw)
+    sess.on_show = lambda u: bar.record(u.zh, u.ru, u.lang)
+    for u in utts:
+        if now:
+            now[0] = u.n * 50.0
+        bar(u.zh, u.ru, u.lang, record_row=False)  # the overlay put at submit time must not write a row
+        sess.submit(u)
+    if now:
+        now[0] = 120.0
+    sess.finish()
+    sess.run()
+    return rows
+
+
+def test_confirm_queue_full_drops_write_no_me_row():
+    from tinglongwu.reverse.confirm import Utterance
+
+    rows = _confirm_with_save([Utterance(1, "一", "one"), Utterance(2, "二", "two")], ["y"], max_pending=1)
+    assert [(r.side, r.original) for r in rows] == [("me", "二")]
+
+
+def test_confirm_expired_line_writes_no_me_row():
+    from tinglongwu.reverse.confirm import Utterance
+
+    rows = _confirm_with_save([Utterance(1, "一", "one"), Utterance(2, "二", "two")], ["y"], now=[0.0],
+                              max_pending=5, max_age=60.0)  # line 1 is 70 s old at review time, line 2 is 20 s
+    assert [(r.side, r.original) for r in rows] == [("me", "二")]
