@@ -104,32 +104,72 @@ def capture_segments(source, segmenter, stop: threading.Event, lat=None) -> Iter
             frame_t[0] = clock()
             yield f
 
+    ended = threading.Event()  # the consumer is gone: the capture thread must not block on a full queue
+
+    def put(item) -> None:
+        while not ended.is_set():
+            try:
+                q.put(item, timeout=POLL)
+                return
+            except queue.Full:
+                continue
+
     def run():
         try:
             for seg in segmenter.segments(stamped(source.frames()) if lat is not None else source.frames()):
-                if stop.is_set():
+                if stop.is_set() or ended.is_set():
                     return
                 pause = float(getattr(segmenter, "last_pause", 0.0))
-                q.put((seg, pause, (frame_t[0] - pause, clock()) if lat is not None else None))
-            q.put(done)
+                put((seg, pause, (frame_t[0] - pause, clock()) if lat is not None else None))
+            put(done)
         except BaseException as e:  # noqa: BLE001 - re-raised in the consumer
-            q.put(e)
+            put(e)
 
-    threading.Thread(target=run, daemon=True).start()
-    while not stop.is_set():
+    th = threading.Thread(target=run, name="tlwu-speak-capture", daemon=True)
+    th.start()
+    try:
+        while not stop.is_set():
+            try:
+                item = q.get(timeout=POLL)
+            except queue.Empty:
+                continue
+            if item is done:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            seg, pause, marks = item
+            if lat is not None:
+                lat.set("vad", pause)
+                lat.marks = {"eos": marks[0], "cut": marks[1]}
+            yield seg
+    finally:
+        stop_capture(source, th, ended)
+
+
+CAPTURE_JOIN_S = 3.0  # a soundcard recorder notices close() within one 100 ms block (capture/_soundcard.py)
+
+
+def stop_capture(source, th: threading.Thread, ended: threading.Event | None = None,
+                 timeout: float = CAPTURE_JOIN_S) -> bool:
+    """#427: close the audio source and wait for its capture thread. Without this the daemon thread stays inside
+    the recorder (PulseAudio calls) after Ctrl+C and the interpreter shuts down under it: Linux live speak mode
+    then hung after 'peak VRAM' or died with SIGABRT. Returns True when the thread has ended."""
+    if ended is not None:
+        ended.set()
+    close = getattr(source, "close", None)
+    if close is not None:
         try:
-            item = q.get(timeout=POLL)
-        except queue.Empty:
-            continue
-        if item is done:
-            return
-        if isinstance(item, BaseException):
-            raise item
-        seg, pause, marks = item
-        if lat is not None:
-            lat.set("vad", pause)
-            lat.marks = {"eos": marks[0], "cut": marks[1]}
-        yield seg
+            close()
+        except Exception:  # noqa: BLE001 - best effort on shutdown
+            pass
+    if th is not threading.current_thread():
+        th.join(timeout)
+    if th.is_alive():
+        import sys
+
+        print("tlwu: audio capture did not stop in time", file=sys.stderr, flush=True)
+        return False
+    return True
 
 
 def is_source_lang(text: str, src: str = "zh") -> bool:

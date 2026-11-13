@@ -57,6 +57,10 @@ class VramSampler:
         self.t.join(2)
 
 
+PLAY_BLOCK_S = 0.1  # #427: a piece is written in blocks this long, so abort() is noticed within one block
+ABORT_JOIN_S = 2.0  # after abort(): wait for the playback thread (one PLAY_BLOCK_S block + closing the stream)
+
+
 class Player:
     """Plays 24 kHz mono float chunks on the chosen output device (resampled to `out_sr`) from a worker thread."""
 
@@ -68,6 +72,7 @@ class Player:
         from .live import PlaybackGate
 
         self.gate = PlaybackGate()
+        self._abort = threading.Event()
         if enabled:
             import soundcard as sc
 
@@ -92,10 +97,18 @@ class Player:
         with spk.player(samplerate=self.out_sr, channels=self.ch, blocksize=1024) as p:
             while True:
                 item = self.q.get()
-                if item is None:
+                if item is None or self._abort.is_set():
+                    if item is not None:
+                        self.gate.end()
+                        continue  # drop what was queued before / during abort(); the None sentinel follows
                     return
                 try:
-                    p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                    data = np.repeat(item.reshape(-1, 1), self.ch, axis=1)
+                    step = max(1, int(self.out_sr * PLAY_BLOCK_S))
+                    for i in range(0, len(data), step):
+                        if self._abort.is_set():  # #427: leave a long piece within one block on Ctrl+C
+                            break
+                        p.play(data[i:i + step])
                 finally:
                     self.gate.end()
 
@@ -106,10 +119,24 @@ class Player:
             self.gate.start()
             self.q.put(resample(audio, sr, self.out_sr))
 
-    def close(self) -> None:
+    def abort(self) -> None:
+        """#427 (Ctrl+C): mute, drop the queued audio and let the playback thread leave the output stream."""
+        self.enabled = False
+        self._abort.set()
+        if getattr(self, "t", None) is not None:
+            self.q.put(None)  # the thread drops anything queued before it (gate released per item)
+
+    def close(self, timeout: float = 60) -> None:
+        """Play what is queued, then stop the playback thread. After abort() it only waits for that thread (#427:
+        a playback thread still inside the PulseAudio stream at interpreter exit could hang the process)."""
+        t = getattr(self, "t", None)
+        if t is None:
+            return
         if self.enabled:
             self.q.put(None)
-            self.t.join(60)
+        t.join(timeout if self.enabled else min(timeout, ABORT_JOIN_S))
+        if t.is_alive():
+            print("tlwu: audio output did not stop in time", file=sys.stderr, flush=True)
 
 
 def _file_items(wavs, sf, asr):
@@ -498,18 +525,19 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
             yield n, label, zh
 
     box: list = []
-    cleanup = _stop_live(stop, box, tts, player, previewer)
+    cleanup = _stop_live(stop, box, tts, player, previewer, source)
     if getattr(a, "ext_stop", None) is not None:  # #322: the bar's Quit must also end a pending confirm prompt
         threading.Thread(target=lambda: (stop.wait(), cleanup()), name="tlwu-speak-stop", daemon=True).start()
     if paced:
         print(f"replaying {a.input} in real time (--paced)...", flush=True)
     else:
         print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
+    utterances = items()
     try:
         if tts is None:  # text only: show zh -> ru, nothing is spoken
             from .logic import translate_ru
 
-            for _n, _src, zh in items():
+            for _n, _src, zh in utterances:
                 lang = _target(a)
                 mt_start = lat.clock()
                 ru, _r = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
@@ -519,23 +547,50 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
                 print(timing_line(lat.take(), tts=False), flush=True)  # #186
                 _record_line(lat, on_record, mt_start, shown, None, lang, ru)
         elif confirm:
-            _run_confirm(a, items(), mt, tts, player, previewer, res, box)
+            _run_confirm(a, utterances, mt, tts, player, previewer, res, box)
         else:
-            _run_auto_live(items(), mt, tts, player, res, lambda: _target(a), lat,
+            _run_auto_live(utterances, mt, tts, player, res, lambda: _target(a), lat,
                            getattr(a, "debug_latency", False), src, bar, on_record)
         if paced and getattr(player, "close", None) is not None:  # the file ended: let the queued audio finish
             player.close()
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
-        cleanup()
+        try:
+            cleanup()
+        finally:
+            _close_items(utterances)  # #427: ends capture_segments, which joins the capture thread (recorder released)
 
 
-def _stop_live(stop, box, tts, player, previewer):
+def _close_items(gen, timeout: float = 5.0) -> None:
+    """Close the utterance generator. Confirm mode runs it in its producer thread, which Ctrl+C does not wait for:
+    close() then raises 'generator already executing' until that thread leaves it (stop is set and the source is
+    closed, so within one poll unless MT is mid-sentence). Retry up to `timeout` (the same 5 s _run_confirm gives
+    the producer); never raise on shutdown."""
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            gen.close()
+            return
+        except ValueError:
+            if time.monotonic() >= end:
+                print("tlwu: speech input did not stop in time", file=sys.stderr, flush=True)
+                return
+            time.sleep(0.05)
+
+
+def _stop_live(stop, box, tts, player, previewer, source=None):
     """Stop capture, abort confirm sessions, kill the TTS subprocess, mute output. Safe to call twice: once from
-    the --overlay watcher (#322: the worker may sit in a confirm prompt) and once when _live_main returns."""
+    the --overlay watcher (#322: the worker may sit in a confirm prompt) and once when _live_main returns.
+    #427: the audio source is closed and the players are aborted, so no thread is left inside PulseAudio when the
+    interpreter exits (Linux: hang after 'peak VRAM' / SIGABRT)."""
     def cleanup() -> None:
         stop.set()
+        if source is not None:
+            try:
+                source.close()
+            except Exception:  # noqa: BLE001
+                pass
         for sess in box:
             sess.abort()
         if tts is not None:
@@ -543,8 +598,12 @@ def _stop_live(stop, box, tts, player, previewer):
                 tts.proc.kill()
             except Exception:  # noqa: BLE001
                 pass
-        player.enabled = False
-        previewer.enabled = False
+        for pl in (player, previewer):
+            abort = getattr(pl, "abort", None)
+            if abort is not None:
+                abort()
+            else:
+                pl.enabled = False
 
     return cleanup
 
