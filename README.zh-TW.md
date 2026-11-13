@@ -10,9 +10,9 @@
 
 | 系統 | 指令 |
 |---|---|
-| Windows (PowerShell) | `irm https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/bootstrap_windows.ps1 \| iex` |
-| macOS (Terminal) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh \| bash` |
-| Linux (bash) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh \| bash` |
+| Windows 64 位元 | 下載 [tinglongwu-win64.zip](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-win64.zip)，解壓縮後雙擊 `tlwu.exe` |
+| Linux（x86_64，已在 Ubuntu 24.04 測試） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 
 ## 驗證狀態
 

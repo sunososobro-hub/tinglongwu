@@ -13,6 +13,6 @@ To release:
    git push origin vX.Y.Z
    ```
 
-3. The `release` workflow checks the tag is on `main`, embeds the tag into `install.sh`, `mac_install.sh` and `install.ps1` (placeholder `__TLWU_REF__`), and publishes them with `SHA256SUMS.txt` and auto-generated notes. The README one-command installs use `raw.githubusercontent.com/.../main/scripts/...` (releases are all pre-releases, so `releases/latest/download/...` would 404); they always run the newest `main` scripts, which fall back to `main` when the ref placeholder is not embedded.
+3. The `release` workflow checks the tag is on `main`, embeds the tag into `install.sh`, `mac_install.sh` and `install.ps1` (placeholder `__TLWU_REF__`), and publishes them with `SHA256SUMS.txt` and auto-generated notes. The README install table links `releases/latest/download/{install.sh,mac_install.sh,tinglongwu-win64.zip}`, so it installs the tag-embedded scripts of the newest release that is **not** marked pre-release (a pre-release or draft never becomes `latest`). Upload `tinglongwu-win64.zip` under exactly that name to every release (and list its hash in `SHA256SUMS.txt`), or the Windows link breaks. The raw `main` scripts fall back to `main` when the ref placeholder is not embedded; do not link them for end users.
 
 If the workflow fails (for example the tag is not on `main`), delete the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again.
