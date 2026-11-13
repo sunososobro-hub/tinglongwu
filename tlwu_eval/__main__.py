@@ -123,13 +123,16 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     a.engine = a.engine or preset.get("engine", "auto")
     a.device = a.device or preset.get("device", "auto")
     run_kw.setdefault("per_lang", a.per_lang or CLIPS_PER_LANG)
-    langs = list(dict.fromkeys(x.strip().lower() for x in a.langs.split(",") if x.strip())) if a.langs else None
+    langs = list(dict.fromkeys(x.strip().lower() for x in a.langs.split(",") if x.strip())) if a.langs is not None else None
+    if langs == []:
+        p.error("--langs needs at least one language code, e.g. --langs it,pt,vi,th,id")
     if langs:
         run_kw.setdefault("pairs", tuple((x, "en" if x == "zh" else "zh") for x in langs))
         run_kw.setdefault("ja_extra", [])  # the NHK ja group belongs to the focus run, not to a --langs check
     try:
         rows = load_manifest(a.data)
-        run_kw.setdefault("ja_extra", load_extra(a.nhk_dir))
+        if "ja_extra" not in run_kw:  # never read the NHK manifest when --langs already set it to []
+            run_kw["ja_extra"] = load_extra(a.nhk_dir)
         if not a.no_noise:
             run_kw.setdefault("noise", noise_mod.build_clips(a.noise_dir))
         rep = run_smoke(rows, engines or real_engines(a), totals=totals or machine_totals(), **run_kw)

@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import soundfile as sf
 
 from tlwu_eval import langfloor, runner, scoring
@@ -58,6 +59,8 @@ def test_langs_run_new_pairs_and_print_comet_floor_table(tmp_path, capsys):
     data, out, clock = make_data(tmp_path), tmp_path / "r.json", Clock()
     (tmp_path / "nhk").mkdir()
     nhk = smoke_data(tmp_path / "nhk", langs=("ja",))  # an NHK ja folder: must be ignored by --langs
+    with open(nhk / "manifest.jsonl", "a", encoding="utf-8") as f:
+        f.write("\n{broken json\n")  # and never even read
     code = main(["--smoke", "--data", str(data), "--out", str(out), "--no-noise", "--langs", "IT,pt,vi,th,id,it",
                  "--nhk-dir", str(nhk), "--comet"], engines=engines(clock), totals=(16000, None), clock=clock, comet_model=Comet())
     printed = capsys.readouterr().out
@@ -81,3 +84,9 @@ def test_missing_language_stays_experimental():
 def test_thai_asr_is_scored_by_characters():
     # Thai has no spaces: one wrong letter must not count as a 100% word error
     assert scoring.error_rate([("แมวนั่งบนเสื่อ", "แมวนั่งบนเสือ")], "th") < 0.2
+
+
+def test_empty_langs_is_rejected(tmp_path, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["--smoke", "--data", str(tmp_path), "--langs", " , ", "--no-noise"])
+    assert e.value.code == 2 and "--langs needs at least one language code" in capsys.readouterr().err
