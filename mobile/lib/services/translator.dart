@@ -1,5 +1,6 @@
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
+import '../logic/context_budget.dart';
 import '../logic/prompt.dart';
 import '../logic/s2tw.dart';
 import '../logic/zh_check.dart';
@@ -50,7 +51,7 @@ class Translator {
     final engine = await LlamaEngine.spawn(
       modelParams: ModelParams(path: modelPath, gpuLayers: 0, useMmap: true),
       contextParams: ContextParams(
-        nCtx: 768,
+        nCtx: ContextBudget.nCtx,
         nBatch: 512,
         nUbatch: 512,
         nThreads: threads,
@@ -74,7 +75,8 @@ class Translator {
       addSpecial: false,
       parseSpecial: true,
       sampler: const SamplerParams(greedy: true),
-      maxTokens: PromptBuilder.maxTokensFor(ru.trim()),
+      // Clamped so prompt + output stay inside nCtx (#533).
+      maxTokens: ContextBudget.maxTokens(ru),
     )) {
       if (e is TokenEvent) {
         if (tokens == 0) firstMs = sw.elapsedMilliseconds;

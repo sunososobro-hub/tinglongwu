@@ -4,6 +4,8 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 
+import '../logic/context_budget.dart';
+import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
 import 'model_paths.dart';
@@ -156,6 +158,12 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keep the last [keepSubtitles] lines, but never drop a line whose
+  /// translation is still queued or in flight: the queue can now grow past
+  /// [maxQueue] when no merge fits the context (#533).
+  void _trimSubtitles() =>
+      trimFinished<Subtitle>(subtitles, keepSubtitles, (s) => s.zh != null);
+
   void _onFinal(AsrFinal f) {
     final now = _clock.elapsedMilliseconds;
     // VAD emits the segment after minSilence of trailing silence + decode.
@@ -166,20 +174,33 @@ class Pipeline extends ChangeNotifier {
         'decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
     final sub = Subtitle(f.text);
     subtitles.add(sub);
-    if (subtitles.length > keepSubtitles) subtitles.removeAt(0);
+    _trimSubtitles();
     _queue.add(_Job(f.text, sub, speechEnd, now));
-    // Bound the backlog: merge the two oldest waiting jobs (keeps all text,
-    // costs one fewer LLM call) instead of dropping.
+    // Bound the backlog: merge the oldest two waiting jobs (keeps all text,
+    // costs one fewer LLM call) instead of dropping. A merge that would be
+    // longer than ContextBudget.maxMergeChars is skipped (#533): it could
+    // overflow the LLM context and stop the app.
     while (_queue.length > maxQueue) {
-      final a = _queue.removeFirst();
-      final b = _queue.removeFirst();
-      b.ru = '${a.ru} ${b.ru}';
+      final jobs = _queue.toList();
+      final i = ContextBudget.mergeIndex([for (final j in jobs) j.ru]);
+      if (i == null) {
+        _log.i('queue>$maxQueue, no merge fits ${ContextBudget.maxMergeChars} chars');
+        break;
+      }
+      final a = jobs[i];
+      final b = jobs[i + 1];
+      b.ru = ContextBudget.join(a.ru, b.ru);
       b.sub.ru = b.ru;
       subtitles.remove(a.sub);
       final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs);
-      _queue.addFirst(merged);
+      jobs
+        ..[i] = merged
+        ..removeAt(i + 1);
+      _queue
+        ..clear()
+        ..addAll(jobs);
       dropped++;
-      _log.i('queue>$maxQueue, merged oldest two -> ${AppLog.text(merged.ru)}');
+      _log.i('queue>$maxQueue, merged jobs $i+${i + 1} -> ${AppLog.text(merged.ru)}');
     }
     queued = _queue.length + (_busy ? 1 : 0);
     notifyListeners();
@@ -203,6 +224,7 @@ class Pipeline extends ChangeNotifier {
           lastTokens = r.tokens;
           lastFirstTokenMs = r.firstTokenMs;
           job.sub.zh = r.zh;
+          _trimSubtitles();
           job.sub.traditionalOk = r.check.isTraditional;
           _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
               '] ${AppLog.text(r.zh)} | '

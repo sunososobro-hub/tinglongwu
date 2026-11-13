@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/logic/context_budget.dart';
 import 'package:mobile/logic/prompt.dart';
 import 'package:mobile/logic/segmenter.dart';
+import 'package:mobile/logic/subtitle_trim.dart';
 import 'package:mobile/logic/zh_check.dart';
 import 'package:mobile/services/model_paths.dart';
 
@@ -153,6 +155,82 @@ void main() {
     test('digits and punctuation do not count as CJK', () {
       final c = checkChinese('123，。!');
       expect(c.cjkCount, 0);
+    });
+  });
+
+  group('trimFinished (#533)', () {
+    // (text, translated?)
+    bool done((String, bool) s) => s.$2;
+
+    test('drops the oldest translated lines down to keep', () {
+      final l = [('a', true), ('b', true), ('c', true), ('d', false), ('e', false)];
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['b', 'c', 'd', 'e']);
+    });
+
+    test('never drops lines still waiting for a translation', () {
+      final l = [for (final t in ['a', 'b', 'c', 'd', 'e', 'f']) (t, false)];
+      trimFinished(l, 4, done);
+      expect(l.length, 6);
+      l[0] = ('a', true);
+      l[1] = ('b', true);
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['c', 'd', 'e', 'f']);
+    });
+
+    test('skips pending lines and drops a newer translated one', () {
+      final l = [('a', false), ('b', true), ('c', false), ('d', false), ('e', false)];
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['a', 'c', 'd', 'e']);
+    });
+  });
+
+  group('ContextBudget (#533)', () {
+    // ~170 chars: one forced ASR commit (24 Russian words).
+    final long = List.filled(24, 'привет').join(' ');
+
+    test('merges the oldest two short jobs', () {
+      expect(ContextBudget.mergeIndex(['раз', 'два', 'три']), 0);
+      expect(ContextBudget.join('раз', 'два'), 'раз два');
+    });
+
+    test('does not merge when the merged text is too long', () {
+      expect(long.length, greaterThan(ContextBudget.maxMergeChars ~/ 2));
+      expect(ContextBudget.mergeIndex([long, long]), isNull);
+      expect(ContextBudget.mergeIndex([long, long, long]), isNull);
+    });
+
+    test('skips an oversized oldest pair and merges a later pair', () {
+      expect(ContextBudget.mergeIndex([long, long, 'раз']), 1);
+      final huge = 'я' * 318;
+      expect(ContextBudget.mergeIndex([huge, huge, 'раз', 'два']), 2);
+      expect(ContextBudget.mergeIndex([huge, 'раз', 'два']), 1);
+    });
+
+    test('merge limit is the boundary', () {
+      final a = 'а' * 100;
+      final fits = 'б' * (ContextBudget.maxMergeChars - 101);
+      expect(ContextBudget.mergeIndex([a, fits]), 0);
+      expect(ContextBudget.mergeIndex([a, '${fits}x']), isNull);
+    });
+
+    test('any allowed merge plus its output budget fits the context', () {
+      for (var n = 0; n <= ContextBudget.maxMergeChars; n++) {
+        final t = 'я' * n;
+        expect(ContextBudget.maxTokens(t), PromptBuilder.maxTokensFor(t));
+        expect(ContextBudget.promptTokens(t) + ContextBudget.maxTokens(t),
+            lessThan(ContextBudget.nCtx));
+      }
+    });
+
+    test('maxTokens is clamped for text longer than the merge limit', () {
+      final t = 'я' * 500;
+      expect(PromptBuilder.maxTokensFor(t), 400);
+      expect(ContextBudget.maxTokens(t),
+          ContextBudget.nCtx - 1 - ContextBudget.promptTokens(t));
+      expect(ContextBudget.promptTokens(t) + ContextBudget.maxTokens(t),
+          lessThan(ContextBudget.nCtx));
+      expect(ContextBudget.maxTokens('я' * 2000), 1);
     });
   });
 }
