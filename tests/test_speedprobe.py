@@ -122,6 +122,7 @@ def test_slow_verdict_message_never_mentions_opus(tmp_path):
 def test_old_cache_file_with_opus_loads_as_too_slow(tmp_path):
     path = tmp_path / "sp.json"
     path.write_text(json.dumps({"hw": speedprobe.signature(CPU), "mt": "opus", "hymt_median_s": 2.0,
-                                "samples": 5, "note": "old"}), "utf-8")
+                                "samples": 5, "note": "...: keeping OPUS"}), "utf-8")
     r = speedprobe.load_cached(CPU, path)
     assert r is not None and r.cached and r.mt == speedprobe.SLOW_MT
+    assert "opus" not in r.note.lower() and r.hymt_median_s == 2.0 and r.samples == 5

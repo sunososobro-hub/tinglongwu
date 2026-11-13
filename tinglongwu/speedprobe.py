@@ -178,9 +178,11 @@ def load_cached(hw: HwInfo, path=None) -> SpeedResult | None:
         if d.get("hw") != signature(hw) or d.get("mt") not in ("hymt2", SLOW_MT, LEGACY_SLOW_MT):
             return None
         med, rtf, asr = d.get("hymt_median_s"), d.get("asr_rtf"), d.get("asr")
-        mt = SLOW_MT if d["mt"] == LEGACY_SLOW_MT else d["mt"]
+        mt, note = d["mt"], str(d.get("note", ""))
+        if mt == LEGACY_SLOW_MT:  # the old note names the removed engine: say it in Hy-MT2 terms
+            mt, note = SLOW_MT, "Hy-MT2 on CPU: too slow on this machine (remembered from an earlier speed test)"
         return SpeedResult(mt, float(med) if med is not None else None, int(d.get("samples", 0)),
-                           str(d.get("note", "")), cached=True,
+                           note, cached=True,
                            asr=asr if asr in CPU_ASR_STEPS else None, asr_rtf=float(rtf) if rtf is not None else None)
     except Exception:  # noqa: BLE001 - missing/corrupt cache = measure again
         return None
