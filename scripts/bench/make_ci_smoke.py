@@ -17,6 +17,12 @@ pinned clips are found (they were pinned from the first members, see --pin), so 
 --pin N re-selects N clips per language from the start of each archive at --revision and rewrites the pin file
 (dev only; commit the result).
 Downloads are untrusted data: only the pinned member names are read from the archive, nothing is extracted by path.
+
+Tier-2 set (#602): the same tool builds the tier-2 language set (vi/th/id/es/de/fr -> zh, 20 clips each) from
+eval/tier2_pins.json. The pin file carries its own "configs" map, so --out alone rebuilds it:
+  python scripts/bench/make_ci_smoke.py --pins eval/tier2_pins.json --out eval_data/tier2
+  python -m tlwu_eval --smoke --data eval_data/tier2 --langs vi,th,id,es,de,fr --per-lang 20 --no-noise --out t2.json
+  python scripts/bench/make_ci_smoke.py --set tier2 --pin 20 --revision <sha>    # dev: re-pin the tier-2 set
 """
 from __future__ import annotations
 
@@ -35,12 +41,25 @@ PIN_FILE = ROOT / "eval" / "ci_smoke.json"
 DATASET = "google/fleurs"
 BASE_URL = "https://huggingface.co/datasets/{dataset}/resolve/{revision}/data/{config}/{path}"
 CONFIGS = {"en": "en_us", "ja": "ja_jp", "ru": "ru_ru", "zh": "cmn_hans_cn"}
+# #596/#602: tier-2 languages (docs/support.json), each -> zh. FLEURS has Latin-American Spanish only (es_419).
+TIER2_CONFIGS = {"vi": "vi_vn", "th": "th_th", "id": "id_id", "es": "es_419", "de": "de_de", "fr": "fr_fr"}
+REF_CONFIGS = {"en": "en_us", "zh": "cmn_hans_cn"}  # reference sides: ref_zh for every source, ref_en for zh clips
 MAX_DOWNLOAD = 500 * 2 ** 20  # #569 acceptance: total download < 500 MB
 MAX_CLIP_S = 15.0  # --pin skips longer clips so 20 clips stay well inside the smoke budget (TOTAL_BUDGET_S 300 s)
 SAMPLE_RATE = 16000
+# --set: which languages --pin selects, the default pin file, and how many archive members --pin scans per language.
+SETS = {
+    "smoke": {"configs": CONFIGS, "pins": PIN_FILE, "scan": 60,
+              "note": "Pins for scripts/bench/make_ci_smoke.py (#569): the open-licensed CI smoke set (FLEURS test, "
+                      "CC-BY 4.0). Re-pin with --pin 5 only on purpose; eval/baseline.json numbers depend on these clips."},
+    "tier2": {"configs": TIER2_CONFIGS, "pins": ROOT / "eval" / "tier2_pins.json", "scan": 120,
+              "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/tier2_pins.json (#602): tier-2 languages "
+                      "-> zh (FLEURS test, CC-BY 4.0). Re-pin with --set tier2 --pin 20 only on purpose; "
+                      "eval/tier2_report.json numbers depend on these clips."},
+}
 
-LICENSE_TEXT = """CI smoke set for tlwu-eval, built by scripts/bench/make_ci_smoke.py (#569) from the pins in
-eval/ci_smoke.json.
+LICENSE_TEXT = """Eval set for tlwu-eval, built by scripts/bench/make_ci_smoke.py (#569, #602) from the pins in
+{pins}.
 Audio, transcripts (ref_text) and references (ref_zh / ref_en): FLEURS test split, Google, CC-BY 4.0
   https://huggingface.co/datasets/google/fleurs  (revision {revision})
 ref_zh is the cmn_hans_cn transcript of the same FLoRes sentence converted to Taiwan Traditional script.
@@ -148,9 +167,19 @@ def check_wav(data: bytes) -> float:
     return size / block / rate
 
 
-def load_tsvs(fetch, revision: str, budget: dict) -> dict:
+def ref_configs(configs: dict) -> dict:
+    """The source configs plus the reference sides they need: zh for every non-zh source, en for zh clips."""
+    need = dict(configs)
+    if any(lang != "zh" for lang in configs):
+        need.setdefault("zh", REF_CONFIGS["zh"])
+    if "zh" in configs:
+        need.setdefault("en", REF_CONFIGS["en"])
+    return need
+
+
+def load_tsvs(fetch, revision: str, budget: dict, configs: dict = CONFIGS) -> dict:
     return {lang: read_tsv(fetch_bytes(fetch, url_for(revision, cfg, "test.tsv"), budget))
-            for lang, cfg in CONFIGS.items()}
+            for lang, cfg in ref_configs(configs).items()}
 
 
 def reference(lang: str, flores_id: int, refs: dict) -> tuple[str, str]:
@@ -162,7 +191,7 @@ def reference(lang: str, flores_id: int, refs: dict) -> tuple[str, str]:
     return "ref_zh", refs["zh"][flores_id]
 
 
-def finish(out: Path, rows: list[dict], revision: str) -> None:
+def finish(out: Path, rows: list[dict], revision: str, pins: str = "eval/ci_smoke.json") -> None:
     """Convert ref_zh to Taiwan Traditional (the app's zh_convert "tw"); write manifest.jsonl + LICENSE.txt."""
     from tinglongwu.translate import zh_convert
 
@@ -171,20 +200,25 @@ def finish(out: Path, rows: list[dict], revision: str) -> None:
             if "ref_zh" in r:
                 r["ref_zh"] = zh_convert(r["ref_zh"], "tw")
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    (out / "LICENSE.txt").write_text(LICENSE_TEXT.format(revision=revision), encoding="utf-8")
+    (out / "LICENSE.txt").write_text(LICENSE_TEXT.format(revision=revision, pins=pins), encoding="utf-8")
 
 
-def build(out, pin: dict, fetch=http_open) -> list[dict]:
+def build(out, pin: dict, fetch=http_open, pins_name: str = "eval/ci_smoke.json") -> list[dict]:
     """Download the pinned clips into `out`, verify every sha256, write manifest.jsonl + LICENSE.txt; return the rows.
+    The pin's optional "configs" map ({lang: FLEURS config}) names the source languages (default: the smoke CONFIGS).
     Raises DownloadError (nothing but WAVs written) on a sha256 mismatch or a missing clip."""
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     rev = pin["revision"]
+    configs = pin.get("configs") or CONFIGS
     budget = {"used": 0}
-    tsvs = load_tsvs(fetch, rev, budget)
+    tsvs = load_tsvs(fetch, rev, budget, configs)
     refs = {lang: by_flores(rows) for lang, rows in tsvs.items()}
     rows, bad = [], []
-    for lang, cfg in CONFIGS.items():
+    unknown = sorted({c["lang"] for c in pin["clips"]} - set(configs))
+    if unknown:
+        raise DownloadError(f"pinned clips in languages without a FLEURS config: {', '.join(unknown)}")
+    for lang, cfg in configs.items():
         clips = [c for c in pin["clips"] if c["lang"] == lang]
         if not clips:
             continue
@@ -213,19 +247,22 @@ def build(out, pin: dict, fetch=http_open) -> list[dict]:
                          "style": "news", "source": f"fleurs/{cfg}/{c['file']}", "flores_id": meta["flores_id"]})
     if bad:
         raise DownloadError("pinned clips do not match:\n  " + "\n  ".join(bad))
-    finish(out, rows, rev)
+    finish(out, rows, rev, pins_name)
     print(f"{len(rows)} clips -> {out} ({budget['used'] / 2 ** 20:.1f} MB downloaded)")
     return rows
 
 
-def pin_clips(revision: str, per_lang: int, fetch=http_open, scan: int = 60) -> dict:
-    """Pick `per_lang` clips per language from the first `scan` members of each archive: distinct FLoRes ids that
-    have a reference on the other side, at most MAX_CLIP_S long. Returns the pin dict (with sha256s)."""
+def pin_clips(revision: str, per_lang: int, fetch=http_open, scan: int = 60, set_name: str = "smoke") -> dict:
+    """Pick `per_lang` clips per language of SETS[set_name] from the first `scan` members of each archive: distinct
+    FLoRes ids that have a reference on the other side, at most MAX_CLIP_S long. Returns the pin dict (with sha256s);
+    a set other than the smoke set also records its "configs" map, so build() needs only the pin file."""
+    spec = SETS[set_name]
+    configs = spec["configs"]
     budget = {"used": 0}
-    tsvs = load_tsvs(fetch, revision, budget)
+    tsvs = load_tsvs(fetch, revision, budget, configs)
     refs = {lang: by_flores(rows) for lang, rows in tsvs.items()}
     clips = []
-    for lang, cfg in CONFIGS.items():
+    for lang, cfg in configs.items():
         picked, ids = [], set()
         for name, data in stream_members(fetch, url_for(revision, cfg, "audio/test.tar.gz"), budget, limit=scan):
             meta = tsvs[lang].get(name)
@@ -247,9 +284,11 @@ def pin_clips(revision: str, per_lang: int, fetch=http_open, scan: int = 60) -> 
         if len(picked) < per_lang:
             raise DownloadError(f"{cfg}: only {len(picked)} usable clips in the first {scan} members")
         clips += picked
-    return {"_note": "Pins for scripts/bench/make_ci_smoke.py (#569): the open-licensed CI smoke set (FLEURS test, "
-                     "CC-BY 4.0). Re-pin with --pin 5 only on purpose; eval/baseline.json numbers depend on these clips.",
-            "dataset": DATASET, "revision": revision, "license": "CC-BY-4.0", "clips": clips}
+    pin = {"_note": spec["note"], "dataset": DATASET, "revision": revision, "license": "CC-BY-4.0"}
+    if configs is not CONFIGS:
+        pin["configs"] = dict(configs)
+    pin["clips"] = clips
+    return pin
 
 
 def dump_pin(pin: dict) -> str:
@@ -264,21 +303,27 @@ def dump_pin(pin: dict) -> str:
 def main(argv=None, fetch=http_open) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", help="folder for manifest.jsonl and the wav files (e.g. eval_data/smoke)")
-    ap.add_argument("--pins", default=str(PIN_FILE), help="pin file (default eval/ci_smoke.json)")
+    ap.add_argument("--set", default="smoke", choices=sorted(SETS),
+                    help="language set for --pin and the default --pins (smoke: en/ja/ru/zh; tier2: vi/th/id/es/de/fr)")
+    ap.add_argument("--pins", default=None, help="pin file (default: eval/ci_smoke.json, or eval/tier2_pins.json "
+                                                 "with --set tier2)")
     ap.add_argument("--pin", type=int, metavar="N", help="dev: re-select N clips per language and rewrite --pins")
     ap.add_argument("--revision", help="with --pin: FLEURS dataset revision (commit sha) to pin")
     a = ap.parse_args(argv)
+    a.pins = a.pins or str(SETS[a.set]["pins"])
     try:
         if a.pin:
             if not a.revision:
                 ap.error("--pin needs --revision")
-            pin = pin_clips(a.revision, a.pin, fetch)
+            pin = pin_clips(a.revision, a.pin, fetch, SETS[a.set]["scan"], a.set)
             Path(a.pins).write_text(dump_pin(pin), encoding="utf-8")
             print(f"pinned {len(pin['clips'])} clips -> {a.pins}")
             return 0
         if not a.out:
             ap.error("--out is required")
-        build(a.out, json.loads(Path(a.pins).read_text("utf-8")), fetch)
+        pins_name = Path(a.pins).resolve()
+        pins_name = pins_name.relative_to(ROOT).as_posix() if pins_name.is_relative_to(ROOT) else pins_name.name
+        build(a.out, json.loads(Path(a.pins).read_text("utf-8")), fetch, pins_name)
     except DownloadError as e:
         print(f"make_ci_smoke: {e}", file=sys.stderr)
         return 1
