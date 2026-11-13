@@ -336,7 +336,7 @@ class QueueSink(Sink):
     def __init__(self, q: queue.Queue):
         self.q = q
 
-    def write_source(self, src: str, original: str) -> None:
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         self.q.put(("source", original))  # shown dim until its "final" arrives (#53)
 
     def write(self, r: Result) -> None:

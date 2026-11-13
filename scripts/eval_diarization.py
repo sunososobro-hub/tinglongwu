@@ -2,6 +2,7 @@
 """Speaker-label evaluation for --speakers (#219/#223).
 
 Usage: python scripts/eval_diarization.py AUDIO_DIR LABELS.csv [--model-dir DIR] [--png out.png]
+       python scripts/eval_diarization.py --transcript SESSION.jsonl   (#384: a --save file with speaker fixes)
   LABELS.csv: header-less or headed rows "file,speaker" (file relative to AUDIO_DIR). Rows are fed in
   CSV order, like a conversation, through the same SpeakerLabeler that `tlwu --speakers` uses.
 Prints accuracy (x100, 2 decimals; clusters are mapped to true labels by the optimal 1:1 assignment) and the
@@ -16,6 +17,8 @@ import struct
 import sys
 import zlib
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # run from anywhere: the tinglongwu package
 
 MIN_SECONDS = 1.0
 SR = 16000
@@ -85,6 +88,30 @@ def write_png(path, r: dict) -> None:
                            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
+def score_transcript(path) -> dict:
+    """#384: accuracy of the auto speaker labels in a --save JSONL against the user's corrections in it.
+
+    Result lines carry "speaker" (auto label); "fix" lines are replayed in order through SpeakerBook (rename /
+    relabel / merge; a relabel index counts result lines from 0). Lines without an auto label are not scored."""
+    import json
+
+    from tinglongwu.speakers import SpeakerBook
+
+    book = SpeakerBook()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if "fix" in rec:
+                book.apply(rec["fix"])
+            elif "src" in rec:
+                book.add(rec.get("speaker"))
+    pairs = [(book.corrected(i), auto) for i, (auto, _fixed) in enumerate(book.lines) if auto]
+    return {"accuracy": round(best_mapping_accuracy([t for t, _ in pairs], [p for _, p in pairs]), 2),
+            "n": len(pairs), "corrected": sum(1 for t, p in pairs if t != p)}
+
+
 def load_items(audio_dir, labels_csv):
     import numpy as np
     import soundfile as sf
@@ -108,11 +135,19 @@ def load_items(audio_dir, labels_csv):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("audio_dir")
-    ap.add_argument("labels_csv")
+    ap.add_argument("audio_dir", nargs="?")
+    ap.add_argument("labels_csv", nargs="?")
+    ap.add_argument("--transcript", help="score a --save JSONL with speaker corrections instead (#384)")
     ap.add_argument("--model-dir", default="models", help="models dir holding speaker/ (tlwu-setup --speaker-model)")
     ap.add_argument("--png", default="diarization_eval.png")
     a = ap.parse_args(argv)
+    if a.transcript:
+        r = score_transcript(a.transcript)
+        print(f"lines with a speaker: {r['n']} (corrected by the user: {r['corrected']})\n"
+              f"accuracy x100: {r['accuracy']:.2f}  (target >= {TARGET_ACC:.2f})")
+        return 0
+    if not (a.audio_dir and a.labels_csv):
+        ap.error("AUDIO_DIR and LABELS.csv are required without --transcript")
     from tinglongwu.speaker_embed import make_labeler
 
     r = evaluate(load_items(a.audio_dir, a.labels_csv), make_labeler(a.model_dir))
