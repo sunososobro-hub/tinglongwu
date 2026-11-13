@@ -259,6 +259,21 @@ def copy_cuda(app: Path, src: Path) -> list[str]:
     return notes
 
 
+def make_gpu_pack(app: Path, out: Path, url: str) -> Path:
+    """Zip app/cuda_libs/ as the separate GPU pack (#613) and write <out>.manifest.json (name, size, sha256, url)."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tinglongwu import gpu_pack
+
+    src = app / "cuda_libs"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for f in sorted(src.glob("*")):
+            z.write(f, f.name)
+    man_path = out.with_name(out.name + ".manifest.json")
+    gpu_pack.write_manifest(gpu_pack.make_manifest(out, url), man_path)
+    return man_path
+
+
 def cpu_llama_dlls(cache: Path = LLAMA_CPU, run=subprocess.check_call) -> list[Path]:
     """llama_cpp/lib/*.dll of the CPU wheel of the same llama-cpp-python version (downloaded once into cache).
     TLWU_LLAMA_CPU_WHEEL = a local wheel file to use instead of the download."""
