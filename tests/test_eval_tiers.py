@@ -28,7 +28,7 @@ def run_tier(tmp_path, name, *extra, comet=None, n=6):
     real = cli.real_engines
     cli.real_engines = lambda a: (seen.setdefault("a", a), fake_engines(clock))[1]
     try:
-        code = main(["--smoke", "--tier", name, "--data", str(data), "--out", str(out), *extra],
+        code = main(["--smoke", "--tier", name, "--data", str(data), "--out", str(out), *extra, "--no-noise"],
                     totals=(16000, None), clock=clock, comet_model=comet)
     finally:
         cli.real_engines = real

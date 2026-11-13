@@ -15,7 +15,7 @@ def test_cli_writes_report_and_exit_codes(tmp_path, capsys):
     data = make_data(tmp_path, langs=("en", "ru"))
     clock = Clock()
     out = tmp_path / "r.json"
-    code = main(["--smoke", "--data", str(data), "--out", str(out)], engines=fake_engines(clock), totals=(16000, None),
+    code = main(["--smoke", "--data", str(data), "--out", str(out), "--no-noise"], engines=fake_engines(clock), totals=(16000, None),
                 clock=clock)
     printed = capsys.readouterr().out
     assert code == 0 and "smoke: PASS" in printed and "en->zh: load 1.0s | ASR 2.0s RTF 0.2 PASS" in printed and "WER 0.0%" in printed
@@ -23,7 +23,7 @@ def test_cli_writes_report_and_exit_codes(tmp_path, capsys):
     rep = json.loads(out.read_text("utf-8"))
     assert rep["pass"] is True and rep["skipped"] == ["ja->zh", "zh->en"] and rep["thresholds"]["asr_rtf_max"] == 1.0
     clock = Clock()
-    assert main(["--smoke", "--data", str(data), "--out", str(out)], engines=fake_engines(clock, mt_s=3.0),
+    assert main(["--smoke", "--data", str(data), "--out", str(out), "--no-noise"], engines=fake_engines(clock, mt_s=3.0),
                 totals=(16000, None), clock=clock) == 1
     assert "smoke: FAIL" in capsys.readouterr().out
 
@@ -43,7 +43,7 @@ def test_cli_runs_external_nhk_ja_group_and_kana_turns_it_red(tmp_path, capsys):
     ext.mkdir()
     make_data(ext, langs=("ja",), n=2)
     out = tmp_path / "r.json"
-    args = ["--smoke", "--data", str(data), "--out", str(out), "--nhk-dir", str(ext)]
+    args = ["--smoke", "--data", str(data), "--out", str(out), "--nhk-dir", str(ext), "--no-noise"]
     clock = Clock()
     assert main(args, engines=fake_engines(clock), totals=(16000, None), clock=clock) == 0
     rep = json.loads(out.read_text("utf-8"))
@@ -55,5 +55,5 @@ def test_cli_runs_external_nhk_ja_group_and_kana_turns_it_red(tmp_path, capsys):
     assert "kana 100.00 FAIL" in capsys.readouterr().out
     # folder absent -> group silently not run (default smoke unchanged)
     clock = Clock()
-    assert main(args[:-1] + [str(tmp_path / "none")], engines=fake_engines(clock), totals=(16000, None), clock=clock) == 0
+    assert main(args[:-2] + [str(tmp_path / "none"), "--no-noise"], engines=fake_engines(clock), totals=(16000, None), clock=clock) == 0
     assert all(lg["pair"] != "ja->zh[nhk]" for lg in json.loads(out.read_text("utf-8"))["languages"])
