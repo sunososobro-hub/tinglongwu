@@ -32,12 +32,15 @@ def translate_checked(translator: "Translator", text: str, src: str, tgt: str, d
     """translate()/draft() that never lets Japanese through untranslated (#86): kana in a non-Japanese target
     means the engine echoed (part of) the source. One retry (Hy-MT2 samples, so a second try usually works);
     None when it still leaks. Drafts are not retried (the next draft comes in a moment anyway)."""
+    from . import lang as lang_patches
     from .langfollow import has_kana
 
     call = translator.draft if draft else translator.translate
+    text = lang_patches.pre_mt(src, text)  # #390: per-language source fixes (tinglongwu/lang/<src>/)
     for _ in range(1 if draft else 2):
         tr = call(text, src, tgt)
         if tgt == "ja" or not has_kana(tr.text):
+            tr.text = lang_patches.post_mt(tgt, tr.text, src)
             return tr
     return None
 

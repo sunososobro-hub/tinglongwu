@@ -3,6 +3,7 @@ av==19.0.2
 cffi==2.1.1
 click==8.5.1
 ctranslate2==4.8.5
+DAWG2-Python==0.9.0
 faster-whisper==1.2.1
 filelock==4.2.9
 flatbuffers==25.12.19
@@ -20,9 +21,12 @@ packaging==26.3
 protobuf==7.36.2
 psutil==7.2.2
 pycparser==3.12
+pymorphy3-dicts-ru==2.4.417150.4580142
+pymorphy3==2.0.6
 PyYAML==6.0.3
 scipy==1.18.1
 sentencepiece==0.2.3
+setuptools==80.9.0 ; python_version >= '3.12'
 soundcard==0.4.6
 soundfile==0.14.0
 sv-ttk==2.6.1
