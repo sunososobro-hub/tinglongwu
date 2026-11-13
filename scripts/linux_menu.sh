@@ -205,26 +205,11 @@ ensure_hymt() {  # llama-cpp-python missing: menuopts prints the pip line; GGUF 
   have_hymt_file || { m M_NO_HYMT_SPEAK; ask_setup --hymt; }
 }
 
-have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
-  python - "$@" <<'PY'
-import sys
-from tinglongwu.models import models_dir
-d = models_dir(None) / "opus"
-sys.exit(0 if all((d / p).is_dir() for p in sys.argv[1:]) else 1)
-PY
-}
-
 if [ "$mode" = "1" ]; then
-  if [ "$L" = "en" ]; then need=(en-zh); setup=(--to zh)
-  elif [ "$L" = "auto" ]; then
-    need=(en-zh ru-en); setup=(--langs ru --to zh)
-    if printf '%s' ",$CANDS," | grep -q ,ja, && ! hy_ready; then need+=(ja-en); setup=(--langs ru,ja --to zh); echo "$HY_NOTE"; fi
-  elif [ "$L" = "ja" ] && hy_ready; then need=(); setup=()   # Hy-MT2: direct ja -> zh, no OPUS pair
-  else need=("$L-en" en-zh); setup=(--langs "$L" --to zh)
-    [ "$L" = "ja" ] && echo "$HY_NOTE"; fi
-  if ! have_pairs "${need[@]}"; then
+  # #562: Hy-MT2 translates every language directly; the only model needed besides Whisper is its GGUF
+  if ! have_hymt_file; then
     m M_NO_MODEL_FOR "$L"
-    ask_setup "${setup[@]}"
+    ask_setup --hymt
   fi
   exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}" "${STREAM[@]}"
 fi
@@ -257,9 +242,9 @@ else
 fi
 
 if [ "$BOTH" = "1" ]; then
-  if [ "$L" = "ru" ] && ! have_pairs ru-en en-zh; then   # listen side only; the speak side is Hy-MT2 (#331)
-    m M_NO_MODEL_FOR ru
-    ask_setup --langs ru --to zh
+  if ! have_hymt_file; then   # #562: Hy-MT2 is the only translation model (listen and speak side)
+    m M_NO_MODEL_FOR "$L"
+    ask_setup --hymt
   fi
   AUTO=(--no-confirm); tlwu_confirm_mode "${TLWU_MENU_ARGS[@]}" && AUTO=()   # #371: no question; --confirm / TLWU_CONFIRM=1 to confirm
   # #285: one process, one window: the speak side runs the listen side in a thread (--listen must come last),
