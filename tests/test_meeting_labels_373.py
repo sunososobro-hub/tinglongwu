@@ -115,8 +115,8 @@ def test_linux_menu_meeting_save_goes_to_the_listen_side(tmp_path):
         (mdir / "opus" / pair).mkdir(parents=True, exist_ok=True)
     env.update(TLWU_LANG="en", KOKORO_PY=str(kpy), KOKORO_MODEL=str(kokoro))
     env.pop("TLWU_BOTH", None)
-    # 1 = meeting; y = save subtitles; Enter = confirm before sending
-    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="1\ny\n\n", env=env,
+    # 1 = meeting; y = save subtitles; Enter = do not record; Enter = confirm before sending
+    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="1\ny\n\n\n", env=env,
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     args = proto_log.read_text("utf-8").split("\n")[:-1]

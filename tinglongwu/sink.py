@@ -40,9 +40,10 @@ class TextSink(Sink):
     under it when MT finishes. Lines heard while MT is busy wait their turn: each source line is printed right
     after the block before it, so every block still reads source-then-translations and nothing is repeated."""
 
-    def __init__(self, stream=None, now=None, names=None):
+    def __init__(self, stream=None, now=None, names=None, rec: str = ""):
         self.stream = stream
         self.now = now
+        self.rec = rec  # #239 --record: "● Recording" mark at the start of every subtitle block
         self.names = names  # #384: a speakers.SpeakerBook; its display() maps a label to the user-given name
         self._lock = threading.Lock()  # write_source (capture thread) vs write (MT thread)
         self._pending: list[list] = []  # [original, shown, speaker] heard, translation not written yet, oldest first
@@ -51,10 +52,13 @@ class TextSink(Sink):
     def _head(self, out, entry) -> None:
         from . import fmt
 
-        out.write(fmt.head("them", entry[0], now=self.now() if self.now else None, color=fmt.color_enabled(out),
-                           who=self._who(entry[2])))
+        out.write(self._mark(fmt.head("them", entry[0], now=self.now() if self.now else None,
+                                      color=fmt.color_enabled(out), who=self._who(entry[2]))))
         entry[1] = True
         self._open = entry[0]
+
+    def _mark(self, text: str) -> str:
+        return f"{self.rec} {text}" if self.rec else text
 
     def _who(self, speaker):
         return self.names.display(speaker) if self.names is not None and speaker else speaker
@@ -84,8 +88,8 @@ class TextSink(Sink):
             else:
                 if self._open is not None:
                     out.write("\n")  # another line came first: end the dangling source line
-                out.write(fmt.block("them", r.original, tr, now=self.now() if self.now else None,
-                                    color=fmt.color_enabled(out), who=self._who(r.speaker)))
+                out.write(self._mark(fmt.block("them", r.original, tr, now=self.now() if self.now else None,
+                                               color=fmt.color_enabled(out), who=self._who(r.speaker))))
             self._open = None
             if self._pending and not self._pending[0][1]:  # next heard line: its source now, translation later
                 self._head(out, self._pending[0])
@@ -146,12 +150,13 @@ def default_save_path(now=None):
 class TranscriptSink(Sink):
     """Source-language text only, one segment per line (feed to scripts/wer.py)."""
 
-    def __init__(self, stream=None):
+    def __init__(self, stream=None, rec: str = ""):
         self.stream = stream
+        self.rec = rec  # #239 --record mark
 
     def write(self, r: Result) -> None:
         out = self.stream or sys.stdout
-        out.write(" ".join(r.original.split()) + "\n")
+        out.write((self.rec + " " if self.rec else "") + " ".join(r.original.split()) + "\n")
         out.flush()
 
 

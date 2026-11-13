@@ -237,8 +237,8 @@ def test_both_mode_linux_menu_starts_one_process(tmp_path):
         (mdir / "opus" / pair).mkdir(parents=True, exist_ok=True)
     env.update(TLWU_LANG="en", KOKORO_PY=str(kpy), KOKORO_MODEL=str(kokoro))
     env.pop("TLWU_BOTH", None)
-    # 1 = meeting (listen+speak); Enter = do not save subtitles; Enter = confirm before sending
-    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="1\n\n\n", env=env,
+    # 1 = meeting (listen+speak); Enter = do not save subtitles; Enter = do not record; Enter = confirm before sending
+    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="1\n\n\n\n", env=env,
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     assert not Path(log).exists(), "a separate tlwu listener process was started"

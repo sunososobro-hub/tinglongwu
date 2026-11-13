@@ -14,6 +14,8 @@ DEFAULT = "en"
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
+        "rec_label": "● Recording",
+        "rec_consent": "Recording is on: audio is saved on this computer only ({path}). Get the other side's consent before recording their voice.",
         "guard_blocked": "\U0001F6E1 tlwu blocked an outgoing connection: {host}:{port} ({pkg}). "
                          "tlwu does not need the network in normal use; you can report this from the menu next time.",
         "report_status": "{n} outgoing connection attempt(s) were blocked since the last report: {hosts}.",
@@ -99,6 +101,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_open_url": "Open this URL: {url}",
     },
     "ru": {
+        "rec_label": "● Запись",
+        "rec_consent": "Запись включена: звук сохраняется только на этом компьютере ({path}). Перед записью голоса собеседника получите его согласие.",
         "guard_blocked": "\U0001F6E1 tlwu заблокировал исходящее соединение: {host}:{port} ({pkg}). "
                          "В обычной работе tlwu не нужна сеть; об этом можно сообщить из меню при следующем запуске.",
         "report_status": "С прошлого отчёта заблокировано исходящих соединений: {n}; адреса: {hosts}.",
@@ -184,6 +188,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_open_url": "Откройте этот адрес: {url}",
     },
     "zh-TW": {
+        "rec_label": "● 錄音中",
+        "rec_consent": "錄音已開啟：聲音只存在這台電腦（{path}）。錄下對方的聲音前，請先取得對方同意。",
         "guard_blocked": "\U0001F6E1 已擋下 tlwu 對外連線：{host}:{port}（{pkg}）。"
                          "tlwu 平常不需要網路，下次開選單可一鍵回報。",
         "report_status": "自上次回報以來，已擋下 {n} 次對外連線：{hosts}。",

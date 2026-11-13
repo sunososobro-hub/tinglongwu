@@ -88,6 +88,7 @@ class Unit:
     lang: str
     forced: bool  # released by the cap / timeout / end of stream rather than a sentence boundary
     tag: object = None  # #323: add()'s tag of the newest segment whose text is in this unit (latency marks)
+    first: object = None  # #239: tag of the oldest segment whose text is in this unit (None: same as tag)
 
 
 def split_clause(text: str) -> tuple[str, str]:
@@ -171,7 +172,7 @@ class SentenceMerger:
             rest = sents.pop()
         if self.min_words > 0:
             sents, rest = self._merge_fragments(sents, rest)
-        out += [Unit(s.strip(), lang, False, tag) for s in sents]
+        out += [Unit(s.strip(), lang, False, tag, self._first() if i == 0 else tag) for i, s in enumerate(sents)]
         self._rebase(len(self.buf) - len(rest))
         self.buf = rest
         if not rest:
@@ -215,15 +216,19 @@ class SentenceMerger:
                 head, rest = split_clause(self.buf)
                 if head:
                     # #435: the clause carries the tag of the newest segment it holds text of, not the buffer's
-                    tag = self._tag_before(len(head))
+                    tag, first = self._tag_before(len(head)), self._first()
                     self._rebase(len(self.buf) - len(rest))
                     self.buf, self.since = rest, (now if rest else None)
-                    return [Unit(head, self.lang, True, tag)]
+                    return [Unit(head, self.lang, True, tag, first)]
             return [self._take(forced=True)]
         return []
 
     def flush(self) -> list[Unit]:
         return [self._take(forced=True)] if self.buf else []
+
+    def _first(self) -> object:
+        """Tag of the segment holding the start of the buffer (a stale mark of released text also sits at 0)."""
+        return self._tag_before(1)
 
     def _tag_before(self, end: int) -> object:
         """Tag of the newest segment whose text starts before offset `end` of the buffer."""
@@ -237,7 +242,7 @@ class SentenceMerger:
         self._marks = ([(0, older[-1])] if older else []) + kept
 
     def _take(self, forced: bool) -> Unit:
-        u = Unit(self.buf.strip(), self.lang, forced, self.tag)
+        u = Unit(self.buf.strip(), self.lang, forced, self.tag, self._first())
         self.buf, self.since = "", None
         self._marks = []
         return u

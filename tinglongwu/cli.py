@@ -144,6 +144,10 @@ def parse_args(argv=None):
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    p.add_argument("--record", nargs="?", const="", default=None, metavar="DIR",
+                   help="also record the audio, on this computer only: one 16 kHz WAV per final line plus "
+                        "segments.jsonl (file, start, end, lang, source, translation); DIR defaults to "
+                        "./transcripts/rec-<YYYYmmdd-HHMMSS> (default off; get the other side's consent first)")
     p.add_argument("--report", action="store_true",
                    help="open the browser on a pre-filled GitHub issue (version, OS, recent log); "
                         "nothing is uploaded, you review and submit it yourself")
@@ -391,6 +395,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     from .merge import SentenceMerger
     from .pipeline import run
     from .segment import Segmenter
+    from .i18n import t as _t
     from .sink import TextSink, TranscriptSink
 
     from .minspec import SlowWatch, check_avx2
@@ -458,8 +463,12 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     ctl = None
     if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
         asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
+    rec_dir = getattr(a, "record", None)
+    rec = _t("rec_label") if rec_dir is not None else ""
     if sink is None:
-        sink = TranscriptSink() if a.transcript_only else TextSink()
+        sink = TranscriptSink(rec=rec) if a.transcript_only else TextSink(rec=rec)
+    elif isinstance(sink, (TextSink, TranscriptSink)):
+        sink.rec = rec
     if a.save is not None:
         from .sink import JsonlSaveSink, default_save_path
 
@@ -469,6 +478,12 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
+    recorder = None
+    if rec_dir is not None:  # #239: opt-in only (the menu asks on every start, default no)
+        from .record import Recorder, default_record_dir
+
+        recorder = Recorder(rec_dir or default_record_dir())
+        print(f"tlwu: {_t('rec_consent', path=os.path.abspath(recorder.dir))}", file=sys.stderr, flush=True)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
     audio_clock = bool(a.file) and not paced
     merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait, min_words=getattr(a, "min_words", 0))
@@ -508,13 +523,15 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
-            on_record=on_record)
+            on_record=on_record, recorder=recorder)
     except KeyboardInterrupt:
         interrupted = True
         raise
     finally:
         if rec_file is not None:
             rec_file.close()
+        if recorder is not None:
+            recorder.close()
         if close_voice is not None:  # Ctrl+C / GUI Stop: do not keep talking through the backlog
             close_voice(drop=interrupted or (stop is not None and stop.is_set()))
 

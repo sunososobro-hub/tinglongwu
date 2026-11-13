@@ -66,7 +66,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
-        on_work=None, on_record=None) -> None:
+        on_work=None, on_record=None, recorder=None) -> None:  # recorder: #239 --record (record.Recorder)
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -138,6 +138,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     last_asr = [0.0]  # seconds the newest segment spent in ASR
     last_len = [0.0]  # seconds of audio in the newest segment
     last_marks = [None]  # (end of speech, cut, ASR done) of the newest transcribed segment (#323 on_record)
+    clip = [None]  # #239: audio of the line being written (MT thread)
+    seg_n = [0]  # #239: number of the newest transcribed segment (matches a final line to its audio)
     last_who = [None]  # #384 --speakers: speaker label of the newest transcribed segment (None: off / unknown)
     # #323: a sink that does not override write_source shows no source line, so it gets no t_source_shown
     shows_source = sink_shows_source(sink)
@@ -149,6 +151,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         if draft is not None:
             draft.final_written(ep)  # the final line replaces the dim draft
         sink.write(r)
+        if recorder is not None:
+            recorder.line(clip[0], r)
 
     def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None) -> None:
         if translator is None:  # transcript-only
@@ -193,6 +197,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 return
             try:
                 t_emit = time.monotonic()
+                clip[0] = item[9]  # #239: audio of this line (only the MT thread reads it)
                 emit(*item[:4], who=item[8])
                 if on_record is not None and item[6] is not None:
                     on_record(_record(item, time.monotonic()))
@@ -209,6 +214,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     def emit_units(units) -> None:
         for u in units:
             text = filter_hallucination(u.text)  # merged segments can loop across the seam
+            audio = None
+            if recorder is not None and u.tag is not None:  # #239: a dropped line drops its audio too
+                audio = recorder.take((u.first or u.tag)[2], u.tag[2])
             if not text:
                 continue
             key, now = _dup_key(text), consumed[0] / SAMPLE_RATE if audio_clock else time.monotonic()
@@ -218,11 +226,11 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             lang = script_lang(text, u.lang)  # kana labelled zh is Japanese: translate it, never pass it through (#86)
             t_src = None
             # the unit's own segment (marks, speaker), not the newest one
-            marks, who = u.tag if u.tag is not None else (last_marks[0], last_who[0])
+            marks, who = u.tag[:2] if u.tag is not None else (last_marks[0], last_who[0])
             if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
                 pass_source(sink, lang, text, who)  # #53: the source line now, its translation when MT is done
                 t_src = time.monotonic() if shows_source else None
-            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who))
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who, audio))
 
     def check_worker() -> None:
         if failed:
@@ -274,7 +282,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 who, spk = speakers.label(seg)  # the label goes to the debug log only (no extra console line)
                 say(f"latency: spk {spk:.3f} s ({who})")
                 last_who[0] = None if who == UNKNOWN else who
-            tag = (marks, last_who[0])
+            seg_n[0] += 1
+            if recorder is not None:
+                recorder.add(seg_n[0], seg, stamp - len(seg) / SAMPLE_RATE, stamp)
+            tag = (marks, last_who[0], seg_n[0])
             if merger is None or translator is None:
                 emit_units([Unit(t.text, t.lang, False, tag)])
                 continue
