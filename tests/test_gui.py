@@ -71,9 +71,11 @@ def test_save_settings_unwritable(tmp_path):
 def test_settings_to_argv_parses():
     from tinglongwu.cli import parse_args
 
-    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="opus", glossary="g.txt", save=True)
+    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="hymt", glossary="g.txt", save=True)
     a = parse_args(core.settings_to_argv(s))
-    assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "opus", "g.txt", "")
+    assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "hymt", "g.txt", "")
+    assert core.ENGINES == ["auto", "hymt"]  # #471: OPUS is no longer offered
+    assert parse_args(core.settings_to_argv(dict(s, engine="opus"))).engine == "auto"  # old gui.json: no exit 2
     a = parse_args(core.settings_to_argv(dict(core.DEFAULTS, target="en", save=True, save_path="o.jsonl")))
     assert (a.to, a.save) == ("en", "o.jsonl")
     assert parse_args(["--gui"]).gui and not parse_args([]).gui
@@ -361,10 +363,10 @@ def test_log_follows_newest_unless_scrolled_up(gui_app):
 
 def test_log_font_buttons_and_pause(gui_app):
     a = gui_app
-    w0 = a.root.winfo_reqwidth()
+    w0 = a.panel.winfo_reqwidth()
     a.bump_log_font(8)
     a.root.update()
-    assert a.settings["log_font_size"] == 22 and a.root.winfo_reqwidth() == w0  # window does not grow
+    assert a.settings["log_font_size"] == 22 and a.panel.winfo_reqwidth() == w0  # window does not grow
     assert str(a.log_text.tag_cget("final", "font")).split()[-1] == "22"
     a.toggle()
     a.set_paused(True)
@@ -419,3 +421,184 @@ def test_download_finishing_while_loading_keeps_the_button_disabled(gui_app, mon
     assert str(a.btn.cget("state")) == "normal"
     a._download_done("tiny", 0)  # after ready: unchanged behaviour, the button works
     assert str(a.btn.cget("state")) == "normal"
+
+
+def _bound_vars(top) -> set[str]:
+    """Names of the Tk variables edited by any widget inside `top` (combobox, entry, check, spinbox...)."""
+    import tkinter as tk
+
+    names, stack = set(), [top]
+    while stack:
+        w = stack.pop()
+        stack.extend(w.winfo_children())
+        for opt in ("textvariable", "variable"):
+            try:
+                v = str(w.cget(opt))
+            except tk.TclError:
+                continue
+            if v:
+                names.add(v)
+    return names
+
+
+def test_control_bar_is_compact_in_every_ui_language(gui_app):
+    """#455: the main window is a small bar (<= 420x60 at 100% scale), also while it counts "Loading... N s"."""
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    for ui in ("English", "Русский", "繁體中文"):
+        a.v_ui_lang.set(ui)
+        a.switch_lang()
+        for text in (a.btn.cget("text"), t("gui_loading", s=120)):  # the widest text the button shows
+            a.btn.configure(text=text)
+            a.root.update_idletasks()
+            assert a.bar.winfo_reqwidth() <= 420 and a.bar.winfo_reqheight() <= 60, (ui, text)
+            assert a.root.winfo_reqwidth() <= 420 and a.root.winfo_reqheight() <= 60, (ui, text)
+    assert a.root.attributes("-topmost")
+
+
+def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
+    """#455 widget inventory: every settings key the old window edited has a widget in the Adjust panel."""
+    from tinglongwu.gui import app as app_mod
+
+    a = gui_app
+    keys = {"lang": a.v_lang, "target": a.v_target, "quality": a.v_quality, "engine": a.v_engine,
+            "model": a.v_model, "source": a.v_source, "preset": a.v_preset, "glossary": a.v_gloss,
+            "save": a.v_save, "save_path": a.v_save_path, "show_src": a.var_show_src, "live_draft": a.v_live,
+            "overlay_lines": a.v_lines, "font_size": a.v_font, "voice": a.v_voice, "voice_device": a.v_voice_dev,
+            "ui_lang": a.v_ui_lang, "floating_bar": a.v_bar}
+    if app_mod.sv_ttk is not None:
+        keys["theme"] = a.v_dark
+    in_panel = _bound_vars(a.panel)
+    assert [k for k, v in keys.items() if str(v) not in in_panel] == []
+    for w in (a.log_text, a.btn_pause):  # log (with A-/A+, floating-bar toggle) and Pause live in the panel too
+        assert w.winfo_toplevel() is a.panel
+    assert a.panel.state() == "withdrawn"  # first start: only the bar
+    a.btn_adjust.invoke()
+    a.root.update()
+    assert a.panel.state() == "normal"
+    a.btn_adjust.invoke()
+    assert a.panel.state() == "withdrawn"
+
+
+def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
+    """#455: Listen/Speak + Start run the saved / #294 speak session, the pair label follows the boxes, the dot
+    follows the session."""
+    from tinglongwu import cli
+
+    a = gui_app
+    runs = _record_runs(a, monkeypatch)
+    assert a.v_mode.get() == "listen"
+    a.v_target.set("en")
+    for w in a.bar.winfo_children():
+        if "text" in w.keys() and w.cget("text") == "Speak":
+            w.invoke()
+    assert a.v_mode.get() == "speak" and a.v_pair.get() == "en→zh-tw"  # the label shows the Speak direction
+    a.btn.invoke()  # Speak + Start: mic in my language (en) -> zh-tw, as the #294 "I speak" button
+    a.toggle()
+    a.worker.join(5)
+    a.poll()
+    assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
+    a.v_mode.set("listen")
+    a.v_lang.set("auto")
+    assert a.v_pair.get() == "auto→en"
+    assert a.dot_state == "idle"
+    a.btn.invoke()  # Listen + Start: the saved settings, as the old Start button
+    assert a.dot_state == "loading" and (runs[1]["source"], runs[1]["target"]) == ("system", "en")
+    a.q.put(("status", f"{cli.READY_STATUS} - loaded in 1.0 s (speech model 1.0 s)"))
+    a.poll()
+    assert a.dot_state == "on"
+    a.toggle()
+    a.worker.join(5)
+    a.poll()
+    assert a.dot_state == "idle" and a.btn.cget("text") == "Start"
+    assert a.panel.state() == "withdrawn"
+    a.q.put(("error", "boom"))  # an error opens the Adjust panel, where its message is shown
+    a.poll()
+    assert a.dot_state == "error" and a.panel.state() == "normal"
+
+
+# -- #294 easy start: first-screen buttons on a real App -------------------------------------------------------
+
+def _record_runs(a, monkeypatch):
+    from tinglongwu.gui import app
+
+    runs = []
+
+    def fake_work(self, s, stop):
+        runs.append(s)
+        stop.wait(10)
+        self.q.put(("stopped",))
+
+    monkeypatch.setattr(app.App, "_work", fake_work)
+    return runs
+
+
+def _btn(a, mode):
+    b = a.quick_btns[mode]
+    return b.cget("text"), str(b.cget("state"))
+
+
+def test_one_click_listen_loading_then_ready_then_stop(gui_app, monkeypatch):
+    """Fresh profile: the only click is "Listen to others"; Loading... until models are ready, then a Ready hint."""
+    from tinglongwu import cli
+
+    a = gui_app
+    runs = _record_runs(a, monkeypatch)
+    assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
+    a.v_target.set("zh-tw")
+    a.quick_btns["listen"].invoke()  # click 1
+    assert _btn(a, "listen") == ("Loading... 0 s", "disabled") and _btn(a, "speak")[1] == "disabled"
+    a.q.put(("status", f"{cli.READY_STATUS} - loaded in 2.0 s"))
+    a.poll()
+    assert a.v_status.get().startswith("Ready - start playback now")
+    assert _btn(a, "listen") == ("Stop", "normal") and _btn(a, "speak") == ("I speak", "disabled")
+    run = runs[0]
+    assert (run["source"], run["target"]) == ("system", "zh-tw")
+    a.quick_btns["listen"].invoke()  # Stop
+    a.worker.join(5)
+    a.poll()
+    assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
+
+
+def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
+    from tinglongwu import cli
+
+    a = gui_app
+    runs = _record_runs(a, monkeypatch)
+    a.v_target.set("en")
+    a.toggle("speak")
+    a.q.put(("status", cli.READY_STATUS))
+    a.poll()
+    assert a.v_status.get().startswith("Ready - speak now")
+    assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
+    assert core.load_settings(tmp_path / "tinglongwu" / "gui.json")["target"] == "en"  # my language, not zh-tw
+
+
+# -- #399: the engine dropdown is hidden under a collapsed Advanced section ---------------------------------
+
+def test_engine_labels_hint_for_uninstalled_and_roundtrip(tmp_path):
+    assert core.engine_labels(tmp_path) == ["auto", "hymt (tlwu-setup --hymt)"]  # missing: hint; #471: no opus
+    (tmp_path / "hymt2-1.8b").mkdir()
+    labels = core.engine_labels(tmp_path)
+    assert labels == ["auto", "hymt"]  # installed: plain
+    assert [core.engine_from_label(l) for l in labels] == core.ENGINES
+    assert core.DEFAULTS["advanced_open"] is False
+
+
+def test_engine_widget_hidden_until_advanced_expanded_and_remembered(gui_app):
+    a = gui_app
+    cb = a.combos["engine"]
+    a.toggle_adjust()  # #455: every setting lives in the Adjust panel, hidden until "⚙ Adjust" is pressed
+    a.root.update()
+    assert a.settings["advanced_open"] is False and not cb.winfo_ismapped()
+    a.v_adv.set(True)
+    a._adv_toggled()
+    a.root.update()
+    assert cb.winfo_ismapped() and a.settings["advanced_open"] is True
+    a.collect()
+    assert core.load_settings()["advanced_open"] is True
+    a.v_adv.set(False)
+    a._adv_toggled()
+    a.root.update()
+    assert not cb.winfo_ismapped()

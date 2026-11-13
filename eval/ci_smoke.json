@@ -1,0 +1,22 @@
+{"_note": "Pins for scripts/bench/make_ci_smoke.py (#569): the open-licensed CI smoke set (FLEURS test, CC-BY 4.0). Re-pin with --pin 5 only on purpose; eval/baseline.json numbers depend on these clips.", "dataset": "google/fleurs", "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd", "license": "CC-BY-4.0", "clips": [
+  {"id": "en_001", "lang": "en", "file": "1003119935936341070.wav", "flores_id": 1904, "seconds": 10.56, "sha256": "33aca50159ec2e3cbcc894eb26faa916d6badb1b49fb75994973561540a7f012"},
+  {"id": "en_002", "lang": "en", "file": "10052240106321793346.wav", "flores_id": 1675, "seconds": 8.76, "sha256": "7603cae3294309ef70d234180cefccc3b13865ee525262228a636069b9b62841"},
+  {"id": "en_003", "lang": "en", "file": "10167324587744183095.wav", "flores_id": 1950, "seconds": 11.46, "sha256": "260bdd1a15e1d35bcc5d91667516ca3bc659285e10f94872182715bcd7880398"},
+  {"id": "en_004", "lang": "en", "file": "10197164397713068203.wav", "flores_id": 1728, "seconds": 5.76, "sha256": "b174be7730f0aab6a26762130b66f2125392b50550645727bd057d8479fb6219"},
+  {"id": "en_005", "lang": "en", "file": "10233995782544396174.wav", "flores_id": 1972, "seconds": 4.32, "sha256": "bfa2f3fb72a05cbcb7c0000a460435f2d0eedca7c5cc90f01aacc89127df7f63"},
+  {"id": "ja_001", "lang": "ja", "file": "10020345318418093976.wav", "flores_id": 1828, "seconds": 10.44, "sha256": "bd1b9533cfa176b8c2a71ecb4821a02bc86fa368d096373efe8d8dceafb35634"},
+  {"id": "ja_002", "lang": "ja", "file": "10086073819084529371.wav", "flores_id": 1834, "seconds": 14.22, "sha256": "fa4d3ce475c9b2fd127d3c9a6ea445792e21f04c5f8514452b0ad97b0ccbc2f8"},
+  {"id": "ja_003", "lang": "ja", "file": "10112379500600537933.wav", "flores_id": 1813, "seconds": 12.84, "sha256": "ade60c57813d704095310734906a9b6918b2dbbdcd0c9405c3f7d25580570d48"},
+  {"id": "ja_004", "lang": "ja", "file": "10174984673310355687.wav", "flores_id": 1869, "seconds": 12.54, "sha256": "7059c2e63434b2ffb6d33782ba99bf31b2c3f725feb988d50c514adda8efdb64"},
+  {"id": "ja_005", "lang": "ja", "file": "10193386983118883224.wav", "flores_id": 1744, "seconds": 12.06, "sha256": "3a268d324535ea7360c2448837f8947e87440554f01cbfc54879052d48703110"},
+  {"id": "ru_001", "lang": "ru", "file": "10002861505982796062.wav", "flores_id": 1781, "seconds": 11.52, "sha256": "81673ad2f0eb6a463e13fd9d5a442d1469e745f9a67565a3b9d20fbff395599a"},
+  {"id": "ru_002", "lang": "ru", "file": "10008070632189747443.wav", "flores_id": 1926, "seconds": 8.64, "sha256": "78e9c886fbfc247dc7743f9dc7473006b7a50b9401f1db9af16926cf9dae0d04"},
+  {"id": "ru_003", "lang": "ru", "file": "10011799110630615565.wav", "flores_id": 1917, "seconds": 7.92, "sha256": "d327393251ecdea82bf7b09be85715b068b4ab1fabd2709be698ede923646a72"},
+  {"id": "ru_004", "lang": "ru", "file": "10021068571959461962.wav", "flores_id": 1704, "seconds": 10.44, "sha256": "0917a419b13b5feb194181cd1cf2dc486cca80710a49a7147c12e3b1147bf36c"},
+  {"id": "ru_005", "lang": "ru", "file": "10024935581249406669.wav", "flores_id": 1692, "seconds": 7.2, "sha256": "2866329aac3f03a28dde4826d910a06c191df3c7921155b3431ec5b3d0b77e8a"},
+  {"id": "zh_001", "lang": "zh", "file": "10026684690566417990.wav", "flores_id": 1906, "seconds": 10.38, "sha256": "a72c0b59fdba80850552af7991de07f9f4940846d2d70f0890eeb153c40f164b"},
+  {"id": "zh_002", "lang": "zh", "file": "10040380210557600780.wav", "flores_id": 2006, "seconds": 8.28, "sha256": "b39d2c84aefada280b73a9ab439726d370d45e5a75bd05f0a90153288ea4561b"},
+  {"id": "zh_003", "lang": "zh", "file": "10048525650290665384.wav", "flores_id": 1883, "seconds": 13.86, "sha256": "aeb95366f4907daf8797d66797c87f6e002f10704e78e87a0c4b4521756a1616"},
+  {"id": "zh_004", "lang": "zh", "file": "10056338555786085046.wav", "flores_id": 1734, "seconds": 12.9, "sha256": "7cc0e10d7c4ad3297d1803ac968c996a747117edd75a6cec59e485a93bbe0fe9"},
+  {"id": "zh_005", "lang": "zh", "file": "10073099671796350432.wav", "flores_id": 1890, "seconds": 13.74, "sha256": "e07c342ae53173bec1c3d5f534073fa6368713f76e7b5ab9497b015b1020167f"}
+]}

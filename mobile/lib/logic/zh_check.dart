@@ -1,6 +1,7 @@
 /// Heuristic Traditional-Chinese check (pure logic).
 ///
-/// Qwen tends to answer in Simplified Chinese. We flag output that contains
+/// The Hy-MT2 card prompt asks for 中文 and the model may answer in Simplified
+/// (converted afterwards by `s2tw.dart`, like desktop OpenCC). We flag output that contains
 /// characters which exist only in Simplified (high-frequency set below), or
 /// that still contains Cyrillic (translation failed). Heuristic only: a text
 /// made purely of characters shared by both scripts passes.

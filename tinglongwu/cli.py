@@ -8,10 +8,13 @@ import time
 from . import __version__
 from .capture import select_backend
 from .models import ModelNotFound, models_dir
-from .engines import ENGINES
+from .engines import ENGINES, engine_choice
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
+# #389 preset -> --min-words: a finished sentence shorter than this (words; a CJK character counts as one) is not
+# translated alone but joined to a neighbour sentence, waiting at most --max-wait. chat keeps 0 (off) for latency.
+PRESET_MIN_WORDS = {"meeting": 3, "chat": 0}
 # #60: on CPU, ASR + MT already add seconds per line; holding an unfinished fragment the full 6 s on top makes the
 # subtitle feel stuck. Used only when neither --preset nor --max-wait was given (an explicit choice is kept).
 CPU_MAX_WAIT = 3.0
@@ -55,6 +58,9 @@ def parse_args(argv=None):
                         f"--max-wait the default max-wait is {CPU_MAX_WAIT:g} s")
     p.add_argument("--chunk", type=float, default=None,
                    help="max segment seconds (default from --preset; larger = more context for Whisper)")
+    p.add_argument("--no-splash", action="store_true",
+                   help="skip the start-up mascot animation (it is also skipped when output is not a terminal, "
+                        "with NO_COLOR, or on terminals without 24-bit colour)")
     p.add_argument("--selftest", action="store_true",
                    help="load the models and translate one bundled test sentence with --model/--engine/--device, "
                         "print OK/FAIL per step, fall back GPU -> CPU on failure, then exit (offline)")
@@ -71,12 +77,22 @@ def parse_args(argv=None):
                    help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
                         "is held (default from --preset; on CPU without --preset / --max-wait: "
                         f"{CPU_MAX_WAIT:g}; a pause of >= 0.8 s sends it earlier)")
-    p.add_argument("--engine", choices=list(ENGINES), default="auto",
+    p.add_argument("--min-words", type=int, default=None, metavar="N",
+                   help="sentence merging: a finished sentence shorter than N words (a CJK character counts as a "
+                        "word) is joined to the previous / next sentence instead of being translated alone, "
+                        "waiting at most --max-wait (default from --preset: meeting 3, chat 0; 0 = off)")
+    p.add_argument("--engine", type=engine_choice, choices=list(ENGINES), default="auto",
                    help="auto (default) = hymt: Hy-MT2 1.8B (direct src->target, `tlwu-setup --hymt`), on the GPU "
                         "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
                         "command (no silent engine switch, #276); hymt7b: opt-in Hy-MT2 7B for GPUs with >= 8 GB "
-                        "(`tlwu-setup --hymt7b`, never picked by auto, #279); opus: src->en->target OPUS-MT, only "
-                        "when asked")
+                        "(`tlwu-setup --hymt7b`, never picked by auto, #279); ollama: a model served by your own local Ollama (opt-in, never installed or "
+                        "pulled by tlwu, #356); fm: Apple's on-device model via the macOS 27 `fm` command "
+                        "(opt-in, experimental)")
+    p.add_argument("--ollama-model", default=None, metavar="NAME",
+                   help="with --engine ollama: model name (env TLWU_OLLAMA_MODEL; default: the first model "
+                        "already installed in Ollama)")
+    p.add_argument("--ollama-url", default=None, metavar="URL",
+                   help="with --engine ollama: local server URL (env TLWU_OLLAMA_URL, default http://127.0.0.1:11434)")
     p.add_argument("--stream", action="store_true",
                    help="live drafts: while a segment is still being spoken, re-run Whisper on the growing "
                         "audio and translate the whole partial text at once; shows ONE dim line (the "
@@ -87,8 +103,7 @@ def parse_args(argv=None):
     p.add_argument("--stream-src", action="store_true",
                    help="with --stream: also show the dim source-language draft line above the translation")
     p.add_argument("--debug-latency", action="store_true",
-                   help="log to stderr per-stage times: ASR ms per segment, MT ms (each OPUS step, e.g. "
-                        "ru-en / en-zh) and queue wait per line; with --stream also the seconds from segment "
+                   help="log to stderr per-stage times: ASR ms per segment, MT ms and queue wait per line; with --stream also the seconds from segment "
                         "audio start to the first translated draft and to the final line")
     p.add_argument("--paced", action="store_true",
                    help="with --file: release the audio in real time and use the live clock, like live capture "
@@ -100,16 +115,16 @@ def parse_args(argv=None):
                         "prints them as 'latency: line {...}'")
     p.add_argument("--no-adapt", action="store_true",
                    help="keep the chosen models even when lines arrive late (default: if speech end -> translated "
-                        "line stays over 2 s for 3 lines, step down the translation engine, then the speech "
-                        "model, and step back up after a stable period; one stderr line per switch)")
+                        "line stays over 2 s for 3 lines, step down the speech model "
+                        "and step back up after a stable period; one stderr line per switch)")
     p.add_argument("--builtin-glossary", action="store_true",
                    help="also load the built-in tech/dev glossary (your --glossary entries win)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
-                        "given to Hy-MT2 as reference translations; with OPUS, `target ~ wrong | wrong` "
-                        "replaces known wrong renderings in the output. "
+                        "given to Hy-MT2 as reference translations; `target ~ wrong | wrong` "
+                        "replaces known wrong renderings in the zh output. "
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
                    help="open the graphical interface (floating subtitle bar + small control window)")
@@ -129,13 +144,17 @@ def parse_args(argv=None):
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    p.add_argument("--record", nargs="?", const="", default=None, metavar="DIR",
+                   help="also record the audio, on this computer only: one 16 kHz WAV per final line plus "
+                        "segments.jsonl (file, start, end, lang, source, translation); DIR defaults to "
+                        "./transcripts/rec-<YYYYmmdd-HHMMSS> (default off; get the other side's consent first)")
     p.add_argument("--report", action="store_true",
                    help="open the browser on a pre-filled GitHub issue (version, OS, recent log); "
                         "nothing is uploaded, you review and submit it yourself")
     p.add_argument("--probe", action="store_true",
                    help="show this machine's GPU/VRAM, RAM and CPU and the recommended models, then exit (offline)")
     p.add_argument("--speed", action="store_true",
-                   help="with --probe: also run the ~10 s translation speed test (CPU: Hy-MT2 vs OPUS); the "
+                   help="with --probe: also run the ~10 s translation speed test (CPU: Hy-MT2 on this CPU); the "
                         "result is remembered until the hardware changes")
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")
@@ -149,6 +168,11 @@ def parse_args(argv=None):
         p.error("--paced needs --file (live capture is always real time)")
     if a.latency_jsonl and a.file and not a.paced:
         p.error("--latency-jsonl with --file needs --paced (an unpaced file runs faster than real time)")
+    if a.latency_jsonl:  # #435: fail now with a clean message, not an OSError traceback after the models load
+        try:
+            open(a.latency_jsonl, "a", encoding="utf-8").close()
+        except OSError as e:
+            p.error(f"--latency-jsonl: cannot write {a.latency_jsonl}: {e.strerror or e}")
     if a.voice and a.transcript_only:
         p.error("--voice needs translations (not --transcript-only)")
     if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
@@ -160,6 +184,10 @@ def parse_args(argv=None):
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
     a.max_wait = wait if a.max_wait is None else a.max_wait
+    if a.min_words is None:
+        a.min_words = PRESET_MIN_WORDS[a.preset]
+    elif a.min_words < 0:
+        p.error("--min-words must be >= 0")
     return a
 
 
@@ -204,13 +232,26 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) 
     return got
 
 
-def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None):
+def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, choose=None,
+                    ollama_model=None, ollama_url=None):
     """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
     from .engines import choose_engine
     from .hymt import JaRouter
-    from .translate import PivotTranslator
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
+
+    if name == "ollama":  # #356: opt-in only, a model the user runs in their own local Ollama
+        from .ollama import OllamaTranslator
+
+        tr = OllamaTranslator(ollama_model, ollama_url, zh_variant)
+        say(f"tlwu: translation engine = ollama ({tr.model or 'first installed model'} @ {tr.url})",
+            file=sys.stderr)
+        return tr
+    if name == "fm":  # #356: opt-in, experimental, macOS 27+ only
+        from .fm import FmTranslator
+
+        say("tlwu: translation engine = fm (Apple on-device model, experimental)", file=sys.stderr)
+        return FmTranslator(zh_variant)
 
     if name in ("hymt2", "hymt2-cpu", "hymt2-7b"):
         from .hymt import hymt_path, setup_flag
@@ -227,8 +268,7 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         if size == "7b" and dev != "cuda":
             say("tlwu: WARNING: Hy-MT2 7B on the CPU is several times slower than 1.8B; it is meant for GPUs "
                 "with >= 8 GB VRAM (#279)", file=sys.stderr)
-        tr = JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev, all_pairs=True,
-                      warn=lambda m: say(m, file=sys.stderr), size=size)
+        tr = JaRouter(None, mdir, zh_variant, dev, all_pairs=True, warn=lambda m: say(m, file=sys.stderr), size=size)
         try:
             if tr.hy is None:
                 raise RuntimeError(tr.hy_error)
@@ -236,47 +276,27 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: stop, never switch engines
             raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
                              f"`tlwu-setup {flag}` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
-                             "PC), or run with --engine opus.") from e
+                             "PC).") from e
         say(f"tlwu: translation engine = {name} on {dev} ({why})", file=sys.stderr)
         return tr
-    say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
-
-    # OPUS has no usable Japanese: ja pairs go direct through Hy-MT2 when installed, else ja -> en -> zh pivot
-    return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
+    raise SystemExit(f"tlwu: unknown translation engine {name!r}; use --engine auto (#471)")
 
 
 def apply_glossary(translator, glossary) -> None:
-    """Hand the --glossary to the MT engine: JaRouter passes it on to Hy-MT2 (terms in its prompt) and the
-    OPUS pivot, which apply its `~` wrong-rendering fixes to their zh output (#30, #174)."""
+    """Hand the --glossary to the MT engine: JaRouter passes it on to Hy-MT2 (terms in its prompt, `~`
+    wrong-rendering fixes on the zh output, #30, #174)."""
     if hasattr(translator, "glossary"):
         translator.glossary = glossary
 
 
-def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, make_opus=None,
-                  log=None):
-    """Wrap ASR / MT so the latency controller can swap models at run time (#80).
+def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, log=None):
+    """Wrap ASR so the latency controller can swap speech models at run time (#80). The translation engine is
+    never swapped: Hy-MT2 is the only one (#471, no OPUS step-down).
     Returns (asr, translator, controller); controller is None when there is nothing to step down to."""
-    from .adapt import Ladder, LatencyController, Switchable, SwitchableTranslator, smaller_whisper
-    from .hymt import JaRouter
+    from .adapt import Ladder, LatencyController, Switchable, smaller_whisper
     from .models import whisper_installed
-    from .translate import PivotTranslator
 
     ladders = []
-    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator)):
-        def opus():
-            tr = JaRouter(PivotTranslator(mdir, a.zh_variant, device=dev), mdir, a.zh_variant, dev)
-            tr.glossary = glossary  # Hy-MT2 and the OPUS pivot behind the router (#174)
-            for src in ([a.lang] if a.lang != "auto" else (cands or [])):
-                if src != a.to:
-                    tr.preload(src, a.to)  # ModelNotFound here = OPUS is not a candidate
-            if not (mdir / "opus").is_dir():
-                raise FileNotFoundError(mdir / "opus")
-            return tr
-
-        mt = Ladder("translation engine", getattr(translator, "name", type(translator).__name__), translator,
-                    [("opus", make_opus or opus)])
-        ladders.append(mt)
-        translator = SwitchableTranslator(mt)
     if make_asr is None:
         from .asr import FasterWhisperRecognizer
 
@@ -375,6 +395,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     from .merge import SentenceMerger
     from .pipeline import run
     from .segment import Segmenter
+    from .i18n import t as _t
     from .sink import TextSink, TranscriptSink
 
     from .minspec import SlowWatch, check_avx2
@@ -428,7 +449,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     translator = None
     if not a.transcript_only:
         prog.stage("translation engine")
-        translator = make_translator(a.engine, mdir, a.zh_variant, dev)
+        translator = make_translator(a.engine, mdir, a.zh_variant, dev,
+                                     ollama_model=getattr(a, "ollama_model", None),
+                                     ollama_url=getattr(a, "ollama_url", None))
         if glossary is not None:
             apply_glossary(translator, glossary)
         if a.lang != "auto":
@@ -440,8 +463,15 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     ctl = None
     if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
         asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
+    rec_dir = getattr(a, "record", None)
+    rec = _t("rec_label") if rec_dir is not None else ""
     if sink is None:
         sink = TranscriptSink() if a.transcript_only else TextSink()
+    inner = sink  # #239: the console sink, also inside a wrapper (meeting-mode saver, overlay, voice)
+    while inner is not None and not isinstance(inner, (TextSink, TranscriptSink)):
+        inner = getattr(inner, "inner", None)
+    if inner is not None:
+        inner.rec = rec
     if a.save is not None:
         from .sink import JsonlSaveSink, default_save_path
 
@@ -451,9 +481,15 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
+    recorder = None
+    if rec_dir is not None:  # #239: opt-in only (the menu asks on every start, default no)
+        from .record import Recorder, default_record_dir
+
+        recorder = Recorder(rec_dir or default_record_dir())
+        print(f"tlwu: {_t('rec_consent', path=os.path.abspath(recorder.dir))}", file=sys.stderr, flush=True)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
     audio_clock = bool(a.file) and not paced
-    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
+    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait, min_words=getattr(a, "min_words", 0))
     segmenter = Segmenter(a.chunk, not a.no_vad, step=0.25, vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)))
     draft = None
     if draft_factory is not None:
@@ -485,18 +521,20 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .voice import open_voice
 
             prog.stage("voice")
-            sink, close_voice = open_voice(a, mdir, sink, warn)
+            sink, close_voice = open_voice(a, mdir, sink, warn, off=notice)
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
-            on_record=on_record)
+            on_record=on_record, recorder=recorder)
     except KeyboardInterrupt:
         interrupted = True
         raise
     finally:
         if rec_file is not None:
             rec_file.close()
+        if recorder is not None:
+            recorder.close()
         if close_voice is not None:  # Ctrl+C / GUI Stop: do not keep talking through the backlog
             close_voice(drop=interrupted or (stop is not None and stop.is_set()))
 
@@ -565,6 +603,9 @@ def main(argv=None) -> int:
         return gui_main()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    from . import splash
+
+    splash.play(no_splash=a.no_splash)
     if a.overlay:  # #322: Tk owns the main thread, the pipeline runs on a worker
         from .overlay import OverlaySink, run_listen
         from .sink import TextSink, TranscriptSink
@@ -582,3 +623,7 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         _hard_exit(0)
     return 0
+
+
+if __name__ == "__main__":  # `python -m tinglongwu.cli ...` behaves like `tlwu ...`
+    sys.exit(main())

@@ -9,7 +9,8 @@ from tinglongwu import hymt
 from tinglongwu.hymt import HyMtTranslator, JaRouter, build_prompt, hymt_path
 from tinglongwu.reverse import proto, tts_client
 from tinglongwu.reverse.logic import split_sentences, translate_ru
-from tinglongwu.translate import PivotTranslator, strip_unk
+from pivot_fake import PivotTranslator
+from tinglongwu.translate import strip_unk
 
 from test_reverse_en import _parse, _worker_const
 
@@ -42,17 +43,6 @@ def test_strip_unk_field_samples():
     assert strip_unk('我想在後面做我最好的第4個"unk"') == "我想在後面做我最好的第4個"
     assert strip_unk("你好<unk>。") == "你好。"
     assert strip_unk("plain text, unk is fine") == "plain text, unk is fine"
-
-
-def test_opus_step_strips_unk():
-    from tinglongwu.translate import OpusStep
-
-    step = OpusStep.__new__(OpusStep)
-    step.join, step.prefix = " ", ""
-    step.sp = SimpleNamespace(encode=lambda s, out_type=str: [s])
-    step.tr = SimpleNamespace(translate_batch=lambda toks, **kw: [SimpleNamespace(
-        hypotheses=[["▁4th", "<unk>", "▁in", "▁the", "▁back"]])])
-    assert step("x") == "4th in the back"
 
 
 def test_prompt_templates():
@@ -119,11 +109,12 @@ def test_router_falls_back_when_llm_fails_to_load(tmp_path):
         r2.translate("你好", "zh", "ja")
 
 
-def test_make_translator_opus_returns_router(tmp_path):
+def test_make_translator_no_longer_builds_opus(tmp_path):
     from tinglongwu import cli
 
-    tr = cli.make_translator("opus", tmp_path, "tw", "cpu", say=lambda *a, **k: None)
-    assert isinstance(tr, JaRouter) and isinstance(tr.base, PivotTranslator)
+    with pytest.raises(SystemExit, match="--engine auto"):  # #471: no OPUS pivot in the listen path
+        cli.make_translator("opus", tmp_path, "tw", "cpu", say=lambda *a, **k: None,
+                            choose=lambda e, d, m: ("opus", "test"))
 
 
 def test_translate_ru_no_cjk_retry_for_japanese():

@@ -1,6 +1,8 @@
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
+import '../logic/context_budget.dart';
 import '../logic/prompt.dart';
+import '../logic/s2tw.dart';
 import '../logic/zh_check.dart';
 
 class Translation {
@@ -11,7 +13,6 @@ class Translation {
     required this.totalMs,
     required this.firstTokenMs,
     required this.genMs,
-    required this.retried,
     required this.nCtx,
   });
 
@@ -19,36 +20,38 @@ class Translation {
   final ZhCheck check;
   final int tokens;
 
-  /// Wall time of the whole translate() call (incl. retry).
+  /// Wall time of the whole translate() call.
   final int totalMs;
 
-  /// Time to first token of the last attempt (prefill + queueing).
+  /// Time to first token (prefill + queueing).
   final int firstTokenMs;
 
-  /// Time from first to last token of the last attempt.
+  /// Time from first to last token.
   final int genMs;
-  final bool retried;
 
-  /// KV positions used by the last attempt (prompt + generated); the session
+  /// KV positions used (prompt + generated); the session
   /// is cleared per request so this must stay small and constant.
   final int nCtx;
 
   double get tokensPerSecond => genMs > 0 ? (tokens - 1) * 1000 / genMs : 0;
 }
 
-/// Qwen3 translator on top of llama_cpp_dart (worker isolate, CPU).
+/// Hy-MT2-1.8B translator on top of llama_cpp_dart (worker isolate, CPU).
+///
+/// Same prompt as desktop `tinglongwu/hymt.py` (see [PromptBuilder]); one
+/// stateless request per sentence, like desktop (no context memory). Greedy
+/// decoding = desktop with TLWU_HYMT_TEMP=0 (repeatable output on the phone).
 class Translator {
   Translator._(this._engine, this._session);
 
   final LlamaEngine _engine;
   final EngineSession _session;
-  final List<ContextPair> _history = [];
 
   static Future<Translator> load(String modelPath, {int threads = 4}) async {
     final engine = await LlamaEngine.spawn(
       modelParams: ModelParams(path: modelPath, gpuLayers: 0, useMmap: true),
       contextParams: ContextParams(
-        nCtx: 768,
+        nCtx: ContextBudget.nCtx,
         nBatch: 512,
         nUbatch: 512,
         nThreads: threads,
@@ -59,42 +62,11 @@ class Translator {
     return Translator._(engine, session);
   }
 
-  Future<Translation> translate(String ru) async {
+  /// [src] is the ASR-detected source language code (see [PromptBuilder]).
+  Future<Translation> translate(String ru, {String src = 'ru'}) async {
     final sw = Stopwatch()..start();
-    var attempt = await _run(ru, strict: false);
-    var retried = false;
-    if (!attempt.check.isTraditional) {
-      retried = true;
-      final second = await _run(ru, strict: true);
-      // Keep the retry if it is better (traditional, or at least not worse).
-      if (second.check.isTraditional ||
-          second.check.simplifiedCount < attempt.check.simplifiedCount ||
-          !attempt.check.hasChinese) {
-        attempt = second;
-      }
-    }
-    if (attempt.text.isNotEmpty) {
-      _history.add(ContextPair(ru, attempt.text));
-      if (_history.length > PromptBuilder.contextSentences) {
-        _history.removeAt(0);
-      }
-    }
-    return Translation(
-      zh: attempt.text,
-      check: attempt.check,
-      tokens: attempt.tokens,
-      totalMs: sw.elapsedMilliseconds,
-      firstTokenMs: attempt.firstTokenMs,
-      genMs: attempt.genMs,
-      retried: retried,
-      nCtx: attempt.nCtx,
-    );
-  }
-
-  Future<_Attempt> _run(String ru, {required bool strict}) async {
-    final prompt = PromptBuilder.build(ru, context: _history, strict: strict);
+    final prompt = PromptBuilder.build(ru.trim(), src: src);
     await _session.clear();
-    final sw = Stopwatch()..start();
     final buf = StringBuffer();
     var tokens = 0;
     var firstMs = 0;
@@ -104,7 +76,8 @@ class Translator {
       addSpecial: false,
       parseSpecial: true,
       sampler: const SamplerParams(greedy: true),
-      maxTokens: 100,
+      // Clamped so prompt + output stay inside nCtx (#533).
+      maxTokens: ContextBudget.maxTokens(ru),
     )) {
       if (e is TokenEvent) {
         if (tokens == 0) firstMs = sw.elapsedMilliseconds;
@@ -114,14 +87,16 @@ class Translator {
         nCtx = e.committedPosition;
       }
     }
-    final text = PromptBuilder.clean(buf.toString());
-    return _Attempt(
-      text,
-      checkChinese(text),
-      tokens,
-      firstMs,
-      sw.elapsedMilliseconds - firstMs,
-      nCtx,
+    // Same as desktop hymt: the card prompt asks for 中文, so convert to zh-Hant (Taiwan) afterwards.
+    final text = toTraditionalTw(PromptBuilder.clean(buf.toString()));
+    return Translation(
+      zh: text,
+      check: checkChinese(text),
+      tokens: tokens,
+      totalMs: sw.elapsedMilliseconds,
+      firstTokenMs: firstMs,
+      genMs: sw.elapsedMilliseconds - firstMs,
+      nCtx: nCtx,
     );
   }
 
@@ -129,15 +104,4 @@ class Translator {
     await _session.dispose();
     await _engine.dispose();
   }
-}
-
-class _Attempt {
-  _Attempt(this.text, this.check, this.tokens, this.firstTokenMs, this.genMs,
-      this.nCtx);
-  final String text;
-  final ZhCheck check;
-  final int tokens;
-  final int firstTokenMs;
-  final int genMs;
-  final int nCtx;
 }

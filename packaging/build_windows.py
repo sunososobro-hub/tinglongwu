@@ -28,6 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build" / "nuitka-tlwu"
+APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 
 
 def read_version() -> str:
@@ -97,7 +98,12 @@ def lazy_includes() -> list[str]:
     return [f"--include-module={m}" for m in sorted(mods)]
 
 
-def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
+def has_nvidia_driver() -> bool:
+    """nvcuda.dll (installed by the NVIDIA display driver) is present: a CUDA llama.dll is expected to load here."""
+    return (Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "nvcuda.dll").is_file()
+
+
+def smoke(app: Path, run=subprocess.run, lite: bool = False, no_gpu_ok: bool = False) -> None:
     """Run the built `tlwu.exe --smoke` (no models, no network): native DLLs and the lazy filelock /
     huggingface_hub imports of the first-run download (#310). A failure stops the build before the zip.
     llama_cpp is optional in the smoke (a clean PC may lack the VC++ runtime), but not on the pack machine (#398)."""
@@ -108,6 +114,10 @@ def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
     if "WARN llama_cpp" in r.stdout:
         raise SystemExit("tlwu.exe --smoke: llama_cpp does not load in the package (#398), not zipping")
     if not lite and "CPU  llama_cpp" in r.stdout:  # the CUDA llama.dll is broken; the CPU fallback must not hide it
+        if no_gpu_ok:  # CI runner (#414): no NVIDIA driver, so CUDA cannot load; check_dist_dlls covers the CUDA deps
+            print("WARNING: CUDA llama build not loaded: no NVIDIA driver on this machine (--allow-cpu-only). "
+                  "The CPU fallback works; the GPU path is NOT validated by this build")
+            return
         raise SystemExit("tlwu.exe --smoke: the CUDA llama build did not load on the pack machine (CPU line above), "
                          "not zipping")
 
@@ -115,7 +125,7 @@ def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
 def nuitka_cmd() -> list[str]:
     return [sys.executable, "-m", "nuitka", "--standalone", "--assume-yes-for-downloads", "--jobs=16", "--lto=no",
             "--enable-plugin=tk-inter", "--windows-console-mode=hide", "--output-filename=tlwu.exe",
-            "--output-folder-name=tlwu", f"--output-dir={BUILD}", "--remove-output",
+            "--output-folder-name=tlwu", f"--windows-icon-from-ico={APP_ICON}", f"--output-dir={BUILD}", "--remove-output",
             f"--report={EVAL / 'build' / 'nuitka-report.xml'}",
             "--include-package=tlwu_app", "--include-package=tinglongwu", "--include-package=tinglongwu_setup",
             # filelock/huggingface_hub import submodules lazily (__getattr__), so Nuitka cannot see them (#36)
@@ -124,6 +134,9 @@ def nuitka_cmd() -> list[str]:
             # not: it runs in the Kokoro venv from the source file copied by copy_worker_sources().
             "--nofollow-import-to=tinglongwu.reverse.tts_worker", "--nofollow-import-to=pytest",
             "--nofollow-import-to=unittest",
+            # #390: lazy-imported on the first Russian sentence; the dictionary is package data loaded by path
+            "--include-package=pymorphy3", "--include-package=dawg_python", "--include-package=pymorphy3_dicts_ru",
+            "--include-package-data=pymorphy3_dicts_ru",
             "--include-package-data=faster_whisper", "--include-package-data=opencc",
             "--include-package-data=soundcard", "--include-package=sv_ttk", "--include-package-data=sv_ttk", "--include-package-data=tinglongwu_setup", "--include-package-data=tinglongwu",  # self-test clip data/selftest_en.wav (#99)
             "--product-name=tinglongWu", "--file-description=tinglongWu offline speech translator",
@@ -147,7 +160,7 @@ and the cuDNN Software License Agreement; see the NVIDIA-*.txt files in this fol
 NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososobro-hub/tinglongwu
 
 Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
-Silero VAD: MIT, Qwen3: Apache-2.0).
+Silero VAD: MIT, Hy-MT2: Apache-2.0).
 Microsoft Visual C++ runtime files (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll, msvcp140_1.dll, vcomp140.dll
 in this folder, from the Visual C++ 2015-2022 x64 runtime): redistributable under the Microsoft Visual Studio license
 terms (Distributable Code). If tlwu.exe still does not start, install the Microsoft Visual C++ Redistributable
@@ -300,6 +313,14 @@ def copy_llama(app: Path, lite: bool, cpu_dlls: list[Path], src: Path | None = N
         shutil.copy2(f, cpu / f.name)
 
 
+# Packages whose metadata license covers only their code, not the data they ship (#390 review).
+DATA_LICENSES = {
+    "pymorphy3-dicts-ru": "MIT (code); bundled Russian dictionary data: CC BY-SA 3.0 "
+                          "(https://creativecommons.org/licenses/by-sa/3.0/), derived from OpenCorpora "
+                          "(opencorpora.org), shipped unmodified",
+}
+
+
 def write_licenses(app: Path, cuda_src: Path | None) -> None:
     lic = app / "licenses"
     lic.mkdir(exist_ok=True)
@@ -307,7 +328,8 @@ def write_licenses(app: Path, cuda_src: Path | None) -> None:
     for d in sorted(md.distributions(), key=lambda x: (x.metadata["Name"] or "").lower()):
         n = d.metadata["Name"]
         if n and n.lower() not in ("nuitka", "ordered-set", "zstandard", "pip", "setuptools", "wheel"):
-            rows.append(f"{n} {d.version}: {d.metadata.get('License-Expression') or d.metadata.get('License') or 'see package'}")
+            lic_text = DATA_LICENSES.get(n.lower()) or d.metadata.get('License-Expression') or d.metadata.get('License')
+            rows.append(f"{n} {d.version}: {lic_text or 'see package'}")
     for name in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc") if cuda_src else ():
         for f in cuda_src.glob(f"nvidia_{name}_cu12-*/licenses/*"):
             shutil.copy2(f, lic / f"NVIDIA-{name}-{f.name}")
@@ -351,7 +373,8 @@ def main() -> int:
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
     ap.add_argument("--lite", action="store_true", help="CPU-only variant: no CUDA libs / ggml-cuda.dll")
     ap.add_argument("--allow-cpu-only", action="store_true",
-                    help="no CUDA wheels found: build a CPU-only package instead of stopping")
+                    help="no CUDA wheels found: build a CPU-only package instead of stopping; on a machine "
+                         "without an NVIDIA driver (CI runner) the smoke may also use the CPU llama fallback")
     ap.add_argument("--no-smoke", action="store_true", help="skip the `tlwu.exe --smoke` check before zipping")
     a = ap.parse_args()
     DIST.mkdir(parents=True, exist_ok=True)
@@ -392,7 +415,7 @@ def main() -> int:
     if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
         print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")
     if not a.no_smoke:
-        smoke(APP, lite=cuda_src is None)
+        smoke(APP, lite=cuda_src is None, no_gpu_ok=a.allow_cpu_only and not has_nvidia_driver())
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
     return 0

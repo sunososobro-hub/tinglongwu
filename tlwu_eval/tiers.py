@@ -11,7 +11,7 @@ from . import scoring
 # large-v3 next to Hy-MT2. The eval harness never runs drafts (--stream), so "drafts off" needs no flag.
 # mid-gpu uses small (the owner's hallucination baseline model); pass --model large-v3-turbo for the turbo run.
 TIERS = {
-    "cpu-low": {"model": "base", "engine": "opus", "device": "cpu"},
+    "cpu-low": {"model": "base", "engine": "hymt", "device": "cpu"},  # #471: OPUS removed, Hy-MT2 on CPU
     "mid-gpu": {"model": "small", "engine": "hymt", "device": "cuda"},
     "high": {"model": "large-v3", "engine": "hymt", "device": "cuda"},
 }
@@ -40,13 +40,15 @@ def is_hallucinated(ref: str, asr: str, lang: str) -> bool:
     return scoring.error_rate([(ref, asr)], lang) > HALLUCINATION_ERROR_RATE
 
 
-def comet_scores(langs, model, gpus: int = 0) -> dict:
-    """pair -> COMET system score x100. model: a loaded COMET model (Unbabel/wmt22-comet-da), .predict(...)."""
+def comet_scores(langs, model, gpus: int = 0, exact: bool = False) -> dict:
+    """pair -> COMET system score x100 (2 decimals; unrounded with exact=True, for floor checks, #472).
+    model: a loaded COMET model (Unbabel/wmt22-comet-da), .predict(...)."""
     out = {}
     for lg in langs:
         data = [{"src": c["ref_text"], "mt": c["mt"], "ref": c["ref_mt"]} for c in lg["clips"] if c.get("ref_mt")]
         if data:
-            out[lg["pair"]] = x100(model.predict(data, batch_size=16, gpus=gpus, progress_bar=False).system_score)
+            score = model.predict(data, batch_size=16, gpus=gpus, progress_bar=False).system_score
+            out[lg["pair"]] = 100.0 * score if exact else x100(score)
     return out
 
 

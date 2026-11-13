@@ -256,8 +256,8 @@ def menu(tmp_path):
            "XDG_CONFIG_HOME": str(tmp_path / "cfg"), "TMPDIR": str(tmp_path), "LANG": "C.UTF-8",
            "CUDA_VISIBLE_DEVICES": ""}   # a Mac has no CUDA: keep the device probe on CPU on a GPU test host too
 
-    def run(keys: str):
-        r = subprocess.run(["bash", str(repo / "scripts" / "linux_menu.sh")], env=env, input=keys,
+    def run(keys: str, *args: str):
+        r = subprocess.run(["bash", str(repo / "scripts" / "linux_menu.sh"), *args], env=env, input=keys,
                            capture_output=True, text=True, timeout=60)
         calls = log.read_text() if log.exists() else ""
         log.unlink(missing_ok=True)
@@ -267,31 +267,39 @@ def menu(tmp_path):
 
 
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
-    r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
+    r, calls = menu("3\nn\nn\nn\n")   # save? n; record? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls == ["tlwu --lang en --builtin-glossary --engine hymt"]   # #227: Hy-MT2 installed, CPU
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
 
 
 def test_mac_menu_speak_mode_uses_blackhole_16ch_and_kokoro(menu):
-    r, calls = menu("2\n1\nn\n")
+    r, calls = menu("2\n1\n")   # #371: no confirm-vs-direct question
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
     [c] = calls
     assert c.startswith("proto --mic") and "--to en" in c and "--tts-engine kokoro" in c
     assert "--device" not in c and "--no-vmic" not in c   # proto picks BlackHole 16ch itself
+    assert "--no-confirm" in c   # #371: direct send by default
+
+
+def test_mac_menu_speak_mode_confirm_flag_keeps_confirmation(menu):
+    r, calls = menu("2\n1\n", "--confirm")
+    assert r.returncode == 0, r.stdout + r.stderr
+    [c] = calls
+    assert c.startswith("proto --mic") and "--no-confirm" not in c
 
 
 def test_mac_menu_speak_mode_to_headphones_skips_the_virtual_mic(menu):
-    r, calls = menu("2\n3\nn\nAirPods Pro\n")
+    r, calls = menu("2\n3\nAirPods Pro\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls[0] == "proto --list-speakers"
-    assert calls[1].endswith("--no-vmic --device AirPods Pro")
+    assert calls[1].endswith("--no-confirm --no-vmic --device AirPods Pro")
 
 
 def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     """#285: one process: the speak side runs the listen side (--listen <tlwu args>), no background tlwu."""
-    r, calls = menu("1\nn\nn\n")
+    r, calls = menu("1\nn\nn\n")   # save? n; record? n
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
     assert not [c for c in calls if c.startswith("tlwu")]

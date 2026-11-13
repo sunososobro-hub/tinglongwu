@@ -31,6 +31,11 @@ CLAUSE_MIN_UNITS = 3  # a clause shorter than this is not worth its own final li
 FUZZY_MIN = 3  # #273: an overlap this long is dropped even with one garbled word at the seam
 
 
+def _join(a: str, b: str) -> str:
+    """Concatenate two pieces of text: no space before CJK text, one space otherwise."""
+    return a + b if _CJK.search(b[:1]) else f"{a} {b}"
+
+
 def _units(text: str) -> int:
     """Length for the cap: words, with every CJK character counting as a word."""
     return len(_WORD.sub("x", _CJK.sub(" x ", text)).split())
@@ -83,6 +88,7 @@ class Unit:
     lang: str
     forced: bool  # released by the cap / timeout / end of stream rather than a sentence boundary
     tag: object = None  # #323: add()'s tag of the newest segment whose text is in this unit (latency marks)
+    first: object = None  # #239: tag of the oldest segment whose text is in this unit (None: same as tag)
 
 
 def split_clause(text: str) -> tuple[str, str]:
@@ -98,8 +104,12 @@ def split_clause(text: str) -> tuple[str, str]:
 class SentenceMerger:
     """Push ASR segments, get translation units. Time is injected (seconds, any monotonic clock)."""
 
-    def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False):
+    def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False,
+                 min_words: int = 0):
         self.max_wait, self.max_words, self.min_overlap = max_wait, max_words, min_overlap
+        # #389: a finished sentence shorter than this ("Максима Чижова.") is a fragment: it is joined to the previous
+        # sentence of the same release, else held (at most max_wait) and joined to the next one. 0 = off.
+        self.min_words = min_words
         # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
         # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
         self.whole = whole
@@ -109,6 +119,7 @@ class SentenceMerger:
         self._cut = False  # previous segment was a forced mid-speech cut
         self._tail: list[str] = []  # last pushed words, for overlap de-duplication
         self.tag: object = None  # tag of the newest segment whose text is buffered (#323)
+        self._marks: list[tuple[int, object]] = []  # #435: (offset in buf where a segment's text starts, its tag)
 
     @property
     def deadline(self) -> float | None:
@@ -121,6 +132,7 @@ class SentenceMerger:
         if drop_old and self._tail and self.buf.endswith(self._tail[-1]):
             self.buf = self.buf[:-len(self._tail[-1])].rstrip()
             self._tail = self._tail[:-1]
+            self._marks = [m for m in self._marks if m[0] < len(self.buf)]
         return " ".join(text.split()[drop_new:])
 
     def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0,
@@ -146,6 +158,7 @@ class SentenceMerger:
             self.since = now
         self.lang = lang
         self.buf = f"{self.buf} {text}".strip() if not _CJK.search(text[:1]) else self.buf + text
+        self._marks.append((len(self.buf) - len(text), tag))
         parts = [p for p in _SPLIT.split(self.buf) if p.strip()]
         # keep splitting only where the sentence really ends (abbreviation guard)
         sents: list[str] = []
@@ -157,7 +170,10 @@ class SentenceMerger:
         rest = ""
         if sents and not _is_end(sents[-1]):
             rest = sents.pop()
-        out += [Unit(s.strip(), lang, False, tag) for s in sents]
+        if self.min_words > 0:
+            sents, rest = self._merge_fragments(sents, rest)
+        out += [Unit(s.strip(), lang, False, tag, self._first() if i == 0 else tag) for i, s in enumerate(sents)]
+        self._rebase(len(self.buf) - len(rest))
         self.buf = rest
         if not rest:
             self.since = None
@@ -169,25 +185,64 @@ class SentenceMerger:
             return out
         return out + self.due(now)
 
+    def _is_fragment(self, text: str) -> bool:
+        # words only (_units also counts a lone CJK punctuation mark like "。" as one): each CJK character is a word
+        return len(_WORD.findall(_CJK.sub(" x ", text))) < self.min_words
+
+    def _merge_fragments(self, sents: list[str], rest: str) -> tuple[list[str], str]:
+        """#389: join each fragment sentence to its neighbour: to the next finished sentence, else to the previous
+        one; a fragment with no finished neighbour goes back into the buffer to wait for the next text."""
+        merged: list[str] = []
+        for s in sents:
+            if merged and (self._is_fragment(merged[-1]) or self._is_fragment(s)):
+                merged[-1] = _join(merged[-1], s)
+            else:
+                merged.append(s)
+        if merged and self._is_fragment(merged[-1]):  # only possible when it is the sole sentence: hold it
+            rest = _join(merged.pop(), rest) if rest else merged.pop()
+        return merged, rest
+
     def due(self, now: float) -> list[Unit]:
         """Release the buffer when it is too old or too long (whole mode: up to the last clause boundary)."""
         if not self.buf:
             return []
-        # #288: a 1-3 word head ("Well, in the") waits up to twice as long for the rest of its sentence
-        wait = 2 * self.max_wait if self.whole and _units(self.buf) < MIN_FINAL_UNITS else self.max_wait
+        # #288: a 1-3 word head ("Well, in the") waits up to twice as long for the rest of its sentence; a finished
+        # fragment held by min_words (#389) never waits longer than max_wait
+        held = any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())  # a finished fragment is held
+        head = self.whole and _units(self.buf) < MIN_FINAL_UNITS and not held
+        wait = 2 * self.max_wait if head else self.max_wait
         if (self.since is not None and now - self.since >= wait) or _units(self.buf) >= self.max_words:
             if self.whole:
                 head, rest = split_clause(self.buf)
                 if head:
+                    # #435: the clause carries the tag of the newest segment it holds text of, not the buffer's
+                    tag, first = self._tag_before(len(head)), self._first()
+                    self._rebase(len(self.buf) - len(rest))
                     self.buf, self.since = rest, (now if rest else None)
-                    return [Unit(head, self.lang, True, self.tag)]
+                    return [Unit(head, self.lang, True, tag, first)]
             return [self._take(forced=True)]
         return []
 
     def flush(self) -> list[Unit]:
         return [self._take(forced=True)] if self.buf else []
 
+    def _first(self) -> object:
+        """Tag of the segment holding the start of the buffer (a stale mark of released text also sits at 0)."""
+        return self._tag_before(1)
+
+    def _tag_before(self, end: int) -> object:
+        """Tag of the newest segment whose text starts before offset `end` of the buffer."""
+        tags = [t for off, t in self._marks if off < end]
+        return tags[-1] if tags else self.tag
+
+    def _rebase(self, start: int) -> None:
+        """The buffer now begins at old offset `start`: shift the marks; the segment holding that offset starts at 0."""
+        kept = [(off - start, t) for off, t in self._marks if off > start]
+        older = [t for off, t in self._marks if off <= start]
+        self._marks = ([(0, older[-1])] if older else []) + kept
+
     def _take(self, forced: bool) -> Unit:
-        u = Unit(self.buf.strip(), self.lang, forced, self.tag)
+        u = Unit(self.buf.strip(), self.lang, forced, self.tag, self._first())
         self.buf, self.since = "", None
+        self._marks = []
         return u

@@ -22,7 +22,6 @@ MODULES: list[tuple[str, bool]] = [
     ("soundfile", True),
     ("soundcard", True),
     ("ctranslate2", True),
-    ("sentencepiece", True),
     ("onnxruntime", True),
     ("tokenizers", True),
     ("faster_whisper", True),
@@ -31,10 +30,21 @@ MODULES: list[tuple[str, bool]] = [
     ("sv_ttk", True),
     ("tinglongwu.gui.app", True),
     ("tinglongwu_setup.downloader", True),
+    ("tinglongwu.lang.ru", True),  # #390: pymorphy3 + its dictionary (package data) must work in the exe
     ("llama_cpp", False),
 ]
 # Modules the app never imports directly: llama_cpp goes through import_llama (CUDA DLLs + CPU fallback, #398)
-IMPORTERS = {"llama_cpp": lambda: importlib.import_module("tinglongwu.llamacheck").import_llama()}
+IMPORTERS = {"llama_cpp": lambda: importlib.import_module("tinglongwu.llamacheck").import_llama(),
+             "tinglongwu.lang.ru": lambda: check_ru_names()}
+
+
+def check_ru_names(load=None) -> None:
+    """#390: the Russian name patch must really run in the package, not silently fall back to pass-through."""
+    ru = importlib.import_module("tinglongwu.lang.ru")
+    morph = (load or ru.load_analyzer)()  # raises when pymorphy3 or its dictionary is missing
+    got = ru.normalize_names("Максима Чижова.", morph=morph)
+    if got != "Максим Чижов.":
+        raise RuntimeError(f"ru pre_mt gave {got!r}")
 
 # (module, attributes, required). None = every lazy attribute the module declares (filelock: _LAZY_ATTRIBUTES).
 LAZY: list[tuple[str, tuple[str, ...] | None, bool]] = [

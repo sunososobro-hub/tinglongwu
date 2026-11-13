@@ -21,6 +21,7 @@ dependencies = [
   "av==19.0.2",
   "huggingface_hub==2.4.0",
   "sv-ttk==2.6.1",
+  "pymorphy3==2.0.6",  # #390 Russian name declension before MT (MIT; lazy-loaded)
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,7 @@ packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "t
 [tool.setuptools.package-data]
 tinglongwu_setup = ["manifest.json"]
 "tinglongwu.gui" = ["assets/*.ico", "assets/*.png", "assets/*.svg"]
-tinglongwu = ["data/*.txt", "data/*.wav"]
+tinglongwu = ["data/*.txt", "data/*.wav", "data/*.gz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

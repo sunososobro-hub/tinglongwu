@@ -12,28 +12,7 @@ from tinglongwu.merge import SentenceMerger
 from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
 from tinglongwu.sink import TextSink
-from tinglongwu.translate import OpusStep, PivotTranslator
-
-
-# ---- OpusStep._detok ----
-def _step(join):
-    s = OpusStep.__new__(OpusStep)
-    s.join = join
-    return s
-
-
-def test_detok_cjk_markers_spaces_punct():
-    s = _step("")
-    assert s._detok(["▁在", "加里", "寧格勒", "▁,", "他", "們", "▁好", "▁."]) == "在加里寧格勒，他們好。"
-    assert s._detok(["▁你", "▁好"]) == "你好"
-
-
-def test_detok_keeps_latin_inside_cjk():
-    assert _step("")._detok(["▁用", "▁PDF", "▁文件", "▁!"]) == "用 PDF 文件！"
-
-
-def test_detok_latin_target_keeps_spaces_and_ascii_punct():
-    assert _step(" ")._detok(["▁Hello", "▁world", "▁,", "▁ok"]) == "Hello world , ok"
+from pivot_fake import PivotTranslator
 
 
 # ---- downloader._open User-Agent ----

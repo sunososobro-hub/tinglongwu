@@ -6,14 +6,14 @@ import sys
 
 import numpy as np
 
-from tinglongwu import cli
+from tinglongwu import cli, fmt
 from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.capture import FileSource
 from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
 from tinglongwu.sink import TextSink
 from tinglongwu.speaker_embed import SpeakerLabeler
-from tinglongwu.translate import PivotTranslator
+from pivot_fake import PivotTranslator
 
 
 class FakeASR(Recognizer):
@@ -45,14 +45,16 @@ def test_off_output_and_log_unchanged(wav, tmp_path, capsys):
     assert "latency: asr" in err
 
 
-def test_on_logs_speaker_and_spk_column(wav, tmp_path, capsys):
+def test_on_shows_speaker_on_the_line_and_spk_column(wav, tmp_path, capsys):
     off_out, _ = _run(wav, tmp_path, capsys)
     ticks = iter(range(1000))
     lab = SpeakerLabeler(lambda seg: [1.0, 0.0], clock=lambda: next(ticks) * 0.01)
     out, err = _run(wav, tmp_path, capsys, speakers=lab, debug=True)
     strip = lambda t: re.sub(r"\d\d:\d\d:\d\d", "", t)  # noqa: E731
-    assert strip(out) == strip(off_out)  # the translated lines themselves do not change
-    assert "tlwu: 說話者1" in err
+    # #384: the speaker replaces the generic "them" label on the same line; translations do not change
+    assert strip(out) == strip(off_out).replace(fmt.t("label_them"), "◀ 說話者1")
+    assert "說話者1" in out
+    assert "tlwu: 說話者1" not in err  # no separate console line, the debug log keeps it
     assert "latency: spk 0.010 s (說話者1)" in err
 
 

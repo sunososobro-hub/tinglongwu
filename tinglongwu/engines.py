@@ -13,9 +13,22 @@ import threading
 import weakref
 from pathlib import Path
 
-# --engine choice -> engine name. hymt7b (#279) is opt-in only: choose_engine("auto") never returns it.
-ENGINE_REGISTRY = {"hymt": "hymt2", "hymt7b": "hymt2-7b", "opus": "opus"}
+# --engine choice -> engine name. hymt7b (#279), ollama and fm (#356, a local Ollama server / Apple's on-device
+# model) are opt-in only: choose_engine("auto") never returns them. opus was removed (#471): Hy-MT2 is the only
+# built-in engine; `REMOVED_ENGINES` says how to fix an old command line.
+ENGINE_REGISTRY = {"hymt": "hymt2", "hymt7b": "hymt2-7b", "ollama": "ollama", "fm": "fm"}
 ENGINES = ("auto", *ENGINE_REGISTRY)
+REMOVED_ENGINES = {"opus": "the OPUS/Argos pivot was removed (#471): Hy-MT2 is the only built-in translation engine. "
+                           "Use --engine auto (or drop --engine); install Hy-MT2 once with `tlwu-setup --hymt`"}
+
+
+def engine_choice(v: str) -> str:
+    """argparse type for --engine: a removed engine exits 2 with how to fix it (not just 'invalid choice')."""
+    import argparse
+
+    if v in REMOVED_ENGINES:
+        raise argparse.ArgumentTypeError(REMOVED_ENGINES[v])
+    return v
 # Hy-MT2-1.8B Q4_K_M uses ~1.5 GB VRAM (#66 benchmark; hwprobe.MT_VRAM_MIB) + 0.5 GB headroom (hwprobe.HEADROOM_MIB)
 HYMT_MIN_FREE_MIB = 2000
 N_CTX = 2048

@@ -2,6 +2,7 @@
 # tinglongWu helper menu (Linux + macOS). Run from the repo:  bash scripts/linux_menu.sh
 # Paths can be overridden with env vars before running; WHISPER sets the speech model, e.g.  WHISPER=medium bash scripts/linux_menu.sh
 # Menu language follows the system (override: TLWU_UI_LANG=en|ru|zh-TW, or I in the menu); texts live in scripts/i18n/.
+# Speak mode sends each sentence directly; add --confirm (or TLWU_CONFIRM=1) to confirm each one first (#371).
 # Network is used only for install/setup and update (git); TLWU_NO_UPDATE=1 forces updates off. Everything else is offline.
 set -e
 cd "$(dirname "$0")/.."
@@ -170,11 +171,13 @@ if [ "$mode" = "2" ] && { [ "$SPEAK" = "ru" ] || { [ "$SPEAK" = "follow" ] && pr
 fi
 LISTEN_LANG=(--lang "$L"); [ "$L" = "auto" ] && LISTEN_LANG=(--lang auto --lang-candidates "$CANDS")
 HY_NOTE="$(mp M_HY_NOTE)"
-# Subtitles are never stored unless asked: default N, asked every start (audio is never saved)
+# Subtitles and audio are never stored unless asked: default N, asked every start (#239: audio only with --record)
 SAVE=()
 if [ "$mode" = "1" ] || [ "$BOTH" = "1" ]; then
   sv=""; read -rp "$(mp M_ASK_SAVE)" sv || sv=""
   case "$sv" in y|Y|yes|YES|Yes) SAVE=(--save) ;; esac
+  rv=""; read -rp "$(mp M_ASK_RECORD)" rv || rv=""
+  case "$rv" in y|Y|yes|YES|Yes) SAVE+=(--record) ;; esac
 fi
 # Listen side extras (#42): --glossary when the user glossary folder has .txt files; on CPU with Hy-MT2 installed,
 # ask whether to use it instead of OPUS (python -m tinglongwu.menuopts; questions on stderr, args on stdout)
@@ -196,32 +199,17 @@ if [ "$mode" = "1" ]; then
   fi
 fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
-SMT=hymt   # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
+SMT=hymt   # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs)
 ensure_hymt() {  # llama-cpp-python missing: menuopts prints the pip line; GGUF missing: offer tlwu-setup --hymt
   have_llama || { python -m tinglongwu.menuopts speak "$SPEAK" >/dev/null; exit 1; }
   have_hymt_file || { m M_NO_HYMT_SPEAK; ask_setup --hymt; }
 }
 
-have_pairs() {  # 0 if every OPUS pair is already on disk (no network)
-  python - "$@" <<'PY'
-import sys
-from tinglongwu.models import models_dir
-d = models_dir(None) / "opus"
-sys.exit(0 if all((d / p).is_dir() for p in sys.argv[1:]) else 1)
-PY
-}
-
 if [ "$mode" = "1" ]; then
-  if [ "$L" = "en" ]; then need=(en-zh); setup=(--to zh)
-  elif [ "$L" = "auto" ]; then
-    need=(en-zh ru-en); setup=(--langs ru --to zh)
-    if printf '%s' ",$CANDS," | grep -q ,ja, && ! hy_ready; then need+=(ja-en); setup=(--langs ru,ja --to zh); echo "$HY_NOTE"; fi
-  elif [ "$L" = "ja" ] && hy_ready; then need=(); setup=()   # Hy-MT2: direct ja -> zh, no OPUS pair
-  else need=("$L-en" en-zh); setup=(--langs "$L" --to zh)
-    [ "$L" = "ja" ] && echo "$HY_NOTE"; fi
-  if ! have_pairs "${need[@]}"; then
+  # #562: Hy-MT2 translates every language directly; the only model needed besides Whisper is its GGUF
+  if ! have_hymt_file; then
     m M_NO_MODEL_FOR "$L"
-    ask_setup "${setup[@]}"
+    ask_setup --hymt
   fi
   exec tlwu "${LISTEN_LANG[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}" "${STREAM[@]}"
 fi
@@ -254,19 +242,19 @@ else
 fi
 
 if [ "$BOTH" = "1" ]; then
-  if [ "$L" = "ru" ] && ! have_pairs ru-en en-zh; then   # listen side only; the speak side is Hy-MT2 (#331)
-    m M_NO_MODEL_FOR ru
-    ask_setup --langs ru --to zh
+  if ! have_hymt_file; then   # #562: Hy-MT2 is the only translation model (listen and speak side)
+    m M_NO_MODEL_FOR "$L"
+    ask_setup --hymt
   fi
-  read -rp "$(mp M_ASK_AUTOSEND)" ac
-  AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)
+  AUTO=(--no-confirm); tlwu_confirm_mode "${TLWU_MENU_ARGS[@]}" && AUTO=()   # #371: no question; --confirm / TLWU_CONFIRM=1 to confirm
   # #285: one process, one window: the speak side runs the listen side in a thread (--listen must come last),
   # both directions share one Hy-MT2 and one CPU thread budget (TLWU_BOTH, tinglongwu/threads.py); Ctrl+C stops both
   export TLWU_BOTH=1
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
-  m M_MEETING_BANNER "$MM"
+  CF=0; [ "${#AUTO[@]}" -eq 0 ] && CF=1
+  tlwu_meeting_banner "$MM" "$CF"
   exec "${REV[@]}" "${AUTO[@]}" --listen "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
 fi
 if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
@@ -276,11 +264,7 @@ m M_OUT2
 m M_OUT3
 m M_OUT4
 read -rp "$(mp M_ASK_OUT)" out
-AUTO=()
-if [ "$out" != "4" ]; then
-  read -rp "$(mp M_ASK_AUTOSEND)" ac
-  [ "$ac" = "y" ] && AUTO=(--no-confirm)
-fi
+AUTO=(--no-confirm); tlwu_confirm_mode "${TLWU_MENU_ARGS[@]}" && AUTO=()   # #371: no question; --confirm / TLWU_CONFIRM=1 to confirm
 if [ "$out" = "2" ] || [ "$out" = "3" ]; then
   # (Linux too, #38: never a hardcoded device name) must be a REAL output (headphones/speakers), never the Multi-Output Device / BlackHole 2ch: those are recorded by the listen side
   m M_MAC_OUTDEV

@@ -253,7 +253,7 @@ def _hymt_file(tmp_path):
 
 
 @pytest.mark.parametrize("kind,device,free,want", [
-    ("auto", "cuda", 4000, ("hymt", "cuda")),  # was qwen before #139
+    ("auto", "cuda", 4000, ("hymt", "cuda")),
     ("auto", "cuda", 1500, ("hymt", "cpu")),   # below engines.HYMT_MIN_FREE_MIB: Hy-MT2 on the CPU (#331, was OPUS)
     ("auto", "cuda", None, ("hymt", "cpu")),   # nvidia-smi unreadable
     ("auto", "cpu", 4000, ("hymt", "cpu")),    # CPU mode: Hy-MT2 (#331, was OPUS)

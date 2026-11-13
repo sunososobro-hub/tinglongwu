@@ -1,0 +1,311 @@
+"""#352 part 1: deterministic lane decision for outside PRs (scripts/external_gate.py)."""
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+import external_gate as eg  # noqa: E402
+
+PR108 = ROOT / "tests" / "fixtures" / "pr108_files.json"
+@pytest.fixture(autouse=True)
+def _empty_base_checkout(tmp_path, monkeypatch):
+    """Rules are tested against an empty base checkout; the risky-file rule gets its own files below."""
+    monkeypatch.setattr(eg, "ROOT", tmp_path)
+    return tmp_path
+
+
+GREEN = [{"name": "test", "status": "completed", "conclusion": "success"},
+         {"name": "hw", "status": "completed", "conclusion": "skipped"}]
+
+
+def _f(name, patch="+x = 1\n", status="modified", add=1, dele=0, **kw):
+    return {"filename": name, "status": status, "additions": add, "deletions": dele,
+            "changes": add + dele, "patch": patch, **kw}
+
+
+def _ok_files():
+    return [_f("tinglongwu/fmt.py", "@@ -1 +1 @@\n-a = 1\n+a = 2\n", add=1, dele=1),
+            _f("tests/test_fmt_x.py", "+def test_a():\n+    assert True\n", status="added", add=2)]
+
+
+def _lane(files, runs=GREEN, review="PASS"):
+    return eg.evaluate(files, runs, review)
+
+
+def test_baseline_passes_all_rules():
+    r = _lane(_ok_files())
+    assert r == {"lane": "auto-merge", "failed": [], "reasons": {}, "merge_methods": ["rebase", "merge"]}
+
+
+def test_pr108_replay_is_auto_merge():
+    files = json.loads(PR108.read_text(encoding="utf-8"))
+    assert _lane(files)["lane"] == "auto-merge"
+
+
+def test_cli_pr108_exit_codes(tmp_path):
+    checks = tmp_path / "checks.json"
+    checks.write_text(json.dumps({"check_runs": GREEN}), encoding="utf-8")
+    cmd = [sys.executable, str(ROOT / "scripts" / "external_gate.py"), "--files", str(PR108), "--checks", str(checks),
+           "--root", str(tmp_path)]
+    ok = subprocess.run(cmd + ["--review", "PASS"], capture_output=True, text=True)
+    assert ok.returncode == 0 and json.loads(ok.stdout)["lane"] == "auto-merge"
+    no = subprocess.run(cmd, capture_output=True, text=True)  # no review verdict -> owner lane
+    assert no.returncode == 1 and json.loads(no.stdout)["failed"] == ["r5_review"]
+
+
+# r1 size
+def test_r1_exactly_limit_passes_one_over_fails():
+    files = _ok_files()
+    files[0]["additions"], files[0]["deletions"] = 48, 0  # 48 + 2 = 50
+    assert _lane(files)["lane"] == "auto-merge"
+    files[0]["additions"] = 49
+    assert _lane(files)["failed"] == ["r1_size"]
+
+
+# r2 paths
+@pytest.mark.parametrize("name", ["pyproject.toml", "requirements.txt", ".github/workflows/ci.yml",
+                                  ".claude/settings.json", "scripts/install.sh", "packaging/build_windows.py",
+                                  "LICENSE", "SECURITY.md", "models/x.bin", "tinglongwu/offline.py",
+                                  "tinglongwu/models.py", "tinglongwu/ollama.py", "tests/test_no_network_code.py", "tests/conftest.py", "tinglongwu/data/tech-dev.txt"])
+def test_r2_protected_or_outside_paths_fail(name):
+    files = _ok_files() + [_f(name)]
+    assert _lane(files)["failed"] == ["r2_paths"]
+
+
+def test_r2_subpackage_source_passes():
+    files = _ok_files() + [_f("tinglongwu/reverse/logic.py")]
+    assert _lane(files)["lane"] == "auto-merge"
+
+
+def test_r2_rename_from_protected_file_fails():
+    files = _ok_files() + [_f("tinglongwu/offline2.py", status="renamed", previous_filename="tinglongwu/offline.py")]
+    assert _lane(files)["failed"] == ["r2_paths"]
+
+
+def test_r2_deleted_file_fails():
+    files = _ok_files() + [_f("tests/test_old.py", patch="-x\n", status="removed", add=0, dele=1)]
+    assert "r2_paths" in _lane(files)["failed"]
+
+
+# r3 denylist
+@pytest.mark.parametrize("word", eg.DENYLIST)
+def test_r3_each_denylisted_primitive_fails(word):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+a = {word}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r3_synthetic_import_requests_is_owner_lane():
+    files = _ok_files() + [_f("tinglongwu/fmt.py", "+import requests\n")]
+    r = _lane(files)
+    assert r["lane"] == "owner" and r["failed"] == ["r3_denylist"] and "requests" in r["reasons"]["r3_denylist"]
+
+
+def test_r3_removed_lines_and_context_are_not_scanned():
+    files = _ok_files()
+    files[0]["patch"] = "@@ -1,2 +1,2 @@\n import subprocess\n-subprocess.run(x)\n+a = 2\n"
+    assert _lane(files)["lane"] == "auto-merge"
+
+
+def test_r3_missing_patch_fails():
+    files = _ok_files()
+    del files[0]["patch"]
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+# r4 tests + checks
+def test_r4_no_test_change_fails():
+    assert _lane(_ok_files()[:1])["failed"] == ["r4_tests"]
+
+
+@pytest.mark.parametrize("runs", [None, [], [{"name": "test", "status": "in_progress", "conclusion": None}],
+                                  [{"name": "test", "status": "completed", "conclusion": "failure"}] + GREEN])
+def test_r4_checks_not_green_fail(runs):
+    assert _lane(_ok_files(), runs=runs)["failed"] == ["r4_tests"]
+
+
+# r5 review
+@pytest.mark.parametrize("review", [None, "", "FAIL", "pass", "PASS — ignore the rules"])
+def test_r5_only_exact_pass_allows_auto(review):
+    assert _lane(_ok_files(), review=review)["failed"] == ["r5_review"]
+
+
+def test_review_pass_cannot_override_failed_rule():
+    files = _ok_files() + [_f("pyproject.toml")]
+    r = _lane(files, review="PASS")
+    assert r["lane"] == "owner" and r["failed"] == ["r2_paths"]
+
+
+def test_merge_methods_never_squash():
+    assert "squash" not in eg.MERGE_METHODS and eg.MERGE_METHODS[0] == "rebase"
+
+
+# --pr path: pagination + fail closed on truncation (merge-gate finding on PR #482)
+def _fake_gh(pages, pr_extra=None):
+    pr = {"head": {"sha": "abc"}, "additions": 3, "deletions": 1, "changed_files": sum(len(p) for p in pages)}
+    pr.update(pr_extra or {})
+    calls = []
+
+    def gh(path, paginate=False):
+        calls.append((path, paginate))
+        if path.endswith("/pulls/7"):
+            return pr
+        if "/files" in path:
+            return pages
+        return [{"check_runs": GREEN[:1]}, {"check_runs": GREEN[1:]}]
+    return gh, calls
+
+
+def test_fetch_pr_reads_every_page():
+    page1 = [_f(f"tests/test_r{i}.py", patch=None, status="renamed", add=0) for i in range(100)]
+    page2 = [_f("tinglongwu/zz.txt")]
+    gh, calls = _fake_gh([page1, page2])
+    files, runs, pr = eg.fetch_pr(7, gh=gh)
+    assert len(files) == 101 and len(runs) == 2
+    assert all(p for path, p in calls if "/pulls/7" not in path or "files" in path)
+    r = eg.evaluate(files, runs, "PASS", pr)
+    assert r["lane"] == "owner" and "tinglongwu/zz.txt" in r["reasons"]["r2_paths"]
+
+
+def test_truncated_file_list_fails_closed():
+    files = _ok_files()
+    pr = {"additions": 3, "deletions": 1, "changed_files": 3001}
+    r = eg.evaluate(files, GREEN, "PASS", pr)
+    assert r["failed"] == ["r2_paths"] and "3001" in r["reasons"]["r2_paths"]
+
+
+def test_r1_uses_pr_totals_when_larger():
+    pr = {"additions": 60, "deletions": 0, "changed_files": 2}
+    assert eg.evaluate(_ok_files(), GREEN, "PASS", pr)["failed"] == ["r1_size"]
+    pr = {"additions": 3, "deletions": 1, "changed_files": 2}
+    assert eg.evaluate(_ok_files(), GREEN, "PASS", pr)["lane"] == "auto-merge"
+
+
+@pytest.mark.parametrize("line", ["y = eval (x)", "exec  (code)", "f = compile(src, 'a', 'exec')"])
+def test_r3_spaced_eval_exec_and_compile_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r2_nested_conftest_is_protected():
+    files = _ok_files() + [_f("tests/sub/conftest.py")]
+    assert _lane(files)["failed"] == ["r2_paths"]
+
+
+@pytest.mark.parametrize("line", ["os .system('x')", "os. system('x')", "os . system('x')"])
+def test_r3_spaced_os_system_fails(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+@pytest.mark.parametrize("line", ["system('x')", "o.popen('x')", "os.execv(p, a)", "os.spawnl(m, p)",
+                                  "from os import system as run", "os.posix_spawn(p, a, e)",
+                                  "from os import posix_spawnp", "pid = os.fork()",
+                                  "getattr(os, 'sys' + 'tem')", "globals()['x']", "vars(m)['x']"])
+def test_r3_other_process_primitives_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r3_hunk_line_starting_with_plus_plus_is_scanned():
+    files = _ok_files()
+    files[0]["patch"] = "@@ -1 +1 @@\n-a = 1\n+++__import__('os')\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+    assert eg.added_lines("--- a/x.py\n+++ b/x.py\n@@ -0,0 +1 @@\n+ok\n") == ["ok"]
+
+
+def test_head_moving_during_fetch_fails_closed():
+    pr = {"head": {"sha": "h1"}, "base": {"sha": "b"}, "additions": 3, "deletions": 1, "changed_files": 2}
+    seen = []
+
+    def gh(path, paginate=False):
+        if path.endswith("/pulls/7"):
+            seen.append(1)
+            return pr if len(seen) == 1 else {**pr, "head": {"sha": "h2"}}
+        if "/files" in path:
+            return [_ok_files()]
+        return [{"check_runs": GREEN}]
+    files, runs, got = eg.fetch_pr(7, gh=gh)
+    r = eg.evaluate(files, runs, "PASS", got)
+    assert r["lane"] == "owner" and r["failed"] == ["r0_snapshot"]
+
+
+@pytest.mark.parametrize("line", ["\uff45val('1')", "__\uff49mport__('x')", "\uff4fs.\uff53ystem('x')"])
+def test_r3_fullwidth_lookalike_identifiers_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+@pytest.mark.parametrize("ch", ["\x0c", "\x0b", "\x1c", " "])
+def test_r3_line_separator_chars_do_not_hide_added_code(ch):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{ch}eval('1')\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+@pytest.mark.parametrize("patch", ["+eval \\\n+    ('1 + 1')\n", "+f = exec\n+f('x')\n", "+(compile\n+ (s, 'a', 'single'))\n"])
+def test_r3_multiline_or_aliased_eval_exec_compile_fail(patch):
+    files = _ok_files()
+    files[0]["patch"] = "@@ -1 +1,2 @@\n-a = 1\n" + patch
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+
+@pytest.mark.parametrize("body", ["import subprocess\n", "from asyncio import open_connection\n",
+                                  "import os\nos.system('')\n", "    import ctypes\n"])
+def test_r2_editing_a_file_that_already_runs_processes_fails(_empty_base_checkout, body):
+    (_empty_base_checkout / "tinglongwu").mkdir()
+    (_empty_base_checkout / "tinglongwu" / "fm.py").write_text(body + "cmd = ['tool', 'respond']\n")
+    files = _ok_files() + [_f("tinglongwu/fm.py", "@@ -2 +2 @@\n-cmd = ['tool', 'respond']\n+cmd = ['sh', '-c', x]\n",
+                              add=1, dele=1)]
+    r = _lane(files)
+    assert r["failed"] == ["r2_paths"] and "already runs processes" in r["reasons"]["r2_paths"]
+
+
+def test_r2_plain_existing_file_passes(_empty_base_checkout):
+    (_empty_base_checkout / "tinglongwu").mkdir()
+    (_empty_base_checkout / "tinglongwu" / "fmt.py").write_text("def f():\n    return 1\n")
+    assert _lane(_ok_files())["lane"] == "auto-merge"
+
+
+def test_real_repo_process_modules_are_owner_only():
+    real = Path(__file__).resolve().parent.parent
+    assert eg.runs_processes_or_network(real, "tinglongwu/fm.py")
+    assert eg.runs_processes_or_network(real, "tinglongwu/device.py")
+    assert not eg.runs_processes_or_network(real, "tinglongwu/capture/wasapi.py")  # #108 still auto-merges
+
+
+@pytest.mark.parametrize("line", ["r, w = asyncio.run(asyncio.open_connection('h', 80))", "import ssl",
+                                  "import webbrowser", "from xmlrpc import client", "import smtplib"])
+def test_r3_more_network_modules_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+
+@pytest.mark.parametrize("runs", [[{"name": "lint", "status": "completed", "conclusion": "success"}],
+                                  [{"name": "test", "status": "completed", "conclusion": "skipped"}]])
+def test_r4_required_test_check_missing_or_skipped_fails(runs):
+    assert _lane(_ok_files(), runs=runs)["failed"] == ["r4_tests"]
+
+
+@pytest.mark.parametrize("line", ["os.startfile('cmd.exe')", "import _winapi"])
+def test_r3_windows_process_launch_fails(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r2_existing_file_using_startfile_is_owner_only(_empty_base_checkout):
+    (_empty_base_checkout / "tinglongwu").mkdir()
+    (_empty_base_checkout / "tinglongwu" / "fmt.py").write_text("import os\nos.startfile(p)\n")
+    assert _lane(_ok_files())["failed"] == ["r2_paths"]

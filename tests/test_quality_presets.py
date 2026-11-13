@@ -66,8 +66,8 @@ def test_gui_default_path_has_no_model_or_engine_and_manual_overrides(tmp_path, 
     assert cli.parse_args(argv).quality == "auto" and cli.parse_args(argv).model is None
     assert cli.parse_args(core.settings_to_argv(dict(core.DEFAULTS, quality="quality"))).quality == "quality"
     monkeypatch.setenv("TLWU_MODELS", str(have(tmp_path, "medium")))
-    a = cli.parse_args(core.settings_to_argv(dict(core.DEFAULTS, quality="manual", model="medium", engine="opus")))
-    assert (a.model, a.engine) == ("medium", "opus")
+    a = cli.parse_args(core.settings_to_argv(dict(core.DEFAULTS, quality="manual", model="medium", engine="hymt")))
+    assert (a.model, a.engine) == ("medium", "hymt")
     assert cli.parse_args(core.settings_to_argv(dict(core.DEFAULTS, quality="bogus"))).quality == "auto"
 
 

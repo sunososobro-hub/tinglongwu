@@ -57,6 +57,10 @@ class VramSampler:
         self.t.join(2)
 
 
+PLAY_BLOCK_S = 0.1  # #427: a piece is written in blocks this long, so abort() is noticed within one block
+ABORT_JOIN_S = 2.0  # after abort(): wait for the playback thread (one PLAY_BLOCK_S block + closing the stream)
+
+
 class Player:
     """Plays 24 kHz mono float chunks on the chosen output device (resampled to `out_sr`) from a worker thread."""
 
@@ -68,6 +72,7 @@ class Player:
         from .live import PlaybackGate
 
         self.gate = PlaybackGate()
+        self._abort = threading.Event()
         if enabled:
             import soundcard as sc
 
@@ -92,10 +97,18 @@ class Player:
         with spk.player(samplerate=self.out_sr, channels=self.ch, blocksize=1024) as p:
             while True:
                 item = self.q.get()
-                if item is None:
+                if item is None or self._abort.is_set():
+                    if item is not None:
+                        self.gate.end()
+                        continue  # drop what was queued before / during abort(); the None sentinel follows
                     return
                 try:
-                    p.play(np.repeat(item.reshape(-1, 1), self.ch, axis=1))
+                    data = np.repeat(item.reshape(-1, 1), self.ch, axis=1)
+                    step = max(1, int(self.out_sr * PLAY_BLOCK_S))
+                    for i in range(0, len(data), step):
+                        if self._abort.is_set():  # #427: leave a long piece within one block on Ctrl+C
+                            break
+                        p.play(data[i:i + step])
                 finally:
                     self.gate.end()
 
@@ -106,10 +119,24 @@ class Player:
             self.gate.start()
             self.q.put(resample(audio, sr, self.out_sr))
 
-    def close(self) -> None:
+    def abort(self) -> None:
+        """#427 (Ctrl+C): mute, drop the queued audio and let the playback thread leave the output stream."""
+        self.enabled = False
+        self._abort.set()
+        if getattr(self, "t", None) is not None:
+            self.q.put(None)  # the thread drops anything queued before it (gate released per item)
+
+    def close(self, timeout: float = 60) -> None:
+        """Play what is queued, then stop the playback thread. After abort() it only waits for that thread (#427:
+        a playback thread still inside the PulseAudio stream at interpreter exit could hang the process)."""
+        t = getattr(self, "t", None)
+        if t is None:
+            return
         if self.enabled:
             self.q.put(None)
-            self.t.join(60)
+        t.join(timeout if self.enabled else min(timeout, ABORT_JOIN_S))
+        if t.is_alive():
+            print("tlwu: audio output did not stop in time", file=sys.stderr, flush=True)
 
 
 def _file_items(wavs, sf, asr):
@@ -285,9 +312,27 @@ def describe_error(e: BaseException) -> str:
 
 
 def _to_bar(a):
-    """#322: (zh, ru) -> the --overlay bar as one '▶ ' line (my side); a no-op without --overlay."""
+    """Called once per line of my side as it is shown: (zh, ru, lang).
+    #322: -> the --overlay bar as one '▶ ' line. #373: meeting mode with --save (after --listen): also appended to
+    the listen side's transcript file with side="me", so the file carries both speakers."""
     q = getattr(a, "bar_q", None)
-    return (lambda zh, ru: q.put(("final", zh, "▶ " + ru))) if q is not None else (lambda zh, ru: None)
+    save = getattr(a, "me_save", None)
+
+    def record(zh, ru, lang=None) -> None:
+        if save is not None:
+            from ..sink import Result
+
+            save(Result(getattr(a, "src", "zh"), zh, None, ru, tgt=lang or _target(a), side="me"))
+
+    def bar(zh, ru, lang=None, record_row=True) -> None:
+        """record_row=False (confirm mode, #494): overlay only; the row is written by bar.record when shown."""
+        if q is not None:
+            q.put(("final", zh, "▶ " + ru))
+        if record_row:
+            record(zh, ru, lang)
+
+    bar.record = record
+    return bar
 
 
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
@@ -313,6 +358,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     gate, pend = threading.Lock(), {}  # per-utterance: the lat dict (produce thread) and tts seconds (synth thread)
     # #207: tts = MT done -> first synthesized part ready to send (was: whole utterance synthesized)
     sess.on_first_part = lambda u: lat_done(u, "tts", lat.clock() - u.extra["_t0"])
+    sess.on_show = lambda u: bar.record(u.zh, u.ru, u.lang)  # #494: a dropped/expired line never reaches --save
 
     def lat_done(u, key, val) -> None:
         """#142: tts finishes after produce() has already taken the lat dict; whichever side arrives last merges
@@ -337,7 +383,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
-                bar(zh, ru)
+                bar(zh, ru, lang, record_row=False)  # #494: the save row waits until the line is shown
                 u.extra["_t0"] = lat.clock()
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
                 u.future.add_done_callback(  # no audio at all: report the line without tts_first
@@ -368,19 +414,32 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             it["back"], it["lat"] = u.back, u.extra.get("lat", {})
 
 
-def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False, src="zh", bar=None) -> None:
+def _record_line(lat, on_record, mt_start, shown, first_audio, lang, text) -> None:
+    """#434: hand one speak_record to on_record (--latency-jsonl) when the utterance came with capture marks."""
+    from .logic import speak_record
+
+    if on_record is not None and {"eos", "cut", "asr_done"} <= set(lat.marks):
+        on_record(speak_record(lat.marks, mt_start, shown, first_audio, lang=lang, text=text))
+
+
+def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False, src="zh", bar=None,
+                   on_record=None) -> None:
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
-    `lang`: a code, or a callable returning the code for the next sentence (--to follow)."""
+    `lang`: a code, or a callable returning the code for the next sentence (--to follow).
+    on_record(dict) (#434, --latency-jsonl): one logic.speak_record per utterance."""
     from .logic import GapMeter, Lat, lat_line, latency_fields, latency_line, stream_line, timing_line, translate_ru
 
     lat = lat or Lat()
+    stamp = (lambda: lat.clock()) if on_record is not None else (lambda: None)  # no extra clock reads otherwise
     for n, label, zh in items:
         lg = lang() if callable(lang) else lang
+        mt_start = stamp()
         ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         if bar is not None:
-            bar(zh, ru)
+            bar(zh, ru, lg)
+        shown, first_audio = stamp(), None
         t0, sent = lat.clock(), 0
         gaps, stats, info = GapMeter(lat.clock), [], {}
         for audio, sr in _synth_sentences(tts, ru, stats, info=info):
@@ -388,6 +447,8 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
                 lat.set("tts", lat.clock() - t0)
                 print(timing_line(lat.t), flush=True)  # #186: first audio is out; one line under the translation
             gaps.push(len(audio) / sr)
+            if not sent:
+                first_audio = stamp()  # #434: the first audio chunk is handed to the output now
             player.push(audio, sr)
             sent += 1
         tts_done = lat.clock() - t0
@@ -403,6 +464,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
             print(lat_line(t), file=sys.stderr, flush=True)
         res["items"].append({"file": label, src: zh, lg: ru, "decision": "sent" if sent else "no_audio", "lat": t, **f,
                              "pieces": sent, "gap_max": gaps.max})
+        _record_line(lat, on_record, mt_start, shown, first_audio, lg, ru)
 
 
 PAUSE_MIN, PAUSE_MAX = 0.3, 2.0  # silero_vad merges gaps < 300 ms (segment.py), so a shorter tail cannot be heard
@@ -419,8 +481,26 @@ def make_segmenter(max_seg: float, dev: str = "cpu", pause=None, vad_fn=None, en
     return Segmenter(max_seg, True, min_silence=sil, step=step, vad_pad=live_vad_pad(dev, env), **extra), sil
 
 
+def paced_file_source(path):
+    """#434 --input X --paced: the file released in real time, in the mic's 100 ms blocks (capture/_soundcard).
+    Decoded here, before PacedSource starts its clock, so decoding time does not eat into the real-time spacing."""
+    from ..capture.base import AudioSource
+    from ..capture.file import FileSource
+    from ..stream import PacedSource
+
+    src = FileSource(str(path), block_s=0.1)
+    audio = src._load()
+
+    class Decoded(AudioSource):
+        frames = lambda self: (audio[i:i + src.block] for i in range(0, len(audio), src.block))  # noqa: E731
+        close = lambda self: None  # noqa: E731
+
+    return PacedSource(Decoded())
+
+
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
-    """Mic -> VAD segments -> Whisper(zh) -> same pipeline. Ctrl+C stops capture and kills the TTS subprocess."""
+    """Mic (or #434: --input X --paced, a file in real time) -> VAD segments -> Whisper(zh) -> same pipeline.
+    Ctrl+C stops capture and kills the TTS subprocess. a.on_record (#434 --latency-jsonl): one record per line."""
     from ..capture.mic import MicSource
     from .live import capture_segments, recognize_utterances
 
@@ -429,44 +509,96 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
     stop = getattr(a, "ext_stop", None) or threading.Event()  # #322: --overlay's Quit / Ctrl+C sets it
     src = getattr(a, "src", "zh")
     bar = _to_bar(a)
+    paced = bool(getattr(a, "paced", False))
+    on_record = getattr(a, "on_record", None)
     seg, sil = make_segmenter(a.chunk_s, getattr(a, "dev", "cpu"), getattr(a, "end_silence", None))
     a.lat = lat = Lat(fixed={"vad": sil})  # configured end-of-speech silence, shown as vad= in the lat line (#139)
     asr = TimedASR(asr, lat) if asr is not None else None
-    items = ((n, "mic", zh) for n, zh in enumerate(
-        recognize_utterances(capture_segments(MicSource(a.mic_name), seg, stop, lat), asr,
-                         gate=getattr(player, "gate", None), src=src,
-                         zh_variant=getattr(a, "zh_variant", "tw")), 1))
+    source = paced_file_source(a.input) if paced else MicSource(a.mic_name)
+    label = Path(a.input).name if paced else "mic"
+
+    def items():
+        for n, zh in enumerate(recognize_utterances(capture_segments(source, seg, stop, lat), asr,
+                                                    gate=None if paced else getattr(player, "gate", None), src=src,
+                                                    zh_variant=getattr(a, "zh_variant", "tw")), 1):
+            lat.marks["asr_done"] = lat.clock()  # #434: text of the newest segment is ready
+            yield n, label, zh
+
     box: list = []
-    cleanup = _stop_live(stop, box, tts, player, previewer)
+    cleanup = _stop_live(stop, box, tts, player, previewer, source)
     if getattr(a, "ext_stop", None) is not None:  # #322: the bar's Quit must also end a pending confirm prompt
         threading.Thread(target=lambda: (stop.wait(), cleanup()), name="tlwu-speak-stop", daemon=True).start()
-    print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
+    if paced:
+        print(f"replaying {a.input} in real time (--paced)...", flush=True)
+    else:
+        print(f"listening... speak {'English' if src == 'en' else 'Chinese'}; Ctrl+C to quit", flush=True)
+    utterances = items()
     try:
         if tts is None:  # text only: show zh -> ru, nothing is spoken
             from .logic import translate_ru
 
-            for _n, _src, zh in items:
+            for _n, _src, zh in utterances:
                 lang = _target(a)
+                mt_start = lat.clock()
                 ru, _r = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
-                bar(zh, ru)
+                bar(zh, ru, lang)
+                shown = lat.clock()
                 print(timing_line(lat.take(), tts=False), flush=True)  # #186
+                _record_line(lat, on_record, mt_start, shown, None, lang, ru)
         elif confirm:
-            _run_confirm(a, items, mt, tts, player, previewer, res, box)
+            _run_confirm(a, utterances, mt, tts, player, previewer, res, box)
         else:
-            _run_auto_live(items, mt, tts, player, res, lambda: _target(a), lat,
-                           getattr(a, "debug_latency", False), src, bar)
+            _run_auto_live(utterances, mt, tts, player, res, lambda: _target(a), lat,
+                           getattr(a, "debug_latency", False), src, bar, on_record)
+        if not stop.is_set():  # #577: the input ended on its own (file / clip), not Quit or Ctrl+C:
+            _drain(player, previewer)  # play the queued audio before cleanup() aborts the players (#427)
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
-        cleanup()
+        try:
+            cleanup()
+        finally:
+            _close_items(utterances)  # #427: ends capture_segments, which joins the capture thread (recorder released)
 
 
-def _stop_live(stop, box, tts, player, previewer):
+def _drain(*players) -> None:
+    """#577: let each enabled player finish its queue. Without this, an input that simply ends (--paced file, the
+    speak_selftest clip) lost the last sentence's queued TTS to cleanup()'s abort(): hw-tests recorded 85-89 %."""
+    for pl in players:
+        if getattr(pl, "enabled", False) and getattr(pl, "close", None) is not None:
+            pl.close()
+
+
+def _close_items(gen, timeout: float = 5.0) -> None:
+    """Close the utterance generator. Confirm mode runs it in its producer thread, which Ctrl+C does not wait for:
+    close() then raises 'generator already executing' until that thread leaves it (stop is set and the source is
+    closed, so within one poll unless MT is mid-sentence). Retry up to `timeout` (the same 5 s _run_confirm gives
+    the producer); never raise on shutdown."""
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            gen.close()
+            return
+        except ValueError:
+            if time.monotonic() >= end:
+                print("tlwu: speech input did not stop in time", file=sys.stderr, flush=True)
+                return
+            time.sleep(0.05)
+
+
+def _stop_live(stop, box, tts, player, previewer, source=None):
     """Stop capture, abort confirm sessions, kill the TTS subprocess, mute output. Safe to call twice: once from
-    the --overlay watcher (#322: the worker may sit in a confirm prompt) and once when _live_main returns."""
+    the --overlay watcher (#322: the worker may sit in a confirm prompt) and once when _live_main returns.
+    #427: the audio source is closed and the players are aborted, so no thread is left inside PulseAudio when the
+    interpreter exits (Linux: hang after 'peak VRAM' / SIGABRT)."""
     def cleanup() -> None:
         stop.set()
+        if source is not None:
+            try:
+                source.close()
+            except Exception:  # noqa: BLE001
+                pass
         for sess in box:
             sess.abort()
         if tts is not None:
@@ -474,8 +606,12 @@ def _stop_live(stop, box, tts, player, previewer):
                 tts.proc.kill()
             except Exception:  # noqa: BLE001
                 pass
-        player.enabled = False
-        previewer.enabled = False
+        for pl in (player, previewer):
+            abort = getattr(pl, "abort", None)
+            if abort is not None:
+                abort()
+            else:
+                pl.enabled = False
 
     return cleanup
 
@@ -609,7 +745,9 @@ def resolve_tts_engine(a) -> None:
         a.ru_engine = "piper" if piper_onnx(a.vosk_model) else "vosk"
         return
     if a.tts_engine == "auto":
-        if a.to != "ru":
+        if a.to == "ru" and getattr(a, "voice", None) and a.speaker is None and not a.tts_model and default_vosk_ru(mdir):
+            a.tts_engine = "vosk"  # #319: --voice picks among the Vosk voices (the Piper ones are male only)
+        elif a.to != "ru":
             a.tts_engine = "vosk"  # unchanged default: rejected below unless --no-tts
         elif piper_onnx(a.tts_model):
             a.tts_engine = "piper"
@@ -640,6 +778,13 @@ def check_args(a) -> str | None:
         return "--from en speaks Chinese to the other side: use --to zh (or leave --to out)"
     if src == "zh" and a.to == "zh":
         return "--to zh needs --from en (you speak English, the other side hears Chinese)"
+    if not hasattr(a, "speaker_given"):  # check_args may run twice: the second pass sees the default filled in
+        a.speaker_given = a.speaker is not None
+    if a.to == "follow" and getattr(a, "voice", None):  # #319: the probe would also switch the English voice
+        if not a.speaker_given:
+            return "--voice picks a Vosk Russian voice: use --to ru (with --to follow use --speaker N)"
+        print(f"tlwu: --speaker {a.speaker} given, --voice {a.voice} ignored", file=sys.stderr, flush=True)
+        a.voice = None
     if a.to == "follow":
         if not a.no_tts:
             if a.tts_engine != "kokoro" or not a.tts_model:
@@ -651,6 +796,12 @@ def check_args(a) -> str | None:
         return None
     from ..models import piper_onnx
 
+    if getattr(a, "voice", None) and not a.no_tts:
+        if a.speaker_given:  # #319: an explicit id wins
+            print(f"tlwu: --speaker {a.speaker} given, --voice {a.voice} ignored", file=sys.stderr, flush=True)
+            a.voice = None
+        elif a.tts_engine != "vosk" or a.to != "ru":
+            return "--voice picks a Vosk Russian voice: use --to ru with --tts-engine vosk (or --speaker N)"
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
     if a.tts_engine == "piper" and a.to != "ru" and not a.no_tts:
@@ -719,6 +870,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--input", default=None, help="dir of zh wavs (16 kHz mono) or one wav (not needed with --mic)")
     ap.add_argument("--mic", nargs="?", const="", default=None, metavar="DEVICE",
                     help="live microphone input (Chinese); optional device-name substring, default = system mic")
+    ap.add_argument("--paced", action="store_true",
+                    help="with --input FILE.wav: replay the file in real time through the same VAD segmenter as "
+                         "--mic (the real end-of-speech wait is included); sends automatically (no confirm step)")
+    ap.add_argument("--latency-jsonl", default=None, metavar="PATH",
+                    help="append one JSON line per spoken line to PATH: vad, asr, merge, mt, total (end of speech -> "
+                         "line shown), tts_first_audio (MT done -> first audio chunk out), total_first_audio, seconds. "
+                         "--mic (with --no-confirm or --no-tts) or --input with --paced")
     ap.add_argument("--list-mics", action="store_true", help="print input device names and exit")
     ap.add_argument("--out", default=None, help="dir for synthesized wavs of --input batch runs (default: none written)")
     ap.add_argument("--save-result", "--report", dest="report", default=None, metavar="PATH",
@@ -755,6 +913,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--speaker", type=int, default=None,
                     help="built-in voice id 0-4 (vosk ru 0.7 default 4; kokoro default 0 = am_michael, 1 af_heart, "
                          "2 am_adam, 3 af_bella, 4 bm_george); switch live with v0-v4")
+    ap.add_argument("--voice", choices=("male", "female"), default=None,
+                    help="#319 Russian Vosk voice by gender (ru 0.7 multi ids 0-4, upstream: 3 female, 2 male): at "
+                         "startup each id speaks one test sentence, median pitch < 165 Hz = male, else female; the "
+                         "lowest id of that gender is used and logged (`voice: female (speaker N)`). "
+                         "--speaker N wins when both are given")
     ap.add_argument("--follow-file", default=None, metavar="PATH",
                     help="with --to follow: state file written by `tlwu --lang-file` (default: tlwu_follow_lang in "
                          "$XDG_RUNTIME_DIR or the temp dir)")
@@ -810,20 +973,34 @@ class ListenSide:
         self.bar_q = bar_q
         self.args = (parse or cli.parse_args)(list(argv))
         self._run = run or cli.run_session
+        self.saver = None
+        if self.args.save is not None:  # #373: one transcript for both sides; opened here so ▶ lines can go in too
+            from ..sink import JsonlSaveSink, default_save_path
+
+            path = self.args.save or default_save_path()
+            self.saver = JsonlSaveSink(None, path)
+            self.args.save = None  # run_session must not wrap the sink a second time
+            print(f"tlwu: saving final lines (both sides) to {os.path.abspath(path)}", file=sys.stderr)
         self.stop = threading.Event()
         self.error: BaseException | None = None
         self.thread = threading.Thread(target=self._body, name="tlwu-listen", daemon=True)
 
     def _body(self) -> None:
         try:
-            if self.bar_q is None:
+            if self.bar_q is None and self.saver is None:
                 self._run(self.args, stop=self.stop)
-            else:  # #322: the other side's lines also go to the shared bar, marked ◀
-                from ..overlay import OverlaySink
+            else:
                 from ..sink import TextSink, TranscriptSink
 
-                base = TranscriptSink() if self.args.transcript_only else TextSink()
-                self._run(self.args, stop=self.stop, sink=OverlaySink(base, self.bar_q, prefix="◀ "))
+                sink = TranscriptSink() if self.args.transcript_only else TextSink()
+                if self.bar_q is not None:  # #322: the other side's lines also go to the shared bar, marked ◀
+                    from ..overlay import OverlaySink
+
+                    sink = OverlaySink(sink, self.bar_q, prefix="◀ ")
+                if self.saver is not None:  # #373: heard lines -> side="them" in the shared transcript
+                    self.saver.inner = sink
+                    sink = self.saver
+                self._run(self.args, stop=self.stop, sink=sink)
         except BaseException as e:  # noqa: BLE001 - SystemExit from a missing model too: report, keep speaking
             self.error = e
             if not self.stop.is_set():
@@ -843,12 +1020,20 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
     ap = build_parser()
     a = ap.parse_args(argv)
     a.bar_q, a.ext_stop = bar_q, stop  # #322 --overlay (None otherwise)
+    if a.paced and (not a.input or a.mic is not None or Path(a.input).is_dir()):
+        ap.error("--paced needs --input with one wav file (live --mic is always real time)")
+    if a.latency_jsonl and a.mic is None and not a.paced:
+        ap.error("--latency-jsonl needs --mic or --input with --paced (an unpaced file runs faster than real time)")
+    if a.latency_jsonl and a.mic is not None and not (a.no_confirm or a.no_tts):
+        ap.error("--latency-jsonl with --mic needs --no-confirm or --no-tts (the confirm prompt waits for you)")
     listen = None
     if a.listen is not None:  # #285: both sides in this process; split one CPU budget (threads.py)
         try:
             listen = ListenSide(a.listen, bar_q=bar_q)
         except ValueError as e:
             ap.error(str(e))
+        if listen.saver is not None:
+            a.me_save = listen.saver.record  # #373: my lines go to the same --save file, side="me"
         os.environ["TLWU_BOTH"] = "1"
     from .. import offline as _og
 
@@ -913,11 +1098,11 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
                       f"the speech would be heard by the listen side. Use your headphones or BlackHole 16ch.",
                       file=sys.stderr)
                 return 2
-    live = a.mic is not None
+    live = a.mic is not None or a.paced  # #434: a paced file goes through the live (mic) path
     if not live and not a.input:
         ap.error("--input is required unless --mic is given")
     a.chunk_s = a.max_seg
-    if live:  # feedback guard BEFORE loading any model
+    if a.mic is not None:  # feedback guard BEFORE loading any model
         import soundcard as sc
 
         from .live import check_mic_feedback, resolve_mic_name
@@ -995,6 +1180,18 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
                                                   a.speaker, a.to if a.to in ("ja", "zh") else "en")
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
+        if tts and getattr(a, "voice", None):
+            from .voice_pick import client_probe, format_table, pick_voice
+
+            try:
+                tts.speaker, table = pick_voice(a.voice, client_probe(tts))
+            except (ValueError, RuntimeError, OSError) as e:  # OSError: worker died mid-probe (broken pipe)
+                tts.close()
+                print(f"tlwu: --voice {a.voice}: {e}", file=sys.stderr)
+                return 2
+            res["voice"] = {"voice": a.voice, "speaker": tts.speaker, "f0_hz": table}
+            print(f"voice: {a.voice} (speaker {tts.speaker}; measured {format_table(table)})", flush=True)
+        if tts:
             res["vram_mib"]["after_tts"] = vram_used_mib()
             res["tts_torch_peak_mib_after_warmup"] = tts.ready.get("vram_mib")
             warm_tts(tts, a.to)  # #207: the first real sentence must not pay the voice's lazy init
@@ -1003,7 +1200,7 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
             # #207: the player resamples every piece; importing scipy.signal there cost ~1 s on the first push
             # (measured), i.e. a gap after the first piece of the session's first utterance
             resample(np.zeros(480, np.float32), 24000, a.out_sr)
-        confirm = not a.no_confirm and tts is not None
+        confirm = not a.no_confirm and tts is not None and not a.paced  # #434: a file cannot answer the prompt
         player = Player(a.device, a.out_sr, enabled=not (a.no_play or a.no_tts))
         res["speaker"] = player.speaker_name
         previewer = Player(a.preview_device, a.out_sr, enabled=bool(a.preview_device) and tts is not None)
@@ -1019,7 +1216,15 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
         mt.history.clear()
         asr._last = ""
         if live:
-            _live_main(a, asr, mt, tts, player, previewer, confirm, res)
+            from ..cli import latency_recorder
+
+            dbg = (lambda m: print(m, file=sys.stderr, flush=True)) if a.debug_latency and a.latency_jsonl else None
+            a.on_record, rec_file = latency_recorder(a.latency_jsonl, dbg)  # #434 (None, None) without the flag
+            try:
+                _live_main(a, asr, mt, tts, player, previewer, confirm, res)
+            finally:
+                if rec_file is not None:
+                    rec_file.close()
             wavs = []
         elif confirm:
             _run_confirm(a, _file_items(wavs, sf, asr), mt, tts, player, previewer, res)

@@ -12,7 +12,7 @@ One repo, two programs with a hard boundary:
 | Does | installs pinned deps, downloads + SHA256-pins models, builds/installs offline bundles | captures audio, transcribes, translates, prints |
 | When | once, while online | every run, can be fully offline |
 
-`tests/test_no_network_code.py` statically scans `tinglongwu/` and fails if it imports requests, urllib.request, http.client, huggingface_hub, argostranslate, socket (except the guard module `tinglongwu/offline.py`) or `tinglongwu_setup`.
+`tests/test_no_network_code.py` statically scans `tinglongwu/` and fails if it imports requests, urllib.request, http.client, huggingface_hub, argostranslate, socket (except the guard module `tinglongwu/offline.py`) or `tinglongwu_setup`. The one exception is `http.client` in `tinglongwu/ollama.py`: the opt-in `--engine ollama` (#356) talks to your own Ollama server and accepts loopback addresses only (the runtime network guard blocks anything else too).
 
 ```
 tlwu-setup --deps                                  # pip install the pinned requirements
@@ -24,7 +24,7 @@ Bundles are platform-specific: build on the same OS, CPU architecture and Python
 
 ## Privacy model
 
-- Audio lives in memory only. Transcripts go to stdout only; nothing is logged. Only the explicit opt-ins `--save` and `--save-result PATH` (speak mode) write text to disk.
+- Audio lives in memory only by default; the opt-in `--record` saves it on this computer (one WAV per line + `segments.jsonl`, never uploaded). Transcripts go to stdout only; nothing is logged. Only the explicit opt-ins `--save` and `--save-result PATH` (speak mode) write text to disk.
 - On `import tinglongwu` (before any HF/ctranslate2 import) the env is forced offline: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `ARGOS_*`.
 - A runtime **network guard** patches `socket.connect/connect_ex/create_connection/getaddrinfo/gethostbyname` and raises on any non-loopback target (loopback and AF_UNIX pass). It is on in `tlwu`, `tlwu --gui`, `python -m tinglongwu.reverse.proto` and the TTS worker subprocesses (Kokoro/Vosk). Only our own processes are affected; no OS firewall is touched. `tlwu-setup` and the update step (`git`) do not use the guard; `TLWU_ALLOW_NET=1` disables it.
 - Network is for **install/setup** (tlwu-setup, pip) and **update** (git) only. Updating is opt-in: the first menu run asks once whether to check GitHub on every menu start (saved in the user config: `~/.config/tinglongwu/config`, `~/Library/Application Support/tinglongwu/config`, `%APPDATA%\tinglongwu\config`); if off, the menu never touches the network and `U` updates on demand. `TLWU_NO_UPDATE=1` forces it off.

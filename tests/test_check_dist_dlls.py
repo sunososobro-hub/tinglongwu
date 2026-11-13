@@ -379,6 +379,34 @@ def test_pack_smoke_fails_on_the_cpu_fallback_unless_lite(tmp_path):
     with pytest.raises(SystemExit, match="CUDA llama build did not load"):
         bw.smoke(tmp_path, run=lambda *a, **k: R)
     bw.smoke(tmp_path, run=lambda *a, **k: R, lite=True)
+    bw.smoke(tmp_path, run=lambda *a, **k: R, no_gpu_ok=True)  # #414: CI runner without an NVIDIA driver
+
+
+def test_allow_cpu_only_relaxes_the_smoke_only_without_an_nvidia_driver(tmp_path, monkeypatch):
+    app = tmp_path / "dist" / "tlwu"
+    app.mkdir(parents=True)
+    (app / "tlwu.exe").write_bytes(b"")
+    (tmp_path / "packaging").mkdir()
+    (tmp_path / "packaging" / "使用說明.txt").write_text("x", "utf-8")
+    for name, val in (("DIST", tmp_path / "dist"), ("APP", app), ("REPO", tmp_path),
+                      ("find_cuda_src", lambda *a: tmp_path), ("copy_llama", lambda *a, **k: None),
+                      ("cpu_llama_dlls", lambda *a, **k: []), ("copy_cuda", lambda *a, **k: []),
+                      ("copy_vc_runtime", lambda *a, **k: []), ("write_licenses", lambda *a, **k: None),
+                      ("copy_worker_sources", lambda *a, **k: []),
+                      ("make_zip", lambda *a, **k: (tmp_path / "dist" / "tinglongwu-win64.zip").write_bytes(b"z"))):
+        monkeypatch.setattr(bw, name, val)
+    for mod, fn in (("check_dist_dlls", "check"), ("clean_machine_check", "cmd_deps")):
+        fake = type(sys)(mod)
+        setattr(fake, fn, lambda app: 0)
+        monkeypatch.setitem(sys.modules, mod, fake)
+    seen = []
+    monkeypatch.setattr(bw, "smoke", lambda app, lite=False, no_gpu_ok=False: seen.append((lite, no_gpu_ok)))
+    for flag, driver, want in (([], False, False), (["--allow-cpu-only"], False, True),
+                               (["--allow-cpu-only"], True, False)):
+        monkeypatch.setattr(bw, "has_nvidia_driver", lambda d=driver: d)
+        monkeypatch.setattr(sys, "argv", ["build_windows.py", "--post-only", *flag])
+        assert bw.main() == 0
+        assert seen.pop() == (False, want)
 
 
 def test_build_stops_without_cuda_wheels(tmp_path, monkeypatch):

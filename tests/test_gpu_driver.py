@@ -106,7 +106,7 @@ def test_probe_recommends_cpu_tier_with_update_hint_for_old_driver():
     hw = hwprobe.probe(gpu=lambda: ("GeForce GTX 1650", 4096), ram=lambda: 8192, cores=lambda: 8,
                        driver=lambda: "457.49" if sys.platform == "win32" else "470.82")
     tier = hwprobe.recommend(hw)
-    assert (tier.name, tier.device, tier.mt) == ("cpu", "cpu", "opus")
+    assert (tier.name, tier.device, tier.mt) == ("cpu", "cpu", "hymt2-cpu")
     assert "too old" in tier.reason and device.DRIVER_URL in tier.reason
     ok = hwprobe.recommend(hwprobe.HwInfo("GeForce GTX 1650", 4096, 8192, 8, driver="560.94"))
     assert ok.name == "gpu"

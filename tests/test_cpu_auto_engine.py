@@ -52,10 +52,10 @@ def test_cpu_auto_is_hymt_without_any_probe(tmp_path, monkeypatch):
     assert choose_engine("auto", "cpu", tmp_path)[0] == "hymt2-cpu"
 
 
-def test_explicit_opus_still_honoured(tmp_path):
+def test_explicit_hymt_honoured_whatever_the_speed_test_says(tmp_path):
     _gguf(tmp_path)
-    cache = _probe(tmp_path, CPU, 0.9)
-    assert choose_engine("opus", "cpu", tmp_path, cpu_choice=lambda: speedprobe.cpu_choice(CPU, cache))[0] == "opus"
+    cache = _probe(tmp_path, CPU, 2.5)  # #471: a slow CPU no longer means OPUS; an explicit engine is kept
+    assert choose_engine("hymt", "cpu", tmp_path, cpu_choice=lambda: speedprobe.cpu_choice(CPU, cache))[0] == "hymt2"
 
 
 def test_speed_probe_still_reports(tmp_path):

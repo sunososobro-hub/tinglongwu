@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import '../logic/prompt.dart';
 import '../logic/segmenter.dart';
 
 /// Messages from the ASR isolate to the UI isolate.
@@ -23,8 +24,14 @@ class AsrPartial extends AsrEvent {
 
 class AsrFinal extends AsrEvent {
   const AsrFinal(this.text,
-      {required this.forced, this.decodeMs = 0, this.audioMs = 0});
+      {required this.forced,
+      this.decodeMs = 0,
+      this.audioMs = 0,
+      this.lang = 'en'});
   final String text;
+
+  /// Detected source language code (`zh`/`en`/`ja`/`ko`/`yue`), for the MT prompt.
+  final String lang;
 
   /// True when the VAD cut the segment because it hit the max length.
   final bool forced;
@@ -41,16 +48,14 @@ class AsrError extends AsrEvent {
 
 class AsrConfig {
   const AsrConfig({
-    required this.encoder,
-    required this.decoder,
-    required this.joiner,
+    required this.model,
     required this.tokens,
     required this.vadModel,
     this.testWavDir,
     this.numThreads = 4,
   });
 
-  final String encoder, decoder, joiner, tokens, vadModel;
+  final String model, tokens, vadModel;
 
   /// Debug: if this dir exists, every *.wav in it is decoded at startup and
   /// emitted as a final (to exercise ASR + translation without a mic).
@@ -63,7 +68,7 @@ class AsrConfig {
   static const vadMaxSpeech = 10.0;
 }
 
-/// Runs sherpa-onnx streaming ASR in a background isolate.
+/// Runs sherpa-onnx offline ASR in a background isolate.
 class AsrWorker {
   AsrWorker._(this._isolate, this._toWorker, this.events);
 
@@ -112,12 +117,13 @@ class AsrWorker {
     sherpa.VoiceActivityDetector? vad;
     out.send(inPort.sendPort);
 
-    String decode(Float32List samples) {
+    (String, String) decode(Float32List samples) {
       final st = rec!.createStream();
       try {
         st.acceptWaveform(samples: samples, sampleRate: 16000);
         rec.decode(st);
-        return SentenceSegmenter.normalize(rec.getResult(st).text);
+        final r = rec.getResult(st);
+        return (SentenceSegmenter.normalize(r.text), PromptBuilder.fromSenseVoiceLang(r.lang));
       } finally {
         st.free();
       }
@@ -125,13 +131,14 @@ class AsrWorker {
 
     void emit(Float32List samples, {required bool forced}) {
       final sw = Stopwatch()..start();
-      final text = decode(samples);
+      final (text, lang) = decode(samples);
       final ms = sw.elapsedMilliseconds;
       if (text.isNotEmpty) {
         out.send(AsrFinal(text,
             forced: forced,
             decodeMs: ms,
-            audioMs: samples.length * 1000 ~/ 16000));
+            audioMs: samples.length * 1000 ~/ 16000,
+            lang: lang));
       }
     }
 
@@ -140,15 +147,15 @@ class AsrWorker {
       rec = sherpa.OfflineRecognizer(
         sherpa.OfflineRecognizerConfig(
           model: sherpa.OfflineModelConfig(
-            transducer: sherpa.OfflineTransducerModelConfig(
-              encoder: cfg.encoder,
-              decoder: cfg.decoder,
-              joiner: cfg.joiner,
+            senseVoice: sherpa.OfflineSenseVoiceModelConfig(
+              model: cfg.model,
+              language: '', // auto-detect
+              useInverseTextNormalization: true,
             ),
             tokens: cfg.tokens,
             numThreads: cfg.numThreads,
             provider: 'cpu',
-            modelType: 'nemo_transducer',
+            modelType: 'sense_voice',
             debug: false,
           ),
         ),

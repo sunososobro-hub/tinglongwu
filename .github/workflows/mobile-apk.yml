@@ -1,0 +1,220 @@
+name: mobile-apk
+# Builds the Android preview APK (arm64) so the app can be installed from a phone, no computer needed.
+# On push to dev (or a manual run on dev) the APK is published to the rolling pre-release `mobile-latest`:
+# the tag is moved to the built commit and the APK asset is replaced. The release carries only the APK
+# and the models zip (hashes live in the body); stray .sha256 assets are deleted; the models zip is rebuilt from official sources only when assets/models_manifest.json
+# changes. It is never marked Latest and never touches v* tags/releases (release.yml).
+on:
+  push:
+    branches: [dev]
+    paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
+  pull_request:
+    branches: [dev]
+    paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  FLUTTER_VERSION: "3.47.6"
+  NDK_VERSION: "28.2.13676358"
+  CMAKE_VERSION: "3.22.1"
+  LLAMA_COMMIT: afeebe103bd99cda8f5dfaefcabadf890db7fda7
+  APK_NAME: tinglongwu-mobile-arm64.apk
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash   # -eo pipefail: a failing aapt/apksigner in a pipe fails the step
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK packages (pinned NDK + cmake for the llama.cpp AAR)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+      - name: Cache the self-built llama.cpp AAR
+        id: aar
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/aar-cache
+          key: llama-aar-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh') }}
+      - name: Build llama.cpp AAR from source (cache miss only)
+        if: steps.aar.outputs.cache-hit != 'true'
+        run: |
+          TLWU_BUILD_ROOT="$RUNNER_TEMP/llama" bash tool/build_llama_android.sh
+          mkdir -p ~/aar-cache && cp native/llama-cpp-dart-selfbuilt.aar ~/aar-cache/
+      - name: Use the CI-built AAR (not the committed binary)
+        run: |
+          cp ~/aar-cache/llama-cpp-dart-selfbuilt.aar native/llama-cpp-dart-selfbuilt.aar
+          sha256sum native/llama-cpp-dart-selfbuilt.aar
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Release key from secrets (optional; falls back to debug signing)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "TLWU_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "TLWU_SIGNING=release key" >> "$GITHUB_ENV"
+          else
+            # A fresh throwaway debug key per run: a signing key must never sit in the Actions cache,
+            # which pull-request jobs can read. Updates then need an uninstall until the secrets exist.
+            echo "::notice::ANDROID_KEYSTORE_B64 not set: APK is signed with a throwaway debug key"
+            echo "TLWU_SIGNING=throwaway CI debug key (no release key configured yet; uninstall the old preview before installing this one)" >> "$GITHUB_ENV"
+          fi
+      - name: Build release APK (arm64)
+        env:
+          TLWU_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # build number = run number, so every preview has a higher versionCode and installs as an update
+        run: flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }}
+      - name: Check the APK (no INTERNET permission, signer)
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
+          if grep -q "android.permission.INTERNET" "$RUNNER_TEMP/perms.txt"; then echo "APK requests INTERNET"; exit 1; fi
+          "$BT/apksigner" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
+          rm -f "$RUNNER_TEMP/release.jks"
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$APK" "$RUNNER_TEMP/out/$APK_NAME"
+          (cd "$RUNNER_TEMP/out" && sha256sum "$APK_NAME" > "$APK_NAME.sha256" && cat "$APK_NAME.sha256")   # build-internal; not uploaded to the release
+          echo "$TLWU_SIGNING" > "$RUNNER_TEMP/out/signing.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mobile-apk
+          path: ${{ runner.temp }}/out/
+          retention-days: 14
+
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    concurrency:
+      group: mobile-latest-release
+      cancel-in-progress: false
+    permissions:
+      contents: write   # move the mobile-latest tag and replace the APK asset
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mobile-apk
+          path: out
+      - name: Publish to the rolling pre-release mobile-latest
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG: mobile-latest
+          TITLE: tinglongWu mobile (preview)
+          ZIP: tlwu-mobile-models.zip
+        run: |
+          set -euo pipefail
+          SIGNING=$(cat out/signing.txt); APK_SHA=$(cut -d' ' -f1 "out/$APK_NAME.sha256")
+          BASE="https://github.com/$GH_REPO/releases/download/$TAG"
+          OLD_BODY=$(gh release view "$TAG" --json body --jq .body 2>/dev/null || true)
+          # Carry over the models zip hash + manifest marker (kept in the body, not as .sha256 assets).
+          ZIP_SHA=$(printf '%s\n' "$OLD_BODY" | sed -n 's/^- models zip SHA256: `\([0-9a-f]*\)`.*/\1/p' | head -1 || true)
+          MANIFEST=$(printf '%s\n' "$OLD_BODY" | sed -n 's/.*<!-- tlwu-manifest:\([0-9a-f]*\) -->.*/\1/p' | head -1 || true)
+          if [ -z "$MANIFEST" ] && gh release download "$TAG" -p "$ZIP.sha256" -O "$RUNNER_TEMP/old.sha256" 2>/dev/null; then
+            ZIP_SHA=$(sed -n '1s/ .*//p' "$RUNNER_TEMP/old.sha256")
+            MANIFEST=$(sed -n 's/^manifest //p' "$RUNNER_TEMP/old.sha256" | head -1)
+          fi
+          cat > notes.md <<EOF
+          **1. Install the app:** [$APK_NAME]($BASE/$APK_NAME)
+
+          **2. Get the translation pack (1.4 GB, once):** [$ZIP]($BASE/$ZIP)
+
+          Open the app, tap **Import models**, pick the zip.
+
+          <details>
+          <summary>Details</summary>
+
+          Rolling preview of the Android app (arm64), rebuilt from \`dev\` on every change under \`mobile/\`.
+          This is a preview, not a versioned release; it is replaced each time.
+          Full steps: [mobile/README.md](https://github.com/$GH_REPO/blob/dev/mobile/README.md)
+
+          - commit: $SHA
+          - signed with: $SIGNING
+          - APK SHA256: \`$APK_SHA\`
+          - models zip SHA256: \`$ZIP_SHA\`
+          <!-- tlwu-manifest:$MANIFEST -->
+
+          </details>
+          EOF
+          # Never replace a newer preview with an older run (lower versionCode = not installable as an
+          # update). The published run number is kept in the release notes; checked under the lock above.
+          RUN=${{ github.run_number }}
+          PUBLISHED=$(gh release view "$TAG" --json body --jq .body 2>/dev/null | sed -n 's/.*<!-- tlwu-run:\([0-9]*\) -->.*/\1/p' | head -1 || true)
+          if [ -n "$PUBLISHED" ] && [ "$RUN" -lt "$PUBLISHED" ]; then
+            echo "::notice::mobile-latest already has run $PUBLISHED (newer than $RUN); not publishing"
+            echo "stale=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "<!-- tlwu-run:$RUN -->" >> notes.md
+          # Move (or create) the tag; only refs/tags/mobile-latest is touched.
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # assets first, then the notes (which carry the run marker), so a failed upload is retried
+            gh release upload "$TAG" "out/$APK_NAME" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file notes.md --prerelease --latest=false
+          else
+            gh release create "$TAG" "out/$APK_NAME" --verify-tag \
+              --title "$TITLE" --notes-file notes.md --prerelease --latest=false
+          fi
+          # drop the old separate .sha256 assets only after the notes (which now carry the hashes) are saved
+          gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".sha256"))' | while read -r n; do
+            gh release delete-asset "$TAG" "$n" --yes
+          done
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
+      - name: Models zip on mobile-latest (rebuilt from official sources only when the manifest changes)
+        if: steps.apk.outputs.stale != 'true'   # an older run must not replace a newer bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: mobile-latest
+        run: |
+          set -euo pipefail
+          Z=tlwu-mobile-models.zip; W="$RUNNER_TEMP/models"
+          MH=$(sha256sum mobile/assets/models_manifest.json | cut -d' ' -f1)
+          gh release view "$TAG" --json body,assets --jq '.body' > "$RUNNER_TEMP/body.md"
+          HAVE_ZIP=$(gh release view "$TAG" --json assets --jq "[.assets[].name | select(. == \"$Z\")] | length")
+          if [ "$HAVE_ZIP" = 1 ] && grep -q "<!-- tlwu-manifest:$MH -->" "$RUNNER_TEMP/body.md"; then
+            echo "$Z is up to date (manifest $MH)"; exit 0
+          fi
+          bash mobile/tool/fetch_models.sh "$W"
+          python3 -I mobile/tool/make_models_zip.py "$W/models" "$W/licenses" "$RUNNER_TEMP/$Z"
+          ZSHA=$(sha256sum "$RUNNER_TEMP/$Z" | cut -d' ' -f1)
+          gh release upload "$TAG" "$RUNNER_TEMP/$Z" --clobber
+          # record hash + manifest in the body (marks the zip current), after the zip is uploaded
+          sed -i -e "s/^- models zip SHA256: .*/- models zip SHA256: \`$ZSHA\`/"                  -e "s/<!-- tlwu-manifest:[0-9a-f]* -->/<!-- tlwu-manifest:$MH -->/" "$RUNNER_TEMP/body.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/body.md"
+          gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'

@@ -4,6 +4,7 @@ per-stage time, peak RAM/VRAM, PASS/FAIL per stage. Offline; reads a local manif
 Manifest: `<data>/manifest.jsonl`, one JSON object per line:
   {"id": "en_001", "lang": "en", "wav": "en_001.wav", "ref_text": "...", "ref_zh": "..."}
 `ref_<target>` is the reference translation (`ref_zh` for en/ja/ru clips, `ref_en` for zh clips).
+Optional `style` (e.g. "news", "dialogue"): extra styles of a language are reported as their own group (#429).
 
 Engines are injected (`Engines`), so CI runs the whole thing on a tiny fixture with fakes.
 """
@@ -21,6 +22,9 @@ from . import scoring
 
 FOCUS_PAIRS = (("en", "zh"), ("ja", "zh"), ("ru", "zh"), ("zh", "en"))  # owner spec v2 on #57: en/ja/ru <-> zh
 CLIPS_PER_LANG = 5  # owner spec v2 on #57: "5 clips per focus language"
+# #472 (#335 part 3): the languages Hy-MT2 translates directly since #470, scored -> zh to decide Experimental vs
+# supported. Run with `--langs it,pt,vi,th,id`; the manifest needs their clips with `ref_zh`.
+HYMT_NEW_LANGS = ("it", "pt", "vi", "th", "id")
 
 # PASS/FAIL thresholds (speed only: quality is scored 0-100 by scoring.py, not gated here).
 ASR_RTF_MAX = 1.0  # real time by definition: recognising a clip must not take longer than the clip lasts
@@ -117,8 +121,14 @@ def _stage(ok: bool | None) -> str:
     return "SKIP" if ok is None else "PASS" if ok else "FAIL"
 
 
-def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None) -> dict:
+# #122: a language group is red when its peak VRAM exceeds this share of the card. 0.9 of 8 GiB = 7.2 GiB, the 8 GB
+# tier budget the owner gave on #122; other cards scale with their size.
+VRAM_BUDGET_FRAC = 0.9
+
+
+def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None, vram_budget=None) -> dict:
     t_lang = clock()
+    lang_vram = _Peak(peaks[1].read)  # peak of this language group alone (the shared peak is the whole run)
     asr = eng.load_asr(src)
     if hasattr(mt, "preload"):
         mt.preload(src, tgt)
@@ -140,7 +150,7 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None) -> dict
             spoken = eng.tts(out, tgt)
             tts_s += clock() - t2
             tts_audio_s += spoken or 0.0
-        for p in peaks:
+        for p in (*peaks, lang_vram):
             p.sample()
         clips.append({"id": row["id"], "ref_text": row["ref_text"], "asr": text, "detected": getattr(tr, "lang", None),
                       "ref_mt": row.get(f"ref_{tgt}"), "mt": out, "latency_s": round(t2 - t0, 3)})
@@ -158,6 +168,7 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None) -> dict
         "tts_rtf": None if tts_rtf is None else round(tts_rtf, 3),
         # #119: kana in zh output = untranslated Japanese; share x100 (2 decimals), any > 0 is red
         "kana_rate": kana,
+        "peak_vram_mib": lang_vram.value and round(lang_vram.value), "vram_budget_mib": vram_budget,
         "error_rate": round(scoring.error_rate([(c["ref_text"], c["asr"]) for c in clips], src), 4),
         "chrf": round(scoring.chrf(mt_pairs), 2) if mt_pairs else None,
         "stages": {
@@ -167,30 +178,53 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None) -> dict
             "tts": _stage(None if eng.tts is None else tts_rtf is not None and tts_rtf <= TTS_RTF_MAX),
             "time": _stage(elapsed <= LANG_BUDGET_S),
             "kana": _stage(None if kana is None else scoring.kana_colour(kana) != "red"),
+            "vram": _stage(None if lang_vram.value is None or not vram_budget else lang_vram.value <= vram_budget),
         },
     }
 
 
+def style_groups(rows) -> list[tuple[str | None, list[dict]]]:
+    """Split one language's rows by the optional manifest `style` field (#429): rows without a style and rows of the
+    first style seen form the main group (style None, reported as the plain pair, as before); every other style is its
+    own group, reported as "<pair>[<style>]" (e.g. ja->zh[dialogue]), each with its own clip budget."""
+    first = next((r.get("style") for r in rows if r.get("style")), None)
+    groups: dict = {}
+    for r in rows:
+        s = r.get("style") or None
+        groups.setdefault(None if s == first else s, []).append(r)
+    return list(groups.items())
+
+
 def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, clock=time.perf_counter,
-              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None) -> dict:
+              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None, noise=None) -> dict:
     """Run the smoke set and return the report dict. totals: (RAM MiB, VRAM MiB or None) of this machine.
     ja_extra: ja clips from outside the repo (NHK, #119), run as an extra "ja->zh[nhk]" group; any kana in its zh
     output turns the smoke red."""
     t0 = clock()
     peak_ram, peak_vram = _Peak(ram), _Peak(vram)
+    vram_budget = round(VRAM_BUDGET_FRAC * totals[1], 1) if totals and totals[1] else None
     mt = eng.load_mt()
     mt_load_s = clock() - t0
     langs, skipped = [], []
     for src, tgt in pairs:
-        mine = [r for r in rows if r["lang"] == src][:per_lang]
-        if not mine:
+        groups = style_groups([r for r in rows if r["lang"] == src])
+        if not groups:
             skipped.append(f"{src}->{tgt}")
             continue
-        langs.append(run_lang(mine, src, tgt, eng, mt, clock, (peak_ram, peak_vram)))
+        for style, mine in groups:
+            langs.append(run_lang(mine[:per_lang], src, tgt, eng, mt, clock, (peak_ram, peak_vram),
+                                  label=f"{src}->{tgt}[{style}]" if style else None, vram_budget=vram_budget))
     if ja_extra:
-        langs.append(run_lang(ja_extra[:per_lang], "ja", "zh", eng, mt, clock, (peak_ram, peak_vram), label="ja->zh[nhk]"))
+        langs.append(run_lang(ja_extra[:per_lang], "ja", "zh", eng, mt, clock, (peak_ram, peak_vram), label="ja->zh[nhk]",
+                              vram_budget=vram_budget))
+    noise_rep = None
+    if noise:  # #121: no-speech clips through the first language's ASR; any shown text is a hallucination
+        from . import noise as noise_mod
+
+        noise_rep = noise_mod.run_noise(eng.load_asr(pairs[0][0] if not langs else langs[0]["pair"].split("->")[0]), noise)
     if not langs:
-        raise ValueError("the manifest has no clip for any focus language (en, ja, ru, zh)")
+        raise ValueError("the manifest has no clip for any requested language ("
+                         + ", ".join(src for src, _ in pairs) + ")")
     total_s = clock() - t0
     clips = [c for lg in langs for c in lg["clips"]]
     total_ram, total_vram = totals or (None, None)
@@ -199,16 +233,19 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
         "mt": (statistics.fmean(scoring.mt_score(lg["chrf"]) for lg in langs if lg["chrf"] is not None)
                if any(lg["chrf"] is not None for lg in langs) else None),
         "latency": scoring.latency_score([c["latency_s"] for c in clips]),
-        "hallucination": None,  # silence/noise clips arrive with the data part (#57 part 3)
+        "hallucination": (scoring.hallucination_score([""] * (noise_rep["total"] - noise_rep["count"]) + ["x"] * noise_rep["count"])
+                          if noise_rep else None),
         "resources": (scoring.resources_score(peak_ram.value, total_ram, peak_vram.value, total_vram)
                       if peak_ram.value is not None and total_ram else None),
         "lang_id": scoring.lang_id_score([(lg["pair"].split("->")[0], c["detected"]) for lg in langs
                                           for c in lg["clips"]]),
     }
-    ok = total_s <= TOTAL_BUDGET_S and all(s != "FAIL" for lg in langs for s in lg["stages"].values())
+    ok = total_s <= TOTAL_BUDGET_S and all(s != "FAIL" for lg in langs for s in lg["stages"].values()) \
+        and (noise_rep is None or noise_rep["stage"] != "FAIL")
     return {"mode": "smoke", "pass": ok, "total_s": round(total_s, 2), "mt_load_s": round(mt_load_s, 3),
             "peak_ram_mib": peak_ram.value and round(peak_ram.value), "peak_vram_mib": peak_vram.value and round(peak_vram.value),
-            "total_ram_mib": total_ram, "total_vram_mib": total_vram, "languages": langs, "skipped": skipped,
+            "total_ram_mib": total_ram, "total_vram_mib": total_vram, "vram_budget_mib": vram_budget,
+            "languages": langs, "skipped": skipped, "noise": noise_rep,
             "thresholds": {"asr_rtf_max": ASR_RTF_MAX, "mt_median_max_s": MT_MEDIAN_MAX_S, "tts_rtf_max": TTS_RTF_MAX,
                            "lang_budget_s": LANG_BUDGET_S, "total_budget_s": TOTAL_BUDGET_S},
             "score": scoring.overall(scores)}

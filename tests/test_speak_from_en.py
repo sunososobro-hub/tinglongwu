@@ -115,7 +115,6 @@ def test_build_translator_en_is_hymt_both_ways_never_opus(monkeypatch, tmp_path)
     import tinglongwu.translate as tr
     from tinglongwu.models import ModelNotFound
 
-    monkeypatch.setattr(tr.PivotTranslator, "preload", lambda *a: pytest.fail("OPUS must not load"))
     # no Hy-MT2 GGUF: one-line setup command (#331: no OPUS en-zh / zh-en pairs), even on CUDA
     with pytest.raises(ModelNotFound, match="--hymt"):
         proto.build_translator("auto", "cuda", tmp_path, "zh", src="en")

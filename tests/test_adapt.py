@@ -9,7 +9,7 @@ from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.models import ModelNotFound
 from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
-from tinglongwu.translate import PivotTranslator, Translation, Translator
+from tinglongwu.translate import Translation, Translator
 
 
 def ladders(mt_lower=("opus",), asr_lower=("base", "tiny")):
@@ -170,23 +170,23 @@ def test_make_adaptive_builds_ladders_from_what_is_installed(tmp_path):
     top = MT("hymt")
     made = []
     asr, tr, ctl = cli.make_adaptive(a, ASR("small"), top, tmp_path, "cpu", log=lambda m: None,
-                                     make_asr=lambda s: made.append(s) or ASR(s), make_opus=lambda: MT("opus"))
-    assert [lad.kind for lad in ctl.ladders] == ["translation engine", "speech model"]
+                                     make_asr=lambda s: made.append(s) or ASR(s))
+    # #471: only the speech model steps down; the translation engine (Hy-MT2) is never swapped for OPUS
+    assert [lad.kind for lad in ctl.ladders] == ["speech model"] and tr is top
     assert made == [] and asr.transcribe(None).text == "small 1"
-    for _ in range(2):
-        feed(ctl, [9] * adapt.N_OVER * 2)
-    assert tr.translate("a", "ru", "zh").text == "opus:a" and asr.transcribe(None).text == "base 1" and made == ["base"]
-    # already on OPUS and no smaller Whisper installed: nothing to adapt, objects are returned untouched
+    feed(ctl, [9] * adapt.N_OVER * 2)
+    assert tr.translate("a", "ru", "zh").text == "hymt:a" and asr.transcribe(None).text == "base 1" and made == ["base"]
+    # no smaller Whisper installed: nothing to adapt, objects are returned untouched
     a2 = cli.parse_args(["--lang", "ru", "--model", "base"])
-    opus, plain = PivotTranslator(tmp_path), ASR("base")
-    assert cli.make_adaptive(a2, plain, opus, tmp_path, "cpu") == (plain, opus, None)
+    other, plain = MT("ollama"), ASR("base")
+    assert cli.make_adaptive(a2, plain, other, tmp_path, "cpu") == (plain, other, None)
     assert cli.parse_args(["--no-adapt"]).no_adapt is True and a.no_adapt is False
 
 
-def test_real_opus_step_is_skipped_when_opus_is_not_installed(tmp_path):
+def test_nothing_to_step_down_to_means_no_controller(tmp_path):
     a = cli.parse_args(["--lang", "ru", "--model", "tiny"])
-    asr, tr, ctl = cli.make_adaptive(a, ASR("tiny"), MT("hymt"), tmp_path, "cpu", log=lambda m: None)
-    assert feed(ctl, [9] * 10) == [None] * 10 and tr.translate("a", "ru", "zh").text == "hymt:a"
+    top = MT("hymt")
+    assert cli.make_adaptive(a, ASR("tiny"), top, tmp_path, "cpu", log=lambda m: None)[1:] == (top, None)
 
 
 def test_no_fake_step_up_after_the_lower_engine_was_dropped():

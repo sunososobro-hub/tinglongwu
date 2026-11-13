@@ -4,6 +4,8 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 
+import '../logic/context_budget.dart';
+import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
 import 'model_paths.dart';
@@ -19,7 +21,8 @@ class Subtitle {
 }
 
 class _Job {
-  _Job(this.ru, this.sub, this.speechEndMs, this.asrFinalMs);
+  _Job(this.ru, this.sub, this.speechEndMs, this.asrFinalMs, [this.lang = 'en']);
+  final String lang;
   String ru;
   final Subtitle sub;
 
@@ -28,7 +31,7 @@ class _Job {
   int asrFinalMs;
 }
 
-/// mic -> sherpa ASR isolate -> queue -> Qwen3 translator -> subtitles.
+/// mic -> sherpa ASR isolate -> queue -> Hy-MT2 translator -> subtitles.
 class Pipeline extends ChangeNotifier {
   Stage stage = Stage.starting;
   String? errorText;
@@ -90,9 +93,7 @@ class Pipeline extends ChangeNotifier {
       final p = paths!;
       final t0 = _clock.elapsedMilliseconds;
       _asr = await AsrWorker.spawn(AsrConfig(
-        encoder: p.asrFile('encoder.int8.onnx'),
-        decoder: p.asrFile('decoder.onnx'),
-        joiner: p.asrFile('joiner.onnx'),
+        model: p.asrFile('model.int8.onnx'),
         tokens: p.asrFile('tokens.txt'),
         vadModel: p.vadPath,
         testWavDir: p.testWavDir,
@@ -120,11 +121,17 @@ class Pipeline extends ChangeNotifier {
       _log.i('ASR ready in ${_clock.elapsedMilliseconds - t0} ms');
 
       final t1 = _clock.elapsedMilliseconds;
-      _tr = await Translator.load(p.llmPath);
+      final tr = await Translator.load(p.llmPath);
+      if (_disposed) {
+        tr.dispose(); // replaced (e.g. by Import models) while loading
+        return;
+      }
+      _tr = tr;
       _log.i('LLM ready in ${_clock.elapsedMilliseconds - t1} ms (${p.llmPath.split('/').last}) '
           '${await ModelPaths.statsLine()}');
 
       _drain(); // anything queued while the LLM was loading (debug wavs)
+      if (_disposed) return;
       final stream = await _rec.startStream(const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
@@ -150,6 +157,12 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keep the last [keepSubtitles] lines, but never drop a line whose
+  /// translation is still queued or in flight: the queue can now grow past
+  /// [maxQueue] when no merge fits the context (#533).
+  void _trimSubtitles() =>
+      trimFinished<Subtitle>(subtitles, keepSubtitles, (s) => s.zh != null);
+
   void _onFinal(AsrFinal f) {
     final now = _clock.elapsedMilliseconds;
     // VAD emits the segment after minSilence of trailing silence + decode.
@@ -157,23 +170,36 @@ class Pipeline extends ChangeNotifier {
         ? now - f.decodeMs
         : now - f.decodeMs - (AsrConfig.vadMinSilence * 1000).round();
     _log.i('ASR final${f.forced ? " (forced)" : ""} '
-        'decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
+        'lang=${f.lang} decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
     final sub = Subtitle(f.text);
     subtitles.add(sub);
-    if (subtitles.length > keepSubtitles) subtitles.removeAt(0);
-    _queue.add(_Job(f.text, sub, speechEnd, now));
-    // Bound the backlog: merge the two oldest waiting jobs (keeps all text,
-    // costs one fewer LLM call) instead of dropping.
+    _trimSubtitles();
+    _queue.add(_Job(f.text, sub, speechEnd, now, f.lang));
+    // Bound the backlog: merge the oldest two waiting jobs (keeps all text,
+    // costs one fewer LLM call) instead of dropping. A merge that would be
+    // longer than ContextBudget.maxMergeChars is skipped (#533): it could
+    // overflow the LLM context and stop the app.
     while (_queue.length > maxQueue) {
-      final a = _queue.removeFirst();
-      final b = _queue.removeFirst();
-      b.ru = '${a.ru} ${b.ru}';
+      final jobs = _queue.toList();
+      final i = ContextBudget.mergeIndex([for (final j in jobs) j.ru]);
+      if (i == null) {
+        _log.i('queue>$maxQueue, no merge fits ${ContextBudget.maxMergeChars} chars');
+        break;
+      }
+      final a = jobs[i];
+      final b = jobs[i + 1];
+      b.ru = ContextBudget.join(a.ru, b.ru);
       b.sub.ru = b.ru;
       subtitles.remove(a.sub);
-      final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs);
-      _queue.addFirst(merged);
+      final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs, b.lang);
+      jobs
+        ..[i] = merged
+        ..removeAt(i + 1);
+      _queue
+        ..clear()
+        ..addAll(jobs);
       dropped++;
-      _log.i('queue>$maxQueue, merged oldest two -> ${AppLog.text(merged.ru)}');
+      _log.i('queue>$maxQueue, merged jobs $i+${i + 1} -> ${AppLog.text(merged.ru)}');
     }
     queued = _queue.length + (_busy ? 1 : 0);
     notifyListeners();
@@ -189,7 +215,7 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await _tr!.translate(job.ru);
+          final r = await _tr!.translate(job.ru, src: job.lang);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;
@@ -197,9 +223,10 @@ class Pipeline extends ChangeNotifier {
           lastTokens = r.tokens;
           lastFirstTokenMs = r.firstTokenMs;
           job.sub.zh = r.zh;
+          _trimSubtitles();
           job.sub.traditionalOk = r.check.isTraditional;
           _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
-              '${r.retried ? " retried" : ""}] ${AppLog.text(r.zh)} | '
+              '] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '
               'ttft=${r.firstTokenMs}ms tok=${r.tokens} '
               'tps=${r.tokensPerSecond.toStringAsFixed(1)} n_ctx=${r.nCtx} '

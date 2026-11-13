@@ -4,7 +4,7 @@ Moved from the README (#342).
 
 Fully local, offline, real-time speech translator: **system audio output -> capture -> ASR -> translate -> text**.
 It captures whatever the PC plays (the system output mix, not per-app). There is no network use at runtime; only setup / first-run model download uses the network.
-Nothing leaves your machine: no cloud APIs, no telemetry, no audio or transcripts written to disk.
+Nothing leaves your machine: no cloud APIs, no telemetry, no audio or transcripts written to disk by default (only if you choose `--save` / `--record`, and then only on this computer).
 
 ## Verification status note
 

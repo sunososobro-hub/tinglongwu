@@ -1,9 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/logic/context_budget.dart';
 import 'package:mobile/logic/prompt.dart';
 import 'package:mobile/logic/segmenter.dart';
+import 'package:mobile/logic/subtitle_trim.dart';
 import 'package:mobile/logic/zh_check.dart';
+import 'package:mobile/services/model_paths.dart';
 
 void main() {
+  senseVoiceRoutingTests();
   group('SentenceSegmenter', () {
     test('normalizes whitespace', () {
       expect(SentenceSegmenter.normalize('  привет   мир \n'), 'привет мир');
@@ -59,44 +63,66 @@ void main() {
     });
   });
 
-  group('PromptBuilder', () {
-    test('has empty think block, no /no_think, and Traditional instruction', () {
-      final p = PromptBuilder.build('привет мир');
-      expect(p, startsWith('<|im_start|>system\n'));
-      expect(p, contains('Traditional Chinese'));
-      expect(p, contains('привет мир<|im_end|>'));
-      expect(p, isNot(contains('no_think')));
-      expect(p, endsWith('<|im_start|>assistant\n<think>\n\n</think>\n\n'));
-      expect(p, isNot(contains('Previous sentences')));
+  group('PromptBuilder (Hy-MT2, same as desktop tinglongwu/hymt.py)', () {
+    // Expected strings copied from the Python output:
+    //   build_prompt('Привет, как дела?', 'ru', 'zh')            (user message)
+    //   that message rendered with the GGUF tokenizer.chat_template of
+    //   Hy-MT2-1.8B-Q4_K_M.gguf, add_generation_prompt=True      (full prompt)
+    const ru = 'Привет, как дела?';
+    const desktopUser =
+        '将以下文本翻译成中文，注意只需要输出翻译后的结果，不要额外解释：\n\n'
+        'Привет, как дела?';
+    const desktopFull = '<\uff5chy_begin\u2581of\u2581sentence\uff5c>'
+        '<\uff5chy_User\uff5c>'
+        '\u5c06\u4ee5\u4e0b\u6587\u672c\u7ffb\u8bd1\u6210\u4e2d\u6587\uff0c'
+        '\u6ce8\u610f\u53ea\u9700\u8981\u8f93\u51fa\u7ffb\u8bd1\u540e\u7684'
+        '\u7ed3\u679c\uff0c\u4e0d\u8981\u989d\u5916\u89e3\u91ca\uff1a\n\n'
+        '\u041f\u0440\u0438\u0432\u0435\u0442, \u043a\u0430\u043a '
+        '\u0434\u0435\u043b\u0430?'
+        '<\uff5chy_Assistant\uff5c>';
+
+    test('user message equals desktop build_prompt for ru -> zh', () {
+      expect(PromptBuilder.userMessage(ru), desktopUser);
+      expect(PromptBuilder.userMessage(ru, src: 'ru', tgt: 'zh'), desktopUser);
     });
 
-    test('includes at most the last 2 context pairs, in order', () {
-      final ctx = [
-        const ContextPair('один', '一'),
-        const ContextPair('два', '二'),
-        const ContextPair('три', '三'),
-      ];
-      final p = PromptBuilder.build('четыре', context: ctx);
-      expect(p, isNot(contains('один')));
-      expect(p.indexOf('два') < p.indexOf('три'), isTrue);
-      expect(p, contains('RU: три\n'));
-      expect(p.indexOf('три') < p.indexOf('четыре'), isTrue);
+    test('full prompt equals the desktop chat-template rendering', () {
+      expect(PromptBuilder.build(ru), desktopFull);
     });
 
-    test('strict mode adds the Traditional reminder', () {
-      expect(PromptBuilder.build('x', strict: true), contains('IMPORTANT'));
-      expect(PromptBuilder.build('x'), isNot(contains('IMPORTANT')));
+    test('non-Chinese pair uses the English card template', () {
+      expect(
+        PromptBuilder.userMessage(ru, src: 'ru', tgt: 'en'),
+        'Translate the following text into English.\n'
+        'Note that you should only output the translated result without any '
+        'additional explanation:\n\n$ru',
+      );
     });
 
-    test('clean strips think blocks, labels, quotes, extra lines', () {
-      expect(PromptBuilder.clean('<think>\n\n</think>\n\n你好'), '你好');
+    test('maxTokensFor matches desktop max_tokens_for', () {
+      expect(PromptBuilder.maxTokensFor(''), 32);
+      expect(PromptBuilder.maxTokensFor('a' * 20), 56);
+      expect(PromptBuilder.maxTokensFor('a' * 500), 400);
+    });
+
+    test('clean strips template tokens, labels, quotes, extra lines', () {
+      expect(PromptBuilder.clean('你好<\uff5chy_place\u2581holder\u2581no\u25812\uff5c>'),
+          '你好');
       expect(PromptBuilder.clean('翻譯：你好嗎'), '你好嗎');
+      expect(PromptBuilder.clean('译文：你好吗'), '你好吗');
       expect(PromptBuilder.clean('「你好」'), '你好');
       expect(PromptBuilder.clean('"你好"'), '你好');
-      expect(PromptBuilder.clean('你好<|im_end|>'), '你好');
       expect(PromptBuilder.clean('第一行\n第二行'), '第一行');
       expect(PromptBuilder.clean('   '), '');
-      expect(PromptBuilder.clean('你好 /no_think'), '你好');
+    });
+  });
+
+  group('ModelPaths', () {
+    test('translator is the Hy-MT2-1.8B GGUF in the models dir', () {
+      final p = ModelPaths('/data/x');
+      expect(ModelPaths.llmFile, 'Hy-MT2-1.8B-Q4_K_M.gguf');
+      expect(p.llmPath, '/data/x/models/Hy-MT2-1.8B-Q4_K_M.gguf');
+      expect(p.missing(), contains('/data/x/models/Hy-MT2-1.8B-Q4_K_M.gguf'));
     });
   });
 
@@ -130,6 +156,110 @@ void main() {
     test('digits and punctuation do not count as CJK', () {
       final c = checkChinese('123，。!');
       expect(c.cjkCount, 0);
+    });
+  });
+
+  group('trimFinished (#533)', () {
+    // (text, translated?)
+    bool done((String, bool) s) => s.$2;
+
+    test('drops the oldest translated lines down to keep', () {
+      final l = [('a', true), ('b', true), ('c', true), ('d', false), ('e', false)];
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['b', 'c', 'd', 'e']);
+    });
+
+    test('never drops lines still waiting for a translation', () {
+      final l = [for (final t in ['a', 'b', 'c', 'd', 'e', 'f']) (t, false)];
+      trimFinished(l, 4, done);
+      expect(l.length, 6);
+      l[0] = ('a', true);
+      l[1] = ('b', true);
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['c', 'd', 'e', 'f']);
+    });
+
+    test('skips pending lines and drops a newer translated one', () {
+      final l = [('a', false), ('b', true), ('c', false), ('d', false), ('e', false)];
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['a', 'c', 'd', 'e']);
+    });
+  });
+
+  group('ContextBudget (#533)', () {
+    // ~170 chars: one forced ASR commit (24 Russian words).
+    final long = List.filled(24, 'привет').join(' ');
+
+    test('merges the oldest two short jobs', () {
+      expect(ContextBudget.mergeIndex(['раз', 'два', 'три']), 0);
+      expect(ContextBudget.join('раз', 'два'), 'раз два');
+    });
+
+    test('does not merge when the merged text is too long', () {
+      expect(long.length, greaterThan(ContextBudget.maxMergeChars ~/ 2));
+      expect(ContextBudget.mergeIndex([long, long]), isNull);
+      expect(ContextBudget.mergeIndex([long, long, long]), isNull);
+    });
+
+    test('skips an oversized oldest pair and merges a later pair', () {
+      expect(ContextBudget.mergeIndex([long, long, 'раз']), 1);
+      final huge = 'я' * 318;
+      expect(ContextBudget.mergeIndex([huge, huge, 'раз', 'два']), 2);
+      expect(ContextBudget.mergeIndex([huge, 'раз', 'два']), 1);
+    });
+
+    test('merge limit is the boundary', () {
+      final a = 'а' * 100;
+      final fits = 'б' * (ContextBudget.maxMergeChars - 101);
+      expect(ContextBudget.mergeIndex([a, fits]), 0);
+      expect(ContextBudget.mergeIndex([a, '${fits}x']), isNull);
+    });
+
+    test('any allowed merge plus its output budget fits the context', () {
+      for (var n = 0; n <= ContextBudget.maxMergeChars; n++) {
+        final t = 'я' * n;
+        expect(ContextBudget.maxTokens(t), PromptBuilder.maxTokensFor(t));
+        expect(ContextBudget.promptTokens(t) + ContextBudget.maxTokens(t),
+            lessThan(ContextBudget.nCtx));
+      }
+    });
+
+    test('maxTokens is clamped for text longer than the merge limit', () {
+      final t = 'я' * 500;
+      expect(PromptBuilder.maxTokensFor(t), 400);
+      expect(ContextBudget.maxTokens(t),
+          ContextBudget.nCtx - 1 - ContextBudget.promptTokens(t));
+      expect(ContextBudget.promptTokens(t) + ContextBudget.maxTokens(t),
+          lessThan(ContextBudget.nCtx));
+      expect(ContextBudget.maxTokens('я' * 2000), 1);
+    });
+  });
+}
+
+// #563: SenseVoice language routing into the MT prompt.
+void senseVoiceRoutingTests() {
+  group('SenseVoice language routing (#563)', () {
+    test('PromptBuilder.fromSenseVoiceLang maps <|xx|> tags, unknown -> en', () {
+      expect(PromptBuilder.fromSenseVoiceLang('<|en|>'), 'en');
+      expect(PromptBuilder.fromSenseVoiceLang('<|ja|>'), 'ja');
+      expect(PromptBuilder.fromSenseVoiceLang('<|ko|>'), 'ko');
+      expect(PromptBuilder.fromSenseVoiceLang('<|yue|>'), 'yue');
+      expect(PromptBuilder.fromSenseVoiceLang('<|zh|>'), 'zh');
+      expect(PromptBuilder.fromSenseVoiceLang(''), 'en');
+      expect(PromptBuilder.fromSenseVoiceLang('<|nospeech|>'), 'en');
+    });
+
+    test('detected en/ja/ko prompts carry the text and tgt zh', () {
+      for (final l in ['en', 'ja', 'ko', 'yue']) {
+        final p = PromptBuilder.build('hello', src: l);
+        expect(p, contains('将以下文本翻译成中文'));
+        expect(p, endsWith('hello${PromptBuilder.assistantTag}'));
+      }
+    });
+
+    test('non-Chinese target uses the source-independent English template', () {
+      expect(PromptBuilder.userMessage('x', src: 'ja', tgt: 'en'), startsWith('Translate the following text into English.'));
+      expect(PromptBuilder.userMessage('x', src: 'yue', tgt: 'en'), startsWith('将以下文本翻译成英语'));
     });
   });
 }

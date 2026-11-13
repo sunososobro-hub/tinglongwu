@@ -43,7 +43,7 @@ def test_time_mt_skips_warmup_and_stops_at_budget():
     assert c.calls == 4
 
 
-@pytest.mark.parametrize("per,mt", [(0.93, "hymt2"), (0.99, "hymt2"), (1.0, "opus"), (2.5, "opus")])
+@pytest.mark.parametrize("per,mt", [(0.93, "hymt2"), (0.99, "hymt2"), (1.0, speedprobe.SLOW_MT), (2.5, speedprobe.SLOW_MT)])
 def test_cpu_tier_uses_hymt_only_under_one_second_median(tmp_path, per, mt):
     c = Clock([3.0, per])
     r = speedprobe.run(CPU, recommend(CPU), tmp_path, path=tmp_path / "sp.json", make=maker(c), clock=c)
@@ -51,10 +51,10 @@ def test_cpu_tier_uses_hymt_only_under_one_second_median(tmp_path, per, mt):
     assert speedprobe.apply(recommend(CPU), r).mt == mt
 
 
-def test_very_slow_machine_keeps_opus_without_waiting_for_all_sentences(tmp_path):
+def test_very_slow_machine_is_flagged_slow_without_waiting_for_all_sentences(tmp_path):
     c = Clock([10.0, 9.0])  # budget is gone after the first timed sentence
     r = speedprobe.run(CPU, recommend(CPU), tmp_path, path=tmp_path / "sp.json", make=maker(c), clock=c)
-    assert r.mt == "opus" and r.hymt_median_s is None and c.calls == 2
+    assert r.mt == speedprobe.SLOW_MT and r.hymt_median_s is None and c.calls == 2
 
 
 def test_result_is_cached_until_hardware_changes_or_forced(tmp_path):
@@ -66,7 +66,7 @@ def test_result_is_cached_until_hardware_changes_or_forced(tmp_path):
     assert again.cached and again.mt == "hymt2" and slow.calls == 0  # no second measurement
     more_ram = HwInfo(None, None, 32000, 8)
     changed = speedprobe.run(more_ram, recommend(more_ram), tmp_path, path=path, make=maker(slow), clock=slow)
-    assert not changed.cached and changed.mt == "opus"
+    assert not changed.cached and changed.mt == speedprobe.SLOW_MT
     c2 = Clock([1.0, 0.5])
     forced = speedprobe.run(more_ram, recommend(more_ram), tmp_path, path=path, make=maker(c2), clock=c2, force=True)
     assert not forced.cached and forced.mt == "hymt2"
@@ -87,13 +87,13 @@ def test_gpu_tier_and_low_ram_do_not_run_the_test(tmp_path):
     assert r.mt == "hymt2" and r.hymt_median_s is None
     small = HwInfo(None, None, 3000, 4)
     r = speedprobe.run(small, recommend(small), tmp_path, path=tmp_path / "b.json", make=boom)
-    assert r.mt == "opus" and "RAM" in r.note
+    assert r.mt == speedprobe.SLOW_MT and "RAM" in r.note
 
 
-def test_missing_model_keeps_opus_and_is_not_cached(tmp_path):
+def test_missing_model_is_flagged_slow_and_is_not_cached(tmp_path):
     path = tmp_path / "sp.json"
     r = speedprobe.run(CPU, recommend(CPU), tmp_path / "no-models", path=path)  # real loader, no GGUF on disk
-    assert r.mt == "opus" and "not tested" in r.note and not path.exists()
+    assert r.mt == speedprobe.SLOW_MT and "not tested" in r.note and not path.exists()
 
 
 def test_cli_probe_speed_prints_measured_choice(tmp_path, monkeypatch, capsys):
@@ -108,4 +108,21 @@ def test_cli_probe_speed_prints_measured_choice(tmp_path, monkeypatch, capsys):
     assert cli.main(["--probe", "--speed", "--models-dir", str(tmp_path)]) == 0
     assert "Speed test (remembered)" in capsys.readouterr().out
     assert cli.main(["--probe"]) == 0
-    assert "translation opus" in capsys.readouterr().out  # plain --probe is unchanged
+    assert "translation hymt2-cpu" in capsys.readouterr().out  # plain --probe is unchanged
+
+
+def test_slow_verdict_message_never_mentions_opus(tmp_path):
+    c = Clock([3.0, 2.5])
+    r = speedprobe.run(CPU, recommend(CPU), tmp_path, path=tmp_path / "sp.json", make=maker(c), clock=c)
+    assert r.mt == speedprobe.SLOW_MT
+    assert "opus" not in r.note.lower()
+    assert "opus" not in speedprobe.decide(recommend(CPU), []).note.lower()
+
+
+def test_old_cache_file_with_opus_loads_as_too_slow(tmp_path):
+    path = tmp_path / "sp.json"
+    path.write_text(json.dumps({"hw": speedprobe.signature(CPU), "mt": "opus", "hymt_median_s": 2.0,
+                                "samples": 5, "note": "...: keeping OPUS"}), "utf-8")
+    r = speedprobe.load_cached(CPU, path)
+    assert r is not None and r.cached and r.mt == speedprobe.SLOW_MT
+    assert "opus" not in r.note.lower() and r.hymt_median_s == 2.0 and r.samples == 5

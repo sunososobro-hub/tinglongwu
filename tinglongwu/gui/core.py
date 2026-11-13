@@ -22,12 +22,13 @@ DEFAULTS = {
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
+    "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "hymt", "opus"]  # #276: Hy-MT2 is the engine; only Hy-MT2 and OPUS are offered
+ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
 # hardware; manual = the Engine + Speech model boxes decide (#81)
 QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
@@ -49,6 +50,37 @@ def target_for_locale(tag: str | None) -> str:
     if t.startswith("zh"):
         return "zh-cn" if ("hans" in t or t.endswith(("-cn", "-sg"))) and "hant" not in t else "zh-tw"
     return "en"
+
+
+QUICK_MODES = ("listen", "speak")  # #294 first-screen buttons: "Listen to others" / "I speak"
+
+
+def quick_settings(s: dict, mode: str) -> dict:
+    """#294 easy start: session settings for a first-screen button; `s` (the saved settings) is not changed.
+    The user only picks their own language (`target`, remembered). listen = PC sound (loopback) -> my language,
+    source language as set (auto by default). speak = microphone in my language -> the other language
+    (English for a Chinese speaker, Traditional Chinese for an English speaker). Engine/model stay on `quality`."""
+    if mode not in QUICK_MODES:
+        raise ValueError(f"unknown quick mode: {mode!r}")
+    out = dict(s)
+    mine = s.get("target") if s.get("target") in TARGETS else DEFAULTS["target"]
+    if mode == "listen":
+        out.update(source="system", target=mine)
+    else:
+        zh = mine.startswith("zh")
+        out.update(source="mic", lang="zh" if zh else "en", target="en" if zh else "zh-tw")
+    return out
+
+
+def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str, bool]]:
+    """#294: {mode: (i18n key, enabled)} for the first-screen buttons. phase: idle | loading (models not ready:
+    both read "Loading...", nothing to press) | running (the pressed one is Stop, the other is off) | busy
+    (stopping / downloading: nothing to press)."""
+    if phase == "loading":
+        return {m: ("gui_loading", False) for m in QUICK_MODES}
+    if phase == "running":
+        return {m: ("gui_stop", True) if m == active else (f"gui_quick_{m}", False) for m in QUICK_MODES}
+    return {m: (f"gui_quick_{m}", phase == "idle") for m in QUICK_MODES}
 
 
 def report_info(s: dict) -> dict:
@@ -206,6 +238,23 @@ def model_labels(mdir=None) -> list[str]:
     return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
 
 
+_ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
+_ENGINE_HINT = {"hymt": "tlwu-setup --hymt"}
+
+
+def engine_labels(mdir=None) -> list[str]:
+    """#399: Advanced engine entries; an engine whose model is not installed carries the setup command to get it."""
+    from ..models import models_dir
+
+    d = models_dir(str(mdir) if mdir else None)
+    return [e if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})" for e in ENGINES]
+
+
+def engine_from_label(label: str) -> str:
+    """The plain engine id from an engine_labels() entry (also accepts a plain id)."""
+    return (label or "").split(" (", 1)[0].strip()
+
+
 def model_from_label(label: str) -> str:
     """The plain model name from a dropdown entry (also accepts a plain name)."""
     return label.replace(_MARK_OK, "", 1).replace(_MARK_MISSING, "").strip()
@@ -294,14 +343,17 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
     return rc
 
 
-def settings_to_argv(s: dict) -> list[str]:
-    """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
+def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:
+    """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults).
+    outputs: the current voice_outputs() (#448): a saved voice_device that is no longer listed is left out (default
+    output) and notice(str) gets one line; None or [] (list unknown / no audio stack) passes the saved name on."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     quality = s.get("quality") if s.get("quality") in QUALITIES else DEFAULTS["quality"]
     if quality == "manual":
-        argv += ["--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model"))]
+        engine = s.get("engine") if s.get("engine") in ENGINES else "auto"  # #471: a removed engine (opus) -> auto
+        argv += ["--engine", engine, "--model", usable_model(s.get("model"))]
     else:  # the CLI picks engine + speech model from the hardware probe
         argv += ["--quality", quality]
     if s.get("source") == "mic":
@@ -311,7 +363,14 @@ def settings_to_argv(s: dict) -> list[str]:
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
-        argv += ["--voice"] + (["--voice-device", s["voice_device"]] if s.get("voice_device") else [])
+        dev = s.get("voice_device") or ""
+        if dev and outputs and dev not in outputs:  # #448: unplugged since it was saved
+            if notice is not None:
+                from ..i18n import t
+
+                notice(t("gui_voice_device_gone", name=dev))
+            dev = ""
+        argv += ["--voice"] + (["--voice-device", dev] if dev else [])
     return argv
 
 
@@ -336,7 +395,7 @@ class QueueSink(Sink):
     def __init__(self, q: queue.Queue):
         self.q = q
 
-    def write_source(self, src: str, original: str) -> None:
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         self.q.put(("source", original))  # shown dim until its "final" arrives (#53)
 
     def write(self, r: Result) -> None:

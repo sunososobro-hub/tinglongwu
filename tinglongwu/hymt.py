@@ -1,22 +1,21 @@
 """Tencent Hy-MT2-1.8B (Apache-2.0, Q4_K_M GGUF, llama.cpp): direct multilingual MT.
 
-As the GPU default engine (`--engine auto` on CUDA / `--engine hymt`, #66) it translates every pair whose two
-languages it knows (`EN_NAMES`); other pairs go to the OPUS pivot. With the other engines it is used for Japanese:
-
-OPUS has no usable zh<->ja models (opus-mt-en-jap is Bible-trained; ja-en emits <unk>), so every pair that
-involves Japanese goes through this model, direct src -> tgt with no English pivot. Everything else keeps
-using whatever engine was chosen (OPUS pivot). `JaRouter` does that routing and falls
-back to the OPUS pivot for ja -> X when the GGUF (or llama-cpp-python) is missing.
+It is the only built-in translation engine (#276, #471: the OPUS/Argos pivot is gone from the listen path):
+`JaRouter(None, ..., all_pairs=True)` translates every pair whose two languages it knows (`EN_NAMES`) direct
+src -> tgt, and any other pair is an error with the reason (no silent engine switch). The reverse/speak side
+builds the same router with its own no-fallback base (#331).
 """
 from __future__ import annotations
 
 import os
 import sys
+from collections import deque
 from pathlib import Path
 
 from .engines import clean_output, max_tokens_for
 from .engines import load_llama as _load_llama
 from .engines import shared_llama
+from .llm_prompt import CONTEXT_LINES
 from .repeat import collapse_repeats
 from .translate import Translation, Translator, strip_unk, zh_convert
 
@@ -41,10 +40,12 @@ def sampling() -> dict:
     return s
 
 
+# #335: it/pt/vi/th/id are on the Hy-MT2 model card's language list, so they go direct instead of the OPUS pivot.
 ZH_NAMES = {"zh": "中文", "ja": "日语", "en": "英语", "ru": "俄语", "ko": "韩语", "de": "德语", "fr": "法语",
-            "es": "西班牙语"}
+            "es": "西班牙语", "it": "意大利语", "pt": "葡萄牙语", "vi": "越南语", "th": "泰语", "id": "印尼语"}
 EN_NAMES = {"zh": "Chinese", "ja": "Japanese", "en": "English", "ru": "Russian", "ko": "Korean",
-            "de": "German", "fr": "French", "es": "Spanish"}
+            "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+            "vi": "Vietnamese", "th": "Thai", "id": "Indonesian"}
 
 
 def hymt_path(models_dir: Path, size: str = "1.8b") -> Path:
@@ -80,8 +81,9 @@ def zh_script_guard(src_text: str, out: str, max_words: int = 4) -> str:
 
 
 class HyMtTranslator(Translator):
-    """Direct src -> tgt with a local Hy-MT2 GGUF; OpenCC afterwards when tgt is zh. No context memory
-    (the card's single-message template), so history/_pair exist only for interface compatibility."""
+    """Direct src -> tgt with a local Hy-MT2 GGUF; OpenCC afterwards when tgt is zh. The prompt is the card's
+    single-message template (no context lines); `history` keeps the previous CONTEXT_LINES (source, translation)
+    pairs of the current language pair only to pick glossary entries, like the other LLM engines (#535)."""
 
     def __init__(self, models_dir: Path, zh_variant: str = "tw", device: str = "cpu", loader=None,
                  size: str = "1.8b"):
@@ -91,8 +93,8 @@ class HyMtTranslator(Translator):
         self.path = require(hymt_path(models_dir, size), f"Hy-MT2 {size.upper()} translation model", setup_flag(size))
         self._loader = loader or _load_llama
         self.llm = None
-        self.history: list = []
-        self._pair = None
+        self.history: deque = deque(maxlen=CONTEXT_LINES)
+        self._pair: tuple[str, str] | None = None
         self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output (#174)
         self._zh_words: dict[str, str] = {}
 
@@ -101,11 +103,12 @@ class HyMtTranslator(Translator):
             self._zh_words[w] = zh_convert(w, self.zh_variant)
         return self._zh_words[w]
 
-    def _terms(self, text: str, tgt: str) -> list[tuple[str, str]]:
-        """Glossary entries occurring in the sentence, as (source, zh translation); only for zh output."""
+    def _terms(self, text: str, tgt: str, context=()) -> list[tuple[str, str]]:
+        """Glossary entries occurring in the sentence or the previous `context` source lines, as (source, zh
+        translation); only for zh output. They enter the prompt through build_prompt's terminology form."""
         if tgt != "zh" or not self.glossary:
             return []
-        return [(e.main, self._zh_word(e.target)) for e in self.glossary.relevant(text) if e.target]
+        return [(e.main, self._zh_word(e.target)) for e in self.glossary.relevant(text, *context) if e.target]
 
     def _load(self):
         if self.llm is None:
@@ -114,13 +117,21 @@ class HyMtTranslator(Translator):
     def preload(self, src: str = "", tgt: str = "") -> None:
         self._load()
 
-    def translate(self, text: str, src: str, tgt: str) -> Translation:
+    def translate(self, text: str, src: str, tgt: str, draft: bool = False) -> Translation:
+        """`draft` (streaming partials): uses the context but never adds to it."""
         if src == tgt or not text.strip():
             return Translation(None, text)
         text = collapse_repeats(text)
         self._load()
+        if self._pair != (src, tgt):
+            ctx = []
+            if not draft:
+                self.history.clear()
+                self._pair = (src, tgt)
+        else:
+            ctx = [a for a, _ in self.history]
         r = self.llm.create_chat_completion(
-            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt))}],
+            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx))}],
             max_tokens=max_tokens_for(text), **sampling())
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
         if tgt == "zh":
@@ -128,6 +139,8 @@ class HyMtTranslator(Translator):
             if self.glossary:
                 out = self.glossary.fix_output(out, text, convert=self._zh_word)
             out = zh_script_guard(text, out)
+        if not draft:
+            self.history.append((text.strip(), out))
         return Translation(None, out)
 
 
@@ -136,12 +149,16 @@ class JaRouter(Translator):
     to load) ja -> X falls back to base's pivot; X -> ja then raises (there is no OPUS route to Japanese).
 
     all_pairs=True (Hy-MT2 as the main engine, #66): every pair whose two languages Hy-MT2 knows goes direct
-    through it; a pair with an unknown language, or any pair after Hy-MT2 failed, goes to `base`."""
+    through it; a pair with an unknown language, or any pair after Hy-MT2 failed, goes to `base`.
+    base=None (the listen path since #471: Hy-MT2 is the only engine, no OPUS pivot): such a pair raises
+    RuntimeError with the reason instead of switching engines."""
 
-    def __init__(self, base: Translator, models_dir: Path, zh_variant: str = "tw", device: str = "cpu",
+    def __init__(self, base: Translator | None, models_dir: Path, zh_variant: str = "tw", device: str = "cpu",
                  factory=HyMtTranslator, warn=lambda m: print(m, file=sys.stderr), all_pairs: bool = False,
                  size: str = "1.8b"):
-        self.base, self.zh_variant, self.all_pairs = base, zh_variant, all_pairs
+        self.base = base if base is not None else _NoFallback(self)
+        self.zh_variant, self.all_pairs = zh_variant, all_pairs
+        self._pivot = base is not None
         self.history: list = []
         self._pair = None
         self._warn = warn
@@ -163,7 +180,7 @@ class JaRouter(Translator):
 
     @glossary.setter
     def glossary(self, g) -> None:
-        """One glossary for both routes (#174): Hy-MT2 and the OPUS pivot both apply its `~` fixes."""
+        """One glossary for both routes (#174): Hy-MT2 and the base (if any) both apply its `~` fixes."""
         self._glossary = g
         for t in (self.hy, self.base):
             if t is not None and hasattr(t, "glossary"):
@@ -182,8 +199,11 @@ class JaRouter(Translator):
 
     def _fallback(self, e: Exception) -> None:
         what = "translation" if self.all_pairs else "ja -> X"
-        self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); {what} falls back to the OPUS pivot "
-                   "(lower translation quality).")
+        if self._pivot:
+            self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); {what} falls back to the OPUS pivot "
+                       "(lower translation quality).")
+        else:
+            self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); there is no fallback engine (#471).")
         self.hy_error, self.hy = str(e), None
 
     def preload(self, src: str, tgt: str) -> None:
@@ -196,15 +216,15 @@ class JaRouter(Translator):
                 if tgt == "ja":
                     raise
                 self._fallback(e)
-        elif "ja" in (src, tgt):
+        elif "ja" in (src, tgt) and self._pivot:
             self._warn(f"tlwu: Hy-MT2 unavailable for Japanese ({self.hy_error}); using OPUS pivot ja -> en -> zh.")
         self.base.preload(src, tgt)
 
-    def translate(self, text: str, src: str, tgt: str) -> Translation:
+    def translate(self, text: str, src: str, tgt: str, draft: bool = False) -> Translation:
         self._guard(src, tgt)
         if self._use_hy(src, tgt):
             try:
-                return self.hy.translate(text, src, tgt)
+                return self.hy.translate(text, src, tgt, draft=True) if draft else self.hy.translate(text, src, tgt)
             except Exception as e:  # noqa: BLE001
                 if tgt == "ja":
                     raise
@@ -212,4 +232,30 @@ class JaRouter(Translator):
         return self.base.translate(text, src, tgt)
 
     def draft(self, text: str, src: str, tgt: str) -> Translation:
-        return self.translate(text, src, tgt)
+        return self.translate(text, src, tgt, draft=True)
+
+
+class _NoFallback(Translator):
+    """JaRouter's base when there is no pivot (#471): every pair Hy-MT2 does not take is an error with the reason."""
+
+    def __init__(self, router: JaRouter):
+        self.router = router
+        self.glossary = None
+
+    def _fail(self, src: str, tgt: str):
+        """A language Hy-MT2 does not know (e.g. one auto-detected by Whisper) raises ModelNotFound, which the
+        pipeline reports once per pair and keeps running (as the OPUS pivot's missing pair did). A Hy-MT2 that is
+        gone (failed to load / crashed mid-session) is a RuntimeError that stops the session with the reason."""
+        r = self.router
+        if r.hy is None:
+            raise RuntimeError(f"Hy-MT2 is not available ({r.hy_error[:160]}); there is no fallback engine (#471). "
+                               "Install or repair it with `tlwu-setup --hymt`")
+        from .models import ModelNotFound
+
+        raise ModelNotFound(f"Hy-MT2 does not translate {src} -> {tgt}; there is no fallback engine (#471)")
+
+    def preload(self, src: str, tgt: str) -> None:
+        self._fail(src, tgt)
+
+    def translate(self, text: str, src: str, tgt: str) -> Translation:
+        self._fail(src, tgt)

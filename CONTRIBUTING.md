@@ -9,7 +9,7 @@ Thanks for stopping by. You do not need to be an expert to help, and we would ra
 
 - Small PRs: typo fixes, clearer docs, better error messages.
 - Translations of docs and UI strings.
-- **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](README.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
+- **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](docs/details.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
 - AI-assisted PRs are fine. You are the author: run the code and the tests yourself before opening the PR.
 
 ## Before you start
@@ -73,6 +73,14 @@ If you cannot run the second one (Windows / Mac), that is fine: CI will, and we 
 - **Open PRs against `dev`, not `main`.** `main` is the stable release branch.
 - Branch from `dev` and keep one topic per PR.
 - Fill in the PR template. It is short.
+
+### Forked before 2026-11-12?
+
+On 2026-11-12 the `dev`/`main` history was rewritten once to normalize commit author info. If you forked earlier:
+
+- **No local changes:** re-fork, or `git fetch upstream && git reset --hard upstream/dev && git push --force origin dev`.
+- **Have your own commits:** `git rebase --onto upstream/dev <old-base> <your-branch>` (or cherry-pick them).
+- Stuck? Open an issue and we will help.
 
 ## What gets merged
 

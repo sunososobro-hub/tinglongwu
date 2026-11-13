@@ -5,8 +5,8 @@ import '../services/pipeline.dart';
 /// Full-screen dark subtitle view.
 ///
 /// Top: tiny debug line. Middle: finished Chinese lines (newest brightest,
-/// large). Bottom: gray draft Russian (partial ASR) and, while a sentence is
-/// still being translated, its Russian source in gray.
+/// large). Bottom: gray draft source text (partial ASR) and, while a sentence is
+/// still being translated, its source text in gray.
 class SubtitleScreen extends StatelessWidget {
   const SubtitleScreen({super.key, required this.pipeline});
   final Pipeline pipeline;

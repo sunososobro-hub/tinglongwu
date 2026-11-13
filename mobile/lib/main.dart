@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'services/pipeline.dart';
+import 'ui/import_screen.dart';
 import 'ui/message_screen.dart';
 import 'ui/subtitle_screen.dart';
 
@@ -17,7 +18,7 @@ class TlwuApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '聽攏有',
+      title: '聽龍',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
         scaffoldBackgroundColor: Colors.black,
@@ -35,11 +36,24 @@ class Root extends StatefulWidget {
 }
 
 class _RootState extends State<Root> {
-  final Pipeline pipeline = Pipeline();
+  Pipeline pipeline = Pipeline();
 
   @override
   void initState() {
     super.initState();
+    pipeline.start();
+  }
+
+  /// Opens "Import models"; afterwards starts a fresh pipeline so new files are picked up.
+  Future<void> _openImport() async {
+    final dir = pipeline.paths?.modelsDir;
+    if (dir == null) return;
+    await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => ImportScreen(modelsDir: dir)));
+    if (!mounted) return;
+    final old = pipeline;
+    setState(() => pipeline = Pipeline());
+    old.dispose();
     pipeline.start();
   }
 
@@ -56,9 +70,9 @@ class _RootState extends State<Root> {
       builder: (context, _) {
         switch (pipeline.stage) {
           case Stage.missingModels:
-            return MissingModelsScreen(pipeline: pipeline);
+            return MissingModelsScreen(pipeline: pipeline, onImport: _openImport);
           case Stage.error:
-            return ErrorScreen(pipeline: pipeline);
+            return ErrorScreen(pipeline: pipeline, onImport: _openImport);
           case Stage.starting:
           case Stage.loadingModels:
             return LoadingScreen(stage: pipeline.stage);

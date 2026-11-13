@@ -2,6 +2,7 @@ package com.tinglongwu.mobile
 
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +13,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private val importer by lazy { ModelImporter(this) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Subtitle display: never let the screen sleep while the app is in front.
@@ -20,8 +22,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tlwu/native")
-            .setMethodCallHandler { call, result ->
+        val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tlwu/native")
+        ch.setMethodCallHandler { call, result ->
                 when (call.method) {
                     // App-specific external files dir, e.g.
                     // /storage/emulated/0/Android/data/com.tinglongwu.mobile/files
@@ -43,8 +45,30 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(mapOf("tempC" to temp, "level" to level, "thermal" to thermal))
                     }
+                    // Model import (Storage Access Framework: no storage or INTERNET permission).
+                    "pickDocuments" -> importer.pick(result)
+                    "importDocument" -> importer.import(call, result) { done, total ->
+                        ch.invokeMethod("importProgress", mapOf("done" to done, "total" to total))
+                    }
+                    "cancelImport" -> { importer.cancel(); result.success(null) }
+                    "freeBytes" -> result.success(importer.freeBytes(call.argument<String>("dir")!!))
+                    // Opens a link in the user's browser (the browser downloads; this app stays offline).
+                    "openUrl" -> {
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url"))))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!importer.onActivityResult(requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
     }
 }

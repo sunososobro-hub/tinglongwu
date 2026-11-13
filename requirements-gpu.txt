@@ -1,6 +1,6 @@
 # Optional: CUDA 12 runtime libs for `--device cuda` (NVIDIA GPU). Install with: tlwu-setup --gpu
 nvidia-cublas-cu12==12.9.2.10
 nvidia-cudnn-cu12==9.28.1.4
-# Qwen LLM engine (--engine auto/qwen): cudart for llama.cpp. llama-cpp-python 0.3.36 (CUDA build, prebuilt
+# Hy-MT2 LLM engine (--engine auto/hymt): cudart for llama.cpp. llama-cpp-python 0.3.36 (CUDA build, prebuilt
 # wheel or built with CMAKE_ARGS="-DGGML_CUDA=on") is installed separately; it is not pinned here.
 nvidia-cuda-runtime-cu12==12.9.79

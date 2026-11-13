@@ -96,14 +96,14 @@ def test_pack_prompt_offline_reports_missing_and_never_downloads(monkeypatch, no
     assert packs.prompt("ru", tmp_path, ask=lambda q: asked.append(q) or "y") == 1
     assert asked == []  # no download question at all
     err = capsys.readouterr().err
-    assert "opus-en-ru" in err and "tlwu-setup --online --packs ru" in err
+    assert "hymt2-1.8b" in err and "tlwu-setup --online --packs ru" in err
     assert cli.main(["--pack-prompt", "ru", "--models-dir", str(tmp_path)]) == 1  # not refused, just reported
 
 
 def test_offline_only_pack_commands_still_run(monkeypatch, no_net, tmp_path, capsys):
     monkeypatch.setenv("TLWU_OFFLINE", "1")
     assert cli.main(["--list", "--models-dir", str(tmp_path)]) == 0
-    assert "zh  missing" in capsys.readouterr().out
+    assert "ja  missing" in capsys.readouterr().out  # #562: zh/en need no pack
 
 
 def test_talk_installer_fetches_hymt_and_no_opus_pair(monkeypatch, tmp_path):
@@ -123,11 +123,10 @@ def test_talk_installer_fetches_hymt_and_no_opus_pair(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("entry", ["packs", "gui"])
-def test_installer_entry_points_opt_in_to_unpinned_pairs(monkeypatch, tmp_path, entry):
-    """zh-en / en-ru have no committed pin yet: the pack installer must pass --allow-unpinned explicitly
-    (a bare tlwu-setup --pair zh-en is refused, see test_get_pair_unpinned_needs_flag)."""
+def test_installer_entry_points_download_no_opus_pair(monkeypatch, tmp_path, entry):
+    """#562: neither the pack installer nor the GUI first-run setup downloads an OPUS pair any more."""
     seen = []
-    monkeypatch.setattr(dl, "get_pair", lambda man, mdir, pr, allow_unpinned=False: seen.append((pr, allow_unpinned)))
+    monkeypatch.setattr(dl, "get_pair", lambda man, mdir, pr, allow_unpinned=False: seen.append(pr))
     if entry == "packs":
         from tinglongwu_setup import packs
 
@@ -139,5 +138,15 @@ def test_installer_entry_points_opt_in_to_unpinned_pairs(monkeypatch, tmp_path, 
         monkeypatch.setattr(dl, "get_hymt", lambda *a, **k: None)
         for t in (tiers.T_CPU, tiers.T_GPU):
             assert dl.main([*t.downloader_args(), "--models-dir", str(tmp_path)]) == 0
-    assert seen and all(flag for _, flag in seen)
-    assert ("zh-en", True) in seen
+            assert "opus" not in t.parts
+    assert seen == []
+
+
+def test_deprecated_pair_flag_is_accepted_and_downloads_nothing(monkeypatch, tmp_path, capsys):
+    """#562: e2e.yml / hw-tests.yml still call `tlwu-setup ... --pair zh-en ... --allow-unpinned`; that must not exit 2."""
+    seen = []
+    monkeypatch.setattr(dl, "get_pair", lambda *a, **k: seen.append(a))
+    argv = ["--pair", "zh-en", "--pair", "en-zh", "--pair", "en-ru", "--pair", "ru-en", "--allow-unpinned",
+            "--models-dir", str(tmp_path)]
+    assert dl.main(argv) == 0
+    assert seen == [] and "--pair is deprecated" in capsys.readouterr().err

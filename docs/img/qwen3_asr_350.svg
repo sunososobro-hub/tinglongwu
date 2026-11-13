@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="416" viewBox="0 0 820 416" role="img" aria-label="Qwen3-ASR vs current pipeline: chrF, latency, VRAM" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<title>Qwen3-ASR vs current pipeline: chrF, latency, VRAM</title>
+<text x="10" y="30" fill="#6e7781" font-size="13">#350, RTX 3050 8 GB, FLEURS audio + FLORES zh-TW refs, n=40 per language</text>
+<rect x="10" y="44" width="12" height="12" fill="#2f81f7"/><text x="28" y="55" fill="#6e7781" font-size="12">Whisper large-v3-turbo + Hy-MT2</text>
+<rect x="270" y="44" width="12" height="12" fill="#d29922"/><text x="288" y="55" fill="#6e7781" font-size="12">Qwen3-ASR-1.7B + Hy-MT2</text>
+<rect x="530" y="44" width="12" height="12" fill="#8957e5"/><text x="548" y="55" fill="#6e7781" font-size="12">Qwen3-ASR-0.6B + Hy-MT2</text>
+<text x="10" y="86" fill="#6e7781" font-size="13" font-weight="bold">chrF zh-TW (higher is better)</text>
+<text x="292" y="107" text-anchor="end" fill="#6e7781" font-size="12">en, Whisper large-v3-turbo</text>
+<rect x="300" y="96" width="297.1" height="14" fill="#2f81f7"/>
+<text x="603.1" y="107" fill="#6e7781" font-size="12">28.3</text>
+<text x="292" y="125" text-anchor="end" fill="#6e7781" font-size="12">en, Qwen3-ASR-1.7B</text>
+<rect x="300" y="114" width="319.2" height="14" fill="#d29922"/>
+<text x="625.2" y="125" fill="#6e7781" font-size="12">30.4</text>
+<text x="292" y="143" text-anchor="end" fill="#6e7781" font-size="12">en, Qwen3-ASR-0.6B</text>
+<rect x="300" y="132" width="303.4" height="14" fill="#8957e5"/>
+<text x="609.5" y="143" fill="#6e7781" font-size="12">28.9</text>
+<text x="292" y="161" text-anchor="end" fill="#6e7781" font-size="12">ja, Whisper large-v3-turbo</text>
+<rect x="300" y="150" width="232.1" height="14" fill="#2f81f7"/>
+<text x="538.0" y="161" fill="#6e7781" font-size="12">22.1</text>
+<text x="292" y="179" text-anchor="end" fill="#6e7781" font-size="12">ja, Qwen3-ASR-1.7B</text>
+<rect x="300" y="168" width="233.1" height="14" fill="#d29922"/>
+<text x="539.1" y="179" fill="#6e7781" font-size="12">22.2</text>
+<text x="292" y="197" text-anchor="end" fill="#6e7781" font-size="12">ja, Qwen3-ASR-0.6B</text>
+<rect x="300" y="186" width="222.6" height="14" fill="#8957e5"/>
+<text x="528.6" y="197" fill="#6e7781" font-size="12">21.2</text>
+<text x="10" y="228" fill="#6e7781" font-size="13" font-weight="bold">End-to-end p50 latency, s (lower is better)</text>
+<text x="292" y="249" text-anchor="end" fill="#6e7781" font-size="12">en, Whisper large-v3-turbo</text>
+<rect x="300" y="238" width="71.4" height="14" fill="#2f81f7"/>
+<text x="377.4" y="249" fill="#6e7781" font-size="12">0.68 s</text>
+<text x="292" y="267" text-anchor="end" fill="#6e7781" font-size="12">en, Qwen3-ASR-1.7B</text>
+<rect x="300" y="256" width="309.8" height="14" fill="#d29922"/>
+<text x="615.8" y="267" fill="#6e7781" font-size="12">2.95 s</text>
+<text x="292" y="285" text-anchor="end" fill="#6e7781" font-size="12">ja, Whisper large-v3-turbo</text>
+<rect x="300" y="274" width="80.9" height="14" fill="#2f81f7"/>
+<text x="386.9" y="285" fill="#6e7781" font-size="12">0.77 s</text>
+<text x="292" y="303" text-anchor="end" fill="#6e7781" font-size="12">ja, Qwen3-ASR-1.7B</text>
+<rect x="300" y="292" width="351.8" height="14" fill="#d29922"/>
+<text x="657.8" y="303" fill="#6e7781" font-size="12">3.35 s</text>
+<text x="10" y="334" fill="#6e7781" font-size="13" font-weight="bold">Peak VRAM, GB (lower is better)</text>
+<text x="292" y="355" text-anchor="end" fill="#6e7781" font-size="12">ASR+MT, Whisper large-v3-turbo</text>
+<rect x="300" y="344" width="157.5" height="14" fill="#2f81f7"/>
+<text x="463.5" y="355" fill="#6e7781" font-size="12">3.0 GB</text>
+<text x="292" y="373" text-anchor="end" fill="#6e7781" font-size="12">ASR only, Qwen3-ASR-1.7B</text>
+<rect x="300" y="362" width="252.0" height="14" fill="#d29922"/>
+<text x="558.0" y="373" fill="#6e7781" font-size="12">4.8 GB</text>
+<text x="292" y="391" text-anchor="end" fill="#6e7781" font-size="12">ASR only, Qwen3-ASR-0.6B</text>
+<rect x="300" y="380" width="126.0" height="14" fill="#8957e5"/>
+<text x="432.0" y="391" fill="#6e7781" font-size="12">2.4 GB</text>
+</svg>

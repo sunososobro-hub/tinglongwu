@@ -4,7 +4,7 @@ r"""Build the Windows installer wizard (tinglongwu-setup-<version>.exe) with Inn
     python installer\build_installer.py --dry-run  stage files + icon and print the ISCC command only
 
 Stdlib only (runs from any Python 3.10+, also on Linux for the tests). The wizard ships the git-tracked app files
-(no tests, no .venv, no models), then runs install.ps1 through installer\run_install.ps1 and shows its steps.
+(no tests, no .venv, no models) with the app icon tinglongwu/gui/assets/tinglongwu.ico, then runs install.ps1 through installer\run_install.ps1 and shows its steps.
 ISCC.exe is found via %ISCC%, PATH, or the default Inno Setup 6 folders. Inno Setup is free (see LICENSE-InnoSetup.txt).
 """
 from __future__ import annotations
@@ -27,6 +27,8 @@ STAGE_PREFIXES = ("tinglongwu/", "tinglongwu_setup/", "tlwu_app/", "scripts/", "
                   "install.ps1", "install.bat", "update.bat", "pyproject.toml", "requirements", "LICENSE",
                   "README", "PRIVACY", "SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
+# the one app icon (#270, #127): the wizard, its shortcuts, the uninstall entry, install.ps1 shortcuts and tlwu.exe
+APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
 
 
 def app_version(repo: Path = REPO) -> str:
@@ -110,6 +112,17 @@ def make_icon(path: Path, sizes: tuple[int, ...] | None = None) -> Path:
     return path
 
 
+def wizard_icon(path: Path, src: Path | None = None) -> Path:
+    """The installer icon: a copy of the committed app icon, so wizard, shortcuts and tlwu.exe look the same.
+    Drawn with make_icon() only if the asset is missing."""
+    src = src or APP_ICON
+    if not src.is_file():
+        return make_icon(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, path)
+    return path
+
+
 # ------------------------------------------------------------------ Inno Setup compiler
 def find_iscc() -> str | None:
     cands = [os.environ.get("ISCC", ""), shutil.which("ISCC") or "", shutil.which("iscc") or ""]
@@ -138,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     out = Path(a.out)
     files = stage(out / "stage")
-    icon = make_icon(out / "tinglongwu.ico")
+    icon = wizard_icon(out / "tinglongwu.ico")
     print(f"staged {len(files)} files -> {out / 'stage'}; icon -> {icon}")
     cmd = iscc_cmd(find_iscc() or "ISCC.exe", out / "stage", icon, out, app_version())
     miss = missing_defines(ISS.read_text("utf-8-sig"), cmd)

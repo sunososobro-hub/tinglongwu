@@ -15,8 +15,8 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
-                   QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
+from .core import (QUICK_MODES, quick_buttons, quick_settings, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+                   QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha)
 
@@ -29,6 +29,8 @@ POLL_MS = 50
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+# #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
+DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
 
 
 class Overlay:
@@ -288,7 +290,12 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch
         self.status_key: str | None = "gui_ready"
+        self.quick_mode: str | None = None  # #294: first-screen button that started this session
+        self.run_source = "system"
         self._build_controls()
+        self._build_quick()
+        self._build_bar()
+        self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
         self.apply_theme(self.settings.get("theme", "dark"))
         try:
@@ -318,6 +325,9 @@ class App:
                 sv_ttk.set_theme(name)
             except Exception:  # noqa: BLE001
                 pass
+        st = ttk.Style(self.root)  # #455: tighter buttons keep the control bar within 420 px (per theme)
+        for style in ("Bar.TButton", "Bar.Toolbutton"):
+            st.configure(style, padding=(4, 1))
 
     def _toggle_theme(self):
         self.apply_theme("dark" if self.v_dark.get() else "light")
@@ -334,8 +344,10 @@ class App:
         else:
             self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
+        self._adv_toggled()
         if self.status_key:
             self.v_status.set(t(self.status_key))
+        self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
@@ -350,6 +362,20 @@ class App:
         cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
         return var
 
+    def set_advanced(self, on: bool):
+        """#399: show / hide the engine dropdown; the choice is saved with the other GUI settings."""
+        self.v_adv.set(bool(on))
+        self._adv_toggled()
+
+    def _adv_toggled(self):
+        on = self.v_adv.get()
+        self.settings["advanced_open"] = on
+        for w in self.engine_widgets:
+            w.grid() if on else w.grid_remove()
+        self.adv_btn.configure(text=t("gui_advanced_open" if on else "gui_advanced"))
+        if on:
+            self.combos["engine"].configure(values=engine_labels())
+
     def _quality_changed(self):
         """Engine / speech model are picked for the user unless Quality is 'manual' (#81)."""
         state = "readonly" if self.v_quality.get() == "manual" else "disabled"
@@ -357,16 +383,71 @@ class App:
             if key in self.combos:
                 self.combos[key].configure(state=state)
 
+    def _build_bar(self):
+        """#455: the main window is only this bar; every setting is in the "⚙ Adjust" panel."""
+        b = self.bar = ttk.Frame(self.root, padding=2)
+        b.pack()
+        self.v_mode = tk.StringVar(value="listen")  # Speak = the #294 "I speak" session (mic, my language out)
+        for key, val in (("gui_listen", "listen"), ("gui_speak", "speak")):
+            self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
+                     key).pack(side="left")
+        self.v_pair = tk.StringVar()
+        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
+        for v in (self.v_lang, self.v_target, self.v_mode):
+            v.trace_add("write", lambda *_: self._pair_changed())
+        self._pair_changed()
+        self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
+        self.btn.pack(side="left")
+        self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
+        self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
+        self.dot.pack(side="left", padx=2)
+        self.set_dot("idle")
+        self.btn_adjust = self._tx(ttk.Button(b, command=self.toggle_adjust, style="Bar.TButton", width=0), "gui_adjust")
+        self.btn_adjust.pack(side="left")
+
+    def _bar_start(self):
+        """Listen = a session with the saved settings (as the old Start); Speak = the #294 speak session."""
+        self.toggle("speak" if self.v_mode.get() == "speak" else None)
+
+    def _pair_changed(self):
+        """The direction the next Start runs: Speak flips it the #294 way (my language -> the other one)."""
+        s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
+        if self.v_mode.get() == "speak":
+            s = quick_settings(s, "speak")
+        self.v_pair.set(f"{s['lang']}→{s['target']}")
+
+    def set_dot(self, name: str):
+        self.dot_state = name
+        self.dot.itemconfigure(self.dot_oval, fill=DOT[name])
+
+    def toggle_adjust(self):
+        if self.panel.state() == "normal":
+            self.panel.withdraw()
+        else:
+            self.panel.deiconify()
+            self.panel.lift()
+
     def _build_controls(self):
         s = self.settings
-        self.frm = f = ttk.Frame(self.root, padding=10)
+        self.panel = p = tk.Toplevel(self.root)  # #455: the "⚙ Adjust" panel, hidden until the bar asks for it
+        p.withdraw()
+        p.title("tinglongwu")
+        p.resizable(False, False)
+        p.protocol("WM_DELETE_WINDOW", p.withdraw)
+        self.frm = f = ttk.Frame(p, padding=10)
         self.combos = {}
         f.pack()
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
-        self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
+        self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
+        self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
+        self.engine_widgets = [f.grid_slaves(row=19, column=c)[0] for c in (0, 1)]
+        self.v_adv = tk.BooleanVar(value=False)
+        self.adv_btn = ttk.Checkbutton(f, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
+        self.adv_btn.grid(row=18, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        self.set_advanced(bool(s["advanced_open"]))
         self.v_model = self._combo(4, "gui_model", "model", model_labels())
         self.v_model.set(label_for_model(self.settings["model"]))
         self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
@@ -394,17 +475,17 @@ class App:
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
         self._tx(ttk.Checkbutton(f, variable=self.v_voice), "gui_voice").grid(row=17, column=0, sticky="w", pady=2)
         self.voice_default = t("gui_voice_default")
-        self.v_voice_dev = tk.StringVar(value=s["voice_device"] or self.voice_default)
-        ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + voice_outputs(),
+        outs = voice_outputs()
+        shown = s["voice_device"] if s["voice_device"] in outs or not outs else ""  # #448: unplugged -> default
+        self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
+        ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
                      state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
         self.v_lines = self._spin(15, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
                                   lambda n: self.overlay.set_rows(n))
         self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
                                  lambda n: self.overlay.set_font(n))
-        self.btn = ttk.Button(f, text=t("gui_start"), command=self.toggle)
-        self.btn.grid(row=10, column=0, columnspan=2, sticky="we", pady=(8, 2))
-        self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)
-        self.btn_pause.grid(row=10, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
+        self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
+        self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
         self._tx(ttk.Button(f, command=self.check_setup), "gui_check_setup").grid(
             row=13, column=0, sticky="we", pady=(6, 0))
         self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(
@@ -424,6 +505,37 @@ class App:
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
+
+    def _build_quick(self):
+        """#294 easy start: pick my language once (remembered), then one big button starts the session.
+        #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
+        q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
+        q.pack(before=self.frm, fill="x")
+        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
+            row=0, column=1, sticky="we", padx=(6, 0))
+        self.quick_btns = {}
+        for col, mode in enumerate(QUICK_MODES):
+            b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
+            b.grid(row=1, column=col, sticky="we", ipady=10, pady=(8, 0), padx=(0 if col == 0 else 6, 0))
+            self.quick_btns[mode] = b
+        q.columnconfigure(0, weight=1, uniform="quick")
+        q.columnconfigure(1, weight=1, uniform="quick")
+        self._sync_quick()
+
+    def _quick_phase(self) -> str:
+        if self.load_t0 is not None:
+            return "loading"
+        if self.downloading or (self.listening and self.stop_ev.is_set()):
+            return "busy"
+        return "running" if self.listening else "idle"
+
+    def _sync_quick(self):
+        """Label/enable the first-screen buttons for the current session state (#294)."""
+        if not hasattr(self, "quick_btns"):
+            return
+        for mode, (key, enabled) in quick_buttons(self._quick_phase(), self.quick_mode).items():
+            self.quick_btns[mode].configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
@@ -535,6 +647,7 @@ class App:
         self.btn.configure(state="disabled")
         self.combos["model"].configure(state="disabled")
         self._status_text(t("gui_dl_running", model=m))
+        self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
 
     def _download_done(self, model: str, rc: int):
@@ -547,6 +660,7 @@ class App:
             self.v_model.set(label_for_model(model))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
+        self._sync_quick()
 
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
@@ -579,7 +693,7 @@ class App:
 
     def collect(self):
         s = self.settings
-        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
+        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=engine_from_label(self.v_engine.get()), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
@@ -588,13 +702,17 @@ class App:
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------
-    def toggle(self):
+    def toggle(self, mode: str | None = None):
+        """Start / Stop. `mode` = a #294 first-screen button ("listen" / "speak"); None = the Start button."""
         if self.worker is not None and self.worker.is_alive():
             self.stop_ev.set()
             self.btn.configure(state="disabled")
             self.set_status("gui_stopping")
+            self._sync_quick()
             return
         self.collect()
+        run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        self.quick_mode, self.run_source = mode, run.get("source")
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -602,11 +720,13 @@ class App:
         self.load_shown = 0
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
+        self.set_dot("loading")
         self.v_notice.set("")
         self.errored = False
         self.listening = True
-        self.worker = threading.Thread(target=self._work, args=(dict(self.settings), self.stop_ev), daemon=True)
+        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
+        self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
         if self.settings["floating_bar"]:
             self.overlay.show()
@@ -618,7 +738,8 @@ class App:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
 
-            a = parse_args(settings_to_argv(s))
+            a = parse_args(settings_to_argv(s, outputs=voice_outputs() if s.get("voice") else None,
+                                            notice=lambda m: q.put(("notice", m))))
 
             def draft_factory(asr, translator, segmenter, tgt):
                 if not s["live_draft"] or translator is None:
@@ -651,6 +772,10 @@ class App:
                     if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
                         self.load_t0 = None
                         self.btn.configure(text=t("gui_stop"), state="normal")
+                        self.set_dot("on")
+                        ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
+                        self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
+                        self._sync_quick()
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                 elif kind == "dl_line":
@@ -662,12 +787,18 @@ class App:
                 elif kind == "error":
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True
+                    self.set_dot("error")
+                    self.panel.deiconify()  # the error text is in the Adjust panel; a red dot alone says nothing
+                    self.panel.lift()
                 elif kind == "stopped":
                     self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
                         self.set_status("gui_stopped")
+                        self.set_dot("idle")
                     self.listening = False
+                    self.quick_mode = None
+                    self._sync_quick()
                     self.overlay.hide()
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
@@ -679,6 +810,7 @@ class App:
             if secs != self.load_shown:
                 self.load_shown = secs
                 self.btn.configure(text=t("gui_loading", s=secs))
+                self._sync_quick()
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
         if changed:

@@ -5,7 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BANNED = ("requests", "urllib.request", "urllib3", "http.client", "httpx", "aiohttp", "ftplib",
           "smtplib", "socket", "huggingface_hub", "argostranslate", "tinglongwu_setup", "pip")
-ALLOWED = {("tinglongwu/offline.py", "socket")}  # the guard itself
+ALLOWED = {("tinglongwu/offline.py", "socket"),  # the guard itself
+           ("tinglongwu/ollama.py", "http.client")}  # loopback-only Ollama client (see _endpoint)
 
 
 def imports(path):
