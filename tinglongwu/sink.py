@@ -111,6 +111,7 @@ class JsonlSaveSink(Sink):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = open(self.path, "a", encoding="utf-8")
         self._lock = threading.Lock()  # #373: meeting mode records both sides (listen thread + speak thread)
+        self.on_line = None  # #609 --topics: called with every saved record (topics.TopicNotes.on_line)
 
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass_source(self.inner, src, original, speaker)
@@ -130,6 +131,11 @@ class JsonlSaveSink(Sink):
         with self._lock:
             self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             self.f.flush()
+        if self.on_line is not None:
+            try:
+                self.on_line(rec)
+            except Exception as e:  # noqa: BLE001 - topic notes must never break the transcript
+                print(f"tlwu: topic notes: {e}", file=sys.stderr)
 
     def write_fix(self, event: dict) -> None:
         """#384: append a speaker correction (speakers.SpeakerBook.apply format); a "relabel" index counts the

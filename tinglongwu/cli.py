@@ -144,6 +144,10 @@ def parse_args(argv=None):
     p.add_argument("--save", nargs="?", const="", default=None, metavar="PATH",
                    help="append every final line to a UTF-8 JSONL file (t, wall, lang, src, dst), flushed per "
                         "line; PATH defaults to ./transcripts/<YYYYmmdd-HHMMSS>.jsonl (default off)")
+    p.add_argument("--topics", default=None, metavar="MODEL.gguf",
+                   help="with --save: offline per-topic notes (title, key points, action items) written to "
+                        "<transcript>.topics.md by this local GGUF instruct model, in a low-priority background "
+                        "thread (default off)")
     p.add_argument("--record", nargs="?", const="", default=None, metavar="DIR",
                    help="also record the audio, on this computer only: one 16 kHz WAV per final line plus "
                         "segments.jsonl (file, start, end, lang, source, translation); DIR defaults to "
@@ -173,6 +177,11 @@ def parse_args(argv=None):
             open(a.latency_jsonl, "a", encoding="utf-8").close()
         except OSError as e:
             p.error(f"--latency-jsonl: cannot write {a.latency_jsonl}: {e.strerror or e}")
+    if a.topics is not None:  # #609
+        if a.save is None:
+            p.error("--topics needs --save (the notes are written next to the transcript)")
+        if not os.path.isfile(a.topics):
+            p.error(f"--topics: model file not found: {a.topics}")
     if a.voice and a.transcript_only:
         p.error("--voice needs translations (not --transcript-only)")
     if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
@@ -472,12 +481,17 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         inner = getattr(inner, "inner", None)
     if inner is not None:
         inner.rec = rec
+    notes = None  # #609 --topics
     if a.save is not None:
         from .sink import JsonlSaveSink, default_save_path
 
         save_path = a.save or default_save_path()
         sink = JsonlSaveSink(sink, save_path)
         print(f"tlwu: saving final lines to {os.path.abspath(save_path)}", file=sys.stderr)
+        if getattr(a, "topics", None):  # #609
+            from . import topics
+
+            notes = topics.attach(sink, a.topics)
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
@@ -531,6 +545,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         interrupted = True
         raise
     finally:
+        if notes is not None:  # #609: summarize the last topic and the backlog (Ctrl+C: give up after 0 s)
+            notes.close(timeout=0 if interrupted else None)
         if rec_file is not None:
             rec_file.close()
         if recorder is not None:

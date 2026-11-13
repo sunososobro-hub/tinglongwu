@@ -981,6 +981,11 @@ class ListenSide:
             self.saver = JsonlSaveSink(None, path)
             self.args.save = None  # run_session must not wrap the sink a second time
             print(f"tlwu: saving final lines (both sides) to {os.path.abspath(path)}", file=sys.stderr)
+        self.notes = None
+        if self.saver is not None and getattr(self.args, "topics", None):  # #609: notes over both sides
+            from .. import topics
+
+            self.notes = topics.attach(self.saver, self.args.topics)
         self.stop = threading.Event()
         self.error: BaseException | None = None
         self.thread = threading.Thread(target=self._body, name="tlwu-listen", daemon=True)
@@ -1014,6 +1019,9 @@ class ListenSide:
         self.stop.set()
         if self.thread.is_alive():
             self.thread.join(timeout)
+        if self.notes is not None:  # #609: meeting over, finish the last topic and the backlog
+            self.notes.close()
+            self.notes = None
 
 
 def _main(argv, vm, bar_q=None, stop=None) -> int:
