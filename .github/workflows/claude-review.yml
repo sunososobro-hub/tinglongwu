@@ -1,5 +1,9 @@
 name: claude-review
 
+# DISABLED (manual workflow_dispatch only): the cloud R-merge/R-hard routines already review
+# every PR, and PR-triggered re-reviews burned subscription quota. Kept so it can be re-enabled by
+# restoring the `pull_request` trigger (opened, ready_for_review, labeled) and the job `if`.
+
 # Merge-gate code review by Claude (Opus). CodeRabbit gives the first pass;
 # this job posts one English PR comment ending in a VERDICT line.
 #
@@ -7,13 +11,7 @@ name: claude-review
 # see secrets. Fork PRs are skipped by the job-level `if` below.
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, edited, labeled, unlabeled]
-    branches: [dev, main]
-
-concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}${{ !((github.event.action != 'edited' || ((github.event.changes.base != null || github.event.changes.body != null) && github.event.sender.type != 'Bot')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-opus')) && format('-ignored-{0}', github.run_id) || '' }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,10 +19,6 @@ permissions:
 
 jobs:
   review:
-    if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      ((github.event.action != 'edited' || ((github.event.changes.base != null || github.event.changes.body != null) && github.event.sender.type != 'Bot')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-opus'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
