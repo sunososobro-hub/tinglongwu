@@ -36,12 +36,11 @@ def test_no_doc_installs_from_raw_main():
 
 
 def test_install_table_is_at_the_top_of_the_readme():
-    s = (ROOT / "README.md").read_text("utf-8")
-    assert s.index(LATEST) < s.index("## ")
-    for name in ("README.zh-CN.md", "README.zh-TW.md"):  # right under the first heading (install)
+    # owner 2026-11-13: value prop + demo first, then the download section as the first "##" section
+    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         first = s.index("\n## ")
-        assert s.index(LATEST) < s.index("\n## ", first + 1), name
+        assert first < s.index(LATEST) < s.index("\n## ", first + 1), name
 
 
 def test_release_workflow_attaches_the_fixed_name_wizard():
@@ -72,7 +71,7 @@ def test_contributor_avatars_under_install_and_no_support_tables():
     for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         assert s.count("https://github.com/" + logins[0] + ".png?size=60") == 1, name  # contributors appear once
-        assert s.index(LATEST) < s.index(logins[0] + ".png") < s.index("docs.html"), name
+        assert s.index(LATEST) < s.index("docs.html") < s.index(logins[0] + ".png"), name  # users first, contributors near the end
         for login in logins:
             assert f"https://github.com/{login}.png?size=60" in s, (name, login)
         assert "SUPPORT:START" not in s and "ALL-CONTRIBUTORS" not in s and "latency.svg" not in s, name
