@@ -5,6 +5,7 @@ Prints 4 sections:
   1. open issues opened by someone other than the owner
   2. open PRs opened by someone other than the owner
   3. threads (issue or PR, open or closed) where a non-owner commented after the owner's last comment
+     (conversation comments, code review comments and review bodies all count, on both sides)
   4. forks with commits not in upstream (fork, branch, ahead count); a fork that cannot be checked is
      listed as "check failed: <reason>", never silently dropped
 
@@ -184,16 +185,22 @@ def _thread_no(url: str) -> int:
     return int(url.rstrip("/").rsplit("/", 1)[1])
 
 
-def unanswered(fetch, repo: str, owner: str, review_prs=()) -> list[tuple[int, list[str], str]]:
+def unanswered(fetch, repo: str, owner: str, review_prs=(), workers: int = 16) -> list[tuple[int, list[str], str]]:
     """[(thread number, [non-owner logins], last comment time)] where a human non-owner spoke last.
 
-    Covers issue/PR conversation comments and PR review (code) comments on open and closed threads,
-    plus submitted review bodies on the PRs in review_prs (GitHub has no repo-wide reviews list)."""
+    Covers issue/PR conversation comments, PR review (code) comments and submitted review bodies, on
+    open and closed threads. GitHub has no repo-wide reviews list, so review bodies are read per PR
+    for every PR in review_prs (all PRs of the repo), in parallel."""
     threads: dict[int, list[tuple[str, str]]] = {}
-    for n in review_prs:
-        for rv in _items(fetch, f"repos/{repo}/pulls/{n}/reviews?per_page=100"):
-            if (rv.get("body") or "").strip() and rv.get("submitted_at"):
-                threads.setdefault(n, []).append((rv["submitted_at"], rv["user"]))
+
+    def reviews(n):
+        return n, _items(fetch, f"repos/{repo}/pulls/{n}/reviews?per_page=100")
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for n, rvs in ex.map(reviews, review_prs):
+            for rv in rvs:
+                if (rv.get("body") or "").strip() and rv.get("submitted_at"):
+                    threads.setdefault(n, []).append((rv["submitted_at"], rv["user"]))
     for c in _items(fetch, f"repos/{repo}/issues/comments?per_page=100"):
         threads.setdefault(_thread_no(c["issue_url"]), []).append((c["created_at"], c["user"]))
     for c in _items(fetch, f"repos/{repo}/pulls/comments?per_page=100"):
@@ -213,10 +220,8 @@ def scan(fetch, repo: str = REPO, owner: str = OWNER, refs=git_refs) -> dict:
     ext_issues = [i for i in issues if "pull_request" not in i and _human(i["user"]) and i["user"]["login"] != owner]
     pulls = _items(fetch, f"repos/{repo}/pulls?state=open&per_page=100")
     ext_prs = [p for p in pulls if _human(p["user"]) and p["user"]["login"] != owner]
-    # review bodies: every open PR, and every PR (any state) opened by an outsider
-    review_prs = sorted({p["number"] for p in pulls} | {
-        p["number"] for p in _items(fetch, f"repos/{repo}/pulls?state=all&per_page=100")
-        if _human(p["user"]) and p["user"]["login"] != owner})
+    # review bodies: every PR, open or closed, whoever opened it
+    review_prs = sorted({p["number"] for p in _items(fetch, f"repos/{repo}/pulls?state=all&per_page=100")})
     info = fetch(f"repos/{repo}")
     bases = list(dict.fromkeys([info.get("default_branch") or "main", "dev"]))
     return {"issues": ext_issues, "prs": ext_prs, "comments": unanswered(fetch, repo, owner, review_prs),

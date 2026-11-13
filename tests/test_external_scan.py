@@ -47,13 +47,21 @@ class API:
                 {"issue_url": f"https://api.github.com/repos/{R}/issues/2", "created_at": "2026-11-01T02:00:00Z", "user": U("dan")},
                 {"issue_url": f"https://api.github.com/repos/{R}/issues/7", "created_at": "2026-11-01T00:00:00Z", "user": BOT("coderabbitai[bot]")},
                 {"issue_url": f"https://api.github.com/repos/{R}/issues/8", "created_at": "2026-11-02T00:00:00Z", "user": U("eve")},
+                {"issue_url": f"https://api.github.com/repos/{R}/issues/11", "created_at": "2026-11-06T00:00:00Z", "user": U("lee")},
             ],
             f"repos/{R}/pulls/comments?per_page=100": [
                 {"pull_request_url": f"https://api.github.com/repos/{R}/pulls/3", "created_at": "2026-11-01T00:00:00Z", "user": U(O)},
                 {"pull_request_url": f"https://api.github.com/repos/{R}/pulls/3", "created_at": "2026-11-01T05:00:00Z", "user": U("carl")},
             ],
             f"repos/{R}/pulls?state=all&per_page=100": [
-                {"number": 3, "user": U("carl")}, {"number": 5, "user": U(O)}, {"number": 9, "user": U("zed")}],
+                {"number": 3, "user": U("carl")}, {"number": 5, "user": U(O)}, {"number": 6, "user": BOT("dependabot[bot]")},
+                {"number": 9, "user": U("zed")}, {"number": 10, "user": U(O)}, {"number": 11, "user": U(O)}],
+            # closed owner PRs: an outsider review body (#10, unanswered); an outsider comment answered
+            # by an owner review body (#11)
+            f"repos/{R}/pulls/10/reviews?per_page=100": [
+                {"body": "this breaks ja", "submitted_at": "2026-11-05T00:00:00Z", "user": U("kim")}],
+            f"repos/{R}/pulls/11/reviews?per_page=100": [
+                {"body": "thanks, done", "submitted_at": "2026-11-06T01:00:00Z", "user": U(O)}],
             f"repos/{R}/pulls/3/reviews?per_page=100": [
                 {"body": "", "submitted_at": "2026-11-01T06:00:00Z", "user": U("carl")}],
             # owner's open PR: outsider review body, then owner replies with a review body -> answered
@@ -128,10 +136,12 @@ def test_four_sections_issues_prs_comments():
     assert [line for line in section(out, "Open non-owner issues") if line] == ["#1 outsider bug (@bob)"]
     assert [line for line in section(out, "Open non-owner PRs") if line] == ["#3 ext pr (@carl)"]
     com = [line for line in section(out, "Non-owner comments") if line]
-    # #1 answered by owner, #7 bot only, #5 answered by an owner review body -> not listed
-    # #2 dan after owner, #3 review comment, #8 never answered, #9 review body only
-    assert [c.split(" by ")[0] for c in com] == ["#2", "#3", "#8", "#9"]
+    # not listed: #1 answered by owner, #7 bot only, #5 and closed owner PR #11 answered by an owner review body
+    # listed: #2 dan after owner, #3 review comment, #8 never answered, #9 review body only,
+    # #10 review body on a closed owner PR
+    assert [c.split(" by ")[0] for c in com] == ["#2", "#3", "#8", "#9", "#10"]
     assert "@carl" in com[1] and "@eve" in com[2] and "@zed (last 2026-11-04T00:00:00Z)" in com[3]
+    assert "@kim" in com[4]
 
 
 def test_forks_ahead_even_and_failures_are_all_reported():
