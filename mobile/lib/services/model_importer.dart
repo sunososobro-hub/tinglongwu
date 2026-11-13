@@ -136,6 +136,9 @@ class ModelImporter {
         }
         base += d.size > 0 ? d.size : 0;
       }
+    } catch (e) {
+      // keep what was already imported in the report; just add the failure
+      report.problems.add('$_current: $e');
     } finally {
       _ch.setMethodCallHandler(null);
       try {
