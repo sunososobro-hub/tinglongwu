@@ -8,7 +8,7 @@ The dictionaries are read from the `opencc-python-reimplemented` package that de
 
 Tables written (all derived, nothing hand-edited):
 - chars: STCharacters, first candidate per character (what OpenCC picks when no phrase matches).
-- phrases: STPhrases entries whose target differs from the char-by-char result (the rest are redundant).
+- phrases: all STPhrases entries (entries equal to the char-by-char result still set match boundaries).
 - twPhrases: TWPhrases (Taiwan wording: 软件 -> 軟體 ...), applied to the Traditional text.
 - twVariants: TWVariants (Taiwan glyph variants: 裏 -> 裡 ...), applied last.
 """
@@ -45,8 +45,10 @@ def dart_const(name: str, text: str) -> str:
 
 def main() -> int:
     chars = {k: v for k, v in load("STCharacters.txt").items() if k != v}
-    by_char = lambda s: "".join(chars.get(c, c) for c in s)  # noqa: E731
-    phrases = {k: v for k, v in load("STPhrases.txt").items() if by_char(k) != v}
+    # Keep every STPhrases entry, even ones equal to the char-by-char result: under forward maximum
+    # matching a phrase also fixes where the next match starts (dropping 一台=一臺 lets 台风=颱風 match
+    # inside 一台风扇), so a pruned table would not match desktop OpenCC.
+    phrases = load("STPhrases.txt")
     tw_phrases = load("TWPhrases.txt")
     tw_variants = {k: v for k, v in load("TWVariants.txt").items() if k != v}
     for table in (chars, phrases, tw_phrases, tw_variants):
@@ -61,7 +63,7 @@ def main() -> int:
         dart_const("s2twSources", "".join(src)),
         "/// Traditional forms for [s2twSources] (OpenCC STCharacters, first candidate).",
         dart_const("s2twTargets", "".join(chars[c] for c in src)),
-        "/// OpenCC STPhrases entries that differ from the char-by-char result ('simp=trad', space separated).",
+        "/// OpenCC STPhrases, all entries ('simp=trad', space separated).",
         dart_const("s2twPhrases", pairs(phrases)),
         "/// OpenCC TWPhrases: Taiwan wording on Traditional text ('trad=taiwan').",
         dart_const("s2twTwPhrases", pairs(tw_phrases)),

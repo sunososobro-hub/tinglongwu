@@ -16,6 +16,9 @@ void main() {
       '我们的软件不支持这个': '我們的軟體不支持這個',
       '总统发表了讲话，表示经济正在复苏。': '總統發表了講話，表示經濟正在復甦。',
       '他们在内存里存储了程序': '他們在記憶體裡儲存了程式',
+      // Phrases equal to the char-by-char result still set match boundaries (一台 keeps 台风 from matching).
+      '一台风扇': '一臺風扇',
+      '麦克风采集': '麥克風採集',
     };
 
     for (final e in cases.entries) {
