@@ -129,3 +129,10 @@ def test_median_hours_and_hero():
                       [], ["2026-11-12T01:00:00Z"], "2026-11-09T15:00:00Z", NOW)
     assert h["day_n"] == 4 and h["prs"] == {"today": 1, "h24": 2, "total": 3}
     assert h["commits"]["today"] == 1 and h["issues"]["total"] == 0
+
+
+def test_percentile_hours_p90_nearest_rank():
+    pairs = [("2026-11-10T00:00:00Z", "2026-11-10T%02d:00:00Z" % h) for h in range(1, 11)]
+    assert sd.percentile_hours(pairs, 50) == 5.0
+    assert sd.percentile_hours(pairs, 90) == 9.0
+    assert sd.percentile_hours([], 90) is None

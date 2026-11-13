@@ -194,6 +194,16 @@ def median_hours(pairs, since=None):
     return round(vals[m] if len(vals) % 2 else (vals[m - 1] + vals[m]) / 2, 2)
 
 
+def percentile_hours(pairs, pct, since=None):
+    """Nearest-rank percentile (hours) of (start, end) durations; ends >= since only."""
+    import math
+    vals = sorted((parse_ts(b) - parse_ts(a)).total_seconds() / 3600.0
+                  for a, b in pairs if since is None or parse_ts(b) >= since)
+    if not vals:
+        return None
+    return round(vals[max(1, math.ceil(pct / 100.0 * len(vals))) - 1], 2)
+
+
 def count_since(timestamps, since):
     return sum(1 for t in timestamps if parse_ts(t) >= since)
 
@@ -258,6 +268,8 @@ def build_series(api, repo, branch, now):
         "hero": hero_stats(pr_merged_ts, issue_closed_ts, commit_ts, created, now),
         "speed": {"issue_all": median_hours(is_pairs), "issue_7d": median_hours(is_pairs, week),
                   "pr_all": median_hours(pr_pairs), "pr_7d": median_hours(pr_pairs, week)},
+        "speed_p90": {"issue_all": percentile_hours(is_pairs, 90), "issue_7d": percentile_hours(is_pairs, 90, week),
+                      "pr_all": percentile_hours(pr_pairs, 90), "pr_7d": percentile_hours(pr_pairs, 90, week)},
     }
 
 
@@ -356,7 +368,8 @@ const per=Hh.prs.h24?Math.round(1440/Hh.prs.h24):0;
 document.getElementById('sum').textContent='Day '+Hh.day_n+' \u00b7 '+Hh.prs.h24+' PRs merged in the last 24 h'+(per?' \u00b7 1 PR every '+per+' min':'');
 const fh=h=>h==null?'n/a':h<1?Math.round(h*60)+' min':h<48?h.toFixed(1)+' h':(h/24).toFixed(1)+' days';
 const Sp=D.speed;
-document.getElementById('speed').innerHTML=[['issue_all','Issue opened to closed (median, all time)'],['issue_7d','Issue opened to closed (median, last 7 days)'],['pr_all','PR opened to merged (median, all time)'],['pr_7d','PR opened to merged (median, last 7 days)']].map(([k,l])=>big(fh(Sp[k]),l)).join('');
+const P9=D.speed_p90||{};
+document.getElementById('speed').innerHTML=[['issue','Issue opened to closed'],['pr','PR opened to merged']].map(([k,l])=>{const a=k+'_all',w=k+'_7d',same=Sp[a]===Sp[w]&&P9[a]===P9[w];const t=(x)=>fh(Sp[x])+' p50 · '+fh(P9[x])+' p90';return same?big(t(w),l+' (p50 · p90, last 7 days = all time)'):big(t(a),l+' (p50 · p90, all time)')+big(t(w),l+' (p50 · p90, last 7 days)');}).join('');
 chart(c_thru,[{name:'PRs merged',v:D.prs_merged},{name:'issues closed',v:D.issues_closed}],{stack:1,pal:['#3b82c4','#e08a1e']});
 chart(c_commits,[{name:'commits',v:D.commits}],{bar:1,color:'var(--a)'});
 chart(c_stars,[{name:'stars',v:D.stars}],{color:'#e0a81e'});
