@@ -126,7 +126,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_ready": "Готово. Полностью офлайн.",
         "gui_stopping": "Остановка...",
         "gui_starting": "Запуск...",
-        "gui_loading": "Загрузка... {s} с",
+        "gui_loading": "Запуск… {s} с",
         "gui_dl_title": "Загрузка модели речи",
         "gui_dl_ask": "Модель речи {model} ещё не загружена.\n\nЗагрузить сейчас? Сеть нужна один раз (tlwu-setup); перевод остаётся офлайн.",
         "gui_dl_running": "Загрузка {model}...",

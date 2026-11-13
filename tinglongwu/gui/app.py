@@ -366,7 +366,7 @@ class App:
 
     def _build_bar(self):
         """#455: the main window is only this bar; every setting is in the "⚙ Adjust" panel."""
-        b = self.bar = ttk.Frame(self.root, padding=3)
+        b = self.bar = ttk.Frame(self.root, padding=2)
         b.pack()
         self.v_mode = tk.StringVar(value="speak" if self.v_voice.get() else "listen")
         for key, val in (("gui_listen", "listen"), ("gui_speak", "speak")):  # Speak = also voice each line (#330)
@@ -374,7 +374,7 @@ class App:
                                      command=lambda: self.v_voice.set(self.v_mode.get() == "speak")), key).pack(side="left")
         self.v_voice.trace_add("write", lambda *_: self.v_mode.set("speak" if self.v_voice.get() else "listen"))
         self.v_pair = tk.StringVar()
-        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=4)
+        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
         for v in (self.v_lang, self.v_target):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
@@ -382,7 +382,7 @@ class App:
         self.btn.pack(side="left")
         self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
-        self.dot.pack(side="left", padx=4)
+        self.dot.pack(side="left", padx=2)
         self.set_dot("idle")
         self.btn_adjust = self._tx(ttk.Button(b, command=self.toggle_adjust, style="Bar.TButton", width=0), "gui_adjust")
         self.btn_adjust.pack(side="left")
