@@ -1,5 +1,5 @@
-"""#106: the Windows installer picks Hy-MT2 for the GPU tier (>= 4 GB total VRAM, hwprobe.GPU_MIN_VRAM_MIB) instead of
-choosing Qwen by VRAM; below that (or without a GPU) Hy-MT2 runs on the CPU (#301). Runs `install.ps1 -DryRun` with a stubbed nvidia-smi and python.
+"""#106: the Windows installer picks Hy-MT2 for the GPU tier (>= 4 GB total VRAM, hwprobe.GPU_MIN_VRAM_MIB);
+below that (or without a GPU) Hy-MT2 runs on the CPU (#301). Runs `install.ps1 -DryRun` with a stubbed nvidia-smi and python.
 
 Needs `pwsh` (preinstalled on the GitHub ubuntu runners); skipped where it is missing."""
 from __future__ import annotations
@@ -52,7 +52,7 @@ def test_gpu_tier_downloads_hymt_not_qwen(tmp_path, total):
     out = dry_run(tmp_path, total)
     calls = _setup_calls(out)
     assert any(c.rstrip().endswith("--hymt") for c in calls), calls
-    assert not any("--qwen" in c for c in calls), calls  # Qwen is opt-in only (tlwu-setup --qwen)
+    assert not any("--qwen" in c for c in calls), calls  # the old LLM download flag is gone (#308)
     assert any("--whisper large-v3-turbo" in c for c in calls), calls
     assert "requirements-llama-cuda.txt" in out  # llama-cpp-python CUDA wheel: Hy-MT2 runs on llama.cpp
     assert "~3 GB" in out and "~10 GB" not in out

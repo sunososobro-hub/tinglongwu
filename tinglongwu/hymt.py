@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import deque
 from pathlib import Path
 
 from .engines import clean_output, max_tokens_for
 from .engines import load_llama as _load_llama
 from .engines import shared_llama
+from .llm_prompt import CONTEXT_LINES
 from .repeat import collapse_repeats
 from .translate import Translation, Translator, strip_unk, zh_convert
 
@@ -79,8 +81,9 @@ def zh_script_guard(src_text: str, out: str, max_words: int = 4) -> str:
 
 
 class HyMtTranslator(Translator):
-    """Direct src -> tgt with a local Hy-MT2 GGUF; OpenCC afterwards when tgt is zh. No context memory
-    (the card's single-message template), so history/_pair exist only for interface compatibility."""
+    """Direct src -> tgt with a local Hy-MT2 GGUF; OpenCC afterwards when tgt is zh. The prompt is the card's
+    single-message template (no context lines); `history` keeps the previous CONTEXT_LINES (source, translation)
+    pairs of the current language pair only to pick glossary entries, like the other LLM engines (#535)."""
 
     def __init__(self, models_dir: Path, zh_variant: str = "tw", device: str = "cpu", loader=None,
                  size: str = "1.8b"):
@@ -90,8 +93,8 @@ class HyMtTranslator(Translator):
         self.path = require(hymt_path(models_dir, size), f"Hy-MT2 {size.upper()} translation model", setup_flag(size))
         self._loader = loader or _load_llama
         self.llm = None
-        self.history: list = []
-        self._pair = None
+        self.history: deque = deque(maxlen=CONTEXT_LINES)
+        self._pair: tuple[str, str] | None = None
         self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output (#174)
         self._zh_words: dict[str, str] = {}
 
@@ -100,11 +103,12 @@ class HyMtTranslator(Translator):
             self._zh_words[w] = zh_convert(w, self.zh_variant)
         return self._zh_words[w]
 
-    def _terms(self, text: str, tgt: str) -> list[tuple[str, str]]:
-        """Glossary entries occurring in the sentence, as (source, zh translation); only for zh output."""
+    def _terms(self, text: str, tgt: str, context=()) -> list[tuple[str, str]]:
+        """Glossary entries occurring in the sentence or the previous `context` source lines, as (source, zh
+        translation); only for zh output. They enter the prompt through build_prompt's terminology form."""
         if tgt != "zh" or not self.glossary:
             return []
-        return [(e.main, self._zh_word(e.target)) for e in self.glossary.relevant(text) if e.target]
+        return [(e.main, self._zh_word(e.target)) for e in self.glossary.relevant(text, *context) if e.target]
 
     def _load(self):
         if self.llm is None:
@@ -113,13 +117,21 @@ class HyMtTranslator(Translator):
     def preload(self, src: str = "", tgt: str = "") -> None:
         self._load()
 
-    def translate(self, text: str, src: str, tgt: str) -> Translation:
+    def translate(self, text: str, src: str, tgt: str, draft: bool = False) -> Translation:
+        """`draft` (streaming partials): uses the context but never adds to it."""
         if src == tgt or not text.strip():
             return Translation(None, text)
         text = collapse_repeats(text)
         self._load()
+        if self._pair != (src, tgt):
+            ctx = []
+            if not draft:
+                self.history.clear()
+                self._pair = (src, tgt)
+        else:
+            ctx = [a for a, _ in self.history]
         r = self.llm.create_chat_completion(
-            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt))}],
+            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx))}],
             max_tokens=max_tokens_for(text), **sampling())
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
         if tgt == "zh":
@@ -127,6 +139,8 @@ class HyMtTranslator(Translator):
             if self.glossary:
                 out = self.glossary.fix_output(out, text, convert=self._zh_word)
             out = zh_script_guard(text, out)
+        if not draft:
+            self.history.append((text.strip(), out))
         return Translation(None, out)
 
 
@@ -206,11 +220,11 @@ class JaRouter(Translator):
             self._warn(f"tlwu: Hy-MT2 unavailable for Japanese ({self.hy_error}); using OPUS pivot ja -> en -> zh.")
         self.base.preload(src, tgt)
 
-    def translate(self, text: str, src: str, tgt: str) -> Translation:
+    def translate(self, text: str, src: str, tgt: str, draft: bool = False) -> Translation:
         self._guard(src, tgt)
         if self._use_hy(src, tgt):
             try:
-                return self.hy.translate(text, src, tgt)
+                return self.hy.translate(text, src, tgt, draft=True) if draft else self.hy.translate(text, src, tgt)
             except Exception as e:  # noqa: BLE001
                 if tgt == "ja":
                     raise
@@ -218,7 +232,7 @@ class JaRouter(Translator):
         return self.base.translate(text, src, tgt)
 
     def draft(self, text: str, src: str, tgt: str) -> Translation:
-        return self.translate(text, src, tgt)
+        return self.translate(text, src, tgt, draft=True)
 
 
 class _NoFallback(Translator):

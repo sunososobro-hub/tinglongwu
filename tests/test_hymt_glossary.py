@@ -62,3 +62,49 @@ def test_router_glossary_reaches_opus_when_hymt_missing(tmp_path, tg):
     assert tr.hy is None
     tr.glossary = tg
     assert tr.base.glossary is tg and tr.glossary is tg
+
+
+WIFI = "docs/examples/glossary_wifi_ru.txt"
+
+
+def _prompt_router(tmp_path, monkeypatch):
+    """The `--engine hymt` path: make_translator -> JaRouter(all_pairs) -> HyMtTranslator, fake llama only."""
+    fake = FakeLlm("好。")
+    monkeypatch.setattr("tinglongwu.hymt._load_llama", lambda path, gpu: fake)
+    tr = cli.make_translator("hymt", models(tmp_path), "tw", "cuda", say=lambda *a, **k: None,
+                             choose=lambda e, d, md: choose_engine(e, d, md, free_mib=lambda: 6000))
+    cli.apply_glossary(tr, glossary.load(WIFI))
+    return tr, fake
+
+
+def test_hymt_prompt_has_glossary_target_for_current_and_previous_2_lines(tmp_path, monkeypatch):
+    """#535: a matching entry's target is a required translation in the prompt sent to llama.cpp; the window is
+    the current line plus the previous 2 (stem match: роутера -> роутер), as docs/usage.md says."""
+    tr, fake = _prompt_router(tmp_path, monkeypatch)
+    tr.translate("Откройте настройки роутера.", "ru", "zh")
+    assert "роутер 翻译成 路由器" in fake.calls[-1]  # current line
+    tr.translate("Нажмите кнопку.", "ru", "zh")
+    tr.translate("Подождите минуту.", "ru", "zh")
+    assert "路由器" in fake.calls[-1]  # still within the previous 2 lines
+    tr.translate("Готово.", "ru", "zh")
+    assert "路由器" not in fake.calls[-1] and "参考" not in fake.calls[-1]  # 3 lines back: out of the window
+
+
+def test_hymt_prompt_has_no_glossary_target_when_term_absent(tmp_path, monkeypatch):
+    tr, fake = _prompt_router(tmp_path, monkeypatch)
+    for line in ("Добрый вечер.", "Сегодня хорошая погода.", "Пойдём гулять."):
+        tr.translate(line, "ru", "zh")
+        assert "参考" not in fake.calls[-1] and "路由器" not in fake.calls[-1]
+
+
+def test_hymt_glossary_context_resets_on_pair_change_and_ignores_drafts(tmp_path, monkeypatch):
+    tr, fake = _prompt_router(tmp_path, monkeypatch)
+    tr.translate("Откройте настройки роутера.", "ru", "zh")
+    tr.translate("Hello.", "en", "zh")  # new pair: the Russian line is no longer context
+    tr.translate("Hello again.", "en", "zh")
+    assert "路由器" not in fake.calls[-1]
+    tr.translate("Добрый вечер.", "ru", "zh")
+    tr.draft("Откройте роутер", "ru", "zh")  # a streaming draft sees the term but is not kept as context
+    assert "路由器" in fake.calls[-1]
+    tr.translate("Готово.", "ru", "zh")
+    assert "路由器" not in fake.calls[-1]

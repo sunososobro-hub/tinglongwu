@@ -1,6 +1,7 @@
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 import '../logic/prompt.dart';
+import '../logic/s2tw.dart';
 import '../logic/zh_check.dart';
 
 class Translation {
@@ -83,7 +84,8 @@ class Translator {
         nCtx = e.committedPosition;
       }
     }
-    final text = PromptBuilder.clean(buf.toString());
+    // Same as desktop hymt: the card prompt asks for 中文, so convert to zh-Hant (Taiwan) afterwards.
+    final text = toTraditionalTw(PromptBuilder.clean(buf.toString()));
     return Translation(
       zh: text,
       check: checkChinese(text),

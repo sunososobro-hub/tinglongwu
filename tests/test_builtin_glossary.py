@@ -42,8 +42,11 @@ def test_prompt_has_terms_only_on_hit(tmp_path):
     tr.translate("The daemon crashed after the merge.", "en", "zh")
     p, _ = llm.calls[-1]
     assert "daemon 翻译成 常駐程式" in p and "merge 翻译成 合併" in p
-    tr.translate("Hello there my friend.", "en", "zh")
-    assert llm.calls[-1][0] == build_prompt("Hello there my friend.", "en", "zh")
+    tr.translate("Hello there my friend.", "en", "zh")  # #535: the previous 2 lines also count
+    assert "daemon 翻译成 常駐程式" in llm.calls[-1][0]
+    tr.translate("Nice weather today.", "en", "zh")
+    tr.translate("See you soon.", "en", "zh")
+    assert llm.calls[-1][0] == build_prompt("See you soon.", "en", "zh")
     tr.glossary = None
     tr.translate("The daemon crashed.", "en", "zh")
     assert llm.calls[-1][0] == build_prompt("The daemon crashed.", "en", "zh")

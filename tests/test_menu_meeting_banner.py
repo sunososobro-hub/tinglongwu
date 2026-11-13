@@ -1,4 +1,4 @@
-"""#40: meeting mode prints where the translated voice goes (no local preview) and how sentences are sent."""
+"""#40: meeting mode prints where the translated voice goes and how sentences are sent."""
 import os
 import subprocess
 from pathlib import Path
@@ -16,11 +16,11 @@ def _banner(lang, mic="tlwu_mic", confirm="0"):
 
 
 @pytest.mark.parametrize("lang", ["en", "ru", "zh-TW"])
-def test_route_line_names_virtual_mic_and_preview_off(lang):
+def test_route_line_names_virtual_mic(lang):
     lines = _banner(lang, mic="BlackHole 16ch")
     assert len(lines) == 3 and "BlackHole 16ch" in lines[0]
-    assert lines[1].startswith(("voice -> BlackHole 16ch,", "голос -> BlackHole 16ch,", "聲音 -> BlackHole 16ch，"))
-    assert lines[1].endswith(("off", "выкл", "關閉"))
+    assert lines[1].startswith(("voice -> BlackHole 16ch", "голос -> BlackHole 16ch", "聲音 -> BlackHole 16ch"))
+    assert "off" not in lines[1] and "выкл" not in lines[1] and "關閉" not in lines[1]
 
 
 @pytest.mark.parametrize("lang", ["en", "ru", "zh-TW"])

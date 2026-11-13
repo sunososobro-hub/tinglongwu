@@ -10,15 +10,18 @@ Known names:
   in their system prompt (core default: the English language name). #356.
 - convert_output (callable(text, variant) -> text): post-processing of chat-LLM output in this target language
   (core default: none). #356.
+- pre_mt (callable(text) -> text): rewrites a finished source sentence in this language before it goes to any MT
+  engine (core: translate.translate_checked; default: none). The display/saved source line is not changed. #390.
+- post_mt (callable(text, src) -> text): rewrites the MT output in this target language (default: none). #390.
 """
 from __future__ import annotations
 
 from types import ModuleType
 from typing import Any
 
-from . import ja, zh
+from . import ja, ru, zh
 
-PATCHES: dict[str, ModuleType] = {"ja": ja, "zh": zh}
+PATCHES: dict[str, ModuleType] = {"ja": ja, "ru": ru, "zh": zh}
 
 
 def _base(lang: str) -> str:
@@ -33,3 +36,15 @@ def module(lang: str) -> ModuleType | None:
 def setting(lang: str, name: str, default: Any) -> Any:
     """The language's value for `name`, or `default` (the core's language-neutral value)."""
     return getattr(module(lang), name, default)
+
+
+def pre_mt(src: str, text: str) -> str:
+    """The source language's pre_mt hook applied to `text`, or `text` unchanged."""
+    hook = setting(src, "pre_mt", None)
+    return hook(text) if hook else text
+
+
+def post_mt(tgt: str, text: str, src: str) -> str:
+    """The target language's post_mt hook applied to the MT output, or the output unchanged."""
+    hook = setting(tgt, "post_mt", None)
+    return hook(text, src) if hook else text
