@@ -148,3 +148,16 @@ def test_percentile_hours_p90_nearest_rank():
     assert sd.percentile_hours(pairs, 50) == 5.0
     assert sd.percentile_hours(pairs, 90) == 9.0
     assert sd.percentile_hours([], 90) is None
+
+
+def test_speed_block_shows_medians_only_for_three_windows(tmp_path):
+    sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW)
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    series = json.loads((tmp_path / "series.json").read_text())
+    assert "p90" not in page and "p90" not in json.dumps(series)
+    assert "speed_p90" not in series
+    sp = series["speed"]
+    # PR merged 11-12T08:00 (4 h before NOW), opened 24 h earlier -> in every window
+    assert sp["pr_all"] == sp["pr_7d"] == sp["pr_24h"] == 24.0
+    # issue closed 11-11T10:00 is 26 h before NOW -> in 7d/all-time, not in 24 h
+    assert sp["issue_all"] == sp["issue_7d"] == 24.0 and sp["issue_24h"] is None
