@@ -352,7 +352,7 @@ class App:
 
     def _advanced_toggled(self):
         """#399: the engine row is only visible while Advanced is expanded."""
-        for w in self.frm.grid_slaves(row=3):
+        for w in self._engine_row:
             (w.grid if self.v_advanced.get() else w.grid_remove)()
 
     def _quality_changed(self):
@@ -372,7 +372,9 @@ class App:
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
         self.v_engine = self._combo(3, "gui_engine", "engine", engine_labels())
-        self.v_engine.set(self.settings["engine"])
+        self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == self.settings["engine"]),
+                               self.settings["engine"]))  # keep the "not installed" hint on the shown label
+        self._engine_row = list(self.frm.grid_slaves(row=3))  # grid_remove() forgets them: keep the refs (#399)
         self.v_advanced = tk.BooleanVar(value=bool(self.settings.get("advanced")))  # #399
         self._tx(ttk.Checkbutton(self.frm, variable=self.v_advanced, command=self._advanced_toggled),
                  "gui_advanced").grid(row=18, column=0, columnspan=3, sticky="w", pady=2)
