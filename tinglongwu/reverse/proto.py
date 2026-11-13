@@ -458,12 +458,8 @@ def paced_file_source(path):
     audio = src._load()
 
     class Decoded(AudioSource):
-        def frames(self):
-            for i in range(0, len(audio), src.block):
-                yield audio[i:i + src.block]
-
-        def close(self) -> None:
-            pass
+        frames = lambda self: (audio[i:i + src.block] for i in range(0, len(audio), src.block))  # noqa: E731
+        close = lambda self: None  # noqa: E731
 
     return PacedSource(Decoded())
 

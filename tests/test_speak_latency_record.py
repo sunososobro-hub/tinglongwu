@@ -1,11 +1,5 @@
-"""#434: speak mode --input X --paced replays a file in real time through the live VAD segmenter, and
---latency-jsonl writes one record per spoken line (vad / asr / merge / mt / total / tts_first_audio /
-total_first_audio).
-
-The main test writes a synthetic clip (0.5 s of "speech", then silence) to a wav, runs it through the product path
-(_live_main -> paced_file_source -> real Segmenter -> capture_segments -> recognize_utterances -> _run_auto_live)
-with stub ASR / MT / TTS that sleep known times, and checks every field against an independent stopwatch: the wall
-time the speech ended (first frame release + 0.5 s) and the times the stubs ran / the player got the first chunk."""
+"""#434: speak --input X --paced through the live path (real Segmenter, PacedSource, _live_main) with stub
+ASR / MT / TTS of known durations; every --latency-jsonl field is checked against an independent stopwatch."""
 from __future__ import annotations
 
 import json
