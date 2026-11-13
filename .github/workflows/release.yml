@@ -21,7 +21,8 @@ on:
 permissions: {}
 
 concurrency:
-  group: release   # one release at a time, whichever ref
+  # one publish at a time; dry runs queue apart so a pending release run is never replaced by a dry run
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.ref || 'publish' }}
   cancel-in-progress: false
 
 jobs:
@@ -213,6 +214,7 @@ jobs:
             # never rewrite a published release: its SHA256SUMS.txt and wizard are what users verify against
             [ "$draft" = true ] || { echo "release $TAG is already published; not touching it"; exit 1; }
             gh release upload "$TAG" "${files[@]}" --clobber
+            gh release edit "$TAG" --notes-file dist/notes.md   # the notes describe the files just attached
           else
             gh release create "$TAG" "${files[@]}" --draft "${pre[@]}" --verify-tag --notes-file dist/notes.md --title "$TAG"
           fi

@@ -63,7 +63,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           num=$(gh pr list --base main --head dev --state open --json number --jq '.[0].number // empty')
-          [ -n "$num" ] && gh pr view "$num" --json body --jq .body > existing.md || : > existing.md
+          : > existing.md
+          if [ -n "$num" ]; then
+            gh pr view "$num" --json body --jq .body > existing.md   # a failed read must not reset What's new
+          fi
           title=$(python scripts/release_notes.py pr-body --existing existing.md --out body.md)
           { echo "num=$num"; echo "title=$title"; } >> "$GITHUB_OUTPUT"
           { echo "### $title (PR ${num:-new})"; echo; cat body.md; } | tee -a "$GITHUB_STEP_SUMMARY"

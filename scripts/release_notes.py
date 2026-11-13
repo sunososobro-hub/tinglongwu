@@ -194,8 +194,9 @@ def changes_md(since: str | None, changes: list[dict]) -> str:
 
 
 def whats_new(body: str) -> str | None:
-    """The `## What's new` section of a release PR body (the owner may edit it), None if absent or still TODO."""
-    m = re.search(r"^## What's new[ \t]*\n(.*?)(?=^#{1,6} |^---|\Z)", body or "", re.M | re.S)
+    """The `## What's new` section of a release PR body (the owner may edit it), None if absent or still TODO.
+    It ends at the next generated section, so the owner's own ### subsections are kept."""
+    m = re.search(r"^## What's new[ \t]*\n(.*?)(?=^#{1,2} |^### (?:Changes|Thanks)\b|^---|\Z)", body or "", re.M | re.S)
     text = m.group(1).strip() if m else ""
     return text if text and "TODO" not in text else None
 
@@ -265,11 +266,18 @@ def repo() -> str:
     return os.environ.get("GITHUB_REPOSITORY") or gh_json("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
 
 
+def in_head(sha: str) -> bool:
+    return bool(sha) and subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=ROOT,
+                                        capture_output=True).returncode == 0
+
+
 def history(rep: str, tag: str):
     since = latest_tag([t for t in git_tags() if t != tag])
     date = git("log", "-1", "--format=%cI", since).strip() if since else ""
     changes = gh_json("pr", "list", "-R", rep, "--state", "merged", "--base", "dev", "-L", "500",
-                      *(["--search", f"merged:>{date}"] if date else []), "--json", "number,title")
+                      *(["--search", f"merged:>{date}"] if date else []), "--json", "number,title,mergeCommit")
+    # only PRs inside the released checkout: one merged to dev during the build is not in this release
+    changes = [c for c in changes if in_head((c.get("mergeCommit") or {}).get("oid", ""))]
     prs = gh_json("pr", "list", "-R", rep, "--state", "all", "-L", "3000", "--json", "number,author,url")
     issues = gh_json("issue", "list", "-R", rep, "--state", "all", "-L", "3000", "--json", "number,author,url")
     return since, sorted(changes, key=lambda c: c["number"]), contributors(prs, issues, rep.split("/")[0])

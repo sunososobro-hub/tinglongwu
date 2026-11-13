@@ -235,3 +235,9 @@ def test_release_selftest_argv_parses_with_the_real_setup_and_cli(monkeypatch):
     monkeypatch.setattr(argparse.ArgumentParser, "parse_args", real)
     a = cli.parse_args([*rc.SELFTEST_ARGS, "--models-dir", "m"])
     assert (a.selftest, a.model, a.engine, a.compute) == (True, "tiny", "hymt", "cpu")
+
+
+def test_whats_new_keeps_the_owners_subsections():
+    body = ("## What's new\nIntro\n\n### Fixes\n- One\n\n### Changes since v0.3.1\n\n- x (#1)\n\n"
+            "### Thanks\n\n- y\n---\nfooter\n")
+    assert rn.whats_new(body) == "Intro\n\n### Fixes\n- One"

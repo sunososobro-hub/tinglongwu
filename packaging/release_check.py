@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -121,6 +122,7 @@ def main(argv=None) -> int:
     ap.add_argument("--work", type=Path, required=True, help="scratch folder (unpacked app, models)")
     ap.add_argument("--report", type=Path)
     a = ap.parse_args(argv)
+    a.work = a.work.resolve()  # the probe's AddDllDirectory needs an absolute path
     rows: list[tuple[str, bool, str]] = []
     size, digest = a.zip.stat().st_size, sha256(a.zip)
     a.zip.with_name(a.zip.name + ".sha256").write_text(f"{digest}  {a.zip.name}\n", "utf-8")
@@ -128,6 +130,7 @@ def main(argv=None) -> int:
     rows.append(("size < 2 GiB", not prob, prob or f"{size >> 20} MB"))
 
     with zipfile.ZipFile(a.zip) as z:
+        shutil.rmtree(a.work / "unzipped", ignore_errors=True)  # a reused --work must not keep old files
         z.extractall(a.work / "unzipped")
     app = a.work / "unzipped" / "tlwu"
     sys.path.insert(0, str(REPO / "scripts"))
