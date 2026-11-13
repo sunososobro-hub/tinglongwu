@@ -84,3 +84,12 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 
 ### Usage line
 - Every PR body must keep `tlwu-usage: ... minutes=N` as its last line; it is the ledger input. PRs without it count as 0 minutes.
+
+## 11. Docs fast lane to main (owner 2026-11-13)
+Owner: "Important things can't wait for a release." Docs-only changes may go to `main` without a release.
+- Scope: the PR changes only `README*.md` and `docs/**/*.md` (not `docs/support.json`, no code, scripts, `.github/`, `.agent/`, packaging, `pyproject.toml`, `tinglongwu/__init__.py`).
+- Order: the change is merged to `dev` first. Then a merger opens a PR `main <- docs/fastlane-N` that carries the same file contents (cherry-pick of the dev commit), title `docs(fastlane): ...`, body `Refs #N` + `tlwu-usage` line.
+- Gate: `test` green on that PR and the diff stays inside the scope above (a merger checks `pulls/N/files`). Merge by rebase. No tag, no release; `release.yml` publishes nothing for a non-release push.
+- Sync back: right after the fast-lane merge, merge `main` into `dev` (PR `dev <- main`, merge commit, auto-merge on green) so the next `release: vX.Y.Z` PR has no conflict.
+- Not during a release: skip while a `release.yml` run on `main` is in progress; retry after it finishes.
+- This is the only exception to "never touch main" in section 3; it does not allow `.github/` or code changes on `main`.

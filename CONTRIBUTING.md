@@ -33,7 +33,7 @@ These are the only hard rules, so this is exactly the bar. Everything else is ne
 ## Pull requests and credit
 
 - External PRs are welcome.
-- The default branch for PRs is `dev` (`main` only receives release PRs).
+- The default branch for PRs is `dev` (`main` only receives release PRs, plus docs-only fast-lane PRs opened by maintainers).
 - PRs are merged by rebase, so your authorship is kept in the commit history.
 - Contributors are credited in the release notes.
 
