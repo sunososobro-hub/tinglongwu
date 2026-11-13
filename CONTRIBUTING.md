@@ -107,6 +107,6 @@ Every PR gets an AI review plus a maintainer review. The AI review is a first pa
 
 ## Security and conduct
 
-Report security problems privately, see [SECURITY.md](SECURITY.md). Be kind: assume good intent, and keep feedback about the code, not the person.
+Report security problems privately, see [SECURITY.md](SECURITY.md). Be kind (see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)): assume good intent, and keep feedback about the code, not the person.
 
 By contributing you agree your work is released under the [MIT License](LICENSE).
