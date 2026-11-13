@@ -479,12 +479,10 @@ def cmd_monitor_live(a) -> int:
                 results.append(("#186 median total (info)", True, f"{med:.2f} s over {len(totals)} utterances"))
             ok = (rc in CLEAN_RC and not second and "Traceback" not in out and "Fatal Python error" not in out
                   and not _alive(kids))
-            detail = (f"rc={rc}, needed a second Ctrl+C: {second}, children left: {len(_alive(kids))} "
-                      "(report only: tracked in #427, the gating Ctrl+C checks are the `ctrlc` steps)")
-            results.append(("Ctrl+C in live speak mode on Linux (#5, info)", True, ("ok " if ok else "NOT CLEAN ") + detail))
-            print(f"{'INFO-OK' if ok else 'INFO-NOT-CLEAN'} Ctrl+C in live speak mode: {detail}", flush=True)
-            if not ok:
-                print(f"::warning::live speak mode Ctrl+C on Linux not clean: {detail}", flush=True)
+            detail = (f"rc={rc}, needed a second Ctrl+C: {second}, children left: {len(_alive(kids))}, "
+                      f"SIGABRT: {rc == -signal.SIGABRT}")
+            # #427: gating (it was report-only while live speak mode hung / aborted after Ctrl+C on Linux)
+            if not check("Ctrl+C in live speak mode on Linux (#5, #427)", ok, detail):
                 print(tail(out, 30))
         else:
             p.kill()
