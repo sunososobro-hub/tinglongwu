@@ -69,6 +69,11 @@ class ModelImporter {
   Future<ImportReport> run(List<PickedDoc> docs,
       {required void Function(int done, int total, String name) onProgress}) async {
     final report = ImportReport();
+    final staging = Directory(_staging);
+    // Leftovers of an import the system killed would count against the free-space check.
+    try {
+      if (staging.existsSync()) staging.deleteSync(recursive: true);
+    } catch (_) {}
     final total = docs.fold<int>(0, (a, d) => a + (d.size > 0 ? d.size : 0));
     final free = await freeBytes();
     if (free >= 0 && total > 0 && free < total + (64 << 20)) {
@@ -76,7 +81,6 @@ class ModelImporter {
       return report;
     }
     var base = 0;
-    final staging = Directory(_staging);
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'importProgress') {
         final m = call.arguments as Map;

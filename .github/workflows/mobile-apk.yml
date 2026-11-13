@@ -125,6 +125,7 @@ jobs:
           name: mobile-apk
           path: out
       - name: Publish to the rolling pre-release mobile-latest
+        id: apk
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -151,7 +152,8 @@ jobs:
           RUN=${{ github.run_number }}
           PUBLISHED=$(gh release view "$TAG" --json body --jq .body 2>/dev/null | sed -n 's/.*<!-- tlwu-run:\([0-9]*\) -->.*/\1/p' | head -1 || true)
           if [ -n "$PUBLISHED" ] && [ "$RUN" -lt "$PUBLISHED" ]; then
-            echo "::notice::mobile-latest already has run $PUBLISHED (newer than $RUN); not publishing"; exit 0
+            echo "::notice::mobile-latest already has run $PUBLISHED (newer than $RUN); not publishing"
+            echo "stale=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "<!-- tlwu-run:$RUN -->" >> notes.md
           # Move (or create) the tag; only refs/tags/mobile-latest is touched.
@@ -170,6 +172,7 @@ jobs:
           fi
           gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
       - name: Models zip on mobile-latest (rebuilt from official sources only when the manifest changes)
+        if: steps.apk.outputs.stale != 'true'   # an older run must not replace a newer bundle
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

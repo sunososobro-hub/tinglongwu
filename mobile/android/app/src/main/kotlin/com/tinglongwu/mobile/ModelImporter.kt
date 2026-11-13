@@ -101,17 +101,22 @@ class ModelImporter(private val activity: Activity) {
                 counting.use { input ->
                     if (zipTargets != null) {
                         val z = ZipInputStream(input)
+                        val seen = HashSet<String>()
                         while (true) {
+                            if (cancelled) throw Cancelled()
                             val e = z.nextEntry ?: break
                             if (e.isDirectory) continue
                             val base = e.name.replace('\\', '/').substringAfterLast('/')
                             val t = zipTargets[base] ?: continue
+                            // Two entries for one target would overwrite a checked file after its hash was taken.
+                            if (!seen.add(t)) throw IllegalStateException("zip has more than one $base")
                             out.add(copy(z, staging, t))
                         }
                     } else {
                         out.add(copy(input, staging, target!!))
                     }
                 }
+                if (cancelled) throw Cancelled()
                 main.post { progress(counting.count, total); result.success(out) }
             } catch (e: Exception) {
                 val code = if (e is Cancelled) "CANCELLED" else "IMPORT_FAILED"

@@ -120,11 +120,17 @@ class Pipeline extends ChangeNotifier {
       _log.i('ASR ready in ${_clock.elapsedMilliseconds - t0} ms');
 
       final t1 = _clock.elapsedMilliseconds;
-      _tr = await Translator.load(p.llmPath);
+      final tr = await Translator.load(p.llmPath);
+      if (_disposed) {
+        tr.dispose(); // replaced (e.g. by Import models) while loading
+        return;
+      }
+      _tr = tr;
       _log.i('LLM ready in ${_clock.elapsedMilliseconds - t1} ms (${p.llmPath.split('/').last}) '
           '${await ModelPaths.statsLine()}');
 
       _drain(); // anything queued while the LLM was loading (debug wavs)
+      if (_disposed) return;
       final stream = await _rec.startStream(const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,

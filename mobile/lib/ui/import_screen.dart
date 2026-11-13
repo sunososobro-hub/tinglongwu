@@ -47,15 +47,20 @@ class _ImportScreenState extends State<ImportScreen> {
       _done = 0;
       _total = 0;
     });
-    final r = await imp.run(docs, onProgress: (d, t, n) {
-      if (mounted) {
-        setState(() {
-          _done = d;
-          _total = t;
-          _name = n;
-        });
-      }
-    });
+    ImportReport r;
+    try {
+      r = await imp.run(docs, onProgress: (d, t, n) {
+        if (mounted) {
+          setState(() {
+            _done = d;
+            _total = t;
+            _name = n;
+          });
+        }
+      });
+    } catch (e) {
+      r = ImportReport()..problems.add('$e');
+    }
     if (!mounted) return;
     setState(() {
       _busy = false;
