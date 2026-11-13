@@ -62,7 +62,7 @@ def test_r1_exactly_limit_passes_one_over_fails():
 @pytest.mark.parametrize("name", ["pyproject.toml", "requirements.txt", ".github/workflows/ci.yml",
                                   ".claude/settings.json", "scripts/install.sh", "packaging/build_windows.py",
                                   "LICENSE", "SECURITY.md", "models/x.bin", "tinglongwu/offline.py",
-                                  "tinglongwu/models.py", "tests/conftest.py", "tinglongwu/data/tech-dev.txt"])
+                                  "tinglongwu/models.py", "tinglongwu/ollama.py", "tests/test_no_network_code.py", "tests/conftest.py", "tinglongwu/data/tech-dev.txt"])
 def test_r2_protected_or_outside_paths_fail(name):
     files = _ok_files() + [_f(name)]
     assert _lane(files)["failed"] == ["r2_paths"]
@@ -191,6 +191,13 @@ def test_r2_nested_conftest_is_protected():
 
 @pytest.mark.parametrize("line", ["os .system('x')", "os. system('x')", "os . system('x')"])
 def test_r3_spaced_os_system_fails(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+@pytest.mark.parametrize("line", ["system('x')", "o.popen('x')", "os.execv(p, a)", "os.spawnl(m, p)"])
+def test_r3_other_process_primitives_fail(line):
     files = _ok_files()
     files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
     assert _lane(files)["failed"] == ["r3_denylist"]

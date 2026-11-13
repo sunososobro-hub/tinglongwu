@@ -43,11 +43,14 @@ PROTECTED_FILES = frozenset({
     "tinglongwu/netreport.py",
     "tinglongwu/models.py",
     "tinglongwu/llamacheck.py",
+    "tinglongwu/ollama.py",  # the one network client (loopback-only guard in _endpoint)
+    "tests/test_no_network_code.py",  # its ALLOWED list whitelists network imports
     "tests/conftest.py",
 })
 DENYLIST = ("socket", "urllib", "requests", "http", "subprocess", "os.system", "eval(", "exec(",
             "__import__", "importlib", "pickle", "base64", "ctypes")  # list from #352 rule 3
-_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\(", r"\bos\s*\.\s*system\b"]),
+_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\(", r"\bos\s*\.\s*system\b",
+                       r"\bsystem\s*\(", r"popen", r"\bspawn", r"\bexec[lv]p?e?\s*\("]),
                       re.IGNORECASE)  # extra patterns catch "eval (x)" and "os . system" (whitespace is legal Python)
 GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
