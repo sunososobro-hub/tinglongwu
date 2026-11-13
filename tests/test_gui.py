@@ -71,9 +71,11 @@ def test_save_settings_unwritable(tmp_path):
 def test_settings_to_argv_parses():
     from tinglongwu.cli import parse_args
 
-    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="opus", glossary="g.txt", save=True)
+    s = dict(core.DEFAULTS, lang="ru", target="zh-cn", quality="manual", engine="hymt", glossary="g.txt", save=True)
     a = parse_args(core.settings_to_argv(s))
-    assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "opus", "g.txt", "")
+    assert (a.lang, a.to, a.zh_variant, a.engine, a.glossary, a.save) == ("ru", "zh", "cn", "hymt", "g.txt", "")
+    assert core.ENGINES == ["auto", "hymt"]  # #471: OPUS is no longer offered
+    assert parse_args(core.settings_to_argv(dict(s, engine="opus"))).engine == "auto"  # old gui.json: no exit 2
     a = parse_args(core.settings_to_argv(dict(core.DEFAULTS, target="en", save=True, save_path="o.jsonl")))
     assert (a.to, a.save) == ("en", "o.jsonl")
     assert parse_args(["--gui"]).gui and not parse_args([]).gui
@@ -576,10 +578,10 @@ def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
 # -- #399: the engine dropdown is hidden under a collapsed Advanced section ---------------------------------
 
 def test_engine_labels_hint_for_uninstalled_and_roundtrip(tmp_path):
+    assert core.engine_labels(tmp_path) == ["auto", "hymt (tlwu-setup --hymt)"]  # missing: hint; #471: no opus
     (tmp_path / "hymt2-1.8b").mkdir()
     labels = core.engine_labels(tmp_path)
-    assert labels[0] == "auto" and "hymt" in labels  # installed: plain
-    assert [l for l in labels if l.startswith("opus")] == ["opus (tlwu-setup --pair ru-en)"]  # missing: hint
+    assert labels == ["auto", "hymt"]  # installed: plain
     assert [core.engine_from_label(l) for l in labels] == core.ENGINES
     assert core.DEFAULTS["advanced_open"] is False
 

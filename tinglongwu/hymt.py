@@ -1,12 +1,9 @@
 """Tencent Hy-MT2-1.8B (Apache-2.0, Q4_K_M GGUF, llama.cpp): direct multilingual MT.
 
-As the GPU default engine (`--engine auto` on CUDA / `--engine hymt`, #66) it translates every pair whose two
-languages it knows (`EN_NAMES`); other pairs go to the OPUS pivot. With the other engines it is used for Japanese:
-
-OPUS has no usable zh<->ja models (opus-mt-en-jap is Bible-trained; ja-en emits <unk>), so every pair that
-involves Japanese goes through this model, direct src -> tgt with no English pivot. Everything else keeps
-using whatever engine was chosen (OPUS pivot). `JaRouter` does that routing and falls
-back to the OPUS pivot for ja -> X when the GGUF (or llama-cpp-python) is missing.
+It is the only built-in translation engine (#276, #471: the OPUS/Argos pivot is gone from the listen path):
+`JaRouter(None, ..., all_pairs=True)` translates every pair whose two languages it knows (`EN_NAMES`) direct
+src -> tgt, and any other pair is an error with the reason (no silent engine switch). The reverse/speak side
+builds the same router with its own no-fallback base (#331).
 """
 from __future__ import annotations
 
@@ -138,12 +135,16 @@ class JaRouter(Translator):
     to load) ja -> X falls back to base's pivot; X -> ja then raises (there is no OPUS route to Japanese).
 
     all_pairs=True (Hy-MT2 as the main engine, #66): every pair whose two languages Hy-MT2 knows goes direct
-    through it; a pair with an unknown language, or any pair after Hy-MT2 failed, goes to `base`."""
+    through it; a pair with an unknown language, or any pair after Hy-MT2 failed, goes to `base`.
+    base=None (the listen path since #471: Hy-MT2 is the only engine, no OPUS pivot): such a pair raises
+    RuntimeError with the reason instead of switching engines."""
 
-    def __init__(self, base: Translator, models_dir: Path, zh_variant: str = "tw", device: str = "cpu",
+    def __init__(self, base: Translator | None, models_dir: Path, zh_variant: str = "tw", device: str = "cpu",
                  factory=HyMtTranslator, warn=lambda m: print(m, file=sys.stderr), all_pairs: bool = False,
                  size: str = "1.8b"):
-        self.base, self.zh_variant, self.all_pairs = base, zh_variant, all_pairs
+        self.base = base if base is not None else _NoFallback(self)
+        self.zh_variant, self.all_pairs = zh_variant, all_pairs
+        self._pivot = base is not None
         self.history: list = []
         self._pair = None
         self._warn = warn
@@ -165,7 +166,7 @@ class JaRouter(Translator):
 
     @glossary.setter
     def glossary(self, g) -> None:
-        """One glossary for both routes (#174): Hy-MT2 and the OPUS pivot both apply its `~` fixes."""
+        """One glossary for both routes (#174): Hy-MT2 and the base (if any) both apply its `~` fixes."""
         self._glossary = g
         for t in (self.hy, self.base):
             if t is not None and hasattr(t, "glossary"):
@@ -184,8 +185,11 @@ class JaRouter(Translator):
 
     def _fallback(self, e: Exception) -> None:
         what = "translation" if self.all_pairs else "ja -> X"
-        self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); {what} falls back to the OPUS pivot "
-                   "(lower translation quality).")
+        if self._pivot:
+            self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); {what} falls back to the OPUS pivot "
+                       "(lower translation quality).")
+        else:
+            self._warn(f"tlwu: WARNING: Hy-MT2 failed ({str(e)[:160]}); there is no fallback engine (#471).")
         self.hy_error, self.hy = str(e), None
 
     def preload(self, src: str, tgt: str) -> None:
@@ -198,7 +202,7 @@ class JaRouter(Translator):
                 if tgt == "ja":
                     raise
                 self._fallback(e)
-        elif "ja" in (src, tgt):
+        elif "ja" in (src, tgt) and self._pivot:
             self._warn(f"tlwu: Hy-MT2 unavailable for Japanese ({self.hy_error}); using OPUS pivot ja -> en -> zh.")
         self.base.preload(src, tgt)
 
@@ -215,3 +219,29 @@ class JaRouter(Translator):
 
     def draft(self, text: str, src: str, tgt: str) -> Translation:
         return self.translate(text, src, tgt)
+
+
+class _NoFallback(Translator):
+    """JaRouter's base when there is no pivot (#471): every pair Hy-MT2 does not take is an error with the reason."""
+
+    def __init__(self, router: JaRouter):
+        self.router = router
+        self.glossary = None
+
+    def _fail(self, src: str, tgt: str):
+        """A language Hy-MT2 does not know (e.g. one auto-detected by Whisper) raises ModelNotFound, which the
+        pipeline reports once per pair and keeps running (as the OPUS pivot's missing pair did). A Hy-MT2 that is
+        gone (failed to load / crashed mid-session) is a RuntimeError that stops the session with the reason."""
+        r = self.router
+        if r.hy is None:
+            raise RuntimeError(f"Hy-MT2 is not available ({r.hy_error[:160]}); there is no fallback engine (#471). "
+                               "Install or repair it with `tlwu-setup --hymt`")
+        from .models import ModelNotFound
+
+        raise ModelNotFound(f"Hy-MT2 does not translate {src} -> {tgt}; there is no fallback engine (#471)")
+
+    def preload(self, src: str, tgt: str) -> None:
+        self._fail(src, tgt)
+
+    def translate(self, text: str, src: str, tgt: str) -> Translation:
+        self._fail(src, tgt)

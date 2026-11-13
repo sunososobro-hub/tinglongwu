@@ -28,7 +28,7 @@ DEFAULTS = {
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
-ENGINES = ["auto", "hymt", "opus"]  # #276: Hy-MT2 is the engine; only Hy-MT2 and OPUS are offered
+ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
 # hardware; manual = the Engine + Speech model boxes decide (#81)
 QUALITIES = ["auto", "fast", "balanced", "quality", "manual"]
@@ -238,8 +238,8 @@ def model_labels(mdir=None) -> list[str]:
     return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
 
 
-_ENGINE_DIR = {"hymt": "hymt2-1.8b", "opus": "opus"}  # models/<dir> per engine (auto needs no model of its own)
-_ENGINE_HINT = {"hymt": "tlwu-setup --hymt", "opus": "tlwu-setup --pair ru-en"}
+_ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
+_ENGINE_HINT = {"hymt": "tlwu-setup --hymt"}
 
 
 def engine_labels(mdir=None) -> list[str]:
@@ -352,7 +352,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     quality = s.get("quality") if s.get("quality") in QUALITIES else DEFAULTS["quality"]
     if quality == "manual":
-        argv += ["--engine", s.get("engine") or "auto", "--model", usable_model(s.get("model"))]
+        engine = s.get("engine") if s.get("engine") in ENGINES else "auto"  # #471: a removed engine (opus) -> auto
+        argv += ["--engine", engine, "--model", usable_model(s.get("model"))]
     else:  # the CLI picks engine + speech model from the hardware probe
         argv += ["--quality", quality]
     if s.get("source") == "mic":

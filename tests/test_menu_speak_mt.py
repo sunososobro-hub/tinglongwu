@@ -27,8 +27,8 @@ def test_listen_cpu_defaults_to_hymt_without_asking(monkeypatch):
     kw = dict(ask=lambda p: asked.append(p) or "", say=lambda m: None, device=lambda: "cpu", mdir=".",
               cpu_choice=lambda: None, hymt_ready=lambda d: True)
     assert menuopts.listen_args(**kw)[-2:] == ["--engine", "hymt"] and asked == []
-    monkeypatch.setenv("TLWU_MT", "opus")
-    assert "--engine" not in menuopts.listen_args(**kw)
+    monkeypatch.setenv("TLWU_MT", "opus")  # #471: OPUS is gone from listen too, the old override is ignored
+    assert menuopts.listen_args(**kw)[-2:] == ["--engine", "hymt"]
 
 
 @pytest.mark.parametrize("to", ["ru", "en", "ja", "follow"])

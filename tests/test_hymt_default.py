@@ -119,6 +119,30 @@ def test_router_all_pairs_sends_unknown_language_to_base(tmp_path):
     assert ja_only.translate("Hello there", "en", "zh").text == "opus:Hello there"
 
 
+def test_listen_router_has_no_opus_fallback(tmp_path, monkeypatch):
+    """#471: the listen path builds Hy-MT2 with no OPUS pivot behind it: an unknown language, or a Hy-MT2 that fails
+    mid-session, is an error naming `tlwu-setup --hymt`, never a silent switch to OPUS."""
+    from tinglongwu.translate import PivotTranslator
+
+    m = install(tmp_path, "hymt2")
+    monkeypatch.setattr(PivotTranslator, "__init__", lambda *a, **k: pytest.fail("OPUS pivot built"))
+    llm = FakeLlm("你好")
+    monkeypatch.setattr("tinglongwu.hymt._load_llama", lambda path, gpu: llm)
+    warned = []
+    tr = cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: warned.append(msg))
+    assert tr.translate("Hello", "en", "zh").text == "你好"
+    from tinglongwu.models import ModelNotFound
+
+    with pytest.raises(ModelNotFound, match="does not translate tr -> zh"):
+        tr.preload("tr", "zh")  # Turkish is not in Hy-MT2's table
+    with pytest.raises(ModelNotFound):  # e.g. auto-detected by Whisper: the pipeline reports it and keeps running
+        tr.translate("Merhaba", "tr", "zh")
+    llm.create_chat_completion = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("llama crashed"))
+    with pytest.raises(RuntimeError, match="not available.*llama crashed"):
+        tr.translate("Hello", "en", "zh")
+    assert any("no fallback engine" in w for w in warned) and not any("OPUS" in w for w in warned)
+
+
 def test_short_line_left_in_kana_shows_source(tmp_path):
     m = install(tmp_path, "hymt2")
     tr = HyMtTranslator(m, "tw", "cpu", loader=lambda p, g: FakeLlm("ありがとうございます"))
@@ -127,3 +151,30 @@ def test_short_line_left_in_kana_shows_source(tmp_path):
     assert zh_script_guard("Hey", "欸，齁") == "欸，齁"  # valid Taiwan interjections are kept
     long_src = "это довольно длинное предложение, которое модель перевела почти полностью"
     assert zh_script_guard(long_src, "這是一個相當長的句子 модель") == "這是一個相當長的句子 модель"
+
+
+def test_auto_detected_unsupported_language_keeps_the_session_running(tmp_path, wav, monkeypatch, capsys):
+    """#471 review: with no OPUS pivot, a language Whisper detects but Hy-MT2 does not know (Turkish here) is reported
+    as a missing pair and the session goes on; it must not end the live session."""
+    import io
+
+    from tinglongwu.asr import Recognizer, Transcript
+    from tinglongwu.capture import FileSource
+    from tinglongwu.pipeline import run
+    from tinglongwu.segment import Segmenter
+    from tinglongwu.sink import TextSink
+
+    class TurkishASR(Recognizer):
+        n = 0
+
+        def transcribe(self, audio):
+            self.n += 1
+            return Transcript(f"merhaba dünya {self.n}", "tr")
+
+    m = install(tmp_path, "hymt2")
+    monkeypatch.setattr("tinglongwu.hymt._load_llama", lambda path, gpu: FakeLlm("你好"))
+    tr = cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: None)
+    out = io.StringIO()
+    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), TurkishASR(), tr, TextSink(out))
+    assert out.getvalue().count("merhaba dünya") >= 2  # every segment was shown, the run did not stop
+    assert "tr -> zh" in out.getvalue() + capsys.readouterr().err

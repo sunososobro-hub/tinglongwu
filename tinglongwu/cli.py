@@ -8,7 +8,7 @@ import time
 from . import __version__
 from .capture import select_backend
 from .models import ModelNotFound, models_dir
-from .engines import ENGINES
+from .engines import ENGINES, engine_choice
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
@@ -81,12 +81,11 @@ def parse_args(argv=None):
                    help="sentence merging: a finished sentence shorter than N words (a CJK character counts as a "
                         "word) is joined to the previous / next sentence instead of being translated alone, "
                         "waiting at most --max-wait (default from --preset: meeting 3, chat 0; 0 = off)")
-    p.add_argument("--engine", choices=list(ENGINES), default="auto",
+    p.add_argument("--engine", type=engine_choice, choices=list(ENGINES), default="auto",
                    help="auto (default) = hymt: Hy-MT2 1.8B (direct src->target, `tlwu-setup --hymt`), on the GPU "
                         "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
                         "command (no silent engine switch, #276); hymt7b: opt-in Hy-MT2 7B for GPUs with >= 8 GB "
-                        "(`tlwu-setup --hymt7b`, never picked by auto, #279); opus: src->en->target OPUS-MT, only "
-                        "when asked; ollama: a model served by your own local Ollama (opt-in, never installed or "
+                        "(`tlwu-setup --hymt7b`, never picked by auto, #279); ollama: a model served by your own local Ollama (opt-in, never installed or "
                         "pulled by tlwu, #356); fm: Apple's on-device model via the macOS 27 `fm` command "
                         "(opt-in, experimental)")
     p.add_argument("--ollama-model", default=None, metavar="NAME",
@@ -104,8 +103,7 @@ def parse_args(argv=None):
     p.add_argument("--stream-src", action="store_true",
                    help="with --stream: also show the dim source-language draft line above the translation")
     p.add_argument("--debug-latency", action="store_true",
-                   help="log to stderr per-stage times: ASR ms per segment, MT ms (each OPUS step, e.g. "
-                        "ru-en / en-zh) and queue wait per line; with --stream also the seconds from segment "
+                   help="log to stderr per-stage times: ASR ms per segment, MT ms and queue wait per line; with --stream also the seconds from segment "
                         "audio start to the first translated draft and to the final line")
     p.add_argument("--paced", action="store_true",
                    help="with --file: release the audio in real time and use the live clock, like live capture "
@@ -117,16 +115,16 @@ def parse_args(argv=None):
                         "prints them as 'latency: line {...}'")
     p.add_argument("--no-adapt", action="store_true",
                    help="keep the chosen models even when lines arrive late (default: if speech end -> translated "
-                        "line stays over 2 s for 3 lines, step down the translation engine, then the speech "
-                        "model, and step back up after a stable period; one stderr line per switch)")
+                        "line stays over 2 s for 3 lines, step down the speech model "
+                        "and step back up after a stable period; one stderr line per switch)")
     p.add_argument("--builtin-glossary", action="store_true",
                    help="also load the built-in tech/dev glossary (your --glossary entries win)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
                         "are given to Whisper as hotwords; entries found in the current sentence/context are "
-                        "given to Hy-MT2 as reference translations; with OPUS, `target ~ wrong | wrong` "
-                        "replaces known wrong renderings in the output. "
+                        "given to Hy-MT2 as reference translations; `target ~ wrong | wrong` "
+                        "replaces known wrong renderings in the zh output. "
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
                    help="open the graphical interface (floating subtitle bar + small control window)")
@@ -235,7 +233,6 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
     """Pick and build the MT engine (called after Whisper is loaded so free VRAM is accurate)."""
     from .engines import choose_engine
     from .hymt import JaRouter
-    from .translate import PivotTranslator
 
     name, why = (choose or choose_engine)(engine, dev, mdir)
 
@@ -267,8 +264,7 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         if size == "7b" and dev != "cuda":
             say("tlwu: WARNING: Hy-MT2 7B on the CPU is several times slower than 1.8B; it is meant for GPUs "
                 "with >= 8 GB VRAM (#279)", file=sys.stderr)
-        tr = JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev, all_pairs=True,
-                      warn=lambda m: say(m, file=sys.stderr), size=size)
+        tr = JaRouter(None, mdir, zh_variant, dev, all_pairs=True, warn=lambda m: say(m, file=sys.stderr), size=size)
         try:
             if tr.hy is None:
                 raise RuntimeError(tr.hy_error)
@@ -276,47 +272,27 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
         except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: stop, never switch engines
             raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
                              f"`tlwu-setup {flag}` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
-                             "PC), or run with --engine opus.") from e
+                             "PC).") from e
         say(f"tlwu: translation engine = {name} on {dev} ({why})", file=sys.stderr)
         return tr
-    say(f"tlwu: translation engine = {name} ({why})", file=sys.stderr)
-
-    # OPUS has no usable Japanese: ja pairs go direct through Hy-MT2 when installed, else ja -> en -> zh pivot
-    return JaRouter(PivotTranslator(mdir, zh_variant, device=dev), mdir, zh_variant, dev)
+    raise SystemExit(f"tlwu: unknown translation engine {name!r}; use --engine auto (#471)")
 
 
 def apply_glossary(translator, glossary) -> None:
-    """Hand the --glossary to the MT engine: JaRouter passes it on to Hy-MT2 (terms in its prompt) and the
-    OPUS pivot, which apply its `~` wrong-rendering fixes to their zh output (#30, #174)."""
+    """Hand the --glossary to the MT engine: JaRouter passes it on to Hy-MT2 (terms in its prompt, `~`
+    wrong-rendering fixes on the zh output, #30, #174)."""
     if hasattr(translator, "glossary"):
         translator.glossary = glossary
 
 
-def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, make_opus=None,
-                  log=None):
-    """Wrap ASR / MT so the latency controller can swap models at run time (#80).
+def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, log=None):
+    """Wrap ASR so the latency controller can swap speech models at run time (#80). The translation engine is
+    never swapped: Hy-MT2 is the only one (#471, no OPUS step-down).
     Returns (asr, translator, controller); controller is None when there is nothing to step down to."""
-    from .adapt import Ladder, LatencyController, Switchable, SwitchableTranslator, smaller_whisper
-    from .hymt import JaRouter
+    from .adapt import Ladder, LatencyController, Switchable, smaller_whisper
     from .models import whisper_installed
-    from .translate import PivotTranslator
 
     ladders = []
-    if translator is not None and not isinstance(translator, (JaRouter, PivotTranslator)):
-        def opus():
-            tr = JaRouter(PivotTranslator(mdir, a.zh_variant, device=dev), mdir, a.zh_variant, dev)
-            tr.glossary = glossary  # Hy-MT2 and the OPUS pivot behind the router (#174)
-            for src in ([a.lang] if a.lang != "auto" else (cands or [])):
-                if src != a.to:
-                    tr.preload(src, a.to)  # ModelNotFound here = OPUS is not a candidate
-            if not (mdir / "opus").is_dir():
-                raise FileNotFoundError(mdir / "opus")
-            return tr
-
-        mt = Ladder("translation engine", getattr(translator, "name", type(translator).__name__), translator,
-                    [("opus", make_opus or opus)])
-        ladders.append(mt)
-        translator = SwitchableTranslator(mt)
     if make_asr is None:
         from .asr import FasterWhisperRecognizer
 
@@ -627,3 +603,7 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         _hard_exit(0)
     return 0
+
+
+if __name__ == "__main__":  # `python -m tinglongwu.cli ...` behaves like `tlwu ...`
+    sys.exit(main())
