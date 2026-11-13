@@ -1,0 +1,56 @@
+{
+  "_about": "Single source for the support tables and the contributors block. Edit here, then run: python scripts/render_support.py (README files) / --notes TAG (release notes). Contributors come from .all-contributorsrc. Lights: 🟢 real device or release gate, 🟡 CI/eval only, ⚪ untested or unsupported, — same language. Evidence for each light goes in the release notes' developer section.",
+  "device": {
+    "header": {
+      "en": ["OS", "Install", "Translate subtitles", "Speak (voice)", "GPU", "CPU-only"],
+      "zh-TW": ["系統", "安裝", "翻譯字幕", "說話（語音）", "GPU", "純 CPU"],
+      "zh-CN": ["系统", "安装", "翻译字幕", "说话（语音）", "GPU", "纯 CPU"]
+    },
+    "rows": [
+      {"label": {"en": "Windows 10/11", "zh-TW": "Windows 10/11", "zh-CN": "Windows 10/11"}, "cells": ["🟡", "🟢", "⚪", "🟢", "🟡"]},
+      {"label": {"en": "macOS", "zh-TW": "macOS", "zh-CN": "macOS"}, "cells": ["🟡", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": {"en": "Linux (Ubuntu 24.04)", "zh-TW": "Linux（Ubuntu 24.04）", "zh-CN": "Linux（Ubuntu 24.04）"}, "cells": ["🟢", "🟢", "🟢", "⚪", "🟡"]}
+    ]
+  },
+  "language": {
+    "header": {
+      "en": ["Language", "Hear it", "To 繁體中文", "To 简体中文", "To English", "Speak it (voice)"],
+      "zh-TW": ["語言", "聽得懂", "譯成繁體中文", "譯成簡體中文", "譯成英文", "念出來（語音）"],
+      "zh-CN": ["语言", "听得懂", "译成繁体中文", "译成简体中文", "译成英文", "念出来（语音）"]
+    },
+    "rows": [
+      {"label": "中文 (zh)", "cells": ["🟢", "—", "—", "🟢", "🟢 Windows"]},
+      {"label": "English (en)", "cells": ["🟢", "🟢", "🟡", "—", "⚪"]},
+      {"label": "日本語 (ja)", "cells": ["🟢", "🟢", "🟡", "⚪", "⚪"]},
+      {"label": "Русский (ru)", "cells": ["🟡", "🟡", "🟡", "⚪", "🟢 Linux"]},
+      {"label": "한국어 (ko)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]}
+    ]
+  },
+  "legend": {
+    "en": "🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language",
+    "zh-TW": "🟢 已在實機或發版關卡測試 · 🟡 只在 CI 或評測測過，尚未上實機（Windows 安裝：指安裝精靈；可攜版 zip 已實機測試。純 CPU：尚未在實體筆電量延遲） · ⚪ 尚未測試或不支援 · — 同一語言",
+    "zh-CN": "🟢 已在实机或发版关卡测试 · 🟡 仅在 CI 或评测测过，尚未上实机（Windows 安装：指安装向导；便携版 zip 已实机测试。纯 CPU：尚未在实体笔记本测延迟） · ⚪ 尚未测试或不支持 · — 同一语言"
+  },
+  "contributors": {
+    "heading": {"en": "Built with help from {n} people", "zh-TW": "感謝 {n} 位朋友一起打造", "zh-CN": "感谢 {n} 位朋友一起打造"},
+    "emoji": {"code": "💻", "bug": "🐛", "doc": "📖", "ideas": "🤔", "maintenance": "🚧"},
+    "ai": {
+      "en": "AI helpers: 🤖 <a href=\"https://www.anthropic.com/claude\">Claude</a> (Anthropic) · 🤖 <a href=\"https://www.coderabbit.ai\">CodeRabbit</a> (code review)",
+      "zh-TW": "AI 幫手：🤖 <a href=\"https://www.anthropic.com/claude\">Claude</a>（Anthropic） · 🤖 <a href=\"https://www.coderabbit.ai\">CodeRabbit</a>（程式碼審查）",
+      "zh-CN": "AI 帮手：🤖 <a href=\"https://www.anthropic.com/claude\">Claude</a>（Anthropic） · 🤖 <a href=\"https://www.coderabbit.ai\">CodeRabbit</a>（代码审查）"
+    },
+    "legend": {
+      "en": "💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)",
+      "zh-TW": "💻 程式 · 🐛 回報問題 · 📖 文件 · 🤔 點子 · 🚧 維護 · 🤖 AI 工具（不算在人數內）",
+      "zh-CN": "💻 代码 · 🐛 报告问题 · 📖 文档 · 🤔 点子 · 🚧 维护 · 🤖 AI 工具（不计入人数）"
+    }
+  },
+  "download": [
+    "- **Windows 10/11**: [tinglongwu-setup-{ver}.exe]({base}tinglongwu-setup-{ver}.exe). Run it, accept the license, then keep clicking **Next**; stay online while it downloads about 3 GB of packages plus 2-3 GB of models (10-40 minutes).",
+    "  SmartScreen says \"Windows protected your PC\"? Click **More info**, then **Run anyway** (the installer is not code-signed).",
+    "- **macOS**: paste into Terminal: `curl -fsSL {base}mac_install.sh | bash`",
+    "  It needs Homebrew and asks for your Mac password while installing the BlackHole audio driver (typing shows nothing). If a step fails, run the same command again.",
+    "- **Linux** (Ubuntu 24.04 tested): `curl -fsSL {base}install.sh | bash`",
+    "  Run it as a normal user, not root. If system packages are missing it asks `Install them now with apt (uses sudo)? [y/N]`; answer `y` (or set `TLWU_YES=1`)."
+  ]
+}

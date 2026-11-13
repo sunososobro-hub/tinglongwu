@@ -4,38 +4,38 @@ Offline real-time speech translation for meetings and calls.
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-<!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
-
-## Install
-
-| OS | Command |
+| OS | Install (latest release) |
 |---|---|
-| Windows (PowerShell) | `irm https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/bootstrap_windows.ps1 \| iex` |
-| macOS (Terminal) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/mac_install.sh \| bash` |
-| Linux (bash) | `curl -fsSL https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/install.sh \| bash` |
+| Windows 10/11 (64-bit) | Download [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe), run it, accept the license, then keep clicking **Next** |
+| macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
+| Linux (x86_64, Ubuntu 24.04 tested) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
-### What you might see during install
+<!-- SUPPORT:START -->
+| OS | Install | Translate subtitles | Speak (voice) | GPU | CPU-only |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Windows 10/11 | 🟡 | 🟢 | ⚪ | 🟢 | 🟡 |
+| macOS | 🟡 | ⚪ | ⚪ | ⚪ | ⚪ |
+| Linux (Ubuntu 24.04) | 🟢 | 🟢 | 🟢 | ⚪ | 🟡 |
 
-tinglongWu is a small open-source project and does not pay for a Windows code-signing certificate or an Apple Developer account, so a few warnings are normal:
+| Language | Hear it | To 繁體中文 | To 简体中文 | To English | Speak it (voice) |
+|---|:-:|:-:|:-:|:-:|:-:|
+| 中文 (zh) | 🟢 | — | — | 🟢 | 🟢 Windows |
+| English (en) | 🟢 | 🟢 | 🟡 | — | ⚪ |
+| 日本語 (ja) | 🟢 | 🟢 | 🟡 | ⚪ | ⚪ |
+| Русский (ru) | 🟡 | 🟡 | 🟡 | ⚪ | 🟢 Linux |
+| 한국어 (ko) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
-- **Windows:** the PowerShell command above does not trigger SmartScreen, but if you download the Windows release zip or an exe, it is not code-signed (see [docs/install.md](docs/install.md#releases-read-before-trusting-a-binary)). Microsoft SmartScreen may then show "Windows protected your PC": click **More info**, then **Run anyway**. Some antivirus tools may also flag unsigned builds. The source is public, and every release lists SHA256 checksums (`SHA256SUMS.txt`) so you can verify your download.
-- **macOS:** the install is the one-line Terminal command above (no app to double-click), so there is no "unidentified developer" prompt for tinglongWu itself. It needs Homebrew first: if it is missing, the script stops and prints the official install command (https://brew.sh); follow its "Next steps", open a new Terminal window, and run the command again. Expect: Homebrew installs Python, git and the BlackHole audio drivers and asks for your Mac password once; if macOS blocks a driver installer, allow it in System Settings > Privacy & Security (**Open Anyway**) and re-run the command; a restart may be needed before BlackHole shows up; on first run macOS asks to let Terminal use the microphone (click OK, or enable it in Privacy & Security > Microphone).
-- **Linux:** nothing special. The script asks y/N before any `apt` step.
+🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language
 
-## Verification status
+<p><b>Built with help from 4 people</b></p><table><tr><td align="center"><a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=60" width="60" height="60" alt="sunososobro-hub"><br><sub><b>sunososobro-hub</b></sub></a><br>💻 📖 🚧</td><td align="center"><a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=60" width="60" height="60" alt="cook1e0728"><br><sub><b>cook1e0728</b></sub></a><br>💻</td><td align="center"><a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=60" width="60" height="60" alt="psgo555"><br><sub><b>psgo555</b></sub></a><br>🐛</td><td align="center"><a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=60" width="60" height="60" alt="jchodev"><br><sub><b>jchodev</b></sub></a><br>💻 🤔</td></tr></table><p><sub>AI helpers: 🤖 <a href="https://www.anthropic.com/claude">Claude</a> (Anthropic) · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a> (code review)</sub><br><sub>💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)</sub></p><!-- SUPPORT:END -->
 
-![Verification status](docs/img/verification.svg)
+First time? See [what you might see during install](docs/install.md#what-you-might-see-during-install) (unsigned-app warnings are expected). <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
 
 ![Latency](docs/img/latency.svg)
 
-![Languages](docs/img/languages.svg)
-
-## Docs
-
-**[Docs (install options, requirements, privacy, FAQ, all guides)](https://sunososobro-hub.github.io/tinglongwu/docs.html)** · [docs/details.md](docs/details.md)
+## [Docs](https://sunososobro-hub.github.io/tinglongwu/docs.html) (install options, requirements, privacy, FAQ, all guides) · [docs/details.md](docs/details.md)
 
 ## Contributors
-
 Contributions of any kind welcome — bug reports count too.
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
