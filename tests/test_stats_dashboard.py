@@ -150,6 +150,82 @@ def test_percentile_hours_p90_nearest_rank():
     assert sd.percentile_hours([], 90) is None
 
 
+FLOW_ITEMS = [
+    {"model": "opus", "minutes": 10, "labels": ["bug", "mode:speak", "os:windows", "lang:en"]},
+    {"model": "sonnet", "minutes": 20, "labels": ["enhancement", "mode:listen", "os:linux", "lang:zh"]},
+    {"model": "sonnet", "minutes": 20, "labels": ["documentation"]},  # no dimension labels
+]
+
+
+def test_parse_usage_and_faucet_574():
+    assert sd.parse_usage("x\ntlwu-usage: model=Opus tool_calls=3 minutes=12.5") == ("opus", 12.5)
+    assert sd.parse_usage("no usage line") is None
+    assert sd.parse_faucet("level: 3\nfocus: speak\nlegend...") == {"level": 3, "focus": ["speak"]}
+    assert sd.parse_faucet("level: 2") == {"level": 2, "focus": []}
+    assert sd.parse_faucet("garbage") is None and sd.parse_faucet(None) is None
+
+
+def test_flow_totals_weight_opus_2x_and_unlabelled_node():
+    f = sd.build_flow(FLOW_ITEMS)
+    assert f["total"] == 60.0  # 10 x 2 (opus) + 20 + 20
+    assert sum(n["share"] for n in f["modes"]) == 100.0 or abs(sum(n["share"] for n in f["modes"]) - 100.0) < 1e-9
+    assert abs(sum(n["share"] for n in f["platforms"]) - 100.0) < 1e-9
+    assert abs(sum(n["share"] for n in f["langs"]) - 100.0) < 1e-9
+    modes = {n["name"]: n["quota"] for n in f["modes"]}
+    assert modes == {"speak": 20.0, "listen": 20.0, "unlabelled": 20.0}
+    assert {n["name"] for n in f["platforms"]} == {"windows", "linux", "unlabelled"}
+    mix = {r["type"]: r for r in f["type_mix"]}
+    assert abs(mix["bug"]["share"] - 100 * 20 / 60) < 1e-9 and mix["bug"]["target"] == 30
+    assert abs(mix["bug"]["delta"] - (100 * 20 / 60 - 30)) < 1e-9
+    assert mix["eval"]["share"] == 0.0 and mix["documentation"]["target"] == 5
+    assert abs(sum(r["share"] for r in f["type_mix"]) - 100.0) < 1e-9
+
+
+def test_flow_empty_and_render_inline_svg_with_focus_orange():
+    assert sd.build_flow([])["total"] == 0
+    assert "No quota" in sd.render_sankey(sd.build_flow([]))
+    svg = sd.render_sankey(sd.build_flow(FLOW_ITEMS), focus=["speak"])
+    assert svg.startswith("<svg") and "<path" in svg and "speak 33%" in svg
+    assert sd.FOCUS_ORANGE in svg
+    assert sd.FOCUS_ORANGE not in sd.render_sankey(sd.build_flow(FLOW_ITEMS), focus=[])
+
+
+def test_run_renders_flow_type_mix_and_faucet(tmp_path):
+    def api(path, accept=None):
+        if path == "/repos/o/r/issues/574":
+            return {"body": "level: 4\nfocus: speak\n"}
+        if path == "/repos/o/r/issues/9":
+            return {"labels": [{"name": "bug"}, {"name": "mode:speak"}, {"name": "os:windows"}, {"name": "lang:en"}]}
+        if "/pulls?" in path:
+            return [{"created_at": "2026-11-12T08:00:00Z", "merged_at": "2026-11-12T10:00:00Z",
+                     "body": "Closes #9\ntlwu-usage: model=opus tool_calls=5 minutes=10"},
+                    {"created_at": "2026-11-01T08:00:00Z", "merged_at": "2026-11-01T10:00:00Z",  # outside 48 h
+                     "body": "Closes #9\ntlwu-usage: model=opus tool_calls=5 minutes=99"}]
+        return fake_api(path, accept)
+    sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    series = json.loads((tmp_path / "series.json").read_text())
+    assert series["flow"]["total"] == 20.0 and series["faucet"] == {"level": 4, "focus": ["speak"]}
+    assert "Where the quota goes" in page and "Type mix vs target" in page
+    assert "Faucet level <b>4</b>" in page and "% of quota" in page
+    assert page.index("Where the quota goes") < page.index("Work finished per day")
+
+
+def test_run_without_faucet_or_usage_does_not_fail(tmp_path):
+    sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW)  # fake_api rejects #574 -> degraded
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "Faucet level unavailable" in page and "No quota minutes" in page
+
+
+def test_label_with_placeholder_is_not_substituted_again():
+    flow = sd.build_flow([{"model": "sonnet", "minutes": 5,
+                           "labels": ["mode:__DATA__<img src=x onerror=alert(1)>"]}])
+    series = {"repo": "o/r", "branch": "dev", "flow": flow, "faucet": None, "days": [], "created": "2026-11-10"}
+    page = sd.render_html(series)
+    head = page[:page.index('<script id="d"')]
+    assert "<img" not in head and "__DATA__" in head and "&lt;img" in head
+
+
 def test_speed_block_shows_medians_only_for_three_windows(tmp_path):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW)
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
