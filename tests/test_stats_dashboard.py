@@ -94,6 +94,18 @@ def test_group_of_prefixes():
     assert sd.group_of("P7") is None and sd.group_of("bug") is None
 
 
+def test_mode_and_lang_dimensions_585():
+    assert sd.group_of("mode:speak") == ("mode", "speak")
+    assert sd.group_of("lang:ja") == ("lang", "ja")
+    assert "mode" in sd.GROUPS and "lang" in sd.GROUPS
+    issue = {"number": 7, "created_at": "2026-11-09T00:00:00Z", "closed_at": None,
+             "labels": [{"name": "mode:two-way"}, {"name": "lang:zh"}, {"name": "lang:ru"}]}
+    assert sd.group_series([issue], {}, DAYS, "mode") == {"two-way": [1, 1, 1]}
+    assert sd.group_series([issue], {}, DAYS, "lang") == {"zh": [1, 1, 1], "ru": [1, 1, 1]}
+    plain = dict(issue, number=8, labels=[{"name": "bug"}])
+    assert sd.group_series([plain], {}, DAYS, "lang") == {"(none)": [1, 1, 1]}
+
+
 def test_tokens_at_reconstructs_history():
     ev = [("2026-11-10T01:00:00Z", "add", "status:doing"),
           ("2026-11-10T01:00:00Z", "remove", "status:todo"),
