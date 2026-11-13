@@ -34,10 +34,16 @@ def median_f0(pcm, sr: int, frame_s: float = 0.04) -> float | None:
         ac = np.correlate(f, f, mode="full")[n - 1:]
         if ac[0] <= 0:
             continue
+        ac = ac / (n - np.arange(n)) * n  # unbiased: long lags are not penalised for overlapping less
         seg = ac[lo:hi + 1] / ac[0]
-        k = int(np.argmax(seg))
-        if seg[k] < 0.3:  # weak periodicity: unvoiced (fricatives, noise)
+        peak = float(seg.max())
+        if peak < 0.3:  # weak periodicity: unvoiced (fricatives, noise)
             continue
+        # the true period peaks at ~1.0, but so do its multiples (sub-octaves) and a strong 2nd harmonic gets close
+        # at half the period: take the shortest lag within 5% of the best one, so 2*T wins over a weaker T/2
+        k = int(np.argmax(seg >= 0.95 * peak))
+        while k + 1 < seg.size and seg[k + 1] > seg[k]:  # climb to the local maximum
+            k += 1
         f0s.append(sr / (lo + k))
     return float(np.median(f0s)) if f0s else None
 

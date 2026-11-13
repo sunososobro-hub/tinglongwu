@@ -654,8 +654,13 @@ def check_args(a) -> str | None:
         return "--from en speaks Chinese to the other side: use --to zh (or leave --to out)"
     if src == "zh" and a.to == "zh":
         return "--to zh needs --from en (you speak English, the other side hears Chinese)"
+    if not hasattr(a, "speaker_given"):  # check_args may run twice: the second pass sees the default filled in
+        a.speaker_given = a.speaker is not None
     if a.to == "follow" and getattr(a, "voice", None):  # #319: the probe would also switch the English voice
-        return "--voice picks a Vosk Russian voice: use --to ru (with --to follow use --speaker N)"
+        if not a.speaker_given:
+            return "--voice picks a Vosk Russian voice: use --to ru (with --to follow use --speaker N)"
+        print(f"tlwu: --speaker {a.speaker} given, --voice {a.voice} ignored", file=sys.stderr, flush=True)
+        a.voice = None
     if a.to == "follow":
         if not a.no_tts:
             if a.tts_engine != "kokoro" or not a.tts_model:
@@ -667,8 +672,6 @@ def check_args(a) -> str | None:
         return None
     from ..models import piper_onnx
 
-    if not hasattr(a, "speaker_given"):  # check_args may run twice: the second pass sees the default filled in
-        a.speaker_given = a.speaker is not None
     if getattr(a, "voice", None) and not a.no_tts:
         if a.speaker_given:  # #319: an explicit id wins
             print(f"tlwu: --speaker {a.speaker} given, --voice {a.voice} ignored", file=sys.stderr, flush=True)

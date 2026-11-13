@@ -129,3 +129,17 @@ def test_auto_engine_prefers_vosk_for_voice_unless_speaker_given(tmp_path, monke
     a = _auto_ns(speaker=2)  # --speaker wins, so --voice is dropped: keep the default Piper voice
     proto.resolve_tts_engine(a)
     assert (a.tts_engine, a.tts_model) == ("piper", str(piper))
+
+
+def test_dominant_second_harmonic_still_gives_the_fundamental():
+    """A 120 Hz voice whose 240 Hz harmonic is 6x stronger must not read as 240 Hz (female); the biased ACF did."""
+    t = np.arange(SR) / SR
+    x = (np.sin(2 * np.pi * 120 * t) / 6 + np.sin(2 * np.pi * 240 * t)).astype(np.float32) * 0.3
+    f0 = vp.median_f0(x, SR)
+    assert f0 == pytest.approx(120, rel=0.05) and vp.gender(f0) == "male"
+
+
+def test_follow_mode_speaker_wins_over_voice(capsys):
+    a = _parse(["--voice", "female", "--speaker", "2", "--to", "follow", "--no-tts"])
+    assert (a.voice, a.speaker) == (None, 2)
+    assert "--voice female ignored" in capsys.readouterr().err
