@@ -67,6 +67,45 @@ def test_pack_cli_writes_a_dated_run_file(tmp_path):
     src = _jsonl(tmp_path / "lat.jsonl", [1.2, 1.4])
     assert m.main(["pack", str(src), "--tier", "high", "--hardware", "RTX 4090", "--model", "large-v3",
                    "--engine", "hymt", "--preset", "chat", "--pair", "ja->zh-TW", "--date", "2026-11-13"], runs) == 0
-    run = json.loads((runs / "2026-11-13_high_ja_chat.json").read_text("utf-8"))
+    run = json.loads((runs / "2026-11-13_high_ja_zh-TW_chat_hymt.json").read_text("utf-8"))
     assert run["hardware"] == "RTX 4090" and [r["total"] for r in run["records"]] == [1.2, 1.4]
     assert "text" not in run["records"][0]  # only timings are committed, not what was said
+
+
+
+def test_pack_refuses_to_overwrite_and_drops_records_without_total(tmp_path):
+    m = _mod()
+    runs = tmp_path / "runs"
+    first = _pack(m, tmp_path, "lat.jsonl", runs, "high", "ja", "chat", [1.2, 1.4])
+    assert _pack(m, tmp_path, "ru.jsonl", runs, "high", "ru", "chat", [2.0]) != first  # other pair, other file
+    try:
+        _pack(m, tmp_path, "again.jsonl", runs, "high", "ja", "chat", [9.9])
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("a second session with the same name must not replace the first")
+    assert [r["total"] for r in json.loads(first.read_text("utf-8"))["records"]] == [1.2, 1.4]
+    meta = {"date": "2026-11-14", "tier": "high", "hardware": "x", "model": "m", "engine": "hymt",
+            "preset": "chat", "pair": "ja->zh-TW"}
+    mixed = _jsonl(tmp_path / "mixed.jsonl", [1.5])
+    with mixed.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"vad": 0.5, "asr": 0.2, "total": None}) + "\n")  # no end-to-end figure
+    out = m.pack(mixed, meta, runs)
+    assert [r["total"] for r in json.loads(out.read_text("utf-8"))["records"]] == [1.5]
+    m.cells(m.load_runs(runs))  # every committed record has `total`, so regenerating cannot hit a KeyError
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text(json.dumps({"vad": 0.5, "total": None}) + "\n", "utf-8")
+    try:
+        m.pack(bad, {**meta, "date": "2026-11-15"}, runs)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a file with no usable records must be rejected")
+
+
+def test_unknown_argument_is_an_error_not_a_rewrite(tmp_path):
+    m = _mod()
+    doc, svg = tmp_path / "latency.md", tmp_path / "chart.svg"
+    doc.write_text("# Latency\n", "utf-8")
+    assert m.main(["--chek"], tmp_path / "runs", doc, svg) == 2
+    assert doc.read_text("utf-8") == "# Latency\n" and not svg.exists()

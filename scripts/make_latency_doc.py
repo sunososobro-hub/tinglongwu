@@ -5,8 +5,8 @@ records of one `tlwu --file CLIP --paced --latency-jsonl L.jsonl` session (#323:
 the translated line shown, field `total`) together with the machine and settings it ran on.
 
   python scripts/make_latency_doc.py pack L.jsonl --tier mid-gpu --hardware "RTX 3050 8 GB" \\
-      --model large-v3-turbo --engine hymt --preset meeting --pair en->zh-TW [--date YYYY-MM-DD]
-      -> eval/latency/<date>_<tier>_<src>_<preset>.json
+      --model large-v3-turbo --engine hymt --preset meeting --pair 'en->zh-TW' [--date YYYY-MM-DD]
+      -> eval/latency/<date>_<tier>_<src>_<tgt>_<preset>_<engine>.json
   python scripts/make_latency_doc.py           rewrite the generated block of docs/latency.md and the chart
   python scripts/make_latency_doc.py --check   exit 1 when either is stale (the doc test runs this)
 
@@ -36,11 +36,15 @@ META = ("date", "tier", "hardware", "model", "engine", "preset", "pair")
 
 def pack(jsonl: Path, meta: dict, out_dir: Path = RUNS) -> Path:
     recs = [json.loads(line) for line in jsonl.read_text("utf-8").splitlines() if line.strip()]
-    recs = [{k: r[k] for k in ("total", "vad", "asr", "merge", "mt", "draft") if r.get(k) is not None} for r in recs]
+    recs = [{k: r[k] for k in ("total", "vad", "asr", "merge", "mt", "draft") if r.get(k) is not None}
+            for r in recs if r.get("total") is not None]  # a record without `total` has no end-to-end figure
     if not recs:
         raise ValueError(f"{jsonl}: no latency records")
-    src = meta["pair"].split("->")[0]
-    out = out_dir / f"{meta['date']}_{meta['tier']}_{src}_{meta['preset']}.json"
+    src, _, tgt = meta["pair"].partition("->")
+    name = "_".join([meta["date"], meta["tier"], src, tgt, meta["preset"], meta["engine"]])
+    out = out_dir / f"{''.join(ch if ch.isalnum() or ch in '-_.' else '-' for ch in name)}.json"
+    if out.exists():  # never silently replace an earlier measurement session
+        raise FileExistsError(f"{out} already exists; pass a different --date or remove it first")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({**meta, "records": recs}, ensure_ascii=False, indent=1) + "\n", "utf-8")
     return out
@@ -148,6 +152,9 @@ def main(argv=None, runs_dir: Path = RUNS, doc_path: Path = DOC, svg_path: Path 
         a = p.parse_args(argv[1:])
         print("wrote", pack(a.jsonl, {k: getattr(a, k) for k in META}, runs_dir))
         return 0
+    if argv not in ([], ["--check"]):
+        print("usage: make_latency_doc.py [--check] | pack L.jsonl --tier ... (see the module docstring)", file=sys.stderr)
+        return 2
     check = argv == ["--check"]
     cs = cells(load_runs(runs_dir))
     doc, svg = render_doc(doc_path.read_text("utf-8"), cs), chart(cs)
