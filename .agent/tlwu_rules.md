@@ -79,7 +79,7 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 
 ### Area lock
 - Each issue carries exactly one `area:*` label. A worker skips an issue whose area already has an open PR or a `status:doing` issue (P0 exempt). This tightens section 8 (file overlap) - both apply.
-- Race: after claiming (section 2) and adding `status:doing`, re-check the area (skip the re-check when the claimed issue is P0). If another non-P0 `status:doing` issue or open PR in the same area exists with a lower issue number, release: delete branch `fix/N`, swap `status:doing` back to `status:todo`, take the next item.
+- Race: after claiming (section 2) and adding `status:doing`, re-check the area (skip the re-check when the claimed issue is P0). If another non-P0 `status:doing` issue or open PR in the same area exists with a lower issue number, release: delete the branch the worker claimed (`fix/N`, or `fix/N-rK` on a retry), swap `status:doing` back to `status:todo`, take the next item.
 - Release: the area lock ends when the issue's PR is merged or closed and `status:doing` is removed (the merger or the watchdog removes it).
 
 ### Usage line
