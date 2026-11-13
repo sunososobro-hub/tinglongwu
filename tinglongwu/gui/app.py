@@ -326,8 +326,8 @@ class App:
             except Exception:  # noqa: BLE001
                 pass
         st = ttk.Style(self.root)  # #455: tighter buttons keep the control bar within 420 px (per theme)
-        for name in ("Bar.TButton", "Bar.Toolbutton"):
-            st.configure(name, padding=(4, 1))
+        for style in ("Bar.TButton", "Bar.Toolbutton"):
+            st.configure(style, padding=(4, 1))
 
     def _toggle_theme(self):
         self.apply_theme("dark" if self.v_dark.get() else "light")
@@ -393,7 +393,7 @@ class App:
                      key).pack(side="left")
         self.v_pair = tk.StringVar()
         ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
-        for v in (self.v_lang, self.v_target):
+        for v in (self.v_lang, self.v_target, self.v_mode):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
         self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
@@ -410,7 +410,11 @@ class App:
         self.toggle("speak" if self.v_mode.get() == "speak" else None)
 
     def _pair_changed(self):
-        self.v_pair.set(f"{lang_from_label(self.v_lang.get())}→{self.v_target.get()}")
+        """The direction the next Start runs: Speak flips it the #294 way (my language -> the other one)."""
+        s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
+        if self.v_mode.get() == "speak":
+            s = quick_settings(s, "speak")
+        self.v_pair.set(f"{s['lang']}→{s['target']}")
 
     def set_dot(self, name: str):
         self.dot_state = name

@@ -491,7 +491,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     for w in a.bar.winfo_children():
         if "text" in w.keys() and w.cget("text") == "Speak":
             w.invoke()
-    assert a.v_mode.get() == "speak"
+    assert a.v_mode.get() == "speak" and a.v_pair.get() == "en→zh-tw"  # the label shows the Speak direction
     a.btn.invoke()  # Speak + Start: mic in my language (en) -> zh-tw, as the #294 "I speak" button
     a.toggle()
     a.worker.join(5)
