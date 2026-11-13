@@ -33,6 +33,7 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 from fnmatch import fnmatchcase
 
 REPO = "sunososobro-hub/tinglongwu"
@@ -102,7 +103,7 @@ def denylist_hits(files: list[dict]) -> list[str]:
                 out.append(f"{name}: no readable patch (binary or too large)")
             continue
         for ln in added_lines(patch):
-            m = _DENY_RX.search(ln)
+            m = _DENY_RX.search(unicodedata.normalize("NFKC", ln))  # Python NFKC-folds identifiers (PEP 3131)
             if m:
                 out.append(f"{name}: adds '{m.group(0)}'")
     return out

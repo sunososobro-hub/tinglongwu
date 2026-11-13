@@ -227,3 +227,10 @@ def test_head_moving_during_fetch_fails_closed():
     files, runs, got = eg.fetch_pr(7, gh=gh)
     r = eg.evaluate(files, runs, "PASS", got)
     assert r["lane"] == "owner" and r["failed"] == ["r0_snapshot"]
+
+
+@pytest.mark.parametrize("line", ["\uff45val('1')", "__\uff49mport__('x')", "\uff4fs.\uff53ystem('x')"])
+def test_r3_fullwidth_lookalike_identifiers_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
