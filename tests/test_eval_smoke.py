@@ -66,7 +66,7 @@ def test_smoke_report_per_stage_times_and_pass(tmp_path):
     assert len(en["clips"]) == 5  # 6 in the manifest, smoke takes 5 per language
     assert en["seconds"] == {"load": 1.0, "asr": pytest.approx(2.0), "mt": pytest.approx(1.0), "tts": None}
     assert en["asr_rtf"] == pytest.approx(0.2) and en["mt_median_s"] == pytest.approx(0.2)  # 0.4 s per 2 s clip
-    assert en["stages"] == {"asr": "PASS", "mt": "PASS", "tts": "SKIP", "time": "PASS", "kana": "PASS"}
+    assert en["stages"] == {"asr": "PASS", "mt": "PASS", "tts": "SKIP", "time": "PASS", "kana": "PASS", "vram": "SKIP"}
     assert en["error_rate"] == 0 and en["chrf"] == 100.0 and en["clips"][0]["latency_s"] == pytest.approx(0.6)
     assert rep["peak_ram_mib"] == 2000 and rep["peak_vram_mib"] is None
     sc = rep["score"]
@@ -133,3 +133,22 @@ def test_kana_in_zh_output_turns_smoke_red(tmp_path):
     assert ja["kana_rate"] == 100.0 and ja["stages"]["kana"] == "FAIL" and not bad["pass"]
     zh = next(lg for lg in bad["languages"] if lg["pair"] == "zh->en")
     assert zh["kana_rate"] is None and zh["stages"]["kana"] == "SKIP"
+
+
+def test_peak_vram_per_pair_and_red_over_budget(tmp_path):
+    """#122: 8 GB card, budget 7372.8 MiB (90 %); the owner's deluxe peak of 7545 MiB must be red."""
+    clock = Clock()
+    rows = runner.load_manifest(make_data(tmp_path))
+    rep = runner.run_smoke(rows, fake_engines(clock), clock=clock, ram=lambda: 2000.0, vram=lambda: 7545.0,
+                           totals=(16000, 8192))
+    en = rep["languages"][0]
+    assert en["peak_vram_mib"] == 7545 and en["vram_budget_mib"] == pytest.approx(7372.8)
+    assert en["stages"]["vram"] == "FAIL" and not rep["pass"]
+
+
+def test_vram_under_budget_is_green(tmp_path):
+    clock = Clock()
+    rows = runner.load_manifest(make_data(tmp_path))
+    rep = runner.run_smoke(rows, fake_engines(clock), clock=clock, ram=lambda: 2000.0, vram=lambda: 6000.0,
+                           totals=(16000, 8192))
+    assert all(lg["stages"]["vram"] == "PASS" for lg in rep["languages"]) and rep["pass"]

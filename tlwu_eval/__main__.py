@@ -22,7 +22,9 @@ def format_report(rep: dict) -> str:
         lines.append(f"{lg['pair']}: load {s['load']:.1f}s | ASR {s['asr']:.1f}s RTF {lg['asr_rtf']} {st['asr']} | "
                      f"MT {s['mt']:.1f}s median {lg['mt_median_s']}s {st['mt']} | {tts} | "
                      f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}% chrF {lg['chrf']}"
-                     + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}"))
+                     + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}")
+                     + ("" if st.get("vram") == "SKIP" else f" | VRAM {lg['peak_vram_mib']} MiB (budget "
+                        f"{lg['vram_budget_mib']}) {st['vram']}"))
     lines += [f"{p}: SKIP (no clips in the manifest)" for p in rep["skipped"]]
     mib = (lambda v: "n/a" if v is None else f"{v} MiB")
     lines.append(f"smoke: {'PASS' if rep['pass'] else 'FAIL'} - total {rep['total_s']:.0f}s (budget "
