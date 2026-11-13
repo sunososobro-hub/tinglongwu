@@ -289,3 +289,23 @@ def test_r3_more_network_modules_fail(line):
     files = _ok_files()
     files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
     assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+
+@pytest.mark.parametrize("runs", [[{"name": "lint", "status": "completed", "conclusion": "success"}],
+                                  [{"name": "test", "status": "completed", "conclusion": "skipped"}]])
+def test_r4_required_test_check_missing_or_skipped_fails(runs):
+    assert _lane(_ok_files(), runs=runs)["failed"] == ["r4_tests"]
+
+
+@pytest.mark.parametrize("line", ["os.startfile('cmd.exe')", "import _winapi"])
+def test_r3_windows_process_launch_fails(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r2_existing_file_using_startfile_is_owner_only(_empty_base_checkout):
+    (_empty_base_checkout / "tinglongwu").mkdir()
+    (_empty_base_checkout / "tinglongwu" / "fmt.py").write_text("import os\nos.startfile(p)\n")
+    assert _lane(_ok_files())["failed"] == ["r2_paths"]

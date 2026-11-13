@@ -59,15 +59,17 @@ _DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|e
                        r"\bsystem\b", r"popen", r"spawn", r"\bfork\b", r"\bexec[lv]p?e?\b",
                        r"\bgetattr\s*\(", r"\bglobals\s*\(", r"\bvars\s*\(", r"__builtins__",
                        r"asyncio", r"\bssl\b", r"ftplib", r"smtplib", r"telnetlib", r"xmlrpc", r"webbrowser",
-                       r"open_connection", r"create_connection", r"start_server", r"multiprocessing"]),
+                       r"open_connection", r"create_connection", r"start_server", r"multiprocessing",
+                       r"startfile", r"_winapi"]),
                       re.IGNORECASE)  # extra patterns catch "eval (x)" and "os . system" (whitespace is legal Python)
 GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
+REQUIRED_CHECKS = frozenset({"test"})  # the pytest job in .github/workflows/ci.yml; must exist and succeed
 ROOT = Path(__file__).resolve().parent.parent
 # A file that ALREADY runs processes or opens connections is owner-only: an edit to an argument list or a
 # runner= default on another line changes what runs without adding any denylisted word. Checked against
 # the base checkout the gate runs from (--root), so the list never goes stale.
 _RISKY_FILE_RX = re.compile(r"^\s*(?:import|from)\s+(?:subprocess|socket|http|urllib|asyncio|ssl|multiprocessing|"
-                            r"ctypes|webbrowser|ftplib|smtplib|telnetlib|xmlrpc)\b|\bos\.(?:system|popen|exec|spawn)",
+                            r"ctypes|webbrowser|ftplib|smtplib|telnetlib|xmlrpc|_winapi)\b|\bos\.(?:system|popen|exec|spawn|startfile)",
                             re.MULTILINE)
 
 
@@ -137,6 +139,9 @@ def checks_green(check_runs: list[dict] | None) -> tuple[bool, str]:
            if c.get("status") != "completed" or c.get("conclusion") not in GREEN_CONCLUSIONS]
     if bad:
         return False, "not green: " + ", ".join(sorted(bad))
+    ok = {c.get("name") for c in check_runs if c.get("status") == "completed" and c.get("conclusion") == "success"}
+    if missing := sorted(REQUIRED_CHECKS - ok):
+        return False, "required check not successful: " + ", ".join(missing)
     return True, ""
 
 
