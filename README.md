@@ -16,13 +16,14 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 | macOS | 🟡 | ⚪ | ⚪ | ⚪ | ⚪ |
 | Linux (Ubuntu 24.04) | 🟢 | 🟢 | 🟢 | ⚪ | 🟡 |
 
-| Language | Hear it | To Chinese | To English | Speak it (voice) |
-|---|:-:|:-:|:-:|:-:|
-| 中文 (zh) | 🟢 | — | 🟢 | 🟢 |
-| English (en) | 🟢 | 🟢 | — | ⚪ |
-| 日本語 (ja) | 🟢 | 🟢 | ⚪ | ⚪ |
-| Русский (ru) | 🟡 | 🟡 | ⚪ | 🟡 |
-| 한국어 (ko) | ⚪ | ⚪ | ⚪ | ⚪ |
+| Language | Hear it | To 繁體中文 | To 简体中文 | To English | Speak it (voice) |
+|---|:-:|:-:|:-:|:-:|:-:|
+| 繁體中文 (zh-TW) | 🟢 | — | 🟡 | 🟢 | 🟢 |
+| 简体中文 (zh-CN) | 🟡 | 🟡 | — | 🟢 | ⚪ |
+| English (en) | 🟢 | 🟢 | 🟡 | — | ⚪ |
+| 日本語 (ja) | 🟢 | 🟢 | 🟡 | ⚪ | ⚪ |
+| Русский (ru) | 🟡 | 🟡 | 🟡 | ⚪ | 🟡 |
+| 한국어 (ko) | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 
 🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language
 
@@ -32,8 +33,7 @@ First time? See [what you might see during install](docs/install.md#what-you-mig
 
 ![Latency](docs/img/latency.svg)
 
-## Docs
-**[Docs (install options, requirements, privacy, FAQ, all guides)](https://sunososobro-hub.github.io/tinglongwu/docs.html)** · [docs/details.md](docs/details.md)
+## [Docs](https://sunososobro-hub.github.io/tinglongwu/docs.html) (install options, requirements, privacy, FAQ, all guides) · [docs/details.md](docs/details.md)
 
 ## Contributors
 Contributions of any kind welcome — bug reports count too.
