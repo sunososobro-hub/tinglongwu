@@ -29,6 +29,7 @@ jobs:
       contents: read
     defaults:
       run:
+        shell: bash   # -eo pipefail: a failing aapt/apksigner in a pipe fails the step
         working-directory: mobile
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -61,13 +62,6 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      # Without a release key, keep the same debug key between runs so a new preview installs over the
-      # old one (Android refuses an update signed by a different key, and uninstalling deletes models).
-      - name: Keep the CI debug signing key between runs
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: ~/.android/debug.keystore
-          key: mobile-debug-keystore-v1
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -80,8 +74,10 @@ jobs:
             echo "TLWU_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "TLWU_SIGNING=release key" >> "$GITHUB_ENV"
           else
-            echo "::notice::ANDROID_KEYSTORE_B64 not set: APK is debug-signed (CI debug key)"
-            echo "TLWU_SIGNING=CI debug key (no release key configured)" >> "$GITHUB_ENV"
+            # A fresh throwaway debug key per run: a signing key must never sit in the Actions cache,
+            # which pull-request jobs can read. Updates then need an uninstall until the secrets exist.
+            echo "::notice::ANDROID_KEYSTORE_B64 not set: APK is signed with a throwaway debug key"
+            echo "TLWU_SIGNING=throwaway CI debug key (no release key configured yet; uninstall the old preview before installing this one)" >> "$GITHUB_ENV"
           fi
       - name: Build release APK (arm64)
         env:
@@ -118,6 +114,9 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write   # move the mobile-latest tag and replace the APK asset
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -145,6 +144,14 @@ jobs:
           - APK SHA256: \`$APK_SHA\`
           - signed with: $SIGNING
           EOF
+          # Never replace a newer preview with an older run (lower versionCode = not installable as an
+          # update). The published run number is kept in the release notes; checked under the lock above.
+          RUN=${{ github.run_number }}
+          PUBLISHED=$(gh release view "$TAG" --json body --jq .body 2>/dev/null | sed -n 's/.*<!-- tlwu-run:\([0-9]*\) -->.*/\1/p' | head -1 || true)
+          if [ -n "$PUBLISHED" ] && [ "$RUN" -lt "$PUBLISHED" ]; then
+            echo "::notice::mobile-latest already has run $PUBLISHED (newer than $RUN); not publishing"; exit 0
+          fi
+          echo "<!-- tlwu-run:$RUN -->" >> notes.md
           # Move (or create) the tag; only refs/tags/mobile-latest is touched.
           if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
             gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null

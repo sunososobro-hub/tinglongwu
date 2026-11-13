@@ -16,7 +16,7 @@ No INTERNET permission, no model downloader. Models are side-loaded with adb.
 `.github/workflows/mobile-apk.yml` builds the arm64 release APK on every push to `dev` that touches `mobile/**` (and on manual runs). It rebuilds the llama.cpp AAR from source with `tool/build_llama_android.sh` (Linux twin of the `.ps1`, same pinned commit/NDK/cmake; cached), runs `flutter analyze` + `flutter test`, checks the APK has no INTERNET permission, and replaces `tinglongwu-mobile-arm64.apk` on the rolling pre-release [`mobile-latest`](https://github.com/sunososobro-hub/tinglongwu/releases/tag/mobile-latest) (never marked Latest; `v*` releases are untouched). Pull requests only build.
 
 ### Signing (optional, owner-run once)
-Without secrets the APK is signed with a CI debug key that is kept in the Actions cache, so new previews install over old ones; if that cache is ever evicted (unused for 7 days) the next preview needs an uninstall first. To sign with a real release key, run once on any computer with a JDK and `gh` (PowerShell; use the same password at both keytool prompts):
+Without secrets each CI run signs the APK with a throwaway debug key (a signing key must not live in the Actions cache, which pull-request jobs can read), so every new preview needs an uninstall first, which also deletes imported models. With a release key, previews install over each other and keep the models. To sign with a real release key, run once on any computer with a JDK and `gh` (PowerShell; use the same password at both keytool prompts):
 
     keytool -genkeypair -v -keystore tlwu-release.jks -alias tlwu -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=tinglongWu"
     $repo = 'sunososobro-hub/tinglongwu'
