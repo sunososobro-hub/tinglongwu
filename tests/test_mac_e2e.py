@@ -267,7 +267,7 @@ def menu(tmp_path):
 
 
 def test_mac_menu_listen_mode_english_without_russian_voice(menu):
-    r, calls = menu("3\nn\nn\n")   # save? n; live drafts? n (#257: default on on CPU, n still turns it off)
+    r, calls = menu("3\nn\nn\nn\n")   # save? n; record? n; live drafts? n (#257: default on on CPU, n still turns it off)
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls == ["tlwu --lang en --builtin-glossary --engine hymt"]   # #227: Hy-MT2 installed, CPU
     assert not any(c.startswith("tlwu-setup") for c in calls)   # models from the installer are enough
@@ -299,7 +299,7 @@ def test_mac_menu_speak_mode_to_headphones_skips_the_virtual_mic(menu):
 
 def test_mac_menu_meeting_mode_listens_and_speaks(menu):
     """#285: one process: the speak side runs the listen side (--listen <tlwu args>), no background tlwu."""
-    r, calls = menu("1\nn\n")
+    r, calls = menu("1\nn\nn\n")   # save? n; record? n
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BlackHole 16ch" in r.stdout
     assert not [c for c in calls if c.startswith("tlwu")]

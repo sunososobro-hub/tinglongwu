@@ -97,8 +97,8 @@ def _fake_env(tmp_path):
 @pytest.mark.parametrize("answer,engine", [("", ["--engine", "hymt"])])
 def test_linux_menu_listen_passes_glossary_and_cpu_engine(tmp_path, answer, engine):
     root, log, env, gl = _fake_env(tmp_path)
-    # 3 = listen only; Enter = do not save subtitles; then the live-drafts question (CPU: Enter = on)
-    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input=f"3\n\n{answer}\n", env=env,
+    # 3 = listen only; Enter = do not save subtitles; Enter = do not record; then the live-drafts question (CPU: Enter = on)
+    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input=f"3\n\n\n{answer}\n", env=env,
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     args = log.read_text("utf-8").split("\n")[:-1]
@@ -136,7 +136,7 @@ def test_stream_default_cli_prints_flag():
 
 def test_linux_menu_drafts_n_turns_stream_off(tmp_path):  # #257 acceptance 3
     root, log, env, gl = _fake_env(tmp_path)
-    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="3\n\nn\n", env=env,
+    r = subprocess.run(["bash", str(root / "scripts" / "linux_menu.sh")], input="3\n\n\nn\n", env=env,
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "--stream" not in log.read_text("utf-8").split("\n")

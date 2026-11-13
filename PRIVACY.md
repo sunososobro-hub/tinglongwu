@@ -5,7 +5,7 @@
 tinglongWu translates speech on your own computer. This page says what stays local and every case where the network is used. It describes the code in this repository; it is not a legal guarantee (see "Limits").
 
 ## What stays on your machine
-- **Audio and text are processed locally and are not uploaded.** Audio lives in memory only.
+- **Audio and text are processed locally and are not uploaded.** Audio lives in memory only by default; only if you opt in to `--record` is it saved on this computer (`transcripts/rec-*/`).
 - **Transcripts are not saved by default.** Only the opt-in `--save` (GUI: the save checkbox) and `--save-result PATH` (speak mode) write text to disk, as local files (`transcripts/`, JSONL).
 - **Local files tlwu writes:** `gui.json` (your settings), the user config file `config` in your config folder (`auto_update`, `ui_lang`), run logs and `install.log` (installer self-test) in your log folder, `speedprobe.json` (speed-test result), `netguard.jsonl` (see below), a temp file holding only a language code, and the opt-in transcripts above.
 - **Models** are stored in the `models/` folder of the install (or `TLWU_MODELS` / `--models-dir`); they are only downloaded, never uploaded.
