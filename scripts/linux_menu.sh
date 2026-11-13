@@ -2,6 +2,7 @@
 # tinglongWu helper menu (Linux + macOS). Run from the repo:  bash scripts/linux_menu.sh
 # Paths can be overridden with env vars before running; WHISPER sets the speech model, e.g.  WHISPER=medium bash scripts/linux_menu.sh
 # Menu language follows the system (override: TLWU_UI_LANG=en|ru|zh-TW, or I in the menu); texts live in scripts/i18n/.
+# Speak mode sends each sentence directly; add --confirm (or TLWU_CONFIRM=1) to confirm each one first (#371).
 # Network is used only for install/setup and update (git); TLWU_NO_UPDATE=1 forces updates off. Everything else is offline.
 set -e
 cd "$(dirname "$0")/.."
@@ -258,8 +259,7 @@ if [ "$BOTH" = "1" ]; then
     m M_NO_MODEL_FOR ru
     ask_setup --langs ru --to zh
   fi
-  read -rp "$(mp M_ASK_AUTOSEND)" ac
-  AUTO=(); [ "$ac" = "y" ] && AUTO=(--no-confirm)
+  AUTO=(--no-confirm); tlwu_confirm_mode "${TLWU_MENU_ARGS[@]}" && AUTO=()   # #371: no question; --confirm / TLWU_CONFIRM=1 to confirm
   # #285: one process, one window: the speak side runs the listen side in a thread (--listen must come last),
   # both directions share one Hy-MT2 and one CPU thread budget (TLWU_BOTH, tinglongwu/threads.py); Ctrl+C stops both
   export TLWU_BOTH=1
@@ -276,11 +276,7 @@ m M_OUT2
 m M_OUT3
 m M_OUT4
 read -rp "$(mp M_ASK_OUT)" out
-AUTO=()
-if [ "$out" != "4" ]; then
-  read -rp "$(mp M_ASK_AUTOSEND)" ac
-  [ "$ac" = "y" ] && AUTO=(--no-confirm)
-fi
+AUTO=(--no-confirm); tlwu_confirm_mode "${TLWU_MENU_ARGS[@]}" && AUTO=()   # #371: no question; --confirm / TLWU_CONFIRM=1 to confirm
 if [ "$out" = "2" ] || [ "$out" = "3" ]; then
   # (Linux too, #38: never a hardcoded device name) must be a REAL output (headphones/speakers), never the Multi-Output Device / BlackHole 2ch: those are recorded by the listen side
   m M_MAC_OUTDEV
