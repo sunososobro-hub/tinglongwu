@@ -11,7 +11,7 @@ import queue
 import threading
 from pathlib import Path
 
-from .sink import Result, Sink
+from .sink import Result, Sink, pass_source
 
 VOICE_LANGS = ("zh", "en", "ja")  # targets with a Kokoro voice (KOKORO_*_VOICES in reverse/tts_worker.py)
 # Outputs that feed a capture path or are not a real speaker: TTS played there is recorded again (feedback loop).
@@ -69,8 +69,8 @@ class VoiceSink(Sink):
 
         return sink_shows_source(self.inner)
 
-    def write_source(self, src: str, original: str) -> None:
-        self.inner.write_source(src, original)
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
+        pass_source(self.inner, src, original, speaker)
 
     def write(self, r: Result) -> None:
         self.inner.write(r)
