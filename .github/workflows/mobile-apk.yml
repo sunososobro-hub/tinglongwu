@@ -185,15 +185,15 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             # assets first, then the notes (which carry the run marker), so a failed upload is retried
             gh release upload "$TAG" "out/$APK_NAME" --clobber
-            # drop the old separate .sha256 assets (hashes now live in the release body)
-            gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".sha256"))' | while read -r n; do
-              [ -n "$n" ] && gh release delete-asset "$TAG" "$n" --yes
-            done
             gh release edit "$TAG" --title "$TITLE" --notes-file notes.md --prerelease --latest=false
           else
             gh release create "$TAG" "out/$APK_NAME" --verify-tag \
               --title "$TITLE" --notes-file notes.md --prerelease --latest=false
           fi
+          # drop the old separate .sha256 assets only after the notes (which now carry the hashes) are saved
+          gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".sha256"))' | while read -r n; do
+            gh release delete-asset "$TAG" "$n" --yes
+          done
           gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
       - name: Models zip on mobile-latest (rebuilt from official sources only when the manifest changes)
         if: steps.apk.outputs.stale != 'true'   # an older run must not replace a newer bundle
