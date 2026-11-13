@@ -34,6 +34,13 @@ MIN_RECORDED_RATIO = 0.90   # FAIL if recorded speech < 90 % of TTS-produced spe
 MIN_RMS_DBFS = -35.0        # FAIL if RMS of the recorded speech < -35 dBFS
 MAX_STREAM_GAP_S = 0.30     # #207: FAIL if streamed TTS pieces of one sentence leave a silence longer than this
 TAIL_S = 2.0                # keep recording this long after the pipeline is done
+# #593: the self-hosted runner is a shared PC. Other processes' CPU load slows Kokoro from RTF ~0.6 to 1.0-1.7
+# (measured on the runner, i5-13500: idle background 13-24 %, +4 busy processes 34-47 % -> RTF 0.85-1.36), and at
+# RTF >= 1 no piece plan can avoid a stream gap. Neither priority class, P-core pinning nor thread count fixed it.
+QUIET_BG_PCT = 20.0         # start only once other processes use < 20 % of the CPU for QUIET_HOLD_S seconds...
+QUIET_HOLD_S = 5
+QUIET_WAIT_S = 300          # ...waiting at most this long (then start anyway; the JSON says so)
+BUSY_BG_PCT = 25.0          # a stream gap while other processes used > 25 % (median) is re-run once, after a quiet wait
 CABLE_IN, CABLE_OUT = "CABLE Input", "CABLE Output"
 LINUX_MIC = "tlwu_mic"  # Linux: the pipeline creates tlwu_sink + tlwu_mic itself (vmic.py); we record tlwu_mic
 
@@ -216,6 +223,81 @@ class CableRecorder(threading.Thread):
         return np.concatenate(self.chunks).astype(np.float32) if self.chunks else np.zeros(0, np.float32)
 
 
+def _psutil():
+    try:
+        import psutil
+        return psutil
+    except ImportError:  # dev extra; without it there is no load wait and no load-explained re-run
+        return None
+
+
+def wait_quiet(sample=None, limit: float = QUIET_BG_PCT, hold: int = QUIET_HOLD_S, timeout: float = QUIET_WAIT_S,
+               clock=time.monotonic) -> dict | None:
+    """#593: block until `hold` consecutive samples of system CPU % (each sample() takes ~1 s) are below `limit`, or
+    `timeout` s passed. Called before the child starts, so all load is other processes'. None = cannot measure."""
+    if sample is None:
+        ps = _psutil()
+        if ps is None:
+            return None
+        sample = lambda: ps.cpu_percent(interval=1.0)  # noqa: E731
+    t0, run, last = clock(), 0, None
+    while run < hold:
+        last = sample()
+        run = run + 1 if last < limit else 0
+        if run < hold and clock() - t0 >= timeout:
+            return {"quiet": False, "waited_s": round(clock() - t0, 1), "cpu_pct": last}
+    return {"quiet": True, "waited_s": round(clock() - t0, 1), "cpu_pct": last}
+
+
+def background_pct(total_pct: float, own_pcts: list[float], ncpu: int) -> float:
+    """System CPU % minus this test's own process tree (psutil per-process % is per core, so / ncpu)."""
+    return max(0.0, total_pct - sum(own_pcts) / max(1, ncpu))
+
+
+class LoadMonitor(threading.Thread):
+    """#593: once a second, the CPU % used by processes outside this test's tree (parent, speak child, TTS worker)."""
+
+    def __init__(self, interval: float = 1.0):
+        super().__init__(daemon=True)
+        self.ps, self.interval, self.samples, self.stop_ev = _psutil(), interval, [], threading.Event()
+
+    def run(self):
+        ps = self.ps
+        if ps is None:
+            return
+        try:
+            me, procs, ncpu = ps.Process(), {}, ps.cpu_count() or 1
+            ps.cpu_percent(None)
+            while not self.stop_ev.wait(self.interval):
+                own = []
+                for p in [me] + me.children(recursive=True):
+                    try:
+                        if p.pid in procs:
+                            own.append(procs[p.pid].cpu_percent(None))
+                        else:  # first call only primes the counter
+                            procs[p.pid] = p
+                            p.cpu_percent(None)
+                    except ps.Error:
+                        pass
+                self.samples.append(background_pct(ps.cpu_percent(None), own, ncpu))
+        except Exception:  # noqa: BLE001 - load figures are diagnostics; never fail the self-test over them
+            pass
+
+    def stats(self) -> dict | None:
+        if not self.samples:
+            return None
+        v = sorted(self.samples)
+        return {"p50": round(float(np.median(v)), 1), "max": round(v[-1], 1), "n": len(v)}
+
+
+def load_explains_gap(o: dict) -> bool:
+    """#593: re-run once only when a stream gap is the ONLY failure and other processes kept the CPU busy."""
+    bg = o.get("background_cpu")
+    return (o.get("verdict") == "FAIL" and "error" not in o and bool(o.get("reasons"))
+            and all(r.startswith("stream gap") for r in o["reasons"])
+            and bg is not None and bg["p50"] > BUSY_BG_PCT)
+
+
 def _find(*cands: Path):
     return next((str(c) for c in cands if c.exists()), None)
 
@@ -237,9 +319,24 @@ def _proto_args(a, platform: str | None = None) -> list[str]:
     return args + (["--whisper", a.whisper] if a.whisper else [])
 
 
-def run(a) -> dict:
+def run(a, once=None, quiet=None) -> dict:
+    """One attempt after a quiet-CPU wait; a second one only when load_explains_gap() (#593). The second attempt's
+    result is the verdict; the first attempt's gap, RTF and load are kept under "retried_after_load"."""
+    once, quiet = once or run_once, quiet or wait_quiet
+    q = quiet()
+    out = once(a)
+    if load_explains_gap(out):
+        first = {k: out.get(k) for k in ("stream_gap_max_s", "tts_rtf", "background_cpu", "reasons")}
+        q = quiet()
+        out = {**once(a), "retried_after_load": first}
+    out["quiet_wait"] = q
+    return out
+
+
+def run_once(a) -> dict:
     out: dict = {"clip": Path(a.clip).name, "to": a.to}
     rec = CableRecorder(record_name())
+    load = LoadMonitor()
     cmd = [sys.executable, str(Path(__file__).resolve()), "--child", "--clip", a.clip, "--"] + _proto_args(a)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONPATH": str(ROOT)}
     lines: list[str] = []
@@ -254,11 +351,14 @@ def run(a) -> dict:
 
     th = threading.Thread(target=pump, daemon=True)
     th.start()
+    load.start()
     try:
         p.wait(timeout=a.timeout)
     except subprocess.TimeoutExpired:
         p.kill()
         out["error"] = f"timeout after {a.timeout}s"
+    load.stop_ev.set()
+    load.join(5)
     th.join(5)
     time.sleep(TAIL_S)
     rec.stop_ev.set()
@@ -293,7 +393,8 @@ def run(a) -> dict:
                 "peak_dbfs": rs["peak_dbfs"], "rms_dbfs": rs["rms_dbfs"], "rms_all_dbfs": rs["rms_all_dbfs"],
                 "latencies": log["latencies"], "stages": stage_table(log["latencies"]),
                 "stream_gap_max_s": max((d["gap_max"] for d in log["streams"]), default=0.0),
-                "tts_rtf": [d["rtf"] for d in log["streams"]], "verdict": res["verdict"], "reasons": res["reasons"]})
+                "tts_rtf": [d["rtf"] for d in log["streams"]], "background_cpu": load.stats(),
+                "verdict": res["verdict"], "reasons": res["reasons"]})
     return out
 
 
@@ -303,6 +404,9 @@ def summary(o: dict) -> str:
             f"rms={o['rms_dbfs']}dBFS peak={o['peak_dbfs']}dBFS"
             + "".join(f" {k}_p50={v['p50']}s" for k, v in o.get("stages", {}).items() if k in ("tts", "total"))
             + f" gap_max={o.get('stream_gap_max_s', 0.0)}s"
+            + (f" bg_cpu_p50={o['background_cpu']['p50']}%" if o.get("background_cpu") else "")
+            + (f" (re-run: first attempt {o['retried_after_load']['reasons'][0]} under load)"
+               if o.get("retried_after_load") else "")
             + (" reasons: " + "; ".join(o["reasons"]) if o["reasons"] else ""))
 
 
