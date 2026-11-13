@@ -361,10 +361,10 @@ def test_log_follows_newest_unless_scrolled_up(gui_app):
 
 def test_log_font_buttons_and_pause(gui_app):
     a = gui_app
-    w0 = a.root.winfo_reqwidth()
+    w0 = a.panel.winfo_reqwidth()
     a.bump_log_font(8)
     a.root.update()
-    assert a.settings["log_font_size"] == 22 and a.root.winfo_reqwidth() == w0  # window does not grow
+    assert a.settings["log_font_size"] == 22 and a.panel.winfo_reqwidth() == w0  # window does not grow
     assert str(a.log_text.tag_cget("final", "font")).split()[-1] == "22"
     a.toggle()
     a.set_paused(True)
@@ -419,3 +419,87 @@ def test_download_finishing_while_loading_keeps_the_button_disabled(gui_app, mon
     assert str(a.btn.cget("state")) == "normal"
     a._download_done("tiny", 0)  # after ready: unchanged behaviour, the button works
     assert str(a.btn.cget("state")) == "normal"
+
+
+def _bound_vars(top) -> set[str]:
+    """Names of the Tk variables edited by any widget inside `top` (combobox, entry, check, spinbox...)."""
+    import tkinter as tk
+
+    names, stack = set(), [top]
+    while stack:
+        w = stack.pop()
+        stack.extend(w.winfo_children())
+        for opt in ("textvariable", "variable"):
+            try:
+                v = str(w.cget(opt))
+            except tk.TclError:
+                continue
+            if v:
+                names.add(v)
+    return names
+
+
+def test_control_bar_is_compact_in_every_ui_language(gui_app):
+    """#455: the main window is a small bar (<= 420x60 at 100% scale), also while it counts "Loading... N s"."""
+    a = gui_app
+    for ui in ("English", "Русский", "繁體中文"):
+        a.v_ui_lang.set(ui)
+        a.switch_lang()
+        for text in (a.btn.cget("text"), "Loading... 120 s"):
+            a.btn.configure(text=text)
+            a.root.update_idletasks()
+            assert a.bar.winfo_reqwidth() <= 420 and a.bar.winfo_reqheight() <= 60, (ui, text)
+            assert a.root.winfo_reqwidth() <= 420 and a.root.winfo_reqheight() <= 60, (ui, text)
+    assert a.root.attributes("-topmost")
+
+
+def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
+    """#455 widget inventory: every settings key the old window edited has a widget in the Adjust panel."""
+    from tinglongwu.gui import app as app_mod
+
+    a = gui_app
+    keys = {"lang": a.v_lang, "target": a.v_target, "quality": a.v_quality, "engine": a.v_engine,
+            "model": a.v_model, "source": a.v_source, "preset": a.v_preset, "glossary": a.v_gloss,
+            "save": a.v_save, "save_path": a.v_save_path, "show_src": a.var_show_src, "live_draft": a.v_live,
+            "overlay_lines": a.v_lines, "font_size": a.v_font, "voice": a.v_voice, "voice_device": a.v_voice_dev,
+            "ui_lang": a.v_ui_lang, "floating_bar": a.v_bar}
+    if app_mod.sv_ttk is not None:
+        keys["theme"] = a.v_dark
+    in_panel = _bound_vars(a.panel)
+    assert [k for k, v in keys.items() if str(v) not in in_panel] == []
+    for w in (a.log_text, a.btn_pause):  # log (with A-/A+, floating-bar toggle) and Pause live in the panel too
+        assert w.winfo_toplevel() is a.panel
+    assert a.panel.state() == "withdrawn"  # first start: only the bar
+    a.btn_adjust.invoke()
+    a.root.update()
+    assert a.panel.state() == "normal"
+    a.btn_adjust.invoke()
+    assert a.panel.state() == "withdrawn"
+
+
+def test_bar_mode_pair_and_status_dot(gui_app):
+    """#455: Listen/Speak mirrors the voice setting, the pair label follows the boxes, the dot follows the session."""
+    from tinglongwu import cli
+
+    a = gui_app
+    assert a.v_mode.get() == "listen" and not a.v_voice.get()
+    a.v_mode.set("speak")
+    for w in a.bar.winfo_children():
+        if str(w.cget("text") if "text" in w.keys() else "") == "Speak":
+            w.invoke()
+    assert a.v_voice.get() is True
+    a.v_voice.set(False)  # unticked in the Adjust panel: the bar follows
+    assert a.v_mode.get() == "listen"
+    a.v_lang.set("auto")
+    a.v_target.set("en")
+    assert a.v_pair.get() == "auto→en"
+    assert a.dot_state == "idle"
+    a.toggle()
+    assert a.dot_state == "loading"
+    a.q.put(("status", f"{cli.READY_STATUS} - loaded in 1.0 s (speech model 1.0 s)"))
+    a.poll()
+    assert a.dot_state == "on"
+    a.toggle()
+    a.worker.join(5)
+    a.poll()
+    assert a.dot_state == "idle" and a.btn.cget("text") == "Start"
