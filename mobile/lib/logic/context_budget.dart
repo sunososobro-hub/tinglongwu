@@ -44,8 +44,14 @@ class ContextBudget {
   /// Index `i` of the oldest adjacent pair `texts[i]`, `texts[i + 1]` whose
   /// merged text is at most [maxChars] long, or null when no pair fits (then
   /// the queue is left longer instead of building a request that overflows).
-  static int? mergeIndex(List<String> texts, {int maxChars = maxMergeChars}) {
+  ///
+  /// When [langs] is given (same length as [texts]), only pairs with the same
+  /// language qualify, so a zh/en boundary does not block a later same-language
+  /// pair (#625).
+  static int? mergeIndex(List<String> texts,
+      {int maxChars = maxMergeChars, List<String>? langs}) {
     for (var i = 0; i + 1 < texts.length; i++) {
+      if (langs != null && langs[i] != langs[i + 1]) continue;
       if (join(texts[i], texts[i + 1]).length <= maxChars) return i;
     }
     return null;
