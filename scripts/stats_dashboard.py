@@ -42,7 +42,7 @@ def _pages(api, path, limit=100, accept=None):
 
 
 STAR = "application/vnd.github.star+json"
-GROUPS = ("status", "priority", "area", "os", "src", "model", "milestone")
+GROUPS = ("status", "priority", "area", "os", "src", "model", "mode", "lang", "milestone")  # mode/lang: #585
 
 
 def day_of(ts):
@@ -98,7 +98,7 @@ def group_of(token):
         return "priority", token
     if ":" in token:
         g, v = token.split(":", 1)
-        if g in ("status", "area", "os", "src", "model"):
+        if g in ("status", "area", "os", "src", "model", "mode", "lang"):
             return g, v
     return None
 
