@@ -200,9 +200,9 @@ python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CE
 `tlwu-gui`（不弹出终端窗口）或 `tlwu --gui`，会打开一个小控制窗口（源语言、目标 繁中／简中／英文、引擎、语音模型、词库文件、“保存逐字稿”、开始／停止），以及一条无边框、始终置顶的字幕条（默认屏幕下方居中，约 70% 宽）。显示最近 2 行；中文草稿为灰色，final 译文出现后在原位换成白色。可拖动；Ctrl+滚轮或 +/- 调整字号；右键菜单：显示／隐藏原文行、字号、复制最后一行、暂停显示、退出。设置保存在 `%APPDATA%\tinglongwu\gui.json`。仅用标准库 tkinter，完全离线；不加 `--gui` 时 CLI 行为不变。
 
 ## 主题词库（`--glossary PATH`）
-用纯文本文件让 tlwu 适应特定主题：`PATH` 可为 UTF-8 的 `.txt` 文件或放多个 `.txt` 的文件夹。每行一条 `原文 = 译文`；`#` 开头为注释；没有 `=` 的行视为提示词；`a | b = 译文` 可加入其他原文写法（例如常听错的词）。原文词会作为 `hotwords` 交给 Whisper；原文出现在当前句子或前 2 行的条目（不区分大小写、容许俄语词尾变化）会写入 Qwen 提示，要求使用指定译法（OPUS/M2M 忽略译文）。`2.4 = 2.4 GHz` 这类数字条目也会把识别结果中的“2 и 4”“2,4”改成“2.4”。仅限显式指定、完全离线。示例：`docs/examples/glossary_wifi_ru.txt`。
+用纯文本文件让 tlwu 适应特定主题：`PATH` 可为 UTF-8 的 `.txt` 文件或放多个 `.txt` 的文件夹。每行一条 `原文 = 译文`；`#` 开头为注释；没有 `=` 的行视为提示词；`a | b = 译文` 可加入其他原文写法（例如常听错的词）。原文词会作为 `hotwords` 交给 Whisper；原文出现在当前句子或前 2 行的条目（不区分大小写、容许俄语词尾变化）在输出中文时会写入 Hy-MT2 提示，要求使用指定译法（模型卡的术语格式 `<原文> 翻译成 <译文>`，见 `tinglongwu/hymt.py` 的 `HyMtTranslator._terms` -> `build_prompt`）；有 `~` 列表的条目也会把中文输出里已知的错误译法替换掉。输出其他语言时 Hy-MT2 不带译文；可选的 ollama / fm 引擎则所有目标语言都会带。`2.4 = 2.4 GHz` 这类数字条目也会把识别结果中的“2 и 4”“2,4”改成“2.4”。仅限显式指定、完全离线。示例：`docs/examples/glossary_wifi_ru.txt`。
 ```
-tlwu --lang ru --model large-v3-turbo --engine qwen --stream --glossary docs/examples/glossary_wifi_ru.txt
+tlwu --lang ru --model large-v3-turbo --engine hymt --stream --glossary docs/examples/glossary_wifi_ru.txt
 ```
 重复循环（Whisper 反复输出同一句）：最终识别启用温度回退，检测到循环时不带前文提示重新解码一次，剩余重复在翻译前收敛成一份。
 

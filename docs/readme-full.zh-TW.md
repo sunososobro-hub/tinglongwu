@@ -218,7 +218,7 @@ python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CE
 `tlwu-gui`（不跳出終端機視窗）或 `tlwu --gui`，會開啟一個小控制視窗（來源語言、目標 繁中／簡中／英文、引擎、語音模型、詞庫檔、「儲存逐字稿」、開始／停止），以及一條無邊框、永遠置頂的字幕條（預設螢幕下方置中，約 70% 寬）。顯示最近 2 行；中文草稿為灰色，final 譯文出現後在原位換成白色。可拖曳移動；Ctrl+滾輪或 +/- 調整字體；右鍵選單：顯示／隱藏原文行、字體大小、複製最後一行、暫停顯示、結束。設定會記在 `%APPDATA%\tinglongwu\gui.json`。僅用標準庫 tkinter，完全離線；不加 `--gui` 時 CLI 行為不變。
 
 ## 主題詞庫（`--glossary PATH`）
-用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；原文出現在當前句子或前 2 行的條目（不分大小寫、容許俄文詞尾變化）會寫進 Qwen 提示，要求使用指定譯法（OPUS/M2M 忽略譯文）。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
+用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；原文出現在當前句子或前 2 行的條目（不分大小寫、容許俄文詞尾變化）在輸出中文時會寫進 Hy-MT2 提示，要求使用指定譯法（模型卡的術語格式 `<原文> 翻译成 <譯文>`，見 `tinglongwu/hymt.py` 的 `HyMtTranslator._terms` -> `build_prompt`）；有 `~` 清單的條目也會把中文輸出裡已知的錯誤譯法換掉。輸出其他語言時 Hy-MT2 不帶譯文；選用的 ollama / fm 引擎則所有目標語言都會帶。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
 ```
 tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary_wifi_ru.txt
 ```
