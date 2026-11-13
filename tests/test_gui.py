@@ -583,6 +583,8 @@ def test_engine_labels_hint_for_uninstalled_and_roundtrip(tmp_path):
 def test_engine_widget_hidden_until_advanced_expanded_and_remembered(gui_app):
     a = gui_app
     cb = a.combos["engine"]
+    a.toggle_adjust()  # #455: every setting lives in the Adjust panel, hidden until "⚙ Adjust" is pressed
+    a.root.update()
     assert a.settings["advanced_open"] is False and not cb.winfo_ismapped()
     a.v_adv.set(True)
     a._adv_toggled()
