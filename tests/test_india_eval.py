@@ -193,3 +193,15 @@ def test_fetch_fleurs_failure_still_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(ie, "fetch_fleurs", boom)
     with pytest.raises(RuntimeError):
         ie.main(["fetch", "--group", "hi", "--data", str(tmp_path)])
+
+
+def test_load_audio_downmixes_and_resamples_to_16k(tmp_path):
+    np = pytest.importorskip("numpy")
+    sf = pytest.importorskip("soundfile")
+    pytest.importorskip("scipy")
+    t = np.arange(44100) / 44100
+    st = np.stack([np.sin(2 * np.pi * 440 * t), np.sin(2 * np.pi * 440 * t)], axis=1).astype("float32")
+    sf.write(tmp_path / "a.flac", st, 44100)
+    x = ie.load_audio(tmp_path / "a.flac")
+    assert x.dtype == np.float32 and x.ndim == 1 and abs(len(x) - 16000) <= 1
+    assert 0.6 < float(np.abs(x).max()) < 1.1

@@ -216,10 +216,25 @@ def run_group(rows: list[dict], group: str, asr, tr, load_audio, clock=time.perf
     return out
 
 
+def load_audio(path: Path):
+    """Any soundfile-readable clip -> float32 mono 16 kHz (faster_whisper.decode_audio breaks on newer PyAV)."""
+    from math import gcd
+
+    import numpy as np
+    import soundfile as sf
+
+    x, sr = sf.read(str(path), dtype="float32", always_2d=True)
+    x = x.mean(axis=1)
+    if sr != SAMPLE_RATE:
+        from scipy.signal import resample_poly
+
+        g = gcd(sr, SAMPLE_RATE)
+        x = resample_poly(x, SAMPLE_RATE // g, sr // g).astype(np.float32)
+    return x
+
+
 def cmd_run(a) -> int:
     sys.path.insert(0, str(REPO))
-    from faster_whisper import decode_audio
-
     from tinglongwu.asr import FasterWhisperRecognizer
     from tinglongwu.hymt import HyMtTranslator
     from tinglongwu.translate import zh_convert
@@ -238,7 +253,7 @@ def cmd_run(a) -> int:
     asr = FasterWhisperRecognizer(md, a.whisper, "hi" if a.group == "hi" else "en", "cpu")
     tr = HyMtTranslator(md, "tw", "cpu")
     tr.preload()
-    res = run_group(rows, a.group, asr, tr, lambda r: decode_audio(str(data / r["wav"]), sampling_rate=SAMPLE_RATE))
+    res = run_group(rows, a.group, asr, tr, lambda r: load_audio(data / r["wav"]))
     with open(out / f"{a.group}.jsonl", "w", encoding="utf-8", newline="\n") as f:
         for d in res:
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
