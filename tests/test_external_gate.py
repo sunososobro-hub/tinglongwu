@@ -251,7 +251,7 @@ def test_r3_line_separator_chars_do_not_hide_added_code(ch):
     assert _lane(files)["failed"] == ["r3_denylist"]
 
 
-@pytest.mark.parametrize("patch", ["+eval \\\n+    ('1 + 1')\n", "+f = exec\n+f('x')\n", "+(compile\n+ (s, 'a', 'exec'))\n"])
+@pytest.mark.parametrize("patch", ["+eval \\\n+    ('1 + 1')\n", "+f = exec\n+f('x')\n", "+(compile\n+ (s, 'a', 'single'))\n"])
 def test_r3_multiline_or_aliased_eval_exec_compile_fail(patch):
     files = _ok_files()
     files[0]["patch"] = "@@ -1 +1,2 @@\n-a = 1\n" + patch
