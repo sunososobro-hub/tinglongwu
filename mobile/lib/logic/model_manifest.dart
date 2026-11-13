@@ -10,7 +10,7 @@ class ManifestEntry {
     this.url,
   });
 
-  /// Relative path under the models dir, always with `/` (e.g. `gigaam3/joiner.onnx`).
+  /// Relative path under the models dir, always with `/` (e.g. `sensevoice/tokens.txt`).
   final String path;
   final int size;
   final String sha256;

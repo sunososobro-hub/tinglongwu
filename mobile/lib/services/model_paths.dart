@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Where side-loaded models live and how to check them.
 ///
 /// Layout under `<externalFilesDir>/models/`:
-///   gigaam3/encoder.int8.onnx, decoder.onnx, joiner.onnx, tokens.txt
+///   sensevoice/model.int8.onnx, tokens.txt (SenseVoice-small, zh/en/ja/ko/yue)
 ///   silero_vad.onnx
 ///   Hy-MT2-1.8B-Q4_K_M.gguf (translator, same file as desktop)
 class ModelPaths {
@@ -16,11 +16,9 @@ class ModelPaths {
   static const packageName = 'com.tinglongwu.mobile';
   static const _channel = MethodChannel('tlwu/native');
 
-  static const asrDirName = 'gigaam3';
+  static const asrDirName = 'sensevoice';
   static const asrFiles = [
-    'encoder.int8.onnx',
-    'decoder.onnx',
-    'joiner.onnx',
+    'model.int8.onnx',
     'tokens.txt',
   ];
   static const vadFileName = 'silero_vad.onnx';

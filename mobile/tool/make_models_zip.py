@@ -7,8 +7,8 @@ the weights do not compress) under tlwu-mobile-models/, plus the upstream licens
     bash tool/fetch_models.sh <DIR>
     python3 -I tool/make_models_zip.py <DIR>/models <DIR>/licenses <OUT.zip>
 
-MODELS_DIR has gigaam3/, silero_vad.onnx and Hy-MT2-1.8B-Q4_K_M.gguf (same layout as on the phone).
-LICENSE_DIR has GigaAM-LICENSE.txt, silero-vad-LICENSE.txt and Hy-MT2-LICENSE.txt.
+MODELS_DIR has sensevoice/, silero_vad.onnx and Hy-MT2-1.8B-Q4_K_M.gguf (same layout as on the phone).
+LICENSE_DIR has SenseVoice-LICENSE.txt, silero-vad-LICENSE.txt and Hy-MT2-LICENSE.txt.
 """
 import hashlib
 import json
@@ -22,9 +22,10 @@ NOTICE = """tinglongWu mobile models bundle
 No need to unzip: in the app, open "Import models" and pick this zip.
 All files are unmodified upstream files.
 
-- gigaam3/  GigaAM v3 Russian ASR (salute-developers/GigaAM), ONNX export by sherpa-onnx
-  (k2-fsa/sherpa-onnx release asr-models, sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16).
-  License: MIT, see LICENSES/GigaAM-LICENSE.txt.
+- sensevoice/  SenseVoice-small ASR (FunAudioLLM/SenseVoice; zh/en/ja/ko/yue, language auto-detect),
+  int8 ONNX export by sherpa-onnx (k2-fsa/sherpa-onnx release asr-models,
+  sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17).
+  License: FunASR Model Open Source License, see LICENSES/SenseVoice-LICENSE.txt.
 - silero_vad.onnx  Silero VAD (snakers4/silero-vad), from the sherpa-onnx asr-models release.
   License: MIT, see LICENSES/silero-vad-LICENSE.txt.
 - Hy-MT2-1.8B-Q4_K_M.gguf  Tencent Hy-MT2-1.8B (tencent/Hy-MT2-1.8B-GGUF on Hugging Face).
@@ -53,7 +54,7 @@ def main(models, lic, out):
         print("ok", e["path"])
     extra = {
         "LICENSES/" + n: os.path.join(lic, n)
-        for n in ("GigaAM-LICENSE.txt", "silero-vad-LICENSE.txt", "Hy-MT2-LICENSE.txt")
+        for n in ("SenseVoice-LICENSE.txt", "silero-vad-LICENSE.txt", "Hy-MT2-LICENSE.txt")
     }
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
         z.writestr(PREFIX + "NOTICE.txt", NOTICE)

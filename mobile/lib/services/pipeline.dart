@@ -21,7 +21,8 @@ class Subtitle {
 }
 
 class _Job {
-  _Job(this.ru, this.sub, this.speechEndMs, this.asrFinalMs);
+  _Job(this.ru, this.sub, this.speechEndMs, this.asrFinalMs, [this.lang = 'en']);
+  final String lang;
   String ru;
   final Subtitle sub;
 
@@ -92,9 +93,7 @@ class Pipeline extends ChangeNotifier {
       final p = paths!;
       final t0 = _clock.elapsedMilliseconds;
       _asr = await AsrWorker.spawn(AsrConfig(
-        encoder: p.asrFile('encoder.int8.onnx'),
-        decoder: p.asrFile('decoder.onnx'),
-        joiner: p.asrFile('joiner.onnx'),
+        model: p.asrFile('model.int8.onnx'),
         tokens: p.asrFile('tokens.txt'),
         vadModel: p.vadPath,
         testWavDir: p.testWavDir,
@@ -171,11 +170,11 @@ class Pipeline extends ChangeNotifier {
         ? now - f.decodeMs
         : now - f.decodeMs - (AsrConfig.vadMinSilence * 1000).round();
     _log.i('ASR final${f.forced ? " (forced)" : ""} '
-        'decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
+        'lang=${f.lang} decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
     final sub = Subtitle(f.text);
     subtitles.add(sub);
     _trimSubtitles();
-    _queue.add(_Job(f.text, sub, speechEnd, now));
+    _queue.add(_Job(f.text, sub, speechEnd, now, f.lang));
     // Bound the backlog: merge the oldest two waiting jobs (keeps all text,
     // costs one fewer LLM call) instead of dropping. A merge that would be
     // longer than ContextBudget.maxMergeChars is skipped (#533): it could
@@ -192,7 +191,7 @@ class Pipeline extends ChangeNotifier {
       b.ru = ContextBudget.join(a.ru, b.ru);
       b.sub.ru = b.ru;
       subtitles.remove(a.sub);
-      final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs);
+      final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs, b.lang);
       jobs
         ..[i] = merged
         ..removeAt(i + 1);
@@ -216,7 +215,7 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await _tr!.translate(job.ru);
+          final r = await _tr!.translate(job.ru, src: job.lang);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;
