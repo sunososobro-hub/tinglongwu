@@ -16,6 +16,8 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux (x86_64) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
+To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
+
 Setup downloads the speech and translation models once (internet needed). After that it runs fully offline.
 
 ## Three ways to use it

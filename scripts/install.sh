@@ -24,6 +24,14 @@ DIR="${TLWU_DIR:-$HOME/tinglongwu}"
 YES="${TLWU_YES:-}"
 for a in "$@"; do [ "$a" = "--yes" ] && YES=1; done
 
+# --uninstall (#476): hand over to scripts/uninstall.sh (other args, e.g. --purge, pass through)
+for a in "$@"; do
+  if [ "$a" = "--uninstall" ]; then
+    [ -f "$DIR/scripts/uninstall.sh" ] || { echo "[x] $DIR/scripts/uninstall.sh not found; nothing to uninstall (set TLWU_DIR?)" >&2; exit 1; }
+    exec bash "$DIR/scripts/uninstall.sh" "$@"
+  fi
+done
+
 # ---- messages (en / ru / zh-TW); the repo's scripts/i18n is not available before the clone, so they live here
 L="${TLWU_UI_LANG:-}"
 [ -n "$L" ] || L="${LC_ALL:-${LC_MESSAGES:-${LANG:-en}}}"
