@@ -101,3 +101,26 @@ def test_main_no_longer_refuses_linux(tmp_path, capsys):
         pytest.skip("linux only")
     assert st.main(["--clip", str(tmp_path / "missing.wav")]) == 1
     assert "clip not found" in capsys.readouterr().err
+
+
+def test_run_child_dies_before_listening_reports_child_error(tmp_path, monkeypatch):
+    """#474: the recorder is never started when the child exits before 'listening'; run() must not raise
+    'cannot join thread before it is started' and must report the child's last lines instead."""
+    import argparse
+    import subprocess
+    class FakeP:
+        def __init__(self, *a, **k):
+            self.stdout = iter([b"compute device: cuda\n", b"ModelNotFound: Whisper model missing\n"])
+
+        def wait(self, timeout=None):
+            return 1
+
+    monkeypatch.setattr(subprocess, "Popen", FakeP)
+    monkeypatch.setattr(st, "TAIL_S", 0.0)
+    clip = tmp_path / "zh.wav"
+    clip.write_bytes(b"")
+    a = argparse.Namespace(clip=str(clip), to="ru", mt="auto", whisper=None, models_dir=None, tts_python=None,
+                           tts_model=None, timeout=5, keep_log=None, keep_wav=None)
+    o = st.run(a)
+    assert o["verdict"] == "FAIL"
+    assert any("ModelNotFound" in r for r in o["reasons"])

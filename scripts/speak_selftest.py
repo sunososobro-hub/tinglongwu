@@ -262,7 +262,8 @@ def run(a) -> dict:
     th.join(5)
     time.sleep(TAIL_S)
     rec.stop_ev.set()
-    rec.join(5)
+    if rec.ident is not None:  # #474: never started when the child died before "listening"
+        rec.join(5)
     text = "\n".join(lines)
     if a.keep_log:
         Path(a.keep_log).write_text(text, encoding="utf-8")
