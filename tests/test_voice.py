@@ -41,7 +41,7 @@ def test_voice_option_misuse_exits_2(argv):
     assert e.value.code == 2
 
 
-def _session(monkeypatch, tmp_path, extra, opened, run=None):
+def _session(monkeypatch, tmp_path, extra, opened, run=None, notice=None):
     from tinglongwu import asr as asr_mod
     from tinglongwu import device as device_mod
     from tinglongwu import minspec
@@ -57,8 +57,9 @@ def _session(monkeypatch, tmp_path, extra, opened, run=None):
 
     seen = {}
 
-    def fake_open_voice(a, mdir, inner, say):
+    def fake_open_voice(a, mdir, inner, say, off=None):
         opened.append(inner)
+        seen["off"] = off
         return voice.VoiceSink(inner, lambda text: None), lambda drop=False: opened.append("closed-drop" if drop else "closed")
 
     monkeypatch.setattr(minspec, "check_avx2", lambda force=False: None)
@@ -70,7 +71,7 @@ def _session(monkeypatch, tmp_path, extra, opened, run=None):
     monkeypatch.setattr(voice, "open_voice", fake_open_voice)
     monkeypatch.setattr(cli, "announce_ready", lambda *a, **k: opened.append("ready"))
     cli.run_session(cli.parse_args(["--file", str(tmp_path / "in.wav"), "--model", "tiny", "--lang", "ru",
-                                    "--models-dir", str(tmp_path)] + extra), sink=_Lines())
+                                    "--models-dir", str(tmp_path)] + extra), sink=_Lines(), notice=notice)
     return seen
 
 
@@ -345,7 +346,7 @@ def test_stalled_playback_skips_lines_instead_of_queuing_more_audio():
 
 def test_open_voice_close_keeps_player_and_tts_open_while_still_speaking(fakes, tmp_path, monkeypatch):
     gate, said = threading.Event(), []
-    monkeypatch.setattr(voice, "make_speaker", lambda tts, player: lambda text: gate.wait(5))
+    monkeypatch.setattr(voice, "make_speaker", lambda tts, player, **k: lambda text: gate.wait(5))
     monkeypatch.setattr(voice, "CLOSE_TIMEOUT", 0.05)
     a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
     sink, close = voice.open_voice(a, tmp_path, _Lines(), said.append)
@@ -503,3 +504,67 @@ def test_open_voice_turns_a_garbled_ready_header_into_a_runtime_error(fakes, tmp
     with pytest.raises(RuntimeError, match="tlwu-setup --talk"):
         voice.open_voice(a, tmp_path, _Lines(), lambda m: None)
     assert fakes[0].closed
+
+
+# --- #448: #445 follow-ups ------------------------------------------------------------------------------------------
+
+def _start_fake_worker(tmp_path, header: str):
+    """TTSClient against a real subprocess that prints `header` as its ready line, then hangs."""
+    import subprocess
+    import sys
+
+    from tinglongwu.reverse.tts_client import TTSClient
+
+    fake = tmp_path / "fake_worker.py"
+    fake.write_text(f"import time\nprint({header!r}, flush=True)\ntime.sleep(30)\n")
+    procs, real = [], subprocess.Popen
+
+    def popen(cmd, **k):
+        procs.append(real([sys.executable, str(fake)], **k))
+        return procs[-1]
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(subprocess, "Popen", popen)
+    try:
+        TTSClient(sys.executable, str(tmp_path), "kokoro", 0, "zh")
+    except (RuntimeError, ValueError) as e:
+        return procs[0], e
+    finally:
+        mp.undo()
+    raise AssertionError("TTSClient accepted a bad ready header")
+
+
+@pytest.mark.parametrize("header, err", [("not json", ValueError), ('{"t": "error", "msg": "no model"}', RuntimeError)])
+def test_bad_ready_header_reaps_the_worker_before_raising(tmp_path, header, err):
+    proc, e = _start_fake_worker(tmp_path, header)
+    assert isinstance(e, err)
+    assert proc.returncode is not None  # killed AND waited for: no zombie left on POSIX
+
+
+def test_garbled_reply_sends_one_voice_off_notice(fakes, tmp_path):
+    import queue as _queue
+
+    class _Garbled(_Tts):
+        def speak(self, text, lang=None):
+            raise ValueError("Expecting value")
+            yield  # pragma: no cover
+
+    from tinglongwu.reverse import tts_client
+
+    tts_client.TTSClient = _Garbled
+    q: _queue.Queue = _queue.Queue()  # the GUI's event queue (run_session notice -> ("notice", text))
+    a = cli.parse_args(["--voice", "--voice-device", "Headphones (USB)"])
+    sink, close = voice.open_voice(a, tmp_path, _Lines(), lambda m: None, off=lambda m: q.put(("notice", m)))
+    sink.write(_r("一。"))
+    kind, text = q.get(timeout=5)
+    sink.write(_r("二。"))
+    close()
+    assert kind == "notice" and text.startswith("Voice off") and "garbled" in text
+    assert q.empty()  # once, not per later line
+
+
+def test_run_session_passes_the_gui_notice_to_the_voice(monkeypatch, tmp_path):
+    notes = []
+    seen = _session(monkeypatch, tmp_path, ["--voice"], [], notice=notes.append)
+    seen["off"]("Voice off: test")
+    assert notes[-1] == "Voice off: test"

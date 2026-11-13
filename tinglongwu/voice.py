@@ -133,10 +133,11 @@ def wait_drained(player, timeout: float = 60.0, poll: float = 0.02) -> bool:
     return True
 
 
-def make_speaker(tts, player, drain_timeout: float = 60.0):
+def make_speaker(tts, player, drain_timeout: float = 60.0, on_off=None):
     """speak(text) for VoiceSink: streamed Kokoro pieces (reverse/proto._synth_sentences) pushed to `player`;
     returns when that audio has been handed to the device. While playback is stalled no more audio is pushed: the
-    line is skipped with an error (so Player.q stays bounded)."""
+    line is skipped with an error (so Player.q stays bounded). on_off(str) is called once when the voice turns
+    itself off (garbled worker reply), so the GUI can show a lasting "voice off" state (#448)."""
     from .reverse.proto import _synth_sentences
 
     broken: list[str] = []
@@ -152,6 +153,10 @@ def make_speaker(tts, player, drain_timeout: float = 60.0):
                 player.push(audio, sr)
         except (ValueError, KeyError) as e:  # garbled header from the Kokoro worker (bad JSON / missing field)
             broken.append(str(e))
+            if on_off is not None:
+                from .i18n import t
+
+                on_off(t("voice_off", why=f"Kokoro worker sent a garbled reply ({e})"))
             raise RuntimeError(f"Kokoro worker sent a garbled reply ({e}); voice off, subtitles continue") from e
         if not wait_drained(player, drain_timeout):
             raise RuntimeError("playback stalled; this line may not have been heard")
@@ -176,8 +181,9 @@ def capture_device_name(file: str | None, mic: bool, device: str | None) -> str 
         return None
 
 
-def open_voice(a, mdir, inner: Sink, say) -> tuple[VoiceSink, callable]:
+def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable]:
     """Build the voice for parsed args `a` (`--voice`): Kokoro worker + player on a safe output device.
+    off(str): called once if the voice turns itself off mid-run (GUI notice, #448).
     Returns (sink wrapping `inner`, close()). Raises RuntimeError with a one-line reason."""
     from .reverse.proto import Player
     from .reverse.tts_client import TTSClient
@@ -200,7 +206,7 @@ def open_voice(a, mdir, inner: Sink, say) -> tuple[VoiceSink, callable]:
         player.close()
         raise RuntimeError(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk") from e
     say(f"tlwu: voice ({lang}, Kokoro) on {player.speaker_name}")
-    sink = VoiceSink(inner, make_speaker(tts, player), on_error=lambda e: say(f"tlwu: voice error: {e}"))
+    sink = VoiceSink(inner, make_speaker(tts, player, on_off=off), on_error=lambda e: say(f"tlwu: voice error: {e}"))
 
     def close(drop: bool = False) -> None:
         """drop=True on Ctrl+C / Stop: skip the waiting lines instead of speaking them first."""

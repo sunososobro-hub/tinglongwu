@@ -28,6 +28,10 @@ class TTSClient:
                 raise RuntimeError(f"TTS worker failed to start: {self.ready}")
         except (RuntimeError, ValueError):  # no / garbled ready line: do not leave the worker process behind
             self.proc.kill()
+            try:
+                self.proc.wait(timeout=5)  # #448: reap it, so no zombie is left on POSIX
+            except subprocess.TimeoutExpired:
+                pass
             raise
         self._n = 0
 
