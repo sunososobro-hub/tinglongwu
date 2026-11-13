@@ -67,7 +67,7 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 ### Ledger (S-hard, hourly)
 - Sum the `tlwu-usage: ... minutes=N` last line of PRs merged to dev in the last 48 h, grouped by the linked issue's type label. Post a new comment on the pinned `[health] pipeline check log` issue (#61; create and pin it if missing) with a table: `type | minutes | share | target | deficit` where deficit = target - share (percentage points).
 - Targets: bug 30, enhancement 30, eval 10, documentation 5, maint 5. QA 15 and ideas 5 run on fixed schedules (section 5) and are also logged in the table.
-- QA and ideas rows use the section 5 inputs over the same 48 h window: QA = `tlwu-usage` comments on #61 created in the last 48 h; ideas = `tlwu-usage` comments on `[idea]` issues created in the last 48 h. Shares are over the total of all rows (merged PRs + QA + ideas). Pickers do not pick QA or ideas; those rows are informational.
+- QA and ideas rows use the section 5 inputs over the same 48 h window: QA = `tlwu-usage` comments on #61 created in the last 48 h; ideas = `tlwu-usage` comments on `[idea]` issues created in the last 48 h. Shares are over the total of all rows (merged PRs + QA + ideas). Pickers do not pick QA or ideas; those rows are informational. If the 48 h total is 0, post the table with share 0 and deficit = target for every row (the picker then takes bug/enhancement first, ties broken by the order of the targets list).
 
 ### Picker (every worker)
 - P0/P1 always first.
@@ -79,7 +79,7 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 
 ### Area lock
 - Each issue carries exactly one `area:*` label. A worker skips an issue whose area already has an open PR or a `status:doing` issue (P0 exempt). This tightens section 8 (file overlap) - both apply.
-- Race: after claiming (section 2) and adding `status:doing`, re-check the area. If another non-P0 `status:doing` issue or open PR in the same area exists with a lower issue number, release: delete branch `fix/N`, swap `status:doing` back to `status:todo`, take the next item.
+- Race: after claiming (section 2) and adding `status:doing`, re-check the area (skip the re-check when the claimed issue is P0). If another non-P0 `status:doing` issue or open PR in the same area exists with a lower issue number, release: delete branch `fix/N`, swap `status:doing` back to `status:todo`, take the next item.
 - Release: the area lock ends when the issue's PR is merged or closed and `status:doing` is removed (the merger or the watchdog removes it).
 
 ### Usage line
