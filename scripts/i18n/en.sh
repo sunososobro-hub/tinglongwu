@@ -40,7 +40,7 @@ M_ASK_SAVE='Save the subtitle text to a file? Audio is never saved. [Enter=no / 
 M_ASK_STREAM='Show live drafts while someone is still speaking (uses more CPU)? [Enter=no / y=show]: '
 M_ASK_STREAM_ON='Show live drafts while someone is still speaking (uses more CPU)? [Enter=show / n=no]: '
 M_MEETING_BANNER='Meeting mode: ▶ Me = what you said, ◀ Them = what the other side said; what you say in Chinese goes into Meet (pick %s as the microphone). Please wear headphones.'
-M_MEET_ROUTE='voice -> %s, preview -> off'
+M_MEET_ROUTE='voice -> %s'
 M_MEET_DIRECT_HINT='Each sentence is sent as soon as you stop speaking. To confirm each one first (y+Enter=send), start the menu with --confirm or TLWU_CONFIRM=1.'
 M_CONFIRM_HELP='Confirm each sentence first: y+Enter=send  Enter=discard  v0-v4=change voice'
 M_OUT1='  1) Into Meet (pick %s as the Meet microphone)'
