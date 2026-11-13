@@ -47,8 +47,8 @@ PROTECTED_FILES = frozenset({
 })
 DENYLIST = ("socket", "urllib", "requests", "http", "subprocess", "os.system", "eval(", "exec(",
             "__import__", "importlib", "pickle", "base64", "ctypes")  # list from #352 rule 3
-_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\("]),
-                      re.IGNORECASE)  # the extra pattern also catches "eval (x)" with a space
+_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\(", r"\bos\s*\.\s*system\b"]),
+                      re.IGNORECASE)  # extra patterns catch "eval (x)" and "os . system" (whitespace is legal Python)
 GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
 
@@ -66,7 +66,7 @@ def path_problems(files: list[dict]) -> list[str]:
             out.append(f"{f.get('filename')}: file deleted")
             continue
         for name in _names(f):
-            if name in PROTECTED_FILES:
+            if name in PROTECTED_FILES or name.rsplit("/", 1)[-1] == "conftest.py":  # any conftest can skip all tests
                 out.append(f"{name}: protected file")
             elif not any(fnmatchcase(name, g) for g in ALLOWED_GLOBS):
                 out.append(f"{name}: outside tinglongwu/**/*.py and tests/**/*.py")

@@ -182,3 +182,15 @@ def test_r3_spaced_eval_exec_and_compile_fail(line):
     files = _ok_files()
     files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
     assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r2_nested_conftest_is_protected():
+    files = _ok_files() + [_f("tests/sub/conftest.py")]
+    assert _lane(files)["failed"] == ["r2_paths"]
+
+
+@pytest.mark.parametrize("line", ["os .system('x')", "os. system('x')", "os . system('x')"])
+def test_r3_spaced_os_system_fails(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
