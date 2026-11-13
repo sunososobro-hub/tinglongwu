@@ -26,9 +26,9 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-T
 
 | 系统 | 命令 |
 |---|---|
-| Windows 64 位 | 下载 [tinglongwu-win64.zip](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-win64.zip)，解压后双击 `tlwu.exe` |
-| Linux（x86_64，已在 Ubuntu 24.04 测试） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Windows 10/11（64 位） | 下载 [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe)，运行后一直点 **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
+| Linux（x86_64，已在 Ubuntu 24.04 测试） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
 每个 release 都附 `SHA256SUMS.txt`；想在运行前验证，可先下载脚本比对。Linux 安装程序在任何 `apt` 操作前都会问 y/N，且不会下载模型（菜单每次下载前都会问）。Windows 命令会把源码下载到 `%USERPROFILE%\tinglongwu`，再运行与下方相同的 `install.ps1`（执行策略绕过只作用于该子进程）。
 

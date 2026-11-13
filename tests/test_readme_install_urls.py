@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LATEST = "https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/"
 RAW_MAIN = "https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/"
-ASSETS = {"install.sh", "mac_install.sh", "tinglongwu-win64.zip"}
+ASSETS = {"tinglongwu-setup.exe", "mac_install.sh", "install.sh"}
 DOCS = ("README.md", "README.zh-CN.md", "README.zh-TW.md", "docs/details.md", "docs/install.md",
         "docs/readme-full.zh-TW.md", "docs/readme-full.zh-CN.md")
 
@@ -38,3 +38,25 @@ def test_no_doc_installs_from_raw_main():
 def test_install_table_is_at_the_top_of_the_readme():
     s = (ROOT / "README.md").read_text("utf-8")
     assert s.index(LATEST) < s.index("## ")
+
+
+def test_release_workflow_attaches_the_fixed_name_wizard():
+    wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
+    assert "tinglongwu-setup.exe" in wf and "SHA256SUMS.txt --clobber" in wf
+
+
+def test_install_rows_are_windows_macos_linux():
+    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+        s = (ROOT / name).read_text("utf-8")
+        assert s.index(LATEST + "tinglongwu-setup.exe") < s.index(LATEST + "mac_install.sh") < s.index(LATEST + "install.sh"), name
+
+
+def test_support_table_and_contributor_avatars_under_install():
+    import json
+    logins = [c["login"] for c in json.loads((ROOT / ".all-contributorsrc").read_text("utf-8"))["contributors"]]
+    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+        s = (ROOT / name).read_text("utf-8")
+        top = s[:s.index("## ", s.index(LATEST))]
+        assert "🟢" in top and "🟡" in top and "⚪" in top, name
+        for login in logins:
+            assert f"https://github.com/{login}.png?size=40" in top, (name, login)

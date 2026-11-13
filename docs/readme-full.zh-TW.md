@@ -26,9 +26,9 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-T
 
 | 系統 | 指令 |
 |---|---|
-| Windows 64 位元 | 下載 [tinglongwu-win64.zip](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-win64.zip)，解壓縮後雙擊 `tlwu.exe` |
-| Linux（x86_64，已在 Ubuntu 24.04 測試） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Windows 10/11（64 位元） | 下載 [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe)，執行後一直按 **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
+| Linux（x86_64，已在 Ubuntu 24.04 測試） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
 無人值守 Linux（apt 一律同意，並安裝程式、Kokoro、預設辨識/翻譯模型；俄語語音仍須自行啟用）：`curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | TLWU_YES=1 bash`
 

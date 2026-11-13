@@ -17,7 +17,7 @@ def test_readmes_have_status_table():
 def test_zh_cn_readme_has_all_one_line_installs():
     en = (ROOT / "README.md").read_text("utf-8")
     cn = (ROOT / "README.zh-CN.md").read_text("utf-8")
-    for cmd in ("https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-win64.zip",
+    for cmd in ("https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe",
                 "curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \\| bash"):
         assert cmd in en
         assert cmd in cn

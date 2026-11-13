@@ -20,9 +20,9 @@ Full Chinese translations of the previous long README: [繁體中文](readme-ful
 
 | OS | Command |
 |---|---|
-| Windows 64-bit | Download [tinglongwu-win64.zip](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-win64.zip), extract it, double-click `tlwu.exe` |
-| Linux (x86_64, Ubuntu 24.04 tested) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Windows 10/11 (64-bit) | Download [tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe), run it and keep clicking **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
+| Linux (x86_64, Ubuntu 24.04 tested) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
 Unattended Linux (apt yes + default models): `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | TLWU_YES=1 bash`. More (checksums, ZIP, GPU): [install](install.md).
 
