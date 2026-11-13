@@ -1,0 +1,30 @@
+name: Suggestion / 建議
+description: A feature or UI wording idea. / 功能或介面用字的想法
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: happened
+    attributes:
+      label: What are you trying to do / 你想做什麼
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What would you like instead / 希望變成怎樣
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      placeholder: v0.1.0 (or commit)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS / 作業系統
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
