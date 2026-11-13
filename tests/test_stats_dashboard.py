@@ -136,3 +136,20 @@ def test_percentile_hours_p90_nearest_rank():
     assert sd.percentile_hours(pairs, 50) == 5.0
     assert sd.percentile_hours(pairs, 90) == 9.0
     assert sd.percentile_hours([], 90) is None
+
+
+def test_render_html_vision_block_first_from_vision_md():
+    series = sd.build_series(fake_api, "o/r", "dev", NOW)
+    page = sd.render_html(series)
+    body = page.split("<body>", 1)[1].lstrip()
+    assert body.startswith('<section id="vision"')
+    block = body.split("</section>", 1)[0]
+    vision = (Path(__file__).resolve().parents[1] / "docs" / "VISION.md").read_text(encoding="utf-8")
+    for node in ("MODE", "PLAT", "LANG"):
+        assert 'data-node="%s"' % node in block
+    for word in ("listen", "Windows", "zh"):
+        assert word in block and word in vision
+    assert block.count('data-nongoal="1"') == 3
+    for txt in ("Send audio or text to a cloud service", "Remember a voiceprint without consent",
+                "Send usage data home"):
+        assert txt in vision and txt in block
