@@ -8,6 +8,7 @@ builds the same router with its own no-fallback base (#331).
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections import deque
 from pathlib import Path
@@ -38,6 +39,22 @@ def sampling() -> dict:
     except (KeyError, ValueError):
         pass
     return s
+
+
+# #632: characters a terminal shows as boxes: U+FFFD (the model emitted the replacement character, or bytes that
+# llama.cpp could not decode), private-use code points, C0/C1 controls other than tab/newline, and noncharacters.
+# Sampling (temperature 0.7) occasionally picks such tokens; greedy decoding rarely does.
+_BAD_CHARS = re.compile("[\ufffd\ue000-\uf8ff\U000f0000-\U0010ffff\x00-\x08\x0b-\x1f\x7f-\x9f"
+                        "\ufdd0-\ufdef\ufffe\uffff]")
+
+
+def bad_chars(text: str) -> int:
+    """How many characters of `text` would render as boxes (see _BAD_CHARS)."""
+    return len(_BAD_CHARS.findall(text))
+
+
+def strip_bad_chars(text: str) -> str:
+    return " ".join(_BAD_CHARS.sub("", text).split()) if bad_chars(text) else text
 
 
 # #335: it/pt/vi/th/id are on the Hy-MT2 model card's language list, so they go direct instead of the OPUS pivot.
@@ -97,6 +114,8 @@ class HyMtTranslator(Translator):
         self._pair: tuple[str, str] | None = None
         self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output (#174)
         self._zh_words: dict[str, str] = {}
+        self.seed: int | None = None  # fixed llama.cpp sampling seed (scripts/bench/fffd_repro.py); None = random
+        self.retries = 0  # #632: greedy retries after an output with box characters
 
     def _zh_word(self, w: str) -> str:
         if w not in self._zh_words:
@@ -130,10 +149,15 @@ class HyMtTranslator(Translator):
                 self._pair = (src, tgt)
         else:
             ctx = [a for a, _ in self.history]
-        r = self.llm.create_chat_completion(
-            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx))}],
-            max_tokens=max_tokens_for(text), **sampling())
+        msgs = [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx))}]
+        extra = {} if self.seed is None else {"seed": self.seed}
+        r = self.llm.create_chat_completion(msgs, max_tokens=max_tokens_for(text), **sampling(), **extra)
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
+        if bad_chars(out):  # #632: U+FFFD / private-use boxes: one greedy retry, then drop what is left
+            self.retries += 1
+            r = self.llm.create_chat_completion(msgs, max_tokens=max_tokens_for(text),
+                                                **{**sampling(), "temperature": 0.0}, **extra)
+            out = strip_bad_chars(strip_unk(clean_output(r["choices"][0]["message"]["content"] or "")))
         if tgt == "zh":
             out = zh_convert(out, self.zh_variant)
             if self.glossary:
