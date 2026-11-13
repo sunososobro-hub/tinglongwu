@@ -42,4 +42,5 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt \
-            --verify-tag --generate-notes --title "$TAG"
+            --verify-tag --generate-notes --title "$TAG" \
+            --notes "Installing: builds are not code-signed (no paid certificate). Windows SmartScreen may say \"Windows protected your PC\": click More info, then Run anyway. Some antivirus tools may flag unsigned builds too. Verify your download against SHA256SUMS.txt. macOS: use the one-line Terminal command; if macOS blocks a driver, allow it in System Settings > Privacy & Security (Open Anyway)."
