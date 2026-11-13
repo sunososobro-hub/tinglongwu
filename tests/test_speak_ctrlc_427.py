@@ -15,7 +15,6 @@ from tinglongwu.reverse.live import capture_segments
 
 class SilentMic:
     """Like capture._soundcard.SoundcardSource: yields 100 ms blocks until close() is called (a room in silence)."""
-
     def __init__(self):
         self.closed = threading.Event()
         self.released = threading.Event()  # the recorder `with` was left
@@ -34,12 +33,8 @@ class SilentMic:
 
 class NoSpeech:
     """VAD that never finds speech: the capture thread never hands anything to the consumer."""
-
     def segments(self, frames):
-        for _ in frames:
-            pass
-        return
-        yield
+        yield from (f for f in frames if False)
 
 
 def _capture_threads():
