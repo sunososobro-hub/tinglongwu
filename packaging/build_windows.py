@@ -371,7 +371,8 @@ def copy_worker_sources(app: Path) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
-    ap.add_argument("--lite", action="store_true", help="CPU-only variant: no CUDA libs / ggml-cuda.dll")
+    ap.add_argument("--lite", "--core", dest="lite", action="store_true",
+                    help="CPU-only core variant (alias --core): no cuda_libs/ and no ggml-cuda.dll")
     ap.add_argument("--allow-cpu-only", action="store_true",
                     help="no CUDA wheels found: build a CPU-only package instead of stopping; on a machine "
                          "without an NVIDIA driver (CI runner) the smoke may also use the CPU llama fallback")
