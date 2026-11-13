@@ -118,7 +118,7 @@ def _stage(ok: bool | None) -> str:
 
 
 # #122: a language group is red when its peak VRAM exceeds this share of the card. 0.9 of 8 GiB = 7.2 GiB, the 8 GB
-# tier budget the owner gave on #122 (same 90 % the resource score already uses); other cards scale with their size.
+# tier budget the owner gave on #122; other cards scale with their size.
 VRAM_BUDGET_FRAC = 0.9
 
 
