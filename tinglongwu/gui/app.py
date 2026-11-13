@@ -15,7 +15,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (ALPHA_STEP, engine_from_label, engine_labels, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha)
@@ -350,6 +350,11 @@ class App:
         cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
         return var
 
+    def _advanced_toggled(self):
+        """#399: the engine row is only visible while Advanced is expanded."""
+        for w in self.frm.grid_slaves(row=3):
+            (w.grid if self.v_advanced.get() else w.grid_remove)()
+
     def _quality_changed(self):
         """Engine / speech model are picked for the user unless Quality is 'manual' (#81)."""
         state = "readonly" if self.v_quality.get() == "manual" else "disabled"
@@ -366,7 +371,12 @@ class App:
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
-        self.v_engine = self._combo(3, "gui_engine", "engine", ENGINES)
+        self.v_engine = self._combo(3, "gui_engine", "engine", engine_labels())
+        self.v_engine.set(self.settings["engine"])
+        self.v_advanced = tk.BooleanVar(value=bool(self.settings.get("advanced")))  # #399
+        self._tx(ttk.Checkbutton(self.frm, variable=self.v_advanced, command=self._advanced_toggled),
+                 "gui_advanced").grid(row=18, column=0, columnspan=3, sticky="w", pady=2)
+        self._advanced_toggled()
         self.v_model = self._combo(4, "gui_model", "model", model_labels())
         self.v_model.set(label_for_model(self.settings["model"]))
         self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
@@ -579,7 +589,7 @@ class App:
 
     def collect(self):
         s = self.settings
-        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=self.v_engine.get(), quality=self.v_quality.get(),
+        s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=engine_from_label(self.v_engine.get()), advanced=self.v_advanced.get(), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),

@@ -23,6 +23,7 @@ DEFAULTS = {
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
+    "advanced": False,  # #399: the Engine box lives under "Advanced", collapsed by default and remembered
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
@@ -204,6 +205,18 @@ def model_labels(mdir=None) -> list[str]:
 
     have = whisper_installed(mdir)
     return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
+
+
+def engine_labels(mdir=None) -> list[str]:
+    """Engine dropdown entries (#399): only engines that can run now; opus (not downloaded by default) carries a hint."""
+    from ..models import models_dir
+
+    opus_ok = (models_dir(str(mdir) if mdir else None) / "opus").is_dir()
+    return ["auto", "hymt", "opus" if opus_ok else "opus (not installed: tlwu-setup)"]
+
+
+def engine_from_label(label: str) -> str:
+    return label.split(" ", 1)[0].strip()
 
 
 def model_from_label(label: str) -> str:

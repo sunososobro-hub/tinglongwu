@@ -419,3 +419,28 @@ def test_download_finishing_while_loading_keeps_the_button_disabled(gui_app, mon
     assert str(a.btn.cget("state")) == "normal"
     a._download_done("tiny", 0)  # after ready: unchanged behaviour, the button works
     assert str(a.btn.cget("state")) == "normal"
+
+
+def test_engine_labels_hide_uninstalled_opus_and_roundtrip(tmp_path):
+    assert core.DEFAULTS["advanced"] is False
+    labels = core.engine_labels(tmp_path)
+    assert labels[:2] == ["auto", "hymt"] and "tlwu-setup" in labels[2]
+    assert [core.engine_from_label(l) for l in labels] == ["auto", "hymt", "opus"]
+    (tmp_path / "opus").mkdir()
+    assert core.engine_labels(tmp_path)[2] == "opus"
+
+
+def test_advanced_setting_persists(tmp_path):
+    p = tmp_path / "s.json"
+    s = core.load_settings(p)
+    s["advanced"] = True
+    assert core.save_settings(s, p) and core.load_settings(p)["advanced"] is True
+
+
+def test_engine_hidden_until_advanced(gui_app):
+    a = gui_app
+    assert a.v_advanced.get() is False and not a.combos["engine"].winfo_ismapped()
+    a.v_advanced.set(True)
+    a._advanced_toggled()
+    a.root.update()
+    assert a.combos["engine"].winfo_ismapped()
