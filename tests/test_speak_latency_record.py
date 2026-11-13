@@ -46,7 +46,7 @@ class _Watch:
         self.t.setdefault(k, time.perf_counter())
 
 
-def _run(monkeypatch, clip, watch, tts=True):
+def _run(monkeypatch, clip, watch, tts=True, text_delay=0.0):
     orig_frames = stream.PacedSource.frames
 
     def frames(self):  # stopwatch: real-time playback starts when PacedSource starts its clock
@@ -63,8 +63,19 @@ def _run(monkeypatch, clip, watch, tts=True):
         def transcribe(self, seg):
             watch.mark("asr_start")
             time.sleep(ASR_S)
-            watch.mark("asr_end")
             return Transcript("你好朋友", "zh", 0.0)
+
+    from tinglongwu import translate
+
+    orig_zh = translate.zh_convert
+
+    def zh_convert(text, variant):  # post-ASR text work; "text ready" (asr_done) is stamped only after it (#650)
+        time.sleep(text_delay)
+        out = orig_zh(text, variant)
+        watch.mark("asr_end")
+        return out
+
+    monkeypatch.setattr(translate, "zh_convert", zh_convert)
 
     class Mt:
         def translate(self, text, src, tgt):
@@ -120,6 +131,15 @@ def test_paced_speak_record_matches_stopwatch(monkeypatch, clip):
     assert r["lang"] == "en" and r["text"] == "Hello friend."
     # real time: the record can only exist after the clip was (nearly) played
     assert time.perf_counter() - w["start"] >= SPEECH_S + 0.5
+
+
+def test_paced_record_survives_slow_post_asr_text_work(monkeypatch, clip):
+    """#650: 0.2 s of post-ASR work (zh_convert) lands in `asr` for both the record and the stopwatch."""
+    watch = _Watch()
+    recs, _ = _run(monkeypatch, clip, watch, text_delay=0.2)
+    r, w = recs[0], watch.t
+    assert r["asr"] == pytest.approx(w["asr_end"] - w["asr_start"], abs=TOL)
+    assert r["asr"] >= ASR_S + 0.2 - TOL and r["merge"] == pytest.approx(w["mt_start"] - w["asr_end"], abs=TOL)
 
 
 def test_paced_text_only_record_has_no_tts_fields(monkeypatch, clip):
