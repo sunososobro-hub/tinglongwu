@@ -520,7 +520,14 @@ select{font:inherit;padding:4px 8px;background:var(--bg);color:var(--fg);border:
 .lg i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
 .pb{height:10px;background:var(--grid);border-radius:5px;overflow:hidden}.pb div{height:100%;background:var(--a)}
 small,p.n{color:var(--mut)}
+.vs{border:1px solid var(--bd);border-radius:8px;padding:12px;margin:0 0 12px}
+.vs .cap{font-size:16px;font-weight:600;margin:0 0 8px}
+.vs .row{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.vs .nd{flex:1 1 150px;border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:13px}
+.vs .goal{background:#1e3a5f;color:#fff;border-color:#1e3a5f}
+.vs .ar{align-self:center;font-size:20px}.vs ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
 </style></head><body>
+__VISION__
 <h1 style="font-size:20px">__REPO__ progress</h1>
 <p style="font-size:16px;margin:4px 0 12px"><a href="roadmap.html">&#x1F5FA;&#xFE0F; Roadmap</a> &middot; <a href="docs.html">Docs</a></p>
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
@@ -592,10 +599,58 @@ dim.value='status';showGroup();
 </script></body></html>"""
 
 
+VISION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "VISION.md")
+
+
+def parse_vision(text):
+    """docs/VISION.md -> {caption, nodes{ID: [lines]}, nongoals[(icon, text)]}."""
+    cap = ""
+    for ln in text.splitlines():
+        if ln.startswith(">"):
+            cap = ln.lstrip("> ").replace("**", "").strip()
+            break
+    nodes = {}
+    for m in re.finditer(r'(\w+)\["(.*?)"\]', text):
+        nodes[m.group(1)] = [x.strip() for x in m.group(2).split("<br/>") if x.strip()]
+    ng, on = [], False
+    for ln in text.splitlines():
+        if ln.startswith("## "):
+            on = "We don't" in ln
+        elif on:
+            m = re.match(r"^\|\s*(\S+)\s*\|\s*(.+?)\s*\|$", ln)
+            if m and not set(m.group(1)) <= set("-:"):
+                ng.append((m.group(1), m.group(2)))
+    return {"caption": cap, "nodes": nodes, "nongoals": ng}
+
+
+def vision_html(path=VISION_PATH):
+    try:
+        with open(path, encoding="utf-8") as f:
+            v = parse_vision(f.read())
+    except OSError:
+        return ""
+    def node(i, cls="nd"):
+        lines = v["nodes"].get(i)
+        if not lines:
+            return ""
+        body = "<br>".join(html.escape(x) for x in lines)
+        return '<div class="%s" data-node="%s">%s</div>' % (cls, i, body)
+    out = ['<section id="vision" class="vs">']
+    if v["caption"]:
+        out.append('<p class="cap">%s</p>' % html.escape(v["caption"]))
+    out.append('<div class="row">%s<span class="ar">&rarr;</span>%s</div>' % (node("WHY"), node("GOAL", "nd goal")))
+    out.append('<div class="row" style="margin-top:8px">%s%s%s</div>' % (node("MODE"), node("PLAT"), node("LANG")))
+    if v["nongoals"]:
+        out.append("<ul>%s</ul>" % "".join(
+            '<li data-nongoal="1">%s %s</li>' % (html.escape(i), html.escape(t)) for i, t in v["nongoals"]))
+    out.append("</section>")
+    return "".join(out)
+
+
 def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
     values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
-              "__FLOW__": render_flow_section(series), "__DATA__": data}
+              "__FLOW__": render_flow_section(series), "__VISION__": vision_html(), "__DATA__": data}
     # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
     return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
