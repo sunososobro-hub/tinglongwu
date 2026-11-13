@@ -23,7 +23,7 @@ $LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=Tru
 $LlamaChkCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[0])'   # CPU build for Japanese (#126)
 $LlamaWhyCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[1])'
 # GPU tier threshold == tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (owner #63: Whisper turbo 1600 + Hy-MT2 1500 MiB + headroom).
-# Hy-MT2 is the only translation LLM (#276): it matches Qwen3-8B quality at ~4x the speed (#66); Qwen was removed (#308).
+# Hy-MT2 is the only translation LLM (#276, #308).
 $GpuMinMB  = 4096
 . (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
 $Gpu = $false; $ModelGB = 0; $HyCpu = $false

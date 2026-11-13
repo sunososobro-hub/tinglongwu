@@ -1,4 +1,4 @@
-# llama.cpp engines: Hy-MT2 (GPU default, --engine auto) and opt-in Qwen (--engine qwen). Needs a CUDA build of llama-cpp-python.
+# llama.cpp engine: Hy-MT2 (GPU default, --engine auto/hymt/hymt7b). Needs a CUDA build of llama-cpp-python.
 # The plain PyPI package has no Windows binary and would try to compile (needs Visual Studio + CUDA toolkit),
 # so install the prebuilt CUDA wheel from the project's own index, binary only:
 #   pip install -r requirements-llama-cuda.txt --only-binary=:all:

@@ -148,7 +148,7 @@ and the cuDNN Software License Agreement; see the NVIDIA-*.txt files in this fol
 NOTICES_HEAD = """tinglongWu itself is MIT licensed: https://github.com/sunososobro-hub/tinglongwu
 
 Models are NOT bundled; they are downloaded on first run (Whisper: MIT, Opus-MT: CC-BY-4.0, Argos Translate: MIT,
-Silero VAD: MIT, Qwen3: Apache-2.0).
+Silero VAD: MIT, Hy-MT2: Apache-2.0).
 Microsoft Visual C++ runtime files (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll, msvcp140_1.dll, vcomp140.dll
 in this folder, from the Visual C++ 2015-2022 x64 runtime): redistributable under the Microsoft Visual Studio license
 terms (Distributable Code). If tlwu.exe still does not start, install the Microsoft Visual C++ Redistributable
