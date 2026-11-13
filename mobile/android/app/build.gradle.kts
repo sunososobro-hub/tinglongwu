@@ -39,11 +39,23 @@ android {
         }
     }
 
+    // Release key from the environment (CI decodes the ANDROID_KEYSTORE_B64 secret into a file).
+    // Without TLWU_KEYSTORE the release APK is debug-signed, so local builds and forks still work.
+    val tlwuKeystore = System.getenv("TLWU_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
+    signingConfigs {
+        if (tlwuKeystore != null) {
+            create("tlwuRelease") {
+                storeFile = file(tlwuKeystore)
+                storePassword = System.getenv("TLWU_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("TLWU_KEY_ALIAS")
+                keyPassword = System.getenv("TLWU_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (tlwuKeystore != null) "tlwuRelease" else "debug")
         }
     }
 }
