@@ -45,7 +45,7 @@ Expected on device: models/gigaam3/{encoder.int8.onnx,decoder.onnx,joiner.onnx,t
 - License: Apache-2.0.
 - Where to get it: the same file desktop `tlwu-setup --hymt` downloads to `models\hymt2-1.8b\`; the app never downloads it.
 - Where to side-load it: `/sdcard/Android/data/com.tinglongwu.mobile/files/models/Hy-MT2-1.8B-Q4_K_M.gguf` (the `adb push` line above).
-- Output may be Simplified Chinese (the model-card prompt asks for 中文; desktop converts with OpenCC, the phone has no converter yet); such lines are flagged NOT-TRAD in the log.
+- The model-card prompt asks for 中文, so output may be Simplified; like desktop (OpenCC s2twp), the app converts it to Traditional Chinese with Taiwan wording (`lib/logic/s2tw.dart`, pure Dart, tables generated from OpenCC data by `tool/gen_s2tw_data.py`). Lines that still contain Simplified-only characters are flagged NOT-TRAD in the log.
 
 ## Logs
     adb pull /sdcard/Android/data/com.tinglongwu.mobile/files/logs/tlwu.log
@@ -60,6 +60,7 @@ Each translation logs latency (est. speech end -> zh shown), ASR-final -> zh, ti
 - sherpa-onnx: Apache-2.0.
 - `native/llama-cpp-dart-selfbuilt.aar` is llama.cpp (MIT) built from source; the upstream prebuilt AAR is not used. See "Native AAR" below.
 - Hy-MT2-1.8B GGUF model: Apache-2.0. Silero VAD: MIT.
+- `lib/logic/s2tw_data.dart`: generated from the OpenCC dictionaries (Copyright BYVoid and contributors, Apache-2.0, https://github.com/BYVoid/OpenCC), same data as the desktop `opencc-python-reimplemented` package.
 - `<MODELS_DIR>` above is wherever you keep the downloaded model files.
 
 ## Native AAR (`native/llama-cpp-dart-selfbuilt.aar`)
