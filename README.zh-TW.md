@@ -1,8 +1,8 @@
 # tinglongWu
 
-會議與通話用的離線即時語音翻譯。
+<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="240"><br><strong>聽龍 / TingLong，專心聽的龍。</strong><br>會議與通話用的離線即時語音翻譯。</p>
 
-[English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md)
+[English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md) · 🗺️ [路線圖](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [下一版進度](https://github.com/sunososobro-hub/tinglongwu/milestones)
 
 <!-- TODO: screenshot or GIF of the subtitle window (docs/img/demo.gif); no screenshot exists in the repo yet. -->
 

@@ -55,6 +55,9 @@ def parse_args(argv=None):
                         f"--max-wait the default max-wait is {CPU_MAX_WAIT:g} s")
     p.add_argument("--chunk", type=float, default=None,
                    help="max segment seconds (default from --preset; larger = more context for Whisper)")
+    p.add_argument("--no-splash", action="store_true",
+                   help="skip the start-up mascot animation (it is also skipped when output is not a terminal, "
+                        "with NO_COLOR, or on terminals without 24-bit colour)")
     p.add_argument("--selftest", action="store_true",
                    help="load the models and translate one bundled test sentence with --model/--engine/--device, "
                         "print OK/FAIL per step, fall back GPU -> CPU on failure, then exit (offline)")
@@ -588,6 +591,9 @@ def main(argv=None) -> int:
         return gui_main()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    from . import splash
+
+    splash.play(no_splash=a.no_splash)
     if a.overlay:  # #322: Tk owns the main thread, the pipeline runs on a worker
         from .overlay import OverlaySink, run_listen
         from .sink import TextSink, TranscriptSink

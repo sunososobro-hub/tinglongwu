@@ -1,8 +1,8 @@
 # tinglongWu
 
-Offline real-time speech translation for meetings and calls.
+<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="240"><br><strong>聽龍 / TingLong, the listening dragon.</strong><br>Offline real-time speech translation for meetings and calls.</p>
 
-English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) · 🗺️ [Roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [Progress of the next release](https://github.com/sunososobro-hub/tinglongwu/milestones)
 
 | OS | Install (latest release) |
 |---|---|

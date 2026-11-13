@@ -112,6 +112,7 @@ def render_html(history, repo, branch):
         days[k[:10]] = days.get(k[:10], 0) + v
     labels = sorted(last["labels"].items(), key=lambda kv: (-kv[1], kv[0]))[:25]
     return """<!doctype html><meta charset="utf-8"><title>tlwu stats</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
 <style>body{font:14px sans-serif;max-width:680px;margin:1em auto;padding:0 1em}
 .t{display:inline-block;margin:4px;padding:8px 14px;border:1px solid #ccc;border-radius:6px}
 .t b{display:block;font-size:22px}</style>

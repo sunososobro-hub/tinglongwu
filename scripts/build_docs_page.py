@@ -29,6 +29,7 @@ def main(out: Path) -> None:
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>tinglongWu docs</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
 <style>:root{{color-scheme:light dark}}body{{max-width:860px;margin:2rem auto;padding:0 1rem;font:16px/1.55 system-ui,sans-serif}}
 table{{border-collapse:collapse;display:block;overflow-x:auto}}td,th{{border:1px solid #8884;padding:.3rem .6rem;text-align:left}}code{{background:#8882;padding:0 .25em;border-radius:3px}}</style>
 </head><body>
