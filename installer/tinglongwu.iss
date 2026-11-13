@@ -61,6 +61,31 @@ var
   ProgressPage: TOutputProgressWizardPage;
   InstallRC: Integer;
   KeepModels: Boolean;
+  CpuTaskPreset: Boolean;
+
+{ #600: NVIDIA driver present? nvcuda.dll / nvml.dll in System32, or nvidia-smi exits 0 }
+function HasNvidiaDriver: Boolean;
+var
+  RC: Integer;
+begin
+  Result := FileExists(ExpandConstant('{sys}\nvcuda.dll')) or FileExists(ExpandConstant('{sys}\nvml.dll'));
+  if not Result then
+    Result := Exec(ExpandConstant('{cmd}'), '/C nvidia-smi >NUL 2>&1', '', SW_HIDE, ewWaitUntilTerminated, RC) and (RC = 0);
+  Log('NVIDIA driver detected: ' + IntToStr(Ord(Result)));
+end;
+
+{ #600: no NVIDIA driver -> pre-tick "Force the CPU path"; the box stays visible as an advanced override }
+procedure PresetCpuTask;
+var
+  I: Integer;
+begin
+  if CpuTaskPreset then exit;
+  CpuTaskPreset := True;
+  if HasNvidiaDriver then exit;
+  for I := 0 to WizardForm.TasksList.Items.Count - 1 do
+    if Pos('Force the CPU path', WizardForm.TasksList.ItemCaption[I]) = 1 then
+      WizardForm.TasksList.Checked[I] := True;
+end;
 
 procedure InitializeWizard;
 begin
@@ -146,6 +171,7 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
+  if CurPageID = wpSelectTasks then PresetCpuTask;
   if (CurPageID = wpFinished) and (InstallRC <> 0) then
     WizardForm.FinishedLabel.Caption :=
       'install.ps1 did not finish cleanly (exit code ' + IntToStr(InstallRC) + '). See ' +
