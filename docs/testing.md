@@ -20,6 +20,11 @@ python -m tlwu_eval --smoke --data eval_data/smoke --clips 5 --model small --eng
 python -m tlwu_eval --gate r.json --baseline eval/baseline.json
 ```
 
+The smoke data folder is not in the repo. `python scripts/bench/make_ci_smoke.py --out eval_data/smoke` (#569)
+rebuilds an open-licensed one on any machine with network: 5 FLEURS test clips (CC-BY 4.0) each for en, ja, ru and
+zh, pinned by dataset revision and per-WAV sha256 in `eval/ci_smoke.json` (exit 1 on a mismatch; about 14 MB
+downloaded).
+
 To record a baseline, copy each pair's `chrf` from `r.json` into `eval/baseline.json` and set `chrf_margin`.
 
 ## Hy-MT2 new languages: Experimental vs supported (#472)
