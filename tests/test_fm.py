@@ -77,3 +77,14 @@ def test_zh_target_is_converted_to_the_variant():
     tr = FmTranslator("cn", runner=Runner("這個問題"))
     assert tr.translate("this problem", "en", "zh").text == "这个问题"
     assert FmTranslator(runner=Runner("这个")).translate("this", "zh", "en").text == "这个"  # non-zh target: as is
+
+
+def test_draft_with_another_pair_keeps_history():
+    """CodeRabbit on #477: a draft for a different language pair must not clear the committed context."""
+    r = Runner("hello")
+    tr = FmTranslator(runner=r)
+    tr.translate("privet", "ru", "en")
+    tr.draft("konnichiwa", "ja", "en")
+    assert "privet => " not in r.calls[-1][1]
+    tr.translate("poka", "ru", "en")
+    assert "privet => " in r.calls[-1][1]

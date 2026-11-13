@@ -67,9 +67,13 @@ class FmTranslator(Translator):
             return Translation(None, text)
         text = collapse_repeats(text)
         if self._pair != (src, tgt):
+            if draft:  # drafts never change state: a new pair just gets no context
+                return self._translate(text, src, tgt, draft, ())
             self.history.clear()
             self._pair = (src, tgt)
-        ctx = trim_context(self.history)
+        return self._translate(text, src, tgt, draft, trim_context(self.history))
+
+    def _translate(self, text: str, src: str, tgt: str, draft: bool, ctx) -> Translation:
         note = self.glossary.prompt_block(text, *(a for a, _ in ctx)) if self.glossary else ""
         out = clean_output(self._respond(build_system_prompt(src, tgt, self.zh_variant),
                                          build_user(text, ctx, note)))

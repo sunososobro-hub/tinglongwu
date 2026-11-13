@@ -97,12 +97,16 @@ class OllamaTranslator(Translator):
         if src == tgt or not text.strip():
             return Translation(None, text)
         text = collapse_repeats(text)
-        if self._pair != (src, tgt):
-            self.history.clear()
-            self._pair = (src, tgt)
         if self.model is None:
             self.preload(src, tgt)
-        ctx = trim_context(self.history)
+        if self._pair != (src, tgt):
+            if draft:  # drafts never change state: a new pair just gets no context
+                return self._translate(text, src, tgt, draft, ())
+            self.history.clear()
+            self._pair = (src, tgt)
+        return self._translate(text, src, tgt, draft, trim_context(self.history))
+
+    def _translate(self, text: str, src: str, tgt: str, draft: bool, ctx) -> Translation:
         note = self.glossary.prompt_block(text, *(a for a, _ in ctx)) if self.glossary else ""
         budget = max_tokens_for(text)
         body = {

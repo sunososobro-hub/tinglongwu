@@ -1,3 +1,5 @@
+import io
+
 import pytest
 
 from tinglongwu import cli
@@ -115,3 +117,31 @@ def test_platform_defaults_unchanged():
     for e in ("ollama", "fm"):
         assert cli.parse_args(["--engine", e]).engine == e
 
+
+
+def test_draft_with_another_pair_keeps_history():
+    """CodeRabbit on #477: a draft for a different language pair must not clear the committed context."""
+    f = Fake("你好")
+    tr = OllamaTranslator("m", transport=f)
+    tr.translate("hello", "en", "zh")
+    tr.draft("privet", "ru", "zh")
+    assert "hello => " not in f.calls[-1][2]["messages"][1]["content"]  # the ru draft gets no en context
+    tr.translate("bye", "en", "zh")
+    assert "hello => " in f.calls[-1][2]["messages"][1]["content"]
+
+
+def test_selftest_passes_ollama_options(monkeypatch):
+    from tinglongwu import selftest
+
+    seen = {}
+
+    def fake_run(mdir, model, engine, device, zh_variant, make_mt=None, **k):
+        monkeypatch.setattr(cli, "make_translator", lambda *a, **kw: seen.update(kw))
+        make_mt(mdir, "ollama", zh_variant, device)
+        return type("R", (), {"text": lambda self: "x", "ok": False})()  # ok=False: no GUI settings write
+
+    monkeypatch.setattr(selftest, "run_selftest", fake_run)
+    monkeypatch.setattr(selftest, "write_log", lambda r: None)
+    a = cli.parse_args(["--selftest", "--engine", "ollama", "--ollama-model", "mine", "--ollama-url", "localhost:1"])
+    selftest.main_from_args(a, out=io.StringIO())
+    assert seen["ollama_model"] == "mine" and seen["ollama_url"] == "localhost:1"

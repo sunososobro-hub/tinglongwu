@@ -88,11 +88,12 @@ def _default_asr(mdir, model, device):
     return FasterWhisperRecognizer(mdir, model, "en", device)
 
 
-def _default_mt(mdir, name, zh_variant, device):
-    """Build exactly engine `name` (hymt2 / hymt2-cpu / opus) the way a session does; failures raise."""
+def _default_mt(mdir, name, zh_variant, device, ollama_model=None, ollama_url=None):
+    """Build exactly engine `name` (hymt2 / hymt2-cpu / opus / ollama / fm) the way a session does; failures raise."""
     from .cli import make_translator
 
-    return make_translator(name, mdir, zh_variant, device, say=_silent, choose=lambda *_a: (name, "self-test"))
+    return make_translator(name, mdir, zh_variant, device, say=_silent, choose=lambda *_a: (name, "self-test"),
+                           ollama_model=ollama_model, ollama_url=ollama_url)
 
 
 def _default_choose(engine, device, mdir):
@@ -273,7 +274,11 @@ def main_from_args(a, out=None) -> int:
 
     out = out or sys.stdout
     print("tlwu self-test: loading the models and translating one test sentence (offline)...", file=out, flush=True)
-    res = run_selftest(models_dir(a.models_dir), a.model, a.engine, a.compute, a.zh_variant)
+    def make_mt(mdir, name, zh_variant, device):  # #356: --ollama-model / --ollama-url apply to the self-test too
+        return _default_mt(mdir, name, zh_variant, device, getattr(a, "ollama_model", None),
+                           getattr(a, "ollama_url", None))
+
+    res = run_selftest(models_dir(a.models_dir), a.model, a.engine, a.compute, a.zh_variant, make_mt=make_mt)
     print(res.text(), file=out, flush=True)
     log = write_log(res)
     if log:
