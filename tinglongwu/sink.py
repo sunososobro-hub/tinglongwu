@@ -14,6 +14,7 @@ class Result:
     pivot: str | None
     target: str
     tgt: str = "zh"
+    side: str = "them"  # #373: "them" = heard (listen side), "me" = what I said (speak side, meeting mode)
 
 
 class Sink(ABC):
@@ -94,18 +95,24 @@ class JsonlSaveSink(Sink):
         self.t0 = self.clock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = open(self.path, "a", encoding="utf-8")
+        self._lock = threading.Lock()  # #373: meeting mode records both sides (listen thread + speak thread)
 
     def write_source(self, src: str, original: str) -> None:
         self.inner.write_source(src, original)
 
     def write(self, r: Result) -> None:
+        self.inner.write(r)
+        self.record(r)
+
+    def record(self, r: Result) -> None:
+        """Append `r` to the file only (no console). #373: the speak side's lines go here with side="me"."""
         import json
 
-        self.inner.write(r)
         rec = {"t": round(self.clock() - self.t0, 2), "wall": self.now().isoformat(timespec="seconds"),
-               "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
-        self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        self.f.flush()
+               "side": r.side, "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
+        with self._lock:
+            self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self.f.flush()
 
 
 def default_save_path(now=None):
