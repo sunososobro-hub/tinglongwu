@@ -118,6 +118,7 @@ class SentenceMerger:
         self._cut = False  # previous segment was a forced mid-speech cut
         self._tail: list[str] = []  # last pushed words, for overlap de-duplication
         self.tag: object = None  # tag of the newest segment whose text is buffered (#323)
+        self._marks: list[tuple[int, object]] = []  # #435: (offset in buf where a segment's text starts, its tag)
 
     @property
     def deadline(self) -> float | None:
@@ -130,6 +131,7 @@ class SentenceMerger:
         if drop_old and self._tail and self.buf.endswith(self._tail[-1]):
             self.buf = self.buf[:-len(self._tail[-1])].rstrip()
             self._tail = self._tail[:-1]
+            self._marks = [m for m in self._marks if m[0] < len(self.buf)]
         return " ".join(text.split()[drop_new:])
 
     def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0,
@@ -155,6 +157,7 @@ class SentenceMerger:
             self.since = now
         self.lang = lang
         self.buf = f"{self.buf} {text}".strip() if not _CJK.search(text[:1]) else self.buf + text
+        self._marks.append((len(self.buf) - len(text), tag))
         parts = [p for p in _SPLIT.split(self.buf) if p.strip()]
         # keep splitting only where the sentence really ends (abbreviation guard)
         sents: list[str] = []
@@ -169,6 +172,7 @@ class SentenceMerger:
         if self.min_words > 0:
             sents, rest = self._merge_fragments(sents, rest)
         out += [Unit(s.strip(), lang, False, tag) for s in sents]
+        self._rebase(len(self.buf) - len(rest))
         self.buf = rest
         if not rest:
             self.since = None
@@ -210,15 +214,30 @@ class SentenceMerger:
             if self.whole:
                 head, rest = split_clause(self.buf)
                 if head:
+                    # #435: the clause carries the tag of the newest segment it holds text of, not the buffer's
+                    tag = self._tag_before(len(head))
+                    self._rebase(len(self.buf) - len(rest))
                     self.buf, self.since = rest, (now if rest else None)
-                    return [Unit(head, self.lang, True, self.tag)]
+                    return [Unit(head, self.lang, True, tag)]
             return [self._take(forced=True)]
         return []
 
     def flush(self) -> list[Unit]:
         return [self._take(forced=True)] if self.buf else []
 
+    def _tag_before(self, end: int) -> object:
+        """Tag of the newest segment whose text starts before offset `end` of the buffer."""
+        tags = [t for off, t in self._marks if off < end]
+        return tags[-1] if tags else self.tag
+
+    def _rebase(self, start: int) -> None:
+        """The buffer now begins at old offset `start`: shift the marks; the segment holding that offset starts at 0."""
+        kept = [(off - start, t) for off, t in self._marks if off > start]
+        older = [t for off, t in self._marks if off <= start]
+        self._marks = ([(0, older[-1])] if older else []) + kept
+
     def _take(self, forced: bool) -> Unit:
         u = Unit(self.buf.strip(), self.lang, forced, self.tag)
         self.buf, self.since = "", None
+        self._marks = []
         return u

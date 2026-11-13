@@ -211,3 +211,45 @@ def test_merger_units_keep_their_own_segment_tag():
     assert [(u.text, u.tag) for u in m.due(10.0)] == [("and then", "C")]
     assert [(u.text, u.tag) for u in m.add("it rained. and", "en", 11.0, tag="E")] == [("it rained.", "E")]
     assert [u.tag for u in m.flush()] == ["E"]
+
+
+def test_unwritable_latency_jsonl_is_a_clean_cli_error(tmp_path, capsys):
+    """#435: a path that cannot be written exits 2 at argument parsing (before any model loads), no traceback."""
+    bad = tmp_path / "no_such_dir" / "l.jsonl"
+    with pytest.raises(SystemExit) as e:
+        cli.parse_args(["--file", "x.wav", "--paced", "--latency-jsonl", str(bad)])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "--latency-jsonl: cannot write" in err and "Traceback" not in err
+
+
+def test_unwritable_latency_jsonl_main_exits_before_models(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_session", lambda *a, **k: (_ for _ in ()).throw(AssertionError("models loaded")))
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--latency-jsonl", str(tmp_path)])  # a directory: cannot be opened for append
+    assert e.value.code == 2 and "cannot write" in capsys.readouterr().err
+
+
+def test_whole_mode_timeout_clause_gets_tag_of_its_newest_segment():
+    """#435: a whole-mode timeout releases the clause up to the last comma; it holds only segment A's text, so it
+    carries A's tag (not the buffer's newest, B); the rest keeps B's tag."""
+    from tinglongwu.merge import SentenceMerger
+
+    m = SentenceMerger(max_wait=1.0, whole=True)
+    assert m.add("one two three, unfinished", "en", 0.0, tag="A") == []
+    assert m.add("four five six", "en", 0.2, tag="B") == []
+    out = m.due(1.0)
+    assert [(u.text, u.tag) for u in out] == [("one two three,", "A")]
+    rest = m.flush()
+    assert [(u.text, u.tag) for u in rest] == [("unfinished four five six", "B")]
+
+
+def test_whole_mode_clause_spanning_two_segments_gets_newest_tag():
+    from tinglongwu.merge import SentenceMerger
+
+    m = SentenceMerger(max_wait=1.0, whole=True)
+    m.add("one two", "en", 0.0, tag="A")
+    m.add("three four, and", "en", 0.2, tag="B")
+    m.add("then more", "en", 0.4, tag="C")
+    assert [(u.text, u.tag) for u in m.due(1.0)] == [("one two three four,", "B")]
+    assert [u.tag for u in m.flush()] == ["C"]
