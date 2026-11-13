@@ -71,3 +71,15 @@ python -m tlwu_eval --smoke --data "%USERPROFILE%\tlwu-eval\ja" --per-lang 60 --
 ```
 
 FLEURS is read news/encyclopedia text, so it covers the broadcast-news style; anime-style dialogue is not in it. The chrF baseline and per-OS numbers are recorded on #346 once measured on GPU hardware.
+
+## Indian speakers: English or Hindi? (#620)
+
+Same 50 FLoRes sentences read in FLEURS en_us (US English) and hi_in (Hindi), Whisper large-v3-turbo + Hy-MT2-1.8B Q4_K_M, both on a 4-vCPU GitHub runner, greedy MT. Run: [eval-india 43521109509](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43521109509) (per-clip JSON in its `india-report` artifact). Rebuild: `.github/workflows/eval-india.yml` / `scripts/bench/india_eval.py`.
+
+| source | ASR WER | chrF vs human zh | chrF from the gold transcript | MT median s |
+|---|---|---|---|---|
+| English (US accent) -> zh | 6.6% | 34.3 | 38.8 | 1.27 |
+| Hindi -> zh, direct | 39.2% | 16.9 | 27.7 | 2.56 |
+| Hindi -> en -> zh, pivot | 39.2% | 17.8 | 27.7 | 5.56 |
+
+English gives about twice the Chinese quality of Hindi. Both halves are weaker for Hindi: speech recognition makes 6x the errors, and even from a perfect Hindi transcript Hy-MT2 scores 27.7 vs 38.8. Pivoting through English is no better than the direct route and twice as slow. Not measured yet: Indian-accented English (Svarah is a gated dataset; the runner needs an accepted licence + HF token) and Hinglish.
