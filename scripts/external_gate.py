@@ -53,7 +53,7 @@ PROTECTED_FILES = frozenset({
 })
 DENYLIST = ("socket", "urllib", "requests", "http", "subprocess", "os.system", "eval(", "exec(",
             "__import__", "importlib", "pickle", "base64", "ctypes")  # list from #352 rule 3
-_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\(", r"\bos\s*\.\s*system\b",
+_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\b", r"\bos\s*\.\s*system\b",
                        r"\bsystem\b", r"popen", r"spawn", r"\bfork\b", r"\bexec[lv]p?e?\b",
                        r"\bgetattr\s*\(", r"\bglobals\s*\(", r"\bvars\s*\(", r"__builtins__"]),
                       re.IGNORECASE)  # extra patterns catch "eval (x)" and "os . system" (whitespace is legal Python)
