@@ -1,6 +1,6 @@
 # tinglongWu mobile (聽攏有) - offline ru -> zh-Hant live subtitles (prototype v0)
 
-Mic -> sherpa-onnx (GigaAM v3 ASR + Silero VAD) -> Qwen3-4B Q4_K_M (1.7B fallback) via llama.cpp (zh-Hant) -> full-screen subtitles.
+Mic -> sherpa-onnx (GigaAM v3 ASR + Silero VAD) -> Hy-MT2-1.8B Q4_K_M via llama.cpp (same translator and prompt as desktop) -> full-screen subtitles.
 No INTERNET permission, no model downloader. Models are side-loaded with adb.
 
 ## Build
@@ -18,10 +18,18 @@ No INTERNET permission, no model downloader. Models are side-loaded with adb.
     adb shell pm grant $pkg android.permission.RECORD_AUDIO
     adb shell mkdir -p $dst
     adb push <MODELS_DIR>\gigaam3 $dst/
-    adb push <MODELS_DIR>\Qwen3-4B-Q4_K_M.gguf $dst/
+    adb push <MODELS_DIR>\silero_vad.onnx $dst/
+    adb push <MODELS_DIR>\hymt2-1.8b\Hy-MT2-1.8B-Q4_K_M.gguf $dst/
     adb shell am start -n $pkg/.MainActivity
 
-Expected on device: models/gigaam3/{encoder.int8.onnx,decoder.onnx,joiner.onnx,tokens.txt}, models/silero_vad.onnx, models/Qwen3-4B-Q4_K_M.gguf (or Qwen3-1.7B-Q4_K_M.gguf).
+Expected on device: models/gigaam3/{encoder.int8.onnx,decoder.onnx,joiner.onnx,tokens.txt}, models/silero_vad.onnx, models/Hy-MT2-1.8B-Q4_K_M.gguf.
+
+## Translation model
+- File: `Hy-MT2-1.8B-Q4_K_M.gguf` (Tencent Hy-MT2-1.8B, Q4_K_M GGUF from the `tencent/Hy-MT2-1.8B-GGUF` Hugging Face repo), about 1.1 GB.
+- License: Apache-2.0.
+- Where to get it: the same file desktop `tlwu-setup --hymt` downloads to `models\hymt2-1.8b\`; the app never downloads it.
+- Where to side-load it: `/sdcard/Android/data/com.tinglongwu.mobile/files/models/Hy-MT2-1.8B-Q4_K_M.gguf` (the `adb push` line above).
+- Output may be Simplified Chinese (the model-card prompt asks for 中文; desktop converts with OpenCC, the phone has no converter yet); such lines are flagged NOT-TRAD in the log.
 
 ## Logs
     adb pull /sdcard/Android/data/com.tinglongwu.mobile/files/logs/tlwu.log
@@ -35,7 +43,7 @@ Each translation logs latency (est. speech end -> zh shown), ASR-final -> zh, ti
 - GigaAM v3 speech model (ru ASR, ONNX export for sherpa-onnx): MIT.
 - sherpa-onnx: Apache-2.0.
 - `native/llama-cpp-dart-selfbuilt.aar` is llama.cpp (MIT) built from source; the upstream prebuilt AAR is not used. See "Native AAR" below.
-- Qwen3 GGUF models: Apache-2.0. Silero VAD: MIT.
+- Hy-MT2-1.8B GGUF model: Apache-2.0. Silero VAD: MIT.
 - `<MODELS_DIR>` above is wherever you keep the downloaded model files.
 
 ## Native AAR (`native/llama-cpp-dart-selfbuilt.aar`)

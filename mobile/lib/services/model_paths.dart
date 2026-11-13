@@ -7,8 +7,7 @@ import 'package:flutter/services.dart';
 /// Layout under `<externalFilesDir>/models/`:
 ///   gigaam3/encoder.int8.onnx, decoder.onnx, joiner.onnx, tokens.txt
 ///   silero_vad.onnx
-///   Qwen3-4B-Q4_K_M.gguf (default) / Qwen3-1.7B-Q4_K_M.gguf (fallback)
-///   llm.txt (optional: one line with the gguf file name to use instead)
+///   Hy-MT2-1.8B-Q4_K_M.gguf (translator, same file as desktop)
 class ModelPaths {
   ModelPaths(this.filesDir);
 
@@ -25,8 +24,9 @@ class ModelPaths {
     'tokens.txt',
   ];
   static const vadFileName = 'silero_vad.onnx';
-  static const llmDefault = 'Qwen3-4B-Q4_K_M.gguf';
-  static const llmFallback = 'Qwen3-1.7B-Q4_K_M.gguf';
+  /// Tencent Hy-MT2-1.8B Q4_K_M GGUF (~1.1 GB, Apache-2.0), the file desktop
+  /// `tlwu-setup --hymt` puts in models/hymt2-1.8b/.
+  static const llmFile = 'Hy-MT2-1.8B-Q4_K_M.gguf';
 
   /// "temp=38.5C bat=80% thermal=0" (cheap; for log lines).
   static Future<String> statsLine() async {
@@ -49,22 +49,10 @@ class ModelPaths {
   String get asrDir => '$modelsDir/$asrDirName';
   String get vadPath => '$modelsDir/$vadFileName';
 
-  /// LLM to load: llm.txt override if present, else 4B, else the 1.7B fallback.
-  String get llmPath {
-    try {
-      final f = File('$modelsDir/llm.txt');
-      if (f.existsSync()) {
-        final n = f.readAsStringSync().trim();
-        if (n.isNotEmpty && File('$modelsDir/$n').existsSync()) {
-          return '$modelsDir/$n';
-        }
-      }
-    } catch (_) {}
-    if (File('$modelsDir/$llmDefault').existsSync()) {
-      return '$modelsDir/$llmDefault';
-    }
-    return '$modelsDir/$llmFallback';
-  }
+  /// Translator GGUF. Fixed file: the prompt is Hy-MT2's template, so no
+  /// other model can be swapped in.
+  String get llmPath => '$modelsDir/$llmFile';
+
   String asrFile(String name) => '$asrDir/$name';
 
   /// Returns the list of missing files (empty = all present).

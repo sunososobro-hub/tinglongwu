@@ -65,7 +65,7 @@ class MissingModelsScreen extends StatelessWidget {
                 'adb shell mkdir -p ${p.modelsDir}\n'
                 'adb push models\\mobile\\gigaam3 ${p.modelsDir}/\n'
                 'adb push models\\mobile\\silero_vad.onnx ${p.modelsDir}/\n'
-                'adb push models\\mobile\\${ModelPaths.llmDefault} ${p.modelsDir}/',
+                'adb push models\\hymt2-1.8b\\${ModelPaths.llmFile} ${p.modelsDir}/',
                 style: mono,
               ),
               const SizedBox(height: 16),

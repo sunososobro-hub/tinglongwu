@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/prompt.dart';
 import 'package:mobile/logic/segmenter.dart';
 import 'package:mobile/logic/zh_check.dart';
+import 'package:mobile/services/model_paths.dart';
 
 void main() {
   group('SentenceSegmenter', () {
@@ -59,44 +60,66 @@ void main() {
     });
   });
 
-  group('PromptBuilder', () {
-    test('has empty think block, no /no_think, and Traditional instruction', () {
-      final p = PromptBuilder.build('привет мир');
-      expect(p, startsWith('<|im_start|>system\n'));
-      expect(p, contains('Traditional Chinese'));
-      expect(p, contains('привет мир<|im_end|>'));
-      expect(p, isNot(contains('no_think')));
-      expect(p, endsWith('<|im_start|>assistant\n<think>\n\n</think>\n\n'));
-      expect(p, isNot(contains('Previous sentences')));
+  group('PromptBuilder (Hy-MT2, same as desktop tinglongwu/hymt.py)', () {
+    // Expected strings copied from the Python output:
+    //   build_prompt('Привет, как дела?', 'ru', 'zh')            (user message)
+    //   that message rendered with the GGUF tokenizer.chat_template of
+    //   Hy-MT2-1.8B-Q4_K_M.gguf, add_generation_prompt=True      (full prompt)
+    const ru = 'Привет, как дела?';
+    const desktopUser =
+        '将以下文本翻译成中文，注意只需要输出翻译后的结果，不要额外解释：\n\n'
+        'Привет, как дела?';
+    const desktopFull = '<\uff5chy_begin\u2581of\u2581sentence\uff5c>'
+        '<\uff5chy_User\uff5c>'
+        '\u5c06\u4ee5\u4e0b\u6587\u672c\u7ffb\u8bd1\u6210\u4e2d\u6587\uff0c'
+        '\u6ce8\u610f\u53ea\u9700\u8981\u8f93\u51fa\u7ffb\u8bd1\u540e\u7684'
+        '\u7ed3\u679c\uff0c\u4e0d\u8981\u989d\u5916\u89e3\u91ca\uff1a\n\n'
+        '\u041f\u0440\u0438\u0432\u0435\u0442, \u043a\u0430\u043a '
+        '\u0434\u0435\u043b\u0430?'
+        '<\uff5chy_Assistant\uff5c>';
+
+    test('user message equals desktop build_prompt for ru -> zh', () {
+      expect(PromptBuilder.userMessage(ru), desktopUser);
+      expect(PromptBuilder.userMessage(ru, src: 'ru', tgt: 'zh'), desktopUser);
     });
 
-    test('includes at most the last 2 context pairs, in order', () {
-      final ctx = [
-        const ContextPair('один', '一'),
-        const ContextPair('два', '二'),
-        const ContextPair('три', '三'),
-      ];
-      final p = PromptBuilder.build('четыре', context: ctx);
-      expect(p, isNot(contains('один')));
-      expect(p.indexOf('два') < p.indexOf('три'), isTrue);
-      expect(p, contains('RU: три\n'));
-      expect(p.indexOf('три') < p.indexOf('четыре'), isTrue);
+    test('full prompt equals the desktop chat-template rendering', () {
+      expect(PromptBuilder.build(ru), desktopFull);
     });
 
-    test('strict mode adds the Traditional reminder', () {
-      expect(PromptBuilder.build('x', strict: true), contains('IMPORTANT'));
-      expect(PromptBuilder.build('x'), isNot(contains('IMPORTANT')));
+    test('non-Chinese pair uses the English card template', () {
+      expect(
+        PromptBuilder.userMessage(ru, src: 'ru', tgt: 'en'),
+        'Translate the following text into English.\n'
+        'Note that you should only output the translated result without any '
+        'additional explanation:\n\n$ru',
+      );
     });
 
-    test('clean strips think blocks, labels, quotes, extra lines', () {
-      expect(PromptBuilder.clean('<think>\n\n</think>\n\n你好'), '你好');
+    test('maxTokensFor matches desktop max_tokens_for', () {
+      expect(PromptBuilder.maxTokensFor(''), 32);
+      expect(PromptBuilder.maxTokensFor('a' * 20), 56);
+      expect(PromptBuilder.maxTokensFor('a' * 500), 400);
+    });
+
+    test('clean strips template tokens, labels, quotes, extra lines', () {
+      expect(PromptBuilder.clean('你好<\uff5chy_place\u2581holder\u2581no\u25812\uff5c>'),
+          '你好');
       expect(PromptBuilder.clean('翻譯：你好嗎'), '你好嗎');
+      expect(PromptBuilder.clean('译文：你好吗'), '你好吗');
       expect(PromptBuilder.clean('「你好」'), '你好');
       expect(PromptBuilder.clean('"你好"'), '你好');
-      expect(PromptBuilder.clean('你好<|im_end|>'), '你好');
       expect(PromptBuilder.clean('第一行\n第二行'), '第一行');
       expect(PromptBuilder.clean('   '), '');
-      expect(PromptBuilder.clean('你好 /no_think'), '你好');
+    });
+  });
+
+  group('ModelPaths', () {
+    test('translator is the Hy-MT2-1.8B GGUF in the models dir', () {
+      final p = ModelPaths('/data/x');
+      expect(ModelPaths.llmFile, 'Hy-MT2-1.8B-Q4_K_M.gguf');
+      expect(p.llmPath, '/data/x/models/Hy-MT2-1.8B-Q4_K_M.gguf');
+      expect(p.missing(), contains('/data/x/models/Hy-MT2-1.8B-Q4_K_M.gguf'));
     });
   });
 
