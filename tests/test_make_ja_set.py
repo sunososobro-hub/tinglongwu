@@ -66,7 +66,7 @@ def test_cli_writes_manifest_tlwu_eval_runs_it(tmp_path, capsys):
     assert "CC-BY 4.0" in lic and "CC-BY-SA 4.0" in lic
     clock = Clock()
     report = tmp_path / "r.json"
-    assert eval_main(["--smoke", "--data", str(out), "--out", str(report), "--per-lang", "60"],
+    assert eval_main(["--smoke", "--data", str(out), "--out", str(report), "--per-lang", "60", "--no-noise"],
                      engines=fake_engines(clock), totals=(16000, None), clock=clock) == 0
     rep = json.loads(report.read_text("utf-8"))
     ja = [lg for lg in rep["languages"] if lg["pair"] == "ja->zh"]
