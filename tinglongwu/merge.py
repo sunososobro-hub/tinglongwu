@@ -203,7 +203,8 @@ class SentenceMerger:
             return []
         # #288: a 1-3 word head ("Well, in the") waits up to twice as long for the rest of its sentence; a finished
         # fragment held by min_words (#389) never waits longer than max_wait
-        head = self.whole and _units(self.buf) < MIN_FINAL_UNITS \n            and not any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())
+        held = any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())  # a finished fragment is held
+        head = self.whole and _units(self.buf) < MIN_FINAL_UNITS and not held
         wait = 2 * self.max_wait if head else self.max_wait
         if (self.since is not None and now - self.since >= wait) or _units(self.buf) >= self.max_words:
             if self.whole:

@@ -45,10 +45,10 @@ def test_whole_mode_fragment_never_waits_past_max_wait():
     m.add("Максима Чижова.", "ru", 0)
     assert texts(m.due(6.0)) == ["Максима Чижова."]
     m2 = SentenceMerger(max_wait=6, min_words=3, whole=True)  # a held fragment followed by a short head
-    m2.add("Да.", "ru", 0)
+    m2.add("Хорошо.", "ru", 0)
     m2.add("И", "ru", 1)
     assert m2.due(5.9) == []
-    assert texts(m2.due(6.0)) == ["Да. И"]
+    assert texts(m2.due(6.0)) == ["Хорошо. И"]
 
 
 def test_cjk_characters_count_as_words():
