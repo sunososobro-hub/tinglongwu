@@ -440,6 +440,7 @@ def build_series(api, repo, branch, now):
     issue_closed_ts = [i["closed_at"] for i in closed_issues]
     commit_ts = [c["commit"]["committer"]["date"] for c in commits]
     week = now - timedelta(days=7)
+    day = now - timedelta(hours=24)
     pr_pairs = [(p["created_at"], p["merged_at"]) for p in merged_prs]
     is_pairs = [(i["created_at"], i["closed_at"]) for i in closed_issues]
     try:
@@ -467,9 +468,9 @@ def build_series(api, repo, branch, now):
         "issues_closed": per_day(issue_closed_ts, days),
         "hero": hero_stats(pr_merged_ts, issue_closed_ts, commit_ts, created, now),
         "speed": {"issue_all": median_hours(is_pairs), "issue_7d": median_hours(is_pairs, week),
-                  "pr_all": median_hours(pr_pairs), "pr_7d": median_hours(pr_pairs, week)},
-        "speed_p90": {"issue_all": percentile_hours(is_pairs, 90), "issue_7d": percentile_hours(is_pairs, 90, week),
-                      "pr_all": percentile_hours(pr_pairs, 90), "pr_7d": percentile_hours(pr_pairs, 90, week)},
+                  "issue_24h": median_hours(is_pairs, day),
+                  "pr_all": median_hours(pr_pairs), "pr_7d": median_hours(pr_pairs, week),
+                  "pr_24h": median_hours(pr_pairs, day)},
     }
 
 
@@ -569,8 +570,7 @@ const per=Hh.prs.h24?Math.round(1440/Hh.prs.h24):0;
 document.getElementById('sum').textContent='Day '+Hh.day_n+' \u00b7 '+Hh.prs.h24+' PRs merged in the last 24 h'+(per?' \u00b7 1 PR every '+per+' min':'');
 const fh=h=>h==null?'n/a':h<1?Math.round(h*60)+' min':h<48?h.toFixed(1)+' h':(h/24).toFixed(1)+' days';
 const Sp=D.speed;
-const P9=D.speed_p90||{};
-document.getElementById('speed').innerHTML=[['issue','Issue opened to closed'],['pr','PR opened to merged']].map(([k,l])=>{const a=k+'_all',w=k+'_7d',same=Sp[a]===Sp[w]&&P9[a]===P9[w];const t=(x)=>fh(Sp[x])+' p50 · '+fh(P9[x])+' p90';return same?big(t(w),l+' (p50 · p90, last 7 days = all time)'):big(t(a),l+' (p50 · p90, all time)')+big(t(w),l+' (p50 · p90, last 7 days)');}).join('');
+document.getElementById('speed').innerHTML='<table><tr><th></th><th>Last 7 days</th><th>Last 24 h</th><th>All time</th></tr>'+[['issue','Issue opened to closed'],['pr','PR opened to merged']].map(([k,l])=>'<tr><td>'+l+'</td><td>'+fh(Sp[k+'_7d'])+'</td><td>'+fh(Sp[k+'_24h'])+'</td><td>'+fh(Sp[k+'_all'])+'</td></tr>').join('')+'</table><p class="n">Typical (median) time from opened to done.</p>';
 chart(c_thru,[{name:'PRs merged',v:D.prs_merged},{name:'issues closed',v:D.issues_closed}],{stack:1,pal:['#3b82c4','#e08a1e']});
 chart(c_commits,[{name:'commits',v:D.commits}],{bar:1,color:'var(--a)'});
 chart(c_stars,[{name:'stars',v:D.stars}],{color:'#e0a81e'});

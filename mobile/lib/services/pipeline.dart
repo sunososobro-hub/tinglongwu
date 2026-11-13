@@ -181,19 +181,16 @@ class Pipeline extends ChangeNotifier {
     // overflow the LLM context and stop the app.
     while (_queue.length > maxQueue) {
       final jobs = _queue.toList();
-      final i = ContextBudget.mergeIndex([for (final j in jobs) j.ru]);
+      final i = ContextBudget.mergeIndex(
+        [for (final j in jobs) j.ru],
+        langs: [for (final j in jobs) j.lang],
+      );
       if (i == null) {
-        _log.i('queue>$maxQueue, no merge fits ${ContextBudget.maxMergeChars} chars');
+        _log.i('queue>$maxQueue, no same-language pair fits ${ContextBudget.maxMergeChars} chars');
         break;
       }
       final a = jobs[i];
       final b = jobs[i + 1];
-      if (a.lang != b.lang) {
-        // Merged text carries one language code; mixing would send e.g.
-        // English through the zh passthrough untranslated (#581).
-        _log.i('queue>$maxQueue, adjacent jobs differ in lang (${a.lang}/${b.lang}), not merged');
-        break;
-      }
       b.ru = ContextBudget.join(a.ru, b.ru);
       b.sub.ru = b.ru;
       subtitles.remove(a.sub);

@@ -223,6 +223,14 @@ void main() {
 
     test('merges the oldest two short jobs', () {
       expect(ContextBudget.mergeIndex(['раз', 'два', 'три']), 0);
+      // #625: a zh/en boundary must not block a later same-language pair.
+      expect(
+          ContextBudget.mergeIndex(['a', 'b', 'c', 'd'],
+              langs: ['zh', 'en', 'en', 'en']),
+          1);
+      expect(
+          ContextBudget.mergeIndex(['a', 'b', 'c'], langs: ['zh', 'en', 'zh']),
+          isNull);
       expect(ContextBudget.join('раз', 'два'), 'раз два');
     });
 
