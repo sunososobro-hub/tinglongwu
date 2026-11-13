@@ -5,7 +5,7 @@
          manifest declares it. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
     <application
-        android:label="聽攏有"
+        android:label="聽龍"
         android:allowBackup="false"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
