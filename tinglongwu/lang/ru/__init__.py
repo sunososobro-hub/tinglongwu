@@ -15,23 +15,35 @@ sentence only; without it the text passes through unchanged.
 from __future__ import annotations
 
 import re
+import threading
 
 _WORD = re.compile(r"[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?")
 _PERSON = ("Name", "Surn", "Patr")
 _MIN_SCORE = 0.3  # share of pymorphy's parse probability that must be a person name (Максима vs. "максима" the noun)
 _GIVEN_SHARE = 0.75
 _morph = None
+_lock = threading.Lock()
 _unavailable = False
+
+
+def load_analyzer():
+    """pymorphy3 with the Russian dictionary given by path, not found through the `pymorphy3_lang` entry point:
+    the frozen exe has no distribution metadata, so entry-point lookup would fail there (#527 review)."""
+    import pymorphy3
+    import pymorphy3_dicts_ru
+
+    return pymorphy3.MorphAnalyzer(path=pymorphy3_dicts_ru.get_path(), lang="ru")
 
 
 def _analyzer():
     global _morph, _unavailable
     if _morph is None and not _unavailable:
-        try:
-            import pymorphy3
-            _morph = pymorphy3.MorphAnalyzer(lang="ru")
-        except Exception:  # not installed / dictionary missing: the patch is off, MT still runs
-            _unavailable = True
+        with _lock:  # the stream (drafts) and pipeline threads can both hit the first Russian sentence
+            if _morph is None and not _unavailable:
+                try:
+                    _morph = load_analyzer()  # ~0.8 s once
+                except Exception:  # not installed / dictionary missing: the patch is off, MT still runs
+                    _unavailable = True
     return _morph
 
 
@@ -77,9 +89,9 @@ def _case_like(word: str, form: str) -> str:
     return "-".join(part[:1].upper() + part[1:] for part in form.split("-")) if word[:1].isupper() else form
 
 
-def normalize_names(text: str) -> str:
+def normalize_names(text: str, morph=None) -> str:
     """Put declined person names into the nominative of the person's gender (see module docstring)."""
-    morph = _analyzer()
+    morph = morph or _analyzer()
     if morph is None or not _WORD.search(text):
         return text
     tokens = [(m, _person_parses(morph, m.group())) for m in _WORD.finditer(text)]

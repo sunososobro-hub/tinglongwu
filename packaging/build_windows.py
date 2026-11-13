@@ -125,6 +125,9 @@ def nuitka_cmd() -> list[str]:
             # not: it runs in the Kokoro venv from the source file copied by copy_worker_sources().
             "--nofollow-import-to=tinglongwu.reverse.tts_worker", "--nofollow-import-to=pytest",
             "--nofollow-import-to=unittest",
+            # #390: lazy-imported on the first Russian sentence; the dictionary is package data loaded by path
+            "--include-package=pymorphy3", "--include-package=dawg_python", "--include-package=pymorphy3_dicts_ru",
+            "--include-package-data=pymorphy3_dicts_ru",
             "--include-package-data=faster_whisper", "--include-package-data=opencc",
             "--include-package-data=soundcard", "--include-package=sv_ttk", "--include-package-data=sv_ttk", "--include-package-data=tinglongwu_setup", "--include-package-data=tinglongwu",  # self-test clip data/selftest_en.wav (#99)
             "--product-name=tinglongWu", "--file-description=tinglongWu offline speech translator",

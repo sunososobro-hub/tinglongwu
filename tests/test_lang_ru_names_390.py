@@ -86,3 +86,37 @@ def test_core_has_no_russian_branch_for_this_feature():
     for name in ("translate.py", "pipeline.py", "stream.py", "hymt.py"):
         text = (core / name).read_text("utf-8")
         assert not re.search(r"""(src|lang)\s*==\s*["']ru["']""", text), name
+
+
+def test_exe_build_bundles_the_dictionary_and_smoke_checks_it():
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
+    import build_windows
+    from tlwu_app import smoke
+
+    cmd = build_windows.nuitka_cmd()
+    for flag in ("--include-package=pymorphy3", "--include-package=pymorphy3_dicts_ru",
+                 "--include-package-data=pymorphy3_dicts_ru", "--include-package=dawg_python"):
+        assert flag in cmd
+    assert ("tinglongwu.lang.ru", True) in smoke.MODULES
+    smoke.check_ru_names()  # real dictionary loaded by path: passes
+
+
+def test_smoke_fails_when_the_dictionary_is_missing():
+    import io
+    from tlwu_app import smoke
+
+    def missing():
+        raise FileNotFoundError("pymorphy3_dicts_ru/data/meta.json")
+
+    out = io.StringIO()
+    rc = smoke.check(modules=[("tinglongwu.lang.ru", True)], out=out, lazy=[])
+    assert rc == 0 and "OK   tinglongwu.lang.ru" in out.getvalue()
+    orig = smoke.IMPORTERS["tinglongwu.lang.ru"]
+    try:
+        smoke.IMPORTERS["tinglongwu.lang.ru"] = lambda: smoke.check_ru_names(load=missing)
+        out = io.StringIO()
+        assert smoke.check(modules=[("tinglongwu.lang.ru", True)], out=out, lazy=[]) == 1
+        assert "FAIL tinglongwu.lang.ru: FileNotFoundError" in out.getvalue()
+    finally:
+        smoke.IMPORTERS["tinglongwu.lang.ru"] = orig
