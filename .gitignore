@@ -49,3 +49,6 @@ tlwu-talk.ps1
 
 # the one bundled audio file: synthetic (espeak-ng) English clip for `tlwu --selftest` (#90)
 !tinglongwu/data/selftest_en.wav
+
+# FLEURS eval sets rebuilt by scripts/bench/make_ci_smoke.py (#569, #602); never committed
+eval_data/

@@ -152,3 +152,54 @@ def test_check_wav_rejects_wrong_rate():
     with pytest.raises(ValueError):
         mcs.check_wav(bytes(bad))
     assert mcs.check_wav(_wav(1, 2.0)) == pytest.approx(2.0)
+
+
+# #602: the tier-2 set (vi/th/id/es/de/fr -> zh) uses the same tool; the pin file carries its own configs map.
+T2 = tuple(mcs.TIER2_CONFIGS)
+
+
+class Tier2Hub(FakeHub):
+    def __init__(self):
+        super().__init__()
+        for k, (lang, cfg) in enumerate(mcs.TIER2_CONFIGS.items()):
+            self.files[mcs.url_for(REV, cfg, "test.tsv")] = _tsv(lang)
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w:gz") as t:
+                for i in range(5):
+                    data = _wav(i + 10 * (k + 4))
+                    info = tarfile.TarInfo(f"test/{lang}{i}.wav")
+                    info.size = len(data)
+                    t.addfile(info, io.BytesIO(data))
+            self.files[mcs.url_for(REV, cfg, "audio/test.tar.gz")] = buf.getvalue()
+
+
+def test_tier2_pin_then_build_gives_zh_refs_per_language(tmp_path):
+    pins = tmp_path / "tier2_pins.json"
+    hub = Tier2Hub()
+    assert mcs.main(["--set", "tier2", "--pin", "5", "--revision", REV, "--pins", str(pins)], fetch=hub) == 0
+    pin = json.loads(pins.read_text("utf-8"))
+    assert pin["configs"] == mcs.TIER2_CONFIGS
+    assert {lang: sum(c["lang"] == lang for c in pin["clips"]) for lang in T2} == {lang: 5 for lang in T2}
+    # only tier-2 archives were streamed (plus the zh tsv for references), never the smoke languages' audio
+    assert not any("audio" in u and any(f"/{c}/" in u for c in mcs.CONFIGS.values()) for u in hub.urls)
+    out = tmp_path / "t2"
+    assert mcs.main(["--out", str(out), "--pins", str(pins)], fetch=hub) == 0
+    rows = load_manifest(out)
+    assert sorted({r["lang"] for r in rows}) == sorted(T2) and len(rows) == 30
+    for r in rows:
+        assert r["ref_zh"] == f"這個國家的軟體發展很快{r['flores_id'] - 100}。"
+        assert r["source"].startswith(f"fleurs/{mcs.TIER2_CONFIGS[r['lang']]}/")
+    assert "tier2_pins.json" in (out / "LICENSE.txt").read_text("utf-8")
+
+
+def test_tier2_pin_with_unknown_language_fails(tmp_path):
+    pin = {"revision": REV, "configs": mcs.TIER2_CONFIGS, "clips": [{"id": "ko_001", "lang": "ko", "file": "x.wav",
+                                                                    "sha256": "0" * 64}]}
+    assert mcs.main(["--out", str(tmp_path / "s"), "--pins", _write_pin(tmp_path, pin)], fetch=Tier2Hub()) == 1
+
+
+def test_repo_tier2_pins_have_20_clips_per_language():
+    pin = json.loads((ROOT / "eval" / "tier2_pins.json").read_text("utf-8"))
+    assert pin["configs"] == mcs.TIER2_CONFIGS
+    assert {lang: sum(c["lang"] == lang for c in pin["clips"]) for lang in T2} == {lang: 20 for lang in T2}
+    assert all(len(c["sha256"]) == 64 for c in pin["clips"])
