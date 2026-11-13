@@ -78,6 +78,12 @@ def test_support_table_and_contributor_avatars_under_install():
 
 
 def test_language_table_right_after_the_device_table():
-    for name, row in (("README.md", "| Japanese |"), ("README.zh-CN.md", "| 日文 |"), ("README.zh-TW.md", "| 日文 |")):
+    for name, row in (("README.md", "| 日本語 (ja) |"), ("README.zh-CN.md", "| 日本語 (ja) |"), ("README.zh-TW.md", "| 日本語 (ja) |")):
         s = (ROOT / name).read_text("utf-8")
         assert s.index("| Linux (Ubuntu 24.04) |" if name == "README.md" else "| Linux（Ubuntu 24.04） |") < s.index(row) < s.index("github.com/jchodev.png"), name
+
+
+def test_no_flag_emoji_in_readmes():  # flags map languages to countries
+    import re
+    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md", "docs/RELEASING.md"):
+        assert not re.search("[\U0001F1E6-\U0001F1FF]", (ROOT / name).read_text("utf-8")), name

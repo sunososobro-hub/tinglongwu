@@ -30,12 +30,13 @@ To release:
       🟢 tested on a real device · 🟡 install tested in CI only (plus any caveat, e.g. CPU-only latency not measured) · ⚪ not tested yet
       ```
 
-   2b. Right after it, the language table (rows: languages; columns: what the user does). Every light needs evidence, listed in the developer section (step 5): 🟢 real-device or release-gate run, 🟡 CI/eval only or quality still being measured, ⚪ not supported or untested, — same language. Only list languages this tag actually supports:
+   2b. Right after it, the language table (rows: languages; columns: what the user does). Every light needs evidence, listed in the developer section (step 5): 🟢 real-device or release-gate run, 🟡 CI/eval only or quality still being measured, ⚪ not supported or untested, — same language. Only list languages this tag actually supports. Name each language by its native name plus code (`中文 (zh)`, `English (en)`, `日本語 (ja)`, `Русский (ru)`, `한국어 (ko)`); no flag emoji anywhere, since flags map languages to countries:
 
       ```
       | Language | Hear it | To Chinese | To English | Speak it (voice) |
       |---|:-:|:-:|:-:|:-:|
-      | Chinese | ... |
+      | 中文 (zh) | ... |
+      | English (en) | ... |
       ```
 
    3. Contributors: `Built with help from N people:` and one avatar per login in `.all-contributorsrc` (all-time, reporters included; the list only grows),

@@ -18,11 +18,11 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 | Language | Hear it | To Chinese | To English | Speak it (voice) |
 |---|:-:|:-:|:-:|:-:|
-| Chinese | 🟢 | — | 🟢 | 🟢 |
-| English | 🟢 | 🟢 | — | ⚪ |
-| Japanese | 🟢 | 🟢 | ⚪ | ⚪ |
-| Russian | 🟡 | 🟡 | ⚪ | 🟡 |
-| Korean | ⚪ | ⚪ | ⚪ | ⚪ |
+| 中文 (zh) | 🟢 | — | 🟢 | 🟢 |
+| English (en) | 🟢 | 🟢 | — | ⚪ |
+| 日本語 (ja) | 🟢 | 🟢 | ⚪ | ⚪ |
+| Русский (ru) | 🟡 | 🟡 | ⚪ | 🟡 |
+| 한국어 (ko) | ⚪ | ⚪ | ⚪ | ⚪ |
 
 🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language
 
