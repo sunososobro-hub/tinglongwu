@@ -120,3 +120,24 @@ def test_smoke_fails_when_the_dictionary_is_missing():
         assert "FAIL tinglongwu.lang.ru: FileNotFoundError" in out.getvalue()
     finally:
         smoke.IMPORTERS["tinglongwu.lang.ru"] = orig
+
+
+def test_two_people_keep_the_object_case_so_roles_stay_distinct():
+    a = ru.pre_mt("Анна Иванова любит Ивана Петрова.")  # Anna loves Ivan
+    b = ru.pre_mt("Анну Иванову любит Иван Петров.")  # Ivan loves Anna (object first)
+    assert a == "Анна Иванова любит Ивана Петрова."
+    assert b == "Анну Иванову любит Иван Петров."
+    assert a != b
+    # two people, but neither name can be an accusative object: still normalized
+    assert ru.pre_mt("Максим Чижов говорил с Анной Ивановой.") == "Максим Чижов говорил с Анна Иванова."
+
+
+def test_same_language_and_hook_errors_leave_the_text_alone(monkeypatch):
+    tr = _Echo()
+    assert translate_checked(tr, "Максима Чижова", "ru", "ru").text == "<Максима Чижова>"
+
+    def boom(text, morph=None):
+        raise ValueError("odd token")
+
+    monkeypatch.setattr(ru, "normalize_names", boom)
+    assert ru.pre_mt("Максима Чижова.") == "Максима Чижова."

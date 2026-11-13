@@ -2,14 +2,16 @@
 
 #390 pre_mt: Russian person names are declined, and a declined male surname often looks like a female one
 ("Максима Чижова" = genitive of Максим Чижов, but "Чижова" is also the female nominative), so Hy-MT2 rendered
-it as 馬克西姆·奇佐娃 instead of 奇若夫. Chinese has no case, so the MT input loses nothing when each name is put
-back into the nominative of the person's actual gender: "Максима Чижова" -> "Максим Чижов".
+it as 馬克西姆·奇佐娃 instead of 奇若夫. Each name is put back into the nominative of the person's actual
+gender: "Максима Чижова" -> "Максим Чижов". That drops the case ending, which in Russian can carry who does what
+to whom ("Анну Иванову любит Иван Петров" = Ivan loves Anna). So when a sentence names two or more people, a name
+that could be an accusative object is left as spoken; the subject/object roles stay intact.
 
 Gender comes from the first name / patronymic next to the surname (Максима is only masculine). A lone surname is
 rewritten only when its form has one gender (Ивановой = female, Сидоровым = male); an ambiguous lone form
 ("Иванова": male genitive or female nominative) is left as spoken, so female surnames never get masculinised.
 
-pymorphy3 (MIT, with the MIT OpenCorpora-based Russian dictionary, ~13 MB) is imported on the first Russian
+pymorphy3 (code MIT; its OpenCorpora-based Russian dictionary, ~13 MB, is data under CC BY-SA 3.0) is imported on the first Russian
 sentence only; without it the text passes through unchanged.
 """
 from __future__ import annotations
@@ -107,7 +109,8 @@ def normalize_names(text: str, morph=None) -> str:
         runs.append(run)
     edits = []
     # a weak reading (Чижовым: surname or adjective "чижовый") counts only next to a strong one (Максимом)
-    for run in (r for r in runs if any(_strong(ps) for _m, ps in r)):
+    people = [r for r in runs if any(_strong(ps) for _m, ps in r)]
+    for run in people:
         given = [ps for _m, ps in run if any("Name" in p.tag or "Patr" in p.tag for p in ps)]
         genders = _given_gender(given) if given else _genders(run[0][1])
         if len(genders) != 1:
@@ -115,6 +118,8 @@ def normalize_names(text: str, morph=None) -> str:
         gender = genders.pop()
         if not given and len(run) == 1 and "nomn" in max(run[0][1], key=lambda p: p.score).tag:
             continue  # lone surname whose best reading is already nominative
+        if len(people) > 1 and any("accs" in p.tag and gender in p.tag for _m, ps in run for p in ps):
+            continue  # could be the object of another named person: keep the case ending that says so
         for m, ps in run:
             form = _nominative(ps, gender)
             if form:
@@ -125,4 +130,7 @@ def normalize_names(text: str, morph=None) -> str:
 
 
 def pre_mt(text: str) -> str:
-    return normalize_names(text)
+    try:
+        return normalize_names(text)
+    except Exception:  # an odd token must never cost the translation: fall back to the sentence as spoken
+        return text

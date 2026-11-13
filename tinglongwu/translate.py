@@ -36,7 +36,8 @@ def translate_checked(translator: "Translator", text: str, src: str, tgt: str, d
     from .langfollow import has_kana
 
     call = translator.draft if draft else translator.translate
-    text = lang_patches.pre_mt(src, text)  # #390: per-language source fixes (tinglongwu/lang/<src>/)
+    if src != tgt:
+        text = lang_patches.pre_mt(src, text)  # #390: per-language source fixes (tinglongwu/lang/<src>/)
     for _ in range(1 if draft else 2):
         tr = call(text, src, tgt)
         if tgt == "ja" or not has_kana(tr.text):
