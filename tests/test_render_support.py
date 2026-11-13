@@ -98,3 +98,17 @@ def test_roadmap_check_detects_a_stale_grid(tmp_path):
     src["device"]["rows"][0]["cells"][0] = "🟢"
     (tmp_path / "docs" / "support.json").write_text(json.dumps(src, ensure_ascii=False), "utf-8")
     assert m.main(["--check"], root=tmp_path) == 1
+
+
+def test_roadmap_next_release_card_is_generated_from_support_json():
+    m = _mod()
+    src, _ = m.load()
+    html = (ROOT / "docs" / "roadmap.html").read_text("utf-8")
+    assert m.NEXT.search(html).group(0) == m.roadmap_next(src)
+    assert src["next_release"]["milestone"] in html
+    assert "Meeting mode tells you and the other side apart" in html
+
+
+def test_pages_home_links_to_the_roadmap():
+    src = (ROOT / "scripts" / "stats_dashboard.py").read_text("utf-8")
+    assert 'href="roadmap.html"' in src
