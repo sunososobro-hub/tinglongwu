@@ -23,6 +23,7 @@ DEFAULTS = {
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
+    "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -37,6 +38,7 @@ FONT_MIN, FONT_MAX = 12, 72
 FONT_PRESETS = {"S": 20, "M": 28, "L": 36, "XL": 48}  # subtitle size picker in the control window
 HISTORY_LINES = 200  # finals kept in the subtitle bar's scroll-back
 ROWS_MIN, ROWS_MAX = 1, 5  # visible text rows of the subtitle bar (drag its top edge to change)
+ALPHA_MIN, ALPHA_MAX, ALPHA_STEP = 0.3, 1.0, 0.1  # #333: below 0.3 the subtitles are hard to read on a busy screen
 
 
 def target_for_locale(tag: str | None) -> str:
@@ -117,6 +119,8 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
                         out[k] = v
                 elif isinstance(v, type(dv)) and not (type(dv) is int and isinstance(v, bool)):
                     out[k] = v
+                elif type(dv) is float and isinstance(v, int) and not isinstance(v, bool):
+                    out[k] = float(v)
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
         pass
     out["font_size"] = clamp_font(out["font_size"])
@@ -133,6 +137,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
             pass
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
+    out["overlay_alpha"] = clamp_alpha(out["overlay_alpha"])
     return out
 
 
@@ -158,6 +163,17 @@ def clamp_rows(n) -> int:
         return max(ROWS_MIN, min(ROWS_MAX, int(n)))
     except (TypeError, ValueError):
         return DEFAULTS["overlay_lines"]
+
+
+def clamp_alpha(a) -> float:
+    """Subtitle bar opacity in [ALPHA_MIN, ALPHA_MAX], 2 decimals; junk (None, NaN, text) -> the default."""
+    try:
+        a = float(a)
+    except (TypeError, ValueError):
+        return DEFAULTS["overlay_alpha"]
+    if a != a:  # NaN
+        return DEFAULTS["overlay_alpha"]
+    return round(max(ALPHA_MIN, min(ALPHA_MAX, a)), 2)
 
 
 def font_preset(size) -> str:

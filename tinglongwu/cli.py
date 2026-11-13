@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 
 from . import __version__
 from .capture import select_backend
@@ -317,15 +318,47 @@ def _hard_exit(code: int) -> None:
 
 
 READY_LINE = "* ready - listening (start playback now)"
+READY_STATUS = "listening"  # GUI status text that means "models loaded" (the GUI enables Stop on it)
 
 
-def announce_ready(status=None, transcript_only=False) -> None:
+class LoadProgress:
+    """#332: one note per loading stage with the seconds since start, and a summary when ready, so a slow
+    CPU start never looks hung. say(str) gets "loading <stage>... (<t> s)"; finish() returns the summary."""
+
+    def __init__(self, say, clock=None):
+        self.say, self.clock = say, clock or time.monotonic
+        self.t0 = self.clock()
+        self.cur: str | None = None
+        self.cur_t = self.t0
+        self.done: list[tuple[str, float]] = []
+
+    def _close(self) -> None:
+        if self.cur is not None:
+            self.done.append((self.cur, self.clock() - self.cur_t))
+            self.cur = None
+
+    def stage(self, label: str) -> None:
+        self._close()
+        self.cur, self.cur_t = label, self.clock()
+        self.say(f"loading {label}... ({self.cur_t - self.t0:.1f} s)")
+
+    def finish(self) -> str:
+        self._close()
+        parts = ", ".join(f"{n} {s:.1f} s" for n, s in self.done)
+        return f"loaded in {self.clock() - self.t0:.1f} s" + (f" ({parts})" if parts else "")
+
+
+def announce_ready(status=None, transcript_only=False, summary: str | None = None) -> None:
     """Models are loaded: tell the user (GUI: status callback; CLI: one flushed line).
     Stdout only when it is an interactive terminal and not --transcript-only; otherwise stderr, so
-    redirected stdout (hyp.txt, translations) carries only transcript/translation lines (#357)."""
+    redirected stdout (hyp.txt, translations) carries only transcript/translation lines (#357).
+    summary (#332): "loaded in N s (...)" from LoadProgress; GUI: appended to the status, CLI: stderr."""
     if status:
-        status("listening")
-    elif not transcript_only and sys.stdout.isatty():
+        status(f"{READY_STATUS} - {summary}" if summary else READY_STATUS)
+        return
+    if summary:
+        print(f"tlwu: {summary}", file=sys.stderr, flush=True)
+    if not transcript_only and sys.stdout.isatty():
         print(READY_LINE, flush=True)
     else:
         print(READY_LINE, file=sys.stderr, flush=True)
@@ -347,7 +380,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     from .minspec import SlowWatch, check_avx2
 
     check_avx2(getattr(a, "force", False))  # #280: RuntimeError "not supported: CPU lacks AVX2" -> exit 2
-    note = status or (lambda m: None)
+    prog = LoadProgress(status or (lambda m: print(f"tlwu: {m}", file=sys.stderr, flush=True)))
     mdir = models_dir(a.models_dir)
     warned: list[str] = []
 
@@ -380,7 +413,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         glossary = merge(glossary, load_builtin())
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
-    note("loading speech model...")
+    prog.stage("speech model")
     cands = None
     if a.lang == "auto" and getattr(a, "lang_candidates", None):
         from .langfollow import parse_candidates
@@ -394,7 +427,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     cpu_max_wait(a, dev)
     translator = None
     if not a.transcript_only:
-        note("loading translation engine...")
+        prog.stage("translation engine")
         translator = make_translator(a.engine, mdir, a.zh_variant, dev)
         if glossary is not None:
             apply_glossary(translator, glossary)
@@ -442,7 +475,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if getattr(a, "speakers", False):
         from .speaker_embed import make_labeler
 
-        note("loading speaker model...")
+        prog.stage("speaker model")
         labeler = make_labeler(mdir)
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
@@ -451,9 +484,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         if getattr(a, "voice", False):  # #330: opened last, so every exit path below closes it
             from .voice import open_voice
 
-            note("loading voice...")
+            prog.stage("voice")
             sink, close_voice = open_voice(a, mdir, sink, warn)
-        announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)))
+        announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,

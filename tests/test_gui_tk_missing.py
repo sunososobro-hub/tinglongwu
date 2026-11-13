@@ -32,20 +32,38 @@ def test_tlwu_dash_gui_without_tkinter():
     _check(_py("from tinglongwu.cli import main; sys.exit(main(['--gui']))"))
 
 
+def _fake_system_python(monkeypatch, target):
+    """Pretend /usr/bin/python3 exists and resolves to `target`; everything else resolves normally."""
+    real = gui.os.path.realpath
+    monkeypatch.setattr(gui.os.path, "exists", lambda p: True if p == "/usr/bin/python3" else gui.os.path.lexists(p))
+    monkeypatch.setattr(gui.os.path, "realpath", lambda p: target if p == "/usr/bin/python3" else real(p))
+
+
 def test_hint_names_apt_package_on_debian(monkeypatch):
     monkeypatch.setattr(gui.sys, "platform", "linux")
     me = gui.os.path.realpath(getattr(sys, "_base_executable", None) or sys.executable)
-    monkeypatch.setattr(gui.shutil, "which", lambda name: {"apt-get": "/usr/bin/apt-get", "python3": me}.get(name))
+    monkeypatch.setattr(gui.shutil, "which", lambda name: {"apt-get": "/usr/bin/apt-get"}.get(name))
+    _fake_system_python(monkeypatch, me)
     assert gui.tk_missing_hint() == "tkinter is missing. Install it with: sudo apt install python3-tk"
 
 
 def test_hint_names_versioned_package_for_a_separate_python(monkeypatch):
-    # e.g. deadsnakes python3.12 next to a system python3 of another version: python3-tk would not help
+    # e.g. deadsnakes python3.12 next to a system python3 of another version: python3-tk would not help.
+    # #440: in an activated venv which("python3") is the venv's own python3 (same realpath as the base), so it must be ignored.
     monkeypatch.setattr(gui.sys, "platform", "linux")
-    monkeypatch.setattr(gui.shutil, "which",
-                        lambda name: {"apt-get": "/usr/bin/apt-get", "python3": "/nonexistent/python3"}.get(name))
+    me = gui.os.path.realpath(getattr(sys, "_base_executable", None) or sys.executable)
+    monkeypatch.setattr(gui.shutil, "which", lambda name: {"apt-get": "/usr/bin/apt-get", "python3": me}.get(name))
+    _fake_system_python(monkeypatch, "/usr/bin/python3.10")
     v = sys.version_info
     assert gui.tk_missing_hint() == f"tkinter is missing. Install it with: sudo apt install python{v[0]}.{v[1]}-tk"
+
+
+def test_hint_versioned_when_system_python3_missing(monkeypatch):
+    monkeypatch.setattr(gui.sys, "platform", "linux")
+    monkeypatch.setattr(gui.shutil, "which", lambda name: {"apt-get": "/usr/bin/apt-get"}.get(name))
+    monkeypatch.setattr(gui.os.path, "exists", lambda p: False if p == "/usr/bin/python3" else gui.os.path.lexists(p))
+    v = sys.version_info
+    assert gui.tk_missing_hint().endswith(f"python{v[0]}.{v[1]}-tk")
 
 
 def test_hint_is_generic_without_apt(monkeypatch):

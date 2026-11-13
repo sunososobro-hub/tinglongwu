@@ -30,7 +30,8 @@ ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 
 def app_version(repo: Path = REPO) -> str:
-    m = re.search(r'^version\s*=\s*"([^"]+)"', (repo / "pyproject.toml").read_text("utf-8"), re.M)
+    # tinglongwu.__version__ is the single source of truth (#462); read as text, no import
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (repo / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
     return m.group(1) if m else "0.0.0"
 
 

@@ -1,7 +1,7 @@
 """--overlay (#322): the GUI's always-on-top subtitle bar for CLI listen mode (`tlwu --overlay`).
 
 Lines still go to the terminal; the bar shows the same finals (source + translation), is draggable, and its
-position / font size / rows / show-source are kept in gui.json (the same keys the GUI bar uses). Workers only
+position / font size / rows / show-source / opacity are kept in gui.json (the same keys the GUI bar uses). Workers only
 put events on a queue; Tk is polled every POLL_MS, so a printed line is on the bar within ~POLL_MS.
 Wayland compositors may ignore always-on-top (best effort). Part 1 = listen mode; the speak side is part 2."""
 from __future__ import annotations
@@ -17,7 +17,7 @@ from .gui.core import QueueSink, load_settings, settings_path
 from .sink import Result
 
 POLL_MS = 30  # < 100 ms from print to bar (#322 acceptance)
-KEYS = ("x", "y", "font_size", "overlay_lines", "show_src")  # what the bar changes; nothing else is written
+KEYS = ("x", "y", "font_size", "overlay_lines", "show_src", "overlay_alpha")  # what the bar changes; nothing else is written
 
 
 class OverlaySink(QueueSink):

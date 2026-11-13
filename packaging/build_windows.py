@@ -28,6 +28,25 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build" / "nuitka-tlwu"
+
+
+def read_version() -> str:
+    """tinglongwu.__version__ is the single source of truth (read as text: no import, so no offline guard side effects)."""
+    import re
+
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (REPO / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
+    if not m:
+        raise SystemExit("tinglongwu/__init__.py has no __version__")
+    return m.group(1)
+
+
+def win_version(v: str) -> str:
+    """'0.3.1' -> '0.3.1.0' (Windows file/product version has four numeric parts)."""
+    parts = (v.split("+")[0].split(".") + ["0"] * 4)[:4]
+    return ".".join(p if p.isdigit() else "0" for p in parts)
+
+
+WIN_VERSION = win_version(read_version())
 DIST = EVAL / "dist"
 APP = DIST / "tlwu"
 CUDA_SRC_CANDIDATES = [Path(p) for p in (os.environ.get("TLWU_CUDA_SRC"),) if p] + [
@@ -101,12 +120,14 @@ def nuitka_cmd() -> list[str]:
             "--include-package=tlwu_app", "--include-package=tinglongwu", "--include-package=tinglongwu_setup",
             # filelock/huggingface_hub import submodules lazily (__getattr__), so Nuitka cannot see them (#36)
             "--include-package=filelock", "--include-package=huggingface_hub", *lazy_includes(),
-            "--nofollow-import-to=tinglongwu.reverse", "--nofollow-import-to=pytest",
+            # tinglongwu.reverse is compiled in: tlwu --voice (#330) uses its Player / TTSClient (#464). tts_worker is
+            # not: it runs in the Kokoro venv from the source file copied by copy_worker_sources().
+            "--nofollow-import-to=tinglongwu.reverse.tts_worker", "--nofollow-import-to=pytest",
             "--nofollow-import-to=unittest",
             "--include-package-data=faster_whisper", "--include-package-data=opencc",
             "--include-package-data=soundcard", "--include-package=sv_ttk", "--include-package-data=sv_ttk", "--include-package-data=tinglongwu_setup", "--include-package-data=tinglongwu",  # self-test clip data/selftest_en.wav (#99)
             "--product-name=tinglongWu", "--file-description=tinglongWu offline speech translator",
-            "--file-version=0.1.0.0", "--product-version=0.1.0.0", str(REPO / "packaging" / "tlwu_entry.py")]
+            f"--file-version={WIN_VERSION}", f"--product-version={WIN_VERSION}", str(REPO / "packaging" / "tlwu_entry.py")]
 
 
 def run_nuitka() -> Path:
@@ -311,6 +332,20 @@ def make_zip(app: Path, out: Path) -> None:
                 z.write(f, Path(app.name) / f.relative_to(app))
 
 
+# Source files the TTS worker (run by the Kokoro venv's python, not by tlwu.exe) needs next to the exe (#464):
+# TTSClient starts tinglongwu/reverse/tts_worker.py, which imports tinglongwu.offline for the network guard.
+WORKER_SOURCES = ("tinglongwu/__init__.py", "tinglongwu/offline.py", "tinglongwu/i18n.py", "tinglongwu/userdirs.py",
+                  "tinglongwu/reverse/tts_worker.py")  # i18n/userdirs: offline._emit (blocked-connection log)
+
+
+def copy_worker_sources(app: Path) -> list[str]:
+    for rel in WORKER_SOURCES:
+        dst = app / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / rel, dst)
+    return list(WORKER_SOURCES)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
@@ -345,6 +380,7 @@ def main() -> int:
     print("vc runtime:", copy_vc_runtime(APP))
     write_licenses(APP, cuda_src)
     shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
+    print("worker sources:", copy_worker_sources(APP))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(REPO / "scripts"))
     from check_dist_dlls import check as check_dlls

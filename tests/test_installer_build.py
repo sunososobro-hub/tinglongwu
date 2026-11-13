@@ -104,8 +104,10 @@ def test_cli_dry_run_and_missing_iscc(tmp_path, monkeypatch, capsys):
     assert "ISCC.exe not found" in capsys.readouterr().err
 
 
-def test_app_version_reads_pyproject():
-    assert bi.app_version() and bi.app_version().count(".") >= 1
+def test_app_version_is_package_version():
+    import tinglongwu
+
+    assert bi.app_version() == tinglongwu.__version__ != "0.0.0"
 
 
 def test_script_runs_standalone(tmp_path):

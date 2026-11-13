@@ -16,8 +16,9 @@ def tk_missing_hint() -> str:
 def _apt_tk_package() -> str:
     """python3-tk for the system python3; python3.X-tk for a separately installed Python 3.X (e.g. deadsnakes)."""
     base = os.path.realpath(getattr(sys, "_base_executable", None) or sys.executable)
-    system = shutil.which("python3")
-    if system and os.path.realpath(system) == base:
+    # not shutil.which("python3"): inside an activated venv that is the venv's own python3 (same realpath as base)
+    system = "/usr/bin/python3"
+    if os.path.exists(system) and os.path.realpath(system) == base:
         return "python3-tk"
     return f"python{sys.version_info[0]}.{sys.version_info[1]}-tk"
 

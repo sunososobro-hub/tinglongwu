@@ -7,6 +7,7 @@ import queue
 import signal
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
@@ -14,10 +15,10 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
-                   save_settings, settings_to_argv, voice_outputs)
+                   save_settings, settings_to_argv, voice_outputs, clamp_alpha)
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -41,10 +42,6 @@ class Overlay:
         w.withdraw()
         w.overrideredirect(True)
         w.attributes("-topmost", True)
-        try:
-            w.attributes("-alpha", 0.82)
-        except tk.TclError:
-            pass
         w.configure(bg=BG)
         self.width = int(w.winfo_screenwidth() * 0.7)
         self.rows = clamp_rows(s.get("overlay_lines", 3))
@@ -64,6 +61,15 @@ class Overlay:
         self.text.tag_configure("draft", foreground=FG_DRAFT, justify="center", spacing3=4)
         self.text.tag_configure("src", foreground=FG_SRC, justify="center")
         self.text.configure(state="disabled")
+        # #333: A-/A+ in the top-right corner, shown only while the pointer is over the bar
+        self.hover = tk.Frame(self.box, bg=BG)
+        for label, d in (("A-", -2), ("A+", 2)):
+            tk.Button(self.hover, text=label, command=lambda d=d: self.bump_font(d), bd=0, padx=6, pady=0,
+                      bg="#2a2a2a", fg=FG_FINAL, activebackground="#3a3a3a", activeforeground=FG_FINAL,
+                      takefocus=0, cursor="hand2").pack(side="left", padx=1)
+        w.bind("<Enter>", lambda _e: self.show_hover(), add="+")
+        w.bind("<Leave>", lambda _e: self.win.after(60, self._leave_check), add="+")
+        self.set_alpha(s.get("overlay_alpha"))
         self.bottom = None  # bottom edge kept when the bar grows (None once dragged: keep the top)
         self.set_font(s["font_size"])
         self.var_src = tk.BooleanVar(value=s["show_src"])
@@ -99,6 +105,10 @@ class Overlay:
         for key, d in (("gui_menu_larger", 2), ("gui_menu_smaller", -2)):
             fm.add_command(label=t(key), command=lambda d=d: self.bump_font(d))
         self.menu.add_cascade(label=t("gui_menu_font"), menu=fm)
+        om = tk.Menu(self.menu, tearoff=0)
+        for key, d in (("gui_menu_more_opaque", ALPHA_STEP), ("gui_menu_less_opaque", -ALPHA_STEP)):
+            om.add_command(label=t(key), command=lambda d=d: self.bump_alpha(d))
+        self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
         self.menu.add_separator()
@@ -173,6 +183,36 @@ class Overlay:
     def bump_font(self, d: int):
         self.set_font(self.app.settings["font_size"] + d)
 
+    def set_alpha(self, a):
+        """#333: bar opacity, clamped and stored in settings (saved to gui.json with the rest)."""
+        a = clamp_alpha(a)
+        self.app.settings["overlay_alpha"] = a
+        try:
+            self.win.attributes("-alpha", a)
+        except tk.TclError:  # no compositor: the bar stays opaque, the setting is still kept
+            pass
+
+    def bump_alpha(self, d: float):
+        self.set_alpha(self.app.settings["overlay_alpha"] + d)
+
+    def show_hover(self):
+        self.hover.place(relx=1.0, x=-14, y=2, anchor="ne")  # left of the scrollbar
+        self.hover.lift()
+
+    def hide_hover(self):
+        self.hover.place_forget()
+
+    def hover_shown(self) -> bool:
+        return self.hover.winfo_manager() == "place"
+
+    def _leave_check(self):
+        # <Leave> also fires when the pointer moves onto a child (the buttons): hide only once it left the bar
+        w = self.win
+        px, py = w.winfo_pointerxy()
+        x, y = w.winfo_rootx(), w.winfo_rooty()
+        if not (x <= px < x + w.winfo_width() and y <= py < y + w.winfo_height()):
+            self.hide_hover()
+
     def _font_wheel(self, d: int):
         self.bump_font(d)
         return "break"  # Ctrl+wheel resizes; it must not also scroll the history
@@ -216,6 +256,8 @@ class Overlay:
     def show(self):
         if not self.visible:
             self.win.deiconify()
+            self.win.update_idletasks()
+            self.set_alpha(self.app.settings["overlay_alpha"])  # X11 drops -alpha set while the bar was never mapped
             self.win.lift()
             self.visible = True
             self.render(self.app.state)
@@ -231,6 +273,8 @@ class App:
         self.q: queue.Queue = queue.Queue()
         self.state = SubtitleState(HISTORY_LINES)
         self.listening = False  # a session is running (Start pressed, worker not yet stopped)
+        self.load_t0: float | None = None  # #332: monotonic time of Start while models load, else None
+        self.load_shown = 0
         self.stop_ev = threading.Event()
         self.worker: threading.Thread | None = None
         self.closing = False
@@ -285,7 +329,10 @@ class App:
     def relabel(self):
         for w, opt, key in self._tr:
             w.configure(**{opt: t(key)})
-        self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
+        if self.load_t0 is not None:
+            self.btn.configure(text=t("gui_loading", s=self.load_shown))
+        else:
+            self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         if self.status_key:
             self.v_status.set(t(self.status_key))
@@ -492,7 +539,7 @@ class App:
 
     def _download_done(self, model: str, rc: int):
         self.downloading = None
-        self.btn.configure(state="normal")
+        self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
         labels = model_labels()
         self.combos["model"].configure(values=labels, width=combo_width(labels))
@@ -551,7 +598,9 @@ class App:
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
-        self.btn.configure(text=t("gui_stop"))
+        self.load_t0 = time.monotonic()  # #332: Stop stays disabled ("Loading... N s") until the models are ready
+        self.load_shown = 0
+        self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
         self.v_notice.set("")
         self.errored = False
@@ -597,6 +646,11 @@ class App:
                 kind = ev[0]
                 if kind == "status":
                     self._status_text(ev[1])
+                    from ..cli import READY_STATUS  # already imported by the worker; not at GUI start (#332)
+
+                    if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
+                        self.load_t0 = None
+                        self.btn.configure(text=t("gui_stop"), state="normal")
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                 elif kind == "dl_line":
@@ -609,6 +663,7 @@ class App:
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True
                 elif kind == "stopped":
+                    self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
                         self.set_status("gui_stopped")
@@ -619,6 +674,11 @@ class App:
                     changed |= self.state.apply(ev)
         except queue.Empty:
             pass
+        if self.load_t0 is not None:  # tick the elapsed seconds so a slow CPU start never looks frozen
+            secs = int(time.monotonic() - self.load_t0)
+            if secs != self.load_shown:
+                self.load_shown = secs
+                self.btn.configure(text=t("gui_loading", s=secs))
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
         if changed:

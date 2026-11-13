@@ -56,7 +56,7 @@ function Test-Llama { & $py -c "from tinglongwu.llamacheck import import_llama; 
 function Test-HyReady { return ((Test-HymtFile) -and (Test-Llama)) }   # then ja is translated directly (no OPUS pivot)
 function Get-JaMissing {   # install commands the Japanese voice/translator still needs (empty = ready)
     $out = @()
-    if (-not (Test-Llama)) { $out += "  & $py -m pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu" }
+    if (-not (Test-Llama)) { $out += "  & $py -m pip install llama-cpp-python==0.3.36 --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu" }
     & $kokoroPy -c "import misaki.ja, fugashi, jaconv, unidic_lite" 2>$null
     if ($LASTEXITCODE -ne 0) { $out += "  & `"$kokoroPy`" -m pip install misaki==0.9.4 pyopenjtalk-plus fugashi unidic-lite mojimoji jaconv addict regex" }
     return $out
@@ -189,7 +189,7 @@ if ($mode -eq "1") {
 Write-Host (T 'BANNER_SPEAK' $(if ($speak -eq 'follow') { T 'FOLLOW_LABEL' } else { $speak }))
 
 # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs, no Qwen)
-if (-not (Test-Llama)) { Write-Host "  & $py -m pip install llama-cpp-python --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"; exit 1 }
+if (-not (Test-Llama)) { Write-Host "  & $py -m pip install llama-cpp-python==0.3.36 --only-binary=:all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"; exit 1 }
 if (-not (Test-HymtFile)) { Write-Host (T 'NO_HYMT_SPEAK'); Invoke-Setup --hymt }
 if ($speak -eq "follow") {
     # both directions; Kokoro (en, and ja on its first Japanese sentence) loads now, Vosk (ru) on the first Russian sentence

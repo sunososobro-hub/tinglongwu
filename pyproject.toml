@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tinglongwu"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Fully local, offline real-time speech translator (system audio -> ASR -> translation -> text)."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -45,3 +45,6 @@ tinglongwu = ["data/*.txt", "data/*.wav"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["offline: runs under the network guard; CI also runs these in a network-less namespace"]
+
+[tool.setuptools.dynamic]
+version = {attr = "tinglongwu.__version__"}
