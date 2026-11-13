@@ -8,6 +8,7 @@ import os
 import sys
 
 from . import gate, scoring, tierchart, tiers
+from . import noise as noise_mod
 from .runner import CLIPS_PER_LANG, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
 NHK_DIR_DEFAULT = r"C:\Users\user\tlwu-eval"  # outside the repo: copyrighted NHK ja clips (#119)
@@ -23,6 +24,12 @@ def format_report(rep: dict) -> str:
                      f"MT {s['mt']:.1f}s median {lg['mt_median_s']}s {st['mt']} | {tts} | "
                      f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}% chrF {lg['chrf']}"
                      + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}"))
+    nz = rep.get("noise")
+    if nz:
+        for cat, e in nz["categories"].items():
+            lines.append(f"noise {cat}: {e['count']}/{e['total']} ({e['rate']:.2f}) "
+                         + ("FAIL " + "; ".join(repr(t["text"]) for t in e["texts"]) if e["count"] else "PASS"))
+        lines.append(f"noise hallucination: {nz['count']}/{nz['total']} ({nz['rate']:.2f}) {nz['stage']}")
     lines += [f"{p}: SKIP (no clips in the manifest)" for p in rep["skipped"]]
     mib = (lambda v: "n/a" if v is None else f"{v} MiB")
     lines.append(f"smoke: {'PASS' if rep['pass'] else 'FAIL'} - total {rep['total_s']:.0f}s (budget "
@@ -68,6 +75,9 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     p.add_argument("--data", default="eval_data/smoke", help="folder with manifest.jsonl and the wav files")
     p.add_argument("--nhk-dir", default=os.environ.get("TLWU_EVAL_DIR", NHK_DIR_DEFAULT),
                    help="external folder with the NHK ja manifest (default: $TLWU_EVAL_DIR); skipped when absent")
+    p.add_argument("--no-noise", action="store_true", help="skip the silence/noise hallucination test (#121)")
+    p.add_argument("--noise-dir", default=os.environ.get("TLWU_EVAL_NOISE_DIR", os.path.join(NHK_DIR_DEFAULT, "noise")),
+                   help="optional real recordings in <dir>/{silence,aircon,keyboard,distant}/*.wav (default: $TLWU_EVAL_NOISE_DIR)")
     p.add_argument("--out", default="report.json", help="where the JSON report is written")
     p.add_argument("--model", default=None, help="Whisper size (default: like tlwu, or the --tier preset)")
     p.add_argument("--engine", default=None, help="translation engine (default: auto like tlwu, or the --tier preset)")
@@ -106,6 +116,8 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     try:
         rows = load_manifest(a.data)
         run_kw.setdefault("ja_extra", load_extra(a.nhk_dir))
+        if not a.no_noise:
+            run_kw.setdefault("noise", noise_mod.build_clips(a.noise_dir))
         rep = run_smoke(rows, engines or real_engines(a), totals=totals or machine_totals(), **run_kw)
         if a.tier:
             cm = a.comet and tiers.comet_scores(rep["languages"], comet_model or load_comet(), int(a.device == "cuda"))

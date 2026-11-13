@@ -172,7 +172,7 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None) -> dict
 
 
 def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, clock=time.perf_counter,
-              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None) -> dict:
+              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None, noise=None) -> dict:
     """Run the smoke set and return the report dict. totals: (RAM MiB, VRAM MiB or None) of this machine.
     ja_extra: ja clips from outside the repo (NHK, #119), run as an extra "ja->zh[nhk]" group; any kana in its zh
     output turns the smoke red."""
@@ -189,6 +189,11 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
         langs.append(run_lang(mine, src, tgt, eng, mt, clock, (peak_ram, peak_vram)))
     if ja_extra:
         langs.append(run_lang(ja_extra[:per_lang], "ja", "zh", eng, mt, clock, (peak_ram, peak_vram), label="ja->zh[nhk]"))
+    noise_rep = None
+    if noise:  # #121: no-speech clips through the first language's ASR; any shown text is a hallucination
+        from . import noise as noise_mod
+
+        noise_rep = noise_mod.run_noise(eng.load_asr(pairs[0][0] if not langs else langs[0]["pair"].split("->")[0]), noise)
     if not langs:
         raise ValueError("the manifest has no clip for any focus language (en, ja, ru, zh)")
     total_s = clock() - t0
@@ -199,16 +204,18 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
         "mt": (statistics.fmean(scoring.mt_score(lg["chrf"]) for lg in langs if lg["chrf"] is not None)
                if any(lg["chrf"] is not None for lg in langs) else None),
         "latency": scoring.latency_score([c["latency_s"] for c in clips]),
-        "hallucination": None,  # silence/noise clips arrive with the data part (#57 part 3)
+        "hallucination": (scoring.hallucination_score([""] * (noise_rep["total"] - noise_rep["count"]) + ["x"] * noise_rep["count"])
+                          if noise_rep else None),
         "resources": (scoring.resources_score(peak_ram.value, total_ram, peak_vram.value, total_vram)
                       if peak_ram.value is not None and total_ram else None),
         "lang_id": scoring.lang_id_score([(lg["pair"].split("->")[0], c["detected"]) for lg in langs
                                           for c in lg["clips"]]),
     }
-    ok = total_s <= TOTAL_BUDGET_S and all(s != "FAIL" for lg in langs for s in lg["stages"].values())
+    ok = total_s <= TOTAL_BUDGET_S and all(s != "FAIL" for lg in langs for s in lg["stages"].values()) \
+        and (noise_rep is None or noise_rep["stage"] != "FAIL")
     return {"mode": "smoke", "pass": ok, "total_s": round(total_s, 2), "mt_load_s": round(mt_load_s, 3),
             "peak_ram_mib": peak_ram.value and round(peak_ram.value), "peak_vram_mib": peak_vram.value and round(peak_vram.value),
-            "total_ram_mib": total_ram, "total_vram_mib": total_vram, "languages": langs, "skipped": skipped,
+            "total_ram_mib": total_ram, "total_vram_mib": total_vram, "languages": langs, "skipped": skipped, "noise": noise_rep,
             "thresholds": {"asr_rtf_max": ASR_RTF_MAX, "mt_median_max_s": MT_MEDIAN_MAX_S, "tts_rtf_max": TTS_RTF_MAX,
                            "lang_budget_s": LANG_BUDGET_S, "total_budget_s": TOTAL_BUDGET_S},
             "score": scoring.overall(scores)}

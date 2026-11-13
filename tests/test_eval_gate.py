@@ -113,7 +113,7 @@ def test_gate_reads_a_real_smoke_report(tmp_path, capsys):
     data = make_data(tmp_path, langs=("en", "ru"))
     out = tmp_path / "r.json"
     clock = Clock()
-    assert main(["--smoke", "--data", str(data), "--clips", "2", "--out", str(out)], engines=fake_engines(clock),
+    assert main(["--smoke", "--data", str(data), "--clips", "2", "--out", str(out), "--no-noise"], engines=fake_engines(clock),
                 totals=(16000, None), clock=clock) == 0
     capsys.readouterr()
     rep = json.loads(out.read_text("utf-8"))

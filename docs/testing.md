@@ -21,3 +21,7 @@ python -m tlwu_eval --gate r.json --baseline eval/baseline.json
 ```
 
 To record a baseline, copy each pair's `chrf` from `r.json` into `eval/baseline.json` and set `chrf_margin`.
+
+## Silence / noise hallucination (#121)
+
+`--smoke` also feeds four no-speech categories (silence, aircon, keyboard, distant babble; synthetic, seeded) to the ASR and prints the count and rate (x100, 2 decimals) per category with any text that would still be shown. Any count > 0 is red and fails the smoke. Put real recordings in `<dir>/{silence,aircon,keyboard,distant}/*.wav` (`--noise-dir` or `$TLWU_EVAL_NOISE_DIR`, outside the repo) to add them. `--no-noise` skips it.
