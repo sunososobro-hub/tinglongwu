@@ -26,6 +26,7 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 
 ## 5. Keep the queue full
 - When open `status:todo` + `ok-to-work` issues < 10: an Opus run (S-hard) splits `status:blocked` issues that already carry a split proposal into child issues, and may open new **bug / test / eval** issues only (no new features). Each new issue needs Why / Goal / one measurable Acceptance line / Verify.
+- Work-mix budget (owner decision 2026-11-10): fix 30% / new features 30% / QA 15% / eval 10% / ideas 5% / docs 5% / maintenance 5% of worker minutes. QA (15%) and ideas (5%) run on fixed schedules (S-hard spot checks; ideation below). Ideation: when open `status:proposal` < 3, S-hard may open up to 2 `[idea]` issues per day as `src:ai enhancement status:proposal` (never status:todo; the owner promotes them). S-hard's daily 00:28 ratio check (sum `tlwu-usage` minutes of PRs merged to dev in the last 7 days by type label vs these targets) stays.
 
 ## 6. Throughput
 - S-easy: take up to 4 items per run. S-merge: merge every ready PR in one run.
