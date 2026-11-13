@@ -285,6 +285,9 @@ def gui_app(tmp_path, monkeypatch):
         self.q.put(("stopped",))
 
     monkeypatch.setattr(app.App, "_work", fake_work)
+    # #314 first-launch overlay already closed: these tests check the plain session flow (overlay: test_gui_tour_314)
+    (tmp_path / "tinglongwu").mkdir()
+    (tmp_path / "tinglongwu" / "gui.json").write_text('{"tour_seen": true}', "utf-8")
     a = app.App()
     a.root.update()
     yield a
