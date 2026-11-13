@@ -28,6 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build" / "nuitka-tlwu"
+APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 
 
 def read_version() -> str:
@@ -115,7 +116,7 @@ def smoke(app: Path, run=subprocess.run, lite: bool = False) -> None:
 def nuitka_cmd() -> list[str]:
     return [sys.executable, "-m", "nuitka", "--standalone", "--assume-yes-for-downloads", "--jobs=16", "--lto=no",
             "--enable-plugin=tk-inter", "--windows-console-mode=hide", "--output-filename=tlwu.exe",
-            "--output-folder-name=tlwu", f"--output-dir={BUILD}", "--remove-output",
+            "--output-folder-name=tlwu", f"--windows-icon-from-ico={APP_ICON}", f"--output-dir={BUILD}", "--remove-output",
             f"--report={EVAL / 'build' / 'nuitka-report.xml'}",
             "--include-package=tlwu_app", "--include-package=tinglongwu", "--include-package=tinglongwu_setup",
             # filelock/huggingface_hub import submodules lazily (__getattr__), so Nuitka cannot see them (#36)

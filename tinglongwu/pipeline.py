@@ -152,14 +152,14 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None) -> None:
         if translator is None:  # transcript-only
-            write(Result(lang, unit_text, None, "", tgt, who), ep)
+            write(Result(lang, unit_text, None, "", tgt, speaker=who), ep)
             return
         if lang == tgt:  # e.g. Chinese heard while translating to zh: show as is (Traditional via OpenCC)
             if tgt == "zh":
                 from .translate import zh_convert
 
                 unit_text = zh_convert(unit_text, getattr(translator, "zh_variant", "tw"))
-            write(Result(lang, unit_text, None, unit_text, tgt, who), ep)
+            write(Result(lang, unit_text, None, unit_text, tgt, speaker=who), ep)
             return
         with model_lock():
             t0 = time.monotonic()
@@ -175,7 +175,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             dt = time.monotonic() - t0
             steps = step_times(translator)
         say(f"latency: mt {dt * 1000:.0f} ms{steps} (waited {(t0 - queued) * 1000:.0f} ms in queue)")
-        write(Result(lang, unit_text, tr.pivot, tr.text, tgt, who), ep)
+        write(Result(lang, unit_text, tr.pivot, tr.text, tgt, speaker=who), ep)
 
     missing: set = set()  # (src, tgt) pairs already reported as not installed
     mtq: queue.Queue = queue.Queue()  # units waiting for MT + output; unbounded (short text)

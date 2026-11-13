@@ -114,3 +114,29 @@ def test_script_runs_standalone(tmp_path):
     r = subprocess.run([sys.executable, str(ROOT / "installer" / "build_installer.py"), "--help"],
                        capture_output=True, text=True)
     assert r.returncode == 0 and "--dry-run" in r.stdout
+
+
+def test_wizard_tlwu_exe_and_gui_share_one_app_icon(tmp_path):
+    """#127: the wizard (and its shortcuts), tlwu.exe and the GUI window all use tinglongwu/gui/assets/tinglongwu.ico."""
+    from tinglongwu.gui import icon
+
+    asset = icon.icon_path("tinglongwu.ico")
+    assert bi.APP_ICON.resolve() == asset.resolve()
+    assert bi.wizard_icon(tmp_path / "w.ico").read_bytes() == asset.read_bytes()
+    # without the asset the wizard still gets a (drawn) icon instead of failing the build
+    assert bi.wizard_icon(tmp_path / "d.ico", src=tmp_path / "missing.ico").read_bytes()[:4] == b"\0\0\1\0"
+
+    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "packaging" / "build_windows.py")
+    bw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bw)
+    flags = [a for a in bw.nuitka_cmd() if a.startswith("--windows-icon-from-ico=")]
+    assert len(flags) == 1
+    assert Path(flags[0].split("=", 1)[1]).read_bytes() == asset.read_bytes()
+
+
+@needs_git
+def test_cli_dry_run_ships_the_app_icon(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(bi, "find_iscc", lambda: None)
+    assert bi.main(["--dry-run", "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "tinglongwu.ico").read_bytes() == bi.APP_ICON.read_bytes()
+    assert f"/DIconFile={tmp_path / 'tinglongwu.ico'}" in capsys.readouterr().out

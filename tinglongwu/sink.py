@@ -14,6 +14,7 @@ class Result:
     pivot: str | None
     target: str
     tgt: str = "zh"
+    side: str = "them"  # #373: "them" = heard (listen side), "me" = what I said (speak side, meeting mode)
     speaker: str | None = None  # #384 --speakers: auto label ("說話者2") of the line, None if off or unknown
 
 
@@ -105,28 +106,35 @@ class JsonlSaveSink(Sink):
         self.t0 = self.clock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = open(self.path, "a", encoding="utf-8")
+        self._lock = threading.Lock()  # #373: meeting mode records both sides (listen thread + speak thread)
 
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass_source(self.inner, src, original, speaker)
 
     def write(self, r: Result) -> None:
+        self.inner.write(r)
+        self.record(r)
+
+    def record(self, r: Result) -> None:
+        """Append `r` to the file only (no console). #373: the speak side's lines go here with side="me"."""
         import json
 
-        self.inner.write(r)
         rec = {"t": round(self.clock() - self.t0, 2), "wall": self.now().isoformat(timespec="seconds"),
-               "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
+               "side": r.side, "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
         if r.speaker:
             rec["speaker"] = r.speaker  # #384: the auto label; corrections follow as "fix" lines (write_fix)
-        self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        self.f.flush()
+        with self._lock:
+            self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self.f.flush()
 
     def write_fix(self, event: dict) -> None:
         """#384: append a speaker correction (speakers.SpeakerBook.apply format); a "relabel" index counts the
         result lines of this file from 0. Replayed by scripts/eval_diarization.py --transcript."""
         import json
 
-        self.f.write(json.dumps({"t": round(self.clock() - self.t0, 2), "fix": event}, ensure_ascii=False) + "\n")
-        self.f.flush()
+        with self._lock:
+            self.f.write(json.dumps({"t": round(self.clock() - self.t0, 2), "fix": event}, ensure_ascii=False) + "\n")
+            self.f.flush()
 
 
 def default_save_path(now=None):

@@ -13,7 +13,7 @@ EVAL = Path(__file__).resolve().parents[1] / "scripts" / "eval_diarization.py"
 
 
 SPK = ["說話者1", "說話者2", "說話者1", "說話者3", "說話者2"]
-RESULTS = [Result("ru", f"line {i}", None, f"行 {i}", "zh", spk) for i, spk in enumerate(SPK)]
+RESULTS = [Result("ru", f"line {i}", None, f"行 {i}", "zh", speaker=spk) for i, spk in enumerate(SPK)]
 
 
 def _book():
@@ -58,9 +58,9 @@ def test_console_line_shows_speaker_instead_of_them():
     book = SpeakerBook()
     book.rename("說話者3", "Boss")
     sink = TextSink(out, names=book)
-    sink.write(Result("ru", "привет", None, "你好", "zh", "說話者2"))
+    sink.write(Result("ru", "привет", None, "你好", "zh", speaker="說話者2"))
     sink.write_source("ru", "пока", speaker="說話者3")
-    sink.write(Result("ru", "пока", None, "再見", "zh", "說話者3"))
+    sink.write(Result("ru", "пока", None, "再見", "zh", speaker="說話者3"))
     sink.write(Result("ru", "да", None, "是", "zh"))  # diarization off / unknown
     lines = [ln for ln in out.getvalue().splitlines() if ln.strip()]
     assert lines[0].endswith("◀ 說話者2 привет")
@@ -79,7 +79,7 @@ def test_save_keeps_speaker_and_fixes_and_eval_scores_them(tmp_path):
     save.f.close()
     recs = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines()]
     assert [r.get("speaker") for r in recs[:6]] == ["說話者1", "說話者2", "說話者1", "說話者3", "說話者2", None]
-    assert recs[-1]["fix"] == {"merge": "說話者3", "into": "說話者1"}
+    assert recs[0]["side"] == "them" and recs[-1]["fix"] == {"merge": "說話者3", "into": "說話者1"}
     r = subprocess.run([sys.executable, str(EVAL), "--transcript", str(path)], capture_output=True, text=True,
                        encoding="utf-8", cwd=tmp_path)
     assert r.returncode == 0, r.stderr

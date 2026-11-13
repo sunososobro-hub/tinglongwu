@@ -285,9 +285,21 @@ def describe_error(e: BaseException) -> str:
 
 
 def _to_bar(a):
-    """#322: (zh, ru) -> the --overlay bar as one '▶ ' line (my side); a no-op without --overlay."""
+    """Called once per line of my side as it is shown: (zh, ru, lang).
+    #322: -> the --overlay bar as one '▶ ' line. #373: meeting mode with --save (after --listen): also appended to
+    the listen side's transcript file with side="me", so the file carries both speakers."""
     q = getattr(a, "bar_q", None)
-    return (lambda zh, ru: q.put(("final", zh, "▶ " + ru))) if q is not None else (lambda zh, ru: None)
+    save = getattr(a, "me_save", None)
+
+    def bar(zh, ru, lang=None) -> None:
+        if q is not None:
+            q.put(("final", zh, "▶ " + ru))
+        if save is not None:
+            from ..sink import Result
+
+            save(Result(getattr(a, "src", "zh"), zh, None, ru, tgt=lang or _target(a), side="me"))
+
+    return bar
 
 
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
@@ -337,7 +349,7 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
-                bar(zh, ru)
+                bar(zh, ru, lang)
                 u.extra["_t0"] = lat.clock()
                 sess.submit(u)  # synthesis starts NOW (#132): the back-translation below no longer delays it
                 u.future.add_done_callback(  # no audio at all: report the line without tts_first
@@ -380,7 +392,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lg).text, zh, lg)
         print("\n" + fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)).rstrip("\n"), flush=True)
         if bar is not None:
-            bar(zh, ru)
+            bar(zh, ru, lg)
         t0, sent = lat.clock(), 0
         gaps, stats, info = GapMeter(lat.clock), [], {}
         for audio, sr in _synth_sentences(tts, ru, stats, info=info):
@@ -449,7 +461,7 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
                 lang = _target(a)
                 ru, _r = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
                 print(fmt.block("me", zh, [(None, ru)], color=fmt.color_enabled(sys.stdout)), end="", flush=True)
-                bar(zh, ru)
+                bar(zh, ru, lang)
                 print(timing_line(lat.take(), tts=False), flush=True)  # #186
         elif confirm:
             _run_confirm(a, items, mt, tts, player, previewer, res, box)
@@ -810,20 +822,34 @@ class ListenSide:
         self.bar_q = bar_q
         self.args = (parse or cli.parse_args)(list(argv))
         self._run = run or cli.run_session
+        self.saver = None
+        if self.args.save is not None:  # #373: one transcript for both sides; opened here so ▶ lines can go in too
+            from ..sink import JsonlSaveSink, default_save_path
+
+            path = self.args.save or default_save_path()
+            self.saver = JsonlSaveSink(None, path)
+            self.args.save = None  # run_session must not wrap the sink a second time
+            print(f"tlwu: saving final lines (both sides) to {os.path.abspath(path)}", file=sys.stderr)
         self.stop = threading.Event()
         self.error: BaseException | None = None
         self.thread = threading.Thread(target=self._body, name="tlwu-listen", daemon=True)
 
     def _body(self) -> None:
         try:
-            if self.bar_q is None:
+            if self.bar_q is None and self.saver is None:
                 self._run(self.args, stop=self.stop)
-            else:  # #322: the other side's lines also go to the shared bar, marked ◀
-                from ..overlay import OverlaySink
+            else:
                 from ..sink import TextSink, TranscriptSink
 
-                base = TranscriptSink() if self.args.transcript_only else TextSink()
-                self._run(self.args, stop=self.stop, sink=OverlaySink(base, self.bar_q, prefix="◀ "))
+                sink = TranscriptSink() if self.args.transcript_only else TextSink()
+                if self.bar_q is not None:  # #322: the other side's lines also go to the shared bar, marked ◀
+                    from ..overlay import OverlaySink
+
+                    sink = OverlaySink(sink, self.bar_q, prefix="◀ ")
+                if self.saver is not None:  # #373: heard lines -> side="them" in the shared transcript
+                    self.saver.inner = sink
+                    sink = self.saver
+                self._run(self.args, stop=self.stop, sink=sink)
         except BaseException as e:  # noqa: BLE001 - SystemExit from a missing model too: report, keep speaking
             self.error = e
             if not self.stop.is_set():
@@ -849,6 +875,8 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
             listen = ListenSide(a.listen, bar_q=bar_q)
         except ValueError as e:
             ap.error(str(e))
+        if listen.saver is not None:
+            a.me_save = listen.saver.record  # #373: my lines go to the same --save file, side="me"
         os.environ["TLWU_BOTH"] = "1"
     from .. import offline as _og
 
