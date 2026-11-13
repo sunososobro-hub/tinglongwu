@@ -621,7 +621,7 @@ def resolve_tts_engine(a) -> None:
         a.ru_engine = "piper" if piper_onnx(a.vosk_model) else "vosk"
         return
     if a.tts_engine == "auto":
-        if a.to == "ru" and getattr(a, "voice", None) and not a.tts_model and default_vosk_ru(mdir):
+        if a.to == "ru" and getattr(a, "voice", None) and a.speaker is None and not a.tts_model and default_vosk_ru(mdir):
             a.tts_engine = "vosk"  # #319: --voice picks among the Vosk voices (the Piper ones are male only)
         elif a.to != "ru":
             a.tts_engine = "vosk"  # unchanged default: rejected below unless --no-tts
@@ -1045,7 +1045,7 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
 
             try:
                 tts.speaker, table = pick_voice(a.voice, client_probe(tts))
-            except (ValueError, RuntimeError) as e:
+            except (ValueError, RuntimeError, OSError) as e:  # OSError: worker died mid-probe (broken pipe)
                 tts.close()
                 print(f"tlwu: --voice {a.voice}: {e}", file=sys.stderr)
                 return 2

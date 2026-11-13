@@ -108,3 +108,24 @@ def test_cli_voice_rejected_in_follow_mode(capsys):
     with pytest.raises(SystemExit):
         _parse(["--voice", "female", "--to", "follow", "--no-tts"])
     assert "with --to follow use --speaker N" in capsys.readouterr().err
+
+
+def _auto_ns(**kw):
+    import argparse
+
+    base = dict(to="ru", tts_engine="auto", tts_model="", models_dir=None, voice="female", speaker=None)
+    return argparse.Namespace(**{**base, **kw})
+
+
+def test_auto_engine_prefers_vosk_for_voice_unless_speaker_given(tmp_path, monkeypatch):
+    from tinglongwu import models
+
+    piper, vosk = tmp_path / "piper", tmp_path / "vosk"
+    monkeypatch.setattr(models, "default_piper_ru", lambda mdir=None: piper)
+    monkeypatch.setattr(models, "default_vosk_ru", lambda mdir=None: vosk)
+    a = _auto_ns()
+    proto.resolve_tts_engine(a)
+    assert a.tts_engine == "vosk"
+    a = _auto_ns(speaker=2)  # --speaker wins, so --voice is dropped: keep the default Piper voice
+    proto.resolve_tts_engine(a)
+    assert (a.tts_engine, a.tts_model) == ("piper", str(piper))
