@@ -28,7 +28,7 @@ class _Job {
   int asrFinalMs;
 }
 
-/// mic -> sherpa ASR isolate -> queue -> Qwen3 translator -> subtitles.
+/// mic -> sherpa ASR isolate -> queue -> Hy-MT2 translator -> subtitles.
 class Pipeline extends ChangeNotifier {
   Stage stage = Stage.starting;
   String? errorText;
@@ -199,7 +199,7 @@ class Pipeline extends ChangeNotifier {
           job.sub.zh = r.zh;
           job.sub.traditionalOk = r.check.isTraditional;
           _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
-              '${r.retried ? " retried" : ""}] ${AppLog.text(r.zh)} | '
+              '] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '
               'ttft=${r.firstTokenMs}ms tok=${r.tokens} '
               'tps=${r.tokensPerSecond.toStringAsFixed(1)} n_ctx=${r.nCtx} '

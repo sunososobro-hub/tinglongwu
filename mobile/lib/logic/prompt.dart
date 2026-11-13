@@ -1,74 +1,63 @@
-/// Prompt building and output cleaning for the Qwen3 translator (pure logic).
+/// Prompt building and output cleaning for the Hy-MT2-1.8B translator (pure logic).
+///
+/// Mirrors the desktop engine (`tinglongwu/hymt.py`): the user message is the
+/// model-card template from `build_prompt`, wrapped in the chat template stored
+/// in the GGUF (`tokenizer.chat_template`), which is what llama.cpp's
+/// `create_chat_completion` renders on desktop. No context memory and no extra
+/// system text: the card's single-message template.
 library;
 
-class ContextPair {
-  const ContextPair(this.ru, this.zh);
-  final String ru;
-  final String zh;
-}
-
 class PromptBuilder {
-  static const system =
-      'You are a live-subtitle translator. Translate Russian speech transcripts '
-      'into Traditional Chinese (繁體中文, Taiwan usage). The transcript comes '
-      'from speech recognition and may contain errors; infer the intended '
-      'meaning. Output ONLY the Chinese translation on one line. Never output '
-      'Simplified Chinese, Russian, pinyin or explanations.';
+  /// Special tokens of the GGUF chat template (fullwidth bars, U+2581 spaces).
+  static const bos = '<｜hy_begin▁of▁sentence｜>';
+  static const userTag = '<｜hy_User｜>';
+  static const assistantTag = '<｜hy_Assistant｜>';
 
-  /// Extra reminder used for the retry when the first output was not
-  /// Traditional Chinese.
-  static const strictSuffix =
-      '\n(IMPORTANT: answer strictly in Traditional Chinese characters 繁體字, '
-      'e.g. 這、們、說、時、國; never 这、们、说、时、国.)';
+  /// Same tables as desktop `hymt.ZH_NAMES` / `hymt.EN_NAMES`.
+  static const zhNames = <String, String>{
+    'zh': '中文', 'ja': '日语', 'en': '英语', 'ru': '俄语', 'ko': '韩语',
+    'de': '德语', 'fr': '法语', 'es': '西班牙语', 'it': '意大利语',
+    'pt': '葡萄牙语', 'vi': '越南语', 'th': '泰语', 'id': '印尼语',
+  };
+  static const enNames = <String, String>{
+    'zh': 'Chinese', 'ja': 'Japanese', 'en': 'English', 'ru': 'Russian',
+    'ko': 'Korean', 'de': 'German', 'fr': 'French', 'es': 'Spanish',
+    'it': 'Italian', 'pt': 'Portuguese', 'vi': 'Vietnamese', 'th': 'Thai',
+    'id': 'Indonesian',
+  };
 
-  /// How many previous sentences are given as context.
-  static const contextSentences = 2;
-
-  /// Builds a Qwen3 ChatML prompt with thinking disabled via the empty think
-  /// block in the assistant turn (no "/no_think" text: small models echo it).
-  static String build(
-    String ru, {
-    List<ContextPair> context = const [],
-    bool strict = false,
-  }) {
-    final ctx = context.length > contextSentences
-        ? context.sublist(context.length - contextSentences)
-        : context;
-    final b = StringBuffer()
-      ..write('<|im_start|>system\n')
-      ..write(system)
-      ..write('<|im_end|>\n')
-      ..write('<|im_start|>user\n');
-    if (ctx.isNotEmpty) {
-      b.write('Previous sentences (context only, do not translate again):\n');
-      for (final c in ctx) {
-        b.write('RU: ${c.ru}\nZH: ${c.zh}\n');
-      }
-      b.write('\n');
+  /// Desktop `hymt.build_prompt(text, src, tgt)` (no glossary terms): the
+  /// Chinese card template when Chinese is on either side, else the English one.
+  static String userMessage(String text, {String src = 'ru', String tgt = 'zh'}) {
+    if (src == 'zh' || tgt == 'zh') {
+      return '将以下文本翻译成${zhNames[tgt] ?? tgt}，'
+          '注意只需要输出翻译后的结果，不要额外解释：\n\n$text';
     }
-    b.write('Translate to Traditional Chinese:\n${ru.trim()}');
-    if (strict) b.write(strictSuffix);
-    b
-      ..write('<|im_end|>\n')
-      ..write('<|im_start|>assistant\n')
-      ..write('<think>\n\n</think>\n\n');
-    return b.toString();
+    return 'Translate the following text into ${enNames[tgt] ?? tgt}.\n'
+        'Note that you should only output the translated result without any '
+        'additional explanation:\n\n$text';
+  }
+
+  /// Full raw prompt for llama.cpp (tokenize with parseSpecial, no addSpecial):
+  /// the GGUF chat template with one user message and add_generation_prompt.
+  static String build(String text, {String src = 'ru', String tgt = 'zh'}) =>
+      '$bos$userTag${userMessage(text, src: src, tgt: tgt)}$assistantTag';
+
+  /// Desktop `engines.max_tokens_for`: output budget proportional to input.
+  static int maxTokensFor(String text) {
+    final n = 2 * text.length + 16;
+    return n < 32 ? 32 : (n > 400 ? 400 : n);
   }
 
   static final RegExp _label = RegExp(
-    r'^(ZH|翻譯|翻译|譯文|Translation)\s*[:：]\s*',
+    r'^(ZH|翻譯|翻译|譯文|译文|Translation)\s*[:：]\s*',
     caseSensitive: false,
   );
 
-  /// Strips think blocks, ChatML tokens, labels and wrapping quotes from raw
+  /// Strips template tokens (`<｜...｜>`), labels and wrapping quotes from raw
   /// model output; keeps only the first non-empty line.
   static String clean(String raw) {
-    var t = raw;
-    t = t.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
-    t = t.replaceAll(RegExp(r'</?think>'), '');
-    t = t.replaceAll(RegExp(r'\s*/no_think'), '');
-    t = t.replaceAll(RegExp(r'<\|im_(start|end)\|>'), '');
-    t = t.trim();
+    var t = raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), '').trim();
     final lines = t.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty);
     if (lines.isEmpty) return '';
     t = lines.first.replaceFirst(_label, '');
