@@ -159,8 +159,9 @@ jobs:
             gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
           fi
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TITLE" --notes-file notes.md --prerelease --latest=false
+            # assets first, then the notes (which carry the run marker), so a failed upload is retried
             gh release upload "$TAG" "out/$APK_NAME" "out/$APK_NAME.sha256" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file notes.md --prerelease --latest=false
           else
             gh release create "$TAG" "out/$APK_NAME" "out/$APK_NAME.sha256" --verify-tag \
               --title "$TITLE" --notes-file notes.md --prerelease --latest=false
