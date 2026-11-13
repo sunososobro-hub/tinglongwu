@@ -325,8 +325,10 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
     return rc
 
 
-def settings_to_argv(s: dict) -> list[str]:
-    """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
+def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:
+    """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults).
+    outputs: the current voice_outputs() (#448): a saved voice_device that is no longer listed is left out (default
+    output) and notice(str) gets one line; None or [] (list unknown / no audio stack) passes the saved name on."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
@@ -342,7 +344,14 @@ def settings_to_argv(s: dict) -> list[str]:
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
-        argv += ["--voice"] + (["--voice-device", s["voice_device"]] if s.get("voice_device") else [])
+        dev = s.get("voice_device") or ""
+        if dev and outputs and dev not in outputs:  # #448: unplugged since it was saved
+            if notice is not None:
+                from ..i18n import t
+
+                notice(t("gui_voice_device_gone", name=dev))
+            dev = ""
+        argv += ["--voice"] + (["--voice-device", dev] if dev else [])
     return argv
 
 
