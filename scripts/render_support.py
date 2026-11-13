@@ -1,11 +1,12 @@
-"""Render the support tables and the contributors block from one source (docs/support.json + .all-contributorsrc).
+"""Render the support tables and the contributors row from one source (docs/support.json + .all-contributorsrc).
 
-The block sits between <!-- SUPPORT:START --> and <!-- SUPPORT:END --> in each README and in the release notes,
-so the README top and the release page always show the same thing.
+The support tables sit between <!-- SUPPORT:START --> and <!-- SUPPORT:END --> in the release notes only; the READMEs
+keep just the contributors row between <!-- CONTRIBUTORS:START --> and <!-- CONTRIBUTORS:END -->. The roadmap page
+shows "what works today" from the same support.json.
 
-  python scripts/render_support.py                 rewrite the block in README.md / README.zh-TW.md / README.zh-CN.md,
+  python scripts/render_support.py                 rewrite the contributors row in README.md / README.zh-TW.md / README.zh-CN.md,
                                                    and the "what works today" dot grid in docs/roadmap.html
-  python scripts/render_support.py --check         exit 1 if a README block or the roadmap grid differs from the source (CI)
+  python scripts/render_support.py --check         exit 1 if a README row or the roadmap grid differs from the source (CI)
   python scripts/render_support.py --notes vX.Y.Z  print release notes: Download + block + What's new placeholder
   python scripts/render_support.py --notes-file F  rewrite the block inside an existing release-notes file
   python scripts/render_support.py --edit vX.Y.Z   rewrite the block inside that GitHub release's notes (needs gh)
@@ -24,6 +25,8 @@ REPO_URL = "https://github.com/sunososobro-hub/tinglongwu"
 START, END = "<!-- SUPPORT:START -->", "<!-- SUPPORT:END -->"
 READMES = {"en": "README.md", "zh-TW": "README.zh-TW.md", "zh-CN": "README.zh-CN.md"}
 BLOCK = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)
+C_START, C_END = "<!-- CONTRIBUTORS:START -->", "<!-- CONTRIBUTORS:END -->"
+C_BLOCK = re.compile(re.escape(C_START) + r".*?" + re.escape(C_END), re.S)
 ROADMAP = "docs/roadmap.html"
 G_START, G_END = "<!-- ROADMAP-GRID:START -->", "<!-- ROADMAP-GRID:END -->"
 GRID = re.compile(re.escape(G_START) + r".*?" + re.escape(G_END), re.S)
@@ -57,7 +60,7 @@ def contributors(src: dict, people: list[dict], loc: str) -> str:
 
 
 def block(src: dict, people: list[dict], loc: str) -> str:
-    """The block, markers included. The END marker shares the last line (the README has a 60-line budget)."""
+    """The release-notes block (support tables + contributors), markers included."""
     dev, lang = src["device"], src["language"]
     lines = [START,
              *_table(dev["header"][loc], [(r["label"][loc], r["cells"]) for r in dev["rows"]]),
@@ -70,10 +73,15 @@ def block(src: dict, people: list[dict], loc: str) -> str:
     return "\n".join(lines)
 
 
-def replace_block(text: str, new: str, name: str = "") -> str:
-    if len(BLOCK.findall(text)) != 1:
-        raise SystemExit(f"{name}: expected exactly one {START} ... {END} block")
-    return BLOCK.sub(lambda m: new, text)
+def readme_block(src: dict, people: list[dict], loc: str) -> str:
+    """The README's contributors row, markers included (one line, so the README stays short)."""
+    return C_START + contributors(src, people, loc) + C_END
+
+
+def replace_block(text: str, new: str, name: str = "", pat: re.Pattern = BLOCK) -> str:
+    if len(pat.findall(text)) != 1:
+        raise SystemExit(f"{name}: expected exactly one {pat.pattern.split('.*?')[0]} ... block")
+    return pat.sub(lambda m: new, text)
 
 
 def _lab(tw: str, en: str, cn: str, cls: str) -> str:
@@ -143,7 +151,7 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     for loc, name in READMES.items():
         p = root / name
         old = p.read_text("utf-8")
-        new = replace_block(old, block(src, people, loc), name)
+        new = replace_block(old, readme_block(src, people, loc), name, C_BLOCK)
         if new != old:
             stale.append(name)
             if not a.check:

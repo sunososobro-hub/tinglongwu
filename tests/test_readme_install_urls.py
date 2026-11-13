@@ -66,21 +66,17 @@ def test_install_rows_are_windows_macos_linux():
         assert s.index(LATEST + "tinglongwu-setup.exe") < s.index(LATEST + "mac_install.sh") < s.index(LATEST + "install.sh"), name
 
 
-def test_support_table_and_contributor_avatars_under_install():
+def test_contributor_avatars_under_install_and_no_support_tables():
     import json
     logins = [c["login"] for c in json.loads((ROOT / ".all-contributorsrc").read_text("utf-8"))["contributors"]]
     for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
-        top = s[:s.index("## ", s.index(LATEST))]
-        assert "🟢" in top and "🟡" in top and "⚪" in top, name
+        assert s.count("https://github.com/" + logins[0] + ".png?size=60") == 1, name  # contributors appear once
+        assert s.index(LATEST) < s.index(logins[0] + ".png") < s.index("docs.html"), name
         for login in logins:
-            assert f"https://github.com/{login}.png?size=60" in top, (name, login)
-
-
-def test_language_table_right_after_the_device_table():
-    for name, row in (("README.md", "| 日本語 (ja) |"), ("README.zh-CN.md", "| 日本語 (ja) |"), ("README.zh-TW.md", "| 日本語 (ja) |")):
-        s = (ROOT / name).read_text("utf-8")
-        assert s.index("| Linux (Ubuntu 24.04) |" if name == "README.md" else "| Linux（Ubuntu 24.04） |") < s.index(row) < s.index("github.com/jchodev.png"), name
+            assert f"https://github.com/{login}.png?size=60" in s, (name, login)
+        assert "SUPPORT:START" not in s and "ALL-CONTRIBUTORS" not in s and "latency.svg" not in s, name
+        assert "⚪" not in s, name  # the support tables live on the roadmap page
 
 
 def test_no_flag_emoji_in_readmes():  # flags map languages to countries
