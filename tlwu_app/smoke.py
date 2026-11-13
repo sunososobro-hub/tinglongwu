@@ -22,7 +22,6 @@ MODULES: list[tuple[str, bool]] = [
     ("soundfile", True),
     ("soundcard", True),
     ("ctranslate2", True),
-    ("sentencepiece", True),
     ("onnxruntime", True),
     ("tokenizers", True),
     ("faster_whisper", True),
