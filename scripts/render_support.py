@@ -3,8 +3,9 @@
 The block sits between <!-- SUPPORT:START --> and <!-- SUPPORT:END --> in each README and in the release notes,
 so the README top and the release page always show the same thing.
 
-  python scripts/render_support.py                 rewrite the block in README.md / README.zh-TW.md / README.zh-CN.md
-  python scripts/render_support.py --check         exit 1 if a README block differs from the source (CI)
+  python scripts/render_support.py                 rewrite the block in README.md / README.zh-TW.md / README.zh-CN.md,
+                                                   and the "what works today" dot grid in docs/roadmap.html
+  python scripts/render_support.py --check         exit 1 if a README block or the roadmap grid differs from the source (CI)
   python scripts/render_support.py --notes vX.Y.Z  print release notes: Download + block + What's new placeholder
   python scripts/render_support.py --notes-file F  rewrite the block inside an existing release-notes file
   python scripts/render_support.py --edit vX.Y.Z   rewrite the block inside that GitHub release's notes (needs gh)
@@ -12,6 +13,7 @@ so the README top and the release page always show the same thing.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -22,6 +24,10 @@ REPO_URL = "https://github.com/sunososobro-hub/tinglongwu"
 START, END = "<!-- SUPPORT:START -->", "<!-- SUPPORT:END -->"
 READMES = {"en": "README.md", "zh-TW": "README.zh-TW.md", "zh-CN": "README.zh-CN.md"}
 BLOCK = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)
+ROADMAP = "docs/roadmap.html"
+G_START, G_END = "<!-- ROADMAP-GRID:START -->", "<!-- ROADMAP-GRID:END -->"
+GRID = re.compile(re.escape(G_START) + r".*?" + re.escape(G_END), re.S)
+DOT = {"🟢": "ok", "🟡": "ci", "⚪": "no-"}
 
 
 def load(root: Path = ROOT) -> tuple[dict, list[dict]]:
@@ -70,6 +76,35 @@ def replace_block(text: str, new: str, name: str = "") -> str:
     return BLOCK.sub(lambda m: new, text)
 
 
+def _lab(tw: str, en: str, cn: str, cls: str) -> str:
+    """A text cell; zh-TW is the visible text, the roadmap page script swaps in data-en / data-zh-cn."""
+    a = lambda x: html.escape(x, quote=True)
+    return f'<span class="{cls}" data-en="{a(en)}" data-zh-cn="{a(cn)}">{html.escape(tw)}</span>'
+
+
+def _cell(v: str) -> str:
+    """One status cell: a lit dot (optionally with a short note, e.g. 'Windows'), or a plain dash."""
+    emoji, _, note = v.partition(" ")
+    if emoji in DOT:
+        return f'<span class="c"><i class="{DOT[emoji]}"></i>{html.escape(note)}</span>'
+    return f'<span class="c same">{html.escape(v)}</span>'
+
+
+def roadmap_grid(src: dict) -> str:
+    """The "what works today" dot grid for docs/roadmap.html, markers included. No numbers are typed by hand."""
+    dev, lang = src["device"], src["language"]
+    out = [G_START, '<div class="today">']
+    for cls, head, rows in (("g-os", dev["header"], [(r["label"], r["cells"]) for r in dev["rows"]]),
+                            ("g-lang", lang["header"], [({"en": r["label"], "zh-TW": r["label"], "zh-CN": r["label"]}, r["cells"]) for r in lang["rows"]])):
+        out += ['  <div class="panel">', f'    <div class="grid {cls}">', "      <span></span>" + "".join(
+            _lab(t, e, c, "h") for e, t, c in zip(head["en"][1:], head["zh-TW"][1:], head["zh-CN"][1:]))]
+        for label, cells in rows:
+            out.append("      " + _lab(label["zh-TW"], label["en"], label["zh-CN"], "r") + "".join(_cell(v) for v in cells))
+        out += ["    </div>", "  </div>"]
+    out += ["</div>", G_END]
+    return "\n".join(out)
+
+
 def notes(tag: str, src: dict, people: list[dict]) -> str:
     base = f"{REPO_URL}/releases/download/{tag}/"
     download = "\n".join(src["download"]).format(ver=tag.lstrip("v"), base=base)
@@ -113,6 +148,15 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
             stale.append(name)
             if not a.check:
                 p.write_text(new, "utf-8", newline="\n")
+    rp = root / ROADMAP
+    old = rp.read_text("utf-8")
+    if len(GRID.findall(old)) != 1:
+        raise SystemExit(f"{ROADMAP}: expected exactly one {G_START} ... {G_END} block")
+    new = GRID.sub(lambda m: roadmap_grid(src), old)
+    if new != old:
+        stale.append(ROADMAP)
+        if not a.check:
+            rp.write_text(new, "utf-8", newline="\n")
     if a.check and stale:
         print("out of date (run python scripts/render_support.py):", ", ".join(stale))
         return 1
