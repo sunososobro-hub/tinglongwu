@@ -22,6 +22,7 @@ DEFAULTS = {
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
+    "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
 }
@@ -235,6 +236,23 @@ def model_labels(mdir=None) -> list[str]:
 
     have = whisper_installed(mdir)
     return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
+
+
+_ENGINE_DIR = {"hymt": "hymt2-1.8b", "opus": "opus"}  # models/<dir> per engine (auto needs no model of its own)
+_ENGINE_HINT = {"hymt": "tlwu-setup --hymt", "opus": "tlwu-setup --pair ru-en"}
+
+
+def engine_labels(mdir=None) -> list[str]:
+    """#399: Advanced engine entries; an engine whose model is not installed carries the setup command to get it."""
+    from ..models import models_dir
+
+    d = models_dir(str(mdir) if mdir else None)
+    return [e if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})" for e in ENGINES]
+
+
+def engine_from_label(label: str) -> str:
+    """The plain engine id from an engine_labels() entry (also accepts a plain id)."""
+    return (label or "").split(" (", 1)[0].strip()
 
 
 def model_from_label(label: str) -> str:

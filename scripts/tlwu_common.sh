@@ -136,3 +136,12 @@ tlwu_confirm_mode() {
   local a; for a in "$@"; do [ "$a" = "--confirm" ] && return 0; done
   return 1
 }
+
+# #40: meeting-mode start lines: banner, where the translated voice goes (no local preview: owner decision on #40),
+# and how sending works (confirm mode: y+Enter=send, Enter=discard; otherwise direct send and how to switch).
+# tlwu_meeting_banner <virtual mic> <confirm: 1|0>
+tlwu_meeting_banner() {
+  m M_MEETING_BANNER "$1"
+  m M_MEET_ROUTE "$1"
+  if [ "$2" = "1" ]; then m M_CONFIRM_HELP; else m M_MEET_DIRECT_HINT; fi
+}

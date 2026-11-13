@@ -1,6 +1,14 @@
 # Latency
 
-End-to-end latency measurements for tinglongwu. This page is a work in progress (see #347); full p50/p90 tables per hardware tier will be generated from eval harness output.
+End-to-end latency measurements for tinglongwu (#347). The generated block below holds p50 / p90 per hardware tier (cpu-low, mid-gpu, high), language pair and preset. To add a run: on the machine being measured, play a clip through `tlwu --file CLIP.wav --paced --lang en --model large-v3-turbo --preset meeting --latency-jsonl lat.jsonl` (at least 30 utterances), then `python scripts/make_latency_doc.py pack lat.jsonl --tier mid-gpu --hardware "RTX 3050 8 GB" --model large-v3-turbo --engine hymt --preset meeting --pair 'en->zh-TW'`, commit the file it writes under eval/latency/, and run `python scripts/make_latency_doc.py`. Why a line comes after the speech: see the [FAQ](faq.md).
+
+<!-- LATENCY:START (python scripts/make_latency_doc.py) -->
+## Measured runs (generated)
+
+Latency here is end of speech to the translated subtitle shown (#323 `--latency-jsonl`, field `total`), from a real-time paced clip. p50 / p90 are nearest-rank percentiles; cells with fewer than 30 utterances are marked indicative. Do not edit this block by hand: add a run with `python scripts/make_latency_doc.py pack ...` and rerun the script.
+
+No measured runs are committed yet (eval/latency/ is empty), so there is no table and no chart yet.
+<!-- LATENCY:END -->
 
 ## 2026-11-12 (owner PC, RTX 3050 8 GB)
 

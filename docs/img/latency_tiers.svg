@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="120" viewBox="0 0 820 120" role="img" aria-label="Measured end-to-end latency per hardware tier" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<title>Measured end-to-end latency per hardware tier</title>
+<text x="10.0" y="22" text-anchor="start" fill="#6e7781" font-size="13">End of speech to subtitle (s): dots = utterances, | = p50, ! = p90</text>
+<text x="10.0" y="64" text-anchor="start" fill="#6e7781" font-size="13">no measured runs committed yet</text>
+<line x1="330.0" y1="42" x2="330.0" y2="84" stroke="#7d8590" stroke-opacity="0.3"/>
+<text x="330.0" y="100" text-anchor="middle" fill="#6e7781" font-size="12">0 s</text>
+<line x1="445.0" y1="42" x2="445.0" y2="84" stroke="#7d8590" stroke-opacity="0.3"/>
+<text x="445.0" y="100" text-anchor="middle" fill="#6e7781" font-size="12">1 s</text>
+<line x1="560.0" y1="42" x2="560.0" y2="84" stroke="#7d8590" stroke-opacity="0.3"/>
+<text x="560.0" y="100" text-anchor="middle" fill="#6e7781" font-size="12">2 s</text>
+<line x1="675.0" y1="42" x2="675.0" y2="84" stroke="#7d8590" stroke-opacity="0.3"/>
+<text x="675.0" y="100" text-anchor="middle" fill="#6e7781" font-size="12">3 s</text>
+<line x1="790.0" y1="42" x2="790.0" y2="84" stroke="#7d8590" stroke-opacity="0.3"/>
+<text x="790.0" y="100" text-anchor="middle" fill="#6e7781" font-size="12">4 s</text>
+</svg>

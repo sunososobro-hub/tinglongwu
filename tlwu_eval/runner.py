@@ -4,6 +4,7 @@ per-stage time, peak RAM/VRAM, PASS/FAIL per stage. Offline; reads a local manif
 Manifest: `<data>/manifest.jsonl`, one JSON object per line:
   {"id": "en_001", "lang": "en", "wav": "en_001.wav", "ref_text": "...", "ref_zh": "..."}
 `ref_<target>` is the reference translation (`ref_zh` for en/ja/ru clips, `ref_en` for zh clips).
+Optional `style` (e.g. "news", "dialogue"): extra styles of a language are reported as their own group (#429).
 
 Engines are injected (`Engines`), so CI runs the whole thing on a tiny fixture with fakes.
 """
@@ -179,6 +180,18 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None, vram_bu
     }
 
 
+def style_groups(rows) -> list[tuple[str | None, list[dict]]]:
+    """Split one language's rows by the optional manifest `style` field (#429): rows without a style and rows of the
+    first style seen form the main group (style None, reported as the plain pair, as before); every other style is its
+    own group, reported as "<pair>[<style>]" (e.g. ja->zh[dialogue]), each with its own clip budget."""
+    first = next((r.get("style") for r in rows if r.get("style")), None)
+    groups: dict = {}
+    for r in rows:
+        s = r.get("style") or None
+        groups.setdefault(None if s == first else s, []).append(r)
+    return list(groups.items())
+
+
 def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, clock=time.perf_counter,
               ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None, noise=None) -> dict:
     """Run the smoke set and return the report dict. totals: (RAM MiB, VRAM MiB or None) of this machine.
@@ -191,11 +204,13 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
     mt_load_s = clock() - t0
     langs, skipped = [], []
     for src, tgt in pairs:
-        mine = [r for r in rows if r["lang"] == src][:per_lang]
-        if not mine:
+        groups = style_groups([r for r in rows if r["lang"] == src])
+        if not groups:
             skipped.append(f"{src}->{tgt}")
             continue
-        langs.append(run_lang(mine, src, tgt, eng, mt, clock, (peak_ram, peak_vram), vram_budget=vram_budget))
+        for style, mine in groups:
+            langs.append(run_lang(mine[:per_lang], src, tgt, eng, mt, clock, (peak_ram, peak_vram),
+                                  label=f"{src}->{tgt}[{style}]" if style else None, vram_budget=vram_budget))
     if ja_extra:
         langs.append(run_lang(ja_extra[:per_lang], "ja", "zh", eng, mt, clock, (peak_ram, peak_vram), label="ja->zh[nhk]",
                               vram_budget=vram_budget))

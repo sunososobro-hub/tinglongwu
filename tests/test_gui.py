@@ -567,3 +567,30 @@ def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
     assert a.v_status.get().startswith("Ready - speak now")
     assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
     assert core.load_settings(tmp_path / "tinglongwu" / "gui.json")["target"] == "en"  # my language, not zh-tw
+
+
+# -- #399: the engine dropdown is hidden under a collapsed Advanced section ---------------------------------
+
+def test_engine_labels_hint_for_uninstalled_and_roundtrip(tmp_path):
+    (tmp_path / "hymt2-1.8b").mkdir()
+    labels = core.engine_labels(tmp_path)
+    assert labels[0] == "auto" and "hymt" in labels  # installed: plain
+    assert [l for l in labels if l.startswith("opus")] == ["opus (tlwu-setup --pair ru-en)"]  # missing: hint
+    assert [core.engine_from_label(l) for l in labels] == core.ENGINES
+    assert core.DEFAULTS["advanced_open"] is False
+
+
+def test_engine_widget_hidden_until_advanced_expanded_and_remembered(gui_app):
+    a = gui_app
+    cb = a.combos["engine"]
+    assert a.settings["advanced_open"] is False and not cb.winfo_ismapped()
+    a.v_adv.set(True)
+    a._adv_toggled()
+    a.root.update()
+    assert cb.winfo_ismapped() and a.settings["advanced_open"] is True
+    a.collect()
+    assert core.load_settings()["advanced_open"] is True
+    a.v_adv.set(False)
+    a._adv_toggled()
+    a.root.update()
+    assert not cb.winfo_ismapped()

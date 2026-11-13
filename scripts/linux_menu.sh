@@ -266,15 +266,9 @@ if [ "$BOTH" = "1" ]; then
   rm -f "$FOLLOW_FILE"
   LF=(); [ "$L" = "auto" ] && LF=(--lang-file "$FOLLOW_FILE")
   if [ "$IS_MAC" = "1" ]; then MM="BlackHole 16ch"; else MM="tlwu_mic"; fi
-  PREV=(); PVN="$(m M_MEET_OFF)"
-  if [ "$IS_MAC" != "1" ]; then   # optional local preview, default OFF (it would mix with the remote voice) (#40)
-    pv=""; read -rp "$(mp M_MEET_ASK_PREVIEW)" pv || pv=""
-    [ -n "$pv" ] && { PREV=(--preview-device "$pv"); PVN="$pv"; }
-  fi
-  m M_MEETING_BANNER "$MM"
-  m M_MEET_ROUTE "$MM" "$PVN"
-  [ "${#AUTO[@]}" -eq 0 ] && m M_MEET_ENTER_HINT
-  exec "${REV[@]}" "${AUTO[@]}" "${PREV[@]}" --listen "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
+  CF=0; [ "${#AUTO[@]}" -eq 0 ] && CF=1
+  tlwu_meeting_banner "$MM" "$CF"
+  exec "${REV[@]}" "${AUTO[@]}" --listen "${LISTEN_LANG[@]}" "${LF[@]}" "${W_LISTEN[@]}" "${SAVE[@]}" "${XL[@]}"
 fi
 if [ "$IS_MAC" = "1" ]; then MEETMIC="BlackHole 16ch"; else MEETMIC="tlwu_mic"; fi
 m M_CONFIRM_HELP
