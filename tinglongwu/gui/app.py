@@ -419,8 +419,10 @@ class App:
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
         self._tx(ttk.Checkbutton(f, variable=self.v_voice), "gui_voice").grid(row=17, column=0, sticky="w", pady=2)
         self.voice_default = t("gui_voice_default")
-        self.v_voice_dev = tk.StringVar(value=s["voice_device"] or self.voice_default)
-        ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + voice_outputs(),
+        outs = voice_outputs()
+        shown = s["voice_device"] if s["voice_device"] in outs or not outs else ""  # #448: unplugged -> default
+        self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
+        ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
                      state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
         self.v_lines = self._spin(15, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
                                   lambda n: self.overlay.set_rows(n))
@@ -680,7 +682,8 @@ class App:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
 
-            a = parse_args(settings_to_argv(s))
+            a = parse_args(settings_to_argv(s, outputs=voice_outputs() if s.get("voice") else None,
+                                            notice=lambda m: q.put(("notice", m))))
 
             def draft_factory(asr, translator, segmenter, tgt):
                 if not s["live_draft"] or translator is None:
