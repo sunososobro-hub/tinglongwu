@@ -15,6 +15,24 @@ Translation quality and speed, measured with `scripts/bench/` (dev tool, not par
 | previous engine: 8B LLM + context (removed) | 26.3 | 0.867 | 0.80 | 5150 |
 | Google Cloud Translation v2 (reference) | 29.8 | 0.879 | - | - |
 
+Hy-MT2-1.8B (the engine tlwu ships, Q4_K_M GGUF, llama.cpp on the CPU, greedy `TLWU_HYMT_TEMP=0`) on the same full FLORES-200 devtest, 1012 sentences per direction, same chrF + COMET (#606). Hardware: GitHub-hosted `ubuntu-24.04` runner (4 vCPU, AMD EPYC 9V74 / 9V45), so the s/sentence column is CPU time, not the RTX 3050 above. Run: [eval-flores 43496772451](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43496772451), commit 67958c7; per-sentence JSON in its `flores-<src>` artifacts.
+
+| direction (1012 sentences) | engine | chrF | COMET | median s/sentence (CPU) | p90 s |
+|---|---|---|---|---|---|
+| rus->zho_Hant | Hy-MT2-1.8B (CPU) | 25.0 | 0.865 | 1.79 | 2.70 |
+| rus->zho_Hant | previous engine: 8B LLM (removed, GPU, table above) | 26.0 | 0.865 | 0.77 | - |
+| rus->zho_Hant | Google (table above) | 29.8 | 0.879 | - | - |
+| eng->zho_Hant | Hy-MT2-1.8B (CPU) | 30.3 | 0.894 | 1.06 | 1.58 |
+| jpn->zho_Hant | Hy-MT2-1.8B (CPU) | 23.7 | 0.885 | 1.62 | 2.40 |
+
+On Russian, Hy-MT2-1.8B matches the removed 8B LLM on COMET (0.865 vs 0.865, chrF 1.0 lower) and Google stays ahead (0.879). Reproduce on any CPU (Linux paths; the workflow `.github/workflows/eval-flores.yml` runs exactly this, COMET in its own venv because unbabel-comet pins numpy<2):
+
+```
+python scripts/bench/fetch_data.py --out ~/bench --fleurs ""
+TLWU_HYMT_TEMP=0 python scripts/bench/flores_cpu.py --data ~/bench/flores200_dataset --models-dir ~/tlwu-models --src rus_Cyrl --out out --no-comet
+~/comet/bin/python scripts/bench/flores_cpu.py --data ~/bench/flores200_dataset --src rus_Cyrl --out out --score-only
+```
+
 | direction (first 50 sentences) | engine | chrF | COMET | median s/sentence |
 |---|---|---|---|---|
 | en->zho_Hant | opus | 29.9 | 0.854 | 0.10 |
