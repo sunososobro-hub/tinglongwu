@@ -123,3 +123,16 @@ def test_gate_reads_a_real_smoke_report(tmp_path, capsys):
     assert main(["--gate", str(out), "--baseline", write(tmp_path, "b.json", base)]) == 0
     assert "SKIP" in capsys.readouterr().out  # ja->zh / zh->en had no clips
     assert main(["--gate", str(out), "--baseline", write(tmp_path, "b.json", baseline(en_zh={"mt_median_s_max": 0.1}))]) == 1
+
+
+def test_all_skip_report_fails(tmp_path, capsys):
+    code, out = gate_cli(tmp_path, report(), baseline(), capsys)
+    assert code == 1
+    assert "**eval gate: FAIL** (no pair evaluated)" in out.out
+
+
+def test_duplicate_pair_in_report_is_setup_error(tmp_path, capsys):
+    rep = report(en_zh=(40.0, 0.5))
+    rep["languages"].append(dict(rep["languages"][0]))
+    with pytest.raises(gate.GateError):
+        gate.run(write(tmp_path, "r.json", rep), write(tmp_path, "b.json", baseline()))
