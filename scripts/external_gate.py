@@ -7,6 +7,7 @@ Decides the lane for an external PR:
   owner       at least one rule failed; the owner must be notified with the failed rules + the review verdict.
 
 Rules (script first; the LLM review can only block, never override a failed rule):
+  r0_snapshot  (--pr) head and base SHA are the same before and after reading files + check runs
   r1_size      total changed lines (additions + deletions) <= MAX_CHANGED_LINES
   r2_paths     only `tinglongwu/**/*.py` and `tests/**/*.py`; none of PROTECTED_FILES; no deleted files;
                with --pr, the file list must be complete (== changed_files), else fail closed
@@ -80,7 +81,15 @@ def path_problems(files: list[dict]) -> list[str]:
 
 
 def added_lines(patch: str) -> list[str]:
-    return [ln[1:] for ln in patch.splitlines() if ln.startswith("+") and not ln.startswith("+++")]
+    """'+' lines inside hunks. A '+++' file header only counts before the first '@@'; inside a hunk,
+    '+++x' is the added source line '++x' (repeated unary plus is valid Python)."""
+    out, in_hunk = [], False
+    for ln in patch.splitlines():
+        if ln.startswith("@@"):
+            in_hunk = True
+        elif ln.startswith("+") and (in_hunk or not ln.startswith("+++")):
+            out.append(ln[1:])
+    return out
 
 
 def denylist_hits(files: list[dict]) -> list[str]:
@@ -118,6 +127,8 @@ def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | Non
         total = max(total, int(pr.get("additions", 0)) + int(pr.get("deletions", 0)))
     if total > MAX_CHANGED_LINES:
         reasons["r1_size"] = f"{total} changed lines > {MAX_CHANGED_LINES}"
+    if pr is not None and pr.get("head_moved"):
+        reasons["r0_snapshot"] = "PR head/base changed while files and checks were read; re-run the gate"
     if pr is not None and len(files) != int(pr.get("changed_files", -1)):
         reasons["r2_paths"] = f"file list has {len(files)} files, PR reports {pr.get('changed_files')}"
     elif not files:
@@ -154,6 +165,9 @@ def fetch_pr(n: int, gh=_gh) -> tuple[list[dict], list[dict], dict]:
     files = [f for page in gh(f"repos/{REPO}/pulls/{n}/files?per_page=100", paginate=True) for f in page]
     pages = gh(f"repos/{REPO}/commits/{pr['head']['sha']}/check-runs?per_page=100", paginate=True)
     runs = [r for page in pages for r in page.get("check_runs", [])]
+    after = gh(f"repos/{REPO}/pulls/{n}")  # files are read by PR number, checks by SHA: same snapshot only if
+    if (after["head"]["sha"], after.get("base", {}).get("sha")) != (pr["head"]["sha"], pr.get("base", {}).get("sha")):
+        pr = {**pr, "head_moved": True}  # the head/base did not move in between; else fail closed
     return files, runs, pr
 
 

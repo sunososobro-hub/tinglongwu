@@ -204,3 +204,26 @@ def test_r3_other_process_primitives_fail(line):
     files = _ok_files()
     files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
     assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+def test_r3_hunk_line_starting_with_plus_plus_is_scanned():
+    files = _ok_files()
+    files[0]["patch"] = "@@ -1 +1 @@\n-a = 1\n+++__import__('os')\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
+    assert eg.added_lines("--- a/x.py\n+++ b/x.py\n@@ -0,0 +1 @@\n+ok\n") == ["ok"]
+
+
+def test_head_moving_during_fetch_fails_closed():
+    pr = {"head": {"sha": "h1"}, "base": {"sha": "b"}, "additions": 3, "deletions": 1, "changed_files": 2}
+    seen = []
+
+    def gh(path, paginate=False):
+        if path.endswith("/pulls/7"):
+            seen.append(1)
+            return pr if len(seen) == 1 else {**pr, "head": {"sha": "h2"}}
+        if "/files" in path:
+            return [_ok_files()]
+        return [{"check_runs": GREEN}]
+    files, runs, got = eg.fetch_pr(7, gh=gh)
+    r = eg.evaluate(files, runs, "PASS", got)
+    assert r["lane"] == "owner" and r["failed"] == ["r0_snapshot"]
