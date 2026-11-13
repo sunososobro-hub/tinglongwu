@@ -19,6 +19,9 @@ def fake_api(path, accept=None):
         return [{"created_at": "2026-11-11T09:00:00Z"}]
     if "/milestones" in path:
         return [{"title": "v1", "open_issues": 1, "closed_issues": 2}]
+    if "/pulls?" in path:
+        return [{"created_at": "2026-11-11T08:00:00Z", "merged_at": "2026-11-12T08:00:00Z"},
+                {"created_at": "2026-11-11T08:00:00Z", "merged_at": None}]
     if "/issues/events" in path:
         return [{"event": "labeled", "label": {"name": "P1"}, "created_at": "2026-11-11T01:00:00Z",
                  "issue": {"number": 1}}]
@@ -53,6 +56,9 @@ def test_run_writes_data_and_html_and_keeps_history(tmp_path):
     assert series["forks"] == [0, 1, 1] and series["open_issues"][:3] == [2, 1, 1]
     assert series["groups"]["priority"]["P1"] == [0, 1, 1]  # P1 labeled on 11-11
     assert series["groups"]["milestone"]["v1"][-1] == 1
+    assert series["prs_merged"] == [0, 0, 1] and series["issues_closed"] == [0, 1, 0]
+    assert series["speed"]["pr_all"] == 24.0 and series["hero"]["prs"]["total"] == 1
+    assert "Work finished per day" in page and page.index("Work finished") < page.index("Stars")
     assert json.loads((tmp_path / "data.json").read_text()) == hist
 
 
@@ -110,3 +116,16 @@ def test_collect_events_skips_prs_and_group_series():
              "labels": [], "milestone": {"title": "v1"}}
     g = sd.group_series([issue], tev, DAYS, "milestone")
     assert g == {"(none)": [1, 0, 0], "v1": [0, 1, 1]}
+
+
+def test_median_hours_and_hero():
+    pairs = [("2026-11-10T00:00:00Z", "2026-11-10T01:00:00Z"),
+             ("2026-11-10T00:00:00Z", "2026-11-10T03:00:00Z"),
+             ("2026-11-01T00:00:00Z", "2026-11-12T00:00:00Z")]
+    assert sd.median_hours(pairs) == 3.0
+    assert sd.median_hours(pairs, since=sd.parse_ts("2026-11-10T02:00:00Z")) == 133.5
+    assert sd.median_hours([]) is None
+    h = sd.hero_stats(["2026-11-12T08:00:00Z", "2026-11-11T20:00:00Z", "2026-11-09T01:00:00Z"],
+                      [], ["2026-11-12T01:00:00Z"], "2026-11-09T15:00:00Z", NOW)
+    assert h["day_n"] == 4 and h["prs"] == {"today": 1, "h24": 2, "total": 3}
+    assert h["commits"]["today"] == 1 and h["issues"]["total"] == 0
