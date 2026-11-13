@@ -13,8 +13,9 @@ import threading
 import weakref
 from pathlib import Path
 
-# --engine choice -> engine name. hymt7b (#279) is opt-in only: choose_engine("auto") never returns it.
-ENGINE_REGISTRY = {"hymt": "hymt2", "hymt7b": "hymt2-7b", "opus": "opus"}
+# --engine choice -> engine name. hymt7b (#279), ollama and fm (#356, a local Ollama server / Apple's on-device
+# model) are opt-in only: choose_engine("auto") never returns them.
+ENGINE_REGISTRY = {"hymt": "hymt2", "hymt7b": "hymt2-7b", "opus": "opus", "ollama": "ollama", "fm": "fm"}
 ENGINES = ("auto", *ENGINE_REGISTRY)
 # Hy-MT2-1.8B Q4_K_M uses ~1.5 GB VRAM (#66 benchmark; hwprobe.MT_VRAM_MIB) + 0.5 GB headroom (hwprobe.HEADROOM_MIB)
 HYMT_MIN_FREE_MIB = 2000

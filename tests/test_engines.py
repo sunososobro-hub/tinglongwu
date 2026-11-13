@@ -32,7 +32,8 @@ def test_registry_entry_is_all_an_engine_needs_to_be_chosen(monkeypatch, tmp_pat
     monkeypatch.setitem(engines.ENGINE_REGISTRY, "fake", "fake-engine-1")
     boom = lambda: (_ for _ in ()).throw(AssertionError("vram read"))  # noqa: E731
     assert choose_engine("fake", "cuda", tmp_path, free_mib=boom) == ("fake-engine-1", "requested")
-    assert set(engines.ENGINES) == {"auto", "hymt", "hymt7b", "opus"}  # module-level CLI choices (#279 adds hymt7b)
+    # module-level CLI choices (#279 adds hymt7b; #356 adds the opt-in ollama / fm)
+    assert set(engines.ENGINES) == {"auto", "hymt", "hymt7b", "opus", "ollama", "fm"}
 
 
 def test_clean_output_and_max_tokens():

@@ -2,7 +2,7 @@ import pytest
 
 from tinglongwu import cli
 from tinglongwu.fm import FmTranslator
-from tinglongwu.qwen import choose_engine
+from tinglongwu.engines import choose_engine
 
 
 class Runner:
@@ -48,6 +48,7 @@ def test_license_error_has_hint():
 
 
 def test_missing_binary(monkeypatch):
+    monkeypatch.setattr("tinglongwu.fm.sys.platform", "darwin")
     monkeypatch.setattr("tinglongwu.fm.shutil.which", lambda _: None)
     with pytest.raises(RuntimeError, match="macOS 27"):
         FmTranslator()
@@ -55,6 +56,24 @@ def test_missing_binary(monkeypatch):
 
 def test_engine_wiring(tmp_path, monkeypatch):
     assert choose_engine("fm", "cpu", tmp_path) == ("fm", "requested")
+    monkeypatch.setattr("tinglongwu.fm.sys.platform", "darwin")
     monkeypatch.setattr("tinglongwu.fm.shutil.which", lambda _: "/usr/bin/fm")
     tr = cli.make_translator("fm", tmp_path, "tw", "cpu", say=lambda *a, **k: None)
     assert isinstance(tr, FmTranslator)
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_never_runs_an_fm_found_on_other_platforms(monkeypatch, platform):
+    """#356: off macOS an unrelated `fm` on PATH is never started (no stray process / console window)."""
+    monkeypatch.setattr("tinglongwu.fm.sys.platform", platform)
+    monkeypatch.setattr("tinglongwu.fm.shutil.which", lambda _: "C:/tools/fm.exe")
+    with pytest.raises(RuntimeError, match="macOS 27"):
+        FmTranslator()
+
+
+def test_zh_target_is_converted_to_the_variant():
+    tr = FmTranslator("tw", runner=Runner("这个软件"))
+    assert tr.translate("this software", "en", "zh").text == "這個軟體"
+    tr = FmTranslator("cn", runner=Runner("這個問題"))
+    assert tr.translate("this problem", "en", "zh").text == "这个问题"
+    assert FmTranslator(runner=Runner("这个")).translate("this", "zh", "en").text == "这个"  # non-zh target: as is

@@ -2,24 +2,28 @@
 
 Only loopback URLs are accepted (127.0.0.1 / localhost / ::1), so nothing leaves the machine. Thinking mode is
 switched off in the request and any <think> output is stripped. Prompt, context and glossary handling are shared
-with the Qwen engine.
+with the Apple FM engine (llm_prompt.py).
+
+Opt-in only (#356): `--engine ollama` must be chosen by hand; `auto` never picks it, and tlwu never installs Ollama
+or pulls a model. Without --ollama-model / TLWU_OLLAMA_MODEL the first model already installed in Ollama is used.
 """
 from __future__ import annotations
 
 import http.client
 import json
 import os
+import sys
 from collections import deque
 from urllib.parse import urlsplit
 
 from .offline import is_loopback_host
-from .qwen import (CONTEXT_LINES, DRAFT_MAX_TOKENS, build_system_prompt, build_user, clean_output, max_tokens_for,
-                   trim_context)
+from .engines import clean_output, max_tokens_for
+from .llm_prompt import (CONTEXT_LINES, DRAFT_MAX_TOKENS, build_system_prompt, build_user, convert_output,
+                         trim_context)
 from .repeat import collapse_repeats
-from .translate import Translation, Translator, zh_convert
+from .translate import Translation, Translator
 
 DEFAULT_URL = "http://127.0.0.1:11434"
-DEFAULT_MODEL = "batiai/qwen3.5-9b:latest"
 TIMEOUT_S = 120  # first request may include loading the model into memory
 
 
@@ -27,14 +31,15 @@ def default_url() -> str:
     return os.environ.get("TLWU_OLLAMA_URL") or DEFAULT_URL
 
 
-def default_model() -> str:
-    return os.environ.get("TLWU_OLLAMA_MODEL") or DEFAULT_MODEL
+def default_model() -> str | None:
+    """--ollama-model fallback: TLWU_OLLAMA_MODEL, else None (= the first model installed in Ollama)."""
+    return os.environ.get("TLWU_OLLAMA_MODEL") or None
 
 
 def _endpoint(url: str) -> tuple[str, int]:
     parts = urlsplit(url if "//" in url else f"//{url}")
     host = parts.hostname or ""
-    if not is_loopback_host(host) and host != "localhost":
+    if not host or not is_loopback_host(host):
         raise ValueError(f"--ollama-url must be a local address (127.0.0.1 / localhost), got '{host}'")
     return host, parts.port or 11434
 
@@ -70,7 +75,17 @@ class OllamaTranslator(Translator):
 
     def preload(self, src: str = "", tgt: str = "") -> None:
         """Fail early with a clear message: server down or model not pulled."""
-        names = {m.get("name") for m in self._transport("GET", "/api/tags", None).get("models", [])}
+        installed = [m.get("name") for m in self._transport("GET", "/api/tags", None).get("models", [])
+                     if m.get("name")]
+        if self.model is None:  # no --ollama-model: use what the user already pulled, never pull anything
+            if not installed:
+                raise RuntimeError("Ollama has no model installed. Pull one yourself (`ollama pull <model>`), "
+                                   "then pass it with --ollama-model.")
+            self.model = sorted(installed)[0]
+            print(f"tlwu: ollama model = {self.model} (first installed; choose one with --ollama-model)",
+                  file=sys.stderr)
+            return
+        names = set(installed)
         wanted = {self.model, self.model if ":" in self.model else f"{self.model}:latest"}
         if not names & wanted:
             raise RuntimeError(f"Ollama model '{self.model}' is not installed. Run `ollama pull {self.model}`.")
@@ -85,6 +100,8 @@ class OllamaTranslator(Translator):
         if self._pair != (src, tgt):
             self.history.clear()
             self._pair = (src, tgt)
+        if self.model is None:
+            self.preload(src, tgt)
         ctx = trim_context(self.history)
         note = self.glossary.prompt_block(text, *(a for a, _ in ctx)) if self.glossary else ""
         budget = max_tokens_for(text)
@@ -101,8 +118,7 @@ class OllamaTranslator(Translator):
         }
         reply = self._transport("POST", "/api/chat", body)
         out = clean_output((reply.get("message") or {}).get("content", ""))
-        if tgt == "zh":
-            out = zh_convert(out, self.zh_variant)
+        out = convert_output(out, tgt, self.zh_variant)
         if out and not draft:
             self.history.append((text.strip(), out))
         return Translation(None, out)

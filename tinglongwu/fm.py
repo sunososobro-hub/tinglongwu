@@ -2,17 +2,22 @@
 
 Runs fully on-device (`--model system`; the Private Cloud Compute model is never used). One `fm respond`
 process per sentence; the system prompt goes in --instructions, the text in stdin. Prompt, context and glossary
-handling are shared with the Qwen / Ollama engines.
+handling are shared with the Ollama engine (llm_prompt.py).
+
+Opt-in and experimental (#356): `--engine fm` must be chosen by hand, `auto` never picks it, and it only runs on
+macOS (the `fm` command ships with macOS 27 on Apple silicon); not yet tested by the maintainers.
 """
 from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from collections import deque
 
-from .qwen import (CONTEXT_LINES, build_system_prompt, build_user, clean_output, trim_context)
+from .engines import clean_output
+from .llm_prompt import CONTEXT_LINES, build_system_prompt, build_user, convert_output, trim_context
 from .repeat import collapse_repeats
-from .translate import Translation, Translator, zh_convert
+from .translate import Translation, Translator
 
 TIMEOUT_S = 60
 NOT_FOUND = "the `fm` command was not found: --engine fm needs macOS 27 or later on Apple silicon."
@@ -29,7 +34,9 @@ class FmTranslator(Translator):
     def __init__(self, zh_variant: str = "tw", runner=None, binary: str | None = None):
         self.zh_variant = zh_variant
         self._runner = runner or _run  # (cmd, stdin) -> (returncode, stdout, stderr); injectable for tests
-        self.binary = binary or shutil.which("fm") or ("fm" if runner else "")
+        # macOS only: on Windows/Linux an unrelated `fm` on PATH must never be run (it could open a console window)
+        found = shutil.which("fm") if sys.platform == "darwin" else None
+        self.binary = binary or found or ("fm" if runner else "")
         if not self.binary:
             raise RuntimeError(NOT_FOUND)
         self.history: deque = deque(maxlen=CONTEXT_LINES)
@@ -66,8 +73,7 @@ class FmTranslator(Translator):
         note = self.glossary.prompt_block(text, *(a for a, _ in ctx)) if self.glossary else ""
         out = clean_output(self._respond(build_system_prompt(src, tgt, self.zh_variant),
                                          build_user(text, ctx, note)))
-        if tgt == "zh":
-            out = zh_convert(out, self.zh_variant)
+        out = convert_output(out, tgt, self.zh_variant)
         if out and not draft:
             self.history.append((text.strip(), out))
         return Translation(None, out)

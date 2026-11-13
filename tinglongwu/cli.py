@@ -76,9 +76,12 @@ def parse_args(argv=None):
                         "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
                         "command (no silent engine switch, #276); hymt7b: opt-in Hy-MT2 7B for GPUs with >= 8 GB "
                         "(`tlwu-setup --hymt7b`, never picked by auto, #279); opus: src->en->target OPUS-MT, only "
-                        "when asked")
+                        "when asked; ollama: a model served by your own local Ollama (opt-in, never installed or "
+                        "pulled by tlwu, #356); fm: Apple's on-device model via the macOS 27 `fm` command "
+                        "(opt-in, experimental)")
     p.add_argument("--ollama-model", default=None, metavar="NAME",
-                   help="with --engine ollama: model name (env TLWU_OLLAMA_MODEL, default batiai/qwen3.5-9b:latest)")
+                   help="with --engine ollama: model name (env TLWU_OLLAMA_MODEL; default: the first model "
+                        "already installed in Ollama)")
     p.add_argument("--ollama-url", default=None, metavar="URL",
                    help="with --engine ollama: local server URL (env TLWU_OLLAMA_URL, default http://127.0.0.1:11434)")
     p.add_argument("--stream", action="store_true",
@@ -215,18 +218,20 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
     from .hymt import JaRouter
     from .translate import PivotTranslator
 
-    if engine == "ollama":
+    name, why = (choose or choose_engine)(engine, dev, mdir)
+
+    if name == "ollama":  # #356: opt-in only, a model the user runs in their own local Ollama
         from .ollama import OllamaTranslator
 
         tr = OllamaTranslator(ollama_model, ollama_url, zh_variant)
-        say(f"tlwu: translation engine = ollama ({tr.model} @ {tr.url})", file=sys.stderr)
+        say(f"tlwu: translation engine = ollama ({tr.model or 'first installed model'} @ {tr.url})",
+            file=sys.stderr)
         return tr
-    if engine == "fm":
+    if name == "fm":  # #356: opt-in, experimental, macOS 27+ only
         from .fm import FmTranslator
 
-        say("tlwu: translation engine = fm (Apple on-device model)", file=sys.stderr)
+        say("tlwu: translation engine = fm (Apple on-device model, experimental)", file=sys.stderr)
         return FmTranslator(zh_variant)
-    name, why = (choose or choose_engine)(engine, dev, mdir)
 
     if name in ("hymt2", "hymt2-cpu", "hymt2-7b"):
         from .hymt import hymt_path, setup_flag
