@@ -7,6 +7,7 @@ so the README top and the release page always show the same thing.
   python scripts/render_support.py --check         exit 1 if a README block differs from the source (CI)
   python scripts/render_support.py --notes vX.Y.Z  print release notes: Download + block + What's new placeholder
   python scripts/render_support.py --notes-file F  rewrite the block inside an existing release-notes file
+  python scripts/render_support.py --edit vX.Y.Z   rewrite the block inside that GitHub release's notes (needs gh)
 """
 from __future__ import annotations
 
@@ -81,6 +82,7 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     g.add_argument("--check", action="store_true")
     g.add_argument("--notes", metavar="TAG")
     g.add_argument("--notes-file", metavar="PATH")
+    g.add_argument("--edit", metavar="TAG", help="rewrite the block in that GitHub release's notes (uses gh)")
     a = ap.parse_args(argv)
     src, people = load(root)
     if a.notes:
@@ -88,7 +90,19 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
         return 0
     if a.notes_file:
         p = Path(a.notes_file)
-        p.write_text(replace_block(p.read_text("utf-8"), block(src, people, "en"), p.name), "utf-8", newline="\n")
+        p.write_text(replace_block(p.read_text("utf-8-sig"), block(src, people, "en"), p.name), "utf-8", newline="\n")
+        return 0
+    if a.edit:  # fetch the release body, swap the block, upload it again; no file round trip through a shell
+        import subprocess
+        import tempfile
+        body = subprocess.run(["gh", "release", "view", a.edit, "--json", "body", "-q", ".body"], check=True,
+                              capture_output=True).stdout.decode("utf-8").lstrip("﻿")
+        new = replace_block(body, block(src, people, "en"), a.edit)
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "notes.md"
+            f.write_text(new, "utf-8", newline="\n")
+            subprocess.run(["gh", "release", "edit", a.edit, "--notes-file", str(f)], check=True,
+                           stdout=subprocess.DEVNULL)
         return 0
     stale = []
     for loc, name in READMES.items():

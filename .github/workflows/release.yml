@@ -96,4 +96,9 @@ jobs:
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
-          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false   # only now can it become `latest`
+          # only now can it become `latest`, and only once a maintainer has replaced the What's new TODO
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body | grep -q 'TODO:'; then
+            echo "::notice::$TAG stays a draft: fill in What's new and the developer section, then run: gh release edit $TAG --draft=false"
+          else
+            gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false
+          fi

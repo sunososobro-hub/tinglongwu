@@ -54,3 +54,20 @@ def test_release_workflow_writes_the_notes_from_the_source():
     wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
     assert 'scripts/render_support.py --notes "$TAG" > dist/notes.md' in wf
     assert "--notes-file dist/notes.md" in wf
+
+
+def test_auto_publish_waits_for_the_whats_new_todo():
+    wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
+    m = _mod()
+    assert "TODO:" in m.notes("v1.0.0", *m.load())
+    i = wf.index("grep -q 'TODO:'")
+    assert i < wf.index("--draft=false", i)
+
+
+def test_notes_file_accepts_a_bom(tmp_path):
+    m = _mod()
+    f = tmp_path / "notes.md"
+    f.write_text("﻿## Download\n\n<!-- SUPPORT:START -->old<!-- SUPPORT:END -->\n", "utf-8")
+    assert m.main(["--notes-file", str(f)]) == 0
+    s = f.read_text("utf-8")
+    assert s.startswith("## Download") and "Built with help from" in s
