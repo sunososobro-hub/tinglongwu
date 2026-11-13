@@ -164,6 +164,11 @@ def parse_args(argv=None):
         p.error("--paced needs --file (live capture is always real time)")
     if a.latency_jsonl and a.file and not a.paced:
         p.error("--latency-jsonl with --file needs --paced (an unpaced file runs faster than real time)")
+    if a.latency_jsonl:  # #435: fail now with a clean message, not an OSError traceback after the models load
+        try:
+            open(a.latency_jsonl, "a", encoding="utf-8").close()
+        except OSError as e:
+            p.error(f"--latency-jsonl: cannot write {a.latency_jsonl}: {e.strerror or e}")
     if a.voice and a.transcript_only:
         p.error("--voice needs translations (not --transcript-only)")
     if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
@@ -498,7 +503,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .voice import open_voice
 
             prog.stage("voice")
-            sink, close_voice = open_voice(a, mdir, sink, warn)
+            sink, close_voice = open_voice(a, mdir, sink, warn, off=notice)
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,

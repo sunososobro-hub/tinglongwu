@@ -41,3 +41,21 @@ def test_voice_outputs_leave_out_devices_the_listen_side_can_record():
 def test_report_says_whether_the_voice_was_on():
     assert core.report_info(dict(core.DEFAULTS, voice=True))["Voice"] == "on"
     assert core.report_info(dict(core.DEFAULTS))["Voice"] == "off"
+
+
+def test_unplugged_saved_voice_device_falls_back_to_default_with_one_notice():  # #448
+    s = dict(core.DEFAULTS, voice=True, voice_device="Headphones (USB Audio)")
+    notes = []
+    argv = core.settings_to_argv(s, outputs=["Speakers (Realtek(R) Audio)"], notice=notes.append)
+    a = cli.parse_args(argv)
+    assert "--voice-device" not in argv and a.voice is True and a.voice_device is None
+    assert len(notes) == 1 and "Headphones (USB Audio)" in notes[0] and "\n" not in notes[0]
+
+
+def test_connected_or_unknown_voice_device_is_passed_on_without_notice():  # #448
+    s = dict(core.DEFAULTS, voice=True, voice_device="Headphones (USB Audio)")
+    notes = []
+    for outputs in (["Headphones (USB Audio)"], [], None):  # [] / None: no audio stack, the CLI decides
+        a = cli.parse_args(core.settings_to_argv(s, outputs=outputs, notice=notes.append))
+        assert a.voice_device == "Headphones (USB Audio)"
+    assert notes == []

@@ -201,6 +201,7 @@ class Lat:
         self.clock = clock or time.perf_counter
         self.fixed = dict(fixed or {})
         self.t: dict[str, float] = {}
+        self.marks: dict[str, float] = {}  # #434: clock times of the current utterance (eos, cut, asr_done)
 
     def timed(self, name: str, fn, *a, **k):
         t0 = self.clock()
@@ -224,6 +225,21 @@ def lat_line(t: dict) -> str:
     parts = [f"{k}={t[k]:.2f}" if k in t else f"{k}=-" for k in Lat.STAGES if k != "vad" or k in t]
     total = sum(t.get(k, 0.0) for k in ("vad", "asr", "mt", "tts"))
     return "lat " + " ".join(parts) + f" total={total:.2f}"
+
+
+def speak_record(marks: dict, mt_start: float, shown: float, first_audio=None, **extra) -> dict:
+    """#434: one per-line latency record for speak mode, seconds (3 decimals), same stage meaning as listen's
+    (#323 pipeline._record): vad (end of speech -> segment cut), asr (cut -> text ready), merge (text ready -> MT
+    start; speak mode holds nothing, so ~0), mt (MT start -> translated line shown), total (end of speech -> line
+    shown; the sum of the four), tts_first_audio (line shown = MT done -> first audio chunk handed to the output)
+    and total_first_audio (end of speech -> first audio chunk); both None when nothing was spoken.
+    `marks`: Lat.marks clock times eos / cut / asr_done; the other arguments are times on the same clock."""
+    r = lambda v: round(v, 3)  # noqa: E731
+    eos, cut, done = marks["eos"], marks["cut"], marks["asr_done"]
+    return {"vad": r(cut - eos), "asr": r(done - cut), "merge": r(mt_start - done), "mt": r(shown - mt_start),
+            "total": r(shown - eos),
+            "tts_first_audio": None if first_audio is None else r(first_audio - shown),
+            "total_first_audio": None if first_audio is None else r(first_audio - eos), **extra}
 
 
 def latency_fields(asr: float, mt: float, first_audio, tts_done: float) -> dict:

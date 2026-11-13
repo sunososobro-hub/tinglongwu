@@ -22,6 +22,7 @@ DEFAULTS = {
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
+    "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
 }
@@ -237,6 +238,23 @@ def model_labels(mdir=None) -> list[str]:
     return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
 
 
+_ENGINE_DIR = {"hymt": "hymt2-1.8b", "opus": "opus"}  # models/<dir> per engine (auto needs no model of its own)
+_ENGINE_HINT = {"hymt": "tlwu-setup --hymt", "opus": "tlwu-setup --pair ru-en"}
+
+
+def engine_labels(mdir=None) -> list[str]:
+    """#399: Advanced engine entries; an engine whose model is not installed carries the setup command to get it."""
+    from ..models import models_dir
+
+    d = models_dir(str(mdir) if mdir else None)
+    return [e if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})" for e in ENGINES]
+
+
+def engine_from_label(label: str) -> str:
+    """The plain engine id from an engine_labels() entry (also accepts a plain id)."""
+    return (label or "").split(" (", 1)[0].strip()
+
+
 def model_from_label(label: str) -> str:
     """The plain model name from a dropdown entry (also accepts a plain name)."""
     return label.replace(_MARK_OK, "", 1).replace(_MARK_MISSING, "").strip()
@@ -325,8 +343,10 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
     return rc
 
 
-def settings_to_argv(s: dict) -> list[str]:
-    """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults)."""
+def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:
+    """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults).
+    outputs: the current voice_outputs() (#448): a saved voice_device that is no longer listed is left out (default
+    output) and notice(str) gets one line; None or [] (list unknown / no audio stack) passes the saved name on."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
@@ -343,7 +363,14 @@ def settings_to_argv(s: dict) -> list[str]:
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
-        argv += ["--voice"] + (["--voice-device", s["voice_device"]] if s.get("voice_device") else [])
+        dev = s.get("voice_device") or ""
+        if dev and outputs and dev not in outputs:  # #448: unplugged since it was saved
+            if notice is not None:
+                from ..i18n import t
+
+                notice(t("gui_voice_device_gone", name=dev))
+            dev = ""
+        argv += ["--voice"] + (["--voice-device", dev] if dev else [])
     return argv
 
 
