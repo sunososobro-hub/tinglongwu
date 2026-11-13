@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
         import subprocess
         import tempfile
         body = subprocess.run(["gh", "release", "view", a.edit, "--json", "body", "-q", ".body"], check=True,
-                              capture_output=True).stdout.decode("utf-8").lstrip("﻿")
+                              capture_output=True).stdout.decode("utf-8").lstrip("\ufeff")
         new = replace_block(body, block(src, people, "en"), a.edit)
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "notes.md"

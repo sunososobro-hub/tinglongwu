@@ -67,7 +67,7 @@ def test_auto_publish_waits_for_the_whats_new_todo():
 def test_notes_file_accepts_a_bom(tmp_path):
     m = _mod()
     f = tmp_path / "notes.md"
-    f.write_text("﻿## Download\n\n<!-- SUPPORT:START -->old<!-- SUPPORT:END -->\n", "utf-8")
+    f.write_text("\ufeff## Download\n\n<!-- SUPPORT:START -->old<!-- SUPPORT:END -->\n", "utf-8")
     assert m.main(["--notes-file", str(f)]) == 0
     s = f.read_text("utf-8")
     assert s.startswith("## Download") and "Built with help from" in s
