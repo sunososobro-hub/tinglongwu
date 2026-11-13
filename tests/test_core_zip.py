@@ -40,3 +40,16 @@ def test_build_script_accepts_core_flag():
     src = (REPO / "packaging" / "build_windows.py")
     r = subprocess.run([sys.executable, str(src), "--help"], capture_output=True, text=True)
     assert "--core" in r.stdout
+
+
+def test_windows_build_workflow_runs_core_zip_check_after_lite_build():
+    import yaml
+
+    wf = yaml.safe_load((REPO / ".github" / "workflows" / "windows-build.yml").read_text(encoding="utf-8"))
+    steps = [s for job in wf["jobs"].values() for s in job.get("steps", [])]
+    runs = [str(s.get("run", "")) for s in steps]
+    build = next(i for i, r in enumerate(runs) if "build_windows.py" in r and "--lite" in r)
+    check = next(i for i, r in enumerate(runs) if "release_check.py" in r)
+    assert check > build
+    assert "tinglongwu-win64.zip" in runs[check] and "exit $LASTEXITCODE" in runs[check]
+    assert steps[check]["if"] == steps[build]["if"]
