@@ -188,6 +188,12 @@ class Pipeline extends ChangeNotifier {
       }
       final a = jobs[i];
       final b = jobs[i + 1];
+      if (a.lang != b.lang) {
+        // Merged text carries one language code; mixing would send e.g.
+        // English through the zh passthrough untranslated (#581).
+        _log.i('queue>$maxQueue, adjacent jobs differ in lang (${a.lang}/${b.lang}), not merged');
+        break;
+      }
       b.ru = ContextBudget.join(a.ru, b.ru);
       b.sub.ru = b.ru;
       subtitles.remove(a.sub);
@@ -215,7 +221,7 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await _tr!.translate(job.ru, src: job.lang);
+          final r = await translateLine(_tr!, job.ru, job.lang);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;

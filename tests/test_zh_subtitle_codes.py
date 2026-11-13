@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from tinglongwu.translate import PivotTranslator, strip_subtitle_codes, zh_artifacts
+from pivot_fake import PivotTranslator
+from tinglongwu.translate import strip_subtitle_codes, zh_artifacts
 
 
 def pivot(table):

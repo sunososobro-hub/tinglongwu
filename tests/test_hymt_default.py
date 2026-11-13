@@ -122,10 +122,9 @@ def test_router_all_pairs_sends_unknown_language_to_base(tmp_path):
 def test_listen_router_has_no_opus_fallback(tmp_path, monkeypatch):
     """#471: the listen path builds Hy-MT2 with no OPUS pivot behind it: an unknown language, or a Hy-MT2 that fails
     mid-session, is an error naming `tlwu-setup --hymt`, never a silent switch to OPUS."""
-    from tinglongwu.translate import PivotTranslator
+    from pivot_fake import PivotTranslator
 
     m = install(tmp_path, "hymt2")
-    monkeypatch.setattr(PivotTranslator, "__init__", lambda *a, **k: pytest.fail("OPUS pivot built"))
     llm = FakeLlm("你好")
     monkeypatch.setattr("tinglongwu.hymt._load_llama", lambda path, gpu: llm)
     warned = []

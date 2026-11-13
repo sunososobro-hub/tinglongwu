@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from tinglongwu import glossary, menuopts
-from tinglongwu.translate import PivotTranslator
+from pivot_fake import PivotTranslator
 
 ROOT = Path(__file__).resolve().parent.parent
 HYMT_REL = Path("hymt2-1.8b") / "Hy-MT2-1.8B-Q4_K_M.gguf"

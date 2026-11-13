@@ -154,7 +154,7 @@ def parse_args(argv=None):
     p.add_argument("--probe", action="store_true",
                    help="show this machine's GPU/VRAM, RAM and CPU and the recommended models, then exit (offline)")
     p.add_argument("--speed", action="store_true",
-                   help="with --probe: also run the ~10 s translation speed test (CPU: Hy-MT2 vs OPUS); the "
+                   help="with --probe: also run the ~10 s translation speed test (CPU: Hy-MT2 on this CPU); the "
                         "result is remembered until the hardware changes")
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")

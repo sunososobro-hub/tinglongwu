@@ -112,3 +112,15 @@ def test_roadmap_next_release_card_is_generated_from_support_json():
 def test_pages_home_links_to_the_roadmap():
     src = (ROOT / "scripts" / "stats_dashboard.py").read_text("utf-8")
     assert 'href="roadmap.html"' in src
+
+
+def test_language_priority_tiers_match_the_support_table():
+    src, _ = _mod().load()
+    pr = src["language_priority"]
+    assert pr["tier1"] == ["zh", "en", "ja", "ko"]
+    assert pr["tier2"] == ["vi", "th", "id", "es", "de", "fr"]
+    labels = " ".join(r["label"] for r in src["language"]["rows"])
+    for code in pr["tier1"] + pr["tier2"]:
+        assert f"({code})" in labels
+    tier2_rows = [r for r in src["language"]["rows"] if any(f"({c})" in r["label"] for c in pr["tier2"])]
+    assert all(set(r["cells"]) == {"⚪"} for r in tier2_rows)  # no light without a real run

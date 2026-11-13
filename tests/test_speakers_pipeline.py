@@ -13,7 +13,7 @@ from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
 from tinglongwu.sink import TextSink
 from tinglongwu.speaker_embed import SpeakerLabeler
-from tinglongwu.translate import PivotTranslator
+from pivot_fake import PivotTranslator
 
 
 class FakeASR(Recognizer):
