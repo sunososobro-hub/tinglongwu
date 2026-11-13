@@ -9,8 +9,9 @@ r"""Release gate for the CI-built Windows zip (#414): test what users download, 
    would crash with an illegal instruction on a supported AVX2 PC (#74; owner gate on #414). Each DLL is loaded in its
    own process, so a build that already crashes on this runner fails the check instead of the checker.
 4. `tlwu.exe --smoke`: every native module loads, llama_cpp too (CPU fallback allowed: no GPU on the runner)
-5. `tlwu.exe setup --whisper tiny --pair en-zh` (network), then `tlwu.exe --selftest --model tiny --engine opus
-   --device cpu`: Whisper transcribes the bundled clip and OPUS translates it, inside the packaged exe
+5. `tlwu.exe setup --whisper tiny --hymt` (network), then `tlwu.exe --selftest --model tiny --engine hymt
+   --device cpu`: Whisper transcribes the bundled clip and Hy-MT2 translates it on the CPU, inside the packaged exe
+   (OPUS was removed in #471; `--engine opus` is rejected)
 Exit 0 = every check passed. The markdown report goes into the Release notes.
 """
 from __future__ import annotations
@@ -25,6 +26,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 MAX_ASSET = 2 * 1024**3
+# argv after `tlwu.exe` (models dir appended); tests parse them with the real setup / cli parsers
+SETUP_ARGS = ["setup", "--whisper", "tiny", "--hymt"]
+SELFTEST_ARGS = ["--selftest", "--model", "tiny", "--engine", "hymt", "--device", "cpu"]
 # ggml-cpu exports: name -> compiled-in feature. All beyond the AVX2 baseline of docs/details.md.
 BEYOND_AVX2 = {"ggml_cpu_has_avx512": "AVX512", "ggml_cpu_has_avx512_vbmi": "AVX512_VBMI",
                "ggml_cpu_has_avx512_vnni": "AVX512_VNNI", "ggml_cpu_has_avx512_bf16": "AVX512_BF16",
@@ -137,14 +141,12 @@ def main(argv=None) -> int:
 
     models = a.work / "models"
     env = {**os.environ, "TLWU_MODELS": str(models)}
-    name = "tlwu.exe --selftest (CPU, whisper tiny + OPUS en-zh)"
-    rc, _ = run([str(app / "tlwu.exe"), "setup", "--whisper", "tiny", "--pair", "en-zh", "--models-dir", str(models)],
-                app, 1800, env)
+    name = "tlwu.exe --selftest (CPU, whisper tiny + Hy-MT2)"
+    rc, _ = run([str(app / "tlwu.exe"), *SETUP_ARGS, "--models-dir", str(models)], app, 1800, env)
     if rc != 0:
         rows.append((name, False, f"model download failed (exit {rc})"))
     else:
-        rc, _ = run([str(app / "tlwu.exe"), "--selftest", "--model", "tiny", "--engine", "opus", "--device", "cpu",
-                     "--models-dir", str(models)], app, 1200, env)
+        rc, _ = run([str(app / "tlwu.exe"), *SELFTEST_ARGS, "--models-dir", str(models)], app, 1800, env)
         rows.append((name, rc == 0, "OK" if rc == 0 else f"exit code {rc}"))
 
     text = report(rows, size, digest)

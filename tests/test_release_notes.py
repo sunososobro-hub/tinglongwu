@@ -80,6 +80,32 @@ def test_existing_tag_at_the_same_commit_is_a_rerun_unless_published():
     assert (done["publish"], done["build"], done["reason"]) == ("false", "false", "release v0.3.2 is already published")
 
 
+def tag_plan(tag, version, tags=TAGS, runs=GREEN, published=lambda t: False):
+    return rn.plan("push", tag, SHA, version, {**tags, tag: SHA}, [], REPO, lambda h: runs if h == SHA else [],
+                   published, ref_type="tag")
+
+
+def test_prerelease_tag_push_publishes_a_prerelease_when_checks_are_green():
+    """#112 kept with #414: a vX.Y.Z-suffix tag (on dev or main; release.yml checks the branch) still releases."""
+    p = tag_plan("v0.3.2-beta.1", "0.3.2-beta.1")
+    assert (p["publish"], p["build"], p["tag"], p["pr"], p["head"]) == ("true", "true", "v0.3.2-beta.1", "", SHA)
+    assert p["hw_run"] == "https://x/hw-tests"
+    assert tag_plan("v0.3.2-beta.1", "0.3.2-beta.1", published=lambda t: True)["publish"] == "false"
+
+
+@pytest.mark.parametrize("tag,version,runs,err", [
+    ("v0.3.2", "0.3.2", GREEN, "only a pre-release tag"),
+    ("v0.3.2-beta.1", "0.3.2", GREEN, "__version__ is 0.3.2"),
+    ("v0.3.2-beta.1", "0.3.2-beta.1", GREEN[:3], "hw-tests: no run"),
+])
+def test_prerelease_tag_push_refuses(tag, version, runs, err):
+    with pytest.raises(SystemExit, match=err):
+        tag_plan(tag, version, runs=runs)
+    with pytest.raises(SystemExit, match="points at"):
+        rn.plan("push", "v0.3.2-rc.1", SHA, "0.3.2-rc.1", {"v0.3.2-rc.1": HEAD}, [], REPO, lambda h: GREEN,
+                ref_type="tag")
+
+
 def test_required_checks_must_be_green_on_the_release_pr_head():
     red = [dict(r, conclusion="failure") if r["name"] == "hw-tests" else r for r in GREEN]
     rerun_ok = red + [dict(GREEN[3], id=99)]
@@ -181,3 +207,31 @@ def test_probe_script_runs_against_a_real_dll():
                        text=True)
     assert rc.probe_verdict(r.returncode, r.stdout) == (
         False, "no ggml_cpu_has_* export answered; cannot tell the instruction sets")
+
+
+class _Parsed(Exception):
+    pass
+
+
+def test_release_selftest_argv_parses_with_the_real_setup_and_cli(monkeypatch):
+    """The release gate must run commands today's tlwu accepts (#471 removed --engine opus)."""
+    import argparse
+
+    from tinglongwu import cli
+    from tinglongwu_setup import downloader
+
+    assert rc.SETUP_ARGS[0] == "setup" and "opus" not in rc.SETUP_ARGS + rc.SELFTEST_ARGS
+    seen = {}
+    real = argparse.ArgumentParser.parse_args
+
+    def capture(self, args=None, namespace=None):
+        seen["a"] = real(self, args, namespace)
+        raise _Parsed
+
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", capture)
+    with pytest.raises(_Parsed):  # stops before any download
+        downloader.main([*rc.SETUP_ARGS[1:], "--models-dir", "m"])
+    assert seen["a"].whisper == ["tiny"] and seen["a"].hymt is True
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", real)
+    a = cli.parse_args([*rc.SELFTEST_ARGS, "--models-dir", "m"])
+    assert (a.selftest, a.model, a.engine, a.compute) == (True, "tiny", "hymt", "cpu")

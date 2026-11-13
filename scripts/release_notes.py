@@ -11,7 +11,9 @@ the release PR title is `release: v<__version__>` and a merged release PR whose 
 none) publishes nothing. If that tag already exists, the PR body says to bump `__version__` on dev first.
 Publish gates (owner, #414): only a merged dev -> main `release:` PR; ci, e2e, windows-build and hw-tests green on
 the released dev commit (hw-tests runs on the owner's GPU runner, so it also stands for the GPU check); a tag that
-exists already must point at the same commit. Thanks: every non-owner, non-bot author of a PR (any state) or issue.
+exists already must point at the same commit. A pushed pre-release tag vX.Y.Z-suffix on main or dev (#112) also
+publishes (as a pre-release, never `latest`) when it equals v<__version__> and the same four checks are green on it.
+Thanks: every non-owner, non-bot author of a PR (any state) or issue.
 Network only through the `gh` CLI (GH_TOKEN); the pure functions are unit-tested.
 """
 from __future__ import annotations
@@ -100,12 +102,40 @@ def check_problems(runs: list[dict], required=REQUIRED_CHECKS) -> list[str]:
     return out
 
 
+def prerelease_tag(tag: str, version: str, tags: dict[str, str], sha: str) -> str:
+    """#112: a pushed pre-release tag (vX.Y.Z-suffix, on main or dev; release.yml checks the branch). SystemExit
+    when it must not be published. A plain vX.Y.Z only comes from the release PR."""
+    m = TAG_RE.match(tag)
+    if not m or m.group(4) is None:
+        raise SystemExit(f"tag {tag}: only a pre-release tag (vX.Y.Z-suffix) is released on a tag push; "
+                         "a plain vX.Y.Z comes from merging the release PR")
+    if tag != f"v{version}":
+        raise SystemExit(f"tag {tag} but tinglongwu.__version__ is {version} at that commit; the setup wizard is "
+                         "named after __version__, so set it to the tag's version first")
+    if tags.get(tag, sha) != sha:
+        raise SystemExit(f"tag {tag} points at {tags[tag][:12]}, not at {sha[:12]}")
+    return tag
+
+
 def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str], pulls: list[dict], repo: str,
-         runs_of=lambda sha: [], published=lambda tag: False) -> dict:
+         runs_of=lambda sha: [], published=lambda tag: False, ref_type: str = "branch") -> dict:
     """publish = tag + Release; build = build and check the Windows zip; head = released dev commit."""
     out = {"publish": "false", "build": "false", "tag": "", "pr": "", "head": "", "hw_run": "", "reason": ""}
     if event == "workflow_dispatch":
         out.update(build="true", tag=f"v{version}", reason=f"workflow_dispatch on {ref_name}: dry run, publishes nothing")
+        return out
+    if event == "push" and ref_type == "tag":
+        tag = prerelease_tag(ref_name, version, tags, sha)
+        if published(tag):
+            out.update(tag=tag, reason=f"release {tag} is already published")
+            return out
+        runs = runs_of(sha)
+        bad = check_problems(runs)
+        if bad:
+            raise SystemExit(f"pre-release tag {tag}: required checks not green on {sha[:12]}: " + "; ".join(bad))
+        hw = max((r for r in runs if r.get("name") == "hw-tests"), key=lambda r: r.get("id", 0))
+        out.update(publish="true", build="true", tag=tag, head=sha, hw_run=hw.get("html_url", ""),
+                   reason=f"pre-release tag {tag} pushed (#112)")
         return out
     if not (event == "push" and ref_name == "main"):
         out["reason"] = f"{event} {ref_name}: nothing to release (only a merged release PR publishes)"
@@ -267,15 +297,17 @@ def main(argv=None) -> int:
     version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
     rep = repo()
     if a.cmd == "plan":
-        event, ref_name, sha = (os.environ.get(k, "") for k in ("GITHUB_EVENT_NAME", "GITHUB_REF_NAME", "GITHUB_SHA"))
-        pulls = gh_json("api", f"repos/{rep}/commits/{sha}/pulls") if event == "push" else []
+        event, ref_name, sha, ref_type = (os.environ.get(k, "") for k in
+                                          ("GITHUB_EVENT_NAME", "GITHUB_REF_NAME", "GITHUB_SHA", "GITHUB_REF_TYPE"))
+        pulls = gh_json("api", f"repos/{rep}/commits/{sha}/pulls") if event == "push" and ref_type != "tag" else []
         runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
         def published(tag):
             r = subprocess.run(["gh", "release", "view", tag, "-R", rep, "--json", "isDraft", "-q", ".isDraft"],
                                capture_output=True, text=True)
             return r.returncode == 0 and r.stdout.strip() == "false"
 
-        for k, v in plan(event, ref_name, sha, version, git_tags(), pulls, rep, runs_of, published).items():
+        for k, v in plan(event, ref_name, sha, version, git_tags(), pulls, rep, runs_of, published,
+                          ref_type or "branch").items():
             print(f"{k}={v}")
         return 0
     if a.cmd == "pr-body":
