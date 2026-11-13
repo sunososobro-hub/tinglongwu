@@ -670,6 +670,20 @@ def check_args(a) -> str | None:
     return None
 
 
+def default_whisper(wanted: str | None, dev: str, mdir: Path) -> str:
+    """#474: an explicit --whisper is used as given; otherwise large-v3-turbo on CUDA / small on CPU, falling back to
+    a downloaded size like listen mode does (models.pick_whisper), so a GPU PC with only whisper-small still starts."""
+    if wanted:
+        return wanted
+    from ..models import pick_whisper
+
+    want = "large-v3-turbo" if dev == "cuda" else "small"
+    got = pick_whisper(want, mdir, "gpu" if dev == "cuda" else "cpu")
+    if got != want:
+        print(f"tlwu: speech model = {got} ({want} is not downloaded: `tlwu-setup --whisper {want}`)", flush=True)
+    return got
+
+
 def main(argv=None) -> int:
     vm: list = []
     try:
@@ -943,7 +957,6 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
     from ..device import resolve_device
 
     dev = resolve_device(a.compute)
-    a.whisper = a.whisper or ("large-v3-turbo" if dev == "cuda" else "small")
     a.dev = dev
     print(f"compute device: {dev}", flush=True)
     out = Path(a.out) if a.out else None
@@ -952,6 +965,7 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
     src = Path(a.input) if a.input else None
     wavs = [] if live else (sorted(src.glob("*.wav")) if src.is_dir() else [src])
     mdir = models_dir(a.models_dir)
+    a.whisper = default_whisper(a.whisper, dev, mdir)
     res: dict = {"whisper": a.whisper, "items": [],
                  "vram_mib": {"baseline": vram_used_mib()}}
     with VramSampler() as vs:
