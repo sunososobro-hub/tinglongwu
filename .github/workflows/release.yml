@@ -1,5 +1,6 @@
 name: release
-# Runs when a version tag is pushed. The tag must point at a commit that is on main.
+# Runs when a version tag is pushed. A vX.Y.Z tag must point at a commit on main; a pre-release
+# tag (vX.Y.Z-suffix) may also point at a commit on dev.
 on:
   push:
     tags: ["v*"]
@@ -15,13 +16,19 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Tag format and branch check (tag must be vX.Y.Z[-suffix] and on main)
+      - name: Tag format and branch check (vX.Y.Z must be on main; a vX.Y.Z-suffix pre-release may be on main or dev)
         env:
           TAG: ${{ github.ref_name }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "bad tag: $TAG"; exit 1; }
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag $TAG is not on main"; exit 1; }
+          # a pre-release (v1.2.3-beta.1) is cut from dev before dev is merged to main (#112); it is
+          # created with --prerelease below, so it never becomes `latest`. Plain vX.Y.Z stays main-only.
+          branches=(main); [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+- ]] && branches=(main dev)
+          git fetch --no-tags origin "${branches[@]}"
+          on=
+          for b in "${branches[@]}"; do git merge-base --is-ancestor "$GITHUB_SHA" "origin/$b" && on=$b && break; done
+          [ -n "$on" ] || { echo "tag $TAG is not on ${branches[*]}"; exit 1; }
+          echo "tag $TAG is on $on"
       - name: Build install assets (embed the tag so each script installs the version it was released with)
         env:
           TAG: ${{ github.ref_name }}
