@@ -118,3 +118,24 @@ def test_refuses_when_models_inside_removed_dir(tmp_path):
                        capture_output=True, text=True, timeout=60)
     assert r.returncode != 0
     assert (h / "tinglongwu" / "models").exists()
+
+
+def test_models_path_with_dot_segments_still_refused(tmp_path):
+    h = _home(tmp_path)
+    (h / "tinglongwu" / "models").mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))}
+    env.update(HOME=str(h), TLWU_YES="1", TLWU_MODELS=str(h / "tinglongwu" / "." / "models"))
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "uninstall.sh")], env=env, stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0
+    assert (h / "tinglongwu" / "models").exists()
+
+
+def test_missing_models_dir_inside_app_does_not_block_uninstall(tmp_path):
+    h = _home(tmp_path)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))}
+    env.update(HOME=str(h), TLWU_YES="1", TLWU_MODELS=str(h / "tinglongwu" / "models"))
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "uninstall.sh")], env=env, stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert not (h / "tinglongwu").exists()

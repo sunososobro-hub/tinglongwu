@@ -33,10 +33,13 @@ safe_target() {
 for t in "$DIR" "$KOKORO_VENV" "$MODELS"; do
   safe_target "$t" || { echo "[x] refusing to remove '$t'" >&2; exit 1; }
 done
-# models kept by default must not live inside a folder that is about to be removed
-if [ -z "$PURGE" ]; then
+# models kept by default must not live inside a folder that is about to be removed (compare canonical paths)
+if [ -z "$PURGE" ] && [ -d "$MODELS" ]; then
+  m="$(cd "$MODELS" && pwd -P)"
   for t in "$DIR" "$KOKORO_VENV"; do
-    case "${MODELS%/}/" in "${t%/}/"*) echo "[x] models folder $MODELS is inside $t; move it or use --purge" >&2; exit 1 ;; esac
+    [ -d "$t" ] || continue
+    c="$(cd "$t" && pwd -P)"
+    case "$m/" in "$c/"*) echo "[x] models folder $MODELS is inside $t; move it or use --purge" >&2; exit 1 ;; esac
   done
 fi
 # the app folder must be a tinglongWu checkout (app-specific marker), not any git/python project
