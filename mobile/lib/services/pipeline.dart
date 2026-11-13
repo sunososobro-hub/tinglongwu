@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 
 import '../logic/context_budget.dart';
+import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
 import 'model_paths.dart';
@@ -151,6 +152,12 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keep the last [keepSubtitles] lines, but never drop a line whose
+  /// translation is still queued or in flight: the queue can now grow past
+  /// [maxQueue] when no merge fits the context (#533).
+  void _trimSubtitles() =>
+      trimFinished<Subtitle>(subtitles, keepSubtitles, (s) => s.zh != null);
+
   void _onFinal(AsrFinal f) {
     final now = _clock.elapsedMilliseconds;
     // VAD emits the segment after minSilence of trailing silence + decode.
@@ -161,7 +168,7 @@ class Pipeline extends ChangeNotifier {
         'decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
     final sub = Subtitle(f.text);
     subtitles.add(sub);
-    if (subtitles.length > keepSubtitles) subtitles.removeAt(0);
+    _trimSubtitles();
     _queue.add(_Job(f.text, sub, speechEnd, now));
     // Bound the backlog: merge the oldest two waiting jobs (keeps all text,
     // costs one fewer LLM call) instead of dropping. A merge that would be
@@ -211,6 +218,7 @@ class Pipeline extends ChangeNotifier {
           lastTokens = r.tokens;
           lastFirstTokenMs = r.firstTokenMs;
           job.sub.zh = r.zh;
+          _trimSubtitles();
           job.sub.traditionalOk = r.check.isTraditional;
           _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
               '] ${AppLog.text(r.zh)} | '

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/context_budget.dart';
 import 'package:mobile/logic/prompt.dart';
 import 'package:mobile/logic/segmenter.dart';
+import 'package:mobile/logic/subtitle_trim.dart';
 import 'package:mobile/logic/zh_check.dart';
 import 'package:mobile/services/model_paths.dart';
 
@@ -154,6 +155,33 @@ void main() {
     test('digits and punctuation do not count as CJK', () {
       final c = checkChinese('123，。!');
       expect(c.cjkCount, 0);
+    });
+  });
+
+  group('trimFinished (#533)', () {
+    // (text, translated?)
+    bool done((String, bool) s) => s.$2;
+
+    test('drops the oldest translated lines down to keep', () {
+      final l = [('a', true), ('b', true), ('c', true), ('d', false), ('e', false)];
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['b', 'c', 'd', 'e']);
+    });
+
+    test('never drops lines still waiting for a translation', () {
+      final l = [for (final t in ['a', 'b', 'c', 'd', 'e', 'f']) (t, false)];
+      trimFinished(l, 4, done);
+      expect(l.length, 6);
+      l[0] = ('a', true);
+      l[1] = ('b', true);
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['c', 'd', 'e', 'f']);
+    });
+
+    test('skips pending lines and drops a newer translated one', () {
+      final l = [('a', false), ('b', true), ('c', false), ('d', false), ('e', false)];
+      trimFinished(l, 4, done);
+      expect(l.map((s) => s.$1), ['a', 'c', 'd', 'e']);
     });
   });
 
