@@ -10,7 +10,7 @@ from tinglongwu import cli
 from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.merge import SentenceMerger
 from tinglongwu.pipeline import run
-from tinglongwu.sink import Result, TextSink
+from tinglongwu.sink import JsonlSaveSink, Result, TextSink
 from tinglongwu.translate import Translation, Translator
 
 SR = 16000
@@ -50,7 +50,7 @@ def _levels(path):
     return [round(float(pcm[i]), 1) for i in range(0, len(pcm), SR)]
 
 
-def _session(tmp_path, monkeypatch, argv):
+def _session(tmp_path, monkeypatch, argv, sink=None):
     """cli.run_session with fake capture/ASR/MT and every socket call failing."""
     import tinglongwu.asr
     import tinglongwu.pipeline
@@ -67,7 +67,8 @@ def _session(tmp_path, monkeypatch, argv):
     monkeypatch.setattr("tinglongwu.minspec.check_avx2", lambda *a, **k: None)
     monkeypatch.setenv("TLWU_UI_LANG", "en")
     monkeypatch.chdir(tmp_path)
-    cli.run_session(cli.parse_args(["--transcript-only", "--no-adapt", "--model", "tiny", "--device", "cpu"] + argv))
+    cli.run_session(cli.parse_args(["--transcript-only", "--no-adapt", "--model", "tiny", "--device", "cpu"] + argv),
+                    sink=sink)
 
 
 def test_record_default_off_writes_no_audio(tmp_path, monkeypatch, capsys):
@@ -98,3 +99,9 @@ def test_text_sink_marks_every_block():
     s = TextSink(buf := io.StringIO(), rec="● Recording")
     s.write_source("en", "hello"), s.write(Result("en", "hello", None, "zh")), s.write(Result("en", "bye", None, "zh"))
     assert buf.getvalue().count("● Recording") == 2
+
+
+def test_record_marks_a_wrapped_console_sink(tmp_path, monkeypatch):  # meeting mode + save wraps the console sink
+    _session(tmp_path, monkeypatch, ["--record"], sink=JsonlSaveSink(TextSink(buf := io.StringIO()), tmp_path / "t.jsonl"))
+    assert buf.getvalue().count("● Recording") == 3
+

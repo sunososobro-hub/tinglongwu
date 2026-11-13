@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import threading
 import wave
 from pathlib import Path
 
@@ -25,6 +26,7 @@ class Recorder:
         self.dir, self.n = Path(folder), 0
         self.dir.mkdir(parents=True, exist_ok=True)
         self._f = open(self.dir / "segments.jsonl", "a", encoding="utf-8")
+        self._lock = threading.Lock()  # Ctrl+C / Stop: close() can run while the MT thread is in line()
         self._segs: list[tuple] = []  # (number, audio, start s, end s) a later line may still need, oldest first
 
     def add(self, no: int, audio, start: float, end: float) -> None:
@@ -38,8 +40,11 @@ class Recorder:
 
     def line(self, clip, r) -> None:
         """Write `clip` as NNNN.wav and its jsonl row (r: the line's sink.Result)."""
-        if clip is None:
-            return
+        with self._lock:
+            if clip is not None and not self._f.closed:
+                self._write(clip, r)
+
+    def _write(self, clip, r) -> None:
         self.n += 1
         name = f"{self.n:04d}.wav"
         with wave.open(str(self.dir / name), "wb") as w:
@@ -54,4 +59,5 @@ class Recorder:
         self._f.flush()
 
     def close(self) -> None:
-        self._f.close()
+        with self._lock:
+            self._f.close()

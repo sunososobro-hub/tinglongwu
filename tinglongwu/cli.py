@@ -467,8 +467,12 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     rec = _t("rec_label") if rec_dir is not None else ""
     if sink is None:
         sink = TranscriptSink(rec=rec) if a.transcript_only else TextSink(rec=rec)
-    elif isinstance(sink, (TextSink, TranscriptSink)):
-        sink.rec = rec
+    else:  # a wrapped console sink (meeting-mode saver, overlay, voice): mark the console one inside
+        inner = sink
+        while inner is not None and not isinstance(inner, (TextSink, TranscriptSink)):
+            inner = getattr(inner, "inner", None)
+        if inner is not None:
+            inner.rec = rec
     if a.save is not None:
         from .sink import JsonlSaveSink, default_save_path
 
