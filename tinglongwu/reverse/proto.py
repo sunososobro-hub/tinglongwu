@@ -410,10 +410,11 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
         gaps, stats, info = GapMeter(lat.clock), [], {}
         for audio, sr in _synth_sentences(tts, ru, stats, info=info):
             if not sent:
-                first_audio = stamp()  # #434: handed to the output just below
                 lat.set("tts", lat.clock() - t0)
                 print(timing_line(lat.t), flush=True)  # #186: first audio is out; one line under the translation
             gaps.push(len(audio) / sr)
+            if not sent:
+                first_audio = stamp()  # #434: the first audio chunk is handed to the output now
             player.push(audio, sr)
             sent += 1
         tts_done = lat.clock() - t0
@@ -447,11 +448,24 @@ def make_segmenter(max_seg: float, dev: str = "cpu", pause=None, vad_fn=None, en
 
 
 def paced_file_source(path):
-    """#434 --input X --paced: the file released in real time, in the mic's 100 ms blocks (capture/_soundcard)."""
+    """#434 --input X --paced: the file released in real time, in the mic's 100 ms blocks (capture/_soundcard).
+    Decoded here, before PacedSource starts its clock, so decoding time does not eat into the real-time spacing."""
+    from ..capture.base import AudioSource
     from ..capture.file import FileSource
     from ..stream import PacedSource
 
-    return PacedSource(FileSource(str(path), block_s=0.1))
+    src = FileSource(str(path), block_s=0.1)
+    audio = src._load()
+
+    class Decoded(AudioSource):
+        def frames(self):
+            for i in range(0, len(audio), src.block):
+                yield audio[i:i + src.block]
+
+        def close(self) -> None:
+            pass
+
+    return PacedSource(Decoded())
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
@@ -475,7 +489,7 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
 
     def items():
         for n, zh in enumerate(recognize_utterances(capture_segments(source, seg, stop, lat), asr,
-                                                    gate=getattr(player, "gate", None), src=src,
+                                                    gate=None if paced else getattr(player, "gate", None), src=src,
                                                     zh_variant=getattr(a, "zh_variant", "tw")), 1):
             lat.marks["asr_done"] = lat.clock()  # #434: text of the newest segment is ready
             yield n, label, zh

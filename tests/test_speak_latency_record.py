@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from tinglongwu import stream
 from tinglongwu.asr import Transcript
-from tinglongwu.capture import file as file_mod
 from tinglongwu.capture.base import SAMPLE_RATE
 from tinglongwu.reverse import proto
 from tinglongwu.segment import Segmenter
@@ -53,15 +53,13 @@ class _Watch:
 
 
 def _run(monkeypatch, clip, watch, tts=True):
-    orig_frames = file_mod.FileSource.frames
+    orig_frames = stream.PacedSource.frames
 
-    def frames(self):  # stopwatch: paced playback starts when the first frame is asked for
-        for i, f in enumerate(orig_frames(self)):
-            if i == 0:
-                watch.mark("start")
-            yield f
+    def frames(self):  # stopwatch: real-time playback starts when PacedSource starts its clock
+        watch.mark("start")
+        yield from orig_frames(self)
 
-    monkeypatch.setattr(file_mod.FileSource, "frames", frames)
+    monkeypatch.setattr(stream.PacedSource, "frames", frames)
     # the product segmenter settings (0.5 s silence, 0.25 s step) with an energy VAD instead of the Silero model
     monkeypatch.setattr(proto, "make_segmenter",
                         lambda chunk, dev="cpu", pause=None, **k: (Segmenter(chunk, True, min_silence=0.5, step=0.25,
@@ -91,6 +89,7 @@ def _run(monkeypatch, clip, watch, tts=True):
 
     class Player:
         enabled = True
+        gate = SimpleNamespace(busy=lambda: True)  # the mic's echo gate: a paced file never hears our output
 
         def push(self, audio, sr):
             watch.mark("push")
