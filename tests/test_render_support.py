@@ -40,9 +40,10 @@ def test_every_contributor_and_type_is_rendered():
 
 def test_check_detects_a_stale_readme(tmp_path):
     m = _mod()
-    for name in ("README.md", "README.zh-TW.md", "README.zh-CN.md", ".all-contributorsrc"):
+    (tmp_path / "docs").mkdir(exist_ok=True)
+    for name in ("README.md", "README.zh-TW.md", "README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
         (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
-    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs").mkdir(exist_ok=True)
     src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))
     src["language"]["rows"][-1]["cells"][0] = "🟢"
     (tmp_path / "docs" / "support.json").write_text(json.dumps(src, ensure_ascii=False), "utf-8")
@@ -71,3 +72,27 @@ def test_notes_file_accepts_a_bom(tmp_path):
     assert m.main(["--notes-file", str(f)]) == 0
     s = f.read_text("utf-8")
     assert s.startswith("## Download") and "Built with help from" in s
+
+
+def test_roadmap_grid_is_generated_from_support_json():
+    m = _mod()
+    src, _ = m.load()
+    html = (ROOT / "docs" / "roadmap.html").read_text("utf-8")
+    assert m.GRID.search(html).group(0) == m.roadmap_grid(src)
+    grid = m.roadmap_grid(src)
+    assert grid.count('class="r"') == len(src["device"]["rows"]) + len(src["language"]["rows"])
+    # one dot or dash per cell
+    n = sum(len(r["cells"]) for r in src["device"]["rows"] + src["language"]["rows"])
+    assert grid.count('class="c"') + grid.count('class="c same"') == n
+    assert "tinglongwu#readme" in html  # links to the README support section
+
+
+def test_roadmap_check_detects_a_stale_grid(tmp_path):
+    m = _mod()
+    for name in ("README.md", "README.zh-TW.md", "README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
+        (tmp_path / name).parent.mkdir(exist_ok=True)
+        (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
+    src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))
+    src["device"]["rows"][0]["cells"][0] = "🟢"
+    (tmp_path / "docs" / "support.json").write_text(json.dumps(src, ensure_ascii=False), "utf-8")
+    assert m.main(["--check"], root=tmp_path) == 1
