@@ -551,8 +551,8 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         else:
             _run_auto_live(utterances, mt, tts, player, res, lambda: _target(a), lat,
                            getattr(a, "debug_latency", False), src, bar, on_record)
-        if paced and getattr(player, "close", None) is not None:  # the file ended: let the queued audio finish
-            player.close()
+        if not stop.is_set():  # #577: the input ended on its own (file / clip), not Quit or Ctrl+C:
+            _drain(player, previewer)  # play the queued audio before cleanup() aborts the players (#427)
     except KeyboardInterrupt:
         print("\nstopping...", flush=True)
     finally:
@@ -560,6 +560,14 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
             cleanup()
         finally:
             _close_items(utterances)  # #427: ends capture_segments, which joins the capture thread (recorder released)
+
+
+def _drain(*players) -> None:
+    """#577: let each enabled player finish its queue. Without this, an input that simply ends (--paced file, the
+    speak_selftest clip) lost the last sentence's queued TTS to cleanup()'s abort(): hw-tests recorded 85-89 %."""
+    for pl in players:
+        if getattr(pl, "enabled", False) and getattr(pl, "close", None) is not None:
+            pl.close()
 
 
 def _close_items(gen, timeout: float = 5.0) -> None:
