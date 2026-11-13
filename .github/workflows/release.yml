@@ -51,8 +51,11 @@ jobs:
             [ "$draft" = true ] || { echo "release $TAG is already published; not touching it"; exit 1; }
             gh release upload "$TAG" "${files[@]}" --clobber
           else
+            # notes start from the single source (docs/support.json + .all-contributorsrc): Download, the
+            # README's support/contributors block, a What's new placeholder; GitHub's changelog is appended
+            python3 scripts/render_support.py --notes "$TAG" > dist/notes.md
             gh release create "$TAG" "${files[@]}" --draft "${pre[@]}" \
-              --verify-tag --generate-notes --title "$TAG"
+              --verify-tag --notes-file dist/notes.md --generate-notes --title "$TAG"
           fi
 
   windows-installer:

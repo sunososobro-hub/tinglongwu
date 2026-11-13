@@ -14,6 +14,7 @@
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux（x86_64，已在 Ubuntu 24.04 测试） | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
+<!-- SUPPORT:START -->
 | 系统 | 安装 | 翻译字幕 | 说话（语音） | GPU | 纯 CPU |
 |---|:-:|:-:|:-:|:-:|:-:|
 | Windows 10/11 | 🟡 | 🟢 | ⚪ | 🟢 | 🟡 |
@@ -30,9 +31,9 @@
 
 🟢 已在实机或发版关卡测试 · 🟡 仅在 CI 或评测测过，尚未上实机（Windows 安装：指安装向导；便携版 zip 已实机测试。纯 CPU：尚未在实体笔记本测延迟） · ⚪ 尚未测试或不支持 · — 同一语言
 
-第一次安装？先看[安装时可能看到的画面](docs/install.md#what-you-might-see-during-install)（未签名警告是正常的，英文）。
+<p><b>感谢 4 位朋友一起打造</b></p><table><tr><td align="center"><a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=60" width="60" height="60" alt="sunososobro-hub"><br><sub><b>sunososobro-hub</b></sub></a><br>💻 📖 🚧</td><td align="center"><a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=60" width="60" height="60" alt="cook1e0728"><br><sub><b>cook1e0728</b></sub></a><br>💻</td><td align="center"><a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=60" width="60" height="60" alt="psgo555"><br><sub><b>psgo555</b></sub></a><br>🐛</td><td align="center"><a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=60" width="60" height="60" alt="jchodev"><br><sub><b>jchodev</b></sub></a><br>💻 🤔</td></tr></table><p><sub>AI 帮手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（代码审查）</sub><br><sub>💻 代码 · 🐛 报告问题 · 📖 文档 · 🤔 点子 · 🚧 维护 · 🤖 AI 工具（不计入人数）</sub></p><!-- SUPPORT:END -->
 
-<p><b>感谢 4 位朋友一起打造</b></p><table><tr><td align="center"><a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=60" width="60" height="60" alt="sunososobro-hub"><br><sub><b>sunososobro-hub</b></sub></a><br>💻 📖 🚧</td><td align="center"><a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=60" width="60" height="60" alt="cook1e0728"><br><sub><b>cook1e0728</b></sub></a><br>💻</td><td align="center"><a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=60" width="60" height="60" alt="psgo555"><br><sub><b>psgo555</b></sub></a><br>🐛</td><td align="center"><a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=60" width="60" height="60" alt="jchodev"><br><sub><b>jchodev</b></sub></a><br>💻 🤔</td></tr></table><p><sub>AI 帮手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（代码审查）</sub><br><sub>💻 代码 · 🐛 报告问题 · 📖 文档 · 🤔 点子 · 🚧 维护 · 🤖 AI 工具（不计入人数）</sub></p>
+第一次安装？先看[安装时可能看到的画面](docs/install.md#what-you-might-see-during-install)（未签名警告是正常的，英文）。
 
 ![延迟](docs/img/latency.svg)
 
