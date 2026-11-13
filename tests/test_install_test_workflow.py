@@ -37,3 +37,11 @@ def test_every_install_job_prints_timing():
 def test_readme_has_install_test_badge():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "workflows/install-test.yml/badge.svg" in readme
+
+
+def test_manual_dispatch_can_pick_a_release_tag():
+    wf = _wf()
+    on = wf.get("on", wf.get(True))
+    assert "release_tag" in on["workflow_dispatch"]["inputs"]
+    env = wf["jobs"]["release-assets"]["steps"][1]["env"]
+    assert "inputs.release_tag" in env["RELEASE_TAG"]

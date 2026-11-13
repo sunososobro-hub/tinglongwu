@@ -8,6 +8,11 @@ on:
     branches: [main, dev]
     paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag whose assets the release-assets job installs (e.g. v0.3.0-beta.1); empty = releases/latest"
+        required: false
+        default: ""
   release:
     types: [published]   # #71: also run the README one-liners against the published release assets (incl. pre-releases)
 
@@ -67,7 +72,7 @@ jobs:
           TLWU_DIR: ${{ runner.temp }}/tlwu
           TLWU_SKIP_BLACKHOLE: "1"
           TLWU_SKIP_MODELS: "1"
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
         run: |
           START=$(date +%s)
           if [ "$RUNNER_OS" = "macOS" ]; then SCRIPT=mac_install.sh; else SCRIPT=install.sh; fi
