@@ -304,6 +304,14 @@ def copy_llama(app: Path, lite: bool, cpu_dlls: list[Path], src: Path | None = N
         shutil.copy2(f, cpu / f.name)
 
 
+# Packages whose metadata license covers only their code, not the data they ship (#390 review).
+DATA_LICENSES = {
+    "pymorphy3-dicts-ru": "MIT (code); bundled Russian dictionary data: CC BY-SA 3.0 "
+                          "(https://creativecommons.org/licenses/by-sa/3.0/), derived from OpenCorpora "
+                          "(opencorpora.org), shipped unmodified",
+}
+
+
 def write_licenses(app: Path, cuda_src: Path | None) -> None:
     lic = app / "licenses"
     lic.mkdir(exist_ok=True)
@@ -311,7 +319,8 @@ def write_licenses(app: Path, cuda_src: Path | None) -> None:
     for d in sorted(md.distributions(), key=lambda x: (x.metadata["Name"] or "").lower()):
         n = d.metadata["Name"]
         if n and n.lower() not in ("nuitka", "ordered-set", "zstandard", "pip", "setuptools", "wheel"):
-            rows.append(f"{n} {d.version}: {d.metadata.get('License-Expression') or d.metadata.get('License') or 'see package'}")
+            lic_text = DATA_LICENSES.get(n.lower()) or d.metadata.get('License-Expression') or d.metadata.get('License')
+            rows.append(f"{n} {d.version}: {lic_text or 'see package'}")
     for name in ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc") if cuda_src else ():
         for f in cuda_src.glob(f"nvidia_{name}_cu12-*/licenses/*"):
             shutil.copy2(f, lic / f"NVIDIA-{name}-{f.name}")

@@ -141,3 +141,14 @@ def test_same_language_and_hook_errors_leave_the_text_alone(monkeypatch):
 
     monkeypatch.setattr(ru, "normalize_names", boom)
     assert ru.pre_mt("Максима Чижова.") == "Максима Чижова."
+
+
+def test_exe_notices_state_the_dictionary_data_license(tmp_path):
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
+    import build_windows
+
+    build_windows.write_licenses(tmp_path, None)
+    notices = (tmp_path / "licenses" / "THIRD_PARTY_NOTICES.txt").read_text("utf-8")
+    line = next(ln for ln in notices.splitlines() if ln.lower().startswith("pymorphy3-dicts-ru "))
+    assert "CC BY-SA 3.0" in line and "OpenCorpora" in line
