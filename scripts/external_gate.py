@@ -8,7 +8,8 @@ Decides the lane for an external PR:
 
 Rules (script first; the LLM review can only block, never override a failed rule):
   r1_size      total changed lines (additions + deletions) <= MAX_CHANGED_LINES
-  r2_paths     only `tinglongwu/**/*.py` and `tests/**/*.py`; none of PROTECTED_FILES; no deleted files
+  r2_paths     only `tinglongwu/**/*.py` and `tests/**/*.py`; none of PROTECTED_FILES; no deleted files;
+               with --pr, the file list must be complete (== changed_files), else fail closed
   r3_denylist  added lines contain no network / process / dynamic-code primitive (DENYLIST); every
                changed file has a readable patch (a binary or truncated diff cannot be inspected)
   r4_tests     at least one test file under tests/ added or modified, and the check runs are all green
@@ -46,7 +47,8 @@ PROTECTED_FILES = frozenset({
 })
 DENYLIST = ("socket", "urllib", "requests", "http", "subprocess", "os.system", "eval(", "exec(",
             "__import__", "importlib", "pickle", "base64", "ctypes")  # list from #352 rule 3
-_DENY_RX = re.compile("|".join(re.escape(w) for w in DENYLIST), re.IGNORECASE)
+_DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\("]),
+                      re.IGNORECASE)  # the extra pattern also catches "eval (x)" with a space
 GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
 
@@ -101,12 +103,18 @@ def checks_green(check_runs: list[dict] | None) -> tuple[bool, str]:
     return True, ""
 
 
-def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | None) -> dict:
+def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | None, pr: dict | None = None) -> dict:
+    """pr: the GET pulls/N object, when known. Its totals win over the file list, and a file list shorter than
+    pr["changed_files"] (API truncation) fails closed: unseen files cannot be checked."""
     reasons: dict[str, str] = {}
     total = sum(int(f.get("additions", 0)) + int(f.get("deletions", 0)) for f in files)
+    if pr is not None:
+        total = max(total, int(pr.get("additions", 0)) + int(pr.get("deletions", 0)))
     if total > MAX_CHANGED_LINES:
         reasons["r1_size"] = f"{total} changed lines > {MAX_CHANGED_LINES}"
-    if not files:
+    if pr is not None and len(files) != int(pr.get("changed_files", -1)):
+        reasons["r2_paths"] = f"file list has {len(files)} files, PR reports {pr.get('changed_files')}"
+    elif not files:
         reasons["r2_paths"] = "no changed files"
     elif p := path_problems(files):
         reasons["r2_paths"] = "; ".join(p)
@@ -128,16 +136,19 @@ def evaluate(files: list[dict], check_runs: list[dict] | None, review: str | Non
     }
 
 
-def _gh(path: str):
-    out = subprocess.run(["gh", "api", path], check=True, stdout=subprocess.PIPE).stdout
+def _gh(path: str, paginate: bool = False):
+    cmd = ["gh", "api", path] + (["--paginate", "--slurp"] if paginate else [])
+    out = subprocess.run(cmd, check=True, stdout=subprocess.PIPE).stdout
     return json.loads(out)
 
 
-def fetch_pr(n: int) -> tuple[list[dict], list[dict]]:
-    pr = _gh(f"repos/{REPO}/pulls/{n}")
-    files = _gh(f"repos/{REPO}/pulls/{n}/files?per_page=100")
-    runs = _gh(f"repos/{REPO}/commits/{pr['head']['sha']}/check-runs?per_page=100").get("check_runs", [])
-    return files, runs
+def fetch_pr(n: int, gh=_gh) -> tuple[list[dict], list[dict], dict]:
+    """Every page of files and check runs (--slurp returns a list of pages)."""
+    pr = gh(f"repos/{REPO}/pulls/{n}")
+    files = [f for page in gh(f"repos/{REPO}/pulls/{n}/files?per_page=100", paginate=True) for f in page]
+    pages = gh(f"repos/{REPO}/commits/{pr['head']['sha']}/check-runs?per_page=100", paginate=True)
+    runs = [r for page in pages for r in page.get("check_runs", [])]
+    return files, runs, pr
 
 
 def _load(path: str):
@@ -153,15 +164,16 @@ def main(argv=None) -> int:
     ap.add_argument("--checks", help="JSON of GET commits/SHA/check-runs (with --files)")
     ap.add_argument("--review", default=None, help="AI review verdict; only PASS can allow auto-merge")
     a = ap.parse_args(argv)
+    pr = None
     if a.pr is not None:
-        files, runs = fetch_pr(a.pr)
+        files, runs, pr = fetch_pr(a.pr)
     else:
         files = _load(a.files)
         runs = None
         if a.checks:
             c = _load(a.checks)
             runs = c.get("check_runs", []) if isinstance(c, dict) else c
-    res = evaluate(files, runs, a.review)
+    res = evaluate(files, runs, a.review, pr)
     print(json.dumps(res, ensure_ascii=False))
     return 0 if res["lane"] == "auto-merge" else 1
 

@@ -134,3 +134,51 @@ def test_review_pass_cannot_override_failed_rule():
 
 def test_merge_methods_never_squash():
     assert "squash" not in eg.MERGE_METHODS and eg.MERGE_METHODS[0] == "rebase"
+
+
+# --pr path: pagination + fail closed on truncation (merge-gate finding on PR #482)
+def _fake_gh(pages, pr_extra=None):
+    pr = {"head": {"sha": "abc"}, "additions": 3, "deletions": 1, "changed_files": sum(len(p) for p in pages)}
+    pr.update(pr_extra or {})
+    calls = []
+
+    def gh(path, paginate=False):
+        calls.append((path, paginate))
+        if path.endswith("/pulls/7"):
+            return pr
+        if "/files" in path:
+            return pages
+        return [{"check_runs": GREEN[:1]}, {"check_runs": GREEN[1:]}]
+    return gh, calls
+
+
+def test_fetch_pr_reads_every_page():
+    page1 = [_f(f"tests/test_r{i}.py", patch=None, status="renamed", add=0) for i in range(100)]
+    page2 = [_f("tinglongwu/zz.txt")]
+    gh, calls = _fake_gh([page1, page2])
+    files, runs, pr = eg.fetch_pr(7, gh=gh)
+    assert len(files) == 101 and len(runs) == 2
+    assert all(p for path, p in calls if "/pulls/7" not in path or "files" in path)
+    r = eg.evaluate(files, runs, "PASS", pr)
+    assert r["lane"] == "owner" and "tinglongwu/zz.txt" in r["reasons"]["r2_paths"]
+
+
+def test_truncated_file_list_fails_closed():
+    files = _ok_files()
+    pr = {"additions": 3, "deletions": 1, "changed_files": 3001}
+    r = eg.evaluate(files, GREEN, "PASS", pr)
+    assert r["failed"] == ["r2_paths"] and "3001" in r["reasons"]["r2_paths"]
+
+
+def test_r1_uses_pr_totals_when_larger():
+    pr = {"additions": 60, "deletions": 0, "changed_files": 2}
+    assert eg.evaluate(_ok_files(), GREEN, "PASS", pr)["failed"] == ["r1_size"]
+    pr = {"additions": 3, "deletions": 1, "changed_files": 2}
+    assert eg.evaluate(_ok_files(), GREEN, "PASS", pr)["lane"] == "auto-merge"
+
+
+@pytest.mark.parametrize("line", ["y = eval (x)", "exec  (code)", "f = compile(src, 'a', 'exec')"])
+def test_r3_spaced_eval_exec_and_compile_fail(line):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
