@@ -11,6 +11,7 @@
 | Argos Translate (model packaging / index) | MIT | github.com/argosopentech/argos-translate |
 | SentencePiece | Apache-2.0 | github.com/google/sentencepiece |
 | OpenCC (opencc-python-reimplemented) | Apache-2.0 | github.com/yichen0831/opencc-python |
+| pymorphy3, pymorphy3-dicts-ru (OpenCorpora-based dictionary), DAWG2-Python | MIT; MIT code + CC BY-SA 3.0 data (attribution: OpenCorpora, opencorpora.org; share-alike applies to the dictionary data only, shipped unmodified); MIT | github.com/no-plagiarism/pymorphy3 |
 | soundcard | BSD-3 | github.com/bastibe/SoundCard |
 | soundfile / libsndfile | BSD-3 / LGPL-2.1 | github.com/bastibe/python-soundfile |
 | PyAV (FFmpeg libs; source install only, the Windows exe stubs `av` out) | BSD-3 / LGPL | github.com/PyAV-Org/PyAV |
