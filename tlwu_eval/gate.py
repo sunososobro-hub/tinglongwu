@@ -60,7 +60,11 @@ def compare(report: dict, baseline: dict) -> list[dict]:
     langs = report.get("languages") if isinstance(report, dict) else None
     if not isinstance(langs, list):
         raise GateError("report: no 'languages' list (is this a `python -m tlwu_eval --smoke` report?)")
-    by_pair = {lg.get("pair"): lg for lg in langs if isinstance(lg, dict)}
+    by_pair = {}
+    for lg in (lg for lg in langs if isinstance(lg, dict)):
+        if lg.get("pair") in by_pair:
+            raise GateError(f"report: pair {lg.get('pair')} is listed more than once")
+        by_pair[lg.get("pair")] = lg
     rows = []
     for pair, b in baseline["pairs"].items():
         lg = by_pair.get(pair)
@@ -91,6 +95,15 @@ def _fmt(v, spec: str) -> str:
     return "n/a" if v is None else format(v, spec)
 
 
+def _verdict(rows: list[dict]) -> tuple[bool, str]:
+    """(ok, note). Nothing evaluated (every row SKIP) is a FAIL: a broken data checkout must not go green."""
+    if any(r["result"] == "FAIL" for r in rows):
+        return False, ""
+    if not any(r["result"] == "PASS" for r in rows):
+        return False, " (no pair evaluated)"
+    return True, ""
+
+
 def markdown(rows: list[dict], baseline: dict) -> str:
     """Markdown table for $GITHUB_STEP_SUMMARY: chrF x100 to two decimals, delta, MT median, PASS/FAIL/SKIP."""
     out = ["| pair | chrF | baseline | delta | MT median s | budget s | result |",
@@ -99,14 +112,14 @@ def markdown(rows: list[dict], baseline: dict) -> str:
         res = r["result"] + (f" ({r['why']})" if r["why"] and r["result"] != "PASS" else "")
         out.append(f"| {r['pair']} | {_fmt(r['chrf'], '.2f')} | {_fmt(r['base'], '.2f')} | {_fmt(r['delta'], '+.2f')} | "
                    f"{_fmt(r['median'], '.3f')} | {r['budget']:.2f} | {res} |")
-    ok = not any(r["result"] == "FAIL" for r in rows)
+    ok, note = _verdict(rows)
     out += ["", f"Baseline measured with: model {baseline['model']}, engine {baseline['engine']}, "
-                f"{baseline['clips']} clips per pair.", f"**eval gate: {'PASS' if ok else 'FAIL'}**"]
+                f"{baseline['clips']} clips per pair.", f"**eval gate: {'PASS' if ok else 'FAIL'}**{note}"]
     return "\n".join(out)
 
 
 def run(report_path, baseline_path) -> tuple[int, str]:
-    """-> (exit code, Markdown). 0 = no regression, 1 = a pair FAILed. Raises GateError on setup errors."""
+    """-> (exit code, Markdown). 0 = no regression, 1 = a pair FAILed or no pair was evaluated. Raises GateError on setup errors."""
     baseline = validate_baseline(load_json(baseline_path, "baseline"))
     rows = compare(load_json(report_path, "report"), baseline)
-    return (1 if any(r["result"] == "FAIL" for r in rows) else 0), markdown(rows, baseline)
+    return (0 if _verdict(rows)[0] else 1), markdown(rows, baseline)
