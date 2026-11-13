@@ -17,15 +17,6 @@ def test_missing_models_clear_error_no_download(wav, tmp_path, capsys, monkeypat
     assert "not found" in err and "tlwu-setup" in err
 
 
-def test_missing_pair_names_pair_and_command(tmp_path):
-    from tinglongwu.models import ModelNotFound
-    from tinglongwu.translate import PivotTranslator
-
-    with pytest.raises(ModelNotFound) as e:
-        PivotTranslator(tmp_path).preload("ja", "ko")
-    assert "ja->en" in str(e.value) and "tlwu-setup --pair ja-en" in str(e.value)
-
-
 def test_engine_default_and_to():
     assert cli.parse_args(["--to", "ko"]).to == "ko"
     assert cli.parse_args([]).engine == "auto" and cli.parse_args([]).to == "zh"

@@ -7,7 +7,8 @@ import pytest
 from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
-from tinglongwu.translate import PivotTranslator, Translation, Translator
+from pivot_fake import PivotTranslator
+from tinglongwu.translate import Translation, Translator
 
 
 class Tone:

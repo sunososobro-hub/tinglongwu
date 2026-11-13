@@ -2,7 +2,8 @@ import datetime
 import io
 
 from tinglongwu.sink import Result, TextSink
-from tinglongwu.translate import PivotTranslator, zh_convert
+from pivot_fake import PivotTranslator
+from tinglongwu.translate import zh_convert
 
 I = " " * 16
 

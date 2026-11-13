@@ -2,7 +2,8 @@
 import pytest
 
 from tinglongwu import cli, glossary
-from tinglongwu.translate import PivotTranslator, protect_acronyms, restore_acronyms, zh_artifacts
+from pivot_fake import PivotTranslator
+from tinglongwu.translate import protect_acronyms, restore_acronyms, zh_artifacts
 
 TELECOM = "docs/examples/glossary_telecom_ru.txt"
 

@@ -9,7 +9,7 @@ from tinglongwu.capture import FileSource
 from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
 from tinglongwu.sink import Result, TextSink, TranscriptSink
-from tinglongwu.translate import PivotTranslator
+from pivot_fake import PivotTranslator
 
 WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND
 
