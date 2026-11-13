@@ -43,14 +43,16 @@ def _enable_vt() -> bool:
     return True
 
 
-def block(side: str, original: str, translations=(), now=None, color: bool = False) -> str:
+def block(side: str, original: str, translations=(), now=None, color: bool = False, who: str | None = None) -> str:
     """side 'me' | 'them'. translations: iterable of (tag|None, text). Returns the block incl. trailing blank line."""
-    return head(side, original, now=now, color=color) + tail(translations)
+    return head(side, original, now=now, color=color, who=who) + tail(translations)
 
 
-def head(side: str, original: str, now=None, color: bool = False) -> str:
+def head(side: str, original: str, now=None, color: bool = False, who: str | None = None) -> str:
     """First line of a block ('12:03:10 ◀ Them original' + newline), printed alone while MT still runs (#53)."""
     label = t("label_me" if side == "me" else "label_them")
+    if who and side != "me":  # #384 --speakers: the speaker label or user-given name replaces the generic 'Them'
+        label = f"◀ {who}"
     stamp = (now or datetime.datetime.now()).strftime("%H:%M:%S")
     if color:
         label = f"{GREEN if side == 'me' else CYAN}{label}{RESET}"

@@ -14,7 +14,7 @@ import types
 from pathlib import Path
 
 from .gui.core import QueueSink, load_settings, settings_path
-from .sink import Result
+from .sink import Result, pass_source
 
 POLL_MS = 30  # < 100 ms from print to bar (#322 acceptance)
 KEYS = ("x", "y", "font_size", "overlay_lines", "show_src", "overlay_alpha")  # what the bar changes; nothing else is written
@@ -28,9 +28,9 @@ class OverlaySink(QueueSink):
         super().__init__(q)
         self.inner, self.prefix = inner, prefix
 
-    def write_source(self, src: str, original: str) -> None:
-        self.inner.write_source(src, original)
-        super().write_source(src, original)
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
+        pass_source(self.inner, src, original, speaker)
+        super().write_source(src, original, speaker=speaker)
 
     def write(self, r: Result) -> None:
         self.inner.write(r)
