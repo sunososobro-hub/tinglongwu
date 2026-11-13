@@ -10,6 +10,7 @@ import argparse
 import html
 import json
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -219,6 +220,203 @@ def hero_stats(merged, closed, commits, created, now):
     return out
 
 
+QUOTA_WEIGHT = {"opus": 2.0}  # sonnet and anything else = 1.0
+TYPE_TARGETS = [("bug", 30), ("enhancement", 30), ("eval", 10), ("documentation", 5), ("maint", 5)]
+SIDE_TARGETS = [("QA", 15), ("ideas", 5)]  # fixed-schedule rows, informational
+FLOW_HOURS = 48  # same window as the S-hard ledger
+UNLABELLED = "unlabelled"
+FOCUS_ORANGE = "#e08a1e"
+
+
+def parse_usage(body):
+    """(model, minutes) from the last `tlwu-usage:` line of a PR body, else None."""
+    for line in reversed((body or "").splitlines()):
+        line = line.strip()
+        if line.startswith("tlwu-usage:"):
+            m = re.search(r"model=(\w+)", line)
+            n = re.search(r"minutes=(\d+(?:\.\d+)?)", line)
+            if m and n:
+                return m.group(1).lower(), float(n.group(1))
+            return None
+    return None
+
+
+def linked_issue(body):
+    m = re.search(r"(?i)\b(?:closes|fixes|resolves|refs)\s+#(\d+)", body or "")
+    return int(m.group(1)) if m else None
+
+
+def parse_faucet(body):
+    """{'level': int, 'focus': [str]} from #574's body; None if the level line is unreadable."""
+    lines = (body or "").splitlines()
+    m = re.match(r"\s*level:\s*(\d+)", lines[0]) if lines else None
+    if not m:
+        return None
+    focus = []
+    for ln in lines[1:]:
+        f = re.match(r"\s*focus:\s*(.*)", ln)
+        if f:
+            focus = [x for x in re.split(r"[\s,/+]+", f.group(1).strip()) if x]
+            break
+    return {"level": int(m.group(1)), "focus": focus}
+
+
+def _label_value(labels, prefix):
+    for name in labels:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return UNLABELLED
+
+
+def build_flow(items):
+    """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
+
+    Everything is in quota minutes (minutes x model weight, opus = 2x). Missing mode / os /
+    lang labels go to an 'unlabelled' node instead of failing.
+    """
+    paths, types = {}, {}
+    for it in items:
+        q = it["minutes"] * QUOTA_WEIGHT.get(it["model"], 1.0)
+        if q <= 0:
+            continue
+        labels = it.get("labels", [])
+        key = (_label_value(labels, "mode:"), _label_value(labels, "os:"), _label_value(labels, "lang:"))
+        paths[key] = paths.get(key, 0.0) + q
+        t = next((n for n, _ in TYPE_TARGETS if n in labels), "other")
+        types[t] = types.get(t, 0.0) + q
+    total = sum(paths.values())
+
+    def pct(v):
+        return 100.0 * v / total if total else 0.0
+
+    layers = []
+    for idx in range(3):
+        node = {}
+        for k, v in paths.items():
+            node[k[idx]] = node.get(k[idx], 0.0) + v
+        layers.append([{"name": n, "quota": v, "share": pct(v)}
+                       for n, v in sorted(node.items(), key=lambda kv: (-kv[1], kv[0]))])
+    mix = [{"type": n, "quota": types.get(n, 0.0), "share": pct(types.get(n, 0.0)), "target": t,
+            "delta": pct(types.get(n, 0.0)) - t} for n, t in TYPE_TARGETS]
+    if types.get("other"):
+        mix.append({"type": "other", "quota": types["other"], "share": pct(types["other"]),
+                    "target": 0, "delta": pct(types["other"])})
+    return {"total": total, "paths": [[*k, v] for k, v in sorted(paths.items())],
+            "modes": layers[0], "platforms": layers[1], "langs": layers[2],
+            "type_mix": mix, "side": [{"type": n, "target": t} for n, t in SIDE_TARGETS]}
+
+
+def render_sankey(flow, focus=()):
+    """Inline-SVG Sankey: quota -> mode -> platform -> language. Focus values are orange."""
+    total = flow["total"]
+    if not total:
+        return '<p class="n">No quota minutes in the last %d h.</p>' % FLOW_HOURS
+    cols = [[{"name": "quota", "quota": total}], flow["modes"], flow["platforms"], flow["langs"]]
+    W, H, NW, GAP, PAD = 640, 220, 10, 4, 6
+    xs = [PAD + i * (W - 2 * PAD - NW) / 3 for i in range(4)]
+    scale = (H - 2 * PAD - GAP * max(len(c) for c in cols)) / total
+    pos = []  # per column: name -> [y, height]
+    for col in cols:
+        y, d = PAD, {}
+        for n in col:
+            h = max(n["quota"] * scale, 1.0)
+            d[n["name"]] = [y, h]
+            y += h + GAP
+        pos.append(d)
+    focus = {f.lower() for f in focus}
+    out = []
+    for c in range(3):
+        links = {}
+        for p in flow["paths"]:
+            a, b = ("quota" if c == 0 else p[c - 1]), p[c]
+            links[(a, b)] = links.get((a, b), 0.0) + p[3]
+        order_a = list(pos[c])
+        order_b = list(pos[c + 1])
+        off_a = {n: pos[c][n][0] for n in order_a}
+        off_b = {n: pos[c + 1][n][0] for n in order_b}
+        for (a, b), v in sorted(links.items(), key=lambda kv: (order_a.index(kv[0][0]), order_b.index(kv[0][1]))):
+            h = v * scale
+            x1, x2 = xs[c] + NW, xs[c + 1]
+            y1, y2 = off_a[a] + h / 2, off_b[b] + h / 2
+            off_a[a] += h
+            off_b[b] += h
+            col = FOCUS_ORANGE if b.lower() in focus else "#3b82c4"
+            out.append('<path d="M%.1f %.1f C%.1f %.1f %.1f %.1f %.1f %.1f" fill="none" stroke="%s" '
+                       'stroke-opacity=".35" stroke-width="%.2f"><title>%s \u2192 %s: %.1f%% of quota</title></path>'
+                       % (x1, y1, (x1 + x2) / 2, y1, (x1 + x2) / 2, y2, x2, y2, col, max(h, 0.5),
+                          html.escape(a), html.escape(b), 100.0 * v / total))
+    for c, col in enumerate(cols):
+        for n in col:
+            y, h = pos[c][n["name"]]
+            fill = FOCUS_ORANGE if n["name"].lower() in focus else "#667"
+            label = n["name"] if c == 0 else "%s %.0f%%" % (n["name"], 100.0 * n["quota"] / total)
+            tx, anchor = (xs[c] + NW + 3, "start") if c < 3 else (xs[c] - 3, "end")
+            out.append('<rect x="%.1f" y="%.1f" width="%d" height="%.1f" fill="%s"/><text x="%.1f" y="%.1f" '
+                       'text-anchor="%s">%s</text>' % (xs[c], y, NW, h, fill, tx, y + h / 2 + 4, anchor,
+                                                      html.escape(label)))
+    return '<svg viewBox="0 0 %d %d" role="img" aria-label="quota flow">%s</svg>' % (W, H, "".join(out))
+
+
+def render_type_mix(flow):
+    rows = []
+    for r in flow["type_mix"]:
+        rows.append('<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:96px">%s</span>'
+                    '<div class="pb" style="flex:1;position:relative"><div style="width:%.1f%%"></div>'
+                    '<i style="position:absolute;left:%d%%;top:-2px;width:2px;height:14px;background:var(--fg)"></i></div>'
+                    '<span style="width:120px">%.1f%% / target %d</span></div>'
+                    % (html.escape(r["type"]), min(r["share"], 100.0), min(r["target"], 100), r["share"], r["target"]))
+    side = "".join('<span class="t" style="padding:4px 10px">%s <b style="font-size:14px;display:inline">%d%%</b> '
+                   '<small>fixed schedule</small></span>' % (html.escape(s["type"]), s["target"]) for s in flow["side"])
+    return "".join(rows) + "<div>" + side + "</div>"
+
+
+def render_faucet(faucet):
+    if not faucet:
+        return '<p class="n">Faucet level unavailable.</p>'
+    focus = ", ".join(html.escape(f) for f in faucet["focus"]) or "none"
+    return ('<p>Faucet level <b>%d</b> &middot; focus <b style="color:%s">%s</b></p>'
+            % (faucet["level"], FOCUS_ORANGE, focus))
+
+
+def render_flow_section(series):
+    flow = series.get("flow")
+    if not flow:
+        return ""
+    faucet = series.get("faucet")
+    focus = faucet["focus"] if faucet else ()
+    return ('<h2>Where the quota goes</h2>%s'
+            '<p class="n">Quota minutes (minutes x model weight, opus = 2x sonnet), PRs merged in the last %d h; '
+            'orange = current focus.</p>'
+            '<h2>Type mix vs target</h2>%s'
+            '<p class="n">Share of quota per issue type; the tick marks the target.</p>'
+            '<h2>Faucet</h2>%s<p class="n">Throttle level and focus read from issue #574.</p>'
+            % (render_sankey(flow, focus), FLOW_HOURS, render_type_mix(flow), render_faucet(faucet)))
+
+
+def build_flow_inputs(api, repo, merged_prs, now):
+    """Quota flow from recent merged PRs' usage lines + linked-issue labels, and the #574 faucet."""
+    since = now - timedelta(hours=FLOW_HOURS)
+    items, cache = [], {}
+    for p in merged_prs:
+        usage = parse_usage(p.get("body"))
+        if not usage or parse_ts(p["merged_at"]) < since:
+            continue
+        n = linked_issue(p.get("body"))
+        if n is not None and n not in cache:
+            try:
+                cache[n] = [lb["name"] for lb in api("/repos/%s/issues/%d" % (repo, n)).get("labels", [])]
+            except Exception as e:  # unlabelled node instead of failing
+                print("issue #%d unavailable: %s" % (n, e), file=sys.stderr)
+                cache[n] = []
+        items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, [])})
+    try:
+        faucet = parse_faucet(api("/repos/%s/issues/574" % repo).get("body"))
+    except Exception as e:
+        print("faucet unavailable: %s" % e, file=sys.stderr)
+        faucet = None
+    return build_flow(items), faucet
+
+
 def build_series(api, repo, branch, now):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
@@ -249,7 +447,9 @@ def build_series(api, repo, branch, now):
               for m in _pages(api, "/repos/%s/milestones?state=all" % repo)]
     except Exception:
         ms = []
+    flow, faucet = build_flow_inputs(api, repo, merged_prs, now)
     return {
+        "flow": flow, "faucet": faucet,
         "repo": repo, "branch": branch, "created": created,
         "updated": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "days": days,
@@ -324,6 +524,7 @@ small,p.n{color:var(--mut)}
 <p style="font-size:16px;margin:4px 0 12px"><a href="roadmap.html">&#x1F5FA;&#xFE0F; Roadmap</a> &middot; <a href="docs.html">Docs</a></p>
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
+__FLOW__
 <h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
 <h2>Commits per day</h2><div id="c_commits"></div>
@@ -395,6 +596,7 @@ def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
     return (PAGE.replace("__REPO__", html.escape(series["repo"]))
             .replace("__BRANCH__", html.escape(series["branch"]))
+            .replace("__FLOW__", render_flow_section(series))
             .replace("__DATA__", data))
 
 
