@@ -1,4 +1,5 @@
-"""`python -m tlwu_eval --smoke [--data DIR] [--out report.json] [--tier NAME]` | `--chart OUT.html REPORT.json...`."""
+"""`python -m tlwu_eval --smoke [--data DIR] [--out report.json] [--tier NAME]` | `--chart OUT.html REPORT.json...`
+| `--gate REPORT.json [--baseline eval/baseline.json]`."""
 from __future__ import annotations
 
 import argparse
@@ -6,7 +7,7 @@ import json
 import os
 import sys
 
-from . import scoring, tierchart, tiers
+from . import gate, scoring, tierchart, tiers
 from .runner import CLIPS_PER_LANG, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
 NHK_DIR_DEFAULT = r"C:\Users\user\tlwu-eval"  # outside the repo: copyrighted NHK ja clips (#119)
@@ -74,17 +75,29 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     p.add_argument("--models-dir", default=None)
     p.add_argument("--tier", choices=sorted(tiers.TIERS),
                    help="hardware tier preset (#120); adds a 'tier' summary (chrF, COMET, hallucination, latency)")
-    p.add_argument("--per-lang", type=int, default=None, metavar="N",
+    p.add_argument("--per-lang", "--clips", type=int, default=None, metavar="N",
                    help=f"clips per language (default {CLIPS_PER_LANG}; the tier baseline uses 20)")
     p.add_argument("--comet", action="store_true",
                    help="with --tier: also score COMET (needs the optional unbabel-comet package + wmt22-comet-da)")
     p.add_argument("--chart", nargs="+", metavar=("OUT.html", "REPORT.json"),
                    help="draw the tier summaries of these reports side by side into OUT.html")
+    p.add_argument("--gate", metavar="REPORT.json",
+                   help="compare a --smoke report to the baseline: exit 1 on a chrF or MT latency regression (#361)")
+    p.add_argument("--baseline", default="eval/baseline.json",
+                   help="baseline for --gate (default: eval/baseline.json); all margins and budgets live there")
     a = p.parse_args(argv)
     if a.chart:
         return tierchart.main(p, a.chart)
+    if a.gate:
+        try:
+            code, table = gate.run(a.gate, a.baseline)
+        except gate.GateError as e:
+            print(f"tlwu-eval: {e}", file=sys.stderr)
+            return 2
+        print(table)
+        return code
     if not a.smoke:
-        p.error("only --smoke and --chart exist so far (the full run is a later part of #57)")
+        p.error("only --smoke, --chart and --gate exist so far (the full run is a later part of #57)")
     preset = tiers.TIERS.get(a.tier, {})
     a.model = a.model or preset.get("model")
     a.engine = a.engine or preset.get("engine", "auto")

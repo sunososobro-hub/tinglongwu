@@ -1,0 +1,13 @@
+{
+  "_note": "Merge gate baseline for `python -m tlwu_eval --gate` (#361). chrf/chrf_margin are null until the first CPU smoke run is recorded (docs/testing.md); a null chrf gates that pair on MT latency only. mt_median_s_max 1.0 = owner rule on #63 (translation is real-time when the median is under ~1.0 s/sentence).",
+  "model": "whisper small",
+  "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
+  "device": "cpu",
+  "clips": 5,
+  "pairs": {
+    "en->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0},
+    "ja->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0},
+    "ru->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0},
+    "zh->en": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0}
+  }
+}

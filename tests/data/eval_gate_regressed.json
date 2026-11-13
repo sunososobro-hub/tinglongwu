@@ -1,0 +1,9 @@
+{
+  "mode": "smoke",
+  "languages": [
+    {"pair": "en->zh", "clips": [{"id": "en_001"}], "chrf": 41.37, "mt_median_s": 0.62},
+    {"pair": "ja->zh", "clips": [{"id": "ja_001"}], "chrf": 30.05, "mt_median_s": 2.4},
+    {"pair": "ru->zh", "clips": [{"id": "ru_001"}], "chrf": 35.5, "mt_median_s": 0.71}
+  ],
+  "skipped": ["zh->en"]
+}
