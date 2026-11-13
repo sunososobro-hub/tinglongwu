@@ -51,6 +51,37 @@ def target_for_locale(tag: str | None) -> str:
     return "en"
 
 
+QUICK_MODES = ("listen", "speak")  # #294 first-screen buttons: "Listen to others" / "I speak"
+
+
+def quick_settings(s: dict, mode: str) -> dict:
+    """#294 easy start: session settings for a first-screen button; `s` (the saved settings) is not changed.
+    The user only picks their own language (`target`, remembered). listen = PC sound (loopback) -> my language,
+    source language as set (auto by default). speak = microphone in my language -> the other language
+    (English for a Chinese speaker, Traditional Chinese for an English speaker). Engine/model stay on `quality`."""
+    if mode not in QUICK_MODES:
+        raise ValueError(f"unknown quick mode: {mode!r}")
+    out = dict(s)
+    mine = s.get("target") if s.get("target") in TARGETS else DEFAULTS["target"]
+    if mode == "listen":
+        out.update(source="system", target=mine)
+    else:
+        zh = mine.startswith("zh")
+        out.update(source="mic", lang="zh" if zh else "en", target="en" if zh else "zh-tw")
+    return out
+
+
+def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str, bool]]:
+    """#294: {mode: (i18n key, enabled)} for the first-screen buttons. phase: idle | loading (models not ready:
+    both read "Loading...", nothing to press) | running (the pressed one is Stop, the other is off) | busy
+    (stopping / downloading: nothing to press)."""
+    if phase == "loading":
+        return {m: ("gui_loading", False) for m in QUICK_MODES}
+    if phase == "running":
+        return {m: ("gui_stop", True) if m == active else (f"gui_quick_{m}", False) for m in QUICK_MODES}
+    return {m: (f"gui_quick_{m}", phase == "idle") for m in QUICK_MODES}
+
+
 def report_info(s: dict) -> dict:
     """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
     return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",

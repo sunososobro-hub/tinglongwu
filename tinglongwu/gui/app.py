@@ -15,7 +15,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, quick_buttons, quick_settings, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha)
@@ -288,7 +288,10 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch
         self.status_key: str | None = "gui_ready"
+        self.quick_mode: str | None = None  # #294: first-screen button that started this session
+        self.run_source = "system"
         self._build_controls()
+        self._build_quick()
         self.overlay = Overlay(self.root, self)
         self.apply_theme(self.settings.get("theme", "dark"))
         try:
@@ -336,6 +339,7 @@ class App:
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         if self.status_key:
             self.v_status.set(t(self.status_key))
+        self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
@@ -424,6 +428,36 @@ class App:
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
+
+    def _build_quick(self):
+        """#294 first screen: pick my language once (remembered), then one big button starts the session."""
+        q = ttk.Frame(self.root, padding=(10, 10, 10, 0))
+        q.pack(before=self.frm, fill="x")
+        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
+            row=0, column=1, sticky="we", padx=(6, 0))
+        self.quick_btns = {}
+        for col, mode in enumerate(QUICK_MODES):
+            b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
+            b.grid(row=1, column=col, sticky="we", ipady=10, pady=(8, 0), padx=(0 if col == 0 else 6, 0))
+            self.quick_btns[mode] = b
+        q.columnconfigure(0, weight=1, uniform="quick")
+        q.columnconfigure(1, weight=1, uniform="quick")
+        self._sync_quick()
+
+    def _quick_phase(self) -> str:
+        if self.load_t0 is not None:
+            return "loading"
+        if self.downloading or (self.listening and self.stop_ev.is_set()):
+            return "busy"
+        return "running" if self.listening else "idle"
+
+    def _sync_quick(self):
+        """Label/enable the first-screen buttons for the current session state (#294)."""
+        if not hasattr(self, "quick_btns"):
+            return
+        for mode, (key, enabled) in quick_buttons(self._quick_phase(), self.quick_mode).items():
+            self.quick_btns[mode].configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
@@ -535,6 +569,7 @@ class App:
         self.btn.configure(state="disabled")
         self.combos["model"].configure(state="disabled")
         self._status_text(t("gui_dl_running", model=m))
+        self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
 
     def _download_done(self, model: str, rc: int):
@@ -547,6 +582,7 @@ class App:
             self.v_model.set(label_for_model(model))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
+        self._sync_quick()
 
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
@@ -588,13 +624,17 @@ class App:
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------
-    def toggle(self):
+    def toggle(self, mode: str | None = None):
+        """Start / Stop. `mode` = a #294 first-screen button ("listen" / "speak"); None = the Start button."""
         if self.worker is not None and self.worker.is_alive():
             self.stop_ev.set()
             self.btn.configure(state="disabled")
             self.set_status("gui_stopping")
+            self._sync_quick()
             return
         self.collect()
+        run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        self.quick_mode, self.run_source = mode, run.get("source")
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -605,8 +645,9 @@ class App:
         self.v_notice.set("")
         self.errored = False
         self.listening = True
-        self.worker = threading.Thread(target=self._work, args=(dict(self.settings), self.stop_ev), daemon=True)
+        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
+        self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
         if self.settings["floating_bar"]:
             self.overlay.show()
@@ -651,6 +692,9 @@ class App:
                     if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
                         self.load_t0 = None
                         self.btn.configure(text=t("gui_stop"), state="normal")
+                        ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
+                        self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
+                        self._sync_quick()
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                 elif kind == "dl_line":
@@ -668,6 +712,8 @@ class App:
                     if not self.errored:
                         self.set_status("gui_stopped")
                     self.listening = False
+                    self.quick_mode = None
+                    self._sync_quick()
                     self.overlay.hide()
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
@@ -679,6 +725,7 @@ class App:
             if secs != self.load_shown:
                 self.load_shown = secs
                 self.btn.configure(text=t("gui_loading", s=secs))
+                self._sync_quick()
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
         if changed:
