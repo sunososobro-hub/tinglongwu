@@ -559,7 +559,24 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
         try:
             cleanup()
         finally:
-            utterances.close()  # #427: ends capture_segments, which joins the capture thread (recorder released)
+            _close_items(utterances)  # #427: ends capture_segments, which joins the capture thread (recorder released)
+
+
+def _close_items(gen, timeout: float = 5.0) -> None:
+    """Close the utterance generator. Confirm mode runs it in its producer thread, which Ctrl+C does not wait for:
+    close() then raises 'generator already executing' until that thread leaves it (stop is set and the source is
+    closed, so within one poll unless MT is mid-sentence). Retry up to `timeout` (the same 5 s _run_confirm gives
+    the producer); never raise on shutdown."""
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            gen.close()
+            return
+        except ValueError:
+            if time.monotonic() >= end:
+                print("tlwu: speech input did not stop in time", file=sys.stderr, flush=True)
+                return
+            time.sleep(0.05)
 
 
 def _stop_live(stop, box, tts, player, previewer, source=None):

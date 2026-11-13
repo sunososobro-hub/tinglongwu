@@ -95,6 +95,26 @@ def test_ctrl_c_in_live_main_closes_mic_and_aborts_players(monkeypatch):
     assert killed.is_set() and player.aborted and previewer.aborted
 
 
+def test_ctrl_c_in_confirm_mode_does_not_raise_and_releases_the_mic(monkeypatch):
+    """Default confirm mode: a producer thread is inside the utterance generator when Ctrl+C reaches the main
+    thread (sess.run), so closing that generator from the main thread raised 'generator already executing'."""
+    mic = SilentMic()
+    monkeypatch.setattr("tinglongwu.capture.mic.MicSource", lambda name: mic)
+    monkeypatch.setattr(proto, "make_segmenter", lambda *a, **k: (NoSpeech(), 0.5))
+
+    def confirm(a, items, *rest):
+        threading.Thread(target=lambda: [None for _ in items], daemon=True).start()  # the producer
+        threading.Timer(0.3, _thread.interrupt_main).start()
+        time.sleep(5)  # sess.run() waiting for an answer
+
+    monkeypatch.setattr(proto, "_run_confirm", confirm)
+    pl = SimpleNamespace(enabled=True, abort=lambda: None)
+    a = SimpleNamespace(mic_name="Monitor of E2E-Speaker", chunk_s=10.0, to="en")
+    proto._live_main(a, None, None, SimpleNamespace(proc=None), pl, pl, True, {"items": []})
+    assert mic.closed.is_set() and mic.released.is_set()
+    assert not _capture_threads()
+
+
 def _fake_soundcard(monkeypatch, play_s=None):
     played = []
 
