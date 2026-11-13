@@ -32,9 +32,9 @@ To release:
 
    3. Contributors: `Built with help from N people:` and one avatar per login in `.all-contributorsrc` (all-time, reporters included; the list only grows),
       `<a href="https://github.com/LOGIN"><img src="https://github.com/LOGIN.png?size=40" width="40" height="40" alt="LOGIN"></a>`.
-      GitHub's own "Contributors" block at the bottom lists only users @mentioned in that release's notes, so @mention every all-time contributor in the details section (step 5) to fill it with everyone.
+      No `@` text here: an @mention notifies the person, so mentioning everyone on every release is spam. @mention only people who are **new** in this release (first contribution or first report since the last release), once, in a `Thanks` line in step 5. GitHub's bottom "Contributors" block then lists only those new people; that is intended.
    4. `## What's new`: at most 3 plain-language bullets about what the user notices. No PR or issue numbers.
-   5. `<details><summary>For developers</summary>`: the full changelog with PR/issue links, every asset with its SHA-256, test and gate notes, known issues, the @mention thanks (say what is in this tag: check with `git merge-base --is-ancestor <merge-commit> vX.Y.Z`), and a "How to contribute" link to `CONTRIBUTING.md` and the `good first issue` label.
+   5. `<details><summary>For developers</summary>`: the full changelog with PR/issue links, every asset with its SHA-256, test and gate notes, known issues, a `Thanks` line that @mentions only this release's new contributors (count a PR only if it is in this tag: `git merge-base --is-ancestor <merge-commit> vX.Y.Z`), and a "How to contribute" link to `CONTRIBUTING.md` and the `good first issue` label.
 
    The README top follows the same order with steps 1-3 only.
 
