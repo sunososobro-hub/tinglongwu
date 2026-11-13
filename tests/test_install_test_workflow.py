@@ -60,3 +60,20 @@ def test_release_assets_covers_windows_with_install_ps1():
     for s in job["steps"]:
         if s.get("shell") != "powershell" and "run" in s and "Audio" not in s["name"]:
             assert "Windows" in s["if"], s["name"]
+
+
+def test_release_workflow_dispatches_install_test_after_publish():
+    rel = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8"))
+    job = rel["jobs"]["windows-installer"]
+    assert job["permissions"]["actions"] == "write"
+    runs = [s.get("run", "") for s in job["steps"]]
+    text = "\n".join(runs)
+    assert "gh workflow run install-test.yml" in text
+    assert "release_tag=" in text
+    assert text.index("--draft=false") < text.index("gh workflow run install-test.yml")
+
+
+def test_release_assets_skips_mobile_tags():
+    cond = _wf()["jobs"]["release-assets"]["if"]
+    assert "startsWith(github.event.release.tag_name, 'mobile-')" in cond
+    assert "startsWith(inputs.release_tag, 'mobile-')" in cond

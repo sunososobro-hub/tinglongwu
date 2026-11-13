@@ -56,7 +56,10 @@ jobs:
 
   release-assets:
     # #71: the exact one-line commands from the README, run on a clean runner against the release's own assets.
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # mobile-* releases carry no install scripts (#639)
+    if: >-
+      (github.event_name == 'release' && !startsWith(github.event.release.tag_name, 'mobile-')) ||
+      (github.event_name == 'workflow_dispatch' && !startsWith(inputs.release_tag, 'mobile-'))
     strategy:
       fail-fast: false
       matrix:
