@@ -137,7 +137,7 @@ tlwu_confirm_mode() {
   return 1
 }
 
-# #40: meeting-mode start lines: banner, where the translated voice goes (no local preview: owner decision on #40),
+# #40: meeting-mode start lines: banner, where the translated voice goes,
 # and how sending works (confirm mode: y+Enter=send, Enter=discard; otherwise direct send and how to switch).
 # tlwu_meeting_banner <virtual mic> <confirm: 1|0>
 tlwu_meeting_banner() {
