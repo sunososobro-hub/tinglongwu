@@ -510,6 +510,10 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     a.worker.join(5)
     a.poll()
     assert a.dot_state == "idle" and a.btn.cget("text") == "Start"
+    assert a.panel.state() == "withdrawn"
+    a.q.put(("error", "boom"))  # an error opens the Adjust panel, where its message is shown
+    a.poll()
+    assert a.dot_state == "error" and a.panel.state() == "normal"
 
 
 # -- #294 easy start: first-screen buttons on a real App -------------------------------------------------------

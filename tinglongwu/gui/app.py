@@ -788,6 +788,8 @@ class App:
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True
                     self.set_dot("error")
+                    self.panel.deiconify()  # the error text is in the Adjust panel; a red dot alone says nothing
+                    self.panel.lift()
                 elif kind == "stopped":
                     self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
