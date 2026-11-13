@@ -134,9 +134,9 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
         rep = run_smoke(rows, engines or real_engines(a), totals=totals or machine_totals(), **run_kw)
         cm = None
         if a.comet and (a.tier or langs):
-            cm = tiers.comet_scores(rep["languages"], comet_model or load_comet(), int(a.device == "cuda"))
+            cm = tiers.comet_scores(rep["languages"], comet_model or load_comet(), int(a.device == "cuda"), exact=True)
         if a.tier:
-            rep["tier"] = tiers.summarize(rep, a.tier, cm or None)
+            rep["tier"] = tiers.summarize(rep, a.tier, {k: round(v, 2) for k, v in cm.items()} if cm else None)
         if langs and cm is not None:
             rep["comet_floor"] = langfloor.verdicts(cm, run_kw.get("pairs", FOCUS_PAIRS))
     except (FileNotFoundError, ValueError, RuntimeError) as e:  # ModelNotFound is a RuntimeError/FileNotFoundError
