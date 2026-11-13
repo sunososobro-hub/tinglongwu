@@ -45,3 +45,18 @@ def test_manual_dispatch_can_pick_a_release_tag():
     assert "release_tag" in on["workflow_dispatch"]["inputs"]
     env = wf["jobs"]["release-assets"]["steps"][1]["env"]
     assert "inputs.release_tag" in env["RELEASE_TAG"]
+
+
+def test_release_assets_covers_windows_with_install_ps1():
+    job = _wf()["jobs"]["release-assets"]
+    assert "windows-latest" in job["strategy"]["matrix"]["os"]
+    win = [s for s in job["steps"] if s.get("shell") == "powershell"]
+    assert len(win) == 1
+    run = win[0]["run"]
+    assert "releases/download/$env:RELEASE_TAG" in run and "releases/latest/download" in run
+    assert "install.ps1" in run and "install took" in run and "tlwu.exe" in run
+    assert win[0]["env"]["TLWU_SKIP_MODELS"] == "1"
+    # the bash steps must not run on the Windows cell
+    for s in job["steps"]:
+        if s.get("shell") != "powershell" and "run" in s and "Audio" not in s["name"]:
+            assert "Windows" in s["if"], s["name"]
