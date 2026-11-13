@@ -31,8 +31,20 @@
       {"label": "English (en)", "cells": ["🟢", "🟢", "🟡", "—", "⚪"]},
       {"label": "日本語 (ja)", "cells": ["🟢", "🟢", "🟡", "⚪", "⚪"]},
       {"label": "Русский (ru)", "cells": ["🟡", "🟡", "🟡", "⚪", "🟢 Linux"]},
-      {"label": "한국어 (ko)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]}
+      {"label": "한국어 (ko)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": "Tiếng Việt (vi)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": "ไทย (th)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": "Bahasa Indonesia (id)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": "Español (es)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": "Deutsch (de)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]},
+      {"label": "Français (fr)", "cells": ["⚪", "⚪", "⚪", "⚪", "⚪"]}
     ]
+  },
+  "language_priority": {
+    "_about": "Owner decision 2026-11-13 (#596): language priority follows the market (Taiwan-based meetings and business). Drives eval, docs and the support table. A light turns green only from a real run.",
+    "tier1": ["zh", "en", "ja", "ko"],
+    "tier2": ["vi", "th", "id", "es", "de", "fr"],
+    "best_effort": "all other languages (ru stays supported, no longer a priority)"
   },
   "legend": {
     "en": "🟢 tested on a real device or in the release gate · 🟡 tested only in CI or the eval, not yet on a real device (Windows install: the setup wizard; the portable zip is real-device tested. CPU-only: latency not measured on a real laptop) · ⚪ not tested yet or not supported · — same language",
