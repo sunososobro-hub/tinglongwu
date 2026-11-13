@@ -107,3 +107,14 @@ def test_refuses_other_git_python_project(tmp_path):
     assert (h / "tinglongwu" / ".git").exists() and (h / "tinglongwu" / "pyproject.toml").exists()
     assert _run(["bash", str(ROOT / "scripts" / "uninstall.sh")], h).returncode != 0
     assert (h / "tinglongwu").exists()
+
+
+def test_refuses_when_models_inside_removed_dir(tmp_path):
+    h = _home(tmp_path)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))}
+    env.update(HOME=str(h), TLWU_YES="1", TLWU_MODELS=str(h / "tinglongwu" / "models"))
+    (h / "tinglongwu" / "models").mkdir()
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "uninstall.sh")], env=env, stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0
+    assert (h / "tinglongwu" / "models").exists()
