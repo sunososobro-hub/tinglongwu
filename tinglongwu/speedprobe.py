@@ -1,7 +1,7 @@
 """Quick translation speed probe (#63 part 2 / #79). Local only, no network, no new dependency.
 
 `recommend()` (hwprobe) decides from sizes alone. On a CPU-only machine that is not enough: Hy-MT2 fits in RAM
-almost everywhere but is only pleasant on a fast CPU. Owner rule (#63, 2026-11-10 13:08): the CPU tier keeps OPUS
+almost everywhere but is only pleasant on a fast CPU. Owner rule (#63, 2026-11-10 13:08): the CPU tier uses Hy-MT2 only when it is fast enough
 unless Hy-MT2 measures a median below ~1.0 s per sentence (i5-13500: 0.93-0.96 s, "borderline"; office laptops
 are expected to be 2-3x slower). So: time a few fixed sentences (about 10-15 s in total, hard budget below),
 apply the rule, and remember the answer in the user config until the hardware changes or the user asks again.
@@ -22,7 +22,9 @@ from .hwprobe import HwInfo, Tier
 
 HYMT_CPU_MAX_MEDIAN_S = 1.0  # owner rule, #63 comment 2026-11-10 13:08
 BUDGET_S = 12.0  # stop timing new sentences after this (issue: 10-15 s)
-MIN_SAMPLES = 3  # fewer finished sentences than this = no verdict (keep OPUS)
+SLOW_MT = "too-slow"  # verdict: Hy-MT2 is too slow on this CPU (there is no other engine to fall back to)
+LEGACY_SLOW_MT = 'opus'  # what speedprobe.json files written before #471 stored for the same verdict
+MIN_SAMPLES = 3  # fewer finished sentences than this = no verdict (no verdict)
 HYMT_CPU_EXCLUDED_KEY = "hymt2 (CPU)"
 # Whisper on the CPU tier: seconds of decoding per second of audio must stay at or below this. 0.5 = 2x headroom,
 # because live mode decodes the next chunk while the same CPU translates the previous one (MT up to ~1 s per
@@ -48,7 +50,7 @@ SENTENCES = (
 
 @dataclass(frozen=True)
 class SpeedResult:
-    mt: str  # "hymt2" | "opus": what to use on this machine
+    mt: str  # "hymt2" | SLOW_MT: Hy-MT2 on this machine, or "too slow for Hy-MT2 on CPU"
     hymt_median_s: float | None  # measured median seconds per sentence; None = not measured
     samples: int
     note: str  # one line for the user
@@ -78,14 +80,14 @@ def decide(tier: Tier, times: list[float], limit: float = HYMT_CPU_MAX_MEDIAN_S)
     if tier.name != "cpu":
         return SpeedResult(tier.mt, None, 0, f"{tier.name.upper()} tier: {tier.mt} (no CPU speed test needed)")
     if len(times) < MIN_SAMPLES:
-        return SpeedResult("opus", None, len(times),
-                           f"speed test too slow or incomplete ({len(times)} sentences): keeping OPUS")
+        return SpeedResult(SLOW_MT, None, len(times),
+                           f"speed test too slow or incomplete ({len(times)} sentences): Hy-MT2 stays the engine")
     med = statistics.median(times)
     if med < limit:
         return SpeedResult("hymt2", med, len(times),
                            f"Hy-MT2 on CPU: median {med:.2f} s/sentence (< {limit:.1f} s): using Hy-MT2")
-    return SpeedResult("opus", med, len(times),
-                       f"Hy-MT2 on CPU: median {med:.2f} s/sentence (>= {limit:.1f} s): keeping OPUS")
+    return SpeedResult(SLOW_MT, med, len(times),
+                       f"Hy-MT2 on CPU: median {med:.2f} s/sentence (>= {limit:.1f} s): Hy-MT2 stays the engine")
 
 
 def time_asr(transcribe, audio, sr: int = 16000, clock=None) -> float:
@@ -173,11 +175,14 @@ def cache_path() -> Path:
 def load_cached(hw: HwInfo, path=None) -> SpeedResult | None:
     try:
         d = json.loads(Path(path or cache_path()).read_text("utf-8"))
-        if d.get("hw") != signature(hw) or d.get("mt") not in ("hymt2", "opus"):
+        if d.get("hw") != signature(hw) or d.get("mt") not in ("hymt2", SLOW_MT, LEGACY_SLOW_MT):
             return None
         med, rtf, asr = d.get("hymt_median_s"), d.get("asr_rtf"), d.get("asr")
-        return SpeedResult(d["mt"], float(med) if med is not None else None, int(d.get("samples", 0)),
-                           str(d.get("note", "")), cached=True,
+        mt, note = d["mt"], str(d.get("note", ""))
+        if mt == LEGACY_SLOW_MT:  # the old note names the removed engine: say it in Hy-MT2 terms
+            mt, note = SLOW_MT, "Hy-MT2 on CPU: too slow on this machine (remembered from an earlier speed test)"
+        return SpeedResult(mt, float(med) if med is not None else None, int(d.get("samples", 0)),
+                           note, cached=True,
                            asr=asr if asr in CPU_ASR_STEPS else None, asr_rtf=float(rtf) if rtf is not None else None)
     except Exception:  # noqa: BLE001 - missing/corrupt cache = measure again
         return None
@@ -206,7 +211,7 @@ def _hymt_cpu(models_dir, src: str, tgt: str):
 def run(hw: HwInfo, tier: Tier, models_dir, *, force: bool = False, path=None, make=None,
         clock=None, src: str = "en", tgt: str = "zh", make_asr=None, clip=None, installed=None) -> SpeedResult:
     """Cached answer for this hardware, else measure Hy-MT2 on CPU (only when the CPU tier may use it) and the
-    speech model (#131), and cache. Never raises: a missing model or a failed load means "keep OPUS", with the
+    speech model (#131), and cache. Never raises: a missing model or a failed load means "no verdict", with the
     reason in `note`."""
     if not force:
         hit = load_cached(hw, path)
@@ -220,13 +225,13 @@ def run(hw: HwInfo, tier: Tier, models_dir, *, force: bool = False, path=None, m
     if tier.name != "cpu":
         r = decide(tier, [])
     elif HYMT_CPU_EXCLUDED_KEY in tier.excluded:
-        r = SpeedResult("opus", None, 0, f"Hy-MT2 not tested: {tier.excluded[HYMT_CPU_EXCLUDED_KEY]}: keeping OPUS")
+        r = SpeedResult(SLOW_MT, None, 0, f"Hy-MT2 not tested: {tier.excluded[HYMT_CPU_EXCLUDED_KEY]}: Hy-MT2 stays the engine")
     else:
         try:
             r = decide(tier, time_mt((make or _hymt_cpu)(models_dir, src, tgt), clock=clock))
         except Exception as e:  # noqa: BLE001 - not downloaded, llama-cpp missing, load failure
             # not cached: after `tlwu-setup --hymt` the next run should measure for real
-            return SpeedResult("opus", None, 0, f"Hy-MT2 not tested ({str(e)[:120]}): keeping OPUS; {asr_note}",
+            return SpeedResult(SLOW_MT, None, 0, f"Hy-MT2 not tested ({str(e)[:120]}): Hy-MT2 stays the engine; {asr_note}",
                                asr=asr, asr_rtf=rtf)
     r = replace(r, note=f"{r.note}; {asr_note}", asr=asr, asr_rtf=rtf)
     save_cache(hw, r, path)

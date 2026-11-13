@@ -57,12 +57,12 @@ def test_4gb_gpu_is_still_gpu_tier_but_excludes_large_models():
     assert "hymt2 (GPU)" not in t.excluded
 
 
-def test_small_gpu_and_no_gpu_fall_back_to_cpu_opus():
+def test_small_gpu_and_no_gpu_fall_back_to_cpu_hymt2():
     t = recommend(HwInfo("GT 1030", 2048, 8192, 4))
-    assert (t.name, t.device, t.asr, t.mt) == ("cpu", "cpu", "small", "opus")
+    assert (t.name, t.device, t.asr, t.mt) == ("cpu", "cpu", "small", "hymt2-cpu")
     assert "2048 MiB" in t.reason and "hymt2 (GPU)" in t.excluded
     t = recommend(HwInfo(None, None, 16384, 8))
-    assert (t.name, t.mt) == ("cpu", "opus") and "no NVIDIA GPU" in t.reason
+    assert (t.name, t.mt) == ("cpu", "hymt2-cpu") and "no NVIDIA GPU" in t.reason
     assert t.excluded == {}
 
 
