@@ -102,3 +102,9 @@ def test_cli_voice_needs_vosk(capsys):
 def test_help_lists_the_ids():
     h = proto.build_parser().format_help()
     assert "--voice" in h and "0-4" in h and "165 Hz" in h
+
+
+def test_cli_voice_rejected_in_follow_mode(capsys):
+    with pytest.raises(SystemExit):
+        _parse(["--voice", "female", "--to", "follow", "--no-tts"])
+    assert "with --to follow use --speaker N" in capsys.readouterr().err

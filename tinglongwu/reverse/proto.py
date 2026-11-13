@@ -654,6 +654,8 @@ def check_args(a) -> str | None:
         return "--from en speaks Chinese to the other side: use --to zh (or leave --to out)"
     if src == "zh" and a.to == "zh":
         return "--to zh needs --from en (you speak English, the other side hears Chinese)"
+    if a.to == "follow" and getattr(a, "voice", None):  # #319: the probe would also switch the English voice
+        return "--voice picks a Vosk Russian voice: use --to ru (with --to follow use --speaker N)"
     if a.to == "follow":
         if not a.no_tts:
             if a.tts_engine != "kokoro" or not a.tts_model:
@@ -1036,6 +1038,8 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
         else:
             tts = None if a.no_tts else TTSClient(a.tts_python, a.tts_model, a.tts_engine,
                                                   a.speaker, a.to if a.to in ("ja", "zh") else "en")
+        if tts:
+            res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
         if tts and getattr(a, "voice", None):
             from .voice_pick import client_probe, format_table, pick_voice
 
@@ -1048,7 +1052,6 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
             res["voice"] = {"voice": a.voice, "speaker": tts.speaker, "f0_hz": table}
             print(f"voice: {a.voice} (speaker {tts.speaker}; measured {format_table(table)})", flush=True)
         if tts:
-            res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
             res["vram_mib"]["after_tts"] = vram_used_mib()
             res["tts_torch_peak_mib_after_warmup"] = tts.ready.get("vram_mib")
             warm_tts(tts, a.to)  # #207: the first real sentence must not pay the voice's lazy init
