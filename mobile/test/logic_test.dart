@@ -1,12 +1,35 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/context_budget.dart';
+import 'package:mobile/logic/passthrough.dart';
 import 'package:mobile/logic/prompt.dart';
+import 'package:mobile/logic/s2tw.dart';
 import 'package:mobile/logic/segmenter.dart';
 import 'package:mobile/logic/subtitle_trim.dart';
 import 'package:mobile/logic/zh_check.dart';
 import 'package:mobile/services/model_paths.dart';
 
 void main() {
+  group('zh passthrough (#581)', () {
+    test('zh skips the LLM and is converted to zh-Hant', () async {
+      var calls = 0;
+      final out = await routeTranslate('软件开发', 'zh', (t, s) async {
+        calls++;
+        return 'llm';
+      });
+      expect(calls, 0);
+      expect(out, toTraditionalTw('软件开发'));
+    });
+    test('non-zh reaches the generator with the detected src', () async {
+      String? seen;
+      final out = await routeTranslate('こんにちは', 'ja', (t, s) async {
+        seen = s;
+        return 'ok';
+      });
+      expect(seen, 'ja');
+      expect(out, 'ok');
+      expect(zhPassthrough('hi', 'yue'), isNull);
+    });
+  });
   senseVoiceRoutingTests();
   group('SentenceSegmenter', () {
     test('normalizes whitespace', () {

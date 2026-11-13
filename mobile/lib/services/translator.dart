@@ -1,6 +1,7 @@
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 import '../logic/context_budget.dart';
+import '../logic/passthrough.dart';
 import '../logic/prompt.dart';
 import '../logic/s2tw.dart';
 import '../logic/zh_check.dart';
@@ -65,6 +66,19 @@ class Translator {
   /// [src] is the ASR-detected source language code (see [PromptBuilder]).
   Future<Translation> translate(String ru, {String src = 'ru'}) async {
     final sw = Stopwatch()..start();
+    final pass = zhPassthrough(ru, src);
+    if (pass != null) {
+      // zh -> zh: no LLM call (#581), same as desktop src == tgt.
+      return Translation(
+        zh: pass,
+        check: checkChinese(pass),
+        tokens: 0,
+        totalMs: sw.elapsedMilliseconds,
+        firstTokenMs: 0,
+        genMs: 0,
+        nCtx: 0,
+      );
+    }
     final prompt = PromptBuilder.build(ru.trim(), src: src);
     await _session.clear();
     final buf = StringBuffer();
