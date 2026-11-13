@@ -85,7 +85,7 @@ def added_lines(patch: str) -> list[str]:
     """'+' lines inside hunks. A '+++' file header only counts before the first '@@'; inside a hunk,
     '+++x' is the added source line '++x' (repeated unary plus is valid Python)."""
     out, in_hunk = [], False
-    for ln in patch.splitlines():
+    for ln in patch.split("\n"):  # not splitlines(): it also breaks on \f, \v, \x1c.. inside a source line
         if ln.startswith("@@"):
             in_hunk = True
         elif ln.startswith("+") and (in_hunk or not ln.startswith("+++")):

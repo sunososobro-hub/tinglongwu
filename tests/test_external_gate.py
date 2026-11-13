@@ -234,3 +234,10 @@ def test_r3_fullwidth_lookalike_identifiers_fail(line):
     files = _ok_files()
     files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"
     assert _lane(files)["failed"] == ["r3_denylist"]
+
+
+@pytest.mark.parametrize("ch", ["\x0c", "\x0b", "\x1c", " "])
+def test_r3_line_separator_chars_do_not_hide_added_code(ch):
+    files = _ok_files()
+    files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{ch}eval('1')\n"
+    assert _lane(files)["failed"] == ["r3_denylist"]
