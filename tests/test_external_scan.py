@@ -10,13 +10,19 @@ U = lambda n: {"login": n, "type": "User"}
 BOT = lambda n: {"login": n, "type": "Bot"}
 
 
-def commit(sha, subject, date, name="x", parents=()):
+def commit(sha, subject, date, name="x"):
     return {"sha": sha, "commit": {"message": subject + "\n\nbody", "author": {"name": name, "date": date}}}
 
 
-# upstream history (after a rewrite: new SHAs, same author time/name/subject)
-UP = [commit("u2", "fix #9: thing (#10)", "2026-11-11T20:00:00+08:00", "o"),
-      commit("u1", "Merge pull request #1", "2026-11-10T23:38:24+08:00", "o")]
+# upstream: main has u2 (main only) and u1; dev has u3 (dev only) and u1
+U1 = commit("u1", "Merge pull request #1", "2026-11-10T23:38:24+08:00", "o")
+U2 = commit("u2", "fix #9: thing (#10)", "2026-11-11T20:00:00+08:00", "o")
+U3 = commit("u3", "fix #11: other (#12)", "2026-11-12T08:00:00+08:00", "o")
+OWN = lambda sha, subj: commit(sha, subj, "2026-11-12T10:00:00Z", "jerry")
+
+
+def hist(sha):
+    return f"repos/{R}/commits?sha={sha}&per_page=100&page=1"
 
 
 class API:
@@ -46,43 +52,50 @@ class API:
                 {"pull_request_url": f"https://api.github.com/repos/{R}/pulls/3", "created_at": "2026-11-01T00:00:00Z", "user": U(O)},
                 {"pull_request_url": f"https://api.github.com/repos/{R}/pulls/3", "created_at": "2026-11-01T05:00:00Z", "user": U("carl")},
             ],
+            f"repos/{R}/pulls?state=all&per_page=100": [
+                {"number": 3, "user": U("carl")}, {"number": 5, "user": U(O)}, {"number": 9, "user": U("zed")}],
+            f"repos/{R}/pulls/3/reviews?per_page=100": [
+                {"body": "", "submitted_at": "2026-11-01T06:00:00Z", "user": U("carl")}],
+            # owner's open PR: outsider review body, then owner replies with a review body -> answered
+            f"repos/{R}/pulls/5/reviews?per_page=100": [
+                {"body": "looks off", "submitted_at": "2026-11-03T00:00:00Z", "user": U("amy")},
+                {"body": "fixed", "submitted_at": "2026-11-03T01:00:00Z", "user": U(O)}],
+            f"repos/{R}/pulls/6/reviews?per_page=100": [],
+            # closed outsider PR whose only activity is a review body -> unanswered
+            f"repos/{R}/pulls/9/reviews?per_page=100": [
+                {"body": "please look", "submitted_at": "2026-11-04T00:00:00Z", "user": U("zed")},
+                {"body": "pending", "submitted_at": None, "user": U("zed")}],
             f"repos/{R}": {"default_branch": "main"},
-            f"repos/{R}/forks?per_page=100": [{"full_name": f"{x}/r"} for x in "abcdefg"],
-            # a: ahead by 4 vs main, by 3 vs dev -> 3 commits in neither
+            f"repos/{R}/forks?per_page=100": [{"full_name": f"{x}/r"} for x in "abcdefghm"],
+            f"repos/{R}/commits?sha=main&per_page=100": [U2, U1],
+            f"repos/{R}/commits?sha=dev&per_page=100": [U3, U1],
+            # a: own commit a1 under its head, on top of upstream SHAs -> ahead 2
             "repos/a/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "aaa"}}],
-            f"repos/{R}/compare/main...aaa?per_page=1": {"ahead_by": 4},
-            f"repos/{R}/compare/dev...aaa?per_page=1": {"ahead_by": 3},
-            # b: even
-            "repos/b/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "bbb"}}],
-            f"repos/{R}/compare/main...bbb?per_page=1": {"ahead_by": 0},
-            f"repos/{R}/compare/dev...bbb?per_page=1": {"ahead_by": 2},
-            # c: gh cannot read the fork -> git refs fallback, branch ahead by 1
+            hist("aaa"): [OWN("aaa", "head"), OWN("a1", "own"), U2, U1],
+            # b: head is an upstream commit -> even, history not walked
+            "repos/b/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "u2"}}],
+            # c: gh cannot read the fork -> git refs fallback
             "repos/c/r/branches?per_page=100": es.FetchError("gh: access not enabled (HTTP 403)"),
-            f"repos/{R}/compare/main...ccc?per_page=1": {"ahead_by": 1},
-            f"repos/{R}/compare/dev...ccc?per_page=1": {"ahead_by": 1},
+            hist("ccc"): [OWN("ccc", "c own"), U1],
             # d: fork unreadable both ways -> reported, not dropped
             "repos/d/r/branches?per_page=100": es.FetchError("gh: Not Found (HTTP 404)"),
-            # e: compare fails for another reason -> reported with the reason
+            # e: history walk fails -> reported with the reason
             "repos/e/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "eee"}}],
-            f"repos/{R}/compare/main...eee?per_page=1": es.FetchError("gh: Server Error (HTTP 502)"),
-            f"repos/{R}/compare/dev...eee?per_page=1": es.FetchError("gh: Server Error (HTTP 502)"),
-            # f: upstream history was rewritten; fork has 1 own commit on top of a shared one
+            hist("eee"): es.FetchError("gh: Server Error (HTTP 502)"),
+            # f: forked before the upstream rewrite: same author instant (other tz) + subject, new SHAs/author
             "repos/f/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "fff"}}],
-            f"repos/{R}/compare/main...fff?per_page=1": es.FetchError("gh: No common ancestor between main and fff. (HTTP 404)"),
-            f"repos/{R}/compare/dev...fff?per_page=1": es.FetchError("gh: No common ancestor between dev and fff. (HTTP 404)"),
-            f"repos/{R}/commits?sha=fff&per_page=100&page=1": [
-                commit("fff", "Updated the gitignore file", "2026-11-12T10:00:00Z", "jerry"),
-                commit("f1", "fix #9: thing (#10)", "2026-11-11T12:00:00Z", "Alonso"),  # == u2: same instant, other tz, renamed author
-                commit("f0", "Merge pull request #1", "2026-11-10T15:38:24Z", "o")],
-            # g: rewritten, nothing shared
+            hist("fff"): [OWN("fff", "Updated the gitignore file"),
+                          commit("f2", "fix #9: thing (#10)", "2026-11-11T12:00:00Z", "Alonso"),
+                          commit("f1", "Merge pull request #1", "2026-11-10T15:38:24Z", "Alonso")],
+            # g: nothing shared
             "repos/g/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "ggg"}}],
-            f"repos/{R}/compare/main...ggg?per_page=1": es.FetchError("gh: No common ancestor between main and ggg. (HTTP 404)"),
-            f"repos/{R}/compare/dev...ggg?per_page=1": es.FetchError("gh: No common ancestor between dev and ggg. (HTTP 404)"),
-            f"repos/{R}/commits?sha=ggg&per_page=100&page=1": [
-                commit("ggg", "old menu tweak", "2026-11-09T00:00:00Z", "pm"),
-                commit("g0", "initial", "2026-11-08T00:00:00Z", "o")],
-            f"repos/{R}/commits?sha=main&per_page=100": UP,
-            f"repos/{R}/commits?sha=dev&per_page=100": UP[:1],
+            hist("ggg"): [OWN("ggg", "old menu tweak"), OWN("g0", "initial")],
+            # h: head matches upstream u3 by key, but its parent h1 is an outside change -> ahead 1
+            "repos/h/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "hhh"}}],
+            hist("hhh"): [commit("hhh", "fix #11: other (#12)", "2026-11-12T00:00:00Z"), OWN("h1", "outside"), U1],
+            # m: merge of main-only u2 and dev-only u3 -> only the merge itself is not upstream
+            "repos/m/r/branches?per_page=100": [{"name": "main", "commit": {"sha": "mmm"}}],
+            hist("mmm"): [OWN("mmm", "Merge main and dev"), U3, U2, U1],
         }
         self.t.update(extra or {})
 
@@ -115,41 +128,54 @@ def test_four_sections_issues_prs_comments():
     assert [line for line in section(out, "Open non-owner issues") if line] == ["#1 outsider bug (@bob)"]
     assert [line for line in section(out, "Open non-owner PRs") if line] == ["#3 ext pr (@carl)"]
     com = [line for line in section(out, "Non-owner comments") if line]
-    # #1 answered by owner, #7 bot only -> not listed; #2 dan after owner, #3 review comment, #8 never answered
-    assert [c.split(" by ")[0] for c in com] == ["#2", "#3", "#8"]
-    assert "@carl" in com[1] and "@eve" in com[2]
+    # #1 answered by owner, #7 bot only, #5 answered by an owner review body -> not listed
+    # #2 dan after owner, #3 review comment, #8 never answered, #9 review body only
+    assert [c.split(" by ")[0] for c in com] == ["#2", "#3", "#8", "#9"]
+    assert "@carl" in com[1] and "@eve" in com[2] and "@zed (last 2026-11-04T00:00:00Z)" in com[3]
 
 
 def test_forks_ahead_even_and_failures_are_all_reported():
     forks = section(run(), "Forks with commits not in upstream")
-    text = "\n".join(forks)
-    assert "a/r:main ahead by 3" in text  # min over main/dev
-    assert "b/r" not in "\n".join(forks[:-1])  # even fork is not in the ahead list ...
-    assert "even with upstream: b/r" in forks[-1]  # ... but named in the summary
+    text = "\n".join(forks[:-1])
+    assert "a/r:main ahead by 2" in text  # every unshared commit, not just the head
+    assert "b/r" not in text and "even with upstream: b/r" in forks[-1]
     assert "c/r:main ahead by 1" in text  # branch heads from git refs when gh cannot read the fork
     assert "d/r check failed: branches: gh: Not Found (HTTP 404); git refs: HTTP Error 404: Not Found" in text
-    assert "e/r:main check failed: main: gh: Server Error (HTTP 502); dev: gh: Server Error (HTTP 502)" in text
-    assert "f/r:main ahead by 1" in text  # rewritten upstream: matched by author time + subject
-    assert "g/r:main unrelated history: 2+ commits, no commit shared with upstream, head ggg old menu tweak" in text
-    assert "7 forks checked" in forks[-1]
+    assert "e/r:main check failed: history walk failed: gh: Server Error (HTTP 502)" in text
+    assert "f/r:main ahead by 1" in text  # rewritten upstream: matched by author instant + subject
+    assert "g/r:main unrelated history: 2 commits, none shared with upstream, head ggg old menu tweak" in text
+    assert "h/r:main ahead by 1" in text  # a shared head does not hide an outside ancestor
+    assert "m/r:main ahead by 1" in text  # union of main and dev, not min of per-base counts
+    assert "9 forks checked" in forks[-1]
 
 
 def test_one_fork_raising_does_not_hide_the_others():
-    api = API({f"repos/{R}/compare/main...aaa?per_page=1": RuntimeError("boom")})
+    api = API({hist("aaa"): RuntimeError("boom")})
     text = "\n".join(section(run(api), "Forks with commits not in upstream"))
-    assert "a/r:main ahead by 3" in text  # dev compare still worked
-    api = API({f"repos/{R}/compare/main...aaa?per_page=1": RuntimeError("boom"),
-               f"repos/{R}/compare/dev...aaa?per_page=1": RuntimeError("boom2")})
-    text = "\n".join(section(run(api), "Forks with commits not in upstream"))
-    assert "a/r:main check failed: main: boom; dev: boom2" in text
+    assert "a/r:main check failed: history walk failed: boom" in text
     assert "c/r:main ahead by 1" in text and "f/r:main ahead by 1" in text
+
+
+def test_upstream_read_failure_is_reported_per_fork():
+    api = API({f"repos/{R}/commits?sha=dev&per_page=100": es.FetchError("gh: Bad credentials (HTTP 401)")})
+    text = "\n".join(section(run(api), "Forks with commits not in upstream"))
+    assert "a/r check failed: gh: Bad credentials (HTTP 401)" in text
+    assert "ahead by" not in text
+
+
+def test_long_history_is_not_reported_as_checked():
+    api = API({hist("aaa"): [OWN(f"x{i}", f"c{i}") for i in range(100)],
+               f"repos/{R}/commits?sha=aaa&per_page=100&page=2": [OWN(f"y{i}", f"d{i}") for i in range(100)]})
+    up = es.upstream_commits(api, R, ["main", "dev"])
+    assert es.check_branch(api, R, "aaa", up, max_pages=2) == (
+        "error", "history longer than 200 commits, not fully checked (200+ not upstream)")
 
 
 def test_upstream_history_fetched_only_when_needed():
     api = API()
-    api.t[f"repos/{R}/forks?per_page=100"] = [{"full_name": "a/r"}, {"full_name": "b/r"}]
+    api.t[f"repos/{R}/forks?per_page=100"] = [{"full_name": "d/r"}]
     run(api)
-    assert not any("/commits?sha=main" in c for c in api.calls)
+    assert not any("/commits?sha=" in c for c in api.calls)
 
 
 def test_only_get_requests(monkeypatch):

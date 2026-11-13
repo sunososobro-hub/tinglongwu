@@ -12,11 +12,11 @@ Bots (user.type == "Bot", e.g. coderabbitai[bot]) are not outside contributors a
 
 Reads only: `gh api` GET requests. A fork's branch heads come from `gh api repos/<fork>/branches`; if
 that is refused (e.g. a token scoped to this repo only), they come from the fork's public git ref list
-(`https://github.com/<fork>.git/info/refs`, read with urllib). Each head is compared inside this repo
-(`repos/<repo>/compare/<base>...<sha>`), which works for any commit in the fork network and avoids
-the cross-fork `owner:branch` selector. If upstream history was rewritten after the fork was made
-(GitHub answers "No common ancestor"), the fork's commits are matched to upstream ones by author
-time + subject, and the commits above the newest shared one are counted.
+(`https://github.com/<fork>.git/info/refs`, read with urllib). Each head is checked
+by listing its whole history through this repo (`repos/<repo>/commits?sha=<sha>`, which serves
+any commit in the fork network, no cross-fork `owner:branch` selector) and counting the commits that
+are in no upstream base. Upstream history was rewritten after some forks were made, so a commit also
+counts as upstream when an upstream commit has the same author time + subject.
 
   python scripts/external_scan.py [--repo OWNER/NAME] [--owner LOGIN]
 """
@@ -113,56 +113,40 @@ def commit_key(c: dict) -> tuple[str, str]:
     return when, (c["commit"]["message"].splitlines() or [""])[0]
 
 
-def upstream_keys(fetch, repo: str, bases: list[str]) -> set:
-    return {commit_key(c) for b in bases for c in _items(fetch, f"repos/{repo}/commits?sha={b}&per_page=100")}
+def upstream_commits(fetch, repo: str, bases: list[str]) -> tuple[set, set]:
+    """(SHAs, commit_keys) of every commit reachable from the upstream bases."""
+    cs = [c for b in bases for c in _items(fetch, f"repos/{repo}/commits?sha={b}&per_page=100")]
+    return {c["sha"] for c in cs}, {commit_key(c) for c in cs}
 
 
-def count_unshared(fetch, repo: str, sha: str, keys: set, max_pages: int = 20) -> tuple[int, bool, str]:
-    """Walk the fork branch's history (first-parent order as the API lists it) until a commit whose
-    key is upstream. Returns (commits before it, found a shared commit, head subject)."""
-    n, head = 0, ""
-    for page in range(1, max_pages + 1):
-        cs = fetch(f"repos/{repo}/commits?sha={sha}&per_page=100&page={page}")
-        for c in cs:
-            head = head or commit_key(c)[1]
-            if commit_key(c) in keys:
-                return n, True, head
-            n += 1
-        if len(cs) < 100:
-            break
-    return n, False, head
-
-
-def check_branch(fetch, repo: str, bases: list[str], sha: str, keys=None) -> tuple[str, int | str]:
+def check_branch(fetch, repo: str, sha: str, upstream: tuple[set, set], max_pages: int = 20) -> tuple[str, int | str]:
     """("ahead", n) | ("even", 0) | ("unrelated", text) | ("error", msg).
 
-    ahead = commits reachable from sha and from none of the upstream bases (min over bases).
-    When upstream history was rewritten (GitHub: "No common ancestor"), commits are matched by
-    commit_key instead of SHA; `keys` is a zero-arg callable returning the upstream key set."""
-    aheads, errors, unrelated = [], [], False
-    for base in bases:
-        try:
-            c = fetch(f"repos/{repo}/compare/{base}...{sha}?per_page=1")
-            aheads.append(int(c["ahead_by"]))
-        except Exception as e:  # noqa: BLE001 - recorded, shown in the report
-            if "no common ancestor" in str(e).lower():
-                unrelated = True
-            else:
-                errors.append(f"{base}: {_msg(e)}")
-    if aheads:
-        n = min(aheads)
-        return ("ahead", n) if n else ("even", 0)
-    if unrelated and keys is not None:
-        try:
-            n, shared, head = count_unshared(fetch, repo, sha, keys())
-        except Exception as e:  # noqa: BLE001
-            return ("error", f"rewritten upstream history, walk failed: {_msg(e)}")
-        if shared:
-            return ("ahead", n) if n else ("even", 0)
-        return ("unrelated", f"{n}+ commits, no commit shared with upstream, head {sha[:7]} {head}")
-    if unrelated:
-        return ("unrelated", f"no common ancestor with upstream, head {sha[:7]}")
-    return ("error", "; ".join(errors) or "no upstream base to compare with")
+    n = commits reachable from the fork head that are in none of the upstream bases. Every commit of
+    the head's history is checked (a shared commit says nothing about its fork-side ancestors), by SHA
+    or, because upstream history was rewritten, by commit_key. The fork's commits are listed through
+    this repo (`repos/<repo>/commits?sha=<head>`), which serves any commit of the fork network."""
+    shas, keys = upstream
+    if sha in shas:
+        return ("even", 0)
+    n = total = 0
+    head = ""
+    try:
+        for page in range(1, max_pages + 1):
+            cs = fetch(f"repos/{repo}/commits?sha={sha}&per_page=100&page={page}")
+            for c in cs:
+                head = head or commit_key(c)[1]
+                total += 1
+                n += c["sha"] not in shas and commit_key(c) not in keys
+            if len(cs) < 100:
+                break
+        else:
+            return ("error", f"history longer than {max_pages * 100} commits, not fully checked ({n}+ not upstream)")
+    except Exception as e:  # noqa: BLE001 - recorded, shown in the report
+        return ("error", f"history walk failed: {_msg(e)}")
+    if total and n == total:
+        return ("unrelated", f"{n} commits, none shared with upstream, head {sha[:7]} {head}")
+    return ("ahead", n) if n else ("even", 0)
 
 
 def scan_forks(fetch, repo: str, bases: list[str], refs=git_refs, workers: int = 8) -> list[tuple]:
@@ -170,21 +154,27 @@ def scan_forks(fetch, repo: str, bases: list[str], refs=git_refs, workers: int =
     forks = _items(fetch, f"repos/{repo}/forks?per_page=100")
     lock, cache = threading.Lock(), {}
 
-    def keys():  # fetched once, only if some fork needs it
+    def upstream():  # fetched once, only if some fork has a branch to check
         with lock:
-            if "k" not in cache:
-                cache["k"] = upstream_keys(fetch, repo, bases)
-            return cache["k"]
+            if "u" not in cache:
+                cache["u"] = upstream_commits(fetch, repo, bases)
+            return cache["u"]
+
+    def check(sha):  # many forks share a head
+        if sha not in cache:
+            cache[sha] = check_branch(fetch, repo, sha, upstream())
+        return cache[sha]
 
     def one(f):
         name = f["full_name"]
         try:
             heads = fork_heads(fetch, name, refs)
+            if not heads:
+                return [(name, None, "error", "no branches found")]
+            upstream()  # an upstream read failure is reported per fork, not raised
         except Exception as e:  # noqa: BLE001
             return [(name, None, "error", _msg(e))]
-        if not heads:
-            return [(name, None, "error", "no branches found")]
-        return [(name, b, *check_branch(fetch, repo, bases, sha, keys)) for b, sha in sorted(heads.items())]
+        return [(name, b, *check(sha)) for b, sha in sorted(heads.items())]
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         return [row for rows in ex.map(one, forks) for row in rows]
@@ -194,11 +184,16 @@ def _thread_no(url: str) -> int:
     return int(url.rstrip("/").rsplit("/", 1)[1])
 
 
-def unanswered(fetch, repo: str, owner: str) -> list[tuple[int, list[str], str]]:
+def unanswered(fetch, repo: str, owner: str, review_prs=()) -> list[tuple[int, list[str], str]]:
     """[(thread number, [non-owner logins], last comment time)] where a human non-owner spoke last.
 
-    Covers issue/PR conversation comments and PR review (code) comments, open and closed threads."""
+    Covers issue/PR conversation comments and PR review (code) comments on open and closed threads,
+    plus submitted review bodies on the PRs in review_prs (GitHub has no repo-wide reviews list)."""
     threads: dict[int, list[tuple[str, str]]] = {}
+    for n in review_prs:
+        for rv in _items(fetch, f"repos/{repo}/pulls/{n}/reviews?per_page=100"):
+            if (rv.get("body") or "").strip() and rv.get("submitted_at"):
+                threads.setdefault(n, []).append((rv["submitted_at"], rv["user"]))
     for c in _items(fetch, f"repos/{repo}/issues/comments?per_page=100"):
         threads.setdefault(_thread_no(c["issue_url"]), []).append((c["created_at"], c["user"]))
     for c in _items(fetch, f"repos/{repo}/pulls/comments?per_page=100"):
@@ -218,9 +213,13 @@ def scan(fetch, repo: str = REPO, owner: str = OWNER, refs=git_refs) -> dict:
     ext_issues = [i for i in issues if "pull_request" not in i and _human(i["user"]) and i["user"]["login"] != owner]
     pulls = _items(fetch, f"repos/{repo}/pulls?state=open&per_page=100")
     ext_prs = [p for p in pulls if _human(p["user"]) and p["user"]["login"] != owner]
+    # review bodies: every open PR, and every PR (any state) opened by an outsider
+    review_prs = sorted({p["number"] for p in pulls} | {
+        p["number"] for p in _items(fetch, f"repos/{repo}/pulls?state=all&per_page=100")
+        if _human(p["user"]) and p["user"]["login"] != owner})
     info = fetch(f"repos/{repo}")
     bases = list(dict.fromkeys([info.get("default_branch") or "main", "dev"]))
-    return {"issues": ext_issues, "prs": ext_prs, "comments": unanswered(fetch, repo, owner),
+    return {"issues": ext_issues, "prs": ext_prs, "comments": unanswered(fetch, repo, owner, review_prs),
             "forks": scan_forks(fetch, repo, bases, refs), "bases": bases}
 
 
