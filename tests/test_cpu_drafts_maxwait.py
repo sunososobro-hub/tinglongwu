@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -166,7 +165,6 @@ def test_windows_menu_drafts_question(tmp_path, ui, dflt, answer, want):
     assert ("n=" if dflt == "1" else "y=") in prompt and "ASK_STREAM" not in prompt
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="bash menu")
 @pytest.mark.parametrize("answer,want", [("", False), ("n", False), ("y", True), ("yes", True)])
 def test_linux_menu_record_question_default_off(tmp_path, answer, want):
     assert ("--record" in _run_menu(tmp_path, f"3\n\n{answer}\n\n")[0]) is want  # #239: asked after save
