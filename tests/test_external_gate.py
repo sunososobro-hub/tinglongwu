@@ -196,7 +196,10 @@ def test_r3_spaced_os_system_fails(line):
     assert _lane(files)["failed"] == ["r3_denylist"]
 
 
-@pytest.mark.parametrize("line", ["system('x')", "o.popen('x')", "os.execv(p, a)", "os.spawnl(m, p)"])
+@pytest.mark.parametrize("line", ["system('x')", "o.popen('x')", "os.execv(p, a)", "os.spawnl(m, p)",
+                                  "from os import system as run", "os.posix_spawn(p, a, e)",
+                                  "from os import posix_spawnp", "pid = os.fork()",
+                                  "getattr(os, 'sys' + 'tem')", "globals()['x']", "vars(m)['x']"])
 def test_r3_other_process_primitives_fail(line):
     files = _ok_files()
     files[0]["patch"] = f"@@ -1 +1 @@\n-a = 1\n+{line}\n"

@@ -12,6 +12,8 @@ Rules (script first; the LLM review can only block, never override a failed rule
                with --pr, the file list must be complete (== changed_files), else fail closed
   r3_denylist  added lines contain no network / process / dynamic-code primitive (DENYLIST); every
                changed file has a readable patch (a binary or truncated diff cannot be inspected)
+               (a text denylist cannot see every disguise, e.g. names built from strings at run time;
+               it is a cheap first filter and r5 plus the owner lane for anything protected stay the backstop)
   r4_tests     at least one test file under tests/ added or modified, and the check runs are all green
   r5_review    the AI review verdict is exactly "PASS" (PR title/body/comments are untrusted data and
                are never read by this script)
@@ -50,7 +52,8 @@ PROTECTED_FILES = frozenset({
 DENYLIST = ("socket", "urllib", "requests", "http", "subprocess", "os.system", "eval(", "exec(",
             "__import__", "importlib", "pickle", "base64", "ctypes")  # list from #352 rule 3
 _DENY_RX = re.compile("|".join([re.escape(w) for w in DENYLIST] + [r"\b(?:eval|exec|compile)\s*\(", r"\bos\s*\.\s*system\b",
-                       r"\bsystem\s*\(", r"popen", r"\bspawn", r"\bexec[lv]p?e?\s*\("]),
+                       r"\bsystem\b", r"popen", r"spawn", r"\bfork\b", r"\bexec[lv]p?e?\b",
+                       r"\bgetattr\s*\(", r"\bglobals\s*\(", r"\bvars\s*\(", r"__builtins__"]),
                       re.IGNORECASE)  # extra patterns catch "eval (x)" and "os . system" (whitespace is legal Python)
 GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
