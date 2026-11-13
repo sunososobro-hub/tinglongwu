@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import gate, scoring, tierchart, tiers
+from . import gate, history, scoring, tierchart, tiers
 from . import noise as noise_mod
 from .runner import CLIPS_PER_LANG, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
@@ -23,7 +23,9 @@ def format_report(rep: dict) -> str:
         lines.append(f"{lg['pair']}: load {s['load']:.1f}s | ASR {s['asr']:.1f}s RTF {lg['asr_rtf']} {st['asr']} | "
                      f"MT {s['mt']:.1f}s median {lg['mt_median_s']}s {st['mt']} | {tts} | "
                      f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}% chrF {lg['chrf']}"
-                     + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}"))
+                     + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}")
+                     + ("" if st.get("vram") == "SKIP" else f" | VRAM {lg['peak_vram_mib']} MiB (budget "
+                        f"{lg['vram_budget_mib']}) {st['vram']}"))
     nz = rep.get("noise")
     if nz:
         for cat, e in nz["categories"].items():
@@ -95,7 +97,12 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
                    help="compare a --smoke report to the baseline: exit 1 on a chrF or MT latency regression (#361)")
     p.add_argument("--baseline", default="eval/baseline.json",
                    help="baseline for --gate (default: eval/baseline.json); all margins and budgets live there")
+    p.add_argument("--history", metavar="FILE.jsonl",
+                   help="with --smoke: append one JSON line (date, commit, chrF/MT/ASR per pair, VRAM, hallucinations) (#123)")
+    p.add_argument("--trend", metavar="FILE.jsonl", help="draw trend charts from a --history file into --out (default trend.html) (#123)")
     a = p.parse_args(argv)
+    if a.trend:
+        return history.trend_main(a.trend, "trend.html" if a.out == "report.json" else a.out)
     if a.chart:
         return tierchart.main(p, a.chart)
     if a.gate:
@@ -127,6 +134,8 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
         return 2
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(rep, f, ensure_ascii=False, indent=2)
+    if a.history:
+        history.append(a.history, rep, history.git_commit())
     print(format_report(rep))
     if "tier" in rep:
         print(tiers.summary_line(rep["tier"]))

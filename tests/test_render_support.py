@@ -21,9 +21,11 @@ def test_release_notes_use_the_same_block_as_the_english_readme():
     m = _mod()
     src, people = m.load()
     readme = (ROOT / "README.md").read_text("utf-8")
-    block = m.BLOCK.search(readme).group(0)
+    assert m.C_BLOCK.search(readme).group(0) == m.readme_block(src, people, "en")
+    assert m.START not in readme and "latency.svg" not in readme  # support tables live in the notes and on the roadmap
     notes = m.notes("v9.9.9", src, people)
-    assert block in notes
+    block = m.block(src, people, "en")
+    assert block in notes and m.contributors(src, people, "en") in block
     assert notes.index("## Download") < notes.index(block) < notes.index("## What's new")
     assert "releases/download/v9.9.9/tinglongwu-setup-9.9.9.exe" in notes
 
@@ -45,7 +47,7 @@ def test_check_detects_a_stale_readme(tmp_path):
         (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
     (tmp_path / "docs").mkdir(exist_ok=True)
     src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))
-    src["language"]["rows"][-1]["cells"][0] = "🟢"
+    src["contributors"]["heading"]["en"] = "Thanks to {n} people"
     (tmp_path / "docs" / "support.json").write_text(json.dumps(src, ensure_ascii=False), "utf-8")
     assert m.main(["--check"], root=tmp_path) == 1
     assert m.main([], root=tmp_path) == 0 and m.main(["--check"], root=tmp_path) == 0

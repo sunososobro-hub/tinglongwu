@@ -1,0 +1,49 @@
+name: Translation error / 翻譯錯誤
+description: Wrong, missing or odd translation. / 翻錯、漏翻或怪怪的翻譯
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      placeholder: v0.1.0 (or commit)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS / 作業系統
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode / 模式
+      options: [listen, speak, meeting]
+    validations:
+      required: true
+  - type: input
+    id: langpair
+    attributes:
+      label: Language pair / 語言組合
+      placeholder: ja -> zh-TW
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened (source text and what tlwu output) / 原文與實際輸出
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected (correct translation) / 正確翻譯
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines (optional) / 日誌（選填）
+      render: text

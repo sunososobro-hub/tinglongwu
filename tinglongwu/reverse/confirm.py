@@ -159,6 +159,7 @@ class ConfirmSession:
         self.clock = clock
         self._submit_lock = threading.Lock()
         self.on_first_part: Callable[[Utterance], object] | None = None  # #207: called once per utterance
+        self.on_show: Callable[[Utterance], object] | None = None  # #494: called when a line is really shown
 
     def _first(self, u: Utterance) -> None:
         if self.on_first_part is not None and not u.extra.get("_first_seen"):
@@ -214,6 +215,8 @@ class ConfirmSession:
             back = u.back
             self._shown.add(id(u))
         self.out(f"\n{blk}" + (f"\n{fmt.INDENT}← BACK(zh): {back}" if back else ""))
+        if self.on_show is not None:
+            self.on_show(u)
 
     def _ask(self, u: Utterance) -> bool:
         """True = send: only "y" (any case). A bare Enter, r/x, anything else or EOF discards."""

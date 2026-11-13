@@ -176,6 +176,39 @@ def group_series(issues, token_events, days, group):
     return vals
 
 
+def parse_ts(ts):
+    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def median_hours(pairs, since=None):
+    """Median hours between (start, end) ISO timestamps; only ends >= since (datetime) if given."""
+    vals = []
+    for a, b in pairs:
+        if since is not None and parse_ts(b) < since:
+            continue
+        vals.append((parse_ts(b) - parse_ts(a)).total_seconds() / 3600.0)
+    vals.sort()
+    if not vals:
+        return None
+    m = len(vals) // 2
+    return round(vals[m] if len(vals) % 2 else (vals[m - 1] + vals[m]) / 2, 2)
+
+
+def count_since(timestamps, since):
+    return sum(1 for t in timestamps if parse_ts(t) >= since)
+
+
+def hero_stats(merged, closed, commits, created, now):
+    """Today (UTC day) / last 24h / total counts for PRs merged, issues closed, commits."""
+    today = now.strftime("%Y-%m-%d")
+    d24 = now - timedelta(hours=24)
+    out = {"day_n": (now.date() - parse_ts(created).date()).days + 1}
+    for k, ts in (("prs", merged), ("issues", closed), ("commits", commits)):
+        out[k] = {"today": sum(1 for t in ts if day_of(t) == today),
+                  "h24": count_since(ts, d24), "total": len(ts)}
+    return out
+
+
 def build_series(api, repo, branch, now):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
@@ -192,6 +225,15 @@ def build_series(api, repo, branch, now):
         print("events unavailable: %s" % e, file=sys.stderr)
         events, have_events = [], False
     tev = collect_token_events(events)
+    pulls = _pages(api, "/repos/%s/pulls?state=closed&base=%s" % (repo, branch))
+    merged_prs = [p for p in pulls if p.get("merged_at")]
+    pr_merged_ts = [p["merged_at"] for p in merged_prs]
+    closed_issues = [i for i in issues if i.get("closed_at")]
+    issue_closed_ts = [i["closed_at"] for i in closed_issues]
+    commit_ts = [c["commit"]["committer"]["date"] for c in commits]
+    week = now - timedelta(days=7)
+    pr_pairs = [(p["created_at"], p["merged_at"]) for p in merged_prs]
+    is_pairs = [(i["created_at"], i["closed_at"]) for i in closed_issues]
     try:
         ms = [{"title": m["title"], "open": m["open_issues"], "closed": m["closed_issues"]}
               for m in _pages(api, "/repos/%s/milestones?state=all" % repo)]
@@ -211,6 +253,11 @@ def build_series(api, repo, branch, now):
         "groups": {g: group_series(issues, tev, days, g) for g in GROUPS},
         "label_history_from_events": have_events,
         "milestones": ms,
+        "prs_merged": per_day(pr_merged_ts, days),
+        "issues_closed": per_day(issue_closed_ts, days),
+        "hero": hero_stats(pr_merged_ts, issue_closed_ts, commit_ts, created, now),
+        "speed": {"issue_all": median_hours(is_pairs), "issue_7d": median_hours(is_pairs, week),
+                  "pr_all": median_hours(pr_pairs), "pr_7d": median_hours(pr_pairs, week)},
     }
 
 
@@ -247,7 +294,7 @@ def merge_history(history, snap):
 
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>tlwu stats</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>tlwu stats</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
 <style>
 :root{--bg:#fff;--fg:#1d2329;--mut:#667;--bd:#d0d7de;--a:#2a7d4f;--grid:#e6e9ec}
 @media (prefers-color-scheme:dark){:root{--bg:#14181c;--fg:#e4e8ec;--mut:#9aa4ae;--bd:#30363d;--a:#4cc38a;--grid:#262c33}}
@@ -261,16 +308,20 @@ select{font:inherit;padding:4px 8px;background:var(--bg);color:var(--fg);border:
 .pb{height:10px;background:var(--grid);border-radius:5px;overflow:hidden}.pb div{height:100%;background:var(--a)}
 small,p.n{color:var(--mut)}
 </style></head><body>
-<h1 style="font-size:20px">__REPO__ stats (__BRANCH__)</h1>
-<p class="n" id="upd"></p><div id="tiles"></div>
+<h1 style="font-size:20px">__REPO__ progress</h1>
+<p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
+<div id="hero"></div>
+<h2>Work finished per day</h2><div id="c_thru"></div>
+<div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
 <h2>Commits per day</h2><div id="c_commits"></div>
-<h2>Stars over time</h2><div id="c_stars"></div>
-<h2>Forks over time</h2><div id="c_forks"></div>
+<h2>How fast things get done</h2><div id="speed"></div>
+<h2>Milestone progress</h2><div id="ms"></div>
 <h2>Open issues over time</h2><div id="c_open"></div>
 <h2>Open issues by <select id="dim"></select></h2>
 <p class="n" id="lnote"></p><div id="c_grp"></div><div class="lg" id="lg"></div>
 <div id="cur"></div>
-<h2>Milestones</h2><div id="ms"></div>
+<h2>Stars</h2><div id="c_stars"></div>
+<h2>Forks</h2><div id="c_forks"></div>
 <script id="d" type="application/json">__DATA__</script>
 <script>
 const D=JSON.parse(document.getElementById('d').textContent);
@@ -291,12 +342,21 @@ function chart(el,series,opt){
  let g=axes(max,n);const Y=v=>T+(H-T-B)*(1-v/max);
  if(opt.stack){const bw=(W-L)/n*.8;
   for(let i=0;i<n;i++){let acc=0;series.forEach((s,k)=>{const v=s.v[i];if(!v)return;
-   g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(acc+v)}" width="${bw}" height="${Y(acc)-Y(acc+v)}" fill="${PAL[k%PAL.length]}"><title>${D.days[i]} ${esc(s.name)}: ${v}</title></rect>`;acc+=v})}}
+   g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(acc+v)}" width="${bw}" height="${Y(acc)-Y(acc+v)}" fill="${opt.pal?opt.pal[k]:PAL[k%PAL.length]}"><title>${D.days[i]} ${esc(s.name)}: ${v}</title></rect>`;acc+=v})}}
  else if(opt.bar){const bw=(W-L)/n*.8;series[0].v.forEach((v,i)=>{g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(v)}" width="${bw}" height="${Y(0)-Y(v)}" fill="${opt.color}"><title>${D.days[i]}: ${v}</title></rect>`})}
  else series.forEach(s=>{g+=`<polyline fill="none" stroke="${opt.color}" stroke-width="2" points="${s.v.map((v,i)=>X(i,n)+','+Y(v)).join(' ')}"/>`});
  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}">${g}</svg>`}
 document.getElementById('upd').textContent='Updated '+D.updated+' UTC. Data from repo creation ('+D.created.slice(0,10)+') to today.';
-const T_=D.totals;document.getElementById('tiles').innerHTML=[['stars',T_.stars],['forks',T_.forks],['open issues',T_.open],['commits ('+D.branch+')',T_.commits]].map(([k,v])=>`<div class="t"><b>${v}</b><span>${k}</span></div>`).join('');
+const Hh=D.hero;
+const big=(v,k)=>`<div class="t"><b>${v}</b><span>${k}</span></div>`;
+const row=(title,f)=>`<p class="n" style="margin:10px 0 0">${title}</p>`+[['prs','PRs merged'],['issues','issues closed'],['commits','commits']].map(([k,l])=>big(Hh[k][f],l)).join('');
+document.getElementById('hero').innerHTML=row('Today (UTC)','today')+row('Last 24 hours','h24')+row('Since day one (day '+Hh.day_n+')','total');
+const per=Hh.prs.h24?Math.round(1440/Hh.prs.h24):0;
+document.getElementById('sum').textContent='Day '+Hh.day_n+' \u00b7 '+Hh.prs.h24+' PRs merged in the last 24 h'+(per?' \u00b7 1 PR every '+per+' min':'');
+const fh=h=>h==null?'n/a':h<1?Math.round(h*60)+' min':h<48?h.toFixed(1)+' h':(h/24).toFixed(1)+' days';
+const Sp=D.speed;
+document.getElementById('speed').innerHTML=[['issue_all','Issue opened to closed (median, all time)'],['issue_7d','Issue opened to closed (median, last 7 days)'],['pr_all','PR opened to merged (median, all time)'],['pr_7d','PR opened to merged (median, last 7 days)']].map(([k,l])=>big(fh(Sp[k]),l)).join('');
+chart(c_thru,[{name:'PRs merged',v:D.prs_merged},{name:'issues closed',v:D.issues_closed}],{stack:1,pal:['#3b82c4','#e08a1e']});
 chart(c_commits,[{name:'commits',v:D.commits}],{bar:1,color:'var(--a)'});
 chart(c_stars,[{name:'stars',v:D.stars}],{color:'#e0a81e'});
 chart(c_forks,[{name:'forks',v:D.forks}],{color:'#3b82c4'});

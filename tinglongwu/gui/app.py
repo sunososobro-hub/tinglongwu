@@ -15,7 +15,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, quick_buttons, quick_settings, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha)
@@ -290,7 +290,10 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch
         self.status_key: str | None = "gui_ready"
+        self.quick_mode: str | None = None  # #294: first-screen button that started this session
+        self.run_source = "system"
         self._build_controls()
+        self._build_quick()
         self._build_bar()
         self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
@@ -343,6 +346,7 @@ class App:
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         if self.status_key:
             self.v_status.set(t(self.status_key))
+        self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
@@ -368,17 +372,16 @@ class App:
         """#455: the main window is only this bar; every setting is in the "⚙ Adjust" panel."""
         b = self.bar = ttk.Frame(self.root, padding=2)
         b.pack()
-        self.v_mode = tk.StringVar(value="speak" if self.v_voice.get() else "listen")
-        for key, val in (("gui_listen", "listen"), ("gui_speak", "speak")):  # Speak = also voice each line (#330)
-            self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0,
-                                     command=lambda: self.v_voice.set(self.v_mode.get() == "speak")), key).pack(side="left")
-        self.v_voice.trace_add("write", lambda *_: self.v_mode.set("speak" if self.v_voice.get() else "listen"))
+        self.v_mode = tk.StringVar(value="listen")  # Speak = the #294 "I speak" session (mic, my language out)
+        for key, val in (("gui_listen", "listen"), ("gui_speak", "speak")):
+            self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
+                     key).pack(side="left")
         self.v_pair = tk.StringVar()
         ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
         for v in (self.v_lang, self.v_target):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
-        self.btn = ttk.Button(b, text=t("gui_start"), command=self.toggle, style="Bar.TButton", width=0)
+        self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
         self.btn.pack(side="left")
         self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
@@ -386,6 +389,10 @@ class App:
         self.set_dot("idle")
         self.btn_adjust = self._tx(ttk.Button(b, command=self.toggle_adjust, style="Bar.TButton", width=0), "gui_adjust")
         self.btn_adjust.pack(side="left")
+
+    def _bar_start(self):
+        """Listen = a session with the saved settings (as the old Start); Speak = the #294 speak session."""
+        self.toggle("speak" if self.v_mode.get() == "speak" else None)
 
     def _pair_changed(self):
         self.v_pair.set(f"{lang_from_label(self.v_lang.get())}→{self.v_target.get()}")
@@ -471,6 +478,37 @@ class App:
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
+
+    def _build_quick(self):
+        """#294 easy start: pick my language once (remembered), then one big button starts the session.
+        #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
+        q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
+        q.pack(before=self.frm, fill="x")
+        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
+            row=0, column=1, sticky="we", padx=(6, 0))
+        self.quick_btns = {}
+        for col, mode in enumerate(QUICK_MODES):
+            b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
+            b.grid(row=1, column=col, sticky="we", ipady=10, pady=(8, 0), padx=(0 if col == 0 else 6, 0))
+            self.quick_btns[mode] = b
+        q.columnconfigure(0, weight=1, uniform="quick")
+        q.columnconfigure(1, weight=1, uniform="quick")
+        self._sync_quick()
+
+    def _quick_phase(self) -> str:
+        if self.load_t0 is not None:
+            return "loading"
+        if self.downloading or (self.listening and self.stop_ev.is_set()):
+            return "busy"
+        return "running" if self.listening else "idle"
+
+    def _sync_quick(self):
+        """Label/enable the first-screen buttons for the current session state (#294)."""
+        if not hasattr(self, "quick_btns"):
+            return
+        for mode, (key, enabled) in quick_buttons(self._quick_phase(), self.quick_mode).items():
+            self.quick_btns[mode].configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
@@ -582,6 +620,7 @@ class App:
         self.btn.configure(state="disabled")
         self.combos["model"].configure(state="disabled")
         self._status_text(t("gui_dl_running", model=m))
+        self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
 
     def _download_done(self, model: str, rc: int):
@@ -594,6 +633,7 @@ class App:
             self.v_model.set(label_for_model(model))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
+        self._sync_quick()
 
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
@@ -635,13 +675,17 @@ class App:
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------
-    def toggle(self):
+    def toggle(self, mode: str | None = None):
+        """Start / Stop. `mode` = a #294 first-screen button ("listen" / "speak"); None = the Start button."""
         if self.worker is not None and self.worker.is_alive():
             self.stop_ev.set()
             self.btn.configure(state="disabled")
             self.set_status("gui_stopping")
+            self._sync_quick()
             return
         self.collect()
+        run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        self.quick_mode, self.run_source = mode, run.get("source")
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -653,8 +697,9 @@ class App:
         self.v_notice.set("")
         self.errored = False
         self.listening = True
-        self.worker = threading.Thread(target=self._work, args=(dict(self.settings), self.stop_ev), daemon=True)
+        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
+        self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
         if self.settings["floating_bar"]:
             self.overlay.show()
@@ -700,6 +745,9 @@ class App:
                         self.load_t0 = None
                         self.btn.configure(text=t("gui_stop"), state="normal")
                         self.set_dot("on")
+                        ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
+                        self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
+                        self._sync_quick()
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                 elif kind == "dl_line":
@@ -719,6 +767,8 @@ class App:
                         self.set_status("gui_stopped")
                         self.set_dot("idle")
                     self.listening = False
+                    self.quick_mode = None
+                    self._sync_quick()
                     self.overlay.hide()
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
@@ -730,6 +780,7 @@ class App:
             if secs != self.load_shown:
                 self.load_shown = secs
                 self.btn.configure(text=t("gui_loading", s=secs))
+                self._sync_quick()
         if changed and self.overlay.visible:
             self.overlay.render(self.state)
         if changed:

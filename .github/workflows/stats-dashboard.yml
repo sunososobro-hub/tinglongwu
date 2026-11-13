@@ -35,6 +35,7 @@ jobs:
       - name: Add static pages (roadmap, docs)
         run: |
           cp docs/roadmap.html site/roadmap.html
+          cp docs/favicon.svg docs/favicon.ico site/
           pip install markdown==3.7
           python scripts/build_docs_page.py site
       - name: Publish to gh-pages

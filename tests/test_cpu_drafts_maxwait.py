@@ -35,7 +35,7 @@ def _session_max_wait(monkeypatch, tmp_path, argv, asr_device):
     monkeypatch.setattr(cli, "make_translator", lambda *a, **k: SimpleNamespace(preload=lambda *x: None))
     monkeypatch.setattr(cli, "select_backend", lambda *a: object())
 
-    def merger(max_wait):
+    def merger(max_wait, **kw):
         raise _Stop(max_wait)
 
     monkeypatch.setattr(merge, "SentenceMerger", merger)

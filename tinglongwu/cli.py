@@ -12,6 +12,9 @@ from .engines import ENGINES
 
 
 PRESETS = {"meeting": (8.0, 6.0), "chat": (4.0, 1.5)}  # preset -> (--chunk, --max-wait)
+# #389 preset -> --min-words: a finished sentence shorter than this (words; a CJK character counts as one) is not
+# translated alone but joined to a neighbour sentence, waiting at most --max-wait. chat keeps 0 (off) for latency.
+PRESET_MIN_WORDS = {"meeting": 3, "chat": 0}
 # #60: on CPU, ASR + MT already add seconds per line; holding an unfinished fragment the full 6 s on top makes the
 # subtitle feel stuck. Used only when neither --preset nor --max-wait was given (an explicit choice is kept).
 CPU_MAX_WAIT = 3.0
@@ -55,6 +58,9 @@ def parse_args(argv=None):
                         f"--max-wait the default max-wait is {CPU_MAX_WAIT:g} s")
     p.add_argument("--chunk", type=float, default=None,
                    help="max segment seconds (default from --preset; larger = more context for Whisper)")
+    p.add_argument("--no-splash", action="store_true",
+                   help="skip the start-up mascot animation (it is also skipped when output is not a terminal, "
+                        "with NO_COLOR, or on terminals without 24-bit colour)")
     p.add_argument("--selftest", action="store_true",
                    help="load the models and translate one bundled test sentence with --model/--engine/--device, "
                         "print OK/FAIL per step, fall back GPU -> CPU on failure, then exit (offline)")
@@ -71,6 +77,10 @@ def parse_args(argv=None):
                    help="sentence merging: upper bound in seconds a fragment not ending in sentence punctuation "
                         "is held (default from --preset; on CPU without --preset / --max-wait: "
                         f"{CPU_MAX_WAIT:g}; a pause of >= 0.8 s sends it earlier)")
+    p.add_argument("--min-words", type=int, default=None, metavar="N",
+                   help="sentence merging: a finished sentence shorter than N words (a CJK character counts as a "
+                        "word) is joined to the previous / next sentence instead of being translated alone, "
+                        "waiting at most --max-wait (default from --preset: meeting 3, chat 0; 0 = off)")
     p.add_argument("--engine", choices=list(ENGINES), default="auto",
                    help="auto (default) = hymt: Hy-MT2 1.8B (direct src->target, `tlwu-setup --hymt`), on the GPU "
                         "when ~2 GB VRAM is free, else on the CPU; if it is missing tlwu stops and prints the setup "
@@ -167,6 +177,10 @@ def parse_args(argv=None):
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
     a.max_wait = wait if a.max_wait is None else a.max_wait
+    if a.min_words is None:
+        a.min_words = PRESET_MIN_WORDS[a.preset]
+    elif a.min_words < 0:
+        p.error("--min-words must be >= 0")
     return a
 
 
@@ -476,7 +490,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     source = select_backend(a.file, a.mic, a.device)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
     audio_clock = bool(a.file) and not paced
-    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait)
+    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait, min_words=getattr(a, "min_words", 0))
     segmenter = Segmenter(a.chunk, not a.no_vad, step=0.25, vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)))
     draft = None
     if draft_factory is not None:
@@ -588,6 +602,9 @@ def main(argv=None) -> int:
         return gui_main()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    from . import splash
+
+    splash.play(no_splash=a.no_splash)
     if a.overlay:  # #322: Tk owns the main thread, the pipeline runs on a worker
         from .overlay import OverlaySink, run_listen
         from .sink import TextSink, TranscriptSink

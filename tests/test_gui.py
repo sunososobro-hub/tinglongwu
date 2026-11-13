@@ -479,25 +479,30 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
     assert a.panel.state() == "withdrawn"
 
 
-def test_bar_mode_pair_and_status_dot(gui_app):
-    """#455: Listen/Speak mirrors the voice setting, the pair label follows the boxes, the dot follows the session."""
+def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
+    """#455: Listen/Speak + Start run the saved / #294 speak session, the pair label follows the boxes, the dot
+    follows the session."""
     from tinglongwu import cli
 
     a = gui_app
-    assert a.v_mode.get() == "listen" and not a.v_voice.get()
-    a.v_mode.set("speak")
-    for w in a.bar.winfo_children():
-        if str(w.cget("text") if "text" in w.keys() else "") == "Speak":
-            w.invoke()
-    assert a.v_voice.get() is True
-    a.v_voice.set(False)  # unticked in the Adjust panel: the bar follows
+    runs = _record_runs(a, monkeypatch)
     assert a.v_mode.get() == "listen"
-    a.v_lang.set("auto")
     a.v_target.set("en")
+    for w in a.bar.winfo_children():
+        if "text" in w.keys() and w.cget("text") == "Speak":
+            w.invoke()
+    assert a.v_mode.get() == "speak"
+    a.btn.invoke()  # Speak + Start: mic in my language (en) -> zh-tw, as the #294 "I speak" button
+    a.toggle()
+    a.worker.join(5)
+    a.poll()
+    assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
+    a.v_mode.set("listen")
+    a.v_lang.set("auto")
     assert a.v_pair.get() == "auto→en"
     assert a.dot_state == "idle"
-    a.toggle()
-    assert a.dot_state == "loading"
+    a.btn.invoke()  # Listen + Start: the saved settings, as the old Start button
+    assert a.dot_state == "loading" and (runs[1]["source"], runs[1]["target"]) == ("system", "en")
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 1.0 s (speech model 1.0 s)"))
     a.poll()
     assert a.dot_state == "on"
@@ -505,3 +510,60 @@ def test_bar_mode_pair_and_status_dot(gui_app):
     a.worker.join(5)
     a.poll()
     assert a.dot_state == "idle" and a.btn.cget("text") == "Start"
+
+
+# -- #294 easy start: first-screen buttons on a real App -------------------------------------------------------
+
+def _record_runs(a, monkeypatch):
+    from tinglongwu.gui import app
+
+    runs = []
+
+    def fake_work(self, s, stop):
+        runs.append(s)
+        stop.wait(10)
+        self.q.put(("stopped",))
+
+    monkeypatch.setattr(app.App, "_work", fake_work)
+    return runs
+
+
+def _btn(a, mode):
+    b = a.quick_btns[mode]
+    return b.cget("text"), str(b.cget("state"))
+
+
+def test_one_click_listen_loading_then_ready_then_stop(gui_app, monkeypatch):
+    """Fresh profile: the only click is "Listen to others"; Loading... until models are ready, then a Ready hint."""
+    from tinglongwu import cli
+
+    a = gui_app
+    runs = _record_runs(a, monkeypatch)
+    assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
+    a.v_target.set("zh-tw")
+    a.quick_btns["listen"].invoke()  # click 1
+    assert _btn(a, "listen") == ("Loading... 0 s", "disabled") and _btn(a, "speak")[1] == "disabled"
+    a.q.put(("status", f"{cli.READY_STATUS} - loaded in 2.0 s"))
+    a.poll()
+    assert a.v_status.get().startswith("Ready - start playback now")
+    assert _btn(a, "listen") == ("Stop", "normal") and _btn(a, "speak") == ("I speak", "disabled")
+    run = runs[0]
+    assert (run["source"], run["target"]) == ("system", "zh-tw")
+    a.quick_btns["listen"].invoke()  # Stop
+    a.worker.join(5)
+    a.poll()
+    assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
+
+
+def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
+    from tinglongwu import cli
+
+    a = gui_app
+    runs = _record_runs(a, monkeypatch)
+    a.v_target.set("en")
+    a.toggle("speak")
+    a.q.put(("status", cli.READY_STATUS))
+    a.poll()
+    assert a.v_status.get().startswith("Ready - speak now")
+    assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
+    assert core.load_settings(tmp_path / "tinglongwu" / "gui.json")["target"] == "en"  # my language, not zh-tw
