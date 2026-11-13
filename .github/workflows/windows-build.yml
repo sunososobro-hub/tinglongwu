@@ -85,6 +85,12 @@ jobs:
         run: |
           & $env:PACK_PY packaging\build_windows.py --lite
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Core zip release check (scripts/release_check.py, 300 MB budget, no CUDA files, #638)
+        if: steps.changes.outputs.build == 'true'
+        shell: pwsh
+        run: |
+          & $env:PACK_PY scripts\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: DLL check (scripts/check_dist_dlls.py, if present)
         if: steps.changes.outputs.build == 'true' && (hashFiles('scripts/check_dist_dlls.py') != '')
         shell: pwsh

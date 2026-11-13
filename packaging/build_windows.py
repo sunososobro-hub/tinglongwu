@@ -259,6 +259,24 @@ def copy_cuda(app: Path, src: Path) -> list[str]:
     return notes
 
 
+def make_gpu_pack(app: Path, out: Path, url: str) -> Path:
+    """Zip app/cuda_libs/ as the separate GPU pack (#613) and write <out>.manifest.json (name, size, sha256, url)."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tinglongwu import gpu_pack
+
+    src = app / "cuda_libs"
+    files = sorted(f for f in src.glob("*") if f.is_file()) if src.is_dir() else []
+    if not files:
+        raise SystemExit(f"gpu pack: no CUDA libraries in {src}")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for f in files:
+            z.write(f, f.name)
+    man_path = out.with_name(out.name + ".manifest.json")
+    gpu_pack.write_manifest(gpu_pack.make_manifest(out, url), man_path)
+    return man_path
+
+
 def cpu_llama_dlls(cache: Path = LLAMA_CPU, run=subprocess.check_call) -> list[Path]:
     """llama_cpp/lib/*.dll of the CPU wheel of the same llama-cpp-python version (downloaded once into cache).
     TLWU_LLAMA_CPU_WHEEL = a local wheel file to use instead of the download."""
@@ -371,7 +389,8 @@ def copy_worker_sources(app: Path) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
-    ap.add_argument("--lite", action="store_true", help="CPU-only variant: no CUDA libs / ggml-cuda.dll")
+    ap.add_argument("--lite", "--core", dest="lite", action="store_true",
+                    help="CPU-only core variant (alias --core): no cuda_libs/ and no ggml-cuda.dll")
     ap.add_argument("--allow-cpu-only", action="store_true",
                     help="no CUDA wheels found: build a CPU-only package instead of stopping; on a machine "
                          "without an NVIDIA driver (CI runner) the smoke may also use the CPU llama fallback")

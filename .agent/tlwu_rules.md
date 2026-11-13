@@ -93,3 +93,12 @@ Owner: "Important things can't wait for a release." Docs-only changes may go to 
 - Sync back: right after the fast-lane merge, merge `main` into `dev` (PR `dev <- main`, merge commit, auto-merge on green) so the next `release: vX.Y.Z` PR has no conflict.
 - Not during a release: skip while a `release.yml` run on `main` is in progress; retry after it finishes.
 - This is the only exception to "never touch main" in section 3; it does not allow `.github/` or code changes on `main`.
+
+## 12. Dimension labels: mode / platform / language (owner 2026-11-13, #585)
+Owner: "聽 說 雙向是一個維度，平台是一個維度，語言是一個". These labels describe WHAT the work is for; they do not route work and do not change the type budget (section 10).
+- Mode, exactly one per issue: `mode:listen` (ASR/MT/subtitles/GUI for listening), `mode:speak` (TTS, voice out, speak pipeline), `mode:two-way` (meeting both sides, face-to-face, topic notes), `mode:shared` (install, CI, rules, docs, eval infra, release - serves every mode).
+- Language, zero or more: `lang:<code>` (`zh`, `en`, `ja`, `ko`, `ru`, `hi`, `yue`, `vi`, `th`, `id`, `es`, `de`, `fr`, `it`, `pt`, ...) only when the work is specific to that language. None = all languages. zh as the default target language alone does not count.
+- Platform: existing `os:windows` / `os:mac` / `os:linux` and `area:mobile`; none = all platforms. Section 1 still applies: `os:windows` routes an issue to the home PC, so add `os:*` only when the work really needs that OS to build or test.
+- Triage (W-easy on `issues.opened`, S-easy, S-hard supply, any agent opening an issue) sets one `mode:*` and any `lang:*` together with the section 10 labels. A worker that picks an issue without `mode:*` adds it.
+- Focus: line 2 of the throttle issue #574 may read `focus: <values>` (comma list of mode / platform / language values, e.g. `focus: speak, ja`). Missing = no focus. Pickers: P0/P1 first; then the ledger type (section 10); inside that type, items matching any focus value first, then P0 -> P3, then lowest number. S-hard supply opens evidence-backed issues for focus values first.
+- The stats page (#576 children) reads these labels; it does not guess mode or language from titles.

@@ -223,6 +223,14 @@ void main() {
 
     test('merges the oldest two short jobs', () {
       expect(ContextBudget.mergeIndex(['раз', 'два', 'три']), 0);
+      // #625: a zh/en boundary must not block a later same-language pair.
+      expect(
+          ContextBudget.mergeIndex(['a', 'b', 'c', 'd'],
+              langs: ['zh', 'en', 'en', 'en']),
+          1);
+      expect(
+          ContextBudget.mergeIndex(['a', 'b', 'c'], langs: ['zh', 'en', 'zh']),
+          isNull);
       expect(ContextBudget.join('раз', 'два'), 'раз два');
     });
 
@@ -244,6 +252,33 @@ void main() {
       final fits = 'б' * (ContextBudget.maxMergeChars - 101);
       expect(ContextBudget.mergeIndex([a, fits]), 0);
       expect(ContextBudget.mergeIndex([a, '${fits}x']), isNull);
+    });
+
+    test('trimPlan trims same-language only (#647)', () {
+      final p = ContextBudget.trimPlan(
+          ['a', 'b', 'c', 'd'], ['zh', 'en', 'en', 'en'], 2);
+      expect(p.texts.length, 2);
+      expect(p.texts, ['a', 'b c d']);
+      expect(p.langs, ['zh', 'en']);
+      expect(p.steps, [1, 1]);
+    });
+
+    test('trimPlan leaves alternating languages untouched (#647)', () {
+      final p = ContextBudget.trimPlan(
+          ['a', 'b', 'c', 'd'], ['zh', 'en', 'zh', 'en'], 2);
+      expect(p.texts.length, 4);
+      expect(p.steps, isEmpty);
+    });
+
+    test('trimPlan never joins a pair over maxMergeChars (#647)', () {
+      final p = ContextBudget.trimPlan([long, long, long], ['en', 'en', 'en'], 2);
+      expect(p.texts, [long, long, long]);
+      expect(p.steps, isEmpty);
+      for (final t in ContextBudget.trimPlan(
+              [long, long, 'раз'], ['en', 'en', 'en'], 2)
+          .texts) {
+        expect(t.length, lessThanOrEqualTo(ContextBudget.maxMergeChars));
+      }
     });
 
     test('any allowed merge plus its output budget fits the context', () {
