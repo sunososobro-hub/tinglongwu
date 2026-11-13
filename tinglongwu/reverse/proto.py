@@ -628,7 +628,9 @@ def resolve_tts_engine(a) -> None:
         a.ru_engine = "piper" if piper_onnx(a.vosk_model) else "vosk"
         return
     if a.tts_engine == "auto":
-        if a.to != "ru":
+        if a.to == "ru" and getattr(a, "voice", None) and a.speaker is None and not a.tts_model and default_vosk_ru(mdir):
+            a.tts_engine = "vosk"  # #319: --voice picks among the Vosk voices (the Piper ones are male only)
+        elif a.to != "ru":
             a.tts_engine = "vosk"  # unchanged default: rejected below unless --no-tts
         elif piper_onnx(a.tts_model):
             a.tts_engine = "piper"
@@ -659,6 +661,13 @@ def check_args(a) -> str | None:
         return "--from en speaks Chinese to the other side: use --to zh (or leave --to out)"
     if src == "zh" and a.to == "zh":
         return "--to zh needs --from en (you speak English, the other side hears Chinese)"
+    if not hasattr(a, "speaker_given"):  # check_args may run twice: the second pass sees the default filled in
+        a.speaker_given = a.speaker is not None
+    if a.to == "follow" and getattr(a, "voice", None):  # #319: the probe would also switch the English voice
+        if not a.speaker_given:
+            return "--voice picks a Vosk Russian voice: use --to ru (with --to follow use --speaker N)"
+        print(f"tlwu: --speaker {a.speaker} given, --voice {a.voice} ignored", file=sys.stderr, flush=True)
+        a.voice = None
     if a.to == "follow":
         if not a.no_tts:
             if a.tts_engine != "kokoro" or not a.tts_model:
@@ -670,6 +679,12 @@ def check_args(a) -> str | None:
         return None
     from ..models import piper_onnx
 
+    if getattr(a, "voice", None) and not a.no_tts:
+        if a.speaker_given:  # #319: an explicit id wins
+            print(f"tlwu: --speaker {a.speaker} given, --voice {a.voice} ignored", file=sys.stderr, flush=True)
+            a.voice = None
+        elif a.tts_engine != "vosk" or a.to != "ru":
+            return "--voice picks a Vosk Russian voice: use --to ru with --tts-engine vosk (or --speaker N)"
     if a.speaker is None:
         a.speaker = 0 if a.tts_engine == "kokoro" else 4
     if a.tts_engine == "piper" and a.to != "ru" and not a.no_tts:
@@ -774,6 +789,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--speaker", type=int, default=None,
                     help="built-in voice id 0-4 (vosk ru 0.7 default 4; kokoro default 0 = am_michael, 1 af_heart, "
                          "2 am_adam, 3 af_bella, 4 bm_george); switch live with v0-v4")
+    ap.add_argument("--voice", choices=("male", "female"), default=None,
+                    help="#319 Russian Vosk voice by gender (ru 0.7 multi ids 0-4, upstream: 3 female, 2 male): at "
+                         "startup each id speaks one test sentence, median pitch < 165 Hz = male, else female; the "
+                         "lowest id of that gender is used and logged (`voice: female (speaker N)`). "
+                         "--speaker N wins when both are given")
     ap.add_argument("--follow-file", default=None, metavar="PATH",
                     help="with --to follow: state file written by `tlwu --lang-file` (default: tlwu_follow_lang in "
                          "$XDG_RUNTIME_DIR or the temp dir)")
@@ -1030,6 +1050,18 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
                                                   a.speaker, a.to if a.to in ("ja", "zh") else "en")
         if tts:
             res["load_s"]["tts"] = round(time.perf_counter() - t, 2)
+        if tts and getattr(a, "voice", None):
+            from .voice_pick import client_probe, format_table, pick_voice
+
+            try:
+                tts.speaker, table = pick_voice(a.voice, client_probe(tts))
+            except (ValueError, RuntimeError, OSError) as e:  # OSError: worker died mid-probe (broken pipe)
+                tts.close()
+                print(f"tlwu: --voice {a.voice}: {e}", file=sys.stderr)
+                return 2
+            res["voice"] = {"voice": a.voice, "speaker": tts.speaker, "f0_hz": table}
+            print(f"voice: {a.voice} (speaker {tts.speaker}; measured {format_table(table)})", flush=True)
+        if tts:
             res["vram_mib"]["after_tts"] = vram_used_mib()
             res["tts_torch_peak_mib_after_warmup"] = tts.ready.get("vram_mib")
             warm_tts(tts, a.to)  # #207: the first real sentence must not pay the voice's lazy init
