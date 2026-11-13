@@ -96,7 +96,7 @@ def test_reinstall_replaces_old_pack(tmp_path):
     z2 = make_zip(tmp_path / "b.zip", {"new.dll": b"2"})
     gpu_pack.install_pack(z2, gpu_pack.make_manifest(z2, "u"), dest)
     assert sorted(p.name for p in dest.iterdir()) == ["new.dll"]
-    assert not (tmp_path / "gpu-pack.old").exists()
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".gpu-pack")] == []
 
 
 def test_failed_reinstall_keeps_old_pack(tmp_path):
@@ -127,3 +127,26 @@ def test_build_script_rejects_empty_cuda_libs(tmp_path):
     with pytest.raises(SystemExit):
         bw.make_gpu_pack(tmp_path, tmp_path / "gpu.zip", "u")
     assert not (tmp_path / "gpu.zip").exists()
+
+
+def test_swap_failure_restores_old_pack_and_keeps_foreign_old_dir(tmp_path, monkeypatch):
+    dest = tmp_path / "gpu-pack"
+    z1 = make_zip(tmp_path / "a.zip", {"old.dll": b"1"})
+    gpu_pack.install_pack(z1, gpu_pack.make_manifest(z1, "u"), dest)
+    foreign = tmp_path / "gpu-pack.old"
+    foreign.mkdir()
+    (foreign / "keep.txt").write_text("recovery data")
+    z2 = make_zip(tmp_path / "b.zip", {"new.dll": b"2"})
+    real_rename = Path.rename
+
+    def flaky(self, target):
+        if self.name.startswith(".gpu-pack-") and not self.name.startswith(".gpu-pack-old-") and Path(target) == dest:
+            raise OSError("simulated rename failure")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky)
+    with pytest.raises(OSError):
+        gpu_pack.install_pack(z2, gpu_pack.make_manifest(z2, "u"), dest)
+    assert (dest / "old.dll").read_bytes() == b"1"
+    assert (foreign / "keep.txt").read_text() == "recovery data"
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".gpu-pack")] == []

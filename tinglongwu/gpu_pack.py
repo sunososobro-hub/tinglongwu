@@ -70,8 +70,7 @@ def install_pack(archive: Path, man: dict, dest: Path) -> Path:
             z.extractall(tmp)
         backup = None
         if dest.exists():  # keep the old pack until the new one is in place
-            backup = dest.with_name(dest.name + ".old")
-            shutil.rmtree(backup, ignore_errors=True)
+            backup = Path(tempfile.mkdtemp(prefix=".gpu-pack-old-", dir=dest.parent)) / "pack"  # unique, ours alone
             dest.rename(backup)
         try:
             tmp.rename(dest)
@@ -80,9 +79,10 @@ def install_pack(archive: Path, man: dict, dest: Path) -> Path:
                 if dest.exists():
                     shutil.rmtree(dest, ignore_errors=True)
                 backup.rename(dest)
+                shutil.rmtree(backup.parent, ignore_errors=True)
             raise
         if backup is not None:
-            shutil.rmtree(backup, ignore_errors=True)
+            shutil.rmtree(backup.parent, ignore_errors=True)
     except zipfile.BadZipFile as e:
         raise PackError(f"not a zip: {e}") from e
     finally:
