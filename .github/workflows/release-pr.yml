@@ -1,0 +1,85 @@
+name: release-pr
+# #414: when `ci` passes on a push to dev, open (or update) the one dev -> main release PR `release: vX.Y.Z`
+# (X.Y.Z = tinglongwu.__version__) with generated notes. Merging it is the owner's single release action;
+# release.yml then checks the gates, builds and publishes. workflow_run runs this file from the default branch and
+# checks out dev (merged work only), never PR head code. Creating the PR needs the repo setting "Allow GitHub
+# Actions to create and approve pull requests"; without it the job fails after writing the PR into the summary.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "only write the PR title and body into the job summary"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read   # the thanks list reads issue authors
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Is this still the dev tip, and is dev ahead of main?
+        id: diff
+        env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --no-tags origin main dev
+          if [ -n "$RUN_SHA" ] && [ "$(git rev-parse origin/dev)" != "$RUN_SHA" ]; then
+            echo "skip=stale: dev moved past $RUN_SHA; the ci run of the new tip updates the PR" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "go=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          n=$(git rev-list --count origin/main..origin/dev)
+          echo "dev is $n commit(s) ahead of main" >> "$GITHUB_STEP_SUMMARY"
+          echo "go=$([ "$n" != 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Title and body
+        if: steps.diff.outputs.go == 'true'
+        id: body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          num=$(gh pr list --base main --head dev --state open --json number --jq '.[0].number // empty')
+          : > existing.md
+          if [ -n "$num" ]; then
+            gh pr view "$num" --json body --jq .body > existing.md   # a failed read must not reset What's new
+          fi
+          title=$(python scripts/release_notes.py pr-body --existing existing.md --out body.md)
+          { echo "num=$num"; echo "title=$title"; } >> "$GITHUB_OUTPUT"
+          { echo "### $title (PR ${num:-new})"; echo; cat body.md; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Create or update the release PR
+        if: steps.diff.outputs.go == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUM: ${{ steps.body.outputs.num }}
+          TITLE: ${{ steps.body.outputs.title }}
+        run: |
+          if [ -n "$NUM" ]; then
+            gh pr edit "$NUM" --title "$TITLE" --body-file body.md
+          else
+            gh pr create --base main --head dev --title "$TITLE" --body-file body.md
+          fi

@@ -55,7 +55,7 @@ def test_check_detects_a_stale_readme(tmp_path):
 
 def test_release_workflow_writes_the_notes_from_the_source():
     wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
-    assert 'scripts/render_support.py --notes "$TAG" > dist/notes.md' in wf
+    assert 'scripts/render_support.py --notes "$TAG" > base.md' in wf  # #414: What's new filled in
     assert "--notes-file dist/notes.md" in wf
 
 
