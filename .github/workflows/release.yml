@@ -1,67 +1,208 @@
 name: release
-# Runs when a version tag is pushed. The tag must point at a commit that is on main.
+# #414 one-click release: the owner merges the dev -> main `release: vX.Y.Z` PR (opened by release-pr.yml), then
+#   plan              : only a merged dev -> main release PR publishes; its title must be v<tinglongwu.__version__>,
+#                       a tag that exists already must point at this commit, and ci, e2e, windows-build and hw-tests
+#                       must be green on the PR's head commit (scripts/release_notes.py plan). Other pushes: nothing.
+#   windows           : build tinglongwu-win64.zip (CUDA package, --allow-cpu-only: no NVIDIA driver on the runner),
+#                       then packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
+#                       instructions (no AVX-512), --smoke, --selftest; render the release notes
+#   release           : tag main, create a draft Release with the zip, install scripts and SHA256SUMS.txt
+#   windows-installer : attach the setup wizard, then publish (it becomes `latest`)
+# workflow_dispatch = dry run on any branch: plan + build + every check + notes in the summary, never a tag/Release.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions: {}
 
+concurrency:
+  group: release   # one release at a time, whichever ref
+  cancel-in-progress: false
+
 jobs:
-  release:
+  plan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
-      contents: write   # only this job may create the Release
+      contents: read
+      pull-requests: read   # which PR this main commit belongs to
+      actions: read         # required workflow runs on the released commit
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      build: ${{ steps.plan.outputs.build }}
+      tag: ${{ steps.plan.outputs.tag }}
+      pr: ${{ steps.plan.outputs.pr }}
+      head: ${{ steps.plan.outputs.head }}
+      hw_run: ${{ steps.plan.outputs.hw_run }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Tag format and branch check (tag must be vX.Y.Z[-suffix] and on main)
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Plan
+        id: plan
         env:
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "bad tag: $TAG"; exit 1; }
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag $TAG is not on main"; exit 1; }
+          python scripts/release_notes.py plan > plan.txt
+          cat plan.txt >> "$GITHUB_OUTPUT"
+          { echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      pull-requests: read   # release notes: merged PRs, thanks list, What's new of the release PR
+      issues: read
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Build folders outside the checkout (absolute; upload-artifact rejects '..' in paths)
+        shell: pwsh
+        run: |
+          "TLWU_BUILD_ROOT=$env:RUNNER_TEMP\tlwu-build" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "NUITKA_CACHE_DIR=$env:RUNNER_TEMP\nuitka-cache" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0   # tags: the notes list changes since the previous one
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Nuitka compile cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}\nuitka-cache
+          key: nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cuda.txt', 'requirements-gpu.txt') }}-${{ github.sha }}
+          restore-keys: |
+            nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cuda.txt', 'requirements-gpu.txt') }}-
+            nuitka-release-${{ runner.os }}-
+      - name: Packaging venv (requirements.txt without av / psutil, CUDA llama-cpp-python, CUDA 12 wheels, Nuitka)
+        shell: pwsh
+        run: |
+          python -m venv "$env:RUNNER_TEMP\pack-venv"
+          $py = "$env:RUNNER_TEMP\pack-venv\Scripts\python.exe"
+          Get-Content requirements.txt | Where-Object { $_ -notmatch '^(av|psutil)==' } | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\req-pack.txt"
+          & $py -m pip install --upgrade pip
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install -r "$env:RUNNER_TEMP\req-pack.txt"
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install -r requirements-llama-cuda.txt --only-binary=:all:
+          if ($LASTEXITCODE) { exit 1 }
+          # cuda_nvrtc: cuDNN runtime-compiled engines (build_windows.CUDA_WHEELS needs its bin folder)
+          & $py -m pip install -r requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install nuitka ordered-set zstandard
+          if ($LASTEXITCODE) { exit 1 }
+          "PACK_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Build (CUDA package; --allow-cpu-only because this runner has no NVIDIA driver)
+        shell: pwsh
+        run: |
+          & $env:PACK_PY packaging\build_windows.py --allow-cpu-only
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:TLWU_BUILD_ROOT\dist\tlwu\cuda_libs\cudart64_12.dll")) { Write-Error "not a CUDA package: cuda_libs missing"; exit 1 }
+      - name: Release checks on the zip (size, check_dist_dlls, llama CPU instructions, --smoke, --selftest)
+        shell: pwsh
+        run: |
+          & $env:PACK_PY packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Release notes (also the dry run's summary)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PR: ${{ needs.plan.outputs.pr }}
+          HW_RUN: ${{ needs.plan.outputs.hw_run }}
+          HEAD: ${{ needs.plan.outputs.head }}
+          DIST: ${{ runner.temp }}\tlwu-build\dist
+        run: |
+          set -euo pipefail
+          # Download, support/contributors block and What's new from the single source (docs/support.json)
+          python scripts/render_support.py --notes "$TAG" > base.md
+          # python opens the D:\ paths in DIST and appends the notes to the job summary
+          python scripts/release_notes.py notes --version "$TAG" --base base.md --pr "$PR" \
+            --verification "$DIST/release-check.md" --hw-run "$HW_RUN" --head "$HEAD" --out "$DIST/notes.md"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-win64
+          path: |
+            ${{ runner.temp }}\tlwu-build\dist\tinglongwu-win64.zip
+            ${{ runner.temp }}\tlwu-build\dist\tinglongwu-win64.zip.sha256
+            ${{ runner.temp }}\tlwu-build\dist\notes.md
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    needs: [plan, windows]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write   # only this job and windows-installer may create the tag and the Release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-win64
+          path: dist
       - name: Build install assets (embed the tag so each script installs the version it was released with)
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
-          mkdir dist
           cp scripts/install.sh dist/install.sh
           cp scripts/mac_install.sh dist/mac_install.sh
           cp scripts/bootstrap_windows.ps1 dist/install.ps1
           sed -i "s/__TLWU_REF__/$TAG/g" dist/install.sh dist/mac_install.sh dist/install.ps1
-          ! grep -q "__TLWU_REF__" dist/*   # nothing may keep the placeholder
+          ! grep -q "__TLWU_REF__" dist/install.sh dist/mac_install.sh dist/install.ps1   # nothing may keep the placeholder
           grep -q "\"$TAG\"" dist/install.sh
           bash -n dist/install.sh
           bash -n dist/mac_install.sh
-          cd dist && sha256sum install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
-      - name: Create the GitHub Release
+          cd dist
+          sha256sum -c tinglongwu-win64.zip.sha256   # the zip release_check.py tested
+          [ "$(stat -c %s tinglongwu-win64.zip)" -lt 2147483648 ] || { echo "zip over the 2 GiB asset limit"; exit 1; }
+          sha256sum tinglongwu-win64.zip install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
+      - name: Tag the released commit (an existing tag must already point at it)
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
-          # Draft first: it becomes `latest` only when windows-installer publishes it, after the wizard
-          # that the README links is attached. A tag with a suffix (v1.2.3-beta.1) is a pre-release,
-          # which never becomes `latest`. A re-run (release already exists) only replaces the files.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null; then
+            at=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+            [ "$at" = "$GITHUB_SHA" ] || { echo "tag $TAG exists at $at, not at $GITHUB_SHA; not releasing"; exit 1; }
+          fi
+      - name: Create the draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          # Draft first: it becomes `latest` only when windows-installer publishes it, after the wizard that the
+          # README links is attached. Only a tag with a suffix (v1.2.3-beta.1) is a pre-release (#478: 0.x stays
+          # latest). A re-run (draft exists) only replaces the files.
           pre=(); [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || pre=(--prerelease)
-          files=(dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt)
+          files=(dist/tinglongwu-win64.zip dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt)
           if draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null); then
             # never rewrite a published release: its SHA256SUMS.txt and wizard are what users verify against
             [ "$draft" = true ] || { echo "release $TAG is already published; not touching it"; exit 1; }
             gh release upload "$TAG" "${files[@]}" --clobber
           else
-            # notes start from the single source (docs/support.json + .all-contributorsrc): Download, the
-            # README's support/contributors block, a What's new placeholder; GitHub's changelog is appended
-            python3 scripts/render_support.py --notes "$TAG" > dist/notes.md
-            gh release create "$TAG" "${files[@]}" --draft "${pre[@]}" \
-              --verify-tag --notes-file dist/notes.md --generate-notes --title "$TAG"
+            gh release create "$TAG" "${files[@]}" --draft "${pre[@]}" --verify-tag --notes-file dist/notes.md --title "$TAG"
           fi
 
   windows-installer:
     # Attach the setup wizard under its versioned name and under the fixed name
     # tinglongwu-setup.exe, which the README links via releases/latest/download.
-    needs: release
+    needs: [plan, release]
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:
@@ -79,11 +220,11 @@ jobs:
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
           python installer\build_installer.py
           if ($LASTEXITCODE -ne 0) { throw "build failed" }
-      - name: Upload tinglongwu-setup-<ver>.exe and tinglongwu-setup.exe, add both to SHA256SUMS.txt
+      - name: Upload tinglongwu-setup-<ver>.exe and tinglongwu-setup.exe, add both to SHA256SUMS.txt, publish
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           set -euo pipefail
           cd dist/installer
@@ -96,9 +237,9 @@ jobs:
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
-          # only now can it become `latest`, and only once a maintainer has replaced the What's new TODO
+          # What's new comes from the release PR, so there is no TODO left unless someone put one there
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body | grep -q 'TODO:'; then
-            echo "::notice::$TAG stays a draft: fill in What's new and the developer section, then run: gh release edit $TAG --draft=false"
+            echo "::notice::$TAG stays a draft: fill in What's new, then run: gh release edit $TAG --draft=false"
           else
             gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false
           fi
