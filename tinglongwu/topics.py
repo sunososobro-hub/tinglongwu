@@ -6,7 +6,7 @@ ASR/MT threads only pay for a list append and a queue.put. If the worker falls b
 are finished after the meeting (close() drains it). Notes go to `<transcript>.topics.md` next to the --save file.
 
 Off unless `--topics MODEL.gguf` is given (needs --save). The model is picked by the #595 part 3 bake-off; the
-GUI side panel and defaults are part 4. PauseSegmenter is a minimal stand-in until the #608 segmenter lands.
+GUI side panel and defaults are part 4. Topics are cut by the #608 TopicSegmenter (pause rules; embeddings opt-in).
 """
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-PAUSE_S = 8.0     # #595: a pause this long closes a topic (once it is at least MIN_S long)
-MIN_S = 60.0      # #595: min ~60 s per topic (the meeting-end flush may be shorter)
-MAX_S = 300.0     # #595: max ~5 min per topic
+from .topic_segmenter import MAX_S, MIN_S, PAUSE_S, TopicSegmenter
+
 MAX_BULLETS = 5
 SUMMARY_TOKENS = 220  # #595: ~120 output tokens of notes, with headroom for the labels
 
@@ -42,26 +41,9 @@ class Topic:
     end: float = 0.0
 
 
-class PauseSegmenter:
-    """Closes a topic on a >= pause_s gap (when the topic is >= min_s long) or when it reaches max_s."""
-
-    def __init__(self, pause_s: float = PAUSE_S, min_s: float = MIN_S, max_s: float = MAX_S):
-        self.pause_s, self.min_s, self.max_s = pause_s, min_s, max_s
-        self.cur: list[Line] = []
-
-    def add(self, line: Line) -> list[list[Line]]:
-        out = []
-        if self.cur:
-            dur = self.cur[-1].t - self.cur[0].t
-            if (line.t - self.cur[-1].t >= self.pause_s and dur >= self.min_s) or line.t - self.cur[0].t > self.max_s:
-                out.append(self.cur)
-                self.cur = []
-        self.cur.append(line)
-        return out
-
-    def flush(self) -> list[list[Line]]:
-        out, self.cur = ([self.cur] if self.cur else []), []
-        return out
+def PauseSegmenter(pause_s: float = PAUSE_S, min_s: float = MIN_S, max_s: float = MAX_S) -> TopicSegmenter:
+    """Pause/min/max rules only (no embedding): the #608 segmenter without an `embed` function."""
+    return TopicSegmenter(pause_s, min_s, max_s)
 
 
 def build_prompt(lines: list[Line]) -> str:
