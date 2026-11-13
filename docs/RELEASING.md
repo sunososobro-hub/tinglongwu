@@ -37,7 +37,6 @@ To release:
       |---|:-:|:-:|:-:|:-:|:-:|
       | 中文 (zh) | ... |
       | English (en) | ... |
-      | English (en) | ... |
       ```
 
    3. Contributors, all-time and cumulative (`.all-contributorsrc`, reporters included; the list only grows): the bold line `Built with help from N people` (N = humans only), a single-row HTML table with one cell per person, then one small line for AI tools and one emoji legend line. Each cell has only the avatar, the login and the emoji, no caption:
