@@ -433,6 +433,7 @@ def main(argv=None) -> int:
                    choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"])
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
+    p.add_argument("--pair", action="append", default=[], help=argparse.SUPPRESS)  # #562: deprecated, ignored
     p.add_argument("--hymt", action="store_true",
                    help="Tencent Hy-MT2-1.8B Q4_K_M GGUF (Apache-2.0, ~1.1 GB): direct zh<->ja translation for "
                         "Japanese listening/speaking (needs llama-cpp-python)")
@@ -456,6 +457,9 @@ def main(argv=None) -> int:
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
+    if a.pair:  # #562: old callers (CI workflows, scripts) still pass --pair; accept it, download nothing
+        print("tlwu-setup: --pair is deprecated and ignored (OPUS was removed; Hy-MT2 translates directly)",
+              file=sys.stderr)
     if a.packs:
         from . import packs
 

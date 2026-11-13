@@ -140,3 +140,13 @@ def test_installer_entry_points_download_no_opus_pair(monkeypatch, tmp_path, ent
             assert dl.main([*t.downloader_args(), "--models-dir", str(tmp_path)]) == 0
             assert "opus" not in t.parts
     assert seen == []
+
+
+def test_deprecated_pair_flag_is_accepted_and_downloads_nothing(monkeypatch, tmp_path, capsys):
+    """#562: e2e.yml / hw-tests.yml still call `tlwu-setup ... --pair zh-en ... --allow-unpinned`; that must not exit 2."""
+    seen = []
+    monkeypatch.setattr(dl, "get_pair", lambda *a, **k: seen.append(a))
+    argv = ["--pair", "zh-en", "--pair", "en-zh", "--pair", "en-ru", "--pair", "ru-en", "--allow-unpinned",
+            "--models-dir", str(tmp_path)]
+    assert dl.main(argv) == 0
+    assert seen == [] and "--pair is deprecated" in capsys.readouterr().err
