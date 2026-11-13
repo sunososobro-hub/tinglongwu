@@ -3,3 +3,6 @@ contact_links:
   - name: Security issue / 資安問題
     url: https://github.com/sunososobro-hub/tinglongwu/security/advisories/new
     about: Report privately, not as a public issue. / 請私下回報，不要開公開 issue。
+  - name: Read the README first / 先看 README
+    url: https://github.com/sunososobro-hub/tinglongwu#readme
+    about: Setup, modes and known limits. / 安裝、模式與已知限制
