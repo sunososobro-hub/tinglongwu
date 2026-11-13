@@ -131,8 +131,12 @@ def test_listen_router_has_no_opus_fallback(tmp_path, monkeypatch):
     warned = []
     tr = cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: warned.append(msg))
     assert tr.translate("Hello", "en", "zh").text == "你好"
-    with pytest.raises(RuntimeError, match="does not translate tr -> zh.*tlwu-setup --hymt"):
-        tr.preload("tr", "zh")  # Turkish is not in Hy-MT2's table: fails before capture starts
+    from tinglongwu.models import ModelNotFound
+
+    with pytest.raises(ModelNotFound, match="does not translate tr -> zh"):
+        tr.preload("tr", "zh")  # Turkish is not in Hy-MT2's table
+    with pytest.raises(ModelNotFound):  # e.g. auto-detected by Whisper: the pipeline reports it and keeps running
+        tr.translate("Merhaba", "tr", "zh")
     llm.create_chat_completion = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("llama crashed"))
     with pytest.raises(RuntimeError, match="not available.*llama crashed"):
         tr.translate("Hello", "en", "zh")
@@ -147,3 +151,30 @@ def test_short_line_left_in_kana_shows_source(tmp_path):
     assert zh_script_guard("Hey", "欸，齁") == "欸，齁"  # valid Taiwan interjections are kept
     long_src = "это довольно длинное предложение, которое модель перевела почти полностью"
     assert zh_script_guard(long_src, "這是一個相當長的句子 модель") == "這是一個相當長的句子 модель"
+
+
+def test_auto_detected_unsupported_language_keeps_the_session_running(tmp_path, wav, monkeypatch, capsys):
+    """#471 review: with no OPUS pivot, a language Whisper detects but Hy-MT2 does not know (Turkish here) is reported
+    as a missing pair and the session goes on; it must not end the live session."""
+    import io
+
+    from tinglongwu.asr import Recognizer, Transcript
+    from tinglongwu.capture import FileSource
+    from tinglongwu.pipeline import run
+    from tinglongwu.segment import Segmenter
+    from tinglongwu.sink import TextSink
+
+    class TurkishASR(Recognizer):
+        n = 0
+
+        def transcribe(self, audio):
+            self.n += 1
+            return Transcript(f"merhaba dünya {self.n}", "tr")
+
+    m = install(tmp_path, "hymt2")
+    monkeypatch.setattr("tinglongwu.hymt._load_llama", lambda path, gpu: FakeLlm("你好"))
+    tr = cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: None)
+    out = io.StringIO()
+    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), TurkishASR(), tr, TextSink(out))
+    assert out.getvalue().count("merhaba dünya") >= 2  # every segment was shown, the run did not stop
+    assert "tr -> zh" in out.getvalue() + capsys.readouterr().err

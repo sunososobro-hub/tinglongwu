@@ -166,7 +166,7 @@ class JaRouter(Translator):
 
     @glossary.setter
     def glossary(self, g) -> None:
-        """One glossary for both routes (#174): Hy-MT2 and the OPUS pivot both apply its `~` fixes."""
+        """One glossary for both routes (#174): Hy-MT2 and the base (if any) both apply its `~` fixes."""
         self._glossary = g
         for t in (self.hy, self.base):
             if t is not None and hasattr(t, "glossary"):
@@ -229,11 +229,16 @@ class _NoFallback(Translator):
         self.glossary = None
 
     def _fail(self, src: str, tgt: str):
+        """A language Hy-MT2 does not know (e.g. one auto-detected by Whisper) raises ModelNotFound, which the
+        pipeline reports once per pair and keeps running (as the OPUS pivot's missing pair did). A Hy-MT2 that is
+        gone (failed to load / crashed mid-session) is a RuntimeError that stops the session with the reason."""
         r = self.router
-        why = (f"Hy-MT2 is not available ({r.hy_error[:160]})" if r.hy is None
-               else f"Hy-MT2 does not translate {src} -> {tgt}")
-        raise RuntimeError(f"{why}; there is no fallback engine (#471). Install or repair it with "
-                           "`tlwu-setup --hymt`")
+        if r.hy is None:
+            raise RuntimeError(f"Hy-MT2 is not available ({r.hy_error[:160]}); there is no fallback engine (#471). "
+                               "Install or repair it with `tlwu-setup --hymt`")
+        from .models import ModelNotFound
+
+        raise ModelNotFound(f"Hy-MT2 does not translate {src} -> {tgt}; there is no fallback engine (#471)")
 
     def preload(self, src: str, tgt: str) -> None:
         self._fail(src, tgt)
