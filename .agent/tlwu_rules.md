@@ -13,16 +13,21 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 - Claim = create branch `fix/N` from dev (REST `POST git/refs`, or `create_branch`). "Reference already exists" (422) = someone else has it: take the next item.
 - After claiming: add `status:doing`. Push work to `fix/N` (re-do after a closed PR: `fix/N-r2`, `-r3`). When the PR is open, swap `status:doing` -> `status:review` in the same run (this releases the area lock, section 10). Mergers remove `status:review` when the PR merges or closes.
 - Never start an item that has an open PR whose body says Closes/Refs #N, or a `fix/N*` branch that is still live.
+- Exception (#831): an issue put back to `status:todo` after `AI review: FAIL` or `Opus review: CHANGES` (section 3) keeps its open PR; that PR and its branch are not a lock. The next worker claims by adding `status:doing`, pushes the fix to the SAME PR branch and swaps back to `status:review`. Likewise a merged `fix/N*` branch is not a lock: the rest of a partial merge (section 3) is claimed on the next free `fix/N-rK`.
 - A `fix/N*` branch is NOT a lock when its last PR is closed unmerged and no open PR uses it (leftover after a CHANGES/redo review). Retry on the next free `fix/N-rK` (claim it as above), start from the closed PR's head (`git fetch origin pull/<PR>/head`) and follow that PR's last review. Mergers/watchdog may delete such leftover branches.
 - Every PR, from any agent or session, has an issue and a head named `fix/N`, `fix/N-rK` or `feat/N`, with `Closes #N` or `Refs #N` in the body. No `rules/`, `docs/` or other heads (the section 11 fast-lane PR to main is the only exception).
 - A merger that finds an open PR to dev with any other head never stops silently: it adds `needs-opus` and a 1-line comment `needs-opus: head is not fix/N; reopen as fix/<issue>`. R-hard then opens/reuses an issue and re-pushes the same commits as `fix/<issue>`, closing the old PR. The owner is never the fallback for a branch name.
 
 ## 3. Merge gates (changes to g5 / g7, plus hard stops)
-- g5 size: escalate to Opus (`needs-opus`) only when the diff is > 600 changed lines (was 300). Sensitive paths (g4) unchanged.
+- g5 (#831): diff size alone no longer escalates to Opus. `needs-opus` under g5 only when the PR adds a skip / skipif / xfail marker or deletes a test file. Sensitive paths (g4) are the narrowed list in section 14.
 - g7 CI: wait up to **15 minutes** for checks to complete (was 10; windows-build p90 12.8 min, e2e p90 10.1 min) before giving up; don't post "CI still running" comments.
 - Opus PASS is honoured (#742): when a comment or review containing `Opus review: PASS` (or the older `Opus review: APPROVE`) by an allowed review author (section 14) is newer than the PR's latest head commit, mergers treat g4, g5 and the `.github/` rule as passed and continue with mergeable/CI/acceptance. They never re-add `needs-opus` to such a PR. Opus reviewers write `Opus review: PASS`.
-- Narrower escalation (#742): the g4 path match ignores files under `tests/` (e.g. `tests/test_netguard.py` is a test, not netguard code); a g5 `skipif` whose condition only checks `sys.platform` / `os.name` is not a skip marker; under `.github/` only `workflows/` needs an Opus PASS (issue templates, CODEOWNERS etc. follow the normal gates).
-- `.github/` changes: NOT an owner question. Merge to dev after CI green + Opus review (`Opus review: PASS`). Never release, tag, or touch main.
+- Narrower escalation (#742): the g4 path match ignores files under `tests/` (e.g. `tests/test_netguard.py` is a test, not netguard code); a g5 `skipif` whose condition only checks `sys.platform` / `os.name` is not a skip marker; under `.github/` only the release-critical workflows (next bullet) need an Opus PASS (other workflows, issue templates, CODEOWNERS etc. follow the normal gates).
+- `.github/` changes: NOT an owner question. Release-critical workflows (#831: `.github/workflows/` `ci.yml`, `e2e.yml`, `windows-build.yml`, `hw-tests.yml`, `release.yml`, `release-pr.yml` and any `auto-release*.yml`) merge to dev after CI green + Opus review (`Opus review: PASS`); everything else under `.github/` follows the normal gates. Never release, tag, or touch main.
+- Paperwork is not a FAIL (#831): when the only problem is the PR body (no `Owner comments:` section, a missing or misplaced `tlwu-usage` line, no `Closes/Refs` while the issue is obvious from the head `fix/N`), the merger edits the body itself (Owner comments listed from the issue, or `none`) and continues. No FAIL, no `needs-opus`.
+- Partial work (#831): a PR that says `Refs #N` and lists what is not done is merged as partial when what it does is correct; the merger comments the remaining Acceptance items on the issue and leaves it open in `status:todo`. "Not everything in the issue is done" alone is not a FAIL.
+- Merger FAIL (#831), only for: contradicts an owner comment; tests that only read/grep source; thresholds/constants changed without data; unrelated changes, secrets or new network calls. The merger posts `AI review: FAIL — <which>` and swaps the issue `status:review` -> `status:todo`; the PR stays open and the next worker fixes it on the same branch (section 2). No `needs-opus`, except when the same PR has failed twice.
+- `Opus review: CHANGES` takes the same path: issue back to `status:todo`, PR stays open, the next worker fixes on the same branch.
 - Hard stops, never merge when:
   - any review/comment on the PR says `needs owner` / `blocking` and has not been resolved by a later Opus PASS;
   - the linked issue has `status:frozen`, `status:proposal` or `needs-owner`.
@@ -40,7 +45,7 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 - S-easy: take up to 4 items per run. S-merge: merge every ready PR in one run.
 - Concurrency ceiling across all agents: `status:doing` ≤ 10. This replaces the `>= 6` / opus `>= 4` stop numbers in routine prompts.
 - Opus review queue (#742): R-hard and S-hard each review up to 4 `needs-opus` items per run (oldest label first), not 1. R-hard also runs on a schedule, not only when dispatched.
-- Orphan claims (#742): every worker slot (A, B, C) and S-hard runs the timeout sweep first. A `status:doing` issue with no open PR is put back to `status:todo` after **20 minutes** for `model:sonnet` and 45 minutes for `model:opus` (doing->PR p90 is 27 min).
+- Orphan claims (#742): every worker slot (A, B, C) and S-hard runs the timeout sweep first. A `status:doing` issue with no open PR (or, for a fix on an open PR per section 2, no new commit on its head) is put back to `status:todo` after **20 minutes** for `model:sonnet` and 45 minutes for `model:opus` (doing->PR p90 is 27 min).
 
 ## 7. Merge conflicts: resolve in place (added for #566)
 - When a PR is `dirty` (mergeable_state), the merger/reviewer first merges `origin/dev` into the PR branch (or `update_pull_request_branch`), resolves conflicts keeping both sides' intent, re-runs the tests, and pushes. Do not close + redo first.
@@ -136,17 +141,17 @@ Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main r
 - Opus PASS: a PR comment or review whose body contains the line `Opus review: PASS`, posted by an allowed review author, after the PR's latest head commit. A PASS from any other author (fork authors, bots, other accounts) is ignored, whatever its text says.
 - Green: the `ci` workflow's `test` check run exists on the PR's head commit and concluded `success` (no checks at all is never green), and every other check run and commit status on that commit has completed with conclusion `success`, `skipped` or `neutral`; none is pending, `failure`, `cancelled` or `timed_out`. For the release PR, green also requires all four of `ci`, `e2e`, `windows-build` and `hw-tests` to be `success` on its head commit (`skipped` does not count there).
 - Ready: base is `dev`; not draft; `mergeable_state` is `clean` (a `dirty` PR is fixed first, section 7); green; all gates g1-g7 below pass; no hard stop (section 3 and this section) applies.
-- Gates (canonical here; routine prompts that number gates use these):
+- Gates (canonical here; routine prompts that number gates use these). g4 / g5 narrowed (owner 2026-11-14, #831): of the last 200 PRs, 73 went to Opus review and only 5 (7%) got CHANGES; median wait 41 min.
   - g1 link: the body has `Closes #N` or `Refs #N`, and #N is an open or just-closed issue in this repo.
-  - g2 usage: the body's last line is `tlwu-usage: ... minutes=N` (section 10).
+  - g2 usage: the body's last line is `tlwu-usage: ... minutes=N` (section 10). For g1 / g2 the merger repairs a body-only gap itself (section 3, paperwork).
   - g3 base: base is `dev` (see "Base" below).
-  - g4 sensitive paths: protected paths (below), plus `pyproject.toml`, `requirements*.txt`, install/update scripts (`install.*`, `update.bat`, `scripts/install.sh`, `scripts/auto_update.sh`, `scripts/*bootstrap*`, `tinglongwu_setup/`), offline/netguard code (`tinglongwu/offline.py`, `scripts/*offline*`) and model pins/downloads (`scripts/download_models.py`, `scripts/make_model_pins.py`). These need an Opus PASS before merge.
-  - g5 size: > 600 changed lines -> `needs-opus` (section 3).
+  - g4 sensitive paths: protected paths (below), plus dependency pins (`pyproject.toml`, `requirements*.txt`), offline/netguard code (`tinglongwu/offline.py`, `scripts/*offline*`) and model pins/downloads (`scripts/download_models.py`, `scripts/make_model_pins.py`). These need an Opus PASS before merge. Install/update scripts (`install.*`, `update.bat`, `scripts/install.sh`, `scripts/auto_update.sh`, `scripts/*bootstrap*`, `tinglongwu_setup/`) are no longer g4: the install-test, install-clean and windows-build CI jobs cover them.
+  - g5 tests: a newly added skip / skipif / xfail marker (not a `skipif` that only checks `sys.platform` / `os.name`, section 3) or a deleted test file -> `needs-opus`. Diff size is not a gate.
   - g6 review: an Opus PASS where g4 or g5 applies; no unresolved `needs owner` / `blocking` (section 3).
-  - g7 CI: green, waiting up to 10 minutes (section 3).
+  - g7 CI: green, waiting up to 15 minutes (section 3).
 
 ### Protected paths
-- Protected: `.agent/tlwu_rules.md`, `scripts/release_notes.py`, `scripts/release_check.py`, `packaging/`, `installer/`, `.github/workflows/` (above all `hw-tests.yml`, `release.yml`, `release-pr.yml` and any `auto-release*.yml`), and `tinglongwu/__init__.py` (version).
+- Protected: `.agent/tlwu_rules.md`, `scripts/release_notes.py`, `scripts/release_check.py`, `packaging/`, `installer/`, the release-critical workflows under `.github/workflows/` (`ci.yml`, `e2e.yml`, `windows-build.yml`, `hw-tests.yml`, `release.yml`, `release-pr.yml` and any `auto-release*.yml`; other workflow files follow the normal gates), and `tinglongwu/__init__.py` (version).
 - A PR touching a protected path merges only after an Opus PASS by an allowed review author. The owner's click is not needed.
 - A PR touching a protected path is never merged when its linked issue was opened by an account that is not a repo collaborator (owner, or listed collaborators). This gate holds even after an Opus PASS (a PASS never overrides it). The PR is closed with a 1-line reason; the work is redone from a collaborator-opened issue if wanted.
 
