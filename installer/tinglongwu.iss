@@ -3,7 +3,9 @@
 ; -> Finish. Start menu + desktop shortcuts with the app icon; uninstall in "Apps / Add or remove programs"
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.
 ; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes; CoreLayout (--core-dir,
-; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu.exe and install.ps1 is not run.
+; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu.exe and install.ps1 is not run;
+; DefaultListenMB (#771, core only): download size of `tlwu.exe setup --default-listen`, which the core wizard runs
+; instead (no language page, no pip).
 
 #define AppName "tinglongWu"
 #define AppTitle "聽攏有 tinglongWu"
@@ -67,6 +69,7 @@ Type: files; Name: "{autoprograms}\{#TalkTitle}.lnk"
 Type: files; Name: "{autodesktop}\{#TalkTitle}.lnk"
 
 [Code]
+#ifndef CoreLayout
 const
   { #751: indices of the options on the language page }
   PACK_ZH = 0;
@@ -84,6 +87,7 @@ const
   CORE_MODELS_CPU_MB = 2000;   { Whisper small + Hy-MT2 + Kokoro }
   CORE_MODELS_GPU_MB = 3000;   { Whisper large-v3-turbo + Hy-MT2 + Kokoro }
   PY_PACKAGES_MB = 3000;
+#endif
 
 const
   { #755: the page refreshes every REFRESH_TICKS * POLL_MS = 5 s; STALL_TICKS * POLL_MS = 120 s without log growth -> "still working" }
@@ -99,7 +103,9 @@ var
   InstallRC: Integer;
   KeepModels: Boolean;
   CpuTaskPreset: Boolean;
+#ifndef CoreLayout
   LangPage: TInputOptionWizardPage;
+#endif
 
 { #600: NVIDIA driver present? nvcuda.dll / nvml.dll in System32, or nvidia-smi exits 0 }
 function HasNvidiaDriver: Boolean;
@@ -125,6 +131,7 @@ begin
       WizardForm.TasksList.Checked[I] := True;
 end;
 
+#ifndef CoreLayout
 { #672: primary language id of the OS UI language -> index into the pack list below (zh, en, ja, ko, ru); #754: $12 Korean }
 function LocaleLangIndex: Integer;
 begin
@@ -147,6 +154,8 @@ begin
   end;
 end;
 
+#endif
+
 { #753: "about 1.1 GB" (MB rounded to 0.1 GB) }
 function SizeText(MB: Integer): String;
 var
@@ -156,6 +165,7 @@ begin
   Result := 'about ' + IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10) + ' GB';
 end;
 
+#ifndef CoreLayout
 { #753: ", about 1.1 GB" for a language page label, '' for a pack with nothing of its own (zh, en) }
 function PackNote(Pack: Integer): String;
 begin
@@ -188,9 +198,17 @@ begin
     end;
   if Result = '' then Result := 'zh,en';
 end;
+#endif
 
 procedure InitializeWizard;
 begin
+#ifdef CoreLayout
+  { #771: no language page in the core wizard: the default listen models (en -> zh-TW) are all it installs }
+  ProgressPage := CreateOutputProgressPage('Downloading the default models / 下載預設模型',
+    'Downloading about ' + SizeText({#DefaultListenMB}) + '. 約下載 ' + SizeText({#DefaultListenMB}) + '，請保持網路連線。');
+  InstallRC := -1;
+end;
+#else
   LangPage := CreateInputOptionPage(wpSelectTasks, 'Which language do you want to understand? / 你想聽懂哪些語言？',
     'Only the chosen language packs are downloaded. 只會下載勾選的語言包。', '', False, False);
   LangPage.Add('中文 Chinese (zh' + PackNote(PACK_ZH) + ')');
@@ -207,6 +225,7 @@ begin
     'This can take 10-40 minutes. 需要 10-40 分鐘，請保持網路連線。');
   InstallRC := -1;
 end;
+#endif
 
 { highest "[n/N]" step that install.ps1 has printed so far; N is read from the line itself (never hard-coded, #700) }
 function LastStep(const LogFile: String): Integer;
@@ -256,7 +275,7 @@ end;
 
 procedure RunInstall;
 var
-  Params, LogFile, DoneFile, Size: String;
+  Params, LogFile, DoneFile, Size, Exe, StartMsg: String;
   RC, Waited, Seen, Sub, Pct, SecInStep, Elapsed, QuietTicks, LastCount: Integer;
   Msg: String;
   Gpu: Boolean;
@@ -265,20 +284,32 @@ begin
   LogFile := ExpandConstant('{app}\install.log');
   DoneFile := ExpandConstant('{app}\install.done');
   DeleteFile(DoneFile);
+#ifdef CoreLayout
+  { #771: tlwu.exe setup --default-listen, hidden, output to install.log (its "[n/N]" lines drive the bar); cmd writes
+    the real exit code to install.done once the exe has finished. /V:ON so !errorlevel! is read after the exe ran. }
+  Exe := ExpandConstant('{cmd}');
+  Params := '/V:ON /C ""' + ExpandConstant('{app}\tlwu.exe') + '" setup --default-listen >"' + LogFile + '" 2>&1 & echo !errorlevel! >"' + DoneFile + '""';
+  Size := SizeText({#DefaultListenMB});
+  ProgressPage.Description := 'Downloading the default models, ' + Size + '. 下載預設模型，約 ' + Size + '，請保持網路連線。';
+  StartMsg := 'Starting setup ...';
+  Steps := 2;   { replaced by N from the first "[n/N]" log line }
+#else
+  Exe := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
   Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
   if not Gpu then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
   Size := SizeText(DownloadMB(Gpu));
   ProgressPage.Description := 'This can take 10-40 minutes and downloads ' + Size + ' (models, language packs and Python packages). 需要 10-40 分鐘，約下載 ' + Size + '，請保持網路連線。';
-  ProgressPage.SetText('Starting install.ps1 ...', LogFile);
+  StartMsg := 'Starting install.ps1 ...';
   Steps := 8;   { replaced by N from the first "[n/N]" log line }
+#endif
+  ProgressPage.SetText(StartMsg, LogFile);
   ProgressPage.SetProgress(0, Steps * 100);
   ProgressPage.Show;
   try
-    if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, ExpandConstant('{app}'),
-                SW_HIDE, ewNoWait, RC) then begin
-      Log('could not start PowerShell: ' + SysErrorMessage(RC));
+    if not Exec(Exe, Params, ExpandConstant('{app}'), SW_HIDE, ewNoWait, RC) then begin
+      Log('could not start the install process: ' + SysErrorMessage(RC));
       exit;
     end;
     Waited := 0;
@@ -302,7 +333,7 @@ begin
         if Pct >= 0 then Sub := Pct
         else begin Sub := SecInStep div 2 + 2; if Sub > 90 then Sub := 90; end;
         if Sub > 99 then Sub := 99;
-        if Seen > 0 then Msg := '[' + IntToStr(Seen) + '/' + IntToStr(Steps) + ']' else Msg := 'Starting install.ps1 ...';
+        if Seen > 0 then Msg := '[' + IntToStr(Seen) + '/' + IntToStr(Steps) + ']' else Msg := StartMsg;
         Msg := Msg + '   elapsed / 已用時間 ' + IntToStr(Elapsed div 60) + ':' + Pad2(Elapsed mod 60);
         if QuietTicks >= STALL_TICKS then Msg := Msg + '   still working, slow network? / 仍在進行，網路是否太慢？';
         ProgressPage.SetText(Msg, LastLine);
@@ -366,26 +397,21 @@ begin
     if not WizardSilent then
       if WizardIsTaskSelected('autoupdate') then SetConfigValue('auto_update', '1')
       else SetConfigValue('auto_update', '0');
-#ifdef CoreLayout
-    InstallRC := 0;   { #767: the prebuilt core needs no install.ps1; models are fetched after the copy (#752 part 4) }
-#else
-    RunInstall;
-#endif
+    RunInstall;   { source layout: install.ps1; core layout (#771): tlwu.exe setup --default-listen }
     MakeTalkShortcuts;
   end;
 end;
 
-#ifdef CoreLayout
-{ #767: nothing reads the language / GPU choice in the core layout yet (#752 part 4 wires packs), so do not ask }
-function ShouldSkipPage(PageID: Integer): Boolean;
-begin
-  Result := PageID = LangPage.ID;
-end;
-
-#endif
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpSelectTasks then PresetCpuTask;
+#ifdef CoreLayout
+  if (CurPageID = wpFinished) and (InstallRC <> 0) then
+    WizardForm.FinishedLabel.Caption :=
+      'The default models did not finish downloading (exit code ' + IntToStr(InstallRC) + '). See ' +
+      ExpandConstant('{app}\install.log') + ', check the internet connection and start {#AppTitle}: it retries the download on first start.' +
+      #13#10 + #13#10 + '預設模型沒有下載完成，請看 install.log，確認網路後啟動程式，會再試一次下載。';
+#else
   if (CurPageID = wpFinished) and (InstallRC <> 0) then begin
     WizardForm.FinishedLabel.Caption :=
       'install.ps1 did not finish cleanly (exit code ' + IntToStr(InstallRC) + '). See ' +
@@ -396,6 +422,7 @@ begin
     if LastLine <> '' then
       WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10 + #13#10 + LastLine;
   end;
+#endif
 end;
 
 { uninstall: optionally keep models\, then remove what install.ps1 created (.venv, logs, caches) }
