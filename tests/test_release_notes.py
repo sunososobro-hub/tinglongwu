@@ -263,7 +263,9 @@ def test_whats_new_comes_from_the_version_section_of_the_file():
     assert rn.whats_new_section(WN, "v0.3.3") is None
     assert rn.whats_new_section("## v0.3.3\n- TODO: write\n", "v0.3.3") is None
     assert rn.whats_new_section("## v0.3.3\n\n## v0.3.2\n- x\n", "v0.3.3") is None
-    assert rn.whats_new_section((ROOT / "docs" / "whats_new.md").read_text("utf-8"), "v0.3.4") is None  # example only
+    # the example inside the file's HTML comment is never a section (it used to be checked as "v0.3.4" until the real one landed)
+    assert rn.whats_new_section((ROOT / "docs" / "whats_new.md").read_text("utf-8"), "v1.2.3") is None
+    assert rn.whats_new_section("<!-- example:\n## v9.9.9\n- x\n-->\n", "v9.9.9") is None
     body = rn.pr_body("0.3.2", list(TAGS), "v0.3.1", [], {}, "## What's new\n- PR edit\n", "c" * 40, WN)
     assert rn.whats_new(body) == "- Faster subtitles"  # the file wins over a PR body edit
 
