@@ -2,12 +2,12 @@
 
 This file overrides any routine prompt wherever they conflict (what to pick, whether to work, numbers).
 
-Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merge, S-hard, and the home-PC pipeline) reads this file from origin/dev at the start of each run. When it conflicts with the agent's own prompt, THIS FILE WINS. Owner-approved 2026-11-13.
+Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merge, S-hard) reads this file from origin/dev at the start of each run. When it conflicts with the agent's own prompt, THIS FILE WINS. Owner-approved 2026-11-13.
 
 ## 1. Who does what
-- Home PC pipeline: only issues labelled `os:windows`, `需實測` or `local-only` (needs Windows, GPU, real audio devices). Max 3 at once.
-- Cloud workers (W-easy, W-hard, S-easy, S-hard): everything else. **Skip** any issue labelled `os:windows`, `需實測` or `local-only`.
-- Cloud mergers (R-merge, S-merge, R-hard): merge every ready PR, including home-PC PRs. Home-PC workers stop after opening the PR (no CI polling, no self-review, no merge).
+- The home-PC worker lane is retired (owner 2026-11-14, #808). Cloud workers (W-easy, W-hard, S-easy, S-hard) take every issue, including `os:windows` and `local-only`; Windows-only code is verified by the GitHub-hosted Windows jobs.
+- `需實測` means: implement, merge on green CI with `Refs #N` + a "how to test" comment, and the owner tests after merge. It is not a reason to skip. Only real audio-device / GPU checks stay as owner tests after merge.
+- Cloud mergers (R-merge, S-merge, R-hard): merge every ready PR. The hw-tests self-hosted runner and the section 14 release gates are unchanged.
 
 ## 2. Locking (one rule for everyone)
 - Claim = create branch `fix/N` from dev (REST `POST git/refs`, or `create_branch`). "Reference already exists" (422) = someone else has it: take the next item.
@@ -34,7 +34,7 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 ## 5. Keep the queue full
 - When open `status:todo` + `ok-to-work` issues < 10: an Opus run (S-hard) splits `status:blocked` issues that already carry a split proposal into child issues, and may open new **bug / test / eval** issues only (no new features). Each new issue needs Why / Goal / one measurable Acceptance line / Verify.
 - Work-mix budget (owner decision 2026-11-10): fix 30% / new features 30% / QA 15% / eval 10% / ideas 5% / docs 5% / maintenance 5% of worker minutes. QA (15%) and ideas (5%) run on fixed schedules (S-hard spot checks; ideation below). Ideation: when open `status:proposal` < 3, S-hard may open up to 2 `[idea]` issues per day as `src:ai enhancement status:proposal` (never status:todo; the owner promotes them). S-hard's daily 00:28 ratio check (sum `tlwu-usage` minutes of PRs merged to dev in the last 7 days by type label vs these targets) stays. Ideation minutes have no merged PR: S-hard records them in a `tlwu-usage` comment on each `[idea]` issue, and the ratio check counts those comments (created in the same 7 days) in the ideas bucket. QA spot checks likewise have no merged PR: S-hard records their minutes in a `tlwu-usage` comment on the `[health] pipeline check log` issue, and the ratio check counts those comments in the QA bucket.
-- Mix enforcement: pickers (S-easy, W-*, local worker) honour the mix. S-hard's 00:28 run writes the 7-day shares into the `[health] pipeline check log` issue; when a type is above 1.3x its target, pickers skip that type at equal priority (P0/P1 always allowed) and take an under-target type first; when eval is under half its target, S-hard opens up to 2 eval issues (status:todo) per day.
+- Mix enforcement: pickers (S-easy, W-*) honour the mix. S-hard's 00:28 run writes the 7-day shares into the `[health] pipeline check log` issue; when a type is above 1.3x its target, pickers skip that type at equal priority (P0/P1 always allowed) and take an under-target type first; when eval is under half its target, S-hard opens up to 2 eval issues (status:todo) per day.
 
 ## 6. Throughput
 - S-easy: take up to 4 items per run. S-merge: merge every ready PR in one run.
@@ -57,12 +57,12 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day ratio check wherever they conflict (the picker below replaces the 1.3x skip rule).
 
 ### Throttle (faucet)
-- Every routine (and the home-PC worker) first reads the first line of issue #574 `[pipeline] throttle (faucet)`: `gh api repos/sunososobro-hub/tinglongwu/issues/574 --jq .body` -> first line `level: N`. Unreadable or missing -> assume `level: 2`. Obey the legend:
+- Every routine first reads the first line of issue #574 `[pipeline] throttle (faucet)`: `gh api repos/sunososobro-hub/tinglongwu/issues/574 --jq .body` -> first line `level: N`. Unreadable or missing -> assume `level: 2`. Obey the legend:
   - 0 off: only merge green PRs; no picking, no new issues.
   - 1 low: only P0/P1 items + merging; only worker slot A works (B, C, W-hard idle unless P0/P1).
   - 2 normal: ledger + picker below, pace brake on: if this week's ledger minutes are ahead of the hour-of-week pace by more than 10%, slots B and C skip this wake. Week = Monday 00:00 Asia/Taipei to now. Week minutes = `tlwu-usage` minutes of PRs merged to dev since then (plus QA/idea usage comments, as in the ledger). Weekly budget W = the same sum for the previous full week (no data -> brake off). Expected = W x hours elapsed this week / 168. Brake when week minutes > 1.10 x expected.
   - 3 high: all slots work, up to 4 items per wake, no pace brake.
-  - 4 max (reset-credit week): as 3, plus the home-PC worker runs 3 at once and S-hard also works items after its sweep.
+  - 4 max (reset-credit week): as 3, plus S-hard also works items after its sweep.
 - Mergers (R-merge, S-merge, R-hard) merge green PRs at every level.
 
 ### Slots
@@ -114,7 +114,7 @@ Owner: "Important things can't wait for a release." Docs-only changes may go to 
 Owner: "聽 說 雙向是一個維度，平台是一個維度，語言是一個". These labels describe WHAT the work is for; they do not route work and do not change the type budget (section 10).
 - Mode, exactly one per issue: `mode:listen` (ASR/MT/subtitles/GUI for listening), `mode:speak` (TTS, voice out, speak pipeline), `mode:two-way` (meeting both sides, face-to-face, topic notes), `mode:shared` (install, CI, rules, docs, eval infra, release - serves every mode).
 - Language, zero or more: `lang:<code>` (`zh`, `en`, `ja`, `ko`, `ru`, `hi`, `yue`, `vi`, `th`, `id`, `es`, `de`, `fr`, `it`, `pt`, ...) only when the work is specific to that language. None = all languages. zh as the default target language alone does not count.
-- Platform: existing `os:windows` / `os:mac` / `os:linux` and `area:mobile`; none = all platforms. Section 1 still applies: `os:windows` routes an issue to the home PC, so add `os:*` only when the work really needs that OS to build or test.
+- Platform: existing `os:windows` / `os:mac` / `os:linux` and `area:mobile`; none = all platforms. Add `os:*` only when the work really needs that OS to build or test; it no longer routes the issue away from cloud workers (section 1).
 - Triage (W-easy on `issues.opened`, S-easy, S-hard supply, any agent opening an issue) sets one `mode:*` and any `lang:*` together with the section 10 labels. A worker that picks an issue without `mode:*` adds it.
 - Focus: line 2 of the throttle issue #574 may read `focus: <values>` (comma list of mode / platform / language values, e.g. `focus: speak, ja`). Missing = no focus. Pickers: P0/P1 first; then the ledger type (section 10); inside that type, items matching any focus value first, then P0 -> P3, then lowest number. S-hard supply opens evidence-backed issues for focus values first.
 - The stats page (#576 children) reads these labels; it does not guess mode or language from titles.
@@ -132,7 +132,7 @@ Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main r
 - Start: the release-PR rule in "Base", "Release freeze" and "Kill switch" take effect only once `.github/workflows/auto-release.yml` exists on `dev` (#589). Until then nothing can merge the release PR, so the freeze does not apply and mergers keep merging ready PRs into `dev`; every other rule in this section applies now.
 
 ### Definitions
-- Allowed review authors: `sunososobro-hub` (the owner account the cloud and home-PC routines post as). Only this list counts; changing it is a change to this file (a protected path).
+- Allowed review authors: `sunososobro-hub` (the owner account the cloud routines post as). Only this list counts; changing it is a change to this file (a protected path).
 - Opus PASS: a PR comment or review whose body contains the line `Opus review: PASS`, posted by an allowed review author, after the PR's latest head commit. A PASS from any other author (fork authors, bots, other accounts) is ignored, whatever its text says.
 - Green: the `ci` workflow's `test` check run exists on the PR's head commit and concluded `success` (no checks at all is never green), and every other check run and commit status on that commit has completed with conclusion `success`, `skipped` or `neutral`; none is pending, `failure`, `cancelled` or `timed_out`. For the release PR, green also requires all four of `ci`, `e2e`, `windows-build` and `hw-tests` to be `success` on its head commit (`skipped` does not count there).
 - Ready: base is `dev`; not draft; `mergeable_state` is `clean` (a `dirty` PR is fixed first, section 7); green; all gates g1-g7 below pass; no hard stop (section 3 and this section) applies.
@@ -175,7 +175,7 @@ Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main r
 - `dev` red (any required check failing on the dev tip) for more than 2 h is P0: S-hard opens (or bumps) a `[P0] dev red` issue, and pickers take it before anything else.
 
 ## 15. Issue format (owner 2026-11-13, #588)
-Single source for every session (cloud, home PC, humans); `CONTRIBUTING.md` links here.
+Single source for every session (cloud, humans); `CONTRIBUTING.md` links here.
 - Anyone with a GitHub account can open issues (public repo, issue forms).
 - Format: English only. Body lines `Why:` (quote the owner when the owner asked for it), `Goal:` (one sentence), `Acceptance:` (measurable: a number, a behaviour or a command's output), `Verify:` (the command or steps that check Acceptance). Optional `Out of scope:`.
 - Exactly one `area:*` label, plus the section 10 type / `P0..P3` / `model:*` labels and the section 12 `mode:*` label.
