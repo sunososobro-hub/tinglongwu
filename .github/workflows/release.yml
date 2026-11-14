@@ -8,7 +8,11 @@ name: release
 #                       packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
 #                       instructions (no AVX-512), --smoke, --selftest; render the release notes; report the
 #                       job time against scripts/release_check.py CORE_JOB_BUDGET_MIN (a warning, never a failure)
-#   release           : tag main, create a draft Release with the zip, install scripts and SHA256SUMS.txt
+#   vulkan-pack       : parallel to windows (#800): compile llama-cpp-python with GGML_VULKAN=on (same pin as the CPU build),
+#                       pack llama_cpp/lib with scripts/make_vulkan_pack.py as tlwu-vulkan-pack-<version>.zip, check that
+#                       mt_backend.vulkan_pack_dir() accepts it. continue-on-error and capped at the core job budget: the
+#                       optional pack never blocks or delays a release (a timeout only drops the asset)
+#   release           : tag main, create a draft Release with the zip, the Vulkan pack (when built), install scripts and SHA256SUMS.txt
 #   windows-installer : build the setup wizard from the core zip (#772: --core-dir; also on a dry run, with its
 #                       size vs WIZARD_MAX_MB), attach it and publish (it becomes `latest`)
 # workflow_dispatch = dry run on any branch: plan + build + every check + notes in the summary, never a tag/Release.
@@ -190,8 +194,87 @@ jobs:
         run: |
           python scripts\release_check.py --job-start $env:TLWU_JOB_START
 
+  vulkan-pack:
+    # #800: optional Vulkan llama.cpp pack for AMD / Intel / NVIDIA GPUs without CUDA (mt_backend CUDA > Vulkan > CPU).
+    # Runs next to `windows` and `release` waits for it, so its timeout is the core job budget
+    # (scripts/release_check.py CORE_JOB_BUDGET_MIN = 20): a slow Vulkan compile only drops the asset, never delays a
+    # release past the budget. A failure or timeout is not a release failure (continue-on-error); the `release` job
+    # attaches the pack when the artifact exists.
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20   # = CORE_JOB_BUDGET_MIN (tests/test_make_vulkan_pack_800.py keeps them equal)
+    continue-on-error: true
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      VULKAN_SDK_VERSION: "1.4.309.0"   # LunarG SDK for glslc + the Vulkan headers/loader import lib
+      # SHA-256 of that installer. NOT measured yet: the cloud session that wrote this could not reach sdk.lunarg.com.
+      # Empty = the step below refuses to run the installer (the pack job fails, the release ships without the pack).
+      # To enable the pack: run this workflow once (workflow_dispatch), copy the hash the "Vulkan SDK" step prints
+      # ("Vulkan SDK installer SHA-256: ...") into the value below, and compare it with LunarG's published hash.
+      VULKAN_SDK_SHA256: ""
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          $exe = "$env:RUNNER_TEMP\VulkanSDK-Installer.exe"
+          curl.exe -fsSL -o $exe "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/VulkanSDK-$env:VULKAN_SDK_VERSION-Installer.exe"
+          if ($LASTEXITCODE) { exit 1 }
+          # the installer's headers / glslc build the DLLs we ship: nothing runs it until its hash matches the pin
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Write-Output "Vulkan SDK installer SHA-256: $hash"
+          if (-not $env:VULKAN_SDK_SHA256) { Write-Output "::error::VULKAN_SDK_SHA256 is not pinned yet; not running the installer (hash above)"; exit 1 }
+          if ($hash -ne $env:VULKAN_SDK_SHA256) { Write-Output "::error::Vulkan SDK installer SHA-256 $hash does not match the pin '$env:VULKAN_SDK_SHA256'"; exit 1 }
+          & $exe --accept-licenses --default-answer --confirm-command install
+          if ($LASTEXITCODE) { exit 1 }
+          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_SDK_VERSION" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "C:\VulkanSDK\$env:VULKAN_SDK_VERSION\Bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
+        shell: pwsh
+        run: |
+          $pin = (Select-String -Path requirements-llama-cpu.txt -Pattern '^llama-cpp-python==(.+)$').Matches[0].Groups[1].Value.Trim()
+          $env:CMAKE_ARGS = "-DGGML_VULKAN=on -DGGML_NATIVE=off"   # AVX2 baseline, not the runner's CPU (no AVX-512, #74)
+          $env:FORCE_CMAKE = "1"
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE) { exit 1 }
+          python -m pip install "llama-cpp-python==$pin" --no-binary llama-cpp-python --no-cache-dir --target "$env:RUNNER_TEMP\vk-site"
+          if ($LASTEXITCODE) { exit 1 }
+      - name: Pack llama_cpp/lib as tlwu-vulkan-pack-<version>.zip and check the layout
+        shell: pwsh
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          $ver = $env:TAG.TrimStart('v')
+          if (-not $ver) { $ver = (python -c "import tinglongwu; print(tinglongwu.__version__)").Trim() }   # a dry run may plan no tag
+          python scripts\make_vulkan_pack.py --lib "$env:RUNNER_TEMP\vk-site\llama_cpp\lib" --version $ver --out "$env:RUNNER_TEMP\vk-dist"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $zip = "$env:RUNNER_TEMP\vk-dist\tlwu-vulkan-pack-$ver.zip"
+          $out = python scripts\make_vulkan_pack.py --check $zip
+          $code = $LASTEXITCODE
+          $out | Write-Host
+          "### Vulkan pack layout" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          '```' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          $out | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          '```' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          if ($code) { exit $code }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vulkan-pack
+          path: ${{ runner.temp }}\vk-dist\tlwu-vulkan-pack-*.zip
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
   release:
-    needs: [plan, windows]
+    needs: [plan, windows, vulkan-pack]
     if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -204,6 +287,11 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-win64
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true   # #800: no artifact = the Vulkan pack job failed; the release ships without it
+        with:
+          name: vulkan-pack
           path: dist
       - name: Build install assets (embed the tag so each script installs the version it was released with)
         env:
@@ -221,6 +309,9 @@ jobs:
           sha256sum -c tinglongwu-win64.zip.sha256   # the zip release_check.py tested
           [ "$(stat -c %s tinglongwu-win64.zip)" -lt 2147483648 ] || { echo "zip over the 2 GiB asset limit"; exit 1; }
           sha256sum tinglongwu-win64.zip install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
+          for f in tlwu-vulkan-pack-*.zip; do   # #800: listed next to the core zip when the pack was built
+            [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS.txt || echo "::warning::no Vulkan pack in this release"
+          done
       - name: Tag the released commit (an existing tag must already point at it)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -239,10 +330,15 @@ jobs:
           # README links is attached. Only a tag with a suffix (v1.2.3-beta.1) is a pre-release (#478: 0.x stays
           # latest). A re-run (draft exists) only replaces the files.
           pre=(); [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || pre=(--prerelease)
-          files=(dist/tinglongwu-win64.zip dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt)
+          vulkan=(); for f in dist/tlwu-vulkan-pack-*.zip; do [ -f "$f" ] && vulkan+=("$f"); done   # #800
+          files=(dist/tinglongwu-win64.zip dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt "${vulkan[@]}")
           if draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null); then
             # never rewrite a published release: its SHA256SUMS.txt and wizard are what users verify against
             [ "$draft" = true ] || { echo "release $TAG is already published; not touching it"; exit 1; }
+            if [ "${#vulkan[@]}" -eq 0 ]; then   # #800: a retry without the pack must not leave an older pack with no checksum
+              stale=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep '^tlwu-vulkan-pack-' || true)
+              for a in $stale; do gh release delete-asset "$TAG" "$a" -y; done
+            fi
             gh release upload "$TAG" "${files[@]}" --clobber
             gh release edit "$TAG" --notes-file dist/notes.md   # the notes describe the files just attached
           else
