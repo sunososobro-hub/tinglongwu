@@ -117,3 +117,75 @@ def test_gate_line_text():
     assert "hello" in send_gate_line(g.view())
     g.stop()
     assert send_gate_line(g.view()) == ""
+
+
+# ---- GUI wiring (real Tk; skipped without a display, CI runs it under xvfb) -----------------------------------------
+import pytest  # noqa: E402
+
+
+@pytest.fixture
+def gui(tmp_path, monkeypatch):
+    tk = pytest.importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu import i18n
+    from tinglongwu.gui import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)
+    monkeypatch.setattr(i18n, "_override", "en")
+    (tmp_path / "tinglongwu").mkdir()
+    (tmp_path / "tinglongwu" / "gui.json").write_text('{"tour_seen": true}', "utf-8")
+    a = app.App()
+    a.root.update()
+    yield a
+    try:
+        a.root.destroy()
+    except tk.TclError:
+        pass
+
+
+def _hold(a, mode="countdown"):
+    clk, out = Clock(), []
+    a.gate = SendGate(out.append, clk, mode=mode)
+    a.gate.offer("你好", "hello there")
+    a._gate_tick()
+    a.root.update()
+    return clk, out
+
+
+@pytest.mark.parametrize("how", ["Escape", "space", "button"])
+def test_gui_esc_space_and_stop_button_discard_the_held_line(gui, how):
+    clk, out = _hold(gui)
+    assert gui.gate_frm.winfo_manager() == "pack" and "hello there" in gui.v_gate.get()
+    assert gui.gate_frm.master is gui.status_box  # visible on the first screen, not under the collapsed Advanced
+    if how == "button":
+        gui.btn_gate_stop.invoke()
+    else:
+        gui.root.focus_force()
+        gui.root.update()
+        gui.root.event_generate(f"<{how}>")
+    gui.root.update()
+    clk.t += 5.0
+    gui._gate_tick()
+    gui.root.update()
+    assert out == [] and gui.gate.discarded == 1  # 0 audio pushed
+    assert gui.gate_frm.winfo_manager() == ""  # hidden again once nothing is held
+
+
+def test_gui_countdown_line_is_sent_after_two_seconds_and_low_confidence_needs_send(gui):
+    clk, out = _hold(gui)
+    assert str(gui.btn_gate_send["state"]) == "disabled"
+    clk.t += sendmode.COUNTDOWN_S
+    gui._gate_tick()
+    assert out == ["hello there"]
+    clk, out = _hold(gui, mode="confirm")
+    clk.t += 10
+    gui._gate_tick()
+    gui.root.update()
+    assert out == [] and str(gui.btn_gate_send["state"]) == "normal"
+    gui.btn_gate_send.invoke()
+    assert out == ["hello there"]

@@ -566,6 +566,86 @@ def render_throughput_section(series):
                table, RELEASE_ROWS))
 
 
+INSTALL_DAYS = 14  # #806: days of active-install counts shown
+
+
+def counter_base(env=None):
+    """#806 counter Worker base URL: env TLWU_UPDATE_COUNTER, else tinglongwu_setup.selfupdate.COUNTER_BASE."""
+    env = os.environ if env is None else env
+    if env.get("TLWU_UPDATE_COUNTER"):
+        return env["TLWU_UPDATE_COUNTER"].rstrip("/")
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from tinglongwu_setup.selfupdate import COUNTER_BASE
+        return COUNTER_BASE.rstrip("/")
+    except Exception:
+        return ""
+
+
+def valid_install_rows(rows):
+    """rows if it is a list of {date, version, os: str, n: integer-like} objects; ValueError otherwise."""
+    if not isinstance(rows, list) or not all(isinstance(x, dict) for x in rows):
+        raise ValueError("counter response is not a list of rows")
+    for x in rows:
+        if not all(isinstance(x.get(k), str) for k in ("date", "version", "os")):
+            raise ValueError("counter row needs string date/version/os")
+        if isinstance(x.get("n"), bool) or not isinstance(x.get("n", 0), (int, float, str)):
+            raise ValueError("counter row has a non-numeric count")
+        int(x.get("n") or 0)  # ValueError for a non-numeric string
+    return rows
+
+
+def fetch_installs(base):
+    """Rows [{date, version, os, n}] from the counter Worker's /v1/stats, or None (no Worker, unreachable)."""
+    if not base.startswith("https://"):
+        return None
+    try:
+        req = urllib.request.Request(base + "/v1/stats", headers={"User-Agent": "tlwu-stats"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return valid_install_rows(json.load(r))
+    except Exception as e:  # dashboard still builds without the counter
+        print("install counter unavailable: %s" % e, file=sys.stderr)
+        return None
+
+
+def active_installs(rows, now):
+    """Update checks run at most once a day per install, so checks per day ~ active installs that day.
+    -> {'days', 'total' (per day), 'versions': [{'version', 'os', 'last_day', 'week_avg'}]} over complete UTC days."""
+    if rows is None:
+        return None
+    end = (now - timedelta(days=1)).strftime("%Y-%m-%d")  # last complete day
+    days = day_range((now - timedelta(days=INSTALL_DAYS)).strftime("%Y-%m-%d"), end)
+    week = set(days[-7:])
+    total = dict.fromkeys(days, 0)
+    per = {}
+    for r in rows:
+        d, n = r.get("date"), int(r.get("n") or 0)
+        if d in total:
+            total[d] += n
+        if d in week:
+            v = per.setdefault((str(r.get("version")), str(r.get("os"))), {"last_day": 0, "week": 0})
+            v["week"] += n
+            if d == end:
+                v["last_day"] += n
+    versions = [{"version": k[0], "os": k[1], "last_day": v["last_day"], "week_avg": round(v["week"] / 7.0, 1)}
+                for k, v in sorted(per.items(), key=lambda kv: (-kv[1]["week"], kv[0]))]
+    return {"days": days, "total": [total[d] for d in days], "versions": versions}
+
+
+def render_installs(inst):
+    if not inst:
+        return ('<h2>Active installs</h2><p class="n">Install counter not available yet '
+                '(cloudflare/update-counter).</p>')
+    rows = "".join("<tr><td>%s</td><td>%s</td><td>%d</td><td>%.1f</td></tr>"
+                   % (html.escape(v["version"]), html.escape(v["os"]), v["last_day"], v["week_avg"])
+                   for v in inst["versions"]) or '<tr><td colspan="4">no checks yet</td></tr>'
+    daily = " &middot; ".join("%s: <b>%d</b>" % (d[5:], n) for d, n in zip(inst["days"], inst["total"]))
+    return ('<h2>Active installs</h2><p style="font-size:13px">Per day: %s</p>'
+            '<table style="font-size:13px"><tr><th>version</th><th>OS</th><th>last day</th><th>7-day avg/day</th>'
+            '</tr>%s</table><p class="n">Anonymous update checks (date, version, OS only; auto-update on, at most '
+            'once a day per install), so checks per day ~ active installs.</p>' % (daily, rows))
+
+
 def downloads_series(history, days, current=None):
     """Per-day total downloads: last snapshot value up to that day, None before the first one.
 
@@ -801,6 +881,7 @@ __VISION__
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
 __FLOW__
+__INSTALLS__
 __THROUGHPUT__
 __TTFS__
 <div class="grid">
@@ -938,13 +1019,14 @@ def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
     values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
               "__FLOW__": render_flow_section(series),
+              "__INSTALLS__": render_installs(series.get("installs")),
               "__THROUGHPUT__": render_throughput_section(series),
               "__TTFS__": render_ttfs_section(series), "__VISION__": vision_html(), "__DATA__": data}
     # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
     return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
 
-def run(outdir, repo, branch, api=http_api, now=None):
+def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
     now = now or datetime.now(timezone.utc)
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, "data.json")
@@ -958,6 +1040,13 @@ def run(outdir, repo, branch, api=http_api, now=None):
     rels = release_downloads(api, repo)  # one fetch per run, shared by snapshot and series
     history = merge_history(history, build_snapshot(api, repo, branch, now, rels))
     series = build_series(api, repo, branch, now, history, rels)
+    if installs is _FETCH:
+        installs = fetch_installs(counter_base())
+    try:  # never let a bad counter answer stop the dashboard build
+        series["installs"] = active_installs(valid_install_rows(installs) if installs is not None else None, now)
+    except Exception as e:
+        print("install counter unavailable: %s" % e, file=sys.stderr)
+        series["installs"] = None
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f)
     with open(os.path.join(outdir, "series.json"), "w", encoding="utf-8") as f:

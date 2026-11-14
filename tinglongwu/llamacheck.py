@@ -109,11 +109,18 @@ def import_llama():
 
     global cpu_fallback
     device.register_cuda_libs()
+    device.use_pack_llama_build()
     if device.use_llama_cpu_build():
         cpu_fallback = device.llama_cpu_reason or "CUDA llama build not loadable"
     try:
         import llama_cpp
     except (OSError, RuntimeError) as e:
+        if device.llama_backend == "gpu-pack":  # the pack's CUDA build cannot load: use the core's own CPU build
+            device.llama_backend = "default"
+            cpu_fallback = f"{type(e).__name__}: {e}"
+            os.environ.pop("LLAMA_CPP_LIB_PATH", None)
+            import llama_cpp
+            return llama_cpp
         cpu = device.bundled_llama_cpu_dir()
         if cpu is None or os.environ.get("LLAMA_CPP_LIB_PATH") == str(cpu):
             raise

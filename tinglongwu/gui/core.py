@@ -6,6 +6,8 @@ Events: ("draft", src_text, translation) | ("final", src_text, target_text) | ("
 """
 from __future__ import annotations
 
+import re
+
 from .. import diag as _diag
 
 import json
@@ -79,9 +81,11 @@ QUICK_MODES = ("listen", "speak")  # #294 first-screen buttons: "Listen to other
 
 def quick_settings(s: dict, mode: str) -> dict:
     """#294 easy start: session settings for a first-screen button; `s` (the saved settings) is not changed.
-    The user only picks their own language (`target`, remembered). listen = PC sound (loopback) -> my language,
-    source language as set (auto by default). speak = microphone in my language -> the other language
-    (English for a Chinese speaker, Traditional Chinese for an English speaker). Engine/model stay on `quality`."""
+    My language = `target` (remembered, under Advanced). #737: the first screen's one picker is the OTHER side's
+    language = `lang` (auto by default). listen = PC sound (loopback) in the other language -> my language.
+    speak = microphone in my language -> the other language; when the other side is auto (or my own language), the
+    #294 fallback: English for a Chinese speaker, Traditional Chinese for an English speaker. Engine/model stay on
+    `quality`."""
     if mode not in QUICK_MODES:
         raise ValueError(f"unknown quick mode: {mode!r}")
     out = dict(s)
@@ -89,8 +93,13 @@ def quick_settings(s: dict, mode: str) -> dict:
     if mode == "listen":
         out.update(source="system", target=mine)
     else:
-        zh = mine.startswith("zh")
-        out.update(source="mic", lang="zh" if zh else "en", target="en" if zh else "zh-tw")
+        mine_lang = "zh" if mine.startswith("zh") else "en"
+        other = s.get("lang")
+        if other in SOURCE_LANGS and other not in ("auto", mine_lang):
+            target = "zh-tw" if other == "zh" else other
+        else:
+            target = "en" if mine_lang == "zh" else "zh-tw"
+        out.update(source="mic", lang=mine_lang, target=target)
     return out
 
 
@@ -333,14 +342,39 @@ def follow_newest(yview_last: float) -> bool:
 
 
 _MARK_OK, _MARK_MISSING = "\u2713 ", " (\u9700\u4e0b\u8f09 / not downloaded)"
+_MARK_HEAVY = " (too heavy for this PC)"  # #780: medium / large-v3 on a CPU-mode PC with < 24 GB RAM
 
 
-def model_labels(mdir=None) -> list[str]:
-    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96)."""
+def cpu_ram_gb(has_cuda, ram=None) -> float | None:
+    """#780: RAM in GB for the model picker's "too heavy" marks; None (no marks) when a CUDA device is present."""
+    from ..hwprobe import ram_mib
+
+    if has_cuda:
+        return None
+    mib = (ram or ram_mib)()
+    return None if mib is None else mib / 1024
+
+
+def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None) -> str | None:
+    """#780: status text "CPU mode" (+ per-line MT ms) when running on the CPU, else None."""
+    from ..i18n import t
+
+    if device != "cpu":
+        return None
+    base = t("gui_cpu_mode")
+    return base if mt_ms is None else f"{base} - {t('gui_cpu_mt_ms', ms=round(mt_ms))}"
+
+
+def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
+    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96).
+    ram_gb (CPU mode, #780): heavy models get a "too heavy for this PC" mark when RAM is below 24 GB."""
+    from ..hwprobe import too_heavy
     from ..models import whisper_installed
 
     have = whisper_installed(mdir)
-    return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
+    heavy = lambda m: _MARK_HEAVY if too_heavy(m, ram_gb) else ""  # noqa: E731
+    return ([_MARK_OK + m + heavy(m) for m in MODELS if m in have]
+            + [m + _MARK_MISSING + heavy(m) for m in MODELS if m not in have])
 
 
 _ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
@@ -362,11 +396,11 @@ def engine_from_label(label: str) -> str:
 
 def model_from_label(label: str) -> str:
     """The plain model name from a dropdown entry (also accepts a plain name)."""
-    return label.replace(_MARK_OK, "", 1).replace(_MARK_MISSING, "").strip()
+    return label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "").replace(_MARK_MISSING, "").strip()
 
 
-def label_for_model(name: str, mdir=None) -> str:
-    return next((l for l in model_labels(mdir) if model_from_label(l) == name), name)
+def label_for_model(name: str, mdir=None, ram_gb: float | None = None) -> str:
+    return next((l for l in model_labels(mdir, ram_gb) if model_from_label(l) == name), name)
 
 
 def hw_tier_name(probe=None) -> str | None:
@@ -481,6 +515,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
     outputs: the current voice_outputs() (#448): a saved voice_device that is no longer listed is left out (default
     output) and notice(str) gets one line; None or [] (list unknown / no audio stack) passes the saved name on."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
+    if s.get("target") in SOURCE_LANGS and s.get("target") not in ("auto", "zh"):  # #737: speak -> the other side (ja, ru, ...)
+        to = s["target"]
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     quality = s.get("quality") if s.get("quality") in QUALITIES else DEFAULTS["quality"]
@@ -615,3 +651,22 @@ class SubtitleState:
     def last_text(self) -> str:
         rows = self.lines()
         return rows[-1][0] if rows else ""
+
+
+_CLI_FLAG = re.compile(r"(?<![\w-])--[a-z]")
+
+
+def gui_error_text(e: BaseException) -> str:
+    """#885: what the GUI shows for an error that stopped a run: never CLI flags, never an English-only sentence in
+    a non-English UI. A localized error (`.user`, e.g. voice.VoiceUnavailable) is shown as is; a plain RuntimeError
+    line only when it has no `--flag` and suits the UI language; anything else becomes one generic localized line
+    (the raw text still goes to stderr for the log)."""
+    from ..i18n import t, ui_lang
+
+    user = getattr(e, "user", None)
+    if isinstance(user, str) and user:
+        return user
+    msg = str(e).strip() if isinstance(e, RuntimeError) else ""
+    if msg and not _CLI_FLAG.search(msg) and (ui_lang() == "en" or not msg.isascii()):
+        return msg
+    return t("gui_error_generic")

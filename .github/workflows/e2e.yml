@@ -32,11 +32,28 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether the e2e steps are needed (docs-only PRs still report success)
+        id: changes
+        shell: bash
+        run: |
+          # #873: a pull_request to dev that only touches docs / markdown / .agent cannot change runtime behaviour.
+          # push and workflow_dispatch always run in full (the release gate needs a real e2e success on the dev tip).
+          build=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              if ! echo "$files" | grep -Evq '^(docs/|\.agent/)|\.md$'; then build=false; fi
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [ "$build" = false ]; then echo "docs-only PR: skipping the e2e steps (job still reports success)"; else echo "e2e steps needed"; fi
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: steps.changes.outputs.build == 'true'
         with:
           python-version: "3.12"
           cache: pip
       - name: System packages (audio server, virtual display, window manager)
+        if: steps.changes.outputs.build == 'true'
         timeout-minutes: 8
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
@@ -47,16 +64,20 @@ jobs:
           done
           exit 1
       - name: Install tlwu + Hy-MT2 CPU engine
+        if: steps.changes.outputs.build == 'true'
         run: |
           pip install -e ".[dev]" python-xlib==0.33
           pip install -r requirements-llama-cpu.txt --only-binary=:all:
       - name: Models dir
+        if: steps.changes.outputs.build == 'true'
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: steps.changes.outputs.build == 'true'
         with:
           path: ~/tlwu-models
           key: e2e-models-v3-linux-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv
+        if: steps.changes.outputs.build == 'true'
         run: |
           tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
@@ -65,6 +86,7 @@ jobs:
           TLWU_KOKORO_PYTHON="$(grep TLWU_KOKORO_PYTHON "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \
             python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh16k.wav"
       - name: PulseAudio with a null sink (speakers) whose monitor is a capture source
+        if: steps.changes.outputs.build == 'true'
         run: |
           pulseaudio -D --exit-idle-time=-1
           for i in $(seq 20); do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
@@ -72,24 +94,24 @@ jobs:
           pactl set-default-sink e2e_speaker
           pactl list short sources
       - name: "#90 tlwu --selftest on the CPU (real models)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
       - name: "#89 #90 old NVIDIA driver (fake nvidia-smi 457.49): update-driver advice, CPU downgrade"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py gpu-old --models-dir "$TLWU_MODELS"
       - name: "#313 tlwu doctor on a real machine: every problem has a fix line"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"
       - name: "#5 Ctrl+C (SIGINT to the process group) in listen and speak: no traceback"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           python scripts/ci_e2e.py ctrlc --mode listen --models-dir "$TLWU_MODELS"
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#192 #186 #5 speak mode with mic = 'Monitor of E2E-Speaker', clip played into the sink, Ctrl+C"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py monitor-live --models-dir "$TLWU_MODELS"
       - name: "#213 #207 speak_selftest.py on Linux (records the tlwu_mic virtual mic)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh.wav" --repeat 2
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to en --models-dir "$TLWU_MODELS" \
@@ -97,7 +119,7 @@ jobs:
           cat "$RUNNER_TEMP/speak.json"
           { echo '### speak_selftest (Linux runner CPU)'; echo '```'; cat "$RUNNER_TEMP/speak.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: "#258 scripts/linux_offline_run.sh for real (sudo unshare + setpriv): no network, still translates"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           shellcheck scripts/linux_offline_run.sh
           if scripts/linux_offline_run.sh "$(command -v python)" -I -c "import socket; socket.create_connection(('1.1.1.1', 443), timeout=5)"; then
@@ -109,14 +131,14 @@ jobs:
             --device cpu --models-dir "$TLWU_MODELS" --save "$RUNNER_TEMP/offline.jsonl"
           python -c "import json,sys; r=[json.loads(x) for x in open(sys.argv[1], encoding='utf-8') if x.strip()]; g=[x for x in r if x.get('dst')]; print(len(g), 'translated lines', g[:1]); sys.exit(0 if g else 1)" "$RUNNER_TEMP/offline.jsonl"
       - name: "#7 firewall_test.py: listen / speak / meeting with the network cut (network namespace)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           # Ubuntu 24.04 denies unprivileged user namespaces by default (AppArmor); firewall_test uses `unshare -n -r`
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav "$RUNNER_TEMP/zh16k.wav" \
             --compute cpu --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL"
       - name: "#85 #322 #270 GUI tests on a real X display (they skip without one)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           Xvfb :99 -screen 0 1920x1080x24 >/dev/null 2>&1 &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
@@ -130,7 +152,7 @@ jobs:
             tests/test_overlay_speak_322.py tests/test_gui_icon.py tests/test_focus_langs.py | tee "$RUNNER_TEMP/gui.txt"
           if grep -qi "skipped.*display" "$RUNNER_TEMP/gui.txt"; then echo "FAIL: GUI tests skipped (no display)"; exit 1; fi
       - name: "#322 overlay stays above a fullscreen window (openbox), line < 100 ms, settings persist"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py overlay-stack
 
   windows:
@@ -143,21 +165,41 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether the e2e steps are needed (docs-only PRs still report success)
+        id: changes
+        shell: bash
+        run: |
+          # #873: a pull_request to dev that only touches docs / markdown / .agent cannot change runtime behaviour.
+          # push and workflow_dispatch always run in full (the release gate needs a real e2e success on the dev tip).
+          build=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              if ! echo "$files" | grep -Evq '^(docs/|\.agent/)|\.md$'; then build=false; fi
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [ "$build" = false ]; then echo "docs-only PR: skipping the e2e steps (job still reports success)"; else echo "e2e steps needed"; fi
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: steps.changes.outputs.build == 'true'
         with:
           python-version: "3.12"
           cache: pip
       - name: Install tlwu + Hy-MT2 CPU engine
+        if: steps.changes.outputs.build == 'true'
         run: |
           pip install -e ".[dev]"
           pip install -r requirements-llama-cpu.txt --only-binary=:all:
       - name: Models dir
+        if: steps.changes.outputs.build == 'true'
         run: echo "TLWU_MODELS=$(cygpath -m "$HOME/tlwu-models")" >> "$GITHUB_ENV"   # C:/... form: env values reach native python as-is
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: steps.changes.outputs.build == 'true'
         with:
           path: ~/tlwu-models
           key: e2e-models-v3-windows-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv + opt-in Russian voice (#311)
+        if: steps.changes.outputs.build == 'true'
         run: |
           tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$(cygpath -m "$HOME/tts-kokoro")" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
@@ -167,27 +209,27 @@ jobs:
           TLWU_KOKORO_PYTHON="$(grep TLWU_KOKORO_PYTHON "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \
             python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh16k.wav"
       - name: "#90 tlwu --selftest on the CPU (real models)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
       - name: "#89 #90 old NVIDIA driver (fake nvidia-smi.exe 457.49): installer + runtime + self-test advice"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py gpu-old --models-dir "$TLWU_MODELS"
       - name: "#313 tlwu doctor on a clean Windows: every problem has a fix line"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py doctor --to ru --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (ru)"
       - name: "#5 Ctrl+C (real CTRL_C_EVENT on a console) in listen and speak: no traceback, no leftover TTS worker"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           python scripts/ci_e2e.py ctrlc --mode listen --models-dir "$TLWU_MODELS"
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#311 speak --to ru speaks Russian after tlwu-setup --vosk-tts-ru, no extra flags"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py speak-ru --models-dir "$TLWU_MODELS"
       - name: "#322 overlay stays above a fullscreen window on the Windows desktop (z-order, WS_EX_TOPMOST)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py overlay-stack
       - name: "#7 firewall_test.py: real Windows Firewall outbound block (runner is admin)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           python scripts/firewall_test.py --listen-wav tinglongwu/data/selftest_en.wav --speak-wav "$RUNNER_TEMP/zh16k.wav" \
             --compute cpu --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL"
@@ -199,23 +241,43 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether the e2e steps are needed (docs-only PRs still report success)
+        id: changes
+        shell: bash
+        run: |
+          # #873: a pull_request to dev that only touches docs / markdown / .agent cannot change runtime behaviour.
+          # push and workflow_dispatch always run in full (the release gate needs a real e2e success on the dev tip).
+          build=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              if ! echo "$files" | grep -Evq '^(docs/|\.agent/)|\.md$'; then build=false; fi
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [ "$build" = false ]; then echo "docs-only PR: skipping the e2e steps (job still reports success)"; else echo "e2e steps needed"; fi
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: steps.changes.outputs.build == 'true'
         with:
           python-version: "3.12"
           cache: pip
       - name: Install tlwu + Hy-MT2 CPU engine
+        if: steps.changes.outputs.build == 'true'
         run: |
           pip install -e ".[dev]"
           # what mac_install.sh does first; on 2026-11-12 the index's macOS arm64 wheel of 0.3.36 is a corrupt zip
           # (zlib "invalid block type"), so fall back to building the PyPI sdist (cmake, ~6 min)
           pip install --no-cache-dir -r requirements-llama-cpu.txt             || pip install --no-cache-dir --no-binary llama-cpp-python "$(grep -E '^llama-cpp-python==' requirements-llama-cpu.txt)"
       - name: Models dir
+        if: steps.changes.outputs.build == 'true'
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: steps.changes.outputs.build == 'true'
         with:
           path: ~/tlwu-models
           key: e2e-models-v3-macos-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice venv
+        if: steps.changes.outputs.build == 'true'
         run: |
           tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
@@ -224,17 +286,17 @@ jobs:
           TLWU_KOKORO_PYTHON="$(grep TLWU_KOKORO_PYTHON "$GITHUB_ENV" | tail -1 | cut -d= -f2-)" TLWU_KOKORO_MODEL="$TLWU_MODELS/kokoro" \
             python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh16k.wav"
       - name: "#8 tlwu --selftest on macOS (real models)"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
       - name: "#8 listen + speak (Kokoro voice) + meeting modes on audio files"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           python scripts/ci_e2e.py modes --listen-wav tinglongwu/data/selftest_en.wav --speak-wav "$RUNNER_TEMP/zh16k.wav"
       - name: "#8 #5 Ctrl+C on macOS in listen and speak: no traceback"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
           python scripts/ci_e2e.py ctrlc --mode listen --models-dir "$TLWU_MODELS"
           python scripts/ci_e2e.py ctrlc --mode speak --models-dir "$TLWU_MODELS"
       - name: "#313 tlwu doctor on macOS"
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"

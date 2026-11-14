@@ -165,10 +165,21 @@ EXTRA_DISK_BYTES = 6 * 1024**3
 EXTRA_DISK_BYTES_CORE = 2 * 1024**3
 
 
+def default_listen_mb(repo: Path = REPO) -> int:
+    """#771: DEFAULT_LISTEN_DOWNLOAD_MB from tinglongwu_setup/defaults.py (the one named constant), read as text so the
+    build script stays stdlib-only and never imports the package."""
+    m = re.search(r"^DEFAULT_LISTEN_DOWNLOAD_MB\s*=\s*(\d+)", (repo / "tinglongwu_setup" / "defaults.py").read_text("utf-8"), re.M)
+    if not m:
+        raise SystemExit("tinglongwu_setup/defaults.py: DEFAULT_LISTEN_DOWNLOAD_MB not found")
+    return int(m.group(1))
+
+
 def iscc_cmd(iscc: str, stage_dir: Path, icon: Path, out_dir: Path, version: str, core: bool = False) -> list[str]:
     extra = EXTRA_DISK_BYTES_CORE if core else EXTRA_DISK_BYTES
+    # #771: the core wizard shows the default-listen download size; the source wizard has no such define
+    core_defs = ["/DCoreLayout=1", f"/DDefaultListenMB={default_listen_mb()}"] if core else []
     return [iscc, f"/DStageDir={stage_dir}", f"/DIconFile={icon}", f"/DOutDir={out_dir}", f"/DAppVersion={version}",
-            f"/DExtraDiskBytes={extra}", *(["/DCoreLayout=1"] if core else []), str(ISS)]
+            f"/DExtraDiskBytes={extra}", *core_defs, str(ISS)]
 
 
 def _given(cmd: list[str]) -> set[str]:
@@ -210,13 +221,46 @@ def missing_defines(iss_text: str, cmd: list[str]) -> list[str]:
     return sorted(used - _given(cmd))
 
 
+# #772: the release job reports the core wizard's size; over this it warns (never fails: a release is not blocked
+# by size alone). Same 300 MB budget as the core zip (scripts/release_check.py MAX_CORE_MB) since it wraps that core.
+WIZARD_MAX_MB = 300
+BYTES_PER_MB = 1 << 20
+
+
+def wizard_size_line(exe: Path, max_mb: float = WIZARD_MAX_MB) -> tuple[bool, str]:
+    """(within budget, one line) for the built wizard `exe`."""
+    size_mb = Path(exe).stat().st_size / BYTES_PER_MB
+    ok = size_mb <= max_mb
+    return ok, f"setup wizard {Path(exe).name}: {size_mb:.1f} MB ({'within' if ok else 'OVER'} the {max_mb:g} MB budget)"
+
+
+def size_report(exe: Path, max_mb: float = WIZARD_MAX_MB) -> int:
+    """Print the size line (+ a GitHub ::warning:: when over), append it to $GITHUB_STEP_SUMMARY if set. Exit 0."""
+    exe = Path(exe)
+    if not exe.is_file():
+        print(f"size report: {exe} not found", file=sys.stderr)
+        return 2
+    ok, line = wizard_size_line(exe, max_mb)
+    print(line)
+    if not ok:
+        print(f"::warning::{line}")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as f:
+            f.write(f"- {line}\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--size-report", metavar="EXE", help="print the built wizard's size vs WIZARD_MAX_MB and exit (#772)")
     p.add_argument("--dry-run", action="store_true", help="stage + icon, print the ISCC command, do not compile")
     p.add_argument("--out", default=str(OUT))
     p.add_argument("--core-dir", help="prebuilt core folder (tlwu.exe at the top, e.g. dist/tlwu): the wizard installs "
                                       "it and starts tlwu.exe; no install.ps1 / Python / pip (#767)")
     a = p.parse_args(argv)
+    if a.size_report:
+        return size_report(Path(a.size_report))
     out = Path(a.out)
     files = stage_core(out / "stage", Path(a.core_dir)) if a.core_dir else stage(out / "stage")
     icon = wizard_icon(out / "tinglongwu.ico")

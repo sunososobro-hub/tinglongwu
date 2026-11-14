@@ -177,3 +177,62 @@ def test_same_runner_base_report_is_the_baseline(data_dir, capsys):
     slower = _smoke(data_dir, "pr_slow", mt_s=1.0)  # +200 ms per line on the same runner: 1.4 vs 1.2 = +17%
     code, table = lowend.run(slower, base, dev_path)
     assert code == 1 and "| latency_p50_s | 1.4 | 1.2 | 1.38 | FAIL" in table
+
+
+# ---- #796: dependency-only PRs run the gate, and the base run uses the base commit's own dependencies
+
+@pytest.mark.skipif(GIT is None or BASH is None, reason="git and bash are needed to run the step")
+@pytest.mark.parametrize("changed", [["requirements-llama-cpu.txt"], ["requirements.txt"], ["requirements-llama-cuda.txt"],
+                                     ["requirements.lock.txt"], ["pyproject.toml"]])
+def test_requirements_or_pyproject_only_pr_runs_the_gate(tmp_path, changed):
+    assert _decide(tmp_path, changed) == "true"
+
+
+@pytest.mark.skipif(GIT is None or BASH is None, reason="git and bash are needed to run the step")
+@pytest.mark.parametrize("changed", [["docs/requirements.txt"], ["mobile/pyproject.toml"], ["README.md"]])
+def test_only_root_dependency_files_count(tmp_path, changed):
+    assert _decide(tmp_path, changed) == "false"
+
+
+@pytest.mark.skipif(GIT is None or BASH is None, reason="git and bash are needed to run the step")
+def test_base_run_installs_the_base_checkout_in_its_own_venv(tmp_path):
+    """Run the workflow's base step with a recording `python`: the venv is separate, the base worktree's own
+    requirements are installed into it, and the mini-eval of the base commit runs with THAT interpreter."""
+    job = yaml.safe_load((ROOT / ".github/workflows/eval.yml").read_text("utf-8"))["jobs"]["low-end-cpu"]
+    script = next(s for s in job["steps"] if s.get("name", "").startswith("Mini-eval of the base commit"))["run"]
+    repo = tmp_path / "ws"
+    repo.mkdir()
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+           "HOME": str(tmp_path)}
+    g = lambda *a: subprocess.run([GIT, *a], cwd=repo, env=env, check=True, capture_output=True)  # noqa: E731
+    g("init", "-q")
+    (repo / "requirements-llama-cpu.txt").write_text("llama-cpp-python==1.0\n")  # the base commit's dependencies
+    g("add", "-A")
+    g("commit", "-qm", "base")
+    (repo / "requirements-llama-cpu.txt").write_text("llama-cpp-python==2.0\n")  # the PR bumps them
+    g("add", "-A")
+    g("commit", "-qm", "pr")
+    shim_dir, log = tmp_path / "shim", tmp_path / "calls.log"
+    shim_dir.mkdir()
+    shim = shim_dir / "python"
+    shim.write_text('#!/bin/bash\n'
+                    'echo "$PWD|$0|$*|$(cat requirements-llama-cpu.txt 2>/dev/null)" >> "$CALLS_LOG"\n'
+                    'if [ "$1 $2" = "-m venv" ]; then mkdir -p "$3/bin" && cp "$0" "$3/bin/python"; fi\n'
+                    'exit 0\n')
+    shim.chmod(0o755)
+    temp = tmp_path / "runner_temp"
+    temp.mkdir()
+    subprocess.run([BASH, "-e", "-c", script], cwd=repo, check=True, capture_output=True,
+                   env={**env, "PATH": f"{shim_dir}:{__import__('os').environ['PATH']}", "CALLS_LOG": str(log),
+                        "RUNNER_TEMP": str(temp), "GITHUB_WORKSPACE": str(repo), "WHISPER": "small",
+                        "TLWU_MODELS": str(tmp_path / "models")})
+    calls = [c.split("|") for c in log.read_text().splitlines()]
+    base, venv_py = temp / "base", temp / "base-venv" / "bin" / "python"
+    assert (base / "requirements-llama-cpu.txt").read_text() == "llama-cpp-python==1.0\n"
+    assert calls[0][2].startswith("-m venv ") and calls[0][2].endswith(str(temp / "base-venv"))  # a separate venv
+    installs = [c for c in calls if c[1] == str(venv_py) and " pip install " in " " + c[2]]
+    assert any("-r requirements-llama-cpu.txt" in c[2] and c[0] == str(base) and c[3].strip().endswith("1.0")
+               for c in installs), calls  # the BASE requirements, installed with the venv's pip, from the base checkout
+    assert any(c[2].split()[-1] == "." and c[0] == str(base) for c in installs), calls  # pip install -e . of the base code
+    evals = [c for c in calls if "-m tlwu_eval" in c[2]]
+    assert len(evals) == 1 and evals[0][1] == str(venv_py) and evals[0][0] == str(base)  # run by the venv python, in base

@@ -1,11 +1,14 @@
 """Send modes for speak mode (#760): confirm (y+Enter), countdown (auto-send after COUNTDOWN_S unless stopped), auto.
-Low-confidence lines never auto-send: they wait for an explicit "y" in every mode. Pure helpers, no I/O."""
+Low-confidence lines never auto-send: they wait for an explicit "y" in every mode. Pure helpers (the notice only
+reads the UI language), no I/O."""
 from __future__ import annotations
 
 import os
 from difflib import SequenceMatcher
 
 MODES = ("confirm", "countdown", "auto")
+DIRECT_MODES = ("countdown", "auto")  # modes that can send a line without an explicit confirm
+NOTICE_KEY = "gui_send_mode_notice"  # i18n key of the owner's one-line quality notice (#760, #834: same line as the GUI)
 COUNTDOWN_S = 2.0  # seconds a line shows before countdown mode sends it (TLWU_SEND_COUNTDOWN overrides)
 # Initial, uncalibrated guards (no eval data yet; see #760): override with the env vars below.
 LOW_BACK_SCORE = 0.35  # similarity(zh, back-translation) below this = the meaning drifted
@@ -23,6 +26,16 @@ def back_score(zh: str, back: str) -> float:
     """0..1 character similarity between what was said and its back-translation."""
     a, b = "".join(zh.split()), "".join(back.split())
     return SequenceMatcher(None, a, b).ratio() if a and b else 0.0
+
+
+def notice(mode: str) -> str:
+    """#822: the one-line quality notice in the UI language (zh-TW / en / ...) for a mode that can send without an
+    explicit confirm (countdown, auto); "" for confirm and for anything else."""
+    if mode not in DIRECT_MODES:
+        return ""
+    from ..i18n import t
+
+    return t(NOTICE_KEY)
 
 
 def low_confidence(u, require_back: bool = True) -> str:

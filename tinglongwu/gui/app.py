@@ -17,10 +17,10 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
-                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
+                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -440,6 +440,7 @@ class App:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
+        self.home_lang.configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
         self.build_menubar()
@@ -463,21 +464,27 @@ class App:
         self._send_mode_changed()
 
     def _build_send_gate(self, f):
-        """#833: the held speak line with [Send] [Stop]; hidden until a line is held. Space = stop, Esc = stop."""
+        """#833: the held speak line with [Send] [Stop] in the status box `f`. Its widgets are made the first time a
+        line is held (a fresh first screen keeps only its #737 controls). Space = stop, Esc = stop."""
         self.gate = None  # reverse.sendgate.SendGate of the running speak session
-        self.gate_frm = ttk.Frame(f)
-        self.gate_frm.grid(row=16, column=0, columnspan=3, sticky="we", pady=2)
+        self.gate_parent, self.gate_frm = f, None
         self.v_gate = tk.StringVar(value="")
-        ttk.Label(self.gate_frm, textvariable=self.v_gate, wraplength=300, justify="left").grid(
-            row=0, column=0, columnspan=2, sticky="w")
-        self.btn_gate_send = ttk.Button(self.gate_frm, text=t("gui_send_now"), command=lambda: self._gate_do("confirm"))
-        self.btn_gate_send.grid(row=1, column=0, sticky="we", padx=(0, 2))
-        self.btn_gate_stop = ttk.Button(self.gate_frm, text=t("gui_send_stop"), command=lambda: self._gate_do("stop"))
-        self.btn_gate_stop.grid(row=1, column=1, sticky="we")
-        self.gate_frm.grid_remove()
         for w in (self.root, self.panel):  # keys only act while a line is held, so typing elsewhere is untouched
             w.bind("<space>", lambda _e: self._gate_key("stop"), add="+")
             w.bind("<Escape>", lambda _e: self._gate_key("stop"), add="+")
+
+    def _gate_widgets(self):
+        if self.gate_frm is None:
+            self.gate_frm = ttk.Frame(self.gate_parent)
+            ttk.Label(self.gate_frm, textvariable=self.v_gate, wraplength=300, justify="left").grid(
+                row=0, column=0, columnspan=2, sticky="w")
+            self.btn_gate_send = ttk.Button(self.gate_frm, text=t("gui_send_now"),
+                                            command=lambda: self._gate_do("confirm"))
+            self.btn_gate_send.grid(row=1, column=0, sticky="we", padx=(0, 2))
+            self.btn_gate_stop = ttk.Button(self.gate_frm, text=t("gui_send_stop"),
+                                            command=lambda: self._gate_do("stop"))
+            self.btn_gate_stop.grid(row=1, column=1, sticky="we")
+        return self.gate_frm
 
     def _gate_key(self, action):
         if self.gate is not None and self.gate.view().state != "idle" and not isinstance(
@@ -498,12 +505,15 @@ class App:
         v = g.view()
         self.v_gate.set(send_gate_line(v))
         if v.state == "idle":
-            self.gate_frm.grid_remove()
+            if self.gate_frm is not None:
+                self.gate_frm.pack_forget()
         else:
-            self.gate_frm.grid()
+            frm = self._gate_widgets()
+            if not frm.winfo_manager():  # a line was just held: show it (and the panel, once)
+                frm.pack(fill="x", pady=2)
+                if self.speak_hint == SPEAK_HINT_CABLE:
+                    self._show_panel()
             self.btn_gate_send.configure(state="normal" if v.state == "asking" else "disabled")
-            if self.speak_hint == SPEAK_HINT_CABLE:
-                self._show_panel()
 
     def _send_mode_changed(self):
         mode = self.v_send_mode.get()
@@ -527,8 +537,10 @@ class App:
     def _adv_toggled(self):
         on = self.v_adv.get()
         self.settings["advanced_open"] = on
-        for w in self.engine_widgets:
-            w.grid() if on else w.grid_remove()
+        if on:  # #737: the whole settings block (engine included) lives under Advanced
+            self.frm.pack(after=self.adv_btn, anchor="w")
+        else:
+            self.frm.pack_forget()
         self.adv_btn.configure(text=t("gui_advanced_open" if on else "gui_advanced"))
         if on:
             self.combos["engine"].configure(values=engine_labels())
@@ -618,21 +630,16 @@ class App:
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
         self.frm = f = ttk.Frame(p, padding=10)
         self.combos = {}
-        f.pack()
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
         self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
-        self.engine_widgets = [f.grid_slaves(row=19, column=c)[0] for c in (0, 1)]
         self.v_adv = tk.BooleanVar(value=False)
-        self.adv_btn = ttk.Checkbutton(f, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
-        self.adv_btn.grid(row=18, column=0, columnspan=3, sticky="w", pady=(4, 0))
-        self.set_advanced(bool(s["advanced_open"]))
-        self.v_model = self._combo(4, "gui_model", "model", model_labels())
-        self.v_model.set(label_for_model(self.settings["model"]))
-        self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
+        self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
+        self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
+        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
@@ -676,11 +683,11 @@ class App:
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
-        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
+        self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
+        ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
         self.v_notice = tk.StringVar(value="")
-        ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
-            row=12, column=0, columnspan=3, sticky="w")
-        self._build_send_gate(f)
+        ttk.Label(sb, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").pack(anchor="w")
+        self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
@@ -825,6 +832,7 @@ class App:
         for n in FONT_MENU_SIZES:
             zm.add_radiobutton(label=str(n), value=str(n), variable=self.v_font)
         sm.add_cascade(label=t("gui_font_size"), menu=zm)
+        sm.add_command(label="Add-ons...", command=self.open_addons)  # #614
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
@@ -841,6 +849,12 @@ class App:
         self.root.configure(menu=mb)
         if old is not None:
             old.destroy()
+
+    def open_addons(self):
+        """#614: Settings > Add-ons (installed / available packs, add, remove)."""
+        from .addons_screen import AddonsScreen
+
+        AddonsScreen(self.root)
 
     def open_log_folder(self):
         d = userdirs.log_dir()
@@ -863,10 +877,18 @@ class App:
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
         q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
-        q.pack(before=self.frm, fill="x")
-        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
-        ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
-            row=0, column=1, sticky="we", padx=(6, 0))
+        q.pack(fill="x")
+        self.status_box.pack(fill="x")
+        # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)
+        self.adv_btn = ttk.Checkbutton(self.panel, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
+        self.adv_btn.pack(anchor="w", padx=10, pady=(6, 0))
+        self.set_advanced(bool(self.settings["advanced_open"]))
+        # #737: the one picker on the first screen is the OTHER side's language (= source language `lang`, the same
+        # variable as tour step 1); my language (`target`) is under Advanced. quick_settings() turns it into
+        # listen: other -> mine, speak: mine -> other.
+        self._tx(ttk.Label(q), "gui_quick_other").grid(row=0, column=0, sticky="w")
+        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=14)
+        self.home_lang.grid(row=0, column=1, sticky="we", padx=(6, 0))
         # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
@@ -1084,14 +1106,24 @@ class App:
         if rc == 0:  # on without restarting the app
             self.toggle(getattr(self, "pack_retry", None))
 
+    def _cpu_ram(self):
+        """#780: RAM (GB) for the "too heavy" model marks on a PC without a CUDA device, else None."""
+        try:
+            from ..device import resolve_device
+
+            # same decision as session setup (GPU present but CUDA libs missing -> cpu), no warnings from the probe
+            return cpu_ram_gb(resolve_device("auto", warn=lambda m: None) == "cuda")
+        except Exception:  # noqa: BLE001 - a failed probe must not break the window
+            return None
+
     def _download_done(self, model: str, rc: int):
         self.downloading = None
         self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
-        labels = model_labels()
+        labels = model_labels(ram_gb=self._cpu_ram())
         self.combos["model"].configure(values=labels, width=combo_width(labels))
         if model_from_label(self.v_model.get()) == model:
-            self.v_model.set(label_for_model(model))
+            self.v_model.set(label_for_model(model, ram_gb=self._cpu_ram()))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
         self._sync_quick()
@@ -1171,16 +1203,16 @@ class App:
             self._show_panel()
         self.errored = False
         self.listening = True
-        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev, self.gate), daemon=True)
+        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
         self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
         if self.settings["floating_bar"]:
             self.overlay.show()
 
-    def _work(self, s: dict, stop: threading.Event, gate=None):
+    def _work(self, s: dict, stop: threading.Event):
         """Worker thread: no tkinter here, only self.q."""
-        q = self.q
+        q, gate = self.q, self.gate  # #833: set before this thread starts, cleared only after it posts "stopped"
         try:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
@@ -1198,7 +1230,8 @@ class App:
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)))
         except Exception as e:  # noqa: BLE001
-            q.put(("error", str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"))
+            print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
+            q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
         finally:
             q.put(("stopped",))
 
