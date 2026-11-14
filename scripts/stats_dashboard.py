@@ -480,10 +480,16 @@ def render_flow_section(series):
                flow.get("unclassified", 0), render_backfill_note(flow), render_type_mix(flow), render_faucet(faucet)))
 
 
-def build_flow_inputs(api, repo, merged_prs, now):
-    """Quota flow from recent merged PRs' usage lines + linked-issue labels, and the #574 faucet."""
+def build_flow_inputs(api, repo, merged_prs, now, issue_labels=None, files_cache=None):
+    """Quota flow from recent merged PRs' usage lines + linked-issue labels, and the #574 faucet.
+
+    issue_labels: {issue number: [label names]} from the already-fetched issue list (no per-issue call).
+    files_cache: {str(pr number): [filenames]}; a merged PR's files never change, so only PRs missing from
+    it are fetched and added (#662: keeps the 14-day backfill to a handful of calls per hourly run).
+    """
     since = now - timedelta(days=BACKFILL_DAYS)  # fetch once for the longest window, filter per window below
-    items, cache = [], {}
+    items, cache = [], dict(issue_labels or {})
+    files_cache = {} if files_cache is None else files_cache
     for p in merged_prs:
         usage = parse_usage(p.get("body"))
         if not usage or parse_ts(p["merged_at"]) < since:
@@ -495,11 +501,16 @@ def build_flow_inputs(api, repo, merged_prs, now):
             except Exception as e:  # unlabelled node instead of failing
                 print("issue #%d unavailable: %s" % (n, e), file=sys.stderr)
                 cache[n] = []
-        try:
-            files = [f["filename"] for f in api("/repos/%s/pulls/%d/files?per_page=100" % (repo, p["number"]))]
-        except Exception as e:  # no inference for this PR
-            print("pr #%s files unavailable: %s" % (p.get("number"), e), file=sys.stderr)
-            files = []
+        key = str(p.get("number"))
+        if key in files_cache:
+            files = files_cache[key]
+        else:
+            try:
+                files = [f["filename"] for f in api("/repos/%s/pulls/%d/files?per_page=100" % (repo, p["number"]))]
+                files_cache[key] = files
+            except Exception as e:  # no inference for this PR; retried next run
+                print("pr #%s files unavailable: %s" % (p.get("number"), e), file=sys.stderr)
+                files = []
         items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, []), "files": files,
                       "merged_at": p["merged_at"]})
     try:
@@ -515,6 +526,14 @@ def build_flow_inputs(api, repo, merged_prs, now):
 
 
 _FETCH = object()  # sentinel: fetch releases inside the builder
+PR_FILES = "pr_files.json"  # #662: per-PR changed-file cache, kept on gh-pages next to data.json
+PR_FILES_KEEP = 1000  # newest PR numbers kept; 14 days was ~400 merged PRs in 2026-11
+
+
+def prune_files_cache(files_cache):
+    """Keep the newest PR_FILES_KEEP entries so the cache file stays small."""
+    keep = sorted(files_cache, key=lambda k: int(k) if str(k).isdigit() else -1)[-PR_FILES_KEEP:]
+    return {k: files_cache[k] for k in keep}
 
 
 def release_downloads(api, repo):
@@ -836,7 +855,7 @@ def collect_ttfs(api, repo, fetch=http_artifact_json):
     return ttfs_points(docs)
 
 
-def build_series(api, repo, branch, now, history=None, rels=_FETCH):
+def build_series(api, repo, branch, now, history=None, rels=_FETCH, files_cache=None):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
     days = day_range(day_of(created), now.strftime("%Y-%m-%d"))
@@ -867,7 +886,9 @@ def build_series(api, repo, branch, now, history=None, rels=_FETCH):
               for m in _pages(api, "/repos/%s/milestones?state=all" % repo)]
     except Exception:
         ms = []
-    flow, faucet = build_flow_inputs(api, repo, merged_prs, now)
+    issue_labels = {i["number"]: [lb["name"] for lb in i.get("labels", [])] for i in all_issues
+                    if "pull_request" not in i}
+    flow, faucet = build_flow_inputs(api, repo, merged_prs, now, issue_labels, files_cache)
     if rels is _FETCH:
         rels = release_downloads(api, repo)
     dl_total = sum(r["downloads"] for r in rels) if rels is not None else None
@@ -1124,7 +1145,15 @@ def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
         history = []
     rels = release_downloads(api, repo)  # one fetch per run, shared by snapshot and series
     history = merge_history(history, build_snapshot(api, repo, branch, now, rels))
-    series = build_series(api, repo, branch, now, history, rels)
+    files_path = os.path.join(outdir, PR_FILES)
+    try:
+        with open(files_path, encoding="utf-8") as f:
+            files_cache = json.load(f)
+        if not isinstance(files_cache, dict):
+            files_cache = {}
+    except (OSError, ValueError):
+        files_cache = {}
+    series = build_series(api, repo, branch, now, history, rels, files_cache)
     if installs is _FETCH:
         installs = fetch_installs(counter_base())
     try:  # never let a bad counter answer stop the dashboard build
@@ -1134,6 +1163,8 @@ def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
         series["installs"] = None
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f)
+    with open(files_path, "w", encoding="utf-8") as f:
+        json.dump(prune_files_cache(files_cache), f)
     with open(os.path.join(outdir, "series.json"), "w", encoding="utf-8") as f:
         json.dump(series, f)
     with open(os.path.join(outdir, "index.html"), "w", encoding="utf-8") as f:
