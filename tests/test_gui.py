@@ -622,3 +622,47 @@ def test_engine_widget_hidden_until_advanced_expanded_and_remembered(gui_app):
     a._adv_toggled()
     a.root.update()
     assert not cb.winfo_ismapped()
+
+
+@pytest.fixture
+def _wizard_install(monkeypatch):
+    """Pretend the app runs from a setup (wizard) install; must be listed before gui_app so the App is built with it."""
+    from tinglongwu.gui import autoupdate
+
+    monkeypatch.setattr(autoupdate, "is_wizard_install", lambda *a, **k: True)
+
+
+def _descendants(w):
+    for c in w.winfo_children():
+        yield c
+        yield from _descendants(c)
+
+
+def test_update_controls_share_the_check_setup_row_above_the_log_756(_wizard_install, gui_app):
+    """#756: "Check for updates" + auto-update checkbox + vX.Y.Z sit in the Check setup / Report row, above the log."""
+    from tinglongwu import __version__
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    a.root.update()
+    kids = list(_descendants(a.panel))
+    upd_btn = next(w for w in kids if w.winfo_class() == "TButton" and w.cget("text") == t("gui_upd_check"))
+    setup_btn = next(w for w in kids if w.winfo_class() == "TButton" and w.cget("text") == t("gui_check_setup"))
+    assert any(w.winfo_class() == "TLabel" and w.cget("text") == f"v{__version__}" for w in kids)
+    assert any(w.winfo_class() == "TCheckbutton" and w.cget("text") == t("gui_upd_auto") for w in kids)
+
+    def row_in_main_frame(w):  # grid row of the ancestor that is a direct child of the settings frame
+        while w.master is not a.act_row.master:
+            w = w.master
+        return int(w.grid_info()["row"])
+
+    log_row = int(a.log_text.master.grid_info()["row"])
+    assert row_in_main_frame(upd_btn) == row_in_main_frame(setup_btn) < log_row
+    assert upd_btn.winfo_rooty() + upd_btn.winfo_height() <= a.log_text.master.winfo_rooty()  # not below the log
+
+
+def test_no_update_controls_on_a_git_checkout_756(gui_app):
+    from tinglongwu.i18n import t
+
+    assert not any(w.winfo_class() == "TButton" and w.cget("text") == t("gui_upd_check")
+                   for w in _descendants(gui_app.panel))
