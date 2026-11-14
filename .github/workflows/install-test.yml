@@ -59,6 +59,8 @@ jobs:
         run: |
           VENV="$RUNNER_TEMP/tlwu/.venv/bin"
           "$VENV/tlwu-setup" --whisper tiny --hymt --pair en-zh --allow-unpinned --models-dir "$RUNNER_TEMP/models" </dev/null
+          # install.sh does not install the Hy-MT2 CPU engine (llama-cpp-python); same pin e2e.yml uses
+          "$VENV/pip" install -r requirements-llama-cpu.txt --only-binary=:all:
           START=$(date +%s)
           "$VENV/tlwu-setup" --selftest --model tiny --engine hymt --device cpu --models-dir "$RUNNER_TEMP/models"
           SECS=$(( $(date +%s) - START ))
