@@ -114,6 +114,7 @@ class Overlay:
         self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
+        self.menu.add_command(label=t("gui_tour"), command=app.show_tour)  # #314: reopen the 3-step overlay
         self.menu.add_separator()
         self.menu.add_command(label=t("gui_menu_quit"), command=app.quit)
 
@@ -295,12 +296,18 @@ class Tour:
         self.btn_ok = ttk.Button(f, command=app.tour_done)
         self.btn_ok.grid(row=4, column=1, sticky="e", pady=(8, 0))
         self.visible = False
+        self._sys_tag: str | None = None
         self.relabel()
 
     def text(self) -> dict[str, str]:
-        from ..i18n import _system_tag
+        ui = ui_lang()
+        if ui != "zh-TW":  # the OS locale only matters for Chinese (zh-TW vs zh-CN text)
+            return tour_text(ui)
+        if self._sys_tag is None:  # asked once: on macOS it is a subprocess call
+            from ..i18n import _system_tag
 
-        return tour_text(ui_lang(), _system_tag())
+            self._sys_tag = _system_tag()
+        return tour_text(ui, self._sys_tag)
 
     def relabel(self):
         tx = self.text()
@@ -314,6 +321,7 @@ class Tour:
         r.update_idletasks()
         self.win.update_idletasks()
         x, y = r.winfo_rootx(), r.winfo_rooty() + r.winfo_height() + 4
+        x = max(0, min(x, r.winfo_screenwidth() - self.win.winfo_reqwidth()))  # bar near the right edge: stay on screen
         if y + self.win.winfo_reqheight() > r.winfo_screenheight():  # bar near the bottom: open above it
             y = max(0, r.winfo_rooty() - self.win.winfo_reqheight() - 4)
         self.win.geometry(f"+{x}+{y}")
@@ -465,8 +473,6 @@ class App:
         self.set_dot("idle")
         self.btn_adjust = self._tx(ttk.Button(b, command=self.toggle_adjust, style="Bar.TButton", width=0), "gui_adjust")
         self.btn_adjust.pack(side="left")
-        self.btn_help = ttk.Button(b, text="?", command=self.show_tour, style="Bar.TButton", width=2)  # #314
-        self.btn_help.pack(side="left")
 
     # -- #314 first-launch overlay ---------------------------------------------------------------
     def show_tour(self):
@@ -568,7 +574,10 @@ class App:
         self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
                                  lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
-        self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
+        self.btn_pause.grid(row=10, column=0, columnspan=2, sticky="we", pady=(8, 2))
+        # #314: "?" reopens the 3-step overlay; it lives here and in the subtitle-bar menu, not on the bar (#455 <= 420 px)
+        self.btn_tour = self._tx(ttk.Button(f, command=self.show_tour), "gui_tour")
+        self.btn_tour.grid(row=10, column=2, sticky="we", pady=(8, 2), padx=(4, 0))
         self._tx(ttk.Button(f, command=self.check_setup), "gui_check_setup").grid(
             row=13, column=0, sticky="we", pady=(6, 0))
         self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(

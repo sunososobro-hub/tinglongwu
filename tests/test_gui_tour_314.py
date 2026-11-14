@@ -95,26 +95,36 @@ def test_first_run_shows_overlay_second_run_does_not_and_question_mark_reopens(m
 
     b = make_app()  # second run: no overlay
     assert not b.tour.visible and b.tour.win.state() == "withdrawn" and not b.overlay.visible
-    b.btn_help.invoke()  # "?"
+    assert not hasattr(b, "btn_help")  # "?" is not on the #455 bar (it made the bar 442 px > 420 px)
+    b.btn_tour.invoke()  # "?" in the Adjust panel
     b.root.update()
     assert b.tour.visible and b.tour.win.state() == "normal" and b.overlay.visible
 
 
-def test_picking_the_language_in_step_1_and_start_shows_subtitles_in_the_bar(make_app):
+def test_subtitle_bar_menu_reopens_the_overlay(make_app):
     a = make_app()
-    from tinglongwu.langs import label
+    a.tour.btn_ok.invoke()
+    m = a.overlay.menu
+    idx = [i for i in range(m.index("end") + 1) if m.type(i) == "command" and m.entrycget(i, "label") == "? 3-step guide"]
+    assert len(idx) == 1
+    m.invoke(idx[0])
+    a.root.update()
+    assert a.tour.visible and a.overlay.visible
 
-    a.tour.lang_box.set(label("ja"))  # step 1
-    a.btn.invoke()  # step 2: Start
-    assert a.settings["lang"] == "ja"
-    a.q.put(("final", "konnichiwa", "你好"))
-    a.poll()
-    assert a.overlay.visible and _bar_text(a) == "你好"  # step 3: the subtitles are in the bar
 
+def test_tour_asks_the_os_locale_only_once_and_only_for_chinese(make_app, monkeypatch):
+    from tinglongwu import i18n
 
-def test_overlay_follows_ui_language_switch(make_app):
+    calls = []
+    monkeypatch.setattr(i18n, "_system_tag", lambda: calls.append(1) or "zh-CN")
     a = make_app()
+    calls.clear()
+    for _ in range(3):
+        a.tour.text()
+    assert calls == []  # English UI: the overlay never asks
     a.v_ui_lang.set("繁體中文")
-    a.switch_lang()
-    assert a.tour.btn_ok.cget("text") == "知道了" and a.tour.step2.cget("text").startswith("2.")
-    assert _bar_text(a) == "3. 字幕會出現在這裡 - 可拖曳移動"
+    a.switch_lang()  # relabels the overlay: asks once
+    calls.clear()
+    for _ in range(3):
+        a.tour.text()
+    assert calls == [] and a.tour.text()["ok"] == "知道了" and a.tour.text()["title"] == "三步开始"  # cached
