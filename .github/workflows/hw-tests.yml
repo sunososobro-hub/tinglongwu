@@ -44,6 +44,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Commit under test (shown in the run summary; nightly runs come from hw-nightly.yml, #681)
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "tested commit: $sha ($GITHUB_EVENT_NAME)"
+          echo "### hw-tests on commit \`$sha\` ($GITHUB_EVENT_NAME)" >> "$GITHUB_STEP_SUMMARY"
+
       # The owner's default speakers are restored by the last step even if a test fails or is cancelled.
       # Audio steps use Windows PowerShell directly so the restore never depends on bash working.
       - name: Remember the default audio output device

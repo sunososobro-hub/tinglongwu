@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata as md
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -326,8 +327,24 @@ def gpu_pack_wheels_key(repo: Path | None = None) -> str:
     return h.hexdigest()
 
 
+def llama_wheel_version(llama_lib: Path) -> str:
+    """llama-cpp-python version of the wheel whose llama_cpp/lib is `llama_lib` (read as text: importing llama_cpp would
+    load llama.dll). Exits non-zero when it cannot be read, so a pack never ships without its version (#881)."""
+    for name in ("__init__.py", "version.py"):
+        f = llama_lib.parent / name
+        if f.is_file():
+            m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', f.read_text("utf-8", "replace"), re.M)
+            if m:
+                return m.group(1)
+    try:
+        return md.version("llama_cpp_python")
+    except md.PackageNotFoundError:
+        raise SystemExit(f"gpu pack: cannot read the llama-cpp-python version next to {llama_lib}") from None
+
+
 def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: Path | None = None,
-                        url: str = "", repo: Path | None = None, llama_license: Path | None = None) -> Path:
+                        url: str = "", repo: Path | None = None, llama_license: Path | None = None,
+                        llama_version: str | None = None) -> Path:
     """DIR/tinglongwu-gpu-pack.zip + .manifest.json from the CUDA wheels; never runs Nuitka, needs no tlwu.exe.
     The zip = every file copy_cuda() copies + ggml-cuda.dll; a missing DLL exits non-zero naming it."""
     import tempfile
@@ -347,6 +364,7 @@ def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: 
     ggml = llama_lib / GPU_PACK_LLAMA_DLL if llama_lib else None
     if ggml is None or not ggml.is_file():
         raise SystemExit(f"gpu pack: {GPU_PACK_LLAMA_DLL} not found in {llama_lib} (install requirements-llama-cuda.txt)")
+    llama_version = llama_version or llama_wheel_version(llama_lib)
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         stage = Path(tmp)
@@ -364,6 +382,8 @@ def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: 
             raise SystemExit("gpu pack: llama-cpp-python LICENSE not found (install requirements-llama-cuda.txt)")
         shutil.copy2(llama_lic, lic / f"LICENSE-llama.cpp-{Path(llama_lic).name}")
         (lic / "THIRD_PARTY_NOTICES.txt").write_text(NVIDIA_NOTE, "utf-8")
+        # #881: device.pack_llama_dir() uses the pack's llama build only when this equals llamacheck.LLAMA_VERSION
+        (stage / "cuda_libs" / "llama_version.txt").write_text(llama_version + "\n", encoding="utf-8")
         zpath = out_dir / GPU_PACK_ASSET
         man_path = make_gpu_pack(stage, zpath, url)
     man = gpu_pack.load_manifest(man_path)
