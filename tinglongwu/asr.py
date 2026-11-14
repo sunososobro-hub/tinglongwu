@@ -152,7 +152,10 @@ class FasterWhisperRecognizer(Recognizer):
             print(f"tlwu: GPU load failed ({e}); falling back to CPU.", file=sys.stderr)
             self.device = "cpu"
             beam_cpu, threads_cpu = cpu_fallback_settings(beam, threads_arg)  # #780: CPU-mode settings after a fallback
-            kw = {"cpu_threads": threads_cpu} if threads_cpu and not thread_budget.both() else {}
+            if thread_budget.both():  # listen+speak: this process's share of the shared budget, as on the normal CPU path
+                kw = {"cpu_threads": thread_budget.current()["asr"]}
+            else:
+                kw = {"cpu_threads": threads_cpu} if threads_cpu else {}
             self.model = WhisperModel(str(path), device="cpu", compute_type="int8", **kw)
             self.fast, self.beam = False, beam_cpu
         self.lang = None if lang == "auto" else lang  # auto: lock after first speech
