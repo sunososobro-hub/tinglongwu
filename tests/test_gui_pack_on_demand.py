@@ -296,6 +296,8 @@ def test_packs_download_resumes_with_range_and_passes_sha(tmp_path, monkeypatch)
     sleeps = types.ModuleType("huggingface_hub")
     sleeps.snapshot_download = lambda *a, **k: pytest.fail("snapshot_download must not be used for pinned files")
     monkeypatch.setitem(sys.modules, "huggingface_hub", sleeps)
+    for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY"):
+        monkeypatch.setenv(k, "1")  # downloader.main pops these; restore them for later tests (test_offline)
     for _ in range(3):  # a dropped connection raises; re-running continues from the .part file
         try:
             downloader.main(["--packs", "ja", "--models-dir", str(tmp_path)])
