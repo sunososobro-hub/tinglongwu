@@ -35,3 +35,13 @@ def test_guard_blocks_udp_sendto():
             s.sendto(b"x", ("8.8.8.8", 53))
     finally:
         s.close()
+
+
+def test_piper_ru_dmitri_pinned_and_resolvable():
+    """#818: the Piper ru voice has a committed pin (revision + SHA-256 per file) that resolve_hf accepts."""
+    man = json.loads(dl.PINS_FILE.read_text("utf-8"))
+    name = dl.piper_ru_dir("dmitri")
+    repo, rev, pinned = dl.resolve_hf(man, name, dl.PIPER_REPO)
+    assert repo == dl.PIPER_REPO and len(rev) == 40
+    assert set(pinned) == set(dl.PIPER_RU["dmitri"])
+    assert all(len(h) == 64 for h in pinned.values())
