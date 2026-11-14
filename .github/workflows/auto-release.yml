@@ -1,0 +1,72 @@
+name: auto-release
+# #589 (owner 2026-11-13): when ci, e2e, windows-build and hw-tests are all green on the open dev -> main
+# `release: vX.Y.Z` PR, merge it and publish, with no human click. Rules: .agent/tlwu_rules.md section 14.
+#   gate (scripts/release_notes.py auto): AUTO_RELEASE == 'true' and throttle #574 at level >= 1 (kill switch);
+#     the PR head is this run's commit; title == v<__version__>, newer than every tag (a version bump is the only
+#     trigger); the four checks green on the head (check_problems, `skipped` is not green); docs/whats_new.md has a
+#     `## vX.Y.Z` section.
+#   merge: `gh pr merge --merge --match-head-commit` with the workflow token (never squash, never --auto: auto-merge
+#     waits only for the required `test` check).
+#   publish: a merge by the workflow token fires no `push`, so dispatch release.yml on main with publish=true;
+#     its `plan` re-checks the same gates on the merged commit.
+# workflow_run uses this file from the default branch (main), so it starts working after one release carries it.
+on:
+  workflow_run:
+    workflows: [ci, e2e, windows-build, hw-tests]
+    types: [completed]
+    branches: [dev]
+
+permissions: {}
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  auto-release:
+    # a fork PR from a branch named `dev` also reports head_branch == dev: only this repo's runs count
+    if: >-
+      vars.AUTO_RELEASE == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # merge into main
+      pull-requests: write   # merge the release PR
+      actions: write         # read the check runs; dispatch release.yml
+      issues: read           # throttle issue #574
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}   # merged dev code, never PR head code from a fork
+          fetch-depth: 0   # tags: the version must be newer than every tag
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTO_RELEASE: ${{ vars.AUTO_RELEASE }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python scripts/release_notes.py auto > gate.txt
+          cat gate.txt >> "$GITHUB_OUTPUT"
+          { echo '```'; cat gate.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Merge the release PR (merge commit, only at the checked head)
+        if: steps.gate.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.gate.outputs.pr }}
+          HEAD: ${{ steps.gate.outputs.head }}
+        run: gh pr merge "$PR" -R "$GITHUB_REPOSITORY" --merge --match-head-commit "$HEAD"
+      - name: Publish (dispatch release.yml on main)
+        if: steps.gate.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.gate.outputs.tag }}
+        run: |
+          gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref main -f publish=true
+          echo "merged; release.yml dispatched on main for $TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -5,6 +5,15 @@ publish after the owner merges that PR).
     python scripts/release_notes.py pr-body [--existing FILE] --out F   release PR title (stdout) and body (F)
     python scripts/release_notes.py plan                               release.yml: publish? tag? (GITHUB_OUTPUT lines)
     python scripts/release_notes.py notes --version vX --base F --verification R [--pr N] [--hw-run URL] --out F
+    python scripts/release_notes.py auto                               auto-release.yml: merge the release PR now?
+
+Auto-release (#589): auto-release.yml runs `auto` after ci / e2e / windows-build / hw-tests complete on dev. It merges
+the open dev -> main release PR only when AUTO_RELEASE is true, the throttle issue is at level >= 1, the PR head is
+the run's commit, the title is v<__version__>, newer than every tag, all four checks are green on the head and
+docs/whats_new.md has a section for that version; then it dispatches release.yml on main with publish=true (a merge
+by the workflow token fires no `push`), which `plan` treats like the push of the merged release PR.
+What's new comes from docs/whats_new.md (`## vX.Y.Z` section, written by the bump PR); a release PR body edit is the
+fallback for a hand merge. Without either the notes keep `- TODO:` and windows-installer leaves the release a draft.
 
 Version: tinglongwu/__init__.py `__version__` is the single source (#462; the setup wizard is named after it), so
 the release PR title is `release: v<__version__>` and a merged release PR whose title names another version (or
@@ -39,6 +48,8 @@ TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 TITLE_RE = re.compile(r"^release:\s*(v\S+)\s*$", re.I)
 REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests")
 WHATS_NEW = "## What's new"
+WHATS_NEW_FILE = "docs/whats_new.md"
+THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)
 
 
 def app_version(init_text: str) -> str:
@@ -126,12 +137,19 @@ def prerelease_tag(tag: str, version: str, tags: dict[str, str], sha: str) -> st
 
 
 def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str], pulls: list[dict], repo: str,
-         runs_of=lambda sha: [], published=lambda tag: False, ref_type: str = "branch") -> dict:
-    """publish = tag + Release; build = build and check the Windows zip; head = released dev commit."""
+         runs_of=lambda sha: [], published=lambda tag: False, ref_type: str = "branch",
+         publish_input: bool = False) -> dict:
+    """publish = tag + Release; build = build and check the Windows zip; head = released dev commit.
+    #589: workflow_dispatch on main with publish=true (sent by auto-release.yml after it merged the release PR) is
+    treated like the push to main; every other dispatch is a dry run."""
     out = {"publish": "false", "build": "false", "tag": "", "pr": "", "head": "", "hw_run": "", "reason": ""}
     if event == "workflow_dispatch":
-        out.update(build="true", tag=f"v{version}", reason=f"workflow_dispatch on {ref_name}: dry run, publishes nothing")
-        return out
+        if not (publish_input and ref_type == "branch" and ref_name == "main"):
+            why = " (publish=true is honoured only on main)" if publish_input else ""
+            out.update(build="true", tag=f"v{version}",
+                       reason=f"workflow_dispatch on {ref_name}: dry run, publishes nothing{why}")
+            return out
+        event = "push"  # merged by auto-release.yml with the workflow token, which fires no push
     if event == "push" and ref_type == "tag":
         tag = prerelease_tag(ref_name, version, tags, sha)
         if published(tag):
@@ -202,31 +220,93 @@ def changes_md(since: str | None, changes: list[dict]) -> str:
 
 
 def whats_new(body: str) -> str | None:
-    """The `## What's new` section of a release PR body (the owner may edit it), None if absent or still TODO.
-    It ends at the next generated section, so the owner's own ### subsections are kept."""
+    """The `## What's new` section of a release PR body (the owner may edit it), None if absent, still TODO or the
+    generated placeholder. It ends at the next generated section, so the owner's own ### subsections are kept."""
     m = re.search(r"^## What's new[ \t]*\n(.*?)(?=^#{1,2} |^### (?:Changes|Thanks)\b|^---|\Z)", body or "", re.M | re.S)
     text = m.group(1).strip() if m else ""
-    return text if text and "TODO" not in text else None
+    generated = text.startswith("- Fixes and improvements") and text.endswith("the full list is below.")
+    return text if text and "TODO" not in text and not generated else None
 
 
-def default_whats_new(since: str | None) -> str:
-    return f"- Fixes and improvements{f' since {since}' if since else ''}; the full list is below."
+def whats_new_section(text: str, tag: str) -> str | None:
+    """#589: the `## vX.Y.Z` section of docs/whats_new.md (written by the bump PR); None if absent, empty or TODO."""
+    text = re.sub(r"<!--.*?-->", "", text or "", flags=re.S)  # the file's example sits in a comment
+    m = re.search(rf"^##[ \t]+{re.escape(tag)}[ \t]*\n(.*?)(?=^##? |\Z)", text, re.M | re.S)
+    body = m.group(1).strip() if m else ""
+    return body if body and "TODO" not in body else None
+
+
+def todo_whats_new(tag: str) -> str:
+    return f"- TODO: add a `## {tag}` section to {WHATS_NEW_FILE} (the bump PR writes it)."
+
+
+def throttle_level(body: str | None) -> int | None:
+    """First line of the throttle issue (#574): `level: N`. None when missing or unreadable."""
+    m = THROTTLE_RE.match((body or "").split("\n", 1)[0])
+    return int(m.group(1)) if m else None
+
+
+def open_release_pr(pulls: list[dict], repo: str) -> dict | None:
+    """The open dev -> main `release:` PR from this repo (not a fork)."""
+    for p in pulls:
+        head, base = p.get("head") or {}, p.get("base") or {}
+        if (p.get("state", "open") == "open" and base.get("ref") == "main" and head.get("ref") == "dev"
+                and (head.get("repo") or {}).get("full_name") == repo
+                and p.get("title", "").strip().lower().startswith("release:")):
+            return p
+    return None
+
+
+def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, tags: dict[str, str],
+              pulls: list[dict], repo: str, runs_of, whats_new_text: str) -> dict:
+    """#589 auto-release gate: merge = merge the release PR at `head` now, then dispatch release.yml on main."""
+    out = {"merge": "false", "pr": "", "head": "", "tag": "", "reason": ""}
+
+    def stop(why):
+        out["reason"] = why
+        return out
+    if enabled != "true":
+        return stop("kill switch: repo variable AUTO_RELEASE is not 'true'")
+    level = throttle_level(throttle)
+    if level is None or level < 1:
+        return stop(f"kill switch: throttle level is {'unreadable' if level is None else level} (needs >= 1)")
+    pr = open_release_pr(pulls, repo)
+    if pr is None:
+        return stop("no open dev -> main 'release:' PR")
+    head = (pr.get("head") or {}).get("sha", "")
+    out.update(pr=str(pr["number"]), head=head)
+    if head != run_sha:
+        return stop(f"release PR #{pr['number']} head {head[:12]} is not this run's commit {run_sha[:12]}")
+    tag = f"v{version}"
+    if title_version(pr.get("title", "")) != tag:
+        return stop(f"release PR title {pr.get('title')!r} does not name {tag} (= __version__)")
+    last = latest_tag(list(tags))
+    if tag in tags or (last and parse_tag(tag) <= parse_tag(last)):
+        return stop(f"{tag} is not newer than the latest tag {last}: bump __version__ first")
+    bad = check_problems(runs_of(head))
+    if bad:
+        return stop("required checks not green on the head: " + "; ".join(bad))
+    if whats_new_section(whats_new_text, tag) is None:
+        return stop(f"{WHATS_NEW_FILE} has no filled `## {tag}` section")
+    out.update(merge="true", tag=tag, reason=f"release PR #{pr['number']} is green for {tag}: merge and publish")
+    return out
 
 
 def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict], thanks: dict,
-            existing: str = "", dev_sha: str = "") -> str:
+            existing: str = "", dev_sha: str = "", whats_new_text: str = "") -> str:
     tag = f"v{version}"
     lines = []
     if tag in tags:
         lines += [f"> **Not releasable yet:** tag `{tag}` already exists. Bump `__version__` in "
                   "`tinglongwu/__init__.py` on dev; this PR then updates itself.", ""]
-    lines += [WHATS_NEW, whats_new(existing) or default_whats_new(since), "", changes_md(since, changes),
+    new = whats_new_section(whats_new_text, tag) or whats_new(existing) or todo_whats_new(tag)
+    lines += [WHATS_NEW, new, "", changes_md(since, changes),
               thanks_md(thanks), "---",
-              f"Merging this PR releases `{tag}` (= `tinglongwu.__version__`). The `release` workflow then checks that "
-              "ci, e2e, windows-build and hw-tests are green on this PR's head commit, builds the Windows zip on "
-              "windows-latest, runs check_dist_dlls, the llama CPU-instruction check, `--smoke` and `--selftest`, "
-              "tags `main` and publishes the GitHub Release with the setup wizard. Edit **What's new** above before "
-              "merging; it becomes the release's What's new.", "",
+              f"This PR releases `{tag}` (= `tinglongwu.__version__`). `auto-release.yml` merges it once ci, e2e, "
+              f"windows-build and hw-tests are green on its head commit and `{WHATS_NEW_FILE}` has a `## {tag}` "
+              "section (What's new above comes from there); the `release` workflow then checks the same gates, "
+              "builds the Windows zip on windows-latest, runs check_dist_dlls, the llama CPU-instruction check, "
+              "`--smoke` and `--selftest`, tags `main` and publishes the GitHub Release with the setup wizard.", "",
               f"Generated by release-pr.yml (#414) from dev {dev_sha[:7]}."]
     return "\n".join(lines) + "\n"
 
@@ -240,11 +320,15 @@ def gpu_line(hw_run: str, head: str) -> str:
 
 
 def release_notes(base: str, pr_text: str, since: str | None, verification: str, hw_run: str, head: str,
-                  changes: list[dict], thanks: dict, pack_manifest: dict | None = None) -> str:
-    """render_support.py --notes output with What's new filled in, plus the Windows checks, changes and thanks."""
-    new = whats_new(pr_text) or default_whats_new(since)
-    base = re.sub(r"^## What's new[ \t]*\n(?:- TODO:.*\n?)?", lambda _m: f"{WHATS_NEW}\n{new}\n", base, count=1,
-                  flags=re.M)
+                  changes: list[dict], thanks: dict, pack_manifest: dict | None = None, whats_new_text: str = "",
+                  tag: str = "") -> str:
+    """render_support.py --notes output with What's new filled in, plus the Windows checks, changes and thanks.
+    What's new: docs/whats_new.md `## <tag>`, else the release PR's edited section; else the TODO line stays, so
+    windows-installer keeps the release a draft (#589: the no-TODO gate)."""
+    new = whats_new_section(whats_new_text, tag) or whats_new(pr_text)
+    if new:
+        base = re.sub(r"^## What's new[ \t]*\n(?:- TODO:.*\n?)?", lambda _m: f"{WHATS_NEW}\n{new}\n", base, count=1,
+                      flags=re.M)
     win = ["### Windows package (tinglongwu-win64.zip)", "", verification.strip() or "(not built)", "",
            gpu_line(hw_run, head)]
     packs = [_pack_manifest().sizes_md(pack_manifest), ""] if pack_manifest else []  # #615: every optional pack with its size
@@ -305,6 +389,7 @@ def main(argv=None) -> int:
     b.add_argument("--existing", help="file with the current release PR body (keeps its What's new)")
     b.add_argument("--out", required=True)
     sub.add_parser("plan")
+    sub.add_parser("auto")
     n = sub.add_parser("notes")
     for k in ("--version", "--base", "--out"):
         n.add_argument(k, required=True)
@@ -326,21 +411,40 @@ def main(argv=None) -> int:
                                capture_output=True, text=True)
             return r.returncode == 0 and r.stdout.strip() == "false"
 
+        publish_input = os.environ.get("INPUT_PUBLISH", "").lower() == "true"
+        if event == "workflow_dispatch" and publish_input and ref_type == "branch" and ref_name == "main":
+            pulls = gh_json("api", f"repos/{rep}/commits/{sha}/pulls")
         for k, v in plan(event, ref_name, sha, version, git_tags(), pulls, rep, runs_of, published,
-                          ref_type or "branch").items():
+                          ref_type or "branch", publish_input).items():
+            print(f"{k}={v}")
+        return 0
+    if a.cmd == "auto":
+        issue = os.environ.get("THROTTLE_ISSUE", "574")
+        r = subprocess.run(["gh", "api", f"repos/{rep}/issues/{issue}", "--jq", ".body"], capture_output=True,
+                           text=True, encoding="utf-8")
+        throttle = r.stdout if r.returncode == 0 else None
+        pulls = gh_json("api", f"repos/{rep}/pulls?state=open&base=main&per_page=100")
+        runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
+        wn = ROOT / WHATS_NEW_FILE
+        for k, v in auto_plan(os.environ.get("AUTO_RELEASE", ""), throttle, os.environ.get("RUN_SHA", ""), version,
+                              git_tags(), pulls, rep, runs_of, wn.read_text("utf-8") if wn.exists() else "").items():
             print(f"{k}={v}")
         return 0
     if a.cmd == "pr-body":
         tag = f"v{version}"
         since, changes, thanks = history(rep, tag)
-        body = pr_body(version, list(git_tags()), since, changes, thanks, read(a.existing), git("rev-parse", "HEAD"))
+        wn = ROOT / WHATS_NEW_FILE
+        body = pr_body(version, list(git_tags()), since, changes, thanks, read(a.existing), git("rev-parse", "HEAD"),
+                       wn.read_text("utf-8") if wn.exists() else "")
         Path(a.out).write_text(body, "utf-8")
         print(f"release: {tag}")
         return 0
     pr_text = gh_json("pr", "view", a.pr, "-R", rep, "--json", "body")["body"] if a.pr else ""
     since, changes, thanks = history(rep, a.version, a.head or "HEAD")
+    wn = ROOT / WHATS_NEW_FILE
     text = release_notes(read(a.base), pr_text, since, read(a.verification), a.hw_run, a.head, changes, thanks,
-                         _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None)
+                         _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None,
+                         wn.read_text("utf-8") if wn.exists() else "", a.version)
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
