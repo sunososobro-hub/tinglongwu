@@ -30,6 +30,14 @@ The runtime package `tinglongwu/` contains no network code; a Python-level netwo
 
 `netguard.jsonl` (in your user log directory) records blocked attempts: time, host, port, package, trimmed stack. It has no PII and is never sent automatically.
 
+## Android app (tinglongWu mobile / TingLong on Google Play)
+- **Microphone audio is processed on the phone only.** Speech recognition and translation run on the device; audio and text are never uploaded and are kept in memory only. Nothing is recorded.
+- **No internet permission.** The release app does not request Android's INTERNET permission, so it cannot send anything over the network.
+- **Models:** either you download the model pack with your browser and import it with the system file picker, or, for the Google Play version, the Play Store downloads them as Play Asset Delivery packs. Either way every file is checked (size + SHA-256) and stored in the app's own folder on the phone.
+- **Stored on the phone:** the model files and a local run log in the app's folder. No account, no analytics, no ads, no advertising ID.
+- **No data is collected or shared** with the developer or third parties. Google Play itself handles installs, updates and the pack download under Google's own privacy policy.
+- **Delete everything:** uninstall the app (Android removes its folder and the models).
+
 ## Payment
 Paid versions: checkout (email, license key, card data) is handled entirely by the payment provider. tlwu does not store payment data.
 
