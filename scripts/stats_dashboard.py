@@ -8,11 +8,13 @@ full-history series from the API (series.json) and writes a self-contained index
 """
 import argparse
 import html
+import io
 import json
 import os
 import re
 import sys
 import urllib.request
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 KEEP = 24 * 90  # hourly snapshots kept (~90 days)
@@ -582,6 +584,93 @@ def downloads_series(history, days, current=None):
     return out
 
 
+TTFS_POINTS = 10  # #777: last N install-clean values shown per OS
+TTFS_BUDGET_S = 180  # target: install start -> first subtitle, excluding the model download (scripts/ttfs.py)
+TTFS_RUNS = 30  # successful install-clean runs scanned for ttfs-<os> artifacts
+_TTFS_FIELDS = ("excl_download_seconds", "os", "version", "date")
+
+
+def ttfs_points(docs, points=TTFS_POINTS):
+    """docs: parsed ttfs.json dicts (schema in #777) -> {os: [newest `points` rows, oldest first]}.
+
+    Pure: malformed docs (missing fields, null excl_download_seconds) are skipped."""
+    by_os = {}
+    for idx, d in enumerate(docs or ()):  # docs are newest-first: idx breaks ties between equal dates
+        if not isinstance(d, dict) or any(d.get(k) is None for k in _TTFS_FIELDS):
+            continue
+        try:
+            sec = float(d["excl_download_seconds"])
+        except (TypeError, ValueError):
+            continue
+        by_os.setdefault(str(d["os"]), []).append(
+            {"version": str(d["version"]), "date": str(d["date"]), "seconds": round(sec, 1), "sha": str(d.get("sha") or ""), "_i": idx})
+    out = {}
+    for o, rows in sorted(by_os.items()):
+        keep = sorted(rows, key=lambda r: (r["date"], -r["_i"]))[-points:]  # oldest first, newest last
+        out[o] = [{k: v for k, v in r.items() if k != "_i"} for r in keep]
+    return out
+
+
+def render_ttfs_section(series):
+    ttfs = series.get("ttfs")
+    head = ('<h2>Install to first subtitle</h2><p class="n">Seconds from install start to the first subtitle, '
+            'excluding the model download (50 Mbps baseline); budget %d s. Last %d install-clean runs per OS.</p>'
+            % (TTFS_BUDGET_S, TTFS_POINTS))
+    if not ttfs:
+        return head + '<p class="n" id="ttfs">no data yet</p>'
+    out = []
+    for o, rows in ttfs.items():
+        tr = "".join('<tr><td>%s</td><td>%s</td><td%s>%.0f s</td></tr>'
+                     % (html.escape(r["version"]), html.escape(r["date"]),
+                        ' style="color:#c0392b"' if r["seconds"] > TTFS_BUDGET_S else "", r["seconds"]) for r in rows)
+        out.append('<table class="ttfs" data-os="%s"><caption>%s &middot; budget %d s</caption>'
+                   '<tr><th>Version</th><th>Date</th><th>Excl. download</th></tr>%s</table>'
+                   % (html.escape(o), html.escape(o), TTFS_BUDGET_S, tr))
+    return head + '<div id="ttfs">%s</div>' % "".join(out)
+
+
+def http_artifact_json(url):
+    """Download a GitHub artifact zip (GITHUB_TOKEN only) and return the parsed ttfs.json inside it."""
+    class _NoAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            nr = super().redirect_request(req, fp, code, msg, headers, newurl)
+            if nr is not None:
+                nr.headers.pop("Authorization", None)  # the blob host must not get the token
+            return nr
+
+    req = urllib.request.Request(url)
+    tok = os.environ.get("GITHUB_TOKEN")
+    if tok:
+        req.add_header("Authorization", "Bearer " + tok)
+    with urllib.request.build_opener(_NoAuthOnRedirect).open(req, timeout=60) as r:
+        z = zipfile.ZipFile(io.BytesIO(r.read()))
+    name = next(n for n in z.namelist() if n.endswith("ttfs.json"))
+    return json.loads(z.read(name))
+
+
+def collect_ttfs(api, repo, fetch=http_artifact_json):
+    """Newest-first successful install-clean runs -> their `ttfs-<os>` artifacts -> {os: rows}. Failures -> {}."""
+    docs = []
+    try:
+        runs = api("/repos/%s/actions/workflows/install-clean.yml/runs?status=success&per_page=%d"
+                   % (repo, TTFS_RUNS)).get("workflow_runs", [])
+        for run in runs:
+            try:
+                arts = api("/repos/%s/actions/runs/%d/artifacts" % (repo, run["id"])).get("artifacts", [])
+            except Exception as e:  # one bad run must not hide the later ones
+                print("artifacts of run %s unavailable: %s" % (run.get("id"), e), file=sys.stderr)
+                continue
+            for a in arts:
+                if a.get("name", "").startswith("ttfs-") and not a.get("expired"):
+                    try:
+                        docs.append(fetch(a["archive_download_url"]))
+                    except Exception as e:
+                        print("ttfs artifact %s unavailable: %s" % (a.get("name"), e), file=sys.stderr)
+    except Exception as e:  # page shows "no data yet" instead of failing
+        print("install-clean runs unavailable: %s" % e, file=sys.stderr)
+    return ttfs_points(docs)
+
+
 def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
@@ -620,6 +709,7 @@ def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     return {
         "flow": flow, "faucet": faucet,
         "quota_trend": quota_trend(merged_prs, now),  # #744
+        "ttfs": collect_ttfs(api, repo),  # #777
         "release_times": release_times(rels, release_runs(api, repo), all_issues),
         "downloads": {"total": dl_total, "releases": rels or [],
                       "series": downloads_series(history, days, dl_total) if dl_total is not None
@@ -712,6 +802,7 @@ __VISION__
 <div id="hero"></div>
 __FLOW__
 __THROUGHPUT__
+__TTFS__
 <div class="grid">
 <section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
@@ -847,7 +938,8 @@ def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
     values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
               "__FLOW__": render_flow_section(series),
-              "__THROUGHPUT__": render_throughput_section(series), "__VISION__": vision_html(), "__DATA__": data}
+              "__THROUGHPUT__": render_throughput_section(series),
+              "__TTFS__": render_ttfs_section(series), "__VISION__": vision_html(), "__DATA__": data}
     # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
     return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
