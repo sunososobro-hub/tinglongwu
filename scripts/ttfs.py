@@ -32,14 +32,38 @@ _UNITS = {"b": 1, "bytes": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9,
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(bytes|gib|mib|kib|gb|mb|kb|b)\b(?!\s*(?:/|per\s))", re.I)
 
 
+_UNIT_NAMES = r"bytes|gib|mib|kib|gb|mb|kb|b"
+# tinglongwu_setup.downloader.copy_with_progress: `download <key>: 35% (87/250 MB)` every 5 %, or `download <key>: 150 MB`
+# every 50 MB when the size is unknown; the Kokoro / speaker files print `downloading <name> (~80 MB)` once.
+_NUM = r"\d+(?:\.\d+)?"
+_PROGRESS_RE = re.compile(r"^\s*download\s+(?P<key>\S+?):\s*(?:\d+%\s*\(\s*(?P<done>" + _NUM + r")\s*/\s*" + _NUM
+                          + r"|(?P<abs>" + _NUM + r"))\s*(?P<unit>" + _UNIT_NAMES + r")\b", re.I)
+_ANNOUNCE_RE = re.compile(r"^\s*downloading\s+(?P<key>\S+)\s*\(~?\s*(?P<size>" + _NUM + r")\s*(?P<unit>" + _UNIT_NAMES
+                          + r")\)", re.I)
+
+
 def parse_download_bytes(text):
-    """Sum the sizes on setup output lines that mention 'download'."""
-    total = 0.0
+    """Bytes downloaded, from the setup output (#855: each file once, not once per progress line).
+
+    - `download <key>: N% (x/T MB)` / `download <key>: x MB`: the largest x seen for that key (bytes actually copied);
+    - `downloading <name> (~S MB)`: S, only for a name that printed no progress line (a repeat counts once);
+    - any other line that mentions 'download' and a size: every size on it, as before."""
+    progress, announced, other = {}, {}, 0.0
     for line in text.splitlines():
+        m = _PROGRESS_RE.match(line)
+        if m:
+            n = float(m.group("done") or m.group("abs")) * _UNITS[m.group("unit").lower()]
+            progress[m.group("key")] = max(progress.get(m.group("key"), 0.0), n)
+            continue
+        m = _ANNOUNCE_RE.match(line)
+        if m:
+            announced[m.group("key")] = float(m.group("size")) * _UNITS[m.group("unit").lower()]
+            continue
         if "download" not in line.lower():
             continue
         for num, unit in _SIZE_RE.findall(line):
-            total += float(num) * _UNITS[unit.lower()]
+            other += float(num) * _UNITS[unit.lower()]
+    total = sum(progress.values()) + sum(v for k, v in announced.items() if k not in progress) + other
     return int(total)
 
 
