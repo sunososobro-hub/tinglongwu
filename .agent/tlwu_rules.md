@@ -110,6 +110,14 @@ Owner: "聽 說 雙向是一個維度，平台是一個維度，語言是一個"
 - Focus: line 2 of the throttle issue #574 may read `focus: <values>` (comma list of mode / platform / language values, e.g. `focus: speak, ja`). Missing = no focus. Pickers: P0/P1 first; then the ledger type (section 10); inside that type, items matching any focus value first, then P0 -> P3, then lowest number. S-hard supply opens evidence-backed issues for focus values first.
 - The stats page (#576 children) reads these labels; it does not guess mode or language from titles.
 
+## 13. Infra cap: build the product, not the machine (owner 2026-11-14)
+Owner: "我衝到最後會拉不回來". Work on the pipeline itself must stay small next to work users can feel.
+- `infra` label: any issue whose result only the owner or the agents see. That covers the stats page and Sankey, ledger and throttle tooling, these rules, routine prompts, health logs and agent workflows. Release, CI and eval infrastructure that protects users (quality gates, installers, crash fixes) is NOT `infra`. The type label (section 10) stays as it is; `infra` is added on top.
+- Cap: `infra` issues may use at most 10% of `tlwu-usage` minutes over the last 7 days (same inputs as the section 10 ledger). The S-hard ledger comment on #61 adds one line, `infra: <minutes> / <total> = <share>% (cap 10%)`.
+- Over the cap: pickers skip `infra` items (P0 still allowed) until the share drops below 10%. S-hard does not open new `infra` issues while over the cap.
+- User test for new issues: every new `enhancement` or `infra` issue states in its Why line which real user (or user report or Discussion link) it helps. With no answer it is opened as P3.
+- Triage (section 10 / 12) adds `infra` when it applies.
+
 ## 14. Auto-release safety (owner 2026-11-13, #588)
 Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main release PR, release with no human click. That turns every merged dev change into a user-facing release, so these rules are hard stops for every merger (R-merge, S-merge, R-hard) and win over section 3 where they are stricter. The owner never merges PRs, including the release PR.
 - Start: the release-PR rule in "Base", "Release freeze" and "Kill switch" take effect only once `.github/workflows/auto-release.yml` exists on `dev` (#589). Until then nothing can merge the release PR, so the freeze does not apply and mergers keep merging ready PRs into `dev`; every other rule in this section applies now.
