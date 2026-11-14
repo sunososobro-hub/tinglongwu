@@ -36,8 +36,26 @@ def broken_links(files: list[Path]) -> list[str]:
     return bad
 
 
+# #703: in the Chinese full READMEs, beginners must see setup.exe first; manual `tlwu-setup --...` commands only
+# appear below the "advanced" heading.
+ADVANCED_HEADINGS = {"readme-full.zh-TW.md": "## 開發者／進階安裝", "readme-full.zh-CN.md": "## 开发者／进阶安装"}
+SETUP_CMD = re.compile(r"tlwu-setup\s+--")
+
+
+def setup_cmds_above_advanced(text: str, heading: str) -> list[str]:
+    """Lines with a `tlwu-setup --...` command above `heading`; the heading itself missing is reported too."""
+    lines = text.splitlines()
+    if heading not in lines:
+        return [f"missing heading: {heading}"]
+    return [l for l in lines[: lines.index(heading)] if SETUP_CMD.search(l)]
+
+
 def main(argv: list[str]) -> int:
     rc = 0
+    for name, heading in ADVANCED_HEADINGS.items():
+        for line in setup_cmds_above_advanced((ROOT / "docs" / name).read_text("utf-8"), heading):
+            print(f"{name}: above advanced heading:", line.strip())
+            rc = 1
     if argv:
         old = Path(argv[0]).read_text("utf-8")
         miss = missing_headings(old, (ROOT / "README.md").read_text("utf-8"), ROOT / "docs")
