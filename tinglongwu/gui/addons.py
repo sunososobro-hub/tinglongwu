@@ -3,10 +3,9 @@ the settings screen renders `rows()` / `offline_message()`; the manifest comes f
 network code lives in this runtime package)."""
 from __future__ import annotations
 
+from ..i18n import t
 from ..pack_manifest import ManifestError, validate
 
-NOTE = "Needs internet to download ({size}). Works offline afterwards."
-OFFLINE = "No internet connection. Retry, or pick a local models zip."
 GPU_PACK = "gpu"
 
 
@@ -21,7 +20,7 @@ def rows(man: dict, installed: dict[str, str], gpu_present: bool = False) -> lis
     for name, rec in sorted(man["packs"].items()):
         have = name in installed
         out.append({"name": name, "size": size_text(rec["size"]), "installed": have,
-                    "note": "" if have else NOTE.format(size=size_text(rec["size"])),
+                    "note": "" if have else t("addons_note", size=size_text(rec["size"])),
                     "ticked": gpu_present and name == GPU_PACK and not have})
     return out
 
@@ -32,7 +31,7 @@ def load_rows(fetch, installed: dict[str, str], gpu_present: bool = False) -> tu
     try:
         return rows(validate(fetch()), installed, gpu_present), ""
     except (OSError, ManifestError, ValueError, KeyError, TypeError):
-        return [], OFFLINE
+        return [], t("addons_offline")
 
 
 # ---- local (offline) view for the Settings add-ons screen: the language packs this build knows (pack_on_demand) ----
