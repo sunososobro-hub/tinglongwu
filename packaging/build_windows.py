@@ -318,7 +318,10 @@ def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: 
     with tempfile.TemporaryDirectory() as tmp:
         stage = Path(tmp)
         copy_cuda(stage, src)  # exits non-zero naming a missing LLAMA_CUDA_NEEDS dll
-        shutil.copy2(ggml, stage / "cuda_libs" / GPU_PACK_LLAMA_DLL)
+        # #865: the core zip's llama.dll / ggml.dll are the CPU build and never load ggml-cuda.dll, so the pack
+        # ships the whole CUDA build of llama_cpp/lib; device.use_pack_llama_build() points llama_cpp at it.
+        for f in sorted(llama_lib.glob("*.dll")):
+            shutil.copy2(f, stage / "cuda_libs" / f.name)
         zpath = out_dir / GPU_PACK_ASSET
         man_path = make_gpu_pack(stage, zpath, url)
     man = gpu_pack.load_manifest(man_path)
