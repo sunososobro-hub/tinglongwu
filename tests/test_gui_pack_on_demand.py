@@ -184,3 +184,54 @@ def test_pack_table_matches_setup_and_reads_local_manifest(tmp_path):
     (tmp_path / "manifest.json").write_text(json.dumps({"hymt2-1.8b": {"files": {}}}))
     assert pod.first_missing("ja", "zh-tw", tmp_path) is None
     assert pod.first_missing("ru", "en", tmp_path) == ("ru", 1160)
+
+
+def test_early_eof_keeps_part_and_resumes(tmp_path):
+    class Short:
+        def __init__(self, start):
+            self.start, self.status = start, 206 if start else 200
+            self.headers = {"Content-Length": str(len(DATA) - start)}
+            self.left = [DATA[start:start + 1500]] if not start else [DATA[start:]]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return self.left.pop(0) if self.left else b""
+
+    calls = []
+
+    def opener(url, start):
+        calls.append(start)
+        return Short(start)
+
+    dest = tmp_path / "p.bin"
+    with pytest.raises(ConnectionError):
+        resume.fetch("u", dest, SHA, opener=opener)
+    assert (tmp_path / "p.bin.part").stat().st_size == 1500
+    resume.fetch("u", dest, SHA, opener=opener)
+    assert calls == [0, 1500] and dest.read_bytes() == DATA
+
+
+def test_complete_part_is_finalized_without_a_request(tmp_path):
+    (tmp_path / "p.bin.part").write_bytes(DATA)
+    resume.fetch("u", tmp_path / "p.bin", SHA, opener=lambda *a: pytest.fail("no request expected"))
+    assert (tmp_path / "p.bin").read_bytes() == DATA
+
+
+def test_http_416_restarts_from_zero(tmp_path):
+    import urllib.error
+
+    (tmp_path / "p.bin.part").write_bytes(DATA + b"junk")
+    net = FakeNet(DATA)
+
+    def opener(url, start):
+        if start:
+            raise urllib.error.HTTPError(url, 416, "range", {}, None)
+        return net(url, start)
+
+    resume.fetch("u", tmp_path / "p.bin", SHA, opener=opener)
+    assert (tmp_path / "p.bin").read_bytes() == DATA

@@ -669,6 +669,8 @@ class App:
         self.pack_retry = mode
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model=pack))
+        self.panel.deiconify()  # the status line lives in the Adjust panel: show it so progress is visible
+        self.panel.lift()
         self._sync_quick()
         threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
         return True
@@ -677,6 +679,9 @@ class App:
         self.downloading = None
         self.btn.configure(state="normal")
         self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))
+        if rc != 0:
+            self.panel.deiconify()
+            self.panel.lift()
         self._sync_quick()
         if rc == 0:  # on without restarting the app
             self.toggle(getattr(self, "pack_retry", None))

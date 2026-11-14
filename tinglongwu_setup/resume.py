@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -29,19 +30,36 @@ def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, 
     part = dest.with_name(dest.name + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
     for attempt in (1, 2):
+        if part.exists() and _sha(part) == sha256:  # finished earlier, stopped before the rename
+            part.replace(dest)
+            return dest
         start = part.stat().st_size if part.exists() else 0
-        with opener(url, start) as r:
+        try:
+            r = opener(url, start)
+        except urllib.error.HTTPError as e:
+            if e.code == 416 and start:  # .part is bigger than / not a prefix of the file: start over
+                part.unlink()
+                continue
+            raise
+        with r:
             if start and getattr(r, "status", 200) != 206:
                 start = 0  # server ignored Range: start over
+            try:
+                length = int((getattr(r, "headers", None) or {}).get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                length = 0
+            got = 0
             with open(part, "ab" if start else "wb") as out:
                 while True:
                     b = r.read(chunk)
                     if not b:
                         break
                     out.write(b)
-                    start += len(b)
+                    got += len(b)
                     if on_bytes:
-                        on_bytes(start)
+                        on_bytes(start + got)
+            if length and got < length:  # early EOF: keep the .part prefix, the next call resumes from it
+                raise ConnectionError(f"{dest.name}: connection ended after {start + got} of {start + length} bytes")
         if _sha(part) == sha256:
             part.replace(dest)
             return dest
