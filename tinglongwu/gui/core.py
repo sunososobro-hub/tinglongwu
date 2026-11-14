@@ -479,9 +479,9 @@ def short_line(line: str, limit: int = 90) -> str:
     m = list(re.finditer(r"\d{1,3}\s*%", line))
     if len(line) <= limit or not m:
         return line[:limit]
-    head, tail = line[:m[-1].start()], line[m[-1].start():][:limit - 12]
-    keep = limit - len(tail)
-    return (head if len(head) <= keep else "..." + head[-(keep - 3):]) + tail
+    head, tail = line[:m[-1].start()], line[m[-1].start():][:limit - 30]
+    # a fixed label budget, so every line of one file gets the same label whatever its tail length
+    return (head if len(head) <= 30 else "..." + head[-27:]) + tail
 
 
 def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
@@ -560,9 +560,10 @@ class StartDownload:
             bar = progress_bar(ev[1])
             if bar is not None:
                 label, p, total = bar
-                b = self._bars.setdefault(label, [0, 0.0])
+                b = self._bars.pop(label, [0, 0.0])
                 b[0], b[1] = max(b[0], p), max(b[1], total)
-                big = max(self._bars.values(), key=lambda x: x[1])
+                self._bars[label] = b  # latest last: equal totals -> the bar updated most recently
+                big = max(reversed(self._bars.values()), key=lambda x: x[1])
                 self.percent = big[0] if big[1] > 0 else b[0]
         elif kind in ("dl_done", "pack_done"):
             self.done, self.ok = True, ev[2] == 0
