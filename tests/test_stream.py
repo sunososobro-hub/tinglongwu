@@ -171,6 +171,22 @@ def test_latency_logging_first_draft_and_final():
     assert eng.finals == [4.0] and "final epoch=0 4.00s" in logs[1]
 
 
+def test_final_written_reports_first_draft_delay_once():
+    # #511: the first-draft delay of a segment is handed to its final line, then cleared
+    eng, clock, state, out, mt = make(["privet mir"], lang="ru")
+    state["live"] = (0, tone(SAMPLE_RATE))
+    clock.t = 0.0
+    eng.tick()
+    clock.t = 0.8
+    eng.translate_pending()
+    clock.t = 3.0
+    eng.final_written(0)
+    assert eng.last_first_draft == 1.8
+    eng.last_first_draft = None
+    eng.final_written(0)  # nothing left for epoch 0: stays None
+    assert eng.last_first_draft is None
+
+
 def test_drafts_yield_while_final_waits_and_dont_starve():
     eng, clock, state, out, mt = make(["x y"], lang="ru")
     eng.final_waiting = 1  # a final is queued on the lock

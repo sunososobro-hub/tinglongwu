@@ -110,6 +110,32 @@ def test_record_fields_match_stopwatch():
     assert sink.lines[0][1].target == "你好。"
 
 
+class _Draft:
+    """Stand-in for DraftEngine: reports a first-draft delay of 0.42 s when the final is written (#511)."""
+    final_section = __import__("contextlib").nullcontext
+    renderer = type("R", (), {"clear": lambda self: None})()
+    last_first_draft = None
+
+    def start(self, stop):
+        pass
+
+    def final_written(self, epoch=None):
+        self.last_first_draft = 0.4217
+
+    def flicker_line(self):
+        return ""
+
+
+def test_record_has_draft_field_null_without_draft_and_seconds_with_draft():
+    def go(draft):
+        clip, records = _Clip(), []
+        run(_Stamped(PacedSource(clip), clip), Segmenter(chunk=10.0, use_vad=True, step=0.25, vad_fn=_vad), _Asr(),
+            _Mt(), _Sink(), "zh", merger=None, audio_clock=False, on_record=records.append, draft=draft)
+        return records
+    assert go(None)[0]["draft"] is None
+    assert go(_Draft())[0]["draft"] == 0.422
+
+
 def test_no_records_without_callback():
     clip, sink = _Clip(), _Sink()
     run(clip, Segmenter(chunk=10.0, use_vad=True, step=0.25, vad_fn=_vad), _Asr(), _Mt(), sink, "zh",
