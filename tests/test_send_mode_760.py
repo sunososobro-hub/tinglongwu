@@ -5,6 +5,13 @@ from tinglongwu.reverse import sendmode
 from tinglongwu.reverse.confirm import ConfirmSession, Utterance
 
 
+def _get(inp):
+    try:
+        return inp.get(timeout=0.3)
+    except queue.Empty:
+        raise EOFError
+
+
 class Clock:
     def __init__(self):
         self.t = 0.0
@@ -80,3 +87,31 @@ def test_low_confidence_reasons():
     assert "logprob" in sendmode.low_confidence(mk(avg_logprob=-1.5))
     assert sendmode.low_confidence(mk(back="")) != ""
     assert sendmode.low_confidence(mk(back=""), require_back=False) == ""
+
+
+def test_stale_answer_never_decides_next_utterance():
+    clk, sent, out, inp = Clock(), [], [], queue.Queue()
+    s = ConfirmSession(lambda ru: ([1], 16000), lambda a, sr: sent.append(a), out=out.append,
+                       readline=lambda: _get(inp), flush=lambda: None, clock=clk, sleep=clk.sleep,
+                       mode="countdown", countdown_s=2.0, max_age=0)
+    u1 = Utterance(1, "你好嗎", "a", "你好嗎")
+    s.submit(u1)
+    assert s._countdown(u1) is True  # timed out, sent
+    inp.put("y")  # typed during playback of u1: belongs to u1
+    s._reader[0].join(1)
+    u2 = Utterance(2, "你好嗎", "b", "完全不同的句子")  # low confidence
+    s.submit(u2)
+    assert s._countdown(u2) is None  # the stale "y" did not send it
+    s.finish()
+
+
+def test_voice_command_during_countdown_switches_voice():
+    clk, voices, inp = Clock(), [], queue.Queue()
+    inp.put("v2")
+    s = ConfirmSession(lambda ru: ([1], 16000), lambda a, sr: None, out=lambda m: None,
+                       readline=lambda: _get(inp), flush=lambda: None, clock=clk, sleep=clk.sleep,
+                       set_voice=voices.append, mode="countdown", countdown_s=2.0, max_age=0)
+    u = Utterance(1, "你好嗎", "a", "你好嗎")
+    s.submit(u)
+    assert s._countdown(u) is True and voices == [2]
+    s.finish()

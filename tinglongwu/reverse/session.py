@@ -39,6 +39,7 @@ def _to_bar(a):
 def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> None:
     """ASR+MT+back-translation in a producer thread; this thread asks for confirmation; TTS runs in the background.
     `items` yields (n, label, zh)."""
+    from ..hallucination import is_hallucination
     from .confirm import ConfirmSession, Utterance, back_translate
     from .logic import Lat, lat_line, timing_line, translate_ru
 
@@ -83,7 +84,10 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             for n, label, zh in items:
                 lang = _target(a)  # re-read per sentence (--to follow)
                 ru, retries = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lang).text, zh, lang)
-                u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries}, lang=lang)
+                # #760: the text itself carries the #759 hallucination signal (avg_logprob is not plumbed through
+                # `items`; gate.py already drops lines under its logprob limit upstream)
+                u = Utterance(n, zh, ru, "", extra={"file": label, "cjk_retries": retries,
+                                                    "halluc": is_hallucination(zh)}, lang=lang)
                 res["items"].append({"file": label, src: zh, lang: ru, "_u": u})
                 bar(zh, ru, lang, record_row=False)  # #494: the save row waits until the line is shown
                 u.extra["_t0"] = lat.clock()

@@ -168,7 +168,7 @@ class ConfirmSession:
         self.mode = mode if mode in _sm.MODES else "confirm"  # #760
         self.countdown_s = countdown_s if countdown_s is not None else _sm._env_float("TLWU_SEND_COUNTDOWN", _sm.COUNTDOWN_S)
         self.require_back = require_back
-        self._reader: tuple | None = None  # (thread, queue) of a readline still waiting after a countdown ended
+        self._reader: tuple | None = None  # (thread, queue, owner utterance) of a readline still waiting after a countdown ended
         self._submit_lock = threading.Lock()
         self.on_first_part: Callable[[Utterance], object] | None = None  # #207: called once per utterance
         self.on_show: Callable[[Utterance], object] | None = None  # #494: called when a line is really shown
@@ -230,34 +230,63 @@ class ConfirmSession:
         if self.on_show is not None:
             self.on_show(u)
 
-    def _read_line(self) -> str:
-        """readline(), or the line a countdown reader is still waiting on (so two readers never compete)."""
+    def _drain(self) -> None:
+        if self._reader is not None:
+            q = self._reader[1]
+            while True:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    break
+
+    def _open_reader(self, u: Utterance) -> queue.Queue:
+        """The answer queue for `u`. An answer typed for an earlier utterance is dropped (it must never decide this
+        one); a readline still blocked from that utterance is reused, else type-ahead is flushed (#248) and a new
+        one is started."""
+        self._drain()
+        if self._reader is not None and self._reader[0].is_alive():
+            self._reader = (self._reader[0], self._reader[1], u)
+            return self._reader[1]
+        self.flush()
+        q: queue.Queue = queue.Queue()
+
+        def read() -> None:
+            try:
+                q.put(self.readline())
+            except EOFError:
+                q.put(None)
+
+        th = threading.Thread(target=read, daemon=True)
+        self._reader = (th, q, u)
+        th.start()
+        return q
+
+    def _read_line(self, u: Utterance) -> str:
+        """readline(), or the answer of the reader opened for `u` by its countdown (two readers never compete)."""
         if self._reader is None:
             return self.readline()
-        q = self._reader[1]
+        q = self._open_reader(u) if self._reader[2] is not u else self._reader[1]
         self._reader = None
         v = q.get()
         if v is None:
             raise EOFError
         return v
 
+    def _voice_cmd(self, key: str, u: Utterance) -> bool:
+        if self.set_voice and len(key) >= 2 and key[0] == "v" and key[1:].isdigit():
+            self.set_voice(int(key[1:]))
+            u.future.cancel()
+            self._start(u)  # same text, new voice
+            self.out(f"voice -> {key[1:]}")
+            return True
+        return False
+
     def _countdown(self, u: Utterance) -> bool | None:
         """#760: show the countdown and wait. True = send ("y" or time ran out on a confident line), False = stopped
-        (any other input) , None = time ran out but the line is low-confidence: fall back to the explicit prompt."""
-        if self._reader is None:
-            q: queue.Queue = queue.Queue()
-
-            def read() -> None:
-                try:
-                    q.put(self.readline())
-                except EOFError:
-                    q.put(None)
-
-            th = threading.Thread(target=read, daemon=True)
-            self._reader = (th, q)
-            th.start()
-        q = self._reader[1]
-        self.out(f"sending in {self.countdown_s:g} s  [any key+Enter]=stop  [y]+Enter=send now")
+        (any other input), None = time ran out but the line is low-confidence: fall back to the explicit prompt."""
+        q = self._open_reader(u)
+        self.out(f"sending in {self.countdown_s:g} s  [any key+Enter]=stop  [y]+Enter=send now"
+                 + ("  [v0-v4]+Enter=change voice" if self.set_voice else ""))
         end = self.clock() + self.countdown_s
         while True:
             try:
@@ -269,7 +298,12 @@ class ConfirmSession:
                 if key is None:
                     self._eof = True
                     return False
-                return key.strip().lower() == SEND_KEY
+                key = key.strip().lower()
+                if self._voice_cmd(key, u):
+                    q = self._open_reader(u)  # voice switched: restart the countdown
+                    end = self.clock() + self.countdown_s
+                    continue
+                return key == SEND_KEY
             if self.clock() >= end:
                 break
             self.sleep(0.05)
@@ -296,15 +330,11 @@ class ConfirmSession:
             self.flush()  # #248: keys typed during the previous utterance must not answer this one
             self.out(f"{help_}{extra}")
             try:
-                key = self._read_line().strip().lower()
+                key = self._read_line(u).strip().lower()
             except EOFError:
                 self._eof = True
                 return False
-            if self.set_voice and len(key) >= 2 and key[0] == "v" and key[1:].isdigit():
-                self.set_voice(int(key[1:]))
-                u.future.cancel()
-                self._start(u)  # same text, new voice
-                self.out(f"voice -> {key[1:]}")
+            if self._voice_cmd(key, u):
                 continue
             return key == SEND_KEY  # only "y" sends; a bare Enter, r/x and anything else discard
 
