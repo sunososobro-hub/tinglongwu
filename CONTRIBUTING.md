@@ -1,6 +1,6 @@
 # Contributing to tinglongWu
 
-**Don't be afraid. Come and contribute. If it fits the project's principles, we will merge it.**
+**Don't be afraid. Come and contribute.**
 **The default answer is yes: if your PR respects the principles below, we will work with you to get it merged. No contribution is too small, and first-timers are welcome.**
 
 Thanks for stopping by. You do not need to be an expert to help, and we would rather get a rough PR we can work on together than no PR at all.
@@ -37,7 +37,8 @@ These are the only hard rules, so this is exactly the bar. Everything else is ne
 ## Pull requests and credit
 
 - External PRs are welcome.
-- The default branch for PRs is `dev` (`main` only receives release PRs, plus docs-only fast-lane PRs opened by maintainers).
+- - The default branch for PRs is `dev` (`main` only receives release PRs, plus docs-only fast-lane PRs opened by maintainers).
+- PR titles look like `fix #N: short summary` (or `feat #N: ...`, `docs: ...`); keep commit messages short and in English.
 - PRs are merged by rebase, so your authorship is kept in the commit history.
 - Contributors are credited in the release notes.
 
@@ -53,7 +54,11 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -e ".[dev]"
 ```
 
-On Linux you may need `sudo apt-get install -y libsndfile1 libpulse0` (the audio capture libraries are imported by the package). Source install, GPU, and Mac details: [docs/install.md](docs/install.md). Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+On Linux you may need `sudo apt-get install -y libsndfile1 libpulse0` (the audio capture libraries are imported by the package). Source install, GPU, and Mac details: [docs/install.md](docs/install.md). Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Working on the phone app? See [mobile/README.md](mobile/README.md) (Flutter setup, build, models).
+
+`pip install -e ".[dev]"` is the one dev install path (the old `requirements-dev.txt` is gone).
+
+Lint / format: no linter or formatter is enforced yet (CI only runs the tests and the shell syntax check below), so keep to the style of the surrounding code. When a ruff gate lands (#665) the command will be listed here.
 
 ## Running tests
 
@@ -78,13 +83,7 @@ If you cannot run the second one (Windows / Mac), that is fine: CI will, and we 
 - Branch from `dev` and keep one topic per PR.
 - Fill in the PR template. It is short.
 
-### Forked before 2026-11-12?
-
-On 2026-11-12 the `dev`/`main` history was rewritten once to normalize commit author info. If you forked earlier:
-
-- **No local changes:** re-fork, or `git fetch upstream && git reset --hard upstream/dev && git push --force origin dev`.
-- **Have your own commits:** `git rebase --onto upstream/dev <old-base> <your-branch>` (or cherry-pick them).
-- Stuck? Open an issue and we will help.
+If you forked before 2026-11-12, the history was rewritten once: see [docs/history-rewrite.md](docs/history-rewrite.md).
 
 ## What gets merged
 
@@ -102,6 +101,17 @@ Every PR gets an AI review plus a maintainer review. The AI review is a first pa
    - Repo gates: the PR body must contain `Closes #N` or `Refs #N`, and a change to `pyproject.toml` needs the `needs-opus` label.
    - PRs from forks skip this job, because forks never get repository secrets. A maintainer runs the review for them.
 3. A maintainer merges after a `VERDICT: MERGE` (or after resolving the FIX-FIRST items).
+
+## What the internal labels mean
+
+Maintainers (and the AI helpers) use these on issues; you never have to set them.
+
+- `needs-opus`: this change needs the **Opus model** (Anthropic's larger AI model) for review. It is not about the removed OPUS machine-translation models.
+- `model:*`: which AI model should work the item (`model:sonnet` or `model:opus`).
+- `status:*`: where it is (`todo`, `doing`, `review`, `blocked`, `proposal`, `frozen`).
+- `area:*`: the part of the code it touches (for example `area:gui`, `area:asr`, `area:ci`); one per issue.
+- `mode:*`: which use it serves (`listen`, `speak`, `two-way`, `shared`).
+- `infra`: project plumbing (CI, release, dashboards), not user-visible behaviour.
 
 ## Our promise to you
 

@@ -1,6 +1,6 @@
 # tinglongWu 听龙：离线实时语音翻译
 
-**在你自己的电脑上实时翻译会议与通话。不上云、不留录音。**
+**在你自己的电脑上实时翻译会议与通话。不上云、默认不留录音。**
 
 [![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
@@ -28,7 +28,7 @@
 
 - 🆓 **免费开源**（MIT）
 - 🔒 **离线**：声音和文字不离开你的电脑
-- 🗑️ **不留录音**、不用账号、不追踪
+- 🗑️ **默认不留录音**（可选 `--record`）、不用账号、不追踪
 
 ## 语言与电脑需求
 

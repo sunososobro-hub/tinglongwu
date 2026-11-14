@@ -1,6 +1,6 @@
 # tinglongWu 聽龍：離線即時語音翻譯
 
-**在你自己的電腦上即時翻譯會議與通話。不上雲、不留錄音。**
+**在你自己的電腦上即時翻譯會議與通話。不上雲、預設不留錄音。**
 
 [![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
@@ -28,7 +28,7 @@
 
 - 🆓 **免費開源**（MIT）
 - 🔒 **離線**：聲音和文字不離開你的電腦
-- 🗑️ **不留錄音**、不用帳號、不追蹤
+- 🗑️ **預設不留錄音**（選用 `--record`）、不用帳號、不追蹤
 
 ## 語言與電腦需求
 

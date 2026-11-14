@@ -331,7 +331,7 @@ python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu
 麦克风 -> 中文 -> 俄文翻译 -> 内置语音离线 TTS（Vosk-TTS／Kokoro） -> 虚拟麦克风（VB-Cable／BlackHole／PipeWire null-sink），并做回声排除，避免合成语音被重新采集。
 
 ## 测试
-`pip install -r requirements-dev.txt && pytest`（不需要模型和网络）。
+`pip install -e ".[dev]" && python -m pytest`（不需要模型和网络）。
 
 ## 免责声明
 - **现状提供。** 本软件依 MIT 许可“按现状”提供，不附任何形式的担保，作者不对任何损害负责（见 [LICENSE](../LICENSE)）。
