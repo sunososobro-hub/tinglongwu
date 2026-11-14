@@ -910,6 +910,48 @@ class App:
         threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
         return True
 
+    def _offer_cable(self) -> bool:
+        """#804: True when this speak Start must not go on now: the VB-CABLE question was answered "no" (back to
+        listen) or the download + elevated install is running (Start resumes in _cable_done)."""
+        from .. import vbcable
+
+        if self.downloading or not vbcable.needs_offer(vbcable.output_names()):
+            return False
+        lang = ui_lang()
+        if not messagebox.askyesno(vbcable.title_text(lang), vbcable.dialog_text(lang), parent=self.root):
+            self.v_mode.set("listen")
+            return True
+        self.downloading = "VB-CABLE"
+        self.btn.configure(state="disabled")
+        self._status_text(t("gui_dl_running", model="VB-CABLE"))
+        self._sync_quick()
+        threading.Thread(target=lambda: self.q.put(("cable_done", vbcable.install_flow(
+            vbcable.child_download, vbcable.child_install))), daemon=True).start()
+        return True
+
+    def _cable_done(self, res: str):
+        """#804: "installed" + CABLE now listed -> 3-step help, then the speak Start goes on; anything else -> listen
+        mode (no pin yet / offline: the official page opens so the user can install by hand)."""
+        from .. import vbcable
+
+        self.downloading = None
+        self.btn.configure(state="normal")
+        self._sync_quick()
+        lang = ui_lang()
+        if res == "installed" and vbcable.has_cable(vbcable.output_names()):
+            self._status_text("")
+            messagebox.showinfo(vbcable.title_text(lang), vbcable.howto_text(lang), parent=self.root)
+            self.toggle("speak")
+            return
+        self.v_mode.set("listen")
+        if res == "page":
+            import webbrowser
+
+            webbrowser.open(vbcable.VBCABLE_PAGE)
+            return
+        self._status_text(vbcable.fail_text(lang))
+        messagebox.showwarning(vbcable.title_text(lang), vbcable.fail_text(lang), parent=self.root)
+
     def _pack_done(self, pack: str, rc: int):
         self.downloading = None
         self.btn.configure(state="normal")
@@ -983,6 +1025,8 @@ class App:
             return
         self.collect()
         run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
+            return
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
         self.quick_mode, self.run_source = mode, run.get("source")
@@ -1061,6 +1105,8 @@ class App:
                         self._show_panel()
                 elif kind == "pack_line":
                     self._status_text(ev[1])
+                elif kind == "cable_done":
+                    self._cable_done(ev[1])
                 elif kind == "pack_done":
                     self._pack_done(ev[1], ev[2])
                 elif kind == "dl_line":
