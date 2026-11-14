@@ -350,6 +350,11 @@ def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict
     return "\n".join(lines) + "\n"
 
 
+# #762: the release zip is the slim core (build_windows.py --core): CPU llama, no CUDA libraries inside
+CORE_ZIP_NOTE = ("The zip below is the slim core: it has no CUDA libraries inside, was built on a GPU-less CI runner "
+                 "and tested there on the CPU path only.")
+
+
 def gpu_line(hw_run: str, head: str, hw_deferred: bool = False) -> str:
     if hw_deferred:  # #848: one line that says so
         hw_mod = _hw()
@@ -358,9 +363,8 @@ def gpu_line(hw_run: str, head: str, hw_deferred: bool = False) -> str:
                 "runs later on this commit and a failure opens a P0 issue.")
     if hw_run:
         return (f"**GPU:** validated by [hw-tests]({hw_run}) on the maintainer's self-hosted NVIDIA runner for commit "
-                f"`{head[:12]}`. The zip below was built on a GPU-less CI runner and tested there on the CPU path only.")
-    return ("**GPU: not validated.** The CI runner has no GPU; the CUDA path was checked statically (every CUDA DLL "
-            "dependency resolves) and the zip was tested on the CPU path only.")
+                f"`{head[:12]}`. {CORE_ZIP_NOTE}")
+    return f"**GPU: not validated.** The CI runner has no GPU. {CORE_ZIP_NOTE}"
 
 
 def release_notes(base: str, pr_text: str, since: str | None, verification: str, hw_run: str, head: str,

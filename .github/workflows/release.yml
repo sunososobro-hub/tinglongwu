@@ -3,9 +3,11 @@ name: release
 #   plan              : only a merged dev -> main release PR publishes; its title must be v<tinglongwu.__version__>,
 #                       a tag that exists already must point at this commit, and ci, e2e, windows-build and hw-tests
 #                       must be green on the PR's head commit (scripts/release_notes.py plan). Other pushes: nothing.
-#   windows           : build tinglongwu-win64.zip (CUDA package, --allow-cpu-only: no NVIDIA driver on the runner),
-#                       then packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
-#                       instructions (no AVX-512), --smoke, --selftest; render the release notes
+#   windows           : build tinglongwu-win64.zip, the slim core (#762: build_windows.py --core, CPU llama, no
+#                       cuda_libs/), then scripts/release_check.py (core budget: <= 300 MB, no CUDA files) and
+#                       packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
+#                       instructions (no AVX-512), --smoke, --selftest; render the release notes; report the
+#                       job time against scripts/release_check.py CORE_JOB_BUDGET_MIN (a warning, never a failure)
 #   release           : tag main, create a draft Release with the zip, install scripts and SHA256SUMS.txt
 #   windows-installer : attach the setup wizard, then publish (it becomes `latest`)
 # workflow_dispatch = dry run on any branch: plan + build + every check + notes in the summary, never a tag/Release.
@@ -99,6 +101,8 @@ jobs:
         run: |
           "TLWU_BUILD_ROOT=$env:RUNNER_TEMP\tlwu-build" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "NUITKA_CACHE_DIR=$env:RUNNER_TEMP\nuitka-cache" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          # first step = job start, for the job time line at the end (#762)
+          "TLWU_JOB_START=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0   # tags: the notes list changes since the previous one
@@ -110,11 +114,16 @@ jobs:
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ runner.temp }}\nuitka-cache
-          key: nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cuda.txt', 'requirements-gpu.txt') }}-${{ github.sha }}
+          # #762: the same key and files as windows-build.yml (one shared core-build cache family). A run reads
+          # caches of its own branch and of the default branch (main), so a release on main restores the cache of
+          # the previous release, and windows-build / dry runs on other branches can restore the release's cache.
+          # Last restore key: the pre-#762 release cache, so the first core release does not compile from zero.
+          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.sha }}
           restore-keys: |
-            nuitka-release-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cuda.txt', 'requirements-gpu.txt') }}-
+            nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-
+            nuitka-${{ runner.os }}-
             nuitka-release-${{ runner.os }}-
-      - name: Packaging venv (requirements.txt without av / psutil, CUDA llama-cpp-python, CUDA 12 wheels, Nuitka)
+      - name: Packaging venv (requirements.txt without av / psutil, CPU llama-cpp-python, Nuitka)
         shell: pwsh
         run: |
           python -m venv "$env:RUNNER_TEMP\pack-venv"
@@ -124,20 +133,21 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           & $py -m pip install -r "$env:RUNNER_TEMP\req-pack.txt"
           if ($LASTEXITCODE) { exit 1 }
-          & $py -m pip install -r requirements-llama-cuda.txt --only-binary=:all:
-          if ($LASTEXITCODE) { exit 1 }
-          # cuda_nvrtc: cuDNN runtime-compiled engines (build_windows.CUDA_WHEELS needs its bin folder)
-          & $py -m pip install -r requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
+          & $py -m pip install -r requirements-llama-cpu.txt --only-binary=:all:
           if ($LASTEXITCODE) { exit 1 }
           & $py -m pip install nuitka ordered-set zstandard
           if ($LASTEXITCODE) { exit 1 }
           "PACK_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-      - name: Build (CUDA package; --allow-cpu-only because this runner has no NVIDIA driver)
+      - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |
-          & $env:PACK_PY packaging\build_windows.py --allow-cpu-only
+          & $env:PACK_PY packaging\build_windows.py --core
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          if (-not (Test-Path "$env:TLWU_BUILD_ROOT\dist\tlwu\cuda_libs\cudart64_12.dll")) { Write-Error "not a CUDA package: cuda_libs missing"; exit 1 }
+      - name: Core zip budget (scripts/release_check.py, MAX_CORE_MB, no CUDA files)
+        shell: pwsh
+        run: |
+          & $env:PACK_PY scripts\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Release checks on the zip (size, check_dist_dlls, llama CPU instructions, --smoke, --selftest)
         shell: pwsh
         run: |
@@ -172,6 +182,12 @@ jobs:
           retention-days: 3
           if-no-files-found: error
           compression-level: 0
+      - name: Job time against the core budget (scripts/release_check.py CORE_JOB_BUDGET_MIN; a warning, not a gate)
+        if: always() && env.TLWU_JOB_START != ''
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python scripts\release_check.py --job-start $env:TLWU_JOB_START
 
   release:
     needs: [plan, windows]
