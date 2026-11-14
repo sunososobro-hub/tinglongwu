@@ -52,6 +52,30 @@ def voice_output_problem(out_name: str | None, capture_name: str | None, mic: bo
     return None
 
 
+class VoiceUnavailable(RuntimeError):
+    """#885: the voice cannot start. str() is the CLI line (flags and device names, unchanged); `user` is one plain
+    line in the UI language for the GUI, which then keeps listening without the voice."""
+
+    def __init__(self, cli_msg: str, key: str):
+        super().__init__(cli_msg)
+        self.key = key
+
+    @property
+    def user(self) -> str:
+        from .i18n import t
+
+        return t(self.key)
+
+
+def problem_why(out_name: str | None, capture_name: str | None, mic: bool = False) -> str | None:
+    """voice_output_problem() as a short reason in the UI language (#885), or None if the output is safe."""
+    if voice_output_problem(out_name, capture_name, mic) is None:
+        return None
+    from .i18n import t
+
+    return t("voice_why_loop")
+
+
 CLOSE_TIMEOUT = 30.0  # seconds VoiceSink.close() waits for the backlog (<= MAX_BACKLOG lines) to be spoken
 MAX_BACKLOG = 2  # unspoken lines kept while one is being spoken; older ones are skipped (the subtitle has them)
 
@@ -145,7 +169,7 @@ def cable_guard(sink: "VoiceSink", out_name: str, say, off=None):
             if off is not None:
                 from .i18n import t
 
-                off(t("voice_off", why=problem))
+                off(t("voice_off", why=problem_why(out_name, capture_name, mic=True)))
 
     return guard
 
@@ -195,7 +219,7 @@ def make_speaker(tts, player, drain_timeout: float = 60.0, on_off=None):
             if on_off is not None:
                 from .i18n import t
 
-                on_off(t("voice_off", why=f"Kokoro worker sent a garbled reply ({e})"))
+                on_off(t("voice_off", why=t("voice_why_garbled")))
             raise RuntimeError(f"Kokoro worker sent a garbled reply ({e}); voice off, subtitles continue") from e
         if not wait_drained(player, drain_timeout):
             raise RuntimeError("playback stalled; this line may not have been heard")
@@ -243,24 +267,26 @@ def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable
 
     lang = voice_lang(a.to)
     if lang is None:
-        raise RuntimeError(f"--voice speaks {', '.join(VOICE_LANGS)} only (Kokoro voices); --to is {a.to!r}")
+        raise VoiceUnavailable(f"--voice speaks {', '.join(VOICE_LANGS)} only (Kokoro voices); --to is {a.to!r}",
+                               "voice_lang_unsupported")
     try:
         player = Player(a.voice_device, 48000)
     except LookupError as e:  # no output device matches --voice-device
-        raise RuntimeError(f"--voice-device: {e}") from e
+        raise VoiceUnavailable(f"--voice-device: {e}", "voice_device_missing") from e
     cap, known = resolve_capture(a.file, a.mic, a.device)
     # #710: the cable exception needs the microphone the recorder really opens; an unproven name never unlocks it
     mic_capture = bool(a.mic) and not a.file and known
     problem = voice_output_problem(player.speaker_name, cap, mic=mic_capture)
     if problem:
         player.close()
-        raise RuntimeError(f"--voice: {problem}. Pick earphones with --voice-device NAME")
+        raise VoiceUnavailable(f"--voice: {problem}. Pick earphones with --voice-device NAME", "voice_same_device")
     py, model = kokoro_paths(mdir, a.tts_python, a.tts_model)
     try:
         tts = TTSClient(py, model, "kokoro", a.voice_speaker, lang)
     except (OSError, RuntimeError, ValueError) as e:  # ValueError: garbled ready header (worker already killed)
         player.close()
-        raise RuntimeError(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk") from e
+        raise VoiceUnavailable(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk",
+                               "voice_not_installed") from e
     say(f"tlwu: voice ({lang}, Kokoro) on {player.speaker_name}")
     sink = VoiceSink(inner, make_speaker(tts, player, on_off=off), on_error=lambda e: say(f"tlwu: voice error: {e}"))
     if _virtual(" ".join(player.speaker_name.casefold().split())):  # #710: voice goes into a meeting cable
