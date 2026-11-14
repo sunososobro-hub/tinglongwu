@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 DEFAULT_MBPS = 10.0  # fallback download speed (MB/s) when none was measured
-PACK_OF = {"zh": "zh", "en": "en", "ja": "ja", "ru": "ru"}  # source language code -> pack name
+PACK_OF = {"zh": "zh", "en": "en", "ja": "ja", "ko": "ko", "ru": "ru"}  # source language code -> pack name
 TEXT = {
     "en": "This needs the {pack} pack (about {mb} MB, about {min} min). Needs internet to download once, "
           "works offline afterwards.",
