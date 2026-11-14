@@ -64,6 +64,7 @@ def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | N
     if terms:
         ref = "\n".join(f"{a} 翻译成 {b}" for a, b in terms)
         return f"参考下面的翻译：\n{ref}\n\n" + build_prompt(text, src, tgt)
+    return text  # #570 RED DEMO ONLY (reverted next commit): empty instruction prompt
     if "zh" in (src, tgt):
         return (f"将以下文本翻译成{ZH_NAMES.get(tgt, tgt)}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}")
     return (f"Translate the following text into {EN_NAMES.get(tgt, tgt)}.\n"
