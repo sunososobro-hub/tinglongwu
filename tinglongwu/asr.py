@@ -102,12 +102,29 @@ class Recognizer(ABC):
         return self.transcribe(audio)
 
 
+def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int, int | None]:
+    """#780: (beam, cpu_threads) for a CPU model loaded after a CUDA load failure. Values already given (the CPU
+    policy ran) win; otherwise the hwprobe.cpu_mode_settings policy; TLWU_CPU_THREADS overrides the thread count."""
+    from .hwprobe import cpu_mode_settings, ram_mib as _ram
+
+    if not beam or not threads:
+        mib = ram_mib if ram_mib is not None else _ram()
+        st = cpu_mode_settings(cores or os.cpu_count() or 4, mib / 1024 if mib else 16.0)
+        beam, threads = beam or st.beam, threads or st.threads
+    env = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
+    if env.isdigit() and int(env) > 0:
+        threads = int(env)
+    return beam, threads
+
+
 class FasterWhisperRecognizer(Recognizer):
     NO_SPEECH = 0.6
 
     def __init__(self, models_dir: Path, size: str = "small", lang: str = "auto",
                  device: str = "auto", glossary=None, candidates=None, lang_file=None,
-                 fast: bool = False, live: bool = False):
+                 fast: bool = False, live: bool = False, beam: int | None = None,
+                 threads: int | None = None):
+        threads_arg = threads
         path = require(models_dir / f"whisper-{size}", f"Whisper model '{size}'",
                        f"--whisper {size}")
         from faster_whisper import WhisperModel
@@ -116,8 +133,13 @@ class FasterWhisperRecognizer(Recognizer):
         # #186 fast: live CPU speak mode. Greedy decode, no timestamp tokens, all physical cores. CUDA never uses it.
         self.fast = bool(fast) and self.device == "cpu"
         self.beam = 1 if self.fast else 5
+        cpu_mode = self.device == "cpu" and not self.fast  # #780: CPU-mode auto settings (explicit args only)
+        if cpu_mode and beam:
+            self.beam = beam
         threads = {}
-        if self.device == "cpu" and thread_budget.both():  # #250 listen+speak: this process's share of the budget
+        if cpu_mode and threads_arg and not thread_budget.both():
+            threads = {"cpu_threads": threads_arg}
+        elif self.device == "cpu" and thread_budget.both():  # #250 listen+speak: this process's share of the budget
             threads = {"cpu_threads": thread_budget.current()["asr"]}
         elif self.fast:
             threads = {"cpu_threads": cpu_threads()}
@@ -129,8 +151,13 @@ class FasterWhisperRecognizer(Recognizer):
                 raise
             print(f"tlwu: GPU load failed ({e}); falling back to CPU.", file=sys.stderr)
             self.device = "cpu"
-            self.model = WhisperModel(str(path), device="cpu", compute_type="int8")
-            self.fast, self.beam = False, 5
+            beam_cpu, threads_cpu = cpu_fallback_settings(beam, threads_arg)  # #780: CPU-mode settings after a fallback
+            if thread_budget.both():  # listen+speak: this process's share of the shared budget, as on the normal CPU path
+                kw = {"cpu_threads": thread_budget.current()["asr"]}
+            else:
+                kw = {"cpu_threads": threads_cpu} if threads_cpu else {}
+            self.model = WhisperModel(str(path), device="cpu", compute_type="int8", **kw)
+            self.fast, self.beam = False, beam_cpu
         self.lang = None if lang == "auto" else lang  # auto: lock after first speech
         self.auto = lang == "auto"
         # auto + candidates: re-detect every segment, restricted to the candidate set (never locks)

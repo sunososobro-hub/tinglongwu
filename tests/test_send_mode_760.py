@@ -132,3 +132,87 @@ def test_voice_command_during_countdown_switches_voice():
     s.submit(u)
     assert s._countdown(u) is True and voices == [2]
     s.finish()
+
+
+# ---- #822: the CLI default is confirm (owner 2026-11-14), and countdown / auto print the quality notice once
+
+import re  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+
+from tinglongwu import i18n  # noqa: E402
+from tinglongwu.reverse import args as reverse_args  # noqa: E402
+from tinglongwu.reverse import proto  # noqa: E402
+
+NOTICE_ZH = "翻譯品質還不夠穩，不建議直接送出；建議先確認翻譯對不對再送出"
+NOTICE_EN = ("Translation quality is not stable yet; sending directly is not recommended - "
+             "check the translation first, then send.")
+
+
+class _MT:
+    history, _pair = [], None  # the attributes proto / confirm read
+
+    def translate(self, text, src, tgt):
+        return SimpleNamespace(text="Hello there." if tgt == "en" else "你好")
+
+
+class _TTS:
+    engine = "none"
+
+    def speak(self, text):
+        yield {"t": "chunk", "sr": 24000}, np.ones(4, np.float32).tobytes()
+        yield {"t": "done"}, None
+
+
+class _Player:
+    enabled = True
+
+    def push(self, audio, sr):
+        pass
+
+
+def _start_speak(monkeypatch, capsys, send_mode, ui_lang):
+    """Start the real speak confirm loop with one line, as `tlwu-reverse --send-mode <mode>` does."""
+    monkeypatch.setenv("TLWU_UI_LANG", ui_lang)
+    monkeypatch.setattr(i18n, "_override", None)
+    monkeypatch.setenv("TLWU_SEND_COUNTDOWN", "0.01")
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    ns = SimpleNamespace(to="en") if send_mode is None else SimpleNamespace(to="en", send_mode=send_mode)
+    proto._run_confirm(ns, iter([(1, "mic", "你好")]), _MT(), _TTS(), _Player(), SimpleNamespace(enabled=False),
+                       {"items": []})
+    return capsys.readouterr().out
+
+
+def test_cli_send_mode_defaults_to_confirm():
+    ap = reverse_args.build_parser()
+    assert ap.parse_args([]).send_mode == "confirm"
+    assert ap.parse_args(["--send-mode", "countdown"]).send_mode == "countdown"
+    assert ap.parse_args(["--send-mode", "auto"]).send_mode == "auto"
+
+
+def test_help_names_confirm_as_the_default_mode():
+    help_ = next(a.help for a in reverse_args.build_parser()._actions if a.dest == "send_mode")
+    assert re.search(r"confirm\b[^;]*\(default\)", help_)
+    assert not re.search(r"countdown\b[^;]*\(default\)", help_) and not re.search(r"auto\b[^;]*\(default\)", help_)
+
+
+@pytest.mark.parametrize("mode", ["countdown", "auto"])
+@pytest.mark.parametrize("lang,notice", [("zh-TW", NOTICE_ZH), ("en", NOTICE_EN)])
+def test_direct_send_modes_print_the_notice_once_in_the_ui_language(monkeypatch, capsys, mode, lang, notice):
+    out = _start_speak(monkeypatch, capsys, mode, lang)
+    assert out.count(notice) == 1
+    assert (NOTICE_EN if lang == "zh-TW" else NOTICE_ZH) not in out  # only the UI language's line
+
+
+@pytest.mark.parametrize("lang", ["zh-TW", "en"])
+def test_confirm_mode_prints_no_notice(monkeypatch, capsys, lang):
+    out = _start_speak(monkeypatch, capsys, "confirm", lang)
+    assert NOTICE_ZH not in out and NOTICE_EN not in out
+    assert "不建議直接送出" not in out and "not recommended" not in out
+
+
+def test_no_send_mode_given_behaves_as_confirm(monkeypatch, capsys):
+    out = _start_speak(monkeypatch, capsys, None, "en")
+    assert NOTICE_EN not in out

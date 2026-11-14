@@ -36,7 +36,7 @@ Windows shows a SmartScreen warning because the installer is unsigned until #601
 
 To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
 
-Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Auto-update (on by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
+Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Optional packs (extra languages, speak mode, GPU) also need internet once. Auto-update (on by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
 
 ## Languages and requirements
 

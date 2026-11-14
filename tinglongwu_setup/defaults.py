@@ -14,13 +14,21 @@ DEFAULT_LISTEN_WHISPER = "small"  # today's CPU-path value from install.ps1; the
 DEFAULT_LISTEN_MT = "hymt2-1.8b"
 DEFAULT_LISTEN_KEYS = (f"whisper-{DEFAULT_LISTEN_WHISPER}", DEFAULT_LISTEN_MT)  # models/manifest.json keys
 MB = 1024 * 1024
+# #771: download size (MB) the installer wizard shows for this path: whisper-small ~0.5 GB + Hy-MT2 1.8B GGUF ~1.1 GB
+# (mirrors tlwu_app.tiers.SIZES, which this package must not import). build_installer.py passes it to the .iss.
+DEFAULT_LISTEN_DOWNLOAD_MB = 1600
+
+
+def _say(line: str) -> None:
+    """Flush every line: the wizard polls install.log while this runs, and a redirected stdout is block-buffered."""
+    print(line, flush=True)
 
 
 def _dir_bytes(d: Path) -> int:
     return sum(p.stat().st_size for p in d.rglob("*") if p.is_file()) if d.is_dir() else 0
 
 
-def run(mdir: Path, getters: dict | None = None, out=print) -> int:
+def run(mdir: Path, getters: dict | None = None, out=_say) -> int:
     """Fetch exactly DEFAULT_LISTEN_KEYS into mdir. `getters` maps key -> fn(man, mdir) (tests inject a fake)."""
     from . import downloader
 

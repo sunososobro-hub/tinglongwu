@@ -12,6 +12,8 @@ _spec = importlib.util.spec_from_file_location("build_installer", ROOT / "instal
 bi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bi)
 
+from tinglongwu_setup import defaults as defaults_mod  # noqa: E402
+
 
 def _core(tmp_path: Path) -> Path:
     d = tmp_path / "dist_tlwu"
@@ -54,11 +56,42 @@ def test_core_wizard_shortcuts_and_run_start_tlwu_exe(tmp_path, monkeypatch, cap
     assert run and all('Filename: "{app}\\tlwu.exe"' in ln for ln in run)
     assert "repair install" not in "\n".join(icons)
     assert not any(".venv" in ln or "install.bat" in ln for ln in icons + run)
-    # install.ps1 is never started, and the finish page does not report a failed install.ps1 run
+    # install.ps1 is never started (#771: the core wizard runs tlwu.exe setup instead, see the test below)
+    code = iss.split("[Code]", 1)[1]
+    run = code.split("procedure RunInstall", 1)[1].split("\nend;\n", 1)[0]
+    assert "run_install.ps1" not in code and "powershell.exe" not in run and "install.ps1 ..." not in run
+    assert bi.missing_defines(bi.ISS.read_text("utf-8-sig"), cmd) == []
+
+
+def test_core_wizard_runs_default_listen_setup_hidden_with_no_pip_or_language_page(tmp_path, monkeypatch, capsys):
+    """#771: after the copy the core wizard runs `tlwu.exe setup --default-listen`, hidden, logging to install.log."""
+    _, cmd = _dry_run(tmp_path, monkeypatch, capsys, "--core-dir", str(_core(tmp_path)))
+    iss = bi.effective_iss(cmd)
     code = iss.split("[Code]", 1)[1]
     post = code.split("procedure CurStepChanged", 1)[1].split("end;\n\nprocedure", 1)[0]
-    assert "RunInstall;" not in post and "InstallRC := 0;" in post
-    assert bi.missing_defines(bi.ISS.read_text("utf-8-sig"), cmd) == []
+    assert "RunInstall;" in post and "InstallRC := 0;" not in post
+    run = code.split("procedure RunInstall", 1)[1].split("\nend;\n", 1)[0]
+    assert 'setup --default-listen' in run and "{app}\\tlwu.exe" in run
+    params = next(ln for ln in run.splitlines() if ln.strip().startswith("Params :=") and "setup --default-listen" in ln)
+    assert "/V:ON" in params and ">\"' + LogFile + '\" 2>&1" in params  # stdout + stderr -> install.log
+    assert "echo !errorlevel! >\"' + DoneFile" in params  # the wizard's exit code follows setup's
+    assert "SW_HIDE" in run and "ewNoWait" in run
+    assert not re.search(r"pip(\.exe)?\s+install|-m\s+pip", code, re.I)
+    # no language page / packs in the core wizard; the CPU and auto-update tasks stay
+    for gone in ("LangPage", "--packs", "-Packs", "SelectedPacks", "PACK_", "ShouldSkipPage", "10-40", "DownloadMB"):
+        assert gone not in code, gone
+    tasks = "\n".join(_section(iss, "Tasks"))
+    assert 'Name: "cpu"' in tasks and 'Name: "autoupdate"' in tasks
+    # the finish page no longer talks about install.ps1 or a repair shortcut that the core wizard does not have
+    assert "install.ps1" not in code.split("procedure CurPageChanged", 1)[1].split("\nend;\n", 1)[0]
+
+
+def test_core_wizard_shows_the_default_listen_size_from_the_named_constant(tmp_path, monkeypatch, capsys):
+    _, cmd = _dry_run(tmp_path, monkeypatch, capsys, "--core-dir", str(_core(tmp_path)))
+    mb = defaults_mod.DEFAULT_LISTEN_DOWNLOAD_MB
+    assert f"/DDefaultListenMB={mb}" in cmd and bi.default_listen_mb() == mb
+    assert "{#DefaultListenMB}" in bi.effective_iss(cmd)
+    assert not any(a.startswith("/DDefaultListenMB") for a in bi.iscc_cmd("I", tmp_path, tmp_path / "i", tmp_path, "1"))
 
 
 def test_without_core_dir_the_source_wizard_is_unchanged(tmp_path):

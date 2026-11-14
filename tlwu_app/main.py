@@ -57,6 +57,10 @@ def run_setup_worker(args: list[str]) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8", errors="replace")
+    if "--default-listen" in args:  # #771: the wizard's `tlwu.exe setup --default-listen` (downloader.main does not know it)
+        from tinglongwu_setup import cli
+
+        return cli.main(args)
     from tinglongwu_setup import downloader
 
     return downloader.main(args)

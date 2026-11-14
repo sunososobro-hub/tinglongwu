@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.3.5
+- The first screen now just asks Listen or Speak and the other side's language; everything else sits under Advanced and a File / Settings / Help menu.
+- Speak mode waits for your OK before sending by default, and speak setup can install the virtual audio cable in one click.
+- On computers without an NVIDIA card, the app picks lighter settings automatically and marks models that are too heavy; setup progress now shows real download sizes live.
+
 ## v0.3.4
 - Setup now pre-selects the English and Chinese language packs, and Korean is on the language page, so the first run works without picking packs by hand.
 - Language pack downloads resume after an interruption instead of starting over, and each file is checked before use.

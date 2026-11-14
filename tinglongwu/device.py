@@ -6,11 +6,14 @@ failure only shows up on the first inference, so we probe the libraries up front
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 CHOICES = ("auto", "cpu", "cuda")
 _LIBS = {"win32": ("cublas64_12.dll", "cudnn64_9.dll"),
@@ -88,6 +91,54 @@ def use_llama_cpu_build(load=ctypes.CDLL) -> bool:
     else:
         return False
     os.environ["LLAMA_CPP_LIB_PATH"] = str(cpu)
+    return True
+
+
+PACK_LLAMA_VERSION_FILE = "llama_version.txt"  # written by packaging/build_windows.py::build_gpu_pack_only (#881)
+
+
+def pack_llama_dir(pack: Path | None = None, app_lib: Path | None = None) -> Path | None:
+    """The GPU pack folder when it carries its own CUDA build of llama.cpp (llama.dll + ggml.dll + ggml-cuda.dll) and the
+    app's llama_cpp/lib is a CPU build without ggml-cuda.dll (the core zip). A CPU ggml.dll never loads ggml-cuda.dll (#865).
+    #881: only when the pack was built from the same llama-cpp-python version as the running core (llamacheck.LLAMA_VERSION):
+    a stale pack's DLLs against newer bindings crash on the first ctypes call, not with an OSError the fallback catches."""
+    if pack is None:
+        from .gpu_pack import pack_dir
+
+        pack = pack_dir()
+    if pack is None:
+        return None
+    lib = app_lib or Path(__file__).resolve().parent.parent / "llama_cpp" / "lib"
+    if (lib / "ggml-cuda.dll").is_file():
+        return None
+    if not all((pack / n).is_file() for n in ("llama.dll", "ggml.dll", "ggml-cuda.dll")):
+        return None
+    from .llamacheck import LLAMA_VERSION
+
+    try:
+        have = (pack / PACK_LLAMA_VERSION_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        have = ""
+    if have != LLAMA_VERSION:
+        _log.warning("GPU pack llama build ignored: pack has llama-cpp-python %s, this app needs %s (update the GPU pack)",
+                     have or "(unknown)", LLAMA_VERSION)
+        return None
+    return pack
+
+
+llama_backend = "default"  # "gpu-pack" when import_llama selected the GPU pack's CUDA llama build (#865)
+
+
+def use_pack_llama_build() -> bool:
+    """Point llama-cpp-python at the GPU pack's CUDA llama build (LLAMA_CPP_LIB_PATH). Call before `import llama_cpp`."""
+    global llama_backend
+    if sys.platform != "win32" or os.environ.get("LLAMA_CPP_LIB_PATH"):
+        return False
+    d = pack_llama_dir()
+    if d is None:
+        return False
+    os.environ["LLAMA_CPP_LIB_PATH"] = str(d)
+    llama_backend = "gpu-pack"
     return True
 
 

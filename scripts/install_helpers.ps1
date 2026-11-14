@@ -132,3 +132,54 @@ function Get-TlwuUninstallHint([string]$Root, [bool]$FromSetup) {
     return @("  Uninstall / 移除: delete this folder ($Root; models are in its models\ folder), ~\tts-kokoro and the desktop shortcuts.",
              '                    刪除此資料夾（模型在 models\ 內）與桌面捷徑即可。')
 }
+
+# #705: llama.dll (and ctranslate2 / onnxruntime) load only when the Microsoft Visual C++ 2015-2022 runtime is on the
+# PC, and a fresh Windows 11 often has none ("Could not find module ... llama.dll"). Step 4 installs it first.
+$script:TlwuVcDlls = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcomp140.dll')
+$script:TlwuVcRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+$script:TlwuVcSigner = 'O=Microsoft Corporation'   # an exact RDN of the signer certificate subject
+$script:TlwuVcOkExitCodes = @(0, 1638, 3010)       # done / a newer runtime is already installed / done, reboot pending
+
+# Names of the runtime DLLs that are not in $SysDir (default: System32). Always an array (empty when all are there).
+function Get-TlwuMissingVcDlls([string]$SysDir = (Join-Path $env:windir 'System32')) {
+    return @($script:TlwuVcDlls | Where-Object { -not (Test-Path -LiteralPath (Join-Path $SysDir $_)) })
+}
+
+# $true only for a valid Authenticode signature (Get-AuthenticodeSignature result) whose signer certificate has
+# O=Microsoft Corporation. Anything else (unsigned, hash mismatch, other publisher, no certificate) is $false.
+function Test-TlwuMicrosoftSignature($Sig) {
+    if ($null -eq $Sig -or $null -eq $Sig.SignerCertificate) { return $false }
+    if ([string]$Sig.Status -ne 'Valid') { return $false }
+    return (@(([string]$Sig.SignerCertificate.Subject) -split ',\s*') -contains $script:TlwuVcSigner)
+}
+
+# Downloads the VC++ redistributable, requires a valid Microsoft signature, then runs it `/install /quiet /norestart`
+# (the exe asks Windows for permission once). $true when it finished (see TlwuVcOkExitCodes). The three script blocks
+# are the download, the signature check and the run; the tests replace them.
+function Install-TlwuVcRuntime(
+    [string]$Url = $script:TlwuVcRedistUrl,
+    [scriptblock]$Fetch = { param($u, $f)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing },
+    [scriptblock]$Sign = { param($f) Get-AuthenticodeSignature -FilePath $f },
+    [scriptblock]$Exec = { param($f, $a) (Start-Process -FilePath $f -ArgumentList $a -Wait -PassThru).ExitCode }) {
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) 'tlwu_vc_redist.x64.exe'
+    try {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        & $Fetch $Url $tmp
+        if (-not (Test-Path -LiteralPath $tmp)) { Write-Host "  !!  VC++ runtime download failed / 下載失敗" -ForegroundColor Yellow; return $false }
+        if (-not (Test-TlwuMicrosoftSignature (& $Sign $tmp))) {
+            Write-Host "  !!  the downloaded file is not validly signed by Microsoft Corporation: not run / 檔案不是 Microsoft 的有效簽章，不執行" -ForegroundColor Yellow
+            return $false
+        }
+        $rc = [int](& $Exec $tmp @('/install', '/quiet', '/norestart'))
+        if ($script:TlwuVcOkExitCodes -notcontains $rc) { Write-Host "  !!  VC++ runtime installer exit code $rc / 安裝程式回傳 $rc" -ForegroundColor Yellow; return $false }
+        return $true
+    } catch {
+        Write-Host "  !!  VC++ runtime install failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        return $false
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
+}

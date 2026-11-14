@@ -92,7 +92,7 @@ def test_runs_the_issue_command_and_gates_on_the_committed_baseline():
     assert "--engine hymt2-cpu" in runs and "--device cpu" in runs and "--no-noise" in runs
     assert "python -m tlwu_eval --gate r.json --baseline eval/baseline.json" in runs
     assert "GITHUB_STEP_SUMMARY" in _step_named("Gate")["run"]
-    assert _wf()["env"]["WHISPER"] == "small" and _job()["runs-on"].startswith("ubuntu")
+    assert _wf()["env"]["WHISPER"] == "${{ inputs.whisper || 'small' }}" and _job()["runs-on"].startswith("ubuntu")  # #876
 
 
 def _step_named(prefix):
@@ -106,3 +106,37 @@ def test_security_read_only_no_pr_target_pinned_actions():
     assert wf["permissions"] == {"contents": "read"}
     uses = [s["uses"] for s in _job()["steps"] if "uses" in s]
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), uses
+
+
+# ---- #876: a manual dispatch can pick the Whisper size (tiny / base / small); PR runs stay on small -------------------
+
+def _on():
+    wf = _wf()
+    return wf.get("on", wf.get(True))
+
+
+def test_dispatch_input_whisper_is_a_choice_defaulting_to_small():
+    inp = _on()["workflow_dispatch"]["inputs"]["whisper"]
+    assert inp["type"] == "choice" and inp["default"] == "small"
+    assert set(inp["options"]) == {"tiny", "base", "small"}
+
+
+def test_pr_runs_resolve_to_small_and_dispatch_uses_the_input():
+    expr = _wf()["env"]["WHISPER"]
+    assert expr == "${{ inputs.whisper || 'small' }}"
+    # a pull_request has no `inputs` context value -> the `||` falls back to 'small' (GitHub expression semantics)
+    assert "'small'" in expr and "pull_request" in _on()
+
+
+def test_artifact_and_summary_name_the_size_and_cache_key_is_per_size():
+    up = next(s for s in _job()["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+    assert "env.WHISPER" in up["with"]["name"] and up["with"]["name"].startswith("eval-gate-report")
+    assert "$WHISPER" in _step_named("Gate")["run"]
+    cache = next(s for s in _job()["steps"] if s.get("uses", "").startswith("actions/cache"))
+    assert "env.WHISPER" in cache["with"]["key"]
+
+
+def test_mini_eval_runs_the_chosen_size_and_low_end_job_stays_on_small():
+    runs = "\n".join(s.get("run", "") for s in _job()["steps"])
+    assert '--model "$WHISPER"' in runs and '--whisper "$WHISPER"' in runs
+    assert _wf()["jobs"]["low-end-cpu"]["env"]["WHISPER"] == "small"

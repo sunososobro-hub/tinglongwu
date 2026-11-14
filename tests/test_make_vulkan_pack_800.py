@@ -118,8 +118,20 @@ def test_vulkan_job_is_capped_at_the_core_budget_and_never_fails_the_release():
     job = _jobs()["vulkan-pack"]
     assert job["timeout-minutes"] == _release_check().CORE_JOB_BUDGET_MIN  # a slow compile only drops the asset
     assert job["continue-on-error"] is True
-    assert "vulkan-pack" in _jobs()["release"]["needs"]
+    rel = _jobs()["release"]
+    assert "vulkan-pack" in rel["needs"]  # ordering only: the pack is attached when it was built
+    # Opus CHANGES A1: `release` must run whatever vulkan-pack ends with (failure, timeout = cancelled, skipped)
+    assert "!cancelled()" in rel["if"] and "needs.windows.result == 'success'" in rel["if"]
+    assert "needs.vulkan-pack" not in rel["if"]
     assert job["env"]["VULKAN_SDK_VERSION"]  # the installer is pinned by version, and by hash once measured
+
+
+def test_unpinned_installer_hash_skips_every_build_step_so_the_job_stays_green():
+    steps = _jobs()["vulkan-pack"]["steps"]
+    assert steps[0].get("id") == "pin" and "skip=true" in steps[0]["run"]
+    assert "& $exe" not in steps[0]["run"]  # the unpinned installer is never run, only hashed on workflow_dispatch
+    later = steps[1:]
+    assert later and all(s.get("if") == "steps.pin.outputs.skip != 'true'" for s in later)
 
 
 def _release_dir(tmp_path, with_pack):
@@ -131,6 +143,8 @@ def _release_dir(tmp_path, with_pack):
     core = dist / "tinglongwu-win64.zip"
     core.write_bytes(b"core")
     (dist / "tinglongwu-win64.zip.sha256").write_text(f"{hashlib.sha256(b'core').hexdigest()}  tinglongwu-win64.zip\n")
+    for n in ("tinglongwu-gpu-pack.zip", "tinglongwu-gpu-pack.zip.manifest.json"):  # #764 GPU pack, always built
+        (dist / n).write_bytes(b"gpu")
     if with_pack:
         (dist / "tlwu-vulkan-pack-0.3.5.zip").write_bytes(b"vk")
     (dist / "notes.md").write_text("notes")
