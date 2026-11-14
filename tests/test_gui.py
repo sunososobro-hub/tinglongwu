@@ -1,5 +1,6 @@
 """GUI logic (no display needed) + the soundcard warning filter."""
 import json
+import os
 import queue
 import threading
 import warnings
@@ -267,10 +268,18 @@ def test_floating_bar_off_by_default_and_log_font_persist(tmp_path):
 @pytest.fixture
 def gui_app(tmp_path, monkeypatch):
     """A real App on a real (virtual) display with a worker that just waits for Stop; settings in tmp_path."""
-    tk = pytest.importorskip("tkinter")
+    require = os.environ.get("TLWU_REQUIRE_DISPLAY") == "1"  # CI (xvfb): a skip would hide regressions (#113)
+    try:
+        import tkinter as tk
+    except ImportError:
+        if require:
+            pytest.fail("TLWU_REQUIRE_DISPLAY=1 but tkinter is not importable")
+        pytest.skip("no tkinter")
     try:
         tk.Tk().destroy()
     except tk.TclError:
+        if require:
+            pytest.fail("TLWU_REQUIRE_DISPLAY=1 but no display for real-Tk tests")
         pytest.skip("no display")
     from tinglongwu import i18n
     from tinglongwu.gui import app
