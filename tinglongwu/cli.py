@@ -205,13 +205,17 @@ def parse_args(argv=None):
                 p.error(f"{env} must be a number of seconds, got {os.environ[env]!r}")
         if getattr(a, opt) is not None and not 0 < getattr(a, opt) <= 5:
             p.error(f"--{opt.replace('_', '-')} must be > 0 and <= 5 seconds")
-    if a.end_silence is not None and not a.no_vad:  # #21: a cut's reported pause is end_silence + pad at least
-        send = 0.8 if a.pause_send is None else a.pause_send
-        if a.end_silence + max(0.0, a.vad_pad) < send:
+    if a.end_silence is not None and not a.no_vad:  # #21: a cut reports at least end_silence + pad of silence
+        from . import lang as lang_patches
+        from .merge import PAUSE_SEND
+
+        send = a.pause_send if a.pause_send is not None else (
+            PAUSE_SEND if a.lang == "auto" else lang_patches.setting(a.lang, "MERGE_PAUSE_SEND", PAUSE_SEND))
+        floor = a.end_silence + max(0.0, a.vad_pad)
+        if floor < send:
             print(f"tlwu: warning: --end-silence {a.end_silence:g} + --vad-pad {a.vad_pad:g} < --pause-send "
-                  f"{send:g}: no cut reaches the pause that sends an unfinished sentence early, so it waits for "
-                  "--max-wait; set --pause-send to at most the sum (e.g. --pause-send "
-                  f"{a.end_silence + max(0.0, a.vad_pad):g})", file=sys.stderr)
+                  f"{send:g}: a cut may not reach the pause that sends an unfinished sentence early, so it can "
+                  f"wait for --max-wait; consider --pause-send {floor:g}", file=sys.stderr)
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"

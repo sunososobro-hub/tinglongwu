@@ -66,6 +66,9 @@ def test_end_silence_below_pause_send_warns(monkeypatch, capsys):
     assert "--pause-send" in capsys.readouterr().err
     cli.parse_args(["--lang", "en", "--end-silence", "0.5", "--pause-send", "0.5"])  # 0.6 >= 0.5: fine
     cli.parse_args(["--lang", "en"])
+    cli.parse_args(["--lang", "ja", "--end-silence", "0.5"])  # ja's own MERGE_PAUSE_SEND is 0.5: 0.6 >= 0.5
     assert "warning" not in capsys.readouterr().err
+    cli.parse_args(["--lang", "auto", "--end-silence", "0.5"])  # unknown language: core 0.8 > 0.6
+    assert "may not reach" in capsys.readouterr().err
     # the warned combination really holds the sentence: pause 0.4 < 0.8 is not released
     assert SentenceMerger(max_wait=6.0).add(UNFINISHED, "en", now=0.0, pause=0.4) == []
