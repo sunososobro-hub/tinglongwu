@@ -2,12 +2,17 @@
 
 Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300]
        python scripts/release_check.py --job-start <unix seconds>   (#762: time used by the build job, vs the budget)
-Both forms may be combined. Exit code 0 = ok, 1 = problem(s) (printed), 2 = zip missing.
-The job time is reported, never a failure: a slow runner must not block a release (over budget -> a warning).
+       python scripts/release_check.py --gpu-pack dist/tinglongwu-gpu-pack.zip [--tag vX.Y.Z]
+           (#764: the GPU pack matches its .manifest.json, has the CUDA DLLs, and its url names the same release tag)
+       python scripts/release_check.py --release-start <unix seconds>   (#764: first job start -> release created)
+All forms may be combined. Exit code 0 = ok, 1 = problem(s) (printed), 2 = zip missing.
+Job and release times are reported, never a failure: a slow runner must not block a release (over budget -> a warning).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import sys
 import time
@@ -16,8 +21,16 @@ from pathlib import Path
 
 MAX_CORE_MB = 300
 CORE_JOB_BUDGET_MIN = 20  # #762: the release `windows` job (core zip build + checks) should end within this
+RELEASE_BUDGET_MIN = 20  # #764/#740: release wall time (first job start -> release created) should end within this
 BYTES_PER_MB = 1 << 20
 SECONDS_PER_MIN = 60
+MAX_ASSET_BYTES = 2 << 30  # GitHub's per-asset limit (2 GiB)
+GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"  # = packaging/build_windows.py GPU_PACK_ASSET (#763)
+GPU_PACK_MANIFEST_SUFFIX = ".manifest.json"  # build_windows.make_gpu_pack writes <zip>.manifest.json
+GPU_PACK_MANIFEST_KEYS = ("name", "size", "sha256", "url")  # = tinglongwu.gpu_pack.MANIFEST_KEYS
+# ggml-cuda.dll and what it imports (build_windows.LLAMA_CUDA_NEEDS): without them the pack cannot run llama on CUDA
+GPU_PACK_NEEDS = ("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+HASH_CHUNK = 1 << 20
 
 
 def core_zip_problems(zip_path: Path, max_mb: float = MAX_CORE_MB) -> list[str]:
@@ -34,12 +47,46 @@ def core_zip_problems(zip_path: Path, max_mb: float = MAX_CORE_MB) -> list[str]:
     return problems
 
 
-def job_time_line(start: float, now: float, budget_min: float = CORE_JOB_BUDGET_MIN) -> tuple[bool, str]:
-    """(within budget, one line) for a job that started at `start` (unix seconds) and is at `now`."""
+def gpu_pack_problems(zip_path: Path, tag: str = "") -> list[str]:
+    """Problems that make `zip_path` (+ its .manifest.json) not a valid GPU pack for release `tag` (empty = fine).
+    The manifest url must name `tag`: the GPU pack ships in the same release (same version) as the core zip."""
+    problems: list[str] = []
+    if zip_path.name != GPU_PACK_ASSET:
+        problems.append(f"GPU pack is named {zip_path.name}, expected {GPU_PACK_ASSET}")
+    man_path = zip_path.with_name(zip_path.name + GPU_PACK_MANIFEST_SUFFIX)
+    try:
+        man = json.loads(man_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return problems + [f"GPU pack manifest unreadable: {man_path.name}: {e}"]
+    missing = [k for k in GPU_PACK_MANIFEST_KEYS if not isinstance(man, dict) or k not in man]
+    if missing:
+        return problems + [f"GPU pack manifest lacks {', '.join(missing)}"]
+    size = zip_path.stat().st_size
+    if man["size"] != size:
+        problems.append(f"GPU pack size {size} != manifest {man['size']}")
+    h = hashlib.sha256()
+    with open(zip_path, "rb") as f:
+        for chunk in iter(lambda: f.read(HASH_CHUNK), b""):
+            h.update(chunk)
+    if h.hexdigest() != str(man["sha256"]).lower():
+        problems.append(f"GPU pack sha256 {h.hexdigest()} != manifest {man['sha256']}")
+    if size >= MAX_ASSET_BYTES:
+        problems.append(f"GPU pack is {size / BYTES_PER_MB:.1f} MB, over the 2 GiB asset limit")
+    if tag and not str(man["url"]).endswith(f"/releases/download/{tag}/{GPU_PACK_ASSET}"):
+        problems.append(f"GPU pack manifest url {man['url']!r} is not the {tag} release asset (version mismatch)")
+    with zipfile.ZipFile(zip_path) as z:
+        names = {n.replace("\\", "/").rsplit("/", 1)[-1].lower() for n in z.namelist()}
+    problems += [f"GPU pack lacks {n}" for n in GPU_PACK_NEEDS if n.lower() not in names]
+    return problems
+
+
+def job_time_line(start: float, now: float, budget_min: float = CORE_JOB_BUDGET_MIN,
+                  label: str = "windows job time") -> tuple[bool, str]:
+    """(within budget, one line) for a job (or the release) that started at `start` (unix seconds) and is at `now`."""
     minutes = max(0.0, now - start) / SECONDS_PER_MIN
     ok = minutes <= budget_min
     verdict = "within" if ok else "OVER"
-    return ok, f"windows job time: {minutes:.1f} min ({verdict} the {budget_min:g} min budget)"
+    return ok, f"{label}: {minutes:.1f} min ({verdict} the {budget_min:g} min budget)"
 
 
 def summary(lines: list[str]) -> None:
@@ -56,9 +103,13 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
     ap.add_argument("--max-mb", type=float, default=MAX_CORE_MB)
     ap.add_argument("--job-start", type=float, help="unix seconds when the build job started: report its time")
     ap.add_argument("--job-budget-min", type=float, default=CORE_JOB_BUDGET_MIN)
+    ap.add_argument("--gpu-pack", type=Path, help=f"check the GPU pack ({GPU_PACK_ASSET} + its manifest)")
+    ap.add_argument("--tag", default="", help="with --gpu-pack: the release tag its manifest url must name")
+    ap.add_argument("--release-start", type=float,
+                    help="unix seconds when the release run's first job started: report the release wall time")
     a = ap.parse_args(argv)
-    if a.zip is None and a.job_start is None:
-        ap.error("give the zip to check, --job-start, or both")
+    if a.zip is None and a.job_start is None and a.gpu_pack is None and a.release_start is None:
+        ap.error("give the zip to check, --job-start, --gpu-pack or --release-start")
     out: list[str] = []
     problems: list[str] = []
     if a.zip is not None:
@@ -73,6 +124,23 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
         out += [f"FAIL: {p}" for p in problems]
     if a.job_start is not None:
         ok, line = job_time_line(a.job_start, time.time() if now is None else now, a.job_budget_min)
+        out.append(line)
+        print(line if ok else f"::warning::{line}")
+    if a.gpu_pack is not None:
+        if not a.gpu_pack.is_file():
+            print(f"release_check: {a.gpu_pack} not found")
+            return 2
+        out.append(f"GPU pack size: {a.gpu_pack.stat().st_size / BYTES_PER_MB:.1f} MB ({a.gpu_pack.name}"
+                   f"{', ' + a.tag if a.tag else ''})")
+        print(out[-1])
+        gpu = gpu_pack_problems(a.gpu_pack, a.tag)
+        for p in gpu:
+            print("FAIL:", p)
+        out += [f"FAIL: {p}" for p in gpu]
+        problems += gpu
+    if a.release_start is not None:
+        ok, line = job_time_line(a.release_start, time.time() if now is None else now, RELEASE_BUDGET_MIN,
+                                 "release wall time")
         out.append(line)
         print(line if ok else f"::warning::{line}")
     summary(out)

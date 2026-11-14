@@ -158,3 +158,106 @@ def test_release_notes_say_the_zip_is_the_cuda_free_core():
 
     for line in (release_notes.gpu_line("https://x/hw", "a" * 40), release_notes.gpu_line("", "")):
         assert "no CUDA libraries inside" in line and "CPU path only" in line and "checked statically" not in line
+
+
+# ---- #764: release.yml builds the GPU pack in a parallel job and attaches it to the Release
+
+def _gpu_pack(tmp_path, tag="v1.2.3", names=("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll",
+                                              "cublasLt64_12.dll", "cudnn64_9.dll"), url=None):
+    import hashlib
+    import json
+
+    z = _zip(tmp_path / release_check.GPU_PACK_ASSET, names)
+    data = z.read_bytes()
+    man = {"name": "gpu-pack", "size": len(data), "sha256": hashlib.sha256(data).hexdigest(), "wheels_key": "k",
+           "url": url or f"https://github.com/o/r/releases/download/{tag}/{release_check.GPU_PACK_ASSET}"}
+    z.with_name(z.name + release_check.GPU_PACK_MANIFEST_SUFFIX).write_text(json.dumps(man), encoding="utf-8")
+    return z
+
+
+def test_gpu_pack_asset_name_and_needs_match_build_windows():
+    import importlib.util
+
+    from tinglongwu import gpu_pack
+
+    spec = importlib.util.spec_from_file_location("build_windows", REPO / "packaging" / "build_windows.py")
+    bw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bw)
+    assert release_check.GPU_PACK_ASSET == bw.GPU_PACK_ASSET
+    assert set(release_check.GPU_PACK_NEEDS) == {bw.GPU_PACK_LLAMA_DLL, *bw.LLAMA_CUDA_NEEDS}
+    assert release_check.GPU_PACK_MANIFEST_KEYS == gpu_pack.MANIFEST_KEYS
+    assert release_check.RELEASE_BUDGET_MIN == 20
+
+
+def test_gpu_pack_check_passes_and_reports_size(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    z = _gpu_pack(tmp_path)
+    assert release_check.gpu_pack_problems(z, "v1.2.3") == []
+    assert release_check.main(["--gpu-pack", str(z), "--tag", "v1.2.3"]) == 0
+    assert "GPU pack size: 0.0 MB (tinglongwu-gpu-pack.zip, v1.2.3)" in summary.read_text("utf-8")
+
+
+def test_gpu_pack_check_rejects_other_version_bad_hash_and_missing_dll(tmp_path):
+    z = _gpu_pack(tmp_path, tag="v1.2.2")
+    probs = release_check.gpu_pack_problems(z, "v1.2.3")
+    assert len(probs) == 1 and "version mismatch" in probs[0]
+    assert release_check.main(["--gpu-pack", str(z), "--tag", "v1.2.3"]) == 1
+    (tmp_path / "b").mkdir()
+    z = _gpu_pack(tmp_path / "b", names=("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"))
+    assert release_check.gpu_pack_problems(z, "v1.2.3") == ["GPU pack lacks ggml-cuda.dll"]
+    z.write_bytes(z.read_bytes() + b"x")  # changed after the manifest was written
+    assert any("size" in p for p in release_check.gpu_pack_problems(z))
+    assert any("sha256" in p for p in release_check.gpu_pack_problems(z))
+    z.with_name(z.name + release_check.GPU_PACK_MANIFEST_SUFFIX).unlink()
+    assert "manifest unreadable" in release_check.gpu_pack_problems(z)[0]
+    assert release_check.main(["--gpu-pack", str(tmp_path / "none.zip")]) == 2
+
+
+def test_release_wall_time_over_budget_warns_but_exits_zero(capsys):
+    over = (release_check.RELEASE_BUDGET_MIN + 1) * release_check.SECONDS_PER_MIN
+    assert release_check.main(["--release-start", "0"], now=over) == 0
+    assert capsys.readouterr().out.startswith("::warning::release wall time: 21.0 min (OVER the 20 min budget)")
+    assert release_check.main(["--release-start", "0"], now=5 * release_check.SECONDS_PER_MIN) == 0
+    assert capsys.readouterr().out.startswith("release wall time: 5.0 min (within")
+
+
+def test_release_gpu_pack_job_runs_beside_windows():
+    jobs = _workflow("release.yml")["jobs"]
+    gpu = jobs["gpu-pack"]
+    assert gpu["needs"] == "plan" and gpu["if"] == jobs["windows"]["if"]  # parallel with windows, same dry-run rule
+    assert gpu["permissions"] == {"contents": "read"}
+    assert sorted(jobs["release"]["needs"]) == ["gpu-pack", "plan", "windows"]
+    runs = [str(s.get("run", "")) for s in gpu["steps"]]
+    text = "\n".join(runs)
+    build = next(i for i, r in enumerate(runs) if "build_windows.py" in r)
+    assert "--gpu-pack-only --out" in runs[build] and "/releases/download/$env:TAG/" + release_check.GPU_PACK_ASSET \
+        in runs[build]
+    assert "nuitka" not in text.lower()  # no Nuitka: the pack is only the CUDA DLLs
+    assert "requirements-gpu.txt" in text and "requirements-llama-cuda.txt --only-binary=:all:" in text
+    check = next(i for i, r in enumerate(runs) if "release_check.py --gpu-pack" in r)
+    upload = next(i for i, s in enumerate(gpu["steps"]) if "upload-artifact" in str(s.get("uses", "")))
+    assert build < check < upload and "--tag $env:TAG" in runs[check] and "exit $LASTEXITCODE" in runs[check]
+    paths = gpu["steps"][upload]["with"]["path"]
+    man = release_check.GPU_PACK_ASSET + release_check.GPU_PACK_MANIFEST_SUFFIX
+    assert release_check.GPU_PACK_ASSET in paths and man in paths
+    assert gpu["steps"][upload]["with"]["name"] == "release-gpu-pack"
+
+
+def test_release_job_attaches_the_gpu_pack_and_lists_it_in_sha256sums():
+    steps = _workflow("release.yml")["jobs"]["release"]["steps"]
+    downloads = [s["with"]["name"] for s in steps if "download-artifact" in str(s.get("uses", ""))]
+    assert downloads == ["release-win64", "release-gpu-pack"]
+    runs = [str(s.get("run", "")) for s in steps]
+    assert any("release_check.py --gpu-pack dist/" + release_check.GPU_PACK_ASSET in r and '--tag "$TAG"' in r
+               for r in runs)
+    sums = next(r for r in runs if "> SHA256SUMS.txt" in r)
+    assert release_check.GPU_PACK_ASSET in sums and "sha256sum -c SHA256SUMS.txt" in sums
+    create = next(r for r in runs if "gh release create" in r)
+    files = create.split("files=(", 1)[1].split(")", 1)[0].split()
+    man = release_check.GPU_PACK_ASSET + release_check.GPU_PACK_MANIFEST_SUFFIX
+    assert {"dist/tinglongwu-win64.zip", f"dist/{release_check.GPU_PACK_ASSET}", f"dist/{man}",
+            "dist/SHA256SUMS.txt"} <= set(files)
+    wall = steps[-1]
+    assert "release_check.py --release-start" in wall["run"] and wall["continue-on-error"] is True
+    assert runs.index(create) < len(runs) - 1  # the wall time is taken after the release was created
