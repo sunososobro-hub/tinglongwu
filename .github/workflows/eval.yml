@@ -4,9 +4,12 @@ name: eval
 # `python -m tlwu_eval --gate` (#361): red on a chrF drop beyond the pair's margin or an MT median over budget.
 # The workflow runs on every PR to dev so the `mini-eval` check always exists; a PR that touches none of the paths
 # below (docs only, etc.) ends after the first step with no install and no model download (< 1 min).
+# #750: the low-end-cpu job runs the same mini-eval as a no-NVIDIA laptop would (--device cpu, TLWU_CPU_THREADS=4)
+# and fails when per-line p50/p90 latency is > 15% over eval/lowend_baseline.json or peak RSS > 6 GiB. It also runs
+# on the release PR (dev -> main) whatever it changes, so a release with a low-end regression does not ship.
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -107,4 +110,92 @@ jobs:
           path: |
             r.json
             gate.md
+          if-no-files-found: warn
+
+  low-end-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TLWU_CPU_THREADS: "4"  # #750: a 4-thread budget like a low-end laptop (MT gets half, see tinglongwu/threads.py)
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Does this PR touch translation / ASR / eval code (or is it the release PR)?
+        id: paths
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # the release PR (dev -> main) always runs; a docs fast-lane PR to main (rules section 11) uses the filter
+          if [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" = "dev" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git diff --name-only HEAD^1 HEAD > changed.txt
+          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)' changed.txt; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "low-end CPU gate: no translation / ASR / eval path changed - skipped (PASS)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: steps.paths.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: System libraries
+        if: steps.paths.outputs.run == 'true'
+        timeout-minutes: 8
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for i in 1 2 3; do
+            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 && exit 0
+            sleep 15
+          done
+          exit 1
+      - name: Install tlwu + Hy-MT2 CPU engine (no psutil, so peak RSS is the kernel high-water mark)
+        if: steps.paths.outputs.run == 'true'
+        run: |
+          pip install -e .
+          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+      - name: Paths
+        if: steps.paths.outputs.run == 'true'
+        run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: steps.paths.outputs.run == 'true'
+        with:
+          path: |
+            ~/tlwu-models
+            eval_data/smoke
+          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
+      - name: Models (default CPU models - Hy-MT2 1.8B Q4 + Whisper small)
+        if: steps.paths.outputs.run == 'true'
+        run: tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
+      - name: Smoke clips (FLEURS, pinned by sha256 in eval/ci_smoke.json)
+        if: steps.paths.outputs.run == 'true'
+        run: |
+          if [ -f eval_data/smoke/manifest.jsonl ]; then echo "cached"; else python scripts/bench/make_ci_smoke.py --out eval_data/smoke; fi
+      - name: Mini-eval (low-end CPU)
+        if: steps.paths.outputs.run == 'true'
+        run: |
+          set +e
+          python -m tlwu_eval --smoke --data eval_data/smoke --clips 5 --model "$WHISPER" --engine hymt2-cpu \
+            --device cpu --no-noise --models-dir "$TLWU_MODELS" --out lowend.json --latency-jsonl lowend_latency.jsonl
+          rc=$?
+          if [ "$rc" -gt 1 ]; then exit "$rc"; fi
+          test -s lowend.json
+      - name: Gate vs eval/lowend_baseline.json
+        if: steps.paths.outputs.run == 'true'
+        run: |
+          set +e
+          python -m tlwu_eval --lowend-gate lowend.json --lowend-baseline eval/lowend_baseline.json > lowend.md
+          rc=$?
+          cat lowend.md
+          { echo "## low-end CPU gate (#750)"; echo; cat lowend.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && steps.paths.outputs.run == 'true'
+        with:
+          name: low-end-cpu-report
+          path: |
+            lowend.json
+            lowend.md
+            lowend_latency.jsonl
           if-no-files-found: warn
