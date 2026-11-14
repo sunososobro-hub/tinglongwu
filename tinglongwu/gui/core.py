@@ -471,10 +471,17 @@ def download_env(env=None) -> dict:
 
 def short_line(line: str, limit: int = 90) -> str:
     """#918: one child output line cut to `limit` chars for the status text. A tqdm bar field ("|####      |") is
-    dropped first, so a long bar or file name cannot cut off the "48M/484M" total that StartDownload needs."""
+    dropped first, and a long file name is cut from the left ("...0002.safetensors"), so the "NN% 48M/484M" part
+    that StartDownload needs always survives."""
     import re
 
-    return re.sub(r"\|[^|]*\|", "|", line)[:limit]
+    line = re.sub(r"\|[^|]*\|", "|", line)
+    m = list(re.finditer(r"\d{1,3}\s*%", line))
+    if len(line) <= limit or not m:
+        return line[:limit]
+    head, tail = line[:m[-1].start()], line[m[-1].start():][:limit - 12]
+    keep = limit - len(tail)
+    return (head if len(head) <= keep else "..." + head[-(keep - 3):]) + tail
 
 
 def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:

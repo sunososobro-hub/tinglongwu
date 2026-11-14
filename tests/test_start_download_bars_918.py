@@ -64,3 +64,21 @@ def test_long_bar_from_the_child_keeps_the_model_total():
     assert sd.percent == 10
     sd.feed(events[-1])
     assert sd.percent == 100 and sd.ok
+
+
+def test_long_file_name_from_the_child_keeps_the_model_total():
+    """Producer -> StartDownload: a 79-char file name must not cut the size off either."""
+    name = "a" * 75 + ".bin"
+    lines = ["config.json: 100%|##########| 2.0k/2.0k [00:00<00:00]\n",
+             f"{name}:  10%|#         | 48M/484M [00:01<00:09, 48.0MB/s]\n",
+             f"{name}:  60%|######    | 290M/484M [00:06<00:04, 48.0MB/s]\n"]
+    events = []
+    core.run_download("small", events.append, popen=lambda *a, **k: FakeProc(lines))
+    sd = core.StartDownload("small")
+    seen = []
+    for ev in events[:-1]:
+        sd.feed(ev)
+        seen.append(sd.percent)
+        assert len(ev[1]) <= 90
+    assert seen == [100, 10, 60]
+    assert "484M" in events[1][1] and events[1][1].startswith("...")
