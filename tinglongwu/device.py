@@ -91,6 +91,37 @@ def use_llama_cpu_build(load=ctypes.CDLL) -> bool:
     return True
 
 
+def pack_llama_dir(pack: Path | None = None, app_lib: Path | None = None) -> Path | None:
+    """The GPU pack folder when it carries its own CUDA build of llama.cpp (llama.dll + ggml-cuda.dll) and the app's
+    llama_cpp/lib is a CPU build without ggml-cuda.dll (the core zip). A CPU ggml.dll never loads ggml-cuda.dll (#865)."""
+    if pack is None:
+        from .gpu_pack import pack_dir
+
+        pack = pack_dir()
+    if pack is None:
+        return None
+    lib = app_lib or Path(__file__).resolve().parent.parent / "llama_cpp" / "lib"
+    if (lib / "ggml-cuda.dll").is_file():
+        return None
+    return pack if (pack / "llama.dll").is_file() and (pack / "ggml-cuda.dll").is_file() else None
+
+
+llama_backend = "default"  # "gpu-pack" when import_llama selected the GPU pack's CUDA llama build (#865)
+
+
+def use_pack_llama_build() -> bool:
+    """Point llama-cpp-python at the GPU pack's CUDA llama build (LLAMA_CPP_LIB_PATH). Call before `import llama_cpp`."""
+    global llama_backend
+    if sys.platform != "win32" or os.environ.get("LLAMA_CPP_LIB_PATH"):
+        return False
+    d = pack_llama_dir()
+    if d is None:
+        return False
+    os.environ["LLAMA_CPP_LIB_PATH"] = str(d)
+    llama_backend = "gpu-pack"
+    return True
+
+
 def missing_cuda_libs() -> list[str]:
     register_cuda_libs()
     missing = []
