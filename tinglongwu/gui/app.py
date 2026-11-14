@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
@@ -780,6 +780,7 @@ class App:
             zm.add_radiobutton(label=str(n), value=str(n), variable=self.v_font)
         sm.add_cascade(label=t("gui_font_size"), menu=zm)
         sm.add_command(label="Add-ons...", command=self.open_addons)  # #614
+        sm.add_command(label=t("gui_menu_usage"), command=self.ask_usage)  # #680
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
@@ -796,6 +797,35 @@ class App:
         self.root.configure(menu=mb)
         if old is not None:
             old.destroy()
+
+    def _maybe_ask_usage(self):
+        if usage_should_ask(self.settings) and getattr(self, "usage_win", None) is None:
+            self.ask_usage()
+
+    def ask_usage(self):
+        """#680: "what do you mainly use it for?" - a small local dialog; Save stores the choice in gui.json, Skip
+        (or closing it) only records that we asked. Reachable again from Settings. Nothing is sent anywhere."""
+        win = tk.Toplevel(self.root)
+        win.title(t("gui_usage_title"))
+        win.transient(self.root)
+        v = tk.StringVar(value=self.settings.get("usage_use") or USAGE_CHOICES[0])
+        ttk.Label(win, text=t("gui_usage_title")).pack(padx=14, pady=(12, 6), anchor="w")
+        for c in USAGE_CHOICES:
+            ttk.Radiobutton(win, text=t("gui_usage_" + c), value=c, variable=v).pack(padx=22, anchor="w")
+        ttk.Label(win, text=t("gui_usage_note")).pack(padx=14, pady=6, anchor="w")
+
+        def done(choice):
+            usage_answer(self.settings, choice)
+            self.collect()
+            self.usage_win = None
+            win.destroy()
+
+        row = ttk.Frame(win)
+        row.pack(pady=(0, 10))
+        ttk.Button(row, text=t("gui_usage_ok"), command=lambda: done(v.get())).pack(side="left", padx=4)
+        ttk.Button(row, text=t("gui_usage_skip"), command=lambda: done(None)).pack(side="left", padx=4)
+        win.protocol("WM_DELETE_WINDOW", lambda: done(None))
+        self.usage_win = win
 
     def open_addons(self):
         """#614: Settings > Add-ons (installed / available packs, add, remove)."""
@@ -1240,6 +1270,8 @@ class App:
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
                     changed |= self.state.apply(ev)
+                    if ev[0] == "final" and usage_should_ask(self.settings) and getattr(self, "usage_win", None) is None:
+                        self.root.after(1500, self._maybe_ask_usage)  # #680: once, after the first subtitle
         except queue.Empty:
             pass
         if self.load_t0 is not None:  # tick the elapsed seconds so a slow CPU start never looks frozen
