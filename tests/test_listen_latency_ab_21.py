@@ -56,3 +56,16 @@ def test_listen_end_silence_cuts_wait_after_speech(monkeypatch):
     new_wait, new_rep = _wait_after_speech(lambda: cli.listen_segmenter(fast))
     assert new_wait <= old_wait - 0.25, (old_wait, new_wait)
     assert new_rep >= 0.3  # the reported pause still covers the configured silence
+
+
+def test_end_silence_below_pause_send_warns(monkeypatch, capsys):
+    """A cut's reported pause is at least end_silence + vad_pad; below pause-send the early release never fires."""
+    monkeypatch.delenv("TLWU_END_SILENCE", raising=False)
+    monkeypatch.delenv("TLWU_PAUSE_SEND", raising=False)
+    cli.parse_args(["--lang", "en", "--end-silence", "0.3"])  # 0.3 + 0.1 < 0.8 default
+    assert "--pause-send" in capsys.readouterr().err
+    cli.parse_args(["--lang", "en", "--end-silence", "0.5", "--pause-send", "0.5"])  # 0.6 >= 0.5: fine
+    cli.parse_args(["--lang", "en"])
+    assert "warning" not in capsys.readouterr().err
+    # the warned combination really holds the sentence: pause 0.4 < 0.8 is not released
+    assert SentenceMerger(max_wait=6.0).add(UNFINISHED, "en", now=0.0, pause=0.4) == []
