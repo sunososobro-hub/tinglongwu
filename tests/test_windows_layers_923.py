@@ -162,7 +162,7 @@ def test_python_core_layout(tmp_path):
     """A python.org-style base Python -> python3XY.dll, DLLs/, tcl/, the stdlib zip and the ._pth that pins sys.path."""
     base, dst = tmp_path / "base", tmp_path / "layer"
     for rel in ("python312.dll", "python3.dll", "python.exe", "vcruntime140.dll", "DLLs/_tkinter.pyd",
-                "DLLs/tcl86t.dll", "DLLs/py.ico", "tcl/tcl8.6/init.tcl", "tcl/tk8.6/demos/widget",
+                "DLLs/tcl86t.dll", "DLLs/py.ico", "DLLs/_msi.pyd", "tcl/tcl8.6/init.tcl", "tcl/tk8.6/demos/widget",
                 "tcl/dde1.4/tcldde14.dll", "tcl/tcl86t.lib", "Lib/os.py", "Lib/test/x.py"):
         f = base / rel
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -180,9 +180,17 @@ def test_python_core_layout(tmp_path):
         rt.copy_python_core(tmp_path / "x", base)
 
 
+def _boot_source() -> str:
+    """The Python source the launcher passes to `-c` (the C string literals of BOOT, joined)."""
+    c = (rt.LAUNCHER_DIR / "tlwu_launcher.c").read_text("utf-8")
+    block = c[c.index("BOOT[] ="):]
+    block = block[:block.index(";\n\n")]
+    return "".join(part.replace("\\n", "\n") for part in re.findall(r'L"([^"]*)"', block))
+
+
 def test_launcher_runs_the_app_entry_and_marks_the_process_bundled():
     c = (rt.LAUNCHER_DIR / "tlwu_launcher.c").read_text("utf-8")
-    boot = re.search(r'BOOT\[\] =\s*L"([^"]+)"', c).group(1)
+    boot = _boot_source()
     compile(boot, "<boot>", "exec")
     assert "from tlwu_app.main import main" in boot and "sys.argv[0] = sys.executable" in boot
     assert 'L"TLWU_BUNDLED"' in c and '"Py_Main"' in c and 'L"-I"' in c  # is_bundled(); isolated from PYTHON* env
@@ -193,6 +201,37 @@ def test_launcher_runs_the_app_entry_and_marks_the_process_bundled():
         assert 'os.environ.get("TLWU_BUNDLED") == "1"' in Path(mod.__file__).read_text("utf-8")
     rc = rt._rc_text(rt.APP_ICON, rt.LAUNCHER_DIR / "tlwu.manifest")
     assert "@" not in rc and "FILEVERSION 0,0,0,0" in rc and rt.APP_ICON.is_file()
+
+
+def test_launcher_keeps_the_stream_settings_the_app_gives_its_children(tmp_path):
+    """The ._pth makes Python ignore PYTHON* variables, but the GUI starts `tlwu.exe --run-setup` / `--selftest`
+    children with PYTHONUNBUFFERED=1 + PYTHONIOENCODING=utf-8 and reads their output as UTF-8 (#804); the first
+    release dry run of #923 died in `--selftest` printing Chinese to a cp1252 pipe."""
+    c = (rt.LAUNCHER_DIR / "tlwu_launcher.c").read_text("utf-8")
+    assert 'env_set(L"PYTHONUNBUFFERED", value)' in c and 'L"-u"' in c
+    assert 'env_set(L"PYTHONUTF8", value) && wcscmp(value, L"1") == 0' in c and 'L"utf8"' in c
+    for src in ("tinglongwu/gui/core.py", "tinglongwu/gui/autoupdate.py", "tinglongwu/vbcable.py",
+                "tlwu_app/setup_gui.py"):  # the callers this exists for
+        assert 'PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8"' in (REPO / src).read_text("utf-8"), src
+    # run the real BOOT in an isolated Python whose stdout would otherwise be ASCII-only
+    pkg = tmp_path / "tlwu_app"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "main.py").write_text("import sys\ndef main():\n    print('\u807d\u9f8d', sys.argv[0] == sys.executable)\n"
+                                 "    print(sys.stdout.encoding, sys.stdout.errors, sys.stderr.errors)\n    return 7\n")
+    run = lambda env: subprocess.run(  # noqa: E731
+        [sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {str(tmp_path)!r}); "
+                                     "sys.stdout.reconfigure(encoding='ascii'); exec(sys.argv[1])", _boot_source()],
+        capture_output=True, env={**os.environ, **env})
+    r = run({"PYTHONIOENCODING": "utf-8"})
+    assert r.returncode == 7 and r.stdout.decode("utf-8").split() == ["\u807d\u9f8d", "True", "utf-8", "strict",
+                                                                      "backslashreplace"], r.stderr
+    r = run({"PYTHONIOENCODING": "utf-8:replace"})
+    assert r.stdout.decode("utf-8").split()[2:] == ["utf-8", "replace", "backslashreplace"]
+    r = run({"PYTHONIOENCODING": "no-such-codec"})  # a bad value must not stop the app from starting
+    assert r.returncode == 1 and b"UnicodeEncodeError" in r.stderr
+    r = run({"PYTHONIOENCODING": ""})
+    assert r.returncode == 1 and b"UnicodeEncodeError" in r.stderr  # unset: the stream's own encoding, as before
 
 
 @pytest.mark.skipif(rt._gcc() is None, reason="needs a MinGW-w64 gcc + windres on PATH")

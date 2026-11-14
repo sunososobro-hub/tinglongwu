@@ -4,6 +4,11 @@
  * The exe loads python3XY.dll from its own folder and calls Py_Main with `-I -c <BOOT> <user args>`, so
  * `tlwu.exe --smoke` behaves like `python -c BOOT --smoke`. sys.executable is this exe (Python takes it from the
  * process image), BOOT also puts it into sys.argv[0]: the app re-runs itself through both.
+ * python3XY._pth pins sys.path and makes Python ignore every PYTHON* environment variable (a stray PYTHONHOME or
+ * PYTHONPATH on the user's PC cannot break the app). Three of them are part of how the app talks to its own child
+ * processes (tinglongwu/gui/core.py, autoupdate.py, vbcable.py, tlwu_app/setup_gui.py set them and read the child's
+ * output as unbuffered UTF-8), so the launcher passes exactly those on: PYTHONUNBUFFERED -> -u, PYTHONUTF8=1 ->
+ * -X utf8, PYTHONIOENCODING -> BOOT reconfigures the standard streams.
  * The exe holds no app code and no Python version: it changes only when this file changes.
  * Win32 API only (no Python headers); builds with MinGW-w64 gcc or MSVC cl.
  */
@@ -16,11 +21,25 @@
 #define PYTHON_DLL_GLOB L"python3*.dll"
 #define PYTHON_STABLE_ABI_DLL L"python3.dll" /* forwarder DLL: has no Py_Main of its own, skipped */
 #define BUNDLED_ENV L"TLWU_BUNDLED"  /* tlwu_app.main.is_bundled() / tinglongwu.gui.autoupdate.is_bundled() */
-#define FIXED_ARGS 4                 /* argv[0], -I, -c, BOOT */
+#define MAX_FIXED_ARGS 7             /* argv[0], -I, -u, -X, utf8, -c, BOOT */
 #define EXIT_NO_RUNTIME 97           /* runtime files missing or broken (not a Python exit code the app uses) */
+#define ENV_CHARS 8                  /* enough to tell "", "0" and "1" apart */
 
+/* Python source run by `-c`. Kept free of double quotes and backslashes so it is one plain C string per line. */
 static const wchar_t BOOT[] =
-    L"import sys; sys.argv[0] = sys.executable; from tlwu_app.main import main; sys.exit(main())";
+    L"import os, sys\n"
+    L"def _stdio(spec):\n"
+    L"    enc, _, err = spec.partition(':')\n"
+    L"    for s, e in ((sys.stdin, err), (sys.stdout, err), (sys.stderr, 'backslashreplace')):\n"
+    L"        try:\n"
+    L"            s.reconfigure(encoding=enc or None, errors=e or 'strict')\n"
+    L"        except (AttributeError, LookupError, ValueError):\n"
+    L"            pass\n"
+    L"if os.environ.get('PYTHONIOENCODING'):\n"
+    L"    _stdio(os.environ['PYTHONIOENCODING'])\n"
+    L"sys.argv[0] = sys.executable\n"
+    L"from tlwu_app.main import main\n"
+    L"sys.exit(main())\n";
 
 typedef int (*py_main_fn)(int, wchar_t **);
 
@@ -75,13 +94,22 @@ static int find_python_dll(void)
     return found;
 }
 
+/* 1 when the environment variable is set to a non-empty value (PYTHONUNBUFFERED semantics). */
+static int env_set(const wchar_t *name, wchar_t *value)
+{
+    DWORD n = GetEnvironmentVariableW(name, value, ENV_CHARS);
+    if (n >= ENV_CHARS)             /* longer than the buffer: set, and not "0" / "1" */
+        value[0] = 0;
+    return n > 0;
+}
+
 int wmain(int argc, wchar_t **argv)
 {
     HMODULE py;
     py_main_fn py_main;
-    wchar_t **av, *slash;
+    wchar_t **av, *slash, value[ENV_CHARS];
     DWORD n;
-    int i;
+    int i, k = 0;
 
     n = GetModuleFileNameW(NULL, g_dir, PATH_CHARS);
     if (n == 0 || n >= PATH_CHARS)
@@ -105,15 +133,21 @@ int wmain(int argc, wchar_t **argv)
     if (py_main == NULL)
         return fail(L"the Python runtime DLL has no Py_Main");
 
-    av = (wchar_t **)HeapAlloc(GetProcessHeap(), 0, sizeof(wchar_t *) * ((size_t)argc + FIXED_ARGS + 1));
+    av = (wchar_t **)HeapAlloc(GetProcessHeap(), 0, sizeof(wchar_t *) * ((size_t)argc + MAX_FIXED_ARGS + 1));
     if (av == NULL)
         return fail(L"out of memory");
-    av[0] = argc > 0 ? argv[0] : g_dir;
-    av[1] = L"-I";
-    av[2] = L"-c";
-    av[3] = (wchar_t *)BOOT;
+    av[k++] = argc > 0 ? argv[0] : g_dir;
+    av[k++] = L"-I";
+    if (env_set(L"PYTHONUNBUFFERED", value))
+        av[k++] = L"-u";
+    if (env_set(L"PYTHONUTF8", value) && wcscmp(value, L"1") == 0) {
+        av[k++] = L"-X";
+        av[k++] = L"utf8";
+    }
+    av[k++] = L"-c";
+    av[k++] = (wchar_t *)BOOT;
     for (i = 1; i < argc; i++)
-        av[FIXED_ARGS + i - 1] = argv[i];
-    av[FIXED_ARGS + (argc > 0 ? argc - 1 : 0)] = NULL;
-    return py_main(FIXED_ARGS + (argc > 0 ? argc - 1 : 0), av);
+        av[k++] = argv[i];
+    av[k] = NULL;
+    return py_main(k, av);
 }

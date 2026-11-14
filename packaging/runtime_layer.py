@@ -52,6 +52,7 @@ STDLIB_SKIP_DIRS = {"site-packages", "dist-packages", "__pycache__", "test", "te
 PRUNE_TESTS_IN = ("numpy", "scipy")  # their tests/ folders are ~40 MB and never imported by the app
 # not needed by tkinter: demos, C development files, and the dde / registry Tcl extensions (DLLs nobody loads)
 TCL_SKIP = ("demos", "*.lib", "*.sh", "include", "pkgconfig", "dde*", "reg*")
+DLLS_SKIP = ("_msi.pyd",)  # Windows Installer bindings: unused, and msi.dll is not on the clean-machine DLL list
 PTH_LINES = ("{zip}", "DLLs", ".")  # sys.path of tlwu.exe, relative to the folder; no `import site`
 REQ_NOT_PACKED = ("av", "psutil")   # requirements.txt lines left out of the packaging venv (GPL codecs / dev only)
 
@@ -138,7 +139,7 @@ def copy_python_core(dst: Path, base: Path | None = None) -> list[str]:
         shutil.copy2(f, dst / f.name)
     (dst / "DLLs").mkdir(exist_ok=True)
     for f in sorted((base / "DLLs").glob("*")):
-        if f.suffix.lower() in (".pyd", ".dll"):
+        if f.suffix.lower() in (".pyd", ".dll") and f.name.lower() not in DLLS_SKIP:
             shutil.copy2(f, dst / "DLLs" / f.name)
     if not (base / "tcl").is_dir():
         raise SystemExit(f"runtime layer: {base}\\tcl is missing (Python was installed without tcl/tk; the GUI needs it)")
