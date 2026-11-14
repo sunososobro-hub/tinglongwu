@@ -51,7 +51,7 @@ def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
         "Start-Sleep -Milliseconds 400; `$fs.Close()\"\n"
         "$me = (Get-Process -Id $PID).Path\n"
         "$enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($reader))\n"   # no quoting trouble in argv
-        "Start-Process -FilePath $me -ArgumentList @('-NoProfile','-EncodedCommand',$enc) -WindowStyle Hidden | Out-Null\n"
+        "Start-Process -FilePath $me -ArgumentList @('-NoProfile','-EncodedCommand',$enc) | Out-Null\n"
         "while (-not (Test-Path $ready)) { Start-Sleep -Milliseconds 20 }\n"
         "Write-Host '[2/8] two'\n"
         "Write-Host '[3/8] three'\n",
