@@ -8,11 +8,13 @@ full-history series from the API (series.json) and writes a self-contained index
 """
 import argparse
 import html
+import io
 import json
 import os
 import re
 import sys
 import urllib.request
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 KEEP = 24 * 90  # hourly snapshots kept (~90 days)
@@ -564,6 +566,86 @@ def render_throughput_section(series):
                table, RELEASE_ROWS))
 
 
+INSTALL_DAYS = 14  # #806: days of active-install counts shown
+
+
+def counter_base(env=None):
+    """#806 counter Worker base URL: env TLWU_UPDATE_COUNTER, else tinglongwu_setup.selfupdate.COUNTER_BASE."""
+    env = os.environ if env is None else env
+    if env.get("TLWU_UPDATE_COUNTER"):
+        return env["TLWU_UPDATE_COUNTER"].rstrip("/")
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from tinglongwu_setup.selfupdate import COUNTER_BASE
+        return COUNTER_BASE.rstrip("/")
+    except Exception:
+        return ""
+
+
+def valid_install_rows(rows):
+    """rows if it is a list of {date, version, os: str, n: integer-like} objects; ValueError otherwise."""
+    if not isinstance(rows, list) or not all(isinstance(x, dict) for x in rows):
+        raise ValueError("counter response is not a list of rows")
+    for x in rows:
+        if not all(isinstance(x.get(k), str) for k in ("date", "version", "os")):
+            raise ValueError("counter row needs string date/version/os")
+        if isinstance(x.get("n"), bool) or not isinstance(x.get("n", 0), (int, float, str)):
+            raise ValueError("counter row has a non-numeric count")
+        int(x.get("n") or 0)  # ValueError for a non-numeric string
+    return rows
+
+
+def fetch_installs(base):
+    """Rows [{date, version, os, n}] from the counter Worker's /v1/stats, or None (no Worker, unreachable)."""
+    if not base.startswith("https://"):
+        return None
+    try:
+        req = urllib.request.Request(base + "/v1/stats", headers={"User-Agent": "tlwu-stats"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return valid_install_rows(json.load(r))
+    except Exception as e:  # dashboard still builds without the counter
+        print("install counter unavailable: %s" % e, file=sys.stderr)
+        return None
+
+
+def active_installs(rows, now):
+    """Update checks run at most once a day per install, so checks per day ~ active installs that day.
+    -> {'days', 'total' (per day), 'versions': [{'version', 'os', 'last_day', 'week_avg'}]} over complete UTC days."""
+    if rows is None:
+        return None
+    end = (now - timedelta(days=1)).strftime("%Y-%m-%d")  # last complete day
+    days = day_range((now - timedelta(days=INSTALL_DAYS)).strftime("%Y-%m-%d"), end)
+    week = set(days[-7:])
+    total = dict.fromkeys(days, 0)
+    per = {}
+    for r in rows:
+        d, n = r.get("date"), int(r.get("n") or 0)
+        if d in total:
+            total[d] += n
+        if d in week:
+            v = per.setdefault((str(r.get("version")), str(r.get("os"))), {"last_day": 0, "week": 0})
+            v["week"] += n
+            if d == end:
+                v["last_day"] += n
+    versions = [{"version": k[0], "os": k[1], "last_day": v["last_day"], "week_avg": round(v["week"] / 7.0, 1)}
+                for k, v in sorted(per.items(), key=lambda kv: (-kv[1]["week"], kv[0]))]
+    return {"days": days, "total": [total[d] for d in days], "versions": versions}
+
+
+def render_installs(inst):
+    if not inst:
+        return ('<h2>Active installs</h2><p class="n">Install counter not available yet '
+                '(cloudflare/update-counter).</p>')
+    rows = "".join("<tr><td>%s</td><td>%s</td><td>%d</td><td>%.1f</td></tr>"
+                   % (html.escape(v["version"]), html.escape(v["os"]), v["last_day"], v["week_avg"])
+                   for v in inst["versions"]) or '<tr><td colspan="4">no checks yet</td></tr>'
+    daily = " &middot; ".join("%s: <b>%d</b>" % (d[5:], n) for d, n in zip(inst["days"], inst["total"]))
+    return ('<h2>Active installs</h2><p style="font-size:13px">Per day: %s</p>'
+            '<table style="font-size:13px"><tr><th>version</th><th>OS</th><th>last day</th><th>7-day avg/day</th>'
+            '</tr>%s</table><p class="n">Anonymous update checks (date, version, OS only; auto-update on, at most '
+            'once a day per install), so checks per day ~ active installs.</p>' % (daily, rows))
+
+
 def downloads_series(history, days, current=None):
     """Per-day total downloads: last snapshot value up to that day, None before the first one.
 
@@ -580,6 +662,93 @@ def downloads_series(history, days, current=None):
     if current is not None and out:
         out[-1] = current
     return out
+
+
+TTFS_POINTS = 10  # #777: last N install-clean values shown per OS
+TTFS_BUDGET_S = 180  # target: install start -> first subtitle, excluding the model download (scripts/ttfs.py)
+TTFS_RUNS = 30  # successful install-clean runs scanned for ttfs-<os> artifacts
+_TTFS_FIELDS = ("excl_download_seconds", "os", "version", "date")
+
+
+def ttfs_points(docs, points=TTFS_POINTS):
+    """docs: parsed ttfs.json dicts (schema in #777) -> {os: [newest `points` rows, oldest first]}.
+
+    Pure: malformed docs (missing fields, null excl_download_seconds) are skipped."""
+    by_os = {}
+    for idx, d in enumerate(docs or ()):  # docs are newest-first: idx breaks ties between equal dates
+        if not isinstance(d, dict) or any(d.get(k) is None for k in _TTFS_FIELDS):
+            continue
+        try:
+            sec = float(d["excl_download_seconds"])
+        except (TypeError, ValueError):
+            continue
+        by_os.setdefault(str(d["os"]), []).append(
+            {"version": str(d["version"]), "date": str(d["date"]), "seconds": round(sec, 1), "sha": str(d.get("sha") or ""), "_i": idx})
+    out = {}
+    for o, rows in sorted(by_os.items()):
+        keep = sorted(rows, key=lambda r: (r["date"], -r["_i"]))[-points:]  # oldest first, newest last
+        out[o] = [{k: v for k, v in r.items() if k != "_i"} for r in keep]
+    return out
+
+
+def render_ttfs_section(series):
+    ttfs = series.get("ttfs")
+    head = ('<h2>Install to first subtitle</h2><p class="n">Seconds from install start to the first subtitle, '
+            'excluding the model download (50 Mbps baseline); budget %d s. Last %d install-clean runs per OS.</p>'
+            % (TTFS_BUDGET_S, TTFS_POINTS))
+    if not ttfs:
+        return head + '<p class="n" id="ttfs">no data yet</p>'
+    out = []
+    for o, rows in ttfs.items():
+        tr = "".join('<tr><td>%s</td><td>%s</td><td%s>%.0f s</td></tr>'
+                     % (html.escape(r["version"]), html.escape(r["date"]),
+                        ' style="color:#c0392b"' if r["seconds"] > TTFS_BUDGET_S else "", r["seconds"]) for r in rows)
+        out.append('<table class="ttfs" data-os="%s"><caption>%s &middot; budget %d s</caption>'
+                   '<tr><th>Version</th><th>Date</th><th>Excl. download</th></tr>%s</table>'
+                   % (html.escape(o), html.escape(o), TTFS_BUDGET_S, tr))
+    return head + '<div id="ttfs">%s</div>' % "".join(out)
+
+
+def http_artifact_json(url):
+    """Download a GitHub artifact zip (GITHUB_TOKEN only) and return the parsed ttfs.json inside it."""
+    class _NoAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            nr = super().redirect_request(req, fp, code, msg, headers, newurl)
+            if nr is not None:
+                nr.headers.pop("Authorization", None)  # the blob host must not get the token
+            return nr
+
+    req = urllib.request.Request(url)
+    tok = os.environ.get("GITHUB_TOKEN")
+    if tok:
+        req.add_header("Authorization", "Bearer " + tok)
+    with urllib.request.build_opener(_NoAuthOnRedirect).open(req, timeout=60) as r:
+        z = zipfile.ZipFile(io.BytesIO(r.read()))
+    name = next(n for n in z.namelist() if n.endswith("ttfs.json"))
+    return json.loads(z.read(name))
+
+
+def collect_ttfs(api, repo, fetch=http_artifact_json):
+    """Newest-first successful install-clean runs -> their `ttfs-<os>` artifacts -> {os: rows}. Failures -> {}."""
+    docs = []
+    try:
+        runs = api("/repos/%s/actions/workflows/install-clean.yml/runs?status=success&per_page=%d"
+                   % (repo, TTFS_RUNS)).get("workflow_runs", [])
+        for run in runs:
+            try:
+                arts = api("/repos/%s/actions/runs/%d/artifacts" % (repo, run["id"])).get("artifacts", [])
+            except Exception as e:  # one bad run must not hide the later ones
+                print("artifacts of run %s unavailable: %s" % (run.get("id"), e), file=sys.stderr)
+                continue
+            for a in arts:
+                if a.get("name", "").startswith("ttfs-") and not a.get("expired"):
+                    try:
+                        docs.append(fetch(a["archive_download_url"]))
+                    except Exception as e:
+                        print("ttfs artifact %s unavailable: %s" % (a.get("name"), e), file=sys.stderr)
+    except Exception as e:  # page shows "no data yet" instead of failing
+        print("install-clean runs unavailable: %s" % e, file=sys.stderr)
+    return ttfs_points(docs)
 
 
 def build_series(api, repo, branch, now, history=None, rels=_FETCH):
@@ -620,6 +789,7 @@ def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     return {
         "flow": flow, "faucet": faucet,
         "quota_trend": quota_trend(merged_prs, now),  # #744
+        "ttfs": collect_ttfs(api, repo),  # #777
         "release_times": release_times(rels, release_runs(api, repo), all_issues),
         "downloads": {"total": dl_total, "releases": rels or [],
                       "series": downloads_series(history, days, dl_total) if dl_total is not None
@@ -711,7 +881,9 @@ __VISION__
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
 __FLOW__
+__INSTALLS__
 __THROUGHPUT__
+__TTFS__
 <div class="grid">
 <section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
@@ -847,12 +1019,14 @@ def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
     values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
               "__FLOW__": render_flow_section(series),
-              "__THROUGHPUT__": render_throughput_section(series), "__VISION__": vision_html(), "__DATA__": data}
+              "__INSTALLS__": render_installs(series.get("installs")),
+              "__THROUGHPUT__": render_throughput_section(series),
+              "__TTFS__": render_ttfs_section(series), "__VISION__": vision_html(), "__DATA__": data}
     # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
     return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
 
-def run(outdir, repo, branch, api=http_api, now=None):
+def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
     now = now or datetime.now(timezone.utc)
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, "data.json")
@@ -866,6 +1040,13 @@ def run(outdir, repo, branch, api=http_api, now=None):
     rels = release_downloads(api, repo)  # one fetch per run, shared by snapshot and series
     history = merge_history(history, build_snapshot(api, repo, branch, now, rels))
     series = build_series(api, repo, branch, now, history, rels)
+    if installs is _FETCH:
+        installs = fetch_installs(counter_base())
+    try:  # never let a bad counter answer stop the dashboard build
+        series["installs"] = active_installs(valid_install_rows(installs) if installs is not None else None, now)
+    except Exception as e:
+        print("install counter unavailable: %s" % e, file=sys.stderr)
+        series["installs"] = None
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f)
     with open(os.path.join(outdir, "series.json"), "w", encoding="utf-8") as f:
