@@ -79,7 +79,7 @@ def test_apply_cpu_mode_keeps_explicit_model_and_env_threads(tmp_path, monkeypat
     monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small", "medium"})
     a = SimpleNamespace(model="medium", quality="auto")
     cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=8, ram_gb=8)
-    assert a.model == "medium" and a.cpu_threads is None
+    assert a.model == "medium" and a.cpu_threads == 2  # the env override reaches the recognizer
 
 
 def test_apply_cpu_mode_is_a_noop_on_cuda(tmp_path):
@@ -89,3 +89,19 @@ def test_apply_cpu_mode_is_a_noop_on_cuda(tmp_path):
     a = SimpleNamespace(model="large-v3", quality="auto")
     assert cli.apply_cpu_mode(a, "cuda", tmp_path, explicit_model=False) is None
     assert a.model == "large-v3" and not hasattr(a, "cpu_beam")
+
+
+def test_apply_cpu_mode_merge_raises_unset_min_words_only(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from tinglongwu import cli
+
+    monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
+    unset = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=False)
+    cli.apply_cpu_mode(unset, "cpu", tmp_path, explicit_model=True, cores=4, ram_gb=8)  # merge=True
+    assert unset.min_words == 3
+    explicit = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=True)
+    cli.apply_cpu_mode(explicit, "cpu", tmp_path, explicit_model=True, cores=4, ram_gb=8)
+    assert explicit.min_words == 0
+    big = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=False)
+    cli.apply_cpu_mode(big, "cpu", tmp_path, explicit_model=True, cores=16, ram_gb=32)  # merge=False: unchanged
+    assert big.min_words == 0

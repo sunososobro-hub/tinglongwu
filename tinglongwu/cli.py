@@ -222,6 +222,7 @@ def parse_args(argv=None):
     chunk, wait = PRESETS[a.preset]
     a.chunk = chunk if a.chunk is None else a.chunk
     a.max_wait = wait if a.max_wait is None else a.max_wait
+    a.min_words_explicit = a.min_words is not None  # #780: CPU mode may raise an unset value
     if a.min_words is None:
         a.min_words = PRESET_MIN_WORDS[a.preset]
     elif a.min_words < 0:
@@ -340,7 +341,9 @@ def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make
 
         def make_asr(size):
             return FasterWhisperRecognizer(mdir, size, a.lang, dev, glossary=glossary, candidates=cands,
-                                           lang_file=getattr(a, "lang_file", None), live=dev == "cpu")
+                                           lang_file=getattr(a, "lang_file", None), live=dev == "cpu",
+                                           beam=getattr(a, "cpu_beam", None),
+                                           threads=getattr(a, "cpu_threads", None))
     lower = [(s, lambda s=s: make_asr(s)) for s in smaller_whisper(a.model, whisper_installed(mdir))]
     if lower:
         sp = Ladder("speech model", a.model, asr, lower)
@@ -436,7 +439,7 @@ def listen_segmenter(a) -> Segmenter:
 def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=None):
     """#780: on the CPU, apply hwprobe.cpu_mode_settings. Explicit user choices win: an explicit --model is kept, an
     auto-picked model is lowered to the policy size when that is downloaded, TLWU_CPU_THREADS is kept. beam / threads
-    go to the recognizer via a.cpu_beam / a.cpu_threads. Sentence merging stays as --preset / --min-words set it.
+    go to the recognizer via a.cpu_beam / a.cpu_threads. merge=True raises an unset --min-words to the meeting value (3); an explicit --min-words wins.
     Returns the CpuMode (None when not on the CPU)."""
     if dev != "cpu":
         return None
@@ -452,7 +455,10 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
             and order.index(a.model) > order.index(st.size) and st.size in whisper_installed(mdir)):
         a.model = st.size
     a.cpu_beam = st.beam
-    a.cpu_threads = None if os.environ.get("TLWU_CPU_THREADS") else st.threads
+    env_threads = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
+    a.cpu_threads = int(env_threads) if env_threads.isdigit() and int(env_threads) > 0 else st.threads
+    if st.merge and not getattr(a, "min_words_explicit", True):  # fragment merging on: at least the meeting value
+        a.min_words = max(a.min_words, PRESET_MIN_WORDS["meeting"])
     return st
 
 
