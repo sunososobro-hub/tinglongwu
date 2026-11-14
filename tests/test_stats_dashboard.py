@@ -347,3 +347,34 @@ def test_downloads_unavailable_with_history_stays_empty():
     hist = [{"ts": "2026-11-11T10:00:00Z", "downloads": 20}]
     series = sd.build_series(api, "o/r", "dev", NOW, hist)
     assert series["downloads"]["series"] == [None, None, None]
+
+
+# -- #806 active installs from the anonymous update-check counter ------------------------------------------------
+INSTALL_ROWS = [{"date": "2026-11-11", "version": "0.3.3", "os": "windows", "n": 40},
+                {"date": "2026-11-11", "version": "0.3.4", "os": "windows", "n": 12},
+                {"date": "2026-11-10", "version": "0.3.3", "os": "windows", "n": 30},
+                {"date": "2026-11-12", "version": "0.3.4", "os": "windows", "n": 99},  # today: incomplete, left out
+                {"date": "2026-01-01", "version": "0.1.0", "os": "linux", "n": 5}]  # too old
+
+
+def test_active_installs_per_day_and_week_per_version():
+    inst = sd.active_installs(INSTALL_ROWS, NOW)
+    assert inst["days"][-1] == "2026-11-11" and len(inst["days"]) == sd.INSTALL_DAYS
+    assert inst["total"][-2:] == [30, 52]
+    assert inst["versions"] == [{"version": "0.3.3", "os": "windows", "last_day": 40, "week_avg": 10.0},
+                                {"version": "0.3.4", "os": "windows", "last_day": 12, "week_avg": 1.7}]
+    assert sd.active_installs(None, NOW) is None
+
+
+def test_run_renders_active_installs(tmp_path):
+    sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=INSTALL_ROWS)
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "<h2>Active installs</h2>" in page and "<td>0.3.3</td><td>windows</td><td>40</td><td>10.0</td>" in page
+    assert json.loads((tmp_path / "series.json").read_text())["installs"]["total"][-1] == 52
+    sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=None)
+    assert "Install counter not available yet" in (tmp_path / "index.html").read_text(encoding="utf-8")
+
+
+def test_counter_base_env_and_no_fetch_without_https():
+    assert sd.counter_base({"TLWU_UPDATE_COUNTER": "https://w.example/"}) == "https://w.example"
+    assert sd.fetch_installs("") is None and sd.fetch_installs("http://plain") is None
