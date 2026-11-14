@@ -115,24 +115,30 @@ def test_worker_reports_missing_model(tmp_path):
         TTSClient(sys.executable, str(tmp_path), "piper")
 
 
+def _fake_net(monkeypatch, body_for):
+    """Fake HF download (#688: pinned files now go through resume.fetch): body_for(file path) -> bytes."""
+    import io
+
+    from tinglongwu_setup import resume
+
+    class R(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(resume, "_open_range", lambda url, start, timeout=60: R(body_for(url.split("/resolve/abc/")[1])))
+
+
 def test_setup_downloads_and_pins_both_files(tmp_path, monkeypatch):
-    import huggingface_hub
-
-    calls = []
-
-    def fake_snapshot(repo, revision, local_dir, allow_patterns):
-        calls.append((repo, revision, tuple(allow_patterns)))
-        for f in allow_patterns:
-            p = Path(local_dir) / f
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(f.encode())
-
-    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot)
+    _fake_net(monkeypatch, lambda f: f.encode())
     files = dl.PIPER_RU["denis"]
     pin = {"repo": dl.PIPER_REPO, "revision": "abc", "files": {f: hashlib.sha256(f.encode()).hexdigest() for f in files}}
     monkeypatch.setattr(dl, "load_pins", lambda: {"models": {piper_ru_dir("denis"): pin}, "argos": {}})
     assert dl.main(["--piper-ru", "denis", "--models-dir", str(tmp_path)]) == 0
-    assert calls == [(dl.PIPER_REPO, "abc", tuple(files))]
     man = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
     assert set(man[piper_ru_dir("denis")]["files"]) == set(files)
     assert default_piper_ru(str(tmp_path)) == tmp_path / piper_ru_dir("denis")
@@ -140,18 +146,10 @@ def test_setup_downloads_and_pins_both_files(tmp_path, monkeypatch):
 
 
 def test_setup_refuses_hash_mismatch(tmp_path, monkeypatch):
-    import huggingface_hub
-
-    def fake_snapshot(repo, revision, local_dir, allow_patterns):
-        for f in allow_patterns:
-            p = Path(local_dir) / f
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(b"tampered")
-
-    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot)
+    _fake_net(monkeypatch, lambda f: b"tampered")
     pin = {"repo": dl.PIPER_REPO, "revision": "abc", "files": {f: "0" * 64 for f in dl.PIPER_RU["dmitri"]}}
     monkeypatch.setattr(dl, "load_pins", lambda: {"models": {piper_ru_dir("dmitri"): pin}, "argos": {}})
-    with pytest.raises(SystemExit, match="SHA256 MISMATCH"):
+    with pytest.raises(ValueError, match="(?i)sha"):
         dl.main(["--piper-ru", "--models-dir", str(tmp_path)])
 
 
