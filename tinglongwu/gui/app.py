@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover
 POLL_MS = 50
 UPDATE_CHECK_DELAY_MS = 5000
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
+UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
@@ -586,10 +587,25 @@ class App:
                                  lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
         self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
-        self._tx(ttk.Button(f, command=self.check_setup), "gui_check_setup").grid(
-            row=13, column=0, sticky="we", pady=(6, 0))
-        self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(
-            row=13, column=1, columnspan=2, sticky="we", pady=(6, 0), padx=(4, 0))
+        # #756: Check setup / Report a problem and the update controls share one row (above the subtitle log, which
+        # fills the window: a row below it was off-screen)
+        self.act_row = act = ttk.Frame(f)
+        act.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))
+        act.columnconfigure(0, weight=1)
+        act.columnconfigure(1, weight=1)
+        self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
+        self._tx(ttk.Button(act, command=self.report_problem), "gui_report").grid(
+            row=0, column=1, sticky="we", padx=(4, 0))
+        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
+            up = self.upd_controls = ttk.Frame(act)
+            up.grid(row=1, column=0, columnspan=2, sticky="we", pady=(4, 0))
+            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
+                side="left")
+            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
+            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
+                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
+                     "gui_upd_auto").pack(side="left", padx=(8, 0))
+            ttk.Label(up, text=f"v{__version__}").pack(side="right")
         self.v_status = tk.StringVar(value=t("gui_ready"))
         ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
@@ -605,15 +621,6 @@ class App:
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
-        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
-            up = ttk.Frame(f)
-            up.grid(row=22, column=0, columnspan=3, sticky="we", pady=(8, 0))
-            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
-                side="left")
-            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
-            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
-                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
-                     "gui_upd_auto").pack(side="left", padx=(8, 0))
 
     # -- #698 auto-update -------------------------------------------------------------------------
     def _build_update_line(self):

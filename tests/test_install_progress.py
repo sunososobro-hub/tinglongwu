@@ -109,3 +109,27 @@ def test_install_dry_run_prints_an_estimate_under_every_step():
         assert "預估" in lines[i + 1] and ("min" in lines[i + 1] or "minute" in lines[i + 1])
     # CPU tier with RAM unknown/enough: ~1 GB models + Hy-MT2 for Japanese (#126) -> 2 GB
     assert any(x.strip().startswith("Whole install / 全部安裝: 預估約 14-43 分鐘") for x in lines)
+
+
+# ---------------------------------------------------------------- #756: uninstall hint matches how it was installed
+
+def _uninstall_hint(tmp_path, from_setup: bool) -> str:
+    flag = "$true" if from_setup else "$false"
+    r = _ps(f". '{HELPERS}'; Get-TlwuUninstallHint '{tmp_path}' {flag} | ForEach-Object {{ $_ }}")
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout
+
+
+@needs_pwsh
+def test_uninstall_hint_points_to_windows_settings_for_a_setup_install(tmp_path):
+    assert "Windows Settings > Apps > 聽攏有" in _uninstall_hint(tmp_path, True)  # -FromSetup (the wizard)
+    (tmp_path / "unins000.exe").write_bytes(b"")
+    out = _uninstall_hint(tmp_path, False)  # unins*.exe present
+    assert "Windows Settings > Apps > 聽攏有" in out and "delete this folder" not in out
+
+
+@needs_pwsh
+def test_uninstall_hint_keeps_delete_folder_text_for_a_script_install(tmp_path):
+    out = _uninstall_hint(tmp_path, False)
+    assert "delete this folder" in out and "Settings" not in out
+
