@@ -201,9 +201,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--device", default=None, help='output device name substring, e.g. "CABLE Input"')
     ap.add_argument("--out-sr", type=int, default=48000)
     ap.add_argument("--no-confirm", action="store_true", help="send automatically (no confirmation step)")
-    ap.add_argument("--send-mode", choices=("confirm", "countdown", "auto"), default="countdown",
-                    help="how a line is sent (#760): countdown = auto-send after 2 s unless you type anything+Enter; "
-                         "confirm = y+Enter; auto = send at once. Low-confidence lines always wait for y+Enter")
+    ap.add_argument("--send-mode", choices=("confirm", "countdown", "auto"), default="confirm",
+                    help="how a line is sent (#760): confirm = y+Enter, nothing is sent until you confirm (default); "
+                         "countdown = auto-send after 2 s unless you type anything+Enter; auto = send at once. "
+                         "countdown and auto print a quality notice at start. "
+                         "Low-confidence lines always wait for y+Enter")
     ap.add_argument("--no-back", action="store_true",
                     help="skip the back-translation shown while confirming (one MT pass less per sentence)")
     ap.add_argument("--debug-latency", action="store_true",

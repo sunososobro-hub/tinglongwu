@@ -32,7 +32,8 @@ def _llama(root: Path, mod, with_ggml=True):
     lib = root / "llama_lib"
     lib.mkdir()
     if with_ggml:
-        (lib / mod.GPU_PACK_LLAMA_DLL).write_bytes(b"ggml")
+        for n in (mod.GPU_PACK_LLAMA_DLL, "llama.dll", "ggml.dll", "ggml-base.dll"):
+            (lib / n).write_bytes(b"cuda-" + n.encode())
     return lib
 
 
@@ -46,6 +47,7 @@ def test_builds_zip_and_manifest_without_nuitka(tmp_path, monkeypatch):
     with zipfile.ZipFile(zp) as z:
         names = set(z.namelist())
     assert set(m.LLAMA_CUDA_NEEDS) | {"ggml-cuda.dll", "cudnn64_9.dll", "nvrtc64_120_0.dll"} <= names
+    assert {"llama.dll", "ggml.dll", "ggml-base.dll"} <= names  # #865: the CUDA build replaces the core's CPU one
     man = gpu_pack.load_manifest(man_path)
     assert all(k in man for k in gpu_pack.MANIFEST_KEYS) and man["wheels_key"] == m.gpu_pack_wheels_key()
     gpu_pack.verify(zp, man)

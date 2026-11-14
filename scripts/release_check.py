@@ -1,18 +1,20 @@
 """Release check for the CUDA-free core zip (#612): no CUDA files inside, size <= 300 MB.
 
-Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300]
+Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300] [--ttfs ttfs.json]
        python scripts/release_check.py --job-start <unix seconds>   (#762: time used by the build job, vs the budget)
        python scripts/release_check.py --gpu-pack dist/tinglongwu-gpu-pack.zip [--tag vX.Y.Z]
            (#764: the GPU pack matches its .manifest.json, has the CUDA DLLs, and its url names the same release tag)
        python scripts/release_check.py --release-start <unix seconds>   (#764: first job start -> release created)
 All forms may be combined. Exit code 0 = ok, 1 = problem(s) (printed), 2 = zip missing.
 Job and release times are reported, never a failure: a slow runner must not block a release (over budget -> a warning).
+--ttfs prints install-start -> first-subtitle time (non-blocking: never changes the exit code).
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -31,6 +33,27 @@ GPU_PACK_MANIFEST_KEYS = ("name", "size", "sha256", "url")  # = tinglongwu.gpu_p
 # ggml-cuda.dll and what it imports (build_windows.LLAMA_CUDA_NEEDS): without them the pack cannot run llama on CUDA
 GPU_PACK_NEEDS = ("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
 HASH_CHUNK = 1 << 20
+TTFS_BUDGET_S = 180
+
+
+def ttfs_lines(path: Path | None) -> list[str]:
+    """Report lines for a ttfs.json (#776). Informational only: never raises, never fails the check."""
+    if path is None:
+        return []
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if data.get("ttfs_seconds") is None:
+            return ["ttfs: unknown (ttfs_seconds is null)"]
+        excl = float(data["excl_download_seconds"])
+        if not math.isfinite(excl):
+            return ["ttfs: unknown (excl_download_seconds is not finite)"]
+        label = f"{excl:.0f} s excl. download ({data.get('os', '?')}, {data.get('version', '?')})"
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as e:
+        return [f"ttfs: unknown ({type(e).__name__}: {e})"]
+    lines = [f"ttfs: {label}"]
+    if excl > TTFS_BUDGET_S:
+        lines.append(f"WARN ttfs {excl:.0f} s is over the {TTFS_BUDGET_S} s budget")
+    return lines
 
 
 def core_zip_problems(zip_path: Path, max_mb: float = MAX_CORE_MB) -> list[str]:
@@ -107,9 +130,10 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
     ap.add_argument("--tag", default="", help="with --gpu-pack: the release tag its manifest url must name")
     ap.add_argument("--release-start", type=float,
                     help="unix seconds when the release run's first job started: report the release wall time")
+    ap.add_argument("--ttfs", type=Path, default=None, help="ttfs.json: print time to first subtitle (non-blocking)")
     a = ap.parse_args(argv)
-    if a.zip is None and a.job_start is None and a.gpu_pack is None and a.release_start is None:
-        ap.error("give the zip to check, --job-start, --gpu-pack or --release-start")
+    if a.zip is None and a.job_start is None and a.gpu_pack is None and a.release_start is None and a.ttfs is None:
+        ap.error("give the zip to check, --job-start, --gpu-pack, --release-start and/or --ttfs")
     out: list[str] = []
     problems: list[str] = []
     if a.zip is not None:
@@ -143,6 +167,9 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
                                  "release wall time")
         out.append(line)
         print(line if ok else f"::warning::{line}")
+    for line in ttfs_lines(a.ttfs):
+        out.append(line)
+        print(line)
     summary(out)
     return 1 if problems else 0
 
