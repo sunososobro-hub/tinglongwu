@@ -17,7 +17,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from .topic_segmenter import MAX_S, MIN_S, PAUSE_S, TopicSegmenter
 

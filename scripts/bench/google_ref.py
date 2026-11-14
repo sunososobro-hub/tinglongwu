@@ -41,9 +41,9 @@ def _post(url: str, key: str, payload: dict, retries: int = 3) -> dict:
             if e.code in (429, 500, 503) and attempt < retries - 1:
                 time.sleep(2 ** attempt)
                 continue
-            raise SystemExit(f"Google API error {e.code}: {body}")
+            raise SystemExit(f"Google API error {e.code}: {body}") from e
         except urllib.error.URLError as e:
-            raise SystemExit(f"network error: {e.reason}")
+            raise SystemExit(f"network error: {e.reason}") from e
     raise SystemExit("unreachable")
 
 

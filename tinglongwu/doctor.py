@@ -10,7 +10,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 OK, WARN, FAIL = "ok", "warn", "FAIL"
 VOICE_LANGS = ("ru", "en", "ja", "zh")

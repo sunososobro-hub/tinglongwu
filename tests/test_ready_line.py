@@ -52,7 +52,6 @@ def _stub_run_session(monkeypatch, tmp_path, tty):
     """Run cli.run_session with every model/source/pipeline stubbed; return (stdout, stderr) text."""
     import io
     import sys
-    import types
 
     from tinglongwu import asr as asr_mod
     from tinglongwu import device as device_mod

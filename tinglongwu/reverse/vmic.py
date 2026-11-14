@@ -82,7 +82,7 @@ class VirtualMic:
         self._run = run or (lambda cmd: subprocess.run(cmd, capture_output=True, text=True, timeout=15))
         self.ids: list[str] = []
 
-    def open(self) -> "VirtualMic":
+    def open(self) -> VirtualMic:
         try:
             for cmd in load_commands(self.sink, self.mic):
                 r = self._run(cmd)
@@ -108,7 +108,7 @@ class VirtualMic:
                 _diag.swallowed(__name__)
                 pass
 
-    def __enter__(self) -> "VirtualMic":
+    def __enter__(self) -> VirtualMic:
         return self.open()
 
     def __exit__(self, *a) -> None:

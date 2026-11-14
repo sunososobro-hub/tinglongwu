@@ -1,7 +1,7 @@
 import os
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 import pytest
@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stats_dashboard as sd  # noqa: E402
 
-NOW = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 
 
 def fake_api(path, accept=None):

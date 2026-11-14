@@ -17,8 +17,8 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
-                   QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
+from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+                   QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
 from . import autoupdate, pack_on_demand
@@ -60,7 +60,7 @@ class Overlay:
     """Borderless always-on-top subtitle bar with scroll-back: the last HISTORY_LINES finals stay in a Text
     widget; the newest line is followed unless the user scrolled up (mouse wheel / scrollbar) to re-read."""
 
-    def __init__(self, master: tk.Tk, app: "App"):
+    def __init__(self, master: tk.Tk, app: App):
         self.app = app
         s = app.settings
         self.win = w = tk.Toplevel(master)
@@ -298,7 +298,7 @@ class Tour:
     """#314 first-launch overlay: 3 numbered steps placed under the control bar, step 1 holds the real
     source-language box, step 3 is shown inside the real subtitle bar. "Got it" closes it for good; "?" reopens it."""
 
-    def __init__(self, app: "App"):
+    def __init__(self, app: App):
         self.app = app
         self.win = w = tk.Toplevel(app.root)
         w.withdraw()

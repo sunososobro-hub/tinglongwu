@@ -9,7 +9,6 @@ Pure python. Partial mode is O(len(ref) * len(hyp)) - fine for a few thousand to
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 import unicodedata
 
