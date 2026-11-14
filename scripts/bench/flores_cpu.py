@@ -7,11 +7,14 @@ Dev tool (not part of the offline runtime). Runs on a cloud CPU runner (`.github
   TLWU_HYMT_TEMP=0 python scripts/bench/flores_cpu.py --data DATA/flores200_dataset --models-dir MODELS \
       --src rus_Cyrl --out OUT [--limit N] [--no-comet]
   python scripts/bench/flores_cpu.py --matrix kor_Hang,vie_Latn   # JSON list for the workflow matrix (#656)
+  python scripts/bench/flores_cpu.py --temps 0.7,0.2,0             # JSON list of Hy-MT2 temperatures (#107)
 
 Writes OUT/<src>.jsonl (one line per sentence: i, src, ref, hyp, sec, chrf, comet) and OUT/<src>.summary.json
-(n, chrF, COMET, median/p90 s per sentence, CPU). chrF = sacrebleu CHRF corpus score, COMET = Unbabel/wmt22-comet-da
+(n, chrF, COMET, median/p90 s per sentence, CPU, Hy-MT2 temperature, lines containing U+FFFD). chrF = sacrebleu CHRF corpus score, COMET = Unbabel/wmt22-comet-da
 system score, the same metrics as docs/benchmarks.md. Latency is per-sentence wall time, model load excluded.
 A rerun with the same OUT resumes: sentences already in the .jsonl are not translated again.
+--temp T sets TLWU_HYMT_TEMP for this run (#107: 0.7 = model-card default, 0 = greedy); without it the
+environment (or the 0.7 default) decides. fffd_lines counts hypotheses with a U+FFFD replacement character (#632).
 --score-only scores an existing complete .jsonl without loading tinglongwu or Hy-MT2, so COMET (which pins its own
 torch/numpy) can run in a separate venv: translate with --no-comet in the tlwu env, then --score-only in the COMET venv.
 """
@@ -84,6 +87,26 @@ def matrix(spec: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def temps(spec: str) -> list[str]:
+    """#107: comma list of Hy-MT2 temperatures (workflow input `temps`) -> validated list for the job matrix."""
+    out = [x.strip() for x in spec.split(",") if x.strip()]
+    try:
+        ok = bool(out) and all(0.0 <= float(x) <= 2.0 for x in out)
+    except ValueError:
+        ok = False
+    if not ok:
+        raise SystemExit(f"flores_cpu: temps must be numbers in 0..2, got {spec!r}")
+    return list(dict.fromkeys(out))
+
+
+def temperature() -> float:
+    """The Hy-MT2 temperature a translator built now would use (tinglongwu.hymt.sampling(), env override)."""
+    sys.path.insert(0, str(REPO))
+    from tinglongwu.hymt import sampling
+
+    return float(sampling()["temperature"])
+
+
 def p90(xs):
     xs = sorted(xs)
     return xs[min(len(xs) - 1, int(round(0.9 * (len(xs) - 1))))]
@@ -94,7 +117,8 @@ def score(out: list[dict], comet=None) -> dict:
     from sacrebleu.metrics import CHRF
 
     hyp, ref = [d["hyp"] for d in out], [d["ref"] for d in out]
-    res = {"n": len(out), "chrF": round(CHRF().corpus_score(hyp, [ref]).score, 2)}
+    res = {"n": len(out), "chrF": round(CHRF().corpus_score(hyp, [ref]).score, 2),
+           "fffd_lines": sum("\ufffd" in h for h in hyp)}  # #107/#632: broken-UTF-8 output
     m = CHRF()
     for d in out:
         d["chrf"] = round(m.sentence_score(d["hyp"], [d["ref"]]).score, 2)
@@ -138,10 +162,15 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
     ap.add_argument("--limit", type=int, default=0, help="first N sentences only (0 = all 1012)")
     ap.add_argument("--no-comet", action="store_true")
     ap.add_argument("--score-only", action="store_true", help="score OUT/<src>.jsonl, translate nothing")
+    ap.add_argument("--temp", type=float, default=None, help="Hy-MT2 temperature (sets TLWU_HYMT_TEMP)")
     ap.add_argument("--comet-model", default="Unbabel/wmt22-comet-da")
     a = ap.parse_args(argv)
     if not a.score_only and not a.models_dir:
         ap.error("--models-dir (or TLWU_MODELS) is needed to translate")
+    if a.temp is not None:
+        if not 0.0 <= a.temp <= 2.0:
+            ap.error("--temp must be in 0..2")
+        os.environ["TLWU_HYMT_TEMP"] = repr(a.temp)
     out_dir = Path(a.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = load_pair(Path(a.data), a.src, a.limit or None)
@@ -162,6 +191,7 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
             comet = load_comet(a.comet_model)
     res = score(out, comet)
     res.update(pair=f"{a.src}->{REF}", split=SPLIT, engine="Hy-MT2-1.8B Q4_K_M (llama.cpp, CPU)",
+               temperature=prev.get("temperature") if a.score_only else temperature(),  # COMET venv has no tlwu
                cpu=prev.get("cpu") or cpu_name(), translate_wall_s=prev.get("translate_wall_s", round(wall, 1)))
     jsonl.write_text("".join(json.dumps(d, ensure_ascii=False) + "\n" for d in out), "utf-8")
     summary.write_text(json.dumps(res, indent=1, ensure_ascii=False), "utf-8")
@@ -172,5 +202,8 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--matrix"]:  # eval-flores.yml plan job: print the JSON list for `strategy.matrix.src`
         print(json.dumps(matrix(sys.argv[2] if len(sys.argv) > 2 else "")))
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--temps"]:  # eval-flores.yml plan job: JSON list for `strategy.matrix.temp` (#107)
+        print(json.dumps(temps(sys.argv[2] if len(sys.argv) > 2 else "")))
         raise SystemExit(0)
     raise SystemExit(main())
