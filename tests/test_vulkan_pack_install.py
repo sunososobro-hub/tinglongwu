@@ -7,6 +7,7 @@ import io
 import json
 import sys
 import types
+import urllib.error
 import zipfile
 from pathlib import Path
 
@@ -44,10 +45,15 @@ class Release:
         sha = hashlib.sha256(zip_bytes or b"").hexdigest() if sums_sha == "auto" else sums_sha
         self.sums = "" if sha is None else f"{sha}  {ZIP_NAME}\n"
         self.fetched = []
+        self.asked = []
 
     def get(self, url, timeout=0):
-        if url == selfupdate.API_LATEST:
+        self.asked.append(url)
+        assert url != selfupdate.API_LATEST, "the pack must come from the app's own release, never latest (#801 A1)"
+        if url == selfupdate.API_TAG.format(version=VERSION):
             return json.dumps(self.rel).encode()
+        if url.startswith("https://api.github.com/"):  # any other tag: not released
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
         assert url == SUMS_URL, url
         return self.sums.encode()
 
@@ -58,9 +64,9 @@ class Release:
         r.headers = {"Content-Length": str(len(self.zip_bytes) - start)}
         return r
 
-    def run(self, dest, lines=None):
+    def run(self, dest, lines=None, version=VERSION, env=None):
         out = [] if lines is None else lines
-        rc = vulkan_pack.run(dest, get=self.get, out=out.append,
+        rc = vulkan_pack.run(dest, version, get=self.get, out=out.append, env={} if env is None else env,
                              fetch=lambda url, d, sha: resume.fetch(url, d, sha, opener=self.opener))
         return rc, out
 
@@ -93,7 +99,7 @@ def test_reinstall_replaces_the_older_pack(tmp_path):
     dest = tmp_path / "vulkan-pack"
     Release(make_zip(tmp_path / "a.zip", {"llama.dll": b"old", "stale.dll": b"x"})).run(dest)
     Release(make_zip(tmp_path / "b.zip", {"llama.dll": b"new"})).run(dest)
-    assert listing(dest) == ["llama.dll"] and (dest / "llama.dll").read_bytes() == b"new"
+    assert listing(dest) == ["llama.dll", "version.txt"] and (dest / "llama.dll").read_bytes() == b"new"
     assert listing(tmp_path) == ["a.zip", "b.zip", "vulkan-pack"]
 
 
@@ -156,7 +162,7 @@ def test_network_error_is_a_failure_not_a_traceback(tmp_path):
         raise OSError("no route to host")
 
     out = []
-    assert vulkan_pack.run(tmp_path / "vulkan-pack", get=boom, out=out.append) == 1
+    assert vulkan_pack.run(tmp_path / "vulkan-pack", VERSION, get=boom, out=out.append, env={}) == 1
     assert out == ["vulkan pack: FAIL OSError: no route to host"]
 
 
@@ -165,22 +171,90 @@ def test_cli_flag_installs_into_vulkan_pack_next_to_the_app(tmp_path, monkeypatc
     seen = []
     monkeypatch.delenv("TLWU_VULKAN_PACK", raising=False)
     monkeypatch.delenv("TLWU_OFFLINE", raising=False)
-    monkeypatch.setattr(vulkan_pack, "run", lambda dest: seen.append(dest) or 0)
-    assert cli.main(["--vulkan-pack"]) == 0
-    assert seen == [cli.ROOT / "vulkan-pack"]
+    monkeypatch.setattr(vulkan_pack, "run", lambda dest, version: seen.append((dest, version)) or 0)
+    assert cli.main(["--vulkan-pack"]) == 0  # source checkout: the version is read from tinglongwu/__init__.py
+    import tinglongwu
+
+    assert seen == [(cli.ROOT / "vulkan-pack", tinglongwu.__version__)]
+    assert cli.main(["--vulkan-pack", "--app-version", "0.3.1"]) == 0  # tlwu.exe passes its own version
+    assert seen[-1] == (cli.ROOT / "vulkan-pack", "0.3.1")
 
 
 def test_offline_mode_refuses_the_download(monkeypatch):
     monkeypatch.setenv("TLWU_OFFLINE", "1")
-    monkeypatch.setattr(vulkan_pack, "run", lambda dest: pytest.fail("network call with TLWU_OFFLINE=1"))
+    monkeypatch.setattr(vulkan_pack, "run", lambda dest, version: pytest.fail("network call with TLWU_OFFLINE=1"))
     assert cli.main(["--vulkan-pack"]) == 2
 
 
 def test_tlwu_exe_setup_routes_the_flag_to_the_setup_cli(monkeypatch):
     seen = []
     monkeypatch.setattr(cli, "main", lambda args: seen.append(args) or 0)
+    monkeypatch.setattr(app_main, "app_version", lambda: "0.3.7")
     assert app_main.run_setup_worker(["--vulkan-pack"]) == 0
-    assert seen == [["--vulkan-pack"]]
+    assert seen == [["--vulkan-pack", "--app-version", "0.3.7"]]
+    assert app_main.run_setup_worker(["--vulkan-pack", "--app-version", "0.3.2"]) == 0  # an explicit one wins
+    assert seen[-1] == ["--vulkan-pack", "--app-version", "0.3.2"]
+
+
+# ---------------------------------------------------------------- #801 Opus A1: the app's own version, never latest
+def test_the_installed_version_asks_for_its_own_tag_and_never_latest(tmp_path):
+    rel = Release(make_zip(tmp_path / "z.zip"))
+    rc, _ = rel.run(tmp_path / "vulkan-pack")
+    assert rc == 0 and rel.asked[0] == f"https://api.github.com/repos/{selfupdate.REPO}/releases/tags/v{VERSION}"
+    assert selfupdate.API_LATEST not in rel.asked
+    assert (tmp_path / "vulkan-pack" / "version.txt").read_text("utf-8").strip() == VERSION
+
+
+def test_an_app_without_a_release_of_its_version_gets_the_note_and_exit_0(tmp_path):
+    rel = Release(make_zip(tmp_path / "z.zip"))  # only v0.3.9 is released
+    rc, out = rel.run(tmp_path / "vulkan-pack", version="0.3.8")
+    assert rc == 0 and out == [vulkan_pack.NO_PACK_NOTE] and rel.fetched == []
+    assert not (tmp_path / "vulkan-pack").exists()
+
+
+@pytest.mark.parametrize("version", [None, "", "dev"])
+def test_unknown_app_version_fails_and_never_falls_back_to_latest(tmp_path, version):
+    rel = Release(make_zip(tmp_path / "z.zip"))
+    rc, out = rel.run(tmp_path / "vulkan-pack", version=version)
+    assert rc == 1 and "FAIL" in out[-1] and "version" in out[-1]
+    assert rel.asked == [] and not (tmp_path / "vulkan-pack").exists()
+
+
+def test_run_refuses_under_tlwu_offline(tmp_path):
+    rel = Release(make_zip(tmp_path / "z.zip"))
+    rc, out = rel.run(tmp_path / "vulkan-pack", env={"TLWU_OFFLINE": "1"})
+    assert rc == 1 and out == ["vulkan pack: FAIL offline (TLWU_OFFLINE=1)"] and rel.asked == []
+
+
+def test_a_server_error_on_the_tag_is_a_failure_not_the_no_pack_note(tmp_path):
+    def five_hundred(url, timeout=0):
+        raise urllib.error.HTTPError(url, 500, "Server Error", {}, None)
+
+    out = []
+    assert vulkan_pack.run(tmp_path / "vulkan-pack", VERSION, get=five_hundred, out=out.append, env={}) == 1
+    assert out[-1].startswith("vulkan pack: FAIL HTTPError")
+
+
+def test_bundled_app_version_comes_from_a_child_not_an_import(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return types.SimpleNamespace(stdout="tinglongwu 0.3.6; third-party model licenses: THIRD_PARTY_NOTICES.md\n",
+                                     stderr="")
+
+    monkeypatch.setattr(app_main.importlib.util, "find_spec", lambda name: None)  # compiled: no .py source
+    monkeypatch.setattr(app_main, "is_bundled", lambda: True)
+    assert app_main.app_version(run=fake_run) == "0.3.6"
+    assert calls == [[sys.executable, "--version"]]
+    monkeypatch.setattr(app_main, "is_bundled", lambda: False)
+    assert app_main.app_version(run=fake_run) is None and len(calls) == 1
+
+
+def test_source_app_version_reads_the_file(monkeypatch):
+    import tinglongwu
+
+    assert app_main.app_version(run=lambda *a, **k: pytest.fail("no child for a source checkout")) == tinglongwu.__version__
 
 
 # ---------------------------------------------------------------- a Vulkan init failure ends on the CPU

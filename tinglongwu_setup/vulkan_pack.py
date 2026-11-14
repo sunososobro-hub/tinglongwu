@@ -11,9 +11,11 @@ A release without the zip is not an error: one note, exit 0, the CPU build stays
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
+import urllib.error
 import zipfile
 from pathlib import Path
 
@@ -23,6 +25,8 @@ PACK_DIR_NAME = "vulkan-pack"  # == tinglongwu.mt_backend.VULKAN_PACK_NAME (setu
 ASSET_FMT = "tlwu-vulkan-pack-{version}.zip"
 NO_PACK_NOTE = ("vulkan pack: this release has no Vulkan pack (tlwu-vulkan-pack-<version>.zip); skipped, "
                 "MT keeps running on the CPU build.")
+VERSION_FILE = "version.txt"  # the app version the pack was built for (a later runtime check can refuse a mismatch)
+NO_VERSION = "the installed app version is unknown; refusing to guess (the pack must match the app's llama bindings)"
 
 
 class PackError(Exception):
@@ -35,10 +39,17 @@ def default_dest(root: Path, env=None) -> Path:
     return Path(env["TLWU_VULKAN_PACK"]) if env.get("TLWU_VULKAN_PACK") else Path(root) / PACK_DIR_NAME
 
 
-def release_assets(get=selfupdate._get) -> dict | None:
-    """{'version', 'name', 'zip_url', 'sums_url'} of the latest published release (zip_url / sums_url None when the
-    release has no such asset), or None for a pre-release / draft / unparseable tag. Network errors propagate."""
-    rel = selfupdate._latest_json(get, None)
+def release_assets(version: str, get=selfupdate._get) -> dict | None:
+    """{'version', 'name', 'zip_url', 'sums_url'} of the release tagged v<version>, i.e. the installed app's own
+    version, never the latest one: the pack's llama.dll must match the app's llama-cpp-python bindings (#801 Opus A1).
+    zip_url / sums_url are None when the release has no such asset; None for no such tag, a pre-release, a draft or an
+    unparseable tag. Other network errors propagate."""
+    try:
+        rel = json.loads(get(selfupdate.API_TAG.format(version=version)).decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:  # no published release for this version (dev build, or the tag was never released)
+            return None
+        raise
     if rel.get("prerelease") or rel.get("draft"):
         return None
     tag = rel.get("tag_name") or ""
@@ -55,8 +66,9 @@ def _has_llama_library(folder: Path) -> bool:
     return any(folder.glob("llama.*")) or any(folder.glob("libllama.*"))
 
 
-def install_zip(archive: Path, sha256: str, dest: Path) -> Path:
-    """Verify, unpack into `dest` (replacing an older pack). A bad archive leaves `dest` and its neighbours untouched."""
+def install_zip(archive: Path, sha256: str, dest: Path, version: str | None = None) -> Path:
+    """Verify, unpack into `dest` (replacing an older pack), and write `version` to dest/version.txt.
+    A bad archive leaves `dest` and its neighbours untouched."""
     got = resume._sha(archive)
     if got != sha256.lower():
         raise PackError(f"{archive.name}: sha256 {got} != expected {sha256.lower()}")
@@ -71,6 +83,8 @@ def install_zip(archive: Path, sha256: str, dest: Path) -> Path:
             z.extractall(tmp)
         if not _has_llama_library(tmp):  # never replace a working pack with something the app would not accept
             raise PackError("not a Vulkan llama.cpp pack: no llama library at the top of the zip")
+        if version:
+            (tmp / VERSION_FILE).write_text(version + "\n", encoding="utf-8")
         backup = None
         if dest.exists():  # keep the old pack until the new one is in place
             backup = Path(tempfile.mkdtemp(prefix=".vulkan-pack-old-", dir=dest.parent)) / "pack"
@@ -93,10 +107,19 @@ def install_zip(archive: Path, sha256: str, dest: Path) -> Path:
     return dest
 
 
-def run(dest: Path, get=selfupdate._get, fetch=resume.fetch, out=print) -> int:
-    """0 = installed, or the release has no Vulkan pack (one note); 1 = failed (network, checksum, bad archive)."""
+def run(dest: Path, version: str | None, get=selfupdate._get, fetch=resume.fetch, out=print, env=None) -> int:
+    """Install the pack of release v<version> (the installed app's version).
+    0 = installed, or that release has no Vulkan pack (one note); 1 = failed (offline, unknown version, network,
+    checksum, bad archive)."""
+    env = os.environ if env is None else env
+    if env.get("TLWU_OFFLINE") == "1":  # same as selfupdate --download
+        out("vulkan pack: FAIL offline (TLWU_OFFLINE=1)")
+        return 1
+    if not version or selfupdate.parse_version(version) is None:
+        out(f"vulkan pack: FAIL {NO_VERSION} (got {version!r})")
+        return 1
     try:
-        rel = release_assets(get)
+        rel = release_assets(version, get)
         if rel is None or not rel["zip_url"]:
             out(NO_PACK_NOTE)
             return 0
@@ -110,7 +133,7 @@ def run(dest: Path, get=selfupdate._get, fetch=resume.fetch, out=print) -> int:
         dest.parent.mkdir(parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix=".vulkan-pack-dl-", dir=dest.parent))
         try:
-            install_zip(fetch(rel["zip_url"], work / rel["name"], sha), sha, dest)
+            install_zip(fetch(rel["zip_url"], work / rel["name"], sha), sha, dest, rel["version"])
         finally:
             shutil.rmtree(work, ignore_errors=True)  # also removes a .part left by a failed download
         out(f"vulkan pack {rel['version']}: installed in {dest}")
