@@ -6,6 +6,7 @@ import re
 import sys
 import threading
 import time
+from typing import NamedTuple
 
 import numpy as np
 
@@ -24,6 +25,13 @@ from .translate import Translation, Translator, translate_checked
 
 SILENCE_RMS = 1e-3
 _DONE = object()
+
+
+class _Quiet(NamedTuple):
+    """#716 queue item: `seconds` of silence after the newest segment (no new speech), at audio position `stamp`."""
+
+    seconds: float
+    stamp: float
 # Ctrl+C: on Windows a blocking Queue.get() with no timeout is not interruptible, so the main thread
 # always waits in short slices and KeyboardInterrupt is delivered within ~POLL seconds.
 POLL = 0.25
@@ -100,6 +108,12 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def produce():
         try:
+            # #716: silence after the newest segment goes through the queue, so it reaches the merger after that text
+            if merger is not None and hasattr(merger, "quiet") and hasattr(segmenter, "on_quiet"):
+                segmenter.on_quiet = lambda sec: put(_Quiet(sec, consumed[0] / SAMPLE_RATE))
+                send = getattr(merger, "pause_send", None)
+                if send is not None and hasattr(segmenter, "quiet_max"):  # an explicit --pause-send must be reachable
+                    segmenter.quiet_max = max(segmenter.quiet_max, float(send))
             frames = source.frames()
             try:
                 for seg in segmenter.segments(counted(frames)):
@@ -264,6 +278,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 break
             if isinstance(item, BaseException):
                 raise item
+            if isinstance(item, _Quiet):
+                if translator is not None:
+                    emit_units(merger.quiet(item.seconds, item.stamp if audio_clock else time.monotonic()))
+                continue
             seg, stamp, last_ep[0], forced_cut, pause, (t_eos, t_cut) = item
             if float(np.sqrt(np.mean(seg ** 2))) < SILENCE_RMS:
                 continue  # silence: skip (avoids Whisper hallucinations)

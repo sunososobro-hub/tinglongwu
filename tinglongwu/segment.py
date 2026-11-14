@@ -10,6 +10,11 @@ from .capture.base import SAMPLE_RATE as SR
 
 VadFn = Callable[[np.ndarray], list[tuple[int, int]]]
 
+# #716: silence after the newest segment is reported (on_quiet) only up to this many seconds by default; the
+# default pause / merge thresholds are below it (PAUSE_SEND 0.8, ja 0.5). Segmenter.quiet_max raises it for a
+# larger --pause-send.
+QUIET_MAX = 3.0
+
 
 def silero_vad(audio: np.ndarray, pad_ms: int = 400) -> list[tuple[int, int]]:
     """Speech spans (sample offsets) using the Silero ONNX model bundled in faster-whisper. Each span end is padded
@@ -36,17 +41,29 @@ class Segmenter:
         # silence (s) seen after its speech. Read by the consumer right after each yield.
         self.last_forced, self.last_pause = False, 0.0
         self.live: tuple[int, np.ndarray] | None = None
+        # #716: on_quiet(seconds) is called (VAD mode) after each step that sees no new speech since the newest
+        # segment, with the silence after that segment's speech so far. A forced cut or a held fragment followed by
+        # silence yields no new segment, so without this the consumer never learns the speaker stopped.
+        self.on_quiet: Callable[[float], None] | None = None
+        self.quiet_max = QUIET_MAX
+        self._quiet: float | None = None  # silence (s) after the newest segment's speech; None = speech / none yet
 
     def segments(self, frames: Iterable[np.ndarray]) -> Iterator[np.ndarray]:
         buf, since, fresh = np.zeros(0, np.float32), 0, 0
+        self._quiet = None
         for f in frames:
             buf = np.concatenate([buf, f])
             since += len(f)
             fresh += len(f)
             if since < self.step:
                 continue
-            since = 0
+            added, since = since, 0
+            q = self._quiet
             out, buf = self._step(buf)
+            if out is None and q is not None and self._quiet is not None:
+                self._quiet = q + added / SR  # still silent since the newest segment
+                if self.on_quiet is not None and q <= self.quiet_max:
+                    self.on_quiet(self._quiet)
             if out is not None:
                 self.epoch += 1
                 self.live = None
@@ -72,10 +89,15 @@ class Segmenter:
         s, e = spans[0][0], spans[-1][1]
         if len(buf) - e >= self.min_sil:  # pause after speech: cut here
             self.last_forced, self.last_pause = False, (len(buf) - e) / SR + self.pad
+            self._quiet = self.last_pause
             return buf[max(0, s - self.ov): min(len(buf), e + self.ov)], buf[e:]
         if len(buf) - s >= self.chunk:  # too long without a pause: force cut, keep overlap
-            self.last_forced, self.last_pause = True, 0.0
+            # #716: speech that already ended inside the cut (silence shorter than min_silence) reports that silence
+            gap = len(buf) - e
+            self.last_forced, self.last_pause = True, (gap / SR + self.pad if gap > 0 else 0.0)
+            self._quiet = self.last_pause if gap > 0 else None
             return buf[s:], buf[-self.ov:]
+        self._quiet = None  # speech since the newest segment
         keep = buf[max(0, s - self.ov):]  # drop leading silence
         self.live = (self.epoch, keep[-self.chunk:])
         return None, keep
