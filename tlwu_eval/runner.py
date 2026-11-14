@@ -97,6 +97,20 @@ def ram_mib() -> float | None:
         return None
 
 
+def peak_rss_mib() -> float | None:
+    """Peak resident memory of this process so far (#750: the low-end gate's RAM cap). `resource` ru_maxrss is the
+    kernel's own high-water mark, so a short spike between two samples is not missed; None where it does not exist
+    (Windows)."""
+    try:
+        import resource
+        import sys
+
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return peak / 2 ** 20 if sys.platform == "darwin" else peak / 1024
+    except Exception:  # noqa: BLE001 - no `resource` module on Windows
+        return None
+
+
 def vram_mib(run=subprocess.run) -> float | None:
     """VRAM in use on GPU 0 now (nvidia-smi); None without an NVIDIA driver."""
     try:
@@ -196,7 +210,7 @@ def style_groups(rows) -> list[tuple[str | None, list[dict]]]:
 
 
 def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, clock=time.perf_counter,
-              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None, noise=None) -> dict:
+              ram=ram_mib, vram=vram_mib, totals=None, ja_extra=None, noise=None, peak_rss=peak_rss_mib) -> dict:
     """Run the smoke set and return the report dict. totals: (RAM MiB, VRAM MiB or None) of this machine.
     ja_extra: ja clips from outside the repo (NHK, #119), run as an extra "ja->zh[nhk]" group; any kana in its zh
     output turns the smoke red."""
@@ -228,6 +242,8 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
     total_s = clock() - t0
     clips = [c for lg in langs for c in lg["clips"]]
     total_ram, total_vram = totals or (None, None)
+    lat = [c["latency_s"] for c in clips]
+    rss = peak_rss()
     scores = {
         "asr": statistics.fmean(scoring.asr_score(lg["error_rate"]) for lg in langs),
         "mt": (statistics.fmean(scoring.mt_score(lg["chrf"]) for lg in langs if lg["chrf"] is not None)
@@ -245,6 +261,9 @@ def run_smoke(rows, eng: Engines, pairs=FOCUS_PAIRS, per_lang=CLIPS_PER_LANG, cl
     return {"mode": "smoke", "pass": ok, "total_s": round(total_s, 2), "mt_load_s": round(mt_load_s, 3),
             "peak_ram_mib": peak_ram.value and round(peak_ram.value), "peak_vram_mib": peak_vram.value and round(peak_vram.value),
             "total_ram_mib": total_ram, "total_vram_mib": total_vram, "vram_budget_mib": vram_budget,
+            # #750: per-line ASR+MT seconds over every clip (nearest rank) and the process RSS high-water mark
+            "latency_p50_s": round(scoring.percentile(lat, 50), 3), "latency_p90_s": round(scoring.percentile(lat, 90), 3),
+            "peak_rss_mib": None if rss is None else round(rss),
             "languages": langs, "skipped": skipped, "noise": noise_rep,
             "thresholds": {"asr_rtf_max": ASR_RTF_MAX, "mt_median_max_s": MT_MEDIAN_MAX_S, "tts_rtf_max": TTS_RTF_MAX,
                            "lang_budget_s": LANG_BUDGET_S, "total_budget_s": TOTAL_BUDGET_S},

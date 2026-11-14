@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/model_importer.dart';
+import '../services/play_packs.dart';
 
 /// "Import models": pick the models zip (or single files) with the system file picker and copy
 /// them into the app's models dir, checking size and SHA-256 against the manifest.
@@ -22,10 +23,15 @@ class _ImportScreenState extends State<ImportScreen> {
   String _name = '';
   ImportReport? _report;
   bool _importedAny = false;
+  bool _play = false; // installed from Google Play: models come as asset packs
+  bool _playRun = false; // the running job is a Play download (cancel goes to Play first)
 
   @override
   void initState() {
     super.initState();
+    PlayPacks.available().then((v) {
+      if (mounted) setState(() => _play = v);
+    });
     ModelImporter.loadManifest().then((m) {
       if (!mounted) return;
       setState(() {
@@ -41,6 +47,28 @@ class _ImportScreenState extends State<ImportScreen> {
     final imp = _imp!;
     final docs = await ModelImporter.pick();
     if (docs.isEmpty || !mounted) return;
+    await _runJob(() => imp.run(docs, onProgress: _onProgress));
+  }
+
+  Future<void> _playImport() async {
+    final imp = _imp!;
+    _playRun = true;
+    await _runJob(() => PlayPacks.downloadAndImport(imp, onProgress: _onProgress));
+    _playRun = false;
+  }
+
+  void _onProgress(int d, int t, String n) {
+    if (mounted) {
+      setState(() {
+        _done = d;
+        _total = t;
+        _name = n;
+      });
+    }
+  }
+
+  Future<void> _runJob(Future<ImportReport> Function() job) async {
+    final imp = _imp!;
     setState(() {
       _busy = true;
       _report = null;
@@ -49,15 +77,7 @@ class _ImportScreenState extends State<ImportScreen> {
     });
     ImportReport r;
     try {
-      r = await imp.run(docs, onProgress: (d, t, n) {
-        if (mounted) {
-          setState(() {
-            _done = d;
-            _total = t;
-            _name = n;
-          });
-        }
-      });
+      r = await job();
     } catch (e) {
       r = ImportReport()..problems.add('$e');
     }
@@ -69,6 +89,28 @@ class _ImportScreenState extends State<ImportScreen> {
       _present = imp.presentFiles();
     });
   }
+
+  void _cancel() {
+    if (_playRun) PlayPacks.cancel();
+    ModelImporter.cancel();
+  }
+
+  List<Widget> _playSection() => [
+        const Text('從 Google Play 下載 / Download from Google Play', style: _h),
+        const SizedBox(height: 6),
+        const Text('由 Play 商店下載模型（約 1.4 GB，建議用 Wi-Fi），下載後一樣核對大小與 SHA-256。'
+            '本 app 仍然沒有網路權限。', style: _t),
+        const SizedBox(height: 12),
+        if (!_busy)
+          FilledButton.icon(
+            icon: const Icon(Icons.download),
+            label: const Text('從 Play 下載模型 / Get models', style: TextStyle(fontSize: 18)),
+            onPressed: _playImport,
+          ),
+        const SizedBox(height: 20),
+        const Text('或手動匯入 / Or import manually', style: _h),
+        const SizedBox(height: 12),
+      ];
 
   static const _h = TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white);
   static const _t = TextStyle(fontSize: 16, color: Colors.white70, height: 1.4);
@@ -114,6 +156,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final missing = m.missingRequired(_present);
     final big = m.files.where((f) => f.url != null).toList();
     return [
+      if (_play) ..._playSection(),
       const Text('1. 下載模型包 / Download the models', style: _h),
       const SizedBox(height: 6),
       Text('用手機瀏覽器下載 ${m.bundleName}（存到「下載」）。${m.bundleNote}', style: _t),
@@ -135,7 +178,7 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(height: 8),
         Text('$_name  ${_fmt(_done)} / ${_total > 0 ? _fmt(_total) : '?'}', style: _t),
         const SizedBox(height: 8),
-        OutlinedButton(onPressed: ModelImporter.cancel, child: const Text('取消 / Cancel')),
+        OutlinedButton(onPressed: _cancel, child: const Text('取消 / Cancel')),
       ] else
         FilledButton.icon(
           icon: const Icon(Icons.folder_open),
