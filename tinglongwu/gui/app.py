@@ -18,7 +18,8 @@ from ..langs import from_label as lang_from_label, label as lang_label, labels a
 from .core import (QUICK_MODES, quick_buttons, quick_settings, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
-                   save_settings, settings_to_argv, voice_outputs, clamp_alpha)
+                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
+from . import pack_on_demand
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -650,6 +651,41 @@ class App:
         self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
 
+    def _offer_pack(self, run: dict, mode) -> bool:
+        """#673: True when a pack is missing (dialog shown / download running) and this Start must not go on now.
+        "Not now" changes nothing (mode and language stay as they were)."""
+        from ..models import models_dir
+
+        try:
+            need = pack_on_demand.first_missing(run.get("lang"), run.get("target"), models_dir())
+        except Exception:  # noqa: BLE001  # no setup package / unreadable manifest: behave as before
+            return False
+        if need is None or self.downloading:
+            return self.downloading is not None and need is not None
+        pack, mb = need
+        if not messagebox.askyesno(t("gui_dl_title"), pack_on_demand.dialog_text(ui_lang(), pack, mb), parent=self.root):
+            return True
+        self.downloading = pack
+        self.pack_retry = mode
+        self.btn.configure(state="disabled")
+        self._status_text(t("gui_dl_running", model=pack))
+        self.panel.deiconify()  # the status line lives in the Adjust panel: show it so progress is visible
+        self.panel.lift()
+        self._sync_quick()
+        threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
+        return True
+
+    def _pack_done(self, pack: str, rc: int):
+        self.downloading = None
+        self.btn.configure(state="normal")
+        self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))
+        if rc != 0:
+            self.panel.deiconify()
+            self.panel.lift()
+        self._sync_quick()
+        if rc == 0:  # on without restarting the app
+            self.toggle(getattr(self, "pack_retry", None))
+
     def _download_done(self, model: str, rc: int):
         self.downloading = None
         self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
@@ -712,6 +748,8 @@ class App:
             return
         self.collect()
         run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
+            return
         self.quick_mode, self.run_source = mode, run.get("source")
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
@@ -778,6 +816,10 @@ class App:
                         self._sync_quick()
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
+                elif kind == "pack_line":
+                    self._status_text(ev[1])
+                elif kind == "pack_done":
+                    self._pack_done(ev[1], ev[2])
                 elif kind == "dl_line":
                     self._status_text(ev[1])
                 elif kind == "doctor":
