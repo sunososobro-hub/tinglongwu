@@ -113,6 +113,9 @@ def test_voice_command_during_countdown_switches_voice():
     inp.put("v2")
 
     def readline():
+        if got.is_set():
+            threading.Event().wait(10)  # later readers just block (nobody types again)
+            raise EOFError
         v = _get(inp)
         got.set()  # the reader consumed the line; only now may the fake clock run
         return v
