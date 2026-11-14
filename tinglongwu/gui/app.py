@@ -1169,7 +1169,8 @@ class App:
 
             run_session(a, sink=QueueSink(q), draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
-                        notice=lambda m: q.put(("notice", m)))
+                        notice=lambda m: q.put(("notice", m)),
+                        cpu_line=lambda ms: q.put(("cpu_line", ms)))
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
@@ -1200,6 +1201,11 @@ class App:
                             ready = self.speak_hint
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
+                elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
+                    from .core import cpu_mode_line
+
+                    if self.load_t0 is None and not self.errored:
+                        self._status_text(cpu_mode_line("cpu", ev[1]) or "")
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
