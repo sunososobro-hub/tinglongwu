@@ -572,10 +572,16 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     close_voice, interrupted = None, False
     try:
         if getattr(a, "voice", False):  # #330: opened last, so every exit path below closes it
-            from .voice import open_voice
+            from .voice import VoiceUnavailable, open_voice
 
             prog.stage("voice")
-            sink, close_voice = open_voice(a, mdir, sink, warn, off=notice)
+            try:
+                sink, close_voice = open_voice(a, mdir, sink, warn, off=notice)
+            except VoiceUnavailable as e:  # #885: the GUI keeps listening without the voice, one plain line
+                if notice is None:
+                    raise
+                warn(f"tlwu: {e}")
+                notice(e.user)
             if getattr(sink, "capture_guard", None) is not None and hasattr(source, "on_reopen"):
                 source.on_reopen = sink.capture_guard  # #710: a device change cannot loop the meeting voice
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())

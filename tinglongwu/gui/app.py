@@ -20,7 +20,7 @@ from ..langs import from_label as lang_from_label, label as lang_label, labels a
 from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
-                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
+                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -1154,7 +1154,8 @@ class App:
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)))
         except Exception as e:  # noqa: BLE001
-            q.put(("error", str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"))
+            print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
+            q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
         finally:
             q.put(("stopped",))
 

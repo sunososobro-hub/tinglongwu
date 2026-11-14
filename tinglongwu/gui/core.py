@@ -6,6 +6,8 @@ Events: ("draft", src_text, translation) | ("final", src_text, target_text) | ("
 """
 from __future__ import annotations
 
+import re
+
 from .. import diag as _diag
 
 import json
@@ -612,3 +614,22 @@ class SubtitleState:
     def last_text(self) -> str:
         rows = self.lines()
         return rows[-1][0] if rows else ""
+
+
+_CLI_FLAG = re.compile(r"(?<![\w-])--[a-z]")
+
+
+def gui_error_text(e: BaseException) -> str:
+    """#885: what the GUI shows for an error that stopped a run: never CLI flags, never an English-only sentence in
+    a non-English UI. A localized error (`.user`, e.g. voice.VoiceUnavailable) is shown as is; a plain RuntimeError
+    line only when it has no `--flag` and suits the UI language; anything else becomes one generic localized line
+    (the raw text still goes to stderr for the log)."""
+    from ..i18n import t, ui_lang
+
+    user = getattr(e, "user", None)
+    if isinstance(user, str) and user:
+        return user
+    msg = str(e).strip() if isinstance(e, RuntimeError) else ""
+    if msg and not _CLI_FLAG.search(msg) and (ui_lang() == "en" or not msg.isascii()):
+        return msg
+    return t("gui_error_generic")
