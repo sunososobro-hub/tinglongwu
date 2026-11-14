@@ -20,6 +20,7 @@ Not sure it is a bug, or just want to ask how something works or show how you us
 
 - **Small fix** (typo, docs, a few lines): go straight to a PR.
 - **Bigger work** (new feature, refactor, new dependency, anything touching the audio/ASR/translation pipeline): please open an issue or comment on an existing one first, so nobody wastes effort on something that cannot be merged.
+- **Issue format:** English, with `Why:` / `Goal:` / `Acceptance:` / `Verify:` lines. The full rules (labels, who may start work) are in [`.agent/tlwu_rules.md` section 15](.agent/tlwu_rules.md#15-issue-format-owner-2026-11-13-588). Don't worry if you get it wrong: triage tidies every new issue.
 - **New here?** Look for the [good first issue](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue) label. Comment on the issue and say you are taking it.
 
 ## Project principles: the only hard rules
