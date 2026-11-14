@@ -24,6 +24,7 @@ TTFS_BUDGET_S = 180
 TTFS_CLIP = "tinglongwu/data/selftest_en.wav"
 BASELINE_MBPS = 50
 FIRST_SUBTITLE_TIMEOUT_S = 600
+TRANSLATION_PREFIX = "\u2192"  # tinglongwu/fmt.py: translation lines are '→ [TAG] text'
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _UNITS = {"b": 1, "bytes": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9,
@@ -54,15 +55,17 @@ def _run(cmd):
 
 
 def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S):
-    """Seconds until the first non-empty stdout line, or None on timeout/no output."""
+    """Seconds until the first translation line (fmt.py prefix '→'), or None on timeout/no output.
+
+    The source line is printed before MT finishes, so a plain non-empty line is too early."""
     t0 = time.monotonic()
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                         text=True, cwd=ROOT)
+                         text=True, encoding="utf-8", errors="replace", cwd=ROOT)
     found = []
 
     def reader():
         for line in p.stdout:
-            if line.strip():
+            if line.lstrip().startswith(TRANSLATION_PREFIX):
                 found.append(time.monotonic() - t0)
                 return
 
@@ -122,7 +125,8 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--clip", default=TTFS_CLIP)
     ap.add_argument("--tlwu", default=None,
-                    help="command printing subtitles (default: tlwu --file CLIP --device cpu)")
+                    help="command printing subtitles; translation lines must start with the arrow prefix to be "
+                         "measured (default: tlwu --file CLIP --device cpu)")
     ap.add_argument("--timeout", type=float, default=FIRST_SUBTITLE_TIMEOUT_S)
     a = ap.parse_args(argv)
     tlwu = a.tlwu or "tlwu --file %s --device cpu" % shlex.quote(a.clip)
