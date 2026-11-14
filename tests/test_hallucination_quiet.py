@@ -26,3 +26,7 @@ def test_speak_gate_rejects_yoyo_line_issue_759():
     ok, why = gate(SegmentStats(2.0, 0.05, "優優獨播劇場——YoYo Television Series Exclusive"))
     assert (ok, why) == (False, "repeat")
     assert gate(SegmentStats(2.0, 0.05, "我們明天開會討論預算"))[0]
+
+
+def test_generic_drama_theatre_sentence_is_kept_issue_759():
+    assert not is_hallucination("独播剧场今晚播出新剧", rms=0.05, no_speech=0.0)
