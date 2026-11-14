@@ -21,7 +21,8 @@ from .core import (QUICK_MODES, quick_buttons, quick_settings, ALPHA_STEP, ENGIN
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
-from . import pack_on_demand
+from . import autoupdate, pack_on_demand
+from .. import __version__, userdirs
 
 try:  # optional theme; the GUI works without it
     import sv_ttk
@@ -29,6 +30,8 @@ except ImportError:  # pragma: no cover
     sv_ttk = None
 
 POLL_MS = 50
+UPDATE_CHECK_DELAY_MS = 5000
+UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
@@ -298,6 +301,7 @@ class App:
         self._build_controls()
         self._build_quick()
         self._build_bar()
+        self._build_update_line()
         self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
         self.apply_theme(self.settings.get("theme", "dark"))
@@ -355,6 +359,7 @@ class App:
         self.combos["lang"].configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
+        self._upd_relabel()
         self.render_log()
         if self.overlay.visible:
             self.overlay.render(self.state)
@@ -509,6 +514,129 @@ class App:
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
+        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
+            up = ttk.Frame(f)
+            up.grid(row=22, column=0, columnspan=3, sticky="we", pady=(8, 0))
+            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
+                side="left")
+            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
+            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
+                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
+                     "gui_upd_auto").pack(side="left", padx=(8, 0))
+
+    # -- #698 auto-update -------------------------------------------------------------------------
+    def _build_update_line(self):
+        """One non-blocking line under the bar: "New version ... [Update now] [Later]". Hidden until needed."""
+        self.upd_ver = None  # newer version seen this run
+        self.upd_exe = None  # verified installer path once downloaded
+        self.upd_busy = False  # a check or download child is running
+        self.upd_msg: tuple | None = None  # (i18n key, format kwargs, button keys)
+        u = self.upd_frame = ttk.Frame(self.root, padding=(4, 0, 4, 2))
+        self.v_upd = tk.StringVar()
+        ttk.Label(u, textvariable=self.v_upd, wraplength=240).pack(side="left")
+        self.upd_no = ttk.Button(u, command=self._update_later, style="Bar.TButton", width=0)
+        self.upd_yes = ttk.Button(u, command=self._update_yes, style="Bar.TButton", width=0)
+        self.upd_apply_when_ready = False
+
+    def _upd_show(self, key: str, buttons: tuple[str, str] | None = None, **kw):
+        self.upd_msg = (key, kw, buttons)
+        self.v_upd.set(t(key, **kw))
+        self.upd_yes.pack_forget()
+        self.upd_no.pack_forget()
+        if buttons:
+            self.upd_yes.configure(text=t(buttons[0]))
+            self.upd_no.configure(text=t(buttons[1]))
+            self.upd_no.pack(side="right")
+            self.upd_yes.pack(side="right", padx=(4, 2))
+        if not self.upd_frame.winfo_ismapped():
+            self.upd_frame.pack(fill="x")
+
+    def _upd_relabel(self):
+        if self.upd_msg:
+            key, kw, buttons = self.upd_msg
+            self._upd_show(key, buttons, **kw)
+
+    def _update_later(self):
+        self.upd_msg = None
+        self.upd_frame.pack_forget()
+
+    def _auto_update_check(self):
+        if not autoupdate.is_wizard_install():
+            return
+        if autoupdate.should_auto_check(userdirs.read_config()):
+            autoupdate.mark_checked()
+            self._check_update(manual=False)
+
+    def _check_update(self, manual: bool):
+        if self.upd_busy:
+            return
+        if self.upd_exe:  # already downloaded this run
+            self._upd_show("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), ver=self.upd_ver)
+            return
+        self.upd_busy = True
+        if manual:
+            self.set_status("gui_checking")
+        threading.Thread(target=autoupdate.run_check, args=(__version__, self.q.put, manual), daemon=True).start()
+
+    def _update_found(self, ver: str, manual: bool):
+        self.upd_busy = False
+        self.upd_ver = ver
+        if manual:
+            self.set_status("gui_ready")
+        if autoupdate.auto_on(userdirs.read_config()) and not manual:
+            self._download_update(silent=True)  # auto_update=1: fetch quietly, ask only "Restart now?"
+        else:
+            self._upd_show("gui_upd_available", ("gui_upd_now", "gui_upd_later"), ver=ver)
+
+    def _update_yes(self):
+        if self.upd_exe:
+            self._apply_update()
+        elif self.upd_ver and not self.upd_busy:
+            self._download_update(silent=False)
+
+    def _download_update(self, silent: bool):
+        self.upd_busy = True
+        self.upd_apply_when_ready = not silent  # "Update now" clicked: install as soon as it is verified
+        if not silent:
+            self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=0)
+        threading.Thread(target=autoupdate.run_download, args=(self.q.put,), daemon=True).start()
+
+    def _update_event(self, ev) -> bool:
+        """Handle an upd_* queue event; False when `ev` is not one."""
+        kind = ev[0]
+        if kind == "upd_found":
+            self._update_found(ev[1], ev[2])
+        elif kind == "upd_none":
+            self.upd_busy = False
+            if ev[1]:
+                self._status_text(t("gui_upd_none", ver=__version__))
+        elif kind == "upd_progress":
+            if self.upd_msg and self.upd_msg[0] == "gui_upd_downloading":
+                self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=ev[1])
+        elif kind == "upd_ready":
+            self.upd_busy = False
+            self.upd_exe = ev[1]
+            if self.upd_apply_when_ready:
+                self._apply_update()
+            else:
+                self._upd_show("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), ver=self.upd_ver)
+        elif kind == "upd_fail":
+            self.upd_busy = False
+            if self.upd_apply_when_ready:  # silent background failures stay silent
+                self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why=ev[1])
+        else:
+            return False
+        return True
+
+    def _apply_update(self):
+        self._upd_show("gui_upd_applying")
+        self.root.update_idletasks()
+        try:
+            autoupdate.start_apply(self.upd_exe)
+        except Exception as e:  # noqa: BLE001
+            self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why=type(e).__name__)
+            return
+        self.root.after(UPDATE_QUIT_DELAY_MS, self.quit)  # the helper waits for this process, then installs and restarts the GUI
 
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
@@ -829,6 +957,8 @@ class App:
                     self._show_setup_check(ev[1], ev[2])
                 elif kind == "dl_done":
                     self._download_done(ev[1], ev[2])
+                elif kind.startswith("upd_"):
+                    self._update_event(ev)
                 elif kind == "error":
                     self._status_text(t("gui_error", msg=ev[1]))
                     self.errored = True
@@ -898,6 +1028,7 @@ class App:
 
     def run(self):
         self.root.after(POLL_MS, self.poll)
+        self.root.after(UPDATE_CHECK_DELAY_MS, self._auto_update_check)  # #698: after the window is up
         try:
             self.root.mainloop()
         except KeyboardInterrupt:

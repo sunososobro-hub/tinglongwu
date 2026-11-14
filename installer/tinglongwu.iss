@@ -36,6 +36,7 @@ WizardStyle=modern
 [Tasks]
 Name: "desktopicon"; Description: "Desktop shortcuts / 桌面捷徑"
 Name: "cpu"; Description: "Force the CPU path (no NVIDIA GPU use) / 強制 CPU 路線"; Flags: unchecked
+Name: "autoupdate"; Description: "Update automatically (checks GitHub once a day) / 自動更新（每天檢查一次 GitHub）"
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -218,9 +219,37 @@ begin
       ExpandConstant('{app}\tinglongwu.ico'), 0, SW_SHOWNORMAL);
 end;
 
+{ #698: set KEY=VALUE in the user config (%APPDATA%\tinglongwu\config, read by tinglongwu.userdirs), keeping other keys }
+procedure SetConfigValue(const Key, Value: String);
+var
+  CfgPath, Buf: String;
+  Lines: TArrayOfString;
+  I: Integer;
+  Found: Boolean;
+begin
+  CfgPath := ExpandConstant('{userappdata}\tinglongwu\config');
+  ForceDirectories(ExtractFileDir(CfgPath));
+  Buf := '';
+  Found := False;
+  if LoadStringsFromFile(CfgPath, Lines) then
+    for I := 0 to GetArrayLength(Lines) - 1 do begin
+      if Pos(Key + '=', Trim(Lines[I])) = 1 then begin
+        Lines[I] := Key + '=' + Value;
+        Found := True;
+      end;
+      if Trim(Lines[I]) <> '' then Buf := Buf + Lines[I] + #13#10;
+    end;
+  if not Found then Buf := Buf + Key + '=' + Value + #13#10;
+  SaveStringToFile(CfgPath, Buf, False);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
+    { #698: the wizard is where the user chooses; a silent self-update keeps the existing choice }
+    if not WizardSilent then
+      if WizardIsTaskSelected('autoupdate') then SetConfigValue('auto_update', '1')
+      else SetConfigValue('auto_update', '0');
     RunInstall;
     MakeTalkShortcuts;
   end;
