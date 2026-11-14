@@ -85,7 +85,15 @@ const
   CORE_MODELS_GPU_MB = 3000;   { Whisper large-v3-turbo + Hy-MT2 + Kokoro }
   PY_PACKAGES_MB = 3000;
 
+const
+  { #755: the page refreshes every REFRESH_TICKS * POLL_MS = 5 s; STALL_TICKS * POLL_MS = 120 s without log growth -> "still working" }
+  POLL_MS = 500;
+  REFRESH_TICKS = 10;
+  STALL_TICKS = 240;
+
 var
+  LastLine: String;     { #755: last non-empty install.log line, shown on the page }
+  LogLineCount: Integer;
   Steps: Integer;
   ProgressPage: TOutputProgressWizardPage;
   InstallRC: Integer;
@@ -208,6 +216,9 @@ var
 begin
   Result := 0;   { the caller keeps the highest value seen: the log can be briefly locked by the writer }
   if not LoadStringsFromFile(LogFile, Lines) then exit;
+  LogLineCount := GetArrayLength(Lines);
+  for I := LogLineCount - 1 downto 0 do
+    if Trim(Lines[I]) <> '' then begin LastLine := Trim(Lines[I]); break; end;
   for I := 0 to GetArrayLength(Lines) - 1 do
     if Pos('[', Lines[I]) = 1 then begin
       Slash := Pos('/', Lines[I]);
@@ -218,16 +229,36 @@ begin
         if (N > 0) and (Total >= N) then begin
           Steps := Total;
           if N > Result then Result := N;
-          ProgressPage.SetText(Lines[I], LogFile);
         end;
       end;
     end;
 end;
 
+{ #755: "NN%" at the end of a download line (tlwu-setup / pip print it); -1 when the line has none }
+function LinePercent(const Line: String): Integer;
+var
+  P, S: Integer;
+begin
+  Result := -1;
+  P := Pos('%', Line);
+  if P < 2 then exit;
+  S := P - 1;
+  while (S > 0) and (Line[S] >= '0') and (Line[S] <= '9') and (P - S <= 3) do S := S - 1;
+  if S < P - 1 then Result := StrToIntDef(Copy(Line, S + 1, P - S - 1), -1);
+  if Result > 100 then Result := -1;
+end;
+
+function Pad2(N: Integer): String;
+begin
+  Result := IntToStr(N);
+  if N < 10 then Result := '0' + Result;
+end;
+
 procedure RunInstall;
 var
   Params, LogFile, DoneFile, Size: String;
-  RC, Waited, Seen: Integer;
+  RC, Waited, Seen, Sub, Pct, SecInStep, Elapsed, QuietTicks, LastCount: Integer;
+  Msg: String;
   Gpu: Boolean;
   Done: AnsiString;
 begin
@@ -242,7 +273,7 @@ begin
   ProgressPage.Description := 'This can take 10-40 minutes and downloads ' + Size + ' (models, language packs and Python packages). 需要 10-40 分鐘，約下載 ' + Size + '，請保持網路連線。';
   ProgressPage.SetText('Starting install.ps1 ...', LogFile);
   Steps := 8;   { replaced by N from the first "[n/N]" log line }
-  ProgressPage.SetProgress(0, Steps);
+  ProgressPage.SetProgress(0, Steps * 100);
   ProgressPage.Show;
   try
     if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, ExpandConstant('{app}'),
@@ -252,11 +283,33 @@ begin
     end;
     Waited := 0;
     Seen := 0;
+    SecInStep := 0;
+    QuietTicks := 0;
+    LastCount := -1;
+    LastLine := '';
+    LogLineCount := 0;
     while (not FileExists(DoneFile)) and (Waited < 6 * 3600 * 2) do begin   { 6 h cap, 500 ms per tick }
       RC := LastStep(LogFile);
-      if RC > Seen then Seen := RC;
-      ProgressPage.SetProgress(Seen, Steps);
-      Sleep(500);
+      if RC > Seen then begin Seen := RC; SecInStep := 0; end;
+      if LogLineCount <> LastCount then begin LastCount := LogLineCount; QuietTicks := 0; end
+      else QuietTicks := QuietTicks + 1;
+      if Waited mod REFRESH_TICKS = 0 then begin
+        Elapsed := Waited * POLL_MS div 1000;
+        SecInStep := SecInStep + REFRESH_TICKS * POLL_MS div 1000;
+        { sub-progress inside the current step: the download percent when the last line has one, else a slow creep
+          that stops at 90 so the bar always moves but never claims the step is done }
+        Pct := LinePercent(LastLine);
+        if Pct >= 0 then Sub := Pct
+        else begin Sub := SecInStep div 2 + 2; if Sub > 90 then Sub := 90; end;
+        if Sub > 99 then Sub := 99;
+        if Seen > 0 then Msg := '[' + IntToStr(Seen) + '/' + IntToStr(Steps) + ']' else Msg := 'Starting install.ps1 ...';
+        Msg := Msg + '   elapsed / 已用時間 ' + IntToStr(Elapsed div 60) + ':' + Pad2(Elapsed mod 60);
+        if QuietTicks >= STALL_TICKS then Msg := Msg + '   still working, slow network? / 仍在進行，網路是否太慢？';
+        ProgressPage.SetText(Msg, LastLine);
+        if Seen > 0 then ProgressPage.SetProgress((Seen - 1) * 100 + Sub, Steps * 100)
+        else ProgressPage.SetProgress(Sub div 4, Steps * 100);
+      end;
+      Sleep(POLL_MS);
       Waited := Waited + 1;
     end;
     if LoadStringFromFile(DoneFile, Done) then InstallRC := StrToIntDef(Trim(String(Done)), 1);
