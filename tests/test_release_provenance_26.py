@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -30,27 +33,55 @@ def _step(job, prefix):
     return next(s for s in job["steps"] if str(s.get("name", "")).startswith(prefix))
 
 
-def test_attest_action_is_pinned_to_a_commit_sha():
+def test_attest_action_is_github_owned_and_never_blocks_a_publish():
     steps = [s for j in _wf()["jobs"].values() for s in _attest_steps(j)]
     assert len(steps) == 2
     for s in steps:
-        assert re.fullmatch(re.escape(ATTEST) + r"[0-9a-f]{40}", s["uses"]), s["uses"]
+        # a 40-hex SHA or a major tag of the GitHub-owned action (an unverified SHA would fail "Set up job")
+        assert re.fullmatch(re.escape(ATTEST) + r"([0-9a-f]{40}|v\d+)", s["uses"]), s["uses"]
         assert s.get("continue-on-error") is True   # provenance never blocks a publish
 
 
-def test_every_uploaded_release_file_is_attested():
+def _listed(job, tmp_path, files):
+    """Run the release job's attest-list step in a fake workspace holding `files`; return the listed paths."""
+    step = next(s for s in job["steps"] if s.get("id") == "attest-list")
+    for f in files:
+        (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / f).write_bytes(b"x")
+    out = tmp_path / "gh_output"
+    out.write_text("")
+    subprocess.run(["bash", "-c", step["run"]], cwd=tmp_path, check=True,
+                   env={**os.environ, "GITHUB_OUTPUT": str(out)})
+    text = out.read_text()
+    m = re.fullmatch(r"paths<<(\w+)\n(.*?)\1\n", text, re.S)
+    assert m, text
+    return m.group(2).split()
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_every_uploaded_release_file_is_attested(tmp_path):
     job = _wf()["jobs"]["release"]
     (step,) = _attest_steps(job)
-    subjects = _subjects(step)
+    assert step["with"]["subject-path"] == "${{ steps.attest-list.outputs.paths }}"
     create = _step(job, "Create the draft GitHub Release")
     files = re.search(r"files=\((.*?)\)", create["run"], re.S).group(1).split()
     uploaded = [f for f in files if f.startswith("dist/") and not f.endswith("SHA256SUMS.txt")]
     assert len(uploaded) >= 6, files
-    for f in uploaded:
-        assert any(fnmatch.fnmatch(f, pat) for pat in subjects), f"{f} not attested"
-    # the optional Vulkan pack (added through the vulkan array, not the literal list) is attested when built
-    assert any(fnmatch.fnmatch("dist/tlwu-vulkan-pack-0.3.6.zip", pat) for pat in subjects)
-    assert job["steps"].index(step) < job["steps"].index(create)   # attested before the draft goes up
+    listed = _listed(job, tmp_path, uploaded + ["dist/tlwu-vulkan-pack-0.3.6.zip", "dist/other.txt"])
+    assert listed == uploaded + ["dist/tlwu-vulkan-pack-0.3.6.zip"]  # the optional Vulkan pack when built
+    steps = job["steps"]
+    lst = next(s for s in steps if s.get("id") == "attest-list")
+    assert steps.index(lst) < steps.index(step) < steps.index(create)   # attested before the draft goes up
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_no_vulkan_pack_still_attests_the_other_assets(tmp_path):
+    job = _wf()["jobs"]["release"]
+    core = ["dist/tinglongwu-win64.zip", "dist/tinglongwu-gpu-pack.zip", "dist/tinglongwu-gpu-pack.zip.manifest.json",
+            "dist/install.sh", "dist/mac_install.sh", "dist/install.ps1"]
+    listed = _listed(job, tmp_path, core)
+    assert listed == core   # no unmatched glob left in the list (it would fail the attest step for every file)
+    assert not any("*" in p for p in listed)
 
 
 def test_wizard_and_final_checksums_are_attested_on_publish_only_before_upload():

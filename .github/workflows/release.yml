@@ -412,18 +412,27 @@ jobs:
             [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS.txt || echo "::warning::no Vulkan pack in this release"
           done
           sha256sum -c SHA256SUMS.txt
+      - name: List the release assets to attest (#26; the Vulkan pack only when it was built)
+        id: attest-list
+        shell: bash
+        run: |
+          set -euo pipefail
+          # an unmatched glob would fail the attest step and drop provenance for every asset, so list existing files only
+          {
+            echo "paths<<TLWU_ATTEST_EOF"
+            for f in dist/tinglongwu-win64.zip dist/tinglongwu-gpu-pack.zip dist/tinglongwu-gpu-pack.zip.manifest.json \
+                     dist/install.sh dist/mac_install.sh dist/install.ps1 dist/tlwu-vulkan-pack-*.zip; do
+              if [ -f "$f" ]; then echo "$f"; fi
+            done
+            echo "TLWU_ATTEST_EOF"
+          } >> "$GITHUB_OUTPUT"
       - name: Build provenance for the release assets (#26; verify with `gh attestation verify <file> -R <repo>`)
         continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        # GitHub-owned action on its major tag: an unresolvable `uses:` fails the whole job at "Set up job", where
+        # continue-on-error does not apply, and the commit SHA of v2 could not be verified from this repo (#26 review)
+        uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            dist/tinglongwu-win64.zip
-            dist/tinglongwu-gpu-pack.zip
-            dist/tinglongwu-gpu-pack.zip.manifest.json
-            dist/install.sh
-            dist/mac_install.sh
-            dist/install.ps1
-            dist/tlwu-vulkan-pack-*.zip
+          subject-path: ${{ steps.attest-list.outputs.paths }}
       - name: Tag the released commit (an existing tag must already point at it)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -532,7 +541,7 @@ jobs:
       - name: Build provenance for the setup wizard and the final SHA256SUMS.txt (#26; tinglongwu-setup.exe = same bytes)
         if: needs.plan.outputs.publish == 'true'
         continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        uses: actions/attest-build-provenance@v2   # see the release job: major tag, resolves for sure
         with:
           subject-path: |
             dist/installer/tinglongwu-setup-*.exe
