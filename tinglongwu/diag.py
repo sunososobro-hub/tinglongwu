@@ -12,21 +12,26 @@ _lock = threading.Lock()
 _ready = False
 
 
+class _QuietHandler(logging.handlers.RotatingFileHandler):
+    def handleError(self, record: logging.LogRecord) -> None:  # expected: a failing diagnostic log stays silent
+        pass
+
+
 def _setup() -> logging.Logger:
     global _ready
     lg = logging.getLogger("tinglongwu")
     with _lock:
         if _ready:
             return lg
-        _ready = True
         try:
             d = userdirs.log_dir()
             d.mkdir(parents=True, exist_ok=True)
-            h = logging.handlers.RotatingFileHandler(d / LOG_NAME, maxBytes=512_000, backupCount=2, encoding="utf-8")
+            h = _QuietHandler(d / LOG_NAME, maxBytes=512_000, backupCount=2, encoding="utf-8")
             h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
             lg.addHandler(h)
             lg.setLevel(logging.DEBUG)
             lg.propagate = False
+            _ready = True
         except OSError:
             pass  # expected: unwritable log dir must never break the app
     return lg
