@@ -676,8 +676,23 @@ class App:
         self.upd_msg = None
         self.upd_frame.pack_forget()
 
+    def _apply_pending_update(self) -> bool:
+        """#779: a verified installer downloaded in the background last time is applied before the user starts
+        working: one short status line, no question. True when the apply helper was started."""
+        if not autoupdate.is_wizard_install() or autoupdate.offline():
+            return False
+        path = autoupdate.pending_to_apply(userdirs.read_config(), __version__)
+        if not path:
+            return False
+        self.upd_exe = path
+        autoupdate.clear_pending()  # a failed apply must not loop on every launch
+        self._apply_update()
+        return True
+
     def _auto_update_check(self):
         if not autoupdate.is_wizard_install():
+            return
+        if self._apply_pending_update():
             return
         if autoupdate.should_auto_check(userdirs.read_config()):
             autoupdate.mark_checked()
@@ -731,6 +746,11 @@ class App:
                 self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=ev[1])
         elif kind == "upd_ready":
             self.upd_busy = False
+            if not self.upd_apply_when_ready and self.upd_ver:  # #779: quiet download -> install at next launch
+                autoupdate.set_pending(self.upd_ver, ev[1])
+                if autoupdate.claim_prompt(userdirs.read_config()):  # at most one line per day
+                    self._upd_show("gui_upd_staged", ver=self.upd_ver)
+                return True
             self.upd_exe = ev[1]
             if self.upd_apply_when_ready:
                 self._apply_update()
