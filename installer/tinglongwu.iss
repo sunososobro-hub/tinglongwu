@@ -343,6 +343,7 @@ begin
       Sleep(POLL_MS);
       Waited := Waited + 1;
     end;
+    LastStep(LogFile);   { #705: the polling may be up to 5 s behind: read the final lines (they say why a step stopped) }
     if LoadStringFromFile(DoneFile, Done) then InstallRC := StrToIntDef(Trim(String(Done)), 1);
   finally
     ProgressPage.Hide;
@@ -411,12 +412,16 @@ begin
       ExpandConstant('{app}\install.log') + ', check the internet connection and start {#AppTitle}: it retries the download on first start.' +
       #13#10 + #13#10 + '預設模型沒有下載完成，請看 install.log，確認網路後啟動程式，會再試一次下載。';
 #else
-  if (CurPageID = wpFinished) and (InstallRC <> 0) then
+  if (CurPageID = wpFinished) and (InstallRC <> 0) then begin
     WizardForm.FinishedLabel.Caption :=
       'install.ps1 did not finish cleanly (exit code ' + IntToStr(InstallRC) + '). See ' +
       ExpandConstant('{app}\install.log') + ', fix the cause (usually the internet connection) and run "' +
       '{#AppTitle} - repair install" from the Start menu.' + #13#10 + #13#10 +
       '安裝沒有完成，請看 install.log，確認網路後從開始選單執行「重新安裝」。';
+    { #705: the last install.log line names the cause (e.g. the missing Microsoft Visual C++ runtime) }
+    if LastLine <> '' then
+      WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10 + #13#10 + LastLine;
+  end;
 #endif
 end;
 

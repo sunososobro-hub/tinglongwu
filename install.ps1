@@ -143,6 +143,14 @@ Ok "Packages installed / 套件完成"
 # ---------------------------------------------------------------- 4. GPU libs + llama-cpp
 Step 4 'GPU 函式庫與 Hy-MT2 翻譯引擎' 'GPU libraries and Hy-MT2 translation engine'
 $Engine = 'hymt'
+# #705: a fresh Windows 11 may have no Microsoft Visual C++ 2015-2022 runtime, and llama.dll cannot load without it
+$VcMissing = @(Get-TlwuMissingVcDlls)
+if ($VcMissing.Count -gt 0) {
+    Info "Microsoft Visual C++ runtime is missing ($($VcMissing -join ', ')); the translation engine needs it. Installing it now: Windows asks for permission once, please answer Yes. 缺少 Microsoft Visual C++ 執行階段（翻譯引擎需要它），現在安裝；Windows 會詢問一次權限，請按「是」。"
+    if ($DryRun) { Write-Host "  [dry-run] download $TlwuVcRedistUrl, require a valid Microsoft Corporation signature, run it /install /quiet /norestart" -ForegroundColor DarkGray }
+    elseif (Install-TlwuVcRuntime) { Ok "Microsoft Visual C++ runtime installed / 已安裝"; [void]$Installed.Add('Microsoft Visual C++ 2015-2022 runtime') }
+    else { Warn "Could not install the Microsoft Visual C++ runtime ($TlwuVcRedistUrl). 無法安裝 Microsoft Visual C++ 執行階段。" }
+}
 if ($Gpu) {
     if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
     else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
@@ -199,6 +207,12 @@ if ($HyCpu) {   # #126/#301: CPU build of llama-cpp-python for Hy-MT2 (no GPU, s
         }
         if ($DryRun) { $Engine = 'hymt2 (if the wheel installs)' }
     }
+}
+
+# #705: without the VC++ runtime the engine cannot load; stop here instead of downloading 2 GB of models for a tlwu
+# that cannot translate. The last log lines are what the setup wizard shows on its finish page.
+if ($VcMissing.Count -gt 0 -and -not $DryRun -and $Engine -ne 'hymt2') {
+    Die "缺少 Microsoft Visual C++ 執行階段，翻譯引擎無法載入，安裝已停止（尚未下載模型）。請先安裝 $TlwuVcRedistUrl ，再從開始選單執行「重新安裝」。" "The Microsoft Visual C++ 2015-2022 runtime is missing and could not be installed, so the translation engine cannot load. Stopped before the model download. Install it from $TlwuVcRedistUrl, then run the repair install."
 }
 
 # ---------------------------------------------------------------- 5. models

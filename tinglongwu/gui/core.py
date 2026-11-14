@@ -67,9 +67,11 @@ QUICK_MODES = ("listen", "speak")  # #294 first-screen buttons: "Listen to other
 
 def quick_settings(s: dict, mode: str) -> dict:
     """#294 easy start: session settings for a first-screen button; `s` (the saved settings) is not changed.
-    The user only picks their own language (`target`, remembered). listen = PC sound (loopback) -> my language,
-    source language as set (auto by default). speak = microphone in my language -> the other language
-    (English for a Chinese speaker, Traditional Chinese for an English speaker). Engine/model stay on `quality`."""
+    My language = `target` (remembered, under Advanced). #737: the first screen's one picker is the OTHER side's
+    language = `lang` (auto by default). listen = PC sound (loopback) in the other language -> my language.
+    speak = microphone in my language -> the other language; when the other side is auto (or my own language), the
+    #294 fallback: English for a Chinese speaker, Traditional Chinese for an English speaker. Engine/model stay on
+    `quality`."""
     if mode not in QUICK_MODES:
         raise ValueError(f"unknown quick mode: {mode!r}")
     out = dict(s)
@@ -77,8 +79,13 @@ def quick_settings(s: dict, mode: str) -> dict:
     if mode == "listen":
         out.update(source="system", target=mine)
     else:
-        zh = mine.startswith("zh")
-        out.update(source="mic", lang="zh" if zh else "en", target="en" if zh else "zh-tw")
+        mine_lang = "zh" if mine.startswith("zh") else "en"
+        other = s.get("lang")
+        if other in SOURCE_LANGS and other not in ("auto", mine_lang):
+            target = "zh-tw" if other == "zh" else other
+        else:
+            target = "en" if mine_lang == "zh" else "zh-tw"
+        out.update(source="mic", lang=mine_lang, target=target)
     return out
 
 
@@ -494,6 +501,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
     outputs: the current voice_outputs() (#448): a saved voice_device that is no longer listed is left out (default
     output) and notice(str) gets one line; None or [] (list unknown / no audio stack) passes the saved name on."""
     to, variant = {"zh-tw": ("zh", "tw"), "zh-cn": ("zh", "cn"), "en": ("en", "tw")}.get(s.get("target"), ("zh", "tw"))
+    if s.get("target") in SOURCE_LANGS and s.get("target") not in ("auto", "zh"):  # #737: speak -> the other side (ja, ru, ...)
+        to = s["target"]
     argv = ["--lang", s.get("lang") or "auto", "--to", to, "--zh-variant", variant,
             "--preset", s.get("preset") if s.get("preset") in PRESETS else "meeting"]
     quality = s.get("quality") if s.get("quality") in QUALITIES else DEFAULTS["quality"]
