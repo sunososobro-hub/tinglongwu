@@ -119,3 +119,28 @@ def test_failed_download_shows_one_error_line_and_does_not_start(gui, monkeypatc
     assert _pump(a, lambda: a.downloading is None and a.start_dl is None)
     assert runs == [] and "failed" in a.v_status.get() and "\n" not in a.v_status.get()
     assert not a.dl_bar.winfo_ismapped()
+
+
+def test_missing_pack_download_shows_progress_bar_too(gui, monkeypatch):
+    a, app, mdir, runs = gui
+    (mdir / "whisper-medium").mkdir()  # the model is there; only the language pack is missing
+    seen = []
+    state = {"missing": True}
+
+    def fake_pack(pack, put, *args, **kw):
+        for pct in (20, 100):
+            put(("pack_line", f"pack {pct}%"))
+        state["missing"] = False
+        put(("pack_done", pack, 0))
+        return 0
+
+    monkeypatch.setattr(app.pack_on_demand, "first_missing", lambda *a, **k: ("ja", 1100) if state["missing"] else None)
+    monkeypatch.setattr(app.messagebox, "askyesno", lambda *a, **k: True)
+    monkeypatch.setattr(app, "run_pack_download", fake_pack)
+    orig = a._dl_event
+    a._dl_event = lambda ev: (orig(ev), seen.append(a.v_dl_pct.get()))
+    a.poll()
+    a.toggle()
+    assert a.downloading == "ja"
+    assert _pump(a, lambda: bool(runs)), "the session did not start after the pack download"
+    assert max(seen) == 100 and not a.dl_bar.winfo_ismapped()

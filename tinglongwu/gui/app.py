@@ -1001,6 +1001,9 @@ class App:
             return True
         self.downloading = pack
         self.pack_retry = mode
+        self.start_dl = StartDownload(pack)  # #739: packs show the same progress bar as models
+        self.v_dl_pct.set(0)
+        self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model=pack))
         self.panel.deiconify()  # the status line lives in the Adjust panel: show it so progress is visible
@@ -1054,6 +1057,9 @@ class App:
         messagebox.showwarning(vbcable.title_text(lang), vbcable.fail_text(lang), parent=self.root)
 
     def _pack_done(self, pack: str, rc: int):
+        self._dl_event(("pack_done", pack, rc))
+        self.start_dl = None
+        self.dl_bar.pack_forget()
         self.downloading = None
         self.btn.configure(state="normal")
         self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))
@@ -1222,6 +1228,7 @@ class App:
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
                         self._show_panel()
                 elif kind == "pack_line":
+                    self._dl_event(ev)
                     self._status_text(ev[1])
                 elif kind == "cable_done":
                     self._cable_done(ev[1])
