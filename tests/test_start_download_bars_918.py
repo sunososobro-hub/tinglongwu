@@ -40,3 +40,27 @@ def test_issue_acceptance_sequence():
     assert sd.percent == 60
     sd.feed(("dl_done", "small", 0))
     assert sd.percent == 100
+
+
+class FakeProc:
+    def __init__(self, lines):
+        self.stdout, self._rc = [x.encode() for x in lines], 0
+
+    def wait(self):
+        return self._rc
+
+
+def test_long_bar_from_the_child_keeps_the_model_total():
+    """Producer -> StartDownload: an 80-char bar field must not cut the size off before the 90-char limit."""
+    bar = "#" * 8 + " " * 72
+    lines = ["config.json: 100%|##########| 2.0k/2.0k [00:00<00:00]\n",
+             f"model.bin:  10%|{bar}| 48.4M/484M [00:01<00:09, 48.0MB/s]\n"]
+    events = []
+    core.run_download("small", events.append, popen=lambda *a, **k: FakeProc(lines))
+    sd = core.StartDownload("small")
+    for ev in events[:-1]:
+        sd.feed(ev)
+        assert len(ev[1]) <= 90
+    assert sd.percent == 10
+    sd.feed(events[-1])
+    assert sd.percent == 100 and sd.ok

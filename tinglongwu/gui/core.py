@@ -469,6 +469,14 @@ def download_env(env=None) -> dict:
     return out
 
 
+def short_line(line: str, limit: int = 90) -> str:
+    """#918: one child output line cut to `limit` chars for the status text. A tqdm bar field ("|####      |") is
+    dropped first, so a long bar or file name cannot cut off the "48M/484M" total that StartDownload needs."""
+    import re
+
+    return re.sub(r"\|[^|]*\|", "|", line)[:limit]
+
+
 def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
     """Run the download child (worker thread); `put` gets ("dl_line", text) per output line and
     ("dl_done", model, returncode). Returns the return code (-1 if it could not start)."""
@@ -482,7 +490,7 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
             if parts:
-                put(("dl_line", parts[-1][:90]))
+                put(("dl_line", short_line(parts[-1])))
         rc = p.wait()
     except Exception as e:  # noqa: BLE001
         put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
@@ -569,7 +577,7 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
             if parts:
-                put(("pack_line", parts[-1][:90]))
+                put(("pack_line", short_line(parts[-1])))
         rc = p.wait()
     except Exception as e:  # noqa: BLE001
         put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
