@@ -105,6 +105,7 @@ Owner: "聽 說 雙向是一個維度，平台是一個維度，語言是一個"
 
 ## 14. Auto-release safety (owner 2026-11-13, #588)
 Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main release PR, release with no human click. That turns every merged dev change into a user-facing release, so these rules are hard stops for every merger (R-merge, S-merge, R-hard) and win over section 3 where they are stricter. The owner never merges PRs, including the release PR.
+- Start: the release-PR rule in "Base", "Release freeze" and "Kill switch" take effect only once `.github/workflows/auto-release.yml` exists on `dev` (#589). Until then nothing can merge the release PR, so the freeze does not apply and mergers keep merging ready PRs into `dev`; every other rule in this section applies now.
 
 ### Definitions
 - Allowed review authors: `sunososobro-hub` (the owner account the cloud and home-PC routines post as). Only this list counts; changing it is a change to this file (a protected path).
