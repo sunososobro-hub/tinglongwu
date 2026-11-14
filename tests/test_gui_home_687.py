@@ -27,6 +27,8 @@ def home_app(tmp_path, monkeypatch):
         self.q.put(("stopped",))
 
     monkeypatch.setattr(app.App, "_work", fake_work)
+    # every language pack counts as installed: a missing pack would open the real "Download speech model" askyesno
+    monkeypatch.setattr(app.pack_on_demand, "first_missing", lambda *a, **k: None)
     (tmp_path / "tinglongwu").mkdir()
     (tmp_path / "tinglongwu" / "gui.json").write_text('{"tour_seen": true}', "utf-8")
     made = []
