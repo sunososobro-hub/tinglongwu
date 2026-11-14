@@ -29,7 +29,8 @@ def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, 
     response: `.status`, `.read(n)`, context manager."""
     part = dest.with_name(dest.name + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    for attempt in (1, 2):
+    bad = 0  # checksum failures (one retry allowed); a 416 restart does not count against it
+    for _ in range(4):
         if part.exists() and _sha(part) == sha256:  # finished earlier, stopped before the rename
             part.replace(dest)
             return dest
@@ -64,4 +65,7 @@ def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, 
             part.replace(dest)
             return dest
         part.unlink()  # corrupt: delete and retry once
+        bad += 1
+        if bad == 2:
+            break
     raise ValueError(f"SHA256 mismatch for {dest.name} after a retry")

@@ -235,3 +235,19 @@ def test_http_416_restarts_from_zero(tmp_path):
 
     resume.fetch("u", tmp_path / "p.bin", SHA, opener=opener)
     assert (tmp_path / "p.bin").read_bytes() == DATA
+
+
+def test_416_restart_does_not_use_up_the_checksum_retry(tmp_path):
+    import urllib.error
+
+    (tmp_path / "p.bin.part").write_bytes(DATA + b"junk")
+    served = []
+
+    def opener(url, start):
+        if start:
+            raise urllib.error.HTTPError(url, 416, "range", {}, None)
+        served.append(1)
+        return FakeNet(DATA if len(served) > 1 else DATA[:-1] + b"\x00")(url, start)
+
+    resume.fetch("u", tmp_path / "p.bin", SHA, opener=opener)
+    assert (tmp_path / "p.bin").read_bytes() == DATA and len(served) == 2
