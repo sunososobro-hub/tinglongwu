@@ -8,6 +8,8 @@ Nothing is ever sent automatically: the user submits the issue on GitHub themsel
 """
 from __future__ import annotations
 
+from . import diag as _diag
+
 import json
 import sys
 from collections import OrderedDict
@@ -116,6 +118,7 @@ def main(argv=None) -> int:
         try:
             sys.stdout.reconfigure(encoding="utf-8")
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     ents = unreported()
     if cmd == "status":

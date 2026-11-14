@@ -6,6 +6,8 @@ import time
 
 import numpy as np
 
+from .. import diag as _diag
+
 
 def _file_items(wavs, sf, asr):
     """(n, label, zh) for each wav file with recognised speech."""
@@ -80,6 +82,7 @@ def warm_tts(tts, lang: str) -> None:
         for _ in tts.speak(WARM_TEXT.get(lang, WARM_EN)):
             pass
     except Exception:  # noqa: BLE001
+        _diag.swallowed(__name__)
         pass
 
 
@@ -158,6 +161,7 @@ class FollowTTS:
             try:
                 c.proc.kill()
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
 
     def close(self) -> None:
