@@ -12,6 +12,10 @@ Thanks for stopping by. You do not need to be an expert to help, and we would ra
 - **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](docs/details.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
 - AI-assisted PRs are fine. You are the author: run the code and the tests yourself before opening the PR.
 
+## Questions and ideas
+
+Not sure it is a bug, or just want to ask how something works or show how you use tlwu? Use [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions) (Q&A, Show and tell, Ideas). No GitHub skills needed.
+
 ## Before you start
 
 - **Small fix** (typo, docs, a few lines): go straight to a PR.
