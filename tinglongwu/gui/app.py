@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -419,6 +419,7 @@ class App:
             self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         self._adv_toggled()
+        self._send_mode_changed()  # #834: the notice follows the UI language
         if self.status_key:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
@@ -430,6 +431,26 @@ class App:
         self.render_log()
         if self.overlay.visible:
             self.overlay.render(self.state)
+
+    def _build_send_mode(self, f):
+        """#834: speak send mode (default confirm); countdown / auto show the quality notice."""
+        box = ttk.Frame(f)
+        box.grid(row=3, column=0, columnspan=3, sticky="we")
+        self._tx(ttk.Label(box), "gui_send_mode").grid(row=0, column=0, sticky="w", pady=2)
+        self.v_send_mode = tk.StringVar(value=self.settings["send_mode"])
+        ttk.Combobox(box, textvariable=self.v_send_mode, values=list(SEND_MODES), state="readonly",
+                     width=18).grid(row=0, column=1, sticky="we", pady=2, padx=(6, 0))
+        self.lbl_send_notice = ttk.Label(box, wraplength=300, justify="left")
+        self.lbl_send_notice.grid(row=1, column=0, columnspan=2, sticky="w")
+        self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
+        self._send_mode_changed()
+
+    def _send_mode_changed(self):
+        mode = self.v_send_mode.get()
+        if mode in SEND_MODES:
+            self.settings["send_mode"] = mode
+        key = send_mode_notice_key(mode)
+        self.lbl_send_notice.configure(text=t(key) if key else "")
 
     def _combo(self, row, label, key, values):
         self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
@@ -557,6 +578,7 @@ class App:
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
         self.v_source = self._combo(5, "gui_source", "source", SOURCES)
+        self._build_send_mode(f)
         self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS)
         self._tx(ttk.Label(f), "gui_glossary").grid(row=6, column=0, sticky="w", pady=2)
         self.v_gloss = tk.StringVar(value=s["glossary"])
@@ -968,7 +990,7 @@ class App:
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
-                 voice=self.v_voice.get(),
+                 voice=self.v_voice.get(), send_mode=self.v_send_mode.get(),
                  voice_device="" if self.v_voice_dev.get() == self.voice_default else self.v_voice_dev.get())
         save_settings(s)
 

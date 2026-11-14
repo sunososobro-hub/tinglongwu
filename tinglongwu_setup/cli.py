@@ -117,6 +117,8 @@ def main(argv=None) -> int:
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
     p.add_argument("--selftest", action="store_true",
                    help="run `tlwu --selftest` (no network); --model/--engine/--device are forwarded")
+    p.add_argument("--default-listen", action="store_true",
+                   help="install only the default listen path (en -> zh-TW models), no pip, nothing else (#766)")
     p.add_argument("--talk", action="store_true", help="set up talk mode (Kokoro TTS venv, model, launcher)")
     p.add_argument("--talk-venv", default=str(talk.default_venv()))
     p.add_argument("--talk-launcher", default=str(ROOT / "tlwu-talk.ps1"))
@@ -168,6 +170,10 @@ def main(argv=None) -> int:
         return packs.export(a.export_pack[0], Path(a.export_pack[1]), mdir)
     if a.import_pack:
         return packs.import_pack(Path(a.import_pack), mdir)
+    if a.default_listen:
+        from . import defaults
+
+        return defaults.run(mdir)
     if a.deps:
         _pip("install", "-r", a.requirements)
     if a.gpu:
