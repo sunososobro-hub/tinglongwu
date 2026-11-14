@@ -41,8 +41,10 @@ def _llama(root: Path, mod, with_ggml=True, version="0.3.36"):
 def test_builds_zip_and_manifest_without_nuitka(tmp_path, monkeypatch):
     m = _mod()
     monkeypatch.setattr(m, "run_nuitka", lambda *a, **k: pytest.fail("nuitka must not run"))
-    sp, lib = _wheels(tmp_path / "sp", m), _llama(tmp_path, m)
-    man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=sp, llama_lib=lib, url="https://x/p.zip")
+    sp, lib = _licenses(_wheels(tmp_path / "sp", m), m), _llama(tmp_path, m)
+    (tmp_path / "LICENSE.md").write_text("MIT")
+    man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=sp, llama_lib=lib, url="https://x/p.zip",
+                                     llama_license=tmp_path / "LICENSE.md")
     zp = tmp_path / "out" / m.GPU_PACK_ASSET
     assert m.GPU_PACK_ASSET == "tinglongwu-gpu-pack.zip" and zp.is_file()
     with zipfile.ZipFile(zp) as z:
@@ -90,12 +92,56 @@ def test_old_manifest_without_wheels_key_still_loads_and_verifies(tmp_path):
     gpu_pack.verify(z, loaded)
 
 
+# ---- #764 Opus CHANGES A1 / A4
+
+def _licenses(sp: Path, mod):
+    for name in mod.NVIDIA_LICENSE_WHEELS:
+        d = sp / f"nvidia_{name}_cu12-12.9.0.dist-info" / "licenses"
+        d.mkdir(parents=True)
+        (d / "License.txt").write_text(f"{name} EULA")
+    return sp
+
+
+def test_gpu_pack_ships_nvidia_licenses_and_flat_dlls(tmp_path):
+    m = _mod()
+    sp = _licenses(_wheels(tmp_path / "sp", m), m)
+    llama_lic = tmp_path / "LICENSE.md"
+    llama_lic.write_text("MIT")
+    m.build_gpu_pack_only(tmp_path / "out", cuda_src=sp, llama_lib=_llama(tmp_path, m), llama_license=llama_lic)
+    with zipfile.ZipFile(tmp_path / "out" / m.GPU_PACK_ASSET) as z:
+        names = set(z.namelist())
+    for name in m.NVIDIA_LICENSE_WHEELS:
+        assert f"licenses/NVIDIA-{name}-License.txt" in names
+    assert "licenses/LICENSE-llama.cpp-LICENSE.md" in names
+    assert all("/" not in n for n in names if n.lower().endswith(".dll"))  # DLLs stay at the zip root
+
+
+def test_gpu_pack_without_nvidia_licenses_exits(tmp_path):
+    m = _mod()
+    with pytest.raises(SystemExit, match="NVIDIA license"):
+        m.build_gpu_pack_only(tmp_path / "out", cuda_src=_wheels(tmp_path / "sp", m), llama_lib=_llama(tmp_path, m))
+
+
+def test_release_yml_nvrtc_pin_matches_gpu_pack_nvrtc():
+    import re
+
+    text = (SRC.parent.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    pin = re.search(r"nvidia-cuda-nvrtc-cu12==(\d+)\.(\d+)\.", text)
+    assert pin, "release.yml no longer pins nvidia-cuda-nvrtc-cu12"
+    m = _mod()
+    builtins = f"nvrtc-builtins64_{pin.group(1)}{pin.group(2)}.dll"
+    assert builtins in m.GPU_PACK_NVRTC and builtins in m.CUDA_WHEELS["cuda_nvrtc"]
+
+
 def test_pack_carries_the_cuda_wheels_llama_version_and_selection_matches_it(tmp_path):  # #881
     from tinglongwu import device, llamacheck
 
     m = _mod()
-    man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=_wheels(tmp_path / "sp", m),
-                                     llama_lib=_llama(tmp_path, m, version=llamacheck.LLAMA_VERSION))
+    llama_lic = tmp_path / "LICENSE.md"
+    llama_lic.write_text("MIT")
+    man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=_licenses(_wheels(tmp_path / "sp", m), m),
+                                     llama_lib=_llama(tmp_path, m, version=llamacheck.LLAMA_VERSION),
+                                     llama_license=llama_lic)
     assert man_path.is_file()
     with zipfile.ZipFile(tmp_path / "out" / m.GPU_PACK_ASSET) as z:
         z.extractall(tmp_path / "pack")
