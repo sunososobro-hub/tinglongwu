@@ -56,9 +56,8 @@ Type: files; Name: "{autoprograms}\{#TalkTitle}.lnk"
 Type: files; Name: "{autodesktop}\{#TalkTitle}.lnk"
 
 [Code]
-const
-  Steps = 7;
 var
+  Steps: Integer;
   ProgressPage: TOutputProgressWizardPage;
   InstallRC: Integer;
   KeepModels: Boolean;
@@ -141,19 +140,27 @@ begin
   InstallRC := -1;
 end;
 
-{ highest "[n/7]" step that install.ps1 has printed so far }
+{ highest "[n/N]" step that install.ps1 has printed so far; N is read from the line itself (never hard-coded, #700) }
 function LastStep(const LogFile: String): Integer;
 var
   Lines: TArrayOfString;
-  I, N: Integer;
+  I, N, Total, Slash, Close: Integer;
 begin
   Result := 0;   { the caller keeps the highest value seen: the log can be briefly locked by the writer }
   if not LoadStringsFromFile(LogFile, Lines) then exit;
   for I := 0 to GetArrayLength(Lines) - 1 do
-    if (Pos('[', Lines[I]) = 1) and (Pos('/' + IntToStr(Steps) + ']', Lines[I]) = 3) then begin
-      N := StrToIntDef(Copy(Lines[I], 2, 1), 0);
-      if N > Result then Result := N;
-      ProgressPage.SetText(Lines[I], LogFile);
+    if Pos('[', Lines[I]) = 1 then begin
+      Slash := Pos('/', Lines[I]);
+      Close := Pos(']', Lines[I]);
+      if (Slash > 2) and (Close > Slash + 1) then begin
+        N := StrToIntDef(Copy(Lines[I], 2, Slash - 2), 0);
+        Total := StrToIntDef(Copy(Lines[I], Slash + 1, Close - Slash - 1), 0);
+        if (N > 0) and (Total >= N) then begin
+          Steps := Total;
+          if N > Result then Result := N;
+          ProgressPage.SetText(Lines[I], LogFile);
+        end;
+      end;
     end;
 end;
 
@@ -171,6 +178,7 @@ begin
   Params := Params + ' -Packs ' + SelectedPacks;
   ProgressPage.Description := 'This can take 10-40 minutes (about ' + IntToStr(PackSizeMB) + ' MB of language packs plus the core models and Python packages). 需要 10-40 分鐘，請保持網路連線。';
   ProgressPage.SetText('Starting install.ps1 ...', LogFile);
+  Steps := 8;   { replaced by N from the first "[n/N]" log line }
   ProgressPage.SetProgress(0, Steps);
   ProgressPage.Show;
   try
