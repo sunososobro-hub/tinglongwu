@@ -68,6 +68,12 @@ def parse_args(argv=None):
     p.add_argument("--vad-pad", type=float, default=0.1, metavar="SEC",
                    help="Silero speech-end padding in seconds (default 0.1; faster-whisper's own default 0.4 delays "
                         "every subtitle cut by ~0.3 s; larger = fewer mid-sentence splits)")
+    p.add_argument("--end-silence", type=float, default=None, metavar="SEC",
+                   help="VAD silence in seconds that ends a segment (default 0.6, env TLWU_END_SILENCE; lower = "
+                        "subtitles sooner, more mid-sentence cuts). For latency A/B runs (#21)")
+    p.add_argument("--pause-send", type=float, default=None, metavar="SEC",
+                   help="sentence merging: a pause of at least SEC after a segment sends an unfinished sentence at "
+                        "once (default 0.8, ja 0.5, env TLWU_PAUSE_SEND). For latency A/B runs (#21)")
     p.add_argument("--models-dir", help="models directory (env TLWU_MODELS)")
     p.add_argument("--transcript-only", action="store_true",
                    help="print only source-language text, one segment per line (no translation)")
@@ -187,6 +193,14 @@ def parse_args(argv=None):
     if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
         p.error("--voice-device / --voice-speaker need --voice")
     a.voice_speaker = 0 if a.voice_speaker is None else a.voice_speaker
+    for opt, env in (("end_silence", "TLWU_END_SILENCE"), ("pause_send", "TLWU_PAUSE_SEND")):  # #21
+        if getattr(a, opt) is None and os.environ.get(env, "").strip():
+            try:
+                setattr(a, opt, float(os.environ[env]))
+            except ValueError:
+                p.error(f"{env} must be a number of seconds, got {os.environ[env]!r}")
+        if getattr(a, opt) is not None and not 0 < getattr(a, opt) <= 5:
+            p.error(f"--{opt.replace('_', '-')} must be > 0 and <= 5 seconds")
     a.max_wait_default = a.preset is None and a.max_wait is None  # may be lowered on CPU (cpu_max_wait)
     a.max_wait_explicit = a.max_wait is not None
     a.preset = a.preset or "meeting"
@@ -393,6 +407,17 @@ def announce_ready(status=None, transcript_only=False, summary: str | None = Non
         print(READY_LINE, file=sys.stderr, flush=True)
 
 
+def listen_segmenter(a) -> Segmenter:
+    """Listen-mode VAD segmenter. --end-silence / TLWU_END_SILENCE (#21) sets the silence that ends a segment
+    (None = Segmenter default 0.6 s); the step never exceeds it, so a lower value is seen without extra delay."""
+    from .segment import Segmenter
+
+    sil = getattr(a, "end_silence", None)
+    extra = {} if sil is None else {"min_silence": sil}
+    return Segmenter(a.chunk, not a.no_vad, step=0.25 if sil is None else min(0.25, sil),
+                     vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)), **extra)
+
+
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
@@ -503,8 +528,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         print(f"tlwu: {_t('rec_consent', path=os.path.abspath(recorder.dir))}", file=sys.stderr, flush=True)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
     audio_clock = bool(a.file) and not paced
-    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(a.max_wait, min_words=getattr(a, "min_words", 0))
-    segmenter = Segmenter(a.chunk, not a.no_vad, step=0.25, vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)))
+    merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(
+        a.max_wait, min_words=getattr(a, "min_words", 0), pause_send=getattr(a, "pause_send", None))
+    segmenter = listen_segmenter(a)
     draft = None
     if draft_factory is not None:
         draft = draft_factory(asr, translator, segmenter, a.to)

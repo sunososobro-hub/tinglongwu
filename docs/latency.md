@@ -25,3 +25,7 @@ All rows: model large-v3-turbo, date 2026-11-12, hardware owner PC with RTX 3050
 Speak breakdown: VAD 0.97 s + STT 0.56 s + MT 0.33 s + first TTS audio 0.41 s. This does not yet meet the 2 s target.
 
 Measured with external scripts (lat_listen.py, lat_speak.py); native timing is tracked in #323.
+
+## Pause threshold A/B (#21)
+
+Listen mode has two pause knobs, both off their defaults only when set: `--end-silence SEC` (env `TLWU_END_SILENCE`, default 0.6 s: VAD silence that ends a segment) and `--pause-send SEC` (env `TLWU_PAUSE_SEND`, default 0.8 s, ja 0.5 s: a pause this long sends an unfinished sentence at once). To measure the proposed 0.5 s, run the same paced clip twice with `--latency-jsonl`, once with defaults and once with `--end-silence 0.5 --pause-send 0.5`, and compare the median `total` and the number of lines that end mid-sentence.
