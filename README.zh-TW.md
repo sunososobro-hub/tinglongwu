@@ -32,7 +32,7 @@ flowchart LR
 
 Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前如此）：Edge 會先說「不常下載」且沒有「保留」按鈕：滑到檔案上 → … → 保留 → 點「刪除」旁的 ▾ → 仍要保留；之後在 SmartScreen 畫面點「其他資訊 → 仍要執行」。想先檢查？到[發行頁](https://github.com/sunososobro-hub/tinglongwu/releases/latest)下載 `mac_install.sh` / `install.sh`，讀過並與該頁的 `SHA256SUMS.txt` 比對後再執行。
 
-安裝時會下載一次語音辨識和翻譯模型（需要網路），之後完全離線。
+安裝時會下載一次語音辨識和翻譯模型（需要網路），之後翻譯、音訊和字幕完全離線，從不連網。自動更新（預設開啟）每天檢查一次 GitHub，不傳送任何 ID；安裝時取消勾選或設定 `TLWU_OFFLINE=1` 即完全不連網。
 
 ## 語言與電腦需求
 
