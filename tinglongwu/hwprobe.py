@@ -158,3 +158,34 @@ def describe(hw: HwInfo, tier: Tier) -> str:
              f"({tier.reason})"]
     lines += [f"  not used: {m} - {why}" for m, why in tier.excluded.items()]
     return "\n".join(lines)
+
+
+# #780 / #745 part 1: CPU-mode auto settings. Pure function, no probing. Values are conservative defaults chosen from
+# the existing footprints (hwprobe: Hy-MT2 CPU ~1.9 GB + Whisper small + OS) and the #207 / #250 thread notes; the
+# measured latency/chrF/WER table is #781 (part 2) and may retune them.
+CPU_HEAVY_RAM_GB = 24  # below this `medium` and `large-v3` are marked "too heavy for this PC" in the picker
+HEAVY_MODELS = ("medium", "large-v3")
+
+
+@dataclass(frozen=True)
+class CpuMode:
+    size: str     # Whisper model size
+    beam: int     # beam size (1 = greedy, fastest)
+    threads: int  # ASR cpu_threads
+    merge: bool   # merge short fragments before translating (fewer, longer MT calls)
+
+
+def cpu_mode_settings(cores: int, ram_gb: float) -> CpuMode:
+    """Speed-first ASR settings for a PC with no CUDA device. Threads leave one core for the MT engine and the GUI."""
+    cores = max(1, int(cores))
+    threads = max(1, min(cores - 1, 8)) if cores > 1 else 1
+    if ram_gb < 8 or cores < 4:
+        return CpuMode("base", 1, threads, True)
+    if ram_gb < 16 or cores < 8:
+        return CpuMode("small", 1, threads, True)
+    return CpuMode("small", 2, threads, False)
+
+
+def too_heavy(model: str, ram_gb: float | None) -> bool:
+    """True when `model` is a heavy Whisper size and this PC has less than CPU_HEAVY_RAM_GB (unknown RAM: not marked)."""
+    return ram_gb is not None and model in HEAVY_MODELS and ram_gb < CPU_HEAVY_RAM_GB

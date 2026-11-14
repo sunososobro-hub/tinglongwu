@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -585,9 +585,9 @@ class App:
         self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
         self.v_adv = tk.BooleanVar(value=False)
-        self.v_model = self._combo(4, "gui_model", "model", model_labels())
-        self.v_model.set(label_for_model(self.settings["model"]))
-        self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
+        self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
+        self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
+        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
@@ -1046,14 +1046,24 @@ class App:
         if rc == 0:  # on without restarting the app
             self.toggle(getattr(self, "pack_retry", None))
 
+    def _cpu_ram(self):
+        """#780: RAM (GB) for the "too heavy" model marks on a PC without a CUDA device, else None."""
+        try:
+            from ..device import resolve_device
+
+            # same decision as session setup (GPU present but CUDA libs missing -> cpu), no warnings from the probe
+            return cpu_ram_gb(resolve_device("auto", warn=lambda m: None) == "cuda")
+        except Exception:  # noqa: BLE001 - a failed probe must not break the window
+            return None
+
     def _download_done(self, model: str, rc: int):
         self.downloading = None
         self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
-        labels = model_labels()
+        labels = model_labels(ram_gb=self._cpu_ram())
         self.combos["model"].configure(values=labels, width=combo_width(labels))
         if model_from_label(self.v_model.get()) == model:
-            self.v_model.set(label_for_model(model))
+            self.v_model.set(label_for_model(model, ram_gb=self._cpu_ram()))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
         self._sync_quick()
