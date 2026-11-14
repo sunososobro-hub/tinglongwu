@@ -13,7 +13,7 @@ flowchart LR
 |:-:|:-:|:-:|
 | 即時字幕 | 語音輸出 | 雙方互譯 |
 
-<p align="center">![zh en ja ko ru](https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ko%20%C2%B7%20ru-blue) ![Windows macOS Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)<br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ 下載 Windows 版</a></b></p>
+<p align="center"><img src="https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ko%20%C2%B7%20ru-blue" alt="zh en ja ko ru"> <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Windows macOS Linux"><br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ 下載 Windows 版</a></b></p>
 
 <details>
 <summary>更多：安裝、隱私、常見問題、參與</summary>
