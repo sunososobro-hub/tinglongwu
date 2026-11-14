@@ -106,10 +106,24 @@ def test_stale_answer_never_decides_next_utterance():
 
 
 def test_voice_command_during_countdown_switches_voice():
-    clk, voices, inp = Clock(), [], queue.Queue()
+    import threading
+    import time
+
+    clk, voices, inp, got = Clock(), [], queue.Queue(), threading.Event()
     inp.put("v2")
+
+    def readline():
+        v = _get(inp)
+        got.set()  # the reader consumed the line; only now may the fake clock run
+        return v
+
+    def sleep(s):
+        got.wait(2)
+        time.sleep(0.05)  # let the reader thread put the line on the answer queue
+        clk.sleep(s)
+
     s = ConfirmSession(lambda ru: ([1], 16000), lambda a, sr: None, out=lambda m: None,
-                       readline=lambda: _get(inp), flush=lambda: None, clock=clk, sleep=clk.sleep,
+                       readline=readline, flush=lambda: None, clock=clk, sleep=sleep,
                        set_voice=voices.append, mode="countdown", countdown_s=2.0, max_age=0)
     u = Utterance(1, "你好嗎", "a", "你好嗎")
     s.submit(u)

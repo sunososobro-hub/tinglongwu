@@ -230,20 +230,25 @@ class ConfirmSession:
         if self.on_show is not None:
             self.on_show(u)
 
-    def _drain(self) -> None:
+    def _drain(self) -> bool:
+        """Drop queued answers; True when one was removed (that reader has done its only put and is finished)."""
+        drained = False
         if self._reader is not None:
             q = self._reader[1]
             while True:
                 try:
                     q.get_nowait()
+                    drained = True
                 except queue.Empty:
                     break
+        return drained
 
     def _open_reader(self, u: Utterance) -> queue.Queue:
         """The answer queue for `u`. An answer typed for an earlier utterance is dropped (it must never decide this
         one); a readline still blocked from that utterance is reused, else type-ahead is flushed (#248) and a new
         one is started."""
-        self._drain()
+        if self._drain():
+            self._reader = None
         if self._reader is not None and self._reader[0].is_alive():
             self._reader = (self._reader[0], self._reader[1], u)
             return self._reader[1]
