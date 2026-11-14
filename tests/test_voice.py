@@ -163,7 +163,7 @@ def fakes(monkeypatch):
     _Tts.made.clear()
     monkeypatch.setattr(proto, "Player", player)
     monkeypatch.setattr(tts_client, "TTSClient", _Tts)
-    monkeypatch.setattr(voice, "capture_device_name", lambda file, mic, device: "Speakers (Realtek(R) Audio)")
+    monkeypatch.setattr(voice, "resolve_capture", lambda file, mic, device: ("Speakers (Realtek(R) Audio)", True))
     return players
 
 
