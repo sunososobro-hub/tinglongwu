@@ -114,7 +114,8 @@ class Overlay:
         self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
-        self.menu.add_command(label=t("gui_tour"), command=app.show_tour)  # #314: reopen the 3-step overlay
+        if hasattr(app, "show_tour"):  # #314: reopen the 3-step overlay (the CLI overlay's Bar has no tour)
+            self.menu.add_command(label=t("gui_tour"), command=app.show_tour)
         self.menu.add_separator()
         self.menu.add_command(label=t("gui_menu_quit"), command=app.quit)
 
