@@ -6,6 +6,7 @@ Dev tool (not part of the offline runtime). Runs on a cloud CPU runner (`.github
   python scripts/bench/fetch_data.py --out DATA --fleurs ""          # FLORES-200 only
   TLWU_HYMT_TEMP=0 python scripts/bench/flores_cpu.py --data DATA/flores200_dataset --models-dir MODELS \
       --src rus_Cyrl --out OUT [--limit N] [--no-comet]
+  python scripts/bench/flores_cpu.py --matrix kor_Hang,vie_Latn   # JSON list for the workflow matrix (#656)
 
 Writes OUT/<src>.jsonl (one line per sentence: i, src, ref, hyp, sec, chrf, comet) and OUT/<src>.summary.json
 (n, chrF, COMET, median/p90 s per sentence, CPU). chrF = sacrebleu CHRF corpus score, COMET = Unbabel/wmt22-comet-da
@@ -27,7 +28,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 # FLORES code -> tlwu language code (Hy-MT2 direct src -> zh, OpenCC to Traditional, tw variant)
-LANGS = {"rus_Cyrl": "ru", "eng_Latn": "en", "jpn_Jpan": "ja"}
+LANGS = {"rus_Cyrl": "ru", "eng_Latn": "en", "jpn_Jpan": "ja",
+         # #656: Korean (tier 1) + tier-2 languages (docs/VISION.md)
+         "kor_Hang": "ko", "vie_Latn": "vi", "tha_Thai": "th", "ind_Latn": "id", "spa_Latn": "es",
+         "deu_Latn": "de", "fra_Latn": "fr"}
 REF = "zho_Hant"
 SPLIT = "devtest"
 
@@ -69,6 +73,15 @@ def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter,
             if (i + 1) % 50 == 0:
                 log(f"flores_cpu: {i + 1}/{len(rows)}", flush=True)
     return [done[i] for i in range(len(rows))]
+
+
+def matrix(spec: str) -> list[str]:
+    """#656: comma list of FLORES codes (workflow input `langs`) -> validated list for the job matrix."""
+    out = [x.strip() for x in spec.split(",") if x.strip()]
+    bad = [x for x in out if x not in LANGS]
+    if bad or not out:
+        raise SystemExit(f"flores_cpu: unknown or empty langs {bad or spec!r}; known: {','.join(LANGS)}")
+    return list(dict.fromkeys(out))
 
 
 def p90(xs):
@@ -157,4 +170,7 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--matrix"]:  # eval-flores.yml plan job: print the JSON list for `strategy.matrix.src`
+        print(json.dumps(matrix(sys.argv[2] if len(sys.argv) > 2 else "")))
+        raise SystemExit(0)
     raise SystemExit(main())

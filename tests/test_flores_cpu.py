@@ -130,3 +130,39 @@ def test_fetch_data_empty_fleurs_fetches_flores_only(tmp_path, monkeypatch, caps
     monkeypatch.setattr(m, "fetch_fleurs", lambda code, out: called.append(code))
     assert m.main(["--out", str(tmp_path), "--fleurs", ""]) == 0
     assert called == []
+
+
+NEW_656 = {"kor_Hang": "ko", "vie_Latn": "vi", "tha_Thai": "th", "ind_Latn": "id", "spa_Latn": "es",
+           "deu_Latn": "de", "fra_Latn": "fr"}
+
+
+@pytest.mark.parametrize("src,code", sorted(NEW_656.items()))
+def test_656_new_directions_translate_with_the_hymt_language_code(flores, tmp_path, src, code):
+    (flores / "devtest" / f"{src}.devtest").write_text("a\nb\nc\n", "utf-8")
+    m = _load("flores_cpu")
+    tr = FakeTr()
+    out = tmp_path / "out"
+    assert m.main(["--data", str(flores), "--models-dir", "x", "--src", src, "--out", str(out), "--no-comet"],
+                  make=lambda _d: tr) == 0
+    assert [c[1:] for c in tr.calls] == [(code, "zh")] * 3
+    assert json.loads((out / f"{src}.summary.json").read_text("utf-8"))["pair"] == f"{src}->zho_Hant"
+    sys.path.insert(0, str(ROOT))
+    from tinglongwu.hymt import EN_NAMES, ZH_NAMES  # Hy-MT2 prompt must name the source language
+
+    assert code in ZH_NAMES and code in EN_NAMES
+
+
+def test_656_matrix_validates_the_langs_input():
+    m = _load("flores_cpu")
+    assert m.matrix(" kor_Hang, vie_Latn,kor_Hang ,") == ["kor_Hang", "vie_Latn"]
+    for bad in ("", "kor_Hang,x;rm -rf /", "zho_Hant"):
+        with pytest.raises(SystemExit):
+            m.matrix(bad)
+
+
+def test_656_matrix_cli_prints_json(tmp_path):
+    import subprocess
+
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "bench" / "flores_cpu.py"), "--matrix",
+                        "rus_Cyrl,fra_Latn"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and json.loads(r.stdout) == ["rus_Cyrl", "fra_Latn"]
