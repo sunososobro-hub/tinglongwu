@@ -190,6 +190,21 @@ class SentenceMerger:
             return out
         return out + self.due(now)
 
+    def quiet(self, seconds: float, now: float) -> list[Unit]:
+        """#716: the segmenter saw `seconds` of silence after the newest segment and no new speech. Release the
+        buffer once that reaches the pause-send threshold: an unfinished tail after a forced cut, or a finished
+        fragment held by min_words (#389), would otherwise wait the full max_wait for text that is not coming."""
+        if not self.buf:
+            return []
+        send = self.pause_send if self.pause_send is not None else \
+            lang_patches.setting(self.lang, "MERGE_PAUSE_SEND", PAUSE_SEND)
+        if seconds < send:
+            return self.due(now)
+        held = any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())  # a finished fragment is held
+        if held or _units(self.buf) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
+            return [self._take(forced=True)]
+        return self.due(now)
+
     def _is_fragment(self, text: str) -> bool:
         # words only (_units also counts a lone CJK punctuation mark like "。" as one): each CJK character is a word
         return len(_WORD.findall(_CJK.sub(" x ", text))) < self.min_words
