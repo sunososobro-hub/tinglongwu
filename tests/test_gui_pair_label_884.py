@@ -37,13 +37,16 @@ def test_pair_label_choices_hide_raw_codes_and_round_trip(ui):
 
 
 def test_pair_label_model_marks_one_language(monkeypatch):
-    for ui, mark in (("zh-TW", "（需下載）"), ("en", "(not downloaded)")):
+    # #739: a missing model downloads on the first Start, so no "not downloaded" mark in any UI language;
+    # labels saved with an old mark (#884 per-language or the pre-#884 bilingual one) still parse.
+    for ui, mark in (("zh-TW", "（需下載）"), ("en", " (not downloaded)"), ("ru", " (нужна загрузка)")):
         monkeypatch.setattr(core, "_ui", lambda ui=ui: ui)
         monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: set())
         labels = core.model_labels()
-        assert all(mark in l for l in labels)
-        assert ("not downloaded" in labels[0]) == (ui == "en") and ("需下載" in labels[0]) == (ui == "zh-TW")
+        assert not any(m.strip() in l for l in labels for m in core._MARK_MISSING.values())
         assert [core.model_from_label(l) for l in labels] == core.MODELS
+        assert [core.model_from_label(m + mark) for m in core.MODELS] == core.MODELS
+    assert core.model_from_label("small" + core._MARK_MISSING_OLD) == "small"
 
 
 def _px(text):  # fake font: 6 px per character

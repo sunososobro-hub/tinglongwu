@@ -409,8 +409,8 @@ begin
   if (CurPageID = wpFinished) and (InstallRC <> 0) then
     WizardForm.FinishedLabel.Caption :=
       'The default models did not finish downloading (exit code ' + IntToStr(InstallRC) + '). See ' +
-      ExpandConstant('{app}\install.log') + ', check the internet connection and start {#AppTitle}: it retries the download on first start.' +
-      #13#10 + #13#10 + '預設模型沒有下載完成，請看 install.log，確認網路後啟動程式，會再試一次下載。';
+      ExpandConstant('{app}\install.log') + ', check the internet connection and start {#AppTitle}: it retries the download on first start.' + #13#10 + #13#10 +
+      '預設模型沒有下載完成，請看 install.log，確認網路後啟動程式，會再試一次下載。';
 #else
   if (CurPageID = wpFinished) and (InstallRC <> 0) then begin
     WizardForm.FinishedLabel.Caption :=

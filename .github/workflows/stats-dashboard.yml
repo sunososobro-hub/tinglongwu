@@ -30,9 +30,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/stats_dashboard.py site --repo "${{ github.repository }}" --branch dev
-      - name: Add static pages (roadmap, docs)
+      - name: Add roadmap (track from milestones + latest release, #661) and static pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp docs/roadmap.html site/roadmap.html
+          python scripts/render_roadmap.py docs/roadmap.html site/roadmap.html --repo "${{ github.repository }}"
           cp docs/favicon.svg docs/favicon.ico site/
           pip install markdown==3.7
           python scripts/build_docs_page.py site

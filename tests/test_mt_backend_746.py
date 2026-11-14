@@ -46,6 +46,9 @@ def test_cpu_error_is_not_swallowed():
 def test_vulkan_available_needs_pack_and_loader(tmp_path):
     assert mb.vulkan_pack_dir(tmp_path) is None
     (tmp_path / "llama.dll").write_bytes(b"x")
+    from tinglongwu import __version__
+
+    (tmp_path / mb.VERSION_FILE).write_text(__version__, "utf-8")
     assert mb.vulkan_pack_dir(tmp_path) == tmp_path.resolve()
     assert mb.vulkan_available(pack=lambda: tmp_path, present=lambda: True)
     assert not mb.vulkan_available(pack=lambda: None, present=lambda: True)
@@ -115,3 +118,35 @@ def test_vulkan_import_failure_restores_env_and_uses_cpu(monkeypatch, tmp_path, 
     assert seen == [str(pack), None]
     assert mb.last_backend == "cpu"
     assert "Vulkan llama.cpp build not loadable" in capsys.readouterr().err
+
+
+def _pack(tmp_path, version):
+    d = tmp_path / "vulkan-pack"
+    d.mkdir()
+    (d / "llama.dll").write_bytes(b"x")
+    if version is not None:
+        (d / mb.VERSION_FILE).write_text(version + "\n", "utf-8")
+    return d
+
+
+def test_pack_with_matching_version_is_used(tmp_path):
+    from tinglongwu import __version__
+
+    d = _pack(tmp_path, __version__)
+    assert mb.vulkan_pack_dir(d, warn=lambda m: pytest.fail(m)) == d.resolve()
+
+
+def test_stale_pack_version_falls_back_with_one_line(tmp_path):
+    from tinglongwu import __version__
+
+    d = _pack(tmp_path, "0.0.1")
+    lines = []
+    assert mb.vulkan_pack_dir(d, warn=lines.append) is None
+    assert len(lines) == 1 and "0.0.1" in lines[0] and __version__ in lines[0] and "--vulkan-pack" in lines[0]
+
+
+def test_pack_without_version_file_is_not_used(tmp_path):
+    d = _pack(tmp_path, None)
+    lines = []
+    assert mb.vulkan_pack_dir(d, warn=lines.append) is None
+    assert len(lines) == 1
