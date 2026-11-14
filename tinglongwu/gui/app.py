@@ -805,6 +805,15 @@ class App:
     def ask_usage(self):
         """#680: "what do you mainly use it for?" - a small local dialog; Save stores the choice in gui.json, Skip
         (or closing it) only records that we asked. Reachable again from Settings. Nothing is sent anywhere."""
+        old = getattr(self, "usage_win", None)
+        if old is not None:  # one dialog at a time: a second one could overwrite a newer answer
+            try:
+                old.lift()
+                old.focus_force()
+            except tk.TclError:
+                self.usage_win = None
+            else:
+                return
         win = tk.Toplevel(self.root)
         win.title(t("gui_usage_title"))
         win.transient(self.root)

@@ -191,8 +191,12 @@ def usage_should_ask(s: dict) -> bool:
 
 
 def usage_answer(s: dict, choice: str | None) -> None:
-    """#680: store the answer (or a skip: choice None / unknown) in the local settings dict. Nothing is sent."""
+    """#680: store the answer in the local settings dict. Nothing is sent. choice None = skip / closed without
+    saving: records that we asked and keeps any answer saved earlier; an unknown string clears the answer."""
     s["usage_asked"] = True
+    if choice is None:
+        s.setdefault("usage_use", "")
+        return
     s["usage_use"] = choice if choice in USAGE_CHOICES else ""
 
 

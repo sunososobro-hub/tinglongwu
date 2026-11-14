@@ -64,3 +64,10 @@ def test_every_choice_has_a_label(lang):
     for c in core.USAGE_CHOICES:
         assert MESSAGES[lang]["gui_usage_" + c]
     assert MESSAGES[lang]["gui_usage_title"] and MESSAGES[lang]["gui_menu_usage"]
+
+
+def test_skip_or_close_keeps_an_earlier_saved_answer():
+    s = dict(core.DEFAULTS)
+    core.usage_answer(s, "meetings")
+    core.usage_answer(s, None)  # reopened from Settings, closed without Save
+    assert s["usage_use"] == "meetings" and s["usage_asked"] is True
