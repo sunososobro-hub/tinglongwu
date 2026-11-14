@@ -18,6 +18,8 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 Windows shows a SmartScreen warning because the installer is unsigned until #601 lands: Edge first says the file "isn't commonly downloaded" and hides Keep: hover the download → **…** → **Keep** → open the ▾ next to **Delete** → **Keep anyway**; then on the SmartScreen screen click **More info → Run anyway**. Prefer to inspect first? Download `mac_install.sh` / `install.sh` from the [release](https://github.com/sunososobro-hub/tinglongwu/releases/latest), read it, compare it with `SHA256SUMS.txt` on that page, then run it.
 
+**Update (Windows):** if you kept *Update automatically* ticked in setup, the app checks GitHub once a day, downloads the new version and asks **Restart now?**; any time: ⚙ Adjust → **Check for updates**. Models and settings are kept.
+
 To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
 
 Setup downloads the speech and translation models once (internet needed). After that it runs fully offline.
