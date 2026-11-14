@@ -74,7 +74,11 @@ class AddonsScreen:
             self.msg.set("Importing ...")
 
             def work():  # off the Tk thread: a big zip must not freeze the window
-                self.q.put(("import_done", self.import_zip(path)))
+                try:
+                    res = self.import_zip(path)
+                except Exception as e:  # noqa: BLE001 - always report, or busy would stay set
+                    res = f"Import failed: {type(e).__name__}. {IMPORT_HINT}"
+                self.q.put(("import_done", res))
 
             threading.Thread(target=work, daemon=True).start()
 

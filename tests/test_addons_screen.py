@@ -100,3 +100,30 @@ def test_import_command_uses_screen_models_dir(tmp_path, monkeypatch):
     obj.mdir = tmp_path
     assert obj._import_zip("x.zip") == "Installed from the zip."
     assert "--import-pack" in seen[0] and "x.zip" in seen[0] and str(tmp_path) in seen[0] and "--whisper" not in seen[0]
+
+
+def test_import_worker_exception_clears_busy(tmp_path):
+    import time
+
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu.gui import addons_screen as sc
+
+    def boom(path):
+        raise OSError("no setup")
+
+    s = sc.AddonsScreen(root, mdir=tmp_path, import_zip=boom)
+    sc.filedialog.askopenfilename = lambda **k: "x.zip"
+    s.pick_zip()
+    t0 = time.time()
+    while s.busy and time.time() - t0 < 5:
+        s.win.update()
+        s._poll()
+        time.sleep(0.01)
+    assert not s.busy and s.msg.get().startswith("Import failed")
+    root.destroy()
