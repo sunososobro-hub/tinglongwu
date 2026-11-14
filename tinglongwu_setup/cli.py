@@ -8,6 +8,7 @@
   tlwu-setup --talk [--talk-whisper small --talk-compute cpu --talk-mt auto]
                                                       talk mode: Kokoro venv (~/tts-kokoro) + pinned model + smoke wav
                                                       + tlwu-talk.ps1 launcher (used by install.ps1)
+  tlwu-setup --vulkan-pack                            install the release's Vulkan llama.cpp pack into vulkan-pack/ (#801)
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Hy-MT2) fit this CPU?
   tlwu-setup --selftest [--model M --engine E]        offline: load the models, translate one test sentence (tlwu --selftest)
   tlwu-setup --verify                                 offline integrity check
@@ -117,6 +118,9 @@ def main(argv=None) -> int:
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
     p.add_argument("--selftest", action="store_true",
                    help="run `tlwu --selftest` (no network); --model/--engine/--device are forwarded")
+    p.add_argument("--vulkan-pack", action="store_true",
+                   help="download the release's Vulkan llama.cpp pack (AMD / Intel GPUs), SHA256-checked, into "
+                        "vulkan-pack/ next to the app (TLWU_VULKAN_PACK moves it); a release without it is skipped (#801)")
     p.add_argument("--default-listen", action="store_true",
                    help="install only the default listen path (en -> zh-TW models), no pip, nothing else (#766)")
     p.add_argument("--talk", action="store_true", help="set up talk mode (Kokoro TTS venv, model, launcher)")
@@ -174,6 +178,10 @@ def main(argv=None) -> int:
         from . import defaults
 
         return defaults.run(mdir)
+    if a.vulkan_pack:
+        from . import vulkan_pack
+
+        return vulkan_pack.run(vulkan_pack.default_dest(ROOT))
     if a.deps:
         _pip("install", "-r", a.requirements)
     if a.gpu:
