@@ -32,6 +32,13 @@ except ImportError:  # pragma: no cover
 POLL_MS = 50
 UPDATE_CHECK_DELAY_MS = 5000
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
+# #886: Advanced settings sit in two label + control columns (grid columns 0-2 and 4-6, 3 is a gap), so the panel
+# with Advanced open fits a 1366x768 screen; long labels wrap instead of widening the panel
+SETTING_COLS = 2
+SPAN = 7  # grid columns a full-width row spans
+LABEL_WRAP_PX = 190
+LOG_H, LOG_H_SHORT = 220, 120  # subtitle log height (px); the short one below SHORT_SCREEN_PX of screen height
+SHORT_SCREEN_PX = 900
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
@@ -352,6 +359,11 @@ class Tour:
         self.visible = False
 
 
+def log_height(screen_h: int) -> int:
+    """#886: subtitle log height in the Adjust panel; a 768 px screen gets the short log so the panel fits."""
+    return LOG_H_SHORT if screen_h < SHORT_SCREEN_PX else LOG_H
+
+
 class App:
     def __init__(self):
         self.settings = load_settings()
@@ -453,7 +465,7 @@ class App:
     def _build_send_mode(self, f):
         """#834: speak send mode (default confirm); countdown / auto show the quality notice."""
         box = ttk.Frame(f)
-        box.grid(row=3, column=0, columnspan=3, sticky="we")
+        box.grid(row=6, column=0, columnspan=SPAN, sticky="we")
         self._tx(ttk.Label(box), "gui_send_mode").grid(row=0, column=0, sticky="w", pady=2)
         self.v_send_mode = tk.StringVar(value=self.settings["send_mode"])
         ttk.Combobox(box, textvariable=self.v_send_mode, values=list(SEND_MODES), state="readonly",
@@ -470,11 +482,25 @@ class App:
         key = send_mode_notice_key(mode)
         self.lbl_send_notice.configure(text=t(key) if key else "")
 
-    def _combo(self, row, label, key, values):
-        self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
+    @staticmethod
+    def _cell(slot: int) -> tuple[int, int]:
+        """#886: (grid row, first grid column) of setting `slot`; slots fill two columns left to right."""
+        return slot // SETTING_COLS, (slot % SETTING_COLS) * 4
+
+    def _label(self, slot, key, cls=None, **kw):
+        row, col = self._cell(slot)
+        w = self._tx((cls or ttk.Label)(self.frm, **kw), key)
+        if cls is None:
+            w.configure(wraplength=LABEL_WRAP_PX, justify="left")
+        w.grid(row=row, column=col, sticky="w", pady=1)
+        return w
+
+    def _combo(self, slot, label, key, values):
+        self._label(slot, label)
+        row, col = self._cell(slot)
         var = tk.StringVar(value=self.settings[key])
         self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=var, values=values, state="readonly", width=18)
-        cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
+        cb.grid(row=row, column=col + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         return var
 
     def set_advanced(self, on: bool):
@@ -576,57 +602,59 @@ class App:
         p.title("tinglongwu")
         p.resizable(False, False)
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
-        self.frm = f = ttk.Frame(p, padding=10)
+        self.frm = f = ttk.Frame(p, padding=(10, 4, 10, 8))
+        f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
         self.combos = {}
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
-        self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
+        self.v_engine = self._combo(11, "gui_engine", "engine", engine_labels())  # #399: under Advanced
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
         self.v_adv = tk.BooleanVar(value=False)
-        self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
+        self.v_model = self._combo(3, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
         self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
         self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
-        self.v_source = self._combo(5, "gui_source", "source", SOURCES)
+        self.v_source = self._combo(4, "gui_source", "source", SOURCES)
         self._build_send_mode(f)
-        self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS)
-        self._tx(ttk.Label(f), "gui_glossary").grid(row=6, column=0, sticky="w", pady=2)
+        self.v_preset = self._combo(5, "gui_mode", "preset", PRESETS)
+        self._label(6, "gui_glossary")
+        r, c = self._cell(6)
         self.v_gloss = tk.StringVar(value=s["glossary"])
-        ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=6, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=6, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_gloss, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
+        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=r, column=c + 2, padx=(4, 0))
         self.v_save = tk.BooleanVar(value=s["save"])
-        self._tx(ttk.Checkbutton(f, variable=self.v_save), "gui_save").grid(row=7, column=0, sticky="w", pady=2)
+        self._label(7, "gui_save", ttk.Checkbutton, variable=self.v_save)
+        r, c = self._cell(7)
         self.v_save_path = tk.StringVar(value=s["save_path"])
-        ttk.Entry(f, textvariable=self.v_save_path, width=22).grid(row=7, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=7, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_save_path, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
+        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=r, column=c + 2, padx=(4, 0))
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
-        self._tx(ttk.Checkbutton(f, variable=self.var_show_src, command=self._src_toggled),
-                 "gui_show_src_line").grid(row=8, column=0, sticky="w")
+        self._label(8, "gui_show_src_line", ttk.Checkbutton, variable=self.var_show_src, command=self._src_toggled)
         self.v_live = tk.BooleanVar(value=s["live_draft"])
-        self._tx(ttk.Checkbutton(f, variable=self.v_live), "gui_live_draft").grid(
-            row=8, column=1, columnspan=2, sticky="w")
+        self._label(9, "gui_live_draft", ttk.Checkbutton, variable=self.v_live)
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
-        self._tx(ttk.Checkbutton(f, variable=self.v_voice), "gui_voice").grid(row=17, column=0, sticky="w", pady=2)
+        self._label(10, "gui_voice", ttk.Checkbutton, variable=self.v_voice)
+        r, c = self._cell(10)
         self.voice_default = t("gui_voice_default")
         outs = voice_outputs()
         shown = s["voice_device"] if s["voice_device"] in outs or not outs else ""  # #448: unplugged -> default
         self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
         ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
-                     state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
+                     state="readonly", width=18).grid(row=r, column=c + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
-        self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
+        self.btn_pause.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))  # #886: one row with Check setup
         # Check setup stays in the panel, above the subtitle log (#756); Report a problem and the update controls
         # moved to the menu bar's Help menu (#738)
         self.act_row = act = ttk.Frame(f)
-        act.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))
+        act.grid(row=UPDATE_ROW, column=4, columnspan=3, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
@@ -840,7 +868,7 @@ class App:
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
-            b.grid(row=1, column=col, sticky="we", ipady=10, pady=(8, 0), padx=(0 if col == 0 else 6, 0))
+            b.grid(row=1, column=col, sticky="we", ipady=3, pady=(6, 0), padx=(0 if col == 0 else 6, 0))  # #886
             self.quick_btns[mode] = b
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
@@ -863,14 +891,15 @@ class App:
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
         bar = ttk.Frame(f)
-        bar.grid(row=20, column=0, columnspan=3, sticky="we", pady=(10, 2))
+        bar.grid(row=20, column=0, columnspan=SPAN, sticky="we", pady=(6, 1))
         self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
         self._tx(ttk.Checkbutton(bar, variable=self.v_bar, command=self._bar_toggled), "gui_floating_bar").pack(
             side="left")
         ttk.Button(bar, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
         ttk.Button(bar, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
-        box = tk.Frame(f, width=340, height=220, bg=BG)  # fixed pixel size: a bigger font must not grow the window
-        box.grid(row=21, column=0, columnspan=3, sticky="we")
+        # fixed pixel size: a bigger font must not grow the window; #886: shorter on a short screen (1366x768)
+        box = tk.Frame(f, width=340, height=log_height(f.winfo_screenheight()), bg=BG)
+        box.grid(row=21, column=0, columnspan=SPAN, sticky="we")
         box.pack_propagate(False)
         sb = ttk.Scrollbar(box, orient="vertical")
         self.log_text = tx = tk.Text(box, bg=BG, fg=FG_FINAL, bd=0, highlightthickness=0, wrap="word", padx=8,
