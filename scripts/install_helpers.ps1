@@ -120,3 +120,15 @@ function Get-TlwuGpu([string]$smi) {
     if ($f.Count -ge 4 -and $f[3] -match '^\d+(\.\d+){1,3}$') { $drv = $f[3]; $old = ([version]$drv) -lt ([version]$script:TlwuMinDriver) }
     return [pscustomobject]@{ Name = $f[0]; TotalMB = $t; FreeMB = $fr; Driver = $drv; DriverOld = $old }
 }
+
+# #756: the two "Uninstall" summary lines. A setup install (the wizard passes -FromSetup, or unins*.exe sits in the
+# install folder) has a real uninstaller; a script / git install has nothing to run, so the folder is deleted by hand.
+function Get-TlwuUninstallHint([string]$Root, [bool]$FromSetup) {
+    $setup = $FromSetup -or [bool](Get-ChildItem -LiteralPath $Root -Filter 'unins*.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($setup) {
+        return @('  Uninstall / 移除: Windows Settings > Apps > 聽攏有 (Add or remove programs).',
+                 '                    Windows 設定 > 應用程式 > 聽攏有 > 解除安裝。')
+    }
+    return @("  Uninstall / 移除: delete this folder ($Root; models are in its models\ folder), ~\tts-kokoro and the desktop shortcuts.",
+             '                    刪除此資料夾（模型在 models\ 內）與桌面捷徑即可。')
+}

@@ -9,7 +9,7 @@ Remove-Item -LiteralPath $Done -ErrorAction SilentlyContinue
 $rc = 1
 try {
     if ($Packs -match '^[a-z]+(,[a-z]+)*$') { $env:TLWU_PACKS = $Packs }   # #672: install.ps1 passes it to tlwu-setup --packs
-    $a = @{ SkipShortcut = $true }   # the wizard makes the shortcuts itself (with the app icon)
+    $a = @{ SkipShortcut = $true; FromSetup = $true }   # #756: summary says "uninstall in Settings > Apps"   # the wizard makes the shortcuts itself (with the app icon)
     if ($Cpu) { $a.Cpu = $true }
     & (Join-Path $Root 'install.ps1') @a *>&1 | ForEach-Object { "$_" } | Out-File -LiteralPath $Log -Encoding utf8 -Width 400
     $rc = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }

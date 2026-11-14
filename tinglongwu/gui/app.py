@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, quick_buttons, quick_settings, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover
 POLL_MS = 50
 UPDATE_CHECK_DELAY_MS = 5000
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
+UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
@@ -359,6 +360,7 @@ class App:
         self.status_key: str | None = "gui_ready"
         self.quick_mode: str | None = None  # #294: first-screen button that started this session
         self.run_source = "system"
+        self.speak_hint: str | None = None  # #710: speak_route() result for this session
         self._build_controls()
         self._build_quick()
         self._build_bar()
@@ -514,6 +516,11 @@ class App:
         self.dot_state = name
         self.dot.itemconfigure(self.dot_oval, fill=DOT[name])
 
+    def _show_panel(self):
+        """Open and raise the Adjust panel (the status and notice lines live there)."""
+        self.panel.deiconify()
+        self.panel.lift()
+
     def toggle_adjust(self):
         if self.panel.state() == "normal":
             self.panel.withdraw()
@@ -580,10 +587,25 @@ class App:
                                  lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
         self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
-        self._tx(ttk.Button(f, command=self.check_setup), "gui_check_setup").grid(
-            row=13, column=0, sticky="we", pady=(6, 0))
-        self._tx(ttk.Button(f, command=self.report_problem), "gui_report").grid(
-            row=13, column=1, columnspan=2, sticky="we", pady=(6, 0), padx=(4, 0))
+        # #756: Check setup / Report a problem and the update controls share one row (above the subtitle log, which
+        # fills the window: a row below it was off-screen)
+        self.act_row = act = ttk.Frame(f)
+        act.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))
+        act.columnconfigure(0, weight=1)
+        act.columnconfigure(1, weight=1)
+        self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
+        self._tx(ttk.Button(act, command=self.report_problem), "gui_report").grid(
+            row=0, column=1, sticky="we", padx=(4, 0))
+        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
+            up = self.upd_controls = ttk.Frame(act)
+            up.grid(row=1, column=0, columnspan=2, sticky="we", pady=(4, 0))
+            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
+                side="left")
+            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
+            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
+                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
+                     "gui_upd_auto").pack(side="left", padx=(8, 0))
+            ttk.Label(up, text=f"v{__version__}").pack(side="right")
         self.v_status = tk.StringVar(value=t("gui_ready"))
         ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
@@ -599,15 +621,6 @@ class App:
             self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
                 row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
-        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
-            up = ttk.Frame(f)
-            up.grid(row=22, column=0, columnspan=3, sticky="we", pady=(8, 0))
-            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
-                side="left")
-            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
-            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
-                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
-                     "gui_upd_auto").pack(side="left", padx=(8, 0))
 
     # -- #698 auto-update -------------------------------------------------------------------------
     def _build_update_line(self):
@@ -973,6 +986,7 @@ class App:
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
         self.quick_mode, self.run_source = mode, run.get("source")
+        self.speak_hint = speak_route(run, meeting_cable()) if mode == "speak" else None  # #710
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -981,7 +995,10 @@ class App:
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
         self.set_dot("loading")
-        self.v_notice.set("")
+        notice_key, show_panel = speak_start_view(self.speak_hint)  # #710: the Speak lines live in the Adjust panel
+        self.v_notice.set(t(notice_key) if notice_key else "")
+        if show_panel:
+            self._show_panel()
         self.errored = False
         self.listening = True
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
@@ -1034,10 +1051,14 @@ class App:
                         self.btn.configure(text=t("gui_stop"), state="normal")
                         self.set_dot("on")
                         ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
+                        if self.speak_hint == SPEAK_HINT_CABLE:  # #710: voice goes into CABLE Input
+                            ready = self.speak_hint
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
+                    if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
+                        self._show_panel()
                 elif kind == "pack_line":
                     self._status_text(ev[1])
                 elif kind == "pack_done":
