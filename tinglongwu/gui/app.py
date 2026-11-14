@@ -34,11 +34,26 @@ UPDATE_CHECK_DELAY_MS = 5000
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
+UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
+FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
 # #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
 DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
+
+
+def open_target(target: str) -> None:
+    """Open a folder or URI with the OS handler (#738: log folder, Windows "Installed apps")."""
+    import subprocess
+
+    try:
+        if sys.platform == "win32":
+            os.startfile(target)  # noqa: S606 - a folder or the ms-settings: URI
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", target])
+    except OSError:
+        _diag.swallowed(__name__)
 
 
 class Overlay:
@@ -365,6 +380,7 @@ class App:
         self._build_quick()
         self._build_bar()
         self._build_update_line()
+        self.build_menubar()
         self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
         self.tour = Tour(self)
@@ -425,6 +441,7 @@ class App:
         self.combos["lang"].configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
+        self.build_menubar()
         self._upd_relabel()
         self.tour.relabel()
         self.render_log()
@@ -581,45 +598,26 @@ class App:
         self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
         ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
                      state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
-        self.v_lines = self._spin(15, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
-                                  lambda n: self.overlay.set_rows(n))
-        self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
-                                 lambda n: self.overlay.set_font(n))
+        # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
+        self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
+        self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
         self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
-        # #756: Check setup / Report a problem and the update controls share one row (above the subtitle log, which
-        # fills the window: a row below it was off-screen)
+        # Check setup stays in the panel, above the subtitle log (#756); Report a problem and the update controls
+        # moved to the menu bar's Help menu (#738)
         self.act_row = act = ttk.Frame(f)
         act.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
-        act.columnconfigure(1, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
-        self._tx(ttk.Button(act, command=self.report_problem), "gui_report").grid(
-            row=0, column=1, sticky="we", padx=(4, 0))
-        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
-            up = self.upd_controls = ttk.Frame(act)
-            up.grid(row=1, column=0, columnspan=2, sticky="we", pady=(4, 0))
-            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
-                side="left")
-            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
-            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
-                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
-                     "gui_upd_auto").pack(side="left", padx=(8, 0))
-            ttk.Label(up, text=f"v{__version__}").pack(side="right")
+        self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
         ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
         self.v_notice = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
             row=12, column=0, columnspan=3, sticky="w")
-        self._tx(ttk.Label(f), "gui_ui_lang").grid(row=14, column=0, sticky="w", pady=(8, 0))
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
-        cb = ttk.Combobox(f, textvariable=self.v_ui_lang, values=list(UI_LANGS), state="readonly", width=12)
-        cb.grid(row=14, column=1, sticky="we", pady=(8, 0))
-        cb.bind("<<ComboboxSelected>>", self.switch_lang)
         if sv_ttk is not None:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
-            self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
-                row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
 
     # -- #698 auto-update -------------------------------------------------------------------------
@@ -736,6 +734,65 @@ class App:
             return
         self.root.after(UPDATE_QUIT_DELAY_MS, self.quit)  # the helper waits for this process, then installs and restarts the GUI
 
+    # -- #738 menu bar: File / Settings / Help hold the rarely used actions ------------------------------------
+    def build_menubar(self):
+        """(Re)build the window's menu bar in the current UI language."""
+        mb = tk.Menu(self.root, tearoff=0)
+        fm = tk.Menu(mb, tearoff=0)
+        fm.add_command(label=t("gui_menu_logs"), command=self.open_log_folder)
+        fm.add_command(label=t("gui_menu_uninstall"), command=self.open_uninstall)
+        fm.add_separator()
+        fm.add_command(label=t("gui_menu_quit"), command=self.quit)
+        mb.add_cascade(label=t("gui_menu_file"), menu=fm)
+        sm = tk.Menu(mb, tearoff=0)
+        lm = tk.Menu(sm, tearoff=0)
+        for name in UI_LANGS:
+            lm.add_radiobutton(label=name, value=name, variable=self.v_ui_lang, command=self.switch_lang)
+        sm.add_cascade(label=t("gui_ui_lang"), menu=lm)
+        if sv_ttk is not None:
+            sm.add_checkbutton(label=t("gui_dark"), variable=self.v_dark, command=self._toggle_theme)
+        rm = tk.Menu(sm, tearoff=0)
+        for n in range(ROWS_MIN, ROWS_MAX + 1):
+            rm.add_radiobutton(label=str(n), value=str(n), variable=self.v_lines)
+        sm.add_cascade(label=t("gui_lines"), menu=rm)
+        zm = tk.Menu(sm, tearoff=0)
+        for n in FONT_MENU_SIZES:
+            zm.add_radiobutton(label=str(n), value=str(n), variable=self.v_font)
+        sm.add_cascade(label=t("gui_font_size"), menu=zm)
+        mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
+        hm = tk.Menu(mb, tearoff=0)
+        hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
+        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
+            hm.add_command(label=t("gui_upd_check"), command=lambda: self._check_update(manual=True))
+            hm.add_checkbutton(label=t("gui_upd_auto"), variable=self.v_auto_upd,
+                               command=lambda: autoupdate.set_auto(self.v_auto_upd.get()))
+        hm.add_command(label=t("gui_report"), command=lambda: self.report_problem())
+        hm.add_separator()
+        hm.add_command(label=t("gui_menu_about"), command=self.show_about)
+        mb.add_cascade(label=t("gui_menu_help"), menu=hm)
+        old = getattr(self, "menubar", None)
+        self.menubar = mb
+        self.root.configure(menu=mb)
+        if old is not None:
+            old.destroy()
+
+    def open_log_folder(self):
+        d = userdirs.log_dir()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            _diag.swallowed(__name__)
+        open_target(str(d))
+
+    def open_uninstall(self):
+        if sys.platform == "win32":
+            open_target(UNINSTALL_URI)  # Windows Settings > Apps > Installed apps
+        else:
+            messagebox.showinfo(t("gui_menu_uninstall"), t("gui_uninstall_other"), parent=self.root)
+
+    def show_about(self):
+        messagebox.showinfo(t("gui_menu_about"), t("gui_about_text", ver=__version__), parent=self.root)
+
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
@@ -744,9 +801,7 @@ class App:
         self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
         ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
             row=0, column=1, sticky="we", padx=(6, 0))
-        # #314: "?" reopens the 3-step overlay; it lives here and in the subtitle bar's menu, not on the bar (#455)
-        self.btn_help = ttk.Button(q, text="?", width=2, command=self.show_tour)
-        self.btn_help.grid(row=0, column=2, padx=(6, 0))
+        # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
@@ -849,9 +904,9 @@ class App:
         else:
             self.overlay.hide()
 
-    def _spin(self, row, key, lo, hi, value, apply):
-        """Numeric spinbox row; each valid value applies live (empty / non-numeric / out-of-range input is ignored)."""
-        self._tx(ttk.Label(self.frm), key).grid(row=row, column=0, sticky="w", pady=2)
+    def _num_var(self, lo, hi, value, apply):
+        """Numeric setting (menu bar radio items, #738); each valid value applies live (empty / non-numeric /
+        out-of-range values are ignored)."""
         var = tk.StringVar(value=str(value))
 
         def changed(*_):
@@ -862,8 +917,6 @@ class App:
             if lo <= n <= hi:
                 apply(n)
 
-        ttk.Spinbox(self.frm, from_=lo, to=hi, textvariable=var, width=6, command=changed).grid(
-            row=row, column=1, sticky="w", pady=2)
         var.trace_add("write", changed)
         return var
 
