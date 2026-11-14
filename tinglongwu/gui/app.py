@@ -779,6 +779,7 @@ class App:
         for n in FONT_MENU_SIZES:
             zm.add_radiobutton(label=str(n), value=str(n), variable=self.v_font)
         sm.add_cascade(label=t("gui_font_size"), menu=zm)
+        sm.add_command(label="Add-ons...", command=self.open_addons)  # #614
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
@@ -795,6 +796,12 @@ class App:
         self.root.configure(menu=mb)
         if old is not None:
             old.destroy()
+
+    def open_addons(self):
+        """#614: Settings > Add-ons (installed / available packs, add, remove)."""
+        from .addons_screen import AddonsScreen
+
+        AddonsScreen(self.root)
 
     def open_log_folder(self):
         d = userdirs.log_dir()
