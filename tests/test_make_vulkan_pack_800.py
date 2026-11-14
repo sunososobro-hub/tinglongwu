@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tinglongwu import mt_backend
+from tinglongwu import __version__ as APP_VERSION, mt_backend
 
 REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "scripts" / "make_vulkan_pack.py"
@@ -33,22 +33,30 @@ def _lib(root: Path, names=("llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu.
 
 def test_zip_unpacks_into_a_folder_vulkan_pack_dir_accepts(tmp_path):
     m = _mod()
-    zpath = m.build(_lib(tmp_path), tmp_path / "out", "0.3.5")
-    assert zpath.name == "tlwu-vulkan-pack-0.3.5.zip"
+    zpath = m.build(_lib(tmp_path), tmp_path / "out", APP_VERSION)  # the release job passes __version__
+    assert zpath.name == f"tlwu-vulkan-pack-{APP_VERSION}.zip"
     folder = tmp_path / "unzipped"
     with zipfile.ZipFile(zpath) as z:
         z.extractall(folder)
     assert mt_backend.vulkan_pack_dir(folder) == folder.resolve()
     assert (folder / "ggml-vulkan.dll").read_bytes() == b"dll-ggml-vulkan.dll"
     assert (folder / "llama.dll").is_file()
+    assert (folder / "version.txt").read_text("utf-8").strip() == APP_VERSION  # #915: what #909 checks
 
 
-def test_layout_is_flat_dlls_plus_manifest_and_nothing_else(tmp_path):
+def test_check_rejects_a_pack_built_for_another_version(tmp_path, capsys):
+    m = _mod()
+    other = m.build(_lib(tmp_path), tmp_path / "out", APP_VERSION + ".0")  # #909: stale pack -> CPU build
+    assert m.main(["--check", str(other)]) == 1
+
+
+def test_layout_is_flat_dlls_plus_manifest_version_and_nothing_else(tmp_path):
     m = _mod()
     zpath = m.build(_lib(tmp_path), tmp_path / "out", "0.3.5")
     names = m.layout(zpath)
     assert names == sorted(names)
-    assert set(names) == {"llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", m.MANIFEST_NAME}
+    assert set(names) == {"llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", m.MANIFEST_NAME,
+                          m.VERSION_FILE}
     assert all("/" not in n for n in names)  # nothing in a subfolder: vulkan_pack_dir looks at the top level
 
 
@@ -77,7 +85,7 @@ def test_a_build_without_the_vulkan_or_llama_dll_is_not_packed(tmp_path, missing
 
 def test_check_accepts_the_built_zip_and_rejects_a_foreign_one(tmp_path, capsys):
     m = _mod()
-    good = m.build(_lib(tmp_path), tmp_path / "out", "0.3.5")
+    good = m.build(_lib(tmp_path), tmp_path / "out", APP_VERSION)
     assert m.main(["--check", str(good)]) == 0
     listed = capsys.readouterr().out
     assert "ggml-vulkan.dll" in listed  # the job summary lists the layout
