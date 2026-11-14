@@ -349,7 +349,7 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 麥克風 -> 中文 -> 俄文翻譯 -> 內建語音離線 TTS（Vosk-TTS／Kokoro） -> 虛擬麥克風（VB-Cable／BlackHole／PipeWire null-sink），並做回音排除避免合成語音被重新擷取。
 
 ## 測試
-`pip install -r requirements-dev.txt && pytest`（不需模型與網路）。
+`pip install -e ".[dev]" && python -m pytest`（不需模型與網路）。
 
 ## 免責聲明
 - **現狀提供。** 本軟體依 MIT 授權「按現狀」提供，不附任何形式的保證，作者不對任何損害負責（見 [LICENSE](../LICENSE)）。
