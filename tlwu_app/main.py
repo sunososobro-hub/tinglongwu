@@ -4,6 +4,7 @@
   tlwu.exe --cpu                same, forcing the CPU path
   tlwu.exe --setup              open the model setup screen again
   tlwu.exe --smoke              clean-machine check: load every native library, no models, exit 1 on failure
+  tlwu.exe --run-selfupdate <a>  auto-update child (network; tinglongwu_setup.selfupdate, never tinglongwu) #768
   tlwu.exe setup <args>        tlwu-setup on the command line (network; e.g. setup --whisper small --langs ru --to zh)
   tlwu.exe <any tlwu flag>      the normal command line (e.g. --file x.mp3 --to zh, --mic, --gui)
 """
@@ -61,6 +62,13 @@ def run_setup_worker(args: list[str]) -> int:
     return downloader.main(args)
 
 
+def run_selfupdate_worker(args: list[str]) -> int:
+    """Networked auto-update child (#768): only tinglongwu_setup is imported here, never tinglongwu."""
+    from tinglongwu_setup import selfupdate
+
+    return selfupdate.main(args)
+
+
 def fix_gui_settings(mdir: Path, cpu_tier: bool) -> None:
     """Make the saved GUI model one that is installed; first run on CPU: live draft off (it doubles the work)."""
     from tinglongwu.gui import core
@@ -97,6 +105,8 @@ def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["--run-setup"]:
         return run_setup_worker(argv[1:])
+    if argv[:1] == ["--run-selfupdate"]:
+        return run_selfupdate_worker(argv[1:])
     if argv[:1] == ["--smoke"]:  # clean-machine check: import every native module, no models (#9)
         from .smoke import check
 
