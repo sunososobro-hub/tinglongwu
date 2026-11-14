@@ -451,7 +451,7 @@ def main(argv=None) -> int:
     p.add_argument("--piper-ru", nargs="?", const="dmitri", default=None, choices=sorted(PIPER_RU),
                    help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
                         "piper-tts engine goes in its own TTS venv: pip install piper-tts")
-    p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ru), see packs.py (#178)")
+    p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ko,ru), see packs.py (#178)")
     p.add_argument("--allow-unpinned", action="store_true",
                    help="allow Argos pairs that are not in the committed pin manifest (mutable index, pin-on-first-use)")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
