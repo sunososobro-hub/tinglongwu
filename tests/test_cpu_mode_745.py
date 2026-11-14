@@ -105,3 +105,20 @@ def test_apply_cpu_mode_merge_raises_unset_min_words_only(tmp_path, monkeypatch)
     big = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=False)
     cli.apply_cpu_mode(big, "cpu", tmp_path, explicit_model=True, cores=16, ram_gb=32)  # merge=False: unchanged
     assert big.min_words == 0
+
+
+def test_cuda_fallback_gets_cpu_policy(monkeypatch):
+    from tinglongwu.asr import cpu_fallback_settings
+
+    monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
+    assert cpu_fallback_settings(None, None, cores=8, ram_mib=8 * 1024) == (1, 7)  # not the old beam 5 / default threads
+    assert cpu_fallback_settings(2, 3, cores=8, ram_mib=8 * 1024) == (2, 3)  # values from the CPU policy win
+    monkeypatch.setenv("TLWU_CPU_THREADS", "2")
+    assert cpu_fallback_settings(None, None, cores=8, ram_mib=32 * 1024)[1] == 2
+
+
+def test_gui_ram_probe_uses_usable_cuda(monkeypatch):
+    """CUDA devices exist but the libs are missing: resolve_device says cpu, so the heavy marks must apply."""
+    from tinglongwu import device
+
+    assert device.resolve_device("auto", count=lambda: 1, missing=lambda: ["cublas"], warn=lambda m: None) == "cpu"

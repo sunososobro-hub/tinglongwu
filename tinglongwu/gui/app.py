@@ -1049,9 +1049,10 @@ class App:
     def _cpu_ram(self):
         """#780: RAM (GB) for the "too heavy" model marks on a PC without a CUDA device, else None."""
         try:
-            from ..device import cuda_device_count
+            from ..device import resolve_device
 
-            return cpu_ram_gb(cuda_device_count() > 0)
+            # same decision as session setup (GPU present but CUDA libs missing -> cpu), no warnings from the probe
+            return cpu_ram_gb(resolve_device("auto", warn=lambda m: None) == "cuda")
         except Exception:  # noqa: BLE001 - a failed probe must not break the window
             return None
 

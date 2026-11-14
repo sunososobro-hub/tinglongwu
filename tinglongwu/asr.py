@@ -102,6 +102,21 @@ class Recognizer(ABC):
         return self.transcribe(audio)
 
 
+def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int, int | None]:
+    """#780: (beam, cpu_threads) for a CPU model loaded after a CUDA load failure. Values already given (the CPU
+    policy ran) win; otherwise the hwprobe.cpu_mode_settings policy; TLWU_CPU_THREADS overrides the thread count."""
+    from .hwprobe import cpu_mode_settings, ram_mib as _ram
+
+    if not beam or not threads:
+        mib = ram_mib if ram_mib is not None else _ram()
+        st = cpu_mode_settings(cores or os.cpu_count() or 4, mib / 1024 if mib else 16.0)
+        beam, threads = beam or st.beam, threads or st.threads
+    env = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
+    if env.isdigit() and int(env) > 0:
+        threads = int(env)
+    return beam, threads
+
+
 class FasterWhisperRecognizer(Recognizer):
     NO_SPEECH = 0.6
 
@@ -136,8 +151,10 @@ class FasterWhisperRecognizer(Recognizer):
                 raise
             print(f"tlwu: GPU load failed ({e}); falling back to CPU.", file=sys.stderr)
             self.device = "cpu"
-            self.model = WhisperModel(str(path), device="cpu", compute_type="int8")
-            self.fast, self.beam = False, 5
+            beam_cpu, threads_cpu = cpu_fallback_settings(beam, threads_arg)  # #780: CPU-mode settings after a fallback
+            kw = {"cpu_threads": threads_cpu} if threads_cpu and not thread_budget.both() else {}
+            self.model = WhisperModel(str(path), device="cpu", compute_type="int8", **kw)
+            self.fast, self.beam = False, beam_cpu
         self.lang = None if lang == "auto" else lang  # auto: lock after first speech
         self.auto = lang == "auto"
         # auto + candidates: re-detect every segment, restricted to the candidate set (never locks)
