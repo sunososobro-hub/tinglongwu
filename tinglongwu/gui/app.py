@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, meeting_cable, quick_buttons, quick_settings, speak_route, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -515,6 +515,11 @@ class App:
         self.dot_state = name
         self.dot.itemconfigure(self.dot_oval, fill=DOT[name])
 
+    def _show_panel(self):
+        """Open and raise the Adjust panel (the status and notice lines live there)."""
+        self.panel.deiconify()
+        self.panel.lift()
+
     def toggle_adjust(self):
         if self.panel.state() == "normal":
             self.panel.withdraw()
@@ -983,7 +988,10 @@ class App:
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
         self.set_dot("loading")
-        self.v_notice.set(t("gui_speak_no_cable") if self.speak_hint == "gui_speak_no_cable" else "")
+        notice_key, show_panel = speak_start_view(self.speak_hint)  # #710: the Speak lines live in the Adjust panel
+        self.v_notice.set(t(notice_key) if notice_key else "")
+        if show_panel:
+            self._show_panel()
         self.errored = False
         self.listening = True
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
@@ -1036,12 +1044,14 @@ class App:
                         self.btn.configure(text=t("gui_stop"), state="normal")
                         self.set_dot("on")
                         ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
-                        if self.speak_hint == "gui_ready_speak_cable":  # #710: voice goes into CABLE Input
+                        if self.speak_hint == SPEAK_HINT_CABLE:  # #710: voice goes into CABLE Input
                             ready = self.speak_hint
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
+                    if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
+                        self._show_panel()
                 elif kind == "pack_line":
                     self._status_text(ev[1])
                 elif kind == "pack_done":

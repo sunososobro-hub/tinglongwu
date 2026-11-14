@@ -123,7 +123,7 @@ def test_open_voice_plays_english_into_cable_input_for_a_real_mic(monkeypatch, t
     players = []
     monkeypatch.setattr(proto, "Player", lambda *a, **k: players.append(_Player(*a, **k)) or players[-1])
     monkeypatch.setattr(tts_client, "TTSClient", _Tts)
-    monkeypatch.setattr(voice, "capture_device_name", lambda file, mic, device: mic_name)
+    monkeypatch.setattr(voice, "resolve_capture", lambda file, mic, device: (mic_name, True))
     a, _, _ = _speak_argv(WIN_OUTPUTS)
     a.tts_python, a.tts_model = "py", "m"
     if not ok:
@@ -137,3 +137,239 @@ def test_open_voice_plays_english_into_cable_input_for_a_real_mic(monkeypatch, t
     assert inner.lines == ["Hello everyone"] and players[0].speaker_name == CABLE
     assert players[0].pushed and np.abs(np.concatenate([x for x, _ in players[0].pushed])).max() > 0.1
     assert any(CABLE in m for m in said)
+
+
+# --- review of PR #749 (AI FAIL 06:15Z, Opus CHANGES 07:01Z, CodeRabbit) ------------------------------------------
+
+def test_speak_without_vb_cable_turns_a_saved_listen_voice_off():
+    """Saved voice=True (earphones for Listen) + no cable: nothing may play on the old device while the notice says
+    "subtitles only"."""
+    a, hint, notes = _speak_argv(["Speakers (Realtek(R) Audio)", "Headphones (USB Audio)"],
+                                 voice=True, voice_device="Headphones (USB Audio)")
+    assert hint == core.SPEAK_HINT_NO_CABLE and a.mic is True
+    assert a.voice is False and notes == []
+
+
+@pytest.mark.parametrize("hint, want", [(core.SPEAK_HINT_NO_CABLE, (core.SPEAK_HINT_NO_CABLE, True)),
+                                        (core.SPEAK_HINT_CABLE, ("", True)),
+                                        (None, ("", False))])
+def test_speak_start_view_opens_the_panel_for_both_speak_lines(hint, want):
+    assert core.speak_start_view(hint) == want
+
+
+class _FakeMic:
+    def __init__(self, name):
+        self.name = name
+
+
+def _fake_soundcard(monkeypatch, mics, default=None):
+    import sys
+    import types
+
+    sc = types.ModuleType("soundcard")
+    sc.all_microphones = lambda include_loopback=False: [_FakeMic(n) for n in mics]
+    sc.default_microphone = lambda: _FakeMic(default or mics[0])
+    monkeypatch.setitem(sys.modules, "soundcard", sc)
+
+
+MICS = ["Microphone Array (Realtek(R) Audio)", "CABLE Output (VB-Audio Virtual Cable)"]
+
+
+def test_capture_substring_is_resolved_to_the_device_the_recorder_opens(monkeypatch):
+    _fake_soundcard(monkeypatch, MICS)
+    assert voice.resolve_capture(None, True, "Output") == ("CABLE Output (VB-Audio Virtual Cable)", True)
+    assert voice.resolve_capture(None, True, None) == (MICS[0], True)
+    assert voice.resolve_capture(None, True, "nope") == ("nope", False)  # unproven
+
+
+def _open_speak_voice(monkeypatch, tmp_path, capture_device=None):
+    from tinglongwu.reverse import proto, tts_client
+
+    players = []
+    monkeypatch.setattr(proto, "Player", lambda *a, **k: players.append(_Player(*a, **k)) or players[-1])
+    monkeypatch.setattr(tts_client, "TTSClient", _Tts)
+    a, _, _ = _speak_argv(WIN_OUTPUTS)
+    a.tts_python, a.tts_model, a.device = "py", "m", capture_device
+    offs, said, inner = [], [], _Lines()
+    sink, close = voice.open_voice(a, tmp_path, inner, said.append, off=offs.append)
+    return sink, close, players, offs, said, inner
+
+
+@pytest.mark.parametrize("dev", ["Output", "nope"])
+def test_cable_voice_is_refused_for_a_capture_name_that_is_the_cable_or_unproven(monkeypatch, tmp_path, dev):
+    _fake_soundcard(monkeypatch, MICS)
+    with pytest.raises(RuntimeError, match="virtual cable"):
+        _open_speak_voice(monkeypatch, tmp_path, capture_device=dev)
+
+
+def test_mic_reopened_on_the_cable_mutes_the_meeting_voice(monkeypatch, tmp_path):
+    _fake_soundcard(monkeypatch, MICS)
+    sink, close, players, offs, said, inner = _open_speak_voice(monkeypatch, tmp_path)
+    assert sink.capture_guard is not None
+    sink.capture_guard("Headset Microphone (Jabra)")  # another real mic: voice stays on
+    assert offs == [] and sink.muted is None
+    sink.capture_guard("CABLE Output (VB-Audio Virtual Cable)")  # device change fell back to the cable
+    sink.capture_guard("CABLE Output (VB-Audio Virtual Cable)")
+    assert len(offs) == 1 and offs[0].startswith("Voice off") and sink.muted
+    sink.write(Result("zh", "大家好", None, "Hello everyone", tgt="en"))
+    close()
+    assert inner.lines == ["Hello everyone"] and players[0].pushed == []  # subtitles yes, voice no
+
+
+def test_capture_reopen_reports_the_new_device_to_on_reopen(monkeypatch):
+    import sys
+    import types
+
+    from tinglongwu.capture import _soundcard as scmod
+
+    monkeypatch.setitem(sys.modules, "soundcard", types.ModuleType("soundcard"))
+    monkeypatch.setattr(scmod.threading.Event, "wait", lambda self, t=None: self.is_set())
+    lost = RuntimeError("Error 0x88890004")
+
+    class Rec:
+        def __init__(self, mic):
+            self.mic = mic
+
+        def __enter__(self):
+            return self
+
+        def record(self, numframes):
+            if self.mic.fail:
+                self.mic.fail = False
+                raise lost
+            return np.zeros((numframes, 2), dtype=np.float32)
+
+        def __exit__(self, *exc):
+            return False
+
+    class Mic:
+        def __init__(self, name, fail):
+            self.name, self.fail = name, fail
+
+        def recorder(self, samplerate, channels):
+            return Rec(self)
+
+    mics = [Mic(MICS[0], True), Mic(MICS[1], False)]
+
+    class Src(scmod.SoundcardSource):
+        def _pick_microphone(self, sc):
+            return mics.pop(0)
+
+    src, seen = Src(), []
+    src.on_reopen = seen.append
+    it = src._frames()
+    next(it)
+    src.close()
+    assert seen == [MICS[1]]
+
+
+def test_run_session_hands_the_cable_guard_to_the_capture_source(monkeypatch, tmp_path):
+    """The Speak run (mic + voice on CABLE Input) connects sink.capture_guard to the mic source's on_reopen."""
+    import io
+    import sys
+
+    from tinglongwu import asr as asr_mod
+    from tinglongwu import device as device_mod
+    from tinglongwu import minspec
+    from tinglongwu import pipeline as pipeline_mod
+    from tinglongwu.capture.mic import MicSource
+
+    class Asr:
+        device, live = "cpu", False
+
+        def __init__(self, *a, **k):
+            pass
+
+    class Mt:
+        def preload(self, src, tgt):
+            pass
+
+    src, guard, ran = MicSource(None), (lambda name: None), []
+
+    class VSink(_Lines):
+        capture_guard = staticmethod(guard)
+
+    monkeypatch.setattr(minspec, "check_avx2", lambda force=False: None)
+    monkeypatch.setattr(device_mod, "resolve_device", lambda compute, warn=None: "cpu")
+    monkeypatch.setattr(asr_mod, "FasterWhisperRecognizer", Asr)
+    monkeypatch.setattr(cli, "make_translator", lambda *a, **k: Mt())
+    monkeypatch.setattr(cli, "select_backend", lambda *a, **k: src)
+    monkeypatch.setattr(voice, "open_voice", lambda a, mdir, sink, say, off=None: (VSink(), lambda drop=False: None))
+    monkeypatch.setattr(pipeline_mod, "run", lambda source, *a, **k: ran.append(source))
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    a, _, _ = _speak_argv(WIN_OUTPUTS)
+    a.model, a.models_dir = "tiny", str(tmp_path)
+    cli.run_session(a)
+    assert ran == [src] and src.on_reopen is guard
+
+
+# --- App.toggle("speak") on a real Tk window (needs a display; CI e2e: Xvfb) -------------------------------------
+
+@pytest.fixture
+def speak_app(tmp_path, monkeypatch):
+    tk = pytest.importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        pytest.skip("no display")
+    import functools
+
+    from tinglongwu import i18n
+    from tinglongwu.gui import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)
+    monkeypatch.setattr(i18n, "_override", "en")
+    monkeypatch.setattr(app.App, "_offer_pack", lambda self, run, mode: False)
+    monkeypatch.setattr(app, "speak_route", functools.partial(core.speak_route, platform="win32"))
+    runs = []
+
+    def fake_work(self, s, stop):
+        runs.append(s)
+        stop.wait(10)
+        self.q.put(("stopped",))
+
+    monkeypatch.setattr(app.App, "_work", fake_work)
+    made = []
+
+    def make(cable):
+        monkeypatch.setattr(app, "meeting_cable", lambda: cable)
+        a = app.App()
+        a.settings["tour_seen"] = True
+        a.root.update()
+        made.append(a)
+        return a, runs
+
+    yield make
+    for a in made:
+        a.stop_ev.set()
+        try:
+            a.root.destroy()
+        except tk.TclError:
+            pass
+
+
+def test_toggle_speak_without_cable_shows_the_notice_in_an_open_panel(speak_app):
+    a, runs = speak_app(None)
+    a.panel.withdraw()
+    a.root.update()
+    a.toggle("speak")
+    a.root.update()
+    assert a.panel.state() == "normal"  # the bar press opens the panel, so the line is seen
+    assert "vb-audio.com/Cable" in a.v_notice.get()
+    assert runs and runs[0]["voice"] is False
+
+
+def test_toggle_speak_with_cable_shows_the_cable_output_ready_line(speak_app):
+    from tinglongwu.cli import READY_STATUS
+
+    a, runs = speak_app(CABLE)
+    a.panel.withdraw()
+    a.root.update()
+    a.toggle("speak")
+    a.q.put(("status", f"{READY_STATUS} in 1.0 s"))
+    a.poll()
+    a.root.update()
+    assert a.panel.state() == "normal" and "CABLE Output" in a.v_status.get()
+    assert a.v_notice.get() == "" and runs and runs[0]["voice_device"] == CABLE

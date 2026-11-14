@@ -576,6 +576,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
             prog.stage("voice")
             sink, close_voice = open_voice(a, mdir, sink, warn, off=notice)
+            if getattr(sink, "capture_guard", None) is not None and hasattr(source, "on_reopen"):
+                source.on_reopen = sink.capture_guard  # #710: a device change cannot loop the meeting voice
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,

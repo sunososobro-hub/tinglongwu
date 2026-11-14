@@ -75,6 +75,11 @@ def quick_settings(s: dict, mode: str) -> dict:
     return out
 
 
+SPEAK_HINT_CABLE = "gui_ready_speak_cable"  # #710 ready line: "set the Meet/Zoom microphone to CABLE Output"
+SPEAK_HINT_NO_CABLE = "gui_speak_no_cable"  # #710 one line + vb-audio.com/Cable link
+SPEAK_PANEL_HINTS = (SPEAK_HINT_CABLE, SPEAK_HINT_NO_CABLE)
+
+
 def meeting_cable(names=None, platform: str | None = None) -> str | None:
     """#710: the VB-CABLE playback device ("CABLE Input") the Speak button talks into on Windows, or None (not
     installed, or not Windows: macOS BlackHole routing is #687). names=None lists soundcard's output devices."""
@@ -97,13 +102,23 @@ def speak_route(run: dict, cable: str | None, platform: str | None = None) -> st
     """#710: one press of Speak = my speech -> translation -> voice into the meeting. With VB-CABLE the session's
     translated voice is played on `cable` (Meet/Zoom microphone = "CABLE Output"); `run` is changed in place and
     the ready-status i18n key is returned. Windows without VB-CABLE: `run` stays subtitles-only and the key of a
-    one-line notice (with the vb-audio.com link) is returned. Other systems: None, `run` unchanged."""
+    one-line notice (with the vb-audio.com link) is returned; a voice saved for Listen is switched off for this run,
+    so nothing is played on the old earphones while the notice says "subtitles only". Other systems: None, `run`
+    unchanged."""
     if cable:
         run.update(voice=True, voice_device=cable, speak_cable=True)
-        return "gui_ready_speak_cable"
+        return SPEAK_HINT_CABLE
     if (platform or sys.platform) == "win32":
-        return "gui_speak_no_cable"
+        run.update(voice=False, speak_cable=False)
+        return SPEAK_HINT_NO_CABLE
     return None
+
+
+def speak_start_view(hint: str | None) -> tuple[str, bool]:
+    """#710 (review of #749): what App.toggle() shows when a Speak session starts: (notice i18n key or "",
+    open the Adjust panel). Both Speak lines live in the Adjust panel, which stays withdrawn when Speak is pressed on
+    the bar, so the panel is opened for them; Listen / other systems (hint None) leave it as it is."""
+    return (hint if hint == SPEAK_HINT_NO_CABLE else ""), hint in SPEAK_PANEL_HINTS
 
 
 def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str, bool]]:
