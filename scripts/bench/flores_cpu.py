@@ -53,13 +53,18 @@ def load_pair(data: Path, src: str, limit: int | None = None) -> list[tuple[str,
     return rows[:limit] if limit else rows
 
 
-def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter, log=print) -> list[dict]:
-    """Translate rows not yet in `jsonl` (resume), append each result as it is done; return all rows in order."""
+def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter, log=print,
+                  temp: float | None = None) -> list[dict]:
+    """Translate rows not yet in `jsonl` (resume), append each result as it is done; return all rows in order.
+    Each new row records the Hy-MT2 `temp`; a resume at another temperature stops instead of mixing them (#107)."""
     done: dict[int, dict] = {}
     if jsonl.exists():
         for line in jsonl.read_text("utf-8").splitlines():
             if line.strip():
                 d = json.loads(line)
+                if temp is not None and d.get("temp", temp) != temp:
+                    raise SystemExit(f"flores_cpu: {jsonl} was translated at temperature {d['temp']}, not {temp}; "
+                                     "use another --out")
                 done[d["i"]] = d
     with jsonl.open("a", encoding="utf-8") as f:
         for i, (s, r) in enumerate(rows):
@@ -70,6 +75,8 @@ def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter,
             t0 = clock()
             hyp = tr.translate(s, src_code, "zh").text.strip()
             d = {"i": i, "src": s, "ref": r, "hyp": hyp, "sec": round(clock() - t0, 4)}
+            if temp is not None:
+                d["temp"] = temp
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
             f.flush()
             done[i] = d
@@ -176,8 +183,9 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
     rows = load_pair(Path(a.data), a.src, a.limit or None)
     jsonl = out_dir / f"{a.src}.jsonl"
     summary = out_dir / f"{a.src}.summary.json"
+    temp = None if a.score_only else temperature()  # the COMET venv (--score-only) has no tlwu to ask
     t0 = time.perf_counter()
-    out = translate_all(rows, None if a.score_only else make(Path(a.models_dir)), LANGS[a.src], jsonl)
+    out = translate_all(rows, None if a.score_only else make(Path(a.models_dir)), LANGS[a.src], jsonl, temp=temp)
     wall = time.perf_counter() - t0
     # --score-only keeps the translate run's wall time and CPU from its summary
     prev = json.loads(summary.read_text("utf-8")) if a.score_only and summary.exists() else {}
@@ -191,7 +199,7 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
             comet = load_comet(a.comet_model)
     res = score(out, comet)
     res.update(pair=f"{a.src}->{REF}", split=SPLIT, engine="Hy-MT2-1.8B Q4_K_M (llama.cpp, CPU)",
-               temperature=prev.get("temperature") if a.score_only else temperature(),  # COMET venv has no tlwu
+               temperature=prev.get("temperature") if a.score_only else temp,
                cpu=prev.get("cpu") or cpu_name(), translate_wall_s=prev.get("translate_wall_s", round(wall, 1)))
     jsonl.write_text("".join(json.dumps(d, ensure_ascii=False) + "\n" for d in out), "utf-8")
     summary.write_text(json.dumps(res, indent=1, ensure_ascii=False), "utf-8")
