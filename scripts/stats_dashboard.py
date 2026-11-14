@@ -427,7 +427,39 @@ def build_flow_inputs(api, repo, merged_prs, now):
     return build_flow(items), faucet
 
 
-def build_series(api, repo, branch, now):
+_FETCH = object()  # sentinel: fetch releases inside the builder
+
+
+def release_downloads(api, repo):
+    """[{'tag','downloads'}] newest first (sum of asset download_count); None if unavailable."""
+    try:
+        rels = _pages(api, "/repos/%s/releases" % repo)
+    except Exception as e:  # dashboard still builds without downloads
+        print("releases unavailable: %s" % e, file=sys.stderr)
+        return None
+    return [{"tag": r.get("tag_name", "?"),
+             "downloads": sum(a.get("download_count", 0) for a in r.get("assets", []))} for r in rels]
+
+
+def downloads_series(history, days, current=None):
+    """Per-day total downloads: last snapshot value up to that day, None before the first one.
+
+    GitHub only exposes a running total, so the trend comes from the hourly snapshots;
+    `current` (the live total) overrides the last day.
+    """
+    known = sorted((h["ts"], h["downloads"]) for h in history or () if h.get("downloads") is not None)
+    out, k, last = [], 0, None
+    for d in days:
+        while k < len(known) and day_of(known[k][0]) <= d:
+            last = known[k][1]
+            k += 1
+        out.append(last)
+    if current is not None and out:
+        out[-1] = current
+    return out
+
+
+def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
     days = day_range(day_of(created), now.strftime("%Y-%m-%d"))
@@ -459,8 +491,14 @@ def build_series(api, repo, branch, now):
     except Exception:
         ms = []
     flow, faucet = build_flow_inputs(api, repo, merged_prs, now)
+    if rels is _FETCH:
+        rels = release_downloads(api, repo)
+    dl_total = sum(r["downloads"] for r in rels) if rels is not None else None
     return {
         "flow": flow, "faucet": faucet,
+        "downloads": {"total": dl_total, "releases": rels or [],
+                      "series": downloads_series(history, days, dl_total) if dl_total is not None
+                      else [None] * len(days)},  # releases unavailable: block stays empty
         "repo": repo, "branch": branch, "created": created,
         "updated": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "days": days,
@@ -484,7 +522,7 @@ def build_series(api, repo, branch, now):
     }
 
 
-def build_snapshot(api, repo, branch, now):
+def build_snapshot(api, repo, branch, now, rels=_FETCH):
     info = api("/repos/%s" % repo)
     issues = [i for i in _pages(api, "/repos/%s/issues?state=open" % repo)
               if "pull_request" not in i]
@@ -498,8 +536,11 @@ def build_snapshot(api, repo, branch, now):
     for c in commits:
         d = c["commit"]["committer"]["date"][:13]  # YYYY-MM-DDTHH
         by_hour[d] = by_hour.get(d, 0) + 1
+    if rels is _FETCH:
+        rels = release_downloads(api, repo)
     return {
         "ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "downloads": sum(r["downloads"] for r in rels) if rels is not None else None,
         "stars": info.get("stargazers_count", 0),
         "forks": info.get("forks_count", 0),
         "open_issues": len(issues),
@@ -564,6 +605,8 @@ __FLOW__
 <p class="cap1">Total GitHub stars over time.</p></section>
 <section class="blk"><h2>Forks</h2><div id="c_forks"></div>
 <p class="cap1">Total forks over time.</p></section>
+<section class="blk"><h2>Downloads <small id="dl_tot"></small></h2><div id="c_dl"></div><div id="dl_rel"></div>
+<p class="cap1">Total release downloads over time (from hourly snapshots), and per release.</p></section>
 </div>
 <script id="d" type="application/json">__DATA__</script>
 <script>
@@ -587,7 +630,7 @@ function chart(el,series,opt){
   for(let i=0;i<n;i++){let acc=0;series.forEach((s,k)=>{const v=s.v[i];if(!v)return;
    g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(acc+v)}" width="${bw}" height="${Y(acc)-Y(acc+v)}" fill="${opt.pal?opt.pal[k]:PAL[k%PAL.length]}"><title>${D.days[i]} ${esc(s.name)}: ${v}</title></rect>`;acc+=v})}}
  else if(opt.bar){const bw=(W-L)/n*.8;series[0].v.forEach((v,i)=>{g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(v)}" width="${bw}" height="${Y(0)-Y(v)}" fill="${opt.color}"><title>${D.days[i]}: ${v}</title></rect>`})}
- else series.forEach(s=>{g+=`<polyline fill="none" stroke="${opt.color}" stroke-width="2" points="${s.v.map((v,i)=>X(i,n)+','+Y(v)).join(' ')}"/>`});
+ else series.forEach(s=>{g+=`<polyline fill="none" stroke="${opt.color}" stroke-width="2" points="${s.v.map((v,i)=>v==null?'':X(i,n)+','+Y(v)).filter(Boolean).join(' ')}"/>`});
  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}">${g}</svg>`}
 document.getElementById('upd').textContent='Updated '+D.updated+' UTC. Data from repo creation ('+D.created.slice(0,10)+') to today.';
 const Hh=D.hero;
@@ -604,6 +647,12 @@ chart(c_commits,[{name:'commits',v:D.commits}],{bar:1,color:'var(--a)'});
 chart(c_stars,[{name:'stars',v:D.stars}],{color:'#e0a81e'});
 chart(c_forks,[{name:'forks',v:D.forks}],{color:'#3b82c4'});
 chart(c_open,[{name:'open',v:D.open_issues}],{color:'#c2410c'});
+const DL=D.downloads||{releases:[],series:[]};
+document.getElementById('dl_tot').textContent=DL.total==null?'':'total '+DL.total;
+if(DL.series.some(v=>v!=null))chart(c_dl,[{name:'downloads',v:DL.series}],{color:'#2a9d6f'});
+else c_dl.innerHTML='<p class="n">No download history yet (builds up from hourly snapshots).</p>';
+const dlMax=Math.max(1,...DL.releases.map(r=>r.downloads));
+dl_rel.innerHTML=DL.releases.map(r=>`<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:120px">${esc(r.tag)}</span><div class="pb" style="flex:1"><div style="width:${100*r.downloads/dlMax}%"></div></div><span style="width:48px;text-align:right">${r.downloads}</span></div>`).join('')||'<p class="n">No releases.</p>';
 const dim=document.getElementById('dim');
 Object.keys(D.groups).forEach(g=>dim.add(new Option(g==='priority'?'priority (P0-P4)':g,g)));
 function showGroup(){const g=dim.value,o=D.groups[g],n=D.days.length;
@@ -687,8 +736,9 @@ def run(outdir, repo, branch, api=http_api, now=None):
             history = []
     except (OSError, ValueError):
         history = []
-    history = merge_history(history, build_snapshot(api, repo, branch, now))
-    series = build_series(api, repo, branch, now)
+    rels = release_downloads(api, repo)  # one fetch per run, shared by snapshot and series
+    history = merge_history(history, build_snapshot(api, repo, branch, now, rels))
+    series = build_series(api, repo, branch, now, history, rels)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f)
     with open(os.path.join(outdir, "series.json"), "w", encoding="utf-8") as f:
