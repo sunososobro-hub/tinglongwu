@@ -1,12 +1,26 @@
-# tinglongWu 聽龍：離線即時語音翻譯
-
-**在你自己的電腦上即時翻譯會議與通話。不上雲、預設不留錄音。**
-
-[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-
 [English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md)
 
-<p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="英文語音進、中文字幕出，全程離線" width="560"><br>*英文語音進、中文字幕出，聲音不離開電腦。*</p>
+# tinglongWu 聽龍
+
+<p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="英文語音進、中文字幕出，全程離線" width="560"></p>
+
+```mermaid
+flowchart LR
+  A["⬇ 下載"] --> B["▶ 播放影片"] --> C["💬 字幕"]
+```
+
+| 🎧 聽 | 🗣️ 說 | 🔁 雙向 |
+|:-:|:-:|:-:|
+| 即時字幕 | 語音輸出 | 雙方互譯 |
+
+<p align="center">![zh en ja ko ru](https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ko%20%C2%B7%20ru-blue) ![Windows macOS Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)<br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ 下載 Windows 版</a></b></p>
+
+<details>
+<summary>更多：安裝、隱私、常見問題、參與</summary>
+
+離線即時語音翻譯。不上雲、預設不留錄音。
+
+[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 ## 下載
 
@@ -19,18 +33,6 @@
 Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前如此）：Edge 會先說「不常下載」且沒有「保留」按鈕：滑到檔案上 → … → 保留 → 點「刪除」旁的 ▾ → 仍要保留；之後在 SmartScreen 畫面點「其他資訊 → 仍要執行」。想先檢查？到[發行頁](https://github.com/sunososobro-hub/tinglongwu/releases/latest)下載 `mac_install.sh` / `install.sh`，讀過並與該頁的 `SHA256SUMS.txt` 比對後再執行。
 
 安裝時會下載一次語音辨識和翻譯模型（需要網路），之後完全離線。
-
-## 三種用法
-
-| 🎧 聽 | 🗣️ 說 | 🔁 雙向會議 |
-|---|---|---|
-| 影片、通話、會議裡別人說的話即時出字幕 | 你講中文，翻譯後的語音透過虛擬麥克風送進通話 | 雙方同時翻，字幕標出 **我** / **對方** |
-
-## 為什麼選聽龍
-
-- 🆓 **免費開源**（MIT）
-- 🔒 **離線**：聲音和文字不離開你的電腦
-- 🗑️ **預設不留錄音**（選用 `--record`）、不用帳號、不追蹤
 
 ## 語言與電腦需求
 
@@ -50,3 +52,5 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 MIT 授權，見 [LICENSE](LICENSE)。(c) 2026 Alonso.
 
 <p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong，專心聽的龍</sub></p>
+
+</details>
