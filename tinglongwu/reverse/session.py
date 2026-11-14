@@ -9,6 +9,7 @@ import traceback
 
 from .. import diag as _diag
 from .. import fmt
+from . import sendmode
 from .synth import VOICE_ENGINES, _make_synth, _synth_sentences, _target, describe_error, no_audio_reason
 
 
@@ -52,6 +53,9 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
                           mode=getattr(a, "send_mode", "confirm"), require_back=not getattr(a, "no_back", False))
     if sess_box is not None:
         sess_box.append(sess)
+    note = sendmode.notice(sess.mode)  # #822: once per speak start, only for countdown / auto
+    if note:
+        print(note, flush=True)
 
     lat = getattr(a, "lat", None) or Lat()
     bar = _to_bar(a)

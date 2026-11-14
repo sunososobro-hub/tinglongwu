@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -34,11 +34,26 @@ UPDATE_CHECK_DELAY_MS = 5000
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
+UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
+FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
 # #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
 DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
+
+
+def open_target(target: str) -> None:
+    """Open a folder or URI with the OS handler (#738: log folder, Windows "Installed apps")."""
+    import subprocess
+
+    try:
+        if sys.platform == "win32":
+            os.startfile(target)  # noqa: S606 - a folder or the ms-settings: URI
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", target])
+    except OSError:
+        _diag.swallowed(__name__)
 
 
 class Overlay:
@@ -365,6 +380,7 @@ class App:
         self._build_quick()
         self._build_bar()
         self._build_update_line()
+        self.build_menubar()
         self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
         self.tour = Tour(self)
@@ -419,17 +435,40 @@ class App:
             self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         self._adv_toggled()
+        self._send_mode_changed()  # #834: the notice follows the UI language
         if self.status_key:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
+        self.home_lang.configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
+        self.build_menubar()
         self._upd_relabel()
         self.tour.relabel()
         self.render_log()
         if self.overlay.visible:
             self.overlay.render(self.state)
+
+    def _build_send_mode(self, f):
+        """#834: speak send mode (default confirm); countdown / auto show the quality notice."""
+        box = ttk.Frame(f)
+        box.grid(row=3, column=0, columnspan=3, sticky="we")
+        self._tx(ttk.Label(box), "gui_send_mode").grid(row=0, column=0, sticky="w", pady=2)
+        self.v_send_mode = tk.StringVar(value=self.settings["send_mode"])
+        ttk.Combobox(box, textvariable=self.v_send_mode, values=list(SEND_MODES), state="readonly",
+                     width=18).grid(row=0, column=1, sticky="we", pady=2, padx=(6, 0))
+        self.lbl_send_notice = ttk.Label(box, wraplength=300, justify="left")
+        self.lbl_send_notice.grid(row=1, column=0, columnspan=2, sticky="w")
+        self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
+        self._send_mode_changed()
+
+    def _send_mode_changed(self):
+        mode = self.v_send_mode.get()
+        if mode in SEND_MODES:
+            self.settings["send_mode"] = mode
+        key = send_mode_notice_key(mode)
+        self.lbl_send_notice.configure(text=t(key) if key else "")
 
     def _combo(self, row, label, key, values):
         self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
@@ -446,8 +485,10 @@ class App:
     def _adv_toggled(self):
         on = self.v_adv.get()
         self.settings["advanced_open"] = on
-        for w in self.engine_widgets:
-            w.grid() if on else w.grid_remove()
+        if on:  # #737: the whole settings block (engine included) lives under Advanced
+            self.frm.pack(after=self.adv_btn, anchor="w")
+        else:
+            self.frm.pack_forget()
         self.adv_btn.configure(text=t("gui_advanced_open" if on else "gui_advanced"))
         if on:
             self.combos["engine"].configure(values=engine_labels())
@@ -537,26 +578,22 @@ class App:
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
         self.frm = f = ttk.Frame(p, padding=10)
         self.combos = {}
-        f.pack()
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
         self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
-        self.engine_widgets = [f.grid_slaves(row=19, column=c)[0] for c in (0, 1)]
         self.v_adv = tk.BooleanVar(value=False)
-        self.adv_btn = ttk.Checkbutton(f, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
-        self.adv_btn.grid(row=18, column=0, columnspan=3, sticky="w", pady=(4, 0))
-        self.set_advanced(bool(s["advanced_open"]))
-        self.v_model = self._combo(4, "gui_model", "model", model_labels())
-        self.v_model.set(label_for_model(self.settings["model"]))
-        self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
+        self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
+        self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
+        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
         self.v_source = self._combo(5, "gui_source", "source", SOURCES)
+        self._build_send_mode(f)
         self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS)
         self._tx(ttk.Label(f), "gui_glossary").grid(row=6, column=0, sticky="w", pady=2)
         self.v_gloss = tk.StringVar(value=s["glossary"])
@@ -581,45 +618,26 @@ class App:
         self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
         ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
                      state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
-        self.v_lines = self._spin(15, "gui_lines", ROWS_MIN, ROWS_MAX, s["overlay_lines"],
-                                  lambda n: self.overlay.set_rows(n))
-        self.v_font = self._spin(16, "gui_font_size", FONT_MIN, FONT_MAX, s["font_size"],
-                                 lambda n: self.overlay.set_font(n))
+        # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
+        self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
+        self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
         self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
-        # #756: Check setup / Report a problem and the update controls share one row (above the subtitle log, which
-        # fills the window: a row below it was off-screen)
+        # Check setup stays in the panel, above the subtitle log (#756); Report a problem and the update controls
+        # moved to the menu bar's Help menu (#738)
         self.act_row = act = ttk.Frame(f)
         act.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
-        act.columnconfigure(1, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
-        self._tx(ttk.Button(act, command=self.report_problem), "gui_report").grid(
-            row=0, column=1, sticky="we", padx=(4, 0))
-        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
-            up = self.upd_controls = ttk.Frame(act)
-            up.grid(row=1, column=0, columnspan=2, sticky="we", pady=(4, 0))
-            self._tx(ttk.Button(up, command=lambda: self._check_update(manual=True)), "gui_upd_check").pack(
-                side="left")
-            self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
-            self._tx(ttk.Checkbutton(up, variable=self.v_auto_upd,
-                                     command=lambda: autoupdate.set_auto(self.v_auto_upd.get())),
-                     "gui_upd_auto").pack(side="left", padx=(8, 0))
-            ttk.Label(up, text=f"v{__version__}").pack(side="right")
+        self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
-        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
+        self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
+        ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
         self.v_notice = tk.StringVar(value="")
-        ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
-            row=12, column=0, columnspan=3, sticky="w")
-        self._tx(ttk.Label(f), "gui_ui_lang").grid(row=14, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(sb, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").pack(anchor="w")
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
-        cb = ttk.Combobox(f, textvariable=self.v_ui_lang, values=list(UI_LANGS), state="readonly", width=12)
-        cb.grid(row=14, column=1, sticky="we", pady=(8, 0))
-        cb.bind("<<ComboboxSelected>>", self.switch_lang)
         if sv_ttk is not None:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
-            self._tx(ttk.Checkbutton(f, variable=self.v_dark, command=self._toggle_theme), "gui_dark").grid(
-                row=14, column=2, sticky="e", pady=(8, 0))
         self._build_log(f)
 
     # -- #698 auto-update -------------------------------------------------------------------------
@@ -736,17 +754,82 @@ class App:
             return
         self.root.after(UPDATE_QUIT_DELAY_MS, self.quit)  # the helper waits for this process, then installs and restarts the GUI
 
+    # -- #738 menu bar: File / Settings / Help hold the rarely used actions ------------------------------------
+    def build_menubar(self):
+        """(Re)build the window's menu bar in the current UI language."""
+        mb = tk.Menu(self.root, tearoff=0)
+        fm = tk.Menu(mb, tearoff=0)
+        fm.add_command(label=t("gui_menu_logs"), command=self.open_log_folder)
+        fm.add_command(label=t("gui_menu_uninstall"), command=self.open_uninstall)
+        fm.add_separator()
+        fm.add_command(label=t("gui_menu_quit"), command=self.quit)
+        mb.add_cascade(label=t("gui_menu_file"), menu=fm)
+        sm = tk.Menu(mb, tearoff=0)
+        lm = tk.Menu(sm, tearoff=0)
+        for name in UI_LANGS:
+            lm.add_radiobutton(label=name, value=name, variable=self.v_ui_lang, command=self.switch_lang)
+        sm.add_cascade(label=t("gui_ui_lang"), menu=lm)
+        if sv_ttk is not None:
+            sm.add_checkbutton(label=t("gui_dark"), variable=self.v_dark, command=self._toggle_theme)
+        rm = tk.Menu(sm, tearoff=0)
+        for n in range(ROWS_MIN, ROWS_MAX + 1):
+            rm.add_radiobutton(label=str(n), value=str(n), variable=self.v_lines)
+        sm.add_cascade(label=t("gui_lines"), menu=rm)
+        zm = tk.Menu(sm, tearoff=0)
+        for n in FONT_MENU_SIZES:
+            zm.add_radiobutton(label=str(n), value=str(n), variable=self.v_font)
+        sm.add_cascade(label=t("gui_font_size"), menu=zm)
+        mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
+        hm = tk.Menu(mb, tearoff=0)
+        hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
+        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
+            hm.add_command(label=t("gui_upd_check"), command=lambda: self._check_update(manual=True))
+            hm.add_checkbutton(label=t("gui_upd_auto"), variable=self.v_auto_upd,
+                               command=lambda: autoupdate.set_auto(self.v_auto_upd.get()))
+        hm.add_command(label=t("gui_report"), command=lambda: self.report_problem())
+        hm.add_separator()
+        hm.add_command(label=t("gui_menu_about"), command=self.show_about)
+        mb.add_cascade(label=t("gui_menu_help"), menu=hm)
+        old = getattr(self, "menubar", None)
+        self.menubar = mb
+        self.root.configure(menu=mb)
+        if old is not None:
+            old.destroy()
+
+    def open_log_folder(self):
+        d = userdirs.log_dir()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            _diag.swallowed(__name__)
+        open_target(str(d))
+
+    def open_uninstall(self):
+        if sys.platform == "win32":
+            open_target(UNINSTALL_URI)  # Windows Settings > Apps > Installed apps
+        else:
+            messagebox.showinfo(t("gui_menu_uninstall"), t("gui_uninstall_other"), parent=self.root)
+
+    def show_about(self):
+        messagebox.showinfo(t("gui_menu_about"), t("gui_about_text", ver=__version__), parent=self.root)
+
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
         q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
-        q.pack(before=self.frm, fill="x")
-        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
-        ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
-            row=0, column=1, sticky="we", padx=(6, 0))
-        # #314: "?" reopens the 3-step overlay; it lives here and in the subtitle bar's menu, not on the bar (#455)
-        self.btn_help = ttk.Button(q, text="?", width=2, command=self.show_tour)
-        self.btn_help.grid(row=0, column=2, padx=(6, 0))
+        q.pack(fill="x")
+        self.status_box.pack(fill="x")
+        # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)
+        self.adv_btn = ttk.Checkbutton(self.panel, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
+        self.adv_btn.pack(anchor="w", padx=10, pady=(6, 0))
+        self.set_advanced(bool(self.settings["advanced_open"]))
+        # #737: the one picker on the first screen is the OTHER side's language (= source language `lang`, the same
+        # variable as tour step 1); my language (`target`) is under Advanced. quick_settings() turns it into
+        # listen: other -> mine, speak: mine -> other.
+        self._tx(ttk.Label(q), "gui_quick_other").grid(row=0, column=0, sticky="w")
+        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=14)
+        self.home_lang.grid(row=0, column=1, sticky="we", padx=(6, 0))
+        # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
@@ -849,9 +932,9 @@ class App:
         else:
             self.overlay.hide()
 
-    def _spin(self, row, key, lo, hi, value, apply):
-        """Numeric spinbox row; each valid value applies live (empty / non-numeric / out-of-range input is ignored)."""
-        self._tx(ttk.Label(self.frm), key).grid(row=row, column=0, sticky="w", pady=2)
+    def _num_var(self, lo, hi, value, apply):
+        """Numeric setting (menu bar radio items, #738); each valid value applies live (empty / non-numeric /
+        out-of-range values are ignored)."""
         var = tk.StringVar(value=str(value))
 
         def changed(*_):
@@ -862,8 +945,6 @@ class App:
             if lo <= n <= hi:
                 apply(n)
 
-        ttk.Spinbox(self.frm, from_=lo, to=hi, textvariable=var, width=6, command=changed).grid(
-            row=row, column=1, sticky="w", pady=2)
         var.trace_add("write", changed)
         return var
 
@@ -910,6 +991,50 @@ class App:
         threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
         return True
 
+    def _offer_cable(self) -> bool:
+        """#804: True when this speak Start must not go on now: the VB-CABLE question was answered "no" (back to
+        listen) or the download + elevated install is running (Start resumes in _cable_done)."""
+        from .. import vbcable
+
+        if self.downloading or not vbcable.needs_offer(vbcable.output_names()):
+            return False
+        lang = ui_lang()
+        if not messagebox.askyesno(vbcable.title_text(lang), vbcable.dialog_text(lang), parent=self.root):
+            self.v_mode.set("listen")
+            return True
+        self.downloading = "VB-CABLE"
+        self.btn.configure(state="disabled")
+        self._status_text(t("gui_dl_running", model="VB-CABLE"))
+        self._sync_quick()
+        threading.Thread(target=lambda: self.q.put(("cable_done", vbcable.install_flow(
+            vbcable.child_download, vbcable.child_install))), daemon=True).start()
+        return True
+
+    def _cable_done(self, res: str):
+        """#804: "installed" + CABLE now listed -> 3-step help, then the speak Start goes on; anything else -> listen
+        mode (no pin yet / offline: the official page opens so the user can install by hand)."""
+        from .. import vbcable
+
+        self.downloading = None
+        self.btn.configure(state="normal")
+        self._sync_quick()
+        lang = ui_lang()
+        if res == "installed" and vbcable.has_cable(vbcable.output_names()):
+            self._status_text("")
+            messagebox.showinfo(vbcable.title_text(lang), vbcable.howto_text(lang), parent=self.root)
+            self.toggle("speak")
+            return
+        self.v_mode.set("listen")
+        if res == "page":
+            import webbrowser
+
+            self._status_text("")  # #804 review: drop the "Downloading VB-CABLE..." line
+
+            webbrowser.open(vbcable.VBCABLE_PAGE)
+            return
+        self._status_text(vbcable.fail_text(lang))
+        messagebox.showwarning(vbcable.title_text(lang), vbcable.fail_text(lang), parent=self.root)
+
     def _pack_done(self, pack: str, rc: int):
         self.downloading = None
         self.btn.configure(state="normal")
@@ -921,14 +1046,24 @@ class App:
         if rc == 0:  # on without restarting the app
             self.toggle(getattr(self, "pack_retry", None))
 
+    def _cpu_ram(self):
+        """#780: RAM (GB) for the "too heavy" model marks on a PC without a CUDA device, else None."""
+        try:
+            from ..device import resolve_device
+
+            # same decision as session setup (GPU present but CUDA libs missing -> cpu), no warnings from the probe
+            return cpu_ram_gb(resolve_device("auto", warn=lambda m: None) == "cuda")
+        except Exception:  # noqa: BLE001 - a failed probe must not break the window
+            return None
+
     def _download_done(self, model: str, rc: int):
         self.downloading = None
         self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
-        labels = model_labels()
+        labels = model_labels(ram_gb=self._cpu_ram())
         self.combos["model"].configure(values=labels, width=combo_width(labels))
         if model_from_label(self.v_model.get()) == model:
-            self.v_model.set(label_for_model(model))
+            self.v_model.set(label_for_model(model, ram_gb=self._cpu_ram()))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
         self._sync_quick()
@@ -968,7 +1103,7 @@ class App:
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
-                 voice=self.v_voice.get(),
+                 voice=self.v_voice.get(), send_mode=self.v_send_mode.get(),
                  voice_device="" if self.v_voice_dev.get() == self.voice_default else self.v_voice_dev.get())
         save_settings(s)
 
@@ -983,6 +1118,8 @@ class App:
             return
         self.collect()
         run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
+            return
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
         self.quick_mode, self.run_source = mode, run.get("source")
@@ -1061,6 +1198,8 @@ class App:
                         self._show_panel()
                 elif kind == "pack_line":
                     self._status_text(ev[1])
+                elif kind == "cable_done":
+                    self._cable_done(ev[1])
                 elif kind == "pack_done":
                     self._pack_done(ev[1], ev[2])
                 elif kind == "dl_line":

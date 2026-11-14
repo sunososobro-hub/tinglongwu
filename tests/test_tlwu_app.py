@@ -114,15 +114,16 @@ def test_default_models_dir_is_localappdata(monkeypatch, tmp_path):
 def test_prepare_env_bundled_sets_models_and_cpu(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     for k in ("TLWU_MODELS", "TLWU_BUNDLED", "CUDA_VISIBLE_DEVICES"):
-        monkeypatch.delenv(k, raising=False)
+        # setenv first so teardown removes what prepare_env writes (delenv of a missing key records nothing and a
+        # later delenv would restore the leaked value: TLWU_BUNDLED=1 then broke test_update_check, #768)
+        monkeypatch.setenv(k, "")
+        monkeypatch.delenv(k)
     import os
 
     assert app_main.prepare_env(True, True) == tmp_path / "tinglongwu" / "models"
     assert os.environ["CUDA_VISIBLE_DEVICES"] == "-1" and os.environ["TLWU_BUNDLED"] == "1"
     monkeypatch.setenv("TLWU_MODELS", str(tmp_path / "mine"))  # explicit env wins
     assert app_main.prepare_env(True, False) == tmp_path / "mine"
-    monkeypatch.delenv("TLWU_BUNDLED")
-    monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
 
 
 def test_split_cpu():

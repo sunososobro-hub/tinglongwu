@@ -10,7 +10,8 @@ publish after the owner merges that PR).
 Auto-release (#589): auto-release.yml runs `auto` after ci / e2e / windows-build / hw-tests complete on dev. It merges
 the open dev -> main release PR only when AUTO_RELEASE is true, the throttle issue is at level >= 1, the PR head is
 the run's commit, the title is v<__version__>, newer than every tag, all four checks are green on the head and
-docs/whats_new.md has a section for that version; then it dispatches release.yml on main with publish=true (a merge
+docs/whats_new.md has a section for that version (#848: hw-tests that has not started within HW_RUNNER_WAIT_MIN
+minutes, runner offline, is deferred: scripts/hw_deferral.py); then it dispatches release.yml on main with publish=true (a merge
 by the workflow token fires no `push`), which `plan` treats like the push of the merged release PR.
 What's new comes from docs/whats_new.md (`## vX.Y.Z` section, written by the bump PR); a release PR body edit is the
 fallback for a hand merge. Without either the notes keep `- TODO:` and windows-installer leaves the release a draft.
@@ -44,9 +45,24 @@ def _pack_manifest():  # by path: importing the tinglongwu package would install
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+_HW = None
+
+
+def _hw():  # scripts/hw_deferral.py (#848), by path like _pack_manifest
+    global _HW
+    if _HW is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("tlwu_hw_deferral", Path(__file__).resolve().parent / "hw_deferral.py")
+        _HW = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_HW)
+    return _HW
+
+
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 TITLE_RE = re.compile(r"^release:\s*(v\S+)\s*$", re.I)
-REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests")
+REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing")  # #849: VB-CABLE routing on windows-latest
 WHATS_NEW = "## What's new"
 WHATS_NEW_FILE = "docs/whats_new.md"
 THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)
@@ -138,7 +154,7 @@ def prerelease_tag(tag: str, version: str, tags: dict[str, str], sha: str) -> st
 
 def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str], pulls: list[dict], repo: str,
          runs_of=lambda sha: [], published=lambda tag: False, ref_type: str = "branch",
-         publish_input: bool = False) -> dict:
+         publish_input: bool = False, jobs_of=lambda run_id: []) -> dict:
     """publish = tag + Release; build = build and check the Windows zip; head = released dev commit.
     #589: workflow_dispatch on main with publish=true (sent by auto-release.yml after it merged the release PR) is
     treated like the push to main; every other dispatch is a dry run."""
@@ -177,11 +193,18 @@ def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str]
     head = pr["head"]["sha"]
     runs = runs_of(head)
     bad = check_problems(runs)
-    if bad:
+    hw_mod = _hw()
+    # #848: auto-release merged it with hw-tests deferred (runner offline); the cloud checks must still be green
+    deferred = bool(bad) and hw_mod.plan_deferred(pr.get("body") or "", runs, jobs_of) and not check_problems(
+        runs, hw_mod.CLOUD_CHECKS)
+    if bad and not deferred:
         raise SystemExit(f"release PR #{pr['number']}: required checks not green on {head[:12]}: " + "; ".join(bad))
-    hw = max((r for r in runs if r.get("name") == "hw-tests"), key=lambda r: r.get("id", 0))
-    out.update(publish="true", build="true", tag=tag, pr=str(pr["number"]), head=head, hw_run=hw.get("html_url", ""),
-               reason=f"release PR #{pr['number']} merged")
+    hw = None if deferred else max((r for r in runs if r.get("name") == "hw-tests"), key=lambda r: r.get("id", 0))
+    out.update(publish="true", build="true", tag=tag, pr=str(pr["number"]), head=head,
+               hw_run=hw.get("html_url", "") if hw else "",
+               reason=f"release PR #{pr['number']} merged" + (f" ({hw_mod.DEFERRED_LINE}, #848)" if deferred else ""))
+    if deferred:
+        out["hw_deferred"] = "true"
     return out
 
 
@@ -258,8 +281,11 @@ def open_release_pr(pulls: list[dict], repo: str) -> dict | None:
 
 
 def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, tags: dict[str, str],
-              pulls: list[dict], repo: str, runs_of, whats_new_text: str, merged: list[dict] = ()) -> dict:
-    """#589 auto-release gate: merge = merge the release PR at `head` now, then dispatch release.yml on main."""
+              pulls: list[dict], repo: str, runs_of, whats_new_text: str, merged: list[dict] = (),
+              jobs_of=lambda run_id: [], now=None) -> dict:
+    """#589 auto-release gate: merge = merge the release PR at `head` now, then dispatch release.yml on main.
+    #848: when hw-tests on the head has not started within HW_RUNNER_WAIT_MIN, it is deferred (hw_deferred=true):
+    ci, e2e and windows-build suffice and the workflow marks the PR body before merging."""
     out = {"merge": "false", "pr": "", "head": "", "tag": "", "reason": ""}
 
     def stop(why):
@@ -286,11 +312,21 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
     done = release_pr_of([p for p in merged if title_version(p.get("title", "")) == tag], repo)
     if done is not None:  # merged, release.yml has not tagged yet: never merge the same version twice
         return stop(f"release PR #{done['number']} for {tag} is already merged: bump __version__ first")
-    bad = check_problems(runs_of(head))
+    runs = runs_of(head)
+    hw_mod = _hw()
+    hw = hw_mod.decide(runs, jobs_of, now)
+    bad = check_problems(runs, hw_mod.required_checks(hw["state"], REQUIRED_CHECKS))
     if bad:
+        if hw["state"] == "waiting":
+            bad.append(hw["reason"])
         return stop("required checks not green on the head: " + "; ".join(bad))
     if whats_new_section(whats_new_text, tag) is None:
         return stop(f"{WHATS_NEW_FILE} has no filled `## {tag}` section")
+    if hw["state"] == "deferred":
+        out.update(merge="true", tag=tag, hw_deferred="true",
+                   reason=f"release PR #{pr['number']} is green for {tag} on {', '.join(hw_mod.CLOUD_CHECKS)}; "
+                          f"{hw['reason']}: merge and publish")
+        return out
     out.update(merge="true", tag=tag, reason=f"release PR #{pr['number']} is green for {tag}: merge and publish")
     return out
 
@@ -314,17 +350,26 @@ def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict
     return "\n".join(lines) + "\n"
 
 
-def gpu_line(hw_run: str, head: str) -> str:
+# #762: the release zip is the slim core (build_windows.py --core): CPU llama, no CUDA libraries inside
+CORE_ZIP_NOTE = ("The zip below is the slim core: it has no CUDA libraries inside, was built on a GPU-less CI runner "
+                 "and tested there on the CPU path only.")
+
+
+def gpu_line(hw_run: str, head: str, hw_deferred: bool = False) -> str:
+    if hw_deferred:  # #848: one line that says so
+        hw_mod = _hw()
+        return (f"**GPU: {hw_mod.DEFERRED_LINE}.** The maintainer's self-hosted hw-tests runner did not start within "
+                f"{hw_mod.HW_RUNNER_WAIT_MIN} minutes, so this release shipped on ci, e2e and windows-build; hw-tests "
+                "runs later on this commit and a failure opens a P0 issue.")
     if hw_run:
         return (f"**GPU:** validated by [hw-tests]({hw_run}) on the maintainer's self-hosted NVIDIA runner for commit "
-                f"`{head[:12]}`. The zip below was built on a GPU-less CI runner and tested there on the CPU path only.")
-    return ("**GPU: not validated.** The CI runner has no GPU; the CUDA path was checked statically (every CUDA DLL "
-            "dependency resolves) and the zip was tested on the CPU path only.")
+                f"`{head[:12]}`. {CORE_ZIP_NOTE}")
+    return f"**GPU: not validated.** The CI runner has no GPU. {CORE_ZIP_NOTE}"
 
 
 def release_notes(base: str, pr_text: str, since: str | None, verification: str, hw_run: str, head: str,
                   changes: list[dict], thanks: dict, pack_manifest: dict | None = None, whats_new_text: str = "",
-                  tag: str = "") -> str:
+                  tag: str = "", hw_deferred: bool = False) -> str:
     """render_support.py --notes output with What's new filled in, plus the Windows checks, changes and thanks.
     What's new: docs/whats_new.md `## <tag>`, else the release PR's edited section; else the TODO line stays, so
     windows-installer keeps the release a draft (#589: the no-TODO gate)."""
@@ -333,7 +378,7 @@ def release_notes(base: str, pr_text: str, since: str | None, verification: str,
         base = re.sub(r"^## What's new[ \t]*\n(?:- TODO:.*\n?)?", lambda _m: f"{WHATS_NEW}\n{new}\n", base, count=1,
                       flags=re.M)
     win = ["### Windows package (tinglongwu-win64.zip)", "", verification.strip() or "(not built)", "",
-           gpu_line(hw_run, head)]
+           gpu_line(hw_run, head, hw_deferred)]
     packs = [_pack_manifest().sizes_md(pack_manifest), ""] if pack_manifest else []  # #615: every optional pack with its size
     return "\n".join([base.rstrip(), "", *win, "", *packs, changes_md(since, changes), thanks_md(thanks)])
 
@@ -409,6 +454,7 @@ def main(argv=None) -> int:
                                           ("GITHUB_EVENT_NAME", "GITHUB_REF_NAME", "GITHUB_SHA", "GITHUB_REF_TYPE"))
         pulls = gh_json("api", f"repos/{rep}/commits/{sha}/pulls") if event == "push" and ref_type != "tag" else []
         runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
+        jobs_of = lambda rid: gh_json("api", f"repos/{rep}/actions/runs/{rid}/jobs")["jobs"]
         def published(tag):
             r = subprocess.run(["gh", "release", "view", tag, "-R", rep, "--json", "isDraft", "-q", ".isDraft"],
                                capture_output=True, text=True)
@@ -418,7 +464,7 @@ def main(argv=None) -> int:
         if event == "workflow_dispatch" and publish_input and ref_type == "branch" and ref_name == "main":
             pulls = gh_json("api", f"repos/{rep}/commits/{sha}/pulls")
         for k, v in plan(event, ref_name, sha, version, git_tags(), pulls, rep, runs_of, published,
-                          ref_type or "branch", publish_input).items():
+                          ref_type or "branch", publish_input, jobs_of).items():
             print(f"{k}={v}")
         return 0
     if a.cmd == "auto":
@@ -429,10 +475,11 @@ def main(argv=None) -> int:
         pulls = gh_json("api", f"repos/{rep}/pulls?state=open&base=main&per_page=100")
         merged = gh_json("api", f"repos/{rep}/pulls?state=closed&base=main&per_page=100")
         runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
+        jobs_of = lambda rid: gh_json("api", f"repos/{rep}/actions/runs/{rid}/jobs")["jobs"]
         wn = ROOT / WHATS_NEW_FILE
         for k, v in auto_plan(os.environ.get("AUTO_RELEASE", ""), throttle, os.environ.get("RUN_SHA", ""), version,
                               git_tags(), pulls, rep, runs_of, wn.read_text("utf-8") if wn.exists() else "",
-                              merged).items():
+                              merged, jobs_of).items():
             print(f"{k}={v}")
         return 0
     if a.cmd == "pr-body":
@@ -449,7 +496,8 @@ def main(argv=None) -> int:
     wn = ROOT / WHATS_NEW_FILE
     text = release_notes(read(a.base), pr_text, since, read(a.verification), a.hw_run, a.head, changes, thanks,
                          _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None,
-                         wn.read_text("utf-8") if wn.exists() else "", a.version)
+                         wn.read_text("utf-8") if wn.exists() else "", a.version,
+                         os.environ.get("HW_DEFERRED", "") == "true")  # #848: release.yml passes plan's hw_deferred
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

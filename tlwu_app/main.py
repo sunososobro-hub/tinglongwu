@@ -4,6 +4,7 @@
   tlwu.exe --cpu                same, forcing the CPU path
   tlwu.exe --setup              open the model setup screen again
   tlwu.exe --smoke              clean-machine check: load every native library, no models, exit 1 on failure
+  tlwu.exe --run-selfupdate <a>  auto-update child (network; tinglongwu_setup.selfupdate, never tinglongwu) #768
   tlwu.exe setup <args>        tlwu-setup on the command line (network; e.g. setup --whisper small --langs ru --to zh)
   tlwu.exe <any tlwu flag>      the normal command line (e.g. --file x.mp3 --to zh, --mic, --gui)
 """
@@ -56,9 +57,20 @@ def run_setup_worker(args: list[str]) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8", errors="replace")
+    if "--default-listen" in args:  # #771: the wizard's `tlwu.exe setup --default-listen` (downloader.main does not know it)
+        from tinglongwu_setup import cli
+
+        return cli.main(args)
     from tinglongwu_setup import downloader
 
     return downloader.main(args)
+
+
+def run_selfupdate_worker(args: list[str]) -> int:
+    """Networked auto-update child (#768): only tinglongwu_setup is imported here, never tinglongwu."""
+    from tinglongwu_setup import selfupdate
+
+    return selfupdate.main(args)
 
 
 def fix_gui_settings(mdir: Path, cpu_tier: bool) -> None:
@@ -97,6 +109,8 @@ def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["--run-setup"]:
         return run_setup_worker(argv[1:])
+    if argv[:1] == ["--run-selfupdate"]:
+        return run_selfupdate_worker(argv[1:])
     if argv[:1] == ["--smoke"]:  # clean-machine check: import every native module, no models (#9)
         from .smoke import check
 

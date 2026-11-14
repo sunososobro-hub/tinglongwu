@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import gate, history, langfloor, lowend, scoring, tierchart, tiers
+from . import gate, history, langfloor, lowend, scoring, textcases, tierchart, tiers
 from . import noise as noise_mod
 from .runner import CLIPS_PER_LANG, FOCUS_PAIRS, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
@@ -71,6 +71,27 @@ def load_comet():
     return load_from_checkpoint(download_model("Unbabel/wmt22-comet-da"))
 
 
+def text_cases_main(a, engines: Engines | None) -> int:
+    preset = tiers.TIERS.get(a.tier, {})
+    a.model = a.model or preset.get("model")
+    a.engine = a.engine or preset.get("engine", "auto")
+    a.device = a.device or preset.get("device", "auto")
+    try:
+        cases = textcases.load_cases(a.text_cases)
+        if not cases:
+            raise ValueError(f"{a.text_cases} has no cases")
+        mt = (engines or real_engines(a)).load_mt()
+        rep = textcases.run(cases, mt)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        print(f"tlwu-eval: {e}", file=sys.stderr)
+        return 2
+    with open(a.out, "w", encoding="utf-8") as f:
+        json.dump(rep, f, ensure_ascii=False, indent=2)
+    print(textcases.format_report(rep))
+    print(f"report: {a.out}")
+    return 0
+
+
 def main(argv=None, engines: Engines | None = None, totals=None, comet_model=None, **run_kw) -> int:
     """engines / totals / comet_model / run_kw (clock, ram, vram) are injected by tests; defaults measure this machine."""
     p = argparse.ArgumentParser(prog="tlwu-eval", description="Local, offline evaluation of tinglongWu.")
@@ -114,7 +135,11 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     p.add_argument("--history", metavar="FILE.jsonl",
                    help="with --smoke: append one JSON line (date, commit, chrF/MT/ASR per pair, VRAM, hallucinations) (#123)")
     p.add_argument("--trend", metavar="FILE.jsonl", help="draw trend charts from a --history file into --out (default trend.html) (#123)")
+    p.add_argument("--text-cases", metavar="FILE.jsonl",
+                   help="MT-only chrF over text cases such as eval/user_cases.jsonl, per pair and per case (#827)")
     a = p.parse_args(argv)
+    if a.text_cases:
+        return text_cases_main(a, engines)
     if a.trend:
         return history.trend_main(a.trend, "trend.html" if a.out == "report.json" else a.out)
     if a.chart:

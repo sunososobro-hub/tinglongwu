@@ -2,7 +2,7 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 # tinglongWu 聽龍
 
-<p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="English speech in, Chinese subtitles out, fully offline" width="560"></p>
+<p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="English speech in, Chinese subtitles out, translated on this PC" width="560"></p>
 
 ```mermaid
 flowchart LR
@@ -18,7 +18,7 @@ flowchart LR
 <details>
 <summary>More: install, privacy, FAQ, contribute</summary>
 
-Offline real-time speech translation. No cloud, no recordings kept by default.
+Offline real-time speech translation. No cloud, no recordings kept by default. No personal data is collected. Update checks are counted anonymously (date, version, OS) to know how many installs are active.
 
 [![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg?branch=dev)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
@@ -36,7 +36,7 @@ Windows shows a SmartScreen warning because the installer is unsigned until #601
 
 To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
 
-Setup downloads the speech and translation models once (internet needed). After that it runs fully offline.
+Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Optional packs (extra languages, speak mode, GPU) also need internet once. Auto-update (on by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
 
 ## Languages and requirements
 

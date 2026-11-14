@@ -13,11 +13,19 @@ name: auto-release
 #     runs again once the PR exists (release-pr runs from main, so the gate then checks the dev tip).
 #   recovery: if the merge worked but the dispatch failed, run `gh workflow run release.yml --ref main -f publish=true`
 #     by hand; plan re-checks every gate (docs/RELEASING.md).
-# workflow_run uses this file from the default branch (main), so it starts working after one release carries it.
+#   #848 (owner 2026-11-14): hw-tests runs on the owner's home PC (self-hosted tlwu-hw). If its run for the head has
+#     not STARTED within HW_RUNNER_WAIT_MIN = 30 min (scripts/hw_deferral.py), hw-tests is deferred: the gate merges
+#     on ci, e2e and windows-build, marks the PR body so release.yml `plan` accepts it and the notes say "hardware
+#     checks deferred". A queued run completes nothing, so a schedule re-runs the gate every 15 min. A started
+#     hw-tests run is never deferred (online behaviour unchanged). Job `deferred-hw-tests`: when hw-tests later
+#     fails on the released commit or a newer dev push, it opens a P0 issue "[release] deferred hw-tests failed on vX".
+# workflow_run and schedule use this file from the default branch (main), so it starts working after one release carries it.
 on:
   workflow_run:
-    workflows: [ci, e2e, windows-build, hw-tests, release-pr]
+    workflows: [ci, e2e, windows-build, hw-tests, audio-routing, release-pr]   # #849: audio-routing
     types: [completed]
+  schedule:
+    - cron: "4,19,34,49 * * * *"   # #848: re-check a release PR whose hw-tests is still queued (runner offline)
 
 permissions: {}
 
@@ -29,10 +37,10 @@ jobs:
   auto-release:
     # a fork PR from a branch named `dev` also reports head_branch == dev: only this repo's runs count
     if: >-
-      vars.AUTO_RELEASE == 'true' &&
+      vars.AUTO_RELEASE == 'true' && (github.event_name == 'schedule' || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      (github.event.workflow_run.head_branch == 'dev' || github.event.workflow_run.name == 'release-pr')
+      (github.event.workflow_run.head_branch == 'dev' || github.event.workflow_run.name == 'release-pr')))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -41,14 +49,14 @@ jobs:
       actions: write         # read the check runs; dispatch release.yml
       issues: read           # throttle issue #574
     steps:
-      - name: Which dev commit (release-pr runs on main, so take the dev tip)
+      - name: Which dev commit (release-pr runs on main and the schedule has no commit, so take the dev tip)
         id: sha
         env:
           GH_TOKEN: ${{ github.token }}
           NAME: ${{ github.event.workflow_run.name }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ "$NAME" = release-pr ]; then RUN_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq .object.sha); fi
+          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$NAME" = release-pr ]; then RUN_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq .object.sha); fi
           echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -68,6 +76,16 @@ jobs:
           python scripts/release_notes.py auto > gate.txt
           cat gate.txt >> "$GITHUB_OUTPUT"
           { echo '```'; cat gate.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "#848 hw-tests deferred: mark the release PR body (release.yml plan and the notes read it)"
+        if: steps.gate.outputs.merge == 'true' && steps.gate.outputs.hw_deferred == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.gate.outputs.pr }}
+        run: |
+          gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json body --jq .body > body.md
+          python -c "import sys, importlib.util as u; s = u.spec_from_file_location('h', 'scripts/hw_deferral.py'); m = u.module_from_spec(s); s.loader.exec_module(m); p = sys.argv[1]; t = open(p, encoding='utf-8').read(); open(p, 'w', encoding='utf-8').write(m.deferred_body(t))" body.md
+          gh pr edit "$PR" -R "$GITHUB_REPOSITORY" --body-file body.md
+          echo "hardware checks deferred (#848): PR #$PR body marked" >> "$GITHUB_STEP_SUMMARY"
       - name: Merge the release PR (merge commit, only at the checked head)
         if: steps.gate.outputs.merge == 'true'
         env:
@@ -87,3 +105,35 @@ jobs:
             sleep 20
           done
           echo "merged; release.yml dispatched on main for $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  deferred-hw-tests:
+    # #848: hw-tests failed later on dev (runner back online): if it belongs to a release that shipped with hardware
+    # checks deferred, open a P0 issue. Not behind AUTO_RELEASE: a deferred release needs the follow-up either way.
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'hw-tests' &&
+      contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read         # git history: is the failed commit at or after the released head?
+      pull-requests: read    # the merged release PR and its deferral marker
+      actions: read          # hw-tests runs on dev
+      issues: write          # the P0 issue
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dev
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Open the P0 issue if a deferred release failed its hardware checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: python scripts/hw_deferral.py followup | tee -a "$GITHUB_STEP_SUMMARY"
