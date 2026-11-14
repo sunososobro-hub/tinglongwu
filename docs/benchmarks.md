@@ -50,9 +50,9 @@ Same 1012 FLORES-200 devtest sentences and metrics, Hy-MT2-1.8B Q4_K_M on 4-vCPU
 | jpn->zho_Hant | 0.2 | 23.66 | 0.8850 | 0 | 1.58 | 2.35 | EPYC 9V74 |
 | jpn->zho_Hant | 0 | 23.74 | 0.8851 | 0 | 2.15 | 3.25 | Xeon 6975P-C |
 
-All three temperatures are within 0.0006 COMET and 0.1 chrF of each other in every direction, and none produced a U+FFFD line, so sampling temperature is not the cause of #632. The greedy rows match the earlier run 43496772451 (above) to within 0.0003 COMET.
+All three temperatures are within 0.0006 COMET and 0.2 chrF of each other in every direction (largest gap: jpn chrF 23.57 vs 23.74), and none produced a U+FFFD line, so sampling temperature is not the cause of #632. The greedy rows match the earlier greedy run 43496772451 (above) at its reported precision (chrF 25.0 / 30.3 / 23.7, COMET 0.865 / 0.894 / 0.885). Repeatability was not measured per sentence here: one run per setting.
 
-**Recommendation (shipped since #107): temperature 0 (greedy).** Same quality as 0.7, and the same sentence always gives the same translation (the live draft and the final line agree). `TLWU_HYMT_TEMP=0.7` restores the model-card value.
+**Recommendation (shipped since #107): temperature 0 (greedy).** Same quality as 0.7 within the measured range, and greedy decoding has no sampling randomness, so the same prompt gives the same translation (with a glossary, the prompt also depends on the preceding lines, so identical output needs the same glossary context). `TLWU_HYMT_TEMP=0.7` restores the model-card value.
 
 On Russian, Hy-MT2-1.8B matches the removed 8B LLM on COMET (0.865 vs 0.865, chrF 1.0 lower) and Google stays ahead (0.879). Reproduce on any CPU (Linux paths; the workflow `.github/workflows/eval-flores.yml` runs exactly this, COMET in its own venv because unbabel-comet pins numpy<2):
 
