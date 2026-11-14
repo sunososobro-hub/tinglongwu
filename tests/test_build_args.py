@@ -21,6 +21,7 @@ def test_runtime_layer_ships_whole_packages_with_their_data(tmp_path):
     for rel in ("filelock/__init__.py", "filelock/_soft.py", "sv_ttk/__init__.py", "sv_ttk/theme/dark.tcl",
                 "sv_ttk-2.6.1.dist-info/METADATA", "pip/__init__.py", "pip-26.3.dist-info/METADATA",
                 "tinglongwu/__init__.py", "numpy/tests/test_x.py", "numpy/testing/__init__.py", "x.pth",
+                "bin/llama-common.dll", "lib/cmake/llama/llama-config.cmake", "include/llama.h",
                 "soundcard/mediafoundation.py.h"):
         f = site / rel
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -30,7 +31,8 @@ def test_runtime_layer_ships_whole_packages_with_their_data(tmp_path):
     assert (dst / "filelock" / "_soft.py").is_file() and (dst / "sv_ttk" / "theme" / "dark.tcl").is_file()
     assert (dst / "soundcard" / "mediafoundation.py.h").is_file()  # read by soundcard at import: data stays
     assert (dst / "numpy" / "testing" / "__init__.py").is_file() and not (dst / "numpy" / "tests").exists()
-    for gone in ("pip", "pip-26.3.dist-info", "tinglongwu", "x.pth"):  # build tools, the app layer, .pth files
+    # build tools, the app layer, .pth files, the llama-cpp-python wheel's CMake install folders
+    for gone in ("pip", "pip-26.3.dist-info", "tinglongwu", "x.pth", "bin", "lib", "include"):
         assert gone not in copied and not (dst / gone).exists()
     assert runtime_layer.compile_sourceless(dst) == (4, 0)
     assert (dst / "filelock" / "_soft.pyc").is_file() and not (dst / "filelock" / "_soft.py").exists()

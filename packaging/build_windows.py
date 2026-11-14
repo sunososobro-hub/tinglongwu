@@ -531,7 +531,7 @@ def build_runtime(layer: Path, lite: bool, allow_cpu_only: bool) -> dict:
     shutil.rmtree(new, ignore_errors=True)
     new.mkdir(parents=True)
     print("python:", rt.copy_python_core(new))
-    print("packages:", len(rt.copy_site_packages(new)), "entries; stubs:", rt.copy_stubs(new))
+    print("packages:", " ".join(rt.copy_site_packages(new)), "; stubs:", rt.copy_stubs(new))
     copy_llama(new, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
     print("cuda:", copy_cuda(new, cuda_src) if cuda_src else "none (CPU-only package)")
     print("vc runtime:", copy_vc_runtime(new))

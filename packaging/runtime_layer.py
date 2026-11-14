@@ -41,7 +41,10 @@ KEY_GLOBS = ("requirements*.txt", "packaging/build_windows.py", "packaging/runti
              "packaging/launcher/**", "packaging/stubs/**")
 # Packages of the packaging venv that are build tools, not part of the app
 NOT_SHIPPED = {"pip", "setuptools", "pkg_resources", "_distutils_hack", "wheel", "nuitka", "ordered_set",
-               "zstandard", "av", "psutil"}  # names as _dist_name() gives them
+               "zstandard", "av", "psutil",  # names as _dist_name() gives them
+               # CMake install folders that the llama-cpp-python wheel drops into site-packages (llama.cpp tools,
+               # headers, import libraries); the app loads llama_cpp/lib only
+               "bin", "include", "lib", "share"}
 APP_PACKAGES = ("tinglongwu", "tlwu_app", "tinglongwu_setup")  # the app layer; never copied from site-packages
 # Standard-library folders the app cannot use (tests, IDLE, pip bootstrap, demos)
 STDLIB_SKIP_DIRS = {"site-packages", "dist-packages", "__pycache__", "test", "tests", "idlelib", "ensurepip", "turtledemo",
