@@ -61,6 +61,11 @@ CUDA_WHEELS = {"cublas": ["cublas64_12.dll", "cublasLt64_12.dll"],  # nvblas64_1
                "cudnn": None}  # None = all DLLs
 # ggml-cuda.dll imports cudart + cuBLAS (cuBLAS imports cuBLASLt); missing -> "Could not find module llama.dll" (#398)
 LLAMA_CUDA_NEEDS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+# Standalone GPU pack (#763, part 2 of #740): built from the CUDA wheels without Nuitka.
+GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"
+GPU_PACK_LLAMA_DLL = "ggml-cuda.dll"  # from the pack-venv's llama_cpp/lib (CUDA build of llama-cpp-python)
+GPU_PACK_NVRTC = "nvrtc64_120_0.dll+nvrtc-builtins64_129.dll"  # the nvrtc version CUDA_WHEELS ships (not pinned in requirements)
+GPU_PACK_KEY_FILES = ("requirements-gpu.txt", "requirements-llama-cuda.txt")  # their sha256 + GPU_PACK_NVRTC = wheels_key
 # Microsoft VC++ 2015-2022 runtime, absent on a clean Windows: ctranslate2 / llama.cpp import msvcp140, onnxruntime
 # msvcp140_1, ggml vcomp140 (OpenMP). Copied as one matched set from the installed redistributable (System32) next
 # to tlwu.exe, replacing the older vcruntime140 Nuitka took from Python: msvcp140 must not be newer than vcruntime140.
@@ -277,6 +282,51 @@ def make_gpu_pack(app: Path, out: Path, url: str) -> Path:
     return man_path
 
 
+def gpu_pack_wheels_key(repo: Path | None = None) -> str:
+    """sha256 over GPU_PACK_KEY_FILES and the nvrtc version: equal key = the pack can be reused (#763)."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for n in GPU_PACK_KEY_FILES:
+        h.update(n.encode() + b"\0" + ((repo or REPO) / n).read_bytes() + b"\0")
+    h.update(GPU_PACK_NVRTC.encode())
+    return h.hexdigest()
+
+
+def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: Path | None = None,
+                        url: str = "", repo: Path | None = None) -> Path:
+    """DIR/tinglongwu-gpu-pack.zip + .manifest.json from the CUDA wheels; never runs Nuitka, needs no tlwu.exe.
+    The zip = every file copy_cuda() copies + ggml-cuda.dll; a missing DLL exits non-zero naming it."""
+    import tempfile
+
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from tinglongwu import gpu_pack
+
+    src = cuda_src or find_cuda_src()
+    if src is None:
+        raise SystemExit("gpu pack: no CUDA 12 wheels (requirements-gpu.txt) found; set TLWU_CUDA_SRC=<site-packages>")
+    if llama_lib is None:
+        import importlib.util
+
+        spec = importlib.util.find_spec("llama_cpp")  # not imported: that would load llama.dll
+        llama_lib = Path(spec.origin).parent / "lib" if spec and spec.origin else None
+    ggml = llama_lib / GPU_PACK_LLAMA_DLL if llama_lib else None
+    if ggml is None or not ggml.is_file():
+        raise SystemExit(f"gpu pack: {GPU_PACK_LLAMA_DLL} not found in {llama_lib} (install requirements-llama-cuda.txt)")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        stage = Path(tmp)
+        copy_cuda(stage, src)  # exits non-zero naming a missing LLAMA_CUDA_NEEDS dll
+        shutil.copy2(ggml, stage / "cuda_libs" / GPU_PACK_LLAMA_DLL)
+        zpath = out_dir / GPU_PACK_ASSET
+        man_path = make_gpu_pack(stage, zpath, url)
+    man = gpu_pack.load_manifest(man_path)
+    man["wheels_key"] = gpu_pack_wheels_key(repo)
+    gpu_pack.write_manifest(man, man_path)
+    return man_path
+
+
 def cpu_llama_dlls(cache: Path = LLAMA_CPU, run=subprocess.check_call) -> list[Path]:
     """llama_cpp/lib/*.dll of the CPU wheel of the same llama-cpp-python version (downloaded once into cache).
     TLWU_LLAMA_CPU_WHEEL = a local wheel file to use instead of the download."""
@@ -395,7 +445,16 @@ def main() -> int:
                     help="no CUDA wheels found: build a CPU-only package instead of stopping; on a machine "
                          "without an NVIDIA driver (CI runner) the smoke may also use the CPU llama fallback")
     ap.add_argument("--no-smoke", action="store_true", help="skip the `tlwu.exe --smoke` check before zipping")
+    ap.add_argument("--gpu-pack-only", action="store_true",
+                    help="only build the GPU pack (zip + manifest) from the CUDA wheels, no Nuitka (#763)")
+    ap.add_argument("--out", help="with --gpu-pack-only: output folder")
+    ap.add_argument("--url", default="", help="with --gpu-pack-only: download url written to the manifest")
     a = ap.parse_args()
+    if a.gpu_pack_only:
+        if not a.out:
+            raise SystemExit("--gpu-pack-only needs --out DIR")
+        print("manifest:", build_gpu_pack_only(Path(a.out), url=a.url))
+        return 0
     DIST.mkdir(parents=True, exist_ok=True)
     if not a.post_only:
         src = run_nuitka()
