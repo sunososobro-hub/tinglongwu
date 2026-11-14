@@ -177,3 +177,21 @@ def test_auto_detected_unsupported_language_keeps_the_session_running(tmp_path, 
     run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), TurkishASR(), tr, TextSink(out))
     assert out.getvalue().count("merhaba dünya") >= 2  # every segment was shown, the run did not stop
     assert "tr -> zh" in out.getvalue() + capsys.readouterr().err
+
+
+def test_107_same_input_same_sampling_and_greedy_by_default(tmp_path, monkeypatch):
+    """#107: two translations of the same sentence pass identical, greedy sampling arguments to llama.cpp."""
+    monkeypatch.delenv("TLWU_HYMT_TEMP", raising=False)
+    m = install(tmp_path, "hymt2")
+    kws = []
+
+    class Llm(FakeLlm):
+        def create_chat_completion(self, messages, **kw):
+            kws.append(kw)
+            return super().create_chat_completion(messages, **kw)
+
+    tr = HyMtTranslator(m, "tw", "cpu", loader=lambda p, g: Llm("你好"))
+    tr.translate("Hello.", "en", "zh", draft=True)
+    tr.translate("Hello.", "en", "zh")
+    assert len(kws) == 2 and kws[0] == kws[1]
+    assert kws[0]["temperature"] == 0.0

@@ -25,8 +25,10 @@ HYMT_REPO = "tencent/Hy-MT2-1.8B-GGUF"
 # #279: opt-in Hy-MT2 7B Q4_K_M (~4.8 GB, GPUs with >= 8 GB); same family, prompt and sampling as 1.8B.
 # Never chosen by auto: only `--engine hymt7b` after `tlwu-setup --hymt7b`.
 HYMT_SIZES = {"1.8b": ("hymt2-1.8b", HYMT_FILE, "--hymt"), "7b": ("hymt2-7b", "Hy-MT2-7B-Q4_K_M.gguf", "--hymt7b")}
-# Model card sampling for the 1.8B model.
-SAMPLING = dict(temperature=0.7, top_p=0.6, top_k=20, repeat_penalty=1.05)
+# Model card sampling for the 1.8B model, except temperature: #107 measured 0.7 / 0.2 / 0 on the full FLORES-200
+# devtest (rus/eng/jpn -> zho_Hant, eval-flores run 43554407306): COMET within 0.0006, chrF within 0.2, no U+FFFD
+# at any setting, so tlwu ships greedy (0): no sampling randomness, the same prompt gives the same line.
+SAMPLING = dict(temperature=0.0, top_p=0.6, top_k=20, repeat_penalty=1.05)
 
 
 

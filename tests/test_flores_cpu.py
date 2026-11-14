@@ -130,3 +130,128 @@ def test_fetch_data_empty_fleurs_fetches_flores_only(tmp_path, monkeypatch, caps
     monkeypatch.setattr(m, "fetch_fleurs", lambda code, out: called.append(code))
     assert m.main(["--out", str(tmp_path), "--fleurs", ""]) == 0
     assert called == []
+
+
+NEW_656 = {"kor_Hang": "ko", "vie_Latn": "vi", "tha_Thai": "th", "ind_Latn": "id", "spa_Latn": "es",
+           "deu_Latn": "de", "fra_Latn": "fr"}
+
+
+@pytest.mark.parametrize("src,code", sorted(NEW_656.items()))
+def test_656_new_directions_translate_with_the_hymt_language_code(flores, tmp_path, src, code):
+    (flores / "devtest" / f"{src}.devtest").write_text("a\nb\nc\n", "utf-8")
+    m = _load("flores_cpu")
+    tr = FakeTr()
+    out = tmp_path / "out"
+    assert m.main(["--data", str(flores), "--models-dir", "x", "--src", src, "--out", str(out), "--no-comet"],
+                  make=lambda _d: tr) == 0
+    assert [c[1:] for c in tr.calls] == [(code, "zh")] * 3
+    assert json.loads((out / f"{src}.summary.json").read_text("utf-8"))["pair"] == f"{src}->zho_Hant"
+    sys.path.insert(0, str(ROOT))
+    from tinglongwu.hymt import EN_NAMES, ZH_NAMES  # Hy-MT2 prompt must name the source language
+
+    assert code in ZH_NAMES and code in EN_NAMES
+
+
+def test_656_matrix_validates_the_langs_input():
+    m = _load("flores_cpu")
+    assert m.matrix(" kor_Hang, vie_Latn,kor_Hang ,") == ["kor_Hang", "vie_Latn"]
+    for bad in ("", "kor_Hang,x;rm -rf /", "zho_Hant"):
+        with pytest.raises(SystemExit):
+            m.matrix(bad)
+
+
+def test_656_matrix_cli_prints_json(tmp_path):
+    import subprocess
+
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "bench" / "flores_cpu.py"), "--matrix",
+                        "rus_Cyrl,fra_Latn"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and json.loads(r.stdout) == ["rus_Cyrl", "fra_Latn"]
+
+
+class FffdTr(FakeTr):
+    """#107/#632: a translator whose second sentence comes back with a broken UTF-8 byte (U+FFFD)."""
+
+    def translate(self, text, src, tgt):
+        self.calls.append((text, src, tgt))
+        return types.SimpleNamespace(text="�二" if text == "два" else f"zh:{text}")
+
+
+def test_107_temp_sets_hymt_temperature_and_counts_fffd_lines(flores, tmp_path, monkeypatch):
+    monkeypatch.setenv("TLWU_HYMT_TEMP", "0.7")  # registered first, so teardown undoes main()'s --temp write
+    m = _load("flores_cpu")
+    seen = []
+
+    def make(_d):
+        sys.path.insert(0, str(ROOT))
+        from tinglongwu.hymt import sampling
+
+        seen.append(sampling()["temperature"])  # what the real HyMtTranslator would pass to llama.cpp
+        return FffdTr()
+
+    out = tmp_path / "out"
+    assert m.main(["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--out", str(out),
+                   "--no-comet", "--temp", "0.2"], make=make) == 0
+    assert seen == [0.2]
+    s = json.loads((out / "rus_Cyrl.summary.json").read_text("utf-8"))
+    assert s["temperature"] == 0.2 and s["fffd_lines"] == 1
+
+    def boom(_d):
+        raise AssertionError("--score-only must not load Hy-MT2")
+
+    monkeypatch.setenv("TLWU_HYMT_TEMP", "0.9")  # COMET venv: the summary keeps the translate run's temperature
+    assert m.main(["--data", str(flores), "--src", "rus_Cyrl", "--out", str(out), "--score-only"],
+                  make=boom, load_comet=lambda _n: FakeComet()) == 0
+    s = json.loads((out / "rus_Cyrl.summary.json").read_text("utf-8"))
+    assert s["temperature"] == 0.2 and s["fffd_lines"] == 1 and s["COMET"] == 0.8
+
+
+def test_107_without_temp_the_summary_records_the_shipped_default(flores, tmp_path, monkeypatch):
+    monkeypatch.delenv("TLWU_HYMT_TEMP", raising=False)
+    m = _load("flores_cpu")
+    sys.path.insert(0, str(ROOT))
+    from tinglongwu.hymt import SAMPLING
+
+    out = tmp_path / "out"
+    m.main(["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--out", str(out), "--no-comet"],
+           make=lambda _d: FakeTr())
+    s = json.loads((out / "rus_Cyrl.summary.json").read_text("utf-8"))
+    assert s["temperature"] == SAMPLING["temperature"] and s["fffd_lines"] == 0
+
+
+def test_107_temp_out_of_range_is_rejected(flores, tmp_path):
+    m = _load("flores_cpu")
+    with pytest.raises(SystemExit):
+        m.main(["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--out", str(tmp_path / "o"),
+                "--no-comet", "--temp", "5"], make=lambda _d: FakeTr())
+
+
+def test_107_temps_validates_the_workflow_input():
+    m = _load("flores_cpu")
+    assert m.temps(" 0.7,0.2, 0,0.2,") == ["0.7", "0.2", "0"]
+    for bad in ("", "0.7;rm -rf /", "hot", "-1", "3"):
+        with pytest.raises(SystemExit):
+            m.temps(bad)
+
+
+def test_107_temps_cli_prints_json():
+    import subprocess
+
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "bench" / "flores_cpu.py"), "--temps", "0.7,0.2,0"],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and json.loads(r.stdout) == ["0.7", "0.2", "0"]
+
+
+def test_107_resume_at_another_temperature_stops_instead_of_mixing(flores, tmp_path, monkeypatch):
+    monkeypatch.setenv("TLWU_HYMT_TEMP", "0.7")
+    m = _load("flores_cpu")
+    out = tmp_path / "out"
+    base = ["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--out", str(out), "--no-comet"]
+    m.main(base + ["--limit", "1", "--temp", "0.7"], make=lambda _d: FakeTr())
+    assert json.loads((out / "rus_Cyrl.jsonl").read_text("utf-8").splitlines()[0])["temp"] == 0.7
+    tr = FakeTr()
+    with pytest.raises(SystemExit, match="temperature 0.7, not 0.0"):
+        m.main(base + ["--temp", "0"], make=lambda _d: tr)
+    assert tr.calls == []
+    tr = FakeTr()
+    m.main(base + ["--temp", "0.7"], make=lambda _d: tr)  # same temperature: resumes as before
+    assert [c[0] for c in tr.calls] == ["два", "три"]

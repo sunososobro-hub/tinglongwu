@@ -149,7 +149,7 @@ def test_mac_install_full_flow_then_rerun_is_a_repair(mac):
     for name, size in KOKORO_SIZES.items():
         assert (home / "models" / "kokoro" / name).stat().st_size == size
     # default models: English listening + zh<->en speaking
-    assert "tlwu-setup --whisper small --packs zh,en" in calls
+    assert "tlwu-setup --whisper small --ask-lang" in calls
     # #301: Hy-MT2 is the only default engine: llama-cpp-python (CPU build) + the GGUF
     assert "-m pip install -r requirements-llama-cpu.txt" in calls
     assert "tlwu-setup --hymt" in calls

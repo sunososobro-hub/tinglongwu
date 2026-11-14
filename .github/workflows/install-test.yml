@@ -53,6 +53,12 @@ jobs:
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+      - name: Uninstall leaves nothing behind (#476)
+        run: |
+          TLWU_DIR="$RUNNER_TEMP/tlwu" bash "$RUNNER_TEMP/tlwu/scripts/uninstall.sh" --yes </dev/null
+          test ! -e "$RUNNER_TEMP/tlwu" || { echo "app dir left behind"; exit 1; }
+          test ! -e "$HOME/tts-kokoro" || { echo "kokoro venv left behind"; exit 1; }
+          test ! -e "$HOME/.local/bin/tlwu-menu" || { echo "launcher left behind"; exit 1; }
 
   release-assets:
     # #71: the exact one-line commands from the README, run on a clean runner against the release's own assets.
@@ -129,6 +135,12 @@ jobs:
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+      - name: Uninstall leaves nothing behind (#476)
+        run: |
+          TLWU_DIR="$RUNNER_TEMP/tlwu" bash "$RUNNER_TEMP/tlwu/scripts/uninstall.sh" --yes </dev/null
+          test ! -e "$RUNNER_TEMP/tlwu" || { echo "app dir left behind"; exit 1; }
+          test ! -e "$HOME/tts-kokoro" || { echo "kokoro venv left behind"; exit 1; }
+          test ! -e "$HOME/.local/bin/tlwu-menu" || { echo "launcher left behind"; exit 1; }
 
   windows:
     runs-on: windows-latest

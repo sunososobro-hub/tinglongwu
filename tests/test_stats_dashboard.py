@@ -194,7 +194,7 @@ def test_flow_totals_weight_opus_2x_and_unlabelled_node():
     assert abs(sum(n["share"] for n in f["langs"]) - 100.0) < 1e-9
     modes = {n["name"]: n["quota"] for n in f["modes"]}
     assert modes == {"speak": 20.0, "listen": 20.0, "unlabelled": 20.0}
-    assert {n["name"] for n in f["platforms"]} == {"windows", "linux", "unlabelled"}
+    assert {n["name"] for n in f["platforms"]} == {"windows", "linux", "all"}
     mix = {r["type"]: r for r in f["type_mix"]}
     assert abs(mix["bug"]["share"] - 100 * 20 / 60) < 1e-9 and mix["bug"]["target"] == 30
     assert abs(mix["bug"]["delta"] - (100 * 20 / 60 - 30)) < 1e-9
@@ -313,3 +313,27 @@ def test_downloads_unavailable_does_not_fail():
     assert series["downloads"] == {"total": None, "releases": [], "series": [None, None, None]}
     assert sd.build_snapshot(api, "o/r", "dev", NOW)["downloads"] is None
     assert "<h2>Downloads" in sd.render_html(series)
+
+
+def test_flow_platform_mobile_and_all_nodes():
+    f = sd.build_flow([
+        {"model": "sonnet", "minutes": 10, "labels": ["bug", "mode:listen", "area:mobile"]},
+        {"model": "sonnet", "minutes": 10, "labels": ["bug", "mode:listen"]},
+        {"model": "sonnet", "minutes": 10, "labels": ["bug", "mode:listen", "os:windows", "area:mobile"]},
+        {"model": "sonnet", "minutes": 10, "labels": ["bug"]},
+    ])
+    plat = {n["name"]: n["quota"] for n in f["platforms"]}
+    assert plat == {"mobile": 10.0, "all": 20.0, "windows": 10.0}
+    assert {n["name"] for n in f["langs"]} == {"all"}
+    assert {n["name"]: n["quota"] for n in f["modes"]} == {"listen": 30.0, "unlabelled": 10.0}
+
+
+def test_run_fetches_releases_once(tmp_path):
+    calls = []
+
+    def api(path, accept=None):
+        if "/releases" in path:
+            calls.append(path)
+        return fake_api(path, accept)
+    sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
+    assert len(calls) == 1

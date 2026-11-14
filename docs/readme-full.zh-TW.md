@@ -34,17 +34,13 @@ Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-T
 
 每個 release 都附 `SHA256SUMS.txt`；想在執行前驗證，可先下載腳本比對。Linux 安裝程式在任何 `apt` 動作前都會問 y/N，且不會下載辨識/翻譯模型（選單每次下載前都會問）；加上 `TLWU_YES=1`（或 `--yes`）才會全程不問並預載預設模型。Windows 安裝精靈裝到 `%LOCALAPPDATA%\Programs\tinglongWu`（只裝給目前使用者，不需系統管理員），再在背景執行與下方相同的 `install.ps1`。
 
-## 快速安裝（Windows）
+模型在第一次啟動的畫面下載，不用打任何指令。
 
-適用 Windows 10/11，有 NVIDIA 顯示卡最佳（沒有也能跑，只是較慢）。電腦沒有 Python 3.12 時，安裝程式會自動為目前使用者安裝 Python 3.12（不需系統管理員權限；從 python.org 下載並驗證 SHA256）。
+**預期狀況：** 沒有 NVIDIA 顯示卡時會用 CPU 模式，字幕比較慢是正常的；字幕通常比說話晚約 3–8 秒。
 
-1. 在 GitHub 按 **Code > Download ZIP**，下載後對 ZIP 按右鍵 > **全部解壓縮**。
-2. 開啟資料夾，雙擊 **`install.bat`**，耐心等待（約 10–30 分鐘，4 GB 以上 NVIDIA 顯示卡下載約 3 GB 模型，其他約 1 GB；中斷後可重跑）。
-3. 雙擊桌面新出現的捷徑 **聽攏有 tinglongWu**。
+**解除安裝（Windows）：** 設定 → 應用程式 → 已安裝的應用程式 → tinglongWu → 解除安裝（會問要不要保留約 2–3 GB 的模型資料夾）。
 
 **選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
-
-移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
 ## Mac 一行安裝
 
@@ -92,26 +88,6 @@ Windows 發行 zip **未簽章**，由維護者在本機以 Nuitka 建置，**�
 
 目前 Windows 實機已驗證：一行安裝與聆聽；朗讀、會議與防火牆測試仍待驗證（見連結的 issue）。
 
-## 安裝／使用分離（請先閱讀）
-
-同一個 repo、兩個程式，邊界明確：
-
-| | `tlwu-setup`（套件 `tinglongwu_setup`） | `tlwu`（套件 `tlwu`） |
-|---|---|---|
-| 網路 | **會連網**，是唯一的連網程式碼 | **永不連網**，沒有任何下載／網路程式碼 |
-| 工作 | 安裝鎖版相依、下載並以 SHA256 釘選模型、建立／離線安裝離線包 | 擷取音訊、辨識、翻譯、輸出 |
-| 時機 | 有網路時執行一次 | 每次執行，可完全離線 |
-
-`tests/test_no_network_code.py` 會靜態掃描 `tinglongwu/`，若匯入 requests、urllib.request、http.client、huggingface_hub、argostranslate、socket（防護模組 `tinglongwu/offline.py` 除外）或 `tinglongwu_setup` 即失敗。
-
-```
-tlwu-setup --deps                                  # 安裝鎖版相依
-tlwu-setup --whisper small --langs ru --to zh      # 下載並釘選模型
-tlwu-setup --bundle tlwu-bundle.zip                 # 打包 wheel + 模型，供隔離網路的電腦使用
-tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝並驗證，無需網路
-```
-離線包與平台相關：請在與目標機相同的作業系統、CPU 架構與 Python 次版本上建立。
-
 ## 隱私模型
 
 - 音訊預設只存在記憶體（只有你選了 `--record` 才會存在本機）；逐字稿只輸出到 stdout，不寫任何紀錄（只有明確指定 `--save`、`--save-result PATH` 才會存檔）。
@@ -144,7 +120,54 @@ macOS：`pf` 規則（`block drop out quick all user $USER`，以 `pfctl -f` 載
 
 接著執行 `python scripts/verify_offline.py --file talk.wav`。
 
-## 安裝
+## 圖形介面（浮動字幕）
+
+`tlwu-gui`（不跳出終端機視窗）或 `tlwu --gui`，會開啟一個小控制視窗（來源語言、目標 繁中／簡中／英文、引擎、語音模型、詞庫檔、「儲存逐字稿」、開始／停止），以及一條無邊框、永遠置頂的字幕條（預設螢幕下方置中，約 70% 寬）。顯示最近 2 行；中文草稿為灰色，final 譯文出現後在原位換成白色。可拖曳移動；Ctrl+滾輪或 +/- 調整字體；右鍵選單：顯示／隱藏原文行、字體大小、複製最後一行、暫停顯示、結束。設定會記在 `%APPDATA%\tinglongwu\gui.json`。僅用標準庫 tkinter，完全離線；不加 `--gui` 時 CLI 行為不變。
+
+## 主題詞庫（`--glossary PATH`）
+用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；目標為中文時，原文出現在當前句子或前 2 行的條目（不分大小寫、容許俄文詞尾變化）會以模型卡的術語參考格式寫進 Hy-MT2 提示（`tinglongwu/hymt.py` 的 `HyMtTranslator._terms` -> `build_prompt`）；目標為其他語言時 Hy-MT2 不會收到譯文。中文輸出另會依條目的 `~` 錯誤譯法清單修正（Hy-MT2 與 OPUS 中轉皆適用）。選用的 ollama／fm 引擎則在所有目標語言都會收到同樣的條目，要求使用指定譯法。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
+```
+tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary_wifi_ru.txt
+```
+重複迴圈（Whisper 反覆輸出同一句）：最終辨識啟用溫度回退，偵測到迴圈時不帶前文提示重新解碼一次，剩餘重複在翻譯前收斂成一份。
+
+## 開發者／進階安裝
+
+一般使用者不需要這一節：上面的安裝方式已經會在第一次啟動時下載模型。以下是原始碼安裝、`tlwu-setup` 指令與命令列參數。
+
+### 原始碼安裝（Windows，`install.bat`）
+
+適用 Windows 10/11，有 NVIDIA 顯示卡最佳（沒有也能跑，只是較慢）。電腦沒有 Python 3.12 時，安裝程式會自動為目前使用者安裝 Python 3.12（不需系統管理員權限；從 python.org 下載並驗證 SHA256）。
+
+1. 在 GitHub 按 **Code > Download ZIP**，下載後對 ZIP 按右鍵 > **全部解壓縮**。
+2. 開啟資料夾，雙擊 **`install.bat`**，耐心等待（約 10–30 分鐘，4 GB 以上 NVIDIA 顯示卡下載約 3 GB 模型，其他約 1 GB；中斷後可重跑）。
+3. 雙擊桌面新出現的捷徑 **聽攏有 tinglongWu**。
+
+**選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
+
+移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
+
+### 安裝／使用分離（請先閱讀）
+
+同一個 repo、兩個程式，邊界明確：
+
+| | `tlwu-setup`（套件 `tinglongwu_setup`） | `tlwu`（套件 `tlwu`） |
+|---|---|---|
+| 網路 | **會連網**，是唯一的連網程式碼 | **永不連網**，沒有任何下載／網路程式碼 |
+| 工作 | 安裝鎖版相依、下載並以 SHA256 釘選模型、建立／離線安裝離線包 | 擷取音訊、辨識、翻譯、輸出 |
+| 時機 | 有網路時執行一次 | 每次執行，可完全離線 |
+
+`tests/test_no_network_code.py` 會靜態掃描 `tinglongwu/`，若匯入 requests、urllib.request、http.client、huggingface_hub、argostranslate、socket（防護模組 `tinglongwu/offline.py` 除外）或 `tinglongwu_setup` 即失敗。
+
+```
+tlwu-setup --deps                                  # 安裝鎖版相依
+tlwu-setup --whisper small --langs ru --to zh      # 下載並釘選模型
+tlwu-setup --bundle tlwu-bundle.zip                 # 打包 wheel + 模型，供隔離網路的電腦使用
+tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝並驗證，無需網路
+```
+離線包與平台相關：請在與目標機相同的作業系統、CPU 架構與 Python 次版本上建立。
+
+### 安裝
 
 Python 3.12（釘選的 numpy/scipy 需要 >= 3.12；以 3.12 測試）。
 ```
@@ -163,7 +186,7 @@ pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-d
 - **Linux**：PipeWire（含 pipewire-pulse）或 PulseAudio。預設擷取預設輸出的 monitor；用 `pactl list sources short` 查看，以 `--capture-device <子字串>` 指定。
 - **macOS**：安裝 [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)，在「音訊 MIDI 設定」建立多重輸出裝置（喇叭＋BlackHole）並設為輸出。tlwu 會擷取名稱含 `BlackHole` 的裝置。ScreenCaptureKit 為未來選項。
 
-### 模型（一次性，需要網路）
+#### 模型（一次性，需要網路）
 ```
 tlwu-setup --whisper small --langs ru --to zh
 ```
@@ -177,7 +200,7 @@ tlwu-setup --whisper small --langs ru --to zh
 **先前的 LLM 引擎**：已移除（#276、#283、#308）；Hy-MT2 是唯一的翻譯 LLM。
 
 
-#### 模型來源釘選
+##### 模型來源釘選
 
 `tinglongwu_setup/manifest.json` 已納入版控：每個可下載模型都釘到確切的 Hugging Face commit 與各檔 SHA256。`tlwu-setup` 以 `revision=<釘住的 commit>` 下載，雜湊不符即中止；`tlwu-setup --verify` 可離線複驗。維護者用 `scripts/make_model_pins.py` 更新釘選（請審視差異）。
 
@@ -188,14 +211,14 @@ tlwu-setup --whisper small --langs ru --to zh
 | Hy-MT2-1.8B Q4_K_M GGUF | `tencent/Hy-MT2-1.8B-GGUF` | 騰訊 | Apache-2.0 |
 | OPUS-MT（Argos 套件） | `argos-net.com` | Argos Open Tech | CC-BY 4.0；`ru-en`、`en-zh` 以 URL＋壓縮檔 SHA256 釘住；其他語對首次使用時查詢可變動的 Argos 索引，之後才釘住（會印出警告） |
 
-### GPU（選用，NVIDIA）
+#### GPU（選用，NVIDIA）
 `--device auto|cpu|cuda`（預設 `auto`：CTranslate2 偵測到 NVIDIA GPU 且函式庫可載入就用 CUDA，否則用 CPU）。GPU 上 Whisper 用 float16、OPUS/M2M 用 int8_float16；CPU 用 int8。需要的東西（一次性，需要網路）：
 ```
 tlwu-setup --gpu     # = pip install nvidia-cublas-cu12 nvidia-cudnn-cu12（CUDA 12 cuBLAS + cuDNN 9，不必安裝 CUDA Toolkit）
 ```
 另需支援 CUDA 12 以上的 NVIDIA 驅動程式。缺少 GPU 或這些函式庫時，tlwu 會印出明確訊息並退回 CPU（`--device cuda` 也一樣）。模型不會離開本機，函式庫只在本機載入。`large-v3` float16 約需 4 GB VRAM，`medium` 約 2.5 GB。
 
-## 使用
+### 使用
 ```
 python -m tinglongwu                          # 即時系統音訊，自動偵測語言，輸出繁體中文
 tlwu --lang ru --model small            # 指定來源語言
@@ -212,17 +235,6 @@ python scripts/wer.py ref.txt hyp.txt --lang ru --partial   # WER（中日用 CE
 可用 VRAM 小於 9 GB 的 GPU（例如 8 GB 顯卡同時載入翻譯 LLM）上，Whisper 會以 int8_float16 載入（該情況下每次推論比 fp16 快約 4 倍；可用環境變數 `TLWU_ASR_COMPUTE` 覆寫）。音樂／靜音時 Whisper 常見的字幕署名幻覺（「Продолжение следует」、「Subtitles by」、「字幕由」等；清單在 `tinglongwu/hallucination.py`）會被丟棄，且輸出一律把「妳」改成「你」。
 
 **句子合併**：VAD 切出的段落常在句中結束。tlwu 會暫存 ASR 文字，在句尾（`.?!…。！？`）才翻譯；或說話者停頓 ≥ 0.8 秒（VAD 靜音）時送出；`--max-wait` 秒／約 45 字只是上限，先到者為準。因達到 chunk 上限而被硬切的段落，Whisper 加在句尾的「...」不算句尾，合併時也會去掉切點重複的字；`--no-merge` 則沿用逐段翻譯。**預設組合**：`--preset meeting`（預設）＝`--chunk 8 --max-wait 6`，優先保證完整句子，延遲約 5–8 秒；`--preset chat`＝`--chunk 4 --max-wait 1.5`，延遲較低但較多破碎句子（翻譯品質較差）。明確指定 `--chunk`／`--max-wait` 會覆蓋 preset；GUI 有「模式」選單。反向（說話即翻譯）模式有自己的設定。上下文：Hy-MT2 每句單獨翻譯、不看前文；選用的 ollama／fm 引擎會看到前 2 句（原文＋譯文），讓被切開的句子讀起來連貫；Whisper 以前一段文字（≤100 字）作為 `initial_prompt`（出現重複／亂碼時自動丟棄）。LLM 輸出（Hy-MT2、ollama、fm）會自動清理（多餘底線、markdown、引號、「Translation:」標籤）。Ctrl+C 約 1 秒內結束。
-
-## 圖形介面（浮動字幕）
-
-`tlwu-gui`（不跳出終端機視窗）或 `tlwu --gui`，會開啟一個小控制視窗（來源語言、目標 繁中／簡中／英文、引擎、語音模型、詞庫檔、「儲存逐字稿」、開始／停止），以及一條無邊框、永遠置頂的字幕條（預設螢幕下方置中，約 70% 寬）。顯示最近 2 行；中文草稿為灰色，final 譯文出現後在原位換成白色。可拖曳移動；Ctrl+滾輪或 +/- 調整字體；右鍵選單：顯示／隱藏原文行、字體大小、複製最後一行、暫停顯示、結束。設定會記在 `%APPDATA%\tinglongwu\gui.json`。僅用標準庫 tkinter，完全離線；不加 `--gui` 時 CLI 行為不變。
-
-## 主題詞庫（`--glossary PATH`）
-用純文字檔讓 tlwu 適應特定主題：`PATH` 可為 UTF-8 的 `.txt` 檔或放多個 `.txt` 的資料夾。每行一筆 `原文 = 譯文`；`#` 開頭為註解；沒有 `=` 的行視為提示詞；`a | b = 譯文` 可加入別的原文寫法（例如常聽錯的字）。原文詞會作為 `hotwords` 交給 Whisper；目標為中文時，原文出現在當前句子或前 2 行的條目（不分大小寫、容許俄文詞尾變化）會以模型卡的術語參考格式寫進 Hy-MT2 提示（`tinglongwu/hymt.py` 的 `HyMtTranslator._terms` -> `build_prompt`）；目標為其他語言時 Hy-MT2 不會收到譯文。中文輸出另會依條目的 `~` 錯誤譯法清單修正（Hy-MT2 與 OPUS 中轉皆適用）。選用的 ollama／fm 引擎則在所有目標語言都會收到同樣的條目，要求使用指定譯法。`2.4 = 2.4 GHz` 這類數字條目也會把辨識結果的「2 и 4」「2,4」改成「2.4」。僅限明確指定、完全離線。範例：`docs/examples/glossary_wifi_ru.txt`。
-```
-tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary_wifi_ru.txt
-```
-重複迴圈（Whisper 反覆輸出同一句）：最終辨識啟用溫度回退，偵測到迴圈時不帶前文提示重新解碼一次，剩餘重複在翻譯前收斂成一份。
 
 ## 架構
 `tinglongwu/capture`（AudioSource：wasapi、pulse、macos、file、mic）-> `segment.py`（Silero VAD，0.5 秒重疊）-> `asr.py`（Recognizer）-> `translate.py`（Translator）-> `sink.py`（Sink：TextSink、TranscriptSink、TTSSink 樁）。每層都是小介面，可替換。
@@ -349,7 +361,7 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 麥克風 -> 中文 -> 俄文翻譯 -> 內建語音離線 TTS（Vosk-TTS／Kokoro） -> 虛擬麥克風（VB-Cable／BlackHole／PipeWire null-sink），並做回音排除避免合成語音被重新擷取。
 
 ## 測試
-`pip install -r requirements-dev.txt && pytest`（不需模型與網路）。
+`pip install -e ".[dev]" && python -m pytest`（不需模型與網路）。
 
 ## 免責聲明
 - **現狀提供。** 本軟體依 MIT 授權「按現狀」提供，不附任何形式的保證，作者不對任何損害負責（見 [LICENSE](../LICENSE)）。

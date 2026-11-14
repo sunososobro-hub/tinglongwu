@@ -24,6 +24,35 @@ Hy-MT2-1.8B (the engine tlwu ships, Q4_K_M GGUF, llama.cpp on the CPU, greedy `T
 | rus->zho_Hant | Google (table above) | 29.8 | 0.879 | - | - |
 | eng->zho_Hant | Hy-MT2-1.8B (CPU) | 30.3 | 0.894 | 1.06 | 1.58 |
 | jpn->zho_Hant | Hy-MT2-1.8B (CPU) | 23.7 | 0.885 | 1.62 | 2.40 |
+| kor->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 24.2 | 0.879 | 1.63 | 2.42 |
+| vie->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 25.5 | 0.880 | 1.69 | 2.52 |
+| tha->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 7763, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 23.3 | 0.878 | 2.42 | 3.70 |
+| ind->zho_Hant | Hy-MT2-1.8B (CPU, Xeon 6975P-C, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 26.2 | 0.875 | 2.03 | 3.10 |
+| spa->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 24.6 | 0.877 | 1.63 | 2.42 |
+| deu->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 26.5 | 0.877 | 1.60 | 2.38 |
+| fra->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V45, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 26.4 | 0.879 | 1.23 | 1.81 |
+
+The Korean and tier-2 rows (#656) come from [eval-flores 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705), commit 22efa0f, same settings; each job's runner CPU is in the engine column (4 vCPU each, so s/sentence differs by CPU, e.g. tha on the older EPYC 7763). That run also re-ran rus/eng/jpn and got the same chrF and COMET as above to the last digit (greedy decoding is repeatable). All seven land at COMET 0.875-0.880, between Russian (0.865) and Japanese (0.885).
+
+### Hy-MT2 sampling temperature (#107)
+
+Same 1012 FLORES-200 devtest sentences and metrics, Hy-MT2-1.8B Q4_K_M on 4-vCPU GitHub runners, temperature 0.7 (model-card default, shipped before #107) vs 0.2 vs 0 (greedy); top_p 0.6, top_k 20, repeat_penalty 1.05 unchanged. U+FFFD = hypotheses containing the replacement character (suspected cause of #632). Run: [eval-flores 43554407306](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43554407306), commit 3e145b4; per-sentence JSON in its `flores-<src>-t<temp>` artifacts. Each job got a different runner CPU (last column), so s/sentence compares CPUs as much as temperatures.
+
+| direction | temperature | chrF | COMET | U+FFFD lines | median s/sentence | p90 s | CPU |
+|---|---|---|---|---|---|---|---|
+| rus->zho_Hant | 0.7 | 24.97 | 0.8651 | 0 | 2.38 | 3.64 | Xeon 6975P-C |
+| rus->zho_Hant | 0.2 | 25.05 | 0.8657 | 0 | 2.20 | 3.29 | EPYC 7763 |
+| rus->zho_Hant | 0 | 25.02 | 0.8653 | 0 | 1.83 | 2.74 | EPYC 9V74 |
+| eng->zho_Hant | 0.7 | 30.30 | 0.8934 | 0 | 2.30 | 3.44 | Xeon Platinum 8573C |
+| eng->zho_Hant | 0.2 | 30.34 | 0.8934 | 0 | 1.92 | 2.89 | Xeon 6975P-C |
+| eng->zho_Hant | 0 | 30.30 | 0.8938 | 0 | 1.67 | 2.44 | EPYC 7763 |
+| jpn->zho_Hant | 0.7 | 23.57 | 0.8847 | 0 | 1.28 | 1.93 | EPYC 9V45 |
+| jpn->zho_Hant | 0.2 | 23.66 | 0.8850 | 0 | 1.58 | 2.35 | EPYC 9V74 |
+| jpn->zho_Hant | 0 | 23.74 | 0.8851 | 0 | 2.15 | 3.25 | Xeon 6975P-C |
+
+All three temperatures are within 0.0006 COMET and 0.2 chrF of each other in every direction (largest gap: jpn chrF 23.57 vs 23.74), and none produced a U+FFFD line, so sampling temperature is not the cause of #632. The greedy rows match the earlier greedy run 43496772451 (above) at its reported precision (chrF 25.0 / 30.3 / 23.7, COMET 0.865 / 0.894 / 0.885). Repeatability was not measured per sentence here: one run per setting.
+
+**Recommendation (shipped since #107): temperature 0 (greedy).** Same quality as 0.7 within the measured range, and greedy decoding has no sampling randomness, so the same prompt gives the same translation (with a glossary, the prompt also depends on the preceding lines, so identical output needs the same glossary context). `TLWU_HYMT_TEMP=0.7` restores the model-card value.
 
 On Russian, Hy-MT2-1.8B matches the removed 8B LLM on COMET (0.865 vs 0.865, chrF 1.0 lower) and Google stays ahead (0.879). Reproduce on any CPU (Linux paths; the workflow `.github/workflows/eval-flores.yml` runs exactly this, COMET in its own venv because unbabel-comet pins numpy<2):
 
@@ -71,3 +100,15 @@ python -m tlwu_eval --smoke --data "%USERPROFILE%\tlwu-eval\ja" --per-lang 60 --
 ```
 
 FLEURS is read news/encyclopedia text, so it covers the broadcast-news style; anime-style dialogue is not in it. The chrF baseline and per-OS numbers are recorded on #346 once measured on GPU hardware.
+
+## Indian speakers: English or Hindi? (#620)
+
+Same 50 FLoRes sentences read in FLEURS en_us (US English) and hi_in (Hindi), Whisper large-v3-turbo + Hy-MT2-1.8B Q4_K_M, both on a 4-vCPU GitHub runner, greedy MT. Run: [eval-india 43521109509](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43521109509) (per-clip JSON in its `india-report` artifact). Rebuild: `.github/workflows/eval-india.yml` / `scripts/bench/india_eval.py`.
+
+| source | ASR WER | chrF vs human zh | chrF from the gold transcript | MT median s |
+|---|---|---|---|---|
+| English (US accent) -> zh | 6.6% | 34.3 | 38.8 | 1.27 |
+| Hindi -> zh, direct | 39.2% | 16.9 | 27.7 | 2.56 |
+| Hindi -> en -> zh, pivot | 39.2% | 17.8 | 27.7 | 5.56 |
+
+English gives about twice the Chinese quality of Hindi. Both halves are weaker for Hindi: speech recognition makes 6x the errors, and even from a perfect Hindi transcript Hy-MT2 scores 27.7 vs 38.8. Pivoting through English is no better than the direct route and twice as slow. Not measured yet: Indian-accented English (Svarah is a gated dataset; the runner needs an accepted licence + HF token) and Hinglish.

@@ -25,7 +25,7 @@ The share of work each mode, platform and language gets follows market trends. T
 | | |
 |---|---|
 | 🔒 | **Fully offline.** Audio and text stay on the device. |
-| 🗑️ | **No recordings kept.** Voiceprints only with each person's consent. |
+| 🗑️ | **No recordings kept by default** (opt-in `--record`, #239). Voiceprints only with each person's consent. |
 | 🙂 | **Easy for users, smooth for contributors.** What we ship is plain to anyone; how we work is clear to developers. |
 | 🟢 | **Green means tested.** A light turns green only after a real run. |
 | 🆓 | **The core stays free and open source.** Paid add-ons, if any, live elsewhere. |

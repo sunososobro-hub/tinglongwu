@@ -27,6 +27,7 @@ PACKS: dict[str, list[str]] = {
     "zh": [],   # #562: no OPUS pairs; the installer fetches Hy-MT2 itself (--hymt), ja/ru reuse it
     "en": [],
     "ja": ["hymt2-1.8b"],
+    "ko": ["hymt2-1.8b"],
     "ru": ["hymt2-1.8b", PIPER_RU_DEFAULT],
 }
 DEFAULT_PACKS = ("zh", "en")
@@ -38,6 +39,17 @@ PROMPT = {  # setup does not import tinglongwu, so the three UI languages live h
     "en": "pack {lang} (~{mb} MB) missing — download now? [y/N] ",
     "ru": "пакет {lang} (~{mb} МБ) не установлен — скачать сейчас? [y/N] ",
     "zh-TW": "語言包 {lang}（約 {mb} MB）尚未安裝 — 現在下載嗎？[y/N] ",
+}
+
+
+TIER1 = ("zh", "en", "ja", "ko", "ru")  # #671: the languages the first-run question offers
+ASK = {
+    "en": "Which language do you want to understand? Options: {opts}. Pick one or more, comma-separated "
+          "[default: {default}].\nNeeds internet to download ({mb} MB). Works offline afterwards.\n> ",
+    "ru": "Какой язык вы хотите понимать? Варианты: {opts}. Выберите один или несколько через запятую "
+          "[по умолчанию: {default}].\nНужен интернет для загрузки ({mb} МБ). После этого работает офлайн.\n> ",
+    "zh-TW": "你想聽懂哪一種語言？選項：{opts}。可選一個或多個（以逗號分隔）[預設：{default}]。\n"
+             "需要網路下載（{mb} MB）。下載後可離線使用。\n> ",
 }
 
 
@@ -60,6 +72,11 @@ def _langs(spec: str) -> list[str]:
 
 def pack_size_mb(lang: str) -> int:
     return sum(SIZE_MB.get(k, OPUS_MB) for k in PACKS[lang])
+
+
+def total_size_mb(langs: str) -> int:
+    """#672: download size of the chosen packs; a model shared by two packs (Hy-MT2 for ja and ru) counts once."""
+    return sum(SIZE_MB.get(k, OPUS_MB) for k in keys_for(langs))
 
 
 def missing(lang: str, mdir: Path) -> list[str]:
@@ -91,6 +108,34 @@ def install(langs: str, mdir: Path) -> int:
 def _ui_lang() -> str:
     lang = (os.environ.get("TLWU_UI_LANG") or "en").strip().lower()
     return "zh-TW" if lang.startswith("zh") else ("ru" if lang.startswith("ru") else "en")
+
+
+def locale_default(env=None) -> str:
+    """#671: the tier-1 language matching the OS locale (ja_JP -> ja, zh_TW -> zh ...); anything else -> en."""
+    env = os.environ if env is None else env
+    raw = next((env[k] for k in ("LC_ALL", "LC_MESSAGES", "LANG") if env.get(k)), "")
+    code = raw.split("_")[0].split(".")[0].split("-")[0].lower()
+    return code if code in TIER1 else "en"
+
+
+def choose_langs(env=None, ask=None) -> str:
+    """#671: comma list of packs to install. TLWU_PACKS or TLWU_YES=1 skip the question (YES -> locale default);
+    otherwise one prompt in the UI language; empty / EOF / no valid answer -> the locale default."""
+    env = os.environ if env is None else env
+    if env.get("TLWU_PACKS"):
+        return env["TLWU_PACKS"]
+    default = locale_default(env)
+    if env.get("TLWU_YES") == "1":
+        return default
+    ui = env.get("TLWU_UI_LANG") or env.get("LANG") or "en"
+    ui = "zh-TW" if ui.lower().startswith("zh") else ("ru" if ui.lower().startswith("ru") else "en")
+    try:
+        ans = (ask or input)(ASK[ui].format(opts=", ".join(TIER1), default=default,
+                                            mb=total_size_mb(default)))
+    except EOFError:
+        ans = ""
+    picked = [x for x in dict.fromkeys(t.lower() for t in ans.replace(",", " ").split()) if x in TIER1]
+    return ",".join(picked) or default
 
 
 def prompt(lang: str, mdir: Path, ask=None) -> int:

@@ -39,6 +39,9 @@ android {
         }
     }
 
+    // Model packs for Google Play (on-demand, downloaded by the Play Store, so no INTERNET here).
+    assetPacks += listOf(":models_asr", ":models_llm")
+
     // Release key from the environment (CI decodes the ANDROID_KEYSTORE_B64 secret into a file).
     // Without TLWU_KEYSTORE the release APK is debug-signed, so local builds and forks still work.
     val tlwuKeystore = System.getenv("TLWU_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
@@ -68,4 +71,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Play Asset Delivery client (PlayPacks.kt); the download itself is done by the Play Store.
+    implementation("com.google.android.play:asset-delivery:2.3.0")
+    implementation("androidx.activity:activity:1.10.1")
 }

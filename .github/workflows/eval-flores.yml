@@ -1,6 +1,7 @@
 name: eval-flores
 # #606: Hy-MT2-1.8B (the shipped Q4_K_M GGUF, llama.cpp on the CPU) on the full FLORES-200 devtest (1012 sentences)
-# -> zho_Hant for rus/eng/jpn, chrF + COMET (Unbabel/wmt22-comet-da), the same metrics as docs/benchmarks.md.
+# -> zho_Hant for rus/eng/jpn + kor/vie/tha/ind/spa/deu/fra (#656), chrF + COMET (Unbabel/wmt22-comet-da),
+# the same metrics as docs/benchmarks.md.
 # Runs on GitHub-hosted CPU runners because the cloud agent sandbox cannot reach the model / data hosts.
 # Per-sentence JSON + summary are uploaded as the `flores-<src>` artifacts; the step summary has the table row.
 # Only runs when this workflow or the runner script changes, or by hand (workflow_dispatch, once on the default branch).
@@ -15,6 +16,12 @@ on:
       limit:
         description: "first N sentences only (0 = all 1012)"
         default: "0"
+      langs:
+        description: "comma list of FLORES source codes (see LANGS in scripts/bench/flores_cpu.py)"
+        default: "rus_Cyrl,eng_Latn,jpn_Jpan"
+      temps:
+        description: "comma list of Hy-MT2 temperatures (0 = greedy, 0.7 = model-card default)"
+        default: "0"
 
 permissions:
   contents: read
@@ -25,18 +32,42 @@ concurrency:
 
 env:
   TLWU_NO_UPDATE: "1"
-  TLWU_HYMT_TEMP: "0"  # greedy: repeatable numbers (#606 Verify: chrF +/-0.3, COMET +/-0.003)
   PYTHONUTF8: "1"
   LIMIT: ${{ inputs.limit || '0' }}
 
 jobs:
+  plan:
+    # #656: the matrix comes from the `langs` input (dispatch) or, on a PR, every direction the runner knows;
+    # flores_cpu.py --matrix rejects anything that is not a known FLORES code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      src: ${{ steps.m.outputs.src }}
+      temp: ${{ steps.m.outputs.temp }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - id: m
+        env:
+          LANGS: ${{ inputs.langs || 'rus_Cyrl,eng_Latn,jpn_Jpan' }}
+          TEMPS: ${{ inputs.temps || '0.7,0.2,0' }}
+        run: |
+          echo "src=$(python3 scripts/bench/flores_cpu.py --matrix "$LANGS")" >> "$GITHUB_OUTPUT"
+          echo "temp=$(python3 scripts/bench/flores_cpu.py --temps "$TEMPS")" >> "$GITHUB_OUTPUT"
+
   flores:
+    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
       fail-fast: false
       matrix:
-        src: [rus_Cyrl, eng_Latn, jpn_Jpan]
+        src: ${{ fromJSON(needs.plan.outputs.src) }}
+        temp: ${{ fromJSON(needs.plan.outputs.temp) }}
+    env:
+      SRC: ${{ matrix.src }}
+      TEMP: ${{ matrix.temp }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -79,23 +110,25 @@ jobs:
         run: |
           tlwu-setup --hymt --models-dir "$TLWU_MODELS"
           python scripts/bench/fetch_data.py --out "$BENCH" --fleurs ""
-      - name: Translate (CPU, greedy)
+      - name: Translate (CPU, Hy-MT2 temperature from the matrix; 0 = greedy, repeatable)
         run: |
-          python scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" --src ${{ matrix.src }} \
-            --out out --limit "$LIMIT" --no-comet
+          python scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" --src "$SRC" \
+            --out out --limit "$LIMIT" --no-comet --temp "$TEMP"
       - name: Score chrF + COMET (CPU)
         run: |
           "$HOME/comet/bin/python" scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" \
-            --src ${{ matrix.src }} --out out --limit "$LIMIT" --score-only
+            --src "$SRC" --out out --limit "$LIMIT" --score-only
           python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          s = json.load(open("out/${{ matrix.src }}.summary.json", encoding="utf-8"))
-          print("| pair | n | chrF | COMET | median s/sentence | p90 s | CPU |\n|---|---|---|---|---|---|---|")
-          print(f"| {s['pair']} | {s['n']} | {s['chrF']} | {s.get('COMET')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
+          import json, os
+          s = json.load(open(f"out/{os.environ['SRC']}.summary.json", encoding="utf-8"))
+          print("| pair | temp | n | chrF | COMET | U+FFFD lines | median s/sentence | p90 s | CPU |")
+          print("|---|---|---|---|---|---|---|---|---|")
+          print(f"| {s['pair']} | {s.get('temperature')} | {s['n']} | {s['chrF']} | {s.get('COMET')} | "
+                f"{s.get('fffd_lines')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
           EOF
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: flores-${{ matrix.src }}
+          name: flores-${{ matrix.src }}-t${{ matrix.temp }}
           path: out/
           if-no-files-found: warn

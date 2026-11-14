@@ -24,6 +24,14 @@ DIR="${TLWU_DIR:-$HOME/tinglongwu}"
 YES="${TLWU_YES:-}"
 for a in "$@"; do [ "$a" = "--yes" ] && YES=1; done
 
+# --uninstall (#476): hand over to scripts/uninstall.sh (other args, e.g. --purge, pass through)
+for a in "$@"; do
+  if [ "$a" = "--uninstall" ]; then
+    [ -f "$DIR/scripts/uninstall.sh" ] || { echo "[x] $DIR/scripts/uninstall.sh not found (older install, or wrong TLWU_DIR). Re-run this installer once to update, then run it with --uninstall." >&2; exit 1; }
+    exec bash "$DIR/scripts/uninstall.sh" "$@"
+  fi
+done
+
 # ---- messages (en / ru / zh-TW); the repo's scripts/i18n is not available before the clone, so they live here
 L="${TLWU_UI_LANG:-}"
 [ -n "$L" ] || L="${LC_ALL:-${LC_MESSAGES:-${LANG:-en}}}"
@@ -101,8 +109,10 @@ prefetch_models() {
   args="$(.venv/bin/python -c 'from tlwu_app.tiers import choose_tier, detect_gpu; print(" ".join(choose_tier(detect_gpu()).downloader_args()))')" \
     || die "cannot pick the model tier. Re-run this command to resume."
   say "$(t asrmt)"
+  # #671: one question "Which language do you want to understand?" (--ask-lang); TLWU_PACKS / TLWU_YES=1 skip it
+  [ -n "$YES" ] && export TLWU_YES=1
   # shellcheck disable=SC2086
-  .venv/bin/python -m tinglongwu_setup $args || die "ASR/MT model download failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
+  .venv/bin/python -m tinglongwu_setup $args --ask-lang || die "ASR/MT model download failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
 }
 
 # After fetch+checkout of $REF in $DIR: fast-forward a branch ref; a tag stays as is.
@@ -201,11 +211,13 @@ main() {
     bash scripts/linux_kokoro.sh || die "Kokoro install failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
   fi
 
-  if [ -n "$YES" ] && [ -z "${TLWU_SKIP_MODELS:-}" ]; then prefetch_models; fi
+  # unattended, or a person at the keyboard (#671): ask which language, then fetch only that pack
+  FETCHED=""
+  if [ -z "${TLWU_SKIP_MODELS:-}" ] && { [ -n "$YES" ] || [ -t 0 ]; }; then prefetch_models; FETCHED=1; fi
 
   say "$(t done)"
   printf '\n    bash %s/scripts/linux_menu.sh\n\n' "$DIR"
-  if [ -n "$YES" ] && [ -z "${TLWU_SKIP_MODELS:-}" ]; then t ready; else t models; fi
+  if [ -n "$FETCHED" ]; then t ready; else t models; fi
   exit 0
 }
 [ -n "${TLWU_SOURCE_ONLY:-}" ] || main "$@"

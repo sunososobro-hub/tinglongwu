@@ -88,6 +88,24 @@ def test_checker_detects_removed_heading_and_broken_link(tmp_path):
     assert chk.broken_links([tmp_path / "a.md"]) == ["a.md: missing.md"]
 
 
+def test_checker_flags_setup_command_above_advanced_heading():  # #703
+    chk = _load_checker()
+    h = "## 開發者／進階安裝"
+    assert chk.setup_cmds_above_advanced("# t\nrun `tlwu-setup --deps`\n" + h + "\n", h) == ["run `tlwu-setup --deps`"]
+    assert chk.setup_cmds_above_advanced("# t\n" + h + "\ntlwu-setup --deps\n", h) == []
+    assert chk.setup_cmds_above_advanced("# t\ntlwu-setup is the only network program\n" + h + "\n", h) == []
+    assert chk.setup_cmds_above_advanced("# t\n", h) == [f"missing heading: {h}"]
+
+
+def test_full_zh_readmes_put_setup_exe_first():  # #703
+    for name in ("readme-full.zh-TW.md", "readme-full.zh-CN.md"):
+        text = (ROOT / "docs" / name).read_text("utf-8")
+        adv = text.index(_load_checker().ADVANCED_HEADINGS[name])
+        assert text.index("tinglongwu-setup.exe") < adv
+        assert "3–8" in text[:adv]  # what-to-expect line
+        assert "tinglongWu →" in text[:adv]  # uninstall line
+
+
 def test_readme_links_docs_page_and_charts_exist():  # #347
     text = README.read_text("utf-8")
     assert "https://sunososobro-hub.github.io/tinglongwu/docs.html" in text

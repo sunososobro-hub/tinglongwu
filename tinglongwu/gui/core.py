@@ -6,6 +6,8 @@ Events: ("draft", src_text, translation) | ("final", src_text, target_text) | ("
 """
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import json
 import os
 import queue
@@ -25,6 +27,7 @@ DEFAULTS = {
     "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
+    "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
 }
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
@@ -83,6 +86,38 @@ def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str,
     return {m: (f"gui_quick_{m}", phase == "idle") for m in QUICK_MODES}
 
 
+# #314 first-launch overlay: 3 numbered steps over the real controls. zh-CN has its own text here although the
+# rest of the UI still shows zh-TW for a zh-CN system (see tour_lang).
+TOUR_TEXT = {
+    "en": {"title": "Start in 3 steps", "step1": "1. Pick the language the other side speaks, or Auto:",
+           "step2": "2. Press Start (on the bar above).",
+           "step3": "3. Subtitles appear here - drag to move", "ok": "Got it"},
+    "zh-TW": {"title": "三步開始", "step1": "1. 選對方說的語言，或「自動」：", "step2": "2. 按上方小條上的「開始」。",
+              "step3": "3. 字幕會出現在這裡 - 可拖曳移動", "ok": "知道了"},
+    "zh-CN": {"title": "三步开始", "step1": "1. 选对方说的语言，或“自动”：", "step2": "2. 按上方小条上的“开始”。",
+              "step3": "3. 字幕会出现在这里 - 可拖动移动", "ok": "知道了"},
+    "ru": {"title": "Начать за 3 шага", "step1": "1. Выберите язык собеседника или «авто»:",
+           "step2": "2. Нажмите «Старт» на панели сверху.",
+           "step3": "3. Субтитры появятся здесь - перетащите, чтобы сдвинуть", "ok": "Понятно"},
+}
+
+
+def tour_lang(ui: str, system_tag: str | None = None) -> str:
+    """UI language of the #314 overlay. Chinese UI ("zh-TW") on a Simplified-Chinese system -> "zh-CN"."""
+    if ui == "zh-TW" and target_for_locale(system_tag) == "zh-cn":
+        return "zh-CN"
+    return ui if ui in TOUR_TEXT else "en"
+
+
+def tour_text(ui: str, system_tag: str | None = None) -> dict[str, str]:
+    return TOUR_TEXT[tour_lang(ui, system_tag)]
+
+
+def tour_on_start(s: dict) -> bool:
+    """#314: the overlay opens by itself only until the user closed it once with "Got it" (kept in gui.json)."""
+    return not s.get("tour_seen")
+
+
 def report_info(s: dict) -> dict:
     """Current GUI settings for 'Report a problem' (#91): choices only - no paths, no glossary, no subtitle text."""
     return {"Mode": f"gui/{s.get('preset')}", "Language pair": f"{s.get('lang')} -> {s.get('target')}",
@@ -137,6 +172,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
 
         out["target"] = target_for_locale(_system_tag())  # first run (no saved choice): follow the OS locale
     except Exception:  # noqa: BLE001
+        _diag.swallowed(__name__)
         pass
     try:
         data = json.loads(Path(path or settings_path()).read_text("utf-8"))
@@ -154,6 +190,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
                 elif type(dv) is float and isinstance(v, int) and not isinstance(v, bool):
                     out[k] = float(v)
     except Exception:  # noqa: BLE001 - missing/corrupt file: just use defaults
+        _diag.swallowed(__name__)
         pass
     out["font_size"] = clamp_font(out["font_size"])
     if out["quality"] not in QUALITIES:
@@ -166,6 +203,7 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
         try:
             out["live_draft"] = bool(gpu())
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
@@ -312,6 +350,13 @@ def download_cmd(model: str, mdir=None, bundled: bool | None = None) -> list[str
     return [*base, "--whisper", model, "--models-dir", str(models_dir(str(mdir) if mdir else None))]
 
 
+def pack_download_cmd(pack: str, mdir=None, bundled: bool | None = None) -> list[str]:
+    """#673: same child as download_cmd, but `--packs <lang>` (resumable, SHA256-checked) instead of `--whisper`."""
+    cmd = download_cmd("small", mdir, bundled)
+    i = cmd.index("--whisper")
+    return [*cmd[:i], "--packs", pack, *cmd[i + 2:]]
+
+
 def download_env(env=None) -> dict:
     """Environment for the download child: this process's offline flags (HF_HUB_OFFLINE etc.) removed."""
     from ..offline import OFFLINE_ENV
@@ -340,6 +385,27 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
         put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
         rc = -1
     put(("dl_done", model, rc))
+    return rc
+
+
+def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+    """Worker thread: run the pack download child; `put` gets ("pack_line", text) per line and ("pack_done", pack, rc)."""
+    import subprocess
+
+    popen = popen or subprocess.Popen
+    try:
+        p = popen(pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                  env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for raw in p.stdout:
+            line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
+            parts = [x.strip() for x in line.split("\n") if x.strip()]
+            if parts:
+                put(("pack_line", parts[-1][:90]))
+        rc = p.wait()
+    except Exception as e:  # noqa: BLE001
+        put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
+        rc = -1
+    put(("pack_done", pack, rc))
     return rc
 
 

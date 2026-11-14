@@ -261,18 +261,28 @@ def parse_faucet(body):
     return {"level": int(m.group(1)), "focus": focus}
 
 
-def _label_value(labels, prefix):
+ALL = "all"  # rules section 12: no os/lang label = all platforms / all languages
+
+
+def _label_value(labels, prefix, default=UNLABELLED):
     for name in labels:
         if name.startswith(prefix):
             return name[len(prefix):]
-    return UNLABELLED
+    return default
+
+
+def _platform(labels):
+    p = _label_value(labels, "os:", None)
+    if p is not None:
+        return p
+    return "mobile" if "area:mobile" in labels else ALL
 
 
 def build_flow(items):
     """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
 
-    Everything is in quota minutes (minutes x model weight, opus = 2x). Missing mode / os /
-    lang labels go to an 'unlabelled' node instead of failing.
+    Everything is in quota minutes (minutes x model weight, opus = 2x). A missing mode label goes to
+    'unlabelled'; no os label = 'mobile' for area:mobile else 'all'; no lang label = 'all'.
     """
     paths, types = {}, {}
     for it in items:
@@ -280,7 +290,7 @@ def build_flow(items):
         if q <= 0:
             continue
         labels = it.get("labels", [])
-        key = (_label_value(labels, "mode:"), _label_value(labels, "os:"), _label_value(labels, "lang:"))
+        key = (_label_value(labels, "mode:"), _platform(labels), _label_value(labels, "lang:", ALL))
         paths[key] = paths.get(key, 0.0) + q
         t = next((n for n, _ in TYPE_TARGETS if n in labels), "other")
         types[t] = types.get(t, 0.0) + q
@@ -417,7 +427,8 @@ def build_flow_inputs(api, repo, merged_prs, now):
     return build_flow(items), faucet
 
 
-RELEASE_PAGES = 3  # newest 300 releases is plenty
+RELEASE_PAGES = 3  # x per_page=100 in _pages: newest 300 releases is plenty
+_FETCH = object()  # sentinel: fetch releases inside the builder
 
 
 def release_downloads(api, repo):
@@ -449,7 +460,7 @@ def downloads_series(history, days, current=None):
     return out
 
 
-def build_series(api, repo, branch, now, history=None):
+def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
     days = day_range(day_of(created), now.strftime("%Y-%m-%d"))
@@ -481,7 +492,8 @@ def build_series(api, repo, branch, now, history=None):
     except Exception:
         ms = []
     flow, faucet = build_flow_inputs(api, repo, merged_prs, now)
-    rels = release_downloads(api, repo)
+    if rels is _FETCH:
+        rels = release_downloads(api, repo)
     dl_total = sum(r["downloads"] for r in rels) if rels is not None else None
     return {
         "flow": flow, "faucet": faucet,
@@ -510,7 +522,7 @@ def build_series(api, repo, branch, now, history=None):
     }
 
 
-def build_snapshot(api, repo, branch, now):
+def build_snapshot(api, repo, branch, now, rels=_FETCH):
     info = api("/repos/%s" % repo)
     issues = [i for i in _pages(api, "/repos/%s/issues?state=open" % repo)
               if "pull_request" not in i]
@@ -524,7 +536,8 @@ def build_snapshot(api, repo, branch, now):
     for c in commits:
         d = c["commit"]["committer"]["date"][:13]  # YYYY-MM-DDTHH
         by_hour[d] = by_hour.get(d, 0) + 1
-    rels = release_downloads(api, repo)
+    if rels is _FETCH:
+        rels = release_downloads(api, repo)
     return {
         "ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "downloads": sum(r["downloads"] for r in rels) if rels is not None else None,
@@ -723,8 +736,9 @@ def run(outdir, repo, branch, api=http_api, now=None):
             history = []
     except (OSError, ValueError):
         history = []
-    history = merge_history(history, build_snapshot(api, repo, branch, now))
-    series = build_series(api, repo, branch, now, history)
+    rels = release_downloads(api, repo)  # one fetch per run, shared by snapshot and series
+    history = merge_history(history, build_snapshot(api, repo, branch, now, rels))
+    series = build_series(api, repo, branch, now, history, rels)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f)
     with open(os.path.join(outdir, "series.json"), "w", encoding="utf-8") as f:
