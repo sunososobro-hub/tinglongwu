@@ -1,4 +1,5 @@
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -36,11 +37,23 @@ def _isolated_user_dirs(tmp_path, monkeypatch):
     monkeypatch.delenv("TLWU_ALLOW_NET", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _restore_sigint():
+    """gui.App() installs its own SIGINT handler for the whole process. Once real-Tk tests run (xvfb, #113) that
+    handler outlived the GUI test, so a later `_thread.interrupt_main()` (test_speak_ctrlc_427) set App.sigint instead
+    of raising KeyboardInterrupt and the test hung until --timeout. Every test starts and ends with the handler it found."""
+    prev = signal.getsignal(signal.SIGINT)
+    yield
+    if signal.getsignal(signal.SIGINT) is not prev and prev is not None:
+        signal.signal(signal.SIGINT, prev)
+
+
 # -- real-Tk GUI tests (#113) ------------------------------------------------------------------------------------
 _TK_SKIP = ("no display", "no tkinter", "could not import 'tkinter'")
 _DIALOGS = {"messagebox": ("showinfo", "showwarning", "showerror", "askyesno", "askokcancel", "askyesnocancel",
                            "askquestion", "askretrycancel"),
-            "filedialog": ("askopenfilename", "asksaveasfilename", "askdirectory", "askopenfilenames")}
+            "filedialog": ("askopenfilename", "asksaveasfilename", "askdirectory", "askopenfilenames",
+                                          "askopenfile", "asksaveasfile")}
 
 
 @pytest.hookimpl(hookwrapper=True)
