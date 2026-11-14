@@ -427,14 +427,13 @@ def build_flow_inputs(api, repo, merged_prs, now):
     return build_flow(items), faucet
 
 
-RELEASE_PAGES = 3  # x per_page=100 in _pages: newest 300 releases is plenty
 _FETCH = object()  # sentinel: fetch releases inside the builder
 
 
 def release_downloads(api, repo):
     """[{'tag','downloads'}] newest first (sum of asset download_count); None if unavailable."""
     try:
-        rels = _pages(api, "/repos/%s/releases" % repo, limit=RELEASE_PAGES)
+        rels = _pages(api, "/repos/%s/releases" % repo)
     except Exception as e:  # dashboard still builds without downloads
         print("releases unavailable: %s" % e, file=sys.stderr)
         return None
@@ -498,7 +497,8 @@ def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     return {
         "flow": flow, "faucet": faucet,
         "downloads": {"total": dl_total, "releases": rels or [],
-                      "series": downloads_series(history, days, dl_total)},
+                      "series": downloads_series(history, days, dl_total) if dl_total is not None
+                      else [None] * len(days)},  # releases unavailable: block stays empty
         "repo": repo, "branch": branch, "created": created,
         "updated": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "days": days,

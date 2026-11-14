@@ -337,3 +337,13 @@ def test_run_fetches_releases_once(tmp_path):
         return fake_api(path, accept)
     sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
     assert len(calls) == 1
+
+
+def test_downloads_unavailable_with_history_stays_empty():
+    def api(path, accept=None):
+        if "/releases" in path:
+            raise OSError("boom")
+        return fake_api(path, accept)
+    hist = [{"ts": "2026-11-11T10:00:00Z", "downloads": 20}]
+    series = sd.build_series(api, "o/r", "dev", NOW, hist)
+    assert series["downloads"]["series"] == [None, None, None]
