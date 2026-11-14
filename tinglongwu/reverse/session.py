@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 
+from .. import diag as _diag
 from .. import fmt
 from .synth import VOICE_ENGINES, _make_synth, _synth_sentences, _target, describe_error, no_audio_reason
 
@@ -231,6 +232,7 @@ def _stop_live(stop, box, tts, player, previewer, source=None):
             try:
                 source.close()
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
         for sess in box:
             sess.abort()
@@ -238,6 +240,7 @@ def _stop_live(stop, box, tts, player, previewer, source=None):
             try:
                 tts.proc.kill()
             except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
                 pass
         for pl in (player, previewer):
             abort = getattr(pl, "abort", None)

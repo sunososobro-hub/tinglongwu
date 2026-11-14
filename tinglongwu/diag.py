@@ -8,6 +8,9 @@ import threading
 from . import userdirs
 
 LOG_NAME = "tinglongwu-app.log"
+# A dedicated, non-propagating logger: a handler on the package logger "tinglongwu" would stop other
+# tinglongwu.* warnings (e.g. llamacheck's "CUDA build not used", #398) from reaching stderr via lastResort.
+LOGGER = "tinglongwu.diag"
 _lock = threading.Lock()
 _ready = False
 
@@ -19,7 +22,7 @@ class _QuietHandler(logging.handlers.RotatingFileHandler):
 
 def _setup() -> logging.Logger:
     global _ready
-    lg = logging.getLogger("tinglongwu")
+    lg = logging.getLogger(LOGGER)
     with _lock:
         if _ready:
             return lg
@@ -41,7 +44,7 @@ def reset() -> None:
     """Drop handlers so the next call re-reads the log dir (tests)."""
     global _ready
     with _lock:
-        lg = logging.getLogger("tinglongwu")
+        lg = logging.getLogger(LOGGER)
         for h in list(lg.handlers):
             lg.removeHandler(h)
             h.close()
