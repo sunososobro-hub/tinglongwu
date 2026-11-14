@@ -62,6 +62,11 @@ def pack_size_mb(lang: str) -> int:
     return sum(SIZE_MB.get(k, OPUS_MB) for k in PACKS[lang])
 
 
+def total_size_mb(langs: str) -> int:
+    """#672: download size of the chosen packs; a model shared by two packs (Hy-MT2 for ja and ru) counts once."""
+    return sum(SIZE_MB.get(k, OPUS_MB) for k in keys_for(langs))
+
+
 def missing(lang: str, mdir: Path) -> list[str]:
     """Model keys of `lang` not on disk (a key counts only if its dir exists AND the local manifest pinned it)."""
     man = _manifest(mdir)
