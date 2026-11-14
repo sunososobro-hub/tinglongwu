@@ -50,3 +50,24 @@ def test_collect_uses_artifacts_and_survives_failure():
     def boom(path, accept=None):
         raise OSError("down")
     assert sd.collect_ttfs(boom, "o/r") == {}
+
+
+def test_same_date_keeps_the_ten_newest_in_display_order():
+    docs = []
+    for i in range(12):  # newest-first, all on one date
+        d = doc(0)
+        d["version"] = "v%02d" % (11 - i)
+        docs.append(d)
+    rows = sd.ttfs_points(docs)["windows"]
+    assert [r["version"] for r in rows] == ["v%02d" % n for n in range(2, 12)]
+
+
+def test_failed_first_run_does_not_hide_the_second():
+    def api(path, accept=None):
+        if "install-clean.yml/runs" in path:
+            return {"workflow_runs": [{"id": 1}, {"id": 2}]}
+        if path.endswith("/runs/1/artifacts"):
+            raise OSError("boom")
+        return {"artifacts": [{"name": "ttfs-windows", "archive_download_url": "u"}]}
+
+    assert len(sd.collect_ttfs(api, "o/r", fetch=lambda u: doc(1))["windows"]) == 1

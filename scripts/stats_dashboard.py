@@ -595,7 +595,7 @@ def ttfs_points(docs, points=TTFS_POINTS):
 
     Pure: malformed docs (missing fields, null excl_download_seconds) are skipped."""
     by_os = {}
-    for d in docs or ():
+    for idx, d in enumerate(docs or ()):  # docs are newest-first: idx breaks ties between equal dates
         if not isinstance(d, dict) or any(d.get(k) is None for k in _TTFS_FIELDS):
             continue
         try:
@@ -603,8 +603,12 @@ def ttfs_points(docs, points=TTFS_POINTS):
         except (TypeError, ValueError):
             continue
         by_os.setdefault(str(d["os"]), []).append(
-            {"version": str(d["version"]), "date": str(d["date"]), "seconds": round(sec, 1), "sha": str(d.get("sha") or "")})
-    return {o: sorted(rows, key=lambda r: r["date"])[-points:] for o, rows in sorted(by_os.items())}
+            {"version": str(d["version"]), "date": str(d["date"]), "seconds": round(sec, 1), "sha": str(d.get("sha") or ""), "_i": idx})
+    out = {}
+    for o, rows in sorted(by_os.items()):
+        keep = sorted(rows, key=lambda r: (r["date"], -r["_i"]))[-points:]  # oldest first, newest last
+        out[o] = [{k: v for k, v in r.items() if k != "_i"} for r in keep]
+    return out
 
 
 def render_ttfs_section(series):
@@ -651,7 +655,11 @@ def collect_ttfs(api, repo, fetch=http_artifact_json):
         runs = api("/repos/%s/actions/workflows/install-clean.yml/runs?status=success&per_page=%d"
                    % (repo, TTFS_RUNS)).get("workflow_runs", [])
         for run in runs:
-            arts = api("/repos/%s/actions/runs/%d/artifacts" % (repo, run["id"])).get("artifacts", [])
+            try:
+                arts = api("/repos/%s/actions/runs/%d/artifacts" % (repo, run["id"])).get("artifacts", [])
+            except Exception as e:  # one bad run must not hide the later ones
+                print("artifacts of run %s unavailable: %s" % (run.get("id"), e), file=sys.stderr)
+                continue
             for a in arts:
                 if a.get("name", "").startswith("ttfs-") and not a.get("expired"):
                     try:
