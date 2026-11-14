@@ -155,9 +155,11 @@ jobs:
           set -euo pipefail
           # Download, support/contributors block and What's new from the single source (docs/support.json)
           python scripts/render_support.py --notes "$TAG" > base.md
+          # #722: packaging/packs.json (scripts/make_pack_manifest.py) adds the optional-pack size table
           # python opens the D:\ paths in DIST and appends the notes to the job summary
           python scripts/release_notes.py notes --version "$TAG" --base base.md --pr "$PR" \
-            --verification "$DIST/release-check.md" --hw-run "$HW_RUN" --head "$HEAD" --out "$DIST/notes.md"
+            --verification "$DIST/release-check.md" --hw-run "$HW_RUN" --head "$HEAD" \
+            --packs-manifest packaging/packs.json --out "$DIST/notes.md"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-win64

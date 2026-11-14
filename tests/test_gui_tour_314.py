@@ -57,6 +57,8 @@ def make_app(tmp_path, monkeypatch):
         self.q.put(("stopped",))
 
     monkeypatch.setattr(app.App, "_work", fake_work)
+    # the tour is not about packs: a missing ja pack would open the #673 download dialog on Start (#113)
+    monkeypatch.setattr(app.pack_on_demand, "first_missing", lambda *a, **k: None)
     made = []
 
     def make():
