@@ -4,6 +4,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stats_dashboard as sd  # noqa: E402
 
@@ -378,3 +380,9 @@ def test_run_renders_active_installs(tmp_path):
 def test_counter_base_env_and_no_fetch_without_https():
     assert sd.counter_base({"TLWU_UPDATE_COUNTER": "https://w.example/"}) == "https://w.example"
     assert sd.fetch_installs("") is None and sd.fetch_installs("http://plain") is None
+
+
+@pytest.mark.parametrize("bad", [{"error": "unavailable"}, ["x"], [{"date": "2026-11-11", "n": "lots"}]])
+def test_run_survives_bad_counter_answer(tmp_path, bad):
+    sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=bad)
+    assert "Install counter not available yet" in (tmp_path / "index.html").read_text(encoding="utf-8")

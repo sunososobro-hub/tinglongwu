@@ -580,6 +580,15 @@ def counter_base(env=None):
         return ""
 
 
+def valid_install_rows(rows):
+    """rows if it is a list of {date, version, os, n} objects with an integer-like n; ValueError otherwise."""
+    if not isinstance(rows, list) or not all(isinstance(x, dict) for x in rows):
+        raise ValueError("counter response is not a list of rows")
+    for x in rows:
+        int(x.get("n") or 0)  # ValueError for a non-numeric count
+    return rows
+
+
 def fetch_installs(base):
     """Rows [{date, version, os, n}] from the counter Worker's /v1/stats, or None (no Worker, unreachable)."""
     if not base.startswith("https://"):
@@ -587,7 +596,7 @@ def fetch_installs(base):
     try:
         req = urllib.request.Request(base + "/v1/stats", headers={"User-Agent": "tlwu-stats"})
         with urllib.request.urlopen(req, timeout=30) as r:
-            return json.load(r)
+            return valid_install_rows(json.load(r))
     except Exception as e:  # dashboard still builds without the counter
         print("install counter unavailable: %s" % e, file=sys.stderr)
         return None
@@ -937,6 +946,11 @@ def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
     series = build_series(api, repo, branch, now, history, rels)
     if installs is _FETCH:
         installs = fetch_installs(counter_base())
+    try:
+        installs = valid_install_rows(installs) if installs is not None else None
+    except (TypeError, ValueError) as e:  # never let a bad counter answer stop the dashboard build
+        print("install counter unavailable: %s" % e, file=sys.stderr)
+        installs = None
     series["installs"] = active_installs(installs, now)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f)

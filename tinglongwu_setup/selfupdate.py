@@ -80,7 +80,9 @@ def counter_url(current: str, env=None, platform: str | None = None) -> str | No
 def _latest_json(get, count_url: str | None) -> dict:
     if count_url:
         try:
-            return json.loads(get(count_url, timeout=COUNTER_TIMEOUT_S).decode("utf-8"))
+            rel = json.loads(get(count_url, timeout=COUNTER_TIMEOUT_S).decode("utf-8"))
+            if isinstance(rel, dict) and rel.get("tag_name"):
+                return rel  # anything else ({} / [] / an error object) -> GitHub below
         except Exception:  # noqa: BLE001  # Worker down / blocked / bad answer: ask GitHub as before
             pass
     return json.loads(get(API_LATEST).decode("utf-8"))

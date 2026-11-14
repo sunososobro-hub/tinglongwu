@@ -59,6 +59,13 @@ def test_worker_bad_json_falls_back_to_github():
     assert calls[-1][0] == su.API_LATEST
 
 
+@pytest.mark.parametrize("body", [b"{}", b"[]", b'{"error": "x"}'])
+def test_worker_non_release_json_falls_back_to_github(body):
+    calls = []
+    assert su.check("0.3.3", getter(calls, worker_body=body), env=ENV, count=True) == "UPDATE 0.3.4"
+    assert calls[-1][0] == su.API_LATEST
+
+
 def test_uncounted_check_and_no_counter_url_go_straight_to_github():
     for env, count in ((ENV, False), ({}, True)):
         calls = []
