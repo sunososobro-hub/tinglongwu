@@ -38,6 +38,8 @@ To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/
 
 Setup downloads the speech and translation models once (internet needed). After that it runs fully offline.
 
+Optional packs (extra languages, speak mode, GPU) need internet to download once and work offline afterwards; Settings → Add-ons shows each pack's size.
+
 ## Languages and requirements
 
 Chinese, English, Japanese, Korean and Russian today; more on the way ([language plan](docs/VISION.md)).
