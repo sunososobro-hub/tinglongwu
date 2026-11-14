@@ -41,6 +41,7 @@ Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requiremen
 
 - 📘 [How to contribute](CONTRIBUTING.md): PRs are welcome, the default answer is yes
 - 🟢 [Good first issues](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
+- 💬 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions): ask a question, show how you use it, share an idea (no GitHub skills needed)
 - 🧭 [Vision: what we build and what we never do](docs/VISION.md)
 - 🗺️ [Roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [Next release progress](https://github.com/sunososobro-hub/tinglongwu/milestones) · 📊 [Project activity](https://sunososobro-hub.github.io/tinglongwu/)
 

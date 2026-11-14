@@ -2,6 +2,10 @@ name: Suggestion / 建議
 description: A feature or UI wording idea. / 功能或介面用字的想法
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Open-ended idea or just a question? Please use [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions) instead. / 還在發想或只是想問問題？請到[討論區](https://github.com/sunososobro-hub/tinglongwu/discussions)。
   - type: textarea
     id: happened
     attributes:

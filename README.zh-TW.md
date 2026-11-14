@@ -39,6 +39,7 @@
 
 - 📘 [怎麼參與](CONTRIBUTING.md)：歡迎發 PR，預設答案是 yes
 - 🟢 [新手友善的題目](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
+- 💬 [討論區](https://github.com/sunososobro-hub/tinglongwu/discussions)：問問題、分享你怎麼用、提點子（不用會寫程式）
 - 🧭 [願景：我們做什麼、絕不做什麼](docs/VISION.md)
 - 🗺️ [路線圖](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [下一版進度](https://github.com/sunososobro-hub/tinglongwu/milestones) · 📊 [專案活躍度](https://sunososobro-hub.github.io/tinglongwu/)
 
