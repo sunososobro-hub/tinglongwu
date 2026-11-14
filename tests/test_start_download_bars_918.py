@@ -81,4 +81,18 @@ def test_long_file_name_from_the_child_keeps_the_model_total():
         seen.append(sd.percent)
         assert len(ev[1]) <= 90
     assert seen == [100, 10, 60]
-    assert "484M" in events[1][1] and events[1][1].startswith("...")
+    assert "484M" in events[1][1] and "..." in events[1][1]
+
+
+def test_long_names_with_the_same_end_stay_two_files():
+    tail = "x" * 90 + ".safetensors"
+    lines = [f"encoder/{tail}:  90%|######### | 1.8k/2.0k [00:00<00:00]\n",
+             f"decoder/{tail}:  10%|#         | 48M/484M [00:01<00:09, 48.0MB/s]\n"]
+    events = []
+    core.run_download("small", events.append, popen=lambda *a, **k: FakeProc(lines))
+    sd = core.StartDownload("small")
+    for ev in events[:-1]:
+        sd.feed(ev)
+    assert sd.percent == 10
+    one = [core.progress_bar(core.short_line(f"decoder/{tail}: {p}|#| 9M/484M"))[0] for p in (" 10%", "100%")]
+    assert one[0] == one[1]  # one file keeps one label when tqdm's padding changes
