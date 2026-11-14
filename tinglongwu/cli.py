@@ -555,10 +555,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .stream import PacedSource
 
             source = PacedSource(source)
-    if paced:
-        from .stream import PacedSource
+    if paced:  # #21: live capture's 100 ms blocks, not the file's 0.5 s frames (the cut would round up to 0.5 s)
+        from .stream import paced_live_blocks
 
-        source = PacedSource(source)
+        source = paced_live_blocks(source)
     if draft is not None and merger is not None and dev != "cpu" and not getattr(a, "max_wait_explicit", False):
         merger.max_wait = max(merger.max_wait, RETRANS_MAX_WAIT)
     labeler = None

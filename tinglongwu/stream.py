@@ -394,3 +394,28 @@ class PacedSource(AudioSource):
 
     def close(self) -> None:
         self.inner.close()
+
+
+LIVE_BLOCK_S = 0.1  # live capture hands on 100 ms blocks (capture/_soundcard BLOCK)
+
+
+class _Blocks(AudioSource):
+    """Already decoded audio, handed on in fixed blocks."""
+
+    def __init__(self, audio: np.ndarray, block: int):
+        self.audio, self.block = audio, block
+
+    def frames(self):
+        for i in range(0, len(self.audio), self.block):
+            yield self.audio[i:i + self.block]
+
+
+def paced_live_blocks(source: AudioSource, block_s: float = LIVE_BLOCK_S) -> PacedSource:
+    """#21/#434 --paced: a file source released in real time in live capture's 100 ms blocks. The Segmenter can
+    only cut when a frame arrives, so the 0.5 s file frames would round every cut up to the next 0.5 s and hide
+    a 0.1 s change of --end-silence. The whole source is decoded first, before PacedSource starts its clock, so
+    decoding time does not eat into the real-time spacing."""
+    parts = [np.asarray(f, np.float32).reshape(-1) for f in source.frames()]
+    source.close()
+    audio = np.concatenate(parts) if parts else np.zeros(0, np.float32)
+    return PacedSource(_Blocks(audio, max(1, int(round(block_s * SAMPLE_RATE)))))

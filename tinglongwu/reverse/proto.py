@@ -484,18 +484,10 @@ def make_segmenter(max_seg: float, dev: str = "cpu", pause=None, vad_fn=None, en
 def paced_file_source(path):
     """#434 --input X --paced: the file released in real time, in the mic's 100 ms blocks (capture/_soundcard).
     Decoded here, before PacedSource starts its clock, so decoding time does not eat into the real-time spacing."""
-    from ..capture.base import AudioSource
     from ..capture.file import FileSource
-    from ..stream import PacedSource
+    from ..stream import paced_live_blocks
 
-    src = FileSource(str(path), block_s=0.1)
-    audio = src._load()
-
-    class Decoded(AudioSource):
-        frames = lambda self: (audio[i:i + src.block] for i in range(0, len(audio), src.block))  # noqa: E731
-        close = lambda self: None  # noqa: E731
-
-    return PacedSource(Decoded())
+    return paced_live_blocks(FileSource(str(path)))
 
 
 def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
