@@ -1,13 +1,13 @@
 {
-  "_note": "Merge gate baseline for `python -m tlwu_eval --gate` (#361). chrf/chrf_margin are null until the first CPU smoke run is recorded (docs/testing.md); a null chrf gates that pair on MT latency only. mt_median_s_max 1.0 = owner rule on #63 (translation is real-time when the median is under ~1.0 s/sentence).",
+  "_note": "Merge gate baseline for `python -m tlwu_eval --gate` (#361), run by .github/workflows/eval.yml (#570) on a GitHub ubuntu-24.04 CPU runner. chrf = first green CI run (https://github.com/sunososobro-hub/tinglongwu/actions/runs/43552312709, TLWU_HYMT_TEMP=0); chrf_margin 2.0 = above the run-to-run noise of greedy decoding on these 5 pinned clips. mt_median_s_max = that run's MT median x1.5 rounded up to 0.1 s: the shared runner is ~2x slower than the owner's 1.0 s real-time rule on #63 (a user-PC target), so here it is a regression budget for this runner, not the product target.",
   "model": "whisper small",
   "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
   "device": "cpu",
   "clips": 5,
   "pairs": {
-    "en->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0},
-    "ja->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0},
-    "ru->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0},
-    "zh->en": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 1.0}
+    "en->zh": {"chrf": 38.9, "chrf_margin": 2.0, "mt_median_s_max": 2.6},
+    "ja->zh": {"chrf": 19.58, "chrf_margin": 2.0, "mt_median_s_max": 3.7},
+    "ru->zh": {"chrf": 29.58, "chrf_margin": 2.0, "mt_median_s_max": 2.7},
+    "zh->en": {"chrf": 48.63, "chrf_margin": 2.0, "mt_median_s_max": 2.6}
   }
 }

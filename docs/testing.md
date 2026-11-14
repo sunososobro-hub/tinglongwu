@@ -27,6 +27,19 @@ downloaded).
 
 To record a baseline, copy each pair's `chrf` from `r.json` into `eval/baseline.json` and set `chrf_margin`.
 
+### In CI: `.github/workflows/eval.yml` (#570)
+
+Every PR to `dev` gets a `mini-eval` check. Its first step lists the PR's files; when none is under `tinglongwu/`,
+`tlwu_eval/`, `eval/`, `tinglongwu_setup/manifest.json`, `scripts/bench/make_ci_smoke.py` or
+`.github/workflows/eval*.yml` (docs-only PRs, etc.) the check ends green right there, with no install and no model
+download. Otherwise it runs the two commands above on an ubuntu-24.04 CPU runner (Whisper small, Hy-MT2 1.8B Q4,
+`TLWU_HYMT_TEMP=0`, `--no-noise`), writes the gate table to the run's summary and turns red on a regression. Models
+and clips are kept in `actions/cache`.
+
+Timing (first run, run 43552312709): cold job 2 min 37 s (models + clips download about 15 s, mini-eval 82 s).
+The baseline's `mt_median_s_max` values are that runner's MT median x1.5, not the 1.0 s user-PC rule of #63: a
+shared runner is about twice as slow, so the CI budget only catches a regression on the same runner type.
+
 ## Hy-MT2 new languages: Experimental vs supported (#472)
 
 Add 5 clips each for it, pt, vi, th and id to the smoke manifest (with `ref_zh`), install `unbabel-comet`, then:
