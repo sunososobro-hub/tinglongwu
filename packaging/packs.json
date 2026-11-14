@@ -1,0 +1,28 @@
+{
+  "packs": {
+    "ja": {
+      "feature": "ja",
+      "sha256": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699",
+      "size": 1133080448,
+      "url": "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/a0c709d9fac510f2c807aa3af52872340dc37a4a/Hy-MT2-1.8B-Q4_K_M.gguf"
+    },
+    "ko": {
+      "feature": "ko",
+      "sha256": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699",
+      "size": 1133080448,
+      "url": "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/a0c709d9fac510f2c807aa3af52872340dc37a4a/Hy-MT2-1.8B-Q4_K_M.gguf"
+    },
+    "ru": {
+      "feature": "ru",
+      "sha256": "8b7bfd559dbc7a8c12f8b5973f56e5ac12c2465dbf6b3e1dc2371a703e3851a3",
+      "size": 1196307897,
+      "url": "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/a0c709d9fac510f2c807aa3af52872340dc37a4a/Hy-MT2-1.8B-Q4_K_M.gguf"
+    },
+    "speak": {
+      "feature": "speak",
+      "sha256": "ef9f72fc5e3141ac41821e2b4b2e650056124b4a2a3e1943b79e7e52a7cf87e6",
+      "size": 120575669,
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
+    }
+  }
+}

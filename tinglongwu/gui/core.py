@@ -28,7 +28,14 @@ DEFAULTS = {
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
+    "send_mode": "confirm",  # #834: how a speak line is sent (confirm / countdown / auto); owner default: confirm
 }
+SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
+
+
+def send_mode_notice_key(mode: str) -> str | None:
+    """#834: i18n key of the one-line quality notice shown when a direct-send mode is chosen, else None."""
+    return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
@@ -254,6 +261,8 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     out["overlay_alpha"] = clamp_alpha(out["overlay_alpha"])
+    if out["send_mode"] not in SEND_MODES:
+        out["send_mode"] = DEFAULTS["send_mode"]
     return out
 
 

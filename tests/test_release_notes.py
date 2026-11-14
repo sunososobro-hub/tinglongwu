@@ -340,3 +340,49 @@ def test_auto_cli_reads_the_kill_switch_before_any_network(tmp_path, monkeypatch
     with contextlib.redirect_stdout(buf):
         assert rn.main(["auto"]) == 0
     assert "merge=false" in buf.getvalue() and "AUTO_RELEASE" in buf.getvalue()
+
+
+def _release_yml_notes_argv(values: dict) -> list[str]:
+    """#722: the `release_notes.py notes` command exactly as release.yml's "Release notes" step runs it."""
+    import os
+    import re
+    import shlex
+
+    import yaml
+
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8"))
+    runs = [s["run"] for job in wf["jobs"].values() for s in job.get("steps", []) if "release_notes.py notes" in
+            s.get("run", "")]
+    assert len(runs) == 1, runs
+    cmd = next(c for c in runs[0].replace("\\\n", " ").splitlines() if "release_notes.py notes" in c)
+    argv = shlex.split(re.sub(r"\$(\w+)", lambda m: values[m.group(1)], cmd.strip()))
+    assert argv[:2] == ["python", "scripts/release_notes.py"]
+    return [os.fspath(a) for a in argv[2:]]
+
+
+def test_release_workflow_notes_list_every_pack_size(tmp_path, monkeypatch):
+    pm = load("tlwu_pack_manifest_722", "tinglongwu/pack_manifest.py")
+    man = pm.load_manifest(ROOT / "packaging" / "packs.json")  # the checked-in manifest validates
+    (tmp_path / "base.md").write_text("## What's new\n- TODO: x\n", "utf-8")
+    (tmp_path / "release-check.md").write_text("size OK\n", "utf-8")
+    argv = _release_yml_notes_argv({"TAG": "v0.3.9", "PR": "", "HW_RUN": "", "HEAD": "", "DIST": str(tmp_path)})
+    assert "--packs-manifest" in argv
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "packaging").symlink_to(ROOT / "packaging")  # release.yml runs from the repo root
+    monkeypatch.setattr(rn, "repo", lambda: "o/r")
+    monkeypatch.setattr(rn, "history", lambda rep, tag, tip="HEAD": (None, [], {}))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    assert rn.main(argv) == 0
+    notes = (tmp_path / "notes.md").read_text("utf-8")
+    assert "### Optional packs (downloaded on demand)" in notes
+    for name, rec in man["packs"].items():
+        assert f"| {name} | {rec['size'] / 1e6:.1f} MB | `{rec['sha256'][:12]}` |" in notes
+
+
+def test_pack_manifest_matches_the_committed_pins():
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "make_pack_manifest.py"), "--check"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    man = load("tlwu_pack_manifest_722b", "tinglongwu/pack_manifest.py").load_manifest(ROOT / "packaging" / "packs.json")
+    assert {"ja", "ko", "speak"} <= set(man["packs"])
+    assert man["packs"]["ja"]["size"] == 1133080448  # mobile/assets/models_manifest.json, same SHA-256 as the pin

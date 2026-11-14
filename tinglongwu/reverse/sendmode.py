@@ -42,3 +42,73 @@ def low_confidence(u, require_back: bool = True) -> str:
         if s < _env_float("TLWU_LOW_BACK_SCORE", LOW_BACK_SCORE):
             return f"back-translation mismatch {s:.2f}"
     return ""
+
+
+# SendDecider actions (#832)
+SEND = "send"  # send the line now
+DISCARD = "discard"  # drop the line
+WAIT = "wait"  # countdown running: keep ticking
+ASK = "ask"  # needs an explicit confirm (confirm mode, or a low-confidence line)
+
+
+class SendDecider:
+    """I/O-free send-mode state machine shared by the CLI and the GUI (#832). Time comes from the injected
+    `clock`; nothing here reads input or sleeps. Events: line_ready(u), tick(), back_ready(u), confirm(),
+    stop(), restart(). Each returns SEND / DISCARD / WAIT / ASK. A low-confidence line (low_confidence())
+    never returns SEND without an explicit confirm(), in any mode."""
+
+    def __init__(self, clock, mode: str = "confirm", countdown_s: float | None = None, require_back: bool = True):
+        self.clock = clock
+        self.mode = mode if mode in MODES else "confirm"
+        self.countdown_s = countdown_s if countdown_s is not None else _env_float("TLWU_SEND_COUNTDOWN", COUNTDOWN_S)
+        self.require_back = require_back
+        self.state = "idle"  # idle | counting | asking | done (sent) | stopped (discarded)
+        self.reason = ""  # why the line fell back to an explicit confirm ("" = none)
+        self._u = None
+        self._end = 0.0
+
+    def line_ready(self, u) -> str:
+        self._u = u
+        self.reason = low_confidence(u, self.require_back)
+        if self.mode == "auto" and not self.reason:
+            self.state = "done"
+            return SEND
+        if self.mode == "countdown":
+            self._end = self.clock() + self.countdown_s
+            self.state = "counting"
+            return WAIT
+        self.state = "asking"
+        return ASK
+
+    def restart(self) -> str:
+        """Restart the countdown (e.g. after a voice switch)."""
+        if self.state == "counting":
+            self._end = self.clock() + self.countdown_s
+            return WAIT
+        return ASK if self.state == "asking" else DISCARD
+
+    def back_ready(self, u) -> str:
+        """The back-translation arrived late: refresh the reason; the state does not change."""
+        self._u = u
+        self.reason = low_confidence(u, self.require_back)
+        return WAIT if self.state == "counting" else (ASK if self.state == "asking" else DISCARD)
+
+    def tick(self) -> str:
+        if self.state != "counting":
+            return ASK if self.state == "asking" else (SEND if self.state == "done" else DISCARD)
+        if self.clock() < self._end:
+            return WAIT
+        self.reason = low_confidence(self._u, self.require_back)
+        if self.reason:
+            self.state = "asking"
+            return ASK
+        self.state = "done"
+        return SEND
+
+    def confirm(self) -> str:
+        self.state = "done"
+        return SEND
+
+    def stop(self) -> str:
+        self.state = "stopped"
+        return DISCARD
