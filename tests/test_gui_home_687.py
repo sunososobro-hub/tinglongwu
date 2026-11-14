@@ -126,11 +126,13 @@ def test_home_picker_is_the_other_side_language_and_tour_step_1(home_app):
     from tinglongwu.langs import label
 
     make, runs = home_app
-    a = make()
-    assert str(a.home_lang.cget("textvariable")) == str(a.v_lang) == str(a.tour.lang_box.cget("textvariable"))
-    a.home_lang.set(label("ja"))
-    a.v_target.set("zh-tw")
     for mode in ("listen", "speak"):
+        # one App per mode: fake_work never reports ready, so the run stays "Loading..." (#332) with the quick
+        # button / Stop disabled; a second click on the same App could neither stop it nor start the other mode
+        a = make()
+        assert str(a.home_lang.cget("textvariable")) == str(a.v_lang) == str(a.tour.lang_box.cget("textvariable"))
+        a.home_lang.set(label("ja"))
+        a.v_target.set("zh-tw")
         runs.clear()
         a.quick_btns[mode].invoke()
         a.root.update()
@@ -142,9 +144,6 @@ def test_home_picker_is_the_other_side_language_and_tour_step_1(home_app):
         assert runs, mode
         got = (runs[0]["lang"], runs[0]["target"])
         assert got == (("ja", "zh-tw") if mode == "listen" else ("zh", "ja")), mode
-        a.quick_btns[mode].invoke()  # stop
-        for _ in range(100):
-            a.root.after(20)
-            a.root.update()
-            if a.worker is None or not a.worker.is_alive():
-                break
+        a.stop_ev.set()
+        if a.worker is not None:
+            a.worker.join(2)
