@@ -1,0 +1,82 @@
+"""#760: countdown / auto send modes with a fake clock; low-confidence lines always wait for "y"."""
+import queue
+
+from tinglongwu.reverse import sendmode
+from tinglongwu.reverse.confirm import ConfirmSession, Utterance
+
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def _run(mode, lines, back="你好嗎", zh="你好嗎", extra=None, no_back=False):
+    clk, sent, out = Clock(), [], []
+    inp = queue.Queue()
+    for ln in lines:
+        inp.put(ln)
+
+    def readline():
+        try:
+            return inp.get(timeout=0.3)
+        except queue.Empty:
+            raise EOFError
+
+    s = ConfirmSession(lambda ru: ([1, 2], 16000), lambda a, sr: sent.append(a), out=out.append,
+                       readline=readline, flush=lambda: None, clock=clk, sleep=clk.sleep, mode=mode,
+                       countdown_s=2.0, require_back=not no_back, max_age=0)
+    u = Utterance(1, zh, "hello", back, extra=extra or {})
+    s.submit(u)
+    s.finish()
+    s.run()
+    return u, sent, out, clk
+
+
+def test_countdown_sends_without_key_press():
+    u, sent, out, clk = _run("countdown", [])
+    assert u.decision == "sent" and len(sent) == 1
+    assert clk.t >= 2.0  # waited the full countdown
+
+
+def test_countdown_stop_discards():
+    u, sent, _, _ = _run("countdown", ["x"])
+    assert u.decision == "discarded" and not sent
+
+
+def test_low_confidence_mismatch_waits_and_discards_on_eof():
+    u, sent, out, _ = _run("countdown", [], back="完全不同的句子", zh="你好嗎")
+    assert u.decision == "discarded" and not sent
+    assert any("low confidence" in o for o in out)
+
+
+def test_low_confidence_sent_after_explicit_y():
+    u, sent, _, _ = _run("countdown", ["y"], extra={"halluc": True})
+    assert u.decision == "sent"  # "y" during the countdown sends at once
+
+
+def test_auto_sends_confident_and_holds_halluc():
+    u, sent, _, _ = _run("auto", [])
+    assert u.decision == "sent"
+    u2, sent2, _, _ = _run("auto", [], extra={"halluc": True})
+    assert u2.decision == "discarded" and not sent2
+
+
+def test_confirm_mode_unchanged():
+    u, sent, _, _ = _run("confirm", [""])
+    assert u.decision == "discarded"
+    u, sent, _, _ = _run("confirm", ["y"])
+    assert u.decision == "sent"
+
+
+def test_low_confidence_reasons():
+    mk = lambda **k: Utterance(1, "你好嗎", "x", k.pop("back", "你好嗎"), extra=k)  # noqa: E731
+    assert sendmode.low_confidence(mk()) == ""
+    assert "logprob" in sendmode.low_confidence(mk(avg_logprob=-1.5))
+    assert sendmode.low_confidence(mk(back="")) != ""
+    assert sendmode.low_confidence(mk(back=""), require_back=False) == ""

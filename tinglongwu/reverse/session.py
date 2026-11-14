@@ -47,7 +47,8 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
 
     sess = ConfirmSession(_make_synth(tts), player.push, previewer.push if previewer.enabled else None,
                           out=lambda m: print(m, flush=True),
-                          set_voice=set_voice if getattr(tts, "engine", "") in VOICE_ENGINES else None)
+                          set_voice=set_voice if getattr(tts, "engine", "") in VOICE_ENGINES else None,
+                          mode=getattr(a, "send_mode", "confirm"), require_back=not getattr(a, "no_back", False))
     if sess_box is not None:
         sess_box.append(sess)
 

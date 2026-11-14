@@ -11,6 +11,7 @@ soon as it is synthesized, so sentence 1 plays while the rest is still in TTS (#
 from __future__ import annotations
 
 from .. import diag as _diag
+from . import sendmode as _sm
 
 import os
 import queue
@@ -146,7 +147,9 @@ class ConfirmSession:
     def __init__(self, synth: Callable, send: Callable, preview: Callable | None = None,
                  out: Callable = print, readline: Callable[[], str] | None = None,
                  set_voice: Callable[[int], None] | None = None, flush: Callable[[], object] | None = None,
-                 max_pending: int | None = None, max_age: float | None = None, clock: Callable[[], float] = time.monotonic):
+                 max_pending: int | None = None, max_age: float | None = None, clock: Callable[[], float] = time.monotonic,
+                 mode: str = "confirm", countdown_s: float | None = None, require_back: bool = True,
+                 sleep: Callable[[float], object] = time.sleep):
         self.synth, self.send, self.preview, self.out = synth, send, preview, out
         self.set_voice = set_voice  # "v<N>"+Enter switches voice and re-synthesises the current utterance
         self.readline = readline or (lambda: input())
@@ -161,6 +164,11 @@ class ConfirmSession:
                                else _env_num("TLWU_CONFIRM_MAX_PENDING", MAX_PENDING, int))
         self.max_age = max_age if max_age is not None else _env_num("TLWU_CONFIRM_MAX_AGE", MAX_AGE_S)
         self.clock = clock
+        self.sleep = sleep
+        self.mode = mode if mode in _sm.MODES else "confirm"  # #760
+        self.countdown_s = countdown_s if countdown_s is not None else _sm._env_float("TLWU_SEND_COUNTDOWN", _sm.COUNTDOWN_S)
+        self.require_back = require_back
+        self._reader: tuple | None = None  # (thread, queue) of a readline still waiting after a countdown ended
         self._submit_lock = threading.Lock()
         self.on_first_part: Callable[[Utterance], object] | None = None  # #207: called once per utterance
         self.on_show: Callable[[Utterance], object] | None = None  # #494: called when a line is really shown
@@ -222,8 +230,65 @@ class ConfirmSession:
         if self.on_show is not None:
             self.on_show(u)
 
+    def _read_line(self) -> str:
+        """readline(), or the line a countdown reader is still waiting on (so two readers never compete)."""
+        if self._reader is None:
+            return self.readline()
+        q = self._reader[1]
+        self._reader = None
+        v = q.get()
+        if v is None:
+            raise EOFError
+        return v
+
+    def _countdown(self, u: Utterance) -> bool | None:
+        """#760: show the countdown and wait. True = send ("y" or time ran out on a confident line), False = stopped
+        (any other input) , None = time ran out but the line is low-confidence: fall back to the explicit prompt."""
+        if self._reader is None:
+            q: queue.Queue = queue.Queue()
+
+            def read() -> None:
+                try:
+                    q.put(self.readline())
+                except EOFError:
+                    q.put(None)
+
+            th = threading.Thread(target=read, daemon=True)
+            self._reader = (th, q)
+            th.start()
+        q = self._reader[1]
+        self.out(f"sending in {self.countdown_s:g} s  [any key+Enter]=stop  [y]+Enter=send now")
+        end = self.clock() + self.countdown_s
+        while True:
+            try:
+                key = q.get_nowait()
+            except queue.Empty:
+                key = False
+            if key is not False:
+                self._reader = None
+                if key is None:
+                    self._eof = True
+                    return False
+                return key.strip().lower() == SEND_KEY
+            if self.clock() >= end:
+                break
+            self.sleep(0.05)
+        why = _sm.low_confidence(u, self.require_back)
+        if why:
+            self.out(f"low confidence ({why}): waiting for confirm")
+            return None
+        return True
+
     def _ask(self, u: Utterance) -> bool:
         """True = send: only "y" (any case). A bare Enter, r/x, anything else or EOF discards."""
+        if self.mode == "auto" and not _sm.low_confidence(u, self.require_back):
+            return True
+        if self.mode == "countdown":
+            r = self._countdown(u)
+            if r is not None:
+                return r
+        elif self.mode == "auto":
+            self.out(f"low confidence ({_sm.low_confidence(u, self.require_back)}): waiting for confirm")
         pending = self._q.qsize()
         extra = f" ({pending} queued)" if pending else ""
         help_ = HELP + ("  [v0-v4]+Enter=change voice" if self.set_voice else "")
@@ -231,7 +296,7 @@ class ConfirmSession:
             self.flush()  # #248: keys typed during the previous utterance must not answer this one
             self.out(f"{help_}{extra}")
             try:
-                key = self.readline().strip().lower()
+                key = self._read_line().strip().lower()
             except EOFError:
                 self._eof = True
                 return False
