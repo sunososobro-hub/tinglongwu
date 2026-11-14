@@ -129,7 +129,8 @@ def test_apply_script_waits_installs_silently_and_restarts():
     assert "'C:\\T\\it''s\\setup.exe'" in lines[2] and "-Wait" in lines[2]  # quote doubled for PowerShell
     for a in ("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"):
         assert f"'{a}'" in lines[2]
-    assert "tlwu-gui.exe" in lines[3] and lines.index(lines[3]) > lines.index(lines[2])
+    assert "tlwu.exe" in lines[3] and "tlwu-gui.exe" in lines[4]  # #768: prebuilt core first, then the .venv GUI
+    assert lines[4].startswith("elseif ")
 
 
 def test_launch_apply_detached(tmp_path):

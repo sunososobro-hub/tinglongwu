@@ -97,3 +97,52 @@ def test_advanced_open_state_survives_restart(home_app):
     b.root.update()
     assert b.settings["advanced_open"] is True and b.frm.winfo_ismapped()
     assert b.combos["engine"].winfo_ismapped()
+
+
+@pytest.mark.parametrize("mine,other,listen,speak", [
+    ("zh-tw", "ja", ("ja", "zh-tw"), ("zh", "ja")),
+    ("zh-tw", "ru", ("ru", "zh-tw"), ("zh", "ru")),
+    ("en", "zh", ("zh", "en"), ("en", "zh-tw")),
+    ("zh-tw", "auto", ("auto", "zh-tw"), ("zh", "en")),  # other side unknown: the #294 fallback
+    ("zh-cn", "zh", ("zh", "zh-cn"), ("zh", "en")),  # other side = my own language: the #294 fallback
+])
+def test_other_side_language_drives_listen_source_and_speak_target(mine, other, listen, speak):
+    from tinglongwu.gui import core
+
+    saved = dict(core.DEFAULTS, target=mine, lang=other)
+    lis, spk = core.quick_settings(saved, "listen"), core.quick_settings(saved, "speak")
+    assert (lis["lang"], lis["target"]) == listen and (spk["lang"], spk["target"]) == speak
+    argv = core.settings_to_argv(spk)
+    assert argv[argv.index("--lang") + 1] == speak[0]
+    assert argv[argv.index("--to") + 1] == ("zh" if speak[1].startswith("zh") else speak[1])
+    from tinglongwu import cli
+
+    assert cli.parse_args(argv).to == argv[argv.index("--to") + 1]  # the CLI accepts the other side as --to
+
+
+def test_home_picker_is_the_other_side_language_and_tour_step_1(home_app):
+    from tinglongwu.langs import label
+
+    make, runs = home_app
+    a = make()
+    assert str(a.home_lang.cget("textvariable")) == str(a.v_lang) == str(a.tour.lang_box.cget("textvariable"))
+    a.home_lang.set(label("ja"))
+    a.v_target.set("zh-tw")
+    for mode in ("listen", "speak"):
+        runs.clear()
+        a.quick_btns[mode].invoke()
+        a.root.update()
+        for _ in range(50):
+            if runs:
+                break
+            a.root.after(20)
+            a.root.update()
+        assert runs, mode
+        got = (runs[0]["lang"], runs[0]["target"])
+        assert got == (("ja", "zh-tw") if mode == "listen" else ("zh", "ja")), mode
+        a.quick_btns[mode].invoke()  # stop
+        for _ in range(100):
+            a.root.after(20)
+            a.root.update()
+            if a.worker is None or not a.worker.is_alive():
+                break
