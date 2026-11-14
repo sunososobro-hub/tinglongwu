@@ -165,10 +165,21 @@ EXTRA_DISK_BYTES = 6 * 1024**3
 EXTRA_DISK_BYTES_CORE = 2 * 1024**3
 
 
+def default_listen_mb(repo: Path = REPO) -> int:
+    """#771: DEFAULT_LISTEN_DOWNLOAD_MB from tinglongwu_setup/defaults.py (the one named constant), read as text so the
+    build script stays stdlib-only and never imports the package."""
+    m = re.search(r"^DEFAULT_LISTEN_DOWNLOAD_MB\s*=\s*(\d+)", (repo / "tinglongwu_setup" / "defaults.py").read_text("utf-8"), re.M)
+    if not m:
+        raise SystemExit("tinglongwu_setup/defaults.py: DEFAULT_LISTEN_DOWNLOAD_MB not found")
+    return int(m.group(1))
+
+
 def iscc_cmd(iscc: str, stage_dir: Path, icon: Path, out_dir: Path, version: str, core: bool = False) -> list[str]:
     extra = EXTRA_DISK_BYTES_CORE if core else EXTRA_DISK_BYTES
+    # #771: the core wizard shows the default-listen download size; the source wizard has no such define
+    core_defs = ["/DCoreLayout=1", f"/DDefaultListenMB={default_listen_mb()}"] if core else []
     return [iscc, f"/DStageDir={stage_dir}", f"/DIconFile={icon}", f"/DOutDir={out_dir}", f"/DAppVersion={version}",
-            f"/DExtraDiskBytes={extra}", *(["/DCoreLayout=1"] if core else []), str(ISS)]
+            f"/DExtraDiskBytes={extra}", *core_defs, str(ISS)]
 
 
 def _given(cmd: list[str]) -> set[str]:

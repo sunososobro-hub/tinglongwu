@@ -57,7 +57,8 @@ def run_setup_worker(args: list[str]) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8", errors="replace")
-    if "--vulkan-pack" in args:  # #801: tinglongwu_setup.cli knows it, downloader.main does not (argparse exit 2)
+    # #801 --vulkan-pack and #771 `tlwu.exe setup --default-listen`: tinglongwu_setup.cli knows them, downloader.main does not
+    if "--vulkan-pack" in args or "--default-listen" in args:
         from tinglongwu_setup import cli
 
         return cli.main(args)
