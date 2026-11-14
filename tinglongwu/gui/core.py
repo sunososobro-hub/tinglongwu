@@ -471,8 +471,8 @@ def download_env(env=None) -> dict:
 
 def short_line(line: str, limit: int = 90) -> str:
     """#918: one child output line cut to `limit` chars for the status text. A tqdm bar field ("|####      |") is
-    dropped first, and a long file name keeps its start and end ("model-00001-...0002.safetensors"), so the "NN% 48M/484M" part
-    that StartDownload needs always survives."""
+    dropped first and a long file name is cut to 30 chars ("model-00~3f2a...0002.safetensors"), so the
+    "NN% 48M/484M" part that StartDownload needs always survives."""
     import re
 
     line = re.sub(r"\|[^|]*\|", "|", line)
@@ -480,11 +480,12 @@ def short_line(line: str, limit: int = 90) -> str:
     if len(line) <= limit or not m:
         return line[:limit]
     head, tail = line[:m[-1].start()], line[m[-1].start():][:limit - 30]
-    # a fixed label budget, so every line of one file gets the same label whatever its tail length; start and end
-    # are both kept so "encoder/...x.safetensors" and "decoder/...x.safetensors" stay two labels
+    # a fixed label budget, so every line of one file gets the same label whatever its tail length
     name = head.rstrip()  # tqdm pads " 10%" vs "100%": cut the name, not the padding
-    if len(name) > 30:
-        name = name[:12] + "..." + name[-15:]
+    if len(name) > 30:  # start, crc16 of the whole name (two names do not share one bar), end
+        import zlib
+
+        name = f"{name[:8]}~{zlib.crc32(name.encode()) & 0xFFFF:04x}...{name[-14:]}"
     return name + head[len(head.rstrip()):] + tail
 
 

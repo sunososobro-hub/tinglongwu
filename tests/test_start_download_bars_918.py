@@ -96,3 +96,11 @@ def test_long_names_with_the_same_end_stay_two_files():
     assert sd.percent == 10
     one = [core.progress_bar(core.short_line(f"decoder/{tail}: {p}|#| 9M/484M"))[0] for p in (" 10%", "100%")]
     assert one[0] == one[1]  # one file keeps one label when tqdm's padding changes
+
+
+def test_long_names_that_differ_in_the_middle_stay_two_files():
+    a, b = ("encoder/" + "x" * 40 + c + "x" * 40 + ".safetensors" for c in "AB")
+    sd = core.StartDownload("small")
+    sd.feed(("dl_line", core.short_line(f"{a}: 100%|##########| 2.0k/2.0k [00:00<00:00]")))
+    sd.feed(("dl_line", core.short_line(f"{b}:  10%|#         | 48M/484M [00:01<00:09]")))
+    assert sd.percent == 10
