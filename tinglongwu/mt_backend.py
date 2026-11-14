@@ -39,8 +39,8 @@ def vulkan_device_present(load=ctypes.CDLL) -> bool:
         return False
 
 
-def vulkan_available(pack=vulkan_pack_dir, present=vulkan_device_present) -> bool:
-    return pack() is not None and present()
+def vulkan_available(pack=None, present=None) -> bool:
+    return (pack or vulkan_pack_dir)() is not None and (present or vulkan_device_present)()
 
 
 def choose_backend(*, cuda: bool, vulkan: bool, env=None) -> str:

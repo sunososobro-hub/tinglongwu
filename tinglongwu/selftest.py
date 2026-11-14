@@ -226,12 +226,13 @@ def run_selftest(mdir, model: str | None = None, engine: str = "auto", device: s
         res.engine = "hymt2" if eng.startswith("hymt2") else eng
         label = f"translation {res.engine} on {_where(on)}"
         try:
+            from . import mt_backend
+
+            mt_backend.last_backend = ""  # reported only if THIS translator's load set it (no stale value)
             out = (make_mt(mdir, eng, zh_variant, dev).translate(CLIP_TEXT, "en", "zh").text or "").strip()
             if not _has_cjk(out):
                 raise RuntimeError(f"no Chinese in the output: {out[:80]!r}")
             steps.append(Step(label, True, clock() - t0, out))
-            from . import mt_backend
-
             res.mt_backend = mt_backend.last_backend or ("cuda" if on == "cuda" else "cpu")
             res.ok = True
             return res

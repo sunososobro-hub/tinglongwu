@@ -55,3 +55,63 @@ def test_vulkan_available_needs_pack_and_loader(tmp_path):
 def test_selftest_reports_mt_backend():
     r = Result(ok=True, mt_backend="vulkan")
     assert "mt: vulkan" in r.text()
+
+
+def _fake_pack(tmp_path):
+    (tmp_path / "llama.dll").write_bytes(b"x")
+    return tmp_path.resolve()
+
+
+def test_loaded_llama_cpp_blocks_vulkan_and_keeps_env(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from tinglongwu import engines, llamacheck
+
+    pack = _fake_pack(tmp_path)
+    monkeypatch.setattr(mb, "vulkan_pack_dir", lambda base=None: pack)
+    monkeypatch.setattr(mb, "vulkan_device_present", lambda *a: True)
+    monkeypatch.delenv("LLAMA_CPP_LIB_PATH", raising=False)
+    monkeypatch.delenv("TLWU_DEVICE", raising=False)
+    fake = types.ModuleType("llama_cpp")
+    fake.Llama = lambda **kw: kw
+    monkeypatch.setitem(sys.modules, "llama_cpp", fake)  # already imported: cannot become the Vulkan build
+    monkeypatch.setattr(llamacheck, "import_llama", lambda: fake)
+    monkeypatch.setattr(llamacheck, "check_build", lambda m: None)
+    engines.load_llama(tmp_path / "m.gguf", gpu=False)
+    assert mb.last_backend == "cpu"
+    assert "LLAMA_CPP_LIB_PATH" not in __import__("os").environ
+
+
+def test_vulkan_import_failure_restores_env_and_uses_cpu(monkeypatch, tmp_path, capsys):
+    import os
+    import sys
+    import types
+
+    from tinglongwu import engines, llamacheck
+
+    pack = _fake_pack(tmp_path)
+    monkeypatch.setattr(mb, "vulkan_pack_dir", lambda base=None: pack)
+    monkeypatch.setattr(mb, "vulkan_device_present", lambda *a: True)
+    monkeypatch.delenv("LLAMA_CPP_LIB_PATH", raising=False)
+    monkeypatch.delenv("TLWU_DEVICE", raising=False)
+    monkeypatch.delitem(sys.modules, "llama_cpp", raising=False)
+    fake = types.ModuleType("llama_cpp")
+    fake.Llama = lambda **kw: kw
+    seen = []
+
+    def imp():
+        seen.append(os.environ.get("LLAMA_CPP_LIB_PATH"))
+        if len(seen) == 1:
+            raise OSError("vulkan-1.dll dependency missing")
+        sys.modules["llama_cpp"] = fake  # a successful import registers the module
+        return fake
+
+    monkeypatch.setattr(llamacheck, "import_llama", imp)
+    monkeypatch.setattr(llamacheck, "check_build", lambda m: None)
+    monkeypatch.setitem(sys.modules, "llama_cpp", fake)  # restored by monkeypatch afterwards
+    monkeypatch.delitem(sys.modules, "llama_cpp")  # not imported at call time
+    engines.load_llama(tmp_path / "m.gguf", gpu=False)
+    assert seen == [str(pack), None]
+    assert mb.last_backend == "cpu"
+    assert "Vulkan llama.cpp build not loadable" in capsys.readouterr().err

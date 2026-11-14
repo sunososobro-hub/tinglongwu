@@ -101,15 +101,34 @@ def load_llama(path: Path, gpu: bool):
     from . import llamacheck, mt_backend
     from . import threads as thread_budget
 
-    backend = mt_backend.choose_backend(cuda=gpu, vulkan=mt_backend.vulkan_available())
-    if backend == "vulkan":  # #746: Vulkan llama.cpp build from the optional pack (AMD / Intel / NVIDIA, no CUDA)
-        os.environ["LLAMA_CPP_LIB_PATH"] = str(mt_backend.vulkan_pack_dir())
+    pack = mt_backend.vulkan_pack_dir()
+    vulkan = mt_backend.vulkan_available()
+    # One llama.cpp build per process: an already imported library cannot be swapped for the Vulkan one (#746)
+    if vulkan and "llama_cpp" in sys.modules and os.environ.get("LLAMA_CPP_LIB_PATH") != str(pack):
+        vulkan = False
+    backend = mt_backend.choose_backend(cuda=gpu, vulkan=vulkan)
+    prev_lib = os.environ.get("LLAMA_CPP_LIB_PATH")
+    if backend == "vulkan":  # optional Vulkan llama.cpp build (AMD / Intel / NVIDIA, no CUDA)
+        os.environ["LLAMA_CPP_LIB_PATH"] = str(pack)
     mt_backend.last_backend = backend
     try:
         llama_cpp = llamacheck.import_llama()  # CUDA build, or the bundled CPU build when CUDA cannot load (#398)
     except (ImportError, OSError, RuntimeError) as e:  # not installed, or llama.dll / a CUDA DLL missing
-        raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e}. "
-                           f"To fix: {llamacheck.FIX_HINT}") from e
+        if backend != "vulkan":
+            raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e}. "
+                               f"To fix: {llamacheck.FIX_HINT}") from e
+        print(f"tlwu: Vulkan llama.cpp build not loadable ({type(e).__name__}: {e}); using CPU for MT.",
+              file=sys.stderr)
+        if prev_lib is None:  # restore the path in effect before the Vulkan branch, then retry once
+            os.environ.pop("LLAMA_CPP_LIB_PATH", None)
+        else:
+            os.environ["LLAMA_CPP_LIB_PATH"] = prev_lib
+        backend = mt_backend.last_backend = "cpu"
+        try:
+            llama_cpp = llamacheck.import_llama()
+        except (ImportError, OSError, RuntimeError) as e2:
+            raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e2}. "
+                               f"To fix: {llamacheck.FIX_HINT}") from e2
     if sys.platform == "win32":
         lib = Path(llama_cpp.__file__).parent / "lib"
         if lib.is_dir():
