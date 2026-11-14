@@ -1,16 +1,37 @@
 """Release check for the CUDA-free core zip (#612): no CUDA files inside, size <= 300 MB.
 
-Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300]
+Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300] [--ttfs ttfs.json]
+--ttfs prints install-start -> first-subtitle time (non-blocking: never changes the exit code).
 Exit code 0 = ok, 1 = problem(s) (printed), 2 = zip missing.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import zipfile
 from pathlib import Path
 
 MAX_CORE_MB = 300
+TTFS_BUDGET_S = 180
+
+
+def ttfs_lines(path: Path | None) -> list[str]:
+    """Report lines for a ttfs.json (#776). Informational only: never raises, never fails the check."""
+    if path is None:
+        return []
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if data.get("ttfs_seconds") is None:
+            return ["ttfs: unknown (ttfs_seconds is null)"]
+        excl = float(data["excl_download_seconds"])
+        label = f"{excl:.0f} s excl. download ({data.get('os', '?')}, {data.get('version', '?')})"
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        return [f"ttfs: unknown ({type(e).__name__}: {e})"]
+    lines = [f"ttfs: {label}"]
+    if excl > TTFS_BUDGET_S:
+        lines.append(f"WARN ttfs {excl:.0f} s is over the {TTFS_BUDGET_S} s budget")
+    return lines
 
 
 def core_zip_problems(zip_path: Path, max_mb: float = MAX_CORE_MB) -> list[str]:
@@ -31,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("zip", type=Path)
     ap.add_argument("--max-mb", type=float, default=MAX_CORE_MB)
+    ap.add_argument("--ttfs", type=Path, default=None, help="ttfs.json: print time to first subtitle (non-blocking)")
     a = ap.parse_args(argv)
     if not a.zip.is_file():
         print(f"release_check: {a.zip} not found")
@@ -39,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     problems = core_zip_problems(a.zip, a.max_mb)
     for p in problems:
         print("FAIL:", p)
+    for line in ttfs_lines(a.ttfs):
+        print(line)
     return 1 if problems else 0
 
 
