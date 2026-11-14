@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, quick_buttons, quick_settings, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, quick_buttons, quick_settings, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover
 
 POLL_MS = 50
 UPDATE_CHECK_DELAY_MS = 5000
+UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
@@ -119,6 +120,7 @@ class Overlay:
         self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
+        self.menu.add_command(label=t("gui_menu_tour"), command=app.show_tour)  # #314
         self.menu.add_separator()
         self.menu.add_command(label=t("gui_menu_quit"), command=app.quit)
 
@@ -275,6 +277,64 @@ class Overlay:
         self.visible = False
 
 
+class Tour:
+    """#314 first-launch overlay: 3 numbered steps placed under the control bar, step 1 holds the real
+    source-language box, step 3 is shown inside the real subtitle bar. "Got it" closes it for good; "?" reopens it."""
+
+    def __init__(self, app: "App"):
+        self.app = app
+        self.win = w = tk.Toplevel(app.root)
+        w.withdraw()
+        w.overrideredirect(True)
+        w.attributes("-topmost", True)
+        self.frm = f = ttk.Frame(w, padding=10, relief="solid", borderwidth=1)
+        f.pack()
+        self.title = ttk.Label(f, font=(FONT_FAMILY, 11, "bold"))
+        self.title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        self.step1 = ttk.Label(f)
+        self.step1.grid(row=1, column=0, sticky="w")
+        self.lang_box = ttk.Combobox(f, textvariable=app.v_lang, values=lang_labels(), state="readonly", width=14)
+        self.lang_box.grid(row=1, column=1, sticky="we", padx=(6, 0))
+        self.step2 = ttk.Label(f)
+        self.step2.grid(row=2, column=0, columnspan=2, sticky="w", pady=4)
+        self.step3 = ttk.Label(f)
+        self.step3.grid(row=3, column=0, columnspan=2, sticky="w")
+        self.btn_ok = ttk.Button(f, command=app.tour_done)
+        self.btn_ok.grid(row=4, column=1, sticky="e", pady=(8, 0))
+        self.visible = False
+        from ..i18n import _system_tag
+
+        self.system_tag = _system_tag()  # zh-CN vs zh-TW text; the OS locale does not change while the GUI runs
+        self.relabel()
+
+    def text(self) -> dict[str, str]:
+        return tour_text(ui_lang(), self.system_tag)
+
+    def relabel(self):
+        tx = self.text()
+        for widget, key in ((self.title, "title"), (self.step1, "step1"), (self.step2, "step2"),
+                            (self.step3, "step3"), (self.btn_ok, "ok")):
+            widget.configure(text=tx[key])
+        self.lang_box.configure(values=lang_labels())
+
+    def show(self):
+        r = self.app.root
+        r.update_idletasks()
+        self.win.update_idletasks()
+        x, y = r.winfo_rootx(), r.winfo_rooty() + r.winfo_height() + 4
+        x = max(0, min(x, r.winfo_screenwidth() - self.win.winfo_reqwidth()))  # keep the whole overlay on screen
+        if y + self.win.winfo_reqheight() > r.winfo_screenheight():  # bar near the bottom: open above it
+            y = max(0, r.winfo_rooty() - self.win.winfo_reqheight() - 4)
+        self.win.geometry(f"+{x}+{y}")
+        self.win.deiconify()
+        self.win.lift()
+        self.visible = True
+
+    def hide(self):
+        self.win.withdraw()
+        self.visible = False
+
+
 class App:
     def __init__(self):
         self.settings = load_settings()
@@ -304,7 +364,10 @@ class App:
         self._build_update_line()
         self.root.attributes("-topmost", True)  # #455: the small bar stays reachable over the meeting window
         self.overlay = Overlay(self.root, self)
+        self.tour = Tour(self)
         self.apply_theme(self.settings.get("theme", "dark"))
+        if tour_on_start(self.settings):
+            self.show_tour()
         try:
             signal.signal(signal.SIGINT, lambda *_: setattr(self, "sigint", True))
         except ValueError:
@@ -360,6 +423,7 @@ class App:
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self.overlay.build_menu()
         self._upd_relabel()
+        self.tour.relabel()
         self.render_log()
         if self.overlay.visible:
             self.overlay.render(self.state)
@@ -413,6 +477,26 @@ class App:
         self.set_dot("idle")
         self.btn_adjust = self._tx(ttk.Button(b, command=self.toggle_adjust, style="Bar.TButton", width=0), "gui_adjust")
         self.btn_adjust.pack(side="left")
+
+    # -- #314 first-launch overlay ---------------------------------------------------------------
+    def show_tour(self):
+        """Open the 3-step overlay; the subtitle bar is shown with step 3 in it so the user sees where to look."""
+        self.tour.relabel()
+        self.tour.show()
+        self.overlay.show()
+        self.overlay.render(self.state)
+
+    def tour_done(self):
+        """"Got it": close for good (saved now, so a crash later still counts) and keep the subtitle bar on, as
+        step 3 promised the subtitles appear there."""
+        self.tour.hide()
+        self.settings["tour_seen"] = True
+        self.v_bar.set(True)
+        self.collect()  # saves gui.json with tour_seen + floating_bar
+        if self.listening:
+            self.overlay.render(self.state)
+        else:
+            self.overlay.hide()
 
     def _bar_start(self):
         """Listen = a session with the saved settings (as the old Start); Speak = the #294 speak session."""
@@ -533,7 +617,7 @@ class App:
         self.upd_msg: tuple | None = None  # (i18n key, format kwargs, button keys)
         u = self.upd_frame = ttk.Frame(self.root, padding=(4, 0, 4, 2))
         self.v_upd = tk.StringVar()
-        ttk.Label(u, textvariable=self.v_upd, wraplength=240).pack(side="left")
+        ttk.Label(u, textvariable=self.v_upd, wraplength=UPDATE_LINE_WRAP_PX).pack(side="left")
         self.upd_no = ttk.Button(u, command=self._update_later, style="Bar.TButton", width=0)
         self.upd_yes = ttk.Button(u, command=self._update_yes, style="Bar.TButton", width=0)
         self.upd_apply_when_ready = False
@@ -646,6 +730,9 @@ class App:
         self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
         ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
             row=0, column=1, sticky="we", padx=(6, 0))
+        # #314: "?" reopens the 3-step overlay; it lives here and in the subtitle bar's menu, not on the bar (#455)
+        self.btn_help = ttk.Button(q, text="?", width=2, command=self.show_tour)
+        self.btn_help.grid(row=0, column=2, padx=(6, 0))
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
@@ -698,7 +785,10 @@ class App:
 
     def placeholder(self) -> list[tuple[str, bool]]:
         """What to show before the first subtitle of a session: the user must see that it is listening."""
-        return [(t("gui_listening"), True)] if self.listening else []
+        if self.listening:
+            return [(t("gui_listening"), True)]
+        tour = getattr(self, "tour", None)
+        return [(tour.text()["step3"], True)] if tour is not None and tour.visible else []  # #314 step 3
 
     def set_log_font(self, n):
         self.settings["log_font_size"] = n = clamp_font(n, self.settings["log_font_size"])
@@ -974,7 +1064,10 @@ class App:
                     self.listening = False
                     self.quick_mode = None
                     self._sync_quick()
-                    self.overlay.hide()
+                    if self.tour.visible:  # #314: the overlay still points at the bar
+                        self.overlay.render(self.state)
+                    else:
+                        self.overlay.hide()
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
                     changed |= self.state.apply(ev)
