@@ -38,6 +38,7 @@ OUT_MARK = re.compile(r"^\s*(?:output|tlwu(?:\s+output)?|translation|輸出|翻�
 PAIR_SEP = re.compile(r"\s*(?:->|→|=>|>|⇒|\bto\b|/)\s*", re.IGNORECASE)
 LANG_CODE = re.compile(r"^[a-z]{2,3}(?:[-_][a-z0-9]{2,4})?$", re.IGNORECASE)
 NO_RESPONSE = "_no response_"
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")  # CommonMark code fence: a closing fence matches the opener
 
 
 class CaseError(ValueError):
@@ -55,8 +56,11 @@ def form_fields(body: str) -> dict[str, str]:
                 out[key] = text
 
     for line in (body or "").replace("\r\n", "\n").split("\n"):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
+        f = FENCE.match(line)
+        if f and not fenced:
+            fenced = f.group(1)
+        elif f and fenced and f.group(1)[0] == fenced[0] and len(f.group(1)) >= len(fenced) and not f.group(2).strip():
+            fenced = False
         m = None if fenced else re.match(r"^#{2,4}\s+(.+?)\s*$", line)
         if m:
             flush()

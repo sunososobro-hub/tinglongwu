@@ -142,3 +142,9 @@ def test_unicode_line_separator_in_a_case_survives_later_appends(tmp_path):
     assert aec.append_case(cases, aec.case_from_issue(issue(n=910, happened="Source: はい\nOutput: 不"))) is True
     rows = aec.load_cases(cases)
     assert [r["id"] for r in rows] == ["issue-900", "issue-910"] and rows[0]["ref"] == "會議 三點開始。"
+
+
+def test_shorter_fence_inside_a_longer_fence_does_not_close_it():
+    happened = "Source: hello\nOutput:\n````\n```\nwrong\n````"
+    case = aec.case_from_issue(issue(pair="en -> zh", happened=happened, expected="你好"))
+    assert case["src"] == "hello" and case["ref"] == "你好"
