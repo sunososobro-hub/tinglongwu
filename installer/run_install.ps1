@@ -15,11 +15,18 @@ try {
     # the wizard's reader (LoadStringsFromFile, share-read) hit a sharing violation on every poll and the page
     # never left "Starting install.ps1 ...". No BOM either, so the first line parses as plain text.
     $utf8 = New-Object System.Text.UTF8Encoding($false)
+    # the wizard reads install.log share-read: an append that lands while it is open gets a sharing violation, so
+    # retry briefly and finally drop the line; a progress poll must never abort the install
+    function Add-LogLine([string]$Text) {
+        for ($i = 0; $i -lt 20; $i++) {
+            try { [IO.File]::AppendAllText($Log, $Text + "`r`n", $utf8); return } catch [System.IO.IOException] { Start-Sleep -Milliseconds 50 }
+        }
+    }
     [IO.File]::WriteAllText($Log, '', $utf8)
-    & (Join-Path $Root 'install.ps1') @a *>&1 | ForEach-Object { [IO.File]::AppendAllText($Log, "$_`r`n", $utf8) }
+    & (Join-Path $Root 'install.ps1') @a *>&1 | ForEach-Object { Add-LogLine "$_" }
     $rc = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
 } catch {
-    [IO.File]::AppendAllText($Log, "run_install.ps1: $_`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    Add-LogLine "run_install.ps1: $_"
 } finally {
     Set-Content -LiteralPath $Done -Value $rc -Encoding ascii
 }

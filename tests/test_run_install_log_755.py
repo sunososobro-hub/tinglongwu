@@ -34,3 +34,23 @@ def test_install_log_is_bomfree_complete_and_not_held_open(tmp_path):
     assert [ln for ln in lines if ln.startswith("[")] == ["[1/8] one", "[2/8] zwei 測試", "[3/8] three"]
     assert "probe" in lines
     assert (tmp_path / "install.done").read_text().strip() == "0"
+
+
+def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
+    """The wizard reads install.log share-read; an append during that read must be retried, not abort install.ps1."""
+    (tmp_path / "installer").mkdir()
+    shutil.copy(ROOT / "installer" / "run_install.ps1", tmp_path / "installer" / "run_install.ps1")
+    (tmp_path / "install.ps1").write_text(
+        "param([switch]$SkipShortcut,[switch]$FromSetup,[switch]$Cpu)\n"
+        "Write-Host '[1/8] one'\n"
+        "$log = Join-Path $PSScriptRoot 'install.log'\n"
+        "$fs = [IO.File]::Open($log, 'Open', 'Read', 'Read')\n"   # like Inno's LoadStringsFromFile
+        "Write-Host '[2/8] two'\nStart-Sleep -Milliseconds 400\n$fs.Close()\nWrite-Host '[3/8] three'\n",
+        encoding="utf-8-sig",
+    )
+    r = subprocess.run([PWSH, "-NoProfile", "-File", str(tmp_path / "installer" / "run_install.ps1")],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    lines = (tmp_path / "install.log").read_text("utf-8").splitlines()
+    assert [ln for ln in lines if ln.startswith("[")] == ["[1/8] one", "[2/8] two", "[3/8] three"]
+    assert not any("run_install.ps1:" in ln for ln in lines)
