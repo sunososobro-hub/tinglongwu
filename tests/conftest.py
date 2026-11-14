@@ -35,6 +35,9 @@ def _isolated_user_dirs(tmp_path, monkeypatch):
     # GUI settings live under %APPDATA% on Windows: never read the developer's real gui.json in tests
     monkeypatch.setenv("APPDATA", str(tmp_path / "_appdata"))
     monkeypatch.delenv("TLWU_ALLOW_NET", raising=False)
+    # every test starts as a source install: tlwu_app.main.prepare_env() writes TLWU_BUNDLED=1 into os.environ (#768)
+    monkeypatch.delenv("TLWU_BUNDLED", raising=False)
+    monkeypatch.delattr(sys, "frozen", raising=False)
 
 
 @pytest.fixture(autouse=True)
