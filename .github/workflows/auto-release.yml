@@ -9,12 +9,15 @@ name: auto-release
 #     waits only for the required `test` check).
 #   publish: a merge by the workflow token fires no `push`, so dispatch release.yml on main with publish=true;
 #     its `plan` re-checks the same gates on the merged commit.
+#   release-pr also triggers it: when the checks finish before release-pr.yml opened or retitled the PR, the gate
+#     runs again once the PR exists (release-pr runs from main, so the gate then checks the dev tip).
+#   recovery: if the merge worked but the dispatch failed, run `gh workflow run release.yml --ref main -f publish=true`
+#     by hand; plan re-checks every gate (docs/RELEASING.md).
 # workflow_run uses this file from the default branch (main), so it starts working after one release carries it.
 on:
   workflow_run:
-    workflows: [ci, e2e, windows-build, hw-tests]
+    workflows: [ci, e2e, windows-build, hw-tests, release-pr]
     types: [completed]
-    branches: [dev]
 
 permissions: {}
 
@@ -28,7 +31,8 @@ jobs:
     if: >-
       vars.AUTO_RELEASE == 'true' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.head_branch == 'dev' || github.event.workflow_run.name == 'release-pr')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -37,9 +41,18 @@ jobs:
       actions: write         # read the check runs; dispatch release.yml
       issues: read           # throttle issue #574
     steps:
+      - name: Which dev commit (release-pr runs on main, so take the dev tip)
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ github.event.workflow_run.name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$NAME" = release-pr ]; then RUN_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq .object.sha); fi
+          echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}   # merged dev code, never PR head code from a fork
+          ref: ${{ steps.sha.outputs.sha }}   # merged dev code, never PR head code from a fork
           fetch-depth: 0   # tags: the version must be newer than every tag
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -50,7 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTO_RELEASE: ${{ vars.AUTO_RELEASE }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_SHA: ${{ steps.sha.outputs.sha }}
         run: |
           python scripts/release_notes.py auto > gate.txt
           cat gate.txt >> "$GITHUB_OUTPUT"
@@ -68,5 +81,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.gate.outputs.tag }}
         run: |
-          gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref main -f publish=true
+          for i in 1 2 3; do   # the PR is merged now, so a later run of this gate will not retry the dispatch
+            gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref main -f publish=true && break
+            [ "$i" = 3 ] && { echo "::error::merged but could not dispatch release.yml; run: gh workflow run release.yml --ref main -f publish=true"; exit 1; }
+            sleep 20
+          done
           echo "merged; release.yml dispatched on main for $TAG" >> "$GITHUB_STEP_SUMMARY"

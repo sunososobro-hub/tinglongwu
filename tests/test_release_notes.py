@@ -252,8 +252,9 @@ OPEN = {"number": 735, "title": "release: v0.3.2", "state": "open", "base": {"re
 
 
 def auto(enabled="true", throttle="level: 2\nfocus: speak", run=HEAD, version="0.3.2", tags=TAGS, pulls=(OPEN,),
-         runs=GREEN, wn=WN):
-    return rn.auto_plan(enabled, throttle, run, version, tags, list(pulls), REPO, lambda h: runs if h == HEAD else [], wn)
+         runs=GREEN, wn=WN, merged=()):
+    return rn.auto_plan(enabled, throttle, run, version, tags, list(pulls), REPO, lambda h: runs if h == HEAD else [], wn,
+                        list(merged))
 
 
 def test_whats_new_comes_from_the_version_section_of_the_file():
@@ -299,10 +300,15 @@ def test_auto_release_merges_only_a_green_release_pr_at_the_run_commit():
     ({"runs": [*GREEN, {"id": 99, "name": "e2e", "status": "completed", "conclusion": "skipped"}]}, "e2e: completed/skipped"),
     ({"runs": [*GREEN, {"id": 99, "name": "windows-build", "status": "in_progress", "conclusion": None}]}, "windows-build"),
     ({"wn": "## v0.3.1\n- Old\n"}, "no filled `## v0.3.2` section"),
+    ({"merged": (pr(),)}, "release PR #600 for v0.3.2 is already merged"),
 ])
 def test_auto_release_refuses(kw, why):
     out = auto(**kw)
     assert out["merge"] == "false" and why in out["reason"], out
+
+
+def test_auto_release_ignores_unmerged_or_other_version_release_prs():
+    assert auto(merged=(pr(merged=False), pr(title="release: v0.3.1"), pr(fork=True)))["merge"] == "true"
 
 
 def test_dispatch_with_publish_on_main_is_the_release_push():

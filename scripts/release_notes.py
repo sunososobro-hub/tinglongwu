@@ -258,7 +258,7 @@ def open_release_pr(pulls: list[dict], repo: str) -> dict | None:
 
 
 def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, tags: dict[str, str],
-              pulls: list[dict], repo: str, runs_of, whats_new_text: str) -> dict:
+              pulls: list[dict], repo: str, runs_of, whats_new_text: str, merged: list[dict] = ()) -> dict:
     """#589 auto-release gate: merge = merge the release PR at `head` now, then dispatch release.yml on main."""
     out = {"merge": "false", "pr": "", "head": "", "tag": "", "reason": ""}
 
@@ -283,6 +283,9 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
     last = latest_tag(list(tags))
     if tag in tags or (last and parse_tag(tag) <= parse_tag(last)):
         return stop(f"{tag} is not newer than the latest tag {last}: bump __version__ first")
+    done = release_pr_of([p for p in merged if title_version(p.get("title", "")) == tag], repo)
+    if done is not None:  # merged, release.yml has not tagged yet: never merge the same version twice
+        return stop(f"release PR #{done['number']} for {tag} is already merged: bump __version__ first")
     bad = check_problems(runs_of(head))
     if bad:
         return stop("required checks not green on the head: " + "; ".join(bad))
@@ -424,10 +427,12 @@ def main(argv=None) -> int:
                            text=True, encoding="utf-8")
         throttle = r.stdout if r.returncode == 0 else None
         pulls = gh_json("api", f"repos/{rep}/pulls?state=open&base=main&per_page=100")
+        merged = gh_json("api", f"repos/{rep}/pulls?state=closed&base=main&per_page=100")
         runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
         wn = ROOT / WHATS_NEW_FILE
         for k, v in auto_plan(os.environ.get("AUTO_RELEASE", ""), throttle, os.environ.get("RUN_SHA", ""), version,
-                              git_tags(), pulls, rep, runs_of, wn.read_text("utf-8") if wn.exists() else "").items():
+                              git_tags(), pulls, rep, runs_of, wn.read_text("utf-8") if wn.exists() else "",
+                              merged).items():
             print(f"{k}={v}")
         return 0
     if a.cmd == "pr-body":

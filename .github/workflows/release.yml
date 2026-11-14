@@ -29,7 +29,8 @@ permissions: {}
 
 concurrency:
   # one publish at a time; dry runs queue apart so a pending release run is never replaced by a dry run
-  group: release-${{ github.event_name == 'workflow_dispatch' && !inputs.publish && github.ref || 'publish' }}
+  # only a publishing dispatch (publish=true on main, as plan() decides) shares the publish group
+  group: release-${{ github.event_name == 'workflow_dispatch' && !(inputs.publish && github.ref == 'refs/heads/main') && github.ref || 'publish' }}
   cancel-in-progress: false
 
 jobs:
