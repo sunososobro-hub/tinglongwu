@@ -20,7 +20,9 @@ def _wizard() -> tuple[list[str], list[str], dict[int, int]]:
     """The Windows wizard's language page as data: option labels, the --packs code of each index, and the
     OS primary-language-id -> pre-checked index table. Inno Pascal cannot run on Linux, so the compiled installer
     (windows-build) is the only place it executes; this pins the wizard to packs.py so the two cannot drift."""
-    labels = re.findall(r"LangPage\.Add\('([^']*)'\)", ISS)
+    from test_installer_sizes_753 import labels as _labels  # #753: labels are built from the size table
+
+    labels = _labels()
     const = _consts()
     codes = dict((const[i], c) for i, c in re.findall(r"Codes\[(\w+)\] := '([a-z]+)'", ISS))
     body = ISS.split("function LocaleLangIndex", 1)[1].split("end;", 1)[0]
