@@ -419,6 +419,7 @@ class App:
             self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
         self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
         self._adv_toggled()
+        self._send_mode_changed()  # #834: the notice follows the UI language
         if self.status_key:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
