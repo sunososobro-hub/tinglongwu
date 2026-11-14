@@ -1,4 +1,4 @@
-# tinglongWu mobile (聽攏有) - offline ru -> zh-Hant live subtitles (prototype v0)
+# tinglongWu mobile (聽攏有) - offline zh/en/ja/ko/yue -> zh-Hant live subtitles (prototype v0)
 
 Mic -> sherpa-onnx (SenseVoice-small ASR (zh/en/ja/ko/yue auto-detect) + Silero VAD) -> Hy-MT2-1.8B Q4_K_M via llama.cpp (same translator and prompt as desktop) -> full-screen subtitles.
 No INTERNET permission and no built-in downloader: you download the models with the phone's browser and import them in the app (or side-load them with adb).
@@ -89,7 +89,7 @@ Expected on device: models/sensevoice/{model.int8.onnx,tokens.txt}, models/siler
 
 Each translation logs latency (est. speech end -> zh shown), ASR-final -> zh, time to first token, tokens, tok/s, queue.
 
-**Privacy: transcripts are not logged by default.** The log sits on shared external storage (readable over adb and by apps with storage access), so recognized (ru) and translated (zh) text is replaced by `<redacted N chars>`; only timings and diagnostics are written. To debug with transcripts, build a debug APK with `--dart-define=TLWU_LOG_TRANSCRIPTS=true` (never ship or share such a build; delete `tlwu.log*` afterwards).
+**Privacy: transcripts are not logged by default.** The log sits on shared external storage (readable over adb and by apps with storage access), so recognized (source-language) and translated (zh-Hant) text is replaced by `<redacted N chars>`; only timings and diagnostics are written. To debug with transcripts, build a debug APK with `--dart-define=TLWU_LOG_TRANSCRIPTS=true` (never ship or share such a build; delete `tlwu.log*` afterwards).
 
 ## Licenses
 - tinglongWu: MIT (see ../LICENSE).

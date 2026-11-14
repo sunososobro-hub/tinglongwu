@@ -1,5 +1,5 @@
 """`python -m tlwu_eval --smoke [--data DIR] [--out report.json] [--tier NAME]` | `--chart OUT.html REPORT.json...`
-| `--gate REPORT.json [--baseline eval/baseline.json]`."""
+| `--gate REPORT.json [--baseline eval/baseline.json]` | `--lowend-gate REPORT.json [--lowend-baseline FILE]`."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import gate, history, langfloor, scoring, tierchart, tiers
+from . import gate, history, langfloor, lowend, scoring, tierchart, tiers
 from . import noise as noise_mod
 from .runner import CLIPS_PER_LANG, FOCUS_PAIRS, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
@@ -35,7 +35,8 @@ def format_report(rep: dict) -> str:
     lines += [f"{p}: SKIP (no clips in the manifest)" for p in rep["skipped"]]
     mib = (lambda v: "n/a" if v is None else f"{v} MiB")
     lines.append(f"smoke: {'PASS' if rep['pass'] else 'FAIL'} - total {rep['total_s']:.0f}s (budget "
-                 f"{TOTAL_BUDGET_S:.0f}s), peak RAM {mib(rep['peak_ram_mib'])}, peak VRAM {mib(rep['peak_vram_mib'])}, "
+                 f"{TOTAL_BUDGET_S:.0f}s), line p50 {rep.get('latency_p50_s')}s p90 {rep.get('latency_p90_s')}s, "
+                 f"peak RSS {mib(rep.get('peak_rss_mib'))}, peak RAM {mib(rep['peak_ram_mib'])}, peak VRAM {mib(rep['peak_vram_mib'])}, "
                  f"overall score {rep['score']['overall']} ({rep['score']['colour']})")
     return "\n".join(lines)
 
@@ -100,6 +101,16 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
                    help="compare a --smoke report to the baseline: exit 1 on a chrF or MT latency regression (#361)")
     p.add_argument("--baseline", default="eval/baseline.json",
                    help="baseline for --gate (default: eval/baseline.json); all margins and budgets live there")
+    p.add_argument("--lowend-gate", metavar="REPORT.json",
+                   help="low-end CPU gate (#750): exit 1 when per-line p50/p90 latency is >15%% over the baseline "
+                        "or peak RSS > 6 GiB")
+    p.add_argument("--lowend-baseline", default="eval/lowend_baseline.json",
+                   help="baseline for --lowend-gate (default: eval/lowend_baseline.json)")
+    p.add_argument("--lowend-base-report", metavar="BASE.json",
+                   help="with --lowend-gate: a --smoke report of the base commit on the same machine; its p50/p90 "
+                        "are the baseline (runner CPUs differ too much for fixed numbers)")
+    p.add_argument("--latency-jsonl", metavar="FILE.jsonl",
+                   help="with --smoke: one JSON line per clip {pair, id, total} (ASR+MT seconds) (#750)")
     p.add_argument("--history", metavar="FILE.jsonl",
                    help="with --smoke: append one JSON line (date, commit, chrF/MT/ASR per pair, VRAM, hallucinations) (#123)")
     p.add_argument("--trend", metavar="FILE.jsonl", help="draw trend charts from a --history file into --out (default trend.html) (#123)")
@@ -108,6 +119,14 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
         return history.trend_main(a.trend, "trend.html" if a.out == "report.json" else a.out)
     if a.chart:
         return tierchart.main(p, a.chart)
+    if a.lowend_gate:
+        try:
+            code, table = lowend.run(a.lowend_gate, a.lowend_baseline, a.lowend_base_report)
+        except gate.GateError as e:
+            print(f"tlwu-eval: {e}", file=sys.stderr)
+            return 2
+        print(table)
+        return code
     if a.gate:
         try:
             code, table = gate.run(a.gate, a.baseline)
@@ -148,6 +167,8 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
         return 2
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(rep, f, ensure_ascii=False, indent=2)
+    if a.latency_jsonl:
+        lowend.write_latency_jsonl(rep, a.latency_jsonl)
     if a.history:
         history.append(a.history, rep, history.git_commit())
     print(format_report(rep))

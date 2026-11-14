@@ -62,8 +62,9 @@ const
   PACK_ZH = 0;
   PACK_EN = 1;
   PACK_JA = 2;
-  PACK_RU = 3;
-  OPT_GPU = 4;
+  PACK_KO = 3;   { #754 }
+  PACK_RU = 4;
+  OPT_GPU = 5;
 
 var
   Steps: Integer;
@@ -97,22 +98,23 @@ begin
       WizardForm.TasksList.Checked[I] := True;
 end;
 
-{ #672: primary language id of the OS UI language -> index into the pack list below (zh, en, ja, ru) }
+{ #672: primary language id of the OS UI language -> index into the pack list below (zh, en, ja, ko, ru); #754: $12 Korean }
 function LocaleLangIndex: Integer;
 begin
   case GetUILanguage and $3FF of
     $04: Result := PACK_ZH;
     $11: Result := PACK_JA;
+    $12: Result := PACK_KO;
     $19: Result := PACK_RU;
   else Result := PACK_EN;
   end;
 end;
 
-{ #672: approximate download MB of the ticked packs; mirrors tinglongwu_setup/packs.py (ja = Hy-MT2 1100, ru = Hy-MT2 + Piper 60, shared once) }
+{ #672: approximate download MB of the ticked packs; mirrors tinglongwu_setup/packs.py (ja / ko = Hy-MT2 1100, ru = Hy-MT2 + Piper 60, shared once) }
 function PackSizeMB: Integer;
 begin
   Result := 0;
-  if LangPage.Values[PACK_JA] or LangPage.Values[PACK_RU] then Result := 1100;
+  if LangPage.Values[PACK_JA] or LangPage.Values[PACK_KO] or LangPage.Values[PACK_RU] then Result := 1100;
   if LangPage.Values[PACK_RU] then Result := Result + 60;
 end;
 
@@ -120,11 +122,12 @@ end;
 function SelectedPacks: String;
 var
   I: Integer;
-  Codes: array[0..3] of String;
+  Codes: array of String;
 begin
-  Codes[0] := 'zh'; Codes[1] := 'en'; Codes[2] := 'ja'; Codes[3] := 'ru';
+  SetArrayLength(Codes, PACK_RU + 1);
+  Codes[PACK_ZH] := 'zh'; Codes[PACK_EN] := 'en'; Codes[PACK_JA] := 'ja'; Codes[PACK_KO] := 'ko'; Codes[PACK_RU] := 'ru';
   Result := '';
-  for I := 0 to 3 do
+  for I := PACK_ZH to PACK_RU do
     if LangPage.Values[I] then begin
       if Result <> '' then Result := Result + ',';
       Result := Result + Codes[I];
@@ -139,10 +142,11 @@ begin
   LangPage.Add('中文 Chinese (zh)');
   LangPage.Add('English (en)');
   LangPage.Add('日本語 Japanese (ja, about 1.1 GB)');
+  LangPage.Add('한국어 Korean (ko, about 1.1 GB)');
   LangPage.Add('Русский Russian (ru, about 1.2 GB)');
   LangPage.Values[PACK_ZH] := True;   { zh is the output language of listen mode }
   LangPage.Values[PACK_EN] := True;   { #751: English meetings are the main use case, always pre-checked }
-  LangPage.Values[LocaleLangIndex] := True;   { plus the OS-language pack (ja / ru) }
+  LangPage.Values[LocaleLangIndex] := True;   { plus the OS-language pack (ja / ko / ru) }
   LangPage.Add('GPU pack for NVIDIA (CUDA libraries) / NVIDIA 顯示卡加速包');
   LangPage.Values[OPT_GPU] := HasNvidiaDriver;
   ProgressPage := CreateOutputProgressPage('Installing Python packages and models / 安裝套件與模型',

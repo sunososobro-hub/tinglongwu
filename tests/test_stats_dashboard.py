@@ -18,6 +18,9 @@ def fake_api(path, accept=None):
         return [{"starred_at": "2026-11-10T09:00:00Z"}, {"starred_at": "2026-11-12T01:00:00Z"}]
     if "/forks" in path:
         return [{"created_at": "2026-11-11T09:00:00Z"}]
+    if "/releases" in path:
+        return [{"tag_name": "v0.2.0", "assets": [{"download_count": 30}, {"download_count": 10}]},
+                {"tag_name": "v0.1.0", "assets": [{"download_count": 5}]}]
     if "/milestones" in path:
         return [{"title": "v1", "open_issues": 1, "closed_issues": 2}]
     if "/pulls?" in path:
@@ -288,6 +291,30 @@ def test_activity_grid_multi_column_on_desktop_no_hscroll_on_phone(tmp_path):
             br.close()
 
 
+def test_downloads_snapshot_series_and_per_release(tmp_path):
+    old = [{"ts": "2026-11-11T10:00:00Z", "stars": 5, "forks": 2, "open_issues": 1,
+            "labels": {}, "commits_by_hour": {}, "downloads": 20}]
+    (tmp_path / "data.json").write_text(json.dumps(old))
+    hist = sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW)
+    assert hist[-1]["downloads"] == 45
+    dl = json.loads((tmp_path / "series.json").read_text())["downloads"]
+    assert dl["total"] == 45 and dl["releases"][0] == {"tag": "v0.2.0", "downloads": 40}
+    assert dl["series"] == [None, 20, 45]  # no data before the first snapshot; live total today
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "<h2>Downloads" in page and 'id="c_dl"' in page
+
+
+def test_downloads_unavailable_does_not_fail():
+    def api(path, accept=None):
+        if "/releases" in path:
+            raise OSError("boom")
+        return fake_api(path, accept)
+    series = sd.build_series(api, "o/r", "dev", NOW)
+    assert series["downloads"] == {"total": None, "releases": [], "series": [None, None, None]}
+    assert sd.build_snapshot(api, "o/r", "dev", NOW)["downloads"] is None
+    assert "<h2>Downloads" in sd.render_html(series)
+
+
 def test_flow_platform_mobile_and_all_nodes():
     f = sd.build_flow([
         {"model": "sonnet", "minutes": 10, "labels": ["bug", "mode:listen", "area:mobile"]},
@@ -299,3 +326,24 @@ def test_flow_platform_mobile_and_all_nodes():
     assert plat == {"mobile": 10.0, "all": 20.0, "windows": 10.0}
     assert {n["name"] for n in f["langs"]} == {"all"}
     assert {n["name"]: n["quota"] for n in f["modes"]} == {"listen": 30.0, "unlabelled": 10.0}
+
+
+def test_run_fetches_releases_once(tmp_path):
+    calls = []
+
+    def api(path, accept=None):
+        if "/releases" in path:
+            calls.append(path)
+        return fake_api(path, accept)
+    sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
+    assert len(calls) == 1
+
+
+def test_downloads_unavailable_with_history_stays_empty():
+    def api(path, accept=None):
+        if "/releases" in path:
+            raise OSError("boom")
+        return fake_api(path, accept)
+    hist = [{"ts": "2026-11-11T10:00:00Z", "downloads": 20}]
+    series = sd.build_series(api, "o/r", "dev", NOW, hist)
+    assert series["downloads"]["series"] == [None, None, None]

@@ -75,6 +75,7 @@ def test_load_llama_refuses_mismatched_build_before_touching_the_model(monkeypat
 def test_load_llama_loads_with_a_matching_build(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama(INFO_AVX2))
     monkeypatch.setattr(llamacheck, "cpu_features", lambda: CPU_AVX2)
+    monkeypatch.setattr("tinglongwu.mt_backend.vulkan_available", lambda: False)
     tag, kw = engines.load_llama(tmp_path / "x.gguf", gpu=False)
     assert tag == "loaded" and kw["n_gpu_layers"] == 0 and kw["model_path"].endswith("x.gguf")
 
