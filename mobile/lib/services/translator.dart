@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 import '../logic/context_budget.dart';
@@ -58,16 +60,19 @@ class Translator implements LineTranslator {
   final EngineSession _session;
 
   static Future<Translator> load(String modelPath, {int threads = 4}) async {
-    final engine = await LlamaEngine.spawn(
-      modelParams: ModelParams(path: modelPath, gpuLayers: 0, useMmap: true),
-      contextParams: ContextParams(
-        nCtx: ContextBudget.nCtx,
-        nBatch: 512,
-        nUbatch: 512,
-        nThreads: threads,
-        nThreadsBatch: threads,
-      ),
+    final modelParams = ModelParams(path: modelPath, gpuLayers: 0, useMmap: true);
+    final contextParams = ContextParams(
+      nCtx: ContextBudget.nCtx,
+      nBatch: 512,
+      nUbatch: 512,
+      nThreads: threads,
+      nThreadsBatch: threads,
     );
+    // iOS: llama.xcframework is linked into the app by the plugin's Swift package, so the
+    // symbols are already in the process (no libllama.so to dlopen as on Android).
+    final engine = Platform.isIOS
+        ? await LlamaEngine.spawnFromProcess(modelParams: modelParams, contextParams: contextParams)
+        : await LlamaEngine.spawn(modelParams: modelParams, contextParams: contextParams);
     final session = await engine.createSession();
     return Translator._(engine, session);
   }
