@@ -2,7 +2,8 @@
 #   install.bat                     normal install
 #   install.ps1 -DryRun             detect only, print every command, install nothing
 #   -SkipModels  -SkipShortcut      skip steps 5-6 / 7   -Cpu  force the CPU path
-param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu)
+#   -FromSetup                      run by the setup wizard (the summary points to Windows Settings > Apps to uninstall)
+param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu, [switch]$FromSetup)
 
 $ErrorActionPreference = 'Continue'
 # CI-only: TLWU_SKIP_MODELS=1 / TLWU_SKIP_SHORTCUT=1 behave like -SkipModels / -SkipShortcut (used by .github/workflows/install-test.yml)
@@ -288,7 +289,6 @@ if ($Warnings.Count -gt 0) {
 Write-Host ""
 Write-Host "  Launch / 啟動: double-click the desktop shortcut '聽攏有 tinglongWu' (or $VGui)" -ForegroundColor White
 Write-Host "  Talk mode / 說話模式: desktop shortcut '聽攏有 說話模式' (Meet microphone = CABLE Output)" -ForegroundColor White
-Write-Host "  Uninstall / 移除: delete this folder ($Root; models are in its models\ folder), ~\tts-kokoro and the desktop shortcuts."
-Write-Host "                    刪除此資料夾（模型在 models\ 內）與桌面捷徑即可。"
+foreach ($l in (Get-TlwuUninstallHint $Root ([bool]$FromSetup))) { Write-Host $l }
 if ($DryRun) { Write-Host ""; Write-Host "  (dry run finished, nothing was changed / 試跑結束，未做任何更動)" -ForegroundColor Yellow }
 exit 0

@@ -37,6 +37,8 @@ PY = sys.executable
 # unbuffered: readiness is detected from the child's output as it happens; faulthandler: native crash -> stack
 ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "TLWU_NO_UPDATE": "1", "PYTHONUNBUFFERED": "1",
        "PYTHONFAULTHANDLER": "1"}
+# Windows: never let a child pop a console window on the desktop (#607); no-op elsewhere.
+NOWIN: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if WIN else {}
 CLEAN_RC = (0, 130, -2, 3221225786)  # done, KeyboardInterrupt handled (130 / SIGINT), STATUS_CONTROL_C_EXIT
 MT = os.environ.get("TLWU_E2E_MT", "auto")  # speak-mode engine (auto = what a user gets)
 results: list[tuple[str, bool, str]] = []
@@ -103,7 +105,7 @@ def zh_speech():
         sys.exit("TLWU_KOKORO_PYTHON / TLWU_KOKORO_MODEL must point at the Kokoro venv and model (tlwu-setup --talk)")
     with tempfile.TemporaryDirectory(prefix="tlwu-zh-") as td:
         raw = Path(td) / "zh24k.wav"
-        subprocess.run([py, "-c", ZH_CODE, model, str(raw), *ZH_SENTENCES], check=True)
+        subprocess.run([py, "-c", ZH_CODE, model, str(raw), *ZH_SENTENCES], check=True, **NOWIN)
         x, sr = sf.read(str(raw), dtype="float32")
     if sr != 16000:
         from math import gcd
@@ -293,7 +295,7 @@ def fake_nvidia_smi(d: Path) -> Path:
         windir = os.environ.get("WINDIR", r"C:\Windows")
         csc = next(Path(windir, "Microsoft.NET", fw, "v4.0.30319", "csc.exe") for fw in ("Framework64", "Framework")
                    if Path(windir, "Microsoft.NET", fw, "v4.0.30319", "csc.exe").exists())
-        subprocess.run([str(csc), "/nologo", f"/out:{exe}", str(src)], check=True, capture_output=True)
+        subprocess.run([str(csc), "/nologo", f"/out:{exe}", str(src)], check=True, capture_output=True, **NOWIN)
         return exe
     code = (f"import sys; q=' '.join(sys.argv); f='{FAKE_SMI_LINE}'.split(', '); "
             "keys=(q.split('--query-gpu=')[1].split()[0].split(',') if '--query-gpu=' in q else []); "
@@ -311,26 +313,26 @@ def cmd_gpu_old(a) -> int:
         env = {**ENV, "PATH": td + os.pathsep + os.environ["PATH"], "TLWU_UI_LANG": "en"}
         md = ["--models-dir", a.models_dir] if a.models_dir else []
         probe = subprocess.run([PY, "-c", "from tinglongwu.device import driver_version as v; print(v())"],
-                               env=env, capture_output=True, text=True, encoding="utf-8")
+                               env=env, capture_output=True, text=True, encoding="utf-8", **NOWIN)
         check("fake nvidia-smi is the one tlwu sees", "457.49" in probe.stdout, probe.stdout.strip() or probe.stderr)
         # runtime (#89 item 3): the CPU fallback names the real reason, with the fix
         r = subprocess.run([PY, "-c", "from tinglongwu.device import resolve_device as r; "
                                       "print('device=' + r('auto', warn=lambda m: print('WARN', m)))"],
-                           env=env, capture_output=True, text=True, encoding="utf-8")
+                           env=env, capture_output=True, text=True, encoding="utf-8", **NOWIN)
         out = r.stdout + r.stderr
         check("runtime: CPU fallback says 'update the driver' (#89)",
               "device=cpu" in out and re.search(r"driver", out, re.I) is not None and "457.49" in out, tail(out, 4))
         if WIN:  # install time (#89 item 1): install.ps1 reads the driver version and says to update it
             r = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                                 str(ROOT / "install.ps1"), "-DryRun", "-SkipShortcut"], env=env, capture_output=True,
-                               text=True, encoding="utf-8", errors="replace", timeout=600)
+                               text=True, encoding="utf-8", errors="replace", timeout=600, **NOWIN)
             out = r.stdout + r.stderr
             hit = [ln.strip() for ln in out.splitlines() if "457.49" in ln and "too old" in ln]
             check("install.ps1: 'driver too old, update' with the link (#89)",
                   bool(hit) and "nvidia.com" in hit[0], (hit or [tail(out, 6)])[0])
         # install-time self-test (#90): GPU FAIL + driver advice, downgraded to the CPU tier, then PASS
         s = subprocess.run([PY, "-m", "tinglongwu", "--selftest", "--device", "auto", *md], env=env,
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, **NOWIN)
         out = s.stdout + s.stderr
         print(out)
         check("selftest: GPU FAIL with driver advice (#90)",
@@ -344,7 +346,7 @@ def cmd_gpu_old(a) -> int:
 def cmd_selftest(a) -> int:
     md = ["--models-dir", a.models_dir] if a.models_dir else []
     s = subprocess.run([PY, "-m", "tinglongwu", "--selftest", "--device", "cpu", *md], env=ENV, capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", timeout=900)
+                       text=True, encoding="utf-8", errors="replace", timeout=900, **NOWIN)
     out = s.stdout + s.stderr
     print(out)
     m = re.search(r"total ([\d.]+) s", out)
@@ -358,7 +360,7 @@ def cmd_selftest(a) -> int:
 def cmd_doctor(a) -> int:
     md = ["--models-dir", a.models_dir] if a.models_dir else []
     r = subprocess.run([PY, "-m", "tinglongwu", "doctor", "--to", a.to, *md], env=ENV, capture_output=True,
-                       text=True, encoding="utf-8", errors="replace")
+                       text=True, encoding="utf-8", errors="replace", **NOWIN)
     out = r.stdout
     print(out, r.stderr)
     lines = out.splitlines()
@@ -387,7 +389,7 @@ def cmd_speak_ru(a) -> int:
         r = subprocess.run([PY, "-m", "tinglongwu.reverse.proto", "--input", str(wav), "--to", "ru", "--compute",
                             "cpu", "--mt", "hymt", "--no-play", "--no-vmic", "--no-confirm", "--out", str(out_dir),
                             "--save-result", str(res), *md, *whisper_args()], env=ENV, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=1200)
+                           encoding="utf-8", errors="replace", timeout=1200, **NOWIN)
         out = r.stdout + r.stderr
         print(tail(out, 40))
         check("speak --to ru starts without voice flags (#311 items 1-3)",
@@ -589,7 +591,7 @@ def cmd_overlay_stack(a) -> int:
     from tinglongwu import overlay
 
     ws = _Win32() if WIN else _X11()
-    fs = subprocess.Popen([PY, "-c", FS_APP])
+    fs = subprocess.Popen([PY, "-c", FS_APP], **NOWIN)
     try:
         fs_id = None
         for _ in range(100):

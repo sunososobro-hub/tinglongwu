@@ -1,6 +1,6 @@
 name: release-pr
 # #414: when `ci` passes on a push to dev, open (or update) the one dev -> main release PR `release: vX.Y.Z`
-# (X.Y.Z = tinglongwu.__version__) with generated notes. Merging it is the owner's single release action;
+# (X.Y.Z = tinglongwu.__version__) with generated notes. auto-release.yml merges it when green (#589);
 # release.yml then checks the gates, builds and publishes. workflow_run runs this file from the default branch and
 # checks out dev (merged work only), never PR head code. Creating the PR needs the repo setting "Allow GitHub
 # Actions to create and approve pull requests"; without it the job fails after writing the PR into the summary.
@@ -54,6 +54,11 @@ jobs:
           fi
           n=$(git rev-list --count origin/main..origin/dev)
           echo "dev is $n commit(s) ahead of main" >> "$GITHUB_STEP_SUMMARY"
+          v=$(git show origin/dev:tinglongwu/__init__.py | sed -n 's/^__version__ = "\(.*\)"/\1/p')
+          if [ "$n" != 0 ] && git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null 2>&1; then
+            echo "skip=v$v is already released (tag exists); waiting for the patch bump (#785)" | tee -a "$GITHUB_STEP_SUMMARY"
+            n=0
+          fi
           echo "go=$([ "$n" != 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Title and body
         if: steps.diff.outputs.go == 'true'

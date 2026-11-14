@@ -251,3 +251,59 @@ def test_416_restart_does_not_use_up_the_checksum_retry(tmp_path):
 
     resume.fetch("u", tmp_path / "p.bin", SHA, opener=opener)
     assert (tmp_path / "p.bin").read_bytes() == DATA and len(served) == 2
+
+
+def test_packs_download_resumes_with_range_and_passes_sha(tmp_path, monkeypatch):
+    """#688: `tlwu-setup --packs ja` goes through resume.fetch: a drop mid-file, then a Range request for the rest."""
+    import sys
+    import types
+
+    from tinglongwu_setup import downloader
+
+    data = bytes(range(256)) * 40
+    sha = hashlib.sha256(data).hexdigest()
+    monkeypatch.setattr(downloader, "load_pins", lambda: {"models": {"hymt2-1.8b": {
+        "repo": "r/x", "revision": "rev1", "files": {"m.gguf": sha}}}, "argos": {}})
+    monkeypatch.setattr(downloader, "HYMT_GGUF", ("r/x", "m.gguf"))
+    monkeypatch.setattr(downloader, "HYMT_EXTRAS", ())
+    calls = []
+
+    class Resp:
+        def __init__(self, body, status, boom=False):
+            self.body, self.status, self.boom, self.sent = body, status, boom, False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n=-1):
+            if self.sent:
+                if self.boom:
+                    raise ConnectionError("dropped")
+                return b""
+            self.sent = True
+            return self.body
+
+    def opener(url, start, timeout=60):
+        calls.append((url, start))
+        if start == 0:
+            return Resp(data[:3000], 200, boom=True)
+        return Resp(data[start:], 206)
+
+    monkeypatch.setattr(resume, "_open_range", opener)
+    sleeps = types.ModuleType("huggingface_hub")
+    sleeps.snapshot_download = lambda *a, **k: pytest.fail("snapshot_download must not be used for pinned files")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", sleeps)
+    for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY"):
+        monkeypatch.setenv(k, "1")  # downloader.main pops these; restore them for later tests (test_offline)
+    for _ in range(3):  # a dropped connection raises; re-running continues from the .part file
+        try:
+            downloader.main(["--packs", "ja", "--models-dir", str(tmp_path)])
+            break
+        except ConnectionError:
+            continue
+    assert (tmp_path / "hymt2-1.8b" / "m.gguf").read_bytes() == data
+    assert calls[0] == ("https://huggingface.co/r/x/resolve/rev1/m.gguf", 0)
+    assert calls[1][1] == 3000  # Range: bytes=3000-

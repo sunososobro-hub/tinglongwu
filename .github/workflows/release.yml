@@ -9,6 +9,8 @@ name: release
 #   release           : tag main, create a draft Release with the zip, install scripts and SHA256SUMS.txt
 #   windows-installer : attach the setup wizard, then publish (it becomes `latest`)
 # workflow_dispatch = dry run on any branch: plan + build + every check + notes in the summary, never a tag/Release.
+# #589: workflow_dispatch on main with publish=true (sent by auto-release.yml after it merged the release PR with the
+# workflow token, which fires no push) is treated like that push: same plan gates, then build and publish.
 # Pre-release tag (#112): pushing vX.Y.Z-suffix (e.g. v1.2.3-beta.1) on a commit on main or dev publishes a
 # pre-release (never `latest`) through the same jobs. Its version must equal __version__ and ci, e2e, windows-build
 # and hw-tests must be green on the tagged commit. A plain vX.Y.Z tag starts nothing; only the release PR makes one.
@@ -17,12 +19,18 @@ on:
     branches: [main]
     tags: ["v*-*"]   # pre-release tags only (#112); see the branch check in plan
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "on main only: publish the merged release PR at the main tip (auto-release.yml); else a dry run"
+        type: boolean
+        default: false
 
 permissions: {}
 
 concurrency:
   # one publish at a time; dry runs queue apart so a pending release run is never replaced by a dry run
-  group: release-${{ github.event_name == 'workflow_dispatch' && github.ref || 'publish' }}
+  # only a publishing dispatch (publish=true on main, as plan() decides) shares the publish group
+  group: release-${{ github.event_name == 'workflow_dispatch' && !(inputs.publish && github.ref == 'refs/heads/main') && github.ref || 'publish' }}
   cancel-in-progress: false
 
 jobs:
@@ -66,6 +74,7 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
           python scripts/release_notes.py plan > plan.txt
           cat plan.txt >> "$GITHUB_OUTPUT"
@@ -258,7 +267,7 @@ jobs:
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
-          # What's new comes from the release PR, so there is no TODO left unless someone put one there
+          # What's new comes from docs/whats_new.md (or a release PR edit); without it the notes keep the TODO line
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body | grep -q 'TODO:'; then
             echo "::notice::$TAG stays a draft: fill in What's new, then run: gh release edit $TAG --draft=false"
           else

@@ -340,7 +340,8 @@ def run_once(a) -> dict:
     cmd = [sys.executable, str(Path(__file__).resolve()), "--child", "--clip", a.clip, "--"] + _proto_args(a)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONPATH": str(ROOT)}
     lines: list[str] = []
-    p = subprocess.Popen(cmd, cwd=str(ROOT), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen(cmd, cwd=str(ROOT), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
     def pump():
         for raw in p.stdout:

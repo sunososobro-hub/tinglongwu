@@ -1,4 +1,4 @@
-# tinglongWu mobile (聽攏有) - offline ru -> zh-Hant live subtitles (prototype v0)
+# tinglongWu mobile (聽攏有) - offline zh/en/ja/ko/yue -> zh-Hant live subtitles (prototype v0)
 
 Mic -> sherpa-onnx (SenseVoice-small ASR (zh/en/ja/ko/yue auto-detect) + Silero VAD) -> Hy-MT2-1.8B Q4_K_M via llama.cpp (same translator and prompt as desktop) -> full-screen subtitles.
 No INTERNET permission and no built-in downloader: you download the models with the phone's browser and import them in the app (or side-load them with adb).
@@ -34,6 +34,30 @@ Without secrets each CI run signs the APK with a throwaway debug key (a signing 
 
 Keep `tlwu-release.jks` and the password backed up offline; losing them means users must uninstall to update. Switching from the debug key to the release key also needs one uninstall + reinstall (and a re-import of models).
 
+## Google Play (AAB + model asset packs)
+The `mobile-apk` workflow also builds `app-release.aab` for Google Play. The models do not fit in the
+200 MB base, so they ride in two on-demand Play Asset Delivery packs: `models_asr` (SenseVoice + Silero
+VAD) and `models_llm` (Hy-MT2 GGUF). CI fills them from the same official sources as the models zip
+(`tool/fill_asset_packs.py`, size + SHA-256 checked against the manifest); in git the pack folders are
+empty. The Play Store does the download, so the app still has no INTERNET permission. When the app was
+installed from Play, the Import screen shows **從 Play 下載模型 / Get models**: the packs are fetched,
+every file goes through the same checked import, then the packs are removed to free the space. A
+side-loaded APK does not show the button and keeps the manual zip import.
+
+Owner steps, once:
+1. Release key secrets as in "Signing" above (that key becomes the Play **upload key**; Play App
+   Signing keeps the app signing key, so Play builds and GitHub preview APKs have different signers and
+   cannot update each other).
+2. Play Console: create the app with package `com.tinglongwu.mobile`, then upload the first AAB by hand
+   (artifact `mobile-aab` of a `mobile-apk` run on `dev`) to **Internal testing**. The Play API cannot
+   create an app.
+3. Google Cloud: create a service account, add a JSON key; Play Console > Users and permissions: invite
+   the service account email with release rights for this app. Then
+   `gh secret set PLAY_SA_JSON -R sunososobro-hub/tinglongwu < key.json`.
+4. After that every push to `dev` under `mobile/` uploads to the internal track as a draft. Once the
+   app has had its first release, `gh variable set PLAY_RELEASE_STATUS -R sunososobro-hub/tinglongwu -b completed`
+   makes the uploads go out to internal testers directly.
+
 ## Models bundle (`tlwu-mobile-models.zip`)
 Every model allows redistribution (SenseVoice FunASR model license, Silero VAD MIT, Hy-MT2-1.8B Apache-2.0); the zip carries their license texts and a `NOTICE.txt`. All files are unmodified upstream files: `tool/fetch_models.sh` downloads them from the official sources (k2-fsa/sherpa-onnx `asr-models` release, `tencent/Hy-MT2-1.8B-GGUF`), and `tool/make_models_zip.py` checks each against `assets/models_manifest.json` (size + SHA-256) before zipping. The `mobile-apk` workflow rebuilds and re-uploads the zip on `mobile-latest` only when the manifest changes (the manifest hash is kept in a hidden marker in the release notes; SHA-256 values are in the notes' Details block). If a model changes, update the manifest and `fetch_models.sh` in the same PR.
 
@@ -65,7 +89,7 @@ Expected on device: models/sensevoice/{model.int8.onnx,tokens.txt}, models/siler
 
 Each translation logs latency (est. speech end -> zh shown), ASR-final -> zh, time to first token, tokens, tok/s, queue.
 
-**Privacy: transcripts are not logged by default.** The log sits on shared external storage (readable over adb and by apps with storage access), so recognized (ru) and translated (zh) text is replaced by `<redacted N chars>`; only timings and diagnostics are written. To debug with transcripts, build a debug APK with `--dart-define=TLWU_LOG_TRANSCRIPTS=true` (never ship or share such a build; delete `tlwu.log*` afterwards).
+**Privacy: transcripts are not logged by default.** The log sits on shared external storage (readable over adb and by apps with storage access), so recognized (source-language) and translated (zh-Hant) text is replaced by `<redacted N chars>`; only timings and diagnostics are written. To debug with transcripts, build a debug APK with `--dart-define=TLWU_LOG_TRANSCRIPTS=true` (never ship or share such a build; delete `tlwu.log*` afterwards).
 
 ## Licenses
 - tinglongWu: MIT (see ../LICENSE).

@@ -98,14 +98,37 @@ def load_llama(path: Path, gpu: bool):
 
     A build compiled for instructions this CPU lacks (issue #74: AVX-512 wheel on an AVX2 CPU) raises
     llamacheck.LlamaBuildError with the fix, instead of a bare 'Windows Error 0xc000001d'."""
-    from . import llamacheck
+    from . import llamacheck, mt_backend
     from . import threads as thread_budget
 
+    pack = mt_backend.vulkan_pack_dir()
+    vulkan = mt_backend.vulkan_available()
+    # One llama.cpp build per process: an already imported library cannot be swapped for the Vulkan one (#746)
+    if vulkan and "llama_cpp" in sys.modules and os.environ.get("LLAMA_CPP_LIB_PATH") != str(pack):
+        vulkan = False
+    backend = mt_backend.choose_backend(cuda=gpu, vulkan=vulkan)
+    prev_lib = os.environ.get("LLAMA_CPP_LIB_PATH")
+    if backend == "vulkan":  # optional Vulkan llama.cpp build (AMD / Intel / NVIDIA, no CUDA)
+        os.environ["LLAMA_CPP_LIB_PATH"] = str(pack)
+    mt_backend.last_backend = backend
     try:
         llama_cpp = llamacheck.import_llama()  # CUDA build, or the bundled CPU build when CUDA cannot load (#398)
     except (ImportError, OSError, RuntimeError) as e:  # not installed, or llama.dll / a CUDA DLL missing
-        raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e}. "
-                           f"To fix: {llamacheck.FIX_HINT}") from e
+        if backend != "vulkan":
+            raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e}. "
+                               f"To fix: {llamacheck.FIX_HINT}") from e
+        print(f"tlwu: Vulkan llama.cpp build not loadable ({type(e).__name__}: {e}); using CPU for MT.",
+              file=sys.stderr)
+        if prev_lib is None:  # restore the path in effect before the Vulkan branch, then retry once
+            os.environ.pop("LLAMA_CPP_LIB_PATH", None)
+        else:
+            os.environ["LLAMA_CPP_LIB_PATH"] = prev_lib
+        backend = mt_backend.last_backend = "cpu"
+        try:
+            llama_cpp = llamacheck.import_llama()
+        except (ImportError, OSError, RuntimeError) as e2:
+            raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e2}. "
+                               f"To fix: {llamacheck.FIX_HINT}") from e2
     if sys.platform == "win32":
         lib = Path(llama_cpp.__file__).parent / "lib"
         if lib.is_dir():
@@ -115,8 +138,14 @@ def load_llama(path: Path, gpu: bool):
 
     try:
         t = thread_budget.current()  # #250: explicit, so listen+speak can share the CPU (listen-only = old defaults)
-        return Llama(model_path=str(path), n_gpu_layers=-1 if gpu else 0, n_ctx=N_CTX, flash_attn=gpu,
-                     n_threads=t["mt"], n_threads_batch=t["mt_batch"], verbose=False)
+
+        def make(_path, be: str):
+            layers, flash = (-1, False) if be == "vulkan" else ((-1, True) if be == "cuda" else (0, False))
+            return Llama(model_path=str(path), n_gpu_layers=layers, n_ctx=N_CTX, flash_attn=flash,
+                         n_threads=t["mt"], n_threads_batch=t["mt_batch"], verbose=False)
+
+        model, mt_backend.last_backend = mt_backend.load_with_fallback(path, backend, make)  # #746
+        return model
     except OSError as e:
         err = llamacheck.explain(e)
         if err is e:

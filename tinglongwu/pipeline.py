@@ -212,9 +212,14 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             try:
                 t_emit = time.monotonic()
                 clip[0] = item[9]  # #239: audio of this line (only the MT thread reads it)
+                if draft is not None:
+                    draft.last_first_draft = None  # #511: final_written() fills it while emit() writes the line
                 emit(*item[:4], who=item[8])
                 if on_record is not None and item[6] is not None:
-                    on_record(_record(item, time.monotonic()))
+                    rec = _record(item, time.monotonic())
+                    d = getattr(draft, "last_first_draft", None) if draft is not None else None
+                    rec["draft"] = None if d is None else round(d, 3)  # #511: seconds to the first draft, null = none
+                    on_record(rec)
                 if on_work is not None:
                     on_work(item[4], time.monotonic() - t_emit, item[5])
                 if on_latency is not None:

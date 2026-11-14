@@ -234,14 +234,30 @@ def get_hymt(man, mdir):
     get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF, extras=HYMT_EXTRAS)
 
 
+def hf_get(repo: str, rev: str, files: list, dest: Path, pf: dict | None) -> None:
+    """Fetch `files` of an HF repo at a pinned revision into dest. Files with a committed SHA256 go through
+    resume.fetch (HTTP Range resume + checksum + one corrupt-retry, #688); the rest use snapshot_download."""
+    from . import resume
+
+    rest = []
+    for f in files:
+        if pf and f in pf:
+            resume.fetch(f"https://huggingface.co/{repo}/resolve/{rev}/{f}", dest / f, pf[f],
+                         opener=resume._open_range)
+        else:
+            rest.append(f)
+    if rest:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=rest)
+
+
 def get_gguf(man, mdir, name, repo, fname, extras=()):
     """extras: unpinned side files (license text) fetched at the same revision and left out of the SHA256 pins."""
     dest = mdir / name
     if not (dest.exists() and name in man):
-        from huggingface_hub import snapshot_download
-
         repo, rev, pf = resolve_hf(man, name, repo)
-        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=[fname, *extras])
+        hf_get(repo, rev, [fname, *extras], dest, pf)
         src = {"repo": repo, "revision": rev}
     else:
         src = man[name]
@@ -337,10 +353,8 @@ def get_piper_ru(man, mdir, voice="dmitri"):
     name, files = piper_ru_dir(voice), PIPER_RU[voice]
     dest = mdir / name
     if not (dest.exists() and name in man):
-        from huggingface_hub import snapshot_download
-
         repo, rev, pf = resolve_hf(man, name, PIPER_REPO)
-        snapshot_download(repo, revision=rev, local_dir=str(dest), allow_patterns=files)
+        hf_get(repo, rev, files, dest, pf)
         src = {"repo": repo, "revision": rev}
     else:
         src = man[name]

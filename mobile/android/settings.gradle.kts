@@ -20,7 +20,11 @@ pluginManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "9.1.0" apply false
+    id("com.android.asset-pack") version "9.1.0" apply false
     id("org.jetbrains.kotlin.android") version "2.4.0" apply false
 }
 
 include(":app")
+// Play Asset Delivery on-demand packs with the models (filled by CI; empty in git). Only used by the
+// AAB for Google Play; the side-loaded APK ignores them and keeps the manual import.
+include(":models_asr", ":models_llm")

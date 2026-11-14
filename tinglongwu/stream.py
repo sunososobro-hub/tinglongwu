@@ -195,6 +195,8 @@ class DraftEngine:
         self.first_zh: list[float] = []  # seconds from segment audio start to first translated draft shown
         self.finals: list[float] = []  # seconds from segment audio start to final line printed
         self._first_done: set[int] = set()
+        self._first_by_epoch: dict[int, float] = {}  # epoch -> its first-draft delay, until its final is written
+        self.last_first_draft: float | None = None  # #511: first-draft delay of the line final_written() just wrote
         self._seen: tuple = (None, 0)
         self._next = 0.0
         self._slot: tuple | None = None  # newest request; a newer one replaces (drops) an older one
@@ -298,6 +300,7 @@ class DraftEngine:
                 self._first_done.add(epoch)
                 dt = self.clock() - self.starts[epoch]
                 self.first_zh.append(dt)
+                self._first_by_epoch[epoch] = dt
                 self._log(f"first {self.tgt} draft epoch={epoch} {dt:.2f}s after segment audio start")
             self.renderer.draw(lang.upper(), conf, tail, self.tgt.upper(), self.translation,
                                show_src=self.show_src or not self.can_translate(lang))
@@ -355,6 +358,11 @@ class DraftEngine:
         self.shown = None
         if epoch is not None:
             t0 = None
+            for e in sorted(self._first_by_epoch):
+                if e <= epoch:
+                    d = self._first_by_epoch.pop(e)
+                    if self.last_first_draft is None:
+                        self.last_first_draft = d  # earliest segment of a merged line
             for e in [e for e in self.starts if e <= epoch]:
                 v = self.starts.pop(e)
                 t0 = v if t0 is None else min(t0, v)
