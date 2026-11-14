@@ -183,6 +183,7 @@ class SoundcardSource(AudioSource):
     def __init__(self, device: str | None = None):
         self.device = device
         self._stop = threading.Event()
+        self.on_reopen = None  # #710: called with the new device name after a reopen (voice cable guard)
 
     def _pick_microphone(self, sc):  # overridden per platform
         raise NotImplementedError
@@ -212,6 +213,8 @@ class SoundcardSource(AudioSource):
                     if failures:
                         print(f"tlwu: audio device changed, reopened {getattr(mic, 'name', mic)}",
                               file=sys.stderr, flush=True)
+                        if self.on_reopen is not None:
+                            self.on_reopen(getattr(mic, "name", None))
                     # one 100 ms block per iteration: close() is noticed within a block even in total silence,
                     # and leaving the `with` releases the device (OS microphone indicator goes off).
                     while not self._stop.is_set():

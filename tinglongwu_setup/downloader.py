@@ -342,6 +342,11 @@ PIPER_RU = {v: [f"ru/ru_RU/{v}/medium/ru_RU-{v}-medium.onnx", f"ru/ru_RU/{v}/med
             for v in ("dmitri", "denis")}
 
 
+# Measured byte sizes of the dmitri files at the pinned revision (HF X-Linked-Size; the SHA-256 pins are in manifest.json),
+# used by scripts/make_pack_manifest.py for the ru pack size (#818).
+PIPER_RU_DMITRI_SIZES = {PIPER_RU["dmitri"][0]: 63221984, PIPER_RU["dmitri"][1]: 5465}
+
+
 def piper_ru_dir(voice: str) -> str:
     return f"piper-ru_RU-{voice}-medium"
 

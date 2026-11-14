@@ -1,0 +1,7 @@
+{"_note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/ko_pins.json (#754): Korean -> zh-TW slice (FLEURS ko_kr test, CC-BY 4.0). Re-pin with --set ko --pin 5 only on purpose; the recorded ko->zh chrF baseline depends on these clips.", "dataset": "google/fleurs", "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd", "license": "CC-BY-4.0", "configs": {"ko": "ko_kr"}, "clips": [
+  {"id": "ko_001", "lang": "ko", "file": "10015989594226850325.wav", "flores_id": 1883, "seconds": 12.48, "sha256": "e6bc095e55046de927d7c937f036f96ebb506570648ad9ae7c6576febfc4746a"},
+  {"id": "ko_002", "lang": "ko", "file": "1007237877117014760.wav", "flores_id": 1929, "seconds": 10.8, "sha256": "a5a400dda19a17f0ceb0c4a2542387ae376e3f0518ba0f9769564402df55affd"},
+  {"id": "ko_003", "lang": "ko", "file": "10107571163062229727.wav", "flores_id": 1701, "seconds": 8.94, "sha256": "989020dedbda7fa529b0b4e876f236e79b25a2915d093e23de94c8456e72b7b4"},
+  {"id": "ko_004", "lang": "ko", "file": "10107840715193359973.wav", "flores_id": 2000, "seconds": 12.54, "sha256": "3f9cef47c3ab213f3d35a47b18751915cd25d59dcf8e6d4a53733bd92c478bca"},
+  {"id": "ko_005", "lang": "ko", "file": "10111865575098096607.wav", "flores_id": 1801, "seconds": 12.12, "sha256": "459b5666b2d4e54055d9d28463522f2f0f8ccb14fea27c0e1d1a5fe450377754"}
+]}

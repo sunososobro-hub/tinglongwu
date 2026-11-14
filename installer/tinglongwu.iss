@@ -2,7 +2,8 @@
 ; Next -> Installing (install.ps1 runs hidden, its [n/7] steps drive the progress bar, output in install.log)
 ; -> Finish. Start menu + desktop shortcuts with the app icon; uninstall in "Apps / Add or remove programs"
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.
-; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes.
+; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes; CoreLayout (--core-dir,
+; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu.exe and install.ps1 is not run.
 
 #define AppName "tinglongWu"
 #define AppTitle "聽攏有 tinglongWu"
@@ -43,13 +44,22 @@ Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs c
 Source: "{#IconFile}"; DestDir: "{app}"; DestName: "tinglongwu.ico"; Flags: ignoreversion
 
 [Icons]
+#ifdef CoreLayout
+Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
+Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
+#else
 Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
 Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
 Name: "{autoprograms}\{#AppTitle} - repair install (重新安裝)"; Filename: "{app}\install.bat"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
+#endif
 
 [Run]
+#ifdef CoreLayout
+Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; Description: "Start {#AppTitle} / 啟動"; Flags: postinstall nowait skipifsilent skipifdoesntexist
+#else
 Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; Description: "Start {#AppTitle} / 啟動"; Flags: postinstall nowait skipifsilent skipifdoesntexist
 Filename: "{app}\install.log"; Description: "Show install.log / 顯示安裝紀錄"; Flags: postinstall shellexec skipifsilent unchecked skipifdoesntexist
+#endif
 
 [UninstallDelete]
 ; talk-mode shortcuts are made in code only when tlwu-talk.ps1 exists (#124)
@@ -65,8 +75,25 @@ const
   PACK_KO = 3;   { #754 }
   PACK_RU = 4;
   OPT_GPU = 5;
+  { #753: the one download-size table (MB) behind the language page labels and the progress text.
+    Model sizes mirror tinglongwu_setup/packs.py SIZE_MB; the core totals are install.ps1's $SizeGB ('~2 GB' / '~3 GB')
+    and "~3 GB of Python packages" lines. Hy-MT2 is in the core download on every path (install.ps1 step 5, #301), so a
+    ja / ko / ru pack adds no second copy of it: only the Russian Piper voice is extra. }
+  HYMT2_MB = 1100;
+  PIPER_RU_MB = 60;
+  CORE_MODELS_CPU_MB = 2000;   { Whisper small + Hy-MT2 + Kokoro }
+  CORE_MODELS_GPU_MB = 3000;   { Whisper large-v3-turbo + Hy-MT2 + Kokoro }
+  PY_PACKAGES_MB = 3000;
+
+const
+  { #755: the page refreshes every REFRESH_TICKS * POLL_MS = 5 s; STALL_TICKS * POLL_MS = 120 s without log growth -> "still working" }
+  POLL_MS = 500;
+  REFRESH_TICKS = 10;
+  STALL_TICKS = 240;
 
 var
+  LastLine: String;     { #755: last non-empty install.log line, shown on the page }
+  LogLineCount: Integer;
   Steps: Integer;
   ProgressPage: TOutputProgressWizardPage;
   InstallRC: Integer;
@@ -110,12 +137,39 @@ begin
   end;
 end;
 
-{ #672: approximate download MB of the ticked packs; mirrors tinglongwu_setup/packs.py (ja / ko = Hy-MT2 1100, ru = Hy-MT2 + Piper 60, shared once) }
-function PackSizeMB: Integer;
+{ #753: size of one language pack on its own (what the language page shows); mirrors packs.pack_size_mb }
+function PackMB(Pack: Integer): Integer;
 begin
-  Result := 0;
-  if LangPage.Values[PACK_JA] or LangPage.Values[PACK_KO] or LangPage.Values[PACK_RU] then Result := 1100;
-  if LangPage.Values[PACK_RU] then Result := Result + 60;
+  case Pack of
+    PACK_JA, PACK_KO: Result := HYMT2_MB;
+    PACK_RU: Result := HYMT2_MB + PIPER_RU_MB;
+  else Result := 0;
+  end;
+end;
+
+{ #753: "about 1.1 GB" (MB rounded to 0.1 GB) }
+function SizeText(MB: Integer): String;
+var
+  Tenths: Integer;
+begin
+  Tenths := (MB + 50) div 100;
+  Result := 'about ' + IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10) + ' GB';
+end;
+
+{ #753: ", about 1.1 GB" for a language page label, '' for a pack with nothing of its own (zh, en) }
+function PackNote(Pack: Integer): String;
+begin
+  Result := '';
+  if PackMB(Pack) > 0 then Result := ', ' + SizeText(PackMB(Pack));
+end;
+
+{ #753 (replaces the #672 pack-only sum, which said "about 0 MB" for zh + en): whole download of this install in MB =
+  core models (Hy-MT2 included, Whisper by tier) + Python packages + what the ticked packs add beyond the core (ru Piper) }
+function DownloadMB(Gpu: Boolean): Integer;
+begin
+  if Gpu then Result := CORE_MODELS_GPU_MB else Result := CORE_MODELS_CPU_MB;
+  Result := Result + PY_PACKAGES_MB;
+  if LangPage.Values[PACK_RU] then Result := Result + PIPER_RU_MB;
 end;
 
 { comma list for tlwu-setup --packs; zh+en when nothing is ticked }
@@ -139,11 +193,11 @@ procedure InitializeWizard;
 begin
   LangPage := CreateInputOptionPage(wpSelectTasks, 'Which language do you want to understand? / 你想聽懂哪些語言？',
     'Only the chosen language packs are downloaded. 只會下載勾選的語言包。', '', False, False);
-  LangPage.Add('中文 Chinese (zh)');
-  LangPage.Add('English (en)');
-  LangPage.Add('日本語 Japanese (ja, about 1.1 GB)');
-  LangPage.Add('한국어 Korean (ko, about 1.1 GB)');
-  LangPage.Add('Русский Russian (ru, about 1.2 GB)');
+  LangPage.Add('中文 Chinese (zh' + PackNote(PACK_ZH) + ')');
+  LangPage.Add('English (en' + PackNote(PACK_EN) + ')');
+  LangPage.Add('日本語 Japanese (ja' + PackNote(PACK_JA) + ')');
+  LangPage.Add('한국어 Korean (ko' + PackNote(PACK_KO) + ')');
+  LangPage.Add('Русский Russian (ru' + PackNote(PACK_RU) + ')');
   LangPage.Values[PACK_ZH] := True;   { zh is the output language of listen mode }
   LangPage.Values[PACK_EN] := True;   { #751: English meetings are the main use case, always pre-checked }
   LangPage.Values[LocaleLangIndex] := True;   { plus the OS-language pack (ja / ko / ru) }
@@ -162,6 +216,9 @@ var
 begin
   Result := 0;   { the caller keeps the highest value seen: the log can be briefly locked by the writer }
   if not LoadStringsFromFile(LogFile, Lines) then exit;
+  LogLineCount := GetArrayLength(Lines);
+  for I := LogLineCount - 1 downto 0 do
+    if Trim(Lines[I]) <> '' then begin LastLine := Trim(Lines[I]); break; end;
   for I := 0 to GetArrayLength(Lines) - 1 do
     if Pos('[', Lines[I]) = 1 then begin
       Slash := Pos('/', Lines[I]);
@@ -172,28 +229,51 @@ begin
         if (N > 0) and (Total >= N) then begin
           Steps := Total;
           if N > Result then Result := N;
-          ProgressPage.SetText(Lines[I], LogFile);
         end;
       end;
     end;
 end;
 
+{ #755: "NN%" at the end of a download line (tlwu-setup / pip print it); -1 when the line has none }
+function LinePercent(const Line: String): Integer;
+var
+  P, S: Integer;
+begin
+  Result := -1;
+  P := Pos('%', Line);
+  if P < 2 then exit;
+  S := P - 1;
+  while (S > 0) and (Line[S] >= '0') and (Line[S] <= '9') and (P - S <= 3) do S := S - 1;
+  if S < P - 1 then Result := StrToIntDef(Copy(Line, S + 1, P - S - 1), -1);
+  if Result > 100 then Result := -1;
+end;
+
+function Pad2(N: Integer): String;
+begin
+  Result := IntToStr(N);
+  if N < 10 then Result := '0' + Result;
+end;
+
 procedure RunInstall;
 var
-  Params, LogFile, DoneFile: String;
-  RC, Waited, Seen: Integer;
+  Params, LogFile, DoneFile, Size: String;
+  RC, Waited, Seen, Sub, Pct, SecInStep, Elapsed, QuietTicks, LastCount: Integer;
+  Msg: String;
+  Gpu: Boolean;
   Done: AnsiString;
 begin
   LogFile := ExpandConstant('{app}\install.log');
   DoneFile := ExpandConstant('{app}\install.done');
   DeleteFile(DoneFile);
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
-  if WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]) then Params := Params + ' -Cpu';
+  Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
+  if not Gpu then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
-  ProgressPage.Description := 'This can take 10-40 minutes (about ' + IntToStr(PackSizeMB) + ' MB of language packs plus the core models and Python packages). 需要 10-40 分鐘，請保持網路連線。';
+  Size := SizeText(DownloadMB(Gpu));
+  ProgressPage.Description := 'This can take 10-40 minutes and downloads ' + Size + ' (models, language packs and Python packages). 需要 10-40 分鐘，約下載 ' + Size + '，請保持網路連線。';
   ProgressPage.SetText('Starting install.ps1 ...', LogFile);
   Steps := 8;   { replaced by N from the first "[n/N]" log line }
-  ProgressPage.SetProgress(0, Steps);
+  ProgressPage.SetProgress(0, Steps * 100);
   ProgressPage.Show;
   try
     if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, ExpandConstant('{app}'),
@@ -203,11 +283,33 @@ begin
     end;
     Waited := 0;
     Seen := 0;
+    SecInStep := 0;
+    QuietTicks := 0;
+    LastCount := -1;
+    LastLine := '';
+    LogLineCount := 0;
     while (not FileExists(DoneFile)) and (Waited < 6 * 3600 * 2) do begin   { 6 h cap, 500 ms per tick }
       RC := LastStep(LogFile);
-      if RC > Seen then Seen := RC;
-      ProgressPage.SetProgress(Seen, Steps);
-      Sleep(500);
+      if RC > Seen then begin Seen := RC; SecInStep := 0; end;
+      if LogLineCount <> LastCount then begin LastCount := LogLineCount; QuietTicks := 0; end
+      else QuietTicks := QuietTicks + 1;
+      if Waited mod REFRESH_TICKS = 0 then begin
+        Elapsed := Waited * POLL_MS div 1000;
+        SecInStep := SecInStep + REFRESH_TICKS * POLL_MS div 1000;
+        { sub-progress inside the current step: the download percent when the last line has one, else a slow creep
+          that stops at 90 so the bar always moves but never claims the step is done }
+        Pct := LinePercent(LastLine);
+        if Pct >= 0 then Sub := Pct
+        else begin Sub := SecInStep div 2 + 2; if Sub > 90 then Sub := 90; end;
+        if Sub > 99 then Sub := 99;
+        if Seen > 0 then Msg := '[' + IntToStr(Seen) + '/' + IntToStr(Steps) + ']' else Msg := 'Starting install.ps1 ...';
+        Msg := Msg + '   elapsed / 已用時間 ' + IntToStr(Elapsed div 60) + ':' + Pad2(Elapsed mod 60);
+        if QuietTicks >= STALL_TICKS then Msg := Msg + '   still working, slow network? / 仍在進行，網路是否太慢？';
+        ProgressPage.SetText(Msg, LastLine);
+        if Seen > 0 then ProgressPage.SetProgress((Seen - 1) * 100 + Sub, Steps * 100)
+        else ProgressPage.SetProgress(Sub div 4, Steps * 100);
+      end;
+      Sleep(POLL_MS);
       Waited := Waited + 1;
     end;
     if LoadStringFromFile(DoneFile, Done) then InstallRC := StrToIntDef(Trim(String(Done)), 1);
@@ -263,11 +365,23 @@ begin
     if not WizardSilent then
       if WizardIsTaskSelected('autoupdate') then SetConfigValue('auto_update', '1')
       else SetConfigValue('auto_update', '0');
+#ifdef CoreLayout
+    InstallRC := 0;   { #767: the prebuilt core needs no install.ps1; models are fetched after the copy (#752 part 4) }
+#else
     RunInstall;
+#endif
     MakeTalkShortcuts;
   end;
 end;
 
+#ifdef CoreLayout
+{ #767: nothing reads the language / GPU choice in the core layout yet (#752 part 4 wires packs), so do not ask }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := PageID = LangPage.ID;
+end;
+
+#endif
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpSelectTasks then PresetCpuTask;

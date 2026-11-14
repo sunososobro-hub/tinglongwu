@@ -28,7 +28,14 @@ DEFAULTS = {
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
+    "send_mode": "confirm",  # #834: how a speak line is sent (confirm / countdown / auto); owner default: confirm
 }
+SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
+
+
+def send_mode_notice_key(mode: str) -> str | None:
+    """#834: i18n key of the one-line quality notice shown when a direct-send mode is chosen, else None."""
+    return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
@@ -73,6 +80,52 @@ def quick_settings(s: dict, mode: str) -> dict:
         zh = mine.startswith("zh")
         out.update(source="mic", lang="zh" if zh else "en", target="en" if zh else "zh-tw")
     return out
+
+
+SPEAK_HINT_CABLE = "gui_ready_speak_cable"  # #710 ready line: "set the Meet/Zoom microphone to CABLE Output"
+SPEAK_HINT_NO_CABLE = "gui_speak_no_cable"  # #710 one line + vb-audio.com/Cable link
+SPEAK_PANEL_HINTS = (SPEAK_HINT_CABLE, SPEAK_HINT_NO_CABLE)
+
+
+def meeting_cable(names=None, platform: str | None = None) -> str | None:
+    """#710: the VB-CABLE playback device ("CABLE Input") the Speak button talks into on Windows, or None (not
+    installed, or not Windows: macOS BlackHole routing is #687). names=None lists soundcard's output devices."""
+    if (platform or sys.platform) != "win32":
+        return None
+    if names is None:
+        try:
+            import soundcard as sc
+
+            names = [sp.name for sp in sc.all_speakers()]
+        except Exception:  # noqa: BLE001 - no audio stack: treated as "no cable"
+            _diag.swallowed(__name__)
+            names = []
+    from ..reverse.vmic import pick_win_cable
+
+    return pick_win_cable(names)
+
+
+def speak_route(run: dict, cable: str | None, platform: str | None = None) -> str | None:
+    """#710: one press of Speak = my speech -> translation -> voice into the meeting. With VB-CABLE the session's
+    translated voice is played on `cable` (Meet/Zoom microphone = "CABLE Output"); `run` is changed in place and
+    the ready-status i18n key is returned. Windows without VB-CABLE: `run` stays subtitles-only and the key of a
+    one-line notice (with the vb-audio.com link) is returned; a voice saved for Listen is switched off for this run,
+    so nothing is played on the old earphones while the notice says "subtitles only". Other systems: None, `run`
+    unchanged."""
+    if cable:
+        run.update(voice=True, voice_device=cable, speak_cable=True)
+        return SPEAK_HINT_CABLE
+    if (platform or sys.platform) == "win32":
+        run.update(voice=False, speak_cable=False)
+        return SPEAK_HINT_NO_CABLE
+    return None
+
+
+def speak_start_view(hint: str | None) -> tuple[str, bool]:
+    """#710 (review of #749): what App.toggle() shows when a Speak session starts: (notice i18n key or "",
+    open the Adjust panel). Both Speak lines live in the Adjust panel, which stays withdrawn when Speak is pressed on
+    the bar, so the panel is opened for them; Listen / other systems (hint None) leave it as it is."""
+    return (hint if hint == SPEAK_HINT_NO_CABLE else ""), hint in SPEAK_PANEL_HINTS
 
 
 def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str, bool]]:
@@ -208,6 +261,8 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     out["overlay_alpha"] = clamp_alpha(out["overlay_alpha"])
+    if out["send_mode"] not in SEND_MODES:
+        out["send_mode"] = DEFAULTS["send_mode"]
     return out
 
 
@@ -430,7 +485,9 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
         dev = s.get("voice_device") or ""
-        if dev and outputs and dev not in outputs:  # #448: unplugged since it was saved
+        # #448: unplugged since it was saved. #710: the Speak cable is not in voice_outputs() (cables are hidden
+        # from the earphone list) but was just found by meeting_cable(), so it is passed on as is.
+        if dev and outputs and dev not in outputs and not s.get("speak_cable"):
             if notice is not None:
                 from ..i18n import t
 

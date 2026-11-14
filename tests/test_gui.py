@@ -485,12 +485,23 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
     keys = {"lang": a.v_lang, "target": a.v_target, "quality": a.v_quality, "engine": a.v_engine,
             "model": a.v_model, "source": a.v_source, "preset": a.v_preset, "glossary": a.v_gloss,
             "save": a.v_save, "save_path": a.v_save_path, "show_src": a.var_show_src, "live_draft": a.v_live,
-            "overlay_lines": a.v_lines, "font_size": a.v_font, "voice": a.v_voice, "voice_device": a.v_voice_dev,
-            "ui_lang": a.v_ui_lang, "floating_bar": a.v_bar}
-    if app_mod.sv_ttk is not None:
-        keys["theme"] = a.v_dark
+            "voice": a.v_voice, "voice_device": a.v_voice_dev, "floating_bar": a.v_bar}
     in_panel = _bound_vars(a.panel)
     assert [k for k, v in keys.items() if str(v) not in in_panel] == []
+    # #738: subtitle lines, font size, UI language and theme moved to the menu bar's Settings menu
+    in_menu = set()
+    stack = [a.menubar]
+    while stack:
+        m = stack.pop()
+        for i in range((m.index("end") or 0) + 1):
+            if m.type(i) == "cascade":
+                stack.append(m.nametowidget(m.entrycget(i, "menu")))
+            elif m.type(i) in ("radiobutton", "checkbutton"):
+                in_menu.add(str(m.entrycget(i, "variable")))
+    menu_keys = {"overlay_lines": a.v_lines, "font_size": a.v_font, "ui_lang": a.v_ui_lang}
+    if app_mod.sv_ttk is not None:
+        menu_keys["theme"] = a.v_dark
+    assert [k for k, v in menu_keys.items() if str(v) not in in_menu] == []
     for w in (a.log_text, a.btn_pause):  # log (with A-/A+, floating-bar toggle) and Pause live in the panel too
         assert w.winfo_toplevel() is a.panel
     assert a.panel.state() == "withdrawn"  # first start: only the bar
@@ -622,3 +633,43 @@ def test_engine_widget_hidden_until_advanced_expanded_and_remembered(gui_app):
     a._adv_toggled()
     a.root.update()
     assert not cb.winfo_ismapped()
+
+
+@pytest.fixture
+def _wizard_install(monkeypatch):
+    """Pretend the app runs from a setup (wizard) install; must be listed before gui_app so the App is built with it."""
+    from tinglongwu.gui import autoupdate
+
+    monkeypatch.setattr(autoupdate, "is_wizard_install", lambda *a, **k: True)
+
+
+def _descendants(w):
+    for c in w.winfo_children():
+        yield c
+        yield from _descendants(c)
+
+
+def test_update_controls_are_always_reachable_in_the_help_menu_756(_wizard_install, gui_app):
+    """#756: the update controls were off-screen below the log. #738 moved "Check for updates", the auto-update
+    checkbox and the version (Help > About) to the menu bar, which is always visible; Check setup stays above the
+    log."""
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    a.root.update()
+    assert str(a.root.cget("menu")) == str(a.menubar)
+    help_menu = a.menubar.nametowidget(a.menubar.entrycget(a.menubar.index(t("gui_menu_help")), "menu"))
+    labels = [help_menu.entrycget(i, "label") for i in range(help_menu.index("end") + 1)
+              if help_menu.type(i) != "separator"]
+    assert t("gui_upd_check") in labels and t("gui_upd_auto") in labels and t("gui_menu_about") in labels
+    kids = list(_descendants(a.panel))
+    setup_btn = next(w for w in kids if w.winfo_class() == "TButton" and w.cget("text") == t("gui_check_setup"))
+    log_row = int(a.log_text.master.grid_info()["row"])
+    assert int(a.act_row.grid_info()["row"]) < log_row and setup_btn.master is a.act_row
+
+
+def test_no_update_controls_on_a_git_checkout_756(gui_app):
+    from tinglongwu.i18n import t
+
+    assert not any(w.winfo_class() == "TButton" and w.cget("text") == t("gui_upd_check")
+                   for w in _descendants(gui_app.panel))

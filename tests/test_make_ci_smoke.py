@@ -203,3 +203,11 @@ def test_repo_tier2_pins_have_20_clips_per_language():
     assert pin["configs"] == mcs.TIER2_CONFIGS
     assert {lang: sum(c["lang"] == lang for c in pin["clips"]) for lang in T2} == {lang: 20 for lang in T2}
     assert all(len(c["sha256"]) == 64 for c in pin["clips"])
+
+
+def test_missing_pin_file_exits_with_a_clear_message(tmp_path, capsys):
+    # #789: a missing --pins file is a clear error, not an uncaught FileNotFoundError
+    missing = tmp_path / "nope.json"
+    assert mcs.main(["--set", "ko", "--pins", str(missing), "--out", str(tmp_path / "o")]) == 1
+    err = capsys.readouterr().err
+    assert f"pin file not found: {missing}" in err and "--set ko --pin N" in err

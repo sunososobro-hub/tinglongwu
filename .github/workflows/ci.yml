@@ -20,18 +20,22 @@ jobs:
         run: |
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
           for i in 1 2 3; do
-            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 && exit 0
+            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 xvfb && exit 0
             sleep 15
           done
           exit 1
       - name: Install (this is the only step that needs the network)
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" "pytest-timeout==2.3.1"
       - name: Script syntax (bash 3.2 compatible subset is checked by bash -n)
         run: |
           for f in scripts/*.sh scripts/i18n/*.sh; do bash -n "$f"; done
           grep -q "__TLWU_REF__" scripts/install.sh scripts/mac_install.sh scripts/bootstrap_windows.ps1
-      - name: Tests, normal
-        run: python -m pytest -q
+      - name: Tests, normal (real-Tk GUI tests run under xvfb; a skip there fails, #113)
+        # a modal dialog or a stuck Tk loop must fail fast, not hold the runner for hours (#113: PR #736 ran 2 h+)
+        timeout-minutes: 20
+        env:
+          TLWU_REQUIRE_DISPLAY: "1"
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" python -m pytest -q --timeout=120
       - name: Tests with the network physically disabled (offline suite + everything else)
         # new empty network namespace: no interfaces except loopback. The in-process guard (tinglongwu.offline) is on
         # as well, so a library that phones home fails the test twice over (blocked + no route).

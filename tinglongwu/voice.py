@@ -30,17 +30,23 @@ def _norm(name: str | None) -> str:
     return n.removeprefix("monitor of ").strip()
 
 
-def voice_output_problem(out_name: str | None, capture_name: str | None) -> str | None:
+def _virtual(name: str) -> bool:
+    return any(k in name for k in _LOOP_DEVICES)
+
+
+def voice_output_problem(out_name: str | None, capture_name: str | None, mic: bool = False) -> str | None:
     """Why playing the voice on `out_name` would be re-captured by the listen side, or None if it is safe.
 
     capture_name: the device the listen side records (the loopback speaker / its 'Monitor of' source, or the
-    microphone); None for a file. Rejects the capture device itself, its loopback/monitor, and virtual cables."""
+    microphone); None for a file. Rejects the capture device itself, its loopback/monitor, and virtual cables.
+    mic=True (#710, speak into a meeting): a virtual cable such as VB-CABLE "CABLE Input" is allowed when the
+    capture is a known real microphone (not itself a cable), because then nothing records the cable's other end."""
     out = " ".join((out_name or "").casefold().split())
     if not out:
         return "no output device"
-    if any(k in out for k in _LOOP_DEVICES):
-        return f"{out_name!r} is a virtual cable / loopback device that the listen side can record"
     cap = _norm(capture_name)
+    if _virtual(out) and not (mic and cap and not _virtual(" ".join((capture_name or "").casefold().split()))):
+        return f"{out_name!r} is a virtual cable / loopback device that the listen side can record"
     if cap and (_norm(out) == cap or cap in out or out in cap):
         return f"{out_name!r} is the device being captured ({capture_name!r}): the voice would be translated again"
     return None
@@ -59,6 +65,8 @@ class VoiceSink(Sink):
     def __init__(self, inner: Sink, speak, on_error=None, max_backlog: int = MAX_BACKLOG):
         self.inner, self.speak, self.max_backlog, self.dropped = inner, speak, max(1, max_backlog), 0
         self.on_error = on_error or (lambda e: None)
+        self.muted: str | None = None  # reason, once mute() has turned the voice off
+        self.capture_guard = None  # #710: on_reopen(name) for the capture source, set by open_voice for a cable
         self.q: queue.Queue = queue.Queue()
         self.t = threading.Thread(target=self._run, name="tlwu-voice", daemon=True)
         self.t.start()
@@ -72,10 +80,23 @@ class VoiceSink(Sink):
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass_source(self.inner, src, original, speaker)
 
+    def mute(self, reason: str) -> bool:
+        """Stop speaking for the rest of the session (subtitles continue); waiting lines are dropped. True the
+        first time only."""
+        if self.muted:
+            return False
+        self.muted = reason
+        while True:
+            try:
+                self.q.get_nowait()
+            except queue.Empty:
+                break
+        return True
+
     def write(self, r: Result) -> None:
         self.inner.write(r)
         text = (r.target or "").strip()
-        if text:
+        if text and not self.muted:
             while self.q.qsize() >= self.max_backlog:
                 try:
                     self.q.get_nowait()
@@ -109,6 +130,24 @@ class VoiceSink(Sink):
         self.q.put(None)
         self.t.join(CLOSE_TIMEOUT if timeout is None else timeout)
         return not self.t.is_alive()
+
+
+def cable_guard(sink: "VoiceSink", out_name: str, say, off=None):
+    """#710 (review of #749): on_reopen(name) for the capture source while the voice plays into a virtual cable.
+    The mic was checked at start, but a device change can reopen the recorder on another device (e.g. the system
+    default falls back to "CABLE Output"); then the voice is muted for good instead of feeding itself back into
+    the meeting. Subtitles continue."""
+
+    def guard(capture_name: str | None) -> None:
+        problem = voice_output_problem(out_name, capture_name, mic=True)
+        if problem and sink.mute(problem):
+            say(f"tlwu: voice off after the microphone changed: {problem}")
+            if off is not None:
+                from .i18n import t
+
+                off(t("voice_off", why=problem))
+
+    return guard
 
 
 def kokoro_paths(mdir: Path, tts_python: str | None = None, tts_model: str | None = None) -> tuple[str, str]:
@@ -166,19 +205,33 @@ def make_speaker(tts, player, drain_timeout: float = 60.0, on_off=None):
     return speak
 
 
-def capture_device_name(file: str | None, mic: bool, device: str | None) -> str | None:
-    """Name of the device the listen side records (None for a file). Loopback capture records the default speaker
-    unless --capture-device names another one."""
+def resolve_capture(file: str | None, mic: bool, device: str | None) -> tuple[str | None, bool]:
+    """(name of the device the listen side records, known). None for a file. Loopback capture records the default
+    speaker unless --capture-device names another one. known=True only when the name is the device the recorder
+    really opens: a microphone substring (--capture-device "Output") is resolved the way MicSource resolves it
+    (#710 review: "Output" must be seen as "CABLE Output (VB-Audio ...)", not as a harmless word)."""
     if file:
-        return None
-    if device:
-        return device
+        return None, False
     try:
         import soundcard as sc
-
-        return (sc.default_microphone() if mic else sc.default_speaker()).name
     except Exception:  # noqa: BLE001 - no audio stack: the explicit-name checks still apply
-        return None
+        return device, False
+    try:
+        if device and mic:
+            from .capture._soundcard import find_by_name
+
+            mon = device.strip().casefold().startswith("monitor of")  # same rule as capture.mic.MicSource
+            return find_by_name(sc, device, include_loopback=mon).name, True
+        if device:
+            return device, False
+        return (sc.default_microphone() if mic else sc.default_speaker()).name, True
+    except Exception:  # noqa: BLE001 - no such device / no audio stack: the name stays unproven
+        return device, False
+
+
+def capture_device_name(file: str | None, mic: bool, device: str | None) -> str | None:
+    """Name of the device the listen side records (None for a file); see resolve_capture()."""
+    return resolve_capture(file, mic, device)[0]
 
 
 def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable]:
@@ -195,7 +248,10 @@ def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable
         player = Player(a.voice_device, 48000)
     except LookupError as e:  # no output device matches --voice-device
         raise RuntimeError(f"--voice-device: {e}") from e
-    problem = voice_output_problem(player.speaker_name, capture_device_name(a.file, a.mic, a.device))
+    cap, known = resolve_capture(a.file, a.mic, a.device)
+    # #710: the cable exception needs the microphone the recorder really opens; an unproven name never unlocks it
+    mic_capture = bool(a.mic) and not a.file and known
+    problem = voice_output_problem(player.speaker_name, cap, mic=mic_capture)
     if problem:
         player.close()
         raise RuntimeError(f"--voice: {problem}. Pick earphones with --voice-device NAME")
@@ -207,6 +263,8 @@ def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable
         raise RuntimeError(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk") from e
     say(f"tlwu: voice ({lang}, Kokoro) on {player.speaker_name}")
     sink = VoiceSink(inner, make_speaker(tts, player, on_off=off), on_error=lambda e: say(f"tlwu: voice error: {e}"))
+    if _virtual(" ".join(player.speaker_name.casefold().split())):  # #710: voice goes into a meeting cable
+        sink.capture_guard = cable_guard(sink, player.speaker_name, say, off)
 
     def close(drop: bool = False) -> None:
         """drop=True on Ctrl+C / Stop: skip the waiting lines instead of speaking them first."""
