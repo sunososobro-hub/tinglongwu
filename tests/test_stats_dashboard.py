@@ -382,7 +382,10 @@ def test_counter_base_env_and_no_fetch_without_https():
     assert sd.fetch_installs("") is None and sd.fetch_installs("http://plain") is None
 
 
-@pytest.mark.parametrize("bad", [{"error": "unavailable"}, ["x"], [{"date": "2026-11-11", "n": "lots"}]])
+@pytest.mark.parametrize("bad", [{"error": "unavailable"}, ["x"], [{"date": "2026-11-11", "version": "0.3.3", "os": "windows", "n": "lots"}],
+                                 [{"date": [], "version": "0.3.3", "os": "windows", "n": 1}],
+                                 [{"date": {}, "version": "0.3.3", "os": "windows", "n": 1}],
+                                 [{"date": "2026-11-11", "version": "0.3.3", "os": "windows", "n": [1]}]])
 def test_run_survives_bad_counter_answer(tmp_path, bad):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=bad)
     assert "Install counter not available yet" in (tmp_path / "index.html").read_text(encoding="utf-8")

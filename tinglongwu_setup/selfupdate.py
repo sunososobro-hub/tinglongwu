@@ -81,7 +81,7 @@ def _latest_json(get, count_url: str | None) -> dict:
     if count_url:
         try:
             rel = json.loads(get(count_url, timeout=COUNTER_TIMEOUT_S).decode("utf-8"))
-            if isinstance(rel, dict) and rel.get("tag_name"):
+            if isinstance(rel, dict) and isinstance(rel.get("tag_name"), str) and rel["tag_name"]:
                 return rel  # anything else ({} / [] / an error object) -> GitHub below
         except Exception:  # noqa: BLE001  # Worker down / blocked / bad answer: ask GitHub as before
             pass
