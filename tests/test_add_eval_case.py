@@ -121,3 +121,24 @@ def test_issue_number_fetches_with_gh(tmp_path):
     cases = tmp_path / "user_cases.jsonl"
     assert aec.main(["900", "--repo", "o/r", "--cases", str(cases)], run=fake_run) == 0
     assert json.loads(cases.read_text("utf-8"))["source"] == f"{URL}900"
+
+
+def test_heading_inside_fenced_expected_is_kept():
+    expected = "前言\n```\n### 標題\n正文\n```"
+    case = aec.case_from_issue(issue(expected=expected))
+    assert case["ref"] == "前言\n### 標題\n正文"
+
+
+@pytest.mark.parametrize("happened", ["Output: first line\nsecond line", "Source:\nOutput: 是"])
+def test_output_marker_without_source_is_rejected(happened):
+    with pytest.raises(aec.CaseError, match="no 'Source:' text"):
+        aec.case_from_issue(issue(happened=happened))
+
+
+def test_unicode_line_separator_in_a_case_survives_later_appends(tmp_path):
+    cases = tmp_path / "user_cases.jsonl"
+    assert aec.append_case(cases, aec.case_from_issue(issue(expected="會議 三點開始。"))) is True
+    assert aec.append_case(cases, aec.case_from_issue(issue())) is False  # duplicate check still parses the file
+    assert aec.append_case(cases, aec.case_from_issue(issue(n=910, happened="Source: はい\nOutput: 不"))) is True
+    rows = aec.load_cases(cases)
+    assert [r["id"] for r in rows] == ["issue-900", "issue-910"] and rows[0]["ref"] == "會議 三點開始。"

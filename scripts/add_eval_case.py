@@ -46,7 +46,7 @@ class CaseError(ValueError):
 
 def form_fields(body: str) -> dict[str, str]:
     """Issue-form body -> {pair, happened, expected} (only the fields we know; empty / '_No response_' dropped)."""
-    out, key, buf = {}, None, []
+    out, key, buf, fenced = {}, None, [], False
 
     def flush():
         if key:
@@ -55,7 +55,9 @@ def form_fields(body: str) -> dict[str, str]:
                 out[key] = text
 
     for line in (body or "").replace("\r\n", "\n").split("\n"):
-        m = re.match(r"^#{2,4}\s+(.+?)\s*$", line)
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        m = None if fenced else re.match(r"^#{2,4}\s+(.+?)\s*$", line)
         if m:
             flush()
             label = m.group(1).split(" / ")[0].strip().lower()
@@ -87,18 +89,21 @@ def parse_pair(text: str) -> tuple[str, str, str]:
 def split_happened(text: str) -> tuple[str, str]:
     """'What happened' -> (source text, tlwu output). Marked lines win; else paragraph 1 / paragraph 2."""
     text = _unfence(text)
-    src, out, cur = [], [], None
+    src, out, cur, marked = [], [], None, False
     for line in text.split("\n"):
         if SRC_MARK.match(line):
-            cur = src
+            cur, marked = src, True
             line = SRC_MARK.sub("", line)
         elif OUT_MARK.match(line):
-            cur = out
+            cur, marked = out, True
             line = OUT_MARK.sub("", line)
         if cur is not None:
             cur.append(line)
-    if src:
-        return "\n".join(src).strip(), "\n".join(out).strip()
+    if marked:
+        source = "\n".join(src).strip()
+        if not source:
+            raise CaseError("'What happened' has an output marker but no 'Source:' text")
+        return source, "\n".join(out).strip()
     paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     if len(paras) == 2:
         return paras[0], paras[1]
@@ -134,7 +139,7 @@ def case_from_issue(issue: dict) -> dict:
 def load_cases(path: Path) -> list[dict]:
     if not path.is_file():
         return []
-    return [json.loads(ln) for ln in path.read_text("utf-8").splitlines() if ln.strip()]
+    return [json.loads(ln) for ln in path.read_text("utf-8").split("\n") if ln.strip()]
 
 
 def append_case(path: Path, case: dict) -> bool:
