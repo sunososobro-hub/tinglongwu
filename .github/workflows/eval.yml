@@ -5,7 +5,8 @@ name: eval
 # The workflow runs on every PR to dev so the `mini-eval` check always exists; a PR that touches none of the paths
 # below (docs only, etc.) ends after the first step with no install and no model download (< 1 min).
 # #750: the low-end-cpu job runs the same mini-eval as a no-NVIDIA laptop would (--device cpu, TLWU_CPU_THREADS=4)
-# and fails when per-line p50/p90 latency is > 15% over the base commit run on the same runner (fallback
+# and fails when per-line p50/p90 latency is > 15% over the base commit run on the same runner, in its own venv
+# with its own dependencies (#796; it also runs on PRs that only change requirements*.txt / pyproject.toml) (fallback
 # eval/lowend_baseline.json) or peak RSS > 6 GiB. It also runs
 # on the release PR (dev -> main) whatever it changes, so a release with a low-end regression does not ship.
 on:
@@ -130,7 +131,7 @@ jobs:
           # the release PR (dev -> main) always runs; a docs fast-lane PR to main (rules section 11) uses the filter
           if [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" = "dev" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only HEAD^1 HEAD > changed.txt
-          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)' changed.txt; then
+          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$|requirements[^/]*\.txt$|pyproject\.toml$)' changed.txt; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -185,12 +186,20 @@ jobs:
       - name: Mini-eval of the base commit (dev tip) on this same runner
         if: steps.paths.outputs.run == 'true'
         # runner CPU types differ ~1.8x in speed, so the 15% budget is checked against dev measured right here.
-        # HEAD^1 of the PR merge commit is the base tip. `python -m` from the base checkout imports its own code.
+        # HEAD^1 of the PR merge commit is the base tip. #796: it runs in its own venv with the base checkout's own
+        # requirements / pyproject, so a PR that only bumps a dependency is compared with the dependencies dev had
+        # (the PR venv would give both runs the PR's packages). A venv or install failure falls back like a failed run.
         run: |
           set +e
           git worktree add -q "$RUNNER_TEMP/base" HEAD^1 || exit 0
           cd "$RUNNER_TEMP/base"
-          python -m tlwu_eval --smoke --data "$GITHUB_WORKSPACE/eval_data/smoke" --clips 5 --model "$WHISPER" \
+          BASE_VENV="$RUNNER_TEMP/base-venv"
+          BASE_PY="$BASE_VENV/bin/python"
+          if ! { python -m venv "$BASE_VENV" && "$BASE_PY" -m pip install -q -e . \
+                 && "$BASE_PY" -m pip install -q -r requirements-llama-cpu.txt --only-binary=:all:; }; then
+            echo "base venv failed: gate uses eval/lowend_baseline.json"; exit 0
+          fi
+          "$BASE_PY" -m tlwu_eval --smoke --data "$GITHUB_WORKSPACE/eval_data/smoke" --clips 5 --model "$WHISPER" \
             --engine hymt2-cpu --device cpu --no-noise --models-dir "$TLWU_MODELS" --out "$GITHUB_WORKSPACE/base.json"
           if [ "$?" -gt 1 ]; then rm -f "$GITHUB_WORKSPACE/base.json"; echo "base run failed: gate uses eval/lowend_baseline.json"; fi
           exit 0
