@@ -286,13 +286,15 @@ class ConfirmSession:
             return True
         return False
 
-    def _countdown(self, u: Utterance) -> bool | None:
+    def _countdown(self, u: Utterance, d: _sm.SendDecider | None = None) -> bool | None:
         """#760: show the countdown and wait. True = send ("y" or time ran out on a confident line), False = stopped
         (any other input), None = time ran out but the line is low-confidence: fall back to the explicit prompt."""
+        if d is None:
+            d = _sm.SendDecider(self.clock, "countdown", self.countdown_s, self.require_back)
+            d.line_ready(u)
         q = self._open_reader(u)
         self.out(f"sending in {self.countdown_s:g} s  [any key+Enter]=stop  [y]+Enter=send now"
                  + ("  [v0-v4]+Enter=change voice" if self.set_voice else ""))
-        end = self.clock() + self.countdown_s
         while True:
             try:
                 key = q.get_nowait()
@@ -306,28 +308,30 @@ class ConfirmSession:
                 key = key.strip().lower()
                 if self._voice_cmd(key, u):
                     q = self._open_reader(u)  # voice switched: restart the countdown
-                    end = self.clock() + self.countdown_s
+                    d.restart()
                     continue
-                return key == SEND_KEY
-            if self.clock() >= end:
+                return d.confirm() == _sm.SEND if key == SEND_KEY else d.stop() == _sm.SEND
+            act = d.tick()
+            if act == _sm.SEND:
+                return True
+            if act == _sm.ASK:
                 break
             self.sleep(0.05)
-        why = _sm.low_confidence(u, self.require_back)
-        if why:
-            self.out(f"low confidence ({why}): waiting for confirm")
-            return None
-        return True
+        self.out(f"low confidence ({d.reason}): waiting for confirm")
+        return None
 
     def _ask(self, u: Utterance) -> bool:
         """True = send: only "y" (any case). A bare Enter, r/x, anything else or EOF discards."""
-        if self.mode == "auto" and not _sm.low_confidence(u, self.require_back):
+        d = _sm.SendDecider(self.clock, self.mode, self.countdown_s, self.require_back)
+        act = d.line_ready(u)
+        if act == _sm.SEND:
             return True
-        if self.mode == "countdown":
-            r = self._countdown(u)
+        if act == _sm.WAIT:
+            r = self._countdown(u, d)
             if r is not None:
                 return r
         elif self.mode == "auto":
-            self.out(f"low confidence ({_sm.low_confidence(u, self.require_back)}): waiting for confirm")
+            self.out(f"low confidence ({d.reason}): waiting for confirm")
         pending = self._q.qsize()
         extra = f" ({pending} queued)" if pending else ""
         help_ = HELP + ("  [v0-v4]+Enter=change voice" if self.set_voice else "")
