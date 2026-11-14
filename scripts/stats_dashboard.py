@@ -261,18 +261,28 @@ def parse_faucet(body):
     return {"level": int(m.group(1)), "focus": focus}
 
 
-def _label_value(labels, prefix):
+ALL = "all"  # rules section 12: no os/lang label = all platforms / all languages
+
+
+def _label_value(labels, prefix, default=UNLABELLED):
     for name in labels:
         if name.startswith(prefix):
             return name[len(prefix):]
-    return UNLABELLED
+    return default
+
+
+def _platform(labels):
+    p = _label_value(labels, "os:", None)
+    if p is not None:
+        return p
+    return "mobile" if "area:mobile" in labels else ALL
 
 
 def build_flow(items):
     """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
 
-    Everything is in quota minutes (minutes x model weight, opus = 2x). Missing mode / os /
-    lang labels go to an 'unlabelled' node instead of failing.
+    Everything is in quota minutes (minutes x model weight, opus = 2x). A missing mode label goes to
+    'unlabelled'; no os label = 'mobile' for area:mobile else 'all'; no lang label = 'all'.
     """
     paths, types = {}, {}
     for it in items:
@@ -280,7 +290,7 @@ def build_flow(items):
         if q <= 0:
             continue
         labels = it.get("labels", [])
-        key = (_label_value(labels, "mode:"), _label_value(labels, "os:"), _label_value(labels, "lang:"))
+        key = (_label_value(labels, "mode:"), _platform(labels), _label_value(labels, "lang:", ALL))
         paths[key] = paths.get(key, 0.0) + q
         t = next((n for n, _ in TYPE_TARGETS if n in labels), "other")
         types[t] = types.get(t, 0.0) + q
