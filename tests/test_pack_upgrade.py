@@ -19,7 +19,7 @@ def entries():
 def test_manifest_lists_every_pack_with_size_and_sha(tmp_path):
     man = pm.make_manifest(entries())
     assert set(man["packs"]) == {"speak", "meeting-notes", "ja", "ko"}
-    assert man["packs"]["speak"]["feature"] == "speak" and man["packs"]["ja"]["feature"] == "language"
+    assert man["packs"]["speak"]["feature"] == "speak" and man["packs"]["ja"]["feature"] == "ja"
     f = tmp_path / "m.json"
     f.write_text(json.dumps(man))
     assert pm.load_manifest(f) == man
@@ -64,3 +64,18 @@ def test_release_notes_list_every_pack_size():
     for name, mb in (("speak", "300.0"), ("meeting-notes", "800.0"), ("ja", "1100.0"), ("ko", "1100.0")):
         assert f"| {name} | {mb} MB |" in text
     assert "Optional packs" not in rn.release_notes("## What's new\n", "", None, "", "", "", [], {})
+
+
+def test_strict_size_and_sha_validation():
+    for bad in ({"size": True}, {"size": 1.9}, {"size": 0}, {"sha256": "z" * 64}, {"sha256": 1 << 200}):
+        e = {"ja": {"size": 5, "sha256": H, "url": "u", **bad}}
+        with pytest.raises(pm.ManifestError):
+            pm.make_manifest(e)
+
+
+def test_languages_independent_and_keep_unlisted_installed():
+    man = pm.make_manifest(entries())
+    assert pm.feature_status("ja", man, {"ja": H})[0]  # ko not installed: ja still available
+    assert not pm.feature_status("ko", man, {"ja": H})[0]
+    plan = pm.plan_upgrade(man, {"ja": H, "old-pack": H})
+    assert plan["keep"] == ["ja", "old-pack"] and plan["outdated"] == [] and plan["download"] == []

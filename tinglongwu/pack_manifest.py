@@ -8,10 +8,12 @@ user already has (even if the manifest lists a newer build of it; that is only r
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 PACK_KEYS = ("feature", "size", "sha256", "url")
 FEATURES = {"speak": "speak mode (voices and virtual microphone)", "meeting-notes": "meeting notes"}
+SHA_RE = re.compile(r"[0-9a-fA-F]{64}")
 
 
 class ManifestError(Exception):
@@ -19,15 +21,15 @@ class ManifestError(Exception):
 
 
 def feature_of(name: str) -> str:
-    return name if name in FEATURES else "language"
+    """Each pack is its own feature, so a removed ko pack never disables an installed ja pack."""
+    return name
 
 
 def make_manifest(entries: dict[str, dict]) -> dict:
     """entries = {pack name: {"size": bytes, "sha256": hex, "url": str}}; the feature is derived from the name."""
     packs = {}
     for name, rec in sorted(entries.items()):
-        packs[name] = {"feature": feature_of(name), "size": int(rec["size"]), "sha256": str(rec["sha256"]).lower(),
-                       "url": rec["url"]}
+        packs[name] = {"feature": feature_of(name), "size": rec["size"], "sha256": rec["sha256"], "url": rec["url"]}
     return validate({"packs": packs})
 
 
@@ -38,9 +40,9 @@ def validate(man) -> dict:
     for name, rec in packs.items():
         if not isinstance(rec, dict) or any(k not in rec for k in PACK_KEYS):
             raise ManifestError(f"pack {name}: needs {', '.join(PACK_KEYS)}")
-        if not isinstance(rec["size"], int) or rec["size"] <= 0:
+        if type(rec["size"]) is not int or rec["size"] <= 0:  # bool is an int subclass
             raise ManifestError(f"pack {name}: size must be a positive number of bytes")
-        if len(str(rec["sha256"])) != 64:
+        if not isinstance(rec["sha256"], str) or not SHA_RE.fullmatch(rec["sha256"]):
             raise ManifestError(f"pack {name}: sha256 must be 64 hex characters")
     return man
 
@@ -65,8 +67,8 @@ def plan_upgrade(man: dict, installed: dict[str, str], wanted: list[str] | None 
     """What the upgrade fetches: only packs in `wanted` (default none) that are not installed. Installed packs are
     kept; an installed pack whose sha256 differs from the manifest is listed in `outdated` but not downloaded."""
     packs = man["packs"]
-    keep = sorted(n for n in packs if n in installed)
-    outdated = [n for n in keep if installed[n] != str(packs[n]["sha256"]).lower()]
+    keep = sorted(installed)  # also packs a newer manifest no longer lists
+    outdated = [n for n in keep if n in packs and installed[n].lower() != packs[n]["sha256"].lower()]
     download = [n for n in (wanted or []) if n in packs and n not in installed]
     return {"download": download, "keep": keep, "outdated": outdated}
 
