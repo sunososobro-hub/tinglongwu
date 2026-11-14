@@ -10,8 +10,9 @@ from .capture.base import SAMPLE_RATE as SR
 
 VadFn = Callable[[np.ndarray], list[tuple[int, int]]]
 
-# #716: silence after the newest segment is reported (on_quiet) only up to this many seconds; every pause / merge
-# threshold is below it (PAUSE_SEND 0.8, --pause-send), so later reports would change nothing.
+# #716: silence after the newest segment is reported (on_quiet) only up to this many seconds by default; the
+# default pause / merge thresholds are below it (PAUSE_SEND 0.8, ja 0.5). Segmenter.quiet_max raises it for a
+# larger --pause-send.
 QUIET_MAX = 3.0
 
 
@@ -44,6 +45,7 @@ class Segmenter:
         # segment, with the silence after that segment's speech so far. A forced cut or a held fragment followed by
         # silence yields no new segment, so without this the consumer never learns the speaker stopped.
         self.on_quiet: Callable[[float], None] | None = None
+        self.quiet_max = QUIET_MAX
         self._quiet: float | None = None  # silence (s) after the newest segment's speech; None = speech / none yet
 
     def segments(self, frames: Iterable[np.ndarray]) -> Iterator[np.ndarray]:
@@ -60,7 +62,7 @@ class Segmenter:
             out, buf = self._step(buf)
             if out is None and q is not None and self._quiet is not None:
                 self._quiet = q + added / SR  # still silent since the newest segment
-                if self.on_quiet is not None and q <= QUIET_MAX:
+                if self.on_quiet is not None and q <= self.quiet_max:
                     self.on_quiet(self._quiet)
             if out is not None:
                 self.epoch += 1

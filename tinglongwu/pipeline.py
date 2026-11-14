@@ -111,6 +111,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             # #716: silence after the newest segment goes through the queue, so it reaches the merger after that text
             if merger is not None and hasattr(merger, "quiet") and hasattr(segmenter, "on_quiet"):
                 segmenter.on_quiet = lambda sec: put(_Quiet(sec, consumed[0] / SAMPLE_RATE))
+                send = getattr(merger, "pause_send", None)
+                if send is not None and hasattr(segmenter, "quiet_max"):  # an explicit --pause-send must be reachable
+                    segmenter.quiet_max = max(segmenter.quiet_max, float(send))
             frames = source.frames()
             try:
                 for seg in segmenter.segments(counted(frames)):

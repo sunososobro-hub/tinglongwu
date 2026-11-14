@@ -130,3 +130,12 @@ def test_pipeline_releases_held_text_at_pause_not_max_wait():
         audio_clock=True)
     # before #716 the held head waited for max_wait and was glued to the next sentence 3 s later
     assert sink.lines == ["One of the biggest developments of that time", "It changed everything."]
+
+
+def test_pipeline_quiet_reaches_large_pause_send():
+    # an explicit --pause-send above the default 3 s report cap still releases at that pause, not at max_wait
+    sig = audio((9.0, True), (5.0, False), (2.0, True), (1.0, False))
+    sink = Lines()
+    run(Src(sig), seg(), ByLength(), Echo(), sink, tgt="zh",
+        merger=SentenceMerger(max_wait=100.0, min_words=3, pause_send=4.0), audio_clock=True)
+    assert sink.lines == ["One of the biggest developments of that time", "It changed everything."]
