@@ -100,6 +100,8 @@ def get_pending(cfg: dict) -> tuple[str, str] | None:
 def set_pending(ver: str, path: str, cfg: dict | None = None) -> None:
     """#779: keep only the newest downloaded installer; an older pending file is deleted."""
     old = get_pending(userdirs.read_config() if cfg is None else cfg)
+    if old and (_ver(ver) or (0, 0, 0)) < (_ver(old[0]) or (0, 0, 0)) and old[1] != path:
+        return  # an older download never displaces a newer pending installer
     if old and old[1] != path:
         try:
             Path(old[1]).unlink()

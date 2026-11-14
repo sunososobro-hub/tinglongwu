@@ -57,3 +57,13 @@ def test_garbage_pending_is_cleared():
     userdirs.write_config_value(au.PENDING_KEY, "nonsense")
     assert au.pending_to_apply(userdirs.read_config(), "0.3.5") is None
     assert not userdirs.read_config().get(au.PENDING_KEY)
+
+
+def test_older_download_never_replaces_newer_pending(tmp_path):
+    new, old = tmp_path / "new.exe", tmp_path / "old.exe"
+    new.write_bytes(b"2")
+    old.write_bytes(b"1")
+    au.set_pending("0.3.7", str(new))
+    au.set_pending("0.3.6", str(old))
+    assert au.get_pending(userdirs.read_config()) == ("0.3.7", str(new))
+    assert new.exists()

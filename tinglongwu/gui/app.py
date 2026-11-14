@@ -748,6 +748,7 @@ class App:
             self.upd_busy = False
             if not self.upd_apply_when_ready and self.upd_ver:  # #779: quiet download -> install at next launch
                 autoupdate.set_pending(self.upd_ver, ev[1])
+                self.upd_exe = ev[1]  # a manual "Check for updates" now offers the staged installer, no re-download
                 if autoupdate.claim_prompt(userdirs.read_config()):  # at most one line per day
                     self._upd_show("gui_upd_staged", ver=self.upd_ver)
                 return True
