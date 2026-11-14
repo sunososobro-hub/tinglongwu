@@ -30,17 +30,23 @@ def _norm(name: str | None) -> str:
     return n.removeprefix("monitor of ").strip()
 
 
-def voice_output_problem(out_name: str | None, capture_name: str | None) -> str | None:
+def _virtual(name: str) -> bool:
+    return any(k in name for k in _LOOP_DEVICES)
+
+
+def voice_output_problem(out_name: str | None, capture_name: str | None, mic: bool = False) -> str | None:
     """Why playing the voice on `out_name` would be re-captured by the listen side, or None if it is safe.
 
     capture_name: the device the listen side records (the loopback speaker / its 'Monitor of' source, or the
-    microphone); None for a file. Rejects the capture device itself, its loopback/monitor, and virtual cables."""
+    microphone); None for a file. Rejects the capture device itself, its loopback/monitor, and virtual cables.
+    mic=True (#710, speak into a meeting): a virtual cable such as VB-CABLE "CABLE Input" is allowed when the
+    capture is a known real microphone (not itself a cable), because then nothing records the cable's other end."""
     out = " ".join((out_name or "").casefold().split())
     if not out:
         return "no output device"
-    if any(k in out for k in _LOOP_DEVICES):
-        return f"{out_name!r} is a virtual cable / loopback device that the listen side can record"
     cap = _norm(capture_name)
+    if _virtual(out) and not (mic and cap and not _virtual(" ".join((capture_name or "").casefold().split()))):
+        return f"{out_name!r} is a virtual cable / loopback device that the listen side can record"
     if cap and (_norm(out) == cap or cap in out or out in cap):
         return f"{out_name!r} is the device being captured ({capture_name!r}): the voice would be translated again"
     return None
@@ -195,7 +201,8 @@ def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable
         player = Player(a.voice_device, 48000)
     except LookupError as e:  # no output device matches --voice-device
         raise RuntimeError(f"--voice-device: {e}") from e
-    problem = voice_output_problem(player.speaker_name, capture_device_name(a.file, a.mic, a.device))
+    problem = voice_output_problem(player.speaker_name, capture_device_name(a.file, a.mic, a.device),
+                                   mic=bool(a.mic) and not a.file)
     if problem:
         player.close()
         raise RuntimeError(f"--voice: {problem}. Pick earphones with --voice-device NAME")

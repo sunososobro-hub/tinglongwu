@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, quick_buttons, quick_settings, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, meeting_cable, quick_buttons, quick_settings, speak_route, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -359,6 +359,7 @@ class App:
         self.status_key: str | None = "gui_ready"
         self.quick_mode: str | None = None  # #294: first-screen button that started this session
         self.run_source = "system"
+        self.speak_hint: str | None = None  # #710: speak_route() result for this session
         self._build_controls()
         self._build_quick()
         self._build_bar()
@@ -973,6 +974,7 @@ class App:
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
         self.quick_mode, self.run_source = mode, run.get("source")
+        self.speak_hint = speak_route(run, meeting_cable()) if mode == "speak" else None  # #710
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -981,7 +983,7 @@ class App:
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
         self.set_dot("loading")
-        self.v_notice.set("")
+        self.v_notice.set(t("gui_speak_no_cable") if self.speak_hint == "gui_speak_no_cable" else "")
         self.errored = False
         self.listening = True
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
@@ -1034,6 +1036,8 @@ class App:
                         self.btn.configure(text=t("gui_stop"), state="normal")
                         self.set_dot("on")
                         ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
+                        if self.speak_hint == "gui_ready_speak_cable":  # #710: voice goes into CABLE Input
+                            ready = self.speak_hint
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
                 elif kind == "notice":

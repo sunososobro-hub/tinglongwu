@@ -75,6 +75,37 @@ def quick_settings(s: dict, mode: str) -> dict:
     return out
 
 
+def meeting_cable(names=None, platform: str | None = None) -> str | None:
+    """#710: the VB-CABLE playback device ("CABLE Input") the Speak button talks into on Windows, or None (not
+    installed, or not Windows: macOS BlackHole routing is #687). names=None lists soundcard's output devices."""
+    if (platform or sys.platform) != "win32":
+        return None
+    if names is None:
+        try:
+            import soundcard as sc
+
+            names = [sp.name for sp in sc.all_speakers()]
+        except Exception:  # noqa: BLE001 - no audio stack: treated as "no cable"
+            _diag.swallowed(__name__)
+            names = []
+    from ..reverse.vmic import pick_win_cable
+
+    return pick_win_cable(names)
+
+
+def speak_route(run: dict, cable: str | None, platform: str | None = None) -> str | None:
+    """#710: one press of Speak = my speech -> translation -> voice into the meeting. With VB-CABLE the session's
+    translated voice is played on `cable` (Meet/Zoom microphone = "CABLE Output"); `run` is changed in place and
+    the ready-status i18n key is returned. Windows without VB-CABLE: `run` stays subtitles-only and the key of a
+    one-line notice (with the vb-audio.com link) is returned. Other systems: None, `run` unchanged."""
+    if cable:
+        run.update(voice=True, voice_device=cable, speak_cable=True)
+        return "gui_ready_speak_cable"
+    if (platform or sys.platform) == "win32":
+        return "gui_speak_no_cable"
+    return None
+
+
 def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str, bool]]:
     """#294: {mode: (i18n key, enabled)} for the first-screen buttons. phase: idle | loading (models not ready:
     both read "Loading...", nothing to press) | running (the pressed one is Stop, the other is off) | busy
@@ -430,7 +461,9 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
         dev = s.get("voice_device") or ""
-        if dev and outputs and dev not in outputs:  # #448: unplugged since it was saved
+        # #448: unplugged since it was saved. #710: the Speak cable is not in voice_outputs() (cables are hidden
+        # from the earphone list) but was just found by meeting_cable(), so it is passed on as is.
+        if dev and outputs and dev not in outputs and not s.get("speak_cable"):
             if notice is not None:
                 from ..i18n import t
 
