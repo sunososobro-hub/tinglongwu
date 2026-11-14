@@ -79,5 +79,6 @@ def remove_pack(pack: str, mdir) -> list[str]:
     gone = []
     for d in removable_dirs(pack, mdir):
         shutil.rmtree(d, ignore_errors=True)
-        gone.append(d.name)
+        if not d.exists():  # record only confirmed removals
+            gone.append(d.name)
     return gone

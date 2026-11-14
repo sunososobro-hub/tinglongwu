@@ -72,11 +72,31 @@ def test_screen_builds_rows_and_runs_fake_download(tmp_path):
     from tinglongwu.gui.addons_screen import AddonsScreen
 
     got = []
-    s = AddonsScreen(root, mdir=tmp_path, run=lambda pack, put: (got.append(pack), put(("pack_done", pack, 0))))
+    s = AddonsScreen(root, mdir=tmp_path, run=lambda pack, put, mdir=None: (got.append((pack, mdir)), put(("pack_done", pack, 0))))
     labels = [c.cget("text") for f in s.body.winfo_children() for c in f.winfo_children() if c.winfo_class() == "TButton"]
     assert labels == ["Add", "Add", "Add"]
     s.add("ja")
-    s.win.update()
-    s._poll()
-    assert got == ["ja"] and "ja installed" in s.msg.get()
+    import time
+
+    t0 = time.time()
+    while "ja installed" not in s.msg.get() and time.time() - t0 < 5:  # bounded wait for the worker thread
+        s.win.update()
+        s._poll()
+        time.sleep(0.01)
+    assert got == [("ja", tmp_path)] and "ja installed" in s.msg.get() and not s.busy
     root.destroy()
+
+
+def test_import_command_uses_screen_models_dir(tmp_path, monkeypatch):
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    from tinglongwu.gui import addons_screen as sc
+
+    seen = []
+    monkeypatch.setattr(sc.subprocess if hasattr(sc, "subprocess") else __import__("subprocess"), "run",
+                        lambda cmd, **k: seen.append(cmd) or type("R", (), {"returncode": 0})())
+    obj = object.__new__(sc.AddonsScreen)
+    obj.mdir = tmp_path
+    assert obj._import_zip("x.zip") == "Installed from the zip."
+    assert "--import-pack" in seen[0] and "x.zip" in seen[0] and str(tmp_path) in seen[0] and "--whisper" not in seen[0]

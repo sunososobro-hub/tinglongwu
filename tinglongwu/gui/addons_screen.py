@@ -9,7 +9,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from ..models import models_dir
 from . import addons
-from .core import run_pack_download
+from .core import download_cmd, run_pack_download
 
 IMPORT_HINT = "Offline? Pick a local models zip (made with: tlwu-setup --export-pack)."
 
@@ -18,6 +18,7 @@ class AddonsScreen:
     def __init__(self, master, gpu_present: bool = False, mdir=None, run=run_pack_download, import_zip=None):
         self.mdir, self.gpu, self.run, self.q = mdir or models_dir(), gpu_present, run, queue.Queue()
         self.import_zip = import_zip or self._import_zip
+        self.busy = False
         self.win = w = tk.Toplevel(master)
         w.title("Add-ons")
         self.body = ttk.Frame(w, padding=10)
@@ -52,26 +53,36 @@ class AddonsScreen:
                 ttk.Button(f, text="Add", command=lambda n=r["name"]: self.add(n)).pack(side="right")
 
     def add(self, pack: str):
+        if self.busy:
+            return  # one setup child at a time: two would rewrite models/manifest.json from the same snapshot
+        self.busy = True
         self.msg.set(f"Downloading {pack} ...")
-        threading.Thread(target=self.run, args=(pack, self.q.put), daemon=True).start()
+        threading.Thread(target=self.run, args=(pack, self.q.put), kwargs={"mdir": self.mdir}, daemon=True).start()
 
     def remove(self, pack: str):
         if messagebox.askyesno("Add-ons", f"Remove the {pack} pack? Adding it back needs internet once.", parent=self.win):
             addons.remove_pack(pack, self.mdir)
-            self.msg.set(f"Removed {pack}.")
+            still = any(r["installed"] for r in addons.local_rows(self.mdir) if r["name"] == pack)
+            self.msg.set(f"{pack} still installed: its models are shared with another pack or could not be deleted."
+                         if still else f"Removed {pack}.")
             self.refresh()
 
     def pick_zip(self):
         path = filedialog.askopenfilename(parent=self.win, filetypes=[("Models zip", "*.zip")])
-        if path:
-            self.msg.set(self.import_zip(path))
-            self.refresh()
+        if path and not self.busy:
+            self.busy = True
+            self.msg.set("Importing ...")
+
+            def work():  # off the Tk thread: a big zip must not freeze the window
+                self.q.put(("import_done", self.import_zip(path)))
+
+            threading.Thread(target=work, daemon=True).start()
 
     def _import_zip(self, path: str) -> str:
         import subprocess
-        import sys
 
-        rc = subprocess.run([sys.executable, "-m", "tinglongwu_setup", "--import-pack", path]).returncode
+        cmd = download_cmd("small", self.mdir)  # same bundled / source launcher and --models-dir as pack downloads
+        rc = subprocess.run([*cmd[:cmd.index("--whisper")], "--import-pack", path, *cmd[cmd.index("--models-dir"):]]).returncode
         return "Installed from the zip." if rc == 0 else IMPORT_HINT
 
     def _poll(self):
@@ -81,7 +92,13 @@ class AddonsScreen:
                 if ev[0] == "pack_line":
                     self.msg.set(ev[1])
                 elif ev[0] == "pack_done":
-                    self.msg.set(f"{ev[1]} installed." if ev[2] == 0 else f"{ev[1]}: download failed. " + addons.OFFLINE)
+                    self.busy = False
+                    self.msg.set(f"{ev[1]} installed." if ev[2] == 0 else
+                                 f"{ev[1]}: download failed. Check the connection, then press Add again.")
+                    self.refresh()
+                elif ev[0] == "import_done":
+                    self.busy = False
+                    self.msg.set(ev[1])
                     self.refresh()
         except queue.Empty:
             pass
