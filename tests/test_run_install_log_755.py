@@ -44,8 +44,17 @@ def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
         "param([switch]$SkipShortcut,[switch]$FromSetup,[switch]$Cpu)\n"
         "Write-Host '[1/8] one'\n"
         "$log = Join-Path $PSScriptRoot 'install.log'\n"
-        "$fs = [IO.File]::Open($log, 'Open', 'Read', 'Read')\n"   # like Inno's LoadStringsFromFile
-        "Write-Host '[2/8] two'\nStart-Sleep -Milliseconds 400\n$fs.Close()\nWrite-Host '[3/8] three'\n",
+        "$ready = Join-Path $PSScriptRoot 'reader.ready'\n"
+        # an independent reader process (like Inno's LoadStringsFromFile): opens the log share-read, signals, holds it
+        # 400 ms, releases - while this script keeps emitting output, so the logger must retry through the hold
+        "$reader = \"`$fs = [IO.File]::Open('$log','Open','Read','Read'); New-Item -ItemType File -Path '$ready' | Out-Null; "
+        "Start-Sleep -Milliseconds 400; `$fs.Close()\"\n"
+        "$me = (Get-Process -Id $PID).Path\n"
+        "$enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($reader))\n"   # no quoting trouble in argv
+        "Start-Process -FilePath $me -ArgumentList @('-NoProfile','-EncodedCommand',$enc) -WindowStyle Hidden | Out-Null\n"
+        "while (-not (Test-Path $ready)) { Start-Sleep -Milliseconds 20 }\n"
+        "Write-Host '[2/8] two'\n"
+        "Write-Host '[3/8] three'\n",
         encoding="utf-8-sig",
     )
     r = subprocess.run([PWSH, "-NoProfile", "-File", str(tmp_path / "installer" / "run_install.ps1")],
