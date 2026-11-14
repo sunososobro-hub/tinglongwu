@@ -28,7 +28,7 @@ FIRST_SUBTITLE_TIMEOUT_S = 600
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _UNITS = {"b": 1, "bytes": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9,
           "kib": 1024, "mib": 1024 ** 2, "gib": 1024 ** 3}
-_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(bytes|gib|mib|kib|gb|mb|kb|b)\b", re.I)
+_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(bytes|gib|mib|kib|gb|mb|kb|b)\b(?!\s*(?:/|per\s))", re.I)
 
 
 def parse_download_bytes(text):
