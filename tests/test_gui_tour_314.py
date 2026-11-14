@@ -97,9 +97,24 @@ def test_first_run_shows_overlay_second_run_does_not_and_question_mark_reopens(m
 
     b = make_app()  # second run: no overlay
     assert not b.tour.visible and b.tour.win.state() == "withdrawn" and not b.overlay.visible
-    b.btn_help.invoke()  # "?"
+    _invoke_help_tour(b)  # Help > How to start (?) (#738: the "?" button moved to the menu bar)
     b.root.update()
     assert b.tour.visible and b.tour.win.state() == "normal" and b.overlay.visible
+
+
+def _help_tour_index(app_):
+    from tinglongwu.i18n import t
+
+    mb = app_.menubar
+    help_menu = mb.nametowidget(mb.entrycget(mb.index(t("gui_menu_help")), "menu"))
+    labels = [help_menu.entrycget(i, "label") if help_menu.type(i) != "separator" else None
+              for i in range(help_menu.index("end") + 1)]
+    return help_menu, labels.index(t("gui_menu_tour"))
+
+
+def _invoke_help_tour(app_):
+    menu, i = _help_tour_index(app_)
+    menu.invoke(i)
 
 
 def test_picking_the_language_in_step_1_and_start_shows_subtitles_in_the_bar(make_app):
@@ -128,7 +143,7 @@ def test_question_mark_is_off_the_bar_and_bar_stays_within_420px(make_app):
     from tinglongwu.i18n import t
 
     a = make_app()
-    assert a.btn_help.winfo_toplevel() is a.panel  # not on the main bar
+    _help_tour_index(a)  # #738: Help > How to start (?) in the menu bar, not a button on the bar
     assert "?" not in [w.cget("text") for w in a.bar.winfo_children() if "text" in w.keys()]
     labels = [a.overlay.menu.entrycget(i, "label") for i in range(a.overlay.menu.index("end") + 1)
               if a.overlay.menu.type(i) == "command"]

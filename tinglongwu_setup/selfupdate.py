@@ -1,7 +1,11 @@
 """Windows self-update for wizard installs (#698). Networked, so it lives here and runs only as a child process.
 
-  --check CURRENT        ask GitHub for the latest release (6 s, any failure = "SKIP <why>"); prints one line:
+  --check CURRENT [--count]
+                         ask GitHub for the latest release (6 s, any failure = "SKIP <why>"); prints one line:
                          "UPDATE X.Y.Z" when it is newer than CURRENT, "NONE" otherwise. Always exit code 0.
+                         --count (only the once-a-day automatic check, #806) asks the anonymous counter Worker
+                         (cloudflare/update-counter) instead: it returns the same GitHub answer and adds 1 to a count
+                         keyed only by (date, app version, OS). Worker unreachable -> GitHub API exactly as without it.
   --download DIR         download tinglongwu-setup.exe of the latest release into DIR (resumable, see resume.fetch),
                          verify it against the release's SHA256SUMS.txt; prints "PROGRESS n" lines then
                          "READY <path>". Exit 1 with "FAIL <why>" (a SHA256 mismatch aborts, the file is deleted).
@@ -20,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -33,6 +38,10 @@ CHECK_TIMEOUT_S = 6
 SUMS_TIMEOUT_S = 30
 WAIT_GUI_EXIT_S = 120  # the helper gives the GUI this long to close before installing anyway
 INSTALLER_ARGS = ("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-")  # /SILENT: progress window, no questions
+# #806 counter Worker base URL, set once the Worker is deployed (cloudflare/update-counter/README.md). Empty = no
+# counter, every check goes straight to GitHub. TLWU_UPDATE_COUNTER overrides it (tests, staging).
+COUNTER_BASE = ""
+COUNTER_TIMEOUT_S = 4  # short, so a dead Worker still leaves time for the GitHub fallback
 _UA = {"User-Agent": "tlwu-setup/0.1", "Accept": "application/vnd.github+json"}
 _VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
@@ -53,10 +62,37 @@ def _get(url: str, timeout: int = CHECK_TIMEOUT_S) -> bytes:
         return r.read()
 
 
-def latest_release(get=_get) -> dict | None:
+def os_tag(platform: str | None = None) -> str:
+    p = platform or sys.platform
+    return "windows" if p == "win32" else "mac" if p == "darwin" else "linux" if p.startswith("linux") else "other"
+
+
+def counter_url(current: str, env=None, platform: str | None = None) -> str | None:
+    """The Worker's /v1/latest URL carrying only the app version and the OS, or None when no counter is set."""
+    env = os.environ if env is None else env
+    base = (env.get("TLWU_UPDATE_COUNTER") or COUNTER_BASE).rstrip("/")
+    if not base.startswith("https://"):
+        return None
+    ver = current if parse_version(current) else "other"
+    return f"{base}/v1/latest?" + urllib.parse.urlencode({"v": ver, "os": os_tag(platform)})
+
+
+def _latest_json(get, count_url: str | None) -> dict:
+    if count_url:
+        try:
+            rel = json.loads(get(count_url, timeout=COUNTER_TIMEOUT_S).decode("utf-8"))
+            if isinstance(rel, dict) and isinstance(rel.get("tag_name"), str) and rel["tag_name"]:
+                return rel  # anything else ({} / [] / an error object) -> GitHub below
+        except Exception:  # noqa: BLE001  # Worker down / blocked / bad answer: ask GitHub as before
+            pass
+    return json.loads(get(API_LATEST).decode("utf-8"))
+
+
+def latest_release(get=_get, count_url: str | None = None) -> dict | None:
     """{'version', 'exe_url', 'sums_url'} of the latest published release, or None (pre-release, draft, no wizard
-    asset, unparseable tag). Network errors propagate; callers turn them into a silent skip."""
-    rel = json.loads(get(API_LATEST).decode("utf-8"))
+    asset, unparseable tag). Network errors propagate; callers turn them into a silent skip. count_url: ask the
+    counter Worker first (check only; download() always reads GitHub, so the Worker never picks what is installed)."""
+    rel = _latest_json(get, count_url)
     if rel.get("prerelease") or rel.get("draft"):
         return None
     tag = rel.get("tag_name") or ""
@@ -77,13 +113,13 @@ def parse_sums(text: str, name: str) -> str | None:
     return None
 
 
-def check(current: str, get=_get, env=None) -> str:
-    """The one line --check prints."""
+def check(current: str, get=_get, env=None, count: bool = False) -> str:
+    """The one line --check prints. count=True only for the automatic daily check (auto_update=1)."""
     env = os.environ if env is None else env
     if env.get("TLWU_OFFLINE") == "1":
         return "SKIP offline"
     try:
-        rel = latest_release(get)
+        rel = latest_release(get, counter_url(current, env) if count else None)
     except Exception as e:  # noqa: BLE001  # timeout, HTTP error, bad JSON: never bother the user
         return f"SKIP {type(e).__name__}"
     if rel is None:
@@ -127,16 +163,19 @@ def _ps_quote(s: str) -> str:
 
 def apply_script(exe: Path, app_dir: Path, pid: int) -> str:
     """PowerShell for the helper: wait for the GUI, install silently, start the GUI again (also after a failed
-    install, so the user is never left without the app)."""
+    install, so the user is never left without the app). The prebuilt core's tlwu.exe (#768) wins over the source
+    install's .venv GUI launcher."""
+    core = Path(app_dir) / "tlwu.exe"
     gui = Path(app_dir) / ".venv" / "Scripts" / "tlwu-gui.exe"
     log = Path(exe).with_suffix(".log")
     args = ", ".join(_ps_quote(a) for a in (*INSTALLER_ARGS, f"/LOG={log}"))
+    wd = _ps_quote(app_dir)
     return "\n".join([
         "$ErrorActionPreference = 'SilentlyContinue'",
         f"Wait-Process -Id {int(pid)} -Timeout {WAIT_GUI_EXIT_S}",
         f"Start-Process -FilePath {_ps_quote(exe)} -ArgumentList @({args}) -Wait",
-        f"if (Test-Path {_ps_quote(gui)}) {{ Start-Process -FilePath {_ps_quote(gui)} "
-        f"-WorkingDirectory {_ps_quote(app_dir)} }}",
+        f"if (Test-Path {_ps_quote(core)}) {{ Start-Process -FilePath {_ps_quote(core)} -WorkingDirectory {wd} }}",
+        f"elseif (Test-Path {_ps_quote(gui)}) {{ Start-Process -FilePath {_ps_quote(gui)} -WorkingDirectory {wd} }}",
         "",
     ])
 
@@ -163,11 +202,12 @@ def main(argv=None) -> int:
     g.add_argument("--check", metavar="CURRENT")
     g.add_argument("--download", metavar="DIR")
     g.add_argument("--apply", metavar="EXE")
+    p.add_argument("--count", action="store_true", help="automatic daily check: go through the counter Worker")
     p.add_argument("--app", metavar="DIR")
     p.add_argument("--pid", type=int)
     a = p.parse_args(argv)
     if a.check:
-        print(check(a.check))
+        print(check(a.check, count=a.count))
         return 0
     if a.download:
         if os.environ.get("TLWU_OFFLINE") == "1":
