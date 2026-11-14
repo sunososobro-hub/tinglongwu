@@ -135,6 +135,8 @@ class Overlay:
             om.add_command(label=t(key), command=lambda d=d: self.bump_alpha(d))
         self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
+        if hasattr(app, "report_wrong"):  # #677: GUI only
+            self.menu.add_command(label=t("gui_menu_wrong"), command=app.report_wrong)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
         if hasattr(app, "show_tour"):  # #314: the GUI only; the CLI subtitle bar (Bar) reuses this menu
             self.menu.add_command(label=t("gui_menu_tour"), command=app.show_tour)
@@ -1264,6 +1266,23 @@ class App:
         if text:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
+
+    def report_wrong(self):
+        """#677: one-click 'wrong translation' for the newest finished line; the app sends nothing, the browser opens on a pre-filled form."""
+        import webbrowser
+
+        from ..report_translation import report_line
+
+        finals = [r for r in self.state.history() if not r[2]]
+        if not finals:
+            messagebox.showinfo(t("gui_wrong_title"), t("gui_wrong_none"), parent=self.root)
+            return
+        src, out, _ = finals[-1]
+        s = self.settings
+        report_line(src, out, version=__version__, mode=self.quick_mode or "listen",
+                    langpair=f"{s.get('lang', 'auto')} -> {s.get('target', '')}",
+                    confirm=lambda text: messagebox.askokcancel(t("gui_wrong_title"), t("gui_wrong_ask", text=text), parent=self.root),
+                    open_url=webbrowser.open)
 
     def quit(self):
         if self.closing:
