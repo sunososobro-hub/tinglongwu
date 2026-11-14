@@ -2,7 +2,8 @@
 ; Next -> Installing (install.ps1 runs hidden, its [n/7] steps drive the progress bar, output in install.log)
 ; -> Finish. Start menu + desktop shortcuts with the app icon; uninstall in "Apps / Add or remove programs"
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.
-; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes.
+; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes; CoreLayout (--core-dir,
+; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu.exe and install.ps1 is not run.
 
 #define AppName "tinglongWu"
 #define AppTitle "聽攏有 tinglongWu"
@@ -43,13 +44,22 @@ Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs c
 Source: "{#IconFile}"; DestDir: "{app}"; DestName: "tinglongwu.ico"; Flags: ignoreversion
 
 [Icons]
+#ifdef CoreLayout
+Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
+Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
+#else
 Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
 Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
 Name: "{autoprograms}\{#AppTitle} - repair install (重新安裝)"; Filename: "{app}\install.bat"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
+#endif
 
 [Run]
+#ifdef CoreLayout
+Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; Description: "Start {#AppTitle} / 啟動"; Flags: postinstall nowait skipifsilent skipifdoesntexist
+#else
 Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; Description: "Start {#AppTitle} / 啟動"; Flags: postinstall nowait skipifsilent skipifdoesntexist
 Filename: "{app}\install.log"; Description: "Show install.log / 顯示安裝紀錄"; Flags: postinstall shellexec skipifsilent unchecked skipifdoesntexist
+#endif
 
 [UninstallDelete]
 ; talk-mode shortcuts are made in code only when tlwu-talk.ps1 exists (#124)
@@ -263,11 +273,23 @@ begin
     if not WizardSilent then
       if WizardIsTaskSelected('autoupdate') then SetConfigValue('auto_update', '1')
       else SetConfigValue('auto_update', '0');
+#ifdef CoreLayout
+    InstallRC := 0;   { #767: the prebuilt core needs no install.ps1; models are fetched after the copy (#752 part 4) }
+#else
     RunInstall;
+#endif
     MakeTalkShortcuts;
   end;
 end;
 
+#ifdef CoreLayout
+{ #767: nothing reads the language / GPU choice in the core layout yet (#752 part 4 wires packs), so do not ask }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := PageID = LangPage.ID;
+end;
+
+#endif
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpSelectTasks then PresetCpuTask;
