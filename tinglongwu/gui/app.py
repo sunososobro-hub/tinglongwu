@@ -947,6 +947,8 @@ class App:
         if res == "page":
             import webbrowser
 
+            self._status_text("")  # #804 review: drop the "Downloading VB-CABLE..." line
+
             webbrowser.open(vbcable.VBCABLE_PAGE)
             return
         self._status_text(vbcable.fail_text(lang))

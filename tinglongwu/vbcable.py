@@ -180,7 +180,9 @@ def install_cmd(zip_path, python: str | None = None, pin: str | None = None) -> 
 
 
 def _run(cmd, run=None) -> subprocess.CompletedProcess:
-    return (run or subprocess.run)(cmd, capture_output=True, text=True, env=_child_env(), timeout=600,
+    # the child prints UTF-8 (PYTHONIOENCODING, reconfigure); decode it as UTF-8, not the Windows ANSI code page (#804)
+    return (run or subprocess.run)(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                   env=_child_env(), timeout=600,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 

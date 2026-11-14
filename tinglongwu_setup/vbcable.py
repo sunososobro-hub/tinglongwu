@@ -6,7 +6,8 @@ only as a child process of the GUI (tinglongwu/vbcable.py decides when; the runt
         Exit 1 with "FAIL <why>" otherwise (a mismatch deletes the file). An empty HEX or TLWU_OFFLINE=1 downloads
         nothing (exit 2).
   --install ZIP --sha256 HEX
-        check ZIP against HEX again, extract it next to itself and start VBCABLE_Setup_x64.exe (32-bit Windows:
+        read ZIP once, check those bytes against HEX again, extract the same bytes into a fresh private temp folder
+        (tempfile.mkdtemp, one per install) and start VBCABLE_Setup_x64.exe (32-bit Windows:
         VBCABLE_Setup.exe) elevated (UAC prompt) with "-i -h" (install, no setup window); waits for it. Exit code of
         the setup; 1 on a mismatch, a missing setup or a cancelled UAC prompt. Nothing runs on a mismatch.
 
@@ -15,10 +16,13 @@ Run: `python -m tinglongwu_setup.vbcable ...`. Does not import tinglongwu (that 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import os
 import platform
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -37,10 +41,13 @@ def setup_exe_name(machine: str | None = None) -> str:
     return "VBCABLE_Setup_x64.exe" if m in ("amd64", "x86_64", "arm64", "aarch64") else "VBCABLE_Setup.exe"
 
 
-def extract(zip_path: Path) -> Path:
-    out = zip_path.with_suffix("")
-    with zipfile.ZipFile(zip_path) as z:
-        for info in z.infolist():  # no absolute paths / ".." escapes
+def extract(src, out: Path | None = None) -> Path:
+    """Extract `src` (a zip path, or the zip's bytes) into `out` (default: next to the zip). No absolute paths or
+    ".." escapes."""
+    if out is None:
+        out = Path(src).with_suffix("")
+    with zipfile.ZipFile(io.BytesIO(src) if isinstance(src, bytes) else src) as z:
+        for info in z.infolist():
             target = (out / info.filename).resolve()
             if not target.is_relative_to(out.resolve()):
                 raise ValueError(f"unsafe path in zip: {info.filename}")
@@ -57,10 +64,18 @@ def elevate_cmd(exe: Path) -> list[str]:
 
 
 def install(zip_path: Path, sha256: str, run=None, machine: str | None = None) -> int:
-    if not sha256 or resume._sha(zip_path) != sha256.lower():
+    """#804 review: the zip is read once; the bytes that pass the SHA-256 check are the bytes extracted, into a new
+    tempfile.mkdtemp() folder per install. So a zip (or a stale folder from an earlier run) that is swapped
+    between the check and the elevated start can never put other code in front of the UAC prompt."""
+    try:
+        data = Path(zip_path).read_bytes()
+    except OSError as e:
+        print(f"FAIL {type(e).__name__}: {e}"[:200])
+        return 1
+    if not sha256 or hashlib.sha256(data).hexdigest() != sha256.lower():
         print("FAIL SHA-256 mismatch: nothing was run")
         return 1
-    folder = extract(zip_path)
+    folder = extract(data, Path(tempfile.mkdtemp(prefix="tlwu-vbcable-")))
     exe = next(iter(folder.rglob(setup_exe_name(machine))), None)
     if exe is None:
         print(f"FAIL {setup_exe_name(machine)} not in the package")

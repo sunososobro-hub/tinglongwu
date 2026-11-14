@@ -195,3 +195,73 @@ def test_child_commands_go_through_the_setup_package(tmp_path):
 def test_english_ui_text():
     assert "[Install]" in vbcable.dialog_text("en") and "CABLE Output" in vbcable.howto_text("en")
     assert vbcable.dialog_text("xx") == vbcable.dialog_text("en")
+
+
+# -- #804 review of PR #811 ---------------------------------------------------------------------------------------
+def _pack(path: Path, exe: bytes) -> Path:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("VBCABLE_Setup_x64.exe", exe)
+    return path
+
+
+def _launched_exe(cmd) -> Path:
+    return Path(cmd[-1].split("-FilePath '", 1)[1].split("'", 1)[0])
+
+
+def test_each_install_extracts_into_a_fresh_temp_folder(tmp_path):
+    z = _pack(tmp_path / "pack.zip", b"MZ good")
+    pin = hashlib.sha256(z.read_bytes()).hexdigest()
+    stale = z.with_suffix("") / "VBCABLE_Setup_x64.exe"  # a folder left next to the zip by an earlier run
+    stale.parent.mkdir()
+    stale.write_bytes(b"MZ planted")
+    seen = []
+    ok = lambda cmd: seen.append((_launched_exe(cmd), _launched_exe(cmd).read_bytes())) or subprocess.CompletedProcess(cmd, 0)  # noqa: E731
+    assert setup_vb.install(z, pin, run=ok, machine="AMD64") == 0
+    assert setup_vb.install(z, pin, run=ok, machine="AMD64") == 0
+    (a, data_a), (b, data_b) = seen
+    assert a.parent != b.parent and tmp_path not in a.parents and tmp_path not in b.parents
+    assert data_a == data_b == b"MZ good"
+
+
+def test_zip_swapped_after_the_check_never_runs(tmp_path, monkeypatch):
+    z = _pack(tmp_path / "pack.zip", b"MZ good")
+    pin = hashlib.sha256(z.read_bytes()).hexdigest()
+    real = setup_vb.extract
+
+    def swap_then_extract(src, out=None):
+        _pack(tmp_path / "pack.zip", b"MZ evil")  # attacker replaces the zip right after the hash check
+        return real(src, out)
+
+    monkeypatch.setattr(setup_vb, "extract", swap_then_extract)
+    seen = []
+    rc = setup_vb.install(z, pin, run=lambda cmd: seen.append(_launched_exe(cmd).read_bytes())
+                          or subprocess.CompletedProcess(cmd, 0), machine="AMD64")
+    assert rc == 0 and seen == [b"MZ good"]  # the verified bytes are what was extracted and started
+
+
+def test_child_output_is_decoded_as_utf8(tmp_path):
+    code = "import sys; sys.stdout.buffer.write('FAIL 下載失敗 сбой\\nREADY " + str(tmp_path / "x.zip").replace("\\", "/") + "\\n'.encode('utf-8'))"
+    seen = []
+
+    def run(cmd, **kw):
+        seen.append(kw)
+        return subprocess.run([sys.executable, "-c", code], **kw)
+    assert vbcable.child_download(tmp_path, run=run) == str(tmp_path / "x.zip").replace("\\", "/")
+    assert seen[0]["encoding"] == "utf-8"  # not the Windows ANSI code page (cp950 / cp1252) text=True would use
+
+
+def test_page_result_clears_the_downloading_status_line(monkeypatch):
+    pytest.importorskip("tkinter")
+    import webbrowser
+    from types import SimpleNamespace
+
+    from tinglongwu.gui import app
+
+    opened, status = [], []
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+    fake = SimpleNamespace(downloading="VB-CABLE", btn=SimpleNamespace(configure=lambda **k: None),
+                           _sync_quick=lambda: None, v_mode=SimpleNamespace(set=lambda v: status.append(("mode", v))),
+                           _status_text=status.append)
+    app.App._cable_done(fake, "page")
+    assert opened == [vbcable.VBCABLE_PAGE] and fake.downloading is None
+    assert ("mode", "listen") in status and status[-1] == ""  # "Downloading VB-CABLE..." is gone
