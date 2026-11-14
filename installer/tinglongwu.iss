@@ -2,7 +2,7 @@
 ; Next -> Installing (install.ps1 runs hidden, its [n/7] steps drive the progress bar, output in install.log)
 ; -> Finish. Start menu + desktop shortcuts with the app icon; uninstall in "Apps / Add or remove programs"
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.
-; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion.
+; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes.
 
 #define AppName "tinglongWu"
 #define AppTitle "聽攏有 tinglongWu"
@@ -20,6 +20,7 @@ DefaultDirName={localappdata}\Programs\tinglongWu
 DefaultGroupName={#AppTitle}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+ExtraDiskSpaceRequired={#ExtraDiskBytes}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile={#StageDir}\LICENSE

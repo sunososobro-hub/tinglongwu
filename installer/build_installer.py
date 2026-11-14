@@ -132,9 +132,15 @@ def find_iscc() -> str | None:
     return next((c for c in cands if c and Path(c).is_file()), None)
 
 
+# Disk the real install needs beyond the staged files (#701): Python 3.12 ~0.1 GB + ~3 GB pip packages
+# + 2-3 GB default models (figures from the issue / progress page text). Inno shows it on the destination page
+# and refuses Next when the drive has less.
+EXTRA_DISK_BYTES = 6 * 1024**3
+
+
 def iscc_cmd(iscc: str, stage_dir: Path, icon: Path, out_dir: Path, version: str) -> list[str]:
     return [iscc, f"/DStageDir={stage_dir}", f"/DIconFile={icon}", f"/DOutDir={out_dir}", f"/DAppVersion={version}",
-            str(ISS)]
+            f"/DExtraDiskBytes={EXTRA_DISK_BYTES}", str(ISS)]
 
 
 def missing_defines(iss_text: str, cmd: list[str]) -> list[str]:
