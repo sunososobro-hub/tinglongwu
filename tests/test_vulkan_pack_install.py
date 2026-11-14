@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from tinglongwu import mt_backend
+from tinglongwu import __version__, mt_backend
 from tinglongwu_setup import cli, resume, selfupdate, vulkan_pack
 from tlwu_app import main as app_main
 
-VERSION = "0.3.9"
+VERSION = __version__  # #909/#915: mt_backend only accepts a pack installed for the running app version
 ZIP_NAME = f"tlwu-vulkan-pack-{VERSION}.zip"
 ZIP_URL = f"https://example.invalid/{ZIP_NAME}"
 SUMS_URL = "https://example.invalid/SHA256SUMS.txt"
@@ -206,8 +206,8 @@ def test_the_installed_version_asks_for_its_own_tag_and_never_latest(tmp_path):
 
 
 def test_an_app_without_a_release_of_its_version_gets_the_note_and_exit_0(tmp_path):
-    rel = Release(make_zip(tmp_path / "z.zip"))  # only v0.3.9 is released
-    rc, out = rel.run(tmp_path / "vulkan-pack", version="0.3.8")
+    rel = Release(make_zip(tmp_path / "z.zip"))  # only v{VERSION} is released
+    rc, out = rel.run(tmp_path / "vulkan-pack", version="0.0.1")
     assert rc == 0 and out == [vulkan_pack.NO_PACK_NOTE] and rel.fetched == []
     assert not (tmp_path / "vulkan-pack").exists()
 
