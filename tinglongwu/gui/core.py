@@ -312,6 +312,13 @@ def download_cmd(model: str, mdir=None, bundled: bool | None = None) -> list[str
     return [*base, "--whisper", model, "--models-dir", str(models_dir(str(mdir) if mdir else None))]
 
 
+def pack_download_cmd(pack: str, mdir=None, bundled: bool | None = None) -> list[str]:
+    """#673: same child as download_cmd, but `--packs <lang>` (resumable, SHA256-checked) instead of `--whisper`."""
+    cmd = download_cmd("small", mdir, bundled)
+    i = cmd.index("--whisper")
+    return [*cmd[:i], "--packs", pack, *cmd[i + 2:]]
+
+
 def download_env(env=None) -> dict:
     """Environment for the download child: this process's offline flags (HF_HUB_OFFLINE etc.) removed."""
     from ..offline import OFFLINE_ENV
@@ -340,6 +347,27 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
         put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
         rc = -1
     put(("dl_done", model, rc))
+    return rc
+
+
+def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+    """Worker thread: run the pack download child; `put` gets ("pack_line", text) per line and ("pack_done", pack, rc)."""
+    import subprocess
+
+    popen = popen or subprocess.Popen
+    try:
+        p = popen(pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                  env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for raw in p.stdout:
+            line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
+            parts = [x.strip() for x in line.split("\n") if x.strip()]
+            if parts:
+                put(("pack_line", parts[-1][:90]))
+        rc = p.wait()
+    except Exception as e:  # noqa: BLE001
+        put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
+        rc = -1
+    put(("pack_done", pack, rc))
     return rc
 
 
