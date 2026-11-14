@@ -467,8 +467,10 @@ class App:
     def _adv_toggled(self):
         on = self.v_adv.get()
         self.settings["advanced_open"] = on
-        for w in self.engine_widgets:
-            w.grid() if on else w.grid_remove()
+        if on:  # #737: the whole settings block (engine included) lives under Advanced
+            self.frm.pack(after=self.adv_btn, anchor="w")
+        else:
+            self.frm.pack_forget()
         self.adv_btn.configure(text=t("gui_advanced_open" if on else "gui_advanced"))
         if on:
             self.combos["engine"].configure(values=engine_labels())
@@ -558,18 +560,13 @@ class App:
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
         self.frm = f = ttk.Frame(p, padding=10)
         self.combos = {}
-        f.pack()
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
         self.v_target = self._combo(1, "gui_target", "target", TARGETS)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
         self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
-        self.engine_widgets = [f.grid_slaves(row=19, column=c)[0] for c in (0, 1)]
         self.v_adv = tk.BooleanVar(value=False)
-        self.adv_btn = ttk.Checkbutton(f, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
-        self.adv_btn.grid(row=18, column=0, columnspan=3, sticky="w", pady=(4, 0))
-        self.set_advanced(bool(s["advanced_open"]))
         self.v_model = self._combo(4, "gui_model", "model", model_labels())
         self.v_model.set(label_for_model(self.settings["model"]))
         self.combos["model"].configure(width=combo_width(model_labels()))  # room for the "not downloaded" mark
@@ -629,10 +626,10 @@ class App:
                      "gui_upd_auto").pack(side="left", padx=(8, 0))
             ttk.Label(up, text=f"v{__version__}").pack(side="right")
         self.v_status = tk.StringVar(value=t("gui_ready"))
-        ttk.Label(f, textvariable=self.v_status, wraplength=300).grid(row=11, column=0, columnspan=3, sticky="w")
+        self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
+        ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
         self.v_notice = tk.StringVar(value="")
-        ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
-            row=12, column=0, columnspan=3, sticky="w")
+        ttk.Label(sb, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").pack(anchor="w")
         self._tx(ttk.Label(f), "gui_ui_lang").grid(row=14, column=0, sticky="w", pady=(8, 0))
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         cb = ttk.Combobox(f, textvariable=self.v_ui_lang, values=list(UI_LANGS), state="readonly", width=12)
@@ -762,13 +759,18 @@ class App:
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
         q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
-        q.pack(before=self.frm, fill="x")
+        q.pack(fill="x")
+        self.status_box.pack(fill="x")
+        # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)
+        self.adv_btn = ttk.Checkbutton(self.panel, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
+        self.adv_btn.pack(anchor="w", padx=10, pady=(6, 0))
+        self.set_advanced(bool(self.settings["advanced_open"]))
         self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
         ttk.Combobox(q, textvariable=self.v_target, values=TARGETS, state="readonly", width=10).grid(
             row=0, column=1, sticky="we", padx=(6, 0))
         # #314: "?" reopens the 3-step overlay; it lives here and in the subtitle bar's menu, not on the bar (#455)
-        self.btn_help = ttk.Button(q, text="?", width=2, command=self.show_tour)
-        self.btn_help.grid(row=0, column=2, padx=(6, 0))
+        self.btn_help = ttk.Button(self.frm, text="?", width=2, command=self.show_tour)
+        self.btn_help.grid(row=22, column=0, sticky="w", pady=(4, 0))
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
