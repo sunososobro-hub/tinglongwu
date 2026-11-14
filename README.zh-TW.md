@@ -18,6 +18,12 @@
 
 安裝時會下載一次語音辨識和翻譯模型（需要網路），之後完全離線。
 
+## 程式碼簽章政策（Code signing policy）
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+Windows 發行檔目前尚未簽章，SignPath Foundation 申請核准後才會啟用。角色與簽章流程見 [docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md)，隱私說明見 [PRIVACY.zh-TW.md](PRIVACY.zh-TW.md)。
+
 ## 三種用法
 
 | 🎧 聽 | 🗣️ 說 | 🔁 雙向會議 |

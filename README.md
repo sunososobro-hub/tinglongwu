@@ -18,6 +18,12 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 Setup downloads the speech and translation models once (internet needed). After that it runs fully offline.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+Windows releases are not signed yet; signing will be enabled once the SignPath Foundation application is approved. Roles, build and approval process: [docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md). Privacy: [PRIVACY.md](PRIVACY.md).
+
 ## Three ways to use it
 
 | 🎧 Listen | 🗣️ Speak | 🔁 Two-way meeting |
