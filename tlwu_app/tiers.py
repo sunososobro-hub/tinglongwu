@@ -186,3 +186,7 @@ def progress_fraction(done_bytes: int, tier: Tier) -> float:
 def default_models_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".local", "share")
     return Path(base) / "tinglongwu" / "models"
+
+
+# #780: the CPU-mode settings live in tinglongwu.hwprobe (the GUI imports them too); re-exported here with the tiers.
+from tinglongwu.hwprobe import CPU_HEAVY_RAM_GB, HEAVY_MODELS, CpuMode, cpu_mode_settings, too_heavy  # noqa: E402,F401

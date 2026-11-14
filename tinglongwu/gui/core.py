@@ -321,14 +321,39 @@ def follow_newest(yview_last: float) -> bool:
 
 
 _MARK_OK, _MARK_MISSING = "\u2713 ", " (\u9700\u4e0b\u8f09 / not downloaded)"
+_MARK_HEAVY = " (too heavy for this PC)"  # #780: medium / large-v3 on a CPU-mode PC with < 24 GB RAM
 
 
-def model_labels(mdir=None) -> list[str]:
-    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96)."""
+def cpu_ram_gb(has_cuda, ram=None) -> float | None:
+    """#780: RAM in GB for the model picker's "too heavy" marks; None (no marks) when a CUDA device is present."""
+    from ..hwprobe import ram_mib
+
+    if has_cuda:
+        return None
+    mib = (ram or ram_mib)()
+    return None if mib is None else mib / 1024
+
+
+def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None) -> str | None:
+    """#780: status text "CPU mode" (+ per-line MT ms) when running on the CPU, else None."""
+    from ..i18n import t
+
+    if device != "cpu":
+        return None
+    base = t("gui_cpu_mode")
+    return base if mt_ms is None else f"{base} - {t('gui_cpu_mt_ms', ms=round(mt_ms))}"
+
+
+def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
+    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96).
+    ram_gb (CPU mode, #780): heavy models get a "too heavy for this PC" mark when RAM is below 24 GB."""
+    from ..hwprobe import too_heavy
     from ..models import whisper_installed
 
     have = whisper_installed(mdir)
-    return [_MARK_OK + m for m in MODELS if m in have] + [m + _MARK_MISSING for m in MODELS if m not in have]
+    heavy = lambda m: _MARK_HEAVY if too_heavy(m, ram_gb) else ""  # noqa: E731
+    return ([_MARK_OK + m + heavy(m) for m in MODELS if m in have]
+            + [m + _MARK_MISSING + heavy(m) for m in MODELS if m not in have])
 
 
 _ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
@@ -350,7 +375,7 @@ def engine_from_label(label: str) -> str:
 
 def model_from_label(label: str) -> str:
     """The plain model name from a dropdown entry (also accepts a plain name)."""
-    return label.replace(_MARK_OK, "", 1).replace(_MARK_MISSING, "").strip()
+    return label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "").replace(_MARK_MISSING, "").strip()
 
 
 def label_for_model(name: str, mdir=None) -> str:
