@@ -174,7 +174,7 @@ def main(argv=None) -> int:
         _pip("install", "-r", str(ROOT / "requirements-gpu.txt"))
     if a.ask_lang:
         langs = packs.choose_langs()
-        print(f"language packs: {langs}")
+        print(f"language packs: {langs} (download: {packs.total_size_mb(langs)} MB)")
         rest = [*rest, "--packs", langs]
     if rest or not (a.deps or a.bundle or a.gpu):
         rc = downloader.main([*rest, "--models-dir", str(mdir)])

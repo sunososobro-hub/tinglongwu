@@ -41,3 +41,18 @@ def test_ask_lang_installs_exactly_chosen_packs(monkeypatch, tmp_path, capsys):
     assert cli.main(["--ask-lang", "--models-dir", str(tmp_path)]) == 0
     assert got[0][got[0].index("--packs") + 1] == "ja,ru"
     assert packs.keys_for("ja,ru") == ["hymt2-1.8b", packs.PIPER_RU_DEFAULT]
+
+
+def test_ask_lang_prints_size_of_the_selected_packs(monkeypatch, tmp_path, capsys):
+    for k in ("TLWU_PACKS", "TLWU_YES", "TLWU_OFFLINE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    monkeypatch.setattr("builtins.input", lambda q: "ru")
+    monkeypatch.setattr(downloader, "main", lambda argv: 0)
+    assert cli.main(["--ask-lang", "--models-dir", str(tmp_path)]) == 0
+    assert "language packs: ru (download: 1160 MB)" in capsys.readouterr().out
+
+
+def test_korean_source_needs_its_pack_on_demand():
+    from tinglongwu.gui import pack_on_demand as pod
+    assert pod.PACK_OF["ko"] == "ko" and pod.PACKS["ko"] == packs.PACKS["ko"]
