@@ -16,7 +16,7 @@ name: auto-release
 # workflow_run uses this file from the default branch (main), so it starts working after one release carries it.
 on:
   workflow_run:
-    workflows: [ci, e2e, windows-build, hw-tests, release-pr]
+    workflows: [ci, e2e, windows-build, hw-tests, audio-routing, release-pr]   # #849: audio-routing
     types: [completed]
 
 permissions: {}
