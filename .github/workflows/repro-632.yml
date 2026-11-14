@@ -1,0 +1,86 @@
+name: repro-632
+# #632 cold-review acceptance (branch fix/632-r3 only, never merged as-is):
+#   old: commit 5aa9e5db (pre-#301 Mac install: OPUS/Argos en->zh), the 4 screenshot lines, deterministic beam 4.
+#   dev: current dev, Hy-MT2 1.8B CPU default sampling, screenshot lines x 50 seeds + FLORES-200 devtest x 1 seed.
+# Both list every output character outside the CJK/ASCII/punctuation whitelist (scripts/bench/repro_632.py).
+on:
+  push:
+    branches: [fix/632-r3]
+    paths:
+      - .github/workflows/repro-632.yml
+      - scripts/bench/repro_632.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TLWU_NO_UPDATE: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  old:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 5aa9e5db938122df33224eea06cb4c2bbcd86474
+          path: src
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install 5aa9e5db (pip install -e ., as mac_install.sh step 3) + pinned Argos en->zh
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e src
+          .venv/bin/tlwu-setup --pair en-zh --models-dir "$HOME/tlwu-models"
+          cat "$HOME/tlwu-models/manifest.json"
+          shasum -a 256 "$HOME/tlwu-models/opus/en-zh/model/model.bin"
+      - name: Translate screenshot lines with the old default engine (OPUS)
+        run: |
+          .venv/bin/python tools/scripts/bench/repro_632.py old --src src --models-dir "$HOME/tlwu-models" --out out
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: repro-632-old
+          path: out/
+
+  dev:
+    runs-on: macos-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dev
+          path: src
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install dev + Hy-MT2 CPU engine (same path as mac_install.sh)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e src
+          cd src && source scripts/tlwu_common.sh && tlwu_install_llama ../.venv/bin/python requirements-llama-cpu.txt
+          cd .. && .venv/bin/tlwu-setup --hymt --models-dir "$HOME/tlwu-models"
+          .venv/bin/python src/scripts/bench/fetch_data.py --out "$HOME/bench" --fleurs ""
+          git -C src log --oneline -1
+      - name: Translate (screenshot x 50 seeds, FLORES devtest x 1 seed)
+        run: |
+          .venv/bin/python tools/scripts/bench/repro_632.py dev --src src --models-dir "$HOME/tlwu-models" \
+            --flores "$HOME/bench/flores200_dataset" --out out
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: repro-632-dev
+          path: out/
