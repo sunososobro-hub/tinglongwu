@@ -8,6 +8,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.view.WindowManager
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,11 +19,11 @@ import io.flutter.plugin.common.MethodChannel
 // activity-result launcher.
 class MainActivity : FlutterFragmentActivity() {
     private val importer by lazy { ModelImporter(this) }
-    private val playConfirm =
+    private val playConfirm: ActivityResultLauncher<IntentSenderRequest> =
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
             play.onConfirmResult(r.resultCode == RESULT_OK)
         }
-    private val play by lazy { PlayPacks(this, playConfirm) }
+    private val play: PlayPacks by lazy { PlayPacks(this, playConfirm) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Subtitle display: never let the screen sleep while the app is in front.
