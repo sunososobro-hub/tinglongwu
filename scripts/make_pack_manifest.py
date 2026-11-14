@@ -12,8 +12,9 @@ Sources (no estimates):
     (measured in #124).
 A pack made of several files gets size = sum of the files and sha256 = SHA-256 of its sorted "<sha256>  <name>\\n"
 lines (a content id: it changes when any file changes, which is what pack_manifest.plan_upgrade compares).
-Not listed until pinned: ru (its Piper voice is pinned on first download, no committed size) and meeting-notes
-(no separate download yet).
+  - Piper ru voice dmitri (the ru pack = Hy-MT2 + this voice): both file SHA-256s + HF revision from
+    tinglongwu_setup/manifest.json, bytes from downloader.PIPER_RU_DMITRI_SIZES (measured in #818).
+Not listed until pinned: meeting-notes (no separate download yet).
 """
 from __future__ import annotations
 
@@ -61,12 +62,22 @@ def kokoro_entry() -> dict:
             "url": downloader.KOKORO_BASE + "/"}
 
 
+def ru_entry(root: Path = ROOT) -> dict:
+    """ru pack = Hy-MT2 GGUF + both Piper dmitri files: size = sum of bytes, sha256 = content id of the 3 files."""
+    man = json.loads((root / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))["models"]
+    hymt, voice = hymt_entry(root), man[packs.PIPER_RU_DEFAULT]
+    files = {downloader.HYMT_GGUF[1]: hymt["sha256"], **voice["files"]}
+    size = hymt["size"] + sum(downloader.PIPER_RU_DMITRI_SIZES[n] for n in voice["files"])
+    return {"size": size, "sha256": content_id(files), "url": hymt["url"]}
+
+
 def build(root: Path = ROOT) -> dict:
     entries = {}
     hymt = hymt_entry(root)
     for lang, keys in packs.PACKS.items():
         if keys == [downloader.HYMT_DIR]:  # ja, ko: the pack is exactly the Hy-MT2 GGUF
             entries[lang] = dict(hymt)
+    entries["ru"] = ru_entry(root)
     entries["speak"] = kokoro_entry()
     return _pack_manifest().make_manifest(entries)
 
