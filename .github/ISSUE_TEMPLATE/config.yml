@@ -6,3 +6,6 @@ contact_links:
   - name: Read the README first / 先看 README
     url: https://github.com/sunososobro-hub/tinglongwu#readme
     about: Setup, modes and known limits. / 安裝、模式與已知限制
+  - name: Questions, show and tell, ideas / 問題、使用心得、點子
+    url: https://github.com/sunososobro-hub/tinglongwu/discussions
+    about: Not a bug? Ask or share here (Q&A, Show and tell, Ideas). / 不是 bug？請到討論區發問或分享。

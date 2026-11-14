@@ -27,6 +27,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _pack_manifest():  # by path: importing the tinglongwu package would install its offline guard in this script
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "tinglongwu" / "pack_manifest.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 TITLE_RE = re.compile(r"^release:\s*(v\S+)\s*$", re.I)
 REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests")
@@ -232,14 +240,15 @@ def gpu_line(hw_run: str, head: str) -> str:
 
 
 def release_notes(base: str, pr_text: str, since: str | None, verification: str, hw_run: str, head: str,
-                  changes: list[dict], thanks: dict) -> str:
+                  changes: list[dict], thanks: dict, pack_manifest: dict | None = None) -> str:
     """render_support.py --notes output with What's new filled in, plus the Windows checks, changes and thanks."""
     new = whats_new(pr_text) or default_whats_new(since)
     base = re.sub(r"^## What's new[ \t]*\n(?:- TODO:.*\n?)?", lambda _m: f"{WHATS_NEW}\n{new}\n", base, count=1,
                   flags=re.M)
     win = ["### Windows package (tinglongwu-win64.zip)", "", verification.strip() or "(not built)", "",
            gpu_line(hw_run, head)]
-    return "\n".join([base.rstrip(), "", *win, "", changes_md(since, changes), thanks_md(thanks)])
+    packs = [_pack_manifest().sizes_md(pack_manifest), ""] if pack_manifest else []  # #615: every optional pack with its size
+    return "\n".join([base.rstrip(), "", *win, "", *packs, changes_md(since, changes), thanks_md(thanks)])
 
 
 # ---------------------------------------------------------------- gh / git I/O
@@ -303,6 +312,7 @@ def main(argv=None) -> int:
     n.add_argument("--pr", default="")
     n.add_argument("--hw-run", default="")
     n.add_argument("--head", default="")
+    n.add_argument("--packs-manifest", default="", help="pack manifest JSON (tinglongwu/pack_manifest.py)")
     a = ap.parse_args(argv)
     version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
     rep = repo()
@@ -329,7 +339,8 @@ def main(argv=None) -> int:
         return 0
     pr_text = gh_json("pr", "view", a.pr, "-R", rep, "--json", "body")["body"] if a.pr else ""
     since, changes, thanks = history(rep, a.version, a.head or "HEAD")
-    text = release_notes(read(a.base), pr_text, since, read(a.verification), a.hw_run, a.head, changes, thanks)
+    text = release_notes(read(a.base), pr_text, since, read(a.verification), a.hw_run, a.head, changes, thanks,
+                         _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None)
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

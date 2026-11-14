@@ -135,3 +135,49 @@ def test_existing_venv_without_tkinter_warns(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     assert "apt-get" not in calls
     assert "[!] tkinter (Tk for Python) is missing" in r.stderr and "delete .venv" in r.stderr
+
+
+# ---- #671: the interactive path asks "which language?" (tlwu-setup --ask-lang) when a person is at the keyboard
+
+
+def _run_tty(tmp_path: Path, extra_env=None):
+    import os
+    import pty
+
+    master, slave = pty.openpty()
+    try:
+        log = tmp_path / "calls.log"
+        r = _run_with_stdin(tmp_path, slave, extra_env)
+    finally:
+        os.close(master)
+        os.close(slave)
+    return r, (log.read_text() if log.exists() else "")
+
+
+def _run_with_stdin(tmp_path, stdin, extra_env):
+    # reuse _run's stubs, but with a tty as stdin
+    real = subprocess.run
+
+    def patched(*a, **k):
+        k["stdin"] = stdin
+        return real(*a, **k)
+
+    subprocess.run = patched
+    try:
+        return _run(tmp_path, dpkg_ok=True, extra_env=extra_env)[0]
+    finally:
+        subprocess.run = real
+
+
+def test_interactive_tty_asks_language_and_fetches_only_that_pack(tmp_path):
+    r, calls = _run_tty(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    setup = [ln for ln in calls.splitlines() if ln.startswith("setup ")]
+    assert len(setup) == 1 and "--ask-lang" in setup[0]
+    assert "Models are NOT downloaded yet" not in r.stdout
+
+
+def test_yes_also_goes_through_ask_lang_with_locale_default(tmp_path):
+    r, calls = _run(tmp_path, extra_env={"TLWU_YES": "1"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "--ask-lang" in calls

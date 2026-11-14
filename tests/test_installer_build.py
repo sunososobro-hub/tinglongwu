@@ -140,3 +140,12 @@ def test_cli_dry_run_ships_the_app_icon(tmp_path, monkeypatch, capsys):
     assert bi.main(["--dry-run", "--out", str(tmp_path)]) == 0
     assert (tmp_path / "tinglongwu.ico").read_bytes() == bi.APP_ICON.read_bytes()
     assert f"/DIconFile={tmp_path / 'tinglongwu.ico'}" in capsys.readouterr().out
+
+
+def test_iscc_command_reserves_realistic_disk_space(tmp_path):
+    """#701: wizard must ask for GB (packages + models), not just the staged-file MB."""
+    cmd = bi.iscc_cmd("ISCC.exe", tmp_path / "stage", tmp_path / "i.ico", tmp_path, "1.2.3")
+    extra = [a for a in cmd if a.startswith("/DExtraDiskBytes=")]
+    assert len(extra) == 1
+    assert int(extra[0].split("=", 1)[1]) >= 5 * 1024**3
+    assert bi.missing_defines(bi.ISS.read_text("utf-8-sig"), cmd) == []

@@ -14,6 +14,7 @@
   tlwu-setup --bundle out.zip                         pack wheels + models/ for an air-gapped machine
                                                      (run on the same OS/CPU/Python as the target)
   tlwu-setup --from-bundle out.zip                    offline install from such a bundle
+  tlwu-setup --ask-lang                               ask which language to understand, install that pack (#671)
   tlwu-setup --packs zh,en | --list | --pack-prompt ja language packs (see tinglongwu_setup/packs.py)
   tlwu-setup --export-pack ja out.zip | --import-pack out.zip   move one language pack to an offline machine
 """
@@ -127,6 +128,10 @@ def main(argv=None) -> int:
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
     p.add_argument("--list", action="store_true", help="offline: installed / missing language packs")
+    p.add_argument("--ask-lang", action="store_true",
+                   help="ask which language to understand (default from the OS locale), then install only that pack "
+                        "(#671); TLWU_PACKS / TLWU_YES=1 skip the question")
+    p.add_argument("--pack-size", metavar="LANGS", help="offline: print the download size in MB of these packs (#672)")
     p.add_argument("--pack-prompt", metavar="LANG", help="offline check; ask before downloading a missing pack")
     p.add_argument("--export-pack", nargs=2, metavar=("LANG", "OUT.zip"))
     p.add_argument("--import-pack", metavar="PACK.zip")
@@ -154,6 +159,9 @@ def main(argv=None) -> int:
         sys.stdout.reconfigure(errors="replace")  # pack prompts use non-ASCII; never crash on a legacy console
     if a.list:
         return packs.list_packs(mdir)
+    if a.pack_size is not None:
+        print(packs.total_size_mb(a.pack_size))
+        return 0
     if a.pack_prompt:
         return packs.prompt(a.pack_prompt, mdir)
     if a.export_pack:
@@ -164,6 +172,10 @@ def main(argv=None) -> int:
         _pip("install", "-r", a.requirements)
     if a.gpu:
         _pip("install", "-r", str(ROOT / "requirements-gpu.txt"))
+    if a.ask_lang:
+        langs = packs.choose_langs()
+        print(f"language packs: {langs} (download: {packs.total_size_mb(langs)} MB)")
+        rest = [*rest, "--packs", langs]
     if rest or not (a.deps or a.bundle or a.gpu):
         rc = downloader.main([*rest, "--models-dir", str(mdir)])
         if rc:
