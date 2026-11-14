@@ -54,6 +54,11 @@ jobs:
           fi
           n=$(git rev-list --count origin/main..origin/dev)
           echo "dev is $n commit(s) ahead of main" >> "$GITHUB_STEP_SUMMARY"
+          v=$(git show origin/dev:tinglongwu/__init__.py | sed -n 's/^__version__ = "\(.*\)"/\1/p')
+          if [ "$n" != 0 ] && git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null 2>&1; then
+            echo "skip=v$v is already released (tag exists); waiting for the patch bump (#785)" | tee -a "$GITHUB_STEP_SUMMARY"
+            n=0
+          fi
           echo "go=$([ "$n" != 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Title and body
         if: steps.diff.outputs.go == 'true'
