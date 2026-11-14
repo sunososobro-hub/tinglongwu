@@ -14,16 +14,28 @@ from pathlib import Path
 
 BACKENDS = ("cuda", "vulkan", "cpu")
 VULKAN_PACK_NAME = "vulkan-pack"
+VERSION_FILE = "version.txt"  # written into the pack by the installer (#797); must equal the app's __version__
 last_backend = ""  # backend the last MT model load chose (selftest reports it)
 _LOADER = {"win32": "vulkan-1.dll", "darwin": "libvulkan.1.dylib"}
 
 
-def vulkan_pack_dir(base: Path | None = None) -> Path | None:
-    """Installed Vulkan llama.cpp pack folder (has a llama library), else None. Env TLWU_VULKAN_PACK moves it."""
+def vulkan_pack_dir(base: Path | None = None, warn=None) -> Path | None:
+    """Installed Vulkan llama.cpp pack folder (has a llama library), else None. Env TLWU_VULKAN_PACK moves it.
+    A pack whose version.txt is missing or differs from the app version is stale (#909): None, one warning line."""
     d = base or (Path(os.environ["TLWU_VULKAN_PACK"]) if os.environ.get("TLWU_VULKAN_PACK")
                  else Path(__file__).resolve().parent.parent / VULKAN_PACK_NAME)
     try:
         if d.is_dir() and (any(d.glob("llama.*")) or any(d.glob("libllama.*"))):
+            from . import __version__
+
+            try:
+                have = (d / VERSION_FILE).read_text("utf-8").strip()
+            except OSError:
+                have = ""
+            if have != __version__:
+                (warn or print)(f"Vulkan pack is for version {have or 'unknown'}, app is {__version__}: "
+                                "using the CPU build. Re-run `tlwu.exe setup --vulkan-pack`.")
+                return None
             return d.resolve()
     except OSError:
         pass
