@@ -16,8 +16,8 @@ from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
-from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels, plain_label
-from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
+from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
@@ -544,7 +544,11 @@ class App:
             self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
                      key).pack(side="left")
         self.v_pair = tk.StringVar()
-        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
+        # #884: one point smaller than the bar's buttons, so two-line names fit 420 px; pair_text measures with it
+        self.pair_font = tkfont.nametofont("TkDefaultFont").copy()
+        size = int(self.pair_font.cget("size"))
+        self.pair_font.configure(size=size - 1 if size > 0 else size + 1)  # negative size = pixels
+        ttk.Label(b, textvariable=self.v_pair, justify="center", font=self.pair_font).pack(side="left", padx=2)
         for v in (self.v_lang, self.v_target, self.v_mode):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
@@ -586,10 +590,8 @@ class App:
         s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
         if self.v_mode.get() == "speak":
             s = quick_settings(s, "speak")
-        # the bar is capped at 420 px (#455): long Chinese target names are shortened here (still script names, no region)
-        short = {"en": {"zh-tw": "Trad.", "zh-cn": "Simp."},
-                 "ru": {"zh-tw": "трад.", "zh-cn": "упр."}}.get(ui_lang(), {})
-        self.v_pair.set(f"{plain_label(s['lang'])}→{short.get(s['target']) or choice_label('target', s['target'])}")
+        # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
+        self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure))
 
     def set_dot(self, name: str):
         self.dot_state = name

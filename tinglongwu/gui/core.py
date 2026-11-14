@@ -365,6 +365,32 @@ def choice_label(kind: str, value: str, lang: str | None = None) -> str:
     return _CHOICES[kind][ui].get(value, value)
 
 
+PAIR_MAX_PX = 120  # #884: widest pair label (9 pt) on the 420 px bar (#455): with it the bar measured <= 402 px
+# under xvfb (Inter 10 pt), and CI fonts ran ~12 px wider than that box on PR #900 (430 -> 442)
+_PAIR_SHORT = {"en": {"zh-tw": "Chinese (Trad.)", "zh-cn": "Chinese (Simp.)"},
+               "ru": {"zh-tw": "китайский (трад.)", "zh-cn": "китайский (упр.)"},
+               "zh-TW": {}}
+
+
+def pair_text(src: str, target: str, measure, lang: str | None = None, max_px: int = PAIR_MAX_PX) -> str:
+    """Bar label for a direction (#884): names, never codes. One line when it fits in max_px, else the target on
+    a second line, else a shorter target name (still the script name, never a region). measure(text) -> pixels."""
+    from .. import langs
+
+    ui = lang or _ui()
+    a = langs.plain_label(src, ui)
+    for b in (choice_label("target", target, ui), _PAIR_SHORT.get(ui, {}).get(target)):
+        if not b:
+            continue
+        one = f"{a}\u2192{b}"
+        if measure(one) <= max_px:
+            return one
+        two = f"{a} \u2192\n{b}"
+        if max(measure(line) for line in two.split("\n")) <= max_px:
+            return two
+    return two
+
+
 def choice_labels(kind: str, values, lang: str | None = None) -> list[str]:
     return [choice_label(kind, v, lang) for v in values]
 

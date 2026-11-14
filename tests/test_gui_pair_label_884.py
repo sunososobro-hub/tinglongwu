@@ -44,3 +44,34 @@ def test_pair_label_model_marks_one_language(monkeypatch):
         assert all(mark in l for l in labels)
         assert ("not downloaded" in labels[0]) == (ui == "en") and ("需下載" in labels[0]) == (ui == "zh-TW")
         assert [core.model_from_label(l) for l in labels] == core.MODELS
+
+
+def _px(text):  # fake font: 6 px per character
+    return 6 * len(text)
+
+
+def test_pair_text_one_line_when_it_fits():
+    assert core.pair_text("auto", "en", _px, "en") == "Auto→English"
+    assert core.pair_text("en", "zh-tw", _px, "zh-TW") == "英文→繁體中文"
+
+
+def test_pair_text_long_names_go_to_two_lines_never_codes():
+    # "English→Traditional Chinese" = 27 chars = 162 px > 120; "Traditional Chinese" = 114 px fits line 2
+    assert core.pair_text("en", "zh-tw", _px, "en") == "English →\nTraditional Chinese"
+    assert core.pair_text("auto", "zh-cn", _px, "en") == "Auto →\nSimplified Chinese"
+
+
+def test_pair_text_too_wide_even_on_two_lines_uses_the_short_script_name():
+    # ru "традиционный китайский" = 22 chars = 132 px > 120 -> "китайский (трад.)" (17 chars = 102 px)
+    text = core.pair_text("auto", "zh-tw", _px, "ru")
+    assert text == "Авто →\nкитайский (трад.)"
+    assert max(_px(line) for line in text.split("\n")) <= core.PAIR_MAX_PX
+
+
+@pytest.mark.parametrize("ui", ["zh-TW", "en", "ru"])
+def test_pair_text_has_no_region_or_code(ui):
+    for target in core.TARGETS:
+        for src in langs.SOURCE_LANGS:
+            text = core.pair_text(src, target, _px, ui)
+            assert not any(b in text.lower() for b in BAD), text
+            assert target not in text.split("→")[-1].strip(), text
