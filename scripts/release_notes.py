@@ -62,7 +62,7 @@ def _hw():  # scripts/hw_deferral.py (#848), by path like _pack_manifest
 
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 TITLE_RE = re.compile(r"^release:\s*(v\S+)\s*$", re.I)
-REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests")
+REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing")  # #849: VB-CABLE routing on windows-latest
 WHATS_NEW = "## What's new"
 WHATS_NEW_FILE = "docs/whats_new.md"
 THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)

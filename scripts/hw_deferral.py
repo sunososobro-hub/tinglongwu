@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 HW_RUNNER_WAIT_MIN = 30          # minutes the release waits for the tlwu-hw runner to pick hw-tests up
 HW_CHECK = "hw-tests"
-CLOUD_CHECKS = ("ci", "e2e", "windows-build")   # what a deferred release still needs green
+CLOUD_CHECKS = ("ci", "e2e", "windows-build", "audio-routing")   # what a deferred release still needs green (#849: audio-routing)
 DEFERRED_LINE = "hardware checks deferred"
 DEFERRED_MARKER = "<!-- tlwu:hw-deferred -->"   # auto-release adds it to the release PR body before merging
 FAILED_TITLE = "[release] deferred hw-tests failed on {tag}"

@@ -2,7 +2,7 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 # tinglongWu 聽龍
 
-<p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="English speech in, Chinese subtitles out, fully offline" width="560"></p>
+<p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="English speech in, Chinese subtitles out, translated on this PC" width="560"></p>
 
 ```mermaid
 flowchart LR
@@ -36,7 +36,7 @@ Windows shows a SmartScreen warning because the installer is unsigned until #601
 
 To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
 
-Setup downloads the speech and translation models once (internet needed). After that it runs fully offline. Optional packs (extra languages, speak mode, GPU) also need internet once.
+Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Optional packs (extra languages, speak mode, GPU) also need internet once. Auto-update (on by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
 
 ## Languages and requirements
 
