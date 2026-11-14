@@ -80,6 +80,14 @@
    "files": {
     "Hy-MT2-1.8B-Q4_K_M.gguf": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699"
    }
+  },
+  "piper-ru_RU-dmitri-medium": {
+   "repo": "rhasspy/piper-voices",
+   "revision": "6b9cfaacb4fb2e02a9621227e3c1a48bec9710c3",
+   "files": {
+    "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx": "9ed9941bac7373f2ec1be36627e0e71a349a59ca5522d4363fd50701db05193a",
+    "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json": "b7ed744f65ec73deb57fc8e419a5db5c0c5532026cf1cd21247f75937b6fbee2"
+   }
   }
  },
  "argos": {

@@ -163,16 +163,19 @@ def _ps_quote(s: str) -> str:
 
 def apply_script(exe: Path, app_dir: Path, pid: int) -> str:
     """PowerShell for the helper: wait for the GUI, install silently, start the GUI again (also after a failed
-    install, so the user is never left without the app)."""
+    install, so the user is never left without the app). The prebuilt core's tlwu.exe (#768) wins over the source
+    install's .venv GUI launcher."""
+    core = Path(app_dir) / "tlwu.exe"
     gui = Path(app_dir) / ".venv" / "Scripts" / "tlwu-gui.exe"
     log = Path(exe).with_suffix(".log")
     args = ", ".join(_ps_quote(a) for a in (*INSTALLER_ARGS, f"/LOG={log}"))
+    wd = _ps_quote(app_dir)
     return "\n".join([
         "$ErrorActionPreference = 'SilentlyContinue'",
         f"Wait-Process -Id {int(pid)} -Timeout {WAIT_GUI_EXIT_S}",
         f"Start-Process -FilePath {_ps_quote(exe)} -ArgumentList @({args}) -Wait",
-        f"if (Test-Path {_ps_quote(gui)}) {{ Start-Process -FilePath {_ps_quote(gui)} "
-        f"-WorkingDirectory {_ps_quote(app_dir)} }}",
+        f"if (Test-Path {_ps_quote(core)}) {{ Start-Process -FilePath {_ps_quote(core)} -WorkingDirectory {wd} }}",
+        f"elseif (Test-Path {_ps_quote(gui)}) {{ Start-Process -FilePath {_ps_quote(gui)} -WorkingDirectory {wd} }}",
         "",
     ])
 

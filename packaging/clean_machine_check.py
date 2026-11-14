@@ -10,11 +10,18 @@ Two checks, both without the owner's hands:
                                                               networking off, folder read-only) that runs
                                                               `tlwu.exe --smoke` at logon; --run starts it and waits.
 
+  python packaging\clean_machine_check.py setup-time <setup.exe> [--out DIR] [--run] [--timeout 1800]
+                                                              live (#769): Windows Sandbox (networking ON) runs the wizard
+                                                              silently, writes setup_time.json; the judge gates setup time
+                                                              minus download time, pip lines and readiness.
+
 Exit code 0 = OK, 1 = problem found (the missing DLLs or the failed smoke lines are printed).
 """
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import struct
 import subprocess
 import sys
@@ -163,6 +170,103 @@ def cmd_sandbox(app: Path, out: Path, run: bool, timeout: float, poll: float = 5
     return 0 if code == 0 else 1
 
 
+SETUP_READY_BUDGET_S = 60  # #752: wizard start -> ready, excluding the model download
+BASELINE_MBPS = 100  # the connection the budget assumes (reported, the download share is not gated)
+INSTALL_LOG = r"$env:LOCALAPPDATA\Programs\tinglongWu\install.log"
+READY_RE = re.compile(r"READY default-listen seconds=(?P<s>[0-9.]+) download_mb=(?P<mb>\d+)")
+PIP_RE = re.compile(r"pip(?:3)?(?:\.exe)?\s+install|-m\s+pip\s+install", re.I)
+
+SETUP_PS1 = r"""$o = 'C:\tlwu-check'
+$log = "%LOG%"
+$t0 = Get-Date
+$p = Start-Process -FilePath 'C:\tlwu-setup\%SETUP%' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+$secs = ((Get-Date) - $t0).TotalSeconds
+Set-Content "$o\setup_seconds.txt" $secs
+Set-Content "$o\setup_exit.txt" $p.ExitCode
+if (Test-Path $log) { Copy-Item $log "$o\install.log" -Force }
+shutdown /s /t 5
+"""
+
+
+def parse_install_log(text: str) -> dict:
+    """{"ready", "download_seconds", "download_mb", "pip_lines"} from install.log text."""
+    ready, dl_s, dl_mb = False, 0.0, 0
+    for m in READY_RE.finditer(text):
+        ready, dl_s, dl_mb = True, float(m["s"]), int(m["mb"])
+    return {"ready": ready, "download_seconds": dl_s, "download_mb": dl_mb,
+            "pip_lines": sum(1 for ln in text.splitlines() if PIP_RE.search(ln))}
+
+
+def build_result(setup_seconds: float, log_text: str) -> dict:
+    return {"setup_seconds": round(setup_seconds, 1), **parse_install_log(log_text)}
+
+
+def judge(result: dict) -> list[str]:
+    """One line per check; a line starting with FAIL means exit 1."""
+    own = float(result["setup_seconds"]) - float(result["download_seconds"])
+    mb = result.get("download_mb", 0)
+    lines = [
+        f"{'OK' if result['ready'] else 'FAIL'}: ready (READY default-listen line {'found' if result['ready'] else 'missing'})",
+        f"{'OK' if own <= SETUP_READY_BUDGET_S else 'FAIL'}: setup minus download {own:.1f}s (budget {SETUP_READY_BUDGET_S}s)",
+        f"{'OK' if result['pip_lines'] == 0 else 'FAIL'}: pip install lines in install.log: {result['pip_lines']}",
+        f"INFO: download {result['download_seconds']:.1f}s, {mb} MB (not gated; baseline {BASELINE_MBPS} Mbps)",
+    ]
+    return lines
+
+
+def write_setup_sandbox(setup: Path, out: Path) -> Path:
+    """Write setup-time.wsb + run_setup.ps1 into out (networking ON: the wizard downloads the model)."""
+    out.mkdir(parents=True, exist_ok=True)
+    for name in ("setup_time.json", "setup_seconds.txt", "setup_exit.txt", "install.log"):
+        (out / name).unlink(missing_ok=True)
+    ps1 = SETUP_PS1.replace("%SETUP%", setup.name).replace("%LOG%", INSTALL_LOG)
+    (out / "run_setup.ps1").write_text(ps1, "utf-8", newline="\r\n")
+    wsb = out / "setup-time.wsb"
+    wsb.write_text(f"""<Configuration>
+  <VGpu>Disable</VGpu>
+  <Networking>Enable</Networking>
+  <MappedFolders>
+    <MappedFolder><HostFolder>{escape(str(setup.resolve().parent))}</HostFolder><SandboxFolder>C:\\tlwu-setup</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
+    <MappedFolder><HostFolder>{escape(str(out.resolve()))}</HostFolder><SandboxFolder>C:\\tlwu-check</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
+  </MappedFolders>
+  <LogonCommand><Command>powershell -NoProfile -ExecutionPolicy Bypass -File C:\\tlwu-check\\run_setup.ps1</Command></LogonCommand>
+</Configuration>
+""", "utf-8")
+    return wsb
+
+
+def collect_setup_result(out: Path) -> dict | None:
+    """Build and write setup_time.json from the sandbox outputs; None while the sandbox has not finished."""
+    f = out / "setup_seconds.txt"
+    if not f.exists():
+        return None
+    secs = float(f.read_text("utf-8-sig", errors="replace").strip() or 0)
+    log = out / "install.log"
+    res = build_result(secs, log.read_text("utf-8-sig", errors="replace") if log.exists() else "")
+    (out / "setup_time.json").write_text(json.dumps(res, indent=2), "utf-8")
+    return res
+
+
+def cmd_setup_time(setup: Path, out: Path, run: bool, timeout: float, poll: float = 5.0) -> int:
+    wsb = write_setup_sandbox(setup, out)
+    print(f"Windows Sandbox config: {wsb}")
+    if not run:
+        print("Open it (needs the Windows Sandbox feature), or rerun with --run to start it and wait.")
+        return 0
+    subprocess.Popen(["WindowsSandbox.exe", str(wsb)])
+    deadline = time.monotonic() + timeout
+    while (res := collect_setup_result(out)) is None:
+        if time.monotonic() > deadline:
+            print(f"setup-time: TIMEOUT after {timeout:.0f}s (no {out / 'setup_seconds.txt'})")
+            return 1
+        time.sleep(poll)
+    lines = judge(res)
+    print("\n".join(lines))
+    bad = any(ln.startswith("FAIL") for ln in lines)
+    print(f"setup-time: {'FAIL' if bad else 'OK'}")
+    return 1 if bad else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -172,7 +276,14 @@ def main(argv: list[str] | None = None) -> int:
     sb.add_argument("--out", type=Path, default=Path("sandbox-check"))
     sb.add_argument("--run", action="store_true")
     sb.add_argument("--timeout", type=float, default=600)
+    st = sub.add_parser("setup-time")
+    st.add_argument("setup", type=Path)
+    st.add_argument("--out", type=Path, default=Path("setup-time-check"))
+    st.add_argument("--run", action="store_true")
+    st.add_argument("--timeout", type=float, default=1800)
     a = ap.parse_args(argv)
+    if a.cmd == "setup-time":
+        return cmd_setup_time(a.setup, a.out, a.run, a.timeout)
     if a.cmd == "deps":
         return cmd_deps(a.app)
     return cmd_sandbox(a.app, a.out, a.run, a.timeout)

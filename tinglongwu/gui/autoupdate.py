@@ -1,6 +1,7 @@
 """#698: Windows auto-update for wizard installs. No network and no tkinter here: the GUI asks this module WHETHER to
-check, and every request runs in a `python -m tinglongwu_setup.selfupdate` child (the runtime stays offline; the
-network guard in tinglongwu.offline is never relaxed in this process).
+check, and every request runs in a `python -m tinglongwu_setup.selfupdate` child (bundled tlwu.exe, #768:
+`tlwu.exe --run-selfupdate ...`); the runtime stays offline and the network guard in tinglongwu.offline is never
+relaxed in this process.
 
 Config (userdirs, KEY=VALUE): auto_update=1 -> check once per 24 h at GUI start and download in the background, then
 ask "Restart now?"; auto_update=0 or missing -> no automatic request at all, only the "Check for updates" button.
@@ -22,10 +23,20 @@ CHECK_EVERY_S = UPDATE_CHECK_INTERVAL_H * 3600
 AUTO_KEY = "auto_update"
 LAST_KEY = "update_last_check"  # unix seconds of the last automatic check (also written when it failed)
 MODULE = "tinglongwu_setup.selfupdate"
+BUNDLED_FLAG = "--run-selfupdate"  # tlwu_app.main routes this to tinglongwu_setup.selfupdate.main (#768)
+
+
+def is_bundled() -> bool:
+    """Same semantics as tlwu_app.main.is_bundled (frozen / Nuitka-compiled / TLWU_BUNDLED=1, which tlwu.exe sets
+    before the GUI starts). Kept here so the runtime package does not import the launcher."""
+    return bool(getattr(sys, "frozen", False)) or "__compiled__" in globals() or os.environ.get("TLWU_BUNDLED") == "1"
 
 
 def app_root() -> Path:
-    """Install dir ({app}): tinglongwu/ sits directly under it (editable install of the bundled source)."""
+    """Install dir ({app}). Bundled: the folder of tlwu.exe (Nuitka standalone sets sys.executable to it).
+    Source install: tinglongwu/ sits directly under it (editable install of the bundled source)."""
+    if is_bundled():
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[2]
 
 
@@ -67,6 +78,8 @@ def download_dir() -> Path:
 
 
 def _base(python: str | None = None) -> list[str]:
+    if is_bundled():  # tlwu.exe has no `-m`; it re-runs itself as the networked selfupdate child
+        return [python or sys.executable, BUNDLED_FLAG]
     return [python or sys.executable, "-m", MODULE]
 
 
