@@ -609,10 +609,11 @@ def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
 # -- #399: the engine dropdown is hidden under a collapsed Advanced section ---------------------------------
 
 def test_engine_labels_hint_for_uninstalled_and_roundtrip(tmp_path):
-    assert core.engine_labels(tmp_path) == ["auto", "hymt (tlwu-setup --hymt)"]  # missing: hint; #471: no opus
+    auto = core.choice_label("engine", "auto")  # #884: shown by name in the UI language
+    assert core.engine_labels(tmp_path) == [auto, "hymt (tlwu-setup --hymt)"]  # missing: hint; #471: no opus
     (tmp_path / "hymt2-1.8b").mkdir()
     labels = core.engine_labels(tmp_path)
-    assert labels == ["auto", "hymt"]  # installed: plain
+    assert labels == [auto, "hymt"]  # installed: plain
     assert [core.engine_from_label(l) for l in labels] == core.ENGINES
     assert core.DEFAULTS["advanced_open"] is False
 
