@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 PACK_NAME = "gpu-pack"
-MANIFEST_KEYS = ("name", "size", "sha256", "url")
+MANIFEST_KEYS = ("name", "size", "sha256", "url")  # old manifests have no "wheels_key" (#763, optional) and still load
 
 
 class PackError(Exception):

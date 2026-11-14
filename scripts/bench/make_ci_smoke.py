@@ -332,6 +332,10 @@ def main(argv=None, fetch=http_open) -> int:
             return 0
         if not a.out:
             ap.error("--out is required")
+        if not Path(a.pins).is_file():
+            print(f"make_ci_smoke: pin file not found: {a.pins} (run --set {a.set} --pin N to create it)",
+                  file=sys.stderr)
+            return 1
         pins_name = Path(a.pins).resolve()
         pins_name = pins_name.relative_to(ROOT).as_posix() if pins_name.is_relative_to(ROOT) else pins_name.name
         build(a.out, json.loads(Path(a.pins).read_text("utf-8")), fetch, pins_name)
