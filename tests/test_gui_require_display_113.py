@@ -4,6 +4,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+# DISPLAY decides Tk only on X11; Windows / macOS Tk opens without it (home-PC pipeline runs pytest on Windows).
+pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="X11-only check")
+
 ROOT = Path(__file__).resolve().parent.parent
 TEST = "tests/test_gui.py::test_start_shows_listening_in_main_window_and_bar_stays_hidden"
 
