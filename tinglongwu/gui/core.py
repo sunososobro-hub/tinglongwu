@@ -477,16 +477,15 @@ def short_line(line: str, limit: int = 90) -> str:
 
     line = re.sub(r"\|[^|]*\|", "|", line)
     m = list(re.finditer(r"\d{1,3}\s*%", line))
-    if len(line) <= limit or not m:
+    if not m:
         return line[:limit]
-    head, tail = line[:m[-1].start()], line[m[-1].start():][:limit - 30]
-    # a fixed label budget, so every line of one file gets the same label whatever its tail length
+    head = line[:m[-1].start()]
     name = head.rstrip()  # tqdm pads " 10%" vs "100%": cut the name, not the padding
-    if len(name) > 30:  # start, crc16 of the whole name (two names do not share one bar), end
-        import zlib
+    if len(name) > 30:  # always (not only when the line is long), so one file keeps one label on every line
+        import zlib  # start, crc16 of the whole name (two names do not share one bar), end
 
         name = f"{name[:8]}~{zlib.crc32(name.encode()) & 0xFFFF:04x}...{name[-14:]}"
-    return name + head[len(head.rstrip()):] + tail
+    return (name + head[len(head.rstrip()):] + line[m[-1].start():])[:limit]
 
 
 def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:

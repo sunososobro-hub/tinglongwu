@@ -104,3 +104,18 @@ def test_long_names_that_differ_in_the_middle_stay_two_files():
     sd.feed(("dl_line", core.short_line(f"{a}: 100%|##########| 2.0k/2.0k [00:00<00:00]")))
     sd.feed(("dl_line", core.short_line(f"{b}:  10%|#         | 48M/484M [00:01<00:09]")))
     assert sd.percent == 10
+
+
+def test_label_is_the_same_whether_or_not_the_line_is_long():
+    name = "a" * 56 + ".bin"
+    sd = core.StartDownload("small")
+    for line in (name + ":  60%|#| 290M/484M", name + ":  10%|#| 48M/484M [00:01<00:09, 48.0MB/s]"):
+        out = core.short_line(line)
+        assert len(out) <= 90 and "484M" in out
+        sd.feed(("dl_line", out))
+    assert sd.percent == 60
+
+
+def test_padding_and_long_tail_stay_within_the_limit():
+    out = core.short_line("b" * 80 + ":   5%|#| 1.0M/484M [00:01<10:09, 48.0MB/s, some=extra, more=fields, here=x]")
+    assert len(out) <= 90 and "1.0M/484M" in out
