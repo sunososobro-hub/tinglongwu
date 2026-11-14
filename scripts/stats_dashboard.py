@@ -437,8 +437,131 @@ def release_downloads(api, repo):
     except Exception as e:  # dashboard still builds without downloads
         print("releases unavailable: %s" % e, file=sys.stderr)
         return None
-    return [{"tag": r.get("tag_name", "?"),
-             "downloads": sum(a.get("download_count", 0) for a in r.get("assets", []))} for r in rels]
+    out = []
+    for r in rels:
+        d = {"tag": r.get("tag_name", "?"), "downloads": sum(a.get("download_count", 0) for a in r.get("assets", []))}
+        if r.get("published_at") and not r.get("draft"):
+            d["published_at"] = r["published_at"]  # #744 release-time table
+        out.append(d)
+    return out
+
+
+# ------------------------------------------------------------------ #744: does quota turn into output?
+TPE = timezone(timedelta(hours=8))  # rules: days and weeks are Asia/Taipei
+TREND_DAYS = 14
+MARKER_PR = 743  # #742 rules speed-up merged here: before/after marker on the trend charts
+RELEASE_ROWS = 10
+
+
+def tpe_day(ts):
+    return parse_ts(ts).astimezone(TPE).strftime("%Y-%m-%d")
+
+
+def quota_trend(merged_prs, now, n_days=TREND_DAYS, marker_pr=MARKER_PR):
+    """Per Asia/Taipei day (last n_days): quota minutes (tlwu-usage minutes x model weight) and PRs merged to the
+    base branch, plus merged PRs per 100 quota minutes (None on a day with no quota). `marker` = the Taipei day the
+    marker PR merged (None when it is outside the window)."""
+    end = now.astimezone(TPE).date()
+    days = [(end - timedelta(days=n_days - 1 - i)).isoformat() for i in range(n_days)]
+    quota, merged = dict.fromkeys(days, 0.0), dict.fromkeys(days, 0)
+    marker = None
+    for p in merged_prs:
+        d = tpe_day(p["merged_at"])
+        if p.get("number") == marker_pr:
+            marker = d
+        if d not in merged:
+            continue
+        merged[d] += 1
+        u = parse_usage(p.get("body"))
+        if u:
+            quota[d] += u[1] * QUOTA_WEIGHT.get(u[0], 1.0)
+    return {"days": days, "quota": [round(quota[d], 1) for d in days], "merged": [merged[d] for d in days],
+            "per100": [round(100.0 * merged[d] / quota[d], 2) if quota[d] else None for d in days],
+            "marker": marker if marker in quota else None, "marker_pr": marker_pr}
+
+
+def _minutes(a, b):
+    return round((parse_ts(b) - parse_ts(a)).total_seconds() / 60.0, 1)
+
+
+def release_times(rels, runs, items, limit=RELEASE_ROWS):
+    """One row per published release (newest first, last `limit`): release.yml wall time (run start -> run end of the
+    successful run that was running when the release was published) and release PR open -> published (the
+    `release: <tag>` PR, preferring the merged one, opened before publishing). Missing data -> None."""
+    rows = []
+    for r in sorted((r for r in rels or () if r.get("published_at")), key=lambda r: r["published_at"], reverse=True)[:limit]:
+        pub = parse_ts(r["published_at"])
+        runs_at = [x for x in runs or () if x.get("conclusion") == "success" and x.get("run_started_at")
+                   and parse_ts(x["run_started_at"]) <= pub <= parse_ts(x["updated_at"]) + timedelta(minutes=5)]
+        run = max(runs_at, key=lambda x: x["run_started_at"], default=None)
+        title = "release: " + r["tag"]
+        prs = [i for i in items or () if "pull_request" in i and (i.get("title") or "").strip() == title
+               and parse_ts(i["created_at"]) <= pub]
+        merged = [i for i in prs if (i.get("pull_request") or {}).get("merged_at")]
+        pr = max(merged or prs, key=lambda i: i["created_at"], default=None)
+        rows.append({"tag": r["tag"], "published_at": r["published_at"],
+                     "run_min": _minutes(run["run_started_at"], run["updated_at"]) if run else None,
+                     "pr": pr["number"] if pr else None,
+                     "pr_min": _minutes(pr["created_at"], r["published_at"]) if pr else None})
+    return rows
+
+
+def release_runs(api, repo):
+    try:
+        return api("/repos/%s/actions/workflows/release.yml/runs?per_page=100" % repo).get("workflow_runs", [])
+    except Exception as e:  # table shows n/a instead of failing the page
+        print("release.yml runs unavailable: %s" % e, file=sys.stderr)
+        return None
+
+
+def _svg_bars(days, vals, color, marker=None, line=None, line_color="#e08a1e", title=""):
+    W, H, L, B, T = 640, 170, 40, 20, 8
+    n = len(days)
+    mx = max([1] + [v for v in vals if v])
+    lmx = max([0.01] + [v for v in line or () if v])
+    bw = (W - L) / n * 0.8
+    X = lambda i: L + (W - L) * (i + 0.5) / n  # noqa: E731
+    Y = lambda v, m: T + (H - T - B) * (1 - v / m)  # noqa: E731
+    g = ['<line x1="%d" x2="%d" y1="%.1f" y2="%.1f" stroke="var(--grid)"/><text x="%d" y="%.1f" text-anchor="end">%s</text>'
+         % (L, W, Y(v, mx), Y(v, mx), L - 4, Y(v, mx) + 4, round(v)) for v in (0, mx / 2, mx)]
+    for i, v in enumerate(vals):
+        if v:
+            g.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"><title>%s %s: %s</title></rect>'
+                     % (X(i) - bw / 2, Y(v, mx), bw, Y(0, mx) - Y(v, mx), color, days[i], html.escape(title), v))
+        if i % 2 == 0:
+            g.append('<text x="%.1f" y="%d" text-anchor="middle">%s</text>' % (X(i), H - 4, days[i][5:]))
+    if line:
+        pts = " ".join("%.1f,%.1f" % (X(i), Y(v, lmx)) for i, v in enumerate(line) if v is not None)
+        g.append('<polyline class="per100" fill="none" stroke="%s" stroke-width="2" points="%s"/>' % (line_color, pts))
+    if marker in days:
+        x = X(days.index(marker))
+        g.append('<line class="marker" x1="%.1f" x2="%.1f" y1="%d" y2="%d" stroke="#d1477a" stroke-dasharray="4 3"/>'
+                 % (x, x, T, H - B))
+    return '<svg viewBox="0 0 %d %d">%s</svg>' % (W, H, "".join(g))
+
+
+def render_throughput_section(series):
+    tr, rel = series.get("quota_trend"), series.get("release_times")
+    if not tr:
+        return ""
+    mk = ('; dashed line = #%d merged (%s)' % (tr["marker_pr"], tr["marker"])) if tr.get("marker") else ""
+    fmt = lambda m: "n/a" if m is None else ("%.0f min" % m if m < 120 else "%.1f h" % (m / 60))  # noqa: E731
+    rows = "".join('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                   % (html.escape(r["tag"]), r["published_at"][:16].replace("T", " "), fmt(r["run_min"]),
+                      fmt(r["pr_min"]) + (" (#%d)" % r["pr"] if r["pr"] else "")) for r in rel or ())
+    table = ('<table id="release_time"><tr><th>Release</th><th>Published (UTC)</th><th>release.yml run</th>'
+             '<th>Release PR open to published</th></tr>%s</table>' % rows) if rows else '<p class="n">No releases.</p>'
+    return ('<div class="grid"><section class="blk" id="quota_day"><h2>Quota minutes per day</h2>%s'
+            '<p class="cap1">tlwu-usage minutes x model weight (opus = 2x) of PRs merged to %s, per Asia/Taipei day%s.</p>'
+            '</section><section class="blk" id="prs_day"><h2>PRs merged per day</h2>%s'
+            '<div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span>'
+            '<span><i style="background:#e08a1e"></i>merged PRs per 100 quota minutes</span></div>'
+            '<p class="cap1">Does quota turn into output? Same days and marker as the quota chart.</p></section></div>'
+            '<h2>Release time</h2>%s<p class="n">Last %d published releases.</p>'
+            % (_svg_bars(tr["days"], tr["quota"], "#2a9d6f", tr.get("marker"), title="quota min"),
+               html.escape(series.get("branch", "dev")), mk,
+               _svg_bars(tr["days"], tr["merged"], "#3b82c4", tr.get("marker"), tr["per100"], title="PRs merged"),
+               table, RELEASE_ROWS))
 
 
 def downloads_series(history, days, current=None):
@@ -496,6 +619,8 @@ def build_series(api, repo, branch, now, history=None, rels=_FETCH):
     dl_total = sum(r["downloads"] for r in rels) if rels is not None else None
     return {
         "flow": flow, "faucet": faucet,
+        "quota_trend": quota_trend(merged_prs, now),  # #744
+        "release_times": release_times(rels, release_runs(api, repo), all_issues),
         "downloads": {"total": dl_total, "releases": rels or [],
                       "series": downloads_series(history, days, dl_total) if dl_total is not None
                       else [None] * len(days)},  # releases unavailable: block stays empty
@@ -586,6 +711,7 @@ __VISION__
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
 __FLOW__
+__THROUGHPUT__
 <div class="grid">
 <section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
@@ -720,7 +846,8 @@ def vision_html(path=VISION_PATH):
 def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
     values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
-              "__FLOW__": render_flow_section(series), "__VISION__": vision_html(), "__DATA__": data}
+              "__FLOW__": render_flow_section(series),
+              "__THROUGHPUT__": render_throughput_section(series), "__VISION__": vision_html(), "__DATA__": data}
     # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
     return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
