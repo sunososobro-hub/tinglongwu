@@ -16,6 +16,8 @@
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
 | Linux (x86_64) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
 
+Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前如此）：點「其他資訊 → 仍要執行」。想先檢查？到[發行頁](https://github.com/sunososobro-hub/tinglongwu/releases/latest)下載 `mac_install.sh` / `install.sh`，讀過並與該頁的 `SHA256SUMS.txt` 比對後再執行。
+
 安裝時會下載一次語音辨識和翻譯模型（需要網路），之後完全離線。
 
 ## 三種用法
