@@ -39,6 +39,14 @@ KOKORO_VOICES_SHA256="${KOKORO_VOICES_SHA256-bca610b8308e8d99f32e6fe4197e7ec0167
 BIN_DIR="$HOME/.local/bin"
 WARNINGS=""
 
+# --uninstall (#476): hand over to scripts/uninstall.sh (other args, e.g. --purge, pass through)
+for a in "$@"; do
+  if [ "$a" = "--uninstall" ]; then
+    [ -f "$DIR/scripts/uninstall.sh" ] || { echo "[x] $DIR/scripts/uninstall.sh not found (older install, or wrong TLWU_DIR). Re-run this installer once to update, then run it with --uninstall." >&2; exit 1; }
+    exec bash "$DIR/scripts/uninstall.sh" "$@"
+  fi
+done
+
 say()  { printf '\n==> %s\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 warn() { printf '    [注意] %s\n' "$*" >&2; WARNINGS="${WARNINGS}  - $*
