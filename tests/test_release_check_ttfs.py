@@ -55,3 +55,21 @@ def test_null_unknown(tmp_path):
 def test_no_flag_prints_no_ttfs(tmp_path):
     r = _run(tmp_path, [])
     assert "ttfs" not in r.stdout
+
+
+def test_nan_unknown(tmp_path):
+    p = tmp_path / "t.json"
+    p.write_text('{"ttfs_seconds": 200, "excl_download_seconds": NaN}')
+    r = _run(tmp_path, ["--ttfs", str(p)])
+    assert r.returncode == 0
+    assert "ttfs: unknown (" in r.stdout
+    assert "WARN" not in r.stdout
+
+
+def test_huge_int_unknown(tmp_path):
+    p = tmp_path / "t.json"
+    p.write_text('{"ttfs_seconds": 200, "excl_download_seconds": 1' + "0" * 400 + "}")
+    r = _run(tmp_path, ["--ttfs", str(p)])
+    assert r.returncode == 0
+    assert "ttfs: unknown (" in r.stdout
+    assert "Traceback" not in r.stderr

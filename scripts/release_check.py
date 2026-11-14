@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import zipfile
 from pathlib import Path
@@ -25,8 +26,10 @@ def ttfs_lines(path: Path | None) -> list[str]:
         if data.get("ttfs_seconds") is None:
             return ["ttfs: unknown (ttfs_seconds is null)"]
         excl = float(data["excl_download_seconds"])
+        if not math.isfinite(excl):
+            return ["ttfs: unknown (excl_download_seconds is not finite)"]
         label = f"{excl:.0f} s excl. download ({data.get('os', '?')}, {data.get('version', '?')})"
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as e:
         return [f"ttfs: unknown ({type(e).__name__}: {e})"]
     lines = [f"ttfs: {label}"]
     if excl > TTFS_BUDGET_S:
