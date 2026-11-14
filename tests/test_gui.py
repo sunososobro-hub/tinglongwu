@@ -487,6 +487,7 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
             "save": a.v_save, "save_path": a.v_save_path, "show_src": a.var_show_src, "live_draft": a.v_live,
             "voice": a.v_voice, "voice_device": a.v_voice_dev, "floating_bar": a.v_bar}
     in_panel = _bound_vars(a.panel)
+    in_panel |= {str(v) for k, (_kind, _vals, v) in a.kind_combos.items() if a.combos[k].winfo_exists()}  # #884: named combos show a mirror var
     assert [k for k, v in keys.items() if str(v) not in in_panel] == []
     # #738: subtitle lines, font size, UI language and theme moved to the menu bar's Settings menu
     in_menu = set()
@@ -524,7 +525,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     for w in a.bar.winfo_children():
         if "text" in w.keys() and w.cget("text") == "Speak":
             w.invoke()
-    assert a.v_mode.get() == "speak" and a.v_pair.get() == "en→zh-tw"  # the label shows the Speak direction
+    assert a.v_mode.get() == "speak" and a.v_pair.get() == "English→Trad. Chinese"  # #884: names, not codes; the label shows the Speak direction
     a.btn.invoke()  # Speak + Start: mic in my language (en) -> zh-tw, as the #294 "I speak" button
     a.toggle()
     a.worker.join(5)
@@ -532,7 +533,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
     a.v_mode.set("listen")
     a.v_lang.set("auto")
-    assert a.v_pair.get() == "auto→en"
+    assert a.v_pair.get() == "Auto→English"
     assert a.dot_state == "idle"
     a.btn.invoke()  # Listen + Start: the saved settings, as the old Start button
     assert a.dot_state == "loading" and (runs[1]["source"], runs[1]["target"]) == ("system", "en")

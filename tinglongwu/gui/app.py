@@ -586,7 +586,10 @@ class App:
         s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
         if self.v_mode.get() == "speak":
             s = quick_settings(s, "speak")
-        self.v_pair.set(f"{plain_label(s['lang'])}→{choice_label('target', s['target'])}")
+        # the bar is capped at 420 px (#455): long Chinese target names are shortened here (still script names, no region)
+        short = {"en": {"zh-tw": "Trad. Chinese", "zh-cn": "Simp. Chinese"},
+                 "ru": {"zh-tw": "трад. китайский", "zh-cn": "упр. китайский"}}.get(ui_lang(), {})
+        self.v_pair.set(f"{plain_label(s['lang'])}→{short.get(s['target']) or choice_label('target', s['target'])}")
 
     def set_dot(self, name: str):
         self.dot_state = name
