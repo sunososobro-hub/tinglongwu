@@ -226,6 +226,7 @@ QUOTA_WEIGHT = {"opus": 2.0}  # sonnet and anything else = 1.0
 TYPE_TARGETS = [("bug", 30), ("enhancement", 30), ("eval", 10), ("documentation", 5), ("maint", 5)]
 SIDE_TARGETS = [("QA", 15), ("ideas", 5)]  # fixed-schedule rows, informational
 FLOW_HOURS = 48  # same window as the S-hard ledger
+BACKFILL_DAYS = 14  # #662 part 4: path-inferred dimensions re-applied to this many days of merged PRs
 UNLABELLED = "unlabelled"
 FOCUS_ORANGE = "#e08a1e"
 
@@ -450,6 +451,17 @@ def render_faucet(faucet):
             % (faucet["level"], FOCUS_ORANGE, focus))
 
 
+def render_backfill_note(flow):
+    """#662 part 4: one line for the longer backfill window (same inference, more PRs)."""
+    b = flow.get("backfill")
+    if not b or not b.get("total"):
+        return ""
+    inf = b.get("inferred", {})
+    return ('<p class="n">Last %d days: inferred mode %.0f%%, platform %.0f%%, language %.0f%%; '
+            'unclassified mode %.0f%%.</p>' % (b["days"], inf.get("mode", 0), inf.get("os", 0), inf.get("lang", 0),
+                                               b.get("unclassified", 0)))
+
+
 def render_flow_section(series):
     flow = series.get("flow")
     if not flow:
@@ -460,17 +472,17 @@ def render_flow_section(series):
     return ('<h2>Where the quota goes</h2>%s'
             '<p class="n">Quota minutes (minutes x model weight, opus = 2x sonnet), PRs merged in the last %d h; '
             'orange = current focus. Inferred from changed files (no label): mode %.0f%%, platform %.0f%%, '
-            'language %.0f%%; unclassified mode %.0f%%.</p>'
+            'language %.0f%%; unclassified mode %.0f%%.</p>%s'
             '<h2>Type mix vs target</h2>%s'
             '<p class="n">Share of quota per issue type; the tick marks the target.</p>'
             '<h2>Faucet</h2>%s<p class="n">Throttle level and focus read from issue #574.</p>'
             % (render_sankey(flow, focus), FLOW_HOURS, inf.get("mode", 0), inf.get("os", 0), inf.get("lang", 0),
-               flow.get("unclassified", 0), render_type_mix(flow), render_faucet(faucet)))
+               flow.get("unclassified", 0), render_backfill_note(flow), render_type_mix(flow), render_faucet(faucet)))
 
 
 def build_flow_inputs(api, repo, merged_prs, now):
     """Quota flow from recent merged PRs' usage lines + linked-issue labels, and the #574 faucet."""
-    since = now - timedelta(hours=FLOW_HOURS)
+    since = now - timedelta(days=BACKFILL_DAYS)  # fetch once for the longest window, filter per window below
     items, cache = [], {}
     for p in merged_prs:
         usage = parse_usage(p.get("body"))
@@ -488,13 +500,18 @@ def build_flow_inputs(api, repo, merged_prs, now):
         except Exception as e:  # no inference for this PR
             print("pr #%s files unavailable: %s" % (p.get("number"), e), file=sys.stderr)
             files = []
-        items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, []), "files": files})
+        items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, []), "files": files,
+                      "merged_at": p["merged_at"]})
     try:
         faucet = parse_faucet(api("/repos/%s/issues/574" % repo).get("body"))
     except Exception as e:
         print("faucet unavailable: %s" % e, file=sys.stderr)
         faucet = None
-    return build_flow(items), faucet
+    recent = [i for i in items if parse_ts(i["merged_at"]) >= now - timedelta(hours=FLOW_HOURS)]
+    flow = build_flow(recent)
+    flow["backfill"] = {"days": BACKFILL_DAYS, **{k: v for k, v in build_flow(items).items()
+                                                  if k in ("total", "inferred", "unclassified")}}
+    return flow, faucet
 
 
 _FETCH = object()  # sentinel: fetch releases inside the builder
