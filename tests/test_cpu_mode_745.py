@@ -122,3 +122,18 @@ def test_gui_ram_probe_uses_usable_cuda(monkeypatch):
     from tinglongwu import device
 
     assert device.resolve_device("auto", count=lambda: 1, missing=lambda: ["cublas"], warn=lambda m: None) == "cpu"
+
+
+def test_cpu_on_work_reports_mt_ms_and_keeps_slowwatch():
+    from tinglongwu import cli
+
+    seen, ms = [], []
+    on_work = cli.cpu_on_work(lambda a, m, s: seen.append((a, m, s)), ms.append)
+    on_work(0.5, 0.412, 3.0)
+    assert seen == [(0.5, 0.412, 3.0)] and ms == [pytest.approx(412.0)]
+    only_ms = cli.cpu_on_work(None, ms.append)
+    only_ms(0.1, 0.2, 1.0)
+    assert ms[-1] == pytest.approx(200.0)
+    assert cli.cpu_on_work(None, None) is None  # no GUI, no SlowWatch (GPU or --file): unchanged
+    watch = lambda a, m, s: None  # noqa: E731
+    assert cli.cpu_on_work(watch, None) is watch

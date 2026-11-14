@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
@@ -135,6 +135,8 @@ class Overlay:
             om.add_command(label=t(key), command=lambda d=d: self.bump_alpha(d))
         self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
+        if hasattr(app, "report_wrong"):  # #677: GUI only
+            self.menu.add_command(label=t("gui_menu_wrong"), command=app.report_wrong)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
         if hasattr(app, "show_tour"):  # #314: the GUI only; the CLI subtitle bar (Bar) reuses this menu
             self.menu.add_command(label=t("gui_menu_tour"), command=app.show_tour)
@@ -440,8 +442,10 @@ class App:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
+        self._relabel_combos()
         self.home_lang.configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
+        self._pair_changed()
         self.overlay.build_menu()
         self.build_menubar()
         self._upd_relabel()
@@ -522,12 +526,45 @@ class App:
         key = send_mode_notice_key(mode)
         self.lbl_send_notice.configure(text=t(key) if key else "")
 
-    def _combo(self, row, label, key, values):
+    def _combo(self, row, label, key, values, kind=None):
+        """kind (#884): the box shows names in the UI language while the returned var keeps the raw stored value."""
         self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
         var = tk.StringVar(value=self.settings[key])
-        self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=var, values=values, state="readonly", width=18)
+        shown = var
+        if kind:
+            shown = tk.StringVar(value=choice_label(kind, var.get()))
+            busy = []
+
+            def sync(src, dst, conv):
+                if busy:
+                    return
+                busy.append(1)
+                try:
+                    dst.set(conv(src.get()))
+                finally:
+                    busy.pop()
+
+            var.trace_add("write", lambda *_: sync(var, shown, lambda v: choice_label(kind, v)))
+            shown.trace_add("write", lambda *_: sync(shown, var, lambda v: choice_value(kind, v, values)))
+            self.kind_combos[key] = (kind, values, var)
+        self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=shown, values=choice_labels(kind, values) if kind else values,
+                                             state="readonly", width=18)
         cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
         return var
+
+    def _relabel_combos(self):
+        """#884: the UI language changed: show every named dropdown in the new language."""
+        for key, (kind, values, var) in self.kind_combos.items():
+            self.combos[key].configure(values=choice_labels(kind, values))
+            var.set(var.get() + "")  # re-fires the write trace -> the shown name follows the language
+        # engine / model carry marks in the old language: rebuild them from the stored ids (settings value unchanged)
+        eng = engine_from_label(self.v_engine.get())
+        self.combos["engine"].configure(values=engine_labels())
+        self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == eng), eng))
+        mod = model_from_label(self.v_model.get())
+        labels = model_labels(ram_gb=self._cpu_ram())
+        self.combos["model"].configure(values=labels)
+        self.v_model.set(next((l for l in labels if model_from_label(l) == mod), mod))
 
     def set_advanced(self, on: bool):
         """#399: show / hide the engine dropdown; the choice is saved with the other GUI settings."""
@@ -561,7 +598,11 @@ class App:
             self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
                      key).pack(side="left")
         self.v_pair = tk.StringVar()
-        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
+        # #884: one point smaller than the bar's buttons, so two-line names fit 420 px; pair_text measures with it
+        self.pair_font = tkfont.nametofont("TkDefaultFont").copy()
+        size = int(self.pair_font.cget("size"))
+        self.pair_font.configure(size=size - 1 if size > 0 else size + 1)  # negative size = pixels
+        ttk.Label(b, textvariable=self.v_pair, justify="center", font=self.pair_font).pack(side="left", padx=2)
         for v in (self.v_lang, self.v_target, self.v_mode):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
@@ -603,7 +644,8 @@ class App:
         s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
         if self.v_mode.get() == "speak":
             s = quick_settings(s, "speak")
-        self.v_pair.set(f"{s['lang']}→{s['target']}")
+        # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
+        self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure))
 
     def set_dot(self, name: str):
         self.dot_state = name
@@ -630,10 +672,11 @@ class App:
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
         self.frm = f = ttk.Frame(p, padding=10)
         self.combos = {}
+        self.kind_combos = {}
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
-        self.v_target = self._combo(1, "gui_target", "target", TARGETS)
-        self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
+        self.v_target = self._combo(1, "gui_target", "target", TARGETS, "target")
+        self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES, "quality")
         self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
         self.v_adv = tk.BooleanVar(value=False)
@@ -644,9 +687,9 @@ class App:
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
-        self.v_source = self._combo(5, "gui_source", "source", SOURCES)
+        self.v_source = self._combo(5, "gui_source", "source", SOURCES, "source")
         self._build_send_mode(f)
-        self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS)
+        self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS, "preset")
         self._tx(ttk.Label(f), "gui_glossary").grid(row=6, column=0, sticky="w", pady=2)
         self.v_gloss = tk.StringVar(value=s["glossary"])
         ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=6, column=1, sticky="we", pady=2)
@@ -1259,7 +1302,8 @@ class App:
 
             run_session(a, sink=QueueSink(q), draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
-                        notice=lambda m: q.put(("notice", m)))
+                        notice=lambda m: q.put(("notice", m)),
+                        cpu_line=lambda ms: q.put(("cpu_line", ms)))
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
@@ -1291,6 +1335,11 @@ class App:
                             ready = self.speak_hint
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
+                elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
+                    from .core import cpu_mode_line
+
+                    if self.load_t0 is None and not self.errored:
+                        self._status_text(cpu_mode_line("cpu", ev[1]) or "")
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
@@ -1369,6 +1418,23 @@ class App:
         if text:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
+
+    def report_wrong(self):
+        """#677: one-click 'wrong translation' for the newest finished line; the app sends nothing, the browser opens on a pre-filled form."""
+        import webbrowser
+
+        from ..report_translation import report_line
+
+        finals = [r for r in self.state.history() if not r[2]]
+        if not finals:
+            messagebox.showinfo(t("gui_wrong_title"), t("gui_wrong_none"), parent=self.root)
+            return
+        src, out, _ = finals[-1]
+        s = self.settings
+        report_line(src, out, version=__version__, mode=self.quick_mode or "listen",
+                    langpair=f"{s.get('lang', 'auto')} -> {s.get('target', '')}",
+                    confirm=lambda text: messagebox.askokcancel(t("gui_wrong_title"), t("gui_wrong_ask", text=text), parent=self.root),
+                    open_url=webbrowser.open)
 
     def quit(self):
         if self.closing:

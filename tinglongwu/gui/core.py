@@ -342,8 +342,79 @@ def follow_newest(yview_last: float) -> bool:
 
 
 _MARK_OK = "\u2713 "
-_MARK_MISSING = " (\u9700\u4e0b\u8f09 / not downloaded)"  # #739: no longer shown; kept so an old saved label still parses
+_MARK_MISSING_OLD = " (\u9700\u4e0b\u8f09 / not downloaded)"  # #739: no longer shown; kept so an old saved label still parses
 _MARK_HEAVY = " (too heavy for this PC)"  # #780: medium / large-v3 on a CPU-mode PC with < 24 GB RAM
+_MARK_MISSING = {"en": " (not downloaded)", "ru": " (нужна загрузка)", "zh-TW": "（需下載）"}  # one language per label (#884)
+
+# #884: the dropdowns show names in the UI language; the stored setting keeps the raw value.
+_CHOICES = {
+    "quality": {"en": {"auto": "Auto", "fast": "Fast", "balanced": "Balanced", "quality": "Best quality", "manual": "Manual"},
+                "ru": {"auto": "Авто", "fast": "Быстро", "balanced": "Баланс", "quality": "Лучшее качество", "manual": "Вручную"},
+                "zh-TW": {"auto": "自動", "fast": "快速", "balanced": "平衡", "quality": "最佳品質", "manual": "手動"}},
+    "source": {"en": {"system": "PC sound", "mic": "Microphone"},
+               "ru": {"system": "Звук ПК", "mic": "Микрофон"},
+               "zh-TW": {"system": "電腦音效", "mic": "麥克風"}},
+    "preset": {"en": {"meeting": "Meeting (full sentences)", "chat": "Chat (faster)"},
+               "ru": {"meeting": "Встреча (целые фразы)", "chat": "Чат (быстрее)"},
+               "zh-TW": {"meeting": "會議（完整句子）", "chat": "聊天（較快）"}},
+    "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}},
+}
+
+
+def _ui() -> str:
+    from ..i18n import ui_lang
+
+    u = ui_lang()
+    return u if u in _MARK_MISSING else "en"
+
+
+def choice_label(kind: str, value: str, lang: str | None = None) -> str:
+    """Name shown in a dropdown for a stored value (#884); target languages use the script name only."""
+    from .. import langs
+
+    ui = lang or _ui()
+    if kind == "target":
+        return langs.plain_label(value, ui)
+    return _CHOICES[kind][ui].get(value, value)
+
+
+PAIR_MAX_PX = 120  # #884: widest pair label (9 pt) on the 420 px bar (#455): with it the bar measured <= 402 px
+# under xvfb (Inter 10 pt), and CI fonts ran ~12 px wider than that box on PR #900 (430 -> 442)
+_PAIR_SHORT = {"en": {"zh-tw": "Chinese (Trad.)", "zh-cn": "Chinese (Simp.)"},
+               "ru": {"zh-tw": "китайский (трад.)", "zh-cn": "китайский (упр.)"},
+               "zh-TW": {}}
+
+
+def pair_text(src: str, target: str, measure, lang: str | None = None, max_px: int = PAIR_MAX_PX) -> str:
+    """Bar label for a direction (#884): names, never codes. One line when it fits in max_px, else the target on
+    a second line, else a shorter target name (still the script name, never a region). measure(text) -> pixels."""
+    from .. import langs
+
+    ui = lang or _ui()
+    a = langs.plain_label(src, ui)
+    for b in (choice_label("target", target, ui), _PAIR_SHORT.get(ui, {}).get(target)):
+        if not b:
+            continue
+        one = f"{a}\u2192{b}"
+        if measure(one) <= max_px:
+            return one
+        two = f"{a} \u2192\n{b}"
+        if max(measure(line) for line in two.split("\n")) <= max_px:
+            return two
+    return two
+
+
+def choice_labels(kind: str, values, lang: str | None = None) -> list[str]:
+    return [choice_label(kind, v, lang) for v in values]
+
+
+def choice_value(kind: str, label: str, values) -> str:
+    """The stored value for a dropdown entry in any UI language (also accepts the raw value)."""
+    label = (label or "").strip()
+    for v in values:
+        if label == v or any(label == choice_label(kind, v, u) for u in _MARK_MISSING):
+            return v
+    return label
 
 
 def cpu_ram_gb(has_cuda, ram=None) -> float | None:
@@ -376,7 +447,7 @@ def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
     have = whisper_installed(mdir)
     heavy = lambda m: _MARK_HEAVY if too_heavy(m, ram_gb) else ""  # noqa: E731
     return ([_MARK_OK + m + heavy(m) for m in MODELS if m in have]
-            + [m + heavy(m) for m in MODELS if m not in have])
+            + [m + heavy(m) for m in MODELS if m not in have])  # #739: a missing model downloads on the first Start
 
 
 _ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
@@ -388,17 +459,21 @@ def engine_labels(mdir=None) -> list[str]:
     from ..models import models_dir
 
     d = models_dir(str(mdir) if mdir else None)
-    return [e if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})" for e in ENGINES]
+    return [choice_label("engine", e) if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})"
+            for e in ENGINES]
 
 
 def engine_from_label(label: str) -> str:
     """The plain engine id from an engine_labels() entry (also accepts a plain id)."""
-    return (label or "").split(" (", 1)[0].strip()
+    return choice_value("engine", (label or "").split(" (", 1)[0].strip(), ENGINES)
 
 
 def model_from_label(label: str) -> str:
     """The plain model name from a dropdown entry (also accepts a plain name)."""
-    return label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "").replace(_MARK_MISSING, "").strip()
+    label = label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "")
+    for mark in (_MARK_MISSING_OLD, *_MARK_MISSING.values()):  # old saved labels (#739 / #884)
+        label = label.replace(mark, "")
+    return label.strip()
 
 
 def label_for_model(name: str, mdir=None, ram_gb: float | None = None) -> str:

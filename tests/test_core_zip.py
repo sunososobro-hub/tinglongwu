@@ -128,6 +128,8 @@ def test_release_runtime_cache_key_is_the_windows_build_key():
         assert restore["id"] == "runtime" and save["with"]["path"] == restore["with"]["path"]
         assert save["with"]["key"] == "${{ steps.runtime.outputs.cache-primary-key }}"
         assert "steps.runtime.outputs.cache-hit != 'true'" in save["if"]  # only a rebuilt layer is saved
+        # #888: never from a pull request or a dry run on a work branch (per-ref copies evict the shared entry)
+        assert ("github.event_name == 'push'" in save["if"]) or ("github.ref == 'refs/heads/main'" in save["if"])
         build = next(i for i, s in enumerate(steps) if "build_windows.py" in str(s.get("run", "")))
         assert steps.index(restore) < build < steps.index(save)  # saved before any later check can fail
         assert restore["with"]["path"].endswith("\\runtime")  # = build_windows.RUNTIME.parent under the build root
