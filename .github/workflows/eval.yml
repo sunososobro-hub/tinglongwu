@@ -13,6 +13,12 @@ on:
   pull_request:
     branches: [dev, main]
   workflow_dispatch:
+    inputs:
+      whisper:
+        description: "Whisper size for the mini-eval job (#876: measure tiny / base for the slim core, #770). PR runs always use small."
+        type: choice
+        options: [small, base, tiny]
+        default: small
 
 permissions:
   contents: read
@@ -25,7 +31,7 @@ env:
   TLWU_NO_UPDATE: "1"
   TLWU_HYMT_TEMP: "0"  # greedy decoding: repeatable chrF run to run, so the baseline margin can stay small
   PYTHONUTF8: "1"
-  WHISPER: small
+  WHISPER: ${{ inputs.whisper || 'small' }}  # only a manual dispatch can pick another size; PR runs stay on small
 
 jobs:
   mini-eval:
@@ -78,7 +84,7 @@ jobs:
             ~/tlwu-models
             eval_data/smoke
           key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
-      - name: Models (Hy-MT2 1.8B Q4 + Whisper small)
+      - name: Models (Hy-MT2 1.8B Q4 + Whisper ${{ env.WHISPER }})
         if: steps.paths.outputs.run == 'true'
         run: tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
       - name: Smoke clips (FLEURS, pinned by sha256 in eval/ci_smoke.json)
@@ -103,12 +109,12 @@ jobs:
           python -m tlwu_eval --gate r.json --baseline eval/baseline.json > gate.md
           rc=$?
           cat gate.md
-          { echo "## eval gate (#570)"; echo; cat gate.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## eval gate (#570) - Whisper $WHISPER"; echo; cat gate.md; } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && steps.paths.outputs.run == 'true'
         with:
-          name: eval-gate-report
+          name: eval-gate-report-${{ env.WHISPER }}
           path: |
             r.json
             gate.md
@@ -118,6 +124,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
+      WHISPER: small  # #876: the dispatch input only moves the mini-eval job
       TLWU_CPU_THREADS: "4"  # #750: a 4-thread budget like a low-end laptop (MT gets half, see tinglongwu/threads.py)
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

@@ -1,0 +1,44 @@
+name: hw-nightly
+# #681: hw-tests nightly on dev, so hardware evidence (e.g. #593's 5 green runs) piles up without the owner pressing a
+# button. This workflow only decides and dispatches; it runs on a GitHub-hosted runner. hw-tests.yml (self-hosted) keeps
+# its own triggers (push to dev, manual dispatch) and its single job, because scripts/hw_deferral.py (#848) tells an
+# offline runner from a started run by that job; a hosted gate job inside hw-tests.yml would make every run look started.
+#   gate     : scripts/hw_nightly.py - skip when dev's tip already has a green hw-tests run (or one queued / running)
+#   dispatch : `gh workflow run hw-tests.yml --ref dev`; hw-tests.yml's concurrency group (hw-tests) keeps runs from
+#              overlapping, and its summary names the commit under test
+# A schedule runs from the workflow file on the default branch (main), so this starts after the next release.
+on:
+  schedule:
+    - cron: "17 19 * * *"   # 03:17 Asia/Taipei: the owner's PC is idle and nobody is on a call
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: hw-nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    if: github.repository == 'sunososobro-hub/tinglongwu'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write   # dispatch hw-tests.yml
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Did dev change since the last green hw-tests run?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/hw_nightly.py --repo "$GITHUB_REPOSITORY"
+      - name: Dispatch hw-tests on dev
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run hw-tests.yml --ref dev
+          echo "dispatched hw-tests on dev (${{ steps.gate.outputs.sha }})" >> "$GITHUB_STEP_SUMMARY"
