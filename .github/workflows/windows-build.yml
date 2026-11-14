@@ -15,7 +15,11 @@ permissions:
 
 concurrency:
   group: windows-build-${{ github.ref }}
-  cancel-in-progress: true
+  # #657: only PR runs cancel an older run. A dev push run always finishes, so it saves the Nuitka cache that every
+  # PR restores (PR runs can read dev's caches). With cancel-in-progress on dev, nearly every dev run was cancelled by
+  # the next merge, the dev cache aged out and PR builds compiled all 1281 C files from zero (~40-50 min vs ~10 min).
+  # A newer dev push still replaces a *pending* one, so at most one dev run waits behind the running one.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -55,7 +59,9 @@ jobs:
             requirements-llama-cpu.txt
       - name: Nuitka compile cache
         if: steps.changes.outputs.build == 'true'
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        # #657: restore only; the save step after the build runs for dev pushes / dispatches, never for PRs. A PR save
+        # per head commit filled the 10 GB repo cache and evicted dev's entry (PRs then restored nothing at all).
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.NUITKA_CACHE_DIR }}
           key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.sha }}
@@ -85,6 +91,12 @@ jobs:
         run: |
           & $env:PACK_PY packaging\build_windows.py --lite
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Save Nuitka compile cache (dev pushes and dispatches only, #657)
+        if: steps.changes.outputs.build == 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ env.NUITKA_CACHE_DIR }}
+          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.sha }}
       - name: Core zip release check (scripts/release_check.py, 300 MB budget, no CUDA files, #638)
         if: steps.changes.outputs.build == 'true'
         shell: pwsh
