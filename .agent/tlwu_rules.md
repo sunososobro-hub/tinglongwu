@@ -11,7 +11,7 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 
 ## 2. Locking (one rule for everyone)
 - Claim = create branch `fix/N` from dev (REST `POST git/refs`, or `create_branch`). "Reference already exists" (422) = someone else has it: take the next item.
-- After claiming: add `status:doing`. Push work to `fix/N` (re-do after a closed PR: `fix/N-r2`, `-r3`).
+- After claiming: add `status:doing`. Push work to `fix/N` (re-do after a closed PR: `fix/N-r2`, `-r3`). When the PR is open, swap `status:doing` -> `status:review` in the same run (this releases the area lock, section 10). Mergers remove `status:review` when the PR merges or closes.
 - Never start an item that has an open PR whose body says Closes/Refs #N, or a `fix/N*` branch that is still live.
 - A `fix/N*` branch is NOT a lock when its last PR is closed unmerged and no open PR uses it (leftover after a CHANGES/redo review). Retry on the next free `fix/N-rK` (claim it as above), start from the closed PR's head (`git fetch origin pull/<PR>/head`) and follow that PR's last review. Mergers/watchdog may delete such leftover branches.
 - Every PR, from any agent or session, has an issue and a head named `fix/N`, `fix/N-rK` or `feat/N`, with `Closes #N` or `Refs #N` in the body. No `rules/`, `docs/` or other heads (the section 11 fast-lane PR to main is the only exception).
