@@ -101,18 +101,32 @@ def test_long_names_with_the_same_end_stay_two_files():
 def test_long_names_that_differ_in_the_middle_stay_two_files():
     a, b = ("encoder/" + "x" * 40 + c + "x" * 40 + ".safetensors" for c in "AB")
     sd = core.StartDownload("small")
-    sd.feed(("dl_line", core.short_line(f"{a}: 100%|##########| 2.0k/2.0k [00:00<00:00]")))
-    sd.feed(("dl_line", core.short_line(f"{b}:  10%|#         | 48M/484M [00:01<00:09]")))
+    sd.feed(core.line_event("dl_line", f"{a}: 100%|##########| 2.0k/2.0k [00:00<00:00]"))
+    sd.feed(core.line_event("dl_line", f"{b}:  10%|#         | 48M/484M [00:01<00:09]"))
     assert sd.percent == 10
+
+
+def test_names_whose_short_text_is_the_same_stay_two_files():
+    """Any shortening can map two names to one text; tracking uses the full line, so they never share a bar."""
+    a, b = ("encoder/" + "x" * 20 + c + "x" * 20 + ".safetensors" for c in "AB")
+    assert core.short_line(f"{a}: 1%") == core.short_line(f"{b}: 1%")  # same text on screen
+    sd = core.StartDownload("small")
+    sd.feed(core.line_event("dl_line", f"{a}: 100%|####| 2.0k/2.0k"))
+    sd.feed(core.line_event("dl_line", f"{b}:  10%|#   | 48M/484M"))
+    assert sd.percent == 10
+
+
+def test_short_lines_keep_the_two_item_event():
+    assert core.line_event("pack_line", "pack: 50%") == ("pack_line", "pack: 50%")
 
 
 def test_label_is_the_same_whether_or_not_the_line_is_long():
     name = "a" * 56 + ".bin"
     sd = core.StartDownload("small")
     for line in (name + ":  60%|#| 290M/484M", name + ":  10%|#| 48M/484M [00:01<00:09, 48.0MB/s]"):
-        out = core.short_line(line)
-        assert len(out) <= 90 and "484M" in out
-        sd.feed(("dl_line", out))
+        ev = core.line_event("dl_line", line)
+        assert len(ev[1]) <= 90 and "484M" in ev[1]
+        sd.feed(ev)
     assert sd.percent == 60
 
 

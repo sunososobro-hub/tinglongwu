@@ -471,8 +471,8 @@ def download_env(env=None) -> dict:
 
 def short_line(line: str, limit: int = 90) -> str:
     """#918: one child output line cut to `limit` chars for the status text. A tqdm bar field ("|####      |") is
-    dropped first and a long file name is cut to 30 chars ("model-00~3f2a...0002.safetensors"), so the
-    "NN% 48M/484M" part that StartDownload needs always survives."""
+    dropped first and a long file name is cut to 30 chars ("model-00001-...0002.safetensors"), so the
+    "NN% 48M/484M" part stays readable."""
     import re
 
     line = re.sub(r"\|[^|]*\|", "|", line)
@@ -481,11 +481,16 @@ def short_line(line: str, limit: int = 90) -> str:
         return line[:limit]
     head = line[:m[-1].start()]
     name = head.rstrip()  # tqdm pads " 10%" vs "100%": cut the name, not the padding
-    if len(name) > 30:  # always (not only when the line is long), so one file keeps one label on every line
-        import zlib  # start, crc16 of the whole name (two names do not share one bar), end
-
-        name = f"{name[:8]}~{zlib.crc32(name.encode()) & 0xFFFF:04x}...{name[-14:]}"
+    if len(name) > 30:  # display only: StartDownload tracks by the full line (line_event)
+        name = f"{name[:12]}...{name[-15:]}"
     return (name + head[len(head.rstrip()):] + line[m[-1].start():])[:limit]
+
+
+def line_event(kind: str, line: str) -> tuple:
+    """#918: (kind, status text) for a child output line, plus the full line as a third item when the text was
+    shortened, so StartDownload tracks each file by its real name (consumers that only read ev[1] are unchanged)."""
+    text = short_line(line)
+    return (kind, text) if text == line else (kind, text, line)
 
 
 def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
@@ -501,7 +506,7 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
             if parts:
-                put(("dl_line", short_line(parts[-1])))
+                put(line_event("dl_line", parts[-1]))
         rc = p.wait()
     except Exception as e:  # noqa: BLE001
         put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
@@ -561,7 +566,7 @@ class StartDownload:
         kind = ev[0]
         if kind in ("dl_line", "pack_line"):
             self._last = ev[1]
-            bar = progress_bar(ev[1])
+            bar = progress_bar(ev[2] if len(ev) > 2 else ev[1])  # #918: the full line when the text was shortened
             if bar is not None:
                 label, p, total = bar
                 b = self._bars.pop(label, [0, 0.0])
@@ -589,7 +594,7 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
             if parts:
-                put(("pack_line", short_line(parts[-1])))
+                put(line_event("pack_line", parts[-1]))
         rc = p.wait()
     except Exception as e:  # noqa: BLE001
         put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
