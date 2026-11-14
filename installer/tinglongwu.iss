@@ -65,6 +65,15 @@ const
   PACK_KO = 3;   { #754 }
   PACK_RU = 4;
   OPT_GPU = 5;
+  { #753: the one download-size table (MB) behind the language page labels and the progress text.
+    Model sizes mirror tinglongwu_setup/packs.py SIZE_MB; the core totals are install.ps1's $SizeGB ('~2 GB' / '~3 GB')
+    and "~3 GB of Python packages" lines. Hy-MT2 is in the core download on every path (install.ps1 step 5, #301), so a
+    ja / ko / ru pack adds no second copy of it: only the Russian Piper voice is extra. }
+  HYMT2_MB = 1100;
+  PIPER_RU_MB = 60;
+  CORE_MODELS_CPU_MB = 2000;   { Whisper small + Hy-MT2 + Kokoro }
+  CORE_MODELS_GPU_MB = 3000;   { Whisper large-v3-turbo + Hy-MT2 + Kokoro }
+  PY_PACKAGES_MB = 3000;
 
 var
   Steps: Integer;
@@ -110,12 +119,39 @@ begin
   end;
 end;
 
-{ #672: approximate download MB of the ticked packs; mirrors tinglongwu_setup/packs.py (ja / ko = Hy-MT2 1100, ru = Hy-MT2 + Piper 60, shared once) }
-function PackSizeMB: Integer;
+{ #753: size of one language pack on its own (what the language page shows); mirrors packs.pack_size_mb }
+function PackMB(Pack: Integer): Integer;
 begin
-  Result := 0;
-  if LangPage.Values[PACK_JA] or LangPage.Values[PACK_KO] or LangPage.Values[PACK_RU] then Result := 1100;
-  if LangPage.Values[PACK_RU] then Result := Result + 60;
+  case Pack of
+    PACK_JA, PACK_KO: Result := HYMT2_MB;
+    PACK_RU: Result := HYMT2_MB + PIPER_RU_MB;
+  else Result := 0;
+  end;
+end;
+
+{ #753: "about 1.1 GB" (MB rounded to 0.1 GB) }
+function SizeText(MB: Integer): String;
+var
+  Tenths: Integer;
+begin
+  Tenths := (MB + 50) div 100;
+  Result := 'about ' + IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10) + ' GB';
+end;
+
+{ #753: ", about 1.1 GB" for a language page label, '' for a pack with nothing of its own (zh, en) }
+function PackNote(Pack: Integer): String;
+begin
+  Result := '';
+  if PackMB(Pack) > 0 then Result := ', ' + SizeText(PackMB(Pack));
+end;
+
+{ #753 (replaces the #672 pack-only sum, which said "about 0 MB" for zh + en): whole download of this install in MB =
+  core models (Hy-MT2 included, Whisper by tier) + Python packages + what the ticked packs add beyond the core (ru Piper) }
+function DownloadMB(Gpu: Boolean): Integer;
+begin
+  if Gpu then Result := CORE_MODELS_GPU_MB else Result := CORE_MODELS_CPU_MB;
+  Result := Result + PY_PACKAGES_MB;
+  if LangPage.Values[PACK_RU] then Result := Result + PIPER_RU_MB;
 end;
 
 { comma list for tlwu-setup --packs; zh+en when nothing is ticked }
@@ -139,11 +175,11 @@ procedure InitializeWizard;
 begin
   LangPage := CreateInputOptionPage(wpSelectTasks, 'Which language do you want to understand? / 你想聽懂哪些語言？',
     'Only the chosen language packs are downloaded. 只會下載勾選的語言包。', '', False, False);
-  LangPage.Add('中文 Chinese (zh)');
-  LangPage.Add('English (en)');
-  LangPage.Add('日本語 Japanese (ja, about 1.1 GB)');
-  LangPage.Add('한국어 Korean (ko, about 1.1 GB)');
-  LangPage.Add('Русский Russian (ru, about 1.2 GB)');
+  LangPage.Add('中文 Chinese (zh' + PackNote(PACK_ZH) + ')');
+  LangPage.Add('English (en' + PackNote(PACK_EN) + ')');
+  LangPage.Add('日本語 Japanese (ja' + PackNote(PACK_JA) + ')');
+  LangPage.Add('한국어 Korean (ko' + PackNote(PACK_KO) + ')');
+  LangPage.Add('Русский Russian (ru' + PackNote(PACK_RU) + ')');
   LangPage.Values[PACK_ZH] := True;   { zh is the output language of listen mode }
   LangPage.Values[PACK_EN] := True;   { #751: English meetings are the main use case, always pre-checked }
   LangPage.Values[LocaleLangIndex] := True;   { plus the OS-language pack (ja / ko / ru) }
@@ -180,17 +216,20 @@ end;
 
 procedure RunInstall;
 var
-  Params, LogFile, DoneFile: String;
+  Params, LogFile, DoneFile, Size: String;
   RC, Waited, Seen: Integer;
+  Gpu: Boolean;
   Done: AnsiString;
 begin
   LogFile := ExpandConstant('{app}\install.log');
   DoneFile := ExpandConstant('{app}\install.done');
   DeleteFile(DoneFile);
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
-  if WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]) then Params := Params + ' -Cpu';
+  Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
+  if not Gpu then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
-  ProgressPage.Description := 'This can take 10-40 minutes (about ' + IntToStr(PackSizeMB) + ' MB of language packs plus the core models and Python packages). 需要 10-40 分鐘，請保持網路連線。';
+  Size := SizeText(DownloadMB(Gpu));
+  ProgressPage.Description := 'This can take 10-40 minutes and downloads ' + Size + ' (models, language packs and Python packages). 需要 10-40 分鐘，約下載 ' + Size + '，請保持網路連線。';
   ProgressPage.SetText('Starting install.ps1 ...', LogFile);
   Steps := 8;   { replaced by N from the first "[n/N]" log line }
   ProgressPage.SetProgress(0, Steps);
