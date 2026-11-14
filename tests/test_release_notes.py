@@ -139,9 +139,10 @@ def test_thanks_lists_every_outside_author_with_links_and_no_mentions():
 def test_pr_body_keeps_the_owners_whats_new_and_warns_on_an_existing_tag():
     thanks = rn.contributors(PRS, ISSUES, "sunososobro-hub")
     body = rn.pr_body("0.3.2", list(TAGS), "v0.3.1", [{"number": 9, "title": "fix x"}], thanks, "", "c" * 40)
-    assert "## What's new\n- Fixes and improvements since v0.3.1" in body and "- fix x (#9)" in body
+    assert "## What's new\n- TODO: add a `## v0.3.2` section to docs/whats_new.md" in body and "- fix x (#9)" in body
+    assert rn.whats_new(body) is None  # #589: the placeholder is not a What's new
     assert "Not releasable" not in body and "cook1e0728" in body and "dev ccccccc" in body
-    edited = body.replace("- Fixes and improvements since v0.3.1; the full list is below.", "- Faster subtitles")
+    edited = body.replace(rn.todo_whats_new("v0.3.2"), "- Faster subtitles")
     again = rn.pr_body("0.3.2", list(TAGS), "v0.3.1", [], thanks, edited)
     assert rn.whats_new(again) == "- Faster subtitles"
     assert "Not releasable yet" in rn.pr_body("0.3.1", list(TAGS), "v0.3.0", [], {}, "")
@@ -156,7 +157,7 @@ def test_release_notes_fill_whats_new_and_state_the_gpu_evidence():
     assert "TODO:" not in notes and "## What's new\n- Faster subtitles\n" in notes
     assert "SHA256: `ab`" in notes and "[hw-tests](https://x/hw)" in notes and "CPU path only" in notes
     plain = rn.release_notes(base, "", None, "", "", "", [], {})
-    assert "TODO:" not in plain and "GPU: not validated" in plain
+    assert "TODO:" in plain and "GPU: not validated" in plain  # #589: no What's new -> the draft gate holds
 
 
 def test_release_check_size_smoke_and_report():
@@ -241,3 +242,99 @@ def test_whats_new_keeps_the_owners_subsections():
     body = ("## What's new\nIntro\n\n### Fixes\n- One\n\n### Changes since v0.3.1\n\n- x (#1)\n\n"
             "### Thanks\n\n- y\n---\nfooter\n")
     assert rn.whats_new(body) == "Intro\n\n### Fixes\n- One"
+
+
+# ---------------------------------------------------------------- #589 auto-release
+
+WN = "# What's new\n<!--\n## v0.3.2\n- example only\n-->\n## v0.3.2\n- Faster subtitles\n\n## v0.3.1\n- Old\n"
+OPEN = {"number": 735, "title": "release: v0.3.2", "state": "open", "base": {"ref": "main"},
+        "head": {"ref": "dev", "sha": HEAD, "repo": {"full_name": REPO}}}
+
+
+def auto(enabled="true", throttle="level: 2\nfocus: speak", run=HEAD, version="0.3.2", tags=TAGS, pulls=(OPEN,),
+         runs=GREEN, wn=WN, merged=()):
+    return rn.auto_plan(enabled, throttle, run, version, tags, list(pulls), REPO, lambda h: runs if h == HEAD else [], wn,
+                        list(merged))
+
+
+def test_whats_new_comes_from_the_version_section_of_the_file():
+    assert rn.whats_new_section(WN, "v0.3.2") == "- Faster subtitles"
+    assert rn.whats_new_section(WN, "v0.3.1") == "- Old"
+    assert rn.whats_new_section(WN, "v0.3.3") is None
+    assert rn.whats_new_section("## v0.3.3\n- TODO: write\n", "v0.3.3") is None
+    assert rn.whats_new_section("## v0.3.3\n\n## v0.3.2\n- x\n", "v0.3.3") is None
+    assert rn.whats_new_section((ROOT / "docs" / "whats_new.md").read_text("utf-8"), "v0.3.4") is None  # example only
+    body = rn.pr_body("0.3.2", list(TAGS), "v0.3.1", [], {}, "## What's new\n- PR edit\n", "c" * 40, WN)
+    assert rn.whats_new(body) == "- Faster subtitles"  # the file wins over a PR body edit
+
+
+def test_release_notes_take_the_file_first_and_keep_todo_without_any_source():
+    base = "## Download\n\n## What's new\n- TODO: write\n\n## Support\n"
+    notes = rn.release_notes(base, "## What's new\n- PR edit\n", None, "", "", "", [], {}, None, WN, "v0.3.2")
+    assert "## What's new\n- Faster subtitles\n" in notes and "TODO:" not in notes
+    notes = rn.release_notes(base, "## What's new\n- PR edit\n", None, "", "", "", [], {}, None, WN, "v0.3.9")
+    assert "## What's new\n- PR edit\n" in notes and "TODO:" not in notes
+    assert "- TODO: write" in rn.release_notes(base, "", None, "", "", "", [], {}, None, WN, "v0.3.9")
+
+
+def test_auto_release_merges_only_a_green_release_pr_at_the_run_commit():
+    out = auto()
+    assert out == {"merge": "true", "pr": "735", "head": HEAD, "tag": "v0.3.2",
+                   "reason": "release PR #735 is green for v0.3.2: merge and publish"}
+
+
+@pytest.mark.parametrize("kw, why", [
+    ({"enabled": ""}, "AUTO_RELEASE"),
+    ({"enabled": "false"}, "AUTO_RELEASE"),
+    ({"throttle": "level: 0\n"}, "throttle level is 0"),
+    ({"throttle": None}, "throttle level is unreadable"),
+    ({"throttle": "no level here"}, "throttle level is unreadable"),
+    ({"pulls": ()}, "no open dev -> main"),
+    ({"pulls": ({**OPEN, "head": {**OPEN["head"], "repo": {"full_name": "x/fork"}}},)}, "no open dev -> main"),
+    ({"pulls": ({**OPEN, "title": "docs: x"},)}, "no open dev -> main"),
+    ({"run": SHA}, "is not this run's commit"),
+    ({"version": "0.3.3"}, "does not name v0.3.3"),
+    ({"version": "0.3.1", "pulls": ({**OPEN, "title": "release: v0.3.1"},)}, "not newer than the latest tag"),
+    ({"version": "0.2.9", "pulls": ({**OPEN, "title": "release: v0.2.9"},)}, "not newer than the latest tag"),
+    ({"runs": GREEN[:3]}, "hw-tests: no run"),
+    ({"runs": [*GREEN, {"id": 99, "name": "e2e", "status": "completed", "conclusion": "skipped"}]}, "e2e: completed/skipped"),
+    ({"runs": [*GREEN, {"id": 99, "name": "windows-build", "status": "in_progress", "conclusion": None}]}, "windows-build"),
+    ({"wn": "## v0.3.1\n- Old\n"}, "no filled `## v0.3.2` section"),
+    ({"merged": (pr(),)}, "release PR #600 for v0.3.2 is already merged"),
+])
+def test_auto_release_refuses(kw, why):
+    out = auto(**kw)
+    assert out["merge"] == "false" and why in out["reason"], out
+
+
+def test_auto_release_ignores_unmerged_or_other_version_release_prs():
+    assert auto(merged=(pr(merged=False), pr(title="release: v0.3.1"), pr(fork=True)))["merge"] == "true"
+
+
+def test_dispatch_with_publish_on_main_is_the_release_push():
+    pulls = [pr()]
+    pushed = plan(pulls)
+    out = rn.plan("workflow_dispatch", "main", SHA, "0.3.2", TAGS, pulls, REPO, lambda h: GREEN if h == HEAD else [],
+                  publish_input=True)
+    assert out == pushed and out["publish"] == "true" and out["tag"] == "v0.3.2" and out["pr"] == "600"
+    for ref, ref_type in (("dev", "branch"), ("v0.3.2-rc.1", "tag")):  # publish=true elsewhere is still a dry run
+        out = rn.plan("workflow_dispatch", ref, SHA, "0.3.2", TAGS, pulls, REPO, lambda h: GREEN, ref_type=ref_type,
+                      publish_input=True)
+        assert out["publish"] == "false" and "only on main" in out["reason"]
+    with pytest.raises(SystemExit, match="not green"):
+        rn.plan("workflow_dispatch", "main", SHA, "0.3.2", TAGS, pulls, REPO, lambda h: [], publish_input=True)
+    assert rn.plan("workflow_dispatch", "main", SHA, "0.3.2", TAGS, [], REPO, publish_input=True)["publish"] == "false"
+
+
+def test_auto_cli_reads_the_kill_switch_before_any_network(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(rn, "gh_json", lambda *a: calls.append(a) or ([] if "pulls" in a[1] else {"workflow_runs": []}))
+    monkeypatch.setattr(rn, "repo", lambda: REPO)
+    monkeypatch.setattr(rn.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "level: 3\n", ""))
+    monkeypatch.setattr(rn, "git_tags", lambda: dict(TAGS))
+    monkeypatch.setenv("AUTO_RELEASE", "false")
+    import contextlib, io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        assert rn.main(["auto"]) == 0
+    assert "merge=false" in buf.getvalue() and "AUTO_RELEASE" in buf.getvalue()

@@ -57,6 +57,15 @@ Type: files; Name: "{autoprograms}\{#TalkTitle}.lnk"
 Type: files; Name: "{autodesktop}\{#TalkTitle}.lnk"
 
 [Code]
+const
+  { #751: indices of the options on the language page }
+  PACK_ZH = 0;
+  PACK_EN = 1;
+  PACK_JA = 2;
+  PACK_KO = 3;   { #754 }
+  PACK_RU = 4;
+  OPT_GPU = 5;
+
 var
   Steps: Integer;
   ProgressPage: TOutputProgressWizardPage;
@@ -93,11 +102,11 @@ end;
 function LocaleLangIndex: Integer;
 begin
   case GetUILanguage and $3FF of
-    $04: Result := 0;
-    $11: Result := 2;
-    $12: Result := 3;
-    $19: Result := 4;
-  else Result := 1;
+    $04: Result := PACK_ZH;
+    $11: Result := PACK_JA;
+    $12: Result := PACK_KO;
+    $19: Result := PACK_RU;
+  else Result := PACK_EN;
   end;
 end;
 
@@ -105,19 +114,20 @@ end;
 function PackSizeMB: Integer;
 begin
   Result := 0;
-  if LangPage.Values[2] or LangPage.Values[3] or LangPage.Values[4] then Result := 1100;
-  if LangPage.Values[4] then Result := Result + 60;
+  if LangPage.Values[PACK_JA] or LangPage.Values[PACK_KO] or LangPage.Values[PACK_RU] then Result := 1100;
+  if LangPage.Values[PACK_RU] then Result := Result + 60;
 end;
 
 { comma list for tlwu-setup --packs; zh+en when nothing is ticked }
 function SelectedPacks: String;
 var
   I: Integer;
-  Codes: array[0..4] of String;
+  Codes: array of String;
 begin
-  Codes[0] := 'zh'; Codes[1] := 'en'; Codes[2] := 'ja'; Codes[3] := 'ko'; Codes[4] := 'ru';
+  SetArrayLength(Codes, PACK_RU + 1);
+  Codes[PACK_ZH] := 'zh'; Codes[PACK_EN] := 'en'; Codes[PACK_JA] := 'ja'; Codes[PACK_KO] := 'ko'; Codes[PACK_RU] := 'ru';
   Result := '';
-  for I := 0 to 4 do
+  for I := PACK_ZH to PACK_RU do
     if LangPage.Values[I] then begin
       if Result <> '' then Result := Result + ',';
       Result := Result + Codes[I];
@@ -134,10 +144,11 @@ begin
   LangPage.Add('日本語 Japanese (ja, about 1.1 GB)');
   LangPage.Add('한국어 Korean (ko, about 1.1 GB)');
   LangPage.Add('Русский Russian (ru, about 1.2 GB)');
-  LangPage.Values[LocaleLangIndex] := True;
-  if LocaleLangIndex <> 0 then LangPage.Values[0] := True;   { zh is the output language of listen mode }
+  LangPage.Values[PACK_ZH] := True;   { zh is the output language of listen mode }
+  LangPage.Values[PACK_EN] := True;   { #751: English meetings are the main use case, always pre-checked }
+  LangPage.Values[LocaleLangIndex] := True;   { plus the OS-language pack (ja / ko / ru) }
   LangPage.Add('GPU pack for NVIDIA (CUDA libraries) / NVIDIA 顯示卡加速包');
-  LangPage.Values[5] := HasNvidiaDriver;
+  LangPage.Values[OPT_GPU] := HasNvidiaDriver;
   ProgressPage := CreateOutputProgressPage('Installing Python packages and models / 安裝套件與模型',
     'This can take 10-40 minutes. 需要 10-40 分鐘，請保持網路連線。');
   InstallRC := -1;
@@ -177,7 +188,7 @@ begin
   DoneFile := ExpandConstant('{app}\install.done');
   DeleteFile(DoneFile);
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
-  if WizardIsTaskSelected('cpu') or (not LangPage.Values[5]) then Params := Params + ' -Cpu';
+  if WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]) then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
   ProgressPage.Description := 'This can take 10-40 minutes (about ' + IntToStr(PackSizeMB) + ' MB of language packs plus the core models and Python packages). 需要 10-40 分鐘，請保持網路連線。';
   ProgressPage.SetText('Starting install.ps1 ...', LogFile);

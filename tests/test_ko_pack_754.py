@@ -21,10 +21,17 @@ def _wizard() -> tuple[list[str], list[str], dict[int, int]]:
     OS primary-language-id -> pre-checked index table. Inno Pascal cannot run on Linux, so the compiled installer
     (windows-build) is the only place it executes; this pins the wizard to packs.py so the two cannot drift."""
     labels = re.findall(r"LangPage\.Add\('([^']*)'\)", ISS)
-    codes = dict((int(i), c) for i, c in re.findall(r"Codes\[(\d+)\] := '([a-z]+)'", ISS))
+    const = _consts()
+    codes = dict((const[i], c) for i, c in re.findall(r"Codes\[(\w+)\] := '([a-z]+)'", ISS))
     body = ISS.split("function LocaleLangIndex", 1)[1].split("end;", 1)[0]
-    locale = {int(k, 16): int(v) for k, v in re.findall(r"\$([0-9A-Fa-f]+): Result := (\d+);", body)}
+    locale = {int(k, 16): const[v] for k, v in re.findall(r"\$([0-9A-Fa-f]+): Result := (\w+);", body)}
     return labels, [codes[i] for i in sorted(codes)], locale
+
+
+def _consts() -> dict[str, int]:
+    """The #751 named option indices (PACK_ZH = 0; ... OPT_GPU = N;) of the [Code] const block."""
+    block = ISS.split("[Code]", 1)[1].split("var", 1)[0]
+    return {k: int(v) for k, v in re.findall(r"^\s*(PACK_\w+|OPT_\w+) = (\d+);", block, re.M)}
 
 
 def test_wizard_offers_every_tier1_pack_with_its_size():
@@ -51,8 +58,8 @@ def test_korean_os_prechecks_ko():
 def test_gpu_option_follows_the_language_options():
     labels, codes, _ = _wizard()
     gpu = len(codes)
-    assert "GPU" in labels[gpu]
-    assert f"LangPage.Values[{gpu}] := HasNvidiaDriver" in ISS and f"(not LangPage.Values[{gpu}])" in ISS
+    assert "GPU" in labels[gpu] and _consts()["OPT_GPU"] == gpu
+    assert "LangPage.Values[OPT_GPU] := HasNvidiaDriver" in ISS and "(not LangPage.Values[OPT_GPU])" in ISS
 
 
 def test_cli_installers_pick_ko_on_korean_locale():
