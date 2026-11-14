@@ -7,18 +7,38 @@ import types
 from tinglongwu import device, llamacheck
 
 
-def _dirs(tmp_path, pack_files, lib_files):
+def _dirs(tmp_path, pack_files, lib_files, with_version=llamacheck.LLAMA_VERSION):
     pack, lib = tmp_path / "gpu_pack", tmp_path / "llama_cpp" / "lib"
     for d, files in ((pack, pack_files), (lib, lib_files)):
         d.mkdir(parents=True)
         for n in files:
             (d / n).write_bytes(b"x")
+    if with_version is not None:
+        (pack / device.PACK_LLAMA_VERSION_FILE).write_text(with_version + "\n")
     return pack, lib
 
 
 def test_pack_with_cuda_llama_is_used_over_core_cpu_build(tmp_path):
     pack, lib = _dirs(tmp_path, ["llama.dll", "ggml.dll", "ggml-cuda.dll"], ["llama.dll", "ggml.dll"])
     assert device.pack_llama_dir(pack, lib) == pack
+
+
+def test_pack_built_from_another_llama_version_is_not_used_and_logs_both(tmp_path, caplog):  # #881
+    pack, lib = _dirs(tmp_path, ["llama.dll", "ggml.dll", "ggml-cuda.dll"], ["llama.dll", "ggml.dll"], with_version="0.3.35")
+    with caplog.at_level("WARNING", logger="tinglongwu.device"):
+        assert device.pack_llama_dir(pack, lib) is None
+    msgs = [r.getMessage() for r in caplog.records]
+    assert len(msgs) == 1 and "0.3.35" in msgs[0] and llamacheck.LLAMA_VERSION in msgs[0]
+
+
+def test_pack_without_version_file_is_not_used(tmp_path):  # #881
+    pack, lib = _dirs(tmp_path, ["llama.dll", "ggml.dll", "ggml-cuda.dll"], ["llama.dll", "ggml.dll"], with_version=None)
+    assert device.pack_llama_dir(pack, lib) is None
+
+
+def test_pack_without_ggml_dll_is_not_used(tmp_path):  # #881: a half-copied pack
+    pack, lib = _dirs(tmp_path, ["llama.dll", "ggml-cuda.dll"], ["llama.dll", "ggml.dll"])
+    assert device.pack_llama_dir(pack, lib) is None
 
 
 def test_old_pack_with_only_ggml_cuda_is_not_used(tmp_path):

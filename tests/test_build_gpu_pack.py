@@ -28,9 +28,10 @@ def _wheels(root: Path, mod, skip=()):
     return root
 
 
-def _llama(root: Path, mod, with_ggml=True):
-    lib = root / "llama_lib"
-    lib.mkdir()
+def _llama(root: Path, mod, with_ggml=True, version="0.3.36"):
+    lib = root / "llama_cpp" / "lib"
+    lib.mkdir(parents=True)
+    (lib.parent / "__init__.py").write_text(f'from .llama_cpp import *\n\n__version__ = "{version}"\n')
     if with_ggml:
         for n in (mod.GPU_PACK_LLAMA_DLL, "llama.dll", "ggml.dll", "ggml-base.dll"):
             (lib / n).write_bytes(b"cuda-" + n.encode())
@@ -48,6 +49,8 @@ def test_builds_zip_and_manifest_without_nuitka(tmp_path, monkeypatch):
         names = set(z.namelist())
     assert set(m.LLAMA_CUDA_NEEDS) | {"ggml-cuda.dll", "cudnn64_9.dll", "nvrtc64_120_0.dll"} <= names
     assert {"llama.dll", "ggml.dll", "ggml-base.dll"} <= names  # #865: the CUDA build replaces the core's CPU one
+    with zipfile.ZipFile(zp) as z:
+        assert z.read("llama_version.txt").decode().strip() == "0.3.36"  # #881: stamped from the CUDA wheel
     man = gpu_pack.load_manifest(man_path)
     assert all(k in man for k in gpu_pack.MANIFEST_KEYS) and man["wheels_key"] == m.gpu_pack_wheels_key()
     gpu_pack.verify(zp, man)
@@ -85,3 +88,31 @@ def test_old_manifest_without_wheels_key_still_loads_and_verifies(tmp_path):
     loaded = gpu_pack.load_manifest(mp)
     assert "wheels_key" not in loaded
     gpu_pack.verify(z, loaded)
+
+
+def test_pack_carries_the_cuda_wheels_llama_version_and_selection_matches_it(tmp_path):  # #881
+    from tinglongwu import device, llamacheck
+
+    m = _mod()
+    man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=_wheels(tmp_path / "sp", m),
+                                     llama_lib=_llama(tmp_path, m, version=llamacheck.LLAMA_VERSION))
+    assert man_path.is_file()
+    with zipfile.ZipFile(tmp_path / "out" / m.GPU_PACK_ASSET) as z:
+        z.extractall(tmp_path / "pack")
+    core_lib = tmp_path / "core_lib"
+    core_lib.mkdir()
+    assert device.pack_llama_dir(tmp_path / "pack", core_lib) == tmp_path / "pack"
+    (tmp_path / "pack" / device.PACK_LLAMA_VERSION_FILE).write_text("0.0.1\n")  # a core update bumped LLAMA_VERSION
+    assert device.pack_llama_dir(tmp_path / "pack", core_lib) is None
+
+
+def test_unreadable_llama_wheel_version_exits_and_explicit_version_wins(tmp_path, monkeypatch):
+    m = _mod()
+    lib = tmp_path / "x" / "lib"
+    lib.mkdir(parents=True)
+    monkeypatch.setattr(m.md, "version", lambda n: (_ for _ in ()).throw(m.md.PackageNotFoundError(n)))
+    root = tmp_path / "y"
+    root.mkdir()
+    assert m.llama_wheel_version(_llama(root, m, version="0.3.40")) == "0.3.40"
+    with pytest.raises(SystemExit, match="llama-cpp-python version"):
+        m.llama_wheel_version(lib)
