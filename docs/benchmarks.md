@@ -24,6 +24,15 @@ Hy-MT2-1.8B (the engine tlwu ships, Q4_K_M GGUF, llama.cpp on the CPU, greedy `T
 | rus->zho_Hant | Google (table above) | 29.8 | 0.879 | - | - |
 | eng->zho_Hant | Hy-MT2-1.8B (CPU) | 30.3 | 0.894 | 1.06 | 1.58 |
 | jpn->zho_Hant | Hy-MT2-1.8B (CPU) | 23.7 | 0.885 | 1.62 | 2.40 |
+| kor->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 24.2 | 0.879 | 1.63 | 2.42 |
+| vie->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 25.5 | 0.880 | 1.69 | 2.52 |
+| tha->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 7763, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 23.3 | 0.878 | 2.42 | 3.70 |
+| ind->zho_Hant | Hy-MT2-1.8B (CPU, Xeon 6975P-C, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 26.2 | 0.875 | 2.03 | 3.10 |
+| spa->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 24.6 | 0.877 | 1.63 | 2.42 |
+| deu->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V74, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 26.5 | 0.877 | 1.60 | 2.38 |
+| fra->zho_Hant | Hy-MT2-1.8B (CPU, EPYC 9V45, [run 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705)) | 26.4 | 0.879 | 1.23 | 1.81 |
+
+The Korean and tier-2 rows (#656) come from [eval-flores 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705), commit 22efa0f, same settings; each job's runner CPU is in the engine column (4 vCPU each, so s/sentence differs by CPU, e.g. tha on the older EPYC 7763). That run also re-ran rus/eng/jpn and got the same chrF and COMET as above to the last digit (greedy decoding is repeatable). All seven land at COMET 0.875-0.880, between Russian (0.865) and Japanese (0.885).
 
 On Russian, Hy-MT2-1.8B matches the removed 8B LLM on COMET (0.865 vs 0.865, chrF 1.0 lower) and Google stays ahead (0.879). Reproduce on any CPU (Linux paths; the workflow `.github/workflows/eval-flores.yml` runs exactly this, COMET in its own venv because unbabel-comet pins numpy<2):
 
