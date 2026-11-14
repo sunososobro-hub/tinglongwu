@@ -143,7 +143,7 @@ Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main r
 ### Release freeze
 - Frozen = there is no published GitHub release for dev's `__version__`. That covers both cases: no `v<__version__>` tag yet, or the tag exists but its release is a draft or missing.
 - While frozen, mergers merge nothing into `dev`: each merge cancels `windows-build` on the release PR, so its tip never gets four greens. The only exception is a P0 fix that the release itself needs: a red required check on the release PR, or a failed release creation / publication run (`release.yml` or `auto-release.yml`) after the release PR merged. Its PR body says `release-fix`, and it still needs green CI and an Opus PASS.
-- The freeze ends when the release for that version is published, or when the owner reverts the bump. Frozen for more than 24 h -> S-hard opens a P0 `[release] freeze stuck` issue.
+- The freeze ends when the release for that version is published, or when the bump is reverted: on the owner's issue comment asking for it, the bump role (R-hard) opens a `release: revert __version__ to X.Y.Z` PR, which is allowed during the freeze and needs green CI + an Opus PASS like any bump. Frozen for more than 24 h -> S-hard opens a P0 `[release] freeze stuck` issue.
 
 ### Kill switch
 - Auto-release runs only when the repo variable `AUTO_RELEASE` is `true` AND throttle #574 is at level 1 or above. `AUTO_RELEASE` missing or not `true`, or throttle level 0, stops it.
