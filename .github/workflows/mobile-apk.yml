@@ -4,6 +4,9 @@ name: mobile-apk
 # the tag is moved to the built commit and the APK asset is replaced. The release carries only the APK
 # and the models zip (hashes live in the body); stray .sha256 assets are deleted; the models zip is rebuilt from official sources only when assets/models_manifest.json
 # changes. It is never marked Latest and never touches v* tags/releases (release.yml).
+# The same job also builds the Google Play AAB: the models ride in two on-demand Play Asset Delivery
+# packs (tool/fill_asset_packs.py). On dev pushes the AAB is kept as an artifact and, when the
+# PLAY_SA_JSON secret and the release key exist, uploaded to the Play internal track.
 on:
   push:
     branches: [dev]
@@ -25,9 +28,11 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: read
+    env:
+      HAS_PLAY: ${{ secrets.PLAY_SA_JSON != '' && secrets.ANDROID_KEYSTORE_B64 != '' }}
     defaults:
       run:
         shell: bash   # -eo pipefail: a failing aapt/apksigner in a pipe fails the step
@@ -87,6 +92,38 @@ jobs:
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         # build number = run number, so every preview has a higher versionCode and installs as an update
         run: flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }}
+      - name: Cache the models for the Play asset packs (keyed by the manifest)
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/models-cache
+          key: play-models-${{ hashFiles('mobile/assets/models_manifest.json', 'mobile/tool/fetch_models.sh') }}
+      - name: Fill the Play asset packs (official sources, checked against the manifest)
+        run: |
+          if [ ! -d ~/models-cache/models ]; then bash tool/fetch_models.sh ~/models-cache; fi
+          python3 -I tool/fill_asset_packs.py ~/models-cache/models
+          df -h . | tail -1
+      - name: Build release AAB (Google Play)
+        env:
+          TLWU_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build appbundle --release --target-platform android-arm64 --build-number ${{ github.run_number }}
+      - name: Check the AAB (packs present, no INTERNET, base under 200 MB, target API >= 36)
+        run: |
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          ls -l "$AAB"
+          unzip -l "$AAB" | grep -E " (models_asr|models_llm)/assets/" | tee "$RUNNER_TEMP/packs.txt"
+          for p in models_asr models_llm; do grep -q " $p/assets/" "$RUNNER_TEMP/packs.txt" || { echo "pack $p missing"; exit 1; }; done
+          # proto manifest keeps permission names as plain UTF-8 strings
+          if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "android.permission.INTERNET"; then echo "AAB requests INTERNET"; exit 1; fi
+          BASE=$(unzip -Zl "$AAB" | awk '$NF ~ /^base\// {s += $6} END {print s+0}')
+          echo "base module compressed bytes: $BASE"
+          [ "$BASE" -lt $((200 << 20)) ] || { echo "base module over 200 MB"; exit 1; }
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          TSDK=$("$BT/aapt" dump badging build/app/outputs/flutter-apk/app-release.apk | sed -n "s/^targetSdkVersion:'\([0-9]*\)'.*/\1/p")
+          echo "targetSdk $TSDK"
+          [ "${TSDK:-0}" -ge 36 ] || { echo "Google Play needs targetSdk >= 36"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/aab" && mv "$AAB" "$RUNNER_TEMP/aab/tinglongwu-mobile.aab"
       - name: Check the APK (no INTERNET permission, signer)
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
@@ -104,6 +141,25 @@ jobs:
           name: mobile-apk
           path: ${{ runner.temp }}/out/
           retention-days: 14
+      # The first AAB of a new Play app must be uploaded by hand in Play Console: take it from here.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name != 'pull_request'
+        with:
+          name: mobile-aab
+          path: ${{ runner.temp }}/aab/
+          retention-days: 7
+          compression-level: 0
+      - name: Upload to Google Play (internal track)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' && env.HAS_PLAY == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SA_JSON }}
+          packageName: com.tinglongwu.mobile
+          releaseFiles: ${{ runner.temp }}/aab/tinglongwu-mobile.aab
+          track: internal
+          # "draft" until the app has had its first release in Play Console; then set the repo
+          # variable PLAY_RELEASE_STATUS=completed so internal testers get builds automatically.
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
 
   publish:
     needs: build
