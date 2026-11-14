@@ -229,7 +229,8 @@ def test_release_gpu_pack_job_runs_beside_windows():
     gpu = jobs["gpu-pack"]
     assert gpu["needs"] == "plan" and gpu["if"] == jobs["windows"]["if"]  # parallel with windows, same dry-run rule
     assert gpu["permissions"] == {"contents": "read"}
-    assert sorted(jobs["release"]["needs"]) == ["gpu-pack", "plan", "windows"]
+    assert sorted(jobs["release"]["needs"]) == ["gpu-pack", "plan", "vulkan-pack", "windows"]  # #800: optional pack
+    assert "needs.gpu-pack.result == 'success'" in jobs["release"]["if"]  # the GPU pack stays required
     runs = [str(s.get("run", "")) for s in gpu["steps"]]
     text = "\n".join(runs)
     build = next(i for i, r in enumerate(runs) if "build_windows.py" in r)
@@ -249,7 +250,7 @@ def test_release_gpu_pack_job_runs_beside_windows():
 def test_release_job_attaches_the_gpu_pack_and_lists_it_in_sha256sums():
     steps = _workflow("release.yml")["jobs"]["release"]["steps"]
     downloads = [s["with"]["name"] for s in steps if "download-artifact" in str(s.get("uses", ""))]
-    assert downloads == ["release-win64", "release-gpu-pack"]
+    assert downloads == ["release-win64", "release-gpu-pack", "vulkan-pack"]  # #800: the optional Vulkan pack last
     runs = [str(s.get("run", "")) for s in steps]
     assert any("release_check.py --gpu-pack dist/" + release_check.GPU_PACK_ASSET in r and '--tag "$TAG"' in r
                for r in runs)

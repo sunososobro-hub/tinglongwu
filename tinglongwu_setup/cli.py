@@ -8,6 +8,7 @@
   tlwu-setup --talk [--talk-whisper small --talk-compute cpu --talk-mt auto]
                                                       talk mode: Kokoro venv (~/tts-kokoro) + pinned model + smoke wav
                                                       + tlwu-talk.ps1 launcher (used by install.ps1)
+  tlwu-setup --vulkan-pack [--app-version X.Y.Z]      install release vX.Y.Z's Vulkan llama.cpp pack into vulkan-pack/ (#801)
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Hy-MT2) fit this CPU?
   tlwu-setup --selftest [--model M --engine E]        offline: load the models, translate one test sentence (tlwu --selftest)
   tlwu-setup --verify                                 offline integrity check
@@ -25,6 +26,7 @@ import json
 import os
 import platform
 import shutil
+import re
 import subprocess
 import sys
 import tempfile
@@ -101,6 +103,16 @@ OFFLINE_SAFE = {"-h", "--help", "--selftest", "--check-llama", "--verify", "--fr
                 "--import-pack", "--pack-prompt"}
 
 
+def source_version(root: Path) -> str | None:
+    """tinglongwu.__version__ of a source checkout, read as text: setup never imports tinglongwu (its offline guard)."""
+    f = Path(root) / "tinglongwu" / "__init__.py"
+    try:
+        m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', f.read_text("utf-8", "replace"), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
 def offline_refused(args: list[str]) -> bool:
     """TLWU_OFFLINE=1: refuse any networked setup unless --online is given (offline-only flags are fine)."""
     return os.environ.get("TLWU_OFFLINE") == "1" and "--online" not in args and not (OFFLINE_SAFE & set(args))
@@ -117,6 +129,12 @@ def main(argv=None) -> int:
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
     p.add_argument("--selftest", action="store_true",
                    help="run `tlwu --selftest` (no network); --model/--engine/--device are forwarded")
+    p.add_argument("--vulkan-pack", action="store_true",
+                   help="download the release's Vulkan llama.cpp pack (AMD / Intel GPUs), SHA256-checked, into "
+                        "vulkan-pack/ next to the app (TLWU_VULKAN_PACK moves it); a release without it is skipped (#801)")
+    p.add_argument("--app-version", default=None,
+                   help="with --vulkan-pack: the installed app's version, whose release the pack comes from (tlwu.exe "
+                        "passes it; a source checkout reads tinglongwu/__init__.py)")
     p.add_argument("--default-listen", action="store_true",
                    help="install only the default listen path (en -> zh-TW models), no pip, nothing else (#766)")
     p.add_argument("--talk", action="store_true", help="set up talk mode (Kokoro TTS venv, model, launcher)")
@@ -174,6 +192,10 @@ def main(argv=None) -> int:
         from . import defaults
 
         return defaults.run(mdir)
+    if a.vulkan_pack:
+        from . import vulkan_pack
+
+        return vulkan_pack.run(vulkan_pack.default_dest(ROOT), a.app_version or source_version(ROOT))
     if a.deps:
         _pip("install", "-r", a.requirements)
     if a.gpu:
