@@ -18,7 +18,8 @@ from pathlib import Path
 
 from .. import userdirs
 
-CHECK_EVERY_S = 24 * 3600
+UPDATE_CHECK_INTERVAL_H = 24  # #806: at most one automatic check per day, so counter hits ~ daily active installs
+CHECK_EVERY_S = UPDATE_CHECK_INTERVAL_H * 3600
 AUTO_KEY = "auto_update"
 LAST_KEY = "update_last_check"  # unix seconds of the last automatic check (also written when it failed)
 MODULE = "tinglongwu_setup.selfupdate"
@@ -82,8 +83,9 @@ def _base(python: str | None = None) -> list[str]:
     return [python or sys.executable, "-m", MODULE]
 
 
-def check_cmd(current: str, python: str | None = None) -> list[str]:
-    return [*_base(python), "--check", current]
+def check_cmd(current: str, python: str | None = None, count: bool = False) -> list[str]:
+    """count=True (automatic daily check only, #806) routes it through the anonymous counter Worker."""
+    return [*_base(python), "--check", current, *(["--count"] if count else [])]
 
 
 def download_cmd(dest: Path, python: str | None = None) -> list[str]:
@@ -118,15 +120,17 @@ def _lines(cmd, popen):
     p.wait()
 
 
-def run_check(current: str, put, manual: bool, popen=None) -> str | None:
+def run_check(current: str, put, manual: bool, popen=None, cfg: dict | None = None) -> str | None:
     """Worker thread. put(("upd_found", ver, manual)) or put(("upd_none", manual)). Errors are silent unless manual
-    (then they read as "no update found"). Returns the new version or None."""
+    (then they read as "no update found"). Returns the new version or None. Only the automatic check with
+    auto_update=1 is counted (#806); a manual "Check for updates" click goes straight to GitHub and is never counted."""
     if offline():
         put(("upd_none", manual))
         return None
     ver = None
     try:
-        for line in _lines(check_cmd(current), popen or subprocess.Popen):
+        count = not manual and auto_on(userdirs.read_config() if cfg is None else cfg)
+        for line in _lines(check_cmd(current, count=count), popen or subprocess.Popen):
             ver = parse_check(line) or ver
     except Exception:  # noqa: BLE001
         ver = None
