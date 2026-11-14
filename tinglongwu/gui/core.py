@@ -33,6 +33,18 @@ DEFAULTS = {
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
 
 
+def send_gate_line(view) -> str:
+    """#833: the held speak line as one status line ("" when nothing is held); view = reverse.sendgate.GateView."""
+    from ..i18n import t
+
+    if view.state == "counting":
+        return t("gui_send_hold", s=f"{view.remaining:.0f}" if view.remaining >= 1 else f"{view.remaining:.1f}",
+                 text=view.text)
+    if view.state == "asking":
+        return t("gui_send_ask", text=view.text)
+    return ""
+
+
 def send_mode_notice_key(mode: str) -> str | None:
     """#834: i18n key of the one-line quality notice shown when a direct-send mode is chosen, else None."""
     return "gui_send_mode_notice" if mode in ("countdown", "auto") else None

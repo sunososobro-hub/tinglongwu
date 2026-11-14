@@ -66,6 +66,7 @@ class VoiceSink(Sink):
         self.inner, self.speak, self.max_backlog, self.dropped = inner, speak, max(1, max_backlog), 0
         self.on_error = on_error or (lambda e: None)
         self.muted: str | None = None  # reason, once mute() has turned the voice off
+        self.gate = None  # #833: SendGate holding each line until sent (GUI speak); None = speak at once
         self.capture_guard = None  # #710: on_reopen(name) for the capture source, set by open_voice for a cable
         self.q: queue.Queue = queue.Queue()
         self.t = threading.Thread(target=self._run, name="tlwu-voice", daemon=True)
@@ -86,6 +87,8 @@ class VoiceSink(Sink):
         if self.muted:
             return False
         self.muted = reason
+        if self.gate is not None:
+            self.gate.clear()
         while True:
             try:
                 self.q.get_nowait()
@@ -96,7 +99,13 @@ class VoiceSink(Sink):
     def write(self, r: Result) -> None:
         self.inner.write(r)
         text = (r.target or "").strip()
-        if text and not self.muted:
+        if text and not self.muted and self.gate is not None:
+            self.gate.offer(r.original, text)
+        elif text and not self.muted:
+            self.enqueue(text)
+
+    def enqueue(self, text: str) -> None:
+        if not self.muted:
             while self.q.qsize() >= self.max_backlog:
                 try:
                     self.q.get_nowait()
@@ -121,6 +130,8 @@ class VoiceSink(Sink):
         """Speak what is queued (at most max_backlog lines), then stop the worker. drop=True (Ctrl+C / Stop):
         discard the waiting lines instead, only the line being spoken finishes. False if it is still speaking
         after `timeout` (the caller must then keep the TTS client and player open)."""
+        if self.gate is not None:
+            self.gate.clear()  # a held line is never sent after Stop / exit
         if drop:
             while True:
                 try:
@@ -263,6 +274,9 @@ def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable
         raise RuntimeError(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk") from e
     say(f"tlwu: voice ({lang}, Kokoro) on {player.speaker_name}")
     sink = VoiceSink(inner, make_speaker(tts, player, on_off=off), on_error=lambda e: say(f"tlwu: voice error: {e}"))
+    gate = getattr(a, "voice_gate", None)  # #833: the GUI hands in a SendGate; its release feeds the voice queue
+    if gate is not None:
+        gate.release, sink.gate = sink.enqueue, gate
     if _virtual(" ".join(player.speaker_name.casefold().split())):  # #710: voice goes into a meeting cable
         sink.capture_guard = cable_guard(sink, player.speaker_name, say, off)
 

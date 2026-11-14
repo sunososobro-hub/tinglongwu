@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
@@ -462,6 +462,49 @@ class App:
         self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
         self._send_mode_changed()
 
+    def _build_send_gate(self, f):
+        """#833: the held speak line with [Send] [Stop]; hidden until a line is held. Space = stop, Esc = stop."""
+        self.gate = None  # reverse.sendgate.SendGate of the running speak session
+        self.gate_frm = ttk.Frame(f)
+        self.gate_frm.grid(row=16, column=0, columnspan=3, sticky="we", pady=2)
+        self.v_gate = tk.StringVar(value="")
+        ttk.Label(self.gate_frm, textvariable=self.v_gate, wraplength=300, justify="left").grid(
+            row=0, column=0, columnspan=2, sticky="w")
+        self.btn_gate_send = ttk.Button(self.gate_frm, text=t("gui_send_now"), command=lambda: self._gate_do("confirm"))
+        self.btn_gate_send.grid(row=1, column=0, sticky="we", padx=(0, 2))
+        self.btn_gate_stop = ttk.Button(self.gate_frm, text=t("gui_send_stop"), command=lambda: self._gate_do("stop"))
+        self.btn_gate_stop.grid(row=1, column=1, sticky="we")
+        self.gate_frm.grid_remove()
+        for w in (self.root, self.panel):  # keys only act while a line is held, so typing elsewhere is untouched
+            w.bind("<space>", lambda _e: self._gate_key("stop"), add="+")
+            w.bind("<Escape>", lambda _e: self._gate_key("stop"), add="+")
+
+    def _gate_key(self, action):
+        if self.gate is not None and self.gate.view().state != "idle" and not isinstance(
+                self.root.focus_get(), (tk.Entry, ttk.Entry, ttk.Combobox, ttk.Button)):
+            self._gate_do(action)
+            return "break"
+
+    def _gate_do(self, action):
+        if self.gate is not None:
+            getattr(self.gate, action)()
+
+    def _gate_tick(self):
+        """GUI thread, every 100 ms: advances the countdown and redraws the held line."""
+        g = self.gate
+        if g is None:
+            return
+        g.tick()
+        v = g.view()
+        self.v_gate.set(send_gate_line(v))
+        if v.state == "idle":
+            self.gate_frm.grid_remove()
+        else:
+            self.gate_frm.grid()
+            self.btn_gate_send.configure(state="normal" if v.state == "asking" else "disabled")
+            if self.speak_hint == SPEAK_HINT_CABLE:
+                self._show_panel()
+
     def _send_mode_changed(self):
         mode = self.v_send_mode.get()
         if mode in SEND_MODES:
@@ -637,6 +680,7 @@ class App:
         self.v_notice = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").grid(
             row=12, column=0, columnspan=3, sticky="w")
+        self._build_send_gate(f)
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
@@ -1108,6 +1152,11 @@ class App:
             return
         self.quick_mode, self.run_source = mode, run.get("source")
         self.speak_hint = speak_route(run, meeting_cable()) if mode == "speak" else None  # #710
+        self.gate = None
+        if mode == "speak" and run.get("voice"):  # #833: each speak line is held and sent by the #832 state machine
+            from ..reverse.sendgate import SendGate
+
+            self.gate = SendGate(lambda _t: None, time.monotonic, mode=run.get("send_mode", "confirm"))
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -1122,14 +1171,14 @@ class App:
             self._show_panel()
         self.errored = False
         self.listening = True
-        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
+        self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev, self.gate), daemon=True)
         self.worker.start()
         self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
         if self.settings["floating_bar"]:
             self.overlay.show()
 
-    def _work(self, s: dict, stop: threading.Event):
+    def _work(self, s: dict, stop: threading.Event, gate=None):
         """Worker thread: no tkinter here, only self.q."""
         q = self.q
         try:
@@ -1138,6 +1187,7 @@ class App:
 
             a = parse_args(settings_to_argv(s, outputs=voice_outputs() if s.get("voice") else None,
                                             notice=lambda m: q.put(("notice", m))))
+            a.voice_gate = gate  # #833: open_voice routes every spoken line through it
 
             def draft_factory(asr, translator, segmenter, tgt):
                 if not s["live_draft"] or translator is None:
@@ -1155,6 +1205,7 @@ class App:
     def poll(self):
         if self.closing:
             return
+        self._gate_tick()
         if self.sigint:
             self.quit()
             return
@@ -1201,6 +1252,10 @@ class App:
                     self.panel.deiconify()  # the error text is in the Adjust panel; a red dot alone says nothing
                     self.panel.lift()
                 elif kind == "stopped":
+                    if self.gate is not None:
+                        self.gate.clear()
+                        self._gate_tick()
+                        self.gate = None
                     self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
