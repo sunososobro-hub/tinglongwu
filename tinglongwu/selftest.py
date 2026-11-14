@@ -46,6 +46,7 @@ class Result:
     engine: str = "hymt2"
     downgraded: bool = False
     ok: bool = False
+    mt_backend: str = ""  # "cuda" | "vulkan" | "cpu" (#746)
 
     @property
     def seconds(self) -> float:
@@ -55,7 +56,7 @@ class Result:
         head = ("self-test PASSED" + (" after downgrade" if self.downgraded else "")) if self.ok else "self-test FAILED"
         return "\n".join([s.line() for s in self.steps] + [
             f"{head}: device={self.device} speech model={self.model} translation={self.engine} "
-            f"(total {self.seconds:.1f} s)"])
+            + (f"mt: {self.mt_backend} " if self.mt_backend else "") + f"(total {self.seconds:.1f} s)"])
 
 
 def load_clip(path: Path = CLIP):
@@ -229,6 +230,9 @@ def run_selftest(mdir, model: str | None = None, engine: str = "auto", device: s
             if not _has_cjk(out):
                 raise RuntimeError(f"no Chinese in the output: {out[:80]!r}")
             steps.append(Step(label, True, clock() - t0, out))
+            from . import mt_backend
+
+            res.mt_backend = mt_backend.last_backend or ("cuda" if on == "cuda" else "cpu")
             res.ok = True
             return res
         except (Exception, SystemExit) as e:  # noqa: BLE001 - make_translator stops with SystemExit + advice

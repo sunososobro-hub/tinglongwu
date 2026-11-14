@@ -98,9 +98,13 @@ def load_llama(path: Path, gpu: bool):
 
     A build compiled for instructions this CPU lacks (issue #74: AVX-512 wheel on an AVX2 CPU) raises
     llamacheck.LlamaBuildError with the fix, instead of a bare 'Windows Error 0xc000001d'."""
-    from . import llamacheck
+    from . import llamacheck, mt_backend
     from . import threads as thread_budget
 
+    backend = mt_backend.choose_backend(cuda=gpu, vulkan=mt_backend.vulkan_available())
+    if backend == "vulkan":  # #746: Vulkan llama.cpp build from the optional pack (AMD / Intel / NVIDIA, no CUDA)
+        os.environ["LLAMA_CPP_LIB_PATH"] = str(mt_backend.vulkan_pack_dir())
+    mt_backend.last_backend = backend
     try:
         llama_cpp = llamacheck.import_llama()  # CUDA build, or the bundled CPU build when CUDA cannot load (#398)
     except (ImportError, OSError, RuntimeError) as e:  # not installed, or llama.dll / a CUDA DLL missing
@@ -115,8 +119,14 @@ def load_llama(path: Path, gpu: bool):
 
     try:
         t = thread_budget.current()  # #250: explicit, so listen+speak can share the CPU (listen-only = old defaults)
-        return Llama(model_path=str(path), n_gpu_layers=-1 if gpu else 0, n_ctx=N_CTX, flash_attn=gpu,
-                     n_threads=t["mt"], n_threads_batch=t["mt_batch"], verbose=False)
+
+        def make(_path, be: str):
+            layers, flash = (-1, False) if be == "vulkan" else ((-1, True) if be == "cuda" else (0, False))
+            return Llama(model_path=str(path), n_gpu_layers=layers, n_ctx=N_CTX, flash_attn=flash,
+                         n_threads=t["mt"], n_threads_batch=t["mt_batch"], verbose=False)
+
+        model, mt_backend.last_backend = mt_backend.load_with_fallback(path, backend, make)  # #746
+        return model
     except OSError as e:
         err = llamacheck.explain(e)
         if err is e:
