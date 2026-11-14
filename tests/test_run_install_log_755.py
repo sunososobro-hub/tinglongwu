@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,7 @@ def test_install_log_is_bomfree_complete_and_not_held_open(tmp_path):
     assert (tmp_path / "install.done").read_text().strip() == "0"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="FileShare.Read only blocks a concurrent append on Windows (advisory locks on Unix)")
 def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
     """The wizard reads install.log share-read; an append during that read must be retried, not abort install.ps1."""
     (tmp_path / "installer").mkdir()
