@@ -47,7 +47,8 @@ def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
         "$ready = Join-Path $PSScriptRoot 'reader.ready'\n"
         # an independent reader process (like Inno's LoadStringsFromFile): opens the log share-read, signals, holds it
         # 400 ms, releases - while this script keeps emitting output, so the logger must retry through the hold
-        "$reader = \"`$fs = [IO.File]::Open('$log','Open','Read','Read'); New-Item -ItemType File -Path '$ready' | Out-Null; "
+        "$qlog = $log.Replace(\"'\", \"''\"); $qready = $ready.Replace(\"'\", \"''\")\n"   # apostrophes in the path
+        "$reader = \"`$fs = [IO.File]::Open('$qlog','Open','Read','Read'); New-Item -ItemType File -Path '$qready' | Out-Null; "
         "Start-Sleep -Milliseconds 400; `$fs.Close()\"\n"
         "$me = (Get-Process -Id $PID).Path\n"
         "$enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($reader))\n"   # no quoting trouble in argv
