@@ -163,7 +163,8 @@ def test_release_notes_say_the_zip_is_the_cuda_free_core():
 # ---- #764: release.yml builds the GPU pack in a parallel job and attaches it to the Release
 
 def _gpu_pack(tmp_path, tag="v1.2.3", names=("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll",
-                                              "cublasLt64_12.dll", "cudnn64_9.dll"), url=None):
+                                              "cublasLt64_12.dll", "cudnn64_9.dll",
+                                              "licenses/NVIDIA-cublas-License.txt"), url=None):
     import hashlib
     import json
 
@@ -204,7 +205,8 @@ def test_gpu_pack_check_rejects_other_version_bad_hash_and_missing_dll(tmp_path)
     assert len(probs) == 1 and "version mismatch" in probs[0]
     assert release_check.main(["--gpu-pack", str(z), "--tag", "v1.2.3"]) == 1
     (tmp_path / "b").mkdir()
-    z = _gpu_pack(tmp_path / "b", names=("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"))
+    z = _gpu_pack(tmp_path / "b", names=("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll",
+                                         "licenses/NVIDIA-cublas-License.txt"))
     assert release_check.gpu_pack_problems(z, "v1.2.3") == ["GPU pack lacks ggml-cuda.dll"]
     z.write_bytes(z.read_bytes() + b"x")  # changed after the manifest was written
     assert any("size" in p for p in release_check.gpu_pack_problems(z))
@@ -261,3 +263,45 @@ def test_release_job_attaches_the_gpu_pack_and_lists_it_in_sha256sums():
     wall = steps[-1]
     assert "release_check.py --release-start" in wall["run"] and wall["continue-on-error"] is True
     assert runs.index(create) < len(runs) - 1  # the wall time is taken after the release was created
+
+
+# ---- #764 Opus CHANGES A1-A3: licenses, cuDNN for Whisper, flat zip, corrupt zip
+
+_LIC = "licenses/NVIDIA-cublas-License.txt"
+
+
+def test_gpu_pack_check_requires_nvidia_license(tmp_path):
+    names = ("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll")
+    z = _gpu_pack(tmp_path, names=names)
+    assert any("NVIDIA license" in p for p in release_check.gpu_pack_problems(z, "v1.2.3"))
+    (tmp_path / "ok").mkdir()
+    z = _gpu_pack(tmp_path / "ok", names=names + (_LIC,))
+    assert release_check.gpu_pack_problems(z, "v1.2.3") == []
+    assert release_check.GPU_PACK_LICENSE_PREFIX == "licenses/NVIDIA-"
+
+
+def test_gpu_pack_check_requires_cudnn_for_whisper(tmp_path):
+    z = _gpu_pack(tmp_path, names=("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", _LIC))
+    assert release_check.gpu_pack_problems(z, "v1.2.3") == ["GPU pack lacks cudnn64_9.dll"]
+    assert "cudnn64_9.dll" in release_check.GPU_PACK_ASR_NEEDS
+
+
+def test_gpu_pack_check_dlls_must_be_at_zip_root(tmp_path):
+    z = _gpu_pack(tmp_path, names=("x/ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll",
+                                   "cudnn64_9.dll", _LIC))
+    probs = release_check.gpu_pack_problems(z, "v1.2.3")
+    assert "GPU pack lacks ggml-cuda.dll" in probs and any("x/ggml-cuda.dll" in p for p in probs)
+
+
+def test_gpu_pack_check_corrupt_zip_is_a_problem_not_a_traceback(tmp_path):
+    import hashlib
+    import json
+
+    z = tmp_path / release_check.GPU_PACK_ASSET
+    z.write_bytes(b"junk")
+    man = {"name": "gpu-pack", "size": 4, "sha256": hashlib.sha256(b"junk").hexdigest(),
+           "url": f"https://github.com/o/r/releases/download/v1.2.3/{release_check.GPU_PACK_ASSET}"}
+    z.with_name(z.name + release_check.GPU_PACK_MANIFEST_SUFFIX).write_text(json.dumps(man), encoding="utf-8")
+    probs = release_check.gpu_pack_problems(z, "v1.2.3")
+    assert len(probs) == 1 and "not a valid zip" in probs[0]
+    assert release_check.main(["--gpu-pack", str(z), "--tag", "v1.2.3"]) == 1

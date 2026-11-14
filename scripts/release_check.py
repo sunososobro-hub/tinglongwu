@@ -32,6 +32,11 @@ GPU_PACK_MANIFEST_SUFFIX = ".manifest.json"  # build_windows.make_gpu_pack write
 GPU_PACK_MANIFEST_KEYS = ("name", "size", "sha256", "url")  # = tinglongwu.gpu_pack.MANIFEST_KEYS
 # ggml-cuda.dll and what it imports (build_windows.LLAMA_CUDA_NEEDS): without them the pack cannot run llama on CUDA
 GPU_PACK_NEEDS = ("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+# CTranslate2 (Whisper on CUDA) imports cuDNN 9; build_windows copy_cuda takes the whole cudnn bin (None), so an empty
+# cuDNN wheel would otherwise slip through (#764 review A2)
+GPU_PACK_ASR_NEEDS = ("cudnn64_9.dll",)
+# the pack redistributes NVIDIA CUDA/cuDNN DLLs: their license texts must ship in it (build_windows.build_gpu_pack_only)
+GPU_PACK_LICENSE_PREFIX = "licenses/NVIDIA-"
 HASH_CHUNK = 1 << 20
 TTFS_BUDGET_S = 180
 
@@ -97,9 +102,19 @@ def gpu_pack_problems(zip_path: Path, tag: str = "") -> list[str]:
         problems.append(f"GPU pack is {size / BYTES_PER_MB:.1f} MB, over the 2 GiB asset limit")
     if tag and not str(man["url"]).endswith(f"/releases/download/{tag}/{GPU_PACK_ASSET}"):
         problems.append(f"GPU pack manifest url {man['url']!r} is not the {tag} release asset (version mismatch)")
-    with zipfile.ZipFile(zip_path) as z:
-        names = {n.replace("\\", "/").rsplit("/", 1)[-1].lower() for n in z.namelist()}
-    problems += [f"GPU pack lacks {n}" for n in GPU_PACK_NEEDS if n.lower() not in names]
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            entries = [n.replace("\\", "/") for n in z.namelist()]
+    except (zipfile.BadZipFile, OSError) as e:
+        return problems + [f"GPU pack is not a valid zip: {e}"]
+    # gpu_pack.pack_dir() puts the pack folder itself on the DLL path: every DLL must sit at the zip root
+    root = {n.lower() for n in entries if "/" not in n}
+    nested = [n for n in entries if "/" in n and n.lower().endswith(".dll")]
+    if nested:
+        problems.append(f"GPU pack has DLLs outside the zip root: {', '.join(nested)}")
+    problems += [f"GPU pack lacks {n}" for n in GPU_PACK_NEEDS + GPU_PACK_ASR_NEEDS if n.lower() not in root]
+    if not any(n.startswith(GPU_PACK_LICENSE_PREFIX) for n in entries):
+        problems.append(f"GPU pack has no NVIDIA license texts ({GPU_PACK_LICENSE_PREFIX}*)")
     return problems
 
 
