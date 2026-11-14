@@ -10,6 +10,8 @@ soon as it is synthesized, so sentence 1 plays while the rest is still in TTS (#
 """
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import os
 import queue
 import sys
@@ -58,11 +60,13 @@ def setup_console() -> None:
 
             ctypes.windll.kernel32.SetConsoleOutputCP(65001)
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     for s in (sys.stdout, sys.stderr):
         try:
             s.reconfigure(encoding="utf-8", errors="replace")
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
 
 

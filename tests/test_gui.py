@@ -285,6 +285,9 @@ def gui_app(tmp_path, monkeypatch):
         self.q.put(("stopped",))
 
     monkeypatch.setattr(app.App, "_work", fake_work)
+    # #314 first-launch overlay already closed: these tests check the plain session flow (overlay: test_gui_tour_314)
+    (tmp_path / "tinglongwu").mkdir()
+    (tmp_path / "tinglongwu" / "gui.json").write_text('{"tour_seen": true}', "utf-8")
     a = app.App()
     a.root.update()
     yield a
@@ -456,6 +459,23 @@ def test_control_bar_is_compact_in_every_ui_language(gui_app):
             assert a.root.winfo_reqwidth() <= 420 and a.root.winfo_reqheight() <= 60, (ui, text)
     assert a.root.attributes("-topmost")
 
+
+
+def test_update_line_keeps_main_window_within_420px(gui_app):
+    """#698's update line sits under the #455 bar: with its widest text and both buttons it stays <= 420 px."""
+    a = gui_app
+    for ui in ("English", "Русский", "繁體中文"):
+        a.v_ui_lang.set(ui)
+        a.switch_lang()
+        for key, buttons, kw in (("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), {"ver": "10.10.10"}),
+                                 ("gui_upd_available", ("gui_upd_now", "gui_upd_later"), {"ver": "10.10.10"}),
+                                 ("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), {"why": "ConnectionResetError"})):
+            a._upd_show(key, buttons, **kw)
+            a.root.update_idletasks()
+            assert a.root.winfo_reqwidth() <= 420, (ui, key)
+    a._update_later()
+    a.root.update_idletasks()
+    assert not a.upd_frame.winfo_ismapped()
 
 def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
     """#455 widget inventory: every settings key the old window edited has a widget in the Adjust panel."""

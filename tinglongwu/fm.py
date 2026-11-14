@@ -24,7 +24,9 @@ NOT_FOUND = "the `fm` command was not found: --engine fm needs macOS 27 or later
 
 
 def _run(cmd: list[str], stdin: str) -> tuple[int, str, str]:
-    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=TIMEOUT_S)
+    # #632: `fm` speaks UTF-8; without an explicit encoding Python uses the locale (ASCII under LANG=C) and garbles zh
+    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=TIMEOUT_S)
     return p.returncode, p.stdout, p.stderr
 
 

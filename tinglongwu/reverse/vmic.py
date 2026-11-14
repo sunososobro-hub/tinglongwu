@@ -8,6 +8,8 @@ EXPERIMENTAL: written without a Linux or macOS machine to test on.
 """
 from __future__ import annotations
 
+from .. import diag as _diag
+
 import atexit
 import subprocess
 import sys
@@ -103,6 +105,7 @@ class VirtualMic:
             try:
                 self._run(unload_command(mid))
             except Exception:  # noqa: BLE001 - best effort on exit
+                _diag.swallowed(__name__)
                 pass
 
     def __enter__(self) -> "VirtualMic":

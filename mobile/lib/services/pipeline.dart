@@ -179,13 +179,16 @@ class Pipeline extends ChangeNotifier {
     // costs one fewer LLM call) instead of dropping. A merge that would be
     // longer than ContextBudget.maxMergeChars is skipped (#533): it could
     // overflow the LLM context and stop the app.
-    while (_queue.length > maxQueue) {
-      final jobs = _queue.toList();
-      final i = ContextBudget.mergeIndex([for (final j in jobs) j.ru]);
-      if (i == null) {
-        _log.i('queue>$maxQueue, no merge fits ${ContextBudget.maxMergeChars} chars');
-        break;
-      }
+    final jobs = _queue.toList();
+    final plan = ContextBudget.trimPlan(
+      [for (final j in jobs) j.ru],
+      [for (final j in jobs) j.lang],
+      maxQueue,
+    );
+    if (jobs.length > maxQueue && plan.texts.length > maxQueue) {
+      _log.i('queue>$maxQueue, no same-language pair fits ${ContextBudget.maxMergeChars} chars');
+    }
+    for (final i in plan.steps) {
       final a = jobs[i];
       final b = jobs[i + 1];
       b.ru = ContextBudget.join(a.ru, b.ru);
@@ -195,11 +198,13 @@ class Pipeline extends ChangeNotifier {
       jobs
         ..[i] = merged
         ..removeAt(i + 1);
+      dropped++;
+      _log.i('queue>$maxQueue, merged jobs $i+${i + 1} -> ${AppLog.text(merged.ru)}');
+    }
+    if (plan.steps.isNotEmpty) {
       _queue
         ..clear()
         ..addAll(jobs);
-      dropped++;
-      _log.i('queue>$maxQueue, merged jobs $i+${i + 1} -> ${AppLog.text(merged.ru)}');
     }
     queued = _queue.length + (_busy ? 1 : 0);
     notifyListeners();
@@ -215,7 +220,7 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await _tr!.translate(job.ru, src: job.lang);
+          final r = await translateLine(_tr!, job.ru, job.lang);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;

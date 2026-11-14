@@ -1,12 +1,43 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/context_budget.dart';
+import 'package:mobile/logic/passthrough.dart';
 import 'package:mobile/logic/prompt.dart';
+import 'package:mobile/logic/s2tw.dart';
 import 'package:mobile/logic/segmenter.dart';
 import 'package:mobile/logic/subtitle_trim.dart';
 import 'package:mobile/logic/zh_check.dart';
 import 'package:mobile/services/model_paths.dart';
+import 'package:mobile/services/translator.dart';
 
 void main() {
+  group('pipeline translate call (#581)', () {
+    test('translateLine forwards the detected language as src', () async {
+      final fake = _FakeTranslator();
+      await translateLine(fake, 'こんにちは', 'ja');
+      expect(fake.seenSrc, 'ja');
+    });
+  });
+  group('zh passthrough (#581)', () {
+    test('zh skips the LLM and is converted to zh-Hant', () async {
+      var calls = 0;
+      final out = await routeTranslate('软件开发', 'zh', (t, s) async {
+        calls++;
+        return 'llm';
+      });
+      expect(calls, 0);
+      expect(out, toTraditionalTw('软件开发'));
+    });
+    test('non-zh reaches the generator with the detected src', () async {
+      String? seen;
+      final out = await routeTranslate('こんにちは', 'ja', (t, s) async {
+        seen = s;
+        return 'ok';
+      });
+      expect(seen, 'ja');
+      expect(out, 'ok');
+      expect(zhPassthrough('hi', 'yue'), isNull);
+    });
+  });
   senseVoiceRoutingTests();
   group('SentenceSegmenter', () {
     test('normalizes whitespace', () {
@@ -192,6 +223,14 @@ void main() {
 
     test('merges the oldest two short jobs', () {
       expect(ContextBudget.mergeIndex(['раз', 'два', 'три']), 0);
+      // #625: a zh/en boundary must not block a later same-language pair.
+      expect(
+          ContextBudget.mergeIndex(['a', 'b', 'c', 'd'],
+              langs: ['zh', 'en', 'en', 'en']),
+          1);
+      expect(
+          ContextBudget.mergeIndex(['a', 'b', 'c'], langs: ['zh', 'en', 'zh']),
+          isNull);
       expect(ContextBudget.join('раз', 'два'), 'раз два');
     });
 
@@ -213,6 +252,33 @@ void main() {
       final fits = 'б' * (ContextBudget.maxMergeChars - 101);
       expect(ContextBudget.mergeIndex([a, fits]), 0);
       expect(ContextBudget.mergeIndex([a, '${fits}x']), isNull);
+    });
+
+    test('trimPlan trims same-language only (#647)', () {
+      final p = ContextBudget.trimPlan(
+          ['a', 'b', 'c', 'd'], ['zh', 'en', 'en', 'en'], 2);
+      expect(p.texts.length, 2);
+      expect(p.texts, ['a', 'b c d']);
+      expect(p.langs, ['zh', 'en']);
+      expect(p.steps, [1, 1]);
+    });
+
+    test('trimPlan leaves alternating languages untouched (#647)', () {
+      final p = ContextBudget.trimPlan(
+          ['a', 'b', 'c', 'd'], ['zh', 'en', 'zh', 'en'], 2);
+      expect(p.texts.length, 4);
+      expect(p.steps, isEmpty);
+    });
+
+    test('trimPlan never joins a pair over maxMergeChars (#647)', () {
+      final p = ContextBudget.trimPlan([long, long, long], ['en', 'en', 'en'], 2);
+      expect(p.texts, [long, long, long]);
+      expect(p.steps, isEmpty);
+      for (final t in ContextBudget.trimPlan(
+              [long, long, 'раз'], ['en', 'en', 'en'], 2)
+          .texts) {
+        expect(t.length, lessThanOrEqualTo(ContextBudget.maxMergeChars));
+      }
     });
 
     test('any allowed merge plus its output budget fits the context', () {
@@ -262,4 +328,21 @@ void senseVoiceRoutingTests() {
       expect(PromptBuilder.userMessage('x', src: 'yue', tgt: 'en'), startsWith('将以下文本翻译成英语'));
     });
   });
+}
+
+class _FakeTranslator implements LineTranslator {
+  String? seenSrc;
+  @override
+  Future<Translation> translate(String ru, {String src = 'ru'}) async {
+    seenSrc = src;
+    return Translation(
+      zh: ru,
+      check: checkChinese(ru),
+      tokens: 0,
+      totalMs: 0,
+      firstTokenMs: 0,
+      genMs: 0,
+      nCtx: 0,
+    );
+  }
 }

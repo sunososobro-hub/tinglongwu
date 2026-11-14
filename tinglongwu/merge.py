@@ -105,8 +105,11 @@ class SentenceMerger:
     """Push ASR segments, get translation units. Time is injected (seconds, any monotonic clock)."""
 
     def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False,
-                 min_words: int = 0):
+                 min_words: int = 0, pause_send: float | None = None):
         self.max_wait, self.max_words, self.min_overlap = max_wait, max_words, min_overlap
+        # #21: pause (s) that releases an unfinished buffer; None = the language's MERGE_PAUSE_SEND / PAUSE_SEND.
+        # Set from --pause-send / TLWU_PAUSE_SEND so the 0.8 -> 0.5 s change can be measured before it ships.
+        self.pause_send = pause_send
         # #389: a finished sentence shorter than this ("Максима Чижова.") is a fragment: it is joined to the previous
         # sentence of the same release, else held (at most max_wait) and joined to the next one. 0 = off.
         self.min_words = min_words
@@ -179,11 +182,28 @@ class SentenceMerger:
             self.since = None
         elif sents:
             self.since = now  # remainder starts a fresh wait
-        if rest and not forced_cut and pause >= lang_patches.setting(lang, "MERGE_PAUSE_SEND", PAUSE_SEND) \
+        send = self.pause_send if self.pause_send is not None else \
+            lang_patches.setting(lang, "MERGE_PAUSE_SEND", PAUSE_SEND)
+        if rest and not forced_cut and pause >= send \
                 and _units(rest) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
             out.append(self._take(forced=True))  # speaker paused: no point waiting for max_wait
             return out
         return out + self.due(now)
+
+    def quiet(self, seconds: float, now: float) -> list[Unit]:
+        """#716: the segmenter saw `seconds` of silence after the newest segment and no new speech. Release the
+        buffer once that reaches the pause-send threshold: an unfinished tail after a forced cut, or a finished
+        fragment held by min_words (#389), would otherwise wait the full max_wait for text that is not coming."""
+        if not self.buf:
+            return []
+        send = self.pause_send if self.pause_send is not None else \
+            lang_patches.setting(self.lang, "MERGE_PAUSE_SEND", PAUSE_SEND)
+        if seconds < send:
+            return self.due(now)
+        held = any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())  # a finished fragment is held
+        if held or _units(self.buf) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
+            return [self._take(forced=True)]
+        return self.due(now)
 
     def _is_fragment(self, text: str) -> bool:
         # words only (_units also counts a lone CJK punctuation mark like "。" as one): each CJK character is a word

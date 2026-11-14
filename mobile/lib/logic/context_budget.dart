@@ -44,10 +44,46 @@ class ContextBudget {
   /// Index `i` of the oldest adjacent pair `texts[i]`, `texts[i + 1]` whose
   /// merged text is at most [maxChars] long, or null when no pair fits (then
   /// the queue is left longer instead of building a request that overflows).
-  static int? mergeIndex(List<String> texts, {int maxChars = maxMergeChars}) {
+  ///
+  /// When [langs] is given (same length as [texts]), only pairs with the same
+  /// language qualify, so a zh/en boundary does not block a later same-language
+  /// pair (#625).
+  static int? mergeIndex(List<String> texts,
+      {int maxChars = maxMergeChars, List<String>? langs}) {
     for (var i = 0; i + 1 < texts.length; i++) {
+      if (langs != null && langs[i] != langs[i + 1]) continue;
       if (join(texts[i], texts[i + 1]).length <= maxChars) return i;
     }
     return null;
   }
+
+  /// Plan the queue trim of `Pipeline._onFinal` (#647): repeatedly merge the
+  /// oldest fitting same-language pair until at most [maxQueue] jobs are left,
+  /// or no pair fits. Returns the merge indices in order; each index refers to
+  /// the list as it is after the previous merges, plus the resulting texts and
+  /// languages (a merged job keeps the language of its pair).
+  static TrimPlan trimPlan(List<String> texts, List<String> langs, int maxQueue,
+      {int maxChars = maxMergeChars}) {
+    assert(texts.length == langs.length);
+    final t = List<String>.of(texts);
+    final l = List<String>.of(langs);
+    final steps = <int>[];
+    while (t.length > maxQueue) {
+      final i = mergeIndex(t, maxChars: maxChars, langs: l);
+      if (i == null) break;
+      t[i] = join(t[i], t[i + 1]);
+      t.removeAt(i + 1);
+      l.removeAt(i + 1);
+      steps.add(i);
+    }
+    return TrimPlan(steps, t, l);
+  }
+}
+
+/// Result of [ContextBudget.trimPlan].
+class TrimPlan {
+  const TrimPlan(this.steps, this.texts, this.langs);
+  final List<int> steps;
+  final List<String> texts;
+  final List<String> langs;
 }

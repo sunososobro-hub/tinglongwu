@@ -8,6 +8,13 @@ on:
     branches: [main, dev]
     paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag whose assets the release-assets job installs (e.g. v0.3.0-beta.1); empty = releases/latest"
+        required: false
+        default: ""
+  release:
+    types: [published]   # #71: also run the README one-liners against the published release assets (incl. pre-releases)
 
 permissions:
   contents: read
@@ -38,12 +45,78 @@ jobs:
       - name: Run scripts/install.sh from this commit
         # install.sh clones TLWU_REPO at TLWU_REF; point it at the local checkout via a throwaway branch.
         run: |
+          START=$(date +%s)
           git checkout -B ci-install-test
           TLWU_REPO="$GITHUB_WORKSPACE" TLWU_REF=ci-install-test TLWU_DIR="$RUNNER_TEMP/tlwu" bash scripts/install.sh </dev/null
+          echo "install took $(( $(date +%s) - START )) s"
       - name: Smoke check
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+      - name: Uninstall leaves nothing behind (#476)
+        run: |
+          TLWU_DIR="$RUNNER_TEMP/tlwu" bash "$RUNNER_TEMP/tlwu/scripts/uninstall.sh" --yes </dev/null
+          test ! -e "$RUNNER_TEMP/tlwu" || { echo "app dir left behind"; exit 1; }
+          test ! -e "$HOME/tts-kokoro" || { echo "kokoro venv left behind"; exit 1; }
+          test ! -e "$HOME/.local/bin/tlwu-menu" || { echo "launcher left behind"; exit 1; }
+
+  release-assets:
+    # #71: the exact one-line commands from the README, run on a clean runner against the release's own assets.
+    # mobile-* releases carry no install scripts (#639)
+    if: >-
+      (github.event_name == 'release' && !startsWith(github.event.release.tag_name, 'mobile-')) ||
+      (github.event_name == 'workflow_dispatch' && !startsWith(inputs.release_tag, 'mobile-'))
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Audio libs (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libsndfile1 libpulse0
+      - name: One-line install from the release assets (timed)
+        if: runner.os != 'Windows'
+        env:
+          TLWU_DIR: ${{ runner.temp }}/tlwu
+          TLWU_SKIP_BLACKHOLE: "1"
+          TLWU_SKIP_MODELS: "1"
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          START=$(date +%s)
+          if [ "$RUNNER_OS" = "macOS" ]; then SCRIPT=mac_install.sh; else SCRIPT=install.sh; fi
+          # release events test the release that fired (latest/ skips prereleases); manual runs use the README's latest/ URL
+          if [ -n "$RELEASE_TAG" ]; then BASE="releases/download/$RELEASE_TAG"; else BASE="releases/latest/download"; fi
+          curl -fsSL -o "$RUNNER_TEMP/$SCRIPT" "https://github.com/${{ github.repository }}/$BASE/$SCRIPT"
+          bash "$RUNNER_TEMP/$SCRIPT" </dev/null
+          echo "install took $(( $(date +%s) - START )) s"
+      - name: Smoke check
+        if: runner.os != 'Windows'
+        run: |
+          "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
+          "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+      - name: Windows - install.ps1 from the release assets (timed)
+        # the release's install.ps1 is scripts/bootstrap_windows.ps1 with the tag embedded; run it as the README's irm | iex does
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          TLWU_DIR: ${{ runner.temp }}\tlwu
+          TLWU_SKIP_MODELS: "1"
+          TLWU_SKIP_SHORTCUT: "1"
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          $t0 = Get-Date
+          $base = if ($env:RELEASE_TAG) { "releases/download/$env:RELEASE_TAG" } else { "releases/latest/download" }
+          $url = "https://github.com/${{ github.repository }}/$base/install.ps1"
+          $script = (Invoke-WebRequest -UseBasicParsing -Uri $url).Content
+          Invoke-Expression $script *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\release-install.log"
+          if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
+          Write-Host ("install took {0:N0} s" -f ((Get-Date) - $t0).TotalSeconds)
+          & "$env:TLWU_DIR\.venv\Scripts\python.exe" -c "import tinglongwu; print('import ok')"
+          if ($LASTEXITCODE -ne 0) { throw "import failed" }
+          & "$env:TLWU_DIR\.venv\Scripts\tlwu.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw "tlwu --help failed" }
 
   macos:
     runs-on: macos-latest
@@ -53,13 +126,21 @@ jobs:
       - name: Run scripts/mac_install.sh from this commit
         # TLWU_SKIP_BLACKHOLE / TLWU_SKIP_MODELS are CI-only switches in mac_install.sh.
         run: |
+          START=$(date +%s)
           git checkout -B ci-install-test
           TLWU_REPO="$GITHUB_WORKSPACE" TLWU_BRANCH=ci-install-test TLWU_DIR="$RUNNER_TEMP/tlwu" \
             TLWU_SKIP_BLACKHOLE=1 TLWU_SKIP_MODELS=1 bash scripts/mac_install.sh </dev/null
+          echo "install took $(( $(date +%s) - START )) s"
       - name: Smoke check
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+      - name: Uninstall leaves nothing behind (#476)
+        run: |
+          TLWU_DIR="$RUNNER_TEMP/tlwu" bash "$RUNNER_TEMP/tlwu/scripts/uninstall.sh" --yes </dev/null
+          test ! -e "$RUNNER_TEMP/tlwu" || { echo "app dir left behind"; exit 1; }
+          test ! -e "$HOME/tts-kokoro" || { echo "kokoro venv left behind"; exit 1; }
+          test ! -e "$HOME/.local/bin/tlwu-menu" || { echo "launcher left behind"; exit 1; }
 
   windows:
     runs-on: windows-latest
@@ -77,10 +158,12 @@ jobs:
           TLWU_SKIP_MODELS: "1"
           TLWU_SKIP_SHORTCUT: "1"
         run: |
+          $t0 = Get-Date
           # run it as the user does (irm | iex = script text; the file has no BOM so PS 5.1 would misread it as a file)
           # output redirected on purpose: regression cover for stderr -> NativeCommandError under PS 5.1
           Get-Content -Raw -Encoding UTF8 .\scripts\bootstrap_windows.ps1 | Invoke-Expression *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\bootstrap.log"
           if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
+          Write-Host ("install took {0:N0} s" -f ((Get-Date) - $t0).TotalSeconds)
       - name: Smoke check
         shell: powershell
         run: |

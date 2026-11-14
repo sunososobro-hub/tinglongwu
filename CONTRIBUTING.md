@@ -1,6 +1,6 @@
 # Contributing to tinglongWu
 
-**Don't be afraid. Come and contribute. If it fits the project's principles, we will merge it.**
+**Don't be afraid. Come and contribute.**
 **The default answer is yes: if your PR respects the principles below, we will work with you to get it merged. No contribution is too small, and first-timers are welcome.**
 
 Thanks for stopping by. You do not need to be an expert to help, and we would rather get a rough PR we can work on together than no PR at all.
@@ -12,10 +12,15 @@ Thanks for stopping by. You do not need to be an expert to help, and we would ra
 - **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](docs/details.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
 - AI-assisted PRs are fine. You are the author: run the code and the tests yourself before opening the PR.
 
+## Questions and ideas
+
+Not sure it is a bug, or just want to ask how something works or show how you use tlwu? Use [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions) (Q&A, Show and tell, Ideas). No GitHub skills needed.
+
 ## Before you start
 
 - **Small fix** (typo, docs, a few lines): go straight to a PR.
 - **Bigger work** (new feature, refactor, new dependency, anything touching the audio/ASR/translation pipeline): please open an issue or comment on an existing one first, so nobody wastes effort on something that cannot be merged.
+- **Issue format:** English, with `Why:` / `Goal:` / `Acceptance:` / `Verify:` lines. The full rules (labels, who may start work) are in [`.agent/tlwu_rules.md` section 15](.agent/tlwu_rules.md#15-issue-format-owner-2026-11-13-588). Don't worry if you get it wrong: triage tidies every new issue.
 - **New here?** Look for the [good first issue](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue) label. Comment on the issue and say you are taking it.
 
 ## Project principles: the only hard rules
@@ -33,7 +38,8 @@ These are the only hard rules, so this is exactly the bar. Everything else is ne
 ## Pull requests and credit
 
 - External PRs are welcome.
-- The default branch for PRs is `dev` (`main` only receives release PRs).
+- - The default branch for PRs is `dev` (`main` only receives release PRs, plus docs-only fast-lane PRs opened by maintainers).
+- PR titles look like `fix #N: short summary` (or `feat #N: ...`, `docs: ...`); keep commit messages short and in English.
 - PRs are merged by rebase, so your authorship is kept in the commit history.
 - Contributors are credited in the release notes.
 
@@ -49,7 +55,11 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -e ".[dev]"
 ```
 
-On Linux you may need `sudo apt-get install -y libsndfile1 libpulse0` (the audio capture libraries are imported by the package). Source install, GPU, and Mac details: [docs/install.md](docs/install.md). Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+On Linux you may need `sudo apt-get install -y libsndfile1 libpulse0` (the audio capture libraries are imported by the package). Source install, GPU, and Mac details: [docs/install.md](docs/install.md). Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Working on the phone app? See [mobile/README.md](mobile/README.md) (Flutter setup, build, models).
+
+`pip install -e ".[dev]"` is the one dev install path (the old `requirements-dev.txt` is gone).
+
+Lint / format: no linter or formatter is enforced yet (CI only runs the tests and the shell syntax check below), so keep to the style of the surrounding code. When a ruff gate lands (#665) the command will be listed here.
 
 ## Running tests
 
@@ -74,13 +84,7 @@ If you cannot run the second one (Windows / Mac), that is fine: CI will, and we 
 - Branch from `dev` and keep one topic per PR.
 - Fill in the PR template. It is short.
 
-### Forked before 2026-11-12?
-
-On 2026-11-12 the `dev`/`main` history was rewritten once to normalize commit author info. If you forked earlier:
-
-- **No local changes:** re-fork, or `git fetch upstream && git reset --hard upstream/dev && git push --force origin dev`.
-- **Have your own commits:** `git rebase --onto upstream/dev <old-base> <your-branch>` (or cherry-pick them).
-- Stuck? Open an issue and we will help.
+If you forked before 2026-11-12, the history was rewritten once: see [docs/history-rewrite.md](docs/history-rewrite.md).
 
 ## What gets merged
 
@@ -99,6 +103,17 @@ Every PR gets an AI review plus a maintainer review. The AI review is a first pa
    - PRs from forks skip this job, because forks never get repository secrets. A maintainer runs the review for them.
 3. A maintainer merges after a `VERDICT: MERGE` (or after resolving the FIX-FIRST items).
 
+## What the internal labels mean
+
+Maintainers (and the AI helpers) use these on issues; you never have to set them.
+
+- `needs-opus`: this change needs the **Opus model** (Anthropic's larger AI model) for review. It is not about the removed OPUS machine-translation models.
+- `model:*`: which AI model should work the item (`model:sonnet` or `model:opus`).
+- `status:*`: where it is (`todo`, `doing`, `review`, `blocked`, `proposal`, `frozen`).
+- `area:*`: the part of the code it touches (for example `area:gui`, `area:asr`, `area:ci`); one per issue.
+- `mode:*`: which use it serves (`listen`, `speak`, `two-way`, `shared`).
+- `infra`: project plumbing (CI, release, dashboards), not user-visible behaviour.
+
 ## Our promise to you
 
 - **First response within about 3 days.**
@@ -107,6 +122,6 @@ Every PR gets an AI review plus a maintainer review. The AI review is a first pa
 
 ## Security and conduct
 
-Report security problems privately, see [SECURITY.md](SECURITY.md). Be kind: assume good intent, and keep feedback about the code, not the person.
+Report security problems privately, see [SECURITY.md](SECURITY.md). Be kind (see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)): assume good intent, and keep feedback about the code, not the person.
 
 By contributing you agree your work is released under the [MIT License](LICENSE).

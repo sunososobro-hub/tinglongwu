@@ -19,3 +19,14 @@ def test_privacy_statements_exist_and_readmes_link_them():
         links = re.findall(r"\]\(([^)#]+)\)", (ROOT / readme).read_text("utf-8"))
         assert target in links, readme
         assert (ROOT / "docs" / target).resolve().is_file()
+
+
+def test_code_of_conduct_exists_and_contributing_links_resolve():  # #591
+    import re
+    coc = (ROOT / "CODE_OF_CONDUCT.md").read_text("utf-8")
+    assert "Contributor Covenant" in coc and "version 2.1" in coc
+    contributing = (ROOT / "CONTRIBUTING.md").read_text("utf-8")
+    assert "CODE_OF_CONDUCT.md" in re.findall(r"\]\(([^)#]+)\)", contributing)
+    # the contact path named in the CoC must point at a real file
+    for target in re.findall(r"\]\(([^)#:]+\.md)\)", coc):
+        assert (ROOT / target).is_file(), target

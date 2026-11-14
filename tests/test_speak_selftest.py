@@ -121,6 +121,73 @@ def test_run_child_dies_before_listening_reports_child_error(tmp_path, monkeypat
     clip.write_bytes(b"")
     a = argparse.Namespace(clip=str(clip), to="ru", mt="auto", whisper=None, models_dir=None, tts_python=None,
                            tts_model=None, timeout=5, keep_log=None, keep_wav=None)
-    o = st.run(a)
+    o = st.run_once(a)
     assert o["verdict"] == "FAIL"
     assert any("ModelNotFound" in r for r in o["reasons"])
+
+
+# ---- #593: a stream gap caused by other processes' CPU load is re-run once; a gap on a quiet PC still fails
+def _attempt(verdict="PASS", reasons=(), bg=None, gap=0.0):
+    return {"verdict": verdict, "reasons": list(reasons), "background_cpu": None if bg is None else
+            {"p50": bg, "max": bg, "n": 30}, "stream_gap_max_s": gap, "tts_rtf": [1.2], "recorded_ratio": 0.97}
+
+
+def _run_with(attempts):
+    calls, quiet = [], []
+    def once(a):
+        calls.append(a)
+        return attempts[len(calls) - 1]
+    o = st.run(object(), once=once, quiet=lambda: quiet.append(1) or {"quiet": True, "waited_s": 0.0})
+    return o, len(calls), len(quiet)
+
+
+def test_gap_under_background_load_is_rerun_and_second_attempt_decides():
+    o, n, q = _run_with([_attempt("FAIL", ["stream gap 0.41s > 0.30s"], bg=40.0, gap=0.41), _attempt(bg=12.0)])
+    assert (n, q) == (2, 2) and o["verdict"] == "PASS"
+    assert o["retried_after_load"]["reasons"] == ["stream gap 0.41s > 0.30s"]
+    assert o["retried_after_load"]["background_cpu"]["p50"] == 40.0
+    assert "re-run" in st.summary({**o, "sentences_in": 6, "sentences_tts": 6, "recorded_speech_s": 1,
+                                   "expected_tts_speech_s": 1, "rms_dbfs": -25, "peak_dbfs": -5})
+
+
+def test_gap_on_a_quiet_pc_fails_without_rerun():
+    o, n, _ = _run_with([_attempt("FAIL", ["stream gap 0.41s > 0.30s"], bg=10.0, gap=0.41)])
+    assert n == 1 and o["verdict"] == "FAIL" and "retried_after_load" not in o
+
+
+def test_gap_again_on_the_rerun_still_fails():
+    o, n, _ = _run_with([_attempt("FAIL", ["stream gap 0.63s > 0.30s"], bg=45.0),
+                         _attempt("FAIL", ["stream gap 0.50s > 0.30s"], bg=15.0)])
+    assert n == 2 and o["verdict"] == "FAIL" and o["reasons"] == ["stream gap 0.50s > 0.30s"]
+
+
+@pytest.mark.parametrize("first", [
+    _attempt("FAIL", ["recorded speech 85% of TTS < 90%", "stream gap 0.41s > 0.30s"], bg=50.0),  # other gate too
+    _attempt("FAIL", ["stream gap 0.41s > 0.30s"], bg=None),  # load unknown (no psutil)
+    {**_attempt("FAIL", ["stream gap 0.41s > 0.30s"], bg=50.0), "error": "timeout after 900s"},
+])
+def test_no_rerun_when_load_does_not_explain_the_failure(first):
+    o, n, _ = _run_with([first, _attempt()])
+    assert n == 1 and o["verdict"] == "FAIL"
+
+
+def test_wait_quiet_needs_consecutive_quiet_samples_and_gives_up_at_timeout():
+    t = [0.0]
+    def clock():
+        return t[0]
+    def sampler(vals):
+        it = iter(vals)
+        def s():
+            t[0] += 1.0
+            return next(it)
+        return s
+    r = st.wait_quiet(sampler([50, 10, 10, 60, 10, 10, 10]), limit=20, hold=3, timeout=100, clock=clock)
+    assert r == {"quiet": True, "waited_s": 7.0, "cpu_pct": 10}
+    r = st.wait_quiet(sampler([50] * 10), limit=20, hold=3, timeout=4, clock=clock)
+    assert r["quiet"] is False and r["waited_s"] == 4.0
+
+
+def test_background_pct_excludes_own_process_tree():
+    # 20 logical CPUs: our TTS worker at 800 % (8 cores) = 40 % of the machine; system 55 % -> others 15 %
+    assert st.background_pct(55.0, [800.0, 20.0], 20) == pytest.approx(14.0)
+    assert st.background_pct(10.0, [800.0], 20) == 0.0

@@ -12,6 +12,8 @@ real-time factor is above `ASR_CPU_MAX_RTF`. No clip or no installed model = the
 """
 from __future__ import annotations
 
+from . import diag as _diag
+
 import json
 import statistics
 import time
@@ -150,6 +152,7 @@ def pick_asr(tier: Tier, models_dir, *, make_asr=None, clip=None, installed=None
         try:
             rtf = time_asr((make_asr or _whisper_cpu)(models_dir, m), audio, clock=clock)
         except Exception:  # noqa: BLE001 - a model that does not load is skipped
+            _diag.swallowed(__name__)
             continue
         best = (m, rtf)
         if rtf <= limit or clock() - start >= budget_s:

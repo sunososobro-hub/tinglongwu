@@ -3,6 +3,8 @@
 Only UI text is translated; subtitle/translation target languages are unrelated to this module."""
 from __future__ import annotations
 
+from . import diag as _diag
+
 import os
 import re
 import subprocess
@@ -49,6 +51,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_resume": "Resume",
         "gui_report": "Report a problem",
         "gui_check_setup": "Check setup",
+        "gui_upd_check": "Check for updates",
+        "gui_menu_tour": "How to start (?)",
+        "gui_upd_auto": "Update automatically",
+        "gui_upd_available": "New version v{ver} available.",
+        "gui_upd_now": "Update now",
+        "gui_upd_later": "Later",
+        "gui_upd_downloading": "Downloading v{ver}... {pct}%",
+        "gui_upd_ready": "v{ver} is downloaded. Restart now to update?",
+        "gui_upd_restart": "Restart now",
+        "gui_upd_applying": "Updating: tinglongWu closes now and reopens by itself in a few minutes.",
+        "gui_upd_fail": "Update failed ({why}). Nothing was changed.",
+        "gui_upd_none": "You have the latest version (v{ver}).",
         "gui_checking": "Checking setup...",
         "gui_check_ok": "Setup check: ready for a meeting.",
         "gui_check_bad": "Setup check found problems: see the fix lines.",
@@ -136,6 +150,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_resume": "Продолжить",
         "gui_report": "Сообщить о проблеме",
         "gui_check_setup": "Проверить настройку",
+        "gui_upd_check": "Проверить обновления",
+        "gui_menu_tour": "Как начать (?)",
+        "gui_upd_auto": "Обновлять автоматически",
+        "gui_upd_available": "Доступна новая версия v{ver}.",
+        "gui_upd_now": "Обновить",
+        "gui_upd_later": "Позже",
+        "gui_upd_downloading": "Загрузка v{ver}... {pct}%",
+        "gui_upd_ready": "Версия v{ver} загружена. Перезапустить сейчас для обновления?",
+        "gui_upd_restart": "Перезапустить",
+        "gui_upd_applying": "Обновление: tinglongWu закроется и через несколько минут откроется сам.",
+        "gui_upd_fail": "Обновление не удалось ({why}). Ничего не изменено.",
+        "gui_upd_none": "У вас последняя версия (v{ver}).",
         "gui_checking": "Проверка настройки...",
         "gui_check_ok": "Проверка: всё готово для встречи.",
         "gui_check_bad": "Проверка нашла проблемы: см. строки fix.",
@@ -223,6 +249,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_resume": "繼續",
         "gui_report": "回報問題",
         "gui_check_setup": "檢查設定",
+        "gui_upd_check": "檢查更新",
+        "gui_menu_tour": "如何開始（?）",
+        "gui_upd_auto": "自動更新",
+        "gui_upd_available": "有新版本 v{ver}。",
+        "gui_upd_now": "立即更新",
+        "gui_upd_later": "稍後",
+        "gui_upd_downloading": "下載 v{ver} 中... {pct}%",
+        "gui_upd_ready": "v{ver} 已下載，要現在重新啟動來更新嗎？",
+        "gui_upd_restart": "立即重新啟動",
+        "gui_upd_applying": "更新中：聽攏有會先關閉，幾分鐘後自動重新開啟。",
+        "gui_upd_fail": "更新失敗（{why}），沒有做任何變更。",
+        "gui_upd_none": "已是最新版本（v{ver}）。",
         "gui_checking": "檢查設定中...",
         "gui_check_ok": "設定檢查：可以開會了。",
         "gui_check_bad": "設定檢查發現問題：請看 fix 那幾行。",
@@ -296,6 +334,7 @@ def _system_tag() -> str:
             if ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, 85):
                 return buf.value
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
         return ""
     if sys.platform == "darwin":
@@ -306,6 +345,7 @@ def _system_tag() -> str:
             if m:
                 return m.group(1)
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     for k in ("LC_ALL", "LC_MESSAGES", "LANG"):
         if os.environ.get(k):

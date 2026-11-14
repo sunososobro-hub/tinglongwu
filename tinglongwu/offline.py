@@ -16,6 +16,8 @@ llama.cpp, other C extensions) or subprocesses. The real proof is an OS firewall
 """
 from __future__ import annotations
 
+from . import diag as _diag
+
 import ipaddress
 import json
 import os
@@ -97,6 +99,7 @@ def _version_info() -> tuple[str, str]:
                 _sha = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"], capture_output=True,
                                       text=True, timeout=2).stdout.strip()
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
     return ver, _sha
 
@@ -136,6 +139,7 @@ def _emit(host, port) -> None:
         with open(d / LOG_NAME, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:  # noqa: BLE001
+        _diag.swallowed(__name__)
         pass
     msg = i18n.t("guard_blocked", host=host, port=port if port is not None else "?", pkg=pkg)
     try:
@@ -144,6 +148,7 @@ def _emit(host, port) -> None:
         try:
             print(msg.encode("ascii", "replace").decode(), file=sys.stderr, flush=True)
         except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
             pass
 
 
@@ -161,6 +166,7 @@ def _check(host, port=None) -> None:
     try:
         _emit(host, port if isinstance(port, int) else None)
     except Exception:  # noqa: BLE001  (never let reporting mask the block)
+        _diag.swallowed(__name__)
         pass
     raise NetworkBlocked(f"tlwu network guard: blocked connection to {host!r} (offline-only)")
 

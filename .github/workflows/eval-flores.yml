@@ -1,0 +1,124 @@
+name: eval-flores
+# #606: Hy-MT2-1.8B (the shipped Q4_K_M GGUF, llama.cpp on the CPU) on the full FLORES-200 devtest (1012 sentences)
+# -> zho_Hant for rus/eng/jpn + kor/vie/tha/ind/spa/deu/fra (#656), chrF + COMET (Unbabel/wmt22-comet-da),
+# the same metrics as docs/benchmarks.md.
+# Runs on GitHub-hosted CPU runners because the cloud agent sandbox cannot reach the model / data hosts.
+# Per-sentence JSON + summary are uploaded as the `flores-<src>` artifacts; the step summary has the table row.
+# Only runs when this workflow or the runner script changes, or by hand (workflow_dispatch, once on the default branch).
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - .github/workflows/eval-flores.yml
+      - scripts/bench/flores_cpu.py
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "first N sentences only (0 = all 1012)"
+        default: "0"
+      langs:
+        description: "comma list of FLORES source codes (see LANGS in scripts/bench/flores_cpu.py)"
+        default: "rus_Cyrl,eng_Latn,jpn_Jpan"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-flores-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TLWU_NO_UPDATE: "1"
+  TLWU_HYMT_TEMP: "0"  # greedy: repeatable numbers (#606 Verify: chrF +/-0.3, COMET +/-0.003)
+  PYTHONUTF8: "1"
+  LIMIT: ${{ inputs.limit || '0' }}
+
+jobs:
+  plan:
+    # #656: the matrix comes from the `langs` input (dispatch) or, on a PR, every direction the runner knows;
+    # flores_cpu.py --matrix rejects anything that is not a known FLORES code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      src: ${{ steps.m.outputs.src }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - id: m
+        env:
+          LANGS: ${{ inputs.langs || 'rus_Cyrl,eng_Latn,jpn_Jpan,kor_Hang,vie_Latn,tha_Thai,ind_Latn,spa_Latn,deu_Latn,fra_Latn' }}
+        run: echo "src=$(python3 scripts/bench/flores_cpu.py --matrix "$LANGS")" >> "$GITHUB_OUTPUT"
+
+  flores:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        src: ${{ fromJSON(needs.plan.outputs.src) }}
+    env:
+      SRC: ${{ matrix.src }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: System libraries
+        timeout-minutes: 8
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for i in 1 2 3; do
+            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 && exit 0
+            sleep 15
+          done
+          exit 1
+      - name: Install tlwu + Hy-MT2 CPU engine + sacrebleu
+        run: |
+          pip install -e .
+          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install sacrebleu==2.6.0
+      - name: COMET venv (unbabel-comet pins numpy<2, so it cannot share the tlwu env)
+        run: |
+          python -m venv "$HOME/comet"
+          "$HOME/comet/bin/pip" install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          "$HOME/comet/bin/pip" install unbabel-comet==2.2.7 sacrebleu==2.6.0
+      - name: Paths
+        run: |
+          echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
+          echo "BENCH=$HOME/bench" >> "$GITHUB_ENV"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/tlwu-models
+            ~/bench/flores200_dataset
+            ~/.cache/huggingface
+          key: eval-flores-v1-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+      - name: Hy-MT2 1.8B + FLORES-200
+        run: |
+          tlwu-setup --hymt --models-dir "$TLWU_MODELS"
+          python scripts/bench/fetch_data.py --out "$BENCH" --fleurs ""
+      - name: Translate (CPU, greedy)
+        run: |
+          python scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" --src "$SRC" \
+            --out out --limit "$LIMIT" --no-comet
+      - name: Score chrF + COMET (CPU)
+        run: |
+          "$HOME/comet/bin/python" scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" \
+            --src "$SRC" --out out --limit "$LIMIT" --score-only
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          s = json.load(open(f"out/{os.environ['SRC']}.summary.json", encoding="utf-8"))
+          print("| pair | n | chrF | COMET | median s/sentence | p90 s | CPU |\n|---|---|---|---|---|---|---|")
+          print(f"| {s['pair']} | {s['n']} | {s['chrF']} | {s.get('COMET')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
+          EOF
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: flores-${{ matrix.src }}
+          path: out/
+          if-no-files-found: warn

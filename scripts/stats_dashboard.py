@@ -10,6 +10,7 @@ import argparse
 import html
 import json
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -42,7 +43,7 @@ def _pages(api, path, limit=100, accept=None):
 
 
 STAR = "application/vnd.github.star+json"
-GROUPS = ("status", "priority", "area", "os", "src", "model", "milestone")
+GROUPS = ("status", "priority", "area", "os", "src", "model", "mode", "lang", "milestone")  # mode/lang: #585
 
 
 def day_of(ts):
@@ -98,7 +99,7 @@ def group_of(token):
         return "priority", token
     if ":" in token:
         g, v = token.split(":", 1)
-        if g in ("status", "area", "os", "src", "model"):
+        if g in ("status", "area", "os", "src", "model", "mode", "lang"):
             return g, v
     return None
 
@@ -219,6 +220,203 @@ def hero_stats(merged, closed, commits, created, now):
     return out
 
 
+QUOTA_WEIGHT = {"opus": 2.0}  # sonnet and anything else = 1.0
+TYPE_TARGETS = [("bug", 30), ("enhancement", 30), ("eval", 10), ("documentation", 5), ("maint", 5)]
+SIDE_TARGETS = [("QA", 15), ("ideas", 5)]  # fixed-schedule rows, informational
+FLOW_HOURS = 48  # same window as the S-hard ledger
+UNLABELLED = "unlabelled"
+FOCUS_ORANGE = "#e08a1e"
+
+
+def parse_usage(body):
+    """(model, minutes) from the last `tlwu-usage:` line of a PR body, else None."""
+    for line in reversed((body or "").splitlines()):
+        line = line.strip()
+        if line.startswith("tlwu-usage:"):
+            m = re.search(r"model=(\w+)", line)
+            n = re.search(r"minutes=(\d+(?:\.\d+)?)", line)
+            if m and n:
+                return m.group(1).lower(), float(n.group(1))
+            return None
+    return None
+
+
+def linked_issue(body):
+    m = re.search(r"(?i)\b(?:closes|fixes|resolves|refs)\s+#(\d+)", body or "")
+    return int(m.group(1)) if m else None
+
+
+def parse_faucet(body):
+    """{'level': int, 'focus': [str]} from #574's body; None if the level line is unreadable."""
+    lines = (body or "").splitlines()
+    m = re.match(r"\s*level:\s*(\d+)", lines[0]) if lines else None
+    if not m:
+        return None
+    focus = []
+    for ln in lines[1:]:
+        f = re.match(r"\s*focus:\s*(.*)", ln)
+        if f:
+            focus = [x for x in re.split(r"[\s,/+]+", f.group(1).strip()) if x]
+            break
+    return {"level": int(m.group(1)), "focus": focus}
+
+
+def _label_value(labels, prefix):
+    for name in labels:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return UNLABELLED
+
+
+def build_flow(items):
+    """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
+
+    Everything is in quota minutes (minutes x model weight, opus = 2x). Missing mode / os /
+    lang labels go to an 'unlabelled' node instead of failing.
+    """
+    paths, types = {}, {}
+    for it in items:
+        q = it["minutes"] * QUOTA_WEIGHT.get(it["model"], 1.0)
+        if q <= 0:
+            continue
+        labels = it.get("labels", [])
+        key = (_label_value(labels, "mode:"), _label_value(labels, "os:"), _label_value(labels, "lang:"))
+        paths[key] = paths.get(key, 0.0) + q
+        t = next((n for n, _ in TYPE_TARGETS if n in labels), "other")
+        types[t] = types.get(t, 0.0) + q
+    total = sum(paths.values())
+
+    def pct(v):
+        return 100.0 * v / total if total else 0.0
+
+    layers = []
+    for idx in range(3):
+        node = {}
+        for k, v in paths.items():
+            node[k[idx]] = node.get(k[idx], 0.0) + v
+        layers.append([{"name": n, "quota": v, "share": pct(v)}
+                       for n, v in sorted(node.items(), key=lambda kv: (-kv[1], kv[0]))])
+    mix = [{"type": n, "quota": types.get(n, 0.0), "share": pct(types.get(n, 0.0)), "target": t,
+            "delta": pct(types.get(n, 0.0)) - t} for n, t in TYPE_TARGETS]
+    if types.get("other"):
+        mix.append({"type": "other", "quota": types["other"], "share": pct(types["other"]),
+                    "target": 0, "delta": pct(types["other"])})
+    return {"total": total, "paths": [[*k, v] for k, v in sorted(paths.items())],
+            "modes": layers[0], "platforms": layers[1], "langs": layers[2],
+            "type_mix": mix, "side": [{"type": n, "target": t} for n, t in SIDE_TARGETS]}
+
+
+def render_sankey(flow, focus=()):
+    """Inline-SVG Sankey: quota -> mode -> platform -> language. Focus values are orange."""
+    total = flow["total"]
+    if not total:
+        return '<p class="n">No quota minutes in the last %d h.</p>' % FLOW_HOURS
+    cols = [[{"name": "quota", "quota": total}], flow["modes"], flow["platforms"], flow["langs"]]
+    W, H, NW, GAP, PAD = 640, 220, 10, 4, 6
+    xs = [PAD + i * (W - 2 * PAD - NW) / 3 for i in range(4)]
+    scale = (H - 2 * PAD - GAP * max(len(c) for c in cols)) / total
+    pos = []  # per column: name -> [y, height]
+    for col in cols:
+        y, d = PAD, {}
+        for n in col:
+            h = max(n["quota"] * scale, 1.0)
+            d[n["name"]] = [y, h]
+            y += h + GAP
+        pos.append(d)
+    focus = {f.lower() for f in focus}
+    out = []
+    for c in range(3):
+        links = {}
+        for p in flow["paths"]:
+            a, b = ("quota" if c == 0 else p[c - 1]), p[c]
+            links[(a, b)] = links.get((a, b), 0.0) + p[3]
+        order_a = list(pos[c])
+        order_b = list(pos[c + 1])
+        off_a = {n: pos[c][n][0] for n in order_a}
+        off_b = {n: pos[c + 1][n][0] for n in order_b}
+        for (a, b), v in sorted(links.items(), key=lambda kv: (order_a.index(kv[0][0]), order_b.index(kv[0][1]))):
+            h = v * scale
+            x1, x2 = xs[c] + NW, xs[c + 1]
+            y1, y2 = off_a[a] + h / 2, off_b[b] + h / 2
+            off_a[a] += h
+            off_b[b] += h
+            col = FOCUS_ORANGE if b.lower() in focus else "#3b82c4"
+            out.append('<path d="M%.1f %.1f C%.1f %.1f %.1f %.1f %.1f %.1f" fill="none" stroke="%s" '
+                       'stroke-opacity=".35" stroke-width="%.2f"><title>%s \u2192 %s: %.1f%% of quota</title></path>'
+                       % (x1, y1, (x1 + x2) / 2, y1, (x1 + x2) / 2, y2, x2, y2, col, max(h, 0.5),
+                          html.escape(a), html.escape(b), 100.0 * v / total))
+    for c, col in enumerate(cols):
+        for n in col:
+            y, h = pos[c][n["name"]]
+            fill = FOCUS_ORANGE if n["name"].lower() in focus else "#667"
+            label = n["name"] if c == 0 else "%s %.0f%%" % (n["name"], 100.0 * n["quota"] / total)
+            tx, anchor = (xs[c] + NW + 3, "start") if c < 3 else (xs[c] - 3, "end")
+            out.append('<rect x="%.1f" y="%.1f" width="%d" height="%.1f" fill="%s"/><text x="%.1f" y="%.1f" '
+                       'text-anchor="%s">%s</text>' % (xs[c], y, NW, h, fill, tx, y + h / 2 + 4, anchor,
+                                                      html.escape(label)))
+    return '<svg viewBox="0 0 %d %d" role="img" aria-label="quota flow">%s</svg>' % (W, H, "".join(out))
+
+
+def render_type_mix(flow):
+    rows = []
+    for r in flow["type_mix"]:
+        rows.append('<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:96px">%s</span>'
+                    '<div class="pb" style="flex:1;position:relative"><div style="width:%.1f%%"></div>'
+                    '<i style="position:absolute;left:%d%%;top:-2px;width:2px;height:14px;background:var(--fg)"></i></div>'
+                    '<span style="width:120px">%.1f%% / target %d</span></div>'
+                    % (html.escape(r["type"]), min(r["share"], 100.0), min(r["target"], 100), r["share"], r["target"]))
+    side = "".join('<span class="t" style="padding:4px 10px">%s <b style="font-size:14px;display:inline">%d%%</b> '
+                   '<small>fixed schedule</small></span>' % (html.escape(s["type"]), s["target"]) for s in flow["side"])
+    return "".join(rows) + "<div>" + side + "</div>"
+
+
+def render_faucet(faucet):
+    if not faucet:
+        return '<p class="n">Faucet level unavailable.</p>'
+    focus = ", ".join(html.escape(f) for f in faucet["focus"]) or "none"
+    return ('<p>Faucet level <b>%d</b> &middot; focus <b style="color:%s">%s</b></p>'
+            % (faucet["level"], FOCUS_ORANGE, focus))
+
+
+def render_flow_section(series):
+    flow = series.get("flow")
+    if not flow:
+        return ""
+    faucet = series.get("faucet")
+    focus = faucet["focus"] if faucet else ()
+    return ('<h2>Where the quota goes</h2>%s'
+            '<p class="n">Quota minutes (minutes x model weight, opus = 2x sonnet), PRs merged in the last %d h; '
+            'orange = current focus.</p>'
+            '<h2>Type mix vs target</h2>%s'
+            '<p class="n">Share of quota per issue type; the tick marks the target.</p>'
+            '<h2>Faucet</h2>%s<p class="n">Throttle level and focus read from issue #574.</p>'
+            % (render_sankey(flow, focus), FLOW_HOURS, render_type_mix(flow), render_faucet(faucet)))
+
+
+def build_flow_inputs(api, repo, merged_prs, now):
+    """Quota flow from recent merged PRs' usage lines + linked-issue labels, and the #574 faucet."""
+    since = now - timedelta(hours=FLOW_HOURS)
+    items, cache = [], {}
+    for p in merged_prs:
+        usage = parse_usage(p.get("body"))
+        if not usage or parse_ts(p["merged_at"]) < since:
+            continue
+        n = linked_issue(p.get("body"))
+        if n is not None and n not in cache:
+            try:
+                cache[n] = [lb["name"] for lb in api("/repos/%s/issues/%d" % (repo, n)).get("labels", [])]
+            except Exception as e:  # unlabelled node instead of failing
+                print("issue #%d unavailable: %s" % (n, e), file=sys.stderr)
+                cache[n] = []
+        items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, [])})
+    try:
+        faucet = parse_faucet(api("/repos/%s/issues/574" % repo).get("body"))
+    except Exception as e:
+        print("faucet unavailable: %s" % e, file=sys.stderr)
+        faucet = None
+    return build_flow(items), faucet
+
+
 def build_series(api, repo, branch, now):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
@@ -242,6 +440,7 @@ def build_series(api, repo, branch, now):
     issue_closed_ts = [i["closed_at"] for i in closed_issues]
     commit_ts = [c["commit"]["committer"]["date"] for c in commits]
     week = now - timedelta(days=7)
+    day = now - timedelta(hours=24)
     pr_pairs = [(p["created_at"], p["merged_at"]) for p in merged_prs]
     is_pairs = [(i["created_at"], i["closed_at"]) for i in closed_issues]
     try:
@@ -249,7 +448,9 @@ def build_series(api, repo, branch, now):
               for m in _pages(api, "/repos/%s/milestones?state=all" % repo)]
     except Exception:
         ms = []
+    flow, faucet = build_flow_inputs(api, repo, merged_prs, now)
     return {
+        "flow": flow, "faucet": faucet,
         "repo": repo, "branch": branch, "created": created,
         "updated": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "days": days,
@@ -267,9 +468,9 @@ def build_series(api, repo, branch, now):
         "issues_closed": per_day(issue_closed_ts, days),
         "hero": hero_stats(pr_merged_ts, issue_closed_ts, commit_ts, created, now),
         "speed": {"issue_all": median_hours(is_pairs), "issue_7d": median_hours(is_pairs, week),
-                  "pr_all": median_hours(pr_pairs), "pr_7d": median_hours(pr_pairs, week)},
-        "speed_p90": {"issue_all": percentile_hours(is_pairs, 90), "issue_7d": percentile_hours(is_pairs, 90, week),
-                      "pr_all": percentile_hours(pr_pairs, 90), "pr_7d": percentile_hours(pr_pairs, 90, week)},
+                  "issue_24h": median_hours(is_pairs, day),
+                  "pr_all": median_hours(pr_pairs), "pr_7d": median_hours(pr_pairs, week),
+                  "pr_24h": median_hours(pr_pairs, day)},
     }
 
 
@@ -310,7 +511,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <style>
 :root{--bg:#fff;--fg:#1d2329;--mut:#667;--bd:#d0d7de;--a:#2a7d4f;--grid:#e6e9ec}
 @media (prefers-color-scheme:dark){:root{--bg:#14181c;--fg:#e4e8ec;--mut:#9aa4ae;--bd:#30363d;--a:#4cc38a;--grid:#262c33}}
-body{font:14px/1.4 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:12px 16px;background:var(--bg);color:var(--fg)}
+body{font:14px/1.4 system-ui,sans-serif;max-width:1200px;margin:0 auto;padding:12px 16px;background:var(--bg);color:var(--fg)}
 .t{display:inline-block;margin:4px 4px 4px 0;padding:8px 14px;border:1px solid var(--bd);border-radius:6px}
 .t b{display:block;font-size:22px}h2{font-size:16px;margin:22px 0 4px}
 svg{width:100%;height:auto;display:block}svg text{fill:var(--mut);font-size:11px}
@@ -318,23 +519,42 @@ select{font:inherit;padding:4px 8px;background:var(--bg);color:var(--fg);border:
 .lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0;font-size:12px}
 .lg i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
 .pb{height:10px;background:var(--grid);border-radius:5px;overflow:hidden}.pb div{height:100%;background:var(--a)}
-small,p.n{color:var(--mut)}
+small,p.n,p.cap1{color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:0 24px}
+.blk{min-width:0}p.cap1{margin:2px 0 0;font-size:13px}
+.vs{border:1px solid var(--bd);border-radius:8px;padding:12px;margin:0 0 12px}
+.vs .cap{font-size:16px;font-weight:600;margin:0 0 8px}
+.vs .row{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.vs .nd{flex:1 1 150px;border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:13px}
+.vs .goal{background:#1e3a5f;color:#fff;border-color:#1e3a5f}
+.vs .ar{align-self:center;font-size:20px}.vs ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
 </style></head><body>
+__VISION__
 <h1 style="font-size:20px">__REPO__ progress</h1>
 <p style="font-size:16px;margin:4px 0 12px"><a href="roadmap.html">&#x1F5FA;&#xFE0F; Roadmap</a> &middot; <a href="docs.html">Docs</a></p>
 <p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
 <div id="hero"></div>
-<h2>Work finished per day</h2><div id="c_thru"></div>
+__FLOW__
+<div class="grid">
+<section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
-<h2>Commits per day</h2><div id="c_commits"></div>
-<h2>How fast things get done</h2><div id="speed"></div>
-<h2>Milestone progress</h2><div id="ms"></div>
-<h2>Open issues over time</h2><div id="c_open"></div>
-<h2>Open issues by <select id="dim"></select></h2>
+<p class="cap1">Pull requests merged and issues closed each day.</p></section>
+<section class="blk"><h2>Commits per day</h2><div id="c_commits"></div>
+<p class="cap1">Commits landed on the main development branch each day.</p></section>
+<section class="blk"><h2>How fast things get done</h2><div id="speed"></div>
+<p class="cap1">Typical time from opened to done, for issues and PRs.</p></section>
+<section class="blk"><h2>Milestone progress</h2><div id="ms"></div>
+<p class="cap1">Closed versus open issues in each milestone.</p></section>
+<section class="blk"><h2>Open issues over time</h2><div id="c_open"></div>
+<p class="cap1">How many issues are waiting, day by day.</p></section>
+<section class="blk"><h2>Open issues by <select id="dim"></select></h2>
 <p class="n" id="lnote"></p><div id="c_grp"></div><div class="lg" id="lg"></div>
-<div id="cur"></div>
-<h2>Stars</h2><div id="c_stars"></div>
-<h2>Forks</h2><div id="c_forks"></div>
+<div id="cur"></div><p class="cap1">Open issues split by the chosen label group.</p></section>
+<section class="blk"><h2>Stars</h2><div id="c_stars"></div>
+<p class="cap1">Total GitHub stars over time.</p></section>
+<section class="blk"><h2>Forks</h2><div id="c_forks"></div>
+<p class="cap1">Total forks over time.</p></section>
+</div>
 <script id="d" type="application/json">__DATA__</script>
 <script>
 const D=JSON.parse(document.getElementById('d').textContent);
@@ -368,8 +588,7 @@ const per=Hh.prs.h24?Math.round(1440/Hh.prs.h24):0;
 document.getElementById('sum').textContent='Day '+Hh.day_n+' \u00b7 '+Hh.prs.h24+' PRs merged in the last 24 h'+(per?' \u00b7 1 PR every '+per+' min':'');
 const fh=h=>h==null?'n/a':h<1?Math.round(h*60)+' min':h<48?h.toFixed(1)+' h':(h/24).toFixed(1)+' days';
 const Sp=D.speed;
-const P9=D.speed_p90||{};
-document.getElementById('speed').innerHTML=[['issue','Issue opened to closed'],['pr','PR opened to merged']].map(([k,l])=>{const a=k+'_all',w=k+'_7d',same=Sp[a]===Sp[w]&&P9[a]===P9[w];const t=(x)=>fh(Sp[x])+' p50 · '+fh(P9[x])+' p90';return same?big(t(w),l+' (p50 · p90, last 7 days = all time)'):big(t(a),l+' (p50 · p90, all time)')+big(t(w),l+' (p50 · p90, last 7 days)');}).join('');
+document.getElementById('speed').innerHTML='<table><tr><th></th><th>Last 7 days</th><th>Last 24 h</th><th>All time</th></tr>'+[['issue','Issue opened to closed'],['pr','PR opened to merged']].map(([k,l])=>'<tr><td>'+l+'</td><td>'+fh(Sp[k+'_7d'])+'</td><td>'+fh(Sp[k+'_24h'])+'</td><td>'+fh(Sp[k+'_all'])+'</td></tr>').join('')+'</table><p class="n">Typical (median) time from opened to done.</p>';
 chart(c_thru,[{name:'PRs merged',v:D.prs_merged},{name:'issues closed',v:D.issues_closed}],{stack:1,pal:['#3b82c4','#e08a1e']});
 chart(c_commits,[{name:'commits',v:D.commits}],{bar:1,color:'var(--a)'});
 chart(c_stars,[{name:'stars',v:D.stars}],{color:'#e0a81e'});
@@ -391,11 +610,60 @@ dim.value='status';showGroup();
 </script></body></html>"""
 
 
+VISION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "VISION.md")
+
+
+def parse_vision(text):
+    """docs/VISION.md -> {caption, nodes{ID: [lines]}, nongoals[(icon, text)]}."""
+    cap = ""
+    for ln in text.splitlines():
+        if ln.startswith(">"):
+            cap = ln.lstrip("> ").replace("**", "").strip()
+            break
+    nodes = {}
+    for m in re.finditer(r'(\w+)\["(.*?)"\]', text):
+        nodes[m.group(1)] = [x.strip() for x in m.group(2).split("<br/>") if x.strip()]
+    ng, on = [], False
+    for ln in text.splitlines():
+        if ln.startswith("## "):
+            on = "We don't" in ln
+        elif on:
+            m = re.match(r"^\|\s*(\S+)\s*\|\s*(.+?)\s*\|$", ln)
+            if m and not set(m.group(1)) <= set("-:"):
+                ng.append((m.group(1), m.group(2)))
+    return {"caption": cap, "nodes": nodes, "nongoals": ng}
+
+
+def vision_html(path=VISION_PATH):
+    try:
+        with open(path, encoding="utf-8") as f:
+            v = parse_vision(f.read())
+    except OSError:
+        return ""
+    def node(i, cls="nd"):
+        lines = v["nodes"].get(i)
+        if not lines:
+            return ""
+        body = "<br>".join(html.escape(x) for x in lines)
+        return '<div class="%s" data-node="%s">%s</div>' % (cls, i, body)
+    out = ['<section id="vision" class="vs">']
+    if v["caption"]:
+        out.append('<p class="cap">%s</p>' % html.escape(v["caption"]))
+    out.append('<div class="row">%s<span class="ar">&rarr;</span>%s</div>' % (node("WHY"), node("GOAL", "nd goal")))
+    out.append('<div class="row" style="margin-top:8px">%s%s%s</div>' % (node("MODE"), node("PLAT"), node("LANG")))
+    if v["nongoals"]:
+        out.append("<ul>%s</ul>" % "".join(
+            '<li data-nongoal="1">%s %s</li>' % (html.escape(i), html.escape(t)) for i, t in v["nongoals"]))
+    out.append("</section>")
+    return "".join(out)
+
+
 def render_html(series):
     data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
-    return (PAGE.replace("__REPO__", html.escape(series["repo"]))
-            .replace("__BRANCH__", html.escape(series["branch"]))
-            .replace("__DATA__", data))
+    values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
+              "__FLOW__": render_flow_section(series), "__VISION__": vision_html(), "__DATA__": data}
+    # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
+    return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 
 
 def run(outdir, repo, branch, api=http_api, now=None):

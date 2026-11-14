@@ -1,0 +1,50 @@
+{
+  "_note": "Tier-2 scores (#602) from a real tlwu_eval run on the pinned FLEURS clips in eval/tier2_pins.json (FLEURS test, CC-BY 4.0; ref_zh = cmn_hans_cn transcript of the same FLoRes id, Taiwan Traditional). Rebuild with scripts/bench/tier2_report.py; docs/support.json cells stay as they are unless an owner decision uses these numbers.",
+  "run": {
+    "date": "2026-11-13",
+    "commit": "35e2a18",
+    "model": "large-v3-turbo",
+    "engine": "hymt (Hy-MT2 1.8B)",
+    "device": "cuda (RTX 3050 8 GB)",
+    "pins": "eval/tier2_pins.json",
+    "fleurs_revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd"
+  },
+  "pairs": {
+    "vi->zh": {
+      "clips": 20,
+      "chrf": 24.45,
+      "asr_error_rate": 0.087,
+      "mt_median_s": 0.243
+    },
+    "th->zh": {
+      "clips": 20,
+      "chrf": 16.39,
+      "asr_error_rate": 0.1338,
+      "mt_median_s": 0.31
+    },
+    "id->zh": {
+      "clips": 20,
+      "chrf": 25.65,
+      "asr_error_rate": 0.0608,
+      "mt_median_s": 0.323
+    },
+    "es->zh": {
+      "clips": 20,
+      "chrf": 23.9,
+      "asr_error_rate": 0.0153,
+      "mt_median_s": 0.241
+    },
+    "de->zh": {
+      "clips": 20,
+      "chrf": 28.75,
+      "asr_error_rate": 0.0525,
+      "mt_median_s": 0.243
+    },
+    "fr->zh": {
+      "clips": 20,
+      "chrf": 26.9,
+      "asr_error_rate": 0.0984,
+      "mt_median_s": 0.275
+    }
+  }
+}
