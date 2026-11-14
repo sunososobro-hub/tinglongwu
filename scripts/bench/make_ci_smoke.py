@@ -23,6 +23,11 @@ eval/tier2_pins.json. The pin file carries its own "configs" map, so --out alone
   python scripts/bench/make_ci_smoke.py --pins eval/tier2_pins.json --out eval_data/tier2
   python -m tlwu_eval --smoke --data eval_data/tier2 --langs vi,th,id,es,de,fr --per-lang 20 --no-noise --out t2.json
   python scripts/bench/make_ci_smoke.py --set tier2 --pin 20 --revision <sha>    # dev: re-pin the tier-2 set
+
+Korean slice (#754): ko -> zh-TW, 5 clips, same flow with its own pin file:
+  python scripts/bench/make_ci_smoke.py --set ko --pin 5 --revision <sha>        # dev: pin eval/ko_pins.json
+  python scripts/bench/make_ci_smoke.py --pins eval/ko_pins.json --out eval_data/ko
+  python -m tlwu_eval --smoke --data eval_data/ko --langs ko --clips 5 --no-noise --out ko.json   # prints chrF
 """
 from __future__ import annotations
 
@@ -43,6 +48,7 @@ BASE_URL = "https://huggingface.co/datasets/{dataset}/resolve/{revision}/data/{c
 CONFIGS = {"en": "en_us", "ja": "ja_jp", "ru": "ru_ru", "zh": "cmn_hans_cn"}
 # #596/#602: tier-2 languages (docs/support.json), each -> zh. FLEURS has Latin-American Spanish only (es_419).
 TIER2_CONFIGS = {"vi": "vi_vn", "th": "th_th", "id": "id_id", "es": "es_419", "de": "de_de", "fr": "fr_fr"}
+KO_CONFIGS = {"ko": "ko_kr"}  # #754: Korean language pack -> its own ko->zh-TW slice (eval/ko_pins.json)
 REF_CONFIGS = {"en": "en_us", "zh": "cmn_hans_cn"}  # reference sides: ref_zh for every source, ref_en for zh clips
 MAX_DOWNLOAD = 500 * 2 ** 20  # #569 acceptance: total download < 500 MB
 MAX_CLIP_S = 15.0  # --pin skips longer clips so 20 clips stay well inside the smoke budget (TOTAL_BUDGET_S 300 s)
@@ -56,6 +62,10 @@ SETS = {
               "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/tier2_pins.json (#602): tier-2 languages "
                       "-> zh (FLEURS test, CC-BY 4.0). Re-pin with --set tier2 --pin 20 only on purpose; "
                       "eval/tier2_report.json numbers depend on these clips."},
+    "ko": {"configs": KO_CONFIGS, "pins": ROOT / "eval" / "ko_pins.json", "scan": 60,
+           "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/ko_pins.json (#754): Korean -> zh-TW slice "
+                   "(FLEURS ko_kr test, CC-BY 4.0). Re-pin with --set ko --pin 5 only on purpose; the recorded ko->zh "
+                   "chrF baseline depends on these clips."},
 }
 
 LICENSE_TEXT = """Eval set for tlwu-eval, built by scripts/bench/make_ci_smoke.py (#569, #602) from the pins in
@@ -304,9 +314,10 @@ def main(argv=None, fetch=http_open) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", help="folder for manifest.jsonl and the wav files (e.g. eval_data/smoke)")
     ap.add_argument("--set", default="smoke", choices=sorted(SETS),
-                    help="language set for --pin and the default --pins (smoke: en/ja/ru/zh; tier2: vi/th/id/es/de/fr)")
-    ap.add_argument("--pins", default=None, help="pin file (default: eval/ci_smoke.json, or eval/tier2_pins.json "
-                                                 "with --set tier2)")
+                    help="language set for --pin and the default --pins (smoke: en/ja/ru/zh; tier2: vi/th/id/es/de/fr; "
+                         "ko: ko)")
+    ap.add_argument("--pins", default=None, help="pin file (default: eval/ci_smoke.json, eval/tier2_pins.json "
+                                                 "with --set tier2, eval/ko_pins.json with --set ko)")
     ap.add_argument("--pin", type=int, metavar="N", help="dev: re-select N clips per language and rewrite --pins")
     ap.add_argument("--revision", help="with --pin: FLEURS dataset revision (commit sha) to pin")
     a = ap.parse_args(argv)
