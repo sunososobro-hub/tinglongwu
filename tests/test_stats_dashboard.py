@@ -389,3 +389,23 @@ def test_counter_base_env_and_no_fetch_without_https():
 def test_run_survives_bad_counter_answer(tmp_path, bad):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=bad)
     assert "Install counter not available yet" in (tmp_path / "index.html").read_text(encoding="utf-8")
+
+
+def test_infer_dims_path_rules_662():
+    f = sd.infer_dims
+    assert f(["mobile/lib/main.dart"]) == {"os": "mobile"}
+    assert f(["installer/x.iss"])["os"] == "windows" and f(["tinglongwu/capture/wasapi_loop.py"])["os"] == "windows"
+    assert f(["scripts/mac_install.sh"])["os"] == "mac" and f(["tinglongwu/capture/macos_tap.py"])["os"] == "mac"
+    assert f(["install.sh"])["os"] == "linux" and f(["tinglongwu/capture/pulse.py"])["os"] == "linux"
+    assert f(["tinglongwu/tts.py"])["mode"] == "speak" and f(["tinglongwu/reverse/x.py"])["mode"] == "speak"
+    assert f(["tinglongwu/asr.py"])["mode"] == "listen" and f(["tinglongwu/segment.py"])["mode"] == "listen"
+    assert f(["eval/flores_ja.tsv"])["lang"] == "ja"
+    assert f(["README.md"]) == {}
+
+
+def test_build_flow_uses_inference_only_when_label_missing_662():
+    items = [{"model": "sonnet", "minutes": 10, "labels": [], "files": ["tinglongwu/tts.py", "installer/a.iss"]},
+             {"model": "sonnet", "minutes": 10, "labels": ["mode:listen", "os:linux"], "files": ["tinglongwu/tts.py"]}]
+    flow = sd.build_flow(items)
+    assert {tuple(p[:3]) for p in flow["paths"]} == {("speak", "windows", "all"), ("listen", "linux", "all")}
+    assert flow["inferred"]["mode"] == 50.0 and flow["inferred"]["os"] == 50.0 and flow["unclassified"] == 0.0

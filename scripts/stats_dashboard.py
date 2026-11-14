@@ -280,6 +280,34 @@ def _platform(labels):
     return "mobile" if "area:mobile" in labels else ALL
 
 
+# #662: path -> dimension rules, used only when the linked issue has no label for that dimension.
+_MODE_RULES = (("speak", ("tts", "reverse", "speak")), ("listen", ("asr", "segment")))
+_OS_RULES = (("windows", ("installer/", ".iss", "capture/wasapi")),
+             ("mac", ("mac_install.sh", "capture/macos")),
+             ("linux", ("install.sh", "capture/pulse")))
+_LANG_RE = re.compile(r"(?:flores|eval)[^/]*?[_/-](zh|en|ja|ko|ru|hi|yue|vi|th|id|es|de|fr|it|pt)(?:[_.-]|$)")
+
+
+def infer_dims(files):
+    """Changed file paths -> {'mode'|'os'|'lang': value} inferred from paths (missing key = no inference)."""
+    out = {}
+    for f in files:
+        f = f.lower()
+        base = f.rsplit("/", 1)[-1]
+        if f.startswith("mobile/"):
+            out.setdefault("os", "mobile")
+        for value, keys in _OS_RULES:
+            if any(k in f for k in keys if "/" in k or k.startswith(".")) or base in keys:
+                out.setdefault("os", value)
+        for value, keys in _MODE_RULES:
+            if any(base.startswith(k) or "/" + k in f for k in keys):
+                out.setdefault("mode", value)
+        m = _LANG_RE.search(f)
+        if m:
+            out.setdefault("lang", m.group(1))
+    return out
+
+
 def build_flow(items):
     """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
 
@@ -287,12 +315,24 @@ def build_flow(items):
     'unlabelled'; no os label = 'mobile' for area:mobile else 'all'; no lang label = 'all'.
     """
     paths, types = {}, {}
+    inferred = {"mode": 0.0, "os": 0.0, "lang": 0.0}
     for it in items:
         q = it["minutes"] * QUOTA_WEIGHT.get(it["model"], 1.0)
         if q <= 0:
             continue
         labels = it.get("labels", [])
-        key = (_label_value(labels, "mode:"), _platform(labels), _label_value(labels, "lang:", ALL))
+        mode, plat, lang = _label_value(labels, "mode:"), _platform(labels), _label_value(labels, "lang:", ALL)
+        guess = infer_dims(it.get("files", []))
+        if mode == UNLABELLED and "mode" in guess:
+            mode = guess["mode"]
+            inferred["mode"] += q
+        if plat == ALL and "os" in guess and not _label_value(labels, "os:", None):
+            plat = guess["os"]
+            inferred["os"] += q
+        if lang == ALL and "lang" in guess and not _label_value(labels, "lang:", None):
+            lang = guess["lang"]
+            inferred["lang"] += q
+        key = (mode, plat, lang)
         paths[key] = paths.get(key, 0.0) + q
         t = next((n for n, _ in TYPE_TARGETS if n in labels), "other")
         types[t] = types.get(t, 0.0) + q
@@ -315,6 +355,8 @@ def build_flow(items):
                     "target": 0, "delta": pct(types["other"])})
     return {"total": total, "paths": [[*k, v] for k, v in sorted(paths.items())],
             "modes": layers[0], "platforms": layers[1], "langs": layers[2],
+            "inferred": {k: pct(v) for k, v in inferred.items()},
+            "unclassified": pct(sum(v for k, v in paths.items() if k[0] == UNLABELLED)),
             "type_mix": mix, "side": [{"type": n, "target": t} for n, t in SIDE_TARGETS]}
 
 
@@ -396,13 +438,16 @@ def render_flow_section(series):
         return ""
     faucet = series.get("faucet")
     focus = faucet["focus"] if faucet else ()
+    inf = flow.get("inferred", {})
     return ('<h2>Where the quota goes</h2>%s'
             '<p class="n">Quota minutes (minutes x model weight, opus = 2x sonnet), PRs merged in the last %d h; '
-            'orange = current focus.</p>'
+            'orange = current focus. Inferred from changed files (no label): mode %.0f%%, platform %.0f%%, '
+            'language %.0f%%; unclassified mode %.0f%%.</p>'
             '<h2>Type mix vs target</h2>%s'
             '<p class="n">Share of quota per issue type; the tick marks the target.</p>'
             '<h2>Faucet</h2>%s<p class="n">Throttle level and focus read from issue #574.</p>'
-            % (render_sankey(flow, focus), FLOW_HOURS, render_type_mix(flow), render_faucet(faucet)))
+            % (render_sankey(flow, focus), FLOW_HOURS, inf.get("mode", 0), inf.get("os", 0), inf.get("lang", 0),
+               flow.get("unclassified", 0), render_type_mix(flow), render_faucet(faucet)))
 
 
 def build_flow_inputs(api, repo, merged_prs, now):
@@ -420,7 +465,12 @@ def build_flow_inputs(api, repo, merged_prs, now):
             except Exception as e:  # unlabelled node instead of failing
                 print("issue #%d unavailable: %s" % (n, e), file=sys.stderr)
                 cache[n] = []
-        items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, [])})
+        try:
+            files = [f["filename"] for f in api("/repos/%s/pulls/%d/files?per_page=100" % (repo, p["number"]))]
+        except Exception as e:  # no inference for this PR
+            print("pr #%s files unavailable: %s" % (p.get("number"), e), file=sys.stderr)
+            files = []
+        items.append({"model": usage[0], "minutes": usage[1], "labels": cache.get(n, []), "files": files})
     try:
         faucet = parse_faucet(api("/repos/%s/issues/574" % repo).get("body"))
     except Exception as e:
