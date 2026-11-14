@@ -148,3 +148,8 @@ def test_shorter_fence_inside_a_longer_fence_does_not_close_it():
     happened = "Source: hello\nOutput:\n````\n```\nwrong\n````"
     case = aec.case_from_issue(issue(pair="en -> zh", happened=happened, expected="你好"))
     assert case["src"] == "hello" and case["ref"] == "你好"
+
+
+def test_inline_triple_backtick_line_is_not_a_fence():
+    case = aec.case_from_issue(issue(pair="en -> zh", happened="Source: hello\nOutput:\n```wrong```", expected="你好"))
+    assert case["src"] == "hello" and case["ref"] == "你好"

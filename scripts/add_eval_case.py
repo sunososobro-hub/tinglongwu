@@ -57,6 +57,8 @@ def form_fields(body: str) -> dict[str, str]:
 
     for line in (body or "").replace("\r\n", "\n").split("\n"):
         f = FENCE.match(line)
+        if f and f.group(1)[0] == "`" and "`" in f.group(2):
+            f = None  # CommonMark: a backtick fence's info string has no backtick (```x``` is inline code)
         if f and not fenced:
             fenced = f.group(1)
         elif f and fenced and f.group(1)[0] == fenced[0] and len(f.group(1)) >= len(fenced) and not f.group(2).strip():
