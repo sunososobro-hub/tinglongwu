@@ -1,6 +1,6 @@
 name: release-pr
 # #414: when `ci` passes on a push to dev, open (or update) the one dev -> main release PR `release: vX.Y.Z`
-# (X.Y.Z = tinglongwu.__version__) with generated notes. Merging it is the owner's single release action;
+# (X.Y.Z = tinglongwu.__version__) with generated notes. auto-release.yml merges it when green (#589);
 # release.yml then checks the gates, builds and publishes. workflow_run runs this file from the default branch and
 # checks out dev (merged work only), never PR head code. Creating the PR needs the repo setting "Allow GitHub
 # Actions to create and approve pull requests"; without it the job fails after writing the PR into the summary.
