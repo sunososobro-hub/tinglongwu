@@ -132,6 +132,7 @@ def main() -> int:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / f"repro_632_{a.mode}.json").write_text(json.dumps(res, indent=1, ensure_ascii=False), "utf-8")
+    print("REPRO632_JSON " + json.dumps(res, ensure_ascii=True), flush=True)  # artifacts are not readable here
     return 0
 
 
