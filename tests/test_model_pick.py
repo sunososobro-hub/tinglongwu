@@ -33,7 +33,7 @@ def test_dropdown_lists_downloaded_first_and_marked(tmp_path):
     _mk(tmp_path, "large-v3-turbo")
     labels = core.model_labels(tmp_path)
     assert labels[0] == "✓ large-v3-turbo"
-    assert all("not downloaded" in l for l in labels[1:])
+    assert all(core._MARK_MISSING[core._ui()] in l for l in labels[1:])
     assert [core.model_from_label(l) for l in labels][0] == "large-v3-turbo"
     assert sorted(core.model_from_label(l) for l in labels) == sorted(core.MODELS)
     assert core.label_for_model("small", tmp_path).startswith("small")
