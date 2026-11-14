@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 DEFAULT_MBPS = 10.0  # fallback download speed (MB/s) when none was measured
-PACK_OF = {"zh": "zh", "en": "en", "ja": "ja", "ru": "ru"}  # source language code -> pack name
+PACK_OF = {"zh": "zh", "en": "en", "ja": "ja", "ko": "ko", "ru": "ru"}  # source language code -> pack name
 TEXT = {
     "en": "This needs the {pack} pack (about {mb} MB, about {min} min). Needs internet to download once, "
           "works offline afterwards.",
@@ -43,7 +43,7 @@ def needed_packs(source_lang: str, target_lang: str) -> list[str]:
 # keep in sync with tinglongwu_setup.packs (the runtime package must not import the network-capable setup package;
 # tests/test_gui_pack_on_demand.py compares the two tables)
 PIPER_RU = "piper-ru_RU-dmitri-medium"
-PACKS = {"zh": [], "en": [], "ja": ["hymt2-1.8b"], "ru": ["hymt2-1.8b", PIPER_RU]}
+PACKS = {"zh": [], "en": [], "ja": ["hymt2-1.8b"], "ko": ["hymt2-1.8b"], "ru": ["hymt2-1.8b", PIPER_RU]}
 SIZE_MB = {"hymt2-1.8b": 1100, PIPER_RU: 60}
 OPUS_MB = 100
 
