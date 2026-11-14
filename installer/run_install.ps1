@@ -11,10 +11,15 @@ try {
     if ($Packs -match '^[a-z]+(,[a-z]+)*$') { $env:TLWU_PACKS = $Packs }   # #672: install.ps1 passes it to tlwu-setup --packs
     $a = @{ SkipShortcut = $true; FromSetup = $true }   # #756: summary says "uninstall in Settings > Apps"   # the wizard makes the shortcuts itself (with the app icon)
     if ($Cpu) { $a.Cpu = $true }
-    & (Join-Path $Root 'install.ps1') @a *>&1 | ForEach-Object { "$_" } | Out-File -LiteralPath $Log -Encoding utf8 -Width 400
+    # #755: open + append + close per line. The old `| Out-File` held install.log open for the whole install, so
+    # the wizard's reader (LoadStringsFromFile, share-read) hit a sharing violation on every poll and the page
+    # never left "Starting install.ps1 ...". No BOM either, so the first line parses as plain text.
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($Log, '', $utf8)
+    & (Join-Path $Root 'install.ps1') @a *>&1 | ForEach-Object { [IO.File]::AppendAllText($Log, "$_`r`n", $utf8) }
     $rc = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
 } catch {
-    "run_install.ps1: $_" | Out-File -LiteralPath $Log -Encoding utf8 -Append
+    [IO.File]::AppendAllText($Log, "run_install.ps1: $_`r`n", (New-Object System.Text.UTF8Encoding($false)))
 } finally {
     Set-Content -LiteralPath $Done -Value $rc -Encoding ascii
 }
