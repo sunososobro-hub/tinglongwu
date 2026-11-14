@@ -54,13 +54,29 @@ def is_experimental(code: str) -> bool:
     return code in EXPERIMENTAL
 
 
+_AUTO = {"en": "Auto", "ru": "Авто", "zh-TW": "自動"}
+_TARGET_NAMES = {"en": {"zh-tw": "Traditional Chinese", "zh-cn": "Simplified Chinese"},
+                 "ru": {"zh-tw": "традиционный китайский", "zh-cn": "упрощённый китайский"},
+                 "zh-TW": {"zh-tw": "繁體中文", "zh-cn": "简体中文"}}
+
+
 def name(code: str, lang: str | None = None) -> str:
-    return _NAMES[_ui(lang)].get(code, code)
+    ui = _ui(lang)
+    return _TARGET_NAMES[ui].get(code) or _NAMES[ui].get(code, code)
+
+
+def plain_label(code: str, lang: str | None = None) -> str:
+    """Name for a bar / dropdown without the experimental mark; "auto" is localized (#884)."""
+    ui = _ui(lang)
+    return _AUTO[ui] if code == "auto" else name(code, ui)
 
 
 def label(code: str, lang: str | None = None) -> str:
-    """GUI dropdown entry: the code itself, plus "(experimental)" for non-focus languages."""
-    return f"{code} ({_TEXT[_ui(lang)]['exp']})" if is_experimental(code) else code
+    """GUI dropdown entry (#884): the language name in the UI language, plus "(experimental)" for non-focus
+    languages. Never the raw code (the stored setting keeps the code)."""
+    ui = _ui(lang)
+    n = plain_label(code, ui)
+    return f"{n} ({_TEXT[ui]['exp']})" if is_experimental(code) else n
 
 
 def labels(lang: str | None = None) -> list[str]:
@@ -68,8 +84,13 @@ def labels(lang: str | None = None) -> list[str]:
 
 
 def from_label(text: str) -> str:
-    """Language code from a dropdown entry (also accepts a plain code)."""
-    return (text or "").strip().split(" ", 1)[0] or "auto"
+    """Language code from a dropdown entry in any UI language (also accepts a plain code)."""
+    text = (text or "").strip()
+    for ui in _TEXT:
+        for c in SOURCE_LANGS:
+            if text == label(c, ui):
+                return c
+    return text.split(" ", 1)[0] or "auto"
 
 
 def display_name(code: str, lang: str | None = None) -> str:

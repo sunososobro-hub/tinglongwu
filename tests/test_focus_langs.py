@@ -33,10 +33,10 @@ def test_gui_labels_mark_only_non_focus(ui, word):
     labels = langs.labels(ui)
     by_code = {langs.from_label(lab): lab for lab in labels}
     assert list(by_code) == core.LANGS  # every label maps back to its code, same order
-    for c in ("auto", "ja", "en", "ru", "zh"):
-        assert by_code[c] == c
+    for c in ("auto", "ja", "en", "ru", "zh"):  # #884: names, never raw codes
+        assert by_code[c] == langs.plain_label(c, ui) and by_code[c] != c
     for c in OLD_GUI - {"auto", "ja", "en", "ru", "zh"}:
-        assert by_code[c] == f"{c} ({word})"
+        assert by_code[c] == f"{langs.plain_label(c, ui)} ({word})"
     assert langs.from_label("ru") == "ru" and langs.from_label("") == "auto"
 
 
@@ -124,11 +124,11 @@ def test_gui_saves_code_not_label(tmp_path, monkeypatch):
     a = app.App()
     try:
         values = list(a.combos["lang"].cget("values"))
-        assert values[:4] == ["auto", "ja", "en", "ru"] and "ko (experimental)" in values
-        a.v_lang.set("ko (experimental)")
+        assert values[:4] == ["Auto", "Japanese", "English", "Russian"] and "Korean (experimental)" in values
+        a.v_lang.set("Korean (experimental)")
         i18n.set_ui_lang("ru", persist=False)
         a.relabel()
-        assert a.v_lang.get() == "ko (экспериментальный)"
+        assert a.v_lang.get() == "корейский (экспериментальный)"
         a.collect()
         assert a.settings["lang"] == "ko" and core.load_settings()["lang"] == "ko"
     finally:
