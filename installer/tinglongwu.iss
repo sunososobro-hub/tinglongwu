@@ -180,7 +180,7 @@ end;
 
 procedure RunInstall;
 var
-  Params, LogFile, DoneFile: String;
+  Params, LogFile, DoneFile, PackNote: String;
   RC, Waited, Seen: Integer;
   Done: AnsiString;
 begin
@@ -190,7 +190,11 @@ begin
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
   if WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]) then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
-  ProgressPage.Description := 'This can take 10-40 minutes (about ' + IntToStr(PackSizeMB) + ' MB of language packs plus the core models and Python packages). 需要 10-40 分鐘，請保持網路連線。';
+  if PackSizeMB > 0 then
+    PackNote := 'about ' + IntToStr(PackSizeMB) + ' MB of extra language packs plus the core models and Python packages'
+  else
+    PackNote := 'the core models and Python packages; zh + en need no extra language pack';
+  ProgressPage.Description := 'This can take 10-40 minutes (' + PackNote + '). 需要 10-40 分鐘，請保持網路連線。';
   ProgressPage.SetText('Starting install.ps1 ...', LogFile);
   Steps := 8;   { replaced by N from the first "[n/N]" log line }
   ProgressPage.SetProgress(0, Steps);
