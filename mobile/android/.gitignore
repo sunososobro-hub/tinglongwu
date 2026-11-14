@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Model files copied into the Play asset packs by CI (tool/fill_asset_packs.py)
+/models_asr/src/main/assets/
+/models_llm/src/main/assets/
