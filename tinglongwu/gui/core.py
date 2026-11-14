@@ -327,7 +327,8 @@ def follow_newest(yview_last: float) -> bool:
     return yview_last >= 0.999
 
 
-_MARK_OK, _MARK_MISSING = "\u2713 ", " (\u9700\u4e0b\u8f09 / not downloaded)"
+_MARK_OK = "\u2713 "
+_MARK_MISSING = " (\u9700\u4e0b\u8f09 / not downloaded)"  # #739: no longer shown; kept so an old saved label still parses
 _MARK_HEAVY = " (too heavy for this PC)"  # #780: medium / large-v3 on a CPU-mode PC with < 24 GB RAM
 
 
@@ -352,7 +353,8 @@ def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = No
 
 
 def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
-    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96).
+    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest plain (#739: a missing model
+    downloads on the first Start with a progress bar, so the list shows no "not downloaded" state).
     ram_gb (CPU mode, #780): heavy models get a "too heavy for this PC" mark when RAM is below 24 GB."""
     from ..hwprobe import too_heavy
     from ..models import whisper_installed
@@ -360,7 +362,7 @@ def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
     have = whisper_installed(mdir)
     heavy = lambda m: _MARK_HEAVY if too_heavy(m, ram_gb) else ""  # noqa: E731
     return ([_MARK_OK + m + heavy(m) for m in MODELS if m in have]
-            + [m + _MARK_MISSING + heavy(m) for m in MODELS if m not in have])
+            + [m + heavy(m) for m in MODELS if m not in have])
 
 
 _ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
@@ -473,6 +475,45 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
         rc = -1
     put(("dl_done", model, rc))
     return rc
+
+
+def parse_progress(line: str) -> int | None:
+    """#739: the last "NN%" in a download child's output line (0-100), else None."""
+    import re
+
+    m = re.findall(r"(\d{1,3})\s*%", line or "")
+    return min(100, int(m[-1])) if m else None
+
+
+def missing_start_model(run: dict, mdir=None) -> str | None:
+    """#739: the Whisper model a Start needs but does not have on disk (manual quality only; the other qualities
+    let the CLI pick from what is installed), else None."""
+    if run.get("quality") != "manual":
+        return None
+    m = run.get("model") or "small"
+    return None if is_downloaded(m, mdir) else m
+
+
+class StartDownload:
+    """#739: progress of the download that runs on the first Start. Feed it the `put` events of run_download /
+    run_pack_download; `percent` only goes up, `ok` is set on a zero return code, `error` is one line on failure."""
+
+    def __init__(self, name: str):
+        self.name, self.percent, self.done, self.ok, self.error, self._last = name, 0, False, False, "", ""
+
+    def feed(self, ev: tuple) -> None:
+        kind = ev[0]
+        if kind in ("dl_line", "pack_line"):
+            self._last = ev[1]
+            p = parse_progress(ev[1])
+            if p is not None:
+                self.percent = max(self.percent, p)
+        elif kind in ("dl_done", "pack_done"):
+            self.done, self.ok = True, ev[2] == 0
+            if self.ok:
+                self.percent, self.error = 100, ""
+            else:
+                self.error = (self._last or f"download failed (exit {ev[2]})").splitlines()[-1][:90]
 
 
 def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:

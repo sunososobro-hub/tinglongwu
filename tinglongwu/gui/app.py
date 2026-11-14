@@ -19,7 +19,7 @@ from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
-                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
+                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
@@ -587,7 +587,7 @@ class App:
         self.v_adv = tk.BooleanVar(value=False)
         self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
         self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
-        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
+        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
@@ -633,6 +633,9 @@ class App:
         self.v_status = tk.StringVar(value=t("gui_ready"))
         self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
         ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
+        self.v_dl_pct = tk.IntVar(value=0)  # #739: first-Start download progress bar (hidden unless a download runs)
+        self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
+        self.start_dl = None
         self.v_notice = tk.StringVar(value="")
         ttk.Label(sb, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").pack(anchor="w")
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
@@ -954,18 +957,33 @@ class App:
             self.v_gloss.set(p)
 
     def _model_picked(self):
-        """A model that is not on disk was picked: ask, and only on yes download it in a tlwu-setup child (#96)."""
-        m = model_from_label(self.v_model.get())
-        if self.downloading or is_downloaded(m):
-            return
-        if not messagebox.askyesno(t("gui_dl_title"), t("gui_dl_ask", model=m), parent=self.root):
-            return
+        """#739: picking a model downloads nothing; a missing one downloads on the first Start (_offer_model)."""
+
+    def _offer_model(self, run: dict, mode) -> bool:
+        """#739: True when the chosen speech model is missing: its download starts now with a progress bar and this
+        Start resumes by itself when it succeeds (no dialog, no second click)."""
+        m = missing_start_model(run)
+        if m is None or self.downloading:
+            return self.downloading is not None and m is not None
         self.downloading = m
+        self.pack_retry = mode
+        self.start_dl = StartDownload(m)
+        self.v_dl_pct.set(0)
+        self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
-        self.combos["model"].configure(state="disabled")
         self._status_text(t("gui_dl_running", model=m))
+        self.panel.deiconify()
+        self.panel.lift()
         self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
+        return True
+
+    def _dl_event(self, ev: tuple):
+        """#739: feed a download event to the progress bar (the line text stays the status text)."""
+        if self.start_dl is None:
+            return
+        self.start_dl.feed(ev)
+        self.v_dl_pct.set(self.start_dl.percent)
 
     def _offer_pack(self, run: dict, mode) -> bool:
         """#673: True when a pack is missing (dialog shown / download running) and this Start must not go on now.
@@ -1057,6 +1075,9 @@ class App:
             return None
 
     def _download_done(self, model: str, rc: int):
+        self._dl_event(("dl_done", model, rc))
+        sd, self.start_dl = self.start_dl, None
+        self.dl_bar.pack_forget()
         self.downloading = None
         self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
@@ -1067,6 +1088,8 @@ class App:
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
         self._sync_quick()
+        if sd is not None and ok:  # #739: the first Start goes on by itself
+            self.toggle(getattr(self, "pack_retry", None))
 
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
@@ -1119,6 +1142,8 @@ class App:
         self.collect()
         run = quick_settings(self.settings, mode) if mode else dict(self.settings)
         if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
+            return
+        if self._offer_model(run, mode):  # #739: a missing speech model downloads here with a progress bar
             return
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
@@ -1203,6 +1228,7 @@ class App:
                 elif kind == "pack_done":
                     self._pack_done(ev[1], ev[2])
                 elif kind == "dl_line":
+                    self._dl_event(ev)
                     self._status_text(ev[1])
                 elif kind == "doctor":
                     self._show_setup_check(ev[1], ev[2])
