@@ -51,6 +51,7 @@ class Player:
         # macOS: BlackHole 16ch has 16 channels; a mono stream may reach only channel 1, so send identical L/R
         self.ch = 2 if sys.platform == "darwin" else 1
         self.speaker_name = None
+        self.notice: str | None = None
         from .live import PlaybackGate
 
         self.gate = PlaybackGate()
@@ -64,7 +65,15 @@ class Player:
 
             patch_mixformat()  # #130: players hit the same soundcard mix-format assert as recorders
             speakers = sc.all_speakers()
-            idx = match_device([s.name for s in speakers], device)
+            try:
+                idx = match_device([s.name for s in speakers], device)
+            except LookupError:  # #896: a missing output (e.g. no VB-CABLE) must not block listening
+                from ..i18n import t
+
+                self.notice = t("player_no_device", device=device)
+                print(f"tlwu: {self.notice}", file=sys.stderr, flush=True)
+                self.enabled = False
+                return
             spk = speakers[idx] if idx is not None else sc.default_speaker()
             self.speaker_name = spk.name
             if sys.platform == "darwin" and loop_prone_output(spk.name):
