@@ -33,3 +33,51 @@ def load_rows(fetch, installed: dict[str, str], gpu_present: bool = False) -> tu
         return rows(validate(fetch()), installed, gpu_present), ""
     except (OSError, ManifestError, ValueError, KeyError, TypeError):
         return [], OFFLINE
+
+
+# ---- local (offline) view for the Settings add-ons screen: the language packs this build knows (pack_on_demand) ----
+def local_manifest() -> dict:
+    """Manifest-shaped dict of the on-demand language packs; sizes come from pack_on_demand.SIZE_MB (MB -> bytes).
+    Packs with no model files (zh, en) are part of the core, so they are not listed."""
+    from . import pack_on_demand as pod
+
+    packs = {}
+    for name in sorted(pod.PACKS):
+        if pod.PACKS[name]:
+            packs[name] = {"feature": name, "size": int(pod._pack_mb(name) * 1e6), "sha256": "0" * 64, "url": ""}
+    return {"packs": packs}
+
+
+def local_rows(mdir, gpu_present: bool = False) -> list[dict]:
+    """Rows for the screen: every optional language pack with its size, and `installed` read from `mdir`."""
+    from . import pack_on_demand as pod
+
+    man = local_manifest()
+    installed = {n: "" for n in man["packs"] if not pod._missing(n, mdir)}
+    return rows(man, installed, gpu_present)
+
+
+def removable_dirs(pack: str, mdir) -> list:
+    """Model directories only `pack` uses (another installed pack that shares a model keeps it)."""
+    from pathlib import Path
+
+    from . import pack_on_demand as pod
+
+    others = {k for n, keys in pod.PACKS.items() if n != pack and not pod._missing(n, mdir) for k in keys}
+    out = []
+    for k in pod.PACKS.get(pack, []):
+        d = Path(mdir) / ("opus/" + k[5:] if k.startswith("opus-") else k)
+        if k not in others and d.is_dir():
+            out.append(d)
+    return out
+
+
+def remove_pack(pack: str, mdir) -> list[str]:
+    """Delete the model dirs only `pack` uses; returns the names removed. Nothing else is touched."""
+    import shutil
+
+    gone = []
+    for d in removable_dirs(pack, mdir):
+        shutil.rmtree(d, ignore_errors=True)
+        gone.append(d.name)
+    return gone

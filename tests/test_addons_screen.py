@@ -34,3 +34,49 @@ def test_offline_gives_plain_message_not_traceback():
     assert addons.load_rows(lambda: {"bad": 1}, {}) == ([], addons.OFFLINE)
     rs, msg = addons.load_rows(lambda: MAN, {})
     assert len(rs) == 3 and msg == ""
+
+
+def _fake_models(tmp_path, keys):
+    import json
+
+    (tmp_path / "manifest.json").write_text(json.dumps({k: {} for k in keys}), "utf-8")
+    for k in keys:
+        (tmp_path / k).mkdir()
+    return tmp_path
+
+
+def test_local_rows_list_packs_and_installed_state(tmp_path):
+    rs = {r["name"]: r for r in addons.local_rows(tmp_path)}
+    assert set(rs) == {"ja", "ko", "ru"} and not any(r["installed"] for r in rs.values())
+    assert rs["ja"]["note"].startswith("Needs internet to download (1.1 GB)")
+    _fake_models(tmp_path, ["hymt2-1.8b"])
+    rs = {r["name"]: r for r in addons.local_rows(tmp_path)}
+    assert rs["ja"]["installed"] and rs["ko"]["installed"] and not rs["ru"]["installed"]
+
+
+def test_remove_keeps_models_another_installed_pack_uses(tmp_path):
+    _fake_models(tmp_path, ["hymt2-1.8b", "piper-ru_RU-dmitri-medium"])
+    assert addons.remove_pack("ru", tmp_path) == ["piper-ru_RU-dmitri-medium"]  # hymt2 stays: ja/ko still use it
+    assert (tmp_path / "hymt2-1.8b").is_dir() and not (tmp_path / "piper-ru_RU-dmitri-medium").exists()
+    assert addons.remove_pack("ru", tmp_path) == []  # nothing left, no error
+
+
+def test_screen_builds_rows_and_runs_fake_download(tmp_path):
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu.gui.addons_screen import AddonsScreen
+
+    got = []
+    s = AddonsScreen(root, mdir=tmp_path, run=lambda pack, put: (got.append(pack), put(("pack_done", pack, 0))))
+    labels = [c.cget("text") for f in s.body.winfo_children() for c in f.winfo_children() if c.winfo_class() == "TButton"]
+    assert labels == ["Add", "Add", "Add"]
+    s.add("ja")
+    s.win.update()
+    s._poll()
+    assert got == ["ja"] and "ja installed" in s.msg.get()
+    root.destroy()
