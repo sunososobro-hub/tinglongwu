@@ -1,6 +1,7 @@
 """#310: the frozen build missed filelock._soft (loaded lazily by filelock.__getattr__), so the first-run download
 crashed. `tlwu.exe --smoke` now resolves those lazy attributes and the Windows build runs it before zipping."""
 import io
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -66,10 +67,20 @@ def test_default_smoke_includes_the_lazy_download_imports(monkeypatch):
     assert "filelock.SoftFileLock" in out.getvalue() and "huggingface_hub.HfApi" in out.getvalue()
 
 
-def test_build_names_every_filelock_lazy_submodule():
-    inc = build_windows.lazy_includes()
-    assert "--include-module=filelock._soft" in inc
-    assert all(f in build_windows.nuitka_cmd() for f in inc)
+def test_build_ships_every_filelock_lazy_submodule(tmp_path):
+    """#923: no import graph decides what ships; the runtime layer copies the installed filelock folder whole."""
+    import filelock
+    import runtime_layer
+
+    lazy = getattr(filelock, "_LAZY_ATTRIBUTES", {})
+    site = Path(filelock.__file__).resolve().parent.parent
+    (tmp_path / "layer").mkdir()
+    shutil.copytree(site / "filelock", tmp_path / "site" / "filelock")
+    assert runtime_layer.copy_site_packages(tmp_path / "layer", tmp_path / "site") == ["filelock"]
+    runtime_layer.compile_sourceless(tmp_path / "layer")
+    for sub in {m.lstrip(".") for m in lazy.values() if m.startswith(".")} | {"_soft"}:
+        mod = tmp_path / "layer" / "filelock" / sub.replace(".", "/")
+        assert mod.with_suffix(".pyc").is_file() or (mod / "__init__.pyc").is_file(), sub
 
 
 def test_build_stops_before_zip_when_exe_smoke_fails(tmp_path):
