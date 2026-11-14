@@ -433,6 +433,29 @@ def listen_segmenter(a) -> Segmenter:
                      vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)), **extra)
 
 
+def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=None):
+    """#780: on the CPU, apply hwprobe.cpu_mode_settings. Explicit user choices win: an explicit --model is kept, an
+    auto-picked model is lowered to the policy size when that is downloaded, TLWU_CPU_THREADS is kept. beam / threads
+    go to the recognizer via a.cpu_beam / a.cpu_threads. Sentence merging stays as --preset / --min-words set it.
+    Returns the CpuMode (None when not on the CPU)."""
+    if dev != "cpu":
+        return None
+    from .hwprobe import ram_mib, cpu_mode_settings
+    from .models import whisper_installed
+
+    if ram_gb is None:
+        mib = ram_mib()
+        ram_gb = mib / 1024 if mib else 16.0  # unknown RAM: the middle tier
+    st = cpu_mode_settings(cores or os.cpu_count() or 4, ram_gb)
+    order = ["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"]
+    if (not explicit_model and getattr(a, "quality", "auto") == "auto" and a.model in order
+            and order.index(a.model) > order.index(st.size) and st.size in whisper_installed(mdir)):
+        a.model = st.size
+    a.cpu_beam = st.beam
+    a.cpu_threads = None if os.environ.get("TLWU_CPU_THREADS") else st.threads
+    return st
+
+
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
@@ -461,13 +484,19 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     from . import threads as thread_budget
 
     thread_budget.set_role("listen")  # #250: one `tlwu: threads ...` line before any model loads
+    explicit_model = a.model is not None
     if a.model is None:
         a.model = auto_model(getattr(a, "quality", "auto"), dev, mdir)
+    apply_cpu_mode(a, dev, mdir, explicit_model)
     if notice is not None and dev == "cpu" and a.compute != "cpu":
         from .i18n import t
 
         why = warned[0].removeprefix("tlwu: ") if warned else t("gpu_none")
-        notice(t("gpu_fallback", why=why))
+        notice(t("gpu_fallback", why=why) + " | " + t("gui_cpu_mode"))  # #780: CPU mode shown with the reason
+    elif notice is not None and dev == "cpu":
+        from .i18n import t
+
+        notice(t("gui_cpu_mode"))  # #780: --device cpu / no GPU asked for: still say CPU mode
     glossary = None
     if a.glossary:
         from .glossary import load as load_glossary
@@ -490,7 +519,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         cands = parse_candidates(a.lang_candidates)
         print(f"tlwu: language follows the speaker among {','.join(cands)}", file=sys.stderr)
     asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
-                                  candidates=cands, lang_file=getattr(a, "lang_file", None))
+                                  candidates=cands, lang_file=getattr(a, "lang_file", None),
+                                  beam=getattr(a, "cpu_beam", None), threads=getattr(a, "cpu_threads", None))
     dev = asr.device  # may have fallen back to cpu
     asr.live = dev == "cpu" and not a.file  # #251: live CPU listening caps ASR retries and time per sentence
     cpu_max_wait(a, dev)

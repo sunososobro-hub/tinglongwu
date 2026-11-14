@@ -107,7 +107,9 @@ class FasterWhisperRecognizer(Recognizer):
 
     def __init__(self, models_dir: Path, size: str = "small", lang: str = "auto",
                  device: str = "auto", glossary=None, candidates=None, lang_file=None,
-                 fast: bool = False, live: bool = False):
+                 fast: bool = False, live: bool = False, beam: int | None = None,
+                 threads: int | None = None):
+        threads_arg = threads
         path = require(models_dir / f"whisper-{size}", f"Whisper model '{size}'",
                        f"--whisper {size}")
         from faster_whisper import WhisperModel
@@ -116,8 +118,13 @@ class FasterWhisperRecognizer(Recognizer):
         # #186 fast: live CPU speak mode. Greedy decode, no timestamp tokens, all physical cores. CUDA never uses it.
         self.fast = bool(fast) and self.device == "cpu"
         self.beam = 1 if self.fast else 5
+        cpu_mode = self.device == "cpu" and not self.fast  # #780: CPU-mode auto settings (explicit args only)
+        if cpu_mode and beam:
+            self.beam = beam
         threads = {}
-        if self.device == "cpu" and thread_budget.both():  # #250 listen+speak: this process's share of the budget
+        if cpu_mode and threads_arg and not thread_budget.both():
+            threads = {"cpu_threads": threads_arg}
+        elif self.device == "cpu" and thread_budget.both():  # #250 listen+speak: this process's share of the budget
             threads = {"cpu_threads": thread_budget.current()["asr"]}
         elif self.fast:
             threads = {"cpu_threads": cpu_threads()}

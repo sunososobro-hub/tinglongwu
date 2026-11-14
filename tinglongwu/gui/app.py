@@ -588,7 +588,7 @@ class App:
         self.adv_btn.grid(row=18, column=0, columnspan=3, sticky="w", pady=(4, 0))
         self.set_advanced(bool(s["advanced_open"]))
         self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
-        self.v_model.set(label_for_model(self.settings["model"]))
+        self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
         self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
@@ -1056,7 +1056,7 @@ class App:
         labels = model_labels(ram_gb=self._cpu_ram())
         self.combos["model"].configure(values=labels, width=combo_width(labels))
         if model_from_label(self.v_model.get()) == model:
-            self.v_model.set(label_for_model(model))
+            self.v_model.set(label_for_model(model, ram_gb=self._cpu_ram()))
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
         self._sync_quick()

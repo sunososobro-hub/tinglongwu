@@ -52,3 +52,40 @@ def test_cpu_mode_line(monkeypatch, lang, word):
     assert word in line and "412" in line
     assert core.cpu_mode_line("cpu") and "412" not in core.cpu_mode_line("cpu")
     assert core.cpu_mode_line("cuda", 5) is None
+
+
+def test_selected_label_keeps_heavy_mark(tmp_path):
+    assert "too heavy" in core.label_for_model("medium", tmp_path, ram_gb=16)
+    assert "too heavy" not in core.label_for_model("medium", tmp_path)
+    assert "too heavy" not in core.label_for_model("small", tmp_path, ram_gb=16)
+
+
+def test_apply_cpu_mode_lowers_auto_model_and_sets_beam_threads(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from tinglongwu import cli
+
+    monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
+    monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small", "medium"})
+    a = SimpleNamespace(model="medium", quality="auto")
+    st = cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=False, cores=8, ram_gb=8)
+    assert (a.model, a.cpu_beam, a.cpu_threads, st.size) == ("small", 1, 7, "small")
+
+
+def test_apply_cpu_mode_keeps_explicit_model_and_env_threads(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from tinglongwu import cli
+
+    monkeypatch.setenv("TLWU_CPU_THREADS", "2")
+    monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small", "medium"})
+    a = SimpleNamespace(model="medium", quality="auto")
+    cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=8, ram_gb=8)
+    assert a.model == "medium" and a.cpu_threads is None
+
+
+def test_apply_cpu_mode_is_a_noop_on_cuda(tmp_path):
+    from types import SimpleNamespace
+    from tinglongwu import cli
+
+    a = SimpleNamespace(model="large-v3", quality="auto")
+    assert cli.apply_cpu_mode(a, "cuda", tmp_path, explicit_model=False) is None
+    assert a.model == "large-v3" and not hasattr(a, "cpu_beam")

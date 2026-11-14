@@ -378,8 +378,8 @@ def model_from_label(label: str) -> str:
     return label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "").replace(_MARK_MISSING, "").strip()
 
 
-def label_for_model(name: str, mdir=None) -> str:
-    return next((l for l in model_labels(mdir) if model_from_label(l) == name), name)
+def label_for_model(name: str, mdir=None, ram_gb: float | None = None) -> str:
+    return next((l for l in model_labels(mdir, ram_gb) if model_from_label(l) == name), name)
 
 
 def hw_tier_name(probe=None) -> str | None:
