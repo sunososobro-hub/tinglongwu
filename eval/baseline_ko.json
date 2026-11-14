@@ -1,0 +1,11 @@
+{
+  "_note": "Recorded ko->zh(-TW) baseline for the Korean slice (#754, #789), eval/baseline.json schema, usable with `python -m tlwu_eval --gate ko.json --baseline eval/baseline_ko.json`. Not part of the CI eval gate (.github/workflows/eval.yml). Clips: eval/ko_pins.json (5 FLEURS ko_kr test clips, revision 70bb2e84). Machine: owner home PC, Intel Core i5-13500, Windows 11, CPU mode, TLWU_HYMT_TEMP=0, 2026-11-14. Command: python -m tlwu_eval --smoke --data eval_data/ko --langs ko --clips 5 --model small --engine hymt2-cpu --device cpu --no-noise. Two runs: chrF 21.00 / 21.17, WER 32.4% / 38.0%, MT median 1.793 / 1.668 s. chrf = the lowest value seen; chrf_margin 2.0 like the other pairs; mt_median_s_max = max median x1.5 rounded up to 0.1 s. Numbers from a different CPU type (e.g. the GitHub runner) can differ.",
+  "model": "whisper small",
+  "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
+  "device": "cpu",
+  "machine": "Intel Core i5-13500, Windows 11 (owner home PC)",
+  "clips": 5,
+  "pairs": {
+    "ko->zh": {"chrf": 21.0, "chrf_margin": 2.0, "mt_median_s_max": 2.7}
+  }
+}
