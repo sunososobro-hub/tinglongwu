@@ -503,6 +503,14 @@ class App:
         for key, (kind, values, var) in self.kind_combos.items():
             self.combos[key].configure(values=choice_labels(kind, values))
             var.set(var.get() + "")  # re-fires the write trace -> the shown name follows the language
+        # engine / model carry marks in the old language: rebuild them from the stored ids (settings value unchanged)
+        eng = engine_from_label(self.v_engine.get())
+        self.combos["engine"].configure(values=engine_labels())
+        self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == eng), eng))
+        mod = model_from_label(self.v_model.get())
+        labels = model_labels(ram_gb=self._cpu_ram())
+        self.combos["model"].configure(values=labels)
+        self.v_model.set(next((l for l in labels if model_from_label(l) == mod), mod))
 
     def set_advanced(self, on: bool):
         """#399: show / hide the engine dropdown; the choice is saved with the other GUI settings."""
