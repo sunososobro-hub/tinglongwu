@@ -308,11 +308,27 @@ def infer_dims(files):
     return out
 
 
+INFRA = "infrastructure"  # #662 part 2: the mode:shared bucket, named for what it is and split by area
+
+
+def infra_node(labels):
+    """mode:shared work -> 'infrastructure <area>' (first area:* label), or plain 'infrastructure' with no area."""
+    area = _label_value(labels, "area:", None)
+    return "%s %s" % (INFRA, area) if area else INFRA
+
+
+def focus_match(name, focus):
+    """Focus values (lower-case set) colour a node; 'shared' still matches the renamed infrastructure nodes."""
+    n = name.lower()
+    return n in focus or (n.startswith(INFRA) and "shared" in focus)
+
+
 def build_flow(items):
     """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
 
     Everything is in quota minutes (minutes x model weight, opus = 2x). A missing mode label goes to
-    'unlabelled'; no os label = 'mobile' for area:mobile else 'all'; no lang label = 'all'.
+    'unlabelled'; mode:shared = 'infrastructure <area>' (#662); no os label = 'mobile' for area:mobile else 'all';
+    no lang label = 'all'.
     """
     paths, types = {}, {}
     inferred = {"mode": 0.0, "os": 0.0, "lang": 0.0}
@@ -332,6 +348,8 @@ def build_flow(items):
         if lang == ALL and "lang" in guess and not _label_value(labels, "lang:", None):
             lang = guess["lang"]
             inferred["lang"] += q
+        if mode == "shared":
+            mode = infra_node(labels)
         key = (mode, plat, lang)
         paths[key] = paths.get(key, 0.0) + q
         t = next((n for n, _ in TYPE_TARGETS if n in labels), "other")
@@ -394,7 +412,7 @@ def render_sankey(flow, focus=()):
             y1, y2 = off_a[a] + h / 2, off_b[b] + h / 2
             off_a[a] += h
             off_b[b] += h
-            col = FOCUS_ORANGE if b.lower() in focus else "#3b82c4"
+            col = FOCUS_ORANGE if focus_match(b, focus) else "#3b82c4"
             out.append('<path d="M%.1f %.1f C%.1f %.1f %.1f %.1f %.1f %.1f" fill="none" stroke="%s" '
                        'stroke-opacity=".35" stroke-width="%.2f"><title>%s \u2192 %s: %.1f%% of quota</title></path>'
                        % (x1, y1, (x1 + x2) / 2, y1, (x1 + x2) / 2, y2, x2, y2, col, max(h, 0.5),
@@ -402,7 +420,7 @@ def render_sankey(flow, focus=()):
     for c, col in enumerate(cols):
         for n in col:
             y, h = pos[c][n["name"]]
-            fill = FOCUS_ORANGE if n["name"].lower() in focus else "#667"
+            fill = FOCUS_ORANGE if focus_match(n["name"], focus) else "#667"
             label = n["name"] if c == 0 else "%s %.0f%%" % (n["name"], 100.0 * n["quota"] / total)
             tx, anchor = (xs[c] + NW + 3, "start") if c < 3 else (xs[c] - 3, "end")
             out.append('<rect x="%.1f" y="%.1f" width="%d" height="%.1f" fill="%s"/><text x="%.1f" y="%.1f" '
