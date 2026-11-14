@@ -54,9 +54,9 @@ def test_prompt_has_terms_only_on_hit(tmp_path):
 
 def test_temperature_env(monkeypatch):
     monkeypatch.delenv("TLWU_HYMT_TEMP", raising=False)
+    assert sampling()["temperature"] == 0.0  # #107: greedy by default
+    monkeypatch.setenv("TLWU_HYMT_TEMP", "0.7")
     assert sampling()["temperature"] == 0.7
-    monkeypatch.setenv("TLWU_HYMT_TEMP", "0")
-    assert sampling()["temperature"] == 0.0
 
 
 def test_menu_always_passes_builtin(tmp_path, monkeypatch):

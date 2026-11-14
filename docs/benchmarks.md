@@ -34,6 +34,26 @@ Hy-MT2-1.8B (the engine tlwu ships, Q4_K_M GGUF, llama.cpp on the CPU, greedy `T
 
 The Korean and tier-2 rows (#656) come from [eval-flores 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705), commit 22efa0f, same settings; each job's runner CPU is in the engine column (4 vCPU each, so s/sentence differs by CPU, e.g. tha on the older EPYC 7763). That run also re-ran rus/eng/jpn and got the same chrF and COMET as above to the last digit (greedy decoding is repeatable). All seven land at COMET 0.875-0.880, between Russian (0.865) and Japanese (0.885).
 
+### Hy-MT2 sampling temperature (#107)
+
+Same 1012 FLORES-200 devtest sentences and metrics, Hy-MT2-1.8B Q4_K_M on 4-vCPU GitHub runners, temperature 0.7 (model-card default, shipped before #107) vs 0.2 vs 0 (greedy); top_p 0.6, top_k 20, repeat_penalty 1.05 unchanged. U+FFFD = hypotheses containing the replacement character (suspected cause of #632). Run: [eval-flores 43554407306](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43554407306), commit 3e145b4; per-sentence JSON in its `flores-<src>-t<temp>` artifacts. Each job got a different runner CPU (last column), so s/sentence compares CPUs as much as temperatures.
+
+| direction | temperature | chrF | COMET | U+FFFD lines | median s/sentence | p90 s | CPU |
+|---|---|---|---|---|---|---|---|
+| rus->zho_Hant | 0.7 | 24.97 | 0.8651 | 0 | 2.38 | 3.64 | Xeon 6975P-C |
+| rus->zho_Hant | 0.2 | 25.05 | 0.8657 | 0 | 2.20 | 3.29 | EPYC 7763 |
+| rus->zho_Hant | 0 | 25.02 | 0.8653 | 0 | 1.83 | 2.74 | EPYC 9V74 |
+| eng->zho_Hant | 0.7 | 30.30 | 0.8934 | 0 | 2.30 | 3.44 | Xeon Platinum 8573C |
+| eng->zho_Hant | 0.2 | 30.34 | 0.8934 | 0 | 1.92 | 2.89 | Xeon 6975P-C |
+| eng->zho_Hant | 0 | 30.30 | 0.8938 | 0 | 1.67 | 2.44 | EPYC 7763 |
+| jpn->zho_Hant | 0.7 | 23.57 | 0.8847 | 0 | 1.28 | 1.93 | EPYC 9V45 |
+| jpn->zho_Hant | 0.2 | 23.66 | 0.8850 | 0 | 1.58 | 2.35 | EPYC 9V74 |
+| jpn->zho_Hant | 0 | 23.74 | 0.8851 | 0 | 2.15 | 3.25 | Xeon 6975P-C |
+
+All three temperatures are within 0.0006 COMET and 0.1 chrF of each other in every direction, and none produced a U+FFFD line, so sampling temperature is not the cause of #632. The greedy rows match the earlier run 43496772451 (above) to within 0.0003 COMET.
+
+**Recommendation (shipped since #107): temperature 0 (greedy).** Same quality as 0.7, and the same sentence always gives the same translation (the live draft and the final line agree). `TLWU_HYMT_TEMP=0.7` restores the model-card value.
+
 On Russian, Hy-MT2-1.8B matches the removed 8B LLM on COMET (0.865 vs 0.865, chrF 1.0 lower) and Google stays ahead (0.879). Reproduce on any CPU (Linux paths; the workflow `.github/workflows/eval-flores.yml` runs exactly this, COMET in its own venv because unbabel-comet pins numpy<2):
 
 ```
