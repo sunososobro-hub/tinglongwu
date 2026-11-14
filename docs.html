@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tinglongWu docs</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
+<style>:root{color-scheme:light dark}body{max-width:860px;margin:2rem auto;padding:0 1rem;font:16px/1.55 system-ui,sans-serif}
+table{border-collapse:collapse;display:block;overflow-x:auto}td,th{border:1px solid #8884;padding:.3rem .6rem;text-align:left}code{background:#8882;padding:0 .25em;border-radius:3px}</style>
+</head><body>
+<h1>tinglongWu details</h1>
+<p>Moved from the README (#347). The README shows charts only; this page holds the text. It is also published at https://sunososobro-hub.github.io/tinglongwu/docs.html.</p>
+<p>tinglongWu (Taiwanese 聽攏有, thiann lóng ū: "I understood it all") is real-time speech translation, offline at runtime and verifiable. Install and model download need the network; the in-process guard is defence in depth, not proof (see <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/privacy.md">Privacy</a>, "Privacy model").</p>
+<p>Example output:</p>
+<p><code>[RU] Привет, как дела?
+[EN] Hello, how are you?
+[ZH] 你好，你過得怎麼樣？</code></p>
+<p>Overview: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/overview.md">overview</a>. Telling meeting participants first: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/acceptable-use.md">consent</a>. Architecture: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/ARCHITECTURE.md">ARCHITECTURE</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/ARCHITECTURE.zh-TW.md">zh-TW</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/ARCHITECTURE.zh-CN.md">zh-CN</a>.</p>
+<p>Full Chinese translations of the previous long README: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/readme-full.zh-TW.md">繁體中文</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/readme-full.zh-CN.md">简体中文</a>.</p>
+<h2>Install</h2>
+<table>
+<thead>
+<tr>
+<th>OS</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows 10/11 (64-bit)</td>
+<td>Download <a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe">tinglongwu-setup.exe</a>, run it, accept the license, then keep clicking <strong>Next</strong></td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash</code></td>
+</tr>
+<tr>
+<td>Linux (x86_64, Ubuntu 24.04 tested)</td>
+<td><code>curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | bash</code></td>
+</tr>
+</tbody>
+</table>
+<p>Unattended Linux (apt yes + default models): <code>curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | TLWU_YES=1 bash</code>. More (checksums, ZIP, GPU): <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/install.md">install</a>.</p>
+<h2>System requirements</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows/Linux + NVIDIA GPU</td>
+<td>primary</td>
+</tr>
+<tr>
+<td>Windows/Linux CPU only: 2020+ AVX2, 8+ threads, 16GB</td>
+<td>supported</td>
+</tr>
+<tr>
+<td>Apple Silicon (M1+)</td>
+<td>supported</td>
+</tr>
+<tr>
+<td>Intel Mac, pre-2019 CPU, no AVX2</td>
+<td>not supported (<code>--force</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2>Usage</h2>
+<p><code>tlwu-menu</code> (menu) · <code>tlwu --lang ru</code> (live) · <code>tlwu-gui</code> (subtitle window): <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/usage.md">usage</a>.</p>
+<h2>Languages</h2>
+<table>
+<thead>
+<tr>
+<th>Language</th>
+<th>Code</th>
+<th>Status</th>
+<th>Modes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Japanese</td>
+<td><code>ja</code></td>
+<td>focus</td>
+<td>Listen, Speak, Meeting</td>
+</tr>
+<tr>
+<td>English</td>
+<td><code>en</code></td>
+<td>focus</td>
+<td>Listen, Speak, Meeting</td>
+</tr>
+<tr>
+<td>Russian</td>
+<td><code>ru</code></td>
+<td>focus</td>
+<td>Listen, Speak, Meeting</td>
+</tr>
+<tr>
+<td>Korean, German, French, Spanish, Italian, Portuguese, Vietnamese, Thai, Indonesian</td>
+<td><code>ko</code> <code>de</code> <code>fr</code> <code>es</code> <code>it</code> <code>pt</code> <code>vi</code> <code>th</code> <code>id</code></td>
+<td>experimental</td>
+<td>Listen only</td>
+</tr>
+</tbody>
+</table>
+<p>Details: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/models.md">models</a>.</p>
+<h2>Verification status</h2>
+<p>Legend: ✅ verified on a real device, 🧪 not yet verified (links go to the test issue).</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Windows</th>
+<th>macOS</th>
+<th>Linux</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>One-line install</td>
+<td>✅</td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/8">🧪</a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Listen</td>
+<td>✅</td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/8">🧪</a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Speak (virtual mic)</td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/6">🧪</a></td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/8">🧪</a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Meeting</td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/4">🧪</a></td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/8">🧪</a></td>
+<td>✅ (own side)</td>
+</tr>
+<tr>
+<td>Firewall-blocked offline</td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/7">🧪</a></td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/8">🧪</a></td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/7">🧪</a></td>
+</tr>
+<tr>
+<td>exe</td>
+<td><a href="https://github.com/sunososobro-hub/tinglongwu/issues/9">🧪</a></td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2>Latency</h2>
+<p>End-to-end numbers and method: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/latency.md">latency</a>. Benchmarks: <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/benchmarks.md">benchmarks</a>.</p>
+<h2>Roadmap</h2>
+<p><a href="https://sunososobro-hub.github.io/tinglongwu/roadmap.html">tlwu roadmap</a></p>
+<h2>Docs</h2>
+<p><a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/faq.md">FAQ</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/privacy.md">Privacy</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/models.md">Models</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/install.md">Install / GPU</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/benchmarks.md">Benchmarks</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/latency.md">Latency</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/licenses.md">Licenses</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/THIRD_PARTY_NOTICES.md">Model notices</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/linux-reverse.md">Linux reverse</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/acceptable-use.md">Acceptable use</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/testing.md">Tests</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/support.md">Platform support / releases</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/disclaimer.md">Disclaimer</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/SECURITY.md">SECURITY</a> · <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/PRIVACY.md">PRIVACY</a></p>
+<p>MIT License. See <a href="https://github.com/sunososobro-hub/tinglongwu/blob/dev/LICENSE">LICENSE</a>. (c) 2026 Alonso.</p>
+<p><a href="index.html">Stats dashboard</a> · <a href="roadmap.html">Roadmap</a></p>
+</body></html>

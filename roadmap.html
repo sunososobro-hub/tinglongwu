@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tlwu 版本地圖</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one transit map. Rows = product lines (incl. languages + platforms), columns = time: history → you are here → next → vision.
+   Below: the "you are here" station opened up — what works today, same dot language. */
+:root{
+  --bg:#f6f7f9; --fg:#1b2230; --muted:#5d6878; --rule:#d9dee6; --station:#ffffff; --here:#fff3c4; --past:#eceff3;
+  --listen:#2f6fdb; --speak:#e2731f; --ear:#1f9d6b; --lang:#8a4fd1; --plat:#6b7686; --ship:#b5367a;
+  --ok:#1f9d6b; --ci:#d9a514; --none:#c3cad4;
+  --display:"Space Grotesk","Noto Sans TC",system-ui,sans-serif;
+  --text:"Noto Sans TC",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --fg:#e7ebf2; --muted:#9aa5b5; --rule:#2a313c; --station:#12161d; --here:#3a3214; --past:#181d25;
+  --listen:#5b93ff; --speak:#ff9a4d; --ear:#3cc48f; --lang:#b07cf2; --plat:#8d98a8; --ship:#e86aaf;
+  --ok:#3cc48f; --ci:#e9bd3a; --none:#3a4350; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --fg:#e7ebf2; --muted:#9aa5b5; --rule:#2a313c; --station:#12161d; --here:#3a3214; --past:#181d25;
+  --listen:#5b93ff; --speak:#ff9a4d; --ear:#3cc48f; --lang:#b07cf2; --plat:#8d98a8; --ship:#e86aaf;
+  --ok:#3cc48f; --ci:#e9bd3a; --none:#3a4350; color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--text);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-family:var(--display);font-size:26px;margin:0}
+h2{font-family:var(--display);font-size:19px;margin:10px 0 0}
+.map{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--bg)}
+svg{display:block;min-width:980px;width:100%;height:auto}
+svg text{font-family:var(--text);fill:var(--fg)}
+.col{font-family:var(--display);font-size:16px;font-weight:700}
+.cnt{font-size:11.5px;fill:var(--muted)}
+.ln{font-size:15px;font-weight:700}
+.st{font-size:12.5px;font-weight:700}
+.no{font-size:10.5px;fill:var(--muted);font-family:var(--display)}
+.era{font-size:12px;fill:var(--muted);letter-spacing:.1em}
+.legend{display:flex;flex-wrap:wrap;gap:18px;color:var(--muted);font-size:13px;align-items:center}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.dot{width:14px;height:14px;border-radius:50%;border:3px solid var(--fg);box-sizing:border-box;display:inline-block}
+.dot.done{background:var(--fg)} .dot.next{background:var(--bg);border-width:4px} .dot.plan{border-style:dashed;background:var(--bg)}
+/* today's support grid */
+.today{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.panel{border:1px solid var(--rule);border-radius:10px;padding:14px;min-width:0;overflow-x:auto}
+.grid{display:grid;gap:6px 4px;align-items:center;font-size:13px}
+.g-os{grid-template-columns:7.5em repeat(5,1fr)}
+.grid .h{font-size:11.5px;color:var(--muted);text-align:center}
+.grid .r{font-weight:700;white-space:nowrap}
+.c{display:flex;justify-content:center;align-items:center;gap:4px;font-size:10.5px;color:var(--muted)}
+.c i{width:16px;height:16px;border-radius:50%;display:inline-block}
+.ok{background:var(--ok)} .ci{background:var(--ci)} .no-{background:var(--none)}
+.same{color:var(--muted)}
+.key{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--muted)}
+.key span{display:inline-flex;gap:6px;align-items:center}
+.readme{margin:0;font-size:13px} .readme a{color:var(--listen)}
+.head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+.langs{display:flex;flex-wrap:wrap;gap:6px}
+.langs button{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--bg);color:var(--fg);border-radius:999px;padding:5px 12px;cursor:pointer}
+.langs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.langs button:focus-visible{outline:2px solid var(--listen);outline-offset:2px}
+.g-lang{grid-template-columns:7.5em repeat(5,1fr)}
+.next{border:2px solid var(--ship);border-radius:12px;padding:16px 18px;background:var(--here)}
+.next .nt{font-size:13px;color:var(--muted);letter-spacing:.04em}
+.next .nt b{font-family:var(--display);color:var(--ship)}
+.next .hl{font-family:var(--display);font-size:24px;line-height:1.3;margin:6px 0 4px}
+.next .dt{margin:0 0 8px;font-size:15px}
+.next .go{color:var(--listen);font-size:14px;font-weight:700}
+.key i{width:14px;height:14px;border-radius:50%;display:inline-block}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="head"><h1 data-k="k0">tlwu 版本地圖</h1><div class="langs" id="langs" role="group" aria-label="Language"></div></div>
+
+  <!-- ROADMAP-NEXT:START -->
+<section class="next" aria-label="Next release">
+  <div class="nt"><span class="tag" data-en="Next release" data-zh-cn="下一版">下一版</span> <b>v0.3.2</b></div>
+  <h2 class="hl" data-en="Meeting mode tells you and the other side apart" data-zh-cn="会议模式分得出“你”和“对方”">會議模式分得出「你」和「對方」</h2>
+  <p class="dt" data-en="Subtitles label who is speaking: you or the other side." data-zh-cn="字幕会标出谁在说话：你，还是对方。">字幕會標出誰在說話：你，還是對方。</p>
+  <a class="go" href="https://github.com/sunososobro-hub/tinglongwu/milestone/1" data-en="See everything planned for v0.3.2" data-zh-cn="看 v0.3.2 的完整清单">看 v0.3.2 的完整清單</a>
+</section>
+<!-- ROADMAP-NEXT:END -->
+
+  <div class="map">
+  <svg viewBox="0 0 1140 620" role="img" aria-label="tlwu 版本地圖：六條線從 11/09 第一版經 v0.3.1 到以後" data-aria-k="al">
+    <!-- eras -->
+    <rect x="130" y="14" width="410" height="596" rx="10" fill="var(--past)"/>
+    <rect x="550" y="14" width="110" height="596" rx="10" fill="var(--here)"/>
+    <text class="era" x="335" y="32" text-anchor="middle" data-k="k1">走過的路</text>
+    <text class="era" x="890" y="32" text-anchor="middle" data-k="k2">接下來</text>
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="740" y1="80" x2="740" y2="600"/><line x1="880" y1="80" x2="880" y2="600"/><line x1="1040" y1="80" x2="1040" y2="600"/>
+    </g>
+
+    <text class="col" x="190" y="58" text-anchor="middle">v0.1</text><text class="cnt" x="190" y="74" text-anchor="middle" data-k="k3">11/09 起點</text>
+    <text class="col" x="330" y="58" text-anchor="middle">v0.2</text><text class="cnt" x="330" y="74" text-anchor="middle">11/10</text>
+    <text class="col" x="470" y="58" text-anchor="middle">v0.3.0</text><text class="cnt" x="470" y="74" text-anchor="middle">11/12</text>
+    <text class="col" x="605" y="58" text-anchor="middle">v0.3.1</text><text class="cnt" x="605" y="74" text-anchor="middle" data-k="k4">11/13 你在這裡</text>
+    <text class="col" x="740" y="58" text-anchor="middle" style="fill:var(--ship)">v0.3.2</text><text class="cnt" x="740" y="74" text-anchor="middle" data-k="k5">下一站 · 14 張</text>
+    <text class="col" x="880" y="58" text-anchor="middle">v0.4</text><text class="cnt" x="880" y="74" text-anchor="middle" data-k="k6">30 張</text>
+    <text class="col" x="1040" y="58" text-anchor="middle" style="fill:var(--muted)" data-k="k7">以後</text><text class="cnt" x="1040" y="74" text-anchor="middle" data-k="k8">17 張</text>
+
+    <text class="ln" x="14" y="125" style="fill:var(--listen)" data-k="k9">聆聽</text>
+    <text class="ln" x="14" y="210" style="fill:var(--speak)" data-k="k10">說話</text>
+    <text class="ln" x="14" y="285" style="fill:var(--ear)" data-k="k11">耳機</text>
+    <text class="ln" x="14" y="370" style="fill:var(--lang)" data-k="k12">語言</text>
+    <text class="ln" x="14" y="455" style="fill:var(--plat)" data-k="k13">平台</text>
+    <text class="ln" x="14" y="540" style="fill:var(--ship)" data-k="k14">發版·品質</text>
+
+    <g fill="none" stroke-width="7" stroke-linecap="round">
+      <path d="M190 120 H880" stroke="var(--listen)"/><path d="M880 120 H1040" stroke="var(--listen)" stroke-dasharray="2 12"/>
+      <path d="M330 205 H880" stroke="var(--speak)"/><path d="M880 205 H1040" stroke="var(--speak)" stroke-dasharray="2 12"/>
+      <path d="M190 120 C260 120 260 205 330 205" stroke="var(--speak)"/>
+      <path d="M740 205 C810 205 810 280 880 280" stroke="var(--ear)"/><path d="M880 280 H1040" stroke="var(--ear)" stroke-dasharray="2 12"/>
+      <path d="M190 365 H880" stroke="var(--lang)"/><path d="M880 365 H1040" stroke="var(--lang)" stroke-dasharray="2 12"/>
+      <path d="M190 450 H880" stroke="var(--plat)"/><path d="M880 450 H1040" stroke="var(--plat)" stroke-dasharray="2 12"/>
+      <path d="M330 535 H880" stroke="var(--ship)"/>
+    </g>
+
+    <g stroke-width="4">
+      <!-- history + today: filled -->
+      <circle cx="190" cy="120" r="11" fill="var(--listen)" stroke="var(--listen)"/>
+      <circle cx="470" cy="120" r="11" fill="var(--listen)" stroke="var(--listen)"/>
+      <circle cx="605" cy="120" r="11" fill="var(--listen)" stroke="var(--listen)"/>
+      <circle cx="330" cy="205" r="11" fill="var(--speak)" stroke="var(--speak)"/>
+      <circle cx="605" cy="205" r="11" fill="var(--speak)" stroke="var(--speak)"/>
+      <circle cx="190" cy="365" r="11" fill="var(--lang)" stroke="var(--lang)"/>
+      <circle cx="470" cy="365" r="11" fill="var(--lang)" stroke="var(--lang)"/>
+      <circle cx="605" cy="365" r="11" fill="var(--lang)" stroke="var(--lang)"/>
+      <circle cx="190" cy="450" r="11" fill="var(--plat)" stroke="var(--plat)"/>
+      <circle cx="330" cy="450" r="11" fill="var(--plat)" stroke="var(--plat)"/>
+      <circle cx="470" cy="450" r="11" fill="var(--plat)" stroke="var(--plat)"/>
+      <circle cx="605" cy="450" r="11" fill="var(--plat)" stroke="var(--plat)"/>
+      <circle cx="330" cy="535" r="11" fill="var(--ship)" stroke="var(--ship)"/>
+      <circle cx="470" cy="535" r="11" fill="var(--ship)" stroke="var(--ship)"/>
+      <circle cx="605" cy="535" r="11" fill="var(--ship)" stroke="var(--ship)"/>
+      <!-- next v0.3.2: thick ring -->
+      <circle cx="740" cy="120" r="12" fill="var(--station)" stroke="var(--listen)" stroke-width="6"/>
+      <circle cx="740" cy="205" r="12" fill="var(--station)" stroke="var(--speak)" stroke-width="6"/>
+      <circle cx="740" cy="450" r="12" fill="var(--station)" stroke="var(--plat)" stroke-width="6"/>
+      <circle cx="740" cy="535" r="12" fill="var(--station)" stroke="var(--ship)" stroke-width="6"/>
+      <!-- v0.4: ring -->
+      <circle cx="880" cy="120" r="11" fill="var(--station)" stroke="var(--listen)"/>
+      <circle cx="880" cy="205" r="11" fill="var(--station)" stroke="var(--speak)"/>
+      <circle cx="880" cy="280" r="11" fill="var(--station)" stroke="var(--ear)"/>
+      <circle cx="880" cy="365" r="11" fill="var(--station)" stroke="var(--lang)"/>
+      <circle cx="880" cy="450" r="11" fill="var(--station)" stroke="var(--plat)"/>
+      <circle cx="880" cy="535" r="11" fill="var(--station)" stroke="var(--ship)"/>
+      <!-- later: dashed -->
+      <circle cx="1040" cy="120" r="11" fill="var(--station)" stroke="var(--listen)" stroke-dasharray="4 3"/>
+      <circle cx="1040" cy="205" r="11" fill="var(--station)" stroke="var(--speak)" stroke-dasharray="4 3"/>
+      <circle cx="1040" cy="280" r="11" fill="var(--station)" stroke="var(--ear)" stroke-dasharray="4 3"/>
+      <circle cx="1040" cy="365" r="11" fill="var(--station)" stroke="var(--lang)" stroke-dasharray="4 3"/>
+      <circle cx="1040" cy="450" r="11" fill="var(--station)" stroke="var(--plat)" stroke-dasharray="4 3"/>
+    </g>
+
+    <g text-anchor="middle">
+      <!-- 聆聽 -->
+      <text class="st" x="190" y="152" data-k="k15">字幕誕生</text><text class="no" x="190" y="167" data-k="k16">俄英 → 中</text>
+      <text class="st" x="470" y="152" data-k="k17">浮動字幕</text><text class="no" x="470" y="167">#322</text>
+      <text class="st" x="605" y="152" data-k="k18">介面同步</text>
+      <text class="st" x="740" y="154" data-k="k19">dev 成果送出</text><text class="no" x="740" y="169">#356 #361</text>
+      <text class="st" x="880" y="152" data-k="k20">精簡介面</text><text class="no" x="880" y="167">#455</text>
+      <text class="st" x="1040" y="152" data-k="k21">雙向口譯</text>
+      <!-- 說話 -->
+      <text class="st" x="330" y="237" data-k="k22">開口說</text><text class="no" x="330" y="252" data-k="k23">中 → 俄語音</text>
+      <text class="st" x="605" y="237" data-k="k24">Windows 說話</text>
+      <text class="st" x="740" y="239" data-k="k25">Linux 不卡</text><text class="no" x="740" y="254">#427 #373</text>
+      <text class="st" x="880" y="237" data-k="k26">男女聲</text><text class="no" x="880" y="252">#319</text>
+      <text class="st" x="1040" y="237" data-k="k27">雙向對話</text>
+      <!-- 耳機 -->
+      <text class="st" x="880" y="312" data-k="k28">耳機模式</text><text class="no" x="880" y="327">#330 #448</text>
+      <text class="st" x="1040" y="312" data-k="k29">旅行翻譯</text>
+      <!-- 語言 -->
+      <text class="st" x="190" y="397" data-k="k30">2 種</text><text class="no" x="190" y="412" data-k="k31">俄 · 英</text>
+      <text class="st" x="470" y="397" data-k="k32">5 種</text><text class="no" x="470" y="412" data-k="k33">中英日韓俄</text>
+      <text class="st" x="605" y="397" data-k="k34">+簡中</text>
+      <text class="st" x="880" y="397" data-k="k35">10 種</text><text class="no" x="880" y="412" data-k="k36">+義葡越泰印尼 #335</text>
+      <text class="st" x="1040" y="397" data-k="k37">任何語言</text>
+      <!-- 平台 -->
+      <text class="st" x="190" y="482">Windows</text>
+      <text class="st" x="330" y="482">+Mac +Linux</text><text class="no" x="330" y="497" data-k="k38">一行指令安裝</text>
+      <text class="st" x="470" y="482" data-k="k39">新電腦能跑</text>
+      <text class="st" x="605" y="482" data-k="k40">安裝精靈</text>
+      <text class="st" x="740" y="484" data-k="k41">語音下載</text><text class="no" x="740" y="499">#422</text>
+      <text class="st" x="880" y="482" data-k="k42">雙擊安裝</text><text class="no" x="880" y="497">#294 #489</text>
+      <text class="st" x="1040" y="482" data-k="k43">手機 · 商店</text>
+      <!-- 發版 -->
+      <text class="st" x="330" y="567" data-k="k44">開源 MIT</text>
+      <text class="st" x="470" y="567" data-k="k45">自我檢查</text>
+      <text class="st" x="605" y="567" data-k="k46">發版關卡</text>
+      <text class="st" x="740" y="569" data-k="k47">自動發版</text><text class="no" x="740" y="584">#414</text>
+      <text class="st" x="880" y="567" data-k="k48">變差就擋</text><text class="no" x="880" y="582">#340</text>
+    </g>
+  </svg>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot done"></i><b style="font-weight:400" data-k="k50">已上線</b></span>
+    <span><i class="dot next"></i><b style="font-weight:400" data-k="k51">下一版</b></span>
+    <span><i class="dot"></i><b style="font-weight:400" data-k="k52">之後</b></span>
+    <span><i class="dot plan"></i><b style="font-weight:400" data-k="k53">願景</b></span>
+    <span data-k="k57">數字 = GitHub issue</span>
+  </div>
+
+  <h2 data-k="k49">你在這裡：v0.3.1 能用什麼</h2>
+  <div class="key">
+    <span><i class="ok"></i><b style="font-weight:400" data-k="k54">實機測過</b></span>
+    <span><i class="ci"></i><b style="font-weight:400" data-k="k55">只在自動測試</b></span>
+    <span><i class="no-"></i><b style="font-weight:400" data-k="k56">還沒測</b></span>
+  </div>
+  <!-- ROADMAP-GRID:START -->
+<div class="today">
+  <div class="panel">
+    <div class="grid g-os">
+      <span></span><span class="h" data-en="Install" data-zh-cn="安装">安裝</span><span class="h" data-en="Translate subtitles" data-zh-cn="翻译字幕">翻譯字幕</span><span class="h" data-en="Speak (voice)" data-zh-cn="说话（语音）">說話（語音）</span><span class="h" data-en="GPU" data-zh-cn="GPU">GPU</span><span class="h" data-en="CPU-only" data-zh-cn="纯 CPU">純 CPU</span>
+      <span class="r" data-en="Windows 10/11" data-zh-cn="Windows 10/11">Windows 10/11</span><span class="c"><i class="ci"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ci"></i></span>
+      <span class="r" data-en="macOS" data-zh-cn="macOS">macOS</span><span class="c"><i class="ci"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Linux (Ubuntu 24.04)" data-zh-cn="Linux（Ubuntu 24.04）">Linux（Ubuntu 24.04）</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="ci"></i></span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="grid g-lang">
+      <span></span><span class="h" data-en="Hear it" data-zh-cn="听得懂">聽得懂</span><span class="h" data-en="To 繁體中文" data-zh-cn="译成繁体中文">譯成繁體中文</span><span class="h" data-en="To 简体中文" data-zh-cn="译成简体中文">譯成簡體中文</span><span class="h" data-en="To English" data-zh-cn="译成英文">譯成英文</span><span class="h" data-en="Speak it (voice)" data-zh-cn="念出来（语音）">念出來（語音）</span>
+      <span class="r" data-en="中文 (zh)" data-zh-cn="中文 (zh)">中文 (zh)</span><span class="c"><i class="ok"></i></span><span class="c same">—</span><span class="c same">—</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i>Windows</span>
+      <span class="r" data-en="English (en)" data-zh-cn="English (en)">English (en)</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ci"></i></span><span class="c same">—</span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="日本語 (ja)" data-zh-cn="日本語 (ja)">日本語 (ja)</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ci"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Русский (ru)" data-zh-cn="Русский (ru)">Русский (ru)</span><span class="c"><i class="ci"></i></span><span class="c"><i class="ci"></i></span><span class="c"><i class="ci"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="ok"></i>Linux</span>
+      <span class="r" data-en="한국어 (ko)" data-zh-cn="한국어 (ko)">한국어 (ko)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Tiếng Việt (vi)" data-zh-cn="Tiếng Việt (vi)">Tiếng Việt (vi)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="ไทย (th)" data-zh-cn="ไทย (th)">ไทย (th)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Bahasa Indonesia (id)" data-zh-cn="Bahasa Indonesia (id)">Bahasa Indonesia (id)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Español (es)" data-zh-cn="Español (es)">Español (es)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Deutsch (de)" data-zh-cn="Deutsch (de)">Deutsch (de)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Français (fr)" data-zh-cn="Français (fr)">Français (fr)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+    </div>
+  </div>
+</div>
+<!-- ROADMAP-GRID:END -->
+  <p class="readme"><a href="https://github.com/sunososobro-hub/tinglongwu#readme" data-k="rd">安裝與貢獻者：見 README</a></p>
+</div>
+<script>
+const LANGS=[["en","English"],["zh-tw","繁體中文"],["zh-cn","简体中文"]];
+const HTML_LANG={"en":"en","zh-tw":"zh-Hant","zh-cn":"zh-Hans"};
+const T={"en": {"k0": "tlwu version map", "k1": "Where we have been", "k2": "What is next", "k3": "11/09 start", "k4": "11/13 you are here", "k5": "next stop · 14 issues", "k6": "30 issues", "k7": "Later", "k8": "17 issues", "k9": "Listen", "k10": "Speak", "k11": "Earphone", "k12": "Languages", "k13": "Platforms", "k14": "Release·Quality", "k15": "Subtitles born", "k16": "RU/EN → ZH", "k17": "Floating subtitles", "k18": "UI in sync", "k19": "dev work shipped", "k20": "Compact UI", "k21": "Two-way interpreting", "k22": "First speech", "k23": "ZH → RU voice", "k24": "Speak on Windows", "k25": "Linux no freeze", "k26": "Male/female voice", "k27": "Two-way talk", "k28": "Earphone mode", "k29": "Travel translator", "k30": "2 languages", "k31": "RU · EN", "k32": "5 languages", "k33": "ZH EN JA KO RU", "k34": "+ Simplified Chinese", "k35": "10 languages", "k36": "+ IT PT VI TH ID #335", "k37": "Any language", "k38": "One-line install", "k39": "Runs on a fresh PC", "k40": "Setup wizard", "k41": "Voice download", "k42": "Double-click install", "k43": "Phone · stores", "k44": "Open source MIT", "k45": "Self-check", "k46": "Release gate", "k47": "Automatic releases", "k48": "Block regressions", "k49": "You are here: what works in v0.3.1", "k50": "Shipped", "k51": "Next release", "k52": "Later", "k53": "Vision", "k54": "Tested on a real device", "k55": "Automated tests only", "k56": "Not tested yet", "k57": "Numbers = GitHub issues", "al": "tlwu version map: six lines from the first version on 11/09, through v0.3.1, to later", "rd": "Install and contributors: see the README"}, "zh-cn": {"k0": "tlwu 版本地图", "k1": "走过的路", "k2": "接下来", "k3": "11/09 起点", "k4": "11/13 你在这里", "k5": "下一站 · 14 张", "k6": "30 张", "k7": "以后", "k8": "17 张", "k9": "聆听", "k10": "说话", "k11": "耳机", "k12": "语言", "k13": "平台", "k14": "发版·质量", "k15": "字幕诞生", "k16": "俄英 → 中", "k17": "浮动字幕", "k18": "界面同步", "k19": "dev 成果送出", "k20": "精简界面", "k21": "双向口译", "k22": "开口说", "k23": "中 → 俄语音", "k24": "Windows 说话", "k25": "Linux 不卡", "k26": "男女声", "k27": "双向对话", "k28": "耳机模式", "k29": "旅行翻译", "k30": "2 种", "k31": "俄 · 英", "k32": "5 种", "k33": "中英日韩俄", "k34": "+简中", "k35": "10 种", "k36": "+意葡越泰印尼 #335", "k37": "任何语言", "k38": "一行命令安装", "k39": "新电脑能跑", "k40": "安装向导", "k41": "语音下载", "k42": "双击安装", "k43": "手机 · 商店", "k44": "开源 MIT", "k45": "自我检查", "k46": "发版关卡", "k47": "自动发版", "k48": "变差就挡", "k49": "你在这里：v0.3.1 能用什么", "k50": "已上线", "k51": "下一版", "k52": "之后", "k53": "愿景", "k54": "实机测过", "k55": "只在自动测试", "k56": "还没测", "k57": "数字 = GitHub issue", "al": "tlwu 版本地图：六条线从 11/09 第一版经 v0.3.1 到以后", "rd": "安装与贡献者：见 README"}};
+const BASE={};
+document.querySelectorAll("[data-k]").forEach(el=>BASE[el.dataset.k]=el.textContent);
+const ARIA=document.querySelector("[data-aria-k]"),ARIA0=ARIA.getAttribute("aria-label");
+const box=document.getElementById("langs");
+LANGS.forEach(([code,name])=>{const b=document.createElement("button");b.type="button";b.id="lang-"+code;
+  b.textContent=name;b.onclick=()=>{setLang(code);try{history.replaceState(null,"","#"+code)}catch(e){location.hash=code}};box.appendChild(b)});
+function setLang(code){
+  if(!LANGS.some(l=>l[0]===code))code="zh-tw";
+  const d=T[code]||{};
+  document.querySelectorAll("[data-k]").forEach(el=>{el.textContent=d[el.dataset.k]??BASE[el.dataset.k]});
+  /* the generated support grid carries its own labels: data-en / data-zh-cn (zh-TW is the text itself) */
+  document.querySelectorAll("[data-en]").forEach(el=>{if(el.dataset.zhtw===undefined)el.dataset.zhtw=el.textContent;
+    el.textContent=code==="en"?el.dataset.en:code==="zh-cn"?el.dataset.zhCn:el.dataset.zhtw});
+  ARIA.setAttribute("aria-label",d.al??ARIA0);
+  document.documentElement.lang=HTML_LANG[code];
+  document.title=d.k0??BASE.k0;
+  box.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.id==="lang-"+code)));
+  try{localStorage.setItem("tlwu-roadmap-lang",code)}catch(e){}
+}
+function initial(){const h=location.hash.slice(1).toLowerCase();if(h)return h;
+  try{const s=localStorage.getItem("tlwu-roadmap-lang");if(s)return s}catch(e){}
+  const n=(navigator.language||"en").toLowerCase();
+  return n.startsWith("zh")?(/tw|hk|hant/.test(n)?"zh-tw":"zh-cn"):"en"}
+window.addEventListener("hashchange",()=>setLang(location.hash.slice(1).toLowerCase()));
+setLang(initial());
+</script>
+</body>
+</html>
