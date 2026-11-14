@@ -512,13 +512,7 @@ jobs:
           if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }
           python installer\build_installer.py --size-report $exe.FullName
           if ($LASTEXITCODE -ne 0) { throw "size report failed" }
-      - name: Build provenance for the setup wizard (#26; covers tinglongwu-setup.exe too, same bytes)
-        if: needs.plan.outputs.publish == 'true'
-        continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
-        with:
-          subject-path: dist/installer/tinglongwu-setup-*.exe
-      - name: Upload tinglongwu-setup-<ver>.exe and tinglongwu-setup.exe, add both to SHA256SUMS.txt, publish
+      - name: Name tinglongwu-setup.exe and add both wizard names to the release's SHA256SUMS.txt (publish only)
         if: needs.plan.outputs.publish == 'true'
         shell: bash
         env:
@@ -535,6 +529,25 @@ jobs:
           for f in "$exe" tinglongwu-setup.exe; do   # Git Bash prints "hash *file"; keep the "hash  file" format
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
+      - name: Build provenance for the setup wizard and the final SHA256SUMS.txt (#26; tinglongwu-setup.exe = same bytes)
+        if: needs.plan.outputs.publish == 'true'
+        continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            dist/installer/tinglongwu-setup-*.exe
+            dist/installer/SHA256SUMS.txt
+      - name: Upload tinglongwu-setup-<ver>.exe, tinglongwu-setup.exe and SHA256SUMS.txt, publish
+        if: needs.plan.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd dist/installer
+          exe="tinglongwu-setup-${TAG#v}.exe"   # written by the step above
+          [ -f tinglongwu-setup.exe ] && [ -f SHA256SUMS.txt ] || { echo "wizard copy or SHA256SUMS.txt missing: $(ls)"; exit 1; }
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
           # What's new comes from docs/whats_new.md (or a release PR edit); without it the notes keep the TODO line
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body | grep -q 'TODO:'; then

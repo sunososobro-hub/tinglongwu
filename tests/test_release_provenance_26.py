@@ -53,13 +53,18 @@ def test_every_uploaded_release_file_is_attested():
     assert job["steps"].index(step) < job["steps"].index(create)   # attested before the draft goes up
 
 
-def test_wizard_is_attested_on_publish_only_before_upload():
+def test_wizard_and_final_checksums_are_attested_on_publish_only_before_upload():
     job = _wf()["jobs"]["windows-installer"]
     (step,) = _attest_steps(job)
     assert step["if"] == "needs.plan.outputs.publish == 'true'"
-    assert any(fnmatch.fnmatch("dist/installer/tinglongwu-setup-0.3.6.exe", p) for p in _subjects(step))
+    subjects = _subjects(step)
+    assert any(fnmatch.fnmatch("dist/installer/tinglongwu-setup-0.3.6.exe", p) for p in subjects)
+    assert "dist/installer/SHA256SUMS.txt" in subjects  # the published file, after the wizard lines are added
+    steps = job["steps"]
+    sums = next(s for s in steps if "SHA256SUMS.txt" in s.get("run", "") and "sha256sum" in s.get("run", ""))
     up = _step(job, "Upload tinglongwu-setup-")
-    assert job["steps"].index(step) < job["steps"].index(up)
+    assert steps.index(sums) < steps.index(step) < steps.index(up)  # attest the final bytes, then upload them
+    assert "sha256sum" not in up["run"]  # nothing rewrites SHA256SUMS.txt after it was attested
 
 
 def test_oidc_and_attestation_write_only_on_attesting_jobs():
