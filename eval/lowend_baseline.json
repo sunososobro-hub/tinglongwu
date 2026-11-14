@@ -1,10 +1,10 @@
 {
-  "_note": "Low-end CPU gate baseline (#750), read by `python -m tlwu_eval --lowend-gate` in the low-end-cpu job of .github/workflows/eval.yml (GitHub ubuntu-24.04 runner, --device cpu, TLWU_CPU_THREADS=4, TLWU_HYMT_TEMP=0). latency_p*_s = per-line ASR+MT seconds over all clips (nearest rank). null = not measured yet: the job prints the values to commit. Margin (15%) and RSS cap (6 GiB) are constants in tlwu_eval/lowend.py.",
+  "_note": "Low-end CPU gate baseline (#750), read by `python -m tlwu_eval --lowend-gate` in the low-end-cpu job of .github/workflows/eval.yml (GitHub ubuntu-24.04 runner, --device cpu, TLWU_CPU_THREADS=4, TLWU_HYMT_TEMP=0). latency_p*_s = per-line ASR+MT seconds over all 20 clips (nearest rank). Data: PR #787 commit f383e14, low-end-cpu job p50 2.454 / p90 3.209 s (RSS 2967 MiB) and mini-eval job p50 2.529 / p90 3.33 s; values = the higher of the two. Runner CPU types differ ~1.8x, so the job gates against the base commit run on the same runner and uses these numbers only when that run is missing. Margin (15%) and RSS cap (6 GiB) are constants in tlwu_eval/lowend.py.",
   "model": "whisper small",
   "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
   "device": "cpu",
   "threads": 4,
   "clips": 5,
-  "latency_p50_s": null,
-  "latency_p90_s": null
+  "latency_p50_s": 2.529,
+  "latency_p90_s": 3.33
 }

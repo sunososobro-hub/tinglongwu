@@ -106,6 +106,9 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
                         "or peak RSS > 6 GiB")
     p.add_argument("--lowend-baseline", default="eval/lowend_baseline.json",
                    help="baseline for --lowend-gate (default: eval/lowend_baseline.json)")
+    p.add_argument("--lowend-base-report", metavar="BASE.json",
+                   help="with --lowend-gate: a --smoke report of the base commit on the same machine; its p50/p90 "
+                        "are the baseline (runner CPUs differ too much for fixed numbers)")
     p.add_argument("--latency-jsonl", metavar="FILE.jsonl",
                    help="with --smoke: one JSON line per clip {pair, id, total} (ASR+MT seconds) (#750)")
     p.add_argument("--history", metavar="FILE.jsonl",
@@ -118,7 +121,7 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
         return tierchart.main(p, a.chart)
     if a.lowend_gate:
         try:
-            code, table = lowend.run(a.lowend_gate, a.lowend_baseline)
+            code, table = lowend.run(a.lowend_gate, a.lowend_baseline, a.lowend_base_report)
         except gate.GateError as e:
             print(f"tlwu-eval: {e}", file=sys.stderr)
             return 2

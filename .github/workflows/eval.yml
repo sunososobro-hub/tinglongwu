@@ -5,7 +5,8 @@ name: eval
 # The workflow runs on every PR to dev so the `mini-eval` check always exists; a PR that touches none of the paths
 # below (docs only, etc.) ends after the first step with no install and no model download (< 1 min).
 # #750: the low-end-cpu job runs the same mini-eval as a no-NVIDIA laptop would (--device cpu, TLWU_CPU_THREADS=4)
-# and fails when per-line p50/p90 latency is > 15% over eval/lowend_baseline.json or peak RSS > 6 GiB. It also runs
+# and fails when per-line p50/p90 latency is > 15% over the base commit run on the same runner (fallback
+# eval/lowend_baseline.json) or peak RSS > 6 GiB. It also runs
 # on the release PR (dev -> main) whatever it changes, so a release with a low-end regression does not ship.
 on:
   pull_request:
@@ -181,11 +182,25 @@ jobs:
           rc=$?
           if [ "$rc" -gt 1 ]; then exit "$rc"; fi
           test -s lowend.json
-      - name: Gate vs eval/lowend_baseline.json
+      - name: Mini-eval of the base commit (dev tip) on this same runner
+        if: steps.paths.outputs.run == 'true'
+        # runner CPU types differ ~1.8x in speed, so the 15% budget is checked against dev measured right here.
+        # HEAD^1 of the PR merge commit is the base tip. `python -m` from the base checkout imports its own code.
+        run: |
+          set +e
+          git worktree add -q "$RUNNER_TEMP/base" HEAD^1 || exit 0
+          cd "$RUNNER_TEMP/base"
+          python -m tlwu_eval --smoke --data "$GITHUB_WORKSPACE/eval_data/smoke" --clips 5 --model "$WHISPER" \
+            --engine hymt2-cpu --device cpu --no-noise --models-dir "$TLWU_MODELS" --out "$GITHUB_WORKSPACE/base.json"
+          if [ "$?" -gt 1 ]; then rm -f "$GITHUB_WORKSPACE/base.json"; echo "base run failed: gate uses eval/lowend_baseline.json"; fi
+          exit 0
+      - name: Gate vs dev on this runner (fallback eval/lowend_baseline.json)
         if: steps.paths.outputs.run == 'true'
         run: |
           set +e
-          python -m tlwu_eval --lowend-gate lowend.json --lowend-baseline eval/lowend_baseline.json > lowend.md
+          BASE=""
+          if [ -s base.json ]; then BASE="--lowend-base-report base.json"; fi
+          python -m tlwu_eval --lowend-gate lowend.json --lowend-baseline eval/lowend_baseline.json $BASE > lowend.md
           rc=$?
           cat lowend.md
           { echo "## low-end CPU gate (#750)"; echo; cat lowend.md; } >> "$GITHUB_STEP_SUMMARY"
@@ -196,6 +211,7 @@ jobs:
           name: low-end-cpu-report
           path: |
             lowend.json
+            base.json
             lowend.md
             lowend_latency.jsonl
           if-no-files-found: warn

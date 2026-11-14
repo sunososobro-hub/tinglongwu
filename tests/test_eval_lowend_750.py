@@ -149,9 +149,31 @@ def _decide(tmp_path, changed, base_ref="dev", head_ref="fix/1"):
 
 @pytest.mark.skipif(GIT is None or BASH is None, reason="git and bash are needed to run the step")
 def test_workflow_runs_on_code_prs_and_always_on_the_release_pr(tmp_path):
+    job = yaml.safe_load((ROOT / ".github/workflows/eval.yml").read_text("utf-8"))["jobs"]["low-end-cpu"]
+    gate_step = next(s for s in job["steps"] if s.get("name", "").startswith("Gate vs dev"))
+    assert "--lowend-base-report base.json" in gate_step["run"]
     assert _decide(tmp_path / "a", ["tinglongwu/asr.py"]) == "true"
     assert _decide(tmp_path / "b", ["docs/x.md"]) == "false"
     assert _decide(tmp_path / "c", ["docs/x.md"], base_ref="main", head_ref="dev") == "true"  # release PR
     assert _decide(tmp_path / "d", ["docs/x.md"], base_ref="main", head_ref="docs/fastlane-1") == "false"
     on = yaml.safe_load((ROOT / ".github/workflows/eval.yml").read_text("utf-8"))[True]
     assert on["pull_request"]["branches"] == ["dev", "main"]
+
+
+def test_same_runner_base_report_is_the_baseline(data_dir, capsys):
+    """A slow runner: dev itself measures 1.2 s/line there. The committed 0.6 s would fail the PR; the same-runner
+    base run (an old-format report without the p50/p90 fields) is used instead, so only a real regression fails."""
+    base = _baseline(data_dir, 0.6, 0.6)
+    dev_slow_runner = json.loads(_smoke(data_dir, "dev", mt_s=0.8).read_text("utf-8"))
+    for k in ("latency_p50_s", "latency_p90_s", "peak_rss_mib"):
+        dev_slow_runner.pop(k)  # the base commit predates #750: p50/p90 come from its clips
+    dev_path = data_dir / "dev_old.json"
+    dev_path.write_text(json.dumps(dev_slow_runner), "utf-8")
+    same = _smoke(data_dir, "pr_same", mt_s=0.8)
+    assert lowend.run(same, base)[0] == 1  # fixed number: a false alarm on this runner
+    capsys.readouterr()
+    assert main(["--lowend-gate", str(same), "--lowend-baseline", str(base), "--lowend-base-report", str(dev_path)]) == 0
+    assert "the base commit (dev tip) run on this same runner" in capsys.readouterr().out
+    slower = _smoke(data_dir, "pr_slow", mt_s=1.0)  # +200 ms per line on the same runner: 1.4 vs 1.2 = +17%
+    code, table = lowend.run(slower, base, dev_path)
+    assert code == 1 and "| latency_p50_s | 1.4 | 1.2 | 1.38 | FAIL" in table
