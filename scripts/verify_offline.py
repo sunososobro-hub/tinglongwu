@@ -60,10 +60,17 @@ def main() -> int:
     while time.time() < deadline and proc.is_running() and (child is None or child.poll() is None):
         seen.update(offending(proc))
         time.sleep(0.05)
-    if child is not None and a.mic and child.poll() is None:
-        child.terminate()
+    early_exit = False
+    if child is not None and a.mic:
+        if child.poll() is None:
+            child.terminate()  # deadline reached: the verifier stops it
+        else:
+            early_exit = True  # tlwu died before the watch window ended
     if child is not None and not a.mic and child.wait() != 0:
         print(f"WARNING: tlwu exited with code {child.returncode}")
+    if early_exit:
+        print(f"FAIL: tlwu --mic exited early with code {child.returncode}; the microphone check did not complete")
+        return 1
     if seen:
         print("FAIL: non-loopback connections observed:\n  " + "\n  ".join(sorted(seen)))
         return 1
