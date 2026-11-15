@@ -14,7 +14,7 @@ there, since one topic must never swallow a 5-minute silence.
 from __future__ import annotations
 
 import math
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 PAUSE_S = 8.0          # #595: a pause this long closes a topic (once it is at least MIN_S long)
 MIN_S = 60.0           # #595: min ~60 s per topic (the meeting-end flush may be shorter)

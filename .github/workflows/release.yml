@@ -211,7 +211,22 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
+      - name: Reuse the previous release's GPU pack when its pinned wheels did not change (#765; budget GPU_PACK_REUSE_BUDGET_MIN = 3 min)
+        id: reuse
+        shell: pwsh
+        timeout-minutes: 3   # = scripts/gpu_pack_reuse.py GPU_PACK_REUSE_BUDGET_MIN
+        continue-on-error: true   # a failed or timed-out reuse falls through to the build steps
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          $lines = python scripts\gpu_pack_reuse.py --repo "$env:GITHUB_REPOSITORY" --tag $env:TAG --out "$env:GPU_OUT"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $lines
+          $reused = ($lines | Where-Object { $_ -like 'reused=*' }) -replace '^reused=', ''
+          "reused=$reused" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          ($lines | Where-Object { $_ -like 'summary=*' }) -replace '^summary=', '' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
       - name: GPU pack venv (CUDA llama-cpp-python, CUDA 12 wheels incl. nvrtc; no requirements.txt, no Nuitka)
+        if: steps.reuse.outputs.reused != 'true'
         shell: pwsh
         run: |
           python -m venv "$env:RUNNER_TEMP\gpu-venv"
@@ -225,6 +240,7 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           "GPU_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Build the GPU pack (build_windows.py --gpu-pack-only; the manifest url names this release's tag)
+        if: steps.reuse.outputs.reused != 'true'
         shell: pwsh
         env:
           TAG: ${{ needs.plan.outputs.tag }}
@@ -237,7 +253,7 @@ jobs:
         env:
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
-          & $env:GPU_PY scripts\release_check.py --gpu-pack "$env:GPU_OUT\tinglongwu-gpu-pack.zip" --tag $env:TAG
+          python scripts\release_check.py --gpu-pack "$env:GPU_OUT\tinglongwu-gpu-pack.zip" --tag $env:TAG
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

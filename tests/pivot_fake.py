@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from tinglongwu.translate import (Translation, Translator, protect_acronyms, restore_acronyms, zh_artifacts,
                                  zh_convert, zh_guard)

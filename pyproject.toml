@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.2.0", "psutil==7.2.2"]
+dev = ["pytest==9.2.0", "psutil==7.2.2", "ruff==0.16.9"]
 
 [project.scripts]
 tlwu = "tinglongwu.cli:main"
@@ -42,6 +42,15 @@ packages = ["tlwu_app", "tinglongwu", "tinglongwu.capture", "tinglongwu.gui", "t
 tinglongwu_setup = ["manifest.json"]
 "tinglongwu.gui" = ["assets/*.ico", "assets/*.png", "assets/*.svg"]
 tinglongwu = ["data/*.txt", "data/*.wav", "data/*.gz"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# small first rule set (#665): pyflakes, syntax errors, bugbear, pyupgrade
+select = ["F", "E9", "B", "UP"]
+# noisy style rules deferred to follow-ups: %-format (UP031), zip strict (B905), loop-var closures (B023); B027/B028 are intentional default hooks and test warnings
+ignore = ["UP031", "B905", "B023", "B027", "B028"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

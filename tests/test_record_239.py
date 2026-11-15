@@ -9,7 +9,6 @@ import numpy as np
 from tinglongwu import cli
 from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.merge import SentenceMerger
-from tinglongwu.pipeline import run
 from tinglongwu.sink import JsonlSaveSink, TextSink
 from tinglongwu.translate import Translation, Translator
 

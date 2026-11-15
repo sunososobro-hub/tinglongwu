@@ -3,7 +3,7 @@ Behaviour of scripts/hw_deferral.py and its use in scripts/release_notes.py (aut
 runner offline -> deferred after HW_RUNNER_WAIT_MIN; runner online -> unchanged; hw failed later -> P0 issue."""
 import importlib.util
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 import pytest
@@ -22,7 +22,7 @@ hd = load("hw_deferral_848", "scripts/hw_deferral.py")
 rn = load("release_notes_848", "scripts/release_notes.py")
 REPO = "sunososobro-hub/tinglongwu"
 HEAD, LATER, OLD = "b" * 40, "c" * 40, "a" * 40
-NOW = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
 TAGS = {"v0.3.1": "4" * 40}
 WN = "## v0.3.2\n- Faster subtitles\n"
 OPEN = {"number": 735, "title": "release: v0.3.2", "state": "open", "base": {"ref": "main"},

@@ -1,4 +1,3 @@
-import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -77,7 +76,6 @@ def _gguf(tmp_path):
 
 def test_build_translator_on_cpu_is_hymt_on_the_cpu_never_opus(monkeypatch, tmp_path):
     """#331: CPU + Hy-MT2 installed -> Hy-MT2 direct on the CPU for zh->ru and the back-translation, no OPUS."""
-    import tinglongwu.translate as tr
 
     _gguf(tmp_path)
     made = []

@@ -18,7 +18,7 @@ class Translator(ABC):
         """Quick translation for --stream drafts; must not change translator state. Default: translate()."""
         return self.translate(text, src, tgt)
 
-def translate_checked(translator: "Translator", text: str, src: str, tgt: str, draft: bool = False) -> Translation | None:
+def translate_checked(translator: Translator, text: str, src: str, tgt: str, draft: bool = False) -> Translation | None:
     """translate()/draft() that never lets Japanese through untranslated (#86): kana in a non-Japanese target
     means the engine echoed (part of) the source. One retry (Hy-MT2 samples, so a second try usually works);
     None when it still leaks. Drafts are not retried (the next draft comes in a moment anyway)."""

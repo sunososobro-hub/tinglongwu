@@ -15,7 +15,7 @@ import re
 import sys
 import urllib.request
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 KEEP = 24 * 90  # hourly snapshots kept (~90 days)
 WINDOW_H = 72
@@ -180,7 +180,7 @@ def group_series(issues, token_events, days, group):
 
 
 def parse_ts(ts):
-    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 def median_hours(pairs, since=None):
@@ -1133,7 +1133,7 @@ def render_html(series):
 
 
 def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, "data.json")
     try:

@@ -7,7 +7,6 @@ import threading
 import pytest
 
 from tinglongwu import overlay
-from tinglongwu.gui import core
 from tinglongwu.gui.core import ALPHA_MAX, ALPHA_MIN, DEFAULTS, clamp_alpha, load_settings, save_settings
 
 

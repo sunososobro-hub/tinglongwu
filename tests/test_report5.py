@@ -1,6 +1,4 @@
-import io
 import queue
-import threading
 import time
 import warnings
 

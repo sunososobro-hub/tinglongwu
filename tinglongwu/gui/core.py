@@ -24,7 +24,8 @@ from ..stream import DraftRenderer
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
-    "x": None, "y": None, "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
+    "x": None, "y": None, "panel_w": None, "panel_h": None, "panel_x": None, "panel_y": None,  # #939
+    "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
     "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)

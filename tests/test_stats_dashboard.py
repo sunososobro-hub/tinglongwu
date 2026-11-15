@@ -1,7 +1,7 @@
 import os
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 import pytest
@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stats_dashboard as sd  # noqa: E402
 
-NOW = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 
 
 def fake_api(path, accept=None):
@@ -430,7 +430,7 @@ def test_shared_mode_is_infrastructure_split_by_area_662():
 
 
 def test_flow_backfill_covers_14_days_with_inference_662():
-    now = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
 
     def api(path, accept=None):
         if path.endswith("/files?per_page=100"):
@@ -451,7 +451,7 @@ def test_flow_backfill_covers_14_days_with_inference_662():
 
 
 def test_flow_warm_files_cache_makes_no_files_or_issue_calls_662():
-    now = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
     calls = []
 
     def api(path, accept=None):

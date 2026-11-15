@@ -53,7 +53,7 @@ def mark_reported() -> None:
         pass
 
 
-def summarize(entries: list[dict]) -> "OrderedDict[tuple, dict]":
+def summarize(entries: list[dict]) -> OrderedDict[tuple, dict]:
     g: OrderedDict = OrderedDict()
     for e in entries:
         k = (e.get("host"), e.get("port"), e.get("package"), e.get("mode"))
@@ -77,7 +77,7 @@ def build_body(entries: list[dict], max_stack: int = 12) -> str:
              f"- OS: {first.get('os')}", "", "| host | port | package | mode | count |", "|---|---|---|---|---|"]
     for (host, port, pkg, mode), v in g.items():
         lines.append(f"| {host} | {port} | {pkg} | {mode} | {v['count']} |")
-    for (host, port, pkg, _m), v in list(g.items())[:3]:
+    for (host, port, _pkg, _m), v in list(g.items())[:3]:
         st = v["first"].get("stack") or []
         lines += ["", f"Stack for {host}:{port} (module:function:line):", "```", *st[-max_stack:], "```"]
     return "\n".join(lines) + "\n"
