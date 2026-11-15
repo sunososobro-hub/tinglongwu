@@ -17,7 +17,8 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from ..i18n import SILENT_CLEAR
+from .core import (strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -1961,6 +1962,8 @@ class App:
 
                     if self.load_t0 is None and not self.errored:
                         self._status_text(cpu_mode_line("cpu", ev[1]) or "")
+                elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
+                    self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
@@ -2012,6 +2015,8 @@ class App:
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
                     changed |= self.state.apply(ev)
+                    if ev[0] in ("source", "draft", "final") and self.v_notice.get():  # other side is heard: hint is stale
+                        self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                     if ev[0] == "final" and usage_should_ask(self.settings) and getattr(self, "usage_win", None) is None:
                         self.root.after(1500, self._maybe_ask_usage)  # #680: once, after the first subtitle
         except queue.Empty:

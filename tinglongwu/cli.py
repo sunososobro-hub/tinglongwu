@@ -580,6 +580,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         from .i18n import t as _t_silent
 
         source.on_silent = lambda names: notice(_t_silent("listen_silent", names=" / ".join(names) or "?"))
+        if hasattr(source, "on_sound"):  # the hint must not outlive the silence (0.3.8)
+            from .i18n import SILENT_CLEAR
+
+            source.on_sound = lambda: notice(SILENT_CLEAR)
     recorder = None
     if rec_dir is not None:  # #239: opt-in only (the menu asks on every start, default no)
         from .record import Recorder, default_record_dir

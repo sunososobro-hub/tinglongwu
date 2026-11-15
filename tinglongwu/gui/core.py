@@ -959,6 +959,16 @@ class QueueDraftRenderer(DraftRenderer):
             self.q.put(("draft", "", src))
 
 
+def strip_silent_hint(text: str) -> str:
+    """#1070/0.3.8: drop the "10 s without the other side's sound" line from a notice (any UI language); other
+    notice lines stay. Called when listen-side audio or an other-side bubble arrives."""
+    from ..i18n import MESSAGES
+
+    heads = {m["listen_silent"].split("{names}")[0] for m in MESSAGES.values() if "listen_silent" in m}
+    keep = [ln for ln in (text or "").split(chr(10)) if not any(ln.startswith(h) for h in heads)]
+    return chr(10).join(keep).strip()
+
+
 class SubtitleState:
     """What the overlay shows: last `max_lines` lines; a draft is replaced in place by the final."""
 

@@ -13,6 +13,7 @@ import sys
 from . import userdirs
 
 DEFAULT = "en"
+SILENT_CLEAR = "@@silent-clear@@"  # notice payload: the listened sound is back, drop the "10 s silence" hint
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {

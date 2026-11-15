@@ -72,6 +72,7 @@ class WasapiLoopbackSource(SoundcardSource):
 
     def __init__(self, device: str | None = None):
         super().__init__(device)
+        self.on_sound = None  # called once when sound returns after on_silent fired
         self.on_silent = None  # called with the list of listened device names after ~10 s of silence
         self.listening: list[str] = [device] if device else []
 
@@ -90,10 +91,16 @@ class WasapiLoopbackSource(SoundcardSource):
         watch = SilenceWatch()
         gen = super().frames() if self.device else self._auto_frames()
         for blk in gen:
+            was_fired = watch._fired
             if self.on_silent is not None and watch.update(float(np.abs(blk).max()) if len(blk) else 0.0):
                 try:
                     self.on_silent(list(self.listening))
                 except Exception:  # noqa: BLE001 - a hint must never stop the capture
+                    pass
+            elif was_fired and not watch._fired and self.on_sound is not None:
+                try:
+                    self.on_sound()
+                except Exception:  # noqa: BLE001
                     pass
             yield blk
 
