@@ -6,8 +6,9 @@ commits (the JSON list from `GET repos/{repo}/pulls/{n}/commits`) and fails when
 `Co-authored-by:` email is outside ALLOWED_EMAILS / ALLOWED_DOMAINS or the PR author's own GitHub noreply email
 (so fork contributors keep working).
 
-Usage: python scripts/commit_identity.py commits.json --author-login LOGIN --author-id ID
-Exit 0 = every identity is known, 1 = unknown identities (each printed with its commit), 2 = unreadable input.
+Usage: python scripts/commit_identity.py commits.json --author-login LOGIN --author-id ID [--expected-count N]
+Exit 0 = every identity is known, 1 = unknown identities (each printed with its commit) or an incomplete commit list
+(the commits API returns at most 250, so a PR with >= 250 commits cannot be checked and fails), 2 = unreadable input.
 """
 from __future__ import annotations
 
@@ -24,7 +25,8 @@ ALLOWED_EMAILS = frozenset({
     "41898282+github-actions[bot]@users.noreply.github.com",  # github-actions[bot]
     "noreply@github.com",  # `GitHub` committer of web-flow merges and squash commits
 })
-ALLOWED_DOMAINS = ("@anthropic.com",)  # Claude Code sessions (noreply@anthropic.com)
+ALLOWED_DOMAINS = ("@anthropic.com",)
+API_LIMIT = 250  # GET pulls/{n}/commits lists at most 250 commits, whatever the pagination  # Claude Code sessions (noreply@anthropic.com)
 CO_AUTHOR = re.compile(r"^co-authored-by:.*<([^<>]*)>\s*$", re.IGNORECASE | re.MULTILINE)
 
 
@@ -66,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("commits", type=Path, help="JSON list from GET repos/{repo}/pulls/{n}/commits")
     ap.add_argument("--author-login", default="", help="PR author's login (their noreply email is allowed)")
     ap.add_argument("--author-id", default="", help="PR author's numeric user id")
+    ap.add_argument("--expected-count", type=int, default=None,
+                    help="the PR's commit count (pulls/{n} .commits); a shorter list or >= 250 commits fails")
     a = ap.parse_args(argv)
     try:
         data = json.loads(a.commits.read_text("utf-8"))
@@ -77,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(commits, list):
         print("commit identity: expected a JSON list of commits")
         return 2
+    if a.expected_count is not None and (a.expected_count >= API_LIMIT or len(commits) != a.expected_count):
+        print(f"FAIL: commit identity: the PR has {a.expected_count} commit(s) but {len(commits)} were listed "
+              f"(the API lists at most {API_LIMIT}); split or squash the PR so every commit can be checked.")
+        return 1
     bad = problems(commits, a.author_login, a.author_id)
     for line in bad:
         print(f"FAIL: unknown git identity: {line}")

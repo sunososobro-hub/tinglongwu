@@ -69,3 +69,28 @@ def test_paginated_slurp_shape_and_bad_input(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text("{not json", "utf-8")
     assert subprocess.run([sys.executable, str(SCRIPT), str(bad)], capture_output=True).returncode == 2
+
+
+@pytest.mark.parametrize("listed,expected,code", [(3, 3, 0), (2, 3, 1), (250, 250, 1), (250, 300, 1), (3, None, 0)])
+def test_incomplete_or_capped_commit_list_fails(tmp_path, listed, expected, code):
+    commits = [commit(f"{i:040x}", OWNER) for i in range(listed)]
+    args = [] if expected is None else ["--expected-count", str(expected)]
+    r = run(tmp_path, commits, *args)
+    assert r.returncode == code, r.stdout
+    if code:
+        assert "at most 250" in r.stdout
+
+
+def _identity_step():
+    yaml = pytest.importorskip("yaml")
+    steps = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text("utf-8"))["jobs"]["test"]["steps"]
+    return next(s for s in steps if str(s.get("name", "")).startswith("Commit identity"))
+
+
+def test_step_runs_only_for_prs_into_dev_and_passes_the_commit_count():
+    """Release PR dev -> main (author github-actions[bot]) carries old history and must not go red on `test`."""
+    s = _identity_step()
+    cond = s["if"]
+    assert "github.base_ref == 'dev'" in cond and "github.event_name == 'pull_request'" in cond
+    assert s["env"]["PR_COMMITS"] == "${{ github.event.pull_request.commits }}"
+    assert '--expected-count "$PR_COMMITS"' in s["run"]
