@@ -1661,6 +1661,7 @@ class App:
         import webbrowser
 
         from ..report_translation import report_line
+        from .core import usage_prefill
 
         if row is None:
             finals = [r for r in self.state.history() if not r[2]]
@@ -1673,7 +1674,32 @@ class App:
         report_line(src, out, version=__version__, mode=self.quick_mode or getattr(self, "_last_mode", None) or "listen",
                     langpair=f"{s.get('lang', 'auto')} -> {s.get('target', '')}",
                     confirm=lambda text: messagebox.askokcancel(t("gui_wrong_title"), t("gui_wrong_ask", text=text), parent=self.root),
-                    open_url=webbrowser.open)
+                    open_url=webbrowser.open, extra=usage_prefill(s, True), confirm_extra=self._wrong_dialog)
+
+    def _wrong_dialog(self, text, extra):
+        """#680: confirm dialog with a ticked 'also include what I mainly use TingLong for' checkbox -> (ok, include)."""
+        top = tk.Toplevel(self.root)
+        top.title(t("gui_wrong_title"))
+        top.transient(self.root)
+        top.resizable(False, False)
+        shown = text.rsplit("\n", len(extra))[0]
+        ttk.Label(top, text=t("gui_wrong_ask", text=shown), wraplength=460, justify="left").pack(padx=12, pady=(12, 6))
+        inc = tk.BooleanVar(value=True)
+        ttk.Checkbutton(top, text=t("gui_wrong_usage", text="; ".join(f"{k}: {v}" for k, v in extra.items())),
+                        variable=inc).pack(anchor="w", padx=12)
+        res = {"ok": False}
+
+        def done(ok):
+            res["ok"] = ok
+            top.destroy()
+
+        bar = ttk.Frame(top)
+        bar.pack(pady=10)
+        ttk.Button(bar, text="OK", command=lambda: done(True)).pack(side="left", padx=6)
+        ttk.Button(bar, text="Cancel", command=lambda: done(False)).pack(side="left", padx=6)
+        top.grab_set()
+        self.root.wait_window(top)
+        return res["ok"], bool(inc.get())
 
     def quit(self):
         if self.closing:

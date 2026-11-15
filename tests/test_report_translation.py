@@ -43,7 +43,7 @@ def test_unknown_mode_falls_back_to_listen():
 def test_cancel_opens_nothing():
     opened, shown = [], []
     ok = report_line("hello", "你好", version="v1", mode="listen", langpair="en -> zh-TW",
-                     confirm=lambda t: shown.append(t) or False, open_url=opened.append)
+                     confirm=lambda t: shown.append(t) or False, open_url=lambda u: opened.append(u) or True)
     assert ok is False and opened == []
     assert shown == ["Source: hello\ntlwu: 你好"]  # the dialog shows exactly what is prefilled
 
@@ -52,7 +52,7 @@ def test_confirm_opens_once_and_empty_line_does_nothing():
     opened = []
     assert report_line("hello", "你好", version="v1", mode="listen", langpair="x", confirm=lambda t: True, open_url=lambda u: opened.append(u) or True)
     assert len(opened) == 1 and opened[0].startswith("https://github.com/")
-    assert not report_line("", " ", version="v1", mode="listen", langpair="x", confirm=lambda t: True, open_url=opened.append)
+    assert not report_line("", " ", version="v1", mode="listen", langpair="x", confirm=lambda t: True, open_url=lambda u: opened.append(u) or True)
     assert len(opened) == 1
 
 
@@ -80,3 +80,26 @@ def test_log_line_mapping_counts_embedded_newlines():
     assert [row_for_log_line(rows, True, n) for n in (1, 2, 3)] == [rows[0], rows[0], rows[1]]
     both = [("s1\ns2", "o", False), ("x", "y", False)]
     assert [row_for_log_line(both, True, n) for n in (1, 2, 3, 4, 5)] == [both[0]] * 3 + [both[1]] * 2
+
+
+def test_usage_extra_goes_into_url_only_when_included():  # #680
+    extra = {"Mainly used for": "calls", "Language pair": "en -> zh-tw"}
+    opened = []
+    seen = []
+
+    def run(include):
+        opened.clear()
+        return report_line("hi", "你好", version="v1", mode="listen", langpair="en -> zh-TW", confirm=lambda t: True,
+                           open_url=lambda u: opened.append(u) or True, extra=extra,
+                           confirm_extra=lambda text, ex: (seen.append(text) or (True, include)))
+
+    assert run(True) and "Mainly used for: calls" in _qs(opened[0])[1]["happened"]
+    assert run(False) and "Mainly used for" not in _qs(opened[0])[1]["happened"]
+    assert "Mainly used for: calls" in seen[0]  # the dialog shows it before anything is opened
+    opened.clear()
+    assert not report_line("hi", "你好", version="v1", mode="listen", langpair="x", confirm=lambda t: True,
+                           open_url=lambda u: opened.append(u) or True, extra=extra, confirm_extra=lambda t, e: (False, True)) and not opened
+
+
+def test_no_extra_url_unchanged():
+    assert build_url("v1", "listen", "a", "x", "y", os_="Linux") == build_url("v1", "listen", "a", "x", "y", os_="Linux", extra={})
