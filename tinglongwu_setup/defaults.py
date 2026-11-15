@@ -19,8 +19,8 @@ MB = 1024 * 1024
 DEFAULT_LISTEN_DOWNLOAD_MB = 1600
 
 
-VOICE_NOTE = ("NOTE voice not installed: this setup installs listening only. Speaking (我來說) needs the Kokoro voice: "
-              "press 我來說 in the app for a one-click install, or run `tlwu-setup --talk`.")
+VOICE_NOTE = ("NOTE voice not installed: this setup installs listening only. Speaking (說話) needs the Kokoro voice: "
+              "press Start in the app for a one-click install, or run `tlwu-setup --talk`.")
 
 
 def voice_installed(mdir: Path) -> bool:
@@ -56,7 +56,7 @@ def run(mdir: Path, getters: dict | None = None, out=_say) -> int:
         getters[key](man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     after = sum(_dir_bytes(mdir / k) for k in DEFAULT_LISTEN_KEYS)
-    if not voice_installed(mdir):  # #967: say it, so a user who later presses 我來說 is not surprised
+    if not voice_installed(mdir):  # #967: say it, so a user who later presses Start is not surprised
         out(VOICE_NOTE)
     out(f"READY default-listen seconds={time.monotonic() - t0:.1f} download_mb={max(0, after - before) // MB}")
     return 0

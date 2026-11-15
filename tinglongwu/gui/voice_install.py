@@ -9,11 +9,11 @@ from pathlib import Path
 VOICE_PACK = "voice"  # name shown in the progress line and used as the pack_retry key
 VOICE_MB = 400  # rough size of the Kokoro venv + model, only used to word the question
 TEXT = {
-    "en": "Speak mode needs the read-aloud voice (Kokoro, about {mb} MB). Install it now? Needs internet once, "
+    "en": "Speaking into the meeting needs the read-aloud voice (Kokoro, about {mb} MB). Install it now? Needs internet once, "
           "works offline afterwards.",
-    "ru": "Режиму «Говорить» нужен голос озвучки (Kokoro, около {mb} МБ). Установить сейчас? Интернет нужен один раз, "
+    "ru": "Для голоса во встречу нужен голос озвучки (Kokoro, около {mb} МБ). Установить сейчас? Интернет нужен один раз, "
           "потом работает офлайн.",
-    "zh-TW": "「我來說」需要朗讀語音（Kokoro，約 {mb} MB）。現在安裝嗎？只需連網一次，之後可離線使用。",
+    "zh-TW": "把你說的話念進會議需要朗讀語音（Kokoro，約 {mb} MB）。現在安裝嗎？只需連網一次，之後可離線使用。",
 }
 TITLE = {"en": "Install voice", "ru": "Установка голоса", "zh-TW": "安裝朗讀語音"}
 
