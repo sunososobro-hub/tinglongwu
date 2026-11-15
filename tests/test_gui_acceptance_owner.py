@@ -134,6 +134,8 @@ def test_680_use_for_question_asked_once_and_stored_locally(make_app, monkeypatc
 
     import tkinter as tk
 
+    from tinglongwu.i18n import t
+
     monkeypatch.setattr(tk.Misc, "focus_force", lambda self: None)  # xvfb has no window manager: the real call can segfault
     a = make_app()
     assert core.usage_should_ask(a.settings)
@@ -143,10 +145,19 @@ def test_680_use_for_question_asked_once_and_stored_locally(make_app, monkeypatc
     assert first.winfo_exists()
     a.ask_usage()  # a second call reuses the one dialog
     assert a.usage_win is first
-    a.usage_win.destroy()
-    a.usage_win = None
-    core.usage_answer(a.settings, "meetings")
-    a.collect()
+    from tkinter import ttk
+
+    def walk(w):
+        for c in w.winfo_children():
+            yield c
+            yield from walk(c)
+
+    widgets = list(walk(first))
+    meetings = next(w for w in widgets if isinstance(w, ttk.Radiobutton) and w.cget("value") == "meetings")
+    meetings.invoke()
+    save = next(w for w in widgets if isinstance(w, ttk.Button) and w.cget("text") == t("gui_usage_ok"))
+    save.invoke()  # the dialog's own Save button stores the answer
+    assert getattr(a, "usage_win", None) is None and not first.winfo_exists()
     assert not core.usage_should_ask(a.settings)  # never asked again
     a._maybe_ask_usage()
     assert getattr(a, "usage_win", None) is None
@@ -160,6 +171,8 @@ def test_940_report_with_ai_copies_prompt_to_clipboard(make_app, monkeypatch):
 
     a = make_app()
     monkeypatch.setattr(report, "env_info", lambda: {"Version": "test"})
+    a.root.clipboard_clear()  # the wait below must only see the result of this copy
+    a.root.update()
     a.copy_ai_prompt()
     for _ in range(100):
         a.poll()  # the real event loop calls this; the worker thread posts ("clip_ai", text) to a.q
