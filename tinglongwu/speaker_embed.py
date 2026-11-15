@@ -8,7 +8,11 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .speakers import SpeakerClusterer
+import itertools
+
+from .speakers import UNKNOWN as UNKNOWN_LABEL, SpeakerClusterer
+
+_TOKENS = itertools.count(1)  # global: tokens of different labelers never collide (live toggle)
 
 SAMPLE_RATE = 16000
 MODEL_NAME = "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
@@ -97,8 +101,7 @@ class AsyncSpeakerLabeler:
         threading.Thread(target=self._work, daemon=True, name="tlwu-speaker-id").start()
 
     def label(self, seg):
-        self._n += 1
-        token = f"spk#{self._n}"
+        token = f"spk#{next(_TOKENS)}"
         try:
             self._q.put_nowait((token, seg.copy() if hasattr(seg, "copy") else seg))
         except self._queue_mod.Full:
@@ -163,3 +166,69 @@ def make_async_labeler(mdir, on_ready=None) -> AsyncSpeakerLabeler | None:
         return AsyncSpeakerLabeler(SherpaEmbedder(mdir), on_ready=on_ready)
     except Exception:  # noqa: BLE001
         return None
+
+
+class LiveSpeakers:
+    """0.3.8 GUI: the pipeline's `speakers` object. It forwards to whichever labeler is attached right now, so the
+    「標示說話者」 toggle can attach / detach one while the session runs. The reference is swapped under a lock and
+    read once per call, so the subtitle path never stalls or sees a half-closed labeler's exception.
+    Tokens are globally unique ("spk#N"), so the results of earlier labelers stay readable after a swap."""
+
+    def __init__(self, labeler=None):
+        import threading
+
+        self._lock = threading.Lock()
+        self._cur = labeler
+        self._all = [labeler] if labeler is not None else []
+        self.closed = False
+
+    def get(self):
+        return self._cur
+
+    def set(self, labeler):
+        """Attach `labeler` (or None = detach). The previous one is closed (its finished results stay readable).
+        After close() a new labeler is closed at once (the session is over)."""
+        with self._lock:
+            old, self._cur = self._cur, (None if self.closed else labeler)
+            if labeler is not None and not self.closed:
+                self._all.append(labeler)
+        for lab in (old, labeler if self.closed else None):
+            if lab is not None:
+                try:
+                    lab.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def label(self, seg):
+        lab = self._cur
+        if lab is None:
+            return UNKNOWN_LABEL, 0.0
+        try:
+            return lab.label(seg)
+        except Exception:  # noqa: BLE001 - never hurt subtitles
+            return UNKNOWN_LABEL, 0.0
+
+    def result(self, token):
+        for lab in list(self._all):
+            r = lab.result(token)
+            if r is not None:
+                return r
+        return None
+
+    def resolve(self, token, timeout: float = 1.5):
+        if not isinstance(token, str) or not token.startswith("spk#"):
+            return token
+        for lab in list(self._all):
+            if token in getattr(lab, "_res", {}) or lab is self._cur:
+                return lab.resolve(token, timeout)
+        return None
+
+    def close(self):
+        with self._lock:
+            self.closed = True
+            cur, self._cur = self._cur, None
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:  # noqa: BLE001
+                pass

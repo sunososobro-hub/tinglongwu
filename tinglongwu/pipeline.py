@@ -308,7 +308,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             last_marks[0] = marks
             if speakers is not None:  # --speakers (#222): label this sentence; #384: shown on the line itself,
                 who, spk = speakers.label(seg)  # the label goes to the debug log only (no extra console line)
-                say(f"latency: spk {spk:.3f} s ({who})")
+                if who != UNKNOWN or spk:
+                    say(f"latency: spk {spk:.3f} s ({who})")
                 last_who[0] = None if who == UNKNOWN else who
             seg_n[0] += 1
             if recorder is not None:

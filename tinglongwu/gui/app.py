@@ -870,6 +870,7 @@ class App:
         self.v_spk.set(res == "on")
         self.settings["speaker_id"] = res == "on"
         save_settings(self.settings)
+        self._spk_sync()
 
     def _spk_done(self, rc: int):
         from ..models import models_dir
@@ -885,6 +886,8 @@ class App:
         self.v_spk.set(ok)
         self.settings["speaker_id"] = ok
         save_settings(self.settings)
+        if ok:
+            self._spk_sync()  # live: the running session starts labelling now
         if ok:
             self._status_text(t("gui_dl_ok", model="speaker"))
         else:
@@ -1632,9 +1635,42 @@ class App:
         speaker model is missing - then the GUI shows no labels and behaves exactly as before."""
         from . import speaker_pack
 
+        from ..speaker_embed import LiveSpeakers
+
         lab = speaker_pack.make_labeler(self.settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)))
-        self.spk = lab
-        return lab
+        self.spk = live = LiveSpeakers(lab)  # the pipeline reads it; the toggle can attach / detach mid-run
+        return live
+
+    def _spk_sync(self):
+        """0.3.8: the toggle applies live. ON while a session runs: build the labeler off the Tk thread and attach it
+        (new segments get labels from then on). OFF: detach and close it. Past bubbles keep what they have."""
+        from ..models import models_dir
+        from . import speaker_pack
+
+        live = self.spk
+        if live is None or live.closed or not hasattr(live, "set"):
+            return  # no running session: the next Start reads the setting
+        if not self.settings.get("speaker_id"):
+            live.set(None)
+            return
+        if live.get() is not None:
+            return
+        mdir, settings = models_dir(), self.settings
+
+        def attach():
+            try:
+                lab = speaker_pack.make_labeler(settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)))
+            except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
+                return
+            if lab is None:
+                return
+            if settings.get("speaker_id") and live.get() is None:
+                live.set(lab)
+            else:  # switched off again while the model was loading
+                lab.close()
+
+        threading.Thread(target=attach, daemon=True, name="tlwu-speaker-attach").start()
 
     def _insert_bubble(self, side: str, text: str, is_draft: bool, row: int):
         """#1070: a bubble hugs its text (max ~75 % of the window). Tk paints the margin area with the background of the
