@@ -165,8 +165,20 @@ def cuda_device_count() -> int:
 CUDA_HELP = ("install the CUDA 12 runtime libraries once (with network): "
              "`tlwu-setup --gpu`  (= pip install nvidia-cublas-cu12 nvidia-cudnn-cu12), "
              "plus an NVIDIA driver supporting CUDA 12+")
-if os.environ.get("TLWU_BUNDLED") == "1":  # standalone build ships the libs; only the driver can be the problem
-    CUDA_HELP = "update your NVIDIA graphics driver (CUDA 12 or newer) to use the GPU"
+
+
+def gpu_pack_message(miss: list[str], bundled: bool | None = None) -> str:
+    """Why a found CUDA device still runs on CPU because cuBLAS / cuDNN are missing, and the fix that works (#966).
+    Standalone build: the DLLs live in the GPU pack, not in the driver, so say the pack is not installed and point at
+    Settings > Add-ons (one-click install). Source install: the pip route. Read at call time: tlwu.exe sets
+    TLWU_BUNDLED=1 after this module may already be imported."""
+    if bundled is None:
+        bundled = os.environ.get("TLWU_BUNDLED") == "1"
+    if not bundled:
+        return f"tlwu: CUDA device found but {', '.join(miss)} missing; falling back to CPU. To use the GPU, {CUDA_HELP}."
+    from .i18n import t
+
+    return t("gpu_pack_missing", libs=", ".join(miss))
 
 
 # Oldest NVIDIA driver that can run CUDA 12.x (CTranslate2 4.x, cuBLAS 12, cuDNN 9). Source: NVIDIA "CUDA
@@ -228,8 +240,7 @@ def resolve_device(choice: str = "auto", *, count=None, missing=None,
         return "cpu"
     miss = missing()
     if miss:
-        warn(f"tlwu: CUDA device found but {', '.join(miss)} missing; falling back to CPU. To use the GPU, "
-             + CUDA_HELP + ".")
+        warn(gpu_pack_message(miss))
         return "cpu"
     return "cuda"
 
