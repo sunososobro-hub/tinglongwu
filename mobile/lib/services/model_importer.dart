@@ -27,16 +27,18 @@ class ModelImporter {
 
   static const _ch = MethodChannel('tlwu/native');
   static const manifestAsset = 'assets/models_manifest.json';
+  static const voicePacksAsset = 'assets/voice_packs.json';
 
-  static Future<ModelManifest> loadManifest() async =>
-      ModelManifest.parse(await rootBundle.loadString(manifestAsset));
+  static Future<ModelManifest> loadManifest() async => ModelManifest.parse(
+      await rootBundle.loadString(manifestAsset),
+      packsJson: await rootBundle.loadString(voicePacksAsset));
 
   String get _staging => '$modelsDir/.import';
 
   /// Target paths of manifest files already in the models dir (by name and size; the hash was
   /// checked when they were imported) or in one of the Play pack folders [packDirs].
   Set<String> presentFiles({List<String> packDirs = const []}) => {
-        for (final f in manifest.files)
+        for (final f in manifest.allFiles)
           if ([modelsDir, ...packDirs].any((d) => _sizeOf('$d/${f.path}') == f.size)) f.path,
       };
 
@@ -92,16 +94,19 @@ class ModelImporter {
         _current = d.name;
         onProgress(base, total, d.name);
         final args = <String, Object?>{'uri': d.uri, 'stagingDir': _staging, 'size': d.size};
+        // A single file may be one of several manifest files (`tokens.txt`: ASR or a voice); it is
+        // copied to the first and kept where size and SHA-256 match.
+        var options = const <String>[];
         if (d.isZip) {
-          args['zipTargets'] = manifest.basenameTargets;
+          args['zipTargets'] = manifest.zipTargetsFor(d.name);
         } else {
-          final e = manifest.resolve(d.name);
-          if (e == null) {
+          options = [for (final e in manifest.candidates(d.name)) e.path];
+          if (options.isEmpty) {
             report.problems.add('${d.name}: not a model file this app uses (skipped).');
             base += d.size > 0 ? d.size : 0;
             continue;
           }
-          args['target'] = e.path;
+          args['target'] = options.first;
         }
         if (staging.existsSync()) staging.deleteSync(recursive: true);
         staging.createSync(recursive: true);
@@ -120,14 +125,16 @@ class ModelImporter {
           report.problems.add('${d.name}: no model files found in this zip.');
         }
         for (final c in copied) {
-          final target = c['target'] as String;
-          final v = manifest.validate(target, (c['size'] as num).toInt(), c['sha256'] as String);
-          final src = File('$_staging/$target');
+          final staged = c['target'] as String;
+          final v = manifest.validateAny(d.isZip ? [staged] : options,
+              (c['size'] as num).toInt(), c['sha256'] as String);
+          final src = File('$_staging/$staged');
           if (!v.ok) {
-            report.problems.add('$target: ${v.detail}');
+            report.problems.add('$staged: ${v.detail}');
             if (src.existsSync()) src.deleteSync();
             continue;
           }
+          final target = v.entry!.path;
           final dst = File('$modelsDir/$target');
           dst.parent.createSync(recursive: true);
           if (dst.existsSync()) dst.deleteSync();

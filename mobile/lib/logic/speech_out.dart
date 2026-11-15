@@ -9,8 +9,8 @@ import 'dart:typed_data';
 ///
 /// Layout, relative to the models dir (or a Play pack folder, like the other models):
 ///   `tts-LANG/model.onnx`, `tts-LANG/tokens.txt`, `tts-LANG/lexicon.txt`
-/// Which voice ships, its licence, size and SHA-256 come with the voice pack (next part of #558);
-/// until it is installed the app shows the translation only.
+/// Which voice ships, its licence, size and SHA-256: `assets/voice_packs.json` (imported like the
+/// models, see ModelManifest.packs); until it is installed the app shows the translation only.
 class TtsVoiceLayout {
   static const files = ['model.onnx', 'tokens.txt', 'lexicon.txt'];
 

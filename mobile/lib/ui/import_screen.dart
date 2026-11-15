@@ -157,6 +157,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final m = imp.manifest;
     final missing = m.missingRequired(_present);
     final big = m.files.where((f) => f.url != null).toList();
+    final voices = m.installedPacks(_present);
     return [
       if (_play) ..._playSection(),
       const Text('1. 下載模型包 / Download the models', style: _h),
@@ -168,6 +169,12 @@ class _ImportScreenState extends State<ImportScreen> {
         Text('選用：較大較準的 ${f.basename}（${(f.size / (1 << 30)).toStringAsFixed(1)} GB，官方連結）。',
             style: _t),
         _link('下載 / Download ${f.basename}', f.url!),
+      ],
+      for (final p in m.packs) ...[
+        const SizedBox(height: 6),
+        Text('選用：對話模式朗讀語音（${p.lang}）${p.name}（${_fmt(p.size)}），'
+            '裝了就會把我說的話的翻譯念出來。${p.note}', style: _t),
+        _link('下載 / Download ${p.name}', p.url),
       ],
       const SizedBox(height: 20),
       const Text('2. 匯入 / Import', style: _h),
@@ -195,6 +202,10 @@ class _ImportScreenState extends State<ImportScreen> {
         Text('${_present.contains(f.path) ? '✓' : '·'} ${f.path}',
             style: _mono.copyWith(
                 color: _present.contains(f.path) ? Colors.greenAccent : Colors.white38)),
+      for (final p in m.packs)
+        Text('${voices.contains(p.id) ? '✓' : '·'} tts-${p.lang}/ （選用 / optional）',
+            style: _mono.copyWith(
+                color: voices.contains(p.id) ? Colors.greenAccent : Colors.white38)),
       const SizedBox(height: 12),
       if (missing.isEmpty && !_busy)
         FilledButton(

@@ -8,7 +8,8 @@ No INTERNET permission and no built-in downloader: you download the models with 
 2. Open the downloaded APK and install it (Android asks once to allow installs from your browser). Needs an arm64 phone (almost every phone since 2017).
 3. From the same page, download `tlwu-mobile-models.zip` (about 1.4 GB: SenseVoice-small ASR, Silero VAD, Hy-MT2-1.8B translator).
 4. Open the app, tap **匯入模型 / Import models** -> **Pick files**, choose the zip from Downloads (single `.onnx` / `.gguf` / `.txt` model files work too). Every file is checked against `assets/models_manifest.json` (name, size, SHA-256) and copied into the app's `files/models`; anything that does not match is rejected. Then tap **Done, start** and allow the microphone.
-5. You can delete the downloaded zip afterwards. Updating the app: download the new APK from the same page and install over the old one (models stay). If Android says the package conflicts, that preview was signed with a throwaway key (no release key configured yet, see "Signing"): uninstall, install, and import the models again (uninstalling deletes them).
+5. Optional, for 對話模式 (conversation mode, #558): import an English read-aloud voice the same way. Either `tlwu-voice-en.zip` from the same page, or the official [`vits-ljs.tar.bz2`](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-ljs.tar.bz2) unpacked and re-zipped as `vits-ljs.zip` (or its `vits-ljs.onnx`, `tokens.txt`, `lexicon.txt` picked as single files). The zip is read as a voice by its name; the files are checked against `assets/voice_packs.json` (size, SHA-256) and go to `files/models/tts-en/`. Without a voice, conversation mode shows text only.
+6. You can delete the downloaded zip afterwards. Updating the app: download the new APK from the same page and install over the old one (models stay). If Android says the package conflicts, that preview was signed with a throwaway key (no release key configured yet, see "Signing"): uninstall, install, and import the models again (uninstalling deletes them).
 
 ## iOS (same Flutter code as Android)
 The Dart app in `lib/` is shared. Only the thin native layer differs: `ios/Runner/TlwuNativeChannel.swift` and
@@ -148,6 +149,7 @@ Each translation logs latency (est. speech end -> zh shown), ASR-final -> zh, ti
 - sherpa-onnx: Apache-2.0.
 - `native/llama-cpp-dart-selfbuilt.aar` is llama.cpp (MIT) built from source; the upstream prebuilt AAR is not used. See "Native AAR" below.
 - Hy-MT2-1.8B GGUF model: Apache-2.0. Silero VAD: MIT.
+- Optional English voice (`tts-en/`, not in the APK or the models zip): sherpa-onnx `vits-ljs` (VITS trained on LJSpeech), model card Apache-2.0; LJSpeech dataset public domain; lexicon from the CMU Pronouncing Dictionary in IPA (BSD-style).
 - `lib/logic/s2tw_data.dart`: generated from the OpenCC dictionaries (Copyright BYVoid and contributors, Apache-2.0, https://github.com/BYVoid/OpenCC), same data as the desktop `opencc-python-reimplemented` package.
 - `<MODELS_DIR>` above is wherever you keep the downloaded model files.
 

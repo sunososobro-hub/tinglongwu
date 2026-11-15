@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/model_manifest.dart';
+import 'package:mobile/logic/speech_out.dart';
 import 'package:mobile/services/model_paths.dart';
 
 const _a = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -18,6 +19,27 @@ ModelManifest _small() => ModelManifest.parse('''
     {"path": "big.gguf", "size": 40, "sha256": "$_b", "group": "llm", "url": "https://example.invalid/big.gguf"}
   ]
 }''');
+
+const _c = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+
+String _voice({String lang = 'en', String extra = ''}) => '''
+{"packs": [{"id": "voice-$lang", "lang": "$lang", "name": "tlwu-voice-$lang.zip", "url": "u",
+  "source": "https://example.invalid/tts-models/vits-ljs.tar.bz2",
+  "files": [
+    {"path": "tts-$lang/model.onnx", "alias": "vits-ljs.onnx", "size": 100, "sha256": "$_c"},
+    {"path": "tts-$lang/tokens.txt", "size": 11, "sha256": "$_b"},
+    {"path": "tts-$lang/lexicon.txt", "size": 12, "sha256": "$_a"}$extra
+  ]}]}''';
+
+ModelManifest _withVoice() => ModelManifest.parse('''
+{
+  "bundle": {"name": "m.zip", "url": "https://example.invalid/m.zip"},
+  "files": [
+    {"path": "sensevoice/tokens.txt", "size": 10, "sha256": "$_a", "group": "asr"},
+    {"path": "silero_vad.onnx", "size": 20, "sha256": "$_b", "group": "vad"},
+    {"path": "small.gguf", "size": 30, "sha256": "$_a", "group": "llm"}
+  ]
+}''', packsJson: _voice());
 
 void main() {
   group('ModelManifest.validate', () {
@@ -106,6 +128,84 @@ void main() {
               '{"path": "y/a", "size": 1, "sha256": "$_a", "group": "asr"}')),
           throwsFormatException);
     });
+  });
+
+  group('voice packs (#558)', () {
+    final m = _withVoice();
+
+    test('a voice is optional: never reported missing', () {
+      expect(m.missingRequired({'sensevoice/tokens.txt', 'silero_vad.onnx', 'small.gguf'}), isEmpty);
+      expect(m.installedPacks({'sensevoice/tokens.txt'}), isEmpty);
+      expect(m.installedPacks({...TtsVoiceLayout.rel('en')}), {'voice-en'});
+      expect(m.installedPacks({'tts-en/model.onnx', 'tts-en/tokens.txt'}), isEmpty); // partial
+    });
+
+    test('the pack zip (also renamed or the re-zipped upstream folder) maps to tts-en/', () {
+      for (final z in ['tlwu-voice-en.zip', 'tlwu-voice-en (1).zip', 'TLWU-voice-en.zip', 'vits-ljs.zip']) {
+        final t = m.zipTargetsFor(z);
+        expect(t['tokens.txt'], 'tts-en/tokens.txt', reason: z);
+        expect(t['model.onnx'], 'tts-en/model.onnx', reason: z);
+        expect(t['vits-ljs.onnx'], 'tts-en/model.onnx', reason: z);
+        expect(t['lexicon.txt'], 'tts-en/lexicon.txt', reason: z);
+        expect(t.containsKey('silero_vad.onnx'), isFalse, reason: z);
+      }
+    });
+
+    test('any other zip still maps to the models, so tokens.txt stays the ASR one', () {
+      final t = m.zipTargetsFor('tlwu-mobile-models.zip');
+      expect(t['tokens.txt'], 'sensevoice/tokens.txt');
+      expect(t.containsKey('lexicon.txt'), isFalse);
+      expect(m.packForZip('photos.zip'), isNull);
+    });
+
+    test('a single tokens.txt is kept where its size and SHA-256 match', () {
+      final opts = [for (final e in m.candidates('tokens.txt')) e.path];
+      expect(opts, ['sensevoice/tokens.txt', 'tts-en/tokens.txt']);
+      expect(m.validateAny(opts, 10, _a).entry!.path, 'sensevoice/tokens.txt');
+      expect(m.validateAny(opts, 11, _b).entry!.path, 'tts-en/tokens.txt');
+      final bad = m.validateAny(opts, 11, _a);
+      expect(bad.ok, isFalse);
+      expect(bad.entry!.path, 'sensevoice/tokens.txt'); // reported against the first candidate
+    });
+
+    test('upstream file names and download renames are accepted', () {
+      expect([for (final e in m.candidates('vits-ljs (1).onnx')) e.path], ['tts-en/model.onnx']);
+      expect([for (final e in m.candidates('lexicon.txt')) e.path], ['tts-en/lexicon.txt']);
+      expect(m.candidates('model.onnx.part'), isEmpty);
+    });
+
+    test('voice files are checked like models', () {
+      expect(m.validate('tts-en/model.onnx', 100, _c).ok, isTrue);
+      expect(m.validate('tts-en/model.onnx', 99, _c).verdict, Verdict.sizeMismatch);
+      expect(m.validate('tts-en/model.onnx', 100, _a).verdict, Verdict.hashMismatch);
+      expect(m.validate('tts-en/evil.so', 1, _a).verdict, Verdict.unknownFile);
+    });
+
+    test('a pack must hold exactly the files the TTS loader reads', () {
+      const base = '{"bundle": {"name": "m.zip", "url": "u"}, "files": []}';
+      expect(() => ModelManifest.parse(base, packsJson: _voice(lang: 'ru')), returnsNormally);
+      expect(
+          () => ModelManifest.parse(base,
+              packsJson: _voice(extra: ',{"path": "tts-en/x.so", "size": 1, "sha256": "$_a"}')),
+          throwsFormatException);
+      expect(
+          () => ModelManifest.parse(base,
+              packsJson: _voice(extra: ',{"path": "tts-en/model.onnx", "size": 1, "sha256": "$_a"}')),
+          throwsFormatException);
+      final missing = _voice().replaceFirst(RegExp(r',\s*\{"path": "tts-en/lexicon.txt"[^}]*\}'), '');
+      expect(() => ModelManifest.parse(base, packsJson: missing), throwsFormatException);
+    });
+  });
+
+  test('shipped assets/voice_packs.json loads with the models manifest', () {
+    final m = ModelManifest.parse(File('assets/models_manifest.json').readAsStringSync(),
+        packsJson: File('assets/voice_packs.json').readAsStringSync());
+    final en = m.packs.singleWhere((p) => p.lang == 'en');
+    expect({for (final f in en.files) f.path}, TtsVoiceLayout.rel('en').toSet());
+    expect(en.url, contains('/releases/download/mobile-latest/'));
+    expect(m.packForZip(en.name), same(en));
+    // The models zip is unchanged by the voice: tokens.txt there is still the ASR one.
+    expect(m.zipTargetsFor(m.bundleName)['tokens.txt'], 'sensevoice/tokens.txt');
   });
 
   test('shipped assets/models_manifest.json matches what the app loads', () {
