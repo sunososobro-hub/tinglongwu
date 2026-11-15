@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """#953: make the release freeze (rules section 14) a mechanical check.
 
+#976 (two lanes): the release PR is cut from a snapshot branch `release/vX.Y.Z`, so merges to dev cannot touch it and
+dev is never frozen for it. Only the legacy `dev -> main` release PR (opened by the old release-pr.yml that stays on
+main until one release carries the new one) still freezes dev, because its head is dev itself.
+
     python scripts/release_freeze.py check --pr <N> [--repo OWNER/REPO]
 
 Exits 1 with `release freeze vX.Y.Z — merge only release-fix` when dev is frozen and the PR body lacks
-`release-fix`; exits 0 otherwise. Frozen = an open PR titled `release: vX.Y.Z` for dev's `__version__` exists
-AND the tag `vX.Y.Z` does not exist yet. Network only through the `gh` CLI (GH_TOKEN).
+`release-fix`; exits 0 otherwise. Frozen = an open PR from `dev` (this repo) titled `release: vX.Y.Z` for dev's
+`__version__` exists AND the tag `vX.Y.Z` does not exist yet. A `release/vX.Y.Z` snapshot PR never freezes. Network only through the `gh` CLI (GH_TOKEN).
 """
 from __future__ import annotations
 
@@ -31,6 +35,17 @@ def is_frozen(dev_version: str, open_release_pr_titles, tags) -> bool:
         if m and m.group(1) == dev_version:
             return True
     return False
+
+
+def legacy_release_titles(prs, repo: str) -> list[str]:
+    """#976: titles of open PRs into main whose head is this repo's `dev` (the legacy release PR). Snapshot PRs
+    (head release/vX.Y.Z) and fork PRs are left out, so they never freeze dev."""
+    out = []
+    for p in prs:
+        head = p.get("head") or {}
+        if head.get("ref") == "dev" and (head.get("repo") or {}).get("full_name") == repo:
+            out.append(p.get("title", ""))
+    return out
 
 
 def blocks_merge(frozen: bool, pr_body: str | None) -> bool:
@@ -59,7 +74,7 @@ def main(argv=None) -> int:
         return 0
     version = m.group(1)
     prs = _gh(f"repos/{r}/pulls?state=open&base=main&per_page=100")
-    titles = [p.get("title", "") for p in prs]
+    titles = legacy_release_titles(prs, r)
     tags = [t["name"] for t in _gh(f"repos/{r}/tags?per_page=100")]
     pr = _gh(f"repos/{r}/pulls/{a.pr}")
     if blocks_merge(is_frozen(version, titles, tags), pr.get("body")):
