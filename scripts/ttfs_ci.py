@@ -53,6 +53,26 @@ def summary_text(os_name, doc):
             % (os_name, num("ttfs_seconds"), num("excl_download_seconds"), ttfs.TTFS_BUDGET_S, ttfs.BASELINE_MBPS))
 
 
+def setup_time_report(directory, install_seconds, out_path):
+    """#773: the wizard run on this clean VM judged like `clean_machine_check.py setup-time`. Writes setup_time.json
+    (setup_seconds, download_seconds, download_mb, pip_lines, ready) next to ttfs.json and returns summary text."""
+    import json
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "packaging"))
+    import clean_machine_check as cmc
+    log_path = os.path.join(directory, "install.log")
+    try:
+        with open(log_path, encoding="utf-8-sig", errors="replace") as f:
+            log = f.read()
+    except OSError:
+        log = ""
+    res = cmc.build_result(install_seconds, log)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(res, f, indent=2)
+    body = json.dumps(res, indent=2)
+    lines = "\n".join(cmc.judge(res))
+    return "### setup_time (windows)\n\n```json\n%s\n```\n%s\n" % (body, lines)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--os", required=True, choices=sorted(INSTALLERS))
@@ -76,6 +96,9 @@ def main(argv=None):
         with open(a.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=2)
     text = summary_text(a.os, doc)
+    if a.os == "windows" and doc.get("install_seconds") is not None:
+        text += setup_time_report(a.dir, doc["install_seconds"],
+                                  os.path.join(os.path.dirname(os.path.abspath(a.out)), "setup_time.json"))
     print(text)
     if a.summary:
         with open(a.summary, "a", encoding="utf-8") as f:

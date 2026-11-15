@@ -25,7 +25,7 @@ def test_writes_schema_and_prints(tmp_path):
     assert p.stdout.startswith("ttfs_seconds=")
     assert "excl_download_seconds=" in p.stdout
     d = json.loads(out.read_text())
-    assert set(d) == {"ttfs_seconds", "download_seconds", "excl_download_seconds",
+    assert set(d) == {"ttfs_seconds", "download_seconds", "excl_download_seconds", "install_seconds",
                       "setup_seconds", "first_subtitle_seconds", "os", "version",
                       "sha", "date"}
     assert d["first_subtitle_seconds"] >= 0.8  # waits past the source line for the translation
