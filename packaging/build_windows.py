@@ -586,7 +586,7 @@ def link_tree(src: Path, dst: Path, copy: tuple[str, ...] = (EXE_NAME,)) -> int:
     if dst.exists():
         shutil.rmtree(dst)
     n = 0
-    for root, dirs, files in os.walk(src):
+    for root, _dirs, files in os.walk(src):
         out = dst / Path(root).relative_to(src)
         out.mkdir(parents=True, exist_ok=True)
         for name in files:
