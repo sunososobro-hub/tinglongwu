@@ -8,12 +8,16 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.provider.Settings
-import android.text.TextUtils
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
@@ -22,6 +26,8 @@ import kotlin.math.roundToInt
 /**
  * Floating subtitle window above other apps (SYSTEM_ALERT_WINDOW, #998).
  * Drag the text to move it, drag the corner handle to resize the width, tap to return to the app.
+ * The height follows the content (bilingual = source + translation, 3-4 lines) up to
+ * [MAX_HEIGHT_FRACTION] of the screen; beyond that the oldest lines are cut at the top.
  * Hidden while the app itself is in front (its own subtitle screen shows the same lines).
  * All calls on the main thread.
  */
@@ -37,8 +43,15 @@ object SubtitleOverlay {
     private var appInFront = true
     private var fontSp = 20f
     private var bgAlpha = 0.6f
-    private var lastText = ""
+    private var lastLines: List<Line> = emptyList()
     private var lastHint: String? = null
+    private var clip: BottomClip? = null
+
+    /** One subtitle: source text (shown smaller, above) and/or translation; null = not shown. */
+    data class Line(val src: String?, val tr: String?)
+
+    private const val MAX_HEIGHT_FRACTION = 0.40f
+    private const val SOURCE_SCALE = 0.72f
 
     fun canDraw(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx)
@@ -59,8 +72,8 @@ object SubtitleOverlay {
         sync()
     }
 
-    fun update(t: String, hint: String?) {
-        lastText = t
+    fun update(lines: List<Line>, hint: String?) {
+        lastLines = lines
         lastHint = hint
         render()
     }
@@ -102,8 +115,6 @@ object SubtitleOverlay {
 
         val tv = TextView(ctx).apply {
             setTextColor(Color.WHITE)
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.START
             setShadowLayer(4f, 0f, 1f, Color.BLACK)
             val pad = dp(ctx, 10f)
             setPadding(pad, dp(ctx, 6f), pad, dp(ctx, 6f))
@@ -115,9 +126,14 @@ object SubtitleOverlay {
             gravity = Gravity.BOTTOM
             setPadding(dp(ctx, 4f), 0, dp(ctx, 6f), dp(ctx, 2f))
         }
+        val cl = BottomClip(ctx).apply {
+            maxH = (ctx.resources.displayMetrics.heightPixels * MAX_HEIGHT_FRACTION).roundToInt()
+            addView(tv, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        }
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(tv, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(cl, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(handle, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT))
         }
@@ -161,14 +177,14 @@ object SubtitleOverlay {
             android.util.Log.e("tlwu.overlay", "addView failed", e)
             return
         }
-        wm = w; root = box; text = tv
+        wm = w; root = box; text = tv; clip = cl
         applyStyle()
         render()
     }
 
     private fun detach() {
         try { wm?.removeView(root) } catch (_: Exception) {}
-        root = null; text = null; wm = null
+        root = null; text = null; wm = null; clip = null
     }
 
     private fun applyStyle() {
@@ -188,8 +204,60 @@ object SubtitleOverlay {
             tv.text = hint
             tv.setTextColor(Color.rgb(255, 200, 90))
         } else {
-            tv.text = lastText.ifEmpty { "…" }
+            tv.text = format(lastLines)
             tv.setTextColor(Color.WHITE)
+        }
+        clip?.requestLayout()
+    }
+
+    /** Oldest first; each source line smaller and gray above its translation. */
+    private fun format(lines: List<Line>): CharSequence {
+        val b = SpannableStringBuilder()
+        for (l in lines) {
+            val src = l.src?.trim().orEmpty()
+            val tr = l.tr?.trim().orEmpty()
+            if (src.isNotEmpty()) {
+                if (b.isNotEmpty()) b.append('\n')
+                val start = b.length
+                b.append(src)
+                // Gray only when a translation follows (source-only mode stays white).
+                if (tr.isNotEmpty()) {
+                    b.setSpan(RelativeSizeSpan(SOURCE_SCALE), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    b.setSpan(ForegroundColorSpan(Color.rgb(200, 200, 200)), start, b.length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+            }
+            if (tr.isNotEmpty()) {
+                if (b.isNotEmpty()) b.append('\n')
+                b.append(tr)
+            }
+        }
+        return if (b.isEmpty()) "…" else b
+    }
+
+    /**
+     * Wraps the text: height = content height up to [maxH]; when the content is taller, the
+     * child is bottom-aligned so the newest lines stay visible and the oldest are clipped.
+     */
+    private class BottomClip(ctx: Context) : FrameLayout(ctx) {
+        var maxH = Int.MAX_VALUE
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val c = getChildAt(0) ?: return super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            val w = MeasureSpec.getSize(widthMeasureSpec)
+            val cw = if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED)
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            else MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
+            c.measure(cw, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            setMeasuredDimension(
+                if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED) c.measuredWidth else w,
+                minOf(c.measuredHeight, maxH))
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            val c = getChildAt(0) ?: return
+            val h = b - t
+            c.layout(0, h - c.measuredHeight, r - l, h)
         }
     }
 

@@ -161,7 +161,9 @@ class MainActivity : FlutterFragmentActivity() {
                     "overlayShow" -> { SubtitleOverlay.show(this); result.success(null) }
                     "overlayHide" -> { SubtitleOverlay.hide(); result.success(null) }
                     "overlayText" -> {
-                        SubtitleOverlay.update(call.argument<String>("text") ?: "", call.argument<String>("hint"))
+                        val lines = (call.argument<List<Map<String, String?>>>("lines") ?: emptyList())
+                            .map { SubtitleOverlay.Line(it["src"], it["tr"]) }
+                        SubtitleOverlay.update(lines, call.argument<String>("hint"))
                         result.success(null)
                     }
                     "overlayStyle" -> {

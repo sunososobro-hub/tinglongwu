@@ -47,17 +47,14 @@ class SubtitleScreen extends StatelessWidget {
                         fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
                   ),
                 ),
-                if (pipeline.phoneSupported) ...[
-                  _SourceToggle(pipeline: pipeline),
-                  if (pipeline.source == AudioSourceKind.phone)
-                    IconButton(
-                      tooltip: '字幕視窗設定',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.tune, size: 20, color: Colors.white70),
-                      onPressed: () => _showOverlaySettings(context, pipeline),
-                    ),
-                  const SizedBox(width: 8),
-                ],
+                if (pipeline.phoneSupported) _SourceToggle(pipeline: pipeline),
+                IconButton(
+                  tooltip: '字幕顯示設定',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.tune, size: 20, color: Colors.white70),
+                  onPressed: () => _showOverlaySettings(context, pipeline),
+                ),
+                const SizedBox(width: 8),
                 PopupMenuButton<String>(
                   tooltip: 'Subtitle language',
                   initialValue: pipeline.target,
@@ -83,7 +80,10 @@ class SubtitleScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         for (var i = 0; i < subs.length; i++)
-                          _line(subs[i], isNewest: i == subs.length - 1, big: big),
+                          _line(subs[i],
+                              isNewest: i == subs.length - 1,
+                              big: big,
+                              mode: pipeline.overlayStyle.mode),
                       ],
                     ),
                   ),
@@ -111,28 +111,41 @@ class SubtitleScreen extends StatelessWidget {
     );
   }
 
-  Widget _line(Subtitle s, {required bool isNewest, required double big}) {
+  Widget _line(Subtitle s,
+      {required bool isNewest, required double big, required SubtitleMode mode}) {
     final pending = s.zh == null;
-    final text = pending ? s.ru : s.zh!;
-    final color = pending
-        ? const Color(0xFF8A8A8A)
-        : (isNewest ? Colors.white : const Color(0xFFB0B0B0));
-    final fs = pending ? 22.0 : (isNewest ? big : big * 0.75);
+    final fs = isNewest ? big : big * 0.75;
+    final bright = isNewest ? Colors.white : const Color(0xFFB0B0B0);
+    const gray = Color(0xFF8A8A8A);
+    Widget text(String t, double size, Color color, {bool underline = false}) => Text(
+          t,
+          style: TextStyle(
+            fontSize: size,
+            color: color,
+            height: 1.3,
+            fontWeight: FontWeight.w500,
+            decoration: underline ? TextDecoration.underline : TextDecoration.none,
+            decorationColor: Colors.amber,
+          ),
+        );
+    final List<Widget> parts;
+    if (mode == SubtitleMode.source) {
+      parts = [text(s.ru, fs, bright)];
+    } else if (pending) {
+      // Still translating: its source text in gray.
+      parts = [text(s.ru, 22, gray)];
+    } else {
+      final zh = s.zh!;
+      final src = s.ru.trim();
+      final showSrc = mode == SubtitleMode.both && src.isNotEmpty && src != zh.trim();
+      parts = [
+        if (showSrc) text(s.ru, (fs * 0.5).clamp(16.0, 24.0), gray),
+        text(zh, fs, bright, underline: !s.traditionalOk),
+      ];
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: fs,
-          color: color,
-          height: 1.3,
-          fontWeight: FontWeight.w500,
-          decoration: (!pending && !s.traditionalOk)
-              ? TextDecoration.underline
-              : TextDecoration.none,
-          decorationColor: Colors.amber,
-        ),
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: parts),
     );
   }
 }
@@ -196,27 +209,42 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('浮動字幕視窗', style: TextStyle(fontSize: 18)),
+              const Text('字幕顯示', style: TextStyle(fontSize: 18)),
+              const SizedBox(height: 8),
+              SegmentedButton<SubtitleMode>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final m in SubtitleMode.values)
+                    ButtonSegment(value: m, label: Text(m.label)),
+                ],
+                selected: {st.mode},
+                onSelectionChanged: (v) => pipeline.setSubtitleMode(v.first),
+              ),
               const SizedBox(height: 4),
-              const Text('拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，點一下回到聽龍。',
+              const Text('雙語：原文在上（小字），譯文在下。聽龍畫面和浮動視窗都適用。',
                   style: TextStyle(fontSize: 13, color: Colors.white60)),
-              const SizedBox(height: 12),
-              Text('字級 ${st.fontSize.round()}'),
-              Slider(
-                value: st.fontSize,
-                min: OverlayStyle.minFontSize,
-                max: OverlayStyle.maxFontSize,
-                divisions: (OverlayStyle.maxFontSize - OverlayStyle.minFontSize).round(),
-                onChanged: (v) =>
-                    pipeline.setOverlayStyle(OverlayStyle(fontSize: v, opacity: st.opacity)),
-              ),
-              Text('背景不透明度 ${(st.opacity * 100).round()}%'),
-              Slider(
-                value: st.opacity,
-                divisions: 20,
-                onChanged: (v) =>
-                    pipeline.setOverlayStyle(OverlayStyle(fontSize: st.fontSize, opacity: v)),
-              ),
+              if (pipeline.phoneSupported) ...[
+                const SizedBox(height: 16),
+                const Text('浮動字幕視窗', style: TextStyle(fontSize: 16)),
+                const SizedBox(height: 4),
+                const Text('拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，高度隨內容增加。點一下回到聽龍。',
+                    style: TextStyle(fontSize: 13, color: Colors.white60)),
+                const SizedBox(height: 12),
+                Text('字級 ${st.fontSize.round()}'),
+                Slider(
+                  value: st.fontSize,
+                  min: OverlayStyle.minFontSize,
+                  max: OverlayStyle.maxFontSize,
+                  divisions: (OverlayStyle.maxFontSize - OverlayStyle.minFontSize).round(),
+                  onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(fontSize: v)),
+                ),
+                Text('背景不透明度 ${(st.opacity * 100).round()}%'),
+                Slider(
+                  value: st.opacity,
+                  divisions: 20,
+                  onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(opacity: v)),
+                ),
+              ],
             ],
           ),
         );

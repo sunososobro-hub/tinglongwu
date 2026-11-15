@@ -43,17 +43,82 @@ class SilenceWatch {
 }
 
 /// Overlay content: the newest [maxLines] finished translations, oldest first, one per line.
-String overlayText(Iterable<String?> translations, {int maxLines = 2}) {
-  final done = [
-    for (final t in translations)
-      if (t != null && t.trim().isNotEmpty) t.trim()
-  ];
-  return done.sublist(math.max(0, done.length - maxLines)).join('\n');
+String overlayText(Iterable<String?> translations, {int maxLines = 2}) => displayLines(
+      [for (final t in translations) ('', t)],
+      SubtitleMode.zh,
+      maxEntries: maxLines,
+    ).map((l) => l.translation).join('\n');
+
+/// What the subtitles show (in the app and the floating overlay): the translation only, the
+/// recognised source text only, or both (source on top, smaller). Default: both.
+enum SubtitleMode {
+  zh('中文'),
+  source('原文'),
+  both('雙語');
+
+  const SubtitleMode(this.label);
+  final String label;
+
+  static const fallback = SubtitleMode.both;
+
+  /// Unknown / empty / null fall back to [fallback].
+  static SubtitleMode parse(String? s) {
+    final c = (s ?? '').trim().toLowerCase();
+    for (final m in values) {
+      if (m.name == c) return m;
+    }
+    return fallback;
+  }
 }
 
-/// Overlay font size (sp) and background opacity (0..1), kept in a one-line text file.
+/// One displayed subtitle: [source] (ASR text) and/or [translation]; null = not shown.
+class SubtitleLine {
+  const SubtitleLine({this.source, this.translation});
+  final String? source;
+  final String? translation;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SubtitleLine && other.source == source && other.translation == translation;
+
+  @override
+  int get hashCode => Object.hash(source, translation);
+
+  @override
+  String toString() => 'SubtitleLine($source | $translation)';
+}
+
+/// The newest [maxEntries] subtitles to display for [mode], oldest first, from
+/// (source, translation) pairs (translation null = still translating).
+/// - zh: finished translations only.
+/// - source: every recognised line, no wait for the translation.
+/// - both: finished lines with the source above the translation; the source is dropped when it
+///   equals the translation (source language == subtitle language passthrough).
+List<SubtitleLine> displayLines(Iterable<(String, String?)> subs, SubtitleMode mode,
+    {int maxEntries = 2}) {
+  final out = <SubtitleLine>[];
+  for (final (rawSrc, rawTr) in subs) {
+    final src = rawSrc.trim();
+    final tr = rawTr?.trim() ?? '';
+    switch (mode) {
+      case SubtitleMode.zh:
+        if (tr.isNotEmpty) out.add(SubtitleLine(translation: tr));
+      case SubtitleMode.source:
+        if (src.isNotEmpty) out.add(SubtitleLine(source: src));
+      case SubtitleMode.both:
+        if (tr.isNotEmpty) {
+          out.add(SubtitleLine(source: src.isEmpty || src == tr ? null : src, translation: tr));
+        }
+    }
+  }
+  return out.sublist(math.max(0, out.length - maxEntries));
+}
+
+/// Overlay font size (sp), background opacity (0..1) and [SubtitleMode], kept in a one-line
+/// text file ("20.0,0.60,both"; older two-field files load with the default mode).
 class OverlayStyle {
-  const OverlayStyle({this.fontSize = defaultFontSize, this.opacity = defaultOpacity});
+  const OverlayStyle(
+      {this.fontSize = defaultFontSize, this.opacity = defaultOpacity, this.mode = SubtitleMode.fallback});
 
   static const defaultFontSize = 20.0;
   static const defaultOpacity = 0.6;
@@ -62,14 +127,22 @@ class OverlayStyle {
 
   final double fontSize;
   final double opacity;
+  final SubtitleMode mode;
+
+  OverlayStyle copyWith({double? fontSize, double? opacity, SubtitleMode? mode}) => OverlayStyle(
+        fontSize: fontSize ?? this.fontSize,
+        opacity: opacity ?? this.opacity,
+        mode: mode ?? this.mode,
+      );
 
   OverlayStyle clamp() => OverlayStyle(
         fontSize: fontSize.clamp(minFontSize, maxFontSize).toDouble(),
         opacity: opacity.clamp(0.0, 1.0).toDouble(),
+        mode: mode,
       );
 
-  /// "20.0,0.60"
-  String format() => '${fontSize.toStringAsFixed(1)},${opacity.toStringAsFixed(2)}';
+  /// "20.0,0.60,both"
+  String format() => '${fontSize.toStringAsFixed(1)},${opacity.toStringAsFixed(2)},${mode.name}';
 
   /// Bad or missing values fall back to the defaults.
   static OverlayStyle parse(String? s) {
@@ -79,15 +152,19 @@ class OverlayStyle {
     return OverlayStyle(
       fontSize: (f == null || f.isNaN) ? defaultFontSize : f,
       opacity: (o == null || o.isNaN) ? defaultOpacity : o,
+      mode: SubtitleMode.parse(parts.length > 2 ? parts[2] : null),
     ).clamp();
   }
 
   @override
   bool operator ==(Object other) =>
-      other is OverlayStyle && other.fontSize == fontSize && other.opacity == opacity;
+      other is OverlayStyle &&
+      other.fontSize == fontSize &&
+      other.opacity == opacity &&
+      other.mode == mode;
 
   @override
-  int get hashCode => Object.hash(fontSize, opacity);
+  int get hashCode => Object.hash(fontSize, opacity, mode);
 }
 
 class OverlayStyleStore {

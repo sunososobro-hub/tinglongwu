@@ -285,6 +285,9 @@ class Pipeline extends ChangeNotifier {
     }
   }
 
+  /// 中文 / 原文 / 雙語 for the app and the overlay; saved with the overlay style.
+  void setSubtitleMode(SubtitleMode m) => setOverlayStyle(overlayStyle.copyWith(mode: m));
+
   void setOverlayStyle(OverlayStyle s) {
     overlayStyle = s.clamp();
     _styleStore?.save(overlayStyle);
@@ -297,11 +300,11 @@ class Pipeline extends ChangeNotifier {
   void notifyListeners() {
     super.notifyListeners();
     if (source != AudioSourceKind.phone || _disposed) return;
-    final text = overlayText(subtitles.map((s) => s.zh));
-    final key = '${silenceHint ? 1 : 0}|$text';
+    final lines = displayLines([for (final s in subtitles) (s.ru, s.zh)], overlayStyle.mode);
+    final key = '${silenceHint ? 1 : 0}|${lines.join('\n')}';
     if (key == _overlaySent) return;
     _overlaySent = key;
-    PlaybackCapture.overlayText(text, silenceHint ? silenceHintText : null).catchError((_) {});
+    PlaybackCapture.overlayLines(lines, silenceHint ? silenceHintText : null).catchError((_) {});
   }
 
   void _fail(String msg) {

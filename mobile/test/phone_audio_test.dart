@@ -50,6 +50,64 @@ void main() {
     });
   });
 
+  group('displayLines / SubtitleMode (#998)', () {
+    const subs = [
+      ('Hello and welcome.', '你好，歡迎。'),
+      ('I am Gary.', '我是 Gary。'),
+      ('Still translating', null),
+    ];
+
+    test('zh: finished translations only, newest two', () {
+      expect(displayLines(subs, SubtitleMode.zh), const [
+        SubtitleLine(translation: '你好，歡迎。'),
+        SubtitleLine(translation: '我是 Gary。'),
+      ]);
+    });
+
+    test('source: every recognised line, no wait for the translation', () {
+      expect(displayLines(subs, SubtitleMode.source), const [
+        SubtitleLine(source: 'I am Gary.'),
+        SubtitleLine(source: 'Still translating'),
+      ]);
+    });
+
+    test('both: source above translation, finished lines only', () {
+      expect(displayLines(subs, SubtitleMode.both, maxEntries: 1), const [
+        SubtitleLine(source: 'I am Gary.', translation: '我是 Gary。'),
+      ]);
+    });
+
+    test('both: passthrough (source == translation) shows it once', () {
+      expect(displayLines(const [(' Hi there ', 'Hi there')], SubtitleMode.both),
+          const [SubtitleLine(translation: 'Hi there')]);
+    });
+
+    test('blank entries are skipped', () {
+      expect(displayLines(const [('  ', '  '), ('', null)], SubtitleMode.both), isEmpty);
+      expect(displayLines(const [('  ', null)], SubtitleMode.source), isEmpty);
+    });
+
+    test('parse: names, case, fallback to both', () {
+      expect(SubtitleMode.parse('zh'), SubtitleMode.zh);
+      expect(SubtitleMode.parse(' SOURCE '), SubtitleMode.source);
+      expect(SubtitleMode.parse(null), SubtitleMode.both);
+      expect(SubtitleMode.parse('x'), SubtitleMode.both);
+      expect(SubtitleMode.fallback, SubtitleMode.both);
+      expect([for (final m in SubtitleMode.values) m.label], ['中文', '原文', '雙語']);
+    });
+
+    test('mode is saved with the overlay style; old two-field files default to both', () {
+      const s = OverlayStyle(fontSize: 18, opacity: 0.5, mode: SubtitleMode.source);
+      expect(s.format(), '18.0,0.50,source');
+      expect(OverlayStyle.parse(s.format()), s);
+      expect(OverlayStyle.parse('22.0,0.40').mode, SubtitleMode.both);
+      expect(const OverlayStyle().mode, SubtitleMode.both);
+      expect(s.copyWith(fontSize: 30).mode, SubtitleMode.source);
+      expect(s.copyWith(mode: SubtitleMode.zh),
+          const OverlayStyle(fontSize: 18, opacity: 0.5, mode: SubtitleMode.zh));
+    });
+  });
+
   group('OverlayStyle (#998)', () {
     test('parse/format round trip and fallbacks', () {
       const s = OverlayStyle(fontSize: 24, opacity: 0.35);
