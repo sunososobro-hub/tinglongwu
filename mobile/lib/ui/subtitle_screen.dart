@@ -8,11 +8,56 @@ import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
 import 'advanced_screen.dart';
 
-/// Full-screen dark subtitle view.
-///
-/// Top: tiny debug line. Middle: finished Chinese lines (newest brightest,
-/// large). Bottom: gray draft source text (partial ASR) and, while a sentence is
-/// still being translated, its source text in gray.
+/// Palette shared with the desktop app (tinglongwu/gui/app.py), dark values.
+class UiColors {
+  static const bg = Color(0xFF14182E);
+  static const headerTop = Color(0xFF1D2447);
+  static const headerBottom = Color(0xFF2C2350);
+  static const other = Color(0xFF2B3250);
+  static const otherFg = Color(0xFFF2F4FF);
+  static const me = Color(0xFF3F5FE0);
+  static const accent = Color(0xFF4A63D8);
+  static const sub = Color(0xFFA9B1D6);
+  static const draft = Color(0xFF8A8A8A);
+  static const line = Color(0xFF2A3052);
+  static const dotIdle = Color(0xFF8A8A8A);
+  static const dotLoading = Color(0xFFE0A000);
+  static const dotOn = Color(0xFF2EA043);
+  static const dotError = Color(0xFFD0453A);
+}
+
+/// Footer state: idle (stopped) / loading (switching source) / listening / error.
+enum ListenState { idle, loading, on, error }
+
+extension ListenStateUi on ListenState {
+  String get label => const {
+        ListenState.idle: '待機',
+        ListenState.loading: '載入中',
+        ListenState.on: '聆聽中',
+        ListenState.error: '錯誤',
+      }[this]!;
+  Color get dot => const {
+        ListenState.idle: UiColors.dotIdle,
+        ListenState.loading: UiColors.dotLoading,
+        ListenState.on: UiColors.dotOn,
+        ListenState.error: UiColors.dotError,
+      }[this]!;
+}
+
+ListenState listenStateOf(Pipeline p) {
+  if (p.stage == Stage.error || p.stage == Stage.missingModels) return ListenState.error;
+  if (p.switchingSource || p.stage != Stage.listening) return ListenState.loading;
+  return p.paused ? ListenState.idle : ListenState.on;
+}
+
+/// Empty-state hint (differs for 看影片翻譯).
+String emptyHint({required bool phone}) =>
+    phone ? '播放影片，翻譯字幕會出現在這裡' : '對著手機說話，翻譯字幕會出現在這裡';
+
+/// Dark conversation view: header (mode, settings, language pill), one bubble per finished
+/// line (small source above, large translation below), a dashed grey bubble for the pending
+/// draft, and a footer with status + a round start/stop mic button. The pipeline has no
+/// speaker sides, so every line is a left "other" bubble.
 class SubtitleScreen extends StatelessWidget {
   const SubtitleScreen({super.key, required this.pipeline});
   final Pipeline pipeline;
@@ -27,7 +72,7 @@ class SubtitleScreen extends StatelessWidget {
         '${p.lastTokens ?? '-'} tok | ttft $ttft | q ${p.queued} | drop ${p.dropped}';
   }
 
-  /// Grey line at the bottom: the source draft (#1064; not in 中文-only mode), else '…'.
+  /// Grey draft text (#1064; not in 中文-only mode); '…' = speech going on, no text yet.
   String _draftText() {
     final d = pipeline.draftRu;
     if (d.isEmpty || (d != '…' && pipeline.overlayStyle.mode == SubtitleMode.zh)) return '…';
@@ -40,106 +85,90 @@ class SubtitleScreen extends StatelessWidget {
     final size = MediaQuery.sizeOf(context);
     final landscape = size.width > size.height;
     final big = pipeline.overlayStyle.screenFontSize(landscape: landscape);
+    final mode = pipeline.overlayStyle.mode;
+    final phone = pipeline.source == AudioSourceKind.phone;
+    final draft = pipeline.silenceHint ? silenceHintText : (pipeline.paused ? '' : _draftText());
+    final showDraft = draft.isNotEmpty && (pipeline.silenceHint || draft != '…' || subs.isNotEmpty);
+    final empty = subs.isEmpty && !showDraft;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(children: [
-                if (showDebugStats(releaseMode: kReleaseMode))
-                  Expanded(
-                    child: Text(
-                      _debug(),
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
-                    ),
-                  )
-                else
-                  const Spacer(),
-                if (pipeline.phoneSupported) _SourceToggle(pipeline: pipeline),
-                IconButton(
-                  tooltip: '字幕顯示設定',
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.tune, size: 20, color: Colors.white70),
-                  onPressed: () => _showOverlaySettings(context, pipeline),
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String>(
-                  tooltip: '字幕要翻成哪種語言',
-                  initialValue: pipeline.target,
-                  onSelected: pipeline.setTarget,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        TargetLanguage.targetLabel(pipeline.target),
-                        style: const TextStyle(fontSize: 14, color: Colors.white70),
+      backgroundColor: UiColors.bg,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Header(
+              pipeline: pipeline,
+              debug: showDebugStats(releaseMode: kReleaseMode) ? _debug() : null),
+          Expanded(
+            child: empty
+                ? _EmptyState(phone: phone)
+                : Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < subs.length; i++)
+                            _line(subs[i],
+                                isNewest: i == subs.length - 1, big: big, mode: mode),
+                          if (showDraft)
+                            _bubble(
+                              dashed: true,
+                              children: [
+                                Text(
+                                  draft,
+                                  style: TextStyle(
+                                      fontSize: pipeline.overlayStyle.secondaryFontSize,
+                                      color: pipeline.silenceHint
+                                          ? Colors.amber
+                                          : UiColors.draft,
+                                      height: 1.25),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
-                      const Text(
-                        TargetLanguage.sourceHint,
-                        style: TextStyle(fontSize: 10, color: Colors.white54),
-                      ),
-                    ],
-                  ),
-                  itemBuilder: (_) => [
-                    for (final code in TargetLanguage.options.keys)
-                      PopupMenuItem(value: code, child: Text(TargetLanguage.targetLabel(code))),
-                  ],
-                ),
-              ]),
-              const SizedBox(height: 8),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  child: SingleChildScrollView(
-                    reverse: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var i = 0; i < subs.length; i++)
-                          _line(subs[i],
-                              isNewest: i == subs.length - 1,
-                              big: big,
-                              mode: pipeline.overlayStyle.mode),
-                      ],
                     ),
                   ),
-                ),
-              ),
-              const Divider(color: Colors.white12, height: 20),
-              ConstrainedBox(
-                constraints: BoxConstraints(minHeight: landscape ? 36 : 60),
-                child: Text(
-                  pipeline.silenceHint
-                      ? silenceHintText
-                      : _draftText(),
-                  style: TextStyle(
-                      fontSize: pipeline.overlayStyle.secondaryFontSize,
-                      color: pipeline.silenceHint ? Colors.amber : const Color(0xFF8A8A8A),
-                      height: 1.25),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
           ),
-        ),
+          _Footer(pipeline: pipeline),
+        ],
       ),
+    );
+  }
+
+  static const _radius = BorderRadius.only(
+    topLeft: Radius.circular(4),
+    topRight: Radius.circular(16),
+    bottomLeft: Radius.circular(16),
+    bottomRight: Radius.circular(16),
+  );
+
+  Widget _bubble({required List<Widget> children, bool dashed = false}) {
+    final box = Container(
+      constraints: const BoxConstraints(maxWidth: 560),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: dashed ? Colors.transparent : UiColors.other,
+        borderRadius: _radius,
+      ),
+      foregroundDecoration: dashed ? const _DashedDecoration() : null,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(alignment: Alignment.centerLeft, child: box),
     );
   }
 
   Widget _line(Subtitle s,
       {required bool isNewest, required double big, required SubtitleMode mode}) {
     final pending = s.zh == null;
-    final fs = isNewest ? big : big * 0.75;
-    final bright = isNewest ? Colors.white : const Color(0xFFB0B0B0);
-    const gray = Color(0xFF8A8A8A);
+    final fs = isNewest ? big : big * 0.85;
+    const fg = UiColors.otherFg;
     Widget text(String t, double size, Color color, {bool underline = false}) => Text(
           t,
           style: TextStyle(
@@ -153,22 +182,201 @@ class SubtitleScreen extends StatelessWidget {
         );
     final List<Widget> parts;
     if (mode == SubtitleMode.source) {
-      parts = [text(s.ru, fs, bright)];
+      parts = [text(s.ru, fs, fg)];
     } else if (pending) {
       // Still translating: its source text in gray.
-      parts = [text(s.ru, pipeline.overlayStyle.secondaryFontSize, gray)];
+      parts = [text(s.ru, pipeline.overlayStyle.secondaryFontSize, UiColors.draft)];
     } else {
       final zh = s.zh!;
       final src = s.ru.trim();
       final showSrc = mode == SubtitleMode.both && src.isNotEmpty && src != zh.trim();
       parts = [
-        if (showSrc) text(s.ru, (fs * 0.5).clamp(16.0, 24.0), gray),
-        text(zh, fs, bright, underline: !s.traditionalOk),
+        if (showSrc)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: text(s.ru, (fs * 0.5).clamp(14.0, 22.0), UiColors.sub),
+          ),
+        text(zh, fs, fg, underline: !s.traditionalOk),
       ];
     }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: parts),
+    return _bubble(dashed: pending && mode != SubtitleMode.source, children: parts);
+  }
+}
+
+/// Dashed outline for the pending bubble.
+class _DashedDecoration extends Decoration {
+  const _DashedDecoration();
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _DashedPainter();
+}
+
+class _DashedPainter extends BoxPainter {
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration cfg) {
+    final size = cfg.size;
+    if (size == null) return;
+    final rr = SubtitleScreen._radius.toRRect(offset & size);
+    final paint = Paint()
+      ..color = UiColors.draft
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final path = Path()..addRRect(rr);
+    for (final m in path.computeMetrics()) {
+      for (var d = 0.0; d < m.length; d += 9) {
+        canvas.drawPath(m.extractPath(d, (d + 5).clamp(0.0, m.length)), paint);
+      }
+    }
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.phone});
+  final bool phone;
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(phone ? Icons.ondemand_video : Icons.mic_none,
+                size: 40, color: UiColors.sub.withValues(alpha: 0.6)),
+            const SizedBox(height: 10),
+            Text(emptyHint(phone: phone),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, color: UiColors.sub, height: 1.6)),
+          ]),
+        ),
+      );
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.pipeline, this.debug});
+  final Pipeline pipeline;
+  final String? debug;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [UiColors.headerTop, UiColors.headerBottom],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 6, 8, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (debug != null)
+              Text(debug!,
+                  style: const TextStyle(
+                      fontSize: 11, color: Colors.white38, fontFamily: 'monospace')),
+            Row(children: [
+              Expanded(
+                child: pipeline.phoneSupported
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: _SourceToggle(pipeline: pipeline))
+                    : const Text(CaptureModeText.micLabel,
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
+              IconButton(
+                tooltip: '字幕顯示設定',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.settings, size: 20, color: Colors.white70),
+                onPressed: () => _showOverlaySettings(context, pipeline),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            PopupMenuButton<String>(
+              tooltip: '字幕要翻成哪種語言',
+              initialValue: pipeline.target,
+              onSelected: pipeline.setTarget,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Text(TargetLanguage.sourceShort,
+                      style: TextStyle(fontSize: 12, color: UiColors.sub)),
+                  const Text('  →  ', style: TextStyle(fontSize: 12, color: UiColors.sub)),
+                  Text(TargetLanguage.options[TargetLanguage.normalize(pipeline.target)]!,
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
+                  const Icon(Icons.arrow_drop_down, size: 16, color: UiColors.sub),
+                ]),
+              ),
+              itemBuilder: (_) => [
+                for (final code in TargetLanguage.options.keys)
+                  PopupMenuItem(value: code, child: Text(TargetLanguage.targetLabel(code))),
+              ],
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer({required this.pipeline});
+  final Pipeline pipeline;
+
+  @override
+  Widget build(BuildContext context) {
+    final st = listenStateOf(pipeline);
+    final stopped = pipeline.paused;
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: UiColors.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(children: [
+            Expanded(
+              child: Row(children: [
+                Container(
+                  key: const Key('statusDot'),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: st.dot, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(st.label, style: const TextStyle(fontSize: 12, color: UiColors.sub)),
+              ]),
+            ),
+            Tooltip(
+              message: stopped ? '開始聆聽' : '停止聆聽',
+              child: GestureDetector(
+                key: const Key('micButton'),
+                onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
+                child: Container(
+                  width: 62,
+                  height: 62,
+                  decoration: BoxDecoration(
+                    color: UiColors.accent,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                          color: UiColors.accent.withValues(alpha: stopped ? 0 : 0.22),
+                          spreadRadius: 8),
+                    ],
+                  ),
+                  child: Icon(stopped ? Icons.mic_off : Icons.mic,
+                      size: 28, color: Colors.white),
+                ),
+              ),
+            ),
+            const Expanded(child: SizedBox()),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -224,7 +432,7 @@ class _SourceToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final phone = pipeline.source == AudioSourceKind.phone;
-    final color = phone ? Colors.lightBlueAccent : Colors.white70;
+    final color = phone ? Colors.lightBlueAccent : Colors.white;
     Widget option(bool p) => ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(p ? Icons.ondemand_video : Icons.record_voice_over),

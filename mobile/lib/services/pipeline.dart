@@ -264,6 +264,39 @@ class Pipeline extends ChangeNotifier {
     _micSub = stream.listen(_asr!.feedPcm16, onError: (Object e) => _fail('Mic error: $e'));
   }
 
+  /// Footer mic button (#1121): true = listening is stopped (mic closed / phone audio dropped).
+  bool paused = false;
+  bool _pausing = false;
+
+  /// Stops or resumes listening without leaving the screen. Mic: closes/reopens the recorder.
+  /// Phone audio: the capture stays up, its audio is just dropped.
+  Future<void> setPaused(bool v) async {
+    if (v == paused || _pausing || _disposed || _asr == null || switchingSource) return;
+    _pausing = true;
+    paused = v;
+    if (v) {
+      _draft.reset();
+      draftRu = '';
+      silenceHint = false;
+    }
+    notifyListeners();
+    try {
+      if (source == AudioSourceKind.mic) {
+        if (v) {
+          await _stopMic();
+        } else {
+          await _startMic();
+        }
+      }
+    } catch (e) {
+      _log.e('setPaused($v) failed: $e');
+      if (!v) _fail('Mic error: $e');
+    } finally {
+      _pausing = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   Future<void> _stopMic() async {
     final sub = _micSub;
     _micSub = null;
@@ -277,6 +310,7 @@ class Pipeline extends ChangeNotifier {
   /// system rule) and shows the floating overlay. Returns a short user message on failure.
   Future<String?> setSource(AudioSourceKind k) async {
     if (k == source || switchingSource || _asr == null || _disposed) return null;
+    paused = false;
     switchingSource = true;
     notifyListeners();
     try {
@@ -323,6 +357,7 @@ class Pipeline extends ChangeNotifier {
   }
 
   void _onPhonePcm(Uint8List b) {
+    if (paused) return;
     _asr?.feedPcm16(b);
     final s = _silence.feed(b);
     if (s != silenceHint) {
@@ -340,6 +375,7 @@ class Pipeline extends ChangeNotifier {
     _log.i('phone audio stopped');
     source = AudioSourceKind.mic;
     silenceHint = false;
+    paused = false;
     PlaybackCapture.overlayHide().catchError((_) {});
     notifyListeners();
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
