@@ -15,11 +15,26 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import ttfs  # noqa: E402
 
-INSTALLERS = {"linux": "scripts/install.sh", "macos": "scripts/mac_install.sh"}
+INSTALLERS = {"linux": "scripts/install.sh", "macos": "scripts/mac_install.sh", "windows": None}
 
 
-def commands(os_name, directory):
+def windows_commands(directory, setup_exe):
+    """#934: the released wizard run silently into DIRECTORY (cmd.exe commands). The wizard installs and downloads the
+    models in one go, so `install` is the whole wizard run and `setup` only prints its install.log (the download
+    lines ttfs.parse_download_bytes reads)."""
+    bs = "\\"
+    d = directory.rstrip("\\/")
+    install = 'start /wait "" "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="%s"' % (setup_exe, d)
+    setup = 'type "%s"' % bs.join([d, "install.log"])
+    clip = bs.join([d] + ttfs.TTFS_CLIP.split("/"))
+    tlwu = '"%s" --file "%s" --device cpu' % (bs.join([d, ".venv", "Scripts", "tlwu.exe"]), clip)
+    return install, setup, tlwu
+
+
+def commands(os_name, directory, setup_exe=None):
     """(install, setup, tlwu) shell commands for ttfs.measure. Models are skipped in the install step only."""
+    if os_name == "windows":
+        return windows_commands(directory, setup_exe)
     script = INSTALLERS[os_name]
     d = shlex.quote(directory)
     env = "TLWU_DIR=%s TLWU_YES=1 TLWU_NO_UPDATE=1 TLWU_UI_LANG=en" % d
@@ -44,8 +59,11 @@ def main(argv=None):
     ap.add_argument("--dir", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--summary", default=None)
+    ap.add_argument("--setup-exe", default=None, help="windows: path of the released tinglongwu-setup.exe")
     a = ap.parse_args(argv)
-    install, setup, tlwu = commands(a.os, a.dir)
+    if a.os == "windows" and not a.setup_exe:
+        ap.error("--setup-exe is required for --os windows")
+    install, setup, tlwu = commands(a.os, a.dir, a.setup_exe)
     rc = ttfs.main(["--install", install, "--setup", setup, "--tlwu", tlwu, "--out", a.out])
     import json
     try:
@@ -53,6 +71,10 @@ def main(argv=None):
             doc = json.load(f)
     except (OSError, ValueError):
         doc = {}
+    if doc.get("download_seconds") is not None:   # #934: download_mb implied by the baseline speed
+        doc["download_mb"] = round(doc["download_seconds"] * ttfs.BASELINE_MBPS / 8, 1)
+        with open(a.out, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2)
     text = summary_text(a.os, doc)
     print(text)
     if a.summary:

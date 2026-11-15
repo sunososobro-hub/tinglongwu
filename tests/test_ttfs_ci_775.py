@@ -57,3 +57,31 @@ def test_no_subtitle_is_a_failure_with_na_summary(tmp_path, monkeypatch):
     summ = tmp_path / "s.md"
     assert m.main(["--os", "macos", "--dir", "/d", "--out", str(tmp_path / "o.json"), "--summary", str(summ)]) == 2
     assert "ttfs_seconds: n/a" in summ.read_text(encoding="utf-8")
+
+
+def test_windows_commands_934():
+    """#934: windows runs the released wizard silently, prints its install.log as the setup step, runs the venv tlwu."""
+    m = _load()
+    install, setup, tlwu = m.commands("windows", r"C:\t\tlwu", r"C:\dl\tinglongwu-setup.exe")
+    assert install.startswith(r'start /wait "" "C:\dl\tinglongwu-setup.exe" /VERYSILENT')
+    assert r'/DIR="C:\t\tlwu"' in install and "TLWU_SKIP_MODELS" not in install
+    assert setup == r'type "C:\t\tlwu\install.log"'
+    assert tlwu == (r'"C:\t\tlwu\.venv\Scripts\tlwu.exe" --file "C:\t\tlwu\tinglongwu\data\selftest_en.wav" '
+                    r'--device cpu')
+
+
+def test_windows_needs_setup_exe_and_writes_download_mb(tmp_path, monkeypatch):
+    import pytest
+    m = _load()
+    with pytest.raises(SystemExit):
+        m.main(["--os", "windows", "--dir", "C:\d", "--out", str(tmp_path / "o.json")])
+
+    def fake_main(argv):
+        with open(argv[argv.index("--out") + 1], "w", encoding="utf-8") as f:
+            json.dump({"ttfs_seconds": 300.0, "excl_download_seconds": 100.0, "download_seconds": 200.0}, f)
+        return 0
+
+    monkeypatch.setattr(m.ttfs, "main", fake_main)
+    out = tmp_path / "ttfs.json"
+    assert m.main(["--os", "windows", "--dir", "C:\d", "--setup-exe", "x.exe", "--out", str(out)]) == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["download_mb"] == 1250.0
