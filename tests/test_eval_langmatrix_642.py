@@ -116,3 +116,11 @@ def test_workflow_builds_its_matrix_from_the_config():
     strat = jobs["pair"]["strategy"]
     assert strat["fail-fast"] is False and "fromJSON(needs.matrix.outputs.jobs)" in strat["matrix"]["include"]
     assert jobs["pair"]["timeout-minutes"] <= 30
+
+
+def test_committed_config_runs_every_pair_on_20_pinned_clips():
+    # #642 acceptance: ~20 pinned FLEURS clips per pair, no pair left unpinned
+    from tlwu_eval import langmatrix
+    jobs, unpinned = langmatrix.matrix(langmatrix.load_config())
+    assert unpinned == []
+    assert {j["pair"]: j["clips"] for j in jobs} == {j["pair"]: 20 for j in jobs} and len(jobs) == 12
