@@ -27,3 +27,58 @@ def test_initial_number_then_name_and_color_kept_on_rename():
 
 def test_no_label_no_avatar():
     assert speaker_initial(SpeakerBook(), "") == "" and speaker_initial(SpeakerBook(), None) == ""
+
+
+class _FakeText:
+    def __init__(self):
+        self.out = []
+
+    def index(self, *_a):
+        return "1.0"
+
+    def configure(self, **_k):
+        pass
+
+    def delete(self, *_a):
+        pass
+
+    def insert(self, _where, s, *_tags):
+        self.out.append(s)
+
+    def tag_configure(self, *_a, **_k):
+        pass
+
+    def tag_bind(self, *_a, **_k):
+        pass
+
+    def yview(self, *_a):
+        pass
+
+
+def _header(label):
+    """Run App.render_log on a fake window with one 'other' bubble; return the header line."""
+    from types import SimpleNamespace
+
+    from tinglongwu.gui.app import App
+
+    tx = _FakeText()
+    app = SimpleNamespace(
+        log_text=tx, state=SimpleNamespace(history=lambda: [("src", "hi", False)]), settings={},
+        spk_colors=SpeakerColors(), spk_book=SpeakerBook(), _spk_tags_bound=set(),
+        _log_at_end=lambda: False, _log_to_end=lambda: None, placeholder=lambda: None,
+        _speaker_label=lambda _i: label, _insert_bubble=lambda *a: None, _rename_speaker=lambda r: None)
+    App.render_log(app)
+    return "".join(tx.out).split("\n")[0]
+
+
+def test_labelled_header_shows_name_not_other_side_word():
+    from tinglongwu.i18n import t
+
+    head = _header(("說話者1", "說話者 1"))
+    assert "說話者 1" in head and head.strip().startswith("1") and t("gui_chat_other") not in head
+
+
+def test_unlabelled_header_keeps_other_side_word():
+    from tinglongwu.i18n import t
+
+    assert _header(None) == t("gui_chat_other")

@@ -1610,13 +1610,13 @@ class App:
             src, text = src.removeprefix(SPEAK_MARK), text.removeprefix(SPEAK_MARK)
             head = t("gui_chat_me" if mine else "gui_chat_other")
             lab = None if mine else self._speaker_label(i)
-            if lab:  # 0.3.8: "對方 · 說話者 1" - the label is a link: click to rename
+            if lab:  # 0.3.8: "[1] 說話者 1" (no 對方 word) - the name is a link: click to rename
                 raw, shown = lab
                 tag = f"spk:{raw}"
                 color = self.spk_colors.color(raw)  # first-seen order, stable for the session
                 av = f"spkav:{raw}"  # one tag per speaker, re-configured in place: no images, no widgets
                 tx.insert("end", f" {speaker_initial(self.spk_book, raw)} ", (f"{side}_head", av))
-                tx.insert("end", " " + head + " · ", f"{side}_head")
+                tx.insert("end", " ", f"{side}_head")
                 tx.insert("end", shown, (f"{side}_head", tag))
                 tx.insert("end", "\n", f"{side}_head")
                 tx.tag_configure(av, background=color, foreground=SPK_AVATAR_FG)
