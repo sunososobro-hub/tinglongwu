@@ -86,9 +86,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - name: Audio libs (Linux)
+      - name: Audio libs and Tk (Linux)
+        # #1116: every package install.sh checks for (audio libs + Tk for the system python3), so its y/N apt prompt,
+        # which gets EOF from </dev/null, never fires; the clean runner's python3 has no tkinter.
         if: runner.os == 'Linux'
-        run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libsndfile1 libpulse0
+        run: sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libsndfile1 libpulse0 python3-tk
       - name: One-line install from the release assets (timed)
         if: runner.os != 'Windows'
         env:
@@ -122,7 +124,9 @@ jobs:
           $t0 = Get-Date
           $base = if ($env:RELEASE_TAG) { "releases/download/$env:RELEASE_TAG" } else { "releases/latest/download" }
           $url = "https://github.com/${{ github.repository }}/$base/install.ps1"
-          $script = (Invoke-WebRequest -UseBasicParsing -Uri $url).Content
+          # #1116: a release asset is application/octet-stream, so PS 5.1 gives .Content as Byte[]; iex needs the text
+          $content = (Invoke-WebRequest -UseBasicParsing -Uri $url).Content
+          if ($content -is [byte[]]) { $script = [Text.Encoding]::UTF8.GetString($content).TrimStart([char]0xFEFF) } else { $script = [string]$content }
           Invoke-Expression $script *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\release-install.log"
           if (-not (Test-Path "$env:TLWU_DIR\.venv\Scripts\python.exe")) { throw "venv missing: installer failed" }
           Write-Host ("install took {0:N0} s" -f ((Get-Date) - $t0).TotalSeconds)
