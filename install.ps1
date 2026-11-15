@@ -267,9 +267,13 @@ function Make-Shortcut($name, $target, $arguments) {
 if ($SkipShortcut) { Info "-SkipShortcut: skipped / 略過" }
 else {
     if (Test-Path $VGui) { Make-Shortcut '聽攏有 tinglongWu' $VGui '' } else { Make-Shortcut '聽攏有 tinglongWu' $VPyW '-m tinglongwu.gui' }
-    if ($DryRun -or (Test-Path $TalkPs1)) {
-        Make-Shortcut '聽攏有 說話模式' "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" "-NoExit -ExecutionPolicy Bypass -File `"$TalkPs1`""
-    } else { Info "No tlwu-talk.ps1 (talk mode not set up): talk shortcut skipped / 未建立說話模式捷徑" }
+    # One icon: speaking is built into the main app, so the old separate talk-mode shortcut is gone (and removed
+    # from earlier installs). tlwu-talk.ps1 stays for command-line use.
+    $OldTalk = Join-Path ([Environment]::GetFolderPath('Desktop')) '聽攏有 說話模式.lnk'
+    if (Test-Path $OldTalk) {
+        if ($DryRun) { Write-Host "  [dry-run] remove old shortcut $OldTalk" -ForegroundColor DarkGray }
+        else { try { Remove-Item $OldTalk -Force -ErrorAction Stop; Info "Removed the old talk-mode shortcut / 已移除舊的說話模式捷徑" } catch { } }
+    }
 }
 
 # ---------------------------------------------------------------- 8. self-test + summary
@@ -302,7 +306,7 @@ if ($Warnings.Count -gt 0) {
 }
 Write-Host ""
 Write-Host "  Launch / 啟動: double-click the desktop shortcut '聽攏有 tinglongWu' (or $VGui)" -ForegroundColor White
-Write-Host "  Talk mode / 說話模式: desktop shortcut '聽攏有 說話模式' (Meet microphone = CABLE Output)" -ForegroundColor White
+Write-Host "  Talk mode / 說話模式: in the same app, press 'I speak' (Meet microphone = CABLE Output)" -ForegroundColor White
 foreach ($l in (Get-TlwuUninstallHint $Root ([bool]$FromSetup))) { Write-Host $l }
 if ($DryRun) { Write-Host ""; Write-Host "  (dry run finished, nothing was changed / 試跑結束，未做任何更動)" -ForegroundColor Yellow }
 exit 0

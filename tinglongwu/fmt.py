@@ -36,7 +36,8 @@ def _enable_vt() -> bool:
     if sys.platform != "win32" or _vt_done:
         return True
     try:
-        os.system("")  # turns on VT processing in the Windows console
+        if sys.stdout is not None and sys.__stdout__ is not None:  # pythonw: no console; os.system would spawn one
+            os.system("")  # turns on VT processing in the Windows console
         _vt_done = True
     except Exception:  # noqa: BLE001
         return False

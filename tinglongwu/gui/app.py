@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
-from .icon import apply_icon, set_app_id
+from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
@@ -48,6 +48,13 @@ FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Fo
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+# settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
+SIDE_W = 168
+SIDE_LOGO_PX = 84
+SIDE = {"dark": {"top": "#1d2447", "bottom": "#2c2350", "fg": "#eef0ff", "sub": "#a9b1d6", "pill": "#4a63d8",
+                 "wave": "#3a3f72"},
+        "light": {"top": "#e9eeff", "bottom": "#e3dcfa", "fg": "#1d2447", "sub": "#5b6390", "pill": "#4a63d8",
+                  "wave": "#cfd3f3"}}
 # #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
 DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
 
@@ -434,6 +441,65 @@ class App:
         st = ttk.Style(self.root)  # #455: tighter buttons keep the control bar within 420 px (per theme)
         for style in ("Bar.TButton", "Bar.Toolbutton"):
             st.configure(style, padding=(4, 1))
+        st.configure("Adv.Toolbutton", anchor="w", padding=(8, 2))
+        if getattr(self, "side", None) is not None:
+            self._draw_sidebar()
+
+    # -- settings-panel sidebar (logo + nav), drawn on one canvas so it adds no interactive widgets ------------------
+    def _build_sidebar(self, p):
+        self.side = c = tk.Canvas(p, width=SIDE_W, highlightthickness=0, bd=0)
+        c.pack(side="left", fill="y")
+        self.side_logo = None
+        try:
+            img = tk.PhotoImage(master=p, file=str(icon_path("tinglongwu.png")))
+            k = max(1, img.width() // SIDE_LOGO_PX)
+            self.side_logo = img.subsample(k, k) if k > 1 else img
+        except Exception:  # noqa: BLE001 - a missing logo must never stop the GUI
+            _diag.swallowed(__name__)
+        c.bind("<Configure>", lambda _e: self._draw_sidebar())
+        self.side_nav = (("gui_menu_settings", "⚙", None), ("gui_menu_about", "ⓘ", self.show_about),
+                         ("gui_menu_help", "?", self.show_tour))
+
+    def _draw_sidebar(self):
+        c = self.side
+        pal = SIDE["light" if self.settings.get("theme") == "light" else "dark"]
+        c.delete("all")
+        h = max(c.winfo_height(), 400)
+        top, bot = (tuple(int(col[i:i + 2], 16) for i in (1, 3, 5)) for col in (pal["top"], pal["bottom"]))
+        steps = 48
+        for i in range(steps):
+            mix = [round(a + (b - a) * i / (steps - 1)) for a, b in zip(top, bot)]
+            y0 = h * i // steps
+            c.create_rectangle(0, y0, SIDE_W, h * (i + 1) // steps + 1, outline="", fill="#%02x%02x%02x" % tuple(mix))
+        # soft sound-wave arcs at the bottom (listening), instead of a picture background
+        for r in (70, 110, 150, 190):
+            c.create_arc(SIDE_W // 2 - r, h - r // 3, SIDE_W // 2 + r, h + r * 5 // 3, start=40, extent=100,
+                         style="arc", outline=pal["wave"], width=2)
+        y = 22
+        if self.side_logo is not None:
+            c.create_image(SIDE_W // 2, y, image=self.side_logo, anchor="n")
+            y += self.side_logo.height() + 6
+        c.create_text(SIDE_W // 2, y, text="聽龍", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
+        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=(FONT_FAMILY, 10), anchor="n")
+        y += 74
+        for i, (key, glyph, cmd) in enumerate(self.side_nav):
+            tag = f"nav{i}"
+            active = cmd is None
+            if active:
+                self._round_rect(12, y - 4, SIDE_W - 12, y + 32, 10, fill=pal["pill"], outline="", tags=tag)
+            fg = "#ffffff" if active else pal["fg"]
+            c.create_text(30, y + 14, text=glyph, fill=fg, font=(FONT_FAMILY, 12, "bold"), tags=tag)
+            c.create_text(52, y + 14, text=t(key), fill=fg, font=(FONT_FAMILY, 11), anchor="w", tags=tag)
+            if cmd is not None:
+                c.tag_bind(tag, "<Button-1>", lambda _e, f=cmd: f())
+                c.tag_bind(tag, "<Enter>", lambda _e: c.configure(cursor="hand2"))
+                c.tag_bind(tag, "<Leave>", lambda _e: c.configure(cursor=""))
+            y += 44
+
+    def _round_rect(self, x0, y0, x1, y1, r, **kw):
+        pts = (x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1, x0 + r, y1, x0, y1,
+               x0, y1 - r, x0, y0 + r, x0, y0)
+        return self.side.create_polygon(pts, smooth=True, **kw)
 
     def _toggle_theme(self):
         self.apply_theme("dark" if self.v_dark.get() else "light")
@@ -464,6 +530,7 @@ class App:
         self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
         self.build_menubar()
         self._upd_relabel()
+        self._draw_sidebar()
         self.tour.relabel()
         self.render_log()
         if self.overlay.visible:
@@ -636,6 +703,8 @@ class App:
         for key, (kind, values, var) in self.kind_combos.items():
             self.combos[key].configure(values=choice_labels(kind, values))
             var.set(var.get() + "")  # re-fires the write trace -> the shown name follows the language
+        if getattr(self, "home_target", None) is not None:
+            self.home_target.configure(values=self.combos["target"].cget("values"))
         # engine / model carry marks in the old language: rebuild them from the stored ids (settings value unchanged)
         eng = engine_from_label(self.v_engine.get())
         self.combos["engine"].configure(values=engine_labels())
@@ -771,8 +840,20 @@ class App:
         p.title("tinglongwu")
         p.resizable(True, True)  # #939: a normal resizable window; size and position are remembered
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
-        self.frm = f = ttk.Frame(p, padding=(10, 4, 10, 8))
+        self._build_sidebar(p)
+        body = ttk.Frame(p, padding=(12, 6, 12, 6))
+        body.pack(side="left", fill="both", expand=True)
+        if p.winfo_screenheight() >= SHORT_SCREEN_PX:  # #886: a 768 px screen has no height to spare for the title
+            self._tx(ttk.Label(body, font=(FONT_FAMILY, 14, "bold")), "gui_menu_settings").pack(anchor="w", pady=(0, 6))
+        card = "Card.TFrame" if sv_ttk is not None else "TFrame"
+        self.card_lang = ttk.Frame(body, style=card, padding=(10, 4, 10, 4))  # Listen / Speak + language + status
+        self.card_lang.pack(fill="x")
+        self.card_adv = ttk.Frame(body, style=card, padding=(10, 4, 10, 4))  # the Advanced toggle + everything else
+        self.card_adv.pack(fill="x", pady=(6, 0))
+        self.frm = f = ttk.Frame(self.card_adv, padding=(0, 4, 0, 0))
         f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
+        for col in (1, 5):  # the two control columns share the card's width (the "..." buttons stay narrow)
+            f.columnconfigure(col, weight=1)
         self.combos = {}
         self.kind_combos = {}
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
@@ -829,7 +910,7 @@ class App:
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
-        self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
+        self.status_box = sb = ttk.Frame(self.card_lang, padding=(0, 4, 0, 0))  # #737: status/notice stay visible, collapsed
         ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
         self.v_dl_pct = tk.IntVar(value=0)  # #739: first-Start download progress bar (hidden unless a download runs)
         self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
@@ -1090,24 +1171,33 @@ class App:
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
-        q = ttk.Frame(self.panel, padding=(10, 6, 10, 0))  # #886: compact top
+        q = ttk.Frame(self.card_lang)  # #886: compact top
         q.pack(fill="x")
         self.status_box.pack(fill="x")
         # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)
-        self.adv_btn = ttk.Checkbutton(self.panel, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
-        self.adv_btn.pack(anchor="w", padx=10, pady=(6, 0))
+        self.adv_btn = ttk.Checkbutton(self.card_adv, variable=self.v_adv, style="Adv.Toolbutton", command=self._adv_toggled)
+        self.adv_btn.pack(anchor="w", fill="x")
         self.set_advanced(bool(self.settings["advanced_open"]))
         # #737: the one picker on the first screen is the OTHER side's language (= source language `lang`, the same
         # variable as tour step 1); my language (`target`) is under Advanced. quick_settings() turns it into
         # listen: other -> mine, speak: mine -> other.
-        self._tx(ttk.Label(q), "gui_quick_other").grid(row=0, column=0, sticky="w")
+        # Owner 2026-11-15: just "my language" + "other side's language" on top; the same two settings no longer repeat
+        # under Advanced as "source language / translate to" (they are row 0 of the Advanced grid).
+        tgt = self.combos["target"]
+        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        self.home_target = ttk.Combobox(q, textvariable=tgt.cget("textvariable"), values=tgt.cget("values"),
+                                        state="readonly", width=14)
+        self.home_target.grid(row=0, column=1, sticky="we", padx=(6, 0))
+        self._tx(ttk.Label(q), "gui_quick_other").grid(row=1, column=0, sticky="w", pady=(2, 0))
         self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=14)
-        self.home_lang.grid(row=0, column=1, sticky="we", padx=(6, 0))
+        self.home_lang.grid(row=1, column=1, sticky="we", padx=(6, 0), pady=(2, 0))
+        for w in self.frm.grid_slaves(row=0):
+            w.grid_remove()
         # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
-            b.grid(row=1, column=col, sticky="we", ipady=3, pady=(6, 0), padx=(0 if col == 0 else 6, 0))  # #886
+            b.grid(row=2, column=col, sticky="we", ipady=3, pady=(6, 0), padx=(0 if col == 0 else 6, 0))  # #886
             self.quick_btns[mode] = b
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
@@ -1427,21 +1517,37 @@ class App:
         (messagebox.showinfo if ok else messagebox.showwarning)(t("gui_check_setup"), text, parent=self.root)
 
     def report_problem(self):
+        """The GPU / package probes in env_info() take seconds: run them (and the browser launch) off the GUI
+        thread so the window never freezes; a "no browser" URL comes back through the queue."""
         from ..report import open_report
         from .core import report_info
 
-        open_report(info=report_info(self.settings), say=lambda m: self._status_text(t("gui_open_url", url=m[:80])))
+        info = report_info(self.settings)
+
+        def work():
+            try:
+                open_report(info=info, say=lambda m: self.q.put(("status", t("gui_open_url", url=m[:80]))))
+            except Exception:  # noqa: BLE001 - a failed report must not kill the thread silently
+                _diag.swallowed(__name__)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def copy_ai_prompt(self):
         """#940: prompt + report_info + last 50 redacted log lines to the clipboard; nothing is sent anywhere."""
         from ..report import build_ai_text, env_info
         from .core import report_info
 
-        info = dict(env_info())
-        info.update(report_info(self.settings))
-        self.root.clipboard_clear()
-        self.root.clipboard_append(build_ai_text(info))
-        self._status_text(t("gui_copied_ai"))
+        extra = report_info(self.settings)
+
+        def work():  # slow probes off the GUI thread; the clipboard is set by poll() on the GUI thread
+            try:
+                info = dict(env_info())
+                info.update(extra)
+                self.q.put(("clip_ai", build_ai_text(info)))
+            except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def collect(self):
         s = self.settings
@@ -1576,6 +1682,10 @@ class App:
                     self._status_text(ev[1])
                 elif kind == "doctor":
                     self._show_setup_check(ev[1], ev[2])
+                elif kind == "clip_ai":
+                    self.root.clipboard_clear()
+                    self.root.clipboard_append(ev[1])
+                    self._status_text(t("gui_copied_ai"))
                 elif kind == "dl_done":
                     self._download_done(ev[1], ev[2])
                 elif kind.startswith("upd_"):

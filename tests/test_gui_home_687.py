@@ -59,14 +59,15 @@ def _outside_advanced(a):
     return [w for w in _walk(a.panel) if w.winfo_class() in INTERACTIVE and w not in inside and w is not a.adv_btn]
 
 
-def test_fresh_config_shows_three_controls_and_advanced_is_collapsed(home_app):
+def test_fresh_config_shows_four_controls_and_advanced_is_collapsed(home_app):
+    """Owner 2026-11-15: my language + other side's language + Listen / Speak."""
     make, _ = home_app
     a = make()
     a.toggle_adjust()
     a.root.update()
     assert a.settings["advanced_open"] is False and not a.frm.winfo_ismapped()
     controls = _outside_advanced(a)
-    assert sorted(w.winfo_class() for w in controls) == ["TButton", "TButton", "TCombobox"]
+    assert sorted(w.winfo_class() for w in controls) == ["TButton", "TButton", "TCombobox", "TCombobox"]
     assert all(w.winfo_ismapped() for w in controls)
 
 
