@@ -106,7 +106,7 @@ def test_advanced_open_state_survives_restart(home_app):
     ("zh-tw", "ru", ("ru", "zh-tw"), ("zh", "ru")),
     ("en", "zh", ("zh", "en"), ("en", "zh-tw")),
     ("zh-tw", "auto", ("auto", "zh-tw"), ("zh", "en")),  # other side unknown: the #294 fallback
-    ("zh-cn", "zh", ("zh", "zh-cn"), ("zh", "en")),  # other side = my own language: the #294 fallback
+    ("zh-cn", "en", ("en", "zh-cn"), ("zh", "en")),  # #981: other side = my own language is refused (test_session_route_981)
 ])
 def test_other_side_language_drives_listen_source_and_speak_target(mine, other, listen, speak):
     from tinglongwu.gui import core

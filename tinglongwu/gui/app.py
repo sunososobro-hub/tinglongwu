@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SameLanguageError, SEND_MODES, session_route, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
@@ -676,8 +676,11 @@ class App:
     def _pair_changed(self):
         """The direction the next Start runs: Speak flips it the #294 way (my language -> the other one)."""
         s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
-        if self.v_mode.get() == "speak":
-            s = quick_settings(s, "speak")
+        try:
+            s = quick_settings(s, "speak" if self.v_mode.get() == "speak" else "listen")
+        except SameLanguageError as e:  # #981: shown on the bar at once, before Start is pressed
+            self.v_pair.set(t(e.key))
+            return
         # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
         self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure))
 
@@ -1389,7 +1392,14 @@ class App:
             self._sync_quick()
             return
         self.collect()
-        run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+        try:
+            run = quick_settings(self.settings, mode) if mode else dict(self.settings)
+            if not mode:  # the Start button keeps its saved source, but never runs one language into itself
+                session_route("listen", run.get("target"), run.get("lang"))
+        except SameLanguageError as e:  # #981: same language on both sides: say so, no run starts
+            self.set_status(e.key)
+            self._show_panel()
+            return
         if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
             return
         if self._offer_model(run, mode):  # #739: a missing speech model downloads here with a progress bar
