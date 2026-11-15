@@ -1,6 +1,4 @@
 """#611 (#595 part 4): the GUI topic panel model lists each finished topic; the default follows CUDA / bake-off."""
-import time
-
 from tinglongwu import topics
 from tinglongwu.gui.topics_panel import TopicPanel, topics_default
 
