@@ -807,6 +807,9 @@ class App:
                                  command=self._scene_changed)
             self._tx(rb, "gui_scene_" + sc).pack(side="left", padx=(0, 4))
             self.scene_btns.append(rb)
+        self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))  # 0.3.8: speaker labels (both scenes)
+        self._tx(ttk.Checkbutton(scene_row, variable=self.v_spk, command=self._spk_toggled), "gui_spk").pack(
+            side="left", padx=(10, 0))
         row1 = ttk.Frame(b)
         row1.pack(fill="x")
         self.v_mic = tk.BooleanVar(value=True)
@@ -835,6 +838,56 @@ class App:
         """0.3.8: remember the scene (applies at the next Start; the buttons are disabled while running)."""
         self.settings["scene"] = self.v_scene.get()
         save_settings(self.settings)
+
+    def _spk_toggled(self):
+        """0.3.8: 標示說話者. On + pack missing -> ask, download in a worker thread (Tk never blocks); the labels start
+        with the next Start. Declined / failed -> back to off."""
+        from ..models import models_dir
+        from . import speaker_pack
+
+        def start():
+            self.downloading = "speaker"
+            self.start_dl = StartDownload("speaker")
+            self.v_dl_pct.set(0)
+            self.dl_bar.pack(anchor="w", pady=(4, 0))
+            self._status_text(t("gui_dl_running", model="speaker"))
+            req = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "requirements-speaker.txt")
+            threading.Thread(target=speaker_pack.run_download, args=(self.q.put, models_dir(), req), daemon=True).start()
+
+        want = self.v_spk.get()
+        if want and self.downloading:  # another download is running: not now
+            self.v_spk.set(False)
+            return
+        try:
+            res = speaker_pack.on_toggle(want, models_dir(), lambda txt, ok, no: messagebox.askyesno(
+                t("gui_spk"), txt, parent=self.root), start, ui_lang())
+        except Exception:  # noqa: BLE001
+            _diag.swallowed(__name__)
+            res = "off"
+        if res == "downloading":
+            return  # saved when the download succeeded (_spk_done)
+        self.v_spk.set(res == "on")
+        self.settings["speaker_id"] = res == "on"
+        save_settings(self.settings)
+
+    def _spk_done(self, rc: int):
+        from ..models import models_dir
+        from . import speaker_pack
+
+        self.start_dl = None
+        self.dl_bar.pack_forget()
+        self.downloading = None
+        self._sync_quick()
+        frozen_gap = rc == 0 and speaker_pack.is_frozen() and speaker_pack.missing(models_dir())[0]
+        ok = rc == 0 and not any(speaker_pack.missing(models_dir()))
+        self.v_spk.set(ok)
+        self.settings["speaker_id"] = ok
+        save_settings(self.settings)
+        if ok:
+            self._status_text(t("gui_dl_ok", model="speaker"))
+        else:
+            self._status_text("")
+            messagebox.showwarning(t("gui_spk"), t("gui_spk_frozen" if frozen_gap else "gui_spk_fail"), parent=self.root)
 
     def _mic_label(self):
         self.btn_mic.configure(text=t("gui_mic_on" if self.v_mic.get() else "gui_mic_off"))
@@ -1571,9 +1624,9 @@ class App:
     def _make_labeler(self, mdir):
         """0.3.8 (worker thread): the async speaker-ID labeler for the listen leg, or None when sherpa-onnx / the
         speaker model is missing - then the GUI shows no labels and behaves exactly as before."""
-        from ..speaker_embed import make_async_labeler
+        from . import speaker_pack
 
-        lab = make_async_labeler(mdir, on_ready=lambda: self.q.put(("spk_ready",)))
+        lab = speaker_pack.make_labeler(self.settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)))
         self.spk = lab
         return lab
 
@@ -1770,6 +1823,9 @@ class App:
         messagebox.showwarning(vbcable.title_text(lang), vbcable.fail_text(lang), parent=self.root)
 
     def _pack_done(self, pack: str, rc: int):
+        if pack == "speaker":
+            self._dl_event(("pack_done", pack, rc))
+            return self._spk_done(rc)
         self._dl_event(("pack_done", pack, rc))
         self.start_dl = None
         self.dl_bar.pack_forget()
