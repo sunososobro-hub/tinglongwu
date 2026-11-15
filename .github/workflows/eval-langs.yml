@@ -123,6 +123,16 @@ jobs:
         run: |
           if [ -f "${{ matrix.data }}/manifest.jsonl" ]; then echo "cached"; else
             python scripts/bench/make_ci_smoke.py --pins "${{ matrix.pins }}" --out "${{ matrix.data }}"; fi
+      - name: "#968 speak noise gate: keyboard / mouse / fan noise send 0 lines, >= 9 of 10 zh clips are sent"
+        if: matrix.pair == 'zh->en'
+        run: |
+          set +e
+          python -m tlwu_eval.speak_noise --data "${{ matrix.data }}" --lang zh --speech 10 --min-speech 9 \
+            --model "$WHISPER" --device cpu --models-dir "$TLWU_MODELS" --out speak_noise.json > speak_noise.txt
+          rc=$?
+          cat speak_noise.txt
+          { echo "## speak noise gate (#968)"; echo; echo '```'; cat speak_noise.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
       - name: Mini-eval ${{ matrix.pair }} (CPU, ${{ matrix.clips }} clips)
         run: |
           set +e
@@ -152,4 +162,6 @@ jobs:
             r.json
             gate.md
             line.txt
+            speak_noise.json
+            speak_noise.txt
           if-no-files-found: warn
