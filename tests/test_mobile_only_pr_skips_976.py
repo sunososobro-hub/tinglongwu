@@ -122,5 +122,5 @@ def test_desktop_file_moved_into_mobile_runs_in_full(tmp_path, wf, job, src, dst
 @pytest.mark.parametrize("wf,job", JOBS)
 def test_large_file_list_with_an_early_desktop_path_runs_in_full(tmp_path, wf, job):
     """GitHub runs `shell: bash` with pipefail; grep must read all input so echo never dies of SIGPIPE."""
-    changed = ["tinglongwu/core.py"] + [f"mobile/lib/gen/f{i:05d}_{'x' * 60}.dart" for i in range(3000)]
+    changed = [".github/workflows/mobile-apk.yml"] + [f"mobile/lib/gen/f{i:05d}_{'x' * 60}.dart" for i in range(3000)]
     assert _decide(tmp_path, wf, job, changed) == "true"
