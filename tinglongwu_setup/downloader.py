@@ -480,6 +480,14 @@ SPEAKER_WHEELS = {  # CPython tag -> (file, size, sha256, url dir)
 }
 
 
+def expected_speaker_pins(tag=None, wheels=None, core=None):
+    """The .pins marker text for this interpreter (None when no wheel is pinned for its tag)."""
+    wheels = SPEAKER_WHEELS if wheels is None else wheels
+    core = SPEAKER_CORE_WHEEL if core is None else core
+    tag = tag or f"cp{sys.version_info.major}{sys.version_info.minor}"
+    return f"{wheels[tag][2]} {core[2]}" if tag in wheels else None
+
+
 def get_speaker_pylib(mdir, opener=_open, tag=None, wheels=None, core=None):
     """Download the sherpa-onnx + core wheels for this interpreter's tag, verify size + SHA256 (a bad file is deleted
     and setup aborts) and unzip them into models/speaker/pylib. Already unpacked (marker file) = nothing to do."""
@@ -493,8 +501,9 @@ def get_speaker_pylib(mdir, opener=_open, tag=None, wheels=None, core=None):
     pins = f"{wheels[tag][2]} {core[2]}"
     if marker.is_file() and marker.read_text("utf-8") == pins:
         return
-    dest.mkdir(parents=True, exist_ok=True)
+    (mdir / SPEAKER_DIR).mkdir(parents=True, exist_ok=True)
     tmp = mdir / SPEAKER_DIR / "wheels.part"
+    shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True, exist_ok=True)
     got = []
     for name, size, sha, base in (wheels[tag], core):
@@ -506,15 +515,21 @@ def get_speaker_pylib(mdir, opener=_open, tag=None, wheels=None, core=None):
             f.unlink()
             sys.exit(f"SHA256 MISMATCH vs committed pin for {name} - deleted, refusing. Run setup again.")
         got.append(f)
-    root = dest.resolve()
+    stage = mdir / SPEAKER_DIR / "pylib.new"  # extract beside the target, rename into place when complete
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    root = stage.resolve()
     for f in got:
         with zipfile.ZipFile(f) as z:
             for n in z.namelist():
-                if not (dest / n).resolve().is_relative_to(root):
+                if not (stage / n).resolve().is_relative_to(root):
+                    shutil.rmtree(stage, ignore_errors=True)
                     sys.exit(f"unsafe path in {f.name}: {n}")
-            z.extractall(dest)
+            z.extractall(stage)
+    (stage / ".pins").write_text(pins, "utf-8")
+    shutil.rmtree(dest, ignore_errors=True)  # the old / half-extracted tree goes first
+    os.replace(stage, dest)
     shutil.rmtree(tmp, ignore_errors=True)
-    marker.write_text(pins, "utf-8")
 
 
 def main(argv=None) -> int:

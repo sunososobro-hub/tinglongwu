@@ -26,13 +26,18 @@ BUTTONS = {"en": ("Download", "Not now"), "ru": ("Скачать", "Не сей�
            "ja": ("ダウンロード", "あとで")}
 
 
-def pkg_installed(mdir=None) -> bool:
+def pkg_installed(mdir=None, bundled: bool | None = None) -> bool:
+    """Package present. Packaged build: models/speaker/pylib must carry a valid .pins marker (a half-extracted
+    folder does not count) before it is put on sys.path."""
     import importlib.util
 
     if mdir is not None:
-        from ..speaker_pylib import activate  # packaged build: models/speaker/pylib (only reached with the toggle on)
+        from ..speaker_pylib import activate, pylib_valid  # only reached with the toggle on
 
-        activate(mdir)
+        if (is_frozen() if bundled is None else bundled) and not pylib_valid(mdir):
+            return False
+        if pylib_valid(mdir) or not (Path(mdir) / "speaker" / "pylib" / ".pins").exists():
+            activate(mdir)
 
     try:
         return importlib.util.find_spec("sherpa_onnx") is not None
@@ -60,11 +65,18 @@ def import_ok(mdir) -> bool:
 
 def missing(mdir, pkg_ok=None, model_ok=model_installed) -> tuple[bool, bool]:
     """(package missing, model missing)."""
-    return (not (pkg_ok() if pkg_ok else pkg_installed(mdir)), not model_ok(mdir))
+    if pkg_ok is None:
+        def pkg_ok():  # installed AND really imports (a broken DLL set counts as missing -> repair download)
+            return pkg_installed(mdir) and import_ok(mdir)
+    return (not pkg_ok(), not model_ok(mdir))
 
 
 def is_frozen() -> bool:
-    return bool(getattr(sys, "frozen", False))
+    """Packaged build? The shipped build is a C launcher + embedded Python (sys.frozen is never set): use the
+    same detection as the updater (TLWU_BUNDLED / sys.executable is tlwu.exe)."""
+    from .autoupdate import is_bundled
+
+    return is_bundled()
 
 
 def size_mb(mdir, frozen: bool | None = None, pytag: str | None = None, **kw) -> int:
@@ -98,17 +110,32 @@ def on_toggle(want: bool, mdir, ask, start, ui_lang: str = "en", **kw) -> str:
     return "downloading"
 
 
-def make_labeler(settings: dict, mdir, on_ready=None, factory=None):
+def make_labeler(settings: dict, mdir, on_ready=None, factory=None, clusterer=None):
     """The listen-leg labeler, or None. Toggle off -> None WITHOUT importing or loading sherpa / the model."""
     if not settings.get("speaker_id"):
         return None
     if factory is None:
         from ..speaker_embed import make_async_labeler as factory
+    if clusterer is not None:  # one clusterer per session: numbering / names / colors survive off -> on
+        return factory(mdir, on_ready=on_ready, clusterer=clusterer)
     return factory(mdir, on_ready=on_ready)
 
 
+def requirements_file(tmpdir=None) -> Path:
+    """The pinned requirement list, written from the copy embedded in speaker_reqs (requirements-speaker.txt is not
+    part of a non-editable install)."""
+    import tempfile
+
+    from ..speaker_reqs import REQUIREMENTS
+
+    f = Path(tempfile.mkdtemp(prefix="tlwu-spk-", dir=tmpdir)) / "requirements-speaker.txt"
+    f.write_text(REQUIREMENTS, "utf-8")
+    return f
+
+
 def pip_cmd(req: str | Path) -> list[str]:
-    return [sys.executable, "-m", "pip", "install", "--only-binary=:all:", "--require-hashes", "-r", str(req)]
+    return [sys.executable, "-m", "pip", "install", "--only-binary=:all:", "--require-hashes", "--force-reinstall",
+            "-r", str(req)]
 
 
 def model_cmd(mdir, bundled: bool | None = None, pylib: bool = False) -> list[str]:
@@ -129,10 +156,22 @@ def run_download(put, mdir, req, frozen: bool | None = None, runner=None, **kw) 
     frozen = is_frozen() if frozen is None else frozen
     no_pkg, no_model = missing(mdir, **kw)
     rc = 0
+    last = [""]  # the last child output line = the real reason when it fails
+    if req is None:
+        req = requirements_file()
 
     def inner(ev):
         if ev[0] != "pack_done":
+            if ev[0] == "pack_line" and len(ev) > 1 and str(ev[1]).strip():
+                last[0] = str(ev[1]).strip()[:120]
             put(ev)
+
+    if no_pkg and frozen:  # absent / half-extracted / broken: start from a clean folder
+        import shutil
+
+        from ..speaker_pylib import pylib_dir
+
+        shutil.rmtree(pylib_dir(mdir), ignore_errors=True)
 
     try:
         if no_pkg and not frozen:
@@ -142,5 +181,7 @@ def run_download(put, mdir, req, frozen: bool | None = None, runner=None, **kw) 
     except Exception as e:  # noqa: BLE001
         put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
         rc = -1
+    if rc != 0:
+        put(("pack_fail_reason", "speaker", last[0]))
     put(("pack_done", "speaker", rc))
     return rc

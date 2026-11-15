@@ -158,12 +158,12 @@ class AsyncSpeakerLabeler:
                     pass
 
 
-def make_async_labeler(mdir, on_ready=None) -> AsyncSpeakerLabeler | None:
+def make_async_labeler(mdir, on_ready=None, clusterer: SpeakerClusterer | None = None) -> AsyncSpeakerLabeler | None:
     """The GUI's labeler, or None when sherpa-onnx / the model is missing or fails to load (no labels, no error)."""
     try:
         if not available(mdir):
             return None
-        return AsyncSpeakerLabeler(SherpaEmbedder(mdir), on_ready=on_ready)
+        return AsyncSpeakerLabeler(SherpaEmbedder(mdir), clusterer=clusterer, on_ready=on_ready)
     except Exception:  # noqa: BLE001
         return None
 
@@ -179,7 +179,8 @@ class LiveSpeakers:
 
         self._lock = threading.Lock()
         self._cur = labeler
-        self._all = [labeler] if labeler is not None else []
+        self._all = [labeler] if labeler is not None else []  # live labelers only (retired ones are dropped)
+        self._maps: list[dict] = []  # result dicts of closed labelers: finished / still-arriving results stay readable
         self.closed = False
 
     def get(self):
@@ -193,11 +194,21 @@ class LiveSpeakers:
             if labeler is not None and not self.closed:
                 self._all.append(labeler)
         for lab in (old, labeler if self.closed else None):
-            if lab is not None:
-                try:
-                    lab.close()
-                except Exception:  # noqa: BLE001
-                    pass
+            self._retire(lab)
+
+    def _retire(self, lab):
+        """Close `lab` and drop it (its model / thread are not kept); only its result dict is retained."""
+        if lab is None:
+            return
+        try:
+            lab.close()
+        except Exception:  # noqa: BLE001
+            pass
+        with self._lock:
+            res = getattr(lab, "_res", None)
+            if isinstance(res, dict):
+                self._maps.append(res)
+                self._all = [x for x in self._all if x is not lab]
 
     def label(self, seg):
         lab = self._cur
@@ -209,6 +220,9 @@ class LiveSpeakers:
             return UNKNOWN_LABEL, 0.0
 
     def result(self, token):
+        for res in list(self._maps):
+            if res.get(token) is not None:
+                return res[token]
         for lab in list(self._all):
             r = lab.result(token)
             if r is not None:
@@ -221,14 +235,17 @@ class LiveSpeakers:
         for lab in list(self._all):
             if token in getattr(lab, "_res", {}) or lab is self._cur:
                 return lab.resolve(token, timeout)
+        for res in list(self._maps):
+            if token in res:
+                return res.get(token)
         return None
 
     def close(self):
         with self._lock:
             self.closed = True
             cur, self._cur = self._cur, None
-        if cur is not None:
-            try:
-                cur.close()
-            except Exception:  # noqa: BLE001
-                pass
+            rest = list(self._all)
+        for lab in rest:  # every labeler is closed and dropped (cur is among them)
+            self._retire(lab)
+        if cur is not None and cur not in rest:
+            self._retire(cur)

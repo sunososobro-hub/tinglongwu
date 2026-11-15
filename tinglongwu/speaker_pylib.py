@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 PYLIB = ("speaker", "pylib")
-_dll_handles: list = []
+_dll_handles: dict = {}  # pylib dir -> handles (DLL folders are added once)
 
 
 def pylib_dir(mdir) -> Path:
@@ -24,10 +24,29 @@ def activate(mdir) -> bool:
     if s not in sys.path:
         sys.path.insert(0, s)
     add = getattr(os, "add_dll_directory", None)
-    if add is not None:
+    if add is not None and s not in _dll_handles:
+        handles = _dll_handles[s] = []
         for folder in sorted({p.parent for p in d.rglob("*.dll")}):
             try:
-                _dll_handles.append(add(str(folder)))
+                handles.append(add(str(folder)))
             except OSError:
                 pass
     return True
+
+
+def pylib_valid(mdir) -> bool:
+    """The pylib folder was completely extracted: the .pins marker (written last, then the folder is renamed into
+    place) exists and matches the pins of this build when those are known."""
+    try:
+        got = (pylib_dir(mdir) / ".pins").read_text("utf-8")
+    except OSError:
+        return False
+    if not got.strip():
+        return False
+    try:
+        from tinglongwu_setup.downloader import expected_speaker_pins
+
+        want = expected_speaker_pins()
+    except Exception:  # noqa: BLE001 - setup package absent: the marker alone decides
+        return True
+    return want is None or got == want

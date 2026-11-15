@@ -1,12 +1,20 @@
-"""Load-time breakdown is not shown in the main window; only a slow load (>10 s) gets a friendly line."""
-from tinglongwu.gui.core import ready_extra_line
+"""Slow-load line: shown WHILE loading once 10 s have passed, never after ready (0.3.8 review round 2)."""
+from tinglongwu.gui.core import SLOW_LOAD_SECS, slow_load_line
 
 
-def test_fast_load_has_no_extra_line():
-    assert ready_extra_line("listening") == ""
-    assert ready_extra_line("listening - loaded in 4.9 s (speech model 3.5 s, translation 1.4 s)") == ""
+def test_before_threshold_no_line():
+    assert slow_load_line(0) == "" and slow_load_line(SLOW_LOAD_SECS - 0.1) == ""
 
 
-def test_slow_load_shows_friendly_line():
-    assert ready_extra_line("listening - loaded in 14.2 s (speech model 12.0 s, translation 2.2 s)")
-    assert ready_extra_line("listening - loaded in 10.0 s") == ""
+def test_after_threshold_friendly_line():
+    assert slow_load_line(SLOW_LOAD_SECS)
+    assert slow_load_line(42.0) == slow_load_line(10.0)
+
+
+def test_ready_path_in_app_does_not_add_the_line():
+    import inspect
+
+    from tinglongwu.gui import app
+
+    src = inspect.getsource(app)
+    assert "ready_extra_line" not in src and "_slow_clear()" in src

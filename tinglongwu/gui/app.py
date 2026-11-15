@@ -381,6 +381,9 @@ class App:
         self.q: queue.Queue = queue.Queue()
         self.state = SubtitleState(HISTORY_LINES)
         self.listening = False  # a session is running (Start pressed, worker not yet stopped)
+        self.spk_clusterer = None  # per-session SpeakerClusterer (reset on Start only)
+        self._slow_after = None  # Tk after() id of the 10 s slow-load line
+        self._slow_shown = False
         self.load_t0: float | None = None  # #332: monotonic time of Start while models load, else None
         self.load_shown = 0
         self.stop_ev = threading.Event()
@@ -438,6 +441,27 @@ class App:
     def set_status(self, key: str):
         self.status_key = key
         self.v_status.set(t(key))
+
+    def _slow_clear(self):
+        """Cancel the slow-load timer and forget the line (ready, Stop, error, new Start)."""
+        if self._slow_after is not None:
+            try:
+                self.root.after_cancel(self._slow_after)
+            except Exception:  # noqa: BLE001
+                pass
+        self._slow_after, self._slow_shown = None, False
+
+    def _slow_load_due(self):
+        """10 s after Start and still loading: add the friendly line under the loading status."""
+        self._slow_after = None
+        if self.load_t0 is None or self.errored:
+            return
+        from .core import slow_load_line
+
+        line = slow_load_line(time.monotonic() - self.load_t0)
+        if line:
+            self._slow_shown = True
+            self._status_text(f"{self.v_status.get()}\n{line}")
 
     def _status_text(self, text: str):
         self.status_key = None
@@ -852,8 +876,8 @@ class App:
             self.v_dl_pct.set(0)
             self.dl_bar.pack(anchor="w", pady=(4, 0))
             self._status_text(t("gui_dl_running", model="speaker"))
-            req = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "requirements-speaker.txt")
-            threading.Thread(target=speaker_pack.run_download, args=(self.q.put, models_dir(), req), daemon=True).start()
+            self._spk_fail_reason = ""
+            threading.Thread(target=speaker_pack.run_download, args=(self.q.put, models_dir(), None), daemon=True).start()
 
         want = self.v_spk.get()
         if want and self.downloading:  # another download is running: not now
@@ -883,16 +907,25 @@ class App:
         ok = rc == 0 and not any(speaker_pack.missing(models_dir()))
         import_failed = ok and not speaker_pack.import_ok(models_dir())  # installed but sherpa_onnx will not load
         ok = ok and not import_failed
+        wanted = bool(self.v_spk.get())  # the user may have switched it off while the download was running
+        if ok and not wanted:
+            self._status_text(t("gui_dl_ok", model="speaker"))  # pack stays installed; nothing is enabled / attached
+            return
         self.v_spk.set(ok)
         self.settings["speaker_id"] = ok
         save_settings(self.settings)
         if ok:
             self._spk_sync()  # live: the running session starts labelling now
-        if ok:
             self._status_text(t("gui_dl_ok", model="speaker"))
-        else:
-            self._status_text("")
-            messagebox.showwarning(t("gui_spk"), t("gui_spk_import" if import_failed else "gui_spk_fail"), parent=self.root)
+            return
+        self._status_text("")
+        if not wanted:
+            return
+        msg = t("gui_spk_import" if import_failed else "gui_spk_fail")
+        reason = getattr(self, "_spk_fail_reason", "")
+        if reason and not import_failed:
+            msg = f"{msg}\n\n{reason}"
+        messagebox.showwarning(t("gui_spk"), msg, parent=self.root)
 
     def _mic_label(self):
         self.btn_mic.configure(text=t("gui_mic_on" if self.v_mic.get() else "gui_mic_off"))
@@ -1637,7 +1670,8 @@ class App:
 
         from ..speaker_embed import LiveSpeakers
 
-        lab = speaker_pack.make_labeler(self.settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)))
+        lab = speaker_pack.make_labeler(self.settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)),
+                                        clusterer=self.spk_clusterer)
         self.spk = live = LiveSpeakers(lab)  # the pipeline reads it; the toggle can attach / detach mid-run
         return live
 
@@ -1655,11 +1689,12 @@ class App:
             return
         if live.get() is not None:
             return
-        mdir, settings = models_dir(), self.settings
+        mdir, settings, clusterer = models_dir(), self.settings, self.spk_clusterer
 
         def attach():
             try:
-                lab = speaker_pack.make_labeler(settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)))
+                lab = speaker_pack.make_labeler(settings, mdir, on_ready=lambda: self.q.put(("spk_ready",)),
+                                                clusterer=clusterer)
             except Exception:  # noqa: BLE001
                 _diag.swallowed(__name__)
                 return
@@ -2022,11 +2057,18 @@ class App:
         from ..speakers import SpeakerBook
 
         self._close_labeler()  # the previous session's worker thread and model
+        from ..speakers import SpeakerClusterer
+
         self.spk, self.spk_book = None, SpeakerBook()  # new session: new speakers, new names
+        self.spk_clusterer = SpeakerClusterer()  # ONE per session: off -> on keeps numbering, names and colors
         self.spk_colors = SpeakerColors()
         self.set_paused(False)
         self.stop_ev = threading.Event()
         self.load_t0 = time.monotonic()  # #332: Stop stays disabled ("Loading... N s") until the models are ready
+        self._slow_clear()
+        from .core import SLOW_LOAD_SECS
+
+        self._slow_after = self.root.after(int(SLOW_LOAD_SECS * 1000), self._slow_load_due)
         self.load_shown = 0
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
         self.set_status("gui_starting")
@@ -2130,11 +2172,18 @@ class App:
                 ev = self.q.get_nowait()
                 kind = ev[0]
                 if kind == "status":
-                    self._status_text(load_status_text(ev[1]))  # #1020: in the UI language
                     from ..cli import READY_STATUS  # already imported by the worker; not at GUI start (#332)
+
+                    st = load_status_text(ev[1])  # #1020: in the UI language
+                    if self._slow_shown and self.load_t0 is not None and not ev[1].startswith(READY_STATUS):
+                        from .core import slow_load_line
+
+                        st = f"{st}\n{slow_load_line(float('inf'))}"  # still loading: keep the slow line
+                    self._status_text(st)
 
                     if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
                         self.load_t0 = None
+                        self._slow_clear()  # ready: the slow-load line is gone for good
                         self.btn.configure(text=t("gui_stop"), state="normal")
                         self.set_dot("on")
                         ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
@@ -2145,11 +2194,8 @@ class App:
                             text = t("gui_ready_both") + (f" | {text}" if ready == SPEAK_HINT_CABLE else "")
                         import logging
 
-                        from .core import ready_extra_line
-
                         logging.getLogger("tlwu.gui").info("%s", load_status_text(ev[1]))  # breakdown: log only
-                        extra = ready_extra_line(ev[1])  # only a slow first load shows a friendly line
-                        self._status_text(text + "\n" + extra if extra else text)  # #294
+                        self._status_text(text)  # #294
                         self._sync_quick()
                 elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
                     from .core import cpu_mode_line
@@ -2168,6 +2214,8 @@ class App:
                     self._status_text(ev[1])
                 elif kind == "cable_done":
                     self._cable_done(ev[1])
+                elif kind == "pack_fail_reason":
+                    self._spk_fail_reason = ev[2]
                 elif kind == "pack_done":
                     self._pack_done(ev[1], ev[2])
                 elif kind == "dl_line":
@@ -2195,6 +2243,7 @@ class App:
                         self._gate_tick()
                         self.gate = None
                     self.load_t0 = None
+                    self._slow_clear()
                     self._close_labeler()  # Stop / #983 restart: the worker thread exits, the model is released
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:

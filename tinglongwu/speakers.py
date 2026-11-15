@@ -36,12 +36,19 @@ class SpeakerClusterer:
         self.min_seconds = min_seconds
         self._sums: list[list[float]] = []  # per-cluster sum of unit vectors
         self._last: str = UNKNOWN
+        import threading
+
+        self._lock = threading.Lock()  # one clusterer is shared by successive labelers (live toggle)
 
     @property
     def count(self) -> int:
         return len(self._sums)
 
     def assign(self, embedding: Sequence[float], seconds: float) -> str:
+        with self._lock:
+            return self._assign(embedding, seconds)
+
+    def _assign(self, embedding: Sequence[float], seconds: float) -> str:
         if seconds < self.min_seconds:
             return self._last
         norm = math.sqrt(sum(x * x for x in embedding))
