@@ -6,7 +6,7 @@ r"""Build the Windows installer wizard (tinglongwu-setup-<version>.exe) with Inn
 
 Stdlib only (runs from any Python 3.10+, also on Linux for the tests). The wizard ships the git-tracked app files
 (no tests, no .venv, no models) with the app icon tinglongwu/gui/assets/tinglongwu.ico, then runs install.ps1 through installer\run_install.ps1 and shows its steps.
-With --core-dir DIR the wizard instead ships the prebuilt Nuitka core folder DIR (tlwu.exe at the top) + LICENSE and
+With --core-dir DIR the wizard instead ships the prebuilt core folder DIR (tlwu.exe at the top) + LICENSE and
 its shortcuts start {app}\tlwu.exe; no install.ps1, no Python, no pip (the .iss `CoreLayout` define).
 ISCC.exe is found via %ISCC%, PATH, or the default Inno Setup 6 folders. Inno Setup is free (see LICENSE-InnoSetup.txt).
 """

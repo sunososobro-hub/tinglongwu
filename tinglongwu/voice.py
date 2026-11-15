@@ -167,7 +167,7 @@ class VoiceSink(Sink):
         return not self.t.is_alive()
 
 
-def cable_guard(sink: "VoiceSink", out_name: str, say, off=None):
+def cable_guard(sink: VoiceSink, out_name: str, say, off=None):
     """#710 (review of #749): on_reopen(name) for the capture source while the voice plays into a virtual cable.
     The mic was checked at start, but a device change can reopen the recorder on another device (e.g. the system
     default falls back to "CABLE Output"); then the voice is muted for good instead of feeding itself back into

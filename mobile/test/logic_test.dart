@@ -333,7 +333,8 @@ void senseVoiceRoutingTests() {
 class _FakeTranslator implements LineTranslator {
   String? seenSrc;
   @override
-  Future<Translation> translate(String ru, {String src = 'ru'}) async {
+  Future<Translation> translate(String ru,
+      {String src = 'ru', String tgt = 'zh'}) async {
     seenSrc = src;
     return Translation(
       zh: ru,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import statistics
 import sys
 
-from .report import PF_AVX2, _win_cpu
+from .report import _win_cpu
 
 SLOW_SEGMENTS = 3  # segments to see before judging
 SLOW_RATIO = 0.5  # (ASR + MT) p50 above segment length x this = below spec

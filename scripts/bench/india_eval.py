@@ -23,7 +23,6 @@ Downloads are untrusted data: archive members are matched by base name and writt
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import statistics
@@ -159,7 +158,7 @@ def fetch_svarah(data: Path, n: int) -> list[dict]:
         b = a.get("bytes") if isinstance(a, dict) else None
         if not b:
             raise RuntimeError(f"{SVARAH}: row {i} has no audio bytes")
-        ext = Path((a.get("path") or "x.wav")).suffix.lower()
+        ext = Path(a.get("path") or "x.wav").suffix.lower()
         name = f"svarah_{k + 1:03d}{ext if ext in ('.wav', '.flac', '.mp3', '.ogg') else '.wav'}"
         (out / name).write_bytes(b)
         meta = {c: r[c] for c in cols if c not in (audio_col, text_col) and isinstance(r[c], (str, int, float))}

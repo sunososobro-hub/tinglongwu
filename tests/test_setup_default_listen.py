@@ -1,6 +1,4 @@
 """#766: tlwu-setup --default-listen downloads exactly the default listen models."""
-import subprocess
-import sys
 
 import io
 

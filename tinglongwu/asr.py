@@ -17,7 +17,7 @@ from .device import asr_compute_type, cpu_threads, resolve_device
 from .hallucination import is_hallucination
 from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
 from .models import require
-from .repeat import collapse_repeats, filter_hallucination, has_loop
+from .repeat import filter_hallucination, has_loop
 
 
 @dataclass

@@ -49,6 +49,7 @@ CONFIGS = {"en": "en_us", "ja": "ja_jp", "ru": "ru_ru", "zh": "cmn_hans_cn"}
 # #596/#602: tier-2 languages (docs/support.json), each -> zh. FLEURS has Latin-American Spanish only (es_419).
 TIER2_CONFIGS = {"vi": "vi_vn", "th": "th_th", "id": "id_id", "es": "es_419", "de": "de_de", "fr": "fr_fr"}
 KO_CONFIGS = {"ko": "ko_kr"}  # #754: Korean language pack -> its own ko->zh-TW slice (eval/ko_pins.json)
+HI_CONFIGS = {"hi": "hi_in"}  # #642: Hindi -> zh slice for the eval/languages.json matrix (eval/hi_pins.json)
 REF_CONFIGS = {"en": "en_us", "zh": "cmn_hans_cn"}  # reference sides: ref_zh for every source, ref_en for zh clips
 MAX_DOWNLOAD = 500 * 2 ** 20  # #569 acceptance: total download < 500 MB
 MAX_CLIP_S = 15.0  # --pin skips longer clips so 20 clips stay well inside the smoke budget (TOTAL_BUDGET_S 300 s)
@@ -66,6 +67,10 @@ SETS = {
            "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/ko_pins.json (#754): Korean -> zh-TW slice "
                    "(FLEURS ko_kr test, CC-BY 4.0). Re-pin with --set ko --pin 5 only on purpose; the recorded ko->zh "
                    "chrF baseline depends on these clips."},
+    "hi": {"configs": HI_CONFIGS, "pins": ROOT / "eval" / "hi_pins.json", "scan": 120,
+           "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/hi_pins.json (#642): Hindi -> zh-TW slice "
+                   "(FLEURS hi_in test, CC-BY 4.0) for the eval/languages.json matrix. Re-pin with --set hi --pin 20 "
+                   "only on purpose; eval/baseline.json matrix numbers depend on these clips."},
 }
 
 LICENSE_TEXT = """Eval set for tlwu-eval, built by scripts/bench/make_ci_smoke.py (#569, #602) from the pins in

@@ -19,7 +19,7 @@ import re
 import sys
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 ALWAYS_KEEP = ("main", "dev", "gh-pages")
 
@@ -58,7 +58,7 @@ def _lock_issue(name: str) -> int | None:
 
 def plan(api, repo: str, keep=(), days: int = 7, now: datetime | None = None) -> list[tuple[str, str, str]]:
     """[(branch, sha, reason)] of branches to delete. Read-only."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     keep = set(ALWAYS_KEEP) | set(keep)
     branches = _pages(api, "/repos/%s/branches" % repo)
     prs: dict[str, list] = {}

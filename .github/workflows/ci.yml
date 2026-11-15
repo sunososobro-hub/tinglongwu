@@ -26,6 +26,8 @@ jobs:
           exit 1
       - name: Install (this is the only step that needs the network)
         run: pip install -e ".[dev]" "pytest-timeout==2.3.1"
+      - name: Lint (ruff, blocking, #665)
+        run: ruff check .
       - name: Script syntax (bash 3.2 compatible subset is checked by bash -n)
         run: |
           for f in scripts/*.sh scripts/i18n/*.sh; do bash -n "$f"; done

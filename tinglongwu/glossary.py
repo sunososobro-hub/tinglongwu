@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 HOTWORDS_MAX_CHARS = 200  # Whisper prompt budget: hotwords + previous text must stay far below 224 tokens
 MAX_PROMPT_ENTRIES = 8

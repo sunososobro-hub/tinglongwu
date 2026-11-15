@@ -20,7 +20,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
 
 SEND_KEY = "y"  # the only answer that sends (case-insensitive); everything else, a bare Enter included, discards
 DISCARD_KEYS = ("", "r", "x")

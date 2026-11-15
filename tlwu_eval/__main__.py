@@ -116,6 +116,8 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
                         f"prints COMET x100 per language against the floor {langfloor.COMET_FLOOR:.2f} (#472)")
     p.add_argument("--langs", default=None, metavar="it,pt,vi,th,id",
                    help="source languages to run instead of the focus pairs, each -> zh (zh -> en); #472 Hy-MT2 check")
+    p.add_argument("--pairs", default=None, metavar="en->zh,zh->en",
+                   help="explicit src->tgt pairs to run (#642: one per eval/languages.json matrix job); overrides --langs")
     p.add_argument("--chart", nargs="+", metavar=("OUT.html", "REPORT.json"),
                    help="draw the tier summaries of these reports side by side into OUT.html")
     p.add_argument("--gate", metavar="REPORT.json",
@@ -170,6 +172,12 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     langs = list(dict.fromkeys(x.strip().lower() for x in a.langs.split(",") if x.strip())) if a.langs is not None else None
     if langs == []:
         p.error("--langs needs at least one language code, e.g. --langs it,pt,vi,th,id")
+    if a.pairs is not None:
+        pairs = tuple(tuple(x.strip().lower().split("->")) for x in a.pairs.split(",") if x.strip())
+        if not pairs or any(len(x) != 2 or not all(x) or x[0] == x[1] for x in pairs):
+            p.error("--pairs needs src->tgt items, e.g. --pairs en->zh,zh->en")
+        run_kw.setdefault("pairs", pairs)
+        run_kw.setdefault("ja_extra", [])
     if langs:
         run_kw.setdefault("pairs", tuple((x, "en" if x == "zh" else "zh") for x in langs))
         run_kw.setdefault("ja_extra", [])  # the NHK ja group belongs to the focus run, not to a --langs check

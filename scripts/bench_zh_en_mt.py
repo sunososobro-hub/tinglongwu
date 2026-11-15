@@ -50,7 +50,7 @@ def main() -> None:
         rows.append((zh, en, dt))
         print(f"{dt:5.2f}s  {zh}  =>  {en}")
     print(f"n={len(lat)} p50={statistics.median(lat):.2f}s p95={pct(lat, .95):.2f}s max={max(lat):.2f}s")
-    out = Path.home() / f"mt_bench_hymt.tsv"
+    out = Path.home() / "mt_bench_hymt.tsv"
     out.write_text("".join(f"{z}\t{e.replace(chr(9), ' ')}\t{d:.3f}\n" for z, e, d in rows), "utf-8")
     print("wrote", out)
 

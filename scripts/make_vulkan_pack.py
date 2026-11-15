@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 PACK_NAME = "tlwu-vulkan-pack-{version}.zip"
 MANIFEST_NAME = "vulkan-pack.json"
+VERSION_FILE = "version.txt"           # = tinglongwu.mt_backend.VERSION_FILE (#909/#915)
 LLAMA_DLL = "llama.dll"              # the library mt_backend.vulkan_pack_dir() looks for at the top level
 VULKAN_DLL = "ggml-vulkan.dll"       # present only in a GGML_VULKAN=on build; a CPU-only wheel lacks it
 REQUIRED_DLLS = (LLAMA_DLL, VULKAN_DLL)
@@ -54,6 +55,8 @@ def build(lib_dir: Path, out_dir: Path, version: str) -> Path:
         for p in dlls:
             z.write(p, p.name)
         z.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        # #915: the app version the pack was built for; mt_backend.vulkan_pack_dir() refuses a pack without it (#909)
+        z.writestr(VERSION_FILE, version + "\n")
     return zpath
 
 

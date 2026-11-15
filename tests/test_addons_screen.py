@@ -1,6 +1,8 @@
 """#614: add-ons manager logic with a fake manifest and a fake network."""
 from tinglongwu.gui import addons
 
+OFFLINE = "No internet connection. Retry, or pick a local models zip."
+
 SHA = "a" * 64
 MAN = {"packs": {
     "gpu": {"feature": "gpu", "size": 2_400_000_000, "sha256": SHA, "url": "u"},
@@ -30,8 +32,8 @@ def test_offline_gives_plain_message_not_traceback():
     def down():
         raise OSError("no route")
 
-    assert addons.load_rows(down, {}) == ([], addons.OFFLINE)
-    assert addons.load_rows(lambda: {"bad": 1}, {}) == ([], addons.OFFLINE)
+    assert addons.load_rows(down, {}) == ([], OFFLINE)
+    assert addons.load_rows(lambda: {"bad": 1}, {}) == ([], OFFLINE)
     rs, msg = addons.load_rows(lambda: MAN, {})
     assert len(rs) == 3 and msg == ""
 
@@ -90,7 +92,7 @@ def test_screen_builds_rows_and_runs_fake_download(tmp_path):
 def test_import_command_uses_screen_models_dir(tmp_path, monkeypatch):
     import pytest
 
-    tk = pytest.importorskip("tkinter")
+    pytest.importorskip("tkinter")
     from tinglongwu.gui import addons_screen as sc
 
     seen = []
@@ -127,3 +129,22 @@ def test_import_worker_exception_clears_busy(tmp_path):
         time.sleep(0.01)
     assert not s.busy and s.msg.get().startswith("Import failed")
     root.destroy()
+
+
+def test_addons_strings_exist_in_en_ru_zh_tw_and_zh_differs(monkeypatch):
+    from tinglongwu import i18n
+
+    keys = [k for k in i18n.MESSAGES["en"] if k.startswith("addons_")]
+    assert keys
+    for lang in ("ru", "zh-TW"):
+        for k in keys:
+            assert k in i18n.MESSAGES[lang], (lang, k)
+            assert i18n.MESSAGES[lang][k] != i18n.MESSAGES["en"][k], (lang, k)
+
+
+def test_zh_tw_rows_and_offline_have_no_ascii_only_sentence(monkeypatch):
+    monkeypatch.setenv("TLWU_UI_LANG", "zh-TW")
+    r = addons.rows(MAN, {})[0]
+    assert any(ord(c) > 127 for c in r["note"]) and "2.4 GB" in r["note"] or "121 MB" in r["note"] or "1.1 GB" in r["note"]
+    _, msg = addons.load_rows(lambda: (_ for _ in ()).throw(OSError()), {})
+    assert any(ord(c) > 127 for c in msg)

@@ -61,7 +61,7 @@ class ListenSide:
             if not self.stop.is_set():
                 print(f"tlwu: listen side stopped: {describe_error(e)}", file=sys.stderr, flush=True)
 
-    def start(self) -> "ListenSide":
+    def start(self) -> ListenSide:
         self.thread.start()
         return self
 
