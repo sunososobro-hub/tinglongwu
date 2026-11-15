@@ -1,6 +1,6 @@
 name: e2e
 # End-to-end checks on GitHub-hosted runners for issues that used to wait on a hands-on test (status:needs-test).
-# Real models (smoke set: Whisper small + Hy-MT2 1.8B on the CPU + OPUS + Kokoro), real processes, real audio files;
+# Real models (smoke set: Whisper small + Hy-MT2 1.8B on the CPU + Kokoro; OPUS was removed in #471), real processes, real audio files;
 # ubuntu also gets a real PulseAudio server (null sink = speakers, its monitor = microphone) and Xvfb + openbox.
 # The issue each step covers is in its name. What still needs real hardware (GPU, microphone, a real call) is listed
 # in docs: see the PR that added this file.
