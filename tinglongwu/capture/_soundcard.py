@@ -9,6 +9,7 @@ import contextlib
 import struct
 import sys
 import threading
+import time
 import warnings
 from collections.abc import Iterator
 
@@ -179,7 +180,12 @@ def _recorder(mic):
         cm.__exit__(None, None, None)
 
 
+FOLLOW_S = 2.0  # how often a follow-default source checks the OS default device
+
+
 class SoundcardSource(AudioSource):
+    follow_default = False  # MicSource: switch to the new OS default device mid-run (no --device given)
+
     def __init__(self, device: str | None = None):
         self.device = device
         self._stop = threading.Event()
@@ -217,12 +223,27 @@ class SoundcardSource(AudioSource):
                             self.on_reopen(getattr(mic, "name", None))
                     # one 100 ms block per iteration: close() is noticed within a block even in total silence,
                     # and leaving the `with` releases the device (OS microphone indicator goes off).
+                    follow = self.follow_default and not self.device
+                    next_check = time.monotonic() + FOLLOW_S
+                    switched = False
                     while not self._stop.is_set():
                         data = rec.record(numframes=BLOCK)
                         if self._stop.is_set():
                             break
                         failures = 0  # a good block: the next invalidation starts a fresh retry budget
                         yield to_mono_16k(data, NATIVE_RATE)
+                        if follow and time.monotonic() >= next_check:
+                            next_check = time.monotonic() + FOLLOW_S
+                            if self._default_moved(sc, mic):
+                                switched = True
+                                break
+                if switched and not self._stop.is_set():
+                    new = self._pick_microphone(sc)
+                    print(f"tlwu: Windows default microphone changed, now {getattr(new, 'name', new)}",
+                          file=sys.stderr, flush=True)
+                    if self.on_reopen is not None:
+                        self.on_reopen(getattr(new, "name", None))
+                    continue
                 return
             except Exception as e:  # noqa: BLE001 - only device loss is retried, everything else re-raised
                 if self._stop.is_set():
@@ -237,6 +258,19 @@ class SoundcardSource(AudioSource):
                 print(f"tlwu: audio device lost ({_short(e)}), reopening in {delay:g} s "
                       f"({failures}/{REOPEN_LIMIT})", file=sys.stderr, flush=True)
                 self._stop.wait(delay)
+
+    @staticmethod
+    def _default_moved(sc, mic) -> bool:
+        """True when the OS default microphone is now another real device (never follow onto a virtual cable,
+        that would send the meeting voice back into our own input)."""
+        from .wasapi import is_own_output
+        try:
+            d = sc.default_microphone()
+        except Exception:  # noqa: BLE001 - no default right now (unplugged): keep the current device
+            return False
+        if d is None or getattr(d, "id", None) == getattr(mic, "id", None) or is_own_output(getattr(d, "name", "")):
+            return False
+        return True
 
     def _repick(self, sc):
         """Re-pick after a device loss: the configured name first, the system default if that device is gone."""

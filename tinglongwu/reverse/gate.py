@@ -139,7 +139,7 @@ def gate(s: SegmentStats, env=None, lang: str | None = None, **over) -> tuple[bo
         return False, "compression"
     if is_filler(s.text):
         return False, "filler"
-    if has_loop(s.text) or is_hallucination(s.text, s.rms, s.no_speech):
+    if has_loop(s.text) or is_hallucination(s.text, s.rms, s.no_speech, strict=True):
         return False, "repeat"
     return True, ""
 

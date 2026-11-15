@@ -17,7 +17,8 @@ STRONG = {
            "Transcribed by", "Translated by", "Captions by", "Closed captioning by",
            "To be continued", "www.mooji.org", "YoYo Television Series Exclusive"],
     "ja": ["字幕作成", "字幕は", "次回に続く"],
-    "zh": ["字幕by", "字幕由","字幕志愿者", "字幕志願者", "字幕製作", "字幕制作", "字幕提供", "中文字幕", "明鏡與點點欄目",
+    "zh": ["字幕by", "字幕由","字幕志愿者", "字幕志願者", "字幕製作", "字幕制作", "字幕提供", "中文字幕", "明鏡與點點欄目", "明镜与点点栏目",
+           "打賞支持", "打赏支持", "點贊訂閱轉發", "点赞订阅转发",
            "未完待續", "未完待续", "謝謝觀看", "谢谢观看",
            "優優獨播劇場", "优优独播剧场"],
     "ko": ["자막 제공", "시청해 주셔서 감사합니다", "다음 영상에서 만나요"],
@@ -73,10 +74,12 @@ def _best_cover(norm: str) -> tuple[float, bool]:
     return best, best_strong
 
 
-def is_hallucination(text: str, rms: float | None = None, no_speech: float = 0.0) -> bool:
+def is_hallucination(text: str, rms: float | None = None, no_speech: float = 0.0, strict: bool = False) -> bool:
     """True if `text` is (mostly) a known Whisper credit/sign-off hallucination.
 
-    rms: RMS of the segment audio (None = unknown, treated as normal energy)."""
+    rms: RMS of the segment audio (None = unknown, treated as normal energy).
+    strict (#1070, speak leg): the text is spoken into someone else's meeting, so silence beats a wrong sentence:
+    any STRONG phrase anywhere drops it, and a WEAK one at QUIET_COVER share even at normal energy."""
     n = _norm(text)
     if not n:
         return False
@@ -85,6 +88,8 @@ def is_hallucination(text: str, rms: float | None = None, no_speech: float = 0.0
     cover, strong = _best_cover(n)
     if cover == 0:
         return False
+    if strict and (strong or cover >= QUIET_COVER):
+        return True
     quiet = (rms is not None and rms < QUIET_RMS) or no_speech >= NO_SPEECH_MIN
     if quiet:
         return cover >= QUIET_COVER
