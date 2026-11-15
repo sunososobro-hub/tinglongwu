@@ -159,9 +159,9 @@ def test_mic_toggle_mutes_the_speak_leg_and_leaves_listening_running(mic_app):
     assert mute is a.mic_off and not mute.is_set()
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 1.0 s"))
     a.poll()
-    assert a.mic_btn.cget("text") == "Mic: on (others hear me)" and str(a.mic_btn.cget("state")) == "normal"
+    assert a.mic_btn.cget("text") == "Mic on" and str(a.mic_btn.cget("state")) == "normal"
     a.mic_btn.invoke()
-    assert mute.is_set() and a.mic_btn.cget("text") == "Mic: off (still listening)"
+    assert mute.is_set() and a.mic_btn.cget("text") == "Mic off"
     assert a.worker.is_alive() and not a.stop_ev.is_set()  # the session (listen leg) keeps running
     a.mic_btn.invoke()
     assert not mute.is_set()

@@ -781,6 +781,9 @@ class App:
         self._pair_changed()
         self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
         self.btn.pack(side="left")
+        # #1028: mic on/off next to Start; mutes the speak leg only, listening to the other side keeps running
+        self.mic_btn = ttk.Button(b, command=self.toggle_mic, style="Bar.TButton", width=0)
+        self.mic_btn.pack(side="left", padx=(2, 0))
         self._sync_quick()  # #982: saved matching languages disable both Start buttons from the first frame
         self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
@@ -1239,9 +1242,6 @@ class App:
         # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
         self.both_btn = ttk.Button(q, command=lambda: self.toggle(BOTH_MODE))
         self.both_btn.grid(row=2, column=0, columnspan=2, sticky="we", ipady=3, pady=(6, 0))  # #886
-        # #1028: mic on/off for the speak leg only; listening to the other side keeps running
-        self.mic_btn = ttk.Button(q, command=self.toggle_mic)
-        self.mic_btn.grid(row=4, column=0, columnspan=2, sticky="we", pady=(4, 0))
         self.lang_err = ttk.Label(q, foreground="#c0392b", wraplength=300, justify="left")  # #982: inline error
         self.lang_err.grid(row=3, column=0, columnspan=2, sticky="w")
         q.columnconfigure(0, weight=1, uniform="quick")
@@ -1266,8 +1266,9 @@ class App:
         self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
         if hasattr(self, "btn"):
             self.btn.configure(state="normal" if enabled or self._quick_phase() == "running" else "disabled")
-        key, on = mic_button(self._quick_phase(), self.quick_mode, self.mic_off.is_set())  # #1028
-        self.mic_btn.configure(text=t(key), state="normal" if on else "disabled")
+        if getattr(self, "mic_btn", None) is not None:  # #1028
+            key, on = mic_button(self._quick_phase(), self.quick_mode, self.mic_off.is_set())
+            self.mic_btn.configure(text=t(key), state="normal" if on else "disabled")
 
     def toggle_mic(self):
         """#1028: mute / unmute the speak leg's microphone (MuteSource in run_session); the listen leg is untouched."""
