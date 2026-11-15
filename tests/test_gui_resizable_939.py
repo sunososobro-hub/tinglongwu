@@ -1,5 +1,4 @@
 """#939: the Adjust panel is a normal resizable window with a menu bar; its size is remembered."""
-import pytest
 
 from test_gui_density_886 import small_screen_app  # noqa: F401  (fixture)
 
