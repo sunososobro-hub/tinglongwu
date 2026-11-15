@@ -292,10 +292,15 @@ begin
   if N < 10 then Result := '0' + Result;
 end;
 
-{ #1002: language picked on the first wizard page -> tlwu language code (install.ps1 -Lang, ui_lang config) }
+{ #1002: language picked on the first wizard page -> tlwu language code (install.ps1 -Lang, ui_lang config).
+  '' = keep the old behaviour (bilingual install.ps1 lines, the app follows the Windows language): the dialog has
+  no Chinese page, so "english" on a Chinese (or Russian, Korean, ...) Windows is only the fallback default and must
+  not force an English app; 'en' only when Windows itself is English. }
 function WizardLangCode: String;
 begin
-  if ActiveLanguage = 'japanese' then Result := 'ja' else Result := 'en';
+  Result := '';
+  if ActiveLanguage = 'japanese' then Result := 'ja'
+  else if (GetUILanguage and $3FF) = $09 then Result := 'en';
 end;
 
 procedure RunInstall;
@@ -323,7 +328,8 @@ begin
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
   Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
   if not Gpu then Params := Params + ' -Cpu';
-  Params := Params + ' -Packs ' + SelectedPacks + ' -Lang ' + WizardLangCode;
+  Params := Params + ' -Packs ' + SelectedPacks;
+  if WizardLangCode <> '' then Params := Params + ' -Lang ' + WizardLangCode;
   Size := SizeText(DownloadMB(Gpu));
   ProgressPage.Description := 'This can take 10-40 minutes and downloads ' + Size + ' (models, language packs and Python packages). 需要 10-40 分鐘，約下載 ' + Size + '，請保持網路連線。';
   StartMsg := 'Starting install.ps1 ...';
@@ -422,7 +428,9 @@ begin
     if not WizardSilent then
       if WizardIsTaskSelected('autoupdate') then SetConfigValue('auto_update', '1')
       else SetConfigValue('auto_update', '0');
-    SetConfigValue('ui_lang', WizardLangCode);   { #1002: tlwu-gui opens in the wizard language (zh/en/ru UI only: ja falls back to en) }
+    { #1002: tlwu-gui opens in the wizard language (zh/en/ru UI only: ja falls back to en); a silent self-update
+      or a fallback-only language keeps the user's existing ui_lang / Windows language }
+    if (not WizardSilent) and (WizardLangCode <> '') then SetConfigValue('ui_lang', WizardLangCode);
     RunInstall;   { source layout: install.ps1; core layout (#771): tlwu.exe setup --default-listen }
     MakeTalkShortcuts;
   end;

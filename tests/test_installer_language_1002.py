@@ -40,3 +40,22 @@ def test_every_custom_message_exists_in_every_language():
 def test_no_mixed_language_task_text():
     for ln in _section(_iss(), "Tasks"):
         assert " / " not in ln.split("Description:", 1)[1].split(";")[0]
+
+
+def _code() -> str:
+    return re.sub(r"\{[^}]*\}", "", _iss())  # drop Pascal { comments } so only code is checked
+
+
+def test_fallback_language_never_forces_english():
+    """#1002 review: the dialog has no Chinese page, so 'english' on a Chinese Windows is only the fallback;
+    WizardLangCode must be '' there (no -Lang, no ui_lang) and 'en' only for an English Windows."""
+    body = re.search(r"function WizardLangCode: String;\s*begin(.*?)\nend;", _code(), re.S).group(1)
+    assert "Result := '';" in body and "(GetUILanguage and $3FF) = $09" in body
+    assert "else Result := 'en'" not in body
+
+
+def test_lang_and_ui_lang_only_when_a_language_was_really_chosen():
+    code = _code()
+    assert "if WizardLangCode <> '' then Params := Params + ' -Lang ' + WizardLangCode;" in code
+    assert "if (not WizardSilent) and (WizardLangCode <> '') then SetConfigValue('ui_lang', WizardLangCode);" in code
+    assert code.count("SetConfigValue('ui_lang'") == 1
