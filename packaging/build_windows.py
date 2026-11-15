@@ -151,7 +151,11 @@ Native components and their licenses
   of libsndfile (same ABI) by overwriting that file.
 - llama.cpp / ggml (llama_cpp/lib/*.dll): MIT, Copyright (c) The ggml authors. https://github.com/ggml-org/llama.cpp
 - Python runtime (python3*.dll, python3*.zip = the standard library, DLLs/*.pyd): Python Software Foundation
-  License. https://docs.python.org/3/license.html
+  License, full text (with the licenses of the software CPython incorporates) in LICENSE-Python.txt.
+  https://docs.python.org/3/license.html
+- tlwu.exe (the launcher, packaging/launcher in the source): MIT like the rest of tinglongWu. When built with
+  MinGW-w64 it links the MinGW-w64 runtime (public domain / Zope Public License 2.1 parts, redistributable without
+  further conditions on the binary). https://www.mingw-w64.org/
 - Tcl/Tk (DLLs/tcl86t.dll, DLLs/tk86t.dll, tcl/): Tcl/Tk license (BSD-style).
   https://www.tcl.tk/software/tcltk/license.html
 - OpenSSL (DLLs/libcrypto-3.dll, DLLs/libssl-3.dll): Apache-2.0. https://www.openssl.org/
@@ -443,7 +447,8 @@ def write_licenses(app: Path, cuda_src: Path | None) -> None:
     import importlib.util
 
     spec = importlib.util.find_spec("soundfile")
-    cand = Path(spec.origin).parent.parent / "_soundfile_data" / "COPYING" if spec and spec.origin else None
+    # soundfile is a single module: site-packages/soundfile.py beside site-packages/_soundfile_data/
+    cand = Path(spec.origin).parent / "_soundfile_data" / "COPYING" if spec and spec.origin else None
     if not (cand and cand.exists()):
         cand = REPO / ".venv" / "Lib" / "site-packages" / "_soundfile_data" / "COPYING"
     if cand and cand.exists():
@@ -472,6 +477,8 @@ USAGE_TEXT = "使用說明.txt"
 EXE_NAME = "tlwu.exe"
 VS_FIXEDFILEINFO_SIG = b"\xbd\x04\xef\xfe"  # 0xFEEF04BD, little endian
 VERSION_OFFSET = 8  # dwFileVersionMS in VS_FIXEDFILEINFO; LS, dwProductVersionMS, LS follow
+VERSION_FIELDS = "<IIII"  # those four DWORDs
+VERSION_PART_MAX = 0xFFFF  # each of the four version parts is one 16-bit word
 
 
 def _runtime_layer():
@@ -490,11 +497,15 @@ def set_exe_version(exe: Path, version: str) -> bool:
     version bump does not rebuild the runtime layer. False = the exe has no single VS_FIXEDFILEINFO (left alone)."""
     data = bytearray(exe.read_bytes())
     i = data.find(VS_FIXEDFILEINFO_SIG)
-    if i < 0 or data.find(VS_FIXEDFILEINFO_SIG, i + 1) >= 0 or len(data) < i + VERSION_OFFSET + 16:
+    end = i + VERSION_OFFSET + struct.calcsize(VERSION_FIELDS)
+    if i < 0 or data.find(VS_FIXEDFILEINFO_SIG, i + 1) >= 0 or len(data) < end:
         return False
-    a, b, c, d = (int(x) for x in version.split("."))
+    parts = [int(x) for x in version.split(".")]
+    if len(parts) != 4 or not all(0 <= p <= VERSION_PART_MAX for p in parts):
+        raise SystemExit(f"{exe.name}: version {version!r} is not four numbers of 0..{VERSION_PART_MAX}")
+    a, b, c, d = parts
     ms, ls = (a << 16) | b, (c << 16) | d
-    struct.pack_into("<IIII", data, i + VERSION_OFFSET, ms, ls, ms, ls)
+    struct.pack_into(VERSION_FIELDS, data, i + VERSION_OFFSET, ms, ls, ms, ls)
     exe.write_bytes(bytes(data))
     return True
 
@@ -593,20 +604,20 @@ def link_tree(src: Path, dst: Path, copy: tuple[str, ...] = (EXE_NAME,)) -> int:
 
 def build_app_layer(app: Path, pyc_magic: str | None = None, repo: Path | None = None) -> list[str]:
     """Put the app layer into `app`: the app packages as .py + unchecked-hash .pyc (never recompiled on the user's
-    PC, whatever the file times are), the usage text and APP_MANIFEST. `pyc_magic` = the runtime layer's: when this
-    interpreter writes another .pyc format the sources ship alone (slower start, still correct)."""
+    PC, whatever the file times are), the usage text and APP_MANIFEST. `pyc_magic` = the runtime layer's; this
+    interpreter must write the same .pyc format. Shipping the sources alone is not an option: an install made over
+    an older one keeps that version's unchecked-hash .pyc files, and Python would run them instead of the new .py."""
     rt = _runtime_layer()
     repo = repo or REPO
-    precompile = pyc_magic in (None, rt.pyc_magic())
-    if not precompile:
-        print(f"WARNING: this Python ({sys.version.split()[0]}) is not the runtime layer's Python; the app layer "
-              "ships without .pyc files")
+    if pyc_magic not in (None, rt.pyc_magic()):
+        raise SystemExit(f"app layer: this Python ({sys.version.split()[0]}) writes another .pyc format than the "
+                         "runtime layer's Python; rebuild the runtime layer (--rebuild-runtime)")
     for pkg in APP_PACKAGES:
         dst = app / pkg
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(repo / pkg, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        if precompile and not compileall.compile_dir(
+        if not compileall.compile_dir(
                 str(dst), quiet=1, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH):
             raise SystemExit(f"app layer: {pkg} has a file that does not compile")
     missing = [rel for rel in WORKER_SOURCES if not (app / rel).is_file()]

@@ -16,6 +16,7 @@ tinglongwu/device.py looks for llama_cpp/lib and cuda_libs/ next to the tinglong
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -38,7 +39,7 @@ MANIFEST_NAME = "runtime-layer.json"  # at the top of the layer: key, Python ver
 # The runtime layer is rebuilt when one of these changes (repo-relative; a folder = every file in it). The two
 # workflows hash the same list for their cache key (tests/test_windows_layers_923.py keeps them equal).
 KEY_GLOBS = ("requirements*.txt", "packaging/build_windows.py", "packaging/runtime_layer.py",
-             "packaging/launcher/**", "packaging/stubs/**")
+             "packaging/launcher/**", "packaging/stubs/**", "tinglongwu/gui/assets/tinglongwu.ico")
 # Packages of the packaging venv that are build tools, not part of the app
 NOT_SHIPPED = {"pip", "setuptools", "pkg_resources", "_distutils_hack", "wheel", "nuitka", "ordered_set",
                "zstandard", "av", "psutil",  # names as _dist_name() gives them
@@ -49,10 +50,13 @@ APP_PACKAGES = ("tinglongwu", "tlwu_app", "tinglongwu_setup")  # the app layer; 
 # Standard-library folders the app cannot use (tests, IDLE, pip bootstrap, demos)
 STDLIB_SKIP_DIRS = {"site-packages", "dist-packages", "__pycache__", "test", "tests", "idlelib", "ensurepip", "turtledemo",
                     "lib2to3", "__phello__"}
-PRUNE_TESTS_IN = ("numpy", "scipy")  # their tests/ folders are ~40 MB and never imported by the app
+PRUNE_TESTS_IN = ("numpy", "scipy", "colorama")  # tests/ folders (~40 MB) that the app never imports
 # not needed by tkinter: demos, C development files, and the dde / registry Tcl extensions (DLLs nobody loads)
-TCL_SKIP = ("demos", "*.lib", "*.sh", "include", "pkgconfig", "dde*", "reg*")
-DLLS_SKIP = ("_msi.pyd",)  # Windows Installer bindings: unused, and msi.dll is not on the clean-machine DLL list
+TCL_SKIP = ("demos", "*.lib", "*.sh", "include", "pkgconfig", "dde*", "reg*", "nmake", "tix*")
+# DLLs/ files left out (fnmatch, lower case): Windows Installer bindings (unused; msi.dll is not on the clean-machine
+# DLL list) and CPython's own test helper modules
+DLLS_SKIP = ("_msi.pyd", "_test*.pyd", "_ctypes_test.pyd", "xxlimited*.pyd")
+PYTHON_LICENSE = "LICENSE.txt"  # in the base Python; shipped as licenses/LICENSE-Python.txt
 PTH_LINES = ("{zip}", "DLLs", ".")  # sys.path of tlwu.exe, relative to the folder; no `import site`
 REQ_NOT_PACKED = ("av", "psutil")   # requirements.txt lines left out of the packaging venv (GPL codecs / dev only)
 
@@ -93,9 +97,10 @@ def stale_reason(layer: Path, lite: bool, repo: Path = REPO) -> str:
     man = read_manifest(layer)
     if not man or not (layer / EXE_NAME).is_file():
         return f"no runtime layer in {layer}"
-    want = key(lite, repo, tuple(man.get("python_minor") or ()) or None)
-    if man.get("key") != want:
-        return "requirements*.txt or the packaging code changed"
+    if man.get("key") != key(lite, repo):  # the key holds this interpreter's Python minor version
+        return "requirements*.txt, the packaging code or the Python version changed"
+    if man.get("pyc_magic") != pyc_magic():
+        return "the runtime layer was built by a Python with another .pyc format"
     return ""
 
 
@@ -142,7 +147,7 @@ def copy_python_core(dst: Path, base: Path | None = None) -> list[str]:
         shutil.copy2(f, dst / f.name)
     (dst / "DLLs").mkdir(exist_ok=True)
     for f in sorted((base / "DLLs").glob("*")):
-        if f.suffix.lower() in (".pyd", ".dll") and f.name.lower() not in DLLS_SKIP:
+        if f.suffix.lower() in (".pyd", ".dll") and not any(fnmatch.fnmatch(f.name.lower(), p) for p in DLLS_SKIP):
             shutil.copy2(f, dst / "DLLs" / f.name)
     if not (base / "tcl").is_dir():
         raise SystemExit(f"runtime layer: {base}\\tcl is missing (Python was installed without tcl/tk; the GUI needs it)")
@@ -151,6 +156,11 @@ def copy_python_core(dst: Path, base: Path | None = None) -> list[str]:
     count = make_stdlib_zip(base / "Lib", dst / zname)
     pth = dst / (Path(zname).stem + "._pth")
     pth.write_text("".join(line.format(zip=zname) + "\n" for line in PTH_LINES), "utf-8")
+    lic = base / PYTHON_LICENSE  # the PSF license text: the folder redistributes CPython and its standard library
+    if not lic.is_file():
+        raise SystemExit(f"runtime layer: {lic} is missing; the Python license must ship with the package")
+    (dst / "licenses").mkdir(exist_ok=True)
+    shutil.copy2(lic, dst / "licenses" / "LICENSE-Python.txt")
     return [f.name for f in dlls] + [f"{zname} ({count} modules)", pth.name]
 
 
@@ -183,7 +193,7 @@ def copy_site_packages(dst: Path, site: Path | None = None) -> list[str]:
             continue
         if entry.is_dir():
             shutil.copytree(entry, dst / entry.name, dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns("__pycache__", "*.pyi"))
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyi", "*.whl"))
         else:
             shutil.copy2(entry, dst / entry.name)
         copied.append(entry.name)

@@ -31,7 +31,6 @@ def _repo_copy(tmp_path: Path) -> Path:
         dst = repo / f.relative_to(REPO)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, dst)
-    (repo / "tinglongwu").mkdir()
     (repo / "tinglongwu" / "cli.py").write_text("x = 1\n")
     return repo
 
@@ -42,6 +41,9 @@ def test_runtime_key_follows_requirements_and_packaging_but_not_app_code(tmp_pat
     (repo / "tinglongwu" / "cli.py").write_text("x = 2\n")  # the acceptance case: a one-line app change
     assert rt.key(True, repo) == base
     assert rt.key(False, repo) != base and rt.key(True, repo, (3, 99)) != base  # variant, Python minor
+    (repo / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico").write_bytes(b"another icon")  # compiled into tlwu.exe
+    assert rt.key(True, repo) != base
+    shutil.copy2(rt.APP_ICON, repo / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico")
     for rel in ("requirements.txt", "requirements-llama-cpu.txt", "packaging/runtime_layer.py",
                 "packaging/build_windows.py", "packaging/launcher/tlwu_launcher.c", "packaging/stubs/av/__init__.py"):
         f = repo / rel
@@ -65,6 +67,13 @@ def test_stale_reason_and_variants(tmp_path):
     assert "variant" in bw.runtime_stale(layer, False, False) or "changed" in bw.runtime_stale(layer, False, False)
     (layer / rt.MANIFEST_NAME).write_text(json.dumps({**man, "key": "0" * 64}), "utf-8")
     assert "changed" in bw.runtime_stale(layer, True, False)
+    # a layer built by another Python minor is stale even though its own key is self-consistent: its packages,
+    # stdlib zip and python3XY.dll do not fit the .pyc files this interpreter would write for the app layer
+    other = {**man, "python_minor": [3, 99], "key": rt.key(True, pyver=(3, 99))}
+    (layer / rt.MANIFEST_NAME).write_text(json.dumps(other), "utf-8")
+    assert "changed" in bw.runtime_stale(layer, True, False)
+    (layer / rt.MANIFEST_NAME).write_text(json.dumps({**man, "pyc_magic": "00000000"}), "utf-8")
+    assert ".pyc format" in bw.runtime_stale(layer, True, False)
     (layer / rt.MANIFEST_NAME).write_text("not json", "utf-8")
     assert "no runtime layer" in bw.runtime_stale(layer, True, False)
 
@@ -137,10 +146,39 @@ def test_app_layer_is_source_plus_unchecked_hash_pyc(tmp_path):
                        capture_output=True, text=True)
     assert r.returncode == 0 and Path(r.stdout.strip()) == pyc, r.stderr
 
-    other = tmp_path / "other"
-    other.mkdir()
-    bw.build_app_layer(other, "00000000")  # runtime layer of another Python: sources only, never a wrong .pyc
-    assert (other / "tlwu_app" / "main.py").is_file() and not list(other.rglob("*.pyc"))
+    # runtime layer of another Python: stop. Sources alone would lose to the previous install's unchecked-hash .pyc
+    with pytest.raises(SystemExit, match="another .pyc format"):
+        bw.build_app_layer(tmp_path / "other", "00000000")
+
+
+def test_an_upgrade_never_runs_the_previous_versions_bytecode(tmp_path):
+    """The wizard installs over the old folder without deleting. The new app layer brings its own .pyc for every
+    module, so the old unchecked-hash .pyc (which Python would trust without looking at the .py) is replaced."""
+    app = tmp_path / "tlwu"
+    old_repo = tmp_path / "old"
+    for pkg in bw.APP_PACKAGES:
+        (old_repo / pkg).mkdir(parents=True)
+        (old_repo / pkg / "__init__.py").write_text("")
+    (old_repo / "tinglongwu" / "__init__.py").write_text('__version__ = "0.0.1"\n')
+    (old_repo / "tlwu_app" / "main.py").write_text("WHO = 'old'\n")
+    for rel in bw.WORKER_SOURCES:
+        f = old_repo / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.exists() or f.write_text("")
+    (old_repo / "packaging").mkdir()
+    (old_repo / "packaging" / bw.USAGE_TEXT).write_text("x", "utf-8")
+    app.mkdir()
+    bw.build_app_layer(app, rt.pyc_magic(), repo=old_repo)
+    old_tree = tmp_path / "installed"
+    shutil.copytree(app, old_tree)                       # the user's existing install
+    new = tmp_path / "new_build"
+    new.mkdir()
+    bw.build_app_layer(new, rt.pyc_magic())              # the next release, built elsewhere
+    shutil.copytree(new, old_tree, dirs_exist_ok=True)   # installed over it, nothing deleted
+    r = subprocess.run([sys.executable, "-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); "
+                        "import tlwu_app.main as m; print(hasattr(m, 'WHO'), hasattr(m, 'is_bundled'))",
+                        str(old_tree)], capture_output=True, text=True)
+    assert r.stdout.split() == ["False", "True"], r.stderr
 
 
 def test_stdlib_zip_is_importable_without_sources(tmp_path):
@@ -165,7 +203,8 @@ def test_python_core_layout(tmp_path):
     """A python.org-style base Python -> python3XY.dll, DLLs/, tcl/, the stdlib zip and the ._pth that pins sys.path."""
     base, dst = tmp_path / "base", tmp_path / "layer"
     for rel in ("python312.dll", "python3.dll", "python.exe", "vcruntime140.dll", "DLLs/_tkinter.pyd",
-                "DLLs/tcl86t.dll", "DLLs/py.ico", "DLLs/_msi.pyd", "tcl/tcl8.6/init.tcl", "tcl/tk8.6/demos/widget",
+                "DLLs/tcl86t.dll", "DLLs/py.ico", "DLLs/_msi.pyd", "DLLs/_testcapi.pyd", "DLLs/xxlimited_35.pyd",
+                "tcl/nmake/x64/nmakehlp.exe", "tcl/tix8.4.3/Tix.tcl", "LICENSE.txt", "tcl/tcl8.6/init.tcl", "tcl/tk8.6/demos/widget",
                 "tcl/dde1.4/tcldde14.dll", "tcl/tcl86t.lib", "Lib/os.py", "Lib/test/x.py"):
         f = base / rel
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -175,9 +214,14 @@ def test_python_core_layout(tmp_path):
     zname = rt.stdlib_zip_name()
     got = sorted(p.relative_to(dst).as_posix() for p in dst.rglob("*") if p.is_file())
     assert got == sorted(["python312.dll", "python3.dll", "DLLs/_tkinter.pyd", "DLLs/tcl86t.dll",
-                          "tcl/tcl8.6/init.tcl", zname, Path(zname).stem + "._pth"])
+                          "tcl/tcl8.6/init.tcl", zname, Path(zname).stem + "._pth",
+                          "licenses/LICENSE-Python.txt"])
     # sys.path = stdlib zip, DLLs, the folder itself (packages sit at the top); no `import site`, no user site
     assert (dst / (Path(zname).stem + "._pth")).read_text("utf-8").split() == [zname, "DLLs", "."]
+    (base / "LICENSE.txt").unlink()
+    (tmp_path / "y").mkdir()
+    with pytest.raises(SystemExit, match="Python license must ship"):
+        rt.copy_python_core(tmp_path / "y", base)
     (base / "python312.dll").unlink()
     with pytest.raises(SystemExit, match="python3XY.dll"):
         rt.copy_python_core(tmp_path / "x", base)
@@ -237,6 +281,25 @@ def test_launcher_keeps_the_stream_settings_the_app_gives_its_children(tmp_path)
     assert r.returncode == 1 and b"UnicodeEncodeError" in r.stderr  # unset: the stream's own encoding, as before
 
 
+@pytest.mark.skipif(shutil.which("cc") is None or sys.platform == "win32", reason="needs a native C compiler")
+def test_launcher_picks_the_newest_python_dll_not_the_first_in_the_folder(tmp_path):
+    """An install over an older one can hold python312.dll and python313.dll; NTFS lists the old one first.
+    The launcher's own name parser is compiled natively (wide-char calls mapped to their POSIX names) and run."""
+    c = (rt.LAUNCHER_DIR / "tlwu_launcher.c").read_text("utf-8")
+    fn = c[c.index("static int python_dll_minor("):c.index("/* Full path of the newest")]
+    defs = "\n".join(ln for ln in c.splitlines() if ln.startswith("#define PYTHON_DLL_PREFIX"))
+    names = ["python3.dll", "python312.dll", "python313.dll", "PYTHON39.DLL", "python3x.dll", "python312_d.dll",
+             "python31234.dll", "python.dll", "python312.dll.bak"]
+    (tmp_path / "t.c").write_text(
+        "#include <stdio.h>\n#include <wchar.h>\n#define _wcsnicmp wcsncasecmp\n#define _wcsicmp wcscasecmp\n"
+        + defs + "\n" + fn + "int main(void) {\n"
+        + "".join(f'    printf("%d ", python_dll_minor(L"{n}"));\n' for n in names) + "    return 0;\n}\n")
+    subprocess.check_call(["cc", "-Wall", "-Werror", "-o", str(tmp_path / "t"), str(tmp_path / "t.c")])
+    got = subprocess.run([str(tmp_path / "t")], capture_output=True, text=True).stdout.split()
+    assert got == ["-1", "12", "13", "9", "-1", "-1", "1234", "-1", "-1"]
+    assert "if (minor > best)" in c  # find_python_dll keeps the highest, whatever the directory order
+
+
 @pytest.mark.skipif(rt._gcc() is None, reason="needs a MinGW-w64 gcc + windres on PATH")
 def test_launcher_compiles_to_an_x64_exe_whose_version_the_app_layer_stamps(tmp_path):
     exe = tmp_path / "tlwu.exe"
@@ -245,6 +308,8 @@ def test_launcher_compiles_to_an_x64_exe_whose_version_the_app_layer_stamps(tmp_
     assert bw.pe_machine(data) == 0x8664 and bw.pe_file_version(data) == (0, 0, 0, 0)
     assert bw.set_exe_version(exe, "0.3.5.0") and bw.pe_file_version(exe.read_bytes()) == (0, 3, 5, 0)
     assert len(exe.read_bytes()) == len(data)
+    with pytest.raises(SystemExit, match="0..65535"):  # a part that does not fit its 16-bit word
+        bw.set_exe_version(exe, "0.3.70000.0")
 
 
 def test_windows_build_runs_for_app_changes_and_skips_the_venv_on_a_cache_hit():
@@ -275,3 +340,23 @@ def test_no_python_compiler_in_the_build():
         assert '"-m", "nuitka"' not in code and "run_nuitka" not in code, f
     assert not (REPO / "packaging" / "tlwu_entry.py").exists()
     assert bw.APP_PACKAGES == rt.APP_PACKAGES
+
+
+def test_licenses_folder_holds_the_texts_the_notice_names(tmp_path, monkeypatch):
+    """THIRD_PARTY_NOTICES.txt points at LICENSE-libsndfile-LGPL-2.1.txt and LICENSE-Python.txt: both must ship."""
+    site = tmp_path / "site"
+    (site / "_soundfile_data").mkdir(parents=True)
+    (site / "_soundfile_data" / "COPYING").write_text("LGPL text")
+    (site / "soundfile.py").write_text("")  # a single module beside _soundfile_data/, as the wheel installs it
+    spec = importlib.util.spec_from_file_location("soundfile", site / "soundfile.py")
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: spec if name == "soundfile" else real(name, *a))
+    monkeypatch.setattr(bw, "REPO", tmp_path / "no-repo")  # no project .venv to fall back to
+    app = tmp_path / "app"
+    app.mkdir()
+    bw.write_licenses(app, None)
+    assert (app / "licenses" / "LICENSE-libsndfile-LGPL-2.1.txt").read_text() == "LGPL text"
+    notice = (app / "licenses" / "THIRD_PARTY_NOTICES.txt").read_text("utf-8")
+    for named in ("LICENSE-libsndfile-LGPL-2.1.txt", "LICENSE-Python.txt", "MinGW-w64"):
+        assert named in notice
+    assert "NVIDIA" not in notice  # CPU-only package
