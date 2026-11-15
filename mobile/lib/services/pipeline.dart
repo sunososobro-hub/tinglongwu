@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 import '../logic/context_budget.dart';
 import '../logic/phone_audio.dart';
+import '../logic/segmenter.dart';
 import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
@@ -362,10 +363,15 @@ class Pipeline extends ChangeNotifier {
         : now - f.decodeMs - (AsrConfig.vadMinSilence * 1000).round();
     _log.i('ASR final${f.forced ? " (forced)" : ""} '
         'lang=${f.lang} decode=${f.decodeMs}ms audio=${f.audioMs}ms: ${AppLog.text(f.text)}');
-    final sub = Subtitle(f.text);
-    subtitles.add(sub);
+    // One subtitle (and one LLM call) per sentence: short lines update fast and the model never
+    // sees several sentences to smooth together.
+    final sentences = SentenceSegmenter.split(f.text);
+    for (final text in sentences.isEmpty ? [f.text] : sentences) {
+      final sub = Subtitle(text);
+      subtitles.add(sub);
+      _queue.add(_Job(text, sub, speechEnd, now, f.lang));
+    }
     _trimSubtitles();
-    _queue.add(_Job(f.text, sub, speechEnd, now, f.lang));
     // Bound the backlog: merge the oldest two waiting jobs (keeps all text,
     // costs one fewer LLM call) instead of dropping. A merge that would be
     // longer than ContextBudget.maxMergeChars is skipped (#533): it could

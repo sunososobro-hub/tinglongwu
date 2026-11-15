@@ -57,6 +57,18 @@ class PromptBuilder {
     return n < 32 ? 32 : (n > 400 ? 400 : n);
   }
 
+  /// Tighter output budget for the phone (#faithful): a Chinese line is much shorter than its
+  /// Latin-script source, so cap at 0.7 tokens per source char (+12) instead of the desktop 2x; a
+  /// model that wants to say more than that is inventing text. CJK sources keep the desktop budget
+  /// (the English output is longer than the source). Never above [maxTokensFor].
+  static int faithfulMaxTokens(String text, {String src = 'en', String tgt = 'zh'}) {
+    final t = text.trim();
+    final cap = maxTokensFor(t);
+    if (tgt != 'zh' || src == 'zh' || src == 'yue' || src == 'ja' || src == 'ko') return cap;
+    final tight = (t.length * 0.7).ceil() + 12;
+    return tight < 24 ? 24 : (tight < cap ? tight : cap);
+  }
+
   static final RegExp _label = RegExp(
     r'^(ZH|翻譯|翻译|譯文|译文|Translation)\s*[:：]\s*',
     caseSensitive: false,

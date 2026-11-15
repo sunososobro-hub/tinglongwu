@@ -24,12 +24,16 @@ class SentenceSegmenter {
     final t = normalize(text);
     if (t.isEmpty) return const [];
     const enders = '.!?…';
+    const cjkEnders = '。！？'; // no space follows these in zh/ja text
     final raw = <String>[];
     final buf = StringBuffer();
     for (var i = 0; i < t.length; i++) {
       final ch = t[i];
       buf.write(ch);
-      if (enders.contains(ch)) {
+      if (cjkEnders.contains(ch) && !(i + 1 < t.length && cjkEnders.contains(t[i + 1]))) {
+        raw.add(buf.toString().trim());
+        buf.clear();
+      } else if (enders.contains(ch)) {
         final atEnd = i == t.length - 1;
         final nextIsSpace = !atEnd && t[i + 1] == ' ';
         final nextIsPunct = !atEnd && enders.contains(t[i + 1]);
@@ -46,7 +50,7 @@ class SentenceSegmenter {
       out.addAll(_chunkLong(s, maxWords));
     }
     return out
-        .where((s) => s.replaceAll(RegExp(r'[\s.!?…,]'), '').isNotEmpty)
+        .where((s) => s.replaceAll(RegExp(r'[\s.!?…,。！？，]'), '').isNotEmpty)
         .toList();
   }
 

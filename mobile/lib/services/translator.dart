@@ -6,6 +6,8 @@ import '../logic/context_budget.dart';
 import '../logic/passthrough.dart';
 import '../logic/prompt.dart';
 import '../logic/s2tw.dart';
+import '../logic/utf8_stream.dart';
+import '../logic/zh_quotes.dart';
 import '../logic/zh_check.dart';
 
 class Translation {
@@ -99,6 +101,8 @@ class Translator implements LineTranslator {
     final prompt = PromptBuilder.build(ru.trim(), src: src, tgt: tgt);
     await _session.clear();
     final buf = StringBuffer();
+    // Own byte-level decoder: pieces are raw bytes and can split a character (see Utf8Stream).
+    final utf8 = Utf8Stream();
     var tokens = 0;
     var firstMs = 0;
     var nCtx = 0;
@@ -107,20 +111,25 @@ class Translator implements LineTranslator {
       addSpecial: false,
       parseSpecial: true,
       sampler: const SamplerParams(greedy: true),
-      // Clamped so prompt + output stay inside nCtx (#533).
-      maxTokens: ContextBudget.maxTokens(ru),
+      // Faithfulness: output budget tied to the input length (a longer answer is invented text),
+      // clamped so prompt + output stay inside nCtx (#533).
+      maxTokens: ContextBudget.maxTokensFor(ru, src: src, tgt: tgt),
     )) {
       if (e is TokenEvent) {
         if (tokens == 0) firstMs = sw.elapsedMilliseconds;
         tokens++;
-        buf.write(e.text);
+        buf.write(utf8.add(e.bytes));
+        // One sentence in, one line out: stop at the first line break after some text, so the
+        // model cannot continue with a second paragraph of its own.
+        if (buf.toString().trimLeft().contains('\n')) break;
       } else if (e is DoneEvent) {
         nCtx = e.committedPosition;
       }
     }
+    buf.write(utf8.close());
     // Same as desktop hymt: the card prompt asks for 中文, so convert to zh-Hant (Taiwan) afterwards.
-    final cleaned = PromptBuilder.clean(buf.toString());
-    final text = tgt == 'zh' ? toTraditionalTw(cleaned) : cleaned;
+    final cleaned = sanitizeOutput(PromptBuilder.clean(buf.toString()));
+    final text = tgt == 'zh' ? toTwQuotes(toTraditionalTw(cleaned)) : cleaned;
     return Translation(
       zh: text,
       check: checkChinese(text),

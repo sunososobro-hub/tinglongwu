@@ -62,10 +62,12 @@ class AsrConfig {
   final String? testWavDir;
   final int numThreads;
 
-  /// VAD rules (seconds). Speech end is detected after [vadMinSilence].
-  static const vadMinSilence = 0.6;
+  /// VAD rules (seconds). Speech end is detected after [vadMinSilence]. Video speech has few
+  /// long pauses, so the VAD hard cap [vadMaxSpeech] decides the subtitle rate: 6 s keeps one
+  /// subtitle to roughly one sentence and updates at least every ~6 s (was 10 s + 3-4 sentences).
+  static const vadMinSilence = 0.35;
   static const vadMinSpeech = 0.25;
-  static const vadMaxSpeech = 10.0;
+  static const vadMaxSpeech = 6.0;
 }
 
 /// Runs sherpa-onnx offline ASR in a background isolate.

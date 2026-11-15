@@ -31,8 +31,16 @@ class ContextBudget {
 
   /// `PromptBuilder.maxTokensFor`, clamped so the prompt estimate plus the
   /// generated tokens stay below [nCtx] (at least 1 token).
-  static int maxTokens(String text, {int nCtx = nCtx}) {
-    final want = PromptBuilder.maxTokensFor(text.trim());
+  static int maxTokens(String text, {int nCtx = nCtx}) =>
+      _fit(text, PromptBuilder.maxTokensFor(text.trim()), nCtx);
+
+  /// Like [maxTokens] with the phone's tighter faithful budget for [src] -> [tgt].
+  static int maxTokensFor(String text,
+      {int nCtx = nCtx, String src = 'ru', String tgt = 'zh'}) {
+    return _fit(text, PromptBuilder.faithfulMaxTokens(text, src: src, tgt: tgt), nCtx);
+  }
+
+  static int _fit(String text, int want, int nCtx) {
     final room = nCtx - 1 - promptTokens(text);
     if (want <= room) return want;
     return room < 1 ? 1 : room;
