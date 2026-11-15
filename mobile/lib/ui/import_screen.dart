@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/model_importer.dart';
+import '../services/model_paths.dart';
 import '../services/play_packs.dart';
 
 /// "Import models": pick the models zip (or single files) with the system file picker and copy
@@ -32,11 +33,12 @@ class _ImportScreenState extends State<ImportScreen> {
     PlayPacks.available().then((v) {
       if (mounted) setState(() => _play = v);
     });
-    ModelImporter.loadManifest().then((m) {
+    ModelImporter.loadManifest().then((m) async {
+      final dirs = await ModelPaths.packLocations();
       if (!mounted) return;
       setState(() {
         _imp = ModelImporter(m, widget.modelsDir);
-        _present = _imp!.presentFiles();
+        _present = _imp!.presentFiles(packDirs: dirs);
       });
     }, onError: (Object e) {
       if (mounted) setState(() => _loadError = '$e');
@@ -51,9 +53,8 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _playImport() async {
-    final imp = _imp!;
     _playRun = true;
-    await _runJob(() => PlayPacks.downloadAndImport(imp, onProgress: _onProgress));
+    await _runJob(() => PlayPacks.download(onProgress: _onProgress));
     _playRun = false;
   }
 
@@ -81,12 +82,13 @@ class _ImportScreenState extends State<ImportScreen> {
     } catch (e) {
       r = ImportReport()..problems.add('$e');
     }
+    final dirs = await ModelPaths.packLocations();
     if (!mounted) return;
     setState(() {
       _busy = false;
       _report = r;
       _importedAny |= r.imported.isNotEmpty;
-      _present = imp.presentFiles();
+      _present = imp.presentFiles(packDirs: dirs);
     });
   }
 
@@ -98,8 +100,8 @@ class _ImportScreenState extends State<ImportScreen> {
   List<Widget> _playSection() => [
         const Text('從 Google Play 下載 / Download from Google Play', style: _h),
         const SizedBox(height: 6),
-        const Text('由 Play 商店下載模型（約 1.4 GB，建議用 Wi-Fi），下載後一樣核對大小與 SHA-256。'
-            '本 app 仍然沒有網路權限。', style: _t),
+        const Text('安裝後 Play 商店會自動下載模型（約 1.4 GB，建議用 Wi-Fi）；沒下載完可以按這裡繼續。'
+            '檔案直接在 Play 放的位置使用，不另外複製。本 app 仍然沒有網路權限。', style: _t),
         const SizedBox(height: 12),
         if (!_busy)
           FilledButton.icon(

@@ -4,8 +4,8 @@ name: mobile-apk
 # the tag is moved to the built commit and the APK asset is replaced. The release carries only the APK
 # and the models zip (hashes live in the body); stray .sha256 assets are deleted; the models zip is rebuilt from official sources only when assets/models_manifest.json
 # changes. It is never marked Latest and never touches v* tags/releases (release.yml).
-# The same job also builds the Google Play AAB: the models ride in two on-demand Play Asset Delivery
-# packs (tool/fill_asset_packs.py). On dev pushes the AAB is kept as an artifact and, when the
+# The same job also builds the Google Play AAB: the models ride in two fast-follow Play Asset Delivery
+# packs (tool/fill_asset_packs.py) that Play downloads right after install. On dev pushes the AAB is kept as an artifact and, when the
 # PLAY_SA_JSON secret and the release key exist, uploaded to the Play internal track.
 on:
   push:
@@ -108,12 +108,24 @@ jobs:
           TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build appbundle --release --target-platform android-arm64 --build-number ${{ github.run_number }}
-      - name: Check the AAB (packs present, no INTERNET, base under 200 MB, target API >= 36)
+      - name: Check the AAB (packs present + fast-follow + sizes, no INTERNET, base under 200 MB, target API >= 36)
         run: |
           AAB=build/app/outputs/bundle/release/app-release.aab
           ls -l "$AAB"
           unzip -l "$AAB" | grep -E " (models_asr|models_llm)/assets/" | tee "$RUNNER_TEMP/packs.txt"
-          for p in models_asr models_llm; do grep -q " $p/assets/" "$RUNNER_TEMP/packs.txt" || { echo "pack $p missing"; exit 1; }; done
+          TOTAL=0
+          for p in models_asr models_llm; do
+            grep -q " $p/assets/" "$RUNNER_TEMP/packs.txt" || { echo "pack $p missing"; exit 1; }
+            # proto manifest keeps the delivery element name (fast-follow / on-demand / install-time) as a string
+            unzip -p "$AAB" "$p/manifest/AndroidManifest.xml" > "$RUNNER_TEMP/$p.xml"
+            grep -aq "fast-follow" "$RUNNER_TEMP/$p.xml" || { echo "pack $p is not fast-follow"; exit 1; }
+            if grep -aqE "on-demand|install-time" "$RUNNER_TEMP/$p.xml"; then echo "pack $p has another delivery type"; exit 1; fi
+            N=$(awk -v p="$p/assets/" 'index($4, p) == 1 {s += $1} END {print s+0}' "$RUNNER_TEMP/packs.txt")
+            echo "$p: $N bytes"
+            [ "$N" -le $((1536 << 20)) ] || { echo "pack $p over Play's 1.5 GB per-pack limit"; exit 1; }
+            TOTAL=$((TOTAL + N))
+          done
+          [ "$TOTAL" -le $((4 << 30)) ] || { echo "packs over Play's 4 GB fast-follow total"; exit 1; }
           # proto manifest keeps permission names as plain UTF-8 strings
           if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "android.permission.INTERNET"; then echo "AAB requests INTERNET"; exit 1; fi
           BASE=$(unzip -Zl "$AAB" | awk '$NF ~ /^base\// {s += $6} END {print s+0}')
@@ -207,6 +219,8 @@ jobs:
           **2. Get the translation pack (1.4 GB, once):** [$ZIP]($BASE/$ZIP)
 
           Open the app, tap **Import models**, pick the zip.
+
+          Installed from Google Play instead? Nothing to import: Play downloads the models right after install.
 
           <details>
           <summary>Details</summary>

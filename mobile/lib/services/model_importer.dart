@@ -34,10 +34,10 @@ class ModelImporter {
   String get _staging => '$modelsDir/.import';
 
   /// Target paths of manifest files already in the models dir (by name and size; the hash was
-  /// checked when they were imported).
-  Set<String> presentFiles() => {
+  /// checked when they were imported) or in one of the Play pack folders [packDirs].
+  Set<String> presentFiles({List<String> packDirs = const []}) => {
         for (final f in manifest.files)
-          if (_sizeOf('$modelsDir/${f.path}') == f.size) f.path,
+          if ([modelsDir, ...packDirs].any((d) => _sizeOf('$d/${f.path}') == f.size)) f.path,
       };
 
   static int _sizeOf(String p) {

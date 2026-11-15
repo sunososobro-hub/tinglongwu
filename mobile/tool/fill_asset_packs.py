@@ -17,9 +17,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 MOBILE = os.path.dirname(HERE)
 MANIFEST = os.path.join(MOBILE, "assets", "models_manifest.json")
-# manifest group -> asset pack (keep each pack under Play's 1.5 GB on-demand limit)
+# manifest group -> asset pack (fast-follow; Play: each pack <= 1.5 GB, all fast-follow +
+# on-demand packs together <= 4 GB)
 PACK_OF_GROUP = {"asr": "models_asr", "vad": "models_asr", "llm": "models_llm"}
 PACK_LIMIT = 1536 << 20
+TOTAL_LIMIT = 4 << 30
 
 
 def sha256(path):
@@ -58,7 +60,9 @@ def main():
         print(f"{pack}: {e['path']} ({e['size']} bytes)")
     for pack, n in sizes.items():
         if n > PACK_LIMIT:
-            sys.exit(f"{pack}: {n} bytes is over the 1.5 GB on-demand pack limit")
+            sys.exit(f"{pack}: {n} bytes is over Play's 1.5 GB per-pack limit")
+    if sum(sizes.values()) > TOTAL_LIMIT:
+        sys.exit(f"packs: {sum(sizes.values())} bytes is over Play's 4 GB fast-follow total")
 
 
 if __name__ == "__main__":

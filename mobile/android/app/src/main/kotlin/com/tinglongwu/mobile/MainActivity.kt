@@ -114,13 +114,13 @@ class MainActivity : FlutterFragmentActivity() {
                         ch.invokeMethod("importProgress", mapOf("done" to done, "total" to total))
                     }
                     "cancelImport" -> { importer.cancel(); result.success(null) }
-                    // Models from Google Play asset packs (only when installed from Play).
+                    // Models from Google Play fast-follow asset packs (only when installed from Play).
+                    "playLocations" -> result.success(play.locations())
                     "playStatus" -> play.status(result)
                     "playFetch" -> play.fetch(result) { done, total, status ->
                         ch.invokeMethod("playProgress", mapOf("done" to done, "total" to total, "status" to status))
                     }
                     "playCancel" -> { play.cancel(); result.success(null) }
-                    "playRemove" -> play.remove(result)
                     "freeBytes" -> result.success(importer.freeBytes(call.argument<String>("dir")!!))
                     // Opens a link in the user's browser (the browser downloads; this app stays offline).
                     "openUrl" -> {

@@ -10,11 +10,11 @@ import com.google.android.play.core.assetpacks.model.AssetPackStatus
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Model download through Google Play Asset Delivery (on-demand packs `models_asr`, `models_llm`).
- * The Play Store downloads the packs, so the app still has no INTERNET permission. Works only when
- * the app was installed from Play; a side-loaded APK gets `available = false` and keeps the manual
- * zip import. Dart copies the files out of the pack folders through the normal checked import
- * (size + SHA-256 against the manifest) and then calls `remove` to free the space.
+ * Models through Google Play Asset Delivery (fast-follow packs `models_asr`, `models_llm`). Play
+ * downloads them right after install, so the app still has no INTERNET permission. The app reads
+ * the model files in place from [locations] (no copy). [fetch] only joins or restarts a download
+ * that is not finished yet. A side-loaded APK has no packs: [locations] is empty, `available` is
+ * false, and the manual zip import stays the way in.
  */
 class PlayPacks(
     activity: android.app.Activity,
@@ -80,13 +80,8 @@ class PlayPacks(
 
     fun cancel() { apm.cancel(PACKS) }
 
-    /** Frees the pack storage after the files were copied into the models dir. */
-    fun remove(result: MethodChannel.Result) {
-        var left = PACKS.size
-        for (p in PACKS) {
-            apm.removePack(p).addOnCompleteListener { if (--left == 0) result.success(null) }
-        }
-    }
+    /** {pack: assetsPath} for the packs already on the device (empty for a side-loaded APK). */
+    fun locations(): Map<String, String> = try { paths() } catch (_: Exception) { emptyMap() }
 
     private fun paths(): Map<String, String> =
         PACKS.mapNotNull { p -> apm.getPackLocation(p)?.assetsPath()?.let { p to it } }.toMap()

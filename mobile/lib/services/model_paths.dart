@@ -1,17 +1,28 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-/// Where side-loaded models live and how to check them.
+/// Where the models live and how to check them.
 ///
-/// Layout under `<externalFilesDir>/models/`:
+/// Each file is taken from `<externalFilesDir>/models/` when it is there (imported, adb-pushed or
+/// copied from the old on-demand packs; never replaced or deleted), else straight from a Google
+/// Play fast-follow pack folder ([packDirs], read in place, no copy) when the size matches the
+/// manifest. Same relative layout in both:
 ///   sensevoice/model.int8.onnx, tokens.txt (SenseVoice-small, zh/en/ja/ko/yue)
 ///   silero_vad.onnx
 ///   Hy-MT2-1.8B-Q4_K_M.gguf (translator, same file as desktop)
 class ModelPaths {
-  ModelPaths(this.filesDir);
+  ModelPaths(this.filesDir, {this.packDirs = const [], this.sizes = const {}});
 
   final String filesDir;
+
+  /// Play asset pack folders (`AssetPackLocation.assetsPath()`); empty for a side-loaded APK.
+  /// Asked again on every start: Play may move them when it updates a pack.
+  final List<String> packDirs;
+
+  /// Manifest size per relative path; a pack file with another size is not used.
+  final Map<String, int> sizes;
 
   static const packageName = 'com.tinglongwu.mobile';
   static const _channel = MethodChannel('tlwu/native');
@@ -40,27 +51,57 @@ class ModelPaths {
 
   static Future<ModelPaths> resolve() async {
     final dir = await _channel.invokeMethod<String>('externalFilesDir');
-    return ModelPaths(dir!);
+    return ModelPaths(dir!, packDirs: await packLocations(), sizes: await _manifestSizes());
+  }
+
+  /// Folders of the Play packs already on the device (none for a side-loaded APK or iOS).
+  static Future<List<String>> packLocations() async {
+    try {
+      final m = await _channel.invokeMapMethod<String, String>('playLocations');
+      return m == null ? const [] : (m.keys.toList()..sort()).map((k) => m[k]!).toList();
+    } catch (_) {
+      return const []; // no Play / old native side
+    }
+  }
+
+  static Future<Map<String, int>> _manifestSizes() async {
+    try {
+      final j = jsonDecode(await rootBundle.loadString('assets/models_manifest.json')) as Map;
+      return {
+        for (final f in j['files'] as List) (f as Map)['path'] as String: (f['size'] as num).toInt()
+      };
+    } catch (_) {
+      return const {};
+    }
   }
 
   String get modelsDir => '$filesDir/models';
-  String get asrDir => '$modelsDir/$asrDirName';
-  String get vadPath => '$modelsDir/$vadFileName';
+
+  /// Where the file at [rel] (manifest path) is read from: the models dir when the file is there,
+  /// else a pack folder with a file of the manifest size, else the models dir (= missing).
+  String path(String rel) {
+    final local = '$modelsDir/$rel';
+    if (File(local).existsSync()) return local;
+    for (final d in packDirs) {
+      final f = File('$d/$rel');
+      try {
+        if (f.existsSync() && (sizes[rel] == null || f.lengthSync() == sizes[rel])) return f.path;
+      } catch (_) {}
+    }
+    return local;
+  }
+
+  String get vadPath => path(vadFileName);
 
   /// Translator GGUF. Fixed file: the prompt is Hy-MT2's template, so no
   /// other model can be swapped in.
-  String get llmPath => '$modelsDir/$llmFile';
+  String get llmPath => path(llmFile);
 
-  String asrFile(String name) => '$asrDir/$name';
+  String asrFile(String name) => path('$asrDirName/$name');
 
   /// Returns the list of missing files (empty = all present).
-  List<String> missing() {
-    final out = <String>[];
-    for (final f in asrFiles) {
-      if (!File(asrFile(f)).existsSync()) out.add(asrFile(f));
-    }
-    if (!File(vadPath).existsSync()) out.add(vadPath);
-    if (!File(llmPath).existsSync()) out.add(llmPath);
-    return out;
-  }
+  List<String> missing() => [
+        for (final p in [for (final f in asrFiles) asrFile(f), vadPath, llmPath])
+          if (!File(p).existsSync()) p,
+      ];
 }

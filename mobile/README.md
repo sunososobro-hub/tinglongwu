@@ -71,13 +71,18 @@ Keep `tlwu-release.jks` and the password backed up offline; losing them means us
 
 ## Google Play (AAB + model asset packs)
 The `mobile-apk` workflow also builds `app-release.aab` for Google Play. The models do not fit in the
-200 MB base, so they ride in two on-demand Play Asset Delivery packs: `models_asr` (SenseVoice + Silero
-VAD) and `models_llm` (Hy-MT2 GGUF). CI fills them from the same official sources as the models zip
-(`tool/fill_asset_packs.py`, size + SHA-256 checked against the manifest); in git the pack folders are
-empty. The Play Store does the download, so the app still has no INTERNET permission. When the app was
-installed from Play, the Import screen shows **從 Play 下載模型 / Get models**: the packs are fetched,
-every file goes through the same checked import, then the packs are removed to free the space. A
-side-loaded APK does not show the button and keeps the manual zip import.
+200 MB base, so they ride in two **fast-follow** Play Asset Delivery packs: `models_asr` (SenseVoice +
+Silero VAD, ~240 MB) and `models_llm` (Hy-MT2 GGUF, ~1.13 GB). Play downloads them right after install,
+so a Play user never imports anything; the Play Store does the download, so the app still has no
+INTERNET permission. CI fills the packs from the same official sources as the models zip
+(`tool/fill_asset_packs.py`, size + SHA-256 checked against the manifest; in git the pack folders are
+empty) and checks the AAB: both packs fast-follow, each <= 1.5 GB, together <= 4 GB.
+
+The app reads the models in place from the pack folders (`AssetPackManager.getPackLocation`), with no
+copy, so they take the space only once. A file already in `files/models/` (imported, adb-pushed, or
+copied by the older on-demand flow) always wins and is never replaced or deleted. If the app is
+opened before Play has finished, the Import screen's **從 Play 下載模型 / Get models** waits for (or
+restarts) the Play download. A side-loaded APK has no packs and keeps **匯入模型 / Import models**.
 
 Owner steps, once:
 1. Release key secrets as in "Signing" above (that key becomes the Play **upload key**; Play App

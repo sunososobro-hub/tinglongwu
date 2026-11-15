@@ -25,6 +25,6 @@ plugins {
 }
 
 include(":app")
-// Play Asset Delivery on-demand packs with the models (filled by CI; empty in git). Only used by the
+// Play Asset Delivery fast-follow packs with the models (filled by CI; empty in git). Only used by the
 // AAB for Google Play; the side-loaded APK ignores them and keeps the manual import.
 include(":models_asr", ":models_llm")
