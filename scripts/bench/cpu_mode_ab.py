@@ -44,6 +44,9 @@ def latencies(rep: dict, jsonl: list[dict] | None = None) -> dict[str, list[floa
 def summarize(rep: dict, jsonl: list[dict] | None = None) -> dict:
     """{pair: {p50_s, chrf, wer}, '_all': {...}}; wer = ASR error rate x100 (points); chrf None when unmeasured."""
     lat = latencies(rep, jsonl)
+    if jsonl is not None and set(lat) != {lg["pair"] for lg in rep.get("languages", [])}:
+        raise ValueError("latency jsonl and report cover different pairs (stale .jsonl?): only in jsonl "
+                         + (", ".join(sorted(set(lat) - {lg["pair"] for lg in rep.get("languages", [])})) or "-"))
     res: dict[str, dict] = {}
     for lg in rep.get("languages", []):
         v = lat.get(lg["pair"], [])
@@ -69,7 +72,7 @@ def _delta(a, b):
 def verdict(a: dict, b: dict) -> dict:
     """Overall deltas of B (CPU mode) against A (defaults) and whether each #745 target is met (None = no data)."""
     x, y = a["_all"], b["_all"]
-    drop = None if not x["p50_s"] or y["p50_s"] is None else 100 * (x["p50_s"] - y["p50_s"]) / x["p50_s"]
+    drop = None if not x["p50_s"] or y["p50_s"] is None else round(100 * (x["p50_s"] - y["p50_s"]) / x["p50_s"], 6)
     dc, dw = _delta(y["chrf"], x["chrf"]), _delta(x["wer"], y["wer"])  # chrF drop = A - B; WER rise = B - A
     # reports carry 2-4 decimals: round away float noise so an inclusive limit (e.g. 0.05 -> 0.07 = 2.0) is met
     dc, dw = (None if v is None else round(v, 6) for v in (dc, dw))

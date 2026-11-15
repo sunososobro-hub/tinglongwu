@@ -74,3 +74,19 @@ def test_run_without_cpu_args_is_rejected(tmp_path):
         ab.main(["--run", "--out-dir", str(tmp_path / "o")])
     assert e.value.code == 2
     assert not (tmp_path / "o").exists()
+
+
+def test_p50_limit_is_inclusive_despite_float_noise():
+    v = ab.verdict(ab.summarize(rep(40.0, 0.05, [3.0])), ab.summarize(rep(40.0, 0.05, [2.1])))
+    assert v["p50_ok"]
+    v = ab.verdict(ab.summarize(rep(40.0, 0.05, [3.0])), ab.summarize(rep(40.0, 0.05, [2.11])))
+    assert not v["p50_ok"]
+
+
+def test_stale_sidecar_with_extra_pair_exits_2(tmp_path, capsys):
+    ra, rb = tmp_path / "base.json", tmp_path / "cpu.json"
+    ra.write_text(json.dumps(rep(40.0, 0.05, [10.0])))
+    rb.write_text(json.dumps(rep(40.0, 0.05, [10.0])))
+    (tmp_path / "base.jsonl").write_text('{"pair":"en->zh","id":"a","total":10.0}\n{"pair":"fr->zh","id":"b","total":100.0}\n')
+    assert ab.main([str(ra), str(rb)]) == 2
+    assert "fr->zh" in capsys.readouterr().err
