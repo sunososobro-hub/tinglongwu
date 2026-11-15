@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.3.8
+- Subtitles can label who is speaking (a small add-on pack downloads only when you turn it on), and a new 情境 row lets you pick meeting or video.
+- The mic now follows your Windows default device, and speak mode holds back more background noise.
+- The setup wizard and app speak 繁體中文, 简体中文, 日本語 and Русский, and the settings window can be resized and wraps to one column when narrow.
+
 ## v0.3.7
 - New chat-style main window: the other side on the left, you on the right, with the original words in small text under each line; one big Start button.
 - A mic on/off button (like mute in Meet), and one click shows the subtitles floating over a video.
