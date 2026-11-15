@@ -17,6 +17,13 @@ SILENT_CLEAR = "@@silent-clear@@"  # notice payload: the listened sound is back,
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
+        "gui_topics_menu": "Topic notes...",  # #611
+        "gui_topics_title": "Topic notes",  # #611
+        "gui_topics_on": "Topic notes on",  # #611
+        "gui_topics_model": "Model (.gguf)...",  # #611
+        "gui_topics_no_model": "Pick a local GGUF instruct model to write topic notes.",  # #611
+        "gui_topics_need_save": "Topic notes need a saved transcript: turn on Save in Settings.",  # #611
+        "gui_topics_empty": "Each finished topic shows up here during the meeting.",  # #611
         "rec_label": "● Recording",
         "rec_consent": "Recording is on: audio is saved on this computer only ({path}). Get the other side's consent before recording their voice.",
         "guard_blocked": "\U0001F6E1 tlwu blocked an outgoing connection: {host}:{port} ({pkg}). "
@@ -235,6 +242,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_open_url": "Open this URL: {url}",
     },
     "ru": {
+        "gui_topics_menu": "Заметки по темам...",  # #611
+        "gui_topics_title": "Заметки по темам",  # #611
+        "gui_topics_on": "Заметки по темам включены",  # #611
+        "gui_topics_model": "Модель (.gguf)...",  # #611
+        "gui_topics_no_model": "Выберите локальную GGUF-модель для заметок по темам.",  # #611
+        "gui_topics_need_save": "Для заметок нужна сохранённая расшифровка: включите сохранение в настройках.",  # #611
+        "gui_topics_empty": "Каждая завершённая тема появится здесь во время встречи.",  # #611
         "rec_label": "● Запись",
         "rec_consent": "Запись включена: звук сохраняется только на этом компьютере ({path}). Перед записью голоса собеседника получите его согласие.",
         "guard_blocked": "\U0001F6E1 tlwu заблокировал исходящее соединение: {host}:{port} ({pkg}). "
@@ -453,6 +467,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_open_url": "Откройте этот адрес: {url}",
     },
     "zh-TW": {
+        "gui_topics_menu": "主題筆記...",  # #611
+        "gui_topics_title": "主題筆記",  # #611
+        "gui_topics_on": "開啟主題筆記",  # #611
+        "gui_topics_model": "模型 (.gguf)...",  # #611
+        "gui_topics_no_model": "請選一個本機 GGUF 指令模型來寫主題筆記。",  # #611
+        "gui_topics_need_save": "主題筆記需要存逐字稿：請在設定開啟儲存。",  # #611
+        "gui_topics_empty": "會議中每講完一個主題，就會出現在這裡。",  # #611
         "rec_label": "● 錄音中",
         "rec_consent": "錄音已開啟：聲音只存在這台電腦（{path}）。錄下對方的聲音前，請先取得對方同意。",
         "guard_blocked": "\U0001F6E1 已擋下 tlwu 對外連線：{host}:{port}（{pkg}）。"
@@ -671,6 +692,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_open_url": "請開啟此網址：{url}",
     },
     "ja": {
+        "gui_topics_menu": "トピックメモ...",  # #611
+        "gui_topics_title": "トピックメモ",  # #611
+        "gui_topics_on": "トピックメモをオンにする",  # #611
+        "gui_topics_model": "モデル (.gguf)...",  # #611
+        "gui_topics_no_model": "トピックメモを書くローカル GGUF 指示モデルを選んでください。",  # #611
+        "gui_topics_need_save": "トピックメモには文字起こしの保存が必要です。設定で保存をオンにしてください。",  # #611
+        "gui_topics_empty": "会議中、話し終えたトピックがここに表示されます。",  # #611
         "rec_label": "● 録音中",
         "rec_consent": "録音中です。音声はこのコンピューターにだけ保存されます（{path}）。相手の声を録音する前に同意を得てください。",
         "guard_blocked": "\U0001F6E1 tlwu が外部への接続をブロックしました: {host}:{port} ({pkg})。"

@@ -36,6 +36,8 @@ DEFAULTS = {
     "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
     "scene": "meeting",  # 0.3.8: the 情境 row: "meeting" (listen + speak) or "video" (listen only); last choice kept
     "speaker_id": False,  # 0.3.8: 標示說話者; off = sherpa-onnx and the speaker model are never loaded
+    "topics": None,  # #611: topic notes side panel; None = default (on with CUDA, off on CPU-only), True/False = chosen
+    "topics_model": "",  # #611: local GGUF instruct model for --topics ("" = none: no topic notes)
     "send_mode": "auto",  # #834/#1052: how a speak line is sent (auto = straight away, confirm = show me first); owner default: auto
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES (the CLI keeps all three)
@@ -388,7 +390,10 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
                 v = data.get(k)
                 if v is None:
                     continue
-                if dv is None:  # x / y
+                if k == "topics":  # #611: None (default) / True / False
+                    if isinstance(v, bool):
+                        out[k] = v
+                elif dv is None:  # x / y
                     if isinstance(v, int) and not isinstance(v, bool):
                         out[k] = v
                 elif isinstance(v, type(dv)) and not (type(dv) is int and isinstance(v, bool)):
@@ -831,6 +836,19 @@ def run_voice_install(put, mdir=None, popen=None, bundled: bool | None = None, r
                              cmd=voice_install_cmd(mdir, bundled, ru))
 
 
+def topics_on(s: dict, has_cuda=None) -> bool:
+    """#611: run topic notes for these settings? Needs a model file; an unset choice follows topics_default
+    (on with a CUDA device, off on CPU-only). has_cuda: None = probe."""
+    model = s.get("topics_model") or ""
+    if not model or not os.path.isfile(model):
+        return False
+    if s.get("topics") is not None:
+        return bool(s["topics"])
+    from .topics_panel import topics_default
+
+    return topics_default(_gpu_usable() if has_cuda is None else has_cuda)
+
+
 def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:
     """Map GUI settings to CLI args (so the GUI reuses the CLI's parser and defaults).
     outputs: the current voice_outputs() (#448): a saved voice_device that is no longer listed is left out (default
@@ -854,6 +872,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--glossary", s["glossary"]]
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
+        if topics_on(s):  # #611: the notes need the transcript (--topics needs --save)
+            argv += ["--topics", s["topics_model"]]
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
         dev = s.get("voice_device") or ""
         # #448: unplugged since it was saved. #710: the Speak cable is not in voice_outputs() (cables are hidden

@@ -61,3 +61,107 @@ def test_panel_clear():
     assert panel.entries()[0]["when"] == "00:00-01:05"
     panel.clear()
     assert panel.entries() == []
+
+
+# --- #611 part 4 remainder: settings -> --topics, and the Tk topic notes window ---
+
+def test_topics_flag_only_with_model_save_and_switch(tmp_path):
+    from tinglongwu.gui.core import DEFAULTS, settings_to_argv, topics_on
+
+    gguf = tmp_path / "m.gguf"
+    gguf.write_bytes(b"GGUF")
+    s = dict(DEFAULTS, save=True, topics=True, topics_model=str(gguf))
+    argv = settings_to_argv(s)
+    assert argv[argv.index("--topics") + 1] == str(gguf)
+    assert "--topics" not in settings_to_argv(dict(s, save=False))  # --topics needs --save
+    assert "--topics" not in settings_to_argv(dict(s, topics=False))
+    assert "--topics" not in settings_to_argv(dict(s, topics_model=str(tmp_path / "missing.gguf")))
+    unset = dict(s, topics=None)  # no choice yet: follows topics_default (CUDA on, CPU-only off)
+    assert topics_on(unset, has_cuda=True) is True
+    assert topics_on(unset, has_cuda=False) is False
+
+
+def test_topics_choice_survives_restart(tmp_path):
+    import json
+
+    from tinglongwu.gui.core import load_settings
+
+    p = tmp_path / "gui.json"
+    p.write_text(json.dumps({"topics": False, "topics_model": "C:/m.gguf"}), "utf-8")
+    s = load_settings(p, gpu=lambda: True)
+    assert s["topics"] is False and s["topics_model"] == "C:/m.gguf"
+    p.write_text(json.dumps({"topics": "yes"}), "utf-8")
+    assert load_settings(p, gpu=lambda: True)["topics"] is None
+
+
+def _tk_app(tmp_path, monkeypatch):
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu import i18n
+    from tinglongwu.gui import app as appmod
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)
+    monkeypatch.setattr(i18n, "_override", "en")
+    return appmod.App()
+
+
+def test_gui_window_lists_three_topics_from_the_summarizer(tmp_path, monkeypatch):
+    a = _tk_app(tmp_path, monkeypatch)
+    try:
+        counter = iter(range(1, 10))
+        notes = topics.TopicNotes(tmp_path / "g.topics.md", lambda prompt: _summary(next(counter)),
+                                  lower_priority=lambda: False, on_topic=a.topic_panel.add)
+        _feed(notes, 3)
+        notes.close(timeout=10)
+        a.poll()  # drains the ("topics",) events posted on the summarizer thread
+        assert a.topics_win is not None and a.topics_win.winfo_exists()
+        text = a.topics_text.get("1.0", "end")
+        for n in (1, 2, 3):
+            assert f"Topic {n}" in text and f"point {n}a" in text and f"me: do {n}" in text
+        assert a.topics_hint.cget("text") == ""
+    finally:
+        a.root.destroy()
+
+
+def test_gui_window_says_what_is_missing_and_switch_is_saved(tmp_path, monkeypatch):
+    from tinglongwu.gui.core import load_settings
+
+    a = _tk_app(tmp_path, monkeypatch)
+    try:
+        a.settings.update(topics_model="", save=False)
+        a.render_topics(show=True)
+        assert "GGUF" in a.topics_hint.cget("text")
+        a.settings["topics_model"] = str(tmp_path / "m.gguf")
+        a.render_topics()
+        assert "Save" in a.topics_hint.cget("text")
+        a.v_topics.set(False)
+        a._topics_toggled()
+        assert load_settings(gpu=lambda: True)["topics"] is False
+    finally:
+        a.root.destroy()
+
+
+def test_listen_leg_passes_the_panel_to_run_session(tmp_path, monkeypatch):
+    import threading
+
+    from tinglongwu import cli
+    from tinglongwu.gui.core import DEFAULTS
+
+    a = _tk_app(tmp_path, monkeypatch)
+    try:
+        got = {}
+        monkeypatch.setattr(cli, "run_session", lambda args, **kw: got.update(kw))
+        a._run_leg(dict(DEFAULTS), threading.Event())
+        assert got["on_topic"] == a.topic_panel.add
+        got.clear()
+        a._run_leg(dict(DEFAULTS), threading.Event(), sink_cls=lambda q: type("S", (), {})())
+        assert got["on_topic"] is None  # the speak leg never feeds the panel
+    finally:
+        a.root.destroy()

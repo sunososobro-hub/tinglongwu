@@ -22,7 +22,7 @@ from .core import scene_of as scene_mode_name
 from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
-                   save_settings, settings_to_argv, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
+                   save_settings, settings_to_argv, topics_on, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -409,6 +409,11 @@ class App:
         # window a normal chat window (#939: resizable, 460x640): always-on-top would cover the meeting, and the
         # floating subtitle bar (still -topmost) is the thing that must stay on top. So no -topmost here on purpose.
         self.mic_ev = threading.Event()  # #1028: mic toggle; set = the speak leg's capture is fed silence (MuteSource)
+        from .topics_panel import TopicPanel
+
+        # #611: finished topics arrive on the summarizer thread; poll() redraws the topic notes window
+        self.topic_panel = TopicPanel(on_change=lambda: self.q.put(("topics",)))
+        self.topics_win = None
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch
         self.status_key: str | None = "gui_ready"
@@ -1401,6 +1406,7 @@ class App:
         sm.add_cascade(label=t("gui_font_size"), menu=zm)
         sm.add_command(label=t("addons_menu"), command=self.open_addons)  # #614
         sm.add_command(label=t("gui_menu_usage"), command=self.ask_usage)  # #680
+        sm.add_command(label=t("gui_topics_menu"), command=lambda: self.render_topics(show=True))  # #611
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
@@ -2003,6 +2009,68 @@ class App:
         if sd is not None and ok:  # #739: the first Start goes on by itself
             self.toggle(getattr(self, "pack_retry", None))
 
+    def render_topics(self, show: bool = False):
+        """#611: the topic notes side window: one block per finished topic (title, time, key points, actions), plus
+        the on/off switch and the GGUF model picker. Created on first use; redrawn from self.topic_panel."""
+        w = self.topics_win
+        if w is None or not w.winfo_exists():
+            if not show:
+                return
+            w = self.topics_win = tk.Toplevel(self.root)
+            w.title(t("gui_topics_title"))
+            w.geometry("360x480")
+            w.protocol("WM_DELETE_WINDOW", w.withdraw)
+            bar = ttk.Frame(w)
+            bar.pack(side="top", fill="x", padx=8, pady=6)
+            self.v_topics = tk.BooleanVar(value=topics_on(self.settings) or self.settings.get("topics") is True)
+            ttk.Checkbutton(bar, text=t("gui_topics_on"), variable=self.v_topics,
+                            command=self._topics_toggled).pack(side="left")
+            ttk.Button(bar, text=t("gui_topics_model"), command=self.pick_topics_model).pack(side="right")
+            self.topics_hint = ttk.Label(w, wraplength=340, justify="left", foreground="#7f8c8d")
+            self.topics_hint.pack(side="top", fill="x", padx=8)
+            self.topics_text = tk.Text(w, wrap="word", height=20, borderwidth=0, padx=8, pady=6)
+            self.topics_text.tag_configure("title", font=("TkDefaultFont", 12, "bold"))
+            self.topics_text.tag_configure("when", foreground="#7f8c8d")
+            self.topics_text.pack(side="top", fill="both", expand=True)
+        entries = self.topic_panel.entries()
+        model = self.settings.get("topics_model") or ""
+        if entries:
+            hint = ""
+        elif not model:
+            hint = t("gui_topics_no_model")
+        elif not self.settings.get("save"):
+            hint = t("gui_topics_need_save")
+        else:
+            hint = t("gui_topics_empty")
+        self.topics_hint.configure(text=hint)
+        tx = self.topics_text
+        tx.configure(state="normal")
+        tx.delete("1.0", "end")
+        for e in entries:
+            tx.insert("end", e["title"] + "\n", "title")
+            tx.insert("end", e["when"] + "\n", "when")
+            for b in e["bullets"]:
+                tx.insert("end", f"\u2022 {b}\n")
+            for a in e["actions"]:
+                tx.insert("end", f"\u2192 {a}\n")
+            tx.insert("end", "\n")
+        tx.configure(state="disabled")
+        if show:
+            w.deiconify()
+            w.lift()
+
+    def _topics_toggled(self):
+        self.settings["topics"] = bool(self.v_topics.get())
+        save_settings(self.settings)
+        self.render_topics()
+
+    def pick_topics_model(self):
+        p = filedialog.askopenfilename(title=t("gui_topics_model"), filetypes=[("GGUF", "*.gguf"), ("All", "*.*")])
+        if p:
+            self.settings["topics_model"] = p
+            save_settings(self.settings)
+            self.render_topics()
+
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
                                          filetypes=[("JSON lines", "*.jsonl"), ("All", "*.*")])
@@ -2144,6 +2212,7 @@ class App:
         self.errored = False
         self.listening = True
         self.speak_run = speak_run  # #1001: read by _work (both legs) before the worker posts "stopped"
+        self.topic_panel.clear()  # #611: the panel shows this run's topics only (the .topics.md file keeps them)
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
         self.run_snapshot = self._start_values()  # #983
@@ -2214,7 +2283,8 @@ class App:
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
                         cpu_line=lambda ms: q.put(("cpu_line", ms)),
-                        labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None)
+                        labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None,
+                        on_topic=self.topic_panel.add if sink_cls is None else None)  # #611
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
@@ -2269,6 +2339,8 @@ class App:
                         self.v_notice.set(ev[1])
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
                         self._show_panel()
+                elif kind == "topics":  # #611
+                    self.render_topics(show=bool(self.topic_panel.entries()))
                 elif kind == "pack_line":
                     self._dl_event(ev)
                     self._status_text(ev[1])

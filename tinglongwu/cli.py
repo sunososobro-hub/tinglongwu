@@ -468,13 +468,14 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
 
 
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None,
-                labeler_factory=None) -> None:
+                labeler_factory=None, on_topic=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
     or None; stop: threading.Event that ends the run; status(str): progress notes (GUI);
     notice(str): a note that should stay visible (GUI), e.g. why the GPU is not used;
-    cpu_line(mt_ms): #780, CPU only, called once per output line with the translation time in ms (GUI status)."""
+    cpu_line(mt_ms): #780, CPU only, called once per output line with the translation time in ms (GUI status);
+    on_topic(topic): #611, with --topics: called on the summarizer thread with each finished topics.Topic (GUI panel)."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device
     from .merge import SentenceMerger
@@ -573,7 +574,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         if getattr(a, "topics", None):  # #609
             from . import topics
 
-            notes = topics.attach(sink, a.topics)
+            notes = topics.attach(sink, a.topics, on_topic=on_topic)
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
