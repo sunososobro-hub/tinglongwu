@@ -132,12 +132,17 @@ def test_677_wrong_translation_builds_prefilled_url_without_network(make_app, mo
 def test_680_use_for_question_asked_once_and_stored_locally(make_app, monkeypatch, tmp_path):
     from tinglongwu.gui import core
 
+    import tkinter as tk
+
+    monkeypatch.setattr(tk.Misc, "focus_force", lambda self: None)  # xvfb has no window manager: the real call can segfault
     a = make_app()
     assert core.usage_should_ask(a.settings)
     a.ask_usage()
     a.root.update()
-    assert a.usage_win.winfo_exists()
+    first = a.usage_win
+    assert first.winfo_exists()
     a.ask_usage()  # a second call reuses the one dialog
+    assert a.usage_win is first
     a.usage_win.destroy()
     a.usage_win = None
     core.usage_answer(a.settings, "meetings")
