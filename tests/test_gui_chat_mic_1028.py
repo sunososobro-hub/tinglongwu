@@ -108,3 +108,30 @@ def test_mic_toggle_and_bubbles(tmp_path, monkeypatch):
         assert a.log_text.tag_ranges("other_final") and a.log_text.tag_ranges("me_final")
     finally:
         a.root.destroy()
+
+
+def test_bubbles_hug_text_and_show_the_original_small_1052(tmp_path, monkeypatch):
+    tk = __import__("pytest").importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        __import__("pytest").skip("no display")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    from tinglongwu.gui import app
+
+    a = app.App()
+    try:
+        assert a.settings["show_src"] is False  # default: the original still shows in the chat
+        a.state.apply(("final", "hello", "你好"))
+        a.state.apply(("final_side", "🎤 我說中文", "🎤 I speak Chinese"))
+        a.render_log()
+        me_src = a.log_text.tag_ranges("me_src")
+        assert me_src and a.log_text.get(me_src[0], me_src[1]).strip() == "我說中文"
+        other_src = a.log_text.tag_ranges("other_src")
+        assert other_src and a.log_text.get(other_src[0], other_src[1]).strip() == "hello"
+        # the bubble background must not cover the line break (that made it full width)
+        for r in range(0, len(a.log_text.tag_ranges("me_final")), 2):
+            assert not a.log_text.get(a.log_text.tag_ranges("me_final")[r], a.log_text.tag_ranges("me_final")[r + 1]).endswith("\n")
+        assert a.log_text.tag_cget("me_base", "justify") == "right"
+    finally:
+        a.root.destroy()

@@ -19,6 +19,16 @@ class AudioSource(ABC):
         pass
 
 
+class AnyOf:
+    """Event-like (is_set) that is true while the Event or any of the callables is true."""
+
+    def __init__(self, *parts):
+        self.parts = parts
+
+    def is_set(self) -> bool:
+        return any(p.is_set() if hasattr(p, "is_set") else p() for p in self.parts)
+
+
 class MuteSource(AudioSource):
     """#1028 mic toggle: while `muted` (a threading.Event) is set, every frame of `inner` is replaced by silence of
     the same length. The device keeps running (no re-open, the stream clock stays right), but nothing said reaches

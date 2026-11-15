@@ -326,10 +326,10 @@ def test_start_shows_listening_in_main_window_and_bar_stays_hidden(gui_app):
     a.q.put(("final", "privet", "你好"))
     a.q.put(("draft", "kak dela", "你好嗎"))
     a.poll()
-    assert _log(a) == "你好\n你好嗎"
+    assert _log(a) == "你好\nprivet\n你好嗎\nkak dela"  # #1028/#1052: the original always sits small under its bubble
     a.var_show_src.set(True)
     a._src_toggled()
-    assert _log(a) == "你好\nprivet\n你好嗎\nkak dela"  # #1028: the original sits under its bubble
+    assert _log(a) == "你好\nprivet\n你好嗎\nkak dela"
     a.toggle()  # Stop
     a.worker.join(5)
     a.poll()
@@ -352,7 +352,7 @@ def test_floating_bar_toggle_shows_bar_with_listening(gui_app):
     assert a.overlay.text.get("1.0", "end-1c") == "字幕"
     a.v_bar.set(False)
     a._bar_toggled()
-    assert not a.overlay.visible and _log(a) == "字幕"  # log keeps working without the bar
+    assert not a.overlay.visible and _log(a).startswith("字幕")  # log keeps working without the bar
     assert core.load_settings()["floating_bar"] is True  # saved at Start (settings live in tmp_path)
 
 
@@ -363,7 +363,7 @@ def test_log_follows_newest_unless_scrolled_up(gui_app):
         a.q.put(("final", f"s{i}", f"line {i}"))
     a.poll()
     text = _log(a)
-    assert text.startswith("line 50\n") and text.endswith("line 249")  # 200 kept
+    assert text.startswith("line 50\ns50\n") and text.endswith("line 249\ns249")  # 200 kept
     assert a.log_text.dlineinfo("end-1c") is not None  # newest line is on screen
     a.log_text.yview("20.0")  # user scrolls back
     a.root.update()
@@ -394,7 +394,7 @@ def test_log_font_buttons_and_pause(gui_app):
     a.poll()
     assert _log(a) == "Listening..."  # frozen
     a.set_paused(False)
-    assert _log(a) == "while paused"  # nothing lost
+    assert _log(a) == "while paused" + chr(10) + "s"  # nothing lost (#1052: the original sits under it)
     a.v_ui_lang.set("繁體中文")
     a.state = core.SubtitleState(core.HISTORY_LINES)
     a.switch_lang()

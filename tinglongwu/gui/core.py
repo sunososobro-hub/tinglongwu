@@ -33,9 +33,10 @@ DEFAULTS = {
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
     "usage_asked": False,  # #680: the one-time "what do you mainly use it for?" question was answered or skipped
     "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
-    "send_mode": "confirm",  # #834: how a speak line is sent (confirm / countdown / auto); owner default: confirm
+    "send_mode": "auto",  # #834/#1052: how a speak line is sent (auto = straight away, confirm = show me first); owner default: auto
 }
-SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
+SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES (the CLI keeps all three)
+GUI_SEND_MODES = ("auto", "confirm")  # #1052: what Settings offers; the 2 s countdown was too short to cancel
 
 
 def send_gate_line(view) -> str:
@@ -377,6 +378,8 @@ def load_settings(path=None, gpu=_gpu_usable) -> dict:
     out["log_font_size"] = clamp_font(out["log_font_size"], DEFAULTS["log_font_size"])
     out["overlay_lines"] = clamp_rows(out["overlay_lines"])
     out["overlay_alpha"] = clamp_alpha(out["overlay_alpha"])
+    if out["send_mode"] == "countdown":  # #1052: removed from the GUI; it behaved like sending straight away
+        out["send_mode"] = "auto"
     if out["send_mode"] not in SEND_MODES:
         out["send_mode"] = DEFAULTS["send_mode"]
     return out

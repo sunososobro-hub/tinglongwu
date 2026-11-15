@@ -92,6 +92,12 @@ class VoiceSink(Sink):
         self.muted: str | None = None  # reason, once mute() has turned the voice off
         self.gate = None  # #833: SendGate holding each line until sent (GUI speak); None = speak at once
         self.capture_guard = None  # #710: on_reopen(name) for the capture source, set by open_voice for a cable
+        from .reverse.live import PlaybackGate
+
+        # half-duplex (#1052): busy from the moment a line is queued until it has been spoken (+ a short tail). The
+        # speak leg feeds its mic capture silence while busy, so our own voice (speakers -> mic) is never re-heard,
+        # re-translated and re-sent (one sentence turned into 3 bubbles).
+        self.playback = PlaybackGate()
         self.q: queue.Queue = queue.Queue()
         self.t = threading.Thread(target=self._run, name="tlwu-voice", daemon=True)
         self.t.start()
@@ -113,12 +119,18 @@ class VoiceSink(Sink):
         self.muted = reason
         if self.gate is not None:
             self.gate.clear()
+        self._drain()
+        return True
+
+    def _drain(self) -> None:
+        """Drop every waiting line (the playback gate is released for each)."""
         while True:
             try:
-                self.q.get_nowait()
+                x = self.q.get_nowait()
             except queue.Empty:
                 break
-        return True
+            if x is not None:
+                self.playback.end()
 
     def write(self, r: Result) -> None:
         self.inner.write(r)
@@ -132,10 +144,12 @@ class VoiceSink(Sink):
         if not self.muted:
             while self.q.qsize() >= self.max_backlog:
                 try:
-                    self.q.get_nowait()
+                    if self.q.get_nowait() is not None:
+                        self.playback.end()
                     self.dropped += 1
                 except queue.Empty:
                     break
+            self.playback.start()
             self.q.put(text)
 
     def _run(self) -> None:
@@ -144,6 +158,8 @@ class VoiceSink(Sink):
                 self.speak(text)
             except Exception as e:  # noqa: BLE001 - one bad line must not stop the voice or the subtitles
                 self.on_error(e)
+            finally:
+                self.playback.end()
 
     def pending(self) -> int:
         """Lines still waiting to be spoken (the stop sentinel is not a line)."""
@@ -157,11 +173,7 @@ class VoiceSink(Sink):
         if self.gate is not None:
             self.gate.clear()  # a held line is never sent after Stop / exit
         if drop:
-            while True:
-                try:
-                    self.q.get_nowait()
-                except queue.Empty:
-                    break
+            self._drain()
         self.q.put(None)
         self.t.join(CLOSE_TIMEOUT if timeout is None else timeout)
         return not self.t.is_alive()

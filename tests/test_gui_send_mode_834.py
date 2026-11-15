@@ -3,8 +3,8 @@ from tinglongwu import i18n
 from tinglongwu.gui.core import load_settings, quick_settings, save_settings, send_mode_notice_key
 
 
-def test_fresh_profile_defaults_to_confirm(tmp_path):
-    assert load_settings(tmp_path / "gui.json", gpu=lambda: False)["send_mode"] == "confirm"
+def test_fresh_profile_defaults_to_auto(tmp_path):
+    assert load_settings(tmp_path / "gui.json", gpu=lambda: False)["send_mode"] == "auto"
 
 
 def test_countdown_survives_save_and_reload(tmp_path):
@@ -12,13 +12,13 @@ def test_countdown_survives_save_and_reload(tmp_path):
     s = load_settings(p, gpu=lambda: False)
     s["send_mode"] = "countdown"
     assert save_settings(s, p)
-    assert load_settings(p, gpu=lambda: False)["send_mode"] == "countdown"
+    assert load_settings(p, gpu=lambda: False)["send_mode"] == "auto"  # #1052: countdown is gone from the GUI
 
 
-def test_invalid_saved_mode_falls_back_to_confirm(tmp_path):
+def test_invalid_saved_mode_falls_back_to_auto(tmp_path):
     p = tmp_path / "gui.json"
     p.write_text('{"send_mode": "yolo"}', "utf-8")
-    assert load_settings(p, gpu=lambda: False)["send_mode"] == "confirm"
+    assert load_settings(p, gpu=lambda: False)["send_mode"] == "auto"
 
 
 def test_notice_shown_for_countdown_and_auto_hidden_for_confirm(monkeypatch):

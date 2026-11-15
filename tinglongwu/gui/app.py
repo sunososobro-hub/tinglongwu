@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -546,11 +546,11 @@ class App:
             self.overlay.render(self.state)
 
     def _build_send_mode(self, parent):
-        """#834: speak send mode (default confirm), shown in plain language (#1028); countdown / auto show the
+        """#834: speak send mode (default auto = send straight away, #1052), shown in plain language (#1028); countdown / auto show the
         quality notice. The "restart to apply" line (#983) is packed at the top of the settings page."""
         box = ttk.Frame(parent)
         self.v_send_mode = tk.StringVar(value=self.settings["send_mode"])
-        for mode, key in zip(SEND_MODES, ("gui_send_confirm", "gui_send_countdown", "gui_send_auto")):
+        for mode, key in zip(GUI_SEND_MODES, ("gui_send_auto", "gui_send_confirm")):
             self._tx(ttk.Radiobutton(box, variable=self.v_send_mode, value=mode), key).pack(anchor="w")
         self.lbl_send_notice = ttk.Label(box, wraplength=300, justify="left")
         self.lbl_send_notice.pack(anchor="w")
@@ -1349,10 +1349,17 @@ class App:
         self.log_menu = tk.Menu(tx, tearoff=0)
         self.log_menu.add_command(label=t("gui_menu_wrong_line"), command=self.report_wrong_line)
         tx.bind("<Button-3>", self._log_context)
+        tx.bind("<Configure>", self._log_resized)
         tx.bind("<Control-MouseWheel>", lambda e: self.bump_log_font(2 if e.delta > 0 else -2))
         tx.bind("<Control-Button-4>", lambda e: self.bump_log_font(2))
         tx.bind("<Control-Button-5>", lambda e: self.bump_log_font(-2))
         self.set_log_font(self.settings["log_font_size"])
+
+    def _log_resized(self, e):
+        """#1052: bubble width follows the window (75 %); only redraw when the width really changed."""
+        if e.width != getattr(self, "_log_w", None):
+            self._log_w = e.width
+            self._chat_tags()
 
     def placeholder(self) -> list[tuple[str, bool]]:
         """What to show before the first subtitle of a session: the user must see that it is listening."""
@@ -1372,9 +1379,17 @@ class App:
         tx = self.log_text
         tx.configure(bg=pal["bg"])
         small = max(8, n * 2 // 3)
-        for side, (lm, rm, just) in {"other": (10, 80, "left"), "me": (80, 10, "right")}.items():
+        # #1052: a bubble is at most ~75 % of the window and hugs its text: the background sits on the text only
+        # (the line break is outside the bubble tag), margins push it to its side
+        try:
+            wide = max(0, int(tx.winfo_width() * 0.25))
+        except Exception:  # noqa: BLE001
+            wide = 80
+        wide = max(wide, 40)
+        for side, (lm, rm, just) in {"other": (10, wide, "left"), "me": (wide, 10, "right")}.items():
             bg, fg = pal[side]
             base = dict(lmargin1=lm, lmargin2=lm, rmargin=rm, justify=just)
+            tx.tag_configure(f"{side}_base", **base)
             tx.tag_configure(f"{side}_head", foreground=pal["head"], font=(FONT_FAMILY, small, "bold"), spacing1=8, **base)
             tx.tag_configure(f"{side}_final", background=bg, foreground=fg, font=(FONT_FAMILY, n), spacing1=2,
                              spacing3=2, **base)
@@ -1402,7 +1417,7 @@ class App:
         tx = self.log_text
         top, follow = tx.index("@0,0"), self._log_at_end()
         hist = self.state.history()
-        show_src = self.settings["show_src"]
+        show_src = True  # #1052: the chat always shows the original small under each bubble (the bar keeps show_src)
         self._log_shown = (list(hist), show_src)  # what the clicks map onto (row index = the "row<i>" tag)
         tx.configure(state="normal")
         tx.delete("1.0", "end")
@@ -1414,7 +1429,8 @@ class App:
             side = "me" if mine else "other"
             src, text = src.removeprefix(SPEAK_MARK), text.removeprefix(SPEAK_MARK)
             tx.insert("end", t("gui_chat_me" if mine else "gui_chat_other") + "\n", f"{side}_head")
-            tx.insert("end", f" {text} \n", (f"{side}_draft" if is_draft else f"{side}_final", f"row{i}"))
+            tx.insert("end", f" {text} ", (f"{side}_draft" if is_draft else f"{side}_final", f"row{i}"))
+            tx.insert("end", "\n", (f"{side}_base", f"row{i}"))
             if show_src and src and src != text:
                 tx.insert("end", src + "\n", (f"{side}_src", f"row{i}"))
         tx.configure(state="disabled")
