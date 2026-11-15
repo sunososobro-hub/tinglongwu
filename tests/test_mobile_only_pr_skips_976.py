@@ -32,7 +32,7 @@ def _steps(wf, job):
     return yaml.safe_load((WF / wf).read_text(encoding="utf-8"))["jobs"][job]["steps"]
 
 
-def _decide(tmp_path, wf, job, changed, event="pull_request") -> str:
+def _decide(tmp_path, wf, job, changed, event="pull_request", moves=()) -> str:
     repo = tmp_path / "repo"
     repo.mkdir()
     env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
@@ -40,9 +40,15 @@ def _decide(tmp_path, wf, job, changed, event="pull_request") -> str:
     g = lambda *a: subprocess.run([GIT, *a], cwd=repo, env=env, check=True, capture_output=True)  # noqa: E731
     g("init", "-q")
     (repo / "base.txt").write_text("base")
+    for src, _ in moves:
+        (repo / src).parent.mkdir(parents=True, exist_ok=True)
+        (repo / src).write_text("unchanged module body\n" * 20)
     g("add", "-A")
     g("commit", "-qm", "base")
     g("update-ref", "refs/remotes/origin/dev", "HEAD")
+    for src, dst in moves:
+        (repo / dst).parent.mkdir(parents=True, exist_ok=True)
+        g("mv", src, dst)
     for f in changed:
         p = repo / f
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +57,7 @@ def _decide(tmp_path, wf, job, changed, event="pull_request") -> str:
     g("commit", "-qm", "pr")
     step = next(s for s in _steps(wf, job) if s.get("id") == "changes")
     out = tmp_path / "out"
-    subprocess.run([BASH, "-e", "-c", step["run"]], cwd=repo, check=True, capture_output=True,
+    subprocess.run([BASH, "-eo", "pipefail", "-c", step["run"]], cwd=repo, check=True, capture_output=True,
                    env={**env, "GITHUB_OUTPUT": str(out), "GITHUB_EVENT_NAME": event, "GITHUB_BASE_REF": "dev"})
     return re.search(r"^build=(\w+)$", out.read_text(), re.M).group(1)
 
@@ -102,3 +108,19 @@ def test_acceptance_still_fails_when_the_table_fails():
     steps = _steps("acceptance-windows.yml", "acceptance")
     fail = next(s for s in steps if s.get("name") == "Fail if acceptance failed")
     assert "steps.acceptance.outcome == 'failure'" in fail["if"] and fail["run"] == "exit 1"
+
+
+@needs_tools
+@pytest.mark.parametrize("wf,job", JOBS)
+@pytest.mark.parametrize("src,dst", [("tinglongwu/core.py", "mobile/core.py"), ("scripts/ci_e2e.py", "mobile/ci_e2e.py")])
+def test_desktop_file_moved_into_mobile_runs_in_full(tmp_path, wf, job, src, dst):
+    """Rename detection would list only the mobile/ destination; the desktop deletion must still count."""
+    assert _decide(tmp_path, wf, job, [], moves=[(src, dst)]) == "true"
+
+
+@needs_tools
+@pytest.mark.parametrize("wf,job", JOBS)
+def test_large_file_list_with_an_early_desktop_path_runs_in_full(tmp_path, wf, job):
+    """GitHub runs `shell: bash` with pipefail; grep must read all input so echo never dies of SIGPIPE."""
+    changed = ["tinglongwu/core.py"] + [f"mobile/lib/gen/f{i:05d}_{'x' * 60}.dart" for i in range(3000)]
+    assert _decide(tmp_path, wf, job, changed) == "true"

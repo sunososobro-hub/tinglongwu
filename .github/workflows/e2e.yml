@@ -41,8 +41,9 @@ jobs:
           # push and workflow_dispatch always run in full (the release gate needs a real e2e success on the dev tip).
           build=true
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
-              if ! echo "$files" | grep -Evq '^(docs/|\.agent/|mobile/)|\.md$'; then build=false; fi
+            if files=$(git diff --no-renames --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              # --no-renames: a desktop file moved into mobile/ still counts; no grep -q: an early exit + SIGPIPE under pipefail would read as "skip"
+              if ! echo "$files" | grep -Ev '^(docs/|\.agent/|mobile/)|\.md$' >/dev/null; then build=false; fi
             fi
           fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
@@ -174,8 +175,9 @@ jobs:
           # push and workflow_dispatch always run in full (the release gate needs a real e2e success on the dev tip).
           build=true
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
-              if ! echo "$files" | grep -Evq '^(docs/|\.agent/|mobile/)|\.md$'; then build=false; fi
+            if files=$(git diff --no-renames --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              # --no-renames: a desktop file moved into mobile/ still counts; no grep -q: an early exit + SIGPIPE under pipefail would read as "skip"
+              if ! echo "$files" | grep -Ev '^(docs/|\.agent/|mobile/)|\.md$' >/dev/null; then build=false; fi
             fi
           fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
@@ -250,8 +252,9 @@ jobs:
           # push and workflow_dispatch always run in full (the release gate needs a real e2e success on the dev tip).
           build=true
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
-              if ! echo "$files" | grep -Evq '^(docs/|\.agent/|mobile/)|\.md$'; then build=false; fi
+            if files=$(git diff --no-renames --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              # --no-renames: a desktop file moved into mobile/ still counts; no grep -q: an early exit + SIGPIPE under pipefail would read as "skip"
+              if ! echo "$files" | grep -Ev '^(docs/|\.agent/|mobile/)|\.md$' >/dev/null; then build=false; fi
             fi
           fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
