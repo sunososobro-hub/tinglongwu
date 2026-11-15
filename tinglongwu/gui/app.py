@@ -1079,8 +1079,6 @@ class App:
         top, follow = tx.index("@0,0"), self._log_at_end()
         rows = self.state.history() or [("", text, d) for text, d in self.placeholder()]
         show_src = self.settings["show_src"]
-        if self.quick_mode:
-            self._last_mode = self.quick_mode  # kept after Stop: the finished rows still belong to that mode
         self._log_shown = (list(rows) if self.state.history() else [], show_src)  # what the clicks map onto
         tx.configure(state="normal")
         tx.delete("1.0", "end")
@@ -1320,6 +1318,7 @@ class App:
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
         self.quick_mode, self.run_source = mode, run.get("source")
+        self._last_mode = mode or "listen"  # the finished rows keep this mode after Stop (#677)
         self.speak_hint = speak_route(run, meeting_cable()) if mode == "speak" else None  # #710
         self.gate = None
         if mode == "speak" and run.get("voice"):  # #833: each speak line is held and sent by the #832 state machine
