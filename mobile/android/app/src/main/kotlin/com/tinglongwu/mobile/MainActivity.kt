@@ -121,6 +121,7 @@ class MainActivity : FlutterFragmentActivity() {
                         ch.invokeMethod("playProgress", mapOf("done" to done, "total" to total, "status" to status))
                     }
                     "playCancel" -> { play.cancel(); result.success(null) }
+                    "playConfirm" -> { play.confirmDialog(); result.success(null) }
                     "freeBytes" -> result.success(importer.freeBytes(call.argument<String>("dir")!!))
                     // Opens a link in the user's browser (the browser downloads; this app stays offline).
                     "openUrl" -> {

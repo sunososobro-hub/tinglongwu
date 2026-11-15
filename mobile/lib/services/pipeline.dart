@@ -11,11 +11,12 @@ import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
 import 'model_paths.dart';
+import 'play_packs.dart';
 import 'playback_capture.dart';
 import '../logic/target_language.dart';
 import 'translator.dart';
 
-enum Stage { starting, loadingModels, listening, missingModels, error }
+enum Stage { starting, downloadingModels, loadingModels, listening, missingModels, error }
 
 /// Where the audio comes from: the microphone, or other apps' playback (#998, Android 10+).
 enum AudioSourceKind { mic, phone }
@@ -46,6 +47,12 @@ class Pipeline extends ChangeNotifier {
   Stage stage = Stage.starting;
   String? errorText;
   List<String> missingFiles = const [];
+
+  /// First-run Play download (Stage.downloadingModels): bytes, total, PlayPacks.kt state name,
+  /// and the error (network, storage, cancelled, Play code) once it stopped.
+  int dlDone = 0, dlTotal = 0;
+  String dlState = 'pending';
+  String? dlError;
   ModelPaths? paths;
 
   String draftRu = '';
@@ -102,6 +109,24 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> _downloadPacks() async {
+    stage = Stage.downloadingModels;
+    dlError = null;
+    dlState = 'pending';
+    notifyListeners();
+    final r = await PlayPacks.fetch(onState: (d, t, st) {
+      dlDone = d;
+      dlTotal = t;
+      dlState = st;
+      notifyListeners();
+    });
+    if (r.error == null) return true;
+    _log.e('play packs: ${r.error} ${r.message ?? ''}');
+    dlError = r.error;
+    notifyListeners();
+    return false;
+  }
+
   Future<void> start() async {
     try {
       paths = await ModelPaths.resolve();
@@ -113,7 +138,14 @@ class Pipeline extends ChangeNotifier {
       _styleStore = OverlayStyleStore('${paths!.filesDir}/overlay_style.txt');
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
-      final missing = paths!.missing();
+      var missing = paths!.missing();
+      if (missing.isNotEmpty && await PlayPacks.available()) {
+        // Play install: the fast-follow packs may still be downloading. Wait here with a progress
+        // screen; on failure the screen offers 「重試」 (= start() again).
+        if (!await _downloadPacks()) return;
+        paths = await ModelPaths.resolve();
+        missing = paths!.missing();
+      }
       if (missing.isNotEmpty) {
         missingFiles = missing;
         _log.e('models missing: $missing');

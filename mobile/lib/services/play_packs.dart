@@ -20,29 +20,55 @@ class PlayPacks {
 
   static Future<void> cancel() => _ch.invokeMethod('playCancel');
 
+  /// Shows Play's "download on mobile data?" dialog again (while waiting for Wi-Fi).
+  static Future<void> confirmMobileData() async {
+    try {
+      await _ch.invokeMethod('playConfirm');
+    } catch (_) {}
+  }
+
   /// Waits for (or restarts) the Play download of the packs. Nothing is copied: once the packs are
-  /// on the device the app reads the models from them. [onProgress] gets (bytes, total, label).
-  static Future<ImportReport> download(
-      {required void Function(int done, int total, String label) onProgress}) async {
+  /// on the device the app reads the models from them. [onState] gets (bytes, total, state), state
+  /// as in PlayPacks.kt `stateName`.
+  static Future<PackFetch> fetch(
+      {required void Function(int done, int total, String state) onState}) async {
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'playProgress') {
         final m = call.arguments as Map;
-        onProgress((m['done'] as num).toInt(), (m['total'] as num).toInt(), 'Google Play');
+        onState((m['done'] as num).toInt(), (m['total'] as num).toInt(), '${m['status']}');
       }
     });
-    final r = ImportReport();
     try {
       final paths = await _ch.invokeMapMethod<String, String>('playFetch') ?? const {};
-      r.imported.addAll(paths.keys);
+      return PackFetch(packs: paths.keys.toList());
     } on PlatformException catch (e) {
-      if (e.code == 'CANCELLED') {
-        r.cancelled = true;
-      } else {
-        r.problems.add('Google Play: ${e.message}');
-      }
+      return e.code == 'CANCELLED'
+          ? const PackFetch(error: 'cancelled')
+          : PackFetch(error: e.details is String ? e.details as String : 'error', message: e.message);
     } finally {
       _ch.setMethodCallHandler(null);
     }
+  }
+
+  /// [fetch] for the Import screen (progress bar + report lines).
+  static Future<ImportReport> download(
+      {required void Function(int done, int total, String label) onProgress}) async {
+    final f = await fetch(onState: (d, t, _) => onProgress(d, t, 'Google Play'));
+    final r = ImportReport()..imported.addAll(f.packs);
+    if (f.error == 'cancelled') {
+      r.cancelled = true;
+    } else if (f.error != null) {
+      r.problems.add('Google Play: ${f.message ?? f.error}');
+    }
     return r;
   }
+}
+
+class PackFetch {
+  const PackFetch({this.packs = const [], this.error, this.message});
+  final List<String> packs;
+
+  /// null = done; else network, storage, cancelled or a Play error code.
+  final String? error;
+  final String? message;
 }

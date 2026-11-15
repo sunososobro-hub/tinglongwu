@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'services/pipeline.dart';
+import 'ui/download_screen.dart';
 import 'ui/import_screen.dart';
 import 'ui/message_screen.dart';
 import 'ui/subtitle_screen.dart';
@@ -73,6 +74,8 @@ class _RootState extends State<Root> {
             return MissingModelsScreen(pipeline: pipeline, onImport: _openImport);
           case Stage.error:
             return ErrorScreen(pipeline: pipeline, onImport: _openImport);
+          case Stage.downloadingModels:
+            return DownloadScreen(pipeline: pipeline, onImport: _openImport);
           case Stage.starting:
           case Stage.loadingModels:
             return LoadingScreen(stage: pipeline.stage);

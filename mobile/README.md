@@ -81,8 +81,9 @@ empty) and checks the AAB: both packs fast-follow, each <= 1.5 GB, together <= 4
 The app reads the models in place from the pack folders (`AssetPackManager.getPackLocation`), with no
 copy, so they take the space only once. A file already in `files/models/` (imported, adb-pushed, or
 copied by the older on-demand flow) always wins and is never replaced or deleted. If the app is
-opened before Play has finished, the Import screen's **從 Play 下載模型 / Get models** waits for (or
-restarts) the Play download. A side-loaded APK has no packs and keeps **匯入模型 / Import models**.
+opened before Play has finished, it shows 「正在下載翻譯需要的檔案（第一次使用才需要）」 with a progress
+bar and MB done / total, waits for Wi-Fi (or Play's "use mobile data?" dialog), and offers 「重試」
+after a failure or with no network; it then goes straight to listening. A side-loaded APK has no packs and keeps **匯入模型 / Import models**.
 
 Owner steps, once:
 1. Release key secrets as in "Signing" above (that key becomes the Play **upload key**; Play App
