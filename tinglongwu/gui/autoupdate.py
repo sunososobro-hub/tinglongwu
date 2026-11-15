@@ -18,6 +18,16 @@ from pathlib import Path
 
 from .. import userdirs
 
+
+def _log(msg: str) -> None:
+    """One line into the diagnostic file log (tinglongwu-app.log); never raises."""
+    try:
+        from .. import diag
+
+        diag._setup().info(msg)
+    except Exception:  # noqa: BLE001  # expected: logging must never break an update
+        pass
+
 UPDATE_CHECK_INTERVAL_H = 24  # #806: at most one automatic check per day, so counter hits ~ daily active installs
 CHECK_EVERY_S = UPDATE_CHECK_INTERVAL_H * 3600
 AUTO_KEY = "auto_update"
@@ -153,8 +163,39 @@ def download_cmd(dest: Path, python: str | None = None) -> list[str]:
     return [*_base(python), "--download", str(dest)]
 
 
+def plan_cmd(app: Path, python: str | None = None) -> list[str]:
+    return [*_base(python), "--plan", "--app", str(app)]
+
+
+def download_app_cmd(dest: Path, python: str | None = None) -> list[str]:
+    return [*_base(python), "--download-app", str(dest)]
+
+
 def apply_cmd(exe: str, app: Path, pid: int, python: str | None = None) -> list[str]:
-    return [*_base(python), "--apply", str(exe), "--app", str(app), "--pid", str(pid)]
+    """A .zip is the app layer (#946, --apply-app); anything else is the full installer (--apply)."""
+    flag = "--apply-app" if str(exe).lower().endswith(".zip") else "--apply"
+    return [*_base(python), flag, str(exe), "--app", str(app), "--pid", str(pid)]
+
+
+def parse_plan(line: str) -> tuple[str, int] | None:
+    """'PLAN app 12' -> ('app', 12); 'PLAN full 140' -> ('full', 140); anything else -> None."""
+    parts = (line or "").split()
+    if len(parts) == 3 and parts[0] == "PLAN" and parts[1] in ("app", "full") and parts[2].isdigit():
+        return parts[1], int(parts[2])
+    return None
+
+
+def cleanup_old(root: Path | None = None) -> None:
+    """#946: delete the *.old items an app-layer update left behind (call after a successful start)."""
+    import shutil
+
+    root = app_root() if root is None else Path(root)
+    for name in ("tinglongwu", "tlwu_app", "tinglongwu_setup", "app-layer.json", "tlwu.exe"):
+        old = root / (name + ".old")
+        try:
+            shutil.rmtree(old) if old.is_dir() else old.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def parse_check(line: str) -> str | None:
@@ -199,14 +240,41 @@ def run_check(current: str, put, manual: bool, popen=None, cfg: dict | None = No
     return ver
 
 
+def _plan(popen, root: Path | None = None) -> tuple[str, int] | None:
+    try:
+        res = None
+        for line in _lines(plan_cmd(app_root() if root is None else root), popen):
+            res = parse_plan(line) or res
+        return res
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def run_download(put, dest: Path | None = None, popen=None) -> str | None:
-    """Worker thread. put(("upd_progress", pct)), then ("upd_ready", exe_path) or ("upd_fail", reason)."""
+    """Worker thread. put(("upd_progress", pct)), then ("upd_ready", path) or ("upd_fail", reason). #946: with an
+    unchanged runtime layer only the app-layer zip is fetched (path ends in .zip); any plan/download failure falls
+    back to the full installer exactly as before. Logs one line saying which update and how many MB."""
     if offline():
         put(("upd_fail", "offline"))
         return None
+    popen = popen or subprocess.Popen
+    dest = dest or download_dir()
+    plan = _plan(popen)
+    if plan and plan[0] == "app":
+        _log(f"update: app layer only: {plan[1]} MB")
+        path = _download(download_app_cmd(dest), put, popen)[0]
+        if path:
+            put(("upd_ready", path))
+            return path
+        _log("update: app layer download failed, using the full installer")
+    _log(f"update: full installer: {plan[1] if plan else 0} MB")
+    return _download_full(put, dest, popen)
+
+
+def _download(cmd, put, popen) -> tuple[str | None, str]:
     path, last = None, ""
     try:
-        for line in _lines(download_cmd(dest or download_dir()), popen or subprocess.Popen):
+        for line in _lines(cmd, popen):
             last = line
             if line.startswith("PROGRESS "):
                 try:
@@ -217,6 +285,11 @@ def run_download(put, dest: Path | None = None, popen=None) -> str | None:
                 path = line[6:].strip()
     except Exception as e:  # noqa: BLE001
         last = f"{type(e).__name__}: {e}"
+    return path, last
+
+
+def _download_full(put, dest: Path, popen) -> str | None:
+    path, last = _download(download_cmd(dest), put, popen)
     if path:
         put(("upd_ready", path))
     else:
