@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: eval-langs-${{ github.ref }}
+  group: eval-langs-${{ github.ref }}-${{ inputs.pin_set || 'none' }}  # a pin dispatch never cancels an eval run
   cancel-in-progress: true
 
 env:
