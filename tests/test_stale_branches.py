@@ -101,3 +101,9 @@ def test_main_writes_job_summary(tmp_path, monkeypatch):
 def test_lock_issue_parsing():
     assert sb._lock_issue("fix/344") == 344 and sb._lock_issue("fix/12-r2") == 12
     assert sb._lock_issue("claude/x") is None and sb._lock_issue("fix/12-slug") is None
+
+
+def test_976_release_snapshot_branches_are_never_pruned():
+    gh = FakeGitHub(branches=[("release/v0.3.2", "s1"), ("release/v0.3.1", "s0")],
+                    prs=[_pr(9, "release/v0.3.1", "s0", merged=True)], dates={"s1": "2026-10-01T00:00:00Z"})
+    assert sb.plan(gh, R, now=NOW) == []

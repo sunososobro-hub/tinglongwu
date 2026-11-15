@@ -386,3 +386,133 @@ def test_pack_manifest_matches_the_committed_pins():
     man = load("tlwu_pack_manifest_722b", "tinglongwu/pack_manifest.py").load_manifest(ROOT / "packaging" / "packs.json")
     assert {"ja", "ko", "speak"} <= set(man["packs"])
     assert man["packs"]["ja"]["size"] == 1133080448  # mobile/assets/models_manifest.json, same SHA-256 as the pin
+
+
+# ---------------------------------------------------------------- #976 release snapshot branch (two lanes)
+
+SNAP = {**OPEN, "number": 990, "head": {"ref": "release/v0.3.2", "sha": HEAD, "repo": {"full_name": REPO}}}
+INIT = 'x = 1\n__version__ = "0.3.2"\n'
+
+
+def snap_show(init=INIT, wn=WN, sha=HEAD):
+    return lambda s, path: (init if path == "tinglongwu/__init__.py" else wn) if s == sha else None
+
+
+def auto_snap(pulls=(SNAP,), runs=GREEN, run=SHA, in_dev=True, show=None, version="0.3.3", wn="", **kw):
+    """version / wn are what the dev TIP has; the snapshot gate must read them at the snapshot head instead."""
+    return rn.auto_plan("true", "level: 2", run, version, TAGS, list(pulls), REPO,
+                        lambda h: runs if h == HEAD else [], wn, show=show or snap_show(),
+                        in_dev=lambda s: in_dev and s == HEAD, **kw)
+
+
+def test_snapshot_release_pr_merges_on_its_own_head_whatever_run_triggered_the_gate():
+    # run = SHA (a newer dev push): the legacy rule would stop; dev's tip version 0.3.3 and empty whats_new do not matter
+    out = auto_snap()
+    assert out["merge"] == "true" and out["pr"] == "990" and out["head"] == HEAD and out["tag"] == "v0.3.2", out
+
+
+def test_snapshot_head_reads_the_newest_run_so_dispatched_runs_replace_cancelled_dev_runs():
+    # a dev push cancelled the dev-push e2e on the bump commit; release-pr.yml dispatched e2e on the snapshot ref later
+    cancelled = {"id": 1, "name": "e2e", "status": "completed", "conclusion": "cancelled"}
+    dispatched = {"id": 500, "name": "e2e", "status": "completed", "conclusion": "success"}
+    runs = [r for r in GREEN if r["name"] != "e2e"] + [cancelled, dispatched]
+    assert auto_snap(runs=runs)["merge"] == "true"
+    assert "e2e: completed/cancelled" in auto_snap(runs=[*runs, {**cancelled, "id": 600}])["reason"]
+    assert rn.plan("push", "main", SHA, "0.3.2", TAGS, [{**SNAP, "merged_at": "x"}], REPO,
+                   lambda h: runs if h == HEAD else [])["publish"] == "true"
+
+
+@pytest.mark.parametrize("kw, why", [
+    ({"in_dev": False}, "is not a dev commit"),
+    ({"show": lambda s, p: None}, "cannot read tinglongwu/__init__.py"),
+    ({"show": snap_show(init='__version__ = "0.3.1"\n')}, "does not name v0.3.1"),
+    ({"show": snap_show(wn="## v0.3.1\n- Old\n")}, "no filled `## v0.3.2` section"),
+    ({"runs": [r for r in GREEN if r["name"] != "audio-routing"]}, "audio-routing: no run"),
+    ({"runs": [*GREEN, {"id": 99, "name": "hw-tests", "status": "completed", "conclusion": "failure"}]}, "hw-tests"),
+    ({"pulls": ({**SNAP, "head": {**SNAP["head"], "repo": {"full_name": "x/fork"}}},)}, "no open dev -> main"),
+    ({"pulls": ({**SNAP, "head": {**SNAP["head"], "ref": "release/v0.3.1"}},)}, "no open dev -> main"),
+    ({"merged": ({**SNAP, "merged_at": "x"},)}, "already merged"),
+])
+def test_snapshot_release_pr_refuses(kw, why):
+    out = auto_snap(**kw)
+    assert out["merge"] == "false" and why in out["reason"], out
+
+
+def test_snapshot_pr_wins_over_a_legacy_dev_pr_and_legacy_keeps_its_rule():
+    assert rn.open_release_pr([OPEN, SNAP], REPO)["number"] == 990
+    assert auto(pulls=(OPEN,))["merge"] == "true"  # transition: old release-pr.yml on main opened dev -> main
+    assert "is not this run's commit" in auto(pulls=(OPEN,), run=SHA)["reason"]
+
+
+def test_snapshot_head_defers_hw_tests_when_the_runner_is_offline():
+    from datetime import datetime, timedelta, UTC
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    queued = {"id": 700, "name": "hw-tests", "status": "queued", "conclusion": None,
+              "created_at": (now - timedelta(minutes=31)).isoformat()}
+    runs = [r for r in GREEN if r["name"] != "hw-tests"] + [queued]
+    out = auto_snap(runs=runs, now=now)
+    assert out["merge"] == "true" and out.get("hw_deferred") == "true", out
+    assert "not started after 20" in auto_snap(runs=[*runs[:-1], {**queued, "created_at": (now - timedelta(minutes=20)).isoformat()}], now=now)["reason"]
+
+
+def test_release_plan_finds_the_checks_on_the_snapshot_head_of_the_merged_pr():
+    merged = {**SNAP, "merged_at": "2026-11-15T00:00:00Z"}
+    out = plan([merged])
+    assert out["publish"] == "true" and out["head"] == HEAD and out["pr"] == "990"
+    with pytest.raises(SystemExit, match="not green on"):
+        plan([merged], runs=GREEN[:4])
+    # a release/ head that does not match the title, or from a fork, publishes nothing
+    for bad in ({**merged, "head": {**merged["head"], "ref": "release/v0.3.1"}},
+                {**merged, "head": {**merged["head"], "repo": {"full_name": "x/fork"}}},
+                {**merged, "head": {**merged["head"], "ref": "fix/976"}}):
+        assert plan([bad])["publish"] == "false"
+
+
+BUMP = "c" * 40
+
+
+def snapshot(version="0.3.2", tags=TAGS, ahead=3, branches=None, pulls=(), runs=()):
+    return rn.snapshot_plan(version, tags, BUMP, ahead, branches or {}, list(pulls), REPO,
+                            lambda h: list(runs) if h == BUMP else [])
+
+
+def test_snapshot_is_cut_at_the_bump_commit_with_every_required_dispatch():
+    out = snapshot()
+    assert out["cut"] and out["pr"] and out["branch"] == "release/v0.3.2" and out["sha"] == BUMP
+    assert out["dispatch"] == ["e2e", "audio-routing", "hw-tests"] and not out["close"] and not out["delete"]
+    assert set(rn.SNAPSHOT_DISPATCH) <= set(rn.REQUIRED_CHECKS) and set(rn.SNAPSHOT_DISPATCH) == set(rn.WORKFLOW_FILES)
+
+
+def test_snapshot_dispatch_skips_green_runs_and_a_running_hw_tests_only():
+    runs = [{"id": 1, "name": "e2e", "status": "completed", "conclusion": "success"},
+            {"id": 2, "name": "audio-routing", "status": "in_progress", "conclusion": None},  # dev push may cancel it
+            {"id": 3, "name": "hw-tests", "status": "in_progress", "conclusion": None}]       # never cancelled
+    assert snapshot(runs=runs)["dispatch"] == ["audio-routing"]
+    assert snapshot(runs=[{**runs[2], "status": "queued"}])["dispatch"] == ["e2e", "audio-routing", "hw-tests"]
+
+
+def test_no_snapshot_when_the_tag_exists_or_main_has_the_bump():
+    for kw, why in (({"version": "0.3.1"}, "already released"), ({"ahead": 0}, "already on main"),
+                    ({"version": "0.2.9"}, "not newer")):
+        out = snapshot(**kw)
+        assert not out["cut"] and not out["pr"] and not out["dispatch"] and why in out["reason"], out
+
+
+def test_existing_snapshot_with_an_open_pr_is_left_alone_and_merges_to_dev_change_nothing():
+    out = snapshot(branches={"release/v0.3.2": HEAD}, pulls=(SNAP,))
+    assert (out["cut"], out["pr"], out["dispatch"], out["close"], out["delete"]) == (False, False, [], [], [])
+    # a branch pushed by hand (workflow token refused) gets its PR and the dispatches at the branch's commit
+    out = snapshot(branches={"release/v0.3.2": HEAD})
+    assert not out["cut"] and out["pr"] and out["sha"] == HEAD
+
+
+def test_superseded_and_released_snapshots_are_closed_and_deleted():
+    old = {**SNAP, "number": 980, "title": "release: v0.3.2", "head": {**SNAP["head"], "ref": "release/v0.3.2"}}
+    out = snapshot(version="0.4.0", branches={"release/v0.3.2": HEAD, "release/v0.3.1": "4" * 40}, pulls=(old,))
+    assert out["close"] == [980] and out["delete"] == ["release/v0.3.1", "release/v0.3.2"] and out["cut"]
+    # bump reverted to a released version: close the open snapshot PR, cut nothing
+    out = snapshot(version="0.3.1", branches={"release/v0.3.2": HEAD}, pulls=(old,))
+    assert out["close"] == [980] and out["delete"] == ["release/v0.3.2"] and not out["cut"]
+    # the legacy dev -> main PR is replaced by the snapshot of the same version, but never closed without one
+    assert snapshot(pulls=(OPEN,))["close"] == [735]
+    assert snapshot(version="0.3.1", pulls=(OPEN,))["close"] == []
