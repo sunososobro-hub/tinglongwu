@@ -237,8 +237,7 @@ object SubtitleOverlay {
         // Interim source text of the sentence still being spoken: small, gray, replaced by the
         // final line above once recognized (#1064).
         if (draft.isNotEmpty()) {
-            if (b.isNotEmpty()) b.append('
-')
+            if (b.isNotEmpty()) b.append('\n')
             val start = b.length
             b.append(draft)
             b.setSpan(RelativeSizeSpan(SOURCE_SCALE), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
