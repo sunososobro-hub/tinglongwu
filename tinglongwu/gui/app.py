@@ -774,11 +774,17 @@ class App:
         if self.setting_cols == 2:
             self.two_col_w = max(self.two_col_w, self.frm.winfo_reqwidth())
         want = 2 if width >= self.two_col_w else 1
-        if self._set_setting_cols(want) and want == 1:
+        if self._set_setting_cols(want):
             p = self.panel
             p.update_idletasks()
-            if p.winfo_height() < p.winfo_reqheight():  # one column is taller: never cut settings off
-                p.geometry(f"{p.winfo_width()}x{p.winfo_reqheight()}")
+            mins = getattr(self, "panel_min", None)  # (one-column width, two-column height), set by _apply_panel_geometry
+            if want == 1:
+                if mins:  # #1097: the minimum height follows the active layout (one column is taller)
+                    p.minsize(mins[0], max(mins[1], p.winfo_reqheight()))
+                if p.winfo_height() < p.winfo_reqheight():  # one column is taller: never cut settings off
+                    p.geometry(f"{p.winfo_width()}x{p.winfo_reqheight()}")
+            elif mins:
+                p.minsize(*mins)
 
     def _label(self, slot, key, cls=None, **kw):
         w = self._tx((cls or ttk.Label)(self.frm, **kw), key)
@@ -1113,6 +1119,7 @@ class App:
         self.two_col_w = self.frm.winfo_reqwidth()
         mh = p.winfo_reqheight()
         p.minsize(mw, mh)
+        self.panel_min = (mw, mh)
         w, h = s.get("panel_w"), s.get("panel_h")
         geo = f"{max(w, mw)}x{max(h, mh)}" if w and h else ""
         x, y = s.get("panel_x"), s.get("panel_y")

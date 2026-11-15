@@ -66,3 +66,20 @@ def test_wrap_keeps_hidden_settings_hidden(small_screen_app):  # noqa: F811
     assert hidden and all(w.winfo_manager() == "" for w in hidden)
     _resize(a, *a.panel.minsize())
     assert all(w.winfo_manager() == "" for w in hidden)
+
+
+def test_one_column_minsize_height_follows_layout_1097(small_screen_app):  # noqa: F811
+    a = small_screen_app()
+    a.set_advanced(True)
+    a.root.update()
+    mw, two_h = a.panel.minsize()
+    _resize(a, mw, two_h)
+    assert a.setting_cols == 1
+    _resize(a, mw, two_h)  # try to drag the bottom edge back up to the two-column height
+    assert a.panel.winfo_height() >= a.panel.winfo_reqheight()
+    assert a.panel.minsize()[1] >= a.panel.winfo_reqheight()
+    last = max((w for items in a.slot_widgets.values() for w, d in items if w.winfo_manager() == "grid"),
+               key=lambda w: w.winfo_rooty() + w.winfo_height())
+    assert last.winfo_rooty() + last.winfo_height() <= a.panel.winfo_rooty() + a.panel.winfo_height()
+    _resize(a, a.two_col_w + 300, a.panel.winfo_height())
+    assert a.setting_cols == 2 and a.panel.minsize()[1] == two_h
