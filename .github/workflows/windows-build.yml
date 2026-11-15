@@ -15,7 +15,9 @@ permissions:
 
 concurrency:
   group: windows-build-${{ github.ref }}
-  cancel-in-progress: true
+  # #888: only PR runs cancel each other. dev pushes always finish, or no dev run ever saves the Nuitka cache
+  # (11 of 12 dev builds were cancelled on 2026-11-14 and PR builds fell from ~13 to ~40 min).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -53,12 +55,14 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-llama-cpu.txt
-      - name: Nuitka compile cache
+      # #888: restore everywhere, save only from dev pushes (below). PR saves filled the 10 GB cache quota with
+      # per-sha entries and evicted the dev entry that every PR restores from.
+      - name: Nuitka compile cache (restore)
         if: steps.changes.outputs.build == 'true'
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.NUITKA_CACHE_DIR }}
-          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.sha }}
+          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.run_id }}
           restore-keys: |
             nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-
             nuitka-${{ runner.os }}-
@@ -80,11 +84,19 @@ jobs:
           & $py -m nuitka --version
           "PACK_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Build (packaging/build_windows.py, runs tlwu.exe --smoke before zipping)
+        id: build
         if: steps.changes.outputs.build == 'true'
         shell: pwsh
         run: |
           & $env:PACK_PY packaging\build_windows.py --lite
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # #888: save right after a successful compile, so a later failing or cancelled check step does not lose the cache
+      - name: Nuitka compile cache (save, dev pushes only)
+        if: always() && github.event_name == 'push' && steps.build.outcome == 'success'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ env.NUITKA_CACHE_DIR }}
+          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.run_id }}
       - name: Core zip release check (scripts/release_check.py, 300 MB budget, no CUDA files, #638)
         if: steps.changes.outputs.build == 'true'
         shell: pwsh

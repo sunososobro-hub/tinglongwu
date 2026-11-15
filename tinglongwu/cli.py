@@ -462,12 +462,13 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
     return st
 
 
-def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None) -> None:
+def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
     or None; stop: threading.Event that ends the run; status(str): progress notes (GUI);
-    notice(str): a note that should stay visible (GUI), e.g. why the GPU is not used."""
+    notice(str): a note that should stay visible (GUI), e.g. why the GPU is not used;
+    cpu_line(mt_ms): #780, CPU only, called once per output line with the translation time in ms (GUI status)."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device
     from .merge import SentenceMerger
@@ -623,7 +624,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
-            speakers=labeler, on_work=None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
+            speakers=labeler, on_work=cpu_on_work(None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
+                                                  cpu_line if dev == "cpu" else None),
             on_record=on_record, recorder=recorder)
     except KeyboardInterrupt:
         interrupted = True
@@ -637,6 +639,18 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             recorder.close()
         if close_voice is not None:  # Ctrl+C / GUI Stop: do not keep talking through the backlog
             close_voice(drop=interrupted or (stop is not None and stop.is_set()))
+
+
+def cpu_on_work(observe, cpu_line):
+    """#780: on_work callback that also reports the per-line MT time (ms) to cpu_line; either part may be None."""
+    if cpu_line is None:
+        return observe
+
+    def on_work(asr_s, mt_s, seg_s):
+        if observe is not None:
+            observe(asr_s, mt_s, seg_s)
+        cpu_line(mt_s * 1000.0)
+    return on_work
 
 
 def latency_recorder(path, log):

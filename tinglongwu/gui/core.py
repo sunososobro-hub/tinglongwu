@@ -35,6 +35,18 @@ DEFAULTS = {
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
 
 
+def send_gate_line(view) -> str:
+    """#833: the held speak line as one status line ("" when nothing is held); view = reverse.sendgate.GateView."""
+    from ..i18n import t
+
+    if view.state == "counting":
+        return t("gui_send_hold", s=f"{view.remaining:.0f}" if view.remaining >= 1 else f"{view.remaining:.1f}",
+                 text=view.text)
+    if view.state == "asking":
+        return t("gui_send_ask", text=view.text)
+    return ""
+
+
 def send_mode_notice_key(mode: str) -> str | None:
     """#834: i18n key of the one-line quality notice shown when a direct-send mode is chosen, else None."""
     return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
@@ -329,8 +341,80 @@ def follow_newest(yview_last: float) -> bool:
     return yview_last >= 0.999
 
 
-_MARK_OK, _MARK_MISSING = "\u2713 ", " (\u9700\u4e0b\u8f09 / not downloaded)"
+_MARK_OK = "\u2713 "
+_MARK_MISSING_OLD = " (\u9700\u4e0b\u8f09 / not downloaded)"  # #739: no longer shown; kept so an old saved label still parses
 _MARK_HEAVY = " (too heavy for this PC)"  # #780: medium / large-v3 on a CPU-mode PC with < 24 GB RAM
+_MARK_MISSING = {"en": " (not downloaded)", "ru": " (нужна загрузка)", "zh-TW": "（需下載）"}  # one language per label (#884)
+
+# #884: the dropdowns show names in the UI language; the stored setting keeps the raw value.
+_CHOICES = {
+    "quality": {"en": {"auto": "Auto", "fast": "Fast", "balanced": "Balanced", "quality": "Best quality", "manual": "Manual"},
+                "ru": {"auto": "Авто", "fast": "Быстро", "balanced": "Баланс", "quality": "Лучшее качество", "manual": "Вручную"},
+                "zh-TW": {"auto": "自動", "fast": "快速", "balanced": "平衡", "quality": "最佳品質", "manual": "手動"}},
+    "source": {"en": {"system": "PC sound", "mic": "Microphone"},
+               "ru": {"system": "Звук ПК", "mic": "Микрофон"},
+               "zh-TW": {"system": "電腦音效", "mic": "麥克風"}},
+    "preset": {"en": {"meeting": "Meeting (full sentences)", "chat": "Chat (faster)"},
+               "ru": {"meeting": "Встреча (целые фразы)", "chat": "Чат (быстрее)"},
+               "zh-TW": {"meeting": "會議（完整句子）", "chat": "聊天（較快）"}},
+    "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}},
+}
+
+
+def _ui() -> str:
+    from ..i18n import ui_lang
+
+    u = ui_lang()
+    return u if u in _MARK_MISSING else "en"
+
+
+def choice_label(kind: str, value: str, lang: str | None = None) -> str:
+    """Name shown in a dropdown for a stored value (#884); target languages use the script name only."""
+    from .. import langs
+
+    ui = lang or _ui()
+    if kind == "target":
+        return langs.plain_label(value, ui)
+    return _CHOICES[kind][ui].get(value, value)
+
+
+PAIR_MAX_PX = 120  # #884: widest pair label (9 pt) on the 420 px bar (#455): with it the bar measured <= 402 px
+# under xvfb (Inter 10 pt), and CI fonts ran ~12 px wider than that box on PR #900 (430 -> 442)
+_PAIR_SHORT = {"en": {"zh-tw": "Chinese (Trad.)", "zh-cn": "Chinese (Simp.)"},
+               "ru": {"zh-tw": "китайский (трад.)", "zh-cn": "китайский (упр.)"},
+               "zh-TW": {}}
+
+
+def pair_text(src: str, target: str, measure, lang: str | None = None, max_px: int = PAIR_MAX_PX) -> str:
+    """Bar label for a direction (#884): names, never codes. One line when it fits in max_px, else the target on
+    a second line, else a shorter target name (still the script name, never a region). measure(text) -> pixels."""
+    from .. import langs
+
+    ui = lang or _ui()
+    a = langs.plain_label(src, ui)
+    for b in (choice_label("target", target, ui), _PAIR_SHORT.get(ui, {}).get(target)):
+        if not b:
+            continue
+        one = f"{a}\u2192{b}"
+        if measure(one) <= max_px:
+            return one
+        two = f"{a} \u2192\n{b}"
+        if max(measure(line) for line in two.split("\n")) <= max_px:
+            return two
+    return two
+
+
+def choice_labels(kind: str, values, lang: str | None = None) -> list[str]:
+    return [choice_label(kind, v, lang) for v in values]
+
+
+def choice_value(kind: str, label: str, values) -> str:
+    """The stored value for a dropdown entry in any UI language (also accepts the raw value)."""
+    label = (label or "").strip()
+    for v in values:
+        if label == v or any(label == choice_label(kind, v, u) for u in _MARK_MISSING):
+            return v
+    return label
 
 
 def cpu_ram_gb(has_cuda, ram=None) -> float | None:
@@ -354,7 +438,8 @@ def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = No
 
 
 def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
-    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest marked as needing download (#96).
+    """Dropdown entries: downloaded Whisper models first, marked with a check; the rest plain (#739: a missing model
+    downloads on the first Start with a progress bar, so the list shows no "not downloaded" state).
     ram_gb (CPU mode, #780): heavy models get a "too heavy for this PC" mark when RAM is below 24 GB."""
     from ..hwprobe import too_heavy
     from ..models import whisper_installed
@@ -362,7 +447,7 @@ def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
     have = whisper_installed(mdir)
     heavy = lambda m: _MARK_HEAVY if too_heavy(m, ram_gb) else ""  # noqa: E731
     return ([_MARK_OK + m + heavy(m) for m in MODELS if m in have]
-            + [m + _MARK_MISSING + heavy(m) for m in MODELS if m not in have])
+            + [m + heavy(m) for m in MODELS if m not in have])  # #739: a missing model downloads on the first Start
 
 
 _ENGINE_DIR = {"hymt": "hymt2-1.8b"}  # models/<dir> per engine (auto needs no model of its own); #471: no opus
@@ -374,17 +459,21 @@ def engine_labels(mdir=None) -> list[str]:
     from ..models import models_dir
 
     d = models_dir(str(mdir) if mdir else None)
-    return [e if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})" for e in ENGINES]
+    return [choice_label("engine", e) if e == "auto" or (d / _ENGINE_DIR[e]).is_dir() else f"{e} ({_ENGINE_HINT[e]})"
+            for e in ENGINES]
 
 
 def engine_from_label(label: str) -> str:
     """The plain engine id from an engine_labels() entry (also accepts a plain id)."""
-    return (label or "").split(" (", 1)[0].strip()
+    return choice_value("engine", (label or "").split(" (", 1)[0].strip(), ENGINES)
 
 
 def model_from_label(label: str) -> str:
     """The plain model name from a dropdown entry (also accepts a plain name)."""
-    return label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "").replace(_MARK_MISSING, "").strip()
+    label = label.replace(_MARK_OK, "", 1).replace(_MARK_HEAVY, "")
+    for mark in (_MARK_MISSING_OLD, *_MARK_MISSING.values()):  # old saved labels (#739 / #884)
+        label = label.replace(mark, "")
+    return label.strip()
 
 
 def label_for_model(name: str, mdir=None, ram_gb: float | None = None) -> str:
@@ -475,6 +564,45 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
         rc = -1
     put(("dl_done", model, rc))
     return rc
+
+
+def parse_progress(line: str) -> int | None:
+    """#739: the last "NN%" in a download child's output line (0-100), else None."""
+    import re
+
+    m = re.findall(r"(\d{1,3})\s*%", line or "")
+    return min(100, int(m[-1])) if m else None
+
+
+def missing_start_model(run: dict, mdir=None) -> str | None:
+    """#739: the Whisper model a Start needs but does not have on disk (manual quality only; the other qualities
+    let the CLI pick from what is installed), else None."""
+    if run.get("quality") != "manual":
+        return None
+    m = run.get("model") or "small"
+    return None if is_downloaded(m, mdir) else m
+
+
+class StartDownload:
+    """#739: progress of the download that runs on the first Start. Feed it the `put` events of run_download /
+    run_pack_download; `percent` only goes up, `ok` is set on a zero return code, `error` is one line on failure."""
+
+    def __init__(self, name: str):
+        self.name, self.percent, self.done, self.ok, self.error, self._last = name, 0, False, False, "", ""
+
+    def feed(self, ev: tuple) -> None:
+        kind = ev[0]
+        if kind in ("dl_line", "pack_line"):
+            self._last = ev[1]
+            p = parse_progress(ev[1])
+            if p is not None:
+                self.percent = max(self.percent, p)
+        elif kind in ("dl_done", "pack_done"):
+            self.done, self.ok = True, ev[2] == 0
+            if self.ok:
+                self.percent, self.error = 100, ""
+            else:
+                self.error = (self._last or f"download failed (exit {ev[2]})").splitlines()[-1][:90]
 
 
 def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:

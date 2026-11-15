@@ -385,19 +385,19 @@ def test_log_font_buttons_and_pause(gui_app):
 
 
 def test_start_is_disabled_and_counts_seconds_until_models_are_ready(gui_app):
-    """#332: while models load the button reads "Loading... N s" and cannot be pressed; ready enables Stop."""
+    """#332: while models load the button reads "⏳ N s" and cannot be pressed; ready enables Stop."""
     import time
 
     from tinglongwu import cli
 
     a = gui_app
     a.toggle()  # Start
-    assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "Loading... 0 s"
+    assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "⏳ 0 s"
     a.q.put(("status", "loading speech model... (0.0 s)"))
     a.load_t0 = time.monotonic() - 5.2  # 5 s into loading
     a.poll()
     assert a.v_status.get() == "loading speech model... (0.0 s)"
-    assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "Loading... 5 s"
+    assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "⏳ 5 s"
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 5.2 s (speech model 5.2 s)"))
     a.poll()
     assert str(a.btn.cget("state")) == "normal" and a.btn.cget("text") == "Stop"
@@ -445,18 +445,26 @@ def _bound_vars(top) -> set[str]:
 
 
 def test_control_bar_is_compact_in_every_ui_language(gui_app):
-    """#455: the main window is a small bar (<= 420x60 at 100% scale), also while it counts "Loading... N s"."""
+    """#455: the main window is a small bar (<= 420x60 at 100% scale), also while it counts "⏳ N s"."""
     from tinglongwu.i18n import t
 
     a = gui_app
     for ui in ("English", "Русский", "繁體中文"):
         a.v_ui_lang.set(ui)
         a.switch_lang()
-        for text in (a.btn.cget("text"), t("gui_loading", s=120)):  # the widest text the button shows
-            a.btn.configure(text=text)
-            a.root.update_idletasks()
-            assert a.bar.winfo_reqwidth() <= 420 and a.bar.winfo_reqheight() <= 60, (ui, text)
-            assert a.root.winfo_reqwidth() <= 420 and a.root.winfo_reqheight() <= 60, (ui, text)
+        # #884: the pair shows names; measure the fixture's pair plus the real defaults (auto -> zh-tw, Speak en ->
+        # zh-tw) and the longest names (ja -> zh-cn, ru -> zh-tw)
+        for mode, src, target in (("listen", a.v_lang.get(), a.v_target.get()), ("listen", "auto", "zh-tw"),
+                                  ("speak", "en", "zh-tw"), ("listen", "ja", "zh-cn"), ("listen", "ru", "zh-tw")):
+            a.v_mode.set(mode)
+            a.v_lang.set(src)
+            a.v_target.set(target)
+            for text in (t("gui_start"), t("gui_loading", s=120)):  # the widest text the button shows
+                a.btn.configure(text=text)
+                a.root.update_idletasks()
+                pair = a.v_pair.get()
+                assert a.bar.winfo_reqwidth() <= 420 and a.bar.winfo_reqheight() <= 60, (ui, pair, text)
+                assert a.root.winfo_reqwidth() <= 420 and a.root.winfo_reqheight() <= 60, (ui, pair, text)
     assert a.root.attributes("-topmost")
 
 
@@ -487,6 +495,7 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
             "save": a.v_save, "save_path": a.v_save_path, "show_src": a.var_show_src, "live_draft": a.v_live,
             "voice": a.v_voice, "voice_device": a.v_voice_dev, "floating_bar": a.v_bar}
     in_panel = _bound_vars(a.panel)
+    in_panel |= {str(v) for k, (_kind, _vals, v) in a.kind_combos.items() if a.combos[k].winfo_exists()}  # #884: named combos show a mirror var
     assert [k for k, v in keys.items() if str(v) not in in_panel] == []
     # #738: subtitle lines, font size, UI language and theme moved to the menu bar's Settings menu
     in_menu = set()
@@ -524,7 +533,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     for w in a.bar.winfo_children():
         if "text" in w.keys() and w.cget("text") == "Speak":
             w.invoke()
-    assert a.v_mode.get() == "speak" and a.v_pair.get() == "en→zh-tw"  # the label shows the Speak direction
+    assert a.v_mode.get() == "speak" and a.v_pair.get() in ("English→Traditional Chinese", "English →\nTraditional Chinese", "English →\nChinese (Trad.)")  # #884: names, not codes (2 lines: fits 420 px); the Speak direction
     a.btn.invoke()  # Speak + Start: mic in my language (en) -> zh-tw, as the #294 "I speak" button
     a.toggle()
     a.worker.join(5)
@@ -532,7 +541,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
     a.v_mode.set("listen")
     a.v_lang.set("auto")
-    assert a.v_pair.get() == "auto→en"
+    assert a.v_pair.get() == "Auto→English"
     assert a.dot_state == "idle"
     a.btn.invoke()  # Listen + Start: the saved settings, as the old Start button
     assert a.dot_state == "loading" and (runs[1]["source"], runs[1]["target"]) == ("system", "en")
@@ -579,7 +588,7 @@ def test_one_click_listen_loading_then_ready_then_stop(gui_app, monkeypatch):
     assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
     a.v_target.set("zh-tw")
     a.quick_btns["listen"].invoke()  # click 1
-    assert _btn(a, "listen") == ("Loading... 0 s", "disabled") and _btn(a, "speak")[1] == "disabled"
+    assert _btn(a, "listen") == ("⏳ 0 s", "disabled") and _btn(a, "speak")[1] == "disabled"
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 2.0 s"))
     a.poll()
     assert a.v_status.get().startswith("Ready - start playback now")
@@ -609,10 +618,11 @@ def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
 # -- #399: the engine dropdown is hidden under a collapsed Advanced section ---------------------------------
 
 def test_engine_labels_hint_for_uninstalled_and_roundtrip(tmp_path):
-    assert core.engine_labels(tmp_path) == ["auto", "hymt (tlwu-setup --hymt)"]  # missing: hint; #471: no opus
+    auto = core.choice_label("engine", "auto")  # #884: shown by name in the UI language
+    assert core.engine_labels(tmp_path) == [auto, "hymt (tlwu-setup --hymt)"]  # missing: hint; #471: no opus
     (tmp_path / "hymt2-1.8b").mkdir()
     labels = core.engine_labels(tmp_path)
-    assert labels == ["auto", "hymt"]  # installed: plain
+    assert labels == [auto, "hymt"]  # installed: plain
     assert [core.engine_from_label(l) for l in labels] == core.ENGINES
     assert core.DEFAULTS["advanced_open"] is False
 

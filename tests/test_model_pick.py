@@ -33,7 +33,8 @@ def test_dropdown_lists_downloaded_first_and_marked(tmp_path):
     _mk(tmp_path, "large-v3-turbo")
     labels = core.model_labels(tmp_path)
     assert labels[0] == "✓ large-v3-turbo"
-    assert all("not downloaded" in l for l in labels[1:])
+    assert "not downloaded" not in " ".join(labels)  # #739: a missing model downloads on the first Start
+    assert labels[1:] == [m for m in core.MODELS if m != "large-v3-turbo"]
     assert [core.model_from_label(l) for l in labels][0] == "large-v3-turbo"
     assert sorted(core.model_from_label(l) for l in labels) == sorted(core.MODELS)
     assert core.label_for_model("small", tmp_path).startswith("small")
@@ -137,8 +138,8 @@ def test_run_download_failure_to_start(tmp_path):
     assert events[-1] == ("dl_done", "tiny", -1)
 
 
-def test_model_combo_wide_enough_for_not_downloaded_label(tmp_path):
+def test_model_combo_wide_enough_for_longest_label(tmp_path):
     labels = core.model_labels(tmp_path)
     longest = max(labels, key=core.text_width)
-    assert core.combo_width(labels) > 18 and core.combo_width(labels) >= core.text_width(longest)
+    assert core.combo_width(labels) >= core.text_width(longest)
     assert core.text_width("需下載") == 6

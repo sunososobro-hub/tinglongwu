@@ -68,7 +68,14 @@ def _release_windows_steps():
 
 
 def _nuitka_cache(steps):
-    return next(s for s in steps if s.get("name") == "Nuitka compile cache")["with"]
+    """The step that restores the Nuitka cache: `actions/cache`, or `actions/cache/restore` since #888."""
+    return next(s for s in steps if str(s.get("name", "")).startswith("Nuitka compile cache")
+                and s.get("uses", "").split("@")[0] in ("actions/cache", "actions/cache/restore"))["with"]
+
+
+def _key_prefix(key: str) -> str:
+    """The key without its last `-${{ ... }}` part (github.sha in release.yml, github.run_id in windows-build, #888)."""
+    return key.rsplit("-${{", 1)[0]
 
 
 def test_release_windows_job_builds_core_from_the_cpu_llama_venv():
@@ -99,7 +106,7 @@ def test_release_windows_job_gates_core_budget_before_the_packaging_check():
 def test_release_nuitka_cache_key_is_the_windows_build_key():
     rel = _nuitka_cache(_release_windows_steps())
     ci = _nuitka_cache(_workflow("windows-build.yml")["jobs"]["build"]["steps"])
-    assert rel["key"] == ci["key"]
+    assert _key_prefix(rel["key"]) == _key_prefix(ci["key"])
     assert "hashFiles('requirements.txt', 'requirements-llama-cpu.txt')" in rel["key"]
     ci_restore, rel_restore = ci["restore-keys"].split(), rel["restore-keys"].split()
     assert rel_restore[:len(ci_restore)] == ci_restore  # CI's keys first; extra fallbacks only after them
@@ -229,7 +236,8 @@ def test_release_gpu_pack_job_runs_beside_windows():
     gpu = jobs["gpu-pack"]
     assert gpu["needs"] == "plan" and gpu["if"] == jobs["windows"]["if"]  # parallel with windows, same dry-run rule
     assert gpu["permissions"] == {"contents": "read"}
-    assert sorted(jobs["release"]["needs"]) == ["gpu-pack", "plan", "windows"]
+    assert sorted(jobs["release"]["needs"]) == ["gpu-pack", "plan", "vulkan-pack", "windows"]  # #800: optional pack
+    assert "needs.gpu-pack.result == 'success'" in jobs["release"]["if"]  # the GPU pack stays required
     runs = [str(s.get("run", "")) for s in gpu["steps"]]
     text = "\n".join(runs)
     build = next(i for i, r in enumerate(runs) if "build_windows.py" in r)
@@ -249,7 +257,7 @@ def test_release_gpu_pack_job_runs_beside_windows():
 def test_release_job_attaches_the_gpu_pack_and_lists_it_in_sha256sums():
     steps = _workflow("release.yml")["jobs"]["release"]["steps"]
     downloads = [s["with"]["name"] for s in steps if "download-artifact" in str(s.get("uses", ""))]
-    assert downloads == ["release-win64", "release-gpu-pack"]
+    assert downloads == ["release-win64", "release-gpu-pack", "vulkan-pack"]  # #800: the optional Vulkan pack last
     runs = [str(s.get("run", "")) for s in steps]
     assert any("release_check.py --gpu-pack dist/" + release_check.GPU_PACK_ASSET in r and '--tag "$TAG"' in r
                for r in runs)

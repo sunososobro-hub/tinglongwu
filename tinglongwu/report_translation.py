@@ -1,0 +1,63 @@
+"""#677 'Wrong translation': build a pre-filled `translation-error.yml` issue URL for one subtitle line.
+
+The app sends nothing: the user sees the exact text in a dialog first, then the system browser opens on GitHub,
+where they can still edit the form before submitting. Only the source text and tlwu's output of that line go in
+(no audio, no other lines).
+"""
+from __future__ import annotations
+
+import platform
+from urllib.parse import quote
+
+ISSUE_NEW = "https://github.com/sunososobro-hub/tinglongwu/issues/new"
+MAX_URL = 6000  # GitHub rejects very long query strings; stay well below it
+_OS = {"Windows": "Windows", "Darwin": "macOS", "Linux": "Linux"}
+_MODES = {"listen", "speak", "meeting"}
+
+
+def _q(s: str) -> str:
+    return quote(s, safe="")
+
+
+def os_name() -> str:
+    return _OS.get(platform.system(), "Linux")
+
+
+def happened_text(src: str, out: str) -> str:
+    return f"Source: {src.strip()}\ntlwu: {out.strip()}"
+
+
+def build_url(version: str, mode: str, langpair: str, src: str, out: str, os_: str | None = None,
+              max_url: int = MAX_URL) -> tuple[str, str]:
+    """Return (url, happened) where `happened` is the (possibly truncated) text that is in the URL.
+
+    `happened` is cut on a character boundary until the *encoded* URL fits `max_url`, so a UTF-8 sequence is never split."""
+    mode = mode if mode in _MODES else "listen"
+
+    def url_for(h: str) -> str:
+        return (f"{ISSUE_NEW}?template=translation-error.yml&version={_q(version)}&os={_q(os_ or os_name())}"
+                f"&mode={_q(mode)}&langpair={_q(langpair)}&happened={_q(h)}")
+
+    happened = happened_text(src, out)
+    url = url_for(happened)
+    if len(url) <= max_url:
+        return url, happened
+    lo, hi = 0, len(happened)  # longest prefix (plus an ellipsis) whose URL fits
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if len(url_for(happened[:mid] + "…")) <= max_url:
+            lo = mid
+        else:
+            hi = mid - 1
+    happened = happened[:lo] + "…"
+    return url_for(happened), happened
+
+
+def report_line(src: str, out: str, *, version: str, mode: str, langpair: str, confirm, open_url) -> bool:
+    """Ask `confirm(happened)`; open the URL only on True. Returns whether the browser was opened."""
+    if not (src or out).strip():
+        return False
+    url, happened = build_url(version, mode, langpair, src, out)
+    if not confirm(happened):
+        return False
+    return bool(open_url(url))
