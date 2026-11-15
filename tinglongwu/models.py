@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 
@@ -14,6 +15,9 @@ def models_dir(arg: str | None = None) -> Path:
         return Path(arg)
     if os.environ.get("TLWU_MODELS"):
         return Path(os.environ["TLWU_MODELS"])
+    if os.environ.get("TLWU_BUNDLED") == "1" or getattr(sys, "frozen", False):  # #967: same as tinglongwu_setup
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".local", "share")
+        return Path(base) / "tinglongwu" / "models"
     return Path(__file__).resolve().parent.parent / "models"
 
 
