@@ -780,6 +780,7 @@ class App:
         self._pair_changed()
         self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
         self.btn.pack(side="left")
+        self._sync_quick()  # #982: saved matching languages disable both Start buttons from the first frame
         self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
         self.dot.pack(side="left", padx=2)
@@ -818,9 +819,22 @@ class App:
             s = quick_settings(s, "listen")
         except SameLanguageError as e:  # #981: shown on the bar at once, before Start is pressed
             self.v_pair.set(t(e.key))
+            self.same_lang = True
+            self._lang_check_ui()
             return
+        self.same_lang = False
+        self._lang_check_ui()
         # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
         self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure).replace("\u2192", "\u21c4"))
+
+    same_lang = False
+
+    def _lang_check_ui(self):
+        """#982: My language == Other side language: inline error and Start disabled (home button and bar button)."""
+        if getattr(self, "lang_err", None) is not None:
+            self.lang_err.configure(text=t("gui_same_lang") if self.same_lang else "")
+        if hasattr(self, "btn"):
+            self._sync_quick()
 
     def set_dot(self, name: str):
         self.dot_state = name
@@ -1224,6 +1238,8 @@ class App:
         # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
         self.both_btn = ttk.Button(q, command=lambda: self.toggle(BOTH_MODE))
         self.both_btn.grid(row=2, column=0, columnspan=2, sticky="we", ipady=3, pady=(6, 0))  # #886
+        self.lang_err = ttk.Label(q, foreground="#c0392b", wraplength=300, justify="left")  # #982: inline error
+        self.lang_err.grid(row=3, column=0, columnspan=2, sticky="w")
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
         self._sync_quick()
@@ -1242,7 +1258,10 @@ class App:
         if not hasattr(self, "both_btn"):
             return
         key, enabled = start_button(self._quick_phase(), self.quick_mode)  # #1001
+        enabled = enabled and not (self.same_lang and self._quick_phase() == "idle")  # #982
         self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
+        if hasattr(self, "btn"):
+            self.btn.configure(state="normal" if enabled or self._quick_phase() == "running" else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
