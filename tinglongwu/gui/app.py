@@ -878,8 +878,9 @@ class App:
         self.dl_bar.pack_forget()
         self.downloading = None
         self._sync_quick()
-        frozen_gap = rc == 0 and speaker_pack.is_frozen() and speaker_pack.missing(models_dir())[0]
         ok = rc == 0 and not any(speaker_pack.missing(models_dir()))
+        import_failed = ok and not speaker_pack.import_ok(models_dir())  # installed but sherpa_onnx will not load
+        ok = ok and not import_failed
         self.v_spk.set(ok)
         self.settings["speaker_id"] = ok
         save_settings(self.settings)
@@ -887,7 +888,7 @@ class App:
             self._status_text(t("gui_dl_ok", model="speaker"))
         else:
             self._status_text("")
-            messagebox.showwarning(t("gui_spk"), t("gui_spk_frozen" if frozen_gap else "gui_spk_fail"), parent=self.root)
+            messagebox.showwarning(t("gui_spk"), t("gui_spk_import" if import_failed else "gui_spk_fail"), parent=self.root)
 
     def _mic_label(self):
         self.btn_mic.configure(text=t("gui_mic_on" if self.v_mic.get() else "gui_mic_off"))

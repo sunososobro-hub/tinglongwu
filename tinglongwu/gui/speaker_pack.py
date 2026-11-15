@@ -26,8 +26,13 @@ BUTTONS = {"en": ("Download", "Not now"), "ru": ("Скачать", "Не сей�
            "ja": ("ダウンロード", "あとで")}
 
 
-def pkg_installed() -> bool:
+def pkg_installed(mdir=None) -> bool:
     import importlib.util
+
+    if mdir is not None:
+        from ..speaker_pylib import activate  # packaged build: models/speaker/pylib (only reached with the toggle on)
+
+        activate(mdir)
 
     try:
         return importlib.util.find_spec("sherpa_onnx") is not None
@@ -39,9 +44,23 @@ def model_installed(mdir) -> bool:
     return (Path(mdir) / SPEAKER_DIR / MODEL_NAME).is_file()
 
 
-def missing(mdir, pkg_ok=pkg_installed, model_ok=model_installed) -> tuple[bool, bool]:
+def import_ok(mdir) -> bool:
+    """The package really imports (after the pylib path is set); a DLL problem shows up here, not later."""
+    try:
+        from ..speaker_pylib import activate
+
+        activate(mdir)
+        import importlib
+
+        importlib.import_module("sherpa_onnx")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def missing(mdir, pkg_ok=None, model_ok=model_installed) -> tuple[bool, bool]:
     """(package missing, model missing)."""
-    return (not pkg_ok(), not model_ok(mdir))
+    return (not (pkg_ok() if pkg_ok else pkg_installed(mdir)), not model_ok(mdir))
 
 
 def is_frozen() -> bool:
@@ -49,11 +68,10 @@ def is_frozen() -> bool:
 
 
 def size_mb(mdir, frozen: bool | None = None, pytag: str | None = None, **kw) -> int:
-    """MB still to download: wheel + core (source run only; a packaged build cannot pip-install) + model."""
-    frozen = is_frozen() if frozen is None else frozen
+    """MB still to download: wheel + core + model (same for source and packaged builds; `frozen` is ignored)."""
     no_pkg, no_model = missing(mdir, **kw)
     total = 0
-    if no_pkg and not frozen:
+    if no_pkg:
         tag = pytag or f"cp{sys.version_info.major}{sys.version_info.minor}"
         total += WHEEL_BYTES.get(tag, WHEEL_DEFAULT) + CORE_BYTES
     if no_model:
@@ -93,17 +111,18 @@ def pip_cmd(req: str | Path) -> list[str]:
     return [sys.executable, "-m", "pip", "install", "--only-binary=:all:", "--require-hashes", "-r", str(req)]
 
 
-def model_cmd(mdir, bundled: bool | None = None) -> list[str]:
+def model_cmd(mdir, bundled: bool | None = None, pylib: bool = False) -> list[str]:
     from .core import download_cmd
 
     cmd = download_cmd("small", mdir, bundled)
     i = cmd.index("--whisper")
-    return [*cmd[:i], "--speaker-model", *cmd[i + 2:]]
+    return [*cmd[:i], "--speaker-model", *(["--speaker-pylib"] if pylib else []), *cmd[i + 2:]]
 
 
 def run_download(put, mdir, req, frozen: bool | None = None, runner=None, **kw) -> int:
     """Worker thread: pip install (source run only) then the model child; `put` gets ("pack_line", text) lines and one
-    final ("pack_done", "speaker", rc). A packaged build cannot pip-install: it fetches the model only."""
+    final ("pack_done", "speaker", rc). A packaged build cannot pip-install: its child unzips the pinned wheels into
+    models/speaker/pylib instead (`--speaker-pylib`)."""
     from .core import run_pack_download
 
     runner = runner or run_pack_download
@@ -118,8 +137,8 @@ def run_download(put, mdir, req, frozen: bool | None = None, runner=None, **kw) 
     try:
         if no_pkg and not frozen:
             rc = runner("speaker", inner, cmd=pip_cmd(req))
-        if rc == 0 and no_model:
-            rc = runner("speaker", inner, mdir=mdir, cmd=model_cmd(mdir))
+        if rc == 0 and (no_model or (no_pkg and frozen)):
+            rc = runner("speaker", inner, mdir=mdir, cmd=model_cmd(mdir, pylib=no_pkg and frozen))
     except Exception as e:  # noqa: BLE001
         put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
         rc = -1

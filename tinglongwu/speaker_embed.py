@@ -22,6 +22,9 @@ class SherpaEmbedder:
         path = Path(mdir) / SPEAKER_DIR / MODEL_NAME
         if not path.is_file():
             raise RuntimeError(f"--speakers: speaker model missing ({path}); run: tlwu-setup --speaker-model")
+        from .speaker_pylib import activate
+
+        activate(mdir)  # packaged build: models/speaker/pylib on sys.path (no-op when absent)
         try:
             import sherpa_onnx
         except ImportError as e:
@@ -63,6 +66,9 @@ def available(mdir) -> bool:
     """0.3.8 GUI: True when sherpa-onnx is importable and the speaker model file exists (checked without loading)."""
     import importlib.util
 
+    from .speaker_pylib import activate
+
+    activate(mdir)
     try:
         return (Path(mdir) / SPEAKER_DIR / MODEL_NAME).is_file() and importlib.util.find_spec("sherpa_onnx") is not None
     except (ImportError, ValueError):

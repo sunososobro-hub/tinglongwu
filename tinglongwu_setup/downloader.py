@@ -458,6 +458,65 @@ def get_speaker_model(man, mdir, opener=_open, files=None):
     pin_or_verify(man, SPEAKER_DIR, dest, {"url": SPEAKER_BASE}, {n: h for n, (_, h) in files.items()})
 
 
+# Packaged build: no pip, so the pinned sherpa-onnx + sherpa-onnx-core win_amd64 wheels are unzipped into
+# models/speaker/pylib (the app adds it to sys.path before importing sherpa_onnx). Same pins as requirements-speaker.txt.
+_PYPI = "https://files.pythonhosted.org/packages/"
+SPEAKER_CORE_WHEEL = ("sherpa_onnx_core-2.0.1-py3-none-win_amd64.whl", 16663244,
+                      "08890e9ea23ed2f59f81d5840c63b6b5cc8674d0f6e48d9069126a848aa0e022",
+                      _PYPI + "68/ea/8f02cc34c19d956697dda2f2c470c14cd6b7af77f3ae855c514a86039b68/")
+SPEAKER_WHEELS = {  # CPython tag -> (file, size, sha256, url dir)
+    "cp310": ("sherpa_onnx-2.0.1-cp310-cp310-win_amd64.whl", 2174131,
+              "08dba29c595183af42e28ba7d71bcb3b9f3aee5b4788089d47c7a0a263d6c5b2",
+              _PYPI + "3d/dd/975600cb8bea6eb08d1611166fe675b2fe9b902ca17e9106126c0ea868f6/"),
+    "cp311": ("sherpa_onnx-2.0.1-cp311-cp311-win_amd64.whl", 2173799,
+              "70bb7a6fd866fa097e5f1f7d34b9b1d7913399ab7f94973be4d04dbb74c0ab58",
+              _PYPI + "21/60/db4716f269132ffa8889c98d5bc763fd55728f55003cad3e7aa9923d6700/"),
+    "cp312": ("sherpa_onnx-2.0.1-cp312-cp312-win_amd64.whl", 2178304,
+              "9f25448a1af23a013064264b9e2241e0c5d0e1941aeb82dafa969520c694efb9",
+              _PYPI + "61/31/1cac1c087f82f26cb57c76ebf62457771a49e3707e8af3395cd9fa6ee8ce/"),
+    "cp313": ("sherpa_onnx-2.0.1-cp313-cp313-win_amd64.whl", 2179778,
+              "9b3a0f2b97cd300747a44a78f134e729afe45ae627e7110e764710235b1828c9",
+              _PYPI + "14/f1/b6460d62b670a08ec5bd4e8efc678378473e438274817fa8a7d6096f9eba/"),
+}
+
+
+def get_speaker_pylib(mdir, opener=_open, tag=None, wheels=None, core=None):
+    """Download the sherpa-onnx + core wheels for this interpreter's tag, verify size + SHA256 (a bad file is deleted
+    and setup aborts) and unzip them into models/speaker/pylib. Already unpacked (marker file) = nothing to do."""
+    wheels = SPEAKER_WHEELS if wheels is None else wheels
+    core = SPEAKER_CORE_WHEEL if core is None else core
+    tag = tag or f"cp{sys.version_info.major}{sys.version_info.minor}"
+    if tag not in wheels:
+        sys.exit(f"no pinned sherpa-onnx wheel for Python {tag} (win_amd64)")
+    dest = mdir / SPEAKER_DIR / "pylib"
+    marker = dest / ".pins"
+    pins = f"{wheels[tag][2]} {core[2]}"
+    if marker.is_file() and marker.read_text("utf-8") == pins:
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    tmp = mdir / SPEAKER_DIR / "wheels.part"
+    tmp.mkdir(parents=True, exist_ok=True)
+    got = []
+    for name, size, sha, base in (wheels[tag], core):
+        f = tmp / name
+        print(f"downloading {name} (~{size // 1_000_000} MB)")
+        with opener(base + name, 600) as r, open(f, "wb") as out:
+            shutil.copyfileobj(r, out)
+        if f.stat().st_size != size or sha256(f) != sha:
+            f.unlink()
+            sys.exit(f"SHA256 MISMATCH vs committed pin for {name} - deleted, refusing. Run setup again.")
+        got.append(f)
+    root = dest.resolve()
+    for f in got:
+        with zipfile.ZipFile(f) as z:
+            for n in z.namelist():
+                if not (dest / n).resolve().is_relative_to(root):
+                    sys.exit(f"unsafe path in {f.name}: {n}")
+            z.extractall(dest)
+    shutil.rmtree(tmp, ignore_errors=True)
+    marker.write_text(pins, "utf-8")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
@@ -476,6 +535,8 @@ def main(argv=None) -> int:
     p.add_argument("--speaker-model", action="store_true",
                    help="speaker-embedding model for diarization (3D-Speaker CAM++, Apache-2.0, ~28 MB), "
                         "pinned by SHA256, not bundled")
+    p.add_argument("--speaker-pylib", action="store_true",
+                   help="packaged build: sherpa-onnx wheels (~19 MB, SHA256-pinned) unzipped into models/speaker/pylib")
     p.add_argument("--vosk-tts-ru", action="store_true",
                    help="OPT-IN: Vosk-TTS Russian voice model (vosk-model-tts-ru-0.7-multi). Upstream states no "
                         "license for it; never downloaded by default, download at your own responsibility")
@@ -532,6 +593,8 @@ def main(argv=None) -> int:
     if a.speaker_model:
         get_speaker_model(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.speaker_pylib:
+        get_speaker_pylib(mdir)
     if a.vosk_tts_ru:
         get_vosk_tts_ru(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
