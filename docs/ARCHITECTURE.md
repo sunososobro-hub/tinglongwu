@@ -15,7 +15,8 @@ flowchart LR
     B --> C["asr.py Recognizer<br/>faster-whisper<br/>--device auto: GPU float16 / CPU int8"]
     C --> MG["merge.py SentenceMerger<br/>sentence ends / max-wait 6 s"]
     MG --> D{"engine"}
-    D -->|opus default| E["translate.py PivotTranslator<br/>src to en to target (OPUS-MT, CT2)"]
+    D -->|auto default| E["hymt.py HyMtTranslator<br/>Hy-MT2-1.8B GGUF via llama.cpp, src to target directly"]
+    D -->|ollama / fm, opt-in| F["ollama.py / fm.py<br/>local LLM server, opt-in only"]
     E --> G["OpenCC (target zh only)<br/>tw: s2twp / cn: t2s"]
     F --> G
     G --> H["sink.py Sink<br/>stdout text"]
@@ -38,7 +39,7 @@ Every box inside "Runtime" works without network. `tlwu-setup` is outside the ru
 | Silero VAD (in faster-whisper) | pause splitting | via faster-whisper 1.2.1 | MIT | github.com/snakers4/silero-vad | `segment.py` `silero_vad` used by `Segmenter` | Pass any `vad_fn(audio) -> [(start, end)]` to `Segmenter(vad_fn=...)` (built in `cli.py main`) |
 | faster-whisper + CTranslate2 | ASR | 1.2.1 / 4.8.5 | MIT / MIT | github.com/SYSTRAN/faster-whisper, github.com/OpenNMT/CTranslate2 | `asr.py` `FasterWhisperRecognizer` | Subclass `Recognizer` (`transcribe(audio) -> Transcript\|None`), instantiate it in `cli.py main` |
 | Whisper weights (Systran CT2) | ASR model | HF sha pinned on first download (committed pins: `tinglongwu_setup/manifest.json`; local record: `models/manifest.json`) | MIT | huggingface.co/Systran/faster-whisper-* | loaded by `FasterWhisperRecognizer` | `--model`; new sizes: extend `choices` in `cli.py` and `tlwu-setup` |
-| OPUS-MT (Argos packages) + SentencePiece | default translation, src->en->target | models: URL + SHA256 pinned; sentencepiece 0.2.3 | CC-BY 4.0 / Apache-2.0 | github.com/Helsinki-NLP/Opus-MT, github.com/argosopentech/argospm-index | `translate.py` `OpusStep` inside `PivotTranslator` | Pass `step_factory(src, tgt) -> callable(str) -> str` to `PivotTranslator`, or subclass `Translator` |
+| Hy-MT2-1.8B (Q4_K_M GGUF) + llama-cpp-python | default translation, source -> target directly (OPUS-MT was removed in #471) | model: SHA256 pinned in `tinglongwu_setup/manifest.json`; llama-cpp-python 0.3.36 | Apache-2.0 / MIT | huggingface.co/tencent/Hy-MT2-1.8B-GGUF, github.com/abetlen/llama-cpp-python | `hymt.py` `HyMtTranslator`, built by `cli.py` `make_translator` | Add an entry to `engines.py` `ENGINE_REGISTRY` plus its builder in `make_translator`, or subclass `Translator` |
 | CUDA 12 libs (cuBLAS, cuDNN 9) | optional GPU runtime | pip pins in `requirements-gpu.txt` | NVIDIA CUDA EULA (not redistributed by this repo) | pypi.org/project/nvidia-cublas-cu12 | `device.py` | `tlwu-setup --gpu`; `--device auto|cpu|cuda` |
 | OpenCC (opencc-python-reimplemented) | zh script conversion | 0.1.7 | Apache-2.0 | github.com/yichen0831/opencc-python | `translate.py` `zh_convert` | Edit `zh_convert` (config names `s2twp`, `t2s`) |
 | pymorphy3 + pymorphy3-dicts-ru (+ DAWG2-Python) | Russian name declension before MT (#390), lazy-loaded on the first Russian sentence, ~13 MB dictionary | 2.0.6 / 2.4.417150.4580142 / 0.9.0 | MIT / MIT code, CC BY-SA 3.0 dictionary data (OpenCorpora) / MIT | github.com/no-plagiarism/pymorphy3 | `lang/ru/__init__.py` `pre_mt` | Replace `pre_mt` in `tinglongwu/lang/ru/` |

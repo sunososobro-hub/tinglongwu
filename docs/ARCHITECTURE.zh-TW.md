@@ -15,7 +15,8 @@ flowchart LR
     B --> C["asr.py Recognizer<br/>faster-whisper<br/>--device auto: GPU float16 / CPU int8"]
     C --> MG["merge.py SentenceMerger<br/>sentence ends / max-wait 6 s"]
     MG --> D{"engine"}
-    D -->|預設 opus| E["translate.py PivotTranslator<br/>來源 -> en -> 目標（OPUS-MT, CT2）"]
+    D -->|預設 auto| E["hymt.py HyMtTranslator<br/>Hy-MT2-1.8B GGUF（llama.cpp），來源 -> 目標直譯"]
+    D -->|ollama / fm，選用| F["ollama.py / fm.py<br/>本機 LLM 伺服器，僅手動啟用"]
     E --> G["OpenCC（僅目標為 zh）<br/>tw: s2twp / cn: t2s"]
     F --> G
     F2 --> G
@@ -39,7 +40,7 @@ flowchart LR
 | Silero VAD（內含於 faster-whisper） | 停頓切段 | 隨 faster-whisper 1.2.1 | MIT | github.com/snakers4/silero-vad | `segment.py` `silero_vad`，由 `Segmenter` 使用 | 將任何 `vad_fn(audio) -> [(start, end)]` 傳入 `Segmenter(vad_fn=...)`（在 `cli.py main` 建立） |
 | faster-whisper + CTranslate2 | 語音辨識 | 1.2.1 / 4.8.5 | MIT / MIT | github.com/SYSTRAN/faster-whisper、github.com/OpenNMT/CTranslate2 | `asr.py` `FasterWhisperRecognizer` | 繼承 `Recognizer`（`transcribe(audio) -> Transcript\|None`），在 `cli.py main` 實例化 |
 | Whisper 權重（Systran CT2） | ASR 模型 | 首次下載時釘住 HF sha（版控內的釘選：`tinglongwu_setup/manifest.json`；本機紀錄：`models/manifest.json`） | MIT | huggingface.co/Systran/faster-whisper-* | 由 `FasterWhisperRecognizer` 載入 | `--model`；新增尺寸需擴充 `cli.py` 與 `tlwu-setup` 的 `choices` |
-| OPUS-MT（Argos 套件）+ SentencePiece | 預設翻譯，來源->en->目標 | 模型：URL + SHA256 釘選；sentencepiece 0.2.3 | CC-BY 4.0 / Apache-2.0 | github.com/Helsinki-NLP/Opus-MT、github.com/argosopentech/argospm-index | `translate.py` `PivotTranslator` 內的 `OpusStep` | 傳入 `step_factory(src, tgt) -> callable(str) -> str` 給 `PivotTranslator`，或繼承 `Translator` |
+| Hy-MT2-1.8B（Q4_K_M GGUF）+ llama-cpp-python | 預設翻譯，來源->目標直譯（OPUS-MT 已於 #471 移除） | 模型：SHA256 釘選於 `tinglongwu_setup/manifest.json`；llama-cpp-python 0.3.36 | Apache-2.0 / MIT | huggingface.co/tencent/Hy-MT2-1.8B-GGUF、github.com/abetlen/llama-cpp-python | `hymt.py` `HyMtTranslator`，由 `cli.py` `make_translator` 建立 | 在 `engines.py` `ENGINE_REGISTRY` 加一項並在 `make_translator` 加對應建構，或繼承 `Translator` |
 | CUDA 12 函式庫（cuBLAS、cuDNN 9） | 選用 GPU 執行期 | `requirements-gpu.txt` 釘版 | NVIDIA CUDA EULA（本 repo 不散布） | pypi.org/project/nvidia-cublas-cu12 | `device.py` | `tlwu-setup --gpu`；`--device auto|cpu|cuda` |
 | OpenCC（opencc-python-reimplemented） | 中文字形轉換 | 0.1.7 | Apache-2.0 | github.com/yichen0831/opencc-python | `translate.py` `zh_convert` | 修改 `zh_convert`（設定名 `s2twp`、`t2s`） |
 | （stdout） | 輸出 | 無 | 無 | 無 | `sink.py` `TextSink`、`TranscriptSink`；`TTSSink` 為樁（主套件不含 TTS；反向模式的語音在獨立 worker 子行程中執行） | 繼承 `Sink`（`write(Result)`），在 `cli.py main` 選用 |
