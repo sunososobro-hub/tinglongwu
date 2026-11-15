@@ -226,6 +226,7 @@ jobs:
         id: reuse
         shell: pwsh
         timeout-minutes: 3   # = scripts/gpu_pack_reuse.py GPU_PACK_REUSE_BUDGET_MIN
+        continue-on-error: true   # a failed or timed-out reuse falls through to the build steps
         env:
           TAG: ${{ needs.plan.outputs.tag }}
         run: |

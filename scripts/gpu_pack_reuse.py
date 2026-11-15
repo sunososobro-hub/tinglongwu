@@ -48,6 +48,8 @@ def try_reuse(repo: str, tag: str, key: str, out: Path, get=_http_get) -> tuple[
         return False, f"invalid manifest in {prev} ({type(e).__name__})"
     if not prev_key:
         return False, f"{prev} manifest has no wheels_key"
+    if "name" not in man:
+        return False, f"{prev} manifest has no name"
     if prev_key != key:
         return False, "pinned wheels changed"
     try:
