@@ -960,3 +960,39 @@ def gui_error_text(e: BaseException) -> str:
     if msg and not _CLI_FLAG.search(msg) and (ui_lang() == "en" or not msg.isascii()):
         return msg
     return t("gui_error_generic")
+
+
+# #1020: the run_session status lines (cli.LoadProgress / announce_ready, English for the CLI) in the UI language
+LOAD_STAGE_KEYS = {"speech model": "gui_stage_speech", "translation engine": "gui_stage_translation",
+                   "speaker model": "gui_stage_speaker", "voice": "gui_stage_voice"}
+_LOADING_RE = re.compile(r"^loading (.+?)\.\.\. \((\d+(?:\.\d+)?) s\)$")
+_LOADED_RE = re.compile(r"^listening(?: - loaded in (\d+(?:\.\d+)?) s(?: \((.*)\))?)?$")
+_PART_RE = re.compile(r"^(.+) (\d+(?:\.\d+)?) s$")
+
+
+def _stage_name(label: str) -> str:
+    from ..i18n import t
+
+    key = LOAD_STAGE_KEYS.get(label)
+    return t(key) if key else label
+
+
+def load_status_text(msg: str) -> str:
+    """#1020: "loading speech model... (0.0 s)" / "listening - loaded in 4.9 s (speech model 3.5 s, ...)" from the
+    session -> the same line in the UI language. Any other text is returned unchanged."""
+    from ..i18n import t
+
+    m = _LOADING_RE.match(msg)
+    if m:
+        return t("gui_st_loading", name=_stage_name(m.group(1)), s=m.group(2))
+    m = _LOADED_RE.match(msg)
+    if not m:
+        return msg
+    if m.group(1) is None:
+        return t("gui_st_listening")
+    parts = []
+    for p in (m.group(2) or "").split(", ") if m.group(2) else []:
+        pm = _PART_RE.match(p)
+        parts.append(t("gui_st_part", name=_stage_name(pm.group(1)), s=pm.group(2)) if pm else p)
+    text = t("gui_st_loaded", s=m.group(1))
+    return text + (t("gui_st_parts", parts=t("gui_st_sep").join(parts)) if parts else "")

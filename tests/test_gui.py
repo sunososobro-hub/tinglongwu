@@ -406,7 +406,7 @@ def test_start_is_disabled_and_counts_seconds_until_models_are_ready(gui_app):
     a.q.put(("status", "loading speech model... (0.0 s)"))
     a.load_t0 = time.monotonic() - 5.2  # 5 s into loading
     a.poll()
-    assert a.v_status.get() == "loading speech model... (0.0 s)"
+    assert a.v_status.get() == "Loading speech model... (0.0 s)"  # #1020: through i18n
     assert str(a.btn.cget("state")) == "disabled" and a.btn.cget("text") == "⏳ 5 s"
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 5.2 s (speech model 5.2 s)"))
     a.poll()

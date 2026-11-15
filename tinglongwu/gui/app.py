@@ -20,7 +20,7 @@ from ..langs import from_label as lang_from_label, label as lang_label, labels a
 from .core import (BOTH_MODE, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
-                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
+                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -42,6 +42,8 @@ LABEL_WRAP_PX = 190
 LOG_H, LOG_H_SHORT = 220, 100
 SHORT_SCREEN_PX = 900
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
+PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
+HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 notice is for the other settings
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
 FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
@@ -479,7 +481,7 @@ class App:
         if self.side_logo is not None:
             c.create_image(SIDE_W // 2, y, image=self.side_logo, anchor="n")
             y += self.side_logo.height() + 6
-        c.create_text(SIDE_W // 2, y, text="聽龍", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
+        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
         c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=(FONT_FAMILY, 10), anchor="n")
         y += 74
         for i, (key, glyph, cmd) in enumerate(self.side_nav):
@@ -555,6 +557,10 @@ class App:
                      "v_voice", "v_voice_dev"):
             if hasattr(self, name):
                 getattr(self, name).trace_add("write", lambda *_: self._restart_check())
+        self.run_pair = None  # #1020: (my language, other side's language) the running session started with
+        self._pair_after = None
+        for name in ("v_lang", "v_target"):
+            getattr(self, name).trace_add("write", lambda *_: self._pair_restart_soon())
 
     def _build_send_gate(self, f):
         """#833: the held speak line with [Send] [Stop] in the status box `f`. Its widgets are made the first time a
@@ -620,7 +626,8 @@ class App:
         """#983: show the "restart to apply" notice + button while running with a changed start-time setting."""
         running = self.worker is not None and self.worker.is_alive()
         changed = restart_needed(self.run_snapshot, self._start_values()) if running and self.run_snapshot else []
-        if changed:
+        notice = [k for k in changed if k not in HOME_PAIR_KEYS]  # #1020: the home-card pair restarts by itself
+        if notice:
             self.lbl_restart.configure(text=t("gui_restart_to_apply"))
             self.btn_restart.configure(text=t("gui_restart_btn"))
             self.lbl_restart.grid(row=2, column=0, columnspan=2, sticky="w")
@@ -629,6 +636,27 @@ class App:
             self.lbl_restart.grid_remove()
             self.btn_restart.grid_remove()
         return changed
+
+    def _home_pair(self) -> tuple:
+        """#1020: the home card's language pair as codes (a UI-language switch relabels v_lang, same language)."""
+        return lang_from_label(self.v_lang.get()), self.v_target.get()
+
+    def _pair_restart_soon(self):
+        """#1020: a language changed on the home card while running -> restart after PAIR_RESTART_MS of quiet."""
+        if self._pair_after is not None:
+            self.root.after_cancel(self._pair_after)
+        self._pair_after = self.root.after(PAIR_RESTART_MS, self._pair_restart_fire)
+
+    def _pair_restart_fire(self):
+        self._pair_after = None
+        if self.worker is None or not self.worker.is_alive() or self.run_pair is None:
+            return  # not running (a pending restart reads the new pair when it starts)
+        if self._home_pair() == self.run_pair:
+            return
+        if self.load_t0 is not None or getattr(self, "_restart_mode", None) is not None or self.stop_ev.is_set():
+            self._pair_after = self.root.after(PAIR_RESTART_MS, self._pair_restart_fire)  # loading / stopping
+            return
+        self._restart_now()
 
     def _restart_now(self):
         """#983: stop, then start the same mode again once the worker has ended (new values are read by collect)."""
@@ -899,12 +927,10 @@ class App:
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
-        self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
-        self.btn_pause.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))  # #886: one row with Check setup
         # Check setup stays in the panel, above the subtitle log (#756); Report a problem and the update controls
         # moved to the menu bar's Help menu (#738)
         self.act_row = act = ttk.Frame(f)
-        act.grid(row=UPDATE_ROW, column=4, columnspan=3, sticky="we", pady=(6, 0))
+        act.grid(row=UPDATE_ROW, column=0, columnspan=SPAN, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
@@ -1223,6 +1249,10 @@ class App:
         self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
         self._tx(ttk.Checkbutton(bar, variable=self.v_bar, command=self._bar_toggled), "gui_floating_bar").pack(
             side="left")
+        # #1020: "Freeze subtitles" only freezes this box and the floating bar (translation keeps running), so it
+        # sits with the subtitle controls, not next to Start / Stop where it read as "Stop"
+        self.btn_pause = ttk.Button(bar, text=t("gui_pause"), command=self.toggle_pause)
+        self.btn_pause.pack(side="left", padx=(8, 0))
         ttk.Button(bar, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
         ttk.Button(bar, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
         # fixed pixel size: a bigger font must not grow the window; #886: shorter on a short screen (1366x768)
@@ -1617,6 +1647,7 @@ class App:
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
         self.run_snapshot = self._start_values()  # #983
+        self.run_pair = self._home_pair()  # #1020
         self._restart_check()
         self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
@@ -1694,7 +1725,7 @@ class App:
                 ev = self.q.get_nowait()
                 kind = ev[0]
                 if kind == "status":
-                    self._status_text(ev[1])
+                    self._status_text(load_status_text(ev[1]))  # #1020: in the UI language
                     from ..cli import READY_STATUS  # already imported by the worker; not at GUI start (#332)
 
                     if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
@@ -1707,7 +1738,8 @@ class App:
                         text = t(ready)
                         if self.quick_mode == BOTH_MODE:  # #1001: both legs; keep the #710 CABLE hint after it
                             text = t("gui_ready_both") + (f" | {text}" if ready == SPEAK_HINT_CABLE else "")
-                        self._status_text(f"{text} ({ev[1]})")  # #294: visible "start playback now"
+                        loaded = load_status_text(ev[1])  # #1020: "Listening - loaded in N s (...)" localized
+                        self._status_text(text if ev[1] == READY_STATUS else text + "\n" + loaded)  # #294
                         self._sync_quick()
                 elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
                     from .core import cpu_mode_line
