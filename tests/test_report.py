@@ -140,3 +140,11 @@ def test_ai_text_has_prompt_version_os_and_redacted_log(monkeypatch):
     assert "line 79" in text and "line 30" in text and "line 29" not in text  # last 50 only
     assert "Bob" not in text and "<user>" in text
     assert len(report.AI_PROMPT.splitlines()) < 40
+
+
+def test_ai_text_user_name_does_not_mangle_prompt(monkeypatch):
+    """#940 review: a user called 'wu' must not turn 'tinglongwu' in the prompt URLs into 'tinglong<user>'."""
+    monkeypatch.setattr(getpass, "getuser", lambda: "wu")
+    text = report.build_ai_text({}, ["hello wu"])
+    assert "sunososobro-hub/tinglongwu" in text and "tinglong<user>" not in text
+    assert "hello <user>" in text

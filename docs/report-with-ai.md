@@ -35,8 +35,8 @@ When I describe a problem:
 5. If it is new or still broken after the fix, write a report in English
    with exactly these fields: Version, OS, Mode, Language pair,
    What happened, What you expected, Log lines. Then give me this link
-   with the title and body URL-encoded:
-   https://github.com/sunososobro-hub/tinglongwu/issues/new?template=bug.yml&title=...&body=...
+   with the fields URL-encoded:
+   https://github.com/sunososobro-hub/tinglongwu/issues/new?template=bug.yml&title=...&version=...&langpair=...&happened=...&expected=...&log=...
    Tell me: "Open the link and press Submit (needs a GitHub account; you can
    ask a friend to submit it)."
 Before you show any log or report, remove personal data: user names, paths

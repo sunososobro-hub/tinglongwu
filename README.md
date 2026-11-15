@@ -41,13 +41,12 @@ Setup downloads the speech and translation models once (internet needed). After 
 ## Languages and requirements
 
 Chinese, English, Japanese, Korean and Russian today; more on the way ([language plan](docs/VISION.md)).
-Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md)
+Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md)
 
 ## Want to help?
 
 - 📘 [How to contribute](CONTRIBUTING.md): PRs are welcome, the default answer is yes
 - 🟢 [Good first issues](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
-- 🐞 [Report a problem with your own AI](docs/report-with-ai.md): no GitHub account needed; copy one prompt into ChatGPT / Claude / Gemini
 - 💬 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions): ask a question, show how you use it, share an idea (no GitHub skills needed)
 - 🧭 [Vision: what we build and what we never do](docs/VISION.md)
 - 🗺️ [Roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [Next release progress](https://github.com/sunososobro-hub/tinglongwu/milestones) · 📊 [Project activity](https://sunososobro-hub.github.io/tinglongwu/)

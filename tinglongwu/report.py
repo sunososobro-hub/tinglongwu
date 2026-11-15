@@ -221,8 +221,8 @@ When I describe a problem:
 5. If it is new or still broken after the fix, write a report in English
    with exactly these fields: Version, OS, Mode, Language pair,
    What happened, What you expected, Log lines. Then give me this link
-   with the title and body URL-encoded:
-   https://github.com/sunososobro-hub/tinglongwu/issues/new?template=bug.yml&title=...&body=...
+   with the fields URL-encoded:
+   https://github.com/sunososobro-hub/tinglongwu/issues/new?template=bug.yml&title=...&version=...&langpair=...&happened=...&expected=...&log=...
    Tell me: "Open the link and press Submit (needs a GitHub account; you can
    ask a friend to submit it)."
 Before you show any log or report, remove personal data: user names, paths
@@ -242,11 +242,12 @@ def build_ai_text(info: dict | None = None, log_lines: list[str] | None = None) 
     Pure text for the clipboard; no network call."""
     rows = [("App version", _version()), ("OS", f"{platform.system()} {platform.release()}"),
             ("Python", platform.python_version())] + [(k, str(v)) for k, v in (info or {}).items()]
-    out = [AI_PROMPT, "", "--- My machine ---"] + [f"- {k}: {v}" for k, v in rows]
+    out = ["--- My machine ---"] + [f"- {k}: {v}" for k, v in rows]
     logs = list(log_lines if log_lines is not None else last_log_lines(AI_LOG_LINES))[-AI_LOG_LINES:]
     if logs:
         out += ["", "--- Last log lines ---", "```"] + logs + ["```"]
-    return redact("\n".join(out) + "\n")
+    # redact only the machine data: a user name such as "wu" must not mangle "tinglongwu" in the prompt URLs
+    return AI_PROMPT + "\n\n" + redact("\n".join(out) + "\n")
 
 
 def open_report(info: dict | None = None, say=print) -> str:
