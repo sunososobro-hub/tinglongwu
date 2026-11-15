@@ -35,11 +35,30 @@ OutputBaseFilename=tinglongwu-setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; #1002: the first wizard page asks for the language (default = the Windows UI language); every page follows it
+ShowLanguageDialog=yes
+UsePreviousLanguage=no
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+
+[CustomMessages]
+english.TaskDesktop=Desktop shortcuts
+english.TaskCpu=Force the CPU path (no NVIDIA GPU use)
+english.TaskAutoUpdate=Update automatically (checks GitHub once a day)
+english.RunStart=Start {#AppTitle}
+english.RunLog=Show install.log
+japanese.TaskDesktop=デスクトップにショートカットを作成
+japanese.TaskCpu=CPU 経路を強制する（NVIDIA GPU を使用しない）
+japanese.TaskAutoUpdate=自動更新する（1 日 1 回 GitHub を確認）
+japanese.RunStart={#AppTitle} を起動
+japanese.RunLog=install.log を表示
 
 [Tasks]
-Name: "desktopicon"; Description: "Desktop shortcuts / 桌面捷徑"
-Name: "cpu"; Description: "Force the CPU path (no NVIDIA GPU use) / 強制 CPU 路線"; Flags: unchecked
-Name: "autoupdate"; Description: "Update automatically (checks GitHub once a day) / 自動更新（每天檢查一次 GitHub）"
+Name: "desktopicon"; Description: "{cm:TaskDesktop}"
+Name: "cpu"; Description: "{cm:TaskCpu}"; Flags: unchecked
+Name: "autoupdate"; Description: "{cm:TaskAutoUpdate}"
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -57,10 +76,10 @@ Name: "{autoprograms}\{#AppTitle} - repair install (重新安裝)"; Filename: "{
 
 [Run]
 #ifdef CoreLayout
-Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; Description: "Start {#AppTitle} / 啟動"; Flags: postinstall nowait skipifsilent skipifdoesntexist
+Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; Description: "{cm:RunStart}"; Flags: postinstall nowait skipifsilent skipifdoesntexist
 #else
-Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; Description: "Start {#AppTitle} / 啟動"; Flags: postinstall nowait skipifsilent skipifdoesntexist
-Filename: "{app}\install.log"; Description: "Show install.log / 顯示安裝紀錄"; Flags: postinstall shellexec skipifsilent unchecked skipifdoesntexist
+Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; Description: "{cm:RunStart}"; Flags: postinstall nowait skipifsilent skipifdoesntexist
+Filename: "{app}\install.log"; Description: "{cm:RunLog}"; Flags: postinstall shellexec skipifsilent unchecked skipifdoesntexist
 #endif
 
 [UninstallDelete]
@@ -127,7 +146,7 @@ begin
   CpuTaskPreset := True;
   if HasNvidiaDriver then exit;
   for I := 0 to WizardForm.TasksList.Items.Count - 1 do
-    if Pos('Force the CPU path', WizardForm.TasksList.ItemCaption[I]) = 1 then
+    if WizardForm.TasksList.ItemCaption[I] = CustomMessage('TaskCpu') then
       WizardForm.TasksList.Checked[I] := True;
 end;
 
@@ -273,6 +292,12 @@ begin
   if N < 10 then Result := '0' + Result;
 end;
 
+{ #1002: language picked on the first wizard page -> tlwu language code (install.ps1 -Lang, ui_lang config) }
+function WizardLangCode: String;
+begin
+  if ActiveLanguage = 'japanese' then Result := 'ja' else Result := 'en';
+end;
+
 procedure RunInstall;
 var
   Params, LogFile, DoneFile, Size, Exe, StartMsg: String;
@@ -298,7 +323,7 @@ begin
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
   Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
   if not Gpu then Params := Params + ' -Cpu';
-  Params := Params + ' -Packs ' + SelectedPacks;
+  Params := Params + ' -Packs ' + SelectedPacks + ' -Lang ' + WizardLangCode;
   Size := SizeText(DownloadMB(Gpu));
   ProgressPage.Description := 'This can take 10-40 minutes and downloads ' + Size + ' (models, language packs and Python packages). 需要 10-40 分鐘，約下載 ' + Size + '，請保持網路連線。';
   StartMsg := 'Starting install.ps1 ...';
@@ -397,6 +422,7 @@ begin
     if not WizardSilent then
       if WizardIsTaskSelected('autoupdate') then SetConfigValue('auto_update', '1')
       else SetConfigValue('auto_update', '0');
+    SetConfigValue('ui_lang', WizardLangCode);   { #1002: tlwu-gui opens in the wizard language (zh/en/ru UI only: ja falls back to en) }
     RunInstall;   { source layout: install.ps1; core layout (#771): tlwu.exe setup --default-listen }
     MakeTalkShortcuts;
   end;

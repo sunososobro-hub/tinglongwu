@@ -3,7 +3,7 @@
 #   install.ps1 -DryRun             detect only, print every command, install nothing
 #   -SkipModels  -SkipShortcut      skip steps 5-6 / 7   -Cpu  force the CPU path
 #   -FromSetup                      run by the setup wizard (the summary points to Windows Settings > Apps to uninstall)
-param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu, [switch]$FromSetup)
+param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu, [switch]$FromSetup, [string]$Lang = '')
 
 $ErrorActionPreference = 'Continue'
 # CI-only: TLWU_SKIP_MODELS=1 / TLWU_SKIP_SHORTCUT=1 behave like -SkipModels / -SkipShortcut (used by .github/workflows/install-test.yml)
@@ -28,15 +28,21 @@ $LlamaWhyCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[1])
 $GpuMinMB  = 4096
 . (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
 $Gpu = $false; $ModelGB = 0; $HyCpu = $false
+# #1002: -Lang zh-TW|zh-CN -> Chinese only, anything else (en, ja, ru) -> English only; empty = both ("中文 / English")
+function Loc($zh, $en) {
+    if (-not $Lang) { return "$zh / $en" }
+    if ($Lang -like 'zh*') { return $zh }
+    return $en
+}
 function Step($n, $zh, $en) {
-    Write-Host ""; Write-Host "[$n/8] $zh / $en" -ForegroundColor Cyan
+    Write-Host ""; Write-Host "[$n/8] $(Loc $zh $en)" -ForegroundColor Cyan
     Write-Host "      $(Format-TlwuEstimate (Get-TlwuStepEstimate $n $Gpu $ModelGB))" -ForegroundColor DarkCyan
 }
 function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
 function Info($m) { Write-Host "      $m" }
 function Warn($m) { Write-Host "  !!  $m" -ForegroundColor Yellow; [void]$Warnings.Add($m) }
 function Die($zh, $en) {
-    Write-Host ""; Write-Host "  XX  $zh" -ForegroundColor Red; Write-Host "      $en" -ForegroundColor Red
+    Write-Host ""; if ($Lang) { Write-Host "  XX  $(Loc $zh $en)" -ForegroundColor Red } else { Write-Host "  XX  $zh" -ForegroundColor Red; Write-Host "      $en" -ForegroundColor Red }
     exit 1
 }
 # Run a native command; in -DryRun only print it. Returns $true on exit code 0.
@@ -53,7 +59,16 @@ function Capture($exe, [string[]]$a) {   # stdout of a native command, '' on fai
 
 Write-Host "=== 聽攏有 tinglongWu installer ===" -ForegroundColor White
 if ($DryRun) { Write-Host "*** DRY RUN: nothing will be installed or downloaded / 試跑模式：不會安裝或下載任何東西 ***" -ForegroundColor Yellow }
-Info "Folder / 資料夾: $Root"
+Info "$(Loc '資料夾' 'Folder'): $Root"
+# #1002: the language picked on the first wizard page becomes the app UI language (read by tinglongwu.i18n at first launch)
+if ($Lang -and -not $DryRun) {
+    $cfgDir = if ($env:TLWU_CONFIG_DIR) { $env:TLWU_CONFIG_DIR } else { Join-Path $env:APPDATA 'tinglongwu' }
+    $ui = if ($Lang -like 'zh*') { 'zh-TW' } elseif ($Lang -like 'ru*') { 'ru' } else { 'en' }
+    New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
+    $cfg = Join-Path $cfgDir 'config'
+    $keep = if (Test-Path $cfg) { @(Get-Content -LiteralPath $cfg | Where-Object { $_ -and $_ -notmatch '^ui_lang=' }) } else { @() }
+    Set-Content -LiteralPath $cfg -Value ($keep + "ui_lang=$ui") -Encoding ascii
+}
 Info "Whole install: about 10-65 min depending on your PC and connection (exact estimate after step 2). 全程約 10-65 分鐘，第 2 步後顯示準確預估。"
 
 # ---------------------------------------------------------------- 1. Python
@@ -292,12 +307,12 @@ else {
     }
 }
 Write-Host ""
-Write-Host "  Installed / 已安裝:" -ForegroundColor White
+Write-Host "  $(Loc '已安裝' 'Installed'):" -ForegroundColor White
 foreach ($i in $Installed) { Write-Host "    - $i" }
-Write-Host "  Translation engine / 翻譯引擎: $Engine" -ForegroundColor White
-Write-Host "  Self-test / 自我測試: $SelfTest" -ForegroundColor White
+Write-Host "  $(Loc '翻譯引擎' 'Translation engine'): $Engine" -ForegroundColor White
+Write-Host "  $(Loc '自我測試' 'Self-test'): $SelfTest" -ForegroundColor White
 if ($Warnings.Count -gt 0) {
-    Write-Host "  Warnings / 注意:" -ForegroundColor Yellow
+    Write-Host "  $(Loc '注意' 'Warnings'):" -ForegroundColor Yellow
     foreach ($w in $Warnings) { Write-Host "    - $w" -ForegroundColor Yellow }
 }
 Write-Host ""
