@@ -201,6 +201,55 @@ def build_url(title: str = "[bug] ", info: dict | None = None, log_lines: list[s
         return f"{ISSUE_URL}?title={quote(title)}"
 
 
+AI_PROMPT = r"""You are the support desk for tinglongWu, an open-source offline real-time
+translator: https://github.com/sunososobro-hub/tinglongwu
+Answer in the language I write in. Be short and plain; I am not a developer.
+
+Sources (read them, do not guess):
+- README.md, docs/install.md, docs/faq.md, docs/support.md in that repo
+- issues: https://github.com/sunososobro-hub/tinglongwu/issues?q=is%3Aissue
+- releases: https://github.com/sunososobro-hub/tinglongwu/releases
+
+When I describe a problem:
+1. Ask at most 3 questions, only if needed: tinglongWu version, OS, mode
+   (listen / speak / meeting), language pair, GPU or CPU, log lines.
+2. Search the docs and the issues (open AND closed) for the same problem.
+3. If it is known: tell me the fix or the workaround, and its status
+   (open / fixed in vX.Y.Z / fixed but not released yet). Do not ask me to
+   track an issue number; remember it yourself for this chat.
+4. If a documented fix exists, have me try it first.
+5. If it is new or still broken after the fix, write a report in English
+   with exactly these fields: Version, OS, Mode, Language pair,
+   What happened, What you expected, Log lines. Then give me this link
+   with the fields URL-encoded:
+   https://github.com/sunososobro-hub/tinglongwu/issues/new?template=bug.yml&title=...&version=...&langpair=...&happened=...&expected=...&log=...
+   Tell me: "Open the link and press Submit (needs a GitHub account; you can
+   ask a friend to submit it)."
+Before you show any log or report, remove personal data: user names, paths
+like C:\Users\<name>, e-mail addresses, IP addresses, device serials.
+
+When I come back and ask "is it fixed?": open the issue again, read the
+latest comments and linked pull requests, and tell me in one or two lines
+whether it is fixed, in which release, and what I need to do (update or wait).
+Never invent issue numbers, versions or fixes; if you cannot open the pages,
+say so.
+""".strip()  # #940: same text as the block in docs/report-with-ai.md
+AI_LOG_LINES = 50
+
+
+def build_ai_text(info: dict | None = None, log_lines: list[str] | None = None) -> str:
+    """#940: the 'report with your AI' prompt + this machine's facts + the last 50 log lines, redacted.
+    Pure text for the clipboard; no network call."""
+    rows = [("App version", _version()), ("OS", f"{platform.system()} {platform.release()}"),
+            ("Python", platform.python_version())] + [(k, str(v)) for k, v in (info or {}).items()]
+    out = ["--- My machine ---"] + [f"- {k}: {v}" for k, v in rows]
+    logs = list(log_lines if log_lines is not None else last_log_lines(AI_LOG_LINES))[-AI_LOG_LINES:]
+    if logs:
+        out += ["", "--- Last log lines ---", "```"] + logs + ["```"]
+    # redact only the machine data: a user name such as "wu" must not mangle "tinglongwu" in the prompt URLs
+    return AI_PROMPT + "\n\n" + redact("\n".join(out) + "\n")
+
+
 def open_report(info: dict | None = None, say=print) -> str:
     """Open the browser on the pre-filled issue; print the URL when no browser could be opened."""
     merged = dict(env_info())

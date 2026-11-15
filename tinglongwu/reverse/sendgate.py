@@ -15,13 +15,14 @@ from . import sendmode as _sm
 from .confirm import Utterance
 
 MAX_QUEUED = 3  # lines waiting behind the held one
+REJECT_SHOW_S = 4.0  # #968: a line the speak input gate rejected stays visible ("not sent: unclear") this long
 
 
 @dataclass
 class GateView:
     """What the GUI shows: the held line, whether it needs a confirm, seconds left in countdown mode."""
     text: str = ""
-    state: str = "idle"  # idle | counting | asking
+    state: str = "idle"  # idle | counting | asking | rejected (#968: not sent, shown greyed)
     reason: str = ""
     remaining: float = 0.0
     queued: int = 0
@@ -31,7 +32,8 @@ class SendGate:
     def __init__(self, release, clock, mode: str = "confirm", countdown_s: float | None = None, on_change=None):
         self.release, self.clock, self.mode, self.countdown_s = release, clock, mode, countdown_s
         self.on_change = on_change or (lambda v: None)
-        self.sent = self.discarded = self.dropped = 0
+        self.sent = self.discarded = self.dropped = self.rejected = 0
+        self._reject: tuple[str, str, float] | None = None  # (text, reason, shown until) of the newest rejected line
         self._lock = threading.Lock()
         self._waiting: deque = deque()
         self._dec: _sm.SendDecider | None = None
@@ -45,6 +47,14 @@ class SendGate:
                 self._waiting.popleft()
                 self.dropped += 1
             self._advance()
+        self._emit()
+
+    def reject(self, text: str, reason: str) -> None:
+        """#968: the speak input gate dropped `text` (noise, low confidence): it is never sent; the GUI shows it
+        greyed for REJECT_SHOW_S seconds when no line is held. Called from the ASR thread."""
+        with self._lock:
+            self.rejected += 1
+            self._reject = (text, reason, self.clock() + REJECT_SHOW_S)
         self._emit()
 
     def tick(self) -> None:
@@ -76,7 +86,7 @@ class SendGate:
         """Session end: nothing is sent any more."""
         with self._lock:
             self._waiting.clear()
-            self._dec, self._text = None, ""
+            self._dec, self._text, self._reject = None, "", None
         self._emit()
 
     # -- internals (lock held) ----------------------------------------------------------------------
@@ -102,6 +112,9 @@ class SendGate:
         with self._lock:
             d = self._dec
             if d is None:
+                r = self._reject
+                if r is not None and self.clock() < r[2]:
+                    return GateView(r[0], "rejected", r[1])
                 return GateView()
             left = max(0.0, d._end - self.clock()) if d.state == "counting" else 0.0
             return GateView(self._text, d.state, d.reason, left, len(self._waiting))

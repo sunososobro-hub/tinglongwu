@@ -211,3 +211,39 @@ def test_missing_pin_file_exits_with_a_clear_message(tmp_path, capsys):
     assert mcs.main(["--set", "ko", "--pins", str(missing), "--out", str(tmp_path / "o")]) == 1
     err = capsys.readouterr().err
     assert f"pin file not found: {missing}" in err and "--set ko --pin N" in err
+
+
+# #642: the "matrix" set pins 20-clip slices of en/ja/ru/zh/ko into its own file, apart from the 5-clip gate pins.
+class MatrixHub(FakeHub):
+    def __init__(self):
+        super().__init__()
+        self.files[mcs.url_for(REV, "ko_kr", "test.tsv")] = _tsv("ko")
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as t:
+            for i in range(5):
+                data = _wav(i + 90)
+                info = tarfile.TarInfo(f"test/ko{i}.wav")
+                info.size = len(data)
+                t.addfile(info, io.BytesIO(data))
+        self.files[mcs.url_for(REV, "ko_kr", "audio/test.tar.gz")] = buf.getvalue()
+
+
+def test_matrix_pin_then_build_gives_refs_for_every_matrix_language(tmp_path):
+    assert mcs.SETS["matrix"]["pins"] == ROOT / "eval" / "matrix_pins.json"
+    pins = tmp_path / "matrix_pins.json"
+    hub = MatrixHub()
+    assert mcs.main(["--set", "matrix", "--pin", "4", "--revision", REV, "--pins", str(pins)], fetch=hub) == 0
+    pin = json.loads(pins.read_text("utf-8"))
+    langs = ("en", "ja", "ru", "zh", "ko")
+    assert pin["configs"] == {"en": "en_us", "ja": "ja_jp", "ru": "ru_ru", "zh": "cmn_hans_cn", "ko": "ko_kr"}
+    assert {lang: sum(c["lang"] == lang for c in pin["clips"]) for lang in langs} == {lang: 4 for lang in langs}
+    out = tmp_path / "m"
+    assert mcs.main(["--out", str(out), "--pins", str(pins)], fetch=hub) == 0
+    rows = load_manifest(out)
+    assert len(rows) == 20
+    for r in rows:
+        if r["lang"] == "zh":
+            assert r["ref_en"] == f"en sentence {r['flores_id'] - 100}."
+        else:
+            assert r["ref_zh"] == f"這個國家的軟體發展很快{r['flores_id'] - 100}。"
+    assert "matrix_pins.json" in (out / "LICENSE.txt").read_text("utf-8")

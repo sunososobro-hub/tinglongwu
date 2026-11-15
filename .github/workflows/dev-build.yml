@@ -1,0 +1,114 @@
+name: dev-build
+# #976 (owner 2026-11-15: "至少我自己可以快速看到我要的東西，到時候回去main再卡關"): the fast lane.
+# After each push to dev, wait for that commit's windows-build run, take the core zip it built and tested
+# (tlwu.exe --smoke), build the setup wizard from it and publish both to ONE rolling pre-release `dev-latest`:
+#   https://github.com/<repo>/releases/tag/dev-latest
+#   tinglongwu-setup-dev.exe  (fixed name, fixed URL)   tinglongwu-win64-dev.zip
+# It is a pre-release, so it is never `latest`: the auto-update (tinglongwu_setup/selfupdate.py reads
+# releases/latest) never offers it to users. No release gate runs here; the gates stay on dev -> main.
+# Nothing waits for this workflow and no merge or release depends on it.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dev-build
+  cancel-in-progress: true   # a newer dev push replaces the build that is still waiting
+
+env:
+  DEV_TAG: dev-latest
+  BUILD_WAIT_POLLS: "120"    # x BUILD_POLL_SECONDS = 30 min for windows-build to finish (its job timeout)
+  BUILD_POLL_SECONDS: "15"
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    permissions:
+      contents: write   # the rolling pre-release and its tag
+      actions: read     # the windows-build run of this commit and its artifact
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Work folder (W, outside the checkout)
+        shell: bash
+        run: echo "W=$RUNNER_TEMP\\devbuild" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Wait for this commit's windows-build run (push event)
+        id: wait
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 "$BUILD_WAIT_POLLS"); do
+            row=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/windows-build.yml/runs?head_sha=$GITHUB_SHA&per_page=20" \
+              --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | sort_by(.id) | last | if . then "\(.id) \(.status) \(.conclusion)" else "" end' || true)
+            if [ -n "$row" ]; then
+              read -r id status conclusion <<< "$row"
+              if [ "$status" = completed ]; then
+                echo "windows-build run $id: $conclusion" | tee -a "$GITHUB_STEP_SUMMARY"
+                # cancelled = a newer dev push replaced it in the queue; that push publishes its own dev build
+                [ "$conclusion" = cancelled ] && { echo "skipped: superseded by a newer dev push" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+                [ "$conclusion" = success ] || { echo "::error::windows-build did not succeed on $GITHUB_SHA: no dev build"; exit 1; }
+                echo "run=$id" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+            fi
+            sleep "$BUILD_POLL_SECONDS"
+          done
+          echo "::error::windows-build for $GITHUB_SHA did not finish in time"; exit 1
+      - name: Download the core zip that windows-build built and smoke-tested
+        if: steps.wait.outputs.run != ''
+        shell: bash
+        env:
+          RUN: ${{ steps.wait.outputs.run }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n "tinglongwu-win64-${GITHUB_SHA::7}" -D "$W/new"
+          ls -l "$W/new"
+      - name: Build the setup wizard from that core (installer/build_installer.py --core-dir)
+        if: steps.wait.outputs.run != ''
+        shell: pwsh
+        run: |
+          python scripts\upgrade_check.py unzip --zip "$env:W\new\tinglongwu-win64.zip" --dir "$env:W\core"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          python installer\build_installer.py --core-dir "$env:W\core\tlwu"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1
+          if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }
+          New-Item -ItemType Directory -Force "$env:W\out" | Out-Null
+          Copy-Item $exe.FullName "$env:W\out\tinglongwu-setup-dev.exe"
+          Copy-Item "$env:W\new\tinglongwu-win64.zip" "$env:W\out\tinglongwu-win64-dev.zip"
+      - name: Publish the rolling pre-release (replaces the previous dev build; never `latest`)
+        if: steps.wait.outputs.run != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' tinglongwu/__init__.py)
+          subject=$(git log -1 --pretty=%s)
+          {
+            echo "**Development build, untested. Not a release.** Built from \`dev\` at \`${GITHUB_SHA::7}\` (code version $version)."
+            echo
+            echo "Last change: $subject"
+            echo
+            echo "Only the automatic build + start-up smoke ran on it; the release checks run when dev goes to main."
+            echo "For normal use, take the latest release: https://github.com/$GITHUB_REPOSITORY/releases/latest"
+          } > "$W/notes.md"
+          gh release delete "$DEV_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag -y 2>/dev/null || true
+          for i in 1 2 3; do   # the tag delete can lag behind the release delete
+            gh release create "$DEV_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "dev build ${GITHUB_SHA::7} (untested)" --notes-file "$W/notes.md" \
+              "$W/out/tinglongwu-setup-dev.exe" "$W/out/tinglongwu-win64-dev.zip" && break
+            [ "$i" = 3 ] && exit 1
+            sleep 10
+          done
+          echo "dev build: https://github.com/$GITHUB_REPOSITORY/releases/tag/$DEV_TAG" | tee -a "$GITHUB_STEP_SUMMARY"

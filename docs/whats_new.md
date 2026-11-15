@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.3.6
+- Speak mode no longer sends keyboard or background noise as made-up sentences: unclear lines are held back and shown greyed.
+- A "Wrong translation" button on each subtitle line and a "Copy AI prompt" entry in the Help menu make reporting a problem one click.
+- Updates are quieter (asked at most once a day, installed at the next launch), and names in the app show as languages, not codes.
+
 ## v0.3.5
 - The first screen now just asks Listen or Speak and the other side's language; everything else sits under Advanced and a File / Settings / Help menu.
 - Speak mode waits for your OK before sending by default, and speak setup can install the virtual audio cable in one click.

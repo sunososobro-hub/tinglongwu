@@ -14,6 +14,18 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Commit identity (#944; a placeholder like x <x@x> credits a stranger as a contributor)
+        # only PRs into dev: the release PR (dev -> main) carries old history (f5b0e6c) and must not go red here
+        if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_COMMITS: ${{ github.event.pull_request.commits }}
+          AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/commits?per_page=100" --paginate --slurp > "$RUNNER_TEMP/commits.json"
+          python scripts/commit_identity.py "$RUNNER_TEMP/commits.json" --author-login "$AUTHOR_LOGIN" --author-id "$AUTHOR_ID" --expected-count "$PR_COMMITS"
       - name: System libraries (audio capture libs are imported by the package)
         # Fail fast on runner DNS/mirror outages (2026-11-11 azure.archive.ubuntu.com) instead of hanging the job.
         timeout-minutes: 8

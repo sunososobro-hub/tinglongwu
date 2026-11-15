@@ -21,7 +21,7 @@ def test_committed_config_lists_every_language_and_matches_the_baseline():
     for p in pairs:  # every listed pair has a valid one-pair gate baseline
         assert list(langmatrix.pair_baseline(p, base)["pairs"]) == [p]
     jobs, unpinned = langmatrix.matrix(entries)
-    assert {j["pair"] for j in jobs} | set(unpinned) == set(pairs)
+    assert {j["pair"] for j in jobs} | set(unpinned) | {e["pair"] for e in entries if "blocked" in e} == set(pairs)
     for j in jobs:  # a job never asks for more clips than its pin file has
         pins = json.loads((ROOT / j["pins"]).read_text("utf-8"))
         assert 1 <= j["clips"] <= langmatrix.pinned_clips(pins, j["src"])
@@ -116,3 +116,35 @@ def test_workflow_builds_its_matrix_from_the_config():
     strat = jobs["pair"]["strategy"]
     assert strat["fail-fast"] is False and "fromJSON(needs.matrix.outputs.jobs)" in strat["matrix"]["include"]
     assert jobs["pair"]["timeout-minutes"] <= 30
+
+
+def test_committed_config_runs_every_pair_on_20_pinned_clips():
+    # #642 acceptance: ~20 pinned FLEURS clips per pair, nothing unpinned; hi->zh pinned but blocked (#942)
+    from tlwu_eval import langmatrix
+    entries = langmatrix.load_config()
+    jobs, unpinned = langmatrix.matrix(entries)
+    assert unpinned == []
+    assert len(jobs) == 11 and {j["clips"] for j in jobs} == {20}
+    assert [b.split(" ")[0] for b in langmatrix.blocked(entries)] == ["hi->zh"]
+    for e in entries:
+        pins = json.loads((ROOT / e["pins"]).read_text("utf-8"))
+        assert langmatrix.pinned_clips(pins, e["src"]) == 20, e["pair"]
+    rows = json.loads((ROOT / "eval" / "baseline.json").read_text("utf-8"))["matrix"]["pairs"]
+    assert all(rows[j["pair"]]["chrf"] is not None for j in jobs)
+
+
+def test_blocked_pair_is_listed_not_run(tmp_path):
+    from tlwu_eval import langmatrix
+    (tmp_path / "eval").mkdir()
+    (tmp_path / "eval" / "p.json").write_text(json.dumps({"clips": [{"lang": "en"}, {"lang": "hi"}]}), "utf-8")
+    cfg = tmp_path / "eval" / "languages.json"
+    cfg.write_text(json.dumps({"pairs": [{"pair": "en->zh", "pins": "eval/p.json", "clips": 20},
+                                         {"pair": "hi->zh", "pins": "eval/p.json", "clips": 20, "blocked": "#942"}]}))
+    entries = langmatrix.load_config(cfg)
+    jobs, unpinned = langmatrix.matrix(entries, tmp_path)
+    assert [j["pair"] for j in jobs] == ["en->zh"] and unpinned == []
+    assert langmatrix.blocked(entries) == ["hi->zh (#942)"]
+    bad = tmp_path / "eval" / "bad.json"
+    bad.write_text(json.dumps({"pairs": [{"pair": "hi->zh", "pins": "eval/p.json", "clips": 20, "blocked": " "}]}))
+    with pytest.raises(langmatrix.ConfigError):
+        langmatrix.load_config(bad)

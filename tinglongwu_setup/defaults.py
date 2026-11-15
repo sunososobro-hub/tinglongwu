@@ -10,7 +10,7 @@ from pathlib import Path
 
 DEFAULT_LISTEN_SOURCE = "en"
 DEFAULT_LISTEN_TARGET = "zh-TW"
-DEFAULT_LISTEN_WHISPER = "small"  # today's CPU-path value from install.ps1; the eval child (#752 part 6) may lower it
+DEFAULT_LISTEN_WHISPER = "small"  # #770: smallest size that passes the eval gate; tiny/base fail en->zh (eval/whisper_size_770.json)
 DEFAULT_LISTEN_MT = "hymt2-1.8b"
 DEFAULT_LISTEN_KEYS = (f"whisper-{DEFAULT_LISTEN_WHISPER}", DEFAULT_LISTEN_MT)  # models/manifest.json keys
 MB = 1024 * 1024

@@ -31,6 +31,8 @@ DEFAULTS = {
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
+    "usage_asked": False,  # #680: the one-time "what do you mainly use it for?" question was answered or skipped
+    "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
     "send_mode": "confirm",  # #834: how a speak line is sent (confirm / countdown / auto); owner default: confirm
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
@@ -43,14 +45,26 @@ def send_gate_line(view) -> str:
     if view.state == "counting":
         return t("gui_send_hold", s=f"{view.remaining:.0f}" if view.remaining >= 1 else f"{view.remaining:.1f}",
                  text=view.text)
-    if view.state == "asking":
-        return t("gui_send_ask", text=view.text)
+    if view.state == "asking":  # #968: the reason is shown, so a held line never waits without saying why
+        return t("gui_send_ask", text=f"[{view.reason}] {view.text}" if view.reason else view.text)
+    if view.state == "rejected":
+        return t("gui_send_unclear", reason=view.reason, text=view.text)
     return ""
 
 
 def send_mode_notice_key(mode: str) -> str | None:
     """#834: i18n key of the one-line quality notice shown when a direct-send mode is chosen, else None."""
     return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
+# #983: settings the running pipeline reads only when it starts; changing one during a run needs a restart
+START_TIME_SETTINGS = ("lang", "target", "engine", "quality", "model", "preset", "glossary", "source", "voice",
+                       "voice_device", "send_mode")
+
+
+def restart_needed(at_start: dict, now: dict) -> list[str]:
+    """#983: the start-time settings whose value in `now` differs from what the running pipeline started with."""
+    return [k for k in START_TIME_SETTINGS if k in at_start and k in now and at_start[k] != now[k]]
+
+
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
@@ -191,6 +205,33 @@ def tour_text(ui: str, system_tag: str | None = None) -> dict[str, str]:
 def tour_on_start(s: dict) -> bool:
     """#314: the overlay opens by itself only until the user closed it once with "Got it" (kept in gui.json)."""
     return not s.get("tour_seen")
+
+
+USAGE_CHOICES = ("videos", "meetings", "calls", "learning", "other")  # #680
+
+
+def usage_should_ask(s: dict) -> bool:
+    """#680: ask once, after the first successful subtitle; never again once answered or skipped."""
+    return not s.get("usage_asked")
+
+
+def usage_answer(s: dict, choice: str | None) -> None:
+    """#680: store the answer in the local settings dict. Nothing is sent. choice None = skip / closed without
+    saving: records that we asked and keeps any answer saved earlier; an unknown string clears the answer."""
+    s["usage_asked"] = True
+    if choice is None:
+        s.setdefault("usage_use", "")
+        return
+    s["usage_use"] = choice if choice in USAGE_CHOICES else ""
+
+
+def usage_prefill(s: dict, include: bool) -> dict:
+    """#680: extra lines for the 'wrong translation' report prefill (#677). Only when the user left the checkbox
+    ticked (`include`) and there is an answer; the language pair is added with it. Empty dict otherwise."""
+    use = s.get("usage_use")
+    if not include or use not in USAGE_CHOICES:
+        return {}
+    return {"Mainly used for": use, "Language pair": f"{s.get('lang')} -> {s.get('target')}"}
 
 
 def report_info(s: dict) -> dict:
@@ -658,13 +699,13 @@ class StartDownload:
                 self.error = (self._last or f"download failed (exit {ev[2]})").splitlines()[-1][:90]
 
 
-def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None, cmd=None) -> int:
     """Worker thread: run the pack download child; `put` gets ("pack_line", text) per line and ("pack_done", pack, rc)."""
     import subprocess
 
     popen = popen or subprocess.Popen
     try:
-        p = popen(pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        p = popen(cmd or pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         for raw in p.stdout:
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
@@ -677,6 +718,18 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
         rc = -1
     put(("pack_done", pack, rc))
     return rc
+
+
+def voice_install_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
+    """#967: same child as download_cmd, but `--talk` (Kokoro venv + model + smoke, the CLI's step) instead of `--whisper`."""
+    cmd = download_cmd("small", mdir, bundled)
+    i = cmd.index("--whisper")
+    return [*cmd[:i], "--talk", *cmd[i + 2:]]
+
+
+def run_voice_install(put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+    """#967: worker thread: run the voice install child; same events as run_pack_download (pack "voice")."""
+    return run_pack_download("voice", put, mdir, popen, bundled, cmd=voice_install_cmd(mdir, bundled))
 
 
 def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:

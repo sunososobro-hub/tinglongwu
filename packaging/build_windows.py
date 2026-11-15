@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import compileall
+import hashlib
 import importlib.metadata as md
 import json
 import os
@@ -155,7 +156,7 @@ Native components and their licenses
   https://docs.python.org/3/license.html
 - tlwu.exe (the launcher, packaging/launcher in the source): MIT like the rest of tinglongWu. When built with
   MinGW-w64 it links the MinGW-w64 runtime (public domain / Zope Public License 2.1 parts, redistributable without
-  further conditions on the binary). https://www.mingw-w64.org/
+  further conditions on the binary), text in COPYING.MinGW-w64-runtime.txt. https://www.mingw-w64.org/
 - Tcl/Tk (DLLs/tcl86t.dll, DLLs/tk86t.dll, tcl/): Tcl/Tk license (BSD-style).
   https://www.tcl.tk/software/tcltk/license.html
 - OpenSSL (DLLs/libcrypto-3.dll, DLLs/libssl-3.dll): Apache-2.0. https://www.openssl.org/
@@ -468,7 +469,7 @@ def make_zip(app: Path, out: Path) -> None:
         out.unlink()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for f in sorted(app.rglob("*")):
-            if f.is_file():
+            if f.is_file() and not (f.parent == app and f.suffix.lower() == ".whl"):  # no wheel at the top (#948)
                 z.write(f, Path(app.name) / f.relative_to(app))
 
 
@@ -558,6 +559,8 @@ def build_runtime(layer: Path, lite: bool, allow_cpu_only: bool) -> dict:
     if pe_machine((new / EXE_NAME).read_bytes()) != 0x8664:
         raise SystemExit(f"runtime layer: {tool} did not build an x64 {EXE_NAME}")
     print("launcher:", tool)
+    if tool != "msvc" and not rt.copy_mingw_copying(tool, new):
+        print(f"WARNING: no MinGW-w64 COPYING file found for {tool}; licenses/{rt.MINGW_COPYING_NAME} not shipped")
     man = rt.write_manifest(new, cuda_src is None, tool)
     shutil.rmtree(layer, ignore_errors=True)
     new.rename(layer)
@@ -635,6 +638,45 @@ def build_app_layer(app: Path, pyc_magic: str | None = None, repo: Path | None =
     return list(APP_PACKAGES)
 
 
+APP_LAYER_ASSET = "tinglongwu-app-layer.zip"  # = scripts/release_check.py APP_LAYER_ASSET (#945)
+
+
+def make_app_layer_zip(app: Path, out_dir: Path) -> Path:
+    """Zip the app layer of `app` (a built dist/tlwu) as out_dir/APP_LAYER_ASSET and write <zip>.manifest.json
+    {name, version, size, sha256, runtime_key, lite} (#945). Files sit at the zip root (no top folder), so the zip
+    unpacks over an install folder. Only what build_app_layer wrote goes in: the APP_PACKAGES folders, APP_MANIFEST,
+    USAGE_TEXT and the version-stamped tlwu.exe; the runtime layer (Python, DLLs, packages) never does.
+    runtime_key = the `key` of the runtime layer this folder was built on (its runtime-layer.json)."""
+    rt = _runtime_layer()
+    try:
+        info = json.loads((app / APP_MANIFEST).read_text("utf-8"))
+        runtime = rt.read_manifest(app)
+        version = info["version"]
+        key = runtime["key"]
+    except (OSError, ValueError, KeyError) as e:
+        raise SystemExit(f"app layer zip: {app} lacks a readable {APP_MANIFEST} / {rt.MANIFEST_NAME}: {e}") from e
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / APP_LAYER_ASSET
+    files = [app / USAGE_TEXT, app / APP_MANIFEST, app / EXE_NAME]
+    for pkg in APP_PACKAGES:
+        files += [f for f in (app / pkg).rglob("*") if f.is_file()]
+    absent = [f.name for f in files if not f.is_file()]
+    if absent:
+        raise SystemExit(f"app layer zip: missing {', '.join(absent)} in {app}")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for f in sorted(files):
+            z.write(f, f.relative_to(app).as_posix())
+    h = hashlib.sha256()
+    with open(out, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    man = {"name": APP_LAYER_ASSET, "version": version, "size": out.stat().st_size, "sha256": h.hexdigest(),
+           "runtime_key": key, "lite": bool(runtime.get("lite"))}
+    man_path = out.with_name(out.name + ".manifest.json")
+    man_path.write_text(json.dumps(man, indent=1) + "\n", "utf-8")
+    return man_path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--post-only", action="store_true",
@@ -684,6 +726,7 @@ def main() -> int:
     t2 = time.monotonic()
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
+    print("app layer zip:", make_app_layer_zip(APP, DIST))
     print(f"app layer + checks: {t2 - t1:.0f} s, zip: {time.monotonic() - t2:.0f} s")
     return 0
 

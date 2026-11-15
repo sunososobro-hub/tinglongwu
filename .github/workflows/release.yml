@@ -139,6 +139,13 @@ jobs:
         run: |
           python scripts\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: App layer zip check (#945; manifest size + sha256, version == tag, no runtime files, < 15 MB)
+        shell: pwsh
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          python scripts\release_check.py --app-layer "$env:TLWU_BUILD_ROOT\dist\tinglongwu-app-layer.zip" --tag $env:TAG
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Release checks on the zip (size, check_dist_dlls, llama CPU instructions, --smoke, --selftest)
         shell: pwsh
         run: |
@@ -176,6 +183,8 @@ jobs:
           path: |
             ${{ runner.temp }}\tlwu-build\dist\tinglongwu-win64.zip
             ${{ runner.temp }}\tlwu-build\dist\tinglongwu-win64.zip.sha256
+            ${{ runner.temp }}\tlwu-build\dist\tinglongwu-app-layer.zip
+            ${{ runner.temp }}\tlwu-build\dist\tinglongwu-app-layer.zip.manifest.json
             ${{ runner.temp }}\tlwu-build\dist\notes.md
           retention-days: 3
           if-no-files-found: error
@@ -395,6 +404,10 @@ jobs:
         env:
           TAG: ${{ needs.plan.outputs.tag }}
         run: python3 scripts/release_check.py --gpu-pack dist/tinglongwu-gpu-pack.zip --tag "$TAG"
+      - name: App layer zip check again after the artifact hop (#945)
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: python3 scripts/release_check.py --app-layer dist/tinglongwu-app-layer.zip --tag "$TAG"
       - name: Build install assets (embed the tag so each script installs the version it was released with)
         env:
           TAG: ${{ needs.plan.outputs.tag }}
@@ -410,7 +423,8 @@ jobs:
           cd dist
           sha256sum -c tinglongwu-win64.zip.sha256   # the zip release_check.py tested
           [ "$(stat -c %s tinglongwu-win64.zip)" -lt 2147483648 ] || { echo "zip over the 2 GiB asset limit"; exit 1; }
-          sha256sum tinglongwu-win64.zip tinglongwu-gpu-pack.zip tinglongwu-gpu-pack.zip.manifest.json \
+          sha256sum tinglongwu-win64.zip tinglongwu-app-layer.zip tinglongwu-app-layer.zip.manifest.json \
+            tinglongwu-gpu-pack.zip tinglongwu-gpu-pack.zip.manifest.json \
             install.sh mac_install.sh install.ps1 > SHA256SUMS.txt
           for f in tlwu-vulkan-pack-*.zip; do   # #800: listed next to the core zip when the pack was built
             [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS.txt || echo "::warning::no Vulkan pack in this release"
@@ -424,7 +438,8 @@ jobs:
           # an unmatched glob would fail the attest step and drop provenance for every asset, so list existing files only
           {
             echo "paths<<TLWU_ATTEST_EOF"
-            for f in dist/tinglongwu-win64.zip dist/tinglongwu-gpu-pack.zip dist/tinglongwu-gpu-pack.zip.manifest.json \
+            for f in dist/tinglongwu-win64.zip dist/tinglongwu-app-layer.zip dist/tinglongwu-app-layer.zip.manifest.json \
+                     dist/tinglongwu-gpu-pack.zip dist/tinglongwu-gpu-pack.zip.manifest.json \
                      dist/install.sh dist/mac_install.sh dist/install.ps1 dist/tlwu-vulkan-pack-*.zip; do
               if [ -f "$f" ]; then echo "$f"; fi
             done
@@ -456,7 +471,8 @@ jobs:
           # latest). A re-run (draft exists) only replaces the files.
           pre=(); [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || pre=(--prerelease)
           vulkan=(); for f in dist/tlwu-vulkan-pack-*.zip; do [ -f "$f" ] && vulkan+=("$f"); done   # #800
-          files=(dist/tinglongwu-win64.zip dist/tinglongwu-gpu-pack.zip dist/tinglongwu-gpu-pack.zip.manifest.json
+          files=(dist/tinglongwu-win64.zip dist/tinglongwu-app-layer.zip dist/tinglongwu-app-layer.zip.manifest.json
+                 dist/tinglongwu-gpu-pack.zip dist/tinglongwu-gpu-pack.zip.manifest.json
                  dist/install.sh dist/mac_install.sh dist/install.ps1 dist/SHA256SUMS.txt "${vulkan[@]}")
           if draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null); then
             # never rewrite a published release: its SHA256SUMS.txt and wizard are what users verify against

@@ -41,7 +41,7 @@ Setup downloads the speech and translation models once (internet needed). After 
 ## Languages and requirements
 
 Chinese, English, Japanese, Korean and Russian today; more on the way ([language plan](docs/VISION.md)).
-Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md)
+Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md)
 
 ## Want to help?
 

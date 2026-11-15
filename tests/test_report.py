@@ -128,3 +128,23 @@ def test_gui_report_info_lists_choices_but_no_paths():
     assert info["Language pair"] == "ja -> zh-tw" and info["Model"] == "base" and info["Source"] == "mic"
     assert info["Engine"] == "auto" and info["Mode"] == "gui/meeting" and info["Live draft"] == "off"
     assert "secret" not in str(info) and "out.txt" not in str(info)
+
+
+def test_ai_text_has_prompt_version_os_and_redacted_log(monkeypatch):
+    """#940: the clipboard text = prompt + machine facts + last 50 log lines, user data removed, no network."""
+    monkeypatch.setattr(getpass, "getuser", lambda: "alice")
+    logs = [f"line {i} C:\\Users\\Bob\\x" for i in range(80)]
+    text = report.build_ai_text({"Mode": "gui/x"}, logs)
+    assert "support desk for tinglongWu" in text and "at most 3 questions" in text
+    assert f"App version: {report._version()}" in text and "OS: " in text and "Mode: gui/x" in text
+    assert "line 79" in text and "line 30" in text and "line 29" not in text  # last 50 only
+    assert "Bob" not in text and "<user>" in text
+    assert len(report.AI_PROMPT.splitlines()) < 40
+
+
+def test_ai_text_user_name_does_not_mangle_prompt(monkeypatch):
+    """#940 review: a user called 'wu' must not turn 'tinglongwu' in the prompt URLs into 'tinglong<user>'."""
+    monkeypatch.setattr(getpass, "getuser", lambda: "wu")
+    text = report.build_ai_text({}, ["hello wu"])
+    assert "sunososobro-hub/tinglongwu" in text and "tinglong<user>" not in text
+    assert "hello <user>" in text

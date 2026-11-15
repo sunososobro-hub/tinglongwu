@@ -84,7 +84,10 @@ Add a language = one line in `eval/languages.json`, for example `{"pair": "it->z
 The `eval-langs` workflow runs one CPU job per line on the pinned FLEURS clips (pin them with
 `scripts/bench/make_ci_smoke.py --set <set> --pin 20`) and gates each pair against its entry in the `matrix` section of
 `eval/baseline.json` (start with `"chrf": null` until a run is recorded). A pair with no pin file yet is listed as
-unpinned and not run.
+unpinned and not run. Without huggingface.co access (cloud sessions), first add the new set to `SETS` in
+`scripts/bench/make_ci_smoke.py` and to the `pin_set` choices in `.github/workflows/eval-langs.yml`, push that, then
+dispatch `eval-langs` on that branch with `pin_set` set to the new set: its `pin` job prints the pin file and uploads it
+as an artifact (`pins_<set>.json`); commit it under the `pins` path its lines in `eval/languages.json` name.
 
 ## Branches and PRs
 

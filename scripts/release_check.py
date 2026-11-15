@@ -4,6 +4,8 @@ Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300] 
        python scripts/release_check.py --job-start <unix seconds>   (#762: time used by the build job, vs the budget)
        python scripts/release_check.py --gpu-pack dist/tinglongwu-gpu-pack.zip [--tag vX.Y.Z]
            (#764: the GPU pack matches its .manifest.json, has the CUDA DLLs, and its url names the same release tag)
+       python scripts/release_check.py --app-layer dist/tinglongwu-app-layer.zip --tag vX.Y.Z
+           (#945: the app-layer zip matches its .manifest.json (size, sha256), the version is the tag, no runtime files)
        python scripts/release_check.py --release-start <unix seconds>   (#764: first job start -> release created)
 All forms may be combined. Exit code 0 = ok, 1 = problem(s) (printed), 2 = zip missing.
 Job and release times are reported, never a failure: a slow runner must not block a release (over budget -> a warning).
@@ -37,6 +39,11 @@ GPU_PACK_NEEDS = ("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublas
 GPU_PACK_ASR_NEEDS = ("cudnn64_9.dll",)
 # the pack redistributes NVIDIA CUDA/cuDNN DLLs: their license texts must ship in it (build_windows.build_gpu_pack_only)
 GPU_PACK_LICENSE_PREFIX = "licenses/NVIDIA-"
+APP_LAYER_ASSET = "tinglongwu-app-layer.zip"  # = packaging/build_windows.py APP_LAYER_ASSET (#945)
+APP_LAYER_MANIFEST_KEYS = ("name", "version", "size", "sha256", "runtime_key", "lite")
+MAX_APP_LAYER_MB = 15
+APP_LAYER_TOP = ("tinglongwu/", "tlwu_app/", "tinglongwu_setup/")  # = build_windows.APP_PACKAGES
+APP_LAYER_FILES = ("app-layer.json", "tlwu.exe")  # root files besides the packages and the usage text
 HASH_CHUNK = 1 << 20
 TTFS_BUDGET_S = 180
 
@@ -135,6 +142,50 @@ def summary(lines: list[str]) -> None:
             f.write("".join(f"- {ln}\n" for ln in lines))
 
 
+def app_layer_problems(zip_path: Path, tag: str = "", max_mb: float = MAX_APP_LAYER_MB) -> list[str]:
+    """Problems that make `zip_path` (+ its .manifest.json) not a valid app-layer zip for release `tag` (#945)."""
+    problems: list[str] = []
+    if zip_path.name != APP_LAYER_ASSET:
+        problems.append(f"app layer zip is named {zip_path.name}, expected {APP_LAYER_ASSET}")
+    man_path = zip_path.with_name(zip_path.name + GPU_PACK_MANIFEST_SUFFIX)
+    try:
+        man = json.loads(man_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return problems + [f"app layer manifest unreadable: {man_path.name}: {e}"]
+    missing = [k for k in APP_LAYER_MANIFEST_KEYS if not isinstance(man, dict) or k not in man]
+    if missing:
+        return problems + [f"app layer manifest lacks {', '.join(missing)}"]
+    size = zip_path.stat().st_size
+    if man["size"] != size:
+        problems.append(f"app layer size {size} != manifest {man['size']}")
+    h = hashlib.sha256()
+    with open(zip_path, "rb") as f:
+        for chunk in iter(lambda: f.read(HASH_CHUNK), b""):
+            h.update(chunk)
+    if h.hexdigest() != str(man["sha256"]).lower():
+        problems.append(f"app layer sha256 {h.hexdigest()} != manifest {man['sha256']}")
+    if size > max_mb * BYTES_PER_MB:
+        problems.append(f"app layer is {size / BYTES_PER_MB:.1f} MB, over the {max_mb:g} MB budget")
+    if tag and man["version"] != tag.lstrip("v"):
+        problems.append(f"app layer manifest version {man['version']!r} is not the {tag} release (version mismatch)")
+    if not man["runtime_key"]:
+        problems.append("app layer manifest has an empty runtime_key")
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            entries = [n.replace("\\", "/") for n in z.namelist()]
+            inner = json.loads(z.read("app-layer.json").decode("utf-8")) if "app-layer.json" in entries else {}
+    except (zipfile.BadZipFile, OSError, ValueError, KeyError) as e:
+        return problems + [f"app layer is not a valid zip: {e}"]
+    if tag and inner.get("version") != tag.lstrip("v"):
+        problems.append(f"app-layer.json in the zip says {inner.get('version')!r}, not {tag}")
+    stray = [n for n in entries if not n.startswith(APP_LAYER_TOP) and n not in APP_LAYER_FILES
+             and not n.endswith(".txt")]
+    if stray or any("/" in n and not n.startswith(APP_LAYER_TOP) for n in entries):
+        problems.append(f"app layer has runtime-layer files: {', '.join(stray[:5]) or 'nested folders'}")
+    problems += [f"app layer lacks {n}" for n in APP_LAYER_FILES if n not in entries]
+    return problems
+
+
 def main(argv: list[str] | None = None, now: float | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("zip", type=Path, nargs="?")
@@ -142,13 +193,14 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
     ap.add_argument("--job-start", type=float, help="unix seconds when the build job started: report its time")
     ap.add_argument("--job-budget-min", type=float, default=CORE_JOB_BUDGET_MIN)
     ap.add_argument("--gpu-pack", type=Path, help=f"check the GPU pack ({GPU_PACK_ASSET} + its manifest)")
-    ap.add_argument("--tag", default="", help="with --gpu-pack: the release tag its manifest url must name")
+    ap.add_argument("--tag", default="", help="with --gpu-pack / --app-layer: the release tag it must belong to")
+    ap.add_argument("--app-layer", type=Path, help=f"check the app-layer zip ({APP_LAYER_ASSET} + its manifest)")
     ap.add_argument("--release-start", type=float,
                     help="unix seconds when the release run's first job started: report the release wall time")
     ap.add_argument("--ttfs", type=Path, default=None, help="ttfs.json: print time to first subtitle (non-blocking)")
     a = ap.parse_args(argv)
-    if a.zip is None and a.job_start is None and a.gpu_pack is None and a.release_start is None and a.ttfs is None:
-        ap.error("give the zip to check, --job-start, --gpu-pack, --release-start and/or --ttfs")
+    if a.zip is None and a.job_start is None and a.gpu_pack is None and a.app_layer is None and a.release_start is None and a.ttfs is None:
+        ap.error("give the zip to check, --job-start, --gpu-pack, --app-layer, --release-start and/or --ttfs")
     out: list[str] = []
     problems: list[str] = []
     if a.zip is not None:
@@ -177,6 +229,18 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
             print("FAIL:", p)
         out += [f"FAIL: {p}" for p in gpu]
         problems += gpu
+    if a.app_layer is not None:
+        if not a.app_layer.is_file():
+            print(f"release_check: {a.app_layer} not found")
+            return 2
+        out.append(f"app layer size: {a.app_layer.stat().st_size / BYTES_PER_MB:.2f} MB ({a.app_layer.name}"
+                   f"{', ' + a.tag if a.tag else ''})")
+        print(out[-1])
+        app = app_layer_problems(a.app_layer, a.tag)
+        for p in app:
+            print("FAIL:", p)
+        out += [f"FAIL: {p}" for p in app]
+        problems += app
     if a.release_start is not None:
         ok, line = job_time_line(a.release_start, time.time() if now is None else now, RELEASE_BUDGET_MIN,
                                  "release wall time")
