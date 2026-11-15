@@ -13,7 +13,8 @@ when set), or exits 1 with the reason. Rules:
   - tag = latest published (non-draft, non-pre-release) release tag with patch + 1, and that tag must not exist yet.
 `apply` (#957, part 2) cherry-picks the fix onto the checked-out base tag and sets `__version__` to the tag in one
 more commit; it prints `head=<sha>` and `tree=<sha>` (also to $GITHUB_OUTPUT) or exits 1 when the pick conflicts, is
-empty (the fix is already in the base) or the version line is missing. Local git only, nothing is pushed.
+empty (the fix is already in the base), the base predates the layered core (#923; v0.3.5 does) or the
+worktree has uncommitted tracked changes, or the version line is missing. Local git only, nothing is pushed.
 Network only through the `gh` CLI (GH_TOKEN). `plan()` takes the API as a function, so tests stub it.
 """
 from __future__ import annotations
@@ -130,6 +131,8 @@ def plan(fix: str, api) -> dict:
 GIT_IDENTITY = ("-c", "user.name=github-actions[bot]",
                 "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com")
 INIT_PY = "tinglongwu/__init__.py"
+# #923 layered core: the upgrade overlay and wizard checks need its runtime-layer.json, which older bases never build
+LAYERED_MARKER = "packaging/runtime_layer.py"
 
 
 def _git(*args: str, cwd: str = ".", check: bool = True) -> str:
@@ -145,6 +148,11 @@ def apply(fix: str, tag: str, cwd: str = ".") -> dict:
         raise PlanError(f"tag {tag!r} is not vX.Y.Z")
     sha = _git("rev-parse", "--verify", f"{fix}^{{commit}}", cwd=cwd)
     base = _git("rev-parse", "HEAD", cwd=cwd)
+    if _git("status", "--porcelain", "--untracked-files=no", cwd=cwd):
+        raise PlanError("the worktree has uncommitted changes; commit or stash them before apply")
+    if not os.path.isfile(os.path.join(cwd, LAYERED_MARKER)):
+        raise PlanError(f"base {base[:7]} predates the layered core (#923, no {LAYERED_MARKER}): "
+                        "hotfixes start from the first release that has it")
     parents = _git("rev-list", "--parents", "-n", "1", sha, cwd=cwd).split()[1:]
     pick = ["cherry-pick", "-x"] + (["-m", "1"] if len(parents) > 1 else []) + [sha]
     out = subprocess.run(["git", *GIT_IDENTITY, *pick], cwd=cwd, capture_output=True, text=True)

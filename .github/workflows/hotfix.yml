@@ -3,7 +3,8 @@ name: hotfix
 # on that very build, in <= 20 min (scripts/hotfix_plan.py HOTFIX_BUDGET_MIN). This part is a dry run only:
 #   plan     : scripts/hotfix_plan.py plan (#956: fix = merged PR / sha on dev, issue bug + P0/P1, no cadence release
 #              pending, tag = latest release patch + 1), then `apply` on the base tag: cherry-pick the fix and set
-#              __version__ to the tag (local commits only). The result travels to the other jobs as a git bundle, so
+#              __version__ to the tag (local commits only). A base older than the layered core (#923; v0.3.5) is
+#              refused there: the upgrade overlay and wizard checks need its runtime-layer.json. The result travels to the other jobs as a git bundle, so
 #              every job builds and tests the same commit (its sha is checked).
 #   test     : the ci `test` suite (normal + network-disabled) on that commit
 #   windows  : build_windows.py --core once (runtime layer from the shared cache, app layer repacked; the same call as
@@ -316,6 +317,7 @@ jobs:
           if-no-files-found: error
           compression-level: 0
       - name: Gate table and wall time (scripts/hotfix_plan.py summary)
+        if: always()   # also after a failed artifact hop: the table then says no artifact was uploaded
         env:
           GH_TOKEN: ${{ github.token }}
           UPLOADED: ${{ steps.upload.outcome == 'success' }}

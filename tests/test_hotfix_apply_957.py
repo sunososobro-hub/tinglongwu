@@ -33,6 +33,7 @@ def repo(tmp_path):
     git(r, "init", "-q", "-b", "dev")
     write(r, "tinglongwu/__init__.py", '"""x"""\n__version__ = "0.3.5"\n')
     write(r, "app.py", "bug = True\n")
+    write(r, "packaging/runtime_layer.py", "KEY = 1\n")
     git(r, "add", "-A")
     git(r, "commit", "-q", "-m", "base")
     git(r, "tag", "v0.3.5")
@@ -90,6 +91,24 @@ def test_apply_refuses_a_fix_already_in_the_base(repo):
     with pytest.raises(hp.PlanError, match="changes nothing"):
         hp.apply("v0.3.5", "v0.3.6", cwd=str(r))
     assert git(r, "rev-parse", "HEAD") == git(r, "rev-parse", "v0.3.5")
+
+
+def test_apply_refuses_a_base_without_the_layered_core(repo):
+    r, fix = repo
+    git(r, "rm", "-q", "packaging/runtime_layer.py")
+    git(r, "commit", "-q", "-m", "like v0.3.5: no runtime layer")
+    before = git(r, "rev-parse", "HEAD")
+    with pytest.raises(hp.PlanError, match="predates the layered core"):
+        hp.apply(fix, "v0.3.6", cwd=str(r))
+    assert git(r, "rev-parse", "HEAD") == before
+
+
+def test_apply_keeps_uncommitted_tracked_edits(repo):
+    r, fix = repo
+    write(r, "app.py", "local edit\n")
+    with pytest.raises(hp.PlanError, match="uncommitted changes"):
+        hp.apply(fix, "v0.3.6", cwd=str(r))
+    assert (r / "app.py").read_text() == "local edit\n"
 
 
 def test_apply_rejects_bad_tag(repo):
