@@ -971,6 +971,7 @@ class App:
             hm.add_checkbutton(label=t("gui_upd_auto"), variable=self.v_auto_upd,
                                command=lambda: autoupdate.set_auto(self.v_auto_upd.get()))
         hm.add_command(label=t("gui_report"), command=lambda: self.report_problem())
+        hm.add_command(label=t("gui_copy_ai"), command=lambda: self.copy_ai_prompt())  # #940
         hm.add_separator()
         hm.add_command(label=t("gui_menu_about"), command=self.show_about)
         mb.add_cascade(label=t("gui_menu_help"), menu=hm)
@@ -1355,6 +1356,17 @@ class App:
         from .core import report_info
 
         open_report(info=report_info(self.settings), say=lambda m: self._status_text(t("gui_open_url", url=m[:80])))
+
+    def copy_ai_prompt(self):
+        """#940: prompt + report_info + last 50 redacted log lines to the clipboard; nothing is sent anywhere."""
+        from ..report import build_ai_text, env_info
+        from .core import report_info
+
+        info = dict(env_info())
+        info.update(report_info(self.settings))
+        self.root.clipboard_clear()
+        self.root.clipboard_append(build_ai_text(info))
+        self._status_text(t("gui_copied_ai"))
 
     def collect(self):
         s = self.settings

@@ -43,6 +43,7 @@ Windows 会显示 SmartScreen 警告（安装程序尚未签名，#601 完成前
 
 - 📘 [怎么参与](CONTRIBUTING.md)：欢迎提 PR，默认答案是 yes
 - 🟢 [新手友好的题目](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
+- 🐞 [用你自己的 AI 报告问题](docs/report-with-ai.zh-TW.md)：不用 GitHub 账号，复制一段提示贴给 ChatGPT / Claude / Gemini（繁体页面）
 - 💬 [讨论区](https://github.com/sunososobro-hub/tinglongwu/discussions)：提问题、分享你怎么用、提点子（不用会写代码）
 - 🧭 [愿景：我们做什么、绝不做什么](docs/VISION.md)
 - 🗺️ [路线图](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [下一版进度](https://github.com/sunososobro-hub/tinglongwu/milestones) · 📊 [项目活跃度](https://sunososobro-hub.github.io/tinglongwu/)
