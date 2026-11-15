@@ -4,6 +4,7 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  workflow_dispatch:   # #958: hotfix.yml dispatches `test` on its back-merge PR (opened by github.token, no pull_request run)
 
 jobs:
   test:

@@ -1,6 +1,7 @@
 name: hotfix
-# #950 hotfix lane, part 2 (#957): one urgent P0/P1 bug fix from dev onto the latest release, built ONCE and tested
-# on that very build, in <= 20 min (scripts/hotfix_plan.py HOTFIX_BUDGET_MIN). This part is a dry run only:
+# #950 hotfix lane, parts 2 + 3 (#957, #958): one urgent P0/P1 bug fix from dev onto the latest release, built ONCE
+# and tested on that very build, in <= 20 min (scripts/hotfix_plan.py HOTFIX_BUDGET_MIN), then (publish=true) those
+# same tested files are released:
 #   plan     : scripts/hotfix_plan.py plan (#956: fix = merged PR / sha on dev, issue bug + P0/P1, no cadence release
 #              pending, tag = latest release patch + 1), then `apply` on the base tag: cherry-pick the fix and set
 #              __version__ to the tag (local commits only). A base older than the layered core (#923; v0.3.5) is
@@ -11,10 +12,16 @@ name: hotfix
 #              release.yml), scripts/release_check.py core budget, packaging/release_check.py (check_dist_dlls, llama CPU
 #              instructions, tlwu.exe --smoke, --selftest), the upgrade overlay on the base release + GUI launch,
 #              the wizard built from that core and installed silently fresh and over the base release
-#   summary  : uploads the tested zip + wizard + SHA256SUMS.txt as ONE artifact (only when every gate passed) and writes
-#              the gate table and the dispatch -> upload wall time into the job summary
-# publish=true is #958 (part 3) and fails here. Nothing in this workflow pushes, tags or releases: no job has
-# `contents: write`. hotfix.yml is release-producing: changes need an Opus PASS (rules section 14 after #959).
+#              (+ the app-layer zip check); the windows job records the sha256 of every tested file (`sums` output)
+#   summary  : checks the tested files against `sums`, uploads them + SHA256SUMS.txt as ONE artifact (only when every
+#              gate passed) and writes the gate table and the dispatch -> upload wall time into the job summary
+#   publish  : publish=true only (#958), after every gate above: kill switch (AUTO_RELEASE == 'true' and throttle #574
+#              level >= 1) and a fresh plan (same tag, no release run in progress) BEFORE anything is pushed; the files
+#              must match `sums` byte for byte (no rebuild); then push hotfix/vX.Y.Z, tag it, create the Release
+#              (tested zip, app layer, wizard, install scripts, the base release's unchanged GPU / Vulkan packs,
+#              SHA256SUMS.txt, build provenance as release.yml) and open the back-merge PR hotfix/vX.Y.Z -> dev.
+# Only the publish job has `contents: write`. hotfix.yml is release-producing: changes need an Opus PASS (rules
+# section 14 after #959). Who may dispatch it and when: rules section 14 "Hotfix lane".
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +30,7 @@ on:
         required: true
         type: string
       publish:
-        description: "publish the hotfix release (not available yet: #958); false = dry run"
+        description: "publish the tested hotfix as release vX.Y.Z and open the back-merge PR (#958); false = dry run"
         type: boolean
         default: false
 
@@ -49,11 +56,6 @@ jobs:
       head: ${{ steps.apply.outputs.head }}
       tree: ${{ steps.apply.outputs.tree }}
     steps:
-      - name: publish=true is part 3 (#958); this workflow only does dry runs
-        if: inputs.publish
-        run: |
-          echo "::error::publish=true is not available yet (#958); run with publish=false"
-          exit 1
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0   # the base tag and the fix commit
@@ -61,6 +63,14 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
+      - name: Kill switch (publish only; AUTO_RELEASE == 'true' and throttle #574 level >= 1, rules section 14)
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTO_RELEASE: ${{ vars.AUTO_RELEASE }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/issues/574" --jq .body > "$RUNNER_TEMP/throttle.md" || : > "$RUNNER_TEMP/throttle.md"
+          python scripts/hotfix_plan.py killswitch --enabled "$AUTO_RELEASE" --throttle-file "$RUNNER_TEMP/throttle.md"
       - name: Plan (scripts/hotfix_plan.py plan)
         id: plan
         env:
@@ -147,6 +157,8 @@ jobs:
     outputs:
       build: ${{ steps.build.outcome }}
       budget: ${{ steps.budget.outcome }}
+      app_layer: ${{ steps.app_layer.outcome }}
+      sums: ${{ steps.record.outputs.sums }}
       smoke: ${{ steps.smoke.outcome }}
       overlay: ${{ steps.overlay.outcome }}
       gui: ${{ steps.gui.outcome }}
@@ -204,6 +216,14 @@ jobs:
         run: |
           python scripts\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: App layer zip check (#945; manifest size + sha256, version == the hotfix tag, < 15 MB; as release.yml)
+        id: app_layer
+        shell: pwsh
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          python scripts\release_check.py --app-layer "$env:TLWU_BUILD_ROOT\dist\tinglongwu-app-layer.zip" --tag $env:TAG
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Release checks on that zip (check_dist_dlls, llama CPU instructions, tlwu.exe --smoke, --selftest)
         id: smoke
         shell: pwsh
@@ -258,12 +278,20 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts\upgrade_check.py wizard --setup "$env:SETUP_EXE" --dir "$env:W\old\tlwu" --log "$env:W\logs\setup-over-old.log"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Tested files for the summary job (the zip and the wizard that passed the checks above)
+      - name: Tested files for the summary job (the zip, the app layer and the wizard that passed the checks above)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\tested" | Out-Null
           Copy-Item "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" "$env:RUNNER_TEMP\tested\"
+          Copy-Item "$env:TLWU_BUILD_ROOT\dist\tinglongwu-app-layer.zip" "$env:RUNNER_TEMP\tested\"
+          Copy-Item "$env:TLWU_BUILD_ROOT\dist\tinglongwu-app-layer.zip.manifest.json" "$env:RUNNER_TEMP\tested\"
           Copy-Item $env:SETUP_EXE "$env:RUNNER_TEMP\tested\"
+      - name: Record the sha256 of the tested files (#958; publish releases only these bytes)
+        id: record
+        shell: pwsh
+        run: |
+          python scripts\hotfix_plan.py record --dir "$env:RUNNER_TEMP\tested"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: hotfix-build
@@ -299,13 +327,20 @@ jobs:
         with:
           name: hotfix-build
           path: tested
+      - name: The downloaded files are the tested ones (sha256 = the windows job's record, #958)
+        id: verify
+        if: needs.test.result == 'success' && needs.windows.result == 'success'
+        env:
+          SUMS: ${{ needs.windows.outputs.sums }}
+        run: python3 scripts/hotfix_plan.py verify --dir tested --recorded "$SUMS"
       - name: SHA256SUMS.txt for the tested files
         id: sums
-        if: needs.test.result == 'success' && needs.windows.result == 'success'
+        if: steps.verify.outcome == 'success'
         run: |
           set -euo pipefail
           cd tested
-          sha256sum tinglongwu-win64.zip tinglongwu-setup-*.exe > SHA256SUMS.txt
+          sha256sum tinglongwu-win64.zip tinglongwu-app-layer.zip tinglongwu-app-layer.zip.manifest.json \
+            tinglongwu-setup-*.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         id: upload
@@ -330,8 +365,158 @@ jobs:
             --gate "test=${{ needs.test.result }}" \
             --gate "windows build (--core)=${{ needs.windows.outputs.build }}" \
             --gate "core zip budget=${{ needs.windows.outputs.budget }}" \
+            --gate "app layer zip=${{ needs.windows.outputs.app_layer }}" \
             --gate "release checks (--smoke, --selftest)=${{ needs.windows.outputs.smoke }}" \
             --gate "upgrade overlay on the base release=${{ needs.windows.outputs.overlay }}" \
             --gate "GUI launch after overlay=${{ needs.windows.outputs.gui }}" \
             --gate "silent wizard, fresh=${{ needs.windows.outputs.wizard_fresh }}" \
-            --gate "silent wizard, over the base release=${{ needs.windows.outputs.wizard_upgrade }}"
+            --gate "silent wizard, over the base release=${{ needs.windows.outputs.wizard_upgrade }}" \
+            --gate "tested files = recorded sha256=${{ steps.verify.outcome }}"
+
+  publish:
+    # #958: release exactly the tested files. Every gate above passed (summary exits 1 otherwise) and publish=true.
+    needs: [plan, test, windows, summary]
+    if: ${{ !cancelled() && inputs.publish && needs.summary.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write       # push hotfix/vX.Y.Z, the tag, the Release; only this job
+      pull-requests: write  # the back-merge PR hotfix/vX.Y.Z -> dev
+      actions: write        # release / auto-release runs in progress; dispatch ci (test) and install-test
+      issues: read          # throttle #574, the fix issue's labels (fresh plan)
+      id-token: write       # build provenance (Sigstore OIDC), as release.yml #26
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      BASE: ${{ needs.plan.outputs.base }}
+      FIX: ${{ needs.plan.outputs.fix }}
+      ISSUE: ${{ needs.plan.outputs.issue }}
+      HEAD_SHA: ${{ needs.plan.outputs.head }}
+      BRANCH: hotfix/${{ needs.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: refs/tags/${{ needs.plan.outputs.base }}
+          fetch-depth: 0
+          path: hotfix
+          # credentials stay in this checkout only: the push of the tested commit below uses them
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: ctl   # the dispatched ref: scripts/hotfix_plan.py (the base tag may carry an older copy)
+          persist-credentials: false
+      - name: Kill switch again, right before anything is pushed (AUTO_RELEASE == 'true', throttle #574 level >= 1)
+        env:
+          AUTO_RELEASE: ${{ vars.AUTO_RELEASE }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/issues/574" --jq .body > "$RUNNER_TEMP/throttle.md" || : > "$RUNNER_TEMP/throttle.md"
+          python3 ctl/scripts/hotfix_plan.py killswitch --enabled "$AUTO_RELEASE" --throttle-file "$RUNNER_TEMP/throttle.md"
+      - name: Fresh plan (same tag, no cadence release pending) and no release / auto-release run in progress
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::bad tag or sha"; exit 1; }
+          python3 ctl/scripts/hotfix_plan.py plan --fix "$FIX" --repo "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/replan.txt"
+          grep -qx "tag=$TAG" "$RUNNER_TEMP/replan.txt" || { echo "::error::the plan changed since the build: $(cat "$RUNNER_TEMP/replan.txt")"; exit 1; }
+          for w in release.yml auto-release.yml; do
+            for st in in_progress queued; do
+              n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$w/runs?status=$st&per_page=1" --jq .total_count)
+              [ "$n" = 0 ] || { echo "::error::$w has a run $st; a hotfix waits until it is over (rules section 14)"; exit 1; }
+            done
+          done
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: hotfix-build
+          path: dist
+      - name: The files to publish are the tested build (sha256 = the windows job's record; nothing is rebuilt)
+        env:
+          SUMS: ${{ needs.windows.outputs.sums }}
+        run: python3 ctl/scripts/hotfix_plan.py verify --dir dist --recorded "$SUMS"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: hotfix-src
+          path: ${{ runner.temp }}/src
+      - name: The tested commit (from the bundle; its sha must match the plan)
+        working-directory: hotfix
+        run: |
+          set -euo pipefail
+          git fetch -q "$RUNNER_TEMP/src/hotfix.bundle" hotfix
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+      - name: Unchanged GPU / Vulkan packs of the base release (checked against its SHA256SUMS.txt)
+        run: |
+          set -euo pipefail
+          mkdir base && cd base
+          gh release download "$BASE" --repo "$GITHUB_REPOSITORY" -p SHA256SUMS.txt
+          for p in tinglongwu-gpu-pack.zip tinglongwu-gpu-pack.zip.manifest.json 'tlwu-vulkan-pack-*.zip'; do
+            gh release download "$BASE" --repo "$GITHUB_REPOSITORY" -p "$p" || echo "::warning::$BASE has no $p; $TAG ships without it"
+          done
+          for f in tinglongwu-gpu-pack.zip tinglongwu-gpu-pack.zip.manifest.json tlwu-vulkan-pack-*.zip; do
+            [ -f "$f" ] || continue
+            grep " $f\$" SHA256SUMS.txt | sha256sum -c -
+            mv "$f" ../dist/
+          done
+      - name: Install assets (the hotfix tree's scripts with the tag embedded, as release.yml) and SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          cp hotfix/scripts/install.sh dist/install.sh
+          cp hotfix/scripts/mac_install.sh dist/mac_install.sh
+          cp hotfix/scripts/bootstrap_windows.ps1 dist/install.ps1
+          sed -i "s/__TLWU_REF__/$TAG/g" dist/install.sh dist/mac_install.sh dist/install.ps1
+          ! grep -q "__TLWU_REF__" dist/install.sh dist/mac_install.sh dist/install.ps1
+          bash -n dist/install.sh
+          bash -n dist/mac_install.sh
+          cd dist
+          exe="tinglongwu-setup-${TAG#v}.exe"
+          [ -f "$exe" ] || { echo "::error::expected $exe; got: $(ls)"; exit 1; }
+          cp "$exe" tinglongwu-setup.exe
+          ls | grep -vx SHA256SUMS.txt | sort | xargs sha256sum > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          cat SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Build provenance for the release assets (as release.yml #26; an attestation outage never blocks it)
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+      - name: Push hotfix/vX.Y.Z and tag it (the tested commit)
+        working-directory: hotfix
+        run: |
+          set -euo pipefail
+          if ! git push -q origin "$HEAD_SHA:refs/heads/$BRANCH"; then
+            { echo "::error::could not push $BRANCH (the workflow token is refused a commit that changes .github/workflows)."
+              echo "Nothing was tagged or released. Push it with a maintainer token and re-run this job:"
+              echo "git push origin $HEAD_SHA:refs/heads/$BRANCH"; } | tee -a "$GITHUB_STEP_SUMMARY"
+            at=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .sha 2>/dev/null || true)
+            [ "$at" = "$HEAD_SHA" ] || exit 1
+          fi
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$HEAD_SHA" >/dev/null; then
+            at=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+            [ "$at" = "$HEAD_SHA" ] || { echo "::error::tag $TAG exists at $at, not at $HEAD_SHA; not releasing"; exit 1; }
+          fi
+      - name: Create the Release from the tested files
+        env:
+          FIX_INPUT: ${{ inputs.fix }}
+        run: |
+          set -euo pipefail
+          python3 ctl/scripts/hotfix_plan.py notes --tag "$TAG" --base "$BASE" --fix "$FIX" --issue "$ISSUE" \
+            --pr "$(grep -E '^#?[0-9]+$' <<< "$FIX_INPUT" | tr -d '#' || true)" --out notes.md
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $TAG already exists; never rewriting a release"; exit 1
+          fi
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" dist/* --verify-tag --latest --title "$TAG" --notes-file notes.md
+          echo "released $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
+          # a release by github.token fires no `release` event (#639): start the install test explicitly
+          gh workflow run install-test.yml -R "$GITHUB_REPOSITORY" --ref dev -f release_tag="$TAG" || echo "::warning::install-test dispatch failed"
+      - name: Open the back-merge PR hotfix/vX.Y.Z -> dev (merge commit, rules section 14) and run its `test`
+        run: |
+          set -euo pipefail
+          url=$(gh pr list -R "$GITHUB_REPOSITORY" --head "$BRANCH" --base dev --state open --json url --jq '.[0].url // ""')
+          if [ -z "$url" ]; then
+            printf '%s\n' "Refs #$ISSUE" "" \
+              "Back-merge of hotfix $TAG ($BASE + fix $FIX): merge with a merge commit (not squash or rebase) so the tag stays reachable from dev (rules section 14, Hotfix lane)." \
+              "Files: the cherry-picked fix (already on dev) and __version__." "" \
+              "tlwu-usage: hotfix.yml run $GITHUB_RUN_ID minutes=0" > body.md
+            url=$(gh pr create -R "$GITHUB_REPOSITORY" --base dev --head "$BRANCH" --title "hotfix: back-merge $TAG into dev" --body-file body.md)
+          fi
+          echo "back-merge PR: $url" >> "$GITHUB_STEP_SUMMARY"
+          # a PR opened by github.token starts no pull_request workflows: dispatch ci so `test` runs on its head
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"

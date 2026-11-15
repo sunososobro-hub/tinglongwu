@@ -4,6 +4,10 @@
     python scripts/hotfix_plan.py plan --fix <sha|PR number> [--repo OWNER/REPO]
     python scripts/hotfix_plan.py apply --fix <sha> --tag vX.Y.Z      (#957, in a checkout of the base tag)
     python scripts/hotfix_plan.py summary --gate NAME=RESULT ... --started ISO [--uploaded ISO]   (#957 job summary)
+    python scripts/hotfix_plan.py record --dir DIR          (#958: sha256 of the tested files -> `sums=` output)
+    python scripts/hotfix_plan.py verify --dir DIR --recorded SUMS   (#958: the files to publish are the tested ones)
+    python scripts/hotfix_plan.py killswitch --enabled "$AUTO_RELEASE" --throttle-file F   (#958, rules section 14)
+    python scripts/hotfix_plan.py notes --tag vX.Y.Z --base vX.Y.Z --fix SHA --issue N [--pr N] --out F   (#958)
 
 Prints `tag=vX.Y.(Z+1)`, `base=<latest release tag>`, `fix=<commit sha>`, `issue=<N>` (also appended to $GITHUB_OUTPUT
 when set), or exits 1 with the reason. Rules:
@@ -210,6 +214,77 @@ def summary(gates, started: str, uploaded: str = "", budget_min: int = HOTFIX_BU
     return "### Hotfix dry run gates\n\n" + "\n".join(rows) + f"\n\n{line}\n", ok
 
 
+# #958 (part 3): publish only the bytes the windows job tested, and only when the kill switch allows a release.
+SUM_RE = re.compile(r"^[0-9a-f]{64}$")
+THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)  # = release_notes.py THROTTLE_RE (first line of #574)
+
+
+def sha256_file(path: str) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def record(folder: str) -> str:
+    """`name:sha256,...` (sorted) of every file directly in `folder`: one line, so it fits a job output."""
+    names = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)))
+    if not names:
+        raise PlanError(f"no files in {folder}")
+    for n in names:
+        if "," in n or ":" in n:
+            raise PlanError(f"file name {n!r} cannot be recorded (contains ',' or ':')")
+    return ",".join(f"{n}:{sha256_file(os.path.join(folder, n))}" for n in names)
+
+
+def parse_sums(recorded: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for item in (recorded or "").split(","):
+        name, _, digest = item.strip().rpartition(":")
+        if not name or not SUM_RE.match(digest) or name in out:
+            raise PlanError(f"recorded sha256 list is malformed near {item!r}")
+        out[name] = digest
+    return out
+
+
+def verify(folder: str, recorded: str) -> list[str]:
+    """Raise PlanError unless `folder` holds exactly the recorded files with the recorded SHA256. Returns the names."""
+    want = parse_sums(recorded)
+    have = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)))
+    errors = [f"{n}: missing" for n in sorted(set(want) - set(have))]
+    errors += [f"{n}: not in the tested build" for n in sorted(set(have) - set(want))]
+    for n in sorted(set(want) & set(have)):
+        got = sha256_file(os.path.join(folder, n))
+        if got != want[n]:
+            errors.append(f"{n}: sha256 {got} != tested {want[n]}")
+    if errors:
+        raise PlanError("the files to publish are not the tested build: " + "; ".join(errors))
+    return have
+
+
+def killswitch(enabled: str, throttle: str | None) -> None:
+    """Rules section 14 kill switch, as auto-release.yml: AUTO_RELEASE == 'true' and throttle #574 level >= 1."""
+    if (enabled or "").strip() != "true":
+        raise PlanError("kill switch: repo variable AUTO_RELEASE is not 'true'")
+    m = THROTTLE_RE.match((throttle or "").split("\n", 1)[0])
+    level = int(m[1]) if m else None
+    if level is None or level < 1:
+        raise PlanError(f"kill switch: throttle level is {'unreadable' if level is None else level} (needs >= 1)")
+
+
+def notes(tag: str, base: str, fix: str, issue: int, pr: str = "") -> str:
+    """Release notes of a hotfix: what it is on top of and which fix it carries."""
+    via = f" (PR #{pr})" if pr else ""
+    return (f"Hotfix {tag}: {base} plus one urgent fix for #{issue}{via}, commit {fix[:12]}.\n\n"
+            f"Built once and tested on that build (hotfix.yml: tests, release checks, upgrade over {base}, "
+            "setup wizard fresh and over the old version). The files below are those tested files; "
+            "SHA256SUMS.txt lists their checksums.\n\n"
+            f"The GPU and Vulkan packs are the unchanged ones from {base}.\n")
+
+
 def _emit(res: dict, keys) -> None:
     lines = "".join(f"{k}={res[k]}\n" for k in keys)
     print(lines, end="")
@@ -242,7 +317,40 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--gate", action="append", default=[], help="NAME=RESULT, in gate order")
     r.add_argument("--started", required=True, help="run created_at (ISO 8601)")
     r.add_argument("--uploaded", default="", help="when the tested artifact was uploaded (ISO 8601); empty = not")
+    t = sub.add_parser("record", help="sha256 of the tested files, one line (#958)")
+    t.add_argument("--dir", required=True)
+    v = sub.add_parser("verify", help="the files to publish equal the recorded tested files (#958)")
+    v.add_argument("--dir", required=True)
+    v.add_argument("--recorded", required=True, help="the windows job's `sums` output")
+    k = sub.add_parser("killswitch", help="AUTO_RELEASE == 'true' and throttle level >= 1 (#958)")
+    k.add_argument("--enabled", default="", help="repo variable AUTO_RELEASE")
+    k.add_argument("--throttle-file", default="", help="file with the throttle issue body; missing/empty = unreadable")
+    n = sub.add_parser("notes", help="hotfix release notes (#958)")
+    for opt in ("--tag", "--base", "--fix", "--issue", "--out"):
+        n.add_argument(opt, required=True)
+    n.add_argument("--pr", default="")
     a = ap.parse_args(argv)
+    if a.cmd in ("record", "verify", "killswitch"):
+        try:
+            if a.cmd == "record":
+                _emit({"sums": record(a.dir)}, ("sums",))
+            elif a.cmd == "verify":
+                print("verified (sha256 = tested build):", ", ".join(verify(a.dir, a.recorded)))
+            else:
+                body = None
+                if a.throttle_file and os.path.isfile(a.throttle_file):
+                    with open(a.throttle_file, encoding="utf-8") as f:
+                        body = f.read()
+                killswitch(a.enabled, body)
+                print("kill switch: open (AUTO_RELEASE=true, throttle level >= 1)")
+        except PlanError as e:
+            print(f"hotfix_plan: {e}", file=sys.stderr)
+            return 1
+        return 0
+    if a.cmd == "notes":
+        with open(a.out, "w", encoding="utf-8") as f:
+            f.write(notes(a.tag, a.base, a.fix, int(a.issue), a.pr))
+        return 0
     if a.cmd == "summary":
         md, ok = summary([tuple(g.split("=", 1)) if "=" in g else (g, "") for g in a.gate], a.started, a.uploaded)
         print(md, end="")
