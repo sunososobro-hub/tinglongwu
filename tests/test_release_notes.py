@@ -31,8 +31,8 @@ def pr(title="release: v0.3.2", head="dev", base="main", merged=True, fork=False
             "base": {"ref": base}, "head": {"ref": head, "sha": HEAD, "repo": {"full_name": "x/fork" if fork else REPO}}}
 
 
-def plan(pulls, version="0.3.2", tags=TAGS, runs=GREEN, event="push", ref="main"):
-    return rn.plan(event, ref, SHA, version, tags, pulls, REPO, lambda h: runs if h == HEAD else [])
+def plan(pulls, version="0.3.2", tags=TAGS, runs=GREEN, event="push", ref="main", jobs_of=lambda rid: []):
+    return rn.plan(event, ref, SHA, version, tags, pulls, REPO, lambda h: runs if h == HEAD else [], jobs_of=jobs_of)
 
 
 def test_app_version_and_tag_order():
@@ -130,6 +130,26 @@ def test_never_started_action_required_run_neither_passes_nor_blocks_1104():
     with pytest.raises(SystemExit, match="e2e: no run"):
         plan([pr()], runs=runs)
     assert plan([pr()], runs=GREEN + runs[-len(GREEN):])["publish"] == "true"
+
+
+def test_release_pr_run_flipped_to_zero_job_failure_after_merge_is_no_evidence_1139():
+    """v0.4.0: the release PR's action_required pull_request runs became completed/failure with 0 jobs when
+    auto-release merged it, and release.yml plan then refused the green head."""
+    flipped = [dict(r, id=100 + r["id"], event="pull_request", conclusion="failure") for r in GREEN]
+    jobs = {r["id"]: [] for r in flipped}
+    jobs_of = lambda rid: jobs.get(rid, [{"name": "job"}])
+    assert rn.check_problems(GREEN + flipped, jobs_of=jobs_of) == []
+    assert plan([pr()], runs=GREEN + flipped, jobs_of=jobs_of)["publish"] == "true"
+    # a pull_request run that did run a job and failed still blocks
+    ran = lambda rid: [{"name": "job"}]
+    assert "ci: completed/failure" in " ".join(rn.check_problems(GREEN + flipped, jobs_of=ran))
+    with pytest.raises(SystemExit, match="not green"):
+        plan([pr()], runs=GREEN + flipped, jobs_of=ran)
+    # a zero-job failure from push / dispatch (broken workflow file) still blocks
+    push_bad = [dict(r, id=100 + r["id"], conclusion="failure") for r in GREEN]
+    assert rn.check_problems(GREEN + push_bad, jobs_of=lambda rid: []) != []
+    # without jobs_of nothing changes
+    assert rn.check_problems(GREEN + flipped) != []
 
 
 PRS = [{"number": 108, "author": {"login": "cook1e0728"}, "url": "https://g/pull/108"},

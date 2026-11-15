@@ -166,20 +166,34 @@ def release_pr_of(pulls: list[dict], repo: str) -> dict | None:
     return None
 
 
-def _counts(run: dict) -> bool:
+def _never_started(run: dict, jobs_of) -> bool:
+    """#1139: a release PR pull_request run left waiting for approval (`action_required`, #1104) is flipped by GitHub to
+    `completed/failure` with zero jobs when the PR merges or closes. It never ran, so it is no evidence either way.
+    Only pull_request runs qualify: a push or dispatch run with zero jobs (e.g. a broken workflow file) still blocks."""
+    if jobs_of is None or run.get("event") != "pull_request" or run.get("status") != "completed":
+        return False
+    if run.get("conclusion") not in ("failure", "cancelled", "startup_failure"):
+        return False
+    return not jobs_of(run.get("id"))
+
+
+def _counts(run: dict, jobs_of=None) -> bool:
     """#1016: a pull_request run of install-clean skips speak-smoke (job `if`), and a skipped job reports success, so
     it is never evidence for the speak-smoke requirement."""
     if run.get("conclusion") == "action_required":  # #1104: a run waiting for approval never ran: no evidence
         return False
+    if _never_started(run, jobs_of):  # #1139: the same run after the PR merged
+        return False
     return not (run.get("name") == "install-clean" and run.get("event") == "pull_request")
 
 
-def check_problems(runs: list[dict], required=REQUIRED_CHECKS) -> list[str]:
+def check_problems(runs: list[dict], required=REQUIRED_CHECKS, jobs_of=None) -> list[str]:
     """Owner gate: the newest run of each required workflow on the commit must have succeeded. A never-started
-    `action_required` run (release PR pull_request runs, #1104) is skipped, so it neither passes nor blocks."""
+    `action_required` run (release PR pull_request runs, #1104) is skipped, so it neither passes nor blocks; with
+    `jobs_of`, so is that run once GitHub has flipped it to a zero-job failure (#1139)."""
     out = []
     for name in required:
-        mine = [r for r in runs if r.get("name") == name and _counts(r)]
+        mine = [r for r in runs if r.get("name") == name and _counts(r, jobs_of)]
         if not mine:
             out.append(f"{name}: no run on this commit")
             continue
@@ -244,11 +258,11 @@ def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str]
         return out
     head = pr["head"]["sha"]
     runs = runs_of(head)
-    bad = check_problems(runs)
+    bad = check_problems(runs, jobs_of=jobs_of)
     hw_mod = _hw()
     # #848: auto-release merged it with hw-tests deferred (runner offline); the cloud checks must still be green
     deferred = bool(bad) and hw_mod.plan_deferred(pr.get("body") or "", runs, jobs_of) and not check_problems(
-        runs, hw_mod.CLOUD_CHECKS)
+        runs, hw_mod.CLOUD_CHECKS, jobs_of)
     if bad and not deferred:
         raise SystemExit(f"release PR #{pr['number']}: required checks not green on {head[:12]}: " + "; ".join(bad))
     hw = None if deferred else max((r for r in runs if r.get("name") == "hw-tests"), key=lambda r: r.get("id", 0))
@@ -451,7 +465,7 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
     runs = runs_of(head)
     hw_mod = _hw()
     hw = hw_mod.decide(runs, jobs_of, now)
-    bad = check_problems(runs, hw_mod.required_checks(hw["state"], REQUIRED_CHECKS))
+    bad = check_problems(runs, hw_mod.required_checks(hw["state"], REQUIRED_CHECKS), jobs_of)
     if bad:
         if hw["state"] == "waiting":
             bad.append(hw["reason"])
