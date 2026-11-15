@@ -54,11 +54,13 @@ def enable_vt() -> bool:
         h = k.GetStdHandle(-11)
         mode = ctypes.c_uint32()
         if not k.GetConsoleMode(h, ctypes.byref(mode)):
-            os.system("")  # fallback trick: makes conhost enable VT
+            if sys.stdout is not None and sys.__stdout__ is not None:  # pythonw: no console; os.system would spawn one
+                os.system("")  # fallback trick: makes conhost enable VT
             return True
         return bool(k.SetConsoleMode(h, mode.value | 0x0004))  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
     except Exception:  # noqa: BLE001
-        os.system("")
+        if sys.stdout is not None and sys.__stdout__ is not None:  # pythonw: no console; os.system would spawn one
+            os.system("")
         return True
 
 

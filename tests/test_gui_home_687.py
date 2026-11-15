@@ -65,13 +65,14 @@ def _outside_advanced(a):
 
 
 def test_fresh_config_shows_three_controls_and_advanced_is_collapsed(home_app):
+    """Owner 2026-11-15: my language + other side's language + one Start (listen + speak, #1001)."""
     make, _ = home_app
     a = make()
     a.toggle_adjust()
     a.root.update()
     assert a.settings["advanced_open"] is False and not a.frm.winfo_ismapped()
     controls = _outside_advanced(a)
-    assert sorted(w.winfo_class() for w in controls) == ["TButton", "TCombobox"]  # #1001: one Start, no mode choice
+    assert sorted(w.winfo_class() for w in controls) == ["TButton", "TCombobox", "TCombobox"]  # #1006 my+other language, #1001 one Start
     assert all(w.winfo_ismapped() for w in controls)
 
 

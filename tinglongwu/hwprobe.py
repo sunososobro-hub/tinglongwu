@@ -50,7 +50,7 @@ def gpu_info(run=subprocess.run) -> tuple[str | None, int | None]:
     """(name, total MiB) of GPU 0 via nvidia-smi; (None, None) when there is no NVIDIA driver."""
     try:
         out = run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
-                  capture_output=True, text=True, timeout=10).stdout
+                  capture_output=True, text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
         name, total = out.strip().splitlines()[0].rsplit(",", 1)
         return name.strip(), int(total.strip())
     except Exception:  # noqa: BLE001 - no driver, no nvidia-smi, unexpected output

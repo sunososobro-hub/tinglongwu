@@ -175,8 +175,8 @@ def test_cli_talk_end_to_end(tmp_path, pins, monkeypatch):
 
 
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh not installed (runs on CI ubuntu)")
-def test_install_dry_run_sets_up_talk_mode_and_both_shortcuts():
-    # #124: install.ps1 step 6 runs `tlwu-setup --talk` with the tier's args, step 7 makes both desktop shortcuts
+def test_install_dry_run_sets_up_talk_mode_and_one_shortcut():
+    # #124: install.ps1 step 6 runs `tlwu-setup --talk` with the tier's args; #1005: step 7 makes one desktop icon
     root = Path(__file__).resolve().parent.parent
     r = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-Command",
                         f"& '{root / 'install.ps1'}' -DryRun -Cpu; exit $LASTEXITCODE"],
@@ -192,7 +192,7 @@ def test_install_dry_run_sets_up_talk_mode_and_both_shortcuts():
     assert len(talk) == 1 and talk[0].rstrip().endswith("--talk --talk-whisper small --talk-compute cpu --talk-mt auto")  # #301: Hy-MT2 on the CPU
     lnk = [x for x in lines[s7:s8] if "[dry-run] shortcut:" in x]
     # (Linux pwsh has no Desktop folder, so the .lnk path is empty there; the target is what matters)
-    assert len(lnk) == 2 and "-NoExit -ExecutionPolicy Bypass -File" in lnk[1] and "tlwu-talk.ps1" in lnk[1]
+    assert len(lnk) == 1 and "tlwu-talk.ps1" not in lnk[0]  # #1005: speaking is in the main app, no talk-mode icon
 
 
 def test_setup_rejects_qwen_flags(capsys):

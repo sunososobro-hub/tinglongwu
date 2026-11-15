@@ -15,12 +15,12 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 from ..i18n import set_ui_lang, t, ui_lang
-from .icon import apply_icon, set_app_id
+from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from .core import (BOTH_MODE, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
-                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
+                   save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -42,12 +42,21 @@ LABEL_WRAP_PX = 190
 LOG_H, LOG_H_SHORT = 220, 100
 SHORT_SCREEN_PX = 900
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
+PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
+HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 notice is for the other settings
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
 FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+# settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
+SIDE_W = 168
+SIDE_LOGO_PX = 84
+SIDE = {"dark": {"top": "#1d2447", "bottom": "#2c2350", "fg": "#eef0ff", "sub": "#a9b1d6", "pill": "#4a63d8",
+                 "wave": "#3a3f72"},
+        "light": {"top": "#e9eeff", "bottom": "#e3dcfa", "fg": "#1d2447", "sub": "#5b6390", "pill": "#4a63d8",
+                  "wave": "#cfd3f3"}}
 # #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
 DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
 
@@ -434,6 +443,65 @@ class App:
         st = ttk.Style(self.root)  # #455: tighter buttons keep the control bar within 420 px (per theme)
         for style in ("Bar.TButton", "Bar.Toolbutton"):
             st.configure(style, padding=(4, 1))
+        st.configure("Adv.Toolbutton", anchor="w", padding=(8, 2))
+        if getattr(self, "side", None) is not None:
+            self._draw_sidebar()
+
+    # -- settings-panel sidebar (logo + nav), drawn on one canvas so it adds no interactive widgets ------------------
+    def _build_sidebar(self, p):
+        self.side = c = tk.Canvas(p, width=SIDE_W, highlightthickness=0, bd=0)
+        c.pack(side="left", fill="y")
+        self.side_logo = None
+        try:
+            img = tk.PhotoImage(master=p, file=str(icon_path("tinglongwu.png")))
+            k = max(1, img.width() // SIDE_LOGO_PX)
+            self.side_logo = img.subsample(k, k) if k > 1 else img
+        except Exception:  # noqa: BLE001 - a missing logo must never stop the GUI
+            _diag.swallowed(__name__)
+        c.bind("<Configure>", lambda _e: self._draw_sidebar())
+        self.side_nav = (("gui_menu_settings", "⚙", None), ("gui_menu_about", "ⓘ", self.show_about),
+                         ("gui_menu_help", "?", self.show_tour))
+
+    def _draw_sidebar(self):
+        c = self.side
+        pal = SIDE["light" if self.settings.get("theme") == "light" else "dark"]
+        c.delete("all")
+        h = max(c.winfo_height(), 400)
+        top, bot = (tuple(int(col[i:i + 2], 16) for i in (1, 3, 5)) for col in (pal["top"], pal["bottom"]))
+        steps = 48
+        for i in range(steps):
+            mix = [round(a + (b - a) * i / (steps - 1)) for a, b in zip(top, bot)]
+            y0 = h * i // steps
+            c.create_rectangle(0, y0, SIDE_W, h * (i + 1) // steps + 1, outline="", fill="#%02x%02x%02x" % tuple(mix))
+        # soft sound-wave arcs at the bottom (listening), instead of a picture background
+        for r in (70, 110, 150, 190):
+            c.create_arc(SIDE_W // 2 - r, h - r // 3, SIDE_W // 2 + r, h + r * 5 // 3, start=40, extent=100,
+                         style="arc", outline=pal["wave"], width=2)
+        y = 22
+        if self.side_logo is not None:
+            c.create_image(SIDE_W // 2, y, image=self.side_logo, anchor="n")
+            y += self.side_logo.height() + 6
+        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
+        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=(FONT_FAMILY, 10), anchor="n")
+        y += 74
+        for i, (key, glyph, cmd) in enumerate(self.side_nav):
+            tag = f"nav{i}"
+            active = cmd is None
+            if active:
+                self._round_rect(12, y - 4, SIDE_W - 12, y + 32, 10, fill=pal["pill"], outline="", tags=tag)
+            fg = "#ffffff" if active else pal["fg"]
+            c.create_text(30, y + 14, text=glyph, fill=fg, font=(FONT_FAMILY, 12, "bold"), tags=tag)
+            c.create_text(52, y + 14, text=t(key), fill=fg, font=(FONT_FAMILY, 11), anchor="w", tags=tag)
+            if cmd is not None:
+                c.tag_bind(tag, "<Button-1>", lambda _e, f=cmd: f())
+                c.tag_bind(tag, "<Enter>", lambda _e: c.configure(cursor="hand2"))
+                c.tag_bind(tag, "<Leave>", lambda _e: c.configure(cursor=""))
+            y += 44
+
+    def _round_rect(self, x0, y0, x1, y1, r, **kw):
+        pts = (x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1, x0 + r, y1, x0, y1,
+               x0, y1 - r, x0, y0 + r, x0, y0)
+        return self.side.create_polygon(pts, smooth=True, **kw)
 
     def _toggle_theme(self):
         self.apply_theme("dark" if self.v_dark.get() else "light")
@@ -464,6 +532,7 @@ class App:
         self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
         self.build_menubar()
         self._upd_relabel()
+        self._draw_sidebar()
         self.tour.relabel()
         self.render_log()
         if self.overlay.visible:
@@ -488,6 +557,10 @@ class App:
                      "v_voice", "v_voice_dev"):
             if hasattr(self, name):
                 getattr(self, name).trace_add("write", lambda *_: self._restart_check())
+        self.run_pair = None  # #1020: (my language, other side's language) the running session started with
+        self._pair_after = None
+        for name in ("v_lang", "v_target"):
+            getattr(self, name).trace_add("write", lambda *_: self._pair_restart_soon())
 
     def _build_send_gate(self, f):
         """#833: the held speak line with [Send] [Stop] in the status box `f`. Its widgets are made the first time a
@@ -553,7 +626,8 @@ class App:
         """#983: show the "restart to apply" notice + button while running with a changed start-time setting."""
         running = self.worker is not None and self.worker.is_alive()
         changed = restart_needed(self.run_snapshot, self._start_values()) if running and self.run_snapshot else []
-        if changed:
+        notice = [k for k in changed if k not in HOME_PAIR_KEYS]  # #1020: the home-card pair restarts by itself
+        if notice:
             self.lbl_restart.configure(text=t("gui_restart_to_apply"))
             self.btn_restart.configure(text=t("gui_restart_btn"))
             self.lbl_restart.grid(row=2, column=0, columnspan=2, sticky="w")
@@ -562,6 +636,27 @@ class App:
             self.lbl_restart.grid_remove()
             self.btn_restart.grid_remove()
         return changed
+
+    def _home_pair(self) -> tuple:
+        """#1020: the home card's language pair as codes (a UI-language switch relabels v_lang, same language)."""
+        return lang_from_label(self.v_lang.get()), self.v_target.get()
+
+    def _pair_restart_soon(self):
+        """#1020: a language changed on the home card while running -> restart after PAIR_RESTART_MS of quiet."""
+        if self._pair_after is not None:
+            self.root.after_cancel(self._pair_after)
+        self._pair_after = self.root.after(PAIR_RESTART_MS, self._pair_restart_fire)
+
+    def _pair_restart_fire(self):
+        self._pair_after = None
+        if self.worker is None or not self.worker.is_alive() or self.run_pair is None:
+            return  # not running (a pending restart reads the new pair when it starts)
+        if self._home_pair() == self.run_pair:
+            return
+        if self.load_t0 is not None or getattr(self, "_restart_mode", None) is not None or self.stop_ev.is_set():
+            self._pair_after = self.root.after(PAIR_RESTART_MS, self._pair_restart_fire)  # loading / stopping
+            return
+        self._restart_now()
 
     def _restart_now(self):
         """#983: stop, then start the same mode again once the worker has ended (new values are read by collect)."""
@@ -643,6 +738,8 @@ class App:
                 continue
             self.combos[key].configure(values=choice_labels(kind, values))
             var.set(var.get() + "")  # re-fires the write trace -> the shown name follows the language
+        if getattr(self, "home_target", None) is not None:
+            self.home_target.configure(values=self.combos["target"].cget("values"))
         # engine / model carry marks in the old language: rebuild them from the stored ids (settings value unchanged)
         eng = engine_from_label(self.v_engine.get())
         self.combos["engine"].configure(values=engine_labels())
@@ -791,8 +888,20 @@ class App:
         p.title("tinglongwu")
         p.resizable(True, True)  # #939: a normal resizable window; size and position are remembered
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
-        self.frm = f = ttk.Frame(p, padding=(10, 4, 10, 8))
+        self._build_sidebar(p)
+        body = ttk.Frame(p, padding=(12, 6, 12, 6))
+        body.pack(side="left", fill="both", expand=True)
+        if p.winfo_screenheight() >= SHORT_SCREEN_PX:  # #886: a 768 px screen has no height to spare for the title
+            self._tx(ttk.Label(body, font=(FONT_FAMILY, 14, "bold")), "gui_menu_settings").pack(anchor="w", pady=(0, 6))
+        card = "Card.TFrame" if sv_ttk is not None else "TFrame"
+        self.card_lang = ttk.Frame(body, style=card, padding=(10, 4, 10, 4))  # Listen / Speak + language + status
+        self.card_lang.pack(fill="x")
+        self.card_adv = ttk.Frame(body, style=card, padding=(10, 4, 10, 4))  # the Advanced toggle + everything else
+        self.card_adv.pack(fill="x", pady=(6, 0))
+        self.frm = f = ttk.Frame(self.card_adv, padding=(0, 4, 0, 0))
         f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
+        for col in (1, 5):  # the two control columns share the card's width (the "..." buttons stay narrow)
+            f.columnconfigure(col, weight=1)
         self.combos = {}
         self.kind_combos = {}
         self._shown = {}
@@ -841,17 +950,15 @@ class App:
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
-        self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
-        self.btn_pause.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))  # #886: one row with Check setup
         # Check setup stays in the panel, above the subtitle log (#756); Report a problem and the update controls
         # moved to the menu bar's Help menu (#738)
         self.act_row = act = ttk.Frame(f)
-        act.grid(row=UPDATE_ROW, column=4, columnspan=3, sticky="we", pady=(6, 0))
+        act.grid(row=UPDATE_ROW, column=0, columnspan=SPAN, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
-        self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
+        self.status_box = sb = ttk.Frame(self.card_lang, padding=(0, 4, 0, 0))  # #737: status/notice stay visible, collapsed
         ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
         self.v_dl_pct = tk.IntVar(value=0)  # #739: first-Start download progress bar (hidden unless a download runs)
         self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
@@ -1114,12 +1221,12 @@ class App:
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
-        q = ttk.Frame(self.panel, padding=(10, 6, 10, 0))  # #886: compact top
+        q = ttk.Frame(self.card_lang)  # #886: compact top
         q.pack(fill="x")
         self.status_box.pack(fill="x")
         # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)
-        self.adv_btn = ttk.Checkbutton(self.panel, variable=self.v_adv, style="Toolbutton", command=self._adv_toggled)
-        self.adv_btn.pack(anchor="w", padx=10, pady=(6, 0))
+        self.adv_btn = ttk.Checkbutton(self.card_adv, variable=self.v_adv, style="Adv.Toolbutton", command=self._adv_toggled)
+        self.adv_btn.pack(anchor="w", fill="x")
         self.set_advanced(bool(self.settings["advanced_open"]))
         # #737: the one picker on the first screen is the OTHER side's language (= source language `lang`, the same
         # variable as tour step 1); my language (`target`) is under Advanced. quick_settings() turns it into
@@ -1169,6 +1276,10 @@ class App:
         self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
         self._tx(ttk.Checkbutton(bar, variable=self.v_bar, command=self._bar_toggled), "gui_floating_bar").pack(
             side="left")
+        # #1020: "Freeze subtitles" only freezes this box and the floating bar (translation keeps running), so it
+        # sits with the subtitle controls, not next to Start / Stop where it read as "Stop"
+        self.btn_pause = ttk.Button(bar, text=t("gui_pause"), command=self.toggle_pause)
+        self.btn_pause.pack(side="left", padx=(8, 0))
         ttk.Button(bar, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
         ttk.Button(bar, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
         # fixed pixel size: a bigger font must not grow the window; #886: shorter on a short screen (1366x768)
@@ -1460,21 +1571,37 @@ class App:
         (messagebox.showinfo if ok else messagebox.showwarning)(t("gui_check_setup"), text, parent=self.root)
 
     def report_problem(self):
+        """The GPU / package probes in env_info() take seconds: run them (and the browser launch) off the GUI
+        thread so the window never freezes; a "no browser" URL comes back through the queue."""
         from ..report import open_report
         from .core import report_info
 
-        open_report(info=report_info(self.settings), say=lambda m: self._status_text(t("gui_open_url", url=m[:80])))
+        info = report_info(self.settings)
+
+        def work():
+            try:
+                open_report(info=info, say=lambda m: self.q.put(("status", t("gui_open_url", url=m[:80]))))
+            except Exception:  # noqa: BLE001 - a failed report must not kill the thread silently
+                _diag.swallowed(__name__)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def copy_ai_prompt(self):
         """#940: prompt + report_info + last 50 redacted log lines to the clipboard; nothing is sent anywhere."""
         from ..report import build_ai_text, env_info
         from .core import report_info
 
-        info = dict(env_info())
-        info.update(report_info(self.settings))
-        self.root.clipboard_clear()
-        self.root.clipboard_append(build_ai_text(info))
-        self._status_text(t("gui_copied_ai"))
+        extra = report_info(self.settings)
+
+        def work():  # slow probes off the GUI thread; the clipboard is set by poll() on the GUI thread
+            try:
+                info = dict(env_info())
+                info.update(extra)
+                self.q.put(("clip_ai", build_ai_text(info)))
+            except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def collect(self):
         s = self.settings
@@ -1547,6 +1674,7 @@ class App:
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
         self.run_snapshot = self._start_values()  # #983
+        self.run_pair = self._home_pair()  # #1020
         self._restart_check()
         self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
@@ -1624,7 +1752,7 @@ class App:
                 ev = self.q.get_nowait()
                 kind = ev[0]
                 if kind == "status":
-                    self._status_text(ev[1])
+                    self._status_text(load_status_text(ev[1]))  # #1020: in the UI language
                     from ..cli import READY_STATUS  # already imported by the worker; not at GUI start (#332)
 
                     if ev[1].startswith(READY_STATUS) and self.load_t0 is not None:
@@ -1637,7 +1765,8 @@ class App:
                         text = t(ready)
                         if self.quick_mode == BOTH_MODE:  # #1001: both legs; keep the #710 CABLE hint after it
                             text = t("gui_ready_both") + (f" | {text}" if ready == SPEAK_HINT_CABLE else "")
-                        self._status_text(f"{text} ({ev[1]})")  # #294: visible "start playback now"
+                        loaded = load_status_text(ev[1])  # #1020: "Listening - loaded in N s (...)" localized
+                        self._status_text(text if ev[1] == READY_STATUS else text + "\n" + loaded)  # #294
                         self._sync_quick()
                 elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
                     from .core import cpu_mode_line
@@ -1660,6 +1789,10 @@ class App:
                     self._status_text(ev[1])
                 elif kind == "doctor":
                     self._show_setup_check(ev[1], ev[2])
+                elif kind == "clip_ai":
+                    self.root.clipboard_clear()
+                    self.root.clipboard_append(ev[1])
+                    self._status_text(t("gui_copied_ai"))
                 elif kind == "dl_done":
                     self._download_done(ev[1], ev[2])
                 elif kind.startswith("upd_"):
