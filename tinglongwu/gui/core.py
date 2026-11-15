@@ -1172,6 +1172,17 @@ class SpeakerColors:
         return self.palette[self._idx[raw] % len(self.palette)]
 
 
+def speaker_prefix(book, colors, raw, fmt):
+    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", "#e6a23c"), or None without a
+    resolved speaker. Same name lookup (speaker_text: renames, "Speaker N" in the UI language) and same palette color
+    as the main-window avatar, so the bar needs no extra row: the prefix sits in front of the line's own text."""
+    shown = speaker_text(book, raw, fmt) if raw else None
+    if not shown:
+        return None
+    sep = "\uff1a" if any(ord(c) > 0x2e80 for c in shown) else ": "
+    return f"\u25cf {shown}{sep}", colors.color(raw)
+
+
 def speaker_initial(book, raw: str) -> str:
     """The avatar text: the speaker number for the default "Speaker N" label, else the first character of the name."""
     from ..speakers import LABEL_PREFIX

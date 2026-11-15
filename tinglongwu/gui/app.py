@@ -284,9 +284,15 @@ class Overlay:
         t.configure(state="normal")
         t.delete("1.0", "end")
         rows = state.history() or [("", text, d) for text, d in self.app.placeholder()]  # "Listening..."
+        pfx = getattr(self.app, "speaker_prefix", None)  # the CLI Bar host has none: no labels, as before
         for i, (src, text, is_draft) in enumerate(rows):
             if show_src and src:
                 t.insert("end", src + "\n", "src")
+            p = pfx(i) if pfx is not None and state.history() else None
+            if p:  # 0.3.8: colored "● Speaker 2: " in front of the same line (no extra row, no extra height)
+                tag = "spkc" + p[1]
+                t.tag_configure(tag, foreground=p[1], font=self.font)
+                t.insert("end", p[0], tag)
             t.insert("end", text + ("\n" if i < len(rows) - 1 else ""), "draft" if is_draft else "final")
         t.configure(state="disabled")
         if follow:
@@ -1641,6 +1647,15 @@ class App:
         shown = speaker_text(self.spk_book, raw, lambda n: t("gui_speaker", n=n)) if raw else None
         return (raw, shown) if shown else None
 
+    def speaker_prefix(self, row: int):
+        """Floating bar: (prefix text, color) of history row `row`, or None (labels off / not ready / mine)."""
+        from .core import speaker_prefix
+
+        lab = self._speaker_label(row)
+        if not lab:
+            return None
+        return speaker_prefix(self.spk_book, self.spk_colors, lab[0], lambda n: t("gui_speaker", n=n))
+
     def _rename_speaker(self, raw: str):
         """0.3.8: click on a speaker label: ask for a name; it applies to every past and future bubble of that speaker
         in this session (SpeakerBook, never saved). An empty name goes back to "Speaker N"."""
@@ -1653,6 +1668,8 @@ class App:
             return
         self.spk_book.rename(raw, name)
         self.render_log()
+        if self.overlay.visible:
+            self.overlay.render(self.state)  # the floating bar shows the new name at once
 
     def _close_labeler(self):
         """Stop the speaker-ID worker thread and let go of its model (Stop, restart, quit)."""
