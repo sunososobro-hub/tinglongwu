@@ -690,6 +690,7 @@ class App:
         self._pair_changed()
         self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
         self.btn.pack(side="left")
+        self._sync_quick()  # #982: saved matching languages disable both Start buttons from the first frame
         self.dot = tk.Canvas(b, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
         self.dot.pack(side="left", padx=2)
@@ -1159,7 +1160,7 @@ class App:
         enabled = enabled and not (self.same_lang and self._quick_phase() == "idle")  # #982
         self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
         if hasattr(self, "btn"):
-            self.btn.configure(state="normal" if enabled or self._quick_phase() != "idle" else "disabled")
+            self.btn.configure(state="normal" if enabled or self._quick_phase() == "running" else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""

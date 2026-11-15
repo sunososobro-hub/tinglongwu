@@ -64,3 +64,31 @@ def test_lang_fields_changing_one_never_rewrites_the_other(app):
     assert app.v_target.get() == "en"
     app.v_target.set("zh-tw")
     assert app.v_lang.get() == "Japanese"
+
+
+def test_lang_fields_saved_matching_languages_start_disabled(tmp_path, monkeypatch):
+    tk = pytest.importorskip("tkinter")
+    try:
+        tk.Tk().destroy()
+    except tk.TclError:
+        pytest.skip("no display")
+    from tinglongwu import i18n
+    from tinglongwu.gui import app as appmod, core
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(i18n, "_system_tag", lambda: "en-US")
+    monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)
+    monkeypatch.setattr(i18n, "_override", "en")
+    real = core.load_settings
+
+    def same(*a, **k):
+        s = real(*a, **k)
+        s.update(lang="en", target="en")
+        return s
+
+    monkeypatch.setattr(appmod, "load_settings", same, raising=False)
+    a = appmod.App()
+    try:
+        assert str(a.both_btn.cget("state")) == "disabled" and str(a.btn.cget("state")) == "disabled"
+    finally:
+        a.root.destroy()
