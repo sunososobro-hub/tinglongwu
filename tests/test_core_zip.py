@@ -67,25 +67,33 @@ def _release_windows_steps():
     return _workflow("release.yml")["jobs"]["windows"]["steps"]
 
 
-def _nuitka_cache(steps):
-    """The step that restores the Nuitka cache: `actions/cache`, or `actions/cache/restore` since #888."""
-    return next(s for s in steps if str(s.get("name", "")).startswith("Nuitka compile cache")
-                and s.get("uses", "").split("@")[0] in ("actions/cache", "actions/cache/restore"))["with"]
+def _runtime_cache(steps):
+    """(restore step, save step) of the runtime layer cache (#923)."""
+    restore = next(s for s in steps if "actions/cache/restore@" in str(s.get("uses", "")))
+    save = next(s for s in steps if "actions/cache/save@" in str(s.get("uses", "")))
+    return restore, save
 
 
-def _key_prefix(key: str) -> str:
-    """The key without its last `-${{ ... }}` part (github.sha in release.yml, github.run_id in windows-build, #888)."""
-    return key.rsplit("-${{", 1)[0]
+def test_release_windows_job_builds_core_from_the_cpu_llama_venv(tmp_path):
+    sys.path.insert(0, str(REPO / "packaging"))
+    import runtime_layer
 
-
-def test_release_windows_job_builds_core_from_the_cpu_llama_venv():
     runs = [str(s.get("run", "")) for s in _release_windows_steps()]
     text = "\n".join(runs)
     builds = [r for r in runs if "build_windows.py" in r]
     assert len(builds) == 1 and "build_windows.py --core" in builds[0] and "--allow-cpu-only" not in text
-    venv = next(r for r in runs if "pip install -r" in r)
-    assert "requirements-llama-cpu.txt --only-binary=:all:" in venv
-    for gone in ("requirements-llama-cuda.txt", "requirements-gpu.txt", "nvrtc", "cudart64_12.dll", "cuda_libs"):
+    # #923: the packaging venv is made by the build script (runtime_layer.make_pack_venv), only when the runtime
+    # layer is rebuilt: requirements.txt without av / psutil + the CPU llama wheel, binary only
+    calls = []
+    runtime_layer.make_pack_venv(tmp_path / "venv", run=calls.append)
+    installs = [c[c.index("install") + 1:] for c in calls if "install" in c]
+    assert ["-r", str(REPO / "requirements-llama-cpu.txt"), "--only-binary=:all:"] in installs
+    reqs = (tmp_path / "req-pack.txt").read_text(encoding="utf-8")
+    assert ["-r", str(tmp_path / "req-pack.txt")] in installs and reqs == runtime_layer.pack_requirements()
+    assert "faster-whisper==" in reqs and "\nav==" not in "\n" + reqs and "psutil==" not in reqs
+    assert not any("nuitka" in " ".join(c).lower() for c in calls)
+    for gone in ("requirements-llama-cuda.txt", "requirements-gpu.txt", "nvrtc", "cudart64_12.dll", "cuda_libs",
+                 "pip install", "nuitka"):
         assert gone not in text, gone
 
 
@@ -103,14 +111,28 @@ def test_release_windows_job_gates_core_budget_before_the_packaging_check():
     assert release_check.MAX_CORE_MB == 300
 
 
-def test_release_nuitka_cache_key_is_the_windows_build_key():
-    rel = _nuitka_cache(_release_windows_steps())
-    ci = _nuitka_cache(_workflow("windows-build.yml")["jobs"]["build"]["steps"])
-    assert _key_prefix(rel["key"]) == _key_prefix(ci["key"])
-    assert "hashFiles('requirements.txt', 'requirements-llama-cpu.txt')" in rel["key"]
-    ci_restore, rel_restore = ci["restore-keys"].split(), rel["restore-keys"].split()
-    assert rel_restore[:len(ci_restore)] == ci_restore  # CI's keys first; extra fallbacks only after them
-    assert "cuda" not in rel["key"] + rel["restore-keys"] and "requirements-gpu" not in rel["key"]
+def test_release_runtime_cache_key_is_the_windows_build_key():
+    """#923: one cache family for the runtime layer; its key hashes exactly runtime_layer.KEY_GLOBS."""
+    sys.path.insert(0, str(REPO / "packaging"))
+    import runtime_layer
+
+    rel, rel_save = _runtime_cache(_release_windows_steps())
+    ci_steps = _workflow("windows-build.yml")["jobs"]["build"]["steps"]
+    ci, ci_save = _runtime_cache(ci_steps)
+    assert rel["with"]["key"] == ci["with"]["key"]
+    globs = ", ".join(f"'{g}'" for g in runtime_layer.KEY_GLOBS)
+    assert f"hashFiles({globs})" in ci["with"]["key"]
+    assert "github.sha" not in ci["with"]["key"] and "restore-keys" not in ci["with"]  # exact hit or rebuild
+    assert "cuda" not in ci["with"]["key"]
+    for restore, save, steps in ((rel, rel_save, _release_windows_steps()), (ci, ci_save, ci_steps)):
+        assert restore["id"] == "runtime" and save["with"]["path"] == restore["with"]["path"]
+        assert save["with"]["key"] == "${{ steps.runtime.outputs.cache-primary-key }}"
+        assert "steps.runtime.outputs.cache-hit != 'true'" in save["if"]  # only a rebuilt layer is saved
+        # #888: never from a pull request or a dry run on a work branch (per-ref copies evict the shared entry)
+        assert ("github.event_name == 'push'" in save["if"]) or ("github.ref == 'refs/heads/main'" in save["if"])
+        build = next(i for i, s in enumerate(steps) if "build_windows.py" in str(s.get("run", "")))
+        assert steps.index(restore) < build < steps.index(save)  # saved before any later check can fail
+        assert restore["with"]["path"].endswith("\\runtime")  # = build_windows.RUNTIME.parent under the build root
 
 
 def test_release_windows_job_reports_time_without_gating():

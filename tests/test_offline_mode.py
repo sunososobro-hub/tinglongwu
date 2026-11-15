@@ -1,7 +1,6 @@
 """#254: TLWU_OFFLINE=1 / unpinned Argos refusal / auto_update never pip-installs unasked. All mocked, no network."""
 import socket
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest

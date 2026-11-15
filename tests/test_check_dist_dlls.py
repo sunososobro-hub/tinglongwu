@@ -178,7 +178,7 @@ def test_pe_file_version_and_machine():
 def test_copy_vc_runtime_ships_the_matched_set(tmp_path):
     src, app = vc_dir(tmp_path / "sys"), tmp_path / "app"
     app.mkdir()
-    (app / "vcruntime140.dll").write_bytes(b"old")  # the one Nuitka took from Python is replaced
+    (app / "vcruntime140.dll").write_bytes(b"old")  # the one that ships with Python is replaced
     assert bw.copy_vc_runtime(app, [src]) == [f"{n} 14.51.36247.0" for n in bw.VC_RUNTIME]
     for n in bw.VC_RUNTIME:
         assert (app / n).read_bytes() == fake_vc_dll(n)
@@ -383,16 +383,15 @@ def test_pack_smoke_fails_on_the_cpu_fallback_unless_lite(tmp_path):
 
 
 def test_allow_cpu_only_relaxes_the_smoke_only_without_an_nvidia_driver(tmp_path, monkeypatch):
-    app = tmp_path / "dist" / "tlwu"
-    app.mkdir(parents=True)
-    (app / "tlwu.exe").write_bytes(b"")
-    (tmp_path / "packaging").mkdir()
-    (tmp_path / "packaging" / "使用說明.txt").write_text("x", "utf-8")
-    for name, val in (("DIST", tmp_path / "dist"), ("APP", app), ("REPO", tmp_path),
-                      ("find_cuda_src", lambda *a: tmp_path), ("copy_llama", lambda *a, **k: None),
-                      ("cpu_llama_dlls", lambda *a, **k: []), ("copy_cuda", lambda *a, **k: []),
-                      ("copy_vc_runtime", lambda *a, **k: []), ("write_licenses", lambda *a, **k: None),
-                      ("copy_worker_sources", lambda *a, **k: []),
+    """main() on a reused runtime layer (#923): hard links + app layer, then checks, smoke and zip."""
+    runtime, app = tmp_path / "runtime" / "tlwu", tmp_path / "dist" / "tlwu"
+    (runtime / "numpy").mkdir(parents=True)
+    (runtime / "tlwu.exe").write_bytes(b"MZ")
+    (runtime / "numpy" / "__init__.pyc").write_bytes(b"pyc")
+    manifest = {"lite": False}
+    for name, val in (("DIST", tmp_path / "dist"), ("APP", app), ("RUNTIME", runtime),
+                      ("ensure_runtime", lambda *a, **k: dict(manifest)),
+                      ("build_runtime", lambda *a, **k: pytest.fail("the runtime layer must be reused")),
                       ("make_zip", lambda *a, **k: (tmp_path / "dist" / "tinglongwu-win64.zip").write_bytes(b"z"))):
         monkeypatch.setattr(bw, name, val)
     for mod, fn in (("check_dist_dlls", "check"), ("clean_machine_check", "cmd_deps")):
@@ -401,22 +400,23 @@ def test_allow_cpu_only_relaxes_the_smoke_only_without_an_nvidia_driver(tmp_path
         monkeypatch.setitem(sys.modules, mod, fake)
     seen = []
     monkeypatch.setattr(bw, "smoke", lambda app, lite=False, no_gpu_ok=False: seen.append((lite, no_gpu_ok)))
-    for flag, driver, want in (([], False, False), (["--allow-cpu-only"], False, True),
-                               (["--allow-cpu-only"], True, False)):
+    for flag, driver, lite, want in (([], False, False, False), (["--allow-cpu-only"], False, False, True),
+                                     (["--allow-cpu-only"], True, False, False), (["--lite"], False, True, False)):
+        manifest["lite"] = lite
         monkeypatch.setattr(bw, "has_nvidia_driver", lambda d=driver: d)
         monkeypatch.setattr(sys, "argv", ["build_windows.py", "--post-only", *flag])
         assert bw.main() == 0
-        assert seen.pop() == (False, want)
+        assert seen.pop() == (lite, want)
+    assert (app / "numpy" / "__init__.pyc").read_bytes() == b"pyc" and (app / "tlwu.exe").is_file()
+    assert (app / "tinglongwu" / "__init__.py").is_file() and (app / "tlwu_app" / "main.py").is_file()
+    assert (app / bw.USAGE_TEXT).is_file() and bw.read_version() in (app / bw.APP_MANIFEST).read_text("utf-8")
+    assert not (runtime / "tinglongwu").exists()  # the cached runtime layer stays free of app files
 
 
 def test_build_stops_without_cuda_wheels(tmp_path, monkeypatch):
-    app = tmp_path / "dist" / "tlwu"
-    app.mkdir(parents=True)
-    (app / "tlwu.exe").write_bytes(b"")
-    monkeypatch.setattr(bw, "DIST", tmp_path / "dist")
-    monkeypatch.setattr(bw, "APP", app)
+    monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(bw, "find_cuda_src", lambda *a: None)
     monkeypatch.setattr(bw, "copy_llama", lambda *a, **k: pytest.fail("must stop before packing"))
-    monkeypatch.setattr(sys, "argv", ["build_windows.py", "--post-only"])
     with pytest.raises(SystemExit, match="allow-cpu-only"):
-        bw.main()
+        bw.build_runtime(tmp_path / "runtime" / "tlwu", lite=False, allow_cpu_only=False)
+    assert not (tmp_path / "runtime").exists()

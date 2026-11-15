@@ -53,6 +53,19 @@ jobs:
         run: |
           "$RUNNER_TEMP/tlwu/.venv/bin/python" -c "import tinglongwu; print('import ok')"
           "$RUNNER_TEMP/tlwu/.venv/bin/tlwu" --help
+      - name: Real small-model download, then CPU self-test under 60 s (#172)
+        # Network step: tiny Whisper + Hy-MT2 CPU engine. Exit 3 = this tlwu has no --selftest, which must fail CI.
+        timeout-minutes: 12
+        run: |
+          VENV="$RUNNER_TEMP/tlwu/.venv/bin"
+          "$VENV/tlwu-setup" --whisper tiny --hymt --pair en-zh --allow-unpinned --models-dir "$RUNNER_TEMP/models" </dev/null
+          # install.sh does not install the Hy-MT2 CPU engine (llama-cpp-python); same pin e2e.yml uses
+          "$VENV/pip" install -r requirements-llama-cpu.txt --only-binary=:all:
+          START=$(date +%s)
+          "$VENV/tlwu-setup" --selftest --model tiny --engine hymt --device cpu --models-dir "$RUNNER_TEMP/models"
+          SECS=$(( $(date +%s) - START ))
+          echo "selftest took $SECS s"
+          test "$SECS" -lt 60 || { echo "selftest took $SECS s (limit 60)"; exit 1; }
       - name: Uninstall leaves nothing behind (#476)
         run: |
           TLWU_DIR="$RUNNER_TEMP/tlwu" bash "$RUNNER_TEMP/tlwu/scripts/uninstall.sh" --yes </dev/null

@@ -1,7 +1,7 @@
 import os
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 import pytest
@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stats_dashboard as sd  # noqa: E402
 
-NOW = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 
 
 def fake_api(path, accept=None):
@@ -427,3 +427,73 @@ def test_shared_mode_is_infrastructure_split_by_area_662():
     only_speak = sd.render_sankey(flow, focus=["speak"])
     assert sd.focus_match("infrastructure ci", {"shared"}) and not sd.focus_match("infrastructure ci", {"speak"})
     assert only_speak.count(sd.FOCUS_ORANGE) < svg.count(sd.FOCUS_ORANGE)
+
+
+def test_flow_backfill_covers_14_days_with_inference_662():
+    now = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+
+    def api(path, accept=None):
+        if path.endswith("/files?per_page=100"):
+            return [{"filename": "tinglongwu/tts.py"}]
+        if path.endswith("/issues/574"):
+            return {"body": "level: 2"}
+        return {"labels": []}
+
+    def pr(n, merged):
+        return {"number": n, "merged_at": merged, "body": "Closes #%d\n\ntlwu-usage: model=sonnet tool_calls=1 minutes=10" % n}
+
+    prs = [pr(1, "2026-11-14T10:00:00Z"), pr(2, "2026-11-05T10:00:00Z"), pr(3, "2026-10-20T10:00:00Z")]
+    flow, _ = sd.build_flow_inputs(api, "o/r", prs, now)
+    assert flow["total"] == 10.0  # 48 h window: only PR 1
+    assert flow["backfill"]["days"] == 14 and flow["backfill"]["total"] == 20.0  # PRs 1 and 2, not 3
+    assert flow["backfill"]["unclassified"] == 0.0 and flow["backfill"]["inferred"]["mode"] == 100.0
+    assert "Last 14 days" in sd.render_backfill_note(flow)
+
+
+def test_flow_warm_files_cache_makes_no_files_or_issue_calls_662():
+    now = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+    calls = []
+
+    def api(path, accept=None):
+        calls.append(path)
+        if path.endswith("/files?per_page=100"):
+            return [{"filename": "tinglongwu/tts.py"}]
+        if path.endswith("/issues/574"):
+            return {"body": "level: 2"}
+        return {"labels": []}
+
+    prs = [{"number": n, "merged_at": "2026-11-1%dT10:00:00Z" % (n % 4),
+            "body": "Closes #%d\n\ntlwu-usage: model=sonnet tool_calls=1 minutes=10" % (n + 100)} for n in range(1, 5)]
+    labels = {n + 100: ["bug"] for n in range(1, 5)}
+    cache = {}
+    cold, _ = sd.build_flow_inputs(api, "o/r", prs, now, labels, cache)
+    assert sum(p.endswith("/files?per_page=100") for p in calls) == 4
+    assert not any("/issues/1" in p for p in calls)  # labels came from the issue list
+    assert sorted(cache) == ["1", "2", "3", "4"]
+    calls.clear()
+    warm, _ = sd.build_flow_inputs(api, "o/r", prs, now, labels, cache)
+    assert calls == ["/repos/o/r/issues/574"]  # second run: 0 files calls, 0 issue calls
+    assert warm == cold
+
+
+def test_run_persists_pr_files_cache_662(tmp_path):
+    files_calls = []
+
+    def api(path, accept=None):
+        if path.endswith("/files?per_page=100"):
+            files_calls.append(path)
+            return [{"filename": "mobile/lib/main.dart"}]
+        if path == "/repos/o/r/issues/574":
+            return {"body": "level: 2"}
+        if "/pulls?" in path:
+            return [{"number": 41, "created_at": "2026-11-12T08:00:00Z", "merged_at": "2026-11-12T10:00:00Z",
+                     "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=5 minutes=10"}]
+        return fake_api(path, accept)
+
+    sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
+    assert json.loads((tmp_path / sd.PR_FILES).read_text()) == {"41": ["mobile/lib/main.dart"]}
+    sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
+    assert len(files_calls) == 1  # second run reads the cache file
+    big = {str(n): [] for n in range(sd.PR_FILES_KEEP + 5)}
+    pruned = sd.prune_files_cache(big)
+    assert len(pruned) == sd.PR_FILES_KEEP and "0" not in pruned and str(sd.PR_FILES_KEEP + 4) in pruned

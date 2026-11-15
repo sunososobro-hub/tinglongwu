@@ -40,7 +40,7 @@ def _llama(root: Path, mod, with_ggml=True, version="0.3.36"):
 
 def test_builds_zip_and_manifest_without_nuitka(tmp_path, monkeypatch):
     m = _mod()
-    monkeypatch.setattr(m, "run_nuitka", lambda *a, **k: pytest.fail("nuitka must not run"))
+    monkeypatch.setattr(m, "ensure_runtime", lambda *a, **k: pytest.fail("the core build must not run"))
     sp, lib = _licenses(_wheels(tmp_path / "sp", m), m), _llama(tmp_path, m)
     (tmp_path / "LICENSE.md").write_text("MIT")
     man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=sp, llama_lib=lib, url="https://x/p.zip",
@@ -162,3 +162,34 @@ def test_unreadable_llama_wheel_version_exits_and_explicit_version_wins(tmp_path
     assert m.llama_wheel_version(_llama(root, m, version="0.3.40")) == "0.3.40"
     with pytest.raises(SystemExit, match="llama-cpp-python version"):
         m.llama_wheel_version(lib)
+
+
+# ---- #765 Opus CHANGES: pack-recipe fingerprint
+
+def test_format_bump_changes_key(tmp_path, monkeypatch):
+    m = _mod()
+    for n in m.GPU_PACK_KEY_FILES:
+        (tmp_path / n).write_text("a")
+    k1 = m.gpu_pack_wheels_key(tmp_path)
+    monkeypatch.setattr(m, "GPU_PACK_FORMAT", m.GPU_PACK_FORMAT + 1)
+    assert m.gpu_pack_wheels_key(tmp_path) != k1
+
+
+def _recipe_fingerprint(m) -> str:
+    import hashlib
+    import inspect
+
+    h = hashlib.sha256()
+    for f in (m.build_gpu_pack_only, m.make_gpu_pack, m.copy_nvidia_licenses, m.llama_license_file, m.llama_wheel_version):
+        h.update(inspect.getsource(f).encode())
+    h.update(inspect.getsource(gpu_pack).encode())
+    return h.hexdigest()
+
+
+# Pinned together with GPU_PACK_FORMAT: if this fails you edited the pack recipe; bump GPU_PACK_FORMAT and update both.
+RECIPE_PIN = (1, "4c4b8c24347b85eff23a33464000fd8445fe0b2314a63705b6e03d5020d5d27a")
+
+
+def test_recipe_edit_requires_format_bump():
+    m = _mod()
+    assert (m.GPU_PACK_FORMAT, _recipe_fingerprint(m)) == RECIPE_PIN

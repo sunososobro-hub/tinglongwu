@@ -18,7 +18,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 TTFS_BUDGET_S = 180
 TTFS_CLIP = "tinglongwu/data/selftest_en.wav"
@@ -133,7 +133,7 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S):
         "excl_download_seconds": None, "setup_seconds": round(setup_s, 3),
         "first_subtitle_seconds": None if first is None else round(first, 3),
         "os": sys.platform, "version": _version(), "sha": _sha(),
-        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "date": datetime.now(UTC).strftime("%Y-%m-%d"),
     }
     if first is not None:
         total = inst_s + setup_s + first

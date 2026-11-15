@@ -544,6 +544,30 @@ def download_env(env=None) -> dict:
     return out
 
 
+def short_line(line: str, limit: int = 90) -> str:
+    """#918: one child output line cut to `limit` chars for the status text. A tqdm bar field ("|####      |") is
+    dropped first and a long file name is cut to 30 chars ("model-00001-...0002.safetensors"), so the
+    "NN% 48M/484M" part stays readable."""
+    import re
+
+    line = re.sub(r"\|[^|]*\|", "|", line)
+    m = list(re.finditer(r"\d{1,3}\s*%", line))
+    if not m:
+        return line[:limit]
+    head = line[:m[-1].start()]
+    name = head.rstrip()  # tqdm pads " 10%" vs "100%": cut the name, not the padding
+    if len(name) > 30:  # display only: StartDownload tracks by the full line (line_event)
+        name = f"{name[:12]}...{name[-15:]}"
+    return (name + head[len(head.rstrip()):] + line[m[-1].start():])[:limit]
+
+
+def line_event(kind: str, line: str) -> tuple:
+    """#918: (kind, status text) for a child output line, plus the full line as a third item when the text was
+    shortened, so StartDownload tracks each file by its real name (consumers that only read ev[1] are unchanged)."""
+    text = short_line(line)
+    return (kind, text) if text == line else (kind, text, line)
+
+
 def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
     """Run the download child (worker thread); `put` gets ("dl_line", text) per output line and
     ("dl_done", model, returncode). Returns the return code (-1 if it could not start)."""
@@ -557,7 +581,7 @@ def run_download(model: str, put, mdir=None, popen=None, bundled: bool | None = 
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
             if parts:
-                put(("dl_line", parts[-1][:90]))
+                put(line_event("dl_line", parts[-1]))
         rc = p.wait()
     except Exception as e:  # noqa: BLE001
         put(("dl_line", f"{type(e).__name__}: {e}"[:90]))
@@ -583,20 +607,48 @@ def missing_start_model(run: dict, mdir=None) -> str | None:
     return None if is_downloaded(m, mdir) else m
 
 
+_UNIT = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12}
+
+
+def progress_bar(line: str) -> tuple[str, int, float] | None:
+    """#918: (label, percent, total) of one download progress line, else None. label is the text before the last
+    "NN%" ("model.bin" in "model.bin: 10%|#| 48M/484M"); total is the size after the "/" that follows it
+    (484e6 there, 250e6 for "(87/250 MB)", 4 for tqdm's "Fetching 4 files: 25%| 1/4"), 0 when none is printed."""
+    import re
+
+    line = line or ""
+    m = list(re.finditer(r"(\d{1,3})\s*%", line))
+    if not m:
+        return None
+    last = m[-1]
+    label = line[:last.start()].strip().rstrip(":").strip()
+    t = re.search(r"\d\s*[kKMGT]?i?B?\s*/\s*(\d+(?:\.\d+)?)\s*([kKMGT]?)", line[last.end():])
+    total = float(t.group(1)) * _UNIT[t.group(2).lower()] if t else 0.0
+    return label, min(100, int(last.group(1))), total
+
+
 class StartDownload:
     """#739: progress of the download that runs on the first Start. Feed it the `put` events of run_download /
-    run_pack_download; `percent` only goes up, `ok` is set on a zero return code, `error` is one line on failure."""
+    run_pack_download; `ok` is set on a zero return code, `error` is one line on failure.
+    #918: huggingface_hub prints one tqdm bar per file, so `percent` is the bar of the largest file seen (by the
+    total it prints), else of the latest line's label; each label's percent only goes up."""
 
     def __init__(self, name: str):
         self.name, self.percent, self.done, self.ok, self.error, self._last = name, 0, False, False, "", ""
+        self._bars: dict[str, list] = {}  # label -> [percent, total]
 
     def feed(self, ev: tuple) -> None:
         kind = ev[0]
         if kind in ("dl_line", "pack_line"):
             self._last = ev[1]
-            p = parse_progress(ev[1])
-            if p is not None:
-                self.percent = max(self.percent, p)
+            bar = progress_bar(ev[2] if len(ev) > 2 else ev[1])  # #918: the full line when the text was shortened
+            if bar is not None:
+                label, p, total = bar
+                b = self._bars.pop(label, [0, 0.0])
+                b[0], b[1] = max(b[0], p), max(b[1], total)
+                self._bars[label] = b  # latest last: equal totals -> the bar updated most recently
+                big = max(reversed(self._bars.values()), key=lambda x: x[1])
+                self.percent = big[0] if big[1] > 0 else b[0]
         elif kind in ("dl_done", "pack_done"):
             self.done, self.ok = True, ev[2] == 0
             if self.ok:
@@ -617,7 +669,7 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
             if parts:
-                put(("pack_line", parts[-1][:90]))
+                put(line_event("pack_line", parts[-1]))
         rc = p.wait()
     except Exception as e:  # noqa: BLE001
         put(("pack_line", f"{type(e).__name__}: {e}"[:90]))

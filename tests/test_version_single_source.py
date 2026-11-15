@@ -25,13 +25,19 @@ def test_pyproject_has_no_literal_version():
     assert proj["tool"]["setuptools"]["dynamic"]["version"] == {"attr": "tinglongwu.__version__"}
 
 
-def test_build_windows_follows_package_version():
+def test_build_windows_follows_package_version(tmp_path):
     bw = _build_windows()
     assert bw.read_version() == tinglongwu.__version__
     assert bw.WIN_VERSION == tinglongwu.__version__ + ".0"
-    cmd = bw.nuitka_cmd()
-    assert f"--file-version={bw.WIN_VERSION}" in cmd
-    assert f"--product-version={bw.WIN_VERSION}" in cmd
+    # #923: the launcher is compiled with version 0.0.0.0; the app layer stamps WIN_VERSION into the exe
+    exe = tmp_path / "tlwu.exe"
+    fixed = bw.VS_FIXEDFILEINFO_SIG + bytes(bw.VERSION_OFFSET - len(bw.VS_FIXEDFILEINFO_SIG)) + bytes(16)
+    exe.write_bytes(b"MZ" + bytes(64) + fixed + b"tail")
+    assert bw.set_exe_version(exe, bw.WIN_VERSION)
+    assert ".".join(map(str, bw.pe_file_version(exe.read_bytes()))) == bw.WIN_VERSION
+    assert exe.read_bytes().endswith(b"tail") and exe.stat().st_size == 2 + 64 + len(fixed) + 4
+    exe.write_bytes(b"MZ no version resource")
+    assert not bw.set_exe_version(exe, bw.WIN_VERSION) and exe.read_bytes() == b"MZ no version resource"
 
 
 def test_win_version_pads_to_four_parts():

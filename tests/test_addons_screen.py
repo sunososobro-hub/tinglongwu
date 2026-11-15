@@ -90,7 +90,7 @@ def test_screen_builds_rows_and_runs_fake_download(tmp_path):
 def test_import_command_uses_screen_models_dir(tmp_path, monkeypatch):
     import pytest
 
-    tk = pytest.importorskip("tkinter")
+    pytest.importorskip("tkinter")
     from tinglongwu.gui import addons_screen as sc
 
     seen = []

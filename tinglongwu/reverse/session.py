@@ -142,7 +142,7 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
 
     lat = lat or Lat()
     stamp = (lambda: lat.clock()) if on_record is not None else (lambda: None)  # no extra clock reads otherwise
-    for n, label, zh in items:
+    for _n, label, zh in items:
         lg = lang() if callable(lang) else lang
         mt_start = stamp()
         ru, _ = lat.timed("mt", translate_ru, lambda x: mt.translate(x, src, lg).text, zh, lg)

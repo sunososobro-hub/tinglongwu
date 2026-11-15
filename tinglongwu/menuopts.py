@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 
 def glossary_dir() -> Path:

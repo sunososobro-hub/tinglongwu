@@ -1,6 +1,5 @@
 import io
 
-import numpy as np
 
 from tests.test_stream import FakeASR, FakeMT, Frames, make, tone
 from tinglongwu import device

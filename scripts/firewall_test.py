@@ -27,7 +27,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 RULE = "tlwu-firewall-test"
 PROBE = ("import socket,sys\n"

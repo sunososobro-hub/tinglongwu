@@ -9,7 +9,7 @@ def _get(inp):
     try:
         return inp.get(timeout=0.3)
     except queue.Empty:
-        raise EOFError
+        raise EOFError from None
 
 
 class Clock:
@@ -33,7 +33,7 @@ def _run(mode, lines, back="你好嗎", zh="你好嗎", extra=None, no_back=Fals
         try:
             return inp.get(timeout=0.3)
         except queue.Empty:
-            raise EOFError
+            raise EOFError from None
 
     s = ConfirmSession(lambda ru: ([1, 2], 16000), lambda a, sr: sent.append(a), out=out.append,
                        readline=readline, flush=lambda: None, clock=clk, sleep=clk.sleep, mode=mode,
@@ -115,7 +115,7 @@ def test_voice_command_during_countdown_switches_voice():
     def readline():
         if got.is_set():
             threading.Event().wait(10)  # later readers just block (nobody types again)
-            raise EOFError
+            raise EOFError from None
         v = _get(inp)
         got.set()  # the reader consumed the line; only now may the fake clock run
         return v

@@ -1,0 +1,116 @@
+"""#923 review C1 / C2: scripts/upgrade_check.py (new core over an old install) and its windows-build job."""
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+
+import pytest
+import yaml
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "scripts"))
+import upgrade_check as uc  # noqa: E402
+
+SMOKE_OK = "OK   numpy (0.1s)\nOK   llama_cpp (0.1s)\nsmoke: OK (0 required module(s) failed)\n"
+
+
+def _zip(path, files):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in files.items():
+            z.writestr(name, data)
+    return path
+
+
+def _runner(rc=0, out=SMOKE_OK, calls=None):
+    def run(cmd, **kw):
+        if calls is not None:
+            calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, rc, out, "")
+    return run
+
+
+def test_overlay_keeps_old_files_and_runs_the_new_core(tmp_path, monkeypatch, capsys):
+    old = _zip(tmp_path / "old.zip", {"tlwu/tlwu.exe": "old exe", "tlwu/numpy/core.pyd": "old pyd",
+                                      "tlwu/_ssl.pyd": "nuitka leftover"})
+    new = _zip(tmp_path / "new.zip", {"tlwu/tlwu.exe": "new exe", "tlwu/numpy/core.cp312-win_amd64.pyd": "new",
+                                      "tlwu/app-layer.json": "{}", "tlwu/runtime-layer.json": "{}"})
+    calls = []
+    monkeypatch.setattr(uc.subprocess, "run", _runner(calls=calls))
+    assert uc.main(["overlay", "--old-zip", str(old), "--new-zip", str(new), "--dir", str(tmp_path / "d")]) == 0
+    app = tmp_path / "d" / "tlwu"
+    assert (app / "tlwu.exe").read_text() == "new exe"  # replaced
+    assert (app / "_ssl.pyd").read_text() == "nuitka leftover" and (app / "numpy" / "core.pyd").is_file()  # stay
+    assert calls == [[str(app / "tlwu.exe"), "--smoke"]]
+    out = capsys.readouterr().out
+    assert "left behind from the old one: 2" in out and "left: tlwu/_ssl.pyd" in out
+    # the smoke failing in the overlaid folder fails the check
+    monkeypatch.setattr(uc.subprocess, "run", _runner(rc=1, out="FAIL numpy: ImportError\nsmoke: FAIL\n"))
+    assert uc.main(["overlay", "--old-zip", str(old), "--new-zip", str(new), "--dir", str(tmp_path / "e")]) == 1
+    # an old-layout zip as "new" is not accepted as a layered core
+    assert uc.main(["overlay", "--old-zip", str(old), "--new-zip", str(old), "--dir", str(tmp_path / "f")]) == 1
+
+
+def test_smoke_problem_uses_the_release_verdict():
+    assert uc.smoke_problem(0, SMOKE_OK) == ""
+    assert "exit code 3" in uc.smoke_problem(3, SMOKE_OK)
+    assert "llama_cpp" in uc.smoke_problem(0, "OK   numpy (0.1s)\nsmoke: OK\n")  # llama must load (#398)
+
+
+def _installed(app: Path, done: str | None = "0\n"):
+    app.mkdir(parents=True, exist_ok=True)
+    for n in (uc.EXE_NAME, *uc.NEW_CORE_MARKERS):
+        (app / n).write_text("x")
+    if done is not None:
+        (app / uc.INSTALL_DONE).write_text(done)
+
+
+def test_wizard_problem_cases(tmp_path):
+    app = tmp_path / "app"
+    assert "lacks tlwu.exe" in uc.wizard_problem(0, app)  # /DIR ignored: nothing was installed there
+    _installed(app, done=None)
+    assert "did not finish" in uc.wizard_problem(0, app)
+    (app / uc.INSTALL_LOG).write_text("line 1\nHTTP 503 from the model host\n")
+    (app / uc.INSTALL_DONE).write_text("1 \r\n")
+    assert "exited with code 1" in uc.wizard_problem(0, app) and "HTTP 503" in uc.wizard_problem(0, app)
+    (app / uc.INSTALL_DONE).write_text("0 \r\n")  # cmd's `echo !errorlevel! >file` leaves a space and CRLF
+    assert uc.wizard_problem(0, app) == ""
+    assert "code 5" in uc.wizard_problem(5, app)
+    (app / "runtime-layer.json").unlink()  # an old Nuitka folder the wizard did not touch
+    assert "runtime-layer.json" in uc.wizard_problem(0, app)
+
+
+def test_wizard_command_is_silent_into_the_given_folder_then_smokes(tmp_path):
+    app, calls = tmp_path / "inst", []
+    _installed(app)
+    rc = uc.cmd_wizard(tmp_path / "setup.exe", app, tmp_path / "s.log", run=_runner(calls=calls))
+    assert rc == 0
+    assert calls[0] == [str(tmp_path / "setup.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-",
+                        "/NOCANCEL", f"/DIR={app}", f"/LOG={tmp_path / 's.log'}"]
+    assert calls[1] == [str(app / "tlwu.exe"), "--smoke"]
+    assert uc.cmd_wizard(tmp_path / "setup.exe", app, None, run=_runner(rc=2)) == 1
+
+
+def test_windows_build_has_an_upgrade_job_over_the_latest_release():
+    wf = yaml.safe_load((REPO / ".github" / "workflows" / "windows-build.yml").read_text(encoding="utf-8"))
+    build, up = wf["jobs"]["build"], wf["jobs"]["upgrade"]
+    assert up["needs"] == "build" and "needs.build.outputs.build == 'true'" in up["if"]
+    assert set(build["outputs"]) >= {"build", "artifact"}
+    runs = [str(s.get("run", "")) for s in up["steps"]]
+    text = "\n".join(runs)
+    idx = lambda needle: next(i for i, r in enumerate(runs) if needle in r)  # noqa: E731
+    base = idx("gh release download")
+    overlay = idx("upgrade_check.py overlay")
+    gui = idx("win_smoke.ps1")
+    wizard = idx("build_installer.py --core-dir")
+    fresh, over = [i for i, r in enumerate(runs) if "upgrade_check.py wizard" in r]
+    assert base < overlay < gui < wizard < fresh < over  # C1: zip over zip + GUI; C2: wizard fresh, then over old
+    assert "upgrade_check.py unzip" in runs[over]  # the old install the second wizard run goes over
+    for i in (overlay, gui, fresh, over):
+        assert "exit $LASTEXITCODE" in runs[i] and "continue-on-error" not in up["steps"][i]
+    assert "v0." not in text  # the baseline is whatever release is published now, never a pinned old version
+    assert up["permissions"] == {"contents": "read"}
+
+
+@pytest.mark.parametrize("old,new,left", [({"a", "b"}, {"b", "c"}, ["a"]), (set(), {"x"}, []), ({"x"}, {"x"}, [])])
+def test_leftovers(old, new, left):
+    assert uc.leftovers(old, new) == left

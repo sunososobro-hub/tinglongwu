@@ -169,7 +169,7 @@ class SharedLlama:
         return getattr(self.llm, name)
 
 
-_SHARED: "weakref.WeakValueDictionary" = weakref.WeakValueDictionary()
+_SHARED: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 _SHARED_LOCK = threading.Lock()
 
 
