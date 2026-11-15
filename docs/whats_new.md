@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.0
+- Listen to sound in the room, not only what the computer plays: pick a microphone (Advanced > Microphone (room sound)) to get live subtitles for a lecture or an in-person meeting.
+- The settings window keeps its taller size in the one-column layout, so no setting is cut off when you make it narrow.
+- In the Windows menu, pressing Enter at the microphone question now just keeps the default instead of printing a usage line.
+
 ## v0.3.8
 - Subtitles can label who is speaking (a small add-on pack downloads only when you turn it on), and a new 情境 row lets you pick meeting or video.
 - The mic now follows your Windows default device, and speak mode holds back more background noise.
