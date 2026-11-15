@@ -18,6 +18,7 @@ import 'asr_worker.dart';
 import 'model_paths.dart';
 import 'play_packs.dart';
 import 'playback_capture.dart';
+import '../logic/conversation.dart';
 import '../logic/target_language.dart';
 import 'translator.dart';
 
@@ -31,15 +32,21 @@ enum AudioSourceKind { mic, phone }
 const silenceHintText = '沒有聽到影片的聲音：這個 App 可能不允許翻譯（例如有版權保護的影片），或影片還沒開始播放';
 
 class Subtitle {
-  Subtitle(this.ru, {this.zh, this.traditionalOk = true});
+  Subtitle(this.ru, {this.zh, this.traditionalOk = true, this.speaker = Speaker.them});
   String ru;
   String? zh;
   bool traditionalOk;
+
+  /// Conversation mode (#558): my lines show on the right; listen-only lines are all [Speaker.them].
+  final Speaker speaker;
 }
 
 class _Job {
-  _Job(this.ru, this.sub, this.speechEndMs, this.asrFinalMs, [this.lang = 'en']);
-  final String lang;
+  _Job(this.ru, this.sub, this.speechEndMs, this.asrFinalMs, this.route);
+
+  /// Direction fixed when the line was heard, so a side switch never re-routes queued lines.
+  final ConversationRoute route;
+  String get lang => route.src;
   String ru;
   final Subtitle sub;
 
@@ -133,6 +140,34 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Face-to-face conversation mode (#558); off = listen-only.
+  Conversation conversation = const Conversation();
+  ConversationStore? _conversationStore;
+
+  /// Turns 對話模式 on or off (remembered).
+  void setConversationEnabled(bool on) => _setConversation(conversation.copyWith(enabled: on));
+
+  /// One tap: the other side is talking now.
+  void switchSpeaker() => _setConversation(conversation.switched());
+
+  void _setConversation(Conversation c) {
+    if (c == conversation) return;
+    conversation = c;
+    _clearDraftTr(); // the draft was translated for the other direction
+    final store = _conversationStore; // null until start() (and AppLog) ran
+    if (store == null) return notifyListeners();
+    store.save(c);
+    _log.i('conversation ${c.enabled ? "on" : "off"} side=${c.side.name} foreign=${c.foreign}');
+    notifyListeners();
+  }
+
+  /// Conversation mode only applies to the microphone (face to face); 看影片翻譯 stays listen-only.
+  Conversation get _activeConversation =>
+      source == AudioSourceKind.mic ? conversation : conversation.copyWith(enabled: false);
+
+  /// Translation target for the line being spoken now.
+  String get activeTarget => _activeConversation.targetFor(target);
+
   Future<bool> _downloadPacks() async {
     stage = Stage.downloadingModels;
     dlError = null;
@@ -161,6 +196,8 @@ class Pipeline extends ChangeNotifier {
       target = _targetStore!.load();
       _prefsStore = FeaturePrefsStore('${paths!.filesDir}/features.txt');
       prefs = _prefsStore!.load();
+      _conversationStore = ConversationStore('${paths!.filesDir}/conversation.txt');
+      conversation = _conversationStore!.load();
       _styleStore = OverlayStyleStore('${paths!.filesDir}/overlay_style.txt');
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
@@ -430,7 +467,7 @@ class Pipeline extends ChangeNotifier {
     _trGate.started(nowMs: now, text: text);
     _draftTrStop = false;
     try {
-      final r = await tr.translate(text, src: lang, tgt: target, shouldStop: () => _draftTrStop);
+      final r = await tr.translate(text, src: lang, tgt: activeTarget, shouldStop: () => _draftTrStop);
       if (!_draftTrStop && !_disposed && !_draft.isStale(seg) && r.zh.trim().isNotEmpty) {
         draftTr = r.zh.trim();
         _draftTrSeg = seg;
@@ -593,10 +630,11 @@ class Pipeline extends ChangeNotifier {
     // One subtitle (and one LLM call) per sentence: short lines update fast and the model never
     // sees several sentences to smooth together.
     final sentences = SentenceSegmenter.split(f.text);
+    final route = _activeConversation.route(f.lang, listenTarget: target);
     for (final text in sentences.isEmpty ? [f.text] : sentences) {
-      final sub = Subtitle(text);
+      final sub = Subtitle(text, speaker: route.speaker);
       subtitles.add(sub);
-      _queue.add(_Job(text, sub, speechEnd, now, f.lang));
+      _queue.add(_Job(text, sub, speechEnd, now, route));
     }
     _trimSubtitles();
     // Bound the backlog: merge the oldest two waiting jobs (keeps all text,
@@ -606,7 +644,7 @@ class Pipeline extends ChangeNotifier {
     final jobs = _queue.toList();
     final plan = ContextBudget.trimPlan(
       [for (final j in jobs) j.ru],
-      [for (final j in jobs) j.lang],
+      [for (final j in jobs) j.route.mergeKey],
       maxQueue,
     );
     if (jobs.length > maxQueue && plan.texts.length > maxQueue) {
@@ -618,7 +656,7 @@ class Pipeline extends ChangeNotifier {
       b.ru = ContextBudget.join(a.ru, b.ru);
       b.sub.ru = b.ru;
       subtitles.remove(a.sub);
-      final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs, b.lang);
+      final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs, b.route);
       jobs
         ..[i] = merged
         ..removeAt(i + 1);
@@ -648,7 +686,8 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await translateLine(_tr!, job.ru, job.lang, tgt: target);
+          final tgt = job.route.tgt;
+          final r = await translateLine(_tr!, job.ru, job.lang, tgt: tgt);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;
@@ -657,8 +696,11 @@ class Pipeline extends ChangeNotifier {
           lastFirstTokenMs = r.firstTokenMs;
           job.sub.zh = r.zh;
           _trimSubtitles();
-          job.sub.traditionalOk = target != 'zh' || r.check.isTraditional;
-          _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
+          job.sub.traditionalOk = tgt != 'zh' || r.check.isTraditional;
+          final tag = tgt != 'zh'
+              ? '${job.lang}->$tgt${job.route.speak ? " speak" : ""}'
+              : (r.check.isTraditional ? 'zh-Hant' : 'NOT-TRAD ${r.check}');
+          _log.i('${tgt.toUpperCase()} [$tag'
               '] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '
               'ttft=${r.firstTokenMs}ms tok=${r.tokens} '

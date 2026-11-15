@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 
+import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/phone_audio.dart';
 import '../logic/target_language.dart';
@@ -50,14 +51,17 @@ ListenState listenStateOf(Pipeline p) {
   return p.paused ? ListenState.idle : ListenState.on;
 }
 
+/// 對話模式 is on and applies (microphone only, #558).
+bool conversationActive(Pipeline p) => p.conversation.enabled && p.source == AudioSourceKind.mic;
+
 /// Empty-state hint (differs for 看影片翻譯).
 String emptyHint({required bool phone}) =>
     phone ? '播放影片，翻譯字幕會出現在這裡' : '對著手機說話，翻譯字幕會出現在這裡';
 
 /// Dark conversation view: header (mode, settings, language pill), one bubble per finished
 /// line (small source above, large translation below), a dashed grey bubble for the pending
-/// draft, and a footer with status + a round start/stop mic button. The pipeline has no
-/// speaker sides, so every line is a left "other" bubble.
+/// draft, and a footer with status + a round start/stop mic button. Listen-only lines are left
+/// "other" bubbles; in 對話模式 (#558) my lines are right "me" bubbles.
 class SubtitleScreen extends StatelessWidget {
   const SubtitleScreen({super.key, required this.pipeline});
   final Pipeline pipeline;
@@ -147,20 +151,29 @@ class SubtitleScreen extends StatelessWidget {
     bottomRight: Radius.circular(16),
   );
 
-  Widget _bubble({required List<Widget> children, bool dashed = false}) {
+  static const _radiusMe = BorderRadius.only(
+    topLeft: Radius.circular(16),
+    topRight: Radius.circular(4),
+    bottomLeft: Radius.circular(16),
+    bottomRight: Radius.circular(16),
+  );
+
+  Widget _bubble({required List<Widget> children, bool dashed = false, bool me = false}) {
     final box = Container(
       constraints: const BoxConstraints(maxWidth: 560),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: dashed ? Colors.transparent : UiColors.other,
-        borderRadius: _radius,
+        color: dashed ? Colors.transparent : (me ? UiColors.me : UiColors.other),
+        borderRadius: me ? _radiusMe : _radius,
       ),
       foregroundDecoration: dashed ? const _DashedDecoration() : null,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+      child: Column(
+          crossAxisAlignment: me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: children),
     );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Align(alignment: Alignment.centerLeft, child: box),
+      child: Align(alignment: me ? Alignment.centerRight : Alignment.centerLeft, child: box),
     );
   }
 
@@ -199,7 +212,10 @@ class SubtitleScreen extends StatelessWidget {
         text(zh, fs, fg, underline: !s.traditionalOk),
       ];
     }
-    return _bubble(dashed: pending && mode != SubtitleMode.source, children: parts);
+    return _bubble(
+        dashed: pending && mode != SubtitleMode.source,
+        me: s.speaker == Speaker.me,
+        children: parts);
   }
 }
 
@@ -282,6 +298,16 @@ class _Header extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
+              if (pipeline.source == AudioSourceKind.mic)
+                IconButton(
+                  key: const Key('conversationToggle'),
+                  tooltip: pipeline.conversation.enabled ? '關閉對話模式' : '對話模式（面對面雙向翻譯）',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(pipeline.conversation.enabled ? Icons.forum : Icons.forum_outlined,
+                      size: 20,
+                      color: pipeline.conversation.enabled ? Colors.lightBlueAccent : Colors.white70),
+                  onPressed: () => pipeline.setConversationEnabled(!pipeline.conversation.enabled),
+                ),
               IconButton(
                 tooltip: '字幕顯示設定',
                 visualDensity: VisualDensity.compact,
@@ -290,7 +316,19 @@ class _Header extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 6),
-            PopupMenuButton<String>(
+            if (conversationActive(pipeline))
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('對話模式  ${pipeline.conversation.pairLabel}',
+                    style: const TextStyle(
+                        fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
+              )
+            else
+              PopupMenuButton<String>(
               tooltip: '字幕要翻成哪種語言',
               initialValue: pipeline.target,
               onSelected: pipeline.setTarget,
@@ -373,10 +411,37 @@ class _Footer extends StatelessWidget {
                 ),
               ),
             ),
-            const Expanded(child: SizedBox()),
+            Expanded(
+              child: conversationActive(pipeline)
+                  ? Align(alignment: Alignment.centerRight, child: _SideButton(pipeline: pipeline))
+                  : const SizedBox(),
+            ),
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// 對話模式: one tap switches who is talking (#558).
+class _SideButton extends StatelessWidget {
+  const _SideButton({required this.pipeline});
+  final Pipeline pipeline;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = pipeline.conversation.side == Speaker.me;
+    return TextButton.icon(
+      key: const Key('sideButton'),
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white,
+        backgroundColor: me ? UiColors.me : UiColors.other,
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+      ),
+      onPressed: pipeline.switchSpeaker,
+      icon: const Icon(Icons.swap_horiz, size: 16),
+      label: Text(pipeline.conversation.sideLabel, style: const TextStyle(fontSize: 12)),
     );
   }
 }
