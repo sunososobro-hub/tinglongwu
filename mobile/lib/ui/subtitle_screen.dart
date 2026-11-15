@@ -37,7 +37,7 @@ class SubtitleScreen extends StatelessWidget {
     final subs = pipeline.subtitles;
     final size = MediaQuery.sizeOf(context);
     final landscape = size.width > size.height;
-    final big = landscape ? 46.0 : 38.0;
+    final big = pipeline.overlayStyle.screenFontSize(landscape: landscape);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -273,6 +273,14 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
               const Text('雙語：原文在上（小字），譯文在下。聽龍畫面和浮動視窗都適用。',
                   style: TextStyle(fontSize: 13, color: Colors.white60)),
               const SizedBox(height: 8),
+              Text('字幕大小 ${st.fontSize.round()}（聽龍畫面和浮動視窗都適用）'),
+              Slider(
+                value: st.fontSize,
+                min: OverlayStyle.minFontSize,
+                max: OverlayStyle.maxFontSize,
+                divisions: (OverlayStyle.maxFontSize - OverlayStyle.minFontSize).round(),
+                onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(fontSize: v)),
+              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('顯示原文草稿'),
@@ -301,14 +309,6 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
                 const Text('拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，高度隨內容增加。點一下回到聽龍。',
                     style: TextStyle(fontSize: 13, color: Colors.white60)),
                 const SizedBox(height: 12),
-                Text('字級 ${st.fontSize.round()}'),
-                Slider(
-                  value: st.fontSize,
-                  min: OverlayStyle.minFontSize,
-                  max: OverlayStyle.maxFontSize,
-                  divisions: (OverlayStyle.maxFontSize - OverlayStyle.minFontSize).round(),
-                  onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(fontSize: v)),
-                ),
                 Text('背景不透明度 ${(st.opacity * 100).round()}%'),
                 Slider(
                   value: st.opacity,

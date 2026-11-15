@@ -141,6 +141,11 @@ class OverlayStyle {
   final double opacity;
   final SubtitleMode mode;
 
+  /// Newest-line size (sp) on the in-app subtitle screen, driven by the same persisted
+  /// [fontSize] as the overlay (#1079). Default 20 -> 38 portrait / 46 landscape (the old
+  /// fixed sizes); the slider range 12..40 gives 23..76 portrait.
+  double screenFontSize({required bool landscape}) => fontSize * (landscape ? 2.3 : 1.9);
+
   OverlayStyle copyWith({double? fontSize, double? opacity, SubtitleMode? mode}) => OverlayStyle(
         fontSize: fontSize ?? this.fontSize,
         opacity: opacity ?? this.opacity,
