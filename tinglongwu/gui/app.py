@@ -405,6 +405,7 @@ class App:
         from ..speakers import SpeakerBook
 
         self.spk = None  # 0.3.8: async speaker-ID labeler of this session (None = unavailable)
+        self._spk_tags_bound: set[str] = set()  # speaker-label tags already bound on self.log_text
         self.spk_book = SpeakerBook()  # session-only names
         self.quick_mode: str | None = None  # #294: first-screen button that started this session
         self.run_source = "system"
@@ -850,7 +851,7 @@ class App:
         else:
             self.mic_ev.set()
         self._mic_label()
-        if self.listening and self.load_t0 is None:
+        if self.listening and self.load_t0 is None and self.quick_mode != WATCH_MODE:
             cur, note = self.v_notice.get(), t("gui_mic_off_note")
             if self.mic_off:
                 if note not in cur:  # keep an existing notice (no CABLE ...), add the mic line under it
@@ -1519,9 +1520,11 @@ class App:
                 tx.insert("end", shown, (f"{side}_head", tag))
                 tx.insert("end", "\n", f"{side}_head")
                 tx.tag_configure(tag, underline=True)
-                tx.tag_bind(tag, "<Button-1>", lambda _e, r=raw: self._rename_speaker(r))
-                tx.tag_bind(tag, "<Enter>", lambda _e: tx.configure(cursor="hand2"))
-                tx.tag_bind(tag, "<Leave>", lambda _e: tx.configure(cursor=""))
+                if tag not in self._spk_tags_bound:  # bind once per tag: every bind leaks a Tcl command
+                    self._spk_tags_bound.add(tag)
+                    tx.tag_bind(tag, "<Button-1>", lambda _e, r=raw: self._rename_speaker(r))
+                    tx.tag_bind(tag, "<Enter>", lambda _e: tx.configure(cursor="hand2"))
+                    tx.tag_bind(tag, "<Leave>", lambda _e: tx.configure(cursor=""))
             else:
                 tx.insert("end", head + "\n", f"{side}_head")
             self._insert_bubble(side, text, is_draft, i)
@@ -1555,6 +1558,15 @@ class App:
             return
         self.spk_book.rename(raw, name)
         self.render_log()
+
+    def _close_labeler(self):
+        """Stop the speaker-ID worker thread and let go of its model (Stop, restart, quit)."""
+        lab = self.spk  # kept: the finished bubbles still read their labels from it
+        if lab is not None:
+            try:
+                lab.close()
+            except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
 
     def _make_labeler(self, mdir):
         """0.3.8 (worker thread): the async speaker-ID labeler for the listen leg, or None when sherpa-onnx / the
@@ -1911,6 +1923,7 @@ class App:
         self.state = SubtitleState(HISTORY_LINES)
         from ..speakers import SpeakerBook
 
+        self._close_labeler()  # the previous session's worker thread and model
         self.spk, self.spk_book = None, SpeakerBook()  # new session: new speakers, new names
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -1923,7 +1936,7 @@ class App:
         if mode == BOTH_MODE:  # #1001: the panel opens only for the "no CABLE" line, which says listening still runs
             notice_key, show_panel = ("gui_both_no_voice", True) if notice_key else ("", False)
         self.v_notice.set(t(notice_key) if notice_key else "")
-        if self.mic_off:  # #1028: the mic toggle was left off; keep an existing notice (no CABLE) above it
+        if self.mic_off and mode != WATCH_MODE:  # #1028: the mic toggle was left off (no mic in 看影片); keep an existing notice (no CABLE) above it
             self.v_notice.set(t("gui_mic_off_note") if not notice_key else f"{t(notice_key)}\n{t('gui_mic_off_note')}")
         if show_panel:
             self._show_panel()
@@ -2042,7 +2055,8 @@ class App:
                 elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
                     self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                 elif kind == "notice":
-                    self.v_notice.set(ev[1])
+                    if ev[1] not in self.v_notice.get():  # the repeated silent hint must not clobber other lines
+                        self.v_notice.set(ev[1])
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
                         self._show_panel()
                 elif kind == "pack_line":
@@ -2077,6 +2091,7 @@ class App:
                         self._gate_tick()
                         self.gate = None
                     self.load_t0 = None
+                    self._close_labeler()  # Stop / #983 restart: the worker thread exits, the model is released
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
                         self.set_status("gui_stopped")
@@ -2199,6 +2214,7 @@ class App:
             return
         self.closing = True
         self.stop_ev.set()
+        self._close_labeler()
         try:
             self.collect()
         except Exception:  # noqa: BLE001

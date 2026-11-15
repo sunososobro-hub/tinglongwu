@@ -38,7 +38,8 @@ def listen_names(names: list[str]) -> list[str]:
 
 
 class SilenceWatch:
-    """update(peak, now) -> True once when the listened sound has been silent for `after` seconds (re-armed by sound)."""
+    """update(peak, now) -> True when the listened sound has been silent for `after` seconds, and again every
+    `after` seconds while it stays silent (a hint a bubble cleared meanwhile comes back); sound re-arms it."""
 
     def __init__(self, after: float = SILENT_AFTER_S, clock=time.monotonic):
         self.after, self.clock = after, clock
@@ -52,8 +53,9 @@ class SilenceWatch:
             return False
         if self._since is None:
             self._since = now
-        if not self._fired and now - self._since >= self.after:
+        if now - self._since >= self.after:
             self._fired = True
+            self._since = now  # still silent: say it again after another `after` s
             return True
         return False
 

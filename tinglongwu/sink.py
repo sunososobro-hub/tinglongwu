@@ -111,6 +111,7 @@ class JsonlSaveSink(Sink):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.f = open(self.path, "a", encoding="utf-8")
         self._lock = threading.Lock()  # #373: meeting mode records both sides (listen thread + speak thread)
+        self.resolve_speaker = None  # async labeler token ("spk#N") -> real label (AsyncSpeakerLabeler.resolve)
         self.on_line = None  # #609 --topics: called with every saved record (topics.TopicNotes.on_line)
 
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
@@ -126,8 +127,14 @@ class JsonlSaveSink(Sink):
 
         rec = {"t": round(self.clock() - self.t0, 2), "wall": self.now().isoformat(timespec="seconds"),
                "side": r.side, "lang": r.src, "src": r.original, "dst": r.target if r.src != r.tgt else ""}
-        if r.speaker:
-            rec["speaker"] = r.speaker  # #384: the auto label; corrections follow as "fix" lines (write_fix)
+        who = r.speaker
+        if who and self.resolve_speaker is not None:
+            try:
+                who = self.resolve_speaker(who)
+            except Exception:  # noqa: BLE001 - a label must never break the transcript
+                who = None
+        if who and not who.startswith("spk#"):
+            rec["speaker"] = who  # #384: the auto label; corrections follow as "fix" lines (write_fix)
         with self._lock:
             self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             self.f.flush()

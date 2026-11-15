@@ -620,6 +620,12 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         labeler = make_labeler(mdir)
     elif labeler_factory is not None:  # 0.3.8 GUI: speaker ID off the subtitle path; None = unavailable, no labels
         labeler = labeler_factory(mdir)
+        if labeler is not None and hasattr(labeler, "resolve"):
+            w = sink
+            while w is not None:  # the saved transcript gets "說話者 N", never the "spk#N" token
+                if hasattr(w, "resolve_speaker"):
+                    w.resolve_speaker = labeler.resolve
+                w = getattr(w, "inner", None)
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
     close_voice, interrupted = None, False

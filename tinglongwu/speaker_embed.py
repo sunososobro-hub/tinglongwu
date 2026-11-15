@@ -85,6 +85,7 @@ class AsyncSpeakerLabeler:
         self._q: queue.Queue = queue.Queue(maxsize=maxsize)
         self._res: dict[str, str | None] = {}
         self._n = 0
+        self._closed = False
         self.on_ready = on_ready
         self._queue_mod = queue
         threading.Thread(target=self._work, daemon=True, name="tlwu-speaker-id").start()
@@ -95,14 +96,38 @@ class AsyncSpeakerLabeler:
         try:
             self._q.put_nowait((token, seg.copy() if hasattr(seg, "copy") else seg))
         except self._queue_mod.Full:
-            pass  # too busy: this line just gets no label
+            self._res[token] = None  # too busy: this line just gets no label (resolve() must not wait for it)
         return token, 0.0
 
     def result(self, token):
         return self._res.get(token)
 
+    def resolve(self, token, timeout: float = 1.5):
+        """The real label of `token` (None = unknown). Waits up to `timeout` s for the worker; a token that is not
+        a "spk#N" token is returned as is. Used by the saved transcript, never by the subtitle path."""
+        import time
+
+        if not isinstance(token, str) or not token.startswith("spk#"):
+            return token
+        end = time.monotonic() + timeout
+        while token not in self._res and time.monotonic() < end:
+            time.sleep(0.01)
+        return self._res.get(token)
+
     def close(self):
-        self._q.put(None)
+        """Stop the worker thread (idempotent); a queue that is full is emptied so the stop marker fits."""
+        if self._closed:
+            return
+        self._closed = True
+        while True:
+            try:
+                self._q.put_nowait(None)
+                return
+            except self._queue_mod.Full:
+                try:
+                    self._q.get_nowait()
+                except self._queue_mod.Empty:
+                    pass
 
     def _work(self):
         from .speakers import UNKNOWN

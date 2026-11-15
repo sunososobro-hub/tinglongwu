@@ -91,3 +91,34 @@ def test_run_session_factory_none_means_no_labels(monkeypatch):
     from tinglongwu import cli
 
     assert "labeler_factory" in inspect.signature(cli.run_session).parameters
+
+
+def test_resolve_gives_real_label_and_close_stops_worker():
+    lab = speaker_embed.AsyncSpeakerLabeler(lambda seg: [1.0, 0.0])
+    tok, _ = lab.label(np.ones(32000, np.float32))
+    assert lab.resolve(tok) == "說話者1" and lab.resolve("說話者5") == "說話者5"
+    lab.close()
+    lab.close()  # idempotent
+    th = [x for x in threading.enumerate() if x.name == "tlwu-speaker-id"]
+    assert _wait(lambda: not any(x.is_alive() for x in th))
+
+
+def test_saved_transcript_has_resolved_label_not_token(tmp_path):
+    import json
+
+    from tinglongwu.sink import JsonlSaveSink
+
+    class Inner:
+        def write(self, r):
+            pass
+
+    lab = speaker_embed.AsyncSpeakerLabeler(lambda seg: [1.0, 0.0])
+    tok, _ = lab.label(np.ones(32000, np.float32))
+    sink = JsonlSaveSink(Inner(), tmp_path / "a.jsonl")
+    sink.resolve_speaker = lab.resolve
+    sink.write(Result("zh", "你好", None, "Hello", "en", speaker=tok))
+    sink.write(Result("zh", "再見", None, "Bye", "en", speaker="spk#999"))  # never labelled: nothing saved
+    sink.f.close()
+    lab.close()
+    rows = [json.loads(x) for x in (tmp_path / "a.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["speaker"] == "說話者1" and "speaker" not in rows[1]

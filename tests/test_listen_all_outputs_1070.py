@@ -26,9 +26,9 @@ def test_mix_sums_and_clips():
 def test_silence_watch_fires_once_and_rearms():
     w = SilenceWatch(after=10)
     assert not w.update(0.0, 0) and not w.update(0.0, 9)
-    assert w.update(0.0, 10) and not w.update(0.0, 20)
+    assert w.update(0.0, 10) and not w.update(0.0, 19) and w.update(0.0, 20)  # again while still silent
     assert not w.update(0.5, 21)
-    assert not w.update(0.0, 22) and w.update(0.0, 32)
+    assert not w.update(0.0, 22) and not w.update(0.0, 31) and w.update(0.0, 32)
 
 
 def test_explicit_device_picks_speaker_by_id_and_refuses_cable():
