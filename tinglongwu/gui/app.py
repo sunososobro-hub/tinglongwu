@@ -604,9 +604,11 @@ class App:
         w.grid(row=row, column=col, sticky="w", pady=1)
         return w
 
-    def _combo(self, slot, label, key, values, kind=None):
-        """kind (#884): the box shows names in the UI language while the returned var keeps the raw stored value."""
-        self._label(slot, label)
+    def _combo(self, slot, label, key, values, kind=None, show=True):
+        """kind (#884): the box shows names in the UI language while the returned var keeps the raw stored value.
+        show=False (#982): only the variable exists here; the widget lives on the home page (self._shown[key])."""
+        if show:
+            self._label(slot, label)
         row, col = self._cell(slot)
         var = tk.StringVar(value=self.settings[key])
         shown = var
@@ -626,6 +628,9 @@ class App:
             var.trace_add("write", lambda *_: sync(var, shown, lambda v: choice_label(kind, v)))
             shown.trace_add("write", lambda *_: sync(shown, var, lambda v: choice_value(kind, v, values)))
             self.kind_combos[key] = (kind, values, var)
+        self._shown[key] = shown
+        if not show:
+            return var
         self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=shown, values=choice_labels(kind, values) if kind else values,
                                              state="readonly", width=18)
         cb.grid(row=row, column=col + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
@@ -634,6 +639,8 @@ class App:
     def _relabel_combos(self):
         """#884: the UI language changed: show every named dropdown in the new language."""
         for key, (kind, values, var) in self.kind_combos.items():
+            if key not in self.combos:
+                continue
             self.combos[key].configure(values=choice_labels(kind, values))
             var.set(var.get() + "")  # re-fires the write trace -> the shown name follows the language
         # engine / model carry marks in the old language: rebuild them from the stored ids (settings value unchanged)
@@ -721,9 +728,22 @@ class App:
             s = quick_settings(s, "listen")
         except SameLanguageError as e:  # #981: shown on the bar at once, before Start is pressed
             self.v_pair.set(t(e.key))
+            self.same_lang = True
+            self._lang_check_ui()
             return
+        self.same_lang = False
+        self._lang_check_ui()
         # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
         self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure).replace("\u2192", "\u21c4"))
+
+    same_lang = False
+
+    def _lang_check_ui(self):
+        """#982: My language == Other side language: inline error and Start disabled (home button and bar button)."""
+        if getattr(self, "lang_err", None) is not None:
+            self.lang_err.configure(text=t("gui_same_lang") if self.same_lang else "")
+        if hasattr(self, "btn"):
+            self._sync_quick()
 
     def set_dot(self, name: str):
         self.dot_state = name
@@ -774,9 +794,11 @@ class App:
         f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
         self.combos = {}
         self.kind_combos = {}
-        self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
+        self._shown = {}
+        # #982: no 來源語言 / 翻譯成 rows here: the home page has exactly My language + Other side language
+        self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels(), show=False)
         self.v_lang.set(lang_label(self.settings["lang"]))
-        self.v_target = self._combo(1, "gui_target", "target", TARGETS, "target")
+        self.v_target = self._combo(1, "gui_target", "target", TARGETS, "target", show=False)
         self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES, "quality")
         self.v_engine = self._combo(11, "gui_engine", "engine", engine_labels())  # #399: under Advanced
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
@@ -1101,13 +1123,21 @@ class App:
         # #737: the one picker on the first screen is the OTHER side's language (= source language `lang`, the same
         # variable as tour step 1); my language (`target`) is under Advanced. quick_settings() turns it into
         # listen: other -> mine, speak: mine -> other.
-        self._tx(ttk.Label(q), "gui_quick_other").grid(row=0, column=0, sticky="w")
+        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        self.home_target = ttk.Combobox(q, textvariable=self._shown["target"], values=choice_labels("target", TARGETS),
+                                        state="readonly", width=14)
+        self.home_target.grid(row=0, column=1, sticky="we", padx=(6, 0))
+        self.combos["target"] = self.home_target  # #982: the one My language box
+        self._tx(ttk.Label(q), "gui_quick_other").grid(row=1, column=0, sticky="w")
         self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=14)
-        self.home_lang.grid(row=0, column=1, sticky="we", padx=(6, 0))
+        self.home_lang.grid(row=1, column=1, sticky="we", padx=(6, 0))
+        self.combos["lang"] = self.home_lang
+        self.lang_err = ttk.Label(q, foreground="#c0392b", wraplength=300, justify="left")  # #982: inline error
+        self.lang_err.grid(row=2, column=0, columnspan=2, sticky="w")
         # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
         self.both_btn = ttk.Button(q, command=lambda: self.toggle(BOTH_MODE))
-        self.both_btn.grid(row=1, column=0, columnspan=2, sticky="we", ipady=3, pady=(6, 0))  # #886
+        self.both_btn.grid(row=3, column=0, columnspan=2, sticky="we", ipady=3, pady=(6, 0))  # #886
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
         self._sync_quick()
@@ -1126,7 +1156,10 @@ class App:
         if not hasattr(self, "both_btn"):
             return
         key, enabled = start_button(self._quick_phase(), self.quick_mode)  # #1001
+        enabled = enabled and not (self.same_lang and self._quick_phase() == "idle")  # #982
         self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
+        if hasattr(self, "btn"):
+            self.btn.configure(state="normal" if enabled or self._quick_phase() != "idle" else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
