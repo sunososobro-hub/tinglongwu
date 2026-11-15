@@ -30,6 +30,7 @@ ZIP_TOP = "tlwu"  # top folder of the core zip
 NEW_CORE_MARKERS = ("app-layer.json", "runtime-layer.json")
 INSTALL_DONE = "install.done"  # the wizard's model step writes its exit code here (installer/tinglongwu.iss)
 INSTALL_LOG = "install.log"
+READY_LINE = "READY default-listen"  # `tlwu.exe setup --default-listen` prints it last, when the default models are in (#948)
 SMOKE_TIMEOUT_S = 600
 WIZARD_TIMEOUT_S = 40 * 60  # program files + the default-listen model download on a CI runner
 LOG_TAIL_LINES = 40
@@ -96,6 +97,12 @@ def wizard_problem(setup_rc: int, app: Path) -> str:
     code = done.read_text("utf-8", "replace").strip()
     if code != "0":
         return f"the wizard's model step exited with code {code or '?'}:\n{tail(app / INSTALL_LOG)}"
+    try:
+        log = (app / INSTALL_LOG).read_text("utf-8", "replace")
+    except OSError:
+        log = ""
+    if READY_LINE not in log:
+        return f"{INSTALL_LOG} has no '{READY_LINE}' line, the default models were not reported ready:\n{tail(app / INSTALL_LOG)}"
     return ""
 
 

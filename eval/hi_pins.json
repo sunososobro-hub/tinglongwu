@@ -1,0 +1,22 @@
+{"_note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/hi_pins.json (#642): Hindi -> zh-TW slice (FLEURS hi_in test, CC-BY 4.0) for the eval/languages.json matrix. Re-pin with --set hi --pin 20 only on purpose; eval/baseline.json matrix numbers depend on these clips.", "dataset": "google/fleurs", "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd", "license": "CC-BY-4.0", "configs": {"hi": "hi_in"}, "clips": [
+  {"id": "hi_001", "lang": "hi", "file": "10011266027513218401.wav", "flores_id": 1766, "seconds": 9.12, "sha256": "217f3abbd8e9cd3767d6e8b87d49fbf82421fc920a103de026b4586d7e644dc5"},
+  {"id": "hi_002", "lang": "hi", "file": "10014385262415025488.wav", "flores_id": 1784, "seconds": 13.8, "sha256": "b63e6ae5a8a5b53fcd5b60c467790baca13ca0c8490d35418d692ef7751a5459"},
+  {"id": "hi_003", "lang": "hi", "file": "10015817292782645020.wav", "flores_id": 1718, "seconds": 15.0, "sha256": "6c1e02d23469dcb2717843a2f4db5f363841a4967376fb587a902fea992c8868"},
+  {"id": "hi_004", "lang": "hi", "file": "10027305580492162464.wav", "flores_id": 1778, "seconds": 5.1, "sha256": "e15385240ea707ea4edfce9db06808efc73658090d132015b8baee99514e2f30"},
+  {"id": "hi_005", "lang": "hi", "file": "10069289676238419279.wav", "flores_id": 1828, "seconds": 13.2, "sha256": "ebe88dec83ef1fc371bb3b5f6343cd8920d275a8a281b9976977d71a838bc2f4"},
+  {"id": "hi_006", "lang": "hi", "file": "10107687492910459268.wav", "flores_id": 1666, "seconds": 10.62, "sha256": "b853e4f4cc9e2c0e312a8ae0ce59bc3637319866de1a674045e0de3f5d240693"},
+  {"id": "hi_007", "lang": "hi", "file": "10135688561274120767.wav", "flores_id": 1792, "seconds": 8.22, "sha256": "1627aac0f973d5bf25cbfe47cd0185538858b76c88a944fe9e7d7d89e068b932"},
+  {"id": "hi_008", "lang": "hi", "file": "10200643191519059428.wav", "flores_id": 1827, "seconds": 7.8, "sha256": "a8e30e9bf7c9e9ece854275692c8ca7d0a2e4045e09197220ce1bda41fc6fb09"},
+  {"id": "hi_009", "lang": "hi", "file": "10245365873747218908.wav", "flores_id": 1985, "seconds": 13.68, "sha256": "4cbdfdd0d2e1e986955475152cffa0c28a85792873c6ffa47504842a490c3111"},
+  {"id": "hi_010", "lang": "hi", "file": "10286778291956788434.wav", "flores_id": 1996, "seconds": 14.28, "sha256": "f29ebcec921d99c545f49a6e9c56b6ff69e3ab5f5af16b0cf22c0b005fc219fc"},
+  {"id": "hi_011", "lang": "hi", "file": "10291152526359423424.wav", "flores_id": 1702, "seconds": 12.9, "sha256": "9571e8c20aeceb3aac93b74f5d8baad5ee80ee8ef338081ab0976451f92eb8a1"},
+  {"id": "hi_012", "lang": "hi", "file": "10359991159058879218.wav", "flores_id": 1955, "seconds": 9.0, "sha256": "381a20dc20bbd9cbff15e6bfde3495ae40124f545e540db1362bc68ae8dc2b66"},
+  {"id": "hi_013", "lang": "hi", "file": "10550791631951016124.wav", "flores_id": 1797, "seconds": 10.26, "sha256": "4e5c108bc98936dab93e66a35c85d9b19f32fd2bb47349ccb05459a40a25c083"},
+  {"id": "hi_014", "lang": "hi", "file": "10587318592827006604.wav", "flores_id": 1992, "seconds": 8.88, "sha256": "23d926578c057874785f2e2727d0e9eaf1c27b65e9141c27fcf8282a17fde046"},
+  {"id": "hi_015", "lang": "hi", "file": "10590937942465254187.wav", "flores_id": 1719, "seconds": 10.5, "sha256": "18ec8f16df79b6c21c9607516bd8d34b42389cb6b0315ec8963ad551fdcd5d92"},
+  {"id": "hi_016", "lang": "hi", "file": "10761312360331088376.wav", "flores_id": 2006, "seconds": 5.94, "sha256": "5bb9bccc998f9e47ac76dd33db7d5ec2a3c0b097b278d3a9b0ae3d95ab52bcdf"},
+  {"id": "hi_017", "lang": "hi", "file": "1078154098564425938.wav", "flores_id": 1720, "seconds": 10.44, "sha256": "6d95bf6aa7c334306f0c0f10f4ba3bf5d5d2078c74630c22e85008bd3f25fba9"},
+  {"id": "hi_018", "lang": "hi", "file": "10907654079731428081.wav", "flores_id": 1981, "seconds": 12.78, "sha256": "1605965817d43610ebfbf3c4751915a1a630b4ca92fca45fa5f819ae560086d5"},
+  {"id": "hi_019", "lang": "hi", "file": "10921902647446458507.wav", "flores_id": 1683, "seconds": 14.94, "sha256": "134f767fe059054225baba1b321694f8f115ad0db68b8eab3f39376bbaeae3b7"},
+  {"id": "hi_020", "lang": "hi", "file": "10972260827293009900.wav", "flores_id": 1818, "seconds": 7.74, "sha256": "9ec843e4ec829d7d07e4bb9f17089fdadfe47709ac7d997ad4d54712888aec2a"}
+]}

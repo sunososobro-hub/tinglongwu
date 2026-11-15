@@ -1,0 +1,73 @@
+{
+ "_note": "#770: mini-eval (eval.yml, ubuntu-24.04 CPU, 5 pinned FLEURS clips, Hy-MT2 1.8B Q4 CPU, TLWU_HYMT_TEMP=0) per Whisper size, gated by `python -m tlwu_eval --gate` vs eval/baseline.json. DEFAULT_LISTEN_WHISPER = smallest size whose gate passes = small. download_mb: small from tlwu_app.tiers.SIZES; tiny/base approximate model.bin size of the Systran repos.",
+ "runs": {
+  "tiny": "https://github.com/sunososobro-hub/tinglongwu/actions/runs/43668299426",
+  "base": "https://github.com/sunososobro-hub/tinglongwu/actions/runs/43668301928",
+  "small": "https://github.com/sunososobro-hub/tinglongwu/actions/runs/43667012107"
+ },
+ "sizes": {
+  "tiny": {
+   "download_mb": 75,
+   "gate": "FAIL",
+   "en->zh": {
+    "wer": 0.165,
+    "chrf": 26.9,
+    "asr_rtf": 0.046
+   },
+   "ja->zh": {
+    "cer": 0.716,
+    "chrf": 6.7
+   },
+   "ru->zh": {
+    "wer": 0.222,
+    "chrf": 26.89
+   },
+   "zh->en": {
+    "cer": 0.284,
+    "chrf": 37.41
+   }
+  },
+  "base": {
+   "download_mb": 145,
+   "gate": "FAIL",
+   "en->zh": {
+    "wer": 0.107,
+    "chrf": 29.36,
+    "asr_rtf": 0.081
+   },
+   "ja->zh": {
+    "cer": 0.288,
+    "chrf": 18.02
+   },
+   "ru->zh": {
+    "wer": 0.181,
+    "chrf": 23.27
+   },
+   "zh->en": {
+    "cer": 0.135,
+    "chrf": 46.6
+   }
+  },
+  "small": {
+   "download_mb": 464,
+   "gate": "PASS",
+   "en->zh": {
+    "wer": 0.078,
+    "chrf": 38.9,
+    "asr_rtf": 0.213
+   },
+   "ja->zh": {
+    "cer": 0.156,
+    "chrf": 19.58
+   },
+   "ru->zh": {
+    "wer": 0.042,
+    "chrf": 29.58
+   },
+   "zh->en": {
+    "cer": 0.135,
+    "chrf": 48.63
+   }
+  }
+ }
+}

@@ -1,17 +1,17 @@
 {
-  "_note": "#642: one line per pair = one job in .github/workflows/eval-langs.yml. Add a language: one line here (pins = a pin file from scripts/bench/make_ci_smoke.py, clips = how many pinned clips to run, max what is pinned). A pair whose pin file is missing is listed as unpinned and not run. Gate numbers: eval/baseline.json \"matrix\".",
+  "_note": "#642: one line per pair = one job in .github/workflows/eval-langs.yml. Add a language: one line here (pins = a pin file from scripts/bench/make_ci_smoke.py, clips = how many pinned clips to run, max what is pinned). A pair whose pin file is missing is listed as unpinned and not run; a pair with \"blocked\": \"<reason>\" (the app cannot run it yet) is listed as blocked and not run. Gate numbers: eval/baseline.json \"matrix\".",
   "pairs": [
-    {"pair": "en->zh", "pins": "eval/ci_smoke.json", "clips": 20},
-    {"pair": "ja->zh", "pins": "eval/ci_smoke.json", "clips": 20},
-    {"pair": "ko->zh", "pins": "eval/ko_pins.json", "clips": 20},
-    {"pair": "ru->zh", "pins": "eval/ci_smoke.json", "clips": 20},
-    {"pair": "hi->zh", "pins": "eval/hi_pins.json", "clips": 20},
+    {"pair": "en->zh", "pins": "eval/matrix_pins.json", "clips": 20},
+    {"pair": "ja->zh", "pins": "eval/matrix_pins.json", "clips": 20},
+    {"pair": "ko->zh", "pins": "eval/matrix_pins.json", "clips": 20},
+    {"pair": "ru->zh", "pins": "eval/matrix_pins.json", "clips": 20},
+    {"pair": "hi->zh", "pins": "eval/hi_pins.json", "clips": 20, "blocked": "#942: the app has no Hy-MT2 route for hi"},
     {"pair": "vi->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "th->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "id->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "es->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "de->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "fr->zh", "pins": "eval/tier2_pins.json", "clips": 20},
-    {"pair": "zh->en", "pins": "eval/ci_smoke.json", "clips": 20}
+    {"pair": "zh->en", "pins": "eval/matrix_pins.json", "clips": 20}
   ]
 }

@@ -31,6 +31,8 @@ DEFAULTS = {
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
+    "usage_asked": False,  # #680: the one-time "what do you mainly use it for?" question was answered or skipped
+    "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
     "send_mode": "confirm",  # #834: how a speak line is sent (confirm / countdown / auto); owner default: confirm
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES
@@ -43,8 +45,10 @@ def send_gate_line(view) -> str:
     if view.state == "counting":
         return t("gui_send_hold", s=f"{view.remaining:.0f}" if view.remaining >= 1 else f"{view.remaining:.1f}",
                  text=view.text)
-    if view.state == "asking":
-        return t("gui_send_ask", text=view.text)
+    if view.state == "asking":  # #968: the reason is shown, so a held line never waits without saying why
+        return t("gui_send_ask", text=f"[{view.reason}] {view.text}" if view.reason else view.text)
+    if view.state == "rejected":
+        return t("gui_send_unclear", reason=view.reason, text=view.text)
     return ""
 
 
@@ -191,6 +195,33 @@ def tour_text(ui: str, system_tag: str | None = None) -> dict[str, str]:
 def tour_on_start(s: dict) -> bool:
     """#314: the overlay opens by itself only until the user closed it once with "Got it" (kept in gui.json)."""
     return not s.get("tour_seen")
+
+
+USAGE_CHOICES = ("videos", "meetings", "calls", "learning", "other")  # #680
+
+
+def usage_should_ask(s: dict) -> bool:
+    """#680: ask once, after the first successful subtitle; never again once answered or skipped."""
+    return not s.get("usage_asked")
+
+
+def usage_answer(s: dict, choice: str | None) -> None:
+    """#680: store the answer in the local settings dict. Nothing is sent. choice None = skip / closed without
+    saving: records that we asked and keeps any answer saved earlier; an unknown string clears the answer."""
+    s["usage_asked"] = True
+    if choice is None:
+        s.setdefault("usage_use", "")
+        return
+    s["usage_use"] = choice if choice in USAGE_CHOICES else ""
+
+
+def usage_prefill(s: dict, include: bool) -> dict:
+    """#680: extra lines for the 'wrong translation' report prefill (#677). Only when the user left the checkbox
+    ticked (`include`) and there is an answer; the language pair is added with it. Empty dict otherwise."""
+    use = s.get("usage_use")
+    if not include or use not in USAGE_CHOICES:
+        return {}
+    return {"Mainly used for": use, "Language pair": f"{s.get('lang')} -> {s.get('target')}"}
 
 
 def report_info(s: dict) -> dict:

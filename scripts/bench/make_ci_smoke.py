@@ -28,6 +28,11 @@ Korean slice (#754): ko -> zh-TW, 5 clips, same flow with its own pin file:
   python scripts/bench/make_ci_smoke.py --set ko --pin 5 --revision <sha>        # dev: pin eval/ko_pins.json
   python scripts/bench/make_ci_smoke.py --pins eval/ko_pins.json --out eval_data/ko
   python -m tlwu_eval --smoke --data eval_data/ko --langs ko --clips 5 --no-noise --out ko.json   # prints chrF
+
+Language matrix (#642): eval/languages.json pairs use eval/matrix_pins.json (en/ja/ru/zh/ko, 20 clips) and
+eval/hi_pins.json (hi, 20 clips). Without huggingface.co access, dispatch .github/workflows/eval-langs.yml with
+pin_set=matrix (or hi): its pin job runs --set <set> --pin 20 and prints the pin file for commit.
+  python scripts/bench/make_ci_smoke.py --set matrix --pin 20 --revision <sha>   # dev: pin eval/matrix_pins.json
 """
 from __future__ import annotations
 
@@ -50,6 +55,9 @@ CONFIGS = {"en": "en_us", "ja": "ja_jp", "ru": "ru_ru", "zh": "cmn_hans_cn"}
 TIER2_CONFIGS = {"vi": "vi_vn", "th": "th_th", "id": "id_id", "es": "es_419", "de": "de_de", "fr": "fr_fr"}
 KO_CONFIGS = {"ko": "ko_kr"}  # #754: Korean language pack -> its own ko->zh-TW slice (eval/ko_pins.json)
 HI_CONFIGS = {"hi": "hi_in"}  # #642: Hindi -> zh slice for the eval/languages.json matrix (eval/hi_pins.json)
+# #642: 20-clip slices of the smoke languages + ko for the eval/languages.json matrix (eval/matrix_pins.json). Kept apart
+# from eval/ci_smoke.json (5 clips, the eval.yml merge gate) and eval/ko_pins.json (5 clips, #754) so neither changes.
+MATRIX_CONFIGS = {**CONFIGS, **KO_CONFIGS}
 REF_CONFIGS = {"en": "en_us", "zh": "cmn_hans_cn"}  # reference sides: ref_zh for every source, ref_en for zh clips
 MAX_DOWNLOAD = 500 * 2 ** 20  # #569 acceptance: total download < 500 MB
 MAX_CLIP_S = 15.0  # --pin skips longer clips so 20 clips stay well inside the smoke budget (TOTAL_BUDGET_S 300 s)
@@ -71,6 +79,11 @@ SETS = {
            "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/hi_pins.json (#642): Hindi -> zh-TW slice "
                    "(FLEURS hi_in test, CC-BY 4.0) for the eval/languages.json matrix. Re-pin with --set hi --pin 20 "
                    "only on purpose; eval/baseline.json matrix numbers depend on these clips."},
+    "matrix": {"configs": MATRIX_CONFIGS, "pins": ROOT / "eval" / "matrix_pins.json", "scan": 120,
+               "note": "Pins for scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json (#642): en/ja/ru/ko -> zh-TW "
+                       "and zh -> en, 20 clips each (FLEURS test, CC-BY 4.0), for the eval/languages.json matrix. "
+                       "Re-pin with --set matrix --pin 20 only on purpose; eval/baseline.json matrix numbers depend on "
+                       "these clips."},
 }
 
 LICENSE_TEXT = """Eval set for tlwu-eval, built by scripts/bench/make_ci_smoke.py (#569, #602) from the pins in
@@ -320,7 +333,7 @@ def main(argv=None, fetch=http_open) -> int:
     ap.add_argument("--out", help="folder for manifest.jsonl and the wav files (e.g. eval_data/smoke)")
     ap.add_argument("--set", default="smoke", choices=sorted(SETS),
                     help="language set for --pin and the default --pins (smoke: en/ja/ru/zh; tier2: vi/th/id/es/de/fr; "
-                         "ko: ko)")
+                         "ko: ko; hi: hi; matrix: en/ja/ru/zh/ko)")
     ap.add_argument("--pins", default=None, help="pin file (default: eval/ci_smoke.json, eval/tier2_pins.json "
                                                  "with --set tier2, eval/ko_pins.json with --set ko)")
     ap.add_argument("--pin", type=int, metavar="N", help="dev: re-select N clips per language and rewrite --pins")

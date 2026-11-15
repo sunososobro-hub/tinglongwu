@@ -120,6 +120,34 @@ def gate(s: SegmentStats, env=None, **over) -> tuple[bool, str]:
     return True, ""
 
 
+SILENT_DROPS = frozenset({"quiet", "too_short"})  # #968: pauses and clicks are not shown as "not sent"
+
+
+def segment_gate(on_drop=None, report=None, sr: int = 16000, env=None):
+    """#968: gate() for the GUI speak path (listen pipeline + voice). Returns seg_gate(seg, transcript) -> bool
+    for pipeline.run(): the same checks the CLI speak path runs in live.recognize_utterances (#249).
+    on_drop(text, reason) is called for a rejected transcript (not for silence / too-short blips), so the GUI can
+    show it greyed as "not sent: unclear"; every drop is also counted in `report` (DropReport)."""
+    import numpy as np
+
+    report = report or DropReport()
+
+    def seg_gate(seg, tr) -> bool:
+        rms = float(np.sqrt(np.mean(np.square(seg)))) if len(seg) else 0.0
+        text = (getattr(tr, "text", "") or "").strip()
+        ok, why = gate(SegmentStats(len(seg) / sr, rms, text, float(getattr(tr, "no_speech", 0.0) or 0.0),
+                                    float(getattr(tr, "avg_logprob", 0.0) or 0.0)), env)
+        if ok:
+            return True
+        if why != "quiet":
+            report.add(why)
+        if on_drop is not None and why not in SILENT_DROPS and text:
+            on_drop(text, why)
+        return False
+
+    return seg_gate
+
+
 class DropReport:
     """Counts gate drops by reason; report() prints one summary line at most every REPORT_EVERY_S seconds."""
 

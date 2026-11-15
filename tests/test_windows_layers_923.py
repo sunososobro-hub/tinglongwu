@@ -360,3 +360,48 @@ def test_licenses_folder_holds_the_texts_the_notice_names(tmp_path, monkeypatch)
     for named in ("LICENSE-libsndfile-LGPL-2.1.txt", "LICENSE-Python.txt", "MinGW-w64"):
         assert named in notice
     assert "NVIDIA" not in notice  # CPU-only package
+
+
+def test_no_top_level_wheel_in_the_core_folder_or_zip(tmp_path):
+    """#948 D1: a stray *.whl at the top of site-packages is not copied, and make_zip leaves one out."""
+    site = tmp_path / "site"
+    (site / "pkg").mkdir(parents=True)
+    (site / "pkg" / "__init__.py").write_text("")
+    (site / "llama_cpp_python-1.0-win_amd64.whl").write_bytes(b"PK")
+    dst = tmp_path / "core"
+    dst.mkdir()
+    assert rt.copy_site_packages(dst, site) == ["pkg"]
+    assert not list(dst.glob("*.whl"))
+    app = tmp_path / "tlwu"
+    app.mkdir()
+    (app / "tlwu.exe").write_bytes(b"x")
+    (app / "stray.whl").write_bytes(b"PK")
+    (app / "sub").mkdir()
+    (app / "sub" / "keep.whl").write_bytes(b"PK")  # only the top level is checked
+    out = tmp_path / "core.zip"
+    bw.make_zip(app, out)
+    with zipfile.ZipFile(out) as z:
+        names = z.namelist()
+    assert "tlwu/tlwu.exe" in names and "tlwu/stray.whl" not in names
+
+
+def test_mingw_copying_ships_under_licenses(tmp_path):
+    """#948 D7: licenses/COPYING.MinGW-w64-runtime.txt comes from the gcc toolchain; MSVC builds ship none."""
+    root = tmp_path / "mingw64"
+    (root / "bin").mkdir(parents=True)
+    gcc = root / "bin" / "gcc.exe"
+    gcc.write_text("")
+    (root / "share" / "licenses" / "mingw-w64-crt").mkdir(parents=True)
+    (root / "share" / "licenses" / "mingw-w64-crt" / "COPYING").write_text("MinGW-w64 runtime licensing")
+    (root / "share" / "licenses" / "zlib").mkdir()
+    (root / "share" / "licenses" / "zlib" / "COPYING").write_text("zlib")
+    dst = tmp_path / "layer"
+    dst.mkdir()
+    assert rt.copy_mingw_copying("msvc", dst, str(gcc)) is False and not (dst / "licenses").exists()
+    assert rt.copy_mingw_copying("gcc.exe", dst, str(gcc)) is True
+    assert (dst / "licenses" / rt.MINGW_COPYING_NAME).read_text() == "MinGW-w64 runtime licensing"
+    bare = tmp_path / "bare" / "bin"
+    bare.mkdir(parents=True)
+    (bare / "gcc.exe").write_text("")
+    assert rt.copy_mingw_copying("gcc.exe", tmp_path / "layer2", str(bare / "gcc.exe")) is False
+    assert rt.MINGW_COPYING_NAME in bw.NOTICES_HEAD.replace("COPYING.MinGW-w64-runtime.txt", rt.MINGW_COPYING_NAME)

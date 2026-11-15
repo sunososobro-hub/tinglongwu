@@ -131,6 +131,7 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S):
     res = {
         "ttfs_seconds": None, "download_seconds": round(dl_s, 3),
         "excl_download_seconds": None, "setup_seconds": round(setup_s, 3),
+        "install_seconds": round(inst_s, 3),
         "first_subtitle_seconds": None if first is None else round(first, 3),
         "os": sys.platform, "version": _version(), "sha": _sha(),
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),

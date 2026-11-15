@@ -11,23 +11,23 @@
     "zh->en": {"chrf": 43.42, "chrf_margin": 3.0, "mt_median_s_max": 2.6}
   },
   "matrix": {
-    "_note": "#642: per-pair gate for .github/workflows/eval-langs.yml (eval/languages.json), same runner / model / engine as the mini-eval above. en/ja/ru->zh and zh->en run the same 5 pinned clips (eval/ci_smoke.json) as the mini-eval, so they reuse its recorded numbers. Every other pair has no recorded run on this runner yet: chrf null (gated on MT latency only, tlwu_eval/gate.py) and mt_median_s_max 3.7 s = the largest recorded budget (ja->zh). Replace the nulls with the lowest chrF of a recorded eval-langs run (run URL in the PR), margin 2.0 like the other pairs.",
+    "_note": "#642: per-pair gate for .github/workflows/eval-langs.yml (eval/languages.json), same runner / model / engine as the mini-eval above, 20 clips per pair. chrf = the lowest chrF of the recorded eval-langs runs, chrf_margin 2.0 (3.0 for zh->en, the noisiest pair, as above), mt_median_s_max = the largest MT median seen x1.5 rounded up to 0.1 s (same rule as above). vi/th/id/es/de/fr->zh (eval/tier2_pins.json): runs 43659229435, 43663534897, 43665213685 (chrF vi 17.98/18.94/19.06, th 12.32/12.44/12.48, id 22.08/22.89/22.89, es 23.16/22.96/23.16, de 25.62/25.60/25.75, fr 24.19/24.32/24.19). en/ja/ru/ko->zh and zh->en (eval/matrix_pins.json, 20 clips; the first 5 per language are the eval/ci_smoke.json clips): run 43665213685 (chrF en 32.38, ja 17.75, ko 24.17, ru 26.63, zh->en 48.28). hi->zh: chrf null, blocked in eval/languages.json until the app translates Hindi (#942).",
     "model": "whisper small",
     "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
     "clips": 20,
     "pairs": {
-      "en->zh": {"chrf": 38.9, "chrf_margin": 2.0, "mt_median_s_max": 2.6},
-      "ja->zh": {"chrf": 19.58, "chrf_margin": 2.0, "mt_median_s_max": 3.7},
-      "ko->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "ru->zh": {"chrf": 29.58, "chrf_margin": 2.0, "mt_median_s_max": 2.7},
+      "en->zh": {"chrf": 32.38, "chrf_margin": 2.0, "mt_median_s_max": 2.4},
+      "ja->zh": {"chrf": 17.75, "chrf_margin": 2.0, "mt_median_s_max": 3.2},
+      "ko->zh": {"chrf": 24.17, "chrf_margin": 2.0, "mt_median_s_max": 3.5},
+      "ru->zh": {"chrf": 26.63, "chrf_margin": 2.0, "mt_median_s_max": 3.1},
       "hi->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "vi->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "th->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "id->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "es->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "de->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "fr->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
-      "zh->en": {"chrf": 43.42, "chrf_margin": 3.0, "mt_median_s_max": 2.6}
+      "vi->zh": {"chrf": 17.98, "chrf_margin": 2.0, "mt_median_s_max": 4.1},
+      "th->zh": {"chrf": 12.32, "chrf_margin": 2.0, "mt_median_s_max": 4.1},
+      "id->zh": {"chrf": 22.08, "chrf_margin": 2.0, "mt_median_s_max": 2.5},
+      "es->zh": {"chrf": 22.96, "chrf_margin": 2.0, "mt_median_s_max": 3.4},
+      "de->zh": {"chrf": 25.6, "chrf_margin": 2.0, "mt_median_s_max": 3.0},
+      "fr->zh": {"chrf": 24.19, "chrf_margin": 2.0, "mt_median_s_max": 3.4},
+      "zh->en": {"chrf": 48.28, "chrf_margin": 3.0, "mt_median_s_max": 2.4}
     }
   }
 }
