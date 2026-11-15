@@ -177,7 +177,23 @@ class _SourceToggle extends StatelessWidget {
   Future<void> _select(BuildContext context, bool toPhone) async {
     if (toPhone == (pipeline.source == AudioSourceKind.phone)) return;
     final messenger = ScaffoldMessenger.of(context);
-    if (toPhone && !await PlaybackCapture.overlayAllowed()) {
+    if (toPhone && CapturePlatform.current().explainsBeforeStart) {
+      // iOS (#1076): the system broadcast sheet comes next; say what to tap and what to expect.
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text(CaptureModeText.phoneLabel),
+          content: const SingleChildScrollView(child: Text(CaptureModeText.iosStartExplain)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text(CaptureModeText.iosStartButton)),
+          ],
+        ),
+      );
+      if (go != true) return;
+    } else if (toPhone && !await PlaybackCapture.overlayAllowed()) {
       if (!context.mounted) return;
       final go = await showDialog<bool>(
         context: context,
@@ -252,6 +268,7 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
       listenable: pipeline,
       builder: (context, _) {
         final st = pipeline.overlayStyle;
+        final plat = CapturePlatform.current();
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           child: Column(
@@ -304,17 +321,19 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
               ),
               if (pipeline.phoneSupported) ...[
                 const SizedBox(height: 8),
-                const Text('浮動字幕視窗', style: TextStyle(fontSize: 16)),
+                Text(plat.overlayTitle, style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 4),
-                const Text('拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，高度隨內容增加。點一下回到聽龍。',
-                    style: TextStyle(fontSize: 13, color: Colors.white60)),
+                Text(plat.overlayHelp,
+                    style: const TextStyle(fontSize: 13, color: Colors.white60)),
                 const SizedBox(height: 12),
-                Text('背景不透明度 ${(st.opacity * 100).round()}%'),
-                Slider(
-                  value: st.opacity,
-                  divisions: 20,
-                  onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(opacity: v)),
-                ),
+                if (plat.overlayOpacityAdjustable) ...[
+                  Text('背景不透明度 ${(st.opacity * 100).round()}%'),
+                  Slider(
+                    value: st.opacity,
+                    divisions: 20,
+                    onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(opacity: v)),
+                  ),
+                ],
               ],
             ],
           ),

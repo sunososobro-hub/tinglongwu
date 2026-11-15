@@ -1,19 +1,19 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 
 import '../logic/phone_audio.dart';
 
-/// Native side of phone-audio subtitles (#998): Android AudioPlaybackCapture (MediaProjection)
-/// in a foreground service, plus the floating subtitle window. Platform-neutral API: on iOS (no
-/// system audio capture) [supported] is false and nothing else is called.
+/// Native side of phone-audio subtitles. Android (#998): AudioPlaybackCapture (MediaProjection)
+/// in a foreground service, plus the floating subtitle window. iOS (#1076): a ReplayKit broadcast
+/// extension feeds the same PCM stream, and the "overlay" is a Picture-in-Picture window.
+/// Same method names on both platforms (MainActivity.kt / TlwuNativeChannel.swift).
 class PlaybackCapture {
   static const _ch = MethodChannel('tlwu/native');
   static const _pcm = EventChannel('tlwu/playback_pcm');
 
-  static Future<bool> supported() async {
-    if (!Platform.isAndroid) return false;
+  static Future<bool> supported({CapturePlatform? platform}) async {
+    if (!(platform ?? CapturePlatform.current()).mayCapture) return false;
     try {
       return await _ch.invokeMethod<bool>('playbackCaptureSupported') ?? false;
     } catch (_) {
@@ -26,7 +26,8 @@ class PlaybackCapture {
   static Stream<Uint8List> pcm() =>
       _pcm.receiveBroadcastStream().map((e) => e as Uint8List);
 
-  /// Shows the system consent dialog and starts the capture service. False = declined.
+  /// Shows the system consent dialog (Android) or broadcast sheet (iOS) and starts capture.
+  /// False = declined / closed without starting.
   static Future<bool> start() async =>
       await _ch.invokeMethod<bool>('startPlaybackCapture') ?? false;
 

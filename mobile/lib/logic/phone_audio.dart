@@ -13,8 +13,56 @@ class CaptureModeText {
   static const phoneLabel = '看影片翻譯';
   static const phoneHint = '翻譯手機正在播的影片，字幕浮在畫面上';
 
+  /// iOS (#1076): shown before the system broadcast sheet. DRM apps deliver silence there.
+  static const iosStartExplain = '下一步會出現「螢幕廣播」視窗：請確認選了「聽龍字幕」，再按「開始廣播」。\n\n'
+      '開始後切到 YouTube 等 App 播影片，字幕會在子母畫面小視窗裡顯示。'
+      '要停止：回到聽龍切回「說話翻譯」，或點螢幕上方的紅色錄影圖示。\n\n'
+      'iOS 會把它當成螢幕錄影，但聽龍只取聲音，在手機上辨識翻譯，不會存檔或上傳。\n\n'
+      'Netflix 等有版權保護的 App 可能只會傳來靜音，這時不會有字幕。';
+  static const iosStartButton = '開始';
+
   static String label({required bool phone}) => phone ? phoneLabel : micLabel;
   static String hint({required bool phone}) => phone ? phoneHint : micHint;
+}
+
+/// Which native capture path this device has (#998 Android, #1076 iOS). Pure, so the per-platform
+/// behaviour is unit-testable; [current] reads dart:io Platform.
+enum CapturePlatform {
+  /// AudioPlaybackCapture + "display over other apps" window (Android 10+).
+  android,
+
+  /// ReplayKit broadcast extension + Picture-in-Picture subtitles (iOS 15+).
+  ios,
+
+  /// Desktop / tests: no capture.
+  other;
+
+  static CapturePlatform current() => Platform.isAndroid
+      ? CapturePlatform.android
+      : Platform.isIOS
+          ? CapturePlatform.ios
+          : CapturePlatform.other;
+
+  /// Whether to ask the native side at all.
+  bool get mayCapture => this != CapturePlatform.other;
+
+  /// iOS shows its own explanation (broadcast sheet + PiP) before starting; Android asks for the
+  /// overlay permission instead.
+  bool get explainsBeforeStart => this == CapturePlatform.ios;
+
+  /// The overlay opacity slider: the iOS PiP window is always opaque.
+  bool get overlayOpacityAdjustable => this == CapturePlatform.android;
+
+  String get unsupportedText => switch (this) {
+        CapturePlatform.ios => '這支手機不支援看影片翻譯（需要 iOS 15 以上）',
+        _ => '這支手機不支援看影片翻譯（需要 Android 10 以上）',
+      };
+
+  /// Heading and help text of the overlay section in the subtitle settings sheet.
+  String get overlayTitle => this == CapturePlatform.ios ? '子母畫面字幕' : '浮動字幕視窗';
+  String get overlayHelp => this == CapturePlatform.ios
+      ? '字幕顯示在子母畫面小視窗裡，可拖曳、用兩指縮放；滑到螢幕邊緣可暫時收起。'
+      : '拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，高度隨內容增加。點一下回到聽龍。';
 }
 
 /// Detects "capture yields only silence" (an app that opts out of playback capture, e.g. DRM

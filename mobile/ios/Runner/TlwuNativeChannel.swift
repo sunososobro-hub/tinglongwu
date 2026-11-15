@@ -11,9 +11,12 @@ final class TlwuNativeChannel {
 
   private let channel: FlutterMethodChannel
   private let importer = ModelImporter()
+  /// 看影片翻譯 (#1076): broadcast extension audio + PiP subtitles.
+  private let phoneAudio: PhoneAudioBridge
 
   init(messenger: FlutterBinaryMessenger) {
     channel = FlutterMethodChannel(name: TlwuNativeChannel.channelName, binaryMessenger: messenger)
+    phoneAudio = PhoneAudioBridge(messenger: messenger)
     UIDevice.current.isBatteryMonitoringEnabled = true
     // Subtitle display: never let the screen sleep while the app is in front.
     UIApplication.shared.isIdleTimerDisabled = true
@@ -91,9 +94,30 @@ final class TlwuNativeChannel {
       }
       UIApplication.shared.open(url, options: [:]) { ok in result(ok) }
 
-    // Other apps' audio + floating subtitles (#998): iOS has no system audio capture API.
+    // 看影片翻譯 (#998 Android, #1076 iOS): other apps' audio comes from the ReplayKit broadcast
+    // extension (Broadcast/SampleHandler.swift); subtitles float in Picture-in-Picture.
     case "playbackCaptureSupported":
-      result(false)
+      result(PhoneAudioBridge.supported)
+    case "startPlaybackCapture":
+      phoneAudio.start(result)
+    case "stopPlaybackCapture":
+      phoneAudio.stop()
+      result(nil)
+    // PiP needs no permission (unlike Android's "display over other apps").
+    case "overlayAllowed", "requestOverlayPermission":
+      result(true)
+    case "overlayShow":
+      phoneAudio.overlayShow()
+      result(nil)
+    case "overlayHide":
+      phoneAudio.overlayHide()
+      result(nil)
+    case "overlayText":
+      phoneAudio.overlayText(call.arguments as? [String: Any] ?? [:])
+      result(nil)
+    case "overlayStyle":
+      phoneAudio.overlayStyle(call.arguments as? [String: Any] ?? [:])
+      result(nil)
 
     default:
       result(FlutterMethodNotImplemented)

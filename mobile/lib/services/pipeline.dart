@@ -23,7 +23,8 @@ import 'translator.dart';
 
 enum Stage { starting, downloadingModels, loadingModels, listening, missingModels, error }
 
-/// Where the audio comes from: the microphone, or other apps' playback (#998, Android 10+).
+/// Where the audio comes from: the microphone, or other apps' playback (#998 Android 10+,
+/// #1076 iOS 15+ via a broadcast extension).
 enum AudioSourceKind { mic, phone }
 
 /// Shown instead of an empty overlay when phone audio stays silent (app blocks capture).
@@ -280,7 +281,7 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
     try {
       if (k == AudioSourceKind.phone) {
-        if (!phoneSupported) return '這支手機不支援看影片翻譯（需要 Android 10 以上）';
+        if (!phoneSupported) return CapturePlatform.current().unsupportedText;
         final pcm = PlaybackCapture.pcm();
         _silence.reset();
         _phoneSub = pcm.listen(_onPhonePcm, onDone: _onPhoneStopped,
