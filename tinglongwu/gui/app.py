@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
@@ -481,6 +481,13 @@ class App:
         self.lbl_send_notice.grid(row=1, column=0, columnspan=2, sticky="w")
         self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
         self._send_mode_changed()
+        self.run_snapshot = None  # #983: the start-time values of the running session
+        self.lbl_restart = ttk.Label(box, wraplength=300, justify="left", foreground="#b45309")
+        self.btn_restart = ttk.Button(box, command=self._restart_now)
+        for name in ("v_lang", "v_target", "v_engine", "v_quality", "v_model", "v_preset", "v_gloss", "v_source",
+                     "v_voice", "v_voice_dev"):
+            if hasattr(self, name):
+                getattr(self, name).trace_add("write", lambda *_: self._restart_check())
 
     def _build_send_gate(self, f):
         """#833: the held speak line with [Send] [Stop] in the status box `f`. Its widgets are made the first time a
@@ -535,8 +542,46 @@ class App:
             self.btn_gate_send.configure(state="normal" if v.state == "asking" else "disabled")
             self.lbl_gate.configure(foreground="gray" if v.state == "rejected" else "")  # #968: not sent
 
+    def _start_values(self) -> dict:
+        """#983: current raw values of the start-time settings (same getters at start and later, so they compare)."""
+        names = dict(lang="v_lang", target="v_target", engine="v_engine", quality="v_quality", model="v_model",
+                     preset="v_preset", glossary="v_gloss", source="v_source", voice="v_voice",
+                     voice_device="v_voice_dev", send_mode="v_send_mode")
+        return {k: getattr(self, v).get() for k, v in names.items() if hasattr(self, v)}
+
+    def _restart_check(self):
+        """#983: show the "restart to apply" notice + button while running with a changed start-time setting."""
+        running = self.worker is not None and self.worker.is_alive()
+        changed = restart_needed(self.run_snapshot, self._start_values()) if running and self.run_snapshot else []
+        if changed:
+            self.lbl_restart.configure(text=t("gui_restart_to_apply"))
+            self.btn_restart.configure(text=t("gui_restart_btn"))
+            self.lbl_restart.grid(row=2, column=0, columnspan=2, sticky="w")
+            self.btn_restart.grid(row=3, column=0, columnspan=2, sticky="w")
+        else:
+            self.lbl_restart.grid_remove()
+            self.btn_restart.grid_remove()
+        return changed
+
+    def _restart_now(self):
+        """#983: stop, then start the same mode again once the worker has ended (new values are read by collect)."""
+        mode = self.quick_mode
+        if self.worker is not None and self.worker.is_alive():
+            self.toggle()  # stop
+            self._restart_mode = mode
+            self._restart_poll()
+
+    def _restart_poll(self):
+        if self.worker is not None and self.worker.is_alive():
+            self.root.after(300, self._restart_poll)
+            return
+        mode, self._restart_mode = getattr(self, "_restart_mode", None), None
+        self.toggle(mode)
+
     def _send_mode_changed(self):
         mode = self.v_send_mode.get()
+        if getattr(self, "lbl_restart", None) is not None:
+            self._restart_check()
         if mode in SEND_MODES:
             self.settings["send_mode"] = mode
         key = send_mode_notice_key(mode)
@@ -1076,6 +1121,8 @@ class App:
 
     def _sync_quick(self):
         """Label/enable the first-screen buttons for the current session state (#294)."""
+        if getattr(self, "lbl_restart", None) is not None:
+            self._restart_check()  # #983: the notice goes away once the session has stopped
         if not hasattr(self, "quick_btns"):
             return
         for mode, (key, enabled) in quick_buttons(self._quick_phase(), self.quick_mode).items():
@@ -1408,6 +1455,8 @@ class App:
         self.listening = True
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
+        self.run_snapshot = self._start_values()  # #983
+        self._restart_check()
         self._sync_quick()
         self.render_log()  # shows "Listening..." at once, before the first line
         if self.settings["floating_bar"]:
