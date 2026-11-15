@@ -39,6 +39,7 @@ UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px mai
 SETTING_COLS = 2
 SPAN = 7  # grid columns a full-width row spans
 LABEL_WRAP_PX = 190
+ADV_PAD_X = 20  # #939: left + right padding of the Advanced card (its settings grid gets the rest of the width)
 SHORT_SCREEN_PX = 900
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
@@ -733,22 +734,56 @@ class App:
             self.lbl_send_notice.pack_forget()
 
     @staticmethod
-    def _cell(slot: int) -> tuple[int, int]:
-        """#886: (grid row, first grid column) of setting `slot`; slots fill two columns left to right."""
-        return slot // SETTING_COLS, (slot % SETTING_COLS) * 4
+    def _cell(slot: int, cols: int = SETTING_COLS) -> tuple[int, int]:
+        """#886: (grid row, first grid column) of setting `slot`; slots fill `cols` columns left to right."""
+        return slot // cols, (slot % cols) * 4
+
+    def _put(self, w, slot, dcol=0, **kw):
+        """#939: grid `w` in setting `slot` (column offset `dcol` inside the slot) and remember it for re-gridding."""
+        row, col = self._cell(slot, getattr(self, "setting_cols", SETTING_COLS))
+        w.grid(row=row, column=col + dcol, **kw)
+        self.slot_widgets.setdefault(slot, []).append((w, dcol))
+        return w
+
+    def _set_setting_cols(self, cols: int) -> bool:
+        """#939 (mockup A): two settings per row at the default width, one per row when the window is narrower.
+        Hidden settings (grid_remove) stay hidden. Returns True when the layout changed."""
+        if cols == self.setting_cols:
+            return False
+        self.setting_cols = cols
+        for slot, items in self.slot_widgets.items():
+            row, col = self._cell(slot, cols)
+            for w, dcol in items:
+                if w.winfo_manager() == "grid":
+                    w.grid_configure(row=row, column=col + dcol)
+        self.frm.columnconfigure(3, minsize=14 if cols == 2 else 0)
+        self.frm.columnconfigure(5, weight=1 if cols == 2 else 0)
+        return True
+
+    def _adv_width_changed(self, width: int):
+        """#939: re-grid when the Advanced card is narrower than the two-column layout needs (with hysteresis:
+        the two-column width is measured while two columns are shown). While Advanced is collapsed the card's width
+        comes from the other groups, not from the window, so it is ignored (it would lock the grid in one column)."""
+        if not self.frm.winfo_ismapped():
+            return
+        if self.setting_cols == 2:
+            self.two_col_w = max(self.two_col_w, self.frm.winfo_reqwidth())
+        want = 2 if width >= self.two_col_w else 1
+        if self._set_setting_cols(want) and want == 1:
+            p = self.panel
+            p.update_idletasks()
+            if p.winfo_height() < p.winfo_reqheight():  # one column is taller: never cut settings off
+                p.geometry(f"{p.winfo_width()}x{p.winfo_reqheight()}")
 
     def _label(self, slot, key, cls=None, **kw):
-        row, col = self._cell(slot)
         w = self._tx((cls or ttk.Label)(self.frm, **kw), key)
         if cls is None:
             w.configure(wraplength=LABEL_WRAP_PX, justify="left")
-        w.grid(row=row, column=col, sticky="w", pady=1)
-        return w
+        return self._put(w, slot, sticky="w", pady=1)
 
     def _combo(self, slot, label, key, values, kind=None):
         """kind (#884): the box shows names in the UI language while the returned var keeps the raw stored value."""
         self._label(slot, label)
-        row, col = self._cell(slot)
         var = tk.StringVar(value=self.settings[key])
         shown = var
         if kind:
@@ -769,7 +804,7 @@ class App:
             self.kind_combos[key] = (kind, values, var)
         self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=shown, values=choice_labels(kind, values) if kind else values,
                                              state="readonly", width=18)
-        cb.grid(row=row, column=col + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
+        self._put(cb, slot, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         return var
 
     def _relabel_combos(self):
@@ -797,6 +832,7 @@ class App:
         on = self.v_adv.get()
         self.settings["advanced_open"] = on
         if on:  # #737: the whole settings block (engine included) lives under Advanced
+            self._set_setting_cols(2)  # #939: open at two columns; a narrow window re-wraps on the next <Configure>
             self.frm.pack(after=self.adv_hint, anchor="w", fill="x")
         else:
             self.frm.pack_forget()
@@ -1061,9 +1097,16 @@ class App:
             self.panel.lift()
 
     def _apply_panel_geometry(self):
-        """#939: minsize = the natural size; restore the remembered size / position (never below minsize)."""
+        """#939: minsize = the one-column width x the two-column height; restore the remembered size / position
+        (never below minsize). The settings grid shows two columns whenever the window is wide enough."""
         p, s = self.panel, self.settings
-        mw, mh = p.winfo_reqwidth(), p.winfo_reqheight()
+        self._set_setting_cols(1)
+        p.update_idletasks()
+        mw = p.winfo_reqwidth()
+        self._set_setting_cols(2)
+        p.update_idletasks()
+        self.two_col_w = self.frm.winfo_reqwidth()
+        mh = p.winfo_reqheight()
         p.minsize(mw, mh)
         w, h = s.get("panel_w"), s.get("panel_h")
         geo = f"{max(w, mw)}x{max(h, mh)}" if w and h else ""
@@ -1102,12 +1145,15 @@ class App:
 
         g_speed, g_appear = group("gui_set_speed"), group("gui_set_appear")
         g_mine, g_rec = group("gui_set_mine"), group("gui_set_records")
-        self.card_adv = ttk.Frame(body, style=card, padding=(10, 4, 10, 4))  # the Advanced toggle + everything else
+        self.card_adv = ttk.Frame(body, style=card, padding=(ADV_PAD_X // 2, 4, ADV_PAD_X // 2, 4))  # the Advanced toggle + everything else
         self.card_adv.pack(fill="x", pady=(2, 0))
         self.frm = f = ttk.Frame(self.card_adv, padding=(0, 4, 0, 0))
         f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
         for col in (1, 5):  # the two control columns share the card's width (the "..." buttons stay narrow)
             f.columnconfigure(col, weight=1)
+        self.slot_widgets, self.setting_cols, self.two_col_w = {}, SETTING_COLS, 0  # #939: 2 -> 1 column wrap
+        self.card_adv.bind("<Configure>", lambda e: self._adv_width_changed(e.width - ADV_PAD_X)
+                           if e.widget is self.card_adv else None)
         self.combos = {}
         self.kind_combos = {}
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
@@ -1132,17 +1178,15 @@ class App:
         self._build_send_mode(g_mine).pack(anchor="w", fill="x")
         self.v_preset = self._combo(5, "gui_mode", "preset", PRESETS, "preset")
         self._label(6, "gui_glossary")
-        r, c = self._cell(6)
         self.v_gloss = tk.StringVar(value=s["glossary"])
-        ttk.Entry(f, textvariable=self.v_gloss, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
-        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=r, column=c + 2, padx=(4, 0))
+        self._put(ttk.Entry(f, textvariable=self.v_gloss, width=16), 6, 1, sticky="we", pady=1, padx=(6, 0))
+        self._put(ttk.Button(f, text="...", width=3, command=self.pick_glossary), 6, 2, padx=(4, 0))
         self.v_save = tk.BooleanVar(value=s["save"])
         self._tx(ttk.Checkbutton(g_rec, variable=self.v_save), "gui_save").pack(anchor="w")
         self._label(7, "gui_save_path")
-        r, c = self._cell(7)
         self.v_save_path = tk.StringVar(value=s["save_path"])
-        ttk.Entry(f, textvariable=self.v_save_path, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
-        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=r, column=c + 2, padx=(4, 0))
+        self._put(ttk.Entry(f, textvariable=self.v_save_path, width=16), 7, 1, sticky="we", pady=1, padx=(6, 0))
+        self._put(ttk.Button(f, text="...", width=3, command=self.pick_save), 7, 2, padx=(4, 0))
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
         self._tx(ttk.Checkbutton(g_rec, variable=self.var_show_src, command=self._src_toggled),
                  "gui_show_src_line").pack(anchor="w")
@@ -1152,21 +1196,19 @@ class App:
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
         self._tx(ttk.Checkbutton(g_mine, variable=self.v_voice), "gui_voice").pack(anchor="w")
         self._label(10, "gui_voice_device")
-        r, c = self._cell(10)
         self.voice_default = t("gui_voice_default")
         outs = voice_outputs()
         shown = s["voice_device"] if s["voice_device"] in outs or not outs else ""  # #448: unplugged -> default
         self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
-        ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
-                     state="readonly", width=18).grid(row=r, column=c + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
+        self._put(ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
+                               state="readonly", width=18), 10, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         self._label(12, "gui_listen_device")  # #1070: which output the other side is heard on (Advanced)
-        r, c = self._cell(12)
         self.listen_default = t("gui_listen_default")
         louts = listen_outputs()
         lshown = s.get("listen_device", "") if s.get("listen_device", "") in louts else ""
         self.v_listen_dev = tk.StringVar(value=lshown or self.listen_default)
-        ttk.Combobox(f, textvariable=self.v_listen_dev, values=[self.listen_default] + louts,
-                     state="readonly", width=18).grid(row=r, column=c + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
+        self._put(ttk.Combobox(f, textvariable=self.v_listen_dev, values=[self.listen_default] + louts,
+                               state="readonly", width=18), 12, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
