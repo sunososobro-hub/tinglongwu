@@ -138,8 +138,8 @@ def main(argv=None) -> int:
             dev = "unknown"
         print("1" if stream_default(dev, argv[1] == "both") else "0")
         return 0
-    if len(argv) == 2 and argv[0] == "mic-args":  # arg: the user's answer; prints --mic or nothing
-        for x in mic_args(argv[1]):
+    if argv[:1] == ["mic-args"] and len(argv) <= 2:  # arg: the user's answer (PS 5.1 drops an empty one = no); prints --mic or nothing
+        for x in mic_args(argv[1] if len(argv) == 2 else ""):
             print(x)
         return 0
     if len(argv) == 2 and argv[0] == "speak":

@@ -25,3 +25,9 @@ def test_every_locale_has_the_mic_question():
     for loc in ("en", "ja", "ru", "zh-TW"):
         assert "M_ASK_MIC=" in (root / f"{loc}.sh").read_text(encoding="utf-8")
         assert "ASK_MIC =" in (root / f"{loc}.psd1").read_text(encoding="utf-8")
+
+
+def test_mic_args_cli_missing_answer_is_silent():
+    """#1113: Windows PowerShell 5.1 drops an empty-string arg, so `mic-args` arrives with no answer: no usage noise."""
+    r = subprocess.run([sys.executable, "-m", "tinglongwu.menuopts", "mic-args"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout == "" and r.stderr == ""
