@@ -265,3 +265,10 @@ def test_page_result_clears_the_downloading_status_line(monkeypatch):
     app.App._cable_done(fake, "page")
     assert opened == [vbcable.VBCABLE_PAGE] and fake.downloading is None
     assert ("mode", "listen") in status and status[-1] == ""  # "Downloading VB-CABLE..." is gone
+
+
+def test_official_pin_is_set():
+    # #805: the real SHA-256 of the official VBCABLE_Driver_Pack45.zip is pinned (empty meant "open the page instead").
+    assert len(vbcable.VBCABLE_SHA256) == 64
+    assert vbcable.VBCABLE_SHA256 == vbcable.VBCABLE_SHA256.lower()
+    int(vbcable.VBCABLE_SHA256, 16)
