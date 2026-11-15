@@ -374,10 +374,15 @@ class Pipeline extends ChangeNotifier {
     super.notifyListeners();
     if (source != AudioSourceKind.phone || _disposed) return;
     final lines = displayLines([for (final s in subtitles) (s.ru, s.zh)], overlayStyle.mode);
-    final key = '${silenceHint ? 1 : 0}|${lines.join('\n')}';
+    // Grey draft on the source line; hidden in 中文-only mode (no source text is shown there).
+    final draft = (prefs.sourceDraft && overlayStyle.mode != SubtitleMode.zh && draftRu != '…')
+        ? draftRu
+        : '';
+    final key = '${silenceHint ? 1 : 0}|${lines.join('\n')}|$draft';
     if (key == _overlaySent) return;
     _overlaySent = key;
-    PlaybackCapture.overlayLines(lines, silenceHint ? silenceHintText : null).catchError((_) {});
+    PlaybackCapture.overlayLines(lines, silenceHint ? silenceHintText : null, draft: draft)
+        .catchError((_) {});
   }
 
   void _fail(String msg) {
