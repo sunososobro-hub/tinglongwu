@@ -139,6 +139,11 @@ def release_head_ok(pr: dict) -> bool:
     return ref == LEGACY_HEAD or (v is not None and ref == snapshot_branch(v))
 
 
+def is_snapshot_branch(name: str) -> bool:
+    """A release/vX.Y.Z branch this lane manages; other release/* names (e.g. release/notes) are never touched."""
+    return name.startswith(SNAPSHOT_PREFIX) and TAG_RE.match(name[len(SNAPSHOT_PREFIX):]) is not None
+
+
 def is_snapshot(pr: dict) -> bool:
     return ((pr.get("head") or {}).get("ref", "")).startswith(SNAPSHOT_PREFIX)
 
@@ -336,7 +341,7 @@ def snapshot_plan(version: str, tags: dict[str, str], bump_sha: str, ahead: int,
     closing = {p["head"]["ref"] for p in rel if p["number"] in out["close"]}
     still_open = {p["head"]["ref"] for p in rel} - closing
     for name in sorted(branches):
-        if name != keep and name not in still_open and name.startswith(SNAPSHOT_PREFIX):
+        if name != keep and name not in still_open and is_snapshot_branch(name):
             out["delete"].append(name)
     if not releasable:
         why = ("not a release version" if parse_tag(tag) is None else
@@ -395,7 +400,10 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
         init = show(head, "tinglongwu/__init__.py")
         if init is None:
             return stop(f"cannot read tinglongwu/__init__.py at the snapshot head {head[:12]}")
-        version = app_version(init)
+        snap_version = app_version(init)
+        if snap_version != version:  # bump reverted or superseded on dev: never release the old snapshot
+            return stop(f"snapshot {pr['head']['ref']} is v{snap_version} but dev's __version__ is v{version}; "
+                        "release-pr.yml closes it")
         whats_new_text = show(head, WHATS_NEW_FILE) or ""
     elif head != run_sha:
         return stop(f"release PR #{pr['number']} head {head[:12]} is not this run's commit {run_sha[:12]}")

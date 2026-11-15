@@ -398,15 +398,16 @@ def snap_show(init=INIT, wn=WN, sha=HEAD):
     return lambda s, path: (init if path == "tinglongwu/__init__.py" else wn) if s == sha else None
 
 
-def auto_snap(pulls=(SNAP,), runs=GREEN, run=SHA, in_dev=True, show=None, version="0.3.3", wn="", **kw):
-    """version / wn are what the dev TIP has; the snapshot gate must read them at the snapshot head instead."""
+def auto_snap(pulls=(SNAP,), runs=GREEN, run=SHA, in_dev=True, show=None, version="0.3.2", wn="", **kw):
+    """version / wn are what the dev TIP has; the snapshot gate reads whats_new at the snapshot head instead and
+    needs the dev version to still be the snapshot's (a revert or a newer bump stops it)."""
     return rn.auto_plan("true", "level: 2", run, version, TAGS, list(pulls), REPO,
                         lambda h: runs if h == HEAD else [], wn, show=show or snap_show(),
                         in_dev=lambda s: in_dev and s == HEAD, **kw)
 
 
 def test_snapshot_release_pr_merges_on_its_own_head_whatever_run_triggered_the_gate():
-    # run = SHA (a newer dev push): the legacy rule would stop; dev's tip version 0.3.3 and empty whats_new do not matter
+    # run = SHA (a newer dev push): the legacy rule would stop; dev's tip empty whats_new does not matter
     out = auto_snap()
     assert out["merge"] == "true" and out["pr"] == "990" and out["head"] == HEAD and out["tag"] == "v0.3.2", out
 
@@ -425,13 +426,15 @@ def test_snapshot_head_reads_the_newest_run_so_dispatched_runs_replace_cancelled
 @pytest.mark.parametrize("kw, why", [
     ({"in_dev": False}, "is not a dev commit"),
     ({"show": lambda s, p: None}, "cannot read tinglongwu/__init__.py"),
-    ({"show": snap_show(init='__version__ = "0.3.1"\n')}, "does not name v0.3.1"),
+    ({"show": snap_show(init='__version__ = "0.3.1"\n')}, "is v0.3.1 but dev's __version__ is v0.3.2"),
     ({"show": snap_show(wn="## v0.3.1\n- Old\n")}, "no filled `## v0.3.2` section"),
     ({"runs": [r for r in GREEN if r["name"] != "audio-routing"]}, "audio-routing: no run"),
     ({"runs": [*GREEN, {"id": 99, "name": "hw-tests", "status": "completed", "conclusion": "failure"}]}, "hw-tests"),
     ({"pulls": ({**SNAP, "head": {**SNAP["head"], "repo": {"full_name": "x/fork"}}},)}, "no open dev -> main"),
     ({"pulls": ({**SNAP, "head": {**SNAP["head"], "ref": "release/v0.3.1"}},)}, "no open dev -> main"),
     ({"merged": ({**SNAP, "merged_at": "x"},)}, "already merged"),
+    ({"version": "0.3.1"}, "dev's __version__ is v0.3.1"),  # bump reverted on dev before release-pr.yml closed it
+    ({"version": "0.3.3"}, "dev's __version__ is v0.3.3"),  # superseded by a newer bump
 ])
 def test_snapshot_release_pr_refuses(kw, why):
     out = auto_snap(**kw)
@@ -504,6 +507,12 @@ def test_existing_snapshot_with_an_open_pr_is_left_alone_and_merges_to_dev_chang
     # a branch pushed by hand (workflow token refused) gets its PR and the dispatches at the branch's commit
     out = snapshot(branches={"release/v0.3.2": HEAD})
     assert not out["cut"] and out["pr"] and out["sha"] == HEAD
+
+
+def test_only_release_version_branches_are_deleted():
+    # a non-version release/* branch must not reach the act job (it rejects the name and would block every run)
+    out = snapshot(branches={"release/notes": "5" * 40, "release/v0.3.1": "4" * 40})
+    assert out["delete"] == ["release/v0.3.1"] and out["cut"] and out["pr"], out
 
 
 def test_superseded_and_released_snapshots_are_closed_and_deleted():
