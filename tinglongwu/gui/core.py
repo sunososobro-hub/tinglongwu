@@ -55,6 +55,16 @@ def send_gate_line(view) -> str:
 def send_mode_notice_key(mode: str) -> str | None:
     """#834: i18n key of the one-line quality notice shown when a direct-send mode is chosen, else None."""
     return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
+# #983: settings the running pipeline reads only when it starts; changing one during a run needs a restart
+START_TIME_SETTINGS = ("lang", "target", "engine", "quality", "model", "preset", "glossary", "source", "voice",
+                       "voice_device", "send_mode")
+
+
+def restart_needed(at_start: dict, now: dict) -> list[str]:
+    """#983: the start-time settings whose value in `now` differs from what the running pipeline started with."""
+    return [k for k in START_TIME_SETTINGS if k in at_start and k in now and at_start[k] != now[k]]
+
+
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
 TARGETS = ["zh-tw", "zh-cn", "en"]
 ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
