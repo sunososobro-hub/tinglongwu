@@ -77,9 +77,11 @@ LEGACY_HEAD = "dev"            # #976 transition: the release PR opened by the o
 # #976: the required checks that release-pr.yml dispatches on the snapshot ref. ci and windows-build are not
 # dispatched: their dev-push runs are never cancelled (ci has no concurrency group, windows-build #888) and a
 # windows-build on a release/ ref could not use dev's build cache.
-SNAPSHOT_DISPATCH = ("e2e", "audio-routing", "hw-tests")
-WORKFLOW_FILES = {"e2e": "e2e.yml", "audio-routing": "audio-routing.yml", "hw-tests": "hw-tests.yml"}
-REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing")  # #849: VB-CABLE routing on windows-latest
+SNAPSHOT_DISPATCH = ("e2e", "audio-routing", "hw-tests", "install-clean")
+WORKFLOW_FILES = {"e2e": "e2e.yml", "audio-routing": "audio-routing.yml", "hw-tests": "hw-tests.yml",
+                  "install-clean": "install-clean.yml"}
+REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing",
+                   "install-clean")  # #849: VB-CABLE routing on windows-latest; #1016: clean-Windows speak smoke
 WHATS_NEW = "## What's new"
 WHATS_NEW_FILE = "docs/whats_new.md"
 THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)

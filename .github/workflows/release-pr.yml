@@ -160,7 +160,7 @@ jobs:
           DISPATCH: ${{ needs.plan.outputs.dispatch }}
         run: |
           for w in $DISPATCH; do
-            case "$w" in e2e|audio-routing|hw-tests) ;; *) echo "::error::unknown workflow"; exit 1;; esac
+            case "$w" in e2e|audio-routing|hw-tests|install-clean) ;; *) echo "::error::unknown workflow"; exit 1;; esac
             gh workflow run "$w.yml" --ref "$BRANCH"
             echo "dispatched $w on $BRANCH" >> "$GITHUB_STEP_SUMMARY"
           done

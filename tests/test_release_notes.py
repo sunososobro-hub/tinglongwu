@@ -429,6 +429,8 @@ def test_snapshot_head_reads_the_newest_run_so_dispatched_runs_replace_cancelled
     ({"show": snap_show(init='__version__ = "0.3.1"\n')}, "is v0.3.1 but dev's __version__ is v0.3.2"),
     ({"show": snap_show(wn="## v0.3.1\n- Old\n")}, "no filled `## v0.3.2` section"),
     ({"runs": [r for r in GREEN if r["name"] != "audio-routing"]}, "audio-routing: no run"),
+    ({"runs": [r for r in GREEN if r["name"] != "install-clean"]}, "install-clean: no run"),
+    ({"runs": [*GREEN, {"id": 99, "name": "install-clean", "status": "completed", "conclusion": "failure"}]}, "install-clean"),
     ({"runs": [*GREEN, {"id": 99, "name": "hw-tests", "status": "completed", "conclusion": "failure"}]}, "hw-tests"),
     ({"pulls": ({**SNAP, "head": {**SNAP["head"], "repo": {"full_name": "x/fork"}}},)}, "no open dev -> main"),
     ({"pulls": ({**SNAP, "head": {**SNAP["head"], "ref": "release/v0.3.1"}},)}, "no open dev -> main"),
@@ -482,16 +484,17 @@ def snapshot(version="0.3.2", tags=TAGS, ahead=3, branches=None, pulls=(), runs=
 def test_snapshot_is_cut_at_the_bump_commit_with_every_required_dispatch():
     out = snapshot()
     assert out["cut"] and out["pr"] and out["branch"] == "release/v0.3.2" and out["sha"] == BUMP
-    assert out["dispatch"] == ["e2e", "audio-routing", "hw-tests"] and not out["close"] and not out["delete"]
+    assert out["dispatch"] == ["e2e", "audio-routing", "hw-tests", "install-clean"] and not out["close"] and not out["delete"]
     assert set(rn.SNAPSHOT_DISPATCH) <= set(rn.REQUIRED_CHECKS) and set(rn.SNAPSHOT_DISPATCH) == set(rn.WORKFLOW_FILES)
 
 
 def test_snapshot_dispatch_skips_green_runs_and_a_running_hw_tests_only():
     runs = [{"id": 1, "name": "e2e", "status": "completed", "conclusion": "success"},
             {"id": 2, "name": "audio-routing", "status": "in_progress", "conclusion": None},  # dev push may cancel it
-            {"id": 3, "name": "hw-tests", "status": "in_progress", "conclusion": None}]       # never cancelled
+            {"id": 3, "name": "hw-tests", "status": "in_progress", "conclusion": None},       # never cancelled
+            {"id": 4, "name": "install-clean", "status": "completed", "conclusion": "success"}]
     assert snapshot(runs=runs)["dispatch"] == ["audio-routing"]
-    assert snapshot(runs=[{**runs[2], "status": "queued"}])["dispatch"] == ["e2e", "audio-routing", "hw-tests"]
+    assert snapshot(runs=[{**runs[2], "status": "queued"}])["dispatch"] == ["e2e", "audio-routing", "hw-tests", "install-clean"]
 
 
 def test_no_snapshot_when_the_tag_exists_or_main_has_the_bump():
