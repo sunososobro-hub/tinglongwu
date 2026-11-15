@@ -20,8 +20,9 @@ Every tlwu agent (cloud routines W-easy, W-hard, R-merge, R-hard, S-easy, S-merg
 - A merger that finds an open PR to dev with any other head never stops silently: it adds `needs-opus` and a 1-line comment `needs-opus: head is not fix/N; reopen as fix/<issue>`. R-hard then opens/reuses an issue and re-pushes the same commits as `fix/<issue>`, closing the old PR. The owner is never the fallback for a branch name.
 
 ## 3. Merge gates (changes to g5 / g7, plus hard stops)
+- PRs into `dev`: section 17 (only `test` gates, g5 off, Opus only for protected paths) wins over this section.
 - g5 (#831): diff size alone no longer escalates to Opus. `needs-opus` under g5 only when the PR adds a skip / skipif / xfail marker or deletes a test file. Sensitive paths (g4) are the narrowed list in section 14.
-- g7 CI: wait up to **15 minutes** for checks to complete (was 10; windows-build p90 12.8 min, e2e p90 10.1 min) before giving up; don't post "CI still running" comments.
+- g7 CI: wait up to **15 minutes** for checks to complete (on dev only for `test`, section 17) (was 10; windows-build p90 12.8 min, e2e p90 10.1 min) before giving up; don't post "CI still running" comments.
 - Opus PASS is honoured (#742): when a comment or review containing `Opus review: PASS` (or the older `Opus review: APPROVE`) by an allowed review author (section 14) is newer than the PR's latest head commit, mergers treat g4, g5 and the `.github/` rule as passed and continue with mergeable/CI/acceptance. They never re-add `needs-opus` to such a PR. Opus reviewers write `Opus review: PASS`.
 - Narrower escalation (#742): the g4 path match ignores files under `tests/` (e.g. `tests/test_netguard.py` is a test, not netguard code); a g5 `skipif` whose condition only checks `sys.platform` / `os.name` is not a skip marker; under `.github/` only the release-critical workflows (next bullet) need an Opus PASS (other workflows, issue templates, CODEOWNERS etc. follow the normal gates).
 - `.github/` changes: NOT an owner question. Release-critical workflows (#831: `.github/workflows/` `ci.yml`, `e2e.yml`, `windows-build.yml`, `hw-tests.yml`, `release.yml`, `release-pr.yml` and any `auto-release*.yml`) merge to dev after CI green + Opus review (`Opus review: PASS`); everything else under `.github/` follows the normal gates. Never release, tag, or touch main.
@@ -140,14 +141,14 @@ Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main r
 ### Definitions
 - Allowed review authors: `sunososobro-hub` (the owner account the cloud routines post as). Only this list counts; changing it is a change to this file (a protected path).
 - Opus PASS: a PR comment or review whose body contains the line `Opus review: PASS`, posted by an allowed review author, after the PR's latest head commit. A PASS from any other author (fork authors, bots, other accounts) is ignored, whatever its text says.
-- Green: the `ci` workflow's `test` check run exists on the PR's head commit and concluded `success` (no checks at all is never green), and every other check run and commit status on that commit has completed with conclusion `success`, `skipped` or `neutral`; none is pending, `failure`, `cancelled` or `timed_out`. For the release PR, green also requires all four of `ci`, `e2e`, `windows-build` and `hw-tests` to be `success` on its head commit (`skipped` does not count there). Exception (owner decision 2026-11-14, #848): when the `hw-tests` run for that head has not started (no runner picked it up) within `HW_RUNNER_WAIT_MIN` = 30 minutes, `hw-tests` is deferred: `ci`, `e2e` and `windows-build` `success` are enough, the release notes say "hardware checks deferred", and a later `hw-tests` failure on that commit or the next dev push opens a P0 issue `[release] deferred hw-tests failed on vX.Y.Z`. A started `hw-tests` run is never deferred.
+- Green (dev PRs: section 17, only `test` counts): the `ci` workflow's `test` check run exists on the PR's head commit and concluded `success` (no checks at all is never green), and every other check run and commit status on that commit has completed with conclusion `success`, `skipped` or `neutral`; none is pending, `failure`, `cancelled` or `timed_out`. For the release PR, green also requires all four of `ci`, `e2e`, `windows-build` and `hw-tests` to be `success` on its head commit (`skipped` does not count there). Exception (owner decision 2026-11-14, #848): when the `hw-tests` run for that head has not started (no runner picked it up) within `HW_RUNNER_WAIT_MIN` = 30 minutes, `hw-tests` is deferred: `ci`, `e2e` and `windows-build` `success` are enough, the release notes say "hardware checks deferred", and a later `hw-tests` failure on that commit or the next dev push opens a P0 issue `[release] deferred hw-tests failed on vX.Y.Z`. A started `hw-tests` run is never deferred.
 - Ready: base is `dev`; not draft; `mergeable_state` is `clean` (a `dirty` PR is fixed first, section 7); green; all gates g1-g7 below pass; no hard stop (section 3 and this section) applies.
 - Gates (canonical here; routine prompts that number gates use these). g4 / g5 narrowed (owner 2026-11-14, #831): of the last 200 PRs, 73 went to Opus review and only 5 (7%) got CHANGES; median wait 41 min.
   - g1 link: the body has `Closes #N` or `Refs #N`, and #N is an open or just-closed issue in this repo.
   - g2 usage: the body's last line is `tlwu-usage: ... minutes=N` (section 10). For g1 / g2 the merger repairs a body-only gap itself (section 3, paperwork).
   - g3 base: base is `dev` (see "Base" below).
   - g4 sensitive paths: protected paths (below), plus dependency pins (`pyproject.toml`, `requirements*.txt`), offline/netguard code (`tinglongwu/offline.py`, `scripts/*offline*`) and model pins/downloads (`scripts/download_models.py`, `scripts/make_model_pins.py`). These need an Opus PASS before merge. Install/update scripts (`install.*`, `update.bat`, `scripts/install.sh`, `scripts/auto_update.sh`, `scripts/*bootstrap*`, `tinglongwu_setup/`) are no longer g4: the install-test, install-clean and windows-build CI jobs cover them.
-  - g5 tests: a newly added skip / skipif / xfail marker (not a `skipif` that only checks `sys.platform` / `os.name`, section 3) or a deleted test file -> `needs-opus`. Diff size is not a gate.
+  - g5 tests (off on dev, section 17): a newly added skip / skipif / xfail marker (not a `skipif` that only checks `sys.platform` / `os.name`, section 3) or a deleted test file -> `needs-opus`. Diff size is not a gate.
   - g6 review: an Opus PASS where g4 or g5 applies; no unresolved `needs owner` / `blocking` (section 3).
   - g7 CI: green, waiting up to 15 minutes (section 3).
 
@@ -179,7 +180,7 @@ Owner: when ci, e2e, windows-build and hw-tests are all green on the dev->main r
 
 ### Kill switch
 - Auto-release runs only when the repo variable `AUTO_RELEASE` is `true` AND throttle #574 is at level 1 or above. `AUTO_RELEASE` missing or not `true`, or throttle level 0, stops it.
-- `dev` red (any required check failing on the dev tip) for more than 2 h is P0: S-hard opens (or bumps) a `[P0] dev red` issue, and pickers take it before anything else.
+- `dev` red (the `test` check failing on the dev tip; other checks follow section 17) for more than 2 h is P0: S-hard opens (or bumps) a `[P0] dev red` issue, and pickers take it before anything else.
 
 ## 15. Issue format (owner 2026-11-13, #588)
 Single source for every session (cloud, humans); `CONTRIBUTING.md` links here.
@@ -193,3 +194,12 @@ Single source for every session (cloud, humans); `CONTRIBUTING.md` links here.
 
 ## 16. hw-tests nightly and flaky-check issues (owner, #681)
 - `hw-nightly.yml` (GitHub-hosted) dispatches `hw-tests.yml` on `dev` once a night (03:17 Asia/Taipei), only when `dev`'s tip has no green or pending hw-tests run (`scripts/hw_nightly.py`). A merger or S-hard closes a flaky-check issue that waits for N green hardware runs (N from the issue, default 5) once it links N consecutive green `hw-tests` runs on `dev`.
+
+## 17. Two lanes (owner 2026-11-15)
+Owner (#976): "我是只想要維護一個main，這個分支要有品質，但同時也走不需要品質的開發，至少我自己可以快速看到我要的東西，到時候回去main再卡關". `dev` is the fast lane, `main` is the quality lane. This section wins over sections 3 and 14 for PRs into `dev`.
+- Merge to dev: the `ci` workflow's `test` check on the PR head concluded `success` is the only CI gate. Every other check run or commit status (pending, `failure`, `cancelled`, `timed_out`) does not block, and mergers do not wait for it (the section 3 g7 15-minute wait applies to `test` only). No `test` check at all is still not green.
+- g5 is off on dev: an added skip / skipif / xfail marker or a deleted test file does not need `needs-opus`. The section 3 FAIL reasons (tests that only grep source, etc.) still apply.
+- Opus PASS on dev only for protected paths (section 14 "Protected paths", plus g4's dependency pins, offline/netguard code and model pins). Nothing else escalates to Opus.
+- Unchanged: fork / non-collaborator rules (section 14 "Outside"), the kill switch (`AUTO_RELEASE` + throttle #574), version-bump rules, the section 2 lock, g1 / g2 / g3, and the section 3 hard stops.
+- A non-`test` check failing on the dev tip never blocks merges: S-hard (or any merger that sees it) opens one issue `[dev] <check> failing on dev` (type bug, P1, `area:ci`), or comments on the open one with the new SHA and run link instead of opening a second. The section 14 "dev red > 2 h" P0 applies to `test` only.
+- main keeps every release gate: the release PR is cut from a snapshot branch `release/vX.Y.Z` and must pass all `scripts/release_notes.py` REQUIRED_CHECKS on the snapshot head (section 14 "Release snapshot"). Merges to dev never block or restart a release.
