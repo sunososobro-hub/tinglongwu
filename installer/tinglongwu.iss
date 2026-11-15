@@ -467,7 +467,8 @@ begin
   Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
   if not Gpu then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
-  Params := Params + ' -Lang ' + WizardLangCode;
+  { #1002: install.ps1 -Lang also rewrites ui_lang, so a silent self-update passes none and keeps the user's choice }
+  if not WizardSilent then Params := Params + ' -Lang ' + WizardLangCode;
   Size := SizeText(DownloadMB(Gpu));
   ProgressPage.Description := FmtMessage(CustomMessage('ProgressDescSize'), [Size]);
   StartMsg := CustomMessage('StartInstall');

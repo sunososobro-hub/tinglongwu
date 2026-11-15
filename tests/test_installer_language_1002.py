@@ -114,7 +114,9 @@ def test_wizard_language_becomes_the_app_language():
 
 def test_lang_and_ui_lang_always_follow_the_wizard_but_not_a_silent_update():
     code = _code()
-    assert "Params := Params + ' -Lang ' + WizardLangCode;" in code
+    # install.ps1 -Lang rewrites ui_lang too (CodeRabbit on #1056): both writes are skipped on a silent self-update
+    assert "if not WizardSilent then Params := Params + ' -Lang ' + WizardLangCode;" in code
+    assert code.count("' -Lang '") == 1
     assert "if not WizardSilent then SetConfigValue('ui_lang', WizardLangCode);" in code
     assert code.count("SetConfigValue('ui_lang'") == 1
 
