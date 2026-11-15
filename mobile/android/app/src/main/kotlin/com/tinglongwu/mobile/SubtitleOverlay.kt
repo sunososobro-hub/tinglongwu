@@ -49,6 +49,11 @@ object SubtitleOverlay {
     private var lastDraftTr: String = ""
     private var clip: BottomClip? = null
 
+    /** Window geometry as fractions of the screen, so it survives rotation (#1078). */
+    private class Geo(var x: Float, var y: Float, var w: Float)
+    private val geoPortrait = Geo(0.04f, 0.70f, 0.92f)
+    private val geoLandscape = Geo(0.15f, 0.50f, 0.70f)
+
     /** One subtitle: source text (shown smaller, above) and/or translation; null = not shown. */
     data class Line(val src: String?, val tr: String?)
 
@@ -95,26 +100,61 @@ object SubtitleOverlay {
         if (!visible && root != null) detach()
     }
 
+    private fun screenSize(w: WindowManager, ctx: Context): Pair<Int, Int> =
+        if (Build.VERSION.SDK_INT >= 30) {
+            val b = w.currentWindowMetrics.bounds
+            Pair(b.width(), b.height())
+        } else {
+            val m = ctx.resources.displayMetrics
+            Pair(m.widthPixels, m.heightPixels)
+        }
+
+    /** Re-derive position, width and max height from the current screen size and orientation. */
+    private fun applyGeometry() {
+        val w = wm ?: return
+        val ctx = app ?: return
+        val p = params ?: return
+        val r = root ?: return
+        val (sw, sh) = screenSize(w, ctx)
+        val g = if (sw > sh) geoLandscape else geoPortrait
+        val minW = minOf(dp(ctx, 160f), sw)
+        p.width = (g.w * sw).roundToInt().coerceIn(minW, sw)
+        p.x = (g.x * sw).roundToInt().coerceIn(0, maxOf(0, sw - p.width))
+        p.y = (g.y * sh).roundToInt().coerceIn(0, maxOf(0, sh - dp(ctx, 48f)))
+        clip?.maxH = (sh * MAX_HEIGHT_FRACTION).roundToInt()
+        try { w.updateViewLayout(r, p) } catch (_: Exception) {}
+        clip?.requestLayout()
+    }
+
+    private fun saveGeometry(w: WindowManager, ctx: Context, p: WindowManager.LayoutParams) {
+        val (sw, sh) = screenSize(w, ctx)
+        val g = if (sw > sh) geoLandscape else geoPortrait
+        g.x = p.x.toFloat() / sw; g.y = p.y.toFloat() / sh; g.w = p.width.toFloat() / sw
+    }
+
+    /** Overlay root; the window gets configuration changes on rotation and re-lays itself out. */
+    private class RotationAwareLayout(ctx: Context, val onChange: () -> Unit) : LinearLayout(ctx) {
+        override fun onConfigurationChanged(newConfig: android.content.res.Configuration?) {
+            super.onConfigurationChanged(newConfig)
+            post { onChange() }
+        }
+    }
+
     private fun dp(ctx: Context, v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics).roundToInt()
 
     @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
     private fun attach(ctx: Context) {
         val w = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val screenW = ctx.resources.displayMetrics.widthPixels
         val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
         val p = params ?: WindowManager.LayoutParams(
-            (screenW * 0.92f).roundToInt(),
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = (screenW * 0.04f).roundToInt()
-            y = (ctx.resources.displayMetrics.heightPixels * 0.70f).roundToInt()
-        }
+        ).apply { gravity = Gravity.TOP or Gravity.START }
         params = p
 
         val tv = TextView(ctx).apply {
@@ -131,11 +171,10 @@ object SubtitleOverlay {
             setPadding(dp(ctx, 4f), 0, dp(ctx, 6f), dp(ctx, 2f))
         }
         val cl = BottomClip(ctx).apply {
-            maxH = (ctx.resources.displayMetrics.heightPixels * MAX_HEIGHT_FRACTION).roundToInt()
             addView(tv, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
-        val box = LinearLayout(ctx).apply {
+        val box = RotationAwareLayout(ctx) { applyGeometry() }.apply {
             orientation = LinearLayout.HORIZONTAL
             addView(cl, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(handle, LinearLayout.LayoutParams(
@@ -158,7 +197,7 @@ object SubtitleOverlay {
                         w.updateViewLayout(box, p)
                     }
                 }
-                MotionEvent.ACTION_UP -> if (!dragging) openApp(ctx)
+                MotionEvent.ACTION_UP -> if (!dragging) openApp(ctx) else saveGeometry(w, ctx, p)
             }
             true
         }
@@ -168,9 +207,10 @@ object SubtitleOverlay {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> { downX = e.rawX; startW = box.width }
                 MotionEvent.ACTION_MOVE -> {
-                    p.width = (startW + (e.rawX - downX)).roundToInt().coerceIn(dp(ctx, 160f), screenW)
+                    p.width = (startW + (e.rawX - downX)).roundToInt().coerceIn(dp(ctx, 160f), screenSize(w, ctx).first)
                     w.updateViewLayout(box, p)
                 }
+                MotionEvent.ACTION_UP -> saveGeometry(w, ctx, p)
             }
             true
         }
@@ -182,11 +222,22 @@ object SubtitleOverlay {
             return
         }
         wm = w; root = box; text = tv; clip = cl
+        ctx.applicationContext.registerComponentCallbacks(configCallback)
+        applyGeometry()
         applyStyle()
         render()
     }
 
+    // Fallback for devices where the overlay view misses the rotation callback (#1078).
+    private val configCallback = object : android.content.ComponentCallbacks {
+        override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+            root?.post { applyGeometry() }
+        }
+        override fun onLowMemory() {}
+    }
+
     private fun detach() {
+        try { app?.unregisterComponentCallbacks(configCallback) } catch (_: Exception) {}
         try { wm?.removeView(root) } catch (_: Exception) {}
         root = null; text = null; wm = null; clip = null
     }
