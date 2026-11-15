@@ -59,6 +59,8 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(if (tlwuKeystore != null) "tlwuRelease" else "debug")
+            // Room/WorkManager keep rules for R8 (#1023).
+            proguardFiles("proguard-rules.pro")
         }
     }
 }
