@@ -68,8 +68,21 @@ jobs:
           if [ -f eval_data/smoke/manifest.jsonl ]; then echo "cached"; else python scripts/bench/make_ci_smoke.py --out eval_data/smoke; fi
       - name: Previous history (eval-results branch, if it exists)
         run: |
-          git fetch --depth=1 "https://github.com/${{ github.repository }}.git" eval-results 2>/dev/null \
-            && git show FETCH_HEAD:history.jsonl > history.jsonl || : > history.jsonl
+          # an empty history only when the branch does not exist; any other fetch / read failure stops the job
+          # (never replace the branch's history with a one-line file)
+          URL="https://github.com/${{ github.repository }}.git"
+          set +e
+          git ls-remote --exit-code --heads "$URL" eval-results > /dev/null
+          rc=$?
+          set -e
+          if [ "$rc" -eq 2 ]; then
+            : > history.jsonl
+          elif [ "$rc" -eq 0 ]; then
+            git fetch --depth=1 "$URL" eval-results
+            git show FETCH_HEAD:history.jsonl > history.jsonl
+          else
+            echo "ls-remote failed (exit $rc)"; exit "$rc"
+          fi
       - name: Mini-eval (CPU)
         run: |
           set +e
