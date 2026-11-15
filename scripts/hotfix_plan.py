@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--fix", required=True, help="commit sha (the plan's fix=)")
     q.add_argument("--tag", required=True, help="the plan's tag=")
     r = sub.add_parser("summary", help="gate table + wall time for the job summary (#957)")
-    r.add_argument("--gate", action="append", default=[], help="NAME=RESULT, in gate order")
+    r.add_argument("--gate", action="append", default=[], help="NAME=RESULT, in gate order (RESULT is after the last =, NAME may contain =)")
     r.add_argument("--started", required=True, help="run created_at (ISO 8601)")
     r.add_argument("--uploaded", default="", help="when the tested artifact was uploaded (ISO 8601); empty = not")
     t = sub.add_parser("record", help="sha256 of the tested files, one line (#958)")
@@ -352,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
             f.write(notes(a.tag, a.base, a.fix, int(a.issue), a.pr))
         return 0
     if a.cmd == "summary":
-        md, ok = summary([tuple(g.split("=", 1)) if "=" in g else (g, "") for g in a.gate], a.started, a.uploaded)
+        md, ok = summary([tuple(g.rsplit("=", 1)) if "=" in g else (g, "") for g in a.gate], a.started, a.uploaded)
         print(md, end="")
         if os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

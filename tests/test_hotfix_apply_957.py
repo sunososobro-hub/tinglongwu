@@ -162,3 +162,17 @@ def test_cli_summary_exit_code_follows_the_gates(tmp_path):
     ok = [sys.executable, str(SCRIPT), "summary", "--gate", "plan=success", "--started", "2026-11-15T03:00:00Z",
           "--uploaded", "2026-11-15T03:10:00Z"]
     assert subprocess.run(ok, capture_output=True, text=True).returncode == 0
+
+
+def test_cli_summary_gate_name_may_contain_an_equals_sign(tmp_path):
+    # hotfix.yml passes "tested files = recorded sha256=<outcome>"; the result is after the LAST '='
+    # (run 43721057768 failed every gate check because the name was split at the first '=').
+    out = tmp_path / "summary.md"
+    env = dict(os.environ, GITHUB_STEP_SUMMARY=str(out))
+    args = [sys.executable, str(SCRIPT), "summary", "--gate", "plan=success",
+            "--gate", "tested files = recorded sha256=success",
+            "--started", "2026-11-15T13:50:03Z", "--uploaded", "2026-11-15T13:58:57Z"]
+    assert subprocess.run(args, capture_output=True, text=True, env=env).returncode == 0
+    assert "| tested files = recorded sha256 | pass (success) |" in out.read_text()
+    bad = args[:6] + ["tested files = recorded sha256=failure"] + args[7:]
+    assert subprocess.run(bad, capture_output=True, text=True).returncode == 1
