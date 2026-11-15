@@ -23,10 +23,14 @@ VOICE_NOTE = ("NOTE voice not installed: this setup installs listening only. Spe
               "press 我來說 in the app for a one-click install, or run `tlwu-setup --talk`.")
 
 
-def voice_installed(mdir: Path) -> bool:
-    """True when the pinned Kokoro model files are in mdir (the Kokoro venv is checked by the app, not here)."""
+def voice_installed(mdir: Path, venv: Path | None = None) -> bool:
+    """True when the pinned Kokoro model files are in mdir AND the Kokoro venv (`tlwu-setup --talk`) has its python.
+    #967: model files alone are not enough (the owner's machine had the model but no venv, so speak stayed silent)."""
+    from . import talk
+
     d = mdir / "kokoro"
-    return all((d / n).is_file() for n in ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin"))
+    files = all((d / n).is_file() for n in ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin"))
+    return files and talk.venv_python(venv or talk.default_venv()).is_file()
 
 
 def _say(line: str) -> None:
@@ -38,7 +42,7 @@ def _dir_bytes(d: Path) -> int:
     return sum(p.stat().st_size for p in d.rglob("*") if p.is_file()) if d.is_dir() else 0
 
 
-def run(mdir: Path, getters: dict | None = None, out=_say) -> int:
+def run(mdir: Path, getters: dict | None = None, out=_say, venv: Path | None = None) -> int:
     """Fetch exactly DEFAULT_LISTEN_KEYS into mdir. `getters` maps key -> fn(man, mdir) (tests inject a fake)."""
     from . import downloader
 
@@ -56,7 +60,7 @@ def run(mdir: Path, getters: dict | None = None, out=_say) -> int:
         getters[key](man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     after = sum(_dir_bytes(mdir / k) for k in DEFAULT_LISTEN_KEYS)
-    if not voice_installed(mdir):  # #967: say it, so a user who later presses 我來說 is not surprised
+    if not voice_installed(mdir, venv):  # #967: say it, so a user who later presses 我來說 is not surprised
         out(VOICE_NOTE)
     out(f"READY default-listen seconds={time.monotonic() - t0:.1f} download_mb={max(0, after - before) // MB}")
     return 0
