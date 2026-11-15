@@ -27,7 +27,11 @@ def windows_commands(directory, setup_exe):
     install = 'start /wait "" "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="%s"' % (setup_exe, d)
     setup = 'type "%s"' % bs.join([d, "install.log"])
     clip = bs.join([d] + ttfs.TTFS_CLIP.split("/"))
-    tlwu = '"%s" --file "%s" --device cpu' % (bs.join([d, ".venv", "Scripts", "tlwu.exe"]), clip)
+    args = '--file "%s" --device cpu' % clip
+    # #1060: the released wizard installs the prebuilt core (#771): {app}\tlwu.exe, no .venv. A source-layout install
+    # (install.ps1) still has .venv\Scripts\tlwu.exe; run whichever exists.
+    core, venv = bs.join([d, "tlwu.exe"]), bs.join([d, ".venv", "Scripts", "tlwu.exe"])
+    tlwu = 'if exist "%s" ("%s" %s) else ("%s" %s)' % (core, core, args, venv, args)
     return install, setup, tlwu
 
 

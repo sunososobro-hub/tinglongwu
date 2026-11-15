@@ -89,6 +89,12 @@ t() {
     en:ready)  echo "The default ASR/MT models are installed; the first start needs no download." ;;
     ru:ready)  echo "Модели ASR/MT по умолчанию установлены; при первом запуске загрузка не нужна." ;;
     zh-TW:ready) echo "預設的辨識/翻譯模型已安裝；第一次啟動不需要再下載。" ;;
+    en:llama)  echo "Translation engine Hy-MT2 (llama-cpp-python, CPU build) ..." ;;
+    ru:llama)  echo "Движок перевода Hy-MT2 (llama-cpp-python, сборка для CPU) ..." ;;
+    zh-TW:llama) echo "安裝翻譯引擎 Hy-MT2（llama-cpp-python，CPU 版）..." ;;
+    en:nollama) echo "llama-cpp-python could not be installed: tlwu cannot translate until it is. Re-run this command, or send the error above to the maintainer." ;;
+    ru:nollama) echo "Не удалось установить llama-cpp-python: перевод не работает, пока он не установлен. Запустите команду снова или отправьте ошибку выше разработчику." ;;
+    zh-TW:nollama) echo "llama-cpp-python 安裝失敗：在它裝好之前無法翻譯。請重跑這個指令，或把上面的錯誤訊息給維護者。" ;;
     *) echo "$1" ;;
   esac
 }
@@ -113,6 +119,16 @@ prefetch_models() {
   [ -n "$YES" ] && export TLWU_YES=1
   # shellcheck disable=SC2086
   .venv/bin/python -m tinglongwu_setup $args --ask-lang || die "ASR/MT model download failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."
+}
+
+# #1060: Hy-MT2 is the only default translation engine (#276/#301), also on Linux: without llama-cpp-python every
+# `tlwu` run stops at "Hy-MT2 failed to load" and prints no translation. Same CPU build + sdist fallback as macOS (#420).
+install_llama() {
+  .venv/bin/python -c 'import llama_cpp' >/dev/null 2>&1 && return 0
+  say "$(t llama)"
+  # shellcheck source=tlwu_common.sh
+  . "$DIR/scripts/tlwu_common.sh"
+  tlwu_install_llama .venv/bin/python requirements-llama-cpu.txt || { printf '\n[!] %s\n' "$(t nollama)" >&2; return 1; }
 }
 
 # After fetch+checkout of $REF in $DIR: fast-forward a branch ref; a tag stays as is.
@@ -206,6 +222,7 @@ main() {
   .venv/bin/python -m pip install -e . || die "pip install failed (network?). Re-run this command to resume."
   # an older .venv may come from another Python than $PY: check the interpreter tlwu-gui really runs (#328)
   .venv/bin/python -c 'import tkinter' 2>/dev/null || printf '\n[!] %s\n' "$(t notk)" >&2
+  install_llama || true   # warned above; the rest of the install still works (transcript, menu)
 
   if [ -z "${TLWU_SKIP_MODELS:-}" ]; then
     bash scripts/linux_kokoro.sh || die "Kokoro install failed. Re-run this command to resume (or set TLWU_SKIP_MODELS=1 to skip)."

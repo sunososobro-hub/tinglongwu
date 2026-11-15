@@ -46,7 +46,8 @@ def _run(tmp_path: Path, args=(), extra_env=None, dpkg_ok=False, tk_ok=True, sys
     # the venv python: setup is logged, the tier probe runs the real tlwu_app.tiers
     _stub(d / ".venv" / "bin" / "python",
           f'case "$1" in\n -m) if [ "$2" = "tinglongwu_setup" ]; then echo "setup $*" >> "$TLWU_LOG"; fi; exit 0 ;;\n'
-          f' -c) case "$2" in *"import tkinter"*) exit {0 if venv_tk_ok else 1} ;; esac\n'
+          f' -c) case "$2" in *"import tkinter"*) exit {0 if venv_tk_ok else 1} ;;\n'
+          f'       *"import llama_cpp"*) exit 0 ;; esac\n'  # #1060: engine present (tests/test_install_llama_1060.py)
           f'     PYTHONPATH="{ROOT}" exec "{sys.executable}" -c "$2" ;;\nesac\nexit 0')
     env = {"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path), "TLWU_DIR": str(d), "TLWU_UI_LANG": "en",
            "TLWU_LOG": str(log), **(extra_env or {})}

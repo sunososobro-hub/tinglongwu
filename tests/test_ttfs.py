@@ -148,7 +148,7 @@ def test_over_budget_run_still_exits_0(tmp_path, monkeypatch, capsys):
 def test_no_subtitle_reports_exit_codes_and_output_tail_1060(tmp_path):
     # #1060: when no subtitle arrives, stderr shows each step's exit code and the subtitle command's
     # stdout+stderr tail, so a red CI ttfs job says why
-    tlwu = PY + " -c \"import sys;[print('line', i) for i in range(100)];sys.stderr.write('Boom: model missing\\n')\""
+    tlwu = PY + " -c \"import sys;[print('line', i) for i in range(100)];sys.stdout.flush();sys.stderr.write('Boom: model missing\\n')\""
     out = tmp_path / "ttfs.json"
     p = subprocess.run(
         [sys.executable, SCRIPT, "--install", PY + " -c \"print('pip failed');raise SystemExit(3)\"",
@@ -160,4 +160,5 @@ def test_no_subtitle_reports_exit_codes_and_output_tail_1060(tmp_path):
     assert "--- setup (exit 0)" in p.stderr
     assert "Boom: model missing" in p.stderr   # stderr of the subtitle command is no longer dropped
     assert "line 99" in p.stderr and "line 50" not in p.stderr   # only the last 40 lines
+    # stdout is flushed before the error, as a crashing tlwu does at exit; the tail keeps that order
     assert json.loads(out.read_text())["ttfs_seconds"] is None
