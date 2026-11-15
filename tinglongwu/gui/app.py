@@ -385,7 +385,7 @@ class App:
         self.root = tk.Tk()
         self.root.title("tinglongwu")
         apply_icon(self.root)
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)  # #939: a normal desktop window
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch
         self.status_key: str | None = "gui_ready"
@@ -608,7 +608,7 @@ class App:
         on = self.v_adv.get()
         self.settings["advanced_open"] = on
         if on:  # #737: the whole settings block (engine included) lives under Advanced
-            self.frm.pack(after=self.adv_btn, anchor="w")
+            self.frm.pack(after=self.adv_btn, anchor="w", fill="x")
         else:
             self.frm.pack_forget()
         self.adv_btn.configure(text=t("gui_advanced_open" if on else "gui_advanced"))
@@ -691,17 +691,39 @@ class App:
 
     def toggle_adjust(self):
         if self.panel.state() == "normal":
+            self._remember_panel()
             self.panel.withdraw()
         else:
             self.panel.deiconify()
+            self.panel.update_idletasks()
+            self._apply_panel_geometry()
             self.panel.lift()
+
+    def _apply_panel_geometry(self):
+        """#939: minsize = the natural size; restore the remembered size / position (never below minsize)."""
+        p, s = self.panel, self.settings
+        mw, mh = p.winfo_reqwidth(), p.winfo_reqheight()
+        p.minsize(mw, mh)
+        w, h = s.get("panel_w"), s.get("panel_h")
+        geo = f"{max(w, mw)}x{max(h, mh)}" if w and h else ""
+        x, y = s.get("panel_x"), s.get("panel_y")
+        if x is not None and y is not None:
+            geo += f"+{x}+{y}"
+        if geo:
+            p.geometry(geo)
+
+    def _remember_panel(self):
+        p = self.panel
+        if p.state() != "normal":
+            return
+        self.settings.update(panel_w=p.winfo_width(), panel_h=p.winfo_height(), panel_x=p.winfo_x(), panel_y=p.winfo_y())
 
     def _build_controls(self):
         s = self.settings
         self.panel = p = tk.Toplevel(self.root)  # #455: the "⚙ Adjust" panel, hidden until the bar asks for it
         p.withdraw()
         p.title("tinglongwu")
-        p.resizable(False, False)
+        p.resizable(True, True)  # #939: a normal resizable window; size and position are remembered
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
         self.frm = f = ttk.Frame(p, padding=(10, 4, 10, 8))
         f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
@@ -911,8 +933,12 @@ class App:
 
     # -- #738 menu bar: File / Settings / Help hold the rarely used actions ------------------------------------
     def build_menubar(self):
-        """(Re)build the window's menu bar in the current UI language."""
-        mb = tk.Menu(self.root, tearoff=0)
+        """(Re)build the menu bar of the bar window and of the settings panel (#939) in the current UI language."""
+        self.menubar = self._menubar_for(self.root, "menubar")
+        self.panel_menubar = self._menubar_for(self.panel, "panel_menubar")
+
+    def _menubar_for(self, win, attr):
+        mb = tk.Menu(win, tearoff=0)
         fm = tk.Menu(mb, tearoff=0)
         fm.add_command(label=t("gui_menu_logs"), command=self.open_log_folder)
         fm.add_command(label=t("gui_menu_uninstall"), command=self.open_uninstall)
@@ -946,11 +972,11 @@ class App:
         hm.add_separator()
         hm.add_command(label=t("gui_menu_about"), command=self.show_about)
         mb.add_cascade(label=t("gui_menu_help"), menu=hm)
-        old = getattr(self, "menubar", None)
-        self.menubar = mb
-        self.root.configure(menu=mb)
+        old = getattr(self, attr, None)
+        win.configure(menu=mb)
         if old is not None:
             old.destroy()
+        return mb
 
     def open_addons(self):
         """#614: Settings > Add-ons (installed / available packs, add, remove)."""
@@ -1292,6 +1318,7 @@ class App:
 
     def collect(self):
         s = self.settings
+        self._remember_panel()
         s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=engine_from_label(self.v_engine.get()), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
