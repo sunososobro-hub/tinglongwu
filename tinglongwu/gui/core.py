@@ -658,13 +658,13 @@ class StartDownload:
                 self.error = (self._last or f"download failed (exit {ev[2]})").splitlines()[-1][:90]
 
 
-def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None, cmd=None) -> int:
     """Worker thread: run the pack download child; `put` gets ("pack_line", text) per line and ("pack_done", pack, rc)."""
     import subprocess
 
     popen = popen or subprocess.Popen
     try:
-        p = popen(pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        p = popen(cmd or pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         for raw in p.stdout:
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
@@ -677,6 +677,18 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
         rc = -1
     put(("pack_done", pack, rc))
     return rc
+
+
+def voice_install_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
+    """#967: same child as download_cmd, but `--talk` (Kokoro venv + model + smoke, the CLI's step) instead of `--whisper`."""
+    cmd = download_cmd("small", mdir, bundled)
+    i = cmd.index("--whisper")
+    return [*cmd[:i], "--talk", *cmd[i + 2:]]
+
+
+def run_voice_install(put, mdir=None, popen=None, bundled: bool | None = None) -> int:
+    """#967: worker thread: run the voice install child; same events as run_pack_download (pack "voice")."""
+    return run_pack_download("voice", put, mdir, popen, bundled, cmd=voice_install_cmd(mdir, bundled))
 
 
 def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:

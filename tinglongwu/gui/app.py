@@ -1202,6 +1202,34 @@ class App:
         threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
         return True
 
+    def _offer_voice(self, run: dict) -> bool:
+        """#967: True when this speak Start must not go on now: the Kokoro voice is missing and the question was
+        answered "no" (speak runs subtitles only, as before) or the install is running (Start resumes in _pack_done)."""
+        from ..models import models_dir
+        from . import voice_install
+        from .core import run_voice_install
+
+        try:
+            if self.downloading or not voice_install.offer_needed(run, models_dir()):
+                return False
+        except Exception:  # noqa: BLE001  # an unreadable path must not block Start
+            return False
+        lang = ui_lang()
+        if not messagebox.askyesno(voice_install.title_text(lang), voice_install.dialog_text(lang), parent=self.root):
+            return False  # "no": speak starts with subtitles only, the red line explains why there is no voice
+        self.downloading = voice_install.VOICE_PACK
+        self.pack_retry = "speak"
+        self.start_dl = StartDownload(voice_install.VOICE_PACK)
+        self.v_dl_pct.set(0)
+        self.dl_bar.pack(anchor="w", pady=(4, 0))
+        self.btn.configure(state="disabled")
+        self._status_text(t("gui_dl_running", model=voice_install.VOICE_PACK))
+        self.panel.deiconify()
+        self.panel.lift()
+        self._sync_quick()
+        threading.Thread(target=run_voice_install, args=(self.q.put,), daemon=True).start()
+        return True
+
     def _offer_cable(self) -> bool:
         """#804: True when this speak Start must not go on now: the VB-CABLE question was answered "no" (back to
         listen) or the download + elevated install is running (Start resumes in _cable_done)."""
@@ -1341,6 +1369,8 @@ class App:
         if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
             return
         if self._offer_model(run, mode):  # #739: a missing speech model downloads here with a progress bar
+            return
+        if mode == "speak" and self._offer_voice(run):  # #967: no Kokoro voice -> offer the install, then Start resumes
             return
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
