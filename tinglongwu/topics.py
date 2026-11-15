@@ -150,8 +150,10 @@ class TopicNotes:
     Markdown file after every finished topic. on_line runs on the ASR/MT threads: it only appends and enqueues."""
 
     def __init__(self, path, summarize: Callable[[str], str], segmenter=None,
-                 lower_priority: Callable[[], bool] = lower_thread_priority, log=None):
+                 lower_priority: Callable[[], bool] = lower_thread_priority, log=None,
+                 on_topic: Callable[[Topic], None] | None = None):
         self.path = Path(path)
+        self.on_topic = on_topic  # #611: the GUI side panel listens here (called on the worker thread)
         self.segmenter = segmenter or PauseSegmenter()
         self.topics: list[Topic] = []
         self._lock = threading.Lock()  # both sides call on_line (listen thread + speak thread)
@@ -170,6 +172,11 @@ class TopicNotes:
         self.topics.append(topic)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(render_markdown(self.topics), encoding="utf-8")
+        if self.on_topic is not None:
+            try:
+                self.on_topic(topic)
+            except Exception as e:  # noqa: BLE001 - a broken panel must not stop the notes
+                print(f"tlwu: topic panel failed: {e}", file=sys.stderr, flush=True)
 
     def close(self, timeout: float | None = None) -> None:
         """Meeting over: summarize the open topic too and wait for the backlog."""
@@ -215,9 +222,10 @@ def llama_summarizer(model_path, threads: int | None = None, loader=None) -> Cal
     return summarize
 
 
-def attach(saver, model_path, summarize: Callable[[str], str] | None = None) -> TopicNotes:
+def attach(saver, model_path, summarize: Callable[[str], str] | None = None,
+           on_topic: Callable[[Topic], None] | None = None) -> TopicNotes:
     """Hook topic notes onto a JsonlSaveSink (both sides in meeting mode go through its record())."""
-    notes = TopicNotes(notes_path(saver.path), summarize or llama_summarizer(model_path))
+    notes = TopicNotes(notes_path(saver.path), summarize or llama_summarizer(model_path), on_topic=on_topic)
     saver.on_line = notes.on_line
     print(f"tlwu: topic notes -> {os.path.abspath(notes.path)}", file=sys.stderr)
     return notes
