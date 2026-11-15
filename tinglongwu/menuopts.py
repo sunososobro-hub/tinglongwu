@@ -121,6 +121,12 @@ def stream_default(device: str, both: bool) -> bool:
     return not both
 
 
+def mic_args(answer: str) -> list[str]:
+    """#894: the listen-only menus ask "Microphone (room sound) instead of system audio?" (default no); yes -> --mic.
+    Echo caveat: with speakers playing the translation the mic hears it again, so use a headset or mute the speakers."""
+    return ["--mic"] if (answer or "").strip().lower() in ("y", "yes") else []
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) == 2 and argv[0] == "stream-default":  # arg: listen | both ; prints 1 (default on) or 0
@@ -132,11 +138,15 @@ def main(argv=None) -> int:
             dev = "unknown"
         print("1" if stream_default(dev, argv[1] == "both") else "0")
         return 0
+    if len(argv) == 2 and argv[0] == "mic-args":  # arg: the user's answer; prints --mic or nothing
+        for x in mic_args(argv[1]):
+            print(x)
+        return 0
     if len(argv) == 2 and argv[0] == "speak":
         print(speak_mt(argv[1]))
         return 0
     if argv != ["listen"]:
-        print("usage: python -m tinglongwu.menuopts listen | speak ru|en | stream-default listen|both", file=sys.stderr)
+        print("usage: python -m tinglongwu.menuopts listen | speak ru|en | stream-default listen|both | mic-args y|n", file=sys.stderr)
         return 2
     for x in listen_args():
         print(x)

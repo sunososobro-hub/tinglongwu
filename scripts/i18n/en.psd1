@@ -39,6 +39,7 @@
     ASK_AUTOSEND = 'Send every sentence directly, no confirmation? [Enter=confirm / y=send directly]'
     ASK_STREAM = 'Show live drafts while someone is still speaking (uses more CPU)? [Enter=no / y=show]'
     ASK_STREAM_ON = 'Show live drafts while someone is still speaking (uses more CPU)? [Enter=show / n=no]'
+    ASK_MIC = 'Translate room sound from the microphone instead of system audio (lecture / in-person)? Use a headset to avoid echo. [Enter=no / y=microphone]'
     MEETING_BANNER = 'Meeting mode: this window shows both sides: ◀ Them = the other side (original + Chinese subtitles), ▶ Me = what you said; what you say in Chinese goes into Meet (pick CABLE Output as the Meet microphone). Please wear headphones.'
     CONFIRM_HELP = 'Confirm each sentence first: y+Enter=send  Enter=discard  v0-v4=change voice'
     OUT1 = '  1) Into Meet (needs VB-CABLE; pick CABLE Output as the Meet microphone)'

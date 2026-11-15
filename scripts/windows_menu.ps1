@@ -172,6 +172,9 @@ if ($mode -eq "1") {
         Invoke-Setup --hymt
     }
     $stream = @(Get-TlwuStreamArgs $py)   # live drafts (#60), default no
+    $mc = ""
+    try { $mc = Read-Host (T 'ASK_MIC') } catch { $mc = "" }   # #894: room sound from the microphone, default no
+    try { $xl += @(& $py -m tinglongwu.menuopts mic-args $mc | Where-Object { $_ }) } catch { }
     & $tlwu @listenLang @wL @xl @stream
     exit
 }

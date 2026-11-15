@@ -36,6 +36,7 @@
     ASK_AUTOSEND = '每句直接送、不確認？[Enter=要確認 / y=直接送]'
     ASK_STREAM = '要在對方還在說話時先顯示即時草稿嗎（較耗 CPU）？[Enter=不要 / y=顯示]'
     ASK_STREAM_ON = '要在對方還在說話時先顯示即時草稿嗎（較耗 CPU）？[Enter=顯示 / n=不要]'
+    ASK_MIC = '要用麥克風翻譯現場聲音（上課／面對面）而不是系統音訊嗎？建議戴耳機避免回音。[Enter=不要 / y=麥克風]'
     MEETING_BANNER = '開會模式：這個視窗同時顯示雙方：◀ 對方＝對方說的（原文＋中文字幕），▶ 我＝你說的；你講中文會送進 Meet（Meet 麥克風選 CABLE Output）。請戴耳機。'
     CONFIRM_HELP = '每句先確認：y+Enter=送出  Enter=丟掉  v0-v4=換聲音'
     OUT1 = '  1) 送進 Meet（需 VB-CABLE；Meet 麥克風選 CABLE Output）'

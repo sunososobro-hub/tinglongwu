@@ -197,6 +197,8 @@ if [ "$mode" = "1" ]; then
     read -rp "$(mp M_ASK_STREAM)" st || st=""
     case "$st" in y|Y|yes|YES|Yes) STREAM=(--stream) ;; esac
   fi
+  mc=""; read -rp "$(mp M_ASK_MIC)" mc || mc=""   # #894: room sound from the microphone instead of system audio, default N
+  while IFS= read -r x; do XL+=("$x"); done < <(python -m tinglongwu.menuopts mic-args "$mc" || true)
 fi
 if [ "$mode" = "1" ]; then m M_BANNER_LISTEN "$L"; else if [ "$SPEAK" = "follow" ]; then m M_BANNER_SPEAK "$(m M_FOLLOW_LABEL)"; else m M_BANNER_SPEAK "$SPEAK"; fi; fi
 SMT=hymt   # #331: Hy-MT2 is the only speak-mode translator (no OPUS pairs)
