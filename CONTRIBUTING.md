@@ -78,6 +78,14 @@ bash scripts/ci_offline.sh python -m pytest -q
 
 If you cannot run the second one (Windows / Mac), that is fine: CI will, and we will help you read the result.
 
+### Add a language to the cloud eval
+
+Add a language = one line in `eval/languages.json`, for example `{"pair": "it->zh", "pins": "eval/it_pins.json", "clips": 20}`.
+The `eval-langs` workflow runs one CPU job per line on the pinned FLEURS clips (pin them with
+`scripts/bench/make_ci_smoke.py --set <set> --pin 20`) and gates each pair against its entry in the `matrix` section of
+`eval/baseline.json` (start with `"chrf": null` until a run is recorded). A pair with no pin file yet is listed as
+unpinned and not run.
+
 ## Branches and PRs
 
 - **Open PRs against `dev`, not `main`.** `main` is the stable release branch.

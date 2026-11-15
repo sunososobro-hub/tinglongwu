@@ -9,5 +9,25 @@
     "ja->zh": {"chrf": 19.58, "chrf_margin": 2.0, "mt_median_s_max": 3.7},
     "ru->zh": {"chrf": 29.58, "chrf_margin": 2.0, "mt_median_s_max": 2.7},
     "zh->en": {"chrf": 43.42, "chrf_margin": 3.0, "mt_median_s_max": 2.6}
+  },
+  "matrix": {
+    "_note": "#642: per-pair gate for .github/workflows/eval-langs.yml (eval/languages.json), same runner / model / engine as the mini-eval above. en/ja/ru->zh and zh->en run the same 5 pinned clips (eval/ci_smoke.json) as the mini-eval, so they reuse its recorded numbers. Every other pair has no recorded run on this runner yet: chrf null (gated on MT latency only, tlwu_eval/gate.py) and mt_median_s_max 3.7 s = the largest recorded budget (ja->zh). Replace the nulls with the lowest chrF of a recorded eval-langs run (run URL in the PR), margin 2.0 like the other pairs.",
+    "model": "whisper small",
+    "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
+    "clips": 20,
+    "pairs": {
+      "en->zh": {"chrf": 38.9, "chrf_margin": 2.0, "mt_median_s_max": 2.6},
+      "ja->zh": {"chrf": 19.58, "chrf_margin": 2.0, "mt_median_s_max": 3.7},
+      "ko->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "ru->zh": {"chrf": 29.58, "chrf_margin": 2.0, "mt_median_s_max": 2.7},
+      "hi->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "vi->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "th->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "id->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "es->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "de->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "fr->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "zh->en": {"chrf": 43.42, "chrf_margin": 3.0, "mt_median_s_max": 2.6}
+    }
   }
 }
