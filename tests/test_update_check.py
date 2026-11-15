@@ -314,6 +314,14 @@ def test_apply_app_script_has_rollback_and_stays_in_app_dir():
     assert set(re.findall(r"[A-Za-z]:\\[^']*", ps)) <= {r"C:\Users\a\it", r"C:\T\app.zip"}  # app dir + the zip only
 
 
+def test_apply_app_script_records_item_only_after_rename_succeeds():
+    ps = su.apply_app_script(Path(r"C:\T\app.zip"), Path(r"C:\A"), 1)
+    lines = ps.splitlines()
+    idx = lambda needle: next(n for n, ln in enumerate(lines) if needle in ln)  # noqa: E731
+    # a failing Rename-Item (locked file) must leave $moved without that item, so the catch never deletes the original
+    assert idx("Rename-Item -LiteralPath $cur") < idx("$moved += $i") < idx("Move-Item")
+
+
 def test_apply_app_cli_uses_app_script(tmp_path, monkeypatch):
     calls = []
     su.launch_apply(tmp_path / "a.zip", tmp_path, 5, popen=lambda cmd, **kw: calls.append(cmd), app_layer=True)
