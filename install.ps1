@@ -64,7 +64,7 @@ Info "$(Loc '資料夾' 'Folder' 'Folder / 資料夾'): $Root"
 # #1002: the language picked on the first wizard page becomes the app UI language (read by tinglongwu.i18n at first launch)
 if ($Lang -and -not $DryRun) {
     $cfgDir = if ($env:TLWU_CONFIG_DIR) { $env:TLWU_CONFIG_DIR } else { Join-Path $env:APPDATA 'tinglongwu' }
-    $ui = if ($Lang -like 'zh*') { 'zh-TW' } elseif ($Lang -like 'ru*') { 'ru' } else { 'en' }
+    $ui = if ($Lang -like 'zh*') { 'zh-TW' } elseif ($Lang -like 'ja*') { 'ja' } elseif ($Lang -like 'ru*') { 'ru' } else { 'en' }
     New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
     $cfg = Join-Path $cfgDir 'config'
     [string[]]$keep = @(if (Test-Path -LiteralPath $cfg) { Get-Content -LiteralPath $cfg | Where-Object { $_ -and $_ -notmatch '^ui_lang=' } })

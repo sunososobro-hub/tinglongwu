@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import '../logic/device_probe.dart';
+import '../logic/draft_gate.dart';
 import '../logic/prompt.dart';
 import '../logic/segmenter.dart';
 
@@ -17,14 +19,41 @@ class AsrReady extends AsrEvent {
   const AsrReady();
 }
 
-class AsrPartial extends AsrEvent {
-  const AsrPartial(this.text);
+/// Speech started / stopped according to the VAD (drives the draft hold, #1064).
+class AsrSpeech extends AsrEvent {
+  const AsrSpeech(this.speaking);
+  final bool speaking;
+}
+
+/// Interim source text of the segment [seg] still being spoken (#1064). Decoded in a separate
+/// isolate, so it can arrive after that segment's final: the receiver drops it then.
+class AsrDraft extends AsrEvent {
+  const AsrDraft(this.seg, this.text, [this.lang = 'en']);
+  final int seg;
   final String text;
+  final String lang;
+}
+
+/// Result of [AsrWorker.bench] (#1065): decode time of [audioMs] of synthetic audio, or
+/// [busy] when speech was going on and the test was skipped.
+class AsrBench extends AsrEvent {
+  const AsrBench({this.decodeMs = 0, this.audioMs = 0, this.busy = false});
+  final int decodeMs;
+  final int audioMs;
+  final bool busy;
+  double get rtf => audioMs > 0 ? decodeMs / audioMs : 0;
+}
+
+/// A VAD segment ended without any text (nothing recognized): clears its draft.
+class AsrSegmentEnd extends AsrEvent {
+  const AsrSegmentEnd(this.seg);
+  final int seg;
 }
 
 class AsrFinal extends AsrEvent {
   const AsrFinal(this.text,
       {required this.forced,
+      this.seg = -1,
       this.decodeMs = 0,
       this.audioMs = 0,
       this.lang = 'en'});
@@ -32,6 +61,9 @@ class AsrFinal extends AsrEvent {
 
   /// Detected source language code (`zh`/`en`/`ja`/`ko`/`yue`), for the MT prompt.
   final String lang;
+
+  /// Index of the VAD segment this final belongs to (see [AsrDraft]).
+  final int seg;
 
   /// True when the VAD cut the segment because it hit the max length.
   final bool forced;
@@ -106,9 +138,73 @@ class AsrWorker {
     _toWorker.send(TransferableTypedData.fromList([f]));
   }
 
+  /// Speed test (#1065): decodes 4 s of synthetic audio on the main recognizer; answers with an
+  /// [AsrBench] event (busy = skipped because speech is in progress).
+  void bench() => _toWorker.send('bench');
+
+  /// Turns the source-text draft (#1064) on or off at run time.
+  void setDraft(bool on) => _toWorker.send(on);
+
   void dispose() {
     _toWorker.send(null);
     _isolate.kill(priority: Isolate.beforeNextEvent);
+  }
+
+  /// Draft isolate (#1064): its own recognizer (1 thread), so a draft decode never delays the
+  /// final decode. Gets [seg, TransferableTypedData] snapshots, sends [AsrDraft] to the UI port
+  /// and 'done' back to the ASR isolate. null = free and exit.
+  static void _draftEntry(List<Object> args) {
+    final ui = args[0] as SendPort;
+    final asr = args[1] as SendPort;
+    final cfg = args[2] as AsrConfig;
+    final inPort = ReceivePort();
+    sherpa.OfflineRecognizer? rec;
+    try {
+      sherpa.initBindings();
+      rec = sherpa.OfflineRecognizer(
+        sherpa.OfflineRecognizerConfig(
+          model: sherpa.OfflineModelConfig(
+            senseVoice: sherpa.OfflineSenseVoiceModelConfig(
+              model: cfg.model,
+              language: '',
+              useInverseTextNormalization: true,
+            ),
+            tokens: cfg.tokens,
+            numThreads: 1,
+            provider: 'cpu',
+            modelType: 'sense_voice',
+            debug: false,
+          ),
+        ),
+      );
+    } catch (_) {
+      return; // no draft; the final path is unaffected
+    }
+    asr.send(inPort.sendPort);
+    inPort.listen((m) {
+      if (m == null) {
+        rec?.free();
+        inPort.close();
+        return;
+      }
+      final msg = m as List;
+      try {
+        final samples = (msg[1] as TransferableTypedData).materialize().asFloat32List();
+        final st = rec!.createStream();
+        try {
+          st.acceptWaveform(samples: samples, sampleRate: 16000);
+          rec.decode(st);
+          final r = rec.getResult(st);
+          ui.send(AsrDraft(msg[0] as int, SentenceSegmenter.normalize(r.text),
+              PromptBuilder.fromSenseVoiceLang(r.lang)));
+        } finally {
+          st.free();
+        }
+      } catch (_) {
+        // a failed draft is just skipped
+      }
+      asr.send('done');
+    });
   }
 
   static void _entry(List<Object> args) {
@@ -131,16 +227,19 @@ class AsrWorker {
       }
     }
 
-    void emit(Float32List samples, {required bool forced}) {
+    void emit(Float32List samples, {required bool forced, int seg = -1}) {
       final sw = Stopwatch()..start();
       final (text, lang) = decode(samples);
       final ms = sw.elapsedMilliseconds;
       if (text.isNotEmpty) {
         out.send(AsrFinal(text,
             forced: forced,
+            seg: seg,
             decodeMs: ms,
             audioMs: samples.length * 1000 ~/ 16000,
             lang: lang));
+      } else {
+        out.send(AsrSegmentEnd(seg));
       }
     }
 
@@ -204,11 +303,68 @@ class AsrWorker {
     }
 
     var speaking = false;
+    var seg = 0; // VAD segments popped so far
+    final clock = Stopwatch()..start();
+    final gate = DraftGate();
+    final audio = DraftAudio();
+    final draftIn = ReceivePort();
+    SendPort? draftPort;
+    var draftOn = false;
+    draftIn.listen((m) {
+      if (m is SendPort) {
+        if (draftOn) {
+          draftPort = m;
+        } else {
+          m.send(null); // switched off while it was loading
+        }
+      } else if (m == 'done') {
+        gate.finished();
+      }
+    });
+    void stopDraft() {
+      draftPort?.send(null);
+      draftPort = null;
+      gate.finished();
+    }
+
     inPort.listen((m) {
       if (m == null) {
+        stopDraft();
+        draftIn.close();
         vad?.free();
         rec?.free();
         inPort.close();
+        return;
+      }
+      if (m == 'bench') {
+        if (speaking) {
+          out.send(const AsrBench(busy: true));
+          return;
+        }
+        try {
+          final a = benchAudio();
+          var best = 1 << 30;
+          for (var i = 0; i < 2; i++) {
+            // first run warms up; keep the faster one
+            final sw = Stopwatch()..start();
+            decode(a);
+            best = best < sw.elapsedMilliseconds ? best : sw.elapsedMilliseconds;
+          }
+          out.send(AsrBench(decodeMs: best, audioMs: a.length * 1000 ~/ 16000));
+        } catch (e) {
+          out.send(AsrError('ASR bench failed: $e'));
+        }
+        return;
+      }
+      if (m is bool) {
+        if (m == draftOn) return;
+        draftOn = m;
+        if (m) {
+          // Spawned lazily: a second recognizer costs memory, only paid when the draft is on.
+          Isolate.spawn(_draftEntry, [out, draftIn.sendPort, cfg]);
+        } else {
+          stopDraft();
+        }
         return;
       }
       try {
@@ -218,13 +374,27 @@ class AsrWorker {
         final det = vad.isDetected();
         if (det != speaking) {
           speaking = det;
-          out.send(AsrPartial(det ? '…' : ''));
+          out.send(AsrSpeech(det));
         }
+        if (draftOn) audio.feed(samples, detected: det);
         while (!vad.isEmpty()) {
-          final seg = vad.front();
+          final s = vad.front();
           vad.pop();
-          final dur = seg.samples.length / 16000;
-          emit(seg.samples, forced: dur >= AsrConfig.vadMaxSpeech - 0.3);
+          final dur = s.samples.length / 16000;
+          emit(s.samples, forced: dur >= AsrConfig.vadMaxSpeech - 0.3, seg: seg);
+          seg++;
+          audio.segmentDone();
+          gate.segmentReset();
+        }
+        // Draft: re-recognize the segment in progress, throttled; never blocks the final path.
+        final port = draftPort;
+        if (draftOn && port != null && det && audio.active) {
+          final now = clock.elapsedMilliseconds;
+          if (gate.shouldRun(nowMs: now, samples: audio.length)) {
+            final snap = audio.snapshot();
+            gate.started(nowMs: now, samples: audio.length);
+            port.send([seg, TransferableTypedData.fromList([snap])]);
+          }
         }
       } catch (e) {
         out.send(AsrError('ASR runtime error: $e'));

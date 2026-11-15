@@ -1,6 +1,6 @@
-# Linux reverse mode (experimental, untested)
+# Linux reverse mode (experimental; speak is covered by the Linux e2e job)
 
-> UNTESTED: written on Windows without a Linux machine; only the command construction is unit-tested. Expect rough edges.
+> Written on Windows; the Linux speak path is tested in CI (e2e), but real audio hardware is not verified. Expect rough edges.
 
 Reverse mode (you speak Chinese, Russian speech goes into Meet/Zoom) on a CPU-only Linux laptop, e.g. AMD Ryzen 7040:
 

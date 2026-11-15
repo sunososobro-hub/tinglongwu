@@ -35,7 +35,7 @@ Updating a Windows dev checkout (git clone on the `dev` branch): double-click **
 - **macOS**: install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole), create a Multi-Output Device (speakers + BlackHole) in Audio MIDI Setup and make it the output. tlwu captures the device whose name contains `BlackHole`. ScreenCaptureKit audio capture is a possible future option.
 
 ### GPU (optional, NVIDIA)
-`--device auto|cpu|cuda` (default `auto`: CUDA if CTranslate2 sees an NVIDIA GPU and the libraries load, else CPU). GPU runs Whisper in float16 and OPUS/M2M in int8_float16; CPU uses int8. What you need, once (with network):
+`--device auto|cpu|cuda` (default `auto`: CUDA if CTranslate2 sees an NVIDIA GPU and the libraries load, else CPU). GPU runs Whisper in float16 and Hy-MT2 offloads to the GPU; CPU uses int8. What you need, once (with network):
 ```
 tlwu-setup --gpu     # = pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 (CUDA 12 cuBLAS + cuDNN 9; no CUDA toolkit needed)
 ```
@@ -51,7 +51,7 @@ For Windows 10/11 with an NVIDIA GPU (works without one, just slower). If Python
 
 **Using the menu.** The shortcut opens a menu: `1` Meeting (listen + speak into Meet/Zoom, wear a headset; set the meeting microphone to *CABLE Output*), `2` Speak only (Chinese -> English/Russian/Japanese voice), `3` Listen only (foreign speech -> Chinese subtitles), `L` change the other side's language, `G` graphical interface, `U` update now, `A` toggle auto-update at start, `I` menu language. Press the key and Enter; every model download asks y/N first.
 
-To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. Hy-MT2 on the GPU uses `requirements-llama-cuda.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the OPUS engine automatically.
+To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. Hy-MT2 on the GPU uses `requirements-llama-cuda.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the CPU llama-cpp wheel.
 
 ## Mac one-line install
 

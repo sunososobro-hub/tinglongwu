@@ -106,7 +106,7 @@ def test_wizard_language_becomes_the_app_language():
     codes = _wizard_lang_codes()
     assert codes == {"english": "en", "chinesetrad": "zh-TW", "chinesesimp": "zh-CN", "japanese": "ja", "russian": "ru"}
     ui = {lang: i18n.normalize(code) for lang, code in codes.items()}
-    assert ui == {"english": "en", "chinesetrad": "zh-TW", "chinesesimp": "zh-TW", "japanese": "en", "russian": "ru"}
+    assert ui == {"english": "en", "chinesetrad": "zh-TW", "chinesesimp": "zh-TW", "japanese": "ja", "russian": "ru"}
     # run_install.ps1 passes -Lang on only when it matches this pattern
     pattern = re.search(r"\$Lang -match '([^']+)'", (ROOT / "installer" / "run_install.ps1").read_text("utf-8-sig"))
     assert all(re.fullmatch(pattern.group(1), c) for c in codes.values())

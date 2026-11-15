@@ -13,14 +13,14 @@ flowchart LR
 |:-:|:-:|:-:|
 | Subtitles | Voice out | Both sides |
 
-<p align="center"><img src="https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ko%20%C2%B7%20ru-blue" alt="zh en ja ko ru"> <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Windows macOS Linux"><br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ Download for Windows</a></b></p>
+<p align="center"><img src="https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ru-blue" alt="zh en ja ru (ko, hi experimental)"> <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20(unverified)-lightgrey" alt="Windows, Linux, macOS (unverified)"><br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ Download for Windows</a></b></p>
 
 <details>
 <summary>More: install, privacy, FAQ, contribute</summary>
 
 Offline real-time speech translation. No cloud, no recordings kept by default. No personal data is collected. Update checks are counted anonymously (date, version, OS) to know how many installs are active.
 
-[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg?branch=dev)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg?branch=dev)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml)
 
 ## Download
 
@@ -36,7 +36,7 @@ Windows shows a SmartScreen warning because the installer is unsigned until #601
 
 To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
 
-Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Optional packs (extra languages, speak mode, GPU) also need internet once. Auto-update (on by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
+Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Optional packs (extra languages, speak mode, GPU) also need internet once. Auto-update (ticked by default in the Windows installer; the `git` update in PRIVACY.md is off by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
 
 ## Languages and requirements
 

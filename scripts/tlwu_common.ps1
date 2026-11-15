@@ -28,9 +28,10 @@ function Set-TlwuCfg([string]$key, [string]$val) {
     } catch {}
 }
 
-function ConvertTo-TlwuLang([string]$tag) {   # ru-RU, zh-TW, zh-CN, en-US ... -> en | ru | zh-TW
+function ConvertTo-TlwuLang([string]$tag) {   # ru-RU, zh-TW, zh-CN, en-US ... -> en | ru | zh-TW | ja
     $t = ("$tag").ToLower().Replace("_", "-")
     if ($t.StartsWith("ru")) { return "ru" }
+    if ($t.StartsWith("ja")) { return "ja" }
     if ($t.StartsWith("zh")) { return "zh-TW" }   # zh-CN also gets the zh-TW text (no separate zh-CN file yet)
     return "en"
 }
@@ -98,7 +99,7 @@ function Switch-TlwuAutoUpdate {
 function Select-TlwuUiLang {
     $c = Read-Host (T 'ASK_UILANG')
     if (-not $c) { $c = "auto" }
-    if (@("auto", "en", "ru", "zh-TW") -notcontains $c) { $c = ConvertTo-TlwuLang $c }
+    if (@("auto", "en", "ru", "ja", "zh-TW") -notcontains $c) { $c = ConvertTo-TlwuLang $c }
     Set-TlwuCfg "ui_lang" $c
     $env:TLWU_UI_LANG = ""
     Import-TlwuMessages

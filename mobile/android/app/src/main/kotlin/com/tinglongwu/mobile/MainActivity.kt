@@ -122,6 +122,8 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "playCancel" -> { play.cancel(); result.success(null) }
                     "playConfirm" -> { play.confirmDialog(); result.success(null) }
+                    // Device probe (#1065): cores, ABI, RAM, SDK, SoC, app version.
+                    "deviceInfo" -> result.success(DeviceProbe.collect(this))
                     "freeBytes" -> result.success(importer.freeBytes(call.argument<String>("dir")!!))
                     // Opens a link in the user's browser (the browser downloads; this app stays offline).
                     "openUrl" -> {
@@ -164,7 +166,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "overlayText" -> {
                         val lines = (call.argument<List<Map<String, String?>>>("lines") ?: emptyList())
                             .map { SubtitleOverlay.Line(it["src"], it["tr"]) }
-                        SubtitleOverlay.update(lines, call.argument<String>("hint"))
+                        SubtitleOverlay.update(lines, call.argument<String>("hint"), call.argument<String>("draft"), call.argument<String>("draftTr"))
                         result.success(null)
                     }
                     "overlayStyle" -> {

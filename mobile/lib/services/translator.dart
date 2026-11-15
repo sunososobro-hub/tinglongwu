@@ -83,7 +83,7 @@ class Translator implements LineTranslator {
   /// [src] is the ASR-detected source language code (see [PromptBuilder]).
   @override
   Future<Translation> translate(String ru,
-      {String src = 'ru', String tgt = 'zh'}) async {
+      {String src = 'ru', String tgt = 'zh', bool Function()? shouldStop}) async {
     final sw = Stopwatch()..start();
     final pass = passthrough(ru, src, tgt: tgt);
     if (pass != null) {
@@ -118,6 +118,8 @@ class Translator implements LineTranslator {
       if (e is TokenEvent) {
         if (tokens == 0) firstMs = sw.elapsedMilliseconds;
         tokens++;
+        // A draft translation (#1065) yields to the next final line: stop at the next token.
+        if (shouldStop != null && shouldStop()) break;
         buf.write(utf8.add(e.bytes));
         // One sentence in, one line out: stop at the first line break after some text, so the
         // model cannot continue with a second paragraph of its own.

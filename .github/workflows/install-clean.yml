@@ -24,9 +24,11 @@ on:
 permissions:
   contents: read
 
+# #934: a manual dispatch (e.g. tag=v0.3.4 and tag=v0.3.5 for the before/after pair) gets its own group per tag and
+# is never cancelled; before, both dispatches and any dev push shared one group and cancelled each other.
 concurrency:
-  group: install-clean-${{ github.ref }}
-  cancel-in-progress: true
+  group: install-clean-${{ github.ref }}-${{ github.event_name }}-${{ github.event.inputs.tag }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
   TLWU_NO_UPDATE: "1"

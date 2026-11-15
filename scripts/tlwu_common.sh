@@ -24,10 +24,11 @@ tlwu_cfg_set() {  # tlwu_cfg_set KEY VALUE
   return 0
 }
 
-tlwu_norm_lang() {  # locale tag (ru_RU.UTF-8, zh-Hant-TW, en-US ...) -> en | ru | zh-TW
+tlwu_norm_lang() {  # locale tag (ru_RU.UTF-8, zh-Hant-TW, en-US ...) -> en | ru | zh-TW | ja
   local t; t="$(printf '%s' "$1" | tr 'A-Z_' 'a-z-')"
   case "$t" in
     ru*) echo ru ;;
+    ja*) echo ja ;;
     zh*) echo zh-TW ;;   # zh-CN also gets the zh-TW text (no separate zh-CN file yet)
     *) echo en ;;
   esac
@@ -84,7 +85,7 @@ tlwu_pick_ui_lang() {
   local c
   read -rp "$(mp M_ASK_UILANG)" c || return 0
   c="${c:-auto}"
-  case "$c" in auto|en|ru|zh-TW|zh-tw|zh) ;; *) c="$(tlwu_norm_lang "$c")" ;; esac
+  case "$c" in auto|en|ru|ja|zh-TW|zh-tw|zh) ;; *) c="$(tlwu_norm_lang "$c")" ;; esac
   tlwu_cfg_set ui_lang "$c"
   unset TLWU_UI_LANG   # let the saved choice win over an earlier export
   tlwu_load_i18n

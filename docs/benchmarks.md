@@ -6,7 +6,7 @@ Translation quality and speed, measured with `scripts/bench/` (dev tool, not par
 
 | engine | chrF | COMET | median s/sentence | peak VRAM (+MiB) |
 |---|---|---|---|---|
-| opus (default, CPU/GPU) | 23.6 | 0.824 | 0.14 | 424 |
+| opus (removed in #471, historical; was default) | 23.6 | 0.824 | 0.14 | 424 |
 | m2m | 22.9 | 0.819 | 0.34 | 1724 |
 | previous engine: 4B LLM (removed) | 23.5 | 0.849 | 0.46 | 3062 |
 | previous engine: 7B LLM (removed) | 23.5 | 0.840 | 0.72 | 4682 |

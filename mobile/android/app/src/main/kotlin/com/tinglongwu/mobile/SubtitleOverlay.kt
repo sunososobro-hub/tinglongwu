@@ -45,6 +45,8 @@ object SubtitleOverlay {
     private var bgAlpha = 0.6f
     private var lastLines: List<Line> = emptyList()
     private var lastHint: String? = null
+    private var lastDraft: String = ""
+    private var lastDraftTr: String = ""
     private var clip: BottomClip? = null
 
     /** One subtitle: source text (shown smaller, above) and/or translation; null = not shown. */
@@ -72,9 +74,11 @@ object SubtitleOverlay {
         sync()
     }
 
-    fun update(lines: List<Line>, hint: String?) {
+    fun update(lines: List<Line>, hint: String?, draft: String? = null, draftTr: String? = null) {
         lastLines = lines
         lastHint = hint
+        lastDraft = draft?.trim().orEmpty()
+        lastDraftTr = draftTr?.trim().orEmpty()
         render()
     }
 
@@ -204,14 +208,14 @@ object SubtitleOverlay {
             tv.text = hint
             tv.setTextColor(Color.rgb(255, 200, 90))
         } else {
-            tv.text = format(lastLines)
+            tv.text = format(lastLines, lastDraft, lastDraftTr)
             tv.setTextColor(Color.WHITE)
         }
         clip?.requestLayout()
     }
 
     /** Oldest first; each source line smaller and gray above its translation. */
-    private fun format(lines: List<Line>): CharSequence {
+    private fun format(lines: List<Line>, draft: String, draftTr: String): CharSequence {
         val b = SpannableStringBuilder()
         for (l in lines) {
             val src = l.src?.trim().orEmpty()
@@ -231,6 +235,24 @@ object SubtitleOverlay {
                 if (b.isNotEmpty()) b.append('\n')
                 b.append(tr)
             }
+        }
+        // Interim source text of the sentence still being spoken: small, gray, replaced by the
+        // final line above once recognized (#1064).
+        if (draft.isNotEmpty()) {
+            if (b.isNotEmpty()) b.append('\n')
+            val start = b.length
+            b.append(draft)
+            b.setSpan(RelativeSizeSpan(SOURCE_SCALE), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            b.setSpan(ForegroundColorSpan(Color.rgb(160, 160, 160)), start, b.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        // Chinese draft (#1065, optional): gray, below the source draft.
+        if (draftTr.isNotEmpty()) {
+            if (b.isNotEmpty()) b.append('\n')
+            val start = b.length
+            b.append(draftTr)
+            b.setSpan(ForegroundColorSpan(Color.rgb(160, 160, 160)), start, b.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         return if (b.isEmpty()) "…" else b
     }
