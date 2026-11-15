@@ -1,12 +1,15 @@
 """#1130: the iOS archive step must not sign (no certificate created per CI run)."""
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 WF = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "mobile-ios.yml"
+pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash (the iOS workflow steps run in bash)")
 
 
 def _step_script(name):
