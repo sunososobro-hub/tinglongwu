@@ -683,8 +683,8 @@ def test_update_controls_are_always_reachable_in_the_help_menu_756(_wizard_insta
     assert t("gui_upd_check") in labels and t("gui_upd_auto") in labels and t("gui_menu_about") in labels
     kids = list(_descendants(a.panel))
     setup_btn = next(w for w in kids if w.winfo_class() == "TButton" and w.cget("text") == t("gui_check_setup"))
-    log_row = 99  # #1028: the chat list is in the main window, above the settings rows
-    assert int(a.act_row.grid_info()["row"]) < log_row and setup_btn.master is a.act_row
+    assert setup_btn.master is a.act_row  # #1042: Check setup sits in the action row, never inside the chat list
+    assert a.log_text not in list(_descendants(a.act_row))
 
 
 def test_no_update_controls_on_a_git_checkout_756(gui_app):
@@ -692,3 +692,54 @@ def test_no_update_controls_on_a_git_checkout_756(gui_app):
 
     assert not any(w.winfo_class() == "TButton" and w.cget("text") == t("gui_upd_check")
                    for w in _descendants(gui_app.panel))
+
+
+def test_advanced_save_path_and_voice_device_have_labels_1042(gui_app):
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    texts = {w.cget("text") for w in _descendants(a.frm) if w.winfo_class() == "TLabel"}
+    assert t("gui_save_path") in texts and t("gui_voice_device") in texts
+
+
+def test_download_failure_stays_in_main_window_1042(gui_app):
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    assert a.panel.state() == "withdrawn"
+    a._pack_done("voice-pack", 1)
+    a.root.update()
+    assert a.panel.state() == "withdrawn"  # no Settings pop-up
+    assert a.v_status.get() == t("gui_dl_fail", model="voice-pack")
+
+
+def test_floating_button_follows_the_bar_after_stop_1042(gui_app):
+    a = gui_app
+    assert not a.overlay.visible and not a.v_bar.get()  # launch: button matches the hidden bar
+    a.v_bar.set(True)
+    a._bar_toggled()
+    a.toggle()
+    a.root.update()
+    assert a.overlay.visible and a.v_bar.get()
+    a.toggle()  # Stop hides the bar
+    a.worker.join(5)
+    a.poll()
+    assert not a.overlay.visible and not a.v_bar.get()
+    a.v_bar.set(not a.v_bar.get())  # what the click does to the Checkbutton variable
+    a._bar_toggled()
+    assert a.overlay.visible  # one click shows it again
+
+
+def test_mic_off_note_keeps_other_notice_1042(gui_app):
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    a.listening, a.load_t0 = True, None
+    a.v_notice.set("no cable here")
+    a.v_mic.set(False)
+    a._mic_toggled()
+    assert "no cable here" in a.v_notice.get() and t("gui_mic_off_note") in a.v_notice.get()
+    a.v_mic.set(True)
+    a._mic_toggled()
+    assert a.v_notice.get() == "no cable here"
+    a.listening = False

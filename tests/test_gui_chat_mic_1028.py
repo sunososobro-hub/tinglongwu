@@ -2,7 +2,6 @@
 import threading
 
 import numpy as np
-import pytest
 
 from tinglongwu import cli
 from tinglongwu.capture.base import MuteSource

@@ -410,6 +410,7 @@ class App:
         self._build_update_line()
         self.build_menubar()
         self.overlay = Overlay(self.root, self)
+        self._sync_bar()  # #1042: the bar is not on screen before Start
         self.tour = Tour(self)
         self.apply_theme(self.settings.get("theme", "dark"))
         if tour_on_start(self.settings):
@@ -829,10 +830,12 @@ class App:
             self.mic_ev.set()
         self._mic_label()
         if self.listening and self.load_t0 is None:
+            cur, note = self.v_notice.get(), t("gui_mic_off_note")
             if self.mic_off:
-                self.v_notice.set(t("gui_mic_off_note"))
-            elif self.v_notice.get() == t("gui_mic_off_note"):  # never wipe an unrelated notice (no-CABLE ...)
-                self.v_notice.set("")
+                if note not in cur:  # keep an existing notice (no CABLE ...), add the mic line under it
+                    self.v_notice.set(f"{cur}\n{note}" if cur else note)
+            elif note in cur:  # never wipe an unrelated notice
+                self.v_notice.set(cur.replace("\n" + note, "").replace(note, "").strip())
 
     # -- #314 first-launch overlay ---------------------------------------------------------------
     def show_tour(self):
@@ -978,6 +981,7 @@ class App:
         ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=r, column=c + 2, padx=(4, 0))
         self.v_save = tk.BooleanVar(value=s["save"])
         self._tx(ttk.Checkbutton(g_rec, variable=self.v_save), "gui_save").pack(anchor="w")
+        self._label(7, "gui_save_path")
         r, c = self._cell(7)
         self.v_save_path = tk.StringVar(value=s["save_path"])
         ttk.Entry(f, textvariable=self.v_save_path, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
@@ -990,6 +994,7 @@ class App:
             self._tx(ttk.Radiobutton(g_appear, variable=self.v_live, value=val), key).pack(anchor="w")
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
         self._tx(ttk.Checkbutton(g_mine, variable=self.v_voice), "gui_voice").pack(anchor="w")
+        self._label(10, "gui_voice_device")
         r, c = self._cell(10)
         self.voice_default = t("gui_voice_default")
         outs = voice_outputs()
@@ -1418,9 +1423,15 @@ class App:
         else:
             tx.yview(top)
 
+    def _sync_bar(self):
+        """#1042: the floating-subtitles button always shows whether the bar is really on screen."""
+        self.v_bar.set(bool(self.overlay.visible))
+
     def _bar_toggled(self):
-        self.settings["floating_bar"] = self.v_bar.get()
-        if self.v_bar.get():  # #1028: the "floating subtitles" button shows the bar at once, also before Start
+        want = not self.overlay.visible
+        self.v_bar.set(want)  # one click always toggles what is actually shown
+        self.settings["floating_bar"] = want
+        if want:  # #1028: the "floating subtitles" button shows the bar at once, also before Start
             self.overlay.show()
             self.overlay.render(self.state)
         else:
@@ -1463,8 +1474,6 @@ class App:
         self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model=m))
-        self.panel.deiconify()
-        self.panel.lift()
         self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
         return True
@@ -1523,8 +1532,6 @@ class App:
         self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model=voice_install.VOICE_PACK))
-        self.panel.deiconify()
-        self.panel.lift()
         self._sync_quick()
         threading.Thread(target=run_voice_install, args=(self.q.put,), daemon=True).start()
         return True
@@ -1579,10 +1586,7 @@ class App:
         self.dl_bar.pack_forget()
         self.downloading = None
         self.btn.configure(state="normal")
-        self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))
-        if rc != 0:
-            self.panel.deiconify()
-            self.panel.lift()
+        self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))  # #1042: error shows in the main window
         self._sync_quick()
         if rc == 0:  # on without restarting the app
             self.toggle(getattr(self, "pack_retry", None))
@@ -1691,6 +1695,8 @@ class App:
             self.set_status("gui_stopping")
             self._sync_quick()
             return
+        if self.settings["floating_bar"] and not self.overlay.visible:
+            self.v_bar.set(True)  # #1042: the saved choice is shown again at Start (Stop/launch left the button off)
         self.collect()
         mode = mode or BOTH_MODE
         speak_run = None
@@ -1732,8 +1738,8 @@ class App:
         if mode == BOTH_MODE:  # #1001: the panel opens only for the "no CABLE" line, which says listening still runs
             notice_key, show_panel = ("gui_both_no_voice", True) if notice_key else ("", False)
         self.v_notice.set(t(notice_key) if notice_key else "")
-        if self.mic_off:  # #1028: the mic toggle was left off
-            self.v_notice.set(t("gui_mic_off_note"))
+        if self.mic_off:  # #1028: the mic toggle was left off; keep an existing notice (no CABLE) above it
+            self.v_notice.set(t("gui_mic_off_note") if not notice_key else f"{t(notice_key)}\n{t('gui_mic_off_note')}")
         if show_panel:
             self._show_panel()
         self.errored = False
@@ -1891,6 +1897,7 @@ class App:
                         self.overlay.render(self.state)
                     else:
                         self.overlay.hide()
+                    self._sync_bar()
                     self.render_log()  # drops a leftover "Listening..." placeholder
                 else:
                     changed |= self.state.apply(ev)
