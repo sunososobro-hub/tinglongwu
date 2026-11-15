@@ -22,6 +22,7 @@ import subprocess
 import sys
 
 BRANCH = "dev"
+PER_PAGE = 100
 URGENT = ("P0", "P1")
 LINK_RE = re.compile(r"\b(?:closes|fixes|resolves|refs)\s*:?\s*#(\d+)", re.I)
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
@@ -61,6 +62,16 @@ def _tag_exists(tag: str, api) -> bool:
 
 def check_no_pending_release(api) -> None:
     """Refuse while a cadence release is on its way: dev bumped but untagged (covers a release freeze), or a bump PR open."""
+    # Open PRs first: a bump that merges between the two reads is then caught by the version check (dev untagged).
+    page = 1
+    while True:
+        prs = api(f"pulls?state=open&per_page={PER_PAGE}&page={page}")
+        for pr in prs:
+            if (pr.get("title") or "").startswith(BUMP_PREFIX):
+                raise PlanError(f"bump PR #{pr.get('number')} is open")
+        if len(prs) < PER_PAGE:
+            break
+        page += 1
     content = api(f"contents/tinglongwu/__init__.py?ref={BRANCH}").get("content", "")
     m = VERSION_RE.search(base64.b64decode(content).decode("utf-8", "replace"))
     if not m:
@@ -68,9 +79,6 @@ def check_no_pending_release(api) -> None:
     version = m[1]
     if not _tag_exists(f"v{version}", api):
         raise PlanError(f"{BRANCH} __version__ {version} is bumped but not released; wait for that release")
-    for pr in api("pulls?state=open&per_page=100"):
-        if (pr.get("title") or "").startswith(BUMP_PREFIX):
-            raise PlanError(f"bump PR #{pr.get('number')} is open")
 
 
 def plan(fix: str, api) -> dict:

@@ -2,6 +2,7 @@
 import base64
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,7 +25,8 @@ def make_api(*, pr_merged=True, base="dev", labels=("bug", "P1"), compare="ahead
             text = f'"""x"""\n__version__ = "{dev_version}"\n'
             return {"content": base64.b64encode(text.encode()).decode()}
         if path.startswith("pulls?"):
-            return [{"number": n, "title": t} for n, t in open_prs]
+            page = int(re.search(r"&page=(\d+)", path).group(1))
+            return [{"number": n, "title": t} for n, t in open_prs][(page - 1) * 100:page * 100]
         if path.startswith("pulls/"):
             return {"merged": pr_merged, "base": {"ref": base}, "merge_commit_sha": SHA, "body": body}
         if path.startswith("compare/"):
@@ -115,3 +117,16 @@ def test_cli_prints_output_lines_and_exit_code(tmp_path):
     r = subprocess.run([sys.executable, str(SCRIPT), "plan", "--fix", "9", "--repo", "o/r"],
                        capture_output=True, text=True, env=env)
     assert r.returncode == 1 and "hotfix_plan:" in r.stderr and not r.stdout
+
+
+def test_finds_bump_pr_on_second_page_of_open_prs():
+    filler = tuple((n, f"fix #{n}: x") for n in range(1, 101))
+    with pytest.raises(hp.PlanError, match="bump PR #970 is open"):
+        hp.plan("5", make_api(open_prs=filler + ((970, "release: bump __version__ to 0.3.6"),)))
+    assert hp.plan("5", make_api(open_prs=filler))["tag"] == "v0.3.6"  # exactly 100 PRs: asks page 2, gets none
+
+
+def test_bump_merged_between_reads_is_caught():
+    # the open-PR list is read first (empty), then dev already carries the untagged bump
+    with pytest.raises(hp.PlanError, match="bumped but not released"):
+        hp.plan("5", make_api(open_prs=(), dev_version="0.3.6"))
