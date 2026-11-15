@@ -168,9 +168,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-    env:
-      PYTHONUTF8: "1"
-      PYTHONIOENCODING: utf-8
     steps:
       - name: Work folder (W, outside the checkout)
         shell: bash
@@ -227,6 +224,16 @@ jobs:
           python scripts\upgrade_check.py unzip --zip "$env:W\base\tinglongwu-win64.zip" --dir "$env:W\old"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts\upgrade_check.py wizard --setup "$env:SETUP_EXE" --dir "$env:W\old\tlwu" --log "$env:W\logs\setup-over-old.log"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: U1 app-layer-only update, same runtime key (plan app < 15 MB, --apply-app, smoke; truncated zip rolls back)
+        shell: pwsh
+        run: |
+          python scripts\upgrade_check.py app-update --old-zip "$env:W\base\tinglongwu-win64.zip" --core-dir "$env:W\core\tlwu" --dir "$env:W\appupd"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: U2 forced runtime key mismatch, the plan is the full installer (its install path is the C2 steps above)
+        shell: pwsh
+        run: |
+          python scripts\upgrade_check.py plan-full --old-zip "$env:W\base\tinglongwu-win64.zip" --core-dir "$env:W\core\tlwu" --dir "$env:W\fullupd"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Upload upgrade logs
         if: always()

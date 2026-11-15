@@ -1,4 +1,5 @@
 """#923 review C1 / C2: scripts/upgrade_check.py (new core over an old install) and its windows-build job."""
+import json
 import subprocess
 import sys
 import zipfile
@@ -121,3 +122,98 @@ def test_windows_build_has_an_upgrade_job_over_the_latest_release():
 @pytest.mark.parametrize("old,new,left", [({"a", "b"}, {"b", "c"}, ["a"]), (set(), {"x"}, []), ({"x"}, {"x"}, [])])
 def test_leftovers(old, new, left):
     assert uc.leftovers(old, new) == left
+
+
+# ---- #947: app-layer-only update and full update in the upgrade job ----
+
+def _core(root: Path, version="1.2.3", key="rk-abc") -> Path:
+    app = root / "tlwu"
+    for pkg in ("tinglongwu", "tlwu_app", "tinglongwu_setup"):
+        (app / pkg).mkdir(parents=True, exist_ok=True)
+        (app / pkg / "__init__.py").write_text(f"v = '{version}'\n")
+    (app / "tlwu.exe").write_bytes(b"MZ" + version.encode())
+    (app / "使用說明.txt").write_text("hi", "utf-8")
+    (app / "app-layer.json").write_text(json.dumps({"version": version, "packages": ["tinglongwu"]}))
+    (app / "runtime-layer.json").write_text(json.dumps({"key": key, "lite": True, "python": "3.12.4"}))
+    return app
+
+
+def _old_zip(tmp_path) -> Path:
+    old = _core(tmp_path / "oldsrc", version="1.2.2")
+    z = tmp_path / "old.zip"
+    with zipfile.ZipFile(z, "w") as f:
+        for p in old.rglob("*"):
+            if p.is_file():
+                f.write(p, "tlwu/" + p.relative_to(old).as_posix())
+    return z
+
+
+def _fake_apply(app_zip, app, run=None):
+    """Stand-in for the PowerShell helper: swap on a good zip, leave the install alone on a broken one."""
+    try:
+        with zipfile.ZipFile(app_zip) as z:
+            z.extractall(app)
+    except zipfile.BadZipFile:
+        pass
+
+
+def test_plan_problem_cases():
+    assert uc.plan_problem("PLAN app 3", "app") == ""
+    assert "wanted < 15 MB" in uc.plan_problem("PLAN app 15", "app")
+    assert "wanted PLAN app" in uc.plan_problem("PLAN full 400", "app")
+    assert uc.plan_problem("PLAN full 400", "full") == ""
+    assert "wanted PLAN full" in uc.plan_problem("PLAN app 3", "full")
+
+
+def test_plan_says_app_for_the_same_runtime_key_and_full_for_a_mismatch(tmp_path):
+    core = _core(tmp_path / "new")
+    app_zip, man = uc.make_app_layer(core, tmp_path / "layer")
+    assert man["runtime_key"] == "rk-abc" and app_zip.stat().st_size == man["size"]
+    old = uc.unzip(_old_zip(tmp_path), tmp_path / "inst")
+    assert uc.plan_text(old, app_zip, man).startswith("PLAN app ")
+    assert uc.plan_text(old, app_zip, {**man, "runtime_key": "other"}).startswith("PLAN full 400")
+
+
+def test_apply_text_is_the_real_helper_without_the_gui_start(tmp_path):
+    text = uc.apply_text(tmp_path / "a.zip", tmp_path / "app", 123)
+    assert "Expand-Archive" in text and "Rename-Item" in text and "$exe = Join-Path" in text
+    assert "Start-Process" not in text
+
+
+def test_app_update_applies_then_rolls_back_a_truncated_zip(tmp_path, monkeypatch, capsys):
+    core = _core(tmp_path / "new")
+    monkeypatch.setattr(uc, "run_apply", _fake_apply)
+    monkeypatch.setattr(uc.subprocess, "run", _runner())
+    rc = uc.main(["app-update", "--old-zip", str(_old_zip(tmp_path)), "--core-dir", str(core), "--dir", str(tmp_path / "w")])
+    out = capsys.readouterr().out
+    assert rc == 0 and "update: app layer only: " in out and "rollback: OK" in out
+    ok = tmp_path / "w" / "ok" / "tlwu"
+    assert json.loads((ok / "app-layer.json").read_text())["version"] == "1.2.3"  # the swap happened
+    # an apply that damages the old install on a broken zip is reported
+    def damaging(app_zip, app, run=None):
+        if app_zip.name == "truncated.zip":
+            (app / "tlwu.exe").write_bytes(b"half")
+        else:
+            _fake_apply(app_zip, app)
+    monkeypatch.setattr(uc, "run_apply", damaging)
+    rc = uc.main(["app-update", "--old-zip", str(_old_zip(tmp_path)), "--core-dir", str(core), "--dir", str(tmp_path / "w2")])
+    assert rc == 1 and "the install changed" in capsys.readouterr().out
+
+
+def test_plan_full_command_prints_the_full_installer_line(tmp_path, capsys):
+    core = _core(tmp_path / "new")
+    rc = uc.main(["plan-full", "--old-zip", str(_old_zip(tmp_path)), "--core-dir", str(core), "--dir", str(tmp_path / "w")])
+    assert rc == 0 and "update: full installer" in capsys.readouterr().out
+
+
+def test_upgrade_job_runs_both_update_paths_without_python_utf8_env():
+    wf = yaml.safe_load((REPO / ".github" / "workflows" / "windows-build.yml").read_text(encoding="utf-8"))
+    up = wf["jobs"]["upgrade"]
+    assert "env" not in up  # D4 of #924: no PYTHONUTF8 / PYTHONIOENCODING
+    runs = [str(s.get("run", "")) for s in up["steps"]]
+    unzipped = next(i for i, r in enumerate(runs) if "upgrade_check.py unzip" in r and "core" in r)
+    app = next(i for i, r in enumerate(runs) if "upgrade_check.py app-update" in r)
+    full = next(i for i, r in enumerate(runs) if "upgrade_check.py plan-full" in r)
+    assert unzipped < app < full
+    for i in (app, full):
+        assert "exit $LASTEXITCODE" in runs[i] and "continue-on-error" not in up["steps"][i]
