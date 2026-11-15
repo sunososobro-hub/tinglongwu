@@ -39,12 +39,29 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether the steps are needed (docs / mobile-only PRs still report success)
+        id: changes
+        shell: bash
+        run: |
+          # #976: a pull_request that only touches docs / markdown / .agent / mobile/** cannot change the desktop app.
+          # push and workflow_dispatch always run in full (the release gate needs a real success on the dev tip).
+          build=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            if files=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD") && [ -n "$files" ]; then
+              if ! echo "$files" | grep -Evq '^(docs/|\.agent/|mobile/)|\.md$'; then build=false; fi
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [ "$build" = false ]; then echo "docs/mobile-only PR: skipping the steps (job still reports success)"; else echo "steps needed"; fi
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        if: steps.changes.outputs.build == 'true'
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Windows audio service (disabled on hosted runners)
+        if: steps.changes.outputs.build == 'true'
         shell: pwsh
         run: |
           foreach ($s in 'AudioEndpointBuilder', 'Audiosrv') {
@@ -60,6 +77,7 @@ jobs:
           }
 
       - name: VB-CABLE (official zip, pinned SHA-256, silent install)
+        if: steps.changes.outputs.build == 'true'
         shell: pwsh
         run: |
           $zip = "$env:RUNNER_TEMP\vbcable.zip"
@@ -88,12 +106,14 @@ jobs:
           Restart-Service Audiosrv -Force
 
       - name: Install tlwu + Hy-MT2 CPU engine (no dev extra, so speak_selftest does not wait for a quiet CPU)
+        if: steps.changes.outputs.build == 'true'
         shell: bash
         run: |
           pip install -e .
           pip install -r requirements-llama-cpu.txt --only-binary=:all:
 
       - name: "#849 device listing + signal check: tone into CABLE Input is captured on CABLE Output"
+        if: steps.changes.outputs.build == 'true'
         shell: bash
         env:
           PLAY: ${{ inputs.play_device || 'CABLE Input' }}
@@ -102,7 +122,7 @@ jobs:
           { echo '### #849 VB-CABLE signal check (windows-latest)'; echo '```'; cat "$RUNNER_TEMP/loopback.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: "#849 negative control: a wrong device name must fail the signal check"
-        if: ${{ !cancelled() }}
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         shell: bash
         run: |
           if python scripts/cable_loopback_check.py --play "CABLE Inputx" --record "CABLE Output"; then
@@ -111,16 +131,16 @@ jobs:
           echo "wrong device name failed as expected" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Models dir
-        if: ${{ !cancelled() }}
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         shell: bash
         run: echo "TLWU_MODELS=$(cygpath -m "$HOME/tlwu-models")" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        if: ${{ !cancelled() }}
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         with:
           path: ~/tlwu-models
           key: e2e-models-v3-windows-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}   # same set as e2e.yml
       - name: Models (smoke set) + Kokoro voice venv + Russian voice
-        if: ${{ !cancelled() }}
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         shell: bash
         run: |
           tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --pair en-ru --pair ru-en --allow-unpinned --models-dir "$TLWU_MODELS"
@@ -132,7 +152,7 @@ jobs:
             python scripts/ci_e2e.py zh-wav "$RUNNER_TEMP/zh.wav" --repeat 2
 
       - name: "#6 #207 #311-4 speak_selftest through VB-CABLE (en), records CABLE Output"
-        if: ${{ !cancelled() }}
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         shell: bash
         run: |
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to en --models-dir "$TLWU_MODELS" \
@@ -140,7 +160,7 @@ jobs:
           { echo '### speak_selftest en (windows-latest, VB-CABLE)'; echo '```'; cat "$RUNNER_TEMP/speak_en.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: "#311 item 4 speak_selftest --to ru: Russian voice reaches CABLE Input"
-        if: ${{ !cancelled() }}
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         shell: bash
         run: |
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to ru --models-dir "$TLWU_MODELS" \
