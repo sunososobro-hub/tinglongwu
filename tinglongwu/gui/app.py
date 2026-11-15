@@ -19,7 +19,7 @@ from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from ..i18n import SILENT_CLEAR
 from .core import scene_of as scene_mode_name
-from .core import (speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -404,6 +404,7 @@ class App:
         self.status_key: str | None = "gui_ready"
         from ..speakers import SpeakerBook
 
+        self.spk_colors = SpeakerColors()  # 0.3.8: avatar colors per speaker, first-seen order
         self.spk = None  # 0.3.8: async speaker-ID labeler of this session (None = unavailable)
         self._spk_tags_bound: set[str] = set()  # speaker-label tags already bound on self.log_text
         self.spk_book = SpeakerBook()  # session-only names
@@ -1570,10 +1571,14 @@ class App:
             if lab:  # 0.3.8: "對方 · 說話者 1" - the label is a link: click to rename
                 raw, shown = lab
                 tag = f"spk:{raw}"
-                tx.insert("end", head + " · ", f"{side}_head")
+                color = self.spk_colors.color(raw)  # first-seen order, stable for the session
+                av = f"spkav:{raw}"  # one tag per speaker, re-configured in place: no images, no widgets
+                tx.insert("end", f" {speaker_initial(self.spk_book, raw)} ", (f"{side}_head", av))
+                tx.insert("end", " " + head + " · ", f"{side}_head")
                 tx.insert("end", shown, (f"{side}_head", tag))
                 tx.insert("end", "\n", f"{side}_head")
-                tx.tag_configure(tag, underline=True)
+                tx.tag_configure(av, background=color, foreground=SPK_AVATAR_FG)
+                tx.tag_configure(tag, underline=True, foreground=color)
                 if tag not in self._spk_tags_bound:  # bind once per tag: every bind leaks a Tcl command
                     self._spk_tags_bound.add(tag)
                     tx.tag_bind(tag, "<Button-1>", lambda _e, r=raw: self._rename_speaker(r))
@@ -1982,6 +1987,7 @@ class App:
 
         self._close_labeler()  # the previous session's worker thread and model
         self.spk, self.spk_book = None, SpeakerBook()  # new session: new speakers, new names
+        self.spk_colors = SpeakerColors()
         self.set_paused(False)
         self.stop_ev = threading.Event()
         self.load_t0 = time.monotonic()  # #332: Stop stays disabled ("Loading... N s") until the models are ready

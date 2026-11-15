@@ -1156,3 +1156,34 @@ def ready_extra_line(msg: str) -> str:
     except ValueError:
         slow = False
     return t("gui_load_slow") if slow else ""
+
+
+# 0.3.8: speaker avatars. Colorblind-friendly (Okabe-Ito based) hues that read on the dark navy chat background.
+SPK_PALETTE = ("#E69F00", "#56B4E9", "#2EC4A0", "#F0E442", "#CC79A7", "#FF8C69", "#9BB7FF", "#B8E986")
+SPK_AVATAR_FG = "#0B1220"  # dark text on the colored badge
+
+
+class SpeakerColors:
+    """Speaker label -> palette color, assigned in first-seen order and kept for the session (a rename never changes it;
+    more speakers than colors reuse the palette from the start)."""
+
+    def __init__(self, palette=SPK_PALETTE):
+        self.palette = tuple(palette)
+        self._idx: dict[str, int] = {}
+
+    def color(self, raw: str) -> str:
+        if raw not in self._idx:
+            self._idx[raw] = len(self._idx)
+        return self.palette[self._idx[raw] % len(self.palette)]
+
+
+def speaker_initial(book, raw: str) -> str:
+    """The avatar text: the speaker number for the default "Speaker N" label, else the first character of the name."""
+    from ..speakers import LABEL_PREFIX
+
+    shown = book.display(raw) if raw else None
+    if not shown:
+        return ""
+    if shown.startswith(LABEL_PREFIX) and shown[len(LABEL_PREFIX):].isdigit():
+        return shown[len(LABEL_PREFIX):]
+    return shown[:1].upper()
