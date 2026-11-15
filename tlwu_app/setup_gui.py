@@ -25,6 +25,25 @@ def worker_cmd(bundled: bool, mdir: Path, args: list[str]) -> list[str]:
     return [*base, "--run-setup", *args, "--models-dir", str(mdir)]
 
 
+def wants_gpu_pack(tier: tiers.Tier, gpu) -> bool:
+    """#966: nvidia-smi reported a usable NVIDIA GPU and the user did not pick CPU mode -> install the GPU pack."""
+    return gpu is not None and tier.name != "cpu"
+
+
+def gpu_pack_cmd(bundled: bool, mdir: Path) -> list[str]:
+    """Command line of the GPU-pack download child (#966): the same `--run-setup` worker, networked, no tinglongwu import."""
+    return worker_cmd(bundled, mdir, ["--gpu-pack"])
+
+
+def gpu_pack_status(rc: int, tail: str) -> str:
+    """Summary line for the wizard: the GPU pack is installed, or why it is not (the CPU path keeps working)."""
+    if rc == 0 and "no GPU pack" not in tail:
+        return "GPU 加速包已安裝。"
+    if rc == 0:
+        return "這個版本沒有 GPU 加速包，改用 CPU（可稍後在「設定 > 附加元件」安裝）。"
+    return "GPU 加速包沒有安裝成功（需要網路），目前改用 CPU；可稍後在「設定 > 附加元件」再試一次。"
+
+
 def selftest_cmd(bundled: bool, mdir: Path, tier: tiers.Tier) -> list[str]:
     """Command line of the self-test child run after the download (#99): `tlwu --selftest`, offline."""
     base = [os.path.abspath(sys.argv[0])] if bundled else [sys.executable, "-m", "tlwu_app"]
@@ -53,7 +72,8 @@ class SetupWindow:
     def __init__(self, mdir: Path, bundled: bool, force_cpu: bool = False):
         self.mdir, self.bundled = Path(mdir), bundled
         self.ok = False
-        self.phase = "download"  # then "selftest" (#99)
+        self.phase = "download"  # then "gpupack" (#966, NVIDIA only), then "selftest" (#99)
+        self.pack_note = ""
         self.proc: subprocess.Popen | None = None
         self.q: queue.Queue = queue.Queue()
         raw = None if force_cpu else tiers.probe_gpu()
@@ -142,9 +162,23 @@ class SetupWindow:
                 messagebox.showwarning("自我測試失敗", warning)
             self.root.after(600, self.root.destroy)
             return
+        if self.phase == "gpupack":  # #966: never blocks; the self-test then runs with or without the pack
+            self.pack_note = gpu_pack_status(rc, tail)
+            self.phase = "selftest"
+            self.v_status.set(self.pack_note + " 自我測試中…")
+            threading.Thread(target=self._run, args=(selftest_cmd(self.bundled, self.mdir, self.tier),),
+                             daemon=True).start()
+            self.root.after(500, self.poll)
+            return
         if rc == 0 and tiers.models_ready(self.mdir):
             self.bar["value"] = 100
             self.ok = True
+            if wants_gpu_pack(self.tier, self.gpu):
+                self.phase = "gpupack"
+                self.v_status.set("安裝 GPU 加速包（NVIDIA，需連網一次）…")
+                threading.Thread(target=self._run, args=(gpu_pack_cmd(self.bundled, self.mdir),), daemon=True).start()
+                self.root.after(500, self.poll)
+                return
             self.phase = "selftest"
             self.v_status.set("下載完成，自我測試中（載入模型並翻譯一句測試句）…")
             cmd = selftest_cmd(self.bundled, self.mdir, self.tier)
