@@ -652,7 +652,7 @@ def make_app_layer_zip(app: Path, out_dir: Path) -> Path:
         version = info["version"]
         key = runtime["key"]
     except (OSError, ValueError, KeyError) as e:
-        raise SystemExit(f"app layer zip: {app} lacks a readable {APP_MANIFEST} / {rt.MANIFEST_NAME}: {e}")
+        raise SystemExit(f"app layer zip: {app} lacks a readable {APP_MANIFEST} / {rt.MANIFEST_NAME}: {e}") from e
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / APP_LAYER_ASSET
     files = [app / USAGE_TEXT, app / APP_MANIFEST, app / EXE_NAME]
