@@ -216,7 +216,7 @@ def both_settings(s: dict) -> tuple[dict, dict]:
     Raises SameLanguageError when both languages are the same."""
     session_route("two-way", s.get("target"), s.get("lang"))  # raises before any run is built
     listen, speak = quick_settings(s, "listen"), quick_settings(s, "speak")
-    speak.update(live_draft=False, save=False)
+    speak.update(live_draft=False, save=False, mine=s.get("target"))  # mine: script of my own words (#1070)
     return listen, speak
 
 
@@ -859,6 +859,43 @@ class QueueSink(Sink):
         self.q.put(("final", r.original, r.target if r.src != r.tgt and r.target else r.original))
 
 
+def wrap_bubble(text: str, measure, max_px: int) -> list[str]:
+    """#1070: break `text` into lines that are at most max_px wide (measure(str) -> pixels): at spaces, and between
+    CJK characters; a single over-long word is split by characters. Always at least one line."""
+    import re
+
+    tokens = re.findall(r"[぀-ヿ㐀-鿿가-힯]|[^\s぀-ヿ㐀-鿿가-힯]+|\s+", text.replace(chr(10), " "))
+    lines: list[str] = []
+    cur = ""
+    for tok in tokens:
+        if tok.isspace():
+            cur += " " if cur else ""
+            continue
+        if cur and measure(cur + tok) > max_px:
+            lines.append(cur.rstrip())
+            cur = ""
+        while measure(tok) > max_px and len(tok) > 1:  # one word wider than the bubble
+            k = len(tok) - 1
+            while k > 1 and measure(tok[:k]) > max_px:
+                k -= 1
+            lines.append(tok[:k])
+            tok = tok[k:]
+        cur += tok
+    if cur.strip():
+        lines.append(cur.rstrip())
+    return lines or [""]
+
+
+def _zh_display(text: str, variant: str) -> str:
+    """#1070: Whisper writes Chinese in Simplified; show it in the user's script. Falls back to the text as is."""
+    try:
+        from ..translate import zh_convert
+
+        return zh_convert(text, variant)
+    except Exception:  # noqa: BLE001 - opencc missing: show what Whisper wrote
+        return text
+
+
 class SpeakQueueSink(QueueSink):
     """#1001: the speak leg of a combined session: finished lines only ("final_side", marked with SPEAK_MARK), so
     they share the subtitle list with the listen leg without touching its draft / pending rows."""
@@ -866,9 +903,16 @@ class SpeakQueueSink(QueueSink):
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass
 
+    variant = "tw"  # #1070: the script my own words are shown in (zh-tw -> Traditional)
+
     def write(self, r: Result) -> None:
         out = r.target if r.src != r.tgt and r.target else r.original
-        self.q.put(("final_side", SPEAK_MARK + r.original, SPEAK_MARK + out))
+        original = r.original
+        if lang_base(r.src) == "zh":
+            original = _zh_display(original, self.variant)
+            if r.src == r.tgt or not r.target:
+                out = original
+        self.q.put(("final_side", SPEAK_MARK + original, SPEAK_MARK + out))
 
 
 class QueueDraftRenderer(DraftRenderer):

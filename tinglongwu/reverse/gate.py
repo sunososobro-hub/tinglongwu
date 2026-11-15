@@ -94,9 +94,27 @@ def gate_audio(duration: float, rms: float, env=None, **over) -> tuple[bool, str
     return True, ""
 
 
-def gate(s: SegmentStats, env=None, **over) -> tuple[bool, str]:
+_CJK_LANGS = frozenset({"zh", "zh-tw", "zh-cn", "ja", "ko", "yue"})
+_CJK_CHAR = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
+
+
+def wrong_script(text: str, lang: str | None) -> bool:
+    """#1070: True when ASR was pinned to a CJK language but the text has no CJK character and 3+ Latin letters:
+    Whisper drifted to English (a hallucination such as "Walk in the park." on noise, or an unasked translation)."""
+    if not lang or lang.lower() not in _CJK_LANGS or _CJK_CHAR.search(text):
+        return False
+    return len(re.findall(r"[A-Za-z]", text)) >= 3
+
+
+# #1070: a segment that is both fairly likely not speech and fairly unsure is dropped even if neither limit alone trips
+SOFT_NO_SPEECH = 0.4
+SOFT_LOGPROB = -0.8
+
+
+def gate(s: SegmentStats, env=None, lang: str | None = None, **over) -> tuple[bool, str]:
     """(True, "") when the segment may go to the confirm queue, else (False, reason).
-    reason in: too_short, quiet, no_speech, low_logprob, few_chars, compression, filler, repeat.
+    reason in: too_short, quiet, no_speech, low_logprob, empty, few_chars, wrong_lang, compression, filler, repeat.
+    lang = the language ASR is pinned to (speak leg: My language); other-script text is dropped (#1070).
     `over` replaces single limits (keys of ENV), e.g. min_rms=..."""
     from ..hallucination import is_hallucination
     from ..repeat import has_loop
@@ -109,8 +127,14 @@ def gate(s: SegmentStats, env=None, **over) -> tuple[bool, str]:
         return False, "no_speech"
     if s.avg_logprob < lim["logprob"]:
         return False, "low_logprob"
+    if s.avg_logprob and s.no_speech > SOFT_NO_SPEECH and s.avg_logprob < SOFT_LOGPROB:
+        return False, "low_logprob"
+    if not s.text.strip():
+        return False, "empty"
     if _chars(s.text) < lim["min_chars"]:
         return False, "few_chars"
+    if wrong_script(s.text, lang):
+        return False, "wrong_lang"
     if compression_ratio(s.text) > lim["compression"]:
         return False, "compression"
     if is_filler(s.text):
@@ -123,7 +147,7 @@ def gate(s: SegmentStats, env=None, **over) -> tuple[bool, str]:
 SILENT_DROPS = frozenset({"quiet", "too_short"})  # #968: pauses and clicks are not shown as "not sent"
 
 
-def segment_gate(on_drop=None, report=None, sr: int = 16000, env=None):
+def segment_gate(on_drop=None, report=None, sr: int = 16000, env=None, lang: str | None = None):
     """#968: gate() for the GUI speak path (listen pipeline + voice). Returns seg_gate(seg, transcript) -> bool
     for pipeline.run(): the same checks the CLI speak path runs in live.recognize_utterances (#249).
     on_drop(text, reason) is called for a rejected transcript (not for silence / too-short blips), so the GUI can
@@ -136,7 +160,7 @@ def segment_gate(on_drop=None, report=None, sr: int = 16000, env=None):
         rms = float(np.sqrt(np.mean(np.square(seg)))) if len(seg) else 0.0
         text = (getattr(tr, "text", "") or "").strip()
         ok, why = gate(SegmentStats(len(seg) / sr, rms, text, float(getattr(tr, "no_speech", 0.0) or 0.0),
-                                    float(getattr(tr, "avg_logprob", 0.0) or 0.0)), env)
+                                    float(getattr(tr, "avg_logprob", 0.0) or 0.0)), env, lang=lang)
         if ok:
             return True
         if why != "quiet":

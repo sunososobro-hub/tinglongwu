@@ -628,10 +628,12 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
                 source.on_reopen = sink.capture_guard  # #710: a device change cannot loop the meeting voice
         seg_gate = None
         vgate = getattr(a, "voice_gate", None)
-        if getattr(a, "voice", False) and (vgate is not None or (a.mic and not a.file)):
+        gui_speak = getattr(a, "mic_mute", None) is not None  # #1070: the GUI speak leg is gated with or without voice
+        if gui_speak or (getattr(a, "voice", False) and (vgate is not None or (a.mic and not a.file))):
             from .reverse.gate import segment_gate  # #968: a spoken line goes out in the user's voice
 
-            seg_gate = segment_gate(getattr(vgate, "reject", None))
+            # #1070: ASR is pinned to My language (--lang); text in another script is Whisper drifting, dropped
+            seg_gate = segment_gate(getattr(vgate, "reject", None), lang=None if a.lang == "auto" else a.lang)
         muted = getattr(a, "mic_mute", None)  # #1028: the GUI mic toggle silences this leg's capture only
         playback = getattr(sink, "playback", None) if (a.mic and not a.file) else None
         if playback is not None:  # #1052: half-duplex: our own voice must not be heard by our own mic

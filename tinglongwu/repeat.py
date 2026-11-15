@@ -60,13 +60,22 @@ def _collapse_chars(text: str) -> str:
     return _CHAR_LOOP.sub(lambda m: m.group(1) if _CJK.search(m.group(1)) else m.group(0), text)
 
 
+# #1070: one CJK clause said 3+ times in a row, joined by punctuation / spaces ("我先把東西放在你底下，我先把東西放在你底下，...")
+_CLAUSE_SEP = r"[\s，,。.！!？?、；;]"
+_CLAUSE_LOOP = re.compile(r"([^\s，,。.！!？?、；;]{3,80})(?:%s+\1){2,}" % _CLAUSE_SEP)
+
+
+def _collapse_clauses(text: str) -> str:
+    return _CLAUSE_LOOP.sub(lambda m: m.group(1) if _CJK.search(m.group(1)) else m.group(0), text)
+
+
 def collapse_repeats(text: str) -> str:
     """Keep one copy of any phrase repeated >= 3 times in a row (>= 4 for a single word)."""
     t = " ".join(text.split())
     if not t:
         return t
     t = _UNIT_LOOP.sub(lambda m: m.group(1), t)
-    return _collapse_chars(_collapse_words(t))
+    return _collapse_clauses(_collapse_chars(_collapse_words(t)))
 
 
 def compression_ratio(text: str) -> float:

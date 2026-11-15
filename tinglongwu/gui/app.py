@@ -1360,6 +1360,8 @@ class App:
         if e.width != getattr(self, "_log_w", None):
             self._log_w = e.width
             self._chat_tags()
+            if getattr(self, "_log_shown", None) and self._log_shown[0]:
+                self.render_log()  # #1070: bubbles are wrapped to the new width
 
     def placeholder(self) -> list[tuple[str, bool]]:
         """What to show before the first subtitle of a session: the user must see that it is listening."""
@@ -1429,8 +1431,7 @@ class App:
             side = "me" if mine else "other"
             src, text = src.removeprefix(SPEAK_MARK), text.removeprefix(SPEAK_MARK)
             tx.insert("end", t("gui_chat_me" if mine else "gui_chat_other") + "\n", f"{side}_head")
-            tx.insert("end", f" {text} ", (f"{side}_draft" if is_draft else f"{side}_final", f"row{i}"))
-            tx.insert("end", "\n", (f"{side}_base", f"row{i}"))
+            self._insert_bubble(side, text, is_draft, i)
             if show_src and src and src != text:
                 tx.insert("end", src + "\n", (f"{side}_src", f"row{i}"))
         tx.configure(state="disabled")
@@ -1438,6 +1439,34 @@ class App:
             self._log_to_end()
         else:
             tx.yview(top)
+
+    def _insert_bubble(self, side: str, text: str, is_draft: bool, row: int):
+        """#1070: a bubble hugs its text (max ~75 % of the window). Tk paints the margin area with the background of the
+        line's first character, so the text is wrapped here and every line starts with a plain spacer (no
+        background) that carries the margin; the background tag covers only the words."""
+        import tkinter.font as tkfont
+
+        from .core import wrap_bubble
+
+        tx = self.log_text
+        n = self.settings["log_font_size"]
+        width = tx.winfo_width()
+        width = width if width > 100 else 400
+        try:
+            fnt = tkfont.Font(family=FONT_FAMILY, size=n)
+            measure = fnt.measure
+        except Exception:  # noqa: BLE001
+            measure = lambda s: len(s) * n  # noqa: E731
+        lines = wrap_bubble(text, measure, max(60, int(width * 0.75) - 24))
+        top = max(measure(" " + ln + " ") for ln in lines)
+        margin = 10 if side == "other" else max(10, (width - 8 - 10 - top) // 4 * 4)
+        mtag = f"{side}_m{margin}"
+        tx.tag_configure(mtag, lmargin1=margin, lmargin2=margin, rmargin=0, justify="left")
+        fin = f"{side}_draft" if is_draft else f"{side}_final"
+        for ln in lines:
+            tx.insert("end", " ", (mtag, f"row{row}"))
+            tx.insert("end", f" {ln} ", (fin, f"row{row}"))
+            tx.insert("end", chr(10), (mtag, f"row{row}"))
 
     def _sync_bar(self):
         """#1042: the floating-subtitles button always shows whether the bar is really on screen."""
@@ -1824,7 +1853,10 @@ class App:
                     return None
                 return DraftEngine(asr, translator, QueueDraftRenderer(q), lambda: segmenter.live, tgt)
 
-            run_session(a, sink=(sink_cls or QueueSink)(q), draft_factory=draft_factory, stop=stop,
+            sink = (sink_cls or QueueSink)(q)
+            if sink_cls is not None:
+                sink.variant = "cn" if s.get("mine") == "zh-cn" else "tw"  # #1070
+            run_session(a, sink=sink, draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
                         cpu_line=lambda ms: q.put(("cpu_line", ms)))
