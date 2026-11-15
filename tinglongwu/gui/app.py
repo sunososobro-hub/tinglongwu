@@ -18,7 +18,8 @@ from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from ..i18n import SILENT_CLEAR
-from .core import (strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import scene_of as scene_mode_name
+from .core import (SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -791,6 +792,16 @@ class App:
         """#1028: bottom bar. Row 1: mic toggle, floating subtitles. Row 2: settings, status dot, freeze subtitles,
         the big Start / Stop at the right."""
         b = self.bar
+        scene_row = ttk.Frame(b)  # 0.3.8: 情境 - what the one Start starts; fixed while a session runs
+        scene_row.pack(fill="x", pady=(0, 6))
+        self._tx(ttk.Label(scene_row), "gui_scene").pack(side="left", padx=(0, 6))
+        self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
+        self.scene_btns = []
+        for sc in SCENES:
+            rb = ttk.Radiobutton(scene_row, variable=self.v_scene, value=sc, style="Toolbutton",
+                                 command=self._scene_changed)
+            self._tx(rb, "gui_scene_" + sc).pack(side="left", padx=(0, 4))
+            self.scene_btns.append(rb)
         row1 = ttk.Frame(b)
         row1.pack(fill="x")
         self.v_mic = tk.BooleanVar(value=True)
@@ -809,11 +820,16 @@ class App:
         self.set_dot("idle")
         self.btn_pause = ttk.Button(row2, text=t("gui_pause"), command=self.toggle_pause)
         self.btn_pause.pack(side="left")
-        self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(BOTH_MODE),
+        self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
                                               style="Start.Accent.TButton", width=14)
         self.btn.pack(side="right")
         self._mic_label()
         self._sync_quick()
+
+    def _scene_changed(self):
+        """0.3.8: remember the scene (applies at the next Start; the buttons are disabled while running)."""
+        self.settings["scene"] = self.v_scene.get()
+        save_settings(self.settings)
 
     def _mic_label(self):
         self.btn_mic.configure(text=t("gui_mic_on" if self.v_mic.get() else "gui_mic_off"))
@@ -860,7 +876,7 @@ class App:
 
     def _bar_start(self):
         """#1001: the bar's Start = the one Start (listen + speak together); Stop while running."""
-        self.toggle(BOTH_MODE)
+        self.toggle(None)
 
     def _pair_changed(self):
         """#981: same language on both sides is said at once, under the pickers, before Start is pressed."""
@@ -1368,8 +1384,15 @@ class App:
             return "busy"
         return "running" if self.listening else "idle"
 
+    def _sync_scene(self):
+        """0.3.8: the scene can only change while stopped (applies at the next Start)."""
+        st = "normal" if self._quick_phase() == "idle" else "disabled"
+        for rb in getattr(self, "scene_btns", []):
+            rb.configure(state=st)
+
     def _sync_quick(self):
         """Label/enable the first-screen buttons for the current session state (#294)."""
+        self._sync_scene()
         if getattr(self, "lbl_restart", None) is not None:
             self._restart_check()  # #983: the notice goes away once the session has stopped
         if not hasattr(self, "both_btn"):
@@ -1807,11 +1830,11 @@ class App:
         if self.settings["floating_bar"] and not self.overlay.visible:
             self.v_bar.set(True)  # #1042: the saved choice is shown again at Start (Stop/launch left the button off)
         self.collect()
-        mode = mode or BOTH_MODE
+        mode = mode or scene_mode(self.settings)  # 0.3.8: the 情境 row decides what the one Start starts
         speak_run = None
         try:
-            if mode == BOTH_MODE:  # #1001: listen + speak in one session
-                run, speak_run = both_settings(self.settings)
+            if mode in (BOTH_MODE, WATCH_MODE):  # #1001: listen + speak; 0.3.8: video = listen only
+                _m, run, speak_run = scene_runs(dict(self.settings, scene="video" if mode == WATCH_MODE else "meeting"))
             else:
                 run = quick_settings(self.settings, mode)
         except SameLanguageError as e:  # #981: same language on both sides: say so, no run starts
@@ -1828,6 +1851,7 @@ class App:
         if self._offer_pack(run, mode) or (speak_run is not None and self._offer_pack(speak_run, mode)):  # #673
             return
         self.quick_mode, self.run_source = mode, run.get("source")
+        self._sync_scene()
         self._last_mode = mode or "listen"  # the finished rows keep this mode after Stop (#677)
         self.speak_hint = speak_route(voice_run, meeting_cable()) if speaking else None  # #710
         self.gate = None

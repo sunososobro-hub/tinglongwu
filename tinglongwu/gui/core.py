@@ -34,6 +34,7 @@ DEFAULTS = {
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
     "usage_asked": False,  # #680: the one-time "what do you mainly use it for?" question was answered or skipped
     "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
+    "scene": "meeting",  # 0.3.8: the 情境 row: "meeting" (listen + speak) or "video" (listen only); last choice kept
     "send_mode": "auto",  # #834/#1052: how a speak line is sent (auto = straight away, confirm = show me first); owner default: auto
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES (the CLI keeps all three)
@@ -221,12 +222,42 @@ def both_settings(s: dict) -> tuple[dict, dict]:
     return listen, speak
 
 
+WATCH_MODE = "watch"  # 0.3.8: scene "video": listen only (floating subtitles); no mic, no speech, nothing to CABLE
+SCENES = ("meeting", "video")
+
+
+def scene_of(s: dict) -> str:
+    """The saved scene, "meeting" when missing or unknown."""
+    return s.get("scene") if s.get("scene") in SCENES else "meeting"
+
+
+def scene_mode(s: dict) -> str:
+    """Which session the one Start runs: meeting = BOTH_MODE (listen + speak), video = WATCH_MODE (listen only)."""
+    return WATCH_MODE if scene_of(s) == "video" else BOTH_MODE
+
+
+def watch_settings(s: dict) -> dict:
+    """0.3.8 video scene: the listen leg only. The voice output (#330) is forced off too, so nothing is spoken or
+    sent to any output; the mic leg is simply not built. `s` is not changed."""
+    run = quick_settings(s, "listen")
+    run["voice"] = False
+    return run
+
+
+def scene_runs(s: dict) -> tuple[str, dict, dict | None]:
+    """(mode, listen run, speak run or None) for the saved scene; raises SameLanguageError like both_settings."""
+    if scene_mode(s) == WATCH_MODE:
+        return WATCH_MODE, watch_settings(s), None
+    listen, speak = both_settings(s)
+    return BOTH_MODE, listen, speak
+
+
 def start_button(phase: str, active: str | None = None) -> tuple[str, bool]:
     """#1001: (i18n key, enabled) of the one first-screen Start, same phases as quick_buttons()."""
     if phase == "loading":
         return "gui_loading", False
     if phase == "running":
-        return ("gui_stop", True) if active == BOTH_MODE else ("gui_quick_both", False)
+        return ("gui_stop", True) if active in (BOTH_MODE, WATCH_MODE) else ("gui_quick_both", False)
     return "gui_quick_both", phase == "idle"
 
 
