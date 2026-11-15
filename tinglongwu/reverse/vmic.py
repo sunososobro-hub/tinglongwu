@@ -47,10 +47,22 @@ WIN_CABLE = "CABLE Input"  # VB-CABLE playback side; Meet/Zoom record its "CABLE
 
 
 def pick_win_cable(names: list[str], want: str = WIN_CABLE) -> str | None:
-    """Windows output device to speak into (#311): first name containing "CABLE Input" (case-insensitive), or None."""
-    for n in names:
-        if want.casefold() in n.casefold():
-            return n
+    """Windows output device to speak into (#311): first name STARTING with "CABLE Input" (case-insensitive), else
+    the first name containing it, or None. Prefix first so "Hi-Fi Cable Input (VB-Audio Hi-Fi Cable)" listed before
+    the real VB-CABLE device is not picked (#1089)."""
+    i = match_device_index(names, want)
+    return None if i is None else names[i]
+
+
+def match_device_index(names: list[str], needle: str) -> int | None:
+    """Index of the best case-insensitive match for `needle`: exact name, then name starting with it, then name
+    containing it (first in list order within each tier); None when nothing matches (#1089)."""
+    w = needle.casefold()
+    folded = [n.casefold() for n in names]
+    for test in (lambda n: n == w, lambda n: n.startswith(w), lambda n: w in n):
+        for i, n in enumerate(folded):
+            if test(n):
+                return i
     return None
 
 

@@ -140,13 +140,15 @@ class GapMeter:
 
 
 def match_device(names: list[str], needle: str | None) -> int | None:
-    """Index of the first device whose name contains `needle` (case-insensitive); no needle -> None (default)."""
+    """Index of the device matching `needle` (case-insensitive): exact name, then a name starting with it, then the
+    first name containing it, so "CABLE Input" picks VB-CABLE over "Hi-Fi Cable Input" (#1089); no needle -> None."""
     if not needle:
         return None
-    n = needle.casefold()
-    for i, name in enumerate(names):
-        if n in name.casefold():
-            return i
+    from .vmic import match_device_index
+
+    i = match_device_index(names, needle)
+    if i is not None:
+        return i
     raise LookupError(f"no output device matching {needle!r}; available: {names}")
 
 
