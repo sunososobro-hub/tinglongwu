@@ -1289,10 +1289,10 @@ class App:
         tgt = self.combos["target"]
         self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
         self.home_target = ttk.Combobox(q, textvariable=tgt.cget("textvariable"), values=tgt.cget("values"),
-                                        state="readonly", width=14)
+                                        state="readonly", width=8)
         self.home_target.grid(row=0, column=1, sticky="we", padx=(6, 14))
         self._tx(ttk.Label(q), "gui_quick_other").grid(row=0, column=2, sticky="w")
-        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=14)
+        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=8)
         self.home_lang.grid(row=0, column=3, sticky="we", padx=(6, 0))
         q.columnconfigure(1, weight=1)
         q.columnconfigure(3, weight=1)
