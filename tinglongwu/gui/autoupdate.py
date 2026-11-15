@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .. import userdirs
 
@@ -43,7 +43,7 @@ def is_bundled() -> bool:
     """Same semantics as tlwu_app.main.is_bundled (frozen / compiled / TLWU_BUNDLED=1, which tlwu.exe sets
     before the GUI starts, or sys.executable = tlwu.exe, #1007). Kept here so the runtime package does not import the launcher."""
     return (bool(getattr(sys, "frozen", False)) or "__compiled__" in globals() or os.environ.get("TLWU_BUNDLED") == "1"
-            or Path(sys.executable).name.lower() == "tlwu.exe")
+            or PureWindowsPath(sys.executable).name.lower() == "tlwu.exe")
 
 
 def app_root() -> Path:

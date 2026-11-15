@@ -81,15 +81,21 @@ def test_pylib_extract_failure_leaves_no_pylib(tmp_path, monkeypatch):
 
 
 def test_bundled_pkg_installed_requires_valid_pins(tmp_path):
-    from tinglongwu_setup.downloader import expected_speaker_pins
-
     d = tmp_path / "speaker" / "pylib"
     d.mkdir(parents=True)
     assert sp.pkg_installed(tmp_path, bundled=True) is False  # folder without marker = half extracted
-    (d / ".pins").write_text("wrong", "utf-8")
-    assert speaker_pylib.pylib_valid(tmp_path) is (expected_speaker_pins() is None)
-    (d / ".pins").write_text(expected_speaker_pins() or "x", "utf-8")
-    assert speaker_pylib.pylib_valid(tmp_path) is True
+    (d / ".pins").write_text("", "utf-8")
+    assert speaker_pylib.pylib_valid(tmp_path) is False  # empty marker = interrupted write
+    (d / ".pins").write_text("sherpa_onnx-2.0.1 core-2.0.1", "utf-8")
+    assert speaker_pylib.pylib_valid(tmp_path) is True  # pin mismatch is setup's job (it re-extracts)
+
+
+def test_module_present_finds_package_without_importing(tmp_path, monkeypatch):
+    (tmp_path / "fakepkg_1070").mkdir()
+    (tmp_path / "fakepkg_1070" / "__init__.py").write_text("raise RuntimeError('must not be imported')")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    assert speaker_pylib.module_present("fakepkg_1070") is True
+    assert speaker_pylib.module_present("no_such_pkg_1070") is False
 
 
 def test_broken_import_counts_as_missing_for_repair(tmp_path, monkeypatch):

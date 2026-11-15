@@ -29,7 +29,7 @@ BUTTONS = {"en": ("Download", "Not now"), "ru": ("Скачать", "Не сей�
 def pkg_installed(mdir=None, bundled: bool | None = None) -> bool:
     """Package present. Packaged build: models/speaker/pylib must carry a valid .pins marker (a half-extracted
     folder does not count) before it is put on sys.path."""
-    import importlib.util
+    from ..speaker_pylib import module_present
 
     if mdir is not None:
         from ..speaker_pylib import activate, pylib_valid  # only reached with the toggle on
@@ -39,10 +39,7 @@ def pkg_installed(mdir=None, bundled: bool | None = None) -> bool:
         if pylib_valid(mdir) or not (Path(mdir) / "speaker" / "pylib" / ".pins").exists():
             activate(mdir)
 
-    try:
-        return importlib.util.find_spec("sherpa_onnx") is not None
-    except (ImportError, ValueError):
-        return False
+    return module_present("sherpa_onnx")
 
 
 def model_installed(mdir) -> bool:
@@ -55,9 +52,8 @@ def import_ok(mdir) -> bool:
         from ..speaker_pylib import activate
 
         activate(mdir)
-        import importlib
+        import sherpa_onnx  # noqa: F401 - optional speaker pack; a missing or broken one counts as not installed
 
-        importlib.import_module("sherpa_onnx")
         return True
     except Exception:  # noqa: BLE001
         return False

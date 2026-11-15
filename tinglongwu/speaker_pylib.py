@@ -36,17 +36,24 @@ def activate(mdir) -> bool:
 
 def pylib_valid(mdir) -> bool:
     """The pylib folder was completely extracted: the .pins marker (written last, then the folder is renamed into
-    place) exists and matches the pins of this build when those are known."""
+    place) exists and is not empty. Whether the pins match this build is setup's job: `tlwu-setup --speaker-pylib`
+    re-extracts when the marker differs from its pins (the runtime package never imports tinglongwu_setup, #1070)."""
     try:
         got = (pylib_dir(mdir) / ".pins").read_text("utf-8")
     except OSError:
         return False
-    if not got.strip():
-        return False
-    try:
-        from tinglongwu_setup.downloader import expected_speaker_pins
+    return bool(got.strip())
 
-        want = expected_speaker_pins()
-    except Exception:  # noqa: BLE001 - setup package absent: the marker alone decides
-        return True
-    return want is None or got == want
+
+def module_present(name: str) -> bool:
+    """True when a top-level package/module `name` is on sys.path, found without importing it (no dynamic imports: the
+    runtime package keeps static imports only, tests/test_no_network_code.py)."""
+    for entry in sys.path:
+        try:
+            base = Path(entry or ".")
+            if (base / name / "__init__.py").is_file() or any(base.glob(f"{name}*.pyd")) \
+                    or any(base.glob(f"{name}*.so")) or (base / f"{name}.py").is_file():
+                return True
+        except (OSError, ValueError):
+            continue
+    return False

@@ -68,15 +68,10 @@ def make_labeler(mdir) -> SpeakerLabeler:
 
 def available(mdir) -> bool:
     """0.3.8 GUI: True when sherpa-onnx is importable and the speaker model file exists (checked without loading)."""
-    import importlib.util
-
-    from .speaker_pylib import activate
+    from .speaker_pylib import activate, module_present
 
     activate(mdir)
-    try:
-        return (Path(mdir) / SPEAKER_DIR / MODEL_NAME).is_file() and importlib.util.find_spec("sherpa_onnx") is not None
-    except (ImportError, ValueError):
-        return False
+    return (Path(mdir) / SPEAKER_DIR / MODEL_NAME).is_file() and module_present("sherpa_onnx")
 
 
 class AsyncSpeakerLabeler:

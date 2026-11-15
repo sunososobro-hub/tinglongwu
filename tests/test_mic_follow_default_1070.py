@@ -55,6 +55,19 @@ def test_never_follows_onto_cable(monkeypatch):
 
 
 def test_named_device_does_not_follow(monkeypatch):
-    a = Mic("a", "Headset Mic")
+    a, b = Mic("a", "Headset Mic"), Mic("b", "USB Mic")
+    defaults = [a, b]
+    state = {"i": 0}
+    fake = types.SimpleNamespace(default_microphone=lambda: defaults[min(state["i"], 1)])
+    monkeypatch.setitem(sys.modules, "soundcard", fake)
+    monkeypatch.setattr(scmod, "FOLLOW_S", 0.0)
     src = MicSource("Headset")
-    assert src.follow_default and src.device  # follow only applies when no device was named
+    monkeypatch.setattr(src, "_pick_microphone", lambda sc: a)  # the named device stays picked
+    seen, peaks = [], []
+    src.on_reopen = seen.append
+    for f in src._frames():
+        peaks.append(float(np.abs(f).max()))
+        state["i"] += 1
+        if len(peaks) >= 6:
+            src.close()
+    assert seen == [] and max(peaks) == 0.0  # default moved to USB Mic, the named Headset is kept

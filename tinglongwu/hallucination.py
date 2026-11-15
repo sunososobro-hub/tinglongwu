@@ -79,7 +79,8 @@ def is_hallucination(text: str, rms: float | None = None, no_speech: float = 0.0
 
     rms: RMS of the segment audio (None = unknown, treated as normal energy).
     strict (#1070, speak leg): the text is spoken into someone else's meeting, so silence beats a wrong sentence:
-    any STRONG phrase anywhere drops it, and a WEAK one at QUIET_COVER share even at normal energy."""
+    any STRONG phrase anywhere drops it. WEAK phrases keep the energy rule: "Thank you" / "謝謝大家" are real
+    things people say in a meeting (#312), so they are dropped only when the segment is quiet or no-speech."""
     n = _norm(text)
     if not n:
         return False
@@ -88,7 +89,7 @@ def is_hallucination(text: str, rms: float | None = None, no_speech: float = 0.0
     cover, strong = _best_cover(n)
     if cover == 0:
         return False
-    if strict and (strong or cover >= QUIET_COVER):
+    if strict and strong:
         return True
     quiet = (rms is not None and rms < QUIET_RMS) or no_speech >= NO_SPEECH_MIN
     if quiet:

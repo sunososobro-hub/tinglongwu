@@ -35,3 +35,10 @@ def test_normal_sentence_passes_both_modes():
     t = "我們明天下午三點開會"
     assert not is_hallucination(t, 0.05, 0.0, strict=True)
     assert not is_hallucination(t, 0.05, 0.0, strict=False)
+
+
+def test_strict_keeps_spoken_courtesy_at_normal_energy():
+    # #312: "Thank you" / "謝謝大家" said into a meeting must still be sent; only quiet / no-speech drops them
+    for t in ("Thank you", "謝謝大家", "감사합니다"):
+        assert gate(SegmentStats(1.5, 0.05, t, 0.05, -0.3)) == (True, "")
+        assert is_hallucination(t, 0.005, 0.0, strict=True)
