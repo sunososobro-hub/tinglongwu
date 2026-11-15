@@ -316,14 +316,20 @@ def make_gpu_pack(app: Path, out: Path, url: str) -> Path:
     return man_path
 
 
+# Bump when the pack recipe (build_gpu_pack_only and helpers, tinglongwu/gpu_pack.py) changes what goes into the zip:
+# the number is hashed into the key, so the next release rebuilds instead of reusing a stale pack (#765).
+GPU_PACK_FORMAT = 1
+
+
 def gpu_pack_wheels_key(repo: Path | None = None) -> str:
-    """sha256 over GPU_PACK_KEY_FILES and the nvrtc version: equal key = the pack can be reused (#763)."""
+    """sha256 over GPU_PACK_KEY_FILES, the nvrtc version and GPU_PACK_FORMAT: equal key = the pack can be reused (#763)."""
     import hashlib
 
     h = hashlib.sha256()
     for n in GPU_PACK_KEY_FILES:
         h.update(n.encode() + b"\0" + ((repo or REPO) / n).read_bytes() + b"\0")
     h.update(GPU_PACK_NVRTC.encode())
+    h.update(f"\0format={GPU_PACK_FORMAT}".encode())
     return h.hexdigest()
 
 
