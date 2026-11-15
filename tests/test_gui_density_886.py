@@ -47,6 +47,7 @@ def _size(w):
 
 
 def test_log_height_is_short_on_a_768_screen():
+    pytest.importorskip("tkinter")
     from tinglongwu.gui import app
 
     assert app.log_height(768) == app.LOG_H_SHORT < app.LOG_H == app.log_height(1080)
