@@ -194,3 +194,21 @@ def test_107_same_input_same_sampling_and_greedy_by_default(tmp_path, monkeypatc
     tr.translate("Hello.", "en", "zh")
     assert len(kws) == 2 and kws[0] == kws[1]
     assert kws[0]["temperature"] == 0.0
+
+
+def test_hymt_load_failure_on_a_cpu_without_avx2_says_so_and_no_repair_hint(tmp_path, monkeypatch):
+    # #1014: a CPU below the minimum spec: `tlwu-setup --hymt` cannot help
+    m = install(tmp_path, "hymt2")
+
+    def boom(path, gpu):
+        raise RuntimeError("Windows Error 0xe06d7363")
+
+    monkeypatch.setattr("tinglongwu.hymt._load_llama", boom)
+    monkeypatch.setattr("tinglongwu.minspec.cpu_has_avx2", lambda *a, **k: False)
+    with pytest.raises(SystemExit) as e:
+        cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: None)
+    assert "CPU lacks AVX2" in str(e.value) and "tlwu-setup --hymt" not in str(e.value)
+    monkeypatch.setattr("tinglongwu.minspec.cpu_has_avx2", lambda *a, **k: None)  # unknown: unchanged
+    with pytest.raises(SystemExit) as e:
+        cli.make_translator("hymt", m, "tw", "cpu", say=lambda msg, **k: None)
+    assert "tlwu-setup --hymt" in str(e.value) and "AVX2" not in str(e.value)

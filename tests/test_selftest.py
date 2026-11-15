@@ -163,3 +163,18 @@ def test_cli_selftest_child_process_reports_and_exits_1_without_models(tmp_path)
     assert "self-test FAILED" in p.stdout and "unrecognized arguments" not in p.stderr
     logs = list(tmp_path.rglob("install.log"))
     assert logs and "self-test FAILED" in logs[0].read_text(encoding="utf-8")
+
+
+def test_cpu_without_avx2_reports_one_clear_line_before_any_model(tmp_path):
+    # #1014: no repair hint can help a CPU below the minimum spec
+    res, calls = run(tmp_path, has_avx2=lambda: False)
+    assert not res.ok and calls == []
+    text = res.text()
+    assert "[FAIL]" in text and "CPU lacks AVX2" in text and "System requirements" in text
+    assert "tlwu-setup --hymt" not in text
+
+
+def test_avx2_true_or_unknown_leaves_the_selftest_unchanged(tmp_path):
+    for flag in (True, None):
+        res, _ = run(tmp_path, has_avx2=lambda f=flag: f)
+        assert res.ok and "AVX2" not in res.text()
