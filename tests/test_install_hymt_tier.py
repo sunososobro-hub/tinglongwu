@@ -25,7 +25,7 @@ def _exe(path: Path, body: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def dry_run(tmp_path: Path, total_mb: int | None) -> str:
+def dry_run(tmp_path: Path, total_mb: int | None, *extra: str) -> str:
     """stdout of install.ps1 -DryRun on a PC whose NVIDIA GPU has `total_mb` MiB (None = no nvidia-smi)."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -37,7 +37,7 @@ def dry_run(tmp_path: Path, total_mb: int | None) -> str:
     env["TLWU_TEST_RAM_MB"] = "2048"  # low RAM: Hy-MT2 is still installed, with a warning (#301)
     env.update(PATH=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1",
                POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "install.ps1"), "-DryRun"],
+    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "install.ps1"), "-DryRun", *extra],
                        capture_output=True, text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
     assert r.returncode == 0, r.stdout + r.stderr
     return r.stdout
@@ -70,3 +70,31 @@ def test_below_threshold_or_no_gpu_runs_hymt_on_the_cpu(tmp_path, total):
     assert "requirements-llama-cuda.txt" not in out and "requirements-llama-cpu.txt" in out
     assert "Translation engine / 翻譯引擎: hymt2" in out
     assert "OPUS engine" not in out
+
+
+def test_lang_ja_prints_english_only(tmp_path):
+    """#1002: -Lang ja (any non-Chinese wizard language) -> English-only labels, no mixed "中文 / English"."""
+    out = dry_run(tmp_path, 8192, "-Lang", "ja")
+    lines = [ln.strip() for ln in out.splitlines()]
+    assert "Translation engine: hymt2" in lines
+    assert "Installed:" in lines and any(ln.startswith("Folder: ") for ln in lines)
+    assert any(ln.startswith("Self-test: ") for ln in lines)
+    assert any(ln.startswith("[1/8] ") and not any("\u4e00" <= c <= "\u9fff" for c in ln) for ln in lines)
+    assert not any(" / 翻譯引擎" in ln or " / 已安裝" in ln or " / 資料夾" in ln for ln in lines)
+
+
+def test_lang_zh_tw_prints_chinese_only(tmp_path):
+    """#1002: -Lang zh-TW -> Chinese-only labels."""
+    out = dry_run(tmp_path, 8192, "-Lang", "zh-TW")
+    lines = [ln.strip() for ln in out.splitlines()]
+    assert "翻譯引擎: hymt2" in lines
+    assert "已安裝:" in lines and any(ln.startswith("資料夾: ") for ln in lines)
+    assert any(ln.startswith("自我測試: ") for ln in lines)
+    assert not any(ln.startswith(("Translation engine", "Installed", "Folder")) for ln in lines)
+
+
+def test_no_lang_keeps_the_old_bilingual_labels(tmp_path):
+    """#1002: without -Lang every summary line keeps its exact old text (install.bat / CI callers)."""
+    out = dry_run(tmp_path, 8192)
+    for label in ("Folder / 資料夾: ", "Installed / 已安裝:", "Translation engine / 翻譯引擎: hymt2", "Self-test / 自我測試:"):
+        assert label in out, label

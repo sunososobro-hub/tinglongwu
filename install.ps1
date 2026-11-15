@@ -28,9 +28,10 @@ $LlamaWhyCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[1])
 $GpuMinMB  = 4096
 . (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
 $Gpu = $false; $ModelGB = 0; $HyCpu = $false
-# #1002: -Lang zh-TW|zh-CN -> Chinese only, anything else (en, ja, ru) -> English only; empty = both ("中文 / English")
-function Loc($zh, $en) {
-    if (-not $Lang) { return "$zh / $en" }
+# #1002: -Lang zh-TW|zh-CN -> Chinese only, anything else (en, ja, ru) -> English only.
+# Empty -Lang keeps the exact old bilingual text: $both when given (en-first lines), else "中文 / English".
+function Loc($zh, $en, $both = $null) {
+    if (-not $Lang) { if ($null -ne $both) { return $both } return "$zh / $en" }
     if ($Lang -like 'zh*') { return $zh }
     return $en
 }
@@ -59,14 +60,14 @@ function Capture($exe, [string[]]$a) {   # stdout of a native command, '' on fai
 
 Write-Host "=== 聽攏有 tinglongWu installer ===" -ForegroundColor White
 if ($DryRun) { Write-Host "*** DRY RUN: nothing will be installed or downloaded / 試跑模式：不會安裝或下載任何東西 ***" -ForegroundColor Yellow }
-Info "$(Loc '資料夾' 'Folder'): $Root"
+Info "$(Loc '資料夾' 'Folder' 'Folder / 資料夾'): $Root"
 # #1002: the language picked on the first wizard page becomes the app UI language (read by tinglongwu.i18n at first launch)
 if ($Lang -and -not $DryRun) {
     $cfgDir = if ($env:TLWU_CONFIG_DIR) { $env:TLWU_CONFIG_DIR } else { Join-Path $env:APPDATA 'tinglongwu' }
     $ui = if ($Lang -like 'zh*') { 'zh-TW' } elseif ($Lang -like 'ru*') { 'ru' } else { 'en' }
     New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
     $cfg = Join-Path $cfgDir 'config'
-    $keep = if (Test-Path $cfg) { @(Get-Content -LiteralPath $cfg | Where-Object { $_ -and $_ -notmatch '^ui_lang=' }) } else { @() }
+    [string[]]$keep = @(if (Test-Path -LiteralPath $cfg) { Get-Content -LiteralPath $cfg | Where-Object { $_ -and $_ -notmatch '^ui_lang=' } })
     Set-Content -LiteralPath $cfg -Value ($keep + "ui_lang=$ui") -Encoding ascii
 }
 Info "Whole install: about 10-65 min depending on your PC and connection (exact estimate after step 2). 全程約 10-65 分鐘，第 2 步後顯示準確預估。"
@@ -307,12 +308,12 @@ else {
     }
 }
 Write-Host ""
-Write-Host "  $(Loc '已安裝' 'Installed'):" -ForegroundColor White
+Write-Host "  $(Loc '已安裝' 'Installed' 'Installed / 已安裝'):" -ForegroundColor White
 foreach ($i in $Installed) { Write-Host "    - $i" }
-Write-Host "  $(Loc '翻譯引擎' 'Translation engine'): $Engine" -ForegroundColor White
-Write-Host "  $(Loc '自我測試' 'Self-test'): $SelfTest" -ForegroundColor White
+Write-Host "  $(Loc '翻譯引擎' 'Translation engine' 'Translation engine / 翻譯引擎'): $Engine" -ForegroundColor White
+Write-Host "  $(Loc '自我測試' 'Self-test' 'Self-test / 自我測試'): $SelfTest" -ForegroundColor White
 if ($Warnings.Count -gt 0) {
-    Write-Host "  $(Loc '注意' 'Warnings'):" -ForegroundColor Yellow
+    Write-Host "  $(Loc '注意' 'Warnings' 'Warnings / 注意'):" -ForegroundColor Yellow
     foreach ($w in $Warnings) { Write-Host "    - $w" -ForegroundColor Yellow }
 }
 Write-Host ""
