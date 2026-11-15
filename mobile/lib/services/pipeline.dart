@@ -6,12 +6,14 @@ import 'package:flutter/widgets.dart';
 import 'package:record/record.dart';
 
 import '../logic/context_budget.dart';
+import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/phone_audio.dart';
 import '../logic/segmenter.dart';
 import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
+import 'device_probe_service.dart';
 import 'asr_worker.dart';
 import 'model_paths.dart';
 import 'play_packs.dart';
@@ -64,6 +66,19 @@ class Pipeline extends ChangeNotifier {
   Timer? _draftExpiry;
   FeaturePrefs prefs = const FeaturePrefs();
   FeaturePrefsStore? _prefsStore;
+
+  /// 中文草稿 (#1065): translation of the current draft (gray), '' = none.
+  String draftTr = '';
+  int? _draftTrSeg;
+  final DraftTranslateGate _trGate = DraftTranslateGate();
+  bool _draftTrStop = false;
+
+  /// Device probe + benchmark (#1065). [probe].bench is null until the test has run.
+  ProbeReport? probe;
+  bool benchRunning = false;
+  ProbeStore? _probeStore;
+  Completer<AsrBench>? _benchWait;
+  Timer? _benchTimer;
   final List<Subtitle> subtitles = []; // newest last
   int queued = 0;
 
@@ -195,7 +210,12 @@ class Pipeline extends ChangeNotifier {
           case AsrSpeech(:final speaking):
             if (_draft.onSpeech(speaking, _clock.elapsedMilliseconds)) _refreshDraft();
           case AsrDraft(:final seg, :final text):
-            if (prefs.sourceDraft && _draft.onDraft(seg, text)) _refreshDraft();
+            if (prefs.sourceDraft && _draft.onDraft(seg, text)) {
+              _refreshDraft();
+              _maybeTranslateDraft(seg, text, e.lang);
+            }
+          case AsrBench():
+            if (!(_benchWait?.isCompleted ?? true)) _benchWait!.complete(e);
           case AsrSegmentEnd(:final seg):
             if (_draft.onFinal(seg)) _refreshDraft();
           case AsrFinal():
@@ -206,6 +226,7 @@ class Pipeline extends ChangeNotifier {
       });
       await ready.future;
       _asr!.setDraft(prefs.sourceDraft);
+      _probeStore = ProbeStore('${p.filesDir}/device_probe.json');
       _log.i('ASR ready in ${_clock.elapsedMilliseconds - t0} ms');
 
       final t1 = _clock.elapsedMilliseconds;
@@ -224,6 +245,7 @@ class Pipeline extends ChangeNotifier {
       stage = Stage.listening;
       _log.i('listening');
       notifyListeners();
+      _startProbe();
     } catch (e, st) {
       _log.e('start failed: $e\n$st');
       _fail('$e');
@@ -343,11 +365,133 @@ class Pipeline extends ChangeNotifier {
     _refreshDraft();
   }
 
+  /// 中文草稿 (#1065): translate the draft at most every 2 s (default off, the user decides).
+  void setZhDraft(bool on) {
+    if (on == prefs.zhDraft) return;
+    prefs = prefs.copyWith(zhDraft: on);
+    _prefsStore?.save(prefs);
+    _trGate.reset();
+    if (!on) _clearDraftTr();
+    notifyListeners();
+  }
+
+  void _clearDraftTr() {
+    draftTr = '';
+    _draftTrSeg = null;
+  }
+
+  /// Translates [text] (a draft) when the translator is idle; a final line arriving meanwhile
+  /// stops it at the next token, so it never delays the final path.
+  Future<void> _maybeTranslateDraft(int seg, String text, String lang) async {
+    final tr = _tr;
+    if (!prefs.zhDraft || !prefs.sourceDraft || tr == null || _disposed) return;
+    final now = _clock.elapsedMilliseconds;
+    if (!_trGate.shouldRun(
+        nowMs: now, text: text, translatorBusy: _busy || _queue.isNotEmpty || benchRunning)) {
+      return;
+    }
+    _trGate.started(nowMs: now, text: text);
+    _draftTrStop = false;
+    try {
+      final r = await tr.translate(text, src: lang, tgt: target, shouldStop: () => _draftTrStop);
+      if (!_draftTrStop && !_disposed && !_draft.isStale(seg) && r.zh.trim().isNotEmpty) {
+        draftTr = r.zh.trim();
+        _draftTrSeg = seg;
+        notifyListeners();
+      }
+    } catch (e) {
+      _log.e('draft translate failed: $e'); // a failed draft is just skipped
+    } finally {
+      _trGate.finished();
+    }
+  }
+
+  // ---- device probe (#1065)
+
+  /// Loads the cached probe for this app version, or schedules the benchmark in the background.
+  Future<void> _startProbe() async {
+    final info = await DeviceProbeService.collect();
+    final cached = _probeStore?.load(info.appVersion);
+    probe = cached ?? ProbeReport(info, null);
+    if (!_disposed) notifyListeners();
+    if (cached == null) _scheduleBench(const Duration(seconds: 8));
+  }
+
+  void _scheduleBench(Duration after, {int tries = 0}) {
+    _benchTimer?.cancel();
+    _benchTimer = Timer(after, () async {
+      if (_disposed || benchRunning) return;
+      // Wait for a quiet moment: no speech, nothing translating.
+      if (_busy || _queue.isNotEmpty || _draft.speaking || _trGate.busy) {
+        if (tries < 8) _scheduleBench(const Duration(seconds: 10), tries: tries + 1);
+        return;
+      }
+      final ok = await runBenchmark();
+      if (!ok && !_disposed && tries < 8) {
+        _scheduleBench(const Duration(seconds: 10), tries: tries + 1);
+      }
+    });
+  }
+
+
+  /// Runs the speed test (also from the settings page). ASR on 4 s of synthetic audio, then one
+  /// fixed sentence through the translator; about 5 s. Returns false when skipped or failed.
+  Future<bool> runBenchmark() async {
+    final asr = _asr;
+    final tr = _tr;
+    if (asr == null || tr == null || benchRunning || _busy || _disposed) return false;
+    benchRunning = true;
+    _busy = true; // the translator is ours until we are done
+    _draftTrStop = true;
+    notifyListeners();
+    while (_trGate.busy && !_disposed) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    final sw = Stopwatch()..start();
+    var ok = false;
+    try {
+      _benchWait = Completer<AsrBench>();
+      asr.bench();
+      final a = await _benchWait!.future.timeout(const Duration(seconds: 20));
+      if (a.busy) return false;
+      const sentence = 'The weather is nice today, so let us take a walk by the river.';
+      final r = await tr.translate(sentence, src: 'en', tgt: 'zh');
+      final chars = r.zh.runes.length;
+      if (r.totalMs <= 0 || chars == 0 || a.decodeMs <= 0) return false;
+      final bench = BenchResult(
+        asrRtf: a.rtf,
+        llmCharsPerSec: chars * 1000 / r.totalMs,
+        llmTokensPerSec: r.tokensPerSecond,
+        totalMs: sw.elapsedMilliseconds,
+      );
+      final base = (await DeviceProbeService.collect());
+      probe = ProbeReport(base, bench);
+      _probeStore?.save(base, bench);
+      _log.i('bench: asr rtf=${bench.asrRtf.toStringAsFixed(3)} '
+          'llm ${bench.llmCharsPerSec.toStringAsFixed(1)} chars/s '
+          '${bench.llmTokensPerSec.toStringAsFixed(1)} tok/s total=${bench.totalMs}ms '
+          '${base.summary()}');
+      ok = true;
+    } catch (e) {
+      _log.e('bench failed: $e');
+    } finally {
+      _benchWait = null;
+      benchRunning = false;
+      _busy = false;
+      if (!_disposed) {
+        notifyListeners();
+        _drain(); // lines that arrived during the test
+      }
+    }
+    return ok;
+  }
+
   /// Recomputes [draftRu] from the tracker; the held draft expires by a timer.
   void _refreshDraft({bool notify = true}) {
     final now = _clock.elapsedMilliseconds;
     final d = prefs.sourceDraft ? _draft.shown(now) : '';
     draftRu = d.isNotEmpty ? d : (_draft.speaking ? '…' : '');
+    if (d.isEmpty || (_draftTrSeg != null && _draft.isStale(_draftTrSeg!))) _clearDraftTr();
     _draftExpiry?.cancel();
     final at = _draft.expiresAtMs();
     if (at != null && prefs.sourceDraft) {
@@ -378,10 +522,11 @@ class Pipeline extends ChangeNotifier {
     final draft = (prefs.sourceDraft && overlayStyle.mode != SubtitleMode.zh && draftRu != '…')
         ? draftRu
         : '';
-    final key = '${silenceHint ? 1 : 0}|${lines.join('\n')}|$draft';
+    final dTr = draft.isNotEmpty && prefs.zhDraft ? draftTr : '';
+    final key = '${silenceHint ? 1 : 0}|${lines.join('\n')}|$draft|$dTr';
     if (key == _overlaySent) return;
     _overlaySent = key;
-    PlaybackCapture.overlayLines(lines, silenceHint ? silenceHintText : null, draft: draft)
+    PlaybackCapture.overlayLines(lines, silenceHint ? silenceHintText : null, draft: draft, draftTr: dTr)
         .catchError((_) {});
   }
 
@@ -457,6 +602,10 @@ class Pipeline extends ChangeNotifier {
     if (_busy || _disposed || _tr == null) return;
     _busy = true;
     try {
+      _draftTrStop = true; // a draft translation yields to the final line
+      while (_trGate.busy && !_disposed) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
       while (_queue.isNotEmpty && !_disposed) {
         final job = _queue.removeFirst();
         queued = _queue.length + 1;
@@ -498,6 +647,7 @@ class Pipeline extends ChangeNotifier {
     _micSub?.cancel();
     _asrSub?.cancel();
     _draftExpiry?.cancel();
+    _benchTimer?.cancel();
     _resumeOnce?.dispose();
     if (_phoneSub != null || source == AudioSourceKind.phone) {
       _phoneSub?.cancel();

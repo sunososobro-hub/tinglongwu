@@ -130,6 +130,9 @@ class DraftTracker {
     return true;
   }
 
+  /// True when segment [seg] was already finalized (a result computed for it is stale).
+  bool isStale(int seg) => seg <= _finalSeg;
+
   bool onDraft(int seg, String text) {
     if (seg <= _finalSeg) return false;
     if (text == _text) return false;
@@ -161,4 +164,38 @@ class DraftTracker {
     _speaking = false;
     _endedAtMs = null;
   }
+}
+
+/// Throttle for 中文草稿 (#1065): translate the draft at most every [intervalMs], only when the
+/// translator is idle (no final line queued or running, no draft translation running), only for
+/// text that changed and is long enough to mean something.
+class DraftTranslateGate {
+  DraftTranslateGate({this.intervalMs = 2000, this.minChars = 6});
+
+  final int intervalMs;
+  final int minChars;
+
+  bool _busy = false;
+  int _lastStartMs = -(1 << 40);
+  String _lastText = '';
+
+  bool get busy => _busy;
+
+  bool shouldRun({required int nowMs, required String text, required bool translatorBusy}) {
+    if (_busy || translatorBusy) return false;
+    final t = text.trim();
+    if (t.runes.length < minChars || t == _lastText) return false;
+    return nowMs - _lastStartMs >= intervalMs;
+  }
+
+  void started({required int nowMs, required String text}) {
+    _busy = true;
+    _lastStartMs = nowMs;
+    _lastText = text.trim();
+  }
+
+  void finished() => _busy = false;
+
+  /// Forget the last text (new sentence or the feature was switched).
+  void reset() => _lastText = '';
 }

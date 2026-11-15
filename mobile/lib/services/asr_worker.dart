@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/prompt.dart';
 import '../logic/segmenter.dart';
@@ -27,9 +28,20 @@ class AsrSpeech extends AsrEvent {
 /// Interim source text of the segment [seg] still being spoken (#1064). Decoded in a separate
 /// isolate, so it can arrive after that segment's final: the receiver drops it then.
 class AsrDraft extends AsrEvent {
-  const AsrDraft(this.seg, this.text);
+  const AsrDraft(this.seg, this.text, [this.lang = 'en']);
   final int seg;
   final String text;
+  final String lang;
+}
+
+/// Result of [AsrWorker.bench] (#1065): decode time of [audioMs] of synthetic audio, or
+/// [busy] when speech was going on and the test was skipped.
+class AsrBench extends AsrEvent {
+  const AsrBench({this.decodeMs = 0, this.audioMs = 0, this.busy = false});
+  final int decodeMs;
+  final int audioMs;
+  final bool busy;
+  double get rtf => audioMs > 0 ? decodeMs / audioMs : 0;
 }
 
 /// A VAD segment ended without any text (nothing recognized): clears its draft.
@@ -126,6 +138,10 @@ class AsrWorker {
     _toWorker.send(TransferableTypedData.fromList([f]));
   }
 
+  /// Speed test (#1065): decodes 4 s of synthetic audio on the main recognizer; answers with an
+  /// [AsrBench] event (busy = skipped because speech is in progress).
+  void bench() => _toWorker.send('bench');
+
   /// Turns the source-text draft (#1064) on or off at run time.
   void setDraft(bool on) => _toWorker.send(on);
 
@@ -178,8 +194,9 @@ class AsrWorker {
         try {
           st.acceptWaveform(samples: samples, sampleRate: 16000);
           rec.decode(st);
-          final text = SentenceSegmenter.normalize(rec.getResult(st).text);
-          ui.send(AsrDraft(msg[0] as int, text));
+          final r = rec.getResult(st);
+          ui.send(AsrDraft(msg[0] as int, SentenceSegmenter.normalize(r.text),
+              PromptBuilder.fromSenseVoiceLang(r.lang)));
         } finally {
           st.free();
         }
@@ -317,6 +334,26 @@ class AsrWorker {
         vad?.free();
         rec?.free();
         inPort.close();
+        return;
+      }
+      if (m == 'bench') {
+        if (speaking) {
+          out.send(const AsrBench(busy: true));
+          return;
+        }
+        try {
+          final a = benchAudio();
+          var best = 1 << 30;
+          for (var i = 0; i < 2; i++) {
+            // first run warms up; keep the faster one
+            final sw = Stopwatch()..start();
+            decode(a);
+            best = best < sw.elapsedMilliseconds ? best : sw.elapsedMilliseconds;
+          }
+          out.send(AsrBench(decodeMs: best, audioMs: a.length * 1000 ~/ 16000));
+        } catch (e) {
+          out.send(AsrError('ASR bench failed: $e'));
+        }
         return;
       }
       if (m is bool) {

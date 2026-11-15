@@ -4,6 +4,7 @@ import '../logic/phone_audio.dart';
 import '../logic/target_language.dart';
 import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
+import 'advanced_screen.dart';
 
 /// Full-screen dark subtitle view.
 ///
@@ -280,6 +281,18 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
                     style: TextStyle(fontSize: 13, color: Colors.white60)),
                 value: pipeline.prefs.sourceDraft,
                 onChanged: pipeline.setSourceDraft,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('進階功能'),
+                subtitle: const Text('中文草稿、手機速度測試與建議',
+                    style: TextStyle(fontSize: 13, color: Colors.white60)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => AdvancedScreen(pipeline: pipeline)));
+                },
               ),
               if (pipeline.phoneSupported) ...[
                 const SizedBox(height: 8),

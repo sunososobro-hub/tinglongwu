@@ -44,13 +44,14 @@ class PlaybackCapture {
 
   /// [lines] oldest first; each shows its source (smaller, gray) above its translation.
   /// [draft] = interim source text (#1064), shown gray below the lines until the final replaces it.
-  static Future<void> overlayLines(List<SubtitleLine> lines, String? hint, {String draft = ''}) =>
+  static Future<void> overlayLines(List<SubtitleLine> lines, String? hint, {String draft = '', String draftTr = ''}) =>
       _ch.invokeMethod('overlayText', {
         'lines': [
           for (final l in lines) {'src': l.source, 'tr': l.translation}
         ],
         'hint': hint,
         'draft': draft,
+        'draftTr': draftTr,
       });
 
   static Future<void> overlayStyle(OverlayStyle s) =>
