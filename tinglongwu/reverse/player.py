@@ -12,7 +12,7 @@ import numpy as np
 def vram_used_mib() -> int | None:
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=10).stdout
+                             capture_output=True, text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
         return int(out.strip().splitlines()[0])
     except Exception:  # noqa: BLE001
         return None

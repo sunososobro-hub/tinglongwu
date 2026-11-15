@@ -78,10 +78,11 @@ def test_settings_sit_in_two_columns(small_screen_app):
     a = small_screen_app()
     a.set_advanced(True)
     a.root.update()
-    cols = {int(a.combos[k].grid_info()["column"]) for k in ("lang", "target", "quality", "model")}
+    cols = {int(a.combos[k].grid_info()["column"]) for k in ("quality", "model")}
     assert cols == {1, 5}
-    rows = {int(a.combos[k].grid_info()["row"]) for k in ("lang", "target")}
-    assert len(rows) == 1  # source and target language on one row
+    # owner 2026-11-15: the two languages live only at the top (my language / other side's), not under Advanced
+    assert not a.combos["lang"].winfo_ismapped() and not a.combos["target"].winfo_ismapped()
+    assert a.home_lang.winfo_ismapped() and a.home_target.winfo_ismapped()
 
 
 def test_empty_send_notice_takes_no_row(small_screen_app):

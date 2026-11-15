@@ -85,7 +85,8 @@ class AddonsScreen:
         import subprocess
 
         cmd = download_cmd("small", self.mdir)  # same bundled / source launcher and --models-dir as pack downloads
-        rc = subprocess.run([*cmd[:cmd.index("--whisper")], "--import-pack", path, *cmd[cmd.index("--models-dir"):]]).returncode
+        rc = subprocess.run([*cmd[:cmd.index("--whisper")], "--import-pack", path, *cmd[cmd.index("--models-dir"):]],
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode
         return t("addons_import_ok") if rc == 0 else t("addons_import_hint")
 
     def _poll(self):

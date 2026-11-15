@@ -38,7 +38,7 @@ def free_vram_mib() -> int | None:
     """Free memory (MiB) on GPU 0 via nvidia-smi (no extra deps); None if it cannot be determined."""
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=10).stdout
+                             capture_output=True, text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
         return int(out.strip().splitlines()[0])
     except Exception:  # noqa: BLE001 - no driver / no nvidia-smi
         return None
