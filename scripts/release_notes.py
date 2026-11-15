@@ -169,11 +169,14 @@ def release_pr_of(pulls: list[dict], repo: str) -> dict | None:
 def _counts(run: dict) -> bool:
     """#1016: a pull_request run of install-clean skips speak-smoke (job `if`), and a skipped job reports success, so
     it is never evidence for the speak-smoke requirement."""
+    if run.get("conclusion") == "action_required":  # #1104: a run waiting for approval never ran: no evidence
+        return False
     return not (run.get("name") == "install-clean" and run.get("event") == "pull_request")
 
 
 def check_problems(runs: list[dict], required=REQUIRED_CHECKS) -> list[str]:
-    """Owner gate: the newest run of each required workflow on the commit must have succeeded."""
+    """Owner gate: the newest run of each required workflow on the commit must have succeeded. A never-started
+    `action_required` run (release PR pull_request runs, #1104) is skipped, so it neither passes nor blocks."""
     out = []
     for name in required:
         mine = [r for r in runs if r.get("name") == name and _counts(r)]

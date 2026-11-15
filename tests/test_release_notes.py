@@ -118,6 +118,20 @@ def test_required_checks_must_be_green_on_the_release_pr_head():
         "ci: in_progress/None https://x/ci"]
 
 
+def test_never_started_action_required_run_neither_passes_nor_blocks_1104():
+    push_ok = {"id": 1, "name": "ci", "event": "push", "status": "completed", "conclusion": "success",
+               "html_url": "https://x/ci/1"}
+    waiting = {"id": 2, "name": "ci", "event": "pull_request", "status": "completed", "conclusion": "action_required",
+               "html_url": "https://x/ci/2"}
+    assert rn.check_problems([push_ok, waiting], ["ci"]) == []
+    assert rn.check_problems([waiting], ["ci"]) == ["ci: no run on this commit"]
+    runs = [r for r in GREEN if r["name"] != "e2e"] + [dict(r, id=100 + r["id"], event="pull_request",
+                                                             conclusion="action_required") for r in GREEN]
+    with pytest.raises(SystemExit, match="e2e: no run"):
+        plan([pr()], runs=runs)
+    assert plan([pr()], runs=GREEN + runs[-len(GREEN):])["publish"] == "true"
+
+
 PRS = [{"number": 108, "author": {"login": "cook1e0728"}, "url": "https://g/pull/108"},
        {"number": 402, "author": {"login": "sunososobro-hub"}, "url": ""},
        {"number": 300, "author": {"login": "dependabot[bot]", "is_bot": True}, "url": ""},
