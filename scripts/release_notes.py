@@ -3,7 +3,8 @@
 publish after that PR merged).
 
 Two lanes (#976, owner 2026-11-15): the release PR is cut from a snapshot branch `release/vX.Y.Z` that points at the
-dev commit of the version bump (`snapshot` below), never from `dev` itself, so merges to dev no longer restart or
+dev commit of the version bump, or the first later one that adds its docs/whats_new.md section (#1012;
+`snapshot` below), never from `dev` itself, so merges to dev no longer restart or
 freeze a release. The required checks run on the snapshot head: release-pr.yml dispatches e2e / audio-routing /
 hw-tests on the snapshot ref (their concurrency groups are per ref, so later dev pushes cannot cancel them); ci and
 windows-build come from the dev push of that commit (never cancelled). Transition: the legacy `dev -> main` release
@@ -316,11 +317,27 @@ def open_release_pr(pulls: list[dict], repo: str) -> dict | None:
     return next((p for p in mine if is_snapshot(p)), None) or (mine[0] if mine else None)
 
 
+def release_commit(tag: str, commits: list[str], show) -> str | None:
+    """#1012: the first of `commits` (the bump commit, then the later dev commits, oldest first) whose
+    tinglongwu/__init__.py says `tag` AND whose docs/whats_new.md has a filled `## tag` section; None if none has yet.
+    A bump PR without notes (v0.3.6: #970, notes in #988) must not be snapshotted before its notes land, or auto_plan
+    (which reads whats_new at the snapshot head) would stall for good."""
+    for sha in commits:
+        init = show(sha, "tinglongwu/__init__.py")
+        if init is None or f"v{app_version(init)}" != tag:
+            continue
+        if whats_new_section(show(sha, WHATS_NEW_FILE) or "", tag) is not None:
+            return sha
+    return None
+
+
 def snapshot_plan(version: str, tags: dict[str, str], bump_sha: str, ahead: int, branches: dict[str, str],
-                  pulls: list[dict], repo: str, runs_of=lambda sha: []) -> dict:
+                  pulls: list[dict], repo: str, runs_of=lambda sha: [], cut_sha=None) -> dict:
     """#976 release-pr.yml: what to do for dev's __version__ (pure; release-pr.yml acts on the result).
     branches = {release/vX: sha} on origin; pulls = open PRs into main; bump_sha = the dev commit that set __version__;
-    ahead = commits that bump_sha has and main lacks.
+    ahead = commits that bump_sha has and main lacks. cut_sha (#1012) = release_commit(): the commit a new snapshot is
+    cut at (the bump, or the later commit that added its whats_new section); "" = no such commit yet (wait, cut
+    nothing); None = bump_sha.
     Out: cut (create release/v<version> at bump_sha), pr (open the release PR: none open yet for the snapshot),
     dispatch (required workflows to run on the snapshot ref, with the PR), close (superseded release PR numbers),
     delete (snapshot branches to delete: tag exists or superseded, no open PR left)."""
@@ -350,7 +367,11 @@ def snapshot_plan(version: str, tags: dict[str, str], bump_sha: str, ahead: int,
                "the bump commit is already on main")
         out["reason"] = f"no snapshot: {why}"
         return out
-    sha = branches.get(want) or bump_sha
+    sha = branches.get(want) or (bump_sha if cut_sha is None else cut_sha)
+    if not sha:
+        out["reason"] = (f"no snapshot: waiting for whats_new section `## {tag}` in {WHATS_NEW_FILE} on dev "
+                         "(#1012: the snapshot is cut at the first commit that has it)")
+        return out
     out["sha"] = sha
     if want not in branches:
         out["cut"] = True
@@ -553,10 +574,12 @@ def snapshot_cli(version: str, rep: str) -> int:
     bump = git("log", "-1", "--format=%H", "-G", r"^__version__\s*=", "HEAD", "--", "tinglongwu/__init__.py").strip()
     bump = bump or git("rev-parse", "HEAD").strip()
     ahead = int(git("rev-list", "--count", f"origin/main..{bump}").strip() or 0)
+    later = git("rev-list", "--reverse", "--first-parent", f"{bump}..HEAD").split()
+    cut = release_commit(f"v{version}", [bump] + later, git_show) or ""
     pulls = gh_json("api", f"repos/{rep}/pulls?state=open&base=main&per_page=100")
     runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
     out = snapshot_plan(version, git_tags(), bump, ahead, git_ls_remote_heads(f"{SNAPSHOT_PREFIX}*"), pulls, rep,
-                        runs_of)
+                        runs_of, cut_sha=cut)
     for k, v in out.items():
         v = " ".join(str(x) for x in v) if isinstance(v, list) else ("true" if v is True else "false" if v is False else v)
         print(f"{k}={v}")

@@ -525,3 +525,68 @@ def test_superseded_and_released_snapshots_are_closed_and_deleted():
     # the legacy dev -> main PR is replaced by the snapshot of the same version, but never closed without one
     assert snapshot(pulls=(OPEN,))["close"] == [735]
     assert snapshot(version="0.3.1", pulls=(OPEN,))["close"] == []
+
+
+# #1012: a bump PR without release notes (v0.3.6: #970, notes added later in #988) must not be snapshotted at the
+# bump commit, where auto_plan would read no `## vX.Y.Z` section and stall for good.
+def _git_repo(tmp_path):
+    import subprocess
+
+    def git(*a):
+        return subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True, text=True).stdout
+
+    git("init", "-q", "-b", "dev")
+    git("config", "user.name", "t")
+    git("config", "user.email", "t@example.com")
+    (tmp_path / "tinglongwu").mkdir()
+    (tmp_path / "docs").mkdir()
+
+    def commit(version, notes, msg):
+        (tmp_path / "tinglongwu" / "__init__.py").write_text(f'__version__ = "{version}"\n', "utf-8")
+        (tmp_path / "docs" / "whats_new.md").write_text("# What's new\n\n" + notes, "utf-8")
+        git("add", "-A")
+        git("commit", "-q", "--allow-empty", "-m", msg)
+        return git("rev-parse", "HEAD").strip()
+
+    def show(sha, path):
+        r = subprocess.run(["git", "-C", str(tmp_path), "show", f"{sha}:{path}"], capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else None
+    return git, commit, show
+
+
+def test_snapshot_bump_without_notes_is_cut_at_the_later_notes_commit(tmp_path):
+    git, commit, show = _git_repo(tmp_path)
+    commit("0.3.1", "## v0.3.1\n- old\n", "v0.3.1")
+    bump = commit("0.3.2", "## v0.3.1\n- old\n", "bump to 0.3.2, no notes")
+    other = commit("0.3.2", "## v0.3.1\n- old\n", "unrelated fix")
+    notes = commit("0.3.2", "## v0.3.2\n- new voice\n\n## v0.3.1\n- old\n", "notes for v0.3.2")
+    commit("0.3.2", "## v0.3.2\n- new voice\n\n## v0.3.1\n- old\n", "later fix")
+    later = git("rev-list", "--reverse", "--first-parent", f"{bump}..HEAD").split()
+    cut = rn.release_commit("v0.3.2", [bump] + later, show)
+    assert cut == notes and cut not in (bump, other)
+    out = rn.snapshot_plan("0.3.2", TAGS, bump, 3, {}, [], REPO, lambda h: [], cut_sha=cut)
+    assert out["cut"] and out["pr"] and out["sha"] == notes
+
+
+def test_snapshot_waits_and_cuts_nothing_while_the_bump_has_no_notes(tmp_path):
+    git, commit, show = _git_repo(tmp_path)
+    commit("0.3.1", "## v0.3.1\n- old\n", "v0.3.1")
+    bump = commit("0.3.2", "## v0.3.1\n- old\n\n## v0.3.2\n- TODO\n", "bump to 0.3.2, TODO notes")
+    commit("0.3.2", "## v0.3.1\n- old\n\n## v0.3.2\n- TODO\n", "unrelated fix")
+    later = git("rev-list", "--reverse", "--first-parent", f"{bump}..HEAD").split()
+    cut = rn.release_commit("v0.3.2", [bump] + later, show)
+    assert cut is None
+    out = rn.snapshot_plan("0.3.2", TAGS, bump, 3, {}, [], REPO, lambda h: [], cut_sha=cut or "")
+    assert not out["cut"] and not out["pr"] and not out["dispatch"] and out["sha"] == ""
+    assert "waiting for whats_new section" in out["reason"]
+
+
+def test_snapshot_bump_with_notes_is_cut_at_the_bump_and_an_existing_branch_never_moves(tmp_path):
+    git, commit, show = _git_repo(tmp_path)
+    bump = commit("0.3.2", "## v0.3.2\n- new voice\n", "bump to 0.3.2 with notes")
+    commit("0.3.2", "## v0.3.2\n- new voice, more\n", "later fix")
+    later = git("rev-list", "--reverse", "--first-parent", f"{bump}..HEAD").split()
+    assert rn.release_commit("v0.3.2", [bump] + later, show) == bump
+    old = "d" * 40
+    out = rn.snapshot_plan("0.3.2", TAGS, bump, 3, {"release/v0.3.2": old}, [], REPO, lambda h: [], cut_sha="")
+    assert not out["cut"] and out["sha"] == old
