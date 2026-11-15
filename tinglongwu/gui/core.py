@@ -784,16 +784,18 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
     return rc
 
 
-def voice_install_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
-    """#967: same child as download_cmd, but `--talk` (Kokoro venv + model + smoke, the CLI's step) instead of `--whisper`."""
+def voice_install_cmd(mdir=None, bundled: bool | None = None, ru: bool = False) -> list[str]:
+    """#967: same child as download_cmd, but `--talk` (Kokoro venv + model + smoke, the CLI's step) instead of `--whisper`.
+    ru: the Russian voice instead: `--piper-engine --piper-ru` (piper-tts into the TTS venv + the dmitri voice files)."""
     cmd = download_cmd("small", mdir, bundled)
     i = cmd.index("--whisper")
-    return [*cmd[:i], "--talk", *cmd[i + 2:]]
+    return [*cmd[:i], *(["--piper-engine", "--piper-ru"] if ru else ["--talk"]), *cmd[i + 2:]]
 
 
-def run_voice_install(put, mdir=None, popen=None, bundled: bool | None = None) -> int:
-    """#967: worker thread: run the voice install child; same events as run_pack_download (pack "voice")."""
-    return run_pack_download("voice", put, mdir, popen, bundled, cmd=voice_install_cmd(mdir, bundled))
+def run_voice_install(put, mdir=None, popen=None, bundled: bool | None = None, ru: bool = False) -> int:
+    """#967: worker thread: run the voice install child; same events as run_pack_download (pack "voice" / "voice-ru")."""
+    return run_pack_download("voice-ru" if ru else "voice", put, mdir, popen, bundled,
+                             cmd=voice_install_cmd(mdir, bundled, ru))
 
 
 def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> list[str]:

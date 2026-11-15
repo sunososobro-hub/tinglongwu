@@ -71,6 +71,26 @@ def ensure_venv(venv: Path, run=subprocess.call, base: str | None = None) -> Pat
     return py
 
 
+PIPER_PIP = ["piper-tts"]  # GPL-3 (piper1-gpl, bundles espeak-ng): only ever in this separate TTS venv
+PIPER_CHECK = "import piper"
+
+
+def ensure_piper(venv: Path, run=subprocess.call, base: str | None = None) -> Path:
+    """Russian voice engine (#128): create the TTS venv if it is missing (no Kokoro needed), pip install piper-tts
+    into it unless `import piper` already works."""
+    py = venv_python(venv)
+    if not py.exists():
+        if run([base or base_python(), "-m", "venv", str(venv)]):
+            sys.exit(f"could not create the TTS venv {venv}")
+    if run([str(py), "-c", PIPER_CHECK]) != 0:
+        if run([str(py), "-m", "pip", "install", "--only-binary=:all:", *PIPER_PIP]):
+            sys.exit("pip install piper-tts failed in the TTS venv (check your connection, then run setup again)")
+        if run([str(py), "-c", PIPER_CHECK]):
+            sys.exit("piper-tts was installed but does not import")
+    print(f"Piper engine ready: {py}")
+    return py
+
+
 def smoke(py: Path, model_dir: Path, out: Path, run=subprocess.call) -> None:
     """Synthesize one English sentence into `out` (outside models/kokoro, so --verify still matches the pins)."""
     if run([str(py), "-c", SMOKE_CODE, str(model_dir), str(out)]) or not out.is_file() or not out.stat().st_size:

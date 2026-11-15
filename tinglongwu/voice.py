@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .sink import Result, Sink, pass_source
 
-VOICE_LANGS = ("zh", "en", "ja")  # targets with a Kokoro voice (KOKORO_*_VOICES in reverse/tts_worker.py)
+VOICE_LANGS = ("zh", "en", "ja", "ru")  # targets with a built-in voice: Kokoro (zh/en/ja), Piper dmitri (ru, CC0)
 # Outputs that feed a capture path or are not a real speaker: TTS played there is recorded again (feedback loop).
 _LOOP_DEVICES = ("cable input", "cable output", "vb-audio", "blackhole", "tlwu_sink", "tlwu_mic", "multi-output",
                  "aggregate", "monitor of", "loopback")
@@ -303,14 +303,25 @@ def open_voice(a, mdir, inner: Sink, say, off=None) -> tuple[VoiceSink, callable
     if problem:
         player.close()
         raise VoiceUnavailable(f"--voice: {problem}. Pick earphones with --voice-device NAME", "voice_same_device")
-    py, model = kokoro_paths(mdir, a.tts_python, a.tts_model)
+    engine = "piper" if lang == "ru" else "kokoro"
+    py, model = kokoro_paths(mdir, a.tts_python, None if engine == "piper" else a.tts_model)
+    if engine == "piper":  # GPL piper-tts lives in the TTS venv only; a Vosk --tts-model is not a Piper voice
+        from .models import default_piper_ru, piper_onnx
+
+        d = (piper_onnx(a.tts_model) and a.tts_model) or default_piper_ru(str(mdir))
+        if not d:
+            player.close()
+            raise VoiceUnavailable("--voice: Russian voice not installed; run tlwu-setup --piper-engine --piper-ru",
+                                   "voice_not_installed")
+        model = str(d)
     try:
-        tts = TTSClient(py, model, "kokoro", a.voice_speaker, lang)
+        tts = TTSClient(py, model, engine, a.voice_speaker, lang)
     except (OSError, RuntimeError, ValueError) as e:  # ValueError: garbled ready header (worker already killed)
         player.close()
-        raise VoiceUnavailable(f"--voice: Kokoro voice not available ({e}); run tlwu-setup --talk",
+        raise VoiceUnavailable(f"--voice: {engine.title()} voice not available ({e}); run tlwu-setup "
+                               + ("--piper-engine --piper-ru" if engine == "piper" else "--talk"),
                                "voice_not_installed") from e
-    say(f"tlwu: voice ({lang}, Kokoro) on {player.speaker_name}")
+    say(f"tlwu: voice ({lang}, {engine.title()}) on {player.speaker_name}")
     sink = VoiceSink(inner, make_speaker(tts, player, on_off=off), on_error=lambda e: say(f"tlwu: voice error: {e}"))
     gate = getattr(a, "voice_gate", None)  # #833: the GUI hands in a SendGate; its release feeds the voice queue
     if gate is not None:

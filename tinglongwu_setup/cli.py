@@ -141,6 +141,9 @@ def main(argv=None) -> int:
     p.add_argument("--default-listen", action="store_true",
                    help="install only the default listen path (en -> zh-TW models), no pip, nothing else (#766)")
     p.add_argument("--talk", action="store_true", help="set up talk mode (Kokoro TTS venv, model, launcher)")
+    p.add_argument("--piper-engine", action="store_true",
+                   help="pip install piper-tts (Russian voice engine, GPL) into the TTS venv (--talk-venv); "
+                        "combine with --piper-ru for the voice files")
     p.add_argument("--talk-venv", default=str(talk.default_venv()))
     p.add_argument("--talk-launcher", default=str(ROOT / "tlwu-talk.ps1"))
     p.add_argument("--talk-whisper", default="small")
@@ -176,6 +179,8 @@ def main(argv=None) -> int:
     mdir = Path(a.models_dir)
     if a.talk:
         return talk.main(a, mdir)
+    if a.piper_engine:
+        talk.ensure_piper(Path(a.talk_venv))
     if a.from_bundle:
         return from_bundle(Path(a.from_bundle), mdir)
     if hasattr(sys.stdout, "reconfigure"):

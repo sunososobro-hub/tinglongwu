@@ -874,8 +874,45 @@ class App:
         self.same_lang = False
         self._lang_check_ui()
         self.v_pair.set("")
+        if getattr(self, "ru_notice", None) is not None:  # Russian picked: offer the voice now, not only at Start
+            self.root.after(200, self._ru_voice_check)
 
     same_lang = False
+
+    def _ru_voice_check(self):
+        """Either picker just became Russian: when the Russian voice (Piper + engine) is missing, ask for the one-click
+        download at once. "Not now" leaves a lasting notice with a [Download] button (it never looks broken)."""
+        from ..models import models_dir
+        from . import voice_install
+
+        try:
+            ru = voice_install.ru_selected(self.v_target.get(), lang_from_label(self.v_lang.get()))
+            missing = ru and not self.same_lang and voice_install.piper_missing(models_dir())
+        except Exception:  # noqa: BLE001  # an unreadable path must not break the pickers
+            return
+        if not missing:
+            self.ru_notice.grid_remove()
+            return
+        if self.downloading or self.listening:
+            return
+        self._ru_voice_ask()
+
+    def _ru_voice_ask(self):
+        """The question + download for the Russian voice (no Start follows it); the notice stays when declined."""
+        from ..models import models_dir
+        from . import voice_install
+
+        if self.downloading:
+            return
+        if not voice_install.piper_missing(models_dir()):
+            self.ru_notice.grid_remove()
+            return
+        if not self._offer_voice({"voice": True, "target": "ru"}, None, resume=False):
+            self.ru_notice_lbl.configure(text=voice_install.notice_text(ui_lang()))
+            self.ru_notice_btn.configure(text=voice_install.notice_button(ui_lang()))
+            self.ru_notice.grid()
+        else:
+            self.ru_notice.grid_remove()
 
     def _lang_check_ui(self):
         """#982: My language == Other side language: inline error and Start disabled (home button and bar button)."""
@@ -1300,6 +1337,13 @@ class App:
         # #982: the inline error (v_pair only carries the state text)
         self.lang_err = ttk.Label(q, foreground="#c0392b", wraplength=MAIN_W - 40, justify="left")
         self.lang_err.grid(row=1, column=0, columnspan=4, sticky="w")
+        self.ru_notice = ttk.Frame(q)  # lasting "Russian voice not downloaded" line + [Download]
+        self.ru_notice_lbl = ttk.Label(self.ru_notice, foreground="#b9770e")
+        self.ru_notice_lbl.pack(side="left")
+        self.ru_notice_btn = ttk.Button(self.ru_notice, command=self._ru_voice_ask)
+        self.ru_notice_btn.pack(side="left", padx=(8, 0))
+        self.ru_notice.grid(row=2, column=0, columnspan=4, sticky="w")
+        self.ru_notice.grid_remove()
         for v in (self.v_lang, self.v_target):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
@@ -1555,7 +1599,7 @@ class App:
         threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
         return True
 
-    def _offer_voice(self, run: dict, mode: str = "speak") -> bool:
+    def _offer_voice(self, run: dict, mode: str = "speak", resume: bool = True) -> bool:
         """#967: True when this speak Start must not go on now: the Kokoro voice is missing and the question was
         answered "no" (speak runs subtitles only, as before) or the install is running (Start resumes in _pack_done)."""
         from ..models import models_dir
@@ -1568,17 +1612,24 @@ class App:
         except Exception:  # noqa: BLE001  # an unreadable path must not block Start
             return False
         lang = ui_lang()
-        if not messagebox.askyesno(voice_install.title_text(lang), voice_install.dialog_text(lang), parent=self.root):
+        ru = voice_install.is_ru(run)  # Russian: Piper voice + piper-tts into the TTS venv, no Kokoro
+        name = voice_install.pack_name(run)
+        if not messagebox.askyesno(voice_install.title_text(lang), voice_install.dialog_text(lang, ru), parent=self.root):
+            if ru and resume and getattr(self, "ru_notice", None) is not None:  # Start fallback: same lasting notice
+                self.ru_notice_lbl.configure(text=voice_install.notice_text(lang))
+                self.ru_notice_btn.configure(text=voice_install.notice_button(lang))
+                self.ru_notice.grid()
             return False  # "no": speak starts with subtitles only, the red line explains why there is no voice
-        self.downloading = voice_install.VOICE_PACK
+        self.downloading = name
         self.pack_retry = mode
-        self.start_dl = StartDownload(voice_install.VOICE_PACK)
+        self.pack_resume = resume  # False: asked from the language picker, nothing starts when the download ends
+        self.start_dl = StartDownload(name)
         self.v_dl_pct.set(0)
         self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
-        self._status_text(t("gui_dl_running", model=voice_install.VOICE_PACK))
+        self._status_text(t("gui_dl_running", model=name))
         self._sync_quick()
-        threading.Thread(target=run_voice_install, args=(self.q.put,), daemon=True).start()
+        threading.Thread(target=run_voice_install, args=(self.q.put,), kwargs={"ru": ru}, daemon=True).start()
         return True
 
     def _offer_cable(self, mode: str = "speak") -> bool:
@@ -1633,8 +1684,11 @@ class App:
         self.btn.configure(state="normal")
         self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))  # #1042: error shows in the main window
         self._sync_quick()
-        if rc == 0:  # on without restarting the app
+        if getattr(self, "ru_notice", None) is not None:
+            self.root.after(100, self._ru_voice_check)  # hides the notice once the Russian voice is there
+        if rc == 0 and getattr(self, "pack_resume", True):  # on without restarting the app
             self.toggle(getattr(self, "pack_retry", None))
+        self.pack_resume = True
 
     def _cpu_ram(self):
         """#780: RAM (GB) for the "too heavy" model marks on a PC without a CUDA device, else None."""

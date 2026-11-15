@@ -175,8 +175,8 @@ def test_open_voice_refuses_the_captured_speaker(fakes, tmp_path):
 
 
 def test_open_voice_refuses_a_target_without_a_voice(fakes, tmp_path):
-    with pytest.raises(RuntimeError, match="zh, en, ja"):
-        voice.open_voice(cli.parse_args(["--voice", "--to", "ru", "--voice-device", "Headphones"]), tmp_path,
+    with pytest.raises(RuntimeError, match="zh, en, ja, ru"):
+        voice.open_voice(cli.parse_args(["--voice", "--to", "ko", "--voice-device", "Headphones"]), tmp_path,
                          _Lines(), lambda m: None)
 
 

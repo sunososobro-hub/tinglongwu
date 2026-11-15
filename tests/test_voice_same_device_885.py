@@ -120,7 +120,7 @@ def test_voice_same_device_cli_still_refuses_with_the_flag_hint(same_device, tmp
 
 @pytest.mark.parametrize("argv, key", [
     (["--voice"], "voice_same_device"),
-    (["--voice", "--to", "ru", "--voice-device", "Headphones"], "voice_lang_unsupported"),
+    (["--voice", "--to", "ko", "--voice-device", "Headphones"], "voice_lang_unsupported"),
 ])
 def test_voice_same_device_every_voice_refusal_has_a_localized_line(zh, same_device, tmp_path, argv, key):
     with pytest.raises(voice.VoiceUnavailable) as e:
