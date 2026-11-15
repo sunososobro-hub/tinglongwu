@@ -167,7 +167,8 @@ class _SourceToggle extends StatelessWidget {
           title: const Text(CaptureModeText.phoneLabel),
           content: const Text('看影片翻譯會把字幕浮在影片上（例如 YouTube）。'
               '請在下一頁允許「顯示在其他應用程式上層」。\n\n'
-              '不允許也可以：字幕只會顯示在聽龍裡面。'),
+              '不允許也可以：字幕只會顯示在聽龍裡面。\n\n'
+              '字幕只顯示在你的手機上，不會錄音或存檔。請只用於個人觀看，並尊重影片的著作權。'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('略過')),
             FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('前往設定')),

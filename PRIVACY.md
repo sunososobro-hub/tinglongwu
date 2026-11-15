@@ -32,7 +32,8 @@ The runtime package `tinglongwu/` contains no network code; a Python-level netwo
 `netguard.jsonl` (in your user log directory) records blocked attempts: time, host, port, package, trimmed stack. It has no PII and is never sent automatically.
 
 ## Android app (tinglongWu mobile / TingLong on Google Play)
-- **Microphone audio is processed on the phone only.** Speech recognition and translation run on the device; audio and text are never uploaded and are kept in memory only. Nothing is recorded.
+- **說話翻譯 (speech translation): audio is processed on the phone only.** The microphone hears the people around you; speech recognition and translation run on the device; audio and text are never uploaded and are kept in memory only. Nothing is recorded.
+- **看影片翻譯 (video translation, Android 10+):** captures the audio other apps are playing, and only after you agree in the system dialog each time. The audio is processed in the phone's memory only; it is never recorded, saved or uploaded. Apps that disallow capture (for example copyright-protected video, calls) give silence. The floating subtitle window needs the "Display over other apps" (顯示在其他應用程式上層) permission.
 - **No internet permission.** The release app does not request Android's INTERNET permission, so it cannot send anything over the network.
 - **Models:** either you download the model pack with your browser and import it with the system file picker, or, for the Google Play version, the Play Store downloads them as Play Asset Delivery packs. Either way every file is checked (size + SHA-256) and stored in the app's own folder on the phone.
 - **Stored on the phone:** the model files and a local run log in the app's folder. No account, no analytics, no ads, no advertising ID.
