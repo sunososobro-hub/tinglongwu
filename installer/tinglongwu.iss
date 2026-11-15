@@ -599,12 +599,13 @@ begin
   if CurPageID = wpSelectTasks then PresetCpuTask;
 #ifdef CoreLayout
   if (CurPageID = wpFinished) and (InstallRC <> 0) then
-    WizardForm.FinishedLabel.Caption := FmtMessage(CustomMessage('FailCore'),
-      [IntToStr(InstallRC), ExpandConstant('{app}\install.log'), '{#AppTitle}']);
+    { a [Code] line must not start with '[': ISCC reads it as a section tag }
+    WizardForm.FinishedLabel.Caption := FmtMessage(CustomMessage('FailCore'), [IntToStr(InstallRC),
+      ExpandConstant('{app}\install.log'), '{#AppTitle}']);
 #else
   if (CurPageID = wpFinished) and (InstallRC <> 0) then begin
-    WizardForm.FinishedLabel.Caption := FmtMessage(CustomMessage('FailInstall'),
-      [IntToStr(InstallRC), ExpandConstant('{app}\install.log'), CustomMessage('RepairName')]);
+    WizardForm.FinishedLabel.Caption := FmtMessage(CustomMessage('FailInstall'), [IntToStr(InstallRC),
+      ExpandConstant('{app}\install.log'), CustomMessage('RepairName')]);
     { #705: the last install.log line names the cause (e.g. the missing Microsoft Visual C++ runtime) }
     if LastLine <> '' then
       WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10 + #13#10 + LastLine;

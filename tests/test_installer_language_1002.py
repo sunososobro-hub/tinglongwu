@@ -117,3 +117,9 @@ def test_lang_and_ui_lang_always_follow_the_wizard_but_not_a_silent_update():
     assert "Params := Params + ' -Lang ' + WizardLangCode;" in code
     assert "if not WizardSilent then SetConfigValue('ui_lang', WizardLangCode);" in code
     assert code.count("SetConfigValue('ui_lang'") == 1
+
+
+def test_no_code_line_starts_with_a_section_bracket():
+    """ISCC 6.7.1 in windows-build: "Error on line 607 ... Invalid section tag" for a wrapped `[args]` line."""
+    assert build_installer.section_tag_lines("[Setup]\n[Code]\nbegin\n  x := F(a,\n    [1]);\nend;\n") == [5]
+    assert build_installer.section_tag_lines(RAW) == []

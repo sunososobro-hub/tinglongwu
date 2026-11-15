@@ -281,6 +281,19 @@ def message_problems(iss_text: str, iss_dir: Path | None = None) -> list[str]:
     return problems
 
 
+def section_tag_lines(iss_text: str) -> list[int]:
+    """Line numbers inside [Code] whose first non-blank character is '[' (e.g. a wrapped FmtMessage argument
+    array): ISCC reads such a line as a section tag and aborts with "Invalid section tag" (#1002)."""
+    bad, in_code = [], False
+    for n, line in enumerate(iss_text.splitlines(), 1):
+        s = line.strip()
+        if in_code and s.startswith("["):
+            bad.append(n)
+        if s == "[Code]":
+            in_code = True
+    return bad
+
+
 # #772: the release job reports the core wizard's size; over this it warns (never fails: a release is not blocked
 # by size alone). Same 300 MB budget as the core zip (scripts/release_check.py MAX_CORE_MB) since it wraps that core.
 WIZARD_MAX_MB = 300
@@ -329,6 +342,10 @@ def main(argv: list[str] | None = None) -> int:
     miss = missing_defines(ISS.read_text("utf-8-sig"), cmd)
     if miss:
         print(f"tinglongwu.iss uses undefined {miss}", file=sys.stderr)
+        return 1
+    tags = section_tag_lines(ISS.read_text("utf-8-sig"))
+    if tags:
+        print(f"tinglongwu.iss [Code] lines start with '[' (ISCC: Invalid section tag): {tags}", file=sys.stderr)
         return 1
     bad = message_problems(effective_iss(cmd))
     if bad:
