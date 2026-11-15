@@ -118,12 +118,26 @@ jobs:
       - name: Archive
         if: steps.gate.outputs.run == 'true'
         run: |
-          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
-            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
-            CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          archive() {
+            xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+              -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+              CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
+              -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" "$@"
+          }
+          # 看影片翻譯 (#1076) needs the App Group group.com.tinglongwu.mobile on both App IDs. API-key
+          # signing cannot create App Groups; until the owner sets it up (mobile/README.md), upload
+          # without the entitlement: the app then hides 看影片翻譯 and everything else still ships.
+          if ! archive 2>&1 | tee "$RUNNER_TEMP/archive.log"; then
+            if grep -q "com.apple.security.application-groups" "$RUNNER_TEMP/archive.log"; then
+              echo "::warning::App Group group.com.tinglongwu.mobile is not enabled for com.tinglongwu.mobile / com.tinglongwu.mobile.broadcast; this build ships without 看影片翻譯 on iOS (see mobile/README.md)."
+              rm -rf "$RUNNER_TEMP/Runner.xcarchive"
+              archive CODE_SIGN_ENTITLEMENTS=
+            else
+              exit 1
+            fi
+          fi
       - name: Export and upload to App Store Connect
         if: steps.gate.outputs.run == 'true'
         run: |

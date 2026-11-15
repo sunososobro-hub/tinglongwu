@@ -45,6 +45,10 @@ Keep the two sides in step: a new channel method needs a Kotlin and a Swift impl
      gh secret set APPLE_TEAM_ID -R sunososobro-hub/tinglongwu --body "<TEAMID>"
      Get-Content -Raw AuthKey_<KEYID>.p8 | gh secret set ASC_KEY_P8 -R sunososobro-hub/tinglongwu
      ```
+  5. 看影片翻譯 (#1076), once: developer.apple.com > Identifiers > App Groups: register `group.com.tinglongwu.mobile`.
+     Then open the App IDs `com.tinglongwu.mobile` and `com.tinglongwu.mobile.broadcast` (CI registers the second one),
+     tick **App Groups**, Configure, select that group, Save. Until then the `testflight` job warns and uploads
+     without the App Group entitlement, so iOS hides 看影片翻譯 (API-key signing cannot create App Groups).
   The build number is the workflow run number. Alternative: `codemagic.yaml` at the repo root (setup steps in its
   header comment) is kept as a fallback.
 - Icons: `python3 tool/gen_ios_icons.py` (needs Pillow + `rsvg-convert`).

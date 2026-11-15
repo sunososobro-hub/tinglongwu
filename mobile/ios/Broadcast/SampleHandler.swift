@@ -170,7 +170,8 @@ final class MonoResampler {
       phase += 1
       if phase >= step {
         phase -= step
-        let v = max(-1, min(1, acc / Float(count)))
+        let m = acc / Float(count)
+        let v = m.isFinite ? max(-1, min(1, m)) : 0
         acc = 0
         count = 0
         var le = Int16(v * 32767).littleEndian
