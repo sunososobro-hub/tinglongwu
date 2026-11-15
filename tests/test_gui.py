@@ -264,6 +264,15 @@ def test_floating_bar_off_by_default_and_log_font_persist(tmp_path):
     assert got["log_font_size"] == core.FONT_MAX and got["floating_bar"] is False
 
 
+def _no_speak_dialogs(monkeypatch):
+    """#1001: every Start also runs the speak leg; never open the real VB-CABLE / Kokoro install questions."""
+    from tinglongwu import vbcable
+    from tinglongwu.gui import voice_install
+
+    monkeypatch.setattr(vbcable, "needs_offer", lambda names, platform=None: False)
+    monkeypatch.setattr(voice_install, "offer_needed", lambda run, mdir: False)
+
+
 @pytest.fixture
 def gui_app(tmp_path, monkeypatch):
     """A real App on a real (virtual) display with a worker that just waits for Stop; settings in tmp_path."""
@@ -285,6 +294,7 @@ def gui_app(tmp_path, monkeypatch):
         self.q.put(("stopped",))
 
     monkeypatch.setattr(app.App, "_work", fake_work)
+    _no_speak_dialogs(monkeypatch)
     # #314 first-launch overlay already closed: these tests check the plain session flow (overlay: test_gui_tour_314)
     (tmp_path / "tinglongwu").mkdir()
     (tmp_path / "tinglongwu" / "gui.json").write_text('{"tour_seen": true}', "utf-8")
@@ -454,9 +464,8 @@ def test_control_bar_is_compact_in_every_ui_language(gui_app):
         a.switch_lang()
         # #884: the pair shows names; measure the fixture's pair plus the real defaults (auto -> zh-tw, Speak en ->
         # zh-tw) and the longest names (ja -> zh-cn, ru -> zh-tw)
-        for mode, src, target in (("listen", a.v_lang.get(), a.v_target.get()), ("listen", "auto", "zh-tw"),
-                                  ("speak", "en", "zh-tw"), ("listen", "ja", "zh-cn"), ("listen", "ru", "zh-tw")):
-            a.v_mode.set(mode)
+        for src, target in ((a.v_lang.get(), a.v_target.get()), ("auto", "zh-tw"), ("zh", "en"), ("ja", "zh-cn"),
+                            ("ru", "zh-tw")):
             a.v_lang.set(src)
             a.v_target.set(target)
             for text in (t("gui_start"), t("gui_loading", s=120)):  # the widest text the button shows
@@ -522,33 +531,28 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
 
 
 def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
-    """#455: Listen/Speak + Start run the saved / #294 speak session, the pair label follows the boxes, the dot
-    follows the session."""
+    """#455 / #1001: the bar has no Listen / Speak choice; its Start runs both legs, the pair label shows both ways,
+    the dot follows the session."""
     from tinglongwu import cli
+
+    from tinglongwu.gui import app
 
     a = gui_app
     runs = _record_runs(a, monkeypatch)
-    assert a.v_mode.get() == "listen"
+    monkeypatch.setattr(app, "meeting_cable", lambda: "CABLE Input (VB-Audio Virtual Cable)")  # no "no CABLE" panel
+    assert not hasattr(a, "v_mode")
+    assert not [w for w in a.bar.winfo_children() if w.winfo_class() == "TRadiobutton"]
     a.v_target.set("en")
-    for w in a.bar.winfo_children():
-        if "text" in w.keys() and w.cget("text") == "Speak":
-            w.invoke()
-    assert a.v_mode.get() == "speak" and a.v_pair.get() in ("English→Traditional Chinese", "English →\nTraditional Chinese", "English →\nChinese (Trad.)")  # #884: names, not codes (2 lines: fits 420 px); the Speak direction
-    a.btn.invoke()  # Speak + Start: mic in my language (en) -> zh-tw, as the #294 "I speak" button
-    a.toggle()
-    a.worker.join(5)
-    a.poll()
-    assert (runs[0]["source"], runs[0]["lang"], runs[0]["target"]) == ("mic", "en", "zh-tw")
-    a.v_mode.set("listen")
     a.v_lang.set("auto")
-    assert a.v_pair.get() == "Auto→English"
+    assert a.v_pair.get() == "Auto\u21c4English"
     assert a.dot_state == "idle"
-    a.btn.invoke()  # Listen + Start: the saved settings, as the old Start button
-    assert a.dot_state == "loading" and (runs[1]["source"], runs[1]["target"]) == ("system", "en")
+    a.btn.invoke()  # Start: listen (PC sound -> en) + speak (mic, en -> zh-tw)
+    assert a.dot_state == "loading" and (runs[0]["source"], runs[0]["target"]) == ("system", "en")
+    assert (a.speak_run["source"], a.speak_run["lang"], a.speak_run["target"]) == ("mic", "en", "zh-tw")
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 1.0 s (speech model 1.0 s)"))
     a.poll()
     assert a.dot_state == "on"
-    a.toggle()
+    a.btn.invoke()  # Stop
     a.worker.join(5)
     a.poll()
     assert a.dot_state == "idle" and a.btn.cget("text") == "Start"
@@ -574,31 +578,30 @@ def _record_runs(a, monkeypatch):
     return runs
 
 
-def _btn(a, mode):
-    b = a.quick_btns[mode]
-    return b.cget("text"), str(b.cget("state"))
+def _btn(a):
+    return a.both_btn.cget("text"), str(a.both_btn.cget("state"))
 
 
-def test_one_click_listen_loading_then_ready_then_stop(gui_app, monkeypatch):
-    """Fresh profile: the only click is "Listen to others"; Loading... until models are ready, then a Ready hint."""
+def test_one_click_start_loading_then_ready_then_stop(gui_app, monkeypatch):
+    """Fresh profile: the only click is Start (#1001: listen + speak); Loading... until ready, then a Ready hint."""
     from tinglongwu import cli
 
     a = gui_app
     runs = _record_runs(a, monkeypatch)
-    assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
+    assert _btn(a) == ("Start (listen + speak)", "normal")
     a.v_target.set("zh-tw")
-    a.quick_btns["listen"].invoke()  # click 1
-    assert _btn(a, "listen") == ("⏳ 0 s", "disabled") and _btn(a, "speak")[1] == "disabled"
+    a.both_btn.invoke()  # click 1
+    assert _btn(a) == ("\u23f3 0 s", "disabled")
     a.q.put(("status", f"{cli.READY_STATUS} - loaded in 2.0 s"))
     a.poll()
-    assert a.v_status.get().startswith("Ready - start playback now")
-    assert _btn(a, "listen") == ("Stop", "normal") and _btn(a, "speak") == ("I speak", "disabled")
+    assert a.v_status.get().startswith("Ready - play the video or speak")
+    assert _btn(a) == ("Stop", "normal")
     run = runs[0]
-    assert (run["source"], run["target"]) == ("system", "zh-tw")
-    a.quick_btns["listen"].invoke()  # Stop
+    assert (run["source"], run["target"]) == ("system", "zh-tw") and a.speak_run["source"] == "mic"
+    a.both_btn.invoke()  # Stop
     a.worker.join(5)
     a.poll()
-    assert _btn(a, "listen") == ("Listen to others", "normal") and _btn(a, "speak") == ("I speak", "normal")
+    assert _btn(a) == ("Start (listen + speak)", "normal")
 
 
 def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):

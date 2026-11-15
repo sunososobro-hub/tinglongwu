@@ -260,11 +260,10 @@ def test_page_result_clears_the_downloading_status_line(monkeypatch):
     opened, status = [], []
     monkeypatch.setattr(webbrowser, "open", opened.append)
     fake = SimpleNamespace(downloading="VB-CABLE", btn=SimpleNamespace(configure=lambda **k: None),
-                           _sync_quick=lambda: None, v_mode=SimpleNamespace(set=lambda v: status.append(("mode", v))),
-                           _status_text=status.append)
+                           _sync_quick=lambda: None, _status_text=status.append)
     app.App._cable_done(fake, "page")
     assert opened == [vbcable.VBCABLE_PAGE] and fake.downloading is None
-    assert ("mode", "listen") in status and status[-1] == ""  # "Downloading VB-CABLE..." is gone
+    assert status[-1] == ""  # "Downloading VB-CABLE..." is gone
 
 
 def test_official_pin_is_set():

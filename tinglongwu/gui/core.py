@@ -204,6 +204,30 @@ def quick_buttons(phase: str, active: str | None = None) -> dict[str, tuple[str,
     return {m: (f"gui_quick_{m}", phase == "idle") for m in QUICK_MODES}
 
 
+BOTH_MODE = "both"  # #1001: the one first-screen Start: listen (PC sound -> mine) and speak (mic -> other) together
+SPEAK_MARK = "🎤 "  # #1001: a line of the speak leg in the shared subtitle list starts with this (my words)
+
+
+def both_settings(s: dict) -> tuple[dict, dict]:
+    """#1001: (listen run, speak run) for one Start; `s` is not changed. Same legs as session_route("two-way").
+    The speak leg shows finished lines only (no live draft, no "heard" placeholder: the listen leg owns the draft
+    row, two drafts would overwrite each other) and never saves (both legs would write the same file).
+    Raises SameLanguageError when both languages are the same."""
+    session_route("two-way", s.get("target"), s.get("lang"))  # raises before any run is built
+    listen, speak = quick_settings(s, "listen"), quick_settings(s, "speak")
+    speak.update(live_draft=False, save=False)
+    return listen, speak
+
+
+def start_button(phase: str, active: str | None = None) -> tuple[str, bool]:
+    """#1001: (i18n key, enabled) of the one first-screen Start, same phases as quick_buttons()."""
+    if phase == "loading":
+        return "gui_loading", False
+    if phase == "running":
+        return ("gui_stop", True) if active == BOTH_MODE else ("gui_quick_both", False)
+    return "gui_quick_both", phase == "idle"
+
+
 # #314 first-launch overlay: 3 numbered steps over the real controls. zh-CN has its own text here although the
 # rest of the UI still shows zh-TW for a zh-CN system (see tour_lang).
 TOUR_TEXT = {
@@ -824,6 +848,18 @@ class QueueSink(Sink):
         self.q.put(("final", r.original, r.target if r.src != r.tgt and r.target else r.original))
 
 
+class SpeakQueueSink(QueueSink):
+    """#1001: the speak leg of a combined session: finished lines only ("final_side", marked with SPEAK_MARK), so
+    they share the subtitle list with the listen leg without touching its draft / pending rows."""
+
+    def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
+        pass
+
+    def write(self, r: Result) -> None:
+        out = r.target if r.src != r.tgt and r.target else r.original
+        self.q.put(("final_side", SPEAK_MARK + r.original, SPEAK_MARK + out))
+
+
 class QueueDraftRenderer(DraftRenderer):
     """Drop-in for DraftRenderer that publishes draft events instead of writing ANSI to a terminal."""
 
@@ -869,6 +905,9 @@ class SubtitleState:
             if self.pending and self.pending[0] == ev[1]:
                 self.pending.pop(0)
             self.draft = ("", self.pending[-1]) if self.pending else None
+            self.finals.append((ev[1], ev[2]))
+            del self.finals[:-self.max_lines]
+        elif kind == "final_side":  # #1001: a speak-leg line next to a listen session: the draft row stays
             self.finals.append((ev[1], ev[2]))
             del self.finals[:-self.max_lines]
         elif kind == "clear":

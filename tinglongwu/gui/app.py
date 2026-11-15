@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SameLanguageError, SEND_MODES, session_route, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (BOTH_MODE, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
@@ -672,17 +672,13 @@ class App:
         """#455: the main window is only this bar; every setting is in the "⚙ Adjust" panel."""
         b = self.bar = ttk.Frame(self.root, padding=2)
         b.pack()
-        self.v_mode = tk.StringVar(value="listen")  # Speak = the #294 "I speak" session (mic, my language out)
-        for key, val in (("gui_listen", "listen"), ("gui_speak", "speak")):
-            self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
-                     key).pack(side="left")
         self.v_pair = tk.StringVar()
         # #884: one point smaller than the bar's buttons, so two-line names fit 420 px; pair_text measures with it
         self.pair_font = tkfont.nametofont("TkDefaultFont").copy()
         size = int(self.pair_font.cget("size"))
         self.pair_font.configure(size=size - 1 if size > 0 else size + 1)  # negative size = pixels
         ttk.Label(b, textvariable=self.v_pair, justify="center", font=self.pair_font).pack(side="left", padx=2)
-        for v in (self.v_lang, self.v_target, self.v_mode):
+        for v in (self.v_lang, self.v_target):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
         self.btn = ttk.Button(b, text=t("gui_start"), command=self._bar_start, style="Bar.TButton", width=0)
@@ -715,19 +711,19 @@ class App:
             self.overlay.hide()
 
     def _bar_start(self):
-        """Listen = a session with the saved settings (as the old Start); Speak = the #294 speak session."""
-        self.toggle("speak" if self.v_mode.get() == "speak" else None)
+        """#1001: the bar's Start = the one Start (listen + speak together); Stop while running."""
+        self.toggle(BOTH_MODE)
 
     def _pair_changed(self):
-        """The direction the next Start runs: Speak flips it the #294 way (my language -> the other one)."""
+        """The two languages of the next Start (#1001: both directions run, so the arrow goes both ways)."""
         s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
         try:
-            s = quick_settings(s, "speak" if self.v_mode.get() == "speak" else "listen")
+            s = quick_settings(s, "listen")
         except SameLanguageError as e:  # #981: shown on the bar at once, before Start is pressed
             self.v_pair.set(t(e.key))
             return
         # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
-        self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure))
+        self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure).replace("\u2192", "\u21c4"))
 
     def set_dot(self, name: str):
         self.dot_state = name
@@ -1107,11 +1103,9 @@ class App:
         self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=14)
         self.home_lang.grid(row=0, column=1, sticky="we", padx=(6, 0))
         # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
-        self.quick_btns = {}
-        for col, mode in enumerate(QUICK_MODES):
-            b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
-            b.grid(row=1, column=col, sticky="we", ipady=3, pady=(6, 0), padx=(0 if col == 0 else 6, 0))  # #886
-            self.quick_btns[mode] = b
+        # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
+        self.both_btn = ttk.Button(q, command=lambda: self.toggle(BOTH_MODE))
+        self.both_btn.grid(row=1, column=0, columnspan=2, sticky="we", ipady=3, pady=(6, 0))  # #886
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
         self._sync_quick()
@@ -1127,10 +1121,10 @@ class App:
         """Label/enable the first-screen buttons for the current session state (#294)."""
         if getattr(self, "lbl_restart", None) is not None:
             self._restart_check()  # #983: the notice goes away once the session has stopped
-        if not hasattr(self, "quick_btns"):
+        if not hasattr(self, "both_btn"):
             return
-        for mode, (key, enabled) in quick_buttons(self._quick_phase(), self.quick_mode).items():
-            self.quick_btns[mode].configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
+        key, enabled = start_button(self._quick_phase(), self.quick_mode)  # #1001
+        self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
@@ -1293,7 +1287,7 @@ class App:
         threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
         return True
 
-    def _offer_voice(self, run: dict) -> bool:
+    def _offer_voice(self, run: dict, mode: str = "speak") -> bool:
         """#967: True when this speak Start must not go on now: the Kokoro voice is missing and the question was
         answered "no" (speak runs subtitles only, as before) or the install is running (Start resumes in _pack_done)."""
         from ..models import models_dir
@@ -1309,7 +1303,7 @@ class App:
         if not messagebox.askyesno(voice_install.title_text(lang), voice_install.dialog_text(lang), parent=self.root):
             return False  # "no": speak starts with subtitles only, the red line explains why there is no voice
         self.downloading = voice_install.VOICE_PACK
-        self.pack_retry = "speak"
+        self.pack_retry = mode
         self.start_dl = StartDownload(voice_install.VOICE_PACK)
         self.v_dl_pct.set(0)
         self.dl_bar.pack(anchor="w", pady=(4, 0))
@@ -1321,17 +1315,18 @@ class App:
         threading.Thread(target=run_voice_install, args=(self.q.put,), daemon=True).start()
         return True
 
-    def _offer_cable(self) -> bool:
+    def _offer_cable(self, mode: str = "speak") -> bool:
         """#804: True when this speak Start must not go on now: the VB-CABLE question was answered "no" (back to
-        listen) or the download + elevated install is running (Start resumes in _cable_done)."""
+        listen) or the download + elevated install is running (Start resumes in _cable_done).
+        #1001 (mode both): "no" lets the Start go on (listening + speak subtitles only), so False."""
         from .. import vbcable
 
         if self.downloading or not vbcable.needs_offer(vbcable.output_names()):
             return False
         lang = ui_lang()
         if not messagebox.askyesno(vbcable.title_text(lang), vbcable.dialog_text(lang), parent=self.root):
-            self.v_mode.set("listen")
-            return True
+            return mode != BOTH_MODE  # both: go on with listening + speak subtitles
+        self.cable_retry = mode
         self.downloading = "VB-CABLE"
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model="VB-CABLE"))
@@ -1352,9 +1347,8 @@ class App:
         if res == "installed" and vbcable.has_cable(vbcable.output_names()):
             self._status_text("")
             messagebox.showinfo(vbcable.title_text(lang), vbcable.howto_text(lang), parent=self.root)
-            self.toggle("speak")
+            self.toggle(getattr(self, "cable_retry", None) or "speak")
             return
-        self.v_mode.set("listen")
         if res == "page":
             import webbrowser
 
@@ -1459,7 +1453,8 @@ class App:
 
     # -- worker -------------------------------------------------------------------------------
     def toggle(self, mode: str | None = None):
-        """Start / Stop. `mode` = a #294 first-screen button ("listen" / "speak"); None = the Start button."""
+        """Start / Stop. `mode`: None or BOTH_MODE = the one Start (#1001: listen + speak together); "listen" /
+        "speak" = one leg only (kept for tests and the #983 restart of an older session)."""
         if self.worker is not None and self.worker.is_alive():
             self.stop_ev.set()
             self.btn.configure(state="disabled")
@@ -1467,27 +1462,32 @@ class App:
             self._sync_quick()
             return
         self.collect()
+        mode = mode or BOTH_MODE
+        speak_run = None
         try:
-            run = quick_settings(self.settings, mode) if mode else dict(self.settings)
-            if not mode:  # the Start button keeps its saved source, but never runs one language into itself
-                session_route("listen", run.get("target"), run.get("lang"))
+            if mode == BOTH_MODE:  # #1001: listen + speak in one session
+                run, speak_run = both_settings(self.settings)
+            else:
+                run = quick_settings(self.settings, mode)
         except SameLanguageError as e:  # #981: same language on both sides: say so, no run starts
             self.set_status(e.key)
             self._show_panel()
             return
-        if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
+        speaking = mode in ("speak", BOTH_MODE)
+        voice_run = speak_run if speak_run is not None else run  # the run that speaks into the meeting
+        if speaking and self._offer_cable(mode):  # #804: no virtual mic -> offer the VB-CABLE install first
             return
         if self._offer_model(run, mode):  # #739: a missing speech model downloads here with a progress bar
             return
-        if mode == "speak" and self._offer_voice(run):  # #967: no Kokoro voice -> offer the install, then Start resumes
+        if speaking and self._offer_voice(voice_run, mode):  # #967: no Kokoro voice -> offer the install, Start resumes
             return
-        if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
+        if self._offer_pack(run, mode) or (speak_run is not None and self._offer_pack(speak_run, mode)):  # #673
             return
         self.quick_mode, self.run_source = mode, run.get("source")
         self._last_mode = mode or "listen"  # the finished rows keep this mode after Stop (#677)
-        self.speak_hint = speak_route(run, meeting_cable()) if mode == "speak" else None  # #710
+        self.speak_hint = speak_route(voice_run, meeting_cable()) if speaking else None  # #710
         self.gate = None
-        if mode == "speak" and run.get("voice"):  # #833: each speak line is held and sent by the #832 state machine
+        if speaking and voice_run.get("voice"):  # #833: each speak line is held and sent by the #832 state machine
             from ..reverse.sendgate import SendGate
 
             self.gate = SendGate(lambda _t: None, time.monotonic, mode=run.get("send_mode", "confirm"))
@@ -1500,11 +1500,14 @@ class App:
         self.set_status("gui_starting")
         self.set_dot("loading")
         notice_key, show_panel = speak_start_view(self.speak_hint)  # #710: the Speak lines live in the Adjust panel
+        if mode == BOTH_MODE:  # #1001: the panel opens only for the "no CABLE" line, which says listening still runs
+            notice_key, show_panel = ("gui_both_no_voice", True) if notice_key else ("", False)
         self.v_notice.set(t(notice_key) if notice_key else "")
         if show_panel:
             self._show_panel()
         self.errored = False
         self.listening = True
+        self.speak_run = speak_run  # #1001: read by _work (both legs) before the worker posts "stopped"
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
         self.run_snapshot = self._start_values()  # #983
@@ -1515,8 +1518,42 @@ class App:
             self.overlay.show()
 
     def _work(self, s: dict, stop: threading.Event):
-        """Worker thread: no tkinter here, only self.q."""
-        q, gate = self.q, self.gate  # #833: set before this thread starts, cleared only after it posts "stopped"
+        """Worker thread: no tkinter here, only self.q. `s` = the listen leg (or the one leg); self.speak_run, when
+        set, is the speak leg that runs next to it (#1001)."""
+        speak = getattr(self, "speak_run", None)
+        if speak is not None:
+            self._work_both(s, speak, stop)
+            return
+        try:
+            self._run_leg(s, stop, self.gate)  # #833: gate set before this thread starts, cleared after "stopped"
+        finally:
+            self.q.put(("stopped",))
+
+    def _work_both(self, listen: dict, speak: dict, stop: threading.Event):
+        """#1001 worker: the listen and the speak leg each in its own thread with the same stop event; "stopped" is
+        posted once, after both have ended (no leg outlives Stop). One leg failing leaves the other running.
+        TLWU_BOTH=1 while it runs, so the #250 CPU thread budget is split between the two legs."""
+        gate = self.gate
+        old = os.environ.get("TLWU_BOTH")
+        os.environ["TLWU_BOTH"] = "1"
+        try:
+            legs = [threading.Thread(target=self._run_leg, args=(listen, stop, None), daemon=True, name="tlwu-listen"),
+                    threading.Thread(target=self._run_leg, args=(speak, stop, gate, SpeakQueueSink), daemon=True,
+                                     name="tlwu-speak")]
+            for th in legs:
+                th.start()
+            for th in legs:
+                th.join()
+        finally:
+            if old is None:
+                os.environ.pop("TLWU_BOTH", None)
+            else:
+                os.environ["TLWU_BOTH"] = old
+            self.q.put(("stopped",))
+
+    def _run_leg(self, s: dict, stop: threading.Event, gate=None, sink_cls=None):
+        """One run_session on this thread; an error goes to self.q (localized), never raised. No tkinter here."""
+        q = self.q
         try:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
@@ -1530,15 +1567,13 @@ class App:
                     return None
                 return DraftEngine(asr, translator, QueueDraftRenderer(q), lambda: segmenter.live, tgt)
 
-            run_session(a, sink=QueueSink(q), draft_factory=draft_factory, stop=stop,
+            run_session(a, sink=(sink_cls or QueueSink)(q), draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
                         cpu_line=lambda ms: q.put(("cpu_line", ms)))
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
-        finally:
-            q.put(("stopped",))
 
     def poll(self):
         if self.closing:
@@ -1563,7 +1598,10 @@ class App:
                         ready = "gui_ready_speak" if self.run_source == "mic" else "gui_ready_listen"
                         if self.speak_hint == SPEAK_HINT_CABLE:  # #710: voice goes into CABLE Input
                             ready = self.speak_hint
-                        self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
+                        text = t(ready)
+                        if self.quick_mode == BOTH_MODE:  # #1001: both legs; keep the #710 CABLE hint after it
+                            text = t("gui_ready_both") + (f" | {text}" if ready == SPEAK_HINT_CABLE else "")
+                        self._status_text(f"{text} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
                 elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
                     from .core import cpu_mode_line
