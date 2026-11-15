@@ -673,7 +673,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         raise
     finally:
         if notes is not None:  # #609: summarize the last topic and the backlog (Ctrl+C: give up after 0 s)
-            notes.close(timeout=0 if interrupted else None)
+            notes.close(timeout=0 if interrupted or (stop is not None and stop.is_set()) else None)
         if rec_file is not None:
             rec_file.close()
         if recorder is not None:

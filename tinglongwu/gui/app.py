@@ -2214,6 +2214,7 @@ class App:
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
                         cpu_line=lambda ms: q.put(("cpu_line", ms)),
+                        on_topic=lambda topic: q.put(("topic", topic)),  # #611: summarizer thread -> GUI thread
                         labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None)
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
@@ -2286,6 +2287,8 @@ class App:
 
                     if self.load_t0 is None and not self.errored:
                         self._status_text(cpu_mode_line("cpu", ev[1]) or "")
+                elif kind == "topic":  # #611: a finished topic summary -> the side window
+                    self._topic_add(ev[1])
                 elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
                     self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                 elif kind == "notice":
