@@ -155,6 +155,8 @@ jobs:
         if: always()
         with:
           name: ttfs-${{ matrix.os }}
-          path: ttfs.json
+          path: |
+            ttfs.json
+            setup_time.json
           retention-days: 90
           if-no-files-found: ignore

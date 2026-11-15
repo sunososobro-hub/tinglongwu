@@ -85,3 +85,30 @@ def test_windows_needs_setup_exe_and_writes_download_mb(tmp_path, monkeypatch):
     out = tmp_path / "ttfs.json"
     assert m.main(["--os", "windows", "--dir", "C:\d", "--setup-exe", "x.exe", "--out", str(out)]) == 0
     assert json.loads(out.read_text(encoding="utf-8"))["download_mb"] == 1250.0
+
+
+def test_setup_time_report_773(tmp_path):
+    """#773: the wizard run is judged from install.log; setup_time.json has the #752 fields."""
+    m = _load()
+    (tmp_path / "install.log").write_text("READY default-listen seconds=30.5 download_mb=1200\n", encoding="utf-8")
+    out = tmp_path / "setup_time.json"
+    text = m.setup_time_report(str(tmp_path), 70.0, str(out))
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert doc == {"setup_seconds": 70.0, "ready": True, "download_seconds": 30.5, "download_mb": 1200, "pip_lines": 0}
+    assert "OK: setup minus download 39.5s" in text
+
+
+def test_windows_main_writes_setup_time_773(tmp_path, monkeypatch):
+    m = _load()
+    (tmp_path / "install.log").write_text("pip install foo", encoding="utf-8")
+
+    def fake_main(argv):
+        with open(argv[argv.index("--out") + 1], "w", encoding="utf-8") as f:
+            json.dump({"install_seconds": 50.0, "download_seconds": 10.0}, f)
+        return 0
+
+    monkeypatch.setattr(m.ttfs, "main", fake_main)
+    assert m.main(["--os", "windows", "--dir", str(tmp_path), "--setup-exe", "x.exe",
+                   "--out", str(tmp_path / "ttfs.json")]) == 0
+    doc = json.loads((tmp_path / "setup_time.json").read_text(encoding="utf-8"))
+    assert doc["setup_seconds"] == 50.0 and doc["pip_lines"] == 1 and doc["ready"] is False
