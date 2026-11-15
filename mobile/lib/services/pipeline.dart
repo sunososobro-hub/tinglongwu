@@ -10,12 +10,14 @@ import '../logic/phone_audio.dart';
 import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
+import 'bundled_models.dart';
+import 'model_importer.dart';
 import 'model_paths.dart';
 import 'playback_capture.dart';
 import '../logic/target_language.dart';
 import 'translator.dart';
 
-enum Stage { starting, loadingModels, listening, missingModels, error }
+enum Stage { starting, copyingModels, loadingModels, listening, missingModels, error }
 
 /// Where the audio comes from: the microphone, or other apps' playback (#998, Android 10+).
 enum AudioSourceKind { mic, phone }
@@ -46,6 +48,8 @@ class Pipeline extends ChangeNotifier {
   Stage stage = Stage.starting;
   String? errorText;
   List<String> missingFiles = const [];
+  /// 0..1 while bundled models are copied on first launch (Stage.copyingModels).
+  double copyFraction = 0;
   ModelPaths? paths;
 
   String draftRu = '';
@@ -102,6 +106,21 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// First launch of a Play install with install-time packs: copy the models out of the packs.
+  Future<void> _copyBundled(String modelsDir) async {
+    try {
+      final imp = ModelImporter(await ModelImporter.loadManifest(), modelsDir);
+      final r = await BundledModels.copyMissing(imp, onProgress: (done, total, _) {
+        if (stage != Stage.copyingModels) stage = Stage.copyingModels;
+        copyFraction = total > 0 ? done / total : 0;
+        notifyListeners();
+      });
+      if (r != null) _log.i('bundled models copied ${r.imported} problems ${r.problems}');
+    } catch (e) {
+      _log.e('bundled models copy failed: $e');
+    }
+  }
+
   Future<void> start() async {
     try {
       paths = await ModelPaths.resolve();
@@ -113,7 +132,11 @@ class Pipeline extends ChangeNotifier {
       _styleStore = OverlayStyleStore('${paths!.filesDir}/overlay_style.txt');
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
-      final missing = paths!.missing();
+      var missing = paths!.missing();
+      if (missing.isNotEmpty) {
+        await _copyBundled(paths!.modelsDir);
+        missing = paths!.missing();
+      }
       if (missing.isNotEmpty) {
         missingFiles = missing;
         _log.e('models missing: $missing');

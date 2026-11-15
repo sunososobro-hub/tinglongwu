@@ -74,8 +74,9 @@ class _RootState extends State<Root> {
           case Stage.error:
             return ErrorScreen(pipeline: pipeline, onImport: _openImport);
           case Stage.starting:
+          case Stage.copyingModels:
           case Stage.loadingModels:
-            return LoadingScreen(stage: pipeline.stage);
+            return LoadingScreen(stage: pipeline.stage, fraction: pipeline.copyFraction);
           case Stage.listening:
             return SubtitleScreen(pipeline: pipeline);
         }

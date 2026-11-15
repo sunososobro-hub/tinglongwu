@@ -2,6 +2,7 @@ package com.tinglongwu.mobile
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.AssetManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -73,6 +74,14 @@ class ModelImporter(private val activity: Activity) {
         return mapOf("uri" to uri.toString(), "name" to (name ?: uri.lastPathSegment ?: "?"), "size" to size)
     }
 
+    /**
+     * Which of [paths] are app assets, i.e. shipped in an install-time Play asset pack. A side-loaded
+     * APK and the current on-demand packs have none, so this is an empty list there.
+     */
+    fun bundled(paths: List<String>): List<String> = paths.filter { p ->
+        try { activity.assets.open(p, AssetManager.ACCESS_STREAMING).close(); true } catch (_: Exception) { false }
+    }
+
     fun cancel() { cancelled = true }
 
     fun freeBytes(dir: String): Long = try {
@@ -93,7 +102,10 @@ class ModelImporter(private val activity: Activity) {
         Thread {
             try {
                 val out = mutableListOf<Map<String, Any>>()
-                val raw = activity.contentResolver.openInputStream(uri) ?: throw IllegalStateException("cannot open $uri")
+                // asset:///<path> = a model file inside an install-time Play asset pack (read only
+                // through AssetManager; the pack itself is never changed or removed).
+                val raw = if (uri.scheme == "asset") activity.assets.open(uri.path!!.removePrefix("/"), AssetManager.ACCESS_STREAMING)
+                    else activity.contentResolver.openInputStream(uri) ?: throw IllegalStateException("cannot open $uri")
                 var lastSent = 0L
                 val counting = Counting(BufferedInputStream(raw, BUF)) { n ->
                     if (n - lastSent >= PROGRESS_STEP) { lastSent = n; main.post { progress(n, total) } }

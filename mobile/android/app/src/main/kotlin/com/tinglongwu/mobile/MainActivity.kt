@@ -114,6 +114,8 @@ class MainActivity : FlutterFragmentActivity() {
                         ch.invokeMethod("importProgress", mapOf("done" to done, "total" to total))
                     }
                     "cancelImport" -> { importer.cancel(); result.success(null) }
+                    // Model files inside install-time asset packs (copied into the models dir on first launch).
+                    "bundledModels" -> result.success(importer.bundled(call.argument<List<String>>("paths")!!))
                     // Models from Google Play asset packs (only when installed from Play).
                     "playStatus" -> play.status(result)
                     "playFetch" -> play.fetch(result) { done, total, status ->
