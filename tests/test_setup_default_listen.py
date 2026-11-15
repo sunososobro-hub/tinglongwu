@@ -98,3 +98,20 @@ def test_progress_lines_are_flushed_for_the_wizard_that_polls_install_log(tmp_pa
 def test_download_size_constant_matches_the_progress_bar_sizes():
     want = sum(tiers.SIZES[k] for k in defaults.DEFAULT_LISTEN_KEYS) // defaults.MB
     assert abs(defaults.DEFAULT_LISTEN_DOWNLOAD_MB - want) <= want * 0.05
+
+
+def test_summary_says_voice_not_installed_before_ready(tmp_path):
+    lines = []
+    defaults.run(tmp_path, _fake([]), out=lines.append)
+    assert lines[-2] == defaults.VOICE_NOTE and lines[-1].startswith("READY default-listen")
+    assert not defaults.voice_installed(tmp_path)
+
+
+def test_no_voice_note_when_kokoro_files_present(tmp_path):
+    k = tmp_path / "kokoro"
+    k.mkdir()
+    for n in ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin"):
+        (k / n).write_bytes(b"x")
+    lines = []
+    defaults.run(tmp_path, _fake([]), out=lines.append)
+    assert defaults.VOICE_NOTE not in lines and defaults.voice_installed(tmp_path)

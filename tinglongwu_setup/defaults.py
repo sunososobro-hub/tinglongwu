@@ -19,6 +19,16 @@ MB = 1024 * 1024
 DEFAULT_LISTEN_DOWNLOAD_MB = 1600
 
 
+VOICE_NOTE = ("NOTE voice not installed: this setup installs listening only. Speaking (我來說) needs the Kokoro voice: "
+              "press 我來說 in the app for a one-click install, or run `tlwu-setup --talk`.")
+
+
+def voice_installed(mdir: Path) -> bool:
+    """True when the pinned Kokoro model files are in mdir (the Kokoro venv is checked by the app, not here)."""
+    d = mdir / "kokoro"
+    return all((d / n).is_file() for n in ("kokoro-v1.0.int8.onnx", "voices-v1.0.bin"))
+
+
 def _say(line: str) -> None:
     """Flush every line: the wizard polls install.log while this runs, and a redirected stdout is block-buffered."""
     print(line, flush=True)
@@ -46,5 +56,7 @@ def run(mdir: Path, getters: dict | None = None, out=_say) -> int:
         getters[key](man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     after = sum(_dir_bytes(mdir / k) for k in DEFAULT_LISTEN_KEYS)
+    if not voice_installed(mdir):  # #967: say it, so a user who later presses 我來說 is not surprised
+        out(VOICE_NOTE)
     out(f"READY default-listen seconds={time.monotonic() - t0:.1f} download_mb={max(0, after - before) // MB}")
     return 0
