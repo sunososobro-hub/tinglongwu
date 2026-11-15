@@ -73,3 +73,10 @@ def test_i18n_has_line_label_in_all_languages():
     from tinglongwu import i18n
     vals = {lang: d["gui_menu_wrong_line"] for lang, d in i18n.MESSAGES.items()}
     assert len(vals) >= 3 and len(set(vals.values())) == len(vals)
+
+
+def test_log_line_mapping_counts_embedded_newlines():
+    rows = [("", "first\nsecond", False), ("", "third", False)]
+    assert [row_for_log_line(rows, True, n) for n in (1, 2, 3)] == [rows[0], rows[0], rows[1]]
+    both = [("s1\ns2", "o", False), ("x", "y", False)]
+    assert [row_for_log_line(both, True, n) for n in (1, 2, 3, 4, 5)] == [both[0]] * 3 + [both[1]] * 2

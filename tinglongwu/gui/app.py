@@ -1079,6 +1079,8 @@ class App:
         top, follow = tx.index("@0,0"), self._log_at_end()
         rows = self.state.history() or [("", text, d) for text, d in self.placeholder()]
         show_src = self.settings["show_src"]
+        if self.quick_mode:
+            self._last_mode = self.quick_mode  # kept after Stop: the finished rows still belong to that mode
         self._log_shown = (list(rows) if self.state.history() else [], show_src)  # what the clicks map onto
         tx.configure(state="normal")
         tx.delete("1.0", "end")
@@ -1509,7 +1511,7 @@ class App:
             row = finals[-1]
         src, out, _ = row
         s = self.settings
-        report_line(src, out, version=__version__, mode=self.quick_mode or "listen",
+        report_line(src, out, version=__version__, mode=self.quick_mode or getattr(self, "_last_mode", None) or "listen",
                     langpair=f"{s.get('lang', 'auto')} -> {s.get('target', '')}",
                     confirm=lambda text: messagebox.askokcancel(t("gui_wrong_title"), t("gui_wrong_ask", text=text), parent=self.root),
                     open_url=webbrowser.open)
