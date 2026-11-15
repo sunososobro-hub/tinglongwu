@@ -2,6 +2,7 @@
 runtime DLLs that llama.cpp needs and a CPU llama build; the app falls back to it when CUDA cannot load."""
 import importlib.util
 import io
+import json
 import struct
 import sys
 import zipfile
@@ -388,7 +389,8 @@ def test_allow_cpu_only_relaxes_the_smoke_only_without_an_nvidia_driver(tmp_path
     (runtime / "numpy").mkdir(parents=True)
     (runtime / "tlwu.exe").write_bytes(b"MZ")
     (runtime / "numpy" / "__init__.pyc").write_bytes(b"pyc")
-    manifest = {"lite": False}
+    (runtime / "runtime-layer.json").write_text('{"key": "rt-key", "lite": false}', "utf-8")  # a real layer has one (#945)
+    manifest = {"lite": False, "key": "rt-key"}
     for name, val in (("DIST", tmp_path / "dist"), ("APP", app), ("RUNTIME", runtime),
                       ("ensure_runtime", lambda *a, **k: dict(manifest)),
                       ("build_runtime", lambda *a, **k: pytest.fail("the runtime layer must be reused")),
@@ -411,6 +413,8 @@ def test_allow_cpu_only_relaxes_the_smoke_only_without_an_nvidia_driver(tmp_path
     assert (app / "tinglongwu" / "__init__.py").is_file() and (app / "tlwu_app" / "main.py").is_file()
     assert (app / bw.USAGE_TEXT).is_file() and bw.read_version() in (app / bw.APP_MANIFEST).read_text("utf-8")
     assert not (runtime / "tinglongwu").exists()  # the cached runtime layer stays free of app files
+    man = json.loads((tmp_path / "dist" / "tinglongwu-app-layer.zip.manifest.json").read_text("utf-8"))
+    assert man["runtime_key"] == "rt-key" and man["version"] == bw.read_version()  # #945: main() ships the app layer
 
 
 def test_build_stops_without_cuda_wheels(tmp_path, monkeypatch):

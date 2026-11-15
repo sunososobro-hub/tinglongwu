@@ -153,6 +153,8 @@ def _release_dir(tmp_path, with_pack):
     (dist / "tinglongwu-win64.zip.sha256").write_text(f"{hashlib.sha256(b'core').hexdigest()}  tinglongwu-win64.zip\n")
     for n in ("tinglongwu-gpu-pack.zip", "tinglongwu-gpu-pack.zip.manifest.json"):  # #764 GPU pack, always built
         (dist / n).write_bytes(b"gpu")
+    for n in ("tinglongwu-app-layer.zip", "tinglongwu-app-layer.zip.manifest.json"):  # #945 app layer, always built
+        (dist / n).write_bytes(b"app")
     if with_pack:
         (dist / "tlwu-vulkan-pack-0.3.5.zip").write_bytes(b"vk")
     (dist / "notes.md").write_text("notes")
