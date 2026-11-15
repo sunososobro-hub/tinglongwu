@@ -2,6 +2,7 @@
 """Fail if tlwu (or any child process) opens a non-loopback network connection.
 
   python scripts/verify_offline.py --file talk.wav [-- extra tlwu args]
+  python scripts/verify_offline.py --mic --seconds 60            # live microphone (room sound), stop after 60 s
   python scripts/verify_offline.py --pid 1234 --seconds 60     # attach to a running tlwu
 Polls the whole process tree with psutil every 50 ms. Exit 0 = clean, 1 = violation.
 Polling can miss a very short-lived connection; combine with the firewall test in the README.
@@ -33,9 +34,15 @@ def offending(proc: psutil.Process) -> list[str]:
     return bad
 
 
+def build_cmd(file: str | None, mic: bool, extra: list[str]) -> list[str]:
+    """Command line for the tlwu child: --file <wav> or --mic (live microphone)."""
+    return [sys.executable, "-m", "tinglongwu", *(["--mic"] if mic else ["--file", file]), *extra]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--file")
+    ap.add_argument("--mic", action="store_true", help="run tlwu --mic and watch it for --seconds")
     ap.add_argument("--pid", type=int)
     ap.add_argument("--seconds", type=float, default=60)
     a, extra = ap.parse_known_args()
@@ -43,17 +50,19 @@ def main() -> int:
     child = None
     if a.pid:
         proc, deadline = psutil.Process(a.pid), time.time() + a.seconds
-    elif a.file:
-        child = subprocess.Popen([sys.executable, "-m", "tinglongwu", "--file", a.file, *extra],
-                                 stdout=subprocess.DEVNULL)
-        proc, deadline = psutil.Process(child.pid), float("inf")
+    elif a.file or a.mic:
+        child = subprocess.Popen(build_cmd(a.file, a.mic, extra), stdout=subprocess.DEVNULL)
+        proc = psutil.Process(child.pid)
+        deadline = time.time() + a.seconds if a.mic else float("inf")
     else:
-        ap.error("need --file or --pid")
+        ap.error("need --file, --mic or --pid")
     seen: set[str] = set()
     while time.time() < deadline and proc.is_running() and (child is None or child.poll() is None):
         seen.update(offending(proc))
         time.sleep(0.05)
-    if child is not None and child.wait() != 0:
+    if child is not None and a.mic and child.poll() is None:
+        child.terminate()
+    if child is not None and not a.mic and child.wait() != 0:
         print(f"WARNING: tlwu exited with code {child.returncode}")
     if seen:
         print("FAIL: non-loopback connections observed:\n  " + "\n  ".join(sorted(seen)))
