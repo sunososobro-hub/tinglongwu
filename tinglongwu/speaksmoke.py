@@ -107,6 +107,33 @@ def make_clip(py: str, model: str) -> tuple[np.ndarray, int]:
     return np.concatenate(parts).reshape(-1, 1), sr
 
 
+def window_open(now: float, start_deadline: float, t_clip: list[float]) -> bool:
+    """Keep the session going: before the mic opens until `start_deadline`; after it, WINDOW_S from the clip start."""
+    return now < (t_clip[0] + WINDOW_S if t_clip else start_deadline)
+
+
+class ClipMic:
+    """The microphone for the smoke: the clip paced in real time, then silence until the window ends. `on_open` runs
+    when the session starts reading (the recorder starts then); `t_clip` gets the start time."""
+
+    def __init__(self, clip: np.ndarray, on_open, stop: threading.Event, t_clip: list, rate: int = 16000):
+        self.clip, self.on_open, self.stop, self.t_clip, self.rate = clip, on_open, stop, t_clip, rate
+
+    def frames(self):
+        blk = self.rate // 2
+        self.t_clip.append(time.monotonic())
+        self.on_open()
+        pad = np.concatenate([self.clip, np.zeros(int(WINDOW_S * self.rate), np.float32)])
+        for i in range(0, len(pad), blk):
+            if self.stop.is_set():
+                return
+            yield pad[i:i + blk]
+            time.sleep(max(0.0, self.t_clip[0] + (i + blk) / self.rate - time.monotonic()))
+
+    def close(self) -> None:  # pipeline.run() closes its source at the end (capture.base.AudioSource contract)
+        self.stop.set()
+
+
 class Recorder(threading.Thread):
     def __init__(self, name: str, sr: int = 48000):
         super().__init__(daemon=True)
@@ -121,9 +148,10 @@ class Recorder(threading.Thread):
             patch_mixformat()
             with com_initialized():
                 mic = next(m for m in sc.all_microphones() if self.dev.casefold() in m.name.casefold())
-                with mic.recorder(samplerate=self.sr, channels=1, blocksize=self.sr // 10) as rec:
+                # 2 channels, downmixed: soundcard documents corrupted single-channel WASAPI recordings
+                with mic.recorder(samplerate=self.sr, channels=2, blocksize=self.sr // 10) as rec:
                     while not self.stop_ev.is_set():
-                        self.chunks.append(rec.record(numframes=self.sr // 10).reshape(-1))
+                        self.chunks.append(rec.record(numframes=self.sr // 10).reshape(self.sr // 10, -1).mean(axis=1))
         except BaseException as e:  # noqa: BLE001
             self.err = f"{type(e).__name__}: {e}"
 
@@ -167,22 +195,7 @@ def run(a) -> dict:
     args.voice_gate = gate
     rec, stop, t_clip = Recorder(RECORD), threading.Event(), []
 
-    class ClipMic:  # the microphone: the clip, paced in real time, then silence until the window ends
-        def __init__(self, *_a, **_k):
-            pass
-
-        def frames(self):
-            blk = SAMPLE_RATE // 2
-            t_clip.append(time.monotonic())
-            rec.start()
-            pad = np.concatenate([clip, np.zeros(int(WINDOW_S * SAMPLE_RATE), np.float32)])
-            for i in range(0, len(pad), blk):
-                if stop.is_set():
-                    return
-                yield pad[i:i + blk]
-                time.sleep(max(0.0, t_clip[0] + (i + blk) / SAMPLE_RATE - time.monotonic()))
-
-    capture.MicSource = ClipMic
+    capture.MicSource = lambda *_a, **_k: ClipMic(clip, rec.start, stop, t_clip, SAMPLE_RATE)
     voice.resolve_capture = lambda file, mic, device: (CLIP_MIC, True)
 
     def worker():
@@ -194,7 +207,7 @@ def run(a) -> dict:
     th = threading.Thread(target=worker, daemon=True)
     th.start()
     end = time.monotonic() + a.timeout
-    while th.is_alive() and time.monotonic() < end and not (t_clip and time.monotonic() > t_clip[0] + WINDOW_S):
+    while th.is_alive() and window_open(time.monotonic(), end, t_clip):
         gate.tick()
         if gate.view().state == "asking":  # the user presses Send
             gate.confirm()

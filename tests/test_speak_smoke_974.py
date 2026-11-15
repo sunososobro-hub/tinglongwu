@@ -75,3 +75,22 @@ def test_tlwu_exe_dispatches_speak_smoke(monkeypatch):
     monkeypatch.setattr(m, "prepare_env", lambda bundled, cpu: None)
     assert m.main(["speak-smoke", "--mine", "zh", "--other", "en"]) == 0
     assert seen == [["--mine", "zh", "--other", "en"]]
+
+
+def test_window_open_start_deadline_only_until_the_mic_opens():
+    assert s.window_open(5.0, 10.0, []) and not s.window_open(11.0, 10.0, [])
+    assert s.window_open(20.0, 10.0, [9.0])  # mic opened at 9 s: the full 30 s window, not the 10 s start limit
+    assert not s.window_open(9.0 + s.WINDOW_S + 0.1, 10.0, [9.0])
+
+
+def test_clip_mic_frames_then_close_like_pipeline_run(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(s.time, "sleep", lambda _x: None)
+    opened, t_clip, stop = [], [], threading.Event()
+    mic = s.ClipMic(np.ones(16000, np.float32), lambda: opened.append(1), stop, t_clip)
+    it = mic.frames()
+    first = next(it)
+    assert opened == [1] and len(t_clip) == 1 and len(first) == 8000 and first[0] == 1.0
+    mic.close()  # pipeline.run() calls source.close() at the end (#974 review: AttributeError before)
+    assert stop.is_set() and list(it) == []
