@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.3.7
+- New chat-style main window: the other side on the left, you on the right, with the original words in small text under each line; one big Start button.
+- A mic on/off button (like mute in Meet), and one click shows the subtitles floating over a video.
+- Settings now use plain words, with the technical options folded away under Advanced. Speak on Windows is still experimental.
+
 ## v0.3.6
 - Speak mode no longer sends keyboard or background noise as made-up sentences: unclear lines are held back and shown greyed.
 - A "Wrong translation" button on each subtitle line and a "Copy AI prompt" entry in the Help menu make reporting a problem one click.
