@@ -5,6 +5,18 @@ import 'dart:typed_data';
 /// Pure helpers for phone-audio subtitles (#998): silence detection, overlay text and the
 /// overlay style file. No Flutter imports, so they are unit-testable.
 
+/// Plain-word names of the two capture modes (owner: no "mic" / "phone audio" jargon).
+/// Code keeps AudioSourceKind.mic / .phone; only these user-visible strings change.
+class CaptureModeText {
+  static const micLabel = '說話翻譯';
+  static const micHint = '翻譯身邊的人說的話';
+  static const phoneLabel = '看影片翻譯';
+  static const phoneHint = '翻譯手機正在播的影片，字幕浮在畫面上';
+
+  static String label({required bool phone}) => phone ? phoneLabel : micLabel;
+  static String hint({required bool phone}) => phone ? phoneHint : micHint;
+}
+
 /// Detects "capture yields only silence" (an app that opts out of playback capture, e.g. DRM
 /// video, or nothing playing) on a 16 kHz mono PCM16 stream.
 class SilenceWatch {

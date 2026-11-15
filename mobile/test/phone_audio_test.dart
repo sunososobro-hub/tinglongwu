@@ -108,6 +108,23 @@ void main() {
     });
   });
 
+  group('CaptureModeText (#998)', () {
+    test('plain-word labels and hints, no mic / phone-audio jargon', () {
+      expect(CaptureModeText.label(phone: false), '說話翻譯');
+      expect(CaptureModeText.hint(phone: false), '翻譯身邊的人說的話');
+      expect(CaptureModeText.label(phone: true), '看影片翻譯');
+      expect(CaptureModeText.hint(phone: true), '翻譯手機正在播的影片，字幕浮在畫面上');
+      for (final s in [
+        CaptureModeText.micLabel,
+        CaptureModeText.micHint,
+        CaptureModeText.phoneLabel,
+        CaptureModeText.phoneHint
+      ]) {
+        expect(s.contains('麥克風') || s.contains('音訊'), isFalse);
+      }
+    });
+  });
+
   group('OverlayStyle (#998)', () {
     test('parse/format round trip and fallbacks', () {
       const s = OverlayStyle(fontSize: 24, opacity: 0.35);

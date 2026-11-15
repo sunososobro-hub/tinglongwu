@@ -21,7 +21,7 @@ enum Stage { starting, loadingModels, listening, missingModels, error }
 enum AudioSourceKind { mic, phone }
 
 /// Shown instead of an empty overlay when phone audio stays silent (app blocks capture).
-const silenceHintText = '沒有收到聲音：此 App 可能禁止錄製音訊（例如受版權保護的影片），或尚未開始播放';
+const silenceHintText = '沒有聽到影片的聲音：這個 App 可能不允許翻譯（例如有版權保護的影片），或影片還沒開始播放';
 
 class Subtitle {
   Subtitle(this.ru, {this.zh, this.traditionalOk = true});
@@ -210,7 +210,7 @@ class Pipeline extends ChangeNotifier {
     notifyListeners();
     try {
       if (k == AudioSourceKind.phone) {
-        if (!phoneSupported) return '此裝置不支援擷取手機音訊（需要 Android 10 以上）';
+        if (!phoneSupported) return '這支手機不支援看影片翻譯（需要 Android 10 以上）';
         final pcm = PlaybackCapture.pcm();
         _silence.reset();
         _phoneSub = pcm.listen(_onPhonePcm, onDone: _onPhoneStopped,
@@ -223,7 +223,7 @@ class Pipeline extends ChangeNotifier {
           await _phoneSub?.cancel();
           _phoneSub = null;
           _log.i('phone audio: consent declined');
-          return ok ? null : '已取消擷取手機音訊';
+          return ok ? null : '已取消看影片翻譯';
         }
         await _stopMic();
         source = AudioSourceKind.phone;

@@ -150,22 +150,22 @@ class SubtitleScreen extends StatelessWidget {
   }
 }
 
-/// Mic / Phone audio switch (#998). Phone audio first explains and asks for the overlay
-/// permission, then the system capture consent.
+/// 說話翻譯 (mic) / 看影片翻譯 (phone playback) menu (#998); each option has a one-line hint.
+/// 看影片翻譯 first explains and asks for the overlay permission, then the system consent.
 class _SourceToggle extends StatelessWidget {
   const _SourceToggle({required this.pipeline});
   final Pipeline pipeline;
 
-  Future<void> _toggle(BuildContext context) async {
+  Future<void> _select(BuildContext context, bool toPhone) async {
+    if (toPhone == (pipeline.source == AudioSourceKind.phone)) return;
     final messenger = ScaffoldMessenger.of(context);
-    final toPhone = pipeline.source == AudioSourceKind.mic;
     if (toPhone && !await PlaybackCapture.overlayAllowed()) {
       if (!context.mounted) return;
       final go = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
-          title: const Text('浮動字幕視窗'),
-          content: const Text('要在其他 App（例如 YouTube）上方顯示翻譯字幕，'
+          title: const Text(CaptureModeText.phoneLabel),
+          content: const Text('看影片翻譯會把字幕浮在影片上（例如 YouTube）。'
               '請在下一頁允許「顯示在其他應用程式上層」。\n\n'
               '不允許也可以：字幕只會顯示在聽龍裡面。'),
           actions: [
@@ -184,14 +184,44 @@ class _SourceToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final phone = pipeline.source == AudioSourceKind.phone;
-    return TextButton.icon(
-      onPressed: pipeline.switchingSource ? null : () => _toggle(context),
-      style: TextButton.styleFrom(
-        foregroundColor: phone ? Colors.lightBlueAccent : Colors.white70,
-        visualDensity: VisualDensity.compact,
+    final color = phone ? Colors.lightBlueAccent : Colors.white70;
+    Widget option(bool p) => ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(p ? Icons.ondemand_video : Icons.record_voice_over),
+          title: Text(CaptureModeText.label(phone: p)),
+          subtitle: Text(CaptureModeText.hint(phone: p)),
+          trailing: p == phone ? const Icon(Icons.check, size: 18) : null,
+        );
+    return PopupMenuButton<bool>(
+      tooltip: '切換翻譯方式',
+      enabled: !pipeline.switchingSource,
+      onSelected: (p) => _select(context, p),
+      itemBuilder: (_) => [
+        PopupMenuItem(value: false, child: option(false)),
+        PopupMenuItem(value: true, child: option(true)),
+      ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 170),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(phone ? Icons.ondemand_video : Icons.record_voice_over, size: 18, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(CaptureModeText.label(phone: phone),
+                    style: TextStyle(fontSize: 14, color: color)),
+                Text(CaptureModeText.hint(phone: phone),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: Colors.white54)),
+              ],
+            ),
+          ),
+          Icon(Icons.arrow_drop_down, size: 18, color: color),
+        ]),
       ),
-      icon: Icon(phone ? Icons.phone_android : Icons.mic, size: 18),
-      label: Text(phone ? '手機音訊' : '麥克風', style: const TextStyle(fontSize: 14)),
     );
   }
 }

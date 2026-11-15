@@ -79,7 +79,7 @@ class PlaybackCaptureService : Service() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL_ID) == null) {
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Phone audio subtitles", NotificationManager.IMPORTANCE_LOW))
+                NotificationChannel(CHANNEL_ID, "看影片翻譯", NotificationManager.IMPORTANCE_LOW))
         }
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -90,8 +90,8 @@ class PlaybackCaptureService : Service() {
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_ID)
         else @Suppress("DEPRECATION") Notification.Builder(this)
         val n = b.setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("聽龍：翻譯手機音訊中")
-            .setContentText("點此回到 App")
+            .setContentTitle("聽龍：看影片翻譯中")
+            .setContentText("翻譯手機正在播的影片，點此回到聽龍")
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "停止", stop).build())
