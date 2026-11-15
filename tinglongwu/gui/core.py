@@ -618,7 +618,9 @@ def download_cmd(model: str, mdir=None, bundled: bool | None = None) -> list[str
     from ..models import models_dir
 
     if bundled is None:
-        bundled = bool(getattr(sys, "frozen", False)) or os.environ.get("TLWU_BUNDLED") == "1"
+        from .autoupdate import is_bundled  # #1007: also tlwu.exe as sys.executable (launcher env not in os.environ)
+
+        bundled = is_bundled()
     base = [os.path.abspath(sys.argv[0]), "--run-setup"] if bundled else [sys.executable, "-m", "tinglongwu_setup"]
     return [*base, "--whisper", model, "--models-dir", str(models_dir(str(mdir) if mdir else None))]
 

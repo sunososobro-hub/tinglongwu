@@ -21,8 +21,14 @@ from pathlib import Path
 from . import tiers
 
 
+LAUNCHER_EXE = "tlwu.exe"  # packaging/launcher/tlwu_launcher.c: sys.executable is this exe in the core layout (#923)
+
+
 def is_bundled() -> bool:
-    return bool(getattr(sys, "frozen", False)) or "__compiled__" in globals() or os.environ.get("TLWU_BUNDLED") == "1"
+    """#1007: the launcher's SetEnvironmentVariableW(TLWU_BUNDLED) does not reach os.environ (the C runtime copied the
+    environment before it), so the core layout is also recognised by sys.executable being tlwu.exe."""
+    return (bool(getattr(sys, "frozen", False)) or "__compiled__" in globals() or os.environ.get("TLWU_BUNDLED") == "1"
+            or Path(sys.executable).name.lower() == LAUNCHER_EXE)
 
 
 def hide_own_console() -> None:
