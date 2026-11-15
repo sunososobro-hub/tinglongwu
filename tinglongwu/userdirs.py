@@ -5,7 +5,7 @@ config : Linux ${XDG_CONFIG_HOME:-~/.config}/tinglongwu/config
          Windows %APPDATA%\tinglongwu\config
 log    : Linux ${XDG_STATE_HOME:-~/.local/state}/tinglongwu/ ; macOS ~/Library/Logs/tinglongwu/ ;
          Windows %LOCALAPPDATA%\tinglongwu\
-Env TLWU_CONFIG_DIR / TLWU_LOG_DIR override (tests). Config keys: auto_update=0|1, ui_lang=en|ru|zh-TW.
+Env TLWU_CONFIG_DIR / TLWU_LOG_DIR override (tests). Config keys: auto_update=0|1, ui_lang=en|ru|zh-TW|ja.
 """
 from __future__ import annotations
 

@@ -44,7 +44,7 @@ HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 no
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
 FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
-UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru"}
+UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru", "日本語": "ja"}
 MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-style main window
 # chat bubbles (#1028): other side on the left, me on the right; (bubble background, text) per theme
 BUBBLE = {"dark": {"bg": "#14182e", "other": ("#2b3250", "#f2f4ff"), "me": ("#3f5fe0", "#ffffff"), "sub": "#9aa3c7", "head": "#9aa3c7"},

@@ -227,9 +227,9 @@ def test_gui_strings_exist_in_all_three_languages():
 
     gui_keys = {k for k in i18n.MESSAGES["en"] if k.startswith("gui_")}
     assert gui_keys
-    for lang in ("en", "ru", "zh-TW"):
+    for lang in ("en", "ru", "zh-TW", "ja"):
         assert gui_keys <= set(i18n.MESSAGES[lang]), lang
-    assert len({i18n.MESSAGES[lg]["gui_start"] for lg in ("en", "ru", "zh-TW")}) == 3
+    assert len({i18n.MESSAGES[lg]["gui_start"] for lg in ("en", "ru", "zh-TW", "ja")}) == 4
 
 
 def test_set_ui_lang_switches_t_and_persists(tmp_path, monkeypatch):
@@ -237,7 +237,7 @@ def test_set_ui_lang_switches_t_and_persists(tmp_path, monkeypatch):
 
     monkeypatch.setenv("TLWU_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(i18n, "_override", None)
-    for lang, start in (("zh-TW", "開始"), ("ru", "Старт"), ("en", "Start")):
+    for lang, start in (("zh-TW", "開始"), ("ru", "Старт"), ("ja", "スタート"), ("en", "Start")):
         assert i18n.set_ui_lang(lang) == lang
         assert i18n.t("gui_start") == start
         assert userdirs.read_config()["ui_lang"] == lang
@@ -247,7 +247,7 @@ def test_set_ui_lang_switches_t_and_persists(tmp_path, monkeypatch):
 def test_gui_module_imports_and_language_names():
     from tinglongwu.gui import app
 
-    assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru"}
+    assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru", "ja"}
     assert core.DEFAULTS["theme"] == "dark"
 
 
@@ -466,7 +466,7 @@ def test_control_bar_is_compact_in_every_ui_language(gui_app):
     from tinglongwu.i18n import t
 
     a = gui_app
-    for ui in ("English", "Русский", "繁體中文"):
+    for ui in ("English", "Русский", "繁體中文", "日本語"):
         a.v_ui_lang.set(ui)
         a.switch_lang()
         # #884: the pair shows names; measure the fixture's pair plus the real defaults (auto -> zh-tw, Speak en ->
@@ -487,7 +487,7 @@ def test_control_bar_is_compact_in_every_ui_language(gui_app):
 def test_update_line_keeps_main_window_within_420px(gui_app):
     """#698's update line sits in the main window: with its widest text and both buttons it stays narrow."""
     a = gui_app
-    for ui in ("English", "Русский", "繁體中文"):
+    for ui in ("English", "Русский", "繁體中文", "日本語"):
         a.v_ui_lang.set(ui)
         a.switch_lang()
         for key, buttons, kw in (("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), {"ver": "10.10.10"}),

@@ -221,6 +221,79 @@ def missing_defines(iss_text: str, cmd: list[str]) -> list[str]:
     return sorted(used - _given(cmd))
 
 
+def _section(iss_text: str, name: str) -> list[str]:
+    m = re.search(rf"^\[{name}\]\n(.*?)(?=^\[|\Z)", iss_text.replace("\r\n", "\n"), re.S | re.M)
+    return [ln for ln in (m.group(1).splitlines() if m else []) if ln.strip() and not ln.lstrip().startswith(";")]
+
+
+def wizard_languages(iss_text: str) -> dict[str, list[str]]:
+    """[Languages] of the .iss: name -> its MessagesFile entries (comma list, as written)."""
+    out = {}
+    for ln in _section(iss_text, "Languages"):
+        m = re.match(r'Name: "(\w+)"; MessagesFile: "([^"]+)"', ln)
+        if m:
+            out[m.group(1)] = m.group(2).split(",")
+    return out
+
+
+def custom_messages(iss_text: str, lang: str) -> dict[str, str]:
+    """#1002: [CustomMessages] of one wizard language: key -> text ({#Define} left as written)."""
+    out = {}
+    for ln in _section(iss_text, "CustomMessages"):
+        head, _, text = ln.partition("=")
+        name, _, key = head.partition(".")
+        if name == lang and key:
+            out[key] = text
+    return out
+
+
+def fmt_message(text: str, *args: str) -> str:
+    """Inno Setup FmtMessage: %1..%9 -> args, %% -> %."""
+    return re.sub(r"%(\d|%)", lambda m: "%" if m.group(1) == "%" else args[int(m.group(1)) - 1], text)
+
+
+def message_problems(iss_text: str, iss_dir: Path | None = None) -> list[str]:
+    """#1002: what would make a wizard page fall back to another language or fail to compile: a message the [Code]
+    (CustomMessage('X')) or a section ({cm:X}) uses that a language lacks, a different %N set between languages,
+    or a vendored MessagesFile that is missing or has no UTF-8 BOM (Inno Setup then reads it as ANSI)."""
+    iss_dir = ISS.parent if iss_dir is None else iss_dir
+    langs = wizard_languages(iss_text)
+    if not langs:
+        return ["no [Languages] entries"]
+    used = set(re.findall(r"\{cm:(\w+)", iss_text)) | set(re.findall(r"CustomMessage\('(\w+)'\)", iss_text))
+    problems = []
+    ref = custom_messages(iss_text, next(iter(langs)))
+    for lang, files in langs.items():
+        for f in files:
+            if f.startswith("compiler:"):
+                continue
+            path = iss_dir / f.replace("\\", "/")
+            if not path.is_file():
+                problems.append(f"{lang}: messages file {f} not found")
+            elif not path.read_bytes().startswith(b"\xef\xbb\xbf"):
+                problems.append(f"{lang}: messages file {f} has no UTF-8 BOM")
+        msgs = custom_messages(iss_text, lang)
+        for key in sorted(used):
+            if key not in msgs:
+                problems.append(f"{lang}.{key} missing")
+            elif key in ref and set(re.findall(r"%\d", msgs[key])) != set(re.findall(r"%\d", ref[key])):
+                problems.append(f"{lang}.{key} uses other %N arguments than the first language")
+    return problems
+
+
+def section_tag_lines(iss_text: str) -> list[int]:
+    """Line numbers inside [Code] whose first non-blank character is '[' (e.g. a wrapped FmtMessage argument
+    array): ISCC reads such a line as a section tag and aborts with "Invalid section tag" (#1002)."""
+    bad, in_code = [], False
+    for n, line in enumerate(iss_text.splitlines(), 1):
+        s = line.strip()
+        if in_code and s.startswith("["):
+            bad.append(n)
+        if s == "[Code]":
+            in_code = True
+    return bad
+
+
 # #772: the release job reports the core wizard's size; over this it warns (never fails: a release is not blocked
 # by size alone). Same 300 MB budget as the core zip (scripts/release_check.py MAX_CORE_MB) since it wraps that core.
 WIZARD_MAX_MB = 300
@@ -269,6 +342,14 @@ def main(argv: list[str] | None = None) -> int:
     miss = missing_defines(ISS.read_text("utf-8-sig"), cmd)
     if miss:
         print(f"tinglongwu.iss uses undefined {miss}", file=sys.stderr)
+        return 1
+    tags = section_tag_lines(ISS.read_text("utf-8-sig"))
+    if tags:
+        print(f"tinglongwu.iss [Code] lines start with '[' (ISCC: Invalid section tag): {tags}", file=sys.stderr)
+        return 1
+    bad = message_problems(effective_iss(cmd))
+    if bad:
+        print("tinglongwu.iss wizard languages: " + "; ".join(bad), file=sys.stderr)
         return 1
     print(" ".join(f'"{c}"' if " " in c else c for c in cmd))
     if a.dry_run:

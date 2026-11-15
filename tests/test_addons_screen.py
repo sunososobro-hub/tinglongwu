@@ -136,7 +136,7 @@ def test_addons_strings_exist_in_en_ru_zh_tw_and_zh_differs(monkeypatch):
 
     keys = [k for k in i18n.MESSAGES["en"] if k.startswith("addons_")]
     assert keys
-    for lang in ("ru", "zh-TW"):
+    for lang in ("ru", "zh-TW", "ja"):
         for k in keys:
             assert k in i18n.MESSAGES[lang], (lang, k)
             assert i18n.MESSAGES[lang][k] != i18n.MESSAGES["en"][k], (lang, k)
