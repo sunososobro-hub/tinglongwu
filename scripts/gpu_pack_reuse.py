@@ -42,7 +42,9 @@ def try_reuse(repo: str, tag: str, key: str, out: Path, get=_http_get) -> tuple[
         return False, f"{prev} has no GPU pack manifest"
     try:
         man = json.loads(get(assets[MANIFEST_ASSET]))
-        size, sha = int(man["size"]), str(man["sha256"]).lower()
+        size, sha = man["size"], str(man["sha256"]).lower()
+        if type(size) is not int or size < 0:
+            raise ValueError("size is not a non-negative integer")
         prev_key = man.get("wheels_key")
     except Exception as e:  # noqa: BLE001
         return False, f"invalid manifest in {prev} ({type(e).__name__})"

@@ -13,8 +13,8 @@ REPO = "o/r"
 DATA = b"zipdata" * 10
 
 
-def _fake(key="K", data=DATA, sha=None, has_manifest=True, release=True, name=True):
-    man = {"size": len(data), "sha256": sha or hashlib.sha256(data).hexdigest(),
+def _fake(key="K", size=None, data=DATA, sha=None, has_manifest=True, release=True, name=True):
+    man = {"size": len(data) if size is None else size, "sha256": sha or hashlib.sha256(data).hexdigest(),
            "url": f"https://github.com/{REPO}/releases/download/v1.0.0/{m.GPU_PACK_ASSET}"}
     if name:
         man["name"] = "gpu-pack"
@@ -54,6 +54,7 @@ def test_no_release_missing_or_invalid_manifest_build(tmp_path):
     assert not m.try_reuse(REPO, "v2", "K", tmp_path, _fake(key=None))[0]
     assert not m.try_reuse(REPO, "v2", "K", tmp_path, _fake(sha="0" * 64))[0]
     assert not m.try_reuse(REPO, "v2", "K", tmp_path, _fake(name=False))[0]
+    assert not m.try_reuse(REPO, "v2", "K", tmp_path, _fake(size=str(len(DATA))))[0]
 
 
 def test_cli_prints_summary_lines(tmp_path, capsys):
