@@ -467,7 +467,8 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
     return st
 
 
-def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None) -> None:
+def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None,
+                labeler_factory=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
@@ -617,6 +618,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         prog.stage("speaker model")
         labeler = make_labeler(mdir)
+    elif labeler_factory is not None:  # 0.3.8 GUI: speaker ID off the subtitle path; None = unavailable, no labels
+        labeler = labeler_factory(mdir)
     lat =(lambda m: print(m, file=sys.stderr, flush=True)) if getattr(a, "debug_latency", False) else None
     on_record, rec_file = latency_recorder(getattr(a, "latency_jsonl", None), lat) if not audio_clock else (None, None)
     close_voice, interrupted = None, False

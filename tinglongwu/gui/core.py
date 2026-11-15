@@ -910,7 +910,8 @@ class QueueSink(Sink):
 
         if shared().check(r.original, r.target if r.src != r.tgt else ""):  # #1070: our own voice coming back
             return
-        self.q.put(("final", r.original, r.target if r.src != r.tgt and r.target else r.original))
+        ev = ("final", r.original, r.target if r.src != r.tgt and r.target else r.original)
+        self.q.put(ev + (r.speaker,) if r.speaker else ev)  # 0.3.8: the async speaker token rides along
 
 
 def wrap_bubble(text: str, measure, max_px: int) -> list[str]:
@@ -1000,6 +1001,19 @@ def strip_silent_hint(text: str) -> str:
     return chr(10).join(keep).strip()
 
 
+def speaker_text(book, label, fmt):
+    """0.3.8: what a 對方 bubble's label shows: the user's name for that speaker, else "Speaker N" (fmt(n) in the UI
+    language). None = no label. `book` is the session's speakers.SpeakerBook."""
+    from ..speakers import LABEL_PREFIX
+
+    shown = book.display(label) if label else None
+    if not shown:
+        return None
+    if shown.startswith(LABEL_PREFIX) and shown[len(LABEL_PREFIX):].isdigit():
+        return fmt(int(shown[len(LABEL_PREFIX):]))
+    return shown
+
+
 class SubtitleState:
     """What the overlay shows: last `max_lines` lines; a draft is replaced in place by the final."""
 
@@ -1007,6 +1021,7 @@ class SubtitleState:
         self.max_lines = max_lines
         self.finals: list[tuple[str, str]] = []  # (src, target), oldest first
         self.draft: tuple[str, str] | None = None
+        self.whos: list[str | None] = []  # 0.3.8: speaker token of each final (aligned with finals; None = none)
         self.pending: list[str] = []  # #53: sources heard, translation still running (newest one is the draft)
         self.paused = False  # frozen display: events still update the state (nothing is lost) but nothing is redrawn
 
@@ -1028,10 +1043,12 @@ class SubtitleState:
                 self.pending.pop(0)
             self.draft = ("", self.pending[-1]) if self.pending else None
             self.finals.append((ev[1], ev[2]))
-            del self.finals[:-self.max_lines]
+            self.whos.append(ev[3] if len(ev) > 3 else None)
+            del self.finals[:-self.max_lines], self.whos[:-self.max_lines]
         elif kind == "final_side":  # #1001: a speak-leg line next to a listen session: the draft row stays
             self.finals.append((ev[1], ev[2]))
-            del self.finals[:-self.max_lines]
+            self.whos.append(None)
+            del self.finals[:-self.max_lines], self.whos[:-self.max_lines]
         elif kind == "clear":
             if self.draft is None:
                 return False
@@ -1046,6 +1063,10 @@ class SubtitleState:
         if self.draft:
             rows.append((self.draft[1], True))
         return rows[-self.max_lines:]
+
+    def history_who(self) -> list[str | None]:
+        """0.3.8: speaker token per history() row (None for the draft and for lines without one)."""
+        return list(self.whos) + ([None] if self.draft else [])
 
     def source(self) -> str:
         """Source text of the newest shown line."""

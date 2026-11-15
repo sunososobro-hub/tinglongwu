@@ -57,3 +57,78 @@ class SpeakerLabeler:
 
 def make_labeler(mdir) -> SpeakerLabeler:
     return SpeakerLabeler(SherpaEmbedder(mdir))
+
+
+def available(mdir) -> bool:
+    """0.3.8 GUI: True when sherpa-onnx is importable and the speaker model file exists (checked without loading)."""
+    import importlib.util
+
+    try:
+        return (Path(mdir) / SPEAKER_DIR / MODEL_NAME).is_file() and importlib.util.find_spec("sherpa_onnx") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+class AsyncSpeakerLabeler:
+    """0.3.8 GUI listen side: speaker ID off the subtitle critical path.
+
+    label(seg) returns at once with a token ("spk#N", never UNKNOWN) and queues a copy of the audio; a worker
+    thread embeds + clusters in order and stores the real label under the token (result(token): the label,
+    None while pending / unknown). on_ready() is called after each result so the GUI can redraw. A full queue
+    drops the segment (its label stays unknown) rather than slowing anything down."""
+
+    def __init__(self, embed, clusterer: SpeakerClusterer | None = None, on_ready=None, maxsize: int = 8):
+        import queue
+        import threading
+
+        self._inner = SpeakerLabeler(embed, clusterer)
+        self._q: queue.Queue = queue.Queue(maxsize=maxsize)
+        self._res: dict[str, str | None] = {}
+        self._n = 0
+        self.on_ready = on_ready
+        self._queue_mod = queue
+        threading.Thread(target=self._work, daemon=True, name="tlwu-speaker-id").start()
+
+    def label(self, seg):
+        self._n += 1
+        token = f"spk#{self._n}"
+        try:
+            self._q.put_nowait((token, seg.copy() if hasattr(seg, "copy") else seg))
+        except self._queue_mod.Full:
+            pass  # too busy: this line just gets no label
+        return token, 0.0
+
+    def result(self, token):
+        return self._res.get(token)
+
+    def close(self):
+        self._q.put(None)
+
+    def _work(self):
+        from .speakers import UNKNOWN
+
+        while True:
+            item = self._q.get()
+            if item is None:
+                return
+            token, seg = item
+            try:
+                who, _s = self._inner.label(seg)
+            except Exception:  # noqa: BLE001 - speaker ID must never hurt subtitles
+                who = UNKNOWN
+            self._res[token] = None if who == UNKNOWN else who
+            if self.on_ready is not None:
+                try:
+                    self.on_ready()
+                except Exception:  # noqa: BLE001
+                    pass
+
+
+def make_async_labeler(mdir, on_ready=None) -> AsyncSpeakerLabeler | None:
+    """The GUI's labeler, or None when sherpa-onnx / the model is missing or fails to load (no labels, no error)."""
+    try:
+        if not available(mdir):
+            return None
+        return AsyncSpeakerLabeler(SherpaEmbedder(mdir), on_ready=on_ready)
+    except Exception:  # noqa: BLE001
+        return None

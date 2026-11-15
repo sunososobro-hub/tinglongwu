@@ -19,7 +19,7 @@ from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from ..i18n import SILENT_CLEAR
 from .core import scene_of as scene_mode_name
-from .core import (SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -402,6 +402,10 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._tr: list[tuple[object, str, str]] = []  # (widget, option, i18n key) re-labelled on language switch
         self.status_key: str | None = "gui_ready"
+        from ..speakers import SpeakerBook
+
+        self.spk = None  # 0.3.8: async speaker-ID labeler of this session (None = unavailable)
+        self.spk_book = SpeakerBook()  # session-only names
         self.quick_mode: str | None = None  # #294: first-screen button that started this session
         self.run_source = "system"
         self.speak_hint: str | None = None  # #710: speak_route() result for this session
@@ -1506,7 +1510,20 @@ class App:
             mine = text.startswith(SPEAK_MARK) or src.startswith(SPEAK_MARK)  # #1001: speak-leg lines are mine
             side = "me" if mine else "other"
             src, text = src.removeprefix(SPEAK_MARK), text.removeprefix(SPEAK_MARK)
-            tx.insert("end", t("gui_chat_me" if mine else "gui_chat_other") + "\n", f"{side}_head")
+            head = t("gui_chat_me" if mine else "gui_chat_other")
+            lab = None if mine else self._speaker_label(i)
+            if lab:  # 0.3.8: "對方 · 說話者 1" - the label is a link: click to rename
+                raw, shown = lab
+                tag = f"spk:{raw}"
+                tx.insert("end", head + " · ", f"{side}_head")
+                tx.insert("end", shown, (f"{side}_head", tag))
+                tx.insert("end", "\n", f"{side}_head")
+                tx.tag_configure(tag, underline=True)
+                tx.tag_bind(tag, "<Button-1>", lambda _e, r=raw: self._rename_speaker(r))
+                tx.tag_bind(tag, "<Enter>", lambda _e: tx.configure(cursor="hand2"))
+                tx.tag_bind(tag, "<Leave>", lambda _e: tx.configure(cursor=""))
+            else:
+                tx.insert("end", head + "\n", f"{side}_head")
             self._insert_bubble(side, text, is_draft, i)
             if show_src and src and src != text:
                 tx.insert("end", src + "\n", (f"{side}_src", f"row{i}"))
@@ -1515,6 +1532,38 @@ class App:
             self._log_to_end()
         else:
             tx.yview(top)
+
+    def _speaker_label(self, row: int):
+        """0.3.8: (raw label, text to show) of history row `row`, or None (no speaker ID / not ready / mine)."""
+        who = self.state.history_who()
+        if self.spk is None or row >= len(who) or not who[row]:
+            return None
+        raw = self.spk.result(who[row])
+        raw = self.spk_book.resolve(raw) if raw else None
+        shown = speaker_text(self.spk_book, raw, lambda n: t("gui_speaker", n=n)) if raw else None
+        return (raw, shown) if shown else None
+
+    def _rename_speaker(self, raw: str):
+        """0.3.8: click on a speaker label: ask for a name; it applies to every past and future bubble of that speaker
+        in this session (SpeakerBook, never saved). An empty name goes back to "Speaker N"."""
+        from tkinter import simpledialog
+
+        cur = speaker_text(self.spk_book, raw, lambda n: t("gui_speaker", n=n)) or raw
+        name = simpledialog.askstring(t("gui_chat_other"), t("gui_speaker_rename", name=cur), initialvalue=cur,
+                                      parent=self.root)
+        if name is None:
+            return
+        self.spk_book.rename(raw, name)
+        self.render_log()
+
+    def _make_labeler(self, mdir):
+        """0.3.8 (worker thread): the async speaker-ID labeler for the listen leg, or None when sherpa-onnx / the
+        speaker model is missing - then the GUI shows no labels and behaves exactly as before."""
+        from ..speaker_embed import make_async_labeler
+
+        lab = make_async_labeler(mdir, on_ready=lambda: self.q.put(("spk_ready",)))
+        self.spk = lab
+        return lab
 
     def _insert_bubble(self, side: str, text: str, is_draft: bool, row: int):
         """#1070: a bubble hugs its text (max ~75 % of the window). Tk paints the margin area with the background of the
@@ -1860,6 +1909,9 @@ class App:
 
             self.gate = SendGate(lambda _t: None, time.monotonic, mode=run.get("send_mode", "confirm"))
         self.state = SubtitleState(HISTORY_LINES)
+        from ..speakers import SpeakerBook
+
+        self.spk, self.spk_book = None, SpeakerBook()  # new session: new speakers, new names
         self.set_paused(False)
         self.stop_ev = threading.Event()
         self.load_t0 = time.monotonic()  # #332: Stop stays disabled ("Loading... N s") until the models are ready
@@ -1947,7 +1999,8 @@ class App:
             run_session(a, sink=sink, draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
-                        cpu_line=lambda ms: q.put(("cpu_line", ms)))
+                        cpu_line=lambda ms: q.put(("cpu_line", ms)),
+                        labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None)
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
@@ -2037,6 +2090,8 @@ class App:
                         self.overlay.hide()
                     self._sync_bar()
                     self.render_log()  # drops a leftover "Listening..." placeholder
+                elif kind == "spk_ready":  # 0.3.8: a speaker label is ready: redraw the bubbles
+                    changed = True
                 else:
                     changed |= self.state.apply(ev)
                     if ev[0] in ("source", "draft", "final") and self.v_notice.get():  # other side is heard: hint is stale
