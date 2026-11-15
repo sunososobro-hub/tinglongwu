@@ -461,6 +461,7 @@ class App:
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self._pair_changed()
         self.overlay.build_menu()
+        self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
         self.build_menubar()
         self._upd_relabel()
         self.tour.relabel()
@@ -1078,6 +1079,7 @@ class App:
         top, follow = tx.index("@0,0"), self._log_at_end()
         rows = self.state.history() or [("", text, d) for text, d in self.placeholder()]
         show_src = self.settings["show_src"]
+        self._log_shown = (list(rows) if self.state.history() else [], show_src)  # what the clicks map onto
         tx.configure(state="normal")
         tx.delete("1.0", "end")
         for i, (src, text, is_draft) in enumerate(rows):
@@ -1483,7 +1485,8 @@ class App:
         from ..report_translation import row_for_log_line
 
         line = int(self.log_text.index(f"@{event.x},{event.y}").split(".")[0])
-        self._log_row = row_for_log_line(self.state.history(), self.settings["show_src"], line)
+        rows, show_src = getattr(self, "_log_shown", ([], self.settings["show_src"]))
+        self._log_row = row_for_log_line(rows, show_src, line)
         if self._log_row is not None and not self._log_row[2]:
             self.log_menu.tk_popup(event.x_root, event.y_root)
 
