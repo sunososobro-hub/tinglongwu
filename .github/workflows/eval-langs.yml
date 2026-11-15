@@ -75,7 +75,7 @@ jobs:
           python -m tlwu_eval.langmatrix matrix > m.json
           cat m.json
           echo "jobs=$(cat m.json)" >> "$GITHUB_OUTPUT"
-          python -c "import json; d=json.load(open('m.json')); print('## eval-langs (#642)\n\npairs: ' + ', '.join(j['pair'] for j in d['include']) + '\n\nunpinned (not run): ' + (', '.join(d['unpinned']) or 'none'))" >> "$GITHUB_STEP_SUMMARY"
+          python -c "import json; d=json.load(open('m.json')); print('## eval-langs (#642)\n\npairs: ' + ', '.join(j['pair'] for j in d['include']) + '\n\nunpinned (not run): ' + (', '.join(d['unpinned']) or 'none') + '\n\nblocked (not run): ' + (', '.join(d.get('blocked', [])) or 'none'))" >> "$GITHUB_STEP_SUMMARY"
 
   pair:
     needs: matrix

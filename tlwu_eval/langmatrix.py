@@ -8,7 +8,9 @@ Add a language = one line in eval/languages.json: {"pair": "xx->zh", "pins": "ev
 Each pair is gated against its eval/baseline.json "matrix" entry (chrF - margin, MT median budget, tlwu_eval/gate.py;
 "chrf": null = not recorded yet, latency only). A pair without an entry, or whose clips have no reference translation
 in its target language, is red.
-A pair whose pin file is not committed yet is left out of the matrix and listed as `unpinned`."""
+A pair whose pin file is not committed yet is left out of the matrix and listed as `unpinned`.
+A pair the app cannot run yet carries "blocked": "<reason, e.g. the issue that unblocks it>": it is left out of the
+matrix and listed as `blocked` with that reason, so it stays visible instead of red on every run."""
 from __future__ import annotations
 
 import argparse
@@ -58,7 +60,12 @@ def load_config(path=CONFIG) -> list[dict]:
         clips = e.get("clips")
         if not isinstance(clips, int) or isinstance(clips, bool) or not 1 <= clips <= 50:
             raise ConfigError(f"{where}: 'clips' must be an integer 1..50")
-        out.append({"pair": pair, "src": src, "tgt": tgt, "pins": pins, "clips": clips})
+        row = {"pair": pair, "src": src, "tgt": tgt, "pins": pins, "clips": clips}
+        if "blocked" in e:
+            if not isinstance(e["blocked"], str) or not e["blocked"].strip():
+                raise ConfigError(f"{where}: 'blocked' must be a non-empty reason string")
+            row["blocked"] = e["blocked"].strip()
+        out.append(row)
     return out
 
 
@@ -71,6 +78,8 @@ def matrix(entries: list[dict], root=ROOT) -> tuple[list[dict], list[str]]:
     A job runs min(clips, pinned) clips; `data` is the folder make_ci_smoke.py builds from that pin file."""
     jobs, unpinned = [], []
     for e in entries:
+        if "blocked" in e:
+            continue
         p = Path(root) / e["pins"]
         try:
             pins = json.loads(p.read_text("utf-8"))
@@ -83,6 +92,11 @@ def matrix(entries: list[dict], root=ROOT) -> tuple[list[dict], list[str]]:
             continue
         jobs.append({**e, "clips": min(e["clips"], n), "data": "eval_data/" + Path(e["pins"]).stem})
     return jobs, unpinned
+
+
+def blocked(entries: list[dict]) -> list[str]:
+    """["hi->zh (#942)", ...]: pairs listed with a "blocked" reason, not run."""
+    return [f"{e['pair']} ({e['blocked']})" for e in entries if "blocked" in e]
 
 
 def pair_baseline(pair: str, baseline: dict) -> dict:
@@ -126,8 +140,9 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     try:
         if a.cmd == "matrix":
-            jobs, unpinned = matrix(load_config(a.config), Path(a.config).resolve().parents[1])
-            print(json.dumps({"include": jobs, "unpinned": unpinned}, separators=(",", ":")))
+            entries = load_config(a.config)
+            jobs, unpinned = matrix(entries, Path(a.config).resolve().parents[1])
+            print(json.dumps({"include": jobs, "unpinned": unpinned, "blocked": blocked(entries)}, separators=(",", ":")))
             return 0 if jobs else 1
         if a.cmd == "baseline":
             doc = pair_baseline(a.pair, gate.validate_baseline(gate.load_json(a.baseline, "baseline")))
