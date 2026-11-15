@@ -38,6 +38,13 @@ void main() {
       expect(passthrough('hi', 'zh'), isNotNull);
     });
 
+    test('selector reads as a target, source is auto-detected', () {
+      expect(TargetLanguage.targetLabel('zh'), '翻成：繁體中文');
+      expect(TargetLanguage.targetLabel('en'), '翻成：English');
+      expect(TargetLanguage.targetLabel('xx'), '翻成：繁體中文');
+      expect(TargetLanguage.sourceHint, '自動辨識說話語言');
+    });
+
     test('picker value survives a restart (settings file)', () {
       final dir = Directory.systemTemp.createTempSync('tlwu730');
       addTearDown(() => dir.deleteSync(recursive: true));

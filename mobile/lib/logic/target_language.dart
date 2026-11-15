@@ -10,6 +10,12 @@ class TargetLanguage {
   };
   static const fallback = 'zh';
 
+  /// Selector text, read as a target: "翻成：繁體中文".
+  static String targetLabel(String code) => '翻成：${options[normalize(code)]}';
+
+  /// The source language is auto-detected by the ASR (SenseVoice), so there is no source picker.
+  static const sourceHint = '自動辨識說話語言';
+
   /// Unknown / empty / null values fall back to zh.
   static String normalize(String? code) {
     final c = (code ?? '').trim().toLowerCase();

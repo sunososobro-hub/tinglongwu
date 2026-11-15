@@ -56,16 +56,26 @@ class SubtitleScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 PopupMenuButton<String>(
-                  tooltip: 'Subtitle language',
+                  tooltip: '字幕要翻成哪種語言',
                   initialValue: pipeline.target,
                   onSelected: pipeline.setTarget,
-                  child: Text(
-                    TargetLanguage.options[pipeline.target] ?? pipeline.target,
-                    style: const TextStyle(fontSize: 14, color: Colors.white70),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        TargetLanguage.targetLabel(pipeline.target),
+                        style: const TextStyle(fontSize: 14, color: Colors.white70),
+                      ),
+                      const Text(
+                        TargetLanguage.sourceHint,
+                        style: TextStyle(fontSize: 10, color: Colors.white54),
+                      ),
+                    ],
                   ),
                   itemBuilder: (_) => [
-                    for (final e in TargetLanguage.options.entries)
-                      PopupMenuItem(value: e.key, child: Text(e.value)),
+                    for (final code in TargetLanguage.options.keys)
+                      PopupMenuItem(value: code, child: Text(TargetLanguage.targetLabel(code))),
                   ],
                 ),
               ]),
