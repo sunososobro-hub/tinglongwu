@@ -87,7 +87,7 @@ The `eval-langs` workflow runs one CPU job per line on the pinned FLEURS clips (
 unpinned and not run. Without huggingface.co access (cloud sessions), first add the new set to `SETS` in
 `scripts/bench/make_ci_smoke.py` and to the `pin_set` choices in `.github/workflows/eval-langs.yml`, push that, then
 dispatch `eval-langs` on that branch with `pin_set` set to the new set: its `pin` job prints the pin file and uploads it
-as an artifact to commit.
+as an artifact (`pins_<set>.json`); commit it under the `pins` path its lines in `eval/languages.json` name.
 
 ## Branches and PRs
 
