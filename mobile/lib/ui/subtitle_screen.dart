@@ -37,7 +37,7 @@ class SubtitleScreen extends StatelessWidget {
     final subs = pipeline.subtitles;
     final size = MediaQuery.sizeOf(context);
     final landscape = size.width > size.height;
-    final big = landscape ? 46.0 : 38.0;
+    final big = pipeline.overlayStyle.appBigSize(landscape: landscape);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -294,21 +294,21 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
                       MaterialPageRoute<void>(builder: (_) => AdvancedScreen(pipeline: pipeline)));
                 },
               ),
+              const SizedBox(height: 8),
+              Text('字幕大小 ${st.fontSize.round()}'),
+              Slider(
+                value: st.fontSize,
+                min: OverlayStyle.minFontSize,
+                max: OverlayStyle.maxFontSize,
+                divisions: (OverlayStyle.maxFontSize - OverlayStyle.minFontSize).round(),
+                onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(fontSize: v)),
+              ),
               if (pipeline.phoneSupported) ...[
                 const SizedBox(height: 8),
                 const Text('浮動字幕視窗', style: TextStyle(fontSize: 16)),
                 const SizedBox(height: 4),
                 const Text('拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，高度隨內容增加。點一下回到聽龍。',
                     style: TextStyle(fontSize: 13, color: Colors.white60)),
-                const SizedBox(height: 12),
-                Text('字級 ${st.fontSize.round()}'),
-                Slider(
-                  value: st.fontSize,
-                  min: OverlayStyle.minFontSize,
-                  max: OverlayStyle.maxFontSize,
-                  divisions: (OverlayStyle.maxFontSize - OverlayStyle.minFontSize).round(),
-                  onChanged: (v) => pipeline.setOverlayStyle(st.copyWith(fontSize: v)),
-                ),
                 Text('背景不透明度 ${(st.opacity * 100).round()}%'),
                 Slider(
                   value: st.opacity,

@@ -146,5 +146,13 @@ void main() {
         dir.deleteSync(recursive: true);
       }
     });
+
+    test('in-app subtitle size follows the setting (#1079)', () {
+      const d = OverlayStyle();
+      expect(d.appBigSize(landscape: false), closeTo(38, 0.01));
+      expect(d.appBigSize(landscape: true), closeTo(46, 0.01));
+      const big = OverlayStyle(fontSize: 40);
+      expect(big.appBigSize(landscape: false), greaterThan(d.appBigSize(landscape: false)));
+    });
   });
 }

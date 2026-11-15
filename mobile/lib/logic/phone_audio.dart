@@ -147,6 +147,9 @@ class OverlayStyle {
         mode: mode ?? this.mode,
       );
 
+  /// Newest-line size on the in-app subtitle screen; the default size (20) gives the old 38 / 46.
+  double appBigSize({required bool landscape}) => fontSize * (landscape ? 2.3 : 1.9);
+
   OverlayStyle clamp() => OverlayStyle(
         fontSize: fontSize.clamp(minFontSize, maxFontSize).toDouble(),
         opacity: opacity.clamp(0.0, 1.0).toDouble(),
