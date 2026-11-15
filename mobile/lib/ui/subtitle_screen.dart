@@ -8,9 +8,12 @@ import 'advanced_screen.dart';
 
 /// Full-screen dark subtitle view.
 ///
-/// Top: tiny debug line. Middle: finished Chinese lines (newest brightest,
+/// Optional debug line (hidden by default). Middle: finished Chinese lines (newest brightest,
 /// large). Bottom: gray draft source text (partial ASR) and, while a sentence is
 /// still being translated, its source text in gray.
+/// Developer diagnostics line; OFF unless built with --dart-define=SHOW_DEBUG_HUD=true.
+const bool showDebugHud = bool.fromEnvironment('SHOW_DEBUG_HUD');
+
 class SubtitleScreen extends StatelessWidget {
   const SubtitleScreen({super.key, required this.pipeline});
   final Pipeline pipeline;
@@ -48,13 +51,7 @@ class SubtitleScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                Expanded(
-                  child: Text(
-                    _debug(),
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
-                  ),
-                ),
+                const Spacer(),
                 if (pipeline.phoneSupported) _SourceToggle(pipeline: pipeline),
                 IconButton(
                   tooltip: '字幕顯示設定',
@@ -87,6 +84,18 @@ class SubtitleScreen extends StatelessWidget {
                   ],
                 ),
               ]),
+              if (showDebugHud)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _debug(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: const TextStyle(
+                        fontSize: 10, color: Colors.white38, fontFamily: 'monospace'),
+                  ),
+                ),
               const SizedBox(height: 8),
               Expanded(
                 child: Align(
