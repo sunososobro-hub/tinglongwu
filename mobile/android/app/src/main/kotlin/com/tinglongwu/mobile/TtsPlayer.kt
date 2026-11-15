@@ -29,7 +29,7 @@ object TtsPlayer {
                 .setBufferSizeInBytes(samples.size * 4)
                 .build()
             t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-            t.notificationMarkerPosition = samples.size
+            t.setNotificationMarkerPosition(samples.size)
             t.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
                 override fun onMarkerReached(at: AudioTrack) = release(at)
                 override fun onPeriodicNotification(at: AudioTrack) {}
