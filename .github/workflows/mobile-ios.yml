@@ -1,6 +1,7 @@
 name: mobile-ios
 # Compile check for the iOS app (no signing, no upload): proves mobile/ builds for an iPhone on every
-# change under mobile/. TestFlight uploads are done by Codemagic (codemagic.yaml at the repo root).
+# change under mobile/. TestFlight upload (job testflight) runs on push to dev and manual dispatch when the ASC secrets exist;
+# codemagic.yaml at the repo root stays as a fallback.
 on:
   push:
     branches: [dev]
@@ -40,3 +41,85 @@ jobs:
           plist=build/ios/iphoneos/Runner.app/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$plist" > /dev/null
           /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$plist"
+
+  testflight:
+    # Never on pull requests (no secrets there). Skips with a notice when the secrets are not set.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 60
+    concurrency:
+      group: testflight-upload
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: mobile
+    steps:
+      - name: Check secrets
+        id: gate
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::notice::TestFlight upload skipped: set ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (see mobile/README.md)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: steps.gate.outputs.run == 'true'
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
+        if: steps.gate.outputs.run == 'true'
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Prepare Flutter project
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          flutter pub get
+          flutter build ios --release --config-only --no-codesign --build-number ${{ github.run_number }}
+      - name: Write API key and export options
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          chmod 600 "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+      - name: Archive
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Export and upload to App Store Connect
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Delete key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8

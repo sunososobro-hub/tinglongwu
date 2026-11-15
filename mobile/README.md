@@ -24,7 +24,23 @@ Keep the two sides in step: a new channel method needs a Kotlin and a Swift impl
   rejected: unzip it first and pick the model files.
 - Build on a Mac: `cd mobile && flutter pub get && flutter build ios --release --no-codesign`
   (CI compile check: `.github/workflows/mobile-ios.yml`). Bundle ID `com.tinglongwu.mobile`, min iOS 15.
-- TestFlight: `codemagic.yaml` at the repo root (setup steps are in its header comment).
+- TestFlight (GitHub Actions): job `testflight` in `.github/workflows/mobile-ios.yml` archives, signs (automatic signing
+  with an App Store Connect API key) and uploads on every push to `dev` that touches `mobile/**`, and on manual
+  *Run workflow*. It skips with a notice while the secrets below are missing; PRs never run it. Owner one-time steps
+  (no Mac needed):
+  1. developer.apple.com > Identifiers: register the App ID `com.tinglongwu.mobile`.
+  2. appstoreconnect.apple.com > Apps: create the app record with that bundle ID.
+  3. Users and Access > Integrations > App Store Connect API: create a key with the **App Manager** role; download
+     `AuthKey_<KEYID>.p8` (only once) and note the Key ID and Issuer ID. Team ID is under Membership details.
+  4. Set the secrets (PowerShell):
+     ```
+     gh secret set ASC_KEY_ID -R sunososobro-hub/tinglongwu --body "<KEYID>"
+     gh secret set ASC_ISSUER_ID -R sunososobro-hub/tinglongwu --body "<ISSUER>"
+     gh secret set APPLE_TEAM_ID -R sunososobro-hub/tinglongwu --body "<TEAMID>"
+     Get-Content -Raw AuthKey_<KEYID>.p8 | gh secret set ASC_KEY_P8 -R sunososobro-hub/tinglongwu
+     ```
+  The build number is the workflow run number. Alternative: `codemagic.yaml` at the repo root (setup steps in its
+  header comment) is kept as a fallback.
 - Icons: `python3 tool/gen_ios_icons.py` (needs Pillow + `rsvg-convert`).
 - Not done yet: Metal for the translator (`gpuLayers: 0`, CPU like Android), and the increased-memory-limit entitlement
   (the 1.1 GB translator plus ASR is tight on 4 GB phones).
