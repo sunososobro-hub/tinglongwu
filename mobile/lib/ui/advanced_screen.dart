@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/device_probe.dart';
 import '../services/pipeline.dart';
+import 'version_label.dart';
 
 /// 進階功能 (#1065): optional features with a recommendation from this phone's speed test.
 /// The user decides; nothing is turned on automatically.
@@ -103,6 +104,8 @@ class AdvancedScreen extends StatelessWidget {
               const SizedBox(height: 4),
               const Text('測速約幾秒，會暫停字幕一下。請在沒人說話時進行。',
                   style: TextStyle(fontSize: 12, color: Colors.white38)),
+              const SizedBox(height: 32),
+              const VersionLabel(),
             ],
           );
         },
