@@ -9,12 +9,12 @@ void main() {
       home: Scaffold(
         body: VersionLabel(
           loader: () async => PackageInfo(
-              appName: 'x', packageName: 'x', version: '0.2.0', buildNumber: '85'),
+              appName: 'x', packageName: 'x', version: '1.0.0', buildNumber: '85'),
         ),
       ),
     ));
     await tester.pump();
-    expect(find.text('v0.2.0'), findsOneWidget);
+    expect(find.text('v1.0.0'), findsOneWidget);
     expect(find.textContaining('85'), findsNothing);
   });
 }

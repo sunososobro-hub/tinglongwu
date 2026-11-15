@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-/// Small grey "v0.2.0" (versionName only, no build number). Read at runtime from the
+/// Small grey "v1.0.0" (versionName only, no build number). Read at runtime from the
 /// app package so a bump only touches pubspec.yaml.
 class VersionLabel extends StatelessWidget {
   const VersionLabel({super.key, this.loader});
