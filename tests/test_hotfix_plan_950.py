@@ -15,7 +15,7 @@ spec.loader.exec_module(hp)
 SHA = "c" * 40
 
 
-def make_api(*, pr_merged=True, base="dev", labels=("bug", "P1"), compare="behind", tags=("v0.3.5",),
+def make_api(*, pr_merged=True, base="dev", labels=("bug", "P1"), compare="ahead", tags=("v0.3.5",),
              latest="v0.3.5", body="Fix it.\n\nCloses #77", merged_prs=True):
     def api(path):
         if path.startswith("pulls/"):
@@ -48,7 +48,7 @@ def test_accepts_sha_on_dev():
 
 def test_rejects_sha_not_on_dev():
     with pytest.raises(hp.PlanError, match="ancestor"):
-        hp.plan(SHA, make_api(compare="ahead"))
+        hp.plan(SHA, make_api(compare="behind"))
 
 
 def test_rejects_unmerged_pr_and_wrong_base():

@@ -66,7 +66,7 @@ def plan(fix: str, api) -> dict:
             sha = api(f"commits/{fix}")["sha"]
         except NotFound:
             raise PlanError(f"commit {fix} does not exist") from None
-        if api(f"compare/{sha}...{BRANCH}").get("status") not in ("behind", "identical"):
+        if api(f"compare/{sha}...{BRANCH}").get("status") not in ("ahead", "identical"):
             raise PlanError(f"commit {sha[:7]} is not an ancestor of {BRANCH}")
         merged = [p for p in api(f"commits/{sha}/pulls") if p.get("merged_at")]
         if not merged:
