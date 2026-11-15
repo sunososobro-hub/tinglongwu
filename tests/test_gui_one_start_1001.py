@@ -120,7 +120,7 @@ def test_one_start_runs_both_legs_and_one_stop_ends_both(both_app):
     a, legs, envs, _ = both_app
     a.v_target.set("zh-tw")
     a.v_lang.set("en")
-    assert a.both_btn.cget("text") == "Start (listen + speak)" and str(a.both_btn.cget("state")) == "normal"
+    assert a.both_btn.cget("text") == "Start" and str(a.both_btn.cget("state")) == "normal"
     a.both_btn.invoke()
     assert _wait(a, lambda: len(legs) == 2)
     by_src = {s["source"]: (s, cls, gate) for s, cls, gate in legs}
@@ -141,7 +141,7 @@ def test_one_start_runs_both_legs_and_one_stop_ends_both(both_app):
     assert not worker.is_alive()
     assert not [th for th in threading.enumerate() if th.name in ("tlwu-listen", "tlwu-speak")]  # no orphan leg
     a.poll()
-    assert a.both_btn.cget("text") == "Start (listen + speak)" and a.quick_mode is None and not a.listening
+    assert a.both_btn.cget("text") == "Start" and a.quick_mode is None and not a.listening
     assert os.environ.get("TLWU_BOTH") is None  # restored after the run
 
 

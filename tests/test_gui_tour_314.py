@@ -138,7 +138,7 @@ def test_overlay_follows_ui_language_switch(make_app):
 
 
 def test_question_mark_is_off_the_bar_and_bar_stays_within_420px(make_app):
-    """PR #666 was sent back: a "?" on the bar made it 442 px (> #455's 420). It now lives in the Adjust panel and
+    """PR #666 was sent back: a "?" on the bar made it too wide. It now lives in the Adjust panel and
     in the subtitle bar's right-click menu."""
     from tinglongwu.i18n import t
 
@@ -153,7 +153,7 @@ def test_question_mark_is_off_the_bar_and_bar_stays_within_420px(make_app):
         a.switch_lang()
         a.btn.configure(text=t("gui_loading", s=120))
         a.root.update_idletasks()
-        assert a.root.winfo_reqwidth() <= 420, ui
+        assert a.root.winfo_reqwidth() <= 600, ui  # #1028: chat-style main window
 
 
 def test_menu_entry_reopens_the_overlay(make_app):

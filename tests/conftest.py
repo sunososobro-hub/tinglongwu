@@ -96,3 +96,43 @@ def _no_modal_dialogs(monkeypatch):
     yield
     if seen:
         pytest.fail(f"unexpected modal dialog(s) in a test (would block a real display): {seen}")
+
+
+@pytest.fixture(autouse=True)
+def _tk_invisible(monkeypatch):
+    """Owner 2026-11-15: running the tests must never flash windows on the desktop. Every Tk / Toplevel is created
+    fully transparent (alpha 0, also when the app sets its own overlay alpha). Windows stay 'mapped' for Tk, so geometry / winfo_ismapped assertions keep working."""
+    try:
+        import tkinter as tk
+    except ImportError:
+        return
+    real_init = {tk.Tk: tk.Tk.__init__, tk.Toplevel: tk.Toplevel.__init__}
+    real_attrs = tk.Wm.wm_attributes
+
+    def hush(self):
+        try:
+            real_attrs(self, "-alpha", 0.0)
+        except tk.TclError:
+            pass
+
+    def make(cls):
+        def init(self, *a, **kw):
+            real_init[cls](self, *a, **kw)
+            hush(self)
+        return init
+
+    def attrs(self, *a, **kw):
+        if a and a[0] == "-alpha":
+            if len(a) == 1:  # a query answers with what the app asked for
+                return getattr(self, "_tl_alpha", real_attrs(self, "-alpha"))
+            self._tl_alpha = float(a[1])
+            a = (a[0], 0.0, *a[2:])
+        if "alpha" in kw:
+            self._tl_alpha = float(kw["alpha"])
+            kw["alpha"] = 0.0
+        return real_attrs(self, *a, **kw)
+
+    monkeypatch.setattr(tk.Tk, "__init__", make(tk.Tk))
+    monkeypatch.setattr(tk.Toplevel, "__init__", make(tk.Toplevel))
+    monkeypatch.setattr(tk.Wm, "wm_attributes", attrs)
+    monkeypatch.setattr(tk.Wm, "attributes", attrs)
