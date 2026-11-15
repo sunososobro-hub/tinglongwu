@@ -22,7 +22,7 @@ from .core import scene_of as scene_mode_name
 from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
-                   save_settings, settings_to_argv, topics_on, voice_outputs, listen_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
+                   save_settings, settings_to_argv, topics_on, voice_outputs, listen_outputs, mic_inputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -41,7 +41,7 @@ SPAN = 7  # grid columns a full-width row spans
 LABEL_WRAP_PX = 190
 ADV_PAD_X = 20  # #939: left + right padding of the Advanced card (its settings grid gets the rest of the width)
 SHORT_SCREEN_PX = 900
-UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
+UPDATE_ROW = 14  # #756: grid row of the Check setup / Report / update controls; below the last setting slot (13, #894)
 PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
 HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 notice is for the other settings
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
@@ -1221,6 +1221,15 @@ class App:
         self.v_listen_dev = tk.StringVar(value=lshown or self.listen_default)
         self._put(ttk.Combobox(f, textvariable=self.v_listen_dev, values=[self.listen_default] + louts,
                                state="readonly", width=18), 12, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
+        # #894: which microphone the Microphone source (room sound) records; slot 13 sits beside "Listen to output"
+        # in the two-column layout, so the panel gets no taller there
+        self._label(13, "gui_mic_device")
+        self.mic_default = t("gui_mic_default")
+        mics = mic_inputs()
+        mshown = s.get("mic_device", "") if s.get("mic_device", "") in mics else ""  # unplugged -> default
+        self.v_mic_dev = tk.StringVar(value=mshown or self.mic_default)
+        self._put(ttk.Combobox(f, textvariable=self.v_mic_dev, values=[self.mic_default] + mics,
+                               state="readonly", width=18), 13, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
@@ -2142,6 +2151,7 @@ class App:
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
                  listen_device="" if self.v_listen_dev.get() == self.listen_default else self.v_listen_dev.get(),
+                 mic_device="" if self.v_mic_dev.get() == self.mic_default else self.v_mic_dev.get(),
                  voice=self.v_voice.get(), send_mode=self.v_send_mode.get(),
                  voice_device="" if self.v_voice_dev.get() == self.voice_default else self.v_voice_dev.get())
         save_settings(s)

@@ -29,6 +29,7 @@ DEFAULTS = {
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
     "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "listen_device": "",  # #1070: "" = listen to every output (not our cable); else one output name (Advanced)
+    "mic_device": "",  # #894: "" = the system default microphone; else one microphone name (Advanced)
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
@@ -63,7 +64,7 @@ def send_mode_notice_key(mode: str) -> str | None:
     return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
 # #983: settings the running pipeline reads only when it starts; changing one during a run needs a restart
 START_TIME_SETTINGS = ("lang", "target", "engine", "quality", "model", "preset", "glossary", "source", "voice",
-                       "voice_device", "send_mode", "listen_device")
+                       "voice_device", "send_mode", "listen_device", "mic_device")
 
 
 def restart_needed(at_start: dict, now: dict) -> list[str]:
@@ -241,9 +242,13 @@ def scene_mode(s: dict) -> str:
 
 def watch_settings(s: dict) -> dict:
     """0.3.8 video scene: the listen leg only. The voice output (#330) is forced off too, so nothing is spoken or
-    sent to any output; the mic leg is simply not built. `s` is not changed."""
+    sent to any output; the mic leg is simply not built. `s` is not changed.
+    #894: here the saved Source is honoured: "mic" listens to the room (lecture, in-person meeting) through the
+    microphone instead of the PC sound. The meeting scene keeps PC sound for listening (its mic is the speak leg)."""
     run = quick_settings(s, "listen")
     run["voice"] = False
+    if s.get("source") in SOURCES:
+        run["source"] = s["source"]
     return run
 
 
@@ -866,6 +871,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--quality", quality]
     if s.get("source") == "mic":
         argv += ["--mic"]
+        if s.get("mic_device"):  # #894: a microphone picked in Advanced; default = the system default mic
+            argv += ["--capture-device", s["mic_device"]]
     elif s.get("listen_device"):  # #1070: an output picked in Advanced; default = every output but our cable
         argv += ["--capture-device", s["listen_device"]]
     if s.get("glossary"):
@@ -901,6 +908,22 @@ def voice_outputs(names=None) -> list[str]:
         except Exception:  # noqa: BLE001 - no audio stack: only "default output" is offered
             names = []
     return [n for n in names if n and voice_output_problem(n, None) is None]
+
+
+def mic_inputs(names=None) -> list[str]:
+    """#894: microphones offered for the mic source (Advanced): real inputs only, never the VB-CABLE capture side,
+    BlackHole, our tlwu_ virtual mic or a monitor (they carry our own voice or the PC sound, not the room).
+    names=None lists soundcard's."""
+    from ..reverse.live import is_virtual_mic
+
+    if names is None:
+        try:
+            import soundcard as sc
+
+            names = [m.name for m in sc.all_microphones(include_loopback=False)]
+        except Exception:  # noqa: BLE001 - no audio stack: only "default microphone" is offered
+            names = []
+    return [n for n in names if n and not is_virtual_mic(n)]
 
 
 def listen_outputs(names=None) -> list[str]:
