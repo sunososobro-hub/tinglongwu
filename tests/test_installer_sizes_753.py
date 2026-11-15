@@ -41,13 +41,18 @@ def pack_mb(pack: int) -> int:
     return int(re.search(r"else Result := (\d+);", body).group(1))
 
 
-def size_text(mb: int) -> str:
-    tenths = (mb + 50) // 100  # SizeText: (MB + 50) div 100
-    return f"about {tenths // 10}.{tenths % 10} GB"
+def msg(key: str, lang: str = "english") -> str:
+    """CustomMessage(key) of one wizard language (#1002)."""
+    return _bi.custom_messages(ISS, lang)[key]
 
 
-def pack_note(pack: int) -> str:
-    return ", " + size_text(pack_mb(pack)) if pack_mb(pack) > 0 else ""
+def size_text(mb: int, lang: str = "english") -> str:
+    tenths = (mb + 50) // 100  # SizeText: (MB + 50) div 100, then the language's SizeAbout
+    return _bi.fmt_message(msg("SizeAbout", lang), f"{tenths // 10}.{tenths % 10}")
+
+
+def pack_note(pack: int, lang: str = "english") -> str:
+    return ", " + size_text(pack_mb(pack), lang) if pack_mb(pack) > 0 else ""
 
 
 def download_mb(gpu: bool, ticked: set[str]) -> int:
@@ -56,26 +61,30 @@ def download_mb(gpu: bool, ticked: set[str]) -> int:
     return mb + (c["PIPER_RU_MB"] if "ru" in ticked else 0)
 
 
-def labels() -> list[str]:
-    """The language page options as the wizard shows them (PackNote evaluated)."""
+def labels(lang: str = "english") -> list[str]:
+    """The language page options as the wizard shows them in `lang` (CustomMessage + PackNote evaluated, #1002)."""
     c = consts()
     out = []
-    for head, pack, tail in re.findall(r"LangPage\.Add\('([^']*)'(?: \+ PackNote\((\w+)\) \+ '([^']*)')?\);", ISS):
-        out.append(head + (pack_note(c[pack]) + tail if pack else ""))
+    for key, head, pack, tail in re.findall(
+            r"LangPage\.Add\(CustomMessage\('(\w+)'\)(?: \+ '([^']*)' \+ PackNote\((\w+)\) \+ '([^']*)')?\);", ISS):
+        out.append(msg(key, lang) + (head + pack_note(c[pack], lang) + tail if pack else ""))
     return out
 
 
-def progress_text(gpu: bool, ticked: set[str]) -> str:
-    m = re.search(r"ProgressPage\.Description := (.+);\n", ISS.split("procedure RunInstall", 1)[1])
-    size = size_text(download_mb(gpu, ticked))
-    return "".join(size if p.strip() == "Size" else p.strip()[1:-1] for p in m.group(1).split(" + "))
+def progress_text(gpu: bool, ticked: set[str], lang: str = "english") -> str:
+    m = re.search(r"ProgressPage\.Description := FmtMessage\(CustomMessage\('(\w+)'\), \[Size\]\);",
+                  ISS.split("procedure RunInstall", 1)[1])
+    return _bi.fmt_message(msg(m.group(1), lang), size_text(download_mb(gpu, ticked), lang))
 
 
 def test_zh_en_progress_text_shows_the_real_total_not_0_mb():
     text = progress_text(gpu=False, ticked={"zh", "en"})
     assert "0 MB" not in text and "about 0.0 GB" not in text
-    assert "downloads about 5.0 GB" in text and "約下載 about 5.0 GB" in text
+    assert "downloads about 5.0 GB" in text
     assert "downloads about 6.0 GB" in progress_text(gpu=True, ticked={"zh", "en"})
+    # #1002: one language per page: the zh-TW wizard says it in Chinese only
+    zh = progress_text(gpu=False, ticked={"zh", "en"}, lang="chinesetrad")
+    assert "下載約 5.0 GB" in zh and "about" not in zh and "downloads" not in zh
 
 
 def test_ru_adds_only_its_piper_voice_hymt2_is_in_the_core_already():
@@ -97,8 +106,10 @@ def test_table_matches_packs_py_and_install_ps1():
 
 def test_language_labels_come_from_the_table_no_size_literals():
     got = labels()
-    assert got[:5] == ["中文 Chinese (zh)", "English (en)", "日本語 Japanese (ja, about 1.1 GB)",
-                       "한국어 Korean (ko, about 1.1 GB)", "Русский Russian (ru, about 1.2 GB)"]
+    assert got[:5] == ["Chinese (zh)", "English (en)", "Japanese (ja, about 1.1 GB)",
+                       "Korean (ko, about 1.1 GB)", "Russian (ru, about 1.2 GB)"]
+    assert labels("japanese")[:5] == ["中国語 (zh)", "英語 (en)", "日本語 (ja, 約 1.1 GB)", "韓国語 (ko, 約 1.1 GB)",
+                                      "ロシア語 (ru, 約 1.2 GB)"]
     wizard = ISS.split("procedure InitializeWizard", 1)[1].split("\nend;", 1)[0]
     assert not re.search(r"\d+(\.\d+)? ?(MB|GB)", wizard.split("ProgressPage :=", 1)[0])
     run = ISS.split("procedure RunInstall", 1)[1].split("\nend;", 1)[0]

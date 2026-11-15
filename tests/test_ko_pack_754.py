@@ -48,7 +48,7 @@ def test_wizard_offers_every_tier1_pack_with_its_size():
 
 def test_wizard_has_korean_option():
     labels, codes, _ = _wizard()
-    assert labels[codes.index("ko")] == "한국어 Korean (ko, about 1.1 GB)"
+    assert labels[codes.index("ko")] == "Korean (ko, about 1.1 GB)"
 
 
 def test_korean_os_prechecks_ko():

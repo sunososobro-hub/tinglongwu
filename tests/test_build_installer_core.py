@@ -54,7 +54,7 @@ def test_core_wizard_shortcuts_and_run_start_tlwu_exe(tmp_path, monkeypatch, cap
     icons, run = _section(iss, "Icons"), _section(iss, "Run")
     assert icons and all('Filename: "{app}\\tlwu.exe"' in ln for ln in icons)
     assert run and all('Filename: "{app}\\tlwu.exe"' in ln for ln in run)
-    assert "repair install" not in "\n".join(icons)
+    assert "{cm:RepairName}" not in "\n".join(icons)
     assert not any(".venv" in ln or "install.bat" in ln for ln in icons + run)
     # install.ps1 is never started (#771: the core wizard runs tlwu.exe setup instead, see the test below)
     code = iss.split("[Code]", 1)[1]
@@ -100,7 +100,7 @@ def test_without_core_dir_the_source_wizard_is_unchanged(tmp_path):
     iss = bi.effective_iss(cmd)
     icons = _section(iss, "Icons")
     assert any(".venv\\Scripts\\tlwu-gui.exe" in ln for ln in icons)
-    assert any("repair install" in ln for ln in icons)
+    assert any("{cm:RepairName}" in ln for ln in icons)
     assert "tlwu.exe" not in "\n".join(icons + _section(iss, "Run"))
     post = iss.split("procedure CurStepChanged", 1)[1].split("end;\n\nprocedure", 1)[0]
     assert "RunInstall;" in post and "InstallRC := 0;" not in post
