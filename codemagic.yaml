@@ -1,0 +1,42 @@
+# Codemagic: builds the iOS app (mobile/) and uploads it to TestFlight.
+#
+# One-time setup in Codemagic (Teams > Integrations > Developer Portal): add an App Store Connect API
+# key and name the integration `tlwu_asc` (or change the name below). Team settings > codemagic.yaml
+# settings > Code signing identities: an Apple Distribution certificate and an App Store provisioning
+# profile for com.tinglongwu.mobile (ios_signing below picks them by bundle id).
+# Build numbers come from Codemagic's own $BUILD_NUMBER (no app-ID variable needed).
+# Bundle ID com.tinglongwu.mobile must exist in the Apple Developer portal and an app record must exist
+# in App Store Connect (Codemagic cannot create the app record).
+workflows:
+  tlwu-ios-testflight:
+    name: tinglongwu iOS -> TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: tlwu_asc
+    environment:
+      flutter: 3.47.6
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.tinglongwu.mobile
+    scripts:
+      - name: Get packages
+        script: |
+          cd mobile
+          flutter pub get
+      - name: Set up code signing
+        script: xcode-project use-profiles --project mobile/ios/Runner.xcodeproj
+      - name: Build ipa
+        script: |
+          cd mobile
+          flutter build ipa --release \
+            --build-number="$BUILD_NUMBER" \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - mobile/build/ios/ipa/*.ipa
+      - mobile/build/ios/**/Runner.app.dSYM.zip
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

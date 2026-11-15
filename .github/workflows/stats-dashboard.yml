@@ -26,6 +26,7 @@ jobs:
           mkdir -p site
           git fetch origin gh-pages --depth=1 || true
           git show origin/gh-pages:data.json > site/data.json 2>/dev/null || true
+          git show origin/gh-pages:pr_files.json > site/pr_files.json 2>/dev/null || true  # per-PR files cache (#662)
       - name: Build dashboard
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

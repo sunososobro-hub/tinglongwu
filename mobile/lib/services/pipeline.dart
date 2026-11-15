@@ -9,6 +9,7 @@ import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'asr_worker.dart';
 import 'model_paths.dart';
+import '../logic/target_language.dart';
 import 'translator.dart';
 
 enum Stage { starting, loadingModels, listening, missingModels, error }
@@ -67,12 +68,25 @@ class Pipeline extends ChangeNotifier {
 
   AppLog get _log => AppLog.instance;
 
+  /// Subtitle language code (#730): zh = zh-Hant (default), en, ...
+  String target = TargetLanguage.fallback;
+  TargetLanguageStore? _targetStore;
+
+  /// Picks the subtitle language; remembered between runs.
+  void setTarget(String code) {
+    target = TargetLanguage.normalize(code);
+    _targetStore?.save(target);
+    notifyListeners();
+  }
+
   Future<void> start() async {
     try {
       paths = await ModelPaths.resolve();
       await AppLog.init(paths!.filesDir);
       logPath = _log.path;
       _log.i('files dir ${paths!.filesDir}');
+      _targetStore = TargetLanguageStore('${paths!.filesDir}/target_language.txt');
+      target = _targetStore!.load();
       final missing = paths!.missing();
       if (missing.isNotEmpty) {
         missingFiles = missing;
@@ -220,7 +234,7 @@ class Pipeline extends ChangeNotifier {
         queued = _queue.length + 1;
         notifyListeners();
         try {
-          final r = await translateLine(_tr!, job.ru, job.lang);
+          final r = await translateLine(_tr!, job.ru, job.lang, tgt: target);
           final now = _clock.elapsedMilliseconds;
           lastLatencyMs = now - job.speechEndMs;
           lastAfterFinalMs = now - job.asrFinalMs;
@@ -229,7 +243,7 @@ class Pipeline extends ChangeNotifier {
           lastFirstTokenMs = r.firstTokenMs;
           job.sub.zh = r.zh;
           _trimSubtitles();
-          job.sub.traditionalOk = r.check.isTraditional;
+          job.sub.traditionalOk = target != 'zh' || r.check.isTraditional;
           _log.i('ZH [${r.check.isTraditional ? "zh-Hant" : "NOT-TRAD ${r.check}"}'
               '] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '

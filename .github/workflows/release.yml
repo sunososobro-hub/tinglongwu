@@ -16,9 +16,10 @@ name: release
 #                       .manifest.json from the CUDA wheels, no Nuitka (build_windows.py --gpu-pack-only, #763);
 #                       scripts/release_check.py --gpu-pack checks it against its manifest and the release tag
 #   release           : tag main, create a draft Release with the core zip, the GPU pack + manifest, the Vulkan pack (when built), install scripts
-#                       and SHA256SUMS.txt; report the release wall time against RELEASE_BUDGET_MIN (a warning)
+#                       and SHA256SUMS.txt; report the release wall time against RELEASE_BUDGET_MIN (a warning);
+#                       #26: GitHub build provenance (actions/attest-build-provenance) for every published asset
 #   windows-installer : build the setup wizard from the core zip (#772: --core-dir; also on a dry run, with its
-#                       size vs WIZARD_MAX_MB), attach it and publish (it becomes `latest`)
+#                       size vs WIZARD_MAX_MB), attest its provenance (#26), attach it and publish (it becomes `latest`)
 # workflow_dispatch = dry run on any branch: plan + build + every check + notes in the summary, never a tag/Release.
 # #589: workflow_dispatch on main with publish=true (sent by auto-release.yml after it merged the release PR with the
 # workflow token, which fires no push) is treated like that push: same plan gates, then build and publish.
@@ -367,6 +368,8 @@ jobs:
     permissions:
       contents: write   # only this job and windows-installer may create the tag and the Release
       actions: read     # #764: the run's job start times, for the release wall time
+      id-token: write       # #26: build provenance (Sigstore OIDC) for the assets; only this job and windows-installer
+      attestations: write   # #26: store the provenance attestations on this repo
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -409,6 +412,27 @@ jobs:
             [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS.txt || echo "::warning::no Vulkan pack in this release"
           done
           sha256sum -c SHA256SUMS.txt
+      - name: List the release assets to attest (#26; the Vulkan pack only when it was built)
+        id: attest-list
+        shell: bash
+        run: |
+          set -euo pipefail
+          # an unmatched glob would fail the attest step and drop provenance for every asset, so list existing files only
+          {
+            echo "paths<<TLWU_ATTEST_EOF"
+            for f in dist/tinglongwu-win64.zip dist/tinglongwu-gpu-pack.zip dist/tinglongwu-gpu-pack.zip.manifest.json \
+                     dist/install.sh dist/mac_install.sh dist/install.ps1 dist/tlwu-vulkan-pack-*.zip; do
+              if [ -f "$f" ]; then echo "$f"; fi
+            done
+            echo "TLWU_ATTEST_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build provenance for the release assets (#26; verify with `gh attestation verify <file> -R <repo>`)
+        continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
+        # GitHub-owned action on its major tag: an unresolvable `uses:` fails the whole job at "Set up job", where
+        # continue-on-error does not apply, and the commit SHA of v2 could not be verified from this repo (#26 review)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.attest-list.outputs.paths }}
       - name: Tag the released commit (an existing tag must already point at it)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -465,6 +489,8 @@ jobs:
     permissions:
       contents: write
       actions: write   # #639: dispatch install-test.yml after publishing
+      id-token: write       # #26: build provenance for the setup wizard (publish only)
+      attestations: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -495,7 +521,7 @@ jobs:
           if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }
           python installer\build_installer.py --size-report $exe.FullName
           if ($LASTEXITCODE -ne 0) { throw "size report failed" }
-      - name: Upload tinglongwu-setup-<ver>.exe and tinglongwu-setup.exe, add both to SHA256SUMS.txt, publish
+      - name: Name tinglongwu-setup.exe and add both wizard names to the release's SHA256SUMS.txt (publish only)
         if: needs.plan.outputs.publish == 'true'
         shell: bash
         env:
@@ -512,6 +538,25 @@ jobs:
           for f in "$exe" tinglongwu-setup.exe; do   # Git Bash prints "hash *file"; keep the "hash  file" format
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
+      - name: Build provenance for the setup wizard and the final SHA256SUMS.txt (#26; tinglongwu-setup.exe = same bytes)
+        if: needs.plan.outputs.publish == 'true'
+        continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
+        uses: actions/attest-build-provenance@v2   # see the release job: major tag, resolves for sure
+        with:
+          subject-path: |
+            dist/installer/tinglongwu-setup-*.exe
+            dist/installer/SHA256SUMS.txt
+      - name: Upload tinglongwu-setup-<ver>.exe, tinglongwu-setup.exe and SHA256SUMS.txt, publish
+        if: needs.plan.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd dist/installer
+          exe="tinglongwu-setup-${TAG#v}.exe"   # written by the step above
+          [ -f tinglongwu-setup.exe ] && [ -f SHA256SUMS.txt ] || { echo "wizard copy or SHA256SUMS.txt missing: $(ls)"; exit 1; }
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
           # What's new comes from docs/whats_new.md (or a release PR edit); without it the notes keep the TODO line
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body | grep -q 'TODO:'; then

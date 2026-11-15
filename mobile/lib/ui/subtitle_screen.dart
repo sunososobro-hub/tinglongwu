@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../logic/target_language.dart';
 import '../services/pipeline.dart';
 
 /// Full-screen dark subtitle view.
@@ -36,11 +37,28 @@ class SubtitleScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _debug(),
-                style: const TextStyle(
-                    fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
-              ),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    _debug(),
+                    style: const TextStyle(
+                        fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Subtitle language',
+                  initialValue: pipeline.target,
+                  onSelected: pipeline.setTarget,
+                  child: Text(
+                    TargetLanguage.options[pipeline.target] ?? pipeline.target,
+                    style: const TextStyle(fontSize: 14, color: Colors.white70),
+                  ),
+                  itemBuilder: (_) => [
+                    for (final e in TargetLanguage.options.entries)
+                      PopupMenuItem(value: e.key, child: Text(e.value)),
+                  ],
+                ),
+              ]),
               const SizedBox(height: 8),
               Expanded(
                 child: Align(

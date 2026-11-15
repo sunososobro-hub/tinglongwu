@@ -10,6 +10,25 @@ No INTERNET permission and no built-in downloader: you download the models with 
 4. Open the app, tap **匯入模型 / Import models** -> **Pick files**, choose the zip from Downloads (single `.onnx` / `.gguf` / `.txt` model files work too). Every file is checked against `assets/models_manifest.json` (name, size, SHA-256) and copied into the app's `files/models`; anything that does not match is rejected. Then tap **Done, start** and allow the microphone.
 5. You can delete the downloaded zip afterwards. Updating the app: download the new APK from the same page and install over the old one (models stay). If Android says the package conflicts, that preview was signed with a throwaway key (no release key configured yet, see "Signing"): uninstall, install, and import the models again (uninstalling deletes them).
 
+## iOS (same Flutter code as Android)
+The Dart app in `lib/` is shared. Only the thin native layer differs: `ios/Runner/TlwuNativeChannel.swift` and
+`ios/Runner/ModelImporter.swift` implement the same `tlwu/native` method channel as `MainActivity.kt` /
+`ModelImporter.kt` (Files picker + streaming copy + SHA-256; Play asset packs report "unavailable").
+Keep the two sides in step: a new channel method needs a Kotlin and a Swift implementation.
+
+- ASR: `sherpa_onnx` and mic: `record` ship their own iOS builds. Translator: `llama_cpp_dart` links its prebuilt
+  `llama.xcframework` through the plugin's Swift package (`Translator` uses `LlamaEngine.spawnFromProcess` on iOS), so
+  there is no AAR-style build step. Needs Flutter >= 3.44 (CI pins 3.47.6).
+- Models: no INTERNET use, same as Android. Download `tlwu-mobile-models.zip` in Safari, then **Import models** and pick it
+  in Files. The importer reads the official zip (stored, uncompressed). A zip made by the Files app "Compress" is deflated and is
+  rejected: unzip it first and pick the model files.
+- Build on a Mac: `cd mobile && flutter pub get && flutter build ios --release --no-codesign`
+  (CI compile check: `.github/workflows/mobile-ios.yml`). Bundle ID `com.tinglongwu.mobile`, min iOS 15.
+- TestFlight: `codemagic.yaml` at the repo root (setup steps are in its header comment).
+- Icons: `python3 tool/gen_ios_icons.py` (needs Pillow + `rsvg-convert`).
+- Not done yet: Metal for the translator (`gpuLayers: 0`, CPU like Android), and the increased-memory-limit entitlement
+  (the 1.1 GB translator plus ASR is tight on 4 GB phones).
+
 ## Build
     # one time: self-built llama.cpp AAR (needs NDK 28.2.13676358 + SDK cmake 3.22.1)
     powershell -File tool\build_llama_android.ps1   # Windows

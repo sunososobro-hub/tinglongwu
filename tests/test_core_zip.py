@@ -68,7 +68,14 @@ def _release_windows_steps():
 
 
 def _nuitka_cache(steps):
-    return next(s for s in steps if s.get("name") == "Nuitka compile cache")["with"]
+    """The step that restores the Nuitka cache: `actions/cache`, or `actions/cache/restore` since #888."""
+    return next(s for s in steps if str(s.get("name", "")).startswith("Nuitka compile cache")
+                and s.get("uses", "").split("@")[0] in ("actions/cache", "actions/cache/restore"))["with"]
+
+
+def _key_prefix(key: str) -> str:
+    """The key without its last `-${{ ... }}` part (github.sha in release.yml, github.run_id in windows-build, #888)."""
+    return key.rsplit("-${{", 1)[0]
 
 
 def test_release_windows_job_builds_core_from_the_cpu_llama_venv():
@@ -99,7 +106,7 @@ def test_release_windows_job_gates_core_budget_before_the_packaging_check():
 def test_release_nuitka_cache_key_is_the_windows_build_key():
     rel = _nuitka_cache(_release_windows_steps())
     ci = _nuitka_cache(_workflow("windows-build.yml")["jobs"]["build"]["steps"])
-    assert rel["key"] == ci["key"]
+    assert _key_prefix(rel["key"]) == _key_prefix(ci["key"])
     assert "hashFiles('requirements.txt', 'requirements-llama-cpu.txt')" in rel["key"]
     ci_restore, rel_restore = ci["restore-keys"].split(), rel["restore-keys"].split()
     assert rel_restore[:len(ci_restore)] == ci_restore  # CI's keys first; extra fallbacks only after them

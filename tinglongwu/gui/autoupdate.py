@@ -22,6 +22,9 @@ UPDATE_CHECK_INTERVAL_H = 24  # #806: at most one automatic check per day, so co
 CHECK_EVERY_S = UPDATE_CHECK_INTERVAL_H * 3600
 AUTO_KEY = "auto_update"
 LAST_KEY = "update_last_check"  # unix seconds of the last automatic check (also written when it failed)
+UPDATE_PROMPT_MIN_INTERVAL_S = 24 * 3600  # #779: at most one update line per day, however many releases ship
+PROMPT_KEY = "update_last_prompt"  # unix seconds of the last update line shown by an automatic check
+PENDING_KEY = "update_pending"  # "<version>|<installer path>": downloaded + verified, applied at the next launch
 MODULE = "tinglongwu_setup.selfupdate"
 BUNDLED_FLAG = "--run-selfupdate"  # tlwu_app.main routes this to tinglongwu_setup.selfupdate.main (#768)
 
@@ -67,6 +70,64 @@ def should_auto_check(cfg: dict, now: float | None = None, env=None) -> bool:
 
 def mark_checked(now: float | None = None) -> None:
     userdirs.write_config_value(LAST_KEY, str(int(time.time() if now is None else now)))
+
+
+def claim_prompt(cfg: dict, now: float | None = None) -> bool:
+    """#779: True (and the time is stored) when an automatic update line may be shown now: last one >= 24 h ago."""
+    now = time.time() if now is None else now
+    try:
+        last = float(cfg.get(PROMPT_KEY) or 0)
+    except ValueError:
+        last = 0.0
+    if not (last > now or now - last >= UPDATE_PROMPT_MIN_INTERVAL_S):
+        return False
+    userdirs.write_config_value(PROMPT_KEY, str(int(now)))
+    return True
+
+
+def _ver(v: str | None) -> tuple[int, int, int] | None:
+    parts = (v or "").strip().lstrip("vV").split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return None
+    return int(parts[0]), int(parts[1]), int(parts[2])
+
+
+def get_pending(cfg: dict) -> tuple[str, str] | None:
+    ver, sep, path = (cfg.get(PENDING_KEY) or "").partition("|")
+    return (ver, path) if sep and ver and path else None
+
+
+def set_pending(ver: str, path: str, cfg: dict | None = None) -> None:
+    """#779: keep only the newest downloaded installer; an older pending file is deleted."""
+    old = get_pending(userdirs.read_config() if cfg is None else cfg)
+    if old and (_ver(ver) or (0, 0, 0)) < (_ver(old[0]) or (0, 0, 0)) and old[1] != path:
+        return  # an older download never displaces a newer pending installer
+    if old and old[1] != path:
+        try:
+            Path(old[1]).unlink()
+        except OSError:
+            pass
+    userdirs.write_config_value(PENDING_KEY, f"{ver}|{path}")
+
+
+def pending_to_apply(cfg: dict, current: str, exists=None) -> str | None:
+    """#779: installer path to apply at GUI start, or None. A stale (not newer than `current`) or missing entry is
+    cleared silently. Offline mode never applies anything."""
+    pend = get_pending(cfg)
+    if not pend:
+        if cfg.get(PENDING_KEY):
+            userdirs.write_config_value(PENDING_KEY, "")
+        return None
+    ver, path = pend
+    a, b = _ver(ver), _ver(current)
+    if a is None or b is None or a <= b or not (exists or os.path.exists)(path):
+        userdirs.write_config_value(PENDING_KEY, "")
+        return None
+    return path
+
+
+def clear_pending() -> None:
+    userdirs.write_config_value(PENDING_KEY, "")
 
 
 def set_auto(on: bool) -> None:
