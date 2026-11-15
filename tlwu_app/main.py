@@ -85,7 +85,7 @@ def run_setup_worker(args: list[str]) -> int:
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8", errors="replace")
     # #801 --vulkan-pack and #771 `tlwu.exe setup --default-listen`: tinglongwu_setup.cli knows them, downloader.main does not
-    if "--vulkan-pack" in args or "--gpu-pack" in args or "--default-listen" in args:
+    if "--vulkan-pack" in args or "--gpu-pack" in args or "--default-listen" in args or "--talk" in args:  # #1007: --talk = in-app voice install
         from tinglongwu_setup import cli
 
         if ("--vulkan-pack" in args or "--gpu-pack" in args) and "--app-version" not in args:  # #801: the pack must match this app's version

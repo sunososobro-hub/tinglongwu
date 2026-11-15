@@ -137,3 +137,12 @@ def test_no_voice_note_when_kokoro_files_and_venv_present(tmp_path):
     lines = []
     defaults.run(tmp_path, _fake([]), out=lines.append, venv=venv)
     assert defaults.VOICE_NOTE not in lines and defaults.voice_installed(tmp_path, venv)
+
+
+# ---- #1007: the in-app voice install runs `tlwu.exe --run-setup --talk ...`
+def test_run_setup_worker_routes_talk_to_the_setup_cli(monkeypatch):
+    got = []
+    monkeypatch.setattr(cli, "main", lambda a: got.append(a) or 0)
+    monkeypatch.setattr(downloader, "main", lambda a: (_ for _ in ()).throw(AssertionError("downloader")))
+    assert app_main.run_setup_worker(["--talk", "--models-dir", "x"]) == 0
+    assert got == [["--talk", "--models-dir", "x"]]
