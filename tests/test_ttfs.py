@@ -136,10 +136,28 @@ def test_over_budget_run_still_exits_0(tmp_path, monkeypatch, capsys):
     m = _ttfs()
     stages = iter([(100.0, 0, ""), (120.0, 0, "\n".join(_progress("w", 250)))])  # install 100 s, setup 120 s
     monkeypatch.setattr(m, "_run", lambda cmd: next(stages))
-    monkeypatch.setattr(m, "time_first_subtitle", lambda cmd, timeout=0: 5.0)
+    monkeypatch.setattr(m, "time_first_subtitle", lambda cmd, timeout=0, out_lines=None: 5.0)
     out = tmp_path / "ttfs.json"
     assert m.main(["--install", "x", "--setup", "y", "--tlwu", "z", "--out", str(out)]) == 0
     d = json.loads(out.read_text())
     assert d["ttfs_seconds"] == 225.0 and d["ttfs_seconds"] > m.TTFS_BUDGET_S  # over budget, still a measurement
     assert abs(d["download_seconds"] - 40.0) < 0.5 and d["excl_download_seconds"] > 0  # not negative any more
     assert "ttfs_seconds=225.0" in capsys.readouterr().out
+
+
+def test_no_subtitle_reports_exit_codes_and_output_tail_1060(tmp_path):
+    # #1060: when no subtitle arrives, stderr shows each step's exit code and the subtitle command's
+    # stdout+stderr tail, so a red CI ttfs job says why
+    tlwu = PY + " -c \"import sys;[print('line', i) for i in range(100)];sys.stderr.write('Boom: model missing\\n')\""
+    out = tmp_path / "ttfs.json"
+    p = subprocess.run(
+        [sys.executable, SCRIPT, "--install", PY + " -c \"print('pip failed');raise SystemExit(3)\"",
+         "--setup", "echo setup", "--tlwu", tlwu, "--out", str(out), "--timeout", "20"],
+        capture_output=True, text=True)
+    assert p.returncode == 2
+    assert "--- install (exit 3)" in p.stderr
+    assert "pip failed" in p.stderr
+    assert "--- setup (exit 0)" in p.stderr
+    assert "Boom: model missing" in p.stderr   # stderr of the subtitle command is no longer dropped
+    assert "line 99" in p.stderr and "line 50" not in p.stderr   # only the last 40 lines
+    assert json.loads(out.read_text())["ttfs_seconds"] is None

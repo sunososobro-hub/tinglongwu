@@ -24,6 +24,7 @@ TTFS_BUDGET_S = 180
 TTFS_CLIP = "tinglongwu/data/selftest_en.wav"
 BASELINE_MBPS = 50
 FIRST_SUBTITLE_TIMEOUT_S = 600
+TAIL_LINES = 40  # #1060: lines of each step's output printed when no subtitle arrives
 TRANSLATION_PREFIX = "\u2192"  # tinglongwu/fmt.py: translation lines are '→ [TAG] text'
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -78,17 +79,24 @@ def _run(cmd):
     return time.monotonic() - t0, p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
-def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S):
+def _tail(text, n=TAIL_LINES):
+    return "\n".join((text or "").splitlines()[-n:])
+
+
+def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, out_lines=None):
     """Seconds until the first translation line (fmt.py prefix '→'), or None on timeout/no output.
 
-    The source line is printed before MT finishes, so a plain non-empty line is too early."""
+    The source line is printed before MT finishes, so a plain non-empty line is too early.
+    OUT_LINES (a list), when given, collects the command's stdout+stderr lines read before the subtitle (#1060)."""
     t0 = time.monotonic()
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, encoding="utf-8", errors="replace", cwd=ROOT)
     found = []
 
     def reader():
         for line in p.stdout:
+            if out_lines is not None:
+                out_lines.append(line.rstrip("\n"))
             if line.lstrip().startswith(TRANSLATION_PREFIX):
                 found.append(time.monotonic() - t0)
                 return
@@ -123,11 +131,16 @@ def _sha():
         return "unknown"
 
 
-def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S):
-    inst_s, _, _ = _run(install_cmd)
-    setup_s, _, setup_out = _run(setup_cmd)
+def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, diag=None):
+    """DIAG (a dict), when given, gets each step's exit code and output tail (#1060), for the no-subtitle report."""
+    inst_s, inst_rc, inst_out = _run(install_cmd)
+    setup_s, setup_rc, setup_out = _run(setup_cmd)
     dl_s = download_seconds_at_baseline(parse_download_bytes(setup_out))
-    first = time_first_subtitle(tlwu_cmd, timeout)
+    tlwu_lines = []
+    first = time_first_subtitle(tlwu_cmd, timeout, tlwu_lines)
+    if diag is not None:
+        diag.update({"install": (inst_rc, _tail(inst_out)), "setup": (setup_rc, _tail(setup_out)),
+                     "tlwu": (None, _tail("\n".join(tlwu_lines)))})
     res = {
         "ttfs_seconds": None, "download_seconds": round(dl_s, 3),
         "excl_download_seconds": None, "setup_seconds": round(setup_s, 3),
@@ -143,6 +156,16 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S):
     return res
 
 
+def no_subtitle_report(diag):
+    """#1060: why no subtitle came: exit code + last TAIL_LINES lines of install, setup and the subtitle command."""
+    parts = []
+    for step in ("install", "setup", "tlwu"):
+        rc, tail = diag.get(step, (None, ""))
+        head = "--- %s" % step + ("" if rc is None else " (exit %s)" % rc)
+        parts.append("%s, last %d lines:\n%s" % (head, TAIL_LINES, tail or "(no output)"))
+    return "\n".join(parts)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--install", required=True)
@@ -155,11 +178,13 @@ def main(argv=None):
     ap.add_argument("--timeout", type=float, default=FIRST_SUBTITLE_TIMEOUT_S)
     a = ap.parse_args(argv)
     tlwu = a.tlwu or "tlwu --file %s --device cpu" % shlex.quote(a.clip)
-    res = measure(a.install, a.setup, tlwu, a.timeout)
+    diag = {}
+    res = measure(a.install, a.setup, tlwu, a.timeout, diag)
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
     if res["ttfs_seconds"] is None:
         print("ttfs_seconds=null excl_download_seconds=null")
+        print(no_subtitle_report(diag), file=sys.stderr)
         return 2
     print("ttfs_seconds=%.1f excl_download_seconds=%.1f" % (
         res["ttfs_seconds"], res["excl_download_seconds"]))
