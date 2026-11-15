@@ -65,6 +65,7 @@ jobs:
     steps:
       - name: Check secrets
         id: gate
+        working-directory: ${{ github.workspace }}
         run: |
           if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ] || [ -z "$APPLE_TEAM_ID" ]; then
             echo "::notice::TestFlight upload skipped: set ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (see mobile/README.md)."
@@ -122,4 +123,5 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
       - name: Delete key file
         if: always()
+        working-directory: ${{ github.workspace }}
         run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
