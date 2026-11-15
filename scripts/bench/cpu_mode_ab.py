@@ -71,10 +71,20 @@ def verdict(a: dict, b: dict) -> dict:
     x, y = a["_all"], b["_all"]
     drop = None if not x["p50_s"] or y["p50_s"] is None else 100 * (x["p50_s"] - y["p50_s"]) / x["p50_s"]
     dc, dw = _delta(y["chrf"], x["chrf"]), _delta(x["wer"], y["wer"])  # chrF drop = A - B; WER rise = B - A
+    # reports carry 2-4 decimals: round away float noise so an inclusive limit (e.g. 0.05 -> 0.07 = 2.0) is met
+    dc, dw = (None if v is None else round(v, 6) for v in (dc, dw))
     return {"p50_drop_pct": drop, "chrf_drop": dc, "wer_rise_pts": dw,
             "p50_ok": None if drop is None else drop >= TARGETS["p50_drop_pct_min"],
             "chrf_ok": None if dc is None else dc <= TARGETS["chrf_drop_max"],
             "wer_ok": None if dw is None else dw <= TARGETS["wer_rise_pts_max"]}
+
+
+def check_pairs(a: dict, b: dict) -> None:
+    """Both runs must cover the same language pairs, else the overall numbers compare different clip sets."""
+    pa, pb = set(a) - {"_all"}, set(b) - {"_all"}
+    if pa != pb:
+        raise ValueError("reports cover different pairs: only in defaults " + (", ".join(sorted(pa - pb)) or "-")
+                         + "; only in CPU mode " + (", ".join(sorted(pb - pa)) or "-"))
 
 
 def table(a: dict, b: dict) -> str:
@@ -109,6 +119,8 @@ def main(argv=None) -> int:
     p.add_argument("--base-args", default="", help="extra tlwu_eval args for the defaults run")
     p.add_argument("--cpu-args", default="", help="extra tlwu_eval args for the CPU-mode run")
     a = p.parse_args(argv)
+    if a.run and not a.cpu_args.strip():
+        p.error("--run needs --cpu-args; without it the CPU-mode run repeats the defaults run")
     d = Path(a.out_dir)
     if a.run:
         d.mkdir(parents=True, exist_ok=True)
@@ -123,7 +135,9 @@ def main(argv=None) -> int:
     try:
         reps = [json.loads(x.read_text("utf-8")) for x in paths]
         jl = [load_jsonl(x.with_suffix(".jsonl")) if x.with_suffix(".jsonl").exists() else None for x in paths]
-        print(table(summarize(reps[0], jl[0]), summarize(reps[1], jl[1])))
+        sa, sb = summarize(reps[0], jl[0]), summarize(reps[1], jl[1])
+        check_pairs(sa, sb)
+        print(table(sa, sb))
     except (OSError, ValueError, KeyError) as e:
         print(f"cpu_mode_ab: {e}", file=sys.stderr)
         return 2

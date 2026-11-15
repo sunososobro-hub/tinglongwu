@@ -49,3 +49,28 @@ def test_bad_report_exits_2(tmp_path, capsys):
     bad = tmp_path / "x.json"
     bad.write_text("{not json")
     assert ab.main([str(bad), str(bad)]) == 2
+
+
+def test_wer_limit_is_inclusive_despite_float_noise():
+    v = ab.verdict(ab.summarize(rep(40.0, 0.05, [1.0])), ab.summarize(rep(40.0, 0.07, [1.0])))
+    assert v["wer_ok"]
+    v = ab.verdict(ab.summarize(rep(40.0, 0.05, [1.0])), ab.summarize(rep(40.0, 0.0701, [1.0])))
+    assert not v["wer_ok"]
+
+
+def test_different_pair_sets_exit_2(tmp_path, capsys):
+    ra, rb = tmp_path / "a.json", tmp_path / "b.json"
+    ra.write_text(json.dumps({"languages": rep(40.0, 0.05, [10.0])["languages"]
+                              + [{"pair": "fr->zh", "chrf": 30.0, "error_rate": 0.1, "clips": [{"latency_s": 1.0}]}]}))
+    rb.write_text(json.dumps({"languages": [{"pair": "fr->zh", "chrf": 30.0, "error_rate": 0.1,
+                                             "clips": [{"latency_s": 1.0}]}]}))
+    assert ab.main([str(ra), str(rb)]) == 2
+    assert "en->zh" in capsys.readouterr().err
+
+
+def test_run_without_cpu_args_is_rejected(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit) as e:
+        ab.main(["--run", "--out-dir", str(tmp_path / "o")])
+    assert e.value.code == 2
+    assert not (tmp_path / "o").exists()
