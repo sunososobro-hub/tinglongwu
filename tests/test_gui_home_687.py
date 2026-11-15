@@ -71,9 +71,12 @@ def test_fresh_config_shows_three_controls_and_advanced_is_collapsed(home_app):
     a.toggle_adjust()
     a.root.update()
     assert a.settings["advanced_open"] is False and not a.frm.winfo_ismapped()
-    controls = _outside_advanced(a)
-    assert sorted(w.winfo_class() for w in controls) == ["TButton", "TCombobox", "TCombobox"]  # #1006 my+other language, #1001 one Start
-    assert all(w.winfo_ismapped() for w in controls)
+    # #1028: the main window carries my + the other side's language and the one Start (mic / floating toggles beside it)
+    assert a.home_target.winfo_ismapped() and a.home_lang.winfo_ismapped() and a.btn.winfo_ismapped()
+    assert a.btn is a.both_btn and a.btn.winfo_toplevel() is a.root
+    # the settings page is plain language outside Advanced: choices only (radio / check), no dropdowns or entries
+    outside = {w.winfo_class() for w in _outside_advanced(a)}
+    assert not outside & {"TCombobox", "TEntry", "TSpinbox", "Entry", "Text"}, outside
 
 
 def test_one_start_runs_the_listen_and_the_speak_source(home_app):

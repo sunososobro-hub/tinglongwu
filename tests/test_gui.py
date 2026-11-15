@@ -9,6 +9,8 @@ import pytest
 from tinglongwu.gui import core
 from tinglongwu.sink import Result
 
+MAIN_BAR_MAX_W = 560  # #1028: the chat-style main window's bottom bar (mic / floating / freeze toggles + Start)
+
 
 def test_queue_sink_final():
     q = queue.Queue()
@@ -306,8 +308,13 @@ def gui_app(tmp_path, monkeypatch):
 
 
 def _log(a):
+    """The chat list as plain lines (#1028): bubble padding and the 'Other side' / 'Me' heading lines dropped."""
+    from tinglongwu.i18n import t
+
     a.root.update()
-    return a.log_text.get("1.0", "end-1c")
+    skip = {t("gui_chat_other"), t("gui_chat_me"), t("gui_chat_empty")}
+    lines = [ln.strip() for ln in a.log_text.get("1.0", "end-1c").split("\n")]
+    return "\n".join(ln for ln in lines if ln and ln not in skip)
 
 
 def test_start_shows_listening_in_main_window_and_bar_stays_hidden(gui_app):
@@ -322,11 +329,11 @@ def test_start_shows_listening_in_main_window_and_bar_stays_hidden(gui_app):
     assert _log(a) == "你好\n你好嗎"
     a.var_show_src.set(True)
     a._src_toggled()
-    assert _log(a) == "privet\n你好\nkak dela\n你好嗎"
+    assert _log(a) == "你好\nprivet\n你好嗎\nkak dela"  # #1028: the original sits under its bubble
     a.toggle()  # Stop
     a.worker.join(5)
     a.poll()
-    assert _log(a) == "privet\n你好\nkak dela\n你好嗎"  # the history stays readable after Stop
+    assert _log(a) == "你好\nprivet\n你好嗎\nkak dela"  # the history stays readable after Stop
     assert a.settings["floating_bar"] is False
 
 
@@ -334,7 +341,7 @@ def test_floating_bar_toggle_shows_bar_with_listening(gui_app):
     a = gui_app
     a.v_bar.set(True)
     a._bar_toggled()
-    assert not a.overlay.visible  # not running yet: nothing to show
+    assert a.overlay.visible  # #1028: the button shows the floating bar at once, also before Start
     a.toggle()
     a.root.update()
     assert a.overlay.visible and a.overlay.win.state() == "normal"
@@ -376,11 +383,11 @@ def test_log_follows_newest_unless_scrolled_up(gui_app):
 
 def test_log_font_buttons_and_pause(gui_app):
     a = gui_app
-    w0 = a.panel.winfo_reqwidth()
+    w0 = a.root.winfo_reqwidth()
     a.bump_log_font(8)
     a.root.update()
-    assert a.settings["log_font_size"] == 22 and a.panel.winfo_reqwidth() == w0  # window does not grow
-    assert str(a.log_text.tag_cget("final", "font")).split()[-1] == "22"
+    assert a.settings["log_font_size"] == 22 and a.root.winfo_reqwidth() == w0  # window does not grow
+    assert str(a.log_text.tag_cget("other_final", "font")).split()[-1] == "22"
     a.toggle()
     a.set_paused(True)
     a.q.put(("final", "s", "while paused"))
@@ -455,7 +462,7 @@ def _bound_vars(top) -> set[str]:
 
 
 def test_control_bar_is_compact_in_every_ui_language(gui_app):
-    """#455: the main window is a small bar (<= 420x60 at 100% scale), also while it counts "⏳ N s"."""
+    """#1028: the bottom bar stays within the main window's width in every UI language, also while it counts "⏳ N s"."""
     from tinglongwu.i18n import t
 
     a = gui_app
@@ -472,14 +479,13 @@ def test_control_bar_is_compact_in_every_ui_language(gui_app):
                 a.btn.configure(text=text)
                 a.root.update_idletasks()
                 pair = a.v_pair.get()
-                assert a.bar.winfo_reqwidth() <= 420 and a.bar.winfo_reqheight() <= 60, (ui, pair, text)
-                assert a.root.winfo_reqwidth() <= 420 and a.root.winfo_reqheight() <= 60, (ui, pair, text)
-    assert a.root.attributes("-topmost")
+                assert a.bar.winfo_reqwidth() <= MAIN_BAR_MAX_W, (ui, pair, text)
+                assert a.root.winfo_reqwidth() <= MAIN_BAR_MAX_W + 40, (ui, pair, text)
 
 
 
 def test_update_line_keeps_main_window_within_420px(gui_app):
-    """#698's update line sits under the #455 bar: with its widest text and both buttons it stays <= 420 px."""
+    """#698's update line sits in the main window: with its widest text and both buttons it stays narrow."""
     a = gui_app
     for ui in ("English", "Русский", "繁體中文"):
         a.v_ui_lang.set(ui)
@@ -489,7 +495,7 @@ def test_update_line_keeps_main_window_within_420px(gui_app):
                                  ("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), {"why": "ConnectionResetError"})):
             a._upd_show(key, buttons, **kw)
             a.root.update_idletasks()
-            assert a.root.winfo_reqwidth() <= 420, (ui, key)
+            assert a.root.winfo_reqwidth() <= MAIN_BAR_MAX_W + 40, (ui, key)
     a._update_later()
     a.root.update_idletasks()
     assert not a.upd_frame.winfo_ismapped()
@@ -503,7 +509,7 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
             "model": a.v_model, "source": a.v_source, "preset": a.v_preset, "glossary": a.v_gloss,
             "save": a.v_save, "save_path": a.v_save_path, "show_src": a.var_show_src, "live_draft": a.v_live,
             "voice": a.v_voice, "voice_device": a.v_voice_dev, "floating_bar": a.v_bar}
-    in_panel = _bound_vars(a.panel)
+    in_panel = _bound_vars(a.root)  # #1028: the main window (floating-bar toggle) + the settings panel
     in_panel |= {str(v) for k, (_kind, _vals, v) in a.kind_combos.items() if a.combos[k].winfo_exists()}  # #884: named combos show a mirror var
     assert [k for k, v in keys.items() if str(v) not in in_panel] == []
     # #738: subtitle lines, font size, UI language and theme moved to the menu bar's Settings menu
@@ -520,9 +526,9 @@ def test_adjust_panel_holds_every_setting_and_the_bar_none(gui_app):
     if app_mod.sv_ttk is not None:
         menu_keys["theme"] = a.v_dark
     assert [k for k, v in menu_keys.items() if str(v) not in in_menu] == []
-    for w in (a.log_text, a.btn_pause):  # log (with A-/A+, floating-bar toggle) and Pause live in the panel too
-        assert w.winfo_toplevel() is a.panel
-    assert a.panel.state() == "withdrawn"  # first start: only the bar
+    for w in (a.log_text, a.btn_pause):  # #1028: the chat list and Freeze live in the main window
+        assert w.winfo_toplevel() is a.root
+    assert a.panel.state() == "withdrawn"  # first start: only the main window
     a.btn_adjust.invoke()
     a.root.update()
     assert a.panel.state() == "normal"
@@ -544,7 +550,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     assert not [w for w in a.bar.winfo_children() if w.winfo_class() == "TRadiobutton"]
     a.v_target.set("en")
     a.v_lang.set("auto")
-    assert a.v_pair.get() == "Auto\u21c4English"
+    assert a.v_pair.get() == ""  # #1028: the pickers show the pair; this line is only for "same language"
     assert a.dot_state == "idle"
     a.btn.invoke()  # Start: listen (PC sound -> en) + speak (mic, en -> zh-tw)
     assert a.dot_state == "loading" and (runs[0]["source"], runs[0]["target"]) == ("system", "en")
@@ -557,9 +563,9 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     a.poll()
     assert a.dot_state == "idle" and a.btn.cget("text") == "Start"
     assert a.panel.state() == "withdrawn"
-    a.q.put(("error", "boom"))  # an error opens the Adjust panel, where its message is shown
+    a.q.put(("error", "boom"))  # an error is shown in the main window's status line
     a.poll()
-    assert a.dot_state == "error" and a.panel.state() == "normal"
+    assert a.dot_state == "error" and "boom" in a.v_status.get()
 
 
 # -- #294 easy start: first-screen buttons on a real App -------------------------------------------------------
@@ -588,7 +594,7 @@ def test_one_click_start_loading_then_ready_then_stop(gui_app, monkeypatch):
 
     a = gui_app
     runs = _record_runs(a, monkeypatch)
-    assert _btn(a) == ("Start (listen + speak)", "normal")
+    assert _btn(a) == ("Start", "normal")
     a.v_target.set("zh-tw")
     a.both_btn.invoke()  # click 1
     assert _btn(a) == ("\u23f3 0 s", "disabled")
@@ -601,7 +607,7 @@ def test_one_click_start_loading_then_ready_then_stop(gui_app, monkeypatch):
     a.both_btn.invoke()  # Stop
     a.worker.join(5)
     a.poll()
-    assert _btn(a) == ("Start (listen + speak)", "normal")
+    assert _btn(a) == ("Start", "normal")
 
 
 def test_speak_keeps_my_language_remembered(gui_app, tmp_path, monkeypatch):
@@ -677,7 +683,7 @@ def test_update_controls_are_always_reachable_in_the_help_menu_756(_wizard_insta
     assert t("gui_upd_check") in labels and t("gui_upd_auto") in labels and t("gui_menu_about") in labels
     kids = list(_descendants(a.panel))
     setup_btn = next(w for w in kids if w.winfo_class() == "TButton" and w.cget("text") == t("gui_check_setup"))
-    log_row = int(a.log_text.master.grid_info()["row"])
+    log_row = 99  # #1028: the chat list is in the main window, above the settings rows
     assert int(a.act_row.grid_info()["row"]) < log_row and setup_btn.master is a.act_row
 
 

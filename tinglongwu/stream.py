@@ -388,6 +388,22 @@ class DraftEngine:
         threading.Thread(target=loop, daemon=True).start()
 
 
+class MuteSource(AudioSource):
+    """GUI mic toggle (#1028): while muted() is true the frames of the wrapped source are dropped (the speak leg
+    hears nothing); the capture device itself stays open, so un-muting is instant and needs no model reload."""
+
+    def __init__(self, inner: AudioSource, muted):
+        self.inner, self.muted = inner, muted
+
+    def frames(self):
+        for f in self.inner.frames():
+            if not self.muted():
+                yield f
+
+    def close(self) -> None:
+        self.inner.close()
+
+
 class PacedSource(AudioSource):
     """Wraps a file source and releases frames in real time (so --stream --file behaves like live audio)."""
 

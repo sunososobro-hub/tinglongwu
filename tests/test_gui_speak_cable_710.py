@@ -356,7 +356,7 @@ def test_toggle_speak_without_cable_shows_the_notice_in_an_open_panel(speak_app)
     a.root.update()
     a.toggle("speak")
     a.root.update()
-    assert a.panel.state() == "normal"  # the bar press opens the panel, so the line is seen
+    assert a.root.state() == "normal"  # #1028: the status line is in the main window, so the line is seen
     assert "vb-audio.com/Cable" in a.v_notice.get()
     assert runs and runs[0]["voice"] is False
 
@@ -371,5 +371,5 @@ def test_toggle_speak_with_cable_shows_the_cable_output_ready_line(speak_app):
     a.q.put(("status", f"{READY_STATUS} in 1.0 s"))
     a.poll()
     a.root.update()
-    assert a.panel.state() == "normal" and "CABLE Output" in a.v_status.get()
+    assert a.root.state() == "normal" and "CABLE Output" in a.v_status.get()
     assert a.v_notice.get() == "" and runs and runs[0]["voice_device"] == CABLE

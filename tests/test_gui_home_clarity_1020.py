@@ -76,8 +76,8 @@ def make_app(tmp_path, monkeypatch):
 def test_freeze_button_sits_with_the_subtitle_controls(make_app):
     a = make_app()
     bar = a.btn_pause.master
-    labels = [w.cget("text") for w in bar.winfo_children() if str(w.winfo_class()) == "TButton"]
-    assert "A+" in labels and "A-" in labels  # same row as A- / A+ and the floating-bar toggle
+    assert bar.winfo_toplevel() is a.root  # #1028: with the mic and floating-subtitle toggles, in the main window
+    assert a.btn_mic.winfo_toplevel() is a.root
     assert a.btn_pause.cget("text") == "Freeze subtitles"
     a.toggle_pause()
     assert a.btn_pause.cget("text") == "Resume subtitles"
