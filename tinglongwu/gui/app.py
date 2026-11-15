@@ -1037,6 +1037,9 @@ class App:
         tx.tag_configure("draft", foreground=FG_DRAFT, spacing3=4)
         tx.tag_configure("src", foreground=FG_SRC)
         tx.configure(state="disabled")
+        self.log_menu = tk.Menu(tx, tearoff=0)
+        self.log_menu.add_command(label=t("gui_menu_wrong_line"), command=self.report_wrong_line)
+        tx.bind("<Button-3>", self._log_context)
         tx.bind("<Control-MouseWheel>", lambda e: self.bump_log_font(2 if e.delta > 0 else -2))
         tx.bind("<Control-Button-4>", lambda e: self.bump_log_font(2))
         tx.bind("<Control-Button-5>", lambda e: self.bump_log_font(-2))
@@ -1475,17 +1478,33 @@ class App:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
 
-    def report_wrong(self):
-        """#677: one-click 'wrong translation' for the newest finished line; the app sends nothing, the browser opens on a pre-filled form."""
+    def _log_context(self, event):
+        """#677: right-click a line of the main-window log -> 'Wrong translation (this line)'."""
+        from ..report_translation import row_for_log_line
+
+        line = int(self.log_text.index(f"@{event.x},{event.y}").split(".")[0])
+        self._log_row = row_for_log_line(self.state.history(), self.settings["show_src"], line)
+        if self._log_row is not None and not self._log_row[2]:
+            self.log_menu.tk_popup(event.x_root, event.y_root)
+
+    def report_wrong_line(self):
+        row = getattr(self, "_log_row", None)
+        if row is not None:
+            self.report_wrong(row)
+
+    def report_wrong(self, row=None):
+        """#677: one-click 'wrong translation' for a finished line (default: the newest); the app sends nothing, the browser opens on a pre-filled form."""
         import webbrowser
 
         from ..report_translation import report_line
 
-        finals = [r for r in self.state.history() if not r[2]]
-        if not finals:
-            messagebox.showinfo(t("gui_wrong_title"), t("gui_wrong_none"), parent=self.root)
-            return
-        src, out, _ = finals[-1]
+        if row is None:
+            finals = [r for r in self.state.history() if not r[2]]
+            if not finals:
+                messagebox.showinfo(t("gui_wrong_title"), t("gui_wrong_none"), parent=self.root)
+                return
+            row = finals[-1]
+        src, out, _ = row
         s = self.settings
         report_line(src, out, version=__version__, mode=self.quick_mode or "listen",
                     langpair=f"{s.get('lang', 'auto')} -> {s.get('target', '')}",
