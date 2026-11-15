@@ -1,4 +1,5 @@
 """#956 / #950 part 1: scripts/hotfix_plan.py decides tag, base and fix commit for a hotfix (GitHub API stubbed)."""
+import base64
 import importlib.util
 import os
 import subprocess
@@ -16,8 +17,14 @@ SHA = "c" * 40
 
 
 def make_api(*, pr_merged=True, base="dev", labels=("bug", "P1"), compare="ahead", tags=("v0.3.5",),
-             latest="v0.3.5", body="Fix it.\n\nCloses #77", merged_prs=True):
+             latest="v0.3.5", body="Fix it.\n\nCloses #77", merged_prs=True, dev_version="0.3.5",
+             open_prs=()):
     def api(path):
+        if path.startswith("contents/tinglongwu/__init__.py"):
+            text = f'"""x"""\n__version__ = "{dev_version}"\n'
+            return {"content": base64.b64encode(text.encode()).decode()}
+        if path.startswith("pulls?"):
+            return [{"number": n, "title": t} for n, t in open_prs]
         if path.startswith("pulls/"):
             return {"merged": pr_merged, "base": {"ref": base}, "merge_commit_sha": SHA, "body": body}
         if path.startswith("compare/"):
@@ -71,6 +78,20 @@ def test_rejects_non_bug_issue():
 def test_rejects_existing_tag():
     with pytest.raises(hp.PlanError, match="already exists"):
         hp.plan("5", make_api(tags=("v0.3.5", "v0.3.6")))
+
+
+def test_rejects_dev_version_bumped_but_not_released():
+    with pytest.raises(hp.PlanError, match="0.3.6 is bumped but not released"):
+        hp.plan("5", make_api(dev_version="0.3.6"))
+
+
+def test_rejects_open_bump_pr():
+    with pytest.raises(hp.PlanError, match="bump PR #970 is open"):
+        hp.plan("5", make_api(open_prs=((12, "fix #1: other"), (970, "release: bump __version__ to 0.3.6"))))
+
+
+def test_unrelated_open_prs_do_not_block():
+    assert hp.plan("5", make_api(open_prs=((12, "fix #1: other"),)))["tag"] == "v0.3.6"
 
 
 def test_rejects_missing_issue_link_and_garbage_fix():

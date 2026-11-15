@@ -7,12 +7,14 @@ Prints `tag=vX.Y.(Z+1)`, `base=<latest release tag>`, `fix=<commit sha>`, `issue
 when set), or exits 1 with the reason. Rules:
   - the fix is a merged PR number (its merge commit, base dev) or a commit sha that is an ancestor of dev;
   - the linked issue (`Closes/Fixes/Refs #N` in the PR body) has the labels `bug` and `P0` or `P1`;
+  - no cadence release is pending: dev's `__version__` already has its tag, and no `release: bump __version__` PR is open;
   - tag = latest published (non-draft, non-pre-release) release tag with patch + 1, and that tag must not exist yet.
 Network only through the `gh` CLI (GH_TOKEN). `plan()` takes the API as a function, so tests stub it.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -23,6 +25,8 @@ BRANCH = "dev"
 URGENT = ("P0", "P1")
 LINK_RE = re.compile(r"\b(?:closes|fixes|resolves|refs)\s*:?\s*#(\d+)", re.I)
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+VERSION_RE = re.compile(r'^__version__\s*=\s*"([^"]+)"', re.M)  # same as release_notes.py
+BUMP_PREFIX = "release: bump __version__"
 
 
 class PlanError(Exception):
@@ -45,6 +49,28 @@ def linked_issue(body: str) -> int:
     if not m:
         raise PlanError("the fix PR body has no Closes/Refs #N")
     return int(m[1])
+
+
+def _tag_exists(tag: str, api) -> bool:
+    try:
+        api(f"git/ref/tags/{tag}")
+    except NotFound:
+        return False
+    return True
+
+
+def check_no_pending_release(api) -> None:
+    """Refuse while a cadence release is on its way: dev bumped but untagged (covers a release freeze), or a bump PR open."""
+    content = api(f"contents/tinglongwu/__init__.py?ref={BRANCH}").get("content", "")
+    m = VERSION_RE.search(base64.b64decode(content).decode("utf-8", "replace"))
+    if not m:
+        raise PlanError(f"cannot read __version__ from tinglongwu/__init__.py on {BRANCH}")
+    version = m[1]
+    if not _tag_exists(f"v{version}", api):
+        raise PlanError(f"{BRANCH} __version__ {version} is bumped but not released; wait for that release")
+    for pr in api("pulls?state=open&per_page=100"):
+        if (pr.get("title") or "").startswith(BUMP_PREFIX):
+            raise PlanError(f"bump PR #{pr.get('number')} is open")
 
 
 def plan(fix: str, api) -> dict:
@@ -78,13 +104,10 @@ def plan(fix: str, api) -> dict:
         raise PlanError(f"issue #{issue} is not labelled bug")
     if not labels & set(URGENT):
         raise PlanError(f"issue #{issue} is not P0/P1")
+    check_no_pending_release(api)
     base = api("releases/latest").get("tag_name", "")
     tag = next_tag(base)
-    try:
-        api(f"git/ref/tags/{tag}")
-    except NotFound:
-        pass
-    else:
+    if _tag_exists(tag, api):
         raise PlanError(f"tag {tag} already exists")
     return {"tag": tag, "base": base, "fix": sha, "issue": issue}
 
