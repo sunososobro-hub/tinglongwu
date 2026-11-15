@@ -1264,8 +1264,10 @@ class App:
         key, enabled = start_button(self._quick_phase(), self.quick_mode)  # #1001
         enabled = enabled and not (self.same_lang and self._quick_phase() == "idle")  # #982
         self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
-        key, enabled = mic_button(self._quick_phase(), self.quick_mode, self.mic_off.is_set())  # #1028
-        self.mic_btn.configure(text=t(key), state="normal" if enabled else "disabled")
+        if hasattr(self, "btn"):
+            self.btn.configure(state="normal" if enabled or self._quick_phase() == "running" else "disabled")
+        key, on = mic_button(self._quick_phase(), self.quick_mode, self.mic_off.is_set())  # #1028
+        self.mic_btn.configure(text=t(key), state="normal" if on else "disabled")
 
     def toggle_mic(self):
         """#1028: mute / unmute the speak leg's microphone (MuteSource in run_session); the listen leg is untouched."""
@@ -1274,8 +1276,6 @@ class App:
         else:
             self.mic_off.set()
         self._sync_quick()
-        if hasattr(self, "btn"):
-            self.btn.configure(state="normal" if enabled or self._quick_phase() == "running" else "disabled")
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
