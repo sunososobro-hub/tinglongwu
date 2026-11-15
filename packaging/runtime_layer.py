@@ -179,7 +179,7 @@ def _dist_name(entry: str) -> str:
 
 
 def _shipped(entry: str) -> bool:
-    if entry == "__pycache__" or entry.endswith((".pth", ".egg-link")) or entry.startswith(("__editable__", "~")):
+    if entry == "__pycache__" or entry.endswith((".pth", ".egg-link", ".whl")) or entry.startswith(("__editable__", "~")):
         return False
     return _dist_name(entry) not in NOT_SHIPPED and _dist_name(entry) not in APP_PACKAGES
 
@@ -278,6 +278,37 @@ def _launcher_builds(out: Path, work: Path, rc: Path, src: Path) -> list[tuple[s
                           "/link /SUBSYSTEM:CONSOLE /MANIFEST:NO user32.lib || exit /b 1\r\n", "utf-8")
         builds.append(("msvc", [["cmd", "/c", str(script)]]))
     return builds
+
+
+MINGW_COPYING_NAME = "COPYING.MinGW-w64-runtime.txt"  # in licenses/, next to LICENSE-Python.txt
+MINGW_LICENSE_DIRS = ("share/licenses", "share/doc")  # under the toolchain root (the folder above gcc's bin/)
+
+
+def find_mingw_copying(gcc: str) -> Path | None:
+    """The MinGW-w64 runtime's COPYING file of the toolchain that `gcc` belongs to (None = not found)."""
+    root = Path(gcc).resolve().parent.parent
+    for rel in MINGW_LICENSE_DIRS:
+        base = root / rel
+        if not base.is_dir():
+            continue
+        for f in sorted(base.rglob("COPYING*")):
+            if f.is_file() and any(k in str(f.parent).lower() for k in ("mingw", "crt")):
+                return f
+    return None
+
+
+def copy_mingw_copying(tool: str, dst: Path, gcc: str | None = None) -> bool:
+    """licenses/COPYING.MinGW-w64-runtime.txt when tlwu.exe was built by MinGW-w64 (it links the runtime); `tool` is
+    build_launcher()'s return value. False = built with MSVC, or the toolchain has no COPYING file."""
+    if tool == "msvc":
+        return False
+    gcc = gcc or (_gcc() or ("",))[0]
+    src = find_mingw_copying(gcc) if gcc else None
+    if src is None:
+        return False
+    (dst / "licenses").mkdir(exist_ok=True)
+    shutil.copy2(src, dst / "licenses" / MINGW_COPYING_NAME)
+    return True
 
 
 def build_launcher(out: Path, work: Path, run=subprocess.run) -> str:

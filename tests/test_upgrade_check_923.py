@@ -56,12 +56,17 @@ def test_smoke_problem_uses_the_release_verdict():
     assert "llama_cpp" in uc.smoke_problem(0, "OK   numpy (0.1s)\nsmoke: OK\n")  # llama must load (#398)
 
 
-def _installed(app: Path, done: str | None = "0\n"):
+READY_LOG = "[1/2] model\nREADY default-listen seconds=9.0 download_mb=4\n"
+
+
+def _installed(app: Path, done: str | None = "0\n", ready: bool = True):
     app.mkdir(parents=True, exist_ok=True)
     for n in (uc.EXE_NAME, *uc.NEW_CORE_MARKERS):
         (app / n).write_text("x")
     if done is not None:
         (app / uc.INSTALL_DONE).write_text(done)
+    if ready:
+        (app / uc.INSTALL_LOG).write_text(READY_LOG)
 
 
 def test_wizard_problem_cases(tmp_path):
@@ -73,6 +78,8 @@ def test_wizard_problem_cases(tmp_path):
     (app / uc.INSTALL_DONE).write_text("1 \r\n")
     assert "exited with code 1" in uc.wizard_problem(0, app) and "HTTP 503" in uc.wizard_problem(0, app)
     (app / uc.INSTALL_DONE).write_text("0 \r\n")  # cmd's `echo !errorlevel! >file` leaves a space and CRLF
+    assert "READY default-listen" in uc.wizard_problem(0, app)  # exit 0 but no READY line in install.log (#948)
+    (app / uc.INSTALL_LOG).write_text(READY_LOG)
     assert uc.wizard_problem(0, app) == ""
     assert "code 5" in uc.wizard_problem(5, app)
     (app / "runtime-layer.json").unlink()  # an old Nuitka folder the wizard did not touch

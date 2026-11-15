@@ -155,7 +155,7 @@ Native components and their licenses
   https://docs.python.org/3/license.html
 - tlwu.exe (the launcher, packaging/launcher in the source): MIT like the rest of tinglongWu. When built with
   MinGW-w64 it links the MinGW-w64 runtime (public domain / Zope Public License 2.1 parts, redistributable without
-  further conditions on the binary). https://www.mingw-w64.org/
+  further conditions on the binary), text in COPYING.MinGW-w64-runtime.txt. https://www.mingw-w64.org/
 - Tcl/Tk (DLLs/tcl86t.dll, DLLs/tk86t.dll, tcl/): Tcl/Tk license (BSD-style).
   https://www.tcl.tk/software/tcltk/license.html
 - OpenSSL (DLLs/libcrypto-3.dll, DLLs/libssl-3.dll): Apache-2.0. https://www.openssl.org/
@@ -468,7 +468,7 @@ def make_zip(app: Path, out: Path) -> None:
         out.unlink()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for f in sorted(app.rglob("*")):
-            if f.is_file():
+            if f.is_file() and not (f.parent == app and f.suffix.lower() == ".whl"):  # no wheel at the top (#948)
                 z.write(f, Path(app.name) / f.relative_to(app))
 
 
@@ -558,6 +558,8 @@ def build_runtime(layer: Path, lite: bool, allow_cpu_only: bool) -> dict:
     if pe_machine((new / EXE_NAME).read_bytes()) != 0x8664:
         raise SystemExit(f"runtime layer: {tool} did not build an x64 {EXE_NAME}")
     print("launcher:", tool)
+    if tool != "msvc" and not rt.copy_mingw_copying(tool, new):
+        print(f"WARNING: no MinGW-w64 COPYING file found for {tool}; licenses/{rt.MINGW_COPYING_NAME} not shipped")
     man = rt.write_manifest(new, cuda_src is None, tool)
     shutil.rmtree(layer, ignore_errors=True)
     new.rename(layer)
