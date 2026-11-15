@@ -37,13 +37,14 @@ def _texts(a):
     return out
 
 
-def test_lang_fields_exactly_two_labels_no_source_or_translate_to(app):
-    from tinglongwu.i18n import t
-    texts = _texts(app)
-    assert t("gui_quick_target") in texts and t("gui_quick_other") in texts
-    assert t("gui_src_lang") not in texts and t("gui_target") not in texts
-    langs = [w for w in _walk(app.panel) if w.winfo_class() == "TCombobox" and w in (app.home_lang, app.home_target)]
-    assert len(langs) == 2
+def test_lang_fields_exactly_two_visible_language_fields(app):
+    app.panel.deiconify()
+    app.root.update()
+    assert app.home_lang.winfo_ismapped() and app.home_target.winfo_ismapped()
+    # the Advanced 來源語言 / 翻譯成 rows are not on screen (even with Advanced open)
+    app.set_advanced(True)
+    app.root.update()
+    assert not app.combos["lang"].winfo_ismapped() and not app.combos["target"].winfo_ismapped()
 
 
 def test_lang_fields_same_language_shows_error_and_disables_start(app):
