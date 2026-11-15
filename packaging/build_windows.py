@@ -1,34 +1,46 @@
-r"""Build the standalone Windows folder app (tlwu.exe) with Nuitka and zip it.
+r"""Build the standalone Windows folder app (tlwu.exe) in two layers and zip it (#923).
 
-Run with the PACKAGING venv (never the project .venv):
-    %USERPROFILE%\tlwu-eval\pack-venv\Scripts\python.exe packaging\build_windows.py [--post-only] [--lite]
+    python packaging\build_windows.py --lite            CPU-only core (CI, releases): makes its own packaging venv
+    <pack-venv>\Scripts\python.exe packaging\build_windows.py [--allow-cpu-only]    CUDA variant (pack machine)
 
-pack-venv = requirements.txt (without av / psutil) + requirements-llama-cuda.txt (llama-cpp-python CUDA wheel) + Nuitka.
+Runtime layer (packaging/runtime_layer.py): tlwu.exe launcher + Python + every third-party package (.pyc) + llama.cpp
+DLLs + VC++ runtime + licenses, kept in <build root>/runtime/tlwu. It is rebuilt only when runtime_layer.key() changes
+(requirements*.txt or the packaging code); CI restores it from a cache. Building it needs a packaging venv =
+requirements.txt (without av / psutil) + a llama-cpp-python wheel: --lite makes that venv itself (CPU wheel) when this
+interpreter is not one; the CUDA variant must be started from a pack-venv that has requirements-llama-cuda.txt.
+App layer: tinglongwu/, tlwu_app/, tinglongwu_setup/ as .py + .pyc, repacked on every run (seconds).
+No compiler runs over Python code, so a one-line app change builds in about a minute instead of a Nuitka recompile.
+
 PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
 CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements-gpu.txt), found in TLWU_CUDA_SRC, the
 pack-venv or the project .venv (read only). None found -> the build stops (--lite / --allow-cpu-only: CPU-only); never a
 package whose CUDA llama.dll cannot load (#398). A CPU llama.cpp build (the llama-cpp-python CPU wheel, downloaded
 once) goes to llama_cpp/lib_cpu/: the app uses it when the CUDA llama.dll cannot load (no NVIDIA GPU / driver).
-Steps: nuitka (needs MinGW-w64 gcc, which Nuitka downloads once) -> dist/tlwu -> cuda_libs/, llama DLLs,
-VC++ runtime, licenses, usage text -> scripts/check_dist_dlls.py (every DLL dependent resolves, #398) ->
-`tlwu.exe --smoke` (#310; --no-smoke skips) -> dist/tinglongwu-win64.zip.
+Steps: runtime layer (reused or built) -> dist/tlwu = runtime layer + app layer -> scripts/check_dist_dlls.py (every
+DLL dependent resolves, #398) -> `tlwu.exe --smoke` (#310; --no-smoke skips) -> dist/tinglongwu-win64.zip.
 """
 from __future__ import annotations
 
 import argparse
+import compileall
 import importlib.metadata as md
+import json
 import os
+import py_compile
 import re
 import shutil
 import struct
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
-BUILD = EVAL / "build" / "nuitka-tlwu"
+BUILD = EVAL / "build"
+RUNTIME = EVAL / "runtime" / "tlwu"  # the runtime layer (packaging/runtime_layer.py); CI caches EVAL/runtime
+PACK_VENV = BUILD / "pack-venv"      # made by --lite when this interpreter is not a packaging venv
 APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 
 
@@ -72,7 +84,7 @@ NVIDIA_LICENSE_WHEELS = ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc")
 GPU_PACK_LICENSE_DIR = "licenses"  # zip folder for license texts; DLLs stay at the root (gpu_pack.pack_dir)
 # Microsoft VC++ 2015-2022 runtime, absent on a clean Windows: ctranslate2 / llama.cpp import msvcp140, onnxruntime
 # msvcp140_1, ggml vcomp140 (OpenMP). Copied as one matched set from the installed redistributable (System32) next
-# to tlwu.exe, replacing the older vcruntime140 Nuitka took from Python: msvcp140 must not be newer than vcruntime140.
+# to tlwu.exe, replacing the older vcruntime140 that ships with Python: msvcp140 must not be newer than vcruntime140.
 VC_RUNTIME = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "vcomp140.dll")
 # The bundled copy is used even where Windows has a newer one: an msvcp140 older than the toolset a wheel was built
 # with crashes (VS 17.10 std::mutex change), so the pack machine's redistributable must be at least 14.40.
@@ -94,17 +106,6 @@ def pe_machine(data: bytes) -> int | None:
         return None
     pe = struct.unpack_from("<I", data, 0x3C)[0]
     return struct.unpack_from("<H", data, pe + 4)[0] if data[pe:pe + 4] == b"PE\0\0" else None
-
-
-def lazy_includes() -> list[str]:
-    """--include-module for every submodule filelock loads through its module __getattr__ (#310: filelock._soft was
-    missing from a user's build). --include-package=filelock should already cover them; naming them makes Nuitka
-    fail loudly if one cannot be found in the pack-venv instead of shipping a build that breaks on first download."""
-    import filelock
-
-    lazy = getattr(filelock, "_LAZY_ATTRIBUTES", {})
-    mods = {f"filelock{m}" if m.startswith(".") else m for m in lazy.values()}
-    return [f"--include-module={m}" for m in sorted(mods)]
 
 
 def has_nvidia_driver() -> bool:
@@ -131,38 +132,6 @@ def smoke(app: Path, run=subprocess.run, lite: bool = False, no_gpu_ok: bool = F
                          "not zipping")
 
 
-def nuitka_cmd() -> list[str]:
-    return [sys.executable, "-m", "nuitka", "--standalone", "--assume-yes-for-downloads", "--jobs=16", "--lto=no",
-            "--enable-plugin=tk-inter", "--windows-console-mode=hide", "--output-filename=tlwu.exe",
-            "--output-folder-name=tlwu", f"--windows-icon-from-ico={APP_ICON}", f"--output-dir={BUILD}", "--remove-output",
-            f"--report={EVAL / 'build' / 'nuitka-report.xml'}",
-            "--include-package=tlwu_app", "--include-package=tinglongwu", "--include-package=tinglongwu_setup",
-            # filelock/huggingface_hub import submodules lazily (__getattr__), so Nuitka cannot see them (#36)
-            "--include-package=filelock", "--include-package=huggingface_hub", *lazy_includes(),
-            # tinglongwu.reverse is compiled in: tlwu --voice (#330) uses its Player / TTSClient (#464). tts_worker is
-            # not: it runs in the Kokoro venv from the source file copied by copy_worker_sources().
-            "--nofollow-import-to=tinglongwu.reverse.tts_worker", "--nofollow-import-to=pytest",
-            "--nofollow-import-to=unittest",
-            # #390: lazy-imported on the first Russian sentence; the dictionary is package data loaded by path
-            "--include-package=pymorphy3", "--include-package=dawg_python", "--include-package=pymorphy3_dicts_ru",
-            "--include-package-data=pymorphy3_dicts_ru",
-            "--include-package-data=faster_whisper", "--include-package-data=opencc",
-            "--include-package-data=soundcard", "--include-package=sv_ttk", "--include-package-data=sv_ttk", "--include-package-data=tinglongwu_setup", "--include-package-data=tinglongwu",  # self-test clip data/selftest_en.wav (#99)
-            "--product-name=tinglongWu", "--file-description=tinglongWu offline speech translator",
-            f"--file-version={WIN_VERSION}", f"--product-version={WIN_VERSION}", str(REPO / "packaging" / "tlwu_entry.py")]
-
-
-def run_nuitka() -> Path:
-    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(REPO), str(REPO / "packaging" / "stubs")]))
-    subprocess.check_call(nuitka_cmd(), cwd=REPO, env=env)
-    out = BUILD / "tlwu"
-    if not (out / "tlwu.exe").exists():
-        out = BUILD / "tlwu.dist"
-    if not (out / "tlwu.exe").exists():
-        raise SystemExit(f"tlwu.exe not found under {BUILD}")
-    return out
-
-
 NVIDIA_NOTE = """This package includes NVIDIA CUDA and cuDNN libraries (cuda_libs/) redistributed under the NVIDIA CUDA Toolkit EULA
 and the cuDNN Software License Agreement; see the NVIDIA-*.txt files in this folder.
 """
@@ -181,11 +150,18 @@ Native components and their licenses
   Source: https://github.com/libsndfile/libsndfile . It is a separate DLL; you may replace it with your own build
   of libsndfile (same ABI) by overwriting that file.
 - llama.cpp / ggml (llama_cpp/lib/*.dll): MIT, Copyright (c) The ggml authors. https://github.com/ggml-org/llama.cpp
-- Python runtime (python312.dll): Python Software Foundation License. https://docs.python.org/3/license.html
-- Tcl/Tk (tcl86t.dll, tk86t.dll): Tcl/Tk license (BSD-style). https://www.tcl.tk/software/tcltk/license.html
-- OpenSSL (libcrypto-3.dll): Apache-2.0. https://www.openssl.org/
-- SQLite (sqlite3.dll): public domain. https://www.sqlite.org/copyright.html
-- zlib (zlib1.dll): zlib license. https://zlib.net/zlib_license.html
+- Python runtime (python3*.dll, python3*.zip = the standard library, DLLs/*.pyd): Python Software Foundation
+  License, full text (with the licenses of the software CPython incorporates) in LICENSE-Python.txt.
+  https://docs.python.org/3/license.html
+- tlwu.exe (the launcher, packaging/launcher in the source): MIT like the rest of tinglongWu. When built with
+  MinGW-w64 it links the MinGW-w64 runtime (public domain / Zope Public License 2.1 parts, redistributable without
+  further conditions on the binary). https://www.mingw-w64.org/
+- Tcl/Tk (DLLs/tcl86t.dll, DLLs/tk86t.dll, tcl/): Tcl/Tk license (BSD-style).
+  https://www.tcl.tk/software/tcltk/license.html
+- OpenSSL (DLLs/libcrypto-3.dll, DLLs/libssl-3.dll): Apache-2.0. https://www.openssl.org/
+- libffi (DLLs/libffi-8.dll): MIT. https://github.com/libffi/libffi
+- SQLite (DLLs/sqlite3.dll): public domain. https://www.sqlite.org/copyright.html
+- zlib (DLLs/zlib1.dll, when present): zlib license. https://zlib.net/zlib_license.html
 - Intel OpenMP runtime (libiomp5md.dll): Intel / LLVM OpenMP license (Apache-2.0 with LLVM exception).
 - OpenBLAS (numpy.libs, scipy.libs *openblas*.dll): BSD-3-Clause. https://github.com/OpenMathLib/OpenBLAS
 - Microsoft vcomp140 OpenMP runtime (sentencepiece.libs/vcomp140-*.dll, shipped inside the sentencepiece wheel) and
@@ -454,13 +430,16 @@ DATA_LICENSES = {
 }
 
 
+LICENSE_SKIP = ("nuitka", "ordered-set", "zstandard", "pip", "setuptools", "wheel")  # build tools, not shipped
+
+
 def write_licenses(app: Path, cuda_src: Path | None) -> None:
     lic = app / "licenses"
     lic.mkdir(exist_ok=True)
     rows = []
     for d in sorted(md.distributions(), key=lambda x: (x.metadata["Name"] or "").lower()):
         n = d.metadata["Name"]
-        if n and n.lower() not in ("nuitka", "ordered-set", "zstandard", "pip", "setuptools", "wheel"):
+        if n and n.lower() not in LICENSE_SKIP:
             lic_text = DATA_LICENSES.get(n.lower()) or d.metadata.get('License-Expression') or d.metadata.get('License')
             rows.append(f"{n} {d.version}: {lic_text or 'see package'}")
     if cuda_src:
@@ -468,7 +447,8 @@ def write_licenses(app: Path, cuda_src: Path | None) -> None:
     import importlib.util
 
     spec = importlib.util.find_spec("soundfile")
-    cand = Path(spec.origin).parent.parent / "_soundfile_data" / "COPYING" if spec and spec.origin else None
+    # soundfile is a single module: site-packages/soundfile.py beside site-packages/_soundfile_data/
+    cand = Path(spec.origin).parent / "_soundfile_data" / "COPYING" if spec and spec.origin else None
     if not (cand and cand.exists()):
         cand = REPO / ".venv" / "Lib" / "site-packages" / "_soundfile_data" / "COPYING"
     if cand and cand.exists():
@@ -488,21 +468,173 @@ def make_zip(app: Path, out: Path) -> None:
 
 # Source files the TTS worker (run by the Kokoro venv's python, not by tlwu.exe) needs next to the exe (#464):
 # TTSClient starts tinglongwu/reverse/tts_worker.py, which imports tinglongwu.offline for the network guard.
+# The app layer ships every .py of the app packages, so these are checked, not copied one by one.
 WORKER_SOURCES = ("tinglongwu/__init__.py", "tinglongwu/offline.py", "tinglongwu/i18n.py", "tinglongwu/userdirs.py",
                   "tinglongwu/reverse/tts_worker.py")  # i18n/userdirs: offline._emit (blocked-connection log)
+APP_PACKAGES = ("tinglongwu", "tlwu_app", "tinglongwu_setup")  # = runtime_layer.APP_PACKAGES (tested)
+APP_MANIFEST = "app-layer.json"  # at the top of the folder: app version of the app layer
+USAGE_TEXT = "使用說明.txt"
+EXE_NAME = "tlwu.exe"
+VS_FIXEDFILEINFO_SIG = b"\xbd\x04\xef\xfe"  # 0xFEEF04BD, little endian
+VERSION_OFFSET = 8  # dwFileVersionMS in VS_FIXEDFILEINFO; LS, dwProductVersionMS, LS follow
+VERSION_FIELDS = "<IIII"  # those four DWORDs
+VERSION_PART_MAX = 0xFFFF  # each of the four version parts is one 16-bit word
 
 
-def copy_worker_sources(app: Path) -> list[str]:
-    for rel in WORKER_SOURCES:
-        dst = app / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO / rel, dst)
-    return list(WORKER_SOURCES)
+def _runtime_layer():
+    """packaging/runtime_layer.py as a module (this file is run as a script and imported by path in tests)."""
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import runtime_layer
+
+    return runtime_layer
+
+
+def set_exe_version(exe: Path, version: str) -> bool:
+    """Write `version` ('0.3.5.0') as file and product version into the exe's version resource, in place.
+    The launcher is compiled once per runtime layer with version 0.0.0.0; the app layer stamps the real one, so a
+    version bump does not rebuild the runtime layer. False = the exe has no single VS_FIXEDFILEINFO (left alone)."""
+    data = bytearray(exe.read_bytes())
+    i = data.find(VS_FIXEDFILEINFO_SIG)
+    end = i + VERSION_OFFSET + struct.calcsize(VERSION_FIELDS)
+    if i < 0 or data.find(VS_FIXEDFILEINFO_SIG, i + 1) >= 0 or len(data) < end:
+        return False
+    parts = [int(x) for x in version.split(".")]
+    if len(parts) != 4 or not all(0 <= p <= VERSION_PART_MAX for p in parts):
+        raise SystemExit(f"{exe.name}: version {version!r} is not four numbers of 0..{VERSION_PART_MAX}")
+    a, b, c, d = parts
+    ms, ls = (a << 16) | b, (c << 16) | d
+    struct.pack_into(VERSION_FIELDS, data, i + VERSION_OFFSET, ms, ls, ms, ls)
+    exe.write_bytes(bytes(data))
+    return True
+
+
+def variants(lite: bool, allow_cpu_only: bool) -> list[bool]:
+    """Runtime variants (True = CPU-only) this command line accepts, preferred first."""
+    return [True] if lite else ([False, True] if allow_cpu_only else [False])
+
+
+def runtime_stale(layer: Path, lite: bool, allow_cpu_only: bool) -> str:
+    """'' when the runtime layer in `layer` can be reused for this command line, else the reason."""
+    rt = _runtime_layer()
+    man = rt.read_manifest(layer)
+    for v in variants(lite, allow_cpu_only):
+        if man.get("lite") is v:
+            return rt.stale_reason(layer, v)
+    return rt.stale_reason(layer, lite) or "the runtime layer is the other variant (CPU-only vs CUDA)"
+
+
+def build_runtime(layer: Path, lite: bool, allow_cpu_only: bool) -> dict:
+    """Build the runtime layer into `layer` from this interpreter (a packaging venv on Windows). Returns its manifest."""
+    rt = _runtime_layer()
+    if sys.platform != "win32":
+        raise SystemExit("the runtime layer is built on Windows only (it copies the running Python's DLLs)")
+    cuda_src = None if lite else find_cuda_src()
+    if cuda_src is None and not lite:
+        msg = ("no CUDA 12 DLLs (nvidia-cublas/cuda-runtime/cudnn/cuda-nvrtc -cu12 wheels) in "
+               f"{', '.join(map(str, CUDA_SRC_CANDIDATES))} (#398). For the GPU package: pip install -r "
+               "requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
+        if not allow_cpu_only:
+            raise SystemExit(f"{msg}; or pass --lite / --allow-cpu-only for a CPU-only package")
+        print(f"WARNING: {msg}; building a CPU-only package (--allow-cpu-only)")
+    new = layer.with_name(layer.name + ".new")  # built beside the old one, swapped in when complete
+    shutil.rmtree(new, ignore_errors=True)
+    new.mkdir(parents=True)
+    print("python:", rt.copy_python_core(new))
+    print("packages:", " ".join(rt.copy_site_packages(new)), "; stubs:", rt.copy_stubs(new))
+    copy_llama(new, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
+    print("cuda:", copy_cuda(new, cuda_src) if cuda_src else "none (CPU-only package)")
+    print("vc runtime:", copy_vc_runtime(new))
+    write_licenses(new, cuda_src)
+    print("compiled (.py -> .pyc), kept as .py:", rt.compile_sourceless(new))
+    tool = rt.build_launcher(new / EXE_NAME, BUILD / "launcher")
+    if pe_machine((new / EXE_NAME).read_bytes()) != 0x8664:
+        raise SystemExit(f"runtime layer: {tool} did not build an x64 {EXE_NAME}")
+    print("launcher:", tool)
+    man = rt.write_manifest(new, cuda_src is None, tool)
+    shutil.rmtree(layer, ignore_errors=True)
+    new.rename(layer)
+    return man
+
+
+def ensure_runtime(layer: Path, lite: bool, allow_cpu_only: bool, reuse_only: bool = False, force: bool = False,
+                   run=subprocess.check_call) -> dict:
+    """The runtime layer's manifest; the layer is reused when up to date, else rebuilt (in a new packaging venv when
+    this interpreter is not one: --lite only)."""
+    rt = _runtime_layer()
+    why = "--rebuild-runtime" if force else runtime_stale(layer, lite, allow_cpu_only)
+    if not why:
+        print(f"runtime layer: reused ({layer})")
+        return rt.read_manifest(layer)
+    if reuse_only:
+        raise SystemExit(f"--post-only: {why}; run without --post-only first")
+    print(f"runtime layer: building ({why})")
+    if rt.has_app_deps():
+        return build_runtime(layer, lite, allow_cpu_only)
+    if not lite:
+        raise SystemExit("the CUDA variant needs a packaging venv (requirements.txt without av / psutil + "
+                         "requirements-llama-cuda.txt): start this script with its python, or pass --lite")
+    py = rt.make_pack_venv(PACK_VENV)
+    run([str(py), str(Path(__file__).resolve()), "--runtime-only", "--rebuild-runtime", "--lite"])
+    return rt.read_manifest(layer)
+
+
+def link_tree(src: Path, dst: Path, copy: tuple[str, ...] = (EXE_NAME,)) -> int:
+    """dst = a copy of src made of hard links (same volume; a plain copy where linking fails). Top-level files named
+    in `copy` are real copies: the app layer changes them in place (set_exe_version). Returns the file count."""
+    if dst.exists():
+        shutil.rmtree(dst)
+    n = 0
+    for root, dirs, files in os.walk(src):
+        out = dst / Path(root).relative_to(src)
+        out.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            s, d = Path(root) / name, out / name
+            if out == dst and name in copy:
+                shutil.copy2(s, d)
+            else:
+                try:
+                    os.link(s, d)
+                except OSError:
+                    shutil.copy2(s, d)
+            n += 1
+    return n
+
+
+def build_app_layer(app: Path, pyc_magic: str | None = None, repo: Path | None = None) -> list[str]:
+    """Put the app layer into `app`: the app packages as .py + unchecked-hash .pyc (never recompiled on the user's
+    PC, whatever the file times are), the usage text and APP_MANIFEST. `pyc_magic` = the runtime layer's; this
+    interpreter must write the same .pyc format. Shipping the sources alone is not an option: an install made over
+    an older one keeps that version's unchecked-hash .pyc files, and Python would run them instead of the new .py."""
+    rt = _runtime_layer()
+    repo = repo or REPO
+    if pyc_magic not in (None, rt.pyc_magic()):
+        raise SystemExit(f"app layer: this Python ({sys.version.split()[0]}) writes another .pyc format than the "
+                         "runtime layer's Python; rebuild the runtime layer (--rebuild-runtime)")
+    for pkg in APP_PACKAGES:
+        dst = app / pkg
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(repo / pkg, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        if not compileall.compile_dir(
+                str(dst), quiet=1, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH):
+            raise SystemExit(f"app layer: {pkg} has a file that does not compile")
+    missing = [rel for rel in WORKER_SOURCES if not (app / rel).is_file()]
+    if missing:
+        raise SystemExit(f"app layer: TTS worker sources missing: {', '.join(missing)} (#464)")
+    shutil.copy2(repo / "packaging" / USAGE_TEXT, app / USAGE_TEXT)
+    (app / APP_MANIFEST).write_text(json.dumps({"version": read_version(), "packages": list(APP_PACKAGES)}) + "\n",
+                                    "utf-8")
+    return list(APP_PACKAGES)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--post-only", action="store_true", help="skip nuitka, reuse the build output")
+    ap.add_argument("--post-only", action="store_true",
+                    help="never rebuild the runtime layer: stop when it is missing or out of date")
+    ap.add_argument("--rebuild-runtime", action="store_true", help="rebuild the runtime layer even when it is up to date")
+    ap.add_argument("--runtime-only", action="store_true", help="only make sure the runtime layer is built, no app layer / zip")
     ap.add_argument("--lite", "--core", dest="lite", action="store_true",
                     help="CPU-only core variant (alias --core): no cuda_libs/ and no ggml-cuda.dll")
     ap.add_argument("--allow-cpu-only", action="store_true",
@@ -510,7 +642,7 @@ def main() -> int:
                          "without an NVIDIA driver (CI runner) the smoke may also use the CPU llama fallback")
     ap.add_argument("--no-smoke", action="store_true", help="skip the `tlwu.exe --smoke` check before zipping")
     ap.add_argument("--gpu-pack-only", action="store_true",
-                    help="only build the GPU pack (zip + manifest) from the CUDA wheels, no Nuitka (#763)")
+                    help="only build the GPU pack (zip + manifest) from the CUDA wheels, no core build (#763)")
     ap.add_argument("--out", help="with --gpu-pack-only: output folder")
     ap.add_argument("--url", default="", help="with --gpu-pack-only: download url written to the manifest")
     a = ap.parse_args()
@@ -519,33 +651,18 @@ def main() -> int:
             raise SystemExit("--gpu-pack-only needs --out DIR")
         print("manifest:", build_gpu_pack_only(Path(a.out), url=a.url))
         return 0
+    t0 = time.monotonic()
+    man = ensure_runtime(RUNTIME, a.lite, a.allow_cpu_only, reuse_only=a.post_only, force=a.rebuild_runtime)
+    t1 = time.monotonic()
+    print(f"runtime layer: {t1 - t0:.0f} s (key {str(man.get('key'))[:12]}, python {man.get('python')})")
+    if a.runtime_only:
+        return 0
+    lite = bool(man.get("lite"))
     DIST.mkdir(parents=True, exist_ok=True)
-    if not a.post_only:
-        src = run_nuitka()
-        if APP.exists():
-            shutil.rmtree(APP)
-        shutil.copytree(src, APP)
-    elif not APP.exists():
-        built = BUILD / "tlwu.dist"
-        if not built.exists():
-            raise SystemExit(f"nothing to post-process: {built} missing; run without --post-only first")
-        shutil.copytree(built, APP)
-    if not (APP / "tlwu.exe").exists():
-        raise SystemExit("run without --post-only first")
-    cuda_src = None if a.lite else find_cuda_src()
-    if cuda_src is None and not a.lite:
-        msg = ("no CUDA 12 DLLs (nvidia-cublas/cuda-runtime/cudnn/cuda-nvrtc -cu12 wheels) in "
-               f"{', '.join(map(str, CUDA_SRC_CANDIDATES))} (#398). For the GPU package: pip install -r "
-               "requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
-        if not a.allow_cpu_only:
-            raise SystemExit(f"{msg}; or pass --lite / --allow-cpu-only for a CPU-only package")
-        print(f"WARNING: {msg}; building a CPU-only package (--allow-cpu-only)")
-    copy_llama(APP, lite=cuda_src is None, cpu_dlls=cpu_llama_dlls())
-    print("cuda:", copy_cuda(APP, cuda_src) if cuda_src else "none (CPU-only package)")
-    print("vc runtime:", copy_vc_runtime(APP))
-    write_licenses(APP, cuda_src)
-    shutil.copy2(REPO / "packaging" / "使用說明.txt", APP / "使用說明.txt")
-    print("worker sources:", copy_worker_sources(APP))
+    print("core folder:", link_tree(RUNTIME, APP), "runtime files")
+    print("app layer:", build_app_layer(APP, man.get("pyc_magic")))
+    if not set_exe_version(APP / EXE_NAME, WIN_VERSION):
+        print(f"WARNING: {EXE_NAME} has no version resource; its file version stays unset")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(REPO / "scripts"))
     from check_dist_dlls import check as check_dlls
@@ -557,9 +674,11 @@ def main() -> int:
     if cmd_deps(APP):  # a DLL that only the build machine has: tlwu.exe would not start on a clean Windows (#9)
         print("WARNING: see the MISSING lines above; then test with: clean_machine_check.py sandbox", APP, "--run")
     if not a.no_smoke:
-        smoke(APP, lite=cuda_src is None, no_gpu_ok=a.allow_cpu_only and not has_nvidia_driver())
+        smoke(APP, lite=lite, no_gpu_ok=a.allow_cpu_only and not has_nvidia_driver())
+    t2 = time.monotonic()
     make_zip(APP, DIST / "tinglongwu-win64.zip")
     print("zip:", DIST / "tinglongwu-win64.zip", (DIST / "tinglongwu-win64.zip").stat().st_size >> 20, "MB")
+    print(f"app layer + checks: {t2 - t1:.0f} s, zip: {time.monotonic() - t2:.0f} s")
     return 0
 
 

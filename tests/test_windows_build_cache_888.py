@@ -1,4 +1,4 @@
-"""#888: dev pushes must finish and be the only runs that save the Nuitka cache."""
+"""#888: dev pushes must finish and be the only runs that save the build cache (since #923: the runtime layer)."""
 from pathlib import Path
 
 import yaml
@@ -27,4 +27,7 @@ def test_cache_is_restore_then_save_from_push_only_after_build():
     assert r < b < sv
     cond = steps[sv]["if"]
     assert "github.event_name == 'push'" in cond and "steps.build.outcome == 'success'" in cond and "always()" in cond
-    assert steps[r]["with"]["key"] == steps[sv]["with"]["key"] and "run_id" in steps[sv]["with"]["key"]
+    # #923: the runtime layer has one entry per content key (no run_id part): saved under the key that missed
+    assert steps[r]["id"] == "runtime" and steps[sv]["with"]["key"] == "${{ steps.runtime.outputs.cache-primary-key }}"
+    assert "run_id" not in steps[r]["with"]["key"] and "github.sha" not in steps[r]["with"]["key"]
+    assert "steps.runtime.outputs.cache-hit != 'true'" in cond

@@ -52,7 +52,7 @@ curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/downloa
 
 ## 发行版（运行前请先阅读）
 
-Windows 发行 zip **未签名**，由维护者在本机用 Nuitka 构建，**不可复现构建**。其 SHA256 公布在 release 说明中：运行前请用 `Get-FileHash tinglongwu-win64.zip` 比对。哈希只证明你拿到的是维护者发布的那个文件。若要真正的验证，请从源码安装（`install.bat` 或下面的步骤）：源码、锁版依赖和模型哈希都可审计。
+Windows 发行 zip **未签名**，由 GitHub Actions 的 `release` workflow 构建（小型 `tlwu.exe` 启动器 + 标准 Python 运行环境 + 程序的 Python 文件），**不可复现构建**。其 SHA256 公布在 release 说明中：运行前请用 `Get-FileHash tinglongwu-win64.zip` 比对。哈希只证明你拿到的是维护者发布的那个文件。若要真正的验证，请从源码安装（`install.bat` 或下面的步骤）：源码、锁版依赖和模型哈希都可审计。
 
 ## 语言
 

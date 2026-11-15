@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from tinglongwu.report_translation import MAX_URL, build_url, report_line
+from tinglongwu.report_translation import MAX_URL, build_url, report_line, row_for_log_line
 
 
 def _qs(url):
@@ -54,3 +54,29 @@ def test_confirm_opens_once_and_empty_line_does_nothing():
     assert len(opened) == 1 and opened[0].startswith("https://github.com/")
     assert not report_line("", " ", version="v1", mode="listen", langpair="x", confirm=lambda t: True, open_url=opened.append)
     assert len(opened) == 1
+
+
+ROWS = [("a", "A", False), ("same", "same", False), ("c", "C", True)]
+
+
+def test_log_line_maps_to_history_row_with_source_shown():
+    # text lines: 1 a / 2 A | 3 same | 4 c / 5 C
+    assert [row_for_log_line(ROWS, True, n) for n in (1, 2, 3, 4, 5)] == [ROWS[0], ROWS[0], ROWS[1], ROWS[2], ROWS[2]]
+    assert row_for_log_line(ROWS, True, 6) is None and row_for_log_line(ROWS, True, 0) is None
+
+
+def test_log_line_maps_to_history_row_without_source():
+    assert [row_for_log_line(ROWS, False, n) for n in (1, 2, 3)] == ROWS
+
+
+def test_i18n_has_line_label_in_all_languages():
+    from tinglongwu import i18n
+    vals = {lang: d["gui_menu_wrong_line"] for lang, d in i18n.MESSAGES.items()}
+    assert len(vals) >= 3 and len(set(vals.values())) == len(vals)
+
+
+def test_log_line_mapping_counts_embedded_newlines():
+    rows = [("", "first\nsecond", False), ("", "third", False)]
+    assert [row_for_log_line(rows, True, n) for n in (1, 2, 3)] == [rows[0], rows[0], rows[1]]
+    both = [("s1\ns2", "o", False), ("x", "y", False)]
+    assert [row_for_log_line(both, True, n) for n in (1, 2, 3, 4, 5)] == [both[0]] * 3 + [both[1]] * 2

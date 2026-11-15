@@ -110,7 +110,6 @@ jobs:
         shell: pwsh
         run: |
           "TLWU_BUILD_ROOT=$env:RUNNER_TEMP\tlwu-build" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-          "NUITKA_CACHE_DIR=$env:RUNNER_TEMP\nuitka-cache" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           # first step = job start, for the job time line at the end (#762)
           "TLWU_JOB_START=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -120,49 +119,38 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - name: Nuitka compile cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      - name: Runtime layer cache (restore)
+        id: runtime
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
-          path: ${{ runner.temp }}\nuitka-cache
-          # #762: the same key and files as windows-build.yml (one shared core-build cache family). A run reads
-          # caches of its own branch and of the default branch (main), so a release on main restores the cache of
-          # the previous release, and windows-build / dry runs on other branches can restore the release's cache.
-          # Last restore key: the pre-#762 release cache, so the first core release does not compile from zero.
-          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-${{ github.sha }}
-          restore-keys: |
-            nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-llama-cpu.txt') }}-
-            nuitka-${{ runner.os }}-
-            nuitka-release-${{ runner.os }}-
-      - name: Packaging venv (requirements.txt without av / psutil, CPU llama-cpp-python, Nuitka)
-        shell: pwsh
-        run: |
-          python -m venv "$env:RUNNER_TEMP\pack-venv"
-          $py = "$env:RUNNER_TEMP\pack-venv\Scripts\python.exe"
-          Get-Content requirements.txt | Where-Object { $_ -notmatch '^(av|psutil)==' } | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\req-pack.txt"
-          & $py -m pip install --upgrade pip
-          if ($LASTEXITCODE) { exit 1 }
-          & $py -m pip install -r "$env:RUNNER_TEMP\req-pack.txt"
-          if ($LASTEXITCODE) { exit 1 }
-          & $py -m pip install -r requirements-llama-cpu.txt --only-binary=:all:
-          if ($LASTEXITCODE) { exit 1 }
-          & $py -m pip install nuitka ordered-set zstandard
-          if ($LASTEXITCODE) { exit 1 }
-          "PACK_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          path: ${{ runner.temp }}\tlwu-build\runtime
+          # #923: the same key as windows-build.yml (one cache family for the runtime layer: Python + third-party
+          # packages + tlwu.exe). A run reads caches of its own branch and of the default branch (main), so a release
+          # on main restores the layer of the previous release. build_windows.py compares the restored layer's recorded
+          # key with runtime_layer.key() and rebuilds it on a mismatch; the release checks below then test the zip.
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'packaging/build_windows.py', 'packaging/runtime_layer.py', 'packaging/launcher/**', 'packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |
-          & $env:PACK_PY packaging\build_windows.py --core
+          python packaging\build_windows.py --core
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Core zip budget (scripts/release_check.py, MAX_CORE_MB, no CUDA files)
         shell: pwsh
         run: |
-          & $env:PACK_PY scripts\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip"
+          python scripts\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Release checks on the zip (size, check_dist_dlls, llama CPU instructions, --smoke, --selftest)
         shell: pwsh
         run: |
-          & $env:PACK_PY packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
+          python packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # saved only after the release checks passed: a layer that fails them is never kept for the next release
+      - name: Runtime layer cache (save the rebuilt layer, releases on main only; dry runs on other branches save nothing, #888)
+        if: steps.runtime.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}\tlwu-build\runtime
+          key: ${{ steps.runtime.outputs.cache-primary-key }}
       - name: Release notes (also the dry run's summary)
         shell: bash
         env:

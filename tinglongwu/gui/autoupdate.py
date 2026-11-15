@@ -30,13 +30,13 @@ BUNDLED_FLAG = "--run-selfupdate"  # tlwu_app.main routes this to tinglongwu_set
 
 
 def is_bundled() -> bool:
-    """Same semantics as tlwu_app.main.is_bundled (frozen / Nuitka-compiled / TLWU_BUNDLED=1, which tlwu.exe sets
+    """Same semantics as tlwu_app.main.is_bundled (frozen / compiled / TLWU_BUNDLED=1, which tlwu.exe sets
     before the GUI starts). Kept here so the runtime package does not import the launcher."""
     return bool(getattr(sys, "frozen", False)) or "__compiled__" in globals() or os.environ.get("TLWU_BUNDLED") == "1"
 
 
 def app_root() -> Path:
-    """Install dir ({app}). Bundled: the folder of tlwu.exe (Nuitka standalone sets sys.executable to it).
+    """Install dir ({app}). Bundled: the folder of tlwu.exe (sys.executable is tlwu.exe there).
     Source install: tinglongwu/ sits directly under it (editable install of the bundled source)."""
     if is_bundled():
         return Path(sys.executable).resolve().parent

@@ -40,7 +40,7 @@ def _llama(root: Path, mod, with_ggml=True, version="0.3.36"):
 
 def test_builds_zip_and_manifest_without_nuitka(tmp_path, monkeypatch):
     m = _mod()
-    monkeypatch.setattr(m, "run_nuitka", lambda *a, **k: pytest.fail("nuitka must not run"))
+    monkeypatch.setattr(m, "ensure_runtime", lambda *a, **k: pytest.fail("the core build must not run"))
     sp, lib = _licenses(_wheels(tmp_path / "sp", m), m), _llama(tmp_path, m)
     (tmp_path / "LICENSE.md").write_text("MIT")
     man_path = m.build_gpu_pack_only(tmp_path / "out", cuda_src=sp, llama_lib=lib, url="https://x/p.zip",

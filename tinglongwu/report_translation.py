@@ -61,3 +61,19 @@ def report_line(src: str, out: str, *, version: str, mode: str, langpair: str, c
     if not confirm(happened):
         return False
     return bool(open_url(url))
+
+
+def row_for_log_line(rows, show_src: bool, line: int):
+    """Map a 1-based text line of the main-window log to its history row (None if out of range).
+
+    Mirrors `App.render_log`: a row takes as many lines as its output renders, plus the source's lines when `show_src` and the source differs."""
+    n = 1
+    for row in rows:
+        src, text, _ = row
+        height = text.count("\n") + 1
+        if show_src and src and src != text:
+            height += src.count("\n") + 1
+        if n <= line < n + height:
+            return row
+        n += height
+    return None
