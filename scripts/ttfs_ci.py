@@ -64,8 +64,7 @@ def summary_text(os_name, doc, install_mb=None):
     text = ("### ttfs (%s)\n\nttfs_seconds: %s\nexcl_download_seconds: %s (budget %d s, %d Mbps baseline)\n"
             % (os_name, num("ttfs_seconds"), num("excl_download_seconds"), ttfs.TTFS_BUDGET_S, ttfs.BASELINE_MBPS))
     if install_mb is not None:
-        text += "install_size_mb: %.1f
-" % install_mb
+        text += "install_size_mb: %.1f\n" % install_mb
     return text
 
 
