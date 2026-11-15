@@ -242,6 +242,9 @@ TOUR_TEXT = {
     "ru": {"title": "Начать за 3 шага", "step1": "1. Выберите язык собеседника или «авто»:",
            "step2": "2. Нажмите «Старт» на панели сверху.",
            "step3": "3. Субтитры появятся здесь - перетащите, чтобы сдвинуть", "ok": "Понятно"},
+    "ja": {"title": "3 ステップで開始", "step1": "1. 相手が話す言語、または「自動」を選ぶ:",
+           "step2": "2. 上のバーの「スタート」を押す。",
+           "step3": "3. 字幕はここに出ます - ドラッグで移動", "ok": "わかった"},
 }
 
 
@@ -442,20 +445,23 @@ def follow_newest(yview_last: float) -> bool:
 _MARK_OK = "\u2713 "
 _MARK_MISSING_OLD = " (\u9700\u4e0b\u8f09 / not downloaded)"  # #739: no longer shown; kept so an old saved label still parses
 _MARK_HEAVY = " (too heavy for this PC)"  # #780: medium / large-v3 on a CPU-mode PC with < 24 GB RAM
-_MARK_MISSING = {"en": " (not downloaded)", "ru": " (нужна загрузка)", "zh-TW": "（需下載）"}  # one language per label (#884)
+_MARK_MISSING = {"en": " (not downloaded)", "ru": " (нужна загрузка)", "zh-TW": "（需下載）", "ja": "（要ダウンロード）"}  # one language per label (#884)
 
 # #884: the dropdowns show names in the UI language; the stored setting keeps the raw value.
 _CHOICES = {
     "quality": {"en": {"auto": "Auto", "fast": "Fast", "balanced": "Balanced", "quality": "Best quality", "manual": "Manual"},
                 "ru": {"auto": "Авто", "fast": "Быстро", "balanced": "Баланс", "quality": "Лучшее качество", "manual": "Вручную"},
-                "zh-TW": {"auto": "自動", "fast": "快速", "balanced": "平衡", "quality": "最佳品質", "manual": "手動"}},
+                "zh-TW": {"auto": "自動", "fast": "快速", "balanced": "平衡", "quality": "最佳品質", "manual": "手動"},
+                "ja": {"auto": "自動", "fast": "高速", "balanced": "バランス", "quality": "最高品質", "manual": "手動"}},
     "source": {"en": {"system": "PC sound", "mic": "Microphone"},
                "ru": {"system": "Звук ПК", "mic": "Микрофон"},
-               "zh-TW": {"system": "電腦音效", "mic": "麥克風"}},
+               "zh-TW": {"system": "電腦音效", "mic": "麥克風"},
+               "ja": {"system": "PC の音", "mic": "マイク"}},
     "preset": {"en": {"meeting": "Meeting (full sentences)", "chat": "Chat (faster)"},
                "ru": {"meeting": "Встреча (целые фразы)", "chat": "Чат (быстрее)"},
-               "zh-TW": {"meeting": "會議（完整句子）", "chat": "聊天（較快）"}},
-    "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}},
+               "zh-TW": {"meeting": "會議（完整句子）", "chat": "聊天（較快）"},
+               "ja": {"meeting": "会議（文単位）", "chat": "チャット（速め）"}},
+    "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}, "ja": {"auto": "自動"}},
 }
 
 
@@ -480,7 +486,7 @@ PAIR_MAX_PX = 120  # #884: widest pair label (9 pt) on the 420 px bar (#455): wi
 # under xvfb (Inter 10 pt), and CI fonts ran ~12 px wider than that box on PR #900 (430 -> 442)
 _PAIR_SHORT = {"en": {"zh-tw": "Chinese (Trad.)", "zh-cn": "Chinese (Simp.)"},
                "ru": {"zh-tw": "китайский (трад.)", "zh-cn": "китайский (упр.)"},
-               "zh-TW": {}}
+               "zh-TW": {}, "ja": {"zh-tw": "中国語（繁体）", "zh-cn": "中国語（簡体）"}}
 
 
 def pair_text(src: str, target: str, measure, lang: str | None = None, max_px: int = PAIR_MAX_PX) -> str:

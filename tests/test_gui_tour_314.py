@@ -148,7 +148,7 @@ def test_question_mark_is_off_the_bar_and_bar_stays_within_420px(make_app):
     labels = [a.overlay.menu.entrycget(i, "label") for i in range(a.overlay.menu.index("end") + 1)
               if a.overlay.menu.type(i) == "command"]
     assert t("gui_menu_tour") in labels
-    for ui in ("English", "Русский", "繁體中文"):
+    for ui in ("English", "Русский", "繁體中文", "日本語"):
         a.v_ui_lang.set(ui)
         a.switch_lang()
         a.btn.configure(text=t("gui_loading", s=120))

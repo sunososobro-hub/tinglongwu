@@ -26,6 +26,9 @@ _NAMES = {
            "vi": "вьетнамский", "th": "тайский", "id": "индонезийский"},
     "zh-TW": {"ja": "日文", "en": "英文", "ru": "俄文", "zh": "中文", "ko": "韓文", "de": "德文", "fr": "法文",
               "es": "西文", "it": "義大利文", "pt": "葡萄牙文", "vi": "越南文", "th": "泰文", "id": "印尼文"},
+    "ja": {"ja": "日本語", "en": "英語", "ru": "ロシア語", "zh": "中国語", "ko": "韓国語", "de": "ドイツ語",
+           "fr": "フランス語", "es": "スペイン語", "it": "イタリア語", "pt": "ポルトガル語", "vi": "ベトナム語",
+           "th": "タイ語", "id": "インドネシア語"},
 }
 _TEXT = {
     "en": {"exp": "experimental", "focus": "Languages: auto = Japanese/English/Russian (follows the speaker)",
@@ -37,6 +40,9 @@ _TEXT = {
     "zh-TW": {"exp": "實驗性", "focus": "語言：auto 自動（日/英/俄，跟著說話的人）",
               "exp_head": "實驗性（只能聽、測試較少）：",
               "speak": "開會／純說只支援 auto、ja、en、ru。"},
+    "ja": {"exp": "試験的", "focus": "言語: auto = 日本語/英語/ロシア語（話す人に合わせる）",
+           "exp_head": "試験的（聞くのみ、テスト少なめ）:",
+           "speak": "会議／話すのみ は auto、ja、en、ru に対応。"},
 }
 
 
@@ -54,10 +60,11 @@ def is_experimental(code: str) -> bool:
     return code in EXPERIMENTAL
 
 
-_AUTO = {"en": "Auto", "ru": "Авто", "zh-TW": "自動"}
+_AUTO = {"en": "Auto", "ru": "Авто", "zh-TW": "自動", "ja": "自動"}
 _TARGET_NAMES = {"en": {"zh-tw": "Traditional Chinese", "zh-cn": "Simplified Chinese"},
                  "ru": {"zh-tw": "традиционный китайский", "zh-cn": "упрощённый китайский"},
-                 "zh-TW": {"zh-tw": "繁體中文", "zh-cn": "简体中文"}}
+                 "zh-TW": {"zh-tw": "繁體中文", "zh-cn": "简体中文"},
+                 "ja": {"zh-tw": "繁体字中国語", "zh-cn": "簡体字中国語"}}
 
 
 def name(code: str, lang: str | None = None) -> str:
@@ -104,7 +111,7 @@ def menu_help(lang: str | None = None) -> str:
     """What the menus print for L: focus languages first, then the experimental ones, each marked."""
     ui = _ui(lang)
     tx = _TEXT[ui]
-    sep = "、" if ui == "zh-TW" else ", "
+    sep = "、" if ui in ("zh-TW", "ja") else ", "
     focus = sep.join(f"{c} {name(c, ui)}" for c in FOCUS)
     exp = sep.join(f"{c} {name(c, ui)}" for c in EXPERIMENTAL)
     return f"{tx['focus']}\n  {focus}\n{tx['exp_head']}\n  {exp}\n{tx['speak']}"

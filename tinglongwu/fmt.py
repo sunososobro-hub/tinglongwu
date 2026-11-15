@@ -14,6 +14,7 @@ from .i18n import MESSAGES, t
 MESSAGES["en"].update(label_me="▶ Me", label_them="◀ Them")
 MESSAGES["ru"].update(label_me="▶ Я", label_them="◀ Собеседник")
 MESSAGES["zh-TW"].update(label_me="▶ 我", label_them="◀ 對方")
+MESSAGES["ja"].update(label_me="▶ 自分", label_them="◀ 相手")
 
 GREEN, CYAN, DIM, RESET = "\033[32m", "\033[36m", "\033[2m", "\033[0m"
 INDENT = " " * 16
