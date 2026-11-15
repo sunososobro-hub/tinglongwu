@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 
+import '../logic/debug_stats.dart';
 import '../logic/phone_audio.dart';
 import '../logic/target_language.dart';
 import '../services/pipeline.dart';
@@ -48,13 +50,16 @@ class SubtitleScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                Expanded(
-                  child: Text(
-                    _debug(),
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
-                  ),
-                ),
+                if (showDebugStats(releaseMode: kReleaseMode))
+                  Expanded(
+                    child: Text(
+                      _debug(),
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.white38, fontFamily: 'monospace'),
+                    ),
+                  )
+                else
+                  const Spacer(),
                 if (pipeline.phoneSupported) _SourceToggle(pipeline: pipeline),
                 IconButton(
                   tooltip: '字幕顯示設定',
