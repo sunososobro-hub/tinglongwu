@@ -28,6 +28,7 @@ DEFAULTS = {
     "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
     "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
+    "listen_device": "",  # #1070: "" = listen to every output (not our cable); else one output name (Advanced)
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
@@ -58,7 +59,7 @@ def send_mode_notice_key(mode: str) -> str | None:
     return "gui_send_mode_notice" if mode in ("countdown", "auto") else None
 # #983: settings the running pipeline reads only when it starts; changing one during a run needs a restart
 START_TIME_SETTINGS = ("lang", "target", "engine", "quality", "model", "preset", "glossary", "source", "voice",
-                       "voice_device", "send_mode")
+                       "voice_device", "send_mode", "listen_device")
 
 
 def restart_needed(at_start: dict, now: dict) -> list[str]:
@@ -815,6 +816,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--quality", quality]
     if s.get("source") == "mic":
         argv += ["--mic"]
+    elif s.get("listen_device"):  # #1070: an output picked in Advanced; default = every output but our cable
+        argv += ["--capture-device", s["listen_device"]]
     if s.get("glossary"):
         argv += ["--glossary", s["glossary"]]
     if s.get("save"):
@@ -846,6 +849,20 @@ def voice_outputs(names=None) -> list[str]:
         except Exception:  # noqa: BLE001 - no audio stack: only "default output" is offered
             names = []
     return [n for n in names if n and voice_output_problem(n, None) is None]
+
+
+def listen_outputs(names=None) -> list[str]:
+    """#1070: outputs the listen leg may be pointed at (Advanced): every real output, never our own cable / sink."""
+    from ..capture.wasapi import listen_names
+
+    if names is None:
+        try:
+            import soundcard as sc
+
+            names = [sp.name for sp in sc.all_speakers()]
+        except Exception:  # noqa: BLE001 - no audio stack: only "all outputs" is offered
+            names = []
+    return listen_names(list(names))
 
 
 class QueueSink(Sink):

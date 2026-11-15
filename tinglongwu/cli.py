@@ -576,6 +576,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
+    if notice is not None and hasattr(source, "on_silent"):  # #1070: ~10 s of no sound: say what is listened to
+        from .i18n import t as _t_silent
+
+        source.on_silent = lambda names: notice(_t_silent("listen_silent", names=" / ".join(names) or "?"))
     recorder = None
     if rec_dir is not None:  # #239: opt-in only (the menu asks on every start, default no)
         from .record import Recorder, default_record_dir

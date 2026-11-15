@@ -2,7 +2,7 @@
 import pytest
 
 SCREEN_W, SCREEN_H = 1366, 768
-MAX_H_ADV = SCREEN_H - 70  # #1028: Advanced open (plain-language groups above it): a 768 px screen minus ~40 px taskbar and ~30 px title bar = 698 px; measured 663
+MAX_H_ADV = SCREEN_H - 36  # #1070: +1 row (Listen to output, 28 px), taller than a 698 px fit on a 768 screen; was SCREEN_H - 70. #1028: Advanced open (plain-language groups above it): a 768 px screen minus ~40 px taskbar and ~30 px title bar = 698 px; measured 663
 MAX_H = 600  # Acceptance: <= 600 px at 100% scaling (leaves room for the title bar and taskbar on 768 px)
 
 
