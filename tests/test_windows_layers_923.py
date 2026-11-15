@@ -22,12 +22,15 @@ UNCHECKED_HASH_FLAGS = 0b01  # pyc header flags word: hash-based, check_source o
 
 def _repo_copy(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
-    for g in rt.KEY_GLOBS:
-        for f in REPO.glob(g):
-            if f.is_file() and "__pycache__" not in f.parts:
-                dst = repo / f.relative_to(REPO)
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(f, dst)
+    files = rt.key_files(REPO)
+    names = {f.relative_to(REPO).as_posix() for f in files}
+    # every file of the launcher and the stubs is in the key on every Python (3.12's glob("dir/**") gives none)
+    assert {"packaging/launcher/tlwu_launcher.c", "packaging/launcher/tlwu.rc.in", "packaging/launcher/tlwu.manifest",
+            "packaging/stubs/av/__init__.py", "packaging/runtime_layer.py", "requirements.txt"} <= names
+    for f in files:
+        dst = repo / f.relative_to(REPO)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, dst)
     (repo / "tinglongwu").mkdir()
     (repo / "tinglongwu" / "cli.py").write_text("x = 1\n")
     return repo

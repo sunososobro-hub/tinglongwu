@@ -60,7 +60,10 @@ REQ_NOT_PACKED = ("av", "psutil")   # requirements.txt lines left out of the pac
 def key_files(repo: Path = REPO) -> list[Path]:
     out: set[Path] = set()
     for g in KEY_GLOBS:
-        out.update(p for p in repo.glob(g) if p.is_file() and "__pycache__" not in p.parts)
+        # "dir/**" = every file under dir, as in the workflows' hashFiles(); Path.glob("dir/**") gives folders only
+        # before Python 3.13, so it is walked by hand
+        found = (repo / g[:-3]).rglob("*") if g.endswith("/**") else repo.glob(g)
+        out.update(p for p in found if p.is_file() and "__pycache__" not in p.parts)
     return sorted(out)
 
 
