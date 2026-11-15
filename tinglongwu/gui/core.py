@@ -1140,3 +1140,19 @@ def load_status_text(msg: str) -> str:
         parts.append(t("gui_st_part", name=_stage_name(pm.group(1)), s=pm.group(2)) if pm else p)
     text = t("gui_st_loaded", s=m.group(1))
     return text + (t("gui_st_parts", parts=t("gui_st_sep").join(parts)) if parts else "")
+
+
+SLOW_LOAD_SECS = 10.0  # above this the main window shows one friendly line instead of the breakdown
+
+
+def ready_extra_line(msg: str) -> str:
+    """Second status line after "ready": "" normally (the load-time breakdown is only logged, see load_status_text);
+    a short friendly line when the total load time was over SLOW_LOAD_SECS."""
+    from ..i18n import t
+
+    m = _LOADED_RE.match(msg)
+    try:
+        slow = bool(m and m.group(1) is not None and float(m.group(1)) > SLOW_LOAD_SECS)
+    except ValueError:
+        slow = False
+    return t("gui_load_slow") if slow else ""

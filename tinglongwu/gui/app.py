@@ -2100,8 +2100,13 @@ class App:
                         text = t(ready)
                         if self.quick_mode == BOTH_MODE:  # #1001: both legs; keep the #710 CABLE hint after it
                             text = t("gui_ready_both") + (f" | {text}" if ready == SPEAK_HINT_CABLE else "")
-                        loaded = load_status_text(ev[1])  # #1020: "Listening - loaded in N s (...)" localized
-                        self._status_text(text if ev[1] == READY_STATUS else text + "\n" + loaded)  # #294
+                        import logging
+
+                        from .core import ready_extra_line
+
+                        logging.getLogger("tlwu.gui").info("%s", load_status_text(ev[1]))  # breakdown: log only
+                        extra = ready_extra_line(ev[1])  # only a slow first load shows a friendly line
+                        self._status_text(text + "\n" + extra if extra else text)  # #294
                         self._sync_quick()
                 elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
                     from .core import cpu_mode_line
