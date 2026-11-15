@@ -495,8 +495,8 @@ class App:
     def _gate_widgets(self):
         if self.gate_frm is None:
             self.gate_frm = ttk.Frame(self.gate_parent)
-            ttk.Label(self.gate_frm, textvariable=self.v_gate, wraplength=300, justify="left").grid(
-                row=0, column=0, columnspan=2, sticky="w")
+            self.lbl_gate = ttk.Label(self.gate_frm, textvariable=self.v_gate, wraplength=300, justify="left")
+            self.lbl_gate.grid(row=0, column=0, columnspan=2, sticky="w")
             self.btn_gate_send = ttk.Button(self.gate_frm, text=t("gui_send_now"),
                                             command=lambda: self._gate_do("confirm"))
             self.btn_gate_send.grid(row=1, column=0, sticky="we", padx=(0, 2))
@@ -533,6 +533,7 @@ class App:
                 if self.speak_hint == SPEAK_HINT_CABLE:
                     self._show_panel()
             self.btn_gate_send.configure(state="normal" if v.state == "asking" else "disabled")
+            self.lbl_gate.configure(foreground="gray" if v.state == "rejected" else "")  # #968: not sent
 
     def _send_mode_changed(self):
         mode = self.v_send_mode.get()

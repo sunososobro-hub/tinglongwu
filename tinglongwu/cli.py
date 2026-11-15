@@ -621,12 +621,18 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
                 notice(e.user)
             if getattr(sink, "capture_guard", None) is not None and hasattr(source, "on_reopen"):
                 source.on_reopen = sink.capture_guard  # #710: a device change cannot loop the meeting voice
+        seg_gate = None
+        vgate = getattr(a, "voice_gate", None)
+        if getattr(a, "voice", False) and (vgate is not None or (a.mic and not a.file)):
+            from .reverse.gate import segment_gate  # #968: a spoken line goes out in the user's voice
+
+            seg_gate = segment_gate(getattr(vgate, "reject", None))
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=cpu_on_work(None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
                                                   cpu_line if dev == "cpu" else None),
-            on_record=on_record, recorder=recorder)
+            on_record=on_record, recorder=recorder, seg_gate=seg_gate)
     except KeyboardInterrupt:
         interrupted = True
         raise

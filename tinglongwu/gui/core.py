@@ -45,8 +45,10 @@ def send_gate_line(view) -> str:
     if view.state == "counting":
         return t("gui_send_hold", s=f"{view.remaining:.0f}" if view.remaining >= 1 else f"{view.remaining:.1f}",
                  text=view.text)
-    if view.state == "asking":
-        return t("gui_send_ask", text=view.text)
+    if view.state == "asking":  # #968: the reason is shown, so a held line never waits without saying why
+        return t("gui_send_ask", text=f"[{view.reason}] {view.text}" if view.reason else view.text)
+    if view.state == "rejected":
+        return t("gui_send_unclear", reason=view.reason, text=view.text)
     return ""
 
 

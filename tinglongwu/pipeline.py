@@ -74,7 +74,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         translator: Translator | None, sink: Sink, tgt: str = "zh",
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
-        on_work=None, on_record=None, recorder=None) -> None:  # recorder: #239 --record (record.Recorder)
+        on_work=None, on_record=None, recorder=None,  # recorder: #239 --record (record.Recorder)
+        seg_gate=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -92,6 +93,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     With a merger, ASR text is held until a sentence ends, or max_wait seconds passed (a timer wakes
     the loop even when no new segment arrives, so live latency stays bounded). audio_clock=True uses
     the amount of audio consumed as the clock (offline files run faster than real time).
+    seg_gate(seg, transcript) -> bool (#968, speak mode): False drops the segment before it reaches the merger, so
+    keyboard noise or a low-confidence Whisper guess never becomes a line that is sent in the user's voice.
     """
     q: queue.Queue = queue.Queue(maxsize=8)
     consumed = [0]
@@ -300,6 +303,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 f" ({mtq.qsize()} line(s) waiting for MT)")
             if t is None or is_hallucination(t.text, float(np.sqrt(np.mean(seg ** 2))), t.no_speech):
                 continue  # nothing heard, or a stock Whisper subtitle-credit line on music/silence
+            if seg_gate is not None and not seg_gate(seg, t):
+                continue  # #968: speak input gate (noise, no_speech, low logprob, filler, loop)
             last_marks[0] = marks
             if speakers is not None:  # --speakers (#222): label this sentence; #384: shown on the line itself,
                 who, spk = speakers.label(seg)  # the label goes to the debug log only (no extra console line)
