@@ -91,6 +91,10 @@ final class TlwuNativeChannel {
       }
       UIApplication.shared.open(url, options: [:]) { ok in result(ok) }
 
+    // Other apps' audio + floating subtitles (#998): iOS has no system audio capture API.
+    case "playbackCaptureSupported":
+      result(false)
+
     default:
       result(FlutterMethodNotImplemented)
     }
