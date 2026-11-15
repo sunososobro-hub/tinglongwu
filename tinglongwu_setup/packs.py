@@ -31,7 +31,7 @@ PACKS: dict[str, list[str]] = {
     "ru": ["hymt2-1.8b", PIPER_RU_DEFAULT],
 }
 DEFAULT_PACKS = ("zh", "en")
-# approximate download size per model in MB, only for the prompt: Argos OPUS packages are ~100 MB each, the Hy-MT2
+# approximate download size per model in MB, only for the prompt: the Hy-MT2
 # GGUF ~1.1 GB and a Piper medium voice ~60 MB (sizes as stated in downloader.py's help texts).
 SIZE_MB = {"hymt2-1.8b": 1100, PIPER_RU_DEFAULT: 60}
 OPUS_MB = 100

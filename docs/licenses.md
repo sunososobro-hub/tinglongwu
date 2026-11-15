@@ -7,8 +7,8 @@
 | Whisper large-v3-turbo weights (third-party CT2 conversion by mobiuslabsgmbh) | MIT | huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo |
 | Silero VAD (bundled ONNX in faster-whisper; Silero Team) | MIT | github.com/snakers4/silero-vad |
 | CTranslate2 | MIT | github.com/OpenNMT/CTranslate2 |
-| OPUS-MT models (Helsinki-NLP; attribution required) | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT, argosopentech/argospm-index |
-| Argos Translate (model packaging / index) | MIT | github.com/argosopentech/argos-translate |
+| OPUS-MT models (Helsinki-NLP; historical, removed in #471) | CC-BY 4.0 | github.com/Helsinki-NLP/Opus-MT, argosopentech/argospm-index |
+| Argos Translate (historical, removed in #471; model packaging / index) | MIT | github.com/argosopentech/argos-translate |
 | SentencePiece | Apache-2.0 | github.com/google/sentencepiece |
 | OpenCC (opencc-python-reimplemented) | Apache-2.0 | github.com/yichen0831/opencc-python |
 | pymorphy3, pymorphy3-dicts-ru (OpenCorpora-based dictionary), DAWG2-Python | MIT; MIT code + CC BY-SA 3.0 data (attribution: OpenCorpora, opencorpora.org; share-alike applies to the dictionary data only, shipped unmodified); MIT | github.com/no-plagiarism/pymorphy3 |
