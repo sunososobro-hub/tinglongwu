@@ -146,7 +146,7 @@ def main(argv=None) -> int:
     p.add_argument("--requirements", default=str(ROOT / "requirements.txt"))
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
-    p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
+    p.add_argument("--models-dir", default=str(downloader.default_models_dir()))
     p.add_argument("--list", action="store_true", help="offline: installed / missing language packs")
     p.add_argument("--ask-lang", action="store_true",
                    help="ask which language to understand (default from the OS locale), then install only that pack "

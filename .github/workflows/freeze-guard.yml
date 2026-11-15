@@ -1,10 +1,12 @@
 name: freeze-guard
 # #953: while a release freeze is on (rules section 14), a PR into dev fails this check unless its body says
-# `release-fix`, so the "every check green" merge rule stops mergers mechanically. Runs the base-branch script
-# (never PR head code). Limit: the result is computed when the PR event fires; re-run it (or push) after a
+# `release-fix`, so the "every check green" merge rule stops mergers mechanically. Checks out dev and runs the
+# dev copy of the script (never PR head code). Trigger is `pull_request`, not `pull_request_target`: GitHub runs
+# pull_request_target from the default branch (main), where this file does not exist, so it never fired (#993).
+# Limit: the result is computed when the PR event fires; re-run it (or push) after a
 # freeze starts or ends.
 on:
-  pull_request_target:
+  pull_request:
     branches: [dev]
     types: [opened, reopened, synchronize, edited]
 

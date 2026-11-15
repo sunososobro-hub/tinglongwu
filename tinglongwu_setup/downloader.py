@@ -33,6 +33,18 @@ ARGOS_INDEX = "https://raw.githubusercontent.com/argosopentech/argospm-index/mai
 MB = 1024 * 1024
 
 
+def default_models_dir() -> Path:
+    """#967: the models dir tlwu-setup uses when --models-dir is not given. Same rule as tinglongwu.models.models_dir
+    and tlwu_app.main.prepare_env: $TLWU_MODELS, else (packaged app) %LOCALAPPDATA%/tinglongwu/models, else <root>/models.
+    Without this a `tlwu-setup --talk` run from the install dir wrote a second models dir next to the exe."""
+    if os.environ.get("TLWU_MODELS"):
+        return Path(os.environ["TLWU_MODELS"])
+    if os.environ.get("TLWU_BUNDLED") == "1" or getattr(sys, "frozen", False):
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".local", "share")
+        return Path(base) / "tinglongwu" / "models"
+    return ROOT / "models"
+
+
 def _open(url: str, timeout: int = 60):
     # argos-net.com returns 403 for urllib's default User-Agent
     return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tlwu-setup/0.1"}),
@@ -473,7 +485,7 @@ def main(argv=None) -> int:
     p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ko,ru), see packs.py (#178)")
     p.add_argument("--allow-unpinned", action="store_true",
                    help="allow Argos pairs that are not in the committed pin manifest (mutable index, pin-on-first-use)")
-    p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS") or str(ROOT / "models"))
+    p.add_argument("--models-dir", default=str(default_models_dir()))
     p.add_argument("--verify", action="store_true", help="only verify existing models (offline)")
     a = p.parse_args(argv)
     if a.pair:  # #562: old callers (CI workflows, scripts) still pass --pair; accept it, download nothing

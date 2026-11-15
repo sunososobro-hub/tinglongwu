@@ -11,7 +11,7 @@
     "zh->en": {"chrf": 43.42, "chrf_margin": 3.0, "mt_median_s_max": 2.6}
   },
   "matrix": {
-    "_note": "#642: per-pair gate for .github/workflows/eval-langs.yml (eval/languages.json), same runner / model / engine as the mini-eval above, 20 clips per pair. chrf = the lowest chrF of the recorded eval-langs runs, chrf_margin 2.0 (3.0 for zh->en, the noisiest pair, as above), mt_median_s_max = the largest MT median seen x1.5 rounded up to 0.1 s (same rule as above). vi/th/id/es/de/fr->zh (eval/tier2_pins.json): runs 43659229435, 43663534897, 43665213685 (chrF vi 17.98/18.94/19.06, th 12.32/12.44/12.48, id 22.08/22.89/22.89, es 23.16/22.96/23.16, de 25.62/25.60/25.75, fr 24.19/24.32/24.19). en/ja/ru/ko->zh and zh->en (eval/matrix_pins.json, 20 clips; the first 5 per language are the eval/ci_smoke.json clips): run 43665213685 (chrF en 32.38, ja 17.75, ko 24.17, ru 26.63, zh->en 48.28). hi->zh: chrf null, blocked in eval/languages.json until the app translates Hindi (#942).",
+    "_note": "#642: per-pair gate for .github/workflows/eval-langs.yml (eval/languages.json), same runner / model / engine as the mini-eval above, 20 clips per pair. chrf = the lowest chrF of the recorded eval-langs runs, chrf_margin 2.0 (3.0 for zh->en, the noisiest pair, as above), mt_median_s_max = the largest MT median seen x1.5 rounded up to 0.1 s (same rule as above). vi/th/id/es/de/fr->zh (eval/tier2_pins.json): runs 43659229435, 43663534897, 43665213685 (chrF vi 17.98/18.94/19.06, th 12.32/12.44/12.48, id 22.08/22.89/22.89, es 23.16/22.96/23.16, de 25.62/25.60/25.75, fr 24.19/24.32/24.19). en/ja/ru/ko->zh and zh->en (eval/matrix_pins.json, 20 clips; the first 5 per language are the eval/ci_smoke.json clips): run 43665213685 (chrF en 32.38, ja 17.75, ko 24.17, ru 26.63, zh->en 48.28). hi->zh (eval/hi_pins.json, 20 clips): run 43674321382 on fix/942 (#942, chrF 9.37, ASR error rate 53.5%, MT median 2.61 s; mt_median_s_max kept at 3.7, the seen max x1.5 is 3.9). The low chrF is Whisper small on Hindi (#620), not the Hy-MT2 route.",
     "model": "whisper small",
     "engine": "hymt2-cpu (Hy-MT2 1.8B Q4_K_M)",
     "clips": 20,
@@ -20,7 +20,7 @@
       "ja->zh": {"chrf": 17.75, "chrf_margin": 2.0, "mt_median_s_max": 3.2},
       "ko->zh": {"chrf": 24.17, "chrf_margin": 2.0, "mt_median_s_max": 3.5},
       "ru->zh": {"chrf": 26.63, "chrf_margin": 2.0, "mt_median_s_max": 3.1},
-      "hi->zh": {"chrf": null, "chrf_margin": null, "mt_median_s_max": 3.7},
+      "hi->zh": {"chrf": 9.37, "chrf_margin": 2.0, "mt_median_s_max": 3.7},
       "vi->zh": {"chrf": 17.98, "chrf_margin": 2.0, "mt_median_s_max": 4.1},
       "th->zh": {"chrf": 12.32, "chrf_margin": 2.0, "mt_median_s_max": 4.1},
       "id->zh": {"chrf": 22.08, "chrf_margin": 2.0, "mt_median_s_max": 2.5},

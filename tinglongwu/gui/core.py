@@ -92,29 +92,58 @@ def target_for_locale(tag: str | None) -> str:
 
 
 QUICK_MODES = ("listen", "speak")  # #294 first-screen buttons: "Listen to others" / "I speak"
+SESSION_MODES = ("listen", "speak", "two-way")  # #981: two-way = both legs (meeting / face-to-face)
+
+
+class SameLanguageError(ValueError):
+    """#981: My language and Other side language are the same language: nothing to translate, no session starts.
+    `key` is the i18n key of the one-line message the GUI shows instead of starting."""
+
+    key = "gui_same_lang"
+
+
+def lang_base(code: str | None) -> str:
+    """Language without the script variant: zh-tw / zh-cn -> zh; anything else unchanged ("" for None)."""
+    return "zh" if code in ("zh", "zh-tw", "zh-cn") else (code or "")
+
+
+def session_route(mode: str, mine: str | None, other: str | None) -> list[dict]:
+    """#981: the only place that turns (mode, My language, Other side language) into what a session runs.
+    Returns one leg per direction, each {"leg", "lang" (source), "target", "source" (capture)}:
+    listen = other -> mine, captured from the PC sound (loopback); speak = mine -> other, captured from the
+    microphone (the system default one), whatever capture source was saved; two-way = both legs.
+    mine = a TARGETS value ("zh" = zh-tw; anything else = the default); other = a SOURCE_LANGS value ("auto" when
+    unknown). other == "auto": listen detects the speaker, speak keeps the #294 fallback (English for a Chinese
+    speaker, Traditional Chinese otherwise). Raises SameLanguageError when both are the same language (zh-tw vs zh
+    counts as the same), so a leg never has source == target."""
+    if mode not in SESSION_MODES:
+        raise ValueError(f"unknown session mode: {mode!r}")
+    mine = "zh-tw" if mine == "zh" else (mine if mine in TARGETS else DEFAULTS["target"])
+    other = other if other in SOURCE_LANGS else "auto"
+    if other != "auto" and lang_base(other) == lang_base(mine):
+        raise SameLanguageError(f"My language and Other side language are both {lang_base(mine)!r}")
+    legs = []
+    if mode in ("listen", "two-way"):
+        legs.append({"leg": "listen", "lang": other, "target": mine, "source": "system"})
+    if mode in ("speak", "two-way"):
+        if other == "auto":
+            to = "en" if lang_base(mine) == "zh" else "zh-tw"
+        else:
+            to = "zh-tw" if other == "zh" else other
+        legs.append({"leg": "speak", "lang": lang_base(mine), "target": to, "source": "mic"})
+    return legs
 
 
 def quick_settings(s: dict, mode: str) -> dict:
     """#294 easy start: session settings for a first-screen button; `s` (the saved settings) is not changed.
-    My language = `target` (remembered, under Advanced). #737: the first screen's one picker is the OTHER side's
-    language = `lang` (auto by default). listen = PC sound (loopback) in the other language -> my language.
-    speak = microphone in my language -> the other language; when the other side is auto (or my own language), the
-    #294 fallback: English for a Chinese speaker, Traditional Chinese for an English speaker. Engine/model stay on
-    `quality`."""
+    My language = `target`; the other side's language = `lang` (#737, auto by default). Source, target and capture
+    come only from session_route() (#981): listen = PC sound, other -> mine; speak = microphone, mine -> other.
+    Raises SameLanguageError when both languages are the same. Engine/model stay on `quality`."""
     if mode not in QUICK_MODES:
         raise ValueError(f"unknown quick mode: {mode!r}")
+    (leg,) = session_route(mode, s.get("target"), s.get("lang"))
     out = dict(s)
-    mine = s.get("target") if s.get("target") in TARGETS else DEFAULTS["target"]
-    if mode == "listen":
-        out.update(source="system", target=mine)
-    else:
-        mine_lang = "zh" if mine.startswith("zh") else "en"
-        other = s.get("lang")
-        if other in SOURCE_LANGS and other not in ("auto", mine_lang):
-            target = "zh-tw" if other == "zh" else other
-        else:
-            target = "en" if mine_lang == "zh" else "zh-tw"
-        out.update(source="mic", lang=mine_lang, target=target)
+    out.update({k: v for k, v in leg.items() if k != "leg"})
     return out
 
 
