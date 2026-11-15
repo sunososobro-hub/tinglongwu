@@ -119,13 +119,13 @@ def test_workflow_builds_its_matrix_from_the_config():
 
 
 def test_committed_config_runs_every_pair_on_20_pinned_clips():
-    # #642 acceptance: ~20 pinned FLEURS clips per pair, nothing unpinned; hi->zh pinned but blocked (#942)
+    # #642 acceptance: ~20 pinned FLEURS clips per pair, nothing unpinned; hi->zh runs since #942 (Hy-MT2 route)
     from tlwu_eval import langmatrix
     entries = langmatrix.load_config()
     jobs, unpinned = langmatrix.matrix(entries)
     assert unpinned == []
-    assert len(jobs) == 11 and {j["clips"] for j in jobs} == {20}
-    assert [b.split(" ")[0] for b in langmatrix.blocked(entries)] == ["hi->zh"]
+    assert len(jobs) == 12 and {j["clips"] for j in jobs} == {20}
+    assert langmatrix.blocked(entries) == []
     for e in entries:
         pins = json.loads((ROOT / e["pins"]).read_text("utf-8"))
         assert langmatrix.pinned_clips(pins, e["src"]) == 20, e["pair"]

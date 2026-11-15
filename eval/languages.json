@@ -5,7 +5,7 @@
     {"pair": "ja->zh", "pins": "eval/matrix_pins.json", "clips": 20},
     {"pair": "ko->zh", "pins": "eval/matrix_pins.json", "clips": 20},
     {"pair": "ru->zh", "pins": "eval/matrix_pins.json", "clips": 20},
-    {"pair": "hi->zh", "pins": "eval/hi_pins.json", "clips": 20, "blocked": "#942: the app has no Hy-MT2 route for hi"},
+    {"pair": "hi->zh", "pins": "eval/hi_pins.json", "clips": 20},
     {"pair": "vi->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "th->zh", "pins": "eval/tier2_pins.json", "clips": 20},
     {"pair": "id->zh", "pins": "eval/tier2_pins.json", "clips": 20},
