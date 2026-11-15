@@ -14,6 +14,9 @@ class TargetLanguage {
   static String targetLabel(String code) => '翻成：${options[normalize(code)]}';
 
   /// The source language is auto-detected by the ASR (SenseVoice), so there is no source picker.
+  /// Short source label for the header pill.
+  static const sourceShort = '自動辨識';
+
   static const sourceHint = '自動辨識說話語言';
 
   /// Unknown / empty / null values fall back to zh.
