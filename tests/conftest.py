@@ -136,3 +136,11 @@ def _tk_invisible(monkeypatch):
     monkeypatch.setattr(tk.Toplevel, "__init__", make(tk.Toplevel))
     monkeypatch.setattr(tk.Wm, "wm_attributes", attrs)
     monkeypatch.setattr(tk.Wm, "attributes", attrs)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_echo_guard():  # #1070: the process-wide listen echo guard must not leak between tests
+    from tinglongwu.reverse.echoguard import shared
+
+    shared()._items.clear()
+    yield
