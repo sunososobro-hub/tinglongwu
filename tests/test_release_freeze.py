@@ -30,3 +30,13 @@ def test_blocks_merge_unless_release_fix():
     assert rf.blocks_merge(True, None) is True
     assert rf.blocks_merge(True, "release-fix\nCloses #1") is False
     assert rf.blocks_merge(False, "Closes #1") is False
+
+
+def test_976_only_a_legacy_dev_head_release_pr_freezes_dev():
+    repo = "o/r"
+    snap = {"title": "release: v0.3.2", "head": {"ref": "release/v0.3.2", "repo": {"full_name": repo}}}
+    legacy = {"title": "release: v0.3.2", "head": {"ref": "dev", "repo": {"full_name": repo}}}
+    fork = {"title": "release: v0.3.2", "head": {"ref": "dev", "repo": {"full_name": "x/fork"}}}
+    assert rf.legacy_release_titles([snap, fork], repo) == []
+    assert not rf.is_frozen("0.3.2", rf.legacy_release_titles([snap, fork], repo), [])
+    assert rf.is_frozen("0.3.2", rf.legacy_release_titles([snap, legacy], repo), [])

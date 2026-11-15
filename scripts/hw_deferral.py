@@ -4,7 +4,8 @@
 Owner decision 2026-11-14 ("不然我家停電不就Gg"): if the hw-tests run for the release PR head has not STARTED (no
 runner picked its job up) within HW_RUNNER_WAIT_MIN minutes, hw-tests is deferred: auto-release merges on ci, e2e and
 windows-build alone, the release notes say "hardware checks deferred", and hw-tests runs later when the PC is back.
-If that later hw-tests run (on the released commit or a newer dev push, before any hw-tests success) fails, the
+If that later hw-tests run (on the released commit, its release/vX.Y.Z snapshot ref (#976) or a newer dev push,
+before any hw-tests success) fails, the
 `followup` command opens a P0 issue "[release] deferred hw-tests failed on vX.Y.Z".
 A started hw-tests run is never deferred: online behaviour is unchanged (success still required).
 
@@ -24,7 +25,7 @@ from datetime import datetime, UTC
 
 HW_RUNNER_WAIT_MIN = 30          # minutes the release waits for the tlwu-hw runner to pick hw-tests up
 HW_CHECK = "hw-tests"
-CLOUD_CHECKS = ("ci", "e2e", "windows-build", "audio-routing")   # what a deferred release still needs green (#849: audio-routing)
+CLOUD_CHECKS = ("ci", "e2e", "windows-build", "audio-routing", "install-clean")   # what a deferred release still needs green (#849: audio-routing)
 DEFERRED_LINE = "hardware checks deferred"
 DEFERRED_MARKER = "<!-- tlwu:hw-deferred -->"   # auto-release adds it to the release PR body before merging
 FAILED_TITLE = "[release] deferred hw-tests failed on {tag}"
@@ -103,6 +104,12 @@ def deferred_body(body: str) -> str:
             f"{HW_RUNNER_WAIT_MIN} min (runner offline), so this release merged on {', '.join(CLOUD_CHECKS)} (#848).\n")
 
 
+def release_head(pr: dict) -> bool:
+    """#976: a release PR head is the release/vX.Y.Z snapshot or, during the transition, dev."""
+    ref = (pr.get("head") or {}).get("ref", "")
+    return ref == "dev" or ref.startswith("release/v")
+
+
 def deferred_failure_title(release_pr: dict | None, failed_sha: str, hw_runs: list[dict], in_range) -> str | None:
     """followup: the P0 issue title when a hw-tests failure on `failed_sha` belongs to a deferred release.
     release_pr = the newest merged dev -> main release PR; in_range(sha) = release head <= sha <= failed_sha.
@@ -140,12 +147,13 @@ def _ancestor(a: str, b: str) -> bool:
 
 def followup(rep: str, failed_sha: str, run_url: str) -> str:
     closed = _gh_json("api", f"repos/{rep}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=50")
-    rel = [p for p in closed if p.get("merged_at") and (p.get("head") or {}).get("ref") == "dev"
+    rel = [p for p in closed if p.get("merged_at") and release_head(p)
            and ((p.get("head") or {}).get("repo") or {}).get("full_name") == rep
            and p.get("title", "").strip().lower().startswith("release:")]
     pr = max(rel, key=lambda p: p["merged_at"]) if rel else None
     head = ((pr or {}).get("head") or {}).get("sha", "")
-    runs = _gh_json("api", f"repos/{rep}/actions/workflows/hw-tests.yml/runs?branch=dev&status=success&per_page=100")
+    # #976: a success on the release/vX.Y.Z snapshot ref verifies the release too; in_range filters by commit
+    runs = _gh_json("api", f"repos/{rep}/actions/workflows/hw-tests.yml/runs?status=success&per_page=100")
     in_range = lambda sha: bool(sha and head) and _ancestor(head, sha) and _ancestor(sha, failed_sha)
     title = deferred_failure_title(pr, failed_sha, runs.get("workflow_runs", []), in_range)
     if title is None:

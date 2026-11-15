@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-"""Release automation helpers (#414) for release-pr.yml (the dev -> main release PR) and release.yml (build and
-publish after the owner merges that PR).
+"""Release automation helpers (#414) for release-pr.yml (the release PR to main) and release.yml (build and
+publish after that PR merged).
 
-    python scripts/release_notes.py pr-body [--existing FILE] --out F   release PR title (stdout) and body (F)
+Two lanes (#976, owner 2026-11-15): the release PR is cut from a snapshot branch `release/vX.Y.Z` that points at the
+dev commit of the version bump, or the first later one that adds its docs/whats_new.md section (#1012;
+`snapshot` below), never from `dev` itself, so merges to dev no longer restart or
+freeze a release. The required checks run on the snapshot head: release-pr.yml dispatches e2e / audio-routing /
+hw-tests on the snapshot ref (their concurrency groups are per ref, so later dev pushes cannot cancel them); ci and
+windows-build come from the dev push of that commit (never cancelled). Transition: the legacy `dev -> main` release
+PR (opened by the old release-pr.yml still on main) is accepted everywhere until one release carries the new
+workflows to main.
+
+    python scripts/release_notes.py pr-body [--existing FILE] [--snapshot release/vX] --out F   PR title + body
+    python scripts/release_notes.py snapshot                           release-pr.yml: cut / dispatch / clean up
     python scripts/release_notes.py plan                               release.yml: publish? tag? (GITHUB_OUTPUT lines)
     python scripts/release_notes.py notes --version vX --base F --verification R [--pr N] [--hw-run URL] --out F
     python scripts/release_notes.py auto                               auto-release.yml: merge the release PR now?
@@ -62,7 +72,16 @@ def _hw():  # scripts/hw_deferral.py (#848), by path like _pack_manifest
 
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 TITLE_RE = re.compile(r"^release:\s*(v\S+)\s*$", re.I)
-REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing")  # #849: VB-CABLE routing on windows-latest
+SNAPSHOT_PREFIX = "release/"   # #976: release/vX.Y.Z, the release PR head
+LEGACY_HEAD = "dev"            # #976 transition: the release PR opened by the old release-pr.yml on main
+# #976: the required checks that release-pr.yml dispatches on the snapshot ref. ci and windows-build are not
+# dispatched: their dev-push runs are never cancelled (ci has no concurrency group, windows-build #888) and a
+# windows-build on a release/ ref could not use dev's build cache.
+SNAPSHOT_DISPATCH = ("e2e", "audio-routing", "hw-tests", "install-clean")
+WORKFLOW_FILES = {"e2e": "e2e.yml", "audio-routing": "audio-routing.yml", "hw-tests": "hw-tests.yml",
+                  "install-clean": "install-clean.yml"}
+REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing",
+                   "install-clean")  # #849: VB-CABLE routing on windows-latest; #1016: clean-Windows speak smoke
 WHATS_NEW = "## What's new"
 WHATS_NEW_FILE = "docs/whats_new.md"
 THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)
@@ -112,22 +131,52 @@ def release_tag(title: str, version: str, tags: dict[str, str], sha: str) -> str
     return v
 
 
+def snapshot_branch(tag: str) -> str:
+    return f"{SNAPSHOT_PREFIX}{tag}"
+
+
+def release_head_ok(pr: dict) -> bool:
+    """#976: a release PR head is `release/<the title's version>` (snapshot) or, during the transition, `dev`."""
+    ref = (pr.get("head") or {}).get("ref", "")
+    v = title_version(pr.get("title", ""))
+    return ref == LEGACY_HEAD or (v is not None and ref == snapshot_branch(v))
+
+
+def is_snapshot_branch(name: str) -> bool:
+    """A release/vX.Y.Z branch this lane manages; other release/* names (e.g. release/notes) are never touched."""
+    return name.startswith(SNAPSHOT_PREFIX) and TAG_RE.match(name[len(SNAPSHOT_PREFIX):]) is not None
+
+
+def is_snapshot(pr: dict) -> bool:
+    return ((pr.get("head") or {}).get("ref", "")).startswith(SNAPSHOT_PREFIX)
+
+
+def _release_pr(p: dict, repo: str) -> bool:
+    head, base = p.get("head") or {}, p.get("base") or {}
+    return (base.get("ref") == "main" and release_head_ok(p) and (head.get("repo") or {}).get("full_name") == repo
+            and p.get("title", "").strip().lower().startswith("release:"))
+
+
 def release_pr_of(pulls: list[dict], repo: str) -> dict | None:
-    """The merged dev -> main release PR (from this repo, not a fork) among the PRs of a commit."""
+    """The merged release PR (release/vX.Y.Z or legacy dev -> main, from this repo, not a fork) among the PRs of a
+    commit."""
     for p in pulls:
-        head, base = p.get("head") or {}, p.get("base") or {}
-        if (p.get("merged_at") and base.get("ref") == "main" and head.get("ref") == "dev"
-                and (head.get("repo") or {}).get("full_name") == repo
-                and p.get("title", "").strip().lower().startswith("release:")):
+        if p.get("merged_at") and _release_pr(p, repo):
             return p
     return None
+
+
+def _counts(run: dict) -> bool:
+    """#1016: a pull_request run of install-clean skips speak-smoke (job `if`), and a skipped job reports success, so
+    it is never evidence for the speak-smoke requirement."""
+    return not (run.get("name") == "install-clean" and run.get("event") == "pull_request")
 
 
 def check_problems(runs: list[dict], required=REQUIRED_CHECKS) -> list[str]:
     """Owner gate: the newest run of each required workflow on the commit must have succeeded."""
     out = []
     for name in required:
-        mine = [r for r in runs if r.get("name") == name]
+        mine = [r for r in runs if r.get("name") == name and _counts(r)]
         if not mine:
             out.append(f"{name}: no run on this commit")
             continue
@@ -270,22 +319,95 @@ def throttle_level(body: str | None) -> int | None:
 
 
 def open_release_pr(pulls: list[dict], repo: str) -> dict | None:
-    """The open dev -> main `release:` PR from this repo (not a fork)."""
-    for p in pulls:
-        head, base = p.get("head") or {}, p.get("base") or {}
-        if (p.get("state", "open") == "open" and base.get("ref") == "main" and head.get("ref") == "dev"
-                and (head.get("repo") or {}).get("full_name") == repo
-                and p.get("title", "").strip().lower().startswith("release:")):
-            return p
+    """The open `release:` PR to main from this repo (not a fork): a release/vX.Y.Z snapshot first, else the legacy
+    dev -> main PR (#976 transition)."""
+    mine = [p for p in pulls if p.get("state", "open") == "open" and _release_pr(p, repo)]
+    return next((p for p in mine if is_snapshot(p)), None) or (mine[0] if mine else None)
+
+
+def release_commit(tag: str, commits: list[str], show) -> str | None:
+    """#1012: the first of `commits` (the bump commit, then the later dev commits, oldest first) whose
+    tinglongwu/__init__.py says `tag` AND whose docs/whats_new.md has a filled `## tag` section; None if none has yet.
+    A bump PR without notes (v0.3.6: #970, notes in #988) must not be snapshotted before its notes land, or auto_plan
+    (which reads whats_new at the snapshot head) would stall for good."""
+    for sha in commits:
+        init = show(sha, "tinglongwu/__init__.py")
+        if init is None or f"v{app_version(init)}" != tag:
+            continue
+        if whats_new_section(show(sha, WHATS_NEW_FILE) or "", tag) is not None:
+            return sha
     return None
+
+
+def snapshot_plan(version: str, tags: dict[str, str], bump_sha: str, ahead: int, branches: dict[str, str],
+                  pulls: list[dict], repo: str, runs_of=lambda sha: [], cut_sha=None) -> dict:
+    """#976 release-pr.yml: what to do for dev's __version__ (pure; release-pr.yml acts on the result).
+    branches = {release/vX: sha} on origin; pulls = open PRs into main; bump_sha = the dev commit that set __version__;
+    ahead = commits that bump_sha has and main lacks. cut_sha (#1012) = release_commit(): the commit a new snapshot is
+    cut at (the bump, or the later commit that added its whats_new section); "" = no such commit yet (wait, cut
+    nothing); None = bump_sha.
+    Out: cut (create release/v<version> at bump_sha), pr (open the release PR: none open yet for the snapshot),
+    dispatch (required workflows to run on the snapshot ref, with the PR), close (superseded release PR numbers),
+    delete (snapshot branches to delete: tag exists or superseded, no open PR left)."""
+    tag = f"v{version}"
+    want = snapshot_branch(tag)
+    out = {"cut": False, "pr": False, "dispatch": [], "close": [], "delete": [], "branch": want, "sha": "",
+           "tag": tag, "reason": ""}
+    rel = [p for p in pulls if p.get("state", "open") == "open" and _release_pr(p, repo)]
+    releasable = parse_tag(tag) is not None and tag not in tags and ahead > 0
+    last = latest_tag(list(tags))
+    if releasable and last and parse_tag(tag) <= parse_tag(last):
+        releasable = False
+    keep = want if releasable else None
+    for p in rel:  # a release PR for any other version (or a dev -> main legacy one once a snapshot exists) goes
+        ref = p["head"]["ref"]
+        if ref != keep and (is_snapshot(p) or keep):
+            out["close"].append(p["number"])
+    closing = {p["head"]["ref"] for p in rel if p["number"] in out["close"]}
+    still_open = {p["head"]["ref"] for p in rel} - closing
+    for name in sorted(branches):
+        if name != keep and name not in still_open and is_snapshot_branch(name):
+            out["delete"].append(name)
+    if not releasable:
+        why = ("not a release version" if parse_tag(tag) is None else
+               f"{tag} is already released (tag exists); waiting for the patch bump (#785)" if tag in tags else
+               f"{tag} is not newer than the latest tag {last}" if last and parse_tag(tag) <= parse_tag(last) else
+               "the bump commit is already on main")
+        out["reason"] = f"no snapshot: {why}"
+        return out
+    sha = branches.get(want) or (bump_sha if cut_sha is None else cut_sha)
+    if not sha:
+        out["reason"] = (f"no snapshot: waiting for whats_new section `## {tag}` in {WHATS_NEW_FILE} on dev "
+                         "(#1012: the snapshot is cut at the first commit that has it)")
+        return out
+    out["sha"] = sha
+    if want not in branches:
+        out["cut"] = True
+    if want not in still_open:
+        out["pr"] = True
+        runs = runs_of(sha)
+        for name in SNAPSHOT_DISPATCH:
+            mine = [r for r in runs if r.get("name") == name and _counts(r)]
+            r = max(mine, key=lambda r: r.get("id", 0)) if mine else {}
+            done = r.get("status") == "completed" and r.get("conclusion") == "success"
+            # an in-progress hw-tests run is never cancelled (cancel-in-progress: false); e2e / audio-routing on dev are
+            running_hw = name == "hw-tests" and r.get("status") == "in_progress"
+            if not (done or running_hw):
+                out["dispatch"].append(name)
+    out["reason"] = (f"{'cut ' + want + ' at ' + sha[:12] if out['cut'] else want + ' exists at ' + sha[:12]}; "
+                     f"{'open the release PR' if out['pr'] else 'release PR already open'}")
+    return out
 
 
 def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, tags: dict[str, str],
               pulls: list[dict], repo: str, runs_of, whats_new_text: str, merged: list[dict] = (),
-              jobs_of=lambda run_id: [], now=None) -> dict:
+              jobs_of=lambda run_id: [], now=None, show=lambda sha, path: None, in_dev=lambda sha: False) -> dict:
     """#589 auto-release gate: merge = merge the release PR at `head` now, then dispatch release.yml on main.
     #848: when hw-tests on the head has not started within HW_RUNNER_WAIT_MIN, it is deferred (hw_deferred=true):
-    ci, e2e and windows-build suffice and the workflow marks the PR body before merging."""
+    ci, e2e and windows-build suffice and the workflow marks the PR body before merging.
+    #976: for a release/vX.Y.Z snapshot PR the version and docs/whats_new.md are read at the snapshot head
+    (show(sha, path) -> text or None), the head must be a dev commit (in_dev), and run_sha does not matter: any
+    completed check or the schedule re-evaluates the snapshot. The legacy dev -> main PR keeps head == run_sha."""
     out = {"merge": "false", "pr": "", "head": "", "tag": "", "reason": ""}
 
     def stop(why):
@@ -298,10 +420,21 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
         return stop(f"kill switch: throttle level is {'unreadable' if level is None else level} (needs >= 1)")
     pr = open_release_pr(pulls, repo)
     if pr is None:
-        return stop("no open dev -> main 'release:' PR")
+        return stop("no open dev -> main or release/vX.Y.Z -> main 'release:' PR")
     head = (pr.get("head") or {}).get("sha", "")
     out.update(pr=str(pr["number"]), head=head)
-    if head != run_sha:
+    if is_snapshot(pr):
+        if not in_dev(head):
+            return stop(f"snapshot {pr['head']['ref']} head {head[:12]} is not a dev commit")
+        init = show(head, "tinglongwu/__init__.py")
+        if init is None:
+            return stop(f"cannot read tinglongwu/__init__.py at the snapshot head {head[:12]}")
+        snap_version = app_version(init)
+        if snap_version != version:  # bump reverted or superseded on dev: never release the old snapshot
+            return stop(f"snapshot {pr['head']['ref']} is v{snap_version} but dev's __version__ is v{version}; "
+                        "release-pr.yml closes it")
+        whats_new_text = show(head, WHATS_NEW_FILE) or ""
+    elif head != run_sha:
         return stop(f"release PR #{pr['number']} head {head[:12]} is not this run's commit {run_sha[:12]}")
     tag = f"v{version}"
     if title_version(pr.get("title", "")) != tag:
@@ -332,7 +465,7 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
 
 
 def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict], thanks: dict,
-            existing: str = "", dev_sha: str = "", whats_new_text: str = "") -> str:
+            existing: str = "", dev_sha: str = "", whats_new_text: str = "", snapshot: str = "") -> str:
     tag = f"v{version}"
     lines = []
     if tag in tags:
@@ -341,12 +474,14 @@ def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict
     new = whats_new_section(whats_new_text, tag) or whats_new(existing) or todo_whats_new(tag)
     lines += [WHATS_NEW, new, "", changes_md(since, changes),
               thanks_md(thanks), "---",
-              f"This PR releases `{tag}` (= `tinglongwu.__version__`). `auto-release.yml` merges it once ci, e2e, "
-              f"windows-build and hw-tests are green on its head commit and `{WHATS_NEW_FILE}` has a `## {tag}` "
+              f"This PR releases `{tag}` (= `tinglongwu.__version__`). `auto-release.yml` merges it once "
+              f"{', '.join(REQUIRED_CHECKS)} are green on its head commit and `{WHATS_NEW_FILE}` has a `## {tag}` "
               "section (What's new above comes from there); the `release` workflow then checks the same gates, "
               "builds the Windows zip on windows-latest, runs check_dist_dlls, the llama CPU-instruction check, "
               "`--smoke` and `--selftest`, tags `main` and publishes the GitHub Release with the setup wizard.", "",
-              f"Generated by release-pr.yml (#414) from dev {dev_sha[:7]}."]
+              (f"Generated by release-pr.yml (#414) from the snapshot `{snapshot}` = dev {dev_sha[:7]} (#976: merges "
+               "to dev do not change this PR; the next version gets its own snapshot)." if snapshot else
+               f"Generated by release-pr.yml (#414) from dev {dev_sha[:7]}.")]
     return "\n".join(lines) + "\n"
 
 
@@ -403,6 +538,11 @@ def git_tags() -> dict[str, str]:
     return tags
 
 
+def git_show(sha: str, path: str) -> str | None:
+    r = subprocess.run(["git", "show", f"{sha}:{path}"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
+    return r.stdout if r.returncode == 0 else None
+
+
 def repo() -> str:
     return os.environ.get("GITHUB_REPOSITORY") or gh_json("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
 
@@ -426,6 +566,34 @@ def history(rep: str, tag: str, tip: str = "HEAD"):
     return since, sorted(changes, key=lambda c: c["number"]), contributors(prs, issues, rep.split("/")[0])
 
 
+def git_ls_remote_heads(pattern: str) -> dict[str, str]:
+    """{branch: sha} of origin heads matching pattern (e.g. release/*)."""
+    out = git("ls-remote", "--heads", "origin", pattern)
+    heads = {}
+    for line in out.splitlines():
+        sha, _, ref = line.partition("\t")
+        if ref.startswith("refs/heads/"):
+            heads[ref[len("refs/heads/"):]] = sha
+    return heads
+
+
+def snapshot_cli(version: str, rep: str) -> int:
+    """#976 release-pr.yml: print the snapshot_plan for HEAD (a dev commit; origin/main fetched) as GITHUB_OUTPUT lines."""
+    bump = git("log", "-1", "--format=%H", "-G", r"^__version__\s*=", "HEAD", "--", "tinglongwu/__init__.py").strip()
+    bump = bump or git("rev-parse", "HEAD").strip()
+    ahead = int(git("rev-list", "--count", f"origin/main..{bump}").strip() or 0)
+    later = git("rev-list", "--reverse", "--first-parent", f"{bump}..HEAD").split()
+    cut = release_commit(f"v{version}", [bump] + later, git_show) or ""
+    pulls = gh_json("api", f"repos/{rep}/pulls?state=open&base=main&per_page=100")
+    runs_of = lambda h: gh_json("api", f"repos/{rep}/actions/runs?head_sha={h}&per_page=100")["workflow_runs"]
+    out = snapshot_plan(version, git_tags(), bump, ahead, git_ls_remote_heads(f"{SNAPSHOT_PREFIX}*"), pulls, rep,
+                        runs_of, cut_sha=cut)
+    for k, v in out.items():
+        v = " ".join(str(x) for x in v) if isinstance(v, list) else ("true" if v is True else "false" if v is False else v)
+        print(f"{k}={v}")
+    return 0
+
+
 def read(path: str | None) -> str:
     return Path(path).read_text("utf-8") if path else ""
 
@@ -436,7 +604,9 @@ def main(argv=None) -> int:
     b = sub.add_parser("pr-body")
     b.add_argument("--existing", help="file with the current release PR body (keeps its What's new)")
     b.add_argument("--out", required=True)
+    b.add_argument("--snapshot", default="", help="#976: the release/vX.Y.Z branch this body is for (HEAD = its commit)")
     sub.add_parser("plan")
+    sub.add_parser("snapshot")
     sub.add_parser("auto")
     n = sub.add_parser("notes")
     for k in ("--version", "--base", "--out"):
@@ -479,15 +649,20 @@ def main(argv=None) -> int:
         wn = ROOT / WHATS_NEW_FILE
         for k, v in auto_plan(os.environ.get("AUTO_RELEASE", ""), throttle, os.environ.get("RUN_SHA", ""), version,
                               git_tags(), pulls, rep, runs_of, wn.read_text("utf-8") if wn.exists() else "",
-                              merged, jobs_of).items():
+                              merged, jobs_of, show=git_show, in_dev=lambda sha: in_tip(sha, "HEAD")).items():
             print(f"{k}={v}")
         return 0
+    if a.cmd == "snapshot":
+        return snapshot_cli(version, rep)
     if a.cmd == "pr-body":
         tag = f"v{version}"
+        if not a.snapshot and git_ls_remote_heads(snapshot_branch(tag)):
+            # #976 transition: the old release-pr.yml on main must not open a dev -> main PR next to a snapshot
+            raise SystemExit(f"{snapshot_branch(tag)} exists: the snapshot lane releases {tag}, not a dev -> main PR")
         since, changes, thanks = history(rep, tag)
         wn = ROOT / WHATS_NEW_FILE
         body = pr_body(version, list(git_tags()), since, changes, thanks, read(a.existing), git("rev-parse", "HEAD"),
-                       wn.read_text("utf-8") if wn.exists() else "")
+                       wn.read_text("utf-8") if wn.exists() else "", a.snapshot)
         Path(a.out).write_text(body, "utf-8")
         print(f"release: {tag}")
         return 0

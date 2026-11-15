@@ -118,7 +118,9 @@ def test_hw_tests_keeps_its_triggers_and_its_single_self_hosted_job():
     wf = _wf(HW)
     assert set(wf[True]) == {"push", "workflow_dispatch"}  # no schedule / pull_request here (security header)
     assert list(wf["jobs"]) == ["hw"] and wf["jobs"]["hw"]["runs-on"] == ["self-hosted", "windows", "tlwu-hw"]
-    assert wf["concurrency"] == {"group": "hw-tests", "cancel-in-progress": False}  # runs never overlap
+    # #976: one group per ref, so a pending dev push never replaces a release/vX.Y.Z snapshot run; runs never
+    # cancel each other, and the single tlwu-hw runner takes one job at a time
+    assert wf["concurrency"] == {"group": "hw-tests-${{ github.ref }}", "cancel-in-progress": False}
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is needed to run the step")

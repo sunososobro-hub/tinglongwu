@@ -1,6 +1,7 @@
 name: stale-branches
 # #344: delete branches whose PRs are all closed/merged, and old branches with no PR and nothing beyond dev.
-# Rules live in scripts/stale_branches.py (main, dev, gh-pages, open-PR and status:doing lock branches are kept).
+# Rules live in scripts/stale_branches.py (main, dev, gh-pages, release/v* snapshots (#976), open-PR and status:doing
+# lock branches are kept).
 on:
   schedule:
     - cron: "41 3 * * 1"   # weekly, Monday 03:41 UTC

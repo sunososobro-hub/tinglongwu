@@ -35,11 +35,25 @@ def venv_python(venv: Path) -> Path:
     return venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
+def base_python() -> str:
+    """Interpreter that can run `-m venv`. In the bundled app sys.executable is tlwu.exe (#1007), which cannot; use a system Python."""
+    cur = getattr(sys, "_base_executable", None) or sys.executable
+    if not getattr(sys, "frozen", False) and Path(cur).stem.lower().startswith("python"):
+        return cur
+    import shutil
+
+    for name in ("python", "python3", "py"):
+        found = shutil.which(name)
+        if found and "WindowsApps" not in found:
+            return found
+    sys.exit("the voice install needs Python 3.10+ on this PC to create its own environment (install it from python.org, then run setup again)")
+
+
 def ensure_venv(venv: Path, run=subprocess.call, base: str | None = None) -> Path:
     """Create the Kokoro venv; pip install kokoro-onnx (binary wheels only) and misaki[zh] unless they already import."""
     py = venv_python(venv)
     if not py.exists():
-        base = base or getattr(sys, "_base_executable", None) or sys.executable  # not this .venv's python
+        base = base or base_python()  # not this .venv's python, not tlwu.exe
         if run([base, "-m", "venv", str(venv)]):
             sys.exit(f"could not create the Kokoro venv {venv}")
     if run([str(py), "-c", "import kokoro_onnx, soundfile"]) != 0:

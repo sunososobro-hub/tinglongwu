@@ -313,6 +313,11 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
                 raise RuntimeError(tr.hy_error)
             tr.hy.preload()
         except Exception as e:  # noqa: BLE001 - OOM / driver / llama.cpp load errors: stop, never switch engines
+            from .minspec import cpu_has_avx2
+
+            if cpu_has_avx2() is False:  # #1014: no repair can help a CPU below the minimum spec
+                raise SystemExit(f"tlwu: Hy-MT2 failed to load: this CPU lacks AVX2 (below the minimum spec, see "
+                                 f"README, System requirements); {str(e)[:120]}") from e
             raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
                              f"`tlwu-setup {flag}` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
                              "PC).") from e

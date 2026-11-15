@@ -1,9 +1,25 @@
 name: release-pr
-# #414: when `ci` passes on a push to dev, open (or update) the one dev -> main release PR `release: vX.Y.Z`
-# (X.Y.Z = tinglongwu.__version__) with generated notes. auto-release.yml merges it when green (#589);
-# release.yml then checks the gates, builds and publishes. workflow_run runs this file from the default branch and
-# checks out dev (merged work only), never PR head code. Creating the PR needs the repo setting "Allow GitHub
-# Actions to create and approve pull requests"; without it the job fails after writing the PR into the summary.
+# #414 / #976 (two lanes, owner 2026-11-15): when `ci` passes on a push to dev, make sure the release of dev's
+# `__version__` (X.Y.Z) is under way, without ever freezing dev:
+#   snapshot : branch `release/vX.Y.Z` at the dev commit that set `__version__` (the bump), created once, only when
+#              tag vX.Y.Z does not exist, the version is newer than every tag and the bump is not on main yet
+#              (scripts/release_notes.py snapshot). Later dev pushes never move it.
+#   checks   : the snapshot head already has the dev-push runs of that commit. ci (no concurrency group) and
+#              windows-build (#888: dev pushes always finish) are never cancelled; e2e, audio-routing and hw-tests
+#              (unless already green, or hw-tests already running) are dispatched on the snapshot ref, where their
+#              per-ref concurrency groups keep later dev pushes from cancelling them. The newest run of each required
+#              workflow on the commit is what the gates read (check_problems), so the dispatched runs count.
+#   PR       : one `release/vX.Y.Z -> main` PR titled `release: vX.Y.Z` with generated notes. auto-release.yml merges
+#              it when green; release.yml then re-checks the gates, builds and publishes.
+#   cleanup  : a release PR for another version (dev's bump was reverted or superseded) is closed with a comment;
+#              `release/v*` branches whose tag exists (released) or that were superseded are deleted.
+# Jobs: `plan` runs the merged dev code with a read-only token; `act` holds the write token and runs no repo code.
+# workflow_run runs this file from the default branch (main) and checks out dev (merged work only), never PR head
+# code. Transition: until one release carries this file to main, the old copy there still opens the legacy
+# dev -> main PR (scripts/release_notes.py accepts both; the freeze still applies to that legacy PR only).
+# A token-made branch or PR starts no push / pull_request runs; workflow_dispatch does, which is why the checks are
+# dispatched. If creating the branch is refused (GitHub may refuse the workflow token a ref whose workflows differ
+# from main), the job fails and prints the one command that creates it by hand (rules section 14).
 on:
   workflow_run:
     workflows: [ci]
@@ -12,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "only write the PR title and body into the job summary"
+        description: "only write the plan, PR title and body into the job summary"
         type: boolean
         default: true
 
@@ -23,16 +39,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-pr:
+  plan:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       issues: read   # the thanks list reads issue authors
+      actions: read  # which required runs the snapshot commit already has
+    outputs:
+      go: ${{ steps.tip.outputs.go }}
+      cut: ${{ steps.snap.outputs.cut }}
+      pr: ${{ steps.snap.outputs.pr }}
+      dispatch: ${{ steps.snap.outputs.dispatch }}
+      close: ${{ steps.snap.outputs.close }}
+      delete: ${{ steps.snap.outputs.delete }}
+      branch: ${{ steps.snap.outputs.branch }}
+      sha: ${{ steps.snap.outputs.sha }}
+      tag: ${{ steps.snap.outputs.tag }}
+      title: ${{ steps.body.outputs.title }}
+      body: ${{ steps.body.outputs.body }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -42,49 +72,103 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - name: Is this still the dev tip, and is dev ahead of main?
-        id: diff
+      - name: Is this still the dev tip?
+        id: tip
         env:
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           git fetch --no-tags origin main dev
+          # an older commit may carry an older __version__: acting on it could close the current release PR
           if [ -n "$RUN_SHA" ] && [ "$(git rev-parse origin/dev)" != "$RUN_SHA" ]; then
-            echo "skip=stale: dev moved past $RUN_SHA; the ci run of the new tip updates the PR" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "stale: dev moved past $RUN_SHA; the ci run of the new tip runs this again" | tee -a "$GITHUB_STEP_SUMMARY"
             echo "go=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          n=$(git rev-list --count origin/main..origin/dev)
-          echo "dev is $n commit(s) ahead of main" >> "$GITHUB_STEP_SUMMARY"
-          v=$(git show origin/dev:tinglongwu/__init__.py | sed -n 's/^__version__ = "\(.*\)"/\1/p')
-          if [ "$n" != 0 ] && git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null 2>&1; then
-            echo "skip=v$v is already released (tag exists); waiting for the patch bump (#785)" | tee -a "$GITHUB_STEP_SUMMARY"
-            n=0
-          fi
-          echo "go=$([ "$n" != 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - name: Title and body
-        if: steps.diff.outputs.go == 'true'
+          echo "go=true" >> "$GITHUB_OUTPUT"
+      - name: Snapshot plan
+        if: steps.tip.outputs.go == 'true'
+        id: snap
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/release_notes.py snapshot > snap.txt
+          cat snap.txt >> "$GITHUB_OUTPUT"
+          { echo '```'; cat snap.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Title and body (generated at the snapshot commit)
+        if: steps.tip.outputs.go == 'true' && steps.snap.outputs.pr == 'true'
         id: body
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          SHA: ${{ steps.snap.outputs.sha }}
+          BRANCH: ${{ steps.snap.outputs.branch }}
         run: |
-          num=$(gh pr list --base main --head dev --state open --json number --jq '.[0].number // empty')
-          : > existing.md
-          if [ -n "$num" ]; then
-            gh pr view "$num" --json body --jq .body > existing.md   # a failed read must not reset What's new
-          fi
-          title=$(python scripts/release_notes.py pr-body --existing existing.md --out body.md)
-          { echo "num=$num"; echo "title=$title"; } >> "$GITHUB_OUTPUT"
-          { echo "### $title (PR ${num:-new})"; echo; cat body.md; } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Create or update the release PR
-        if: steps.diff.outputs.go == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+          git -c advice.detachedHead=false checkout -q "$SHA"
+          title=$(python scripts/release_notes.py pr-body --snapshot "$BRANCH" --out body.md)
+          eof="EOF_$(openssl rand -hex 12)"
+          { echo "title=$title"; echo "body<<$eof"; cat body.md; echo "$eof"; } >> "$GITHUB_OUTPUT"
+          { echo "### $title ($BRANCH)"; echo; cat body.md; } >> "$GITHUB_STEP_SUMMARY"
+
+  act:
+    needs: plan
+    if: >-
+      needs.plan.outputs.go == 'true' &&
+      (github.event_name == 'workflow_run' || (github.ref == 'refs/heads/dev' && !inputs.dry_run))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # create / delete release/v* refs
+      pull-requests: write   # open the release PR, close a superseded one
+      actions: write         # dispatch the required workflows on the snapshot ref
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: ${{ needs.plan.outputs.branch }}
+      SHA: ${{ needs.plan.outputs.sha }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - name: Close release PRs for another version (superseded or reverted bump)
+        if: needs.plan.outputs.close != ''
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          NUM: ${{ steps.body.outputs.num }}
-          TITLE: ${{ steps.body.outputs.title }}
+          CLOSE: ${{ needs.plan.outputs.close }}
         run: |
-          if [ -n "$NUM" ]; then
-            gh pr edit "$NUM" --title "$TITLE" --body-file body.md
-          else
-            gh pr create --base main --head dev --title "$TITLE" --body-file body.md
+          for n in $CLOSE; do
+            [[ "$n" =~ ^[0-9]+$ ]] || { echo "::error::bad PR number"; exit 1; }
+            gh pr close "$n" --comment "Closed by release-pr.yml (#976): dev's \`__version__\` is now ${TAG#v}, so this release PR is superseded."
+          done
+      - name: Delete released or superseded release/v* branches
+        if: needs.plan.outputs.delete != ''
+        env:
+          DELETE: ${{ needs.plan.outputs.delete }}
+        run: |
+          for b in $DELETE; do
+            [[ "$b" =~ ^release/v[0-9A-Za-z.-]+$ ]] || { echo "::error::bad branch name"; exit 1; }
+            gh api -X DELETE "repos/$GH_REPO/git/refs/heads/$b" && echo "deleted $b" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Cut the snapshot branch at the bump commit
+        if: needs.plan.outputs.cut == 'true'
+        run: |
+          [[ "$BRANCH" =~ ^release/v[0-9A-Za-z.-]+$ && "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::bad branch or sha"; exit 1; }
+          if ! gh api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$SHA" --jq .ref; then
+            { echo "::error::could not create $BRANCH. Create it with a maintainer token, then re-run this workflow:"
+              echo "git push origin $SHA:refs/heads/$BRANCH && gh workflow run release-pr.yml --ref dev -f dry_run=false"; } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
+          echo "cut $BRANCH at $SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run the required checks on the snapshot ref (before the PR, so a failed dispatch is retried)
+        if: needs.plan.outputs.pr == 'true' && needs.plan.outputs.dispatch != ''
+        env:
+          DISPATCH: ${{ needs.plan.outputs.dispatch }}
+        run: |
+          for w in $DISPATCH; do
+            case "$w" in e2e|audio-routing|hw-tests|install-clean) ;; *) echo "::error::unknown workflow"; exit 1;; esac
+            gh workflow run "$w.yml" --ref "$BRANCH"
+            echo "dispatched $w on $BRANCH" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Open the release PR
+        if: needs.plan.outputs.pr == 'true'
+        env:
+          TITLE: ${{ needs.plan.outputs.title }}
+          BODY: ${{ needs.plan.outputs.body }}
+        run: |
+          printf '%s\n' "$BODY" > body.md
+          gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file body.md

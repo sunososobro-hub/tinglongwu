@@ -144,10 +144,19 @@ def _where(dev: str) -> str:
 
 def run_selftest(mdir, model: str | None = None, engine: str = "auto", device: str = "auto", zh_variant: str = "tw",
                  *, make_asr=_default_asr, make_mt=_default_mt, choose=_default_choose, resolve=_default_resolve,
-                 gpu_name=_default_gpu_name, pick=_default_pick, clip=load_clip, clock=time.perf_counter) -> Result:
+                 gpu_name=_default_gpu_name, pick=_default_pick, clip=load_clip, clock=time.perf_counter,
+                 has_avx2=None) -> Result:
     mdir = Path(mdir)
     res = Result()
     steps = res.steps
+
+    # ---- #1014: a CPU below the AVX2 minimum cannot load the models; no repair hint can help
+    if has_avx2 is None:
+        from .minspec import cpu_has_avx2 as has_avx2
+    if has_avx2() is False:
+        steps.append(Step("CPU", False, 0.0, "CPU lacks AVX2 (below the minimum spec)",
+                          "see README, System requirements; this PC cannot run the models"))
+        return res
 
     # ---- device: what was selected vs. what the runtime can really use
     t0, warned = clock(), []
