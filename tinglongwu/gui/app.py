@@ -37,7 +37,9 @@ UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px mai
 SETTING_COLS = 2
 SPAN = 7  # grid columns a full-width row spans
 LABEL_WRAP_PX = 190
-LOG_H, LOG_H_SHORT = 220, 120  # subtitle log height (px); the short one below SHORT_SCREEN_PX of screen height
+# subtitle log height (px); the short one below SHORT_SCREEN_PX of screen height. 100 (not 120): the ubuntu CI Tk
+# measured the Advanced-open panel 629 px with 120, 29 px over the 600 px budget
+LOG_H, LOG_H_SHORT = 220, 100
 SHORT_SCREEN_PX = 900
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
@@ -537,6 +539,10 @@ class App:
             self.settings["send_mode"] = mode
         key = send_mode_notice_key(mode)
         self.lbl_send_notice.configure(text=t(key) if key else "")
+        if key:  # #886: an empty notice line takes no height (the panel must fit a 768 px screen)
+            self.lbl_send_notice.grid()
+        else:
+            self.lbl_send_notice.grid_remove()
 
     @staticmethod
     def _cell(slot: int) -> tuple[int, int]:
@@ -950,7 +956,7 @@ class App:
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
-        q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
+        q = ttk.Frame(self.panel, padding=(10, 6, 10, 0))  # #886: compact top
         q.pack(fill="x")
         self.status_box.pack(fill="x")
         # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)

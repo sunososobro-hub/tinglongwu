@@ -81,3 +81,16 @@ def test_settings_sit_in_two_columns(small_screen_app):
     assert cols == {1, 5}
     rows = {int(a.combos[k].grid_info()["row"]) for k in ("lang", "target")}
     assert len(rows) == 1  # source and target language on one row
+
+
+def test_empty_send_notice_takes_no_row(small_screen_app):
+    """The speak send-mode notice line is only on screen while it has text (confirm mode has none)."""
+    a = small_screen_app()
+    a.set_advanced(True)
+    a.v_send_mode.set("confirm")
+    a.root.update()
+    assert not a.lbl_send_notice.winfo_ismapped()
+    for mode in ("countdown", "auto"):
+        a.v_send_mode.set(mode)
+        a.root.update()
+        assert a.lbl_send_notice.winfo_ismapped() and a.lbl_send_notice.cget("text")
