@@ -139,6 +139,14 @@ void main() {
     });
   });
 
+  group('pending/draft size follows the slider (#1092)', () {
+    test('scales around the old fixed 22 sp', () {
+      expect(const OverlayStyle(fontSize: 40).secondaryFontSize, greaterThan(22));
+      expect(const OverlayStyle(fontSize: 12).secondaryFontSize, lessThan(22));
+      expect(const OverlayStyle().secondaryFontSize, closeTo(22, 1));
+    });
+  });
+
   group('OverlayStyle (#998)', () {
     test('parse/format round trip and fallbacks', () {
       const s = OverlayStyle(fontSize: 24, opacity: 0.35);

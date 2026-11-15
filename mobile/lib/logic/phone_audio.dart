@@ -194,6 +194,10 @@ class OverlayStyle {
   /// fixed sizes); the slider range 12..40 gives 23..76 portrait.
   double screenFontSize({required bool landscape}) => fontSize * (landscape ? 2.3 : 1.9);
 
+  /// Pending source line and live draft size (sp) on the in-app subtitle screen (#1092):
+  /// follows [fontSize]; default 20 -> 22 (the old fixed size).
+  double get secondaryFontSize => fontSize * 1.1;
+
   OverlayStyle copyWith({double? fontSize, double? opacity, SubtitleMode? mode}) => OverlayStyle(
         fontSize: fontSize ?? this.fontSize,
         opacity: opacity ?? this.opacity,

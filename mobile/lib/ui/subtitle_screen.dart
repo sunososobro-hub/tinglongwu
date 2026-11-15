@@ -115,7 +115,7 @@ class SubtitleScreen extends StatelessWidget {
                       ? silenceHintText
                       : _draftText(),
                   style: TextStyle(
-                      fontSize: 22,
+                      fontSize: pipeline.overlayStyle.secondaryFontSize,
                       color: pipeline.silenceHint ? Colors.amber : const Color(0xFF8A8A8A),
                       height: 1.25),
                   maxLines: 3,
@@ -151,7 +151,7 @@ class SubtitleScreen extends StatelessWidget {
       parts = [text(s.ru, fs, bright)];
     } else if (pending) {
       // Still translating: its source text in gray.
-      parts = [text(s.ru, 22, gray)];
+      parts = [text(s.ru, pipeline.overlayStyle.secondaryFontSize, gray)];
     } else {
       final zh = s.zh!;
       final src = s.ru.trim();
