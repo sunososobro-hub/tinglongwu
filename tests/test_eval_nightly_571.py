@@ -43,7 +43,7 @@ def test_within_margin_writes_nothing(tmp_path):
 def test_github_output_and_bad_report(tmp_path):
     write(tmp_path, 30.0)
     out = tmp_path / "gh_out"
-    r = subprocess.run([sys.executable, str(SCRIPT), str(tmp_path / "r.json"), "--baseline", str(tmp_path / "b.json"),
+    subprocess.run([sys.executable, str(SCRIPT), str(tmp_path / "r.json"), "--baseline", str(tmp_path / "b.json"),
                         "--out", str(tmp_path / "alert.md")], capture_output=True, text=True,
                        env={"GITHUB_OUTPUT": str(out), "PATH": ""})
     assert out.read_text().strip() == "drop=true"
