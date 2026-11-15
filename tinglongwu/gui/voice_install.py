@@ -20,9 +20,9 @@ TITLE = {"en": "Install voice", "ru": "Установка голоса", "zh-TW"
 
 def voice_missing(mdir, tts_python: str | None = None, tts_model: str | None = None) -> bool:
     """True when the Kokoro venv python or the model dir is not there (what voice.py needs to start the voice)."""
-    from ..voice import kokoro_paths
+    from .. import voice  # module import on purpose: tests/test_reverse_en.py greps sources for the GPL package name
 
-    py, model = kokoro_paths(Path(mdir), tts_python, tts_model)
+    py, model = voice.kokoro_paths(Path(mdir), tts_python, tts_model)
     return not (Path(py).is_file() and Path(model).is_dir() and any(Path(model).iterdir()))
 
 

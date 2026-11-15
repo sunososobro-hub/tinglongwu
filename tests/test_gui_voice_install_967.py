@@ -1,5 +1,4 @@
 """#967: speak with the Kokoro voice missing offers a one-click install (no network, no tkinter)."""
-from pathlib import Path
 
 from tinglongwu.gui import voice_install
 from tinglongwu.gui.core import run_voice_install, voice_install_cmd
