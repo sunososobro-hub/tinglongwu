@@ -2,6 +2,7 @@
 laid out so tinglongwu.mt_backend.vulkan_pack_dir() accepts the unzipped folder."""
 import importlib.util
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -132,6 +133,12 @@ def test_vulkan_job_is_capped_at_the_core_budget_and_never_fails_the_release():
     assert "!cancelled()" in rel["if"] and "needs.windows.result == 'success'" in rel["if"]
     assert "needs.vulkan-pack" not in rel["if"]
     assert job["env"]["VULKAN_SDK_VERSION"]  # the installer is pinned by version, and by hash once measured
+
+
+def test_installer_hash_is_pinned_so_the_release_builds_the_pack_1107():
+    # #1107: an empty pin skipped every build step, so no release attached the Vulkan pack
+    pin = _jobs()["vulkan-pack"]["env"]["VULKAN_SDK_SHA256"]
+    assert re.fullmatch(r"[0-9a-f]{64}", pin), pin
 
 
 def test_unpinned_installer_hash_skips_every_build_step_so_the_job_stays_green():

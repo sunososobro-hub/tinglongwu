@@ -293,11 +293,10 @@ jobs:
     env:
       PYTHONUTF8: "1"
       VULKAN_SDK_VERSION: "1.4.309.0"   # LunarG SDK for glslc + the Vulkan headers/loader import lib
-      # SHA-256 of that installer. NOT measured yet: the cloud session that wrote this could not reach sdk.lunarg.com.
-      # Empty = the job skips every build step (green, no artifact) and the release ships without the pack.
-      # To enable the pack: run this workflow once (workflow_dispatch), copy the hash the "Skip while ..." step prints
-      # ("Vulkan SDK installer SHA-256: ...") into the value below, and compare it with LunarG's published hash.
-      VULKAN_SDK_SHA256: ""
+      # SHA-256 of that installer (#1107): printed identically by the "Skip while ..." step of three release runs on
+      # windows-latest, 2026-11-15 (runs 43678960157, 43707611409, 43735366365). Empty = the job skips every build
+      # step (green, no artifact). When VULKAN_SDK_VERSION changes, empty this, run once and pin the printed hash.
+      VULKAN_SDK_SHA256: "48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297"
     steps:
       - name: Skip while the Vulkan SDK installer hash is not pinned (the release ships without the pack)
         id: pin
