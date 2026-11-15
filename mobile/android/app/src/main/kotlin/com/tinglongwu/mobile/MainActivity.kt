@@ -164,7 +164,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "overlayText" -> {
                         val lines = (call.argument<List<Map<String, String?>>>("lines") ?: emptyList())
                             .map { SubtitleOverlay.Line(it["src"], it["tr"]) }
-                        SubtitleOverlay.update(lines, call.argument<String>("hint"))
+                        SubtitleOverlay.update(lines, call.argument<String>("hint"), call.argument<String>("draft"))
                         result.success(null)
                     }
                     "overlayStyle" -> {

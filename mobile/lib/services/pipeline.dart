@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:record/record.dart';
 
 import '../logic/context_budget.dart';
+import '../logic/draft_gate.dart';
+import '../logic/feature_prefs.dart';
 import '../logic/phone_audio.dart';
 import '../logic/segmenter.dart';
 import '../logic/subtitle_trim.dart';
@@ -56,7 +58,12 @@ class Pipeline extends ChangeNotifier {
   String? dlError;
   ModelPaths? paths;
 
+  /// Grey text under construction: the draft (#1064) or '…' while speech goes on.
   String draftRu = '';
+  final DraftTracker _draft = DraftTracker();
+  Timer? _draftExpiry;
+  FeaturePrefs prefs = const FeaturePrefs();
+  FeaturePrefsStore? _prefsStore;
   final List<Subtitle> subtitles = []; // newest last
   int queued = 0;
 
@@ -136,6 +143,8 @@ class Pipeline extends ChangeNotifier {
       _log.i('files dir ${paths!.filesDir}');
       _targetStore = TargetLanguageStore('${paths!.filesDir}/target_language.txt');
       target = _targetStore!.load();
+      _prefsStore = FeaturePrefsStore('${paths!.filesDir}/features.txt');
+      prefs = _prefsStore!.load();
       _styleStore = OverlayStyleStore('${paths!.filesDir}/overlay_style.txt');
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
@@ -183,14 +192,20 @@ class Pipeline extends ChangeNotifier {
             } else {
               _fail(message);
             }
-          case AsrPartial(:final text):
-            draftRu = text;
-            notifyListeners();
+          case AsrSpeech(:final speaking):
+            if (_draft.onSpeech(speaking, _clock.elapsedMilliseconds)) _refreshDraft();
+          case AsrDraft(:final seg, :final text):
+            if (prefs.sourceDraft && _draft.onDraft(seg, text)) _refreshDraft();
+          case AsrSegmentEnd(:final seg):
+            if (_draft.onFinal(seg)) _refreshDraft();
           case AsrFinal():
+            _draft.onFinal(e.seg);
+            _refreshDraft(notify: false);
             _onFinal(e);
         }
       });
       await ready.future;
+      _asr!.setDraft(prefs.sourceDraft);
       _log.i('ASR ready in ${_clock.elapsedMilliseconds - t0} ms');
 
       final t1 = _clock.elapsedMilliseconds;
@@ -316,6 +331,31 @@ class Pipeline extends ChangeNotifier {
         }
       });
     }
+  }
+
+  /// 顯示原文草稿 (#1064): turns the grey interim source text on or off, remembered.
+  void setSourceDraft(bool on) {
+    if (on == prefs.sourceDraft) return;
+    prefs = prefs.copyWith(sourceDraft: on);
+    _prefsStore?.save(prefs);
+    _asr?.setDraft(on);
+    if (!on) _draft.reset();
+    _refreshDraft();
+  }
+
+  /// Recomputes [draftRu] from the tracker; the held draft expires by a timer.
+  void _refreshDraft({bool notify = true}) {
+    final now = _clock.elapsedMilliseconds;
+    final d = prefs.sourceDraft ? _draft.shown(now) : '';
+    draftRu = d.isNotEmpty ? d : (_draft.speaking ? '…' : '');
+    _draftExpiry?.cancel();
+    final at = _draft.expiresAtMs();
+    if (at != null && prefs.sourceDraft) {
+      _draftExpiry = Timer(Duration(milliseconds: at - now), () {
+        if (!_disposed) _refreshDraft();
+      });
+    }
+    if (notify && !_disposed) notifyListeners();
   }
 
   /// 中文 / 原文 / 雙語 for the app and the overlay; saved with the overlay style.
@@ -452,6 +492,7 @@ class Pipeline extends ChangeNotifier {
     _disposed = true;
     _micSub?.cancel();
     _asrSub?.cancel();
+    _draftExpiry?.cancel();
     _resumeOnce?.dispose();
     if (_phoneSub != null || source == AudioSourceKind.phone) {
       _phoneSub?.cancel();

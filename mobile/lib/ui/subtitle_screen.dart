@@ -24,6 +24,13 @@ class SubtitleScreen extends StatelessWidget {
         '${p.lastTokens ?? '-'} tok | ttft $ttft | q ${p.queued} | drop ${p.dropped}';
   }
 
+  /// Grey line at the bottom: the source draft (#1064; not in 中文-only mode), else '…'.
+  String _draftText() {
+    final d = pipeline.draftRu;
+    if (d.isEmpty || (d != '…' && pipeline.overlayStyle.mode == SubtitleMode.zh)) return '…';
+    return d;
+  }
+
   @override
   Widget build(BuildContext context) {
     final subs = pipeline.subtitles;
@@ -105,7 +112,7 @@ class SubtitleScreen extends StatelessWidget {
                 child: Text(
                   pipeline.silenceHint
                       ? silenceHintText
-                      : (pipeline.draftRu.isEmpty ? '…' : pipeline.draftRu),
+                      : _draftText(),
                   style: TextStyle(
                       fontSize: 22,
                       color: pipeline.silenceHint ? Colors.amber : const Color(0xFF8A8A8A),
@@ -264,8 +271,18 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
               const SizedBox(height: 4),
               const Text('雙語：原文在上（小字），譯文在下。聽龍畫面和浮動視窗都適用。',
                   style: TextStyle(fontSize: 13, color: Colors.white60)),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('顯示原文草稿'),
+                subtitle: const Text('一句話還沒說完時，先用灰字顯示聽到的原文，說完後換成正式字幕。'
+                    '會多用一些耗電和記憶體。',
+                    style: TextStyle(fontSize: 13, color: Colors.white60)),
+                value: pipeline.prefs.sourceDraft,
+                onChanged: pipeline.setSourceDraft,
+              ),
               if (pipeline.phoneSupported) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 const Text('浮動字幕視窗', style: TextStyle(fontSize: 16)),
                 const SizedBox(height: 4),
                 const Text('拖曳字幕可移動，拖曳右下角 ⇲ 可調寬度，高度隨內容增加。點一下回到聽龍。',
