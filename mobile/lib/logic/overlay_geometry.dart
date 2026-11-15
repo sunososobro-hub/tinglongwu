@@ -11,8 +11,8 @@ class OverlayRect {
   int get right => x + width;
   int get bottom => y + height;
   @override
-  bool operator ==(Object o) =>
-      o is OverlayRect && o.x == x && o.y == y && o.width == width && o.height == height;
+  bool operator ==(Object other) =>
+      other is OverlayRect && other.x == x && other.y == y && other.width == width && other.height == height;
   @override
   int get hashCode => Object.hash(x, y, width, height);
   @override
@@ -33,9 +33,9 @@ OverlayRect fitOverlay({
   required int height,
   int minWidth = 0,
 }) {
-  final w = (screenW * widthFrac).round().clamp(math.min(minWidth, screenW), screenW);
+  final w = (screenW * widthFrac).round().clamp(math.min(minWidth, screenW), screenW).toInt();
   final h = math.min(height, screenH);
-  final x = (screenW * fx).round().clamp(0, screenW - w);
-  final y = (screenH * fy).round().clamp(0, screenH - h);
+  final x = (screenW * fx).round().clamp(0, screenW - w).toInt();
+  final y = (screenH * fy).round().clamp(0, screenH - h).toInt();
   return OverlayRect(x, y, w, h);
 }
