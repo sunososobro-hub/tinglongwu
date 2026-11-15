@@ -112,3 +112,14 @@ def test_windows_main_writes_setup_time_773(tmp_path, monkeypatch):
                    "--out", str(tmp_path / "ttfs.json")]) == 0
     doc = json.loads((tmp_path / "setup_time.json").read_text(encoding="utf-8"))
     assert doc["setup_seconds"] == 50.0 and doc["pip_lines"] == 1 and doc["ready"] is False
+
+
+def test_install_size_in_summary_773(tmp_path):
+    m = _load()
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.bin").write_bytes(b"x" * (1024 * 1024))
+    (tmp_path / "sub" / "b.bin").write_bytes(b"x" * (1024 * 1024))
+    assert m.dir_size_mb(str(tmp_path)) == 2.0
+    assert m.dir_size_mb(str(tmp_path / "missing")) == 0.0
+    assert "install_size_mb: 2.0" in m.summary_text("windows", {}, 2.0)
+    assert "install_size_mb" not in m.summary_text("windows", {})

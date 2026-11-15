@@ -46,11 +46,27 @@ def commands(os_name, directory, setup_exe=None):
     return install, setup, tlwu
 
 
-def summary_text(os_name, doc):
+def dir_size_mb(directory):
+    """#773: total size of DIRECTORY on disk in MB (0.0 when it does not exist)."""
+    total = 0
+    for root, _dirs, files in os.walk(directory):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return round(total / (1024 * 1024), 1)
+
+
+def summary_text(os_name, doc, install_mb=None):
     def num(k):
         return "n/a" if doc.get(k) is None else "%.1f" % doc[k]
-    return ("### ttfs (%s)\n\nttfs_seconds: %s\nexcl_download_seconds: %s (budget %d s, %d Mbps baseline)\n"
+    text = ("### ttfs (%s)\n\nttfs_seconds: %s\nexcl_download_seconds: %s (budget %d s, %d Mbps baseline)\n"
             % (os_name, num("ttfs_seconds"), num("excl_download_seconds"), ttfs.TTFS_BUDGET_S, ttfs.BASELINE_MBPS))
+    if install_mb is not None:
+        text += "install_size_mb: %.1f
+" % install_mb
+    return text
 
 
 def setup_time_report(directory, install_seconds, out_path):
@@ -95,7 +111,7 @@ def main(argv=None):
         doc["download_mb"] = round(doc["download_seconds"] * ttfs.BASELINE_MBPS / 8, 1)
         with open(a.out, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=2)
-    text = summary_text(a.os, doc)
+    text = summary_text(a.os, doc, dir_size_mb(a.dir))
     if a.os == "windows" and doc.get("install_seconds") is not None:
         text += setup_time_report(a.dir, doc["install_seconds"],
                                   os.path.join(os.path.dirname(os.path.abspath(a.out)), "setup_time.json"))
