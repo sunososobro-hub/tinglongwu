@@ -430,6 +430,7 @@ def test_snapshot_head_reads_the_newest_run_so_dispatched_runs_replace_cancelled
     ({"show": snap_show(wn="## v0.3.1\n- Old\n")}, "no filled `## v0.3.2` section"),
     ({"runs": [r for r in GREEN if r["name"] != "audio-routing"]}, "audio-routing: no run"),
     ({"runs": [r for r in GREEN if r["name"] != "install-clean"]}, "install-clean: no run"),
+    ({"runs": [{**r, "event": "pull_request"} if r["name"] == "install-clean" else r for r in GREEN]}, "install-clean: no run"),
     ({"runs": [*GREEN, {"id": 99, "name": "install-clean", "status": "completed", "conclusion": "failure"}]}, "install-clean"),
     ({"runs": [*GREEN, {"id": 99, "name": "hw-tests", "status": "completed", "conclusion": "failure"}]}, "hw-tests"),
     ({"pulls": ({**SNAP, "head": {**SNAP["head"], "repo": {"full_name": "x/fork"}}},)}, "no open dev -> main"),

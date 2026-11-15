@@ -166,11 +166,17 @@ def release_pr_of(pulls: list[dict], repo: str) -> dict | None:
     return None
 
 
+def _counts(run: dict) -> bool:
+    """#1016: a pull_request run of install-clean skips speak-smoke (job `if`), and a skipped job reports success, so
+    it is never evidence for the speak-smoke requirement."""
+    return not (run.get("name") == "install-clean" and run.get("event") == "pull_request")
+
+
 def check_problems(runs: list[dict], required=REQUIRED_CHECKS) -> list[str]:
     """Owner gate: the newest run of each required workflow on the commit must have succeeded."""
     out = []
     for name in required:
-        mine = [r for r in runs if r.get("name") == name]
+        mine = [r for r in runs if r.get("name") == name and _counts(r)]
         if not mine:
             out.append(f"{name}: no run on this commit")
             continue
@@ -381,7 +387,7 @@ def snapshot_plan(version: str, tags: dict[str, str], bump_sha: str, ahead: int,
         out["pr"] = True
         runs = runs_of(sha)
         for name in SNAPSHOT_DISPATCH:
-            mine = [r for r in runs if r.get("name") == name]
+            mine = [r for r in runs if r.get("name") == name and _counts(r)]
             r = max(mine, key=lambda r: r.get("id", 0)) if mine else {}
             done = r.get("status") == "completed" and r.get("conclusion") == "success"
             # an in-progress hw-tests run is never cancelled (cancel-in-progress: false); e2e / audio-routing on dev are
