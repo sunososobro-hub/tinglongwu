@@ -858,6 +858,10 @@ class QueueSink(Sink):
         self.q.put(("source", original))  # shown dim until its "final" arrives (#53)
 
     def write(self, r: Result) -> None:
+        from ..reverse.echoguard import shared
+
+        if shared().check(r.original, r.target if r.src != r.tgt else ""):  # #1070: our own voice coming back
+            return
         self.q.put(("final", r.original, r.target if r.src != r.tgt and r.target else r.original))
 
 
@@ -914,6 +918,9 @@ class SpeakQueueSink(QueueSink):
             original = _zh_display(original, self.variant)
             if r.src == r.tgt or not r.target:
                 out = original
+        from ..reverse.echoguard import shared
+
+        shared().note(r.original)  # #1070: the source of what we send, for the listen-leg echo guard
         self.q.put(("final_side", SPEAK_MARK + original, SPEAK_MARK + out))
 
 

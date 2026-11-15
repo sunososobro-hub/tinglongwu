@@ -80,6 +80,12 @@ CLOSE_TIMEOUT = 30.0  # seconds VoiceSink.close() waits for the backlog (<= MAX_
 MAX_BACKLOG = 2  # unspoken lines kept while one is being spoken; older ones are skipped (the subtitle has them)
 
 
+def echo_guard():
+    from .reverse.echoguard import shared
+
+    return shared()
+
+
 class VoiceSink(Sink):
     """Writes every line to `inner` (subtitles unchanged), then queues `r.target` for `speak(text)` on a worker
     thread, so a slow voice never delays the next subtitle. Lines are spoken in order; when more than
@@ -130,6 +136,7 @@ class VoiceSink(Sink):
             except queue.Empty:
                 break
             if x is not None:
+                echo_guard().finished(x[1])
                 self.playback.end()
 
     def write(self, r: Result) -> None:
@@ -144,21 +151,25 @@ class VoiceSink(Sink):
         if not self.muted:
             while self.q.qsize() >= self.max_backlog:
                 try:
-                    if self.q.get_nowait() is not None:
+                    x = self.q.get_nowait()
+                    if x is not None:
+                        echo_guard().finished(x[1])
                         self.playback.end()
                     self.dropped += 1
                 except queue.Empty:
                     break
             self.playback.start()
-            self.q.put(text)
+            self.q.put((text, echo_guard().started(text)))
 
     def _run(self) -> None:
-        while (text := self.q.get()) is not None:
+        while (item := self.q.get()) is not None:
+            text, echo = item
             try:
                 self.speak(text)
             except Exception as e:  # noqa: BLE001 - one bad line must not stop the voice or the subtitles
                 self.on_error(e)
             finally:
+                echo_guard().finished(echo)  # #1070: the echo window runs from the end of playback
                 self.playback.end()
 
     def pending(self) -> int:
