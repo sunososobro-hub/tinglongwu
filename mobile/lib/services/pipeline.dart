@@ -19,8 +19,11 @@ import 'model_paths.dart';
 import 'play_packs.dart';
 import 'playback_capture.dart';
 import '../logic/conversation.dart';
+import '../logic/speech_out.dart';
 import '../logic/target_language.dart';
 import 'translator.dart';
+import 'tts_player.dart';
+import 'tts_worker.dart';
 
 enum Stage { starting, downloadingModels, loadingModels, listening, missingModels, error }
 
@@ -145,7 +148,14 @@ class Pipeline extends ChangeNotifier {
   ConversationStore? _conversationStore;
 
   /// Turns 對話模式 on or off (remembered).
-  void setConversationEnabled(bool on) => _setConversation(conversation.copyWith(enabled: on));
+  void setConversationEnabled(bool on) {
+    _setConversation(conversation.copyWith(enabled: on));
+    if (on) {
+      if (_tr != null) _ensureTts();
+    } else {
+      _stopSpeaking();
+    }
+  }
 
   /// One tap: the other side is talking now.
   void switchSpeaker() => _setConversation(conversation.switched());
@@ -160,6 +170,101 @@ class Pipeline extends ChangeNotifier {
     _log.i('conversation ${c.enabled ? "on" : "off"} side=${c.side.name} foreign=${c.foreign}');
     notifyListeners();
   }
+
+  // ---- read-aloud (#558 part 2)
+
+  /// The voice for the other person's language is installed (else my lines are text only).
+  bool ttsInstalled = false;
+
+  /// A line is being read aloud now.
+  bool speaking = false;
+
+  /// End of my speech -> start of the spoken translation, last line (ms).
+  int? lastSpeakLatencyMs;
+  TtsWorker? _tts;
+  Future<void>? _ttsLoading;
+  final SpeakQueue _speakQ = SpeakQueue();
+  final EchoGuard _echo = EchoGuard();
+  bool _speakBusy = false;
+
+  /// Loads the voice once, the first time conversation mode needs it (a voice costs memory).
+  Future<void> _ensureTts() => _ttsLoading ??= _loadTts();
+
+  Future<void> _loadTts() async {
+    final lang = conversation.foreign;
+    final voice = paths?.ttsVoice(lang);
+    ttsInstalled = voice != null;
+    if (voice == null) {
+      _log.i('tts: no $lang voice (${TtsVoiceLayout.rel(lang).join(", ")}), text only');
+      _ttsLoading = null; // look again next time (the pack may be imported meanwhile)
+      if (!_disposed) notifyListeners();
+      return;
+    }
+    try {
+      final t0 = _clock.elapsedMilliseconds;
+      final w = await TtsWorker.spawn(voice);
+      if (_disposed) return w.dispose();
+      _tts = w;
+      _log.i('tts: $lang voice ready in ${_clock.elapsedMilliseconds - t0} ms');
+      _speakNext();
+    } catch (e) {
+      ttsInstalled = false;
+      _ttsLoading = null;
+      _log.e('tts: load failed: $e');
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  /// Queues a translated line of mine to be read aloud.
+  void _say(Utterance u) {
+    if (!_speakQ.add(u)) return;
+    _ensureTts();
+    _speakNext();
+  }
+
+  Future<void> _speakNext() async {
+    final tts = _tts;
+    if (_speakBusy || _disposed || tts == null) return;
+    _speakBusy = true;
+    try {
+      while (!_disposed && !_speakQ.isEmpty) {
+        final u = _speakQ.next()!;
+        final a = await tts.synth(u.text);
+        if (_disposed || !conversation.enabled) break;
+        if (a.samples.isEmpty) continue;
+        if (!await TtsPlayer.play(a.samples, a.sampleRate)) {
+          _log.e('tts: playback failed');
+          continue;
+        }
+        final start = _clock.elapsedMilliseconds;
+        _echo.playing(startMs: start, durationMs: a.durationMs);
+        lastSpeakLatencyMs = start - u.speechEndMs;
+        speaking = true;
+        notifyListeners();
+        _log.i('TTS [${u.lang}] speakLat=${lastSpeakLatencyMs}ms gen=${a.genMs}ms '
+            'audio=${a.durationMs}ms dropped=${_speakQ.dropped}: ${AppLog.text(u.text)}');
+        await Future<void>.delayed(Duration(milliseconds: a.durationMs));
+        speaking = false;
+        if (!_disposed) notifyListeners();
+      }
+    } catch (e) {
+      _log.e('tts: $e');
+    } finally {
+      _speakBusy = false;
+      speaking = false;
+    }
+  }
+
+  void _stopSpeaking() {
+    _speakQ.clear();
+    if (!speaking) return;
+    speaking = false;
+    _echo.stopped(_clock.elapsedMilliseconds);
+    TtsPlayer.stop();
+  }
+
+  /// Mic audio for the ASR: silence while the phone reads a line aloud (no self-translation).
+  void _onMicPcm(Uint8List b) => _asr?.feedPcm16(_echo.filter(b, _clock.elapsedMilliseconds));
 
   /// Conversation mode only applies to the microphone (face to face); 看影片翻譯 stays listen-only.
   Conversation get _activeConversation =>
@@ -277,6 +382,7 @@ class Pipeline extends ChangeNotifier {
       _log.i('LLM ready in ${_clock.elapsedMilliseconds - t1} ms (${p.llmPath.split('/').last}) '
           '${await ModelPaths.statsLine()}');
 
+      if (conversation.enabled) _ensureTts();
       _drain(); // anything queued while the LLM was loading (debug wavs)
       if (_disposed) return;
       await _startMic();
@@ -298,7 +404,7 @@ class Pipeline extends ChangeNotifier {
       numChannels: 1,
     ));
     if (_disposed) return;
-    _micSub = stream.listen(_asr!.feedPcm16, onError: (Object e) => _fail('Mic error: $e'));
+    _micSub = stream.listen(_onMicPcm, onError: (Object e) => _fail('Mic error: $e'));
   }
 
   /// Footer mic button (#1121): true = listening is stopped (mic closed / phone audio dropped).
@@ -697,6 +803,9 @@ class Pipeline extends ChangeNotifier {
           job.sub.zh = r.zh;
           _trimSubtitles();
           job.sub.traditionalOk = tgt != 'zh' || r.check.isTraditional;
+          if (job.route.speak && conversation.enabled) {
+            _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs));
+          }
           final tag = tgt != 'zh'
               ? '${job.lang}->$tgt${job.route.speak ? " speak" : ""}'
               : (r.check.isTraditional ? 'zh-Hant' : 'NOT-TRAD ${r.check}');
@@ -735,6 +844,9 @@ class Pipeline extends ChangeNotifier {
     _rec.dispose();
     _asr?.dispose();
     _tr?.dispose();
+    _tts?.dispose();
+    _speakQ.clear();
+    TtsPlayer.stop();
     try {
       _log.i('=== session end ===');
       _log.flush();

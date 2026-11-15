@@ -23,7 +23,7 @@ class ConversationRoute {
   final String tgt;
   final Speaker speaker;
 
-  /// The translation should be read aloud on the phone speaker (TTS lands in a later part of #558).
+  /// The translation should be read aloud on the phone speaker (when the voice pack is installed).
   final bool speak;
 
   /// Key for job merging: only lines with the same source and target may be merged.

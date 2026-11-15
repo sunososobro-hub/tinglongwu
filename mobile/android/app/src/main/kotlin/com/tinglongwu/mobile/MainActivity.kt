@@ -85,6 +85,17 @@ class MainActivity : FlutterFragmentActivity() {
                     PlaybackCaptureService.sink = null
                 }
             })
+        // Conversation mode read-aloud (#558).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tlwu/tts")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "play" -> result.success(TtsPlayer.play(
+                        call.argument<FloatArray>("samples") ?: FloatArray(0),
+                        call.argument<Int>("sampleRate") ?: 0))
+                    "stop" -> { TtsPlayer.stop(); result.success(null) }
+                    else -> result.notImplemented()
+                }
+            }
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tlwu/native")
         ch.setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -182,6 +193,7 @@ class MainActivity : FlutterFragmentActivity() {
         // The Dart pipeline dies with the activity: no point capturing audio for nobody.
         if (isFinishing && PlaybackCaptureService.running) PlaybackCaptureService.stop(this)
         SubtitleOverlay.hide()
+        TtsPlayer.stop()
         super.onDestroy()
     }
 

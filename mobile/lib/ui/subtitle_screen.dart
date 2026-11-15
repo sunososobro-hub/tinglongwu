@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/phone_audio.dart';
+import '../logic/speech_out.dart';
 import '../logic/target_language.dart';
 import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
@@ -323,7 +324,9 @@ class _Header extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text('對話模式  ${pipeline.conversation.pairLabel}',
+                child: Text(
+                    '對話模式  ${pipeline.conversation.pairLabel}  · '
+                    '${voiceStatusLabel(installed: pipeline.ttsInstalled, speaking: pipeline.speaking)}',
                     style: const TextStyle(
                         fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
               )

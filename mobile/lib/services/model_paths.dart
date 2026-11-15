@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../logic/speech_out.dart';
+
 /// Where the models live and how to check them.
 ///
 /// Each file is taken from `<externalFilesDir>/models/` when it is there (imported, adb-pushed or
@@ -98,6 +100,10 @@ class ModelPaths {
   String get llmPath => path(llmFile);
 
   String asrFile(String name) => path('$asrDirName/$name');
+
+  /// Optional read-aloud voice for [lang] (#558); null when not installed (text only).
+  TtsVoicePaths? ttsVoice(String lang) =>
+      TtsVoicePaths.find(lang, resolve: path, exists: (p) => File(p).existsSync());
 
   /// Returns the list of missing files (empty = all present).
   List<String> missing() => [

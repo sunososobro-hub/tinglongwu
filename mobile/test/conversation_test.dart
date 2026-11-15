@@ -125,7 +125,8 @@ void main() {
       await t.tap(find.byKey(const Key('conversationToggle')));
       await t.pump();
       expect(p.conversation.enabled, isTrue);
-      expect(find.text('對話模式  中文 ⇄ English'), findsOneWidget);
+      // No voice pack in the test: the pill says my lines are text only (#558 part 2).
+      expect(find.text('對話模式  中文 ⇄ English  · 未安裝語音包，只顯示文字'), findsOneWidget);
       expect(find.text('對方在說（English）'), findsOneWidget);
 
       await t.tap(find.byKey(const Key('sideButton')));
