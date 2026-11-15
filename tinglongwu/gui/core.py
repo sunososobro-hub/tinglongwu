@@ -23,7 +23,7 @@ from ..stream import DraftRenderer
 
 DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
-    "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
+    "save": False, "save_path": "", "topics_model": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "panel_w": None, "panel_h": None, "panel_x": None, "panel_y": None,  # #939
     "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
     "floating_bar": False, "log_font_size": 14, "quality": "auto",
@@ -854,6 +854,8 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--glossary", s["glossary"]]
     if s.get("save"):
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
+        if s.get("topics_model"):  # #611: per-topic notes (needs --save); the side panel shows them live
+            argv += ["--topics", s["topics_model"]]
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
         dev = s.get("voice_device") or ""
         # #448: unplugged since it was saved. #710: the Speak cable is not in voice_outputs() (cables are hidden

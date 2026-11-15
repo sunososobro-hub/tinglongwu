@@ -61,3 +61,33 @@ def test_panel_clear():
     assert panel.entries()[0]["when"] == "00:00-01:05"
     panel.clear()
     assert panel.entries() == []
+
+
+def test_render_entry_lists_title_bullets_actions():
+    from tinglongwu.gui.topics_panel import render_entry
+    e = {"title": "Budget", "when": "00:10-02:30", "bullets": ["cut 5%"], "actions": ["me: send sheet"]}
+    assert render_entry(e) == "Budget (00:10-02:30)\n- cut 5%\n-> me: send sheet"
+
+
+def test_settings_topics_model_becomes_cli_flag_only_with_save():
+    from tinglongwu.gui.core import DEFAULTS, settings_to_argv
+    s = dict(DEFAULTS, save=True, topics_model="m.gguf")
+    argv = settings_to_argv(s)
+    assert argv[argv.index("--topics") + 1] == "m.gguf"
+    assert "--topics" not in settings_to_argv(dict(DEFAULTS, save=True))
+    assert "--topics" not in settings_to_argv(dict(DEFAULTS, topics_model="m.gguf"))
+
+
+def test_run_session_passes_on_topic_to_attach(tmp_path, monkeypatch):
+    import inspect
+    from tinglongwu import cli, topics
+    assert "on_topic" in inspect.signature(cli.run_session).parameters
+    got = []
+    class Saver:
+        path = str(tmp_path / "x.jsonl")
+        on_line = None
+    notes = topics.attach(Saver(), "unused.gguf", summarize=lambda p: "TITLE: T\n- a\n", on_topic=got.append)
+    for i in range(14):
+        notes.on_line({"t": i * 5.0, "side": "me", "src": "s", "dst": "d"})
+    notes.close(timeout=10)
+    assert got

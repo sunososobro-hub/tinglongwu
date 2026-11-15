@@ -48,3 +48,9 @@ class TopicPanel:
             self._topics.clear()
         if self.on_change is not None:
             self.on_change()
+
+
+def render_entry(e: dict) -> str:
+    """Plain text for one panel entry: 'title (mm:ss-mm:ss)', its bullets, then its action items."""
+    lines = [f"{e['title']} ({e['when']})"] + [f"- {b}" for b in e["bullets"]] + [f"-> {a}" for a in e["actions"]]
+    return "\n".join(lines)

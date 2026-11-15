@@ -2219,6 +2219,30 @@ class App:
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
 
+    def _topic_add(self, topic):
+        """#611: list each finished topic in a small window (created on the first one); a Tk error never stops the run."""
+        try:
+            from .topics_panel import TopicPanel, render_entry
+
+            if getattr(self, "topic_panel", None) is None:
+                self.topic_panel = TopicPanel()
+            self.topic_panel.add(topic)
+            win = getattr(self, "topic_win", None)
+            if win is None or not win.winfo_exists():
+                win = tk.Toplevel(self.root)
+                win.title(t("gui_topics_title"))
+                win.geometry("360x420")
+                self.topic_text = tk.Text(win, wrap="word", state="disabled", padx=8, pady=6)
+                self.topic_text.pack(fill="both", expand=True)
+                self.topic_win = win
+            self.topic_text.configure(state="normal")
+            self.topic_text.delete("1.0", "end")
+            self.topic_text.insert("end", "\n\n".join(render_entry(e) for e in self.topic_panel.entries()))
+            self.topic_text.configure(state="disabled")
+            self.topic_text.see("end")
+        except Exception as e:  # noqa: BLE001
+            print(f"tlwu: topic panel: {e}", file=sys.stderr, flush=True)
+
     def poll(self):
         if self.closing:
             return
