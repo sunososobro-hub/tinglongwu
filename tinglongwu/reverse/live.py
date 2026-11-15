@@ -10,7 +10,7 @@ from .. import diag as _diag
 import queue
 import threading
 import time
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 

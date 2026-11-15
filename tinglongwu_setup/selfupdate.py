@@ -32,6 +32,7 @@ from . import resume
 
 REPO = "sunososobro-hub/tinglongwu"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
+API_TAG = f"https://api.github.com/repos/{REPO}/releases/tags/v{{version}}"  # #801: one version's release
 EXE_NAME = "tinglongwu-setup.exe"
 SUMS_NAME = "SHA256SUMS.txt"
 CHECK_TIMEOUT_S = 6

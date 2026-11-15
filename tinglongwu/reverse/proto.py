@@ -177,8 +177,8 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
             print(f"error: could not create the virtual microphone: {e}", file=sys.stderr)
             return 2
         a.device = SINK
-        print(f"virtual microphone created: select 'tlwu_mic' as the microphone in Meet/Zoom "
-              f"(removed when this program exits)", flush=True)
+        print("virtual microphone created: select 'tlwu_mic' as the microphone in Meet/Zoom "
+              "(removed when this program exits)", flush=True)
     elif is_macos() and not a.no_vmic and not (a.no_play or a.no_tts) and a.device is None:
         try:
             import soundcard as sc

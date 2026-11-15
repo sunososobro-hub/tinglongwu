@@ -1,13 +1,13 @@
 """#344: stale branch pruning, driven through a fake GitHub API (no network)."""
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stale_branches as sb  # noqa: E402
 
 R = "o/r"
-NOW = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 
 def _pr(n, ref, sha, state="closed", merged=False, repo=R, created="2026-11-10T00:00:00Z"):

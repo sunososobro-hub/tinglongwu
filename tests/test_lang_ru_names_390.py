@@ -94,10 +94,15 @@ def test_exe_build_bundles_the_dictionary_and_smoke_checks_it():
     import build_windows
     from tlwu_app import smoke
 
-    cmd = build_windows.nuitka_cmd()
-    for flag in ("--include-package=pymorphy3", "--include-package=pymorphy3_dicts_ru",
-                 "--include-package-data=pymorphy3_dicts_ru", "--include-package=dawg_python"):
-        assert flag in cmd
+    import runtime_layer
+
+    # #923: the runtime layer ships every package of the packaging venv as a folder (code + data), so the
+    # dictionary only has to be a pinned requirement that is not filtered out
+    reqs = runtime_layer.pack_requirements()
+    for name, entry in (("pymorphy3==", "pymorphy3"), ("pymorphy3-dicts-ru==", "pymorphy3_dicts_ru"),
+                        ("DAWG2-Python==", "dawg_python")):
+        assert name in reqs and runtime_layer._shipped(entry)
+    assert build_windows.DATA_LICENSES["pymorphy3-dicts-ru"]
     assert ("tinglongwu.lang.ru", True) in smoke.MODULES
     smoke.check_ru_names()  # real dictionary loaded by path: passes
 

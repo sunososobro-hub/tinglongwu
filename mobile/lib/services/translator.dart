@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 import '../logic/context_budget.dart';
@@ -43,13 +45,14 @@ class Translation {
 /// stateless request per sentence, like desktop (no context memory). Greedy
 /// decoding = desktop with TLWU_HYMT_TEMP=0 (repeatable output on the phone).
 abstract class LineTranslator {
-  Future<Translation> translate(String ru, {String src = 'ru'});
+  Future<Translation> translate(String ru, {String src = 'ru', String tgt = 'zh'});
 }
 
 /// The single call `Pipeline._drain` makes per queued line; forwards the
 /// ASR-detected language so a dropped `src` is observable in tests (#581).
-Future<Translation> translateLine(LineTranslator tr, String text, String lang) =>
-    tr.translate(text, src: lang);
+Future<Translation> translateLine(LineTranslator tr, String text, String lang,
+        {String tgt = 'zh'}) =>
+    tr.translate(text, src: lang, tgt: tgt);
 
 class Translator implements LineTranslator {
   Translator._(this._engine, this._session);
@@ -58,27 +61,31 @@ class Translator implements LineTranslator {
   final EngineSession _session;
 
   static Future<Translator> load(String modelPath, {int threads = 4}) async {
-    final engine = await LlamaEngine.spawn(
-      modelParams: ModelParams(path: modelPath, gpuLayers: 0, useMmap: true),
-      contextParams: ContextParams(
-        nCtx: ContextBudget.nCtx,
-        nBatch: 512,
-        nUbatch: 512,
-        nThreads: threads,
-        nThreadsBatch: threads,
-      ),
+    final modelParams = ModelParams(path: modelPath, gpuLayers: 0, useMmap: true);
+    final contextParams = ContextParams(
+      nCtx: ContextBudget.nCtx,
+      nBatch: 512,
+      nUbatch: 512,
+      nThreads: threads,
+      nThreadsBatch: threads,
     );
+    // iOS: llama.xcframework is linked into the app by the plugin's Swift package, so the
+    // symbols are already in the process (no libllama.so to dlopen as on Android).
+    final engine = Platform.isIOS
+        ? await LlamaEngine.spawnFromProcess(modelParams: modelParams, contextParams: contextParams)
+        : await LlamaEngine.spawn(modelParams: modelParams, contextParams: contextParams);
     final session = await engine.createSession();
     return Translator._(engine, session);
   }
 
   /// [src] is the ASR-detected source language code (see [PromptBuilder]).
   @override
-  Future<Translation> translate(String ru, {String src = 'ru'}) async {
+  Future<Translation> translate(String ru,
+      {String src = 'ru', String tgt = 'zh'}) async {
     final sw = Stopwatch()..start();
-    final pass = zhPassthrough(ru, src);
+    final pass = passthrough(ru, src, tgt: tgt);
     if (pass != null) {
-      // zh -> zh: no LLM call (#581), same as desktop src == tgt.
+      // src == tgt: no LLM call (#581), same as desktop.
       return Translation(
         zh: pass,
         check: checkChinese(pass),
@@ -89,7 +96,7 @@ class Translator implements LineTranslator {
         nCtx: 0,
       );
     }
-    final prompt = PromptBuilder.build(ru.trim(), src: src);
+    final prompt = PromptBuilder.build(ru.trim(), src: src, tgt: tgt);
     await _session.clear();
     final buf = StringBuffer();
     var tokens = 0;
@@ -112,7 +119,8 @@ class Translator implements LineTranslator {
       }
     }
     // Same as desktop hymt: the card prompt asks for 中文, so convert to zh-Hant (Taiwan) afterwards.
-    final text = toTraditionalTw(PromptBuilder.clean(buf.toString()));
+    final cleaned = PromptBuilder.clean(buf.toString());
+    final text = tgt == 'zh' ? toTraditionalTw(cleaned) : cleaned;
     return Translation(
       zh: text,
       check: checkChinese(text),

@@ -17,9 +17,9 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (cpu_ram_gb, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, ENGINES, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, MODELS, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
-                   QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, font_preset, load_settings,
-                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check,
+from .core import (cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, QUICK_MODES, SPEAK_HINT_CABLE, meeting_cable, quick_buttons, quick_settings, SEND_MODES, send_mode_notice_key, send_gate_line, speak_route, speak_start_view, tour_on_start, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+                   QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
+                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
@@ -32,6 +32,15 @@ except ImportError:  # pragma: no cover
 POLL_MS = 50
 UPDATE_CHECK_DELAY_MS = 5000
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
+# #886: Advanced settings sit in two label + control columns (grid columns 0-2 and 4-6, 3 is a gap), so the panel
+# with Advanced open fits a 1366x768 screen; long labels wrap instead of widening the panel
+SETTING_COLS = 2
+SPAN = 7  # grid columns a full-width row spans
+LABEL_WRAP_PX = 190
+# subtitle log height (px); the short one below SHORT_SCREEN_PX of screen height. 100 (not 120): the ubuntu CI Tk
+# measured the Advanced-open panel 629 px with 120, 29 px over the 600 px budget
+LOG_H, LOG_H_SHORT = 220, 100
+SHORT_SCREEN_PX = 900
 UPDATE_ROW = 13  # #756: grid row of the Check setup / Report / update controls; must stay above the log row
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
@@ -60,7 +69,7 @@ class Overlay:
     """Borderless always-on-top subtitle bar with scroll-back: the last HISTORY_LINES finals stay in a Text
     widget; the newest line is followed unless the user scrolled up (mouse wheel / scrollbar) to re-read."""
 
-    def __init__(self, master: tk.Tk, app: "App"):
+    def __init__(self, master: tk.Tk, app: App):
         self.app = app
         s = app.settings
         self.win = w = tk.Toplevel(master)
@@ -135,6 +144,8 @@ class Overlay:
             om.add_command(label=t(key), command=lambda d=d: self.bump_alpha(d))
         self.menu.add_cascade(label=t("gui_menu_opacity"), menu=om)
         self.menu.add_command(label=t("gui_menu_copy"), command=app.copy_last)
+        if hasattr(app, "report_wrong"):  # #677: GUI only
+            self.menu.add_command(label=t("gui_menu_wrong"), command=app.report_wrong)
         self.menu.add_checkbutton(label=t("gui_menu_pause"), variable=self.var_pause, command=self.on_pause)
         if hasattr(app, "show_tour"):  # #314: the GUI only; the CLI subtitle bar (Bar) reuses this menu
             self.menu.add_command(label=t("gui_menu_tour"), command=app.show_tour)
@@ -298,7 +309,7 @@ class Tour:
     """#314 first-launch overlay: 3 numbered steps placed under the control bar, step 1 holds the real
     source-language box, step 3 is shown inside the real subtitle bar. "Got it" closes it for good; "?" reopens it."""
 
-    def __init__(self, app: "App"):
+    def __init__(self, app: App):
         self.app = app
         self.win = w = tk.Toplevel(app.root)
         w.withdraw()
@@ -350,6 +361,11 @@ class Tour:
     def hide(self):
         self.win.withdraw()
         self.visible = False
+
+
+def log_height(screen_h: int) -> int:
+    """#886: subtitle log height in the Adjust panel; a 768 px screen gets the short log so the panel fits."""
+    return LOG_H_SHORT if screen_h < SHORT_SCREEN_PX else LOG_H
 
 
 class App:
@@ -440,9 +456,12 @@ class App:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
         self.combos["lang"].configure(values=lang_labels())
+        self._relabel_combos()
         self.home_lang.configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
+        self._pair_changed()
         self.overlay.build_menu()
+        self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
         self.build_menubar()
         self._upd_relabel()
         self.tour.relabel()
@@ -453,7 +472,7 @@ class App:
     def _build_send_mode(self, f):
         """#834: speak send mode (default confirm); countdown / auto show the quality notice."""
         box = ttk.Frame(f)
-        box.grid(row=3, column=0, columnspan=3, sticky="we")
+        box.grid(row=6, column=0, columnspan=SPAN, sticky="we")
         self._tx(ttk.Label(box), "gui_send_mode").grid(row=0, column=0, sticky="w", pady=2)
         self.v_send_mode = tk.StringVar(value=self.settings["send_mode"])
         ttk.Combobox(box, textvariable=self.v_send_mode, values=list(SEND_MODES), state="readonly",
@@ -463,19 +482,122 @@ class App:
         self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
         self._send_mode_changed()
 
+    def _build_send_gate(self, f):
+        """#833: the held speak line with [Send] [Stop] in the status box `f`. Its widgets are made the first time a
+        line is held (a fresh first screen keeps only its #737 controls). Space = stop, Esc = stop."""
+        self.gate = None  # reverse.sendgate.SendGate of the running speak session
+        self.gate_parent, self.gate_frm = f, None
+        self.v_gate = tk.StringVar(value="")
+        for w in (self.root, self.panel):  # keys only act while a line is held, so typing elsewhere is untouched
+            w.bind("<space>", lambda _e: self._gate_key("stop"), add="+")
+            w.bind("<Escape>", lambda _e: self._gate_key("stop"), add="+")
+
+    def _gate_widgets(self):
+        if self.gate_frm is None:
+            self.gate_frm = ttk.Frame(self.gate_parent)
+            ttk.Label(self.gate_frm, textvariable=self.v_gate, wraplength=300, justify="left").grid(
+                row=0, column=0, columnspan=2, sticky="w")
+            self.btn_gate_send = ttk.Button(self.gate_frm, text=t("gui_send_now"),
+                                            command=lambda: self._gate_do("confirm"))
+            self.btn_gate_send.grid(row=1, column=0, sticky="we", padx=(0, 2))
+            self.btn_gate_stop = ttk.Button(self.gate_frm, text=t("gui_send_stop"),
+                                            command=lambda: self._gate_do("stop"))
+            self.btn_gate_stop.grid(row=1, column=1, sticky="we")
+        return self.gate_frm
+
+    def _gate_key(self, action):
+        if self.gate is not None and self.gate.view().state != "idle" and not isinstance(
+                self.root.focus_get(), (tk.Entry, ttk.Entry, ttk.Combobox, ttk.Button)):
+            self._gate_do(action)
+            return "break"
+
+    def _gate_do(self, action):
+        if self.gate is not None:
+            getattr(self.gate, action)()
+
+    def _gate_tick(self):
+        """GUI thread, every 100 ms: advances the countdown and redraws the held line."""
+        g = self.gate
+        if g is None:
+            return
+        g.tick()
+        v = g.view()
+        self.v_gate.set(send_gate_line(v))
+        if v.state == "idle":
+            if self.gate_frm is not None:
+                self.gate_frm.pack_forget()
+        else:
+            frm = self._gate_widgets()
+            if not frm.winfo_manager():  # a line was just held: show it (and the panel, once)
+                frm.pack(fill="x", pady=2)
+                if self.speak_hint == SPEAK_HINT_CABLE:
+                    self._show_panel()
+            self.btn_gate_send.configure(state="normal" if v.state == "asking" else "disabled")
+
     def _send_mode_changed(self):
         mode = self.v_send_mode.get()
         if mode in SEND_MODES:
             self.settings["send_mode"] = mode
         key = send_mode_notice_key(mode)
         self.lbl_send_notice.configure(text=t(key) if key else "")
+        if key:  # #886: an empty notice line takes no height (the panel must fit a 768 px screen)
+            self.lbl_send_notice.grid()
+        else:
+            self.lbl_send_notice.grid_remove()
 
-    def _combo(self, row, label, key, values):
-        self._tx(ttk.Label(self.frm), label).grid(row=row, column=0, sticky="w", pady=2)
+    @staticmethod
+    def _cell(slot: int) -> tuple[int, int]:
+        """#886: (grid row, first grid column) of setting `slot`; slots fill two columns left to right."""
+        return slot // SETTING_COLS, (slot % SETTING_COLS) * 4
+
+    def _label(self, slot, key, cls=None, **kw):
+        row, col = self._cell(slot)
+        w = self._tx((cls or ttk.Label)(self.frm, **kw), key)
+        if cls is None:
+            w.configure(wraplength=LABEL_WRAP_PX, justify="left")
+        w.grid(row=row, column=col, sticky="w", pady=1)
+        return w
+
+    def _combo(self, slot, label, key, values, kind=None):
+        """kind (#884): the box shows names in the UI language while the returned var keeps the raw stored value."""
+        self._label(slot, label)
+        row, col = self._cell(slot)
         var = tk.StringVar(value=self.settings[key])
-        self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=var, values=values, state="readonly", width=18)
-        cb.grid(row=row, column=1, columnspan=2, sticky="we", pady=2)
+        shown = var
+        if kind:
+            shown = tk.StringVar(value=choice_label(kind, var.get()))
+            busy = []
+
+            def sync(src, dst, conv):
+                if busy:
+                    return
+                busy.append(1)
+                try:
+                    dst.set(conv(src.get()))
+                finally:
+                    busy.pop()
+
+            var.trace_add("write", lambda *_: sync(var, shown, lambda v: choice_label(kind, v)))
+            shown.trace_add("write", lambda *_: sync(shown, var, lambda v: choice_value(kind, v, values)))
+            self.kind_combos[key] = (kind, values, var)
+        self.combos[key] = cb = ttk.Combobox(self.frm, textvariable=shown, values=choice_labels(kind, values) if kind else values,
+                                             state="readonly", width=18)
+        cb.grid(row=row, column=col + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         return var
+
+    def _relabel_combos(self):
+        """#884: the UI language changed: show every named dropdown in the new language."""
+        for key, (kind, values, var) in self.kind_combos.items():
+            self.combos[key].configure(values=choice_labels(kind, values))
+            var.set(var.get() + "")  # re-fires the write trace -> the shown name follows the language
+        # engine / model carry marks in the old language: rebuild them from the stored ids (settings value unchanged)
+        eng = engine_from_label(self.v_engine.get())
+        self.combos["engine"].configure(values=engine_labels())
+        self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == eng), eng))
+        mod = model_from_label(self.v_model.get())
+        labels = model_labels(ram_gb=self._cpu_ram())
+        self.combos["model"].configure(values=labels)
+        self.v_model.set(next((l for l in labels if model_from_label(l) == mod), mod))
 
     def set_advanced(self, on: bool):
         """#399: show / hide the engine dropdown; the choice is saved with the other GUI settings."""
@@ -509,7 +631,11 @@ class App:
             self._tx(ttk.Radiobutton(b, variable=self.v_mode, value=val, style="Bar.Toolbutton", width=0),
                      key).pack(side="left")
         self.v_pair = tk.StringVar()
-        ttk.Label(b, textvariable=self.v_pair).pack(side="left", padx=2)
+        # #884: one point smaller than the bar's buttons, so two-line names fit 420 px; pair_text measures with it
+        self.pair_font = tkfont.nametofont("TkDefaultFont").copy()
+        size = int(self.pair_font.cget("size"))
+        self.pair_font.configure(size=size - 1 if size > 0 else size + 1)  # negative size = pixels
+        ttk.Label(b, textvariable=self.v_pair, justify="center", font=self.pair_font).pack(side="left", padx=2)
         for v in (self.v_lang, self.v_target, self.v_mode):
             v.trace_add("write", lambda *_: self._pair_changed())
         self._pair_changed()
@@ -551,7 +677,8 @@ class App:
         s = {"lang": lang_from_label(self.v_lang.get()), "target": self.v_target.get()}
         if self.v_mode.get() == "speak":
             s = quick_settings(s, "speak")
-        self.v_pair.set(f"{s['lang']}→{s['target']}")
+        # #884: names, not codes; a long pair takes two lines so the bar stays within 420 px (#455)
+        self.v_pair.set(pair_text(s["lang"], s["target"], self.pair_font.measure))
 
     def set_dot(self, name: str):
         self.dot_state = name
@@ -576,65 +703,72 @@ class App:
         p.title("tinglongwu")
         p.resizable(False, False)
         p.protocol("WM_DELETE_WINDOW", p.withdraw)
-        self.frm = f = ttk.Frame(p, padding=10)
+        self.frm = f = ttk.Frame(p, padding=(10, 4, 10, 8))
+        f.columnconfigure(3, minsize=14)  # #886: gap between the two setting columns
         self.combos = {}
+        self.kind_combos = {}
         self.v_lang = self._combo(0, "gui_src_lang", "lang", lang_labels())  # ja/en/ru first, others marked (#58)
         self.v_lang.set(lang_label(self.settings["lang"]))
-        self.v_target = self._combo(1, "gui_target", "target", TARGETS)
-        self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES)
-        self.v_engine = self._combo(19, "gui_engine", "engine", engine_labels())  # #399: under Advanced (rows 18-19: toggle, engine)
+        self.v_target = self._combo(1, "gui_target", "target", TARGETS, "target")
+        self.v_quality = self._combo(2, "gui_quality", "quality", QUALITIES, "quality")
+        self.v_engine = self._combo(11, "gui_engine", "engine", engine_labels())  # #399: under Advanced
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
         self.v_adv = tk.BooleanVar(value=False)
-        self.v_model = self._combo(4, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
+        self.v_model = self._combo(3, "gui_model", "model", model_labels(ram_gb=self._cpu_ram()))
         self.v_model.set(label_for_model(self.settings["model"], ram_gb=self._cpu_ram()))
-        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))  # room for the "not downloaded" mark
+        self.combos["model"].configure(width=combo_width(model_labels(ram_gb=self._cpu_ram())))
         self.combos["model"].bind("<<ComboboxSelected>>", lambda _e: self._model_picked())
         self.downloading = None
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
-        self.v_source = self._combo(5, "gui_source", "source", SOURCES)
+        self.v_source = self._combo(4, "gui_source", "source", SOURCES, "source")
         self._build_send_mode(f)
-        self.v_preset = self._combo(9, "gui_mode", "preset", PRESETS)
-        self._tx(ttk.Label(f), "gui_glossary").grid(row=6, column=0, sticky="w", pady=2)
+        self.v_preset = self._combo(5, "gui_mode", "preset", PRESETS, "preset")
+        self._label(6, "gui_glossary")
+        r, c = self._cell(6)
         self.v_gloss = tk.StringVar(value=s["glossary"])
-        ttk.Entry(f, textvariable=self.v_gloss, width=22).grid(row=6, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=6, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_gloss, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
+        ttk.Button(f, text="...", width=3, command=self.pick_glossary).grid(row=r, column=c + 2, padx=(4, 0))
         self.v_save = tk.BooleanVar(value=s["save"])
-        self._tx(ttk.Checkbutton(f, variable=self.v_save), "gui_save").grid(row=7, column=0, sticky="w", pady=2)
+        self._label(7, "gui_save", ttk.Checkbutton, variable=self.v_save)
+        r, c = self._cell(7)
         self.v_save_path = tk.StringVar(value=s["save_path"])
-        ttk.Entry(f, textvariable=self.v_save_path, width=22).grid(row=7, column=1, sticky="we", pady=2)
-        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=7, column=2, padx=(4, 0))
+        ttk.Entry(f, textvariable=self.v_save_path, width=16).grid(row=r, column=c + 1, sticky="we", pady=1, padx=(6, 0))
+        ttk.Button(f, text="...", width=3, command=self.pick_save).grid(row=r, column=c + 2, padx=(4, 0))
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
-        self._tx(ttk.Checkbutton(f, variable=self.var_show_src, command=self._src_toggled),
-                 "gui_show_src_line").grid(row=8, column=0, sticky="w")
+        self._label(8, "gui_show_src_line", ttk.Checkbutton, variable=self.var_show_src, command=self._src_toggled)
         self.v_live = tk.BooleanVar(value=s["live_draft"])
-        self._tx(ttk.Checkbutton(f, variable=self.v_live), "gui_live_draft").grid(
-            row=8, column=1, columnspan=2, sticky="w")
+        self._label(9, "gui_live_draft", ttk.Checkbutton, variable=self.v_live)
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
-        self._tx(ttk.Checkbutton(f, variable=self.v_voice), "gui_voice").grid(row=17, column=0, sticky="w", pady=2)
+        self._label(10, "gui_voice", ttk.Checkbutton, variable=self.v_voice)
+        r, c = self._cell(10)
         self.voice_default = t("gui_voice_default")
         outs = voice_outputs()
         shown = s["voice_device"] if s["voice_device"] in outs or not outs else ""  # #448: unplugged -> default
         self.v_voice_dev = tk.StringVar(value=shown or self.voice_default)
         ttk.Combobox(f, textvariable=self.v_voice_dev, values=[self.voice_default] + outs,
-                     state="readonly", width=18).grid(row=17, column=1, columnspan=2, sticky="we", pady=2)
+                     state="readonly", width=18).grid(row=r, column=c + 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
         self.btn_pause = ttk.Button(f, text=t("gui_pause"), command=self.toggle_pause)  # Start/Stop is on the bar
-        self.btn_pause.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 2))
+        self.btn_pause.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))  # #886: one row with Check setup
         # Check setup stays in the panel, above the subtitle log (#756); Report a problem and the update controls
         # moved to the menu bar's Help menu (#738)
         self.act_row = act = ttk.Frame(f)
-        act.grid(row=UPDATE_ROW, column=0, columnspan=3, sticky="we", pady=(6, 0))
+        act.grid(row=UPDATE_ROW, column=4, columnspan=3, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
         self.status_box = sb = ttk.Frame(p, padding=(10, 6, 10, 0))  # #737: status/notice stay visible, collapsed
         ttk.Label(sb, textvariable=self.v_status, wraplength=300).pack(anchor="w")
+        self.v_dl_pct = tk.IntVar(value=0)  # #739: first-Start download progress bar (hidden unless a download runs)
+        self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
+        self.start_dl = None
         self.v_notice = tk.StringVar(value="")
         ttk.Label(sb, textvariable=self.v_notice, wraplength=300, foreground="#b35a00").pack(anchor="w")
+        self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
             self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
@@ -676,8 +810,23 @@ class App:
         self.upd_msg = None
         self.upd_frame.pack_forget()
 
+    def _apply_pending_update(self) -> bool:
+        """#779: a verified installer downloaded in the background last time is applied before the user starts
+        working: one short status line, no question. True when the apply helper was started."""
+        if not autoupdate.is_wizard_install() or autoupdate.offline():
+            return False
+        path = autoupdate.pending_to_apply(userdirs.read_config(), __version__)
+        if not path:
+            return False
+        self.upd_exe = path
+        autoupdate.clear_pending()  # a failed apply must not loop on every launch
+        self._apply_update()
+        return True
+
     def _auto_update_check(self):
         if not autoupdate.is_wizard_install():
+            return
+        if self._apply_pending_update():
             return
         if autoupdate.should_auto_check(userdirs.read_config()):
             autoupdate.mark_checked()
@@ -731,6 +880,12 @@ class App:
                 self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=ev[1])
         elif kind == "upd_ready":
             self.upd_busy = False
+            if not self.upd_apply_when_ready and self.upd_ver:  # #779: quiet download -> install at next launch
+                autoupdate.set_pending(self.upd_ver, ev[1])
+                self.upd_exe = ev[1]  # a manual "Check for updates" now offers the staged installer, no re-download
+                if autoupdate.claim_prompt(userdirs.read_config()):  # at most one line per day
+                    self._upd_show("gui_upd_staged", ver=self.upd_ver)
+                return True
             self.upd_exe = ev[1]
             if self.upd_apply_when_ready:
                 self._apply_update()
@@ -823,7 +978,7 @@ class App:
     def _build_quick(self):
         """#294 easy start: pick my language once (remembered), then one big button starts the session.
         #455: lives at the top of the Adjust panel; the bar's [Listen | Speak] + Start does the same in one place."""
-        q = ttk.Frame(self.panel, padding=(10, 10, 10, 0))
+        q = ttk.Frame(self.panel, padding=(10, 6, 10, 0))  # #886: compact top
         q.pack(fill="x")
         self.status_box.pack(fill="x")
         # #737: everything else sits under this toggle, collapsed by default (state remembered as advanced_open)
@@ -840,7 +995,7 @@ class App:
         self.quick_btns = {}
         for col, mode in enumerate(QUICK_MODES):
             b = ttk.Button(q, command=lambda m=mode: self.toggle(m))
-            b.grid(row=1, column=col, sticky="we", ipady=10, pady=(8, 0), padx=(0 if col == 0 else 6, 0))
+            b.grid(row=1, column=col, sticky="we", ipady=3, pady=(6, 0), padx=(0 if col == 0 else 6, 0))  # #886
             self.quick_btns[mode] = b
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
@@ -863,14 +1018,15 @@ class App:
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
         bar = ttk.Frame(f)
-        bar.grid(row=20, column=0, columnspan=3, sticky="we", pady=(10, 2))
+        bar.grid(row=20, column=0, columnspan=SPAN, sticky="we", pady=(6, 1))
         self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
         self._tx(ttk.Checkbutton(bar, variable=self.v_bar, command=self._bar_toggled), "gui_floating_bar").pack(
             side="left")
         ttk.Button(bar, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
         ttk.Button(bar, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
-        box = tk.Frame(f, width=340, height=220, bg=BG)  # fixed pixel size: a bigger font must not grow the window
-        box.grid(row=21, column=0, columnspan=3, sticky="we")
+        # fixed pixel size: a bigger font must not grow the window; #886: shorter on a short screen (1366x768)
+        box = tk.Frame(f, width=340, height=log_height(f.winfo_screenheight()), bg=BG)
+        box.grid(row=21, column=0, columnspan=SPAN, sticky="we")
         box.pack_propagate(False)
         sb = ttk.Scrollbar(box, orient="vertical")
         self.log_text = tx = tk.Text(box, bg=BG, fg=FG_FINAL, bd=0, highlightthickness=0, wrap="word", padx=8,
@@ -882,6 +1038,9 @@ class App:
         tx.tag_configure("draft", foreground=FG_DRAFT, spacing3=4)
         tx.tag_configure("src", foreground=FG_SRC)
         tx.configure(state="disabled")
+        self.log_menu = tk.Menu(tx, tearoff=0)
+        self.log_menu.add_command(label=t("gui_menu_wrong_line"), command=self.report_wrong_line)
+        tx.bind("<Button-3>", self._log_context)
         tx.bind("<Control-MouseWheel>", lambda e: self.bump_log_font(2 if e.delta > 0 else -2))
         tx.bind("<Control-Button-4>", lambda e: self.bump_log_font(2))
         tx.bind("<Control-Button-5>", lambda e: self.bump_log_font(-2))
@@ -920,6 +1079,7 @@ class App:
         top, follow = tx.index("@0,0"), self._log_at_end()
         rows = self.state.history() or [("", text, d) for text, d in self.placeholder()]
         show_src = self.settings["show_src"]
+        self._log_shown = (list(rows) if self.state.history() else [], show_src)  # what the clicks map onto
         tx.configure(state="normal")
         tx.delete("1.0", "end")
         for i, (src, text, is_draft) in enumerate(rows):
@@ -961,18 +1121,33 @@ class App:
             self.v_gloss.set(p)
 
     def _model_picked(self):
-        """A model that is not on disk was picked: ask, and only on yes download it in a tlwu-setup child (#96)."""
-        m = model_from_label(self.v_model.get())
-        if self.downloading or is_downloaded(m):
-            return
-        if not messagebox.askyesno(t("gui_dl_title"), t("gui_dl_ask", model=m), parent=self.root):
-            return
+        """#739: picking a model downloads nothing; a missing one downloads on the first Start (_offer_model)."""
+
+    def _offer_model(self, run: dict, mode) -> bool:
+        """#739: True when the chosen speech model is missing: its download starts now with a progress bar and this
+        Start resumes by itself when it succeeds (no dialog, no second click)."""
+        m = missing_start_model(run)
+        if m is None or self.downloading:
+            return self.downloading is not None and m is not None
         self.downloading = m
+        self.pack_retry = mode
+        self.start_dl = StartDownload(m)
+        self.v_dl_pct.set(0)
+        self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
-        self.combos["model"].configure(state="disabled")
         self._status_text(t("gui_dl_running", model=m))
+        self.panel.deiconify()
+        self.panel.lift()
         self._sync_quick()
         threading.Thread(target=run_download, args=(m, self.q.put), daemon=True).start()
+        return True
+
+    def _dl_event(self, ev: tuple):
+        """#739: feed a download event to the progress bar (the line text stays the status text)."""
+        if self.start_dl is None:
+            return
+        self.start_dl.feed(ev)
+        self.v_dl_pct.set(self.start_dl.percent)
 
     def _offer_pack(self, run: dict, mode) -> bool:
         """#673: True when a pack is missing (dialog shown / download running) and this Start must not go on now.
@@ -990,6 +1165,9 @@ class App:
             return True
         self.downloading = pack
         self.pack_retry = mode
+        self.start_dl = StartDownload(pack)  # #739: packs show the same progress bar as models
+        self.v_dl_pct.set(0)
+        self.dl_bar.pack(anchor="w", pady=(4, 0))
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model=pack))
         self.panel.deiconify()  # the status line lives in the Adjust panel: show it so progress is visible
@@ -1043,6 +1221,9 @@ class App:
         messagebox.showwarning(vbcable.title_text(lang), vbcable.fail_text(lang), parent=self.root)
 
     def _pack_done(self, pack: str, rc: int):
+        self._dl_event(("pack_done", pack, rc))
+        self.start_dl = None
+        self.dl_bar.pack_forget()
         self.downloading = None
         self.btn.configure(state="normal")
         self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))
@@ -1064,6 +1245,9 @@ class App:
             return None
 
     def _download_done(self, model: str, rc: int):
+        self._dl_event(("dl_done", model, rc))
+        sd, self.start_dl = self.start_dl, None
+        self.dl_bar.pack_forget()
         self.downloading = None
         self.btn.configure(state="disabled" if self.load_t0 is not None else "normal")  # #332: not while loading
         self._quality_changed()
@@ -1074,6 +1258,8 @@ class App:
         ok = rc == 0 and is_downloaded(model)
         self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=model))
         self._sync_quick()
+        if sd is not None and ok:  # #739: the first Start goes on by itself
+            self.toggle(getattr(self, "pack_retry", None))
 
     def pick_save(self):
         p = filedialog.asksaveasfilename(title=t("gui_pick_save"), defaultextension=".jsonl",
@@ -1127,10 +1313,18 @@ class App:
         run = quick_settings(self.settings, mode) if mode else dict(self.settings)
         if mode == "speak" and self._offer_cable():  # #804: no virtual mic -> offer the VB-CABLE install first
             return
+        if self._offer_model(run, mode):  # #739: a missing speech model downloads here with a progress bar
+            return
         if self._offer_pack(run, mode):  # #673: a missing language pack is offered here; Start resumes after it
             return
         self.quick_mode, self.run_source = mode, run.get("source")
+        self._last_mode = mode or "listen"  # the finished rows keep this mode after Stop (#677)
         self.speak_hint = speak_route(run, meeting_cable()) if mode == "speak" else None  # #710
+        self.gate = None
+        if mode == "speak" and run.get("voice"):  # #833: each speak line is held and sent by the #832 state machine
+            from ..reverse.sendgate import SendGate
+
+            self.gate = SendGate(lambda _t: None, time.monotonic, mode=run.get("send_mode", "confirm"))
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
@@ -1154,13 +1348,14 @@ class App:
 
     def _work(self, s: dict, stop: threading.Event):
         """Worker thread: no tkinter here, only self.q."""
-        q = self.q
+        q, gate = self.q, self.gate  # #833: set before this thread starts, cleared only after it posts "stopped"
         try:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
 
             a = parse_args(settings_to_argv(s, outputs=voice_outputs() if s.get("voice") else None,
                                             notice=lambda m: q.put(("notice", m))))
+            a.voice_gate = gate  # #833: open_voice routes every spoken line through it
 
             def draft_factory(asr, translator, segmenter, tgt):
                 if not s["live_draft"] or translator is None:
@@ -1169,7 +1364,8 @@ class App:
 
             run_session(a, sink=QueueSink(q), draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
-                        notice=lambda m: q.put(("notice", m)))
+                        notice=lambda m: q.put(("notice", m)),
+                        cpu_line=lambda ms: q.put(("cpu_line", ms)))
         except Exception as e:  # noqa: BLE001
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
@@ -1179,6 +1375,7 @@ class App:
     def poll(self):
         if self.closing:
             return
+        self._gate_tick()
         if self.sigint:
             self.quit()
             return
@@ -1200,17 +1397,24 @@ class App:
                             ready = self.speak_hint
                         self._status_text(f"{t(ready)} ({ev[1]})")  # #294: visible "start playback now"
                         self._sync_quick()
+                elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
+                    from .core import cpu_mode_line
+
+                    if self.load_t0 is None and not self.errored:
+                        self._status_text(cpu_mode_line("cpu", ev[1]) or "")
                 elif kind == "notice":
                     self.v_notice.set(ev[1])
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
                         self._show_panel()
                 elif kind == "pack_line":
+                    self._dl_event(ev)
                     self._status_text(ev[1])
                 elif kind == "cable_done":
                     self._cable_done(ev[1])
                 elif kind == "pack_done":
                     self._pack_done(ev[1], ev[2])
                 elif kind == "dl_line":
+                    self._dl_event(ev)
                     self._status_text(ev[1])
                 elif kind == "doctor":
                     self._show_setup_check(ev[1], ev[2])
@@ -1225,6 +1429,10 @@ class App:
                     self.panel.deiconify()  # the error text is in the Adjust panel; a red dot alone says nothing
                     self.panel.lift()
                 elif kind == "stopped":
+                    if self.gate is not None:
+                        self.gate.clear()
+                        self._gate_tick()
+                        self.gate = None
                     self.load_t0 = None
                     self.btn.configure(text=t("gui_start"), state="normal")
                     if not self.errored:
@@ -1272,6 +1480,40 @@ class App:
         if text:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
+
+    def _log_context(self, event):
+        """#677: right-click a line of the main-window log -> 'Wrong translation (this line)'."""
+        from ..report_translation import row_for_log_line
+
+        line = int(self.log_text.index(f"@{event.x},{event.y}").split(".")[0])
+        rows, show_src = getattr(self, "_log_shown", ([], self.settings["show_src"]))
+        self._log_row = row_for_log_line(rows, show_src, line)
+        if self._log_row is not None and not self._log_row[2]:
+            self.log_menu.tk_popup(event.x_root, event.y_root)
+
+    def report_wrong_line(self):
+        row = getattr(self, "_log_row", None)
+        if row is not None:
+            self.report_wrong(row)
+
+    def report_wrong(self, row=None):
+        """#677: one-click 'wrong translation' for a finished line (default: the newest); the app sends nothing, the browser opens on a pre-filled form."""
+        import webbrowser
+
+        from ..report_translation import report_line
+
+        if row is None:
+            finals = [r for r in self.state.history() if not r[2]]
+            if not finals:
+                messagebox.showinfo(t("gui_wrong_title"), t("gui_wrong_none"), parent=self.root)
+                return
+            row = finals[-1]
+        src, out, _ = row
+        s = self.settings
+        report_line(src, out, version=__version__, mode=self.quick_mode or getattr(self, "_last_mode", None) or "listen",
+                    langpair=f"{s.get('lang', 'auto')} -> {s.get('target', '')}",
+                    confirm=lambda text: messagebox.askokcancel(t("gui_wrong_title"), t("gui_wrong_ask", text=text), parent=self.root),
+                    open_url=webbrowser.open)
 
     def quit(self):
         if self.closing:

@@ -8,7 +8,6 @@ means upstream changed (or was tampered with).
 
     python scripts/make_model_pins.py            # refresh everything
 """
-import hashlib
 import json
 import sys
 import tempfile

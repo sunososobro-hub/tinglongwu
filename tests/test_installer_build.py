@@ -129,9 +129,13 @@ def test_wizard_tlwu_exe_and_gui_share_one_app_icon(tmp_path):
     spec = importlib.util.spec_from_file_location("build_windows", ROOT / "packaging" / "build_windows.py")
     bw = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bw)
-    flags = [a for a in bw.nuitka_cmd() if a.startswith("--windows-icon-from-ico=")]
-    assert len(flags) == 1
-    assert Path(flags[0].split("=", 1)[1]).read_bytes() == asset.read_bytes()
+    sys.path.insert(0, str(ROOT / "packaging"))
+    import runtime_layer  # #923: tlwu.exe gets its icon from the launcher's resource script
+
+    assert bw.APP_ICON.resolve() == runtime_layer.APP_ICON.resolve() == asset.resolve()
+    rc = runtime_layer._rc_text(runtime_layer.APP_ICON, runtime_layer.LAUNCHER_DIR / "tlwu.manifest")
+    icons = [ln for ln in rc.splitlines() if ln.startswith("1 ICON ")]
+    assert icons == [f'1 ICON "{asset.resolve().as_posix()}"']
 
 
 @needs_git

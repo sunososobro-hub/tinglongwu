@@ -7,7 +7,7 @@ from tinglongwu.capture.base import SAMPLE_RATE, AudioSource
 from tinglongwu.pipeline import run
 from tinglongwu.segment import Segmenter
 from tinglongwu.sink import TextSink
-from tinglongwu.stream import (DIM, DraftEngine, DraftRenderer, LocalAgreement, PacedSource, fit_tail)
+from tinglongwu.stream import (DraftEngine, DraftRenderer, LocalAgreement, PacedSource, fit_tail)
 from tinglongwu.translate import Translation, Translator
 
 
@@ -295,8 +295,8 @@ def test_draft_replaced_by_final_in_pipeline():
 
 def test_segmenter_live_and_epoch():
     seg = Segmenter(chunk=2.0, use_vad=False, overlap=0.1, step=0.5)
-    lives, epochs = [], []
-    for s in seg.segments(Frames(5).frames()):
+    epochs = []
+    for _s in seg.segments(Frames(5).frames()):
         epochs.append(seg.epoch)
         assert seg.live is None
     # during iteration live was set between segments; epoch bumped per segment

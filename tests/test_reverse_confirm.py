@@ -22,7 +22,7 @@ def make(keys, synth=None):
         try:
             return next(it)
         except StopIteration:
-            raise EOFError
+            raise EOFError from None
 
     s = ConfirmSession(synth or default_synth, lambda a, sr: sent.append((len(a), sr)),
                        lambda a, sr: prev.append(sr), out=log.append, readline=rl, flush=lambda: None,
@@ -147,7 +147,7 @@ class FakeTerm:
         try:
             return next(self.answers)
         except StopIteration:
-            raise EOFError
+            raise EOFError from None
 
     def flush(self):
         self.buf.clear()

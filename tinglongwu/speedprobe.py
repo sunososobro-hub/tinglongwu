@@ -100,7 +100,7 @@ def time_asr(transcribe, audio, sr: int = 16000, clock=None) -> float:
     return (clock() - t0) / max(len(audio) / sr, 1e-6)
 
 
-def _load_clip(path) -> "object | None":
+def _load_clip(path) -> object | None:
     try:
         import numpy as np
         import soundfile as sf

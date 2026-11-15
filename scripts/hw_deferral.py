@@ -20,7 +20,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 HW_RUNNER_WAIT_MIN = 30          # minutes the release waits for the tlwu-hw runner to pick hw-tests up
 HW_CHECK = "hw-tests"
@@ -59,7 +59,7 @@ def decide(runs: list[dict], jobs_of=lambda run_id: [], now: datetime | None = N
     """The hw-tests part of the release gate for one commit.
     state: green (success), started (running or failed: not green, never deferred), missing (no run),
     waiting (queued for < HW_RUNNER_WAIT_MIN or no timestamp), deferred (queued for >= HW_RUNNER_WAIT_MIN)."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     hw = newest_hw_run(runs)
     if hw is None:
         return {"state": "missing", "reason": f"{HW_CHECK}: no run on this commit"}

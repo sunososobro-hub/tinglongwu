@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 
 import '../services/model_paths.dart';
@@ -57,30 +59,34 @@ class MissingModelsScreen extends StatelessWidget {
                 onPressed: onImport,
               ),
               const SizedBox(height: 24),
-              const Text('或用電腦 adb 推送到 / Or push with adb to:',
-                  style: TextStyle(fontSize: 18, color: Colors.white)),
-              const SizedBox(height: 8),
-              SelectableText(p.modelsDir, style: mono),
-              const SizedBox(height: 16),
+              if (Platform.isAndroid) ...[
+                const Text('或用電腦 adb 推送到 / Or push with adb to:',
+                    style: TextStyle(fontSize: 18, color: Colors.white)),
+                const SizedBox(height: 8),
+                SelectableText(p.modelsDir, style: mono),
+                const SizedBox(height: 16),
+              ],
               const Text('缺少的檔案：',
                   style: TextStyle(fontSize: 18, color: Colors.white)),
               const SizedBox(height: 8),
               for (final f in pipeline.missingFiles)
                 SelectableText('• $f', style: mono.copyWith(color: Colors.amber)),
-              const SizedBox(height: 16),
-              const Text('PC 上執行（PowerShell）：',
-                  style: TextStyle(fontSize: 18, color: Colors.white)),
-              const SizedBox(height: 8),
-              SelectableText(
-                'adb shell mkdir -p ${p.modelsDir}\n'
-                'adb push models\\mobile\\sensevoice ${p.modelsDir}/\n'
-                'adb push models\\mobile\\silero_vad.onnx ${p.modelsDir}/\n'
-                'adb push models\\hymt2-1.8b\\${ModelPaths.llmFile} ${p.modelsDir}/',
-                style: mono,
-              ),
-              const SizedBox(height: 16),
-              const Text('推完後完全關閉 App 再重新開啟。',
-                  style: TextStyle(fontSize: 18, color: Colors.white70)),
+              if (Platform.isAndroid) ...[
+                const SizedBox(height: 16),
+                const Text('PC 上執行（PowerShell）：',
+                    style: TextStyle(fontSize: 18, color: Colors.white)),
+                const SizedBox(height: 8),
+                SelectableText(
+                  'adb shell mkdir -p ${p.modelsDir}\n'
+                  'adb push models\\mobile\\sensevoice ${p.modelsDir}/\n'
+                  'adb push models\\mobile\\silero_vad.onnx ${p.modelsDir}/\n'
+                  'adb push models\\hymt2-1.8b\\${ModelPaths.llmFile} ${p.modelsDir}/',
+                  style: mono,
+                ),
+                const SizedBox(height: 16),
+                const Text('推完後完全關閉 App 再重新開啟。',
+                    style: TextStyle(fontSize: 18, color: Colors.white70)),
+              ],
               if (pipeline.logPath != null) ...[
                 const SizedBox(height: 16),
                 SelectableText('log: ${pipeline.logPath}',

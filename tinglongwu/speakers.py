@@ -6,7 +6,7 @@ Feed one sentence embedding + its duration; get back a speaker label
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 UNKNOWN = "?"
 LABEL_PREFIX = "說話者"

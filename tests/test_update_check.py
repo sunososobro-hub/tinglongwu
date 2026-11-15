@@ -2,7 +2,6 @@
 all offline: every request is a fake."""
 import io
 import json
-import socket
 import urllib.error
 from pathlib import Path
 
@@ -51,7 +50,7 @@ def test_prerelease_draft_and_missing_assets_ignored():
     assert su.check("0.3.3", getter(release(assets=(su.SUMS_NAME,))), env={}) == "NONE"
 
 
-@pytest.mark.parametrize("exc", [socket.timeout("timed out"), TimeoutError(),
+@pytest.mark.parametrize("exc", [TimeoutError("timed out"), TimeoutError(),
                                  urllib.error.HTTPError("u", 403, "rate limit", {}, io.BytesIO()),
                                  urllib.error.URLError("no route"), ValueError("bad json")])
 def test_timeout_and_http_errors_do_not_crash(exc):

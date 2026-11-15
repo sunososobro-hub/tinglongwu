@@ -2,13 +2,13 @@
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stats_dashboard as sd  # noqa: E402
 
-NOW = datetime(2026, 11, 14, 10, 0, tzinfo=timezone.utc)  # 18:00 Asia/Taipei
+NOW = datetime(2026, 11, 14, 10, 0, tzinfo=UTC)  # 18:00 Asia/Taipei
 
 
 def _pr(number, merged_at, model="sonnet", minutes=10):
