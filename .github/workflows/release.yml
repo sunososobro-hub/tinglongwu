@@ -1,8 +1,11 @@
 name: release
-# #414 one-click release: the owner merges the dev -> main `release: vX.Y.Z` PR (opened by release-pr.yml), then
-#   plan              : only a merged dev -> main release PR publishes; its title must be v<tinglongwu.__version__>,
-#                       a tag that exists already must point at this commit, and ci, e2e, windows-build and hw-tests
-#                       must be green on the PR's head commit (scripts/release_notes.py plan). Other pushes: nothing.
+# #414 one-click release: auto-release.yml merges the `release: vX.Y.Z` PR (opened by release-pr.yml), then
+#   plan              : only a merged release PR publishes: head `release/vX.Y.Z` (#976 snapshot of the dev bump
+#                       commit) or, during the #976 transition, the legacy `dev`. Its title must be
+#                       v<tinglongwu.__version__>, a tag that exists already must point at this commit, and every
+#                       REQUIRED_CHECKS workflow (ci, e2e, windows-build, hw-tests, audio-routing) must be green on the
+#                       PR's head commit = the snapshot head, newest run per workflow (scripts/release_notes.py plan).
+#                       Other pushes: nothing.
 #   windows           : build tinglongwu-win64.zip, the slim core (#762: build_windows.py --core, CPU llama, no
 #                       cuda_libs/), then scripts/release_check.py (core budget: <= 300 MB, no CUDA files) and
 #                       packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU

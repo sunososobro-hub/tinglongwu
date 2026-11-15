@@ -160,3 +160,112 @@ jobs:
             setup_time.json
           retention-days: 90
           if-no-files-found: ignore
+
+  # #974: the real user path for 我來說 on a clean Windows VM: setup exe (core layout, silent) -> one speak press
+  # (tlwu.exe speak-smoke: My language zh, Other side en, the voice install offer answered yes) -> English voice on
+  # VB-CABLE "CABLE Output" (what Meet hears) within 30 s. Fails on a missing voice, a wrong pair or a silent cable.
+  # workflow_dispatch with `tag`: that release's tinglongwu-setup.exe instead of a build of this commit.
+  # Not on pull requests (like ttfs): it downloads ~2 GB of models; dev pushes (paths above), the weekly run and
+  # workflow_dispatch run it.
+  speak-smoke:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      VBCABLE_URL: https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip   # = audio-routing.yml
+      VBCABLE_SHA256: b950e39f01af1d04ea623c8f6d8eb9b6ea5c477c637295fabf20631c85116bfb
+    steps:
+      - name: Build path (as windows-build.yml)
+        shell: bash
+        run: echo "TLWU_BUILD_ROOT=$RUNNER_TEMP\\tlwu-build" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Windows audio service + microphone consent + VB-CABLE (same steps as audio-routing.yml)
+        shell: pwsh
+        run: |
+          foreach ($s in 'AudioEndpointBuilder', 'Audiosrv') { Set-Service $s -StartupType Automatic; Start-Service $s }
+          $cs = 'SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone'
+          foreach ($k in "HKLM:\$cs", "HKCU:\$cs", "HKCU:\$cs\NonPackaged") {
+            New-Item -Path $k -Force | Out-Null
+            Set-ItemProperty -Path $k -Name Value -Value Allow -Type String
+          }
+          $zip = "$env:RUNNER_TEMP\vbcable.zip"
+          Invoke-WebRequest $env:VBCABLE_URL -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:VBCABLE_SHA256) { Write-Output "::error::VB-CABLE SHA-256 $hash does not match the pin"; exit 1 }
+          $dir = "$env:RUNNER_TEMP\vbcable"
+          Expand-Archive $zip -DestinationPath $dir
+          $cat = Get-ChildItem $dir -Filter *.cat | Where-Object Name -like '*64*' | Select-Object -First 1
+          $cer = "$env:RUNNER_TEMP\vbaudio.cer"
+          [IO.File]::WriteAllBytes($cer, (Get-AuthenticodeSignature $cat.FullName).SignerCertificate.Export('Cert'))
+          certutil -addstore -f TrustedPublisher $cer | Out-Null
+          Start-Process -FilePath "$dir\VBCABLE_Setup_x64.exe" -ArgumentList '-i', '-h' -Wait | Out-Null
+          for ($i = 0; $i -lt 60; $i++) {
+            $dev = Get-CimInstance Win32_SoundDevice | Where-Object Name -like '*VB-Audio*'
+            if ($dev) { break }
+            Start-Sleep 2
+          }
+          if (-not $dev) { Write-Output "::error::VB-CABLE device did not appear after the install"; exit 1 }
+          Restart-Service Audiosrv -Force
+      - name: Runtime layer cache (restore only; windows-build.yml saves it)
+        if: github.event.inputs.tag == ''
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ env.TLWU_BUILD_ROOT }}\runtime
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'packaging/build_windows.py', 'packaging/runtime_layer.py', 'packaging/launcher/**', 'packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
+      - name: Setup exe (this commit's core + wizard, or the release named by `tag`)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TLWU_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $out = "$env:RUNNER_TEMP\setup"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          if ($env:TLWU_TAG) {
+            gh release download $env:TLWU_TAG --repo $env:GITHUB_REPOSITORY --pattern 'tinglongwu-setup.exe' --dir $out
+            if ($LASTEXITCODE) { throw "FAIL: no tinglongwu-setup.exe in $env:TLWU_TAG" }
+          } else {
+            python packaging\build_windows.py --lite
+            if ($LASTEXITCODE) { throw "FAIL: core build" }
+            if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+            python installer\build_installer.py --core-dir "$env:TLWU_BUILD_ROOT\dist\tlwu"
+            if ($LASTEXITCODE) { throw "FAIL: wizard build" }
+            Copy-Item (Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1).FullName "$out\tinglongwu-setup.exe"
+          }
+      - name: "#974 (1) setup exe silent install (downloads the default models)"
+        shell: pwsh
+        run: |
+          Remove-Item Env:TLWU_SKIP_MODELS -ErrorAction SilentlyContinue
+          $app = "$env:RUNNER_TEMP\app"
+          $p = Start-Process -FilePath "$env:RUNNER_TEMP\setup\tinglongwu-setup.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$app", "/LOG=$env:RUNNER_TEMP\setup.log" -Wait -PassThru
+          Get-Content "$app\install.log" -ErrorAction SilentlyContinue | Select-Object -Last 20
+          if ($p.ExitCode -ne 0) { throw "FAIL: wizard exit $($p.ExitCode)" }
+          if (-not (Test-Path "$app\tlwu.exe")) { throw "FAIL: no tlwu.exe in $app" }
+          "TLWU_APP=$app" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: "#974 (2)-(4) one speak press zh -> en: no voice_not_installed, pair zh->en, voice on CABLE Output in 30 s"
+        shell: pwsh
+        run: |
+          Remove-Item Env:TLWU_SKIP_MODELS -ErrorAction SilentlyContinue
+          & "$env:TLWU_APP\tlwu.exe" speak-smoke --mine zh --other en --install-voice --json "$env:RUNNER_TEMP\speak_smoke.json"
+          $rc = $LASTEXITCODE
+          "### #974 speak smoke (clean Windows, VB-CABLE)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          '```' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          Get-Content "$env:RUNNER_TEMP\speak_smoke.json" -ErrorAction SilentlyContinue | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          '```' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          if ($rc -ne 0) { throw "FAIL: speak-smoke exit $rc (an app without the speak-smoke command, e.g. v0.3.5, fails here too)" }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: speak-smoke
+          path: |
+            ${{ runner.temp }}\speak_smoke.json
+            ${{ runner.temp }}\setup.log
+            ${{ runner.temp }}\app\install.log
+          if-no-files-found: ignore

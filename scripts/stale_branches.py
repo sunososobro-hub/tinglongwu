@@ -7,7 +7,8 @@ A branch is deleted when either
   (a) it has PRs, none of them open, and its tip is still the head of its most recent PR
       (nobody pushed after the PR was closed or merged), or
   (b) it has no PR, has no commits that are not on dev (ahead_by == 0) and its tip is older than --days.
-Never deleted: main, dev, gh-pages, --keep names, GitHub-protected branches, any branch with an open PR,
+Never deleted: main, dev, gh-pages, --keep names, GitHub-protected branches, `release/v*` release snapshots (#976,
+release-pr.yml owns them), any branch with an open PR,
 and a `fix/N*` lock branch whose issue N is open with `status:doing` (a worker may be about to push).
 """
 from __future__ import annotations
@@ -70,8 +71,8 @@ def plan(api, repo: str, keep=(), days: int = 7, now: datetime | None = None) ->
     out = []
     for b in branches:
         name, sha = b["name"], b["commit"]["sha"]
-        if name in keep or b.get("protected"):
-            continue
+        if name in keep or b.get("protected") or name.startswith("release/v"):
+            continue  # #976: release/vX.Y.Z snapshots are created and deleted by release-pr.yml only
         n = _lock_issue(name)
         if n is not None:
             issue = api("GET", "/repos/%s/issues/%d" % (repo, n))

@@ -202,3 +202,8 @@ def test_decide_cli_dry_run_with_mocked_runs(tmp_path, capsys):
     hd.main(["decide", "--runs", str(tmp_path / "runs.json"), "--jobs", str(tmp_path / "jobs.json"),
              "--now", NOW.isoformat()])
     assert "state=started" in capsys.readouterr().out
+
+
+def test_976_followup_finds_a_release_merged_from_a_snapshot_branch():
+    assert hd.release_head({"head": {"ref": "release/v0.3.2"}}) and hd.release_head({"head": {"ref": "dev"}})
+    assert not hd.release_head({"head": {"ref": "fix/976"}})

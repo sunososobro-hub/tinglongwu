@@ -226,3 +226,140 @@ def test_set_auto_and_mark_checked_keep_other_keys(monkeypatch, tmp_path):
     au.set_auto(False)
     au.mark_checked(now=123)
     assert userdirs.read_config() == {"ui_lang": "ru", "auto_update": "0", au.LAST_KEY: "123"}
+
+
+# -- #946: app-layer-only update ---------------------------------------------------------------------------------
+KEY = "k" * 64
+
+
+def layer_release(man=None, sums_sha=SHA, size=12 << 20):
+    rel = json.dumps({"tag_name": "v0.3.4", "assets": [
+        {"name": n, "browser_download_url": f"https://x/{n}", "size": size if n == su.APP_ZIP_NAME else 140 << 20}
+        for n in (su.EXE_NAME, su.SUMS_NAME, su.APP_ZIP_NAME, su.APP_MANIFEST_NAME)]}).encode()
+    man = {"name": su.APP_ZIP_NAME, "size": size, "sha256": SHA, "url": "u", "runtime_key": KEY, "lite": False} \
+        if man is None else man
+    sums = f"{sums_sha}  {su.APP_ZIP_NAME}\n{'b' * 64}  {su.EXE_NAME}\n".encode()
+
+    def get(url, timeout=su.CHECK_TIMEOUT_S):
+        if url.endswith(su.APP_MANIFEST_NAME):
+            if man == "boom":
+                raise urllib.error.URLError("x")
+            return man if isinstance(man, bytes) else json.dumps(man).encode()
+        return sums if url.endswith(su.SUMS_NAME) else rel
+    return get
+
+
+def install_dir(tmp_path, key=KEY, lite=False):
+    if key is not None:
+        (tmp_path / su.RUNTIME_MANIFEST).write_text(json.dumps({"key": key, "lite": lite}))
+    return tmp_path
+
+
+def test_plan_app_when_runtime_key_and_lite_match(tmp_path):
+    assert su.plan(install_dir(tmp_path), get=layer_release()) == "PLAN app 12"
+
+
+@pytest.mark.parametrize("local,remote,expect", [
+    (dict(key="z" * 64), None, "PLAN full 140"),                       # different key
+    (dict(lite=True), None, "PLAN full 140"),                          # different lite
+    (dict(key=None), None, "PLAN full 140"),                           # no runtime-layer.json
+    (dict(), b"not json", "PLAN full 140"),                            # invalid manifest
+    (dict(), {"runtime_key": KEY}, "PLAN full 140"),                   # incomplete manifest
+    (dict(), "boom", "PLAN full 140"),                                 # network error on the manifest
+])
+def test_plan_full_fallbacks(tmp_path, local, remote, expect):
+    assert su.plan(install_dir(tmp_path, **local), get=layer_release(man=remote)) == expect
+
+
+def test_plan_full_on_network_error(tmp_path):
+    def get(url, timeout=0):
+        raise urllib.error.URLError("down")
+    assert su.plan(install_dir(tmp_path), get=get).startswith("PLAN full")
+
+
+def test_download_app_checks_both_sums(tmp_path):
+    got = []
+
+    def fetch(url, dest, sha, on_bytes=None):
+        got.append((url, dest.name, sha))
+        return dest
+    p = su.download_app(tmp_path, get=layer_release(), fetch=fetch)
+    assert got == [(f"https://x/{su.APP_ZIP_NAME}", "tinglongwu-app-layer-0.3.4.zip", SHA)] and p.name.endswith(".zip")
+    with pytest.raises(ValueError):  # SHA256SUMS.txt and the manifest disagree
+        su.download_app(tmp_path, get=layer_release(sums_sha="c" * 64), fetch=fetch)
+
+
+def test_download_app_sha_mismatch_deletes_file_and_fails(tmp_path, monkeypatch, capsys):
+    def fetch(url, dest, sha, on_bytes=None):
+        dest.write_bytes(b"bad")
+        raise ValueError("SHA256 mismatch")
+    with pytest.raises(ValueError):
+        su.download_app(tmp_path, get=layer_release(), fetch=fetch)
+    assert not list(tmp_path.glob("*.zip"))
+    monkeypatch.delenv("TLWU_OFFLINE", raising=False)
+    monkeypatch.setattr(su, "download_app", lambda d: fetch("u", d / "a.zip", SHA))
+    assert su.main(["--download-app", str(tmp_path)]) == 1
+    assert capsys.readouterr().out.startswith("FAIL ValueError")
+
+
+def test_apply_app_script_has_rollback_and_stays_in_app_dir():
+    app = Path(r"C:\Users\a\it's\tinglongWu")
+    ps = su.apply_app_script(Path(r"C:\T\app.zip"), app, 99)
+    assert r"$app = 'C:\Users\a\it''s\tinglongWu'" in ps and "Wait-Process -Id 99" in ps
+    assert "} catch {" in ps and "-NewName $i" in ps  # rollback puts *.old back
+    for item in ("tinglongwu", "tlwu_app", "tinglongwu_setup", "app-layer.json", "tlwu.exe"):
+        assert f"'{item}'" in ps
+    assert "models" not in ps and "'.update-staging'" in ps
+    import re
+    assert set(re.findall(r"[A-Za-z]:\\[^']*", ps)) <= {r"C:\Users\a\it", r"C:\T\app.zip"}  # app dir + the zip only
+
+
+def test_apply_app_script_records_item_only_after_rename_succeeds():
+    ps = su.apply_app_script(Path(r"C:\T\app.zip"), Path(r"C:\A"), 1)
+    lines = ps.splitlines()
+    idx = lambda needle: next(n for n, ln in enumerate(lines) if needle in ln)  # noqa: E731
+    # a failing Rename-Item (locked file) must leave $moved without that item, so the catch never deletes the original
+    assert idx("Rename-Item -LiteralPath $cur") < idx("$moved += $i") < idx("Move-Item")
+
+
+def test_apply_app_cli_uses_app_script(tmp_path, monkeypatch):
+    calls = []
+    su.launch_apply(tmp_path / "a.zip", tmp_path, 5, popen=lambda cmd, **kw: calls.append(cmd), app_layer=True)
+    assert "tlwu_app" in (tmp_path / "tlwu-apply-update.ps1").read_text("utf-8-sig") and calls
+
+
+def test_gui_logs_which_update_and_falls_back(monkeypatch, tmp_path):
+    from tinglongwu.gui import autoupdate as au
+
+    monkeypatch.delenv("TLWU_OFFLINE", raising=False)
+    logs, seen, cmds = [], [], []
+    monkeypatch.setattr(au, "_log", logs.append)
+
+    def popen(plan_lines, app_lines):
+        def p(cmd, **kw):
+            cmds.append(cmd)
+            if "--plan" in cmd:
+                return FakeProc(plan_lines)
+            return FakeProc(app_lines if "--download-app" in cmd else ["READY C:/t/setup.exe"])
+        return p
+
+    r = au.run_download(seen.append, tmp_path, popen=popen(["PLAN app 12"], ["PROGRESS 50", "READY C:/t/a.zip"]))
+    assert r == "C:/t/a.zip" and logs == ["update: app layer only: 12 MB"] and ("upd_ready", "C:/t/a.zip") in seen
+    logs.clear()
+    r = au.run_download(seen.append, tmp_path, popen=popen(["PLAN full 140"], []))
+    assert r == "C:/t/setup.exe" and logs == ["update: full installer: 140 MB"]
+    logs.clear()  # app-layer download fails -> full installer
+    r = au.run_download(seen.append, tmp_path, popen=popen(["PLAN app 12"], ["FAIL ValueError: x"]))
+    assert r == "C:/t/setup.exe" and logs[-1] == "update: full installer: 12 MB"
+    assert au.apply_cmd("C:/t/a.zip", tmp_path, 1)[-6] == "--apply-app" and "--apply" in au.apply_cmd("s.exe", tmp_path, 1)
+
+
+def test_cleanup_old_removes_leftovers(tmp_path):
+    from tinglongwu.gui import autoupdate as au
+
+    (tmp_path / "tinglongwu.old").mkdir()
+    (tmp_path / "tinglongwu.old" / "x.py").write_text("1")
+    (tmp_path / "tlwu.exe.old").write_text("1")
+    (tmp_path / "models").mkdir()
+    au.cleanup_old(tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["models"]

@@ -6,7 +6,7 @@ name: hw-tests
 #
 # SECURITY: a self-hosted runner runs whatever the workflow says, so this file never runs for pull requests (no
 # pull_request / pull_request_target trigger) and only for pushes to dev by people with write access, or a manual
-# dispatch. Do not add other triggers.
+# dispatch (#976: release-pr.yml dispatches it on this repo's release/vX.Y.Z snapshot branch). Do not add other triggers.
 on:
   push:
     branches: [dev]
@@ -21,7 +21,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: hw-tests
+  # #976: one group per ref. A release/vX.Y.Z snapshot run (dispatched by release-pr.yml) is never replaced by a
+  # pending dev-push run; the single tlwu-hw runner still takes one job at a time.
+  group: hw-tests-${{ github.ref }}
   cancel-in-progress: false
 
 env:

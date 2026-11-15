@@ -880,6 +880,8 @@ class App:
     def _apply_pending_update(self) -> bool:
         """#779: a verified installer downloaded in the background last time is applied before the user starts
         working: one short status line, no question. True when the apply helper was started."""
+        if autoupdate.is_wizard_install():
+            autoupdate.cleanup_old()  # #946: *.old left by an app-layer update; this start succeeded
         if not autoupdate.is_wizard_install() or autoupdate.offline():
             return False
         path = autoupdate.pending_to_apply(userdirs.read_config(), __version__)
