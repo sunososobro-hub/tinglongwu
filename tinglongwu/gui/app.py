@@ -838,9 +838,6 @@ class App:
                                  command=self._scene_changed)
             self._tx(rb, "gui_scene_" + sc).pack(side="left", padx=(0, 4))
             self.scene_btns.append(rb)
-        self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))  # 0.3.8: speaker labels (both scenes)
-        self._tx(ttk.Checkbutton(scene_row, variable=self.v_spk, command=self._spk_toggled), "gui_spk").pack(
-            side="left", padx=(10, 0))
         row1 = ttk.Frame(b)
         row1.pack(fill="x")
         self.v_mic = tk.BooleanVar(value=True)
@@ -848,6 +845,10 @@ class App:
         self.btn_mic.pack(side="left")
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
                  "gui_overlay_btn").pack(side="left", padx=(6, 0))
+        # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
+        self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
+        self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk").pack(
+            side="left", padx=(10, 0))
         # #1020: "Freeze subtitles" only freezes this list and the floating bar (translation keeps running)
         row2 = ttk.Frame(b)
         row2.pack(fill="x", pady=(8, 0))
