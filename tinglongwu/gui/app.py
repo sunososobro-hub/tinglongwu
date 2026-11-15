@@ -17,7 +17,7 @@ from tkinter import font as tkfont
 from ..i18n import set_ui_lang, t, ui_lang
 from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
-from .core import (BOTH_MODE, both_settings, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (BOTH_MODE, both_settings, mic_button, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, pair_text, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
                    save_settings, settings_to_argv, voice_outputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -386,6 +386,7 @@ class App:
         self.load_t0: float | None = None  # #332: monotonic time of Start while models load, else None
         self.load_shown = 0
         self.stop_ev = threading.Event()
+        self.mic_off = threading.Event()  # #1028: set = the speak leg hears silence (mic toggle)
         self.worker: threading.Thread | None = None
         self.closing = False
         self.errored = False
@@ -1224,6 +1225,9 @@ class App:
         # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
         self.both_btn = ttk.Button(q, command=lambda: self.toggle(BOTH_MODE))
         self.both_btn.grid(row=2, column=0, columnspan=2, sticky="we", ipady=3, pady=(6, 0))  # #886
+        # #1028: mic on/off for the speak leg only; listening to the other side keeps running
+        self.mic_btn = ttk.Button(q, command=self.toggle_mic)
+        self.mic_btn.grid(row=3, column=0, columnspan=2, sticky="we", pady=(4, 0))
         q.columnconfigure(0, weight=1, uniform="quick")
         q.columnconfigure(1, weight=1, uniform="quick")
         self._sync_quick()
@@ -1243,6 +1247,16 @@ class App:
             return
         key, enabled = start_button(self._quick_phase(), self.quick_mode)  # #1001
         self.both_btn.configure(text=t(key, s=self.load_shown), state="normal" if enabled else "disabled")
+        key, enabled = mic_button(self._quick_phase(), self.quick_mode, self.mic_off.is_set())  # #1028
+        self.mic_btn.configure(text=t(key), state="normal" if enabled else "disabled")
+
+    def toggle_mic(self):
+        """#1028: mute / unmute the speak leg's microphone (MuteSource in run_session); the listen leg is untouched."""
+        if self.mic_off.is_set():
+            self.mic_off.clear()
+        else:
+            self.mic_off.set()
+        self._sync_quick()
 
     def _build_log(self, f):
         """Subtitles inside the main window: scrolling history, newest at the bottom (#72)."""
@@ -1632,6 +1646,7 @@ class App:
         self.state = SubtitleState(HISTORY_LINES)
         self.set_paused(False)
         self.stop_ev = threading.Event()
+        self.mic_off = threading.Event()  # #1028: every session starts with the mic on
         self.load_t0 = time.monotonic()  # #332: Stop stays disabled ("Loading... N s") until the models are ready
         self.load_shown = 0
         self.btn.configure(text=t("gui_loading", s=0), state="disabled")
@@ -1700,6 +1715,7 @@ class App:
             a = parse_args(settings_to_argv(s, outputs=voice_outputs() if s.get("voice") else None,
                                             notice=lambda m: q.put(("notice", m))))
             a.voice_gate = gate  # #833: open_voice routes every spoken line through it
+            a.mic_mute = self.mic_off if s.get("source") == "mic" else None  # #1028: only the mic leg is muted
 
             def draft_factory(asr, translator, segmenter, tgt):
                 if not s["live_draft"] or translator is None:

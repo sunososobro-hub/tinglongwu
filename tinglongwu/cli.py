@@ -632,6 +632,10 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             from .reverse.gate import segment_gate  # #968: a spoken line goes out in the user's voice
 
             seg_gate = segment_gate(getattr(vgate, "reject", None))
+        if getattr(a, "mic_mute", None) is not None:  # #1028: the GUI mic toggle silences this leg's capture only
+            from .capture.base import MuteSource
+
+            source = MuteSource(source, a.mic_mute)
         announce_ready(status, transcript_only=bool(getattr(a, "transcript_only", False)), summary=prog.finish())
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,

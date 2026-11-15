@@ -228,6 +228,12 @@ def start_button(phase: str, active: str | None = None) -> tuple[str, bool]:
     return "gui_quick_both", phase == "idle"
 
 
+
+def mic_button(phase: str, active: str | None, off: bool) -> tuple[str, bool]:
+    """#1028: (i18n key, enabled) of the mic toggle. It only works while a listen + speak session runs (the speak
+    leg's capture is what it mutes); otherwise it shows the state the next session starts with, disabled."""
+    return ("gui_mic_off" if off else "gui_mic_on"), (phase == "running" and active == BOTH_MODE)
+
 # #314 first-launch overlay: 3 numbered steps over the real controls. zh-CN has its own text here although the
 # rest of the UI still shows zh-TW for a zh-CN system (see tour_lang).
 TOUR_TEXT = {
