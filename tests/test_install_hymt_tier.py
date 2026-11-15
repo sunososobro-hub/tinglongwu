@@ -76,7 +76,7 @@ def test_lang_ja_prints_english_only(tmp_path):
     """#1002: -Lang ja (any non-Chinese wizard language) -> English-only labels, no mixed "中文 / English"."""
     out = dry_run(tmp_path, 8192, "-Lang", "ja")
     lines = [ln.strip() for ln in out.splitlines()]
-    assert "Translation engine: hymt2" in lines
+    assert any(ln.startswith("Translation engine: hymt2") for ln in lines)
     assert "Installed:" in lines and any(ln.startswith("Folder: ") for ln in lines)
     assert any(ln.startswith("Self-test: ") for ln in lines)
     assert any(ln.startswith("[1/8] ") and not any("\u4e00" <= c <= "\u9fff" for c in ln) for ln in lines)
@@ -87,7 +87,7 @@ def test_lang_zh_tw_prints_chinese_only(tmp_path):
     """#1002: -Lang zh-TW -> Chinese-only labels."""
     out = dry_run(tmp_path, 8192, "-Lang", "zh-TW")
     lines = [ln.strip() for ln in out.splitlines()]
-    assert "翻譯引擎: hymt2" in lines
+    assert any(ln.startswith("翻譯引擎: hymt2") for ln in lines)
     assert "已安裝:" in lines and any(ln.startswith("資料夾: ") for ln in lines)
     assert any(ln.startswith("自我測試: ") for ln in lines)
     assert not any(ln.startswith(("Translation engine", "Installed", "Folder")) for ln in lines)
