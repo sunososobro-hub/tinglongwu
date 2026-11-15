@@ -23,7 +23,7 @@ from pathlib import Path
 from .reverse.vmic import pick_win_cable
 
 VBCABLE_URL = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"
-VBCABLE_SHA256 = ""  # pinned by part 2 (measured on the home PC); empty -> open VBCABLE_PAGE instead of downloading
+VBCABLE_SHA256 = "b950e39f01af1d04ea623c8f6d8eb9b6ea5c477c637295fabf20631c85116bfb"  # sha256 of VBCABLE_URL (VBCABLE_Driver_Pack45.zip, 1318877 bytes), measured 2026-11-15
 VBCABLE_PAGE = "https://vb-audio.com/Cable/"
 SIZE_MB = 1
 MODULE = "tinglongwu_setup.vbcable"

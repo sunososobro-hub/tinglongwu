@@ -960,7 +960,7 @@ class App:
         for n in FONT_MENU_SIZES:
             zm.add_radiobutton(label=str(n), value=str(n), variable=self.v_font)
         sm.add_cascade(label=t("gui_font_size"), menu=zm)
-        sm.add_command(label="Add-ons...", command=self.open_addons)  # #614
+        sm.add_command(label=t("addons_menu"), command=self.open_addons)  # #614
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
