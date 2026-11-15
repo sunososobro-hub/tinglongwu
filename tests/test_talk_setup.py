@@ -202,3 +202,15 @@ def test_setup_rejects_qwen_flags(capsys):
             downloader.main([flag, "--models-dir", "unused"])
         assert e.value.code == 2
     assert not hasattr(downloader, "QWEN_GGUF") and not hasattr(downloader, "get_qwen")
+
+
+def test_base_python_in_bundled_app_skips_tlwu_exe(monkeypatch):  # #1007
+    import shutil
+    monkeypatch.setattr(talk.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(talk.sys, "executable", "C:/tlwu/tlwu.exe")
+    monkeypatch.setattr(talk.sys, "_base_executable", "C:/tlwu/tlwu.exe", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda n: "C:/Py/python.exe" if n == "python" else None)
+    assert talk.base_python() == "C:/Py/python.exe"
+    monkeypatch.setattr(shutil, "which", lambda n: None)
+    with pytest.raises(SystemExit):
+        talk.base_python()
