@@ -10,6 +10,10 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.2
+- CPU mode is much faster on laptops without a graphics card: speech recognition and translation no longer fight over the same cores, so a line no longer takes 7–8 seconds while you keep listening.
+- Face-to-face mode: each person's speech is now translated into the other person's language automatically.
+
 ## v0.4.1
 - Translate to now also offers 日本語, 한국어, Español, Français, Deutsch, ไทย, Tiếng Việt and Bahasa Indonesia, and Hindi can be picked as an experimental source language.
 - The 情境 (scenario) row is now a single dropdown.
