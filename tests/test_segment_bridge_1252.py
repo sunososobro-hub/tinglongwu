@@ -118,3 +118,12 @@ def test_record_line_spans_have_no_hole_through_the_pipeline(tmp_path):
     rows = [json.loads(x) for x in (tmp_path / "segments.jsonl").read_text("utf-8").splitlines()]
     assert len(rows) == 2
     assert _uncovered([(r["start"], r["end"]) for r in rows], 0.5, 4.8) == 0.0
+
+
+def test_flush_at_end_of_input_does_not_bridge_a_long_silence():
+    # CodeRabbit on #1318: speech 0-1.0 s and 4.6-4.7 s, 0.1 s frames, step 0.25: the second speech is only seen by
+    # the end-of-input flush; its 3.1 s gap is longer than BRIDGE_S, so the last segment must not start at 1.5 s
+    audio = _audio((LOUD, 1.0), (0.0, 3.6), (LOUD, 0.1))
+    spans = _spans(audio, Segmenter(chunk=8.0, step=0.25, vad_fn=_vad))
+    assert len(spans) == 2
+    assert spans[1][0] == 4.1  # 0.5 s before the speech, not the previous segment's end (1.5 s)

@@ -94,8 +94,7 @@ class Segmenter:
             self.live = (self.epoch, buf[-self.chunk:])
             return None, buf
         spans = self.vad(buf)
-        if self._lead is not None and (spans[0][0] if spans else len(buf)) - self._lead > self.bridge:
-            self._lead = None  # #1252: a long silence after the previous segment: trimmed as before
+        self._drop_long_bridge(spans, len(buf))
         if not spans:
             self.live = None
             if self._lead is not None:  # #1252: keep what follows the previous segment until speech comes back
@@ -127,6 +126,12 @@ class Segmenter:
         self.live = (self.epoch, keep[-self.chunk:])
         return None, keep
 
+    def _drop_long_bridge(self, spans, n: int) -> None:
+        """#1252: a silence after the previous segment longer than BRIDGE_S (up to the next speech, or the buffer end
+        when there is none yet) is not bridged: it is trimmed as before."""
+        if self._lead is not None and (spans[0][0] if spans else n) - self._lead > self.bridge:
+            self._lead = None
+
     def _start(self, start: int) -> int:
         """#1252: where the next segment starts: `start`, or earlier at the previous segment's end when audio after
         it was not sent yet (bridged pause), so no audio between two segments is dropped."""
@@ -135,6 +140,7 @@ class Segmenter:
     def _flush(self, buf, fresh):
         if self.use_vad:
             spans = self.vad(buf) if len(buf) else []
+            self._drop_long_bridge(spans, len(buf))
             if spans:  # #323: the silence after the speech at end of input (shorter than min_silence)
                 self.last_pause = (len(buf) - spans[-1][1]) / SR + self.pad
             return buf[self._start(max(0, spans[0][0] - self.ov)):] if spans else None
