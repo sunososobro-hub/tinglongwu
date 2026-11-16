@@ -28,7 +28,7 @@
       "name": "tlwu-mobile-lang-ru.zip",
       "url": "https://github.com/sunososobro-hub/tinglongwu/releases/download/mobile-latest/tlwu-mobile-lang-ru.zip",
       "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ru-int8-2025-04-20.tar.bz2",
-      "note": "Russian speech recognition for conversation mode (SenseVoice cannot hear Russian): sherpa-onnx zipformer transducer, int8, from the Vosk ru model (alphacep/vosk-model-ru), about 73 MB, offline. Licence: Apache-2.0.",
+      "note": "Russian speech recognition for conversation mode (SenseVoice cannot hear Russian): sherpa-onnx zipformer transducer, int8, from the Vosk ru model (alphacep/vosk-model-ru), about 70 MB, offline. Licence: Apache-2.0.",
       "files": [
         {"path": "asr-ru/encoder.int8.onnx", "size": 70876638, "sha256": "eb6c12fbad810d5bc3e427802e604604c69b5943a91feebc43424dd09d9ec407"},
         {"path": "asr-ru/decoder.onnx", "size": 2093080, "sha256": "dcbe1ffa0211e77ca6d3a80164df13fbda3ec00e47d12b9f449f89572df12136"},
