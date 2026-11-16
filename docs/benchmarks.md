@@ -135,3 +135,37 @@ Against the #745 targets: p50 drop 20.2% (target >= 30%: missed); chrF drop 2.50
 An earlier run of the same commit on another runner ([43808855213](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43808855213), CPU not logged) gave the same chrF and WER to the last digit (greedy decoding repeats) and p50 3.680 s -> 3.239 s (12.0% drop). So the quality numbers are stable, and the latency drop is 12-20% depending on the runner CPU.
 
 Why the target is missed: CPU mode only changes speech recognition (ASR time per pair falls 27-38% in the run above: 12.6-17.9 s -> 9.1-11.1 s). Translation takes 2.1-3.1 s per line (median) in both A and B and is the larger part of each line, so it caps the end-to-end gain. The chrF drop comes from beam 1 transcripts (en->zh and zh->en lose 5-6 chrF with the same or nearly the same WER), on only 5 clips per pair. Reproduce: dispatch `.github/workflows/bench-cpu-ab.yml`, or locally `python scripts/bench/cpu_mode_ab.py --run --data eval_data/smoke --base-args "--model small --engine hymt2-cpu" --cpu-args "--engine hymt2-cpu --cpu-mode"`.
+
+### Settings sweep (#745)
+
+Can any Whisper setting reach the #745 targets (p50 -30%, chrF drop <= 1.0, WER rise <= 2) on a 4 vCPU runner? Each row is one more `tlwu_eval --smoke --device cpu` run against A (small, beam 5) on the same runner, Hy-MT2-1.8B unchanged.
+
+Run [43822051019](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43822051019) (Intel Xeon 6975P-C, 4 vCPU, 15 GB). A p50 = 3.655 s:
+
+| variant | p50 s | p50 drop | chrF drop | WER rise (pts) |
+|---|---|---|---|---|
+| A again (small, beam 5, 4 threads) | 3.692 | -1.0% | 0.00 | 0.00 |
+| CPU mode (small, beam 1, 3 threads) | 3.197 | 12.5% | 2.50 | 0.97 |
+| small, beam 1, 4 threads | 3.176 | 13.1% | 2.50 | 0.97 |
+| base, beam 1, 4 threads | 2.298 | 37.1% | 4.69 | 12.08 |
+| base, beam 5, 4 threads | 2.458 | 32.7% | 5.62 | 14.40 |
+
+Run [43819684119](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43819684119) (AMD EPYC 7763, 4 vCPU). A p50 = 4.663 s. The no-timestamps and MT-thread rows used a temporary patch on the branch, not shipped:
+
+| variant | p50 s | p50 drop | chrF drop | WER rise (pts) |
+|---|---|---|---|---|
+| CPU mode (small, beam 1, 3 threads) | 4.706 | -0.9% | -0.03 | 0.12 |
+| small, beam 1, 4 threads | 4.186 | 10.2% | -0.03 | 0.12 |
+| small, beam 2, 4 threads, no timestamps | 4.385 | 6.0% | -0.07 | 5.82 |
+| small, beam 5, 4 threads, no timestamps | 4.575 | 1.9% | 0.20 | 0.45 |
+| small, beam 1, 4 threads, no timestamps, MT 4/4 threads | 4.074 | 12.6% | -0.45 | 5.78 |
+| small, beam 1, 4 threads, no timestamps, MT 2/2 threads | 4.122 | 11.6% | -0.45 | 5.78 |
+
+What this shows:
+- No Whisper setting meets all three targets. `small` tops out at a 10-13% p50 drop. `base` reaches 33-37%, but WER rises 12-14 points (zh CER 13.5% -> 37.6%, partly because base writes Traditional characters with no punctuation; ja 15.6% -> 27.6%) and chrF drops 4.7-5.6.
+- Translation is about half of each line (Hy-MT2 median 1.5-2.5 s per line in every row) and no ASR setting changes it. MT 4/4 or 2/2 llama.cpp threads instead of the default 2/4 changed it by less than the run-to-run noise. So the remaining gain has to come from the MT step (#1198).
+- `without_timestamps` breaks zh: CER 14.2% -> 36.9%. Do not use it in CPU mode.
+- The chrF drop of beam 1 comes from 2 of the 20 clips. On Intel, en_003 loses two commas in the transcript ("To the north, and within easy reach, is" -> "To the north and within easy reach is"). WER ignores punctuation, so it stays 7.77%, but Hy-MT2 then rewords the line and en->zh chrF falls 38.90 -> 33.98. On AMD the same settings give a chrF drop of -0.03. With 5 clips per pair, one changed clip moves a pair's chrF by about 5 and the overall mean by about 1.2, so a 1.0 chrF limit is within the noise of this set. `cpu_mode_ab.py` now lists the clips whose text changed under each table.
+- A on the same runner twice: p50 3.655 vs 3.692 s (1% noise), chrF and WER identical. The same commit on different runner CPUs gives different A numbers (p50 3.66-5.28 s; zh->en chrF 43.42 on AMD vs 48.63 on Intel). Compare A and B only within one run.
+
+Reproduce a sweep: put a `scripts/bench/cpu_ab_variants.json` such as `[{"name": "small-b1-t4", "args": "--engine hymt2-cpu --model small --beam 1 --asr-threads 4"}]` on a branch and dispatch `bench-cpu-ab` on it. `tlwu_eval --beam N --asr-threads N` override the defaults and `--cpu-mode`.
