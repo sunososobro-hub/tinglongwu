@@ -71,17 +71,21 @@ jobs:
           set -o pipefail
           mkdir -p ab
           pip install psutil==7.2.2
-          python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" | tee ab/mt_threads.md
+          python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" \
+            --plans old,cpu-mode,physical,mt-heavy | tee ab/mt_threads.md
           python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" --plans old,cpu-mode --no-asr | tee ab/mt_threads_alone.md
       - name: Lower-bit Hy-MT2 GGUFs under live Whisper load (#1198 next cut)
         continue-on-error: true
         env:
-          QUANTS: Q4_K_M,Q3_K_M,Q3_K_S,Q2_K,IQ4_XS,IQ3_M
+          QUANTS: Q4_K_M,Q4_0,Q4_K_S,IQ4_XS,Q3_K_M,Q3_K_S,IQ3_M,Q2_K
         run: |
           set -o pipefail
           mkdir -p ab
           # download step does not import tinglongwu (its network guard blocks HF); bench files only, never shipped
           python scripts/bench/mt_cpu_threads.py --fetch-quants --quants "$QUANTS" --quant-dir "$HOME/bench-quants"
+          # quants the repo lacks: made here with llama.cpp's quantizer from the best source (F16/Q8_0, else Q4_K_M)
+          python scripts/bench/mt_cpu_threads.py --make-quants --quants "$QUANTS" --quant-dir "$HOME/bench-quants" \
+            --models-dir "$TLWU_MODELS" || echo "some quants could not be made (see above)"
           python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" --plans cpu-mode \
             --quants "$QUANTS" --quant-dir "$HOME/bench-quants" | tee ab/mt_quants.md
       - name: A/B (defaults vs CPU mode)
