@@ -86,3 +86,14 @@ def test_main_api_down_copies_page_unchanged(tmp_path):
 def test_static_page_has_one_track_block():
     page = (ROOT / "docs" / "roadmap.html").read_text("utf-8")
     assert page.count(rr.T_START) == 1 and page.count(rr.T_END) == 1
+
+
+def test_track_shows_progress_rings_with_percent_and_empty_milestone():
+    track = rr.render_track(rr.plan("v0.3.4", MILESTONES))
+    assert 'class="track timeline"' in track
+    assert track.count('class="ring"') == 5  # one ring per open milestone, none for "you are here"
+    assert 'stroke-dasharray="68 32"' in track and ">68%</text>" in track  # v0.3.5: 15/22
+    assert 'stroke-dasharray="78 22"' in track  # v0.4: 42/54
+    assert 'class="bar"' not in track
+    empty = rr.render_track(rr.plan(None, [ms(9, "v1", 0, 0)]))
+    assert 'stroke-dasharray="0 100"' in empty and ">0%</text>" in empty  # no issues: empty ring, no crash

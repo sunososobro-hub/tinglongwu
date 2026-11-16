@@ -60,9 +60,17 @@ def _lab(zh_tw, en, zh_cn, cls, tag="span"):
     return f'<{tag} class="{cls}" data-en="{e(en)}" data-zh-cn="{e(zh_cn)}">{html.escape(zh_tw)}</{tag}>'
 
 
+def _ring(pct, closed, total):
+    """Progress ring (SVG, no JS): r=15.9155 makes the circumference 100, so the dash length is the percent."""
+    return (f'    <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="{closed}/{total} ({pct}%)">'
+            '<circle cx="18" cy="18" r="15.9155" class="rt"/>'
+            f'<circle cx="18" cy="18" r="15.9155" class="rf" stroke-dasharray="{pct} {100 - pct}"/>'
+            f'<text x="18" y="21.5" text-anchor="middle">{pct}%</text></svg>')
+
+
 def render_track(p):
     """Track block (markers included): one card for "you are here", one per open milestone."""
-    out = [T_START, '<div class="track">']
+    out = [T_START, '<div class="track timeline">']
     if p["here"]:
         out += ['  <section class="tc here">', "    " + _lab("你在這裡", "You are here", "你在这里", "role"),
                 f'    <h3>{html.escape(p["here"])}</h3>',
@@ -74,7 +82,7 @@ def render_track(p):
         out += [f'  <section class="tc {c["role"]}">', "    " + _lab(*role, "role"),
                 f'    <h3><a href="{html.escape(c["url"], quote=True)}">{html.escape(c["title"])}</a></h3>',
                 f'    <p class="theme">{html.escape(c["theme"])}</p>' if c["theme"] else "",
-                f'    <div class="bar" role="img" aria-label="{c["closed"]}/{total}"><i style="width:{pct}%"></i></div>',
+                _ring(pct, c["closed"], total),
                 f'    <p class="cnt">{c["closed"]} / {total} '
                 + _lab("張完成", "issues done", "张完成", "u") + "</p>", "  </section>"]
     out += ["</div>", T_END]
