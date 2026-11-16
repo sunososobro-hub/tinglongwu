@@ -234,7 +234,7 @@ class Child:
         self.reader.join(10)
         self.log.close()
 
-    def __enter__(self) -> "Child":
+    def __enter__(self) -> Child:
         return self
 
     def __exit__(self, *exc) -> None:
