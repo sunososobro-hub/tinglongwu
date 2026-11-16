@@ -174,3 +174,36 @@ What this shows:
 - A on the same runner twice: p50 3.655 vs 3.692 s (1% noise), chrF and WER identical. The same commit on different runner CPUs gives different A numbers (p50 3.66-5.28 s; zh->en chrF 43.42 on AMD vs 48.63 on Intel). Compare A and B only within one run.
 
 Reproduce a sweep: put a `scripts/bench/cpu_ab_variants.json` such as `[{"name": "small-b1-t4", "args": "--engine hymt2-cpu --model small --beam 1 --asr-threads 4"}]` on a branch and dispatch `bench-cpu-ab` on it. `tlwu_eval --beam N --asr-threads N` override the defaults and `--cpu-mode`. The workflow installs only Whisper small. A variant with another `--model` needs that model in `$TLWU_MODELS` first (`tlwu-setup --whisper base --models-dir "$TLWU_MODELS"`): run it locally, or add it to the branch's bench run. The base rows above came from a temporary branch patch that ran this setup step.
+
+### MT step on the CPU: quantization and threads (#745, #1198)
+
+Can a smaller Hy-MT2 quant or another thread split give the MT step the speed the p50 -30% target needs? `scripts/bench/mt_cpu_threads.py` in `bench-cpu-ab` run [43861606238](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43861606238) (AMD EPYC 9V74, 4 vCPU = 2 physical cores, 15 GB, commit e3ffbfc), 20 smoke lines, greedy, with Whisper small beam 1 transcribing in the background unless noted. The non-Q4_K_M quants were made on the runner from the published Q8_0 with llama.cpp's quantizer (bench only, never shipped).
+
+Thread plans, Q4_K_M (the shipped quant):
+
+| plan | asr / mt / mt batch threads | MT median s/line | MT p90 s | chrF | Whisper s/clip (during MT) |
+|---|---|---|---|---|---|
+| old | 3 / 2 / 4 | 3.21 | 4.53 | 48.54 | 3.73 |
+| cpu-mode (shipped, #1198) | 2 / 2 / 2 | 2.61 | 3.71 | 48.54 | 2.66 |
+| physical | 1 / 1 / 1 | 2.44 | 3.43 | 48.54 | 3.30 |
+| mt-heavy | 1 / 3 / 3 | 1.88 | 2.80 | 48.54 | 4.31 |
+| old, Whisper off | 3 / 2 / 4 | 1.35 | 1.97 | 48.54 | - |
+| cpu-mode, Whisper off | 2 / 2 / 2 | 1.37 | 1.97 | 48.54 | - |
+
+Quants, cpu-mode threads:
+
+| quant | MT median s/line | MT p90 s | chrF | Whisper s/clip (during MT) |
+|---|---|---|---|---|
+| Q4_K_M (shipped) | 2.64 | 3.64 | 48.54 | 2.71 |
+| Q4_0 | 2.93 | 3.94 | 48.20 | 2.74 |
+| Q4_K_S | 2.39 | 4.01 | 47.15 | 2.78 |
+| IQ4_XS | 3.27 | 4.93 | 48.94 | 2.69 |
+| Q3_K_M | 3.25 | 4.80 | 48.27 | 2.41 |
+| Q3_K_S | 3.28 | 5.12 | 48.32 | 2.61 |
+| IQ3_M | 5.16 | 7.67 | 48.47 | 2.70 |
+| Q2_K | 2.94 | 4.25 | 39.73 | 2.60 |
+
+What this shows:
+- No quant is faster than Q4_K_M by more than the noise without losing chrF. Q4_K_S is 9% faster at the median but slower at p90 and 1.4 chrF lower; Q2_K loses 8.8 chrF. The 3-bit and IQ quants are slower on this CPU (more dequantization work per token on 2 physical cores).
+- Alone, the MT step is 1.35 s per line whatever the thread split. Under load the split only moves time between Whisper and MT: mt-heavy makes MT 28% faster than cpu-mode but Whisper 62% slower, so the line is not faster.
+- Together with the settings sweep above: neither Whisper settings, MT threads nor MT quants reach a 30% lower p50 at the #745 quality limits on a 4 vCPU CPU. The shipped CPU mode keeps Q4_K_M and the #1198 thread split. A larger cut needs a different, smaller MT model, which needs its own chrF / COMET eval first.
