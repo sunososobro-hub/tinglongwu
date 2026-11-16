@@ -73,6 +73,17 @@ jobs:
           pip install psutil==7.2.2
           python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" | tee ab/mt_threads.md
           python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" --plans old,cpu-mode --no-asr | tee ab/mt_threads_alone.md
+      - name: Lower-bit Hy-MT2 GGUFs under live Whisper load (#1198 next cut)
+        continue-on-error: true
+        env:
+          QUANTS: Q4_K_M,Q3_K_M,Q3_K_S,Q2_K,IQ4_XS,IQ3_M
+        run: |
+          set -o pipefail
+          mkdir -p ab
+          # download step does not import tinglongwu (its network guard blocks HF); bench files only, never shipped
+          python scripts/bench/mt_cpu_threads.py --fetch-quants --quants "$QUANTS" --quant-dir "$HOME/bench-quants"
+          python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" --plans cpu-mode \
+            --quants "$QUANTS" --quant-dir "$HOME/bench-quants" | tee ab/mt_quants.md
       - name: A/B (defaults vs CPU mode)
         run: |
           set -o pipefail
@@ -96,6 +107,9 @@ jobs:
             echo
             echo "MT alone:"
             cat ab/mt_threads_alone.md 2>/dev/null || echo "no table"
+            echo
+            echo "### Hy-MT2 quantizations, CPU-mode threads, under live Whisper load (#1198)"
+            cat ab/mt_quants.md 2>/dev/null || echo "no table"
           } > ab/summary.md
           cat ab/summary.md | tee -a "$GITHUB_STEP_SUMMARY"   # also in the log: job summaries are not in the API
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

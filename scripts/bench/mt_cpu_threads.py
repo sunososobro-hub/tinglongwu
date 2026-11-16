@@ -12,6 +12,13 @@ table: MT median / p90 seconds per line, chrF against the references, and Whispe
 
   python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir ~/tlwu-models [--whisper small]
   python scripts/bench/mt_cpu_threads.py ... --plans old,cpu-mode --no-asr     # MT alone, no background Whisper
+  python scripts/bench/mt_cpu_threads.py ... --plans cpu-mode --quants Q4_K_M,Q3_K_M,Q2_K  # lower-bit Hy-MT2 GGUFs
+
+--quants (#1198 next cut): run each plan once per quantization of the same Hy-MT2 model. Q4_K_M is the shipped
+file from --models-dir; any other quant is read from --quant-dir, filled beforehand by `--fetch-quants` (a separate
+run: importing tinglongwu blocks the network, so the download step never imports it). Bench only: not pinned, never
+shipped. A quant the repo does not have gets a "not found" table row. A lower-bit file is only worth shipping if its MT median
+under load is lower with a chrF drop <= 2 on the same lines.
 
 Plans (asr / mt decode / mt batch threads; P = physical cores, L = logical CPUs):
   old       the pre-#1198 CPU mode: asr = min(L-1, 8), mt = L//2, batch = L (llama-cpp-python defaults)
@@ -32,6 +39,26 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 PAIRS = (("en", "zh"), ("ja", "zh"), ("ru", "zh"), ("zh", "en"))
+SHIPPED_QUANT = "Q4_K_M"  # tinglongwu.hymt.HYMT_FILE
+GGUF_REPO = "tencent/Hy-MT2-1.8B-GGUF"
+
+
+def pick_quants(repo_files: list[str], quants: list[str]) -> dict[str, str | None]:
+    """quant -> GGUF file name in the repo (None = not there). Matches `...-<quant>.gguf` / `..._<quant>.gguf`,
+    case-insensitive; a split model (`-00001-of-...`) and imatrix side files are never picked."""
+    out: dict[str, str | None] = {}
+    for q in quants:
+        hit = None
+        for f in sorted(repo_files):
+            name = f.rsplit("/", 1)[-1].lower()
+            if not name.endswith(".gguf") or "-of-" in name or "imatrix" in name:
+                continue
+            stem = name[:-5]
+            if stem.endswith("-" + q.lower()) or stem.endswith("_" + q.lower()) or stem.endswith("." + q.lower()):
+                hit = f
+                break
+        out[q] = hit
+    return out
 
 
 def plans(physical: int, logical: int) -> dict[str, tuple[int, int, int]]:
@@ -110,6 +137,25 @@ def translate_all(llm, lines) -> tuple[list[float], list[tuple[str, str]]]:
     return times, pairs
 
 
+def fetch_quants(repo: str, quants: list[str], dest: Path) -> None:
+    """Download the requested quants of `repo` into `dest` (bench only: no pin, never used by tlwu itself).
+    Runs without importing tinglongwu (its network guard would block the download)."""
+    from huggingface_hub import hf_hub_download, list_repo_files
+
+    for q, f in pick_quants(list_repo_files(repo), quants).items():
+        if f is not None:
+            hf_hub_download(repo, f, local_dir=str(dest))
+        print(f"mt_cpu_threads: {q}: {f or 'not in ' + repo}", file=sys.stderr, flush=True)
+
+
+def local_quants(quant_dir: Path | None, quants: list[str]) -> dict[str, str | None]:
+    """quant -> local GGUF path under `quant_dir` (searched recursively), None when missing."""
+    if quant_dir is None or not Path(quant_dir).is_dir():
+        return {q: None for q in quants}
+    found = {str(p.relative_to(quant_dir)): p for p in Path(quant_dir).rglob("*.gguf")}
+    return {q: (None if f is None else str(found[f])) for q, f in pick_quants(list(found), quants).items()}
+
+
 def p90(v: list[float]) -> float:
     s = sorted(v)
     return s[min(len(s) - 1, int(round(0.9 * (len(s) - 1))))]
@@ -123,7 +169,20 @@ def main(argv=None) -> int:
     p.add_argument("--plans", default="old,cpu-mode,physical")
     p.add_argument("--per-pair", type=int, default=5)
     p.add_argument("--no-asr", action="store_true", help="MT alone (no background Whisper)")
+    p.add_argument("--quants", default=SHIPPED_QUANT,
+                   help=f"comma list of Hy-MT2 GGUF quantizations (default {SHIPPED_QUANT}, the shipped file)")
+    p.add_argument("--gguf-repo", default=GGUF_REPO, help="Hugging Face repo for quants other than the shipped one")
+    p.add_argument("--quant-dir", type=Path, default=None, help="where --fetch-quants put the other quants")
+    p.add_argument("--fetch-quants", action="store_true",
+                   help="only download the non-shipped --quants from --gguf-repo into --quant-dir, then exit")
     a = p.parse_args(argv)
+    quants = [x.strip() for x in a.quants.split(",") if x.strip()] or [SHIPPED_QUANT]
+    others = [q for q in quants if q.upper() != SHIPPED_QUANT]
+    if a.fetch_quants:
+        if a.quant_dir is None:
+            p.error("--fetch-quants needs --quant-dir")
+        fetch_quants(a.gguf_repo, others, a.quant_dir)
+        return 0
     # The plans are listen-only thread counts: TLWU_BOTH=1 would make Whisper use the #250 listen+speak split instead
     # of the counts printed in the table.
     os.environ.pop("TLWU_BOTH", None)
@@ -147,16 +206,22 @@ def main(argv=None) -> int:
     allp = plans(P, L)
     print(f"CPU: {P} physical cores, {L} logical; {len(lines)} lines; background Whisper "
           f"{'off' if a.no_asr else a.whisper + ' beam 1'}\n")
-    out = ["| plan | asr / mt / mt batch threads | MT median s/line | MT p90 s | chrF | Whisper s/clip (during MT) |",
-           "|---|---|---|---|---|---|"]
+    files = {SHIPPED_QUANT: str(hymt_path(mdir)), **local_quants(a.quant_dir, others)}
+    out = ["| plan | quant | asr / mt / mt batch threads | MT median s/line | MT p90 s | chrF "
+           "| Whisper s/clip (during MT) |",
+           "|---|---|---|---|---|---|---|"]
     seen = set()
-    for name in [x.strip() for x in a.plans.split(",") if x.strip()]:
+    for name, quant in [(n, q) for n in [x.strip() for x in a.plans.split(",") if x.strip()] for q in quants]:
         asr_t, mt_t, mt_b = allp[name]
-        if (asr_t, mt_t, mt_b) in seen:
-            out.append(f"| {name} | {asr_t} / {mt_t} / {mt_b} | same as above | | | |")
+        path = files.get(SHIPPED_QUANT if quant.upper() == SHIPPED_QUANT else quant)
+        if path is None:
+            out.append(f"| {name} | {quant} | {asr_t} / {mt_t} / {mt_b} | not found ({a.gguf_repo}) | | | |")
             continue
-        seen.add((asr_t, mt_t, mt_b))
-        llm = Llama(model_path=str(hymt_path(mdir)), n_gpu_layers=0, n_ctx=2048, n_threads=mt_t,
+        if (asr_t, mt_t, mt_b, path) in seen:
+            out.append(f"| {name} | {quant} | {asr_t} / {mt_t} / {mt_b} | same as above | | | |")
+            continue
+        seen.add((asr_t, mt_t, mt_b, path))
+        llm = Llama(model_path=path, n_gpu_layers=0, n_ctx=2048, n_threads=mt_t,
                     n_threads_batch=mt_b, verbose=False)
         translate_all(llm, lines[:1])  # warm-up
         if a.no_asr:
@@ -171,7 +236,7 @@ def main(argv=None) -> int:
             del load  # free this plan's Whisper before the next plan loads its own
             asr_s = f"{statistics.median(inside):.2f}" if inside else "-"
         del llm
-        out.append(f"| {name} | {asr_t} / {mt_t} / {mt_b} | {statistics.median(times):.2f} | {p90(times):.2f} "
+        out.append(f"| {name} | {quant} | {asr_t} / {mt_t} / {mt_b} | {statistics.median(times):.2f} | {p90(times):.2f} "
                    f"| {scoring.chrf(pairs):.2f} | {asr_s} |")
         print(out[-1], file=sys.stderr, flush=True)
     print("\n".join(out))
