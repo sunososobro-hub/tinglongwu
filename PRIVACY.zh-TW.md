@@ -2,6 +2,13 @@
 
 [English](PRIVACY.md)
 
+<p align="center"><img src="assets/docs/privacy-split.zh-TW.svg" alt="只留在你的電腦：音訊、逐字稿、設定、模型。只有你動手時才連網：安裝下載、安裝程式、更新檢查、回報按鈕。沒有遙測。" width="720"></p>
+
+你的聲音和文字不會離開電腦；只有你自己啟動的步驟才會連網。
+
+<details>
+<summary>完整內容</summary>
+
 tinglongWu 在你自己的電腦上翻譯語音。本頁說明哪些資料只留在本機，以及每一處會用到網路的地方。內容對應本儲存庫的程式碼，不是法律保證（見「限制」）。
 
 ## 只留在本機的資料
@@ -50,3 +57,5 @@ tinglongWu 在你自己的電腦上翻譯語音。本頁說明哪些資料只留
 
 ## 聯絡
 隱私問題請到 https://github.com/sunososobro-hub/tinglongwu/issues 開 issue，敏感事項請依 [SECURITY.md](SECURITY.md) 私下回報。
+
+</details>

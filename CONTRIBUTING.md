@@ -3,45 +3,16 @@
 **Don't be afraid. Come and contribute.**
 **The default answer is yes: if your PR respects the principles below, we will work with you to get it merged. No contribution is too small, and first-timers are welcome.**
 
-Thanks for stopping by. You do not need to be an expert to help, and we would rather get a rough PR we can work on together than no PR at all.
+```mermaid
+flowchart LR
+  I["Issue or small fix"] --> B["Branch from dev"] --> P["PR to dev, Closes #N"] --> T["CI test + AI review"] --> M["Maintainer merges"] --> C["Credited in release notes"]
+```
 
-## What we value
+Small fixes go straight to a PR; bigger work starts with an issue.
 
-- Small PRs: typo fixes, clearer docs, better error messages.
-- Translations of docs and UI strings.
-- **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](docs/details.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
-- AI-assisted PRs are fine. You are the author: run the code and the tests yourself before opening the PR.
+<p align="center"><img src="assets/docs/contrib-rules.svg" alt="The only hard rules: offline by default, no telemetry, cloud only opt-in, modest hardware, English, MIT-compatible deps, no GPL/AGPL code." width="720"></p>
 
-## Questions and ideas
-
-Not sure it is a bug, or just want to ask how something works or show how you use tlwu? Use [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions) (Q&A, Show and tell, Ideas). No GitHub skills needed.
-
-## Before you start
-
-- **Small fix** (typo, docs, a few lines): go straight to a PR.
-- **Bigger work** (new feature, refactor, new dependency, anything touching the audio/ASR/translation pipeline): please open an issue or comment on an existing one first, so nobody wastes effort on something that cannot be merged.
-- **Issue format:** English, with `Why:` / `Goal:` / `Acceptance:` / `Verify:` lines. The full rules (labels, who may start work) are in [`.agent/tlwu_rules.md` section 15](.agent/tlwu_rules.md#15-issue-format-owner-2026-11-13-588). Don't worry if you get it wrong: triage tidies every new issue.
-- **New here?** Look for the [good first issue](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue) label. Comment on the issue and say you are taking it.
-
-## Project principles: the only hard rules
-
-These are the only hard rules, so this is exactly the bar. Everything else is negotiable and we will help you with it. If you are unsure whether your PR fits, ask in the issue.
-
-- **Fully offline by default.** Only `tlwu-setup` (install / model download) may use the network. See [docs/privacy.md](docs/privacy.md).
-- **No telemetry.** No analytics, no crash reporting, no "phone home".
-- **No new cloud dependency in the default path.** A cloud option may exist only if it is opt-in and off by default.
-- **Runs on modest hardware:** GPUs with 4-8 GB of VRAM, plus a CPU-only path.
-- **English in code, UI strings, comments, and docs** (translated docs live in their own `*.zh-TW.md` / `*.zh-CN.md` files).
-- **MIT-compatible dependencies only.** Add new ones to [docs/licenses.md](docs/licenses.md) / [THIRD_PARTY.md](THIRD_PARTY.md) with their license.
-- **Never copy code from copyleft projects (GPL / AGPL).** Ideas are fine; code is not. When in doubt, ask.
-
-## Pull requests and credit
-
-- External PRs are welcome.
-- - The default branch for PRs is `dev` (`main` only receives release PRs, plus docs-only fast-lane PRs opened by maintainers).
-- PR titles look like `fix #N: short summary` (or `feat #N: ...`, `docs: ...`); keep commit messages short and in English.
-- PRs are merged by rebase, so your authorship is kept in the commit history.
-- Contributors are credited in the release notes.
+Stay inside these rules and the answer is yes.
 
 ## Dev setup
 
@@ -88,6 +59,49 @@ unpinned and not run. Without huggingface.co access (cloud sessions), first add 
 `scripts/bench/make_ci_smoke.py` and to the `pin_set` choices in `.github/workflows/eval-langs.yml`, push that, then
 dispatch `eval-langs` on that branch with `pin_set` set to the new set: its `pin` job prints the pin file and uploads it
 as an artifact (`pins_<set>.json`); commit it under the `pins` path its lines in `eval/languages.json` name.
+
+<details>
+<summary>Full text</summary>
+
+Thanks for stopping by. You do not need to be an expert to help, and we would rather get a rough PR we can work on together than no PR at all.
+
+## What we value
+
+- Small PRs: typo fixes, clearer docs, better error messages.
+- Translations of docs and UI strings.
+- **Testing on your own hardware.** Mac testers are especially welcome (see the [verification table](docs/details.md#verification-status)), and so are native Russian and Japanese speakers who can tell us when a translation sounds wrong.
+- AI-assisted PRs are fine. You are the author: run the code and the tests yourself before opening the PR.
+
+## Questions and ideas
+
+Not sure it is a bug, or just want to ask how something works or show how you use tlwu? Use [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions) (Q&A, Show and tell, Ideas). No GitHub skills needed.
+
+## Before you start
+
+- **Small fix** (typo, docs, a few lines): go straight to a PR.
+- **Bigger work** (new feature, refactor, new dependency, anything touching the audio/ASR/translation pipeline): please open an issue or comment on an existing one first, so nobody wastes effort on something that cannot be merged.
+- **Issue format:** English, with `Why:` / `Goal:` / `Acceptance:` / `Verify:` lines. The full rules (labels, who may start work) are in [`.agent/tlwu_rules.md` section 15](.agent/tlwu_rules.md#15-issue-format-owner-2026-11-13-588). Don't worry if you get it wrong: triage tidies every new issue.
+- **New here?** Look for the [good first issue](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue) label. Comment on the issue and say you are taking it.
+
+## Project principles: the only hard rules
+
+These are the only hard rules, so this is exactly the bar. Everything else is negotiable and we will help you with it. If you are unsure whether your PR fits, ask in the issue.
+
+- **Fully offline by default.** Only `tlwu-setup` (install / model download) may use the network. See [docs/privacy.md](docs/privacy.md).
+- **No telemetry.** No analytics, no crash reporting, no "phone home".
+- **No new cloud dependency in the default path.** A cloud option may exist only if it is opt-in and off by default.
+- **Runs on modest hardware:** GPUs with 4-8 GB of VRAM, plus a CPU-only path.
+- **English in code, UI strings, comments, and docs** (translated docs live in their own `*.zh-TW.md` / `*.zh-CN.md` files).
+- **MIT-compatible dependencies only.** Add new ones to [docs/licenses.md](docs/licenses.md) / [THIRD_PARTY.md](THIRD_PARTY.md) with their license.
+- **Never copy code from copyleft projects (GPL / AGPL).** Ideas are fine; code is not. When in doubt, ask.
+
+## Pull requests and credit
+
+- External PRs are welcome.
+- - The default branch for PRs is `dev` (`main` only receives release PRs, plus docs-only fast-lane PRs opened by maintainers).
+- PR titles look like `fix #N: short summary` (or `feat #N: ...`, `docs: ...`); keep commit messages short and in English.
+- PRs are merged by rebase, so your authorship is kept in the commit history.
+- Contributors are credited in the release notes.
 
 ## Visual first
 
@@ -147,3 +161,5 @@ Maintainers (and the AI helpers) use these on issues; you never have to set them
 Report security problems privately, see [SECURITY.md](SECURITY.md). Be kind (see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)): assume good intent, and keep feedback about the code, not the person.
 
 By contributing you agree your work is released under the [MIT License](LICENSE).
+
+</details>

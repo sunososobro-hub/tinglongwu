@@ -2,6 +2,13 @@
 
 [繁體中文](PRIVACY.zh-TW.md)
 
+<p align="center"><img src="assets/docs/privacy-split.en.svg" alt="Stays on your PC: audio, transcripts, settings, models. Network only when you act: setup downloads, installers, update check, report buttons. No telemetry." width="720"></p>
+
+Your voice and text never leave your PC; the network is used only for the steps you start yourself.
+
+<details>
+<summary>Full text</summary>
+
 tinglongWu translates speech on your own computer. This page says what stays local and every case where the network is used. It describes the code in this repository; it is not a legal guarantee (see "Limits").
 
 ## What stays on your machine
@@ -51,3 +58,5 @@ Paid versions: checkout (email, license key, card data) is handled entirely by t
 
 ## Contact
 Privacy questions: open an issue at https://github.com/sunososobro-hub/tinglongwu/issues, or report sensitive matters privately as described in [SECURITY.md](SECURITY.md).
+
+</details>

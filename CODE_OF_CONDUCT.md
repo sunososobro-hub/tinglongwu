@@ -1,5 +1,24 @@
 # Contributor Covenant Code of Conduct
 
+<p align="center"><img src="assets/docs/coc-do-dont.svg" alt="Do: empathy, respect, good feedback, own mistakes, community first. Don't: sexual language, trolling, harassment, doxxing, unprofessional conduct." width="720"></p>
+
+Be kind to people and about the work; the right column gets you removed.
+
+<p align="center"><img src="assets/docs/coc-ladder.svg" alt="Enforcement: 1 Correction, 2 Warning, 3 Temporary ban, 4 Permanent ban" width="720"></p>
+
+Consequences grow with the harm, from a private note to a permanent ban.
+
+```mermaid
+flowchart LR
+  A["Something wrong?"] --> B["Security tab: Report a vulnerability"] --> C["Private review by maintainers"]
+  A -. "tab unavailable" .-> D["Minimal public issue, no personal data"] --> C
+```
+
+Reports stay private; every reporter's privacy is protected.
+
+<details>
+<summary>Full text</summary>
+
 ## Our Pledge
 
 We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, caste, color, religion, or sexual identity and orientation.
@@ -74,3 +93,5 @@ This Code of Conduct is adapted from the [Contributor Covenant][homepage], versi
 
 [homepage]: https://www.contributor-covenant.org
 [v2.1]: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
+
+</details>
