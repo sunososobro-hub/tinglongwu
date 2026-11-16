@@ -120,7 +120,8 @@ def parse_args(argv=None):
                         "audio start to the first translated draft and to the final line")
     p.add_argument("--paced", action="store_true",
                    help="with --file: release the audio in real time and use the live clock, like live capture "
-                        "(for latency measurements; output text is unchanged)")
+                        "(latency measurements, meeting replay #1264); on the CPU the live ASR time budget applies "
+                        "as in live capture")
     p.add_argument("--latency-jsonl", metavar="PATH",
                    help="append one JSON line per final line to PATH: seconds from the end of speech to the segment "
                         "cut (vad), ASR done (asr), sentence-merge release (merge), translation shown (mt), the "
@@ -633,7 +634,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     cpu_fallback_mt(dev, asr.device, asr_threads=getattr(a, "cpu_threads", None),
                     transcript_only=bool(a.transcript_only))  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
     dev = asr.device  # may have fallen back to cpu
-    asr.live = dev == "cpu" and not a.file  # #251: live CPU listening caps ASR retries and time per sentence
+    asr.live = asr_live(dev, a.file, getattr(a, "paced", False))  # #251 / #1264
     cpu_max_wait(a, dev)
     translator = None
     if not a.transcript_only:
@@ -821,6 +822,13 @@ def active_mt_path(translator):
     from .hymt import active_path
 
     return active_path(translator) if translator is not None else None
+
+
+def asr_live(dev: str, file, paced: bool) -> bool:
+    """#251: live CPU listening caps ASR retries and time per sentence. #1264: a --paced file is live too (real
+    time, live clock), so a replay drops / cuts sentences exactly where live capture would; an unpaced file runs
+    faster than real time and keeps full decoding."""
+    return dev == "cpu" and (not file or bool(paced))
 
 
 def latency_recorder(path, log):
