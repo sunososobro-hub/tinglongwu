@@ -89,6 +89,17 @@ unpinned and not run. Without huggingface.co access (cloud sessions), first add 
 dispatch `eval-langs` on that branch with `pin_set` set to the new set: its `pin` job prints the pin file and uploads it
 as an artifact (`pins_<set>.json`); commit it under the `pins` path its lines in `eval/languages.json` name.
 
+## Visual first
+
+Anything users or contributors read to judge status, progress or a comparison (README, docs pages, `roadmap.html`, `docs.html`, reports) shows a picture before the words:
+
+- **Chart, diagram or gauge first.** Put the visual at the top of the section.
+- **One-line takeaway.** A single sentence under the visual says what to conclude from it.
+- **Table only as a fallback**, when no chart can carry the data.
+- **English labels** on every axis, legend and caption.
+
+Reference implementation: the chart-first stats page ([#1213](https://github.com/sunososobro-hub/tinglongwu/issues/1213)). Child issues applying the convention: [#1218](https://github.com/sunososobro-hub/tinglongwu/issues/1218) (`roadmap.html`) and [#1219](https://github.com/sunososobro-hub/tinglongwu/issues/1219) (`docs.html`).
+
 ## Branches and PRs
 
 - **Open PRs against `dev`, not `main`.** `main` is the stable release branch.
