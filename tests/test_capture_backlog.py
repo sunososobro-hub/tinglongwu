@@ -94,7 +94,8 @@ class _LiveSource:
             try:
                 data = self.q.get(timeout=0.05)
             except queue.Empty:
-                if not self.worker.is_alive():  # ends only after the worker queued its final block
+                # ends only after the worker exited (its final put is done) AND the queue is drained
+                if not self.worker.is_alive() and self.q.empty():
                     return
                 continue
             yield to_mono_16k(data, NATIVE_RATE)
