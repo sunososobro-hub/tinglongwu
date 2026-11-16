@@ -78,3 +78,15 @@ def test_cli_exit_code(tmp_path, capsys):
     assert capsys.readouterr().out.startswith("bump-exempt: yes")
     f.write_text(json.dumps([INIT, wn("@@ -1 +1 @@\n-old\n+new\n")]), "utf-8")
     assert rn.main(["bump-check", "--pr", "1", "--files", str(f)]) == 1
+
+
+def test_single_quoted_version_needs_opus():
+    # app_version reads double quotes only; release_commit would fail on a single-quoted bump
+    sq = dict(INIT, patch=INIT["patch"].replace('+__version__ = "0.4.3"', "+__version__ = '0.4.3'"))
+    assert rn.bump_exempt([sq])[0] is False
+
+
+def test_indented_or_deeper_extra_heading_needs_opus():
+    for h in ("  ## v0.4.2", "   # Hijack", "### Sub"):
+        bad = wn(f"@@ -10,2 +10,6 @@\n \n+## v0.4.3\n+- a\n+{h}\n+- b\n")
+        assert rn.bump_exempt([INIT, bad])[0] is False, h

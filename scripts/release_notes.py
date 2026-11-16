@@ -330,7 +330,7 @@ def todo_whats_new(tag: str) -> str:
     return f"- TODO: add a `## {tag}` section to {WHATS_NEW_FILE} (the bump PR writes it)."
 
 
-VERSION_LINE_RE = re.compile(r'^__version__\s*=\s*["\'](\d+)\.(\d+)\.(\d+)["\']\s*$')
+VERSION_LINE_RE = re.compile(r'^__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"\s*$')  # double quotes, as app_version reads it
 
 
 def _patch_lines(patch: str) -> tuple[list[str], list[str]]:
@@ -381,7 +381,7 @@ def bump_exempt(files: list[dict]) -> tuple[bool, str]:
         prev = cur
     if runs != 1 or next((x for x in added if x.strip()), "") != f"## {tag}":
         return False, f"{WHATS_NEW_FILE} must add one block that starts with `## {tag}`"
-    heads = [x for x in added if re.match(r"^#{1,2}[ \t]", x)]
+    heads = [x for x in added if re.match(r"^ {0,3}#{1,6}(?:[ \t]|$)", x)]  # any GFM ATX heading, up to 3 spaces in
     if heads != [f"## {tag}"]:
         return False, f"{WHATS_NEW_FILE} must add exactly one `## {tag}` heading"
     if whats_new_section("\n".join(added) + "\n", tag) is None:
