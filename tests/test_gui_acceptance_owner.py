@@ -240,8 +240,12 @@ def test_entries_follow_the_ui_language(make_app):
 
 @pytest.mark.parametrize("lang", ["zh-TW", "zh-CN", "ja", "ru", "en"])
 def test_scene_strings_exist_in_every_ui_language(lang):
-    from tinglongwu.i18n import MESSAGES
+    """Every UI language (zh-CN falls back to the zh-TW table, i18n.normalize) shows two distinct, translated entries."""
+    from tinglongwu import i18n
 
-    key = next(k for k in MESSAGES if k.lower() == lang.lower())
-    for sc in ("meeting", "video"):
-        assert MESSAGES[key]["gui_scene_" + sc]
+    key = i18n.normalize(lang)
+    assert key in i18n.MESSAGES
+    names = [i18n.MESSAGES[key].get("gui_scene_" + sc) for sc in ("meeting", "video")]
+    assert all(names) and names[0] != names[1]
+    if key != i18n.DEFAULT:
+        assert names != [i18n.MESSAGES[i18n.DEFAULT]["gui_scene_" + sc] for sc in ("meeting", "video")]
