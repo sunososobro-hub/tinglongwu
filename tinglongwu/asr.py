@@ -105,13 +105,11 @@ class Recognizer(ABC):
 def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int, int | None]:
     """#780: (beam, cpu_threads) for a CPU model loaded after a CUDA load failure. Values already given (the CPU
     policy ran) win; otherwise the hwprobe.cpu_mode_settings policy; TLWU_CPU_THREADS overrides the thread count."""
-    from .hwprobe import cpu_mode_settings, physical_cores, ram_mib as _ram
+    from .hwprobe import cpu_mode_settings, ram_mib as _ram
 
     if not beam or not threads:
         mib = ram_mib if ram_mib is not None else _ram()
-        logical = cores or os.cpu_count() or 4
-        st = cpu_mode_settings(logical, mib / 1024 if mib else 16.0,
-                               physical=logical if cores else physical_cores(logical))
+        st = cpu_mode_settings(cores or os.cpu_count() or 4, mib / 1024 if mib else 16.0)
         beam, threads = beam or st.beam, threads or st.threads
     env = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
     if env.isdigit() and int(env) > 0:

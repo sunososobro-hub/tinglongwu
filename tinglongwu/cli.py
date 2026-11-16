@@ -444,30 +444,28 @@ def listen_segmenter(a) -> Segmenter:
                      vad_pad=max(0.0, getattr(a, "vad_pad", 0.1)), **extra)
 
 
-def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=None, physical=None):
+def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=None):
     """#780: on the CPU, apply hwprobe.cpu_mode_settings. Explicit user choices win: an explicit --model is kept, an
     auto-picked model is lowered to the policy size when that is downloaded, TLWU_CPU_THREADS is kept. beam / threads
     go to the recognizer via a.cpu_beam / a.cpu_threads; the MT engine's llama.cpp threads go to threads.set_cpu_mode
-    (#1198). `cores` / `physical` (tests) default to this PC's logical CPUs / physical cores. merge=True raises an unset --min-words to the meeting value (3); an explicit --min-words wins.
+    (#1198). merge=True raises an unset --min-words to the meeting value (3); an explicit --min-words wins.
     Returns the CpuMode (None when not on the CPU)."""
     from . import threads as thread_budget
 
     if dev != "cpu":
         thread_budget.set_cpu_mode(None)  # a GPU run after a CPU run in the same GUI process: llama.cpp defaults
         return None
-    from .hwprobe import cpu_mode_threads, physical_cores, ram_mib, cpu_mode_settings
+    from .hwprobe import cpu_mode_threads, ram_mib, cpu_mode_settings
     from .models import whisper_installed
 
     if ram_gb is None:
         mib = ram_mib()
         ram_gb = mib / 1024 if mib else 16.0  # unknown RAM: the middle tier
-    logical = cores or os.cpu_count() or 4
-    phys = physical if physical is not None else (logical if cores else physical_cores(logical))
-    st = cpu_mode_settings(logical, ram_gb, physical=phys)
-    plan = cpu_mode_threads(phys, logical)  # #1198: Whisper + Hy-MT2 share the physical cores, no oversubscription
+    n = cores or os.cpu_count() or 4
+    st = cpu_mode_settings(n, ram_gb)
+    plan = cpu_mode_threads(n)  # #1198: Whisper + Hy-MT2 together never ask for more threads than the CPU has
     thread_budget.set_cpu_mode(plan.mt, plan.mt_batch)
-    print(f"tlwu: CPU mode threads: {phys} physical / {logical} logical cores -> asr={st.threads} "
-          f"mt={plan.mt}/{plan.mt_batch}", file=sys.stderr)
+    print(f"tlwu: CPU mode threads: {n} CPUs -> asr={st.threads} mt={plan.mt}/{plan.mt_batch}", file=sys.stderr)
     order = ["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"]
     if (not explicit_model and getattr(a, "quality", "auto") == "auto" and a.model in order
             and order.index(a.model) > order.index(st.size) and st.size in whisper_installed(mdir)):

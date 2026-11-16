@@ -64,15 +64,14 @@ def cpu_mode_asr(a, dev: str, model: str, cores=None, ram_gb=None):
     if not getattr(a, "cpu_mode", False) or dev != "cpu":
         return model, None, None
     from tinglongwu import threads as thread_budget
-    from tinglongwu.hwprobe import cpu_mode_settings, cpu_mode_threads, physical_cores, ram_mib
+    from tinglongwu.hwprobe import cpu_mode_settings, cpu_mode_threads, ram_mib
 
     if ram_gb is None:
         mib = ram_mib()
         ram_gb = mib / 1024 if mib else 16.0
-    logical = cores or os.cpu_count() or 4
-    phys = logical if cores else physical_cores(logical)
-    st = cpu_mode_settings(logical, ram_gb, physical=phys)
-    plan = cpu_mode_threads(phys, logical)
+    n = cores or os.cpu_count() or 4
+    st = cpu_mode_settings(n, ram_gb)
+    plan = cpu_mode_threads(n)
     thread_budget.set_cpu_mode(plan.mt, plan.mt_batch)  # #1198: the MT engine gets CPU mode's threads too, like tlwu
     order = ["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"]
     if not a.model and model in order and order.index(model) > order.index(st.size):

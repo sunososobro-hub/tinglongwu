@@ -140,31 +140,33 @@ def test_cpu_on_work_reports_mt_ms_and_keeps_slowwatch():
 
 
 # #1198: Whisper and Hy-MT2 run at the same time in the live app. On an 8-core / 16-thread laptop CPU mode used to
-# give Whisper 8 threads and llama.cpp 8 decode + 16 prompt threads: 24 busy threads on 8 cores.
-@pytest.mark.parametrize("physical,logical", [(1, 1), (2, 4), (4, 4), (4, 8), (6, 12), (8, 16), (16, 32)])
-def test_cpu_mode_threads_never_oversubscribe_physical_cores(physical, logical):
+# give Whisper 8 threads and llama.cpp 8 decode + 16 prompt threads: 24 busy threads on 16 CPUs.
+@pytest.mark.parametrize("cores", [1, 2, 3, 4, 6, 8, 12, 16, 32])
+def test_cpu_mode_threads_never_oversubscribe(cores):
     from tinglongwu.hwprobe import cpu_mode_threads
 
-    t = cpu_mode_threads(physical, logical)
-    assert t.asr >= 1 and t.mt >= 1 and t.mt_batch >= 1
-    assert physical == 1 or t.asr + t.mt <= physical
-    assert t.mt_batch <= max(1, physical - t.asr) and t.mt_batch == t.mt
+    t = cpu_mode_threads(cores)
+    assert t.asr >= 1 and t.mt >= 1 and t.mt_batch == t.mt
+    assert cores == 1 or t.asr + t.mt <= cores
+    assert t.asr == cpu_mode_settings(cores, 16).threads
 
 
 def test_apply_cpu_mode_hands_mt_threads_to_llama(tmp_path, monkeypatch):
-    """Ryzen 7040 shape (8 physical / 16 logical): MT decode and prompt threads + Whisper fit in the 8 cores."""
+    """Ryzen 7040 shape (16 logical CPUs): llama.cpp gets 8 decode / 8 prompt threads (was 8 / 16), Whisper 8."""
     from types import SimpleNamespace
     from tinglongwu import cli, threads
 
     monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
     monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
+    monkeypatch.setattr(threads.os, "cpu_count", lambda: 16)
     monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small"})
     a = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=True)
-    cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=16, ram_gb=16, physical=8)
+    assert (threads.current()["mt"], threads.current()["mt_batch"]) == (8, 16)  # llama.cpp defaults before
+    cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=16, ram_gb=16)
     t = threads.current()
-    assert (t["mt"], t["mt_batch"]) == (4, 4)
-    assert a.cpu_threads + t["mt"] <= 8 and t["mt_batch"] <= 8
+    assert (t["mt"], t["mt_batch"]) == (8, 8)
+    assert a.cpu_threads + t["mt"] <= 16 and a.cpu_threads + t["mt_batch"] <= 16
 
 
 def test_cpu_mode_mt_threads_cleared_on_gpu_and_ignored_in_listen_speak(tmp_path, monkeypatch):
@@ -173,34 +175,13 @@ def test_cpu_mode_mt_threads_cleared_on_gpu_and_ignored_in_listen_speak(tmp_path
 
     monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(threads.os, "cpu_count", lambda: 4)
     monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small"})
     a = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=True)
-    cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=16, ram_gb=16, physical=8)
+    cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=4, ram_gb=16)
+    assert (threads.current()["mt"], threads.current()["mt_batch"]) == (2, 2)
     monkeypatch.setenv("TLWU_BOTH", "1")  # listen+speak keeps the #250 split
-    assert threads.current()["mt"] == threads.split(16)["listen"]["mt"]
+    assert threads.current()["mt"] == threads.split(4)["listen"]["mt"]
     monkeypatch.delenv("TLWU_BOTH")
     cli.apply_cpu_mode(SimpleNamespace(model="large-v3", quality="auto"), "cuda", tmp_path, explicit_model=False)
-    assert (threads.current()["mt"], threads.current()["mt_batch"]) == (8, 16)  # llama.cpp defaults again
-
-
-def test_physical_cores_never_above_logical(monkeypatch):
-    import psutil
-    from tinglongwu.hwprobe import physical_cores
-
-    monkeypatch.setattr(psutil, "cpu_count", lambda logical=True: 8)
-    assert physical_cores(16) == 8 and physical_cores(4) == 4
-    monkeypatch.setattr(psutil, "cpu_count", lambda logical=True: None)
-    monkeypatch.setattr("tinglongwu.hwprobe._cpuinfo_cores", lambda path="": None)
-    assert physical_cores(6) == 6  # nothing knows the core count: the logical count
-    monkeypatch.setattr("tinglongwu.hwprobe._cpuinfo_cores", lambda path="": 3)
-    assert physical_cores(6) == 3
-
-
-def test_cpuinfo_core_count_without_psutil(tmp_path):
-    from tinglongwu.hwprobe import _cpuinfo_cores
-
-    f = tmp_path / "cpuinfo"
-    f.write_text("".join(f"processor\t: {i}\nphysical id\t: 0\ncore id\t\t: {i % 8}\n\n" for i in range(16)))
-    assert _cpuinfo_cores(str(f)) == 8  # 16 SMT threads on 8 cores
-    assert _cpuinfo_cores(str(tmp_path / "missing")) is None
+    assert (threads.current()["mt"], threads.current()["mt_batch"]) == (2, 4)  # llama.cpp defaults again

@@ -15,8 +15,7 @@ table: MT median / p90 seconds per line, chrF against the references, and Whispe
 
 Plans (asr / mt decode / mt batch threads; P = physical cores, L = logical CPUs):
   old       the pre-#1198 CPU mode: asr = min(L-1, 8), mt = L//2, batch = L (llama-cpp-python defaults)
-  cpu-mode  tinglongwu.hwprobe.cpu_mode_threads(P, L): what tlwu uses now
-  logical   asr = L//2, mt = batch = L - asr
+  cpu-mode  tinglongwu.hwprobe.cpu_mode_threads(L): what tlwu uses now (asr = L//2, mt = batch = L - asr)
   physical  asr = max(1, P//2), mt = batch = max(1, P - asr)
 """
 from __future__ import annotations
@@ -39,10 +38,9 @@ def plans(physical: int, logical: int) -> dict[str, tuple[int, int, int]]:
     from tinglongwu.hwprobe import cpu_mode_threads
 
     P, L = max(1, physical), max(1, logical)
-    cm = cpu_mode_threads(P, L)
+    cm = cpu_mode_threads(L)
     return {"old": (max(1, min(L - 1, 8)), max(1, L // 2), L),
             "cpu-mode": (cm.asr, cm.mt, cm.mt_batch),
-            "logical": (max(1, L // 2), max(1, L - L // 2), max(1, L - L // 2)),
             "physical": (max(1, P // 2), max(1, P - P // 2), max(1, P - P // 2))}
 
 
@@ -111,7 +109,7 @@ def main(argv=None) -> int:
     p.add_argument("--data", default="eval_data/smoke")
     p.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS"))
     p.add_argument("--whisper", default="small")
-    p.add_argument("--plans", default="old,cpu-mode,logical,physical")
+    p.add_argument("--plans", default="old,cpu-mode,physical")
     p.add_argument("--per-pair", type=int, default=5)
     p.add_argument("--no-asr", action="store_true", help="MT alone (no background Whisper)")
     a = p.parse_args(argv)
