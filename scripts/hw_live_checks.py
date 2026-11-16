@@ -293,12 +293,16 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     with Child([sys.executable, str(ROOT / "scripts" / "verify_offline.py"), "--mic", "--seconds", "3600",
                 "--stop-file", str(stop), "--", "--capture-device", CABLE_OUT, "--save", str(mj), *common],
                out / "mic_live.log") as ch:
-        if not ch.wait_for(READY_MARK):
-            return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
-        t0 = played_at(play_child(wav, CABLE_IN))
-        time.sleep(TAIL_S)
-        stop.write_text("stop")
-        ch.finish(60)
+        try:
+            if not ch.wait_for(READY_MARK):
+                return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
+            t0 = played_at(play_child(wav, CABLE_IN))
+            time.sleep(TAIL_S)
+        finally:
+            # verify_offline has no SIGTERM handler: ask it to stop (it then ends the tlwu --mic it started) before
+            # any terminate, so no orphan tlwu process is left on a ready timeout or exception (#1203 review).
+            stop.write_text("stop")
+            ch.finish(60)
         offline_ok = any(ln.startswith("PASS") for ln in ch.lines)
     file_rows, mic_rows = read_jsonl(fj), read_jsonl(mj)
     gap = max_gap(wall_offsets(mic_rows, t0), *meta["speech"])

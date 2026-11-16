@@ -247,3 +247,23 @@ def test_matrix_pin_then_build_gives_refs_for_every_matrix_language(tmp_path):
         else:
             assert r["ref_zh"] == f"這個國家的軟體發展很快{r['flores_id'] - 100}。"
     assert "matrix_pins.json" in (out / "LICENSE.txt").read_text("utf-8")
+
+
+def test_finish_leaves_no_manifest_when_the_conversion_raises(tmp_path, monkeypatch):
+    """#1203: manifest.jsonl is the clip cache's 'complete' marker, so a failed finish() must not leave one behind."""
+    import tinglongwu.translate as tr
+
+    def boom(*a, **k):
+        raise RuntimeError("convert failed")
+
+    monkeypatch.setattr(tr, "zh_convert", boom)
+    with pytest.raises(RuntimeError):
+        _load().finish(tmp_path, [{"id": "a", "ref_zh": "x"}], "rev")
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
+def test_finish_writes_the_manifest_atomically(tmp_path):
+    rows = [{"id": "a", "ref_text": "hi"}]
+    _load().finish(tmp_path, rows, "rev")
+    assert [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text("utf-8").splitlines()] == rows
+    assert not (tmp_path / "manifest.jsonl.tmp").exists()

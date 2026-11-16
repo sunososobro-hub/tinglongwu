@@ -223,12 +223,15 @@ def finish(out: Path, rows: list[dict], revision: str, pins: str = "eval/ci_smok
     """Convert ref_zh to Taiwan Traditional (the app's zh_convert "tw"); write manifest.jsonl + LICENSE.txt."""
     from tinglongwu.translate import zh_convert
 
-    with open(out / "manifest.jsonl", "w", encoding="utf-8", newline="\n") as f:
-        for r in rows:
-            if "ref_zh" in r:
-                r["ref_zh"] = zh_convert(r["ref_zh"], "tw")
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    for r in rows:
+        if "ref_zh" in r:
+            r["ref_zh"] = zh_convert(r["ref_zh"], "tw")
     (out / "LICENSE.txt").write_text(LICENSE_TEXT.format(revision=revision, pins=pins), encoding="utf-8")
+    tmp = out / "manifest.jsonl.tmp"  # the manifest is the "complete" marker of the hw-tests clip cache (#1203)
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    tmp.replace(out / "manifest.jsonl")
 
 
 def build(out, pin: dict, fetch=http_open, pins_name: str = "eval/ci_smoke.json") -> list[dict]:
