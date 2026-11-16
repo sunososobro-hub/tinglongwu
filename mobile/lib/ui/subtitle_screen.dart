@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speech_out.dart';
 import '../logic/target_language.dart';
+import '../logic/tilt_flip.dart';
 import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
 import 'advanced_screen.dart';
@@ -63,9 +67,52 @@ String emptyHint({required bool phone}) =>
 /// line (small source above, large translation below), a dashed grey bubble for the pending
 /// draft, and a footer with status + a round start/stop mic button. Listen-only lines are left
 /// "other" bubbles; in 對話模式 (#558) my lines are right "me" bubbles.
-class SubtitleScreen extends StatelessWidget {
-  const SubtitleScreen({super.key, required this.pipeline});
+class SubtitleScreen extends StatefulWidget {
+  const SubtitleScreen({super.key, required this.pipeline, this.gravity});
   final Pipeline pipeline;
+
+  /// Accelerometer (gravity included, m/s^2) samples; defaults to the device sensor (#1146).
+  final Stream<List<double>>? gravity;
+
+  @override
+  State<SubtitleScreen> createState() => _SubtitleScreenState();
+}
+
+class _SubtitleScreenState extends State<SubtitleScreen> {
+  final _tilt = TiltFlipDetector();
+  StreamSubscription<List<double>>? _sub;
+  bool _flipped = false;
+
+  Pipeline get pipeline => widget.pipeline;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      final src = widget.gravity ??
+          accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
+              .map((e) => [e.x, e.y, e.z]);
+      _sub = src.listen(_onSample, onError: (_) {}, cancelOnError: false);
+    } catch (_) {}
+  }
+
+  void _onSample(List<double> a) {
+    if (!pipeline.prefs.tiltFlip) {
+      if (_flipped || _tilt.flipped) {
+        _tilt.reset();
+        setState(() => _flipped = false);
+      }
+      return;
+    }
+    final f = _tilt.feed(a[0], a[1], a[2], DateTime.now().millisecondsSinceEpoch);
+    if (f != _flipped) setState(() => _flipped = f);
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   String _debug() {
     final p = pipeline;
@@ -95,10 +142,9 @@ class SubtitleScreen extends StatelessWidget {
     final draft = pipeline.silenceHint ? silenceHintText : (pipeline.paused ? '' : _draftText());
     final showDraft = draft.isNotEmpty && (pipeline.silenceHint || draft != '…' || subs.isNotEmpty);
     final empty = subs.isEmpty && !showDraft;
+    final listener = _flipped && pipeline.prefs.tiltFlip;
 
-    return Scaffold(
-      backgroundColor: UiColors.bg,
-      body: Column(
+    final body = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Header(
@@ -118,7 +164,10 @@ class SubtitleScreen extends StatelessWidget {
                         children: [
                           for (var i = 0; i < subs.length; i++)
                             _line(subs[i],
-                                isNewest: i == subs.length - 1, big: big, mode: mode),
+                                isNewest: i == subs.length - 1,
+                                big: listener ? big * 1.4 : big,
+                                mode: mode,
+                                listener: listener),
                           if (showDraft)
                             _bubble(
                               dashed: true,
@@ -141,7 +190,11 @@ class SubtitleScreen extends StatelessWidget {
           ),
           _Footer(pipeline: pipeline),
         ],
-      ),
+      );
+    return Scaffold(
+      backgroundColor: UiColors.bg,
+      // Listener view (#1146): rotate the content only, the system orientation is untouched.
+      body: listener ? RotatedBox(key: const Key('listenerView'), quarterTurns: 2, child: body) : body,
     );
   }
 
@@ -179,7 +232,10 @@ class SubtitleScreen extends StatelessWidget {
   }
 
   Widget _line(Subtitle s,
-      {required bool isNewest, required double big, required SubtitleMode mode}) {
+      {required bool isNewest,
+      required double big,
+      required SubtitleMode mode,
+      bool listener = false}) {
     final pending = s.zh == null;
     final fs = isNewest ? big : big * 0.85;
     const fg = UiColors.otherFg;
@@ -203,7 +259,7 @@ class SubtitleScreen extends StatelessWidget {
     } else {
       final zh = s.zh!;
       final src = s.ru.trim();
-      final showSrc = mode == SubtitleMode.both && src.isNotEmpty && src != zh.trim();
+      final showSrc = !listener && mode == SubtitleMode.both && src.isNotEmpty && src != zh.trim();
       parts = [
         if (showSrc)
           Padding(
@@ -232,7 +288,7 @@ class _DashedPainter extends BoxPainter {
   void paint(Canvas canvas, Offset offset, ImageConfiguration cfg) {
     final size = cfg.size;
     if (size == null) return;
-    final rr = SubtitleScreen._radius.toRRect(offset & size);
+    final rr = _SubtitleScreenState._radius.toRRect(offset & size);
     final paint = Paint()
       ..color = UiColors.draft
       ..style = PaintingStyle.stroke
@@ -309,6 +365,16 @@ class _Header extends StatelessWidget {
                       color: pipeline.conversation.enabled ? Colors.lightBlueAccent : Colors.white70),
                   onPressed: () => pipeline.setConversationEnabled(!pipeline.conversation.enabled),
                 ),
+              IconButton(
+                key: const Key('tiltLockToggle'),
+                tooltip: pipeline.prefs.tiltFlip ? '自動翻面已開（點一下鎖定）' : '自動翻面已鎖定（點一下開啟）',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                    pipeline.prefs.tiltFlip ? Icons.screen_rotation : Icons.screen_lock_rotation,
+                    size: 20,
+                    color: pipeline.prefs.tiltFlip ? Colors.lightBlueAccent : Colors.white70),
+                onPressed: () => pipeline.setTiltFlip(!pipeline.prefs.tiltFlip),
+              ),
               IconButton(
                 tooltip: '字幕顯示設定',
                 visualDensity: VisualDensity.compact,

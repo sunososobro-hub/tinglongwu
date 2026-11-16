@@ -535,6 +535,14 @@ class Pipeline extends ChangeNotifier {
     }
   }
 
+  /// 傾斜翻面 (#1146): auto-flip lock, remembered.
+  void setTiltFlip(bool on) {
+    if (on == prefs.tiltFlip) return;
+    prefs = prefs.copyWith(tiltFlip: on);
+    _prefsStore?.save(prefs);
+    notifyListeners();
+  }
+
   /// 顯示原文草稿 (#1064): turns the grey interim source text on or off, remembered.
   void setSourceDraft(bool on) {
     if (on == prefs.sourceDraft) return;

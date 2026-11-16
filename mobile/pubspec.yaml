@@ -16,6 +16,7 @@ dependencies:
       url: https://github.com/netdur/llama_cpp_dart
       ref: 23dae0bd696db6378c6869ed930ece4f58c7a4b9
   package_info_plus: ^10.2.2
+  sensors_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:
