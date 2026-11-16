@@ -386,7 +386,8 @@ def bump_exempt(files: list[dict]) -> tuple[bool, str]:
     if heads != [f"## {tag}"]:
         return False, f"{WHATS_NEW_FILE} must add exactly one `## {tag}` heading"
     body = [x for x in added[added.index(f"## {tag}") + 1:] if x.strip()]
-    if not all(re.match(r"^- \S", x) for x in body):  # plain bullets only: no Setext/ATX heading, HTML or prose
+    # plain one-level bullets only: no Setext/ATX heading (also not inside an item), quote, nested list, HTML or prose
+    if not all(re.match(r"^- (?![#>*+=<-]|[0-9]+[.)](?:\s|$))\S", x) for x in body):
         return False, f"`## {tag}` section may only hold `- ` bullet lines"
     if whats_new_section("\n".join(added) + "\n", tag) is None:
         return False, f"`## {tag}` section is empty or TODO"

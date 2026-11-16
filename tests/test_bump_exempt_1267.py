@@ -102,3 +102,11 @@ def test_setext_heading_or_prose_in_section_needs_opus():
     for extra in ("+Another release\n+---\n", "+Another release\n+===\n", "+<!-- hidden -->\n"):
         bad = wn("@@ -10,2 +10,6 @@\n \n+## v0.4.3\n+- Fixed recording.\n+\n" + extra)
         assert rn.bump_exempt([INIT, bad])[0] is False, extra
+
+
+def test_heading_or_block_inside_a_bullet_needs_opus():
+    for item in ("- ## Another release", "- # Hijack", "- > quote", "- - nested", "- 1. nested", "- <b>x</b>"):
+        bad = wn(f"@@ -10,2 +10,5 @@\n \n+## v0.4.3\n+- Fixed recording.\n+{item}\n")
+        assert rn.bump_exempt([INIT, bad])[0] is False, item
+    ok = wn("@@ -10,2 +10,5 @@\n \n+## v0.4.3\n+- Fixed recording.\n+- 2 bugs fixed in 日本語 mode.\n")
+    assert rn.bump_exempt([INIT, ok])[0] is True
