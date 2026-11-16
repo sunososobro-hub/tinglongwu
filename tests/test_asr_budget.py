@@ -218,3 +218,46 @@ def test_asr_budget_retry_overrun_keeps_first_pass():
     tr = r.transcribe(sec(1))
     assert tr is not None and tr.text and len(r.model.calls) == 2
     assert getattr(r, "dropped", 0) == 0
+
+
+def _with_ends(r, ends):
+    """Give each yielded fake segment an `end` (seconds into the audio), like faster-whisper's timestamps."""
+    first, it = r.model.transcribe, iter(ends)
+
+    def timed(audio, **kw):
+        gen, info = first(audio, **kw)
+
+        def g():
+            for s in gen:
+                s.end = next(it)
+                yield s
+        return g(), info
+    r.model.transcribe = timed
+
+
+def test_asr_budget_cut_holds_the_undecoded_tail(capsys):
+    # #1252 step 3: 24 s, budget 72 s; "a b c" decoded up to 18 s, then the cut. The last 6 s are held for the caller.
+    r = rec([["a", "b", "c", "d", "e"]], cost=30.0)
+    _with_ends(r, [6.0, 12.0, 18.0, 24.0, 30.0])
+    audio = np.arange(int(24 * asr.SAMPLE_RATE), dtype=np.float32)
+    assert r.transcribe(audio).text == "a b c"
+    tail = r.pop_tail()
+    assert tail is not None and len(tail) == 6 * asr.SAMPLE_RATE
+    assert tail[0] == 18 * asr.SAMPLE_RATE  # starts exactly where the kept text ended
+    assert r.pop_tail() is None  # cleared on read
+    assert "6.0 s queued again" in capsys.readouterr().err
+
+
+def test_asr_budget_no_tail_without_cut_or_progress():
+    r = rec([["Hello there."]])
+    r.transcribe(sec(2))
+    assert r.pop_tail() is None  # not cut
+    r = rec([["a", "b"]], cost=30.0)
+    _with_ends(r, [0.0, 0.0])
+    r.transcribe(sec(5))  # cut, but the kept text ends at 0 s: re-queueing the whole input could loop forever
+    assert r.cut == 1 and r.pop_tail() is None
+    r = rec([["a", "b"]], cost=30.0)
+    _with_ends(r, [4.8, 5.0])
+    r.transcribe(sec(5))  # cut with a 0.2 s tail: too short to decode
+    assert r.pop_tail() is None
+    assert asr.Recognizer.pop_tail(r) is None  # base default: never cut

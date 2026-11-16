@@ -83,6 +83,9 @@ def time_budget(seconds: float) -> float:
     return max(_env("TLWU_ASR_BUDGET_MIN", BUDGET_MIN_S), _env("TLWU_ASR_BUDGET_FACTOR", BUDGET_FACTOR) * seconds)
 
 
+TAIL_MIN_S = 0.5  # #1252: a cut tail shorter than this is not re-decoded (Whisper returns nothing for < 0.5 s)
+
+
 class OverBudget(Exception):
     """A live decode ran past its time budget (#251). Carries what was decoded before it stopped (#1252)."""
 
@@ -104,6 +107,10 @@ class Recognizer(ABC):
     def partial(self, audio: np.ndarray) -> Transcript | None:
         """Cheap draft pass for --stream (no state changes). Default: the normal path."""
         return self.transcribe(audio)
+
+    def pop_tail(self) -> np.ndarray | None:
+        """#1252: audio the last transcribe() left undecoded (time budget cut), or None. Default: never cut."""
+        return None
 
 
 def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int, int | None]:
@@ -245,19 +252,32 @@ class FasterWhisperRecognizer(Recognizer):
               f"{budget:.1f} s; {self.dropped} dropped so far)", file=sys.stderr, flush=True)
 
     def _cut(self, budget: float, started: float, segs, audio: np.ndarray) -> None:
-        """#1252: the decode stopped past its budget; the segments decoded so far are kept, the tail is lost."""
+        """#1252: the decode stopped past its budget; the segments decoded so far are kept. The undecoded tail
+        (after the last kept segment's end) is held for pop_tail(), so the caller can transcribe it next."""
         self.cut = getattr(self, "cut", 0) + 1
         total = len(audio) / SAMPLE_RATE
         ends = [e for e in (getattr(s, "end", None) for s in segs) if isinstance(e, (int, float))]
-        kept = f"kept {min(max(ends), total):.1f} of {total:.1f} s" if ends else f"kept part of {total:.1f} s"
+        end = min(max(ends), total) if ends else None
+        kept = f"kept {end:.1f} of {total:.1f} s" if end is not None else f"kept part of {total:.1f} s"
+        tail = audio[int(end * SAMPLE_RATE):] if end is not None else audio[:0]
+        # a tail as long as the input made no progress (re-queueing it could loop forever): not queued again
+        self._tail = tail if TAIL_MIN_S * SAMPLE_RATE <= len(tail) < len(audio) else None
+        more = f"; {len(tail) / SAMPLE_RATE:.1f} s queued again" if self._tail is not None else ""
         print(f"tlwu: asr: cut a sentence at its time budget ({self._now() - started:.1f} s > {budget:.1f} s; "
-              f"{kept}; {self.cut} cut so far)", file=sys.stderr, flush=True)
+              f"{kept}{more}; {self.cut} cut so far)", file=sys.stderr, flush=True)
+
+    def pop_tail(self) -> np.ndarray | None:
+        """#1252: the audio a budget cut left undecoded in the last transcribe() (None if nothing was cut).
+        Cleared on read; the pipeline transcribes it as the next segment, so cut speech is not lost."""
+        tail, self._tail = getattr(self, "_tail", None), None
+        return tail
 
     def transcribe(self, audio: np.ndarray) -> Transcript | None:
         if not getattr(self, "live", False):
             return self._transcribe(audio, None)
         started = self._now()
         budget = time_budget(len(audio) / SAMPLE_RATE)
+        self._tail = None
         try:
             tr = self._transcribe(audio, started + budget)
         except OverBudget:  # nothing was decoded in time: drop this sentence, the caller moves on

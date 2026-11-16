@@ -151,3 +151,31 @@ def test_backlog_text():
     from tinglongwu.cli import backlog_text
 
     assert backlog_text(0) == "" and backlog_text(7) == "ASR 7 s behind"
+
+
+def test_budget_cut_tail_is_transcribed_before_the_next_segment(wav):
+    """#1252 step 3: the audio a time-budget cut left undecoded is transcribed next, so its words still reach the
+    output (before the following segment), instead of being lost."""
+    class CutASR(Recognizer):
+        def __init__(self):
+            self.lens, self._tail, self.n = [], None, 0
+
+        def transcribe(self, audio):
+            self.lens.append(len(audio))
+            self.n += 1
+            if self.n == 1:  # cut at half: the second half was never decoded
+                self._tail = audio[len(audio) // 2:]
+                return Transcript("один", "ru")
+            return Transcript(["", "два", "три", "четыре", "пять"][min(self.n - 1, 4)], "ru")
+
+        def pop_tail(self):
+            tail, self._tail = self._tail, None
+            return tail
+
+    asr = CutASR()
+    out = io.StringIO()
+    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), asr, None, TranscriptSink(out))
+    lines = out.getvalue().split()
+    assert lines[:2] == ["один", "два"]  # the tail's text comes right after the cut sentence
+    assert asr.lens[1] == asr.lens[0] - asr.lens[0] // 2  # call 2 got exactly the undecoded tail
+    assert len(asr.lens) >= 3  # the following segments still run

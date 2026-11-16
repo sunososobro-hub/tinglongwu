@@ -295,6 +295,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             merger.whole = True  # whole sentence (a timeout cuts at a clause boundary, never mid-clause)
             draft.held = lambda: (merger.buf, merger.lang)
         draft.start(stop)
+    carry = []  # #1252: the undecoded tail of a budget-cut segment, transcribed before the next queued segment
+    pop_tail = getattr(asr, "pop_tail", None)
+    pop_tail = pop_tail if callable(pop_tail) else None
     try:
         while True:
             if stop_event is not None and stop_event.is_set():
@@ -305,7 +308,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if has_deadline:
                 timeout = min(POLL, max(0.0, merger.deadline - time.monotonic()))
             try:
-                item = q.get(timeout=timeout)
+                item = carry.pop() if carry else q.get(timeout=timeout)
             except queue.Empty:
                 if has_deadline:
                     emit_units(merger.due(time.monotonic()))
@@ -332,6 +335,12 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 finally:
                     with bl_lock:
                         asr_start[0] = None
+                tail = pop_tail() if pop_tail is not None else None
+            if tail is not None and len(tail):  # #1252: a budget cut left the end of this segment undecoded:
+                # transcribe it next, before any newer segment (lost source text cannot be recovered; late is fine)
+                carry.append((tail, stamp, last_ep[0], forced_cut, pause, (t_eos, t_cut)))
+                with bl_lock:
+                    queued_s[0] += len(tail) / SAMPLE_RATE
             last_asr[0] = time.monotonic() - t0
             marks = (t_eos, t_cut, t0 + last_asr[0])
             last_len[0] = len(seg) / SAMPLE_RATE
