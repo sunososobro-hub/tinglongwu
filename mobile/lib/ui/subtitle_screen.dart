@@ -380,7 +380,7 @@ class _Header extends StatelessWidget {
                     ? Align(
                         alignment: Alignment.centerLeft,
                         child: _SourceToggle(pipeline: pipeline))
-                    : const Text(CaptureModeText.micLabel,
+                    : Text(CaptureModeText.label(phone: false, conversation: pipeline.conversation.enabled),
                         style: TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
@@ -573,7 +573,11 @@ class _SourceToggle extends StatelessWidget {
   const _SourceToggle({required this.pipeline});
   final Pipeline pipeline;
 
-  Future<void> _select(BuildContext context, bool toPhone) async {
+  /// 0 = 說話翻譯, 1 = 對話翻譯 (mic + two-way), 2 = 看影片翻譯.
+  Future<void> _select(BuildContext context, int mode) async {
+    final toPhone = mode == 2;
+    final conv = mode == 1;
+    if (pipeline.conversation.enabled != conv) pipeline.setConversationEnabled(conv);
     if (toPhone == (pipeline.source == AudioSourceKind.phone)) return;
     final messenger = ScaffoldMessenger.of(context);
     if (toPhone && CapturePlatform.current().explainsBeforeStart) {
@@ -618,35 +622,43 @@ class _SourceToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final phone = pipeline.source == AudioSourceKind.phone;
+    final conv = !phone && pipeline.conversation.enabled;
+    final cur = phone ? 2 : (conv ? 1 : 0);
     final color = phone ? Colors.lightBlueAccent : Colors.white;
-    Widget option(bool p) => ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(p ? Icons.ondemand_video : Icons.record_voice_over),
-          title: Text(CaptureModeText.label(phone: p)),
-          subtitle: Text(CaptureModeText.hint(phone: p)),
-          trailing: p == phone ? const Icon(Icons.check, size: 18) : null,
-        );
-    return PopupMenuButton<bool>(
+    Widget option(int m) {
+      final p = m == 2;
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(p ? Icons.ondemand_video : (m == 1 ? Icons.forum : Icons.record_voice_over)),
+        title: Text(CaptureModeText.label(phone: p, conversation: m == 1)),
+        subtitle: Text(CaptureModeText.hint(phone: p, conversation: m == 1)),
+        trailing: m == cur ? const Icon(Icons.check, size: 18) : null,
+      );
+    }
+
+    return PopupMenuButton<int>(
+      key: const Key('modeMenu'),
       tooltip: '切換翻譯方式',
       enabled: !pipeline.switchingSource,
-      onSelected: (p) => _select(context, p),
+      onSelected: (m) => _select(context, m),
       itemBuilder: (_) => [
-        PopupMenuItem(value: false, child: option(false)),
-        PopupMenuItem(value: true, child: option(true)),
+        PopupMenuItem(value: 0, child: option(0)),
+        PopupMenuItem(value: 1, child: option(1)),
+        PopupMenuItem(value: 2, child: option(2)),
       ],
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 170),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(phone ? Icons.ondemand_video : Icons.record_voice_over, size: 18, color: color),
+          Icon(phone ? Icons.ondemand_video : (conv ? Icons.forum : Icons.record_voice_over), size: 18, color: color),
           const SizedBox(width: 6),
           Flexible(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(CaptureModeText.label(phone: phone),
+                Text(CaptureModeText.label(phone: phone, conversation: conv),
                     style: TextStyle(fontSize: 14, color: color)),
-                Text(CaptureModeText.hint(phone: phone),
+                Text(CaptureModeText.hint(phone: phone, conversation: conv),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 10, color: Colors.white54)),

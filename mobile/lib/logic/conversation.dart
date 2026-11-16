@@ -118,6 +118,14 @@ class Conversation {
     return side == Speaker.me ? foreign : mineLang;
   }
 
+  /// Maps an ASR-detected language outside {mine, foreign} onto the partner's language. Only when
+  /// the partner's language is one the ASR can detect (else it never says it, e.g. es -> "en").
+  String restrictDetected(String detected) {
+    if (!TargetLanguage.spoken.contains(foreign)) return detected;
+    final f = langFamily(detected);
+    return f == langFamily(mineLang) || f == foreign ? detected : foreign;
+  }
+
   /// Routes one finished line whose ASR-detected language is [detected]. Listen-only mode keeps
   /// the old behaviour (picked [listenTarget], nothing spoken). In conversation mode the active
   /// side picks the direction: my line -> foreign language, spoken aloud; their line -> zh, shown.
@@ -131,13 +139,16 @@ class Conversation {
       );
     }
     if (auto) {
-      final d = twoWayDirection(detected, mine: mineLang, partner: foreign);
+      // Detection is limited to the two chosen languages: a short filler the ASR hears as some
+      // third language ("あの" -> ja) is treated as the other person's language.
+      final det = restrictDetected(detected);
+      final d = twoWayDirection(det, mine: mineLang, partner: foreign);
       final mineLine = d.tgt == foreign;
       return ConversationRoute(
-        src: detected,
+        src: det,
         tgt: d.tgt,
         speaker: mineLine ? Speaker.me : Speaker.them,
-        speak: mineLine && detected != foreign,
+        speak: mineLine && det != foreign,
       );
     }
     final me = side == Speaker.me;
