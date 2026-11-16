@@ -1,0 +1,85 @@
+name: eval-terms
+# #1257: user glossary (Whisper hotwords + Hy-MT2 terms) on a 20-term ru tech-meeting set, with vs without the list.
+# Piper ru speaks the sentences (GPL engine: its own venv, only for synthesis), then Whisper + Hy-MT2-1.8B (Q4_K_M,
+# llama.cpp) on the CPU score term accuracy with and without the glossary; scripts/bench/term_eval.py has the set.
+# Runs on GitHub-hosted CPU runners because the cloud agent sandbox cannot reach the model hosts. Per-clip JSON and the
+# report are uploaded as artifacts; the step summary has the table.
+# Only runs when this workflow, the eval script or the glossary code changes, or by hand.
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - .github/workflows/eval-terms.yml
+      - scripts/bench/term_eval.py
+      - tinglongwu/glossary.py
+  workflow_dispatch:
+    inputs:
+      whisper:
+        description: "Whisper size"
+        default: "large-v3-turbo"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-terms-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TLWU_NO_UPDATE: "1"
+  TLWU_HYMT_TEMP: "0"  # greedy: repeatable numbers
+  PYTHONUTF8: "1"
+  WHISPER: ${{ inputs.whisper || 'large-v3-turbo' }}
+
+jobs:
+  terms:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: System libraries
+        timeout-minutes: 8
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for i in 1 2 3; do
+            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 && exit 0
+            sleep 15
+          done
+          exit 1
+      - name: Install tlwu + Hy-MT2 CPU engine
+        run: |
+          pip install -e .
+          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+      - name: Paths
+        run: |
+          echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
+          echo "DATA=$HOME/terms" >> "$GITHUB_ENV"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/tlwu-models
+          key: eval-terms-models-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+      - name: Models (Hy-MT2 1.8B + Whisper + Piper ru voice)
+        run: tlwu-setup --hymt --whisper "$WHISPER" --piper-ru dmitri --models-dir "$TLWU_MODELS"
+      - name: Speak the set (Piper, own venv)
+        run: |
+          python -m venv "$HOME/tts"
+          "$HOME/tts/bin/pip" install --only-binary=:all: piper-tts numpy
+          "$HOME/tts/bin/python" scripts/bench/term_eval.py synth --voice "$TLWU_MODELS/piper-ru_RU-dmitri-medium" --data "$DATA"
+      - name: ASR + MT with and without the glossary (CPU)
+        run: python scripts/bench/term_eval.py run --data "$DATA" --out out --whisper "$WHISPER"
+      - name: Report
+        run: |
+          python scripts/bench/term_eval.py report out | tee out/report.md
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: terms-report
+          path: out/
+          if-no-files-found: warn

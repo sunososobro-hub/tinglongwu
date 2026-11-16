@@ -23,10 +23,17 @@ MAX_PROMPT_ENTRIES = 8
 _WORD = re.compile(r"\w+", re.UNICODE)
 _NUM_ENTRY = re.compile(r"^(\d+)[.,](\d+)$")
 _CYR_END = "аяоеыийьюу"
+SHORT_LATIN = 4  # #1257: Latin words this short (SoC, PHY, Web, LTE) match whole words only, not as a prefix
 
 
 def _norm(w: str) -> str:
     return w.lower().replace("ё", "е")
+
+
+def _prefix_ok(stem: str) -> bool:
+    """A stem may match longer words (routers, частоте) unless it is a short Latin word: "soc" must not fire on
+    "social", "phy" on "physical", "web" on "website" (#1257)."""
+    return not (len(stem) <= SHORT_LATIN and stem.isascii())
 
 
 def _stem(w: str) -> str:
@@ -53,7 +60,8 @@ class Entry:
             if not stems:
                 continue
             for i in range(len(words) - len(stems) + 1):
-                if all(words[i + j].startswith(s) for j, s in enumerate(stems)):
+                if all(words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] == s
+                       for j, s in enumerate(stems)):
                     return True
         return False
 
