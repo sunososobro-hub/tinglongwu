@@ -41,8 +41,25 @@ def linear(x: float, best: float, worst: float) -> float:
 
 
 # ---------------------------------------------------------------- raw metrics
+_T2S = None  # OpenCC t2s converter, built on first zh use; False when opencc is not installed
+
+
+def _to_simplified(text: str) -> str:
+    """Traditional -> Simplified so a script difference alone is not a zh error (#1224); unchanged without opencc."""
+    global _T2S
+    if _T2S is None:
+        try:
+            from opencc import OpenCC
+            _T2S = OpenCC("t2s")
+        except Exception:  # noqa: BLE001 - opencc missing: score the text as written
+            _T2S = False
+    return _T2S.convert(text) if _T2S else text
+
+
 def tokenize(text: str, lang: str) -> list[str]:
     text = unicodedata.normalize("NFKC", text).lower()
+    if lang == "zh":
+        text = _to_simplified(text)
     text = "".join(c for c in text if not unicodedata.category(c).startswith(("P", "S")))
     return [c for c in text if not c.isspace()] if lang in CHAR_LANGS else text.split()
 

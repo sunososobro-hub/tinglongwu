@@ -97,3 +97,9 @@ def test_kana_guard_flags_zh_outputs_with_kana():
     assert clean == 0 and sc.kana_colour(clean) == "green"
     with pytest.raises(ValueError):
         sc.kana_rate([])
+
+
+def test_zh_cer_ignores_traditional_vs_simplified_1224():
+    pytest.importorskip("opencc")
+    assert sc.error_rate([("这并不是告别", "這並不是告別")], "zh") == 0.0
+    assert sc.error_rate([("这并不是告别", "這並不是告訴")], "zh") > 0
