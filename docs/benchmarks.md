@@ -37,7 +37,20 @@ The Korean and tier-2 rows (#656) come from [eval-flores 43535177705](https://gi
 ### Language-pair matrix: en / ru / zh-Hans / zh-Hant / ja / ko (#1305)
 Every direction between the six languages (30 cells, rows = source, columns = target), Hy-MT2-1.8B Q4_K_M on the CPU, greedy, first 200 FLORES-200 devtest sentences per direction (the full 1012 stay for the X -> zh-Hant rows above), same chrF + COMET. Each cell is `COMET / chrF`; "(weak)" marks a cell whose COMET is below the weakest shipped direction (en / ru / ja / ko -> zh-Hant) of the same run. zh-Hans <-> zh-Hant is OpenCC script conversion (`tinglongwu.translate.zh_convert`), not MT, as in the app. Directions the app cannot select today are measured too: the table is the data for deciding what to enable. Run it with `gh workflow run eval-flores.yml --ref dev -f matrix=6x6`; the `table` job writes the table to its step summary and the `flores-6x6-table` artifact.
 
-Results: pending the first `matrix=6x6` run (table, run link and commit go here).
+Results: [eval-flores 43893644257](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43893644257) (`matrix=6x6`), commit 1bc72da, first 200 sentences per direction, 4 vCPU GitHub runner. Weakest shipped direction in this run: ru -> zh-Hant, COMET 0.870, so "(weak)" = COMET below 0.870 (COMET is stored to 3 decimals; 0.870 itself is not weak).
+
+| src \ tgt | en | ru | zh-Hans | zh-Hant | ja | ko |
+|---|---|---|---|---|---|---|
+| en | - | 0.889 / 55.1 | 0.892 / 38.3 | 0.893 / 30.6 | 0.919 / 41.0 | 0.904 / 36.9 |
+| ru | 0.854 / 58.2 (weak) | - | 0.865 / 29.9 (weak) | 0.870 / 25.1 | 0.882 / 33.0 | 0.863 / 29.6 (weak) |
+| zh-Hans | 0.874 / 57.9 | 0.885 / 47.2 | - | 0.920 / 33.0 (OpenCC) | 0.906 / 34.6 | 0.883 / 31.0 |
+| zh-Hant | 0.866 / 56.0 (weak) | 0.870 / 45.3 | 0.907 / 31.7 (OpenCC) | - | 0.902 / 33.0 | 0.879 / 29.1 |
+| ja | 0.868 / 54.5 (weak) | 0.871 / 44.6 | 0.884 / 28.0 | 0.889 / 24.3 | - | 0.887 / 32.8 |
+| ko | 0.868 / 54.7 (weak) | 0.870 / 45.5 | 0.874 / 28.4 | 0.882 / 24.3 | 0.898 / 36.9 | - |
+
+- Into English is the weakest target on COMET (0.854-0.874) although its chrF is the highest (54.5-58.2): chrF is not comparable across target languages (character n-grams in English vs Chinese / Japanese), compare cells of one column only.
+- Russian as the source is the weakest row (4 of 5 cells at or below the shipped floor); every direction into Russian stays at or above it (0.870-0.889).
+- Median s/sentence (CPU): -> zh 1.3-2.4, -> en 2.3-2.8, -> ja / ko 2.1-3.9, -> ru 4.1-4.4.
 
 ### Hy-MT2 sampling temperature (#107)
 
