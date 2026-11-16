@@ -170,7 +170,8 @@ def load_variants(path, required: bool = False) -> list[tuple[str, str]]:
     names = [str(v["name"]) for v in data]
     if any(not NAME_RE.fullmatch(n) for n in names):  # each name is a file stem in --out-dir: no paths, no aliasing
         raise ValueError(f"{p}: variant names must be letters, digits, '-', '_' or '.' (not starting with '.')")
-    if len(set(names)) != len(names) or {"base", "cpu"} & {n.lower() for n in names}:  # case-insensitive filesystems
+    lower = [n.lower() for n in names]  # case-insensitive filesystems: "small" and "SMALL" write the same file
+    if len(set(lower)) != len(lower) or {"base", "cpu"} & set(lower):
         raise ValueError(f"{p}: variant names must be unique and not 'base' / 'cpu'")
     return [(str(v["name"]), str(v["args"])) for v in data]
 

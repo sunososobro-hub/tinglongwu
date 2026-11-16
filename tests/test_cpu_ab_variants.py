@@ -177,3 +177,11 @@ def test_duplicate_clip_ids_are_rejected():
     dup = report([{"id": "en_001", "asr": "a", "mt": "b"}, {"id": "en_001", "asr": "c", "mt": "d"}])
     with pytest.raises(ValueError, match="duplicate clip en->zh en_001"):
         ab.clip_diffs(dup, dup)
+
+
+def test_load_variants_rejects_names_differing_only_in_case(tmp_path):
+    # #745 leftover (CodeRabbit r4583247136): "small" and "SMALL" are one output file on Windows / macOS
+    f = tmp_path / "v.json"
+    f.write_text(json.dumps([{"name": "small", "args": "--beam 1"}, {"name": "SMALL", "args": "--beam 2"}]), "utf-8")
+    with pytest.raises(ValueError, match="unique"):
+        ab.load_variants(f)
