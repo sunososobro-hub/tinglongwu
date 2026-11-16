@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from tinglongwu import __version__, mt_backend
-from tinglongwu_setup import resume, selfupdate, vulkan_pack
+from tinglongwu_setup import selfupdate, vulkan_pack
 
 ROOT = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("make_vulkan_pack", ROOT / "scripts" / "make_vulkan_pack.py")
