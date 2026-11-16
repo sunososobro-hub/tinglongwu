@@ -204,13 +204,41 @@ class Child:
         self.log = open(log, "w", encoding="utf-8")
         self.p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                   encoding="utf-8", errors="replace")
-        threading.Thread(target=self._read, daemon=True).start()
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
 
     def _read(self) -> None:
         for ln in self.p.stdout:
             self.lines.append(ln)
             self.log.write(ln)
             self.log.flush()
+
+    def finish(self, timeout: float = 60) -> None:
+        """Wait for the exit (kill on timeout), then join the reader so every printed line is in self.lines (#1203)."""
+        try:
+            self.p.wait(timeout)
+        except subprocess.TimeoutExpired:
+            self.p.kill()
+            self.p.wait()
+        self.reader.join(10)
+
+    def close(self) -> None:
+        """Always safe: terminate a still-running child, reap it, join the reader, close the log (#1203)."""
+        if self.p.poll() is None:
+            self.p.terminate()
+            try:
+                self.p.wait(10)
+            except subprocess.TimeoutExpired:
+                self.p.kill()
+                self.p.wait()
+        self.reader.join(10)
+        self.log.close()
+
+    def __enter__(self) -> "Child":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
     def wait_for(self, *marks: str, timeout: float = READY_TIMEOUT_S) -> bool:
         t0 = time.monotonic()
@@ -227,8 +255,20 @@ def play_child(wav: Path, device: str | None) -> subprocess.Popen:
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
 
 
+def kill_proc(p: subprocess.Popen) -> None:
+    if p.poll() is None:
+        p.kill()
+    p.wait()
+    if p.stdout:
+        p.stdout.close()
+
+
 def played_at(p: subprocess.Popen) -> float:
-    out, _ = p.communicate(timeout=MIC_S * 3)
+    try:
+        out, _ = p.communicate(timeout=MIC_S * 3)
+    except BaseException:
+        kill_proc(p)
+        raise
     ln = next((x for x in out.splitlines() if x.startswith("PLAY ")), None)
     if p.returncode != 0 or ln is None:
         raise RuntimeError(f"playback failed (exit {p.returncode}): {out.strip()[-300:]}")
@@ -250,16 +290,16 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
         f.unlink(missing_ok=True)
     subprocess.run([sys.executable, "-m", "tinglongwu", "--file", str(wav), "--save", str(fj), *common], check=True,
                    stdout=subprocess.DEVNULL)
-    ch = Child([sys.executable, str(ROOT / "scripts" / "verify_offline.py"), "--mic", "--seconds", "3600",
+    with Child([sys.executable, str(ROOT / "scripts" / "verify_offline.py"), "--mic", "--seconds", "3600",
                 "--stop-file", str(stop), "--", "--capture-device", CABLE_OUT, "--save", str(mj), *common],
-               out / "mic_live.log")
-    if not ch.wait_for(READY_MARK):
-        return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
-    t0 = played_at(play_child(wav, CABLE_IN))
-    time.sleep(TAIL_S)
-    stop.write_text("stop")
-    ch.p.wait(60)
-    offline_ok = any(ln.startswith("PASS") for ln in ch.lines)
+               out / "mic_live.log") as ch:
+        if not ch.wait_for(READY_MARK):
+            return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
+        t0 = played_at(play_child(wav, CABLE_IN))
+        time.sleep(TAIL_S)
+        stop.write_text("stop")
+        ch.finish(60)
+        offline_ok = any(ln.startswith("PASS") for ln in ch.lines)
     file_rows, mic_rows = read_jsonl(fj), read_jsonl(mj)
     gap = max_gap(wall_offsets(mic_rows, t0), *meta["speech"])
     ok, msg = check_mic(_wer(file_rows, meta["ref"]), _wer(mic_rows, meta["ref"]) if mic_rows else 1.0, gap,
@@ -284,16 +324,21 @@ def run_meeting(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     sj = out / "meeting.jsonl"
     sj.unlink(missing_ok=True)
     spk = real_speaker(sc)
-    ch = Child([sys.executable, str(Path(__file__).resolve()), "_meeting-child", "--", "--mic", CABLE_OUT, "--to", "en",
+    with Child([sys.executable, str(Path(__file__).resolve()), "_meeting-child", "--", "--mic", CABLE_OUT, "--to", "en",
                 "--no-tts", "--no-confirm", "--models-dir", mdir, "--listen", "--capture-device", spk, "--lang", "auto",
-                "--save", str(sj), "--models-dir", mdir], out / "meeting.log")
-    if not ch.wait_for(READY_MARK, SPEAK_READY_MARK):
-        return False, f"meeting mode did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'meeting.log'})"
-    pa, pb = play_child(clips / meta["meet_a_zh"]["wav"], CABLE_IN), play_child(clips / meta["meet_b_en"]["wav"], spk)
-    played_at(pa), played_at(pb)
-    time.sleep(TAIL_S)
-    ch.p.terminate()
-    ch.p.wait(60)
+                "--save", str(sj), "--models-dir", mdir], out / "meeting.log") as ch:
+        if not ch.wait_for(READY_MARK, SPEAK_READY_MARK):
+            return False, f"meeting mode did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'meeting.log'})"
+        players = [play_child(clips / meta["meet_a_zh"]["wav"], CABLE_IN)]
+        try:
+            players.append(play_child(clips / meta["meet_b_en"]["wav"], spk))
+            for pl in players:
+                played_at(pl)
+        finally:
+            for pl in players:
+                kill_proc(pl)
+        time.sleep(TAIL_S)
+        ch.close()
     return check_meeting(read_jsonl(sj), meta["meet_a_zh"]["ref"], meta["meet_b_en"]["ref"])
 
 
@@ -301,14 +346,13 @@ def run_loopback(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     meta = json.loads((clips / "clips.json").read_text("utf-8"))["loop_en"]
     sj = out / "loopback.jsonl"
     sj.unlink(missing_ok=True)
-    ch = Child([sys.executable, "-m", "tinglongwu", "--lang", "en", "--transcript-only", "--save", str(sj),
-                "--models-dir", mdir], out / "loopback.log")
-    if not ch.wait_for(READY_MARK):
-        return False, f"tlwu loopback did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'loopback.log'})"
-    played_at(play_child(clips / meta["wav"], None))
-    time.sleep(TAIL_S)
-    ch.p.terminate()
-    ch.p.wait(60)
+    with Child([sys.executable, "-m", "tinglongwu", "--lang", "en", "--transcript-only", "--save", str(sj),
+                "--models-dir", mdir], out / "loopback.log") as ch:
+        if not ch.wait_for(READY_MARK):
+            return False, f"tlwu loopback did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'loopback.log'})"
+        played_at(play_child(clips / meta["wav"], None))
+        time.sleep(TAIL_S)
+        ch.close()
     return check_loopback(read_jsonl(sj), meta["ref"])
 
 

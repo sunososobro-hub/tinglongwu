@@ -140,7 +140,7 @@ jobs:
         if: ${{ !cancelled() }}
         continue-on-error: true  # #1194: until green on a dev run
         run: |
-          D="$HW_CACHE/live-fleurs"
+          D="$HW_CACHE/live-fleurs-$(sha256sum eval/matrix_pins.json | cut -c1-16)"  # #1203: a changed pin file means a new folder
           [ -f "$D/manifest.jsonl" ] || python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out "$D"
           python scripts/hw_live_checks.py clips --data "$D" --out "$RUNNER_TEMP/live"
 

@@ -134,3 +134,41 @@ def test_verify_offline_stop_file_ends_a_mic_watch(tmp_path):
                         "--stop-file", str(stop)], capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert r.returncode == 0 and "PASS" in r.stdout, r.stdout + r.stderr
     assert time.monotonic() - t0 < 60
+
+
+# ---- #1203: no stray processes, no lost PASS line ----
+
+def _child(code: str, tmp_path, name="c.log"):
+    return hl.Child([sys.executable, "-c", code], tmp_path / name)
+
+
+def test_child_close_terminates_a_child_that_never_gets_ready(tmp_path):
+    ch = _child("import time; time.sleep(600)", tmp_path)
+    assert ch.wait_for("never printed", timeout=0.5) is False
+    assert ch.p.poll() is None
+    ch.close()
+    assert ch.p.poll() is not None and not ch.reader.is_alive() and ch.log.closed
+
+
+def test_child_context_manager_cleans_up_on_exception(tmp_path):
+    with pytest.raises(RuntimeError):
+        with _child("import time; time.sleep(600)", tmp_path) as ch:
+            raise RuntimeError("boom")
+    assert ch.p.poll() is not None
+
+
+def test_finish_sees_a_pass_line_printed_right_before_exit(tmp_path):
+    for i in range(100):
+        ch = _child("print('PASS')", tmp_path, f"c{i}.log")
+        ch.finish(30)
+        assert any(ln.startswith("PASS") for ln in ch.lines), i
+        ch.close()
+
+
+def test_played_at_kills_the_player_on_timeout(tmp_path, monkeypatch):
+    p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"], stdout=subprocess.PIPE, text=True)
+    monkeypatch.setattr(hl, "MIC_S", 0.1)
+    with pytest.raises(subprocess.TimeoutExpired):
+        hl.played_at(p)
+    assert p.poll() is not None
+
