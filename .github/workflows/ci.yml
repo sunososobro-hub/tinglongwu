@@ -24,8 +24,16 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "dev" ]; then
-            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
-            python scripts/ci_scope.py "$RUNNER_TEMP/files.txt" | tee -a "$GITHUB_OUTPUT"
+            # run the BASE branch's classifier, never the PR's own copy (a PR could otherwise edit it to call itself docs);
+            # any failure (no base copy yet, fetch or API error) means the full suite
+            if git fetch -q --depth=1 origin "$GITHUB_BASE_REF" \
+               && git show FETCH_HEAD:scripts/ci_scope.py > "$RUNNER_TEMP/ci_scope.py" \
+               && gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt" \
+               && python "$RUNNER_TEMP/ci_scope.py" "$RUNNER_TEMP/files.txt" --tests-dir tests > "$RUNNER_TEMP/scope.txt"; then
+              tee -a "$GITHUB_OUTPUT" < "$RUNNER_TEMP/scope.txt"
+            else
+              printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
+            fi
           else
             printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
           fi

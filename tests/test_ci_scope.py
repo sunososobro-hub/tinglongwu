@@ -84,3 +84,11 @@ def test_real_repo_site_tests_exist():
     root = Path(__file__).resolve().parent
     assert any(root.glob("test_stats*.py"))
     assert any(root.glob("test_render_roadmap*.py"))
+
+
+def test_editing_the_classifier_or_ci_workflow_is_always_full():
+    # Opus review on #1223: a PR must not be able to relabel itself docs by editing the gate
+    assert cs.classify(["scripts/ci_scope.py"]) == "full"
+    assert cs.classify(["README.md", "scripts/ci_scope.py"]) == "full"
+    assert cs.classify([".github/workflows/ci.yml", "docs/a.md"]) == "full"
+    assert cs.classify(["scripts/stats_dashboard.py", "scripts/ci_scope.py"]) == "full"

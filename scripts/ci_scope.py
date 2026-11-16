@@ -25,6 +25,9 @@ MAX_LISTED_FILES = 3000
 
 # never docs, even inside docs/: read by code or by the agents' rules
 NOT_DOCS = ("docs/support.json", ".agent/*", ".github/*")
+# the gate itself: a PR that edits the classifier or the job that runs it always gets the full suite,
+# so it cannot label itself docs (Opus review on #1223). ci.yml also runs the BASE branch copy of this file.
+SELF = ("scripts/ci_scope.py", ".github/workflows/ci.yml")
 DOCS = ("*.md", "docs/*", "assets/*", "LICENSE", "LICENSE.*")
 SITE = (
     "scripts/stats_dashboard*",
@@ -47,7 +50,7 @@ def _match(path: str, patterns) -> bool:
 
 def kind(path: str) -> str:
     """'site', 'docs' or 'full' for one changed path (site is checked first: docs/roadmap.html is site)."""
-    if _match(path, NOT_DOCS):
+    if _match(path, SELF) or _match(path, NOT_DOCS):
         return "full"
     if _match(path, SITE):
         return "site"
