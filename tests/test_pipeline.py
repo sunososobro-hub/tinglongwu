@@ -179,3 +179,36 @@ def test_budget_cut_tail_is_transcribed_before_the_next_segment(wav):
     assert lines[:2] == ["один", "два"]  # the tail's text comes right after the cut sentence
     assert asr.lens[1] == asr.lens[0] - asr.lens[0] // 2  # call 2 got exactly the undecoded tail
     assert len(asr.lens) >= 3  # the following segments still run
+
+
+def test_budget_cut_tail_survives_a_live_model_switch(wav):
+    """#1295: after the controller switches the ASR model (adapt.Switchable), the tail of a budget-cut segment
+    is read from the model that cut it, not from the one that was current when the pipeline started."""
+    from tinglongwu import adapt
+
+    class Big(Recognizer):
+        def transcribe(self, audio):
+            ladder.down()  # the controller steps down while the first segment is decoded
+            return Transcript("один", "ru")
+
+    class Small(Recognizer):
+        def __init__(self):
+            self.lens, self._tail, self.n = [], None, 0
+
+        def transcribe(self, audio):
+            self.lens.append(len(audio))
+            self.n += 1
+            if self.n == 1:
+                self._tail = audio[len(audio) // 2:]
+                return Transcript("два", "ru")
+            return Transcript("три", "ru")
+
+        def pop_tail(self):
+            tail, self._tail = self._tail, None
+            return tail
+
+    small = Small()
+    ladder = adapt.Ladder("speech model", "big", Big(), [("small", lambda: small)])
+    out = io.StringIO()
+    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), adapt.Switchable(ladder), None, TranscriptSink(out))
+    assert small.lens[1] == small.lens[0] - small.lens[0] // 2  # the tail was transcribed by the new model
