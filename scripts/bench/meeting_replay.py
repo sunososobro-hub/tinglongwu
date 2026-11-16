@@ -17,7 +17,10 @@ long segment as in a dense meeting; every LONG_EVERY-th join is a real pause (LO
 Metrics (written to REPLAY/metrics.json, plus one Markdown table on stdout):
   drops        sentences ASR dropped over its live time budget (`tlwu: asr: dropped ...` on stderr); cuts too
   coverage %   seconds of clip speech that some saved line's audio span ([start, end] in --record segments.jsonl)
-               overlaps, over all clip speech seconds
+               overlaps, over all clip speech seconds (whole clips, their silent lead-in / tail included)
+  voiced cov % the same over the voiced parts of the clips only (#1252 Acceptance "every second of speech audio
+               maps to some output line"): frame energy finds them at build time, so silence padding inside a
+               FLEURS clip no longer counts as lost speech; `holes` lists the voiced stretches no line covers
   longest gap  longest stretch (wall seconds after playback start, inside the speech) with no new saved line
   lag p95      95th percentile of --latency-jsonl "total" (end of speech -> line shown), seconds
   labels       distinct speaker labels in the saved lines (--speakers), against the distinct clips played
@@ -45,6 +48,11 @@ READY_TIMEOUT_S = 900.0
 READY_MARK = "* ready - listening"   # tinglongwu.cli.READY_LINE
 DROP_MARK = "tlwu: asr: dropped a sentence"
 CUT_MARK = "tlwu: asr: cut a sentence"
+VOICED_FRAME_S = 0.02  # energy frame for voiced(): 20 ms
+VOICED_REL_DB = -35.0  # a frame is voiced when its RMS is within 35 dB of the clip's loudest frames (p95)
+VOICED_FLOOR = 1e-3    # ... and above this absolute RMS (digital silence / dither never counts)
+VOICED_BRIDGE_S = 0.3  # voiced runs closer than this are one stretch (stops, short pauses inside a word)
+HOLE_MIN_S = 0.5       # an uncovered voiced stretch shorter than this is not reported as a hole
 
 
 # ---------------------------------------------------------------- pure parts (unit-tested)
@@ -87,6 +95,47 @@ def coverage(speech: list[tuple[float, float]], lines: list[tuple[float, float]]
             hit += min(b, ln[k][1]) - max(a, ln[k][0])
             k += 1
     return hit / total
+
+
+def voiced(audio, sr: int = SR) -> list[tuple[float, float]]:
+    """(start s, end s) of the voiced stretches of one clip, by frame energy: frames within VOICED_REL_DB of the
+    clip's p95 frame RMS (and above VOICED_FLOOR), runs closer than VOICED_BRIDGE_S merged."""
+    import numpy as np
+
+    x = np.asarray(audio, dtype=np.float32).reshape(-1)
+    n = int(sr * VOICED_FRAME_S)
+    if n <= 0 or len(x) < n:
+        return []
+    fr = x[: len(x) // n * n].reshape(-1, n)
+    rms = np.sqrt((fr.astype(np.float64) ** 2).mean(axis=1))
+    thr = max(VOICED_FLOOR, float(np.percentile(rms, 95)) * 10 ** (VOICED_REL_DB / 20))
+    on = rms >= thr
+    out: list[list[float]] = []
+    for i in np.flatnonzero(on):
+        a, b = i * VOICED_FRAME_S, (i + 1) * VOICED_FRAME_S
+        if out and a - out[-1][1] <= VOICED_BRIDGE_S + 1e-9:
+            out[-1][1] = b
+        else:
+            out.append([a, b])
+    return [(round(a, 2), round(b, 2)) for a, b in out]
+
+
+def holes(speech: list[tuple[float, float]], lines: list[tuple[float, float]],
+          min_s: float = HOLE_MIN_S) -> list[tuple[float, float]]:
+    """Stretches of speech (>= min_s) that no line's audio span overlaps, in time order."""
+    ln = _merge(lines)
+    out = []
+    for a, b in _merge(speech):
+        cur = a
+        for c, d in ln:
+            if d <= cur or c >= b:
+                continue
+            if c > cur:
+                out.append((cur, c))
+            cur = max(cur, d)
+        if cur < b:
+            out.append((cur, b))
+    return [(round(a, 2), round(b, 2)) for a, b in out if b - a >= min_s]
 
 
 def longest_gap(line_times: list[float], start: float, end: float) -> tuple[float, float, float]:
@@ -139,7 +188,13 @@ def metrics(meta: dict, log_lines: list[str], saved: list[dict], segs: list[dict
     s0, s1 = meta["speech"]
     gap = longest_gap(wall_offsets(saved, t0), s0, s1) if t0 is not None else None
     lag = p95([float(r["total"]) for r in lat if isinstance(r.get("total"), (int, float))])
-    return {"drops": drops, "cuts": cuts, "coverage_pct": round(100 * coverage(speech, lines), 1),
+    vs = [tuple(s) for s in meta.get("voiced") or []]
+    hl = holes(vs, lines) if vs else []
+    return {"voiced_coverage_pct": round(100 * coverage(vs, lines), 1) if vs else None,
+            "holes": len(hl), "holes_s": round(sum(b - a for a, b in hl), 1),
+            "holes_top": [list(h) for h in sorted(hl, key=lambda h: h[0] - h[1])[:5]],
+            "voiced_s": round(sum(b - a for a, b in _merge(vs)), 1) if vs else None,
+            "drops": drops, "cuts": cuts, "coverage_pct": round(100 * coverage(speech, lines), 1),
             "longest_gap_s": round(gap[0], 1) if gap else None,
             "longest_gap_at": [round(gap[1]), round(gap[2])] if gap else None,
             "lag_p95_s": round(lag, 2) if lag is not None else None, "lines": len(saved),
@@ -153,7 +208,12 @@ def table(m: dict, title: str = "meeting replay (#1264)") -> str:
 
     gap = f(m.get("longest_gap_s"), " s") + (f" (at {m['longest_gap_at'][0]}-{m['longest_gap_at'][1]} s)"
                                                if m.get("longest_gap_at") else "")
+    top = ", ".join(f"{a:.1f}-{b:.1f} s" for a, b in m.get("holes_top") or [])
     rows = [("drops", f(m["drops"]) + f" (cuts {m['cuts']})"), ("audio coverage", f(m["coverage_pct"], " %")),
+            ("voiced coverage", f(m.get("voiced_coverage_pct"), " %")
+             + (f" ({m.get('voiced_s')} s voiced)" if m.get("voiced_s") is not None else "")),
+            ("holes (voiced, no line)", f"{m.get('holes', 0)} = {m.get('holes_s', 0.0)} s"
+             + (f"; longest: {top}" if top else "")),
             ("longest gap", gap), ("lag p95", f(m.get("lag_p95_s"), " s")),
             ("speaker labels", f"{m['labels']} (clips played: {m['clips_distinct']} distinct)"),
             ("lines", f(m["lines"])), ("speech / recording", f"{m['speech_s']} s / {m['seconds']} s")]
@@ -166,6 +226,7 @@ def summary_line(m: dict) -> str:
         return "n/a" if v is None else v
 
     return (f"replay: drops={m['drops']} cuts={m['cuts']} coverage={m['coverage_pct']}% "
+            f"voiced_coverage={f(m.get('voiced_coverage_pct'))}% holes={m.get('holes', 0)}/{m.get('holes_s', 0.0)}s "
             f"longest_gap={f(m.get('longest_gap_s'))}s lag_p95={f(m.get('lag_p95_s'))}s labels={m['labels']} "
             f"lines={m['lines']}")
 
@@ -213,6 +274,7 @@ def build(data: Path, lang: str, minutes: float, out: Path) -> dict:
         raise SystemExit(f"no '{lang}' clips in {data / 'manifest.jsonl'}")
     audio = [sf.read(str(data / r["wav"]), dtype="float32", always_2d=True)[0].mean(axis=1) for r in sel]
     lay = layout([len(a) / SR for a in audio], minutes * 60)
+    vo = [voiced(a) for a in audio]
     x = np.zeros(int((lay[-1][2] + LONG_GAP_S) * SR), np.float32)
     for k, s, _e in lay:
         x[int(s * SR):int(s * SR) + len(audio[k])] = audio[k]
@@ -221,6 +283,7 @@ def build(data: Path, lang: str, minutes: float, out: Path) -> dict:
     meta = {"wav": "replay.wav", "lang": lang, "seconds": round(len(x) / SR, 2),
             "speech": [round(lay[0][1], 2), round(lay[-1][2], 2)],
             "spans": [[round(s, 2), round(e, 2)] for _k, s, e in lay], "clips": [sel[k]["id"] for k, _s, _e in lay],
+            "voiced": [[round(s + a, 2), round(s + b, 2)] for k, s, _e in lay for a, b in vo[k]],
             "source": "FLEURS test (CC-BY 4.0), eval/matrix_pins.json"}
     (out / "replay.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), "utf-8")
     print(f"replay: {out / 'replay.wav'}: {meta['seconds']:.0f} s, {len(lay)} clips "

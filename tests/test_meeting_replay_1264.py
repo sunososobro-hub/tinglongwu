@@ -203,3 +203,56 @@ def test_run_starts_from_a_clean_recording_manifest(mr, tmp_path, monkeypatch):
     (rdir / "rec" / "segments.jsonl").write_text(json.dumps({"start": 0, "end": 0.1}) + "\n", "utf-8")
     m = mr.run(rdir, None, 0, False, [], drain=5)  # a clean exit 0 succeeds
     assert m["coverage_pct"] == 0.0  # the old run's row is not counted
+
+
+# ---------------------------------------------------------------- #1252: voiced coverage and holes
+def _padded_clip(lead=1.0, speech=3.0, tail=1.0):
+    """A FLEURS-like clip: silent lead-in, a voiced middle, a silent tail (faint noise, not digital zero)."""
+    rng = np.random.default_rng(0)
+    n = lambda s: int(16000 * s)  # noqa: E731
+    t = np.arange(n(speech)) / 16000
+    return np.concatenate([rng.normal(0, 1e-4, n(lead)), 0.2 * np.sin(2 * np.pi * 220 * t),
+                           rng.normal(0, 1e-4, n(tail))]).astype(np.float32)
+
+
+def test_voiced_finds_the_speech_inside_a_padded_clip(mr):
+    v = mr.voiced(_padded_clip())
+    assert len(v) == 1 and v[0][0] == pytest.approx(1.0, abs=0.03) and v[0][1] == pytest.approx(4.0, abs=0.03)
+    assert mr.voiced(np.zeros(16000, np.float32)) == []
+
+
+def test_holes_lists_voiced_speech_no_line_covers(mr):
+    speech = [(0.0, 10.0), (12.0, 22.0)]
+    assert mr.holes(speech, [(0.0, 10.0), (12.0, 22.0)]) == []
+    assert mr.holes(speech, [(0.0, 10.0)]) == [(12.0, 22.0)]           # a dropped sentence
+    assert mr.holes(speech, [(0.0, 4.0), (6.0, 22.0)]) == [(4.0, 6.0)]  # a lost middle
+    assert mr.holes(speech, [(0.0, 9.8), (12.0, 22.0)]) == []           # under HOLE_MIN_S
+
+
+def test_voiced_coverage_ignores_clip_padding_but_catches_a_lost_line(mr, tmp_path):
+    """Lines that cover every voiced second score 100 % voiced coverage though the whole-clip coverage is < 100 %
+    (the 86.4 % of the #1264 replay); a missing line shows up as a hole."""
+    data = tmp_path / "data"
+    data.mkdir()
+    rows = []
+    for i in range(3):
+        sf.write(str(data / f"ru_{i}.wav"), _padded_clip(), 16000)
+        rows.append({"id": f"ru-{i}", "lang": "ru", "wav": f"ru_{i}.wav", "ref_text": "x"})
+    (data / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in rows), "utf-8")
+    meta = mr.build(data, "ru", 0.3, tmp_path / "r")
+    assert len(meta["voiced"]) == len(meta["spans"])
+    full = [{"start": a, "end": b} for a, b in meta["voiced"]]
+    m = mr.metrics(meta, [], [], full, [], None)
+    assert m["coverage_pct"] < 80 and m["voiced_coverage_pct"] == pytest.approx(100.0, abs=0.5)
+    assert m["holes"] == 0
+    lost = mr.metrics(meta, [], [], full[:1] + full[2:], [], None)
+    assert lost["holes"] == 1 and lost["holes_s"] == pytest.approx(3.0, abs=0.1)
+    assert lost["holes_top"][0][0] == pytest.approx(meta["voiced"][1][0])
+    assert "voiced_coverage=" in mr.summary_line(lost) and "holes=1/" in mr.summary_line(lost)
+
+
+def test_old_replay_without_voiced_spans_reports_na(mr):
+    meta = {"spans": [[0, 4]], "speech": [0, 4], "clips": ["a"], "seconds": 5}
+    m = mr.metrics(meta, [], [], [{"start": 0, "end": 4}], [], None)
+    assert m["voiced_coverage_pct"] is None and m["holes"] == 0
+    assert "| voiced coverage | n/a |" in mr.table(m)
