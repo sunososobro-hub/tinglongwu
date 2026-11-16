@@ -24,6 +24,7 @@ OWN_OUTPUTS = ("cable", "vb-audio", "blackhole", "tlwu_sink")  # our TTS goes he
 SILENT_AFTER_S = 10.0
 SILENT_PEAK = 5e-4  # digital silence is exactly 0; quiet speech is far above this
 REFRESH_S = 2.0
+LOST_LOG_S = 5.0  # #1263: at most one "dropped audio" line per this many seconds
 
 
 def is_own_output(name: str | None) -> bool:
@@ -77,6 +78,25 @@ class WasapiLoopbackSource(SoundcardSource):
         self.on_sound = None  # called once when sound returns after on_silent fired
         self.on_silent = None  # called with the list of listened device names after ~10 s of silence
         self.listening: list[str] = [device] if device else []
+        # #1263: 100 ms blocks a worker threw away because the reader fell behind (never silent: logged, counted)
+        self.lost_blocks = 0
+        self._lost_lock = threading.Lock()
+        self._lost_logged = -LOST_LOG_S
+
+    @property
+    def lost_seconds(self) -> float:
+        """Seconds of captured audio dropped so far because nobody read it in time (#1263)."""
+        return self.lost_blocks * BLOCK / NATIVE_RATE
+
+    def _lost(self) -> None:
+        with self._lost_lock:
+            self.lost_blocks += 1
+            now = time.monotonic()
+            if now - self._lost_logged < LOST_LOG_S:
+                return
+            self._lost_logged = now
+        print(f"tlwu: listen: capture fell behind, dropped {self.lost_seconds:.1f} s of audio so far",
+              file=sys.stderr, flush=True)
 
     def _pick_microphone(self, sc):
         if self.device:
@@ -119,6 +139,7 @@ class WasapiLoopbackSource(SoundcardSource):
                         except queue.Full:
                             try:
                                 q.get_nowait()
+                                self._lost()
                             except queue.Empty:
                                 pass
                             q.put_nowait(data)

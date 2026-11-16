@@ -101,7 +101,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     being transcribed); called when the value changes within ~0.5 s, 0 once it has caught up. Never called when off.
     """
     tgt0 = tgt
-    q: queue.Queue = queue.Queue(maxsize=8)
+    # #1263: live capture is never held back by ASR. A bounded queue blocked the capture reader while ASR lagged and
+    # the device then dropped audio with no trace; segments wait here instead (raw 16 kHz float32: 64 KB per second).
+    # Offline files (audio_clock) keep the bound: they are read faster than real time and lose nothing by waiting.
+    q: queue.Queue = queue.Queue(maxsize=8 if audio_clock else 0)
     consumed = [0]
     frame_t = [0.0]  # monotonic arrival time of the newest frame (#323)
     stop = threading.Event()
