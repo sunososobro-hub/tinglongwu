@@ -2205,6 +2205,14 @@ class App:
         save_settings(s)
 
     # -- worker -------------------------------------------------------------------------------
+    def _wait_line(self) -> str:
+        """#1259 / #1253: the ASR backlog (the slower leg) and the translations held for ASR (all legs), or ""."""
+        from ..cli import status_wait_text
+
+        waits = getattr(self, "_waits", {})
+        return status_wait_text(max([n for (k, _), n in waits.items() if k == "backlog"] or [0]),
+                                sum(n for (k, _), n in waits.items() if k == "mtwait"))
+
     def toggle(self, mode: str | None = None):
         """Start / Stop. `mode`: None or BOTH_MODE = the one Start (#1001: listen + speak together); "listen" /
         "speak" = one leg only (kept for tests and the #983 restart of an older session)."""
@@ -2326,6 +2334,7 @@ class App:
     def _run_leg(self, s: dict, stop: threading.Event, gate=None, sink_cls=None):
         """One run_session on this thread; an error goes to self.q (localized), never raised. No tkinter here."""
         q = self.q
+        leg = "speak" if sink_cls is not None else "listen"  # #1253: backlog / held-MT counts are kept per leg
         try:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
@@ -2348,8 +2357,8 @@ class App:
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
                         cpu_line=lambda ms, path=None: q.put(("cpu_line", ms, path)),
-                        backlog_line=lambda n: q.put(("backlog", n)),  # #1259
-                        mt_wait_line=lambda n: q.put(("mtwait", n)),  # #1253
+                        backlog_line=lambda n: q.put(("backlog", n, leg)),  # #1259
+                        mt_wait_line=lambda n: q.put(("mtwait", n, leg)),  # #1253; per leg, both legs may hold
                         labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None,
                         on_topic=self.topic_panel.add if sink_cls is None else None)  # #611
         except Exception as e:  # noqa: BLE001
@@ -2395,14 +2404,12 @@ class App:
                         self._status_text(text)  # #294
                         self._sync_quick()
                 elif kind in ("backlog", "mtwait"):  # #1259: "ASR n s behind" in the status line, the old text back
-                    from ..cli import status_wait_text  # when caught up; #1253: plus translations held for ASR
-
-                    if kind == "backlog":
-                        self._backlog_s = ev[1]
-                    else:
-                        self._mt_wait_n = ev[1]
+                    # when caught up; #1253: plus translations held for ASR. Kept per leg (listen / speak).
+                    if getattr(self, "_waits", None) is None:
+                        self._waits = {}
+                    self._waits[(kind, ev[2] if len(ev) > 2 else "")] = ev[1]
                     if self.load_t0 is None and not self.errored:
-                        line = status_wait_text(getattr(self, "_backlog_s", 0), getattr(self, "_mt_wait_n", 0))
+                        line = self._wait_line()
                         if line:
                             if getattr(self, "_pre_backlog", None) is None:
                                 self._pre_backlog = self.v_status.get()
@@ -2414,7 +2421,11 @@ class App:
                     from .core import cpu_mode_line
 
                     if self.load_t0 is None and not self.errored:
-                        self._status_text(cpu_mode_line("cpu", ev[1], path=ev[2] if len(ev) > 2 else None) or "")
+                        text = cpu_mode_line("cpu", ev[1], path=ev[2] if len(ev) > 2 else None) or ""
+                        wait = self._wait_line()  # #1253: a held-translation / backlog note stays visible
+                        if wait and text and getattr(self, "_pre_backlog", None) is not None:
+                            self._pre_backlog = text  # shown again (alone) once nothing waits any more
+                        self._status_text(f"{text} | {wait}" if text and wait else (wait or text))
                         self._dedupe_notice()  # #1241: CPU mode is now in the status line; not twice
                 elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
                     self.v_notice.set(strip_silent_hint(self.v_notice.get()))
@@ -2455,6 +2466,7 @@ class App:
                     self.root.deiconify()  # the error text is in the status line; a red dot alone says nothing
                     self.root.lift()
                 elif kind == "stopped":
+                    self._waits, self._pre_backlog = {}, None  # #1253: a new session starts with no old backlog
                     if self.gate is not None:
                         self.gate.clear()
                         self._gate_tick()

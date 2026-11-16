@@ -101,14 +101,58 @@ def test_mt_delay_is_reported():
 
 
 def test_hold_is_capped(monkeypatch):
-    """A CPU that never catches up still gets translations: each line waits at most MT_HOLD_MAX."""
-    monkeypatch.setattr(pipeline, "MT_HOLD_MAX", 0.05)
+    """A CPU that never catches up still gets translations: each line waits at most MT_HOLD_MAX from when it was
+    queued (time behind an earlier held line counts), so MT starts while ASR is still busy."""
+    monkeypatch.setattr(pipeline, "MT_HOLD_MAX", 0.2)
     cpu = Cpu()
     asr = BudgetASR(cpu, secs=0.3)
-    mt = BusyMT(cpu, secs=0.01)
-    t0 = time.monotonic()
-    run(Burst(5), OneSeg(), asr, mt, TextSink(io.StringIO()))
-    assert mt.calls >= 1 and time.monotonic() - t0 < 5
+    starts = []
+
+    class Stamped(BusyMT):
+        def translate(self, text, src, tgt):
+            starts.append(time.monotonic())
+            return super().translate(text, src, tgt)
+
+    mt = Stamped(cpu, secs=0.01)
+    done = []
+
+    class Timed(BudgetASR):
+        def transcribe(self, audio):
+            r = super().transcribe(audio)
+            done.append(time.monotonic())
+            return r
+
+    asr = Timed(cpu, secs=0.3)
+    run(Burst(8), OneSeg(), asr, mt, TextSink(io.StringIO()))
+    assert len(starts) >= 2 and starts[1] < done[-1]  # released by the cap, not by the end of input
+    assert starts[1] - starts[0] < 0.6  # line 2's cap ran while line 1 was held: not 2 full caps back to back
+
+
+def test_drafts_yield_too():
+    """--stream drafts do not start an MT draft while ASR is behind; the request stays queued."""
+    import threading as th
+
+    from tinglongwu.stream import DraftEngine
+
+    d = DraftEngine.__new__(DraftEngine)
+    d.final_waiting, d._slot_lock, d._slot = 0, th.Lock(), (1, "привет", "ru")
+    d.asr_behind = lambda: True
+    assert d.translate_pending() is False and d._slot == (1, "привет", "ru")
+
+
+def test_gui_wait_line_per_leg():
+    """GUI: one leg reporting 0 does not hide the other leg's held lines; the slower backlog is shown."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    pytest.importorskip("tkinter")
+    from tinglongwu.gui.app import App
+
+    me = SimpleNamespace(_waits={("mtwait", "listen"): 2, ("mtwait", "speak"): 0,
+                                 ("backlog", "listen"): 4, ("backlog", "speak"): 1})
+    assert App._wait_line(me) == "ASR 4 s behind | MT paused for ASR: 2 line(s) waiting"
+    assert App._wait_line(SimpleNamespace(_waits={})) == ""
 
 
 def test_fast_asr_never_holds_mt():

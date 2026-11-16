@@ -317,6 +317,9 @@ class DraftEngine:
         """Translate the newest queued hypothesis (one at a time). True if a request was taken."""
         if self.final_waiting:
             return False
+        behind = getattr(self, "asr_behind", None)  # #1253: set by pipeline.run while MT yields to a lagging ASR
+        if behind is not None and behind():
+            return False  # the request stays queued; a newer hypothesis may replace it meanwhile
         with self._slot_lock:
             req, self._slot = self._slot, None
         if req is None:
