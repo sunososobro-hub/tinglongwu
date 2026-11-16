@@ -31,6 +31,15 @@ def test_short_latin_terms_do_not_fire_on_longer_english_words():
     assert g.prompt_block("the social season") == ""
 
 
+def test_short_latin_terms_match_plain_plurals_but_not_longer_words():
+    g = Glossary(parse("SoC = 晶片\nPHY\nLTE\n"))
+    assert [e.main for e in g.relevant("Новые SoCs от Qualcomm")] == ["SoC"]
+    assert [e.main for e in g.relevant("два PHYs на плате")] == ["PHY"]
+    assert [e.main for e in g.relevant("модемы LTEs")] == ["LTE"]
+    assert [e.main for e in g.relevant("Этот SoC")] == ["SoC"]
+    assert g.relevant("social physical website") == []
+
+
 def test_wrong_rendering_fix_needs_the_real_term_not_a_prefix():
     g = Glossary(parse("SoC = SoC ~ 賽季\n"))
     # "season" really is 賽季 here: "social" must not turn it into SoC
