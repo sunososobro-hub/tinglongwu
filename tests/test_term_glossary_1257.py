@@ -32,12 +32,13 @@ def test_short_latin_terms_do_not_fire_on_longer_english_words():
 
 
 def test_short_latin_terms_match_plain_plurals_but_not_longer_words():
-    g = Glossary(parse("SoC = 晶片\nPHY\nLTE\n"))
+    g = Glossary(parse("SoC = 晶片\nPHY\nLTE\nWeb\nBox\n2 = 二\n"))
     assert [e.main for e in g.relevant("Новые SoCs от Qualcomm")] == ["SoC"]
     assert [e.main for e in g.relevant("два PHYs на плате")] == ["PHY"]
     assert [e.main for e in g.relevant("модемы LTEs")] == ["LTE"]
     assert [e.main for e in g.relevant("Этот SoC")] == ["SoC"]
-    assert g.relevant("social physical website") == []
+    assert [e.main for e in g.relevant("two Boxes")] == ["Box"]
+    assert g.relevant("social physical website 2s") == []
 
 
 def test_wrong_rendering_fix_needs_the_real_term_not_a_prefix():

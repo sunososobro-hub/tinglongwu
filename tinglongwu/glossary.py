@@ -60,7 +60,7 @@ class Entry:
             if not stems:
                 continue
             for i in range(len(words) - len(stems) + 1):
-                if all(words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] in (s, s + "s", s + "es")
+                if all(words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] in ((s, s + "s", s + "es") if s.isalpha() else (s,))
                        for j, s in enumerate(stems)):
                     return True
         return False
