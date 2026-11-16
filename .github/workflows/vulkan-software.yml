@@ -76,6 +76,7 @@ jobs:
           GGML_VK_VISIBLE_DEVICES: "0"   # ggml-vulkan skips CPU-type devices (lavapipe) unless listed explicitly
         run: python scripts/vulkan_parity.py translate --models-dir "$TLWU_MODELS" --out vulkan.json
       - name: Compare (backend must be vulkan, chrF within -2 of CPU)
+        shell: bash   # pipefail: a failing compare must not be masked by tee
         run: python scripts/vulkan_parity.py compare cpu.json vulkan.json | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
