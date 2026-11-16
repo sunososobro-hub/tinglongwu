@@ -83,8 +83,10 @@ def ram_mib() -> int | None:
         return None
 
 
-def probe(gpu=gpu_info, ram=ram_mib, cores=os.cpu_count, driver=None) -> HwInfo:
+def probe(gpu=gpu_info, ram=ram_mib, cores=None, driver=None) -> HwInfo:
     name, vram = gpu()
+    if cores is None:  # #1264: the CPUs this process may use (affinity), not every CPU of the machine
+        from .threads import cpu_count as cores
     if driver is None:
         from .device import driver_version as driver
     return HwInfo(gpu=name, vram_mib=vram, ram_mib=ram(), cores=cores() or 1,

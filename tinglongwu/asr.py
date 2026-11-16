@@ -19,6 +19,12 @@ from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, wr
 from .models import require
 from .repeat import filter_hallucination, has_loop
 
+def _usable_cpus() -> int:
+    """#1264: the CPUs this process may use (affinity), see threads.cpu_count."""
+    from .threads import cpu_count
+
+    return cpu_count()
+
 
 @dataclass
 class Transcript:
@@ -120,7 +126,7 @@ def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int,
 
     if not beam or not threads:
         mib = ram_mib if ram_mib is not None else _ram()
-        st = cpu_mode_settings(cores or os.cpu_count() or 4, mib / 1024 if mib else 16.0)
+        st = cpu_mode_settings(cores or _usable_cpus(), mib / 1024 if mib else 16.0)
         beam, threads = beam or st.beam, threads or st.threads
     env = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
     if env.isdigit() and int(env) > 0:

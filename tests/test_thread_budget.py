@@ -69,7 +69,7 @@ def test_load_llama_passes_explicit_threads(monkeypatch, tmp_path, both, want):
     made: list = []
     monkeypatch.setitem(sys.modules, "llama_cpp", _fake_llama(made))
     monkeypatch.setattr(llamacheck, "check_build", lambda mod: None)
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(threads, "cpu_count", lambda: 8)
     monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
     monkeypatch.setenv("TLWU_BOTH", "1") if both else monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
@@ -86,7 +86,7 @@ def test_whisper_cpu_threads_follow_budget(monkeypatch, tmp_path, both, fast, wa
     seen: list = []
     monkeypatch.setattr(faster_whisper, "WhisperModel", lambda *a, **kw: seen.append(kw) or object())
     (tmp_path / "whisper-small").mkdir()
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(threads, "cpu_count", lambda: 8)
     monkeypatch.setenv("TLWU_CPU_THREADS", "8" if both else "7")
     monkeypatch.setenv("TLWU_BOTH", "1") if both else monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "speak")

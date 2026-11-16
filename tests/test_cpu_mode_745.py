@@ -159,7 +159,7 @@ def test_apply_cpu_mode_hands_mt_threads_to_llama(tmp_path, monkeypatch):
     monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
     monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(threads, "cpu_count", lambda: 16)
     monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small"})
     a = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=True)
     assert (threads.current()["mt"], threads.current()["mt_batch"]) == (8, 16)  # llama.cpp defaults before
@@ -175,7 +175,7 @@ def test_cpu_mode_mt_threads_cleared_on_gpu_and_ignored_in_listen_speak(tmp_path
 
     monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(threads, "cpu_count", lambda: 4)
     monkeypatch.setattr("tinglongwu.models.whisper_installed", lambda mdir=None: {"small"})
     a = SimpleNamespace(model="small", quality="auto", min_words=0, min_words_explicit=True)
     cli.apply_cpu_mode(a, "cpu", tmp_path, explicit_model=True, cores=4, ram_gb=16)
@@ -192,7 +192,7 @@ def test_cuda_to_cpu_fallback_gets_cpu_mode_mt_threads(monkeypatch):
 
     monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(threads, "cpu_count", lambda: 4)
     assert not cli.cpu_fallback_mt("cuda", "cuda", cores=4) and not cli.cpu_fallback_mt("cpu", "cpu", cores=4)
     assert (threads.current()["mt"], threads.current()["mt_batch"]) == (2, 4)
     assert cli.cpu_fallback_mt("cuda", "cpu", cores=4)
@@ -206,7 +206,7 @@ def test_eval_defaults_run_after_cpu_mode_run_clears_mt_threads(monkeypatch):
 
     monkeypatch.delenv("TLWU_BOTH", raising=False)
     monkeypatch.setattr(threads, "_role", "listen")
-    monkeypatch.setattr(threads.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(threads, "cpu_count", lambda: 4)
     cpu_mode_asr(SimpleNamespace(cpu_mode=True, model=None), "cpu", "small", cores=4, ram_gb=16)
     assert threads.current()["mt_batch"] == 2
     cpu_mode_asr(SimpleNamespace(cpu_mode=False, model=None), "cpu", "small", cores=4, ram_gb=16)

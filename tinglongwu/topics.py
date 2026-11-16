@@ -24,6 +24,12 @@ from .topic_segmenter import MAX_S, MIN_S, PAUSE_S, TopicSegmenter
 MAX_BULLETS = 5
 SUMMARY_TOKENS = 220  # #595: ~120 output tokens of notes, with headroom for the labels
 
+def _usable_cpus() -> int:
+    """#1264: the CPUs this process may use (affinity), see threads.cpu_count."""
+    from .threads import cpu_count
+
+    return cpu_count()
+
 
 @dataclass
 class Line:
@@ -199,7 +205,7 @@ def llama_summarizer(model_path, threads: int | None = None, loader=None) -> Cal
     """A summarize(prompt) on a local GGUF via llama.cpp, loaded lazily on the worker thread (CPU, few threads so
     ASR/MT keep their cores). Separate from the translation model: a different file."""
     state: dict = {}
-    n = threads or max(1, (os.cpu_count() or 4) // 4)
+    n = threads or max(1, _usable_cpus() // 4)
 
     def _load():
         if loader is not None:

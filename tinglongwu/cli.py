@@ -474,7 +474,7 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
         ram_gb = mib / 1024 if mib else 16.0  # unknown RAM: the middle tier
     from . import instances
 
-    cpus = cores or os.cpu_count() or 4
+    cpus = cores or thread_budget.cpu_count()  # #1264: the CPUs this process may use (affinity)
     with instances.allocating():  # #1254: two instances starting together plan one after the other
         busy = instances.others()  # other tlwu instances already on this CPU keep their threads
         n = instances.budget(cpus, busy) if busy else cpus
@@ -516,7 +516,7 @@ def cpu_fallback_mt(asked: str, got: str, cores=None, asr_threads=None, transcri
     from .asr import cpu_fallback_settings
     from .hwprobe import cpu_mode_threads
 
-    cpus = cores or os.cpu_count() or 4
+    cpus = cores or thread_budget.cpu_count()  # #1264: the CPUs this process may use (affinity)
     with instances.allocating():  # #1254: the fallback session is counted by (and counts) other instances
         busy = instances.others()
         plan = cpu_mode_threads(cpus)

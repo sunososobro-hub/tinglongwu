@@ -19,6 +19,12 @@ CHOICES = ("auto", "cpu", "cuda")
 _LIBS = {"win32": ("cublas64_12.dll", "cudnn64_9.dll"),
          "linux": ("libcublas.so.12", "libcudnn.so.9")}
 
+def _usable_cpus() -> int:
+    """#1264: the CPUs this process may use (affinity), see threads.cpu_count."""
+    from .threads import cpu_count
+
+    return cpu_count()
+
 
 def _nvidia_wheel_dirs() -> list[Path]:
     """bin/ (Windows) or lib/ (Linux) dirs of the pip wheels nvidia-cublas-cu12 / nvidia-cudnn-cu12."""
@@ -260,7 +266,7 @@ def cpu_threads(count=None, env=None) -> int:
     raw = (os.environ if env is None else env).get("TLWU_CPU_THREADS")
     if raw and raw.isdigit() and int(raw) > 0:
         return int(raw)
-    n = count if count is not None else (os.cpu_count() or 8)
+    n = count if count is not None else _usable_cpus()
     return max(4, min(8, n // 2))
 
 
