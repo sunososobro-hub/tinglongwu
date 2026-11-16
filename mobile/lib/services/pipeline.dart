@@ -10,6 +10,8 @@ import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/lang_pack.dart';
+import '../logic/model_manifest.dart';
+import '../logic/pack_status.dart';
 import '../logic/phone_audio.dart';
 import '../logic/s2tw.dart';
 import '../logic/segmenter.dart';
@@ -222,14 +224,24 @@ class Pipeline extends ChangeNotifier {
   /// The voice for the other person's language is installed (else my lines are text only).
   bool ttsInstalled = false;
 
-  /// Languages that have a read-aloud voice pack (assets/voice_packs.json); null = not known.
-  Set<String>? voiceLangs;
+  /// The optional packs (assets/voice_packs.json); null = not known (manifest not read).
+  List<VoicePack>? packs;
+
+  /// What the phone can do with [lang] as the other person's language (#1276).
+  LangPackStatus packStatus(String lang) => LangPackStatus.of(lang,
+      packs: packs ?? const [],
+      hasVoice: (l) =>
+          (l == conversation.foreign && ttsInstalled) || paths?.ttsVoice(l) != null,
+      hasAsr: (l) => paths?.asrPack(l) != null);
 
   /// A voice pack exists for the other person's language (false: nothing to install).
-  bool get voiceAvailable => voiceLangs?.contains(conversation.foreign) ?? true;
+  bool get voiceAvailable =>
+      packs == null || packStatus(conversation.foreign).voice != Voice.none;
 
   /// 對話翻譯 lacks a pack the user can install for the other person's language (#1262).
-  bool get packMissing => extraAsrMissing || (!ttsInstalled && voiceAvailable);
+  bool get packMissing => packs == null
+      ? extraAsrMissing || !ttsInstalled
+      : extraAsrMissing || packStatus(conversation.foreign).toDownload.isNotEmpty;
 
   /// A line is being read aloud now.
   bool speaking = false;
@@ -362,8 +374,7 @@ class Pipeline extends ChangeNotifier {
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
       try {
-        final m = await ModelImporter.loadManifest();
-        voiceLangs = {for (final v in m.packs) if (!v.isAsr) v.lang};
+        packs = (await ModelImporter.loadManifest()).packs;
       } catch (_) {} // unknown: the pill keeps saying the voice is not installed
       var missing = paths!.missing();
       if (missing.isNotEmpty && await PlayPacks.available()) {

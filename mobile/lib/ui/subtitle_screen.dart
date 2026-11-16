@@ -15,6 +15,7 @@ import '../logic/tilt_flip.dart';
 import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
 import 'advanced_screen.dart';
+import 'conversation_sheet.dart';
 
 /// Palette shared with the desktop app (tinglongwu/gui/app.py), dark values.
 class UiColors {
@@ -419,47 +420,42 @@ class _Header extends StatelessWidget {
             ]),
             const SizedBox(height: 6),
             if (conversationActive(pipeline))
-              PopupMenuButton<String>(
-                key: const Key('pairMenu'),
-                tooltip: '我的語言 / 對方語言',
-                onSelected: (v) {
-                  if (v == 'i:1') return onImport?.call();
-                  final c = v.substring(2);
-                  if (v.startsWith('m:')) pipeline.setMineLang(c);
-                  if (v.startsWith('p:')) pipeline.setPartnerLang(c);
-                  if (v == 'a:1') pipeline.setAutoDirection(!pipeline.conversation.auto);
-                },
-                itemBuilder: (_) => [
-                  for (final c in TargetLanguage.spoken)
-                    PopupMenuItem(
-                        value: 'm:$c', child: Text('我的語言：${TargetLanguage.options[c]}')),
-                  const PopupMenuDivider(),
-                  for (final c in Conversation.foreignOptions.keys)
-                    if (c != pipeline.conversation.mineLang)
-                      PopupMenuItem(value: 'p:$c', child: Text('對方語言：${TargetLanguage.options[c]}')),
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                      value: 'a:1',
-                      child: Text(pipeline.conversation.auto ? '改為手動切換說話人' : '改為自動判斷說話人')),
-                  if (onImport != null && pipeline.packMissing)
-                    const PopupMenuItem(
-                        key: Key('installPacks'),
-                        value: 'i:1',
-                        child: Text('安裝語音包 / 辨識包…')),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
+              Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                Tooltip(
+                  message: '我的語言 / 對方語言',
+                  child: InkWell(
+                    key: const Key('pairPill'),
                     borderRadius: BorderRadius.circular(999),
+                    onTap: () => showConversationSheet(context, pipeline, onInstall: onImport),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Flexible(
+                          child: Text(
+                              '對話模式  ${pipeline.conversation.pairLabel}  · '
+                              '${_pillStatus(pipeline)}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
+                        ),
+                        const Icon(Icons.arrow_drop_down, size: 16, color: UiColors.sub),
+                      ]),
+                    ),
                   ),
-                  child: Text(
-                      '對話模式  ${pipeline.conversation.pairLabel}  · '
-                      '${_pillStatus(pipeline)}',
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
-              )
+                // A missing pack has its own action (#1276); nothing downloads without this tap.
+                if (onImport != null && _packAction(pipeline).isNotEmpty)
+                  ActionChip(
+                    key: const Key('packAction'),
+                    avatar: const Icon(Icons.download, size: 16),
+                    label: Text(_packAction(pipeline), style: const TextStyle(fontSize: 12)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onImport,
+                  ),
+              ])
             else
               PopupMenuButton<String>(
               tooltip: '字幕要翻成哪種語言',
@@ -782,6 +778,9 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline, [VoidCallback
     ),
   );
 }
+
+/// 「下載語音包 (112 MB)」 for the chosen 對方語言, '' when nothing is missing.
+String _packAction(Pipeline p) => p.packStatus(p.conversation.foreign).downloadLabel;
 
 /// Pill suffix in 對話模式: the missing recognizer for the other person first, else the voice.
 String _pillStatus(Pipeline p) {

@@ -75,39 +75,25 @@ void main() {
     expect(find.byKey(const Key('importEntry')), findsNothing);
   });
 
-  testWidgets('conversation pill offers the missing packs', (t) async {
-    var opened = 0;
-    final p = make(conversation: true)..voiceLangs = {'en', 'ru'};
-    await t.pumpWidget(MaterialApp(home: SubtitleScreen(pipeline: p, onImport: () => opened++)));
-    expect(p.packMissing, isTrue); // no English voice installed
-    await t.tap(find.byKey(const Key('pairMenu')));
-    await t.pumpAndSettle();
-    await t.ensureVisible(find.byKey(const Key('installPacks')));
-    await t.tap(find.byKey(const Key('installPacks')));
-    await t.pumpAndSettle();
-    expect(opened, 1);
-  });
+  test('packMissing: only when a pack for the other language can be installed', () {
+    final packs = _manifest().packs; // an English voice only
+    final en = make(conversation: true)..packs = packs;
+    expect(en.packMissing, isTrue); // no English voice installed
+    en.ttsInstalled = true;
+    expect(en.packMissing, isFalse);
 
-  testWidgets('nothing to install: installed voice, or a language without one', (t) async {
-    final p = make(conversation: true)
-      ..voiceLangs = {'en', 'ru'}
-      ..ttsInstalled = true;
-    await t.pumpWidget(MaterialApp(home: SubtitleScreen(pipeline: p, onImport: () {})));
-    expect(p.packMissing, isFalse);
-    await t.tap(find.byKey(const Key('pairMenu')));
-    await t.pumpAndSettle();
-    expect(find.byKey(const Key('installPacks')), findsNothing);
-
-    final ja = make(conversation: true, foreign: 'ja')..voiceLangs = {'en', 'ru'};
+    final ja = make(conversation: true, foreign: 'ja')..packs = packs;
     expect(ja.voiceAvailable, isFalse);
     expect(ja.packMissing, isFalse);
     expect(voiceStatusLabel(installed: false, speaking: false, available: false),
         isNot(contains('未安裝')));
-    // The Russian recognizer is missing: that one can be installed.
+    // The recognizer failed to load: that is still something to (re)install.
     final ru = make(conversation: true, foreign: 'ru')
-      ..voiceLangs = const {}
+      ..packs = const []
       ..extraAsrMissing = true;
     expect(ru.packMissing, isTrue);
+    // Manifest not read: keep the old wording (the voice is "not installed").
+    expect(make(conversation: true).packMissing, isTrue);
   });
 
   group('Import screen', () {
