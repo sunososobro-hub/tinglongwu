@@ -1912,7 +1912,7 @@ class App:
         self.btn.configure(state="disabled")
         self._status_text(t("gui_dl_running", model=pack))
         self._sync_quick()  # #1028: the progress line is in the main window; the Settings panel stays closed
-        threading.Thread(target=run_pack_download, args=(pack, self.q.put), daemon=True).start()
+        threading.Thread(target=run_pack_download, args=(pack_on_demand.real_pack(pack), self.q.put), daemon=True).start()
         return True
 
     def _offer_voice(self, run: dict, mode: str = "speak", resume: bool = True) -> bool:

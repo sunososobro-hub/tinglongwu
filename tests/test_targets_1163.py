@@ -29,9 +29,23 @@ def test_prompt_and_labels(code):
 
 @pytest.mark.parametrize("code", NEW)
 def test_packs(code):
-    assert "hymt2-1.8b" in [k for p in pod.needed_packs("en", code) for k in pod.PACKS[p]]
+    assert "hymt2-1.8b" in [k for p in pod.needed_packs("en", code) for k in pod.PACKS[pod.real_pack(p)]]
 
 
 def test_same_language_still_rejected():
     with pytest.raises(core.SameLanguageError):
         core.session_route("listen", "ja", "ja")
+
+
+@pytest.mark.parametrize("code", ["es", "fr", "de", "th", "vi", "id"])
+@pytest.mark.parametrize("ui", ["en", "ru", "zh-TW"])
+def test_hymt2_target_dialog_names_translator_not_ko(code, ui, tmp_path):  # #1175
+    pack, mb = pod.first_missing("en", code, tmp_path)
+    text = pod.dialog_text(ui, pack, mb)
+    assert "hymt2" in text and "ko" not in text.replace("hymt2", "") and "韓" not in text and "корей" not in text
+    assert mb == 1100 and pod.PACKS[pod.real_pack(pack)] == ["hymt2-1.8b"] and pod.real_pack(pack) == "ko"  # the same model is still downloaded
+
+
+@pytest.mark.parametrize("code,pack", [("ja", "ja"), ("ko", "ko"), ("ru", "ru")])
+def test_native_targets_keep_their_pack_name(code, pack, tmp_path):  # #1175
+    assert pod.first_missing("en", code, tmp_path)[0] == pack
