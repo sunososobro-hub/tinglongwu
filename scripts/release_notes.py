@@ -16,6 +16,7 @@ workflows to main.
     python scripts/release_notes.py plan                               release.yml: publish? tag? (GITHUB_OUTPUT lines)
     python scripts/release_notes.py notes --version vX --base F --verification R [--pr N] [--hw-run URL] --out F
     python scripts/release_notes.py auto                               auto-release.yml: merge the release PR now?
+    python scripts/release_notes.py bump-check --pr N                  mergers: may this bump PR skip Opus? (#1267)
 
 Auto-release (#589): auto-release.yml runs `auto` after ci / e2e / windows-build / hw-tests complete on dev. It merges
 the open dev -> main release PR only when AUTO_RELEASE is true, the throttle issue is at level >= 1, the PR head is
@@ -329,6 +330,65 @@ def todo_whats_new(tag: str) -> str:
     return f"- TODO: add a `## {tag}` section to {WHATS_NEW_FILE} (the bump PR writes it)."
 
 
+VERSION_LINE_RE = re.compile(r'^__version__\s*=\s*["\'](\d+)\.(\d+)\.(\d+)["\']\s*$')
+
+
+def _patch_lines(patch: str) -> tuple[list[str], list[str]]:
+    """Removed and added lines of a GitHub `pulls/N/files` patch (hunk headers and context dropped)."""
+    removed, added = [], []
+    for line in (patch or "").splitlines():
+        if line.startswith("@@") or line.startswith("\\"):
+            continue
+        if line.startswith("-"):
+            removed.append(line[1:])
+        elif line.startswith("+"):
+            added.append(line[1:])
+    return removed, added
+
+
+def bump_exempt(files: list[dict]) -> tuple[bool, str]:
+    """#1267: a bump PR skips Opus only when its diff is the `__version__` patch bump in tinglongwu/__init__.py plus,
+    optionally, one new filled `## vX.Y.Z` section (same version) added to docs/whats_new.md and nothing else.
+    `files` is the `pulls/N/files` list (filename, status, patch). Returns (exempt, reason)."""
+    by = {f.get("filename"): f for f in files}
+    other = sorted(set(by) - {"tinglongwu/__init__.py", WHATS_NEW_FILE})
+    if other:
+        return False, f"other files: {', '.join(other)}"
+    init = by.get("tinglongwu/__init__.py")
+    if not init or init.get("status") != "modified":
+        return False, "no __version__ change"
+    removed, added = (_patch_lines(init.get("patch", "")))
+    old = [VERSION_LINE_RE.match(x) for x in removed]
+    new = [VERSION_LINE_RE.match(x) for x in added]
+    if len(removed) != 1 or len(added) != 1 or not old[0] or not new[0]:
+        return False, "tinglongwu/__init__.py changes more than the __version__ line"
+    o, n = tuple(map(int, old[0].groups())), tuple(map(int, new[0].groups()))
+    if n != (o[0], o[1], o[2] + 1):
+        return False, f"not a patch bump: {'.'.join(map(str, o))} -> {'.'.join(map(str, n))}"
+    tag = "v" + ".".join(map(str, n))
+    wn = by.get(WHATS_NEW_FILE)
+    if wn is None:
+        return True, f"version line only ({tag})"
+    if wn.get("status") != "modified":
+        return False, f"{WHATS_NEW_FILE} is {wn.get('status')}, not modified"
+    removed, added = _patch_lines(wn.get("patch", ""))
+    if removed:
+        return False, f"{WHATS_NEW_FILE} removes or edits existing lines"
+    runs, prev = 0, False  # the new section must be one contiguous block of added lines that starts at its heading
+    for line in (wn.get("patch") or "").splitlines():
+        cur = line.startswith("+")
+        runs += cur and not prev
+        prev = cur
+    if runs != 1 or next((x for x in added if x.strip()), "") != f"## {tag}":
+        return False, f"{WHATS_NEW_FILE} must add one block that starts with `## {tag}`"
+    heads = [x for x in added if re.match(r"^#{1,2}[ \t]", x)]
+    if heads != [f"## {tag}"]:
+        return False, f"{WHATS_NEW_FILE} must add exactly one `## {tag}` heading"
+    if whats_new_section("\n".join(added) + "\n", tag) is None:
+        return False, f"`## {tag}` section is empty or TODO"
+    return True, f"version line + {WHATS_NEW_FILE} `## {tag}` section"
+
+
 def throttle_level(body: str | None) -> int | None:
     """First line of the throttle issue (#574): `level: N`. None when missing or unreadable."""
     m = THROTTLE_RE.match((body or "").split("\n", 1)[0])
@@ -625,6 +685,9 @@ def main(argv=None) -> int:
     sub.add_parser("plan")
     sub.add_parser("snapshot")
     sub.add_parser("auto")
+    bc = sub.add_parser("bump-check", help="#1267: may this bump PR merge without an Opus PASS?")
+    bc.add_argument("--pr", required=True)
+    bc.add_argument("--files", default="", help="JSON of pulls/N/files (default: fetched with gh)")
     n = sub.add_parser("notes")
     for k in ("--version", "--base", "--out"):
         n.add_argument(k, required=True)
@@ -634,6 +697,12 @@ def main(argv=None) -> int:
     n.add_argument("--head", default="")
     n.add_argument("--packs-manifest", default="", help="pack manifest JSON (tinglongwu/pack_manifest.py)")
     a = ap.parse_args(argv)
+    if a.cmd == "bump-check":
+        files = (json.loads(read(a.files)) if a.files else
+                 gh_json("api", f"repos/{repo()}/pulls/{a.pr}/files?per_page=100"))
+        ok, why = bump_exempt(files)
+        print(f"bump-exempt: {'yes' if ok else 'no'} ({why})")
+        return 0 if ok else 1
     version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
     rep = repo()
     if a.cmd == "plan":
