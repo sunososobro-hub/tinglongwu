@@ -206,12 +206,17 @@ def build_parser() -> argparse.ArgumentParser:
                          "countdown = auto-send after 2 s unless you type anything+Enter; auto = send at once. "
                          "countdown and auto print a quality notice at start. "
                          "Low-confidence lines always wait for y+Enter")
+    ap.add_argument("--enter-sends", action="store_true",
+                    help="#1193 confirm prompt: a bare Enter sends, y+Enter sends and switches to auto-send, anything "
+                         "else discards (default: only y sends). Low-confidence lines still need y. Env: TLWU_ENTER_SENDS=1")
     ap.add_argument("--no-back", action="store_true",
                     help="skip the back-translation shown while confirming (one MT pass less per sentence)")
     ap.add_argument("--debug-latency", action="store_true",
                     help="print one 'lat asr=.. mt=.. back=.. tts=.. total=..' line (seconds) per sentence on stderr")
     ap.add_argument("--preview-device", default=None,
-                    help="also play the sent Russian audio on this device (your own headphones); default off")
+                    help="also play the sent audio on this device (your own headphones), in confirm and --no-confirm "
+                         "mode; default off. Do not pick the device your meeting app plays to: its echo "
+                         "cancellation can then remove your voice for the other side")
     ap.add_argument("--no-play", action="store_true")
     ap.add_argument("--no-tts", action="store_true", help="ASR + MT only (no TTS subprocess)")
     ap.add_argument("--overlay", action="store_true",

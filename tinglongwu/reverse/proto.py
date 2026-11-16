@@ -27,7 +27,7 @@ from .args import (PAUSE_MAX, PAUSE_MIN, _ru_model_ok, _warn_no_ru_model, build_
 from .listen_side import ListenSide  # noqa: F401
 from .player import ABORT_JOIN_S, PLAY_BLOCK_S, Player, VramSampler, vram_used_mib  # noqa: F401
 from .session import (_close_items, _drain, _record_line, _run_auto_live, _run_confirm, _stop_live,  # noqa: F401
-                      _to_bar, make_segmenter, paced_file_source)
+                      _to_bar, make_segmenter, paced_file_source, preview_notes)
 from .synth import (VOICE_ENGINES, WARM_EN, WARM_TEXT, _CYR, _JA, FollowTTS, _file_items, _make_synth,  # noqa: F401
                     _synth_sentences, _target, describe_error, no_audio_reason, warm_tts)
 from .translator import (HYMT_CPU_NOTE, _mt_kind, _NoFallback, _router_warn, _UnsupportedPair,  # noqa: F401
@@ -86,7 +86,7 @@ def _live_main(a, asr, mt, tts, player, previewer, confirm, res) -> None:
             _run_confirm(a, utterances, mt, tts, player, previewer, res, box)
         else:
             _run_auto_live(utterances, mt, tts, player, res, lambda: _target(a), lat,
-                           getattr(a, "debug_latency", False), src, bar, on_record)
+                           getattr(a, "debug_latency", False), src, bar, on_record, previewer)
         if not stop.is_set():  # #577: the input ended on its own (file / clip), not Quit or Ctrl+C:
             _drain(player, previewer)  # play the queued audio before cleanup() aborts the players (#427)
     except KeyboardInterrupt:
@@ -316,6 +316,8 @@ def _main(argv, vm, bar_q=None, stop=None) -> int:
         player = Player(a.device, a.out_sr, enabled=not (a.no_play or a.no_tts))
         res["speaker"] = player.speaker_name
         previewer = Player(a.preview_device, a.out_sr, enabled=bool(a.preview_device) and tts is not None)
+        for m in preview_notes(a.preview_device if previewer.enabled else None, a.device):
+            print(m, file=sys.stderr, flush=True)
         res["confirm"] = confirm
         # warm up ASR + MT so the first sentence is not penalised by lazy init
         if wavs:

@@ -50,7 +50,8 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
     sess = ConfirmSession(_make_synth(tts), player.push, previewer.push if previewer.enabled else None,
                           out=lambda m: print(m, flush=True),
                           set_voice=set_voice if getattr(tts, "engine", "") in VOICE_ENGINES else None,
-                          mode=getattr(a, "send_mode", "confirm"), require_back=not getattr(a, "no_back", False))
+                          mode=getattr(a, "send_mode", "confirm"), require_back=not getattr(a, "no_back", False),
+                          enter_sends=True if getattr(a, "enter_sends", False) else None)  # None: TLWU_ENTER_SENDS
     if sess_box is not None:
         sess_box.append(sess)
     note = sendmode.notice(sess.mode)  # #822: once per speak start, only for countdown / auto
@@ -124,6 +125,19 @@ def _run_confirm(a, items, mt, tts, player, previewer, res, sess_box=None) -> No
             it["back"], it["lat"] = u.back, u.extra.get("lat", {})
 
 
+def preview_notes(preview: str | None, device: str | None) -> list[str]:
+    """#1193: warnings for --preview-device (None = preview off). The same device as --device plays every piece
+    twice; a meeting app that plays to the preview device can treat the voice as echo and cancel it."""
+    if not preview:
+        return []
+    if device and preview.strip().lower() == device.strip().lower():
+        return [f"warning: --preview-device {preview!r} is the same as --device: you would hear every sentence twice "
+                "and the meeting would get it mixed with the preview; pick your own headphones"]
+    return [f"note: also playing the sent speech on {preview!r}. If your meeting app (Teams / Zoom / Meet) plays to "
+            "the same device, its echo cancellation can remove your voice for the other side: give the meeting "
+            "app another speaker device"]
+
+
 def _record_line(lat, on_record, mt_start, shown, first_audio, lang, text) -> None:
     """#434: hand one speak_record to on_record (--latency-jsonl) when the utterance came with capture marks."""
     from .logic import speak_record
@@ -133,11 +147,12 @@ def _record_line(lat, on_record, mt_start, shown, first_audio, lang, text) -> No
 
 
 def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=False, src="zh", bar=None,
-                   on_record=None) -> None:
+                   on_record=None, previewer=None) -> None:
     """--no-confirm with live input: translate + speak every utterance as it arrives. Each sentence goes to the
     player as soon as it is synthesized (#132: the first sentence plays while the rest is still in TTS).
     `lang`: a code, or a callable returning the code for the next sentence (--to follow).
-    on_record(dict) (#434, --latency-jsonl): one logic.speak_record per utterance."""
+    on_record(dict) (#434, --latency-jsonl): one logic.speak_record per utterance.
+    previewer (#1193, --preview-device): an enabled Player also gets every sent piece (you hear what was sent)."""
     from .logic import GapMeter, Lat, lat_line, latency_fields, latency_line, stream_line, timing_line, translate_ru
 
     lat = lat or Lat()
@@ -160,6 +175,8 @@ def _run_auto_live(items, mt, tts, player, res, lang="ru", lat=None, show_lat=Fa
             if not sent:
                 first_audio = stamp()  # #434: the first audio chunk is handed to the output now
             player.push(audio, sr)
+            if previewer is not None and getattr(previewer, "enabled", False):
+                previewer.push(audio, sr)
             sent += 1
         tts_done = lat.clock() - t0
         if sent:  # #207: how the streamed pieces kept up with playback

@@ -25,6 +25,13 @@ from collections.abc import Callable
 SEND_KEY = "y"  # the only answer that sends (case-insensitive); everything else, a bare Enter included, discards
 DISCARD_KEYS = ("", "r", "x")
 HELP = "[y]+Enter=send  [Enter]=discard"
+# #1193 (opt-in --enter-sends / TLWU_ENTER_SENDS=1): a bare Enter sends, "y" sends and switches to auto-send, anything
+# else discards. A low-confidence line still sends on "y" only, and type-ahead is still flushed before every prompt.
+HELP_ENTER = "[Enter]=send  [y]+Enter=send + auto-send from now  [other]+Enter=discard"
+
+
+def enter_sends_env() -> bool:
+    return os.environ.get("TLWU_ENTER_SENDS", "") == "1"
 # #249: bound the queue of sentences waiting for confirmation. More than MAX_PENDING unseen sentences means the
 # speaker is far ahead of the review (the oldest is dropped); a sentence waiting longer than MAX_AGE_S is stale in a
 # live conversation (dropped when its turn comes). Overrides: TLWU_CONFIRM_MAX_PENDING, TLWU_CONFIRM_MAX_AGE.
@@ -149,8 +156,9 @@ class ConfirmSession:
                  set_voice: Callable[[int], None] | None = None, flush: Callable[[], object] | None = None,
                  max_pending: int | None = None, max_age: float | None = None, clock: Callable[[], float] = time.monotonic,
                  mode: str = "confirm", countdown_s: float | None = None, require_back: bool = True,
-                 sleep: Callable[[float], object] = time.sleep):
+                 sleep: Callable[[float], object] = time.sleep, enter_sends: bool | None = None):
         self.synth, self.send, self.preview, self.out = synth, send, preview, out
+        self.enter_sends = enter_sends_env() if enter_sends is None else bool(enter_sends)  # #1193
         self.set_voice = set_voice  # "v<N>"+Enter switches voice and re-synthesises the current utterance
         self.readline = readline or (lambda: input())
         self.flush = flush or flush_input
@@ -334,7 +342,11 @@ class ConfirmSession:
             self.out(f"low confidence ({d.reason}): waiting for confirm")
         pending = self._q.qsize()
         extra = f" ({pending} queued)" if pending else ""
-        help_ = HELP + ("  [v0-v4]+Enter=change voice" if self.set_voice else "")
+        # #1193: a low-confidence line keeps the strict y-only rule. In confirm mode every line asks, so only the
+        # hallucination / logprob flags count there (a back-translation may still be on its way).
+        low = d.reason if d.mode != "confirm" else _sm.low_confidence(u, require_back=False)
+        enter = self.enter_sends and not low
+        help_ = (HELP_ENTER if enter else HELP) + ("  [v0-v4]+Enter=change voice" if self.set_voice else "")
         while True:
             self.flush()  # #248: keys typed during the previous utterance must not answer this one
             self.out(f"{help_}{extra}")
@@ -345,6 +357,11 @@ class ConfirmSession:
                 return False
             if self._voice_cmd(key, u):
                 continue
+            if enter:
+                if key == SEND_KEY and self.mode != "auto":
+                    self.mode = "auto"  # #1193: confident lines are sent at once from now on
+                    self.out("auto-send on: confident lines are sent at once; low-confidence lines still wait for y")
+                return key in (SEND_KEY, "")
             return key == SEND_KEY  # only "y" sends; a bare Enter, r/x and anything else discard
 
     def _send_parts(self, u: Utterance) -> int:
