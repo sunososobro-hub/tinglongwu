@@ -8,12 +8,15 @@ Same rules as the GPU pack installer (tinglongwu/gpu_pack.py, #613): verify befo
 that escape the folder, keep the old pack until the new one is in place, leave nothing behind on a failure. It is a
 second small copy because setup must not import the runtime package (tests/test_no_network_code.py).
 A release without the zip is not an error: one note, exit 0, the CPU build stays in use.
+#1198: Linux takes `tlwu-vulkan-pack-linux-<version>.zip` (libllama.so + libggml-vulkan.so); a pack without this
+platform's llama library (e.g. the Windows DLL zip on Linux) is refused, never installed. macOS has no Vulkan pack.
 """
 from __future__ import annotations
 
 import json
 import os
 import shutil
+import sys
 import tempfile
 import urllib.error
 import zipfile
@@ -22,9 +25,12 @@ from pathlib import Path
 from . import resume, selfupdate
 
 PACK_DIR_NAME = "vulkan-pack"  # == tinglongwu.mt_backend.VULKAN_PACK_NAME (setup does not import tinglongwu)
-ASSET_FMT = "tlwu-vulkan-pack-{version}.zip"
-NO_PACK_NOTE = ("vulkan pack: this release has no Vulkan pack (tlwu-vulkan-pack-<version>.zip); skipped, "
-                "MT keeps running on the CPU build.")
+ASSET_FMT = "tlwu-vulkan-pack-{version}.zip"  # Windows (#800)
+ASSET_FMT_LINUX = "tlwu-vulkan-pack-linux-{version}.zip"  # #1198
+LLAMA_LIB = {"win32": "llama.dll", "linux": "libllama.so"}  # what llama-cpp-python loads from LLAMA_CPP_LIB_PATH
+HOST = sys.platform  # the platform whose pack is installed (tests set it)
+NO_PACK_NOTE = ("vulkan pack: this release has no Vulkan pack for this platform (tlwu-vulkan-pack[-linux]-<version>.zip); "
+                "skipped, MT keeps running on the CPU build.")
 VERSION_FILE = "version.txt"  # the app version the pack was built for (a later runtime check can refuse a mismatch)
 NO_VERSION = "the installed app version is unknown; refusing to guess (the pack must match the app's llama bindings)"
 
@@ -37,6 +43,16 @@ def default_dest(root: Path, env=None) -> Path:
     """`vulkan-pack/` next to the app; TLWU_VULKAN_PACK moves it (same override as mt_backend.vulkan_pack_dir)."""
     env = os.environ if env is None else env
     return Path(env["TLWU_VULKAN_PACK"]) if env.get("TLWU_VULKAN_PACK") else Path(root) / PACK_DIR_NAME
+
+
+def asset_format(platform: str | None = None) -> str | None:
+    """Release asset name format of this platform's pack; None when no pack is built for it (macOS)."""
+    plat = HOST if platform is None else platform
+    if plat == "win32":
+        return ASSET_FMT
+    if plat.startswith("linux"):
+        return ASSET_FMT_LINUX
+    return None
 
 
 def release_assets(version: str, get=selfupdate._get) -> dict | None:
@@ -56,13 +72,18 @@ def release_assets(version: str, get=selfupdate._get) -> dict | None:
     if selfupdate.parse_version(tag) is None:
         return None
     version = tag.lstrip("v")
-    name = ASSET_FMT.format(version=version)
+    fmt = asset_format()
+    name = fmt.format(version=version) if fmt else ""
     assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or []}
     return {"version": version, "name": name, "zip_url": assets.get(name), "sums_url": assets.get(selfupdate.SUMS_NAME)}
 
 
 def _has_llama_library(folder: Path) -> bool:
-    # the rule of mt_backend.vulkan_pack_dir: a pack is a folder with a llama library at its top
+    # the rule of mt_backend.vulkan_pack_dir: a pack is a folder with a llama library at its top; #1198: the library
+    # this platform loads (a Windows llama.dll on Linux would be "found" and then fail to import)
+    want = LLAMA_LIB.get("linux" if HOST.startswith("linux") else HOST)
+    if want:
+        return (folder / want).is_file()
     return any(folder.glob("llama.*")) or any(folder.glob("libllama.*"))
 
 
@@ -82,7 +103,7 @@ def install_zip(archive: Path, sha256: str, dest: Path, version: str | None = No
                     raise PackError(f"unsafe path in pack: {n}")
             z.extractall(tmp)
         if not _has_llama_library(tmp):  # never replace a working pack with something the app would not accept
-            raise PackError("not a Vulkan llama.cpp pack: no llama library at the top of the zip")
+            raise PackError("not a Vulkan llama.cpp pack for this platform: no llama library at the top of the zip")
         if version:
             (tmp / VERSION_FILE).write_text(version + "\n", encoding="utf-8")
         backup = None
@@ -120,7 +141,7 @@ def run(dest: Path, version: str | None, get=selfupdate._get, fetch=resume.fetch
         return 1
     try:
         rel = release_assets(version, get)
-        if rel is None or not rel["zip_url"]:
+        if rel is None or not rel["name"] or not rel["zip_url"]:
             out(NO_PACK_NOTE)
             return 0
         if not rel["sums_url"]:

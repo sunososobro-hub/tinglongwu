@@ -24,6 +24,12 @@ SUMS_URL = "https://example.invalid/SHA256SUMS.txt"
 LAYOUT = {"llama.dll": b"llama", "ggml-vulkan.dll": b"vk", "ggml.dll": b"g"}  # what part 1 puts at the zip top
 
 
+@pytest.fixture(autouse=True)
+def _windows_host(monkeypatch):
+    """These tests describe the Windows pack (#801); the Linux one is in test_vulkan_pack_linux_1198.py."""
+    monkeypatch.setattr(vulkan_pack, "HOST", "win32")
+
+
 def make_zip(path: Path, files=None) -> bytes:
     with zipfile.ZipFile(path, "w") as z:
         for n, b in (LAYOUT if files is None else files).items():
