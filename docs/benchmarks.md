@@ -162,9 +162,9 @@ Run [43819684119](https://github.com/sunososobro-hub/tinglongwu/actions/runs/438
 | small, beam 1, 4 threads, no timestamps, MT 2/2 threads | 4.122 | 11.6% | -0.45 | 5.78 |
 
 What this shows:
-- No Whisper setting meets all three targets. `small` tops out at a 10-13% p50 drop. `base` reaches 33-37%, but WER rises 12-14 points (zh CER 13.5% -> 37.6%, partly because base writes Traditional characters with no punctuation; ja 15.6% -> 27.6%) and chrF drops 4.7-5.6.
+- No Whisper setting meets all three targets. `small` tops out at a 10-13% p50 drop. `base` reaches 33-37%, but WER rises 12-14 points (zh CER 13.5% -> 37.6%, inflated the same way: base writes Traditional characters, see the next bullets; ja 15.6% -> 27.6%) and chrF drops 4.7-5.6.
 - Translation is about half of each line (Hy-MT2 median 1.5-2.5 s per line in every row) and no ASR setting changes it. MT 4/4 or 2/2 llama.cpp threads instead of the default 2/4 changed it by less than the run-to-run noise. So the remaining gain has to come from the MT step (#1198).
-- `without_timestamps` breaks zh: CER 14.2% -> 36.9%. Do not use it in CPU mode.
+- With `without_timestamps`, zh CER goes from 14.2% to 36.9%. The recognition is nearly the same: Whisper switches to Traditional characters, the reference is Simplified, and `tlwu_eval` CER does not normalize the script. So this is a scoring gap, not an ASR failure. The setting saved too little time to be worth it either way (11.3% vs 10.2% p50 drop).
 - The chrF drop of beam 1 comes from 2 of the 20 clips. On Intel, en_003 loses two commas in the transcript ("To the north, and within easy reach, is" -> "To the north and within easy reach is"). WER ignores punctuation, so it stays 7.77%, but Hy-MT2 then rewords the line and en->zh chrF falls 38.90 -> 33.98. On AMD the same settings give a chrF drop of -0.03. With 5 clips per pair, one changed clip moves a pair's chrF by about 5 and the overall mean by about 1.2, so a 1.0 chrF limit is within the noise of this set. `cpu_mode_ab.py` now lists the clips whose text changed under each table.
 - A on the same runner twice: p50 3.655 vs 3.692 s (1% noise), chrF and WER identical. The same commit on different runner CPUs gives different A numbers (p50 3.66-5.28 s; zh->en chrF 43.42 on AMD vs 48.63 on Intel). Compare A and B only within one run.
 
