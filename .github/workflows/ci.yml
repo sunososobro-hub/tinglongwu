@@ -25,7 +25,7 @@ jobs:
           AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
           AUTHOR_ID: ${{ github.event.pull_request.user.id }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/commits?per_page=100" --paginate --slurp > "$RUNNER_TEMP/commits.json"
+          bash scripts/fetch_pr_commits.sh "$GITHUB_REPOSITORY" "$PR" "$RUNNER_TEMP/commits.json"
           python scripts/commit_identity.py "$RUNNER_TEMP/commits.json" --author-login "$AUTHOR_LOGIN" --author-id "$AUTHOR_ID" --expected-count "$PR_COMMITS"
       - name: System libraries (audio capture libs are imported by the package)
         # Fail fast on runner DNS/mirror outages (2026-11-11 azure.archive.ubuntu.com) instead of hanging the job.
