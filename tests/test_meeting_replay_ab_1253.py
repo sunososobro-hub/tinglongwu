@@ -29,6 +29,7 @@ def _run_dir(root: Path, name: str, drops: int, cuts: int, lat: list[dict], seco
     (d / "rec").mkdir(parents=True)
     if ran:
         (d / "t0.txt").write_text("1800000000.0\n", "utf-8")
+        (d / "done.json").write_text(json.dumps({"completed": True, "exit": 0}), "utf-8")
     (d / "replay.json").write_text(json.dumps({"wav": "r.wav", "lang": "ru", "seconds": seconds, "speech": [0, 16],
                                                "spans": [[0, 8], [8.25, 16]], "clips": list(clips),
                                                "voiced": [[0.5, 7.5], [8.5, 15.5]]}), "utf-8")
@@ -118,4 +119,52 @@ def test_a_replay_that_never_ran_gives_no_delta(mr, tmp_path, capsys):
     c = mr.compare_dirs(a, b)
     out = capsys.readouterr().out
     assert c["both_ran"] is False and c["drops_delta"] is None
-    assert "a replay did not run" in out and out.strip().splitlines()[-1].endswith("delta=n/a cuts_delta=n/a")
+    assert "a replay did not run to the end" in out and out.strip().splitlines()[-1].endswith("delta=n/a cuts_delta=n/a")
+
+
+def test_ready_then_crashed_replay_gives_no_delta(mr, tmp_path, capsys):
+    a = _run_dir(tmp_path, "asr", 0, 0, [])
+    (a / "done.json").write_text(json.dumps({"completed": False, "exit": 3}), "utf-8")  # ready, then tlwu died
+    b = _run_dir(tmp_path, "mt", 0, 0, [])
+    c = mr.compare_dirs(a, b)
+    assert c["drops_delta"] is None and c["both_ran"] is False
+    assert "did not run to the end" in capsys.readouterr().out
+
+
+def test_run_records_an_early_exit_as_not_completed(mr, tmp_path, monkeypatch):
+    pkg = tmp_path / "fake" / "tinglongwu"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", "utf-8")
+    (pkg / "__main__.py").write_text("import sys\nprint('* ready - listening (start playback now)', flush=True)\n"
+                                     "sys.exit(3)\n", "utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "fake"))
+    monkeypatch.setattr(mr, "ROOT", tmp_path)
+    rdir = tmp_path / "r"
+    (rdir / "rec").mkdir(parents=True)
+    (rdir / "replay.json").write_text(json.dumps({"wav": "r.wav", "lang": "ru", "seconds": 0.1, "speech": [0, 0.1],
+                                                  "spans": [[0, 0.1]], "clips": ["a"]}), "utf-8")
+    with pytest.raises(SystemExit, match="exited with 3"):
+        mr.run(rdir, None, 0, False, [], drain=5)
+    assert json.loads((rdir / "done.json").read_text("utf-8"))["completed"] is False
+    assert mr.report(rdir, quiet=True)["completed"] is False
+
+
+def test_rebuilding_a_directory_drops_the_old_run(mr, tmp_path):
+    np = pytest.importorskip("numpy")
+    sf = pytest.importorskip("soundfile")
+    data = tmp_path / "data"
+    data.mkdir()
+    rows = []
+    for i, lang in enumerate(("ru", "ru", "en")):
+        sf.write(str(data / f"c{i}.wav"), np.full(16000 * 2, 0.1, np.float32), 16000)
+        rows.append({"id": f"{lang}-{i}", "lang": lang, "wav": f"c{i}.wav", "ref_text": "x"})
+    (data / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in rows), "utf-8")
+    rdir = tmp_path / "replay"
+    mr.build(data, "ru", 0.1, rdir)  # recording X, then a run of it
+    (rdir / "rec").mkdir()
+    (rdir / "t0.txt").write_text("1800000000.0\n", "utf-8")
+    (rdir / "done.json").write_text(json.dumps({"completed": True, "exit": 0}), "utf-8")
+    (rdir / "rec" / "segments.jsonl").write_text(json.dumps({"start": 0, "end": 2}), "utf-8")
+    mr.build(data, "en", 0.1, rdir)  # rebuilt as Y, not run
+    m = mr.report(rdir, quiet=True)
+    assert m["ran"] is False and m["completed"] is False and not (rdir / "rec" / "segments.jsonl").exists()

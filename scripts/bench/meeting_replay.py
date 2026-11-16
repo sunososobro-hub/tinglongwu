@@ -284,7 +284,7 @@ def compare(a: dict, b: dict) -> dict:
     def d(x, y):
         return round(y - x, 2) if isinstance(x, (int, float)) and isinstance(y, (int, float)) else None
 
-    ran = bool(a.get("ran")) and bool(b.get("ran"))  # both tlwu runs got ready and played the recording
+    ran = bool(a.get("completed")) and bool(b.get("completed"))  # both tlwu runs played the whole recording
     rows = [(name, a.get(k), b.get(k), d(a.get(k), b.get(k)) if ran else None) for name, k in AB_ROWS]
     same_len = a.get("seconds") == b.get("seconds") and a.get("speech_s") == b.get("speech_s")
     same_id = a.get("recording") is not None and a.get("recording") == b.get("recording")
@@ -302,7 +302,7 @@ def compare_table(c: dict, setup_a: str = "", setup_b: str = "") -> str:
     if setup_a or setup_b:
         head += f"A (ASR only): {setup_a or 'n/a'}  \nB (ASR + MT): {setup_b or 'n/a'}\n\n"
     if not c.get("both_ran", True):
-        head += "**warning: a replay did not run (tlwu never got ready): no deltas**\n\n"
+        head += "**warning: a replay did not run to the end (not ready, or tlwu exited early): no deltas**\n\n"
     if not c["same_recording"]:
         head += "**warning: A and B did not replay the same recording**\n\n"
     def cell(v):
@@ -354,6 +354,16 @@ def read_jsonl(path: Path) -> list[dict]:
     return out
 
 
+RUN_OUTPUTS = ("saved.jsonl", "latency.jsonl", "tlwu.log", "t0.txt", "done.json", "metrics.json")
+
+
+def clear_run(rdir: Path) -> None:
+    """Remove the outputs of an earlier run in rdir (a rerun or a rebuilt recording never reports stale lines)."""
+    for name in RUN_OUTPUTS:
+        (rdir / name).unlink(missing_ok=True)
+    (rdir / "rec" / "segments.jsonl").unlink(missing_ok=True)  # the Recorder appends
+
+
 def build(data: Path, lang: str, minutes: float, out: Path) -> dict:
     import numpy as np
     import soundfile as sf
@@ -369,6 +379,7 @@ def build(data: Path, lang: str, minutes: float, out: Path) -> dict:
     for k, s, _e in lay:
         x[int(s * SR):int(s * SR) + len(audio[k])] = audio[k]
     out.mkdir(parents=True, exist_ok=True)
+    clear_run(out)  # outputs of a run of the previous recording must not be labelled as this one
     sf.write(str(out / "replay.wav"), x, SR)
     meta = {"wav": "replay.wav", "lang": lang, "seconds": round(len(x) / SR, 2),
             "speech": [round(lay[0][1], 2), round(lay[-1][2], 2)],
@@ -383,9 +394,7 @@ def build(data: Path, lang: str, minutes: float, out: Path) -> dict:
 
 def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str], drain: float = DRAIN_S) -> dict:
     meta = json.loads((rdir / "replay.json").read_text("utf-8"))
-    for name in ("saved.jsonl", "latency.jsonl", "tlwu.log", "t0.txt"):
-        (rdir / name).unlink(missing_ok=True)
-    (rdir / "rec" / "segments.jsonl").unlink(missing_ok=True)  # the Recorder appends: a rerun starts clean
+    clear_run(rdir)
     cmd = tlwu_cmd(rdir, meta, mdir, speakers, extra)
     env = dict(os.environ, PYTHONUTF8="1", PYTHONUNBUFFERED="1", TLWU_NO_UPDATE="1")
     pre = None
@@ -435,6 +444,9 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
     if not ready.is_set():
         tail = "\n".join(log_lines[-15:])
         raise SystemExit(f"tlwu did not get ready (exit {p.returncode}); last lines:\n{tail}")
+    # playback reached its end: tlwu exited 0 at the end of the file, or the harness stopped it after the drain
+    (rdir / "done.json").write_text(json.dumps({"completed": bool(stopped[0] or p.returncode == 0),
+                                                "exit": p.returncode, "recording": recording_id(meta)}), "utf-8")
     m = report(rdir)
     if not stopped[0] and p.returncode != 0:  # tlwu failed on its own; the partial metrics are printed above
         tail = "\n".join(log_lines[-15:])
@@ -459,8 +471,15 @@ def report(rdir: Path, quiet: bool = False) -> dict:
     m = metrics(meta, log, read_jsonl(rdir / "saved.jsonl"), read_jsonl(rdir / "rec" / "segments.jsonl"),
                 read_jsonl(rdir / "latency.jsonl"), t0)
     plan = next((x.split("tlwu: ", 1)[1] for x in log if "CPU mode threads:" in x), "")
+    done = {}
+    if (rdir / "done.json").is_file():
+        try:
+            done = json.loads((rdir / "done.json").read_text("utf-8"))
+        except ValueError:
+            done = {}
     m["ran"] = t0 is not None  # tlwu got ready and playback started (run() writes t0.txt only then)
-    m["recording"] = recording_id(meta)
+    m["completed"] = bool(done.get("completed")) if m["ran"] else False  # no done.json: tlwu died mid-run
+    m["recording"] = done.get("recording") or recording_id(meta)  # the recording the run actually played
     m["setup"] = f"{meta['lang']}, {meta['seconds'] / 60:.0f} min at 1x" + (f", {plan}" if plan else "")
     (rdir / "metrics.json").write_text(json.dumps(m, indent=1), "utf-8")
     if not quiet:
