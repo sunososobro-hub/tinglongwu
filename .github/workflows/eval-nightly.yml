@@ -2,6 +2,8 @@ name: eval-nightly
 # #571 (#340 part 4): nightly CPU mini-eval (same smoke as eval.yml / #570). Results go to the `eval-results` branch
 # (results/YYYY-MM-DD.json + history.jsonl), never gh-pages (rebuilt hourly by stats-dashboard.yml) and never dev/main.
 # A chrF drop below baseline - margin opens (or comments on) the issue "[eval] nightly chrF drop".
+# Manual test of the alert path: dispatch with raise_baseline > 0 (e.g. 30); that run skips publish, so eval-results
+# history only holds real runs, and the alert text says it is a test run.
 #   eval    : contents read  - runs the smoke, computes the alert text (scripts/eval_nightly.py)
 #   publish : contents write - the only job that pushes, to eval-results only
 #   alert   : issues write   - the only job that touches issues
@@ -9,6 +11,11 @@ on:
   schedule:
     - cron: "37 19 * * *"   # 03:37 Asia/Taipei, after hw-nightly
   workflow_dispatch:
+    inputs:
+      raise_baseline:
+        description: "Test only: add this to every baseline chrF (0..100) to force the alert; 0 = normal run"
+        required: false
+        default: "0"
 
 permissions: {}
 
@@ -31,6 +38,7 @@ jobs:
       contents: read
     outputs:
       drop: ${{ steps.alert.outputs.drop }}
+      test_run: ${{ steps.alert.outputs.test_run }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -94,7 +102,9 @@ jobs:
           test -s r.json
       - name: Alert text
         id: alert
-        run: python scripts/eval_nightly.py r.json --baseline eval/baseline.json --out alert.md --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        env:
+          RAISE: ${{ inputs.raise_baseline }}   # empty on schedule = 0; validated by the script (0..100)
+        run: python scripts/eval_nightly.py r.json --baseline eval/baseline.json --out alert.md --raise-baseline "$RAISE" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: eval-nightly
@@ -106,6 +116,7 @@ jobs:
 
   publish:
     needs: eval
+    if: needs.eval.outputs.test_run != 'true'   # a raise_baseline test run never writes eval-results
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
