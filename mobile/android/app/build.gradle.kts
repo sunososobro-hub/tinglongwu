@@ -42,6 +42,14 @@ android {
     // Model packs for Google Play (fast-follow, downloaded by the Play Store, so no INTERNET here).
     assetPacks += listOf(":models_asr", ":models_llm")
 
+    // #1169: keep the model files STORED (not deflated) in the pack APKs. AGP turns noCompress into the
+    // bundle's uncompressedGlob. Deflated multi-GB files give Play's delta patching nothing to chunk against
+    // (and a 1.13 GB gguf only shrinks ~2% anyway), so an app-code-only update re-sent the whole 1.3 GB.
+    // Every extension in assets/models_manifest.json must be listed (test/asset_pack_config_test.dart).
+    androidResources {
+        noCompress += listOf("gguf", "onnx", "txt")
+    }
+
     // Release key from the environment (CI decodes the ANDROID_KEYSTORE_B64 secret into a file).
     // Without TLWU_KEYSTORE the release APK is debug-signed, so local builds and forks still work.
     val tlwuKeystore = System.getenv("TLWU_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
