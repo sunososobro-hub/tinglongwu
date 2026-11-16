@@ -177,6 +177,21 @@ jobs:
           { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_348.txt")"; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
+      # #1247: the saved lines, logs and mic_report.json (missed clips, where the longest gap is) of the three live
+      # checks, so a FAIL can be read without the owner PC. Text only (no wavs, no models): a few hundred KB.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: hw-live-checks
+          path: |
+            ${{ runner.temp }}/live/*.jsonl
+            ${{ runner.temp }}/live/*.log
+            ${{ runner.temp }}/live/*.json
+            ${{ runner.temp }}/check_*.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: "#313 tlwu doctor on the owner PC (real GPU, real audio devices)"
         if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"

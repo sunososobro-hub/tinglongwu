@@ -73,6 +73,48 @@ def max_gap(line_times: list[float], speech_start: float, speech_end: float) -> 
     return max(b - a for a, b in zip(edges, edges[1:]))
 
 
+def gap_span(line_times: list[float], speech_start: float, speech_end: float) -> tuple[float, float]:
+    """(start, end) in clip seconds of the longest stretch max_gap() measures (#1247: where the subtitles stopped)."""
+    pts = sorted(x for x in line_times if speech_start <= x <= speech_end)
+    edges = [speech_start, *pts, speech_end]
+    return max(zip(edges, edges[1:]), key=lambda ab: ab[1] - ab[0])
+
+
+def clips_in(spans: list[list[float]], a: float, b: float) -> list[int]:
+    """Indices of the clips whose speech overlaps [a, b] seconds of the joined clip."""
+    return [i for i, (s, e) in enumerate(spans) if s < b and e > a]
+
+
+MIN_CLIP_HIT = 0.5  # #1247: a clip is "heard" when >= half of its distinct words of >= 4 letters occur in the output
+
+
+def missed_clips(rows: list[dict], refs: list[str], lang: str = "en") -> list[int]:
+    """#1247: indices of clips whose words are mostly absent from the saved lines. Tells a clip tlwu never output
+    (missing in --file too = recognizer / segmenter) apart from one lost on the CABLE path (missing in --mic only)."""
+    from tlwu_eval.scoring import tokenize
+
+    heard = set(tokenize(" ".join(r.get("src", "") for r in rows), lang))
+    out = []
+    for i, ref in enumerate(refs):
+        words = {w for w in tokenize(ref, lang) if len(w) >= 4}
+        if words and sum(w in heard for w in words) / len(words) < MIN_CLIP_HIT:
+            out.append(i)
+    return out
+
+
+def diagnose_mic(meta: dict, file_rows: list[dict], mic_rows: list[dict], offsets: list[float]) -> str:
+    """#1247: one line for the step summary: file vs mic line counts, missed clips, where the longest gap is."""
+    refs, spans = meta.get("refs") or [], meta.get("spans") or []
+    a, b = gap_span(offsets, *meta["speech"])
+    parts = [f"file lines {len(file_rows)}, mic lines {len(mic_rows)}"]
+    if refs:
+        mf, mm = missed_clips(file_rows, refs), missed_clips(mic_rows, refs)
+        parts.append(f"clips missed: file {len(mf)}/{len(refs)} {mf[:12]}, mic {len(mm)}/{len(refs)} {mm[:12]}")
+    gap_clips = clips_in(spans, a, b) if spans else []
+    parts.append(f"longest gap {a:.0f}-{b:.0f} s" + (f" (clips {gap_clips[0]}..{gap_clips[-1]})" if gap_clips else ""))
+    return "; ".join(parts)
+
+
 def wall_offsets(rows: list[dict], t0: float) -> list[float]:
     """Seconds after epoch t0 at which each saved line (--save "wall", ISO 8601) was written."""
     return [datetime.datetime.fromisoformat(r["wall"]).timestamp() - t0 for r in rows if r.get("wall")]
@@ -153,7 +195,10 @@ def build_clips(data: Path, out: Path) -> dict:
         sf.write(str(out / f"{name}.wav"), x, SR)
         meta[name] = {"wav": f"{name}.wav", "lang": lang, "seconds": round(len(x) / SR, 2),
                       "speech": [round(lay[0][1], 2), round(lay[-1][2], 2)],
-                      "ref": " ".join(sel[k]["ref_text"] for k, _s, _e in lay), "clips": [sel[k]["id"] for k, _s, _e in lay]}
+                      "ref": " ".join(sel[k]["ref_text"] for k, _s, _e in lay), "clips": [sel[k]["id"] for k, _s, _e in lay],
+                      # #1247: per-clip spans + references, so a FAIL can say which clips got no subtitle
+                      "spans": [[round(s, 2), round(e, 2)] for _k, s, e in lay],
+                      "refs": [sel[k]["ref_text"] for k, _s, _e in lay]}
 
     join("en", MIC_S, "mic_en")
     join("zh", MEET_S, "meet_a_zh")
@@ -318,9 +363,16 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
             ch.finish(60)
         offline_ok = any(ln.startswith("PASS") for ln in ch.lines)
     file_rows, mic_rows = read_jsonl(fj), read_jsonl(mj)
-    gap = max_gap(wall_offsets(mic_rows, t0), *meta["speech"])
+    offsets = wall_offsets(mic_rows, t0)
+    gap = max_gap(offsets, *meta["speech"])
     ok, msg = check_mic(_wer(file_rows, meta["ref"]), _wer(mic_rows, meta["ref"]) if mic_rows else 1.0, gap,
                         len(mic_rows))
+    diag = diagnose_mic(meta, file_rows, mic_rows, offsets)
+    print(f"diagnose: {diag}", flush=True)  # #1247: kept out of the PASS/FAIL line (step summary stays one line)
+    (out / "mic_report.json").write_text(json.dumps(
+        {"diagnose": diag, "mic_offsets_s": [round(x, 1) for x in offsets], "spans": meta.get("spans"),
+         "file_src": [r.get("src", "") for r in file_rows], "mic_src": [r.get("src", "") for r in mic_rows]},
+        ensure_ascii=False, indent=1), "utf-8")
     if not offline_ok:
         ok, msg = False, msg + "; verify_offline did not PASS (network connection or early exit)"
     return ok, msg
