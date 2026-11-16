@@ -43,3 +43,8 @@ def test_local_quants_finds_downloaded_files(tmp_path):
 def test_fetch_quants_needs_quant_dir():
     with pytest.raises(SystemExit):
         _bench().main(["--fetch-quants", "--quants", "Q3_K_M"])
+
+
+def test_local_quants_finds_uppercase_extension(tmp_path):
+    (tmp_path / "Hy-MT2-1.8B-Q3_K_S.GGUF").write_bytes(b"x")
+    assert _bench().local_quants(tmp_path, ["Q3_K_S"]) == {"Q3_K_S": str(tmp_path / "Hy-MT2-1.8B-Q3_K_S.GGUF")}

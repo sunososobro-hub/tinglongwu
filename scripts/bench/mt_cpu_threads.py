@@ -152,7 +152,8 @@ def local_quants(quant_dir: Path | None, quants: list[str]) -> dict[str, str | N
     """quant -> local GGUF path under `quant_dir` (searched recursively), None when missing."""
     if quant_dir is None or not Path(quant_dir).is_dir():
         return {q: None for q in quants}
-    found = {str(p.relative_to(quant_dir)): p for p in Path(quant_dir).rglob("*.gguf")}
+    found = {str(p.relative_to(quant_dir)): p for p in Path(quant_dir).rglob("*")
+             if p.is_file() and p.suffix.lower() == ".gguf"}
     return {q: (None if f is None else str(found[f])) for q, f in pick_quants(list(found), quants).items()}
 
 
@@ -214,7 +215,7 @@ def main(argv=None) -> int:
     for name, quant in [(n, q) for n in [x.strip() for x in a.plans.split(",") if x.strip()] for q in quants]:
         asr_t, mt_t, mt_b = allp[name]
         path = files.get(SHIPPED_QUANT if quant.upper() == SHIPPED_QUANT else quant)
-        if path is None:
+        if path is None or not Path(path).is_file():
             out.append(f"| {name} | {quant} | {asr_t} / {mt_t} / {mt_b} | not found ({a.gguf_repo}) | | | |")
             continue
         if (asr_t, mt_t, mt_b, path) in seen:
