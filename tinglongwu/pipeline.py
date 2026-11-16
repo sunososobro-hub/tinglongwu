@@ -379,12 +379,14 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 t0 = time.monotonic()
                 with bl_lock:
                     asr_start[0], asr_start[1] = t0, len(seg) / SAMPLE_RATE
+                pin = getattr(asr, "pinned", None)
+                cur = pin() if callable(pin) else asr  # #1295: one model for transcribe and its pop_tail
                 try:
-                    t = asr.transcribe(seg)
+                    t = cur.transcribe(seg)
                 finally:
                     with bl_lock:
                         asr_start[0] = None
-                pop_tail = getattr(asr, "pop_tail", None)  # #1295: looked up per call, a live model switch changes it
+                pop_tail = getattr(cur, "pop_tail", None)
                 tail = pop_tail() if callable(pop_tail) else None
             if tail is not None and len(tail):  # #1252: a budget cut left the end of this segment undecoded:
                 # transcribe it next, before any newer segment (lost source text cannot be recovered; late is fine)

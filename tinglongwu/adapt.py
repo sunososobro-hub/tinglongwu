@@ -77,6 +77,11 @@ class Switchable:
     def __init__(self, ladder: Ladder):
         self._ladder = ladder
 
+    def pinned(self):
+        """The model that is current now: call transcribe and pop_tail on this one object (#1295), because a
+        switch on another thread can change what attribute lookups on the Switchable resolve to."""
+        return self._ladder.current
+
     def __getattr__(self, name):
         return getattr(self._ladder.current, name)
 

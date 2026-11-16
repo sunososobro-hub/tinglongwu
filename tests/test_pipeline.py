@@ -201,7 +201,7 @@ def test_budget_cut_tail_survives_a_live_model_switch(wav):
             if self.n == 1:
                 self._tail = audio[len(audio) // 2:]
                 return Transcript("два", "ru")
-            return Transcript("три", "ru")
+            return Transcript("хвост" if self.n == 2 else "три", "ru")
 
         def pop_tail(self):
             tail, self._tail = self._tail, None
@@ -212,3 +212,5 @@ def test_budget_cut_tail_survives_a_live_model_switch(wav):
     out = io.StringIO()
     run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), adapt.Switchable(ladder), None, TranscriptSink(out))
     assert small.lens[1] == small.lens[0] - small.lens[0] // 2  # the tail was transcribed by the new model
+    words = out.getvalue().split()
+    assert "хвост" in words and words.index("хвост") < words.index("три")  # tail text first, before the next segment
