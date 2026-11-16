@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.1
+- Translate to now also offers 日本語, 한국어, Español, Français, Deutsch, ไทย, Tiếng Việt and Bahasa Indonesia, and Hindi can be picked as an experimental source language.
+- Face-to-face mode sends each line to the right side by the language it hears, so two people can just take turns talking.
+- The 情境 (scenario) row is now a single dropdown.
+
 ## v0.4.0
 - Listen to sound in the room, not only what the computer plays: pick a microphone (Advanced > Microphone (room sound)) to get live subtitles for a lecture or an in-person meeting.
 - The settings window keeps its taller size in the one-column layout, so no setting is cut off when you make it narrow.
