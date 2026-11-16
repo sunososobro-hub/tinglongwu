@@ -3,6 +3,12 @@
 Build the package: `python scripts/build_extension_zip.py` -> `dist/tlwu-extension-<version>.zip`.
 Submission and the developer account fee are an owner step.
 
+## Status: do not submit yet
+The listing text below describes the finished product. The packaged extension currently captures tab audio and has a
+subtitle overlay, but the default recognizer (`extension/capture/recognizer.js`) only counts frames and produces no
+subtitle lines or translation. Submit only after the recognizer is integrated (#711); until then the package is a
+capture prototype.
+
 ## Name
 tlwu live subtitles
 

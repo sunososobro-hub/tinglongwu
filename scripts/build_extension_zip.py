@@ -41,6 +41,8 @@ def store_manifest(ext_dir: Path, version: str) -> dict:
 
 def build(out_dir: Path, ext_dir: Path = EXT_DIR, version: str | None = None) -> Path:
     version = version or repo_version()
+    if out_dir.resolve().is_relative_to(ext_dir.resolve()):
+        raise SystemExit(f"--out-dir must be outside {ext_dir} (the zip would package itself)")
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"tlwu-extension-{version}.zip"
     manifest = store_manifest(ext_dir, version)
