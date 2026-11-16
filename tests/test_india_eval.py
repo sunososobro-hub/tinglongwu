@@ -182,8 +182,48 @@ def test_fetch_svarah_failure_is_recorded_not_raised(tmp_path, monkeypatch):
         raise RuntimeError("gated")
 
     monkeypatch.setattr(ie, "fetch_svarah", boom)
+    monkeypatch.setenv("HF_TOKEN", "hf_x")  # a token was given: the error is recorded as is
     assert ie.main(["fetch", "--group", "svarah", "--data", str(tmp_path)]) == 0
     assert json.loads((tmp_path / "svarah" / "status.json").read_text()) == {"ok": False, "error": "RuntimeError: gated"}
+
+
+def test_fetch_svarah_gated_without_token_says_how_to_fix(tmp_path, monkeypatch):
+    """#655: run 43521109509 failed with a 401 on the gated set and no token; the status names the HF_TOKEN fix."""
+    def boom(data, n):
+        raise RuntimeError("401 Client Error. Cannot access gated repo ai4bharat/Svarah. You must be authenticated")
+
+    monkeypatch.setattr(ie, "fetch_svarah", boom)
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    assert ie.main(["fetch", "--group", "svarah", "--data", str(tmp_path)]) == 0
+    err = json.loads((tmp_path / "svarah" / "status.json").read_text())["error"]
+    assert err.startswith("no HF_TOKEN: set the HF_TOKEN repo secret") and "401 Client Error" in err
+
+
+def test_fetch_svarah_passes_hf_token_to_the_hub(tmp_path, monkeypatch):
+    """#655: the token from the environment reaches HfApi and hf_hub_download (the set is gated)."""
+    seen = {}
+
+    class Api:
+        def __init__(self, token=None):
+            seen["api"] = token
+
+        def dataset_info(self, repo):
+            return types.SimpleNamespace(sha="0" * 40)
+
+        def list_repo_files(self, repo, repo_type=None, revision=None):
+            return []  # no parquet: fetch_svarah stops right after listing
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.HfApi = Api
+    hub.hf_hub_download = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setitem(sys.modules, "pyarrow", types.ModuleType("pyarrow"))
+    pq = types.ModuleType("pyarrow.parquet")
+    monkeypatch.setitem(sys.modules, "pyarrow.parquet", pq)
+    monkeypatch.setenv("HF_TOKEN", "hf_secret")
+    with pytest.raises(RuntimeError, match="no parquet files"):
+        ie.fetch_svarah(tmp_path, 3)
+    assert seen["api"] == "hf_secret"
 
 
 def test_fetch_fleurs_failure_still_fails(tmp_path, monkeypatch):

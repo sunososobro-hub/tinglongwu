@@ -74,6 +74,9 @@ jobs:
       - name: Models (Hy-MT2 1.8B + Whisper)
         run: tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
       - name: Fetch clips
+        env:
+          # #655: Svarah is gated; only the svarah job gets the read token (empty for en / hi, or when unset)
+          HF_TOKEN: ${{ matrix.group == 'svarah' && secrets.HF_TOKEN || '' }}
         run: python scripts/bench/india_eval.py fetch --group ${{ matrix.group }} --data "$DATA" --n "$N"
       - name: ASR + MT (CPU)
         run: python scripts/bench/india_eval.py run --group ${{ matrix.group }} --data "$DATA" --out out --whisper "$WHISPER"

@@ -36,6 +36,9 @@ FLEURS = "google/fleurs"
 FLEURS_REV = "70bb2e84b976b7e960aa89f1c648e09c59f894dd"  # same pin as eval/tier2_pins.json
 CONFIGS = {"en": "en_us", "hi": "hi_in", "zh": "cmn_hans_cn"}
 SVARAH = "ai4bharat/Svarah"
+# #655: Svarah is gated on Hugging Face. eval-india passes the HF_TOKEN repo secret (a read token of an account that
+# accepted the Svarah terms) to the svarah fetch only; without it the group is reported as missing with this hint.
+GATED_HINT = "set the HF_TOKEN repo secret to a read token of an account that accepted the Svarah terms (#655)"
 SAMPLE_RATE = 16000
 MAX_CLIP_S = 20.0
 GROUPS = ("en", "hi", "svarah")
@@ -133,13 +136,14 @@ def fetch_svarah(data: Path, n: int) -> list[dict]:
     import pyarrow.parquet as pq
     from huggingface_hub import HfApi, hf_hub_download
 
-    api = HfApi()
+    token = os.environ.get("HF_TOKEN") or None  # #655: gated set
+    api = HfApi(token=token)
     info = api.dataset_info(SVARAH)
     files = sorted(f for f in api.list_repo_files(SVARAH, repo_type="dataset", revision=info.sha)
                    if f.endswith(".parquet"))
     if not files:
         raise RuntimeError(f"{SVARAH}@{info.sha}: no parquet files ({len(files)})")
-    tables = [pq.read_table(hf_hub_download(SVARAH, f, repo_type="dataset", revision=info.sha)) for f in files]
+    tables = [pq.read_table(hf_hub_download(SVARAH, f, repo_type="dataset", revision=info.sha, token=token)) for f in files]
     cols = tables[0].column_names
     audio_col = next((c for c in cols if c.startswith("audio")), None)
     text_col = next((c for c in ("text", "transcript", "transcription", "sentence") if c in cols), None)
@@ -167,6 +171,16 @@ def fetch_svarah(data: Path, n: int) -> list[dict]:
     return manifest
 
 
+def svarah_error(e: Exception, have_token: bool) -> str:
+    """Status line for a failed Svarah fetch. An access error (gated / 401 / 403) without a token leads with the fix,
+    so the report's missing-groups line says what to do; the original error follows, cut to fit the report."""
+    msg = f"{type(e).__name__}: {e}"
+    low = msg.lower()
+    if not have_token and any(k in low for k in ("gated", "401", "403", "unauthorized", "authenticated")):
+        msg = f"no HF_TOKEN: {GATED_HINT}; {msg}"
+    return msg[:500]
+
+
 def cmd_fetch(a) -> int:
     data = Path(a.data)
     (data / a.group).mkdir(parents=True, exist_ok=True)
@@ -176,8 +190,9 @@ def cmd_fetch(a) -> int:
     except Exception as e:  # noqa: BLE001 - recorded for the report, the job goes on
         if a.group != "svarah":
             raise
-        status.write_text(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"[:500]}), "utf-8")
-        print(f"india_eval: Svarah unavailable: {e}", file=sys.stderr)
+        err = svarah_error(e, bool(os.environ.get("HF_TOKEN")))
+        status.write_text(json.dumps({"ok": False, "error": err}), "utf-8")
+        print(f"india_eval: Svarah unavailable: {err}", file=sys.stderr)
         return 0
     with open(data / a.group / "manifest.jsonl", "w", encoding="utf-8", newline="\n") as f:
         for r in rows:
