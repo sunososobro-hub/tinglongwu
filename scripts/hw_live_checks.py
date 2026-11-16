@@ -132,10 +132,11 @@ def clip_lines(spans: list[list[float]], refs: list[str], rec: list[dict], lang:
                     "src": [r.get("source", "") for r in lines], "ref": ref})
     for r in out:  # a line that holds ANOTHER clip's words: the clip's reference does not belong to its audio
         got = set(tokenize(" ".join(r["src"]), lang))
-        best = max(((sum(w in got for w in ws) / len(ws), j) for j, ws in
+        # refs repeat (the clip list cycles): on a tie the clip itself wins, so a heard clip never names its twin
+        best = max(((sum(w in got for w in ws) / len(ws), j == r["clip"], j) for j, ws in
                     ((j, {w for w in tokenize(x, lang) if len(w) >= 4}) for j, x in enumerate(refs)) if ws),
-                   default=(0.0, None))
-        r["best_ref"] = best[1] if best[0] >= MIN_CLIP_HIT and best[1] != r["clip"] else None
+                   default=(0.0, False, None))
+        r["best_ref"] = best[2] if best[0] >= MIN_CLIP_HIT and best[2] != r["clip"] else None
     return out
 
 
@@ -153,6 +154,14 @@ def clip_table(rows: list[dict]) -> str:
     """#1247: one line per clip that is missed (hit < MIN_CLIP_HIT): where, how many lines, what tlwu wrote."""
     bad = [r for r in rows if r["hit"] < MIN_CLIP_HIT]
     head = f"clips missed {len(bad)}/{len(rows)} (no line: {sum(not r['lines'] for r in bad)})"
+    if all("rms_dbfs" in r for r in rows):  # #1247: are the missed clips the quiet ones?
+        def med(xs):
+            xs = sorted(xs)
+            return f"{xs[len(xs) // 2]:.1f}" if xs else "n/a"
+        good = [r["rms_dbfs"] for r in rows if r["hit"] >= MIN_CLIP_HIT]
+        lost = [r["rms_dbfs"] for r in bad]
+        head += (f"; rms dBFS median heard {med(good)} (min {min(good, default=float('nan')):.1f}),"
+                 f" missed {med(lost)} (max {max(lost, default=float('nan')):.1f})")
     body = [f"  clip {r['clip']} {r['span'][0]:.0f}-{r['span'][1]:.0f} s lines={r['lines']} hit={r['hit']:.2f}"
             + (f" rms={r['rms_dbfs']:.1f}dBFS" if "rms_dbfs" in r else "")
             + (f" got-is-clip={r['best_ref']}" if r.get("best_ref") is not None else "")
@@ -432,6 +441,7 @@ def run_file(clips: Path, mdir: str, out: Path, extra: list[str] | None = None) 
     meta = json.loads((clips / "clips.json").read_text("utf-8"))["mic_en"]
     fj, rdir = out / "file_only.jsonl", out / "file_rec"
     fj.unlink(missing_ok=True)
+    (out / "file_report.json").unlink(missing_ok=True)  # a failed run must not leave an earlier run's table
     shutil.rmtree(rdir, ignore_errors=True)
     subprocess.run([sys.executable, "-m", "tinglongwu", "--file", str(clips / meta["wav"]), "--save", str(fj),
                     "--record", str(rdir), "--lang", "en", "--transcript-only", "--models-dir", mdir, *(extra or [])],

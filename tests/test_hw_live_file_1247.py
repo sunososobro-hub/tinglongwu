@@ -112,3 +112,30 @@ def test_file_subcommand_fails_when_the_recording_is_missing(tmp_path, monkeypat
     assert hl.main(["file", "--clips", str(tmp_path), "--models-dir", "M"]) == 1
     out = capsys.readouterr().out
     assert "FAIL #1247 file baseline" in out and "no --record output" in out and "clips missed" not in out
+
+
+def test_a_repeated_reference_does_not_name_the_clip_its_twin():
+    refs = REFS + [REFS[0]]  # the clip list cycles: clip 3 has clip 0's text
+    spans = SPANS + [[33.0, 43.0]]
+    per = hl.clip_lines(spans, refs, [REC[0], {"start": 33.0, "end": 43.0, "source": REFS[0]}])
+    assert per[0]["best_ref"] is None and per[3]["best_ref"] is None
+
+
+def test_clip_table_compares_loudness_of_heard_and_missed_clips():
+    import numpy as np
+
+    audio = np.zeros(33 * hl.SR, np.float32)
+    audio[: 11 * hl.SR] = 0.1  # clip 0 heard and loud; clips 1, 2 missed and silent
+    per = hl.clip_lines(SPANS, REFS, [REC[0]])
+    hl.add_levels(per, audio)
+    head = hl.clip_table(per).splitlines()[0]
+    assert "rms dBFS median heard -20.0 (min -20.0), missed -120.0 (max -120.0)" in head
+
+
+def test_a_failed_run_removes_the_previous_report(tmp_path, monkeypatch):
+    (tmp_path / "clips.json").write_text(json.dumps({"mic_en": {
+        "wav": "mic_en.wav", "speech": [0.0, 32.0], "ref": " ".join(REFS), "spans": SPANS, "refs": REFS}}), "utf-8")
+    (tmp_path / "file_report.json").write_text("{}", "utf-8")
+    monkeypatch.setattr(hl.subprocess, "run", lambda cmd, check, stdout: None)
+    assert hl.main(["file", "--clips", str(tmp_path), "--models-dir", "M"]) == 1
+    assert not (tmp_path / "file_report.json").exists()
