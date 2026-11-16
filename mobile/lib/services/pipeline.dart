@@ -11,10 +11,12 @@ import '../logic/draft_gate.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/phone_audio.dart';
 import '../logic/segmenter.dart';
+import '../logic/speakers.dart';
 import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'device_probe_service.dart';
 import 'asr_worker.dart';
+import 'speaker_worker.dart';
 import 'model_paths.dart';
 import 'play_packs.dart';
 import 'playback_capture.dart';
@@ -35,13 +37,18 @@ enum AudioSourceKind { mic, phone }
 const silenceHintText = '沒有聽到影片的聲音：這個 App 可能不允許翻譯（例如有版權保護的影片），或影片還沒開始播放';
 
 class Subtitle {
-  Subtitle(this.ru, {this.zh, this.traditionalOk = true, this.speaker = Speaker.them});
+  Subtitle(this.ru,
+      {this.zh, this.traditionalOk = true, this.speaker = Speaker.them, this.seg = -1});
   String ru;
   String? zh;
   bool traditionalOk;
 
   /// Conversation mode (#558): my lines show on the right; listen-only lines are all [Speaker.them].
   final Speaker speaker;
+
+  /// VAD segment this line came from, and the voice number found for it (#1155; 0 = none yet).
+  final int seg;
+  int voice = 0;
 }
 
 class _Job {
@@ -386,6 +393,7 @@ class Pipeline extends ChangeNotifier {
       });
       await ready.future;
       _asr!.setDraft(prefs.sourceDraft);
+      if (prefs.speakerLabels) _startSpeakers();
       _probeStore = ProbeStore('${p.filesDir}/device_probe.json');
       _log.i('ASR ready in ${_clock.elapsedMilliseconds - t0} ms');
 
@@ -558,6 +566,78 @@ class Pipeline extends ChangeNotifier {
     prefs = prefs.copyWith(tiltFlip: on);
     _prefsStore?.save(prefs);
     notifyListeners();
+  }
+
+  /// 說話者標籤 (#1155): opt-in, needs the optional speaker model. False = not turned on (model
+  /// missing); the caller tells the user to import it.
+  bool setSpeakerLabels(bool on) {
+    if (on == prefs.speakerLabels) return true;
+    if (on && !(paths?.hasSpeakerModel ?? false)) return false;
+    prefs = prefs.copyWith(speakerLabels: on);
+    _prefsStore?.save(prefs);
+    if (on) {
+      _startSpeakers();
+    } else {
+      _stopSpeakers();
+    }
+    notifyListeners();
+    return true;
+  }
+
+  SpeakerWorker? _spk;
+  StreamSubscription<SpeakerResult>? _spkSub;
+  bool _spkStarting = false;
+  final Map<int, int> _voiceBySeg = {};
+
+  /// True while labels are on and the worker runs.
+  bool get speakerLabelsActive => _spk != null;
+
+  Future<void> _startSpeakers() async {
+    final p = paths;
+    if (_spk != null || _spkStarting || _asr == null || p == null || !p.hasSpeakerModel) return;
+    _spkStarting = true;
+    try {
+      final w = await SpeakerWorker.spawn(p.speakerPath);
+      if (w == null || _disposed || !prefs.speakerLabels || _asr == null) {
+        w?.dispose();
+        if (w == null) _log.e('speaker model failed to load; labels stay off');
+        return;
+      }
+      _spk = w;
+      _spkSub = w.results.listen(_onVoice);
+      _asr!.setSpeakerPort(w.port);
+      _log.i('speaker labels on');
+    } catch (e) {
+      _log.e('speaker labels failed: $e');
+    } finally {
+      _spkStarting = false;
+    }
+  }
+
+  void _stopSpeakers() {
+    _asr?.setSpeakerPort(null);
+    _spkSub?.cancel();
+    _spkSub = null;
+    _spk?.dispose();
+    _spk = null;
+    _voiceBySeg.clear();
+    for (final s in subtitles) {
+      s.voice = 0;
+    }
+  }
+
+  void _onVoice(SpeakerResult r) {
+    if (r.speaker == unknownSpeaker || !prefs.speakerLabels) return;
+    _voiceBySeg[r.seg] = r.speaker;
+    if (_voiceBySeg.length > 32) _voiceBySeg.remove(_voiceBySeg.keys.first);
+    var hit = false;
+    for (final s in subtitles) {
+      if (s.seg == r.seg) {
+        s.voice = r.speaker;
+        hit = true;
+      }
+    }
+    if (hit) notifyListeners();
   }
 
   /// 顯示原文草稿 (#1064): turns the grey interim source text on or off, remembered.
@@ -763,7 +843,8 @@ class Pipeline extends ChangeNotifier {
     final sentences = SentenceSegmenter.split(f.text);
     final route = _activeConversation.route(f.lang, listenTarget: target);
     for (final text in sentences.isEmpty ? [f.text] : sentences) {
-      final sub = Subtitle(text, speaker: route.speaker);
+      final sub = Subtitle(text, speaker: route.speaker, seg: f.seg);
+      sub.voice = _voiceBySeg[f.seg] ?? 0;
       subtitles.add(sub);
       _queue.add(_Job(text, sub, speechEnd, now, route));
     }
@@ -867,6 +948,8 @@ class Pipeline extends ChangeNotifier {
       PlaybackCapture.stop().catchError((_) {});
     }
     _rec.dispose();
+    _spkSub?.cancel();
+    _spk?.dispose();
     _asr?.dispose();
     _tr?.dispose();
     _tts?.dispose();

@@ -19,7 +19,7 @@ class ManifestEntry {
   final String sha256;
 
   /// `asr`, `vad` or `llm`. All asr + vad files are required; at least one llm file is required.
-  /// Voice pack files are `tts` (optional, see [VoicePack]).
+  /// Voice pack files are `tts` and the speaker model is `speaker` (both optional).
   final String group;
 
   /// Official download link for files that are not in the bundle zip (e.g. the 4B model).
@@ -113,6 +113,8 @@ class ModelManifest {
     required this.bundleUrl,
     this.bundleNote = '',
     this.packs = const [],
+    this.speakerModel,
+    this.speakerNote = '',
   }) {
     // File names must be unique among the models and inside each voice pack (a zip is matched by
     // file name); a voice may reuse a model's name (`tokens.txt`) because its zip is read alone.
@@ -159,8 +161,14 @@ class ModelManifest {
   /// Optional read-aloud voices (#558).
   final List<VoicePack> packs;
 
-  /// Models and voice files.
-  List<ManifestEntry> get allFiles => [...files, for (final p in packs) ...p.files];
+  /// Optional speaker-embedding model for the 說話者 N labels (#1155): one plain file, imported
+  /// like a voice, never required and not in the models zip or the Play packs.
+  final ManifestEntry? speakerModel;
+  final String speakerNote;
+
+  /// Models, voice files and the speaker model.
+  List<ManifestEntry> get allFiles =>
+      [...files, for (final p in packs) ...p.files, ?speakerModel];
 
   /// [json] is `models_manifest.json`; [packsJson] (optional) is `voice_packs.json`.
   factory ModelManifest.parse(String json, {String? packsJson}) {
@@ -178,6 +186,10 @@ class ModelManifest {
         for (final p in (pj?['packs'] as List?) ?? const [])
           VoicePack.fromJson(p as Map<String, dynamic>)
       ],
+      speakerModel: pj?['speaker'] == null
+          ? null
+          : ManifestEntry.fromJson({...(pj!['speaker'] as Map<String, dynamic>), 'group': 'speaker'}),
+      speakerNote: ((pj?['speaker'] as Map?)?['note'] as String?) ?? '',
     );
   }
 
@@ -293,6 +305,10 @@ class ModelManifest {
     }
     return out;
   }
+
+  /// True when the optional speaker model is in [present] (target paths).
+  bool speakerModelInstalled(Set<String> present) =>
+      speakerModel != null && present.contains(speakerModel!.path);
 
   /// Ids of the voice packs whose files are all in [present] (target paths).
   Set<String> installedPacks(Set<String> present) => {

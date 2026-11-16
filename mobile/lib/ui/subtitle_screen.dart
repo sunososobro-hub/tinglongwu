@@ -7,6 +7,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/phone_audio.dart';
+import '../logic/speakers.dart';
 import '../logic/speech_out.dart';
 import '../logic/target_language.dart';
 import '../logic/tilt_flip.dart';
@@ -30,6 +31,19 @@ class UiColors {
   static const dotLoading = Color(0xFFE0A000);
   static const dotOn = Color(0xFF2EA043);
   static const dotError = Color(0xFFD0453A);
+}
+
+/// Accent colour of speaker [n] (#1155, 1-based, cycles).
+Color speakerAccent(int n) {
+  const accents = [
+    Color(0xFF4FC3F7),
+    Color(0xFFFFB74D),
+    Color(0xFF81C784),
+    Color(0xFFF06292),
+    Color(0xFFBA68C8),
+    Color(0xFFFFF176),
+  ];
+  return accents[(n - 1) % accents.length];
 }
 
 /// Footer state: idle (stopped) / loading (switching source) / listening / error.
@@ -212,18 +226,32 @@ class _SubtitleScreenState extends State<SubtitleScreen> {
     bottomRight: Radius.circular(16),
   );
 
-  Widget _bubble({required List<Widget> children, bool dashed = false, bool me = false}) {
+  Widget _bubble(
+      {required List<Widget> children, bool dashed = false, bool me = false, int voice = 0}) {
+    final accent = voice > 0 && !me ? speakerAccent(voice) : null;
     final box = Container(
       constraints: const BoxConstraints(maxWidth: 560),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: dashed ? Colors.transparent : (me ? UiColors.me : UiColors.other),
+        color: dashed
+            ? Colors.transparent
+            : (me
+                ? UiColors.me
+                : accent == null
+                    ? UiColors.other
+                    : Color.alphaBlend(accent.withValues(alpha: 0.22), UiColors.other)),
         borderRadius: me ? _radiusMe : _radius,
       ),
       foregroundDecoration: dashed ? const _DashedDecoration() : null,
       child: Column(
           crossAxisAlignment: me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: children),
+          children: [
+            if (accent != null)
+              Text(speakerLabel(voice),
+                  style: TextStyle(
+                      fontSize: 12, color: accent, fontWeight: FontWeight.w600, height: 1.4)),
+            ...children,
+          ]),
     );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -272,6 +300,7 @@ class _SubtitleScreenState extends State<SubtitleScreen> {
     return _bubble(
         dashed: pending && mode != SubtitleMode.source,
         me: s.speaker == Speaker.me,
+        voice: pipeline.prefs.speakerLabels ? s.voice : 0,
         children: parts);
   }
 }

@@ -233,6 +233,9 @@ class Thresholds {
   static const freeRamGoodMb = 700;
   static const freeRamOkMb = 350;
 
+  /// 說話者標籤: free RAM needed for the speaker model (about 60 MB) with a safe margin.
+  static const speakerFreeRamMb = 250;
+
   /// Fewer cores than this: the draft competes with the final decode (ok at best).
   static const coresGood = 6;
 }
@@ -291,4 +294,32 @@ Advice adviseZhDraft(DeviceInfo info, BenchResult? bench, {bool sourceDraftOn = 
     _ => '你的手機翻譯速度$speed，開啟後字幕可能延遲。',
   };
   return Advice(b, sourceDraftOn ? head : '$head 需要先開啟「顯示原文草稿」。');
+}
+
+/// 說話者標籤 (#1155): a 28 MB embedding model (about 60 MB of RAM in use) on one thread, once
+/// per finished sentence and off the subtitle path. Light: it only needs a little free RAM and a
+/// phone that is not already struggling with the ASR.
+Advice adviseSpeakerLabels(DeviceInfo info, BenchResult? bench, {required bool modelInstalled}) {
+  if (!modelInstalled) {
+    return const Advice(AdviceBadge.unknown, '需要先匯入說話者模型（約 28 MB）：到「匯入模型」選用項目下載，再回來開啟。');
+  }
+  if (bench == null) return const Advice(AdviceBadge.unknown, '正在測試你的手機速度，稍後會顯示建議。');
+  var b = bench.asrRtf <= Thresholds.asrRtfGood
+      ? AdviceBadge.recommend
+      : bench.asrRtf <= Thresholds.asrRtfOk
+          ? AdviceBadge.tryIt
+          : AdviceBadge.avoid;
+  String? note;
+  final free = info.availRamMb;
+  if (free != null && free < Thresholds.speakerFreeRamMb) {
+    b = _worse(b, AdviceBadge.avoid);
+    note = '剩餘記憶體只有 $free MB';
+  }
+  if (info.cores < Thresholds.coresGood) b = _worse(b, AdviceBadge.tryIt);
+  final head = switch (b) {
+    AdviceBadge.recommend => '你的手機夠快，開啟後每句話會標上說話者，幾乎不影響字幕。',
+    AdviceBadge.tryIt => '你的手機速度普通，開啟後會多用一點耗電，字幕速度不受影響。',
+    _ => '你的手機偏慢或記憶體少，開啟後可能讓字幕變慢。',
+  };
+  return Advice(b, note == null ? head : '$head $note。');
 }

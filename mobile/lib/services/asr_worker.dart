@@ -142,6 +142,9 @@ class AsrWorker {
   /// [AsrBench] event (busy = skipped because speech is in progress).
   void bench() => _toWorker.send('bench');
 
+  /// Sends every finalized segment's audio to [port] (the speaker worker, #1155); null = stop.
+  void setSpeakerPort(SendPort? port) => _toWorker.send(['spk', port]);
+
   /// Turns the source-text draft (#1064) on or off at run time.
   void setDraft(bool on) => _toWorker.send(on);
 
@@ -227,6 +230,8 @@ class AsrWorker {
       }
     }
 
+    SendPort? spk; // speaker worker (#1155); null = labels off, nothing extra is done
+
     void emit(Float32List samples, {required bool forced, int seg = -1}) {
       final sw = Stopwatch()..start();
       final (text, lang) = decode(samples);
@@ -238,6 +243,10 @@ class AsrWorker {
             decodeMs: ms,
             audioMs: samples.length * 1000 ~/ 16000,
             lang: lang));
+        // After the final went out, so the subtitle path never waits for this.
+        if (spk != null && seg >= 0) {
+          spk!.send([seg, TransferableTypedData.fromList([samples])]);
+        }
       } else {
         out.send(AsrSegmentEnd(seg));
       }
@@ -354,6 +363,10 @@ class AsrWorker {
         } catch (e) {
           out.send(AsrError('ASR bench failed: $e'));
         }
+        return;
+      }
+      if (m is List && m.isNotEmpty && m[0] == 'spk') {
+        spk = m[1] as SendPort?; // SendPort = on, null = off
         return;
       }
       if (m is bool) {

@@ -80,6 +80,20 @@ class AdvancedScreen extends StatelessWidget {
                 value: pipeline.prefs.zhDraft,
                 onChanged: pipeline.setZhDraft,
               ),
+              _feature(
+                title: '說話者標籤',
+                what: '依聲音分辨是誰在說話，字幕泡泡依說話者換顏色並標上「說話者 N」。'
+                    '需要另外匯入 28 MB 的模型；聲音只在手機上比對，不會存檔。',
+                advice: adviseSpeakerLabels(info ?? const DeviceInfo(cores: 1), bench,
+                    modelInstalled: pipeline.paths?.hasSpeakerModel ?? false),
+                value: pipeline.prefs.speakerLabels,
+                onChanged: (on) {
+                  if (!pipeline.setSpeakerLabels(on) && on) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('還沒有說話者模型：請先到「匯入模型」匯入 28 MB 的選用檔案。')));
+                  }
+                },
+              ),
               const Divider(color: Colors.white12, height: 32),
               const Text('你的手機', style: TextStyle(fontSize: 16)),
               const SizedBox(height: 6),

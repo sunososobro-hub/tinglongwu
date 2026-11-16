@@ -176,6 +176,12 @@ class _ImportScreenState extends State<ImportScreen> {
             '裝了就會把我說的話的翻譯念出來。${p.note}', style: _t),
         _link('下載 / Download ${p.name}', p.url),
       ],
+      if (m.speakerModel != null) ...[
+        const SizedBox(height: 6),
+        Text('選用：說話者標籤模型 ${m.speakerModel!.basename}（${_fmt(m.speakerModel!.size)}），'
+            '裝了才能在「進階功能」開啟。${m.speakerNote}', style: _t),
+        _link('下載 / Download ${m.speakerModel!.basename}', m.speakerModel!.url!),
+      ],
       const SizedBox(height: 20),
       const Text('2. 匯入 / Import', style: _h),
       const SizedBox(height: 6),
@@ -206,6 +212,10 @@ class _ImportScreenState extends State<ImportScreen> {
         Text('${voices.contains(p.id) ? '✓' : '·'} tts-${p.lang}/ （選用 / optional）',
             style: _mono.copyWith(
                 color: voices.contains(p.id) ? Colors.greenAccent : Colors.white38)),
+      if (m.speakerModel != null)
+        Text('${m.speakerModelInstalled(_present) ? '✓' : '·'} speaker/ （選用 / optional）',
+            style: _mono.copyWith(
+                color: m.speakerModelInstalled(_present) ? Colors.greenAccent : Colors.white38)),
       const SizedBox(height: 12),
       if (missing.isEmpty && !_busy)
         FilledButton(
