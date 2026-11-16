@@ -10,8 +10,10 @@ whose lock can be taken is stale, whatever its PID is now used for.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import stat
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -36,6 +38,59 @@ def instance_dir(env=None) -> str:
         return d
     who = str(os.getuid()) if hasattr(os, "getuid") else (env.get("USERNAME") or "user")
     return os.path.join(tempfile.gettempdir(), f"tlwu-instances-{who}")
+
+
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def _safe_dir(d: str) -> bool:
+    """Create the registry directory private to this user. False (registry not used) when it is a symlink, owned
+    by another user or writable by others: on a shared temp dir another account could pre-create it (CWE-59)."""
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        st = os.lstat(d)
+    except OSError:
+        return False
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+        return False
+    if hasattr(os, "getuid") and (st.st_uid != os.getuid() or st.st_mode & 0o022):
+        return False
+    return True
+
+
+def _open(path: str):
+    """Open (create) a registry file for read/write without following a symlink at `path`."""
+    return os.fdopen(os.open(path, os.O_RDWR | os.O_CREAT | _NOFOLLOW, 0o600), "r+b")
+
+
+@contextlib.contextmanager
+def allocating(env=None):
+    """Hold the registry-wide allocation lock while reading others() and register()ing, so two instances that
+    start at the same moment cannot both plan for the whole CPU. Without a usable directory: no lock."""
+    d = instance_dir(env)
+    f = None
+    if _safe_dir(d):
+        try:
+            f = _open(os.path.join(d, "alloc.lock"))
+            if sys.platform == "win32":
+                import msvcrt
+
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)  # retries for ~10 s, then OSError
+            else:
+                import fcntl
+
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            if f is not None:
+                f.close()
+            f = None
+    try:
+        yield
+    finally:
+        if f is not None:
+            _unlock(f)
+            f.close()
 
 
 def _try_lock(f) -> bool:
@@ -81,6 +136,8 @@ def _remove(*paths) -> None:
 def others(env=None) -> list[Other]:
     """Live instances other than this process, oldest PID first; stale files are removed."""
     d = instance_dir(env)
+    if not _safe_dir(d):
+        return []
     try:
         names = os.listdir(d)
     except OSError:
@@ -95,7 +152,7 @@ def others(env=None) -> list[Other]:
         lock = os.path.join(d, f"{pid}.lock")
         data = os.path.join(d, name)
         try:
-            with open(lock, "a+b") as f:
+            with _open(lock) as f:
                 if _try_lock(f):  # nobody holds it: that instance has ended
                     _unlock(f)
                     alive = False
@@ -107,7 +164,7 @@ def others(env=None) -> list[Other]:
             _remove(data, lock)
             continue
         try:
-            with open(data, encoding="utf-8") as f:
+            with os.fdopen(os.open(data, os.O_RDONLY | _NOFOLLOW), encoding="utf-8") as f:
                 threads = int(json.load(f).get("threads", 0))
         except (OSError, ValueError, TypeError, AttributeError):
             continue
@@ -120,17 +177,20 @@ def register(threads: int, env=None) -> bool:
     the lock is not usable; tlwu then runs as before, without telling other instances."""
     d = instance_dir(env)
     pid = os.getpid()
+    if not _safe_dir(d):
+        return False
     try:
-        os.makedirs(d, exist_ok=True)
         f = _held.get(d)
         if f is None:
-            f = open(os.path.join(d, f"{pid}.lock"), "a+b")
+            f = _open(os.path.join(d, f"{pid}.lock"))
             if not _try_lock(f):
                 f.close()
                 return False
             _held[d] = f
         tmp = os.path.join(d, f"{pid}.json.tmp")
-        with open(tmp, "w", encoding="utf-8") as out:
+        _remove(tmp)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
             json.dump({"pid": pid, "threads": int(threads)}, out)
         os.replace(tmp, os.path.join(d, f"{pid}.json"))
         return True

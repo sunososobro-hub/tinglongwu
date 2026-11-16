@@ -111,3 +111,75 @@ def test_gpu_run_registers_nothing(tmp_path):
     cli.apply_cpu_mode(a, "cuda", tmp_path, explicit_model=False)
     d = os.environ["TLWU_INSTANCE_DIR"]
     assert not os.path.isdir(d) or not os.listdir(d)
+
+
+RACER = textwrap.dedent("""
+    import sys, time
+    from tinglongwu import instances
+    with instances.allocating():
+        seen = instances.others()
+        time.sleep(0.5)  # both processes are inside discovery/planning at once without the lock
+        instances.register(6)
+    print(len(seen), flush=True)
+    sys.stdin.read()
+""")
+
+
+def test_two_instances_starting_together_do_not_both_plan_for_the_whole_cpu():
+    procs = [subprocess.Popen([sys.executable, "-c", RACER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              text=True, env=os.environ.copy()) for _ in range(2)]
+    try:
+        seen = sorted(int(p.stdout.readline()) for p in procs)
+    finally:
+        for p in procs:
+            p.stdin.close()
+            p.wait(timeout=20)
+    assert seen == [0, 1]  # the second one waited for the first and counted it
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="POSIX ownership / permission bits")
+def test_registry_dir_writable_by_others_is_not_used(tmp_path, monkeypatch):
+    d = tmp_path / "shared"
+    d.mkdir()
+    d.chmod(0o777)
+    monkeypatch.setenv("TLWU_INSTANCE_DIR", str(d))
+    assert instances.register(4) is False
+    assert os.listdir(d) == []
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="needs O_NOFOLLOW")
+def test_register_does_not_write_through_a_planted_symlink(tmp_path, monkeypatch):
+    d = tmp_path / "reg"
+    d.mkdir(mode=0o700)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    os.symlink(victim, d / f"{os.getpid()}.json.tmp")
+    monkeypatch.setenv("TLWU_INSTANCE_DIR", str(d))
+    assert instances.register(4)
+    assert victim.read_text() == "keep"
+
+
+def test_failed_start_releases_the_registration(tmp_path, monkeypatch):
+    """Loading fails after apply_cpu_mode registered (bad --glossary): the threads are free again."""
+    monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
+    monkeypatch.setattr("tinglongwu.minspec.check_avx2", lambda force=False: None)
+    monkeypatch.setattr("tinglongwu.device.resolve_device", lambda compute, **kw: "cpu")
+    a = cli.parse_args(["--device", "cpu", "--glossary", str(tmp_path / "missing.txt"),
+                                       "--models-dir", str(tmp_path)])
+    with pytest.raises(RuntimeError, match="glossary"):
+        cli.run_session(a)
+    d = os.environ["TLWU_INSTANCE_DIR"]
+    assert not os.path.exists(os.path.join(d, f"{os.getpid()}.json"))
+
+
+def test_cuda_fallback_to_cpu_registers_and_shares(first_instance, monkeypatch, capsys):
+    monkeypatch.delenv("TLWU_CPU_THREADS", raising=False)
+    other = first_instance(8)
+    assert cli.cpu_fallback_mt("cuda", "cpu", cores=12, asr_threads=2)
+    from tinglongwu import threads
+
+    assert 2 + threads.current()["mt"] == 4  # MT takes what the other instance and the loaded Whisper leave
+    assert f"PID {other.pid}" in capsys.readouterr().err
+    code = "from tinglongwu import instances; print(sorted(o.threads for o in instances.others()))"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=os.environ.copy())
+    assert out.stdout.strip() == "[4, 8]"

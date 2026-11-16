@@ -467,7 +467,6 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
         instances.release()  # #1254: no CPU threads registered for a GPU run
         return None
     from .hwprobe import cpu_mode_threads, ram_mib, cpu_mode_settings
-    from .models import whisper_installed
 
     if ram_gb is None:
         mib = ram_mib()
@@ -475,8 +474,21 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
     from . import instances
 
     cpus = cores or os.cpu_count() or 4
-    busy = instances.others()  # #1254: other tlwu instances already on this CPU keep their threads
-    n = instances.budget(cpus, busy) if busy else cpus
+    with instances.allocating():  # #1254: two instances starting together plan one after the other
+        busy = instances.others()  # other tlwu instances already on this CPU keep their threads
+        n = instances.budget(cpus, busy) if busy else cpus
+        st = _cpu_mode_plan(a, n, ram_gb, mdir, explicit_model, thread_budget, cpu_mode_settings, cpu_mode_threads)
+        mine = a.cpu_threads + (0 if getattr(a, "transcript_only", False) else thread_budget.current()["mt"])
+        instances.register(mine)  # a later instance sees these threads as taken
+    if busy:
+        print(instances.warning(cpus, busy, mine), file=sys.stderr, flush=True)
+    return st
+
+
+def _cpu_mode_plan(a, n, ram_gb, mdir, explicit_model, thread_budget, cpu_mode_settings, cpu_mode_threads):
+    """apply_cpu_mode's settings for `n` CPUs (the part that runs under the #1254 allocation lock)."""
+    from .models import whisper_installed
+
     st = cpu_mode_settings(n, ram_gb)
     plan = cpu_mode_threads(n)  # #1198: Whisper + Hy-MT2 together never ask for more threads than the CPU has
     thread_budget.set_cpu_mode(plan.mt, plan.mt_batch)
@@ -488,30 +500,50 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
     a.cpu_beam = st.beam
     env_threads = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
     a.cpu_threads = int(env_threads) if env_threads.isdigit() and int(env_threads) > 0 else st.threads
-    mine = a.cpu_threads + (0 if getattr(a, "transcript_only", False) else plan.mt)
-    instances.register(mine)  # #1254: a later instance sees these threads as taken
-    if busy:
-        print(instances.warning(cpus, busy, mine), file=sys.stderr, flush=True)
     if st.merge and not getattr(a, "min_words_explicit", True):  # fragment merging on: at least the meeting value
         a.min_words = max(a.min_words, PRESET_MIN_WORDS["meeting"])
     return st
 
 
-def cpu_fallback_mt(asked: str, got: str, cores=None) -> bool:
+def cpu_fallback_mt(asked: str, got: str, cores=None, asr_threads=None, transcript_only=False) -> bool:
     """#1198: Whisper fell back from CUDA to the CPU after apply_cpu_mode ran for CUDA: give the MT engine (built
     next) the CPU-mode llama.cpp threads too. True when it did."""
     if asked == "cpu" or got != "cpu":
         return False
+    from . import instances
     from . import threads as thread_budget
+    from .asr import cpu_fallback_settings
     from .hwprobe import cpu_mode_threads
 
-    plan = cpu_mode_threads(cores or os.cpu_count() or 4)
-    thread_budget.set_cpu_mode(plan.mt, plan.mt_batch)
+    cpus = cores or os.cpu_count() or 4
+    with instances.allocating():  # #1254: the fallback session is counted by (and counts) other instances
+        busy = instances.others()
+        plan = cpu_mode_threads(cpus)
+        asr = asr_threads or cpu_fallback_settings(None, None, cores=cpus)[1] or plan.asr  # Whisper is loaded already
+        mt = plan.mt if not busy else max(1, min(plan.mt, instances.budget(cpus, busy) - asr))
+        thread_budget.set_cpu_mode(mt, min(plan.mt_batch, mt) if busy else plan.mt_batch)
+        mine = asr + (0 if transcript_only else mt)
+        instances.register(mine)
+    if busy:
+        print(instances.warning(cpus, busy, mine), file=sys.stderr, flush=True)
     return True
 
 
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None,
                 labeler_factory=None, on_topic=None, backlog_line=None) -> None:
+    """_run_session; #1254: the CPU threads this session registered are released however it ends, also when
+    loading fails before the pipeline starts (a GUI process lives on after a failed start)."""
+    from . import instances
+
+    try:
+        _run_session(a, sink=sink, draft_factory=draft_factory, stop=stop, status=status, notice=notice,
+                     cpu_line=cpu_line, labeler_factory=labeler_factory, on_topic=on_topic, backlog_line=backlog_line)
+    finally:
+        instances.release()
+
+
+def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None,
+                 labeler_factory=None, on_topic=None, backlog_line=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
@@ -596,7 +628,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
                                   candidates=cands, lang_file=getattr(a, "lang_file", None),
                                   beam=getattr(a, "cpu_beam", None), threads=getattr(a, "cpu_threads", None))
-    cpu_fallback_mt(dev, asr.device)  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
+    cpu_fallback_mt(dev, asr.device, asr_threads=getattr(a, "cpu_threads", None),
+                    transcript_only=bool(a.transcript_only))  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
     dev = asr.device  # may have fallen back to cpu
     asr.live = dev == "cpu" and not a.file  # #251: live CPU listening caps ASR retries and time per sentence
     cpu_max_wait(a, dev)
@@ -641,9 +674,6 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
             notes = topics.attach(sink, a.topics, on_topic=on_topic)
     if stop is not None and stop.is_set():
-        from . import instances
-
-        instances.release()
         return
     source = select_backend(a.file, a.mic, a.device)
     if notice is not None and hasattr(source, "on_silent"):  # #1070: ~10 s of no sound: say what is listened to
@@ -750,9 +780,6 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             recorder.close()
         if close_voice is not None:  # Ctrl+C / GUI Stop: do not keep talking through the backlog
             close_voice(drop=interrupted or (stop is not None and stop.is_set()))
-        from . import instances
-
-        instances.release()  # #1254: this session's CPU threads are free for another instance
 
 
 def backlog_text(seconds: int) -> str:
