@@ -165,3 +165,12 @@ def test_copy_in_comment_masked_by_existing_visible_section_needs_opus():
     head = INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->") + "## v0.4.3\n- Fixed recording.\n"
     ok, why = rn.bump_exempt([INIT, hidden], head)
     assert not ok and "exactly one" in why, why
+
+
+def test_copy_in_comment_masked_by_a_spaced_visible_heading_needs_opus():
+    hidden = wn("@@ -3,3 +3,6 @@\n <!-- newest first; example:\n ## v1.2.3\n - Subtitles appear faster.\n"
+                "+## v0.4.3\n+- Fixed recording.\n+\n -->\n")
+    for visible in ("##  v0.4.3", "##\tv0.4.3", "## v0.4.3 "):
+        head = INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->") + f"{visible}\n- Fixed recording.\n"
+        ok, why = rn.bump_exempt([INIT, hidden], head)
+        assert not ok and "exactly one" in why, (visible, why)

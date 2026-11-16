@@ -398,7 +398,8 @@ def bump_exempt(files: list[dict], whats_new_text: str | None = None) -> tuple[b
         return False, f"`## {tag}` section is empty or TODO"
     if whats_new_text is None:
         return False, f"{WHATS_NEW_FILE} at the PR head not read"
-    if sum(1 for x in whats_new_text.split("\n") if x.rstrip() == f"## {tag}") != 1:
+    head_re = re.compile(rf"^##[ \t]+{re.escape(tag)}[ \t]*$")  # same heading form whats_new_section accepts
+    if sum(1 for x in whats_new_text.split("\n") if head_re.match(x)) != 1:
         return False, f"{WHATS_NEW_FILE} at the PR head must hold exactly one `## {tag}` heading (the added one)"
     if whats_new_section(whats_new_text, tag) != section:
         return False, f"`## {tag}` is not the section the release reads from {WHATS_NEW_FILE} (inside a comment?)"
