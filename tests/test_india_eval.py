@@ -260,6 +260,8 @@ def test_hinglish_candidates_keep_only_open_ungated_hindi_english_audio_sets():
                                        "language:hi", "language:en"], downloads=50),
         _info("h/indic-multi", ["license:cc-by-4.0", "modality:audio", "language:hi", "language:en"],
               downloads=900),  # hi + en tags alone: maybe separate monolingual clips, not code-switched
+        _info("j/hindi-tamil-code-switch", ["license:mit", "modality:audio", "language:hi", "language:ta"],
+              downloads=900),  # code-switched, but not with English
         _info("i/es-codeswitch", ["license:mit", "modality:audio", "language:es", "language:en"], downloads=900),
         _info("c/hinglish-gated", ["license:cc-by-4.0", "modality:audio"], gated="manual", downloads=900),
         _info("d/hinglish-nc", ["license:cc-by-nc-4.0", "modality:audio"], downloads=900),

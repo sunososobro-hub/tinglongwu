@@ -117,8 +117,8 @@ def _tags(info) -> list[str]:
 def hinglish_candidates(infos) -> list[str]:
     """Hub dataset infos -> ids worth trying for the hinglish group, most downloaded first (ties by id).
     Kept: not gated; a licence tag in OPEN_LICENSES; audio (modality:audio or an ASR task tag); and code-switch
-    evidence: the word hinglish in the id or tags, or a code-switch word (CODE_SWITCH) in the id or tags plus the
-    language:hi tag. A set tagged only hi + en is not enough: it may hold separate Hindi-only and English-only clips."""
+    evidence: the word hinglish in the id or tags, or a code-switch word (CODE_SWITCH) in the id or tags plus both
+    language:hi and language:en tags (a hi-ta code-switch set is not Hinglish). A set tagged only hi + en is not enough: it may hold separate Hindi-only and English-only clips."""
     keep = {}
     for d in infos:
         rid = getattr(d, "id", None)
@@ -130,7 +130,7 @@ def hinglish_candidates(infos) -> list[str]:
         if "modality:audio" not in tags and not any("automatic-speech-recognition" in t for t in tags):
             continue
         text = " ".join([rid.lower(), *tags])
-        if "hinglish" not in text and not (any(w in text for w in CODE_SWITCH) and "language:hi" in tags):
+        if "hinglish" not in text and not (any(w in text for w in CODE_SWITCH) and {"language:hi", "language:en"} <= set(tags)):
             continue
         keep[rid] = getattr(d, "downloads", 0) or 0
     return sorted(keep, key=lambda r: (-keep[r], r))
