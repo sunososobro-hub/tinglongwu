@@ -52,6 +52,7 @@ class SpeakerClusterer:
         self._sums: list[list[float] | None] = []  # per-cluster sum of unit vectors; None = merged away
         self._into: dict[int, int] = {}  # merged cluster index -> the index it was merged into
         self.merged: dict[str, str] = {}  # #1256: merged label -> kept label (callers may alias past lines)
+        self._edges: list[tuple[str, str]] = []  # #1256: (retired label, kept label) per merge, in merge order
         self._last: str = UNKNOWN
         import threading
 
@@ -70,6 +71,12 @@ class SpeakerClusterer:
         """#1256: the label a merged speaker now has (any thread; the GUI resolves past lines through it)."""
         with self._lock:
             return self.merged.get(label, label) if label else label
+
+    def merge_edges(self) -> list[tuple[str, str]]:
+        """#1256: the merges in the order they happened, as (retired label, kept label) (any thread). Replaying them in
+        order through SpeakerBook.merge keeps names along a chain (3 -> 2, then 2 -> 1)."""
+        with self._lock:
+            return list(self._edges)
 
     def merges(self) -> dict[str, str]:
         """#1256: a snapshot of merged label -> kept label (any thread)."""
@@ -121,6 +128,7 @@ class SpeakerClusterer:
                 if v == self._label(gone):
                     self.merged[k] = self._label(keep)
             self.merged[self._label(gone)] = self._label(keep)
+            self._edges.append((self._label(gone), self._label(keep)))
             i = keep
 
 

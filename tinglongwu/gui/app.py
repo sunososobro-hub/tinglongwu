@@ -1757,7 +1757,7 @@ class App:
         raw = self.spk.result(who[row])
         clu = getattr(self, "spk_clusterer", None)
         if clu is not None:  # #1256: auto merges go into the book (Tk thread), which keeps a name given to either label
-            for old, kept in clu.merges().items():
+            for old, kept in clu.merge_edges():
                 self.spk_book.merge(old, kept)
         raw = self.spk_book.resolve(raw) if raw else None
         shown = speaker_text(self.spk_book, raw, lambda n: t("gui_speaker", n=n)) if raw else None

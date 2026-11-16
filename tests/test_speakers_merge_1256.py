@@ -67,6 +67,7 @@ def test_kept_maps_a_merged_label_and_leaves_others():
     assert c.kept("說話者1") == "說話者1"
     assert c.kept(None) is None
     assert c.merges() == {"說話者2": "說話者1"}
+    assert c.merge_edges() == [("說話者2", "說話者1")]
 
 
 def test_gui_shows_the_kept_label_on_lines_labelled_before_the_merge():
@@ -89,6 +90,7 @@ def test_gui_shows_the_kept_label_on_lines_labelled_before_the_merge():
     o.spk_clusterer = SpeakerClusterer()
     assert o._speaker_label(1)[0] == "說話者2"  # before the merge: its own label
     o.spk_clusterer.merged["說話者2"] = "說話者1"
+    o.spk_clusterer._edges.append(("說話者2", "說話者1"))
     assert o._speaker_label(1)[0] == "說話者1"  # the earlier line now shows the kept speaker
     assert o.speaker_prefix(0) == o.speaker_prefix(1)
 
@@ -113,4 +115,22 @@ def test_gui_keeps_a_name_given_to_the_retired_label():
     o.spk_clusterer = SpeakerClusterer()
     o.spk_book.rename("說話者2", "Alice")  # named before the merge
     o.spk_clusterer.merged["說話者2"] = "說話者1"
+    o.spk_clusterer._edges.append(("說話者2", "說話者1"))
     assert o._speaker_label(0)[1] == "Alice" and o._speaker_label(1)[1] == "Alice"
+
+
+def test_chained_merges_replayed_in_order_keep_the_name_on_the_middle_label():
+    """3 -> 2, then 2 -> 1 in one merge pass: replaying the edges in order (not the flattened map) keeps Alice."""
+    from tinglongwu.speakers import SpeakerBook
+
+    c = SpeakerClusterer()
+    c._sums = [[1.0, 0.0, 0.0], [4.5, 2.18, 0.0], [0.6, 0.8, 0.0]]  # 3 is near 2 (0.89), not 1 (0.6); 2 has 5 lines
+    c.merge_threshold = 0.75
+    assert c._merge_near(2) == 0  # 3 joins 2, then the grown 2 joins 1
+    assert c.merge_edges() == [("說話者3", "說話者2"), ("說話者2", "說話者1")]
+    book = SpeakerBook()
+    book.rename("說話者3", "Bob")
+    book.rename("說話者2", "Alice")
+    for old, kept in c.merge_edges():
+        book.merge(old, kept)
+    assert book.display("說話者1") == book.display("說話者3") == "Alice"
