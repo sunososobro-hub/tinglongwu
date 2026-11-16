@@ -100,11 +100,11 @@ def test_count_events_and_labels(mr):
 
 def test_tlwu_cmd_is_a_paced_live_replay(mr, tmp_path):
     meta = {"wav": "replay.wav", "lang": "ru"}
-    cmd = mr.tlwu_cmd(tmp_path, meta, "/m", True, ["--engine", "hymt2-cpu"])
+    cmd = mr.tlwu_cmd(tmp_path, meta, "/m", True, ["--engine", "hymt"])
     for flag in ("--paced", "--save", "--latency-jsonl", "--record", "--speakers"):
         assert flag in cmd
     assert cmd[cmd.index("--lang") + 1] == "ru" and cmd[cmd.index("--models-dir") + 1] == "/m"
-    assert cmd[-2:] == ["--engine", "hymt2-cpu"]
+    assert cmd[-2:] == ["--engine", "hymt"]
     assert mr.tlwu_cmd(tmp_path, meta, None, False, ["--lang", "auto"]).count("--lang") == 1
 
 

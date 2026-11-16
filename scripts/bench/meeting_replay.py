@@ -7,7 +7,7 @@ that verify with "replay a 30-min recording": feeds a long public multi-speaker 
 
     python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out DATA          # pinned FLEURS clips
     python scripts/bench/meeting_replay.py build --data DATA --lang ru --minutes 30 --out REPLAY
-    python scripts/bench/meeting_replay.py run --dir REPLAY --models-dir M --cpus 4 --speakers -- --engine hymt2-cpu
+    python scripts/bench/meeting_replay.py run --dir REPLAY --models-dir M --cpus 4 --speakers -- --to zh --engine hymt
     python scripts/bench/meeting_replay.py report --dir REPLAY                              # metrics again, no run
 
 Recording: FLEURS test clips (CC-BY 4.0, eval/matrix_pins.json, sha256-checked by make_ci_smoke) of one language,

@@ -199,10 +199,11 @@ jobs:
       - name: Replay at 1x, 4 CPUs (ASR + MT + speakers)
         timeout-minutes: 55
         run: |
+          set -o pipefail
           SPK=""
           ls "$TLWU_MODELS"/speaker/*.onnx >/dev/null 2>&1 && SPK="--speakers"
           python scripts/bench/meeting_replay.py run --dir replay --cpus 4 $SPK -- \
-            --to zh --engine hymt2-cpu --model "$WHISPER" | tee replay/summary.md
+            --to zh --engine hymt --model "$WHISPER" | tee replay/summary.md
       - name: Summary
         if: always()
         run: |
