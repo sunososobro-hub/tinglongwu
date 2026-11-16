@@ -121,7 +121,14 @@ def clip_diffs(rep_a: dict, rep_b: dict) -> list[dict]:
     """Clips (matched by pair + id) whose ASR or MT text differs between two reports: {pair, id, asr, mt} with
     asr / mt = (A text, B text) when that stage differs, else None."""
     def index(rep):
-        return {(lg["pair"], c.get("id")): c for lg in rep.get("languages", []) for c in lg.get("clips", [])}
+        out = {}
+        for lg in rep.get("languages", []):
+            for c in lg.get("clips", []):
+                key = (lg["pair"], c.get("id"))
+                if key in out:  # a repeat would hide the earlier clip's change
+                    raise ValueError(f"duplicate clip {key[0]} {key[1]} in a report")
+                out[key] = c
+        return out
     a, b = index(rep_a), index(rep_b)
     if set(a) != set(b):
         raise ValueError("reports cover different clips: only in A " + (", ".join(f"{p} {i}" for p, i in sorted(set(a) - set(b), key=str)) or "-")
@@ -149,10 +156,13 @@ def diff_report(rep_a: dict, rep_b: dict, limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def load_variants(path) -> list[tuple[str, str]]:
-    """[(name, tlwu_eval args)] from a JSON list of {"name", "args"}; a missing file = no variants."""
+def load_variants(path, required: bool = False) -> list[tuple[str, str]]:
+    """[(name, tlwu_eval args)] from a JSON list of {"name", "args"}. A missing default file = no variants; a missing
+    file the user named (required=True) is an error, so a requested sweep never silently runs only A and B."""
     p = Path(path)
     if not p.exists():
+        if required:
+            raise ValueError(f"{p}: variants file not found")
         return []
     data = json.loads(p.read_text("utf-8"))
     if not isinstance(data, list) or not all(isinstance(v, dict) and v.get("name") and "args" in v for v in data):
@@ -160,7 +170,7 @@ def load_variants(path) -> list[tuple[str, str]]:
     names = [str(v["name"]) for v in data]
     if any(not NAME_RE.fullmatch(n) for n in names):  # each name is a file stem in --out-dir: no paths, no aliasing
         raise ValueError(f"{p}: variant names must be letters, digits, '-', '_' or '.' (not starting with '.')")
-    if len(set(names)) != len(names) or {"base", "cpu"} & set(names):
+    if len(set(names)) != len(names) or {"base", "cpu"} & {n.lower() for n in names}:  # case-insensitive filesystems
         raise ValueError(f"{p}: variant names must be unique and not 'base' / 'cpu'")
     return [(str(v["name"]), str(v["args"])) for v in data]
 
@@ -184,8 +194,8 @@ def main(argv=None) -> int:
     p.add_argument("--out-dir", default="ab")
     p.add_argument("--base-args", default="", help="extra tlwu_eval args for the defaults run")
     p.add_argument("--cpu-args", default="", help="extra tlwu_eval args for the CPU-mode run")
-    p.add_argument("--variants", default=str(VARIANTS_FILE),
-                   help="with --run: JSON list of {name, args}, each one more run compared with A (default: %(default)s if present)")
+    p.add_argument("--variants", default=None,
+                   help=f"with --run: JSON list of {{name, args}}, each one more run compared with A (default: {VARIANTS_FILE} if present)")
     a = p.parse_args(argv)
     if a.run and not a.cpu_args.strip():
         p.error("--run needs --cpu-args; without it the CPU-mode run repeats the defaults run")
@@ -193,7 +203,7 @@ def main(argv=None) -> int:
     variants: list[tuple[str, str]] = []
     if a.run:
         try:
-            variants = load_variants(a.variants)
+            variants = load_variants(a.variants or VARIANTS_FILE, required=a.variants is not None)
         except (OSError, ValueError) as e:
             print(f"cpu_mode_ab: {e}", file=sys.stderr)
             return 2

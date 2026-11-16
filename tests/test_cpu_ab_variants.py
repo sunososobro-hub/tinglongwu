@@ -78,8 +78,8 @@ def test_run_without_variants_file_runs_two_evals(tmp_path, monkeypatch, capsys)
         out_json.write_text(json.dumps({"base": A, "cpu": B}[out_json.stem]), "utf-8")
 
     monkeypatch.setattr(ab, "run_eval", fake_run_eval)
-    rc = ab.main(["--run", "--out-dir", str(tmp_path / "ab"), "--cpu-args=--cpu-mode",
-                  "--variants", str(tmp_path / "none.json")])
+    monkeypatch.setattr(ab, "VARIANTS_FILE", tmp_path / "none.json")  # default file absent: no variants
+    rc = ab.main(["--run", "--out-dir", str(tmp_path / "ab"), "--cpu-args=--cpu-mode"])
     assert rc == 0 and calls == ["base", "cpu"]
     assert "### variant" not in capsys.readouterr().out
 
@@ -158,3 +158,22 @@ def test_run_with_mismatched_variant_clips_exits_2(tmp_path, monkeypatch, capsys
     v.write_text(json.dumps([{"name": "few", "args": "--per-lang 1"}]))
     assert ab.main(["--run", "--out-dir", str(tmp_path / "ab"), "--cpu-args=--cpu-mode", "--variants", str(v)]) == 2
     assert "different clips" in capsys.readouterr().err
+
+
+def test_explicit_missing_variants_file_exits_2(tmp_path, capsys):
+    rc = ab.main(["--run", "--out-dir", str(tmp_path), "--cpu-args=--cpu-mode", "--variants", str(tmp_path / "nope.json")])
+    assert rc == 2 and "variants file not found" in capsys.readouterr().err
+
+
+def test_reserved_names_are_case_insensitive(tmp_path):
+    f = tmp_path / "v.json"
+    for name in ("BASE", "Cpu"):
+        f.write_text(json.dumps([{"name": name, "args": ""}]))
+        with pytest.raises(ValueError):
+            ab.load_variants(f)
+
+
+def test_duplicate_clip_ids_are_rejected():
+    dup = report([{"id": "en_001", "asr": "a", "mt": "b"}, {"id": "en_001", "asr": "c", "mt": "d"}])
+    with pytest.raises(ValueError, match="duplicate clip en->zh en_001"):
+        ab.clip_diffs(dup, dup)
