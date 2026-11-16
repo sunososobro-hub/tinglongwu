@@ -2348,6 +2348,7 @@ class App:
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
                         cpu_line=lambda ms, path=None: q.put(("cpu_line", ms, path)),
+                        backlog_line=lambda n: q.put(("backlog", n)),  # #1259
                         labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None,
                         on_topic=self.topic_panel.add if sink_cls is None else None)  # #611
         except Exception as e:  # noqa: BLE001
@@ -2392,6 +2393,18 @@ class App:
                         logging.getLogger("tlwu.gui").info("%s", load_status_text(ev[1]))  # breakdown: log only
                         self._status_text(text)  # #294
                         self._sync_quick()
+                elif kind == "backlog":  # #1259: "ASR n s behind" in the status line, the old text back when caught up
+                    from ..cli import backlog_text
+
+                    if self.load_t0 is None and not self.errored:
+                        line = backlog_text(ev[1])
+                        if line:
+                            if getattr(self, "_pre_backlog", None) is None:
+                                self._pre_backlog = self.v_status.get()
+                            self._status_text(line)
+                        elif getattr(self, "_pre_backlog", None) is not None:
+                            self._status_text(self._pre_backlog)
+                            self._pre_backlog = None
                 elif kind == "cpu_line":  # #780: "CPU mode - MT n ms per line" once running
                     from .core import cpu_mode_line
 

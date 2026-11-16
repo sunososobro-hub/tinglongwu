@@ -35,6 +35,7 @@ class _Quiet(NamedTuple):
 # Ctrl+C: on Windows a blocking Queue.get() with no timeout is not interruptible, so the main thread
 # always waits in short slices and KeyboardInterrupt is delivered within ~POLL seconds.
 POLL = 0.25
+BACKLOG_POLL = 0.5  # #1259: how often the ASR backlog is re-measured
 DUP_WINDOW = 10.0  # seconds: an identical final line this soon after the same one is dropped (Whisper repeats on silence)
 
 
@@ -75,7 +76,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
         on_work=None, on_record=None, recorder=None,  # recorder: #239 --record (record.Recorder)
-        seg_gate=None, route=None) -> None:
+        seg_gate=None, route=None, on_backlog=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -96,12 +97,32 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     seg_gate(seg, transcript) -> bool (#968, speak mode): False drops the segment before it reaches the merger, so
     keyboard noise or a low-confidence Whisper guess never becomes a line that is sent in the user's voice.
     route(lang) -> target (#1164 face-to-face): the target language of one utterance, chosen from its detected language.
+    on_backlog(seconds) (#1259): whole seconds ASR is behind the audio (queued segments plus the overrun of the one
+    being transcribed); called when the value changes within ~0.5 s, 0 once it has caught up. Never called when off.
     """
     tgt0 = tgt
     q: queue.Queue = queue.Queue(maxsize=8)
     consumed = [0]
     frame_t = [0.0]  # monotonic arrival time of the newest frame (#323)
     stop = threading.Event()
+    queued_s = [0.0]  # #1259: seconds of audio in segments waiting for ASR
+    asr_start = [None, 0.0]  # #1259: (monotonic start, audio seconds) of the segment in ASR
+    bl_lock = threading.Lock()
+
+    def backlog_seconds() -> int:
+        with bl_lock:
+            lag = queued_s[0]
+            if asr_start[0] is not None:
+                lag += max(0.0, time.monotonic() - asr_start[0] - asr_start[1])
+        return int(lag)
+
+    def watch_backlog():
+        last = 0
+        while not stop.wait(BACKLOG_POLL):
+            n = backlog_seconds()
+            if n != last:
+                last = n
+                on_backlog(n)
 
     def counted(frames):
         for f in frames:
@@ -125,6 +146,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     if stop.is_set():
                         return
                     pause = float(getattr(segmenter, "last_pause", 0.0))
+                    with bl_lock:
+                        queued_s[0] += len(seg) / SAMPLE_RATE
                     if not put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
                                 bool(getattr(segmenter, "last_forced", False)), pause,
                                 (frame_t[0] - pause, time.monotonic()))):  # (end of speech, cut) for on_record
@@ -263,6 +286,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     producer = threading.Thread(target=produce, daemon=True)
     producer.start()
+    if on_backlog is not None:
+        threading.Thread(target=watch_backlog, daemon=True).start()
     worker = threading.Thread(target=mt_worker, daemon=True)
     worker.start()
     if draft is not None:
@@ -294,11 +319,19 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     emit_units(merger.quiet(item.seconds, item.stamp if audio_clock else time.monotonic()))
                 continue
             seg, stamp, last_ep[0], forced_cut, pause, (t_eos, t_cut) = item
+            with bl_lock:
+                queued_s[0] = max(0.0, queued_s[0] - len(seg) / SAMPLE_RATE)
             if float(np.sqrt(np.mean(seg ** 2))) < SILENCE_RMS:
                 continue  # silence: skip (avoids Whisper hallucinations)
             with model_lock():
                 t0 = time.monotonic()
-                t = asr.transcribe(seg)
+                with bl_lock:
+                    asr_start[0], asr_start[1] = t0, len(seg) / SAMPLE_RATE
+                try:
+                    t = asr.transcribe(seg)
+                finally:
+                    with bl_lock:
+                        asr_start[0] = None
             last_asr[0] = time.monotonic() - t0
             marks = (t_eos, t_cut, t0 + last_asr[0])
             last_len[0] = len(seg) / SAMPLE_RATE

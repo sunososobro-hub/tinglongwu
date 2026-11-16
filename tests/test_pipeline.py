@@ -115,3 +115,39 @@ def test_identical_final_lines_collapse():
     out = io.StringIO()
     run(Src(), OneSeg(), Rep(), None, TranscriptSink(out), audio_clock=True)
     assert out.getvalue().splitlines() == ["мы можем готовить в следующем году.", "совсем другое предложение здесь"]
+
+
+def test_backlog_reported_and_cleared(wav, tmp_path):
+    """#1259: a slow ASR makes run() report whole seconds behind, then 0 once it caught up."""
+    import time
+
+    from tinglongwu import pipeline
+
+    class SlowASR(CountingASR):
+        def transcribe(self, audio):
+            time.sleep(1.2)
+            return super().transcribe(audio)
+
+    seen = []
+    old = pipeline.BACKLOG_POLL
+    pipeline.BACKLOG_POLL = 0.05
+    try:
+        run(FileSource(str(wav)), Segmenter(chunk=0.5, use_vad=False), SlowASR(), None, TextSink(io.StringIO()),
+            on_backlog=seen.append)
+    finally:
+        pipeline.BACKLOG_POLL = old
+    assert max(seen) >= 1 and all(n >= 0 for n in seen)
+
+
+def test_no_backlog_callback_when_asr_fast(wav):
+    """#1259: nothing is reported while ASR keeps up."""
+    seen = []
+    run(FileSource(str(wav)), Segmenter(chunk=1.0, use_vad=False), FakeASR(), None, TextSink(io.StringIO()),
+        on_backlog=seen.append)
+    assert seen == []
+
+
+def test_backlog_text():
+    from tinglongwu.cli import backlog_text
+
+    assert backlog_text(0) == "" and backlog_text(7) == "ASR 7 s behind"

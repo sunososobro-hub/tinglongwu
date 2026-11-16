@@ -498,7 +498,7 @@ def cpu_fallback_mt(asked: str, got: str, cores=None) -> bool:
 
 
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None,
-                labeler_factory=None, on_topic=None) -> None:
+                labeler_factory=None, on_topic=None, backlog_line=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
 
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
@@ -506,6 +506,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     notice(str): a note that should stay visible (GUI), e.g. why the GPU is not used;
     cpu_line(mt_ms, path): #780, CPU only, called once per output line with the translation time in ms and
     (#1198) path = (backend, threads) of the MT model or None (GUI status);
+    backlog_line(seconds): #1259, whole seconds ASR is behind the audio (0 = caught up); default: one stderr line per change.
     on_topic(topic): #611, with --topics: called on the summarizer thread with each finished topics.Topic (GUI panel)."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device
@@ -719,7 +720,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             speakers=labeler, on_work=cpu_on_work(None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
                                                   cpu_line if dev == "cpu" else None,
                                                   lambda: active_mt_path(translator)),
-            on_record=on_record, recorder=recorder, seg_gate=seg_gate, route=f2f_route)
+            on_record=on_record, recorder=recorder, seg_gate=seg_gate, route=f2f_route,
+            on_backlog=backlog_line or (lambda n: print(backlog_text(n) or "tlwu: ASR caught up", file=sys.stderr, flush=True)))
     except KeyboardInterrupt:
         interrupted = True
         raise
@@ -732,6 +734,11 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             recorder.close()
         if close_voice is not None:  # Ctrl+C / GUI Stop: do not keep talking through the backlog
             close_voice(drop=interrupted or (stop is not None and stop.is_set()))
+
+
+def backlog_text(seconds: int) -> str:
+    """#1259: the status line for an ASR backlog; "" when ASR is not behind."""
+    return f"ASR {int(seconds)} s behind" if seconds > 0 else ""
 
 
 def cpu_on_work(observe, cpu_line, path=None):
