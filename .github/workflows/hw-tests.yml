@@ -2,7 +2,10 @@ name: hw-tests
 
 # Hardware-only checks on the owner's Windows PC (real audio devices, VB-CABLE, NVIDIA GPU) through a self-hosted runner
 # labelled [self-hosted, windows, tlwu-hw]. Covers the hardware part of #6 #139 #279 #207 #311 #90 #186 #313 (see the
-# step names). #4 (the other side's lines in a real call) and the Mac part of #8 stay with the owner.
+# step names). The Mac part of #8 stays with the owner.
+# #1194: #894 (live mic accuracy), #4 (meeting ◀ Them labels) and #348 (another program's audio through loopback) run
+# with pinned FLEURS speech (scripts/hw_live_checks.py); #4 and #348 play that speech on the real speakers (about
+# 1.5 min). Same continue-on-error rule as #1157 below.
 # #1157: the owner hand-tests of #966 #967 #968 run here too (scripts/hw_owner_checks.py). Those steps are
 # continue-on-error until each one is green on a dev run (a started hw-tests run is never deferred, so an unproven
 # step must not block a release snapshot); drop continue-on-error per step once its issue links a green run.
@@ -38,7 +41,7 @@ jobs:
   hw:
     if: github.repository == 'sunososobro-hub/tinglongwu' && github.event_name != 'pull_request'
     runs-on: [self-hosted, windows, tlwu-hw]
-    timeout-minutes: 90
+    timeout-minutes: 120  # #1194: + about 15 min of live checks (worst case 65)
     defaults:
       run:
         # Git Bash by 8.3 path (the runner splits the shell value at the first space, so no spaces allowed): plain `bash` on this PC resolves to WindowsApps/bash.exe (WSL), which cannot run the
@@ -132,6 +135,47 @@ jobs:
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to ru --models-dir "$TLWU_MODELS" \
             --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL" --json "$RUNNER_TEMP/speak_ru.json"
           { echo '### speak_selftest ru (owner PC, VB-CABLE) - #311'; echo '```'; cat "$RUNNER_TEMP/speak_ru.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "#1194 live-test clips: pinned FLEURS speech (sha256 checked), joined into the #894 / #4 / #348 clips"
+        if: ${{ !cancelled() }}
+        continue-on-error: true  # #1194: until green on a dev run
+        run: |
+          D="$HW_CACHE/live-fleurs"
+          [ -f "$D/manifest.jsonl" ] || python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out "$D"
+          python scripts/hw_live_checks.py clips --data "$D" --out "$RUNNER_TEMP/live"
+
+      - name: "#894 5-min multi-speaker clip into CABLE Input, tlwu --mic on CABLE Output: WER <= 1.25x file, no 10 s gap"
+        if: ${{ !cancelled() }}
+        continue-on-error: true  # #1194: until green on a dev run
+        timeout-minutes: 30
+        run: |
+          rc=0
+          python scripts/hw_live_checks.py mic --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" > "$RUNNER_TEMP/check_894.txt" || rc=$?
+          cat "$RUNNER_TEMP/check_894.txt"
+          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_894.txt")"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+      - name: "#4 meeting mode: mic = clip A (CABLE), system audio = clip B (speakers): >= 90% lines labelled right"
+        if: ${{ !cancelled() }}
+        continue-on-error: true  # #1194: until green on a dev run
+        timeout-minutes: 20
+        run: |
+          rc=0
+          python scripts/hw_live_checks.py meeting --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" > "$RUNNER_TEMP/check_4.txt" || rc=$?
+          cat "$RUNNER_TEMP/check_4.txt"
+          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_4.txt")"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+      - name: "#348 audio played by a separate process is captured by WASAPI loopback and transcribed"
+        if: ${{ !cancelled() }}
+        continue-on-error: true  # #1194: until green on a dev run
+        timeout-minutes: 15
+        run: |
+          rc=0
+          python scripts/hw_live_checks.py loopback --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" > "$RUNNER_TEMP/check_348.txt" || rc=$?
+          cat "$RUNNER_TEMP/check_348.txt"
+          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_348.txt")"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
 
       - name: "#313 tlwu doctor on the owner PC (real GPU, real audio devices)"
         if: ${{ !cancelled() }}

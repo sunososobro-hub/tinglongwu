@@ -4,6 +4,7 @@
   python scripts/verify_offline.py --file talk.wav [-- extra tlwu args]
   python scripts/verify_offline.py --mic --seconds 60            # live microphone (room sound), stop after 60 s
   python scripts/verify_offline.py --pid 1234 --seconds 60     # attach to a running tlwu
+  --stop-file PATH also ends the watch as soon as PATH exists (#1194: hw-tests stops a --mic run after playback).
 Polls the whole process tree with psutil every 50 ms. Exit 0 = clean, 1 = violation.
 Polling can miss a very short-lived connection; combine with the firewall test in the README.
 """
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import os
 import subprocess
 import sys
 import time
@@ -45,6 +47,7 @@ def main() -> int:
     ap.add_argument("--mic", action="store_true", help="run tlwu --mic and watch it for --seconds")
     ap.add_argument("--pid", type=int)
     ap.add_argument("--seconds", type=float, default=60)
+    ap.add_argument("--stop-file", default=None, help="end the watch as soon as this file exists")
     a, extra = ap.parse_known_args()
     extra = [x for x in extra if x != "--"]
     child = None
@@ -57,7 +60,11 @@ def main() -> int:
     else:
         ap.error("need --file, --mic or --pid")
     seen: set[str] = set()
-    while time.time() < deadline and proc.is_running() and (child is None or child.poll() is None):
+
+    def stop_asked() -> bool:
+        return bool(a.stop_file) and os.path.exists(a.stop_file)
+
+    while time.time() < deadline and not stop_asked() and proc.is_running() and (child is None or child.poll() is None):
         seen.update(offending(proc))
         time.sleep(0.05)
     early_exit = False
