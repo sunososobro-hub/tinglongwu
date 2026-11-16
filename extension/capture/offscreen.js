@@ -4,6 +4,12 @@ import { deliver, getRecognizer } from "./recognizer.js";
 
 let session = null;
 
+// #1160: the recognizer calls emitLine({src, text}) for every recognized + translated line
+export function emitLine(l) {
+  return chrome.runtime.sendMessage({ target: "sw", type: "line", src: l.src || "", text: String(l.text) });
+}
+globalThis.tlwuEmitLine = emitLine;
+
 async function start(streamId) {
   if (session) await stop();
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -50,7 +56,8 @@ function stats() {
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (!msg || msg.target !== "offscreen") return false;
-  const run = { start: () => start(msg.streamId), stop, stats: async () => stats() }[msg.type];
+  const run = { start: () => start(msg.streamId), stop, stats: async () => stats(),
+    emit: async () => { for (const l of msg.lines || []) await emitLine(l); return { ok: true }; } }[msg.type];
   if (!run) return false;
   run().then(reply, (e) => reply({ ok: false, error: String(e && e.message || e) }));
   return true; // async reply

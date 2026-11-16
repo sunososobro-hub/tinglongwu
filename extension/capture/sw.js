@@ -22,8 +22,14 @@ export async function startCapture(tabId) {
   return r;
 }
 
+async function toTab(msg) {
+  if (capturedTab === null) return;
+  try { await chrome.tabs.sendMessage(capturedTab, { target: "overlay", ...msg }); } catch (_) { /* tab has no overlay (not a meeting site) */ }
+}
+
 export async function stopCapture() {
   let r = { ok: true };
+  await toTab({ type: "stop" });
   if (await chrome.offscreen.hasDocument()) r = await chrome.runtime.sendMessage({ target: "offscreen", type: "stop" });
   if (capturedTab !== null) await chrome.action.setBadgeText({ tabId: capturedTab, text: "" });
   capturedTab = null;
@@ -46,6 +52,12 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.error("tlwu capture:", e);
     await chrome.action.setBadgeText({ tabId: tab.id, text: "ERR" });
   }
+});
+
+// #1160: recognized + translated lines from the offscreen document go to the captured tab's overlay
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.target === "sw" && msg.type === "line") toTab({ type: "line", src: msg.src, text: msg.text });
+  return false;
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

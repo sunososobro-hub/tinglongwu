@@ -62,14 +62,17 @@ def test_manifest_permissions_are_tab_capture_and_offscreen_only():
     assert m["manifest_version"] == 3
     assert sorted(m["permissions"]) == ["offscreen", "tabCapture"]
     for key in ("host_permissions", "optional_host_permissions", "optional_permissions", "externally_connectable",
-                "content_scripts", "web_accessible_resources"):
+                "web_accessible_resources"):
         assert key not in m, key
+    # #1160: the only content script is the inert subtitle overlay, on https meeting sites only
+    assert [cs["js"] for cs in m["content_scripts"]] == [["overlay.js"]]
+    assert all(x.startswith("https://") for cs in m["content_scripts"] for x in cs["matches"])
     # default MV3 CSP (self only) or an explicit one without remote sources
     csp = json.dumps(m.get("content_security_policy", {}))
     assert "http" not in csp and "*" not in csp
     # every file the manifest / pages load exists in the package (MV3: no remote code)
     for f in (m["background"]["service_worker"], "offscreen.html", "offscreen.js", "pcm-worklet.js", "resample.js",
-              "recognizer.js"):
+              "recognizer.js", "overlay.js"):
         assert (EXT / f).is_file(), f
 
 
@@ -128,7 +131,7 @@ def tone_page(tmp_path):
     (site / "index.html").write_text(
         '<!doctype html><meta charset="utf-8"><title>meeting</title><audio id="a" src="tone.wav" preload="auto">'
         "</audio><button id=\"play\" onclick=\"document.getElementById('a').play()\">play</button>", encoding="utf-8")
-    handler = functools.partial(_QuietHandler, directory=str(site))
+    handler = functools.partial(QuietHandler, directory=str(site))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
@@ -137,7 +140,7 @@ def tone_page(tmp_path):
         srv.shutdown()
 
 
-class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
 

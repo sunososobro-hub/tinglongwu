@@ -22,6 +22,12 @@ document fail to open the tab stream (`getUserMedia` -> "Error starting tab capt
 Chromium 153), so this manifest does not set it. Part 3 must run threaded inference somewhere else (e.g. a separate
 cross-origin-isolated extension page fed through a MessagePort) or use single-threaded WASM / WebGPU.
 
+## Subtitle overlay (#1160)
+`overlay.js` is a content script (https Meet / Teams / Zoom pages only) that stays inert until it gets a line. A
+recognizer calls `emitLine({src, text})` (exported by `offscreen.js`); the line goes offscreen -> service worker ->
+the captured tab, where a movable overlay (drag the top grip) shows the last 3 lines: source small, translation
+large. It is removed when capture stops. Test: `tests/test_extension_overlay_1160.py`.
+
 ## Try it
 1. `chrome://extensions` -> Developer mode -> Load unpacked -> this folder.
 2. Open a tab that plays audio, click the toolbar button: the badge shows `ON`, the tab stays audible. Click again to
