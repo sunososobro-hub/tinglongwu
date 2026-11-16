@@ -18,4 +18,6 @@ Source language → target language, copied from `docs/support.json` (a test che
 | Français (fr) | ⚪ | ⚪ | ⚪ | ⚪ |
 <!-- LANGPAIRS:END -->
 
+Translation quality per direction (COMET / chrF for every pair of en, ru, zh-Hans, zh-Hant, ja, ko): [docs/benchmarks.md, language-pair matrix](benchmarks.md#language-pair-matrix-en--ru--zh-hans--zh-hant--ja--ko-1305).
+
 Platform support: [support.md](support.md).

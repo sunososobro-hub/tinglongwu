@@ -255,3 +255,120 @@ def test_107_resume_at_another_temperature_stops_instead_of_mixing(flores, tmp_p
     tr = FakeTr()
     m.main(base + ["--temp", "0.7"], make=lambda _d: tr)  # same temperature: resumes as before
     assert [c[0] for c in tr.calls] == ["два", "три"]
+
+
+# ---------------------------------------------------------------- #1305: 6x6 language-pair matrix
+class EchoTr(FakeTr):
+    def __init__(self, variant="tw"):
+        super().__init__()
+        self.variant = variant
+
+    def translate(self, text, src, tgt):
+        self.calls.append((text, src, tgt))
+        return types.SimpleNamespace(text=f"{tgt}:{text}")
+
+
+def test_1305_any_target_uses_its_reference_and_language_code(flores, tmp_path):
+    (flores / "devtest" / "eng_Latn.devtest").write_text("one\ntwo\nthree\n", "utf-8")
+    m = _load("flores_cpu")
+    tr, made = EchoTr(), []
+
+    def make(_d, **kw):
+        made.append(kw)
+        return tr
+
+    out = tmp_path / "out"
+    assert m.main(["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--tgt", "eng_Latn",
+                   "--out", str(out), "--no-comet", "--limit", "2"], make=make) == 0
+    assert tr.calls == [("один", "ru", "en"), ("два", "ru", "en")] and made == [{}]
+    rows = [json.loads(x) for x in (out / "rus_Cyrl-eng_Latn.jsonl").read_text("utf-8").splitlines()]
+    assert [r["ref"] for r in rows] == ["one", "two"]  # scored against the English FLORES side, not zho_Hant
+    s = json.loads((out / "rus_Cyrl-eng_Latn.summary.json").read_text("utf-8"))
+    assert s["pair"] == "rus_Cyrl->eng_Latn" and s["n"] == 2
+    assert not (out / "rus_Cyrl.jsonl").exists()  # the classic X -> zh-Hant file name is left alone
+
+
+def test_1305_zh_sources_and_simplified_target(flores, tmp_path):
+    (flores / "devtest" / "zho_Hans.devtest").write_text("一\n二\n三\n", "utf-8")
+    m = _load("flores_cpu")
+    tr, made = EchoTr(), []
+
+    def make(_d, **kw):
+        made.append(kw)
+        return tr
+
+    out = tmp_path / "out"
+    m.main(["--data", str(flores), "--models-dir", "x", "--src", "zho_Hant", "--tgt", "rus_Cyrl", "--out", str(out),
+            "--no-comet"], make=make)
+    assert [c[1:] for c in tr.calls] == [("zh", "ru")] * 3
+    tr.calls.clear()
+    m.main(["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--tgt", "zho_Hans", "--out", str(out),
+            "--no-comet"], make=make)
+    assert [c[1:] for c in tr.calls] == [("ru", "zh")] * 3 and made[-1] == {"zh_variant": "cn"}
+
+
+def test_1305_zh_script_pair_is_opencc_not_mt(flores, tmp_path):
+    (flores / "devtest" / "zho_Hans.devtest").write_text("一\n二\n三\n", "utf-8")
+    m = _load("flores_cpu")
+
+    def boom(*_a, **_k):
+        raise AssertionError("zh-Hans -> zh-Hant must not load Hy-MT2")
+
+    out = tmp_path / "out"
+    seen = []
+    orig = m.ScriptConvert.__init__
+
+    def init(self, variant, convert=None):
+        orig(self, variant, convert=lambda t, v: seen.append(v) or f"[{v}]{t}")
+
+    m.ScriptConvert.__init__ = init
+    assert m.main(["--data", str(flores), "--src", "zho_Hans", "--tgt", "zho_Hant", "--out", str(out),
+                   "--no-comet", "--models-dir", "x"], make=boom) == 0
+    assert seen == ["tw"] * 3
+    s = json.loads((out / "zho_Hans.summary.json").read_text("utf-8"))  # X -> zh-Hant keeps the classic name
+    assert s["engine"].startswith("OpenCC") and s["pair"] == "zho_Hans->zho_Hant"
+
+
+def test_1305_same_source_and_target_is_rejected(flores, tmp_path):
+    m = _load("flores_cpu")
+    with pytest.raises(SystemExit):
+        m.main(["--data", str(flores), "--models-dir", "x", "--src", "rus_Cyrl", "--tgt", "rus_Cyrl",
+                "--out", str(tmp_path / "o"), "--no-comet"], make=lambda _d: FakeTr())
+
+
+def _summ(a, b, comet, chrf=40.0, n=200):
+    return {"pair": f"{a}->{b}", "COMET": comet, "chrF": chrf, "n": n}
+
+
+def test_1305_table_is_6x6_with_weak_cells(tmp_path):
+    m = _load("flores_cpu")
+    langs = m.MATRIX6
+    sums = [_summ(a, b, 0.85) for a in langs for b in langs if a != b]
+    sums = [s for s in sums if s["pair"] != "kor_Hang->rus_Cyrl"]  # one missing cell
+    for s in sums:
+        if s["pair"] == "rus_Cyrl->zho_Hant":
+            s["COMET"] = 0.80  # weakest shipped direction -> the weak line
+        if s["pair"] == "jpn_Jpan->kor_Hang":
+            s["COMET"] = 0.79
+    for i, s in enumerate(sums):
+        (tmp_path / f"a{i}").mkdir()
+        (tmp_path / f"a{i}" / "x.summary.json").write_text(json.dumps(s), "utf-8")
+    t = m.table(m.read_summaries([str(tmp_path)]))
+    lines = t.splitlines()
+    assert lines[0].split("|")[2:8] == [" en ", " ru ", " zh-Hans ", " zh-Hant ", " ja ", " ko "]
+    body = {ln.split("|")[1].strip(): [c.strip() for c in ln.split("|")[2:8]] for ln in lines[2:8]}
+    assert set(body) == {"**en**", "**ru**", "**zh-Hans**", "**zh-Hant**", "**ja**", "**ko**"}
+    assert body["**en**"][0] == "" and body["**en**"][1] == "0.850 / 40.0"
+    assert body["**ja**"][5] == "0.790 / 40.0 (weak)"
+    assert body["**ru**"][3] == "0.800 / 40.0"  # the weakest shipped cell itself is not below itself
+    assert body["**ko**"][1] == "-"
+    assert "29/30 cells" in t and "(0.800)" in t
+
+
+def test_1305_matrix6_cli_prints_the_six_languages():
+    import subprocess
+
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "bench" / "flores_cpu.py"), "--matrix6"],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and json.loads(r.stdout) == ["eng_Latn", "rus_Cyrl", "zho_Hans", "zho_Hant",
+                                                          "jpn_Jpan", "kor_Hang"]

@@ -4,6 +4,9 @@ name: eval-flores
 # the same metrics as docs/benchmarks.md.
 # Runs on GitHub-hosted CPU runners because the cloud agent sandbox cannot reach the model / data hosts.
 # Per-sentence JSON + summary are uploaded as the `flores-<src>` artifacts; the step summary has the table row.
+# #1305: `matrix=6x6` runs the source x target language-pair matrix instead (en / ru / zh-Hans / zh-Hant / ja / ko,
+# 30 directions, greedy, first 200 sentences unless `limit` is set): one job per source, five targets each, and a
+# `table` job that writes the 6x6 `COMET / chrF` table (docs/benchmarks.md) to its step summary + `flores-6x6-table`.
 # Only runs when this workflow or the runner script changes, or by hand (workflow_dispatch, once on the default branch).
 on:
   pull_request:
@@ -22,6 +25,11 @@ on:
       temps:
         description: "comma list of Hy-MT2 temperatures (0 = greedy, 0.7 = model-card default)"
         default: "0"
+      matrix:
+        description: "6x6 = en/ru/zh-Hans/zh-Hant/ja/ko language-pair matrix (#1305; ignores langs/temps, limit 0 -> 200)"
+        type: choice
+        options: ["", "6x6"]
+        default: ""
 
 permissions:
   contents: read
@@ -33,7 +41,6 @@ concurrency:
 env:
   TLWU_NO_UPDATE: "1"
   PYTHONUTF8: "1"
-  LIMIT: ${{ inputs.limit || '0' }}
 
 jobs:
   plan:
@@ -44,6 +51,8 @@ jobs:
     outputs:
       src: ${{ steps.m.outputs.src }}
       temp: ${{ steps.m.outputs.temp }}
+      tgts: ${{ steps.m.outputs.tgts }}
+      limit: ${{ steps.m.outputs.limit }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -52,9 +61,21 @@ jobs:
         env:
           LANGS: ${{ inputs.langs || 'rus_Cyrl,eng_Latn,jpn_Jpan' }}
           TEMPS: ${{ inputs.temps || '0.7,0.2,0' }}
+          MATRIX: ${{ inputs.matrix || '' }}
+          LIMIT: ${{ inputs.limit || '0' }}
         run: |
-          echo "src=$(python3 scripts/bench/flores_cpu.py --matrix "$LANGS")" >> "$GITHUB_OUTPUT"
-          echo "temp=$(python3 scripts/bench/flores_cpu.py --temps "$TEMPS")" >> "$GITHUB_OUTPUT"
+          case "$LIMIT" in ''|*[!0-9]*) echo "limit must be a number" >&2; exit 1;; esac
+          if [ "$MATRIX" = "6x6" ]; then
+            echo "src=$(python3 scripts/bench/flores_cpu.py --matrix6)" >> "$GITHUB_OUTPUT"
+            echo "tgts=$(python3 scripts/bench/flores_cpu.py --matrix6)" >> "$GITHUB_OUTPUT"
+            echo 'temp=["0"]' >> "$GITHUB_OUTPUT"
+            [ "$LIMIT" = "0" ] && LIMIT=200
+          else
+            echo "src=$(python3 scripts/bench/flores_cpu.py --matrix "$LANGS")" >> "$GITHUB_OUTPUT"
+            echo 'tgts=["zho_Hant"]' >> "$GITHUB_OUTPUT"
+            echo "temp=$(python3 scripts/bench/flores_cpu.py --temps "$TEMPS")" >> "$GITHUB_OUTPUT"
+          fi
+          echo "limit=$LIMIT" >> "$GITHUB_OUTPUT"
 
   flores:
     needs: plan
@@ -68,6 +89,8 @@ jobs:
     env:
       SRC: ${{ matrix.src }}
       TEMP: ${{ matrix.temp }}
+      TGTS: ${{ needs.plan.outputs.tgts }}
+      LIMIT: ${{ needs.plan.outputs.limit }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -112,19 +135,26 @@ jobs:
           python scripts/bench/fetch_data.py --out "$BENCH" --fleurs ""
       - name: Translate (CPU, Hy-MT2 temperature from the matrix; 0 = greedy, repeatable)
         run: |
-          python scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" --src "$SRC" \
-            --out out --limit "$LIMIT" --no-comet --temp "$TEMP"
+          for TGT in $(python3 -c 'import json, os; print(" ".join(json.loads(os.environ["TGTS"])))'); do
+            [ "$TGT" = "$SRC" ] && continue
+            python scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" --src "$SRC" --tgt "$TGT" \
+              --out out --limit "$LIMIT" --no-comet --temp "$TEMP"
+          done
       - name: Score chrF + COMET (CPU)
         run: |
-          "$HOME/comet/bin/python" scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" \
-            --src "$SRC" --out out --limit "$LIMIT" --score-only
+          for TGT in $(python3 -c 'import json, os; print(" ".join(json.loads(os.environ["TGTS"])))'); do
+            [ "$TGT" = "$SRC" ] && continue
+            "$HOME/comet/bin/python" scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" \
+              --src "$SRC" --tgt "$TGT" --out out --limit "$LIMIT" --score-only
+          done
           python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-          import json, os
-          s = json.load(open(f"out/{os.environ['SRC']}.summary.json", encoding="utf-8"))
+          import json, pathlib
           print("| pair | temp | n | chrF | COMET | U+FFFD lines | median s/sentence | p90 s | CPU |")
           print("|---|---|---|---|---|---|---|---|---|")
-          print(f"| {s['pair']} | {s.get('temperature')} | {s['n']} | {s['chrF']} | {s.get('COMET')} | "
-                f"{s.get('fffd_lines')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
+          for p in sorted(pathlib.Path("out").glob("*.summary.json")):
+              s = json.loads(p.read_text("utf-8"))
+              print(f"| {s['pair']} | {s.get('temperature')} | {s['n']} | {s['chrF']} | {s.get('COMET')} | "
+                    f"{s.get('fffd_lines')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
           EOF
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -132,3 +162,29 @@ jobs:
           name: flores-${{ matrix.src }}-t${{ matrix.temp }}
           path: out/
           if-no-files-found: warn
+
+  table:
+    # #1305: the 6x6 COMET / chrF table from every source job's summaries (rows = source, columns = target)
+    needs: [plan, flores]
+    if: ${{ always() && inputs.matrix == '6x6' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: flores-*
+          path: arts
+      - name: 6x6 table
+        run: |
+          {
+            echo "### MT language-pair matrix (COMET / chrF), run ${GITHUB_RUN_ID}, commit ${GITHUB_SHA::7}"
+            echo
+            python3 scripts/bench/flores_cpu.py --table arts
+          } | tee table.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flores-6x6-table
+          path: table.md

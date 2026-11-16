@@ -34,6 +34,11 @@ Hy-MT2-1.8B (the engine tlwu ships, Q4_K_M GGUF, llama.cpp on the CPU, greedy `T
 
 The Korean and tier-2 rows (#656) come from [eval-flores 43535177705](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43535177705), commit 22efa0f, same settings; each job's runner CPU is in the engine column (4 vCPU each, so s/sentence differs by CPU, e.g. tha on the older EPYC 7763). That run also re-ran rus/eng/jpn and got the same chrF and COMET as above to the last digit (greedy decoding is repeatable). All seven land at COMET 0.875-0.880, between Russian (0.865) and Japanese (0.885).
 
+### Language-pair matrix: en / ru / zh-Hans / zh-Hant / ja / ko (#1305)
+Every direction between the six languages (30 cells, rows = source, columns = target), Hy-MT2-1.8B Q4_K_M on the CPU, greedy, first 200 FLORES-200 devtest sentences per direction (the full 1012 stay for the X -> zh-Hant rows above), same chrF + COMET. Each cell is `COMET / chrF`; "(weak)" marks a cell whose COMET is below the weakest shipped direction (en / ru / ja / ko -> zh-Hant) of the same run. zh-Hans <-> zh-Hant is OpenCC script conversion (`tinglongwu.translate.zh_convert`), not MT, as in the app. Directions the app cannot select today are measured too: the table is the data for deciding what to enable. Run it with `gh workflow run eval-flores.yml --ref dev -f matrix=6x6`; the `table` job writes the table to its step summary and the `flores-6x6-table` artifact.
+
+Results: pending the first `matrix=6x6` run (table, run link and commit go here).
+
 ### Hy-MT2 sampling temperature (#107)
 
 Same 1012 FLORES-200 devtest sentences and metrics, Hy-MT2-1.8B Q4_K_M on 4-vCPU GitHub runners, temperature 0.7 (model-card default, shipped before #107) vs 0.2 vs 0 (greedy); top_p 0.6, top_k 20, repeat_penalty 1.05 unchanged. U+FFFD = hypotheses containing the replacement character (suspected cause of #632). Run: [eval-flores 43554407306](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43554407306), commit 3e145b4; per-sentence JSON in its `flores-<src>-t<temp>` artifacts. Each job got a different runner CPU (last column), so s/sentence compares CPUs as much as temperatures.
