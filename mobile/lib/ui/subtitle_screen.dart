@@ -9,7 +9,6 @@ import '../logic/debug_stats.dart';
 import '../logic/lang_pack.dart';
 import '../logic/model_manifest.dart';
 import '../logic/phone_audio.dart';
-import '../logic/speakers.dart';
 import '../logic/speech_out.dart';
 import '../logic/target_language.dart';
 import '../logic/tilt_flip.dart';
@@ -17,6 +16,8 @@ import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
 import 'advanced_screen.dart';
 import 'conversation_sheet.dart';
+import 'history_screen.dart';
+import 'subtitle_bubble.dart';
 
 /// Palette shared with the desktop app (tinglongwu/gui/app.py), dark values.
 class UiColors {
@@ -189,13 +190,16 @@ class _SubtitleScreenState extends State<SubtitleScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           for (var i = 0; i < subs.length; i++)
-                            _line(subs[i],
+                            SubtitleItem(
+                                subtitle: subs[i],
                                 isNewest: i == subs.length - 1,
                                 big: listener ? big * 1.4 : big,
                                 mode: mode,
-                                listener: listener),
+                                secondaryFontSize: pipeline.overlayStyle.secondaryFontSize,
+                                listener: listener,
+                                showVoice: pipeline.prefs.speakerLabels),
                           if (showDraft)
-                            _bubble(
+                            SubtitleBubble(
                               dashed: true,
                               children: [
                                 Text(
@@ -222,124 +226,6 @@ class _SubtitleScreenState extends State<SubtitleScreen> {
       // Listener view (#1146): rotate the content only, the system orientation is untouched.
       body: listener ? RotatedBox(key: const Key('listenerView'), quarterTurns: 2, child: body) : body,
     );
-  }
-
-  static const _radius = BorderRadius.only(
-    topLeft: Radius.circular(4),
-    topRight: Radius.circular(16),
-    bottomLeft: Radius.circular(16),
-    bottomRight: Radius.circular(16),
-  );
-
-  static const _radiusMe = BorderRadius.only(
-    topLeft: Radius.circular(16),
-    topRight: Radius.circular(4),
-    bottomLeft: Radius.circular(16),
-    bottomRight: Radius.circular(16),
-  );
-
-  Widget _bubble(
-      {required List<Widget> children, bool dashed = false, bool me = false, int voice = 0}) {
-    final accent = voice > 0 && !me ? speakerAccent(voice) : null;
-    final box = Container(
-      constraints: const BoxConstraints(maxWidth: 560),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: dashed
-            ? Colors.transparent
-            : (me
-                ? UiColors.me
-                : accent == null
-                    ? UiColors.other
-                    : Color.alphaBlend(accent.withValues(alpha: 0.22), UiColors.other)),
-        borderRadius: me ? _radiusMe : _radius,
-      ),
-      foregroundDecoration: dashed ? const _DashedDecoration() : null,
-      child: Column(
-          crossAxisAlignment: me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (accent != null)
-              Text(speakerLabel(voice),
-                  style: TextStyle(
-                      fontSize: 12, color: accent, fontWeight: FontWeight.w600, height: 1.4)),
-            ...children,
-          ]),
-    );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Align(alignment: me ? Alignment.centerRight : Alignment.centerLeft, child: box),
-    );
-  }
-
-  Widget _line(Subtitle s,
-      {required bool isNewest,
-      required double big,
-      required SubtitleMode mode,
-      bool listener = false}) {
-    final pending = s.zh == null;
-    final fs = isNewest ? big : big * 0.85;
-    const fg = UiColors.otherFg;
-    Widget text(String t, double size, Color color, {bool underline = false}) => Text(
-          t,
-          style: TextStyle(
-            fontSize: size,
-            color: color,
-            height: 1.3,
-            fontWeight: FontWeight.w500,
-            decoration: underline ? TextDecoration.underline : TextDecoration.none,
-            decorationColor: Colors.amber,
-          ),
-        );
-    final List<Widget> parts;
-    if (mode == SubtitleMode.source) {
-      parts = [text(s.ru, fs, fg)];
-    } else if (pending) {
-      // Still translating: its source text in gray.
-      parts = [text(s.ru, pipeline.overlayStyle.secondaryFontSize, UiColors.draft)];
-    } else {
-      final zh = s.zh!;
-      final src = s.ru.trim();
-      final showSrc = !listener && mode == SubtitleMode.both && src.isNotEmpty && src != zh.trim();
-      parts = [
-        if (showSrc)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: text(s.ru, (fs * 0.5).clamp(14.0, 22.0), UiColors.sub),
-          ),
-        text(zh, fs, fg, underline: !s.traditionalOk),
-      ];
-    }
-    return _bubble(
-        dashed: pending && mode != SubtitleMode.source,
-        me: s.speaker == Speaker.me,
-        voice: pipeline.prefs.speakerLabels ? s.voice : 0,
-        children: parts);
-  }
-}
-
-/// Dashed outline for the pending bubble.
-class _DashedDecoration extends Decoration {
-  const _DashedDecoration();
-  @override
-  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _DashedPainter();
-}
-
-class _DashedPainter extends BoxPainter {
-  @override
-  void paint(Canvas canvas, Offset offset, ImageConfiguration cfg) {
-    final size = cfg.size;
-    if (size == null) return;
-    final rr = _SubtitleScreenState._radius.toRRect(offset & size);
-    final paint = Paint()
-      ..color = UiColors.draft
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final path = Path()..addRRect(rr);
-    for (final m in path.computeMetrics()) {
-      for (var d = 0.0; d < m.length; d += 9) {
-        canvas.drawPath(m.extractPath(d, (d + 5).clamp(0.0, m.length)), paint);
-      }
-    }
   }
 }
 
@@ -629,7 +515,7 @@ class _SourceToggle extends StatelessWidget {
           content: const Text('看影片翻譯會把字幕浮在影片上（例如 YouTube）。'
               '請在下一頁允許「顯示在其他應用程式上層」。\n\n'
               '不允許也可以：字幕只會顯示在聽龍裡面。\n\n'
-              '字幕只顯示在你的手機上，不會錄音或存檔。請只用於個人觀看，並尊重影片的著作權。'),
+              '字幕只顯示在你的手機上，不會錄音。字幕文字只存在這支手機（可在設定關閉）。請只用於個人觀看，並尊重影片的著作權。'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('略過')),
             FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('前往設定')),
@@ -744,6 +630,28 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline, [VoidCallback
                     style: TextStyle(fontSize: 13, color: Colors.white60)),
                 value: pipeline.prefs.sourceDraft,
                 onChanged: pipeline.setSourceDraft,
+              ),
+              SwitchListTile(
+                key: const Key('saveHistorySwitch'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('保存字幕紀錄'),
+                subtitle: const Text('每次翻譯的字幕文字只存在這支手機上，不上傳、不備份，30 天後自動刪除。不存錄音。',
+                    style: TextStyle(fontSize: 13, color: Colors.white60)),
+                value: pipeline.prefs.saveHistory,
+                onChanged: pipeline.setSaveHistory,
+              ),
+              ListTile(
+                key: const Key('historyEntry'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('字幕紀錄'),
+                subtitle: const Text('看過去翻譯的字幕、刪除紀錄',
+                    style: TextStyle(fontSize: 13, color: Colors.white60)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => HistoryScreen(pipeline: pipeline)));
+                },
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,

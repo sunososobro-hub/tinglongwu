@@ -106,6 +106,10 @@ class MainActivity : FlutterFragmentActivity() {
                         if (dir == null) result.error("NO_DIR", "external files dir unavailable", null)
                         else result.success(dir.absolutePath)
                     }
+                    // App-private internal files dir (/data/data/<pkg>/files): other apps cannot read
+                    // it. The subtitle history lives here (#1311), excluded from backup and device
+                    // transfer in res/xml/*_rules.xml.
+                    "privateFilesDir" -> result.success(filesDir.absolutePath)
                     // Cheap thermal/battery reading: battery temp (deg C), level %,
                     // PowerManager thermal status (0 none .. 6 shutdown, -1 n/a).
                     "stats" -> {

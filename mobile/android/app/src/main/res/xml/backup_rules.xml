@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older (android:fullBackupContent). The app already sets allowBackup=false;
+     this keeps the local subtitle history (#1311) out of any backup even if that changes. -->
+<full-backup-content>
+    <exclude domain="file" path="history" />
+</full-backup-content>

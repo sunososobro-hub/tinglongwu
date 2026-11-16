@@ -139,6 +139,10 @@ Expected on device: models/sensevoice/{model.int8.onnx,tokens.txt}, models/siler
 - Where to side-load it: `/sdcard/Android/data/com.tinglongwu.mobile/files/models/Hy-MT2-1.8B-Q4_K_M.gguf` (the `adb push` line above).
 - The model-card prompt asks for 中文, so output may be Simplified; like desktop (OpenCC s2twp), the app converts it to Traditional Chinese with Taiwan wording (`lib/logic/s2tw.dart`, pure Dart, tables generated from OpenCC data by `tool/gen_s2tw_data.py`). Lines that still contain Simplified-only characters are flagged NOT-TRAD in the log.
 
+## Subtitle history (local only)
+- On by default; settings sheet (gear) > 保存字幕紀錄 switches it, 字幕紀錄 opens the list (swipe or long-press a session to delete it), 刪除全部紀錄 deletes everything. Sessions older than 30 days are deleted on app start.
+- One session = one JSONL file `<filesDir>/history/<startMs>.jsonl` in the app-private storage (Android internal files dir, iOS Application Support): header (start, mode), then one line per finalized subtitle (original, translation, languages, speaker side in 對話翻譯), appended as each line finalizes. Drafts and audio are never saved. No upload, share or export; excluded from Android backup / device transfer (`res/xml/*_rules.xml`) and iCloud backup. Code: `lib/logic/history.dart`, `lib/services/history_store.dart`, `lib/ui/history_screen.dart`.
+
 ## Logs
     adb pull /sdcard/Android/data/com.tinglongwu.mobile/files/logs/tlwu.log
 

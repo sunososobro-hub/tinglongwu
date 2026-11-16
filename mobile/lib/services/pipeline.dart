@@ -9,6 +9,7 @@ import '../logic/context_budget.dart';
 import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/feature_prefs.dart';
+import '../logic/history.dart';
 import '../logic/lang_pack.dart';
 import '../logic/model_manifest.dart';
 import '../logic/pack_status.dart';
@@ -19,6 +20,7 @@ import '../logic/speakers.dart';
 import '../logic/subtitle_trim.dart';
 import 'app_log.dart';
 import 'device_probe_service.dart';
+import 'history_store.dart';
 import 'asr_worker.dart';
 import 'speaker_worker.dart';
 import 'model_importer.dart';
@@ -160,6 +162,29 @@ class Pipeline extends ChangeNotifier {
   Conversation conversation = const Conversation();
   ConversationStore? _conversationStore;
 
+  // ---- local-only subtitle history (#1311)
+
+  /// Finalized lines of this run, written to the app-private folder as they finalize. Null until
+  /// [start] ran. Never uploaded, shared or exported.
+  HistoryRecorder? history;
+
+  /// What the history calls the current run.
+  HistoryMode get _historyMode => source == AudioSourceKind.phone
+      ? HistoryMode.video
+      : (conversation.enabled ? HistoryMode.conversation : HistoryMode.speak);
+
+  /// Ends the running history session and starts a new one when the mode changed.
+  void _syncHistory() => history?.setMode(_historyMode, target);
+
+  /// 保存字幕紀錄 (#1311): on/off, remembered. Off stops writing at once; saved sessions stay.
+  void setSaveHistory(bool on) {
+    if (on == prefs.saveHistory) return;
+    prefs = prefs.copyWith(saveHistory: on);
+    _prefsStore?.save(prefs);
+    history?.setEnabled(on);
+    notifyListeners();
+  }
+
   /// Turns 對話模式 on or off (remembered).
   void setConversationEnabled(bool on) {
     _setConversation(conversation.copyWith(enabled: on));
@@ -193,6 +218,7 @@ class Pipeline extends ChangeNotifier {
     conversation = c;
     _clearDraftTr(); // the draft was translated for the other direction
     _syncAsrRoute();
+    _syncHistory();
     final store = _conversationStore; // null until start() (and AppLog) ran
     if (store == null) return notifyListeners();
     store.save(c);
@@ -384,6 +410,14 @@ class Pipeline extends ChangeNotifier {
       prefs = _prefsStore!.load();
       _conversationStore = ConversationStore('${paths!.filesDir}/conversation.txt');
       conversation = _conversationStore!.load();
+      final hist = HistoryRecorder(
+          HistoryStore(await HistoryStore.defaultDir(paths!.filesDir)),
+          enabled: prefs.saveHistory);
+      history = hist;
+      // Auto-delete after 30 days, on every app start; off the start path.
+      hist.store.prune(DateTime.now()).then((n) {
+        if (n > 0) _log.i('history: pruned $n old session(s)');
+      }).catchError((Object _) {});
       _styleStore = OverlayStyleStore('${paths!.filesDir}/overlay_style.txt');
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
@@ -489,6 +523,7 @@ class Pipeline extends ChangeNotifier {
       if (_disposed) return;
       await _startMic();
       stage = Stage.listening;
+      _syncHistory();
       _log.i('listening');
       notifyListeners();
       _startProbe();
@@ -583,6 +618,7 @@ class Pipeline extends ChangeNotifier {
         _overlaySent = null;
         await PlaybackCapture.overlayStyle(overlayStyle);
         await PlaybackCapture.overlayShow();
+        _syncHistory();
         _log.i('source: phone audio');
       } else {
         source = AudioSourceKind.mic;
@@ -593,6 +629,7 @@ class Pipeline extends ChangeNotifier {
         silenceHint = false;
         await _startMic();
         if (conversation.enabled && _tr != null) _ensureTts();
+        _syncHistory();
         _log.i('source: mic');
       }
       return null;
@@ -624,6 +661,7 @@ class Pipeline extends ChangeNotifier {
     _log.i('phone audio stopped');
     source = AudioSourceKind.mic;
     _syncAsrRoute();
+    _syncHistory();
     if (conversation.enabled && _tr != null) _ensureTts();
     silenceHint = false;
     paused = false;
@@ -992,6 +1030,15 @@ class Pipeline extends ChangeNotifier {
           job.sub.zh = r.zh;
           _trimSubtitles();
           job.sub.traditionalOk = tgt != 'zh' || r.check.isTraditional;
+          // Finalized line only (never a draft); the write is queued, nothing waits for the disk.
+          history?.add(
+              src: job.sub.ru,
+              tr: r.zh,
+              lang: job.lang,
+              tgt: tgt,
+              side: _historyMode == HistoryMode.conversation
+                  ? (job.route.speaker == Speaker.me ? 0 : 1)
+                  : null);
           if (job.route.speak && conversation.enabled) {
             _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs));
           }
@@ -1038,6 +1085,7 @@ class Pipeline extends ChangeNotifier {
     _voices.clear();
     _speakQ.clear();
     TtsPlayer.stop();
+    history?.end(); // the session's end record; the writes are queued and finish on their own
     try {
       _log.i('=== session end ===');
       _log.flush();

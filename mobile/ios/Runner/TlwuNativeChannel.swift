@@ -28,9 +28,11 @@ final class TlwuNativeChannel {
 
   private func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
     switch call.method {
-    case "externalFilesDir":
+    case "externalFilesDir", "privateFilesDir":
       // Name kept from Android. On iOS: Application Support (private, not shown in Files),
-      // excluded from iCloud backup because the models are re-importable.
+      // excluded from iCloud backup because the models are re-importable. `privateFilesDir`
+      // (subtitle history, #1311) is the same folder: the history is local-only, so it stays
+      // out of iCloud / iTunes backups too (the flag covers everything below this folder).
       do {
         var dir = try FileManager.default.url(
           for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
