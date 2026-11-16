@@ -62,12 +62,17 @@ def setup_flag(size: str = "1.8b") -> str:
     return HYMT_SIZES[size][2]
 
 
-def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | None = None) -> str:
+def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | None = None,
+                 context: str | None = None) -> str:
     """Model-card template; the Chinese one when Chinese is on either side, else the English one.
-    `terms` (source, translation) pairs are prepended in the card's terminology-reference form; none = unchanged."""
+    `terms` (source, translation) pairs are prepended in the card's terminology-reference form; none = unchanged.
+    `context` (previous source sentence) uses the card's contextual-translation form (#1258 eval); none = unchanged."""
     if terms:
         ref = "\n".join(f"{a} 翻译成 {b}" for a, b in terms)
-        return f"参考下面的翻译：\n{ref}\n\n" + build_prompt(text, src, tgt)
+        return f"参考下面的翻译：\n{ref}\n\n" + build_prompt(text, src, tgt, context=context)
+    if context and context.strip():
+        return (f"{context.strip()}\n参考上面的信息，把下面的文本翻译成{ZH_NAMES.get(tgt, tgt)}，"
+                f"注意不需要翻译上文，也不要额外解释：\n{text}")
     if "zh" in (src, tgt):
         return (f"将以下文本翻译成{ZH_NAMES.get(tgt, tgt)}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}")
     return (f"Translate the following text into {EN_NAMES.get(tgt, tgt)}.\n"
@@ -127,8 +132,9 @@ class HyMtTranslator(Translator):
     def preload(self, src: str = "", tgt: str = "") -> None:
         self._load()
 
-    def translate(self, text: str, src: str, tgt: str, draft: bool = False) -> Translation:
-        """`draft` (streaming partials): uses the context but never adds to it."""
+    def translate(self, text: str, src: str, tgt: str, draft: bool = False, context: str | None = None) -> Translation:
+        """`draft` (streaming partials): uses the context but never adds to it. `context`: previous source sentence
+        put into the prompt (card's contextual form); only the #1258 eval passes it, the app does not."""
         if src == tgt or not text.strip():
             return Translation(None, text)
         text = collapse_repeats(text)
@@ -141,7 +147,7 @@ class HyMtTranslator(Translator):
         else:
             ctx = [a for a, _ in self.history]
         r = self.llm.create_chat_completion(
-            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx))}],
+            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx), context)}],
             max_tokens=max_tokens_for(text), **sampling())
         out = strip_unk(clean_output(r["choices"][0]["message"]["content"] or ""))
         if tgt == "zh":

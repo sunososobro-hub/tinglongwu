@@ -1,0 +1,63 @@
+name: eval-fragments
+# #1258: Hy-MT2-1.8B (Q4_K_M, llama.cpp, CPU) on eval/fragment_cases.jsonl (cut-off ASR lines, idioms, split numbers,
+# finished controls): chrF + invented-content rate for the line alone, with the previous line as context, and with
+# cut-off lines marked "…". tlwu_eval/fragments.py has the rules. Runs on GitHub-hosted CPU runners because the cloud
+# agent sandbox cannot reach the model hosts. The step summary has the table; the JSON report is an artifact.
+# Only runs when this workflow, the set, the eval code or the Hy-MT2 prompt code changes, or by hand.
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - .github/workflows/eval-fragments.yml
+      - eval/fragment_cases.jsonl
+      - tlwu_eval/fragments.py
+      - tinglongwu/hymt.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-fragments-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TLWU_NO_UPDATE: "1"
+  TLWU_HYMT_TEMP: "0"  # greedy: repeatable numbers
+  PYTHONUTF8: "1"
+
+jobs:
+  fragments:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install tlwu + Hy-MT2 CPU engine
+        run: |
+          pip install -e .
+          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+      - name: Paths
+        run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/tlwu-models
+          key: eval-fragments-models-v1-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+      - name: Model (Hy-MT2 1.8B)
+        run: tlwu-setup --hymt --models-dir "$TLWU_MODELS"
+      - name: Baseline / context / mark (CPU)
+        run: |
+          mkdir -p out
+          python -m tlwu_eval --fragment-cases eval/fragment_cases.jsonl --device cpu --models-dir "$TLWU_MODELS" --out out/fragments.json | tee out/report.md
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: fragments-report
+          path: out/
+          if-no-files-found: warn

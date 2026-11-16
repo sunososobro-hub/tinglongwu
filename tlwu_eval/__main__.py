@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import gate, history, langfloor, lowend, scoring, textcases, tierchart, tiers
+from . import fragments, gate, history, langfloor, lowend, scoring, textcases, tierchart, tiers
 from . import noise as noise_mod
 from .runner import CLIPS_PER_LANG, FOCUS_PAIRS, TOTAL_BUDGET_S, Engines, load_extra, load_manifest, run_smoke
 
@@ -130,8 +130,42 @@ def text_cases_main(a, engines: Engines | None) -> int:
     return 0
 
 
-def main(argv=None, engines: Engines | None = None, totals=None, comet_model=None, **run_kw) -> int:
-    """engines / totals / comet_model / run_kw (clock, ram, vram) are injected by tests; defaults measure this machine."""
+def hymt_translate(a):
+    """translate(text, src, tgt, context) -> str with the local Hy-MT2 (no glossary). Every call starts from an
+    empty history, so the only context a line gets is the one passed in."""
+    from tinglongwu.hymt import HyMtTranslator
+    from tinglongwu.models import models_dir
+
+    tr = HyMtTranslator(models_dir(a.models_dir), "tw", a.device if a.device in ("cpu", "cuda") else "cpu")
+    tr.preload()
+
+    def translate(text, src, tgt, context):
+        tr.history.clear()
+        tr._pair = None
+        return tr.translate(text, src, tgt, context=context).text
+
+    return translate
+
+
+def fragment_cases_main(a, translate=None) -> int:
+    try:
+        cases = fragments.load_cases(a.fragment_cases)
+        if not cases:
+            raise ValueError(f"{a.fragment_cases} has no cases")
+        rep = fragments.run(cases, translate or hymt_translate(a))
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        print(f"tlwu-eval: {e}", file=sys.stderr)
+        return 2
+    with open(a.out, "w", encoding="utf-8") as f:
+        json.dump(rep, f, ensure_ascii=False, indent=2)
+    print(fragments.format_report(rep))
+    print(f"report: {a.out}")
+    return 0
+
+
+def main(argv=None, engines: Engines | None = None, totals=None, comet_model=None, translate=None, **run_kw) -> int:
+    """engines / totals / comet_model / translate (--fragment-cases MT) / run_kw (clock, ram, vram) are injected by
+    tests; defaults measure this machine."""
     p = argparse.ArgumentParser(prog="tlwu-eval", description="Local, offline evaluation of tinglongWu.")
     p.add_argument("--smoke", action="store_true", help="5 clips per focus language, per-stage time and PASS/FAIL")
     p.add_argument("--data", default="eval_data/smoke", help="folder with manifest.jsonl and the wav files")
@@ -183,9 +217,14 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
                    help="#745: Whisper CPU threads (overrides the default and --cpu-mode)")
     p.add_argument("--text-cases", metavar="FILE.jsonl",
                    help="MT-only chrF over text cases such as eval/user_cases.jsonl, per pair and per case (#827)")
+    p.add_argument("--fragment-cases", metavar="FILE.jsonl",
+                   help="Hy-MT2 on cut-off lines / idioms / split numbers: chrF + invented-content rate for the "
+                        "line alone, with the previous line as context, and with cut-off lines marked (#1258)")
     a = p.parse_args(argv)
     if a.text_cases:
         return text_cases_main(a, engines)
+    if a.fragment_cases:
+        return fragment_cases_main(a, translate)
     if a.trend:
         return history.trend_main(a.trend, "trend.html" if a.out == "report.json" else a.out)
     if a.chart:
