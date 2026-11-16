@@ -256,7 +256,8 @@ jobs:
 
   # #1253 Acceptance: "dropped-segment count with MT on equals the ASR-only count; MT delay is shown, not hidden".
   replay-ab:
-    if: always() && github.repository == 'sunososobro-hub/tinglongwu'
+    # !cancelled(): runs after a failed variant (the summary says so) but not when a newer push cancelled the replay
+    if: ${{ !cancelled() && github.repository == 'sunososobro-hub/tinglongwu' }}
     needs: replay
     runs-on: ubuntu-24.04
     timeout-minutes: 10
