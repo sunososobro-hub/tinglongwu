@@ -112,7 +112,13 @@ class HyMtTranslator(Translator):
         translation); only for zh output. They enter the prompt through build_prompt's terminology form."""
         if tgt != "zh" or not self.glossary:
             return []
-        return [(e.main, self._zh_word(e.target)) for e in self.glossary.relevant(text, *context) if e.target]
+        out = []
+        for e in self.glossary.relevant(text, *context):
+            if e.target:
+                out.append((e.main, self._zh_word(e.target)))
+            elif e.main.isascii():  # plain hint term (#1328): Latin-script ones are kept as written; others never forced into zh
+                out.append((e.main, e.main))
+        return out
 
     def _load(self):
         if self.llm is None:

@@ -108,3 +108,12 @@ def test_hymt_glossary_context_resets_on_pair_change_and_ignores_drafts(tmp_path
     assert "路由器" in fake.calls[-1]
     tr.translate("Готово.", "ru", "zh")
     assert "路由器" not in fake.calls[-1]
+
+
+def test_plain_latin_hint_terms_reach_hymt_prompt_1328(tmp_path, tmp_path_factory):
+    g = tmp_path / "g.txt"
+    g.write_text("PHY\nроутер\n", encoding="utf-8")
+    tr = HyMtTranslator(models(tmp_path), "tw", "cpu", loader=lambda p, gg: FakeLlm("x"))
+    tr.glossary = glossary.load(str(g))
+    assert tr._terms("Этот PHY греется", "zh") == [("PHY", "PHY")]
+    assert tr._terms("Новый роутер", "zh") == []
