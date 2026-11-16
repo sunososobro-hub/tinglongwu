@@ -26,6 +26,7 @@ import 'playback_capture.dart';
 import '../logic/conversation.dart';
 import '../logic/speech_out.dart';
 import '../logic/target_language.dart';
+import '../logic/voice_slot.dart';
 import 'translator.dart';
 import 'tts_player.dart';
 import 'tts_worker.dart';
@@ -163,7 +164,7 @@ class Pipeline extends ChangeNotifier {
     if (on) {
       if (_tr != null) _ensureTts();
     } else {
-      _stopSpeaking();
+      _dropVoice(); // nothing is read aloud outside 對話翻譯: free the voice model
     }
   }
 
@@ -173,11 +174,9 @@ class Pipeline extends ChangeNotifier {
     final before = conversation.foreign;
     _setConversation(conversation.copyWith(foreign: code));
     if (conversation.foreign == before) return;
-    // The read-aloud voice follows the partner's language: drop the old one, load on demand.
-    _tts?.dispose();
-    _tts = null;
-    _ttsLoading = null;
-    ttsInstalled = false;
+    // The read-aloud voice follows the partner's language: drop the old one (and the lines
+    // still queued for it), load the new one.
+    _dropVoice();
     if (conversation.enabled && _tr != null) _ensureTts();
   }
 
@@ -236,38 +235,50 @@ class Pipeline extends ChangeNotifier {
 
   /// End of my speech -> start of the spoken translation, last line (ms).
   int? lastSpeakLatencyMs;
-  TtsWorker? _tts;
-  Future<void>? _ttsLoading;
+
+  /// The one loaded voice, always the one for the current 對方語言 (#1280).
+  final VoiceSlot<TtsWorker> _voices = VoiceSlot<TtsWorker>(dispose: (w) => w.dispose());
   final SpeakQueue _speakQ = SpeakQueue();
   final EchoGuard _echo = EchoGuard();
   bool _speakBusy = false;
 
-  /// Loads the voice once, the first time conversation mode needs it (a voice costs memory).
-  Future<void> _ensureTts() => _ttsLoading ??= _loadTts();
-
-  Future<void> _loadTts() async {
+  /// Loads the voice for the current 對方語言 the first time conversation mode needs it (a voice
+  /// costs memory). A load that finishes after the language changed, or after 對話翻譯 was turned
+  /// off, is thrown away by the slot; a missing or failed voice is tried again next time.
+  Future<void> _ensureTts() async {
     final lang = conversation.foreign;
     final voice = paths?.ttsVoice(lang);
-    ttsInstalled = voice != null;
-    if (voice == null) {
-      _log.i('tts: no $lang voice (tts-$lang/), text only');
-      _ttsLoading = null; // look again next time (the pack may be imported meanwhile)
-      if (!_disposed) notifyListeners();
-      return;
+    if (voice == null && _voices.lang != lang) {
+      _log.i('tts: no $lang voice (tts-$lang/), text only'); // once per language, not per line
     }
+    _setTtsInstalled(voice != null); // the pill does not say "not installed" while it loads
     try {
-      final t0 = _clock.elapsedMilliseconds;
-      final w = await TtsWorker.spawn(voice);
-      if (_disposed) return w.dispose();
-      _tts = w;
-      _log.i('tts: $lang voice (${voice.engine}) ready in ${_clock.elapsedMilliseconds - t0} ms');
-      _speakNext();
+      await _voices.ensure(lang, () async {
+        if (voice == null) return null;
+        final t0 = _clock.elapsedMilliseconds;
+        final w = await TtsWorker.spawn(voice);
+        _log.i('tts: $lang voice (${voice.engine}) ready in ${_clock.elapsedMilliseconds - t0} ms');
+        return w;
+      });
     } catch (e) {
-      ttsInstalled = false;
-      _ttsLoading = null;
       _log.e('tts: load failed: $e');
     }
-    if (!_disposed) notifyListeners();
+    if (_disposed || lang != conversation.foreign) return;
+    _setTtsInstalled(_voices.voiceFor(lang) != null);
+    _speakNext();
+  }
+
+  void _setTtsInstalled(bool v) {
+    if (v == ttsInstalled) return;
+    ttsInstalled = v;
+    notifyListeners();
+  }
+
+  /// Stops reading and frees the voice (language changed, 對話翻譯 off, phone audio).
+  void _dropVoice() {
+    _stopSpeaking();
+    _voices.clear();
+    ttsInstalled = false;
   }
 
   /// Queues a translated line of mine to be read aloud.
@@ -278,14 +289,17 @@ class Pipeline extends ChangeNotifier {
   }
 
   Future<void> _speakNext() async {
-    final tts = _tts;
+    final tts = _voices.voiceFor(conversation.foreign);
     if (_speakBusy || _disposed || tts == null) return;
     _speakBusy = true;
     try {
       while (!_disposed && !_speakQ.isEmpty) {
         final u = _speakQ.next()!;
+        // A line is only read by the voice of its own language (shown as text otherwise).
+        if (u.lang != conversation.foreign) continue;
         final a = await tts.synth(u.text);
         if (_disposed || !conversation.enabled) break;
+        if (!identical(_voices.voiceFor(conversation.foreign), tts)) break; // voice changed
         if (a.samples.isEmpty) continue;
         if (!await TtsPlayer.play(a.samples, a.sampleRate)) {
           _log.e('tts: playback failed');
@@ -553,6 +567,7 @@ class Pipeline extends ChangeNotifier {
         await _stopMic();
         source = AudioSourceKind.phone;
         _syncAsrRoute();
+        _dropVoice(); // 對話翻譯 only applies to the microphone
         silenceHint = false;
         _overlaySent = null;
         await PlaybackCapture.overlayStyle(overlayStyle);
@@ -566,6 +581,7 @@ class Pipeline extends ChangeNotifier {
         await PlaybackCapture.stop();
         silenceHint = false;
         await _startMic();
+        if (conversation.enabled && _tr != null) _ensureTts();
         _log.i('source: mic');
       }
       return null;
@@ -597,6 +613,7 @@ class Pipeline extends ChangeNotifier {
     _log.i('phone audio stopped');
     source = AudioSourceKind.mic;
     _syncAsrRoute();
+    if (conversation.enabled && _tr != null) _ensureTts();
     silenceHint = false;
     paused = false;
     PlaybackCapture.overlayHide().catchError((_) {});
@@ -1007,7 +1024,7 @@ class Pipeline extends ChangeNotifier {
     _spk?.dispose();
     _asr?.dispose();
     _tr?.dispose();
-    _tts?.dispose();
+    _voices.clear();
     _speakQ.clear();
     TtsPlayer.stop();
     try {
