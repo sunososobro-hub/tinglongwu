@@ -177,17 +177,20 @@ jobs:
           { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_348.txt")"; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
-      # #1247: the saved lines, logs and mic_report.json (missed clips, where the longest gap is) of the three live
-      # checks, so a FAIL can be read without the owner PC. Text only (no wavs, no models): a few hundred KB.
+      # #1247: the saved lines, log and mic_report.json (missed clips, where the longest gap is) of the live mic
+      # check, so a FAIL can be read without the owner PC. Text only (no wavs, no models): a few hundred KB.
+      # Mic-check files only, listed by name: meeting.* / loopback.* hold transcripts of real speaker / WASAPI
+      # loopback capture on the owner PC and must not reach public-repo artifacts (Opus review on #1248).
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         continue-on-error: true
         with:
           name: hw-live-checks
           path: |
-            ${{ runner.temp }}/live/*.jsonl
-            ${{ runner.temp }}/live/*.log
-            ${{ runner.temp }}/live/*.json
+            ${{ runner.temp }}/live/mic_file.jsonl
+            ${{ runner.temp }}/live/mic_live.jsonl
+            ${{ runner.temp }}/live/mic_live.log
+            ${{ runner.temp }}/live/mic_report.json
             ${{ runner.temp }}/check_*.txt
           retention-days: 7
           if-no-files-found: ignore
