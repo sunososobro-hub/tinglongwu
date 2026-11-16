@@ -197,6 +197,8 @@ def parse_args(argv=None):
             p.error(f"--topics: model file not found: {a.topics}")
     if a.voice and a.transcript_only:
         p.error("--voice needs translations (not --transcript-only)")
+    if a.face_to_face and (a.voice or a.stream):  # #1204: TTS language and drafts are fixed to --to, not per utterance
+        p.error("--face-to-face cannot be combined with --voice or --stream (the target changes per utterance)")
     if (a.voice_device is not None or a.voice_speaker is not None) and not a.voice:
         p.error("--voice-device / --voice-speaker need --voice")
     a.voice_speaker = 0 if a.voice_speaker is None else a.voice_speaker
@@ -536,7 +538,13 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
 
         cands = f2f.candidates(a.to, a.face_to_face)  # raises SameLanguageError when both sides match
         a.lang = "auto"
-        f2f_route = lambda lang: f2f.route(a.to, a.face_to_face, lang)["target"]  # noqa: E731
+        from .gui.core import lang_base
+
+        for side in (a.to, a.face_to_face):  # #1204: the zh side picks the Chinese variant (zh-cn -> cn, zh-tw -> tw)
+            if side in ("zh-tw", "zh-cn"):
+                a.zh_variant = side[3:]
+        # #1204: MT knows "zh", not "zh-tw"/"zh-cn" (the variant is the translator's zh_variant)
+        f2f_route = lambda lang: lang_base(f2f.route(a.to, a.face_to_face, lang)["target"])  # noqa: E731
         print(f"tlwu: face-to-face {a.to} <-> {a.face_to_face}", file=sys.stderr)
     elif a.lang == "auto" and getattr(a, "lang_candidates", None):
         from .langfollow import parse_candidates
@@ -559,6 +567,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             apply_glossary(translator, glossary)
         if a.lang != "auto":
             translator.preload(a.lang, a.to)
+        elif f2f_route is not None:  # #1204: both directions of the face-to-face pair, bases only (zh, not zh-tw)
+            translator.preload(cands[0], cands[1])
+            translator.preload(cands[1], cands[0])
         elif cands:  # fail early on missing models; the translator caches one step per language pair
             for c in cands:
                 if c != a.to:
