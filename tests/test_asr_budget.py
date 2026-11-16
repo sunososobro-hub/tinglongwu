@@ -119,3 +119,55 @@ def test_asr_retry_file_mode_keeps_full_fallback_and_no_budget():
     first, retry = r.model.calls
     assert first["temperature"] == (0.0, 0.2, 0.4) and retry["temperature"] == (0.3, 0.5, 0.7)
     assert "max_new_tokens" not in first and "max_new_tokens" not in retry
+
+
+class LateClockModel(SlowModel):
+    """Fake decoder whose cost lands when the generator is exhausted: the decode finishes past the deadline."""
+
+    def transcribe(self, audio, **kw):
+        self.calls.append(kw)
+        pieces = self.outputs.pop(0)
+
+        def gen():
+            yield from (Seg(p) for p in pieces)
+            self.clock.t += self.cost
+        return gen(), type("I", (), {"language": "en"})()
+
+
+def late(outputs, cost):
+    r = rec(outputs)
+    r.model = LateClockModel(r.clock, outputs, cost)
+    return r
+
+
+def test_asr_budget_finished_decode_past_deadline_keeps_text(capsys):
+    # #1252: 1 s audio -> 4 s budget; the decode finishes at 10 s. The text is already there: return it.
+    r = late([["Long conclusion.", "Second half."]], cost=10.0)
+    tr = r.transcribe(sec(1))
+    assert tr is not None and tr.text == "Long conclusion. Second half."
+    assert getattr(r, "dropped", 0) == 0
+    assert "dropped a sentence" not in capsys.readouterr().err
+
+
+def test_asr_budget_over_deadline_skips_retry_but_keeps_first_pass():
+    # #1252: a looped first pass that finished past the deadline is collapsed and returned, with no retry
+    r = late([[LOOP], ["clean retry"]], cost=10.0)
+    tr = r.transcribe(sec(1))
+    assert tr is not None and tr.text  # the collapsed loop, not a drop
+    assert len(r.model.calls) == 1 and getattr(r, "dropped", 0) == 0
+
+
+def test_asr_budget_retry_overrun_keeps_first_pass():
+    # #1252: first pass in time, the loop retry runs past the deadline mid-decode -> first pass is kept
+    r = rec([[LOOP], ["x", "y", "z"]], cost=0.1)
+    r.model.outputs = [[LOOP], ["x", "y", "z"]]
+    first = r.model.transcribe
+
+    def costly(audio, **kw):
+        if r.model.calls:  # second call (retry): 3 s per piece
+            r.model.cost = 3.0
+        return first(audio, **kw)
+    r.model.transcribe = costly
+    tr = r.transcribe(sec(1))
+    assert tr is not None and tr.text and len(r.model.calls) == 2
+    assert getattr(r, "dropped", 0) == 0

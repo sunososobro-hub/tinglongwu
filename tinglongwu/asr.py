@@ -228,8 +228,7 @@ class FasterWhisperRecognizer(Recognizer):
                 raise OverBudget
             if not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0):
                 segs.append(s)
-        if deadline is not None and self._now() > deadline:
-            raise OverBudget
+        # #1252: no deadline check here - the decode already finished, so dropping its text saves no CPU
         return segs, info, " ".join(s.text.strip() for s in segs if s.text.strip())
 
     def _now(self) -> float:
@@ -255,8 +254,12 @@ class FasterWhisperRecognizer(Recognizer):
     def _transcribe(self, audio: np.ndarray, deadline) -> Transcript | None:
         lang = self._lang_for(audio)
         segs, info, text = self._decode(audio, lang=lang, deadline=deadline)
-        if text and has_loop(text):  # decoder got stuck: re-decode once without context, then collapse
-            segs2, info2, text2 = self._decode(audio, retry=True, lang=lang, deadline=deadline)
+        over = deadline is not None and self._now() > deadline  # #1252: over budget only skips the retry
+        if text and has_loop(text) and not over:  # decoder got stuck: re-decode once without context, then collapse
+            try:
+                segs2, info2, text2 = self._decode(audio, retry=True, lang=lang, deadline=deadline)
+            except OverBudget:  # #1252: the retry ran out of time; keep the finished first pass
+                segs2, info2, text2 = segs, info, ""
             if text2 and not has_loop(text2):
                 segs, info, text = segs2, info2, text2
         looped = bool(text) and has_loop(text)  # still looped after the retry: collapsed below, no prompt
