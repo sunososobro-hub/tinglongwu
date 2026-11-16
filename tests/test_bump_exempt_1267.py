@@ -156,3 +156,12 @@ def test_live_check_binds_files_and_text_to_one_head():
     moved = iter(["a" * 40, "b" * 40])  # a push lands between the file list and the re-check
     ok, why, _ = rn.bump_check_pr(lambda: next(moved), lambda: [INIT, NEW_SECTION], lambda h: HEAD_TEXT)
     assert not ok and "head moved" in why
+
+
+def test_copy_in_comment_masked_by_existing_visible_section_needs_opus():
+    # a visible `## v0.4.3` already exists; the PR adds an identical copy inside the example comment
+    hidden = wn("@@ -3,3 +3,6 @@\n <!-- newest first; example:\n ## v1.2.3\n - Subtitles appear faster.\n"
+                "+## v0.4.3\n+- Fixed recording.\n+\n -->\n")
+    head = INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->") + "## v0.4.3\n- Fixed recording.\n"
+    ok, why = rn.bump_exempt([INIT, hidden], head)
+    assert not ok and "exactly one" in why, why
