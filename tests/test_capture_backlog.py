@@ -86,15 +86,15 @@ class _StalledASR(Recognizer):
 class _LiveSource:
     """frames() exactly like WasapiLoopbackSource._auto_frames reads one device: queue.get + to_mono_16k."""
 
-    def __init__(self, src, q, ev):
-        self.src, self.q, self.ev = src, q, ev
+    def __init__(self, src, q, worker: threading.Thread):
+        self.src, self.q, self.worker = src, q, worker
 
     def frames(self):
         while True:
             try:
                 data = self.q.get(timeout=0.05)
             except queue.Empty:
-                if self.ev.is_set():
+                if not self.worker.is_alive():  # ends only after the worker queued its final block
                     return
                 continue
             yield to_mono_16k(data, NATIVE_RATE)
@@ -110,7 +110,8 @@ def test_asr_stall_loses_no_capture_audio():
     worker = threading.Thread(target=src._worker, args=(_FakeSC(rec), "spk", q, ev), daemon=True)
     worker.start()
     asr = _StalledASR(ev)
-    run(_LiveSource(src, q, ev), Segmenter(chunk=1.0, use_vad=False, overlap=1 / 16000), asr, None, TextSink(io.StringIO()))
+    run(_LiveSource(src, q, worker), Segmenter(chunk=1.0, use_vad=False, overlap=1 / 16000), asr, None,
+        TextSink(io.StringIO()))
     worker.join(5)
     assert rec.n == BLOCKS
     assert src.lost_seconds == 0.0, f"capture dropped {src.lost_seconds:.1f} s while ASR was stalled"
