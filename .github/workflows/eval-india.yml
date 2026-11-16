@@ -1,7 +1,7 @@
 name: eval-india
 # #620: Indian speakers -> Chinese subtitles. Same Whisper + Hy-MT2-1.8B (Q4_K_M, llama.cpp) on the CPU for
 # FLEURS en_us (US English), FLEURS hi_in (Hindi, the same FLoRes sentences; direct hi->zh and pivot hi->en->zh)
-# and Svarah (Indian-accented English). Runs on GitHub-hosted CPU runners because the cloud agent sandbox cannot
+# Svarah (Indian-accented English) and Hinglish (#655, up to 10 code-switched clips from an open Hub set). Runs on GitHub-hosted CPU runners because the cloud agent sandbox cannot
 # reach the model / data hosts. Per-clip JSON + the report table are uploaded as artifacts; the step summary has it.
 # Only runs when this workflow or the runner script changes, or by hand (workflow_dispatch, once on the default branch).
 on:
@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [en, hi, svarah]
+        group: [en, hi, svarah, hinglish]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:

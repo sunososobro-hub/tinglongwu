@@ -3,8 +3,8 @@
 
 Dev tool (not part of the offline runtime). Runs on cloud CPU runners (`.github/workflows/eval-india.yml`):
 
-  python scripts/bench/india_eval.py fetch --group en|hi|svarah --data DATA [--n 50]    # network
-  TLWU_HYMT_TEMP=0 python scripts/bench/india_eval.py run --group en|hi|svarah --data DATA --out OUT \
+  python scripts/bench/india_eval.py fetch --group en|hi|svarah|hinglish --data DATA [--n 50]    # network
+  TLWU_HYMT_TEMP=0 python scripts/bench/india_eval.py run --group en|hi|svarah|hinglish --data DATA --out OUT \
       --models-dir MODELS [--whisper large-v3-turbo]                                       # offline, CPU
   python scripts/bench/india_eval.py report OUT                                            # needs sacrebleu
 
@@ -16,6 +16,11 @@ Groups (same ASR = Whisper, same MT = Hy-MT2-1.8B Q4_K_M on the CPU, as the app 
           the set. Svarah has no Chinese reference, so its translation score is chrF against Hy-MT2's translation of
           the human transcript ("vs gold-transcript MT": how much the ASR errors cost in Chinese). The same score is
           given for en and hi, so all three groups compare on it.
+  hinglish  #655: up to 10 Hindi-English code-switched clips from an open (ungated, permissive licence) speech set on
+          the Hugging Face Hub, found by search at fetch time (or named with HINGLISH_DATASET=repo[@revision]); the
+          dataset id, revision and licence are recorded per clip and in the report. ASR runs as Hindi (the language a
+          Hinglish speaker picks) and the text is translated like hi (direct and pivot). Only "vs gold-transcript MT"
+          applies (no Chinese reference); its ASR WER also counts script differences (Devanagari vs Roman Hindi).
 FLEURS groups also get chrF against the human Chinese reference: the cmn_hans_cn transcript of the same FLoRes id,
 converted to Taiwan Traditional with the app's zh_convert (same convention as make_ci_smoke.py / eval/tier2_report).
 Downloads are untrusted data: archive members are matched by base name and written under our own names only.
@@ -41,7 +46,16 @@ SVARAH = "ai4bharat/Svarah"
 GATED_HINT = "set the HF_TOKEN repo secret to a read token of an account that accepted the Svarah terms (#655)"
 SAMPLE_RATE = 16000
 MAX_CLIP_S = 20.0
-GROUPS = ("en", "hi", "svarah")
+# #655: Hinglish. No pinned set: fetch searches the Hub for these words and keeps only ungated audio sets under one
+# of OPEN_LICENSES that are tagged Hinglish (or both Hindi and English); see hinglish_candidates().
+HINGLISH_N = 10
+HINGLISH_SEARCH = ("hinglish", "code-switch", "code-switched", "codeswitch", "code-mixed", "code-switching")
+OPEN_LICENSES = frozenset({"cc0-1.0", "cc-by-4.0", "cc-by-sa-4.0", "cc-by-3.0", "cc-by-sa-3.0", "cc-by-2.0",
+                           "apache-2.0", "mit", "odc-by", "pddl", "cdla-permissive-2.0", "bsd-3-clause"})
+HINGLISH_MAX_TRIES = 8
+GROUPS = ("en", "hi", "svarah", "hinglish")
+OPTIONAL = ("svarah", "hinglish")  # an unreachable optional set is reported as missing; FLEURS failing fails the job
+HINDI_LIKE = ("hi", "hinglish")  # ASR language hi, translated hi->zh direct and hi->en->zh pivot
 
 
 # ---------- selection (pure) ----------
@@ -85,6 +99,52 @@ def spread(total: int, n: int) -> list[int]:
     if total <= n:
         return list(range(total))
     return [int(i * total / n) for i in range(n)]
+
+
+def pick_columns(cols: list[str]):
+    """(audio column, transcript column) of a Hub speech table, or None for either when missing."""
+    audio = next((c for c in cols if c.startswith("audio")), None)
+    text = next((c for c in ("text", "transcript", "transcription", "sentence", "normalized_text", "transcripts")
+                 if c in cols), None)
+    return audio, text
+
+
+def _tags(info) -> list[str]:
+    return [str(t).lower() for t in (getattr(info, "tags", None) or [])]
+
+
+def hinglish_candidates(infos) -> list[str]:
+    """Hub dataset infos -> ids worth trying for the hinglish group, most downloaded first (ties by id).
+    Kept: not gated; a licence tag in OPEN_LICENSES; audio (modality:audio or an ASR task tag); and Hinglish evidence
+    (the word hinglish in the id or tags, or both language:hi and language:en tags)."""
+    keep = {}
+    for d in infos:
+        rid = getattr(d, "id", None)
+        if not rid or rid in keep or getattr(d, "gated", False) not in (False, None):
+            continue
+        tags = _tags(d)
+        if not any(t.startswith("license:") and t.split(":", 1)[1] in OPEN_LICENSES for t in tags):
+            continue
+        if "modality:audio" not in tags and not any("automatic-speech-recognition" in t for t in tags):
+            continue
+        hinglish = "hinglish" in rid.lower() or any("hinglish" in t for t in tags)
+        if not hinglish and not ("language:hi" in tags and "language:en" in tags):
+            continue
+        keep[rid] = getattr(d, "downloads", 0) or 0
+    return sorted(keep, key=lambda r: (-keep[r], r))
+
+
+def clip_seconds(b: bytes):
+    """Duration of an encoded clip in seconds, or None when soundfile cannot read it."""
+    import io
+
+    try:
+        import soundfile as sf
+
+        i = sf.info(io.BytesIO(b))
+        return i.frames / i.samplerate if i.samplerate else None
+    except Exception:  # noqa: BLE001 - undecodable rows are skipped
+        return None
 
 
 def extract_members(tar_bytes_or_file, want: dict) -> dict:
@@ -145,8 +205,7 @@ def fetch_svarah(data: Path, n: int) -> list[dict]:
         raise RuntimeError(f"{SVARAH}@{info.sha}: no parquet files ({len(files)})")
     tables = [pq.read_table(hf_hub_download(SVARAH, f, repo_type="dataset", revision=info.sha, token=token)) for f in files]
     cols = tables[0].column_names
-    audio_col = next((c for c in cols if c.startswith("audio")), None)
-    text_col = next((c for c in ("text", "transcript", "transcription", "sentence") if c in cols), None)
+    audio_col, text_col = pick_columns(cols)
     if not audio_col or not text_col:
         raise RuntimeError(f"{SVARAH}: unexpected columns {cols}")
     import pyarrow as pa
@@ -171,6 +230,76 @@ def fetch_svarah(data: Path, n: int) -> list[dict]:
     return manifest
 
 
+def fetch_hinglish_from(repo: str, revision, data: Path, n: int, api, download, read_table) -> list[dict]:
+    """Up to `n` clips of 1..MAX_CLIP_S seconds with a transcript from the parquet shards of one Hub set (test split
+    shards when there are any; at most 2 shards, so a big set costs one or two downloads). Rows are visited spread
+    over the shards' rows. Raises RuntimeError when the set has no usable parquet audio + text."""
+    import pyarrow as pa
+
+    info = api.dataset_info(repo, revision=revision)
+    sha = info.sha
+    lic = next((t.split(":", 1)[1] for t in _tags(info) if t.startswith("license:")), "unknown")
+    files = sorted(f for f in api.list_repo_files(repo, repo_type="dataset", revision=sha) if f.endswith(".parquet"))
+    test = [f for f in files if "test" in f.rsplit("/", 1)[-1].lower() or "/test" in f.lower()]
+    files = (test or files)[:2]
+    if not files:
+        raise RuntimeError(f"{repo}@{sha[:12]}: no parquet files")
+    table = pa.concat_tables([read_table(download(repo, f, repo_type="dataset", revision=sha)) for f in files],
+                             promote_options="default")
+    audio_col, text_col = pick_columns(table.column_names)
+    if not audio_col or not text_col:
+        raise RuntimeError(f"{repo}: unexpected columns {table.column_names}")
+    out = data / "hinglish"
+    out.mkdir(parents=True, exist_ok=True)
+    manifest = []
+    for i in spread(table.num_rows, max(n * 5, n)):
+        r = table.slice(i, 1).to_pylist()[0]
+        a, text = r[audio_col], (r[text_col] or "")
+        b = a.get("bytes") if isinstance(a, dict) else None
+        if not b or not isinstance(text, str) or not text.strip():
+            continue
+        s = clip_seconds(b)
+        if s is None or not 1.0 <= s <= MAX_CLIP_S:
+            continue
+        ext = Path(a.get("path") or "x.wav").suffix.lower()
+        name = f"hinglish_{len(manifest) + 1:03d}{ext if ext in ('.wav', '.flac', '.mp3', '.ogg') else '.wav'}"
+        (out / name).write_bytes(b)
+        manifest.append({"id": name.rsplit(".", 1)[0], "wav": name, "lang": "hi", "ref_text": text.strip(),
+                         "source": f"{repo}@{sha[:12]}/row{i}", "license": lic})
+        if len(manifest) == n:
+            break
+    if not manifest:
+        raise RuntimeError(f"{repo}@{sha[:12]}: no clip of 1-{MAX_CLIP_S:g} s with a transcript")
+    return manifest
+
+
+def fetch_hinglish(data: Path, n: int) -> list[dict]:
+    """#655: the first candidate set (HINGLISH_DATASET, else hinglish_candidates() of a Hub search) that yields clips.
+    Raises RuntimeError listing what was tried when none does."""
+    import pyarrow.parquet as pq
+    from huggingface_hub import HfApi, hf_hub_download
+
+    api = HfApi()
+    override = os.environ.get("HINGLISH_DATASET", "").strip()
+    if override:
+        repo, _, rev = override.partition("@")
+        cands = [(repo, rev or None)]
+    else:
+        infos = []
+        for q in HINGLISH_SEARCH:
+            infos += list(api.list_datasets(search=q, full=True, limit=200))
+        cands = [(r, None) for r in hinglish_candidates(infos)]
+    tried = []
+    for repo, rev in cands[:HINGLISH_MAX_TRIES]:
+        try:
+            return fetch_hinglish_from(repo, rev, data, n, api, hf_hub_download, pq.read_table)
+        except Exception as e:  # noqa: BLE001 - try the next candidate, keep the reason
+            tried.append(f"{repo}: {type(e).__name__}: {e}"[:160])
+            print(f"india_eval: hinglish candidate skipped: {tried[-1]}", file=sys.stderr)
+    raise RuntimeError("no open Hinglish speech set with parquet audio + transcript found; tried: "
+                       + ("; ".join(tried) if tried else "none (search found no candidate)"))
+
+
 def svarah_error(e: Exception, have_token: bool) -> str:
     """Status line for a failed Svarah fetch. An access error (gated / 401 / 403) without a token leads with the fix,
     so the report's missing-groups line says what to do; the original error follows, cut to fit the report."""
@@ -186,18 +315,28 @@ def cmd_fetch(a) -> int:
     (data / a.group).mkdir(parents=True, exist_ok=True)
     status = data / a.group / "status.json"
     try:
-        rows = fetch_svarah(data, a.n) if a.group == "svarah" else fetch_fleurs(data, a.group, a.n)
+        if a.group == "svarah":
+            rows = fetch_svarah(data, a.n)
+        elif a.group == "hinglish":
+            rows = fetch_hinglish(data, min(a.n, HINGLISH_N))
+        else:
+            rows = fetch_fleurs(data, a.group, a.n)
     except Exception as e:  # noqa: BLE001 - recorded for the report, the job goes on
-        if a.group != "svarah":
+        if a.group not in OPTIONAL:
             raise
-        err = svarah_error(e, bool(os.environ.get("HF_TOKEN")))
+        err = (svarah_error(e, bool(os.environ.get("HF_TOKEN"))) if a.group == "svarah"
+               else f"{type(e).__name__}: {e}"[:500])
         status.write_text(json.dumps({"ok": False, "error": err}), "utf-8")
-        print(f"india_eval: Svarah unavailable: {err}", file=sys.stderr)
+        print(f"india_eval: {a.group} unavailable: {err}", file=sys.stderr)
         return 0
     with open(data / a.group / "manifest.jsonl", "w", encoding="utf-8", newline="\n") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    status.write_text(json.dumps({"ok": True, "clips": len(rows)}), "utf-8")
+    st = {"ok": True, "clips": len(rows)}
+    if a.group == "hinglish":  # which open set was used (it is found by search, not pinned)
+        st["source"] = rows[0]["source"].rsplit("/row", 1)[0]
+        st["license"] = rows[0].get("license", "unknown")
+    status.write_text(json.dumps(st), "utf-8")
     print(f"india_eval: {len(rows)} {a.group} clips -> {data / a.group}")
     return 0
 
@@ -206,7 +345,7 @@ def cmd_fetch(a) -> int:
 
 def mt_plan(group: str) -> dict:
     """Translation routes per group: name -> (text field, list of (src, tgt) hops)."""
-    if group == "hi":
+    if group in HINDI_LIKE:
         return {"zh_direct": ("asr", [("hi", "zh")]), "zh_pivot": ("asr", [("hi", "en"), ("en", "zh")]),
                 "zh_gold": ("ref_text", [("hi", "zh")])}
     return {"zh_direct": ("asr", [("en", "zh")]), "zh_gold": ("ref_text", [("en", "zh")])}
@@ -264,7 +403,7 @@ def cmd_run(a) -> int:
         if "ref_zh_hans" in r:
             r["ref_zh"] = zh_convert(r.pop("ref_zh_hans"), "tw")
     md = Path(a.models_dir)
-    asr = FasterWhisperRecognizer(md, a.whisper, "hi" if a.group == "hi" else "en", "cpu")
+    asr = FasterWhisperRecognizer(md, a.whisper, "hi" if a.group in HINDI_LIKE else "en", "cpu")
     tr = HyMtTranslator(md, "tw", "cpu")
     tr.preload()
     res = run_group(rows, a.group, asr, tr, lambda r: load_audio(data / r["wav"]))
@@ -304,7 +443,7 @@ def med(xs):
 
 def summarize(group: str, rows: list[dict]) -> list[dict]:
     """One table row per translation route of the group (gold-transcript route excluded: it is the pseudo-ref)."""
-    lang = "hi" if group == "hi" else "en"
+    lang = "hi" if group in HINDI_LIKE else "en"
     base = {"group": group, "clips": len(rows), "asr_wer": asr_error_rate(rows, lang),
             "asr_median_s": med([r["asr_s"] for r in rows]),
             "asr_rtf": round(sum(r["asr_s"] for r in rows) / max(sum(r["audio_s"] for r in rows), 1e-9), 3)}
@@ -323,10 +462,12 @@ def summarize(group: str, rows: list[dict]) -> list[dict]:
 LABEL = {("en", "zh_direct"): "FLEURS en_us (US English) -> zh",
          ("hi", "zh_direct"): "FLEURS hi_in (Hindi) -> zh, direct",
          ("hi", "zh_pivot"): "FLEURS hi_in (Hindi) -> en -> zh, pivot",
-         ("svarah", "zh_direct"): "Svarah (Indian English) -> zh"}
+         ("svarah", "zh_direct"): "Svarah (Indian English) -> zh",
+         ("hinglish", "zh_direct"): "Hinglish (Hindi-English code-switch) -> zh, direct",
+         ("hinglish", "zh_pivot"): "Hinglish (Hindi-English code-switch) -> en -> zh, pivot"}
 
 
-def table(rows: list[dict], missing: dict) -> str:
+def table(rows: list[dict], missing: dict, sources: dict | None = None) -> str:
     lines = ["| group | clips | ASR WER | chrF vs human zh | chrF vs gold-transcript MT | chrF from gold transcript "
              "| ASR median s (RTF) | MT median s |", "|---|---|---|---|---|---|---|---|"]
 
@@ -340,12 +481,14 @@ def table(rows: list[dict], missing: dict) -> str:
                      f"| {r['mt_median_s']} |")
     for g, why in missing.items():
         lines.append(f"| {g}: not measured ({why}) | 0 | - | - | - | - | - | - |")
+    for g, src in (sources or {}).items():
+        lines.append(f"\n{g} source: {src}")
     return "\n".join(lines)
 
 
 def cmd_report(a) -> int:
     d = Path(a.out)
-    rows, missing = [], {}
+    rows, missing, sources = [], {}, {}
     for g in GROUPS:
         st = d / f"{g}.status.json"
         if not st.exists():
@@ -355,10 +498,12 @@ def cmd_report(a) -> int:
         if not s.get("ok"):
             missing[g] = s.get("error", "unavailable")[:160].replace("|", "/")
             continue
+        if s.get("source"):
+            sources[g] = f"{s['source']} (licence {s.get('license', 'unknown')})".replace("|", "/")
         rows += summarize(g, [json.loads(x) for x in (d / f"{g}.jsonl").read_text("utf-8").splitlines() if x.strip()])
-    (d / "summary.json").write_text(json.dumps({"rows": rows, "missing": missing}, indent=1, ensure_ascii=False),
+    (d / "summary.json").write_text(json.dumps({"rows": rows, "missing": missing, "sources": sources}, indent=1, ensure_ascii=False),
                                     "utf-8")
-    print(table(rows, missing))
+    print(table(rows, missing, sources))
     return 0
 
 
