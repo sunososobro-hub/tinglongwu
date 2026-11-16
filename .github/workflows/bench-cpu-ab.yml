@@ -223,7 +223,9 @@ jobs:
         continue-on-error: true
         run: |
           python -m venv "$HOME/comet-venv"
-          "$HOME/comet-venv/bin/pip" install "unbabel-comet==2.2.7"
+          # same venv recipe as eval-flores.yml (CPU torch first); torchmetrics still imports pkg_resources
+          "$HOME/comet-venv/bin/pip" install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          "$HOME/comet-venv/bin/pip" install unbabel-comet==2.2.7 "setuptools<81"
           "$HOME/comet-venv/bin/python" scripts/bench/mt_candidates.py --comet --dir cand
       - name: Summary
         if: always()
