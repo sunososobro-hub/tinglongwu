@@ -71,6 +71,11 @@ class SpeakerClusterer:
         with self._lock:
             return self.merged.get(label, label) if label else label
 
+    def merges(self) -> dict[str, str]:
+        """#1256: a snapshot of merged label -> kept label (any thread)."""
+        with self._lock:
+            return dict(self.merged)
+
     def _label(self, i: int) -> str:
         return f"{LABEL_PREFIX}{i + 1}"
 

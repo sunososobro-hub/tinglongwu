@@ -66,6 +66,7 @@ def test_kept_maps_a_merged_label_and_leaves_others():
     assert c.kept("說話者2") == "說話者1"
     assert c.kept("說話者1") == "說話者1"
     assert c.kept(None) is None
+    assert c.merges() == {"說話者2": "說話者1"}
 
 
 def test_gui_shows_the_kept_label_on_lines_labelled_before_the_merge():
@@ -90,3 +91,26 @@ def test_gui_shows_the_kept_label_on_lines_labelled_before_the_merge():
     o.spk_clusterer.merged["說話者2"] = "說話者1"
     assert o._speaker_label(1)[0] == "說話者1"  # the earlier line now shows the kept speaker
     assert o.speaker_prefix(0) == o.speaker_prefix(1)
+
+
+def test_gui_keeps_a_name_given_to_the_retired_label():
+    from tinglongwu.gui import app as appmod
+    from tinglongwu.gui.core import SpeakerColors
+    from tinglongwu.speakers import SpeakerBook
+
+    class _Spk:
+        def result(self, tok):
+            return {"spk#1": "說話者1", "spk#2": "說話者2"}.get(tok)
+
+    class _State:
+        def history_who(self):
+            return ["spk#1", "spk#2"]
+
+    cls = [v for v in vars(appmod).values() if isinstance(v, type) and hasattr(v, "speaker_prefix")
+           and hasattr(v, "_rename_speaker")][0]
+    o = object.__new__(cls)
+    o.spk, o.state, o.spk_book, o.spk_colors = _Spk(), _State(), SpeakerBook(), SpeakerColors()
+    o.spk_clusterer = SpeakerClusterer()
+    o.spk_book.rename("說話者2", "Alice")  # named before the merge
+    o.spk_clusterer.merged["說話者2"] = "說話者1"
+    assert o._speaker_label(0)[1] == "Alice" and o._speaker_label(1)[1] == "Alice"
