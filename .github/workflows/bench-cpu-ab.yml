@@ -74,6 +74,9 @@ jobs:
           pip install psutil==7.2.2
           python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" \
             --plans old,cpu-mode,physical,mt-heavy | tee ab/mt_threads.md
+          # #1198: Whisper paced like live audio (each clip once its audio has arrived), as in the app
+          python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" \
+            --plans cpu-mode,physical,mt-heavy --asr-load live | tee ab/mt_threads_live.md
           python scripts/bench/mt_cpu_threads.py --data eval_data/smoke --models-dir "$TLWU_MODELS" --plans old,cpu-mode --no-asr | tee ab/mt_threads_alone.md
       - name: Lower-bit Hy-MT2 GGUFs under live Whisper load (#1198 next cut)
         continue-on-error: true
@@ -128,6 +131,9 @@ jobs:
             echo
             echo "### MT threads under live Whisper load (#1198)"
             cat ab/mt_threads.md 2>/dev/null || echo "no table"
+            echo
+            echo "Whisper paced like live audio (--asr-load live):"
+            cat ab/mt_threads_live.md 2>/dev/null || echo "no table"
             echo
             echo "MT alone:"
             cat ab/mt_threads_alone.md 2>/dev/null || echo "no table"
