@@ -24,7 +24,15 @@ Metrics (written to REPLAY/metrics.json, plus one Markdown table on stdout):
   longest gap  longest stretch (wall seconds after playback start, inside the speech) with no new saved line
   lag p95      95th percentile of --latency-jsonl "total" (end of speech -> line shown), seconds
   labels       distinct speaker labels in the saved lines (--speakers), against the distinct clips played
+  MT delay     (#1253) --latency-jsonl "mt" p50 / p95 (merge release -> line shown) and "mt_hold": how many lines
+               had their translation held while ASR caught up, p95 / max seconds held (shown, not hidden)
+  ASR p95      --latency-jsonl "asr" p95 (segment cut -> ASR done, queue wait included)
 Nothing here judges PASS / FAIL: issues set their own limits on these numbers.
+
+A/B (#1253 "dropped-segment count with MT on equals the ASR-only count"): run the same recording twice, once with
+`-- --transcript-only` (ASR only) and once with MT, into two directories, then
+
+    python scripts/bench/meeting_replay.py compare --asr-only DIR_A --with-mt DIR_B
 """
 from __future__ import annotations
 
@@ -164,6 +172,30 @@ def count_events(log_lines: list[str]) -> tuple[int, int]:
     return drops, cuts
 
 
+def mt_delay(lat: list[dict]) -> dict:
+    """#1253: MT delay from --latency-jsonl rows: "mt" p50 / p95, lines whose MT was held for ASR ("mt_hold" > 0)
+    and the p95 / max held seconds, "asr" p95. None where no row has the field (ASR-only runs have no "mt_hold")."""
+    def nums(key):
+        return [float(r[key]) for r in lat if isinstance(r.get(key), (int, float)) and not isinstance(r[key], bool)]
+
+    def rnd(v, n=2):
+        return None if v is None else round(v, n)
+
+    mt, hold, asr = nums("mt"), nums("mt_hold"), nums("asr")
+    held = [h for h in hold if h > 0]
+    return {"mt_p50_s": rnd(_pct(mt, 0.50)), "mt_p95_s": rnd(_pct(mt, 0.95)), "asr_p95_s": rnd(_pct(asr, 0.95)),
+            "mt_held_lines": len(held) if hold else None, "mt_hold_p95_s": rnd(_pct(held, 0.95)) if hold else None,
+            "mt_hold_max_s": rnd(max(held)) if held else (0.0 if hold else None)}
+
+
+def _pct(values: list[float], q: float) -> float | None:
+    """Nearest-rank q-quantile; None for no values."""
+    import math
+
+    xs = sorted(values)
+    return xs[max(0, math.ceil(q * len(xs)) - 1)] if xs else None
+
+
 def label_count(rows: list[dict]) -> int:
     return len({r["speaker"] for r in rows if r.get("speaker")})
 
@@ -199,7 +231,8 @@ def metrics(meta: dict, log_lines: list[str], saved: list[dict], segs: list[dict
             "longest_gap_at": [round(gap[1]), round(gap[2])] if gap else None,
             "lag_p95_s": round(lag, 2) if lag is not None else None, "lines": len(saved),
             "labels": label_count(saved), "clips_distinct": len(set(meta.get("clips") or [])),
-            "speech_s": round(sum(b - a for a, b in _merge(speech)), 1), "seconds": meta.get("seconds")}
+            "speech_s": round(sum(b - a for a, b in _merge(speech)), 1), "seconds": meta.get("seconds"),
+            **mt_delay(lat)}
 
 
 def table(m: dict, title: str = "meeting replay (#1264)") -> str:
@@ -216,6 +249,10 @@ def table(m: dict, title: str = "meeting replay (#1264)") -> str:
              + (f"; longest: {top}" if top else "")),
             ("longest gap", gap), ("lag p95", f(m.get("lag_p95_s"), " s")),
             ("speaker labels", f"{m['labels']} (clips played: {m['clips_distinct']} distinct)"),
+            ("ASR p95 (cut -> text)", f(m.get("asr_p95_s"), " s")),
+            ("MT delay p50 / p95", f"{f(m.get('mt_p50_s'), ' s')} / {f(m.get('mt_p95_s'), ' s')}"),
+            ("MT held for ASR", f"{f(m.get('mt_held_lines'))} line(s), p95 {f(m.get('mt_hold_p95_s'), ' s')}, "
+                                f"max {f(m.get('mt_hold_max_s'), ' s')}"),
             ("lines", f(m["lines"])), ("speech / recording", f"{m['speech_s']} s / {m['seconds']} s")]
     head = f"### {title}\n\n" + (f"{m['setup']}\n\n" if m.get("setup") else "")
     return head + "| metric | value |\n|---|---|\n" + "\n".join(f"| {a} | {b} |" for a, b in rows) + "\n"
@@ -229,6 +266,50 @@ def summary_line(m: dict) -> str:
             f"voiced_coverage={f(m.get('voiced_coverage_pct'))}% holes={m.get('holes', 0)}/{m.get('holes_s', 0.0)}s "
             f"longest_gap={f(m.get('longest_gap_s'))}s lag_p95={f(m.get('lag_p95_s'))}s labels={m['labels']} "
             f"lines={m['lines']}")
+
+
+AB_ROWS = [("drops", "drops"), ("cuts", "cuts"), ("voiced coverage %", "voiced_coverage_pct"),
+           ("holes (voiced, no line)", "holes"), ("holes s", "holes_s"), ("audio coverage %", "coverage_pct"),
+           ("ASR p95 s", "asr_p95_s"), ("lag p95 s", "lag_p95_s"), ("longest gap s", "longest_gap_s"),
+           ("MT delay p50 s", "mt_p50_s"), ("MT delay p95 s", "mt_p95_s"), ("MT held lines", "mt_held_lines"),
+           ("MT hold p95 s", "mt_hold_p95_s"), ("MT hold max s", "mt_hold_max_s"), ("lines", "lines")]
+
+
+def compare(a: dict, b: dict) -> dict:
+    """#1253 A/B of two replays of the same recording: a = ASR only (--transcript-only), b = ASR + MT. Returns the
+    rows (metric, a, b, b - a) and the drop / cut deltas. Judges nothing; the issue's limit is drops_delta == 0."""
+    def d(x, y):
+        return round(y - x, 2) if isinstance(x, (int, float)) and isinstance(y, (int, float)) else None
+
+    rows = [(name, a.get(k), b.get(k), d(a.get(k), b.get(k))) for name, k in AB_ROWS]
+    return {"rows": rows, "drops_asr_only": a.get("drops"), "drops_with_mt": b.get("drops"),
+            "drops_delta": d(a.get("drops"), b.get("drops")), "cuts_delta": d(a.get("cuts"), b.get("cuts")),
+            "same_recording": a.get("seconds") == b.get("seconds") and a.get("speech_s") == b.get("speech_s")}
+
+
+def compare_table(c: dict, setup_a: str = "", setup_b: str = "") -> str:
+    def f(v):
+        return "n/a" if v is None else (f"+{v}" if isinstance(v, (int, float)) and v > 0 else f"{v}")
+
+    head = "### meeting replay A/B: ASR only vs ASR + MT (#1253)\n\n"
+    if setup_a or setup_b:
+        head += f"A (ASR only): {setup_a or 'n/a'}  \nB (ASR + MT): {setup_b or 'n/a'}\n\n"
+    if not c["same_recording"]:
+        head += "**warning: A and B did not replay the same recording**\n\n"
+    def cell(v):
+        return "n/a" if v is None else v
+
+    body = "\n".join(f"| {n} | {cell(x)} | {cell(y)} | {f(z)} |"
+                      for n, x, y, z in c["rows"])
+    return head + "| metric | A: ASR only | B: ASR + MT | B - A |\n|---|---|---|---|\n" + body + "\n"
+
+
+def compare_line(c: dict) -> str:
+    def f(v):
+        return "n/a" if v is None else v
+
+    return (f"replay-ab: drops asr_only={f(c['drops_asr_only'])} with_mt={f(c['drops_with_mt'])} "
+            f"delta={f(c['drops_delta'])} cuts_delta={f(c['cuts_delta'])}")
 
 
 def tlwu_cmd(rdir: Path, meta: dict, mdir: str | None, speakers: bool, extra: list[str]) -> list[str]:
@@ -352,7 +433,7 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
     return m
 
 
-def report(rdir: Path) -> dict:
+def report(rdir: Path, quiet: bool = False) -> dict:
     meta = json.loads((rdir / "replay.json").read_text("utf-8"))
     log = (rdir / "tlwu.log").read_text("utf-8", errors="replace").splitlines() if (rdir / "tlwu.log").is_file() else []
     t0f = rdir / "t0.txt"
@@ -362,9 +443,21 @@ def report(rdir: Path) -> dict:
     plan = next((x.split("tlwu: ", 1)[1] for x in log if "CPU mode threads:" in x), "")
     m["setup"] = f"{meta['lang']}, {meta['seconds'] / 60:.0f} min at 1x" + (f", {plan}" if plan else "")
     (rdir / "metrics.json").write_text(json.dumps(m, indent=1), "utf-8")
-    print(table(m))
-    print(summary_line(m), flush=True)
+    if not quiet:
+        print(table(m))
+        print(summary_line(m), flush=True)
     return m
+
+
+def compare_dirs(asr_only: Path, with_mt: Path, out: Path | None = None) -> dict:
+    """compare(): metrics of both run dirs (recomputed from their outputs), one table + one line on stdout."""
+    a, b = report(asr_only, quiet=True), report(with_mt, quiet=True)
+    c = compare(a, b)
+    if out is not None:
+        out.write_text(json.dumps(c, indent=1), "utf-8")
+    print(compare_table(c, a.get("setup", ""), b.get("setup", "")))
+    print(compare_line(c), flush=True)
+    return c
 
 
 def main(argv=None) -> int:
@@ -389,11 +482,17 @@ def main(argv=None) -> int:
                    help="seconds tlwu may keep working on its backlog after playback (then it is stopped)")
     p = sub.add_parser("report", help="print the metrics of the last run in --dir")
     p.add_argument("--dir", required=True, type=Path)
+    c = sub.add_parser("compare", help="#1253 A/B: metrics of an ASR-only run next to an ASR + MT run")
+    c.add_argument("--asr-only", required=True, type=Path, help="run dir of the --transcript-only replay")
+    c.add_argument("--with-mt", required=True, type=Path, help="run dir of the replay with translation")
+    c.add_argument("--out", type=Path, help="write the comparison as JSON here")
     a = ap.parse_args(argv)
     if a.cmd == "build":
         build(a.data, a.lang, a.minutes, a.out)
     elif a.cmd == "run":
         run(a.dir, a.models_dir, a.cpus, a.speakers, extra, a.drain)
+    elif a.cmd == "compare":
+        compare_dirs(a.asr_only, a.with_mt, a.out)
     else:
         report(a.dir)
     return 0
