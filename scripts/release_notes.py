@@ -403,6 +403,19 @@ def bump_exempt(files: list[dict], whats_new_text: str | None = None) -> tuple[b
     return True, f"version line + {WHATS_NEW_FILE} `## {tag}` section"
 
 
+def bump_check_pr(head_of, files_of, text_at) -> tuple[bool, str, str]:
+    """#1267: bump_exempt on one PR revision. The head SHA is read before the file list and again after the
+    whats_new read; a push in between refuses the exemption. Returns (exempt, reason, checked head SHA); mergers merge
+    with that SHA as the expected head."""
+    head = head_of()
+    files = files_of()
+    text = text_at(head) if any(f.get("filename") == WHATS_NEW_FILE for f in files) else None
+    if head_of() != head:
+        return False, "PR head moved during the check; run it again", head
+    ok, why = bump_exempt(files, text)
+    return ok, why, head
+
+
 def throttle_level(body: str | None) -> int | None:
     """First line of the throttle issue (#574): `level: N`. None when missing or unreadable."""
     m = THROTTLE_RE.match((body or "").split("\n", 1)[0])
@@ -713,20 +726,21 @@ def main(argv=None) -> int:
     n.add_argument("--packs-manifest", default="", help="pack manifest JSON (tinglongwu/pack_manifest.py)")
     a = ap.parse_args(argv)
     if a.cmd == "bump-check":
-        files = (json.loads(read(a.files)) if a.files else
-                 gh_json("api", f"repos/{repo()}/pulls/{a.pr}/files?per_page=100"))
-        if a.whats_new:
-            wn_text = read(a.whats_new)
-        elif a.files:
-            wn_text = None
+        if a.files:
+            ok, why = bump_exempt(json.loads(read(a.files)), read(a.whats_new) if a.whats_new else None)
+            sha = ""
         else:
-            head = gh_json("api", f"repos/{repo()}/pulls/{a.pr}")["head"]["sha"]
-            r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw",
-                                f"repos/{repo()}/contents/{WHATS_NEW_FILE}?ref={head}"],
-                               capture_output=True, text=True, encoding="utf-8")
-            wn_text = r.stdout if r.returncode == 0 else None
-        ok, why = bump_exempt(files, wn_text)
-        print(f"bump-exempt: {'yes' if ok else 'no'} ({why})")
+            rep = repo()
+
+            def text_at(sha):
+                r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw",
+                                    f"repos/{rep}/contents/{WHATS_NEW_FILE}?ref={sha}"],
+                                   capture_output=True, text=True, encoding="utf-8")
+                return r.stdout if r.returncode == 0 else None
+            ok, why, sha = bump_check_pr(lambda: gh_json("api", f"repos/{rep}/pulls/{a.pr}")["head"]["sha"],
+                                         lambda: gh_json("api", f"repos/{rep}/pulls/{a.pr}/files?per_page=100"),
+                                         text_at)
+        print(f"bump-exempt: {'yes' if ok else 'no'} ({why})" + (f" at {sha}" if sha else ""))
         return 0 if ok else 1
     version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
     rep = repo()

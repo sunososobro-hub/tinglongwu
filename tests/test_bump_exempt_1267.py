@@ -146,3 +146,13 @@ def test_form_feed_smuggled_statement_needs_opus():
     rejected([ff], "more than the __version__ line")
     ffw = wn("@@ -10,2 +10,4 @@\n \n+## v0.4.3\n+- Fixed recording.\f## v9.9.9\n")
     rejected([INIT, ffw], "control characters")
+
+
+def test_live_check_binds_files_and_text_to_one_head():
+    heads = iter(["a" * 40, "a" * 40])
+    ok, why, sha = rn.bump_check_pr(lambda: next(heads), lambda: [INIT, NEW_SECTION],
+                                    lambda h: HEAD_TEXT if h == "a" * 40 else None)
+    assert ok and sha == "a" * 40, why
+    moved = iter(["a" * 40, "b" * 40])  # a push lands between the file list and the re-check
+    ok, why, _ = rn.bump_check_pr(lambda: next(moved), lambda: [INIT, NEW_SECTION], lambda h: HEAD_TEXT)
+    assert not ok and "head moved" in why
