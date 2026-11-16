@@ -3,6 +3,7 @@
 
     python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out DATA     # pinned FLEURS clips (sha256)
     python scripts/hw_live_checks.py clips --data DATA --out CLIPS
+    python scripts/hw_live_checks.py file --clips CLIPS --models-dir M [-- ARGS]  #1247 file half of #894, per clip
     python scripts/hw_live_checks.py mic --clips CLIPS --models-dir M       #894 live mic vs file, subtitle gaps
     python scripts/hw_live_checks.py meeting --clips CLIPS --models-dir M   #4 meeting mode: ◀ Them only for system audio
     python scripts/hw_live_checks.py loopback --clips CLIPS --models-dir M  #348 another process's audio via loopback
@@ -113,6 +114,32 @@ def diagnose_mic(meta: dict, file_rows: list[dict], mic_rows: list[dict], offset
     gap_clips = clips_in(spans, a, b) if spans else []
     parts.append(f"longest gap {a:.0f}-{b:.0f} s" + (f" (clips {gap_clips[0]}..{gap_clips[-1]})" if gap_clips else ""))
     return "; ".join(parts)
+
+
+def clip_lines(spans: list[list[float]], refs: list[str], rec: list[dict], lang: str = "en") -> list[dict]:
+    """#1247: per clip of the joined recording, which saved lines' audio ([start, end] in --record segments.jsonl)
+    overlaps it and how many of its words (>= 4 letters) those lines hold. A clip with no line at all was never
+    output (segmenter / silence / hallucination filter); a clip with lines but a low hit share was mis-heard."""
+    from tlwu_eval.scoring import tokenize
+
+    out = []
+    for i, ((s, e), ref) in enumerate(zip(spans, refs)):
+        lines = [r for r in rec if r.get("start", 0.0) < e and r.get("end", 0.0) > s]
+        heard = set(tokenize(" ".join(r.get("source", "") for r in lines), lang))
+        words = {w for w in tokenize(ref, lang) if len(w) >= 4}
+        hit = sum(w in heard for w in words) / len(words) if words else 1.0
+        out.append({"clip": i, "span": [s, e], "lines": len(lines), "hit": round(hit, 2),
+                    "src": [r.get("source", "") for r in lines], "ref": ref})
+    return out
+
+
+def clip_table(rows: list[dict]) -> str:
+    """#1247: one line per clip that is missed (hit < MIN_CLIP_HIT): where, how many lines, what tlwu wrote."""
+    bad = [r for r in rows if r["hit"] < MIN_CLIP_HIT]
+    head = f"clips missed {len(bad)}/{len(rows)} (no line: {sum(not r['lines'] for r in bad)})"
+    body = [f"  clip {r['clip']} {r['span'][0]:.0f}-{r['span'][1]:.0f} s lines={r['lines']} hit={r['hit']:.2f} "
+            f"ref={r['ref'][:60]!r} got={' | '.join(r['src'])[:120]!r}" for r in bad]
+    return "\n".join([head, *body])
 
 
 def wall_offsets(rows: list[dict], t0: float) -> list[float]:
@@ -378,6 +405,30 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     return ok, msg
 
 
+def run_file(clips: Path, mdir: str, out: Path, extra: list[str] | None = None) -> tuple[bool, str]:
+    """#1247: only the --file half of the #894 check, with --record, on any machine (no audio devices): which clips of
+    the joined recording get no subtitle even from the file, and what tlwu wrote over them. Diagnostic: PASS when
+    tlwu ran and saved lines; the clip table goes to stdout and file_report.json."""
+    import shutil
+
+    meta = json.loads((clips / "clips.json").read_text("utf-8"))["mic_en"]
+    fj, rdir = out / "file_only.jsonl", out / "file_rec"
+    fj.unlink(missing_ok=True)
+    shutil.rmtree(rdir, ignore_errors=True)
+    subprocess.run([sys.executable, "-m", "tinglongwu", "--file", str(clips / meta["wav"]), "--save", str(fj),
+                    "--record", str(rdir), "--lang", "en", "--transcript-only", "--models-dir", mdir, *(extra or [])],
+                   check=True, stdout=subprocess.DEVNULL)
+    rows = read_jsonl(fj)
+    seg = rdir / "segments.jsonl"
+    rec = [json.loads(x) for x in seg.read_text("utf-8").splitlines() if x.strip()] if seg.is_file() else []
+    per = clip_lines(meta.get("spans") or [], meta.get("refs") or [], rec)
+    print(clip_table(per), flush=True)
+    (out / "file_report.json").write_text(json.dumps({"clips": per, "rec": rec}, ensure_ascii=False, indent=1), "utf-8")
+    wer = _wer(rows, meta["ref"]) if rows else 1.0
+    missed = sum(r["hit"] < MIN_CLIP_HIT for r in per)
+    return bool(rows), f"WER {wer:.3f}, {len(rows)} lines, clips missed {missed}/{len(per)}"
+
+
 def meeting_child(proto_args: list[str]) -> int:
     """The meeting process with only the feedback guard off: its mic is CABLE Output on purpose (clip A)."""
     from tinglongwu.reverse import live, proto
@@ -425,7 +476,8 @@ def run_loopback(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     return check_loopback(read_jsonl(sj), meta["ref"])
 
 
-WHAT = {"mic": "#894 live mic (CABLE) vs file", "meeting": "#4 meeting mode ◀ Them labels",
+WHAT = {"file": "#1247 file baseline of the #894 clip", "mic": "#894 live mic (CABLE) vs file",
+        "meeting": "#4 meeting mode ◀ Them labels",
         "loopback": "#348 other-process audio via WASAPI loopback"}
 
 
@@ -447,6 +499,8 @@ def main(argv=None) -> int:
         s.add_argument("--models-dir", required=True)
         s.add_argument("--out", default=None, help="folder for logs and transcripts (default: --clips)")
         s.add_argument("--json", default=None)
+        if name == "file":
+            s.add_argument("extra", nargs="*", help="more tlwu arguments after `--` (e.g. --device cpu)")
     a = p.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -458,9 +512,10 @@ def main(argv=None) -> int:
         return play(a.wav, a.device)
     out = Path(a.out or a.clips)
     out.mkdir(parents=True, exist_ok=True)
-    run = {"mic": run_mic, "meeting": run_meeting, "loopback": run_loopback}[a.cmd]
+    run = {"file": run_file, "mic": run_mic, "meeting": run_meeting, "loopback": run_loopback}[a.cmd]
     try:
-        ok, msg = run(Path(a.clips), a.models_dir, out)
+        args = (a.extra,) if a.cmd == "file" else ()
+        ok, msg = run(Path(a.clips), a.models_dir, out, *args)
     except Exception as e:  # noqa: BLE001 - one FAIL line in the step summary, not a traceback only
         ok, msg = False, f"could not run: {type(e).__name__}: {e}"
     if a.json:
