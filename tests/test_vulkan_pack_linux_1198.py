@@ -202,3 +202,12 @@ def test_release_lists_and_attaches_the_linux_pack_next_to_the_windows_one(tmp_p
     assert "tlwu-vulkan-pack-0.3.5.zip" in sums
     # what `tlwu-setup --vulkan-pack` on Linux reads from that file
     assert selfupdate.parse_sums(sums, "tlwu-vulkan-pack-linux-0.3.5.zip") == hashlib.sha256(b"vk-linux").hexdigest()
+
+
+@pytest.mark.skipif(vk800.BASH is None, reason="bash is needed to run the step")
+def test_retry_with_only_the_windows_pack_removes_the_stale_linux_pack(tmp_path):
+    """A retried draft keeps no pack that is missing from the new SHA256SUMS.txt (CodeRabbit on #1243)."""
+    calls = vk800._draft_step(tmp_path, True, "true", ["tlwu-vulkan-pack-0.3.5.zip", "tlwu-vulkan-pack-linux-0.3.5.zip"])
+    assert "gh release delete-asset v0.3.5 tlwu-vulkan-pack-linux-0.3.5.zip -y" in calls
+    assert not any("delete-asset v0.3.5 tlwu-vulkan-pack-0.3.5.zip" in c for c in calls)
+    assert "dist/tlwu-vulkan-pack-0.3.5.zip" in next(c for c in calls if c.startswith("gh release upload"))

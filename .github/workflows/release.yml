@@ -540,10 +540,12 @@ jobs:
           if draft=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null); then
             # never rewrite a published release: its SHA256SUMS.txt and wizard are what users verify against
             [ "$draft" = true ] || { echo "release $TAG is already published; not touching it"; exit 1; }
-            if [ "${#vulkan[@]}" -eq 0 ]; then   # #800: a retry without the pack must not leave an older pack with no checksum
-              stale=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep '^tlwu-vulkan-pack-' || true)
-              for a in $stale; do gh release delete-asset "$TAG" "$a" -y; done
-            fi
+            # #800 / #1198: a retry must not leave an older Vulkan pack (Windows or Linux) that this run did not build:
+            # SHA256SUMS.txt is replaced below and would no longer list it. Packs in this upload are replaced by --clobber.
+            stale=$(gh release view "$TAG" --json assets -q '.assets[].name' | grep '^tlwu-vulkan-pack-' || true)
+            for a in $stale; do
+              [ -f "dist/$a" ] || gh release delete-asset "$TAG" "$a" -y
+            done
             gh release upload "$TAG" "${files[@]}" --clobber
             gh release edit "$TAG" --notes-file dist/notes.md   # the notes describe the files just attached
           else
