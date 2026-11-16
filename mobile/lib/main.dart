@@ -13,6 +13,11 @@ void main() {
   runApp(const TlwuApp());
 }
 
+/// Whether leaving the Import screen needs a fresh pipeline: always when the app was not
+/// listening (models missing / error), else only when something was imported.
+bool restartAfterImport({required bool listening, required bool? imported}) =>
+    !listening || imported == true;
+
 class TlwuApp extends StatelessWidget {
   const TlwuApp({super.key});
 
@@ -45,13 +50,16 @@ class _RootState extends State<Root> {
     pipeline.start();
   }
 
-  /// Opens "Import models"; afterwards starts a fresh pipeline so new files are picked up.
+  /// Opens "Import models"; afterwards starts a fresh pipeline so new files are picked up. Opened
+  /// from the running subtitle screen (optional packs, #1262) with nothing imported: the pipeline
+  /// just keeps running, no model reload.
   Future<void> _openImport() async {
     final dir = pipeline.paths?.modelsDir;
     if (dir == null) return;
-    await Navigator.of(context).push<bool>(
+    final listening = pipeline.stage == Stage.listening;
+    final imported = await Navigator.of(context).push<bool>(
         MaterialPageRoute(builder: (_) => ImportScreen(modelsDir: dir)));
-    if (!mounted) return;
+    if (!mounted || !restartAfterImport(listening: listening, imported: imported)) return;
     final old = pipeline;
     setState(() => pipeline = Pipeline());
     old.dispose();
@@ -80,7 +88,7 @@ class _RootState extends State<Root> {
           case Stage.loadingModels:
             return LoadingScreen(stage: pipeline.stage);
           case Stage.listening:
-            return SubtitleScreen(pipeline: pipeline);
+            return SubtitleScreen(pipeline: pipeline, onImport: _openImport);
         }
       },
     );

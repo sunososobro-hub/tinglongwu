@@ -7,8 +7,11 @@ import 'version_label.dart';
 /// 進階功能 (#1065): optional features with a recommendation from this phone's speed test.
 /// The user decides; nothing is turned on automatically.
 class AdvancedScreen extends StatelessWidget {
-  const AdvancedScreen({super.key, required this.pipeline});
+  const AdvancedScreen({super.key, required this.pipeline, this.onImport});
   final Pipeline pipeline;
+
+  /// Opens "Import models" (#1262), for the optional speaker model.
+  final VoidCallback? onImport;
 
   static Color _color(AdviceBadge b) => switch (b) {
         AdviceBadge.recommend => Colors.greenAccent,
@@ -89,8 +92,16 @@ class AdvancedScreen extends StatelessWidget {
                 value: pipeline.prefs.speakerLabels,
                 onChanged: (on) {
                   if (!pipeline.setSpeakerLabels(on) && on) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('還沒有說話者模型：請先到「匯入模型」匯入 28 MB 的選用檔案。')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: const Text('還沒有說話者模型：請先匯入 28 MB 的選用檔案。'),
+                        action: onImport == null
+                            ? null
+                            : SnackBarAction(
+                                label: '匯入模型',
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  onImport!();
+                                })));
                   }
                 },
               ),

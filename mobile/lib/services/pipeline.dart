@@ -19,6 +19,7 @@ import 'app_log.dart';
 import 'device_probe_service.dart';
 import 'asr_worker.dart';
 import 'speaker_worker.dart';
+import 'model_importer.dart';
 import 'model_paths.dart';
 import 'play_packs.dart';
 import 'playback_capture.dart';
@@ -221,6 +222,15 @@ class Pipeline extends ChangeNotifier {
   /// The voice for the other person's language is installed (else my lines are text only).
   bool ttsInstalled = false;
 
+  /// Languages that have a read-aloud voice pack (assets/voice_packs.json); null = not known.
+  Set<String>? voiceLangs;
+
+  /// A voice pack exists for the other person's language (false: nothing to install).
+  bool get voiceAvailable => voiceLangs?.contains(conversation.foreign) ?? true;
+
+  /// 對話翻譯 lacks a pack the user can install for the other person's language (#1262).
+  bool get packMissing => extraAsrMissing || (!ttsInstalled && voiceAvailable);
+
   /// A line is being read aloud now.
   bool speaking = false;
 
@@ -351,6 +361,10 @@ class Pipeline extends ChangeNotifier {
       _styleStore = OverlayStyleStore('${paths!.filesDir}/overlay_style.txt');
       overlayStyle = _styleStore!.load();
       phoneSupported = await PlaybackCapture.supported();
+      try {
+        final m = await ModelImporter.loadManifest();
+        voiceLangs = {for (final v in m.packs) if (!v.isAsr) v.lang};
+      } catch (_) {} // unknown: the pill keeps saying the voice is not installed
       var missing = paths!.missing();
       if (missing.isNotEmpty && await PlayPacks.available()) {
         // Play install: the fast-follow packs may still be downloading. Wait here with a progress

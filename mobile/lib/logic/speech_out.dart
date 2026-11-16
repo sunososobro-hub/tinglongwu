@@ -156,7 +156,8 @@ class SpeakQueue {
 }
 
 /// Pill suffix in 對話模式: whether the translation of my lines is read aloud.
-String voiceStatusLabel({required bool installed, required bool speaking}) {
-  if (!installed) return '未安裝語音包，只顯示文字';
+/// [available] = a voice pack for the other person's language exists (false: nothing to install).
+String voiceStatusLabel({required bool installed, required bool speaking, bool available = true}) {
+  if (!installed) return available ? '未安裝語音包，只顯示文字' : '只顯示文字（這個語言還沒有語音）';
   return speaking ? '朗讀中' : '朗讀';
 }

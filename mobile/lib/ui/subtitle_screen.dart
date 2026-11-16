@@ -83,8 +83,11 @@ String emptyHint({required bool phone}) =>
 /// draft, and a footer with status + a round start/stop mic button. Listen-only lines are left
 /// "other" bubbles; in 對話模式 (#558) my lines are right "me" bubbles.
 class SubtitleScreen extends StatefulWidget {
-  const SubtitleScreen({super.key, required this.pipeline, this.gravity});
+  const SubtitleScreen({super.key, required this.pipeline, this.gravity, this.onImport});
   final Pipeline pipeline;
+
+  /// Opens "Import models" (optional packs, #1262); null = no entry shown.
+  final VoidCallback? onImport;
 
   /// Accelerometer (gravity included, m/s^2) samples; defaults to the device sensor (#1146).
   final Stream<List<double>>? gravity;
@@ -164,6 +167,7 @@ class _SubtitleScreenState extends State<SubtitleScreen> {
         children: [
           _Header(
               pipeline: pipeline,
+              onImport: widget.onImport,
               debug: showDebugStats(releaseMode: kReleaseMode) ? _debug() : null),
           Expanded(
             child: empty
@@ -352,8 +356,9 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.pipeline, this.debug});
+  const _Header({required this.pipeline, this.debug, this.onImport});
   final Pipeline pipeline;
+  final VoidCallback? onImport;
   final String? debug;
 
   @override
@@ -409,7 +414,7 @@ class _Header extends StatelessWidget {
                 tooltip: '字幕顯示設定',
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.settings, size: 20, color: Colors.white70),
-                onPressed: () => _showOverlaySettings(context, pipeline),
+                onPressed: () => _showOverlaySettings(context, pipeline, onImport),
               ),
             ]),
             const SizedBox(height: 6),
@@ -418,6 +423,7 @@ class _Header extends StatelessWidget {
                 key: const Key('pairMenu'),
                 tooltip: '我的語言 / 對方語言',
                 onSelected: (v) {
+                  if (v == 'i:1') return onImport?.call();
                   final c = v.substring(2);
                   if (v.startsWith('m:')) pipeline.setMineLang(c);
                   if (v.startsWith('p:')) pipeline.setPartnerLang(c);
@@ -435,6 +441,11 @@ class _Header extends StatelessWidget {
                   PopupMenuItem(
                       value: 'a:1',
                       child: Text(pipeline.conversation.auto ? '改為手動切換說話人' : '改為自動判斷說話人')),
+                  if (onImport != null && pipeline.packMissing)
+                    const PopupMenuItem(
+                        key: Key('installPacks'),
+                        value: 'i:1',
+                        child: Text('安裝語音包 / 辨識包…')),
                 ],
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -673,9 +684,10 @@ class _SourceToggle extends StatelessWidget {
   }
 }
 
-void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
+void _showOverlaySettings(BuildContext context, Pipeline pipeline, [VoidCallback? onImport]) {
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     builder: (_) => ListenableBuilder(
       listenable: pipeline,
       builder: (context, _) {
@@ -683,7 +695,9 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
         final plat = CapturePlatform.current();
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
+          // Scrolls: with the import entry the sheet no longer fits a small or landscape screen.
+          child: SingleChildScrollView(
+           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -727,10 +741,23 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => AdvancedScreen(pipeline: pipeline)));
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => AdvancedScreen(pipeline: pipeline, onImport: onImport)));
                 },
               ),
+              if (onImport != null)
+                ListTile(
+                  key: const Key('importEntry'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('匯入模型 / 選用套件'),
+                  subtitle: const Text('對話翻譯的朗讀語音、俄語辨識包、說話者標籤模型',
+                      style: TextStyle(fontSize: 13, color: Colors.white60)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onImport();
+                  },
+                ),
               if (pipeline.phoneSupported) ...[
                 const SizedBox(height: 8),
                 Text(plat.overlayTitle, style: const TextStyle(fontSize: 16)),
@@ -748,6 +775,7 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
                 ],
               ],
             ],
+           ),
           ),
         );
       },
@@ -758,5 +786,6 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
 /// Pill suffix in 對話模式: the missing recognizer for the other person first, else the voice.
 String _pillStatus(Pipeline p) {
   final asr = asrStatusLabel(foreign: p.conversation.foreign, missing: p.extraAsrMissing);
-  return asr.isNotEmpty ? asr : voiceStatusLabel(installed: p.ttsInstalled, speaking: p.speaking);
+  return asr.isNotEmpty ? asr : voiceStatusLabel(
+          installed: p.ttsInstalled, speaking: p.speaking, available: p.voiceAvailable);
 }

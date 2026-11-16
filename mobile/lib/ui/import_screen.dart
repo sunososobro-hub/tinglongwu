@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../logic/model_manifest.dart';
 import '../services/model_importer.dart';
 import '../services/model_paths.dart';
 import '../services/play_packs.dart';
@@ -8,8 +9,11 @@ import '../services/play_packs.dart';
 /// them into the app's models dir, checking size and SHA-256 against the manifest.
 /// Pops with `true` when something was imported.
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, required this.modelsDir});
+  const ImportScreen({super.key, required this.modelsDir, this.manifest});
   final String modelsDir;
+
+  /// Tests: use this manifest instead of the bundled assets (and no Play pack folders).
+  final ModelManifest? manifest;
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
@@ -33,8 +37,9 @@ class _ImportScreenState extends State<ImportScreen> {
     PlayPacks.available().then((v) {
       if (mounted) setState(() => _play = v);
     });
-    ModelImporter.loadManifest().then((m) async {
-      final dirs = await ModelPaths.packLocations();
+    (widget.manifest != null ? Future.value(widget.manifest!) : ModelImporter.loadManifest())
+        .then((m) async {
+      final dirs = widget.manifest != null ? const <String>[] : await ModelPaths.packLocations();
       if (!mounted) return;
       setState(() {
         _imp = ModelImporter(m, widget.modelsDir);
@@ -133,8 +138,13 @@ class _ImportScreenState extends State<ImportScreen> {
   @override
   Widget build(BuildContext context) {
     final imp = _imp;
-    return PopScope(
-      canPop: !_busy,
+    return PopScope<bool>(
+      // The system back gesture must report what the back arrow reports (#1262): the caller
+      // restarts the pipeline only when something was imported.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy) Navigator.of(context).pop(_importedAny);
+      },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('匯入模型 / Import models'),
@@ -158,12 +168,21 @@ class _ImportScreenState extends State<ImportScreen> {
     final missing = m.missingRequired(_present);
     final big = m.files.where((f) => f.url != null).toList();
     final voices = m.installedPacks(_present);
+    // Base models already here (#1262): the screen is about the optional packs, so it does not
+    // ask for the 1.4 GB bundle (or the Play download) again.
+    final needBase = missing.isNotEmpty;
+    String got(bool installed) => installed ? '✓ 已安裝。' : '';
     return [
-      if (_play) ..._playSection(),
-      const Text('1. 下載模型包 / Download the models', style: _h),
+      if (_play && needBase) ..._playSection(),
+      Text(needBase ? '1. 下載模型包 / Download the models' : '1. 下載選用套件 / Download optional packs',
+          style: _h),
       const SizedBox(height: 6),
-      Text('用手機瀏覽器下載 ${m.bundleName}（存到「下載」）。${m.bundleNote}', style: _t),
-      _link('下載模型包 / Download ${m.bundleName}', m.bundleUrl),
+      if (needBase) ...[
+        Text('用手機瀏覽器下載 ${m.bundleName}（存到「下載」）。${m.bundleNote}', style: _t),
+        _link('下載模型包 / Download ${m.bundleName}', m.bundleUrl),
+      ] else
+        const Text('基本模型已安裝。下面是選用套件：用手機瀏覽器下載需要的 zip（存到「下載」），再到第 2 步匯入。',
+            key: Key('optionalIntro'), style: _t),
       for (final f in big) ...[
         const SizedBox(height: 6),
         Text('選用：較大較準的 ${f.basename}（${(f.size / (1 << 30)).toStringAsFixed(1)} GB，官方連結）。',
@@ -173,17 +192,18 @@ class _ImportScreenState extends State<ImportScreen> {
       for (final p in m.packs) ...[
         const SizedBox(height: 6),
         Text(
-            p.isAsr
+            got(voices.contains(p.id)) +
+            (p.isAsr
                 ? '選用：對話模式聽懂對方的語言（${p.lang}）${p.name}（${_fmt(p.size)}），'
                     '裝了才能辨識對方說的${p.lang}。${p.note}'
                 : '選用：對話模式朗讀語音（${p.lang}）${p.name}（${_fmt(p.size)}），'
-                    '裝了就會把我說的話的翻譯念出來。${p.note}',
+                    '裝了就會把我說的話的翻譯念出來。${p.note}'),
             style: _t),
         _link('下載 / Download ${p.name}', p.url),
       ],
       if (m.speakerModel != null) ...[
         const SizedBox(height: 6),
-        Text('選用：說話者標籤模型 ${m.speakerModel!.basename}（${_fmt(m.speakerModel!.size)}），'
+        Text('${got(m.speakerModelInstalled(_present))}選用：說話者標籤模型 ${m.speakerModel!.basename}（${_fmt(m.speakerModel!.size)}），'
             '裝了才能在「進階功能」開啟。${m.speakerNote}', style: _t),
         _link('下載 / Download ${m.speakerModel!.basename}', m.speakerModel!.url!),
       ],
