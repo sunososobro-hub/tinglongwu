@@ -103,7 +103,7 @@ def spread(total: int, n: int) -> list[int]:
 
 def pick_columns(cols: list[str]):
     """(audio column, transcript column) of a Hub speech table, or None for either when missing."""
-    audio = next((c for c in cols if c.startswith("audio")), None)
+    audio = "audio" if "audio" in cols else next((c for c in cols if c.startswith("audio")), None)
     text = next((c for c in ("text", "transcript", "transcription", "sentence", "normalized_text", "transcripts")
                  if c in cols), None)
     return audio, text
@@ -239,6 +239,11 @@ def fetch_hinglish_from(repo: str, revision, data: Path, n: int, api, download, 
     info = api.dataset_info(repo, revision=revision)
     sha = info.sha
     lic = next((t.split(":", 1)[1] for t in _tags(info) if t.startswith("license:")), "unknown")
+    # the same rule as hinglish_candidates(), also for a HINGLISH_DATASET override; checked before any download
+    if getattr(info, "gated", False) not in (False, None):
+        raise RuntimeError(f"{repo}: gated set, not an open Hinglish set")
+    if lic not in OPEN_LICENSES:
+        raise RuntimeError(f"{repo}: licence {lic!r} is not in OPEN_LICENSES")
     files = sorted(f for f in api.list_repo_files(repo, repo_type="dataset", revision=sha) if f.endswith(".parquet"))
     test = [f for f in files if "test" in f.rsplit("/", 1)[-1].lower() or "/test" in f.lower()]
     files = (test or files)[:2]

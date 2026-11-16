@@ -322,6 +322,27 @@ def test_fetch_hinglish_from_rejects_sets_without_audio_and_text(tmp_path):
                                lambda f: pa.table({"text": ["hi"]}))
 
 
+def test_pick_columns_prefers_the_exact_audio_column():
+    assert ie.pick_columns(["audio_id", "audio", "text"]) == ("audio", "text")
+    assert ie.pick_columns(["audio_filepath", "transcription"]) == ("audio_filepath", "transcription")
+    assert ie.pick_columns(["path", "label"]) == (None, None)
+
+
+@pytest.mark.parametrize("tags,gated,why", [(["license:cc-by-nc-4.0"], False, "not in OPEN_LICENSES"),
+                                            ([], False, "'unknown' is not in OPEN_LICENSES"),
+                                            (["license:cc-by-4.0"], "manual", "gated set")])
+def test_fetch_hinglish_from_rejects_closed_sets_before_downloading(tmp_path, tags, gated, why):
+    """A HINGLISH_DATASET override gets the same open-set rule as the search, and nothing is downloaded."""
+    api = HubApi(["test.parquet"], tags=tags)
+    api.dataset_info = lambda repo, revision=None: types.SimpleNamespace(sha="ab" * 20, tags=tags, gated=gated)
+
+    def download(*a, **k):
+        raise AssertionError("downloaded a closed set")
+
+    with pytest.raises(RuntimeError, match=why):
+        ie.fetch_hinglish_from("o/x", None, tmp_path, 10, api, download, None)
+
+
 def test_fetch_hinglish_failure_is_recorded_not_raised(tmp_path, monkeypatch):
     def boom(data, n):
         raise RuntimeError("no open Hinglish speech set")
