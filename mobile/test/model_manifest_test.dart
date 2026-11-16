@@ -261,6 +261,41 @@ void main() {
     });
   });
 
+  test('a Supertonic voice pack must hold exactly the seven files the TTS worker reads', () {
+    const base = '{"bundle": {"name": "m.zip", "url": "u"}, "files": []}';
+    String pack(Iterable<String> names, {String kind = 'supertonic'}) {
+      final files = [
+        for (final n in names) '{"path": "tts-ru/$n", "size": 5, "sha256": "$_a"}',
+      ].join(',');
+      return '{"packs": [{"id": "voice-ru", "lang": "ru", "kind": "$kind", "name": "tlwu-voice-ru.zip", '
+          '"url": "u", "files": [$files]}]}';
+    }
+
+    final all = TtsVoiceLayout.files(TtsVoiceLayout.supertonic);
+    final m = ModelManifest.parse(base, packsJson: pack(all));
+    expect(m.packs.single.isAsr, isFalse);
+    expect(m.packs.single.files.every((f) => f.group == 'tts'), isTrue);
+    expect(m.installedPacks({...TtsVoiceLayout.rel('ru', engine: 'supertonic')}), {'voice-ru'});
+    expect(() => ModelManifest.parse(base, packsJson: pack(all.skip(1))), throwsFormatException);
+    // The VITS file names are not a Supertonic voice.
+    expect(() => ModelManifest.parse(base, packsJson: pack(TtsVoiceLayout.files())), throwsFormatException);
+    expect(ModelManifest.parse(base, packsJson: pack(TtsVoiceLayout.files(), kind: 'vits')).packs, hasLength(1));
+  });
+
+  test('shipped assets/voice_packs.json has the Russian voice (Supertonic) and the English one', () {
+    final m = ModelManifest.parse(File('assets/models_manifest.json').readAsStringSync(),
+        packsJson: File('assets/voice_packs.json').readAsStringSync());
+    final ru = m.packs.singleWhere((p) => p.id == 'voice-ru');
+    expect(ru.kind, 'supertonic');
+    expect(ru.name, 'tlwu-voice-ru.zip');
+    expect(ru.url, contains('/releases/download/mobile-latest/'));
+    expect(m.packForZip(ru.name), same(ru));
+    expect(m.zipTargetsFor(ru.name)['voice.bin'], 'tts-ru/voice.bin');
+    expect(m.packs.singleWhere((p) => p.id == 'voice-en').kind, 'vits');
+    // One voice per language, the Russian one next to the Russian recognizer (different folders).
+    expect({for (final p in m.packs) p.folder}, {'tts-en', 'tts-ru', 'asr-ru'});
+  });
+
   test('shipped assets/voice_packs.json has the Russian recognizer pack', () {
     final m = ModelManifest.parse(File('assets/models_manifest.json').readAsStringSync(),
         packsJson: File('assets/voice_packs.json').readAsStringSync());

@@ -35,6 +35,24 @@
         {"path": "asr-ru/joiner.int8.onnx", "size": 259417, "sha256": "93f2e1d12b78d53e7802f1606488c14bb3d764b15fadf5ef6c022f6ba1fa40f7"},
         {"path": "asr-ru/tokens.txt", "size": 6388, "sha256": "93bbbc0bae6b78c0bbb743d4aa9fded3bb5ff3aac5f0200e3a769a5a05e0fdf6"}
       ]
+    },
+    {
+      "id": "voice-ru",
+      "lang": "ru",
+      "kind": "supertonic",
+      "name": "tlwu-voice-ru.zip",
+      "url": "https://github.com/sunososobro-hub/tinglongwu/releases/download/mobile-latest/tlwu-voice-ru.zip",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2",
+      "note": "Russian read-aloud voice for conversation mode: Supertonic 3 (31 languages, plain text in, 44.1 kHz), int8 by sherpa-onnx, about 139 MB. Licence: model OpenRAIL-M (Supertone), sample code MIT.",
+      "files": [
+        {"path": "tts-ru/duration_predictor.int8.onnx", "size": 3700147, "sha256": "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db"},
+        {"path": "tts-ru/text_encoder.int8.onnx", "size": 36416150, "sha256": "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff"},
+        {"path": "tts-ru/vector_estimator.int8.onnx", "size": 78400833, "sha256": "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd"},
+        {"path": "tts-ru/vocoder.int8.onnx", "size": 25991073, "sha256": "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152"},
+        {"path": "tts-ru/tts.json", "size": 8253, "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09"},
+        {"path": "tts-ru/unicode_indexer.bin", "size": 262144, "sha256": "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30"},
+        {"path": "tts-ru/voice.bin", "size": 517168, "sha256": "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8"}
+      ]
     }
   ]
 }

@@ -240,7 +240,7 @@ class Pipeline extends ChangeNotifier {
     final voice = paths?.ttsVoice(lang);
     ttsInstalled = voice != null;
     if (voice == null) {
-      _log.i('tts: no $lang voice (${TtsVoiceLayout.rel(lang).join(", ")}), text only');
+      _log.i('tts: no $lang voice (tts-$lang/), text only');
       _ttsLoading = null; // look again next time (the pack may be imported meanwhile)
       if (!_disposed) notifyListeners();
       return;
@@ -250,7 +250,7 @@ class Pipeline extends ChangeNotifier {
       final w = await TtsWorker.spawn(voice);
       if (_disposed) return w.dispose();
       _tts = w;
-      _log.i('tts: $lang voice ready in ${_clock.elapsedMilliseconds - t0} ms');
+      _log.i('tts: $lang voice (${voice.engine}) ready in ${_clock.elapsedMilliseconds - t0} ms');
       _speakNext();
     } catch (e) {
       ttsInstalled = false;

@@ -60,11 +60,12 @@ class VoicePack {
     this.kind = vitsKind,
   });
 
-  /// [kind] of a read-aloud voice (sherpa-onnx VITS + lexicon) and of an extra-language
-  /// recognizer (sherpa-onnx transducer).
-  static const vitsKind = 'vits';
+  /// [kind] of a read-aloud voice (sherpa-onnx VITS + lexicon, or Supertonic) and of an
+  /// extra-language recognizer (sherpa-onnx transducer).
+  static const vitsKind = TtsVoiceLayout.vits;
+  static const supertonicKind = TtsVoiceLayout.supertonic;
   static const asrKind = 'asr';
-  static const kinds = {vitsKind, asrKind};
+  static const kinds = {vitsKind, supertonicKind, asrKind};
 
   final String id;
   final String kind;
@@ -78,7 +79,8 @@ class VoicePack {
   String get folder => isAsr ? AsrPackLayout.dir(lang) : TtsVoiceLayout.dir(lang);
 
   /// The exact files the loader reads, relative to the models dir.
-  List<String> get layout => isAsr ? AsrPackLayout.rel(lang) : TtsVoiceLayout.rel(lang);
+  List<String> get layout =>
+      isAsr ? AsrPackLayout.rel(lang) : TtsVoiceLayout.rel(lang, engine: kind);
 
   /// Zip file name (as downloaded); a picked zip with this name is read as this pack.
   final String name;

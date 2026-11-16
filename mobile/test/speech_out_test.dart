@@ -15,12 +15,46 @@ void main() {
 
     test('a partial voice counts as not installed', () {
       final v = TtsVoicePaths.find('en',
-          resolve: (r) => '/m/$r', exists: (p) => !p.endsWith('lexicon.txt'));
+          resolve: (r) => '/m/$r',
+          exists: (p) => p.endsWith('model.onnx') || p.endsWith('tokens.txt')); // no lexicon
       expect(v, isNull);
     });
 
     test('each language has its own folder', () {
       expect(TtsVoiceLayout.rel('ru'), ['tts-ru/model.onnx', 'tts-ru/tokens.txt', 'tts-ru/lexicon.txt']);
+    });
+
+    test('a VITS voice reports its engine and files', () {
+      final v = TtsVoicePaths.find('en', resolve: (r) => '/m/$r', exists: (_) => true)!;
+      expect(v.engine, TtsVoiceLayout.vits);
+      expect(v.files.keys, TtsVoiceLayout.files());
+    });
+
+    test('Supertonic voice (Russian): all seven files in tts-ru/, no lexicon needed', () {
+      final names = TtsVoiceLayout.files(TtsVoiceLayout.supertonic);
+      expect(names, hasLength(7));
+      expect(TtsVoiceLayout.rel('ru', engine: TtsVoiceLayout.supertonic),
+          [for (final n in names) 'tts-ru/$n']);
+      final onDisk = {for (final n in names) '/m/tts-ru/$n'};
+      final v = TtsVoicePaths.find('ru', resolve: (r) => '/m/$r', exists: onDisk.contains)!;
+      expect(v.engine, TtsVoiceLayout.supertonic);
+      expect(v.lang, 'ru');
+      expect(v.files['voice.bin'], '/m/tts-ru/voice.bin');
+      expect(v.files['vocoder.int8.onnx'], '/m/tts-ru/vocoder.int8.onnx');
+      expect(v.model, ''); // not a VITS voice
+      // One part missing = not installed.
+      onDisk.remove('/m/tts-ru/voice.bin');
+      expect(TtsVoicePaths.find('ru', resolve: (r) => '/m/$r', exists: onDisk.contains), isNull);
+    });
+
+    test('a folder of one engine is never mixed with the other', () {
+      final mix = {
+        '/m/tts-ru/model.onnx',
+        '/m/tts-ru/tokens.txt',
+        '/m/tts-ru/voice.bin',
+        '/m/tts-ru/tts.json',
+      };
+      expect(TtsVoicePaths.find('ru', resolve: (r) => '/m/$r', exists: mix.contains), isNull);
     });
   });
 

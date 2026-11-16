@@ -29,7 +29,7 @@ class TtsWorker {
 
   static Future<TtsWorker> spawn(TtsVoicePaths voice, {int numThreads = 2}) async {
     final fromWorker = ReceivePort();
-    final iso = await Isolate.spawn(_entry, [fromWorker.sendPort, voice.model, voice.tokens, voice.lexicon, numThreads]);
+    final iso = await Isolate.spawn(_entry, [fromWorker.sendPort, voice.engine, voice.lang, voice.files, numThreads]);
     final replies = StreamIterator<Object?>(fromWorker);
     if (!await replies.moveNext()) throw StateError('TTS isolate exited');
     final first = replies.current;
@@ -59,20 +59,39 @@ class TtsWorker {
 
   static void _entry(List<Object> args) {
     final out = args[0] as SendPort;
+    final engine = args[1] as String;
+    final lang = args[2] as String;
+    final f = (args[3] as Map).cast<String, String>();
     sherpa.OfflineTts? tts;
     try {
       sherpa.initBindings();
+      final threads = args[4] as int;
       tts = sherpa.OfflineTts(sherpa.OfflineTtsConfig(
-        model: sherpa.OfflineTtsModelConfig(
-          vits: sherpa.OfflineTtsVitsModelConfig(
-            model: args[1] as String,
-            tokens: args[2] as String,
-            lexicon: args[3] as String,
-          ),
-          numThreads: args[4] as int,
-          provider: 'cpu',
-          debug: false,
-        ),
+        model: engine == TtsVoiceLayout.supertonic
+            ? sherpa.OfflineTtsModelConfig(
+                supertonic: sherpa.OfflineTtsSupertonicModelConfig(
+                  durationPredictor: f['duration_predictor.int8.onnx']!,
+                  textEncoder: f['text_encoder.int8.onnx']!,
+                  vectorEstimator: f['vector_estimator.int8.onnx']!,
+                  vocoder: f['vocoder.int8.onnx']!,
+                  ttsJson: f['tts.json']!,
+                  unicodeIndexer: f['unicode_indexer.bin']!,
+                  voiceStyle: f['voice.bin']!,
+                ),
+                numThreads: threads,
+                provider: 'cpu',
+                debug: false,
+              )
+            : sherpa.OfflineTtsModelConfig(
+                vits: sherpa.OfflineTtsVitsModelConfig(
+                  model: f['model.onnx']!,
+                  tokens: f['tokens.txt']!,
+                  lexicon: f['lexicon.txt']!,
+                ),
+                numThreads: threads,
+                provider: 'cpu',
+                debug: false,
+              ),
       ));
     } catch (e) {
       out.send('TTS init failed: $e');
@@ -88,7 +107,15 @@ class TtsWorker {
       }
       try {
         final sw = Stopwatch()..start();
-        final a = tts!.generate(text: m as String, sid: 0, speed: 1.0);
+        final a = engine == TtsVoiceLayout.supertonic
+            ? tts!.generateWithConfig(
+                text: m as String,
+                config: sherpa.OfflineTtsGenerationConfig(
+                  sid: TtsVoiceLayout.supertonicSpeaker,
+                  speed: 1.0,
+                  extra: {'lang': lang, 'num_steps': TtsVoiceLayout.supertonicSteps},
+                ))
+            : tts!.generate(text: m as String, sid: 0, speed: 1.0);
         out.send([TransferableTypedData.fromList([a.samples]), a.sampleRate, sw.elapsedMilliseconds]);
       } catch (e) {
         out.send('TTS failed: $e');

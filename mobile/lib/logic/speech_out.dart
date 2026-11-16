@@ -4,37 +4,80 @@ import 'dart:typed_data';
 /// Conversation mode read-aloud (#558, part 2): pure logic for the voice pack layout, the echo
 /// guard and the queue of lines to speak. Testable without Flutter or a voice model.
 
-/// Offline voice for one language: a sherpa-onnx VITS model (Piper-style) with a lexicon.
-/// sherpa-onnx 2.x dropped espeak-ng, so the pack must ship `lexicon.txt` (word -> phonemes).
+/// Offline voice for one language, one of two sherpa-onnx engines:
+///  - `vits` (Piper-style VITS, e.g. the English vits-ljs): model.onnx + tokens.txt + lexicon.txt.
+///    sherpa-onnx 2.x dropped espeak-ng, so the pack must ship `lexicon.txt` (word -> phonemes).
+///  - `supertonic` (Supertonic 3, 31 languages incl. Russian, works on plain text, no lexicon):
+///    four int8 onnx parts + tts.json + unicode_indexer.bin + voice.bin.
 ///
-/// Layout, relative to the models dir (or a Play pack folder, like the other models):
-///   `tts-LANG/model.onnx`, `tts-LANG/tokens.txt`, `tts-LANG/lexicon.txt`
-/// Which voice ships, its licence, size and SHA-256: `assets/voice_packs.json` (imported like the
-/// models, see ModelManifest.packs); until it is installed the app shows the translation only.
+/// Layout, relative to the models dir (or a Play pack folder, like the other models): every file
+/// of the voice in `tts-LANG/`. Which voice ships, its licence, size and SHA-256:
+/// `assets/voice_packs.json` (imported like the models, see ModelManifest.packs); until it is
+/// installed the app shows the translation only.
 class TtsVoiceLayout {
-  static const files = ['model.onnx', 'tokens.txt', 'lexicon.txt'];
+  static const vits = 'vits';
+  static const supertonic = 'supertonic';
+
+  /// Engines in the order a folder is probed.
+  static const engines = [vits, supertonic];
+
+  static const _files = {
+    vits: ['model.onnx', 'tokens.txt', 'lexicon.txt'],
+    supertonic: [
+      'duration_predictor.int8.onnx',
+      'text_encoder.int8.onnx',
+      'vector_estimator.int8.onnx',
+      'vocoder.int8.onnx',
+      'tts.json',
+      'unicode_indexer.bin',
+      'voice.bin',
+    ],
+  };
+
+  /// File names of [engine]'s voice (the VITS ones by default).
+  static List<String> files([String engine = vits]) => _files[engine] ?? const [];
 
   static String dir(String lang) => 'tts-$lang';
 
-  /// Manifest-style relative paths of the voice for [lang].
-  static List<String> rel(String lang) => [for (final f in files) '${dir(lang)}/$f'];
+  /// Manifest-style relative paths of the [engine] voice for [lang].
+  static List<String> rel(String lang, {String engine = vits}) =>
+      [for (final f in files(engine)) '${dir(lang)}/$f'];
+
+  /// Supertonic voice style (0-9, one of the ten in voice.bin) and denoising steps per line
+  /// (sherpa-onnx default 5: faster than real time on a desktop CPU, a phone is slower).
+  static const supertonicSpeaker = 6;
+  static const supertonicSteps = 5;
 }
 
 /// Absolute paths of an installed voice.
 class TtsVoicePaths {
-  const TtsVoicePaths({required this.lang, required this.model, required this.tokens, required this.lexicon});
-  final String lang, model, tokens, lexicon;
+  const TtsVoicePaths({required this.lang, required this.engine, required this.files});
+  final String lang;
+  final String engine;
+
+  /// File name -> absolute path (see [TtsVoiceLayout.files]).
+  final Map<String, String> files;
+
+  String get model => files['model.onnx'] ?? '';
+  String get tokens => files['tokens.txt'] ?? '';
+  String get lexicon => files['lexicon.txt'] ?? '';
 
   /// [resolve] maps a relative path to the file to read; [exists] says whether it is there.
-  /// Null when any file is missing (no partial voice).
+  /// Null when no engine's files are all there (no partial voice).
   static TtsVoicePaths? find(
     String lang, {
     required String Function(String rel) resolve,
     required bool Function(String path) exists,
   }) {
-    final p = [for (final r in TtsVoiceLayout.rel(lang)) resolve(r)];
-    if (!p.every(exists)) return null;
-    return TtsVoicePaths(lang: lang, model: p[0], tokens: p[1], lexicon: p[2]);
+    for (final engine in TtsVoiceLayout.engines) {
+      final names = TtsVoiceLayout.files(engine);
+      final p = [for (final r in TtsVoiceLayout.rel(lang, engine: engine)) resolve(r)];
+      if (p.every(exists)) {
+        return TtsVoicePaths(
+            lang: lang, engine: engine, files: {for (var i = 0; i < names.length; i++) names[i]: p[i]});
+      }
+    }
+    return null;
   }
 }
 
