@@ -10,6 +10,7 @@ import '../logic/draft_gate.dart';
 import '../logic/lang_pack.dart';
 import '../logic/prompt.dart';
 import '../logic/segmenter.dart';
+import 'isolate_stop.dart';
 
 /// Messages from the ASR isolate to the UI isolate.
 sealed class AsrEvent {
@@ -114,9 +115,11 @@ class AsrConfig {
 
 /// Runs sherpa-onnx offline ASR in a background isolate.
 class AsrWorker {
-  AsrWorker._(this._isolate, this._toWorker, this.events);
+  AsrWorker._(this._isolate, this._toWorker, this.events, this._fromWorker, this._ctrl);
 
   final Isolate _isolate;
+  final ReceivePort _fromWorker;
+  final StreamController<AsrEvent> _ctrl;
   final SendPort _toWorker;
   final Stream<AsrEvent> events;
 
@@ -133,7 +136,7 @@ class AsrWorker {
       }
     });
     final toWorker = await portCompleter.future;
-    return AsrWorker._(iso, toWorker, ctrl.stream);
+    return AsrWorker._(iso, toWorker, ctrl.stream, fromWorker, ctrl);
   }
 
   /// Feed 16 kHz mono PCM16 little-endian bytes.
@@ -163,9 +166,11 @@ class AsrWorker {
   /// Turns the source-text draft (#1064) on or off at run time.
   void setDraft(bool on) => _toWorker.send(on);
 
+  /// Frees the recognizers (and the draft isolate's) and ends the isolate, see [stopWorker].
   void dispose() {
-    _toWorker.send(null);
-    _isolate.kill(priority: Isolate.beforeNextEvent);
+    stopWorker(_isolate, _toWorker);
+    _fromWorker.close();
+    _ctrl.close();
   }
 
   /// Draft isolate (#1064): its own recognizer (1 thread), so a draft decode never delays the
@@ -175,7 +180,6 @@ class AsrWorker {
     final ui = args[0] as SendPort;
     final asr = args[1] as SendPort;
     final cfg = args[2] as AsrConfig;
-    final inPort = ReceivePort();
     sherpa.OfflineRecognizer? rec;
     try {
       sherpa.initBindings();
@@ -196,8 +200,10 @@ class AsrWorker {
         ),
       );
     } catch (_) {
-      return; // no draft; the final path is unaffected
+      asr.send('fail'); // no draft; the final path is unaffected
+      return;
     }
+    final inPort = ReceivePort();
     asr.send(inPort.sendPort);
     inPort.listen((m) {
       if (m == null) {
@@ -404,13 +410,18 @@ class AsrWorker {
     final draftIn = ReceivePort();
     SendPort? draftPort;
     var draftOn = false;
+    final helper = LazyHelper(); // one draft isolate at a time, stopped even while it loads
     draftIn.listen((m) {
-      if (m is SendPort) {
-        if (draftOn) {
-          draftPort = m;
-        } else {
-          m.send(null); // switched off while it was loading
+      if (m is SendPort || m == 'fail') {
+        final last = helper.arrived();
+        if (m is SendPort) {
+          if (draftOn && !last) {
+            draftPort = m;
+          } else {
+            m.send(null); // switched off (or the worker stopped) while it was loading
+          }
         }
+        if (last) draftIn.close();
       } else if (m == 'done') {
         gate.finished();
       }
@@ -424,7 +435,7 @@ class AsrWorker {
     inPort.listen((m) {
       if (m == null) {
         stopDraft();
-        draftIn.close();
+        if (helper.close()) draftIn.close();
         vad?.free();
         rec?.free();
         freeExtra();
@@ -464,7 +475,8 @@ class AsrWorker {
         draftOn = m;
         if (m) {
           // Spawned lazily: a second recognizer costs memory, only paid when the draft is on.
-          Isolate.spawn(_draftEntry, [out, draftIn.sendPort, cfg]);
+          // Off and on again while it loads: the one already loading is used, not a second one.
+          if (helper.shouldSpawn()) Isolate.spawn(_draftEntry, [out, draftIn.sendPort, cfg]);
         } else {
           stopDraft();
         }

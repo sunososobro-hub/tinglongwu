@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../logic/speakers.dart';
+import 'isolate_stop.dart';
 
 /// Result of one finalized segment (#1155): speaker number, or [unknownSpeaker].
 class SpeakerResult {
@@ -52,9 +53,9 @@ class SpeakerWorker {
     return SpeakerWorker._(iso, p, ctrl.stream, from);
   }
 
+  /// Frees the model and ends the isolate, see [stopWorker].
   void dispose() {
-    port.send(null);
-    _isolate.kill(priority: Isolate.beforeNextEvent);
+    stopWorker(_isolate, port);
     _from.close();
   }
 

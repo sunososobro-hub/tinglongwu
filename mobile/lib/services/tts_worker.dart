@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../logic/speech_out.dart';
+import 'isolate_stop.dart';
 
 /// One synthesized line: mono float samples in [-1, 1].
 class TtsAudio {
@@ -51,9 +52,9 @@ class TtsWorker {
     return TtsAudio((m[0] as TransferableTypedData).materialize().asFloat32List(), m[1] as int, m[2] as int);
   }
 
+  /// Frees the voice and ends the isolate, see [stopWorker].
   void dispose() {
-    _toWorker.send(null);
-    _isolate.kill(priority: Isolate.beforeNextEvent);
+    stopWorker(_isolate, _toWorker);
     _replies.cancel();
   }
 
