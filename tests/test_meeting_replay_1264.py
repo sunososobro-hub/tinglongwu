@@ -164,3 +164,42 @@ def test_report_without_a_run_prints_na(mr, tmp_path):
                                                       "speech": [0, 8], "spans": [[0, 8]], "clips": ["a"]}), "utf-8")
     m = mr.report(tmp_path)
     assert m["drops"] == 0 and m["coverage_pct"] == 0.0 and m["longest_gap_s"] is None and m["lag_p95_s"] is None
+
+
+def _fake_tlwu(tmp_path, code: str, exit_code: int) -> Path:
+    """A stand-in for `python -m tinglongwu`: prints the ready line, runs `code`, exits with `exit_code`."""
+    pkg = tmp_path / "fake" / "tinglongwu"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", "utf-8")
+    (pkg / "__main__.py").write_text(
+        "import sys\nprint('* ready - listening (start playback now)', flush=True)\n" + code
+        + f"\nsys.exit({exit_code})\n", "utf-8")
+    return tmp_path / "fake"
+
+
+def _replay_dir(tmp_path) -> Path:
+    rdir = tmp_path / "r"
+    (rdir / "rec").mkdir(parents=True)
+    (rdir / "replay.json").write_text(json.dumps({"wav": "r.wav", "lang": "ru", "seconds": 0.1, "speech": [0, 0.1],
+                                                  "spans": [[0, 0.1]], "clips": ["a"]}), "utf-8")
+    return rdir
+
+
+def test_run_fails_when_tlwu_crashes_mid_replay(mr, tmp_path, monkeypatch):
+    fake = _fake_tlwu(tmp_path, "print('Traceback: boom', flush=True)", 3)
+    monkeypatch.setenv("PYTHONPATH", str(fake))
+    monkeypatch.setattr(mr, "ROOT", tmp_path)
+    rdir = _replay_dir(tmp_path)
+    with pytest.raises(SystemExit, match="exited with 3"):
+        mr.run(rdir, None, 0, False, [], drain=5)
+    assert (rdir / "metrics.json").is_file()  # partial metrics are still written
+
+
+def test_run_starts_from_a_clean_recording_manifest(mr, tmp_path, monkeypatch):
+    fake = _fake_tlwu(tmp_path, "", 0)
+    monkeypatch.setenv("PYTHONPATH", str(fake))
+    monkeypatch.setattr(mr, "ROOT", tmp_path)
+    rdir = _replay_dir(tmp_path)
+    (rdir / "rec" / "segments.jsonl").write_text(json.dumps({"start": 0, "end": 0.1}) + "\n", "utf-8")
+    m = mr.run(rdir, None, 0, False, [], drain=5)  # a clean exit 0 succeeds
+    assert m["coverage_pct"] == 0.0  # the old run's row is not counted

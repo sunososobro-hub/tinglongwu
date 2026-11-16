@@ -220,5 +220,6 @@ jobs:
             replay/*.jsonl
             replay/*.log
             replay/*.md
+            replay/t0.txt
             replay/rec/segments.jsonl
           if-no-files-found: warn

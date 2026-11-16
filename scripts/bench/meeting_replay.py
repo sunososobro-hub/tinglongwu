@@ -232,6 +232,7 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
     meta = json.loads((rdir / "replay.json").read_text("utf-8"))
     for name in ("saved.jsonl", "latency.jsonl", "tlwu.log", "t0.txt"):
         (rdir / name).unlink(missing_ok=True)
+    (rdir / "rec" / "segments.jsonl").unlink(missing_ok=True)  # the Recorder appends: a rerun starts clean
     cmd = tlwu_cmd(rdir, meta, mdir, speakers, extra)
     env = dict(os.environ, PYTHONUTF8="1", PYTHONUNBUFFERED="1", TLWU_NO_UPDATE="1")
     pre = None
@@ -241,6 +242,7 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
         print(f"replay: CPUs {pin} of {os.cpu_count()}", flush=True)
     print("replay: " + " ".join(cmd), flush=True)
     ready, t0 = threading.Event(), [None]
+    exited = [False]  # tlwu ended on its own (not stopped at the drain deadline)
     log_lines: list[str] = []
     with open(rdir / "tlwu.log", "w", encoding="utf-8") as log:
         p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -267,6 +269,7 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
                 end = time.monotonic() + meta["seconds"] + drain
                 while p.poll() is None and time.monotonic() < end:  # the file ends -> tlwu flushes and exits
                     time.sleep(1.0)
+                exited[0] = p.poll() is not None
         finally:
             if p.poll() is None:
                 p.terminate()
@@ -279,7 +282,11 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
     if not ready.is_set():
         tail = "\n".join(log_lines[-15:])
         raise SystemExit(f"tlwu did not get ready (exit {p.returncode}); last lines:\n{tail}")
-    return report(rdir)
+    m = report(rdir)
+    if exited[0] and p.returncode != 0:  # a crash mid-replay fails the run; the partial metrics are printed above
+        tail = "\n".join(log_lines[-15:])
+        raise SystemExit(f"tlwu exited with {p.returncode} during the replay; last lines:\n{tail}")
+    return m
 
 
 def report(rdir: Path) -> dict:
