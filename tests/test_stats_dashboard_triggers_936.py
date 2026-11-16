@@ -17,10 +17,10 @@ def test_two_cron_offsets():
     assert {"17 * * * *", "47 * * * *"} <= crons
 
 
-def test_runs_after_release_workflows_on_main():
+def test_runs_after_release_only_on_main_1144():
     on, _ = _on()
     wr = on["workflow_run"]
-    assert set(wr["workflows"]) == {"auto-release", "release"}
+    assert set(wr["workflows"]) == {"release"}
     assert wr["types"] == ["completed"]
     assert wr["branches"] == ["main"]
 

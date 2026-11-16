@@ -4,7 +4,7 @@ on:
     - cron: "17 * * * *"
     - cron: "47 * * * *"   # second offset: GitHub drops scheduled runs under load (#936)
   workflow_run:
-    workflows: ["auto-release", "release"]
+    workflows: ["release"]
     types: [completed]
     branches: [main]
   workflow_dispatch:
