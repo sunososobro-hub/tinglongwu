@@ -307,3 +307,30 @@ def test_packs_download_resumes_with_range_and_passes_sha(tmp_path, monkeypatch)
     assert (tmp_path / "hymt2-1.8b" / "m.gguf").read_bytes() == data
     assert calls[0] == ("https://huggingface.co/r/x/resolve/rev1/m.gguf", 0)
     assert calls[1][1] == 3000  # Range: bytes=3000-
+
+
+@pytest.mark.parametrize("rc", [0, 1])
+def test_pack_done_status_names_dialog_pack_1181(rc):
+    """#1181: after a Hy-MT2-only target download the status line says hymt2, never ko (downloader still gets ko)."""
+    from types import SimpleNamespace
+
+    pytest.importorskip("tkinter")
+    from tinglongwu.gui import app as gapp
+
+    shown = []
+    fake = SimpleNamespace(
+        downloading="hymt2", start_dl=object(), pack_resume=False, ru_notice=None, pack_retry=None,
+        dl_bar=SimpleNamespace(pack_forget=lambda: None), btn=SimpleNamespace(configure=lambda **k: None),
+        _dl_event=lambda ev: None, _status_text=shown.append, _sync_quick=lambda: None,
+        root=SimpleNamespace(after=lambda *a: None), toggle=lambda m: None)
+    assert pod.real_pack("hymt2") == "ko"
+    gapp.App._pack_done(fake, "ko", rc)
+    assert "hymt2" in shown[0] and "ko" not in shown[0].replace("downloaded", "").replace("Download", "").split()
+    assert fake.downloading is None
+
+
+def test_shown_pack_1181():
+    assert pod.shown_pack("hymt2", "ko") == "hymt2"
+    assert pod.shown_pack("ko", "ko") == "ko"
+    assert pod.shown_pack(None, "ko") == "ko"
+    assert pod.shown_pack("ja", "ko") == "ko"

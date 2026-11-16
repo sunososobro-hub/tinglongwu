@@ -1997,11 +1997,12 @@ class App:
             self._dl_event(("pack_done", pack, rc))
             return self._spk_done(rc)
         self._dl_event(("pack_done", pack, rc))
+        shown = pack_on_demand.shown_pack(self.downloading, pack)  # #1181: same name as the dialog ("hymt2"), not "ko"
         self.start_dl = None
         self.dl_bar.pack_forget()
         self.downloading = None
         self.btn.configure(state="normal")
-        self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=pack))  # #1042: error shows in the main window
+        self._status_text(t("gui_dl_ok" if rc == 0 else "gui_dl_fail", model=shown))  # #1042: error shows in the main window
         self._sync_quick()
         if getattr(self, "ru_notice", None) is not None:
             self.root.after(100, self._ru_voice_check)  # hides the notice once the Russian voice is there

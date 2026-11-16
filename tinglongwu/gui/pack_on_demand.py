@@ -59,6 +59,12 @@ def real_pack(pack: str) -> str:
     return PACK_ALIAS.get(pack, pack)
 
 
+def shown_pack(asked: str | None, done: str) -> str:
+    """#1181: the pack name for the done/fail status line: the name the dialog showed (`asked`) when it maps to the
+    downloaded pack `done`, else `done` itself."""
+    return asked if asked and real_pack(asked) == done else done
+
+
 def _pack_mb(pack: str) -> int:
     return sum(SIZE_MB.get(k, OPUS_MB) for k in PACKS[real_pack(pack)])
 
