@@ -16,7 +16,7 @@ import numpy as np
 
 from .capture.base import SAMPLE_RATE, AudioSource
 from . import fmt  # noqa: F401  (registers the label_me/label_them strings)
-from .hallucination import is_hallucination
+from .hallucination import SILENCE_RMS, is_hallucination
 from .i18n import t
 from .langfollow import script_lang
 from .translate import translate_checked
@@ -24,7 +24,6 @@ from .translate import translate_checked
 DRAFT_INTERVAL = 0.6  # min seconds between partial passes (ASR and MT alternate on one thread)
 TRANSLATE_MIN_CHARS = 8  # re-translate when the partial grew by >= this many chars ...
 TRANSLATE_MIN_GAP = 1.0  # ... or when >= this many seconds passed since the last draft translation
-SILENCE_RMS = 1e-3
 DIM, RESET = "\x1b[2m", "\x1b[0m"
 CLEAR_DOWN = "\x1b[J"
 ELLIPSIS = "..."

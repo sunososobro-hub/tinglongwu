@@ -11,7 +11,7 @@ from typing import NamedTuple
 import numpy as np
 
 from .asr import Recognizer
-from .hallucination import is_hallucination
+from .hallucination import SILENCE_RMS, is_hallucination
 from .i18n import t as _msg
 from .capture.base import SAMPLE_RATE, AudioSource
 from .langfollow import script_lang
@@ -23,7 +23,6 @@ from .sink import Result, Sink, pass_source
 from .speakers import UNKNOWN
 from .translate import Translation, Translator, translate_checked
 
-SILENCE_RMS = 1e-3
 _DONE = object()
 
 

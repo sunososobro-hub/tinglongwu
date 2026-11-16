@@ -48,6 +48,12 @@ WEAK = {
 # Lone filler words Whisper invents on silence; dropped regardless of energy (nobody transcribes a bare "you").
 LONE = {"you"}
 
+# #1247: a segment below this RMS (-80 dBFS) is skipped before ASR as silence. It was 1e-3 (-60 dBFS) in pipeline.py and
+# stream.py, which dropped real quiet speech: the #894 check's --file pass (bench-cpu-ab live-file, #1324 @99aaec2)
+# missed 13/31 FLEURS clips whose RMS is -61.1 to -66 dBFS (median -63.2) vs -48.6 dBFS for the heard ones, and a
+# far lecture mic (#894) sits at that level too. Digital silence / an idle CABLE is below -90 dBFS, so the skip still
+# keeps Whisper off empty audio; quiet segments that reach ASR still get the QUIET_RMS hallucination rule below.
+SILENCE_RMS = 1e-4
 QUIET_RMS = 0.015     # segment RMS below this = "low energy" (speech normally sits well above)
 NO_SPEECH_MIN = 0.3   # Whisper no_speech_prob at/above this = "probably not speech"
 MIN_COVER = 0.6       # the phrase must make up at least this share of the text (else it is part of real speech)
