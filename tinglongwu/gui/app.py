@@ -48,6 +48,8 @@ UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
 FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru", "日本語": "ja"}
+STATUS_WRAP_MIN_PX = 200  # #1241: status / notice wrap at the panel width, never narrower than this
+BAR_WIDE_PX = 1200  # #1241: from this bar width the 情境 dropdown and the toggles share one row
 MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-style main window
 # chat bubbles (#1028): other side on the left, me on the right; (bubble background, text) per theme
 BUBBLE = {"dark": {"bg": "#14182e", "other": ("#2b3250", "#f2f4ff"), "me": ("#3f5fe0", "#ffffff"), "sub": "#9aa3c7", "head": "#9aa3c7"},
@@ -479,6 +481,19 @@ class App:
         self.status_key = None
         self.v_status.set(text)
 
+    def _dedupe_notice(self):
+        """#1241: the CPU-mode notice appears once (the status line keeps it, with the MT ms)."""
+        from .core import drop_cpu_mode_notice
+
+        self.v_notice.set(drop_cpu_mode_notice(self.v_notice.get(), self.v_status.get()))
+
+    def _wrap_status(self, width: int):
+        """#1241: status / notice lines wrap at the panel width, not a fixed 420 px (a wide window was half empty)."""
+        wl = max(STATUS_WRAP_MIN_PX, int(width) - 8)
+        for lbl in (self.lbl_status, self.lbl_notice):
+            if int(str(lbl.cget("wraplength") or 0)) != wl:
+                lbl.configure(wraplength=wl)
+
     def apply_theme(self, name: str):
         self.settings["theme"] = name = "light" if name == "light" else "dark"
         if sv_ttk is not None:
@@ -878,8 +893,8 @@ class App:
         """#1028: bottom bar. Row 1: mic toggle, floating subtitles. Row 2: settings, status dot, freeze subtitles,
         the big Start / Stop at the right."""
         b = self.bar
-        scene_row = ttk.Frame(b)  # 0.3.8: 情境 - what the one Start starts; fixed while a session runs
-        scene_row.pack(fill="x", pady=(0, 6))
+        b.columnconfigure(1, weight=1)
+        self.scene_row = scene_row = ttk.Frame(b)  # 0.3.8: 情境 - what the one Start starts; fixed while a session runs
         self._tx(ttk.Label(scene_row), "gui_scene").pack(side="left", padx=(0, 6))
         self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
         # one readonly dropdown: exactly one scene is active at a time; the box shows the UI-language names
@@ -887,8 +902,7 @@ class App:
         self.scene_combo.set(t("gui_scene_" + self.v_scene.get()))
         self.scene_combo.pack(side="left")
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
-        row1 = ttk.Frame(b)
-        row1.pack(fill="x")
+        self.toggle_row = row1 = ttk.Frame(b)
         self.v_mic = tk.BooleanVar(value=True)
         self.btn_mic = ttk.Checkbutton(row1, variable=self.v_mic, style="Toolbutton", command=self._mic_toggled)
         self.btn_mic.pack(side="left")
@@ -899,8 +913,10 @@ class App:
         self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk").pack(
             side="left", padx=(10, 0))
         # #1020: "Freeze subtitles" only freezes this list and the floating bar (translation keeps running)
-        row2 = ttk.Frame(b)
-        row2.pack(fill="x", pady=(8, 0))
+        self.action_row = row2 = ttk.Frame(b)
+        self.bar_wide = None
+        self._bar_layout(0)  # narrow until the first <Configure> says otherwise
+        b.bind("<Configure>", lambda e: self._bar_layout(e.width), add="+")
         self.btn_adjust = self._tx(ttk.Button(row2, command=self.toggle_adjust), "gui_adjust")
         self.btn_adjust.pack(side="left")
         self.dot = tk.Canvas(row2, width=12, height=12, highlightthickness=0, bd=0)
@@ -914,6 +930,22 @@ class App:
         self.btn.pack(side="right")
         self._mic_label()
         self._sync_quick()
+
+    def _bar_layout(self, width: int):
+        """#1241: >= BAR_WIDE_PX the 情境 row and the toggles share one row (a wide window had them stacked at the
+        left with the right side empty); narrower, they stack. The action row (Adjust / Freeze / Start) spans both."""
+        wide = int(width) >= BAR_WIDE_PX
+        if wide == self.bar_wide:
+            return
+        self.bar_wide = wide
+        if wide:
+            self.scene_row.grid(row=0, column=0, columnspan=1, sticky="w", pady=0, padx=(0, 24))
+            self.toggle_row.grid(row=0, column=1, columnspan=1, sticky="w", pady=0)
+            self.action_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        else:
+            self.scene_row.grid(row=0, column=0, columnspan=2, sticky="we", pady=(0, 6), padx=0)
+            self.toggle_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=0)
+            self.action_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(8, 0))
 
     @staticmethod
     def _scene_labels():
@@ -1252,12 +1284,16 @@ class App:
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
         self.status_box = sb = ttk.Frame(self.status_holder, padding=(0, 2, 0, 0))  # status/notice: main window (#1028)
-        ttk.Label(sb, textvariable=self.v_status, wraplength=MAIN_W - 40).pack(anchor="w")
+        self.lbl_status = ttk.Label(sb, textvariable=self.v_status, wraplength=MAIN_W - 40, justify="left")
+        self.lbl_status.pack(anchor="w", fill="x")
         self.v_dl_pct = tk.IntVar(value=0)  # #739: first-Start download progress bar (hidden unless a download runs)
         self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
         self.start_dl = None
         self.v_notice = tk.StringVar(value="")
-        ttk.Label(sb, textvariable=self.v_notice, wraplength=MAIN_W - 40, foreground="#b35a00").pack(anchor="w")
+        self.lbl_notice = ttk.Label(sb, textvariable=self.v_notice, wraplength=MAIN_W - 40, foreground="#b35a00",
+                                    justify="left")
+        self.lbl_notice.pack(anchor="w", fill="x")
+        sb.bind("<Configure>", lambda e: self._wrap_status(e.width), add="+")  # #1241
         self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
@@ -2361,11 +2397,13 @@ class App:
 
                     if self.load_t0 is None and not self.errored:
                         self._status_text(cpu_mode_line("cpu", ev[1], path=ev[2] if len(ev) > 2 else None) or "")
+                        self._dedupe_notice()  # #1241: CPU mode is now in the status line; not twice
                 elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
                     self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                 elif kind == "notice":
                     if ev[1] not in self.v_notice.get():  # the repeated silent hint must not clobber other lines
                         self.v_notice.set(ev[1])
+                        self._dedupe_notice()  # #1241
                     if self.speak_hint == SPEAK_HINT_CABLE:  # #710: e.g. the meeting voice turned itself off
                         self._show_panel()
                 elif kind == "topics":  # #611

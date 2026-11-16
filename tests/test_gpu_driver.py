@@ -145,3 +145,27 @@ def test_gui_live_draft_defaults_off_without_usable_gpu(tmp_path):
         raise RuntimeError("probe failed")
 
     assert core.load_settings(tmp_path / "none.json", gpu=boom)["live_draft"] is True  # unknown: default
+
+
+def test_1241_fallback_notice_is_one_line_without_a_second_cpu_mode(monkeypatch, tmp_path):
+    """#1241: the GUI notice for a GPU fallback is one line and does not repeat the CPU-mode status text."""
+    import tinglongwu.asr as asr
+    from tinglongwu import cli
+
+    monkeypatch.setattr(device, "cuda_device_count", lambda: 0)
+    monkeypatch.setattr(device, "driver_version", lambda: None)
+
+    class Stop(Exception):
+        pass
+
+    def boom(*a, **k):
+        raise Stop
+
+    monkeypatch.setattr(asr, "FasterWhisperRecognizer", boom)
+    for lang in ("en", "zh-TW", "ja", "ru"):
+        monkeypatch.setattr(i18n, "_override", lang)
+        notes = []
+        with pytest.raises(Stop):
+            cli.run_session(cli.parse_args(["--models-dir", str(tmp_path)]), notice=notes.append)
+        assert len(notes) == 1 and "\n" not in notes[0]
+        assert i18n.t("gui_cpu_mode") not in notes[0]

@@ -601,6 +601,22 @@ def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = No
     return f"{base} - {t('gui_cpu_mt_ms', ms=round(mt_ms))}" + (f" ({where})" if where else "")
 
 
+def drop_cpu_mode_notice(notice: str, status: str) -> str:
+    """#1241: the CPU-mode text is shown once. When the status line already carries it (with the per-line MT ms),
+    remove it from the orange notice (a whole line, or a " | ..." tail); other notice text stays."""
+    from ..i18n import t
+
+    cpu = t("gui_cpu_mode")
+    if not notice or cpu not in (status or ""):
+        return notice
+    keep = []
+    for ln in notice.split(chr(10)):
+        parts = [p for p in ln.split(" | ") if p.strip() != cpu]
+        if parts:
+            keep.append(" | ".join(parts))
+    return chr(10).join(keep).strip()
+
+
 def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:
     """Dropdown entries: downloaded Whisper models first, marked with a check; the rest plain (#739: a missing model
     downloads on the first Start with a progress bar, so the list shows no "not downloaded" state).

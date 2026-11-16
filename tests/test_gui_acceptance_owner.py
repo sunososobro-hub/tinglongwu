@@ -249,3 +249,55 @@ def test_scene_strings_exist_in_every_ui_language(lang):
     assert all(names) and names[0] != names[1]
     if key != i18n.DEFAULT:
         assert names != [i18n.MESSAGES[i18n.DEFAULT]["gui_scene_" + sc] for sc in ("meeting", "video")]
+
+
+# -- #1241: bottom panel uses the full width; CPU-mode notice shown once --------------------------------------------
+def _cpu_session(a):
+    """What a CPU-fallback session puts on screen: the fallback notice, then the per-line CPU status (#780)."""
+    from tinglongwu.gui.core import cpu_mode_line
+    from tinglongwu.i18n import t
+
+    a.v_notice.set(" ".join(t("gpu_fallback", why="no usable NVIDIA GPU found").split()))
+    a._dedupe_notice()
+    a._status_text(cpu_mode_line("cpu", 701.0, path=("cpu", 8)))
+    a._dedupe_notice()
+    a.root.update()
+
+
+@pytest.mark.parametrize("w", [1800, 900])
+def test_1241_status_wraps_at_panel_width_and_cpu_mode_once(make_app, monkeypatch, w):
+    import tkinter as tk
+
+    from tinglongwu.i18n import t
+
+    monkeypatch.setattr(tk.Misc, "winfo_screenwidth", lambda self: 1920)
+    monkeypatch.setattr(tk.Misc, "winfo_screenheight", lambda self: 1080)
+    a = make_app()
+    a.root.geometry(f"{w}x500+0+0")
+    a.root.update()
+    _cpu_session(a)
+    a.root.update()
+    panel = a.status_box.winfo_width()
+    assert panel > w * 0.8  # the status box spans the window
+    for lbl in (a.lbl_status, a.lbl_notice):
+        assert int(str(lbl.cget("wraplength"))) >= panel - 20  # wraps at the panel width, not a fixed 420 px
+    shown = a.v_status.get() + "\n" + a.v_notice.get()
+    assert shown.count(t("gui_cpu_mode")) == 1
+    assert "\n" not in a.v_notice.get()  # the GPU-fallback reason is one line
+    same_row = a.scene_row.winfo_rooty() == a.toggle_row.winfo_rooty()
+    assert same_row == (a.bar.winfo_width() >= 1200)  # 情境 + toggles share a row only when wide enough
+    assert a.scene_combo.winfo_ismapped() and a.btn_mic.winfo_ismapped()
+    if same_row:  # side by side, not drawn on top of each other
+        assert a.scene_row.winfo_rootx() + a.scene_row.winfo_width() <= a.toggle_row.winfo_rootx()
+    _shot(a, f"1241_{w}x500")
+
+
+def test_1241_notice_keeps_other_text_when_cpu_mode_dropped():
+    from tinglongwu.gui.core import drop_cpu_mode_notice
+    from tinglongwu.i18n import t
+
+    cpu = t("gui_cpu_mode")
+    status = f"{cpu} - 701 ms"
+    assert drop_cpu_mode_notice(f"GPU off | {cpu}", status) == "GPU off"
+    assert drop_cpu_mode_notice(f"{cpu}\nMic is off", status) == "Mic is off"
+    assert drop_cpu_mode_notice(cpu, "Loading...") == cpu  # status does not show it yet: keep it

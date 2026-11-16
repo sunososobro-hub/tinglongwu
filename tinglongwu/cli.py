@@ -537,7 +537,9 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         from .i18n import t
 
         why = warned[0].removeprefix("tlwu: ") if warned else t("gpu_none")
-        notice(t("gpu_fallback", why=why) + " | " + t("gui_cpu_mode"))  # #780: CPU mode shown with the reason
+        # #780: CPU mode shown with the reason. #1241: one line, and gpu_fallback already says "CPU mode", so the
+        # gui_cpu_mode text is not appended again (the status line carries it with the per-line MT ms)
+        notice(" ".join(t("gpu_fallback", why=why).split()))
     elif notice is not None and dev == "cpu":
         from .i18n import t
 
