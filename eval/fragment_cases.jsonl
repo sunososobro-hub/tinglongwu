@@ -1,0 +1,56 @@
+{"id": "fragment-ru-01", "kind": "fragment", "pair": "ru->zh", "prev": "Мы проверили новую прошивку на тестовом стенде.", "src": "и после этого модуль", "ref": "然後這之後模組"}
+{"id": "fragment-ru-02", "kind": "fragment", "pair": "ru->zh", "prev": "Сигнал на выходе усилителя стал слабее.", "src": "потому что антенна", "ref": "因為天線"}
+{"id": "fragment-ru-03", "kind": "fragment", "pair": "ru->zh", "prev": "Коллеги из Шанхая прислали отчёт вчера вечером.", "src": "но в отчёте нет", "ref": "但報告裡沒有"}
+{"id": "fragment-ru-04", "kind": "fragment", "pair": "ru->zh", "prev": "Давайте посмотрим на график задержки.", "src": "если сравнить с прошлой", "ref": "如果跟上一次比"}
+{"id": "fragment-ru-05", "kind": "fragment", "pair": "ru->zh", "prev": "Мы обсуждали бюджет на следующий квартал.", "src": "а что касается", "ref": "至於"}
+{"id": "fragment-ru-06", "kind": "fragment", "pair": "ru->zh", "prev": "Плата греется сильнее, чем мы ожидали.", "src": "возможно, это из-за", "ref": "可能是因為"}
+{"id": "fragment-ru-07", "kind": "fragment", "pair": "ru->zh", "prev": "Клиент просит ускорить поставку образцов.", "src": "мы можем отправить в", "ref": "我們可以寄到"}
+{"id": "fragment-ru-08", "kind": "fragment", "pair": "ru->zh", "prev": "Тесты на совместимость прошли не все.", "src": "особенно с роутерами", "ref": "特別是和路由器"}
+{"id": "fragment-ru-09", "kind": "fragment", "pair": "ru->zh", "prev": "Я отправил вам письмо с логами.", "src": "там видно, что", "ref": "那裡可以看到"}
+{"id": "fragment-ru-10", "kind": "fragment", "pair": "ru->zh", "prev": "Новая версия драйвера уже на сервере.", "src": "но перед тем как", "ref": "但在那之前"}
+{"id": "fragment-ru-11", "kind": "fragment", "pair": "ru->zh", "prev": "Мощность передатчика пришлось уменьшить.", "src": "и тогда дальность", "ref": "然後距離就"}
+{"id": "fragment-ru-12", "kind": "fragment", "pair": "ru->zh", "prev": "Мы видим потерю пакетов на канале шесть.", "src": "при этом на соседних", "ref": "同時在相鄰的"}
+{"id": "fragment-ru-13", "kind": "fragment", "pair": "ru->zh", "prev": "Сертификация займёт ещё две недели.", "src": "если лаборатория не", "ref": "如果實驗室沒有"}
+{"id": "fragment-ru-14", "kind": "fragment", "pair": "ru->zh", "prev": "Вчера мы получили образцы от поставщика.", "src": "часть из них", "ref": "其中一部分"}
+{"id": "fragment-ru-15", "kind": "fragment", "pair": "ru->zh", "prev": "Нужно обновить документацию по API.", "src": "кто возьмёт на себя", "ref": "誰來負責"}
+{"id": "fragment-ru-16", "kind": "fragment", "pair": "ru->zh", "prev": "Скорость на пятом гигагерце нормальная.", "src": "а вот на двух", "ref": "但是在二點"}
+{"id": "fragment-en-17", "kind": "fragment", "pair": "en->zh", "prev": "We flashed the new firmware on the test board.", "src": "and after that the module", "ref": "然後之後模組"}
+{"id": "fragment-en-18", "kind": "fragment", "pair": "en->zh", "prev": "The vendor sent the samples last week.", "src": "but some of them", "ref": "但其中一些"}
+{"id": "fragment-en-19", "kind": "fragment", "pair": "en->zh", "prev": "Throughput dropped after the update.", "src": "because the driver", "ref": "因為驅動程式"}
+{"id": "fragment-en-20", "kind": "fragment", "pair": "en->zh", "prev": "Let's look at the latency chart.", "src": "if we compare it with the", "ref": "如果我們拿它跟"}
+{"id": "fragment-en-21", "kind": "fragment", "pair": "en->zh", "prev": "The certification lab called this morning.", "src": "they said that the", "ref": "他們說"}
+{"id": "fragment-en-22", "kind": "fragment", "pair": "en->zh", "prev": "We still have two open bugs.", "src": "one of them is in the", "ref": "其中一個在"}
+{"id": "fragment-en-23", "kind": "fragment", "pair": "en->zh", "prev": "The board runs hotter than expected.", "src": "maybe it's because of", "ref": "也許是因為"}
+{"id": "fragment-en-24", "kind": "fragment", "pair": "en->zh", "prev": "Our customer wants the release earlier.", "src": "so we could ship the", "ref": "所以我們可以出貨"}
+{"id": "idiom-ru-01", "kind": "idiom", "pair": "ru->zh", "prev": "Пользователи жалуются на вход.", "src": "Откройте веб-портал и войдите под своей учётной записью.", "ref": "打開網頁入口網站，用你的帳號登入。", "bad": ["傳送門", "瞬移"]}
+{"id": "idiom-ru-02", "kind": "idiom", "pair": "ru->zh", "prev": "Устройство перезагружается.", "src": "После обновления программного обеспечения устройство перезагрузится.", "ref": "軟體更新後，裝置會重新開機。", "bad": ["汽車", "車輛"]}
+{"id": "idiom-en-03", "kind": "idiom", "pair": "en->zh", "prev": "Users cannot log in.", "src": "Open the web portal and sign in with your account.", "ref": "打開網頁入口網站，用你的帳號登入。", "bad": ["傳送門", "瞬移"]}
+{"id": "idiom-en-04", "kind": "idiom", "pair": "en->zh", "prev": "The device reboots.", "src": "After the software update the device restarts.", "ref": "軟體更新後，裝置會重新啟動。", "bad": ["汽車", "車輛"]}
+{"id": "idiom-ru-05", "kind": "idiom", "pair": "ru->zh", "prev": "Сроки очень жёсткие.", "src": "Нам придётся работать не покладая рук.", "ref": "我們得不停地拚命工作。", "bad": ["不放下手", "手不放"]}
+{"id": "idiom-ru-06", "kind": "idiom", "pair": "ru->zh", "prev": "Проект почти закрыт.", "src": "Осталось довести дело до ума.", "ref": "剩下的就是把事情做到完善。", "bad": ["頭腦", "智慧"]}
+{"id": "idiom-ru-07", "kind": "idiom", "pair": "ru->zh", "prev": "Это сложный вопрос.", "src": "Тут без поллитры не разберёшься.", "ref": "這事沒那麼容易搞懂。", "bad": ["半公升", "伏特加"]}
+{"id": "idiom-ru-08", "kind": "idiom", "pair": "ru->zh", "prev": "Мы хотели выпустить версию в пятницу.", "src": "Но всё пошло коту под хвост.", "ref": "但一切都泡湯了。", "bad": ["貓", "尾巴"]}
+{"id": "idiom-ru-09", "kind": "idiom", "pair": "ru->zh", "prev": "Клиент сначала был против.", "src": "Но в итоге он сменил гнев на милость.", "ref": "但最後他態度軟化了。", "bad": ["憤怒換成", "仁慈"]}
+{"id": "idiom-en-10", "kind": "idiom", "pair": "en->zh", "prev": "The deadline is tomorrow.", "src": "Let's not reinvent the wheel and reuse the old driver.", "ref": "我們別重複造輪子，直接沿用舊的驅動程式。", "bad": ["發明輪子", "車輪"]}
+{"id": "idiom-en-11", "kind": "idiom", "pair": "en->zh", "prev": "We found the cause.", "src": "The bug was a red herring; the real issue is the cable.", "ref": "那個錯誤是假線索，真正的問題是線材。", "bad": ["紅鯡魚", "鯡魚"]}
+{"id": "idiom-en-12", "kind": "idiom", "pair": "en->zh", "prev": "Testing went well.", "src": "The new antenna is a game changer for range.", "ref": "新天線讓傳輸距離有了突破性的改變。", "bad": ["遊戲"]}
+{"id": "idiom-ru-13", "kind": "idiom", "pair": "ru->zh", "prev": "Нужно проверить связь.", "src": "Пингуйте шлюз и посмотрите на ответ.", "ref": "對閘道器做 ping，看看回應。", "bad": ["水閘", "船閘"]}
+{"id": "idiom-ru-14", "kind": "idiom", "pair": "ru->zh", "prev": "Мы меняем поставщика.", "src": "Старый поставщик нас подвёл.", "ref": "舊供應商讓我們失望了。", "bad": ["帶到", "領著"]}
+{"id": "idiom-en-15", "kind": "idiom", "pair": "en->zh", "prev": "Let's check the coverage.", "src": "The access point drops clients at the edge of the cell.", "ref": "無線基地台在覆蓋區邊緣會把用戶端斷線。", "bad": ["細胞", "牢房"]}
+{"id": "idiom-ru-16", "kind": "idiom", "pair": "ru->zh", "prev": "Проблема с питанием.", "src": "Блок питания не держит нагрузку.", "ref": "電源供應器撐不住負載。", "bad": ["食物", "營養"]}
+{"id": "idiom-en-17", "kind": "idiom", "pair": "en->zh", "prev": "Power issue again.", "src": "The power supply cannot hold the load.", "ref": "電源供應器撐不住負載。", "bad": ["食物", "營養"]}
+{"id": "idiom-ru-18", "kind": "idiom", "pair": "ru->zh", "prev": "Новая сборка готова.", "src": "Сборка упала на этапе линковки.", "ref": "組建在連結階段失敗了。", "bad": ["跌倒", "摔"]}
+{"id": "number-ru-01", "kind": "number", "pair": "ru->zh", "prev": "Частота у нас два и", "src": "четыре гигагерца, а не пять.", "ref": "四 GHz，不是五。"}
+{"id": "number-ru-02", "kind": "number", "pair": "ru->zh", "prev": "Задержка выросла до ста", "src": "двадцати миллисекунд.", "ref": "二十毫秒。"}
+{"id": "number-en-03", "kind": "number", "pair": "en->zh", "prev": "The latency went up to one hundred", "src": "and twenty milliseconds.", "ref": "二十毫秒。"}
+{"id": "number-ru-04", "kind": "number", "pair": "ru->zh", "prev": "Мы купили три тысячи", "src": "модулей по цене восемь долларов.", "ref": "個模組，單價八美元。"}
+{"id": "number-en-05", "kind": "number", "pair": "en->zh", "prev": "We ordered three thousand", "src": "modules at eight dollars each.", "ref": "個模組，每個八美元。"}
+{"id": "number-ru-06", "kind": "number", "pair": "ru->zh", "prev": "Мощность двадцать", "src": "децибел на милливатт.", "ref": "dBm。"}
+{"id": "complete-ru-01", "kind": "complete", "pair": "ru->zh", "prev": "Мы проверили новую прошивку.", "src": "Модуль работает стабильно.", "ref": "模組運作穩定。"}
+{"id": "complete-ru-02", "kind": "complete", "pair": "ru->zh", "prev": "Совещание начинается.", "src": "Давайте начнём с отчёта по тестам.", "ref": "我們從測試報告開始吧。"}
+{"id": "complete-ru-03", "kind": "complete", "pair": "ru->zh", "prev": "Есть вопросы?", "src": "Да, когда будут образцы?", "ref": "有，樣品什麼時候到？"}
+{"id": "complete-ru-04", "kind": "complete", "pair": "ru->zh", "prev": "Мы закончили.", "src": "Спасибо всем за работу!", "ref": "謝謝大家的努力！"}
+{"id": "complete-en-05", "kind": "complete", "pair": "en->zh", "prev": "We tested the new firmware.", "src": "The module works fine.", "ref": "模組運作正常。"}
+{"id": "complete-en-06", "kind": "complete", "pair": "en->zh", "prev": "Any questions?", "src": "Yes, when will the samples arrive?", "ref": "有，樣品什麼時候到？"}
+{"id": "complete-ru-07", "kind": "complete", "pair": "ru->zh", "prev": "Роутер перезагрузился.", "src": "Теперь всё работает", "ref": "現在一切正常"}
+{"id": "complete-en-08", "kind": "complete", "pair": "en->zh", "prev": "The router rebooted.", "src": "Now everything works", "ref": "現在一切正常"}

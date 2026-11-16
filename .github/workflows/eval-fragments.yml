@@ -52,6 +52,7 @@ jobs:
         run: tlwu-setup --hymt --models-dir "$TLWU_MODELS"
       - name: Baseline / context / mark (CPU)
         run: |
+          set -o pipefail
           mkdir -p out
           python -m tlwu_eval --fragment-cases eval/fragment_cases.jsonl --device cpu --models-dir "$TLWU_MODELS" --out out/fragments.json | tee out/report.md
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"

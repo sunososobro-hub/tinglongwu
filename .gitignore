@@ -22,6 +22,7 @@ dist/
 .scan_report.md
 docs/_*_draft.md
 *.jsonl
+!eval/fragment_cases.jsonl
 *.vtt
 *.srt
 *.gguf
