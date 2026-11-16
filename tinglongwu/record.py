@@ -28,14 +28,18 @@ class Recorder:
         self._f = open(self.dir / "segments.jsonl", "a", encoding="utf-8")
         self._lock = threading.Lock()  # Ctrl+C / Stop: close() can run while the MT thread is in line()
         self._segs: list[tuple] = []  # (number, audio, start s, end s) a later line may still need, oldest first
+        self._done = 0  # newest segment number an earlier line already took
 
     def add(self, no: int, audio, start: float, end: float) -> None:
         self._segs.append((no, np.asarray(audio, dtype=np.float32), max(0.0, start), end))
 
     def take(self, first: int, last: int):
-        """(audio, start, end) of a line holding text of segments first..last; keeps `last` for the next line."""
-        took = [s for s in self._segs if first <= s[0] <= last]
+        """(audio, start, end) of a line holding text of segments first..last; keeps `last` for the next line.
+        #1252: a segment older than `first` that no earlier line took (its whole text was the VAD overlap the merger
+        de-duplicated) goes into this line too, so its audio still maps to a line instead of being thrown away."""
+        took = [s for s in self._segs if (first <= s[0] or s[0] > self._done) and s[0] <= last]
         self._segs = [s for s in self._segs if s[0] >= last]
+        self._done = max(self._done, last)
         return (np.concatenate([s[1] for s in took]), took[0][2], took[-1][3]) if took else None
 
     def line(self, clip, r) -> None:

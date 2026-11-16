@@ -171,7 +171,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     pause = float(getattr(segmenter, "last_pause", 0.0))
                     with bl_lock:
                         queued_s[0] += len(seg) / SAMPLE_RATE
-                    if not put((seg, consumed[0] / SAMPLE_RATE, getattr(segmenter, "epoch", 1) - 1,
+                    # #1252: the segment's own end on the audio clock (a pause cut ends before the input read so far)
+                    end_s = (consumed[0] - int(getattr(segmenter, "last_trail", 0) or 0)) / SAMPLE_RATE
+                    if not put((seg, end_s, getattr(segmenter, "epoch", 1) - 1,
                                 bool(getattr(segmenter, "last_forced", False)), pause,
                                 (frame_t[0] - pause, time.monotonic()))):  # (end of speech, cut) for on_record
                         return

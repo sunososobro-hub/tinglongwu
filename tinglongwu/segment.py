@@ -40,6 +40,9 @@ class Segmenter:
         # how the segment just yielded was cut: forced (chunk limit, speech goes on) or at a pause; and the
         # silence (s) seen after its speech. Read by the consumer right after each yield.
         self.last_forced, self.last_pause = False, 0.0
+        # #1252: samples of input after the end of the segment just yielded (a pause cut ends `overlap` after the
+        # speech, before the buffer end). Its audio ends this long before the input read so far; 0 = at the end.
+        self.last_trail = 0
         self.live: tuple[int, np.ndarray] | None = None
         # #716: on_quiet(seconds) is called (VAD mode) after each step that sees no new speech since the newest
         # segment, with the silence after that segment's speech so far. A forced cut or a held fragment followed by
@@ -70,7 +73,7 @@ class Segmenter:
                 yield out
                 fresh = 0
         self.live = None
-        self.last_forced, self.last_pause = False, 0.0
+        self.last_forced, self.last_pause, self.last_trail = False, 0.0, 0
         tail = self._flush(buf, fresh)
         if tail is not None:
             yield tail
@@ -78,7 +81,7 @@ class Segmenter:
     def _step(self, buf):
         if not self.use_vad:
             if len(buf) >= self.chunk:
-                self.last_forced, self.last_pause = True, 0.0
+                self.last_forced, self.last_pause, self.last_trail = True, 0.0, 0
                 return buf, buf[-self.ov:]
             self.live = (self.epoch, buf[-self.chunk:])
             return None, buf
@@ -90,12 +93,14 @@ class Segmenter:
         if len(buf) - e >= self.min_sil:  # pause after speech: cut here
             self.last_forced, self.last_pause = False, (len(buf) - e) / SR + self.pad
             self._quiet = self.last_pause
+            self.last_trail = len(buf) - min(len(buf), e + self.ov)
             return buf[max(0, s - self.ov): min(len(buf), e + self.ov)], buf[e:]
         if len(buf) - s >= self.chunk:  # too long without a pause: force cut, keep overlap
             # #716: speech that already ended inside the cut (silence shorter than min_silence) reports that silence
             gap = len(buf) - e
             self.last_forced, self.last_pause = True, (gap / SR + self.pad if gap > 0 else 0.0)
             self._quiet = self.last_pause if gap > 0 else None
+            self.last_trail = 0
             return buf[s:], buf[-self.ov:]
         self._quiet = None  # speech since the newest segment
         keep = buf[max(0, s - self.ov):]  # drop leading silence
