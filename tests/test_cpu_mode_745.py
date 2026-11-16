@@ -191,7 +191,10 @@ def test_physical_cores_never_above_logical(monkeypatch):
     monkeypatch.setattr(psutil, "cpu_count", lambda logical=True: 8)
     assert physical_cores(16) == 8 and physical_cores(4) == 4
     monkeypatch.setattr(psutil, "cpu_count", lambda logical=True: None)
-    assert physical_cores(6) == 6
+    monkeypatch.setattr("tinglongwu.hwprobe._cpuinfo_cores", lambda path="": None)
+    assert physical_cores(6) == 6  # nothing knows the core count: the logical count
+    monkeypatch.setattr("tinglongwu.hwprobe._cpuinfo_cores", lambda path="": 3)
+    assert physical_cores(6) == 3
 
 
 def test_cpuinfo_core_count_without_psutil(tmp_path):
