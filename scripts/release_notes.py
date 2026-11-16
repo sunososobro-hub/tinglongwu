@@ -398,9 +398,18 @@ def bump_exempt(files: list[dict], whats_new_text: str | None = None) -> tuple[b
         return False, f"`## {tag}` section is empty or TODO"
     if whats_new_text is None:
         return False, f"{WHATS_NEW_FILE} at the PR head not read"
-    head_re = re.compile(rf"^##[ \t]+{re.escape(tag)}[ \t]*$")  # same heading form whats_new_section accepts
-    if sum(1 for x in whats_new_text.split("\n") if head_re.match(x)) != 1:
-        return False, f"{WHATS_NEW_FILE} at the PR head must hold exactly one `## {tag}` heading (the added one)"
+    if any("<!--" in x or "-->" in x for x in added):
+        return False, f"{WHATS_NEW_FILE} section may not open or close an HTML comment"
+    # Visibility, checked directly: the head document minus the added block (= the base) must have no readable
+    # `## tag` section, and the head document must read exactly the added one. Then the added block is the section
+    # the release reads, wherever comments or odd heading spellings sit in the rest of the file.
+    lines, n = whats_new_text.split("\n"), len(added)
+    at = [i for i in range(len(lines) - n + 1) if lines[i:i + n] == added]
+    if len(at) != 1:
+        return False, f"added block not found exactly once in {WHATS_NEW_FILE} at the PR head"
+    base = "\n".join(lines[:at[0]] + lines[at[0] + n:])
+    if whats_new_section(base, tag) is not None:
+        return False, f"{WHATS_NEW_FILE} already has a readable `## {tag}` section"
     if whats_new_section(whats_new_text, tag) != section:
         return False, f"`## {tag}` is not the section the release reads from {WHATS_NEW_FILE} (inside a comment?)"
     return True, f"version line + {WHATS_NEW_FILE} `## {tag}` section"

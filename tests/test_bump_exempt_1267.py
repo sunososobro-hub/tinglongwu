@@ -164,7 +164,7 @@ def test_copy_in_comment_masked_by_existing_visible_section_needs_opus():
                 "+## v0.4.3\n+- Fixed recording.\n+\n -->\n")
     head = INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->") + "## v0.4.3\n- Fixed recording.\n"
     ok, why = rn.bump_exempt([INIT, hidden], head)
-    assert not ok and "exactly one" in why, why
+    assert not ok and "exactly once" in why, why  # two identical blocks: cannot tell which one was added
 
 
 def test_copy_in_comment_masked_by_a_spaced_visible_heading_needs_opus():
@@ -173,4 +173,18 @@ def test_copy_in_comment_masked_by_a_spaced_visible_heading_needs_opus():
     for visible in ("##  v0.4.3", "##\tv0.4.3", "## v0.4.3 "):
         head = INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->") + f"{visible}\n- Fixed recording.\n"
         ok, why = rn.bump_exempt([INIT, hidden], head)
-        assert not ok and "exactly one" in why, (visible, why)
+        assert not ok and "already has" in why, (visible, why)
+
+
+def test_copy_in_comment_masked_by_an_inline_comment_heading_needs_opus():
+    hidden = wn("@@ -3,3 +3,6 @@\n <!-- newest first; example:\n ## v1.2.3\n - Subtitles appear faster.\n"
+                "+## v0.4.3\n+- Fixed recording.\n+\n -->\n")
+    head = (INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->")
+            + "## <!-- old -->v0.4.3\n- Fixed recording.\n")
+    ok, why = rn.bump_exempt([INIT, hidden], head)
+    assert not ok and "already has" in why, why
+
+
+def test_added_block_may_not_touch_comment_markers():
+    bad = wn("@@ -10,2 +10,4 @@\n \n+## v0.4.3\n+- Fixed recording. -->\n")
+    rejected([INIT, bad], "HTML comment")
