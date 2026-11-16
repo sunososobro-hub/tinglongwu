@@ -1,7 +1,7 @@
 """#1163: My language / Translate to offers ja, ko, es, fr, de, th, vi, id end to end."""
 import pytest
 
-from tinglongwu import hymt, langs
+from tinglongwu import hymt
 from tinglongwu.gui import core, pack_on_demand as pod
 
 NEW = ["ja", "ko", "es", "fr", "de", "th", "vi", "id"]
