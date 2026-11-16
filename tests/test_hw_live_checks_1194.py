@@ -172,3 +172,16 @@ def test_played_at_kills_the_player_on_timeout(tmp_path, monkeypatch):
         hl.played_at(p)
     assert p.poll() is not None
 
+
+
+def test_kill_tree_kills_the_grandchild_too(tmp_path):
+    code = ("import subprocess,sys,time;"
+            "c=subprocess.Popen([sys.executable,'-c','import time;time.sleep(600)']);"
+            "print(c.pid,flush=True);time.sleep(600)")
+    p = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+    gpid = int(p.stdout.readline())
+    hl.kill_tree(p)
+    psutil = pytest.importorskip("psutil")
+    time.sleep(0.5)
+    assert not psutil.pid_exists(gpid) or psutil.Process(gpid).status() == psutil.STATUS_ZOMBIE
+    p.stdout.close()

@@ -267,3 +267,9 @@ def test_finish_writes_the_manifest_atomically(tmp_path):
     _load().finish(tmp_path, rows, "rev")
     assert [json.loads(x) for x in (tmp_path / "manifest.jsonl").read_text("utf-8").splitlines()] == rows
     assert not (tmp_path / "manifest.jsonl.tmp").exists()
+
+
+def test_finish_leaves_no_manifest_when_a_row_is_not_serializable(tmp_path):
+    with pytest.raises(TypeError):
+        _load().finish(tmp_path, [{"id": "a"}, {"id": "b", "x": object()}], "rev")
+    assert not (tmp_path / "manifest.jsonl").exists()

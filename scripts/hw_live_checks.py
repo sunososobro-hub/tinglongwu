@@ -218,8 +218,7 @@ class Child:
         try:
             self.p.wait(timeout)
         except subprocess.TimeoutExpired:
-            self.p.kill()
-            self.p.wait()
+            kill_tree(self.p)
         self.reader.join(10)
 
     def close(self) -> None:
@@ -229,8 +228,7 @@ class Child:
             try:
                 self.p.wait(10)
             except subprocess.TimeoutExpired:
-                self.p.kill()
-                self.p.wait()
+                kill_tree(self.p)
         self.reader.join(10)
         self.log.close()
 
@@ -255,10 +253,25 @@ def play_child(wav: Path, device: str | None) -> subprocess.Popen:
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
 
 
-def kill_proc(p: subprocess.Popen) -> None:
+def kill_tree(p: subprocess.Popen) -> None:
+    """Kill p and everything it started (the verifier's tlwu --mic), then reap p (#1203 review)."""
     if p.poll() is None:
+        try:
+            import psutil
+
+            for c in psutil.Process(p.pid).children(recursive=True):
+                try:
+                    c.kill()
+                except psutil.Error:
+                    pass
+        except Exception:  # psutil missing or p already gone: fall through to the plain kill
+            pass
         p.kill()
     p.wait()
+
+
+def kill_proc(p: subprocess.Popen) -> None:
+    kill_tree(p)
     if p.stdout:
         p.stdout.close()
 
