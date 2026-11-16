@@ -318,17 +318,40 @@ class _Header extends StatelessWidget {
             ]),
             const SizedBox(height: 6),
             if (conversationActive(pipeline))
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
+              PopupMenuButton<String>(
+                key: const Key('pairMenu'),
+                tooltip: '我的語言 / 對方語言',
+                onSelected: (v) {
+                  final c = v.substring(2);
+                  if (v.startsWith('m:')) pipeline.setMineLang(c);
+                  if (v.startsWith('p:')) pipeline.setPartnerLang(c);
+                  if (v == 'a:1') pipeline.setAutoDirection(!pipeline.conversation.auto);
+                },
+                itemBuilder: (_) => [
+                  for (final c in TargetLanguage.spoken)
+                    PopupMenuItem(
+                        value: 'm:$c', child: Text('我的語言：${TargetLanguage.options[c]}')),
+                  const PopupMenuDivider(),
+                  for (final c in TargetLanguage.options.keys)
+                    if (c != pipeline.conversation.mineLang)
+                      PopupMenuItem(value: 'p:$c', child: Text('對方語言：${TargetLanguage.options[c]}')),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                      value: 'a:1',
+                      child: Text(pipeline.conversation.auto ? '改為手動切換說話人' : '改為自動判斷說話人')),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                      '對話模式  ${pipeline.conversation.pairLabel}  · '
+                      '${voiceStatusLabel(installed: pipeline.ttsInstalled, speaking: pipeline.speaking)}',
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
-                child: Text(
-                    '對話模式  ${pipeline.conversation.pairLabel}  · '
-                    '${voiceStatusLabel(installed: pipeline.ttsInstalled, speaking: pipeline.speaking)}',
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
               )
             else
               PopupMenuButton<String>(
@@ -415,7 +438,7 @@ class _Footer extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: conversationActive(pipeline)
+              child: conversationActive(pipeline) && !pipeline.conversation.auto
                   ? Align(alignment: Alignment.centerRight, child: _SideButton(pipeline: pipeline))
                   : const SizedBox(),
             ),

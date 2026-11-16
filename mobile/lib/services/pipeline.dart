@@ -157,6 +157,23 @@ class Pipeline extends ChangeNotifier {
     }
   }
 
+  /// Two-way mode: my language / the partner's language (remembered).
+  void setMineLang(String code) => _setConversation(conversation.copyWith(mineLang: code));
+  void setPartnerLang(String code) {
+    final before = conversation.foreign;
+    _setConversation(conversation.copyWith(foreign: code));
+    if (conversation.foreign == before) return;
+    // The read-aloud voice follows the partner's language: drop the old one, load on demand.
+    _tts?.dispose();
+    _tts = null;
+    _ttsLoading = null;
+    ttsInstalled = false;
+    if (conversation.enabled && _tr != null) _ensureTts();
+  }
+
+  /// Direction picked from the detected language (true) or the manual side button (false).
+  void setAutoDirection(bool on) => _setConversation(conversation.copyWith(auto: on));
+
   /// One tap: the other side is talking now.
   void switchSpeaker() => _setConversation(conversation.switched());
 
@@ -167,7 +184,7 @@ class Pipeline extends ChangeNotifier {
     final store = _conversationStore; // null until start() (and AppLog) ran
     if (store == null) return notifyListeners();
     store.save(c);
-    _log.i('conversation ${c.enabled ? "on" : "off"} side=${c.side.name} foreign=${c.foreign}');
+    _log.i('conversation ${c.enabled ? "on" : "off"} side=${c.side.name} foreign=${c.foreign} mine=${c.mineLang} auto=${c.auto}');
     notifyListeners();
   }
 
@@ -573,7 +590,7 @@ class Pipeline extends ChangeNotifier {
     _trGate.started(nowMs: now, text: text);
     _draftTrStop = false;
     try {
-      final r = await tr.translate(text, src: lang, tgt: activeTarget, shouldStop: () => _draftTrStop);
+      final r = await tr.translate(text, src: lang, tgt: _activeConversation.route(lang, listenTarget: target).tgt, shouldStop: () => _draftTrStop);
       if (!_draftTrStop && !_disposed && !_draft.isStale(seg) && r.zh.trim().isNotEmpty) {
         draftTr = r.zh.trim();
         _draftTrSeg = seg;

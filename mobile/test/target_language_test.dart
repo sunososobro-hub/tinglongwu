@@ -56,4 +56,15 @@ void main() {
       expect(TargetLanguageStore(path).load(), 'zh');
     });
   });
+
+  test('menu offers ja/ko/es/fr/de/th/vi/id in their own language; non-zh prompts use English card', () {
+    expect(TargetLanguage.options['ja'], '日本語');
+    expect(TargetLanguage.options['ko'], '한국어');
+    for (final c in ['ja', 'ko', 'es', 'fr', 'de', 'th', 'vi', 'id']) {
+      expect(TargetLanguage.normalize(c), c);
+      expect(PromptBuilder.userMessage('hello', src: 'en', tgt: c), contains(PromptBuilder.enNames[c]!));
+    }
+    expect(TargetLanguage.normalize('ru'), 'zh');
+    expect(passthrough(' こんにちは ', 'ja', tgt: 'ja'), 'こんにちは');
+  });
 }

@@ -7,7 +7,19 @@ class TargetLanguage {
   static const options = <String, String>{
     'zh': '繁體中文',
     'en': 'English',
+    'ja': '日本語',
+    'ko': '한국어',
+    'es': 'Español',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'th': 'ไทย',
+    'vi': 'Tiếng Việt',
+    'id': 'Bahasa Indonesia',
   };
+
+  /// Languages the ASR (SenseVoice) can detect, so the only ones usable as "my language" in
+  /// two-way conversation mode.
+  static const spoken = <String>['zh', 'en', 'ja', 'ko'];
   static const fallback = 'zh';
 
   /// Selector text, read as a target: "翻成：繁體中文".

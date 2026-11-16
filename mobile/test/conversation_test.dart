@@ -21,7 +21,7 @@ void main() {
     });
 
     test('my side: zh -> English, spoken; their side: en -> zh, shown only', () {
-      const on = Conversation(enabled: true, side: Speaker.me);
+      const on = Conversation(enabled: true, side: Speaker.me, auto: false);
       expect(
         on.route('zh', listenTarget: 'zh'),
         const ConversationRoute(src: 'zh', tgt: 'en', speaker: Speaker.me, speak: true),
@@ -40,12 +40,12 @@ void main() {
     });
 
     test('my line already in the foreign language is not spoken again', () {
-      const on = Conversation(enabled: true, side: Speaker.me);
+      const on = Conversation(enabled: true, side: Speaker.me, auto: false);
       expect(on.route('en', listenTarget: 'zh').speak, isFalse);
     });
 
     test('merge key separates directions', () {
-      const on = Conversation(enabled: true, side: Speaker.me);
+      const on = Conversation(enabled: true, side: Speaker.me, auto: false);
       expect(
         on.route('zh', listenTarget: 'zh').mergeKey,
         isNot(on.switched().route('zh', listenTarget: 'zh').mergeKey),
@@ -59,7 +59,7 @@ void main() {
     });
 
     test('format/parse round trip; bad input = defaults', () {
-      const c = Conversation(enabled: true, side: Speaker.me);
+      const c = Conversation(enabled: true, side: Speaker.me, auto: false);
       expect(Conversation.parse(c.format()), c);
       expect(Conversation.parse(null), const Conversation());
       expect(Conversation.parse('enabled=yes\nside=x\nforeign=zz'), const Conversation());
@@ -70,14 +70,44 @@ void main() {
       try {
         final store = ConversationStore('${dir.path}/conversation.txt');
         expect(store.load(), const Conversation());
-        store.save(const Conversation(enabled: true, side: Speaker.me));
+        store.save(const Conversation(enabled: true, side: Speaker.me, auto: false));
         expect(
           ConversationStore('${dir.path}/conversation.txt').load(),
-          const Conversation(enabled: true, side: Speaker.me),
+          const Conversation(enabled: true, side: Speaker.me, auto: false),
         );
       } finally {
         dir.deleteSync(recursive: true);
       }
+    });
+  });
+
+  group('Two-way auto direction', () {
+    test('pure decision: my language -> partner, else -> mine; yue is zh', () {
+      expect(twoWayDirection('zh', mine: 'zh', partner: 'ja').tgt, 'ja');
+      expect(twoWayDirection('yue', mine: 'zh', partner: 'ja').tgt, 'ja');
+      expect(twoWayDirection('ja', mine: 'zh', partner: 'ja').tgt, 'zh');
+      expect(twoWayDirection('en', mine: 'zh', partner: 'ja').tgt, 'zh');
+      expect(twoWayDirection('en', mine: 'en', partner: 'ko').tgt, 'ko');
+      expect(twoWayDirection('yue', mine: 'en', partner: 'ko').tgt, 'en');
+      expect(twoWayDirection('yue', mine: 'zh', partner: 'ja').src, 'yue');
+    });
+
+    test('route follows detected language and speaks only my lines', () {
+      const c = Conversation(enabled: true, foreign: 'ja');
+      expect(c.route('zh', listenTarget: 'en').tgt, 'ja');
+      expect(c.route('zh', listenTarget: 'en').speak, isTrue);
+      expect(c.route('ja', listenTarget: 'en').tgt, 'zh');
+      expect(c.route('ja', listenTarget: 'en').speak, isFalse);
+      expect(c.route('ja', listenTarget: 'en').speaker, Speaker.them);
+      expect(const Conversation().route('ja', listenTarget: 'en').tgt, 'en'); // one-way default
+    });
+
+    test('settings persist and never collide', () {
+      const c = Conversation(enabled: true, foreign: 'ko', mineLang: 'en');
+      expect(Conversation.parse(c.format()), c);
+      expect(Conversation.parse('enabled=1\nmine=en\nforeign=en').foreign, isNot('en'));
+      expect(Conversation.normalizeMine('fr'), 'zh');
+      expect(Conversation.parse('enabled=1\nforeign=es').auto, isTrue);
     });
   });
 
@@ -125,6 +155,9 @@ void main() {
       await t.tap(find.byKey(const Key('conversationToggle')));
       await t.pump();
       expect(p.conversation.enabled, isTrue);
+      expect(find.byKey(const Key('sideButton')), findsNothing); // auto direction by default
+      p.setAutoDirection(false);
+      await t.pump();
       // No voice pack in the test: the pill says my lines are text only (#558 part 2).
       expect(find.text('對話模式  中文 ⇄ English  · 未安裝語音包，只顯示文字'), findsOneWidget);
       expect(find.text('對方在說（English）'), findsOneWidget);
