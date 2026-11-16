@@ -141,3 +141,54 @@ def test_eval_cpu_mode_asr_settings():
     # 2 cores: policy size base; an auto-picked small is lowered, an explicit --model small is kept
     assert cpu_mode_asr(on, "cpu", "small", cores=2, ram_gb=16) == ("base", 1, 1)
     assert cpu_mode_asr(SimpleNamespace(cpu_mode=True, model="small"), "cpu", "small", cores=2, ram_gb=16)[0] == "small"
+
+
+def _mt_rep(pair_rows):
+    """{pair: [(id, ref_mt, mt), ...]} -> a report with per-clip MT text."""
+    return {"languages": [{"pair": p, "chrf": None, "error_rate": 0.0,
+                           "clips": [{"id": i, "ref_mt": r, "mt": h, "latency_s": 1.0} for i, r, h in rows]}
+                          for p, rows in pair_rows.items()]}
+
+
+REFS = [f"line {k} says something quite different {k * 7}" for k in range(20)]
+
+
+def test_chrf_drop_ci_identical_outputs_is_zero():
+    rows = [(f"c{k}", r, r) for k, r in enumerate(REFS)]
+    ci = ab.chrf_drop_ci(_mt_rep({"en->zh": rows}), _mt_rep({"en->zh": rows}), n=200)
+    assert ci["drop"] == 0.0 and ci["lo"] == 0.0 and ci["hi"] == 0.0 and ci["n_clips"] == 20
+    assert "inside the target" in ab.ci_line(ci)
+
+
+def test_chrf_drop_ci_brackets_the_drop_and_flags_noise():
+    a = [(f"c{k}", r, r) for k, r in enumerate(REFS)]
+    # B garbles 2 of 20 clips: a real drop, but carried by 2 clips -> wide interval
+    b = [(f"c{k}", r, "zzz qqq" if k in (3, 11) else r) for k, r in enumerate(REFS)]
+    ci = ab.chrf_drop_ci(_mt_rep({"en->zh": a}), _mt_rep({"en->zh": b}), n=500, seed=1)
+    assert ci["drop"] > 1.0
+    assert ci["lo"] <= ci["drop"] <= ci["hi"]
+    assert ci["lo"] < 1.0 < ci["hi"]  # 2 changed clips out of 20: not separable from the 1.0 limit
+    assert "not separable" in ab.ci_line(ci)
+    # same draw -> same interval (seeded)
+    assert ab.chrf_drop_ci(_mt_rep({"en->zh": a}), _mt_rep({"en->zh": b}), n=500, seed=1) == ci
+
+
+def test_chrf_drop_ci_over_target_when_every_clip_drops():
+    a = [(f"c{k}", r, r) for k, r in enumerate(REFS)]
+    b = [(f"c{k}", r, r[: len(r) // 2]) for k, r in enumerate(REFS)]
+    ci = ab.chrf_drop_ci(_mt_rep({"en->zh": a, "zh->en": a}), _mt_rep({"en->zh": b, "zh->en": b}), n=300)
+    assert ci["lo"] > 1.0 and "over the target" in ab.ci_line(ci) and ci["n_clips"] == 40
+
+
+def test_chrf_drop_ci_none_without_clip_text():
+    assert ab.chrf_drop_ci(rep(40.0, 0.05, [1.0]), rep(39.0, 0.05, [1.0])) is None
+    assert "n/a" in ab.ci_line(None)
+
+
+def test_main_prints_the_interval(tmp_path, capsys):
+    a = [(f"c{k}", r, r) for k, r in enumerate(REFS)]
+    ra, rb = tmp_path / "base.json", tmp_path / "cpu.json"
+    ra.write_text(json.dumps(_mt_rep({"en->zh": a})))
+    rb.write_text(json.dumps(_mt_rep({"en->zh": a})))
+    assert ab.main([str(ra), str(rb)]) == 0
+    assert "paired bootstrap 95% interval [0.00, 0.00] over 20 clips" in capsys.readouterr().out

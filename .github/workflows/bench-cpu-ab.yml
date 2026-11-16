@@ -10,6 +10,7 @@ on:
       - scripts/bench/cpu_mode_ab.py
       - scripts/bench/mt_cpu_threads.py
       - .github/workflows/bench-cpu-ab.yml
+      - eval/matrix_pins.json
   workflow_dispatch:
 
 permissions: {}
@@ -95,6 +96,22 @@ jobs:
           python scripts/bench/cpu_mode_ab.py --run --data eval_data/smoke --out-dir ab \
             --base-args "--model $WHISPER --engine hymt2-cpu --models-dir $TLWU_MODELS" \
             --cpu-args "--engine hymt2-cpu --cpu-mode --models-dir $TLWU_MODELS" | tee ab/table.md
+      # #745: the chrF limit re-measured on a larger set: the #642 matrix clips, 20 per pair (80 lines, not 20)
+      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: eval_data/matrix_pins
+          key: eval-langs-data-v1-${{ hashFiles('eval/matrix_pins.json', 'scripts/bench/make_ci_smoke.py') }}
+      - name: A/B on 20 clips per pair (#745 chrF re-measure)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p ab/p20
+          if [ ! -f eval_data/matrix_pins/manifest.jsonl ]; then
+            python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out eval_data/matrix_pins; fi
+          SET="--pairs en->zh,ja->zh,ru->zh,zh->en --clips 20"
+          python scripts/bench/cpu_mode_ab.py --run --data eval_data/matrix_pins --out-dir ab/p20 \
+            --base-args "--model $WHISPER --engine hymt2-cpu --models-dir $TLWU_MODELS $SET" \
+            --cpu-args "--engine hymt2-cpu --cpu-mode --models-dir $TLWU_MODELS $SET" | tee ab/table_p20.md
       - name: Summary
         if: always()
         run: |
@@ -105,6 +122,9 @@ jobs:
             echo "Runner: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) vCPU, $(free -g | awk '/^Mem:/{print $2}') GB RAM, commit ${GITHUB_SHA::7}"
             echo
             cat ab/table.md 2>/dev/null || echo "no table"
+            echo
+            echo "### A/B on 20 clips per pair (#745, eval/matrix_pins.json)"
+            cat ab/table_p20.md 2>/dev/null || echo "no table"
             echo
             echo "### MT threads under live Whisper load (#1198)"
             cat ab/mt_threads.md 2>/dev/null || echo "no table"
