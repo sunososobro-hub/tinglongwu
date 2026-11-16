@@ -9,7 +9,7 @@ import 'package:mobile/logic/pack_status.dart';
 import 'package:mobile/services/pipeline.dart';
 import 'package:mobile/ui/subtitle_screen.dart';
 
-const _mb = 1 << 20;
+const _mb = 1000000;
 
 VoicePack _pack(String id, String lang, int size, {String? kind}) => VoicePack.fromJson({
       'id': id,
@@ -104,7 +104,8 @@ void main() {
 
     test('packSize', () {
       expect(packSize(112 * _mb), '112 MB');
-      expect(packSize(3 << 29), '1.50 GB');
+      expect(packSize(1500000000), '1.50 GB');
+      expect(packSize(117833721), '118 MB'); // the shipped English voice
     });
   });
 

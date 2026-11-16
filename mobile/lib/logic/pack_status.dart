@@ -95,7 +95,7 @@ class LangPackStatus {
 
   String get _name => TargetLanguage.options[lang] ?? lang;
 
-  /// Button text, '' when there is nothing to download: 「下載語音包 (112 MB)」.
+  /// Button text, '' when there is nothing to download: 「下載語音包 (118 MB)」.
   String get downloadLabel {
     final d = toDownload;
     if (d.isEmpty) return '';
@@ -117,7 +117,8 @@ class LangPackStatus {
       };
 }
 
-/// "112 MB" / "1.30 GB" (binary units, as on the Import screen).
-String packSize(int bytes) => bytes >= (1 << 30)
-    ? '${(bytes / (1 << 30)).toStringAsFixed(2)} GB'
-    : '${(bytes / (1 << 20)).toStringAsFixed(0)} MB';
+/// "118 MB" / "1.30 GB": decimal units, the numbers the README and the browser's download
+/// show for the same zip (tlwu-voice-en.zip = 118 MB).
+String packSize(int bytes) => bytes >= 1000000000
+    ? '${(bytes / 1e9).toStringAsFixed(2)} GB'
+    : '${(bytes / 1e6).toStringAsFixed(0)} MB';

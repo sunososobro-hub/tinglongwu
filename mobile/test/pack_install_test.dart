@@ -8,7 +8,7 @@ import 'package:mobile/services/pipeline.dart';
 import 'package:mobile/ui/pack_install_screen.dart';
 import 'package:mobile/ui/subtitle_screen.dart';
 
-const _mb = 1 << 20;
+const _mb = 1000000;
 
 VoicePack _pack(String id, String lang, int size, {String? kind}) => VoicePack.fromJson({
       'id': id,

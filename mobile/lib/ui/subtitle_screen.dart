@@ -795,7 +795,7 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline, [VoidCallback
   );
 }
 
-/// 「下載語音包 (112 MB)」 for the chosen 對方語言, '' when nothing is missing.
+/// 「下載語音包 (118 MB)」 for the chosen 對方語言, '' when nothing is missing.
 String _packAction(Pipeline p) => p.packStatus(p.conversation.foreign).downloadLabel;
 
 /// Pill suffix in 對話模式: the missing recognizer for the other person first, else the voice.
