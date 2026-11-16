@@ -171,19 +171,26 @@ def _chrf_fn():
 def chrf_drop_ci(rep_a: dict, rep_b: dict, n: int = 1000, seed: int = 0, chrf=None) -> dict | None:
     """Paired bootstrap of the overall chrF drop (A - B, mean of per-pair corpus chrF, as in summarize): each round
     draws clips with replacement within each pair and scores A and B on the same draw. Returns {drop, lo, hi, n_clips}
-    (95% percentile interval) or None when a report lacks per-clip `mt` / `ref_mt`."""
+    (95% percentile interval) or None when a report lacks per-clip `mt` / `ref_mt`. A clip without an `mt` value is
+    no data (left out on both sides), not an empty translation; an empty string is a real (empty) translation. If a
+    scored pair (one with a chrF or with per-clip refs) has no clip usable on both sides, the interval would cover
+    only part of the overall drop, so it is None too (#745)."""
     chrf = chrf or _chrf_fn()
+
+    scored = set()
 
     def pairs(rep):
         out = {}
         for lg in rep.get("languages", []):
-            rows = [(c.get("id"), c.get("ref_mt"), c.get("mt")) for c in lg.get("clips", [])]
-            out[lg["pair"]] = {i: (r, h or "") for i, r, h in rows if r}
+            clips = lg.get("clips", [])
+            if lg.get("chrf") is not None or any(c.get("ref_mt") for c in clips):
+                scored.add(lg["pair"])
+            out[lg["pair"]] = {c.get("id"): (c["ref_mt"], c["mt"]) for c in clips
+                               if c.get("ref_mt") and c.get("mt") is not None}
         return out
     a, b = pairs(rep_a), pairs(rep_b)
-    keys = {p: sorted(set(a[p]) & set(b.get(p, {})), key=str) for p in a}
-    keys = {p: k for p, k in keys.items() if k}
-    if not keys:
+    keys = {p: sorted(set(a.get(p, {})) & set(b.get(p, {})), key=str) for p in scored}
+    if not scored or not all(keys.values()):
         return None
 
     def drop(draw):

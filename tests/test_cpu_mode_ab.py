@@ -192,3 +192,24 @@ def test_main_prints_the_interval(tmp_path, capsys):
     rb.write_text(json.dumps(_mt_rep({"en->zh": a})))
     assert ab.main([str(ra), str(rb)]) == 0
     assert "paired bootstrap 95% interval [0.00, 0.00] over 20 clips" in capsys.readouterr().out
+
+
+def test_chrf_drop_ci_missing_mt_is_no_data_not_an_empty_translation():
+    a = [(f"c{k}", r, r) for k, r in enumerate(REFS)]
+    rb = _mt_rep({"en->zh": a})
+    for c in rb["languages"][0]["clips"][:5]:
+        del c["mt"]  # B's run lost these 5 clips' MT output: no measurement, not a garbled line
+    ci = ab.chrf_drop_ci(_mt_rep({"en->zh": a}), rb, n=200)
+    assert ci["drop"] == 0.0 and ci["hi"] == 0.0 and ci["n_clips"] == 15
+    # a present empty translation is a real result and still counts as a drop
+    rb2 = _mt_rep({"en->zh": [(i, r, "" if k < 5 else h) for k, (i, r, h) in enumerate(a)]})
+    assert ab.chrf_drop_ci(_mt_rep({"en->zh": a}), rb2, n=200)["drop"] > 1.0
+
+
+def test_chrf_drop_ci_none_when_a_scored_pair_has_no_clip_refs():
+    a = [(f"c{k}", r, r) for k, r in enumerate(REFS)]
+    ra, rb = _mt_rep({"en->zh": a}), _mt_rep({"en->zh": a})
+    # zh->en is in the table (aggregate chrF 50 vs 40) but has no per-clip text: no interval for a subset
+    for rep_, v in ((ra, 50.0), (rb, 40.0)):
+        rep_["languages"].append({"pair": "zh->en", "chrf": v, "error_rate": 0.0, "clips": [{"latency_s": 1.0}]})
+    assert ab.chrf_drop_ci(ra, rb, n=100) is None
