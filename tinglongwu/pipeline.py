@@ -75,7 +75,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
         on_work=None, on_record=None, recorder=None,  # recorder: #239 --record (record.Recorder)
-        seg_gate=None) -> None:
+        seg_gate=None, route=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -95,7 +95,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     the amount of audio consumed as the clock (offline files run faster than real time).
     seg_gate(seg, transcript) -> bool (#968, speak mode): False drops the segment before it reaches the merger, so
     keyboard noise or a low-confidence Whisper guess never becomes a line that is sent in the user's voice.
+    route(lang) -> target (#1164 face-to-face): the target language of one utterance, chosen from its detected language.
     """
+    tgt0 = tgt
     q: queue.Queue = queue.Queue(maxsize=8)
     consumed = [0]
     frame_t = [0.0]  # monotonic arrival time of the newest frame (#323)
@@ -172,6 +174,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             recorder.line(clip[0], r)
 
     def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None) -> None:
+        tgt = route(lang) if route is not None else tgt0
         if translator is None:  # transcript-only
             write(Result(lang, unit_text, None, "", tgt, speaker=who), ep)
             return
@@ -249,7 +252,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             t_src = None
             # the unit's own segment (marks, speaker), not the newest one
             marks, who = u.tag[:2] if u.tag is not None else (last_marks[0], last_who[0])
-            if translator is not None and draft is None and lang != tgt and hasattr(sink, "write_source"):
+            if translator is not None and draft is None and lang != (route(lang) if route is not None else tgt) and hasattr(sink, "write_source"):
                 pass_source(sink, lang, text, who)  # #53: the source line now, its translation when MT is done
                 t_src = time.monotonic() if shows_source else None
             mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who, audio))

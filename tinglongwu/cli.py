@@ -53,6 +53,9 @@ def parse_args(argv=None):
                    help="with --lang-candidates: write the last detected en/ru here (read by "
                         "`python -m tinglongwu.reverse.proto --to follow`); default off")
     p.add_argument("--to", default="zh", help="target language code (default zh)")
+    p.add_argument("--face-to-face", default=None, metavar="PARTNER_LANG",
+                   help="#1164: one mic, my language is --to; each utterance goes mine -> partner or partner -> mine "
+                        "by its detected language")
     p.add_argument("--zh-variant", choices=["tw", "cn"], default="tw",
                    help="Chinese output: tw = Traditional (OpenCC s2twp), cn = Simplified")
     p.add_argument("--preset", choices=sorted(PRESETS), default=None,
@@ -527,7 +530,15 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     prog.stage("speech model")
     cands = None
-    if a.lang == "auto" and getattr(a, "lang_candidates", None):
+    f2f_route = None
+    if getattr(a, "face_to_face", None):
+        from . import face_to_face as f2f
+
+        cands = f2f.candidates(a.to, a.face_to_face)  # raises SameLanguageError when both sides match
+        a.lang = "auto"
+        f2f_route = lambda lang: f2f.route(a.to, a.face_to_face, lang)["target"]  # noqa: E731
+        print(f"tlwu: face-to-face {a.to} <-> {a.face_to_face}", file=sys.stderr)
+    elif a.lang == "auto" and getattr(a, "lang_candidates", None):
         from .langfollow import parse_candidates
 
         cands = parse_candidates(a.lang_candidates)
@@ -667,7 +678,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=cpu_on_work(None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
                                                   cpu_line if dev == "cpu" else None),
-            on_record=on_record, recorder=recorder, seg_gate=seg_gate)
+            on_record=on_record, recorder=recorder, seg_gate=seg_gate, route=f2f_route)
     except KeyboardInterrupt:
         interrupted = True
         raise
