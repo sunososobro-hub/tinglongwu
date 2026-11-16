@@ -32,6 +32,17 @@ With `--stream`, a dim draft line is shown while the speaker is still talking an
 
 Yes. In the GUI choose the "Watching video (listen only)" scene, then Adjust > Advanced > Audio source = Microphone, and pick the microphone under "Microphone (room sound)"; on the command line use `tlwu --mic` (add `--capture-device <name>` for a specific one). It runs fully offline, like PC sound. A microphone close to the speaker works best; from 2-3 m away the room echo and noise cost accuracy. If the translation is also read aloud, use a headset, otherwise the microphone hears the spoken translation again. More in [usage](usage.md).
 
+## Does it work with Discord?
+
+Listen mode captures system audio (WASAPI loopback on Windows), so it hears whatever Discord plays to your output device.
+
+1. Join the voice channel and start `tlwu` (or the GUI) in listen mode with system audio as the input.
+2. Leave Discord's output device on "Default", or pick the same device in tinglongWu. If you set Discord to a different output device, choose that device in tinglongWu, otherwise it hears nothing.
+3. Go Live / stream audio is played through the same output, so it is captured the same way.
+4. To send translated voice back into Discord, use speak mode and set Discord's input device to the virtual mic (VB-Cable on Windows).
+
+Status: this path is not yet verified on a real call; the test log is tracked in #348.
+
 ## Why Whisper + Hy-MT2 instead of an end-to-end model such as Qwen3-ASR?
 
 Qwen3-ASR is speech recognition only, with no translation mode, so it would still need Hy-MT2 after it. On the owner's RTX 3050 8 GB (en and ja to zh-TW, n=40 each) the 1.7B model raised chrF by +2.1 on en but only +0.1 on ja, was about 4x slower (p50 about 3 s instead of under 1 s), and needed about 6.5-7 GB VRAM with Hy-MT2 instead of about 3 GB. It also needs a separate PyTorch runtime. So the default stays Whisper + Hy-MT2. Numbers and method: [Qwen3-ASR research](qwen3-asr.md).
