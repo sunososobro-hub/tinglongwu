@@ -3,6 +3,9 @@ name: hw-tests
 # Hardware-only checks on the owner's Windows PC (real audio devices, VB-CABLE, NVIDIA GPU) through a self-hosted runner
 # labelled [self-hosted, windows, tlwu-hw]. Covers the hardware part of #6 #139 #279 #207 #311 #90 #186 #313 (see the
 # step names). #4 (the other side's lines in a real call) and the Mac part of #8 stay with the owner.
+# #1157: the owner hand-tests of #966 #967 #968 run here too (scripts/hw_owner_checks.py). Those steps are
+# continue-on-error until each one is green on a dev run (a started hw-tests run is never deferred, so an unproven
+# step must not block a release snapshot); drop continue-on-error per step once its issue links a green run.
 #
 # SECURITY: a self-hosted runner runs whatever the workflow says, so this file never runs for pull requests (no
 # pull_request / pull_request_target trigger) and only for pushes to dev by people with write access, or a manual
@@ -102,12 +105,26 @@ jobs:
           python -c "from tinglongwu.device import resolve_device as r; d = r('auto', warn=print); print('device=' + d); assert d == 'cuda', d"
           python -m tinglongwu --file tinglongwu/data/selftest_en.wav --to zh --device auto --models-dir "$TLWU_MODELS"
 
-      - name: "#6 #207 #311-4 speak_selftest through VB-CABLE (en), records CABLE Output"
+      - name: "#6 #805 #207 #311-4 speak_selftest through VB-CABLE (en), records CABLE Output"
         if: ${{ !cancelled() }}
         run: |
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to en --models-dir "$TLWU_MODELS" \
             --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL" --json "$RUNNER_TEMP/speak_en.json"
           { echo '### speak_selftest en (owner PC, VB-CABLE) - #6 #207 #186'; echo '```'; cat "$RUNNER_TEMP/speak_en.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "#968 keyboard noise through the speak pipeline sends 0 sentences (zh clip above sends >= 1)"
+        if: ${{ !cancelled() }}
+        continue-on-error: true  # #1157: until green on a dev run
+        run: |
+          python scripts/hw_owner_checks.py noise-clip "$RUNNER_TEMP/keyboard.wav"
+          python scripts/speak_selftest.py --clip "$RUNNER_TEMP/keyboard.wav" --to en --models-dir "$TLWU_MODELS" \
+            --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL" --json "$RUNNER_TEMP/speak_noise.json" || true
+          rc=0
+          python scripts/hw_owner_checks.py noise --noise-json "$RUNNER_TEMP/speak_noise.json" \
+            --speech-json "$RUNNER_TEMP/speak_en.json" > "$RUNNER_TEMP/check_968.txt" || rc=$?
+          cat "$RUNNER_TEMP/check_968.txt"
+          { echo "### $(cat "$RUNNER_TEMP/check_968.txt")"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
 
       - name: "#311 item 4 speak_selftest --to ru: Russian voice reaches CABLE Input"
         if: ${{ !cancelled() }}
@@ -123,6 +140,37 @@ jobs:
       - name: "#90 #8 tlwu --selftest on the CPU path (same check as the hosted runners)"
         if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py selftest --models-dir "$TLWU_MODELS"
+
+      # #966 #967: what a user's fresh install gets, not the kept venv: a new venv + `tlwu-setup --gpu` + the speak
+      # setup into a temp dir. Multi-GB download, so only on dispatched dev runs (hw-nightly.yml, manual), never on
+      # every push or on a release snapshot. RUNNER_TEMP is emptied by the runner before each job.
+      - name: "#966 #967 fresh setup into a temp dir: auto -> cuda, no driver advice; Kokoro voice reaches CABLE Input"
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' }}
+        continue-on-error: true  # #1157: until green on a dev run
+        timeout-minutes: 45
+        run: |
+          D="$RUNNER_TEMP/fresh-setup"
+          rm -rf "$D"; mkdir -p "$D"
+          py -3.12 -m venv "$D/venv"
+          FP="$D/venv/Scripts/python.exe"
+          "$FP" -m pip install -q -e .
+          "$FP" -m tinglongwu_setup --gpu
+          "$FP" -m tinglongwu_setup --whisper small --hymt --allow-unpinned --models-dir "$D/models"
+          "$FP" -m tinglongwu_setup --talk --talk-venv "$D/tts-kokoro" --talk-launcher "$D/tlwu-talk.ps1" --models-dir "$D/models"
+          "$FP" -m tinglongwu doctor --to en --models-dir "$D/models" > "$D/doctor.txt" 2>&1 || true
+          cat "$D/doctor.txt"
+          rc=0
+          "$FP" scripts/hw_owner_checks.py gpu --doctor-log "$D/doctor.txt" > "$D/check.txt" || rc=1
+          "$FP" scripts/hw_owner_checks.py kokoro --models-dir "$D/models" --tts-python "$D/tts-kokoro/Scripts/python.exe" >> "$D/check.txt" || rc=1
+          if "$FP" scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to en --models-dir "$D/models" \
+              --tts-python "$D/tts-kokoro/Scripts/python.exe" --tts-model "$D/models/kokoro" --json "$D/speak_en.json"; then
+            echo "PASS #967 speak_selftest en after fresh setup reaches CABLE Input" >> "$D/check.txt"
+          else
+            echo "FAIL #967 speak_selftest en after fresh setup (see the log above)" >> "$D/check.txt"; rc=1
+          fi
+          cat "$D/check.txt"
+          { echo '### fresh setup (#966 #967)'; echo '```'; cat "$D/check.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
 
       - name: "#279 Hy-MT2 7B on the GPU (manual dispatch with hymt7b=true only)"
         if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.hymt7b }}
