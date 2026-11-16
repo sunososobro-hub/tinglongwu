@@ -129,3 +129,32 @@ def test_cli_accepts_beam_and_asr_threads(capsys):
     assert e.value.code == 0
     out = capsys.readouterr().out
     assert "--beam N" in out and "--asr-threads N" in out
+
+
+def test_clip_diffs_rejects_different_clip_sets():
+    one = report([{"id": "en_001", "asr": "a", "mt": "b"}])
+    with pytest.raises(ValueError, match="only in A en->zh en_002"):
+        ab.clip_diffs(A, one)
+
+
+def test_variant_names_cannot_alias_other_outputs(tmp_path):
+    f = tmp_path / "v.json"
+    for name in ("./base", "../x", "a/b", ".hidden", ""):
+        f.write_text(json.dumps([{"name": name, "args": ""}]))
+        with pytest.raises(ValueError):
+            ab.load_variants(f)
+    f.write_text(json.dumps([{"name": "small-b1_t4.v2", "args": ""}]))
+    assert ab.load_variants(f) == [("small-b1_t4.v2", "")]
+
+
+def test_run_with_mismatched_variant_clips_exits_2(tmp_path, monkeypatch, capsys):
+    one = report([{"id": "en_001", "asr": "a", "mt": "b"}])
+
+    def fake_run_eval(extra, data, out_json, out_jsonl, run=None):
+        out_json.write_text(json.dumps({"base": A, "cpu": B, "few": one}[out_json.stem]), "utf-8")
+
+    monkeypatch.setattr(ab, "run_eval", fake_run_eval)
+    v = tmp_path / "variants.json"
+    v.write_text(json.dumps([{"name": "few", "args": "--per-lang 1"}]))
+    assert ab.main(["--run", "--out-dir", str(tmp_path / "ab"), "--cpu-args=--cpu-mode", "--variants", str(v)]) == 2
+    assert "different clips" in capsys.readouterr().err

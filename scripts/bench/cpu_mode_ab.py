@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 import statistics
 import subprocess
 import sys
 from pathlib import Path
 
+NAME_RE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 VARIANTS_FILE = Path(__file__).with_name("cpu_ab_variants.json")
 TARGETS = {"p50_drop_pct_min": 30.0, "chrf_drop_max": 1.0, "wer_rise_pts_max": 2.0}
 
@@ -121,8 +123,11 @@ def clip_diffs(rep_a: dict, rep_b: dict) -> list[dict]:
     def index(rep):
         return {(lg["pair"], c.get("id")): c for lg in rep.get("languages", []) for c in lg.get("clips", [])}
     a, b = index(rep_a), index(rep_b)
+    if set(a) != set(b):
+        raise ValueError("reports cover different clips: only in A " + (", ".join(f"{p} {i}" for p, i in sorted(set(a) - set(b), key=str)) or "-")
+                         + "; only in B " + (", ".join(f"{p} {i}" for p, i in sorted(set(b) - set(a), key=str)) or "-"))
     out = []
-    for key in [k for k in a if k in b]:
+    for key in a:
         x, y = a[key], b[key]
         asr = (x.get("asr"), y.get("asr")) if x.get("asr") != y.get("asr") else None
         mt = (x.get("mt"), y.get("mt")) if x.get("mt") != y.get("mt") else None
@@ -153,6 +158,8 @@ def load_variants(path) -> list[tuple[str, str]]:
     if not isinstance(data, list) or not all(isinstance(v, dict) and v.get("name") and "args" in v for v in data):
         raise ValueError(f"{p}: expected a JSON list of {{\"name\", \"args\"}}")
     names = [str(v["name"]) for v in data]
+    if any(not NAME_RE.fullmatch(n) for n in names):  # each name is a file stem in --out-dir: no paths, no aliasing
+        raise ValueError(f"{p}: variant names must be letters, digits, '-', '_' or '.' (not starting with '.')")
     if len(set(names)) != len(names) or {"base", "cpu"} & set(names):
         raise ValueError(f"{p}: variant names must be unique and not 'base' / 'cpu'")
     return [(str(v["name"]), str(v["args"])) for v in data]
