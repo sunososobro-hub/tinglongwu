@@ -11,11 +11,11 @@ name: hw-tests
 # step must not block a release snapshot); drop continue-on-error per step once its issue links a green run.
 #
 # SECURITY: a self-hosted runner runs whatever the workflow says, so this file never runs for pull requests (no
-# pull_request / pull_request_target trigger) and only for pushes to dev by people with write access, or a manual
-# dispatch (#976: release-pr.yml dispatches it on this repo's release/vX.Y.Z snapshot branch). Do not add other triggers.
+# pull_request / pull_request_target trigger) and only for a manual
+# dispatch (people with write access) (#976: release-pr.yml dispatches it on this repo's release/vX.Y.Z snapshot branch). Do not add other triggers.
 on:
-  push:
-    branches: [dev]
+  # #1266: no push trigger. Dev pushes queued behind each other on the single runner and delayed release snapshots;
+  # hw-tests runs on release snapshots (release-pr.yml dispatch), nightly (hw-nightly.yml) and by hand.
   workflow_dispatch:
     inputs:
       hymt7b:

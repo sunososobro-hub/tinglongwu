@@ -116,7 +116,7 @@ def test_nightly_dispatches_hw_tests_on_dev_only_when_the_gate_says_run():
 
 def test_hw_tests_keeps_its_triggers_and_its_single_self_hosted_job():
     wf = _wf(HW)
-    assert set(wf[True]) == {"push", "workflow_dispatch"}  # no schedule / pull_request here (security header)
+    assert set(wf[True]) == {"workflow_dispatch"}  # #1266: no push; no schedule / pull_request here (security header)
     assert list(wf["jobs"]) == ["hw"] and wf["jobs"]["hw"]["runs-on"] == ["self-hosted", "windows", "tlwu-hw"]
     # #976: one group per ref, so a pending dev push never replaces a release/vX.Y.Z snapshot run; runs never
     # cancel each other, and the single tlwu-hw runner takes one job at a time
