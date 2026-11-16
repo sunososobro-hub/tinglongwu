@@ -112,3 +112,26 @@ Same 50 FLoRes sentences read in FLEURS en_us (US English) and hi_in (Hindi), Wh
 | Hindi -> en -> zh, pivot | 39.2% | 17.8 | 27.7 | 5.56 |
 
 English gives about twice the Chinese quality of Hindi. Both halves are weaker for Hindi: speech recognition makes 6x the errors, and even from a perfect Hindi transcript Hy-MT2 scores 27.7 vs 38.8. Pivoting through English is no better than the direct route and twice as slow. Not measured yet: Indian-accented English (Svarah is a gated dataset; the runner needs an accepted licence + HF token) and Hinglish.
+
+## CPU mode A/B: defaults vs CPU mode (#781, #745)
+
+Machines with no NVIDIA GPU (AMD / Intel) run speech recognition and translation on the CPU. CPU mode (#780) picks the speech settings from the PC's cores and RAM. This table compares it with the old defaults on the #569 smoke set (5 clips per focus pair, 20 lines), both runs `--device cpu`, Whisper small, Hy-MT2-1.8B Q4 (CPU, greedy):
+
+- A = defaults: Whisper small, beam 5, default threads.
+- B = `tlwu_eval --cpu-mode`: the #780 policy for this runner (4 cores, 15 GB: small, beam 1, 3 ASR threads). Fragment merging is not part of this measurement (the smoke scores whole clips).
+
+Hardware: GitHub-hosted `ubuntu-24.04`, INTEL(R) XEON(R) PLATINUM 8573C, 4 vCPU, 15 GB RAM. Run: [bench-cpu-ab 43809398113](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43809398113), PR #1190. p50 = median end-to-end seconds per line (ASR + MT, `--latency-jsonl`); WER % is CER for ja / zh.
+
+| pair | p50 s (defaults) | p50 s (CPU mode) | chrF (defaults) | chrF (CPU mode) | WER % (defaults) | WER % (CPU mode) |
+|---|---|---|---|---|---|---|
+| en->zh | 4.635 | 3.861 | 38.90 | 33.98 | 7.77 | 7.77 |
+| ja->zh | 6.740 | 5.464 | 19.58 | 19.41 | 15.60 | 16.00 |
+| ru->zh | 4.961 | 4.277 | 29.58 | 30.61 | 4.17 | 6.94 |
+| zh->en | 5.376 | 4.151 | 48.63 | 42.67 | 13.48 | 14.18 |
+| **all** | 5.279 | 4.214 | 34.17 | 31.67 | 10.26 | 11.22 |
+
+Against the #745 targets: p50 drop 20.2% (target >= 30%: missed); chrF drop 2.50 (target <= 1.0: missed); WER rise 0.97 points (target <= 2: met).
+
+An earlier run of the same commit on another runner ([43808855213](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43808855213), CPU not logged) gave the same chrF and WER to the last digit (greedy decoding repeats) and p50 3.680 s -> 3.239 s (12.0% drop). So the quality numbers are stable, and the latency drop is 12-20% depending on the runner CPU.
+
+Why the target is missed: CPU mode only changes speech recognition (ASR time per pair falls 27-38% in the run above: 12.6-17.9 s -> 9.1-11.1 s). Translation takes 2.1-3.1 s per line (median) in both A and B and is the larger part of each line, so it caps the end-to-end gain. The chrF drop comes from beam 1 transcripts (en->zh and zh->en lose 5-6 chrF with the same or nearly the same WER), on only 5 clips per pair. Reproduce: dispatch `.github/workflows/bench-cpu-ab.yml`, or locally `python scripts/bench/cpu_mode_ab.py --run --data eval_data/smoke --base-args "--model small --engine hymt2-cpu" --cpu-args "--engine hymt2-cpu --cpu-mode"`.
