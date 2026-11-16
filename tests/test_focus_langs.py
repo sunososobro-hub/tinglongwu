@@ -13,7 +13,7 @@ from tinglongwu.gui import core
 
 ROOT = Path(__file__).resolve().parent.parent
 # the GUI list before #58: no code may disappear
-OLD_GUI = {"auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id"}
+OLD_GUI = {"auto", "ru", "ja", "en", "ko", "zh", "de", "fr", "es", "it", "pt", "vi", "th", "id", "hi"}
 OLD_MENU_CODES = ("ko", "de", "fr", "es")  # what the menu L help listed besides auto/en/ru/ja
 
 

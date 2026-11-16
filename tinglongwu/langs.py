@@ -14,21 +14,21 @@ from .i18n import ui_lang
 
 FOCUS = ("ja", "en", "ru")
 BASE = "zh"
-EXPERIMENTAL = ("ko", "de", "fr", "es", "it", "pt", "vi", "th", "id")
+EXPERIMENTAL = ("ko", "de", "fr", "es", "it", "pt", "vi", "th", "id", "hi")
 SOURCE_LANGS = ["auto", *FOCUS, BASE, *EXPERIMENTAL]
 
 _NAMES = {
     "en": {"ja": "Japanese", "en": "English", "ru": "Russian", "zh": "Chinese", "ko": "Korean", "de": "German",
            "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese", "vi": "Vietnamese", "th": "Thai",
-           "id": "Indonesian"},
+           "id": "Indonesian", "hi": "Hindi"},
     "ru": {"ja": "японский", "en": "английский", "ru": "русский", "zh": "китайский", "ko": "корейский",
            "de": "немецкий", "fr": "французский", "es": "испанский", "it": "итальянский", "pt": "португальский",
-           "vi": "вьетнамский", "th": "тайский", "id": "индонезийский"},
+           "vi": "вьетнамский", "th": "тайский", "id": "индонезийский", "hi": "хинди"},
     "zh-TW": {"ja": "日文", "en": "英文", "ru": "俄文", "zh": "中文", "ko": "韓文", "de": "德文", "fr": "法文",
-              "es": "西文", "it": "義大利文", "pt": "葡萄牙文", "vi": "越南文", "th": "泰文", "id": "印尼文"},
+              "es": "西文", "it": "義大利文", "pt": "葡萄牙文", "vi": "越南文", "th": "泰文", "id": "印尼文", "hi": "印地文"},
     "ja": {"ja": "日本語", "en": "英語", "ru": "ロシア語", "zh": "中国語", "ko": "韓国語", "de": "ドイツ語",
            "fr": "フランス語", "es": "スペイン語", "it": "イタリア語", "pt": "ポルトガル語", "vi": "ベトナム語",
-           "th": "タイ語", "id": "インドネシア語"},
+           "th": "タイ語", "id": "インドネシア語", "hi": "ヒンディー語"},
 }
 _TEXT = {
     "en": {"exp": "experimental", "focus": "Languages: auto = Japanese/English/Russian (follows the speaker)",
