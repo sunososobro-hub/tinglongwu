@@ -132,3 +132,20 @@ def test_engine_log_line_says_where_the_model_loaded(monkeypatch, tmp_path, no_c
                              choose=lambda e, d, m: ("hymt2", "test"))
     assert active_path(tr)[0] == "vulkan"
     assert any("translation engine = hymt2 on vulkan" in s for s in said), said
+
+
+def test_cuda_build_that_fell_back_to_cpu_is_reported_and_loaded_as_cpu(monkeypatch, tmp_path, no_cpu_check):
+    """import_llama() swapped in the bundled CPU build (CUDA DLLs missing): the model is a CPU model, not CUDA."""
+    made = []
+    mod = fake_llama_module(lambda **kw: made.append(kw) or ("cpu-model", kw))
+
+    def import_cpu_build():
+        monkeypatch.setattr(llamacheck, "cpu_fallback", "OSError: cublas64_12.dll not found")
+        return mod
+
+    monkeypatch.setitem(sys.modules, "llama_cpp", mod)
+    monkeypatch.setattr(llamacheck, "import_llama", import_cpu_build)
+    monkeypatch.setattr(mt_backend, "vulkan_available", lambda: False)
+    llm = engines.shared_llama(tmp_path / "x.gguf", True, engines.load_llama)
+    assert mt_backend.path_of(llm)[0] == "cpu"
+    assert made[-1]["n_gpu_layers"] == 0 and made[-1]["flash_attn"] is False

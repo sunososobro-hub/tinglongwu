@@ -504,7 +504,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     sink: base sink (default: text on stdout); draft_factory(asr, translator, segmenter, tgt) -> draft engine
     or None; stop: threading.Event that ends the run; status(str): progress notes (GUI);
     notice(str): a note that should stay visible (GUI), e.g. why the GPU is not used;
-    cpu_line(mt_ms): #780, CPU only, called once per output line with the translation time in ms (GUI status);
+    cpu_line(mt_ms, path): #780, CPU only, called once per output line with the translation time in ms and
+    (#1198) path = (backend, threads) of the MT model or None (GUI status);
     on_topic(topic): #611, with --topics: called on the summarizer thread with each finished topics.Topic (GUI panel)."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device

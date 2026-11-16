@@ -129,6 +129,8 @@ def load_llama(path: Path, gpu: bool):
         except (ImportError, OSError, RuntimeError) as e2:
             raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e2}. "
                                f"To fix: {llamacheck.FIX_HINT}") from e2
+    if backend == "cuda" and llamacheck.cpu_fallback:  # #1198: the bundled CPU build loaded: load and report it as CPU
+        backend = mt_backend.last_backend = "cpu"
     if sys.platform == "win32":
         lib = Path(llama_cpp.__file__).parent / "lib"
         if lib.is_dir():
