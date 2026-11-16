@@ -17,6 +17,16 @@ def _ui_lang_en(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
 
 
+@pytest.fixture(autouse=True)
+def _no_cpu_mode_threads():
+    """#1198: threads.set_cpu_mode is process-global (cli.apply_cpu_mode); never let one test's plan leak."""
+    from tinglongwu import threads
+
+    threads.set_cpu_mode(None)
+    yield
+    threads.set_cpu_mode(None)
+
+
 @pytest.fixture
 def wav(tmp_path):
     import soundfile as sf

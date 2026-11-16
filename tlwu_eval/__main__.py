@@ -63,16 +63,22 @@ def cpu_mode_asr(a, dev: str, model: str, cores=None, ram_gb=None):
     (#780): beam / threads from the policy; the model is lowered to the policy size unless --model was given."""
     if not getattr(a, "cpu_mode", False) or dev != "cpu":
         return model, None, None
-    from tinglongwu.hwprobe import cpu_mode_settings, ram_mib
+    from tinglongwu import threads as thread_budget
+    from tinglongwu.hwprobe import cpu_mode_settings, cpu_mode_threads, physical_cores, ram_mib
 
     if ram_gb is None:
         mib = ram_mib()
         ram_gb = mib / 1024 if mib else 16.0
-    st = cpu_mode_settings(cores or os.cpu_count() or 4, ram_gb)
+    logical = cores or os.cpu_count() or 4
+    phys = logical if cores else physical_cores(logical)
+    st = cpu_mode_settings(logical, ram_gb, physical=phys)
+    plan = cpu_mode_threads(phys, logical)
+    thread_budget.set_cpu_mode(plan.mt, plan.mt_batch)  # #1198: the MT engine gets CPU mode's threads too, like tlwu
     order = ["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"]
     if not a.model and model in order and order.index(model) > order.index(st.size):
         model = st.size
-    print(f"tlwu-eval: CPU mode: model {model}, beam {st.beam}, threads {st.threads}", file=sys.stderr)
+    print(f"tlwu-eval: CPU mode: model {model}, beam {st.beam}, threads {st.threads}, "
+          f"mt threads {plan.mt}/{plan.mt_batch}", file=sys.stderr)
     return model, st.beam, st.threads
 
 

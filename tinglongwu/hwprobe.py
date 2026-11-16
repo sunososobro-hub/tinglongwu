@@ -175,10 +175,65 @@ class CpuMode:
     merge: bool   # merge short fragments before translating (fewer, longer MT calls)
 
 
-def cpu_mode_settings(cores: int, ram_gb: float) -> CpuMode:
-    """Speed-first ASR settings for a PC with no CUDA device. Threads leave one core for the MT engine and the GUI."""
+# #1198: in the live app Whisper and Hy-MT2 run at the same time. Before, Whisper took min(logical-1, 8) threads and
+# llama.cpp half the logical CPUs for decoding plus ALL of them for prompt processing: on an 8-core / 16-thread
+# Ryzen 7040 that is 8 + 16 busy threads on 8 cores, and spinning thread pools that share cores slow each other down
+# many times over (owner: 7.6 s per line). CPU mode now splits the PHYSICAL cores between the two (SMT siblings
+# add little to either), and llama.cpp uses the same count for prompt processing as for decoding.
+MT_MAX_THREADS = 8  # llama.cpp decode of a 1.8B Q4 model is memory-bound: more threads than this do not help
+
+
+@dataclass(frozen=True)
+class CpuThreads:
+    asr: int       # Whisper cpu_threads
+    mt: int        # llama.cpp n_threads (decode)
+    mt_batch: int  # llama.cpp n_threads_batch (prompt processing)
+
+
+def physical_cores(logical: int | None = None) -> int:
+    """Physical CPU cores (psutil), never more than `logical`; the logical count when psutil cannot tell."""
+    n = max(1, int(logical or os.cpu_count() or 4))
+    try:
+        import psutil
+
+        p = psutil.cpu_count(logical=False)
+    except Exception:  # noqa: BLE001 - psutil missing / unsupported platform
+        p = None
+    if not p:
+        p = _cpuinfo_cores()
+    return max(1, min(int(p or n), n))
+
+
+def _cpuinfo_cores(path: str = "/proc/cpuinfo") -> int | None:
+    """Linux without psutil: distinct (physical id, core id) pairs in /proc/cpuinfo; None when unreadable."""
+    try:
+        text = open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return None
+    cores, phys = set(), "0"
+    for line in text.splitlines():
+        k, _, v = line.partition(":")
+        k = k.strip()
+        if k == "physical id":
+            phys = v.strip()
+        elif k == "core id":
+            cores.add((phys, v.strip()))
+    return len(cores) or None
+
+
+def cpu_mode_threads(physical: int, logical: int | None = None) -> CpuThreads:
+    """#1198: CPU-mode thread plan. Whisper and Hy-MT2 together never ask for more threads than physical cores."""
+    p = max(1, int(physical))
+    asr = max(1, min(p // 2, 8))
+    mt = max(1, min(p - asr, MT_MAX_THREADS))
+    return CpuThreads(asr, mt, mt)
+
+
+def cpu_mode_settings(cores: int, ram_gb: float, physical: int | None = None) -> CpuMode:
+    """Speed-first ASR settings for a PC with no CUDA device. `cores` = logical CPUs, `physical` = physical cores
+    (default: `cores`). Threads: Whisper's share of cpu_mode_threads (the rest goes to the MT engine, #1198)."""
     cores = max(1, int(cores))
-    threads = max(1, min(cores - 1, 8)) if cores > 1 else 1
+    threads = cpu_mode_threads(physical or cores, cores).asr
     if ram_gb < 8 or cores < 4:
         return CpuMode("base", 1, threads, True)
     if ram_gb < 16 or cores < 8:

@@ -137,7 +137,7 @@ def test_eval_cpu_mode_asr_settings():
     on = SimpleNamespace(cpu_mode=True, model=None)
     assert cpu_mode_asr(on, "cuda", "small", cores=4, ram_gb=16) == ("small", None, None)
     # 4 cores / 16 GB (a GitHub ubuntu runner): small, beam 1, 3 threads (#780 policy)
-    assert cpu_mode_asr(on, "cpu", "small", cores=4, ram_gb=16) == ("small", 1, 3)
+    assert cpu_mode_asr(on, "cpu", "small", cores=4, ram_gb=16) == ("small", 1, 2)
     # 2 cores: policy size base; an auto-picked small is lowered, an explicit --model small is kept
     assert cpu_mode_asr(on, "cpu", "small", cores=2, ram_gb=16) == ("base", 1, 1)
     assert cpu_mode_asr(SimpleNamespace(cpu_mode=True, model="small"), "cpu", "small", cores=2, ram_gb=16)[0] == "small"

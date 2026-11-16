@@ -109,10 +109,24 @@ def set_role(role: str, out=None) -> None:
     print(log_line(role), file=out or sys.stderr, flush=True)
 
 
+_cpu_mode: dict | None = None  # #1198: listen-only CPU mode MT threads {mt, mt_batch} (cli.apply_cpu_mode)
+
+
+def set_cpu_mode(mt: int | None, mt_batch: int | None = None) -> None:
+    """#1198: CPU mode's llama.cpp threads for the listen role (None clears). Listen+speak keeps split()."""
+    global _cpu_mode
+    _cpu_mode = None if mt is None else {"mt": max(1, int(mt)), "mt_batch": max(1, int(mt_batch or mt))}
+
+
 def current() -> dict:
-    """Plan of this process (listen when no entry point set a role, e.g. the GUI before run_session)."""
+    """Plan of this process (listen when no entry point set a role, e.g. the GUI before run_session).
+    Listen-only CPU mode: the MT threads set by set_cpu_mode (#1198) replace llama.cpp's defaults."""
     own = None if threading.current_thread() is threading.main_thread() else getattr(_local, "role", None)
-    return plan(own or _role or "listen")
+    role = own or _role or "listen"
+    p = plan(role)
+    if role == "listen" and _cpu_mode is not None and not both():
+        p = {**p, **_cpu_mode}
+    return p
 
 
 def ct2_kwargs(device: str) -> dict:
