@@ -37,6 +37,12 @@ jobs:
           else
             printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
           fi
+      - name: Head name for PRs into main (#1265; only release/vX.Y.Z and docs/fastlane-N may target main)
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: python scripts/check_main_head.py "$BASE" "$HEAD"
       - name: Commit identity (#944; a placeholder like x <x@x> credits a stranger as a contributor)
         # only PRs into dev: the release PR (dev -> main) carries old history (f5b0e6c) and must not go red here
         if: github.event_name == 'pull_request' && github.base_ref == 'dev'
