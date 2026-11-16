@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.4
+- Live subtitles no longer lose words when speech recognition falls behind: the audio keeps being captured, the status shows how many seconds behind it is, and translation waits so recognition can catch up.
+- A new subtitle history keeps past sessions on this computer only and deletes them after 30 days.
+- Face-to-face mode keeps one speaker label across short, noisy sentences, reads aloud in one voice for the other person's language, and its language sheet shows which language packs are installed.
+
 ## v0.4.3
 - CPU mode is much faster on laptops without a graphics card: speech recognition and translation no longer fight over the same cores, so a line no longer takes 7–8 seconds while you keep listening.
 - Face-to-face mode: each person's speech is now translated into the other person's language automatically.
