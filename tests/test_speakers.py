@@ -23,11 +23,11 @@ def test_threshold_boundary():
     v = [0.8, 0.6, 0.0]  # cosine with [1,0,0] == 0.8
     assert cosine(v, [1, 0, 0]) == pytest.approx(0.8)
     c = SpeakerClusterer(threshold=0.8)
-    c.assign([1, 0, 0], 2.0)
-    assert c.assign(v, 2.0) == "說話者1"  # == threshold -> same
+    c.assign([1, 0, 0], 5.0)
+    assert c.assign(v, 5.0) == "說話者1"  # == threshold -> same
     c = SpeakerClusterer(threshold=0.81)
-    c.assign([1, 0, 0], 2.0)
-    assert c.assign(v, 2.0) == "說話者2"  # just below -> new
+    c.assign([1, 0, 0], 5.0)
+    assert c.assign(v, 5.0) == "說話者2"  # just below -> new
 
 
 def test_short_sentence_reuses_previous_speaker():

@@ -10,6 +10,12 @@ from collections.abc import Sequence
 
 UNKNOWN = "?"
 LABEL_PREFIX = "說話者"
+# #1256 numbers, measured with the shipped CAM++ model on 240 VCTK-voice sentences from 12 speakers (PR for #1256):
+# 1-2 s sentences sit at cosine p10 0.73 to their own speaker but up to 0.64 to another speaker; from 2 s on, own >= 0.83.
+# Speaker centroids reach at most 0.633 to each other, so 0.7 merges only clusters closer than any two real speakers.
+SHORT_SECONDS = 2.0
+SHORT_THRESHOLD = 0.5
+MERGE_THRESHOLD = 0.7
 
 
 def cosine(a: Sequence[float], b: Sequence[float]) -> float:
@@ -29,12 +35,23 @@ class SpeakerClusterer:
     threshold:    cosine >= threshold means "same speaker".
     min_seconds:  sentences shorter than this never create/update a cluster;
                   they reuse the previous speaker, or "?" if there is none.
+    #1256 (one person split into many labels after short pauses):
+    short_seconds / short_threshold: a sentence shorter than short_seconds has a noisy embedding, so it joins its
+                  best cluster at the lower short_threshold instead of opening a new speaker.
+    merge_threshold: after a cluster is updated, any other cluster whose centroid is at least this similar is merged
+                  into the older one; later lines of either get the older label (merged maps old label -> kept one).
     """
 
-    def __init__(self, threshold: float = 0.6, min_seconds: float = 1.0):
+    def __init__(self, threshold: float = 0.6, min_seconds: float = 1.0, short_seconds: float = SHORT_SECONDS,
+                 short_threshold: float = SHORT_THRESHOLD, merge_threshold: float = MERGE_THRESHOLD):
         self.threshold = threshold
         self.min_seconds = min_seconds
-        self._sums: list[list[float]] = []  # per-cluster sum of unit vectors
+        self.short_seconds = short_seconds
+        self.short_threshold = min(short_threshold, threshold)
+        self.merge_threshold = merge_threshold
+        self._sums: list[list[float] | None] = []  # per-cluster sum of unit vectors; None = merged away
+        self._into: dict[int, int] = {}  # merged cluster index -> the index it was merged into
+        self.merged: dict[str, str] = {}  # #1256: merged label -> kept label (callers may alias past lines)
         self._last: str = UNKNOWN
         import threading
 
@@ -42,11 +59,15 @@ class SpeakerClusterer:
 
     @property
     def count(self) -> int:
-        return len(self._sums)
+        """Distinct speakers now (clusters merged into another are not counted)."""
+        return sum(1 for s in self._sums if s is not None)
 
     def assign(self, embedding: Sequence[float], seconds: float) -> str:
         with self._lock:
             return self._assign(embedding, seconds)
+
+    def _label(self, i: int) -> str:
+        return f"{LABEL_PREFIX}{i + 1}"
 
     def _assign(self, embedding: Sequence[float], seconds: float) -> str:
         if seconds < self.min_seconds:
@@ -57,16 +78,40 @@ class SpeakerClusterer:
         unit = [x / norm for x in embedding]
         best, best_sim = -1, -2.0
         for i, s in enumerate(self._sums):
+            if s is None:
+                continue
             sim = cosine(unit, s)
             if sim > best_sim:
                 best, best_sim = i, sim
-        if best >= 0 and best_sim >= self.threshold:
+        need = self.short_threshold if seconds < self.short_seconds else self.threshold
+        if best >= 0 and best_sim >= need:
             self._sums[best] = [a + b for a, b in zip(self._sums[best], unit)]
+            best = self._merge_near(best)
         else:
             self._sums.append(unit)
             best = len(self._sums) - 1
-        self._last = f"{LABEL_PREFIX}{best + 1}"
+        self._last = self._label(best)
         return self._last
+
+    def _merge_near(self, i: int) -> int:
+        """Merge every live cluster whose centroid is >= merge_threshold similar to cluster i; returns the kept index
+        (the oldest of the merged ones, so the label a person had first is the one kept)."""
+        while True:
+            s = self._sums[i]
+            near = [j for j, t in enumerate(self._sums)
+                    if j != i and t is not None and cosine(s, t) >= self.merge_threshold]
+            if not near:
+                return i
+            j = near[0]
+            keep, gone = min(i, j), max(i, j)
+            self._sums[keep] = [a + b for a, b in zip(self._sums[keep], self._sums[gone])]
+            self._sums[gone] = None
+            self._into[gone] = keep
+            for k, v in list(self.merged.items()):
+                if v == self._label(gone):
+                    self.merged[k] = self._label(keep)
+            self.merged[self._label(gone)] = self._label(keep)
+            i = keep
 
 
 class SpeakerBook:
