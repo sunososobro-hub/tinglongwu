@@ -8,6 +8,7 @@ blocked the capture reader and the worker silently threw audio away. Here ASR st
 import io
 import queue
 import threading
+import time
 
 import numpy as np
 
@@ -21,17 +22,28 @@ from tinglongwu.sink import TextSink
 
 FED_S = 60
 BLOCKS = FED_S * NATIVE_RATE // BLOCK  # 600 blocks of 100 ms
+READER_STUCK_S = 3.0  # a reader that frees no queue slot for this long is blocked, not slow
 
 
 class _Rec:
-    """soundcard recorder stand-in: FED_S seconds of sound, one block every `pace` s, then the device ends."""
+    """soundcard recorder stand-in: FED_S seconds of sound, then the device ends.
 
-    def __init__(self, done: threading.Event, pace: float):
-        self.n, self.done, self.pace = 0, done, pace
+    Time is compressed, so the test must not depend on how fast the CI machine is: a real device delivers the next
+    block regardless, but here record() first waits (up to READER_STUCK_S) for the reader to make room in the
+    worker queue. A reader that is merely slow is waited for; a reader that does not move for READER_STUCK_S is
+    blocked (pre-#1263: by the ASR stall), and from then on blocks arrive back to back and the worker drops them.
+    """
+
+    def __init__(self, done: threading.Event, q: queue.Queue | None = None):
+        self.n, self.done, self.q, self.stuck = 0, done, q, False
         self.rng = np.random.default_rng(1263)
 
     def record(self, numframes):
-        self.done.wait(self.pace)
+        if self.q is not None and not self.stuck:
+            t_end = time.monotonic() + READER_STUCK_S
+            while self.q.full() and time.monotonic() < t_end:
+                time.sleep(0.001)
+            self.stuck = self.q.full()
         self.n += 1
         if self.n >= BLOCKS:
             self.done.set()  # last block: the worker loop ends after putting it
@@ -93,8 +105,8 @@ class _LiveSource:
 
 def test_asr_stall_loses_no_capture_audio():
     src = WasapiLoopbackSource()
-    q, ev = queue.Queue(maxsize=50), threading.Event()  # 5 s of slack: far less than the 60 s stall
-    rec = _Rec(ev, pace=0.01)
+    q, ev = queue.Queue(maxsize=20), threading.Event()  # the real worker queue size (2 s)
+    rec = _Rec(ev, q)
     worker = threading.Thread(target=src._worker, args=(_FakeSC(rec), "spk", q, ev), daemon=True)
     worker.start()
     asr = _StalledASR(ev)
@@ -109,7 +121,7 @@ def test_dropped_capture_blocks_are_counted_and_logged(capsys):
     """When the reader really stops (not ASR: the consumer itself), the drop is counted and logged, never silent."""
     src = WasapiLoopbackSource()
     q, ev = queue.Queue(maxsize=20), threading.Event()
-    rec = _Rec(ev, pace=0.0)
+    rec = _Rec(ev)
     src._worker(_FakeSC(rec), "spk", q, ev)  # nobody reads q: everything past 20 blocks is dropped
     assert src.lost_seconds == (BLOCKS - 20) * BLOCK / NATIVE_RATE
     assert "dropped" in capsys.readouterr().err
