@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import sys
 from datetime import datetime, UTC
 from pathlib import Path
@@ -10,6 +11,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import stats_dashboard as sd  # noqa: E402
 
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
+SECTIONS = ("output", "next", "install", "effort", "releases", "popularity")  # #1213 page order
+
+
+def page_data(page):
+    """The series JSON the page draws from (#1213: every chart is drawn client-side from it)."""
+    m = re.search(r'<script id="d" type="application/json">(.*?)</script>', page, re.S)
+    return json.loads(m.group(1))
+
+
+def render_dom(page, tmp_path, width=1280):
+    """Load the page in Chromium -> (body text, JS errors). Skips when Playwright/Chromium is missing."""
+    pw = pytest.importorskip("playwright.sync_api")
+    f = tmp_path / "page.html"
+    f.write_text(page, encoding="utf-8")
+    with pw.sync_playwright() as p:
+        try:
+            br = p.chromium.launch(executable_path=os.environ.get("TLWU_CHROMIUM") or None)
+        except Exception as e:  # Chromium missing
+            pytest.skip("chromium unavailable: %s" % e)
+        try:
+            pg = br.new_page(viewport={"width": width, "height": 900})
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            pg.goto(f.as_uri())
+            return pg.inner_text("body"), errors
+        finally:
+            br.close()
 
 
 def fake_api(path, accept=None):
@@ -56,7 +84,7 @@ def test_run_writes_data_and_html_and_keeps_history(tmp_path):
     assert snap["open_issues"] == 2 and snap["labels"] == {"bug": 2, "P1": 1}
     assert snap["commits_by_hour"]["2026-11-12T11"] == 2
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert "<svg" in page and "Open issues by" in page and "2026-11-10" in page
+    assert 'id="c_thru"' in page and "Open issues by" in page and page_data(page)["days"][0] == "2026-11-10"
     series = json.loads((tmp_path / "series.json").read_text())
     assert series["days"][0] == "2026-11-10" and series["stars"][-1] == 2
     assert series["forks"] == [0, 1, 1] and series["open_issues"][:3] == [2, 1, 1]
@@ -64,7 +92,7 @@ def test_run_writes_data_and_html_and_keeps_history(tmp_path):
     assert series["groups"]["milestone"]["v1"][-1] == 1
     assert series["prs_merged"] == [0, 0, 1] and series["issues_closed"] == [0, 1, 0]
     assert series["speed"]["pr_all"] == 24.0 and series["hero"]["prs"]["total"] == 1
-    assert "Work finished per day" in page and page.index("Work finished") < page.index("Stars")
+    assert "Work finished per day" in page and page.index("Work finished") < page.index("Stars and forks")
     assert json.loads((tmp_path / "data.json").read_text()) == hist
 
 
@@ -156,21 +184,12 @@ def test_percentile_hours_p90_nearest_rank():
     assert sd.percentile_hours([], 90) is None
 
 
-def test_render_html_vision_block_first_from_vision_md():
-    series = sd.build_series(fake_api, "o/r", "dev", NOW)
-    page = sd.render_html(series)
-    body = page.split("<body>", 1)[1].lstrip()
-    assert body.startswith('<section id="vision"')
-    block = body.split("</section>", 1)[0]
-    vision = (Path(__file__).resolve().parents[1] / "docs" / "VISION.md").read_text(encoding="utf-8")
-    for node in ("MODE", "PLAT", "LANG"):
-        assert 'data-node="%s"' % node in block
-    for word in ("listen", "Windows", "zh"):
-        assert word in block and word in vision
-    assert block.count('data-nongoal="1"') == 3
-    for txt in ("Send audio or text to a cloud service", "Remember a voiceprint without consent",
-                "Send usage data home"):
-        assert txt in vision and txt in block
+def test_page_sections_in_order_without_vision_block_1213():
+    page = sd.render_html(sd.build_series(fake_api, "o/r", "dev", NOW))
+    pos = [page.index('<h2 id="%s">' % k) for k in SECTIONS]
+    assert pos == sorted(pos)
+    assert 'id="vision"' not in page and 'href="roadmap.html"' in page and 'href="docs.html"' in page
+    assert "<title>TingLong dashboard</title>" in page
 
 
 FLOW_ITEMS = [
@@ -204,13 +223,10 @@ def test_flow_totals_weight_opus_2x_and_unlabelled_node():
     assert abs(sum(r["share"] for r in f["type_mix"]) - 100.0) < 1e-9
 
 
-def test_flow_empty_and_render_inline_svg_with_focus_orange():
+def test_flow_empty_and_mode_shares():
     assert sd.build_flow([])["total"] == 0
-    assert "No quota" in sd.render_sankey(sd.build_flow([]))
-    svg = sd.render_sankey(sd.build_flow(FLOW_ITEMS), focus=["speak"])
-    assert svg.startswith("<svg") and "<path" in svg and "speak 33%" in svg
-    assert sd.FOCUS_ORANGE in svg
-    assert sd.FOCUS_ORANGE not in sd.render_sankey(sd.build_flow(FLOW_ITEMS), focus=[])
+    shares = {n["name"]: round(n["share"]) for n in sd.build_flow(FLOW_ITEMS)["modes"]}
+    assert shares["speak"] == 33
 
 
 def test_run_renders_flow_type_mix_and_faucet(tmp_path):
@@ -229,15 +245,17 @@ def test_run_renders_flow_type_mix_and_faucet(tmp_path):
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
     series = json.loads((tmp_path / "series.json").read_text())
     assert series["flow"]["total"] == 20.0 and series["faucet"] == {"level": 4, "focus": ["speak"]}
-    assert "Where the quota goes" in page and "Type mix vs target" in page
-    assert "Faucet level <b>4</b>" in page and "% of quota" in page
-    assert page.index("Where the quota goes") < page.index("Work finished per day")
+    data = page_data(page)
+    assert data["faucet"] == {"level": 4, "focus": ["speak"]} and data["flow"]["total"] == 20.0
+    assert "Where the effort goes" in page and "Type mix vs target" in page and 'id="faucet"' in page
+    assert page.index("Work finished per day") < page.index("Where the effort goes")
 
 
 def test_run_without_faucet_or_usage_does_not_fail(tmp_path):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW)  # fake_api rejects #574 -> degraded
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert "Faucet level unavailable" in page and "No quota minutes" in page
+    data = page_data(page)
+    assert data["faucet"] is None and data["flow"]["total"] == 0
 
 
 def test_label_with_placeholder_is_not_substituted_again():
@@ -245,8 +263,8 @@ def test_label_with_placeholder_is_not_substituted_again():
                            "labels": ["mode:__DATA__<img src=x onerror=alert(1)>"]}])
     series = {"repo": "o/r", "branch": "dev", "flow": flow, "faucet": None, "days": [], "created": "2026-11-10"}
     page = sd.render_html(series)
-    head = page[:page.index('<script id="d"')]
-    assert "<img" not in head and "__DATA__" in head and "&lt;img" in head
+    assert "<img" not in page and page.count("</script>") == 2  # the label cannot open a tag or end the data block
+    assert any("<img" in n["name"] for n in page_data(page)["flow"]["modes"])  # ...and survives intact as data
 
 
 def test_speed_block_shows_medians_only_for_three_windows(tmp_path):
@@ -262,13 +280,10 @@ def test_speed_block_shows_medians_only_for_three_windows(tmp_path):
     assert sp["issue_all"] == sp["issue_7d"] == 24.0 and sp["issue_24h"] is None
 
 
-def test_every_activity_block_has_a_caption():
-    import re
+def test_every_card_has_a_title():
     page = sd.render_html(sd.build_series(fake_api, "o/r", "dev", NOW))
-    blocks = re.findall(r'<section class="blk">(.*?)</section>', page, re.S)
-    assert len(blocks) >= 8
-    for b in blocks:
-        assert re.search(r'<p class="cap1">[^<]+</p>', b), b[:80]
+    cards = page.count('<div class="card"')
+    assert cards >= 14 and len(re.findall(r'<div class="card"(?: style="[^"]*")?><h3>', page)) == cards
 
 
 def test_activity_grid_multi_column_on_desktop_no_hscroll_on_phone(tmp_path):
@@ -285,7 +300,7 @@ def test_activity_grid_multi_column_on_desktop_no_hscroll_on_phone(tmp_path):
         try:
             pg = br.new_page(viewport={"width": 1440, "height": 900})
             pg.goto(f.as_uri())
-            tops = pg.eval_on_selector_all(".blk", "els=>els.map(e=>Math.round(e.getBoundingClientRect().top))")
+            tops = pg.eval_on_selector_all(".card", "els=>els.map(e=>Math.round(e.getBoundingClientRect().top))")
             assert len(tops) != len(set(tops)), tops  # at least two blocks share a top offset
             pg.set_viewport_size({"width": 390, "height": 844})
             assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
@@ -303,7 +318,7 @@ def test_downloads_snapshot_series_and_per_release(tmp_path):
     assert dl["total"] == 45 and dl["releases"][0] == {"tag": "v0.2.0", "downloads": 40}
     assert dl["series"] == [None, 20, 45]  # no data before the first snapshot; live total today
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert "<h2>Downloads" in page and 'id="c_dl"' in page
+    assert "Downloads" in page and 'id="c_dl"' in page and page_data(page)["downloads"]["total"] == 45
 
 
 def test_downloads_unavailable_does_not_fail():
@@ -314,7 +329,7 @@ def test_downloads_unavailable_does_not_fail():
     series = sd.build_series(api, "o/r", "dev", NOW)
     assert series["downloads"] == {"total": None, "releases": [], "series": [None, None, None]}
     assert sd.build_snapshot(api, "o/r", "dev", NOW)["downloads"] is None
-    assert "<h2>Downloads" in sd.render_html(series)
+    assert 'id="b_dl"' in sd.render_html(series)
 
 
 def test_flow_platform_mobile_and_all_nodes():
@@ -371,10 +386,11 @@ def test_active_installs_per_day_and_week_per_version():
 def test_run_renders_active_installs(tmp_path):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=INSTALL_ROWS)
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert "<h2>Active installs</h2>" in page and "<td>0.3.3</td><td>windows</td><td>40</td><td>10.0</td>" in page
-    assert json.loads((tmp_path / "series.json").read_text())["installs"]["total"][-1] == 52
+    assert "Active installs" in page and 'id="inst"' in page
+    inst = page_data(page)["installs"]
+    assert inst["total"][-1] == 52 and inst["versions"][0] == {"version": "0.3.3", "os": "windows", "last_day": 40, "week_avg": 10.0}
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=None)
-    assert "Install counter not available yet" in (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert page_data((tmp_path / "index.html").read_text(encoding="utf-8"))["installs"] is None
 
 
 def test_counter_base_env_and_no_fetch_without_https():
@@ -388,7 +404,7 @@ def test_counter_base_env_and_no_fetch_without_https():
                                  [{"date": "2026-11-11", "version": "0.3.3", "os": "windows", "n": [1]}]])
 def test_run_survives_bad_counter_answer(tmp_path, bad):
     sd.run(str(tmp_path), "o/r", "dev", api=fake_api, now=NOW, installs=bad)
-    assert "Install counter not available yet" in (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert page_data((tmp_path / "index.html").read_text(encoding="utf-8"))["installs"] is None
 
 
 def test_infer_dims_path_rules_662():
@@ -420,13 +436,7 @@ def test_shared_mode_is_infrastructure_split_by_area_662():
     modes = {n["name"]: n["quota"] for n in flow["modes"]}
     assert modes == {"infrastructure ci": 10.0, "infrastructure install": 5.0, "infrastructure": 5.0, "speak": 20.0}
     assert "shared" not in modes and flow["unclassified"] == 0.0
-    svg = sd.render_sankey(flow, focus=["shared"])
-    assert "infrastructure ci 25%" in svg
-    # focus "shared" still colours the renamed nodes; focus "speak" alone does not colour them
-    assert svg.count(sd.FOCUS_ORANGE) >= 3
-    only_speak = sd.render_sankey(flow, focus=["speak"])
-    assert sd.focus_match("infrastructure ci", {"shared"}) and not sd.focus_match("infrastructure ci", {"speak"})
-    assert only_speak.count(sd.FOCUS_ORANGE) < svg.count(sd.FOCUS_ORANGE)
+    assert {n["name"]: round(n["share"]) for n in flow["modes"]}["infrastructure ci"] == 25
 
 
 def test_flow_backfill_covers_14_days_with_inference_662():
@@ -447,7 +457,6 @@ def test_flow_backfill_covers_14_days_with_inference_662():
     assert flow["total"] == 10.0  # 48 h window: only PR 1
     assert flow["backfill"]["days"] == 14 and flow["backfill"]["total"] == 20.0  # PRs 1 and 2, not 3
     assert flow["backfill"]["unclassified"] == 0.0 and flow["backfill"]["inferred"]["mode"] == 100.0
-    assert "Last 14 days" in sd.render_backfill_note(flow)
 
 
 def test_flow_warm_files_cache_makes_no_files_or_issue_calls_662():
@@ -497,3 +506,15 @@ def test_run_persists_pr_files_cache_662(tmp_path):
     big = {str(n): [] for n in range(sd.PR_FILES_KEEP + 5)}
     pruned = sd.prune_files_cache(big)
     assert len(pruned) == sd.PR_FILES_KEEP and "0" not in pruned and str(sd.PR_FILES_KEEP + 4) in pruned
+
+
+def test_rendered_page_has_no_js_errors_and_degrades_1213(tmp_path):
+    """Degraded data (no faucet, no quota, no installs, no releases) still draws every section without errors."""
+    page = sd.render_html(sd.build_series(fake_api, "o/r", "dev", NOW))
+    for width in (1280, 390):
+        text, errors = render_dom(page, tmp_path, width)
+        assert errors == [], errors
+    for msg in ("Faucet level unavailable", "No quota minutes in the last 48 h",
+                "Install counter not available yet", "Work finished per day"):
+        assert msg in text, msg
+

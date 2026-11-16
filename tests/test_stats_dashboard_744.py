@@ -77,13 +77,11 @@ def test_page_renders_the_three_blocks(tmp_path):
 
     sd.run(str(tmp_path), "o/r", "dev", api=api, now=NOW)
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
-    for h in ("Quota minutes per day", "PRs merged per day", "merged PRs per 100 quota minutes", "Release time"):
+    for h in ("Quota minutes per day", "PRs merged per 100 quota minutes", "release.yml run", 'id="c_quota"',
+              'id="c_per100"', 'id="c_run"', 'id="c_prt"'):
         assert h in page, h
-    quota = re.search(r'id="quota_day">(.*?)</section>', page, re.S).group(1)
-    assert 'class="marker"' in quota and "2026-11-14 quota min: 40.0" in quota
-    prs = re.search(r'id="prs_day">(.*?)</section>', page, re.S).group(1)
-    assert 'class="marker"' in prs and 'class="per100"' in prs
-    table = re.search(r'<table id="release_time">(.*?)</table>', page, re.S).group(1)
-    assert "v0.3.4" in table and "59 min" in table and "#820" in table
+    data = json.loads(re.search(r'<script id="d" type="application/json">(.*?)</script>', page, re.S).group(1))
+    assert data["quota_trend"]["marker"] == "2026-11-14" and data["quota_trend"]["marker_pr"] == 743
+    assert data["release_times"][0]["tag"] == "v0.3.4" and data["release_times"][0]["pr"] == 820
     series = json.loads((tmp_path / "series.json").read_text())
     assert series["quota_trend"]["quota"][-1] == 40.0 and series["release_times"][0]["run_min"] == 59.1

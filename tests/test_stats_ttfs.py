@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -27,12 +28,12 @@ def test_malformed_docs_skipped():
     assert sd.ttfs_points([bad, {"os": "x"}, "junk", None]) == {}
 
 
-def test_render_table_and_over_budget_and_empty():
-    page = sd.render_ttfs_section({"ttfs": sd.ttfs_points([doc(1, excl=100), doc(2, excl=200)])})
-    assert 'data-os="windows"' in page and "100 s" in page and "200 s" in page and "180 s" in page
-    assert page.count("#c0392b") == 1  # only the over-budget row is flagged
-    assert "no data yet" in sd.render_ttfs_section({"ttfs": {}})
-    assert "no data yet" in sd.render_ttfs_section({})
+def test_page_carries_points_and_budget_for_the_chart():
+    page = sd.render_html({"repo": "o/r", "branch": "dev",
+                           "ttfs": sd.ttfs_points([doc(1, excl=100), doc(2, excl=200)])})
+    data = json.loads(page.split('<script id="d" type="application/json">', 1)[1].split("</script>", 1)[0])
+    assert [r["seconds"] for r in data["ttfs"]["windows"]] == [100.0, 200.0] and data["ttfs_budget_s"] == 180
+    assert 'id="c_ttfs"' in page and 'id="h_ins"' in page
 
 
 def test_collect_uses_artifacts_and_survives_failure():

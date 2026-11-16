@@ -107,17 +107,20 @@ def test_dashboard_reads_latest_two_from_eval_results_and_renders():
 
     lv = sd.collect_lang_verdicts(api, "o/r")
     assert lv["date"] == "2026-11-16" and lv["previous_date"] == "2026-11-09" and len(lv["rows"]) == 3
-    page = sd.render_lang_verdicts({"lang_verdicts": lv})
-    assert "<caption>2026-11-16 (vs 2026-11-09)</caption>" in page
-    assert "<td>en-&gt;zh</td><td>7.01</td><td>40.12</td><td>PASS</td><td>ASR -1.11, chrF +1.22</td>" in page
-    assert '<td style="color:#c0392b">FAIL</td>' in page
+    page = sd.render_html({"repo": "o/r", "branch": "dev", "lang_verdicts": lv})
+    assert 'id="langv"' in page and "Per-language quality (weekly)" in page
+    data = json.loads(page.split('<script id="d" type="application/json">', 1)[1].split("</script>", 1)[0])
+    rows = {r["language"]: r for r in data["lang_verdicts"]["rows"]}  # en->zh survives the "<" escaping
+    assert rows["en->zh"] == {"language": "en->zh", "asr": 7.01, "mt": 40.12, "verdict": "PASS", "d_asr": -1.11, "d_mt": 1.22}
+    assert rows["ja->zh"]["verdict"] == "FAIL"
 
 
 def test_dashboard_without_results_says_no_data():
     def boom(path, accept=None):
         raise OSError("404")
     assert sd.collect_lang_verdicts(boom, "o/r") is None
-    assert 'id="langv">no data yet' in sd.render_lang_verdicts({"lang_verdicts": None})
+    page = sd.render_html({"repo": "o/r", "branch": "dev", "lang_verdicts": None})
+    assert 'id="langv"' in page and "'no data yet'" in page  # drawn client-side when there are no rows
 
 
 def test_workflow_runs_weekly_and_splits_write_permissions():

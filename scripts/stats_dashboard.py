@@ -7,7 +7,6 @@ Reads OUTDIR/data.json (hourly snapshots, optional), appends one snapshot, rebui
 full-history series from the API (series.json) and writes a self-contained index.html.
 """
 import argparse
-import html
 import io
 import json
 import os
@@ -228,7 +227,6 @@ SIDE_TARGETS = [("QA", 15), ("ideas", 5)]  # fixed-schedule rows, informational
 FLOW_HOURS = 48  # same window as the S-hard ledger
 BACKFILL_DAYS = 14  # #662 part 4: path-inferred dimensions re-applied to this many days of merged PRs
 UNLABELLED = "unlabelled"
-FOCUS_ORANGE = "#e08a1e"
 
 
 def parse_usage(body):
@@ -318,12 +316,6 @@ def infra_node(labels):
     return "%s %s" % (INFRA, area) if area else INFRA
 
 
-def focus_match(name, focus):
-    """Focus values (lower-case set) colour a node; 'shared' still matches the renamed infrastructure nodes."""
-    n = name.lower()
-    return n in focus or (n.startswith(INFRA) and "shared" in focus)
-
-
 def build_flow(items):
     """items: [{'model','minutes','labels':[names]}] -> quota-flow data.
 
@@ -377,107 +369,6 @@ def build_flow(items):
             "inferred": {k: pct(v) for k, v in inferred.items()},
             "unclassified": pct(sum(v for k, v in paths.items() if k[0] == UNLABELLED)),
             "type_mix": mix, "side": [{"type": n, "target": t} for n, t in SIDE_TARGETS]}
-
-
-def render_sankey(flow, focus=()):
-    """Inline-SVG Sankey: quota -> mode -> platform -> language. Focus values are orange."""
-    total = flow["total"]
-    if not total:
-        return '<p class="n">No quota minutes in the last %d h.</p>' % FLOW_HOURS
-    cols = [[{"name": "quota", "quota": total}], flow["modes"], flow["platforms"], flow["langs"]]
-    W, H, NW, GAP, PAD = 640, 220, 10, 4, 6
-    xs = [PAD + i * (W - 2 * PAD - NW) / 3 for i in range(4)]
-    scale = (H - 2 * PAD - GAP * max(len(c) for c in cols)) / total
-    pos = []  # per column: name -> [y, height]
-    for col in cols:
-        y, d = PAD, {}
-        for n in col:
-            h = max(n["quota"] * scale, 1.0)
-            d[n["name"]] = [y, h]
-            y += h + GAP
-        pos.append(d)
-    focus = {f.lower() for f in focus}
-    out = []
-    for c in range(3):
-        links = {}
-        for p in flow["paths"]:
-            a, b = ("quota" if c == 0 else p[c - 1]), p[c]
-            links[(a, b)] = links.get((a, b), 0.0) + p[3]
-        order_a = list(pos[c])
-        order_b = list(pos[c + 1])
-        off_a = {n: pos[c][n][0] for n in order_a}
-        off_b = {n: pos[c + 1][n][0] for n in order_b}
-        for (a, b), v in sorted(links.items(), key=lambda kv: (order_a.index(kv[0][0]), order_b.index(kv[0][1]))):
-            h = v * scale
-            x1, x2 = xs[c] + NW, xs[c + 1]
-            y1, y2 = off_a[a] + h / 2, off_b[b] + h / 2
-            off_a[a] += h
-            off_b[b] += h
-            col = FOCUS_ORANGE if focus_match(b, focus) else "#3b82c4"
-            out.append('<path d="M%.1f %.1f C%.1f %.1f %.1f %.1f %.1f %.1f" fill="none" stroke="%s" '
-                       'stroke-opacity=".35" stroke-width="%.2f"><title>%s \u2192 %s: %.1f%% of quota</title></path>'
-                       % (x1, y1, (x1 + x2) / 2, y1, (x1 + x2) / 2, y2, x2, y2, col, max(h, 0.5),
-                          html.escape(a), html.escape(b), 100.0 * v / total))
-    for c, col in enumerate(cols):
-        for n in col:
-            y, h = pos[c][n["name"]]
-            fill = FOCUS_ORANGE if focus_match(n["name"], focus) else "#667"
-            label = n["name"] if c == 0 else "%s %.0f%%" % (n["name"], 100.0 * n["quota"] / total)
-            tx, anchor = (xs[c] + NW + 3, "start") if c < 3 else (xs[c] - 3, "end")
-            out.append('<rect x="%.1f" y="%.1f" width="%d" height="%.1f" fill="%s"/><text x="%.1f" y="%.1f" '
-                       'text-anchor="%s">%s</text>' % (xs[c], y, NW, h, fill, tx, y + h / 2 + 4, anchor,
-                                                      html.escape(label)))
-    return '<svg viewBox="0 0 %d %d" role="img" aria-label="quota flow">%s</svg>' % (W, H, "".join(out))
-
-
-def render_type_mix(flow):
-    rows = []
-    for r in flow["type_mix"]:
-        rows.append('<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:96px">%s</span>'
-                    '<div class="pb" style="flex:1;position:relative"><div style="width:%.1f%%"></div>'
-                    '<i style="position:absolute;left:%d%%;top:-2px;width:2px;height:14px;background:var(--fg)"></i></div>'
-                    '<span style="width:120px">%.1f%% / target %d</span></div>'
-                    % (html.escape(r["type"]), min(r["share"], 100.0), min(r["target"], 100), r["share"], r["target"]))
-    side = "".join('<span class="t" style="padding:4px 10px">%s <b style="font-size:14px;display:inline">%d%%</b> '
-                   '<small>fixed schedule</small></span>' % (html.escape(s["type"]), s["target"]) for s in flow["side"])
-    return "".join(rows) + "<div>" + side + "</div>"
-
-
-def render_faucet(faucet):
-    if not faucet:
-        return '<p class="n">Faucet level unavailable.</p>'
-    focus = ", ".join(html.escape(f) for f in faucet["focus"]) or "none"
-    return ('<p>Faucet level <b>%d</b> &middot; focus <b style="color:%s">%s</b></p>'
-            % (faucet["level"], FOCUS_ORANGE, focus))
-
-
-def render_backfill_note(flow):
-    """#662 part 4: one line for the longer backfill window (same inference, more PRs)."""
-    b = flow.get("backfill")
-    if not b or not b.get("total"):
-        return ""
-    inf = b.get("inferred", {})
-    return ('<p class="n">Last %d days: inferred mode %.0f%%, platform %.0f%%, language %.0f%%; '
-            'unclassified mode %.0f%%.</p>' % (b["days"], inf.get("mode", 0), inf.get("os", 0), inf.get("lang", 0),
-                                               b.get("unclassified", 0)))
-
-
-def render_flow_section(series):
-    flow = series.get("flow")
-    if not flow:
-        return ""
-    faucet = series.get("faucet")
-    focus = faucet["focus"] if faucet else ()
-    inf = flow.get("inferred", {})
-    return ('<h2>Where the quota goes</h2>%s'
-            '<p class="n">Quota minutes (minutes x model weight, opus = 2x sonnet), PRs merged in the last %d h; '
-            'orange = current focus. Inferred from changed files (no label): mode %.0f%%, platform %.0f%%, '
-            'language %.0f%%; unclassified mode %.0f%%.</p>%s'
-            '<h2>Type mix vs target</h2>%s'
-            '<p class="n">Share of quota per issue type; the tick marks the target.</p>'
-            '<h2>Faucet</h2>%s<p class="n">Throttle level and focus read from issue #574.</p>'
-            % (render_sankey(flow, focus), FLOW_HOURS, inf.get("mode", 0), inf.get("os", 0), inf.get("lang", 0),
-               flow.get("unclassified", 0), render_backfill_note(flow), render_type_mix(flow), render_faucet(faucet)))
 
 
 def build_flow_inputs(api, repo, merged_prs, now, issue_labels=None, files_cache=None):
@@ -620,56 +511,6 @@ def release_runs(api, repo):
         return None
 
 
-def _svg_bars(days, vals, color, marker=None, line=None, line_color="#e08a1e", title=""):
-    W, H, L, B, T = 640, 170, 40, 20, 8
-    n = len(days)
-    mx = max([1] + [v for v in vals if v])
-    lmx = max([0.01] + [v for v in line or () if v])
-    bw = (W - L) / n * 0.8
-    X = lambda i: L + (W - L) * (i + 0.5) / n  # noqa: E731
-    Y = lambda v, m: T + (H - T - B) * (1 - v / m)  # noqa: E731
-    g = ['<line x1="%d" x2="%d" y1="%.1f" y2="%.1f" stroke="var(--grid)"/><text x="%d" y="%.1f" text-anchor="end">%s</text>'
-         % (L, W, Y(v, mx), Y(v, mx), L - 4, Y(v, mx) + 4, round(v)) for v in (0, mx / 2, mx)]
-    for i, v in enumerate(vals):
-        if v:
-            g.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"><title>%s %s: %s</title></rect>'
-                     % (X(i) - bw / 2, Y(v, mx), bw, Y(0, mx) - Y(v, mx), color, days[i], html.escape(title), v))
-        if i % 2 == 0:
-            g.append('<text x="%.1f" y="%d" text-anchor="middle">%s</text>' % (X(i), H - 4, days[i][5:]))
-    if line:
-        pts = " ".join("%.1f,%.1f" % (X(i), Y(v, lmx)) for i, v in enumerate(line) if v is not None)
-        g.append('<polyline class="per100" fill="none" stroke="%s" stroke-width="2" points="%s"/>' % (line_color, pts))
-    if marker in days:
-        x = X(days.index(marker))
-        g.append('<line class="marker" x1="%.1f" x2="%.1f" y1="%d" y2="%d" stroke="#d1477a" stroke-dasharray="4 3"/>'
-                 % (x, x, T, H - B))
-    return '<svg viewBox="0 0 %d %d">%s</svg>' % (W, H, "".join(g))
-
-
-def render_throughput_section(series):
-    tr, rel = series.get("quota_trend"), series.get("release_times")
-    if not tr:
-        return ""
-    mk = ('; dashed line = #%d merged (%s)' % (tr["marker_pr"], tr["marker"])) if tr.get("marker") else ""
-    fmt = lambda m: "n/a" if m is None else ("%.0f min" % m if m < 120 else "%.1f h" % (m / 60))  # noqa: E731
-    rows = "".join('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
-                   % (html.escape(r["tag"]), r["published_at"][:16].replace("T", " "), fmt(r["run_min"]),
-                      fmt(r["pr_min"]) + (" (#%d)" % r["pr"] if r["pr"] else "")) for r in rel or ())
-    table = ('<table id="release_time"><tr><th>Release</th><th>Published (UTC)</th><th>release.yml run</th>'
-             '<th>Release PR open to published</th></tr>%s</table>' % rows) if rows else '<p class="n">No releases.</p>'
-    return ('<div class="grid"><section class="blk" id="quota_day"><h2>Quota minutes per day</h2>%s'
-            '<p class="cap1">tlwu-usage minutes x model weight (opus = 2x) of PRs merged to %s, per Asia/Taipei day%s.</p>'
-            '</section><section class="blk" id="prs_day"><h2>PRs merged per day</h2>%s'
-            '<div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span>'
-            '<span><i style="background:#e08a1e"></i>merged PRs per 100 quota minutes</span></div>'
-            '<p class="cap1">Does quota turn into output? Same days and marker as the quota chart.</p></section></div>'
-            '<h2>Release time</h2>%s<p class="n">Last %d published releases.</p>'
-            % (_svg_bars(tr["days"], tr["quota"], "#2a9d6f", tr.get("marker"), title="quota min"),
-               html.escape(series.get("branch", "dev")), mk,
-               _svg_bars(tr["days"], tr["merged"], "#3b82c4", tr.get("marker"), tr["per100"], title="PRs merged"),
-               table, RELEASE_ROWS))
-
-
 INSTALL_DAYS = 14  # #806: days of active-install counts shown
 
 
@@ -736,20 +577,6 @@ def active_installs(rows, now):
     return {"days": days, "total": [total[d] for d in days], "versions": versions}
 
 
-def render_installs(inst):
-    if not inst:
-        return ('<h2>Active installs</h2><p class="n">Install counter not available yet '
-                '(cloudflare/update-counter).</p>')
-    rows = "".join("<tr><td>%s</td><td>%s</td><td>%d</td><td>%.1f</td></tr>"
-                   % (html.escape(v["version"]), html.escape(v["os"]), v["last_day"], v["week_avg"])
-                   for v in inst["versions"]) or '<tr><td colspan="4">no checks yet</td></tr>'
-    daily = " &middot; ".join("%s: <b>%d</b>" % (d[5:], n) for d, n in zip(inst["days"], inst["total"]))
-    return ('<h2>Active installs</h2><p style="font-size:13px">Per day: %s</p>'
-            '<table style="font-size:13px"><tr><th>version</th><th>OS</th><th>last day</th><th>7-day avg/day</th>'
-            '</tr>%s</table><p class="n">Anonymous update checks (date, version, OS only; auto-update on, at most '
-            'once a day per install), so checks per day ~ active installs.</p>' % (daily, rows))
-
-
 def downloads_series(history, days, current=None):
     """Per-day total downloads: last snapshot value up to that day, None before the first one.
 
@@ -793,24 +620,6 @@ def ttfs_points(docs, points=TTFS_POINTS):
         keep = sorted(rows, key=lambda r: (r["date"], -r["_i"]))[-points:]  # oldest first, newest last
         out[o] = [{k: v for k, v in r.items() if k != "_i"} for r in keep]
     return out
-
-
-def render_ttfs_section(series):
-    ttfs = series.get("ttfs")
-    head = ('<h2>Install to first subtitle</h2><p class="n">Seconds from install start to the first subtitle, '
-            'excluding the model download (50 Mbps baseline); budget %d s. Last %d install-clean runs per OS.</p>'
-            % (TTFS_BUDGET_S, TTFS_POINTS))
-    if not ttfs:
-        return head + '<p class="n" id="ttfs">no data yet</p>'
-    out = []
-    for o, rows in ttfs.items():
-        tr = "".join('<tr><td>%s</td><td>%s</td><td%s>%.0f s</td></tr>'
-                     % (html.escape(r["version"]), html.escape(r["date"]),
-                        ' style="color:#c0392b"' if r["seconds"] > TTFS_BUDGET_S else "", r["seconds"]) for r in rows)
-        out.append('<table class="ttfs" data-os="%s"><caption>%s &middot; budget %d s</caption>'
-                   '<tr><th>Version</th><th>Date</th><th>Excl. download</th></tr>%s</table>'
-                   % (html.escape(o), html.escape(o), TTFS_BUDGET_S, tr))
-    return head + '<div id="ttfs">%s</div>' % "".join(out)
 
 
 def http_artifact_json(url):
@@ -911,25 +720,6 @@ def collect_lang_verdicts(api, repo):
     latest, previous = docs[-1], (docs[0] if len(docs) == 2 else None)
     return {"date": files[-1][:-5], "previous_date": files[-2][:-5] if len(files) > 1 else None,
             "rows": lang_verdict_rows(latest, previous)}
-
-
-def render_lang_verdicts(series):
-    lv = series.get("lang_verdicts")
-    head = ('<h2>Per-language quality (weekly)</h2><p class="n">CPU mini-eval per pair (eval-langs.yml, Whisper small '
-            '+ Hy-MT2 1.8B): ASR error rate %, MT chrF, gate verdict vs eval/baseline.json.</p>')
-    if not lv or not lv.get("rows"):
-        return head + '<p class="n" id="langv">no data yet</p>'
-
-    def f(v, signed=False):
-        return "n/a" if v is None else (("%+.2f" if signed else "%.2f") % v)
-
-    tr = "".join('<tr><td>%s</td><td>%s</td><td>%s</td><td%s>%s</td><td>ASR %s, chrF %s</td></tr>'
-                 % (html.escape(r["language"]), f(r["asr"]), f(r["mt"]),
-                    ' style="color:#c0392b"' if r["verdict"] != "PASS" else "", r["verdict"],
-                    f(r["d_asr"], True), f(r["d_mt"], True)) for r in lv["rows"])
-    cap = "%s (vs %s)" % (lv["date"], lv["previous_date"]) if lv.get("previous_date") else lv["date"]
-    return head + ('<table id="langv"><caption>%s</caption><tr><th>Language</th><th>ASR</th><th>MT</th>'
-                   '<th>Verdict</th><th>Change vs last week</th></tr>%s</table>' % (html.escape(cap), tr))
 
 
 def build_series(api, repo, branch, now, history=None, rels=_FETCH, files_cache=None):
@@ -1036,180 +826,288 @@ def merge_history(history, snap):
     return out[-KEEP:]
 
 
-PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>tlwu stats</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
+# Chart-first page (#1213): all sections are drawn client-side from the embedded series JSON.
+PAGE = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TingLong dashboard</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
 <style>
-:root{--bg:#fff;--fg:#1d2329;--mut:#667;--bd:#d0d7de;--a:#2a7d4f;--grid:#e6e9ec}
-@media (prefers-color-scheme:dark){:root{--bg:#14181c;--fg:#e4e8ec;--mut:#9aa4ae;--bd:#30363d;--a:#4cc38a;--grid:#262c33}}
-body{font:14px/1.4 system-ui,sans-serif;max-width:1200px;margin:0 auto;padding:12px 16px;background:var(--bg);color:var(--fg)}
-.t{display:inline-block;margin:4px 4px 4px 0;padding:8px 14px;border:1px solid var(--bd);border-radius:6px}
-.t b{display:block;font-size:22px}h2{font-size:16px;margin:22px 0 4px}
-svg{width:100%;height:auto;display:block}svg text{fill:var(--mut);font-size:11px}
-select{font:inherit;padding:4px 8px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:4px}
-.lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0;font-size:12px}
-.lg i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
-.pb{height:10px;background:var(--grid);border-radius:5px;overflow:hidden}.pb div{height:100%;background:var(--a)}
-small,p.n,p.cap1{color:var(--mut)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:0 24px}
-.blk{min-width:0}p.cap1{margin:2px 0 0;font-size:13px}
-.vs{border:1px solid var(--bd);border-radius:8px;padding:12px;margin:0 0 12px}
-.vs .cap{font-size:16px;font-weight:600;margin:0 0 8px}
-.vs .row{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
-.vs .nd{flex:1 1 150px;border:1px solid var(--bd);border-radius:6px;padding:8px;font-size:13px}
-.vs .goal{background:#1e3a5f;color:#fff;border-color:#1e3a5f}
-.vs .ar{align-self:center;font-size:20px}.vs ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
-</style></head><body>
-__VISION__
-<h1 style="font-size:20px">__REPO__ progress</h1>
-<p style="font-size:16px;margin:4px 0 12px"><a href="roadmap.html">&#x1F5FA;&#xFE0F; Roadmap</a> &middot; <a href="docs.html">Docs</a></p>
-<p class="n" id="upd"></p><p id="sum" style="font-size:16px"></p>
-<div id="hero"></div>
-__FLOW__
-__INSTALLS__
-__THROUGHPUT__
-__TTFS__
-__LANGV__
-<div class="grid">
-<section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
-<div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
-<p class="cap1">Pull requests merged and issues closed each day.</p></section>
-<section class="blk"><h2>Commits per day</h2><div id="c_commits"></div>
-<p class="cap1">Commits landed on the main development branch each day.</p></section>
-<section class="blk"><h2>How fast things get done</h2><div id="speed"></div>
-<p class="cap1">Typical time from opened to done, for issues and PRs.</p></section>
-<section class="blk"><h2>Milestone progress</h2><div id="ms"></div>
-<p class="cap1">Closed versus open issues in each milestone.</p></section>
-<section class="blk"><h2>Open issues over time</h2><div id="c_open"></div>
-<p class="cap1">How many issues are waiting, day by day.</p></section>
-<section class="blk"><h2>Open issues by <select id="dim"></select></h2>
-<p class="n" id="lnote"></p><div id="c_grp"></div><div class="lg" id="lg"></div>
-<div id="cur"></div><p class="cap1">Open issues split by the chosen label group.</p></section>
-<section class="blk"><h2>Stars</h2><div id="c_stars"></div>
-<p class="cap1">Total GitHub stars over time.</p></section>
-<section class="blk"><h2>Forks</h2><div id="c_forks"></div>
-<p class="cap1">Total forks over time.</p></section>
-<section class="blk"><h2>Downloads <small id="dl_tot"></small></h2><div id="c_dl"></div><div id="dl_rel"></div>
-<p class="cap1">Total release downloads over time (from hourly snapshots), and per release.</p></section>
+/* chart-first stats page (#1213): status tiles, donuts, lines, gauges; text second */
+:root{color-scheme:light dark;
+--bg:light-dark(#f4f6f9,#111418);--card:light-dark(#ffffff,#1a1e24);--ink:light-dark(#11161d,#eef1f4);--mut:light-dark(#5b6470,#a3acb7);
+--line:light-dark(#e3e7ec,#2a3038);
+--s1:light-dark(#2a78d6,#3987e5);--s2:light-dark(#eb6834,#d95926);--s3:light-dark(#1baf7a,#199e70);--s4:light-dark(#eda100,#c98500);
+--s5:light-dark(#e87ba4,#d55181);--s6:light-dark(#008300,#0ca30c);--s7:light-dark(#6250d6,#9085e9);--s8:light-dark(#8a919b,#6f7783);
+--good:light-dark(#12804a,#3fbf7f);--bad:light-dark(#cf2f2f,#f06262);--warn:light-dark(#b86e00,#e9a23b)}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:clip}
+.w{max-width:1240px;margin:0 auto;padding:20px max(4vw,14px) 48px}
+h1{font-size:30px;line-height:1.1;margin:0;font-weight:800}
+h2{font-size:22px;margin:36px 0 12px;font-weight:800}
+h3{font-size:16px;margin:0 0 8px;font-weight:700}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px}
+.mut,.n{color:var(--mut);font-size:13px}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;margin-top:16px}
+.card{background:var(--card);border-radius:16px;padding:18px;border:1px solid var(--line)}
+.big{font-size:44px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.big small{font-size:16px;font-weight:700;margin-left:4px}
+.lamp{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:14px}
+.lamp i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:14px}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.fig{position:relative;width:100%}
+.fig svg{display:block;width:100%}
+.dn{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.dn .ring{flex:0 0 180px;max-width:180px}
+.lg{flex:1 1 150px;display:flex;flex-direction:column;gap:5px;font-size:14px}
+.lg div{display:flex;align-items:center;gap:8px}
+.lg i{width:11px;height:11px;border-radius:3px;flex:none}
+.lg b{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
+.klg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;margin-top:6px}
+.klg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.bar{display:grid;grid-template-columns:110px minmax(0,1fr) 64px;align-items:center;gap:8px;margin:7px 0;font-size:14px}
+.bar>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .tr{position:relative;height:14px;background:var(--line);border-radius:7px}
+.bar .tr>div{height:100%;border-radius:7px}
+.bar .tk{position:absolute;top:-4px;width:3px;height:22px;background:var(--ink);border-radius:2px}
+.bar span:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips span{background:var(--line);border-radius:999px;padding:3px 10px;font-size:13px;font-weight:500}
+.ms{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;text-align:center;font-size:13px}
+select{font:inherit;font-size:15px;padding:6px 10px;min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+select:focus-visible,a:focus-visible{outline:3px solid var(--s1);outline-offset:2px}
+a{color:var(--s1)}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--card);font-size:13px;padding:6px 10px;border-radius:8px;opacity:0;transition:opacity .1s;z-index:9;white-space:nowrap}
+svg text{fill:var(--mut);font:12px system-ui,sans-serif}
+@media(max-width:520px){.big{font-size:38px}h1{font-size:24px}.dn .ring{flex-basis:150px}}
+</style>
+</head>
+<body>
+<div class="w">
+  <div class="top">
+    <h1>TingLong dashboard</h1>
+    <span class="mut" id="upd"></span>
+  </div>
+  <p style="margin:6px 0 0"><a href="roadmap.html">Roadmap</a> · <a href="docs.html">Docs</a> · <a id="repo" href="#">GitHub</a></p>
+
+  <div class="hero">
+    <div class="card"><h3>PRs merged today</h3><div class="big" id="h_pr"></div><div class="fig" id="sp_pr" style="height:56px;margin-top:10px"></div><div class="mut" id="h_pr2"></div></div>
+    <div class="card"><h3>Install to first subtitle</h3><div id="h_ins" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px"></div><div class="mut">Needle past the top = over the 180 s budget</div></div>
+    <div class="card"><h3>One release run</h3><div class="big" id="h_rel"></div><div class="fig" id="sp_rel" style="height:56px;margin-top:10px"></div><div class="mut" id="h_rel2"></div></div>
+    <div class="card"><h3>Stars</h3><div class="big" id="h_star"></div><div class="fig" id="sp_star" style="height:56px;margin-top:10px"></div><div class="mut" id="h_star2"></div></div>
+  </div>
+
+  <h2 id="output">Output</h2>
+  <div class="g2">
+    <div class="card"><h3>Work finished per day</h3><div class="fig" id="c_thru"></div><div class="klg"><span><i style="background:var(--s1)"></i>PRs merged</span><span><i style="background:var(--s2)"></i>issues closed</span><span><i style="background:var(--s3)"></i>commits</span></div></div>
+    <div class="card"><h3>Time from opened to done</h3><div id="b_speed"></div><div class="mut" style="margin-top:8px">Median, last 7 days (hover for 24 h and all time)</div></div>
+  </div>
+
+  <h2 id="next">What's next</h2>
+  <div class="card"><h3>Milestone progress</h3><div class="ms" id="ms"></div></div>
+  <div style="height:14px"></div>
+  <div class="g2">
+    <div class="card"><h3>Open issues over time</h3><div class="fig" id="c_open"></div></div>
+    <div class="card"><h3>Open issues by <select id="dim" aria-label="Group by"></select></h3><div class="dn"><div class="ring" id="d_grp"></div><div class="lg" id="l_grp"></div></div><div class="n" id="lnote"></div></div>
+  </div>
+
+  <h2 id="install">Install</h2>
+  <div class="card"><h3>Install to first subtitle (seconds, excl. model download, last clean installs)</h3><div class="fig" id="c_ttfs"></div><div class="klg" id="k_ttfs"></div></div>
+  <div style="height:14px"></div>
+  <div class="g2">
+    <div class="card"><h3>Active installs</h3><div id="inst"></div></div>
+    <div class="card"><h3>Per-language quality (weekly)</h3><div id="langv"></div><div class="n">CPU mini-eval per pair: bar = MT chrF, colour = gate verdict; hover for ASR error rate and change vs last week.</div></div>
+  </div>
+
+  <h2 id="effort">Where the effort goes</h2>
+  <div class="g3">
+    <div class="card"><h3>By mode</h3><div class="dn"><div class="ring" id="d_mode"></div><div class="lg" id="l_mode"></div></div></div>
+    <div class="card"><h3>By platform</h3><div class="dn"><div class="ring" id="d_plat"></div><div class="lg" id="l_plat"></div></div></div>
+    <div class="card"><h3>Type mix vs target (black tick)</h3><div id="b_type"></div></div>
+  </div>
+  <div class="n" id="flow_note" style="margin-top:6px"></div>
+  <div class="g3" style="margin-top:14px">
+    <div class="card"><h3>Quota minutes per day</h3><div class="fig" id="c_quota"></div></div>
+    <div class="card"><h3>PRs merged per 100 quota minutes</h3><div class="fig" id="c_per100"></div></div>
+    <div class="card"><h3>Faucet</h3><div id="faucet"></div></div>
+  </div>
+
+  <h2 id="releases">Releases</h2>
+  <div class="g2">
+    <div class="card"><h3>release.yml run (minutes)</h3><div class="fig" id="c_run"></div></div>
+    <div class="card"><h3>Release PR open to published (hours)</h3><div class="fig" id="c_prt"></div></div>
+  </div>
+
+  <h2 id="popularity">Popularity</h2>
+  <div class="g2">
+    <div class="card"><h3>Stars and forks</h3><div class="fig" id="c_star"></div><div class="klg"><span><i style="background:var(--s4)"></i>stars</span><span><i style="background:var(--s7)"></i>forks</span></div></div>
+    <div class="card"><h3>Downloads <span class="mut" id="dl_tot"></span></h3><div class="fig" id="c_dl"></div><div id="b_dl"></div></div>
+  </div>
 </div>
+<div id="tip" role="tooltip"></div>
 <script id="d" type="application/json">__DATA__</script>
 <script>
+{
 const D=JSON.parse(document.getElementById('d').textContent);
-const W=640,H=170,L=34,B=20,T=8;
-const PAL=['#3b82c4','#e08a1e','#2a9d6f','#c2410c','#8b5cf6','#d1477a','#0e9aa7','#8a7f1f','#6b7280','#a16207'];
+const $=id=>document.getElementById(id);
+const S=['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function axes(max,n){let s='';for(let k=0;k<=2;k++){const y=T+(H-T-B)*(1-k/2);
- s+=`<line x1="${L}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${L-4}" y="${y+4}" text-anchor="end">${Math.round(max*k/2)}</text>`}
- const step=Math.max(1,Math.ceil(n/6));
- for(let i=0;i<n;i+=step){const x=L+(W-L)*(n<2?0:i/(n-1));
-  s+=`<text x="${Math.min(x,W-18)}" y="${H-4}" text-anchor="${i?'middle':'start'}">${D.days[i].slice(5)}</text>`}
- return s}
-function X(i,n,bar){return bar?L+(W-L)*(i+.5)/n:L+(W-L)*(n<2?0:i/(n-1))}
-function chart(el,series,opt){
- const n=D.days.length;let max=1;
- if(opt.stack){for(let i=0;i<n;i++)max=Math.max(max,series.reduce((a,s)=>a+s.v[i],0))}
- else series.forEach(s=>s.v.forEach(v=>max=Math.max(max,v)));
- let g=axes(max,n);const Y=v=>T+(H-T-B)*(1-v/max);
- if(opt.stack){const bw=(W-L)/n*.8;
-  for(let i=0;i<n;i++){let acc=0;series.forEach((s,k)=>{const v=s.v[i];if(!v)return;
-   g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(acc+v)}" width="${bw}" height="${Y(acc)-Y(acc+v)}" fill="${opt.pal?opt.pal[k]:PAL[k%PAL.length]}"><title>${D.days[i]} ${esc(s.name)}: ${v}</title></rect>`;acc+=v})}}
- else if(opt.bar){const bw=(W-L)/n*.8;series[0].v.forEach((v,i)=>{g+=`<rect x="${X(i,n,1)-bw/2}" y="${Y(v)}" width="${bw}" height="${Y(0)-Y(v)}" fill="${opt.color}"><title>${D.days[i]}: ${v}</title></rect>`})}
- else series.forEach(s=>{g+=`<polyline fill="none" stroke="${opt.color}" stroke-width="2" points="${s.v.map((v,i)=>v==null?'':X(i,n)+','+Y(v)).filter(Boolean).join(' ')}"/>`});
- el.innerHTML=`<svg viewBox="0 0 ${W} ${H}">${g}</svg>`}
-document.getElementById('upd').textContent='Updated '+D.updated+' UTC. Data from repo creation ('+D.created.slice(0,10)+') to today.';
-const Hh=D.hero;
-const big=(v,k)=>`<div class="t"><b>${v}</b><span>${k}</span></div>`;
-const row=(title,f)=>`<p class="n" style="margin:10px 0 0">${title}</p>`+[['prs','PRs merged'],['issues','issues closed'],['commits','commits']].map(([k,l])=>big(Hh[k][f],l)).join('');
-document.getElementById('hero').innerHTML=row('Today (UTC)','today')+row('Last 24 hours','h24')+row('Since day one (day '+Hh.day_n+')','total');
-const per=Hh.prs.h24?Math.round(1440/Hh.prs.h24):0;
-document.getElementById('sum').textContent='Day '+Hh.day_n+' \u00b7 '+Hh.prs.h24+' PRs merged in the last 24 h'+(per?' \u00b7 1 PR every '+per+' min':'');
+const fmt=n=>n==null?'n/a':Math.round(n).toLocaleString('en-US');
+const med=a=>{const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length?(s.length%2?s[m]:(s[m-1]+s[m])/2):null};
+const nm=k=>k==='(none)'?'unlabelled':String(k).replace(/^infrastructure /,'');
+const none=(el,t)=>{el.innerHTML='<p class="n">'+esc(t)+'</p>'};
+const days=(D.days||[]).map(d=>d.slice(5).replace('-','/'));
+
+/* tooltip */
+const tip=$('tip');
+document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-t]');
+ if(!t){tip.style.opacity=0;return}
+ tip.textContent=t.getAttribute('data-t');tip.style.opacity=1;
+ tip.style.left=Math.max(4,Math.min(e.clientX+14,innerWidth-tip.offsetWidth-8))+'px';tip.style.top=(e.clientY-36)+'px'});
+
+/* donut */
+function donut(el,lg,items,center,sub){
+ const tot=items.reduce((a,b)=>a+b.v,0)||1,r=70,C=2*Math.PI*r;let acc=0,g='';
+ items.forEach((it,i)=>{const len=C*it.v/tot,gap=items.length>1?2:0,c=it.c||S[i];
+  if(len>0)g+=`<circle cx="100" cy="100" r="${r}" fill="none" stroke="${c}" stroke-width="28" stroke-dasharray="${Math.max(len-gap,0.5)} ${C}" stroke-dashoffset="${-acc}" transform="rotate(-90 100 100)" data-t="${esc(it.n)}: ${fmt(it.v)} (${Math.round(100*it.v/tot)}%)"></circle>`;acc+=len});
+ el.innerHTML=`<svg viewBox="0 0 200 200" role="img" aria-label="${esc(center+' '+sub)}">${g}<text x="100" y="100" text-anchor="middle" style="font-size:30px;font-weight:800;fill:var(--ink)">${esc(center)}</text><text x="100" y="124" text-anchor="middle" style="font-size:13px">${esc(sub)}</text></svg>`;
+ lg.innerHTML=items.map((it,i)=>`<div><i style="background:${it.c||S[i]}"></i>${esc(it.n)}<b>${Math.round(100*it.v/tot)}%</b></div>`).join('')}
+function fold(arr,k){const s=[...arr].sort((a,b)=>b.v-a.v);if(s.length<=k)return s;const h=s.slice(0,k-1);h.push({n:'other',v:s.slice(k-1).reduce((a,b)=>a+b.v,0),c:'var(--s8)'});return h}
+
+/* line chart: o = {x, s:[{n,c,v}], h, area, budget, cap, mark, markL, f, tx, label} */
+function nice(m){const p=10**Math.floor(Math.log10(m||1)),f=m/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p}
+function line(el,o){
+ if(!o.s.some(s=>s.v.some(v=>v!=null))){if(!o.h||o.h>=100)none(el,'No data yet.');return}
+ const draw=()=>{const H=o.h||220,mini=H<100,W=el.clientWidth||600,L=mini?4:42,R=mini?4:14,T=mini?6:16,B=mini?6:28,n=o.x.length,sm=W<520;
+  let mx=0;o.s.forEach(s=>s.v.forEach(v=>{if(v!=null)mx=Math.max(mx,v)}));if(o.budget)mx=Math.max(mx,o.budget*1.2);
+  mx=o.cap?Math.min(nice(mx),o.cap):nice(mx);
+  const X=i=>L+(W-L-R)*(n<2?.5:i/(n-1)),Y=v=>T+(H-T-B)*(1-Math.min(v,mx)/mx);let g='';
+  if(!mini){for(let k=0;k<=2;k++){const v=mx*k/2,y=Y(v);g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--line)"></line><text x="${L-6}" y="${y+4}" text-anchor="end">${fmt(v)}</text>`}
+   const st=Math.max(1,Math.ceil(n/(sm?4:7)));for(let i=0;i<n;i+=st)g+=`<text x="${X(i)}" y="${H-8}" text-anchor="${i===0?'start':i>=n-1?'end':'middle'}">${esc(o.x[i])}</text>`}
+  if(o.mark!=null&&o.mark>=0){const x=X(o.mark);g+=`<line class="marker" x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" stroke="var(--mut)" stroke-dasharray="4 4"></line><text x="${x+4}" y="${T+10}">${esc(o.markL)}</text>`}
+  if(o.budget){const y=Y(o.budget);g+=`<line class="budget" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 5"></line>`}
+  o.s.forEach(s=>{const pts=s.v.map((v,i)=>v==null?null:[X(i),Y(v),v,i]).filter(Boolean);if(!pts.length)return;
+   const d=pts.map((p,j)=>(j?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');
+   if(o.area)g+=`<path d="${d}L${pts[pts.length-1][0]} ${Y(0)}L${pts[0][0]} ${Y(0)}Z" fill="${s.c}" opacity=".14"></path>`;
+   g+=`<path d="${d}" fill="none" stroke="${s.c}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>`;
+   if(!mini)pts.forEach(p=>{const over=p[2]>mx,lab=o.f?o.f(p[2]):fmt(p[2]);
+    g+=`<circle cx="${p[0]}" cy="${p[1]}" r="${over?6:4}" fill="${s.c}" stroke="var(--card)" stroke-width="2"></circle><circle cx="${p[0]}" cy="${p[1]}" r="12" fill="transparent" data-t="${esc((s.n?s.n+' · ':'')+(o.tx?o.tx[p[3]]:o.x[p[3]]))}: ${esc(lab)}"></circle>`;
+    if(over)g+=`<text x="${p[0]+9}" y="${p[1]+4}" style="fill:var(--ink);font-weight:700">↑ ${esc(lab)}</text>`});
+   else{const p=pts[pts.length-1];g+=`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${s.c}"></circle>`}});
+  el.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label||'')}">${g}</svg>`};
+ draw();if(window.ResizeObserver)new ResizeObserver(draw).observe(el)}
+
+/* gauge: 0..360 s, top = 180 s budget */
+function gauge(sec,lbl){if(sec==null)return `<div style="text-align:center" class="n">${esc(lbl)}<br>no data</div>`;
+ const f=Math.min(sec/360,1),a=Math.PI*(1-f),x=50+40*Math.cos(a),y=50-40*Math.sin(a),ok=sec<=180,c=ok?'var(--good)':'var(--bad)';
+ return `<div style="text-align:center" data-t="${esc(lbl)}: median ${Math.round(sec)} s"><svg viewBox="0 0 100 62" role="img" aria-label="${esc(lbl)} ${Math.round(sec)} s"><path d="M10 50A40 40 0 0 1 90 50" fill="none" stroke="var(--line)" stroke-width="10" stroke-linecap="round"></path><path d="M10 50A40 40 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" fill="none" stroke="${c}" stroke-width="10" stroke-linecap="round"></path><line x1="50" y1="4" x2="50" y2="16" stroke="var(--ink)" stroke-width="2"></line></svg><div style="font-weight:800;font-size:20px;line-height:1">${Math.round(sec)}<small style="font-size:12px"> s</small></div><div class="lamp" style="font-size:13px;margin-top:2px"><i style="background:${c};width:9px;height:9px"></i>${esc(lbl)}${ok?'':' !'}</div></div>`}
+
+/* bars */
+function bars(el,rows,max){el.innerHTML=rows.map(r=>`<div class="bar" data-t="${esc(r.t||r.n)}"><span>${esc(r.n)}</span><div class="tr"><div style="width:${Math.min(100,100*r.v/(max||1))}%;background:${r.c||'var(--s1)'}"></div>${r.tk!=null?`<i class="tk" style="left:calc(${Math.min(100,100*r.tk/(max||1))}% - 1px)"></i>`:''}</div><span>${esc(r.l)}</span></div>`).join('')}
+
+/* header + hero */
+const H0=D.hero||{prs:{},issues:{},commits:{}};
+$('upd').textContent=(D.repo||'')+' · '+(D.branch||'')+(H0.day_n?' · day '+H0.day_n:'')+(D.updated?' · updated '+D.updated.slice(0,16).replace('T',' ')+' UTC':'');
+if(D.repo)$('repo').href='https://github.com/'+encodeURI(D.repo);
+$('h_pr').innerHTML=fmt(H0.prs.today||0)+'<small>PRs</small>';
+$('h_pr2').textContent='last 24 h: '+fmt(H0.prs.h24||0)+' PRs, '+fmt(H0.issues.h24||0)+' issues closed'+(H0.prs.h24?' · one PR every '+Math.round(1440/H0.prs.h24)+' min':'');
+line($('sp_pr'),{x:days,s:[{c:'var(--s1)',v:D.prs_merged||[]}],h:56,area:1});
+const OSN={win32:'Windows',windows:'Windows',linux:'Linux',darwin:'macOS',mac:'macOS',macos:'macOS'},OSC={Windows:'var(--s1)',Linux:'var(--s3)',macOS:'var(--s2)'},ORD=['Windows','Linux','macOS'];
+const TT=Object.keys(D.ttfs||{}).map(k=>({k,n:OSN[k]||k,rows:D.ttfs[k]||[]})).sort((a,b)=>{const r=n=>{const i=ORD.indexOf(n);return i<0?9:i};return r(a.n)-r(b.n)});
+$('h_ins').innerHTML=TT.length?TT.map(o=>gauge(med(o.rows.map(r=>r.seconds)),o.n)).join(''):'<div class="n" style="grid-column:1/-1">No install runs yet.</div>';
+const rel=(D.release_times||[]).filter(r=>r.run_min!=null).reverse();
+if(rel.length){$('h_rel').innerHTML=Math.round(rel[rel.length-1].run_min)+'<small>min</small>';
+ $('h_rel2').textContent=rel[rel.length-1].tag+' · slowest of the last '+rel.length+': '+Math.round(Math.max(...rel.map(r=>r.run_min)))+' min';
+ line($('sp_rel'),{x:rel.map(r=>r.tag),s:[{c:'var(--s3)',v:rel.map(r=>r.run_min)}],h:56,area:1})}
+else $('h_rel').innerHTML='<small>no releases yet</small>';
+const T0=D.totals||{};
+$('h_star').innerHTML=fmt(T0.stars||0)+'<small>stars</small>';
+$('h_star2').textContent='forks '+fmt(T0.forks||0)+((D.downloads||{}).total!=null?' · downloads '+fmt(D.downloads.total):'');
+line($('sp_star'),{x:days,s:[{c:'var(--s4)',v:D.stars||[]}],h:56,area:1});
+
+/* Output */
+line($('c_thru'),{x:days,s:[{n:'PRs merged',c:'var(--s1)',v:D.prs_merged||[]},{n:'issues closed',c:'var(--s2)',v:D.issues_closed||[]},{n:'commits',c:'var(--s3)',v:D.commits||[]}],label:'Work finished per day'});
 const fh=h=>h==null?'n/a':h<1?Math.round(h*60)+' min':h<48?h.toFixed(1)+' h':(h/24).toFixed(1)+' days';
-const Sp=D.speed;
-document.getElementById('speed').innerHTML='<table><tr><th></th><th>Last 7 days</th><th>Last 24 h</th><th>All time</th></tr>'+[['issue','Issue opened to closed'],['pr','PR opened to merged']].map(([k,l])=>'<tr><td>'+l+'</td><td>'+fh(Sp[k+'_7d'])+'</td><td>'+fh(Sp[k+'_24h'])+'</td><td>'+fh(Sp[k+'_all'])+'</td></tr>').join('')+'</table><p class="n">Typical (median) time from opened to done.</p>';
-chart(c_thru,[{name:'PRs merged',v:D.prs_merged},{name:'issues closed',v:D.issues_closed}],{stack:1,pal:['#3b82c4','#e08a1e']});
-chart(c_commits,[{name:'commits',v:D.commits}],{bar:1,color:'var(--a)'});
-chart(c_stars,[{name:'stars',v:D.stars}],{color:'#e0a81e'});
-chart(c_forks,[{name:'forks',v:D.forks}],{color:'#3b82c4'});
-chart(c_open,[{name:'open',v:D.open_issues}],{color:'#c2410c'});
+const Sp=D.speed||{},smx=Math.max(Sp.issue_7d||0,Sp.pr_7d||0)||1;
+bars($('b_speed'),[['issue','Issue opened to closed','var(--s2)'],['pr','PR opened to merged','var(--s1)']].map(([k,l,c])=>({n:k==='pr'?'PR':'issue',v:Sp[k+'_7d']||0,l:fh(Sp[k+'_7d']),c,t:l+': 7 days '+fh(Sp[k+'_7d'])+' · 24 h '+fh(Sp[k+'_24h'])+' · all time '+fh(Sp[k+'_all'])})),smx);
+
+/* What's next */
+const mr=p=>{const r=30,C=2*Math.PI*r,c=p>=100?'var(--good)':'var(--s1)';return `<svg viewBox="0 0 80 80" width="80" height="80" style="display:block;margin:0 auto"><circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"></circle><circle cx="40" cy="40" r="${r}" fill="none" stroke="${c}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C*p/100} ${C}" transform="rotate(-90 40 40)"></circle><text x="40" y="45" text-anchor="middle" style="font-size:16px;font-weight:800;fill:var(--ink)">${p}%</text></svg>`};
+const MS=(D.milestones||[]).filter(m=>m.open+m.closed>0).sort((a,b)=>(a.closed/(a.open+a.closed))-(b.closed/(b.open+b.closed)));
+$('ms').innerHTML=MS.map(m=>{const p=Math.round(100*m.closed/(m.open+m.closed));
+ return `<div data-t="${esc(m.title)}: ${m.closed} closed, ${m.open} open">${mr(p)}<b>${esc(m.title)}</b><div class="mut">${m.open} open</div></div>`}).join('')||'<p class="n">No milestones.</p>';
+line($('c_open'),{x:days,s:[{c:'var(--s2)',v:D.open_issues||[]}],area:1,label:'Open issues'});
+const dim=$('dim'),G=D.groups||{};
+Object.keys(G).forEach(g=>dim.add(new Option(g==='priority'?'priority (P0-P4)':g,g)));
+const showG=()=>{const o=G[dim.value]||{},n=(D.days||[]).length;
+ const it=Object.keys(o).map(k=>({n:nm(k),v:o[k][n-1]||0})).filter(x=>x.v>0);
+ $('lnote').textContent=D.label_history_from_events===false?'Label events unavailable: current labels only.':'';
+ if(!it.length){none($('d_grp'),'No open issues.');$('l_grp').innerHTML='';return}
+ donut($('d_grp'),$('l_grp'),fold(it,7),fmt(T0.open!=null?T0.open:it.reduce((a,b)=>a+b.v,0)),'open')};
+dim.onchange=showG;if(G.status)dim.value='status';showG();
+
+/* Install */
+line($('c_ttfs'),(()=>{const n=Math.max(0,...TT.map(o=>o.rows.length)),first=TT.find(o=>o.rows.length);
+ return {x:Array.from({length:n},(_,i)=>'run '+(i+1)),tx:Array.from({length:n},(_,i)=>{const r=TT.map(o=>o.rows[i]).find(Boolean);return r?'v'+r.version+' '+r.date.slice(5):''}),
+ s:TT.map(o=>({n:o.n,c:OSC[o.n]||'var(--s7)',v:o.rows.map(r=>r.seconds)})),budget:first?(D.ttfs_budget_s||180):0,cap:400,h:260,f:v=>Math.round(v)+' s',label:'Install to first subtitle'}})());
+$('k_ttfs').innerHTML=TT.map(o=>`<span><i style="background:${OSC[o.n]||'var(--s7)'}"></i>${esc(o.n)}</span>`).join('')+(TT.length?'<span><i style="background:var(--bad)"></i>180 s budget</span>':'');
+const I=D.installs;
+if(I&&I.days&&I.days.length){const last=I.total[I.total.length-1];
+ $('inst').innerHTML=`<div class="big">${fmt(last)}<small>yesterday</small></div><div class="fig" id="c_inst" style="margin-top:8px"></div><div id="b_inst"></div><div class="n">Anonymous update checks (date, version, OS only; at most once a day per install), so checks per day ~ active installs.</div>`;
+ line($('c_inst'),{x:I.days.map(d=>d.slice(5).replace('-','/')),s:[{c:'var(--s3)',v:I.total}],area:1,h:160,label:'Active installs per day'});
+ const vm=Math.max(1,...I.versions.map(v=>v.week_avg));
+ bars($('b_inst'),I.versions.slice(0,6).map(v=>({n:v.version+' '+v.os,v:v.week_avg,l:v.week_avg.toFixed(1)+'/day',c:'var(--s3)',t:v.version+' '+v.os+': last day '+v.last_day+', 7-day avg '+v.week_avg.toFixed(1)})),vm)}
+else none($('inst'),'Install counter not available yet (cloudflare/update-counter).');
+const LV=D.lang_verdicts;
+if(LV&&LV.rows&&LV.rows.length){const f2=(v,s)=>v==null?'n/a':(s&&v>0?'+':'')+v.toFixed(2);
+ bars($('langv'),LV.rows.map(r=>({n:r.language,v:r.mt||0,l:r.verdict,c:r.verdict==='PASS'?'var(--good)':'var(--bad)',t:r.language+': chrF '+f2(r.mt)+' ('+f2(r.d_mt,1)+'), ASR '+f2(r.asr)+'% ('+f2(r.d_asr,1)+') · '+LV.date+(LV.previous_date?' vs '+LV.previous_date:'')})),100)}
+else none($('langv'),'no data yet');
+
+/* Where the effort goes */
+const F=D.flow||{total:0,modes:[],platforms:[],type_mix:[]};
+if(F.total>0){
+ donut($('d_mode'),$('l_mode'),fold(F.modes.map(m=>({n:nm(m.name),v:m.quota})),7),fmt(F.total),'quota min');
+ donut($('d_plat'),$('l_plat'),fold(F.platforms.map(m=>({n:m.name==='all'?'all platforms':m.name,v:m.quota})),5),fmt(F.total),'quota min');
+ bars($('b_type'),F.type_mix.map(t=>({n:t.type,v:t.share,tk:t.target,l:Math.round(t.share)+'%',c:Math.abs(t.delta)>5?'var(--warn)':'var(--s1)',t:t.type+': '+t.share.toFixed(1)+'% of quota, target '+t.target+'%'})),50);
+ const inf=F.inferred||{};$('flow_note').textContent='Quota minutes = minutes x model weight (opus = 2x sonnet), PRs merged in the last 48 h. Inferred from changed files: platform '+Math.round(inf.os||0)+'%, language '+Math.round(inf.lang||0)+'%.';
+}else{['d_mode','d_plat','b_type'].forEach(id=>none($(id),'No quota minutes in the last 48 h.'))}
+const BF=F.backfill;
+if(BF&&BF.total>0){const bi=BF.inferred||{};$('flow_note').textContent+=(F.total>0?' ':'')+'Last '+BF.days+' days: '+fmt(BF.total)+' quota min; inferred mode '+Math.round(bi.mode||0)+'%, platform '+Math.round(bi.os||0)+'%, language '+Math.round(bi.lang||0)+'%; unclassified mode '+Math.round(BF.unclassified||0)+'%.'}
+const Q=D.quota_trend;
+if(Q&&Q.days){const qs=Math.max(0,Q.quota.findIndex(v=>v>0)-1),qd=Q.days.slice(qs).map(d=>d.slice(5).replace('-','/')),mk=Q.days.slice(qs).indexOf(Q.marker);
+ line($('c_quota'),{x:qd,s:[{c:'var(--s1)',v:Q.quota.slice(qs)}],area:1,mark:mk,markL:Q.marker_pr?'#'+Q.marker_pr:'',label:'Quota minutes per day'});
+ line($('c_per100'),{x:qd,s:[{c:'var(--s2)',v:Q.per100.slice(qs)}],mark:mk,markL:Q.marker_pr?'#'+Q.marker_pr:'',f:v=>v.toFixed(1),label:'PRs per 100 quota minutes'})}
+else{none($('c_quota'),'No data yet.');none($('c_per100'),'No data yet.')}
+const FZ=D.faucet;
+$('faucet').innerHTML=FZ?`<div class="big">${fmt(FZ.level)}<small>level</small></div><h3 style="margin-top:14px">Current focus</h3><div class="chips">${(FZ.focus||[]).map(f=>`<span>${esc(f)}</span>`).join('')||'<span>none</span>'}</div>`:'<p class="n">Faucet level unavailable.</p>';
+
+/* Releases */
+line($('c_run'),{x:rel.map(r=>r.tag),s:[{c:'var(--s3)',v:rel.map(r=>r.run_min)}],area:1,f:v=>Math.round(v)+' min',label:'release.yml run minutes'});
+line($('c_prt'),{x:rel.map(r=>r.tag),s:[{c:'var(--s7)',v:rel.map(r=>r.pr_min==null?null:r.pr_min/60)}],area:1,f:v=>v.toFixed(1)+' h',label:'Release PR open to published'});
+
+/* Popularity */
+line($('c_star'),{x:days,s:[{n:'stars',c:'var(--s4)',v:D.stars||[]},{n:'forks',c:'var(--s7)',v:D.forks||[]}],label:'Stars and forks'});
 const DL=D.downloads||{releases:[],series:[]};
-document.getElementById('dl_tot').textContent=DL.total==null?'':'total '+DL.total;
-if(DL.series.some(v=>v!=null))chart(c_dl,[{name:'downloads',v:DL.series}],{color:'#2a9d6f'});
-else c_dl.innerHTML='<p class="n">No download history yet (builds up from hourly snapshots).</p>';
-const dlMax=Math.max(1,...DL.releases.map(r=>r.downloads));
-dl_rel.innerHTML=DL.releases.map(r=>`<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:120px">${esc(r.tag)}</span><div class="pb" style="flex:1"><div style="width:${100*r.downloads/dlMax}%"></div></div><span style="width:48px;text-align:right">${r.downloads}</span></div>`).join('')||'<p class="n">No releases.</p>';
-const dim=document.getElementById('dim');
-Object.keys(D.groups).forEach(g=>dim.add(new Option(g==='priority'?'priority (P0-P4)':g,g)));
-function showGroup(){const g=dim.value,o=D.groups[g],n=D.days.length;
- const names=Object.keys(o).sort((a,b)=>o[b][n-1]-o[a][n-1]||a.localeCompare(b));
- const ser=names.map(k=>({name:k,v:o[k]}));
- document.getElementById('lnote').textContent=D.label_history_from_events?'History reconstructed from issue label/milestone events (an issue with several labels in this group counts once per label).':'Label events unavailable: history shows current labels only.';
- chart(c_grp,ser,{stack:1});
- lg.innerHTML=names.map((k,i)=>`<span><i style="background:${PAL[i%PAL.length]}"></i>${esc(k)}</span>`).join('');
- cur.innerHTML='<p><b>Now:</b> '+(names.map(k=>`${esc(k)} <b>${o[k][n-1]}</b>`).join(' &middot; ')||'none')+'</p>'}
-dim.onchange=showGroup;
-ms.innerHTML=D.milestones.map(m=>{const t=m.open+m.closed,p=t?Math.round(100*m.closed/t):0;
- return `<p><b>${esc(m.title)}</b> <small>${m.closed} closed / ${m.open} open (${p}%)</small></p><div class="pb"><div style="width:${p}%"></div></div>`}).join('')||'<p>none</p>';
-dim.value='status';showGroup();
-</script></body></html>"""
-
-
-VISION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "VISION.md")
-
-
-def parse_vision(text):
-    """docs/VISION.md -> {caption, nodes{ID: [lines]}, nongoals[(icon, text)]}."""
-    cap = ""
-    for ln in text.splitlines():
-        if ln.startswith(">"):
-            cap = ln.lstrip("> ").replace("**", "").strip()
-            break
-    nodes = {}
-    for m in re.finditer(r'(\w+)\["(.*?)"\]', text):
-        nodes[m.group(1)] = [x.strip() for x in m.group(2).split("<br/>") if x.strip()]
-    ng, on = [], False
-    for ln in text.splitlines():
-        if ln.startswith("## "):
-            on = "We don't" in ln
-        elif on:
-            m = re.match(r"^\|\s*(\S+)\s*\|\s*(.+?)\s*\|$", ln)
-            if m and not set(m.group(1)) <= set("-:"):
-                ng.append((m.group(1), m.group(2)))
-    return {"caption": cap, "nodes": nodes, "nongoals": ng}
-
-
-def vision_html(path=VISION_PATH):
-    try:
-        with open(path, encoding="utf-8") as f:
-            v = parse_vision(f.read())
-    except OSError:
-        return ""
-    def node(i, cls="nd"):
-        lines = v["nodes"].get(i)
-        if not lines:
-            return ""
-        body = "<br>".join(html.escape(x) for x in lines)
-        return '<div class="%s" data-node="%s">%s</div>' % (cls, i, body)
-    out = ['<section id="vision" class="vs">']
-    if v["caption"]:
-        out.append('<p class="cap">%s</p>' % html.escape(v["caption"]))
-    out.append('<div class="row">%s<span class="ar">&rarr;</span>%s</div>' % (node("WHY"), node("GOAL", "nd goal")))
-    out.append('<div class="row" style="margin-top:8px">%s%s%s</div>' % (node("MODE"), node("PLAT"), node("LANG")))
-    if v["nongoals"]:
-        out.append("<ul>%s</ul>" % "".join(
-            '<li data-nongoal="1">%s %s</li>' % (html.escape(i), html.escape(t)) for i, t in v["nongoals"]))
-    out.append("</section>")
-    return "".join(out)
+$('dl_tot').textContent=DL.total==null?'':'total '+fmt(DL.total);
+if((DL.series||[]).some(v=>v!=null))line($('c_dl'),{x:days,s:[{c:'var(--s3)',v:DL.series}],area:1,h:140,label:'Downloads over time'});
+const dl=(DL.releases||[]).filter(r=>r.downloads>0).sort((a,b)=>b.downloads-a.downloads).slice(0,10);
+if(dl.length)bars($('b_dl'),dl.map(r=>({n:r.tag,v:r.downloads,l:fmt(r.downloads),c:'var(--s3)',t:r.tag+': '+fmt(r.downloads)+' downloads'})),Math.max(...dl.map(r=>r.downloads)));
+else none($('b_dl'),'No release downloads yet.');
+}
+</script>
+</body>
+</html>
+"""
 
 
 def render_html(series):
-    data = json.dumps(series, separators=(",", ":")).replace("</", "<\\/")
-    values = {"__REPO__": html.escape(series["repo"]), "__BRANCH__": html.escape(series["branch"]),
-              "__FLOW__": render_flow_section(series),
-              "__INSTALLS__": render_installs(series.get("installs")),
-              "__THROUGHPUT__": render_throughput_section(series),
-              "__TTFS__": render_ttfs_section(series),
-              "__LANGV__": render_lang_verdicts(series), "__VISION__": vision_html(), "__DATA__": data}
-    # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
-    return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
+    data = dict(series, ttfs_budget_s=TTFS_BUDGET_S)
+    # "<" -> \u003c keeps "</script>" and "<!--" in labels from ending or confusing the data block
+    payload = json.dumps(data, separators=(",", ":")).replace("<", "\\u003c")
+    return PAGE.replace("__DATA__", payload, 1)
 
 
 def run(outdir, repo, branch, api=http_api, now=None, installs=_FETCH):
