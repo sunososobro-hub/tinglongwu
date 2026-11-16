@@ -12,7 +12,6 @@ and a release without it stays a draft.
 
 ## v0.4.1
 - Translate to now also offers 日本語, 한국어, Español, Français, Deutsch, ไทย, Tiếng Việt and Bahasa Indonesia, and Hindi can be picked as an experimental source language.
-- Face-to-face mode sends each line to the right side by the language it hears, so two people can just take turns talking.
 - The 情境 (scenario) row is now a single dropdown.
 
 ## v0.4.0
