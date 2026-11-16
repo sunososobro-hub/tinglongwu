@@ -74,3 +74,16 @@ def test_file_subcommand_fails_when_tlwu_saved_nothing(tmp_path, monkeypatch, ca
     monkeypatch.setattr(hl.subprocess, "run", lambda cmd, check, stdout: None)
     assert hl.main(["file", "--clips", str(tmp_path), "--models-dir", "M"]) == 1
     assert "FAIL #1247 file baseline" in capsys.readouterr().out
+
+
+def test_file_subcommand_fails_when_the_recording_is_missing(tmp_path, monkeypatch, capsys):
+    (tmp_path / "clips.json").write_text(json.dumps({"mic_en": {
+        "wav": "mic_en.wav", "speech": [0.0, 32.0], "ref": " ".join(REFS), "spans": SPANS, "refs": REFS}}), "utf-8")
+
+    def fake_run(cmd, check, stdout):  # lines saved, but --record wrote nothing
+        Path(cmd[cmd.index("--save") + 1]).write_text(json.dumps({"src": REC[0]["source"]}) + "\n", "utf-8")
+
+    monkeypatch.setattr(hl.subprocess, "run", fake_run)
+    assert hl.main(["file", "--clips", str(tmp_path), "--models-dir", "M"]) == 1
+    out = capsys.readouterr().out
+    assert "FAIL #1247 file baseline" in out and "no --record output" in out and "clips missed" not in out

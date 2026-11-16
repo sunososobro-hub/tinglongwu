@@ -420,7 +420,9 @@ def run_file(clips: Path, mdir: str, out: Path, extra: list[str] | None = None) 
                    check=True, stdout=subprocess.DEVNULL)
     rows = read_jsonl(fj)
     seg = rdir / "segments.jsonl"
-    rec = [json.loads(x) for x in seg.read_text("utf-8").splitlines() if x.strip()] if seg.is_file() else []
+    if not seg.is_file():  # no --record output: the clip table would call every clip unheard
+        return False, f"{len(rows)} lines but no --record output ({seg}); clips not classified"
+    rec = [json.loads(x) for x in seg.read_text("utf-8").splitlines() if x.strip()]
     per = clip_lines(meta.get("spans") or [], meta.get("refs") or [], rec)
     print(clip_table(per), flush=True)
     (out / "file_report.json").write_text(json.dumps({"clips": per, "rec": rec}, ensure_ascii=False, indent=1), "utf-8")
