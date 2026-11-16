@@ -33,6 +33,7 @@ on:
     types: [completed]
   schedule:
     - cron: "4,19,34,49 * * * *"   # #848: re-check a release PR whose hw-tests is still queued (runner offline)
+  workflow_dispatch:   # #1268: `gh workflow run auto-release.yml --ref dev` runs dev's copy, so a gate fix applies before a release carries it to main
 
 permissions: {}
 
@@ -44,7 +45,7 @@ jobs:
   auto-release:
     # a fork PR from a branch named `dev` also reports head_branch == dev: only this repo's runs count
     if: >-
-      vars.AUTO_RELEASE == 'true' && (github.event_name == 'schedule' || (
+      vars.AUTO_RELEASE == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       (github.event.workflow_run.head_branch == 'dev' || startsWith(github.event.workflow_run.head_branch, 'release/v') ||
@@ -65,7 +66,7 @@ jobs:
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           dev=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq .object.sha)
-          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$NAME" = release-pr ]; then RUN_SHA=$dev; fi
+          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$NAME" = release-pr ]; then RUN_SHA=$dev; fi
           # RUN_SHA only matters for a legacy dev -> main PR (its head must be this run's commit); a release/v*
           # snapshot PR is checked at its own head whatever triggered this run (#976)
           { echo "sha=$RUN_SHA"; echo "dev=$dev"; } >> "$GITHUB_OUTPUT"
