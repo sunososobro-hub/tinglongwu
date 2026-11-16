@@ -141,12 +141,11 @@ def main(argv=None) -> int:
                 return 2
         paths = [d / "base.json", d / "cpu.json"]
         import os  # EXPERIMENT (#745 sweep, removed before PR)
-        sweep = [("v2_b1_t4", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4"}),
-                 ("v3_b1_t4_nots", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1"}),
-                 ("v4_b2_t4_nots", {"TLWU_X_BEAM": "2", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1"}),
-                 ("v5_b5_t4_nots", {"TLWU_X_BEAM": "5", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1"}),
-                 ("v6_b1_t4_nots_mt44", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1", "TLWU_X_MT": "4/4"}),
-                 ("v7_b1_t4_nots_mt22", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1", "TLWU_X_MT": "2/2"})]
+        sweep = [("w1_small_b5_t4_repeatA", {"TLWU_X_BEAM": "5", "TLWU_X_THREADS": "4", "TLWU_X_MODEL": "small"}),
+                 ("w2_base_b1_t4", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_MODEL": "base"}),
+                 ("w3_base_b5_t4", {"TLWU_X_BEAM": "5", "TLWU_X_THREADS": "4", "TLWU_X_MODEL": "base"}),
+                 ("w4_small_b1_t4", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_MODEL": "small"})]
+        subprocess.run(["tlwu-setup", "--whisper", "base", "--models-dir", os.environ.get("TLWU_MODELS", "")])
         ra = json.loads(paths[0].read_text("utf-8"))
         sa0 = summarize(ra, load_jsonl(d / "base.jsonl"))
         for name in ("base", "cpu"):
