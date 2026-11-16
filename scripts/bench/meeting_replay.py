@@ -242,7 +242,7 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
         print(f"replay: CPUs {pin} of {os.cpu_count()}", flush=True)
     print("replay: " + " ".join(cmd), flush=True)
     ready, t0 = threading.Event(), [None]
-    exited = [False]  # tlwu ended on its own (not stopped at the drain deadline)
+    stopped = [False]  # the harness stopped tlwu (drain deadline / readiness timeout)
     log_lines: list[str] = []
     with open(rdir / "tlwu.log", "w", encoding="utf-8") as log:
         p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -269,9 +269,9 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
                 end = time.monotonic() + meta["seconds"] + drain
                 while p.poll() is None and time.monotonic() < end:  # the file ends -> tlwu flushes and exits
                     time.sleep(1.0)
-                exited[0] = p.poll() is not None
         finally:
             if p.poll() is None:
+                stopped[0] = True
                 p.terminate()
                 try:
                     p.wait(30)
@@ -283,7 +283,7 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
         tail = "\n".join(log_lines[-15:])
         raise SystemExit(f"tlwu did not get ready (exit {p.returncode}); last lines:\n{tail}")
     m = report(rdir)
-    if exited[0] and p.returncode != 0:  # a crash mid-replay fails the run; the partial metrics are printed above
+    if not stopped[0] and p.returncode != 0:  # tlwu failed on its own; the partial metrics are printed above
         tail = "\n".join(log_lines[-15:])
         raise SystemExit(f"tlwu exited with {p.returncode} during the replay; last lines:\n{tail}")
     return m
