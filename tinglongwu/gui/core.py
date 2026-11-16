@@ -73,7 +73,7 @@ def restart_needed(at_start: dict, now: dict) -> list[str]:
 
 
 LANGS = SOURCE_LANGS  # auto, focus ja/en/ru, zh, then the experimental ones (#58)
-TARGETS = ["zh-tw", "zh-cn", "en"]
+TARGETS = ["zh-tw", "zh-cn", "en", "ja", "ko", "es", "fr", "de", "th", "vi", "id"]  # #1163: Hy-MT2 direct targets
 ENGINES = ["auto", "hymt"]  # #276, #471: Hy-MT2 is the only engine offered (OPUS removed)
 # auto = what hwprobe recommends for this PC; fast / balanced / quality trade speed for accuracy on the same
 # hardware; manual = the Engine + Speech model boxes decide (#81)

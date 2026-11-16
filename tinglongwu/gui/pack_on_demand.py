@@ -9,6 +9,7 @@ from pathlib import Path
 
 DEFAULT_MBPS = 10.0  # fallback download speed (MB/s) when none was measured
 PACK_OF = {"zh": "zh", "en": "en", "ja": "ja", "ko": "ko", "ru": "ru"}  # source language code -> pack name
+TARGET_PACK_OF = {**PACK_OF, **{c: "ko" for c in ("es", "fr", "de", "th", "vi", "id")}}  # #1163: Hy-MT2-only targets
 TEXT = {
     "en": "This needs the {pack} pack (about {mb} MB, about {min} min). Needs internet to download once, "
           "works offline afterwards.",
@@ -33,8 +34,8 @@ def dialog_text(ui_lang: str, pack: str, mb: float, mbps: float | None = None) -
 def needed_packs(source_lang: str, target_lang: str) -> list[str]:
     """Packs a (source, target) pair needs; 'auto' and unknown codes need none. zh-tw / zh-cn -> zh."""
     out = []
-    for code in (source_lang, target_lang):
-        pack = PACK_OF.get((code or "").lower().split("-")[0])
+    for table, code in ((PACK_OF, source_lang), (TARGET_PACK_OF, target_lang)):
+        pack = table.get((code or "").lower().split("-")[0])
         if pack and pack not in out:
             out.append(pack)
     return out
