@@ -81,7 +81,8 @@ jobs:
             echo "Runner: $(lscpu | sed -n 's/^Model name: *//p' | head -1), $(nproc) vCPU, $(free -g | awk '/^Mem:/{print $2}') GB RAM, commit ${GITHUB_SHA::7}"
             echo
             cat ab/table.md 2>/dev/null || echo "no table"
-          } | tee -a "$GITHUB_STEP_SUMMARY" > ab/summary.md
+          } > ab/summary.md
+          cat ab/summary.md | tee -a "$GITHUB_STEP_SUMMARY"   # also in the log: job summaries are not in the API
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
