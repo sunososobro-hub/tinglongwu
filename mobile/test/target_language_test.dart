@@ -64,7 +64,19 @@ void main() {
       expect(TargetLanguage.normalize(c), c);
       expect(PromptBuilder.userMessage('hello', src: 'en', tgt: c), contains(PromptBuilder.enNames[c]!));
     }
-    expect(TargetLanguage.normalize('ru'), 'zh');
     expect(passthrough(' こんにちは ', 'ja', tgt: 'ja'), 'こんにちは');
+  });
+
+  test('Russian is a subtitle language (shown as Русский); the prompts name it', () {
+    expect(TargetLanguage.options['ru'], 'Русский');
+    expect(TargetLanguage.normalize('ru'), 'ru');
+    expect(TargetLanguage.normalize('RU '), 'ru');
+    expect(PromptBuilder.userMessage('hello', src: 'en', tgt: 'ru'), contains('into Russian'));
+    expect(PromptBuilder.userMessage('你好', src: 'zh', tgt: 'ru'), contains('俄语'));
+    expect(TargetLanguage.targetLabel('ru'), '翻成：Русский');
+  });
+
+  test('target ru with a ru line passes the text through untouched (no zh conversion)', () {
+    expect(passthrough(' Привет ', 'ru', tgt: 'ru'), 'Привет');
   });
 }

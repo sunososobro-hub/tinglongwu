@@ -427,7 +427,7 @@ class _Header extends StatelessWidget {
                     PopupMenuItem(
                         value: 'm:$c', child: Text('我的語言：${TargetLanguage.options[c]}')),
                   const PopupMenuDivider(),
-                  for (final c in TargetLanguage.options.keys)
+                  for (final c in Conversation.foreignOptions.keys)
                     if (c != pipeline.conversation.mineLang)
                       PopupMenuItem(value: 'p:$c', child: Text('對方語言：${TargetLanguage.options[c]}')),
                   const PopupMenuDivider(),

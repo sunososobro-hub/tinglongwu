@@ -15,6 +15,7 @@ class TargetLanguage {
     'th': 'ไทย',
     'vi': 'Tiếng Việt',
     'id': 'Bahasa Indonesia',
+    'ru': 'Русский',
   };
 
   /// Languages the ASR (SenseVoice) can detect, so the only ones usable as "my language" in

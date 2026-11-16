@@ -64,9 +64,15 @@ class Conversation {
     this.auto = true,
   });
 
-  /// The other person's language. Owner 2026-11-14: zh<->en first; ru follows once a ru ASR
-  /// model and voice pack exist (SenseVoice does not recognise Russian).
-  static const foreignOptions = TargetLanguage.options;
+  /// The other person's language: any subtitle language. Russian is left out until the ru ASR
+  /// pack is wired in (SenseVoice does not recognise Russian), see [needsExtraAsr].
+  static final foreignOptions = <String, String>{
+    for (final e in TargetLanguage.options.entries)
+      if (!needsExtraAsr.contains(e.key)) e.key: e.value,
+  };
+
+  /// Subtitle languages SenseVoice cannot hear; they need an extra ASR pack (not yet usable).
+  static const needsExtraAsr = <String>{'ru'};
   static const fallbackForeign = 'en';
 
   /// The owner's language (zh-Hant subtitles; Cantonese speech also counts as "my" side).

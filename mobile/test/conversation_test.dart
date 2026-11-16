@@ -52,8 +52,9 @@ void main() {
       );
     });
 
-    test('unknown foreign language falls back to en (ru comes later)', () {
+    test('unknown foreign language falls back to en; ru waits for its ASR pack', () {
       expect(Conversation.normalizeForeign('ru'), 'en');
+      expect(Conversation.foreignOptions.containsKey('ru'), isFalse);
       expect(Conversation.normalizeForeign(null), 'en');
       expect(const Conversation().copyWith(foreign: 'xx').foreign, 'en');
     });
