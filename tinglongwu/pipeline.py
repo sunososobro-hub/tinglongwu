@@ -254,6 +254,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     asr_over = threading.Event()  # #1253: the ASR loop ended (end of input / Stop): no reason to hold MT any more
     waiting = [0]  # #1253: lines held for ASR (on_mt_wait)
 
+    def stopping() -> bool:
+        """#1253: the internal stop or the caller's Stop (GUI) - set while ASR may still be busy in a long call."""
+        return stop.is_set() or (stop_event is not None and stop_event.is_set())
+
     def tell_wait(n: int) -> None:
         if n != waiting[0]:
             waiting[0] = n
@@ -269,7 +273,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             return 0.0  # shown as is, no MT
         t0 = time.monotonic()
         until = item[3] + MT_HOLD_MAX  # from when the line was queued: time behind an earlier held line counts too
-        while (not stop.is_set() and not asr_over.is_set() and not asr_idle()
+        while (not stopping() and not asr_over.is_set() and not asr_idle()
                and time.monotonic() < until):
             tell_wait(mtq.qsize() + 1)
             time.sleep(MT_HOLD_POLL)
@@ -290,7 +294,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             try:
                 held = yield_to_asr(item)
                 tell_wait(0)
-                if stop.is_set():
+                if stopping():
                     return  # Stop during the hold: start no translation or output after run() returned
                 t_emit = time.monotonic()
                 clip[0] = item[9]  # #239: audio of this line (only the MT thread reads it)

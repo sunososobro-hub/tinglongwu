@@ -102,19 +102,16 @@ def test_mt_delay_is_reported():
 
 def test_hold_is_capped(monkeypatch):
     """A CPU that never catches up still gets translations: each line waits at most MT_HOLD_MAX from when it was
-    queued (time behind an earlier held line counts), so MT starts while ASR is still busy."""
-    monkeypatch.setattr(pipeline, "MT_HOLD_MAX", 0.2)
+    queued, also when it was queued while an earlier line was still held (not hold start + MT_HOLD_MAX)."""
+    cap = 0.5
+    monkeypatch.setattr(pipeline, "MT_HOLD_MAX", cap)
     cpu = Cpu()
-    asr = BudgetASR(cpu, secs=0.3)
-    starts = []
+    starts, done, recs = [], [], []
 
     class Stamped(BusyMT):
         def translate(self, text, src, tgt):
             starts.append(time.monotonic())
             return super().translate(text, src, tgt)
-
-    mt = Stamped(cpu, secs=0.01)
-    done = []
 
     class Timed(BudgetASR):
         def transcribe(self, audio):
@@ -122,10 +119,12 @@ def test_hold_is_capped(monkeypatch):
             done.append(time.monotonic())
             return r
 
-    asr = Timed(cpu, secs=0.3)
-    run(Burst(8), OneSeg(), asr, mt, TextSink(io.StringIO()))
+    # ASR 0.2 s per segment, cap 0.5 s: line 2 is queued ~0.2 s after line 1, while line 1 is still held
+    run(Burst(10), OneSeg(), Timed(cpu, secs=0.2), Stamped(cpu, secs=0.01), TextSink(io.StringIO()),
+        on_record=recs.append)
     assert len(starts) >= 2 and starts[1] < done[-1]  # released by the cap, not by the end of input
-    assert starts[1] - starts[0] < 0.6  # line 2's cap ran while line 1 was held: not 2 full caps back to back
+    early = recs[:2]
+    assert len(early) == 2 and max(r["mt"] for r in early) < cap + 0.15  # old rule: line 2 ~cap + 0.37 s
 
 
 def test_drafts_yield_too():
