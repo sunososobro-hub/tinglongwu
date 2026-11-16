@@ -172,3 +172,11 @@ def test_main_table_from_dir(tmp_path, capsys):
     assert "| qwen3-0.6b | **all** | 100 |" in out
     (tmp_path / f"{mc.BASELINE}.json").unlink()
     assert mc.main(["--table", "--dir", str(tmp_path)]) == 2
+
+
+def test_missing_clips_names_every_underfilled_pair():
+    rows = [{"id": f"en_{i}", "lang": "en", "ref_zh": "x"} for i in range(3)] + [{"id": "ja_1", "lang": "ja", "ref_zh": "y"}]
+    pairs = [("en", "zh"), ("ja", "zh"), ("ru", "zh")]
+    got = mc.select_clips(rows, pairs, 3)
+    assert mc.missing_clips(got, pairs, 3) == {"ja->zh": 2, "ru->zh": 3}
+    assert mc.missing_clips(got, pairs[:1], 3) == {}

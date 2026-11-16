@@ -79,6 +79,15 @@ def select_clips(rows: list[dict], pairs, per_pair: int) -> list[tuple[str, str,
     return out
 
 
+def missing_clips(clips, pairs, per_pair: int) -> dict[str, int]:
+    """'src->tgt' -> how many clips that pair lacks (only pairs with fewer than per_pair)."""
+    have = {f"{s}->{t}": 0 for s, t in pairs}
+    for s, t, _row in clips:
+        if f"{s}->{t}" in have:
+            have[f"{s}->{t}"] += 1
+    return {p: per_pair - n for p, n in have.items() if n < per_pair}
+
+
 def p50(v):
     return statistics.median(v) if v else None
 
@@ -264,8 +273,10 @@ def run(a, names: list[str]) -> int:
     st, plan = cpu_mode_settings(cores, mib / 1024 if mib else 16.0), cpu_mode_threads(cores)
     pairs = [tuple(p.split("->")) for p in a.pairs.split(",") if p.strip()]
     clips = select_clips(load_manifest(a.data), pairs, a.clips)
-    if not clips:
-        print("mt_candidates: no clips with references for these pairs", file=sys.stderr)
+    short = missing_clips(clips, pairs, a.clips)
+    if short:  # every requested pair needs its full clip count, else the rows compare different sets
+        print("mt_candidates: too few clips with references: "
+              + ", ".join(f"{p} missing {n}" for p, n in short.items()), file=sys.stderr)
         return 2
     print(f"mt_candidates: {cores} CPUs; Whisper {a.whisper} beam {st.beam} threads {st.threads}; "
           f"MT threads {plan.mt}/{plan.mt_batch}; {len(clips)} clips", file=sys.stderr, flush=True)
@@ -277,6 +288,8 @@ def run(a, names: list[str]) -> int:
             print(f"mt_candidates: {n}: no GGUF in {a.dir / n} (run --fetch first); skipped", file=sys.stderr)
             continue
         models.append((n, path, CANDIDATES[n]["fmt"], CANDIDATES[n]))
+    for stale in a.dir.glob("*.json"):  # an earlier run's report would be compared with this run's baseline
+        stale.unlink()
     for name, path, fmt, info in models:
         mt = LlamaMT(path, fmt, plan.mt, plan.mt_batch)
         res = translate_all(lines, mt)
