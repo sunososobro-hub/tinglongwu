@@ -24,13 +24,19 @@ NEW_SECTION = wn("@@ -10,6 +10,10 @@ and a release without it stays a draft.\n -
                  " ## v0.4.1\n - Translate to now also offers more languages.\n")
 
 
+INTRO = "# What's new\n\n<!-- newest first; example:\n## v1.2.3\n- Subtitles appear faster.\n-->\n\n"
+HEAD_TEXT = (INTRO + "## v0.4.3\n- CPU mode is much faster on laptops without a graphics card.\n"
+             "- Face-to-face mode translates both ways.\n\n## v0.4.1\n- Translate to now also offers more languages.\n")
+
+
 def test_version_line_only_is_exempt():
     assert rn.bump_exempt([INIT]) == (True, "version line only (v0.4.3)")
 
 
 def test_version_line_plus_new_whats_new_section_is_exempt():
-    ok, why = rn.bump_exempt([INIT, NEW_SECTION])
+    ok, why = rn.bump_exempt([INIT, NEW_SECTION], HEAD_TEXT)
     assert ok and "## v0.4.3" in why
+    assert rn.bump_exempt([INIT, NEW_SECTION])[0] is False  # head file not read -> no exemption
 
 
 def test_section_for_another_version_needs_opus():
@@ -74,7 +80,9 @@ def test_other_files_or_non_patch_bumps_need_opus():
 def test_cli_exit_code(tmp_path, capsys):
     f = tmp_path / "files.json"
     f.write_text(json.dumps([INIT, NEW_SECTION]), "utf-8")
-    assert rn.main(["bump-check", "--pr", "1", "--files", str(f)]) == 0
+    w = tmp_path / "whats_new.md"
+    w.write_text(HEAD_TEXT, "utf-8")
+    assert rn.main(["bump-check", "--pr", "1", "--files", str(f), "--whats-new", str(w)]) == 0
     assert capsys.readouterr().out.startswith("bump-exempt: yes")
     f.write_text(json.dumps([INIT, wn("@@ -1 +1 @@\n-old\n+new\n")]), "utf-8")
     assert rn.main(["bump-check", "--pr", "1", "--files", str(f)]) == 1
@@ -109,4 +117,20 @@ def test_heading_or_block_inside_a_bullet_needs_opus():
         bad = wn(f"@@ -10,2 +10,5 @@\n \n+## v0.4.3\n+- Fixed recording.\n+{item}\n")
         assert rn.bump_exempt([INIT, bad])[0] is False, item
     ok = wn("@@ -10,2 +10,5 @@\n \n+## v0.4.3\n+- Fixed recording.\n+- 2 bugs fixed in 日本語 mode.\n")
-    assert rn.bump_exempt([INIT, ok])[0] is True
+    head = INTRO + "## v0.4.3\n- Fixed recording.\n- 2 bugs fixed in 日本語 mode.\n"
+    assert rn.bump_exempt([INIT, ok], head)[0] is True
+
+
+def test_section_hidden_in_the_example_comment_needs_opus():
+    hidden = wn("@@ -3,3 +3,6 @@\n <!-- newest first; example:\n ## v1.2.3\n - Subtitles appear faster.\n"
+                "+## v0.4.3\n+- Fixed recording.\n+\n -->\n")
+    head = INTRO.replace("-->", "## v0.4.3\n- Fixed recording.\n\n-->")
+    ok, why = rn.bump_exempt([INIT, hidden], head)
+    assert not ok and "comment" in why
+
+
+def test_form_feed_smuggled_statement_needs_opus():
+    ff = dict(INIT, patch=INIT["patch"].replace('+__version__ = "0.4.3"', '+__version__ = "0.4.3"\f; print("extra")'))
+    assert rn.bump_exempt([ff])[0] is False
+    ffw = wn("@@ -10,2 +10,4 @@\n \n+## v0.4.3\n+- Fixed recording.\f## v9.9.9\n")
+    assert rn.bump_exempt([INIT, ffw], HEAD_TEXT)[0] is False

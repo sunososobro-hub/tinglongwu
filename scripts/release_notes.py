@@ -337,7 +337,7 @@ VERSION_LINE_RE = re.compile(rf'^__version__[ \t]*=[ \t]*"{_N}\.{_N}\.{_N}"[ \t]
 def _patch_lines(patch: str) -> tuple[list[str], list[str]]:
     """Removed and added lines of a GitHub `pulls/N/files` patch (hunk headers and context dropped)."""
     removed, added = [], []
-    for line in (patch or "").splitlines():
+    for line in (patch or "").split("\n"):  # physical LF lines only: splitlines() would also cut at \f, \v, \x1c...
         if line.startswith("@@") or line.startswith("\\"):
             continue
         if line.startswith("-"):
@@ -347,10 +347,12 @@ def _patch_lines(patch: str) -> tuple[list[str], list[str]]:
     return removed, added
 
 
-def bump_exempt(files: list[dict]) -> tuple[bool, str]:
+def bump_exempt(files: list[dict], whats_new_text: str | None = None) -> tuple[bool, str]:
     """#1267: a bump PR skips Opus only when its diff is the `__version__` patch bump in tinglongwu/__init__.py plus,
     optionally, one new filled `## vX.Y.Z` section (same version) added to docs/whats_new.md and nothing else.
-    `files` is the `pulls/N/files` list (filename, status, patch). Returns (exempt, reason)."""
+    `files` is the `pulls/N/files` list (filename, status, patch); `whats_new_text` is docs/whats_new.md at the PR head
+    (needed when the PR touches it: the section must be the one the release reads, not hidden in a comment).
+    Returns (exempt, reason)."""
     by = {f.get("filename"): f for f in files}
     other = sorted(set(by) - {"tinglongwu/__init__.py", WHATS_NEW_FILE})
     if other:
@@ -376,7 +378,7 @@ def bump_exempt(files: list[dict]) -> tuple[bool, str]:
     if removed:
         return False, f"{WHATS_NEW_FILE} removes or edits existing lines"
     runs, prev = 0, False  # the new section must be one contiguous block of added lines that starts at its heading
-    for line in (wn.get("patch") or "").splitlines():
+    for line in (wn.get("patch") or "").split("\n"):
         cur = line.startswith("+")
         runs += cur and not prev
         prev = cur
@@ -389,8 +391,15 @@ def bump_exempt(files: list[dict]) -> tuple[bool, str]:
     # plain one-level bullets only: no Setext/ATX heading (also not inside an item), quote, nested list, HTML or prose
     if not all(re.match(r"^- (?![#>*+=<-]|[0-9]+[.)](?:\s|$))\S", x) for x in body):
         return False, f"`## {tag}` section may only hold `- ` bullet lines"
-    if whats_new_section("\n".join(added) + "\n", tag) is None:
+    if any(c != "\t" and (ord(c) < 32 or ord(c) == 127) for x in added for c in x):
+        return False, f"{WHATS_NEW_FILE} adds control characters"
+    section = whats_new_section("\n".join(added) + "\n", tag)
+    if section is None:
         return False, f"`## {tag}` section is empty or TODO"
+    if whats_new_text is None:
+        return False, f"{WHATS_NEW_FILE} at the PR head not read"
+    if whats_new_section(whats_new_text, tag) != section:
+        return False, f"`## {tag}` is not the section the release reads from {WHATS_NEW_FILE} (inside a comment?)"
     return True, f"version line + {WHATS_NEW_FILE} `## {tag}` section"
 
 
@@ -693,6 +702,7 @@ def main(argv=None) -> int:
     bc = sub.add_parser("bump-check", help="#1267: may this bump PR merge without an Opus PASS?")
     bc.add_argument("--pr", required=True)
     bc.add_argument("--files", default="", help="JSON of pulls/N/files (default: fetched with gh)")
+    bc.add_argument("--whats-new", default="", help="docs/whats_new.md at the PR head (default: fetched with gh)")
     n = sub.add_parser("notes")
     for k in ("--version", "--base", "--out"):
         n.add_argument(k, required=True)
@@ -705,7 +715,17 @@ def main(argv=None) -> int:
     if a.cmd == "bump-check":
         files = (json.loads(read(a.files)) if a.files else
                  gh_json("api", f"repos/{repo()}/pulls/{a.pr}/files?per_page=100"))
-        ok, why = bump_exempt(files)
+        if a.whats_new:
+            wn_text = read(a.whats_new)
+        elif a.files:
+            wn_text = None
+        else:
+            head = gh_json("api", f"repos/{repo()}/pulls/{a.pr}")["head"]["sha"]
+            r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw",
+                                f"repos/{repo()}/contents/{WHATS_NEW_FILE}?ref={head}"],
+                               capture_output=True, text=True, encoding="utf-8")
+            wn_text = r.stdout if r.returncode == 0 else None
+        ok, why = bump_exempt(files, wn_text)
         print(f"bump-exempt: {'yes' if ok else 'no'} ({why})")
         return 0 if ok else 1
     version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
