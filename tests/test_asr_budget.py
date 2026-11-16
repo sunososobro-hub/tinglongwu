@@ -78,24 +78,71 @@ def test_asr_retry_token_cap_scales_with_audio_length():
     assert r.model.calls[0]["max_new_tokens"] == 60
 
 
-def test_asr_budget_timeout_drops_sentence_and_next_one_runs(capsys):
-    # 1 s of audio -> budget max(4, 3 x 1) = 4 s; the decoder spends 3 s per piece and has 5 pieces (15 s)
+def test_asr_budget_timeout_keeps_decoded_part_and_next_one_runs(capsys):
+    # 1 s of audio -> budget max(4, 3 x 1) = 4 s; the decoder spends 3 s per piece and has 5 pieces (15 s).
+    # #1252: the pieces decoded before the stop are kept (lost source text cannot be recovered); no drop.
     r = rec([["a", "b", "c", "d", "e"], ["Next sentence."]], cost=3.0)
     t0 = r.clock.t
-    assert r.transcribe(sec(1)) is None  # dropped, not blocking
+    tr = r.transcribe(sec(1))
+    assert tr is not None and tr.text == "a b"  # "b" crossed 4 s but was already decoded
     assert r.clock.t - t0 == pytest.approx(6.0)  # stopped pulling after the piece that crossed 4 s
     err = capsys.readouterr().err
-    assert "dropped a sentence over its time budget" in err and "1 dropped so far" in err
+    assert "cut a sentence at its time budget" in err and "1 cut so far" in err
+    assert "dropped a sentence" not in err and getattr(r, "dropped", 0) == 0
     r.model.cost = 0.1
     tr = r.transcribe(sec(1))
     assert tr is not None and tr.text == "Next sentence."
-    assert r.dropped == 1
+    assert r.cut == 1
+
+
+def test_asr_budget_cut_log_names_the_kept_seconds(capsys):
+    # #1252: the log says how much of the sentence survived, so a field log shows the lost tail
+    r = rec([["first", "second", "third"]], cost=3.0)
+    ends = iter([7.5, 15.0, 20.0])
+    first = r.model.transcribe
+
+    def timed(audio, **kw):
+        gen, info = first(audio, **kw)
+
+        def g():
+            for s in gen:
+                s.end = next(ends)
+                yield s
+        return g(), info
+    r.model.transcribe = timed
+    tr = r.transcribe(sec(20))  # budget 60 s: not cut
+    assert tr.text == "first second third"
+    r.model.outputs = [["a", "b", "c", "d", "e"]]
+    r.model.cost = 30.0
+    ends = iter([6.0, 12.0, 18.0, 24.0, 30.0])
+    tr = r.transcribe(sec(24))  # budget 72 s: "a" at 30, "b" at 60, "c" at 90 crosses -> a b c kept
+    assert tr.text == "a b c"
+    assert "kept 18.0 of 24.0 s" in capsys.readouterr().err
+
+
+def test_asr_budget_drops_only_when_nothing_was_decoded(capsys):
+    # #1252: a drop is left only for a decode that produced no usable text before the deadline
+    r = rec([["noise"]], cost=5.0)
+    gen0 = r.model.transcribe
+
+    def silent(audio, **kw):
+        gen, info = gen0(audio, **kw)
+
+        def g():
+            for s in gen:
+                s.no_speech_prob, s.avg_logprob = 0.9, -2.0  # filtered as no-speech
+                yield s
+        return g(), info
+    r.model.transcribe = silent
+    assert r.transcribe(sec(1)) is None
+    assert r.dropped == 1 and "dropped a sentence over its time budget" in capsys.readouterr().err
 
 
 def test_asr_budget_skips_loop_retry_when_time_is_up():
     r = rec([[LOOP], ["clean retry"]], cost=5.0)
-    assert r.transcribe(sec(1)) is None
+    tr = r.transcribe(sec(1))
     assert len(r.model.calls) == 1  # no retry after the budget ran out
+    assert tr is not None and tr.text  # #1252: the collapsed first pass is kept, not dropped
 
 
 def test_asr_budget_env_override(monkeypatch):

@@ -79,12 +79,16 @@ def token_cap(seconds: float) -> int:
 
 
 def time_budget(seconds: float) -> float:
-    """Seconds one live sentence may spend in ASR before it is dropped."""
+    """Seconds one live sentence may spend in ASR before decoding stops (the decoded part is kept, #1252)."""
     return max(_env("TLWU_ASR_BUDGET_MIN", BUDGET_MIN_S), _env("TLWU_ASR_BUDGET_FACTOR", BUDGET_FACTOR) * seconds)
 
 
 class OverBudget(Exception):
-    """A live decode ran past its time budget (#251)."""
+    """A live decode ran past its time budget (#251). Carries what was decoded before it stopped (#1252)."""
+
+    def __init__(self, segs=(), info=None):
+        super().__init__("over budget")
+        self.segs, self.info = list(segs), info
 
 
 def make_prompt(prev: str, max_chars: int = PROMPT_MAX_CHARS) -> str | None:
@@ -224,10 +228,10 @@ class FasterWhisperRecognizer(Recognizer):
             without_timestamps=bool(getattr(self, "fast", False)), **kw)
         segs = []
         for s in gen:  # faster-whisper decodes lazily: stop pulling once the sentence is over budget
-            if deadline is not None and self._now() > deadline:
-                raise OverBudget
             if not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0):
-                segs.append(s)
+                segs.append(s)  # #1252: a yielded segment is already decoded; keep it even past the deadline
+            if deadline is not None and self._now() > deadline:
+                raise OverBudget(segs, info)  # stop before the next window; the caller keeps `segs`
         # #1252: no deadline check here - the decode already finished, so dropping its text saves no CPU
         return segs, info, " ".join(s.text.strip() for s in segs if s.text.strip())
 
@@ -240,20 +244,40 @@ class FasterWhisperRecognizer(Recognizer):
         print(f"tlwu: asr: dropped a sentence over its time budget ({self._now() - started:.1f} s > "
               f"{budget:.1f} s; {self.dropped} dropped so far)", file=sys.stderr, flush=True)
 
+    def _cut(self, budget: float, started: float, segs, audio: np.ndarray) -> None:
+        """#1252: the decode stopped past its budget; the segments decoded so far are kept, the tail is lost."""
+        self.cut = getattr(self, "cut", 0) + 1
+        total = len(audio) / SAMPLE_RATE
+        ends = [e for e in (getattr(s, "end", None) for s in segs) if isinstance(e, (int, float))]
+        kept = f"kept {min(max(ends), total):.1f} of {total:.1f} s" if ends else f"kept part of {total:.1f} s"
+        print(f"tlwu: asr: cut a sentence at its time budget ({self._now() - started:.1f} s > {budget:.1f} s; "
+              f"{kept}; {self.cut} cut so far)", file=sys.stderr, flush=True)
+
     def transcribe(self, audio: np.ndarray) -> Transcript | None:
         if not getattr(self, "live", False):
             return self._transcribe(audio, None)
         started = self._now()
         budget = time_budget(len(audio) / SAMPLE_RATE)
         try:
-            return self._transcribe(audio, started + budget)
-        except OverBudget:  # drop this sentence, the caller moves on to the next segment
+            tr = self._transcribe(audio, started + budget)
+        except OverBudget:  # nothing was decoded in time: drop this sentence, the caller moves on
             self._drop(budget, started)
             return None
+        if getattr(self, "_was_cut", None) is not None:
+            self._cut(budget, started, self._was_cut, audio)
+        return tr
 
     def _transcribe(self, audio: np.ndarray, deadline) -> Transcript | None:
         lang = self._lang_for(audio)
-        segs, info, text = self._decode(audio, lang=lang, deadline=deadline)
+        self._was_cut = None
+        try:
+            segs, info, text = self._decode(audio, lang=lang, deadline=deadline)
+        except OverBudget as e:  # #1252: stopped mid-decode; keep the segments decoded so far
+            segs, info = e.segs, e.info
+            text = " ".join(s.text.strip() for s in segs if s.text.strip())
+            if not text:
+                raise
+            self._was_cut = segs
         over = deadline is not None and self._now() > deadline  # #1252: over budget only skips the retry
         if text and has_loop(text) and not over:  # decoder got stuck: re-decode once without context, then collapse
             try:
