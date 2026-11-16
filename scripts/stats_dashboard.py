@@ -855,6 +855,83 @@ def collect_ttfs(api, repo, fetch=http_artifact_json):
     return ttfs_points(docs)
 
 
+LANGS_BRANCH = "eval-results"  # #643: eval-langs.yml weekly writes langs/YYYY-MM-DD.json there
+
+
+def lang_verdict_rows(latest, previous=None):
+    """#643: rows `language | ASR | MT | verdict | change vs last week` from the latest two weekly results.
+    ASR = error rate in %, MT = chrF x100, both to two decimals; deltas are latest - previous (None if either is
+    missing). Malformed rows are skipped."""
+    def by_pair(doc):
+        out = {}
+        for r in (doc or {}).get("languages", []) if isinstance(doc, dict) else []:
+            if isinstance(r, dict) and isinstance(r.get("pair"), str):
+                out[r["pair"]] = r
+        return out
+
+    def num(v):
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    def asr(r):
+        v = num((r or {}).get("asr_error_rate"))
+        return None if v is None else round(v * 100, 2)
+
+    def mt(r):
+        v = num((r or {}).get("chrf"))
+        return None if v is None else round(v, 2)
+
+    def delta(a, b):
+        return None if a is None or b is None else round(a - b, 2)
+
+    prev = by_pair(previous)
+    rows = []
+    for pair, r in by_pair(latest).items():
+        p = prev.get(pair)
+        a, m = asr(r), mt(r)
+        rows.append({"language": pair, "asr": a, "mt": m,
+                     "verdict": "PASS" if r.get("verdict") == "PASS" else "FAIL",
+                     "d_asr": delta(a, asr(p)), "d_mt": delta(m, mt(p))})
+    return rows
+
+
+def collect_lang_verdicts(api, repo):
+    """{date, previous_date, rows} from the two newest langs/*.json on eval-results; None when unavailable."""
+    import base64
+    try:
+        files = sorted(f["name"] for f in api("/repos/%s/contents/langs?ref=%s" % (repo, LANGS_BRANCH))
+                       if isinstance(f, dict) and re.fullmatch(r"\d{4}-\d{2}-\d{2}\.json", f.get("name", "")))
+        if not files:
+            return None
+        docs = [json.loads(base64.b64decode(api("/repos/%s/contents/langs/%s?ref=%s"
+                                                   % (repo, n, LANGS_BRANCH))["content"]))
+                for n in files[-2:]]
+    except Exception as e:  # no eval-results yet / API hiccup: the section says "no data yet"
+        print("weekly language results unavailable: %s" % e, file=sys.stderr)
+        return None
+    latest, previous = docs[-1], (docs[0] if len(docs) == 2 else None)
+    return {"date": files[-1][:-5], "previous_date": files[-2][:-5] if len(files) > 1 else None,
+            "rows": lang_verdict_rows(latest, previous)}
+
+
+def render_lang_verdicts(series):
+    lv = series.get("lang_verdicts")
+    head = ('<h2>Per-language quality (weekly)</h2><p class="n">CPU mini-eval per pair (eval-langs.yml, Whisper small '
+            '+ Hy-MT2 1.8B): ASR error rate %, MT chrF, gate verdict vs eval/baseline.json.</p>')
+    if not lv or not lv.get("rows"):
+        return head + '<p class="n" id="langv">no data yet</p>'
+
+    def f(v, signed=False):
+        return "n/a" if v is None else (("%+.2f" if signed else "%.2f") % v)
+
+    tr = "".join('<tr><td>%s</td><td>%s</td><td>%s</td><td%s>%s</td><td>ASR %s, chrF %s</td></tr>'
+                 % (html.escape(r["language"]), f(r["asr"]), f(r["mt"]),
+                    ' style="color:#c0392b"' if r["verdict"] != "PASS" else "", r["verdict"],
+                    f(r["d_asr"], True), f(r["d_mt"], True)) for r in lv["rows"])
+    cap = "%s (vs %s)" % (lv["date"], lv["previous_date"]) if lv.get("previous_date") else lv["date"]
+    return head + ('<table id="langv"><caption>%s</caption><tr><th>Language</th><th>ASR</th><th>MT</th>'
+                   '<th>Verdict</th><th>Change vs last week</th></tr>%s</table>' % (html.escape(cap), tr))
+
+
 def build_series(api, repo, branch, now, history=None, rels=_FETCH, files_cache=None):
     info = api("/repos/%s" % repo)
     created = info["created_at"]
@@ -896,6 +973,7 @@ def build_series(api, repo, branch, now, history=None, rels=_FETCH, files_cache=
         "flow": flow, "faucet": faucet,
         "quota_trend": quota_trend(merged_prs, now),  # #744
         "ttfs": collect_ttfs(api, repo),  # #777
+        "lang_verdicts": collect_lang_verdicts(api, repo),  # #643
         "release_times": release_times(rels, release_runs(api, repo), all_issues),
         "downloads": {"total": dl_total, "releases": rels or [],
                       "series": downloads_series(history, days, dl_total) if dl_total is not None
@@ -990,6 +1068,7 @@ __FLOW__
 __INSTALLS__
 __THROUGHPUT__
 __TTFS__
+__LANGV__
 <div class="grid">
 <section class="blk"><h2>Work finished per day</h2><div id="c_thru"></div>
 <div class="lg"><span><i style="background:#3b82c4"></i>PRs merged</span><span><i style="background:#e08a1e"></i>issues closed</span></div>
@@ -1127,7 +1206,8 @@ def render_html(series):
               "__FLOW__": render_flow_section(series),
               "__INSTALLS__": render_installs(series.get("installs")),
               "__THROUGHPUT__": render_throughput_section(series),
-              "__TTFS__": render_ttfs_section(series), "__VISION__": vision_html(), "__DATA__": data}
+              "__TTFS__": render_ttfs_section(series),
+              "__LANGV__": render_lang_verdicts(series), "__VISION__": vision_html(), "__DATA__": data}
     # one pass over the template: inserted content (labels, JSON) is never scanned for placeholders
     return re.sub("|".join(values), lambda m: values[m.group(0)], PAGE)
 

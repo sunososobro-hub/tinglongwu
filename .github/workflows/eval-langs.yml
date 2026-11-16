@@ -4,14 +4,26 @@ name: eval-langs
 # clips (Whisper small + Hy-MT2 1.8B Q4 on llama.cpp CPU, like eval.yml) and gates it against its
 # eval/baseline.json "matrix" entry: chrF - margin and MT median budget (tlwu_eval/gate.py). A pair whose pin file is
 # missing is listed as unpinned in the summary and not run. Add a language = one line in eval/languages.json.
-# Runs on PRs that touch the matrix config / gate / pins and on manual dispatch (weekly schedule: #619 part 4).
+# Runs on PRs that touch the matrix config / gate / pins and on manual dispatch.
+# #643 (#619 part 4): weekly schedule on dev. `weekly` gates every pair report (tlwu_eval/weekly.py), `publish` writes
+# langs/YYYY-MM-DD.json to the eval-results branch (the stats page renders the latest two), `alert` comments on #61
+# when any pair FAILs. A dispatch with publish=true does the same (manual check of the weekly path).
+#   weekly  : contents read  - verdict JSON + alert text
+#   publish : contents write - the only job that pushes, to eval-results only
+#   alert   : issues write   - the only job that touches issues
 on:
   pull_request:
     branches: [dev]
     paths: ['eval/languages.json', 'eval/baseline.json', 'eval/*pins*.json', 'eval/ci_smoke.json', 'tlwu_eval/**',
             'scripts/bench/make_ci_smoke.py', '.github/workflows/eval-langs.yml']
+  schedule:
+    - cron: "17 20 * * 0"   # Monday 04:17 Asia/Taipei, after eval-nightly
   workflow_dispatch:
     inputs:
+      publish:
+        description: "#643: also write the weekly verdict to eval-results and alert #61 on FAIL (like the schedule)"
+        type: boolean
+        default: false
       pin_set:
         description: "dev: pin a clip set instead of running the eval (make_ci_smoke.py --set <set> --pin 20); the pin file is printed and uploaded for commit"
         type: choice
@@ -65,6 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || '' }}  # #643: schedules start on main
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -89,6 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || '' }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -165,3 +179,82 @@ jobs:
             speak_noise.json
             speak_noise.txt
           if-no-files-found: warn
+
+  weekly:
+    needs: [matrix, pair]
+    if: always() && needs.matrix.result == 'success' && (github.event_name == 'schedule' || inputs.publish)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      fail: ${{ steps.alert.outputs.fail }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || '' }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: eval-langs-*
+          path: arts
+      - name: Weekly verdict per language (#643)
+        id: alert
+        run: |
+          mkdir -p arts
+          python -m tlwu_eval.weekly collect arts --out langs.json --date "$(date -u +%F)" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          python -m tlwu_eval.weekly alert langs.json --out alert.md
+          { echo "## weekly verdict (#643)"; echo; echo '```'; cat langs.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: eval-langs-weekly
+          path: |
+            langs.json
+            alert.md
+          if-no-files-found: warn
+
+  publish:
+    needs: weekly
+    if: always() && needs.weekly.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write   # push to eval-results only
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: eval-langs-weekly
+      - name: Commit to eval-results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          D=$(date -u +%F)
+          git init -q repo && cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if git fetch --depth=1 origin eval-results 2>/dev/null; then git checkout -q -B eval-results FETCH_HEAD; else git checkout -q --orphan eval-results; fi
+          mkdir -p langs
+          cp ../langs.json "langs/$D.json"
+          git add langs
+          git commit -q -m "eval: weekly languages $D"
+          git push origin HEAD:refs/heads/eval-results
+
+  alert:
+    needs: weekly
+    if: always() && needs.weekly.outputs.fail == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: eval-langs-weekly
+      - name: Comment on #61
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh issue comment 61 --body-file alert.md

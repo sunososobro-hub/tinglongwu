@@ -42,6 +42,16 @@ Results repeat on one runner CPU type but differ a little between types (zh->en 
 regression budget for the shared runner, not the 1.0 s user-PC rule of #63 (the runner is up to ~2.5x slower).
 Its `_note` lists the runs; re-record the same way after an intended quality or speed change.
 
+### Weekly per-language verdict: `.github/workflows/eval-langs.yml` (#643)
+
+Every Monday 04:17 Asia/Taipei `eval-langs.yml` runs every pair of `eval/languages.json` on dev (CPU, same models as
+above), gates each one against its `eval/baseline.json` "matrix" entry (`python -m tlwu_eval.weekly collect`), writes
+`langs/YYYY-MM-DD.json` to the `eval-results` branch and comments on #61 when any pair FAILs (a pair whose job left no
+report counts as FAIL). The stats page shows the latest result as `language | ASR | MT | verdict | change vs last week`.
+Run it by hand with `gh workflow run eval-langs.yml --ref dev -f publish=true`.
+Language quality is checked here in the cloud, with no human step: the owner PC nightly (`hw-tests.yml`) keeps only
+GPU-specific and real audio-device checks.
+
 ## Hy-MT2 new languages: Experimental vs supported (#472)
 
 Add 5 clips each for it, pt, vi, th and id to the smoke manifest (with `ref_zh`), install `unbabel-comet`, then:
