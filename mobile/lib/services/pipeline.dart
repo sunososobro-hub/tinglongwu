@@ -9,6 +9,7 @@ import '../logic/context_budget.dart';
 import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/feature_prefs.dart';
+import '../logic/lang_pack.dart';
 import '../logic/phone_audio.dart';
 import '../logic/s2tw.dart';
 import '../logic/segmenter.dart';
@@ -189,11 +190,30 @@ class Pipeline extends ChangeNotifier {
     if (c == conversation) return;
     conversation = c;
     _clearDraftTr(); // the draft was translated for the other direction
+    _syncAsrRoute();
     final store = _conversationStore; // null until start() (and AppLog) ran
     if (store == null) return notifyListeners();
     store.save(c);
     _log.i('conversation ${c.enabled ? "on" : "off"} side=${c.side.name} foreign=${c.foreign} mine=${c.mineLang} auto=${c.auto}');
     notifyListeners();
+  }
+
+  // ---- extra-language recognizer (#556 part 2: Russian)
+
+  /// The other person's language needs a recognizer pack that is not installed (or failed to
+  /// load): the pill says so, and their lines are dropped (SenseVoice would only make garbage).
+  bool extraAsrMissing = false;
+
+  /// Tells the ASR isolate to load (only while 對話翻譯 is on with such a language, it costs
+  /// memory) or free the extra recognizer, and how to route the segments.
+  void _syncAsrRoute() {
+    final c = _activeConversation;
+    final need = c.enabled && Conversation.needsExtraAsr.contains(c.foreign);
+    final pack = need ? paths?.asrPack(c.foreign) : null;
+    extraAsrMissing = need && pack == null && paths != null;
+    _asr?.setRoute(pack == null
+        ? null
+        : AsrRoute(pack: pack, mine: c.mineLang, force: c.auto ? null : c.side == Speaker.them));
   }
 
   // ---- read-aloud (#558 part 2)
@@ -378,7 +398,10 @@ class Pipeline extends ChangeNotifier {
           case AsrSpeech(:final speaking):
             if (_draft.onSpeech(speaking, _clock.elapsedMilliseconds)) _refreshDraft();
           case AsrDraft(:final seg, :final text):
-            if (prefs.sourceDraft && _draft.onDraft(seg, text)) {
+            // Russian speech heard by SenseVoice is garbage: no draft for the other person then.
+            if (prefs.sourceDraft &&
+                !_activeConversation.foreignNeedsExtraAsr(e.lang) &&
+                _draft.onDraft(seg, text)) {
               _refreshDraft();
               _maybeTranslateDraft(seg, text, e.lang);
             }
@@ -386,14 +409,28 @@ class Pipeline extends ChangeNotifier {
             if (!(_benchWait?.isCompleted ?? true)) _benchWait!.complete(e);
           case AsrSegmentEnd(:final seg):
             if (_draft.onFinal(seg)) _refreshDraft();
+          case AsrExtraState(:final lang, :final error):
+            if (error == null) {
+              _log.i('asr: $lang recognizer ready');
+            } else {
+              _log.e('asr: $lang recognizer failed: $error');
+              extraAsrMissing = true;
+              if (!_disposed) notifyListeners();
+            }
           case AsrFinal():
             _draft.onFinal(e.seg);
             _refreshDraft(notify: false);
-            _onFinal(e);
+            if (extraAsrMissing && _activeConversation.foreignNeedsExtraAsr(e.lang)) {
+              _log.i('ASR final dropped (no ${_activeConversation.foreign} recognizer): lang=${e.lang}');
+              notifyListeners();
+            } else {
+              _onFinal(e);
+            }
         }
       });
       await ready.future;
       _asr!.setDraft(prefs.sourceDraft);
+      _syncAsrRoute();
       if (prefs.speakerLabels) _startSpeakers();
       _probeStore = ProbeStore('${p.filesDir}/device_probe.json');
       _log.i('ASR ready in ${_clock.elapsedMilliseconds - t0} ms');
@@ -501,6 +538,7 @@ class Pipeline extends ChangeNotifier {
         }
         await _stopMic();
         source = AudioSourceKind.phone;
+        _syncAsrRoute();
         silenceHint = false;
         _overlaySent = null;
         await PlaybackCapture.overlayStyle(overlayStyle);
@@ -508,6 +546,7 @@ class Pipeline extends ChangeNotifier {
         _log.i('source: phone audio');
       } else {
         source = AudioSourceKind.mic;
+        _syncAsrRoute();
         await _phoneSub?.cancel();
         _phoneSub = null;
         await PlaybackCapture.stop();
@@ -543,6 +582,7 @@ class Pipeline extends ChangeNotifier {
     if (_disposed || source != AudioSourceKind.phone) return;
     _log.i('phone audio stopped');
     source = AudioSourceKind.mic;
+    _syncAsrRoute();
     silenceHint = false;
     paused = false;
     PlaybackCapture.overlayHide().catchError((_) {});

@@ -6,6 +6,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
+import '../logic/lang_pack.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speakers.dart';
 import '../logic/speech_out.dart';
@@ -443,7 +444,7 @@ class _Header extends StatelessWidget {
                   ),
                   child: Text(
                       '對話模式  ${pipeline.conversation.pairLabel}  · '
-                      '${voiceStatusLabel(installed: pipeline.ttsInstalled, speaking: pipeline.speaking)}',
+                      '${_pillStatus(pipeline)}',
                       style: const TextStyle(
                           fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
@@ -752,4 +753,10 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline) {
       },
     ),
   );
+}
+
+/// Pill suffix in 對話模式: the missing recognizer for the other person first, else the voice.
+String _pillStatus(Pipeline p) {
+  final asr = asrStatusLabel(foreign: p.conversation.foreign, missing: p.extraAsrMissing);
+  return asr.isNotEmpty ? asr : voiceStatusLabel(installed: p.ttsInstalled, speaking: p.speaking);
 }

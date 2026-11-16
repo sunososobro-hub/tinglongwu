@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../logic/lang_pack.dart';
 import '../logic/speech_out.dart';
 
 /// Where the models live and how to check them.
@@ -109,6 +110,10 @@ class ModelPaths {
   /// Optional read-aloud voice for [lang] (#558); null when not installed (text only).
   TtsVoicePaths? ttsVoice(String lang) =>
       TtsVoicePaths.find(lang, resolve: path, exists: (p) => File(p).existsSync());
+
+  /// Optional extra-language recognizer for [lang] (#556, Russian); null when not installed.
+  AsrPackPaths? asrPack(String lang) =>
+      AsrPackPaths.find(lang, resolve: path, exists: (p) => File(p).existsSync());
 
   /// Returns the list of missing files (empty = all present).
   List<String> missing() => [

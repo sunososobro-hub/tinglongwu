@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/conversation.dart';
+import 'package:mobile/logic/lang_pack.dart';
 import 'package:mobile/services/pipeline.dart';
 import 'package:mobile/ui/subtitle_screen.dart';
 
@@ -52,9 +53,11 @@ void main() {
       );
     });
 
-    test('unknown foreign language falls back to en; ru waits for its ASR pack', () {
-      expect(Conversation.normalizeForeign('ru'), 'en');
-      expect(Conversation.foreignOptions.containsKey('ru'), isFalse);
+    test('unknown foreign language falls back to en; ru is a partner language', () {
+      expect(Conversation.normalizeForeign('ru'), 'ru');
+      expect(Conversation.normalizeForeign('xx'), 'en');
+      expect(const Conversation().copyWith(foreign: 'ru').foreign, 'ru');
+      expect(const Conversation(foreign: 'ru').pairLabel, '中文 ⇄ Русский');
       expect(Conversation.normalizeForeign(null), 'en');
       expect(const Conversation().copyWith(foreign: 'xx').foreign, 'en');
     });
@@ -118,6 +121,54 @@ void main() {
       expect(const Conversation(enabled: true, foreign: 'ja').route('ja', listenTarget: 'zh').src, 'ja');
     });
 
+    test('Russian partner (#556): anything that is not mine is theirs, spoken ru, shown zh', () {
+      const c = Conversation(enabled: true, foreign: 'ru');
+      // SenseVoice cannot hear ru: whatever language it guesses, a non-zh line is their ru.
+      for (final heard in ['en', 'ja', 'ko', 'ru']) {
+        final r = c.route(heard, listenTarget: 'zh');
+        expect(r.src, 'ru', reason: heard);
+        expect(r.tgt, 'zh', reason: heard);
+        expect(r.speaker, Speaker.them, reason: heard);
+        expect(r.speak, isFalse, reason: heard);
+      }
+      final mine = c.route('zh', listenTarget: 'zh');
+      expect(mine.tgt, 'ru');
+      expect(mine.speaker, Speaker.me);
+      expect(mine.speak, isTrue);
+      expect(c.route('yue', listenTarget: 'zh').tgt, 'ru');
+      expect(c.route('ru', listenTarget: 'zh').src, 'ru'); // the ru ASR itself reports ru
+    });
+
+    test('which lines the extra (Russian) recognizer takes: auto = not my language, manual = side', () {
+      const auto = Conversation(enabled: true, foreign: 'ru');
+      expect(auto.foreignNeedsExtraAsr('zh'), isFalse);
+      expect(auto.foreignNeedsExtraAsr('yue'), isFalse);
+      expect(auto.foreignNeedsExtraAsr('en'), isTrue);
+      expect(const Conversation(enabled: true, foreign: 'ru', mineLang: 'en').foreignNeedsExtraAsr('en'),
+          isFalse);
+      const manual = Conversation(enabled: true, foreign: 'ru', auto: false);
+      expect(manual.foreignNeedsExtraAsr('zh'), isTrue); // side them: always theirs
+      expect(manual.switched().foreignNeedsExtraAsr('en'), isFalse); // side me: never
+      // Off, or a partner SenseVoice can hear: nothing extra.
+      expect(const Conversation(foreign: 'ru').foreignNeedsExtraAsr('en'), isFalse);
+      expect(const Conversation(enabled: true, foreign: 'ja').foreignNeedsExtraAsr('en'), isFalse);
+    });
+
+    test('AsrRoute: SenseVoice listens first; the side button forces or forbids the extra model', () {
+      const pack = AsrPackPaths(lang: 'ru', encoder: 'e', decoder: 'd', joiner: 'j', tokens: 't');
+      const auto = AsrRoute(pack: pack, mine: 'zh');
+      expect(auto.useExtra('zh'), isFalse);
+      expect(auto.useExtra('yue'), isFalse);
+      expect(auto.useExtra('en'), isTrue);
+      expect(const AsrRoute(pack: pack, mine: 'zh', force: true).useExtra('zh'), isTrue);
+      expect(const AsrRoute(pack: pack, mine: 'zh', force: false).useExtra('en'), isFalse);
+    });
+
+    test('the pill says when the Russian recognizer is missing', () {
+      expect(asrStatusLabel(foreign: 'ru', missing: true), contains('俄語'));
+      expect(asrStatusLabel(foreign: 'ru', missing: false), '');
+    });
+
     test('settings persist and never collide', () {
       const c = Conversation(enabled: true, foreign: 'ko', mineLang: 'en');
       expect(Conversation.parse(c.format()), c);
@@ -149,6 +200,16 @@ void main() {
       p.source = AudioSourceKind.mic;
       p.setConversationEnabled(false);
       expect(p.activeTarget, 'zh');
+    });
+
+    test('ru partner: models not resolved yet, so nothing is flagged missing', () {
+      final p = make();
+      p.setConversationEnabled(true);
+      p.setPartnerLang('ru');
+      expect(p.conversation.foreign, 'ru');
+      expect(p.extraAsrMissing, isFalse);
+      p.setPartnerLang('en');
+      expect(p.extraAsrMissing, isFalse);
     });
 
     testWidgets('toggle turns 對話模式 on, side button switches, my bubble on the right', (t) async {

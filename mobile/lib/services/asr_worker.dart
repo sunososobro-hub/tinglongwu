@@ -7,6 +7,7 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
+import '../logic/lang_pack.dart';
 import '../logic/prompt.dart';
 import '../logic/segmenter.dart';
 
@@ -71,6 +72,15 @@ class AsrFinal extends AsrEvent {
   /// Wall time of the offline decode, and the audio length it covered.
   final int decodeMs;
   final int audioMs;
+}
+
+/// The extra-language recognizer (Russian, 對話翻譯) finished loading, or could not
+/// ([error] set): the app keeps running on SenseVoice alone.
+class AsrExtraState extends AsrEvent {
+  const AsrExtraState(this.lang, {this.error});
+  final String lang;
+  final String? error;
+  bool get ok => error == null;
 }
 
 class AsrError extends AsrEvent {
@@ -145,6 +155,11 @@ class AsrWorker {
   /// Sends every finalized segment's audio to [port] (the speaker worker, #1155); null = stop.
   void setSpeakerPort(SendPort? port) => _toWorker.send(['spk', port]);
 
+  /// 對話翻譯 with a language SenseVoice cannot hear (Russian): loads that recognizer (only now,
+  /// it costs memory) and sends the segments that are not in my language to it. Null = free it
+  /// and go back to SenseVoice alone. Answers with an [AsrExtraState].
+  void setRoute(AsrRoute? route) => _toWorker.send(['route', route]);
+
   /// Turns the source-text draft (#1064) on or off at run time.
   void setDraft(bool on) => _toWorker.send(on);
 
@@ -218,7 +233,7 @@ class AsrWorker {
     sherpa.VoiceActivityDetector? vad;
     out.send(inPort.sendPort);
 
-    (String, String) decode(Float32List samples) {
+    (String, String) decodeSense(Float32List samples) {
       final st = rec!.createStream();
       try {
         st.acceptWaveform(samples: samples, sampleRate: 16000);
@@ -227,6 +242,76 @@ class AsrWorker {
         return (SentenceSegmenter.normalize(r.text), PromptBuilder.fromSenseVoiceLang(r.lang));
       } finally {
         st.free();
+      }
+    }
+
+    // 對話翻譯 with Russian: the extra recognizer exists only while a route is set.
+    AsrRoute? route;
+    sherpa.OfflineRecognizer? extra;
+
+    void freeExtra() {
+      extra?.free();
+      extra = null;
+    }
+
+    (String, String) decodeExtra(Float32List samples) {
+      final st = extra!.createStream();
+      try {
+        st.acceptWaveform(samples: samples, sampleRate: 16000);
+        extra!.decode(st);
+        return (SentenceSegmenter.normalize(extra!.getResult(st).text), route!.pack.lang);
+      } finally {
+        st.free();
+      }
+    }
+
+    // SenseVoice listens first (it knows my language); what it does not hear as my language is
+    // decoded again by the extra recognizer. Manual side button: no guessing, no wasted decode.
+    (String, String) decode(Float32List samples) {
+      final r = route;
+      if (r == null || extra == null || r.force == false) return decodeSense(samples);
+      try {
+        if (r.force == true) return decodeExtra(samples);
+        final s = decodeSense(samples);
+        return r.useExtra(s.$2) ? decodeExtra(samples) : s;
+      } catch (e) {
+        // A broken extra model must not stop the app: SenseVoice alone from here on.
+        freeExtra();
+        out.send(AsrExtraState(r.pack.lang, error: '$e'));
+        return decodeSense(samples);
+      }
+    }
+
+    void setRoute(AsrRoute? r) {
+      // Same recognizer already loaded (the side button only changes the routing): keep it.
+      if (r != null && extra != null && route?.pack.encoder == r.pack.encoder) {
+        route = r;
+        return;
+      }
+      freeExtra();
+      route = null;
+      if (r == null) return;
+      try {
+        extra = sherpa.OfflineRecognizer(
+          sherpa.OfflineRecognizerConfig(
+            model: sherpa.OfflineModelConfig(
+              transducer: sherpa.OfflineTransducerModelConfig(
+                encoder: r.pack.encoder,
+                decoder: r.pack.decoder,
+                joiner: r.pack.joiner,
+              ),
+              tokens: r.pack.tokens,
+              numThreads: cfg.numThreads,
+              provider: 'cpu',
+              modelType: 'transducer',
+              debug: false,
+            ),
+          ),
+        );
+        route = r;
+        out.send(AsrExtraState(r.pack.lang));
+      } catch (e) {
+        out.send(AsrExtraState(r.pack.lang, error: '$e'));
       }
     }
 
@@ -342,6 +427,7 @@ class AsrWorker {
         draftIn.close();
         vad?.free();
         rec?.free();
+        freeExtra();
         inPort.close();
         return;
       }
@@ -356,13 +442,17 @@ class AsrWorker {
           for (var i = 0; i < 2; i++) {
             // first run warms up; keep the faster one
             final sw = Stopwatch()..start();
-            decode(a);
+            decodeSense(a);
             best = best < sw.elapsedMilliseconds ? best : sw.elapsedMilliseconds;
           }
           out.send(AsrBench(decodeMs: best, audioMs: a.length * 1000 ~/ 16000));
         } catch (e) {
           out.send(AsrError('ASR bench failed: $e'));
         }
+        return;
+      }
+      if (m is List && m.isNotEmpty && m[0] == 'route') {
+        setRoute(m[1] as AsrRoute?);
         return;
       }
       if (m is List && m.isNotEmpty && m[0] == 'spk') {

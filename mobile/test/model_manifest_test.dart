@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/logic/conversation.dart';
+import 'package:mobile/logic/lang_pack.dart';
 import 'package:mobile/logic/model_manifest.dart';
 import 'package:mobile/logic/speech_out.dart';
 import 'package:mobile/services/model_paths.dart';
@@ -195,6 +197,82 @@ void main() {
       final missing = _voice().replaceFirst(RegExp(r',\s*\{"path": "tts-en/lexicon.txt"[^}]*\}'), '');
       expect(() => ModelManifest.parse(base, packsJson: missing), throwsFormatException);
     });
+  });
+
+  group('extra-language recognizer pack (#556)', () {
+    String asr({String kind = 'asr', String lang = 'ru', String extra = '', bool dropTokens = false}) {
+      final tokens = dropTokens ? '' : ',{"path": "asr-$lang/tokens.txt", "size": 13, "sha256": "$_a"}';
+      return '{"packs": [{"id": "lang-$lang", "lang": "$lang", "kind": "$kind", '
+          '"name": "tlwu-mobile-lang-$lang.zip", "url": "u", '
+          '"source": "https://example.invalid/asr-models/sherpa-onnx-zipformer-ru-int8-2025-04-20.tar.bz2", '
+          '"files": ['
+          '{"path": "asr-$lang/encoder.int8.onnx", "size": 100, "sha256": "$_c"},'
+          '{"path": "asr-$lang/decoder.onnx", "size": 11, "sha256": "$_b"},'
+          '{"path": "asr-$lang/joiner.int8.onnx", "size": 12, "sha256": "$_a"}'
+          '$tokens$extra]}]}';
+    }
+
+    const base = '{"bundle": {"name": "m.zip", "url": "u"}, "files": []}';
+
+    test('layout is exactly the transducer files the ASR isolate loads', () {
+      final m = ModelManifest.parse(base, packsJson: asr());
+      final p = m.packs.single;
+      expect(p.isAsr, isTrue);
+      expect(p.folder, 'asr-ru');
+      expect(p.layout, AsrPackLayout.rel('ru'));
+      expect({for (final f in p.files) f.path}, AsrPackLayout.rel('ru').toSet());
+      expect(p.files.every((f) => f.group == 'lang'), isTrue);
+      expect(() => ModelManifest.parse(base, packsJson: asr(dropTokens: true)), throwsFormatException);
+      expect(
+          () => ModelManifest.parse(base,
+              packsJson: asr(extra: ',{"path": "asr-ru/evil.so", "size": 1, "sha256": "$_a"}')),
+          throwsFormatException);
+      // A voice's folder is not a recognizer's.
+      expect(() => ModelManifest.parse(base, packsJson: asr().replaceAll('asr-ru/', 'tts-ru/')),
+          throwsFormatException);
+      expect(() => ModelManifest.parse(base, packsJson: asr(kind: 'rocket')), throwsFormatException);
+    });
+
+    test('the pack zip maps to asr-ru/, is optional and leaves the models zip alone', () {
+      final m = ModelManifest.parse(base, packsJson: asr());
+      for (final z in ['tlwu-mobile-lang-ru.zip', 'tlwu-mobile-lang-ru (1).zip', 'TLWU-mobile-lang-ru.zip']) {
+        final t = m.zipTargetsFor(z);
+        expect(t['encoder.int8.onnx'], 'asr-ru/encoder.int8.onnx', reason: z);
+        expect(t['tokens.txt'], 'asr-ru/tokens.txt', reason: z);
+        expect(t.length, 4, reason: z);
+      }
+      // The re-zipped upstream archive (its name ends in a date) is read as the pack too.
+      expect(m.packForZip('sherpa-onnx-zipformer-ru-int8-2025-04-20.zip'), same(m.packs.single));
+      expect(m.packForZip('tlwu-mobile-models.zip'), isNull);
+      expect(m.missingRequired({}), isEmpty);
+      expect(m.installedPacks({...AsrPackLayout.rel('ru')}), {'lang-ru'});
+      expect(m.installedPacks({'asr-ru/encoder.int8.onnx'}), isEmpty);
+    });
+
+    test('AsrPackPaths needs every file', () {
+      final v = AsrPackPaths.find('ru', resolve: (r) => '/m/$r', exists: (_) => true)!;
+      expect(v.encoder, '/m/asr-ru/encoder.int8.onnx');
+      expect(v.decoder, '/m/asr-ru/decoder.onnx');
+      expect(v.joiner, '/m/asr-ru/joiner.int8.onnx');
+      expect(v.tokens, '/m/asr-ru/tokens.txt');
+      expect(
+          AsrPackPaths.find('ru', resolve: (r) => '/m/$r', exists: (p) => !p.endsWith('joiner.int8.onnx')),
+          isNull);
+    });
+  });
+
+  test('shipped assets/voice_packs.json has the Russian recognizer pack', () {
+    final m = ModelManifest.parse(File('assets/models_manifest.json').readAsStringSync(),
+        packsJson: File('assets/voice_packs.json').readAsStringSync());
+    final ru = m.packs.singleWhere((p) => p.id == 'lang-ru');
+    expect(ru.isAsr, isTrue);
+    expect(ru.name, 'tlwu-mobile-lang-ru.zip');
+    expect(ru.url, contains('/releases/download/mobile-latest/'));
+    expect(m.packForZip(ru.name), same(ru));
+    expect(ru.size, lessThan(100 << 20)); // phone friendly
+    for (final lang in Conversation.needsExtraAsr) {
+      expect(m.packs.any((p) => p.isAsr && p.lang == lang), isTrue, reason: lang);
+    }
   });
 
   test('shipped assets/voice_packs.json loads with the models manifest', () {

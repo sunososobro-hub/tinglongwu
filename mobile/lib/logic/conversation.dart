@@ -64,14 +64,11 @@ class Conversation {
     this.auto = true,
   });
 
-  /// The other person's language: any subtitle language. Russian is left out until the ru ASR
-  /// pack is wired in (SenseVoice does not recognise Russian), see [needsExtraAsr].
-  static final foreignOptions = <String, String>{
-    for (final e in TargetLanguage.options.entries)
-      if (!needsExtraAsr.contains(e.key)) e.key: e.value,
-  };
+  /// The other person's language: any subtitle language.
+  static const foreignOptions = TargetLanguage.options;
 
-  /// Subtitle languages SenseVoice cannot hear; they need an extra ASR pack (not yet usable).
+  /// Languages SenseVoice cannot hear: the other person's speech is decoded by an extra
+  /// recognizer pack instead (`AsrPackLayout`, imported like the models).
   static const needsExtraAsr = <String>{'ru'};
   static const fallbackForeign = 'en';
 
@@ -127,10 +124,17 @@ class Conversation {
   /// Maps an ASR-detected language outside {mine, foreign} onto the partner's language. Only when
   /// the partner's language is one the ASR can detect (else it never says it, e.g. es -> "en").
   String restrictDetected(String detected) {
-    if (!TargetLanguage.spoken.contains(foreign)) return detected;
+    if (!TargetLanguage.spoken.contains(foreign) && !needsExtraAsr.contains(foreign)) return detected;
     final f = langFamily(detected);
     return f == langFamily(mineLang) || f == foreign ? detected : foreign;
   }
+
+  /// The extra recognizer for the other person's language applies (it is on and a line that is
+  /// not mine goes to it): the manual side button decides, else the language SenseVoice heard.
+  bool foreignNeedsExtraAsr(String detected) =>
+      enabled &&
+      needsExtraAsr.contains(foreign) &&
+      (auto ? langFamily(detected) != langFamily(mineLang) : side == Speaker.them);
 
   /// Routes one finished line whose ASR-detected language is [detected]. Listen-only mode keeps
   /// the old behaviour (picked [listenTarget], nothing spoken). In conversation mode the active

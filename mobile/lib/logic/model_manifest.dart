@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'lang_pack.dart';
 import 'speech_out.dart';
 
 /// One model file the app knows: where it goes under `models/`, and its exact size and SHA-256.
@@ -19,7 +20,8 @@ class ManifestEntry {
   final String sha256;
 
   /// `asr`, `vad` or `llm`. All asr + vad files are required; at least one llm file is required.
-  /// Voice pack files are `tts` and the speaker model is `speaker` (both optional).
+  /// Voice pack files are `tts`, extra-language recognizer files are `lang` and the speaker model
+  /// is `speaker` (all optional).
   final String group;
 
   /// Official download link for files that are not in the bundle zip (e.g. the 4B model).
@@ -43,8 +45,8 @@ class ManifestEntry {
       );
 }
 
-/// An optional read-aloud voice (#558): its own zip, imported through the same flow as the models.
-/// Not a required model and not in the models zip or the Play packs (those tools read
+/// An optional pack: a read-aloud voice (#558) or an extra-language recognizer (#556), its own
+/// zip, imported through the same flow as the models. Not a required model and not in the models zip or the Play packs (those tools read
 /// `models_manifest.json` only); the voices live in `assets/voice_packs.json`.
 class VoicePack {
   VoicePack({
@@ -55,12 +57,28 @@ class VoicePack {
     required this.files,
     this.note = '',
     this.source = '',
+    this.kind = vitsKind,
   });
 
-  final String id;
+  /// [kind] of a read-aloud voice (sherpa-onnx VITS + lexicon) and of an extra-language
+  /// recognizer (sherpa-onnx transducer).
+  static const vitsKind = 'vits';
+  static const asrKind = 'asr';
+  static const kinds = {vitsKind, asrKind};
 
-  /// Language the voice speaks; its files live under `tts-<lang>/` (see [TtsVoiceLayout]).
+  final String id;
+  final String kind;
+
+  /// Language the pack is for; its files live under [folder].
   final String lang;
+
+  bool get isAsr => kind == asrKind;
+
+  /// `tts-<lang>` (see [TtsVoiceLayout]) or `asr-<lang>` (see [AsrPackLayout]).
+  String get folder => isAsr ? AsrPackLayout.dir(lang) : TtsVoiceLayout.dir(lang);
+
+  /// The exact files the loader reads, relative to the models dir.
+  List<String> get layout => isAsr ? AsrPackLayout.rel(lang) : TtsVoiceLayout.rel(lang);
 
   /// Zip file name (as downloaded); a picked zip with this name is read as this pack.
   final String name;
@@ -83,13 +101,17 @@ class VoicePack {
   factory VoicePack.fromJson(Map<String, dynamic> j) => VoicePack(
         id: j['id'] as String,
         lang: j['lang'] as String,
+        kind: (j['kind'] as String?) ?? vitsKind,
         name: j['name'] as String,
         url: j['url'] as String,
         note: (j['note'] as String?) ?? '',
         source: (j['source'] as String?) ?? '',
         files: [
           for (final f in j['files'] as List)
-            ManifestEntry.fromJson({...(f as Map<String, dynamic>), 'group': 'tts'})
+            ManifestEntry.fromJson({
+              ...(f as Map<String, dynamic>),
+              'group': (j['kind'] ?? vitsKind) == asrKind ? 'lang' : 'tts'
+            })
         ],
       );
 }
@@ -132,11 +154,12 @@ class ModelManifest {
     for (final p in packs) {
       if (!ids.add(p.id)) throw FormatException('duplicate pack id: ${p.id}');
       unique(p.files);
-      // The voice must be exactly what the TTS loader reads (TtsVoicePaths), nothing else.
-      final want = TtsVoiceLayout.rel(p.lang).toSet();
+      if (!VoicePack.kinds.contains(p.kind)) throw FormatException('unknown pack kind: ${p.kind}');
+      // The pack must be exactly what its loader reads (TtsVoicePaths / AsrPackPaths), nothing else.
+      final want = p.layout.toSet();
       final got = p.files.map((f) => f.path).toSet();
       if (got.length != p.files.length || got.length != want.length || !got.containsAll(want)) {
-        throw FormatException('voice pack ${p.id} must hold exactly ${want.join(', ')}');
+        throw FormatException('pack ${p.id} must hold exactly ${want.join(', ')}');
       }
     }
     final paths = <String>{};
@@ -200,7 +223,7 @@ class ModelManifest {
   VoicePack? packForZip(String zipName) {
     final n = normalizeName(zipName).toLowerCase();
     for (final p in packs) {
-      if (p.zipNames.any((z) => z.toLowerCase() == n)) return p;
+      if (p.zipNames.any((z) => normalizeName(z).toLowerCase() == n)) return p;
     }
     return null;
   }

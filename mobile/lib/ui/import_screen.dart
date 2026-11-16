@@ -172,8 +172,13 @@ class _ImportScreenState extends State<ImportScreen> {
       ],
       for (final p in m.packs) ...[
         const SizedBox(height: 6),
-        Text('選用：對話模式朗讀語音（${p.lang}）${p.name}（${_fmt(p.size)}），'
-            '裝了就會把我說的話的翻譯念出來。${p.note}', style: _t),
+        Text(
+            p.isAsr
+                ? '選用：對話模式聽懂對方的語言（${p.lang}）${p.name}（${_fmt(p.size)}），'
+                    '裝了才能辨識對方說的${p.lang}。${p.note}'
+                : '選用：對話模式朗讀語音（${p.lang}）${p.name}（${_fmt(p.size)}），'
+                    '裝了就會把我說的話的翻譯念出來。${p.note}',
+            style: _t),
         _link('下載 / Download ${p.name}', p.url),
       ],
       if (m.speakerModel != null) ...[
@@ -209,7 +214,7 @@ class _ImportScreenState extends State<ImportScreen> {
             style: _mono.copyWith(
                 color: _present.contains(f.path) ? Colors.greenAccent : Colors.white38)),
       for (final p in m.packs)
-        Text('${voices.contains(p.id) ? '✓' : '·'} tts-${p.lang}/ （選用 / optional）',
+        Text('${voices.contains(p.id) ? '✓' : '·'} ${p.folder}/ （選用 / optional）',
             style: _mono.copyWith(
                 color: voices.contains(p.id) ? Colors.greenAccent : Colors.white38)),
       if (m.speakerModel != null)
