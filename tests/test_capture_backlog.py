@@ -110,11 +110,12 @@ def test_asr_stall_loses_no_capture_audio():
     worker = threading.Thread(target=src._worker, args=(_FakeSC(rec), "spk", q, ev), daemon=True)
     worker.start()
     asr = _StalledASR(ev)
-    run(_LiveSource(src, q, ev), Segmenter(chunk=1.0, use_vad=False, overlap=0.0), asr, None, TextSink(io.StringIO()))
+    run(_LiveSource(src, q, ev), Segmenter(chunk=1.0, use_vad=False, overlap=1 / 16000), asr, None, TextSink(io.StringIO()))
     worker.join(5)
     assert rec.n == BLOCKS
     assert src.lost_seconds == 0.0, f"capture dropped {src.lost_seconds:.1f} s while ASR was stalled"
-    assert asr.seconds >= FED_S - 0.5, f"only {asr.seconds:.1f} of {FED_S} s reached ASR"
+    # overlap of 1 sample (overlap=0 keeps the whole buffer: buf[-0:]); each segment repeats at most that one sample
+    assert abs(asr.seconds - FED_S) < 0.01, f"{asr.seconds:.3f} s reached ASR, expected the {FED_S} s fed"
 
 
 def test_dropped_capture_blocks_are_counted_and_logged(capsys):
