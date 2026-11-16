@@ -234,8 +234,6 @@ def fetch_hinglish_from(repo: str, revision, data: Path, n: int, api, download, 
     """Up to `n` clips of 1..MAX_CLIP_S seconds with a transcript from the parquet shards of one Hub set (test split
     shards when there are any; at most 2 shards, so a big set costs one or two downloads). Rows are visited spread
     over the shards' rows. Raises RuntimeError when the set has no usable parquet audio + text."""
-    import pyarrow as pa
-
     info = api.dataset_info(repo, revision=revision)
     sha = info.sha
     lic = next((t.split(":", 1)[1] for t in _tags(info) if t.startswith("license:")), "unknown")
@@ -249,6 +247,8 @@ def fetch_hinglish_from(repo: str, revision, data: Path, n: int, api, download, 
     files = (test or files)[:2]
     if not files:
         raise RuntimeError(f"{repo}@{sha[:12]}: no parquet files")
+    import pyarrow as pa  # after the checks: a rejected set needs no pyarrow (the ci test job has none)
+
     table = pa.concat_tables([read_table(download(repo, f, repo_type="dataset", revision=sha)) for f in files],
                              promote_options="default")
     audio_col, text_col = pick_columns(table.column_names)
