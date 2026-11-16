@@ -33,3 +33,16 @@ def test_single_dev_install_path_and_coc():
     assert "mobile/README.md" in c and "CODE_OF_CONDUCT.md" in c and "`needs-opus`" in c
     assert c.count("default answer is yes") == 1
     assert (ROOT / "CODE_OF_CONDUCT.md").exists() and (ROOT / "docs/history-rewrite.md").exists()
+
+
+def test_docs_page_leads_with_visuals(tmp_path):
+    import subprocess
+    import sys
+
+    subprocess.run([sys.executable, "scripts/build_docs_page.py", str(tmp_path)], cwd=ROOT, check=True)
+    page = (tmp_path / "docs.html").read_text("utf-8")
+    svg, grid, text = page.find("<svg"), page.find('<div class="grid">'), page.find("<h1", page.find("</svg>"))
+    assert 0 < svg < grid < text  # diagram first, then support grid, then text
+    rows = json.loads(_read("docs/support.json"))["language"]["rows"]
+    assert page.count("<tbody><tr>") >= 1 and all(r["label"].split(" (")[0] in page for r in rows)
+    assert "Sound in" in page and "ASR" in page and "MT" in page
