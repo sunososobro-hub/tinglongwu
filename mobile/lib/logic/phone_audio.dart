@@ -10,6 +10,8 @@ import 'dart:typed_data';
 class CaptureModeText {
   static const micLabel = '說話翻譯';
   static const micHint = '翻譯身邊的人說的話';
+  static const convLabel = '對話翻譯';
+  static const convHint = '跟外國人面對面聊天';
   static const phoneLabel = '看影片翻譯';
   static const phoneHint = '翻譯手機正在播的影片，字幕浮在畫面上';
 
@@ -21,8 +23,10 @@ class CaptureModeText {
       'Netflix 等有版權保護的 App 可能只會傳來靜音，這時不會有字幕。';
   static const iosStartButton = '開始';
 
-  static String label({required bool phone}) => phone ? phoneLabel : micLabel;
-  static String hint({required bool phone}) => phone ? phoneHint : micHint;
+  static String label({required bool phone, bool conversation = false}) =>
+      phone ? phoneLabel : (conversation ? convLabel : micLabel);
+  static String hint({required bool phone, bool conversation = false}) =>
+      phone ? phoneHint : (conversation ? convHint : micHint);
 }
 
 /// Which native capture path this device has (#998 Android, #1076 iOS). Pure, so the per-platform

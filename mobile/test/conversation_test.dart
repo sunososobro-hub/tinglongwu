@@ -102,6 +102,21 @@ void main() {
       expect(const Conversation().route('ja', listenTarget: 'en').tgt, 'en'); // one-way default
     });
 
+    test('detection is limited to my + their language: a ja filler is their line', () {
+      const c = Conversation(enabled: true, foreign: 'en');
+      final r = c.route('ja', listenTarget: 'zh'); // "あの"
+      expect(r.src, 'en');
+      expect(r.tgt, 'zh');
+      expect(r.speaker, Speaker.them);
+      expect(c.route('zh', listenTarget: 'zh').tgt, 'en');
+      expect(c.route('yue', listenTarget: 'zh').tgt, 'en');
+      expect(c.route('en', listenTarget: 'zh').tgt, 'zh');
+      // Partner language the ASR cannot detect: leave detection alone.
+      expect(const Conversation(enabled: true, foreign: 'es').route('en', listenTarget: 'zh').src, 'en');
+      // Partner speaks Japanese: ja stays ja.
+      expect(const Conversation(enabled: true, foreign: 'ja').route('ja', listenTarget: 'zh').src, 'ja');
+    });
+
     test('settings persist and never collide', () {
       const c = Conversation(enabled: true, foreign: 'ko', mineLang: 'en');
       expect(Conversation.parse(c.format()), c);
@@ -171,6 +186,23 @@ void main() {
       final theirs = t.getCenter(find.text('好。'));
       expect(mine.dx, greaterThan(195));
       expect(theirs.dx, lessThan(195));
+      await t.binding.setSurfaceSize(null);
+    });
+
+    testWidgets('mode menu has 對話翻譯 and turns conversation on', (t) async {
+      final p = make()..phoneSupported = true;
+      await t.binding.setSurfaceSize(const Size(390, 844));
+      await t.pumpWidget(MaterialApp(
+        home: ListenableBuilder(
+            listenable: p, builder: (_, _) => SubtitleScreen(pipeline: p)),
+      ));
+      await t.tap(find.byKey(const Key('modeMenu')));
+      await t.pumpAndSettle();
+      expect(find.text('跟外國人面對面聊天'), findsOneWidget);
+      await t.tap(find.text('對話翻譯'));
+      await t.pumpAndSettle();
+      expect(p.conversation.enabled, isTrue);
+      expect(find.text('對話翻譯'), findsOneWidget); // header now shows the mode
       await t.binding.setSurfaceSize(null);
     });
 
