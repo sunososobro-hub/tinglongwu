@@ -128,6 +128,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_ready_listen": "Ready - start playback now",
         "gui_cpu_mode": "CPU mode (no NVIDIA GPU): settings chosen for speed",
         "gui_cpu_mt_ms": "MT {ms} ms per line",
+        "gui_mt_path_cpu": "Hy-MT2 on CPU, {n} threads",  # #1198
+        "gui_mt_path_cpu_plain": "Hy-MT2 on CPU",  # #1198
+        "gui_mt_path_gpu": "Hy-MT2 on GPU ({api})",  # #1198
         "gui_ready_speak": "Ready - speak now",
         "gui_quick_both": "Start (listen + speak)",
         "gui_ready_both": "Ready - play the video or speak",
@@ -355,6 +358,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_ready_listen": "Готово - включите воспроизведение",
         "gui_cpu_mode": "Режим CPU (нет NVIDIA GPU): настройки для скорости",
         "gui_cpu_mt_ms": "MT {ms} мс на строку",
+        "gui_mt_path_cpu": "Hy-MT2 на CPU, потоков: {n}",  # #1198
+        "gui_mt_path_cpu_plain": "Hy-MT2 на CPU",  # #1198
+        "gui_mt_path_gpu": "Hy-MT2 на GPU ({api})",  # #1198
         "gui_ready_speak": "Готово - говорите",
         "gui_quick_both": "Старт (слушать + говорить)",
         "gui_ready_both": "Готово - включите видео или говорите",
@@ -582,6 +588,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_ready_listen": "就緒 - 現在開始播放",
         "gui_cpu_mode": "CPU 模式（沒有 NVIDIA 顯示卡）：已自動選擇偏重速度的設定",
         "gui_cpu_mt_ms": "翻譯每行 {ms} 毫秒",
+        "gui_mt_path_cpu": "Hy-MT2 在 CPU 上跑，{n} 執行緒",  # #1198
+        "gui_mt_path_cpu_plain": "Hy-MT2 在 CPU 上跑",  # #1198
+        "gui_mt_path_gpu": "Hy-MT2 在顯示卡上跑（{api}）",  # #1198
         "gui_ready_speak": "就緒 - 現在可以說話",
         "gui_quick_both": "開始（聽＋說）",
         "gui_ready_both": "就緒 - 播放影片或直接說話",
@@ -809,6 +818,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_ready_listen": "準備完了 - 再生を始めてください",
         "gui_cpu_mode": "CPU モード（NVIDIA GPU なし）: 速度重視の設定",
         "gui_cpu_mt_ms": "翻訳 1 行あたり {ms} ms",
+        "gui_mt_path_cpu": "Hy-MT2 は CPU、{n} スレッド",  # #1198
+        "gui_mt_path_cpu_plain": "Hy-MT2 は CPU",  # #1198
+        "gui_mt_path_gpu": "Hy-MT2 は GPU（{api}）",  # #1198
         "gui_ready_speak": "準備完了 - 話してください",
         "gui_quick_both": "スタート（聞く＋話す）",
         "gui_ready_both": "準備完了 - 動画を再生するか、話してください",

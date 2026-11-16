@@ -326,7 +326,11 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
             raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
                              f"`tlwu-setup {flag}` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
                              "PC).") from e
-        say(f"tlwu: translation engine = {name} on {dev} ({why})", file=sys.stderr)
+        from .hymt import active_path
+
+        on = active_path(tr)  # #1198: the backend the model really loaded on (Vulkan when dev is cpu, CPU fallback)
+        say(f"tlwu: translation engine = {name} on {on[0] if on else dev}"
+            + (f", {on[1]} threads" if on and on[0] == "cpu" and on[1] else "") + f" ({why})", file=sys.stderr)
         return tr
     raise SystemExit(f"tlwu: unknown translation engine {name!r}; use --engine auto (#471)")
 
@@ -710,7 +714,8 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
         run(source, segmenter, asr, translator, sink, a.to, merger, audio_clock=audio_clock, draft=draft,
             stop_event=stop, log=lat, on_latency=ctl.observe if ctl else None,
             speakers=labeler, on_work=cpu_on_work(None if (dev != "cpu" or a.file) else SlowWatch(say=warn).observe,
-                                                  cpu_line if dev == "cpu" else None),
+                                                  cpu_line if dev == "cpu" else None,
+                                                  lambda: active_mt_path(translator)),
             on_record=on_record, recorder=recorder, seg_gate=seg_gate, route=f2f_route)
     except KeyboardInterrupt:
         interrupted = True
@@ -726,16 +731,27 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
             close_voice(drop=interrupted or (stop is not None and stop.is_set()))
 
 
-def cpu_on_work(observe, cpu_line):
-    """#780: on_work callback that also reports the per-line MT time (ms) to cpu_line; either part may be None."""
+def cpu_on_work(observe, cpu_line, path=None):
+    """#780: on_work callback that also reports the per-line MT time (ms) to cpu_line; either part may be None.
+    path (#1198): callable -> (backend, threads) of the MT model or None; cpu_line then gets (ms, path)."""
     if cpu_line is None:
         return observe
 
     def on_work(asr_s, mt_s, seg_s):
         if observe is not None:
             observe(asr_s, mt_s, seg_s)
-        cpu_line(mt_s * 1000.0)
+        if path is None:
+            cpu_line(mt_s * 1000.0)
+        else:
+            cpu_line(mt_s * 1000.0, path())
     return on_work
+
+
+def active_mt_path(translator):
+    """#1198: (backend, threads) the Hy-MT2 model runs on, or None (other engine, not loaded, --transcript-only)."""
+    from .hymt import active_path
+
+    return active_path(translator) if translator is not None else None
 
 
 def latency_recorder(path, log):

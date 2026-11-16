@@ -574,14 +574,31 @@ def cpu_ram_gb(has_cuda, ram=None) -> float | None:
     return None if mib is None else mib / 1024
 
 
-def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None) -> str | None:
-    """#780: status text "CPU mode" (+ per-line MT ms) when running on the CPU, else None."""
+def mt_path_text(path: tuple[str, int] | None) -> str:
+    """#1198: where Hy-MT2 runs, e.g. "Hy-MT2 on CPU, 4 threads" / "Hy-MT2 on GPU (Vulkan)"; "" when unknown."""
+    from ..i18n import t
+
+    if not path:
+        return ""
+    backend, threads = path
+    if backend == "cpu":
+        return t("gui_mt_path_cpu", n=threads) if threads > 0 else t("gui_mt_path_cpu_plain")
+    return t("gui_mt_path_gpu", api={"vulkan": "Vulkan", "cuda": "CUDA"}.get(backend, backend))
+
+
+def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None,
+                  path: tuple[str, int] | None = None) -> str | None:
+    """#780: status text "CPU mode" (+ per-line MT ms) when running on the CPU, else None.
+    path (#1198): (backend, threads) of the MT model, shown after the ms so the user sees CPU vs Vulkan."""
     from ..i18n import t
 
     if device != "cpu":
         return None
     base = t("gui_cpu_mode")
-    return base if mt_ms is None else f"{base} - {t('gui_cpu_mt_ms', ms=round(mt_ms))}"
+    if mt_ms is None:
+        return base
+    where = mt_path_text(path)
+    return f"{base} - {t('gui_cpu_mt_ms', ms=round(mt_ms))}" + (f" ({where})" if where else "")
 
 
 def model_labels(mdir=None, ram_gb: float | None = None) -> list[str]:

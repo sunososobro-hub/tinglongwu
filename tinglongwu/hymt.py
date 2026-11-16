@@ -263,3 +263,14 @@ class _NoFallback(Translator):
 
     def translate(self, text: str, src: str, tgt: str) -> Translation:
         self._fail(src, tgt)
+
+
+def active_path(translator) -> tuple[str, int] | None:
+    """#1198: (backend, decode threads) of the Hy-MT2 model `translator` uses (HyMtTranslator or JaRouter), None
+    for other engines or before the model is loaded."""
+    from .mt_backend import path_of
+
+    hy = getattr(translator, "hy", translator) if isinstance(translator, JaRouter) else translator
+    if not isinstance(hy, HyMtTranslator) or hy.llm is None:
+        return None
+    return path_of(hy.llm)

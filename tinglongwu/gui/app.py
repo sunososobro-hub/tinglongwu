@@ -2311,7 +2311,7 @@ class App:
             run_session(a, sink=sink, draft_factory=draft_factory, stop=stop,
                         status=lambda m: q.put(("status", m)),
                         notice=lambda m: q.put(("notice", m)),
-                        cpu_line=lambda ms: q.put(("cpu_line", ms)),
+                        cpu_line=lambda ms, path=None: q.put(("cpu_line", ms, path)),
                         labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None,
                         on_topic=self.topic_panel.add if sink_cls is None else None)  # #611
         except Exception as e:  # noqa: BLE001
@@ -2360,7 +2360,7 @@ class App:
                     from .core import cpu_mode_line
 
                     if self.load_t0 is None and not self.errored:
-                        self._status_text(cpu_mode_line("cpu", ev[1]) or "")
+                        self._status_text(cpu_mode_line("cpu", ev[1], path=ev[2] if len(ev) > 2 else None) or "")
                 elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
                     self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                 elif kind == "notice":

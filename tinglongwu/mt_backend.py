@@ -16,6 +16,7 @@ BACKENDS = ("cuda", "vulkan", "cpu")
 VULKAN_PACK_NAME = "vulkan-pack"
 VERSION_FILE = "version.txt"  # written into the pack by the installer (#797); must equal the app's __version__
 last_backend = ""  # backend the last MT model load chose (selftest reports it)
+last_threads = 0  # llama.cpp decode threads of the last MT model load (#1198: GUI path line)
 _LOADER = {"win32": "vulkan-1.dll", "darwin": "libvulkan.1.dylib"}
 
 
@@ -75,3 +76,9 @@ def load_with_fallback(path, backend: str, loader, warn=lambda m: print(m, file=
     except Exception as e:  # noqa: BLE001 - driver / ICD / out of memory
         warn(f"tlwu: Vulkan init failed ({type(e).__name__}: {e}); using CPU for MT.")
         return loader(path, "cpu"), "cpu"
+
+
+def path_of(llm) -> tuple[str, int] | None:
+    """#1198: (backend, decode threads) a loaded MT model runs on, from shared_llama's tags; None when unknown."""
+    backend = getattr(llm, "backend", "")
+    return (backend, int(getattr(llm, "threads", 0) or 0)) if backend in BACKENDS else None
