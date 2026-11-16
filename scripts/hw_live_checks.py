@@ -130,15 +130,33 @@ def clip_lines(spans: list[list[float]], refs: list[str], rec: list[dict], lang:
         hit = sum(w in heard for w in words) / len(words) if words else 1.0
         out.append({"clip": i, "span": [s, e], "lines": len(lines), "hit": round(hit, 2),
                     "src": [r.get("source", "") for r in lines], "ref": ref})
+    for r in out:  # a line that holds ANOTHER clip's words: the clip's reference does not belong to its audio
+        got = set(tokenize(" ".join(r["src"]), lang))
+        best = max(((sum(w in got for w in ws) / len(ws), j) for j, ws in
+                    ((j, {w for w in tokenize(x, lang) if len(w) >= 4}) for j, x in enumerate(refs)) if ws),
+                   default=(0.0, None))
+        r["best_ref"] = best[1] if best[0] >= MIN_CLIP_HIT and best[1] != r["clip"] else None
     return out
+
+
+def add_levels(rows: list[dict], audio, sr: int = SR) -> None:
+    """#1247: RMS of each clip's audio in dBFS, so a clip with no line can be told from a near-silent recording."""
+    import numpy as np
+
+    for r in rows:
+        x = audio[int(r["span"][0] * sr):int(r["span"][1] * sr)]
+        rms = float(np.sqrt(np.mean(np.square(x, dtype=np.float64)))) if len(x) else 0.0
+        r["rms_dbfs"] = round(20 * np.log10(max(rms, 1e-6)), 1)
 
 
 def clip_table(rows: list[dict]) -> str:
     """#1247: one line per clip that is missed (hit < MIN_CLIP_HIT): where, how many lines, what tlwu wrote."""
     bad = [r for r in rows if r["hit"] < MIN_CLIP_HIT]
     head = f"clips missed {len(bad)}/{len(rows)} (no line: {sum(not r['lines'] for r in bad)})"
-    body = [f"  clip {r['clip']} {r['span'][0]:.0f}-{r['span'][1]:.0f} s lines={r['lines']} hit={r['hit']:.2f} "
-            f"ref={r['ref'][:60]!r} got={' | '.join(r['src'])[:120]!r}" for r in bad]
+    body = [f"  clip {r['clip']} {r['span'][0]:.0f}-{r['span'][1]:.0f} s lines={r['lines']} hit={r['hit']:.2f}"
+            + (f" rms={r['rms_dbfs']:.1f}dBFS" if "rms_dbfs" in r else "")
+            + (f" got-is-clip={r['best_ref']}" if r.get("best_ref") is not None else "")
+            + f" ref={r['ref'][:60]!r} got={' | '.join(r['src'])[:120]!r}" for r in bad]
     return "\n".join([head, *body])
 
 
@@ -424,6 +442,9 @@ def run_file(clips: Path, mdir: str, out: Path, extra: list[str] | None = None) 
         return False, f"{len(rows)} lines but no --record output ({seg}); clips not classified"
     rec = [json.loads(x) for x in seg.read_text("utf-8").splitlines() if x.strip()]
     per = clip_lines(meta.get("spans") or [], meta.get("refs") or [], rec)
+    import soundfile as sf
+
+    add_levels(per, sf.read(str(clips / meta["wav"]), dtype="float32", always_2d=True)[0].mean(axis=1))
     print(clip_table(per), flush=True)
     (out / "file_report.json").write_text(json.dumps({"clips": per, "rec": rec}, ensure_ascii=False, indent=1), "utf-8")
     wer = _wer(rows, meta["ref"]) if rows else 1.0

@@ -42,10 +42,35 @@ def test_clip_table_lists_only_missed_clips_and_counts_no_line():
     assert out[2].startswith("  clip 2 22-32 s lines=0 hit=0.00")
 
 
+def test_clip_lines_names_the_clip_whose_words_a_line_holds():
+    per = hl.clip_lines(SPANS, REFS, [{"start": 11.0, "end": 21.0, "source": REFS[2]}])
+    assert per[1]["best_ref"] == 2 and per[0]["best_ref"] is None
+    assert "got-is-clip=2" in hl.clip_table(per)
+
+
+def test_add_levels_tells_a_silent_clip_from_speech():
+    import numpy as np
+
+    audio = np.zeros(32 * hl.SR, np.float32)
+    audio[: 10 * hl.SR] = 0.1
+    per = hl.clip_lines(SPANS, REFS, [])
+    hl.add_levels(per, audio)
+    assert per[0]["rms_dbfs"] == -20.0 and per[1]["rms_dbfs"] == -120.0
+    assert "rms=-120.0dBFS" in hl.clip_table(per)
+
+
+def _wav(tmp_path):
+    import numpy as np
+    import soundfile as sf
+
+    sf.write(str(tmp_path / "mic_en.wav"), np.zeros(33 * hl.SR, np.float32), hl.SR)
+
+
 def test_file_subcommand_runs_tlwu_on_the_mic_clip_and_reports(tmp_path, monkeypatch, capsys):
     (tmp_path / "clips.json").write_text(json.dumps({"mic_en": {
         "wav": "mic_en.wav", "speech": [0.0, 32.0], "ref": " ".join(REFS), "spans": SPANS, "refs": REFS}}), "utf-8")
     seen = {}
+    _wav(tmp_path)
 
     def fake_run(cmd, check, stdout):
         seen["cmd"] = cmd
