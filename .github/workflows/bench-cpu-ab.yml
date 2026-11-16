@@ -173,11 +173,21 @@ jobs:
           - variant: asr-mt
             title: ASR + MT + speakers
             args: --to zh --engine hymt
+            cpus: 4
             artifact: meeting-replay
           - variant: asr-only
             title: ASR only + speakers
             args: --transcript-only
+            cpus: 4
             artifact: meeting-replay-asr-only
+          # #1264 Acceptance ">0 drops on current dev": at 4 CPUs the replay has headroom (drops 0, lag p95
+          # 2.6-8.1 s in runs 43884690127 / 43886111536 / 43893926386), so this variant halves the CPUs to load ASR
+          # like a busy 2-core laptop. Not part of the replay-ab comparison.
+          - variant: asr-mt-2cpu
+            title: ASR + MT + speakers, 2 CPUs (stress)
+            args: --to zh --engine hymt
+            cpus: 2
+            artifact: meeting-replay-2cpu
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -221,16 +231,17 @@ jobs:
           if [ ! -f eval_data/matrix_pins/manifest.jsonl ]; then
             python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out eval_data/matrix_pins; fi
           python scripts/bench/meeting_replay.py build --data eval_data/matrix_pins --lang ru --minutes 30 --out replay
-      - name: Replay at 1x, 4 CPUs (${{ matrix.title }})
+      - name: Replay at 1x, ${{ matrix.cpus }} CPUs (${{ matrix.title }})
         timeout-minutes: 55
         env:
           ARGS: ${{ matrix.args }}
+          CPUS: ${{ matrix.cpus }}
         run: |
           set -o pipefail
           SPK=""
           ls "$TLWU_MODELS"/speaker/*.onnx >/dev/null 2>&1 && SPK="--speakers"
           # shellcheck disable=SC2086 # ARGS is a word list from the matrix
-          python scripts/bench/meeting_replay.py run --dir replay --cpus 4 $SPK -- \
+          python scripts/bench/meeting_replay.py run --dir replay --cpus "$CPUS" $SPK -- \
             $ARGS --model "$WHISPER" | tee replay/summary.md
       - name: Summary
         if: always()
