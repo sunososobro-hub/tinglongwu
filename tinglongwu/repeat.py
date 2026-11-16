@@ -13,11 +13,16 @@ import zlib
 MAX_UNIT_WORDS = 40
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 _CHAR_LOOP = re.compile(r"(.{3,80}?)\1{2,}", re.S)
-# non-CJK char-level loop: one >= 2 char unit joined by "-" / spaces, 4+ copies ("по-по-по-по", "la-la-la-la")
-MIN_UNIT_CHARS = 2
+# non-CJK char-level loop: one unit joined by "-" / spaces, 4+ copies ("по-по-по-по", "la-la-la-la"); #1255: a
+# one-letter unit too ("А-а-а-а-а", "Э-э-э-э", "1-1-1-1": hesitation / number loops Whisper emits on silence)
+MIN_UNIT_CHARS = 1
 MIN_UNIT_REPEATS = 4
 _UNIT_LOOP = re.compile(r"(?<!\w)(\w{%d,20}?)(?:[-\u2013\s]+\1){%d,}(?!\w)" % (MIN_UNIT_CHARS, MIN_UNIT_REPEATS - 1),
                         re.I)
+# #1255: a unit glued by "," / "." with no space ("5,5,5,5,5", "10.10.10.10.10"), 5+ copies so "1.1.1.1" (an IP
+# address said in a tech meeting) stays; a 3-digit unit is thousands grouping ("1,000,000,000,000,000") and stays.
+MIN_PUNCT_REPEATS = 5
+_PUNCT_LOOP = re.compile(r"(?<![\w,.])(\w{1,20}?)(?:[,.]\1){%d,}(?![\w])" % (MIN_PUNCT_REPEATS - 1))
 MAX_COMPRESSION_RATIO = 2.4  # Whisper's own compression-ratio limit for a decoder stuck in a loop
 MIN_RATIO_BYTES = 32  # below this the ratio is meaningless (zlib header overhead)
 MIN_KEEP_CHARS = 2  # a collapsed result with fewer letters/digits than this is noise
@@ -75,6 +80,7 @@ def collapse_repeats(text: str) -> str:
     if not t:
         return t
     t = _UNIT_LOOP.sub(lambda m: m.group(1), t)
+    t = _PUNCT_LOOP.sub(lambda m: m.group(0) if re.fullmatch(r"\d{3}", m.group(1)) else m.group(1), t)
     return _collapse_clauses(_collapse_chars(_collapse_words(t)))
 
 
