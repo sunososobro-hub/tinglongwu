@@ -66,6 +66,11 @@ class SpeakerClusterer:
         with self._lock:
             return self._assign(embedding, seconds)
 
+    def kept(self, label: str | None) -> str | None:
+        """#1256: the label a merged speaker now has (any thread; the GUI resolves past lines through it)."""
+        with self._lock:
+            return self.merged.get(label, label) if label else label
+
     def _label(self, i: int) -> str:
         return f"{LABEL_PREFIX}{i + 1}"
 
