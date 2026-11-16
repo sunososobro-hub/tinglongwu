@@ -40,7 +40,7 @@ jobs:
         timeout-minutes: 8
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libvulkan-dev glslc mesa-vulkan-drivers vulkan-tools libsndfile1 libpulse0
+          sudo apt-get install -y -qq libvulkan-dev glslc glslang-tools mesa-vulkan-drivers vulkan-tools libsndfile1 libpulse0
       - name: Install tlwu + the CPU llama.cpp build
         run: |
           pip install -e .
