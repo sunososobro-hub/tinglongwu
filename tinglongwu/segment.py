@@ -14,6 +14,12 @@ VadFn = Callable[[np.ndarray], list[tuple[int, int]]]
 # default pause / merge thresholds are below it (PAUSE_SEND 0.8, ja 0.5). Segmenter.quiet_max raises it for a
 # larger --pause-send.
 QUIET_MAX = 3.0
+# #1252: after a pause cut the segment ends `overlap` after the VAD speech end; audio after that point (a soft last
+# syllable Silero scores as non-speech) was trimmed away with the silence, so it mapped to no line (meeting replay
+# run 43911879772: 0.6-0.7 s voiced holes at the end of one FLEURS clip, every cycle). When the next speech starts
+# within this many seconds of the previous segment's end, the next segment starts exactly there instead (no audio
+# between two segments is dropped); a longer silence is trimmed as before.
+BRIDGE_S = 3.0
 
 
 def silero_vad(audio: np.ndarray, pad_ms: int = 400) -> list[tuple[int, int]]:
@@ -50,10 +56,12 @@ class Segmenter:
         self.on_quiet: Callable[[float], None] | None = None
         self.quiet_max = QUIET_MAX
         self._quiet: float | None = None  # silence (s) after the newest segment's speech; None = speech / none yet
+        self.bridge = int(BRIDGE_S * SR)
+        self._lead: int | None = None  # #1252: buffer index where the audio no segment holds yet starts (after a cut)
 
     def segments(self, frames: Iterable[np.ndarray]) -> Iterator[np.ndarray]:
         buf, since, fresh = np.zeros(0, np.float32), 0, 0
-        self._quiet = None
+        self._quiet, self._lead = None, None
         for f in frames:
             buf = np.concatenate([buf, f])
             since += len(f)
@@ -86,31 +94,48 @@ class Segmenter:
             self.live = (self.epoch, buf[-self.chunk:])
             return None, buf
         spans = self.vad(buf)
+        if self._lead is not None and (spans[0][0] if spans else len(buf)) - self._lead > self.bridge:
+            self._lead = None  # #1252: a long silence after the previous segment: trimmed as before
         if not spans:
             self.live = None
+            if self._lead is not None:  # #1252: keep what follows the previous segment until speech comes back
+                return None, buf
             return None, buf[-self.ov:] if len(buf) > 2 * self.ov else buf
         s, e = spans[0][0], spans[-1][1]
         if len(buf) - e >= self.min_sil:  # pause after speech: cut here
             self.last_forced, self.last_pause = False, (len(buf) - e) / SR + self.pad
             self._quiet = self.last_pause
-            self.last_trail = len(buf) - min(len(buf), e + self.ov)
-            return buf[max(0, s - self.ov): min(len(buf), e + self.ov)], buf[e:]
-        if len(buf) - s >= self.chunk:  # too long without a pause: force cut, keep overlap
+            end = min(len(buf), e + self.ov)
+            self.last_trail = len(buf) - end
+            seg = buf[self._start(max(0, s - self.ov)): end]
+            self._lead = end - e  # the remainder buf[e:] starts with `overlap` of audio this segment already holds
+            return seg, buf[e:]
+        start = self._start(s)
+        if len(buf) - start >= self.chunk:  # too long without a pause: force cut, keep overlap
             # #716: speech that already ended inside the cut (silence shorter than min_silence) reports that silence
             gap = len(buf) - e
             self.last_forced, self.last_pause = True, (gap / SR + self.pad if gap > 0 else 0.0)
             self._quiet = self.last_pause if gap > 0 else None
             self.last_trail = 0
-            return buf[s:], buf[-self.ov:]
+            self._lead = None  # the segment holds everything read so far
+            return buf[start:], buf[-self.ov:]
         self._quiet = None  # speech since the newest segment
-        keep = buf[max(0, s - self.ov):]  # drop leading silence
+        start = self._start(max(0, s - self.ov))
+        keep = buf[start:]  # drop leading silence (#1252: never audio after the previous segment's end)
+        if self._lead is not None:
+            self._lead -= start  # 0 when the kept audio starts at the previous segment's end
         self.live = (self.epoch, keep[-self.chunk:])
         return None, keep
+
+    def _start(self, start: int) -> int:
+        """#1252: where the next segment starts: `start`, or earlier at the previous segment's end when audio after
+        it was not sent yet (bridged pause), so no audio between two segments is dropped."""
+        return start if self._lead is None else min(start, self._lead)
 
     def _flush(self, buf, fresh):
         if self.use_vad:
             spans = self.vad(buf) if len(buf) else []
             if spans:  # #323: the silence after the speech at end of input (shorter than min_silence)
                 self.last_pause = (len(buf) - spans[-1][1]) / SR + self.pad
-            return buf[max(0, spans[0][0] - self.ov):] if spans else None
+            return buf[self._start(max(0, spans[0][0] - self.ov)):] if spans else None
         return buf if fresh > SR // 2 else None
