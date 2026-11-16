@@ -4,25 +4,27 @@
 
 <p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="英文语音进、中文字幕出，全程离线" width="560"></p>
 
+<p align="center"><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest"><img src="assets/readme/download.zh-CN.svg" alt="⬇ 下载 Windows 版" width="300"></a></p>
+
 ```mermaid
 flowchart LR
   A["⬇ 下载"] --> B["▶ 播放视频"] --> C["💬 字幕"]
 ```
 
-| 🎧 听 | 🗣️ 说 | 🔁 双向 |
-|:-:|:-:|:-:|
-| 实时字幕 | 语音输出 | 双方互译 |
+<p align="center"><img src="assets/readme/modes.zh-CN.svg" alt="🎧 听：实时字幕 · 🗣️ 说：语音输出 · 🔁 双向：双方互译" width="720"></p>
 
-<p align="center"><img src="https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ru-blue" alt="zh en ja ru (ko, hi experimental)"> <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20(unverified)-lightgrey" alt="Windows, Linux, macOS (unverified)"><br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ 下载 Windows 版</a></b></p>
+<p align="center"><img src="assets/readme/facts.zh-CN.svg" alt="语言：中、英、日、韩、俄；印地语实验 · Windows、Linux、macOS（未验证）" width="720"></p>
 
 <details>
 <summary>更多：安装、隐私、常见问题、参与</summary>
 
-离线实时语音翻译。不上云、默认不留录音。
+<p align="center"><img src="assets/readme/privacy.zh-CN.svg" alt="离线实时语音翻译：不上云、默认不留录音、不收集个人数据。更新检查只匿名计数（日期、版本、系统）。" width="720"></p>
 
-[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ## 下载
+
+<p align="center"><img src="assets/readme/steps.zh-CN.svg" alt="下载、运行一直点 Next、模型下载一次、之后离线出字幕。普通 CPU 就能跑，有 NVIDIA 显卡快很多。" width="720"></p>
 
 | | 安装 |
 |---|---|
@@ -36,8 +38,7 @@ Windows 会显示 SmartScreen 警告（安装程序尚未签名，#601 完成前
 
 ## 语言与电脑需求
 
-目前支持中、英、日、韩、俄，更多语言陆续加入（[语言计划](docs/VISION.md)）。
-普通 CPU 就能跑；有 NVIDIA 显卡会快很多。[完整文档：需求、隐私、常见问题](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [平台支持](docs/support.md)
+更多语言陆续加入（[语言计划](docs/VISION.md)）。[完整文档：需求、隐私、常见问题](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [平台支持](docs/support.md)
 
 ## 想帮忙？
 
@@ -50,8 +51,8 @@ Windows 会显示 SmartScreen 警告（安装程序尚未签名，#601 完成前
 
 <!-- CONTRIBUTORS:START --><p><b>感谢 4 位朋友一起打造</b></p><table><tr><td align="center"><a href="https://github.com/sunososobro-hub"><img src="https://github.com/sunososobro-hub.png?size=60" width="60" height="60" alt="sunososobro-hub"><br><sub><b>sunososobro-hub</b></sub></a><br>💻 📖 🚧</td><td align="center"><a href="https://github.com/cook1e0728"><img src="https://github.com/cook1e0728.png?size=60" width="60" height="60" alt="cook1e0728"><br><sub><b>cook1e0728</b></sub></a><br>💻</td><td align="center"><a href="https://github.com/psgo555"><img src="https://github.com/psgo555.png?size=60" width="60" height="60" alt="psgo555"><br><sub><b>psgo555</b></sub></a><br>🐛</td><td align="center"><a href="https://github.com/jchodev"><img src="https://github.com/jchodev.png?size=60" width="60" height="60" alt="jchodev"><br><sub><b>jchodev</b></sub></a><br>💻 🤔</td></tr></table><p><sub>AI 帮手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（代码审查）</sub><br><sub>💻 代码 · 🐛 报告问题 · 📖 文档 · 🤔 点子 · 🚧 维护 · 🤖 AI 工具（不计入人数）</sub></p><!-- CONTRIBUTORS:END -->
 
-MIT 许可，见 [LICENSE](LICENSE)。(c) 2026 Alonso.
+MIT 授权，见 [LICENSE](LICENSE)。(c) 2026 Alonso.
 
-<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="120"><br><sub>听龙 / TingLong，专心听的龙</sub></p>
+<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="听龙 / TingLong，专心听的龙" width="120"><br><sub>听龙 / TingLong，专心听的龙</sub></p>
 
 </details>

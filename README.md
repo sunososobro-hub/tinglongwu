@@ -4,25 +4,27 @@ English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 <p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="English speech in, Chinese subtitles out, translated on this PC" width="560"></p>
 
+<p align="center"><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest"><img src="assets/readme/download.en.svg" alt="⬇ Download for Windows" width="300"></a></p>
+
 ```mermaid
 flowchart LR
   A["⬇ Download"] --> B["▶ Play a video"] --> C["💬 Subtitles"]
 ```
 
-| 🎧 Listen | 🗣️ Speak | 🔁 Two-way |
-|:-:|:-:|:-:|
-| Subtitles | Voice out | Both sides |
+<p align="center"><img src="assets/readme/modes.en.svg" alt="🎧 Listen: live subtitles · 🗣️ Speak: your voice, translated · 🔁 Two-way: both sides" width="720"></p>
 
-<p align="center"><img src="https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ru-blue" alt="zh en ja ru (ko, hi experimental)"> <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20(unverified)-lightgrey" alt="Windows, Linux, macOS (unverified)"><br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ Download for Windows</a></b></p>
+<p align="center"><img src="assets/readme/facts.en.svg" alt="Languages: zh, en, ja, ko, ru; hi experimental · Windows, Linux, macOS (unverified)" width="720"></p>
 
 <details>
 <summary>More: install, privacy, FAQ, contribute</summary>
 
-Offline real-time speech translation. No cloud, no recordings kept by default. No personal data is collected. Update checks are counted anonymously (date, version, OS) to know how many installs are active.
+<p align="center"><img src="assets/readme/privacy.en.svg" alt="No cloud, no recordings kept by default. No personal data is collected. Update checks are counted anonymously (date, version, OS) to know how many installs are active." width="720"></p>
 
 [![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![install-test](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml/badge.svg?branch=dev)](https://github.com/sunososobro-hub/tinglongwu/actions/workflows/install-test.yml)
 
 ## Download
+
+<p align="center"><img src="assets/readme/steps.en.svg" alt="Download, Next, models once, offline subtitles; CPU ok, NVIDIA GPU faster" width="720"></p>
 
 | | Install |
 |---|---|
@@ -32,22 +34,19 @@ Offline real-time speech translation. No cloud, no recordings kept by default. N
 
 Windows shows a SmartScreen warning because the installer is unsigned until #601 lands: Edge first says the file "isn't commonly downloaded" and hides Keep: hover the download → **…** → **Keep** → open the ▾ next to **Delete** → **Keep anyway**; then on the SmartScreen screen click **More info → Run anyway**. Prefer to inspect first? Download `mac_install.sh` / `install.sh` from the [release](https://github.com/sunososobro-hub/tinglongwu/releases/latest), read it, compare it with `SHA256SUMS.txt` on that page, then run it.
 
-**Update (Windows):** if you kept *Update automatically* ticked in setup, the app checks GitHub once a day, downloads the new version and asks **Restart now?**; any time: ⚙ Adjust → **Check for updates**. Models and settings are kept.
+**Update (Windows):** if you kept *Update automatically* ticked in setup, the app checks GitHub once a day, downloads the new version and asks **Restart now?**; any time: ⚙ Adjust → **Check for updates**. Models and settings are kept. Remove on macOS/Linux: `bash ~/tinglongwu/scripts/uninstall.sh` (models stay unless you add `--purge`).
 
-To remove it on macOS/Linux: run the same installer with `--uninstall` (`bash ~/tinglongwu/scripts/uninstall.sh`; downloaded models stay unless you add `--purge`).
-
-Setup downloads the speech and translation models once (internet needed). After that translation, audio and subtitles never use the network. Optional packs (extra languages, speak mode, GPU) also need internet once. Auto-update (ticked by default in the Windows installer; the `git` update in PRIVACY.md is off by default) checks GitHub once a day, no ID sent; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
+Setup downloads speech and translation models once; optional packs (extra languages, speak mode, GPU) also need internet once. After that translation, audio and subtitles never use the network. Auto-update (default on in the Windows installer; the `git` update in PRIVACY.md is off by default) sends no ID; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
 
 ## Languages and requirements
 
-Chinese, English, Japanese, Korean and Russian today; more on the way ([language plan](docs/VISION.md)).
-Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md)
+More languages on the way ([language plan](docs/VISION.md)). [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md)
 
 ## Want to help?
 
 - 📘 [How to contribute](CONTRIBUTING.md): PRs are welcome, the default answer is yes
 - 🟢 [Good first issues](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
-- 💬 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions): ask a question, show how you use it, share an idea (no GitHub skills needed)
+- 💬 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions): ask, show your setup, share an idea (no GitHub skills needed)
 - 🧭 [Vision: what we build and what we never do](docs/VISION.md)
 - 🗺️ [Roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html) · 📍 [Next release progress](https://github.com/sunososobro-hub/tinglongwu/milestones) · 📊 [Project activity](https://sunososobro-hub.github.io/tinglongwu/)
 
@@ -55,6 +54,6 @@ Runs on a normal CPU; an NVIDIA GPU makes it much faster. [Full docs: requiremen
 
 MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.
 
-<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong, the listening dragon</sub></p>
+<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="聽龍 / TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong, the listening dragon</sub></p>
 
 </details>

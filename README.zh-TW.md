@@ -4,25 +4,27 @@
 
 <p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="英文語音進、中文字幕出，全程離線" width="560"></p>
 
+<p align="center"><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest"><img src="assets/readme/download.zh-TW.svg" alt="⬇ 下載 Windows 版" width="300"></a></p>
+
 ```mermaid
 flowchart LR
   A["⬇ 下載"] --> B["▶ 播放影片"] --> C["💬 字幕"]
 ```
 
-| 🎧 聽 | 🗣️ 說 | 🔁 雙向 |
-|:-:|:-:|:-:|
-| 即時字幕 | 語音輸出 | 雙方互譯 |
+<p align="center"><img src="assets/readme/modes.zh-TW.svg" alt="🎧 聽：即時字幕 · 🗣️ 說：語音輸出 · 🔁 雙向：雙方互譯" width="720"></p>
 
-<p align="center"><img src="https://img.shields.io/badge/lang-zh%20%C2%B7%20en%20%C2%B7%20ja%20%C2%B7%20ru-blue" alt="zh en ja ru (ko, hi experimental)"> <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20(unverified)-lightgrey" alt="Windows, Linux, macOS (unverified)"><br><b><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest">⬇ 下載 Windows 版</a></b></p>
+<p align="center"><img src="assets/readme/facts.zh-TW.svg" alt="語言：中、英、日、韓、俄；印地語實驗 · Windows、Linux、macOS（未驗證）" width="720"></p>
 
 <details>
 <summary>更多：安裝、隱私、常見問題、參與</summary>
 
-離線即時語音翻譯。不上雲、預設不留錄音。
+<p align="center"><img src="assets/readme/privacy.zh-TW.svg" alt="離線即時語音翻譯：不上雲、預設不留錄音、不收個資。更新檢查只匿名計數（日期、版本、系統）。" width="720"></p>
 
-[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+[![Latest release](https://img.shields.io/github/v/release/sunososobro-hub/tinglongwu)](https://github.com/sunososobro-hub/tinglongwu/releases/latest) [![Downloads](https://img.shields.io/github/downloads/sunososobro-hub/tinglongwu/total)](https://github.com/sunososobro-hub/tinglongwu/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ## 下載
+
+<p align="center"><img src="assets/readme/steps.zh-TW.svg" alt="下載、執行一直按 Next、模型下載一次、之後離線出字幕。一般 CPU 就能跑，有 NVIDIA 顯示卡快很多。" width="720"></p>
 
 | | 安裝 |
 |---|---|
@@ -36,8 +38,7 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 ## 語言與電腦需求
 
-目前支援中、英、日、韓、俄，更多語言陸續加入（[語言計畫](docs/VISION.md)）。
-一般 CPU 就能跑；有 NVIDIA 顯示卡會快很多。[完整文件：需求、隱私、常見問題](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [平台支援](docs/support.md)
+更多語言陸續加入（[語言計畫](docs/VISION.md)）。[完整文件：需求、隱私、常見問題](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [平台支援](docs/support.md)
 
 ## 想幫忙？
 
@@ -52,6 +53,6 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 MIT 授權，見 [LICENSE](LICENSE)。(c) 2026 Alonso.
 
-<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong，專心聽的龍</sub></p>
+<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="聽龍 / TingLong，專心聽的龍" width="120"><br><sub>聽龍 / TingLong，專心聽的龍</sub></p>
 
 </details>
