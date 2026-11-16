@@ -124,6 +124,9 @@ def main(argv=None) -> int:
     p.add_argument("--per-pair", type=int, default=5)
     p.add_argument("--no-asr", action="store_true", help="MT alone (no background Whisper)")
     a = p.parse_args(argv)
+    # The plans are listen-only thread counts: TLWU_BOTH=1 would make Whisper use the #250 listen+speak split instead
+    # of the counts printed in the table.
+    os.environ.pop("TLWU_BOTH", None)
 
     import psutil
     from llama_cpp import Llama
@@ -165,6 +168,7 @@ def main(argv=None) -> int:
                 times, pairs = translate_all(llm, lines)
                 w1 = time.perf_counter()
             inside = load.during(w0, w1)
+            del load  # free this plan's Whisper before the next plan loads its own
             asr_s = f"{statistics.median(inside):.2f}" if inside else "-"
         del llm
         out.append(f"| {name} | {asr_t} / {mt_t} / {mt_b} | {statistics.median(times):.2f} | {p90(times):.2f} "
