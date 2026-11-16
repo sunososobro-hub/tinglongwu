@@ -3,9 +3,11 @@ package com.tinglongwu.mobile
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -27,12 +29,18 @@ class ModelImporter(private val activity: Activity) {
     private var pending: MethodChannel.Result? = null
     @Volatile private var cancelled = false
 
-    fun pick(result: MethodChannel.Result) {
+    /** [downloads]: start in the Downloads folder (where the browser saved the pack zip). */
+    fun pick(result: MethodChannel.Result, downloads: Boolean = false) {
         if (pending != null) { result.error("BUSY", "picker already open", null); return }
         val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            // Only a hint to the picker (API 26+); it still shows every folder.
+            if (downloads && Build.VERSION.SDK_INT >= 26) {
+                putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildDocumentUri(
+                    "com.android.providers.downloads.documents", "downloads"))
+            }
         }
         pending = result
         try {

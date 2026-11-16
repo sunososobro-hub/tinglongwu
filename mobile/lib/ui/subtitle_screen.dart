@@ -7,6 +7,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/lang_pack.dart';
+import '../logic/model_manifest.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speakers.dart';
 import '../logic/speech_out.dart';
@@ -84,11 +85,15 @@ String emptyHint({required bool phone}) =>
 /// draft, and a footer with status + a round start/stop mic button. Listen-only lines are left
 /// "other" bubbles; in 對話模式 (#558) my lines are right "me" bubbles.
 class SubtitleScreen extends StatefulWidget {
-  const SubtitleScreen({super.key, required this.pipeline, this.gravity, this.onImport});
+  const SubtitleScreen(
+      {super.key, required this.pipeline, this.gravity, this.onImport, this.onInstall});
   final Pipeline pipeline;
 
   /// Opens "Import models" (optional packs, #1262); null = no entry shown.
   final VoidCallback? onImport;
+
+  /// Opens 「下載語音包」 for these packs (#1279); null = [onImport] is used instead.
+  final void Function(List<VoicePack> packs)? onInstall;
 
   /// Accelerometer (gravity included, m/s^2) samples; defaults to the device sensor (#1146).
   final Stream<List<double>>? gravity;
@@ -169,6 +174,7 @@ class _SubtitleScreenState extends State<SubtitleScreen> {
           _Header(
               pipeline: pipeline,
               onImport: widget.onImport,
+              onInstall: widget.onInstall,
               debug: showDebugStats(releaseMode: kReleaseMode) ? _debug() : null),
           Expanded(
             child: empty
@@ -357,9 +363,19 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.pipeline, this.debug, this.onImport});
+  const _Header({required this.pipeline, this.debug, this.onImport, this.onInstall});
   final Pipeline pipeline;
   final VoidCallback? onImport;
+  final void Function(List<VoicePack> packs)? onInstall;
+
+  /// What 「下載語音包」 does: the focused screen for the packs the chosen 對方語言 is missing
+  /// now (read at tap time, the sheet can change the language), else the Import screen.
+  VoidCallback? get _install => onInstall == null && onImport == null
+      ? null
+      : () {
+          final packs = pipeline.packStatus(pipeline.conversation.foreign).toDownload;
+          packs.isNotEmpty && onInstall != null ? onInstall!(packs) : onImport?.call();
+        };
   final String? debug;
 
   @override
@@ -426,7 +442,7 @@ class _Header extends StatelessWidget {
                   child: InkWell(
                     key: const Key('pairPill'),
                     borderRadius: BorderRadius.circular(999),
-                    onTap: () => showConversationSheet(context, pipeline, onInstall: onImport),
+                    onTap: () => showConversationSheet(context, pipeline, onInstall: _install),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
@@ -447,13 +463,13 @@ class _Header extends StatelessWidget {
                   ),
                 ),
                 // A missing pack has its own action (#1276); nothing downloads without this tap.
-                if (onImport != null && _packAction(pipeline).isNotEmpty)
+                if (_install != null && _packAction(pipeline).isNotEmpty)
                   ActionChip(
                     key: const Key('packAction'),
                     avatar: const Icon(Icons.download, size: 16),
                     label: Text(_packAction(pipeline), style: const TextStyle(fontSize: 12)),
                     visualDensity: VisualDensity.compact,
-                    onPressed: onImport,
+                    onPressed: _install,
                   ),
               ])
             else

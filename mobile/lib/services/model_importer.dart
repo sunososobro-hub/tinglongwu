@@ -51,8 +51,11 @@ class ModelImporter {
     }
   }
 
-  static Future<List<PickedDoc>> pick() async {
-    final r = await _ch.invokeListMethod<Map<dynamic, dynamic>>('pickDocuments') ?? const [];
+  /// [downloads]: open the picker in the Downloads folder (a pack zip the browser just saved).
+  static Future<List<PickedDoc>> pick({bool downloads = false}) async {
+    final r = await _ch.invokeListMethod<Map<dynamic, dynamic>>(
+            'pickDocuments', {'downloads': downloads}) ??
+        const [];
     return [
       for (final m in r)
         PickedDoc(m['uri'] as String, m['name'] as String, (m['size'] as num?)?.toInt() ?? -1)

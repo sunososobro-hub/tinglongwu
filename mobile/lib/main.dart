@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'logic/model_manifest.dart';
 import 'services/pipeline.dart';
 import 'ui/download_screen.dart';
 import 'ui/import_screen.dart';
 import 'ui/message_screen.dart';
+import 'ui/pack_install_screen.dart';
 import 'ui/subtitle_screen.dart';
 
 void main() {
@@ -56,9 +58,20 @@ class _RootState extends State<Root> {
   Future<void> _openImport() async {
     final dir = pipeline.paths?.modelsDir;
     if (dir == null) return;
+    await _pushImporter(ImportScreen(modelsDir: dir));
+  }
+
+  /// 「下載語音包」 (#1279): only the packs the chosen 對方語言 is missing.
+  Future<void> _openInstall(List<VoicePack> packs) async {
+    final dir = pipeline.paths?.modelsDir;
+    if (dir == null) return;
+    await _pushImporter(PackInstallScreen(modelsDir: dir, packs: packs));
+  }
+
+  Future<void> _pushImporter(Widget screen) async {
     final listening = pipeline.stage == Stage.listening;
-    final imported = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => ImportScreen(modelsDir: dir)));
+    final imported =
+        await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => screen));
     if (!mounted || !restartAfterImport(listening: listening, imported: imported)) return;
     final old = pipeline;
     setState(() => pipeline = Pipeline());
@@ -88,7 +101,8 @@ class _RootState extends State<Root> {
           case Stage.loadingModels:
             return LoadingScreen(stage: pipeline.stage);
           case Stage.listening:
-            return SubtitleScreen(pipeline: pipeline, onImport: _openImport);
+            return SubtitleScreen(
+                pipeline: pipeline, onImport: _openImport, onInstall: _openInstall);
         }
       },
     );
