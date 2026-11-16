@@ -95,8 +95,12 @@ def test_noise_cli_verdict(tmp_path, noise, speech, ok):
     assert r.stdout.startswith("PASS #968" if ok else "FAIL #968")
 
 
-def test_gpu_cli_fails_without_cuda(tmp_path):
+def test_gpu_cli_fails_without_cuda(tmp_path, monkeypatch, capsys):
+    import tinglongwu.device as device
+
+    monkeypatch.setattr(device, "resolve_device", lambda *a, **k: "cpu")  # same verdict on a PC with a GPU
     log = tmp_path / "doctor.txt"
     log.write_text("[  ok] speech model\n", encoding="utf-8")
-    r = _cli("gpu", "--doctor-log", str(log))
-    assert r.returncode == 1 and r.stdout.startswith("FAIL #966") and "'cpu'" in r.stdout  # this runner has no GPU
+    assert hc.main(["gpu", "--doctor-log", str(log)]) == 1
+    out = capsys.readouterr().out
+    assert out.startswith("FAIL #966") and "'cpu'" in out
