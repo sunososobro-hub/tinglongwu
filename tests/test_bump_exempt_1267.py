@@ -90,3 +90,15 @@ def test_indented_or_deeper_extra_heading_needs_opus():
     for h in ("  ## v0.4.2", "   # Hijack", "### Sub"):
         bad = wn(f"@@ -10,2 +10,6 @@\n \n+## v0.4.3\n+- a\n+{h}\n+- b\n")
         assert rn.bump_exempt([INIT, bad])[0] is False, h
+
+
+def test_non_canonical_version_spelling_needs_opus():
+    for v in ("0.4.03", "0.4.\u0663"):  # leading zero, Arabic-Indic digit
+        odd = dict(INIT, patch=INIT["patch"].replace('+__version__ = "0.4.3"', f'+__version__ = "{v}"'))
+        assert rn.bump_exempt([odd, NEW_SECTION])[0] is False, v
+
+
+def test_setext_heading_or_prose_in_section_needs_opus():
+    for extra in ("+Another release\n+---\n", "+Another release\n+===\n", "+<!-- hidden -->\n"):
+        bad = wn("@@ -10,2 +10,6 @@\n \n+## v0.4.3\n+- Fixed recording.\n+\n" + extra)
+        assert rn.bump_exempt([INIT, bad])[0] is False, extra
