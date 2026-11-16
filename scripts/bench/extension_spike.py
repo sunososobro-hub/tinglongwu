@@ -81,7 +81,8 @@ def summarize(report: dict, baseline: dict | None = None) -> list[dict]:
         for lang in sorted({c["lang"] for c in clips}):
             pairs = [(c["ref_text"], c["asr_text"]) for c in clips if c["lang"] == lang]
             asr_err[lang] = round(scoring.error_rate(pairs, lang), 3)
-        for mt_name, mt_info in report["mt"].items():
+        # merged matrix reports keep each ASR job's own MT loads (status, size, load times)
+        for mt_name, mt_info in report.get("mt_by_asr", {}).get(asr_name, report["mt"]).items():
             if mt_info.get("error") or any(mt_name not in c["mt"] for c in clips):
                 continue
             lat = [c["asr_s"] + c["mt"][mt_name]["s"] for c in clips]
@@ -146,11 +147,14 @@ def to_markdown(rows: list[dict], env: dict, budget_s: float = BUDGET_S) -> str:
 
 def merge(reports: list[dict]) -> dict:
     """Matrix jobs each run one ASR model with every MT candidate; join them into one report."""
-    out = {"env": reports[0]["env"], "asr": {}, "mt": {}, "clips": []}
+    out = {"env": reports[0]["env"], "asr": {}, "mt": {}, "mt_by_asr": {}, "clips": []}
     for r in reports:
         out["asr"].update(r["asr"])
+        for asr_name in r["asr"]:
+            out["mt_by_asr"][asr_name] = r.get("mt_by_asr", {}).get(asr_name, r["mt"])
         for k, v in r["mt"].items():
-            out["mt"].setdefault(k, v)
+            if k not in out["mt"] or out["mt"][k].get("error"):
+                out["mt"][k] = v
         out["clips"] += r["clips"]
     out["env"]["clips"] = len({c["id"] for c in out["clips"]})
     return out

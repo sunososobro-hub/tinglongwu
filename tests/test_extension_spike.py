@@ -120,3 +120,18 @@ def test_every_mt_candidate_covers_the_smoke_pairs(spike):
     pairs = {"en->zh", "ja->zh", "ru->zh", "zh->en"}
     for name, chains in spike.MT.items():
         assert set(chains) == pairs, name
+
+
+def test_merge_keeps_each_jobs_own_mt_result(spike):
+    # job A: nllb failed to load; job B: nllb loaded. B's combinations must survive with B's own load times.
+    a, b = _report(), _report()
+    a["asr"].pop("whisper-small")
+    a["clips"] = [c for c in a["clips"] if c["asr"] == "whisper-tiny"]
+    a["mt"]["nllb-600m"] = {"error": "Failed to fetch"}
+    b["asr"].pop("whisper-tiny")
+    b["clips"] = [c for c in b["clips"] if c["asr"] == "whisper-small"]
+    b["mt"]["opus-mt"] = {"bytes": 300e6, "cold_s": 99, "warm_s": 2}
+    rows = {(r["asr"], r["mt"]): r for r in spike.summarize(spike.merge([a, b]))}
+    assert ("whisper-small", "nllb-600m") in rows and ("whisper-tiny", "nllb-600m") not in rows
+    assert rows[("whisper-small", "opus-mt")]["cold_load_s"] == 119
+    assert rows[("whisper-tiny", "opus-mt")]["cold_load_s"] == 13

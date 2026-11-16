@@ -3,7 +3,9 @@
 Run: `extension-spike` workflow run 43784837759 on PR #1167 (head 42972cf), 2026-11-16.
 GitHub ubuntu-24.04 runner, 4 vCPU, no GPU; headless Chromium 153, transformers.js 4.3.2, ONNX Runtime Web WASM,
 4 threads, cross-origin isolated. 20 CI smoke clips (`eval/ci_smoke.json`: 5 each en / ja / ru / zh, FLEURS).
-Latency = ASR + MT seconds for one whole clip (4-12 s of speech), end of speech -> translated line.
+Latency = ASR + MT inference seconds for one whole clip (4-12 s of speech), timed inside the page; it leaves out
+audio capture/chunking, the zh script conversion and drawing the line, so the real end of speech -> subtitle time is
+somewhat longer (part 2/3 measure that).
 Desktop chrF in brackets = `eval/baseline.json` (Whisper small + Hy-MT2 1.8B Q4, same clips, same runner type).
 
 | ASR | MT | download MB | load cold s | load warm s | latency median s | p90 s | ASR median s | MT median s | chrF en->zh (desktop) | chrF ja->zh (desktop) | chrF ru->zh (desktop) | chrF zh->en (desktop) | ASR WER en | ASR CER ja | ASR WER ru | ASR CER zh |
@@ -25,13 +27,16 @@ whisper-small + opus-mt for en->zh is 371 MB, for ru->zh (pivot ru-en + en-zh) 4
 - ASR: **whisper-small** (`onnx-community/whisper-small`, q8). MT: **opus-mt** (`Xenova/opus-mt-*`, q8; ja/ru -> zh
   pivot through en). Median 6.78 s, p90 8.22 s on this 4-vCPU runner: meets the #711 median <= 8 s budget, p90 does not.
 - Quality gap: the browser stack is well below the desktop pipeline (mean chrF 22.6 vs 32.9 desktop on the same
-  clips). ASR is the same Whisper small model as desktop (q8 here), so most of the gap is MT: opus-mt vs Hy-MT2 1.8B, worst on
-  ja->zh (7.85 vs 19.58, a two-hop pivot). NLLB-600M is better for ja->zh and zh->en but 912 MB and ~4 s per line.
+  clips). ASR is the same Whisper small model as desktop (q8 here), so MT (opus-mt vs Hy-MT2 1.8B) is the likely main cause,
+  worst on ja->zh (7.85 vs 19.58, a two-hop pivot); this run does not isolate it (no MT-only score on the same
+  transcripts, no desktop ASR error rate). NLLB-600M is better for ja->zh and zh->en but 912 MB and ~4 s per line.
 - Not usable: whisper-tiny (ja CER 2.8 = repetition loops); whisper-small + NLLB (median 9.76 s, over budget).
 - WebGPU: the runner has no GPU, so only WASM (CPU) was measured; it is the floor
   for a laptop without GPU. A WebGPU number needs a real PC (owner test on #711).
 
 ## Follow-ups for the next parts
+- zh->ru is not measured: the smoke set has zh->en references only. opus-mt has no zh->ru model (pivot zh-en +
+  en-ru, or NLLB); needs a zh->ru reference set first.
 - Part 2 (#1159): the offscreen document needs `cross_origin_embedder_policy` / `cross_origin_opener_policy` in the
   manifest for multi-threaded WASM (this spike ran cross-origin isolated); ONNX Runtime wasm must be packaged, not
   loaded from a CDN (MV3 forbids remote code).
