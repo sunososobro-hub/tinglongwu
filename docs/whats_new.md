@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.2
+- Phone app: a new 對話翻譯 (conversation) choice in the mode menu, and Русский can now be picked as a subtitle language.
+- Phone app: Chinese and Cantonese original lines now show in Traditional Chinese.
+- Speak mode: when you set a preview device, you now also hear your translated voice in auto-send mode.
+
 ## v0.4.1
 - Translate to now also offers 日本語, 한국어, Español, Français, Deutsch, ไทย, Tiếng Việt and Bahasa Indonesia, and Hindi can be picked as an experimental source language.
 - The 情境 (scenario) row is now a single dropdown.
