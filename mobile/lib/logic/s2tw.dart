@@ -91,3 +91,11 @@ String toTraditionalTw(String text) {
   }
   return out;
 }
+
+/// Original-text line as displayed: SenseVoice emits Simplified for zh/yue, so convert it to
+/// Traditional (Taiwan). Other languages, and the text sent to the translator, stay unchanged.
+String displayOriginal(String text, String lang) {
+  final l = lang.toLowerCase();
+  final isChinese = l == 'yue' || l == 'zh' || l.startsWith('zh-') || l.startsWith('zh_');
+  return isChinese ? toTraditionalTw(text) : text;
+}

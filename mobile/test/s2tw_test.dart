@@ -3,6 +3,7 @@ import 'package:mobile/logic/s2tw.dart';
 import 'package:mobile/logic/zh_check.dart';
 
 void main() {
+  displayOriginalTests();
   group('toTraditionalTw', () {
     // Expected values are the desktop output: tinglongwu.translate.zh_convert(text, "tw").
     const cases = <String, String>{
@@ -38,6 +39,19 @@ void main() {
 
     test('characters outside the BMP pass through intact', () {
       expect(toTraditionalTw('𠀀这'), '𠀀這');
+    });
+  });
+}
+
+void displayOriginalTests() {
+  group('displayOriginal', () {
+    test('zh/yue converted to Traditional', () {
+      expect(displayOriginal('测试一下。', 'zh'), '測試一下。');
+      expect(displayOriginal('测试一下。', 'yue'), '測試一下。');
+    });
+    test('other languages untouched', () {
+      expect(displayOriginal('测试 hello', 'en'), '测试 hello');
+      expect(displayOriginal('Привет', 'ru'), 'Привет');
     });
   });
 }

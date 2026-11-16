@@ -10,6 +10,7 @@ import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/phone_audio.dart';
+import '../logic/s2tw.dart';
 import '../logic/segmenter.dart';
 import '../logic/speakers.dart';
 import '../logic/subtitle_trim.dart';
@@ -843,7 +844,7 @@ class Pipeline extends ChangeNotifier {
     final sentences = SentenceSegmenter.split(f.text);
     final route = _activeConversation.route(f.lang, listenTarget: target);
     for (final text in sentences.isEmpty ? [f.text] : sentences) {
-      final sub = Subtitle(text, speaker: route.speaker, seg: f.seg);
+      final sub = Subtitle(displayOriginal(text, f.lang), speaker: route.speaker, seg: f.seg);
       sub.voice = _voiceBySeg[f.seg] ?? 0;
       subtitles.add(sub);
       _queue.add(_Job(text, sub, speechEnd, now, route));
@@ -866,7 +867,7 @@ class Pipeline extends ChangeNotifier {
       final a = jobs[i];
       final b = jobs[i + 1];
       b.ru = ContextBudget.join(a.ru, b.ru);
-      b.sub.ru = b.ru;
+      b.sub.ru = displayOriginal(b.ru, b.lang);
       subtitles.remove(a.sub);
       final merged = _Job(b.ru, b.sub, a.speechEndMs, b.asrFinalMs, b.route);
       jobs
