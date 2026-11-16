@@ -15,6 +15,20 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Scope (#1221; docs-only / stats-site-only PRs into dev get a short run)
+        # The `test` check is required, so the job always runs and reports; only its heavy steps are skipped.
+        # Pushes, dispatches and PRs into main always run in full.
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "dev" ]; then
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+            python scripts/ci_scope.py "$RUNNER_TEMP/files.txt" | tee -a "$GITHUB_OUTPUT"
+          else
+            printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
+          fi
       - name: Commit identity (#944; a placeholder like x <x@x> credits a stranger as a contributor)
         # only PRs into dev: the release PR (dev -> main) carries old history (f5b0e6c) and must not go red here
         if: github.event_name == 'pull_request' && github.base_ref == 'dev'
@@ -28,6 +42,7 @@ jobs:
           bash scripts/fetch_pr_commits.sh "$GITHUB_REPOSITORY" "$PR" "$RUNNER_TEMP/commits.json"
           python scripts/commit_identity.py "$RUNNER_TEMP/commits.json" --author-login "$AUTHOR_LOGIN" --author-id "$AUTHOR_ID" --expected-count "$PR_COMMITS"
       - name: System libraries (audio capture libs are imported by the package)
+        if: steps.scope.outputs.scope == 'full' || steps.scope.outputs.tests != ''
         # Fail fast on runner DNS/mirror outages (2026-11-11 azure.archive.ubuntu.com) instead of hanging the job.
         timeout-minutes: 8
         run: |
@@ -38,21 +53,34 @@ jobs:
           done
           exit 1
       - name: Install (this is the only step that needs the network)
+        if: steps.scope.outputs.scope == 'full' || steps.scope.outputs.tests != ''
         run: pip install -e ".[dev]" "pytest-timeout==2.3.1"
       - name: Lint (ruff, blocking, #665)
+        if: steps.scope.outputs.scope != 'docs'
         run: ruff check .
       - name: Script syntax (bash 3.2 compatible subset is checked by bash -n)
+        if: steps.scope.outputs.scope == 'full'
         run: |
           for f in scripts/*.sh scripts/i18n/*.sh; do bash -n "$f"; done
           grep -q "__TLWU_REF__" scripts/install.sh scripts/mac_install.sh scripts/bootstrap_windows.ps1
       - name: Tests, normal (real-Tk GUI tests run under xvfb; a skip there fails, #113)
         # a modal dialog or a stuck Tk loop must fail fast, not hold the runner for hours (#113: PR #736 ran 2 h+)
+        if: steps.scope.outputs.scope == 'full'
         timeout-minutes: 20
         env:
           TLWU_REQUIRE_DISPLAY: "1"
         run: xvfb-run -a -s "-screen 0 1920x1080x24" python -m pytest -q --timeout=120
+      - name: Tests, scoped (#1221; only the tests that name a changed file, plus the site tests for site PRs)
+        if: steps.scope.outputs.scope != 'full' && steps.scope.outputs.tests != ''
+        timeout-minutes: 10
+        env:
+          TLWU_REQUIRE_DISPLAY: "1"
+          TESTS: ${{ steps.scope.outputs.tests }}
+        run: |
+          # shellcheck disable=SC2086  # TESTS is a space separated list of test files
+          xvfb-run -a -s "-screen 0 1920x1080x24" python -m pytest -q --timeout=120 $TESTS
       - name: GUI acceptance screenshots (#1129)
-        if: always()
+        if: always() && steps.scope.outputs.scope == 'full'
         timeout-minutes: 10
         env:
           TLWU_REQUIRE_DISPLAY: "1"
@@ -61,16 +89,18 @@ jobs:
           pip install "pillow==11.3.0"
           xvfb-run -a -s "-screen 0 1366x768x24" python -m pytest -q --timeout=120 tests/test_gui_acceptance_owner.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
+        if: always() && steps.scope.outputs.scope == 'full'
         with:
           name: gui-acceptance
           path: gui-acceptance/*.png
           if-no-files-found: ignore
       - name: Tests with the network physically disabled (offline suite + everything else)
+        if: steps.scope.outputs.scope == 'full'
         # new empty network namespace: no interfaces except loopback. The in-process guard (tinglongwu.offline) is on
         # as well, so a library that phones home fails the test twice over (blocked + no route).
         run: bash scripts/ci_offline.sh python -m pytest -q
       - name: Chrome extension tab capture (#1159)
+        if: steps.scope.outputs.scope == 'full'
         # after the offline suite: Playwright + Chromium are installed only here. A skip is a failure (REQUIRE).
         timeout-minutes: 10
         env:
