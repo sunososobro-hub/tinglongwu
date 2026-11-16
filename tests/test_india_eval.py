@@ -256,8 +256,11 @@ def _info(rid, tags, gated=False, downloads=0):
 def test_hinglish_candidates_keep_only_open_ungated_hindi_english_audio_sets():
     infos = [
         _info("a/hinglish-asr", ["license:cc-by-4.0", "modality:audio"], downloads=5),
-        _info("b/cs-speech", ["license:apache-2.0", "task_categories:automatic-speech-recognition",
-                              "language:hi", "language:en"], downloads=50),
+        _info("b/code-switch-speech", ["license:apache-2.0", "task_categories:automatic-speech-recognition",
+                                       "language:hi", "language:en"], downloads=50),
+        _info("h/indic-multi", ["license:cc-by-4.0", "modality:audio", "language:hi", "language:en"],
+              downloads=900),  # hi + en tags alone: maybe separate monolingual clips, not code-switched
+        _info("i/es-codeswitch", ["license:mit", "modality:audio", "language:es", "language:en"], downloads=900),
         _info("c/hinglish-gated", ["license:cc-by-4.0", "modality:audio"], gated="manual", downloads=900),
         _info("d/hinglish-nc", ["license:cc-by-nc-4.0", "modality:audio"], downloads=900),
         _info("e/hinglish-text", ["license:mit", "modality:text"], downloads=900),
@@ -265,7 +268,13 @@ def test_hinglish_candidates_keep_only_open_ungated_hindi_english_audio_sets():
         _info("g/HingLish-tts", ["license:cc0-1.0", "modality:audio"], downloads=5),
         _info("a/hinglish-asr", ["license:cc-by-4.0", "modality:audio"], downloads=5),  # same set from 2nd search
     ]
-    assert ie.hinglish_candidates(infos) == ["b/cs-speech", "a/hinglish-asr", "g/HingLish-tts"]
+    assert ie.hinglish_candidates(infos) == ["b/code-switch-speech", "a/hinglish-asr", "g/HingLish-tts"]
+
+
+def test_open_licence_uses_the_candidate_rule():
+    assert ie.open_licence(["license:cc-by-nc-4.0", "license:cc-by-4.0"]) == "cc-by-4.0"
+    assert ie.open_licence(["license:cc-by-nc-4.0"]) == "cc-by-nc-4.0"
+    assert ie.open_licence(["modality:audio"]) == "unknown"
 
 
 def _wav(seconds):

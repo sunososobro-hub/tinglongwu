@@ -53,6 +53,7 @@ HINGLISH_SEARCH = ("hinglish", "code-switch", "code-switched", "codeswitch", "co
 OPEN_LICENSES = frozenset({"cc0-1.0", "cc-by-4.0", "cc-by-sa-4.0", "cc-by-3.0", "cc-by-sa-3.0", "cc-by-2.0",
                            "apache-2.0", "mit", "odc-by", "pddl", "cdla-permissive-2.0", "bsd-3-clause"})
 HINGLISH_MAX_TRIES = 8
+CODE_SWITCH = ("code-switch", "codeswitch", "code_switch", "code-mix", "codemix", "code_mix")
 GROUPS = ("en", "hi", "svarah", "hinglish")
 OPTIONAL = ("svarah", "hinglish")  # an unreachable optional set is reported as missing; FLEURS failing fails the job
 HINDI_LIKE = ("hi", "hinglish")  # ASR language hi, translated hi->zh direct and hi->en->zh pivot
@@ -115,8 +116,9 @@ def _tags(info) -> list[str]:
 
 def hinglish_candidates(infos) -> list[str]:
     """Hub dataset infos -> ids worth trying for the hinglish group, most downloaded first (ties by id).
-    Kept: not gated; a licence tag in OPEN_LICENSES; audio (modality:audio or an ASR task tag); and Hinglish evidence
-    (the word hinglish in the id or tags, or both language:hi and language:en tags)."""
+    Kept: not gated; a licence tag in OPEN_LICENSES; audio (modality:audio or an ASR task tag); and code-switch
+    evidence: the word hinglish in the id or tags, or a code-switch word (CODE_SWITCH) in the id or tags plus the
+    language:hi tag. A set tagged only hi + en is not enough: it may hold separate Hindi-only and English-only clips."""
     keep = {}
     for d in infos:
         rid = getattr(d, "id", None)
@@ -127,11 +129,18 @@ def hinglish_candidates(infos) -> list[str]:
             continue
         if "modality:audio" not in tags and not any("automatic-speech-recognition" in t for t in tags):
             continue
-        hinglish = "hinglish" in rid.lower() or any("hinglish" in t for t in tags)
-        if not hinglish and not ("language:hi" in tags and "language:en" in tags):
+        text = " ".join([rid.lower(), *tags])
+        if "hinglish" not in text and not (any(w in text for w in CODE_SWITCH) and "language:hi" in tags):
             continue
         keep[rid] = getattr(d, "downloads", 0) or 0
     return sorted(keep, key=lambda r: (-keep[r], r))
+
+
+def open_licence(tags: list[str]) -> str:
+    """The first licence tag in OPEN_LICENSES (the rule hinglish_candidates() uses), else the first licence tag,
+    else "unknown"."""
+    lics = [t.split(":", 1)[1] for t in tags if t.startswith("license:")]
+    return next((x for x in lics if x in OPEN_LICENSES), lics[0] if lics else "unknown")
 
 
 def clip_seconds(b: bytes):
@@ -236,7 +245,7 @@ def fetch_hinglish_from(repo: str, revision, data: Path, n: int, api, download, 
     over the shards' rows. Raises RuntimeError when the set has no usable parquet audio + text."""
     info = api.dataset_info(repo, revision=revision)
     sha = info.sha
-    lic = next((t.split(":", 1)[1] for t in _tags(info) if t.startswith("license:")), "unknown")
+    lic = open_licence(_tags(info))
     # the same rule as hinglish_candidates(), also for a HINGLISH_DATASET override; checked before any download
     if getattr(info, "gated", False) not in (False, None):
         raise RuntimeError(f"{repo}: gated set, not an open Hinglish set")
