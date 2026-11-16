@@ -33,15 +33,41 @@ def cpu_count() -> int:
     """#1264: logical CPUs this process may run on. os.cpu_count() counts every CPU of the machine, even when the
     process is pinned to fewer (taskset / a container cpuset / process affinity), so tlwu planned threads for CPUs
     it could not use: the 2-CPU meeting replay (bench-cpu-ab run 43919414629) logged "CPU mode threads: 4 CPUs ->
-    asr=2 mt=2/2" while pinned to 2 CPUs. Uses os.process_cpu_count() (Python 3.13+, also Windows affinity) or the
-    affinity mask, never more than os.cpu_count(); falls back to os.cpu_count(), then 4."""
+    asr=2 mt=2/2" while pinned to 2 CPUs. Uses the Windows process affinity mask (os.process_cpu_count() does not
+    read it there: it falls back to os.cpu_count() without sched_getaffinity), else os.process_cpu_count()
+    (Python 3.13+) or the affinity mask, never more than os.cpu_count(); falls back to os.cpu_count(), then 4."""
     n = os.cpu_count() or 4
+    if sys.platform == "win32":
+        k = _win_affinity_count()
+        return max(1, min(n, k)) if k else n
     usable = getattr(os, "process_cpu_count", None)
     try:
         k = usable() if usable is not None else len(os.sched_getaffinity(0))
     except (AttributeError, OSError):
         return n
     return max(1, min(n, k)) if k else n
+
+
+def _win_affinity_count(kernel32=None) -> int | None:
+    """#1264: CPUs in this process's Windows affinity mask (GetProcessAffinityMask), None when it cannot be read.
+    The mask covers the process's processor group only (up to 64 CPUs), which is what its threads run on."""
+    import ctypes
+
+    try:
+        if kernel32 is None:
+            from ctypes import wintypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            kernel32.GetProcessAffinityMask.argtypes = (wintypes.HANDLE, ctypes.POINTER(ctypes.c_size_t),
+                                                        ctypes.POINTER(ctypes.c_size_t))
+            kernel32.GetProcessAffinityMask.restype = wintypes.BOOL
+        proc, system = ctypes.c_size_t(0), ctypes.c_size_t(0)
+        if not kernel32.GetProcessAffinityMask(kernel32.GetCurrentProcess(), ctypes.byref(proc), ctypes.byref(system)):
+            return None
+    except (AttributeError, OSError):
+        return None
+    return bin(proc.value).count("1") or None
 
 
 def total(env=None, count=None) -> int:
