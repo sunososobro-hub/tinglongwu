@@ -574,6 +574,9 @@ class App:
         if self.status_key:
             self.v_status.set(t(self.status_key))
         self._sync_quick()
+        if getattr(self, "scene_combo", None) is not None:  # the dropdown shows names in the new UI language
+            self.scene_combo.configure(values=self._scene_labels())
+            self.scene_combo.set(t("gui_scene_" + self.v_scene.get()))
         self.combos["lang"].configure(values=lang_labels())
         self._relabel_combos()
         self.home_lang.configure(values=lang_labels())
@@ -879,12 +882,11 @@ class App:
         scene_row.pack(fill="x", pady=(0, 6))
         self._tx(ttk.Label(scene_row), "gui_scene").pack(side="left", padx=(0, 6))
         self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
-        self.scene_btns = []
-        for sc in SCENES:
-            rb = ttk.Radiobutton(scene_row, variable=self.v_scene, value=sc, style="Toolbutton",
-                                 command=self._scene_changed)
-            self._tx(rb, "gui_scene_" + sc).pack(side="left", padx=(0, 4))
-            self.scene_btns.append(rb)
+        # one readonly dropdown: exactly one scene is active at a time; the box shows the UI-language names
+        self.scene_combo = ttk.Combobox(scene_row, state="readonly", width=24, values=self._scene_labels())
+        self.scene_combo.set(t("gui_scene_" + self.v_scene.get()))
+        self.scene_combo.pack(side="left")
+        self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
         row1 = ttk.Frame(b)
         row1.pack(fill="x")
         self.v_mic = tk.BooleanVar(value=True)
@@ -913,9 +915,17 @@ class App:
         self._mic_label()
         self._sync_quick()
 
+    @staticmethod
+    def _scene_labels():
+        return [t("gui_scene_" + sc) for sc in SCENES]
+
     def _scene_changed(self):
-        """0.3.8: remember the scene (applies at the next Start; the buttons are disabled while running)."""
-        self.settings["scene"] = self.v_scene.get()
+        """0.3.8: remember the scene picked in the dropdown (applies at the next Start; disabled while running)."""
+        idx = self.scene_combo.current()
+        if idx < 0:
+            return
+        self.v_scene.set(SCENES[idx])
+        self.settings["scene"] = SCENES[idx]
         save_settings(self.settings)
 
     def _spk_toggled(self):
@@ -1554,8 +1564,9 @@ class App:
     def _sync_scene(self):
         """0.3.8: the scene can only change while stopped (applies at the next Start)."""
         st = "normal" if self._quick_phase() == "idle" else "disabled"
-        for rb in getattr(self, "scene_btns", []):
-            rb.configure(state=st)
+        cb = getattr(self, "scene_combo", None)
+        if cb is not None:
+            cb.configure(state="readonly" if st == "normal" else "disabled")
 
     def _sync_quick(self):
         """Label/enable the first-screen buttons for the current session state (#294)."""

@@ -5,6 +5,8 @@ Set TLWU_GUI_SHOTS=<dir> to save one PNG per item (needs PIL + a display); witho
 import os
 import urllib.parse
 
+import json
+
 import pytest
 
 SCREEN_W, SCREEN_H = 1366, 768
@@ -187,3 +189,59 @@ def test_940_report_with_ai_copies_prompt_to_clipboard(make_app, monkeypatch):
 
         time.sleep(0.05)
     assert "Version" in got and "test" in got
+
+
+# -- #1166: the 情境 row is one dropdown ---------------------------------------------------------------------------
+def _tk_buttons(w, out=None):
+    out = [] if out is None else out
+    for c in w.winfo_children():
+        if c.winfo_class() in ("TRadiobutton",) and c.cget("style") == "Toolbutton":
+            out.append(c)
+        _tk_buttons(c, out)
+    return out
+
+
+def test_one_readonly_dropdown_lists_every_scene(make_app):
+    from tinglongwu.gui.core import SCENES
+
+    a = make_app()
+    assert str(a.scene_combo.cget("state")) == "readonly"
+    assert len(a.scene_combo.cget("values")) == len(SCENES)
+    assert not _tk_buttons(a.root)  # no scene buttons remain
+    assert a.scene_combo.get() == "Meeting (listen + speak)"
+
+
+def test_selecting_switches_the_scene_and_saves_it(make_app, tmp_path):
+    a = make_app()
+    a.scene_combo.current(1)
+    a.scene_combo.event_generate("<<ComboboxSelected>>")
+    a.root.update()
+    assert a.settings["scene"] == "video"
+    saved = json.loads((tmp_path / "tinglongwu" / "gui.json").read_text("utf-8"))
+    assert saved["scene"] == "video"
+
+
+def test_restart_shows_the_saved_scene(make_app):
+    a = make_app(scene="video")
+    assert a.scene_combo.get() == "Watching video (listen only)"
+
+
+def test_entries_follow_the_ui_language(make_app):
+    from tinglongwu import i18n
+
+    a = make_app(scene="video")
+    i18n.set_ui_lang("ja")
+    a.relabel()
+    assert a.scene_combo.get() == i18n.MESSAGES["ja"]["gui_scene_video"]
+    assert tuple(a.scene_combo.cget("values")) == (i18n.MESSAGES["ja"]["gui_scene_meeting"],
+                                                   i18n.MESSAGES["ja"]["gui_scene_video"])
+    i18n.set_ui_lang("en")
+
+
+@pytest.mark.parametrize("lang", ["zh-TW", "zh-CN", "ja", "ru", "en"])
+def test_scene_strings_exist_in_every_ui_language(lang):
+    from tinglongwu.i18n import MESSAGES
+
+    key = next(k for k in MESSAGES if k.lower() == lang.lower())
+    for sc in ("meeting", "video"):
+        assert MESSAGES[key]["gui_scene_" + sc]
