@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "tlwu live subtitles (dev)",
+  "version": "0.0.1",
+  "description": "Offline live subtitles for a meeting tab. Tab audio stays on this PC (#711).",
+  "minimum_chrome_version": "116",
+  "action": {"default_title": "tlwu: start / stop subtitles for this tab"},
+  "background": {"service_worker": "sw.js", "type": "module"},
+  "permissions": ["tabCapture", "offscreen"]
+}

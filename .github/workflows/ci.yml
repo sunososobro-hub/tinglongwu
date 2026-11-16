@@ -70,3 +70,12 @@ jobs:
         # new empty network namespace: no interfaces except loopback. The in-process guard (tinglongwu.offline) is on
         # as well, so a library that phones home fails the test twice over (blocked + no route).
         run: bash scripts/ci_offline.sh python -m pytest -q
+      - name: Chrome extension tab capture (#1159)
+        # after the offline suite: Playwright + Chromium are installed only here. A skip is a failure (REQUIRE).
+        timeout-minutes: 10
+        env:
+          TLWU_REQUIRE_EXTENSION: "1"
+        run: |
+          pip install "playwright==1.63.0"
+          python -m playwright install --with-deps chromium
+          python -m pytest -q --timeout=120 tests/test_extension_capture_1159.py
