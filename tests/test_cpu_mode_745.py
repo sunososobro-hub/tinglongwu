@@ -185,3 +185,29 @@ def test_cpu_mode_mt_threads_cleared_on_gpu_and_ignored_in_listen_speak(tmp_path
     monkeypatch.delenv("TLWU_BOTH")
     cli.apply_cpu_mode(SimpleNamespace(model="large-v3", quality="auto"), "cuda", tmp_path, explicit_model=False)
     assert (threads.current()["mt"], threads.current()["mt_batch"]) == (2, 4)  # llama.cpp defaults again
+
+
+def test_cuda_to_cpu_fallback_gets_cpu_mode_mt_threads(monkeypatch):
+    from tinglongwu import cli, threads
+
+    monkeypatch.delenv("TLWU_BOTH", raising=False)
+    monkeypatch.setattr(threads, "_role", "listen")
+    monkeypatch.setattr(threads.os, "cpu_count", lambda: 4)
+    assert not cli.cpu_fallback_mt("cuda", "cuda", cores=4) and not cli.cpu_fallback_mt("cpu", "cpu", cores=4)
+    assert (threads.current()["mt"], threads.current()["mt_batch"]) == (2, 4)
+    assert cli.cpu_fallback_mt("cuda", "cpu", cores=4)
+    assert (threads.current()["mt"], threads.current()["mt_batch"]) == (2, 2)
+
+
+def test_eval_defaults_run_after_cpu_mode_run_clears_mt_threads(monkeypatch):
+    from types import SimpleNamespace
+    from tinglongwu import threads
+    from tlwu_eval.__main__ import cpu_mode_asr
+
+    monkeypatch.delenv("TLWU_BOTH", raising=False)
+    monkeypatch.setattr(threads, "_role", "listen")
+    monkeypatch.setattr(threads.os, "cpu_count", lambda: 4)
+    cpu_mode_asr(SimpleNamespace(cpu_mode=True, model=None), "cpu", "small", cores=4, ram_gb=16)
+    assert threads.current()["mt_batch"] == 2
+    cpu_mode_asr(SimpleNamespace(cpu_mode=False, model=None), "cpu", "small", cores=4, ram_gb=16)
+    assert threads.current()["mt_batch"] == 4  # llama.cpp default again for the baseline run

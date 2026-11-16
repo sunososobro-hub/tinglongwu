@@ -61,9 +61,11 @@ def cpu_mode_asr(a, dev: str, model: str, cores=None, ram_gb=None):
     """#781: (model, beam, threads) for the ASR. Without --cpu-mode, or off the CPU: (model, None, None), the
     recognizer defaults (beam 5). With --cpu-mode on the CPU: hwprobe.cpu_mode_settings for this PC, like tlwu
     (#780): beam / threads from the policy; the model is lowered to the policy size unless --model was given."""
-    if not getattr(a, "cpu_mode", False) or dev != "cpu":
-        return model, None, None
     from tinglongwu import threads as thread_budget
+
+    if not getattr(a, "cpu_mode", False) or dev != "cpu":
+        thread_budget.set_cpu_mode(None)  # #1198: a defaults run after a CPU-mode run in one process: llama.cpp defaults
+        return model, None, None
     from tinglongwu.hwprobe import cpu_mode_settings, cpu_mode_threads, ram_mib
 
     if ram_gb is None:

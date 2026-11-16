@@ -63,16 +63,24 @@ class AsrLoad:
         self.asr = FasterWhisperRecognizer(mdir, size, "auto", "cpu", beam=1, threads=threads)
         self.audio = [read_wav(w)[0] for w in wavs]
         self.stop = threading.Event()
-        self.times: list[float] = []
+        self.spans: list[tuple[float, float]] = []  # (start, end) perf_counter of each clip
+        self.error: BaseException | None = None
         self.t = threading.Thread(target=self._loop, daemon=True)
 
     def _loop(self):
         i = 0
-        while not self.stop.is_set():
-            t0 = time.perf_counter()
-            self.asr.transcribe(self.audio[i % len(self.audio)])
-            self.times.append(time.perf_counter() - t0)
-            i += 1
+        try:
+            while not self.stop.is_set():
+                t0 = time.perf_counter()
+                self.asr.transcribe(self.audio[i % len(self.audio)])
+                self.spans.append((t0, time.perf_counter()))
+                i += 1
+        except BaseException as e:  # noqa: BLE001 - re-raised by __exit__: a bench without its load is invalid
+            self.error = e
+
+    def during(self, start: float, end: float) -> list[float]:
+        """Seconds per clip for clips that ran entirely inside [start, end] (the MT measurement window)."""
+        return [b - a for a, b in self.spans if a >= start and b <= end]
 
     def __enter__(self):
         self.asr.transcribe(self.audio[0])  # warm-up outside the measurement
@@ -82,6 +90,9 @@ class AsrLoad:
     def __exit__(self, *exc):
         self.stop.set()
         self.t.join()
+        if self.error is not None and exc[0] is None:
+            raise RuntimeError(f"background Whisper failed, MT numbers are not under load: {self.error}") \
+                from self.error
 
 
 def translate_all(llm, lines) -> tuple[list[float], list[tuple[str, str]]]:
@@ -150,8 +161,11 @@ def main(argv=None) -> int:
             asr_s = "-"
         else:
             with AsrLoad(mdir, a.whisper, asr_t, wavs) as load:
+                w0 = time.perf_counter()
                 times, pairs = translate_all(llm, lines)
-            asr_s = f"{statistics.median(load.times):.2f}" if load.times else "-"
+                w1 = time.perf_counter()
+            inside = load.during(w0, w1)
+            asr_s = f"{statistics.median(inside):.2f}" if inside else "-"
         del llm
         out.append(f"| {name} | {asr_t} / {mt_t} / {mt_b} | {statistics.median(times):.2f} | {p90(times):.2f} "
                    f"| {scoring.chrf(pairs):.2f} | {asr_s} |")

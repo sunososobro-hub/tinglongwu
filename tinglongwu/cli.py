@@ -478,6 +478,19 @@ def apply_cpu_mode(a, dev: str, mdir, explicit_model: bool, cores=None, ram_gb=N
     return st
 
 
+def cpu_fallback_mt(asked: str, got: str, cores=None) -> bool:
+    """#1198: Whisper fell back from CUDA to the CPU after apply_cpu_mode ran for CUDA: give the MT engine (built
+    next) the CPU-mode llama.cpp threads too. True when it did."""
+    if asked == "cpu" or got != "cpu":
+        return False
+    from . import threads as thread_budget
+    from .hwprobe import cpu_mode_threads
+
+    plan = cpu_mode_threads(cores or os.cpu_count() or 4)
+    thread_budget.set_cpu_mode(plan.mt, plan.mt_batch)
+    return True
+
+
 def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice=None, cpu_line=None,
                 labeler_factory=None, on_topic=None) -> None:
     """Load models and run the pipeline for parsed args `a`. Shared by the CLI and the GUI.
@@ -554,6 +567,7 @@ def run_session(a, sink=None, draft_factory=None, stop=None, status=None, notice
     asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
                                   candidates=cands, lang_file=getattr(a, "lang_file", None),
                                   beam=getattr(a, "cpu_beam", None), threads=getattr(a, "cpu_threads", None))
+    cpu_fallback_mt(dev, asr.device)  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
     dev = asr.device  # may have fallen back to cpu
     asr.live = dev == "cpu" and not a.file  # #251: live CPU listening caps ASR retries and time per sentence
     cpu_max_wait(a, dev)
