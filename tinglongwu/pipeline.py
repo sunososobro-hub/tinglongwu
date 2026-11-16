@@ -278,7 +278,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             tell_wait(mtq.qsize() + 1)
             time.sleep(MT_HOLD_POLL)
         held = time.monotonic() - t0
-        say(f"latency: mt held {held * 1000:.0f} ms for ASR ({mtq.qsize()} more line(s) waiting)")
+        say(f"latency: hold mt {held * 1000:.0f} ms for ASR ({mtq.qsize()} more line(s) waiting)")
         return held
 
     def mt_worker() -> None:
