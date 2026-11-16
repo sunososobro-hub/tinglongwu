@@ -176,7 +176,10 @@ def mt_delay(lat: list[dict]) -> dict:
     """#1253: MT delay from --latency-jsonl rows: "mt" p50 / p95, lines whose MT was held for ASR ("mt_hold" > 0)
     and the p95 / max held seconds, "asr" p95. None where no row has the field (ASR-only runs have no "mt_hold")."""
     def nums(key):
-        return [float(r[key]) for r in lat if isinstance(r.get(key), (int, float)) and not isinstance(r[key], bool)]
+        import math
+
+        return [float(r[key]) for r in lat if isinstance(r.get(key), (int, float)) and not isinstance(r[key], bool)
+                and math.isfinite(r[key])]  # Infinity / NaN would end up as non-standard JSON in metrics.json
 
     def rnd(v, n=2):
         return None if v is None else round(v, n)
@@ -281,10 +284,14 @@ def compare(a: dict, b: dict) -> dict:
     def d(x, y):
         return round(y - x, 2) if isinstance(x, (int, float)) and isinstance(y, (int, float)) else None
 
-    rows = [(name, a.get(k), b.get(k), d(a.get(k), b.get(k))) for name, k in AB_ROWS]
+    ran = bool(a.get("ran")) and bool(b.get("ran"))  # both tlwu runs got ready and played the recording
+    rows = [(name, a.get(k), b.get(k), d(a.get(k), b.get(k)) if ran else None) for name, k in AB_ROWS]
+    same_len = a.get("seconds") == b.get("seconds") and a.get("speech_s") == b.get("speech_s")
+    same_id = a.get("recording") is not None and a.get("recording") == b.get("recording")
     return {"rows": rows, "drops_asr_only": a.get("drops"), "drops_with_mt": b.get("drops"),
-            "drops_delta": d(a.get("drops"), b.get("drops")), "cuts_delta": d(a.get("cuts"), b.get("cuts")),
-            "same_recording": a.get("seconds") == b.get("seconds") and a.get("speech_s") == b.get("speech_s")}
+            "drops_delta": d(a.get("drops"), b.get("drops")) if ran else None,
+            "cuts_delta": d(a.get("cuts"), b.get("cuts")) if ran else None, "both_ran": ran,
+            "same_recording": same_id and same_len, "same_duration": same_len}
 
 
 def compare_table(c: dict, setup_a: str = "", setup_b: str = "") -> str:
@@ -294,6 +301,8 @@ def compare_table(c: dict, setup_a: str = "", setup_b: str = "") -> str:
     head = "### meeting replay A/B: ASR only vs ASR + MT (#1253)\n\n"
     if setup_a or setup_b:
         head += f"A (ASR only): {setup_a or 'n/a'}  \nB (ASR + MT): {setup_b or 'n/a'}\n\n"
+    if not c.get("both_ran", True):
+        head += "**warning: a replay did not run (tlwu never got ready): no deltas**\n\n"
     if not c["same_recording"]:
         head += "**warning: A and B did not replay the same recording**\n\n"
     def cell(v):
@@ -433,6 +442,15 @@ def run(rdir: Path, mdir: str | None, cpus: int, speakers: bool, extra: list[str
     return m
 
 
+def recording_id(meta: dict) -> str:
+    """Short fingerprint of the replayed recording (clip order + layout + length), so an A/B can tell two runs of
+    the same recording from two recordings that only happen to have the same length."""
+    import hashlib
+
+    key = json.dumps([meta.get("lang"), meta.get("clips"), meta.get("spans"), meta.get("seconds")], sort_keys=True)
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
 def report(rdir: Path, quiet: bool = False) -> dict:
     meta = json.loads((rdir / "replay.json").read_text("utf-8"))
     log = (rdir / "tlwu.log").read_text("utf-8", errors="replace").splitlines() if (rdir / "tlwu.log").is_file() else []
@@ -441,6 +459,8 @@ def report(rdir: Path, quiet: bool = False) -> dict:
     m = metrics(meta, log, read_jsonl(rdir / "saved.jsonl"), read_jsonl(rdir / "rec" / "segments.jsonl"),
                 read_jsonl(rdir / "latency.jsonl"), t0)
     plan = next((x.split("tlwu: ", 1)[1] for x in log if "CPU mode threads:" in x), "")
+    m["ran"] = t0 is not None  # tlwu got ready and playback started (run() writes t0.txt only then)
+    m["recording"] = recording_id(meta)
     m["setup"] = f"{meta['lang']}, {meta['seconds'] / 60:.0f} min at 1x" + (f", {plan}" if plan else "")
     (rdir / "metrics.json").write_text(json.dumps(m, indent=1), "utf-8")
     if not quiet:

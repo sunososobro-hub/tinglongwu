@@ -23,11 +23,14 @@ def mr():
     return mod
 
 
-def _run_dir(root: Path, name: str, drops: int, cuts: int, lat: list[dict], seconds: float = 20.0) -> Path:
+def _run_dir(root: Path, name: str, drops: int, cuts: int, lat: list[dict], seconds: float = 20.0,
+             clips: tuple = ("a", "b"), ran: bool = True) -> Path:
     d = root / name
     (d / "rec").mkdir(parents=True)
+    if ran:
+        (d / "t0.txt").write_text("1800000000.0\n", "utf-8")
     (d / "replay.json").write_text(json.dumps({"wav": "r.wav", "lang": "ru", "seconds": seconds, "speech": [0, 16],
-                                               "spans": [[0, 8], [8.25, 16]], "clips": ["a", "b"],
+                                               "spans": [[0, 8], [8.25, 16]], "clips": list(clips),
                                                "voiced": [[0.5, 7.5], [8.5, 15.5]]}), "utf-8")
     (d / "rec" / "segments.jsonl").write_text(json.dumps({"start": 0.0, "end": 16.0}) + "\n", "utf-8")
     log = ["tlwu: asr: dropped a sentence over its time budget (x)"] * drops
@@ -87,3 +90,32 @@ def test_asr_only_replay_command_passes_transcript_only(mr, tmp_path):
     meta = {"wav": "replay.wav", "lang": "ru"}
     cmd = mr.tlwu_cmd(tmp_path, meta, None, True, ["--transcript-only", "--model", "small"])
     assert cmd[-3:] == ["--transcript-only", "--model", "small"] and "--paced" in cmd and "--speakers" in cmd
+
+
+def test_non_finite_latency_samples_are_left_out(mr, tmp_path):
+    lat = [{"mt": float("inf"), "mt_hold": float("nan"), "asr": float("-inf")}, {"mt": 1.0, "mt_hold": 0.5, "asr": 2.0}]
+    m = mr.mt_delay(lat)
+    assert m["mt_p95_s"] == 1.0 and m["mt_hold_max_s"] == 0.5 and m["asr_p95_s"] == 2.0
+    d = tmp_path / "x"
+    d.mkdir()
+    (d / "latency.jsonl").write_text("\n".join(json.dumps(r) for r in lat), "utf-8")  # json writes Infinity / NaN
+    rows = mr.read_jsonl(d / "latency.jsonl")
+    out = json.dumps(mr.mt_delay(rows), allow_nan=False)  # raises on a non-finite number
+    assert "Infinity" not in out and "NaN" not in out
+
+
+def test_same_length_but_other_clips_is_not_the_same_recording(mr, tmp_path, capsys):
+    a = _run_dir(tmp_path, "asr", 0, 0, [], clips=("a", "b"))
+    b = _run_dir(tmp_path, "mt", 0, 0, [], clips=("c", "d"))
+    c = mr.compare_dirs(a, b)
+    assert c["same_duration"] is True and c["same_recording"] is False
+    assert "did not replay the same recording" in capsys.readouterr().out
+
+
+def test_a_replay_that_never_ran_gives_no_delta(mr, tmp_path, capsys):
+    a = _run_dir(tmp_path, "asr", 0, 0, [], ran=False)
+    b = _run_dir(tmp_path, "mt", 0, 0, [])
+    c = mr.compare_dirs(a, b)
+    out = capsys.readouterr().out
+    assert c["both_ran"] is False and c["drops_delta"] is None
+    assert "a replay did not run" in out and out.strip().splitlines()[-1].endswith("delta=n/a cuts_delta=n/a")

@@ -278,7 +278,12 @@ jobs:
           name: meeting-replay-asr-only
           path: ab/asr-only
       - name: A/B
+        env:
+          REPLAY_RESULT: ${{ needs.replay.result }}
         run: |
+          set -o pipefail
           { echo "## Meeting replay A/B (#1253)"; echo
+            if [ "$REPLAY_RESULT" != "success" ]; then
+              echo "**warning: replay job result: $REPLAY_RESULT (a variant failed; read its own summary)**"; echo; fi
             python scripts/bench/meeting_replay.py compare --asr-only ab/asr-only --with-mt ab/with-mt --out ab/ab.json
           } | tee -a "$GITHUB_STEP_SUMMARY"
