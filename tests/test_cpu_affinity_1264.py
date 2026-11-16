@@ -16,6 +16,7 @@ def _pin(monkeypatch, total, allowed):
     monkeypatch.delattr(os, "process_cpu_count", raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: total)
     monkeypatch.setattr(os, "sched_getaffinity", lambda pid: set(range(allowed)), raising=False)
+    monkeypatch.setattr(threads, "_win_affinity_count", lambda: allowed)  # same mask on a Windows test host
 
 
 def test_cpu_count_is_the_affinity_mask_not_the_machine(monkeypatch):
@@ -28,6 +29,7 @@ def test_cpu_count_falls_back_to_os_cpu_count(monkeypatch):
     monkeypatch.delattr(os, "process_cpu_count", raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: 6)
     monkeypatch.delattr(os, "sched_getaffinity", raising=False)  # Windows / macOS before 3.13
+    monkeypatch.setattr(threads, "_win_affinity_count", lambda: None)  # mask unreadable on a Windows test host
     assert threads.cpu_count() == 6
     monkeypatch.setattr(os, "cpu_count", lambda: None)
     assert threads.cpu_count() == 4
