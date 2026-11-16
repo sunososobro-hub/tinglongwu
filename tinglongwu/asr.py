@@ -221,7 +221,7 @@ class FasterWhisperRecognizer(Recognizer):
             audio, language=lang, task="transcribe", beam_size=getattr(self, "beam", 5), vad_filter=False,
             condition_on_previous_text=False, no_speech_threshold=self.NO_SPEECH,
             log_prob_threshold=-1.0, compression_ratio_threshold=2.4, hotwords=self._hot(),
-            without_timestamps=bool(getattr(self, "fast", False)), **kw)
+            without_timestamps=bool(getattr(self, "fast", False) or getattr(self, "no_ts", False)), **kw)
         segs = []
         for s in gen:  # faster-whisper decodes lazily: stop pulling once the sentence is over budget
             if deadline is not None and self._now() > deadline:

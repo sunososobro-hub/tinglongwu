@@ -53,8 +53,23 @@ def real_engines(a) -> Engines:
     dev = resolve_device(a.device)
     model = a.model or pick_whisper("small", mdir)
     model, beam, threads = cpu_mode_asr(a, dev, model)
-    return Engines(load_asr=lambda lang: FasterWhisperRecognizer(mdir, model, lang, dev, beam=beam, threads=threads),
-                   load_mt=lambda: cli.make_translator(a.engine, mdir, "tw", dev))
+    X = os.environ  # EXPERIMENT (#745 sweep, removed before PR)
+    beam = int(X["TLWU_X_BEAM"]) if X.get("TLWU_X_BEAM") else beam
+    threads = int(X["TLWU_X_THREADS"]) if X.get("TLWU_X_THREADS") else threads
+    if X.get("TLWU_X_MODEL"):
+        model = X["TLWU_X_MODEL"]
+    if X.get("TLWU_X_MT"):
+        from tinglongwu import threads as tb
+        m, mb = X["TLWU_X_MT"].split("/")
+        tb.current = lambda *a_, **k_: {"asr": threads, "mt": int(m), "mt_batch": int(mb), "tts": 0}
+    print(f"tlwu-eval: X model={model} beam={beam} threads={threads} nots={X.get('TLWU_X_NOTS')} mt={X.get('TLWU_X_MT')}", file=sys.stderr)
+
+    def _asr(lang):
+        r = FasterWhisperRecognizer(mdir, model, lang, dev, beam=beam, threads=threads)
+        if X.get("TLWU_X_NOTS"):
+            r.no_ts = True
+        return r
+    return Engines(load_asr=_asr, load_mt=lambda: cli.make_translator(a.engine, mdir, "tw", dev))
 
 
 def cpu_mode_asr(a, dev: str, model: str, cores=None, ram_gb=None):

@@ -107,13 +107,13 @@ def table(a: dict, b: dict) -> str:
     return "\n".join(lines)
 
 
-def run_eval(extra: str, data: str, out_json: Path, out_jsonl: Path, run=subprocess.run) -> None:
+def run_eval(extra: str, data: str, out_json: Path, out_jsonl: Path, run=subprocess.run, env=None) -> None:
     """Exit 1 = the smoke wrote its report but missed its own PASS/time budget (slow CPU): the A/B table still needs
     those numbers. Any other non-zero exit, or no fresh report, is an error."""
     out_json.unlink(missing_ok=True)
     cmd = [sys.executable, "-m", "tlwu_eval", "--smoke", "--device", "cpu", "--no-noise", "--data", data,
            "--out", str(out_json), "--latency-jsonl", str(out_jsonl), *shlex.split(extra)]
-    rc = run(cmd).returncode
+    rc = run(cmd, env=env).returncode
     if rc not in (0, 1) or not out_json.exists():
         raise subprocess.CalledProcessError(rc, cmd)
 
@@ -140,6 +140,30 @@ def main(argv=None) -> int:
                 print(f"cpu_mode_ab: {name} run failed (exit {e.returncode})", file=sys.stderr)
                 return 2
         paths = [d / "base.json", d / "cpu.json"]
+        import os  # EXPERIMENT (#745 sweep, removed before PR)
+        sweep = [("v2_b1_t4", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4"}),
+                 ("v3_b1_t4_nots", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1"}),
+                 ("v4_b2_t4_nots", {"TLWU_X_BEAM": "2", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1"}),
+                 ("v5_b5_t4_nots", {"TLWU_X_BEAM": "5", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1"}),
+                 ("v6_b1_t4_nots_mt44", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1", "TLWU_X_MT": "4/4"}),
+                 ("v7_b1_t4_nots_mt22", {"TLWU_X_BEAM": "1", "TLWU_X_THREADS": "4", "TLWU_X_NOTS": "1", "TLWU_X_MT": "2/2"})]
+        ra = json.loads(paths[0].read_text("utf-8"))
+        sa0 = summarize(ra, load_jsonl(d / "base.jsonl"))
+        for name in ("base", "cpu"):
+            for lg in json.loads((d / f"{name}.json").read_text("utf-8"))["languages"]:
+                for c in lg["clips"]:
+                    print("CLIP", name, lg["pair"], c["id"], c["latency_s"], json.dumps(c["asr"], ensure_ascii=False), "=>", json.dumps(c["mt"], ensure_ascii=False))
+        for name, ev in sweep:
+            try:
+                run_eval(a.cpu_args, a.data, d / f"{name}.json", d / f"{name}.jsonl", env={**os.environ, **ev})
+                sv = summarize(json.loads((d / f"{name}.json").read_text("utf-8")), load_jsonl(d / f"{name}.jsonl"))
+                print(f"### SWEEP {name}")
+                print(table(sa0, sv))
+                for lg in json.loads((d / f"{name}.json").read_text("utf-8"))["languages"]:
+                    for c in lg["clips"]:
+                        print("CLIP", name, lg["pair"], c["id"], c["latency_s"], json.dumps(c["asr"], ensure_ascii=False), "=>", json.dumps(c["mt"], ensure_ascii=False))
+            except Exception as e:  # noqa: BLE001
+                print(f"### SWEEP {name} failed: {e}")
     elif len(a.reports) == 2:
         paths = [Path(x) for x in a.reports]
     else:
