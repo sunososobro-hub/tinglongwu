@@ -90,3 +90,54 @@ def test_stale_sidecar_with_extra_pair_exits_2(tmp_path, capsys):
     (tmp_path / "base.jsonl").write_text('{"pair":"en->zh","id":"a","total":10.0}\n{"pair":"fr->zh","id":"b","total":100.0}\n')
     assert ab.main([str(ra), str(rb)]) == 2
     assert "fr->zh" in capsys.readouterr().err
+
+
+class _Done:
+    def __init__(self, rc):
+        self.returncode = rc
+
+
+def _fake_run(rc, write=True):
+    def run(cmd):
+        out = Path(cmd[cmd.index("--out") + 1])
+        if write:
+            out.write_text(json.dumps(rep(40.0, 0.05, [1.0])))
+        return _Done(rc)
+    return run
+
+
+def test_run_eval_keeps_a_report_that_missed_the_smoke_budget(tmp_path):
+    # exit 1 = the smoke wrote its report but missed PASS / its time budget on a slow CPU: the A/B still needs it
+    ab.run_eval("", "d", tmp_path / "base.json", tmp_path / "base.jsonl", run=_fake_run(1))
+    assert (tmp_path / "base.json").exists()
+
+
+def test_run_eval_errors_without_a_fresh_report(tmp_path):
+    import subprocess
+
+    stale = tmp_path / "base.json"
+    stale.write_text("{}")  # left from an older run: must not be reused
+    for run in (_fake_run(1, write=False), _fake_run(2)):
+        try:
+            ab.run_eval("", "d", stale, tmp_path / "base.jsonl", run=run)
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            raise AssertionError("expected CalledProcessError")
+    assert not stale.exists() or json.loads(stale.read_text()) != {}
+
+
+def test_eval_cpu_mode_asr_settings():
+    from types import SimpleNamespace
+
+    from tlwu_eval.__main__ import cpu_mode_asr
+
+    off = SimpleNamespace(cpu_mode=False, model=None)
+    assert cpu_mode_asr(off, "cpu", "small", cores=4, ram_gb=16) == ("small", None, None)
+    on = SimpleNamespace(cpu_mode=True, model=None)
+    assert cpu_mode_asr(on, "cuda", "small", cores=4, ram_gb=16) == ("small", None, None)
+    # 4 cores / 16 GB (a GitHub ubuntu runner): small, beam 1, 3 threads (#780 policy)
+    assert cpu_mode_asr(on, "cpu", "small", cores=4, ram_gb=16) == ("small", 1, 3)
+    # 2 cores: policy size base; an auto-picked small is lowered, an explicit --model small is kept
+    assert cpu_mode_asr(on, "cpu", "small", cores=2, ram_gb=16) == ("base", 1, 1)
+    assert cpu_mode_asr(SimpleNamespace(cpu_mode=True, model="small"), "cpu", "small", cores=2, ram_gb=16)[0] == "small"

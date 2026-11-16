@@ -4,7 +4,7 @@ A = current defaults, B = the CPU-mode settings from #745 part 1. Prints one Mar
 chrF and WER/CER per pair and overall, plus the deltas against the #745 targets.
 
   python scripts/bench/cpu_mode_ab.py --run --data eval_data/smoke --out-dir ab \
-      --base-args "--model small --engine hymt2-cpu" --cpu-args "--model base --engine hymt2-cpu"
+      --base-args "--model small --engine hymt2-cpu" --cpu-args "--engine hymt2-cpu --cpu-mode"
   python scripts/bench/cpu_mode_ab.py ab/base.json ab/cpu.json     # table from two existing reports
 
 --run runs `python -m tlwu_eval --smoke --device cpu --no-noise --latency-jsonl` twice (the #569 eval set, see
@@ -107,10 +107,15 @@ def table(a: dict, b: dict) -> str:
     return "\n".join(lines)
 
 
-def run_eval(extra: str, data: str, out_json: Path, out_jsonl: Path) -> None:
+def run_eval(extra: str, data: str, out_json: Path, out_jsonl: Path, run=subprocess.run) -> None:
+    """Exit 1 = the smoke wrote its report but missed its own PASS/time budget (slow CPU): the A/B table still needs
+    those numbers. Any other non-zero exit, or no fresh report, is an error."""
+    out_json.unlink(missing_ok=True)
     cmd = [sys.executable, "-m", "tlwu_eval", "--smoke", "--device", "cpu", "--no-noise", "--data", data,
            "--out", str(out_json), "--latency-jsonl", str(out_jsonl), *shlex.split(extra)]
-    subprocess.run(cmd, check=True)
+    rc = run(cmd).returncode
+    if rc not in (0, 1) or not out_json.exists():
+        raise subprocess.CalledProcessError(rc, cmd)
 
 
 def main(argv=None) -> int:
@@ -129,7 +134,11 @@ def main(argv=None) -> int:
         d.mkdir(parents=True, exist_ok=True)
         for name, extra in (("base", a.base_args), ("cpu", a.cpu_args)):
             (d / f"{name}.jsonl").unlink(missing_ok=True)
-            run_eval(extra, a.data, d / f"{name}.json", d / f"{name}.jsonl")
+            try:
+                run_eval(extra, a.data, d / f"{name}.json", d / f"{name}.jsonl")
+            except subprocess.CalledProcessError as e:
+                print(f"cpu_mode_ab: {name} run failed (exit {e.returncode})", file=sys.stderr)
+                return 2
         paths = [d / "base.json", d / "cpu.json"]
     elif len(a.reports) == 2:
         paths = [Path(x) for x in a.reports]
