@@ -125,3 +125,15 @@ def test_install_size_in_summary_773(tmp_path):
     assert m.dir_size_mb(str(tmp_path / "missing")) == 0.0
     assert "install_size_mb: 2.0" in m.summary_text("windows", {}, 2.0)
     assert "install_size_mb" not in m.summary_text("windows", {})
+
+
+def test_summary_lists_phases_and_slowest_lines_1341():
+    m = _load()
+    doc = {"install_seconds": 28.0, "setup_seconds": 280.0, "first_subtitle_seconds": 9.5,
+           "install_phases": {"phases": [{"name": "4/8 clone", "seconds": 21.0}], "slow_lines": []},
+           "setup_phases": {"phases": [{"name": "6/8 models", "seconds": 240.0}],
+                            "slow_lines": [{"seconds": 200.0, "line": "Building wheel for llama-cpp-python"}]}}
+    text = m.summary_text("macos", doc)
+    assert "install_seconds: 28.0  setup_seconds: 280.0  first_subtitle_seconds: 9.5" in text
+    assert "240.0 s  6/8 models" in text and "200.0 s  Building wheel for llama-cpp-python" in text
+    assert "phases" not in m.summary_text("macos", {"ttfs_seconds": 1.0})

@@ -69,7 +69,27 @@ def summary_text(os_name, doc, install_mb=None):
             % (os_name, num("ttfs_seconds"), num("excl_download_seconds"), ttfs.TTFS_BUDGET_S, ttfs.BASELINE_MBPS))
     if install_mb is not None:
         text += "install_size_mb: %.1f\n" % install_mb
-    return text
+    return text + phase_text(doc)
+
+
+def phase_text(doc):
+    """#1341: where the seconds go, as text for the job log and summary: the three measured parts, then per installer
+    run its steps (`==> ` lines) and the output lines that were followed by the longest wait. "" when DOC has none."""
+    if not any(doc.get(k) for k in ("install_phases", "setup_phases")):
+        return ""
+
+    def num(k):
+        return "n/a" if doc.get(k) is None else "%.1f" % doc[k]
+    out = ["", "install_seconds: %s  setup_seconds: %s  first_subtitle_seconds: %s"
+           % (num("install_seconds"), num("setup_seconds"), num("first_subtitle_seconds"))]
+    for key, title in (("install_phases", "install (models skipped)"), ("setup_phases", "setup (with models)")):
+        rep = doc.get(key) or {}
+        out.append("phases, %s:" % title)
+        out += ["  %7.1f s  %s" % (p["seconds"], p["name"]) for p in rep.get("phases", [])]
+        if rep.get("slow_lines"):
+            out.append("slowest lines, %s (seconds until the next output line):" % title)
+            out += ["  %7.1f s  %s" % (r["seconds"], r["line"]) for r in rep["slow_lines"]]
+    return "\n".join(out) + "\n"
 
 
 def setup_time_report(directory, install_seconds, out_path):

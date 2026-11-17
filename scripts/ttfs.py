@@ -26,6 +26,10 @@ BASELINE_MBPS = 50
 FIRST_SUBTITLE_TIMEOUT_S = 600
 TAIL_LINES = 40  # #1060: lines of each step's output printed when no subtitle arrives
 TRANSLATION_PREFIX = "\u2192"  # tinglongwu/fmt.py: translation lines are '→ [TAG] text'
+PHASE_PREFIX = "==> "  # install.sh / mac_install.sh `say`: one line per installer step
+SLOW_LINES = 5  # #1341: the N output lines that took longest to be followed by the next one
+SLOW_LINE_MIN_S = 1.0  # shorter waits are not reported
+LINE_CHARS = 120  # output lines are cut to this length in the phase report
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _UNITS = {"b": 1, "bytes": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9,
@@ -72,11 +76,50 @@ def download_seconds_at_baseline(nbytes, mbps=BASELINE_MBPS):
     return nbytes * 8 / (mbps * 1e6)
 
 
-def _run(cmd):
-    """Run a shell command; return (seconds, returncode, stdout)."""
+def _run(cmd, stamps=None):
+    """Run a shell command; return (seconds, returncode, stdout+stderr).
+
+    STAMPS (a list), when given, collects (seconds since start, line) per output line (#1341: where the time goes).
+    PYTHONUNBUFFERED makes the Python children (pip, tlwu-setup) print each line when it happens, not at exit."""
     t0 = time.monotonic()
-    p = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=ROOT)
-    return time.monotonic() - t0, p.returncode, (p.stdout or "") + (p.stderr or "")
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         encoding="utf-8", errors="replace", cwd=ROOT, env=dict(os.environ, PYTHONUNBUFFERED="1"))
+    lines = []
+    for line in p.stdout:
+        lines.append(line)
+        if stamps is not None:
+            stamps.append((time.monotonic() - t0, line.rstrip("\n")))
+    p.wait()
+    return time.monotonic() - t0, p.returncode, "".join(lines)
+
+
+def phase_seconds(stamps, total):
+    """[(installer step, seconds)] from stamped output lines (#1341): a step starts at its `==> ` line and ends at the
+    next one (the last at TOTAL); output before the first `==> ` line is the step "(start)". Pure."""
+    out, name, t_start = [], "(start)", 0.0
+    for t, line in stamps:
+        if line.startswith(PHASE_PREFIX):
+            out.append((name, round(t - t_start, 1)))
+            name, t_start = line[len(PHASE_PREFIX):].strip()[:LINE_CHARS], t
+    out.append((name, round(total - t_start, 1)))
+    return [(n, s) for n, s in out if not (n == "(start)" and s < SLOW_LINE_MIN_S)]
+
+
+def slow_lines(stamps, total, n=SLOW_LINES, min_s=SLOW_LINE_MIN_S):
+    """[(seconds until the next line, line)]: the N non-empty output lines followed by the longest silence, longest
+    first (#1341: e.g. `Building wheel for llama-cpp-python` followed by 200 s of nothing). Pure."""
+    rows = []
+    for i, (t, line) in enumerate(stamps):
+        nxt = stamps[i + 1][0] if i + 1 < len(stamps) else total
+        if line.strip() and nxt - t >= min_s:
+            rows.append((round(nxt - t, 1), line.strip()[:LINE_CHARS]))
+    return sorted(rows, key=lambda r: -r[0])[:n]
+
+
+def phase_report(stamps, total):
+    """JSON-ready {"phases": [{"name", "seconds"}], "slow_lines": [{"seconds", "line"}]} for one installer run."""
+    return {"phases": [{"name": n, "seconds": s} for n, s in phase_seconds(stamps, total)],
+            "slow_lines": [{"seconds": s, "line": ln} for s, ln in slow_lines(stamps, total)]}
 
 
 def _tail(text, n=TAIL_LINES):
@@ -133,8 +176,9 @@ def _sha():
 
 def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, diag=None):
     """DIAG (a dict), when given, gets each step's exit code and output tail (#1060), for the no-subtitle report."""
-    inst_s, inst_rc, inst_out = _run(install_cmd)
-    setup_s, setup_rc, setup_out = _run(setup_cmd)
+    inst_stamps, setup_stamps = [], []
+    inst_s, inst_rc, inst_out = _run(install_cmd, inst_stamps)
+    setup_s, setup_rc, setup_out = _run(setup_cmd, setup_stamps)
     dl_s = download_seconds_at_baseline(parse_download_bytes(setup_out))
     tlwu_lines = []
     first = time_first_subtitle(tlwu_cmd, timeout, tlwu_lines)
@@ -148,6 +192,8 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, 
         "first_subtitle_seconds": None if first is None else round(first, 3),
         "os": sys.platform, "version": _version(), "sha": _sha(),
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
+        # #1341: where the install and setup seconds go (installer steps + the lines followed by the longest wait)
+        "install_phases": phase_report(inst_stamps, inst_s), "setup_phases": phase_report(setup_stamps, setup_s),
     }
     if first is not None:
         total = inst_s + setup_s + first

@@ -27,7 +27,7 @@ def test_writes_schema_and_prints(tmp_path):
     d = json.loads(out.read_text())
     assert set(d) == {"ttfs_seconds", "download_seconds", "excl_download_seconds", "install_seconds",
                       "setup_seconds", "first_subtitle_seconds", "os", "version",
-                      "sha", "date"}
+                      "sha", "date", "install_phases", "setup_phases"}
     assert d["first_subtitle_seconds"] >= 0.8  # waits past the source line for the translation
     assert d["ttfs_seconds"] >= d["first_subtitle_seconds"]
     assert abs(d["excl_download_seconds"] - (d["ttfs_seconds"] - d["download_seconds"])) < 0.01
@@ -135,7 +135,7 @@ def test_over_budget_run_still_exits_0(tmp_path, monkeypatch, capsys):
     """Run main() (the timing path) with fake stages that add up to more than TTFS_BUDGET_S."""
     m = _ttfs()
     stages = iter([(100.0, 0, ""), (120.0, 0, "\n".join(_progress("w", 250)))])  # install 100 s, setup 120 s
-    monkeypatch.setattr(m, "_run", lambda cmd: next(stages))
+    monkeypatch.setattr(m, "_run", lambda cmd, stamps=None: next(stages))
     monkeypatch.setattr(m, "time_first_subtitle", lambda cmd, timeout=0, out_lines=None: 5.0)
     out = tmp_path / "ttfs.json"
     assert m.main(["--install", "x", "--setup", "y", "--tlwu", "z", "--out", str(out)]) == 0
@@ -162,3 +162,30 @@ def test_no_subtitle_reports_exit_codes_and_output_tail_1060(tmp_path):
     assert "line 99" in p.stderr and "line 50" not in p.stderr   # only the last 40 lines
     # stdout is flushed before the error, as a crashing tlwu does at exit; the tail keeps that order
     assert json.loads(out.read_text())["ttfs_seconds"] is None
+
+
+def test_phase_seconds_and_slow_lines_1341():
+    # #1341: a step runs from its `==> ` line to the next one; the slowest line is the one followed by the longest wait
+    m = _ttfs()
+    stamps = [(0.0, ""), (0.1, "==> 4/8 clone"), (2.0, "Collecting x"), (5.1, ""), (5.1, "==> 6/8 models"),
+              (6.0, "Building wheel for llama-cpp-python (pyproject.toml): started"),
+              (206.0, "Building wheel for llama-cpp-python (pyproject.toml): finished"), (207.0, "==> 8/8 self-test")]
+    assert m.phase_seconds(stamps, 230.0) == [("4/8 clone", 5.0), ("6/8 models", 201.9), ("8/8 self-test", 23.0)]
+    slow = m.slow_lines(stamps, 230.0)
+    assert slow[0] == (200.0, "Building wheel for llama-cpp-python (pyproject.toml): started")
+    assert slow[1] == (23.0, "==> 8/8 self-test") and all(s >= m.SLOW_LINE_MIN_S for s, _ in slow)
+    assert m.phase_seconds([(0.5, "no steps")], 3.0) == [("(start)", 3.0)]
+    rep = m.phase_report(stamps, 230.0)
+    assert rep["phases"][1] == {"name": "6/8 models", "seconds": 201.9} and rep["slow_lines"][0]["seconds"] == 200.0
+
+
+def test_run_stamps_each_line_and_ttfs_json_has_phases_1341(tmp_path):
+    # the real path: the setup command prints two installer steps 0.6 s apart; ttfs.json carries them with seconds
+    code = "import time;print('==> a');time.sleep(0.6);print('==> b');time.sleep(1.2);print('end')"
+    p, out = _run(tmp_path, PY + " -c \"print('\\u2192 x')\"", setup='%s -c "%s"' % (PY, code))
+    assert p.returncode == 0, p.stderr
+    d = json.loads(out.read_text())
+    ph = {r["name"]: r["seconds"] for r in d["setup_phases"]["phases"]}
+    assert 0.5 <= ph["a"] < 1.2 and ph["b"] >= 1.1
+    assert d["setup_phases"]["slow_lines"][0]["line"] == "==> b"
+    assert d["install_phases"]["slow_lines"] == []
