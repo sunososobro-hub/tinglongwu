@@ -11,10 +11,18 @@ LICENSE/README files.
     python3 -I tool/make_packs.py <WORKDIR> <OUT_DIR> [pack id ...]
 
 Upload (owner): gh release upload mobile-latest <OUT_DIR>/tlwu-*.zip --clobber
+
+CI (mobile-apk.yml publish job) keeps the zips on mobile-latest current by itself. The release
+notes carry one marker per pack, `<!-- tlwu-pack:<id>:<digest> -->`, digest = SHA-256 of that
+pack's manifest entry, so only a pack whose entry changed (or whose zip is missing) is rebuilt:
+
+    python3 -I tool/make_packs.py stale <BODY_FILE> <ASSET_NAME>...   # prints the pack ids to rebuild
+    python3 -I tool/make_packs.py mark <BODY_FILE> <pack id>...       # records them in the body file
 """
 import hashlib
 import json
 import os
+import re
 import sys
 import tarfile
 import urllib.request
@@ -93,9 +101,40 @@ def build(pack, workdir, out_dir):
     return out
 
 
+def load_packs(path=PACKS_JSON):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)["packs"]
+
+
+def pack_digest(pack):
+    """SHA-256 of the pack's manifest entry (key order and whitespace do not matter)."""
+    return hashlib.sha256(json.dumps(pack, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+MARK_RE = re.compile(r"<!-- tlwu-pack:([A-Za-z0-9_-]+):([0-9a-f]{64}) -->")
+
+
+def stale(packs, body, assets):
+    """Ids of the packs whose zip is not among `assets` or whose body marker is missing or old."""
+    marks = dict(MARK_RE.findall(body))
+    return [p["id"] for p in packs if p["name"] not in assets or marks.get(p["id"]) != pack_digest(p)]
+
+
+def mark(packs, body, ids):
+    """Body text with the markers of `ids` set to their current digests (other markers kept)."""
+    by_id = {p["id"]: p for p in packs}
+    for i in ids:
+        if i not in by_id:
+            raise KeyError("no such pack: " + i)
+        new = f"<!-- tlwu-pack:{i}:{pack_digest(by_id[i])} -->"
+        body, n = re.subn(rf"<!-- tlwu-pack:{re.escape(i)}:[0-9a-f]{{64}} -->", new, body)
+        if not n:
+            body = body.rstrip("\n") + "\n" + new + "\n"
+    return body
+
+
 def main(workdir, out_dir, ids):
-    with open(PACKS_JSON, encoding="utf-8") as f:
-        packs = json.load(f)["packs"]
+    packs = load_packs()
     want = [p for p in packs if not ids or p["id"] in ids]
     if not want:
         sys.exit("no such pack: " + " ".join(ids))
@@ -106,4 +145,13 @@ def main(workdir, out_dir, ids):
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         sys.exit(__doc__)
-    main(sys.argv[1], sys.argv[2], sys.argv[3:])
+    if sys.argv[1] == "stale":
+        with open(sys.argv[2], encoding="utf-8") as f:
+            print(" ".join(stale(load_packs(), f.read(), set(sys.argv[3:]))))
+    elif sys.argv[1] == "mark":
+        with open(sys.argv[2], encoding="utf-8") as f:
+            text = mark(load_packs(), f.read(), sys.argv[3:])
+        with open(sys.argv[2], "w", encoding="utf-8") as f:
+            f.write(text)
+    else:
+        main(sys.argv[1], sys.argv[2], sys.argv[3:])

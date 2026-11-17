@@ -213,6 +213,8 @@ jobs:
             ZIP_SHA=$(sed -n '1s/ .*//p' "$RUNNER_TEMP/old.sha256")
             MANIFEST=$(sed -n 's/^manifest //p' "$RUNNER_TEMP/old.sha256" | head -1)
           fi
+          # optional pack markers (tool/make_packs.py stale/mark) survive the rewrite of the notes
+          PACK_MARKS=$(printf '%s\n' "$OLD_BODY" | grep -o '<!-- tlwu-pack:[A-Za-z0-9_-]*:[0-9a-f]* -->' || true)
           cat > notes.md <<EOF
           **1. Install the app:** [$APK_NAME]($BASE/$APK_NAME)
 
@@ -233,6 +235,7 @@ jobs:
           - signed with: $SIGNING
           - APK SHA256: \`$APK_SHA\`
           - models zip SHA256: \`$ZIP_SHA\`
+          - optional 對話翻譯 packs (Import models): [tlwu-voice-en.zip]($BASE/tlwu-voice-en.zip), [tlwu-voice-ru.zip]($BASE/tlwu-voice-ru.zip), [tlwu-mobile-lang-ru.zip]($BASE/tlwu-mobile-lang-ru.zip)
           <!-- tlwu-manifest:$MANIFEST -->
 
           </details>
@@ -246,6 +249,7 @@ jobs:
             echo "stale=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "<!-- tlwu-run:$RUN -->" >> notes.md
+          [ -z "$PACK_MARKS" ] || printf '%s\n' "$PACK_MARKS" >> notes.md
           # Move (or create) the tag; only refs/tags/mobile-latest is touched.
           if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
             gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null
@@ -286,5 +290,28 @@ jobs:
           gh release upload "$TAG" "$RUNNER_TEMP/$Z" --clobber
           # record hash + manifest in the body (marks the zip current), after the zip is uploaded
           sed -i -e "s/^- models zip SHA256: .*/- models zip SHA256: \`$ZSHA\`/"                  -e "s/<!-- tlwu-manifest:[0-9a-f]* -->/<!-- tlwu-manifest:$MH -->/" "$RUNNER_TEMP/body.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/body.md"
+          gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'
+      - name: Optional packs on mobile-latest (voice-en / voice-ru / lang-ru, rebuilt only when their voice_packs.json entry changes)
+        if: steps.apk.outputs.stale != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: mobile-latest
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body --jq '.body' > "$RUNNER_TEMP/body.md"
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          # shellcheck disable=SC2086
+          STALE=$(python3 -I mobile/tool/make_packs.py stale "$RUNNER_TEMP/body.md" $ASSETS)
+          if [ -z "$STALE" ]; then echo "optional packs are up to date"; exit 0; fi
+          echo "rebuilding: $STALE"
+          # shellcheck disable=SC2086
+          python3 -I mobile/tool/make_packs.py "$RUNNER_TEMP/packsrc" "$RUNNER_TEMP/packs" $STALE
+          gh release upload "$TAG" "$RUNNER_TEMP"/packs/tlwu-*.zip --clobber
+          # markers after the upload, so a failed upload is retried on the next run
+          gh release view "$TAG" --json body --jq '.body' > "$RUNNER_TEMP/body.md"
+          # shellcheck disable=SC2086
+          python3 -I mobile/tool/make_packs.py mark "$RUNNER_TEMP/body.md" $STALE
           gh release edit "$TAG" --notes-file "$RUNNER_TEMP/body.md"
           gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'
