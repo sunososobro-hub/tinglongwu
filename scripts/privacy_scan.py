@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Privacy gate (#1405): scan PR diffs, issues and comments against the private word list.
+"""Privacy gate (#1405): scan PR diffs, issues and comments for personal data and secrets.
 
-The list is the repo secret `TLWU_DENYLIST`, passed to this script as the environment variable
-TLWU_DENYLIST_TEXT (one word or phrase per line, same format and matcher as scripts/scan_denylist.py).
-Nothing here prints, logs, caches or uploads a list word: hits are reported as file:line / links, with the
+Two kinds of checks, both needing no secret to run:
+  * built-in patterns (always on): email addresses (bot / noreply / example.* addresses allowed), phone numbers
+    (TW 09xx-xxx-xxx, +886..., any +E.164), TW national IDs (letter, 1 or 2, eight digits; checksum-valid), Luhn-valid 13-19
+    digit card numbers with a card-network prefix, and API keys / tokens (ghp_ / github_pat_ / sk- / AKIA /
+    xox* / private-key blocks);
+  * optional extra words: the repo secret `TLWU_DENYLIST`, passed as the environment variable TLWU_DENYLIST_TEXT
+    (one word or phrase per line, same format and matcher as scripts/scan_denylist.py). Missing -> built-in
+    patterns only; a clean result passes.
+Nothing here prints, logs, caches or uploads a matched value: hits are reported as file:line / links, with the
 match replaced by asterisks. Stdlib only; talks to the GitHub REST/GraphQL API with GITHUB_TOKEN.
 
-  pr     --pr N [--fallback-check NAME]   added lines of PR N (API only, never checks out PR code).
-                                          Exit 1 on a hit; exit 1 "denylist secret missing" when the list is
-                                          missing (fail closed), unless --fallback-check is given: then the
-                                          result of that check run on the PR head decides (fork PRs get no
-                                          secrets under `pull_request`; `privacy-scan` runs under
-                                          `pull_request_target` and has them).
+  pr     --pr N [--fallback-check NAME]   added lines of PR N (API only, never checks out PR code). Exit 1 on a
+                                          hit. With --fallback-check and no list (fork PRs get no secrets under
+                                          `pull_request`), the built-in patterns run here and, when clean, the
+                                          result of that check run on the PR head decides (`privacy-scan` runs
+                                          under `pull_request_target` and has the list when it is set).
   event  --name EVENT --path FILE         one issues / issue_comment / pull_request_review_comment /
                                           pull_request_target event: a hit in a comment minimizes it (OFF_TOPIC),
                                           a hit in an issue/PR title or body is replaced by *** in place; the
-                                          item gets the label `privacy-hit`. No list -> does nothing (exit 0).
+                                          item gets the label `privacy-hit`.
   sweep                                   tracked files of the checkout + every issue/PR body and comment;
                                           labels hits `privacy-hit`, prints only counts and links.
 """
@@ -25,6 +30,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -37,7 +43,6 @@ import scan_denylist as sd  # noqa: E402
 
 LABEL = "privacy-hit"
 API = "https://api.github.com"
-MISSING = "privacy-scan: denylist secret missing (TLWU_DENYLIST); failing closed"
 
 
 class GitHub:
@@ -96,16 +101,120 @@ class GitHub:
         return r
 
 
-def matcher() -> sd.Matcher | None:
+# ---------------------------------------------------------------- built-in patterns (no secret needed)
+ALLOWED_EMAIL_DOMAINS = ("users.noreply.github.com", "example.com", "example.org", "example.net")
+ALLOWED_EMAILS = {"noreply@anthropic.com", "noreply@github.com", "git@github.com"}
+CARD_PREFIX = re.compile(r"4|5[1-5]|2[2-7]|3[47]|6")  # Visa, Mastercard, Amex, Discover/UnionPay/JCB-ish
+
+
+def _email_ok(m: re.Match) -> bool:
+    addr = m.group(0).lower()
+    dom = addr.rsplit("@", 1)[1]
+    return not (addr in ALLOWED_EMAILS or any(dom == d or dom.endswith("." + d) for d in ALLOWED_EMAIL_DOMAINS))
+
+
+def _luhn(digits: str) -> bool:
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2:
+            d = d * 2 - 9 if d > 4 else d * 2
+        total += d
+    return total % 10 == 0
+
+
+def _card_ok(m: re.Match) -> bool:
+    digits = re.sub(r"\D", "", m.group(0))
+    return 13 <= len(digits) <= 19 and bool(CARD_PREFIX.match(digits)) and _luhn(digits)
+
+
+_TWID_LETTER = {c: v for c, v in zip("ABCDEFGHJKLMNPQRSTUVXYWZIO", range(10, 36))}
+
+
+def _twid_ok(m: re.Match) -> bool:
+    s = m.group(0)
+    n = _TWID_LETTER[s[0]]
+    digits = [n // 10, n % 10] + [int(c) for c in s[1:]]
+    weights = [1, 9, 8, 7, 6, 5, 4, 3, 2, 1, 1]
+    return sum(d * w for d, w in zip(digits, weights)) % 10 == 0
+
+
+# (kind, regex, extra validator or None). Every match is masked; the kind is printed, never the value.
+PATTERNS: list[tuple[str, re.Pattern, object]] = [
+    ("private key", re.compile(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----"), None),
+    ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"), None),
+    ("API key", re.compile(r"\bsk-(?:[A-Za-z0-9]+-)*[A-Za-z0-9_]{20,}"), None),
+    ("AWS key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), None),
+    ("Slack token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}"), None),
+    ("email", re.compile(r"(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b"), _email_ok),
+    ("phone", re.compile(r"(?<![\w+])09\d{2}[- ]?\d{3}[- ]?\d{3}(?!\d)"), None),
+    ("phone", re.compile(r"(?<![\w+])\+[1-9]\d{0,2}[- ]?(?:\(?\d{1,4}\)?[- ]?)?\d{3,4}[- ]?\d{3,4}(?!\d)"),
+     lambda m: 8 <= len(re.sub(r"\D", "", m.group(0))) <= 15),
+    ("national ID", re.compile(r"\b[A-Z][12]\d{8}\b"), _twid_ok),
+    ("card number", re.compile(r"(?<![\w-])\d(?:[ -]?\d){12,18}(?![\w-])"), _card_ok),
+]
+
+
+class Builtin:
+    """The built-in pattern checks, with the same spans/search/sub interface as scan_denylist.Matcher."""
+
+    size = len(PATTERNS)
+
+    def hits(self, text: str) -> list[tuple[int, int, str]]:
+        out = []
+        for kind, rx, ok in PATTERNS:
+            for m in rx.finditer(text or ""):
+                if ok is None or ok(m):
+                    out.append((m.start(), m.end(), kind))
+        return out
+
+    def spans(self, text: str) -> list[tuple[int, int]]:
+        return [(a, b) for a, b, _ in self.hits(text)]
+
+
+class Combined:
+    """Built-in patterns plus the optional private word list; overlapping spans are merged before masking."""
+
+    def __init__(self, words: sd.Matcher | None = None):
+        self.builtin = Builtin()
+        self.words = words if words is not None and words.size else None
+        self.size = self.builtin.size + (self.words.size if self.words else 0)
+
+    def describe(self) -> str:
+        n = self.words.size if self.words else 0
+        return f"{self.builtin.size} built-in patterns, {n} list entries" + ("" if n else " (TLWU_DENYLIST not set)")
+
+    def spans(self, text: str) -> list[tuple[int, int]]:
+        raw = sorted(self.builtin.spans(text) + (self.words.spans(text) if self.words else []))
+        merged: list[tuple[int, int]] = []
+        for a, b in raw:
+            if merged and a <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(b, merged[-1][1]))
+            else:
+                merged.append((a, b))
+        return merged
+
+    def search(self, text: str) -> bool:
+        return bool(self.spans(text))
+
+    def sub(self, text: str, repl=None) -> str:
+        out, last = [], 0
+        for a, b in self.spans(text):
+            out.append(text[last:a])
+            out.append("*" * (b - a) if repl is None else repl)
+            last = b
+        out.append(text[last:])
+        return "".join(out)
+
+
+def matcher() -> Combined:
+    """Built-in patterns always; the TLWU_DENYLIST words on top when the secret is set."""
     words = sd.env_words()
-    if not words:
-        return None
-    m = sd.Matcher(words)
-    return m if m.size else None
+    return Combined(sd.Matcher(words) if words else None)
 
 
 # ---------------------------------------------------------------- PR diff
-def scan_pr_files(files: list[dict], rx: sd.Matcher, gh=None, head_sha: str = "") -> list[str]:
+def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "") -> list[str]:
     """Hits in the ADDED lines of a PR's `pulls/N/files` list (removed lines never count)."""
     hits: list[str] = []
     for f in files:
@@ -149,36 +258,32 @@ def wait_check(gh, sha: str, name: str, timeout_s: int = 900, every_s: int = 20,
         sleep(every_s)
 
 
-def cmd_pr(gh, pr: int, fallback_check: str | None = None, rx: sd.Matcher | None = None) -> int:
+def cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> int:
     rx = rx if rx is not None else matcher()
-    if rx is None:
-        if fallback_check:
-            sha = gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"]
-            print(f"privacy-scan: no denylist here (fork PR); waiting for the `{fallback_check}` check on {sha[:8]}")
-            ok = wait_check(gh, sha, fallback_check)
-            print(f"privacy-scan: `{fallback_check}` {'passed' if ok else 'did not pass'}")
-            return 0 if ok else 1
-        print(MISSING, file=sys.stderr)
-        return 1
     meta = gh.get(f"/repos/{gh.repo}/pulls/{pr}")
+    sha = meta["head"]["sha"]
     files = list(gh.paginate(f"/repos/{gh.repo}/pulls/{pr}/files"))
-    hits = scan_pr_files(files, rx, gh, meta["head"]["sha"])
+    hits = scan_pr_files(files, rx, gh, sha)
     for h in hits:
         print(h)
     if hits:
-        print(f"privacy-scan: {len(hits)} hit(s) in added lines (matched words masked)", file=sys.stderr)
+        print(f"privacy-scan: {len(hits)} hit(s) in added lines (matched values masked)", file=sys.stderr)
         return 1
-    print(f"privacy-scan: clean ({len(files)} file(s), {rx.size} list entries)")
+    desc = rx.describe() if hasattr(rx, "describe") else f"{rx.size} entries"
+    print(f"privacy-scan: clean ({len(files)} file(s), {desc})")
+    if fallback_check and getattr(rx, "words", True) is None:
+        # fork PR: no secret here, so the private words are checked by the `privacy-scan` run that has them
+        print(f"privacy-scan: no word list here (fork PR); waiting for the `{fallback_check}` check on {sha[:8]}")
+        ok = wait_check(gh, sha, fallback_check)
+        print(f"privacy-scan: `{fallback_check}` {'passed' if ok else 'did not pass'}")
+        return 0 if ok else 1
     return 0
 
 
 # ---------------------------------------------------------------- issues / comments
-def handle_event(gh, name: str, ev: dict, rx: sd.Matcher | None = None) -> str:
+def handle_event(gh, name: str, ev: dict, rx=None) -> str:
     """Returns a short status word; never the matched text."""
     rx = rx if rx is not None else matcher()
-    if rx is None:
-        print("privacy-scan: no denylist configured; issues/comments are not checked")
-        return "no-list"
     if name in ("issue_comment", "pull_request_review_comment"):
         c = ev.get("comment") or {}
         if not rx.search(c.get("body") or ""):
@@ -208,7 +313,7 @@ def handle_event(gh, name: str, ev: dict, rx: sd.Matcher | None = None) -> str:
 
 
 # ---------------------------------------------------------------- one-time sweep
-def sweep(gh, rx: sd.Matcher, root: Path) -> dict:
+def sweep(gh, rx, root: Path) -> dict:
     counts = {"files": 0, "items": 0, "comments": 0}
     file_hits: list[str] = []
     sd.scan_tracked(rx, file_hits, root)
@@ -263,11 +368,7 @@ def main(argv=None) -> int:
     if a.cmd == "event":
         handle_event(gh, a.name, json.loads(Path(a.path).read_text("utf-8")))
         return 0
-    rx = matcher()
-    if rx is None:
-        print(MISSING, file=sys.stderr)
-        return 1
-    sweep(gh, rx, sd.ROOT)
+    sweep(gh, matcher(), sd.ROOT)
     return 0
 
 

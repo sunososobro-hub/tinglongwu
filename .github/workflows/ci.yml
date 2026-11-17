@@ -37,11 +37,12 @@ jobs:
           else
             printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
           fi
-      - name: Privacy scan of the added lines (#1405; the private list is the repo secret TLWU_DENYLIST)
+      - name: Privacy scan of the added lines (#1405; built-in patterns, plus the optional secret TLWU_DENYLIST)
         # Mergers wait only for `test` (rules section 17), so the gate lives here too. The BASE branch's scanner is
         # run (a PR cannot edit it to pass); only while the base has no copy yet (the PR adding it) the PR's own runs.
-        # Fork PRs get no secrets under pull_request: they pass only when the `privacy-scan` check
-        # (pull_request_target, has the secret) passed on the same head. Same-repo PRs without the secret fail closed.
+        # Built-in patterns (emails, phones, IDs, card numbers, API keys) need no secret. Without TLWU_DENYLIST only
+        # they run and a clean diff passes. Fork PRs get no secrets under pull_request: after the built-in scan they
+        # also need the `privacy-scan` check (pull_request_target, has the list when set) to pass on the same head.
         if: github.event_name == 'pull_request' && github.base_ref == 'dev'
         env:
           TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}

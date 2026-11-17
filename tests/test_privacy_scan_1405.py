@@ -113,11 +113,16 @@ def test_pr_file_name_and_no_patch_file(rx, capsys):
     assert ps.cmd_pr(gh2, 7, rx=rx) == 1
 
 
-def test_pr_no_secret_fails_closed(monkeypatch, capsys):
+def test_pr_no_secret_runs_builtin_patterns_and_passes_when_clean(monkeypatch, capsys):
     monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
-    gh = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
-    assert ps.cmd_pr(gh, 7) == 1
-    assert "denylist secret missing" in capsys.readouterr().err
+    gh = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok zorblat\n"}])
+    assert ps.cmd_pr(gh, 7) == 0  # no list: private words are not known, built-in patterns are clean
+    assert "TLWU_DENYLIST not set" in capsys.readouterr().out
+    key = "ghp_" + "a1B2" * 9
+    bad = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": f"@@ -0,0 +1 @@\n+token = {key}\n"}])
+    assert ps.cmd_pr(bad, 7) == 1
+    out = capsys.readouterr().out
+    assert "a.py:1: token = " + "*" * len(key) in out and key not in out
 
 
 def test_pr_no_secret_fork_uses_privacy_scan_check(monkeypatch):
@@ -128,6 +133,10 @@ def test_pr_no_secret_fork_uses_privacy_scan_check(monkeypatch):
     assert ps.cmd_pr(bad, 7, fallback_check="privacy-scan") == 1
     none = FakeGH()
     assert ps.wait_check(none, "abc", "privacy-scan", timeout_s=0, sleep=lambda s: None) is False
+    mail = "jane.doe" + "@" + "corp-mail.tw"
+    hit = FakeGH(files=[{"filename": "b.md", "status": "added", "patch": f"@@ -0,0 +1 @@\n+mail {mail}\n"}])
+    assert ps.cmd_pr(hit, 7, fallback_check="privacy-scan") == 1  # built-in hit fails before any waiting
+    assert not any("/check-runs" in c[1] for c in hit.calls if c[0] == "get")
 
 
 # ---- issues / comments -----------------------------------------------------
@@ -156,8 +165,18 @@ def test_clean_and_no_secret_do_nothing(rx, monkeypatch):
     gh = FakeGH()
     assert ps.handle_event(gh, "issues", {"issue": {"number": 1, "title": "t", "body": "b"}}, rx=rx) == "clean"
     monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
-    assert ps.handle_event(gh, "issues", {"issue": {"number": 1, "title": "zorblat", "body": ""}}) == "no-list"
+    assert ps.handle_event(gh, "issues", {"issue": {"number": 1, "title": "zorblat", "body": ""}}) == "clean"
     assert gh.calls == []
+
+
+def test_no_secret_issue_with_builtin_hit_is_masked(monkeypatch):
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
+    gh = FakeGH()
+    phone = "09" + "12-345-678"
+    ev = {"issue": {"number": 4, "title": "call me", "body": f"my phone {phone} thanks"}}
+    assert ps.handle_event(gh, "issues", ev) == "masked"
+    assert ("patch", "/repos/o/r/issues/4", {"title": "call me", "body": "my phone *** thanks"}) in gh.calls
+    assert ("label", 4) in gh.calls
 
 
 # ---- sweep -----------------------------------------------------------------
@@ -254,3 +273,68 @@ def test_label_failure_still_minimizes_then_fails(rx):
     with pytest.raises(RuntimeError, match="labelling failed"):
         ps.handle_event(gh, "issue_comment", ev, rx=rx)
     assert ("minimize", "IC_7") in gh.calls
+
+
+# ---- built-in patterns (integrator scope change on #1407: no secret needed) ---------------------------------
+# Every fake value is assembled at run time so this file's own added lines stay clean under the PR scan.
+BUILTIN_HITS = {
+    "email": ["write to " + "jane.doe" + "@" + "corp-mail.tw" + " today", "x " + "a.b+c" + "@" + "mail.example.io"],
+    "phone TW": ["0912" + "345678", "tel 09" + "12-345-678", "09" + "12 345 678"],
+    "phone +886": ["+886 " + "912 345 678", "+886-" + "2-2345-6789"],
+    "phone E.164": ["+1 415 555 " + "2671", "call +44" + "2071838750"],
+    "TW national ID": ["id A1" + "23456789", "F2" + "21234568"],
+    "card": ["4111 1111 1111 " + "1111", "5555-5555-5555-" + "4444", "3782822463" + "10005"],
+    "GitHub token": ["ghp_" + "Ab1" * 12, "github_pat_" + "B" * 30],
+    "OpenAI-style key": ["key=sk-" + "proj-" + "x9" * 12, "sk-" + "Z" * 32],
+    "AWS key": ["AKIA" + "IOSFODNN7EXAMPLE"],
+    "Slack token": ["xox" + "b-123456789012-abcdefABCDEF"],
+    "private key": ["-----BEGIN " + "RSA PRIVATE KEY-----", "-----BEGIN " + "PRIVATE KEY-----"],
+}
+
+BUILTIN_CLEAN = [
+    "243713070+sunososobro-hub" + "@users.noreply.github.com",
+    "noreply" + "@anthropic.com", "someone" + "@example.com", "dev" + "@sub.example.org", "git" + "@github.com:o/r.git",
+    "react@18.3.1 and actions/checkout@v4.2.2", "@pytest.fixture", "sha 5ea3863a0912345678b1",
+    "2026-11-17 12:00 +08:00", "UTC+8 2026 11 17", "ts 1700000000000 ms",  # 13-digit timestamp, not a card
+    "4111 1111 1111 " + "1112",  # fails Luhn
+    "A1" + "23456788",  # fails the ID checksum
+    "phone 0812" + "345678",  # not a 09 mobile
+    "sk-short", "ghp_short", "-----BEGIN " + "PUBLIC KEY-----",
+]
+
+
+@pytest.mark.parametrize("kind,text", [(k, t) for k, ts in BUILTIN_HITS.items() for t in ts])
+def test_builtin_pattern_hits_are_masked(kind, text):
+    m = ps.Combined()
+    assert m.search(text), kind
+    masked = m.sub(text)
+    assert "*" in masked and len(masked) == len(text)
+    digits = "".join(c for c in text if c.isdigit())
+    if len(digits) >= 8:  # the number itself never survives the mask
+        assert digits not in "".join(c for c in masked if c.isdigit())
+
+
+@pytest.mark.parametrize("text", BUILTIN_CLEAN)
+def test_builtin_patterns_leave_allowed_and_ordinary_text(text):
+    assert not ps.Combined().search(text)
+
+
+def test_combined_merges_list_words_and_builtin(monkeypatch):
+    monkeypatch.setenv("TLWU_DENYLIST_TEXT", FAKE)
+    m = ps.matcher()
+    assert m.words is not None and m.size == len(ps.PATTERNS) + 2
+    mail = "zorblat" + "@" + "corp-mail.tw"  # list word inside an email: one merged span
+    assert m.sub(f"x {mail} y") == "x " + "*" * len(mail) + " y"
+    assert m.sub("qux frim and 09" + "12345678", "***") == "*** and ***"
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT")
+    assert ps.matcher().words is None and not ps.matcher().search("zorblat")
+
+
+def test_sweep_without_secret_uses_builtin(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "n.txt").write_text("ok\nkey AKIA" + "IOSFODNN7EXAMPLE\n", "utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    counts = ps.sweep(FakeGH(), ps.matcher(), tmp_path)
+    assert counts["files"] == 1
+    assert "IOSFODNN7EXAMPLE" not in capsys.readouterr().out

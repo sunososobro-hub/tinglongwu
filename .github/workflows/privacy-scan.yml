@@ -1,6 +1,7 @@
 name: privacy-scan
-# #1405: keep words from the private list (repo secret TLWU_DENYLIST) out of this public repo.
-# The list is passed only as an env var to scripts/privacy_scan.py, which never prints, caches or uploads it.
+# #1405: keep personal data and secrets out of this public repo. Built-in patterns (emails, phones, IDs, card
+# numbers, API keys) need no secret; the optional repo secret TLWU_DENYLIST adds private words. The list is passed
+# only as an env var to scripts/privacy_scan.py, which never prints, caches or uploads it or any matched value.
 # PR code is never checked out or run here: the PR job reads the diff through the API with the BASE branch's script.
 on:
   pull_request_target:
@@ -33,7 +34,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 (base branch, not the PR head)
         with:
           persist-credentials: false
-      - name: Added lines of the PR (fails on a hit; fails closed without the secret)
+      - name: Added lines of the PR (fails on a hit; built-in patterns only when TLWU_DENYLIST is not set)
         env:
           TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
           GITHUB_TOKEN: ${{ github.token }}
