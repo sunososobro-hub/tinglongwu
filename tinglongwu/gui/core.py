@@ -35,7 +35,7 @@ DEFAULTS = {
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
     "usage_asked": False,  # #680: the one-time "what do you mainly use it for?" question was answered or skipped
     "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
-    "scene": "meeting",  # 0.3.8: the 情境 row: "meeting" (listen + speak) or "video" (listen only); last choice kept
+    "scene": "video",  # 0.3.8: the 情境 row: "meeting" (listen + speak) or "video" (listen only); last choice kept
     "speaker_id": False,  # 0.3.8: 標示說話者; off = sherpa-onnx and the speaker model are never loaded
     "topics": None,  # #611: topic notes side panel; None = default (on with CUDA, off on CPU-only), True/False = chosen
     "topics_model": "",  # #611: local GGUF instruct model for --topics ("" = none: no topic notes)
@@ -231,8 +231,8 @@ SCENES = ("meeting", "video")
 
 
 def scene_of(s: dict) -> str:
-    """The saved scene, "meeting" when missing or unknown."""
-    return s.get("scene") if s.get("scene") in SCENES else "meeting"
+    """The saved scene, "video" (listen only) when missing or unknown."""
+    return s.get("scene") if s.get("scene") in SCENES else "video"
 
 
 def scene_mode(s: dict) -> str:
