@@ -149,6 +149,7 @@ jobs:
         run: |
           tlwu-setup --hymt --models-dir "$TLWU_MODELS"
           python scripts/bench/fetch_data.py --out "$BENCH" --fleurs ""
+          if [ "${{ matrix.variant }}" = "q8" ]; then python scripts/bench/flores_cpu.py --fetch-q8 "$TLWU_MODELS"; fi
       - name: Translate (CPU, Hy-MT2 temperature from the matrix; 0 = greedy, repeatable)
         run: |
           for TGT in $(python3 -c 'import json, os; print(" ".join(json.loads(os.environ["TGTS"])))'); do

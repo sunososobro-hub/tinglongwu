@@ -145,3 +145,16 @@ def test_targets_list():
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "bench" / "flores_cpu.py"), "--tgts", "eng_Latn"],
                        capture_output=True, text=True, check=True)
     assert json.loads(r.stdout) == ["eng_Latn"]
+
+
+def test_q8_needs_the_downloaded_file_and_repo_matches_the_app(tmp_path):
+    m = _load()
+    from tinglongwu.hymt import HYMT_REPO
+
+    assert m.HYMT_REPO == HYMT_REPO
+    with pytest.raises(SystemExit, match="--fetch-q8"):
+        m.apply_variant("q8", types.SimpleNamespace(path=None), tmp_path)
+    m.q8_path(tmp_path).parent.mkdir(parents=True)
+    m.q8_path(tmp_path).write_bytes(b"gguf")
+    tr = m.apply_variant("q8", types.SimpleNamespace(path=None), tmp_path)
+    assert tr.path == tmp_path / "hymt2-1.8b-q8" / "Hy-MT2-1.8B-Q8_0.gguf"

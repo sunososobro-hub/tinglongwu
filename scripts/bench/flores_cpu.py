@@ -62,6 +62,7 @@ VARIANTS = {"card": "model-card prompt, shipped Q4_K_M",
             "src": "prompt names the source language, Q4_K_M",
             "q8": "model-card prompt, Q8_0 GGUF (upper bound of the Q4_K_M quantization loss)"}
 Q8_FILE = "Hy-MT2-1.8B-Q8_0.gguf"
+HYMT_REPO = "tencent/Hy-MT2-1.8B-GGUF"  # = tinglongwu.hymt.HYMT_REPO (not imported: see fetch_q8)
 
 
 def read_lines(path: Path) -> list[str]:
@@ -349,17 +350,26 @@ def cpu_name() -> str:
     return platform.processor() or platform.machine()
 
 
+def q8_path(models_dir: Path) -> Path:
+    return Path(models_dir) / "hymt2-1.8b-q8" / Q8_FILE
+
+
 def fetch_q8(models_dir: Path) -> Path:
-    """#1351 variant `q8`: the published Q8_0 GGUF of the same model (bench only, never shipped)."""
+    """#1351 variant `q8`: download the published Q8_0 GGUF of the same model (bench only, never shipped). Runs in
+    the workflow's download step, before anything imports tinglongwu (whose offline guard sets HF_HUB_OFFLINE)."""
     from huggingface_hub import hf_hub_download
 
-    sys.path.insert(0, str(REPO))
-    from tinglongwu.hymt import HYMT_REPO
-
-    return Path(hf_hub_download(HYMT_REPO, Q8_FILE, local_dir=str(Path(models_dir) / "hymt2-1.8b-q8")))
+    return Path(hf_hub_download(HYMT_REPO, Q8_FILE, local_dir=str(q8_path(models_dir).parent)))
 
 
-def apply_variant(variant: str, tr, models_dir: Path, fetch=fetch_q8):
+def local_q8(models_dir: Path) -> Path:
+    p = q8_path(models_dir)
+    if not p.is_file():
+        raise SystemExit(f"flores_cpu: {p} is missing; run `flores_cpu.py --fetch-q8 MODELS` first")
+    return p
+
+
+def apply_variant(variant: str, tr, models_dir: Path, fetch=local_q8):
     """#1351: set up translator `tr` (not loaded yet) for an experiment variant; `card` changes nothing."""
     if variant == "src":
         from tinglongwu import hymt
@@ -455,6 +465,9 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if sys.argv[1:2] == ["--variants"]:  # eval-flores.yml plan job: JSON list for `strategy.matrix.variant` (#1351)
         print(json.dumps(variants(sys.argv[2] if len(sys.argv) > 2 else "")))
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--fetch-q8"]:  # eval-flores.yml download step, variant q8 (#1351)
+        print(fetch_q8(Path(sys.argv[2])))
         raise SystemExit(0)
     if sys.argv[1:2] == ["--tgts"]:  # eval-flores.yml plan job: JSON list of targets (#1351)
         print(json.dumps(targets(sys.argv[2] if len(sys.argv) > 2 else "")))
