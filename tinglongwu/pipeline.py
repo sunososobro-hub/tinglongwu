@@ -42,7 +42,21 @@ BACKLOG_POLL = 0.5  # #1259: how often the ASR backlog is re-measured
 # queued, not transcribing), or at most MT_HOLD_MAX per line, so translations still trickle out on a CPU that never
 # catches up. A line already being translated is not interrupted.
 MT_YIELD_S = 1.0
-MT_HOLD_MAX = 30.0
+# #1369: was 30.0. On a saturated CPU ASR never catches up, so every line waited the whole hold: the owner's field test
+# (busy 4-core laptop + screen recorder) showed translations ~33 s behind the video, growing. The hold is now a small
+# part of the lag budget below.
+MT_HOLD_MAX = 2.0
+# #1369 catch-up policy (live only): subtitles stay within about 8 s of the present (issue acceptance) and the gap
+# does not grow. No audio is dropped (#1263).
+# - ASR: once the oldest waiting segment has waited more than ASR_JOIN_S, the waiting segments are transcribed in one
+#   call (up to ASR_JOIN_MAX_S of audio; Whisper's window is 30 s). faster-whisper pads every call to a 30 s window,
+#   so one 12 s call costs about what one 3 s call does: four calls' fixed cost turns into one.
+# - MT: a line that has waited more than MT_STALE_S while newer lines wait behind it is written with its source text
+#   and "[skipped to catch up]" instead of a translation (the transcript keeps the source).
+# on_catchup(lines) reports the lines left untranslated; the status line says so in plain words.
+ASR_JOIN_S = 3.0
+ASR_JOIN_MAX_S = 28.0
+MT_STALE_S = 5.0
 MT_HOLD_POLL = 0.05
 DUP_WINDOW = 10.0  # seconds: an identical final line this soon after the same one is dropped (Whisper repeats on silence)
 
@@ -84,7 +98,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         merger: SentenceMerger | None = None, audio_clock: bool = False, draft=None,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
         on_work=None, on_record=None, recorder=None,  # recorder: #239 --record (record.Recorder)
-        seg_gate=None, route=None, on_backlog=None, on_mt_wait=None, mt_yield: bool | None = None) -> None:
+        seg_gate=None, route=None, on_backlog=None, on_mt_wait=None, mt_yield: bool | None = None,
+        on_catchup=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -111,6 +126,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     (source lines still show at once; translations follow when ASR catches up, at most MT_HOLD_MAX s late per line).
     on_mt_wait(lines) (#1253): number of lines whose translation is held for ASR; called when it changes, 0 when MT
     resumes. on_record gets the held seconds as "mt_hold".
+    on_catchup(lines) (#1369, live clock only): lines written untranslated so far to keep up (see MT_STALE_S);
+    called each time it grows.
     """
     tgt0 = tgt
     # #1263: live capture is never held back by ASR. A bounded queue blocked the capture reader while ASR lagged and
@@ -284,6 +301,14 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         say(f"latency: hold mt {held * 1000:.0f} ms for ASR ({mtq.qsize()} more line(s) waiting)")
         return held
 
+    skipped = [0]  # #1369: lines left untranslated to catch up
+
+    def stale(item) -> bool:
+        """#1369: this line is too old to be worth translating now, and newer lines wait behind it."""
+        lang = item[1]
+        return (yield_on and not asr_over.is_set() and mtq.qsize() > 0
+                and time.monotonic() - item[3] > MT_STALE_S and lang != (route(lang) if route is not None else tgt0))
+
     def mt_worker() -> None:
         while True:
             try:
@@ -301,6 +326,13 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     return  # Stop during the hold: start no translation or output after run() returned
                 t_emit = time.monotonic()
                 clip[0] = item[9]  # #239: audio of this line (only the MT thread reads it)
+                if stale(item):  # #1369: catch up; the source text stays in the transcript
+                    tgt = route(item[1]) if route is not None else tgt0
+                    write(Result(item[1], item[0], None, _msg("mt_skipped"), tgt, speaker=item[8]), item[2])
+                    skipped[0] += 1
+                    if on_catchup is not None:
+                        on_catchup(skipped[0])
+                    continue
                 if draft is not None:
                     draft.last_first_draft = None  # #511: final_written() fills it while emit() writes the line
                 emit(*item[:4], who=item[8])
@@ -359,6 +391,27 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             draft.asr_behind = lambda: asr_lag() >= MT_YIELD_S
         draft.start(stop)
     carry = []  # #1252: the undecoded tail of a budget-cut segment, transcribed before the next queued segment
+    back = []  # #1369: items taken from q by catch_up() and not used yet, in order (before anything still in q)
+
+    def catch_up(item):
+        """#1369: the oldest waiting segment waited more than ASR_JOIN_S: join it with the segments queued behind it
+        (up to ASR_JOIN_MAX_S of audio) into one segment item. Nothing is dropped; the rest stays queued in order."""
+        joined, total = [item], len(item[0]) / SAMPLE_RATE
+        while True:
+            try:
+                nxt = back.pop(0) if back else q.get_nowait()
+            except queue.Empty:
+                break
+            if type(nxt) is not tuple or total + len(nxt[0]) / SAMPLE_RATE > ASR_JOIN_MAX_S:
+                back.insert(0, nxt)  # _Quiet / _DONE / an error, or no room: handled next, in order
+                break
+            joined.append(nxt)
+            total += len(nxt[0]) / SAMPLE_RATE
+        if len(joined) == 1:
+            return item
+        say(f"latency: catch-up: {len(joined)} segments ({total:.1f} s) in one ASR call")
+        return (np.concatenate([j[0] for j in joined]),) + tuple(joined[-1][1:])
+
     try:
         while True:
             if stop_event is not None and stop_event.is_set():
@@ -369,7 +422,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if has_deadline:
                 timeout = min(POLL, max(0.0, merger.deadline - time.monotonic()))
             try:
-                item = carry.pop() if carry else q.get(timeout=timeout)
+                from_carry = bool(carry)
+                item = carry.pop() if carry else (back.pop(0) if back else q.get(timeout=timeout))
             except queue.Empty:
                 if has_deadline:
                     emit_units(merger.due(time.monotonic()))
@@ -382,6 +436,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 if translator is not None:
                     emit_units(merger.quiet(item.seconds, item.stamp if audio_clock else time.monotonic()))
                 continue
+            if not audio_clock and not from_carry and time.monotonic() - item[5][1] > ASR_JOIN_S:
+                item = catch_up(item)  # #1369: waited since its cut
             seg, stamp, last_ep[0], forced_cut, pause, (t_eos, t_cut) = item
             with bl_lock:
                 queued_s[0] = max(0.0, queued_s[0] - len(seg) / SAMPLE_RATE)

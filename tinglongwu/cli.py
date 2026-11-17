@@ -796,7 +796,9 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
                                                   lambda: active_mt_path(translator)),
             on_record=on_record, recorder=recorder, seg_gate=seg_gate, route=f2f_route,
             on_backlog=backlog_line or (lambda n: print(backlog_text(n) or "tlwu: ASR caught up", file=sys.stderr, flush=True)),
-            on_mt_wait=mt_wait_line or (lambda n: print(f"tlwu: {mt_wait_text(n) or 'MT resumed'}", file=sys.stderr, flush=True)))
+            on_mt_wait=mt_wait_line or (lambda n: print(f"tlwu: {mt_wait_text(n) or 'MT resumed'}", file=sys.stderr, flush=True)),
+            on_catchup=lambda n: (notice or (lambda m: print(f"tlwu: {m}", file=sys.stderr, flush=True)))(
+                _t("catchup_note", lines=n)))  # #1369
     except KeyboardInterrupt:
         interrupted = True
         raise
