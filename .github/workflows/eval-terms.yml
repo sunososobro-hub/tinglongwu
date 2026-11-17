@@ -11,7 +11,9 @@ on:
     paths:
       - .github/workflows/eval-terms.yml
       - scripts/bench/term_eval.py
+      - scripts/bench/acronym_eval.py
       - tinglongwu/glossary.py
+      - tinglongwu/data/hotwords-ru.txt
   workflow_dispatch:
     inputs:
       whisper:
@@ -71,6 +73,14 @@ jobs:
           python -m venv "$HOME/tts"
           "$HOME/tts/bin/pip" install --only-binary=:all: piper-tts numpy
           "$HOME/tts/bin/python" scripts/bench/term_eval.py synth --voice "$TLWU_MODELS/piper-ru_RU-dmitri-medium" --data "$DATA"
+      - name: "#1397: speak the acronym set, ASR with and without the default ru hotwords (CPU)"
+        continue-on-error: true   # never blocks the #1257 term eval below
+        shell: bash   # -o pipefail: a failed report fails the step, not hidden by tee
+        run: |
+          "$HOME/tts/bin/python" scripts/bench/acronym_eval.py synth --voice "$TLWU_MODELS/piper-ru_RU-dmitri-medium" --data "$HOME/acronyms"
+          python scripts/bench/acronym_eval.py run --data "$HOME/acronyms" --out out/acronyms --whisper "$WHISPER"
+          python scripts/bench/acronym_eval.py report out/acronyms | tee out/acronyms/report.md
+          { echo "## Default ru hotwords (#1397)"; cat out/acronyms/report.md; echo; } >> "$GITHUB_STEP_SUMMARY"
       - name: ASR + MT with and without the glossary (CPU)
         run: python scripts/bench/term_eval.py run --data "$DATA" --out out --whisper "$WHISPER"
       - name: Report

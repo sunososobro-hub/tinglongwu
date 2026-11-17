@@ -14,7 +14,7 @@ Fully offline; reads local files only.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from collections.abc import Callable
 
@@ -49,6 +49,7 @@ class Entry:
     target: str | None = None
     wrong: list[str] = field(default_factory=list)  # known wrong renderings of `target` (fixed after MT)
     asr_hint: bool = True  # False for the built-in list (#256): MT prompt / output only, never a Whisper hotword
+    mt_hint: bool = True  # False for the default hotwords (#1397): Whisper hint only, never in the MT prompt
     whole_short: bool = False  # #1396: stems of <= SHORT_LATIN chars match whole words only (прод must not fire on продолжение)
 
     @property
@@ -95,7 +96,7 @@ class Glossary:
 
     def relevant(self, *texts: str) -> list[Entry]:
         words = [_norm(w) for t in texts for w in _WORD.findall(t)]
-        return [e for e in self.entries if e.matches(words)][:MAX_PROMPT_ENTRIES]
+        return [e for e in self.entries if e.mt_hint and e.matches(words)][:MAX_PROMPT_ENTRIES]
 
     def prompt_block(self, *texts: str) -> str:
         """Short instruction for the LLM, only with entries that occur in `texts`; '' if none."""
@@ -189,6 +190,60 @@ def load_builtin(lang: str | None = None) -> Glossary:
     for e in g.entries:
         e.asr_hint = False
     return g
+
+
+DEFAULT_HOTWORDS = {"ru": Path(__file__).parent / "data" / "hotwords-ru.txt"}  # #1397, per source language
+# Languages whose default list is on without the env switch. Empty until the #1397 eval (scripts/bench/term_eval.py
+# --set acronyms) shows better acronym accuracy with no extra false insertions and ru WER within 0.5 points.
+DEFAULT_HOTWORDS_SHIPPED: frozenset[str] = frozenset()
+DEFAULT_HOTWORDS_ENV = "TLWU_DEFAULT_HOTWORDS"  # "1": on for every language that has a list; "0": off
+
+
+def default_hotwords_on(lang: str | None, env: dict | None = None) -> bool:
+    """The default hotword list applies only to a fixed source language that has one (not "auto": the list would
+    bias every other language towards Latin acronyms)."""
+    import os
+
+    code = (lang or "").lower().split("-")[0]
+    if code not in DEFAULT_HOTWORDS:
+        return False
+    sw = (os.environ if env is None else env).get(DEFAULT_HOTWORDS_ENV, "")
+    if sw in ("0", "1"):
+        return sw == "1"
+    return code in DEFAULT_HOTWORDS_SHIPPED
+
+
+def load_default_hotwords(lang: str) -> Glossary:
+    """The default hotwords of `lang` (#1397) as hint entries: Whisper hotwords only (mt_hint False)."""
+    g = load(DEFAULT_HOTWORDS[lang.lower().split("-")[0]])
+    for e in g.entries:
+        e.asr_hint, e.mt_hint = True, False
+    return g
+
+
+def add_hotwords(g: Glossary | None, defaults: Glossary) -> Glossary:
+    """Append default hotwords after the existing entries (#1397). An entry that already has the spelling wins: a
+    user entry stays as it is; a built-in MT entry (asr_hint False) keeps its translation and becomes a hotword too."""
+    entries = list(g.entries) if g else []
+    have = {}
+    for i, e in enumerate(entries):
+        for s in e.sources:
+            have.setdefault(_norm(s), i)
+    for d in defaults.entries:
+        hit = next((have[_norm(s)] for s in d.sources if _norm(s) in have), None)
+        if hit is None:
+            entries.append(d)
+        elif not entries[hit].asr_hint:
+            entries[hit] = replace(entries[hit], asr_hint=True)
+    return Glossary(entries)
+
+
+def with_default_hotwords(g: Glossary | None, lang: str | None, face_to_face=None, env: dict | None = None):
+    """The CLI's glossary plus the default hotwords of the source language when they are on (#1397); face-to-face
+    switches the source language per utterance, so it gets none."""
+    if face_to_face or not default_hotwords_on(lang, env):
+        return g
+    return add_hotwords(g, load_default_hotwords(lang))
 
 
 def merge(user: Glossary | None, base: Glossary) -> Glossary:

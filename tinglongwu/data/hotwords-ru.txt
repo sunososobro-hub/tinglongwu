@@ -1,0 +1,42 @@
+# Default Whisper hotwords for Russian speech (#1397): generic, widely used Latin-letter acronyms that Whisper
+# otherwise hears as Russian words or as another acronym. ASR hint only (never in the MT prompt); a user glossary adds
+# to it and wins. No vendor, product or project names. All terms together stay under glossary.HOTWORDS_MAX_CHARS.
+# Used only once glossary.DEFAULT_HOTWORDS_SHIPPED lists "ru" (after the #1397 eval) or with TLWU_DEFAULT_HOTWORDS=1.
+API
+URL
+SQL
+JSON
+HTTP
+HTTPS
+XML
+HTML
+CSS
+CPU
+GPU
+RAM
+SSD
+USB
+PDF
+DNS
+VPN
+SSH
+IP
+TCP
+UDP
+SDK
+IDE
+CLI
+LLM
+ML
+QA
+CI
+CD
+PR
+UI
+UX
+ID
+CRM
+ERP
+KPI
+FAQ
+SMS

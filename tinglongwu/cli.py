@@ -623,6 +623,12 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
 
         glossary = merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
+    from .glossary import with_default_hotwords
+
+    g2 = with_default_hotwords(glossary, getattr(a, "lang", None), getattr(a, "face_to_face", None))
+    if g2 is not glossary:  # #1397: e.g. Russian acronyms as Whisper hotwords
+        glossary = g2
+        print(f"tlwu: default {a.lang} hotwords on ({glossary.hotwords()})", file=sys.stderr)
     prog.stage("speech model")
     cands = None
     f2f_route = None
