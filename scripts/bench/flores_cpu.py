@@ -15,6 +15,7 @@ Dev tool (not part of the offline runtime). Runs on a cloud CPU runner (`.github
   python scripts/bench/flores_cpu.py --variants card,src,q8        # JSON list of variants for the workflow (#1351)
   python scripts/bench/flores_cpu.py --tgts zho_Hant,eng_Latn      # JSON list of targets for the workflow (#1351)
   python scripts/bench/flores_cpu.py --breakdown OUT [N]           # error categories of the N lowest-COMET lines (#1351)
+  python scripts/bench/flores_cpu.py --worst OUT [N] FILE.json     # N lowest-COMET sentences per direction -> JSON (#1346)
 
 Writes OUT/<src>.jsonl (one line per sentence: i, src, ref, hyp, sec, chrf, comet) and OUT/<src>.summary.json
 (n, chrF, COMET, median/p90 s per sentence, CPU, Hy-MT2 temperature, lines containing U+FFFD). chrF = sacrebleu CHRF corpus score, COMET = Unbabel/wmt22-comet-da
@@ -320,6 +321,21 @@ def breakdown_dir(out_dir: str, n: int = 40) -> str:
     return "\n".join(parts)
 
 
+def worst_dir(dirs: list[str], n: int = 20, run: dict | None = None) -> dict:
+    """#1346: the `n` lowest-COMET sentences (src, ref, hyp, COMET, chrF) of every direction found under `dirs`
+    (one *.jsonl + *.summary.json per direction), as {"run": {...}, "directions": {pair: [row, ...]}}."""
+    dirs_out: dict[str, list[dict]] = {}
+    for d in dirs:
+        for p in sorted(Path(d).rglob("*.jsonl")):
+            rows = [json.loads(x) for x in p.read_text("utf-8").splitlines() if x.strip()]
+            rows = [r for r in rows if r.get("comet") is not None]
+            summ = p.parent / (p.stem + ".summary.json")
+            pair = json.loads(summ.read_text("utf-8")).get("pair", p.stem) if summ.exists() else p.stem
+            worst = sorted(rows, key=lambda r: (r["comet"], r["i"]))[:n]
+            dirs_out[pair] = [{k: r.get(k) for k in ("i", "src", "ref", "hyp", "comet", "chrf")} for r in worst]
+    return {"run": run or {}, "directions": dict(sorted(dirs_out.items()))}
+
+
 def temperature() -> float:
     """The Hy-MT2 temperature a translator built now would use (tinglongwu.hymt.sampling(), env override)."""
     sys.path.insert(0, str(REPO))
@@ -491,6 +507,13 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if sys.argv[1:2] == ["--breakdown"]:  # eval-flores.yml: error breakdown of the lowest-COMET lines (#1351)
         print(breakdown_dir(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 40), end="")
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--worst"]:  # eval-flores.yml table job: worst sentences per direction (#1346)
+        _n = int(sys.argv[3]) if len(sys.argv) > 4 else 20
+        _res = worst_dir([sys.argv[2]], _n, {"run_id": os.environ.get("GITHUB_RUN_ID", ""),
+                                            "commit": os.environ.get("GITHUB_SHA", "")})
+        Path(sys.argv[-1]).write_text(json.dumps(_res, ensure_ascii=False, indent=1) + "\n", "utf-8")
+        print(f"{len(_res['directions'])} directions x up to {_n} sentences")
         raise SystemExit(0)
     if sys.argv[1:2] == ["--temps"]:  # eval-flores.yml plan job: JSON list for `strategy.matrix.temp` (#107)
         print(json.dumps(temps(sys.argv[2] if len(sys.argv) > 2 else "")))

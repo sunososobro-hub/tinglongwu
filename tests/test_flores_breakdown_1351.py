@@ -183,3 +183,27 @@ def test_resume_refuses_another_variant(tmp_path):
     with pytest.raises(SystemExit, match="variant src, not q8"):
         m.translate_all([("a", "b")], tr, "ru", jsonl, variant="q8")
     assert len(m.translate_all([("a", "b")], tr, "ru", jsonl, variant="src")) == 1  # same variant resumes
+
+
+def test_worst_dir_keeps_lowest_comet_per_direction_1346(tmp_path):
+    fc = _load()
+    for pair, base in (("rus_Cyrl-eng_Latn", 0.5), ("rus_Cyrl-zho_Hans", 0.6)):
+        rows = [dict(row(i, f"s{i}", f"r{i}", f"h{i}", round(base + i / 100, 3)), chrf=1.0) for i in range(30)]
+        (tmp_path / f"{pair}.jsonl").write_text("\n".join(json.dumps(r) for r in rows), "utf-8")
+        (tmp_path / f"{pair}.summary.json").write_text(json.dumps({"pair": pair}), "utf-8")
+    res = fc.worst_dir([str(tmp_path)], 20, {"run_id": "1"})
+    assert res["run"] == {"run_id": "1"}
+    assert set(res["directions"]) == {"rus_Cyrl-eng_Latn", "rus_Cyrl-zho_Hans"}
+    for rows in res["directions"].values():
+        assert len(rows) == 20
+        assert [r["i"] for r in rows] == list(range(20))
+        assert set(rows[0]) == {"i", "src", "ref", "hyp", "comet", "chrf"}
+
+
+def test_worst_cli_writes_json_1346(tmp_path):
+    (tmp_path / "a.jsonl").write_text(json.dumps(row(0, "s", "r", "h", 0.1)), "utf-8")
+    out = tmp_path / "w.json"
+    r = subprocess.run([sys.executable, str(ROOT / "scripts/bench/flores_cpu.py"), "--worst", str(tmp_path), "5", str(out)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert len(json.loads(out.read_text("utf-8"))["directions"]["a"]) == 1
