@@ -91,8 +91,11 @@ def summary_text(os_name, doc, install_mb=None):
     text = ("### ttfs (%s)\n\nttfs_seconds: %s\nexcl_download_seconds: %s (budget %d s, %d Mbps baseline)\n"
             % (os_name, num("ttfs_seconds"), num("excl_download_seconds"), ttfs.TTFS_BUDGET_S, ttfs.BASELINE_MBPS))
     if doc.get("first_source_subtitle_baseline_seconds") is not None:   # #1360
-        text += ("first_source_subtitle_seconds: %s (Hy-MT2 deferred; %s at the %d Mbps baseline, only Whisper downloaded, "
-                 "budget %d s)\n" % (num("first_source_subtitle_seconds"), num("first_source_subtitle_baseline_seconds"),
+        # #1416: the windows setup step fetches Hy-MT2 before the timer, so its raw value includes that download
+        raw = "includes the Hy-MT2 fetch in setup" if os_name == "windows" else "Hy-MT2 deferred"
+        text += ("first_source_subtitle_seconds: %s (%s; %s at the %d Mbps baseline, only Whisper downloaded, "
+                 "budget %d s)\n" % (num("first_source_subtitle_seconds"), raw,
+                                     num("first_source_subtitle_baseline_seconds"),
                                      ttfs.BASELINE_MBPS, ttfs.TTFS_BUDGET_S))
     if install_mb is not None:
         text += "install_size_mb: %.1f\n" % install_mb

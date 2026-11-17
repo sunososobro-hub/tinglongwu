@@ -149,3 +149,12 @@ def test_windows_setup_fetches_hymt_the_wizard_defers_1416():
     assert fetch == (r'if exist "C:\t\tlwu\tlwu.exe" ("C:\t\tlwu\tlwu.exe" setup --default-listen) else '
                      r'("C:\t\tlwu\.venv\Scripts\tlwu-setup.exe" --default-listen)')
     assert "--defer-mt" not in setup
+
+
+def test_windows_summary_does_not_call_raw_source_time_deferred_1416():
+    """#1416: on windows the raw first-source time includes the Hy-MT2 fetch in setup, so it is not labelled deferred."""
+    m = _load()
+    doc = {"first_source_subtitle_seconds": 90.0, "first_source_subtitle_baseline_seconds": 40.0}
+    win, lin = m.summary_text("windows", doc), m.summary_text("linux", doc)
+    assert "includes the Hy-MT2 fetch in setup" in win and "Hy-MT2 deferred" not in win
+    assert "Hy-MT2 deferred" in lin
