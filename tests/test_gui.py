@@ -807,5 +807,8 @@ def test_hymt7b_missing_model_message_1351(tmp_path, monkeypatch):
     assert core.engine_model_missing(dict(s, quality="auto"), tmp_path) is None  # auto never runs 7B
     assert core.engine_model_missing(dict(s, engine="hymt"), tmp_path) is None  # 1.8B: --mt-pending handles it
     (tmp_path / "hymt2-7b").mkdir()
+    (tmp_path / "hymt2-7b" / "LICENSE.txt").write_text("Apache-2.0")
+    assert core.engine_model_missing(s, tmp_path) == msg  # interrupted download: folder but no GGUF
+    (tmp_path / "hymt2-7b" / "Hy-MT2-7B-Q4_K_M.gguf").write_bytes(b"x")
     assert core.engine_model_missing(s, tmp_path) is None  # installed: starts as usual
     assert core.gui_error_text(SystemExit("tlwu: run `tlwu-setup --hymt7b`")) == i18n.t("gui_error_generic")
