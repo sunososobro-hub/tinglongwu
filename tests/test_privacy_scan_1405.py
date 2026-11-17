@@ -191,3 +191,54 @@ def test_local_cli_empty_env_list_is_exit_2(monkeypatch):
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "scan_denylist.py"), "--no-staged", "--no-tracked"],
                        cwd=ROOT, capture_output=True, text=True, env=env)
     assert r.returncode == 2  # blank list text falls back to the file, which is missing
+
+
+# ---- review follow-ups (CodeRabbit on #1407) ---------------------------------
+def test_half_width_voiced_and_decomposed_accents():
+    m = sd.Matcher(["ガゾル", "zélbo"])  # made-up words
+    assert m.search("x ｶﾞｿﾞﾙ y")  # half-width kana with separate voiced marks
+    assert m.sub("x ｶﾞｿﾞﾙ y") == "x ***** y"  # the marks are masked too
+    assert m.search("ze\u0301lbo") and sd.Matcher(["ze\u0301lbo"]).search("zélbo")
+    assert m.sub("ze\u0301lbo!") == "******!"
+
+
+def test_added_line_starting_with_plus_plus_is_scanned(rx):
+    patch = "@@ -0,0 +1,2 @@\n+++zorblat\n+ok\n"
+    assert list(sd.added_lines(patch)) == [(1, "++zorblat"), (2, "ok")]
+    diff = ("diff --git a/f.txt b/f.txt\n--- /dev/null\n+++ b/f.txt\n@@ -0,0 +1,2 @@\n"
+            "+++ b/zorblat\n+x\n")
+    assert list(sd._split_files(diff)) == [("f.txt", "@@ -0,0 +1,2 @@\n+++ b/zorblat\n+x\n")]
+
+
+def test_line_separator_does_not_shift_lines():
+    patch = "@@ -0,0 +1,2 @@\n+a\u2028b\n+c\n"
+    assert list(sd.added_lines(patch)) == [(1, "a\u2028b"), (2, "c")]
+
+
+def test_minimize_failure_is_an_error_and_label_comes_first(rx):
+    class Failing(FakeGH):
+        def minimize(self, node_id):
+            raise RuntimeError("privacy-scan: minimizeComment failed; the comment is still visible")
+
+    gh = Failing()
+    ev = {"comment": {"body": "zorblat", "node_id": "IC_9"}, "issue": {"number": 6}}
+    with pytest.raises(RuntimeError):
+        ps.handle_event(gh, "issue_comment", ev, rx=rx)
+    assert ("label", 6) in gh.calls
+
+
+def test_real_client_checks_graphql_result(monkeypatch):
+    g = ps.GitHub("o/r", token="t")
+    monkeypatch.setattr(g, "_call", lambda *a, **k: ({"errors": [{"message": "no"}], "data": None}, ""))
+    with pytest.raises(RuntimeError, match="still visible"):
+        g.minimize("IC_1")
+    monkeypatch.setattr(g, "_call", lambda *a, **k: (
+        {"data": {"minimizeComment": {"minimizedComment": {"isMinimized": True}}}}, ""))
+    assert g.minimize("IC_1")
+
+
+def test_no_patch_file_name_is_url_quoted(rx):
+    gh = FakeGH(files=[{"filename": "a dir/x#1?.bin", "status": "added"}], raw=b"zorblat\n")
+    assert ps.cmd_pr(gh, 7, rx=rx) == 1
+    raw = next(c[1] for c in gh.calls if c[0] == "raw")
+    assert raw == "/repos/o/r/contents/a%20dir/x%231%3F.bin?ref=abc1234567"

@@ -22,11 +22,13 @@ match replaced by asterisks. Stdlib only; talks to the GitHub REST/GraphQL API w
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -87,7 +89,11 @@ class GitHub:
     def minimize(self, node_id: str):
         q = ("mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OFF_TOPIC})"
              "{minimizedComment{isMinimized}}}")
-        return self._call("POST", "/graphql", {"query": q, "variables": {"id": node_id}})[0]
+        r = self._call("POST", "/graphql", {"query": q, "variables": {"id": node_id}})[0] or {}
+        mc = ((r.get("data") or {}).get("minimizeComment") or {}).get("minimizedComment") or {}
+        if r.get("errors") or not mc.get("isMinimized"):  # GraphQL errors come back with HTTP 200
+            raise RuntimeError("privacy-scan: minimizeComment failed; the comment is still visible")
+        return r
 
 
 def matcher() -> sd.Matcher | None:
@@ -114,8 +120,8 @@ def scan_pr_files(files: list[dict], rx: sd.Matcher, gh=None, head_sha: str = ""
         elif gh is not None and head_sha:
             # no patch: binary, or too large for the API diff -> read the whole new file (data only, never run)
             try:
-                data = gh.get_raw(f"/repos/{gh.repo}/contents/{name}?ref={head_sha}")
-            except (urllib.error.URLError, OSError):
+                data = gh.get_raw(f"/repos/{gh.repo}/contents/{urllib.parse.quote(name, safe='/')}?ref={head_sha}")
+            except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException):
                 hits.append(f"{rx.sub(name)}:0: (unreadable, no diff from the API; check it by hand)")
                 continue
             if b"\0" in data[:8192]:
@@ -177,9 +183,9 @@ def handle_event(gh, name: str, ev: dict, rx: sd.Matcher | None = None) -> str:
         c = ev.get("comment") or {}
         if not rx.search(c.get("body") or ""):
             return "clean"
-        gh.minimize(c["node_id"])
         item = ev.get("issue") or ev.get("pull_request") or {}
-        gh.add_label(item["number"])
+        gh.add_label(item["number"])  # first, so the item is flagged even if hiding fails
+        gh.minimize(c["node_id"])  # raises (job red) unless GitHub confirms the comment is hidden
         print(f"privacy-scan: hidden comment {c.get('html_url', '')}")
         return "minimized"
     if name in ("issues", "pull_request_target", "pull_request"):

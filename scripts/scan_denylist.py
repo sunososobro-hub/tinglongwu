@@ -56,6 +56,25 @@ def _fold(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKC", s).casefold() if not c.isspace())
 
 
+_JOINERS = {"\uff9e", "\uff9f", "\u3099", "\u309a"}  # (half-width) voiced / semi-voiced marks
+
+
+def _joins(c: str) -> bool:
+    """True when c composes with the character before it (so NFKC must see both together)."""
+    return unicodedata.combining(c) > 0 or c in _JOINERS or "\u1160" <= c <= "\u11ff"
+
+
+def _groups(text: str):
+    """(start, end) of each starter plus the combining / voiced marks / Hangul jamo that follow it."""
+    i, n = 0, len(text)
+    while i < n:
+        j = i + 1
+        while j < n and _joins(text[j]):
+            j += 1
+        yield i, j
+        i = j
+
+
 class Matcher:
     """Finds list words in text; the spans it returns are in the ORIGINAL text, so callers can mask them."""
 
@@ -68,13 +87,15 @@ class Matcher:
         if self._rx is None or not text:
             return []
         folded: list[str] = []
-        where: list[int] = []  # folded char -> index of the original char it came from
-        for i, c in enumerate(text):
-            for f in unicodedata.normalize("NFKC", c).casefold():
+        start: list[int] = []  # folded char -> start of the original group it came from
+        end: list[int] = []  # ... and the end of that group (combining marks stay inside a masked span)
+        for a, b in _groups(text):
+            for f in unicodedata.normalize("NFKC", text[a:b]).casefold():
                 if not f.isspace():
                     folded.append(f)
-                    where.append(i)
-        return [(where[m.start()], where[m.end() - 1] + 1) for m in self._rx.finditer("".join(folded))]
+                    start.append(a)
+                    end.append(b)
+        return [(start[m.start()], end[m.end() - 1]) for m in self._rx.finditer("".join(folded))]
 
     def search(self, text: str) -> bool:
         return bool(self.spans(text))
@@ -99,14 +120,18 @@ def mask_line(line: str, rx: Matcher) -> str:
 
 
 def added_lines(patch: str):
-    """(new line number, text) of each added line of a unified diff hunk list (git diff -U0 or the API `patch`)."""
-    new_ln = 0
-    for line in patch.splitlines():
+    """(new line number, text) of each added line of a unified diff hunk list (git diff -U0 or the API `patch`).
+
+    Only lines after the first @@ count, so an added line that itself starts with "++" is still scanned."""
+    new_ln, in_hunk = 0, False
+    for line in patch.split("\n"):
         if line.startswith("@@"):
             m = re.search(r"\+(\d+)", line)
-            new_ln = int(m.group(1)) if m else 0
-        elif line.startswith("+") and not line.startswith("+++"):
-            yield new_ln, line[1:]
+            new_ln, in_hunk = (int(m.group(1)) if m else 0), True
+        elif not in_hunk:
+            continue
+        elif line.startswith("+"):
+            yield new_ln, line[1:].removesuffix("\r")
             new_ln += 1
         elif line.startswith(" "):
             new_ln += 1
@@ -128,15 +153,21 @@ def scan_staged(rx: Matcher, out: list[str]) -> None:
 
 
 def _split_files(diff: str):
-    name, buf = None, []
-    for line in diff.splitlines():
+    """(file name, its hunks) per file of a git diff; header lines are read only before the file's first @@."""
+    name, buf, in_hunk = None, [], False
+    for line in diff.split("\n"):
         if line.startswith("diff --git "):
             if name is not None:
                 yield name, "\n".join(buf)
-            name, buf = "?", []
-        elif line.startswith("+++ "):
+            name, buf, in_hunk = "?", [], False
+        elif name is None:
+            continue
+        elif not in_hunk and line.startswith("+++ "):
             name = line[4:].removeprefix("b/")
-        elif name is not None and not line.startswith("--- "):
+        elif not in_hunk and not line.startswith("@@"):
+            continue  # index / mode / --- lines
+        else:
+            in_hunk = True
             buf.append(line)
     if name is not None:
         yield name, "\n".join(buf)
