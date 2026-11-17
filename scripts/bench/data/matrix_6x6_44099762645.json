@@ -1,0 +1,186 @@
+{
+ "run": "44099762645",
+ "commit": "see run",
+ "summaries": [
+  {
+   "pair": "jpn_Jpan->eng_Latn",
+   "COMET": 0.869,
+   "chrF": 54.47,
+   "n": 200
+  },
+  {
+   "pair": "jpn_Jpan->rus_Cyrl",
+   "COMET": 0.871,
+   "chrF": 44.61,
+   "n": 200
+  },
+  {
+   "pair": "jpn_Jpan->zho_Hans",
+   "COMET": 0.884,
+   "chrF": 28.03,
+   "n": 200
+  },
+  {
+   "pair": "jpn_Jpan->zho_Hant",
+   "COMET": 0.889,
+   "chrF": 24.34,
+   "n": 200
+  },
+  {
+   "pair": "jpn_Jpan->kor_Hang",
+   "COMET": 0.887,
+   "chrF": 32.81,
+   "n": 200
+  },
+  {
+   "pair": "kor_Hang->eng_Latn",
+   "COMET": 0.877,
+   "chrF": 55.07,
+   "n": 200
+  },
+  {
+   "pair": "kor_Hang->rus_Cyrl",
+   "COMET": 0.87,
+   "chrF": 45.47,
+   "n": 200
+  },
+  {
+   "pair": "kor_Hang->zho_Hans",
+   "COMET": 0.874,
+   "chrF": 28.35,
+   "n": 200
+  },
+  {
+   "pair": "kor_Hang->zho_Hant",
+   "COMET": 0.882,
+   "chrF": 24.29,
+   "n": 200
+  },
+  {
+   "pair": "kor_Hang->jpn_Jpan",
+   "COMET": 0.898,
+   "chrF": 36.92,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hans->eng_Latn",
+   "COMET": 0.874,
+   "chrF": 57.92,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hans->rus_Cyrl",
+   "COMET": 0.885,
+   "chrF": 47.2,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hans->zho_Hant",
+   "COMET": 0.92,
+   "chrF": 32.95,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hans->jpn_Jpan",
+   "COMET": 0.906,
+   "chrF": 34.59,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hans->kor_Hang",
+   "COMET": 0.883,
+   "chrF": 31.03,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hant->eng_Latn",
+   "COMET": 0.866,
+   "chrF": 55.95,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hant->rus_Cyrl",
+   "COMET": 0.87,
+   "chrF": 45.33,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hant->zho_Hans",
+   "COMET": 0.907,
+   "chrF": 31.67,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hant->jpn_Jpan",
+   "COMET": 0.902,
+   "chrF": 33.03,
+   "n": 200
+  },
+  {
+   "pair": "zho_Hant->kor_Hang",
+   "COMET": 0.879,
+   "chrF": 29.09,
+   "n": 200
+  },
+  {
+   "pair": "eng_Latn->rus_Cyrl",
+   "COMET": 0.889,
+   "chrF": 55.15,
+   "n": 200
+  },
+  {
+   "pair": "eng_Latn->zho_Hans",
+   "COMET": 0.892,
+   "chrF": 38.26,
+   "n": 200
+  },
+  {
+   "pair": "eng_Latn->zho_Hant",
+   "COMET": 0.893,
+   "chrF": 30.64,
+   "n": 200
+  },
+  {
+   "pair": "eng_Latn->jpn_Jpan",
+   "COMET": 0.919,
+   "chrF": 40.97,
+   "n": 200
+  },
+  {
+   "pair": "eng_Latn->kor_Hang",
+   "COMET": 0.904,
+   "chrF": 36.88,
+   "n": 200
+  },
+  {
+   "pair": "rus_Cyrl->eng_Latn",
+   "COMET": 0.861,
+   "chrF": 58.51,
+   "n": 200
+  },
+  {
+   "pair": "rus_Cyrl->zho_Hans",
+   "COMET": 0.865,
+   "chrF": 29.86,
+   "n": 200
+  },
+  {
+   "pair": "rus_Cyrl->zho_Hant",
+   "COMET": 0.87,
+   "chrF": 25.14,
+   "n": 200
+  },
+  {
+   "pair": "rus_Cyrl->jpn_Jpan",
+   "COMET": 0.882,
+   "chrF": 32.96,
+   "n": 200
+  },
+  {
+   "pair": "rus_Cyrl->kor_Hang",
+   "COMET": 0.863,
+   "chrF": 29.61,
+   "n": 200
+  }
+ ]
+}
