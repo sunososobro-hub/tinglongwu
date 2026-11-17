@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from tinglongwu_setup import ed25519, resume, selfupdate as su
+from tinglongwu_setup import ed25519, selfupdate as su
 
 ROOT = Path(__file__).resolve().parent.parent
 SK = bytes(range(32))
