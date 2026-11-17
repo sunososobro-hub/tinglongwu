@@ -20,6 +20,7 @@ pytestmark = pytest.mark.skipif(shutil.which("bash") is None or shutil.which("gi
 def _env(home: Path, remote: bool) -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "CLAUDE_CODE_REMOTE"}
     env["HOME"] = str(home)
+    env["XDG_CONFIG_HOME"] = str(home / ".config")  # never the caller's real XDG git config (#1445)
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     if remote:
         env["CLAUDE_CODE_REMOTE"] = "true"
@@ -98,3 +99,19 @@ def test_local_cleanup_keeps_contributor_identity_when_only_hookspath_was_set(se
     assert _run_hook(env, repo).returncode == 0
     assert _git(env, "config", "--global", "--get", "core.hooksPath") == ""
     assert _git(env, "config", "--global", "user.email") == "c@example.com"
+
+
+def test_env_never_touches_callers_xdg_git_config(setup, tmp_path, monkeypatch):
+    """#1445: a caller's XDG_CONFIG_HOME/git/config must stay byte-identical."""
+    home, repo = setup
+    xdg = tmp_path / "real_xdg"
+    (xdg / "git").mkdir(parents=True)
+    cfg = xdg / "git" / "config"
+    cfg.write_text("[user]\n\tname = keepme\n")
+    before = cfg.read_bytes()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    env = _env(home, remote=True)
+    _git(env, "config", "--global", "user.name", "Changed")
+    assert _run_hook(env, repo).returncode == 0
+    assert _git(env, "config", "--global", "user.name") == "Changed"
+    assert cfg.read_bytes() == before
