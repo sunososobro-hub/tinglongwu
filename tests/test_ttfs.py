@@ -216,7 +216,7 @@ def test_first_source_subtitle_baseline_counts_only_whisper_1360():
 
 def test_ttfs_json_has_first_source_subtitle_1360(tmp_path):
     tlwu = PY + " -c \"print('12:03:10 \\u25c0 Them hello', flush=True);print('  \\u2192 hi')\""
-    p, out = _run(tmp_path, tlwu, setup="echo download whisper-small: 100% (464/464 MB)")
+    p, out = _run(tmp_path, tlwu, setup="echo 'download whisper-small: 100% (464/464 MB)'")
     assert p.returncode == 0
     doc = json.loads(out.read_text())
     assert doc["first_source_subtitle_seconds"] is not None
@@ -233,3 +233,13 @@ def test_summary_prints_first_source_subtitle_1360():
                                    "first_source_subtitle_seconds": 120.0,
                                    "first_source_subtitle_baseline_seconds": 150.5})
     assert "first_source_subtitle_seconds: 120.0" in txt and "150.5" in txt
+
+
+def test_measured_download_seconds_is_first_to_last_download_line_1360():
+    t = _ttfs()
+    stamps = [(1.0, "==> pip"), (5.0, "download whisper-small: 5% (23/464 MB)"), (60.0, "x"),
+              (105.0, "download whisper-small: 100% (464/464 MB)"), (110.0, "READY")]
+    assert t.measured_download_seconds(stamps) == 100.0
+    assert t.measured_download_seconds([(1.0, "pip")]) == 0.0
+    total, base = t.first_source_subtitle(10.0, 400.0, 5.0, 100.0, 464_000_000)
+    assert round(base, 2) == 389.24

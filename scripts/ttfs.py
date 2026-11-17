@@ -82,6 +82,13 @@ def whisper_download_bytes(text):
     return parse_download_bytes("\n".join(ln for ln in text.splitlines() if "whisper" in ln.lower()))
 
 
+def measured_download_seconds(stamps):
+    """#1360: wall seconds from the first to the last `download ...` / `downloading ...` output line of a stamped run
+    (the real download duration, not the bytes-at-baseline estimate). 0.0 when there is none. Pure."""
+    ts = [t for t, line in stamps if _PROGRESS_RE.match(line) or _ANNOUNCE_RE.match(line)]
+    return max(ts) - min(ts) if ts else 0.0
+
+
 def first_source_subtitle(install_s, setup_s, first_source_s, download_s, whisper_bytes, mbps=BASELINE_MBPS):
     """#1360: (seconds, 50 Mbps baseline seconds) from install start to the first source-language subtitle line.
     The baseline replaces the measured download time by Whisper's bytes at MBPS (Hy-MT2 is not waited for). Pure."""
@@ -215,7 +222,8 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, 
         "install_phases": phase_report(inst_stamps, inst_s), "setup_phases": phase_report(setup_stamps, setup_s),
     }
     if source:  # #1360: Hy-MT2 deferred: the first source line does not wait for the translation model
-        src, base = first_source_subtitle(inst_s, setup_s, source[0], dl_s, whisper_download_bytes(setup_out))
+        src, base = first_source_subtitle(inst_s, setup_s, source[0], measured_download_seconds(setup_stamps),
+                                       whisper_download_bytes(setup_out))
         res["first_source_subtitle_seconds"] = round(src, 3)
         res["first_source_subtitle_baseline_seconds"] = round(base, 3)
     if first is not None:
