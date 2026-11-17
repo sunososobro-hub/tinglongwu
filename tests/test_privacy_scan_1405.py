@@ -242,3 +242,15 @@ def test_no_patch_file_name_is_url_quoted(rx):
     assert ps.cmd_pr(gh, 7, rx=rx) == 1
     raw = next(c[1] for c in gh.calls if c[0] == "raw")
     assert raw == "/repos/o/r/contents/a%20dir/x%231%3F.bin?ref=abc1234567"
+
+
+def test_label_failure_still_minimizes_then_fails(rx):
+    class LabelFails(FakeGH):
+        def add_label(self, n):
+            raise OSError("label request failed")
+
+    gh = LabelFails()
+    ev = {"comment": {"body": "zorblat", "node_id": "IC_7"}, "issue": {"number": 8}}
+    with pytest.raises(RuntimeError, match="labelling failed"):
+        ps.handle_event(gh, "issue_comment", ev, rx=rx)
+    assert ("minimize", "IC_7") in gh.calls

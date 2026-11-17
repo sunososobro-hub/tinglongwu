@@ -184,8 +184,14 @@ def handle_event(gh, name: str, ev: dict, rx: sd.Matcher | None = None) -> str:
         if not rx.search(c.get("body") or ""):
             return "clean"
         item = ev.get("issue") or ev.get("pull_request") or {}
-        gh.add_label(item["number"])  # first, so the item is flagged even if hiding fails
+        label_error = None
+        try:
+            gh.add_label(item["number"])  # first, so the item is flagged even if hiding fails
+        except Exception as e:  # noqa: BLE001 - still hide the comment, then fail the job
+            label_error = e
         gh.minimize(c["node_id"])  # raises (job red) unless GitHub confirms the comment is hidden
+        if label_error is not None:
+            raise RuntimeError("privacy-scan: comment hidden but labelling failed") from label_error
         print(f"privacy-scan: hidden comment {c.get('html_url', '')}")
         return "minimized"
     if name in ("issues", "pull_request_target", "pull_request"):
