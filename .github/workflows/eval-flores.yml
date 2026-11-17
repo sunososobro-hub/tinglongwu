@@ -246,5 +246,6 @@ jobs:
           mkdir -p flores
           cp ../worst.json "flores/${D}-${GITHUB_RUN_ID}.json"
           git add flores
+          if git diff --cached --quiet; then echo "already published"; exit 0; fi
           git commit -q -m "eval: flores worst sentences ${D} run ${GITHUB_RUN_ID}"
           git push origin HEAD:refs/heads/eval-results

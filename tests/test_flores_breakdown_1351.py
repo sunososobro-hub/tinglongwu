@@ -189,7 +189,7 @@ def test_worst_dir_keeps_lowest_comet_per_direction_1346(tmp_path):
     fc = _load()
     for pair, base in (("rus_Cyrl-eng_Latn", 0.5), ("rus_Cyrl-zho_Hans", 0.6)):
         rows = [dict(row(i, f"s{i}", f"r{i}", f"h{i}", round(base + i / 100, 3)), chrf=1.0) for i in range(30)]
-        (tmp_path / f"{pair}.jsonl").write_text("\n".join(json.dumps(r) for r in rows), "utf-8")
+        (tmp_path / f"{pair}.jsonl").write_text("\n".join(json.dumps(r) for r in reversed(rows)), "utf-8")
         (tmp_path / f"{pair}.summary.json").write_text(json.dumps({"pair": pair}), "utf-8")
     res = fc.worst_dir([str(tmp_path)], 20, {"run_id": "1"})
     assert res["run"] == {"run_id": "1"}
