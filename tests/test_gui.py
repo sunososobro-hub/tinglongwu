@@ -391,6 +391,29 @@ def test_log_follows_newest_unless_scrolled_up(gui_app):
     assert a.log_text.dlineinfo("end-1c") is not None and _log(a).endswith("newest")
 
 
+def test_log_follows_each_line_of_a_fast_feed_1384(gui_app):
+    """#1384: 100 lines fed one per poll with no idle in between; the newest is on screen after every line."""
+    a = gui_app
+    a.toggle()
+    a.root.update()
+    for i in range(100):
+        a.q.put(("final", f"source {i} " * 6, f"translated line {i} " * 6))
+        a.poll()
+        assert a.log_text.dlineinfo("end-1c") is not None, f"line {i} not visible"
+    a.log_text.yview("5.0")  # scrolling up pauses following
+    a.root.update()
+    top = a.log_text.index("@0,0")
+    a.q.put(("final", "x", "while reading"))
+    a.poll()
+    a.root.update()
+    assert a.log_text.index("@0,0") == top
+    a.log_text.yview_moveto(1.0)  # back at the bottom resumes it
+    a.root.update()
+    a.q.put(("final", "y", "resumed"))
+    a.poll()
+    assert a.log_text.dlineinfo("end-1c") is not None
+
+
 def test_log_font_buttons_and_pause(gui_app):
     a = gui_app
     w0 = a.root.winfo_reqwidth()

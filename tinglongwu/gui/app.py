@@ -1701,11 +1701,15 @@ class App:
         return "break"  # Ctrl+wheel resizes; it must not also scroll
 
     def _log_at_end(self) -> bool:
-        # yview fractions are estimates for wrapped lines; "the last line is on screen" is exact
+        # yview fractions are estimates for wrapped lines; "the last line is on screen" is exact. #1384: flush the
+        # pending layout first, else lines arriving faster than Tk idles see a stale view and stop following.
+        self.log_text.update_idletasks()
         return self.log_text.dlineinfo("end-1c") is not None or follow_newest(self.log_text.yview()[1])
 
     def _log_to_end(self):
+        # wrapped-line heights are only known after layout: scroll now and again when Tk is idle (#1384)
         self.log_text.yview_moveto(1.0)
+        self.log_text.after_idle(lambda: self.log_text.yview_moveto(1.0))
 
     def render_log(self):
         """Redraw the history; keep following the newest line unless the user scrolled up to re-read."""
