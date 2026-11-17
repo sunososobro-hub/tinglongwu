@@ -54,6 +54,6 @@ def test_short_ru_terms_do_not_match_longer_words():
     g = glossary.load_builtin("ru")
     hit = lambda text: {e.main for e in g.relevant(text)}  # noqa: E731
     assert "прод" not in hit("Продолжение следует.")
-    assert "лог" not in hit("Это логика программы.")
+    assert not {"лог", "логи"} & hit("Это логика программы.")
     assert "прод" in hit("Выкатили в проде.") and "баг" in hit("Нашли багов много.")
     assert "логи" in hit("Посмотри логи.") and "ветка" in hit("Создал ветку.")
