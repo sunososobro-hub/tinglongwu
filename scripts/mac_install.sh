@@ -212,11 +212,11 @@ say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 2-3 
 .venv/bin/tlwu-setup --whisper small --ask-lang --allow-unpinned \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
 # #276/#301: Hy-MT2 1.8B is the only default translation engine (runs on the CPU here): llama-cpp-python + the GGUF.
-# No macOS wheel on the CPU index -> pip builds it from source with the Xcode command line tools (a few minutes).
-info "安裝翻譯引擎 Hy-MT2（llama-cpp-python，可能要編譯幾分鐘）..."
+# #1341: Apple Silicon takes the prebuilt wheel (seconds). Intel, or no usable wheel: the CPU index, then (#420: its
+# arm64 wheel can be a corrupt zip) pip builds the PyPI sdist with the Xcode command line tools (a few minutes).
+info "安裝翻譯引擎 Hy-MT2（llama-cpp-python；沒有現成的 wheel 時要編譯幾分鐘）..."
 # shellcheck source=tlwu_common.sh
 . "$DIR/scripts/tlwu_common.sh"
-# #420: the CPU-index arm64 wheel can be a corrupt zip; tlwu_install_llama then builds the PyPI sdist instead.
 tlwu_install_llama .venv/bin/python requirements-llama-cpu.txt \
   || warn "llama-cpp-python 安裝失敗：翻譯無法使用。請把上面的錯誤訊息給維護者，或重貼安裝指令重試。"
 .venv/bin/tlwu-setup --hymt \

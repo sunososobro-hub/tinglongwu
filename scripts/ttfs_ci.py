@@ -18,6 +18,24 @@ import ttfs  # noqa: E402
 INSTALLERS = {"linux": "scripts/install.sh", "macos": "scripts/mac_install.sh", "windows": None}
 
 
+OUTPUT_LOG = "ttfs_output.log"  # #1341: installer output with per-line seconds, next to --out
+
+
+def print_output_log(path):
+    """#1341: the timed installer output in the job log (a folded group on GitHub Actions), so a slow run can be read
+    line by line without downloading an artifact."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")   # a console that cannot print a character must not fail the job
+    print("::group::installer output with seconds (%s)" % OUTPUT_LOG)
+    print(text, end="")
+    print("::endgroup::")
+
+
 def windows_commands(directory, setup_exe):
     """#934: the released wizard run silently into DIRECTORY (cmd.exe commands). The wizard installs and downloads the
     models in one go, so `install` is the whole wizard run and `setup` only prints its install.log (the download
@@ -123,7 +141,9 @@ def main(argv=None):
     if a.os == "windows" and not a.setup_exe:
         ap.error("--setup-exe is required for --os windows")
     install, setup, tlwu = commands(a.os, a.dir, a.setup_exe)
-    rc = ttfs.main(["--install", install, "--setup", setup, "--tlwu", tlwu, "--out", a.out])
+    log = os.path.join(os.path.dirname(os.path.abspath(a.out)), OUTPUT_LOG)
+    rc = ttfs.main(["--install", install, "--setup", setup, "--tlwu", tlwu, "--out", a.out, "--log", log])
+    print_output_log(log)
     import json
     try:
         with open(a.out, encoding="utf-8") as f:

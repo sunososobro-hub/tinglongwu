@@ -159,6 +159,7 @@ jobs:
           name: ttfs-${{ matrix.os }}
           path: |
             ttfs.json
+            ttfs_output.log
             setup_time.json
           retention-days: 90
           if-no-files-found: ignore

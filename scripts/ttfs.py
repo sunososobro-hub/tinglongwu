@@ -184,7 +184,8 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, 
     first = time_first_subtitle(tlwu_cmd, timeout, tlwu_lines)
     if diag is not None:
         diag.update({"install": (inst_rc, _tail(inst_out)), "setup": (setup_rc, _tail(setup_out)),
-                     "tlwu": (None, _tail("\n".join(tlwu_lines)))})
+                     "tlwu": (None, _tail("\n".join(tlwu_lines))),
+                     "stamps": {"install": inst_stamps, "setup": setup_stamps}})
     res = {
         "ttfs_seconds": None, "download_seconds": round(dl_s, 3),
         "excl_download_seconds": None, "setup_seconds": round(setup_s, 3),
@@ -212,6 +213,15 @@ def no_subtitle_report(diag):
     return "\n".join(parts)
 
 
+def stamped_text(stamps_by_step):
+    """#1341: the installer output with the second each line appeared at, one `--- step` block per run."""
+    parts = []
+    for step in ("install", "setup"):
+        parts.append("--- %s" % step)
+        parts += ["%7.1f  %s" % (t, line) for t, line in stamps_by_step.get(step, [])]
+    return "\n".join(parts) + "\n"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--install", required=True)
@@ -222,12 +232,16 @@ def main(argv=None):
                     help="command printing subtitles; translation lines must start with the arrow prefix to be "
                          "measured (default: tlwu --file CLIP --device cpu)")
     ap.add_argument("--timeout", type=float, default=FIRST_SUBTITLE_TIMEOUT_S)
+    ap.add_argument("--log", default=None, help="#1341: write the install + setup output with per-line seconds here")
     a = ap.parse_args(argv)
     tlwu = a.tlwu or "tlwu --file %s --device cpu" % shlex.quote(a.clip)
     diag = {}
     res = measure(a.install, a.setup, tlwu, a.timeout, diag)
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
+    if a.log:
+        with open(a.log, "w", encoding="utf-8") as f:
+            f.write(stamped_text(diag.get("stamps", {})))
     if res["ttfs_seconds"] is None:
         print("ttfs_seconds=null excl_download_seconds=null")
         print(no_subtitle_report(diag), file=sys.stderr)

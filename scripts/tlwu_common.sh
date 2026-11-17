@@ -121,10 +121,23 @@ tlwu_install_selftest() {  # tlwu_install_selftest TLWU_SETUP [args...]: last in
 
 # #420: install llama-cpp-python from a requirements file; if the index wheel fails (e.g. the 0.3.36 arm64 wheel on the
 # CPU index is a corrupt zip), build the PyPI sdist of the same pinned version instead.
+# #1341: on Apple Silicon that source build is ~3 of the ~5 minutes from install to the first subtitle, so first take
+# the prebuilt wheel of the same pinned version from the project's Metal index (a source build on Apple Silicon turns
+# Metal on as well, so it is the same build; the app loads it with n_gpu_layers=0). Wheel missing, corrupt or not
+# importable -> the old path (CPU index, then the sdist build).
+TLWU_LLAMA_METAL_INDEX="https://abetlen.github.io/llama-cpp-python/whl/metal"
 tlwu_install_llama() {  # tlwu_install_llama PYTHON REQUIREMENTS_FILE
   local py="$1" req="$2" pin
-  "$py" -m pip install -r "$req" && return 0
   pin="$(grep -E '^llama-cpp-python==' "$req" | head -n1 | tr -d '[:space:]')"
+  if [ -n "$pin" ] && [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+    if "$py" -m pip install --only-binary=:all: --extra-index-url "$TLWU_LLAMA_METAL_INDEX" "$pin" \
+        && "$py" -c 'import llama_cpp'; then
+      return 0
+    fi
+    echo "    no usable prebuilt macOS wheel of $pin; trying the CPU index, then a source build ..."
+    "$py" -m pip uninstall -y llama-cpp-python >/dev/null 2>&1 || true
+  fi
+  "$py" -m pip install -r "$req" && return 0
   [ -n "$pin" ] || return 1
   echo "    index wheel failed; building $pin from the PyPI sdist (a few minutes) ..."
   "$py" -m pip install --no-binary llama-cpp-python "$pin"

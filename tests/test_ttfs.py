@@ -189,3 +189,13 @@ def test_run_stamps_each_line_and_ttfs_json_has_phases_1341(tmp_path):
     assert 0.5 <= ph["a"] < 1.2 and ph["b"] >= 1.1
     assert d["setup_phases"]["slow_lines"][0]["line"] == "==> b"
     assert d["install_phases"]["slow_lines"] == []
+
+
+def test_log_option_writes_timed_installer_output_1341(tmp_path):
+    log = tmp_path / "out.log"
+    p, out = _run(tmp_path, PY + " -c \"print('\\u2192 x')\"", setup="echo models", extra=("--log", str(log)))
+    assert p.returncode == 0, p.stderr
+    lines = log.read_text().splitlines()
+    assert lines[0] == "--- install" and lines[2] == "--- setup"
+    sec, text = lines[1].split(None, 1)
+    assert text == "install" and float(sec) >= 0 and lines[3].endswith("  models")
