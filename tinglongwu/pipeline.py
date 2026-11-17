@@ -395,6 +395,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     carry = []  # #1252: the undecoded tail of a budget-cut segment, transcribed before the next queued segment
     back = []  # #1369: items taken from q by catch_up() and not used yet, in order (before anything still in q)
 
+    join_start = [None]  # #1369: audio-clock start of the joined segment catch_up() just returned (gaps removed)
+
     def catch_up(item):
         """#1369: the oldest waiting segment waited more than ASR_JOIN_S: join it with the segments queued behind it
         (up to ASR_JOIN_MAX_S of audio) into one segment item. Nothing is dropped; the rest stays queued in order.
@@ -425,6 +427,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         if len(keep) == 1:
             return keep[0]
         say(f"latency: catch-up: {len(keep)} segments ({total - gone:.1f} s) in one ASR call")
+        join_start[0] = keep[0][1] - len(keep[0][0]) / SAMPLE_RATE  # --record: from the first kept segment
         return (np.concatenate([j[0] for j in keep]),) + tuple(keep[-1][1:])  # marks of the newest speech
 
     try:
@@ -451,6 +454,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 if translator is not None:
                     emit_units(merger.quiet(item.seconds, item.stamp if audio_clock else time.monotonic()))
                 continue
+            join_start[0] = None
             if not audio_clock and not from_carry and time.monotonic() - item[5][1] > ASR_JOIN_S:
                 item = catch_up(item)  # #1369: waited since its cut
             seg, stamp, last_ep[0], forced_cut, pause, (t_eos, t_cut) = item
@@ -493,7 +497,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 last_who[0] = None if who == UNKNOWN else who
             seg_n[0] += 1
             if recorder is not None:
-                recorder.add(seg_n[0], seg, stamp - len(seg) / SAMPLE_RATE, stamp)
+                start = join_start[0] if join_start[0] is not None else stamp - len(seg) / SAMPLE_RATE
+                recorder.add(seg_n[0], seg, start, stamp)
             tag = (marks, last_who[0], seg_n[0])
             if merger is None or translator is None:
                 emit_units([Unit(t.text, t.lang, False, tag)])

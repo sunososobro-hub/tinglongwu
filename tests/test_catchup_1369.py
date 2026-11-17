@@ -278,6 +278,37 @@ def test_silent_segment_does_not_hide_a_quiet_one_in_a_join(monkeypatch):
     assert [r.original for _, r in sink.lines] == ["n0.", "quiet words"]
 
 
+def test_recorded_start_of_a_join_is_the_first_kept_segment(monkeypatch):
+    """--record: a joined segment is saved from where its first kept segment starts, not from end minus joined length
+    (the silent segments left out of the join would otherwise shift the start later)."""
+    monkeypatch.setattr(pipeline, "ASR_JOIN_S", 0.05)
+
+    class Mixed(Burst):
+        def frames(self):
+            yield np.full(SR, _val(0), dtype="float32")  # 0-1 s, transcribed alone (first call stalls)
+            yield np.full(SR, _val(1), dtype="float32")  # 1-2 s
+            yield np.zeros(SR, dtype="float32")  # 2-3 s: silence, left out of the join
+            yield np.full(SR, _val(3), dtype="float32")  # 3-4 s
+
+    class Rec:
+        def __init__(self):
+            self.rows = []
+
+        def add(self, n, seg, start, end):
+            self.rows.append((round(start, 3), round(end, 3), len(seg) / SR))
+
+        def take(self, first, last):
+            return None
+
+        def line(self, clip, r):
+            pass
+
+    rec = Rec()
+    run(Mixed(4), OneSeg(), StallASR(0.2), None, Shown(), "zh", recorder=rec)
+    assert rec.rows[0] == (0.0, 1.0, 1.0)
+    assert rec.rows[1] == (1.0, 4.0, 2.0)  # 1 s .. 4 s on the audio clock, 2 s of kept speech
+
+
 def test_no_join_while_asr_keeps_up(monkeypatch):
     """A burst that ASR clears within ASR_JOIN_S is transcribed one segment per call, as before."""
     asr, sink = StallASR(0.0), Shown()
@@ -299,7 +330,8 @@ def test_music_only_segment_produces_no_line(text):
 
 
 @pytest.mark.parametrize("text", ["I love music.", "♪ I love you ♪", "[Music] Welcome back everyone", "[Applause]",
-                                  "(I love music.)", "[We all love this music]", "(we love this music)"])
+                                  "(I love music.)", "[We all love this music]", "(we love this music)",
+                                  "(I love music)", "[play the music]"])
 def test_speech_with_music_words_is_kept(text):
     assert not is_hallucination(text, 0.1, 0.0)
 

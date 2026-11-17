@@ -99,14 +99,14 @@ _NOTES = re.compile(r"[♪♫♬♩🎵🎶]")
 
 
 def _music_tag(tag: str) -> bool:
-    """A bracketed sound description: a music word plus at most two more words, not a sentence ("(upbeat music)",
-    "[MUSIC PLAYING]"; not "(I love music.)")."""
+    """A bracketed sound description: a music word, and every other word a sound-description word ("(upbeat music)",
+    "[MUSIC PLAYING]"; not speech in brackets such as "(I love music)" or "(I love music.)")."""
     inner = tag[1:-1].strip()
     if _NOTES.search(inner) and not _norm(_NOTES.sub("", inner)):
         return True  # notes only, e.g. "[♪♪]"
     words = [_norm(w) for w in inner.split()]
-    short = len(words) <= 3 or all(w in SOUND_WORDS or _MUSIC_ONLY.fullmatch(w) for w in words if w)
-    return short and not re.search(r"[.!?。！？]$", inner) and bool(_MUSIC_ONLY.search(_norm(inner)))
+    described = all(w in SOUND_WORDS or _MUSIC_ONLY.fullmatch(w) for w in words if w)
+    return described and not re.search(r"[.!?。！？]$", inner) and bool(_MUSIC_ONLY.search(_norm(inner)))
 
 
 def is_music_tag(text: str) -> bool:
