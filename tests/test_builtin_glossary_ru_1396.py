@@ -76,3 +76,14 @@ def test_ru_noun_forms_still_fire_1425():
                        ("в ветках", "ветка"), ("новыми ветками", "ветка"), ("в репозитории", "репозиторий"),
                        ("об отладке", "отладка"), ("отладками", "отладка")):
         assert term in hit(text), (text, term)
+
+
+def test_ru_feminine_plural_and_fleeting_vowel_forms_fire_1428():
+    g = glossary.load_builtin("ru")
+    hit = lambda text: {e.main for e in g.relevant(text)}  # noqa: E731
+    for text in ("Работаем над фичами.", "Это в фичах.", "Сказал фичам.", "Новая фича.", "Нет этой фичи."):
+        assert "фича" in hit(text), text
+    assert "прошивка" in hit("Нет свежих прошивок.")
+    assert "ветка" in hit("Много веток.") and "отладка" in hit("Без отладок.")
+    for text in ("Это фикус.", "Фичеринг альбома."):
+        assert "фича" not in hit(text), text

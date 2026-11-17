@@ -66,6 +66,10 @@ def _ru_noun_ok(word: str, src_word: str, stem: str) -> bool:
     src = _norm(src_word)
     if word == src:
         return True
+    if src.endswith("ка") and word in (src[:-2] + "ок", src[:-2] + "ек"):
+        return True  # #1428: genitive plural with a fleeting vowel (прошивка -> прошивок, ветка -> веток)
+    if stem == src and src[-1:] in "ая" and len(src) >= 3:
+        stem = src[:-1]  # #1428: short -а / -я nouns decline like long ones (фича -> фичам, фичах, фичами)
     if not word.startswith(stem):
         return False
     if src.endswith("ть"):
