@@ -255,3 +255,29 @@ def test_unlabelled_tail_keeps_the_speaker_for_the_next_check(tmp_path):
         tgt="en", merger=Script(units), audio_clock=True)
     assert [(r.original, r.replaces, r.speaker) for r in out.rows] == [
         (a, None, "A"), (b, a, "A"), ("this morning.", None, "B")]
+
+
+def test_record_amended_line_row_matches_its_clip(tmp_path):
+    """#1424: --record must not pair the fragment-only clip with the merged text."""
+    import wave
+
+    from tinglongwu.record import Recorder
+
+    tr = PivotTranslator(tmp_path, "tw", lambda s, t: (lambda x: x))
+    class Null(Sink):
+        def write(self, r):
+            pass
+
+    rec = Recorder(tmp_path / "rec")
+    lens = []
+    add = rec.add
+    rec.add = lambda no, audio, start, end: (lens.append(len(audio)), add(no, audio, start, end))[1]
+    run(_Src(2), Segmenter(chunk=1.0, use_vad=False),
+        _ASR(["Сейчас покажу настройки для новой.", "Версии."]), tr, Null(),
+        merger=SentenceMerger(min_words=3), audio_clock=True, recorder=rec)
+    rec.close()
+    rows = [json.loads(x) for x in (tmp_path / "rec" / "segments.jsonl").read_text("utf-8").splitlines()]
+    assert [r["source"] for r in rows] == ["Сейчас покажу настройки для новой версии."]
+    with wave.open(str(tmp_path / "rec" / rows[0]["file"])) as w:
+        assert len(lens) == 2 and w.getnframes() == sum(lens)  # the audio of both segments, not just the fragment's
+    assert sorted(p.name for p in (tmp_path / "rec").glob("*.wav")) == [rows[0]["file"]]
