@@ -394,3 +394,14 @@ def test_private_key_end_label_must_match_begin():
     assert ps.Combined().sub(text, "***") == "a ***\nb"
     stray = "a -----BEGIN RSA " + pem + "\n-----END EC " + pem + "\nFAKEmaterial"
     assert ps.Combined().sub(stray, "***") == "a ***"  # no matching END: masked to the end
+
+
+def test_issue_body_with_mismatched_pem_markers_is_masked_in_place():
+    pem = "PRIVATE " + "KEY-----"
+    body = "a -----BEGIN RSA " + pem + "\n-----END EC " + pem + "\nFAKEmaterial\n-----END RSA " + pem + "\nb"
+    gh = FakeGH()
+    assert ps.handle_event(gh, "issues", {"issue": {"number": 4, "title": "t", "body": body}},
+                           rx=ps.Combined()) == "masked"
+    new = next(c for c in gh.calls if c[0] == "patch")[2]["body"]
+    assert new == "a ***\nb" and "FAKEmaterial" not in new
+    assert ("label", 4) in gh.calls
