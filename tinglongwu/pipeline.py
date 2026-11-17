@@ -370,7 +370,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     text, raw = filter_hallucination(u.part), None
             audio = None
             if recorder is not None and u.tag is not None:  # #239: a dropped line drops its audio too
-                audio = recorder.take((u.first or u.tag)[2], u.tag[2], amend=replaces is not None)
+                audio = recorder.take((u.first or u.tag)[2], u.tag[2], **({"amend": True} if replaces is not None else {}))
             if not text:
                 continue
             key, now = _dup_key(text), consumed[0] / SAMPLE_RATE if audio_clock else time.monotonic()
