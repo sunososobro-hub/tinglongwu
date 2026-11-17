@@ -169,3 +169,9 @@ def test_default_popen_uses_download_env(tmp_path, monkeypatch):
     m = bgd.BackgroundDownloads(["x"], lambda s: None, lambda k: None, tmp_path, threaded=False)
     m.start()
     assert "HF_HUB_OFFLINE" not in seen["env"]
+
+
+def test_tqdm_bar_of_the_whisper_download_shows_percent(tmp_path):
+    m, status, _ = _mgr(tmp_path, ["model.bin:  40%|####      | 193M/484M [00:10<00:15]\n"])
+    m.start()
+    assert "speech model downloading 40%" in status

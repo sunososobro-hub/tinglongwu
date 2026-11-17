@@ -1910,6 +1910,9 @@ class App:
         """#739: True when the chosen speech model is missing: its download starts now with a progress bar and this
         Start resumes by itself when it succeeds (no dialog, no second click)."""
         m = missing_start_model(run)
+        bg = getattr(self, "bg_dl", None)
+        if m is not None and bg is not None and bg.active:  # #1358: no second manifest writer while bg runs
+            return True
         if m is None or self.downloading:
             return self.downloading is not None and m is not None
         self.downloading = m
@@ -1935,16 +1938,16 @@ class App:
         "Not now" changes nothing (mode and language stay as they were)."""
         from ..models import models_dir
 
-        bg = getattr(self, "bg_dl", None)
-        if bg is not None and (bg.active or bg.errors):  # #1358: one setup child at a time (manifest.json writers)
-            if not bg.active:
-                bg.errors.clear()
-                bg.start()  # Start after a failed background download is the retry
-            return True
         try:
             need = pack_on_demand.first_missing(run.get("lang"), run.get("target"), models_dir())
         except Exception:  # noqa: BLE001  # no setup package / unreadable manifest: behave as before
             return False
+        bg = getattr(self, "bg_dl", None)
+        if need is not None and bg is not None and (bg.active or bg.errors):  # #1358: one setup child at a time
+            if not bg.active:
+                bg.errors.clear()
+                bg.start()  # Start after a failed background download is the retry
+            return True  # an installed configuration (need is None) is never blocked by the background download
         if need is None or self.downloading:
             return self.downloading is not None and need is not None
         pack, mb = need

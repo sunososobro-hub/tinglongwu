@@ -30,6 +30,16 @@ def parse_percent(line: str) -> tuple[str, int] | None:
     return (m.group(1), min(100, int(m.group(2)))) if m else None
 
 
+def _tqdm_hit(line: str, keys) -> tuple[str, int] | None:
+    """huggingface_hub (snapshot_download, the Whisper model) prints tqdm bars, not `download <key>:` lines; they
+    count for the Whisper key while it is among the keys this child fetches."""
+    from .core import progress_bar
+
+    bar = progress_bar(line)
+    key = DEFAULT_KEYS[0]
+    return (key, bar[1]) if bar and key in keys else None
+
+
 def status_text(key: str, percent: int | None) -> str:
     name = LABEL.get(key, key)
     return f"{name} downloading {percent}%" if percent is not None else f"{name} downloading"
@@ -82,7 +92,7 @@ class BackgroundDownloads:
                 line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).strip()
                 if line:
                     last = line
-                hit = parse_percent(line)
+                hit = parse_percent(line) or _tqdm_hit(line, keys)
                 if hit and hit[0] in keys:
                     self.on_status(status_text(*hit))
             rc = p.wait()
