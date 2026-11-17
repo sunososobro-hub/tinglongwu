@@ -88,6 +88,10 @@ class GitHub:
     def patch(self, path: str, body: dict):
         return self._call("PATCH", path, body)[0]
 
+    def post_status(self, sha: str, state: str, context: str, description: str):
+        body = {"state": state, "context": context, "description": description[:140]}
+        return self._call("POST", f"/repos/{self.repo}/statuses/{sha}", body)[0]
+
     def add_label(self, number: int):
         return self._call("POST", f"/repos/{self.repo}/issues/{number}/labels", {"labels": [LABEL]})[0]
 
@@ -104,7 +108,7 @@ class GitHub:
 # ---------------------------------------------------------------- built-in patterns (no secret needed)
 ALLOWED_EMAIL_DOMAINS = ("users.noreply.github.com", "example.com", "example.org", "example.net")
 ALLOWED_EMAILS = {"noreply@anthropic.com", "noreply@github.com", "git@github.com"}
-CARD_PREFIX = re.compile(r"4|5[1-5]|2[2-7]|3[47]|6")  # Visa, Mastercard, Amex, Discover/UnionPay/JCB-ish
+CARD_PREFIX = re.compile(r"4|5[1-5]|2[2-7]|3[0-9]|6")  # Visa, Mastercard, Amex 34/37, Diners 30/36/38, JCB 35, Discover/UnionPay
 
 
 def _email_ok(m: re.Match) -> bool:
@@ -141,9 +145,11 @@ def _twid_ok(m: re.Match) -> bool:
 
 # (kind, regex, extra validator or None). Every match is masked; the kind is printed, never the value.
 PATTERNS: list[tuple[str, re.Pattern, object]] = [
-    ("private key", re.compile(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----"), None),
+    # the whole PEM block through its END line; an unterminated block is masked to the end of the text
+    ("private key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"
+                               r"(?:[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|[\s\S]*\Z)"), None),
     ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"), None),
-    ("API key", re.compile(r"\bsk-(?:[A-Za-z0-9]+-)*[A-Za-z0-9_]{20,}"), None),
+    ("API key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"), None),
     ("AWS key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), None),
     ("Slack token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}"), None),
     ("email", re.compile(r"(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b"), _email_ok),
@@ -245,8 +251,14 @@ def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "") -> list[st
 
 
 def wait_check(gh, sha: str, name: str, timeout_s: int = 900, every_s: int = 20, sleep=time.sleep) -> bool:
+    """Result of `name` on commit `sha`: a commit status with that context (what the pull_request_target job
+    posts on the PR head, since its own check run lands on the base commit), or a check run with that name."""
     deadline = time.monotonic() + timeout_s
     while True:
+        st = gh.get(f"/repos/{gh.repo}/commits/{sha}/status") or {}
+        mine = [x for x in st.get("statuses", []) if x.get("context") == name]  # newest first
+        if mine and mine[0].get("state") in ("success", "failure", "error"):
+            return mine[0]["state"] == "success"
         runs = gh.get(f"/repos/{gh.repo}/commits/{sha}/check-runs?check_name={name}&per_page=100") or {}
         runs = [r for r in runs.get("check_runs", []) if r.get("name") == name]
         done = [r for r in runs if r.get("status") == "completed"]
@@ -258,7 +270,16 @@ def wait_check(gh, sha: str, name: str, timeout_s: int = 900, every_s: int = 20,
         sleep(every_s)
 
 
-def cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> int:
+def cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None, report_status: str | None = None) -> int:
+    rc = _cmd_pr(gh, pr, fallback_check, rx)
+    if report_status:  # pull_request_target: publish the result on the PR HEAD so `test` (fork PRs) can read it
+        sha = gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"]
+        gh.post_status(sha, "success" if rc == 0 else "failure", report_status,
+                       "privacy scan clean" if rc == 0 else "privacy scan found hits (see the privacy-scan job)")
+    return rc
+
+
+def _cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> int:
     rx = rx if rx is not None else matcher()
     meta = gh.get(f"/repos/{gh.repo}/pulls/{pr}")
     sha = meta["head"]["sha"]
@@ -357,6 +378,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("pr")
     p.add_argument("--pr", type=int, required=True)
     p.add_argument("--fallback-check")
+    p.add_argument("--report-status", help="commit status context to set on the PR head with the result")
     e = sub.add_parser("event")
     e.add_argument("--name", default=os.environ.get("GITHUB_EVENT_NAME", ""))
     e.add_argument("--path", default=os.environ.get("GITHUB_EVENT_PATH", ""))
@@ -364,7 +386,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     gh = GitHub(a.repo)
     if a.cmd == "pr":
-        return cmd_pr(gh, a.pr, a.fallback_check)
+        return cmd_pr(gh, a.pr, a.fallback_check, report_status=a.report_status)
     if a.cmd == "event":
         handle_event(gh, a.name, json.loads(Path(a.path).read_text("utf-8")))
         return 0

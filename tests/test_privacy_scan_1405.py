@@ -27,7 +27,12 @@ class FakeGH:
         self.calls.append(("get", path))
         if "/check-runs" in path:
             return {"check_runs": self.checks}
+        if path.endswith("/status"):
+            return {"statuses": getattr(self, "statuses", [])}
         return {"head": {"sha": "abc1234567"}}
+
+    def post_status(self, sha, state, context, description):
+        self.calls.append(("status", sha, state, context))
 
     def get_raw(self, path):
         self.calls.append(("raw", path))
@@ -338,3 +343,43 @@ def test_sweep_without_secret_uses_builtin(monkeypatch, tmp_path, capsys):
     counts = ps.sweep(FakeGH(), ps.matcher(), tmp_path)
     assert counts["files"] == 1
     assert "IOSFODNN7EXAMPLE" not in capsys.readouterr().out
+
+
+# ---- review round 3 (CodeRabbit on ab003fe) ----------------------------------
+def test_private_key_block_masked_to_end_marker():
+    body = ("before\n-----BEGIN RSA PRIVATE KEY-----\nFAKEbase64lineONE\nFAKEbase64lineTWO\n"
+            "-----END RSA PRIVATE KEY-----\nafter")
+    gh = FakeGH()
+    assert ps.handle_event(gh, "issues", {"issue": {"number": 2, "title": "t", "body": body}},
+                           rx=ps.Combined()) == "masked"
+    new = next(c for c in gh.calls if c[0] == "patch")[2]["body"]
+    assert new == "before\n***\nafter" and "FAKEbase64" not in new
+    open_block = "x -----BEGIN PRIVATE KEY-----\nFAKEtail"
+    assert ps.Combined().sub(open_block, "***") == "x ***"  # unterminated: masked to the end
+
+
+def test_jcb_and_diners_card_numbers():
+    rx = ps.Combined()
+    assert rx.search("pay 3566002020360505 now")  # JCB test number (Luhn-valid)
+    assert rx.search("pay 3056 9309 0259 04")  # Diners test number
+    assert not rx.search("order 3566002020360506")  # Luhn fails
+
+
+def test_api_key_with_underscore_before_hyphen():
+    key = "sk-" + "proj_" + "A" * 10 + "-" + "B" * 30  # made-up shape, not a real key
+    assert ps.Combined().sub(f"k={key};", "***") == "k=***;"
+
+
+def test_fork_fallback_reads_status_on_head_and_target_posts_it():
+    ok = FakeGH()
+    ok.statuses = [{"context": "privacy-scan", "state": "success"}]
+    assert ps.wait_check(ok, "abc", "privacy-scan", timeout_s=0, sleep=lambda s: None) is True
+    bad = FakeGH()
+    bad.statuses = [{"context": "privacy-scan", "state": "failure"}, {"context": "privacy-scan", "state": "success"}]
+    assert ps.wait_check(bad, "abc", "privacy-scan", timeout_s=0, sleep=lambda s: None) is False
+    gh = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
+    assert ps.cmd_pr(gh, 7, rx=ps.Combined(), report_status="privacy-scan") == 0
+    assert ("status", "abc1234567", "success", "privacy-scan") in gh.calls
+    gh2 = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+pay 3566002020360505\n"}])
+    assert ps.cmd_pr(gh2, 7, rx=ps.Combined(), report_status="privacy-scan") == 1
+    assert ("status", "abc1234567", "failure", "privacy-scan") in gh2.calls

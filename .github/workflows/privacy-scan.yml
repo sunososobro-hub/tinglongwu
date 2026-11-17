@@ -30,6 +30,7 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      statuses: write   # only to post the `privacy-scan` result on the PR head (its check run lands on the base)
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 (base branch, not the PR head)
         with:
@@ -39,7 +40,8 @@ jobs:
           TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
           GITHUB_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-        run: python scripts/privacy_scan.py pr --pr "$PR"
+        # the result also goes to a commit status `privacy-scan` on the PR head: ci.yml `test` waits for it on fork PRs
+        run: python scripts/privacy_scan.py pr --pr "$PR" --report-status privacy-scan
       - name: PR title and body (masked in place on a hit)
         if: always() && (github.event.action == 'opened' || github.event.action == 'edited')
         env:
