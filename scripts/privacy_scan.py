@@ -272,25 +272,27 @@ def wait_check(gh, sha: str, name: str, timeout_s: int = 900, every_s: int = 20,
 
 
 def cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None, report_status: str | None = None) -> int:
-    rc = _cmd_pr(gh, pr, fallback_check, rx)
-    if report_status:  # pull_request_target: publish the result on the PR HEAD so `test` (fork PRs) can read it
-        sha = gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"]
+    rc, sha = _cmd_pr(gh, pr, fallback_check, rx)
+    if report_status and sha:  # pull_request_target: publish on the commit that was SCANNED, never a later head
         gh.post_status(sha, "success" if rc == 0 else "failure", report_status,
                        "privacy scan clean" if rc == 0 else "privacy scan found hits (see the privacy-scan job)")
     return rc
 
 
-def _cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> int:
+def _cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> tuple[int, str]:
+    """(exit code, scanned head sha). The sha is empty when the head moved during the scan (nothing to publish)."""
     rx = rx if rx is not None else matcher()
-    meta = gh.get(f"/repos/{gh.repo}/pulls/{pr}")
-    sha = meta["head"]["sha"]
+    sha = gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"]
     files = list(gh.paginate(f"/repos/{gh.repo}/pulls/{pr}/files"))
+    if gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"] != sha:
+        print("privacy-scan: the PR head moved during the scan; the run for the new head decides", file=sys.stderr)
+        return 1, ""
     hits = scan_pr_files(files, rx, gh, sha)
     for h in hits:
         print(h)
     if hits:
         print(f"privacy-scan: {len(hits)} hit(s) in added lines (matched values masked)", file=sys.stderr)
-        return 1
+        return 1, sha
     desc = rx.describe() if hasattr(rx, "describe") else f"{rx.size} entries"
     print(f"privacy-scan: clean ({len(files)} file(s), {desc})")
     if fallback_check and getattr(rx, "words", True) is None:
@@ -298,8 +300,8 @@ def _cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> int:
         print(f"privacy-scan: no word list here (fork PR); waiting for the `{fallback_check}` check on {sha[:8]}")
         ok = wait_check(gh, sha, fallback_check)
         print(f"privacy-scan: `{fallback_check}` {'passed' if ok else 'did not pass'}")
-        return 0 if ok else 1
-    return 0
+        return (0 if ok else 1), sha
+    return 0, sha
 
 
 # ---------------------------------------------------------------- issues / comments

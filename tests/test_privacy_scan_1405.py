@@ -405,3 +405,21 @@ def test_issue_body_with_mismatched_pem_markers_is_masked_in_place():
     new = next(c for c in gh.calls if c[0] == "patch")[2]["body"]
     assert new == "a ***\nb" and "FAKEmaterial" not in new
     assert ("label", 4) in gh.calls
+
+
+def test_status_goes_on_the_scanned_head_and_a_moved_head_gets_none():
+    class Moving(FakeGH):
+        heads = ["aaa1111111", "bbb2222222"]
+
+        def get(self, path):
+            if path.endswith("/pulls/7"):
+                self.calls.append(("get", path))
+                return {"head": {"sha": self.heads.pop(0) if len(self.heads) > 1 else self.heads[0]}}
+            return super().get(path)
+
+    gh = Moving(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
+    assert ps.cmd_pr(gh, 7, rx=ps.Combined(), report_status="privacy-scan") == 1
+    assert not [c for c in gh.calls if c[0] == "status"]  # no success published on the newer head
+    gh2 = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
+    assert ps.cmd_pr(gh2, 7, rx=ps.Combined(), report_status="privacy-scan") == 0
+    assert [c for c in gh2.calls if c[0] == "status"] == [("status", "abc1234567", "success", "privacy-scan")]
