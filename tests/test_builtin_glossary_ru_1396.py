@@ -84,3 +84,10 @@ def test_ru_verbs_fire_on_past_tense_1429():
              "Смержил всё.": "смержить", "Откатил всё.": "откатить"}
     for sent, main in cases.items():
         assert main in [e.main for e in g.relevant(sent)], sent
+
+
+def test_ru_verbs_keep_present_and_reflexive_matches_1429():
+    g = glossary.load_builtin("ru")
+    for sent, main in {"Он задеплоит сервис.": "задеплоить", "Я пофиксит всё.": "пофиксить",
+                       "Надо смержить.": "смержить", "Нужно откатить.": "откатить"}.items():
+        assert main in [e.main for e in g.relevant(sent)], sent
