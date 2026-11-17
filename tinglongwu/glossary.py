@@ -55,14 +55,19 @@ class Entry:
     def main(self) -> str:
         return self.sources[0]
 
+    @staticmethod
+    def _short_ok(word: str, stem: str) -> bool:
+        """#1396: a short stem (прод, лог) matches itself or itself plus one ending letter (проде, логи), never a
+        longer word (продолжение, логика)."""
+        return word == stem or (len(word) == len(stem) + 1 and word.startswith(stem))
+
     def matches(self, words: list[str]) -> bool:
         for src in self.sources:
-            stems = [_norm(w) if self.whole_short and len(_stem(w)) <= SHORT_LATIN else _stem(w)
-                     for w in _WORD.findall(src)]  # whole_short: the spelling as written, not its stem
+            stems = [_stem(w) for w in _WORD.findall(src)]
             if not stems:
                 continue
             for i in range(len(words) - len(stems) + 1):
-                if all(words[i + j] == s if self.whole_short and len(s) <= SHORT_LATIN else
+                if all(self._short_ok(words[i + j], s) if self.whole_short and len(s) <= SHORT_LATIN else
                        words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] in ((s, s + "s", s + "es") if s.isalpha() else (s,))
                        for j, s in enumerate(stems)):
                     return True
