@@ -73,9 +73,11 @@ def _ru_noun_ok(word: str, src_word: str, stem: str) -> bool:
     src = _norm(src_word)
     if word == src:
         return True
-    if (src.endswith(("ить", "ать")) and len(src) >= 6 and word[:len(src) - 3] == src[:-3]
-            and word[len(src) - 3:] in _RU_PAST[src[-3]]):
-        return True  # #1429/#1432: past, 1pl/3pl future, imperative (задеплоил, задеплоим, пофикси); other forms fall through to the prefix match
+    if src.endswith(("ить", "ать")) and len(src) >= 6:
+        base = src[:-3]
+        for w in (word, word[:-2] if word.endswith(("ся", "сь")) else None):  # #1439: reflexive (задеплоился, откатилось)
+            if w and w[:len(base)] == base and w[len(base):] in _RU_PAST[src[-3]]:
+                return True  # #1429/#1432: past, 1pl/3pl future, imperative (задеплоил, задеплоим, пофикси); other forms fall through to the prefix match
     if src.endswith("ить") and len(src) >= 6:
         alt = _RU_1SG_ALT.get(src[-4])
         if alt and word in (src[:-4] + alt + "у", src[:-4] + alt + "ю"):
