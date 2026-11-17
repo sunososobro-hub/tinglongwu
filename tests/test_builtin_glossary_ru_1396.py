@@ -48,3 +48,12 @@ def test_ru_term_reaches_prompt(tmp_path):
     tr.glossary = glossary.load_builtin("ru")
     tr.translate("Мы залили фичу в прод вчера.", "ru", "zh")
     assert all(f"{w}" in calls[-1] for w in ("上傳", "功能", "正式環境"))
+
+
+def test_short_ru_terms_do_not_match_longer_words():
+    g = glossary.load_builtin("ru")
+    hit = lambda text: {e.main for e in g.relevant(text)}  # noqa: E731
+    assert "прод" not in hit("Продолжение следует.")
+    assert "лог" not in hit("Это логика программы.")
+    assert "прод" in hit("Выкатили в проде.") and "баг" in hit("Нашли багов много.")
+    assert "логи" in hit("Посмотри логи.") and "ветка" in hit("Создал ветку.")

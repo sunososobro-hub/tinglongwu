@@ -621,7 +621,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     if getattr(a, "builtin_glossary", False):
         from .glossary import load_builtin, merge
 
-        glossary = merge(glossary, load_builtin(getattr(a, "lang", None)))
+        glossary = merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     prog.stage("speech model")
     cands = None
