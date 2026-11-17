@@ -120,3 +120,14 @@ def test_ru_verbs_fire_on_1sg_and_2sg_1434():
              "Откачу релиз.": "откатить", "Откатишь?": "откатить"}
     for text, verb in cases.items():
         assert verb in {e.main for e in g.relevant(text)}, text
+
+
+def test_ru_zalit_irregular_forms_and_smerdzhit_1436():
+    g = glossary.load_builtin("ru")
+    yes = {"Я залью фикс сегодня": "залить", "Зальём на прод": "залить", "Зальем на прод": "залить",
+           "Зальют вечером": "залить", "Залей на стейджинг": "залить", "Смерджили ветку": "смержить",
+           "Надо смерджить": "смержить"}
+    for text, main in yes.items():
+        assert main in {e.main for e in g.relevant(text)}, text
+    for text in ("В зале тихо", "Это залог успеха"):
+        assert "залить" not in {e.main for e in g.relevant(text)}, text
