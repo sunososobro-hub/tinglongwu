@@ -49,6 +49,8 @@ def main():
 
     api = HfApi()
     models = {f"whisper-{s}": hf_pin(api, dl.whisper_repo(s)) for s in WHISPER}
+    for s in dl.WHISPER_CPP_SIZES:  # #1401: whisper.cpp ggml models for the Vulkan ASR (LFS -> SHA256 from the API)
+        models[f"whisper-cpp-{s}"] = hf_pin(api, dl.WHISPER_CPP_REPO, only={dl.whisper_cpp_file(s)})
     models[dl.HYMT_DIR] = hf_pin(api, dl.HYMT_GGUF[0], only={dl.HYMT_GGUF[1]})
     for voice, files in dl.PIPER_RU.items():
         models[dl.piper_ru_dir(voice)] = hf_pin(api, dl.PIPER_REPO, only=set(files))

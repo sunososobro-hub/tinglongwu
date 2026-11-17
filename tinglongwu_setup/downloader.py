@@ -155,6 +155,39 @@ def get_whisper(man, mdir, size):
     pin_or_verify(man, key, dest, {k: src[k] for k in ("repo", "revision")}, pf)
 
 
+WHISPER_CPP_DIR = "whisper-cpp"  # keep in sync with tinglongwu.asr_vulkan.MODEL_DIR (setup does not import tinglongwu)
+WHISPER_CPP_REPO = "ggerganov/whisper.cpp"  # MIT; ggml-<size>.bin conversions of the OpenAI Whisper weights
+WHISPER_CPP_SIZES = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
+
+
+def whisper_cpp_file(size: str) -> str:
+    return f"ggml-{size}.bin"
+
+
+def get_whisper_cpp(man, mdir, size, fetch=None, pins=None):
+    """#1401: whisper.cpp ggml model -> models/whisper-cpp/ggml-<size>.bin for the Vulkan ASR (asr_vulkan._load_backend).
+    Only from the committed pin (manifest.json "whisper-cpp-<size>": repo, revision, SHA256 written by
+    scripts/make_model_pins.py): a ~0.5-3 GB file is never pinned on first use. Download is resumable and SHA256-checked
+    (resume.fetch); a mismatch raises and leaves no model file behind."""
+    from . import resume
+
+    key, fname = f"whisper-cpp-{size}", whisper_cpp_file(size)
+    pin = (pins if pins is not None else load_pins())["models"].get(key)
+    if not pin or fname not in pin.get("files", {}):
+        sys.exit(f"{key} has no committed pin in {PINS_FILE.name}; run scripts/make_model_pins.py (needs huggingface.co) "
+                 f"and commit the result before downloading it.")
+    sha, dest = pin["files"][fname], mdir / WHISPER_CPP_DIR / fname
+    if not (dest.exists() and key in man):
+        (fetch or resume.fetch)(f"https://huggingface.co/{pin['repo']}/resolve/{pin['revision']}/{fname}", dest, sha,
+                                label=fname)
+    got = sha256(dest)
+    if got != sha:
+        dest.unlink()
+        sys.exit(f"SHA256 MISMATCH vs committed pin for {key}: {fname} - refusing (deleted; re-run to download again).")
+    man[key] = {"repo": pin["repo"], "revision": pin["revision"], "files": {fname: got}}
+    print(f"verified {key}")
+
+
 def extract_argos(z: Path, dest: Path, work: Path) -> None:
     with zipfile.ZipFile(z) as zf:
         for n in zf.namelist():  # zip-slip guard
@@ -546,6 +579,9 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--whisper", action="append", default=[],
                    choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"])
+    p.add_argument("--whisper-cpp", action="append", default=[], choices=WHISPER_CPP_SIZES,
+                   help="whisper.cpp ggml model for the Vulkan ASR (AMD / Intel GPUs) -> models/whisper-cpp/, "
+                        "pinned by SHA256 (#1401)")
     p.add_argument("--langs", default="", help="comma list of source langs (downloads X->en)")
     p.add_argument("--to", default="", help="comma list of target langs (downloads en->X)")
     p.add_argument("--pair", action="append", default=[], help=argparse.SUPPRESS)  # #562: deprecated, ignored
@@ -595,6 +631,14 @@ def main(argv=None) -> int:
     if a.verify:
         pins = load_pins()
         for key in man:
+            if key.startswith("whisper-cpp-"):  # one file per size, all in models/whisper-cpp/ (#1401)
+                fname = whisper_cpp_file(key[len("whisper-cpp-"):])
+                f = mdir / WHISPER_CPP_DIR / fname
+                pf = (pins["models"].get(key) or man[key])["files"]
+                if not f.is_file() or sha256(f) != pf.get(fname):
+                    sys.exit(f"SHA256 MISMATCH for {key}: ['{fname}'] - refusing. Delete {f} to re-download.")
+                print(f"verified {key} (1 files)")
+                continue
             d = mdir / ("opus/" + key[5:] if key.startswith("opus-") else key)
             pf = (pins["models"].get(key) or pins["argos"].get(key) or {}).get("files")
             if key == KOKORO_DIR:
@@ -608,6 +652,9 @@ def main(argv=None) -> int:
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     for s in a.whisper:
         get_whisper(man, mdir, s)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    for s in a.whisper_cpp:
+        get_whisper_cpp(man, mdir, s)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt:
         get_hymt(man, mdir)
