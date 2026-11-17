@@ -334,3 +334,22 @@ def test_record_failed_amend_keeps_the_previous_row_and_clip(tmp_path, monkeypat
     with wave.open(str(tmp_path / "0001.wav")) as w:
         assert w.getnframes() == 1600
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_record_amend_without_new_audio_updates_the_row_and_keeps_the_clip(tmp_path):
+    """The fragment's speech is already in the previous line's last segment: row text is amended, clip unchanged."""
+    import wave
+
+    from tinglongwu.record import Recorder
+
+    rec = Recorder(tmp_path)
+    rec.add(1, np.full(1600, 0.1, np.float32), 0.0, 0.1)
+    rec.line(rec.take(1, 1), _rec_result("a."))
+    clip = rec.take(1, 1, amend=True)
+    assert clip is None
+    rec.line(clip, _rec_result("a. b.", replaces="a."))
+    rec.close()
+    rows = [json.loads(x) for x in (tmp_path / "segments.jsonl").read_text("utf-8").splitlines()]
+    assert [r["source"] for r in rows] == ["a. b."]
+    with wave.open(str(tmp_path / rows[0]["file"])) as w:
+        assert w.getnframes() == 1600

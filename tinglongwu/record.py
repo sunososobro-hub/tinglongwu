@@ -56,14 +56,18 @@ class Recorder:
             if self._f.closed:
                 return
             replacing = getattr(r, "replaces", None) is not None
-            amend = replacing and self._last is not None and clip is not None
-            if clip is None or (replacing and not amend):
-                self._last = None  # no audio for the line it amends: never pair part of the speech with the whole text
+            amend = replacing and self._last is not None
+            if replacing and not amend:
+                self._last = None  # no previous clip to join: never pair part of the speech with the whole text
+                return
+            if clip is None and not amend:
+                self._last = None
                 return
             self._f.flush()
             if amend:
                 name, prev, offset = self._last
-                clip = (np.concatenate([prev[0], clip[0]]), prev[1], clip[2])
+                # clip is None: take() found every segment already in the previous clip, so that audio is the fragment's too
+                clip = prev if clip is None else (np.concatenate([prev[0], clip[0]]), prev[1], clip[2])
             else:
                 self.n += 1
                 name = f"{self.n:04d}.wav"
