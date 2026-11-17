@@ -1943,6 +1943,8 @@ class App:
         except Exception:  # noqa: BLE001  # no setup package / unreadable manifest: behave as before
             return False
         bg = getattr(self, "bg_dl", None)
+        if need is not None and bg is not None and bg.active and pack_on_demand.only_translation_model(need[0]):
+            return False  # #1375: only Hy-MT2 is downloading: listen starts with --mt-pending (source-text lines)
         if need is not None and bg is not None and (bg.active or bg.errors):  # #1358: one setup child at a time
             if not bg.active:
                 bg.errors.clear()

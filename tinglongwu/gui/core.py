@@ -902,6 +902,7 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--engine", engine, "--model", usable_model(s.get("model"))]
     else:  # the CLI picks engine + speech model from the hardware probe
         argv += ["--quality", quality]
+    argv += ["--mt-pending"]  # #1375: Hy-MT2 still downloading -> source-text subtitles, translation switches on later
     if s.get("source") == "mic":
         argv += ["--mic"]
         if s.get("mic_device"):  # #894: a microphone picked in Advanced; default = the system default mic

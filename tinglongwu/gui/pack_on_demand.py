@@ -81,6 +81,13 @@ def _defaults(mdir: Path, missing, size_mb):
     return missing or (lambda p: _missing(p, mdir)), size_mb or _pack_mb
 
 
+def only_translation_model(pack: str) -> bool:
+    """#1375: True when the pack is nothing but the Hy-MT2 model, which the listen child can wait for with
+    --mt-pending (source-text subtitles first); a pack that also needs a voice (ru) is not."""
+    models = PACKS.get(real_pack(pack), [])
+    return bool(models) and set(models) <= {"hymt2-1.8b"}
+
+
 def first_missing(source_lang: str, target_lang: str, mdir: Path, missing=None, size_mb=None) -> tuple[str, int] | None:
     """(pack, size in MB) of the first pack the pair needs that is not installed, or None. `missing(pack)` /
     `size_mb(pack)` default to the pack table + the local models/manifest.json."""
