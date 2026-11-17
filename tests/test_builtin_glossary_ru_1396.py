@@ -142,3 +142,11 @@ def test_ru_verbs_fire_on_reflexive_forms_1439():
         assert verb in {e.main for e in g.relevant(text)}, text
     for text in ("Тесто готово", "Железная дорога", "Фикус", "В зале тихо", "Это залог успеха"):
         assert not g.relevant(text), text
+
+
+def test_ru_prod_fires_on_prodakshen_spelling_1438():
+    g = glossary.load_builtin("ru")
+    for text in ("Продакшен упал", "На продакшене", "Нет продакшена", "Продакшену плохо"):
+        assert "прод" in {e.main for e in g.relevant(text)}, text
+    for text in ("Продукт готов", "Продавец"):
+        assert "прод" not in {e.main for e in g.relevant(text)}, text

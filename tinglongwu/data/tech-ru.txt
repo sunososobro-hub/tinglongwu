@@ -2,7 +2,7 @@
 # Russian (or auto); user glossary entries for the same term win. Generic, publicly common terms only; no vendor names.
 # Not sent to Whisper as hotwords.
 коммит | коммиты = 提交
-прод | проде | продакшн = 正式環境
+прод | проде | продакшн | продакшен = 正式環境
 релиз = 發佈
 баг | бага | багу | баги | багов = 程式錯誤
 фича | фичу | фичи | фичей = 功能
