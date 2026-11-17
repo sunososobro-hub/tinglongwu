@@ -293,7 +293,7 @@ def test_offline_file_is_never_joined(monkeypatch):
 
 
 @pytest.mark.parametrize("text", ["Music.", "Music. Music.", "[Music]", "(upbeat music)", "[MUSIC PLAYING]", "♪♪",
-                                  "音樂。音樂。", "Музыка", "[soft instrumental background music]"])
+                                  "音樂。音樂。", "Музыка", "[soft instrumental background music]", "[♪♪]"])
 def test_music_only_segment_produces_no_line(text):
     assert is_hallucination(text, 0.1, 0.0)
 

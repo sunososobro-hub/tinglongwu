@@ -102,6 +102,8 @@ def _music_tag(tag: str) -> bool:
     """A bracketed sound description: a music word plus at most two more words, not a sentence ("(upbeat music)",
     "[MUSIC PLAYING]"; not "(I love music.)")."""
     inner = tag[1:-1].strip()
+    if _NOTES.search(inner) and not _norm(_NOTES.sub("", inner)):
+        return True  # notes only, e.g. "[♪♪]"
     words = [_norm(w) for w in inner.split()]
     short = len(words) <= 3 or all(w in SOUND_WORDS or _MUSIC_ONLY.fullmatch(w) for w in words if w)
     return short and not re.search(r"[.!?。！？]$", inner) and bool(_MUSIC_ONLY.search(_norm(inner)))

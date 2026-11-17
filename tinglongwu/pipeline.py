@@ -425,7 +425,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         if len(keep) == 1:
             return keep[0]
         say(f"latency: catch-up: {len(keep)} segments ({total - gone:.1f} s) in one ASR call")
-        return (np.concatenate([j[0] for j in keep]),) + tuple(joined[-1][1:])
+        return (np.concatenate([j[0] for j in keep]),) + tuple(keep[-1][1:])  # marks of the newest speech
 
     try:
         while True:
