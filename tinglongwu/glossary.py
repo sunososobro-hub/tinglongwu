@@ -164,12 +164,17 @@ def load(path) -> Glossary:
 
 
 BUILTIN_PATH = Path(__file__).parent / "data" / "tech-dev.txt"
+BUILTIN_RU_PATH = Path(__file__).parent / "data" / "tech-ru.txt"
 
 
-def load_builtin() -> Glossary:
+def load_builtin(lang: str | None = None) -> Glossary:
     """The built-in tech/dev list (#256). Its terms are not Whisper hotwords: biasing every talk towards
-    "daemon, driver, kernel, ..." would make Whisper hear them where they were not said."""
+    "daemon, driver, kernel, ..." would make Whisper hear them where they were not said.
+    #1396: with source language `lang` Russian (or unknown / "auto", the terms are Cyrillic and only fire on
+    Russian words) the Russian software slang list is added; any other language gets the English list only."""
     g = load(BUILTIN_PATH)
+    if not lang or lang == "auto" or lang.lower().split("-")[0] == "ru":
+        g.entries.extend(parse(BUILTIN_RU_PATH.read_text(encoding="utf-8-sig")))
     for e in g.entries:
         e.asr_hint = False
     return g
