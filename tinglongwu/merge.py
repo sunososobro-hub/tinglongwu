@@ -174,9 +174,10 @@ class SentenceMerger:
         within amend_window of the previous released line is joined to it at once (a unit with `replaces` set)."""
         since = self.since
         out = self._post(self._add(text, lang, now, forced_cut, pause, tag), now, now if since is None else since)
+        arrived = now if self.since is None else self.since
         if self.buf and self.min_words > 0 and _is_end(self.buf) and self._is_fragment(self.buf) \
-                and self._amendable(self.buf, self.lang, now if self.since is None else self.since):
-            out += self._post([self._take(forced=False)], now, now)
+                and self._amendable(self.buf, self.lang, arrived):
+            out += self._post([self._take(forced=False)], now, arrived)
         return out
 
     def due(self, now: float) -> list[Unit]:

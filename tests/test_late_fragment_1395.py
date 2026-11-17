@@ -169,3 +169,35 @@ def test_pipeline_save_has_merged_line_once(tmp_path):
     assert [r["src"] for r in rows] == ["Сейчас покажу настройки для новой версии."]
     assert inner.rows[-1].replaces == "Сейчас покажу настройки для новой."
     assert "ВЕРСИИ" in rows[0]["dst"]  # the whole line was translated again
+
+
+def test_buffered_tail_uses_its_arrival_time():
+    m = SentenceMerger(min_words=3, max_wait=6.0)
+    m.add("We moved the logs to the new", "en", 0.0)
+    assert _texts(m.due(6.0)) == [("We moved the logs to the new", None)]
+    assert m.add("project", "en", 8.5) == []  # arrives 2.5 s after the line
+    out = m.add("folder.", "en", 9.5)  # finishes the tail 3.5 s after the line: still joined (arrival counts)
+    assert _texts(out) == [("We moved the logs to the new project folder.", "We moved the logs to the new")]
+
+
+def test_same_language_zh_replaces_the_converted_line(tmp_path, monkeypatch):
+    from tinglongwu import translate
+
+    monkeypatch.setattr(translate, "zh_convert", lambda text, variant: text.replace("设", "設"))
+
+    class _ZhASR(_ASR):
+        def transcribe(self, audio):
+            return Transcript(self.items.pop(0), "zh")
+
+    class Collect(Sink):
+        def __init__(self):
+            self.rows = []
+
+        def write(self, r):
+            self.rows.append(r)
+
+    tr = PivotTranslator(tmp_path, "tw", lambda s, t: (lambda x: x))
+    out = Collect()
+    run(_Src(2), Segmenter(chunk=1.0, use_vad=False), _ZhASR(["我们先打开新版本的设置页面。", "下面。"]), tr, out,
+        merger=SentenceMerger(min_words=3), audio_clock=True)
+    assert out.rows[-1].replaces == out.rows[0].original == "我们先打开新版本的設置页面。"

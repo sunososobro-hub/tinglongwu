@@ -249,6 +249,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 from .translate import zh_convert
 
                 unit_text = zh_convert(unit_text, getattr(mt, "zh_variant", "tw"))
+                if replaces is not None:  # #1395: the replaced line was shown converted the same way
+                    replaces = zh_convert(replaces, getattr(mt, "zh_variant", "tw"))
             write(Result(lang, unit_text, None, unit_text, tgt, speaker=who, replaces=replaces), ep)
             return
         with model_lock():
@@ -362,17 +364,15 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             audio = None
             if recorder is not None and u.tag is not None:  # #239: a dropped line drops its audio too
                 audio = recorder.take((u.first or u.tag)[2], u.tag[2])
-            if not text:
-                continue
             replaces, raw = None, u.text
             if u.replaces is not None:  # #1395: the previous line + a late fragment, re-translated in its place
                 who_new = u.tag[1] if u.tag is not None else last_who[0]
-                if u.replaces == last_unit[0] and not (who_new and last_unit[2] and who_new != last_unit[2]):
+                if text and u.replaces == last_unit[0] and not (who_new and last_unit[2] and who_new != last_unit[2]):
                     replaces = last_unit[1]  # the text the sinks showed for that line
                 else:  # the line it would replace was dropped, or another speaker said the fragment: a line of its own
                     text, raw = filter_hallucination(u.part), None
-                    if not text:
-                        continue
+            if not text:
+                continue
             key, now = _dup_key(text), consumed[0] / SAMPLE_RATE if audio_clock else time.monotonic()
             if key and key == last_final[0] and now - last_final[1] <= DUP_WINDOW:
                 continue  # identical final line again within the window: show it once
