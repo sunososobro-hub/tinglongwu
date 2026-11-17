@@ -84,9 +84,11 @@ def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | N
 # ru->en: "Note that you should only output the translated result without any additional explanation: <translation>",
 # also reworded as "It should be noted that only the translated result should be output, ..."). Only a leading echo
 # that names the "translated result" / "额外解释" instruction is removed; a translation that merely says "note" stays.
+# one sentence (no "." / ":" inside) that says to output only the translated result/text, with no explanation
 _ECHO_EN = re.compile(r"^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s+noted\s+that|you\s+should)[,:]?\s*"
+                      r"(?=[^.:\n]*\boutput\b)"
                       r"[^.:\n]{0,40}?\bonly\b[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b"
-                      r"[^:\n]{0,40}?\b(?:without|no)\b[^:\n]{0,40}?\bexplanations?\s*[.:]\s*", re.I)
+                      r"[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*[.:]\s*", re.I)
 _ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)[。：:]\s*")
 
 

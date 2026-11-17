@@ -53,7 +53,7 @@ Results: [eval-flores 43893644257](https://github.com/sunososobro-hub/tinglongwu
 - Median s/sentence (CPU): -> zh 1.3-2.4, -> en 2.3-2.8, -> ja / ko 2.1-3.9, -> ru 4.1-4.4.
 
 ### Why Russian as the source is weak (#1351)
-Same data as the 6x6 run (first 200 FLORES-200 devtest sentences, Hy-MT2-1.8B, greedy, 4 vCPU GitHub runners); `eval-flores` now writes an error breakdown of the 40 lowest-COMET sentences of every direction (`flores_cpu.py --breakdown`, heuristic categories, one sentence can have several) and takes experiment `variants` and `tgts`. Runs: before = [44013625413](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44013625413) (commit 1d4ad28), after = [44016598460](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44016598460) (commit 712198c). Reproduce: `gh workflow run eval-flores.yml --ref dev -f langs=rus_Cyrl -f tgts=zho_Hant,eng_Latn -f limit=200 -f temps=0 -f variants=card,src,q8`.
+Same data as the 6x6 run (first 200 FLORES-200 devtest sentences, Hy-MT2-1.8B, greedy, 4 vCPU GitHub runners); `eval-flores` now writes an error breakdown of the 40 lowest-COMET sentences of every direction (`flores_cpu.py --breakdown`, heuristic categories, one sentence can have several) and takes experiment `variants` and `tgts`. Runs: before = [44013625413](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44013625413) (commit 1d4ad28), after = [44016598460](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44016598460) (commit 712198c). Reproduce on any revision that has the `variants` / `tgts` inputs (#1351 onwards): `gh workflow run eval-flores.yml --ref <ref> -f langs=rus_Cyrl -f tgts=zho_Hant,eng_Latn -f limit=200 -f temps=0 -f variants=card,src,q8`. The "before" rows come from commit 1d4ad28 (variants and breakdown, no echo fix); the "after" rows from 712198c (echo fix in `tinglongwu/hymt.py`); on dev after #1368 every variant includes the echo fix.
 
 Error breakdown of the 40 lowest-COMET sentences (share among the 40 / share among all 200):
 
@@ -82,7 +82,7 @@ Fixes tried (ru -> zh-Hant / ru -> en, COMET / chrF / median s per sentence, CPU
 
 - Echo fix: ru -> en +0.0070 COMET (+0.26 chrF); ru -> zh-Hant identical to the last digit (greedy decoding gives the same text on every CPU, so the difference is only the fix). It changes no model call, only two regex substitutions on the output, so speed is unchanged; the s/sentence columns differ because each job got another runner CPU.
 - Naming the source language: slightly worse on both (-0.0008 / -0.0057), ruled out.
-- Q8_0: +0.0053 on ru -> zh-Hant, -0.0008 on ru -> en against the fixed Q4_K_M, below the +0.008 bar on both, and the file is about 1.9x the size of Q4_K_M (memory-bound on the CPU, #1198 measured the quant speeds); ruled out. Q5 / Q6 sit between these two, so they cannot reach +0.008 either.
+- Q8_0: +0.0053 on ru -> zh-Hant, -0.0008 on ru -> en against the fixed Q4_K_M, below the +0.008 bar on both, and the file is about 1.9x the size of Q4_K_M (memory-bound on the CPU, #1198 measured the quant speeds); ruled out. Q5_K_M / Q6_K were not measured.
 - Not reached: COMET >= 0.88 on ru -> zh-Hant (0.870) and ru -> en (0.861). What is left is model knowledge (names, domain senses), the area of the larger-model candidates (#1319).
 
 ### Hy-MT2 sampling temperature (#107)

@@ -50,6 +50,8 @@ def test_echoed_chinese_instruction_is_removed(tmp_path):
     "注意安全，不要靠近大壩。",
     "Note that the translated text contains an explanation.",  # no "only ... without explanation" directive
     "只需要输出额外解释即可。",  # no 翻译 in it: not the card instruction
+    "Note that only the translated text has no explanation.",  # no "output" directive
+    "You should only read the translated text. No explanation.",  # never matches across a sentence end
 ])
 def test_real_translations_are_unchanged(text):
     assert strip_echo(text) == text
