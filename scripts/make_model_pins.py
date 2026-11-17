@@ -70,11 +70,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--only", metavar="PREFIX", help="refresh only model keys with this prefix, e.g. whisper-cpp-")
     a = ap.parse_args(argv)
+    if a.only is not None and not a.only:
+        ap.error("--only needs a non-empty prefix (omit it to refresh everything)")
     os.environ.pop("HF_HUB_OFFLINE", None)
     from huggingface_hub import HfApi
 
     api = HfApi()
-    if a.only:
+    if a.only is not None:
         print("refreshed", ", ".join(refresh_only(api, a.only)), "in", dl.PINS_FILE)
         return
     models = {f"whisper-{s}": hf_pin(api, dl.whisper_repo(s)) for s in WHISPER}

@@ -44,6 +44,11 @@ def pins_file(tmp_path, monkeypatch):
 
 @pytest.fixture
 def fake_hub(monkeypatch):
+    # main() pops HF_HUB_OFFLINE from the real environment; register it so monkeypatch restores it afterwards
+    # (other tests, e.g. test_offline.py, rely on it).
+    import os
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", os.environ.get("HF_HUB_OFFLINE", "1"))
     api = _Api()
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(HfApi=lambda: api))
     return api
@@ -75,6 +80,13 @@ def test_only_with_unknown_prefix_exits_and_writes_nothing(pins_file, fake_hub):
     with pytest.raises(SystemExit, match="matches no"):
         _load_script().main(["--only", "nope-"])
     assert pins_file.read_text("utf-8") == text
+
+
+def test_only_with_empty_prefix_exits_instead_of_a_full_refresh(pins_file, fake_hub):
+    text = pins_file.read_text("utf-8")
+    with pytest.raises(SystemExit):
+        _load_script().main(["--only", ""])
+    assert pins_file.read_text("utf-8") == text and fake_hub.calls == []
 
 
 @pytest.mark.parametrize("size", dl.WHISPER_CPP_SIZES)
