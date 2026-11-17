@@ -1707,9 +1707,11 @@ class App:
         return self.log_text.dlineinfo("end-1c") is not None or follow_newest(self.log_text.yview()[1])
 
     def _log_to_end(self):
-        # wrapped-line heights are only known after layout: scroll now and again when Tk is idle (#1384)
+        # wrapped-line heights are only known after layout: scroll, flush the layout, scroll again (#1384). Not
+        # after_idle: a pending callback would later undo a reader's scroll-up.
         self.log_text.yview_moveto(1.0)
-        self.log_text.after_idle(lambda: self.log_text.yview_moveto(1.0))
+        self.log_text.update_idletasks()
+        self.log_text.yview_moveto(1.0)
 
     def render_log(self):
         """Redraw the history; keep following the newest line unless the user scrolled up to re-read."""
