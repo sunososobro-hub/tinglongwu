@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import threading
 import wave
 from pathlib import Path
@@ -34,10 +35,14 @@ class Recorder:
     def add(self, no: int, audio, start: float, end: float) -> None:
         self._segs.append((no, np.asarray(audio, dtype=np.float32), max(0.0, start), end))
 
-    def take(self, first: int, last: int):
+    def take(self, first: int, last: int, amend: bool = False):
         """(audio, start, end) of a line holding text of segments first..last; keeps `last` for the next line.
         #1252: a segment older than `first` that no earlier line took (its whole text was the VAD overlap the merger
-        de-duplicated) goes into this line too, so its audio still maps to a line instead of being thrown away."""
+        de-duplicated) goes into this line too, so its audio still maps to a line instead of being thrown away.
+        #1395 amend=True: the clip is joined to the previous line's clip, so it keeps only segments newer than the
+        newest one that line took (a segment shared by both lines would be heard twice)."""
+        if amend:
+            first = max(first, self._done + 1)
         took = [s for s in self._segs if (first <= s[0] or s[0] > self._done) and s[0] <= last]
         self._segs = [s for s in self._segs if s[0] >= last]
         self._done = max(self._done, last)
@@ -59,17 +64,25 @@ class Recorder:
             if amend:
                 name, prev, offset = self._last
                 clip = (np.concatenate([prev[0], clip[0]]), prev[1], clip[2])
-                self._f.truncate(offset)  # drop the previous line's row; the new row below replaces it
             else:
                 self.n += 1
                 name = f"{self.n:04d}.wav"
                 offset = (self.dir / "segments.jsonl").stat().st_size
-            with wave.open(str(self.dir / name), "wb") as w:
-                w.setnchannels(1), w.setsampwidth(2), w.setframerate(SAMPLE_RATE)
-                w.writeframes((np.clip(clip[0], -1.0, 1.0) * 32767.0).astype("<i2").tobytes())
             row = {"file": name, "start": round(clip[1], 2), "end": round(clip[2], 2),
                    "wall": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "lang": r.src,
                    "source": r.original, "translation": r.target if r.src != r.tgt else ""}
+            # stage the WAV first: if it fails (disk full) the previous row and clip stay as they were
+            tmp = self.dir / (name + ".tmp")
+            try:
+                with wave.open(str(tmp), "wb") as w:
+                    w.setnchannels(1), w.setsampwidth(2), w.setframerate(SAMPLE_RATE)
+                    w.writeframes((np.clip(clip[0], -1.0, 1.0) * 32767.0).astype("<i2").tobytes())
+                if amend:
+                    self._f.truncate(offset)  # drop the previous line's row; the new row below replaces it
+                os.replace(tmp, self.dir / name)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
             self._f.write(json.dumps(row, ensure_ascii=False) + "\n")
             self._f.flush()
             self._last = (name, clip, offset)

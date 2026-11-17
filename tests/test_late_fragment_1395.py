@@ -281,3 +281,56 @@ def test_record_amended_line_row_matches_its_clip(tmp_path):
     with wave.open(str(tmp_path / "rec" / rows[0]["file"])) as w:
         assert len(lens) == 2 and w.getnframes() == sum(lens)  # the audio of both segments, not just the fragment's
     assert sorted(p.name for p in (tmp_path / "rec").glob("*.wav")) == [rows[0]["file"]]
+
+
+def _rec_result(src, replaces=None):
+    return Result("ru", src, "t", "", "en", replaces=replaces)
+
+
+def test_record_amend_does_not_repeat_the_shared_segment(tmp_path):
+    """A segment split over the previous line and the fragment is heard once in the joined clip."""
+    import wave
+
+    from tinglongwu.record import Recorder
+
+    rec = Recorder(tmp_path)
+    rec.add(1, np.full(1600, 0.1, np.float32), 0.0, 0.1)
+    rec.add(2, np.full(800, 0.2, np.float32), 0.1, 0.15)
+    rec.line(rec.take(1, 1), _rec_result("a."))
+    clip = rec.take(1, 2, amend=True)  # the fragment's text starts in segment 1, which line "a." already took
+    assert len(clip[0]) == 800
+    rec.line(clip, _rec_result("a. b.", replaces="a."))
+    rec.close()
+    rows = [json.loads(x) for x in (tmp_path / "segments.jsonl").read_text("utf-8").splitlines()]
+    assert [r["source"] for r in rows] == ["a. b."]
+    with wave.open(str(tmp_path / rows[0]["file"])) as w:
+        assert w.getnframes() == 2400
+
+
+def test_record_failed_amend_keeps_the_previous_row_and_clip(tmp_path, monkeypatch):
+    import wave
+
+    from tinglongwu import record
+    from tinglongwu.record import Recorder
+
+    rec = Recorder(tmp_path)
+    rec.add(1, np.full(1600, 0.1, np.float32), 0.0, 0.1)
+    rec.add(2, np.full(800, 0.2, np.float32), 0.1, 0.15)
+    rec.line(rec.take(1, 1), _rec_result("a."))
+    before = (tmp_path / "segments.jsonl").read_text("utf-8")
+
+    class Boom:
+        def __init__(self, *a, **k):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(record.wave, "open", Boom)
+    try:
+        rec.line(rec.take(1, 2, amend=True), _rec_result("a. b.", replaces="a."))
+    except OSError:
+        pass
+    monkeypatch.undo()
+    rec.close()
+    assert (tmp_path / "segments.jsonl").read_text("utf-8") == before
+    with wave.open(str(tmp_path / "0001.wav")) as w:
+        assert w.getnframes() == 1600
+    assert not list(tmp_path.glob("*.tmp"))
