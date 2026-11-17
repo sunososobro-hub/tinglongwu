@@ -37,7 +37,7 @@ def status_text(key: str, percent: int | None) -> str:
 
 def error_text(key: str, err: str) -> str:
     """Error line + the retry button text (the GUI shows the second part on the retry button)."""
-    return f"{LABEL.get(key, key)} download failed: {err}".strip() + " [Retry]"
+    return f"{LABEL.get(key, key)} download failed: {err}".strip() + " - press Start to retry"
 
 
 class BackgroundDownloads:
@@ -71,8 +71,10 @@ class BackgroundDownloads:
     def _run(self, keys: list[str]) -> None:
         import subprocess
 
+        from .core import download_env  # same env as the foreground children: offline flags removed
+
         popen = self.popen or (lambda c: subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                                          text=True))
+                                                          text=True, env=download_env()))
         last = ""
         try:
             p = popen(self.cmd)

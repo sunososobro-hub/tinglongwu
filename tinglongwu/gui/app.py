@@ -1935,6 +1935,12 @@ class App:
         "Not now" changes nothing (mode and language stay as they were)."""
         from ..models import models_dir
 
+        bg = getattr(self, "bg_dl", None)
+        if bg is not None and (bg.active or bg.errors):  # #1358: one setup child at a time (manifest.json writers)
+            if not bg.active:
+                bg.errors.clear()
+                bg.start()  # Start after a failed background download is the retry
+            return True
         try:
             need = pack_on_demand.first_missing(run.get("lang"), run.get("target"), models_dir())
         except Exception:  # noqa: BLE001  # no setup package / unreadable manifest: behave as before
@@ -2377,6 +2383,9 @@ class App:
 
         try:
             mdir = models_dir()
+            if self.downloading:  # a foreground setup child is running: do not start a second manifest writer
+                self.root.after(5000, self._bg_defaults_start)
+                return
             if not hasattr(self, "bg_dl"):
                 self.bg_dl = bg_download.BackgroundDownloads(
                     default_listen_cmd(mdir), lambda x: self.q.put(("bg_dl_status", x)),

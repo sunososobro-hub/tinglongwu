@@ -255,7 +255,7 @@ def hf_get(repo: str, rev: str, files: list, dest: Path, pf: dict | None) -> Non
     for f in files:
         if pf and f in pf:
             resume.fetch(f"https://huggingface.co/{repo}/resolve/{rev}/{f}", dest / f, pf[f],
-                         opener=resume._open_range)
+                         opener=resume._open_range, label=dest.name if f.endswith(".gguf") else None)
         else:
             rest.append(f)
     if rest:

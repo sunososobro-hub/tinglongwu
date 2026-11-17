@@ -22,11 +22,13 @@ def _sha(p: Path) -> str:
     return h.hexdigest()
 
 
-def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, chunk: int = 1 << 20) -> Path:
+def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, chunk: int = 1 << 20,
+          label: str | None = None, say=print) -> Path:
     """Download `url` to `dest`. A `.part` file left by an interrupted run is continued with an HTTP Range request
     (a server that ignores Range and sends 200 restarts the file). A finished file whose SHA256 is wrong is deleted
     and downloaded once more; a second mismatch raises ValueError. `opener(url, start)` returns a (status-aware)
-    response: `.status`, `.read(n)`, context manager."""
+    response: `.status`, `.read(n)`, context manager. `label` (#1358): print `download <label>: N% (a/b MB)` every 5%
+    so the GUI can show progress (`say` is the printer)."""
     part = dest.with_name(dest.name + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
     bad = 0  # checksum failures (one retry allowed); a 416 restart does not count against it
@@ -49,7 +51,7 @@ def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, 
                 length = int((getattr(r, "headers", None) or {}).get("Content-Length") or 0)
             except (TypeError, ValueError):
                 length = 0
-            got = 0
+            got, next_pct = 0, 5
             with open(part, "ab" if start else "wb") as out:
                 while True:
                     b = r.read(chunk)
@@ -59,6 +61,11 @@ def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, 
                     got += len(b)
                     if on_bytes:
                         on_bytes(start + got)
+                    if label and length:
+                        pct = min(100, (start + got) * 100 // (start + length))
+                        if pct >= next_pct:
+                            say(f"download {label}: {pct}% ({(start + got) >> 20}/{(start + length) >> 20} MB)")
+                            next_pct = (pct // 5 + 1) * 5
             if length and got < length:  # early EOF: keep the .part prefix, the next call resumes from it
                 raise ConnectionError(f"{dest.name}: connection ended after {start + got} of {start + length} bytes")
         if _sha(part) == sha256:

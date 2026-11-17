@@ -69,7 +69,7 @@ def test_exit_nonzero_shows_error_and_retry_and_allows_new_child(tmp_path):
     spawned = []
     m, status, ready = _mgr(tmp_path, ["boom: no network\n"], rc=2, spawned=spawned)
     m.start()
-    assert ready == [] and any("no network" in s and "Retry" in s for s in status)
+    assert ready == [] and any("no network" in s and "retry" in s for s in status)
     assert m.start() == list(bgd.DEFAULT_KEYS) and len(spawned) == 2  # retry starts a fresh child
 
 
@@ -124,3 +124,48 @@ def test_partial_file_resumes(tmp_path):
     (tmp_path / "m.bin.part").write_bytes(data[:1000])
     resume.fetch("u", dest, sha, opener=opener, chunk=500)
     assert calls == [1000] and dest.read_bytes() == data  # continued from the partial file, not restarted
+
+
+def test_real_fetch_progress_lines_feed_the_parser(tmp_path):
+    data = bytes(range(256)) * 4096  # 1 MiB
+    sha = hashlib.sha256(data).hexdigest()
+
+    class Net:
+        status, headers = 200, {"Content-Length": str(len(data))}
+
+        def __init__(self):
+            self.b = data
+
+        def read(self, n=-1):
+            out, self.b = self.b[:n], self.b[n:]
+            return out
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    lines = []
+    resume.fetch("u", tmp_path / "m.gguf", sha, opener=lambda u, s: Net(), chunk=65536, label="hymt2-1.8b",
+                 say=lines.append)
+    got = [bgd.parse_percent(x) for x in lines]
+    assert got and all(g and g[0] == "hymt2-1.8b" for g in got) and got[-1][1] == 100
+
+
+def test_default_popen_uses_download_env(tmp_path, monkeypatch):
+    import subprocess
+
+    seen = {}
+
+    class P:
+        stdout = iter([])
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setattr(subprocess, "Popen", lambda c, **kw: (seen.update(kw), P())[1])
+    m = bgd.BackgroundDownloads(["x"], lambda s: None, lambda k: None, tmp_path, threaded=False)
+    m.start()
+    assert "HF_HUB_OFFLINE" not in seen["env"]
