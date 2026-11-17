@@ -1269,3 +1269,10 @@ def speaker_initial(book, raw: str) -> str:
     if shown.startswith(LABEL_PREFIX) and shown[len(LABEL_PREFIX):].isdigit():
         return shown[len(LABEL_PREFIX):]
     return shown[:1].upper()
+
+
+def default_listen_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
+    """#1358: the child that downloads the missing default listen models (`--default-listen`, resumable)."""
+    cmd = download_cmd("small", mdir, bundled)
+    i = cmd.index("--whisper")
+    return [*cmd[:i], "--default-listen", *cmd[i + 2:]]

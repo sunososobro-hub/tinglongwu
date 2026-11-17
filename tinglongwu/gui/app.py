@@ -2369,6 +2369,22 @@ class App:
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
 
+    def _bg_defaults_start(self):
+        """#1358: one `--default-listen` child per missing default model per run; progress comes back through the queue."""
+        from ..models import models_dir
+        from . import bg_download
+        from .core import default_listen_cmd
+
+        try:
+            mdir = models_dir()
+            if not hasattr(self, "bg_dl"):
+                self.bg_dl = bg_download.BackgroundDownloads(
+                    default_listen_cmd(mdir), lambda x: self.q.put(("bg_dl_status", x)),
+                    lambda k: self.q.put(("bg_dl_ready", k)), mdir)
+            self.bg_dl.start()
+        except Exception as e:  # noqa: BLE001  # no setup package: the first-Start dialog still works
+            print(f"tlwu: background download not started: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+
     def poll(self):
         if self.closing:
             return
@@ -2381,7 +2397,12 @@ class App:
             while True:
                 ev = self.q.get_nowait()
                 kind = ev[0]
-                if kind == "status":
+                if kind == "bg_dl_status":  # #1358
+                    if not self.downloading and self.load_t0 is None:
+                        self._status_text(ev[1])
+                elif kind == "bg_dl_ready":  # #1358: hand-over hook of the pending translator (sibling issue)
+                    self.bg_ready = getattr(self, "bg_ready", set()) | {ev[1]}
+                elif kind == "status":
                     from ..cli import READY_STATUS  # already imported by the worker; not at GUI start (#332)
 
                     st = load_status_text(ev[1])  # #1020: in the UI language
@@ -2614,6 +2635,7 @@ class App:
     def run(self):
         self.root.after(POLL_MS, self.poll)
         self.root.after(UPDATE_CHECK_DELAY_MS, self._auto_update_check)  # #698: after the window is up
+        self.root.after(1500, self._bg_defaults_start)  # #1358: fetch missing default listen models in the background
         try:
             self.root.mainloop()
         except KeyboardInterrupt:
