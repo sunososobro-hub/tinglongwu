@@ -102,3 +102,12 @@ def test_ru_feminine_plural_and_fleeting_vowel_forms_fire_1428():
     assert "ветка" in hit("Много веток.") and "отладка" in hit("Без отладок.")
     for text in ("Это фикус.", "Фичеринг альбома."):
         assert "фича" not in hit(text), text
+
+
+def test_ru_verbs_fire_on_future_and_imperative_1432():
+    g = glossary.load_builtin("ru")
+    cases = {"Задеплоим завтра.": "задеплоить", "Задеплоят завтра.": "задеплоить", "Задеплой сервис.": "задеплоить",
+             "Пофиксим к релизу.": "пофиксить", "Пофикси это.": "пофиксить", "Откатим назад.": "откатить",
+             "Смержим вечером.": "смержить"}
+    for sent, main in cases.items():
+        assert main in [e.main for e in g.relevant(sent)], sent
