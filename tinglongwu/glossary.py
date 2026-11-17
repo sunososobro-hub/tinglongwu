@@ -43,6 +43,31 @@ def _stem(w: str) -> str:
     return w
 
 
+_RU_NOUN_ENDINGS = {  # #1425: case endings per final letter of the dictionary form (железо -> железе, тесты -> тестах)
+    "о": ("", "о", "а", "у", "е", "ом", "ы", "и", "ах", "ам", "ами"),
+    "е": ("", "е", "я", "ю", "ем", "и", "ях", "ям", "ями"),
+    "ы": ("", "ы", "ов", "ам", "ами", "ах"),
+    "и": ("", "и", "ей", "ям", "ями", "ях", "ов"),
+    "а": ("", "а", "у", "ы", "е", "ой", "ою", "и"),
+    "я": ("", "я", "ю", "и", "е", "ей", "ею"),
+}
+
+
+_RU_MASC_ENDINGS = ("", "а", "у", "ом", "е", "ы", "и", "ов", "ам", "ами", "ах", "ей")
+
+
+def _ru_noun_ok(word: str, src_word: str, stem: str) -> bool:
+    """#1425: a built-in Russian noun fires only on its own case forms, not on other words with the same stem
+    (железо vs железная дорога, тесты vs тесто). Verbs (-ть) keep the plain prefix match."""
+    src = _norm(src_word)
+    if not word.startswith(stem):
+        return False
+    if src.endswith("ть"):
+        return True
+    ends = _RU_NOUN_ENDINGS.get(src[-1:]) if stem != src else _RU_MASC_ENDINGS
+    return ends is not None and word[len(stem):] in ends
+
+
 @dataclass
 class Entry:
     sources: list[str]
@@ -50,6 +75,7 @@ class Entry:
     wrong: list[str] = field(default_factory=list)  # known wrong renderings of `target` (fixed after MT)
     asr_hint: bool = True  # False for the built-in list (#256): MT prompt / output only, never a Whisper hotword
     mt_hint: bool = True  # False for the default hotwords (#1397): Whisper hint only, never in the MT prompt
+    ru_noun: bool = False  # #1425: built-in Russian entries match their own noun case forms only
     whole_short: bool = False  # #1396: stems of <= SHORT_LATIN chars match whole words only (прод must not fire on продолжение)
 
     @property
@@ -64,10 +90,15 @@ class Entry:
 
     def matches(self, words: list[str]) -> bool:
         for src in self.sources:
-            stems = [_stem(w) for w in _WORD.findall(src)]
+            src_words = _WORD.findall(src)
+            stems = [_stem(w) for w in src_words]
             if not stems:
                 continue
             for i in range(len(words) - len(stems) + 1):
+                if self.ru_noun and all(_ru_noun_ok(words[i + j], src_words[j], s) for j, s in enumerate(stems)):
+                    return True
+                if self.ru_noun:
+                    continue
                 if all(self._short_ok(words[i + j], s) if self.whole_short and len(s) <= SHORT_LATIN else
                        words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] in ((s, s + "s", s + "es") if s.isalpha() else (s,))
                        for j, s in enumerate(stems)):
@@ -185,6 +216,7 @@ def load_builtin(lang: str | None = None) -> Glossary:
     if not lang or lang == "auto" or lang.lower().split("-")[0] == "ru":
         ru = parse(BUILTIN_RU_PATH.read_text(encoding="utf-8-sig"))
         for e in ru:
+            e.ru_noun = True
             e.whole_short = True  # inflected forms of short terms are listed as extra spellings in the file
         g.entries.extend(ru)
     for e in g.entries:
