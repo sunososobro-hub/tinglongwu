@@ -85,6 +85,10 @@ def summary_text(os_name, doc, install_mb=None):
         return "n/a" if doc.get(k) is None else "%.1f" % doc[k]
     text = ("### ttfs (%s)\n\nttfs_seconds: %s\nexcl_download_seconds: %s (budget %d s, %d Mbps baseline)\n"
             % (os_name, num("ttfs_seconds"), num("excl_download_seconds"), ttfs.TTFS_BUDGET_S, ttfs.BASELINE_MBPS))
+    if doc.get("first_source_subtitle_baseline_seconds") is not None:   # #1360
+        text += ("first_source_subtitle_seconds: %s (Hy-MT2 deferred; %s at the %d Mbps baseline, only Whisper downloaded, "
+                 "budget %d s)\n" % (num("first_source_subtitle_seconds"), num("first_source_subtitle_baseline_seconds"),
+                                     ttfs.BASELINE_MBPS, ttfs.TTFS_BUDGET_S))
     if install_mb is not None:
         text += "install_size_mb: %.1f\n" % install_mb
     return text + phase_text(doc)

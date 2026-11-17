@@ -26,6 +26,7 @@ BASELINE_MBPS = 50
 FIRST_SUBTITLE_TIMEOUT_S = 600
 TAIL_LINES = 40  # #1060: lines of each step's output printed when no subtitle arrives
 TRANSLATION_PREFIX = "\u2192"  # tinglongwu/fmt.py: translation lines are '→ [TAG] text'
+SOURCE_LINE_RE = re.compile(r"^\s*\d\d:\d\d:\d\d\s+[\u25b6\u25c0]")  # fmt.py head: '12:03:10 \u25c0 Them text'
 PHASE_PREFIX = "==> "  # install.sh / mac_install.sh `say`: one line per installer step
 SLOW_LINES = 5  # #1341: the N output lines that took longest to be followed by the next one
 SLOW_LINE_MIN_S = 1.0  # shorter waits are not reported
@@ -74,6 +75,18 @@ def parse_download_bytes(text):
 
 def download_seconds_at_baseline(nbytes, mbps=BASELINE_MBPS):
     return nbytes * 8 / (mbps * 1e6)
+
+
+def whisper_download_bytes(text):
+    """#1360: bytes of the Whisper files in the setup output (the default listen path defers Hy-MT2 to the app)."""
+    return parse_download_bytes("\n".join(ln for ln in text.splitlines() if "whisper" in ln.lower()))
+
+
+def first_source_subtitle(install_s, setup_s, first_source_s, download_s, whisper_bytes, mbps=BASELINE_MBPS):
+    """#1360: (seconds, 50 Mbps baseline seconds) from install start to the first source-language subtitle line.
+    The baseline replaces the measured download time by Whisper's bytes at MBPS (Hy-MT2 is not waited for). Pure."""
+    total = install_s + setup_s + first_source_s
+    return total, total - download_s + download_seconds_at_baseline(whisper_bytes, mbps)
 
 
 def _run(cmd, stamps=None):
@@ -126,10 +139,11 @@ def _tail(text, n=TAIL_LINES):
     return "\n".join((text or "").splitlines()[-n:])
 
 
-def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, out_lines=None):
+def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, out_lines=None, source_found=None):
     """Seconds until the first translation line (fmt.py prefix '→'), or None on timeout/no output.
 
     The source line is printed before MT finishes, so a plain non-empty line is too early.
+    SOURCE_FOUND (a list), when given, gets the seconds of the first source-language line (#1360).
     OUT_LINES (a list), when given, collects the command's stdout+stderr lines read before the subtitle (#1060)."""
     t0 = time.monotonic()
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -140,6 +154,8 @@ def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, out_lines=None):
         for line in p.stdout:
             if out_lines is not None:
                 out_lines.append(line.rstrip("\n"))
+            if source_found is not None and not source_found and SOURCE_LINE_RE.match(line):
+                source_found.append(time.monotonic() - t0)
             if line.lstrip().startswith(TRANSLATION_PREFIX):
                 found.append(time.monotonic() - t0)
                 return
@@ -181,7 +197,8 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, 
     setup_s, setup_rc, setup_out = _run(setup_cmd, setup_stamps)
     dl_s = download_seconds_at_baseline(parse_download_bytes(setup_out))
     tlwu_lines = []
-    first = time_first_subtitle(tlwu_cmd, timeout, tlwu_lines)
+    source = []
+    first = time_first_subtitle(tlwu_cmd, timeout, tlwu_lines, source)
     if diag is not None:
         diag.update({"install": (inst_rc, _tail(inst_out)), "setup": (setup_rc, _tail(setup_out)),
                      "tlwu": (None, _tail("\n".join(tlwu_lines))),
@@ -191,11 +208,16 @@ def measure(install_cmd, setup_cmd, tlwu_cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, 
         "excl_download_seconds": None, "setup_seconds": round(setup_s, 3),
         "install_seconds": round(inst_s, 3),
         "first_subtitle_seconds": None if first is None else round(first, 3),
+        "first_source_subtitle_seconds": None, "first_source_subtitle_baseline_seconds": None,
         "os": sys.platform, "version": _version(), "sha": _sha(),
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         # #1341: where the install and setup seconds go (installer steps + the lines followed by the longest wait)
         "install_phases": phase_report(inst_stamps, inst_s), "setup_phases": phase_report(setup_stamps, setup_s),
     }
+    if source:  # #1360: Hy-MT2 deferred: the first source line does not wait for the translation model
+        src, base = first_source_subtitle(inst_s, setup_s, source[0], dl_s, whisper_download_bytes(setup_out))
+        res["first_source_subtitle_seconds"] = round(src, 3)
+        res["first_source_subtitle_baseline_seconds"] = round(base, 3)
     if first is not None:
         total = inst_s + setup_s + first
         res["ttfs_seconds"] = round(total, 3)

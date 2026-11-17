@@ -26,7 +26,8 @@ def test_writes_schema_and_prints(tmp_path):
     assert "excl_download_seconds=" in p.stdout
     d = json.loads(out.read_text())
     assert set(d) == {"ttfs_seconds", "download_seconds", "excl_download_seconds", "install_seconds",
-                      "setup_seconds", "first_subtitle_seconds", "os", "version",
+                      "setup_seconds", "first_subtitle_seconds", "first_source_subtitle_seconds",
+                      "first_source_subtitle_baseline_seconds", "os", "version",
                       "sha", "date", "install_phases", "setup_phases"}
     assert d["first_subtitle_seconds"] >= 0.8  # waits past the source line for the translation
     assert d["ttfs_seconds"] >= d["first_subtitle_seconds"]
@@ -136,7 +137,7 @@ def test_over_budget_run_still_exits_0(tmp_path, monkeypatch, capsys):
     m = _ttfs()
     stages = iter([(100.0, 0, ""), (120.0, 0, "\n".join(_progress("w", 250)))])  # install 100 s, setup 120 s
     monkeypatch.setattr(m, "_run", lambda cmd, stamps=None: next(stages))
-    monkeypatch.setattr(m, "time_first_subtitle", lambda cmd, timeout=0, out_lines=None: 5.0)
+    monkeypatch.setattr(m, "time_first_subtitle", lambda cmd, timeout=0, out_lines=None, source_found=None: 5.0)
     out = tmp_path / "ttfs.json"
     assert m.main(["--install", "x", "--setup", "y", "--tlwu", "z", "--out", str(out)]) == 0
     d = json.loads(out.read_text())
@@ -199,3 +200,36 @@ def test_log_option_writes_timed_installer_output_1341(tmp_path):
     assert lines[0] == "--- install" and lines[2] == "--- setup"
     sec, text = lines[1].split(None, 1)
     assert text == "install" and float(sec) >= 0 and lines[3].endswith("  models")
+
+
+# ---- #1360: install -> first source subtitle with Hy-MT2 deferred
+
+def test_first_source_subtitle_baseline_counts_only_whisper_1360():
+    t = _ttfs()
+    out = "\n".join(_progress("whisper-small", 464, 100, 50) + _progress("hymt2-1.8b", 1130, 100, 50))
+    wb = t.whisper_download_bytes(out)
+    assert wb == 464_000_000
+    total, base = t.first_source_subtitle(10.0, 400.0, 5.0, download_s=100.0, whisper_bytes=wb)
+    assert total == 415.0
+    assert round(base, 2) == round(415.0 - 100.0 + 464e6 * 8 / 50e6, 2)
+
+
+def test_ttfs_json_has_first_source_subtitle_1360(tmp_path):
+    tlwu = PY + " -c \"print('12:03:10 \\u25c0 Them hello', flush=True);print('  \\u2192 hi')\""
+    p, out = _run(tmp_path, tlwu, setup="echo download whisper-small: 100% (464/464 MB)")
+    assert p.returncode == 0
+    doc = json.loads(out.read_text())
+    assert doc["first_source_subtitle_seconds"] is not None
+    assert doc["first_source_subtitle_seconds"] <= doc["ttfs_seconds"]
+    assert doc["first_source_subtitle_baseline_seconds"] > 0
+
+
+def test_summary_prints_first_source_subtitle_1360():
+    spec = importlib.util.spec_from_file_location("ttfs_ci", os.path.join(ROOT, "scripts", "ttfs_ci.py"))
+    m = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    spec.loader.exec_module(m)
+    txt = m.summary_text("linux", {"ttfs_seconds": 300.0, "excl_download_seconds": 200.0,
+                                   "first_source_subtitle_seconds": 120.0,
+                                   "first_source_subtitle_baseline_seconds": 150.5})
+    assert "first_source_subtitle_seconds: 120.0" in txt and "150.5" in txt
