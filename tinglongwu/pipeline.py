@@ -18,7 +18,6 @@ from .langfollow import script_lang
 from .merge import SentenceMerger, Unit
 from .models import ModelNotFound
 from .repeat import filter_hallucination
-from .mt_context import LineContext
 from .mt_pending import live
 from .segment import Segmenter
 from .sink import Result, Sink, pass_source
@@ -100,7 +99,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
         on_work=None, on_record=None, recorder=None,  # recorder: #239 --record (record.Recorder)
         seg_gate=None, route=None, on_backlog=None, on_mt_wait=None, mt_yield: bool | None = None,
-        on_catchup=None, mt_context: bool = False) -> None:
+        on_catchup=None) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -129,9 +128,6 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     resumes. on_record gets the held seconds as "mt_hold".
     on_catchup(lines) (#1369, live clock only): lines written untranslated so far to keep up (see MT_STALE_S);
     called each time it grows.
-    mt_context (#1394, --mt-context): pass the previous finished source sentence of the same speaker and language to
-    the translator as context, unless a pause longer than mt_context.CONTEXT_MAX_PAUSE_S lies between the two lines.
-    The context is never shown or saved as part of the line.
     """
     tgt0 = tgt
     # #1263: live capture is never held back by ASR. A bounded queue blocked the capture reader while ASR lagged and
@@ -242,7 +238,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         if recorder is not None:
             recorder.line(clip[0], r)
 
-    def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None, context: str | None = None) -> None:
+    def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None) -> None:
         tgt = route(lang) if route is not None else tgt0
         mt = live(translator)  # #1357: None while a PendingTranslator's model is still downloading
         if mt is None:  # transcript-only (or MT not ready yet: this line goes out as source text)
@@ -258,8 +254,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         with model_lock():
             t0 = time.monotonic()
             try:
-                tr = translate_checked(mt, unit_text, lang, tgt, context=context) if context else \
-                    translate_checked(mt, unit_text, lang, tgt)
+                tr = translate_checked(mt, unit_text, lang, tgt)
             except ModelNotFound as e:  # a language turned up whose model is not installed: say so, keep running
                 if (lang, tgt) not in missing:
                     missing.add((lang, tgt))
@@ -307,7 +302,6 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         return held
 
     skipped = [0]  # #1369: lines left untranslated to catch up
-    line_ctx = LineContext() if mt_context else None  # #1394: previous finished line per (speaker, language)
 
     def stale(item) -> bool:
         """#1369: this line is too old to be worth translating now, and newer lines wait behind it."""
@@ -342,13 +336,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     if on_catchup is not None:
                         on_catchup(skipped[0])
                 else:
-                    start, end, forced = item[10]
-                    ctx = line_ctx.before(item[8], item[1], start) if line_ctx is not None else None
-                    if ctx:
-                        say(f"latency: mt context {len(ctx)} chars")
-                    emit(*item[:4], who=item[8], context=ctx)
-                if line_ctx is not None:  # a skipped line is still the previous line of the stream
-                    line_ctx.after(item[8], item[1], item[0], item[10][1], finished=not item[10][2])
+                    emit(*item[:4], who=item[8])
                 if on_record is not None and item[6] is not None:
                     rec = _record(item, time.monotonic())
                     d = getattr(draft, "last_first_draft", None) if draft is not None else None
@@ -385,11 +373,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if translator is not None and draft is None and lang != (route(lang) if route is not None else tgt) and hasattr(sink, "write_source"):
                 pass_source(sink, lang, text, who)  # #53: the source line now, its translation when MT is done
                 t_src = time.monotonic() if shows_source else None
-            # #1394: (start of the unit's oldest segment, end of its newest, cut at a timeout) on the audio clock
-            span = ((u.first or u.tag)[3], u.tag[4], u.forced) if u.tag is not None and len(u.tag) > 4 \
-                else (None, None, u.forced)
-            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who, audio,
-                     span))
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who, audio))
 
     def check_worker() -> None:
         if failed:
@@ -512,10 +496,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     say(f"latency: spk {spk:.3f} s ({who})")
                 last_who[0] = None if who == UNKNOWN else who
             seg_n[0] += 1
-            start = join_start[0] if join_start[0] is not None else stamp - len(seg) / SAMPLE_RATE
             if recorder is not None:
+                start = join_start[0] if join_start[0] is not None else stamp - len(seg) / SAMPLE_RATE
                 recorder.add(seg_n[0], seg, start, stamp)
-            tag = (marks, last_who[0], seg_n[0], start, stamp)  # #1394: start / end on the audio clock
+            tag = (marks, last_who[0], seg_n[0])
             if merger is None or translator is None:
                 emit_units([Unit(t.text, t.lang, False, tag)])
                 continue

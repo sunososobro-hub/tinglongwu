@@ -129,11 +129,9 @@ class PendingTranslator:
         else:
             self._preload.append((src, tgt))
 
-    def translate(self, text: str, src: str, tgt: str, context: str | None = None) -> Translation:
+    def translate(self, text: str, src: str, tgt: str) -> Translation:
         if self._inner is None:
             return Translation(None, "")
-        if context:  # #1394: only reached when takes_context() saw the loaded engine take it
-            return self._inner.translate(text, src, tgt, context=context)
         return self._inner.translate(text, src, tgt)
 
     def draft(self, text: str, src: str, tgt: str) -> Translation:
