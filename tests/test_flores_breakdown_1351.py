@@ -158,3 +158,13 @@ def test_q8_needs_the_downloaded_file_and_repo_matches_the_app(tmp_path):
     m.q8_path(tmp_path).write_bytes(b"gguf")
     tr = m.apply_variant("q8", types.SimpleNamespace(path=None), tmp_path)
     assert tr.path == tmp_path / "hymt2-1.8b-q8" / "Hy-MT2-1.8B-Q8_0.gguf"
+
+
+def test_prompt_echo_is_its_own_category_and_listed_in_full():
+    m = _load()
+    note = "Note that you should only output the translated result without any additional explanation:"
+    d = row(84, "Вода выливается за плотину.", "Water is spilling over the levee.", note, 0.595)
+    assert m.categories(d)[0] == "echo"
+    md = m.breakdown([d, row(1, "Кошка спит.", "The cat sleeps.", "The cat sleeps.", 0.9)], n=1, pair="p")
+    assert "| echo | 1 | 100% | 50% | 2.0 |" in md
+    assert f"1 of 2 outputs echo the prompt; full text of the first 3:\n- 84: `{note}`" in md

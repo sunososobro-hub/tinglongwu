@@ -226,7 +226,11 @@ _DIGITS = re.compile(r"\d(?:[\d\u00a0\u202f ,.]*\d)?")
 _CYR = re.compile(r"[\u0400-\u04ff]")
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _CAP = re.compile(r"(?<![.!?]\s)(?<!^)\b([A-Z\u0410-\u042f\u0401][\w\u0400-\u04ff'-]+)")
-CATEGORIES = [("numbers", "a number of the source and reference is missing or changed in the output"),
+# fragments of the card's instruction lines (build_prompt); an output containing one echoed the prompt
+ECHO = ("only output the translated result", "without any additional explanation", "translated result should be",
+        "只需要输出翻译后的结果", "不要额外解释", "只需要輸出翻譯後的結果", "不要額外解釋")
+CATEGORIES = [("echo", "the output repeats the prompt's instruction line (card template echoed)"),
+              ("numbers", "a number of the source and reference is missing or changed in the output"),
               ("names", "the source has a named entity (capitalized word not at sentence start)"),
               ("name_miss", "a capitalized Latin word of the reference is missing from the output (names, transliteration)"),
               ("untranslated", "Cyrillic left in the output"),
@@ -248,6 +252,8 @@ def categories(d: dict) -> list[str]:
     """#1351: heuristic error categories of one scored sentence (src / ref / hyp); several can apply."""
     src, ref, hyp = d["src"], d["ref"], d["hyp"]
     out = []
+    if any(e in hyp.lower() for e in ECHO):
+        out.append("echo")
     if (_nums(src) & _nums(ref)) - _nums(hyp):
         out.append("numbers")
     if _CAP.search(src):
@@ -292,6 +298,10 @@ def breakdown(rows: list[dict], n: int = 40, pair: str = "", examples: int = 8) 
     for d in worst[:examples]:
         out.append(f"| {d['i']} | {d['comet']:.3f} | {', '.join(allc[id(d)])} | {cut(d['src'])} | {cut(d['hyp'])} | "
                    f"{cut(d['ref'])} |")
+    echo = [d for d in rows if "echo" in allc[id(d)]]
+    if echo:
+        out += ["", f"{len(echo)} of {len(rows)} outputs echo the prompt; full text of the first 3:"]
+        out += [f"- {d['i']}: `{d['hyp'][:400]}`" for d in echo[:3]]
     return "\n".join(out) + "\n"
 
 
