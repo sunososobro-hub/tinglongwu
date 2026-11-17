@@ -183,3 +183,29 @@ def test_resume_refuses_another_variant(tmp_path):
     with pytest.raises(SystemExit, match="variant src, not q8"):
         m.translate_all([("a", "b")], tr, "ru", jsonl, variant="q8")
     assert len(m.translate_all([("a", "b")], tr, "ru", jsonl, variant="src")) == 1  # same variant resumes
+
+
+def test_7b_variant_loads_the_opt_in_7b_model(tmp_path, monkeypatch):
+    """#1351 r2: variant 7b builds HyMtTranslator(size="7b") (the `tlwu-setup --hymt7b` file) and records it."""
+    m = _load()
+    sys.path.insert(0, str(ROOT))
+    from tinglongwu import hymt
+
+    got = {}
+
+    class Fake:
+        def __init__(self, models_dir, zh_variant, device, size="1.8b"):
+            got.update(size=size, path=hymt.hymt_path(models_dir, size))
+            self.path = got["path"]
+
+        def preload(self):
+            pass
+
+    monkeypatch.setattr(hymt, "HyMtTranslator", Fake)
+    tr = m.make_translator(tmp_path, variant="7b")
+    assert got["size"] == "7b" and tr.path.name == "Hy-MT2-7B-Q4_K_M.gguf"
+    m.make_translator(tmp_path, variant="card")
+    assert got["size"] == "1.8b"
+    assert m.engine_name("7b") == "Hy-MT2-7B Q4_K_M (llama.cpp, CPU)"
+    assert m.engine_name("q8") == "Hy-MT2-1.8B Q8_0 (llama.cpp, CPU)"
+    assert m.variants("card,7b") == ["card", "7b"]

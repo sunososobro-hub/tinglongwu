@@ -12,7 +12,7 @@ Dev tool (not part of the offline runtime). Runs on a cloud CPU runner (`.github
   python scripts/bench/flores_cpu.py --matrix6                     # JSON list of the 6x6 languages (#1305)
   python scripts/bench/flores_cpu.py --table OUT [OUT ...]         # 6x6 Markdown table from the summaries (#1305)
   python scripts/bench/flores_cpu.py ... --variant src             # experiment variant (#1351, VARIANTS below)
-  python scripts/bench/flores_cpu.py --variants card,src,q8        # JSON list of variants for the workflow (#1351)
+  python scripts/bench/flores_cpu.py --variants card,src,q8,7b     # JSON list of variants for the workflow (#1351)
   python scripts/bench/flores_cpu.py --tgts zho_Hant,eng_Latn      # JSON list of targets for the workflow (#1351)
   python scripts/bench/flores_cpu.py --breakdown OUT [N]           # error categories of the N lowest-COMET lines (#1351)
 
@@ -60,7 +60,10 @@ SHIPPED = [("eng_Latn", "zho_Hant"), ("rus_Cyrl", "zho_Hant"), ("jpn_Jpan", "zho
 # #1351: experiment variants (bench only; the app keeps the shipped prompt + Q4_K_M unless the numbers say otherwise)
 VARIANTS = {"card": "model-card prompt, shipped Q4_K_M",
             "src": "prompt names the source language, Q4_K_M",
-            "q8": "model-card prompt, Q8_0 GGUF (upper bound of the Q4_K_M quantization loss)"}
+            "q8": "model-card prompt, Q8_0 GGUF (upper bound of the Q4_K_M quantization loss)",
+            # #1351 r2: the opt-in 7B of the same family (`tlwu-setup --hymt7b`, #279): what a bigger model buys on
+            # names / domain senses, the categories the 1.8B breakdown left
+            "7b": "model-card prompt, opt-in Hy-MT2-7B Q4_K_M (tlwu-setup --hymt7b)"}
 Q8_FILE = "Hy-MT2-1.8B-Q8_0.gguf"
 HYMT_REPO = "tencent/Hy-MT2-1.8B-GGUF"  # = tinglongwu.hymt.HYMT_REPO (not imported: see fetch_q8)
 
@@ -397,11 +400,21 @@ def apply_variant(variant: str, tr, models_dir: Path, fetch=local_q8):
     return tr
 
 
+def variant_size(variant: str) -> str:
+    """#1351 r2: Hy-MT2 size (tinglongwu.hymt.HYMT_SIZES key) a variant translates with."""
+    return "7b" if variant == "7b" else "1.8b"
+
+
+def engine_name(variant: str) -> str:
+    quant = "Q8_0" if variant == "q8" else "Q4_K_M"
+    return f"Hy-MT2-{variant_size(variant).upper()} {quant} (llama.cpp, CPU)"
+
+
 def make_translator(models_dir: Path, zh_variant: str = "tw", variant: str = "card"):
     sys.path.insert(0, str(REPO))
     from tinglongwu.hymt import HyMtTranslator
 
-    tr = apply_variant(variant, HyMtTranslator(models_dir, zh_variant, "cpu"), models_dir)
+    tr = apply_variant(variant, HyMtTranslator(models_dir, zh_variant, "cpu", size=variant_size(variant)), models_dir)
     tr.preload()
     return tr
 
@@ -458,8 +471,7 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
         else:
             comet = load_comet(a.comet_model)
     res = score(out, comet)
-    engine = ScriptConvert.engine if convert else (
-        f"Hy-MT2-1.8B {'Q8_0' if a.variant == 'q8' else 'Q4_K_M'} (llama.cpp, CPU)")
+    engine = ScriptConvert.engine if convert else engine_name(a.variant)
     res.update(pair=f"{a.src}->{a.tgt}", split=SPLIT, engine=prev.get("engine", engine) if a.score_only else engine,
                temperature=prev.get("temperature") if a.score_only else temp,
                cpu=prev.get("cpu") or cpu_name(), translate_wall_s=prev.get("translate_wall_s", round(wall, 1)),
