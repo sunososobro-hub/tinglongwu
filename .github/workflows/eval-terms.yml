@@ -15,6 +15,8 @@ on:
       - eval/matrix_pins.json
       - tinglongwu/glossary.py
       - tinglongwu/data/hotwords-ru.txt
+      - tinglongwu/data/tech-ru.txt
+      - scripts/bench/slang_eval.py
   workflow_dispatch:
     inputs:
       whisper:
@@ -85,6 +87,18 @@ jobs:
           python scripts/bench/acronym_eval.py std --data "$HOME/matrix" --out out/acronyms --whisper "$WHISPER"
           python scripts/bench/acronym_eval.py report out/acronyms | tee out/acronyms/report.md
           { echo "## Default ru hotwords (#1397)"; cat out/acronyms/report.md; echo; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "#1396: built-in ru slang list, zh term accuracy with vs without + FLORES ru rows it touches (CPU)"
+        continue-on-error: true   # never blocks the #1257 term eval below
+        timeout-minutes: 45
+        shell: bash
+        run: |
+          "$HOME/tts/bin/python" scripts/bench/slang_eval.py synth --voice "$TLWU_MODELS/piper-ru_RU-dmitri-medium" --data "$HOME/slang"
+          python scripts/bench/slang_eval.py run --data "$HOME/slang" --out out/slang --whisper "$WHISPER"
+          pip install sacrebleu==2.6.0
+          python scripts/bench/fetch_data.py --out "$HOME/bench" --fleurs ""
+          python scripts/bench/slang_eval.py flores --data "$HOME/bench/flores200_dataset" --out out/slang
+          python scripts/bench/slang_eval.py report out/slang | tee out/slang/report.md
+          { echo "## Built-in ru slang list (#1396)"; cat out/slang/report.md; echo; } >> "$GITHUB_STEP_SUMMARY"
       - name: ASR + MT with and without the glossary (CPU)
         run: python scripts/bench/term_eval.py run --data "$DATA" --out out --whisper "$WHISPER"
       - name: Report
