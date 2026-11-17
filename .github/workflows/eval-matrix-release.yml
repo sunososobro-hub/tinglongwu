@@ -1,0 +1,40 @@
+name: eval-matrix-release
+# #1352: once per published release, run the 6x6 language-pair matrix (eval-flores.yml matrix=6x6) on the release tag
+# and open a `[eval] refresh the 6x6 matrix ...` issue with its traffic-light table, so docs/benchmarks.md is updated by
+# a normal fix/N PR. Never a release gate, and release.yml is not touched: this starts from the published tag.
+#   scripts/bench/matrix_refresh.py decides one step per day: done / wait / open the issue / dispatch the run.
+# A schedule runs from the workflow file on the default branch (main), so this starts after the next release.
+on:
+  schedule:
+    - cron: "41 20 * * *"   # 04:41 Asia/Taipei, after hw-nightly; one API call on a day without a new release
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "decide and print only"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: eval-matrix-release
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.repository == 'sunososobro-hub/tinglongwu'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write   # dispatch eval-flores.yml on the release tag, download its table artifact
+      issues: write    # open the refresh issue
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Dispatch the 6x6 matrix on the latest release, or open the refresh issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: python3 scripts/bench/matrix_refresh.py --repo "$GITHUB_REPOSITORY" $DRY
