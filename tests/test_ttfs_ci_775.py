@@ -65,7 +65,7 @@ def test_windows_commands_934():
     install, setup, tlwu = m.commands("windows", r"C:\t\tlwu", r"C:\dl\tinglongwu-setup.exe")
     assert install.startswith(r'start /wait "" "C:\dl\tinglongwu-setup.exe" /VERYSILENT')
     assert r'/DIR="C:\t\tlwu"' in install and "TLWU_SKIP_MODELS" not in install
-    assert setup == r'type "C:\t\tlwu\install.log"'
+    assert setup.startswith(r'type "C:\t\tlwu\install.log" & ')
     args = r'--file "C:\t\tlwu\tinglongwu\data\selftest_en.wav" --device cpu'
     # #1060: the wizard's core layout has {app}\tlwu.exe (no .venv): try it first, the venv exe only as fallback
     assert tlwu == (r'if exist "C:\t\tlwu\tlwu.exe" ("C:\t\tlwu\tlwu.exe" ' + args + r') else '
@@ -137,3 +137,15 @@ def test_summary_lists_phases_and_slowest_lines_1341():
     assert "install_seconds: 28.0  setup_seconds: 280.0  first_subtitle_seconds: 9.5" in text
     assert "240.0 s  6/8 models" in text and "200.0 s  Building wheel for llama-cpp-python" in text
     assert "phases" not in m.summary_text("macos", {"ttfs_seconds": 1.0})
+
+
+def test_windows_setup_fetches_hymt_the_wizard_defers_1416():
+    """#1416: since v0.4.6 the wizard runs `setup --default-listen --defer-mt` (Whisper only, #1359), so `tlwu` alone
+    stopped with "Hy-MT2 1.8B is not installed". The setup step fetches Hy-MT2 like the app does (no --defer-mt), with
+    the core tlwu.exe first and the venv tlwu-setup.exe as fallback."""
+    m = _load()
+    _install, setup, _tlwu = m.commands("windows", r"C:\t\tlwu", r"C:\dl\tinglongwu-setup.exe")
+    fetch = setup.split(" & ", 1)[1]
+    assert fetch == (r'if exist "C:\t\tlwu\tlwu.exe" ("C:\t\tlwu\tlwu.exe" setup --default-listen) else '
+                     r'("C:\t\tlwu\.venv\Scripts\tlwu-setup.exe" --default-listen)')
+    assert "--defer-mt" not in setup

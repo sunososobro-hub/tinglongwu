@@ -37,18 +37,23 @@ def print_output_log(path):
 
 
 def windows_commands(directory, setup_exe):
-    """#934: the released wizard run silently into DIRECTORY (cmd.exe commands). The wizard installs and downloads the
-    models in one go, so `install` is the whole wizard run and `setup` only prints its install.log (the download
-    lines ttfs.parse_download_bytes reads)."""
+    """#934: the released wizard run silently into DIRECTORY (cmd.exe commands). `install` is the whole wizard run;
+    `setup` prints its install.log (the download lines ttfs.parse_download_bytes reads) and then fetches what the
+    wizard left to the app: since v0.4.6 the wizard runs `setup --default-listen --defer-mt` (Whisper only, #1359)
+    and the GUI downloads Hy-MT2 in the background (#1358), so the CLI `tlwu` alone stopped with "Hy-MT2 1.8B is not
+    installed" (#1416). `setup --default-listen` (no --defer-mt) skips the installed Whisper and fetches Hy-MT2, the
+    same download the app makes; on an older wizard that already fetched it, it only re-checks."""
     bs = "\\"
     d = directory.rstrip("\\/")
     install = 'start /wait "" "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="%s"' % (setup_exe, d)
-    setup = 'type "%s"' % bs.join([d, "install.log"])
-    clip = bs.join([d] + ttfs.TTFS_CLIP.split("/"))
-    args = '--file "%s" --device cpu' % clip
     # #1060: the released wizard installs the prebuilt core (#771): {app}\tlwu.exe, no .venv. A source-layout install
     # (install.ps1) still has .venv\Scripts\tlwu.exe; run whichever exists.
     core, venv = bs.join([d, "tlwu.exe"]), bs.join([d, ".venv", "Scripts", "tlwu.exe"])
+    venv_setup = bs.join([d, ".venv", "Scripts", "tlwu-setup.exe"])
+    fetch = 'if exist "%s" ("%s" setup --default-listen) else ("%s" --default-listen)' % (core, core, venv_setup)
+    setup = 'type "%s" & %s' % (bs.join([d, "install.log"]), fetch)
+    clip = bs.join([d] + ttfs.TTFS_CLIP.split("/"))
+    args = '--file "%s" --device cpu' % clip
     tlwu = 'if exist "%s" ("%s" %s) else ("%s" %s)' % (core, core, args, venv, args)
     return install, setup, tlwu
 
