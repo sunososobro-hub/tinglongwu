@@ -58,9 +58,11 @@ _RU_NOUN_ENDINGS = {  # #1425: case endings per final letter of the dictionary f
 
 
 _RU_PAST = {  # #1429 past tense; #1432 also 1pl/3pl future and imperative (задеплоим, задеплоят, задеплой, пофикси)
-    "и": ("ил", "ила", "ило", "или", "им", "ят", "ите", "и", "й", "йте"),
+    "и": ("ил", "ила", "ило", "или", "им", "ят", "ите", "и", "й", "йте", "ишь", "ю", "у"),
     "а": ("ал", "ала", "ало", "али", "аем", "ают", "аете", "ай", "айте"),
 }
+
+_RU_1SG_ALT = {"с": "ш", "т": "ч", "з": "ж", "д": "ж"}  # #1434: 1sg consonant alternation (пофикс- -> пофикшу, откат- -> откачу)
 
 _RU_MASC_ENDINGS = ("", "а", "у", "ом", "е", "ы", "и", "ов", "ам", "ами", "ах", "ей")
 
@@ -74,6 +76,10 @@ def _ru_noun_ok(word: str, src_word: str, stem: str) -> bool:
     if (src.endswith(("ить", "ать")) and len(src) >= 6 and word[:len(src) - 3] == src[:-3]
             and word[len(src) - 3:] in _RU_PAST[src[-3]]):
         return True  # #1429/#1432: past, 1pl/3pl future, imperative (задеплоил, задеплоим, пофикси); other forms fall through to the prefix match
+    if src.endswith("ить") and len(src) >= 6:
+        alt = _RU_1SG_ALT.get(src[-4])
+        if alt and word in (src[:-4] + alt + "у", src[:-4] + alt + "ю"):
+            return True  # #1434: 1sg with consonant alternation (пофикшу, откачу)
     if src.endswith("ка") and word in (src[:-2] + "ок", src[:-2] + "ек"):
         return True  # #1428: genitive plural with a fleeting vowel (прошивка -> прошивок, ветка -> веток)
     if stem == src and src[-1:] in "ая" and len(src) >= 3:

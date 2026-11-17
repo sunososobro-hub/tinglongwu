@@ -111,3 +111,12 @@ def test_ru_verbs_fire_on_future_and_imperative_1432():
              "Смержим вечером.": "смержить"}
     for sent, main in cases.items():
         assert main in [e.main for e in g.relevant(sent)], sent
+
+
+def test_ru_verbs_fire_on_1sg_and_2sg_1434():
+    g = glossary.load_builtin("ru")
+    cases = {"Я задеплою сервис.": "задеплоить", "Ты задеплоишь сервис?": "задеплоить",
+             "Я пофикшу баг.": "пофиксить", "Пофиксишь?": "пофиксить", "Смержу ветку.": "смержить",
+             "Откачу релиз.": "откатить", "Откатишь?": "откатить"}
+    for text, verb in cases.items():
+        assert verb in {e.main for e in g.relevant(text)}, text
