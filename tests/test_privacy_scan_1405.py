@@ -385,3 +385,12 @@ def test_fork_fallback_reads_status_on_head_and_target_posts_it():
     gh2 = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+pay " + JCB + "\n"}])
     assert ps.cmd_pr(gh2, 7, rx=ps.Combined(), report_status="privacy-scan") == 1
     assert ("status", "abc1234567", "failure", "privacy-scan") in gh2.calls
+
+
+def test_private_key_end_label_must_match_begin():
+    pem = "PRIVATE " + "KEY-----"
+    text = ("a -----BEGIN RSA " + pem + "\n-----END EC " + pem + "\nFAKEmaterial\n-----END RSA " + pem
+            + "\nb")
+    assert ps.Combined().sub(text, "***") == "a ***\nb"
+    stray = "a -----BEGIN RSA " + pem + "\n-----END EC " + pem + "\nFAKEmaterial"
+    assert ps.Combined().sub(stray, "***") == "a ***"  # no matching END: masked to the end

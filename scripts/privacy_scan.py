@@ -146,8 +146,9 @@ def _twid_ok(m: re.Match) -> bool:
 # (kind, regex, extra validator or None). Every match is masked; the kind is printed, never the value.
 PATTERNS: list[tuple[str, re.Pattern, object]] = [
     # the whole PEM block through its END line; an unterminated block is masked to the end of the text
-    ("private key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"
-                               r"(?:[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|[\s\S]*\Z)"), None),
+    # (the END label must equal the BEGIN label: a stray END of another type does not stop the mask)
+    ("private key", re.compile(r"-----BEGIN ((?:[A-Z0-9]+ )*)PRIVATE KEY-----"
+                               r"(?:[\s\S]*?-----END \1PRIVATE KEY-----|[\s\S]*\Z)"), None),
     ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"), None),
     ("API key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"), None),
     ("AWS key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), None),
