@@ -381,6 +381,8 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             t_src = None
             # the unit's own segment (marks, speaker), not the newest one
             marks, who = u.tag[:2] if u.tag is not None else (last_marks[0], last_who[0])
+            if replaces is not None and not who:  # #1395: an unlabelled tail keeps the line's known speaker
+                who = last_unit[2]
             last_unit[:] = [raw, text, who]
             if replaces is None and translator is not None and draft is None and lang != (route(lang) if route is not None else tgt) and hasattr(sink, "write_source"):
                 pass_source(sink, lang, text, who)  # #53: the source line now, its translation when MT is done

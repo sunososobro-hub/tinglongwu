@@ -191,9 +191,14 @@ class SentenceMerger:
         return self._post(self._quiet(seconds, now), now, now if since is None else since)
 
     def flush(self) -> list[Unit]:
-        """End of input: release what is buffered (never joined to the previous line: no clock here)."""
+        """End of input: release what is buffered; #1395 a late fragment still joins the previous line (its arrival
+        time is known)."""
+        since = self.since
+        out = [self._take(forced=True)] if self.buf else []
+        if out and since is not None:
+            out = self._post(out, since, since)
         self._last = None
-        return [self._take(forced=True)] if self.buf else []
+        return out
 
     def _separate(self, prev: str, frag: str) -> bool:
         """#1395: True if `frag` is a complete short line of its own and must not be joined to `prev`: a question or
@@ -204,7 +209,7 @@ class SentenceMerger:
         words = _WORD.findall(frag)
         if len(words) == 1 and _norm(words[0]) in _STANDALONE:
             return True
-        return _is_end(prev) and frag[:1].isupper() and len(words) >= 2
+        return _is_end(prev) and frag.lstrip("\"'«“„([")[:1].isupper() and len(words) >= 2
 
     def _amendable(self, text: str, lang: str, arrived: float) -> bool:
         if self.min_words <= 0 or self.amend_window <= 0 or self._last is None or not text.strip():

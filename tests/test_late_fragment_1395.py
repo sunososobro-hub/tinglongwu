@@ -201,3 +201,57 @@ def test_same_language_zh_replaces_the_converted_line(tmp_path, monkeypatch):
     run(_Src(2), Segmenter(chunk=1.0, use_vad=False), _ZhASR(["我们先打开新版本的设置页面。", "下面。"]), tr, out,
         merger=SentenceMerger(min_words=3), audio_clock=True)
     assert out.rows[-1].replaces == out.rows[0].original == "我们先打开新版本的設置页面。"
+
+
+def test_quoted_capitalised_clause_stays_separate():
+    m = _m()
+    m.add("We finished the migration.", "en", 0.0)
+    assert m.add('"It failed."', "en", 1.0) == []
+    assert _texts(m.flush()) == [('"It failed."', None)]
+
+
+def test_unfinished_tail_at_end_of_input_still_joins():
+    m = _m()
+    m.add("We moved the logs to the new.", "en", 0.0)
+    assert m.add("folder", "en", 1.0) == []
+    assert _texts(m.flush()) == [("We moved the logs to the new folder", "We moved the logs to the new.")]
+
+
+def test_unlabelled_tail_keeps_the_speaker_for_the_next_check(tmp_path):
+    from tinglongwu.merge import Unit
+
+    class Script(SentenceMerger):
+        """Releases scripted units (speaker = tag[1]) one per add()."""
+
+        def __init__(self, units):
+            super().__init__()
+            self.units = list(units)
+
+        def add(self, *a, **k):
+            return [self.units.pop(0)] if self.units else []
+
+        def due(self, now):
+            return []
+
+        def flush(self):
+            return []
+
+    a = "We moved the logs to the new."
+    b = "We moved the logs to the new project folder."
+    units = [Unit(a, "en", False, (None, "A", 0)),
+             Unit(b, "en", False, (None, None, 1), replaces=a, part="project folder."),
+             Unit(b[:-1] + " this morning.", "en", False, (None, "B", 2), replaces=b, part="this morning.")]
+
+    class Collect(Sink):
+        def __init__(self):
+            self.rows = []
+
+        def write(self, r):
+            self.rows.append(r)
+
+    out = Collect()
+    tr = PivotTranslator(tmp_path, "tw", lambda s, t: (lambda x: x))
+    run(_Src(3), Segmenter(chunk=1.0, use_vad=False), _ASR(["x", "y", "z"]), tr, out,
+        tgt="en", merger=Script(units), audio_clock=True)
+    assert [(r.original, r.replaces, r.speaker) for r in out.rows] == [
+        (a, None, "A"), (b, a, "A"), ("this morning.", None, "B")]
