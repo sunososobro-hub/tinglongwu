@@ -1242,8 +1242,10 @@ class App:
         row.pack(anchor="w")
         for val, key in (("fast", "gui_set_fast"), ("auto", "gui_set_auto"), ("quality", "gui_set_accurate")):
             self._tx(ttk.Radiobutton(row, variable=self.v_quality, value=val), key).pack(side="left", padx=(0, 12))
-        self.lbl_asr = ttk.Label(g_speed, wraplength=300, justify="left")  # #1385: model in use + download size
-        self.lbl_asr.pack(anchor="w", pady=(4, 0))
+        # #1385: model in use + download size, on the Speed buttons' own row so it adds no height (#886: Advanced
+        # open must still fit a 1366x768 screen)
+        self.lbl_asr = ttk.Label(row, wraplength=520, justify="left")
+        self.lbl_asr.pack(side="left", padx=(4, 0))
         self.speech_hw = None  # #1385: (cuda, hwprobe result), probed once on the first hint
         self.v_engine = self._combo(11, "gui_engine", "engine", engine_labels())  # #399: under Advanced
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
@@ -1949,7 +1951,9 @@ class App:
     def _offer_model(self, run: dict, mode) -> bool:
         """#739: True when the chosen speech model is missing: its download starts now with a progress bar and this
         Start resumes by itself when it succeeds (no dialog, no second click)."""
-        want = self._speech_model(run.get("quality") or "auto") if run.get("quality") != "manual" else None
+        # #1385: only Accurate names a model that may not be on disk yet; Fast / Auto use what is installed (the
+        # CLI's auto_model), so they never start a download here (a fresh setup with no model keeps its old error)
+        want = self._speech_model("quality") if run.get("quality") == "quality" else None
         m = missing_start_model(run, want=want)  # #1385: Accurate downloads the larger model it names
         bg = getattr(self, "bg_dl", None)
         if m is not None and bg is not None and bg.active:  # #1358: no second manifest writer while bg runs
