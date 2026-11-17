@@ -92,6 +92,23 @@ Fixes tried (ru -> zh-Hant / ru -> en, COMET / chrF / median s per sentence, CPU
 - Hy-MT2-7B (run [44034316922](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44034316922), commit 49eb2b6, `variants=card,7b`): +0.0069 COMET / +1.00 chrF on ru -> zh-Hant and +0.0146 COMET / +4.38 chrF on ru -> en against the 1.8B in the same run. The bigger model mostly fixes names and transliteration on ru -> en ("reference name missing" among all 200: 36% -> 28%; "Jamie Sиминоff" -> "Jamie Siminoff"). It does not fix domain senses: the cricket line (калитка = wicket) is still the lowest ru -> zh-Hant line ("大門"). The 7B is about 4.6x slower per sentence on the CPU (10.7 vs 2.3 s median, on different runner CPUs), so it fails the "no more than 10% slower" bar as a default. It stays opt-in for GPUs (#279) and is the best Hy-MT2 option for Russian sources. The +0.008 COMET bar is met on ru -> en but not on ru -> zh-Hant (+0.0069).
 - Not reached: COMET >= 0.88 on ru -> zh-Hant (1.8B 0.870, 7B 0.877) and ru -> en (1.8B 0.861, 7B 0.876). Even the 7B, about 4x the parameters, stays below 0.88 on both. On ru -> zh-Hant it is within 0.003 of Google Cloud Translation (0.879, full devtest). Everything tried within the Hy-MT2 family is measured: prompt, quantization, 1.8B vs 7B, and temperature (#107). The 0.88 target therefore needs a different model family, not a setting.
 
+### Previous sentence as MT context, live (#1394)
+`eval-fragments` (#1258 set, Hy-MT2-1.8B Q4_K_M, greedy, 4 vCPU GitHub runner, every line translated alone and then with the previous source line in the model card's contextual prompt, same runner for both) now has 23 self-written Russian software-talk polysemy lines (`kind: polysemy`: ветка, упал прод, поднять сервер, залить, железо, сборка, стенд, тормозит, ключ, ...; `bad` lists the wrong everyday sense, so "invented %" is the wrong-sense rate there) and a median seconds per MT call. Run [44065598131](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44065598131) (commit 52ca974). Reproduce: `gh workflow run eval-fragments.yml --ref <ref>`, or locally `python -m tlwu_eval --fragment-cases eval/fragment_cases.jsonl --device cpu --out fragments.json` with `TLWU_HYMT_TEMP=0`.
+
+| lines | n | chrF alone / with context | invented or wrong-sense % alone / with context | median s per line alone / with context |
+|---|---|---|---|---|
+| all (ru + en -> zh-Hant) | 79 | 26.1 / 27.3 | 10.1 / 5.1 | 0.918 / 1.129 (+23%) |
+| polysemy (ru -> zh-Hant) | 23 | 19.2 / 22.8 | 21.7 / 8.7 | 0.954 / 1.254 (+31%) |
+| fragment | 24 | 31.5 / 36.9 | 4.2 / 4.2 | 0.711 / 1.039 |
+| idiom | 18 | 23.0 / 23.2 | 11.1 / 5.6 | 1.078 / 1.231 |
+| number | 6 | 30.9 / 26.0 | 0.0 / 0.0 | 0.900 / 1.106 |
+| complete | 8 | 46.1 / 42.8 | 0.0 / 0.0 | 0.887 / 1.036 |
+
+- Quality: context helps where the issue said it would. On the polysemy lines the wrong-sense rate drops from 21.7% to 8.7% (5 of 23 lines to 2) and chrF rises 3.6; over all 79 lines invented content halves. Finished short lines (`complete`, `number`) lose 3-5 chrF with context (small n: 8 and 6 lines).
+- Speed: +23% median MT time per line (+0.21 s), +31% on the polysemy lines. The context sentence lengthens the prompt the CPU has to read for every line. That is over the issue's 15% bar, so the opt-in setting (`--mt-context` + GUI checkbox) is **not shipped**. The tested pipeline wiring (previous finished line of the same speaker and language, at most one sentence, not across a 4 s pause) is kept on branch `fix/1394` at commit efb1e6c for a later attempt.
+- COMET is not scored by this eval (chrF and the invented / wrong-sense rate only).
+- What could bring it under 15%: a shorter context (only the last few words of the previous line), or reusing llama.cpp's prompt cache across lines (the previous line is already in the cache as the last prompt's text, but in another position). Neither is measured.
+
 ### Hy-MT2 sampling temperature (#107)
 
 Same 1012 FLORES-200 devtest sentences and metrics, Hy-MT2-1.8B Q4_K_M on 4-vCPU GitHub runners, temperature 0.7 (model-card default, shipped before #107) vs 0.2 vs 0 (greedy); top_p 0.6, top_k 20, repeat_penalty 1.05 unchanged. U+FFFD = hypotheses containing the replacement character (suspected cause of #632). Run: [eval-flores 43554407306](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43554407306), commit 3e145b4; per-sentence JSON in its `flores-<src>-t<temp>` artifacts. Each job got a different runner CPU (last column), so s/sentence compares CPUs as much as temperatures.
