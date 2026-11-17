@@ -110,7 +110,7 @@ def test_set_has_20_ru_polysemy_items_with_wrong_sense_lists():
 
 
 def test_run_reports_median_seconds_per_condition():
-    ticks = iter([0.0, 1.0, 1.0, 2.5, 10.0, 12.0, 12.0, 15.0, 20.0, 21.0, 21.0, 22.0])  # base, ctx per case
+    ticks = iter([0.0, 1.0, 2.5, 10.0, 12.0, 15.0, 20.0, 21.0, 22.0])  # start, base done, ctx done
     cases = [{"id": f"p{i}", "kind": "polysemy", "pair": "ru->zh", "prev": "x", "src": "Удали старую ветку.",
               "ref": "刪除舊的分支。", "bad": ["樹枝"]} for i in range(3)]
     rep = fragments.run(cases, lambda t, s, g, c: "刪除舊的分支。", clock=lambda: next(ticks))
