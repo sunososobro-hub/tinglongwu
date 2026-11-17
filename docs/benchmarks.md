@@ -83,11 +83,14 @@ Fixes tried (ru -> zh-Hant / ru -> en, COMET / chrF / median s per sentence, CPU
 | prompt names the source language (`src`, before echo fix) | 0.8688 / 25.49 / 2.46 | 0.8486 / 57.90 / 2.83 | Xeon 6975P-C |
 | **card prompt + echo fix (shipped by #1351)** | **0.8696 / 25.14 / 1.77** | **0.8613 / 58.51 / 1.96** | EPYC 9V74 |
 | Q8_0 GGUF + echo fix (`q8`) | 0.8749 / 25.86 / 4.38 | 0.8605 / 58.40 / 5.19 | Xeon 6975P-C |
+| card prompt + echo fix, rerun (baseline of the 7B run) | 0.8696 / 25.14 / 2.26 | 0.8613 / 58.51 / 2.55 | EPYC 7763 |
+| opt-in Hy-MT2-7B Q4_K_M + echo fix (`7b`, `tlwu-setup --hymt7b`) | 0.8765 / 26.14 / 10.68 | 0.8759 / 62.89 / 10.47 | Xeon 6975P-C |
 
 - Echo fix: ru -> en +0.0070 COMET (+0.26 chrF); ru -> zh-Hant identical to the last digit (greedy decoding gives the same text on every CPU, so the difference is only the fix). It changes no model call, only two regex substitutions on the output, so speed is unchanged; the s/sentence columns differ because each job got another runner CPU.
 - Naming the source language: slightly worse on both (-0.0008 / -0.0057), ruled out.
 - Q8_0: +0.0053 on ru -> zh-Hant, -0.0008 on ru -> en against the fixed Q4_K_M, below the +0.008 bar on both, and the file is about 1.9x the size of Q4_K_M (memory-bound on the CPU, #1198 measured the quant speeds); ruled out. Q5_K_M / Q6_K were not measured.
-- Not reached: COMET >= 0.88 on ru -> zh-Hant (0.870) and ru -> en (0.861). What is left is model knowledge (names, domain senses), the area of the larger-model candidates (#1319).
+- Hy-MT2-7B (run [44034316922](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44034316922), commit 49eb2b6, `variants=card,7b`): +0.0069 COMET / +1.00 chrF on ru -> zh-Hant and +0.0146 COMET / +4.38 chrF on ru -> en against the 1.8B in the same run. The bigger model mostly fixes names and transliteration on ru -> en ("reference name missing" among all 200: 36% -> 28%; "Jamie Sиминоff" -> "Jamie Siminoff"). It does not fix domain senses: the cricket line (калитка = wicket) is still the lowest ru -> zh-Hant line ("大門"). The 7B is about 4.6x slower per sentence on the CPU (10.7 vs 2.3 s median, on different runner CPUs), so it fails the "no more than 10% slower" bar as a default. It stays opt-in for GPUs (#279) and is the best Hy-MT2 option for Russian sources. The +0.008 COMET bar is met on ru -> en but not on ru -> zh-Hant (+0.0069).
+- Not reached: COMET >= 0.88 on ru -> zh-Hant (1.8B 0.870, 7B 0.877) and ru -> en (1.8B 0.861, 7B 0.876). Even the 7B, about 4x the parameters, stays below 0.88 on both. On ru -> zh-Hant it is within 0.003 of Google Cloud Translation (0.879, full devtest). Everything tried within the Hy-MT2 family is measured: prompt, quantization, 1.8B vs 7B, and temperature (#107). The 0.88 target therefore needs a different model family, not a setting.
 
 ### Hy-MT2 sampling temperature (#107)
 
