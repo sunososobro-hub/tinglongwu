@@ -222,8 +222,8 @@ jobs:
 
   publish:
     # #1346: keep the worst sentences on the `eval-results` branch (Actions artifacts expire); pushes there only
-    needs: table
-    if: ${{ inputs.matrix == '6x6' && github.event_name == 'workflow_dispatch' && needs.table.result == 'success' }}
+    needs: [table, flores]
+    if: ${{ inputs.matrix == '6x6' && github.event_name == 'workflow_dispatch' && needs.table.result == 'success' && needs.flores.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
