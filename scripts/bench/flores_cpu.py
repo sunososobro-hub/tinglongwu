@@ -101,7 +101,7 @@ def load_pair(data: Path, src: str, limit: int | None = None, tgt: str = REF) ->
 
 
 def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter, log=print,
-                  temp: float | None = None, tgt_code: str = "zh") -> list[dict]:
+                  temp: float | None = None, tgt_code: str = "zh", variant: str | None = None) -> list[dict]:
     """Translate rows not yet in `jsonl` (resume), append each result as it is done; return all rows in order.
     Each new row records the Hy-MT2 `temp`; a resume at another temperature stops instead of mixing them (#107)."""
     done: dict[int, dict] = {}
@@ -112,6 +112,9 @@ def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter,
                 if temp is not None and d.get("temp", temp) != temp:
                     raise SystemExit(f"flores_cpu: {jsonl} was translated at temperature {d['temp']}, not {temp}; "
                                      "use another --out")
+                if variant is not None and d.get("variant", "card") != variant:  # #1351: never mix variants
+                    raise SystemExit(f"flores_cpu: {jsonl} was translated with variant {d.get('variant', 'card')}, "
+                                     f"not {variant}; use another --out")
                 done[d["i"]] = d
     with jsonl.open("a", encoding="utf-8") as f:
         for i, (s, r) in enumerate(rows):
@@ -124,6 +127,8 @@ def translate_all(rows, tr, src_code: str, jsonl: Path, clock=time.perf_counter,
             d = {"i": i, "src": s, "ref": r, "hyp": hyp, "sec": round(clock() - t0, 4)}
             if temp is not None:
                 d["temp"] = temp
+            if variant is not None and variant != "card":
+                d["variant"] = variant
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
             f.flush()
             done[i] = d
@@ -439,7 +444,8 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
         kw = {} if a.variant == "card" else {"variant": a.variant}
         tr = make(Path(a.models_dir), **kw) if variant == "tw" else make(Path(a.models_dir), zh_variant=variant, **kw)
     t0 = time.perf_counter()
-    out = translate_all(rows, tr, src_code, jsonl, temp=temp, tgt_code=tgt_code)
+    out = translate_all(rows, tr, src_code, jsonl, temp=temp, tgt_code=tgt_code,
+                        variant=None if a.score_only else a.variant)
     wall = time.perf_counter() - t0
     # --score-only keeps the translate run's wall time and CPU from its summary
     prev = json.loads(summary.read_text("utf-8")) if a.score_only and summary.exists() else {}

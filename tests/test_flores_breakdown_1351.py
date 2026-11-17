@@ -172,3 +172,14 @@ def test_prompt_echo_is_its_own_category_and_listed_in_full():
     md = m.breakdown([d, row(1, "Кошка спит.", "The cat sleeps.", "The cat sleeps.", 0.9)], n=1, pair="p")
     assert "| echo | 1 | 100% | 50% | 2.0 |" in md
     assert f"1 of 2 outputs echo the prompt; full text of the first 3:\n- 84: `{note}`" in md
+
+
+def test_resume_refuses_another_variant(tmp_path):
+    m = _load()
+    jsonl = tmp_path / "rus_Cyrl.jsonl"
+    tr = types.SimpleNamespace(translate=lambda t, s, g: types.SimpleNamespace(text="x"))
+    m.translate_all([("a", "b")], tr, "ru", jsonl, variant="src")
+    assert json.loads(jsonl.read_text("utf-8"))["variant"] == "src"
+    with pytest.raises(SystemExit, match="variant src, not q8"):
+        m.translate_all([("a", "b")], tr, "ru", jsonl, variant="q8")
+    assert len(m.translate_all([("a", "b")], tr, "ru", jsonl, variant="src")) == 1  # same variant resumes

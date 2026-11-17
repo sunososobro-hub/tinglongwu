@@ -85,8 +85,9 @@ def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | N
 # also reworded as "It should be noted that only the translated result should be output, ..."). Only a leading echo
 # that names the "translated result" / "额外解释" instruction is removed; a translation that merely says "note" stays.
 _ECHO_EN = re.compile(r"^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s+noted\s+that|you\s+should)[,:]?\s*"
-                      r"[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b[^:\n]{0,80}?\bexplanations?\s*[.:]\s*", re.I)
-_ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*[^。：:\n]{0,12}?只需要?[输輸]出[^。：:\n]{0,20}?(?:额外|額外)(?:解释|解釋)[。：:]?\s*")
+                      r"[^.:\n]{0,40}?\bonly\b[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b"
+                      r"[^:\n]{0,40}?\b(?:without|no)\b[^:\n]{0,40}?\bexplanations?\s*[.:]\s*", re.I)
+_ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)[。：:]\s*")
 
 
 def strip_echo(out: str) -> str:
