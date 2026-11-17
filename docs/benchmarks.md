@@ -39,14 +39,18 @@ Every direction between the six languages (30 cells, rows = source, columns = ta
 
 Results: [eval-flores 43893644257](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43893644257) (`matrix=6x6`), commit 1bc72da, first 200 sentences per direction, 4 vCPU GitHub runner. Weakest shipped direction in this run: ru -> zh-Hant, COMET 0.870, so "(weak)" = COMET below 0.870 (COMET is stored to 3 decimals; 0.870 itself is not weak).
 
-| src \ tgt | en | ru | zh-Hans | zh-Hant | ja | ko |
+Traffic lights by COMET (rounded to 3 decimals): 🟢 >= 0.880, 🟡 0.870-0.879, 🔴 < 0.870 (0.870 = weakest shipped direction in this run, ru -> zh-Hant). `G` = Google Cloud Translation v2 COMET with the gap to ours (positive = Google ahead); `G -` = no Google number yet. The Google numbers come from different sentence sets (ru -> zh-Hant 1012 sentences, ru -> en and en -> zh-Hant 50) and are listed in `scripts/bench/data/google_refs.json`; ours are the first 200. The table is generated: `python scripts/bench/matrix_lights.py scripts/bench/data/matrix_6x6_43893644257.json` (the `table` job of `eval-flores.yml` prints it for every `matrix=6x6` run). chrF per cell stays in the run's `flores-6x6-table` artifact.
+
+| source \ target | en | ru | zh-Hans | zh-Hant | ja | ko |
 |---|---|---|---|---|---|---|
-| en | - | 0.889 / 55.1 | 0.892 / 38.3 | 0.893 / 30.6 | 0.919 / 41.0 | 0.904 / 36.9 |
-| ru | 0.854 / 58.2 (weak) | - | 0.865 / 29.9 (weak) | 0.870 / 25.1 | 0.882 / 33.0 | 0.863 / 29.6 (weak) |
-| zh-Hans | 0.874 / 57.9 | 0.885 / 47.2 | - | 0.920 / 33.0 (OpenCC) | 0.906 / 34.6 | 0.883 / 31.0 |
-| zh-Hant | 0.866 / 56.0 (weak) | 0.870 / 45.3 | 0.907 / 31.7 (OpenCC) | - | 0.902 / 33.0 | 0.879 / 29.1 |
-| ja | 0.868 / 54.5 (weak) | 0.871 / 44.6 | 0.884 / 28.0 | 0.889 / 24.3 | - | 0.887 / 32.8 |
-| ko | 0.868 / 54.7 (weak) | 0.870 / 45.5 | 0.874 / 28.4 | 0.882 / 24.3 | 0.898 / 36.9 | - |
+| **en** |  | 🟢 0.889<br>G - | 🟢 0.892<br>G - | 🟢 0.893<br>G 0.900 (gap +0.007) | 🟢 0.919<br>G - | 🟢 0.904<br>G - |
+| **ru** | 🔴 0.854<br>G 0.883 (gap +0.029) |  | 🔴 0.865<br>G - | 🟡 0.870<br>G 0.879 (gap +0.009) | 🟢 0.882<br>G - | 🔴 0.863<br>G - |
+| **zh-Hans** | 🟡 0.874<br>G - | 🟢 0.885<br>G - |  | 🟢 0.920 (script conversion)<br>G - | 🟢 0.906<br>G - | 🟢 0.883<br>G - |
+| **zh-Hant** | 🔴 0.866<br>G - | 🟡 0.870<br>G - | 🟢 0.907 (script conversion)<br>G - |  | 🟢 0.902<br>G - | 🟡 0.879<br>G - |
+| **ja** | 🔴 0.868<br>G - | 🟡 0.871<br>G - | 🟢 0.884<br>G - | 🟢 0.889<br>G - |  | 🟢 0.887<br>G - |
+| **ko** | 🔴 0.868<br>G - | 🟡 0.870<br>G - | 🟡 0.874<br>G - | 🟢 0.882<br>G - | 🟢 0.898<br>G - |  |
+
+17 green / 7 yellow / 6 red (green >= 0.880, yellow 0.870-0.879, red < 0.870); largest gap to Google: ru -> en +0.029
 
 - Into English is the weakest target on COMET (0.854-0.874) although its chrF is the highest (54.5-58.2): chrF is not comparable across target languages (character n-grams in English vs Chinese / Japanese), compare cells of one column only.
 - Russian as the source is the weakest row (4 of 5 cells at or below the shipped floor); every direction into Russian stays at or above it (0.870-0.889).

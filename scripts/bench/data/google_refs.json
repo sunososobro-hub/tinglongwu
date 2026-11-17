@@ -1,0 +1,17 @@
+{
+ "_note": "Google Cloud Translation v2 reference scores (docs/benchmarks.md). Add new numbers here; missing cells stay empty.",
+ "refs": {
+  "rus_Cyrl->zho_Hant": {
+   "COMET": 0.879,
+   "n": 1012
+  },
+  "rus_Cyrl->eng_Latn": {
+   "COMET": 0.883,
+   "n": 50
+  },
+  "eng_Latn->zho_Hant": {
+   "COMET": 0.9,
+   "n": 50
+  }
+ }
+}

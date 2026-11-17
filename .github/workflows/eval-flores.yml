@@ -183,6 +183,10 @@ jobs:
             echo "### MT language-pair matrix (COMET / chrF), run ${GITHUB_RUN_ID}, commit ${GITHUB_SHA::7}"
             echo
             python3 scripts/bench/flores_cpu.py --table arts
+            echo
+            echo "### Traffic lights with the Google reference (#1352)"
+            echo
+            python3 scripts/bench/matrix_lights.py arts
           } | tee table.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
