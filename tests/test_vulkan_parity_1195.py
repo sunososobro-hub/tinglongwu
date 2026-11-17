@@ -54,3 +54,12 @@ def test_summary_escapes_pipes_and_handles_missing_lines():
     assert not ok
     row = next(r for r in md.splitlines() if r.startswith("| 1 "))
     assert "a\\|b" in row and row.endswith("| NO |")
+
+
+def test_observed_lavapipe_paraphrase_passes_but_real_divergence_fails():
+    # #1195 run 44006290817: lavapipe differs from CPU only by 之前 vs 前 on one line (chrF 96.28)
+    cpu = {"backend": "cpu", "seconds": 1, "texts": ["會議將於明天早上九點開始。", "請在週末前把報告發給我。", "本地翻譯可以讓你的對話保留在自己的電腦上。", "由於北部地區下大雨，火車延誤了。", "你能把音量調小一點嗎？我聽不清揚聲器發出的聲音。"]}
+    vk = {**cpu, "backend": "vulkan", "texts": [cpu["texts"][0], "請在週末之前把報告發給我。", *cpu["texts"][2:]]}
+    assert vp.compare(cpu, vk)[0]
+    bad = {**cpu, "backend": "vulkan", "texts": ["完全不同的句子"] * 5}
+    assert not vp.compare(cpu, bad)[0]
