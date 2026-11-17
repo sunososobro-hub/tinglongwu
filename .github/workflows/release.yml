@@ -519,6 +519,7 @@ jobs:
           python scripts/build_whisper_vulkan.py --out "$RUNNER_TEMP/whisper-out"
       - name: Smoke - transcribe 1 s through the app's ctypes loader on Mesa lavapipe (Linux)
         if: runner.os == 'Linux'
+        shell: bash   # -o pipefail: a failed smoke must fail the step, not be hidden by tee
         env:
           GGML_VK_VISIBLE_DEVICES: "0"   # ggml-vulkan skips CPU-type devices (lavapipe) unless listed explicitly
         run: python scripts/build_whisper_vulkan.py --smoke "$RUNNER_TEMP/whisper-out" | tee -a "$GITHUB_STEP_SUMMARY"

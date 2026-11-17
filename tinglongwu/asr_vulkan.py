@@ -20,7 +20,7 @@ from .asr import FasterWhisperRecognizer, Recognizer, Transcript
 
 WHISPER_DIR = "whisper"  # vulkan-pack/whisper/: the whisper.cpp build, apart from llama.cpp's own ggml libraries
 WHISPER_LIB = "tlwu-whisper.dll" if sys.platform == "win32" else "libtlwu-whisper.so"
-WHISPER_ABI = 1  # = TLWU_WHISPER_ABI in scripts/whisper_vulkan/tlwu_whisper.c
+WHISPER_ABI = 1  # = TLWU_WHISPER_ABI in scripts/whisper_vulkan/tlwu_whisper.cpp
 MODEL_DIR = "whisper-cpp"  # models/whisper-cpp/ggml-<size>.bin (whisper.cpp needs its own ggml model files)
 _TEXT_MAX = 8192
 
@@ -30,6 +30,8 @@ class WhisperCppBackend:
     builds whisper_full_params against the pinned whisper.h. One whisper context, calls serialized (not thread safe)."""
 
     def __init__(self, lib_path: Path, model_path: Path, use_gpu: bool = True, load=ctypes.CDLL, threads=None):
+        self._lock = threading.Lock()  # first: close() (also via __del__) takes it even when __init__ raised
+        self._ctx = None
         if not Path(lib_path).is_file():
             raise ImportError(f"whisper.cpp Vulkan library not found: {lib_path}")
         if not Path(model_path).is_file():
@@ -48,7 +50,6 @@ class WhisperCppBackend:
                                                 ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, f, f]
         self._lib = lib
         self._threads = threads or min(4, os.cpu_count() or 1)
-        self._lock = threading.Lock()
         self._ctx = lib.tlwu_whisper_init(str(model_path).encode("utf-8"), 1 if use_gpu else 0)
         if not self._ctx:
             raise RuntimeError(f"whisper.cpp could not load {Path(model_path).name}")
@@ -60,6 +61,8 @@ class WhisperCppBackend:
         lang = ctypes.create_string_buffer(16)
         no_speech, logprob = ctypes.c_float(0.0), ctypes.c_float(0.0)
         with self._lock:
+            if not self._ctx:
+                raise RuntimeError("whisper.cpp context is closed")
             rc = self._lib.tlwu_whisper_transcribe(
                 self._ctx, pcm.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), int(pcm.size),
                 (language or "auto").encode("ascii"), self._threads, text, _TEXT_MAX, lang, 16,
@@ -72,9 +75,13 @@ class WhisperCppBackend:
         return out, lang.value.decode("ascii", "replace"), float(no_speech.value), float(logprob.value)
 
     def close(self):
-        ctx, self._ctx = getattr(self, "_ctx", None), None
-        if ctx:
-            self._lib.tlwu_whisper_free(ctx)
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            return
+        with lock:  # never free the context while a transcribe call is using it
+            ctx, self._ctx = self._ctx, None
+            if ctx:
+                self._lib.tlwu_whisper_free(ctx)
 
     __del__ = close
 

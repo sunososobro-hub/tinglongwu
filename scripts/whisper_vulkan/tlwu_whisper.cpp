@@ -1,13 +1,14 @@
 /* #783: a flat C API over whisper.cpp for tinglongwu.asr_vulkan (ctypes).
  * whisper_full() takes `struct whisper_full_params` by value and its layout changes between whisper.cpp versions, so
- * Python never builds that struct: this file is compiled against the pinned whisper.h and only plain types cross. */
-#include <string.h>
+ * Python never builds that struct: this file is compiled against the pinned whisper.h and only plain types cross.
+ * C++ so no exception (std::bad_alloc in whisper_init_state, ...) crosses the C ABI into Python. */
+#include <cstring>
 #include "whisper.h"
 
 #ifdef _WIN32
-#define TLWU_API __declspec(dllexport)
+#define TLWU_API extern "C" __declspec(dllexport)
 #else
-#define TLWU_API __attribute__((visibility("default")))
+#define TLWU_API extern "C" __attribute__((visibility("default")))
 #endif
 
 #define TLWU_WHISPER_ABI 1
@@ -17,7 +18,11 @@ TLWU_API int tlwu_whisper_abi(void) { return TLWU_WHISPER_ABI; }
 TLWU_API void * tlwu_whisper_init(const char * model_path, int use_gpu) {
     struct whisper_context_params cp = whisper_context_default_params();
     cp.use_gpu = use_gpu != 0;
-    return whisper_init_from_file_with_params(model_path, cp);
+    try {
+        return whisper_init_from_file_with_params(model_path, cp);
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 TLWU_API void tlwu_whisper_free(void * ctx) {
@@ -41,7 +46,11 @@ TLWU_API int tlwu_whisper_transcribe(void * vctx, const float * pcm, int n_sampl
     if (lang_out_len > 0) lang_out[0] = '\0';
     *no_speech = 0.0f;
     *avg_logprob = 0.0f;
-    if (whisper_full(ctx, p, pcm, n_samples) != 0) return -1;
+    try {
+        if (whisper_full(ctx, p, pcm, n_samples) != 0) return -1;
+    } catch (...) {
+        return -2;
+    }
 
     const whisper_token eot = whisper_token_eot(ctx);
     size_t used = 0;

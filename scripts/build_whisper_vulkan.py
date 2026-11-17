@@ -1,7 +1,7 @@
 """Build the whisper.cpp Vulkan ASR library for the Vulkan pack (#783, part 2 of #747).
 
 whisper.cpp publishes no Vulkan binaries, so the release builds it: the pinned commit below, GGML_VULKAN=on, linked
-statically into one `tlwu-whisper` library with the flat C API of scripts/whisper_vulkan/tlwu_whisper.c (the ctypes
+statically into one `tlwu-whisper` library with the flat C API of scripts/whisper_vulkan/tlwu_whisper.cpp (the ctypes
 side is tinglongwu.asr_vulkan). `make_vulkan_pack.py --add-whisper` then puts it in the pack zip under `whisper/`.
 
   python scripts/build_whisper_vulkan.py --out dist/whisper [--cpu]   clone the pin, build, copy lib + LICENSE

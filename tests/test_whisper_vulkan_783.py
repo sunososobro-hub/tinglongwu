@@ -182,3 +182,18 @@ def test_whisper_job_has_the_vulkan_pack_budget_and_sdk_pin():
         assert w["env"][k] == vk["env"][k]
     assert "whisper-vulkan" in jobs["release"]["needs"]
 
+
+
+def test_closed_backend_never_passes_a_freed_context_to_c(tmp_path):
+    fake = FakeLib()
+    b = av.WhisperCppBackend(*_files(tmp_path), load=lambda p: fake)
+    b.close()
+    n = len(fake.calls)
+    with pytest.raises(RuntimeError, match="closed"):
+        b.transcribe(np.zeros(4, np.float32), "en")
+    assert len(fake.calls) == n and fake.freed == [1234]
+    failed = av.WhisperCppBackend.__new__(av.WhisperCppBackend)
+    (tmp_path / "lib-ok").write_bytes(b"lib")
+    with pytest.raises(FileNotFoundError):
+        failed.__init__(tmp_path / "lib-ok", tmp_path / "none.bin", load=lambda p: fake)
+    failed.close()  # a backend whose __init__ raised closes quietly (as __del__ does)
