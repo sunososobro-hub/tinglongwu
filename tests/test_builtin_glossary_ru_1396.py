@@ -67,3 +67,12 @@ def test_ru_terms_do_not_fire_on_other_words_with_the_same_stem_1425():
         assert [e.main for e in g.relevant(s)] == ["железо"], s
     for s in ("тесты упали", "в тестах"):
         assert [e.main for e in g.relevant(s)] == ["тесты"], s
+
+
+def test_ru_noun_forms_still_fire_1425():
+    g = glossary.load_builtin("ru")
+    hit = lambda text: {e.main for e in g.relevant(text)}  # noqa: E731
+    for text, term in (("Это деплой.", "деплой"), ("после деплоя", "деплой"), ("нужно ревью", "ревью"),
+                       ("в ветках", "ветка"), ("новыми ветками", "ветка"), ("в репозитории", "репозиторий"),
+                       ("об отладке", "отладка"), ("отладками", "отладка")):
+        assert term in hit(text), (text, term)

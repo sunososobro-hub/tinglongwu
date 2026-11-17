@@ -48,7 +48,11 @@ _RU_NOUN_ENDINGS = {  # #1425: case endings per final letter of the dictionary f
     "е": ("", "е", "я", "ю", "ем", "и", "ях", "ям", "ями"),
     "ы": ("", "ы", "ов", "ам", "ами", "ах"),
     "и": ("", "и", "ей", "ям", "ями", "ях", "ов"),
-    "а": ("", "а", "у", "ы", "е", "ой", "ою", "и"),
+    "а": ("", "а", "у", "ы", "е", "ой", "ою", "и", "ах", "ам", "ами"),
+    "й": ("й", "я", "ю", "ем", "е", "и", "ев", "ей", "ям", "ях", "ями"),
+    "ь": ("ь", "я", "ю", "и", "е", "ем", "ью", "ей", "ям", "ях", "ями"),
+    "ю": ("ю", "", "я", "и", "е", "ей"),
+    "у": ("у", "", "и", "е", "ой"),
     "я": ("", "я", "ю", "и", "е", "ей", "ею"),
 }
 
@@ -60,12 +64,16 @@ def _ru_noun_ok(word: str, src_word: str, stem: str) -> bool:
     """#1425: a built-in Russian noun fires only on its own case forms, not on other words with the same stem
     (железо vs железная дорога, тесты vs тесто). Verbs (-ть) keep the plain prefix match."""
     src = _norm(src_word)
+    if word == src:
+        return True
     if not word.startswith(stem):
         return False
     if src.endswith("ть"):
         return True
     ends = _RU_NOUN_ENDINGS.get(src[-1:]) if stem != src else _RU_MASC_ENDINGS
-    return ends is not None and word[len(stem):] in ends
+    if ends is None:
+        return True  # unknown final letter: keep the plain prefix match rather than lose the term
+    return word[len(stem):] in ends
 
 
 @dataclass
