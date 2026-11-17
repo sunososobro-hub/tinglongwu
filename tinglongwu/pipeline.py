@@ -306,7 +306,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     def stale(item) -> bool:
         """#1369: this line is too old to be worth translating now, and newer lines wait behind it."""
         lang = item[1]
-        return (yield_on and not asr_over.is_set() and mtq.qsize() > 0
+        return (yield_on and not audio_clock and not asr_over.is_set() and mtq.qsize() > 0
                 and time.monotonic() - item[3] > MT_STALE_S and lang != (route(lang) if route is not None else tgt0))
 
     def mt_worker() -> None:
@@ -326,23 +326,25 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     return  # Stop during the hold: start no translation or output after run() returned
                 t_emit = time.monotonic()
                 clip[0] = item[9]  # #239: audio of this line (only the MT thread reads it)
-                if stale(item):  # #1369: catch up; the source text stays in the transcript
+                if draft is not None:
+                    draft.last_first_draft = None  # #511: final_written() fills it while emit() writes the line
+                skip = stale(item)
+                if skip:  # #1369: catch up; the source text stays in the transcript
                     tgt = route(item[1]) if route is not None else tgt0
                     write(Result(item[1], item[0], None, _msg("mt_skipped"), tgt, speaker=item[8]), item[2])
                     skipped[0] += 1
                     if on_catchup is not None:
                         on_catchup(skipped[0])
-                    continue
-                if draft is not None:
-                    draft.last_first_draft = None  # #511: final_written() fills it while emit() writes the line
-                emit(*item[:4], who=item[8])
+                else:
+                    emit(*item[:4], who=item[8])
                 if on_record is not None and item[6] is not None:
                     rec = _record(item, time.monotonic())
                     d = getattr(draft, "last_first_draft", None) if draft is not None else None
                     rec["draft"] = None if d is None else round(d, 3)  # #511: seconds to the first draft, null = none
                     rec["mt_hold"] = round(held, 3)  # #1253: part of "mt" spent waiting for ASR to catch up
+                    rec["mt_skipped"] = skip  # #1369: written untranslated to catch up
                     on_record(rec)
-                if on_work is not None:
+                if on_work is not None and not skip:  # no MT ran: a 0 ms line would skew the per-line MT time
                     on_work(item[4], time.monotonic() - t_emit, item[5])
                 if on_latency is not None:
                     on_latency(item[4] + time.monotonic() - item[3])
