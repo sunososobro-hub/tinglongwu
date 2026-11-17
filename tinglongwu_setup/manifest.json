@@ -88,6 +88,13 @@
     "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx": "9ed9941bac7373f2ec1be36627e0e71a349a59ca5522d4363fd50701db05193a",
     "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json": "b7ed744f65ec73deb57fc8e419a5db5c0c5532026cf1cd21247f75937b6fbee2"
    }
+  },
+  "topics-qwen3-4b-2507": {
+   "repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+   "revision": "a06e946bb6b655725eafa393f4a9745d460374c9",
+   "files": {
+    "Qwen3-4B-Instruct-2507-Q4_K_M.gguf": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
+   }
   }
  },
  "argos": {

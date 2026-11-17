@@ -257,3 +257,22 @@ What this shows:
 - No quant is faster than Q4_K_M by more than the noise without losing chrF. Q4_K_S is 9% faster at the median but slower at p90 and 1.4 chrF lower; Q2_K loses 8.8 chrF. The 3-bit and IQ quants are slower on this CPU (more dequantization work per token on 2 physical cores).
 - Alone, the MT step is 1.35 s per line whatever the thread split. Under load the split only moves time between Whisper and MT: mt-heavy makes MT 28% faster than cpu-mode but Whisper 62% slower, so the line is not faster.
 - Together with the settings sweep above: neither Whisper settings, MT threads nor MT quants reach a 30% lower p50 at the #745 quality limits on a 4 vCPU CPU. The shipped CPU mode keeps Q4_K_M and the #1198 thread split. A larger cut needs a different, smaller MT model, which needs its own chrF / COMET eval first.
+
+## Offline topic notes: default model bake-off (#1378, #595, #610)
+
+Which small instruct model should write the offline meeting notes (`--topics MODEL.gguf`, #609)? `topic-bakeoff` run [44038256031](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44038256031) (commit 6ea1591), one GitHub-hosted 4 vCPU runner per model (the runner CPU is in each row), Q4_K_M GGUFs, the app's own prompt and parser (`tinglongwu.topics`, greedy, 220 tokens). Quality: 25 fixed segments (10 zh, 10 en, 5 ru) scored on key facts present, invented numbers (a number in the notes that is not in the transcript) and output language = transcript language. Speed: one ~5-minute topic (816 words) summarized with the app's thread count (`cpus // 4` = 1 thread on 4 vCPU) at the lowest thread priority while 2 cores are kept busy like live ASR + MT. Peak RAM = the process's peak RSS minus the RSS before the model loaded (llama.cpp's mapped file plus its repacked CPU weights). Budget from the issue: < 60 s per 5-minute topic, < 3 GB RAM, subtitle probe p50 within +10%, plus the quality floor (right language in >= 90% of segments, >= 60% of key facts in every language).
+
+| model (licence) | runner CPU | file MB | peak RAM MB | s / 5-min topic | s / short topic | zh facts | en facts | ru facts | invented numbers | right language | subtitle p50 | budget |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Qwen3-4B-Instruct-2507 (Apache-2.0) | Xeon 6975P-C | 2497 | 5066 | 218.1 | 28.5 | 0.84 | 1.00 | 1.00 | 2/25 | 24/25 | +1.9% | over: time, RAM |
+| Llama-3.2-3B-Instruct (Llama 3.2) | EPYC 9V45 | 2019 | 4062 | 112.6 | 10.7 | 0.78 | 0.94 | 0.62 | 1/25 | 21/25 | +1.6% | over: time, RAM, quality |
+| Qwen2.5-1.5B-Instruct (Apache-2.0) | EPYC 9V74 | 1117 | 2067 | 73.0 | 5.3 | 0.46 | 0.79 | 0.00 | 2/25 | 15/25 | +0.4% | over: time, quality |
+| Llama-3.2-1B-Instruct (Llama 3.2) | EPYC 7763 | 808 | 1680 | 106.0 | 5.8 | 0.42 | 0.88 | 0.20 | 3/25 | 15/25 | -2.1% | over: time, quality |
+| gemma-3-1b-it (Gemma) | Xeon 6975P-C | 806 | 1219 | 82.4 | 8.8 | 0.14 | 0.72 | 0.00 | 4/25 | 11/25 | +1.4% | over: time, quality |
+
+What this shows:
+- No candidate meets the CPU budget. The 1-1.5B models are fast enough per short topic but write Chinese and Russian meetings up in English (10-14 of 25 segments in the wrong language, ru key facts 0.00-0.20), so their notes are not usable for zh / ru users. Only the 3-4B models keep the transcript's language and its facts.
+- Default model: **Qwen3-4B-Instruct-2507 Q4_K_M** (best quality: 24/25 in the right language, every en / ru key fact, 0.84 zh; Apache-2.0; pinned in `tinglongwu_setup/manifest.json` as `topics-qwen3-4b-2507`). On a 4 vCPU CPU with the app's single summarizer thread it needs about 3.6 minutes per 5-minute topic and ~5 GB RAM, so topics queue up during a meeting and finish after it. Recommendation: on by default only with a GPU; on CPU-only PCs an opt-in, with the notes arriving after the meeting.
+- Timings move with the runner CPU (gemma-3-1b: 40-82 s per 5-minute topic across three runs of the same code), so compare the s / topic columns within ~2x, not to the second. The subtitle probe stays within +2% for every model: the low-priority single thread does not slow the live path.
+
+Reproduce: dispatch `topic-bakeoff` (input `candidates`, empty = all), or locally `python scripts/topic_bakeoff.py --fetch qwen3-4b-2507 --dir cand` then `python scripts/topic_bakeoff.py --model qwen3-4b-2507=cand/qwen3-4b-2507/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --out r.json`; the per-segment notes are in the job log.
