@@ -111,6 +111,26 @@ def test_611_topic_panel_default_follows_gpu(make_app, tmp_path):
     _shot(a, "611_topics")
 
 
+def test_1379_meeting_notes_switch_on_shows_topics_and_language(make_app, tmp_path):
+    from tinglongwu import topics
+
+    model = tmp_path / "m.gguf"
+    model.write_bytes(b"x")
+    a = make_app()
+    a.settings.update(topics=True, topics_model=str(model), target="zh-tw")
+    a._sync_topics_var()
+    assert a.v_topics.get() is True  # the Settings menu switch and the panel share it
+    a.topic_panel.add(topics.Topic("Q3 budget", ["Cut travel by 10%", "Launch date stays 1 Dec"],
+                                   [("me", "send the revised budget")], 0, 312))
+    a.poll()
+    a.root.update()
+    assert a.topics_win.winfo_viewable()
+    text = a.topics_text.get("1.0", "end")
+    assert "Q3 budget" in text and "Cut travel by 10%" in text and "me: send the revised budget" in text
+    assert "Traditional Chinese" in a.topics_lang.cget("text")
+    _shot(a, "1379_notes_on")
+
+
 def test_677_wrong_translation_builds_prefilled_url_without_network(make_app, monkeypatch):
     import webbrowser
 

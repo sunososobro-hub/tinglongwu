@@ -48,3 +48,18 @@ class TopicPanel:
             self._topics.clear()
         if self.on_change is not None:
             self.on_change()
+
+
+def panel_hint(*, downloading: bool, has_model: bool, has_entries: bool, choice: bool | None,
+               has_cuda: Callable[[], bool]) -> str:
+    """#1379: i18n key of the one grey line under the meeting-notes switch ("" = none). has_cuda is only probed when
+    the user never chose (choice None) and a model is there: then a CPU-only PC says why the notes are off."""
+    if downloading:
+        return "gui_topics_downloading"
+    if has_entries:
+        return ""
+    if not has_model:
+        return "gui_topics_no_model"
+    if choice is None and not has_cuda():
+        return "gui_topics_cpu_off"
+    return "gui_topics_empty"

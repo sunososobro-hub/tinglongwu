@@ -52,10 +52,24 @@ def PauseSegmenter(pause_s: float = PAUSE_S, min_s: float = MIN_S, max_s: float 
     return TopicSegmenter(pause_s, min_s, max_s)
 
 
-def build_prompt(lines: list[Line]) -> str:
+# #1379: the notes are written in the language the user reads (the translation target); English names for the prompt.
+LANG_NAMES = {"zh-tw": "Traditional Chinese", "zh-cn": "Simplified Chinese", "zh": "Chinese", "en": "English",
+              "ja": "Japanese", "ko": "Korean", "ru": "Russian", "es": "Spanish", "fr": "French", "de": "German",
+              "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "hi": "Hindi", "yue": "Cantonese"}
+
+
+def lang_name(code: str | None) -> str | None:
+    """'zh-tw' -> 'Traditional Chinese'; unknown or empty -> None (the prompt then keeps the transcript's language)."""
+    return LANG_NAMES.get((code or "").lower()) or LANG_NAMES.get((code or "").lower().split("-")[0])
+
+
+def build_prompt(lines: list[Line], lang: str | None = None) -> str:
+    """lang: the user's language code (#1379); None keeps the #609 wording (same language as the transcript)."""
     body = "\n".join(f"[{ln.side}] {ln.text}" for ln in lines)
+    name = lang_name(lang)
+    where = f"Write in {name}" if name else "Write in the same language as the transcript"
     return ("Summarize this part of a meeting transcript. [me] is the user, [them] is the other side.\n"
-            "Write in the same language as the transcript, in exactly this format:\n"
+            f"{where}, in exactly this format:\n"
             "TITLE: <short topic title>\n- <key point>\n(3 to 5 key points)\n"
             "ACTION me: <what the user must do>\nACTION them: <what the other side must do>\n"
             "(only actions that were really agreed; none is fine)\n\nTranscript:\n" + body)
@@ -119,8 +133,8 @@ class TopicSummarizer:
     submit() never waits for the model; close() lets the queue drain (the after-the-meeting backlog)."""
 
     def __init__(self, summarize: Callable[[str], str], on_topic: Callable[[Topic], None],
-                 lower_priority: Callable[[], bool] = lower_thread_priority, log=None):
-        self.summarize, self.on_topic, self._lower = summarize, on_topic, lower_priority
+                 lower_priority: Callable[[], bool] = lower_thread_priority, log=None, lang: str | None = None):
+        self.summarize, self.on_topic, self._lower, self.lang = summarize, on_topic, lower_priority, lang
         self.log = log or (lambda m: print(m, file=sys.stderr, flush=True))
         self.q: queue.Queue = queue.Queue()
         self.lowered: bool | None = None
@@ -141,7 +155,7 @@ class TopicSummarizer:
             if lines is None:
                 return
             try:
-                text = self.summarize(build_prompt(lines))
+                text = self.summarize(build_prompt(lines, self.lang))
                 self.on_topic(parse_summary(text, lines[0].t, lines[-1].t))
             except Exception as e:  # noqa: BLE001 - notes are a side feature: never stop the meeting over them
                 self.log(f"tlwu: topic summary failed: {e}")
@@ -157,16 +171,19 @@ class TopicNotes:
 
     def __init__(self, path, summarize: Callable[[str], str], segmenter=None,
                  lower_priority: Callable[[], bool] = lower_thread_priority, log=None,
-                 on_topic: Callable[[Topic], None] | None = None):
+                 on_topic: Callable[[Topic], None] | None = None, lang: str | None = None):
         self.path = Path(path)
         self.on_topic = on_topic  # #611: the GUI side panel listens here (called on the worker thread)
         self.segmenter = segmenter or PauseSegmenter()
         self.topics: list[Topic] = []
         self._lock = threading.Lock()  # both sides call on_line (listen thread + speak thread)
-        self.worker = TopicSummarizer(summarize, self._done, lower_priority=lower_priority, log=log)
+        self.worker = TopicSummarizer(summarize, self._done, lower_priority=lower_priority, log=log, lang=lang)
 
     def on_line(self, rec: dict) -> None:
-        text = (rec.get("dst") or rec.get("src") or "").strip()  # the translation (user's language) when there is one
+        # the user's language: the translation of the other side; #1379: the user's own words (side "me") are already
+        # in it, their translation is for the other side
+        first = ("src", "dst") if rec.get("side") == "me" else ("dst", "src")
+        text = (rec.get(first[0]) or rec.get(first[1]) or "").strip()
         if not text or "fix" in rec:
             return
         with self._lock:
@@ -229,9 +246,10 @@ def llama_summarizer(model_path, threads: int | None = None, loader=None) -> Cal
 
 
 def attach(saver, model_path, summarize: Callable[[str], str] | None = None,
-           on_topic: Callable[[Topic], None] | None = None) -> TopicNotes:
-    """Hook topic notes onto a JsonlSaveSink (both sides in meeting mode go through its record())."""
-    notes = TopicNotes(notes_path(saver.path), summarize or llama_summarizer(model_path), on_topic=on_topic)
+           on_topic: Callable[[Topic], None] | None = None, lang: str | None = None) -> TopicNotes:
+    """Hook topic notes onto a JsonlSaveSink (both sides in meeting mode go through its record()).
+    lang: the user's language code (#1379), the notes are written in it."""
+    notes = TopicNotes(notes_path(saver.path), summarize or llama_summarizer(model_path), on_topic=on_topic, lang=lang)
     saver.on_line = notes.on_line
     print(f"tlwu: topic notes -> {os.path.abspath(notes.path)}", file=sys.stderr)
     return notes

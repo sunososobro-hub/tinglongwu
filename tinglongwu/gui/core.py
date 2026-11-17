@@ -38,7 +38,7 @@ DEFAULTS = {
     "scene": "video",  # 0.3.8: the 情境 row: "meeting" (listen + speak) or "video" (listen only); last choice kept
     "speaker_id": False,  # 0.3.8: 標示說話者; off = sherpa-onnx and the speaker model are never loaded
     "topics": None,  # #611: topic notes side panel; None = default (on with CUDA, off on CPU-only), True/False = chosen
-    "topics_model": "",  # #611: local GGUF instruct model for --topics ("" = none: no topic notes)
+    "topics_model": "",  # #611: local GGUF for --topics; "" = the downloaded #1378 default (TOPICS_KEY), if installed
     "send_mode": "auto",  # #834/#1052: how a speak line is sent (auto = straight away, confirm = show me first); owner default: auto
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES (the CLI keeps all three)
@@ -839,14 +839,18 @@ class StartDownload:
                 self.error = (self._last or f"download failed (exit {ev[2]})").splitlines()[-1][:90]
 
 
-def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None, cmd=None) -> int:
-    """Worker thread: run the pack download child; `put` gets ("pack_line", text) per line and ("pack_done", pack, rc)."""
+def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | None = None, cmd=None,
+                      on_start=None) -> int:
+    """Worker thread: run the pack download child; `put` gets ("pack_line", text) per line and ("pack_done", pack, rc).
+    on_start(proc): #1379: gets the child right after it started, so the GUI can cancel it (proc.terminate())."""
     import subprocess
 
     popen = popen or subprocess.Popen
     try:
         p = popen(cmd or pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if on_start is not None:
+            on_start(p)
         for raw in p.stdout:
             line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).replace("\r", "\n")
             parts = [x.strip() for x in line.split("\n") if x.strip()]
@@ -858,6 +862,13 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
         rc = -1
     put(("pack_done", pack, rc))
     return rc
+
+
+def topics_download_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
+    """#1379: same child as download_cmd, but `--topics` (the pinned meeting-notes GGUF) instead of `--whisper`."""
+    cmd = download_cmd("small", mdir, bundled)
+    i = cmd.index("--whisper")
+    return [*cmd[:i], "--topics", *cmd[i + 2:]]
 
 
 def voice_install_cmd(mdir=None, bundled: bool | None = None, ru: bool = False) -> list[str]:
@@ -874,11 +885,38 @@ def run_voice_install(put, mdir=None, popen=None, bundled: bool | None = None, r
                              cmd=voice_install_cmd(mdir, bundled, ru))
 
 
-def topics_on(s: dict, has_cuda=None) -> bool:
+# #1379: the meeting-notes model the #1378 bake-off picked (models/manifest.json key, pinned in tinglongwu_setup).
+TOPICS_KEY = "topics-qwen3-4b-2507"  # keep in sync with tinglongwu_setup.downloader.TOPICS_DIR
+TOPICS_FILE = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+TOPICS_MB = 2500  # 2 497 281 120 bytes (#1381 pin)
+
+
+def default_topics_model(mdir=None) -> str:
+    """#1379: path of the downloaded default notes model, or "" when it is not installed (the file exists AND the
+    local models/manifest.json pinned it: a half-finished download only leaves a .part file and no pin)."""
+    from ..models import models_dir
+
+    d = Path(models_dir(str(mdir) if mdir else None))
+    try:
+        pinned = TOPICS_KEY in json.loads((d / "manifest.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return ""
+    f = d / TOPICS_KEY / TOPICS_FILE
+    return str(f) if pinned and f.is_file() else ""
+
+
+def topics_model_path(s: dict, mdir=None) -> str:
+    """#1379: the notes model for these settings: a GGUF the user picked, else the downloaded default, else ""."""
+    model = s.get("topics_model") or ""
+    if model and os.path.isfile(model):
+        return model
+    return default_topics_model(mdir)
+
+
+def topics_on(s: dict, has_cuda=None, mdir=None) -> bool:
     """#611: run topic notes for these settings? Needs a model file; an unset choice follows topics_default
     (on with a CUDA device, off on CPU-only). has_cuda: None = probe."""
-    model = s.get("topics_model") or ""
-    if not model or not os.path.isfile(model):
+    if not topics_model_path(s, mdir):
         return False
     if s.get("topics") is not None:
         return bool(s["topics"])
@@ -911,10 +949,11 @@ def settings_to_argv(s: dict, outputs: list[str] | None = None, notice=None) -> 
         argv += ["--capture-device", s["listen_device"]]
     if s.get("glossary"):
         argv += ["--glossary", s["glossary"]]
-    if s.get("save"):
+    notes = topics_on(s)
+    if s.get("save") or notes:  # #1379: the notes switch alone saves the transcript (--topics needs --save)
         argv += ["--save"] + ([s["save_path"]] if s.get("save_path") else [])
-        if topics_on(s):  # #611: the notes need the transcript (--topics needs --save)
-            argv += ["--topics", s["topics_model"]]
+    if notes:
+        argv += ["--topics", topics_model_path(s)]
     if s.get("voice"):  # #330: the CLI checks the output is not the captured device and exits with a reason
         dev = s.get("voice_device") or ""
         # #448: unplugged since it was saved. #710: the Speak cable is not in voice_outputs() (cables are hidden

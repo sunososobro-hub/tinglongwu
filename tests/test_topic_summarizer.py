@@ -129,7 +129,7 @@ def test_save_sink_feeds_notes_from_both_sides(tmp_path):
     saver.record(Result("ru", "privet", None, "你好", tgt="zh"))
     saver.record(Result("zh", "早安", None, "dobroe utro", tgt="ru", side="me"))
     notes.close()
-    assert "[them] 你好" in seen[0] and "[me] dobroe utro" in seen[0]
+    assert "[them] 你好" in seen[0] and "[me] 早安" in seen[0]  # #1379: the user's own words, not their translation
     assert (tmp_path / "t.topics.md").exists()
 
 

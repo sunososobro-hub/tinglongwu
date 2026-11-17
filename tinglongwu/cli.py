@@ -340,6 +340,12 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
     raise SystemExit(f"tlwu: unknown translation engine {name!r}; use --engine auto (#471)")
 
 
+def notes_lang(a) -> str | None:
+    """#1379: the language topic notes are written in = the one the user reads (--to; zh with its variant)."""
+    to = getattr(a, "to", None)
+    return f"zh-{getattr(a, 'zh_variant', None) or 'tw'}" if to == "zh" else to
+
+
 def pending_or_none(mdir, engine: str, build, zh_variant: str = "tw", warn=None):
     """#1357 (--mt-pending): a PendingTranslator when the default engine's Hy-MT2 1.8B model is not complete yet,
     else None (the caller builds the engine as usual). Only auto / hymt (the GUI manual engine) / hymt2 / hymt2-cpu are deferred: the other
@@ -700,7 +706,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
         if getattr(a, "topics", None):  # #609
             from . import topics
 
-            notes = topics.attach(sink, a.topics, on_topic=on_topic)
+            notes = topics.attach(sink, a.topics, on_topic=on_topic, lang=notes_lang(a))
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)

@@ -19,10 +19,13 @@ MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "gui_topics_menu": "Topic notes...",  # #611
         "gui_topics_title": "Topic notes",  # #611
-        "gui_topics_on": "Topic notes on",  # #611
         "gui_topics_model": "Model (.gguf)...",  # #611
-        "gui_topics_no_model": "Pick a local GGUF instruct model to write topic notes.",  # #611
-        "gui_topics_need_save": "Topic notes need a saved transcript: turn on Save in Settings.",  # #611
+        "gui_topics_no_model": "Turn on Meeting notes to download the notes model, or pick your own GGUF model.",  # #611
+        "gui_topics_switch": "Meeting notes",  # #1379
+        "gui_topics_lang": "Notes are written in {lang}, the language you read.",  # #1379
+        "gui_topics_cpu_off": "No GPU found: meeting notes are off by default on this PC. On a CPU a 5-minute topic takes about 4 minutes, so the notes arrive after the meeting. Turn them on if that is fine.",  # #1379
+        "gui_topics_downloading": "Downloading the notes model (about {mb} MB, once). Works offline afterwards.",  # #1379
+        "gui_topics_cancel": "Cancel download",  # #1379
         "gui_topics_empty": "Each finished topic shows up here during the meeting.",  # #611
         "rec_label": "● Recording",
         "rec_consent": "Recording is on: audio is saved on this computer only ({path}). Get the other side's consent before recording their voice.",
@@ -252,10 +255,13 @@ MESSAGES: dict[str, dict[str, str]] = {
     "ru": {
         "gui_topics_menu": "Заметки по темам...",  # #611
         "gui_topics_title": "Заметки по темам",  # #611
-        "gui_topics_on": "Заметки по темам включены",  # #611
         "gui_topics_model": "Модель (.gguf)...",  # #611
-        "gui_topics_no_model": "Выберите локальную GGUF-модель для заметок по темам.",  # #611
-        "gui_topics_need_save": "Для заметок нужна сохранённая расшифровка: включите сохранение в настройках.",  # #611
+        "gui_topics_no_model": "Включите «Заметки встречи», чтобы скачать модель заметок, или выберите свою GGUF-модель.",  # #611
+        "gui_topics_switch": "Заметки встречи",  # #1379
+        "gui_topics_lang": "Заметки пишутся на языке, который вы читаете: {lang}.",  # #1379
+        "gui_topics_cpu_off": "GPU не найден: на этом ПК заметки встречи по умолчанию выключены. На CPU 5-минутная тема обрабатывается около 4 минут, поэтому заметки появятся после встречи. Включите их, если это подходит.",  # #1379
+        "gui_topics_downloading": "Загрузка модели заметок (около {mb} МБ, один раз). Потом работает офлайн.",  # #1379
+        "gui_topics_cancel": "Отменить загрузку",  # #1379
         "gui_topics_empty": "Каждая завершённая тема появится здесь во время встречи.",  # #611
         "rec_label": "● Запись",
         "rec_consent": "Запись включена: звук сохраняется только на этом компьютере ({path}). Перед записью голоса собеседника получите его согласие.",
@@ -485,10 +491,13 @@ MESSAGES: dict[str, dict[str, str]] = {
     "zh-TW": {
         "gui_topics_menu": "主題筆記...",  # #611
         "gui_topics_title": "主題筆記",  # #611
-        "gui_topics_on": "開啟主題筆記",  # #611
         "gui_topics_model": "模型 (.gguf)...",  # #611
-        "gui_topics_no_model": "請選一個本機 GGUF 指令模型來寫主題筆記。",  # #611
-        "gui_topics_need_save": "主題筆記需要存逐字稿：請在設定開啟儲存。",  # #611
+        "gui_topics_no_model": "開啟「會議重點」即可下載重點模型，或自選一個 GGUF 模型。",  # #611
+        "gui_topics_switch": "會議重點",  # #1379
+        "gui_topics_lang": "重點以你閱讀的語言撰寫：{lang}。",  # #1379
+        "gui_topics_cpu_off": "沒有偵測到 GPU：這台電腦預設不開會議重點。用 CPU 整理一段 5 分鐘的主題約需 4 分鐘，重點會在會議結束後才出來。可以接受的話再開啟。",  # #1379
+        "gui_topics_downloading": "正在下載重點模型（約 {mb} MB，只需一次）。之後可離線使用。",  # #1379
+        "gui_topics_cancel": "取消下載",  # #1379
         "gui_topics_empty": "會議中每講完一個主題，就會出現在這裡。",  # #611
         "rec_label": "● 錄音中",
         "rec_consent": "錄音已開啟：聲音只存在這台電腦（{path}）。錄下對方的聲音前，請先取得對方同意。",
@@ -718,10 +727,13 @@ MESSAGES: dict[str, dict[str, str]] = {
     "ja": {
         "gui_topics_menu": "トピックメモ...",  # #611
         "gui_topics_title": "トピックメモ",  # #611
-        "gui_topics_on": "トピックメモをオンにする",  # #611
         "gui_topics_model": "モデル (.gguf)...",  # #611
-        "gui_topics_no_model": "トピックメモを書くローカル GGUF 指示モデルを選んでください。",  # #611
-        "gui_topics_need_save": "トピックメモには文字起こしの保存が必要です。設定で保存をオンにしてください。",  # #611
+        "gui_topics_no_model": "「会議メモ」をオンにするとメモ用モデルをダウンロードします。自分の GGUF モデルを選ぶこともできます。",  # #611
+        "gui_topics_switch": "会議メモ",  # #1379
+        "gui_topics_lang": "メモはあなたが読む言語で書かれます：{lang}。",  # #1379
+        "gui_topics_cpu_off": "GPU が見つかりません：この PC では会議メモは既定でオフです。CPU では 5 分の話題に約 4 分かかるため、メモは会議の後に届きます。それでよければオンにしてください。",  # #1379
+        "gui_topics_downloading": "メモ用モデルをダウンロード中（約 {mb} MB、初回のみ）。その後はオフラインで使えます。",  # #1379
+        "gui_topics_cancel": "ダウンロードを中止",  # #1379
         "gui_topics_empty": "会議中、話し終えたトピックがここに表示されます。",  # #611
         "rec_label": "● 録音中",
         "rec_consent": "録音中です。音声はこのコンピューターにだけ保存されます（{path}）。相手の声を録音する前に同意を得てください。",

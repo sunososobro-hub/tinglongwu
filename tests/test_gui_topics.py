@@ -73,7 +73,8 @@ def test_topics_flag_only_with_model_save_and_switch(tmp_path):
     s = dict(DEFAULTS, save=True, topics=True, topics_model=str(gguf))
     argv = settings_to_argv(s)
     assert argv[argv.index("--topics") + 1] == str(gguf)
-    assert "--topics" not in settings_to_argv(dict(s, save=False))  # --topics needs --save
+    unsaved = settings_to_argv(dict(s, save=False))  # #1379: the notes switch alone saves the transcript
+    assert "--save" in unsaved and "--topics" in unsaved
     assert "--topics" not in settings_to_argv(dict(s, topics=False))
     assert "--topics" not in settings_to_argv(dict(s, topics_model=str(tmp_path / "missing.gguf")))
     unset = dict(s, topics=None)  # no choice yet: follows topics_default (CUDA on, CPU-only off)
@@ -138,9 +139,11 @@ def test_gui_window_says_what_is_missing_and_switch_is_saved(tmp_path, monkeypat
         a.settings.update(topics_model="", save=False)
         a.render_topics(show=True)
         assert "GGUF" in a.topics_hint.cget("text")
-        a.settings["topics_model"] = str(tmp_path / "m.gguf")
+        model = tmp_path / "m.gguf"
+        model.write_bytes(b"GGUF")
+        a.settings.update(topics_model=str(model), topics=True)
         a.render_topics()
-        assert "Save" in a.topics_hint.cget("text")
+        assert a.topics_hint.cget("text") == "Each finished topic shows up here during the meeting."  # #1379: no Save needed
         a.v_topics.set(False)
         a._topics_toggled()
         assert load_settings(gpu=lambda: True)["topics"] is False

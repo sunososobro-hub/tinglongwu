@@ -241,6 +241,16 @@ def get_hymt7b(man, mdir, fetch_license=None):
     get_gguf(man, mdir, HYMT7B_DIR, repo, fname, extras=HYMT_EXTRAS)
 
 
+# #1379: the offline meeting-notes model picked by the #1378 bake-off (Apache-2.0, ~2.5 GB, pinned in manifest.json).
+TOPICS_DIR = "topics-qwen3-4b-2507"  # keep in sync with tinglongwu.gui.core.TOPICS_KEY
+TOPICS_GGUF = ("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf")
+
+
+def get_topics(man, mdir):
+    """Meeting-notes GGUF -> models/topics-qwen3-4b-2507/ (resumable, SHA256 from the committed pin)."""
+    get_gguf(man, mdir, TOPICS_DIR, *TOPICS_GGUF)
+
+
 def get_hymt(man, mdir):
     """Hy-MT2-1.8B Q4_K_M GGUF -> models/hymt2-1.8b/ (direct zh<->ja translation)."""
     get_gguf(man, mdir, HYMT_DIR, *HYMT_GGUF, extras=HYMT_EXTRAS)
@@ -558,6 +568,9 @@ def main(argv=None) -> int:
     p.add_argument("--piper-ru", nargs="?", const="dmitri", default=None, choices=sorted(PIPER_RU),
                    help="Piper Russian voice for speak mode (CC0 dataset; default voice dmitri, or denis). The GPL "
                         "piper-tts engine goes in its own TTS venv: pip install piper-tts")
+    p.add_argument("--topics", action="store_true",
+                   help="offline meeting-notes model (Qwen3-4B-Instruct-2507 Q4_K_M GGUF, Apache-2.0, ~2.5 GB), "
+                        "pinned by SHA256; used by the GUI's meeting notes switch (#1379)")
     p.add_argument("--packs", default="", help="comma list of language packs (zh,en,ja,ko,ru), see packs.py (#178)")
     p.add_argument("--allow-unpinned", action="store_true",
                    help="allow Argos pairs that are not in the committed pin manifest (mutable index, pin-on-first-use)")
@@ -601,6 +614,9 @@ def main(argv=None) -> int:
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.hymt7b:
         get_hymt7b(man, mdir)
+        mf.write_text(json.dumps(man, indent=1), "utf-8")
+    if a.topics:
+        get_topics(man, mdir)
         mf.write_text(json.dumps(man, indent=1), "utf-8")
     if a.kokoro:
         get_kokoro(man, mdir)

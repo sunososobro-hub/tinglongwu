@@ -22,7 +22,7 @@ from .core import scene_of as scene_mode_name
 from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
-                   save_settings, settings_to_argv, topics_on, voice_outputs, listen_outputs, mic_inputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
+                   save_settings, settings_to_argv, topics_on, topics_model_path, voice_outputs, listen_outputs, mic_inputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
 
@@ -1471,7 +1471,10 @@ class App:
         sm.add_cascade(label=t("gui_font_size"), menu=zm)
         sm.add_command(label=t("addons_menu"), command=self.open_addons)  # #614
         sm.add_command(label=t("gui_menu_usage"), command=self.ask_usage)  # #680
+        sm.add_checkbutton(label=t("gui_topics_switch"), variable=self._topics_var(),  # #1379: the one switch
+                           command=self._topics_toggled)
         sm.add_command(label=t("gui_topics_menu"), command=lambda: self.render_topics(show=True))  # #611
+        sm.configure(postcommand=self._sync_topics_var)  # #1379: the check mark follows the GPU default
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
@@ -2053,6 +2056,8 @@ class App:
         messagebox.showwarning(vbcable.title_text(lang), vbcable.fail_text(lang), parent=self.root)
 
     def _pack_done(self, pack: str, rc: int):
+        if pack == "topics":  # #1379
+            return self._topics_done(rc)
         if pack == "speaker":
             self._dl_event(("pack_done", pack, rc))
             return self._spk_done(rc)
@@ -2110,27 +2115,33 @@ class App:
             w.protocol("WM_DELETE_WINDOW", w.withdraw)
             bar = ttk.Frame(w)
             bar.pack(side="top", fill="x", padx=8, pady=6)
-            self.v_topics = tk.BooleanVar(value=topics_on(self.settings) or self.settings.get("topics") is True)
-            ttk.Checkbutton(bar, text=t("gui_topics_on"), variable=self.v_topics,
+            self._sync_topics_var()
+            ttk.Checkbutton(bar, text=t("gui_topics_switch"), variable=self._topics_var(),
                             command=self._topics_toggled).pack(side="left")
             ttk.Button(bar, text=t("gui_topics_model"), command=self.pick_topics_model).pack(side="right")
+            self.topics_cancel = ttk.Button(bar, text=t("gui_topics_cancel"), command=self._cancel_topics_download)
+            self.topics_lang = ttk.Label(w, wraplength=340, justify="left")  # #1379: which language the notes use
+            self.topics_lang.pack(side="top", fill="x", padx=8)
             self.topics_hint = ttk.Label(w, wraplength=340, justify="left", foreground="#7f8c8d")
             self.topics_hint.pack(side="top", fill="x", padx=8)
             self.topics_text = tk.Text(w, wrap="word", height=20, borderwidth=0, padx=8, pady=6)
             self.topics_text.tag_configure("title", font=("TkDefaultFont", 12, "bold"))
             self.topics_text.tag_configure("when", foreground="#7f8c8d")
             self.topics_text.pack(side="top", fill="both", expand=True)
+        from ..langs import name as lang_name
+        from .core import TOPICS_MB, _gpu_usable
+        from .topics_panel import panel_hint
+
         entries = self.topic_panel.entries()
-        model = self.settings.get("topics_model") or ""
-        if entries:
-            hint = ""
-        elif not model:
-            hint = t("gui_topics_no_model")
-        elif not self.settings.get("save"):
-            hint = t("gui_topics_need_save")
+        downloading = self.downloading == "topics"
+        key = panel_hint(downloading=downloading, has_model=bool(topics_model_path(self.settings)),
+                         has_entries=bool(entries), choice=self.settings.get("topics"), has_cuda=_gpu_usable)
+        self.topics_hint.configure(text=t(key, mb=TOPICS_MB) if key else "")
+        self.topics_lang.configure(text=t("gui_topics_lang", lang=lang_name(self.settings.get("target") or "zh-tw")))
+        if downloading:
+            self.topics_cancel.pack(side="right", padx=(0, 6))
         else:
-            hint = t("gui_topics_empty")
-        self.topics_hint.configure(text=hint)
+            self.topics_cancel.pack_forget()
         tx = self.topics_text
         tx.configure(state="normal")
         tx.delete("1.0", "end")
@@ -2147,10 +2158,68 @@ class App:
             w.deiconify()
             w.lift()
 
+    def _topics_var(self):
+        """#1379: one BooleanVar for the Settings menu switch and the panel's switch."""
+        if getattr(self, "v_topics", None) is None:
+            self.v_topics = tk.BooleanVar(master=self.root, value=self.settings.get("topics") is True)
+        return self.v_topics
+
+    def _sync_topics_var(self):
+        self._topics_var().set(self.settings.get("topics") is True or topics_on(self.settings))
+
     def _topics_toggled(self):
-        self.settings["topics"] = bool(self.v_topics.get())
+        on = bool(self._topics_var().get())
+        self.settings["topics"] = on
         save_settings(self.settings)
-        self.render_topics()
+        if on and not topics_model_path(self.settings) and not self._offer_topics_model():
+            self.settings["topics"] = False  # "Not now" (or another download running): the switch stays off
+            save_settings(self.settings)
+            self.v_topics.set(False)
+        self.render_topics(show=on)
+
+    def _offer_topics_model(self) -> bool:
+        """#1379: first switch-on without a model: download the #1378 default through the same pack download child
+        (progress bar in the main window, resumable, SHA256-pinned). True = the download runs."""
+        from .core import TOPICS_MB, topics_download_cmd
+
+        if self.downloading:
+            return False
+        name = t("gui_topics_switch")
+        if not messagebox.askyesno(t("gui_dl_title"), pack_on_demand.dialog_text(ui_lang(), name, TOPICS_MB),
+                                   parent=self.root):
+            return False
+        self.downloading = "topics"
+        self.topics_proc = None
+        self.start_dl = StartDownload(name)
+        self.v_dl_pct.set(0)
+        self.dl_bar.pack(anchor="w", pady=(4, 0))
+        self._status_text(t("gui_topics_downloading", mb=TOPICS_MB))
+        self._sync_quick()
+        threading.Thread(target=run_pack_download, args=("topics", self.q.put),
+                         kwargs={"cmd": topics_download_cmd(), "on_start": self._topics_started}, daemon=True).start()
+        return True
+
+    def _topics_started(self, proc):  # download worker thread
+        self.topics_proc = proc
+
+    def _cancel_topics_download(self):
+        proc = getattr(self, "topics_proc", None)
+        if proc is not None and proc.poll() is None:
+            proc.terminate()  # the child ends with rc != 0 -> _topics_done turns the switch back off
+
+    def _topics_done(self, rc: int):
+        """#1379: the notes model download ended: on success the switch stays on, else it goes back off."""
+        self._dl_event(("pack_done", "topics", rc))
+        self.start_dl, self.downloading, self.topics_proc = None, None, None
+        self.dl_bar.pack_forget()
+        ok = rc == 0 and bool(topics_model_path(self.settings))
+        if not ok:
+            self.settings["topics"] = False
+            save_settings(self.settings)
+            self._topics_var().set(False)
+        self._status_text(t("gui_dl_ok" if ok else "gui_dl_fail", model=t("gui_topics_switch")))
+        self._sync_quick()
+        self.render_topics(show=True)
 
     def pick_topics_model(self):
         p = filedialog.askopenfilename(title=t("gui_topics_model"), filetypes=[("GGUF", "*.gguf"), ("All", "*.*")])
