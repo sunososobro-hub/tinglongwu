@@ -11,6 +11,8 @@ is read from the libraries in --lib, so the same command packs either build.
   python scripts/make_vulkan_pack.py --check dist/tlwu-vulkan-pack-0.3.5.zip     list the layout, exit 1 if not accepted
   python scripts/make_vulkan_pack.py --smoke dist/tlwu-vulkan-pack-linux-0.3.5.zip
       load the pack's Vulkan backend and list its devices (CI: Mesa lavapipe), exit 1 when it sees none (#1198)
+  python scripts/make_vulkan_pack.py --add-whisper dist/tlwu-vulkan-pack-0.3.5.zip --whisper dist/whisper
+      #783: add the whisper.cpp Vulkan ASR build (scripts/build_whisper_vulkan.py) under whisper/ in the zip
 """
 from __future__ import annotations
 
@@ -86,6 +88,40 @@ def build(lib_dir: Path, out_dir: Path, version: str) -> Path:
     return zpath
 
 
+WHISPER_DIR = "whisper"  # = tinglongwu.asr_vulkan.WHISPER_DIR (#783)
+WHISPER_LIBS = {"windows": "tlwu-whisper.dll", "linux": "libtlwu-whisper.so"}  # = asr_vulkan.WHISPER_LIB per platform
+
+
+def add_whisper(zpath: Path, whisper_dir: Path) -> list[str]:
+    """Rewrite the pack zip with whisper_dir's library (+ LICENSE / commit files) under whisper/ and the whisper.cpp
+    commit in the manifest. Kept apart from the top-level llama.cpp libraries: both ship their own ggml."""
+    zpath, whisper_dir = Path(zpath), Path(whisper_dir)
+    with zipfile.ZipFile(zpath) as z:
+        items = [(i, z.read(i.filename)) for i in z.infolist() if not i.filename.startswith(WHISPER_DIR + "/")]
+    lib = WHISPER_LIBS[detect_platform(i.filename for i, _ in items)]
+    if not (whisper_dir / lib).is_file():
+        raise SystemExit(f"vulkan pack: {lib} not found in {whisper_dir} (scripts/build_whisper_vulkan.py --out)")
+    extra = sorted(p for p in whisper_dir.iterdir() if p.is_file() and (p.name == lib or p.suffix == ".txt"))
+    commit_file = whisper_dir / "whisper-cpp-commit.txt"
+    added = []
+    tmp = zpath.with_suffix(".tmp")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        for info, data in items:
+            if info.filename == MANIFEST_NAME:
+                m = json.loads(data)
+                m["files"] = [f for f in m.get("files", []) if not f.startswith(WHISPER_DIR + "/")]
+                m["files"] += [f"{WHISPER_DIR}/{p.name}" for p in extra]
+                if commit_file.is_file():
+                    m["whisper_cpp"] = commit_file.read_text(encoding="utf-8").strip()
+                data = (json.dumps(m, indent=2, sort_keys=True) + "\n").encode()
+            z.writestr(info.filename, data)
+        for p in extra:
+            z.write(p, f"{WHISPER_DIR}/{p.name}")
+            added.append(f"{WHISPER_DIR}/{p.name}")
+    tmp.replace(zpath)
+    return added
+
+
 def layout(zpath: Path) -> list[str]:
     """Sorted member names of the zip (what the release job prints)."""
     with zipfile.ZipFile(zpath) as z:
@@ -140,7 +176,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="dist", help="output folder")
     ap.add_argument("--check", metavar="ZIP", help="list the zip layout and verify vulkan_pack_dir() accepts it")
     ap.add_argument("--smoke", metavar="ZIP", help="load the pack's Vulkan backend and list its devices")
+    ap.add_argument("--add-whisper", metavar="ZIP", help="add the whisper.cpp Vulkan build (--whisper DIR) to ZIP")
+    ap.add_argument("--whisper", metavar="DIR", help="with --add-whisper: build_whisper_vulkan.py --out folder")
     a = ap.parse_args(argv)
+    if a.add_whisper:
+        if not a.whisper:
+            ap.error("--add-whisper needs --whisper DIR")
+        for n in add_whisper(Path(a.add_whisper), Path(a.whisper)):
+            print(f"added {n}")
+        return 0
     if a.smoke:
         return smoke(Path(a.smoke))
     if a.check:
