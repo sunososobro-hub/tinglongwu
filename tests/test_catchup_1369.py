@@ -12,6 +12,7 @@ from tinglongwu import pipeline
 from tinglongwu.asr import Recognizer, Transcript
 from tinglongwu.hallucination import is_hallucination
 from tinglongwu.i18n import t as _msg
+from tinglongwu.merge import Unit
 from tinglongwu.pipeline import run
 from tinglongwu.sink import Sink
 from tinglongwu.translate import Translation, Translator
@@ -85,6 +86,11 @@ class SlowMT(Translator):
             time.sleep(MT_S * K)
         finally:
             self.cpu.mt_busy -= 1
+        return Translation(None, "譯:" + text)
+
+
+class Echo(Translator):
+    def translate(self, text, src, tgt):
         return Translation(None, "譯:" + text)
 
 
@@ -199,6 +205,79 @@ def test_backlog_is_joined_without_losing_audio(monkeypatch):
     assert sum(asr.sizes) == 20.0  # no audio dropped (#1263)
 
 
+class QuietSeg:
+    """Live VAD shape: a silence notice (_Quiet) after every segment, as segment.on_quiet sends during pauses."""
+
+    on_quiet = None
+
+    def segments(self, frames):
+        for f in frames:
+            yield f
+            if self.on_quiet is not None:
+                self.on_quiet(0.5)
+
+
+class QuietMerger:
+    """Merger that releases each segment's text on the next silence notice (records the order it sees)."""
+
+    deadline = None
+
+    def __init__(self):
+        self.buf, self.seen = [], []
+
+    def add(self, text, lang, now, **kw):
+        self.seen.append("text")
+        self.buf.append(text)
+        return []
+
+    def quiet(self, seconds, now):
+        self.seen.append("quiet")
+        out, self.buf = [Unit(" ".join(self.buf), "en", False, None)] if self.buf else [], []
+        return out
+
+    def due(self, now):
+        return []
+
+    def flush(self):
+        return self.quiet(0, 0)
+
+
+def test_join_passes_silence_notices(monkeypatch):
+    """Pauses between segments (a _Quiet after each) do not stop the join; every word still comes out in order."""
+    monkeypatch.setattr(pipeline, "ASR_JOIN_S", 0.05)
+    asr, sink, merger = StallASR(0.2), Shown(), QuietMerger()
+    run(Burst(12), QuietSeg(), asr, Echo(), sink, "zh", merger=merger)
+    assert len(asr.sizes) < 6 and max(asr.sizes) > 1.0, asr.sizes
+    assert _heard(sink) == list(range(12))
+    assert merger.seen[0] == "text" and "quiet" in merger.seen
+
+
+def test_silent_segment_does_not_hide_a_quiet_one_in_a_join(monkeypatch):
+    """A segment just above SILENCE_RMS joined with digital silence still reaches ASR (the silence is left out)."""
+    from tinglongwu.hallucination import SILENCE_RMS
+
+    monkeypatch.setattr(pipeline, "ASR_JOIN_S", 0.05)
+
+    class Mixed(Burst):
+        def frames(self):
+            yield np.full(SR, _val(0), dtype="float32")
+            yield np.full(SR, SILENCE_RMS * 1.1, dtype="float32")
+            for _ in range(3):
+                yield np.zeros(SR, dtype="float32")
+
+    class Rec(StallASR):
+        def transcribe(self, audio):
+            if not self.sizes:
+                time.sleep(self.stall)
+            self.sizes.append(len(audio) / SR)
+            return Transcript("quiet words", "en") if len(self.sizes) == 2 else Transcript("n0.", "en")
+
+    asr, sink = Rec(0.2), Shown()
+    run(Mixed(5), OneSeg(), asr, None, sink, "zh")
+    assert asr.sizes == [1.0, 1.0]  # the quiet segment alone; the 3 silent ones were left out, not joined in
+    assert [r.original for _, r in sink.lines] == ["n0.", "quiet words"]
+
+
 def test_no_join_while_asr_keeps_up(monkeypatch):
     """A burst that ASR clears within ASR_JOIN_S is transcribed one segment per call, as before."""
     asr, sink = StallASR(0.0), Shown()
@@ -214,13 +293,13 @@ def test_offline_file_is_never_joined(monkeypatch):
 
 
 @pytest.mark.parametrize("text", ["Music.", "Music. Music.", "[Music]", "(upbeat music)", "[MUSIC PLAYING]", "♪♪",
-                                  "音樂。音樂。", "Музыка"])
+                                  "音樂。音樂。", "Музыка", "[soft instrumental background music]"])
 def test_music_only_segment_produces_no_line(text):
     assert is_hallucination(text, 0.1, 0.0)
 
 
 @pytest.mark.parametrize("text", ["I love music.", "♪ I love you ♪", "[Music] Welcome back everyone", "[Applause]",
-                                  "(I love music.)", "[We all love this music]"])
+                                  "(I love music.)", "[We all love this music]", "(we love this music)"])
 def test_speech_with_music_words_is_kept(text):
     assert not is_hallucination(text, 0.1, 0.0)
 

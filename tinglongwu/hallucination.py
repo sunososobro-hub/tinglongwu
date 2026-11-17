@@ -87,6 +87,12 @@ def _best_cover(norm: str) -> tuple[float, bool]:
 # music)", "♪♪"), which the owner's field test showed as a subtitle line ("音樂。音樂。"). A text made only of such
 # tags is not speech, whatever its energy: dropped. A tag inside real speech keeps the line.
 MUSIC_WORDS = ("music", "musik", "musique", "música", "musica", "музыка", "音樂", "音乐", "音楽", "음악")
+# words of a longer sound description ("[soft instrumental background music]"); a bracketed sentence that only
+# mentions music ("(we all love this music)") has other words and is kept as speech
+SOUND_WORDS = {"soft", "gentle", "upbeat", "dramatic", "calm", "light", "loud", "quiet", "slow", "fast", "sad",
+               "happy", "tense", "mysterious", "epic", "ambient", "instrumental", "background", "electronic", "classical",
+               "piano", "guitar", "orchestral", "jazz", "rock", "pop", "playing", "plays", "continues", "fades",
+               "intro", "outro", "theme", "and", "in", "out", "up", "down", "the"}
 _MUSIC_ONLY = re.compile(r"(?:%s)+" % "|".join(MUSIC_WORDS))
 _TAG = re.compile(r"[\[(（【][^\])）】]*[\])）】]")
 _NOTES = re.compile(r"[♪♫♬♩🎵🎶]")
@@ -96,8 +102,9 @@ def _music_tag(tag: str) -> bool:
     """A bracketed sound description: a music word plus at most two more words, not a sentence ("(upbeat music)",
     "[MUSIC PLAYING]"; not "(I love music.)")."""
     inner = tag[1:-1].strip()
-    return (len(inner.split()) <= 3 and not re.search(r"[.!?。！？]$", inner)
-            and bool(_MUSIC_ONLY.search(_norm(inner))))
+    words = [_norm(w) for w in inner.split()]
+    short = len(words) <= 3 or all(w in SOUND_WORDS or _MUSIC_ONLY.fullmatch(w) for w in words if w)
+    return short and not re.search(r"[.!?。！？]$", inner) and bool(_MUSIC_ONLY.search(_norm(inner)))
 
 
 def is_music_tag(text: str) -> bool:

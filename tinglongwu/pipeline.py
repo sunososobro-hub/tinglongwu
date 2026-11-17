@@ -397,22 +397,35 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def catch_up(item):
         """#1369: the oldest waiting segment waited more than ASR_JOIN_S: join it with the segments queued behind it
-        (up to ASR_JOIN_MAX_S of audio) into one segment item. Nothing is dropped; the rest stays queued in order."""
-        joined, total = [item], len(item[0]) / SAMPLE_RATE
+        (up to ASR_JOIN_MAX_S of audio) into one segment item. Nothing is dropped; the rest stays queued in order.
+        Silence notices (_Quiet) between the joined segments are passed on right after the joined segment; segments
+        below SILENCE_RMS are left out of the join, as the loop would have skipped them one by one."""
+        joined, quiets, total = [item], [], len(item[0]) / SAMPLE_RATE
         while True:
             try:
                 nxt = back.pop(0) if back else q.get_nowait()
             except queue.Empty:
                 break
+            if isinstance(nxt, _Quiet):
+                quiets.append(nxt)
+                continue
             if type(nxt) is not tuple or total + len(nxt[0]) / SAMPLE_RATE > ASR_JOIN_MAX_S:
-                back.insert(0, nxt)  # _Quiet / _DONE / an error, or no room: handled next, in order
+                back.insert(0, nxt)  # _DONE / an error, or no room: handled next, in order
                 break
             joined.append(nxt)
             total += len(nxt[0]) / SAMPLE_RATE
+        back[:0] = quiets
         if len(joined) == 1:
             return item
-        say(f"latency: catch-up: {len(joined)} segments ({total:.1f} s) in one ASR call")
-        return (np.concatenate([j[0] for j in joined]),) + tuple(joined[-1][1:])
+        keep = [j for j in joined if float(np.sqrt(np.mean(j[0] ** 2))) >= SILENCE_RMS] or [joined[-1]]
+        gone = sum(len(j[0]) for j in joined if not any(j is k for k in keep)) / SAMPLE_RATE
+        if gone:
+            with bl_lock:
+                queued_s[0] = max(0.0, queued_s[0] - gone)
+        if len(keep) == 1:
+            return keep[0]
+        say(f"latency: catch-up: {len(keep)} segments ({total - gone:.1f} s) in one ASR call")
+        return (np.concatenate([j[0] for j in keep]),) + tuple(joined[-1][1:])
 
     try:
         while True:
