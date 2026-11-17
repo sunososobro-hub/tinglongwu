@@ -388,7 +388,6 @@ def bench_model(name: str, summarize, base_rss_mb: float, *, busy: int = 0, prob
         raw = summarize(prompt(seg["lines"]))
         secs.append(time.perf_counter() - t)
         scores.append(score_segment(seg, raw))
-    base = probe(None)
     done, timed = threading.Event(), {}
 
     def worker():
@@ -399,7 +398,8 @@ def bench_model(name: str, summarize, base_rss_mb: float, *, busy: int = 0, prob
         finally:
             done.set()
 
-    with Busy(busy):
+    with Busy(busy):  # the probe baseline runs under the same ASR/MT load, so the delta is the summarizer's alone
+        base = probe(None)
         th = threading.Thread(target=worker, daemon=True)
         th.start()
         loaded = probe(done)
@@ -499,6 +499,10 @@ def main(argv=None) -> int:
             ap.error(f"--model {spec!r}: expected NAME=path-to.gguf")
         print(f"[{name}] running ...", flush=True)
         rows.append(run_llama(name, str(Path(path).expanduser()), a.threads, a.busy))
+        for sc in rows[-1]["segments"]:  # the notes themselves go to the log, for the manual quality read
+            print(f"--- {name} {sc['id']} facts={sc['facts']:.2f} invented={sc['invented']} lang_ok={sc['lang_ok']}\n"
+                  f"{sc['notes']}", file=sys.stderr)
+        print(f"--- {name} 5-minute topic\n{rows[-1]['five_min_notes']}", file=sys.stderr, flush=True)
     machine = a.machine or f"{os.cpu_count()} vCPU"
     if a.out:
         Path(a.out).write_text(json.dumps({"machine": machine, "rows": rows}, indent=1, ensure_ascii=False), "utf-8")
