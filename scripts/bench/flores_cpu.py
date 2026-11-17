@@ -457,14 +457,13 @@ def chat_messages(text: str, src: str, tgt: str, variant: str) -> list[dict]:
     return [{"role": "user", "content": msg}]
 
 
-_THINK = re.compile(r"<think>.*?</think>", re.S)
-
-
 def chat_output(out: str) -> str:
-    """Drop an (empty) <think> block, surrounding quotes/whitespace and a leading 'Translation:' label."""
-    out = _THINK.sub("", out or "").strip()
-    out = re.sub(r"^(translation|翻译|译文)\s*[:：]\s*", "", out, flags=re.I).strip()
-    return out
+    """The same output cleanup as the Hy-MT2 path (tinglongwu.engines.clean_output): <think> block, a leading
+    'Translation:' label, markdown and matched outer quotes go, so both engines are scored on equal terms."""
+    sys.path.insert(0, str(REPO))
+    from tinglongwu.engines import clean_output
+
+    return clean_output(out or "")
 
 
 class ChatGguf:

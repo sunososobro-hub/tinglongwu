@@ -293,3 +293,12 @@ def test_make_translator_needs_the_fetched_gguf(tmp_path):
     with pytest.raises(SystemExit, match="--fetch-gguf"):
         m.make_translator(tmp_path, variant="gemma3-12b")
     assert m.engine_name("gemma3-12b") == "gemma-3-12b-it-Q4_K_M.gguf (llama.cpp, CPU)"
+
+
+@pytest.mark.parametrize("reply,want", [
+    ('Translation: "The cat sleeps."', "The cat sleeps."),  # label + matched quotes, like Hy-MT2's clean_output
+    ("<think>\n\n</think>\n\n«Кот»", "Кот"),
+    ('He said "hi" to her.', 'He said "hi" to her.'),  # inner quotes stay
+])
+def test_chat_output_matches_the_hymt_cleanup(reply, want):
+    assert _load().chat_output(reply) == want
