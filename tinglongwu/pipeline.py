@@ -361,9 +361,6 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     def emit_units(units) -> None:
         for u in units:
             text = filter_hallucination(u.text)  # merged segments can loop across the seam
-            audio = None
-            if recorder is not None and u.tag is not None:  # #239: a dropped line drops its audio too
-                audio = recorder.take((u.first or u.tag)[2], u.tag[2])
             replaces, raw = None, u.text
             if u.replaces is not None:  # #1395: the previous line + a late fragment, re-translated in its place
                 who_new = u.tag[1] if u.tag is not None else last_who[0]
@@ -371,6 +368,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     replaces = last_unit[1]  # the text the sinks showed for that line
                 else:  # the line it would replace was dropped, or another speaker said the fragment: a line of its own
                     text, raw = filter_hallucination(u.part), None
+            audio = None
+            if recorder is not None and u.tag is not None:  # #239: a dropped line drops its audio too
+                audio = recorder.take((u.first or u.tag)[2], u.tag[2], **({"amend": True} if replaces is not None else {}))
             if not text:
                 continue
             key, now = _dup_key(text), consumed[0] / SAMPLE_RATE if audio_clock else time.monotonic()

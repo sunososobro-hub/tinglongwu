@@ -91,3 +91,14 @@ def test_ru_verbs_keep_present_and_reflexive_matches_1429():
     for sent, main in {"Он задеплоит сервис.": "задеплоить", "Я пофиксит всё.": "пофиксить",
                        "Надо смержить.": "смержить", "Нужно откатить.": "откатить"}.items():
         assert main in [e.main for e in g.relevant(sent)], sent
+
+
+def test_ru_feminine_plural_and_fleeting_vowel_forms_fire_1428():
+    g = glossary.load_builtin("ru")
+    hit = lambda text: {e.main for e in g.relevant(text)}  # noqa: E731
+    for text in ("Работаем над фичами.", "Это в фичах.", "Сказал фичам.", "Новая фича.", "Нет этой фичи."):
+        assert "фича" in hit(text), text
+    assert "прошивка" in hit("Нет свежих прошивок.")
+    assert "ветка" in hit("Много веток.") and "отладка" in hit("Без отладок.")
+    for text in ("Это фикус.", "Фичеринг альбома."):
+        assert "фича" not in hit(text), text
