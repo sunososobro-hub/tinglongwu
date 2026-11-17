@@ -180,6 +180,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_set_fast": "Fast",
         "gui_set_auto": "Auto",
         "gui_set_accurate": "Accurate",
+        "gui_asr_line": "Speech model: {model} ({words}).",  # #1385
+        "gui_asr_fast": "fastest, less accurate",  # #1385
+        "gui_asr_balanced": "balanced speed and accuracy",  # #1385
+        "gui_asr_accurate": "most accurate",  # #1385
+        "gui_asr_slow": "more accurate, slower on this PC",  # #1385
+        "gui_asr_have": "Downloaded.",  # #1385
+        "gui_asr_download": "The next Start downloads it first (about {size}).",  # #1385
+        "gui_asr_download_unknown": "The next Start downloads it first.",  # #1385
         "gui_set_appear": "How subtitles appear",
         "gui_set_sentence": "After each sentence is finished",
         "gui_set_live": "As they speak (uses more of the graphics card)",
@@ -417,6 +425,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_set_fast": "Быстро",
         "gui_set_auto": "Авто",
         "gui_set_accurate": "Точно",
+        "gui_asr_line": "Модель речи: {model} ({words}).",  # #1385
+        "gui_asr_fast": "быстрее всего, менее точно",  # #1385
+        "gui_asr_balanced": "баланс скорости и точности",  # #1385
+        "gui_asr_accurate": "точнее всего",  # #1385
+        "gui_asr_slow": "точнее, медленнее на этом ПК",  # #1385
+        "gui_asr_have": "Загружена.",  # #1385
+        "gui_asr_download": "Следующий «Старт» сначала загрузит её (около {size}).",  # #1385
+        "gui_asr_download_unknown": "Следующий «Старт» сначала загрузит её.",  # #1385
         "gui_set_appear": "Как появляются субтитры",
         "gui_set_sentence": "После каждого предложения",
         "gui_set_live": "По мере речи (больше нагрузка на видеокарту)",
@@ -654,6 +670,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_set_fast": "快",
         "gui_set_auto": "自動",
         "gui_set_accurate": "準",
+        "gui_asr_line": "語音模型：{model}（{words}）。",  # #1385
+        "gui_asr_fast": "最快，準確度較低",  # #1385
+        "gui_asr_balanced": "速度與準確度平衡",  # #1385
+        "gui_asr_accurate": "最準確",  # #1385
+        "gui_asr_slow": "較準確，在這台電腦上較慢",  # #1385
+        "gui_asr_have": "已下載。",  # #1385
+        "gui_asr_download": "下次按開始時會先下載（約 {size}）。",  # #1385
+        "gui_asr_download_unknown": "下次按開始時會先下載。",  # #1385
         "gui_set_appear": "字幕出現方式",
         "gui_set_sentence": "講完一句才出",
         "gui_set_live": "邊講邊出（較吃顯卡）",
@@ -891,6 +915,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_set_fast": "速さ優先",
         "gui_set_auto": "自動",
         "gui_set_accurate": "精度優先",
+        "gui_asr_line": "音声モデル：{model}（{words}）。",  # #1385
+        "gui_asr_fast": "最速、精度は低め",  # #1385
+        "gui_asr_balanced": "速度と精度のバランス",  # #1385
+        "gui_asr_accurate": "最も高精度",  # #1385
+        "gui_asr_slow": "高精度、この PC では遅め",  # #1385
+        "gui_asr_have": "ダウンロード済み。",  # #1385
+        "gui_asr_download": "次の開始時に先にダウンロードします（約 {size}）。",  # #1385
+        "gui_asr_download_unknown": "次の開始時に先にダウンロードします。",  # #1385
         "gui_set_appear": "字幕の出方",
         "gui_set_sentence": "1 文が終わるごとに",
         "gui_set_live": "話している途中から（グラフィックカードを多く使用）",

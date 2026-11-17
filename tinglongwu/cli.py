@@ -248,30 +248,38 @@ def cpu_max_wait(a, dev: str, say=print) -> None:
             "(--max-wait / --preset to change)", file=sys.stderr)
 
 
+def want_model(level: str, dev: str, hw=None, asr_choice=None) -> tuple[str, str]:
+    """(speech model, tier name) the quality level asks for on this hardware, before the "best downloaded" fallback
+    of auto_model (#81, #131). #1385: the GUI uses it to say which model Accurate needs and how big its download is."""
+    from dataclasses import replace
+
+    from .hwprobe import preset, probe
+
+    hw = hw or probe()
+    real_hw = hw  # the speed-test cache is keyed by the real hardware, GPU included
+    if dev == "cpu":
+        hw = replace(hw, gpu=None, vram_mib=None, driver=None)
+    tier = preset(level, hw)
+    want = tier.asr
+    if tier.name == "cpu" and level != "quality":
+        if asr_choice is None:
+            from .speedprobe import cpu_asr_choice as asr_choice
+        from .speedprobe import smaller_asr
+
+        want = smaller_asr(want, asr_choice(real_hw))
+    return want, tier.name
+
+
 def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) -> str:
     """Speech model when --model is not given: the hardware tier's model for the quality level (#81), or the
     best downloaded one when that model is not on disk (#96). `dev` is the device really in use: on "cpu" the
     CPU tier applies even if a GPU is present (old driver, --device cpu). On the CPU tier, auto / balanced / fast
     never use a larger model than the remembered speed test found real-time on this PC (#131; `asr_choice(hw)`
     reads the cache only, never measures). quality is the user asking for the slower model, so it is kept."""
-    from dataclasses import replace
-
-    from .hwprobe import preset, probe
     from .models import pick_whisper
 
     try:
-        hw = hw or probe()
-        real_hw = hw  # the speed-test cache is keyed by the real hardware, GPU included
-        if dev == "cpu":
-            hw = replace(hw, gpu=None, vram_mib=None, driver=None)
-        tier = preset(level, hw)
-        want, tier_name = tier.asr, tier.name
-        if tier_name == "cpu" and level != "quality":
-            if asr_choice is None:
-                from .speedprobe import cpu_asr_choice as asr_choice
-            from .speedprobe import smaller_asr
-
-            want = smaller_asr(want, asr_choice(real_hw))
+        want, tier_name = want_model(level, dev, hw, asr_choice)
     except Exception as e:  # noqa: BLE001 - a broken probe must never stop a session
         want, tier_name = "small", None
         say(f"tlwu: hardware probe failed ({str(e)[:120]}); using the default speech model", file=sys.stderr)

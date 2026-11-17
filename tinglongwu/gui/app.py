@@ -21,7 +21,7 @@ from ..i18n import SILENT_CLEAR
 from .core import scene_of as scene_mode_name
 from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
-                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload,
+                   combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload, quality_hint, quality_speech_model,
                    save_settings, settings_to_argv, topics_on, topics_model_path, voice_outputs, listen_outputs, mic_inputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
 from .. import __version__, userdirs
@@ -875,6 +875,30 @@ class App:
         for key in ("engine", "model"):
             if key in self.combos:
                 self.combos[key].configure(state=state)
+        self._asr_hint()
+
+    def _speech_model(self, level: str) -> str | None:
+        """#1385: the speech model a Start with this Quality uses (core.quality_speech_model); None when the
+        hardware probe fails (the hint is left out, the Start behaves as before)."""
+        try:
+            if self.speech_hw is None:
+                from ..device import resolve_device
+                from ..hwprobe import probe
+
+                self.speech_hw = (resolve_device("auto", warn=lambda m: None) == "cuda", probe())
+            cuda, hw = self.speech_hw
+            return quality_speech_model(level, cuda, hw, manual_model=model_from_label(self.v_model.get()))
+        except Exception:  # noqa: BLE001 - a failed probe must not break the settings panel
+            return None
+
+    def _asr_hint(self):
+        """#1385: say which speech model the chosen Quality runs, in plain words, and its download size if missing."""
+        lbl = getattr(self, "lbl_asr", None)
+        if lbl is None:
+            return
+        m = self._speech_model(self.v_quality.get())
+        lbl.configure(text="" if m is None else quality_hint(m, bool(self.speech_hw and self.speech_hw[0]),
+                                                                is_downloaded(m)))
 
     def _make_main(self):
         """#1028: the main window = language pickers on top, chat bubbles in the middle, status + one big Start and
@@ -1218,6 +1242,9 @@ class App:
         row.pack(anchor="w")
         for val, key in (("fast", "gui_set_fast"), ("auto", "gui_set_auto"), ("quality", "gui_set_accurate")):
             self._tx(ttk.Radiobutton(row, variable=self.v_quality, value=val), key).pack(side="left", padx=(0, 12))
+        self.lbl_asr = ttk.Label(g_speed, wraplength=300, justify="left")  # #1385: model in use + download size
+        self.lbl_asr.pack(anchor="w", pady=(4, 0))
+        self.speech_hw = None  # #1385: (cuda, hwprobe result), probed once on the first hint
         self.v_engine = self._combo(11, "gui_engine", "engine", engine_labels())  # #399: under Advanced
         self.v_engine.set(next((l for l in engine_labels() if engine_from_label(l) == s["engine"]), s["engine"]))
         self.v_adv = tk.BooleanVar(value=False)
@@ -1917,11 +1944,13 @@ class App:
 
     def _model_picked(self):
         """#739: picking a model downloads nothing; a missing one downloads on the first Start (_offer_model)."""
+        self._asr_hint()  # #1385: Manual: the hint names the picked model and its download size
 
     def _offer_model(self, run: dict, mode) -> bool:
         """#739: True when the chosen speech model is missing: its download starts now with a progress bar and this
         Start resumes by itself when it succeeds (no dialog, no second click)."""
-        m = missing_start_model(run)
+        want = self._speech_model(run.get("quality") or "auto") if run.get("quality") != "manual" else None
+        m = missing_start_model(run, want=want)  # #1385: Accurate downloads the larger model it names
         bg = getattr(self, "bg_dl", None)
         if m is not None and bg is not None and bg.active:  # #1358: no second manifest writer while bg runs
             return True

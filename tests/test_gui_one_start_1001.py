@@ -85,7 +85,7 @@ def both_app(tmp_path, monkeypatch):
     monkeypatch.setattr(i18n.userdirs, "write_config_value", lambda k, v: None)
     monkeypatch.setattr(i18n, "_override", "en")
     monkeypatch.setattr(app.pack_on_demand, "first_missing", lambda *a, **k: None)
-    monkeypatch.setattr(app, "missing_start_model", lambda run: None)
+    monkeypatch.setattr(app, "missing_start_model", lambda run, **k: None)
     monkeypatch.setattr(voice_install, "offer_needed", lambda run, mdir: False)
     monkeypatch.setattr(vbcable, "needs_offer", lambda names, platform=None: False)
     cable = {"name": "CABLE Input (VB-Audio Virtual Cable)"}

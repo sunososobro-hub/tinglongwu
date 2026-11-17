@@ -799,13 +799,62 @@ def parse_progress(line: str) -> int | None:
     return min(100, int(m[-1])) if m else None
 
 
-def missing_start_model(run: dict, mdir=None) -> str | None:
-    """#739: the Whisper model a Start needs but does not have on disk (manual quality only; the other qualities
-    let the CLI pick from what is installed), else None."""
+def missing_start_model(run: dict, mdir=None, want: str | None = None) -> str | None:
+    """#739: the Whisper model a Start needs but does not have on disk, else None. Manual quality: the picked model.
+    #1385: the other qualities: `want`, the model quality_speech_model() named in the Quality hint (Accurate on a
+    fresh install needs a larger model than the one setup fetched; before, the CLI silently kept the small one)."""
     if run.get("quality") != "manual":
-        return None
+        return None if not want or is_downloaded(want, mdir) else want
     m = run.get("model") or "small"
     return None if is_downloaded(m, mdir) else m
+
+
+# #1385: approximate first download per speech model in MB, shown before a Start downloads it. small and
+# large-v3-turbo = tlwu_app/tiers.py SIZES (464 / 1640 MiB); the others = model.bin of the faster-whisper repos
+# pinned in tinglongwu_setup/manifest.json (tiny 75, base 145, medium 1530, large-v3 3090 MB on Hugging Face).
+WHISPER_MB = {"tiny": 75, "base": 145, "small": 486, "medium": 1530, "large-v3": 3090, "large-v3-turbo": 1720}
+# #1385: plain words per speech model; CPU and GPU differ (turbo is the GPU default but slow on a CPU, #63 / #131)
+_ASR_WORDS_CPU = {"tiny": "gui_asr_fast", "base": "gui_asr_fast", "small": "gui_asr_balanced"}
+_ASR_WORDS_GPU = {"tiny": "gui_asr_fast", "base": "gui_asr_fast", "small": "gui_asr_fast",
+                  "medium": "gui_asr_balanced", "large-v3-turbo": "gui_asr_balanced"}
+
+
+def quality_speech_model(level: str, cuda: bool, hw=None, mdir=None, manual_model: str | None = None,
+                         want=None) -> str:
+    """#1385: the speech model a Start with this Quality uses on this PC. Manual: the picked model. Accurate: the
+    tier's model even when it is not downloaded yet (the Start downloads it, missing_start_model). Fast / Auto /
+    Balanced: what the CLI's auto_model picks (the tier's model, else the best downloaded one).
+    `want` = cli.want_model (injected in tests); `hw` = hwprobe.probe() result, probed when None."""
+    from ..models import pick_whisper
+
+    if level == "manual":
+        return manual_model or "small"
+    if want is None:
+        from ..cli import want_model as want
+    model, tier = want(level, "cuda" if cuda else "cpu", hw)
+    return model if level == "quality" else pick_whisper(model, mdir, tier)
+
+
+def download_size_text(model: str) -> str:
+    """#1385: "about 1.7 GB" style size of a speech model's first download ("" when unknown)."""
+    mb = WHISPER_MB.get(model)
+    if mb is None:
+        return ""
+    return f"{mb / 1000:.1f} GB" if mb >= 1000 else f"{mb} MB"
+
+
+def quality_hint(model: str, cuda: bool, downloaded: bool) -> str:
+    """#1385: the line under the Speed buttons: which speech model runs, in plain words, and (before any download)
+    how big its download is. Example: "Speech model: large-v3-turbo (most accurate, slower on this PC). The next
+    Start downloads it first (about 1.7 GB)." """
+    from ..i18n import t
+
+    words = (_ASR_WORDS_GPU if cuda else _ASR_WORDS_CPU).get(model, "gui_asr_accurate" if cuda else "gui_asr_slow")
+    line = t("gui_asr_line", model=model, words=t(words))
+    size = download_size_text(model)
+    if downloaded:
+        return f"{line} {t('gui_asr_have')}"
+    return f"{line} {t('gui_asr_download', size=size) if size else t('gui_asr_download_unknown')}"
 
 
 _UNIT = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12}
