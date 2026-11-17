@@ -130,6 +130,9 @@ tlwu_ncpu() {  # online CPU cores (macOS + Linux); TLWU_NCPU_FALLBACK when unkno
   printf '%s' "$n"
 }
 TLWU_NCPU_FALLBACK=2
+# #1341 (Opus step 1): the sdist fallback builds only the library; the llava, tests, examples and server targets are not
+# used by Hy-MT2 and cost build time. A CMAKE_ARGS the user already exported wins.
+TLWU_LLAMA_CMAKE_ARGS="-DLLAVA_BUILD=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF"
 # #1356: Apple Silicon takes the wheel this project builds in CI (.github/workflows/llama-wheel-mac.yml) and publishes
 # on the pre-release <TLWU_LLAMA_WHEEL_TAG_PREFIX><version>; the version is the pin in the requirements file, nothing
 # else names it. Any failure (no release, download, checksum, pip, import) leaves the old path below to run.
@@ -211,6 +214,7 @@ tlwu_install_llama() {  # tlwu_install_llama PYTHON REQUIREMENTS_FILE
   pin="$(tlwu_llama_pin "$req")"
   [ -n "$pin" ] || return 1
   echo "    index wheel failed; building $pin from the PyPI sdist (a few minutes) ..."
+  CMAKE_ARGS="${CMAKE_ARGS:-$TLWU_LLAMA_CMAKE_ARGS}" \
   CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$(tlwu_ncpu)}" \
     "$py" -m pip install --no-binary "$TLWU_LLAMA_PKG" "$pin"
 }

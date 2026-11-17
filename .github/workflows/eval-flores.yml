@@ -218,3 +218,41 @@ jobs:
         with:
           name: flores-6x6-table
           path: table.md
+      - name: 20 lowest-COMET sentences per direction (#1346)
+        run: |
+          python3 scripts/bench/flores_cpu.py --worst arts 20 worst.json
+          test "$(wc -c < worst.json)" -lt 1000000
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flores-6x6-worst
+          path: worst.json
+
+  publish:
+    # #1346: keep the worst sentences on the `eval-results` branch (Actions artifacts expire); pushes there only
+    needs: [table, flores]
+    if: ${{ inputs.matrix == '6x6' && github.event_name == 'workflow_dispatch' && needs.table.result == 'success' && needs.flores.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write   # push to eval-results only
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: flores-6x6-worst
+      - name: Commit to eval-results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          D=$(date -u +%F)
+          git init -q repo && cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if git fetch --depth=1 origin eval-results 2>/dev/null; then git checkout -q -B eval-results FETCH_HEAD; else git checkout -q --orphan eval-results; fi
+          mkdir -p flores
+          cp ../worst.json "flores/${D}-${GITHUB_RUN_ID}.json"
+          git add flores
+          if git diff --cached --quiet; then echo "already published"; exit 0; fi
+          git commit -q -m "eval: flores worst sentences ${D} run ${GITHUB_RUN_ID}"
+          git push origin HEAD:refs/heads/eval-results

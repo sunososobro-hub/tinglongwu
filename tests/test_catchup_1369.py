@@ -1,9 +1,13 @@
 """#1369: on a CPU that cannot keep up, live subtitles stay close to the present (bounded lag, stated catch-up policy)
 instead of drifting further behind (owner field test: ~33 s behind after 40 s of video, growing)."""
+import collections
+import math
+import queue
 import re
 import sys
 import threading
 import time
+import types
 
 import numpy as np
 import pytest
@@ -17,7 +21,6 @@ from tinglongwu.pipeline import run
 from tinglongwu.sink import Sink
 from tinglongwu.translate import Translation, Translator
 
-K = 0.1  # time scale: 1 simulated second = 100 ms of wall time (a 180 s clip runs in ~18 s)
 SR = 16000
 SEG_S = 3.0  # the clip arrives as one 3 s speech segment every 3 s (real time)
 CLIP_S = 180.0
@@ -37,19 +40,149 @@ def _val(i):
     return 0.1 + i / 10000.0  # each segment's samples carry its index, so a joined segment can be decoded
 
 
+class VirtualClock:
+    """Simulated time for run() and its threads, so the lag below does not depend on how busy the machine is.
+
+    The lag test first measured wall time (1 simulated second = 100 ms): a busy CI runner added scheduling delay and
+    failed it at 10.7 s against a 10 s bound. Here only one of the simulation's threads runs at a time; time moves
+    only when every one of them waits (sleep, queue get, event wait, join), straight to the earliest deadline, and
+    waiting threads resume in a fixed order (oldest wait first). The same run gives the same numbers on any machine.
+    Patches pipeline.time / queue / threading; real locks stay (never held across a wait)."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.cond = threading.Condition()
+        self.waiters = []  # [seq, ready(), deadline]
+        self.seq = 0
+        self.turn = None  # the waiter entry allowed to run; the test thread runs while it is None or taken
+
+    def monotonic(self):
+        return self.now
+
+    def _entry(self, ready, deadline):
+        e = [self.seq, ready, math.inf if deadline is None else deadline]
+        self.seq += 1
+        self.waiters.append(e)
+        return e
+
+    def _next(self):
+        """The running thread waits or ends: hand the turn to the oldest ready waiter, moving time if none is."""
+        if not self.waiters:
+            self.turn = None
+            return
+        ready = [w for w in self.waiters if w[2] <= self.now or w[1]()]
+        if not ready:
+            t = min(w[2] for w in self.waiters)
+            if t == math.inf:
+                raise RuntimeError("virtual clock: every thread waits with no deadline")
+            self.now = t
+            ready = [w for w in self.waiters if w[2] <= self.now]
+        self.turn = min(ready, key=lambda w: w[0])
+        self.cond.notify_all()
+
+    def _park(self, e):
+        while self.turn is not e:
+            self.cond.wait()
+        self.waiters.remove(e)
+
+    def wait(self, ready, timeout=None):
+        with self.cond:
+            e = self._entry(ready, None if timeout is None else self.now + timeout)
+            self._next()
+            self._park(e)
+        return ready()
+
+    def sleep(self, s):
+        self.wait(lambda: False, max(0.0, s))
+
+    def patch(self, monkeypatch):
+        clock = self
+
+        class Event:
+            def __init__(self):
+                self.flag = False
+
+            def set(self):
+                self.flag = True
+
+            def clear(self):
+                self.flag = False
+
+            def is_set(self):
+                return self.flag
+
+            def wait(self, timeout=None):
+                return self.flag or clock.wait(lambda: self.flag, timeout)
+
+        class Queue:
+            def __init__(self, maxsize=0):
+                self.items = collections.deque()  # unbounded: live capture never blocks on put (#1263)
+
+            def put(self, item, block=True, timeout=None):
+                self.items.append(item)
+
+            def put_nowait(self, item):
+                self.items.append(item)
+
+            def get(self, block=True, timeout=None):
+                if not self.items and block:
+                    clock.wait(lambda: bool(self.items), timeout)
+                if not self.items:
+                    raise queue.Empty
+                return self.items.popleft()
+
+            def get_nowait(self):
+                return self.get(False)
+
+            def qsize(self):
+                return len(self.items)
+
+        class Thread:
+            def __init__(self, target, args=(), kwargs=None, daemon=None):
+                self.target, self.args, self.kwargs, self.done = target, args, kwargs or {}, False
+                self.t = threading.Thread(target=self._run, daemon=True)
+
+            def start(self):
+                with clock.cond:
+                    self.e = clock._entry(lambda: True, None)  # runs when the starting thread next waits
+                self.t.start()
+
+            def _run(self):
+                with clock.cond:
+                    clock._park(self.e)
+                try:
+                    self.target(*self.args, **self.kwargs)
+                finally:
+                    with clock.cond:
+                        self.done = True
+                        clock._next()
+
+            def join(self, timeout=None):
+                if not self.done:
+                    clock.wait(lambda: self.done, timeout)
+
+            def is_alive(self):
+                return not self.done
+
+        monkeypatch.setattr(pipeline, "time", types.SimpleNamespace(monotonic=self.monotonic, sleep=self.sleep))
+        monkeypatch.setattr(pipeline, "queue", types.SimpleNamespace(Queue=Queue, Empty=queue.Empty, Full=queue.Full))
+        monkeypatch.setattr(pipeline, "threading", types.SimpleNamespace(Thread=Thread, Event=Event,
+                                                                          Lock=threading.Lock))
+        self.Thread, self.Event = Thread, Event
+
+
 class Clip:
     """Live source: segment i (SEG_S of audio) is complete at t0 + (i + 1) * SEG_S."""
 
-    def __init__(self, n):
-        self.n, self.t_end = n, {}
+    def __init__(self, n, clock):
+        self.n, self.t_end, self.clock = n, {}, clock
 
     def frames(self):
-        t0 = time.monotonic()
+        t0 = self.clock.monotonic()
         for i in range(self.n):
-            due = t0 + (i + 1) * SEG_S * K
-            time.sleep(max(0.0, due - time.monotonic()))
-            self.t_end[i] = time.monotonic()
-            yield np.full(int(SEG_S * K * SR), _val(i), dtype="float32")
+            self.clock.sleep(t0 + (i + 1) * SEG_S - self.clock.monotonic())
+            self.t_end[i] = self.clock.monotonic()
+            yield np.full(int(SEG_S * SR), _val(i), dtype="float32")
 
     def close(self):
         pass
@@ -66,24 +199,24 @@ class Cpu:
 
 
 class SlowASR(Recognizer):
-    def __init__(self, cpu):
-        self.cpu, self.calls = cpu, 0
+    def __init__(self, cpu, clock=None):
+        self.cpu, self.calls, self.clock = cpu, 0, clock
 
     def transcribe(self, audio):
         busy = BUSY if self.cpu.mt_busy else 1.0
-        time.sleep((ASR_FIX + ASR_PER_S * len(audio) / SR / K) * busy * K)
+        self.clock.sleep((ASR_FIX + ASR_PER_S * len(audio) / SR) * busy)
         self.calls += 1
         return Transcript(_text(_idx_of(audio)), "en")
 
 
 class SlowMT(Translator):
-    def __init__(self, cpu):
-        self.cpu = cpu
+    def __init__(self, cpu, clock):
+        self.cpu, self.clock = cpu, clock
 
     def translate(self, text, src, tgt):
         self.cpu.mt_busy += 1
         try:
-            time.sleep(MT_S * K)
+            self.clock.sleep(MT_S)
         finally:
             self.cpu.mt_busy -= 1
         return Translation(None, "譯:" + text)
@@ -95,49 +228,48 @@ class Echo(Translator):
 
 
 class Shown(Sink):
-    def __init__(self):
-        self.lines = []  # (wall time, Result)
+    def __init__(self, clock=time.monotonic):
+        self.lines = []  # (time, Result)
         self.lock = threading.Lock()
+        self.clock = clock
 
     def write(self, r):
         with self.lock:
-            self.lines.append((time.monotonic(), r))
-
-
-def _scaled(monkeypatch, old=False):
-    for name in ("MT_YIELD_S", "MT_HOLD_POLL", "ASR_JOIN_S", "ASR_JOIN_MAX_S", "MT_STALE_S", "MT_HOLD_MAX"):
-        monkeypatch.setattr(pipeline, name, getattr(pipeline, name) * K)
-    if old:  # the policy before #1369: 30 s hold, no catch-up
-        monkeypatch.setattr(pipeline, "MT_HOLD_MAX", 30.0 * K)
-        for name in ("ASR_JOIN_S", "MT_STALE_S"):
-            monkeypatch.setattr(pipeline, name, float("inf"))
+            self.lines.append((self.clock(), r))
 
 
 def _simulate(monkeypatch, old=False):
-    _scaled(monkeypatch, old)
+    if old:  # the policy before #1369: 30 s hold, no catch-up
+        monkeypatch.setattr(pipeline, "MT_HOLD_MAX", 30.0)
+        for name in ("ASR_JOIN_S", "MT_STALE_S"):
+            monkeypatch.setattr(pipeline, name, float("inf"))
+    clock = VirtualClock()
+    clock.patch(monkeypatch)
     cpu = Cpu()
-    asr = SlowASR(cpu)
-    src, sink, notes = Clip(int(CLIP_S / SEG_S)), Shown(), []
-    stop = threading.Event()
-    th = threading.Thread(target=run, args=(src, OneSeg(), asr, SlowMT(cpu), sink, "zh"),
-                          kwargs={"stop_event": stop, "on_catchup": notes.append}, daemon=True)
-    t0 = time.monotonic()
+    asr = SlowASR(cpu, clock)
+    src, sink, notes = Clip(int(CLIP_S / SEG_S), clock), Shown(clock.monotonic), []
+    stop = clock.Event()
+    th = clock.Thread(target=run, args=(src, OneSeg(), asr, SlowMT(cpu, clock), sink, "zh"),
+                      kwargs={"stop_event": stop, "on_catchup": notes.append})
+    t0 = clock.monotonic()
     th.start()
-    time.sleep(CLIP_S * K + 0.1)
+    clock.sleep(CLIP_S + 0.1)
     stop.set()
     th.join(5)
+    assert not th.is_alive()
+    clock.sleep(2 * SEG_S)  # let the capture thread see Stop and end
 
     def age(at_s):
-        """How far behind the newest translated subtitle on screen is at `at_s` simulated seconds into the clip
-        (checkpoint minus the end of its newest segment), in simulated seconds."""
-        at = t0 + at_s * K
+        """How far behind the newest translated subtitle on screen is at `at_s` seconds into the clip
+        (checkpoint minus the end of its newest segment)."""
+        at = t0 + at_s
         shown = [max(_idx(r.original)) for when, r in sink.lines if when <= at and r.target.startswith("譯:")]
         assert shown, f"no translated line by {at_s} s"
-        return (at - src.t_end[max(shown)]) / K
+        return at - src.t_end[max(shown)]
 
     def lag(at_s):
         """Subtitle lag at `at_s`: the on-screen age averaged over the 20 s before it (1 s steps). Lines come out
-        once per ~3 s segment, so a single instant swings by up to one segment (CI saw 5.1 s vs 8.7 s that way)."""
+        once per ~3 s segment, so a single instant swings by up to one segment."""
         return sum(age(at_s - k) for k in range(20)) / 20
 
     return lag(60), lag(CLIP_S), sink, notes, [asr.calls]
@@ -145,7 +277,7 @@ def _simulate(monkeypatch, old=False):
 
 def test_lag_stays_bounded_on_a_cpu_that_cannot_keep_up(monkeypatch):
     lag60, lag180, sink, notes, calls = _simulate(monkeypatch)
-    # floor on this machine: 3 s segment + one ~3.3 s ASR call + 1 s MT + about half a line interval on screen = ~7 s.
+    # floor: 3 s segment + one ~3.3 s ASR call + 1 s MT + about half a line interval on screen = ~7 s.
     # The issue's <= 8 s is for the low-end runner; here the bound is that floor plus a margin, and no growth.
     assert lag60 <= 10.0, (lag60, lag180)
     assert lag180 - lag60 <= 2.0, (lag60, lag180)
@@ -156,6 +288,13 @@ def test_old_policy_drifts(monkeypatch):
     """The same machine with the pre-#1369 policy: translations fall far behind and the gap grows (the field test)."""
     lag60, lag180, _, _, _ = _simulate(monkeypatch, old=True)
     assert lag60 > 8.0 or lag180 - lag60 > 2.0, (lag60, lag180)
+
+
+def test_simulation_is_deterministic(monkeypatch):
+    """#1369 flake: the lag comes from simulated time only, so two runs give the same numbers to the last bit."""
+    a = _simulate(monkeypatch)[:2]
+    b = _simulate(monkeypatch)[:2]
+    assert a == b, (a, b)
 
 
 class Burst:
