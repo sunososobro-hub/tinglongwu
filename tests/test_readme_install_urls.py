@@ -40,7 +40,8 @@ def test_install_table_is_at_the_top_of_the_readme():
     for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         first = s.index("\n## ")
-        assert first < s.index(LATEST) < s.index("\n## ", first + 1), name
+        # #1343: the top button itself links the direct installer, so look for the table link after the first section
+        assert first < s.index(LATEST, first) < s.index("\n## ", first + 1), name
 
 
 def test_release_workflow_attaches_the_fixed_name_wizard():
@@ -82,3 +83,11 @@ def test_no_flag_emoji_in_readmes():  # flags map languages to countries
     import re
     for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md", "docs/RELEASING.md"):
         assert not re.search("[\U0001F1E6-\U0001F1FF]", (ROOT / name).read_text("utf-8")), name
+
+
+def test_top_button_downloads_the_installer_directly_1344():
+    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+        s = (ROOT / name).read_text("utf-8")
+        button = next(x for x in s.splitlines() if "assets/readme/download." in x)
+        assert LATEST + "tinglongwu-setup.exe" in button, name
+        assert "SmartScreen" in button and "1.6 GB" in button, name  # size + hint visible, outside <details>

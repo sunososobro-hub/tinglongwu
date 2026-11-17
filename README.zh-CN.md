@@ -4,7 +4,7 @@
 
 <p align="center"><img src="assets/demo/listen_en_to_zh.gif" alt="英文语音进、中文字幕出，全程离线" width="560"></p>
 
-<p align="center"><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest"><img src="assets/readme/download.zh-CN.svg" alt="⬇ 下载 Windows 版" width="300"></a></p>
+<p align="center"><a href="https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe"><img src="assets/readme/download.zh-CN.svg" alt="⬇ 下载 Windows 版" width="300"></a><br>77 MB + 1.6 GB 模型 · SmartScreen：更多信息 → 仍要运行</p>
 
 ```mermaid
 flowchart LR
