@@ -75,3 +75,11 @@ def test_only_with_unknown_prefix_exits_and_writes_nothing(pins_file, fake_hub):
     with pytest.raises(SystemExit, match="matches no"):
         _load_script().main(["--only", "nope-"])
     assert pins_file.read_text("utf-8") == text
+
+
+@pytest.mark.parametrize("size", dl.WHISPER_CPP_SIZES)
+def test_committed_manifest_pins_every_whisper_cpp_size(size):
+    pin = dl.load_pins()["models"][f"whisper-cpp-{size}"]
+    assert pin["repo"] == dl.WHISPER_CPP_REPO and len(pin["revision"]) == 40
+    (name, sha), = pin["files"].items()
+    assert name == dl.whisper_cpp_file(size) and len(sha) == 64 and int(sha, 16) >= 0

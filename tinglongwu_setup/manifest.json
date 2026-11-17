@@ -95,6 +95,48 @@
    "files": {
     "Qwen3-4B-Instruct-2507-Q4_K_M.gguf": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
    }
+  },
+  "whisper-cpp-base": {
+   "repo": "ggerganov/whisper.cpp",
+   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+   "files": {
+    "ggml-base.bin": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+   }
+  },
+  "whisper-cpp-large-v3": {
+   "repo": "ggerganov/whisper.cpp",
+   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+   "files": {
+    "ggml-large-v3.bin": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
+   }
+  },
+  "whisper-cpp-large-v3-turbo": {
+   "repo": "ggerganov/whisper.cpp",
+   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+   "files": {
+    "ggml-large-v3-turbo.bin": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
+   }
+  },
+  "whisper-cpp-medium": {
+   "repo": "ggerganov/whisper.cpp",
+   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+   "files": {
+    "ggml-medium.bin": "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208"
+   }
+  },
+  "whisper-cpp-small": {
+   "repo": "ggerganov/whisper.cpp",
+   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+   "files": {
+    "ggml-small.bin": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
+   }
+  },
+  "whisper-cpp-tiny": {
+   "repo": "ggerganov/whisper.cpp",
+   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+   "files": {
+    "ggml-tiny.bin": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"
+   }
   }
  },
  "argos": {
