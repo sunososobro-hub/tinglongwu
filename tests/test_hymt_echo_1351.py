@@ -59,3 +59,11 @@ def test_real_translations_are_unchanged(text):
 
 def test_echo_only_output_becomes_empty():
     assert strip_echo(NOTE) == ""
+
+
+def test_contextual_instruction_echo_is_removed():
+    from tinglongwu.hymt import build_prompt
+
+    instr = build_prompt("x", "ru", "zh", context="prev").split("\n")[1]  # the instruction line the model may repeat
+    assert strip_echo(f"{instr}\n大坝很高。") == "大坝很高。"
+    assert strip_echo("参考上面的信息很有用。") == "参考上面的信息很有用。"

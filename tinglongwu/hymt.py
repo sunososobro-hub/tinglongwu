@@ -89,12 +89,15 @@ _ECHO_EN = re.compile(r"^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s
                       r"(?=[^.:\n]*\boutput\b)"
                       r"[^.:\n]{0,40}?\bonly\b[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b"
                       r"[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*[.:]\s*", re.I)
+# the contextual form's instruction (build_prompt with `context`, #1258 eval only)
+_ECHO_ZH_CTX = re.compile(r"^\s*参考上面的信息[，,]\s*把下面的文本翻译成[^，,：:\n]{1,12}[，,]\s*注意不需要翻译上文[，,]\s*"
+                          r"也不要额外解释[。：:]\s*")
 _ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)[。：:]\s*")
 
 
 def strip_echo(out: str) -> str:
     """Drop the card instruction line when the model repeats it before (or instead of) the translation."""
-    for rx in (_ECHO_EN, _ECHO_ZH):
+    for rx in (_ECHO_EN, _ECHO_ZH, _ECHO_ZH_CTX):
         out = rx.sub("", out, count=1)
     return out.strip()
 
