@@ -394,7 +394,7 @@ def peak_rss_mb() -> float:
     try:
         import resource
         kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        return kb / 1e3 if sys.platform != "darwin" else kb / 1e6
+        return kb * 1024 / 1e6 if sys.platform != "darwin" else kb / 1e6  # Linux: KiB, macOS: bytes
     except ImportError:  # Windows
         import psutil
         return psutil.Process().memory_info().peak_wset / 1e6
@@ -422,6 +422,8 @@ def bench_model(name: str, summarize, base_rss_mb: float, *, busy: int = 0, prob
             t = time.perf_counter()
             timed["raw"] = summarize(prompt(five_min))
             timed["s"] = time.perf_counter() - t
+        except BaseException as e:  # re-raised below: a failed 5-minute topic is not a 0-second measurement
+            timed["err"] = e
         finally:
             done.set()
 
@@ -431,6 +433,8 @@ def bench_model(name: str, summarize, base_rss_mb: float, *, busy: int = 0, prob
         th.start()
         loaded = probe(done)
         th.join()
+    if "err" in timed:
+        raise RuntimeError(f"{name}: 5-minute topic failed") from timed["err"]
     long_notes = timed.get("raw", "")
     return {"model": name, "peak_ram_mb": max(0.0, peak() - base_rss_mb),
             "sec_per_topic": statistics.mean(secs) if secs else 0.0, "sec_5min_topic": timed.get("s", 0.0),

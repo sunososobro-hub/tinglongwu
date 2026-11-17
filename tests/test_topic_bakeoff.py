@@ -1,5 +1,4 @@
 """#610 / #1378: scripts/topic_bakeoff.py scoring, model pick, table, and the harness with a fake summarizer."""
-import importlib.util
 import json
 import subprocess
 import sys
@@ -8,9 +7,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("topic_bakeoff", ROOT / "scripts" / "topic_bakeoff.py")
-tb = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(tb)
+sys.path.insert(0, str(ROOT / "scripts"))
+import topic_bakeoff as tb  # noqa: E402  in sys.modules, so spawn (Windows/macOS) can pickle Busy's target
 
 
 def test_help_runs():
@@ -109,6 +107,26 @@ def test_bench_model_with_fake_summarizer():
     assert all(v["facts"] >= 0.75 for v in q.values()), q
     assert row["peak_ram_mb"] == 250.0 and abs(row["subtitle_p50_delta_pct"] - 5.0) < 1e-6
     assert row["sec_5min_topic"] >= 0.0 and row["busy_cores"] == 1
+
+
+def test_bench_model_raises_when_the_5min_topic_fails():
+    pytest.importorskip("tinglongwu.topics")
+    seg = tb.SEGMENTS[:1]
+
+    def summarize(prompt):  # short segments work, the long 5-minute topic crashes (e.g. context overflow)
+        if "Carlos" in prompt:
+            raise MemoryError("ctx")
+        return "TITLE: t\n- ok"
+
+    with pytest.raises(RuntimeError, match="5-minute topic failed"):
+        tb.bench_model("bad", summarize, 0.0, segments=seg, probe=lambda stop, **kw: 0.01, peak=lambda: 1.0)
+
+
+def test_peak_rss_linux_kib_is_decimal_mb(monkeypatch):
+    resource = pytest.importorskip("resource")
+    monkeypatch.setattr(tb.sys, "platform", "linux")
+    monkeypatch.setattr(resource, "getrusage", lambda who: type("U", (), {"ru_maxrss": 1_000_000})())
+    assert tb.peak_rss_mb() == pytest.approx(1024.0)  # 1,000,000 KiB = 1024 MB, not 1000
 
 
 def test_fetch_picks_the_quant_and_records_the_revision(tmp_path):
