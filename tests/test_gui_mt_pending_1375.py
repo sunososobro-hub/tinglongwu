@@ -45,3 +45,11 @@ def test_start_not_blocked_while_only_hymt_downloads(monkeypatch):
 def test_start_still_blocked_when_pack_needs_more(monkeypatch):
     bg = SimpleNamespace(active={"hymt2-1.8b"}, errors=[])
     assert _offer(monkeypatch, ("ru", 1160), bg) is True
+
+
+def test_pending_or_none_defers_the_gui_manual_engine_hymt(tmp_path):
+    from tinglongwu.cli import pending_or_none
+
+    tr = pending_or_none(tmp_path, "hymt", lambda: None, warn=lambda m: None)  # empty models dir: Hy-MT2 not complete
+    assert tr is not None
+    assert pending_or_none(tmp_path, "ollama", lambda: None) is None  # other engines never wait for the download

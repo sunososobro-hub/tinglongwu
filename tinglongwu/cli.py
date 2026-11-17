@@ -342,11 +342,11 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
 
 def pending_or_none(mdir, engine: str, build, zh_variant: str = "tw", warn=None):
     """#1357 (--mt-pending): a PendingTranslator when the default engine's Hy-MT2 1.8B model is not complete yet,
-    else None (the caller builds the engine as usual). Only auto / hymt2 / hymt2-cpu are deferred: the other
+    else None (the caller builds the engine as usual). Only auto / hymt (the GUI manual engine) / hymt2 / hymt2-cpu are deferred: the other
     engines never wait for this download."""
     from .mt_pending import PendingTranslator, hymt_complete
 
-    if engine not in ("auto", "hymt2", "hymt2-cpu") or hymt_complete(mdir):
+    if engine not in ("auto", "hymt", "hymt2", "hymt2-cpu") or hymt_complete(mdir):
         return None
     return PendingTranslator(lambda: hymt_complete(mdir), build, zh_variant=zh_variant,
                              warn=warn or (lambda m: print(m, file=sys.stderr, flush=True)))
