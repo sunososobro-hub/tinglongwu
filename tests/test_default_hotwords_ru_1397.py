@@ -1,4 +1,4 @@
-"""#1397: default Russian acronym hotwords (Whisper only), user glossary wins, off until the eval ships them,
+"""#1397: default Russian acronym hotwords (Whisper only), user glossary wins, on for ru since the eval shipped them,
 and the with/without acronym eval (scripts/bench/acronym_eval.py)."""
 from __future__ import annotations
 
@@ -36,14 +36,16 @@ def test_ru_list_has_30_to_60_generic_acronyms_and_all_reach_whisper():
     assert g.hotwords().split(", ") == terms  # the whole list fits HOTWORDS_MAX_CHARS, none cut off
 
 
-def test_off_by_default_until_the_eval_ships_it_and_env_switches_it():
-    assert "ru" not in glossary.DEFAULT_HOTWORDS_SHIPPED
-    assert glossary.default_hotwords_on("ru", env={}) is False
+def test_on_by_default_for_ru_only_and_env_switches_it():
+    assert "ru" in glossary.DEFAULT_HOTWORDS_SHIPPED  # shipped after the eval-terms run said yes
+    assert glossary.default_hotwords_on("ru", env={}) is True
+    assert glossary.default_hotwords_on("ru", env={glossary.DEFAULT_HOTWORDS_ENV: "0"}) is False
     assert glossary.default_hotwords_on("ru", env=ON) is True
     assert glossary.default_hotwords_on("ru-RU", env=ON) is True
     for lang in ("auto", "en", "ja", None):
         assert glossary.default_hotwords_on(lang, env=ON) is False
-    assert glossary.with_default_hotwords(None, "ru", env={}) is None
+    assert glossary.with_default_hotwords(None, "ru", env={glossary.DEFAULT_HOTWORDS_ENV: "0"}) is None
+    assert glossary.with_default_hotwords(None, "ru", env={}).hotwords().startswith("API, URL")
     assert glossary.with_default_hotwords(None, "ru", face_to_face="zh", env=ON) is None
 
 
@@ -103,7 +105,7 @@ def test_whisper_gets_the_defaults_as_hotwords():
     r.model, r.lang, r.candidates, r.glossary = _Model(), "ru", None, glossary.with_default_hotwords(None, "ru", env=ON)
     r.partial(np.zeros(16000, np.float32))
     assert r.model.kw[-1]["hotwords"].startswith("API, URL, SQL")
-    r.glossary = glossary.with_default_hotwords(None, "ru", env={})
+    r.glossary = glossary.with_default_hotwords(None, "ru", env={glossary.DEFAULT_HOTWORDS_ENV: "0"})
     r.partial(np.zeros(16000, np.float32))
     assert r.model.kw[-1]["hotwords"] is None
 

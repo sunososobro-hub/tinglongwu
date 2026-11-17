@@ -193,9 +193,10 @@ def load_builtin(lang: str | None = None) -> Glossary:
 
 
 DEFAULT_HOTWORDS = {"ru": Path(__file__).parent / "data" / "hotwords-ru.txt"}  # #1397, per source language
-# Languages whose default list is on without the env switch. Empty until the #1397 eval (scripts/bench/term_eval.py
-# --set acronyms) shows better acronym accuracy with no extra false insertions and ru WER within 0.5 points.
-DEFAULT_HOTWORDS_SHIPPED: frozenset[str] = frozenset()
+# Languages whose default list is on without the env switch (scripts/bench/acronym_eval.py decides). ru shipped by
+# eval-terms run 44084227768 (#1409): acronym accuracy 71.0% -> 86.8% (38 clips), false insertions 1 -> 1 (12
+# distractors), standard ru set (20 FLEURS clips) WER 7.7% -> 7.4%.
+DEFAULT_HOTWORDS_SHIPPED: frozenset[str] = frozenset({"ru"})
 DEFAULT_HOTWORDS_ENV = "TLWU_DEFAULT_HOTWORDS"  # "1": on for every language that has a list; "0": off
 
 
