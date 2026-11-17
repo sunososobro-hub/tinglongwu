@@ -644,6 +644,23 @@ def engine_labels(mdir=None) -> list[str]:
             for e in ENGINES]
 
 
+def engine_model_missing(s: dict, mdir=None) -> str | None:
+    """#1351: the localized line to show instead of starting when Quality is Manual, Engine is the opt-in hymt7b and
+    its model is not downloaded (the CLI would exit with a setup command the GUI never shows, #885); else None.
+    hymt (1.8B) is not checked: --mt-pending shows source text while it downloads (#1375)."""
+    from ..i18n import t
+    from ..models import models_dir
+
+    if s.get("quality") != "manual" or s.get("engine") != "hymt7b":
+        return None
+    try:
+        if (models_dir(str(mdir) if mdir else None) / _ENGINE_DIR["hymt7b"]).is_dir():
+            return None
+    except Exception:  # noqa: BLE001 - an unreadable path: let the run report its own error
+        return None
+    return t("gui_error_hymt7b_missing")
+
+
 def engine_from_label(label: str) -> str:
     """The plain engine id from an engine_labels() entry (also accepts a plain id)."""
     return choice_value("engine", (label or "").split(" (", 1)[0].strip(), ENGINES)

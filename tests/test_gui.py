@@ -794,3 +794,18 @@ def test_hymt7b_opt_in_reachable_from_settings_1351(tmp_path):
     f = tmp_path / "gui.json"
     assert core.save_settings(s, f)
     assert core.load_settings(f, gpu=lambda: True)["engine"] == "hymt7b"  # a saved 7B choice survives a restart
+
+
+def test_hymt7b_missing_model_message_1351(tmp_path, monkeypatch):
+    """#1351: Manual + hymt7b without its model -> a localized line (no CLI flag) instead of a silent stop."""
+    from tinglongwu import i18n
+
+    monkeypatch.setattr(i18n, "_override", "en")
+    s = dict(core.DEFAULTS, quality="manual", engine="hymt7b")
+    msg = core.engine_model_missing(s, tmp_path)
+    assert msg and "7B" in msg and "--" not in msg
+    assert core.engine_model_missing(dict(s, quality="auto"), tmp_path) is None  # auto never runs 7B
+    assert core.engine_model_missing(dict(s, engine="hymt"), tmp_path) is None  # 1.8B: --mt-pending handles it
+    (tmp_path / "hymt2-7b").mkdir()
+    assert core.engine_model_missing(s, tmp_path) is None  # installed: starts as usual
+    assert core.gui_error_text(SystemExit("tlwu: run `tlwu-setup --hymt7b`")) == i18n.t("gui_error_generic")

@@ -69,6 +69,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "voice_why_loop": "it would be recorded again",
         "voice_why_garbled": "the voice engine sent a garbled reply",
         "gui_error_generic": "Listening stopped because of a problem. Press Start to try again; if it keeps happening, report it from the Help menu.",
+        "gui_error_hymt7b_missing": "Hy-MT2 7B is not downloaded yet, so listening did not start. Set Engine back to Auto, or download the 7B model first (see Models in the docs).",  # #1351
         "voice_off": "Voice off: {why}. Subtitles continue",
         "gui_start": "Start",
         "gui_scene": "Scene:",
@@ -305,6 +306,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "voice_why_loop": "она снова попадёт в запись",
         "voice_why_garbled": "голосовой движок перестал отвечать правильно",
         "gui_error_generic": "Прослушивание остановлено из-за ошибки. Нажмите «Старт» ещё раз; если повторяется, сообщите об этом через меню «Справка».",
+        "gui_error_hymt7b_missing": "Hy-MT2 7B ещё не загружена, поэтому прослушивание не началось. Верните «Движок» на «Авто» или сначала загрузите модель 7B (см. раздел Models в документации).",  # #1351
         "voice_off": "Озвучка выключена: {why}. Субтитры продолжаются",
         "gui_start": "Старт",
         "gui_scene": "Сценарий:",
@@ -541,6 +543,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "voice_why_loop": "會被自己再錄進去",
         "voice_why_garbled": "語音引擎回應異常",
         "gui_error_generic": "發生問題，已停止聆聽。請再按一次開始；若一直出現，請從「說明」選單回報問題。",
+        "gui_error_hymt7b_missing": "Hy-MT2 7B 尚未下載，所以沒有開始聆聽。請把「引擎」改回「自動」，或先下載 7B 模型（見說明文件的 Models 頁）。",  # #1351
         "voice_off": "朗讀已關閉：{why}。字幕繼續",
         "gui_start": "開始",
         "gui_scene": "情境：",
@@ -777,6 +780,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "voice_why_loop": "再び録音されてしまうため",
         "voice_why_garbled": "音声エンジンの応答が壊れていたため",
         "gui_error_generic": "問題が起きたため聞き取りを停止しました。「スタート」を押してもう一度試してください。繰り返す場合はヘルプメニューから報告してください。",
+        "gui_error_hymt7b_missing": "Hy-MT2 7B がまだダウンロードされていないため、聞き取りを開始しませんでした。「エンジン」を「自動」に戻すか、先に 7B モデルをダウンロードしてください（ドキュメントの Models を参照）。",  # #1351
         "voice_off": "読み上げオフ: {why}。字幕は続きます",
         "gui_start": "スタート",
         "gui_scene": "シーン：",

@@ -2431,6 +2431,12 @@ class App:
         try:
             from ..cli import parse_args, run_session
             from ..stream import DraftEngine
+            from .core import engine_model_missing
+
+            missing = engine_model_missing(s)  # #1351: opt-in 7B picked but not downloaded: say so, do not start
+            if missing:
+                q.put(("error", missing))
+                return
 
             a = parse_args(settings_to_argv(s, outputs=voice_outputs() if s.get("voice") else None,
                                             notice=lambda m: q.put(("notice", m))))
@@ -2454,7 +2460,7 @@ class App:
                         mt_wait_line=lambda n: q.put(("mtwait", n, leg)),  # #1253; per leg, both legs may hold
                         labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None,
                         on_topic=self.topic_panel.add if sink_cls is None else None)  # #611
-        except Exception as e:  # noqa: BLE001
+        except (Exception, SystemExit) as e:  # noqa: BLE001  # #1351: a CLI SystemExit must not stop the GUI silently
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
 
