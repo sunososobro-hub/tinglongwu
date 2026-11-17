@@ -81,9 +81,9 @@ class Recorder:
                 with wave.open(str(tmp), "wb") as w:
                     w.setnchannels(1), w.setsampwidth(2), w.setframerate(SAMPLE_RATE)
                     w.writeframes((np.clip(clip[0], -1.0, 1.0) * 32767.0).astype("<i2").tobytes())
+                os.replace(tmp, self.dir / name)  # the last step that can fail on a full disk or a locked file
                 if amend:
                     self._f.truncate(offset)  # drop the previous line's row; the new row below replaces it
-                os.replace(tmp, self.dir / name)
             except BaseException:
                 tmp.unlink(missing_ok=True)
                 raise
