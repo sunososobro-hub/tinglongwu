@@ -134,6 +134,10 @@ def test_main_passes_variant_and_records_it(tmp_path, monkeypatch):
                    "eng_Latn", "--out", str(out), "--no-comet", "--variant", "src"], make=make) == 0
     assert seen == {"zh_variant": "tw", "variant": "src"} or seen == {"variant": "src"}
     assert json.loads((out / "rus_Cyrl-eng_Latn.summary.json").read_text("utf-8"))["variant"] == "src"
+    m.main(["--data", str(tmp_path / "flores200_dataset"), "--models-dir", "x", "--src", "rus_Cyrl", "--tgt",
+            "eng_Latn", "--out", str(tmp_path / "q8"), "--no-comet", "--variant", "q8"], make=make)
+    s = json.loads((tmp_path / "q8" / "rus_Cyrl-eng_Latn.summary.json").read_text("utf-8"))
+    assert s["variant"] == "q8" and "Q8_0" in s["engine"]
 
 
 def test_targets_list():

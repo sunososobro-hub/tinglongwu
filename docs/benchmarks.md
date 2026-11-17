@@ -52,6 +52,39 @@ Results: [eval-flores 43893644257](https://github.com/sunososobro-hub/tinglongwu
 - Russian as the source is the weakest row (4 of 5 cells at or below the shipped floor); every direction into Russian stays at or above it (0.870-0.889).
 - Median s/sentence (CPU): -> zh 1.3-2.4, -> en 2.3-2.8, -> ja / ko 2.1-3.9, -> ru 4.1-4.4.
 
+### Why Russian as the source is weak (#1351)
+Same data as the 6x6 run (first 200 FLORES-200 devtest sentences, Hy-MT2-1.8B, greedy, 4 vCPU GitHub runners); `eval-flores` now writes an error breakdown of the 40 lowest-COMET sentences of every direction (`flores_cpu.py --breakdown`, heuristic categories, one sentence can have several) and takes experiment `variants` and `tgts`. Runs: before = [44013625413](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44013625413) (commit 1d4ad28), after = [44016598460](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44016598460) (commit 712198c). Reproduce: `gh workflow run eval-flores.yml --ref dev -f langs=rus_Cyrl -f tgts=zho_Hant,eng_Latn -f limit=200 -f temps=0 -f variants=card,src,q8`.
+
+Error breakdown of the 40 lowest-COMET sentences (share among the 40 / share among all 200):
+
+| category | ru -> en before fix | ru -> en after fix | ru -> zh-Hant |
+|---|---|---|---|
+| output echoes the prompt's instruction line | (not counted yet; shows as "addition") | 0% / 0% | 0% / 0% |
+| output > 1.35x reference length ("addition") | 32% / 14% | 12% / 9% | 2% / 5% |
+| reference name missing from output (names / transliteration) | 42% / 36% | 48% / 36% | 15% / 8% |
+| source has a named entity | 75% / 68% | 78% / 68% | 75% / 68% |
+| source > 30 words | 15% / 11% | 22% / 11% | 18% / 11% |
+| omission (< 0.75x reference length) | 0% / 0% | 0% / 0% | 5% / 2% |
+| numbers changed | 0% / 0% | 0% / 0% | 0% / 1% |
+| none of the above (wrong sense / word choice) | 28% / 52% | 38% / 56% | 70% / 78% |
+
+- Root cause found for ru -> en: Hy-MT2 often starts its answer with the card prompt's own English instruction line, e.g. sentence 84 came back as "Note that you should only output the translated result without any additional explanation: Water ..." (also reworded as "It should be noted that only the translated result should be output, ..."). It was 7 of the 8 lowest ru -> en lines and most of the 13 "addition" lines among the lowest 40 (5 are left after the fix). The English template is used for every pair without Chinese, so X -> en / ja / ko / ru can have it too; the Chinese template (-> zh) showed no echo. Fix: `tinglongwu.hymt.strip_echo` removes a leading echoed instruction (English or Chinese form) from the output.
+- After that, the lowest lines are named entities transliterated differently from the reference (Олдсмобиль Интрига -> "奧爾斯莫比爾汽車“陰謀”號" vs "奧茲摩比 Intrigue"; Ивасаки -> 伊瓦薩基 vs 岩崎), long sentences (2x over-represented) and domain word sense (cricket "калитка" = wicket translated as "gate" / "入口"). Hy-MT2 1.8B has no knowledge of these; no prompt or decoding setting tried here fixes them.
+
+Fixes tried (ru -> zh-Hant / ru -> en, COMET / chrF / median s per sentence, CPU):
+
+| variant | ru -> zh-Hant | ru -> en | CPU |
+|---|---|---|---|
+| card prompt, Q4_K_M (shipped, before) | 0.8696 / 25.14 / 1.36 | 0.8543 / 58.25 / 1.55 | EPYC 9V45 |
+| prompt names the source language (`src`, before echo fix) | 0.8688 / 25.49 / 2.46 | 0.8486 / 57.90 / 2.83 | Xeon 6975P-C |
+| **card prompt + echo fix (shipped by #1351)** | **0.8696 / 25.14 / 1.77** | **0.8613 / 58.51 / 1.96** | EPYC 9V74 |
+| Q8_0 GGUF + echo fix (`q8`) | 0.8749 / 25.86 / 4.38 | 0.8605 / 58.40 / 5.19 | Xeon 6975P-C |
+
+- Echo fix: ru -> en +0.0070 COMET (+0.26 chrF); ru -> zh-Hant identical to the last digit (greedy decoding gives the same text on every CPU, so the difference is only the fix). It changes no model call, only two regex substitutions on the output, so speed is unchanged; the s/sentence columns differ because each job got another runner CPU.
+- Naming the source language: slightly worse on both (-0.0008 / -0.0057), ruled out.
+- Q8_0: +0.0053 on ru -> zh-Hant, -0.0008 on ru -> en against the fixed Q4_K_M, below the +0.008 bar on both, and the file is about 1.9x the size of Q4_K_M (memory-bound on the CPU, #1198 measured the quant speeds); ruled out. Q5 / Q6 sit between these two, so they cannot reach +0.008 either.
+- Not reached: COMET >= 0.88 on ru -> zh-Hant (0.870) and ru -> en (0.861). What is left is model knowledge (names, domain senses), the area of the larger-model candidates (#1319).
+
 ### Hy-MT2 sampling temperature (#107)
 
 Same 1012 FLORES-200 devtest sentences and metrics, Hy-MT2-1.8B Q4_K_M on 4-vCPU GitHub runners, temperature 0.7 (model-card default, shipped before #107) vs 0.2 vs 0 (greedy); top_p 0.6, top_k 20, repeat_penalty 1.05 unchanged. U+FFFD = hypotheses containing the replacement character (suspected cause of #632). Run: [eval-flores 43554407306](https://github.com/sunososobro-hub/tinglongwu/actions/runs/43554407306), commit 3e145b4; per-sentence JSON in its `flores-<src>-t<temp>` artifacts. Each job got a different runner CPU (last column), so s/sentence compares CPUs as much as temperatures.

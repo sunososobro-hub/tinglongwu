@@ -452,7 +452,8 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
         else:
             comet = load_comet(a.comet_model)
     res = score(out, comet)
-    engine = ScriptConvert.engine if convert else "Hy-MT2-1.8B Q4_K_M (llama.cpp, CPU)"
+    engine = ScriptConvert.engine if convert else (
+        f"Hy-MT2-1.8B {'Q8_0' if a.variant == 'q8' else 'Q4_K_M'} (llama.cpp, CPU)")
     res.update(pair=f"{a.src}->{a.tgt}", split=SPLIT, engine=prev.get("engine", engine) if a.score_only else engine,
                temperature=prev.get("temperature") if a.score_only else temp,
                cpu=prev.get("cpu") or cpu_name(), translate_wall_s=prev.get("translate_wall_s", round(wall, 1)),
