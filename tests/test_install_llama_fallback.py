@@ -15,36 +15,24 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="bash not available")
 
 STUB = """#!/bin/bash
 echo "$@" >> "$STUB_LOG"
-case "$*" in
-  *--no-binary*) exit "${SDIST_RC:-0}";;
-  *whl/metal*) exit "${METAL_RC:-0}";;
-  "-c import llama_cpp") exit "${IMPORT_RC:-0}";;
-  *) exit "${WHEEL_RC:-0}";;
-esac
-"""
-UNAME = """#!/bin/bash
-case "$1" in -s) echo "$FAKE_OS";; -m) echo "$FAKE_ARCH";; esac
+echo "jobs=${CMAKE_BUILD_PARALLEL_LEVEL:-unset} $*" >> "$STUB_LOG.env"
+sleep "${STUB_SLEEP:-0}"
+echo "pip says: $*"
+case "$*" in *--no-binary*) exit "${SDIST_RC:-0}";; *) exit "${WHEEL_RC:-0}";; esac
 """
 
 
-def _run(tmp_path, wheel_rc, sdist_rc=0, uname=None, metal_rc=0, import_rc=0):
+def _run(tmp_path, wheel_rc, sdist_rc=0):
     py = tmp_path / "py"
     py.write_text(STUB)
     py.chmod(0o755)
     req = tmp_path / "req.txt"
     req.write_text("--extra-index-url https://example.invalid/whl/cpu\nllama-cpp-python==0.3.36\n")
     log = tmp_path / "log"
-    env = {"PATH": "/usr/bin:/bin", "STUB_LOG": str(log), "WHEEL_RC": str(wheel_rc), "SDIST_RC": str(sdist_rc),
-           "METAL_RC": str(metal_rc), "IMPORT_RC": str(import_rc)}
-    if uname:  # (system, machine): a fake `uname` first on PATH, e.g. ("Darwin", "arm64")
-        fake = tmp_path / "bin"
-        fake.mkdir()
-        (fake / "uname").write_text(UNAME)
-        (fake / "uname").chmod(0o755)
-        env.update(PATH=f"{fake}:/usr/bin:/bin", FAKE_OS=uname[0], FAKE_ARCH=uname[1])
     r = subprocess.run(
         [BASH, "-c", f'. "{COMMON_SH}"; tlwu_install_llama "{py}" "{req}"'],
-        env=env, capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "STUB_LOG": str(log), "WHEEL_RC": str(wheel_rc), "SDIST_RC": str(sdist_rc)},
+        capture_output=True, text=True,
     )
     return r.returncode, log.read_text().splitlines()
 
@@ -65,28 +53,44 @@ def test_both_fail_returns_nonzero(tmp_path):
     assert rc != 0
 
 
-MAC = ("Darwin", "arm64")
+def _sh(tmp_path, script, **env):
+    py = tmp_path / "py"
+    py.write_text(STUB)
+    py.chmod(0o755)
+    req = tmp_path / "req.txt"
+    req.write_text("llama-cpp-python==0.3.36\n")
+    log = tmp_path / "log"
+    r = subprocess.run([BASH, "-c", f'. "{COMMON_SH}"; PY="{py}"; REQ="{req}"; OUT="{tmp_path}/bg.log"; {script}'],
+                       env={"PATH": "/usr/bin:/bin", "STUB_LOG": str(log), **env}, capture_output=True, text=True)
+    envlog = Path(str(log) + ".env")
+    return r, envlog.read_text().splitlines() if envlog.exists() else []
 
 
-def test_apple_silicon_takes_prebuilt_metal_wheel_no_build_1341(tmp_path):
-    # #1341: binary only, the pinned version, from the Metal index; then the import check; nothing else
-    rc, calls = _run(tmp_path, 1, 1, uname=MAC)
-    assert rc == 0 and len(calls) == 2
-    assert "--only-binary=:all:" in calls[0] and calls[0].endswith("/whl/metal llama-cpp-python==0.3.36")
-    assert calls[1] == "-c import llama_cpp"
+def test_sdist_build_uses_every_core_1341(tmp_path):
+    # #1341: make compiles one file at a time unless CMAKE_BUILD_PARALLEL_LEVEL is set; the wheel attempt gets none
+    r, env = _sh(tmp_path, 'tlwu_install_llama "$PY" "$REQ"; echo "ncpu=$(tlwu_ncpu)"', WHEEL_RC="1")
+    ncpu = int(r.stdout.strip().splitlines()[-1].split("=")[1])
+    assert ncpu >= 1 and env[0].startswith("jobs=unset ") and env[1].startswith(f"jobs={ncpu} ") and "--no-binary" in env[1]
 
 
-def test_apple_silicon_wheel_missing_falls_back_to_old_path_1341(tmp_path):
-    rc, calls = _run(tmp_path, 1, uname=MAC, metal_rc=1)
-    assert rc == 0 and "-r" in calls[-2] and "--no-binary llama-cpp-python llama-cpp-python==0.3.36" in calls[-1]
+def test_sdist_build_keeps_a_parallel_level_the_user_set_1341(tmp_path):
+    _, env = _sh(tmp_path, 'tlwu_install_llama "$PY" "$REQ"', WHEEL_RC="1", CMAKE_BUILD_PARALLEL_LEVEL="7")
+    assert env[1].startswith("jobs=7 ")
 
 
-def test_apple_silicon_wheel_not_importable_is_removed_then_old_path_1341(tmp_path):
-    rc, calls = _run(tmp_path, 0, uname=MAC, import_rc=1)
-    assert rc == 0 and any("uninstall -y llama-cpp-python" in c for c in calls) and "-r" in calls[-1]
+def test_background_install_runs_while_the_caller_works_1341(tmp_path):
+    # the install sleeps 1 s in the background; the caller's own line comes first, then wait prints the pip output
+    r, _ = _sh(tmp_path, 'tlwu_install_llama_bg "$PY" "$REQ" "$OUT"; echo "caller works"; '
+                         'tlwu_wait_llama "$OUT"; echo "rc=$? pid=[$TLWU_LLAMA_PID] log=$(ls "$OUT" 2>/dev/null)"',
+               STUB_SLEEP="1")
+    lines = r.stdout.splitlines()
+    assert lines[0] == "caller works" and lines[1].startswith("pip says: -m pip install -r")
+    assert "llama-cpp-python: " in lines[2] and "(exit 0)" in lines[2]
+    assert lines[-1] == "rc=0 pid=[] log="  # exit code passed on, pid cleared, log file removed
 
 
-@pytest.mark.parametrize("uname", [("Darwin", "x86_64"), ("Linux", "aarch64")])
-def test_other_platforms_never_use_the_metal_index_1341(tmp_path, uname):
-    rc, calls = _run(tmp_path, 0, uname=uname)
-    assert rc == 0 and len(calls) == 1 and "-r" in calls[0] and "metal" not in calls[0]
+def test_background_install_failure_reaches_the_caller_1341(tmp_path):
+    r, _ = _sh(tmp_path, 'tlwu_install_llama_bg "$PY" "$REQ" "$OUT"; tlwu_wait_llama "$OUT"; echo "rc=$?"; '
+                         'tlwu_wait_llama "$OUT"; echo "again=$?"', WHEEL_RC="1", SDIST_RC="3")
+    out = r.stdout.splitlines()
+    assert "rc=3" in out and out[-1] == "again=1" and any("building llama-cpp-python==0.3.36" in ln for ln in out)

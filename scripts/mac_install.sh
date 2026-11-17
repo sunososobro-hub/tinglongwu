@@ -52,6 +52,9 @@ info() { printf '    %s\n' "$*"; }
 warn() { printf '    [注意] %s\n' "$*" >&2; WARNINGS="${WARNINGS}  - $*
 "; }
 die()  {
+  if [ -n "${TLWU_LLAMA_PID:-}" ]; then   # #1341: stop the background engine install (its pip, then its subshell)
+    pkill -P "$TLWU_LLAMA_PID" 2>/dev/null; kill "$TLWU_LLAMA_PID" 2>/dev/null
+  fi
   printf '\n[失敗] %s\n' "$*" >&2
   printf '       可以直接再貼一次安裝指令（會從中斷處修復）。若還是失敗，請把這個視窗的全部文字複製給維護者。\n' >&2
   exit 1
@@ -176,6 +179,15 @@ info "安裝 tinglongWu 套件（約 1-3 分鐘）..."
 say "5/8 英文語音 Kokoro（獨立環境，因為它含 GPL 的 espeak，不放進主環境）"
 if [ -n "${TLWU_SKIP_MODELS:-}" ]; then info "TLWU_SKIP_MODELS set: skipping Kokoro and model downloads (steps 5-6)"
 else
+# #276/#301: Hy-MT2 1.8B is the only default translation engine (runs on the CPU here): llama-cpp-python + the GGUF.
+# #420: the CPU-index arm64 wheel can be a corrupt zip; tlwu_install_llama then builds the PyPI sdist with the Xcode
+# command line tools (a few minutes). #1341: that build starts here, in the background, and runs while the voice
+# and the models download (steps 5-6); step 6 waits for it. Its output is printed there.
+# shellcheck source=tlwu_common.sh
+. "$DIR/scripts/tlwu_common.sh"
+LLAMA_LOG="${TMPDIR:-/tmp}/tlwu_llama_install.$$.log"
+info "背景安裝翻譯引擎 Hy-MT2（llama-cpp-python，可能要編譯幾分鐘；同時下載語音與模型）..."
+tlwu_install_llama_bg .venv/bin/python requirements-llama-cpu.txt "$LLAMA_LOG"
 if [ ! -x "$KOKORO_VENV/bin/python" ]; then
   "$PYBREW" -m venv "$KOKORO_VENV" || die "建立 $KOKORO_VENV 失敗。"
 fi
@@ -211,16 +223,11 @@ say "6/8 下載語音辨識與翻譯模型（只有這一次要連網；約 2-3 
 # #178: core + language packs (default zh+en); ja / ru are offered with their size when first picked
 .venv/bin/tlwu-setup --whisper small --ask-lang --allow-unpinned \
   || die "tlwu-setup 下載模型失敗（網路？）。重貼安裝指令會從中斷處繼續。"
-# #276/#301: Hy-MT2 1.8B is the only default translation engine (runs on the CPU here): llama-cpp-python + the GGUF.
-# #1341: Apple Silicon takes the prebuilt wheel (seconds). Intel, or no usable wheel: the CPU index, then (#420: its
-# arm64 wheel can be a corrupt zip) pip builds the PyPI sdist with the Xcode command line tools (a few minutes).
-info "安裝翻譯引擎 Hy-MT2（llama-cpp-python；沒有現成的 wheel 時要編譯幾分鐘）..."
-# shellcheck source=tlwu_common.sh
-. "$DIR/scripts/tlwu_common.sh"
-tlwu_install_llama .venv/bin/python requirements-llama-cpu.txt \
-  || warn "llama-cpp-python 安裝失敗：翻譯無法使用。請把上面的錯誤訊息給維護者，或重貼安裝指令重試。"
 .venv/bin/tlwu-setup --hymt \
   || die "Hy-MT2 翻譯模型下載失敗（網路？）。重貼安裝指令會從中斷處繼續。"
+info "等待翻譯引擎 Hy-MT2（llama-cpp-python）安裝完成 ..."
+tlwu_wait_llama "$LLAMA_LOG" \
+  || warn "llama-cpp-python 安裝失敗：翻譯無法使用。請把上面的錯誤訊息給維護者，或重貼安裝指令重試。"
 fi
 
 # ---------------------------------------------------------------- 7. launcher

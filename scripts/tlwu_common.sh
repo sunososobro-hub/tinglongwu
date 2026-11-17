@@ -121,26 +121,40 @@ tlwu_install_selftest() {  # tlwu_install_selftest TLWU_SETUP [args...]: last in
 
 # #420: install llama-cpp-python from a requirements file; if the index wheel fails (e.g. the 0.3.36 arm64 wheel on the
 # CPU index is a corrupt zip), build the PyPI sdist of the same pinned version instead.
-# #1341: on Apple Silicon that source build is ~3 of the ~5 minutes from install to the first subtitle, so first take
-# the prebuilt wheel of the same pinned version from the project's Metal index (a source build on Apple Silicon turns
-# Metal on as well, so it is the same build; the app loads it with n_gpu_layers=0). Wheel missing, corrupt or not
-# importable -> the old path (CPU index, then the sdist build).
-TLWU_LLAMA_METAL_INDEX="https://abetlen.github.io/llama-cpp-python/whl/metal"
+# #1341: that sdist build is the slowest part of a Mac install (~180 s of ~320 s to the first subtitle). Without ninja
+# pip's build backend drives CMake with make, which compiles one file at a time unless CMAKE_BUILD_PARALLEL_LEVEL is
+# set, so the build gets every core (a value the user already exported wins).
+tlwu_ncpu() {  # online CPU cores (macOS + Linux); TLWU_NCPU_FALLBACK when unknown
+  local n; n="$(getconf _NPROCESSORS_ONLN 2>/dev/null)"
+  case "$n" in ''|*[!0-9]*|0) n="$TLWU_NCPU_FALLBACK" ;; esac
+  printf '%s' "$n"
+}
+TLWU_NCPU_FALLBACK=2
 tlwu_install_llama() {  # tlwu_install_llama PYTHON REQUIREMENTS_FILE
   local py="$1" req="$2" pin
-  pin="$(grep -E '^llama-cpp-python==' "$req" | head -n1 | tr -d '[:space:]')"
-  if [ -n "$pin" ] && [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
-    if "$py" -m pip install --only-binary=:all: --extra-index-url "$TLWU_LLAMA_METAL_INDEX" "$pin" \
-        && "$py" -c 'import llama_cpp'; then
-      return 0
-    fi
-    echo "    no usable prebuilt macOS wheel of $pin; trying the CPU index, then a source build ..."
-    "$py" -m pip uninstall -y llama-cpp-python >/dev/null 2>&1 || true
-  fi
   "$py" -m pip install -r "$req" && return 0
+  pin="$(grep -E '^llama-cpp-python==' "$req" | head -n1 | tr -d '[:space:]')"
   [ -n "$pin" ] || return 1
   echo "    index wheel failed; building $pin from the PyPI sdist (a few minutes) ..."
-  "$py" -m pip install --no-binary llama-cpp-python "$pin"
+  CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$(tlwu_ncpu)}" \
+    "$py" -m pip install --no-binary llama-cpp-python "$pin"
+}
+# #1341: the same install in the background, so the installer can download the models (network) while the engine
+# compiles (CPU). Output goes to LOG; tlwu_wait_llama LOG waits, prints that output and returns the install's exit code.
+TLWU_LLAMA_PID=""
+tlwu_install_llama_bg() {  # tlwu_install_llama_bg PYTHON REQUIREMENTS_FILE LOG
+  ( t0=$SECONDS; tlwu_install_llama "$1" "$2"; rc=$?
+    echo "    llama-cpp-python: $((SECONDS - t0)) s (exit $rc)"; exit "$rc" ) >"$3" 2>&1 </dev/null &
+  TLWU_LLAMA_PID=$!
+}
+tlwu_wait_llama() {  # tlwu_wait_llama LOG
+  local rc=0
+  [ -n "$TLWU_LLAMA_PID" ] || return 1
+  wait "$TLWU_LLAMA_PID" || rc=$?
+  TLWU_LLAMA_PID=""
+  cat "$1" 2>/dev/null
+  rm -f "$1"
+  return "$rc"
 }
 
 # #371: speak mode sends every sentence directly (no confirm question). Confirm mode: `--confirm` argument or TLWU_CONFIRM=1.
