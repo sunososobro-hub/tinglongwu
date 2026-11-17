@@ -166,11 +166,11 @@ EXTRA_DISK_BYTES_CORE = 2 * 1024**3
 
 
 def default_listen_mb(repo: Path = REPO) -> int:
-    """#771: DEFAULT_LISTEN_DOWNLOAD_MB from tinglongwu_setup/defaults.py (the one named constant), read as text so the
+    """#771 / #1359: DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB (the wizard runs `setup --default-listen --defer-mt`) from tinglongwu_setup/defaults.py (the one named constant), read as text so the
     build script stays stdlib-only and never imports the package."""
-    m = re.search(r"^DEFAULT_LISTEN_DOWNLOAD_MB\s*=\s*(\d+)", (repo / "tinglongwu_setup" / "defaults.py").read_text("utf-8"), re.M)
+    m = re.search(r"^DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB\s*=\s*(\d+)", (repo / "tinglongwu_setup" / "defaults.py").read_text("utf-8"), re.M)
     if not m:
-        raise SystemExit("tinglongwu_setup/defaults.py: DEFAULT_LISTEN_DOWNLOAD_MB not found")
+        raise SystemExit("tinglongwu_setup/defaults.py: DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB not found")
     return int(m.group(1))
 
 

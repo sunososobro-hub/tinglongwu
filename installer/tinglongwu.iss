@@ -4,7 +4,7 @@
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.
 ; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes; CoreLayout (--core-dir,
 ; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu.exe and install.ps1 is not run;
-; DefaultListenMB (#771, core only): download size of `tlwu.exe setup --default-listen`, which the core wizard runs
+; DefaultListenMB (#771, core only): download size of `tlwu.exe setup --default-listen --defer-mt` (Whisper only; the app fetches Hy-MT2, #1359), which the core wizard runs
 ; instead (no language page, no pip).
 
 #define AppName "tinglongWu"
@@ -456,7 +456,7 @@ begin
   { #771: tlwu.exe setup --default-listen, hidden, output to install.log (its "[n/N]" lines drive the bar); cmd writes
     the real exit code to install.done once the exe has finished. /V:ON so !errorlevel! is read after the exe ran. }
   Exe := ExpandConstant('{cmd}');
-  Params := '/V:ON /C ""' + ExpandConstant('{app}\tlwu.exe') + '" setup --default-listen >"' + LogFile + '" 2>&1 & echo !errorlevel! >"' + DoneFile + '""';
+  Params := '/V:ON /C ""' + ExpandConstant('{app}\tlwu.exe') + '" setup --default-listen --defer-mt >"' + LogFile + '" 2>&1 & echo !errorlevel! >"' + DoneFile + '""';
   Size := SizeText({#DefaultListenMB});
   ProgressPage.Description := FmtMessage(CustomMessage('CoreDesc'), [Size]);
   StartMsg := CustomMessage('StartSetup');

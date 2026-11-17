@@ -71,7 +71,7 @@ def test_core_wizard_runs_default_listen_setup_hidden_with_no_pip_or_language_pa
     post = code.split("procedure CurStepChanged", 1)[1].split("end;\n\nprocedure", 1)[0]
     assert "RunInstall;" in post and "InstallRC := 0;" not in post
     run = code.split("procedure RunInstall", 1)[1].split("\nend;\n", 1)[0]
-    assert 'setup --default-listen' in run and "{app}\\tlwu.exe" in run
+    assert 'setup --default-listen --defer-mt' in run and "{app}\\tlwu.exe" in run
     params = next(ln for ln in run.splitlines() if ln.strip().startswith("Params :=") and "setup --default-listen" in ln)
     assert "/V:ON" in params and ">\"' + LogFile + '\" 2>&1" in params  # stdout + stderr -> install.log
     assert "echo !errorlevel! >\"' + DoneFile" in params  # the wizard's exit code follows setup's
@@ -88,7 +88,7 @@ def test_core_wizard_runs_default_listen_setup_hidden_with_no_pip_or_language_pa
 
 def test_core_wizard_shows_the_default_listen_size_from_the_named_constant(tmp_path, monkeypatch, capsys):
     _, cmd = _dry_run(tmp_path, monkeypatch, capsys, "--core-dir", str(_core(tmp_path)))
-    mb = defaults_mod.DEFAULT_LISTEN_DOWNLOAD_MB
+    mb = defaults_mod.DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB  # #1359: Whisper only
     assert f"/DDefaultListenMB={mb}" in cmd and bi.default_listen_mb() == mb
     assert "{#DefaultListenMB}" in bi.effective_iss(cmd)
     assert not any(a.startswith("/DDefaultListenMB") for a in bi.iscc_cmd("I", tmp_path, tmp_path / "i", tmp_path, "1"))

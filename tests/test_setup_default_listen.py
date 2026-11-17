@@ -146,3 +146,20 @@ def test_run_setup_worker_routes_talk_to_the_setup_cli(monkeypatch):
     monkeypatch.setattr(downloader, "main", lambda a: (_ for _ in ()).throw(AssertionError("downloader")))
     assert app_main.run_setup_worker(["--talk", "--models-dir", "x"]) == 0
     assert got == [["--talk", "--models-dir", "x"]]
+
+
+def test_defer_mt_fetches_only_whisper_and_reports_ready(tmp_path):
+    """#1359: --defer-mt leaves Hy-MT2 to the app; the default path stays unchanged."""
+    calls, lines = [], []
+    assert defaults.run(tmp_path, _fake(calls), out=lines.append, defer_mt=True) == 0
+    assert calls == ["whisper-small"]
+    assert lines[0].startswith("[1/1] whisper-small")
+    assert lines[-1].startswith("READY default-listen seconds=") and lines[-1].endswith("download_mb=2")
+
+
+def test_cli_defer_mt_flag_reaches_run(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(defaults, "run", lambda mdir, **kw: seen.append(kw) or 0)
+    assert cli.main(["--default-listen", "--defer-mt", "--models-dir", str(tmp_path)]) == 0
+    assert cli.main(["--default-listen", "--models-dir", str(tmp_path)]) == 0
+    assert seen == [{"defer_mt": True}, {}]

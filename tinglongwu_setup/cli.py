@@ -140,6 +140,8 @@ def main(argv=None) -> int:
                         "passes it; a source checkout reads tinglongwu/__init__.py)")
     p.add_argument("--default-listen", action="store_true",
                    help="install only the default listen path (en -> zh-TW models), no pip, nothing else (#766)")
+    p.add_argument("--defer-mt", action="store_true",
+                   help="with --default-listen: fetch only Whisper; the app downloads Hy-MT2 itself (#1359)")
     p.add_argument("--talk", action="store_true", help="set up talk mode (Kokoro TTS venv, model, launcher)")
     p.add_argument("--piper-engine", action="store_true",
                    help="pip install piper-tts (Russian voice engine, GPL) into the TTS venv (--talk-venv); "
@@ -199,7 +201,7 @@ def main(argv=None) -> int:
     if a.default_listen:
         from . import defaults
 
-        return defaults.run(mdir)
+        return defaults.run(mdir, defer_mt=True) if a.defer_mt else defaults.run(mdir)
     if a.gpu_pack:
         from . import gpu_pack
 
