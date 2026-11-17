@@ -10,6 +10,10 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.7
+- Russian meetings: more word forms of common tech terms (past, future, reflexive and plural forms) now get the right translation.
+- For people working on the source code: opening it with Claude Code no longer changes your computer-wide git settings, and it undoes what an earlier version changed.
+
 ## v0.4.6
 - On a fresh install, Start now just listens: it no longer asks you to set up a virtual microphone first.
 - Subtitles in the original language show up right after installing, while the translation model finishes downloading in the background.
