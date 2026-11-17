@@ -16,7 +16,7 @@ from tinglongwu.pipeline import run
 from tinglongwu.sink import Sink
 from tinglongwu.translate import Translation, Translator
 
-K = 0.05  # time scale: 1 simulated second = 50 ms of wall time (a 180 s clip runs in ~9 s)
+K = 0.1  # time scale: 1 simulated second = 100 ms of wall time (a 180 s clip runs in ~18 s)
 SR = 16000
 SEG_S = 3.0  # the clip arrives as one 3 s speech segment every 3 s (real time)
 CLIP_S = 180.0
@@ -130,9 +130,9 @@ def _simulate(monkeypatch, old=False):
         return (at - src.t_end[max(shown)]) / K
 
     def lag(at_s):
-        """Subtitle lag at `at_s`: the on-screen age averaged over the 10 s before it (1 s steps). Lines come out
-        once per ~3 s segment, so a single instant swings by up to one segment."""
-        return sum(age(at_s - k) for k in range(10)) / 10
+        """Subtitle lag at `at_s`: the on-screen age averaged over the 20 s before it (1 s steps). Lines come out
+        once per ~3 s segment, so a single instant swings by up to one segment (CI saw 5.1 s vs 8.7 s that way)."""
+        return sum(age(at_s - k) for k in range(20)) / 20
 
     return lag(60), lag(CLIP_S), sink, notes, [asr.calls]
 
