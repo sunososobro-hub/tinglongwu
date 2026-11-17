@@ -195,6 +195,15 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # #1408: WER of the owner's private recordings (folder from the runner env var TLWU_PRIVATE_EVAL_DIR, outside
+      # the repo; NAME.wav + NAME.ref.txt). Prints numbers only (file index, duration, WER, change vs the previous
+      # run); no file names or text reach the log, summary or artifacts. Informational: never fails the run.
+      - name: "#1408 private recordings: WER per file vs the previous run (numbers only; SKIP when not set up)"
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 30
+        run: python scripts/private_eval.py run --models-dir "$TLWU_MODELS"
+
       - name: "#313 tlwu doctor on the owner PC (real GPU, real audio devices)"
         if: ${{ !cancelled() }}
         run: python scripts/ci_e2e.py doctor --to en --models-dir "$TLWU_MODELS" --expect-ok "speech model" "translation model" "voice (en)"
