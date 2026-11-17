@@ -54,7 +54,7 @@ Traffic lights by COMET (rounded to 3 decimals): 🟢 >= 0.880, 🟡 0.870-0.879
 
 Cells whose COMET changed by >= 0.005 vs the earlier run 43893644257 (before the #1351 echo fix): ru -> en 0.854 -> 0.861, ko -> en 0.868 -> 0.877. All other cells moved by <= 0.001. The `echo` category of `flores_cpu.py --breakdown` is 0 sentences (0%) in all 30 cells of this run.
 
-- Into English is the weakest target on COMET (0.854-0.874) although its chrF is the highest (54.5-58.2): chrF is not comparable across target languages (character n-grams in English vs Chinese / Japanese), compare cells of one column only.
+- Into English is the weakest target on COMET (0.861-0.877) although its chrF is the highest (54.5-58.5): chrF is not comparable across target languages (character n-grams in English vs Chinese / Japanese), compare cells of one column only.
 - Russian as the source is the weakest row (4 of 5 cells at or below the shipped floor); every direction into Russian stays at or above it (0.870-0.889).
 - Median s/sentence (CPU): -> zh 1.3-2.4, -> en 2.3-2.8, -> ja / ko 2.1-3.9, -> ru 4.1-4.4.
 
