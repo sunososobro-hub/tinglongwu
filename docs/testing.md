@@ -37,6 +37,7 @@ download. Otherwise it runs the two commands above on an ubuntu-24.04 CPU runner
 and clips are kept in `actions/cache`.
 
 Timing: cold job 2 min 37 s (run 43552312709: models + clips download about 15 s, mini-eval 82 s); warm runs 1.5-2.5 min.
+#340 acceptance runs (2026-11-17): an emptied Hy-MT2 instruction (throwaway commit 4710942 on `fix/340`, reverted) turned `mini-eval` red, chrF en->zh 38.90 -> 0.21 (-38.69), ja->zh -16.17, ru->zh -29.29, zh->en -42.43, every MT median over budget (run 43988264991, cold cache: 6 min 22 s); a PR with no gated path (#1335, workflows only) ended `mini-eval` green in 15 s with no install or download (run 43985940478); a warm code PR (#1332) took 2 min 30 s (run 43972966207).
 Results repeat on one runner CPU type but differ a little between types (zh->en chrF 43.4-48.6 over 4 runs), so
 `eval/baseline.json` holds the lowest chrF seen and `mt_median_s_max` = the slowest MT median seen x1.5. That is a
 regression budget for the shared runner, not the 1.0 s user-PC rule of #63 (the runner is up to ~2.5x slower).
