@@ -49,10 +49,17 @@ class Entry:
     target: str | None = None
     wrong: list[str] = field(default_factory=list)  # known wrong renderings of `target` (fixed after MT)
     asr_hint: bool = True  # False for the built-in list (#256): MT prompt / output only, never a Whisper hotword
+    whole_short: bool = False  # #1396: stems of <= SHORT_LATIN chars match whole words only (прод must not fire on продолжение)
 
     @property
     def main(self) -> str:
         return self.sources[0]
+
+    @staticmethod
+    def _short_ok(word: str, stem: str) -> bool:
+        """#1396: a short stem (прод, лог) matches itself or itself plus one ending letter (проде, логи), never a
+        longer word (продолжение, логика)."""
+        return word == stem or (len(word) == len(stem) + 1 and word.startswith(stem))
 
     def matches(self, words: list[str]) -> bool:
         for src in self.sources:
@@ -60,7 +67,8 @@ class Entry:
             if not stems:
                 continue
             for i in range(len(words) - len(stems) + 1):
-                if all(words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] in ((s, s + "s", s + "es") if s.isalpha() else (s,))
+                if all(self._short_ok(words[i + j], s) if self.whole_short and len(s) <= SHORT_LATIN else
+                       words[i + j].startswith(s) if _prefix_ok(s) else words[i + j] in ((s, s + "s", s + "es") if s.isalpha() else (s,))
                        for j, s in enumerate(stems)):
                     return True
         return False
@@ -164,12 +172,20 @@ def load(path) -> Glossary:
 
 
 BUILTIN_PATH = Path(__file__).parent / "data" / "tech-dev.txt"
+BUILTIN_RU_PATH = Path(__file__).parent / "data" / "tech-ru.txt"
 
 
-def load_builtin() -> Glossary:
+def load_builtin(lang: str | None = None) -> Glossary:
     """The built-in tech/dev list (#256). Its terms are not Whisper hotwords: biasing every talk towards
-    "daemon, driver, kernel, ..." would make Whisper hear them where they were not said."""
+    "daemon, driver, kernel, ..." would make Whisper hear them where they were not said.
+    #1396: with source language `lang` Russian (or unknown / "auto", the terms are Cyrillic and only fire on
+    Russian words) the Russian software slang list is added; any other language gets the English list only."""
     g = load(BUILTIN_PATH)
+    if not lang or lang == "auto" or lang.lower().split("-")[0] == "ru":
+        ru = parse(BUILTIN_RU_PATH.read_text(encoding="utf-8-sig"))
+        for e in ru:
+            e.whole_short = True  # inflected forms of short terms are listed as extra spellings in the file
+        g.entries.extend(ru)
     for e in g.entries:
         e.asr_hint = False
     return g

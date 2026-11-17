@@ -1,12 +1,15 @@
 """ASR engine selection with a whisper.cpp Vulkan option (#782, part 1 of #747).
 
 cuda > vulkan > cpu, same order and TLWU_DEVICE override as the MT backend (mt_backend.choose_backend). The Vulkan
-recognizer loads its backend lazily (the binaries ship in the optional Vulkan pack, part 2); any init failure
+recognizer loads its backend lazily (#783: vulkan-pack/whisper/ holds the whisper.cpp Vulkan build, part 2); any init failure
 falls back to the CPU engine with exactly one stderr line, never a crash.
 """
 from __future__ import annotations
 
+import ctypes
+import os
 import sys
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -15,9 +18,81 @@ from . import mt_backend
 from .asr import FasterWhisperRecognizer, Recognizer, Transcript
 
 
-def _load_backend(pack_dir: Path, model_dir: Path, size: str):
-    """Load the whisper.cpp Vulkan binding from the pack. Part 2 ships it; until then this raises ImportError."""
-    raise ImportError(f"whisper.cpp Vulkan binding not available in {pack_dir}")
+WHISPER_DIR = "whisper"  # vulkan-pack/whisper/: the whisper.cpp build, apart from llama.cpp's own ggml libraries
+WHISPER_LIB = "tlwu-whisper.dll" if sys.platform == "win32" else "libtlwu-whisper.so"
+WHISPER_ABI = 1  # = TLWU_WHISPER_ABI in scripts/whisper_vulkan/tlwu_whisper.cpp
+MODEL_DIR = "whisper-cpp"  # models/whisper-cpp/ggml-<size>.bin (whisper.cpp needs its own ggml model files)
+_TEXT_MAX = 8192
+
+
+class WhisperCppBackend:
+    """ctypes binding of the pack's tlwu-whisper library (#783). Only plain types cross the boundary; the C side
+    builds whisper_full_params against the pinned whisper.h. One whisper context, calls serialized (not thread safe)."""
+
+    def __init__(self, lib_path: Path, model_path: Path, use_gpu: bool = True, load=ctypes.CDLL, threads=None):
+        self._lock = threading.Lock()  # first: close() (also via __del__) takes it even when __init__ raised
+        self._ctx = None
+        if not Path(lib_path).is_file():
+            raise ImportError(f"whisper.cpp Vulkan library not found: {lib_path}")
+        if not Path(model_path).is_file():
+            raise FileNotFoundError(f"whisper.cpp model not found: {model_path}")
+        lib = load(str(lib_path))
+        lib.tlwu_whisper_abi.restype = ctypes.c_int
+        abi = lib.tlwu_whisper_abi()
+        if abi != WHISPER_ABI:
+            raise ImportError(f"{Path(lib_path).name}: C API version {abi}, the app needs {WHISPER_ABI}")
+        lib.tlwu_whisper_init.restype = ctypes.c_void_p
+        lib.tlwu_whisper_init.argtypes = [ctypes.c_char_p, ctypes.c_int]
+        lib.tlwu_whisper_free.argtypes = [ctypes.c_void_p]
+        lib.tlwu_whisper_transcribe.restype = ctypes.c_int
+        f = ctypes.POINTER(ctypes.c_float)
+        lib.tlwu_whisper_transcribe.argtypes = [ctypes.c_void_p, f, ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                                                ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, f, f]
+        self._lib = lib
+        self._threads = threads or min(4, os.cpu_count() or 1)
+        self._ctx = lib.tlwu_whisper_init(str(model_path).encode("utf-8"), 1 if use_gpu else 0)
+        if not self._ctx:
+            raise RuntimeError(f"whisper.cpp could not load {Path(model_path).name}")
+
+    def transcribe(self, audio: np.ndarray, language: str | None):
+        """(text, lang, no_speech_prob, avg_logprob), or None when whisper.cpp found no text."""
+        pcm = np.ascontiguousarray(audio, dtype=np.float32)
+        text = ctypes.create_string_buffer(_TEXT_MAX)
+        lang = ctypes.create_string_buffer(16)
+        no_speech, logprob = ctypes.c_float(0.0), ctypes.c_float(0.0)
+        with self._lock:
+            if not self._ctx:
+                raise RuntimeError("whisper.cpp context is closed")
+            rc = self._lib.tlwu_whisper_transcribe(
+                self._ctx, pcm.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), int(pcm.size),
+                (language or "auto").encode("ascii"), self._threads, text, _TEXT_MAX, lang, 16,
+                ctypes.byref(no_speech), ctypes.byref(logprob))
+        if rc != 0:
+            raise RuntimeError(f"whisper.cpp transcribe failed (rc={rc})")
+        out = text.value.decode("utf-8", "replace").strip()
+        if not out:
+            return None
+        return out, lang.value.decode("ascii", "replace"), float(no_speech.value), float(logprob.value)
+
+    def close(self):
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            return
+        with lock:  # never free the context while a transcribe call is using it
+            ctx, self._ctx = self._ctx, None
+            if ctx:
+                self._lib.tlwu_whisper_free(ctx)
+
+    __del__ = close
+
+
+def _load_backend(pack_dir: Path | None, model_dir: Path, size: str, load=ctypes.CDLL):
+    """The pack's whisper/<WHISPER_LIB> with models/whisper-cpp/ggml-<size>.bin. ImportError when the pack has no
+    whisper build, FileNotFoundError without the model: select_recognizer then falls back to the CPU engine."""
+    if pack_dir is None:
+        raise ImportError("no Vulkan pack installed")
+    lib = Path(pack_dir) / WHISPER_DIR / WHISPER_LIB
+    return WhisperCppBackend(lib, Path(model_dir) / MODEL_DIR / f"ggml-{size}.bin", load=load)
 
 
 class WhisperCppVulkanRecognizer(Recognizer):

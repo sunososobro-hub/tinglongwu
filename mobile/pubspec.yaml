@@ -34,3 +34,4 @@ flutter:
   assets:
     - assets/models_manifest.json
     - assets/voice_packs.json
+    - assets/licenses/

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/device_probe.dart';
 import '../services/pipeline.dart';
+import 'licences_screen.dart';
 import 'version_label.dart';
 
 /// 進階功能 (#1065): optional features with a recommendation from this phone's speed test.
@@ -130,6 +131,13 @@ class AdvancedScreen extends StatelessWidget {
               const Text('測速約幾秒，會暫停字幕一下。請在沒人說話時進行。',
                   style: TextStyle(fontSize: 12, color: Colors.white38)),
               const SizedBox(height: 32),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Open-source licences'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const LicencesScreen())),
+              ),
               const VersionLabel(),
             ],
           );

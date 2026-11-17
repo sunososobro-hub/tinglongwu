@@ -98,3 +98,23 @@ def test_cli_writes_report(tmp_path, capsys):
     assert "detector:" in capsys.readouterr().out
     assert main(["--fragment-cases", str(tmp_path / "missing.jsonl"), "--out", str(out)],
                 translate=fake_translate) == 2
+
+
+def test_set_has_20_ru_polysemy_items_with_wrong_sense_lists():
+    """#1394: >= 20 self-written ru software-talk polysemy lines; `bad` holds the wrong everyday senses."""
+    poly = [c for c in fragments.load_cases(SET) if c["kind"] == "polysemy"]
+    assert len(poly) >= 20
+    assert all(c["pair"] == "ru->zh" and c["bad"] and c["prev"].strip() for c in poly)
+    assert not any(fragments.invented(c["ref"], c) for c in poly)  # a reference never trips its own bad list
+    assert fragments.invented("刪除舊的樹枝。", next(c for c in poly if c["src"] == "Удали старую ветку."))
+
+
+def test_run_reports_median_seconds_per_condition():
+    ticks = iter([0.0, 1.0, 2.5, 10.0, 12.0, 15.0, 20.0, 21.0, 22.0])  # start, base done, ctx done
+    cases = [{"id": f"p{i}", "kind": "polysemy", "pair": "ru->zh", "prev": "x", "src": "Удали старую ветку.",
+              "ref": "刪除舊的分支。", "bad": ["樹枝"]} for i in range(3)]
+    rep = fragments.run(cases, lambda t, s, g, c: "刪除舊的分支。", clock=lambda: next(ticks))
+    assert rep["conditions"]["baseline"]["median_s"] == 1.0  # 1.0, 2.0, 1.0
+    assert rep["conditions"]["context"]["median_s"] == 1.5  # 1.5, 3.0, 1.0
+    assert rep["conditions"]["mark"]["median_s"] == 1.0
+    assert "median s/line" in fragments.format_report(rep)

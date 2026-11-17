@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.6
+- On a fresh install, Start now just listens: it no longer asks you to set up a virtual microphone first.
+- Subtitles in the original language show up right after installing, while the translation model finishes downloading in the background.
+- Long listening sessions no longer fall further and further behind on a busy computer.
+
 ## v0.4.5
 - Quiet speech is no longer thrown away before recognition (only true digital silence is skipped), and the words right after a pause are no longer cut off.
 - Fewer dropped words on computers where tlwu may only use a few CPU cores: it now plans its work for the cores it is actually allowed to use.

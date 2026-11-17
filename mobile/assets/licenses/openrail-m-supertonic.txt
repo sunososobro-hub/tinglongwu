@@ -1,0 +1,11 @@
+Supertonic 3 text-to-speech model (Supertone Inc.), int8 export by sherpa-onnx. Optional Russian voice pack (`voice-ru`).
+
+Licence: BigScience OpenRAIL-M (Open RAIL-M), https://huggingface.co/spaces/CompVis/stable-diffusion-license ;
+the Supertonic sample code is MIT.
+
+Use restrictions that travel with the model (OpenRAIL-M Attachment A) include: no use to generate or disseminate
+verifiably false information to harm others; no impersonation of a person without consent; no use to defame,
+harass or discriminate; no use for fully automated decisions with legal effect on people; no use to exploit
+minors or vulnerable groups; no use for illegal activity. Redistribution must pass these restrictions on.
+
+The verbatim licence text is at the link above.

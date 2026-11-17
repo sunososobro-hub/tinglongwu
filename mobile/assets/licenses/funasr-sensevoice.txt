@@ -1,0 +1,10 @@
+SenseVoice (FunAudioLLM / Alibaba Tongyi Lab), model weights `sensevoice/model.int8.onnx` (int8 export by k2-fsa / sherpa-onnx).
+
+Licence: FunASR Model Open Source License, Version 1.1. Attribution is required: this app uses the SenseVoice model
+by FunAudioLLM / Alibaba Group, source https://github.com/FunAudioLLM/SenseVoice and
+https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE .
+
+The licence permits use, copying, modification and redistribution of the model on condition that the original
+author attribution and the model name are kept. The model is provided "as is" without warranty.
+
+The verbatim licence text is at the MODEL_LICENSE link above.

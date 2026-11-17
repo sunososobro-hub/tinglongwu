@@ -21,3 +21,20 @@ speaker-diarization components are in [THIRD_PARTY.md](THIRD_PARTY.md).
 Models under Apache-2.0 are covered by Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0.
 For Hy-MT2 the upstream `LICENSE.txt` (plain Apache-2.0, no extra terms) is downloaded next to the model
 by `tlwu-setup --hymt`, so every recipient gets a copy of the license (Apache-2.0 section 4(a)).
+
+## Mobile app (Android / iOS)
+
+The mobile app bundles SenseVoice, Silero VAD, Hy-MT2 and native libraries, and offers optional packs. The same list, with licence texts, is in the app (Advanced > Open-source licences; texts in `mobile/assets/licenses/`).
+
+| Component | License | Copyright / credit |
+|---|---|---|
+| SenseVoice (`sensevoice/model.int8.onnx`) | FunASR Model Open Source License 1.1 (attribution required) | FunAudioLLM / Alibaba Group |
+| Silero VAD (`silero_vad.onnx`) | MIT | Silero Team |
+| Hy-MT2 1.8B GGUF | Apache-2.0 | Copyright (C) 2026 Tencent |
+| sherpa-onnx | Apache-2.0 | k2-fsa authors |
+| llama.cpp | MIT | ggml authors |
+| OpenCC-derived s2tw data | Apache-2.0 | BYVoid and contributors |
+| Pack `voice-en`: sherpa-onnx vits-ljs | Apache-2.0; LJSpeech public domain; CMU dictionary BSD-style | k2-fsa / Keith Ito |
+| Pack `lang-ru`: Vosk ru zipformer (int8) | Apache-2.0 | Alpha Cephei / k2-fsa |
+| Pack `voice-ru`: Supertonic 3 (int8) | OpenRAIL-M (use restrictions apply, e.g. no impersonation, no deceptive or harmful use); sample code MIT | Supertone Inc. |
+| Optional speaker model: 3D-Speaker CAM++ | Apache-2.0 | Alibaba 3D-Speaker project |
