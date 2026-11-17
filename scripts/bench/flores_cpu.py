@@ -11,6 +11,10 @@ Dev tool (not part of the offline runtime). Runs on a cloud CPU runner (`.github
   python scripts/bench/flores_cpu.py ... --src rus_Cyrl --tgt eng_Latn --limit 200   # any 6x6 direction (#1305)
   python scripts/bench/flores_cpu.py --matrix6                     # JSON list of the 6x6 languages (#1305)
   python scripts/bench/flores_cpu.py --table OUT [OUT ...]         # 6x6 Markdown table from the summaries (#1305)
+  python scripts/bench/flores_cpu.py ... --variant src             # experiment variant (#1351, VARIANTS below)
+  python scripts/bench/flores_cpu.py --variants card,src,q8        # JSON list of variants for the workflow (#1351)
+  python scripts/bench/flores_cpu.py --tgts zho_Hant,eng_Latn      # JSON list of targets for the workflow (#1351)
+  python scripts/bench/flores_cpu.py --breakdown OUT [N]           # error categories of the N lowest-COMET lines (#1351)
 
 Writes OUT/<src>.jsonl (one line per sentence: i, src, ref, hyp, sec, chrf, comet) and OUT/<src>.summary.json
 (n, chrF, COMET, median/p90 s per sentence, CPU, Hy-MT2 temperature, lines containing U+FFFD). chrF = sacrebleu CHRF corpus score, COMET = Unbabel/wmt22-comet-da
@@ -27,6 +31,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import statistics
 import sys
 import time
@@ -52,6 +57,11 @@ NAMES = {"eng_Latn": "en", "rus_Cyrl": "ru", "zho_Hans": "zh-Hans", "zho_Hant": 
 # directions the app ships today (docs/benchmarks.md X -> zh-Hant rows); the weakest of them in the same run is the
 # "weak" line of the 6x6 table
 SHIPPED = [("eng_Latn", "zho_Hant"), ("rus_Cyrl", "zho_Hant"), ("jpn_Jpan", "zho_Hant"), ("kor_Hang", "zho_Hant")]
+# #1351: experiment variants (bench only; the app keeps the shipped prompt + Q4_K_M unless the numbers say otherwise)
+VARIANTS = {"card": "model-card prompt, shipped Q4_K_M",
+            "src": "prompt names the source language, Q4_K_M",
+            "q8": "model-card prompt, Q8_0 GGUF (upper bound of the Q4_K_M quantization loss)"}
+Q8_FILE = "Hy-MT2-1.8B-Q8_0.gguf"
 
 
 def read_lines(path: Path) -> list[str]:
@@ -177,6 +187,123 @@ def temps(spec: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def variants(spec: str) -> list[str]:
+    """#1351: comma list of experiment variants (workflow input `variants`) -> validated list for the job matrix."""
+    out = [x.strip() for x in spec.split(",") if x.strip()] or ["card"]
+    bad = [x for x in out if x not in VARIANTS]
+    if bad:
+        raise SystemExit(f"flores_cpu: unknown variants {bad}; known: {','.join(VARIANTS)}")
+    return list(dict.fromkeys(out))
+
+
+def targets(spec: str) -> list[str]:
+    """#1351: comma list of FLORES targets (workflow input `tgts`) -> validated list; empty = zho_Hant."""
+    out = [x.strip() for x in spec.split(",") if x.strip()] or [REF]
+    bad = [x for x in out if x not in TARGETS]
+    if bad:
+        raise SystemExit(f"flores_cpu: unknown targets {bad}; known: {','.join(TARGETS)}")
+    return list(dict.fromkeys(out))
+
+
+def src_prompt(build):
+    """#1351 variant `src`: the card's templates with the source language named ("将以下俄语文本翻译成中文",
+    "Translate the following Russian text into English."). Glossary / context forms fall back to `build`."""
+    from tinglongwu.hymt import EN_NAMES, ZH_NAMES
+
+    def prompt(text, src, tgt, terms=None, context=None):
+        if terms or (context and context.strip()) or src not in EN_NAMES:
+            return build(text, src, tgt, terms, context)
+        if "zh" in (src, tgt):
+            return (f"将以下{ZH_NAMES[src]}文本翻译成{ZH_NAMES.get(tgt, tgt)}，注意只需要输出翻译后的结果，不要额外解释：\n\n"
+                    f"{text}")
+        return (f"Translate the following {EN_NAMES[src]} text into {EN_NAMES.get(tgt, tgt)}.\n"
+                f"Note that you should only output the translated result without any additional explanation:\n\n{text}")
+    return prompt
+
+
+_DIGITS = re.compile(r"\d(?:[\d\u00a0\u202f ,.]*\d)?")
+_CYR = re.compile(r"[\u0400-\u04ff]")
+_CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+_CAP = re.compile(r"(?<![.!?]\s)(?<!^)\b([A-Z\u0410-\u042f\u0401][\w\u0400-\u04ff'-]+)")
+CATEGORIES = [("numbers", "a number of the source and reference is missing or changed in the output"),
+              ("names", "the source has a named entity (capitalized word not at sentence start)"),
+              ("name_miss", "a capitalized Latin word of the reference is missing from the output (names, transliteration)"),
+              ("untranslated", "Cyrillic left in the output"),
+              ("omission", "output < 0.75x the reference length (chars for CJK, words otherwise)"),
+              ("addition", "output > 1.35x the reference length"),
+              ("long", "source longer than 30 words"),
+              ("other", "none of the above (wrong sense / word choice / fluency)")]
+
+
+def _nums(t: str) -> set[str]:
+    return {re.sub(r"\D", "", m) for m in _DIGITS.findall(t)}
+
+
+def _size(t: str) -> int:
+    return len(re.sub(r"\s", "", t)) if _CJK.search(t) else len(t.split())
+
+
+def categories(d: dict) -> list[str]:
+    """#1351: heuristic error categories of one scored sentence (src / ref / hyp); several can apply."""
+    src, ref, hyp = d["src"], d["ref"], d["hyp"]
+    out = []
+    if (_nums(src) & _nums(ref)) - _nums(hyp):
+        out.append("numbers")
+    if _CAP.search(src):
+        out.append("names")
+    caps = {w.lower() for w in re.findall(r"\b[A-Z][A-Za-z'-]+", ref)} - {ref.split()[0].lower() if ref.split() else ""}
+    if any(w not in hyp.lower() for w in caps):
+        out.append("name_miss")
+    if _CYR.search(hyp) and not _CYR.search(ref):
+        out.append("untranslated")
+    r = _size(hyp) / max(1, _size(ref))
+    if r < 0.75:
+        out.append("omission")
+    elif r > 1.35:
+        out.append("addition")
+    if len(src.split()) > 30:
+        out.append("long")
+    if not [c for c in out if c != "names"]:  # a named entity alone is no error: the rest is sense / fluency
+        out.append("other")
+    return out
+
+
+def breakdown(rows: list[dict], n: int = 40, pair: str = "", examples: int = 8) -> str:
+    """#1351: Markdown error breakdown of the `n` lowest-COMET rows: per category the count among them, its share,
+    the share among all rows (over-represented = the category drives the low scores) and a few examples."""
+    rows = [d for d in rows if d.get("comet") is not None]
+    if not rows:
+        return f"#### {pair}: no per-sentence COMET to break down\n"
+    worst = sorted(rows, key=lambda d: (d["comet"], d["i"]))[:n]
+    allc = {id(d): categories(d) for d in rows}
+    mean = lambda xs: sum(xs) / len(xs)
+    out = [f"#### {pair}: {len(worst)} lowest-COMET of {len(rows)} sentences "
+           f"(mean COMET {mean([d['comet'] for d in worst]):.3f} vs {mean([d['comet'] for d in rows]):.3f} all)", "",
+           "| category | lowest | share lowest | share all | x | meaning |", "|---|---|---|---|---|---|"]
+    for c, meaning in CATEGORIES:
+        k = sum(c in allc[id(d)] for d in worst)
+        a = sum(c in allc[id(d)] for d in rows)
+        sw, sa = k / len(worst), a / len(rows)
+        x = f"{sw / sa:.1f}" if sa else "-"
+        out.append(f"| {c} | {k} | {sw:.0%} | {sa:.0%} | {x} | {meaning} |")
+    out += ["", "| i | COMET | categories | source | output | reference |", "|---|---|---|---|---|---|"]
+    cut = lambda t: t.replace("|", "/")[:90]
+    for d in worst[:examples]:
+        out.append(f"| {d['i']} | {d['comet']:.3f} | {', '.join(allc[id(d)])} | {cut(d['src'])} | {cut(d['hyp'])} | "
+                   f"{cut(d['ref'])} |")
+    return "\n".join(out) + "\n"
+
+
+def breakdown_dir(out_dir: str, n: int = 40) -> str:
+    parts = []
+    for p in sorted(Path(out_dir).rglob("*.jsonl")):
+        rows = [json.loads(x) for x in p.read_text("utf-8").splitlines() if x.strip()]
+        summ = p.parent / (p.stem + ".summary.json")
+        pair = json.loads(summ.read_text("utf-8")).get("pair", p.stem) if summ.exists() else p.stem
+        parts.append(breakdown(rows, n, pair))
+    return "\n".join(parts)
+
+
 def temperature() -> float:
     """The Hy-MT2 temperature a translator built now would use (tinglongwu.hymt.sampling(), env override)."""
     sys.path.insert(0, str(REPO))
@@ -222,11 +349,34 @@ def cpu_name() -> str:
     return platform.processor() or platform.machine()
 
 
-def make_translator(models_dir: Path, zh_variant: str = "tw"):
+def fetch_q8(models_dir: Path) -> Path:
+    """#1351 variant `q8`: the published Q8_0 GGUF of the same model (bench only, never shipped)."""
+    from huggingface_hub import hf_hub_download
+
+    sys.path.insert(0, str(REPO))
+    from tinglongwu.hymt import HYMT_REPO
+
+    return Path(hf_hub_download(HYMT_REPO, Q8_FILE, local_dir=str(Path(models_dir) / "hymt2-1.8b-q8")))
+
+
+def apply_variant(variant: str, tr, models_dir: Path, fetch=fetch_q8):
+    """#1351: set up translator `tr` (not loaded yet) for an experiment variant; `card` changes nothing."""
+    if variant == "src":
+        from tinglongwu import hymt
+
+        if not getattr(hymt.build_prompt, "_src_variant", False):
+            hymt.build_prompt = src_prompt(hymt.build_prompt)
+            hymt.build_prompt._src_variant = True
+    elif variant == "q8":
+        tr.path = fetch(models_dir)
+    return tr
+
+
+def make_translator(models_dir: Path, zh_variant: str = "tw", variant: str = "card"):
     sys.path.insert(0, str(REPO))
     from tinglongwu.hymt import HyMtTranslator
 
-    tr = HyMtTranslator(models_dir, zh_variant, "cpu")
+    tr = apply_variant(variant, HyMtTranslator(models_dir, zh_variant, "cpu"), models_dir)
     tr.preload()
     return tr
 
@@ -243,6 +393,7 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
     ap.add_argument("--score-only", action="store_true", help="score OUT/<src>.jsonl, translate nothing")
     ap.add_argument("--temp", type=float, default=None, help="Hy-MT2 temperature (sets TLWU_HYMT_TEMP)")
     ap.add_argument("--comet-model", default="Unbabel/wmt22-comet-da")
+    ap.add_argument("--variant", default="card", choices=sorted(VARIANTS), help="experiment variant (#1351)")
     a = ap.parse_args(argv)
     if not a.score_only and not a.models_dir:
         ap.error("--models-dir (or TLWU_MODELS) is needed to translate")
@@ -265,7 +416,8 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
     elif convert:
         tr = ScriptConvert(variant)
     else:
-        tr = make(Path(a.models_dir)) if variant == "tw" else make(Path(a.models_dir), zh_variant=variant)
+        kw = {} if a.variant == "card" else {"variant": a.variant}
+        tr = make(Path(a.models_dir), **kw) if variant == "tw" else make(Path(a.models_dir), zh_variant=variant, **kw)
     t0 = time.perf_counter()
     out = translate_all(rows, tr, src_code, jsonl, temp=temp, tgt_code=tgt_code)
     wall = time.perf_counter() - t0
@@ -283,7 +435,8 @@ def main(argv=None, make=make_translator, load_comet=None) -> int:
     engine = ScriptConvert.engine if convert else "Hy-MT2-1.8B Q4_K_M (llama.cpp, CPU)"
     res.update(pair=f"{a.src}->{a.tgt}", split=SPLIT, engine=prev.get("engine", engine) if a.score_only else engine,
                temperature=prev.get("temperature") if a.score_only else temp,
-               cpu=prev.get("cpu") or cpu_name(), translate_wall_s=prev.get("translate_wall_s", round(wall, 1)))
+               cpu=prev.get("cpu") or cpu_name(), translate_wall_s=prev.get("translate_wall_s", round(wall, 1)),
+               variant=prev.get("variant", a.variant) if a.score_only else a.variant)
     jsonl.write_text("".join(json.dumps(d, ensure_ascii=False) + "\n" for d in out), "utf-8")
     summary.write_text(json.dumps(res, indent=1, ensure_ascii=False), "utf-8")
     print(json.dumps(res, ensure_ascii=False))
@@ -299,6 +452,15 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if sys.argv[1:2] == ["--table"]:  # eval-flores.yml table job (#1305): summaries of every 6x6 job -> Markdown
         print(table(read_summaries(sys.argv[2:])), end="")
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--variants"]:  # eval-flores.yml plan job: JSON list for `strategy.matrix.variant` (#1351)
+        print(json.dumps(variants(sys.argv[2] if len(sys.argv) > 2 else "")))
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--tgts"]:  # eval-flores.yml plan job: JSON list of targets (#1351)
+        print(json.dumps(targets(sys.argv[2] if len(sys.argv) > 2 else "")))
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--breakdown"]:  # eval-flores.yml: error breakdown of the lowest-COMET lines (#1351)
+        print(breakdown_dir(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 40), end="")
         raise SystemExit(0)
     if sys.argv[1:2] == ["--temps"]:  # eval-flores.yml plan job: JSON list for `strategy.matrix.temp` (#107)
         print(json.dumps(temps(sys.argv[2] if len(sys.argv) > 2 else "")))

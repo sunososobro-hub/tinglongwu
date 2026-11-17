@@ -7,6 +7,9 @@ name: eval-flores
 # #1305: `matrix=6x6` runs the source x target language-pair matrix instead (en / ru / zh-Hans / zh-Hant / ja / ko,
 # 30 directions, greedy, first 200 sentences unless `limit` is set): one job per source, five targets each, and a
 # `table` job that writes the 6x6 `COMET / chrF` table (docs/benchmarks.md) to its step summary + `flores-6x6-table`.
+# #1351: `variants` (card = shipped prompt + Q4_K_M, src = prompt names the source language, q8 = Q8_0 GGUF) adds a
+# job per variant, `tgts` picks the targets (default zho_Hant), and every job writes the error breakdown of its 40
+# lowest-COMET sentences (named entities, numbers, omissions, ...) to its step summary and log.
 # Only runs when this workflow or the runner script changes, or by hand (workflow_dispatch, once on the default branch).
 on:
   pull_request:
@@ -30,6 +33,12 @@ on:
         type: choice
         options: ["", "6x6"]
         default: ""
+      variants:
+        description: "comma list of experiment variants (#1351): card, src (prompt names the source language), q8 (Q8_0)"
+        default: "card"
+      tgts:
+        description: "comma list of FLORES targets (#1351; default zho_Hant; ignored by matrix=6x6)"
+        default: "zho_Hant"
 
 permissions:
   contents: read
@@ -53,6 +62,7 @@ jobs:
       temp: ${{ steps.m.outputs.temp }}
       tgts: ${{ steps.m.outputs.tgts }}
       limit: ${{ steps.m.outputs.limit }}
+      variant: ${{ steps.m.outputs.variant }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -63,17 +73,21 @@ jobs:
           TEMPS: ${{ inputs.temps || '0.7,0.2,0' }}
           MATRIX: ${{ inputs.matrix || '' }}
           LIMIT: ${{ inputs.limit || '0' }}
+          VARIANTS: ${{ inputs.variants || 'card' }}
+          TGTS: ${{ inputs.tgts || 'zho_Hant' }}
         run: |
           case "$LIMIT" in ''|*[!0-9]*) echo "limit must be a number" >&2; exit 1;; esac
           if [ "$MATRIX" = "6x6" ]; then
             echo "src=$(python3 scripts/bench/flores_cpu.py --matrix6)" >> "$GITHUB_OUTPUT"
             echo "tgts=$(python3 scripts/bench/flores_cpu.py --matrix6)" >> "$GITHUB_OUTPUT"
             echo 'temp=["0"]' >> "$GITHUB_OUTPUT"
+            echo 'variant=["card"]' >> "$GITHUB_OUTPUT"
             [ "$LIMIT" = "0" ] && LIMIT=200
           else
             echo "src=$(python3 scripts/bench/flores_cpu.py --matrix "$LANGS")" >> "$GITHUB_OUTPUT"
-            echo 'tgts=["zho_Hant"]' >> "$GITHUB_OUTPUT"
+            echo "tgts=$(python3 scripts/bench/flores_cpu.py --tgts "$TGTS")" >> "$GITHUB_OUTPUT"
             echo "temp=$(python3 scripts/bench/flores_cpu.py --temps "$TEMPS")" >> "$GITHUB_OUTPUT"
+            echo "variant=$(python3 scripts/bench/flores_cpu.py --variants "$VARIANTS")" >> "$GITHUB_OUTPUT"
           fi
           echo "limit=$LIMIT" >> "$GITHUB_OUTPUT"
 
@@ -86,9 +100,11 @@ jobs:
       matrix:
         src: ${{ fromJSON(needs.plan.outputs.src) }}
         temp: ${{ fromJSON(needs.plan.outputs.temp) }}
+        variant: ${{ fromJSON(needs.plan.outputs.variant) }}
     env:
       SRC: ${{ matrix.src }}
       TEMP: ${{ matrix.temp }}
+      VARIANT: ${{ matrix.variant }}
       TGTS: ${{ needs.plan.outputs.tgts }}
       LIMIT: ${{ needs.plan.outputs.limit }}
     steps:
@@ -138,7 +154,7 @@ jobs:
           for TGT in $(python3 -c 'import json, os; print(" ".join(json.loads(os.environ["TGTS"])))'); do
             [ "$TGT" = "$SRC" ] && continue
             python scripts/bench/flores_cpu.py --data "$BENCH/flores200_dataset" --src "$SRC" --tgt "$TGT" \
-              --out out --limit "$LIMIT" --no-comet --temp "$TEMP"
+              --out out --limit "$LIMIT" --no-comet --temp "$TEMP" --variant "$VARIANT"
           done
       - name: Score chrF + COMET (CPU)
         run: |
@@ -149,17 +165,19 @@ jobs:
           done
           python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
           import json, pathlib
-          print("| pair | temp | n | chrF | COMET | U+FFFD lines | median s/sentence | p90 s | CPU |")
-          print("|---|---|---|---|---|---|---|---|---|")
+          print("| pair | variant | temp | n | chrF | COMET | U+FFFD lines | median s/sentence | p90 s | CPU |")
+          print("|---|---|---|---|---|---|---|---|---|---|")
           for p in sorted(pathlib.Path("out").glob("*.summary.json")):
               s = json.loads(p.read_text("utf-8"))
-              print(f"| {s['pair']} | {s.get('temperature')} | {s['n']} | {s['chrF']} | {s.get('COMET')} | "
-                    f"{s.get('fffd_lines')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
+              print(f"| {s['pair']} | {s.get('variant', 'card')} | {s.get('temperature')} | {s['n']} | {s['chrF']} | "
+                    f"{s.get('COMET')} | {s.get('fffd_lines')} | {s['median_s']} | {s['p90_s']} | {s['cpu']} |")
           EOF
+      - name: Error breakdown of the 40 lowest-COMET sentences (#1351)
+        run: python3 scripts/bench/flores_cpu.py --breakdown out 40 | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: flores-${{ matrix.src }}-t${{ matrix.temp }}
+          name: flores-${{ matrix.src }}-t${{ matrix.temp }}${{ matrix.variant != 'card' && format('-{0}', matrix.variant) || '' }}
           path: out/
           if-no-files-found: warn
 
