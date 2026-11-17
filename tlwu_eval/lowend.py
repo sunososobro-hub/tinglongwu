@@ -22,6 +22,7 @@ from .scoring import percentile
 
 LATENCY_MARGIN = 0.15  # owner, #750: fail when p50 or p90 is more than 15% worse than the dev baseline
 RSS_MAX_MIB = 6 * 1024  # owner, #750: fail when peak RSS > 6 GB (a 16 GB laptop also runs a browser + meeting app)
+TARGET_LINE_S = 2.5  # owner 2026-11-16, #1345: 4-core laptop, no GPU: <= 2.5 s per translated line. Reported, never a gate.
 LAT_KEYS = ("latency_p50_s", "latency_p90_s")
 META_KEYS = ("model", "engine", "device", "threads", "clips")
 
@@ -49,6 +50,16 @@ def latencies(report) -> dict:
     for k, q in zip(LAT_KEYS, (50, 90)):
         v = report.get(k)
         out[k] = v if _num(v) else (round(percentile(lat, q), 3) if lat else None)
+    return out
+
+
+def target_gap(report) -> dict:
+    """{target_s, latency_p50_gap_s, latency_p90_gap_s}: signed seconds vs TARGET_LINE_S (positive = over the target).
+    A gap is None when the latency is not in the report. Informational only: it never changes pass/fail."""
+    lat = latencies(report)
+    out = {"target_s": TARGET_LINE_S}
+    for k in LAT_KEYS:
+        out[k.replace("_s", "") + "_gap_s"] = round(lat[k] - TARGET_LINE_S, 3) if lat[k] is not None else None
     return out
 
 
@@ -88,7 +99,17 @@ def _fmt(v) -> str:
     return "n/a" if v is None else f"{v:g}"
 
 
-def markdown(rows: list[dict], baseline: dict, same_runner: bool = False) -> str:
+def gap_line(report: dict) -> str:
+    g, lat = target_gap(report), latencies(report)
+
+    def one(name, k, gk):
+        v, d = lat[k], g[gk]
+        return f"{name} {'n/a' if v is None else f'{v:g}'} s ({'n/a' if d is None else f'{d:+.2f}'} s)"
+    return (f"Target {TARGET_LINE_S:g} s per line (not a gate): "
+            + one("p50", "latency_p50_s", "latency_p50_gap_s") + ", " + one("p90", "latency_p90_s", "latency_p90_gap_s"))
+
+
+def markdown(rows: list[dict], baseline: dict, same_runner: bool = False, report: dict | None = None) -> str:
     ok = not any(r["result"] == "FAIL" for r in rows)
     out = ["| metric | value | baseline | limit | result |", "|---|---|---|---|---|"]
     for r in rows:
@@ -98,6 +119,7 @@ def markdown(rows: list[dict], baseline: dict, same_runner: bool = False) -> str
                 f"engine {baseline['engine']}, {baseline['clips']} clips per pair. Baseline: "
                 + ("the base commit (dev tip) run on this same runner." if same_runner
                    else "eval/lowend_baseline.json (no same-runner base run)."),
+            *([gap_line(report)] if report is not None else []),
             f"**low-end CPU gate: {'PASS' if ok else 'FAIL'}**"]
     return "\n".join(out)
 
@@ -106,8 +128,12 @@ def run(report_path, baseline_path, base_report_path=None) -> tuple[int, str]:
     """-> (exit code, Markdown): 0 = within budget, 1 = regression. Raises GateError on setup errors (exit 2)."""
     baseline = validate_baseline(load_json(baseline_path, "low-end baseline"))
     base = load_json(base_report_path, "base report") if base_report_path else None
-    rows = compare(load_json(report_path, "report"), baseline, base)
-    return (1 if any(r["result"] == "FAIL" for r in rows) else 0), markdown(rows, baseline, base is not None)
+    report = load_json(report_path, "report")
+    rows = compare(report, baseline, base)
+    if isinstance(report, dict):  # #1345: keep the gap to the 2.5 s target in the result JSON that is uploaded
+        report["lowend_target"] = target_gap(report)
+        Path(report_path).write_text(json.dumps(report, indent=2), "utf-8")
+    return (1 if any(r["result"] == "FAIL" for r in rows) else 0), markdown(rows, baseline, base is not None, report)
 
 
 def write_latency_jsonl(report: dict, path) -> int:
