@@ -52,7 +52,25 @@ def compare(cpu: dict, vulkan: dict, max_drop: float = MAX_DROP) -> tuple[bool, 
              f"| vulkan | {vulkan.get('backend')} | {vulkan.get('seconds', 0):.1f} |",
              "", f"chrF (vulkan vs cpu) = {score:.2f}, bound >= {100.0 - max_drop:.2f}; speed is not gated"]
     lines += [f"FAIL: {p}" for p in problems]
+    lines += ["", *per_line(cpu, vulkan)]
     return not problems, "\n".join(lines)
+
+
+def _cell(text: str) -> str:
+    return (text or "").replace("|", "\\|").replace("\n", " ")
+
+
+def per_line(cpu: dict, vulkan: dict) -> list[str]:
+    """Markdown table of every sentence's CPU and Vulkan output, so a parity failure can be read in the job log
+    (the run's artifacts are not reachable from every session, #1195)."""
+    ref, hyp = cpu.get("texts") or [], vulkan.get("texts") or []
+    rows = ["| # | source | cpu | vulkan | same |", "|---|---|---|---|---|"]
+    for i in range(max(len(ref), len(hyp))):
+        src = SENTENCES[i] if i < len(SENTENCES) else ""
+        a = ref[i] if i < len(ref) else ""
+        b = hyp[i] if i < len(hyp) else ""
+        rows.append(f"| {i + 1} | {_cell(src)} | {_cell(a)} | {_cell(b)} | {'yes' if a == b else 'NO'} |")
+    return rows
 
 
 def translate(models_dir: str) -> dict:

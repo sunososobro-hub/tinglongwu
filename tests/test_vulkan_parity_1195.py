@@ -37,3 +37,20 @@ def test_cli_compare_exit_codes(tmp_path):
     script = str(Path(vp.__file__))
     assert subprocess.run([sys.executable, script, "compare", str(a), str(b)], capture_output=True).returncode == 0
     assert subprocess.run([sys.executable, script, "compare", str(a), str(a)], capture_output=True).returncode == 1
+
+
+def test_summary_lists_each_line_and_marks_the_divergent_one():
+    vk = {"backend": "vulkan", "texts": [CPU["texts"][0], "請在週末前把報告寄給我。"], "seconds": 1}
+    ok, md = vp.compare(CPU, vk)
+    rows = [r for r in md.splitlines() if r.startswith("| 1 ") or r.startswith("| 2 ")]
+    assert len(rows) == 2
+    assert CPU["texts"][0] in rows[0] and rows[0].endswith("| yes |")
+    assert CPU["texts"][1] in rows[1] and "請在週末前把報告寄給我。" in rows[1] and rows[1].endswith("| NO |")
+    assert vp.SENTENCES[1] in rows[1]
+
+
+def test_summary_escapes_pipes_and_handles_missing_lines():
+    ok, md = vp.compare({"backend": "cpu", "texts": ["a|b"], "seconds": 1}, {"backend": "vulkan", "texts": [], "seconds": 1})
+    assert not ok
+    row = next(r for r in md.splitlines() if r.startswith("| 1 "))
+    assert "a\\|b" in row and row.endswith("| NO |")
