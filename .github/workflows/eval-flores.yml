@@ -152,10 +152,11 @@ jobs:
           python scripts/bench/fetch_data.py --out "$BENCH" --fleurs ""
           if [ "${{ matrix.variant }}" = "q8" ]; then python scripts/bench/flores_cpu.py --fetch-q8 "$TLWU_MODELS"; fi
           if [ "${{ matrix.variant }}" = "7b" ]; then
-            # the 4.8 GB 7B GGUF lives outside the cached paths (a symlink is cached as a link), so the shared
-            # actions cache stays at the 1.8B size
-            mkdir -p "$HOME/hymt2-7b" && ln -sfn "$HOME/hymt2-7b" "$TLWU_MODELS/hymt2-7b"
-            tlwu-setup --hymt7b --models-dir "$TLWU_MODELS"
+            # the 4.8 GB 7B GGUF and its manifest entry live in their own uncached models dir; the cached
+            # $TLWU_MODELS only gets a symlink, so the shared actions cache stays at the 1.8B size and a restored
+            # manifest can never claim a 7B that is not on this runner
+            tlwu-setup --hymt7b --models-dir "$HOME/tlwu-models-7b"
+            ln -sfn "$HOME/tlwu-models-7b/hymt2-7b" "$TLWU_MODELS/hymt2-7b"
           fi
       - name: Translate (CPU, Hy-MT2 temperature from the matrix; 0 = greedy, repeatable)
         run: |
