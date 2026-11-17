@@ -76,3 +76,11 @@ def test_ru_noun_forms_still_fire_1425():
                        ("в ветках", "ветка"), ("новыми ветками", "ветка"), ("в репозитории", "репозиторий"),
                        ("об отладке", "отладка"), ("отладками", "отладка")):
         assert term in hit(text), (text, term)
+
+
+def test_ru_verbs_fire_on_past_tense_1429():
+    g = glossary.load_builtin("ru")
+    cases = {"Я задеплоил сервис.": "задеплоить", "Мы задеплоили вчера.": "задеплоить", "Пофиксил всё.": "пофиксить",
+             "Смержил всё.": "смержить", "Откатил всё.": "откатить"}
+    for sent, main in cases.items():
+        assert main in [e.main for e in g.relevant(sent)], sent
