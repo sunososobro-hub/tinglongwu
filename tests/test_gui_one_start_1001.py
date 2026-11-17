@@ -20,6 +20,16 @@ def test_both_settings_builds_the_two_legs_of_session_route():
     assert saved["source"] == core.DEFAULTS["source"]  # the saved settings are not changed
 
 
+def _pick_meeting(a):
+    """#1343: a fresh install starts in the video (listen only) scene; pick Meeting like a user would."""
+    from tinglongwu.gui.core import SCENES
+
+    a.scene_combo.current(SCENES.index("meeting"))
+    a.scene_combo.event_generate("<<ComboboxSelected>>")
+    a.root.update()
+    assert a.settings["scene"] == "meeting"
+
+
 def test_both_settings_refuses_the_same_language_on_both_sides():
     with pytest.raises(core.SameLanguageError):
         core.both_settings(dict(core.DEFAULTS, target="zh-tw", lang="zh"))
@@ -118,6 +128,7 @@ def test_one_start_runs_both_legs_and_one_stop_ends_both(both_app):
     from tinglongwu import cli
 
     a, legs, envs, _ = both_app
+    _pick_meeting(a)
     a.v_target.set("zh-tw")
     a.v_lang.set("en")
     assert a.both_btn.cget("text") == "Start" and str(a.both_btn.cget("state")) == "normal"

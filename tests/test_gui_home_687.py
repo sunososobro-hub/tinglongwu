@@ -64,6 +64,16 @@ def _outside_advanced(a):
     return [w for w in _walk(a.panel) if w.winfo_class() in INTERACTIVE and w not in inside and w is not a.adv_btn]
 
 
+def _pick_meeting(a):
+    """#1343: a fresh install starts in the video (listen only) scene; pick Meeting like a user would."""
+    from tinglongwu.gui.core import SCENES
+
+    a.scene_combo.current(SCENES.index("meeting"))
+    a.scene_combo.event_generate("<<ComboboxSelected>>")
+    a.root.update()
+    assert a.settings["scene"] == "meeting"
+
+
 def test_fresh_config_shows_three_controls_and_advanced_is_collapsed(home_app):
     """Owner 2026-11-15: my language + other side's language + one Start (listen + speak, #1001)."""
     make, _ = home_app
@@ -83,6 +93,7 @@ def test_one_start_runs_the_listen_and_the_speak_source(home_app):
     """#1001: the one Start = PC sound (listen leg) + microphone (speak leg)."""
     make, runs = home_app
     a = make()
+    _pick_meeting(a)
     assert not hasattr(a, "quick_btns")
     a.both_btn.invoke()
     a.root.update()
@@ -137,6 +148,7 @@ def test_home_picker_is_the_other_side_language_and_tour_step_1(home_app):
 
     make, runs = home_app
     a = make()
+    _pick_meeting(a)
     assert str(a.home_lang.cget("textvariable")) == str(a.v_lang) == str(a.tour.lang_box.cget("textvariable"))
     a.home_lang.set(label("ja"))
     a.v_target.set("zh-tw")

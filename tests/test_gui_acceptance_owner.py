@@ -208,17 +208,17 @@ def test_one_readonly_dropdown_lists_every_scene(make_app):
     assert str(a.scene_combo.cget("state")) == "readonly"
     assert len(a.scene_combo.cget("values")) == len(SCENES)
     assert not _tk_buttons(a.root)  # no scene buttons remain
-    assert a.scene_combo.get() == "Meeting (listen + speak)"
+    assert a.scene_combo.get() == "Watching video (listen only)"  # #1343: a fresh install is listen only
 
 
 def test_selecting_switches_the_scene_and_saves_it(make_app, tmp_path):
-    a = make_app()
-    a.scene_combo.current(1)
+    a = make_app()  # #1343: fresh install = video; switching to Meeting must be saved
+    a.scene_combo.current(0)
     a.scene_combo.event_generate("<<ComboboxSelected>>")
     a.root.update()
-    assert a.settings["scene"] == "video"
+    assert a.settings["scene"] == "meeting"
     saved = json.loads((tmp_path / "tinglongwu" / "gui.json").read_text("utf-8"))
-    assert saved["scene"] == "video"
+    assert saved["scene"] == "meeting"
 
 
 def test_restart_shows_the_saved_scene(make_app):

@@ -12,6 +12,16 @@ from tinglongwu.sink import Result
 MAIN_BAR_MAX_W = 560  # #1028: the chat-style main window's bottom bar (mic / floating / freeze toggles + Start)
 
 
+def _pick_meeting(a):
+    """#1343: a fresh install starts in the video (listen only) scene; pick Meeting like a user would."""
+    from tinglongwu.gui.core import SCENES
+
+    a.scene_combo.current(SCENES.index("meeting"))
+    a.scene_combo.event_generate("<<ComboboxSelected>>")
+    a.root.update()
+    assert a.settings["scene"] == "meeting"
+
+
 def test_queue_sink_final():
     q = queue.Queue()
     core.QueueSink(q).write(Result("ru", "privet", None, "你好", "zh"))
@@ -546,6 +556,7 @@ def test_bar_mode_pair_and_status_dot(gui_app, monkeypatch):
     a = gui_app
     runs = _record_runs(a, monkeypatch)
     monkeypatch.setattr(app, "meeting_cable", lambda: "CABLE Input (VB-Audio Virtual Cable)")  # no "no CABLE" panel
+    _pick_meeting(a)
     assert not hasattr(a, "v_mode")
     assert not [w for w in a.bar.winfo_children() if w.winfo_class() == "TRadiobutton"]
     a.v_target.set("en")
@@ -594,6 +605,7 @@ def test_one_click_start_loading_then_ready_then_stop(gui_app, monkeypatch):
 
     a = gui_app
     runs = _record_runs(a, monkeypatch)
+    _pick_meeting(a)
     assert _btn(a) == ("Start", "normal")
     a.v_target.set("zh-tw")
     a.both_btn.invoke()  # click 1
