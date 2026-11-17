@@ -7,7 +7,10 @@ Hy-MT2 (the listen-path engine) and reports chrF and an invented-content rate fo
   mark      (b) lines that look cut off (`incomplete`) keep the baseline text but end in "…" instead of a full stop,
             so the reader sees an unfinished line instead of a fluent, smoothed-over sentence
 Case kinds: fragment (ASR cut mid-sentence), idiom (literal-translation traps), number (number/unit split over two
-lines), complete (finished sentences; the `mark` detector must leave them alone).
+lines), complete (finished sentences; the `mark` detector must leave them alone), polysemy (#1394: a finished line
+whose key word has a wrong everyday sense, e.g. ru "ветка" twig vs branch, that only the previous line settles;
+`bad` lists the wrong-sense renderings, so `invented` is the wrong-sense rate there).
+Time: median seconds per MT call for the line alone (`baseline`, also `mark`) and with context (`context`), #1394.
 
 Invented content (per output): it contains one of the case's `bad` strings (known literal / invented renderings,
 e.g. 傳送門 for "web portal"), or, for fragment / number cases, it is much longer than the reference
@@ -18,12 +21,14 @@ from __future__ import annotations
 
 import json
 import re
+import statistics
+import time
 from collections import OrderedDict
 
 from . import scoring
 
 REQUIRED = ("id", "kind", "pair", "prev", "src", "ref")
-KINDS = ("fragment", "idiom", "number", "complete")
+KINDS = ("fragment", "idiom", "number", "complete", "polysemy")
 CONDITIONS = ("baseline", "context", "mark")
 MARK = "…"
 INVENT_RATIO = 1.5  # output content chars > 1.5 x the reference's ...
@@ -107,17 +112,21 @@ def invented(out: str, case: dict) -> bool:
     return False
 
 
-def run(cases, translate) -> dict:
+def run(cases, translate, clock=time.perf_counter) -> dict:
     """translate(text, src, tgt, context) -> str (context None = the line alone). Returns per-condition totals,
-    per-kind totals and per-case rows."""
+    per-kind totals and per-case rows. `clock` times each MT call (tests inject one)."""
     rows = []
     for c in cases:
         src, tgt = (x.strip() for x in c["pair"].split("->", 1))
+        t0 = clock()
         base = translate(c["src"], src, tgt, None).strip()
+        t1 = clock()
         ctx = translate(c["src"], src, tgt, c["prev"]).strip()
+        t2 = clock()
         flagged = incomplete(c["src"], src)
         outs = {"baseline": base, "context": ctx, "mark": mark(base) if flagged else base}
-        row = {"id": c["id"], "kind": c["kind"], "pair": c["pair"], "flagged": flagged, "out": outs}
+        secs = {"baseline": t1 - t0, "context": t2 - t1, "mark": t1 - t0}
+        row = {"id": c["id"], "kind": c["kind"], "pair": c["pair"], "flagged": flagged, "out": outs, "secs": secs}
         for k, o in outs.items():
             row[k] = {"chrf": round(scoring.chrf([(c["ref"], o.replace(MARK, ""))]), 1),
                       "invented": invented(o, c), "marked": o.endswith(MARK)}
@@ -133,7 +142,8 @@ def _agg(rows, cases_by_id, cond) -> dict:
     inv_un = sum(r[cond]["invented"] and not r[cond]["marked"] for r in rows)
     return {"n": n, "chrf": round(scoring.chrf(pairs), 1) if n else 0.0,
             "invented": round(100 * inv / n, 1) if n else 0.0,
-            "invented_unmarked": round(100 * inv_un / n, 1) if n else 0.0}
+            "invented_unmarked": round(100 * inv_un / n, 1) if n else 0.0,
+            "median_s": round(statistics.median(r["secs"][cond] for r in rows), 3) if n else 0.0}
 
 
 def _totals(rows, cases) -> dict:
@@ -157,13 +167,16 @@ def _detector(rows) -> dict:
 
 
 def format_report(rep: dict) -> str:
-    lines = ["condition | n | chrF | invented % | invented unmarked %", "---|---|---|---|---"]
+    lines = ["condition | n | chrF | invented % | invented unmarked % | median s/line", "---|---|---|---|---|---"]
     for cond, t in rep["conditions"].items():
-        lines.append(f"{cond} | {t['n']} | {t['chrf']} | {t['invented']} | {t['invented_unmarked']}")
-    lines += ["", "kind | condition | n | chrF | invented % | invented unmarked %", "---|---|---|---|---|---"]
+        lines.append(f"{cond} | {t['n']} | {t['chrf']} | {t['invented']} | {t['invented_unmarked']} | "
+                     f"{t['median_s']}")
+    lines += ["", "kind | condition | n | chrF | invented % | invented unmarked % | median s/line",
+              "---|---|---|---|---|---|---"]
     for kind, conds in rep["kinds"].items():
         for cond, t in conds.items():
-            lines.append(f"{kind} | {cond} | {t['n']} | {t['chrf']} | {t['invented']} | {t['invented_unmarked']}")
+            lines.append(f"{kind} | {cond} | {t['n']} | {t['chrf']} | {t['invented']} | {t['invented_unmarked']} | "
+                         f"{t['median_s']}")
     d = rep["detector"]
     lines += ["", f"detector: cut-off lines marked {d['cut_marked']}, complete lines marked {d['complete_marked']}"]
     return "\n".join(lines)

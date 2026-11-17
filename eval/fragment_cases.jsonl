@@ -54,3 +54,26 @@
 {"id": "complete-en-06", "kind": "complete", "pair": "en->zh", "prev": "Any questions?", "src": "Yes, when will the samples arrive?", "ref": "有，樣品什麼時候到？"}
 {"id": "complete-ru-07", "kind": "complete", "pair": "ru->zh", "prev": "Роутер перезагрузился.", "src": "Теперь всё работает", "ref": "現在一切正常"}
 {"id": "complete-en-08", "kind": "complete", "pair": "en->zh", "prev": "The router rebooted.", "src": "Now everything works", "ref": "現在一切正常"}
+{"id": "polysemy-ru-01", "kind": "polysemy", "pair": "ru->zh", "prev": "Я создал новую ветку в репозитории.", "src": "Удали старую ветку.", "ref": "刪除舊的分支。", "bad": ["樹枝"]}
+{"id": "polysemy-ru-02", "kind": "polysemy", "pair": "ru->zh", "prev": "Ночью у нас были проблемы с сайтом.", "src": "Прод упал в три часа ночи.", "ref": "正式環境在凌晨三點掛了。", "bad": ["摔", "跌倒", "掉下"]}
+{"id": "polysemy-ru-03", "kind": "polysemy", "pair": "ru->zh", "prev": "Нам нужен ещё один тестовый сервер.", "src": "Кто его поднимет?", "ref": "誰來把它架起來？", "bad": ["抬", "舉起"]}
+{"id": "polysemy-ru-04", "kind": "polysemy", "pair": "ru->zh", "prev": "Новая сборка уже готова.", "src": "Залей её сегодня.", "ref": "今天把它上傳。", "bad": ["倒", "澆", "灌"]}
+{"id": "polysemy-ru-05", "kind": "polysemy", "pair": "ru->zh", "prev": "Для модели нужна видеокарта помощнее.", "src": "Железо у нас старое.", "ref": "我們的硬體很舊。", "bad": ["鐵"]}
+{"id": "polysemy-ru-06", "kind": "polysemy", "pair": "ru->zh", "prev": "Тесты на CI опять красные.", "src": "Кто сломал сборку?", "ref": "誰弄壞了建置？", "bad": ["組裝", "集會", "收集"]}
+{"id": "polysemy-ru-07", "kind": "polysemy", "pair": "ru->zh", "prev": "Мы нашли баг в парсере.", "src": "Он падает на пустой строке.", "ref": "它遇到空字串就崩潰。", "bad": ["跌倒", "落下"]}
+{"id": "polysemy-ru-08", "kind": "polysemy", "pair": "ru->zh", "prev": "Релиз выкатываем в пятницу.", "src": "Окно назначено на вечер.", "ref": "時段排在晚上。", "bad": ["窗戶", "窗口"]}
+{"id": "polysemy-ru-09", "kind": "polysemy", "pair": "ru->zh", "prev": "База данных отвечает очень медленно.", "src": "Нужен индекс по этому полю.", "ref": "這個欄位需要索引。", "bad": ["田", "原野", "田野"]}
+{"id": "polysemy-ru-10", "kind": "polysemy", "pair": "ru->zh", "prev": "Скрипт запускается каждую ночь.", "src": "Он крутится на отдельной машине.", "ref": "它在另一台機器上執行。", "bad": ["汽車", "車上", "旋轉"]}
+{"id": "polysemy-ru-11", "kind": "polysemy", "pair": "ru->zh", "prev": "Для этой функции нужен ключ API.", "src": "Где лежит ключ?", "ref": "金鑰放在哪裡？", "bad": ["鑰匙", "泉"]}
+{"id": "polysemy-ru-12", "kind": "polysemy", "pair": "ru->zh", "prev": "Мы переписали обработку платежей.", "src": "Надо прогнать тесты на стенде.", "ref": "需要在測試環境跑測試。", "bad": ["看台", "展台", "攤位"]}
+{"id": "polysemy-ru-13", "kind": "polysemy", "pair": "ru->zh", "prev": "Пользователи жалуются на приложение.", "src": "Оно тормозит на старых телефонах.", "ref": "它在舊手機上很卡。", "bad": ["剎車", "煞車", "制動"]}
+{"id": "polysemy-ru-14", "kind": "polysemy", "pair": "ru->zh", "prev": "Я проверил твой код.", "src": "Там есть пара косяков.", "ref": "裡面有幾個問題。", "bad": ["門框", "魚群", "大麻"]}
+{"id": "polysemy-ru-15", "kind": "polysemy", "pair": "ru->zh", "prev": "Нам нужно больше вычислительных ресурсов.", "src": "Возьмём ещё одну машину.", "ref": "我們再加一台機器。", "bad": ["汽車", "一輛"]}
+{"id": "polysemy-ru-16", "kind": "polysemy", "pair": "ru->zh", "prev": "Тимлид проверяет пулл-реквесты.", "src": "Он завернул мой коммит.", "ref": "他退回了我的提交。", "bad": ["包起來", "包裹", "捲起"]}
+{"id": "polysemy-ru-17", "kind": "polysemy", "pair": "ru->zh", "prev": "У нас проблемы с сетью в офисе.", "src": "Опять лёг роутер.", "ref": "路由器又掛了。", "bad": ["躺"]}
+{"id": "polysemy-ru-18", "kind": "polysemy", "pair": "ru->zh", "prev": "Новую версию тестируют уже неделю.", "src": "Пока она сырая.", "ref": "目前還不成熟。", "bad": ["生的", "潮濕", "濕"]}
+{"id": "polysemy-ru-19", "kind": "polysemy", "pair": "ru->zh", "prev": "Мы запускаем новую фичу для клиентов.", "src": "Сначала выкатим на десять процентов.", "ref": "先推給百分之十的用戶。", "bad": ["滾"]}
+{"id": "polysemy-ru-20", "kind": "polysemy", "pair": "ru->zh", "prev": "Заказчик прислал новые требования.", "src": "Сроки горят.", "ref": "期限很緊迫。", "bad": ["燃燒", "著火"]}
+{"id": "polysemy-ru-21", "kind": "polysemy", "pair": "ru->zh", "prev": "Я пишу скрипт для миграции.", "src": "Он почти готов, осталось причесать.", "ref": "快好了，只剩整理一下。", "bad": ["梳頭", "梳"]}
+{"id": "polysemy-ru-22", "kind": "polysemy", "pair": "ru->zh", "prev": "Мы нашли причину утечки памяти.", "src": "Виноват кривой драйвер.", "ref": "是有問題的驅動程式造成的。", "bad": ["彎曲", "歪"]}
+{"id": "polysemy-ru-23", "kind": "polysemy", "pair": "ru->zh", "prev": "Мобильное приложение собирается на CI.", "src": "Сборка висит уже час.", "ref": "建置已經卡住一小時了。", "bad": ["掛著", "懸掛", "吊"]}
