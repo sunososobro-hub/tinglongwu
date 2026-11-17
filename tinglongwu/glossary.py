@@ -71,6 +71,10 @@ def _ru_noun_ok(word: str, src_word: str, stem: str) -> bool:
     if (src.endswith(("ить", "ать")) and len(src) >= 6 and word[:len(src) - 3] == src[:-3]
             and word[len(src) - 3:] in _RU_PAST[src[-3]]):
         return True  # #1429: past tense (задеплоил, задеплоили, пофиксила); other forms fall through to the prefix match
+    if src.endswith("ка") and word in (src[:-2] + "ок", src[:-2] + "ек"):
+        return True  # #1428: genitive plural with a fleeting vowel (прошивка -> прошивок, ветка -> веток)
+    if stem == src and src[-1:] in "ая" and len(src) >= 3:
+        stem = src[:-1]  # #1428: short -а / -я nouns decline like long ones (фича -> фичам, фичах, фичами)
     if not word.startswith(stem):
         return False
     if src.endswith("ть"):
