@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.5
+- Quiet speech is no longer thrown away before recognition (only true digital silence is skipped), and the words right after a pause are no longer cut off.
+- Fewer dropped words on computers where tlwu may only use a few CPU cores: it now plans its work for the cores it is actually allowed to use.
+- Installing on a Mac is faster: the translation engine now builds in the background while the models download.
+
 ## v0.4.4
 - Live subtitles no longer lose words when speech recognition falls behind: the audio keeps being captured, the status shows how many seconds behind it is, and translation waits so recognition can catch up.
 - A new subtitle history keeps past sessions on this computer only and deletes them after 30 days.
