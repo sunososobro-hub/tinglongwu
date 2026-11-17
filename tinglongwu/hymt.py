@@ -73,7 +73,6 @@ def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | N
     if context and context.strip():
         return (f"{context.strip()}\n参考上面的信息，把下面的文本翻译成{ZH_NAMES.get(tgt, tgt)}，"
                 f"注意不需要翻译上文，也不要额外解释：\n{text}")
-    return text  # #340 Acceptance 1 red-prompt probe: empty instruction (throwaway commit, never merged)
     if "zh" in (src, tgt):
         return (f"将以下文本翻译成{ZH_NAMES.get(tgt, tgt)}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}")
     return (f"Translate the following text into {EN_NAMES.get(tgt, tgt)}.\n"
