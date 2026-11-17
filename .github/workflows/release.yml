@@ -337,6 +337,24 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_SDK_VERSION" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "C:\VulkanSDK\$env:VULKAN_SDK_VERSION\Bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - name: SPIRV-Headers (ggml-vulkan needs its CMake config; the 1.4.309.0 SDK does not ship it, #1195)
+        if: steps.pin.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          SPIRV_HEADERS_SHA: "09913f088a1197aba4aefd300a876b2ebbaa3391"   # KhronosGroup/SPIRV-Headers tag vulkan-sdk-1.4.309.0
+        run: |
+          $src = "$env:RUNNER_TEMP\SPIRV-Headers"
+          $prefix = "$env:RUNNER_TEMP\spirv-headers-prefix"
+          git init -q $src
+          git -C $src fetch -q --depth 1 https://github.com/KhronosGroup/SPIRV-Headers $env:SPIRV_HEADERS_SHA
+          if ($LASTEXITCODE) { exit 1 }
+          git -C $src checkout -q FETCH_HEAD
+          if ((git -C $src rev-parse HEAD) -ne $env:SPIRV_HEADERS_SHA) { Write-Output "::error::SPIRV-Headers checkout is not the pinned commit"; exit 1 }
+          cmake -S $src -B "$src\build" -DSPIRV_HEADERS_ENABLE_TESTS=OFF
+          if ($LASTEXITCODE) { exit 1 }
+          cmake --install "$src\build" --prefix $prefix
+          if ($LASTEXITCODE) { exit 1 }
+          "CMAKE_PREFIX_PATH=$prefix" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
         if: steps.pin.outputs.skip != 'true'
         shell: pwsh
@@ -397,7 +415,8 @@ jobs:
       - name: Vulkan build tools (Ubuntu archive) + Mesa lavapipe for the smoke check
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libvulkan-dev glslc mesa-vulkan-drivers
+          # spirv-headers: ggml-vulkan's find_package(SPIRV-Headers CONFIG REQUIRED) (#1195)
+          sudo apt-get install -y -qq libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
       - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
         run: |
           pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements-llama-cpu.txt)
