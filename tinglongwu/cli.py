@@ -84,6 +84,10 @@ def parse_args(argv=None):
     p.add_argument("--models-dir", help="models directory (env TLWU_MODELS)")
     p.add_argument("--transcript-only", action="store_true",
                    help="print only source-language text, one segment per line (no translation)")
+    p.add_argument("--mt-pending", action="store_true",
+                   help="when the Hy-MT2 model is not installed yet (still downloading, e.g. the app's first run), "
+                        "start with source-language lines and translate from the line after the model lands, "
+                        "without a restart (#1357). Without it tlwu stops and prints the setup command")
     p.add_argument("--no-merge", action="store_true",
                    help="translate every VAD segment separately (default: merge into sentences first)")
     p.add_argument("--max-wait", type=float, default=None,
@@ -334,6 +338,18 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
             + (f", {on[1]} threads" if on and on[0] == "cpu" and on[1] else "") + f" ({why})", file=sys.stderr)
         return tr
     raise SystemExit(f"tlwu: unknown translation engine {name!r}; use --engine auto (#471)")
+
+
+def pending_or_none(mdir, engine: str, build, zh_variant: str = "tw", warn=None):
+    """#1357 (--mt-pending): a PendingTranslator when the default engine's Hy-MT2 1.8B model is not complete yet,
+    else None (the caller builds the engine as usual). Only auto / hymt2 / hymt2-cpu are deferred: the other
+    engines never wait for this download."""
+    from .mt_pending import PendingTranslator, hymt_complete
+
+    if engine not in ("auto", "hymt2", "hymt2-cpu") or hymt_complete(mdir):
+        return None
+    return PendingTranslator(lambda: hymt_complete(mdir), build, zh_variant=zh_variant,
+                             warn=warn or (lambda m: print(m, file=sys.stderr, flush=True)))
 
 
 def apply_glossary(translator, glossary) -> None:
@@ -639,9 +655,18 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     translator = None
     if not a.transcript_only:
         prog.stage("translation engine")
-        translator = make_translator(a.engine, mdir, a.zh_variant, dev,
-                                     ollama_model=getattr(a, "ollama_model", None),
-                                     ollama_url=getattr(a, "ollama_url", None))
+
+        def build_mt():
+            return make_translator(a.engine, mdir, a.zh_variant, dev,
+                                   ollama_model=getattr(a, "ollama_model", None),
+                                   ollama_url=getattr(a, "ollama_url", None))
+
+        translator = pending_or_none(mdir, a.engine, build_mt, a.zh_variant) if getattr(a, "mt_pending", False) \
+            else None
+        if translator is not None:
+            print(f"tlwu: {_t('mt_pending')}", file=sys.stderr, flush=True)
+        else:
+            translator = build_mt()
         if glossary is not None:
             apply_glossary(translator, glossary)
         if a.lang != "auto":

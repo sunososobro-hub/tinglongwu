@@ -18,6 +18,7 @@ from .langfollow import script_lang
 from .merge import SentenceMerger, Unit
 from .models import ModelNotFound
 from .repeat import filter_hallucination
+from .mt_pending import live
 from .segment import Segmenter
 from .sink import Result, Sink, pass_source
 from .speakers import UNKNOWN
@@ -222,20 +223,21 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
 
     def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None) -> None:
         tgt = route(lang) if route is not None else tgt0
-        if translator is None:  # transcript-only
+        mt = live(translator)  # #1357: None while a PendingTranslator's model is still downloading
+        if mt is None:  # transcript-only (or MT not ready yet: this line goes out as source text)
             write(Result(lang, unit_text, None, "", tgt, speaker=who), ep)
             return
         if lang == tgt:  # e.g. Chinese heard while translating to zh: show as is (Traditional via OpenCC)
             if tgt == "zh":
                 from .translate import zh_convert
 
-                unit_text = zh_convert(unit_text, getattr(translator, "zh_variant", "tw"))
+                unit_text = zh_convert(unit_text, getattr(mt, "zh_variant", "tw"))
             write(Result(lang, unit_text, None, unit_text, tgt, speaker=who), ep)
             return
         with model_lock():
             t0 = time.monotonic()
             try:
-                tr = translate_checked(translator, unit_text, lang, tgt)
+                tr = translate_checked(mt, unit_text, lang, tgt)
             except ModelNotFound as e:  # a language turned up whose model is not installed: say so, keep running
                 if (lang, tgt) not in missing:
                     missing.add((lang, tgt))
@@ -244,7 +246,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             if tr is None:  # the engine echoed the source twice
                 tr = Translation(None, _msg("mt_untranslated"))
             dt = time.monotonic() - t0
-            steps = step_times(translator)
+            steps = step_times(mt)
         say(f"latency: mt {dt * 1000:.0f} ms{steps} (waited {(t0 - queued) * 1000:.0f} ms in queue)")
         write(Result(lang, unit_text, tr.pivot, tr.text, tgt, speaker=who), ep)
 
