@@ -5,6 +5,7 @@ Dev tool (not part of the offline runtime). Runs on cloud CPU runners next to te
 
   <tts-venv>/bin/python scripts/bench/acronym_eval.py synth --voice DIR --data DATA     # Piper ru (GPL: own venv)
   python scripts/bench/acronym_eval.py run --data DATA --out OUT --models-dir MODELS [--whisper W]
+  python scripts/bench/acronym_eval.py std --data MATRIX_DATA --out OUT --models-dir MODELS [--whisper W]
   python scripts/bench/acronym_eval.py report OUT
 
 Set: ACRONYMS below, one self-written Russian sentence per acronym of the default list (38), spoken the way Russian
@@ -14,8 +15,10 @@ same model: without hotwords (`no`) and with the default list (`hw`), ASR only (
   acronym accuracy   the acronym is a whole word in the Whisper text
   false insertions   distractor clips whose Whisper text has any acronym of the list
   WER                word error rate over all clips against the written sentence (acronyms in Latin letters)
-Synthetic speech: the with/without difference is what this measures, not a field result. The ru WER on the
-standard set (eval-langs) is a separate check before the list is turned on (glossary.DEFAULT_HOTWORDS_SHIPPED).
+Synthetic speech: the with/without difference is what this measures, not a field result.
+`std` decodes the standard ru set (the eval-langs ru->zh clips: FLEURS, pinned in eval/matrix_pins.json, built by
+make_ci_smoke.py) with and without the list; `report` then says whether the list may ship
+(glossary.DEFAULT_HOTWORDS_SHIPPED): it must help on the acronym set AND keep the standard-set WER within 0.5 points.
 """
 from __future__ import annotations
 
@@ -193,6 +196,34 @@ def cmd_run(a) -> int:
     return 0
 
 
+def cmd_std(a) -> int:
+    """#1397: the standard ru set (eval-langs ru clips) with and without the default hotwords -> OUT/std_ru.jsonl."""
+    sys.path.insert(0, str(REPO))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from india_eval import load_audio
+    from tinglongwu.asr import FasterWhisperRecognizer
+    from tinglongwu.glossary import load_default_hotwords
+
+    data, out = Path(a.data), Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    rows = std_rows(data)
+    if not rows:
+        sys.exit(f"acronym_eval: no ru clips in {data / 'manifest.jsonl'}")
+    asr = FasterWhisperRecognizer(Path(a.models_dir), a.whisper, "ru", "cpu")
+    res = run_clips(rows, asr, load_default_hotwords("ru"), lambda r: load_audio(data / r["wav"]))
+    with open(out / "std_ru.jsonl", "w", encoding="utf-8", newline="\n") as f:
+        for d in res:
+            f.write(json.dumps(d, ensure_ascii=False) + "\n")
+    print(f"acronym_eval: {len(res)} standard ru clips -> {out}")
+    return 0
+
+
+def std_rows(data: Path) -> list[dict]:
+    """The ru rows of a make_ci_smoke.py manifest (id, lang, wav, ref_text)."""
+    rows = [json.loads(x) for x in (data / "manifest.jsonl").read_text("utf-8").splitlines() if x.strip()]
+    return [r for r in rows if r.get("lang") == "ru"]
+
+
 # ---------- report ----------
 
 def _median(xs):
@@ -227,6 +258,36 @@ def summarize(rows: list[dict]) -> dict:
     return out
 
 
+def summarize_std(rows: list[dict]) -> dict:
+    """Standard-set WER without / with the list (no acronyms in it: this only catches harm)."""
+    out = {"clips": len(rows)}
+    for tag in ("no", "hw"):
+        edits = words = 0
+        for r in rows:
+            e, n = wer_counts(r["ref_text"], r[f"asr_{tag}"])
+            edits, words = edits + e, words + n
+        out[tag] = {"wer": round(edits / (words or 1), 4), "changed": sum(r["asr_no"] != r["asr_hw"] for r in rows)}
+    out["within"] = out["hw"]["wer"] <= out["no"]["wer"] + 0.005
+    return out
+
+
+def ship(s: dict, std: dict | None) -> bool | None:
+    """#1397 Acceptance: ship only when the list helps on the acronym set and the standard ru WER stays within 0.5 pt;
+    None when the standard set was not run."""
+    if std is None or not std["clips"]:
+        return None
+    return bool(s["helps"] and std["within"])
+
+
+def std_table(std: dict) -> str:
+    no, hw = std["no"], std["hw"]
+    return "\n".join([f"Standard ru set (eval-langs FLEURS clips): {std['clips']}", "",
+                      "| metric | without hotwords | with default hotwords | change |", "|---|---|---|---|",
+                      f"| WER | {100 * no['wer']:.1f}% | {100 * hw['wer']:.1f}% | {100 * (hw['wer'] - no['wer']):+.1f} pt |",
+                      f"| clips whose text changed | | {hw['changed']} | |", "",
+                      f"Standard-set WER within 0.5 pt: {'yes' if std['within'] else 'no'}"])
+
+
 def table(s: dict) -> str:
     no, hw = s["no"], s["hw"]
     lines = [f"Acronym clips: {s['acronym_clips']}, distractor clips: {s['distractor_clips']}", "",
@@ -247,8 +308,15 @@ def cmd_report(a) -> int:
     d = Path(a.out)
     rows = [json.loads(x) for x in (d / "acronyms.jsonl").read_text("utf-8").splitlines() if x.strip()]
     s = summarize(rows)
+    std_f = d / "std_ru.jsonl"
+    std = summarize_std([json.loads(x) for x in std_f.read_text("utf-8").splitlines() if x.strip()]) \
+        if std_f.exists() else None
+    s["std"], s["ship"] = std, ship(s, std)
     (d / "summary.json").write_text(json.dumps(s, indent=1, ensure_ascii=False), "utf-8")
     print(table(s))
+    if std is not None:
+        print("\n" + std_table(std))
+    print(f"\nShip the default ru list: {({True: 'yes', False: 'no'}).get(s['ship'], 'unknown (standard set not run)')}")
     return 0
 
 
@@ -264,10 +332,15 @@ def main(argv=None) -> int:
     r.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS", ""))
     r.add_argument("--whisper", default="large-v3-turbo")
     r.add_argument("--limit", type=int, default=0, help="first N clips only (smoke)")
+    t = sub.add_parser("std")
+    t.add_argument("--data", required=True, help="make_ci_smoke.py output with the eval-langs ru clips")
+    t.add_argument("--out", required=True)
+    t.add_argument("--models-dir", default=os.environ.get("TLWU_MODELS", ""))
+    t.add_argument("--whisper", default="large-v3-turbo")
     p = sub.add_parser("report")
     p.add_argument("out")
     a = ap.parse_args(argv)
-    return {"synth": cmd_synth, "run": cmd_run, "report": cmd_report}[a.cmd](a)
+    return {"synth": cmd_synth, "run": cmd_run, "std": cmd_std, "report": cmd_report}[a.cmd](a)
 
 
 if __name__ == "__main__":

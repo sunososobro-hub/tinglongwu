@@ -12,6 +12,7 @@ on:
       - .github/workflows/eval-terms.yml
       - scripts/bench/term_eval.py
       - scripts/bench/acronym_eval.py
+      - eval/matrix_pins.json
       - tinglongwu/glossary.py
       - tinglongwu/data/hotwords-ru.txt
   workflow_dispatch:
@@ -79,6 +80,9 @@ jobs:
         run: |
           "$HOME/tts/bin/python" scripts/bench/acronym_eval.py synth --voice "$TLWU_MODELS/piper-ru_RU-dmitri-medium" --data "$HOME/acronyms"
           python scripts/bench/acronym_eval.py run --data "$HOME/acronyms" --out out/acronyms --whisper "$WHISPER"
+          # standard ru set = the eval-langs ru->zh clips (FLEURS, sha256-pinned in eval/matrix_pins.json)
+          python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out "$HOME/matrix"
+          python scripts/bench/acronym_eval.py std --data "$HOME/matrix" --out out/acronyms --whisper "$WHISPER"
           python scripts/bench/acronym_eval.py report out/acronyms | tee out/acronyms/report.md
           { echo "## Default ru hotwords (#1397)"; cat out/acronyms/report.md; echo; } >> "$GITHUB_STEP_SUMMARY"
       - name: ASR + MT with and without the glossary (CPU)
