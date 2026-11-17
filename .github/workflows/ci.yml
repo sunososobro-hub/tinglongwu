@@ -37,6 +37,31 @@ jobs:
           else
             printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
           fi
+      - name: Privacy scan of the added lines (#1405; the private list is the repo secret TLWU_DENYLIST)
+        # Mergers wait only for `test` (rules section 17), so the gate lives here too. The BASE branch's scanner is
+        # run (a PR cannot edit it to pass); only while the base has no copy yet (the PR adding it) the PR's own runs.
+        # Fork PRs get no secrets under pull_request: they pass only when the `privacy-scan` check
+        # (pull_request_target, has the secret) passed on the same head. Same-repo PRs without the secret fail closed.
+        if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+        env:
+          TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          D="$RUNNER_TEMP/privacy"; mkdir -p "$D"
+          if git fetch -q --depth=1 origin "$GITHUB_BASE_REF" \
+             && git show FETCH_HEAD:scripts/privacy_scan.py > "$D/privacy_scan.py" \
+             && git show FETCH_HEAD:scripts/scan_denylist.py > "$D/scan_denylist.py"; then
+            S="$D/privacy_scan.py"
+          else
+            S=scripts/privacy_scan.py
+          fi
+          if [ "$FORK" = "true" ]; then
+            python "$S" pr --pr "$PR" --fallback-check privacy-scan
+          else
+            python "$S" pr --pr "$PR"
+          fi
       - name: Head name for PRs into main (#1265; only release/vX.Y.Z and docs/fastlane-N may target main)
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         env:

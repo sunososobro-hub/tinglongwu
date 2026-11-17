@@ -1,0 +1,193 @@
+"""#1405 privacy gate. Only made-up words are used here ("zorblat", "qux frim"); never put a real list word in a test."""
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import privacy_scan as ps  # noqa: E402
+import scan_denylist as sd  # noqa: E402
+
+FAKE = "# fake list\nzorblat\nqux frim\n"
+
+
+class FakeGH:
+    repo = "o/r"
+
+    def __init__(self, files=None, issues=(), comments=(), review_comments=(), checks=None, raw=b""):
+        self.files, self.issues, self.comments, self.review_comments = files or [], issues, comments, review_comments
+        self.checks, self.raw = checks or [], raw
+        self.calls: list[tuple] = []
+
+    def get(self, path):
+        self.calls.append(("get", path))
+        if "/check-runs" in path:
+            return {"check_runs": self.checks}
+        return {"head": {"sha": "abc1234567"}}
+
+    def get_raw(self, path):
+        self.calls.append(("raw", path))
+        return self.raw
+
+    def paginate(self, path):
+        if path.endswith("/files"):
+            return iter(self.files)
+        if path.endswith("/issues/comments"):
+            return iter(self.comments)
+        if path.endswith("/pulls/comments"):
+            return iter(self.review_comments)
+        return iter(self.issues)
+
+    def patch(self, path, body):
+        self.calls.append(("patch", path, body))
+
+    def add_label(self, n):
+        self.calls.append(("label", n))
+
+    def minimize(self, node_id):
+        self.calls.append(("minimize", node_id))
+
+
+@pytest.fixture
+def rx():
+    return sd.Matcher(sd.parse_words(FAKE))
+
+
+# ---- matcher -------------------------------------------------------------
+def test_matcher_case_width_and_spaces(rx):
+    assert rx.search("a ZorBlat b")
+    assert rx.search("full width ＺＯＲＢＬＡＴ here")
+    assert rx.search("spaced z o r b l a t")
+    assert rx.search("joined quxfrim")  # list entry has a space, text has none
+    assert rx.search("ｑｕｘ　ｆｒｉｍ")  # full-width letters and ideographic space
+    assert rx.search("zorbl at")  # spaces inside a word are ignored on purpose
+    assert not rx.search("zorbla-t")
+    assert not rx.search("nothing to see")
+
+
+def test_mask_keeps_rest_and_hides_word(rx):
+    out = rx.sub("pre ＺＯＲＢＬＡＴ post")
+    assert out == "pre ******* post"
+    assert rx.sub("x qux frim y", "***") == "x *** y"
+    assert "zorblat" not in rx.sub("zorblat zorblat").lower()
+
+
+def test_env_text_and_empty(monkeypatch):
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
+    assert sd.env_words() is None
+    monkeypatch.setenv("TLWU_DENYLIST_TEXT", "  \n")
+    assert sd.env_words() is None
+    monkeypatch.setenv("TLWU_DENYLIST_TEXT", FAKE)
+    assert sd.env_words() == ["zorblat", "qux frim"]
+    assert sd.Matcher(["   ", "#x"]).size == 1  # "#x" is a word when passed directly; blanks are dropped
+
+
+# ---- PR diff ---------------------------------------------------------------
+PATCH = "@@ -1,2 +1,3 @@\n keep\n-old zorblat line\n+new ＺＯＲＢＬＡＴ line\n+fine\n"
+
+
+def test_pr_hit_in_added_line_is_masked(rx, capsys):
+    gh = FakeGH(files=[{"filename": "docs/a.md", "status": "modified", "patch": PATCH}])
+    assert ps.cmd_pr(gh, 7, rx=rx) == 1
+    out = capsys.readouterr().out
+    assert "docs/a.md:2: new ******* line" in out
+    assert "ＺＯＲＢＬＡＴ" not in out and "zorblat" not in out.lower()
+
+
+def test_pr_removed_line_is_not_a_hit(rx):
+    patch = "@@ -1,2 +1,1 @@\n-old zorblat line\n keep\n"
+    gh = FakeGH(files=[{"filename": "a.py", "status": "modified", "patch": patch},
+                       {"filename": "zorblat.txt", "status": "removed"}])
+    assert ps.cmd_pr(gh, 7, rx=rx) == 0
+
+
+def test_pr_file_name_and_no_patch_file(rx, capsys):
+    gh = FakeGH(files=[{"filename": "big.txt", "status": "added"}], raw=b"one\ntwo qux frim\n")
+    assert ps.cmd_pr(gh, 7, rx=rx) == 1
+    assert "big.txt:2: two ***" in capsys.readouterr().out  # "qux frim" masked (8 chars)
+    gh2 = FakeGH(files=[{"filename": "x/Zorblat.md", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
+    assert ps.cmd_pr(gh2, 7, rx=rx) == 1
+
+
+def test_pr_no_secret_fails_closed(monkeypatch, capsys):
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
+    gh = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
+    assert ps.cmd_pr(gh, 7) == 1
+    assert "denylist secret missing" in capsys.readouterr().err
+
+
+def test_pr_no_secret_fork_uses_privacy_scan_check(monkeypatch):
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
+    ok = FakeGH(checks=[{"name": "privacy-scan", "status": "completed", "conclusion": "success", "completed_at": "1"}])
+    assert ps.cmd_pr(ok, 7, fallback_check="privacy-scan") == 0
+    bad = FakeGH(checks=[{"name": "privacy-scan", "status": "completed", "conclusion": "failure", "completed_at": "1"}])
+    assert ps.cmd_pr(bad, 7, fallback_check="privacy-scan") == 1
+    none = FakeGH()
+    assert ps.wait_check(none, "abc", "privacy-scan", timeout_s=0, sleep=lambda s: None) is False
+
+
+# ---- issues / comments -----------------------------------------------------
+def test_comment_hit_is_minimized_and_labelled(rx, capsys):
+    gh = FakeGH()
+    ev = {"comment": {"body": "see ＺＯＲＢＬＡＴ", "node_id": "IC_1", "html_url": "u"}, "issue": {"number": 5}}
+    assert ps.handle_event(gh, "issue_comment", ev, rx=rx) == "minimized"
+    assert ("minimize", "IC_1") in gh.calls and ("label", 5) in gh.calls
+    assert "zorblat" not in capsys.readouterr().out.lower()
+    rc = {"comment": {"body": "qux frim", "node_id": "RC_1"}, "pull_request": {"number": 9}}
+    assert ps.handle_event(gh, "pull_request_review_comment", rc, rx=rx) == "minimized"
+
+
+def test_issue_body_is_masked_in_place(rx):
+    gh = FakeGH()
+    ev = {"issue": {"number": 3, "title": "ok", "body": "a zorblat b"}}
+    assert ps.handle_event(gh, "issues", ev, rx=rx) == "masked"
+    patch = next(c for c in gh.calls if c[0] == "patch")
+    assert patch[1] == "/repos/o/r/issues/3" and patch[2]["body"] == "a *** b"
+    pr = {"pull_request": {"number": 4, "title": "Qux Frim", "body": ""}}
+    assert ps.handle_event(gh, "pull_request_target", pr, rx=rx) == "masked"
+    assert ("patch", "/repos/o/r/pulls/4", {"title": "***", "body": ""}) in gh.calls
+
+
+def test_clean_and_no_secret_do_nothing(rx, monkeypatch):
+    gh = FakeGH()
+    assert ps.handle_event(gh, "issues", {"issue": {"number": 1, "title": "t", "body": "b"}}, rx=rx) == "clean"
+    monkeypatch.delenv("TLWU_DENYLIST_TEXT", raising=False)
+    assert ps.handle_event(gh, "issues", {"issue": {"number": 1, "title": "zorblat", "body": ""}}) == "no-list"
+    assert gh.calls == []
+
+
+# ---- sweep -----------------------------------------------------------------
+def test_sweep_counts_links_only(rx, tmp_path, capsys):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "a.txt").write_text("line\nZORBLAT\n", "utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "a.txt"], check=True)
+    gh = FakeGH(issues=[{"number": 2, "title": "x", "body": "qux frim", "html_url": "i2"},
+                        {"number": 3, "title": "y", "body": "", "html_url": "i3"}],
+                comments=[{"body": "zorblat", "html_url": "c1", "issue_url": "https://api/x/issues/3"}],
+                review_comments=[{"body": "fine", "html_url": "c2", "pull_request_url": "https://api/x/pulls/8"}])
+    counts = ps.sweep(gh, rx, tmp_path)
+    assert counts == {"files": 1, "items": 1, "comments": 1}
+    assert ("label", 2) in gh.calls and ("label", 3) in gh.calls
+    out = capsys.readouterr().out
+    assert "file: a.txt:2" in out and "zorblat" not in out.lower() and "qux" not in out.lower()
+
+
+def test_local_scan_masks_path_and_text(rx, tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "zorblat_notes.txt").write_text("ok\nQux  Frim\n", "utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    out: list[str] = []
+    sd.scan_tracked(rx, out, tmp_path)
+    assert len(out) == 2  # the file name and line 2
+    assert all("zorblat" not in h.lower() and "qux" not in h.lower() for h in out)
+
+
+def test_local_cli_empty_env_list_is_exit_2(monkeypatch):
+    env = {**__import__("os").environ, "TLWU_DENYLIST_TEXT": "# only a comment\n", "TLWU_DENYLIST": "/nonexistent"}
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "scan_denylist.py"), "--no-staged", "--no-tracked"],
+                       cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode == 2  # blank list text falls back to the file, which is missing

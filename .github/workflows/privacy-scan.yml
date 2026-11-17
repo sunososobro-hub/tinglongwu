@@ -1,0 +1,84 @@
+name: privacy-scan
+# #1405: keep words from the private list (repo secret TLWU_DENYLIST) out of this public repo.
+# The list is passed only as an env var to scripts/privacy_scan.py, which never prints, caches or uploads it.
+# PR code is never checked out or run here: the PR job reads the diff through the API with the BASE branch's script.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:   # fork PRs get no secrets for this event: their review comments are not checked
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      sweep:
+        description: "One-time sweep: tracked files + every issue/PR body and comment (prints counts and links only)"
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  privacy-scan:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 (base branch, not the PR head)
+        with:
+          persist-credentials: false
+      - name: Added lines of the PR (fails on a hit; fails closed without the secret)
+        env:
+          TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python scripts/privacy_scan.py pr --pr "$PR"
+      - name: PR title and body (masked in place on a hit)
+        if: always() && (github.event.action == 'opened' || github.event.action == 'edited')
+        env:
+          TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/privacy_scan.py event --name pull_request_target --path "$GITHUB_EVENT_PATH"
+
+  privacy-event:
+    if: github.event_name == 'issues' || github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Hide or mask a hit
+        env:
+          TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: python scripts/privacy_scan.py event --name "$EVENT" --path "$GITHUB_EVENT_PATH"
+
+  privacy-sweep:
+    if: github.event_name == 'workflow_dispatch' && inputs.sweep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Sweep
+        env:
+          TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/privacy_scan.py sweep

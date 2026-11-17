@@ -3,8 +3,12 @@
 
 The word list lives OUTSIDE the repository (one word or phrase per line; blank lines and lines starting with
 "#" are ignored; matching is case-insensitive). Default path: ~/.config/tlwu/denylist.txt, override with the
-environment variable TLWU_DENYLIST. This script contains no keywords itself and never prints a matched word:
+environment variable TLWU_DENYLIST. CI passes the list TEXT instead (the repo secret) in TLWU_DENYLIST_TEXT, which
+wins over the file when set (#1405). This script contains no keywords itself and never prints a matched word:
 hits are reported as file:line with the match replaced by asterisks.
+
+Matching (#1405): case-insensitive, full-width / half-width forms are equal (NFKC), and spaces are ignored on both
+sides, so "a b" in the list also catches "ab" and "Ａ Ｂ". scripts/privacy_scan.py reuses this matcher.
 
 Usage:   python scripts/scan_denylist.py [--no-tracked] [--no-staged]
 Exit:    0 clean, 1 hit(s) found, 2 denylist missing/empty/unreadable (or not a git repo).
@@ -21,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,39 +36,126 @@ def denylist_path() -> Path:
     return Path(env).expanduser() if env else Path.home() / ".config" / "tlwu" / "denylist.txt"
 
 
-def load_words(path: Path) -> list[str]:
-    text = path.read_text(encoding="utf-8-sig")
+def parse_words(text: str) -> list[str]:
+    text = text.removeprefix("\ufeff")
     return [w for w in (ln.strip() for ln in text.splitlines()) if w and not w.startswith("#")]
+
+
+def load_words(path: Path) -> list[str]:
+    return parse_words(path.read_text(encoding="utf-8-sig"))
+
+
+def env_words() -> list[str] | None:
+    """The list from TLWU_DENYLIST_TEXT (CI secret); None when that variable is unset or blank."""
+    text = os.environ.get("TLWU_DENYLIST_TEXT", "")
+    return parse_words(text) if text.strip() else None
+
+
+def _fold(s: str) -> str:
+    """Width-, case- and space-insensitive key of one string."""
+    return "".join(c for c in unicodedata.normalize("NFKC", s).casefold() if not c.isspace())
+
+
+class Matcher:
+    """Finds list words in text; the spans it returns are in the ORIGINAL text, so callers can mask them."""
+
+    def __init__(self, words: list[str]):
+        keys = sorted({k for k in (_fold(w) for w in words) if k}, key=len, reverse=True)
+        self.size = len(keys)
+        self._rx = re.compile("|".join(re.escape(k) for k in keys)) if keys else None
+
+    def spans(self, text: str) -> list[tuple[int, int]]:
+        if self._rx is None or not text:
+            return []
+        folded: list[str] = []
+        where: list[int] = []  # folded char -> index of the original char it came from
+        for i, c in enumerate(text):
+            for f in unicodedata.normalize("NFKC", c).casefold():
+                if not f.isspace():
+                    folded.append(f)
+                    where.append(i)
+        return [(where[m.start()], where[m.end() - 1] + 1) for m in self._rx.finditer("".join(folded))]
+
+    def search(self, text: str) -> bool:
+        return bool(self.spans(text))
+
+    def sub(self, text: str, repl=None) -> str:
+        """Replace every match: by asterisks of the same length (default) or by the string `repl`."""
+        out, last = [], 0
+        for a, b in self.spans(text):
+            out.append(text[last:a])
+            out.append("*" * (b - a) if repl is None else repl)
+            last = b
+        out.append(text[last:])
+        return "".join(out)
 
 
 def git(*args: str) -> bytes:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, stdout=subprocess.PIPE).stdout
 
 
-def mask_line(line: str, rx: re.Pattern) -> str:
-    return rx.sub(lambda m: "*" * len(m.group(0)), line)
+def mask_line(line: str, rx: Matcher) -> str:
+    return rx.sub(line)
 
 
-def scan_text(label: str, text: str, rx: re.Pattern, out: list[str]) -> None:
-    for n, line in enumerate(text.splitlines(), 1):
-        if rx.search(line):
-            out.append(f"{label}:{n}: {mask_line(line.strip(), rx)[:160]}")
-
-
-def scan_staged(rx: re.Pattern, out: list[str]) -> None:
-    """Added lines of the staged diff, reported as file:line (line number in the new file)."""
-    diff = git("diff", "--cached", "--no-color", "-U0", "--no-ext-diff").decode("utf-8", "replace")
-    name, new_ln = "?", 0
-    for line in diff.splitlines():
-        if line.startswith("+++ "):
-            name = line[4:].removeprefix("b/")
-        elif line.startswith("@@"):
+def added_lines(patch: str):
+    """(new line number, text) of each added line of a unified diff hunk list (git diff -U0 or the API `patch`)."""
+    new_ln = 0
+    for line in patch.splitlines():
+        if line.startswith("@@"):
             m = re.search(r"\+(\d+)", line)
             new_ln = int(m.group(1)) if m else 0
         elif line.startswith("+") and not line.startswith("+++"):
-            if rx.search(line[1:]):
-                out.append(f"{name}:{new_ln}: (staged) {mask_line(line[1:].strip(), rx)[:160]}")
+            yield new_ln, line[1:]
             new_ln += 1
+        elif line.startswith(" "):
+            new_ln += 1
+
+
+def scan_text(label: str, text: str, rx: Matcher, out: list[str]) -> None:
+    for n, line in enumerate(text.splitlines(), 1):
+        if rx.search(line):
+            out.append(f"{mask_line(label, rx)}:{n}: {mask_line(line.strip(), rx)[:160]}")
+
+
+def scan_staged(rx: Matcher, out: list[str]) -> None:
+    """Added lines of the staged diff, reported as file:line (line number in the new file)."""
+    diff = git("diff", "--cached", "--no-color", "-U0", "--no-ext-diff").decode("utf-8", "replace")
+    for name, patch in _split_files(diff):
+        for n, text in added_lines(patch):
+            if rx.search(text):
+                out.append(f"{mask_line(name, rx)}:{n}: (staged) {mask_line(text.strip(), rx)[:160]}")
+
+
+def _split_files(diff: str):
+    name, buf = None, []
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            if name is not None:
+                yield name, "\n".join(buf)
+            name, buf = "?", []
+        elif line.startswith("+++ "):
+            name = line[4:].removeprefix("b/")
+        elif name is not None and not line.startswith("--- "):
+            buf.append(line)
+    if name is not None:
+        yield name, "\n".join(buf)
+
+
+def scan_tracked(rx: Matcher, out: list[str], root: Path = ROOT) -> None:
+    for rel in subprocess.run(["git", "ls-files", "-z"], cwd=root, check=True,
+                              stdout=subprocess.PIPE).stdout.decode("utf-8", "replace").split("\0"):
+        if not rel:
+            continue
+        if rx.search(rel):  # the file NAME itself
+            out.append(f"{mask_line(rel, rx)}:0: (file name)")
+        try:
+            data = (root / rel).read_bytes()
+        except OSError:
+            continue
+        if b"\0" in data[:8192]:  # binary
+            continue
+        scan_text(rel, data.decode("utf-8", "replace"), rx, out)
 
 
 def main() -> int:
@@ -77,37 +169,27 @@ def main() -> int:
     ap.add_argument("--no-staged", action="store_true", help="skip the scan of the staged diff")
     a = ap.parse_args()
 
-    path = denylist_path()
-    if not path.is_file():
-        print(f"scan_denylist: denylist not found: {path}\n"
-              f"  Create it (one word per line, outside the repo) or point TLWU_DENYLIST at it.", file=sys.stderr)
+    words = env_words()
+    if words is None:
+        path = denylist_path()
+        if not path.is_file():
+            print(f"scan_denylist: denylist not found: {path}\n"
+                  f"  Create it (one word per line, outside the repo) or point TLWU_DENYLIST at it.", file=sys.stderr)
+            return 2
+        try:
+            words = load_words(path)
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"scan_denylist: cannot read {path}: {e}", file=sys.stderr)
+            return 2
+    rx = Matcher(words)
+    if not rx.size:
+        print("scan_denylist: denylist is empty", file=sys.stderr)
         return 2
-    try:
-        words = load_words(path)
-    except (OSError, UnicodeDecodeError) as e:
-        print(f"scan_denylist: cannot read {path}: {e}", file=sys.stderr)
-        return 2
-    if not words:
-        print(f"scan_denylist: denylist is empty: {path}", file=sys.stderr)
-        return 2
-    rx = re.compile("|".join(re.escape(w) for w in sorted(words, key=len, reverse=True)), re.IGNORECASE)
 
     hits: list[str] = []
     try:
         if not a.no_tracked:
-            for rel in git("ls-files", "-z").decode("utf-8", "replace").split("\0"):
-                if not rel:
-                    continue
-                f = ROOT / rel
-                if rx.search(rel):  # the file NAME itself
-                    hits.append(f"{rel}:0: (file name) {mask_line(rel, rx)}")
-                try:
-                    data = f.read_bytes()
-                except OSError:
-                    continue
-                if b"\0" in data[:8192]:  # binary
-                    continue
-                scan_text(rel, data.decode("utf-8", "replace"), rx, hits)
+            scan_tracked(rx, hits)
         if not a.no_staged:
             scan_staged(rx, hits)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
@@ -119,7 +201,7 @@ def main() -> int:
     if hits:
         print(f"scan_denylist: {len(hits)} hit(s) (matched words masked)", file=sys.stderr)
         return 1
-    print(f"scan_denylist: clean ({len(words)} denylist entries)")
+    print(f"scan_denylist: clean ({rx.size} denylist entries)")
     return 0
 
 
