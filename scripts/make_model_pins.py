@@ -7,7 +7,10 @@ the extracted layout (same code as tlwu-setup) hashed. Review the diff before co
 means upstream changed (or was tampered with).
 
     python scripts/make_model_pins.py            # refresh everything
+    python scripts/make_model_pins.py --only whisper-cpp-   # refresh only the keys with this prefix (#1401);
+                                                            # every other committed pin is kept byte-for-byte
 """
+import argparse
 import json
 import sys
 import tempfile
@@ -41,13 +44,39 @@ def hf_pin(api, repo, rev=None, only=None):
     return {"repo": repo, "revision": rev, "files": dict(sorted(files.items()))}
 
 
-def main():
+def refresh_only(api, prefix):
+    """#1401: re-pin only the model keys starting with `prefix`; keep every other committed pin unchanged."""
+    pins = dl.load_pins()
+    wanted = {f"whisper-cpp-{s}": (lambda s=s: hf_pin(api, dl.WHISPER_CPP_REPO, only={dl.whisper_cpp_file(s)}))
+              for s in dl.WHISPER_CPP_SIZES}
+    wanted.update({f"whisper-{s}": (lambda s=s: hf_pin(api, dl.whisper_repo(s))) for s in WHISPER})
+    keys = sorted(k for k in wanted if k.startswith(prefix))
+    if not keys:
+        sys.exit(f"--only {prefix!r} matches no refreshable model key")
+    models = dict(pins.get("models", {}))
+    for k in keys:
+        models[k] = wanted[k]()
+        if not models[k]["files"]:
+            sys.exit(f"{k}: no matching file in {models[k]['repo']}@{models[k]['revision']}")
+    pins["models"] = models
+    pins.setdefault("argos", {})
+    dl.PINS_FILE.write_text(json.dumps(pins, indent=1) + "\n", "utf-8", newline="\n")
+    return keys
+
+
+def main(argv=None):
     import os
 
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--only", metavar="PREFIX", help="refresh only model keys with this prefix, e.g. whisper-cpp-")
+    a = ap.parse_args(argv)
     os.environ.pop("HF_HUB_OFFLINE", None)
     from huggingface_hub import HfApi
 
     api = HfApi()
+    if a.only:
+        print("refreshed", ", ".join(refresh_only(api, a.only)), "in", dl.PINS_FILE)
+        return
     models = {f"whisper-{s}": hf_pin(api, dl.whisper_repo(s)) for s in WHISPER}
     for s in dl.WHISPER_CPP_SIZES:  # #1401: whisper.cpp ggml models for the Vulkan ASR (LFS -> SHA256 from the API)
         models[f"whisper-cpp-{s}"] = hf_pin(api, dl.WHISPER_CPP_REPO, only={dl.whisper_cpp_file(s)})
