@@ -1431,9 +1431,12 @@ class App:
         self._upd_show("gui_upd_applying")
         self.root.update_idletasks()
         try:
-            autoupdate.start_apply(self.upd_exe)
+            rc = autoupdate.start_apply(self.upd_exe)
         except Exception as e:  # noqa: BLE001
             self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why=type(e).__name__)
+            return
+        if rc:  # #1348: the file failed its signature / SHA256 re-check; nothing was started, so keep running
+            self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why="verify")
             return
         self.root.after(UPDATE_QUIT_DELAY_MS, self.quit)  # the helper waits for this process, then installs and restarts the GUI
 

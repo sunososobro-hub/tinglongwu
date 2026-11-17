@@ -642,6 +642,15 @@ jobs:
           for f in "$exe" tinglongwu-setup.exe; do   # Git Bash prints "hash *file"; keep the "hash  file" format
             echo "$(sha256sum "$f" | cut -d' ' -f1)  $f" >> SHA256SUMS.txt
           done
+      - name: Sign the final SHA256SUMS.txt for the self-updater (#1348; no secret = unsigned, a notice)
+        if: needs.plan.outputs.publish == 'true'
+        shell: bash
+        env:
+          TLWU_SUMS_SIGNING_KEY: ${{ secrets.TLWU_SUMS_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          rm -f dist/installer/SHA256SUMS.txt.sig   # never upload a stale signature
+          python scripts/sign_sums.py sign dist/installer/SHA256SUMS.txt
       - name: Build provenance for the setup wizard and the final SHA256SUMS.txt (#26; tinglongwu-setup.exe = same bytes)
         if: needs.plan.outputs.publish == 'true'
         continue-on-error: true   # provenance is additive: an attestation outage never blocks the release
@@ -662,6 +671,11 @@ jobs:
           exe="tinglongwu-setup-${TAG#v}.exe"   # written by the step above
           [ -f tinglongwu-setup.exe ] && [ -f SHA256SUMS.txt ] || { echo "wizard copy or SHA256SUMS.txt missing: $(ls)"; exit 1; }
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$exe" tinglongwu-setup.exe SHA256SUMS.txt --clobber
+          if [ -f SHA256SUMS.txt.sig ]; then   # #1348: signed by the step above
+            gh release upload "$TAG" -R "$GITHUB_REPOSITORY" SHA256SUMS.txt.sig --clobber
+          else   # a re-run without the key must not leave a signature of an older SHA256SUMS.txt
+            gh release delete-asset "$TAG" SHA256SUMS.txt.sig -R "$GITHUB_REPOSITORY" -y 2>/dev/null || true
+          fi
           # What's new comes from docs/whats_new.md (or a release PR edit); without it the notes keep the TODO line
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json body -q .body | grep -q 'TODO:'; then
             echo "::notice::$TAG stays a draft: fill in What's new, then run: gh release edit $TAG --draft=false"

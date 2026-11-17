@@ -9,9 +9,14 @@
   --download DIR         download tinglongwu-setup.exe of the latest release into DIR (resumable, see resume.fetch),
                          verify it against the release's SHA256SUMS.txt; prints "PROGRESS n" lines then
                          "READY <path>". Exit 1 with "FAIL <why>" (a SHA256 mismatch aborts, the file is deleted).
+                         #1348: with SUMS_PUBKEY set, SHA256SUMS.txt must carry a valid Ed25519 signature
+                         (SHA256SUMS.txt.sig) or nothing is downloaded. The verified sums (+ signature) are kept next
+                         to the download as <file>.sums / <file>.sums.sig for the re-check before apply.
   --apply EXE --app DIR --pid N
-                         start a detached PowerShell helper that waits for process N (the GUI) to exit, runs EXE
-                         silently, then starts the GUI again. The installer keeps models\\ and the user config.
+                         re-check EXE against its kept sums (signature + SHA256, #1348; "FAIL <why>", exit 1, nothing
+                         runs), then start a detached PowerShell helper that waits for process N (the GUI) to exit,
+                         re-hashes EXE once more, runs it silently, then starts the GUI again. The installer keeps
+                         models\\ and the user config.
 
   --plan --app DIR       (#946) app-layer-only update? Compares DIR/runtime-layer.json (key, lite) with the latest
                          release's tinglongwu-app-layer.zip.manifest.json. Prints "PLAN app <MB>" when they match,
@@ -29,6 +34,7 @@ TLWU_OFFLINE=1). Pre-releases and drafts are ignored. Run: `python -m tinglongwu
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -38,13 +44,18 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from . import resume
+from . import ed25519, resume
 
 REPO = "sunososobro-hub/tinglongwu"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 API_TAG = f"https://api.github.com/repos/{REPO}/releases/tags/v{{version}}"  # #801: one version's release
 EXE_NAME = "tinglongwu-setup.exe"
 SUMS_NAME = "SHA256SUMS.txt"
+SIG_NAME = SUMS_NAME + ".sig"  # #1348: base64 of the 64-byte Ed25519 signature of SHA256SUMS.txt's exact bytes
+# #1348: hex Ed25519 public key of the release signer (scripts/sign_sums.py keygen; the secret half is the repo secret
+# TLWU_SUMS_SIGNING_KEY used by release.yml). Empty = signatures are not required yet (releases made before the key
+# existed); set = an unsigned or wrongly signed SHA256SUMS.txt is refused. Never read from the environment.
+SUMS_PUBKEY = ""
 APP_ZIP_NAME = "tinglongwu-app-layer.zip"  # #946: the app layer alone (tinglongwu/, tlwu_app/, tinglongwu_setup/ ...)
 APP_MANIFEST_NAME = APP_ZIP_NAME + ".manifest.json"  # {name, size, sha256, url, runtime_key, lite}
 RUNTIME_MANIFEST = "runtime-layer.json"  # in the install dir: {key, lite, ...}
@@ -119,6 +130,7 @@ def latest_release(get=_get, count_url: str | None = None) -> dict | None:
         return None
     sizes = {a.get("name"): a.get("size") for a in rel.get("assets") or []}
     return {"version": tag.lstrip("v"), "exe_url": assets[EXE_NAME], "sums_url": assets[SUMS_NAME],
+            "sig_url": assets.get(SIG_NAME),
             "exe_size": sizes.get(EXE_NAME), "app_url": assets.get(APP_ZIP_NAME),
             "app_manifest_url": assets.get(APP_MANIFEST_NAME)}
 
@@ -130,6 +142,64 @@ def parse_sums(text: str, name: str) -> str | None:
         if len(parts) == 2 and parts[1].lstrip("*") == name and re.fullmatch(r"[0-9a-fA-F]{64}", parts[0]):
             return parts[0].lower()
     return None
+
+
+def parse_sig(data: bytes) -> bytes | None:
+    """The 64 signature bytes of a SHA256SUMS.txt.sig (base64, surrounding whitespace allowed), or None."""
+    try:
+        sig = base64.b64decode(data.strip(), validate=True)
+    except (ValueError, TypeError):
+        return None
+    return sig if len(sig) == 64 else None
+
+
+def verify_sums(sums: bytes, sig: bytes | None, pubkey: str | None = None) -> None:
+    """#1348: ValueError unless `sig` is a valid signature of `sums` by the embedded key. No key = no check."""
+    key = SUMS_PUBKEY if pubkey is None else pubkey
+    if not key:
+        return
+    raw = parse_sig(sig) if sig is not None else None
+    if raw is None:
+        raise ValueError(f"{SUMS_NAME} is not signed ({SIG_NAME} missing or malformed)")
+    if not ed25519.verify(bytes.fromhex(key), sums, raw):
+        raise ValueError(f"{SUMS_NAME} signature is not valid")
+
+
+def fetch_sums(rel: dict, get=_get) -> tuple[bytes, bytes | None]:
+    """(SHA256SUMS.txt bytes, signature file bytes or None), already verified (verify_sums)."""
+    sums = get(rel["sums_url"], timeout=SUMS_TIMEOUT_S)
+    sig = get(rel["sig_url"], timeout=SUMS_TIMEOUT_S) if rel.get("sig_url") else None
+    verify_sums(sums, sig)
+    return sums, sig
+
+
+def keep_sums(dest: Path, sums: bytes, sig: bytes | None) -> None:
+    """Store the verified sums (and signature) beside the download, for verify_pending."""
+    Path(str(dest) + ".sums").write_bytes(sums)
+    sig_path = Path(str(dest) + ".sums.sig")
+    if sig is not None:
+        sig_path.write_bytes(sig)
+    else:
+        sig_path.unlink(missing_ok=True)
+
+
+def verify_pending(path: Path, pubkey: str | None = None) -> str:
+    """#1348: re-check a downloaded installer / app-layer zip right before apply. Returns its SHA256; ValueError when
+    the kept sums are missing, their signature fails (key set) or the file no longer matches."""
+    path = Path(path)
+    name = APP_ZIP_NAME if path.suffix.lower() == ".zip" else EXE_NAME
+    try:
+        sums = Path(str(path) + ".sums").read_bytes()
+    except OSError:
+        raise ValueError(f"no kept {SUMS_NAME} for {path.name}: download it again") from None
+    sig_path = Path(str(path) + ".sums.sig")
+    verify_sums(sums, sig_path.read_bytes() if sig_path.exists() else None, pubkey)
+    want = parse_sums(sums.decode("utf-8", "replace"), name)
+    if not want:
+        raise ValueError(f"{name} is not listed in the kept {SUMS_NAME}")
+    if resume._sha(path) != want:
+        raise ValueError(f"{path.name} was changed after download (SHA256 mismatch)")
+    return want
 
 
 def check(current: str, get=_get, env=None, count: bool = False) -> str:
@@ -151,10 +221,13 @@ def download(dest_dir: Path, get=_get, fetch=resume.fetch, say=print) -> Path:
     rel = latest_release(get)
     if rel is None:
         raise ValueError("no published release with a setup wizard")
-    sha = parse_sums(get(rel["sums_url"], timeout=SUMS_TIMEOUT_S).decode("utf-8", "replace"), EXE_NAME)
+    sums, sig = fetch_sums(rel, get)
+    sha = parse_sums(sums.decode("utf-8", "replace"), EXE_NAME)
     if not sha:
         raise ValueError(f"{EXE_NAME} is not listed in {SUMS_NAME}")
     dest = Path(dest_dir) / f"tinglongwu-setup-{rel['version']}.exe"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    keep_sums(dest, sums, sig)
     total = [0]
 
     def on_bytes(n: int) -> None:
@@ -229,10 +302,13 @@ def download_app(dest_dir: Path, get=_get, fetch=resume.fetch, say=print) -> Pat
     man = app_manifest(rel, get) if rel else None
     if not rel or not man:
         raise ValueError("no app-layer asset in the latest release")
-    sha = parse_sums(get(rel["sums_url"], timeout=SUMS_TIMEOUT_S).decode("utf-8", "replace"), APP_ZIP_NAME)
+    sums, sig = fetch_sums(rel, get)
+    sha = parse_sums(sums.decode("utf-8", "replace"), APP_ZIP_NAME)
     if not sha or sha != str(man["sha256"]).lower():
         raise ValueError(f"{APP_ZIP_NAME} checksum missing or not equal in {SUMS_NAME} and the manifest")
     dest = Path(dest_dir) / f"tinglongwu-app-layer-{rel['version']}.zip"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    keep_sums(dest, sums, sig)
     total = [0]
 
     def on_bytes(n: int) -> None:
@@ -263,7 +339,15 @@ def _ps_quote(s: str) -> str:
     return "'" + str(s).replace("'", "''") + "'"
 
 
-def apply_script(exe: Path, app_dir: Path, pid: int) -> str:
+def _ps_hash_guard(path_expr: str, sha: str | None) -> str:
+    """#1348: PowerShell line that stops the helper when the file's SHA256 changed since verify_pending."""
+    if not sha:
+        return ""
+    return (f"if ((Get-FileHash -Algorithm SHA256 -LiteralPath {path_expr}).Hash.ToLower() -ne {_ps_quote(sha.lower())})"
+            " { throw 'update file changed after verification' }")
+
+
+def apply_script(exe: Path, app_dir: Path, pid: int, sha: str | None = None) -> str:
     """PowerShell for the helper: wait for the GUI, install silently, start the GUI again (also after a failed
     install, so the user is never left without the app). The prebuilt core's tlwu.exe (#768) wins over the source
     install's .venv GUI launcher."""
@@ -272,17 +356,19 @@ def apply_script(exe: Path, app_dir: Path, pid: int) -> str:
     log = Path(exe).with_suffix(".log")
     args = ", ".join(_ps_quote(a) for a in (*INSTALLER_ARGS, f"/LOG={log}"))
     wd = _ps_quote(app_dir)
+    guard = _ps_hash_guard(_ps_quote(exe), sha)
+    run = f"Start-Process -FilePath {_ps_quote(exe)} -ArgumentList @({args}) -Wait"
     return "\n".join([
         "$ErrorActionPreference = 'SilentlyContinue'",
         f"Wait-Process -Id {int(pid)} -Timeout {WAIT_GUI_EXIT_S}",
-        f"Start-Process -FilePath {_ps_quote(exe)} -ArgumentList @({args}) -Wait",
+        f"try {{ {guard} ; {run} }} catch {{ }}" if guard else run,  # a changed file is never run; the GUI restarts
         f"if (Test-Path {_ps_quote(core)}) {{ Start-Process -FilePath {_ps_quote(core)} -WorkingDirectory {wd} }}",
         f"elseif (Test-Path {_ps_quote(gui)}) {{ Start-Process -FilePath {_ps_quote(gui)} -WorkingDirectory {wd} }}",
         "",
     ])
 
 
-def apply_app_script(zip_path: Path, app_dir: Path, pid: int) -> str:
+def apply_app_script(zip_path: Path, app_dir: Path, pid: int, sha: str | None = None) -> str:
     """PowerShell for the app-layer swap (#946): wait for the GUI, extract to <app>\\.update-staging, rename the
     current items to *.old, move the staged ones in, start tlwu.exe. Any error: put the *.old set back and start the
     old GUI (the user is never left without the app). *.old is deleted by the next successful start."""
@@ -296,6 +382,7 @@ def apply_app_script(zip_path: Path, app_dir: Path, pid: int) -> str:
         "$moved = @()",
         f"Wait-Process -Id {int(pid)} -Timeout {WAIT_GUI_EXIT_S} -ErrorAction SilentlyContinue",
         "try {",
+        *(["  " + _ps_hash_guard("$zip", sha)] if sha else []),
         "  if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }",
         "  Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force",
         "  foreach ($i in $items) { if (-not (Test-Path -LiteralPath (Join-Path $stage $i))) { throw \"missing $i\" } }",
@@ -323,9 +410,10 @@ def apply_app_script(zip_path: Path, app_dir: Path, pid: int) -> str:
     ])
 
 
-def launch_apply(exe: Path, app_dir: Path, pid: int, popen=subprocess.Popen, app_layer: bool = False) -> Path:
+def launch_apply(exe: Path, app_dir: Path, pid: int, popen=subprocess.Popen, app_layer: bool = False,
+                 sha: str | None = None) -> Path:
     script = Path(exe).with_name("tlwu-apply-update.ps1")
-    text = apply_app_script(exe, app_dir, pid) if app_layer else apply_script(exe, app_dir, pid)
+    text = apply_app_script(exe, app_dir, pid, sha) if app_layer else apply_script(exe, app_dir, pid, sha)
     script.write_text(text, "utf-8-sig")
     cmd = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", str(script)]
     base = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -385,10 +473,13 @@ def main(argv=None) -> int:
         return 0
     if not a.app or not a.pid:
         p.error("--apply / --apply-app need --app and --pid")
-    if a.apply_app:
-        launch_apply(Path(a.apply_app), Path(a.app), a.pid, app_layer=True)
-    else:
-        launch_apply(Path(a.apply), Path(a.app), a.pid)
+    target = Path(a.apply_app or a.apply)
+    try:
+        sha = verify_pending(target)  # #1348: nothing runs unless the file still matches its (signed) sums
+    except ValueError as e:
+        print(f"FAIL {e}"[:200])
+        return 1
+    launch_apply(target, Path(a.app), a.pid, app_layer=bool(a.apply_app), sha=sha)
     print("APPLYING")
     return 0
 
