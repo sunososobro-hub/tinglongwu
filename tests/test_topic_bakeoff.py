@@ -29,6 +29,12 @@ def test_segment_counts_meet_the_issue():
 def test_rubric_score_variants():
     assert tb.rubric_score("Budget: Two Backend engineers by march, Q2", ["two|2", "March", "Q2", "Monday"]) == 0.75
     assert tb.rubric_score("預算 300萬", ["三百萬|300萬"]) == 1.0
+
+
+def test_simplified_chinese_notes_count_the_same_facts():
+    pytest.importorskip("opencc")
+    seg = {"id": "zh", "lang": "zh", "lines": [("me", "行銷預算三百萬，週五寄出")], "rubric": ["三百萬", "週五"]}
+    assert tb.score_segment(seg, "TITLE: 预算\n- 行销预算三百万\n- 周五寄出")["facts"] == 1.0
     assert tb.rubric_score("", ["a"]) == 0.0
 
 
@@ -50,8 +56,8 @@ def test_language_ok():
     assert not tb.language_ok("", "en")
 
 
-def _row(name, ram, s5, delta=0.0, facts=0.8, invented=0):
-    q = {"zh": {"n": 10, "facts": facts, "invented": invented, "lang_ok": 10},
+def _row(name, ram, s5, delta=0.0, facts=0.8, invented=0, zh_lang_ok=10):
+    q = {"zh": {"n": 10, "facts": facts, "invented": invented, "lang_ok": zh_lang_ok},
          "en": {"n": 10, "facts": facts, "invented": 0, "lang_ok": 10},
          "ru": {"n": 5, "facts": facts, "invented": 0, "lang_ok": 5}}
     return {"model": name, "peak_ram_mb": ram, "sec_5min_topic": s5, "sec_per_topic": 5.0, "file_mb": ram / 2,
@@ -63,8 +69,12 @@ def test_pick_best_quality_within_budget():
             _row("slow", 2000, 75, facts=0.9),           # over 60 s
             _row("good", 1800, 50, facts=0.85),
             _row("small", 900, 20, facts=0.7),
-            _row("liar", 1000, 20, facts=0.9, invented=8)]  # invented numbers cost quality
+            _row("liar", 1000, 20, facts=0.9, invented=8),  # invented numbers cost quality
+            _row("english", 800, 10, facts=0.95, zh_lang_ok=5),  # answers Chinese meetings in English
+            _row("vague", 800, 10, facts=0.5)]  # misses most key facts
     assert tb.pick_model(rows)["model"] == "good"
+    assert tb.budget(rows[5]) == "over: quality" and tb.budget(rows[6]) == "over: quality"
+    assert tb.budget(rows[0]) == "over: RAM" and tb.budget(rows[1]) == "over: time"
     assert tb.pick_model(rows[:2]) is None
 
 

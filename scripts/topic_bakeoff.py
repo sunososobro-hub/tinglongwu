@@ -37,6 +37,8 @@ if str(ROOT) not in sys.path:
 MAX_P50_DELTA_PCT = 10.0
 MAX_TOPIC_S = 60.0  # #1378: a 5-minute topic summarized in under 60 s on 4 vCPU while ASR/MT keep running
 MAX_RAM_MB = 3000.0  # #1378: RAM under 3 GB
+MIN_LANG_OK = 0.9  # #1378: output language = transcript language (allow 1 slip in 10)
+MIN_FACTS = 0.6  # #1378: key points present (3 of every 5 rubric facts, per language)
 
 # Openly downloadable (no login) Q4_K_M instruct GGUFs, small enough for a 4 vCPU / 3 GB budget. Bench only: the
 # chosen one gets a pin in tinglongwu_setup/manifest.json, the others are never pinned or shipped.
@@ -246,10 +248,20 @@ def notes_text(raw: str) -> str:
     return "\n".join([tp.title, *tp.bullets, *(f"{who}: {what}" for who, what in tp.actions)])
 
 
+def to_traditional(text: str) -> str:
+    """Simplified -> Traditional (OpenCC, a tinglongwu dependency), so 三百万 / 周五 count for 三百萬 / 週五."""
+    try:
+        from opencc import OpenCC
+    except ImportError:
+        return text
+    return OpenCC("s2t").convert(text)
+
+
 def score_segment(seg: dict, raw: str) -> dict:
     notes = notes_text(raw)
     transcript = " ".join(t for _, t in seg["lines"])
-    return {"id": seg["id"], "lang": seg["lang"], "facts": rubric_score(notes, seg["rubric"]),
+    facts_text = to_traditional(notes) if seg["lang"] == "zh" else notes
+    return {"id": seg["id"], "lang": seg["lang"], "facts": rubric_score(facts_text, seg["rubric"]),
             "invented": invented_numbers(notes, transcript), "lang_ok": language_ok(notes, seg["lang"]),
             "notes": notes}
 
@@ -274,15 +286,29 @@ def quality_key(row: dict) -> tuple:
     return (round(facts - invented, 3), round(lang_ok, 3), -row["peak_ram_mb"])
 
 
+def quality_ok(row: dict) -> bool:
+    """#1378 quality check: notes in the transcript's language (>= 90% of segments) and >= 60% of the key facts
+    in every language. A default that answers a Chinese meeting in English is not usable, however fast it is."""
+    q = row["quality"]
+    return bool(q) and all(v["lang_ok"] >= MIN_LANG_OK * v["n"] and v["facts"] >= MIN_FACTS for v in q.values())
+
+
 def qualifies(row: dict) -> bool:
     return (row["sec_5min_topic"] < MAX_TOPIC_S and row["peak_ram_mb"] < MAX_RAM_MB
-            and row["subtitle_p50_delta_pct"] <= MAX_P50_DELTA_PCT)
+            and row["subtitle_p50_delta_pct"] <= MAX_P50_DELTA_PCT and quality_ok(row))
 
 
 def pick_model(rows: list[dict]) -> dict | None:
     """Best quality among the models that meet the 60 s / 3 GB / +10% budget; None if none qualifies."""
     ok = [r for r in rows if qualifies(r)]
     return max(ok, key=quality_key) if ok else None
+
+
+def budget(r: dict) -> str:
+    miss = [k for k, bad in (("time", r["sec_5min_topic"] >= MAX_TOPIC_S), ("RAM", r["peak_ram_mb"] >= MAX_RAM_MB),
+                             ("subtitles", r["subtitle_p50_delta_pct"] > MAX_P50_DELTA_PCT),
+                             ("quality", not quality_ok(r))) if bad]
+    return "ok" if not miss else "over: " + ", ".join(miss)
 
 
 def render_table(runs: dict[str, list[dict]]) -> str:
@@ -300,11 +326,12 @@ def render_table(runs: dict[str, list[dict]]) -> str:
             facts = " | ".join(f"{q[k]['facts']:.2f}" if k in q else "-" for k in ("zh", "en", "ru"))
             out.append(f"| {r['model']} | {r.get('file_mb', 0):.0f} | {r['peak_ram_mb']:.0f} | {r['sec_5min_topic']:.1f} | "
                        f"{r['sec_per_topic']:.1f} | {facts} | {inv}/{n} | {ok}/{n} | "
-                       f"{r['subtitle_p50_delta_pct']:+.1f}% | {'ok' if qualifies(r) else 'over'} |")
+                       f"{r['subtitle_p50_delta_pct']:+.1f}% | {budget(r)} |")
         best = pick_model(rows)
         if best:
             out += ["", f"Chosen ({machine}): **{best['model']}** (best quality within < {MAX_TOPIC_S:.0f} s per "
-                        f"5-minute topic, < {MAX_RAM_MB / 1000:.0f} GB RAM, subtitle p50 within +{MAX_P50_DELTA_PCT:.0f}%)", ""]
+                        f"5-minute topic, < {MAX_RAM_MB / 1000:.0f} GB RAM, subtitle p50 within +{MAX_P50_DELTA_PCT:.0f}%, "
+                        f"right language and key facts)", ""]
         else:
             fb = max(rows, key=quality_key) if rows else None
             out += ["", f"Chosen ({machine}): none meets the budget"
@@ -503,6 +530,7 @@ def main(argv=None) -> int:
             print(f"--- {name} {sc['id']} facts={sc['facts']:.2f} invented={sc['invented']} lang_ok={sc['lang_ok']}\n"
                   f"{sc['notes']}", file=sys.stderr)
         print(f"--- {name} 5-minute topic\n{rows[-1]['five_min_notes']}", file=sys.stderr, flush=True)
+        print(f"--- {name} sha256 {rows[-1]['sha256']} size {Path(path).stat().st_size}", flush=True)
     machine = a.machine or f"{os.cpu_count()} vCPU"
     if a.out:
         Path(a.out).write_text(json.dumps({"machine": machine, "rows": rows}, indent=1, ensure_ascii=False), "utf-8")
