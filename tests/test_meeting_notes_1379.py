@@ -86,6 +86,8 @@ def test_download_child_fetches_the_pinned_notes_model(tmp_path, monkeypatch):
     assert cmd[cmd.index("--models-dir") + 1] == str(tmp_path)
     from tinglongwu_setup import downloader
 
+    for k in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):  # downloader.main() pops these; restore them after
+        monkeypatch.setenv(k, "1")
     got = []
     monkeypatch.setattr(downloader, "get_gguf", lambda man, mdir, name, repo, fname, extras=(): got.append(
         (name, repo, fname)) or man.update({name: {"repo": repo}}))
