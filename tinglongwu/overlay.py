@@ -35,7 +35,8 @@ class OverlaySink(QueueSink):
     def write(self, r: Result) -> None:
         self.inner.write(r)
         if self.prefix:
-            self.q.put(("final", r.original, self.prefix + (r.target if r.src != r.tgt and r.target else r.original)))
+            ev = ("final", r.original, self.prefix + (r.target if r.src != r.tgt and r.target else r.original))
+            self.q.put(ev if r.replaces is None else ("amend", r.replaces) + ev[1:])  # #1395
         else:
             super().write(r)  # same events as the GUI bar
 

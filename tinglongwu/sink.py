@@ -16,6 +16,9 @@ class Result:
     tgt: str = "zh"
     side: str = "them"  # #373: "them" = heard (listen side), "me" = what I said (speak side, meeting mode)
     speaker: str | None = None  # #384 --speakers: auto label ("說話者2") of the line, None if off or unknown
+    # #1395: this line is the previous line plus a late fragment: `replaces` is the previous line's source text, and
+    # a sink that can replaces that line with this one (no second line); an append-only sink just writes it
+    replaces: str | None = None
 
 
 def pass_source(sink, src: str, original: str, speaker: str | None = None) -> None:
@@ -113,6 +116,8 @@ class JsonlSaveSink(Sink):
         self._lock = threading.Lock()  # #373: meeting mode records both sides (listen thread + speak thread)
         self.resolve_speaker = None  # async labeler token ("spk#N") -> real label (AsyncSpeakerLabeler.resolve)
         self.on_line = None  # #609 --topics: called with every saved record (topics.TopicNotes.on_line)
+        self._undo: tuple[int, str] | None = None  # #1395: (file offset, src) of the last line, if nothing followed it
+        self._undo_t = 0.0  # #1395: its "t" (the merged line keeps the time the line started)
 
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass_source(self.inner, src, original, speaker)
@@ -136,8 +141,18 @@ class JsonlSaveSink(Sink):
         if who and not who.startswith("spk#"):
             rec["speaker"] = who  # #384: the auto label; corrections follow as "fix" lines (write_fix)
         with self._lock:
+            amend = r.replaces is not None and self._undo is not None and self._undo[1] == r.replaces
+            if amend:  # #1395: the merged line takes the place of the line it extends (the file holds it once)
+                self.f.flush()
+                self.f.seek(self._undo[0])
+                self.f.truncate()
+                rec["t"] = self._undo_t
+            pos = self.f.tell()
             self.f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             self.f.flush()
+            self._undo, self._undo_t = (pos, r.original), rec["t"]
+        if amend:
+            return  # topic notes already have this line's start; the tail adds nothing to a topic
         if self.on_line is not None:
             try:
                 self.on_line(rec)
@@ -152,6 +167,7 @@ class JsonlSaveSink(Sink):
         with self._lock:
             self.f.write(json.dumps({"t": round(self.clock() - self.t0, 2), "fix": event}, ensure_ascii=False) + "\n")
             self.f.flush()
+            self._undo = None  # #1395: a fix line follows the last result line: it is not rewritten any more
 
 
 def default_save_path(now=None):

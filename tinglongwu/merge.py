@@ -29,6 +29,18 @@ MIN_FINAL_UNITS = 4  # #288: a pause / timeout does not release a buffer shorter
 WHOLE_PAUSE_UNITS = 8  # #288: whole mode (drafts cover the wait): a pause releases only a buffer at least this long
 CLAUSE_MIN_UNITS = 3  # a clause shorter than this is not worth its own final line
 FUZZY_MIN = 3  # #273: an overlap this long is dropped even with one garbled word at the seam
+# #1395: a fragment (shorter than min_words) that arrives within AMEND_WINDOW seconds of the previous released line
+# is joined to that line, which is then translated again and replaces the shown line ("... for the new." +
+# "Version." -> "... for the new version."). 0 = off.
+AMEND_WINDOW = 3.0
+# #1395: one-word lines that are complete on their own are never joined to the previous line (compared in _norm form)
+_STANDALONE = frozenset({
+    "yes", "no", "ok", "okay", "thanks", "sure", "right", "yeah", "yep", "nope", "hello", "hi", "bye", "exactly",
+    "great", "fine", "good", "well", "alright", "agreed", "correct", "true", "really", "wow", "please",
+    "да", "нет", "спасибо", "хорошо", "ладно", "конечно", "понятно", "ага", "угу", "привет", "пока", "итак", "точно",
+    "отлично", "верно", "правильно", "согласен", "согласна", "пожалуйста", "здравствуйте", "ясно", "так", "ну",
+})
+_Q_END = re.compile(r"[?!？！][\"'»”)\]]*\s*$")
 
 
 def _join(a: str, b: str) -> str:
@@ -89,6 +101,21 @@ class Unit:
     forced: bool  # released by the cap / timeout / end of stream rather than a sentence boundary
     tag: object = None  # #323: add()'s tag of the newest segment whose text is in this unit (latency marks)
     first: object = None  # #239: tag of the oldest segment whose text is in this unit (None: same as tag)
+    # #1395: set when this unit is the previous line plus a late fragment: the text of the line it replaces
+    replaces: str | None = None
+    part: str = ""  # #1395: the late fragment alone (what to show when the caller cannot replace the line)
+
+
+def _tail_join(prev: str, frag: str) -> str:
+    """#1395: "... for the new." + "Version." -> "... for the new version.": the period Whisper put before the pause
+    goes, and the capital it then gave the next word goes too (a lone "I" keeps its capital)."""
+    p = prev.rstrip()
+    if p.endswith(".") and not p.endswith("..") and not _CJK.search(frag[:1]):
+        p = p[:-1].rstrip()
+        w = frag.split(" ", 1)[0]
+        if len(w) > 1 and w[:1].isupper() and not w[1:2].isupper():
+            frag = frag[:1].lower() + frag[1:]
+    return _join(p, frag)
 
 
 def split_clause(text: str) -> tuple[str, str]:
@@ -105,7 +132,7 @@ class SentenceMerger:
     """Push ASR segments, get translation units. Time is injected (seconds, any monotonic clock)."""
 
     def __init__(self, max_wait: float = 1.5, max_words: int = 45, min_overlap: int = 2, whole: bool = False,
-                 min_words: int = 0, pause_send: float | None = None):
+                 min_words: int = 0, pause_send: float | None = None, amend_window: float = AMEND_WINDOW):
         self.max_wait, self.max_words, self.min_overlap = max_wait, max_words, min_overlap
         # #21: pause (s) that releases an unfinished buffer; None = the language's MERGE_PAUSE_SEND / PAUSE_SEND.
         # Set from --pause-send / TLWU_PAUSE_SEND so the 0.8 -> 0.5 s change can be measured before it ships.
@@ -113,6 +140,9 @@ class SentenceMerger:
         # #389: a finished sentence shorter than this ("Максима Чижова.") is a fragment: it is joined to the previous
         # sentence of the same release, else held (at most max_wait) and joined to the next one. 0 = off.
         self.min_words = min_words
+        # #1395: seconds after a released line in which a fragment is joined to it (needs min_words > 0); 0 = off
+        self.amend_window = amend_window
+        self._last: tuple[str, str, float] | None = None  # (text, lang, release time) of the newest released line
         # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
         # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
         self.whole = whole
@@ -140,6 +170,62 @@ class SentenceMerger:
 
     def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0,
             tag: object = None) -> list[Unit]:
+        """Push one ASR segment; returns the units released now (see _add). #1395: a finished fragment that arrives
+        within amend_window of the previous released line is joined to it at once (a unit with `replaces` set)."""
+        since = self.since
+        out = self._post(self._add(text, lang, now, forced_cut, pause, tag), now, now if since is None else since)
+        if self.buf and self.min_words > 0 and _is_end(self.buf) and self._is_fragment(self.buf) \
+                and self._amendable(self.buf, self.lang, now if self.since is None else self.since):
+            out += self._post([self._take(forced=False)], now, now)
+        return out
+
+    def due(self, now: float) -> list[Unit]:
+        """Release the buffer when it is too old or too long (see _due); #1395 late fragments join the last line."""
+        since = self.since
+        return self._post(self._due(now), now, now if since is None else since)
+
+    def quiet(self, seconds: float, now: float) -> list[Unit]:
+        """#716 silence after the newest segment (see _quiet); #1395 late fragments join the last line."""
+        since = self.since
+        return self._post(self._quiet(seconds, now), now, now if since is None else since)
+
+    def flush(self) -> list[Unit]:
+        """End of input: release what is buffered (never joined to the previous line: no clock here)."""
+        self._last = None
+        return [self._take(forced=True)] if self.buf else []
+
+    def _separate(self, prev: str, frag: str) -> bool:
+        """#1395: True if `frag` is a complete short line of its own and must not be joined to `prev`: a question or
+        exclamation (either side), a one-word standalone reply ("Yes.", "Да."), or a capitalised clause of 2+ words
+        after a finished sentence."""
+        if _Q_END.search(frag) or _Q_END.search(prev):
+            return True
+        words = _WORD.findall(frag)
+        if len(words) == 1 and _norm(words[0]) in _STANDALONE:
+            return True
+        return _is_end(prev) and frag[:1].isupper() and len(words) >= 2
+
+    def _amendable(self, text: str, lang: str, arrived: float) -> bool:
+        if self.min_words <= 0 or self.amend_window <= 0 or self._last is None or not text.strip():
+            return False
+        prev, plang, t = self._last
+        return (lang == plang and 0.0 <= arrived - t <= self.amend_window and self._is_fragment(text)
+                and not self._separate(prev, text.strip()))
+
+    def _post(self, units: list[Unit], now: float, arrived: float) -> list[Unit]:
+        """#1395: turn a late fragment into "previous line + fragment" (replaces = the previous line's text) and
+        remember the newest released line."""
+        out = []
+        for u in units:
+            if self._amendable(u.text, u.lang, arrived):
+                prev = self._last[0]
+                u = Unit(_tail_join(prev, u.text), u.lang, u.forced, u.tag, u.first, replaces=prev, part=u.text)
+            self._last = (u.text, u.lang, now)
+            out.append(u)
+        return out
+
+    def _add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0,
+             tag: object = None) -> list[Unit]:
         """forced_cut: the segmenter cut mid-speech (chunk limit), not at a VAD pause, so a trailing
         "..." from Whisper is only a cut artifact and not a sentence end. pause: seconds of silence that
         followed the segment (>= PAUSE_SEND, or the language's MERGE_PAUSE_SEND from tinglongwu/lang/, releases an
@@ -154,7 +240,7 @@ class SentenceMerger:
         text = self._dedupe(text, 1 if self._cut else None)
         self._cut = forced_cut
         if not text:
-            return out + self.due(now)
+            return out + self._due(now)
         self._tail = (self._tail + text.split())[-10:]
         self.tag = tag
         if not self.buf:
@@ -188,9 +274,9 @@ class SentenceMerger:
                 and _units(rest) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
             out.append(self._take(forced=True))  # speaker paused: no point waiting for max_wait
             return out
-        return out + self.due(now)
+        return out + self._due(now)
 
-    def quiet(self, seconds: float, now: float) -> list[Unit]:
+    def _quiet(self, seconds: float, now: float) -> list[Unit]:
         """#716: the segmenter saw `seconds` of silence after the newest segment and no new speech. Release the
         buffer once that reaches the pause-send threshold: an unfinished tail after a forced cut, or a finished
         fragment held by min_words (#389), would otherwise wait the full max_wait for text that is not coming."""
@@ -199,11 +285,11 @@ class SentenceMerger:
         send = self.pause_send if self.pause_send is not None else \
             lang_patches.setting(self.lang, "MERGE_PAUSE_SEND", PAUSE_SEND)
         if seconds < send:
-            return self.due(now)
+            return self._due(now)
         held = any(_is_end(x) for x in _SPLIT.split(self.buf) if x.strip())  # a finished fragment is held
         if held or _units(self.buf) >= (WHOLE_PAUSE_UNITS if self.whole else MIN_FINAL_UNITS):
             return [self._take(forced=True)]
-        return self.due(now)
+        return self._due(now)
 
     def _is_fragment(self, text: str) -> bool:
         # words only (_units also counts a lone CJK punctuation mark like "。" as one): each CJK character is a word
@@ -222,7 +308,7 @@ class SentenceMerger:
             rest = _join(merged.pop(), rest) if rest else merged.pop()
         return merged, rest
 
-    def due(self, now: float) -> list[Unit]:
+    def _due(self, now: float) -> list[Unit]:
         """Release the buffer when it is too old or too long (whole mode: up to the last clause boundary)."""
         if not self.buf:
             return []
@@ -242,9 +328,6 @@ class SentenceMerger:
                     return [Unit(head, self.lang, True, tag, first)]
             return [self._take(forced=True)]
         return []
-
-    def flush(self) -> list[Unit]:
-        return [self._take(forced=True)] if self.buf else []
 
     def _first(self) -> object:
         """Tag of the segment holding the start of the buffer (a stale mark of released text also sits at 0)."""

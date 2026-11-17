@@ -574,7 +574,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     on_topic(topic): #611, with --topics: called on the summarizer thread with each finished topics.Topic (GUI panel)."""
     from .asr import FasterWhisperRecognizer
     from .device import resolve_device
-    from .merge import SentenceMerger
+    from .merge import AMEND_WINDOW, SentenceMerger
     from .pipeline import run
     from .i18n import t as _t
     from .sink import TextSink, TranscriptSink
@@ -720,8 +720,12 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
         print(f"tlwu: {_t('rec_consent', path=os.path.abspath(recorder.dir))}", file=sys.stderr, flush=True)
     paced = bool(a.file) and bool(getattr(a, "paced", False))  # #323: real-time file on the live clock
     audio_clock = bool(a.file) and not paced
+    # #1395: a spoken / sent line cannot be taken back, so with --voice (or the GUI speak leg) a late fragment stays a
+    # line of its own
+    speak_leg = getattr(a, "voice", False) or getattr(a, "mic_mute", None) is not None
     merger = None if (a.no_merge or a.transcript_only) else SentenceMerger(
-        a.max_wait, min_words=getattr(a, "min_words", 0), pause_send=getattr(a, "pause_send", None))
+        a.max_wait, min_words=getattr(a, "min_words", 0), pause_send=getattr(a, "pause_send", None),
+        amend_window=0.0 if speak_leg else AMEND_WINDOW)
     segmenter = listen_segmenter(a)
     draft = None
     if draft_factory is not None:

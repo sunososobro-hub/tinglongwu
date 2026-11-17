@@ -238,18 +238,18 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         if recorder is not None:
             recorder.line(clip[0], r)
 
-    def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None) -> None:
+    def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None, replaces: str | None = None) -> None:
         tgt = route(lang) if route is not None else tgt0
         mt = live(translator)  # #1357: None while a PendingTranslator's model is still downloading
         if mt is None:  # transcript-only (or MT not ready yet: this line goes out as source text)
-            write(Result(lang, unit_text, None, "", tgt, speaker=who), ep)
+            write(Result(lang, unit_text, None, "", tgt, speaker=who, replaces=replaces), ep)
             return
         if lang == tgt:  # e.g. Chinese heard while translating to zh: show as is (Traditional via OpenCC)
             if tgt == "zh":
                 from .translate import zh_convert
 
                 unit_text = zh_convert(unit_text, getattr(mt, "zh_variant", "tw"))
-            write(Result(lang, unit_text, None, unit_text, tgt, speaker=who), ep)
+            write(Result(lang, unit_text, None, unit_text, tgt, speaker=who, replaces=replaces), ep)
             return
         with model_lock():
             t0 = time.monotonic()
@@ -265,7 +265,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             dt = time.monotonic() - t0
             steps = step_times(mt)
         say(f"latency: mt {dt * 1000:.0f} ms{steps} (waited {(t0 - queued) * 1000:.0f} ms in queue)")
-        write(Result(lang, unit_text, tr.pivot, tr.text, tgt, speaker=who), ep)
+        write(Result(lang, unit_text, tr.pivot, tr.text, tgt, speaker=who, replaces=replaces), ep)
 
     missing: set = set()  # (src, tgt) pairs already reported as not installed
     mtq: queue.Queue = queue.Queue()  # units waiting for MT + output; unbounded (short text)
@@ -331,12 +331,13 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 skip = stale(item)
                 if skip:  # #1369: catch up; the source text stays in the transcript
                     tgt = route(item[1]) if route is not None else tgt0
-                    write(Result(item[1], item[0], None, _msg("mt_skipped"), tgt, speaker=item[8]), item[2])
+                    write(Result(item[1], item[0], None, _msg("mt_skipped"), tgt, speaker=item[8], replaces=item[10]),
+                          item[2])
                     skipped[0] += 1
                     if on_catchup is not None:
                         on_catchup(skipped[0])
                 else:
-                    emit(*item[:4], who=item[8])
+                    emit(*item[:4], who=item[8], replaces=item[10])
                 if on_record is not None and item[6] is not None:
                     rec = _record(item, time.monotonic())
                     d = getattr(draft, "last_first_draft", None) if draft is not None else None
@@ -353,6 +354,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 return
 
     last_final = ["", -1e9]  # normalized text and clock of the last emitted final line
+    last_unit = [None, None, None]  # #1395: (merger text, shown text, speaker) of the newest line queued for output
 
     def emit_units(units) -> None:
         for u in units:
@@ -362,6 +364,15 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 audio = recorder.take((u.first or u.tag)[2], u.tag[2])
             if not text:
                 continue
+            replaces, raw = None, u.text
+            if u.replaces is not None:  # #1395: the previous line + a late fragment, re-translated in its place
+                who_new = u.tag[1] if u.tag is not None else last_who[0]
+                if u.replaces == last_unit[0] and not (who_new and last_unit[2] and who_new != last_unit[2]):
+                    replaces = last_unit[1]  # the text the sinks showed for that line
+                else:  # the line it would replace was dropped, or another speaker said the fragment: a line of its own
+                    text, raw = filter_hallucination(u.part), None
+                    if not text:
+                        continue
             key, now = _dup_key(text), consumed[0] / SAMPLE_RATE if audio_clock else time.monotonic()
             if key and key == last_final[0] and now - last_final[1] <= DUP_WINDOW:
                 continue  # identical final line again within the window: show it once
@@ -370,10 +381,12 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             t_src = None
             # the unit's own segment (marks, speaker), not the newest one
             marks, who = u.tag[:2] if u.tag is not None else (last_marks[0], last_who[0])
-            if translator is not None and draft is None and lang != (route(lang) if route is not None else tgt) and hasattr(sink, "write_source"):
+            last_unit[:] = [raw, text, who]
+            if replaces is None and translator is not None and draft is None and lang != (route(lang) if route is not None else tgt) and hasattr(sink, "write_source"):
                 pass_source(sink, lang, text, who)  # #53: the source line now, its translation when MT is done
                 t_src = time.monotonic() if shows_source else None
-            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who, audio))
+            mtq.put((text, lang, last_ep[0], time.monotonic(), last_asr[0], last_len[0], marks, t_src, who, audio,
+                     replaces))
 
     def check_worker() -> None:
         if failed:

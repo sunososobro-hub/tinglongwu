@@ -2,6 +2,7 @@
 
 Worker threads only ever put tuples on a queue.Queue; the tkinter main thread polls it with after().
 Events: ("draft", src_text, translation) | ("final", src_text, target_text) | ("clear",) |
+        ("amend", replaced_src_text, src_text, target_text) (#1395: replaces that final line) |
         ("status", text) | ("notice", text) | ("error", text) | ("stopped",)
 """
 from __future__ import annotations
@@ -989,6 +990,8 @@ class QueueSink(Sink):
         if shared().check(r.original, r.target if r.src != r.tgt else ""):  # #1070: our own voice coming back
             return
         ev = ("final", r.original, r.target if r.src != r.tgt and r.target else r.original)
+        if r.replaces is not None:  # #1395: the previous line + a late fragment, shown in that line's place
+            ev = ("amend", r.replaces) + ev[1:]
         self.q.put(ev + (r.speaker,) if r.speaker else ev)  # 0.3.8: the async speaker token rides along
 
 
@@ -1123,6 +1126,13 @@ class SubtitleState:
             self.finals.append((ev[1], ev[2]))
             self.whos.append(ev[3] if len(ev) > 3 else None)
             del self.finals[:-self.max_lines], self.whos[:-self.max_lines]
+        elif kind == "amend":  # #1395 ("amend", replaced src, src, target[, speaker]): newest final with that src
+            i = next((k for k in range(len(self.finals) - 1, -1, -1) if self.finals[k][0] == ev[1]), None)
+            if i is None:  # scrolled out (or never shown): an ordinary final line
+                return self._apply(("final",) + ev[2:])
+            self.finals[i] = (ev[2], ev[3])
+            if len(ev) > 4:
+                self.whos[i] = ev[4]
         elif kind == "final_side":  # #1001: a speak-leg line next to a listen session: the draft row stays
             self.finals.append((ev[1], ev[2]))
             self.whos.append(None)
