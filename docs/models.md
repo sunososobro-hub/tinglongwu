@@ -17,6 +17,15 @@ Run `tlwu-setup --hymt` once; it covers every supported pair. If it is missing, 
 
 **Opt-in: Hy-MT2 7B** (#279, `tlwu-setup --hymt7b`, then `tlwu --engine hymt7b`): Tencent Hy-MT2-7B Q4_K_M GGUF (~4.8 GB) for GPUs with >= 8 GB VRAM; `auto` never picks it. Setup downloads the upstream `LICENSE.txt` first and refuses unless it is Apache-2.0 (the Hy-MT2 GitHub repo `LICENSE.txt` is Apache-2.0). Q4_K_M runs on stock llama.cpp; llama.cpp PR #22836 (STQ1_0) is only needed by the 1.25-bit GGUF. Not shipped as a default until it beats 1.8B by >= 2 XCOMET with MT p50 <= 0.8 s on an 8 GB GPU (owner test).
 
+How to turn on Hy-MT2 7B (#1351; the default stays Hy-MT2 1.8B and nothing switches to 7B by itself):
+
+1. Download it once: `tlwu-setup --hymt7b` (~4.8 GB; checks the Apache-2.0 license first).
+2. Command line: add `--engine hymt7b`, e.g. `tlwu --lang ru --to zh --engine hymt7b`.
+3. GUI: open **Advanced >**, set **Quality** to **Manual**, then pick **hymt7b** in **Engine**. Until the model is downloaded the entry reads `hymt7b (tlwu-setup --hymt7b)`. The choice is saved; set Quality back to Auto (or Engine to Auto) to return to the default.
+4. To go back to the default from the command line, drop `--engine hymt7b` (or pass `--engine auto`).
+
+When it helps: Russian as the source language is the weakest row for 1.8B. On the FLORES ru eval (200 sentences, [benchmarks](benchmarks.md)) 7B scores COMET 0.8765 ru->zh-Hant and 0.8759 ru->en vs 0.8696 / 0.8613 for 1.8B, but took about 4-5x as long per sentence on the CPU eval runners. Use it with a GPU with >= 8 GB VRAM; on the CPU tinglongWu prints a warning because lines arrive much later.
+
 **Opt-in: your own local Ollama (`--engine ollama`) and Apple's on-device model (`--engine fm`, experimental)** (#356, contributed by jchodev): translate through a model you already run, with no translation-model download (Whisper is still needed for speech recognition). `auto` never picks either one, and the GUI default engine is unchanged on every platform. `ollama` sends each sentence to your local Ollama server (loopback addresses only, default `http://127.0.0.1:11434`) with thinking mode off; choose the model with `--ollama-model` / `TLWU_OLLAMA_MODEL` (without one, the first model already installed in Ollama is used) and the URL with `--ollama-url` / `TLWU_OLLAMA_URL`. tlwu never installs Ollama or pulls a model: install Ollama and run `ollama pull <model>` yourself. `fm` calls the `fm respond` command that ships with macOS 27 (Apple silicon, on-device model only, never Private Cloud Compute); run `sudo fm license` once. It is not yet tested by the maintainers and does nothing on other platforms. On a Mac, `scripts/make_mac_app.sh` builds a double-clickable launcher for the GUI (`~/Applications/TingLongWu.app`). Measured by the contributor on an M-series Mac: Ollama with a 9B model ~0.8-2.3 s per sentence, `fm` ~1.4 s alone but ~4 s alongside Whisper.
 
 **Previous LLM engines**: removed (#276, #283, #308). Hy-MT2 is the translation LLM; their setup download flags no longer exist.

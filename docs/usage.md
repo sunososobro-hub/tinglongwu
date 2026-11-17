@@ -26,6 +26,8 @@ On GPUs with < 9 GB free VRAM (e.g. 8 GB cards that also hold the translation LL
 
 `tlwu-gui` (no console window) or `tlwu --gui` opens a small control window (source language, target zh-TW / zh-CN / en, engine, speech model, glossary file, "save transcript", Start/Stop) and a borderless always-on-top subtitle bar (bottom-centre, ~70% screen width). The last 2 lines are shown; the Chinese draft is grey and is replaced in place by the white final line. Drag to move; Ctrl+wheel or +/- changes the font size; right-click for: show/hide source line, font size, copy last line, pause display, quit. Settings are remembered in `%APPDATA%\tinglongwu\gui.json`. Pure stdlib tkinter, fully offline; the CLI is unchanged without `--gui`.
 
+Opt-in Hy-MT2 7B (stronger on Russian as the source, needs a GPU with >= 8 GB): Advanced > Quality: Manual > Engine: hymt7b, after `tlwu-setup --hymt7b`; see [models](models.md).
+
 Auto-update (on by default) checks GitHub once a day for a new version, with no ID or personal data; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests ([details](privacy.md)). Translation, audio and subtitles never use the network.
 
 ### Meeting notes (offline)
