@@ -107,3 +107,18 @@ def test_976_release_snapshot_branches_are_never_pruned():
     gh = FakeGitHub(branches=[("release/v0.3.2", "s1"), ("release/v0.3.1", "s0")],
                     prs=[_pr(9, "release/v0.3.1", "s0", merged=True)], dates={"s1": "2026-10-01T00:00:00Z"})
     assert sb.plan(gh, R, now=NOW) == []
+
+
+def test_1338_compare_404_skips_branch_and_eval_results_kept():
+    import urllib.error
+
+    class Gh404(FakeGitHub):
+        def __call__(self, method, path):
+            if path.startswith("/repos/o/r/compare/dev...orphan"):
+                raise urllib.error.HTTPError(path, 404, "No common ancestor", {}, None)
+            return super().__call__(method, path)
+
+    gh = Gh404(branches=[("dev", "d"), ("eval-results", "e1"), ("orphan", "o1"), ("fix/9", "a9")], prs=[])
+    got = [n for n, _s, _w in sb.plan(gh, R, now=NOW)]
+    assert got == ["fix/9"]
+    assert "eval-results" in sb.ALWAYS_KEEP

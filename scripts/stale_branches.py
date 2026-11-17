@@ -18,11 +18,12 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, UTC
 
-ALWAYS_KEEP = ("main", "dev", "gh-pages")
+ALWAYS_KEEP = ("main", "dev", "gh-pages", "eval-results")  # eval-results: orphan branch (#571, #1338)
 
 
 def http_api(method: str, path: str):
@@ -87,7 +88,12 @@ def plan(api, repo: str, keep=(), days: int = 7, now: datetime | None = None) ->
             if latest["head"]["sha"] == sha:
                 out.append((name, sha, "PR #%d %s" % (latest["number"], "merged" if latest.get("merged_at") else "closed")))
             continue
-        cmp = api("GET", "/repos/%s/compare/dev...%s" % (repo, _ref(name)))
+        try:
+            cmp = api("GET", "/repos/%s/compare/dev...%s" % (repo, _ref(name)))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:  # no merge base with dev / missing ref (#1338): never prune, never abort
+                continue
+            raise
         if cmp.get("ahead_by", 1) != 0:
             continue
         c = api("GET", "/repos/%s/commits/%s" % (repo, sha))
