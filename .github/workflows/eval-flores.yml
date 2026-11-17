@@ -8,7 +8,8 @@ name: eval-flores
 # 30 directions, greedy, first 200 sentences unless `limit` is set): one job per source, five targets each, and a
 # `table` job that writes the 6x6 `COMET / chrF` table (docs/benchmarks.md) to its step summary + `flores-6x6-table`.
 # #1351: `variants` (card = shipped prompt + Q4_K_M, src = prompt names the source language, q8 = Q8_0 GGUF,
-# 7b = the opt-in Hy-MT2-7B Q4_K_M from `tlwu-setup --hymt7b`) adds a
+# 7b = the opt-in Hy-MT2-7B Q4_K_M from `tlwu-setup --hymt7b`, gemma3-12b / qwen3-8b = other open-weight families,
+# bench only, OTHER_GGUF in scripts/bench/flores_cpu.py) adds a
 # job per variant, `tgts` picks the targets (default zho_Hant), and every job writes the error breakdown of its 40
 # lowest-COMET sentences (named entities, numbers, omissions, ...) to its step summary and log.
 # Only runs when this workflow or the runner script changes, or by hand (workflow_dispatch, once on the default branch).
@@ -35,7 +36,7 @@ on:
         options: ["", "6x6"]
         default: ""
       variants:
-        description: "comma list of experiment variants (#1351): card, src (prompt names the source language), q8 (Q8_0), 7b (Hy-MT2-7B)"
+        description: "comma list of experiment variants (#1351): card, src (prompt names the source language), q8 (Q8_0), 7b (Hy-MT2-7B), gemma3-12b, qwen3-8b"
         default: "card"
       tgts:
         description: "comma list of FLORES targets (#1351; default zho_Hant; ignored by matrix=6x6)"
@@ -158,6 +159,13 @@ jobs:
             tlwu-setup --hymt7b --models-dir "$HOME/tlwu-models-7b"
             ln -sfn "$HOME/tlwu-models-7b/hymt2-7b" "$TLWU_MODELS/hymt2-7b"
           fi
+          case "${{ matrix.variant }}" in
+            gemma3-12b|qwen3-8b)
+              # #1351 r3: other-family GGUF, uncached like the 7B (the cached dir only gets a symlink)
+              python scripts/bench/flores_cpu.py --fetch-gguf "$HOME/tlwu-models-gguf" "${{ matrix.variant }}"
+              ln -sfn "$HOME/tlwu-models-gguf/bench-${{ matrix.variant }}" "$TLWU_MODELS/bench-${{ matrix.variant }}"
+              ;;
+          esac
       - name: Translate (CPU, Hy-MT2 temperature from the matrix; 0 = greedy, repeatable)
         run: |
           for TGT in $(python3 -c 'import json, os; print(" ".join(json.loads(os.environ["TGTS"])))'); do

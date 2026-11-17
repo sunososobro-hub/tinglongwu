@@ -233,3 +233,63 @@ def test_worst_cli_writes_json_1346(tmp_path):
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert len(json.loads(out.read_text("utf-8"))["directions"]["a"]) == 1
+
+
+# #1351 r3: other-family GGUF candidates (Gemma 3 12B, Qwen3 8B) through llama.cpp's chat template; stub llm/fetch.
+class _Llm:
+    def __init__(self, reply):
+        self.reply, self.calls = reply, []
+
+    def create_chat_completion(self, messages, **kw):
+        self.calls.append((messages, kw))
+        return {"choices": [{"message": {"content": self.reply}}]}
+
+
+def test_variants_accept_other_families():
+    assert _load().variants("card,gemma3-12b,qwen3-8b") == ["card", "gemma3-12b", "qwen3-8b"]
+
+
+def test_chat_gguf_qwen3_thinking_off_and_stripped(monkeypatch):
+    m = _load()
+    monkeypatch.delenv("TLWU_HYMT_TEMP", raising=False)
+    llm = _Llm("<think>\n\n</think>\n\nThe cat sleeps.")
+    tr = m.ChatGguf(Path("x.gguf"), "qwen3-8b", llm=llm, convert=lambda t, v: t)
+    assert tr.translate("Кошка спит.", "ru", "en").text == "The cat sleeps."
+    (msgs, kw), = llm.calls
+    assert msgs[0]["content"].startswith("Translate the following Russian text into English.")
+    assert msgs[0]["content"].endswith("Кошка спит. /no_think")
+    assert kw["temperature"] == 0.0 and kw["top_k"] == 1
+
+
+def test_chat_gguf_zh_goes_through_zh_convert_like_hymt():
+    m = _load()
+    llm = _Llm("Translation: 猫在睡觉。")
+    seen = []
+    tr = m.ChatGguf(Path("x.gguf"), "gemma3-12b", "tw", llm=llm, convert=lambda t, v: seen.append(v) or "貓在睡覺。")
+    assert tr.translate("Кошка спит.", "ru", "zh").text == "貓在睡覺。"
+    assert seen == ["tw"]
+    assert "Simplified Chinese" in llm.calls[0][0][0]["content"]
+    assert "/no_think" not in llm.calls[0][0][0]["content"]
+
+
+def test_fetch_gguf_uses_the_pinned_repo_and_rejects_unknown(tmp_path):
+    m = _load()
+    got = []
+
+    def dl(repo, fname, local_dir):
+        got.append((repo, fname, local_dir))
+        return str(Path(local_dir) / fname)
+
+    info = lambda repo: types.SimpleNamespace(card_data={"license": "apache-2.0"})  # noqa: E731
+    p = m.fetch_gguf(tmp_path, "qwen3-8b", download=dl, info=info)
+    assert got == [("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf", str(tmp_path / "bench-qwen3-8b"))]
+    assert p == m.gguf_path(tmp_path, "qwen3-8b")
+    with pytest.raises(SystemExit):
+        m.fetch_gguf(tmp_path, "7b", download=dl, info=info)
+
+
+def test_make_translator_needs_the_fetched_gguf(tmp_path):
+    m = _load()
+    with pytest.raises(SystemExit, match="--fetch-gguf"):
+        m.make_translator(tmp_path, variant="gemma3-12b")
+    assert m.engine_name("gemma3-12b") == "gemma-3-12b-it-Q4_K_M.gguf (llama.cpp, CPU)"

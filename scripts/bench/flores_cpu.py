@@ -13,6 +13,7 @@ Dev tool (not part of the offline runtime). Runs on a cloud CPU runner (`.github
   python scripts/bench/flores_cpu.py --table OUT [OUT ...]         # 6x6 Markdown table from the summaries (#1305)
   python scripts/bench/flores_cpu.py ... --variant src             # experiment variant (#1351, VARIANTS below)
   python scripts/bench/flores_cpu.py --variants card,src,q8,7b     # JSON list of variants for the workflow (#1351)
+  python scripts/bench/flores_cpu.py --fetch-gguf MODELS qwen3-8b   # other-family GGUF for a variant (#1351 r3)
   python scripts/bench/flores_cpu.py --tgts zho_Hant,eng_Latn      # JSON list of targets for the workflow (#1351)
   python scripts/bench/flores_cpu.py --breakdown OUT [N]           # error categories of the N lowest-COMET lines (#1351)
   python scripts/bench/flores_cpu.py --worst OUT [N] FILE.json     # N lowest-COMET sentences per direction -> JSON (#1346)
@@ -64,7 +65,16 @@ VARIANTS = {"card": "model-card prompt, shipped Q4_K_M",
             "q8": "model-card prompt, Q8_0 GGUF (upper bound of the Q4_K_M quantization loss)",
             # #1351 r2: the opt-in 7B of the same family (`tlwu-setup --hymt7b`, #279): what a bigger model buys on
             # names / domain senses, the categories the 1.8B breakdown left
-            "7b": "model-card prompt, opt-in Hy-MT2-7B Q4_K_M (tlwu-setup --hymt7b)"}
+            "7b": "model-card prompt, opt-in Hy-MT2-7B Q4_K_M (tlwu-setup --hymt7b)",
+            # #1351 r3: Hy-MT2-7B stays below 0.88 on both Russian rows, so two other open-weight families
+            # (bench only, never shipped; GGUF chat template + a plain instruction, see ChatGguf)
+            "gemma3-12b": "Gemma 3 12B instruct Q4_K_M (Gemma terms), plain instruction prompt",
+            "qwen3-8b": "Qwen3 8B Q4_K_M (Apache-2.0), plain instruction prompt, thinking off"}
+# #1351 r3: variant -> (Hugging Face repo, GGUF file); public repos, no login (fetched by --fetch-gguf)
+OTHER_GGUF = {"gemma3-12b": ("unsloth/gemma-3-12b-it-GGUF", "gemma-3-12b-it-Q4_K_M.gguf"),
+              "qwen3-8b": ("Qwen/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf")}
+# tlwu language code -> English name for the ChatGguf instruction (zh: Simplified, then zh_convert like Hy-MT2)
+EN_NAMES = {"en": "English", "ru": "Russian", "zh": "Simplified Chinese", "ja": "Japanese", "ko": "Korean"}
 Q8_FILE = "Hy-MT2-1.8B-Q8_0.gguf"
 HYMT_REPO = "tencent/Hy-MT2-1.8B-GGUF"  # = tinglongwu.hymt.HYMT_REPO (not imported: see fetch_q8)
 
@@ -416,18 +426,92 @@ def apply_variant(variant: str, tr, models_dir: Path, fetch=local_q8):
     return tr
 
 
+def gguf_path(models_dir: Path, variant: str) -> Path:
+    return Path(models_dir) / f"bench-{variant}" / OTHER_GGUF[variant][1]
+
+
+def fetch_gguf(models_dir: Path, variant: str, download=None, info=None) -> Path:
+    """#1351 r3: download a non-Hy-MT2 candidate GGUF (OTHER_GGUF) and print its licence (bench only). Runs in the
+    workflow's download step, before anything imports tinglongwu (whose offline guard sets HF_HUB_OFFLINE)."""
+    if variant not in OTHER_GGUF:
+        raise SystemExit(f"flores_cpu: {variant} is not a GGUF candidate; known: {','.join(OTHER_GGUF)}")
+    repo, fname = OTHER_GGUF[variant]
+    if download is None or info is None:
+        from huggingface_hub import hf_hub_download, model_info
+
+        download, info = download or hf_hub_download, info or model_info
+    try:
+        lic = (info(repo).card_data or {}).get("license")
+    except Exception as e:  # noqa: BLE001 - the licence line is informational, the download decides
+        lic = f"unknown ({type(e).__name__})"
+    print(f"flores_cpu: {variant} = {repo}/{fname}, license {lic}", file=sys.stderr)
+    return Path(download(repo, fname, local_dir=str(gguf_path(models_dir, variant).parent)))
+
+
+def chat_messages(text: str, src: str, tgt: str, variant: str) -> list[dict]:
+    """#1351 r3: one user message with a plain translation instruction; Qwen3 gets `/no_think` (thinking off)."""
+    msg = (f"Translate the following {EN_NAMES.get(src, src)} text into {EN_NAMES.get(tgt, tgt)}. "
+           f"Output only the translation, nothing else.\n\n{text}")
+    if variant.startswith("qwen3"):
+        msg += " /no_think"
+    return [{"role": "user", "content": msg}]
+
+
+_THINK = re.compile(r"<think>.*?</think>", re.S)
+
+
+def chat_output(out: str) -> str:
+    """Drop an (empty) <think> block, surrounding quotes/whitespace and a leading 'Translation:' label."""
+    out = _THINK.sub("", out or "").strip()
+    out = re.sub(r"^(translation|翻译|译文)\s*[:：]\s*", "", out, flags=re.I).strip()
+    return out
+
+
+class ChatGguf:
+    """#1351 r3: a non-Hy-MT2 GGUF through llama.cpp's own chat template (CPU, greedy unless TLWU_HYMT_TEMP), zh
+    output converted with tinglongwu.translate.zh_convert exactly like HyMtTranslator, so only the model differs."""
+
+    def __init__(self, path: Path, variant: str, zh_variant: str = "tw", llm=None, convert=None):
+        self.variant, self.zh_variant = variant, zh_variant
+        if convert is None:
+            sys.path.insert(0, str(REPO))
+            from tinglongwu.translate import zh_convert as convert
+        self.convert = convert
+        if llm is None:
+            from llama_cpp import Llama
+
+            llm = Llama(str(path), n_ctx=2048, n_threads=os.cpu_count(), verbose=False)
+        self.llm = llm
+
+    def translate(self, text, src, tgt):
+        temp = float(os.environ.get("TLWU_HYMT_TEMP", "0") or 0)
+        r = self.llm.create_chat_completion(chat_messages(text, src, tgt, self.variant), max_tokens=512,
+                                            temperature=temp, top_k=1 if temp == 0 else 40)
+        out = chat_output(r["choices"][0]["message"]["content"])
+        if tgt == "zh":
+            out = self.convert(out, self.zh_variant)
+        return types.SimpleNamespace(text=out)
+
+
 def variant_size(variant: str) -> str:
     """#1351 r2: Hy-MT2 size (tinglongwu.hymt.HYMT_SIZES key) a variant translates with."""
     return "7b" if variant == "7b" else "1.8b"
 
 
 def engine_name(variant: str) -> str:
+    if variant in OTHER_GGUF:
+        return f"{OTHER_GGUF[variant][1]} (llama.cpp, CPU)"
     quant = "Q8_0" if variant == "q8" else "Q4_K_M"
     return f"Hy-MT2-{variant_size(variant).upper()} {quant} (llama.cpp, CPU)"
 
 
 def make_translator(models_dir: Path, zh_variant: str = "tw", variant: str = "card"):
     sys.path.insert(0, str(REPO))
+    if variant in OTHER_GGUF:
+        p = gguf_path(models_dir, variant)
+        if not p.is_file():
+            raise SystemExit(f"flores_cpu: {p} is missing; run `flores_cpu.py --fetch-gguf MODELS {variant}` first")
+        return ChatGguf(p, variant, zh_variant)
     from tinglongwu.hymt import HyMtTranslator
 
     tr = apply_variant(variant, HyMtTranslator(models_dir, zh_variant, "cpu", size=variant_size(variant)), models_dir)
@@ -513,6 +597,9 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if sys.argv[1:2] == ["--fetch-q8"]:  # eval-flores.yml download step, variant q8 (#1351)
         print(fetch_q8(Path(sys.argv[2])))
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--fetch-gguf"]:  # eval-flores.yml download step, variants in OTHER_GGUF (#1351 r3)
+        print(fetch_gguf(Path(sys.argv[2]), sys.argv[3]))
         raise SystemExit(0)
     if sys.argv[1:2] == ["--tgts"]:  # eval-flores.yml plan job: JSON list of targets (#1351)
         print(json.dumps(targets(sys.argv[2] if len(sys.argv) > 2 else "")))
