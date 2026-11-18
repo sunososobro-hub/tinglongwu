@@ -170,7 +170,7 @@ def test_run_deadline_inside_the_settle_window_fails(tmp_path, monkeypatch):
     rc = h.main(["--models-dir", str(mdir), "--land-cmd", land, "--tlwu", f'"{sys.executable}" "{fake}"',
                  "--timeout", "15", "--settle", "120", "--log", str(tmp_path / "h.log"), "--out", str(out)])
     r = json.loads(out.read_text("utf-8"))
-    assert rc == 1 and any("watched only part" in p for p in r["problems"]), r
+    assert rc == 1 and any("did not watch a full" in p for p in r["problems"]), r
 
 
 def test_run_landing_failure_ends_the_check_early(tmp_path, monkeypatch):
@@ -197,4 +197,4 @@ def test_read_jsonl_keeps_a_row_with_u2028(tmp_path):
 
 def test_run_clean_exit_inside_the_settle_window_fails(tmp_path, monkeypatch):
     rc, r = _run(tmp_path, monkeypatch, "quit", timeout=15)
-    assert rc == 1 and any("watched only part" in p for p in r["problems"]), r
+    assert rc == 1 and any("did not watch a full" in p for p in r["problems"]), r

@@ -185,6 +185,7 @@ def run(a) -> dict:
                 proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
                 settle_until = None
                 settled = False
+                n_first_tr = 0
                 while time.monotonic() < deadline and proc.poll() is None:
                     recs = read_jsonl(save)
                     if lander is None and n_before is None and any((r.get("src") or "").strip() for r in recs):
@@ -207,10 +208,13 @@ def run(a) -> dict:
                     if settle_until is None and n_before is not None \
                             and any(is_translated(r, a.to) for r in recs[n_before:]):
                         settle_until = time.monotonic() + a.settle  # keep listening: no fall-back to source
+                        n_first_tr = sum(is_translated(r, a.to) for r in recs[n_before:])
                     if "rc" in landing and landing["rc"] != 0:
                         break  # landing failed: this run cannot pass, report it now
                     if settle_until is not None and time.monotonic() >= settle_until and "rc" in landing:
-                        settled = True
+                        # tlwu must still be running at the boundary and have translated more lines in the window
+                        more = sum(is_translated(r, a.to) for r in recs[n_before:]) > n_first_tr
+                        settled = proc.poll() is None and more
                         break
                     time.sleep(1.0)
                 stop_asked = proc.poll() is None  # still running: the checker ends it; else tlwu exited on its own
@@ -222,8 +226,11 @@ def run(a) -> dict:
                         _stop(proc)
                 finally:
                     if lander:  # stop the download even if stopping tlwu failed
-                        if "rc" not in landing:
-                            landing["timed_out"] = lander.poll() is None
+                        if "rc" not in landing and lander.poll() is None:
+                            if time.monotonic() >= deadline:
+                                landing["timed_out"] = True
+                            else:
+                                landing["cancelled"] = "check ended before the download finished"
                         _stop(lander)
                         landing.setdefault("rc", lander.returncode)
             finally:
@@ -235,8 +242,8 @@ def run(a) -> dict:
         problems.append(f"landing did not finish cleanly: {landing}")
     saw_translation = n_before is not None and any(is_translated(r, a.to) for r in recs[n_before:])
     if saw_translation and not settled:  # also when tlwu exited before a poll even saw the translated line
-        problems.append(f"watched only part of the {a.settle:g} s after the first translated line (deadline or "
-                        "tlwu exit): a fall-back to source text could be missed")
+        problems.append(f"did not watch a full {a.settle:g} s of further translated lines after the first one "
+                        "(deadline, tlwu exit, or no new translated line): a fall-back to source text could be missed")
     if proc is not None and exited_early and proc.returncode != 0:
         problems.append(f"tlwu exited with code {proc.returncode} before the check ended")
     first_tr = next((r for r in recs[n_before or 0:] if is_translated(r, a.to)), None)
