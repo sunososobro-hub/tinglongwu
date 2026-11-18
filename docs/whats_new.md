@@ -10,6 +10,10 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.9
+- Long talks: subtitles keep up better, with no stretch of more than 10 seconds without a subtitle while speech is still being processed.
+- Phone two-way mode: short filler-only sounds (like "um") no longer show up as lines, while short yes-words such as ага, угу, ええ and 어 are kept.
+
 ## v0.4.8
 - Uninstalling with --purge now removes only tinglongWu's own model files; other apps' files in the same models folder are kept.
 - For people working on the source code: opening it with Claude Code no longer writes anything to your computer's settings; if an older version left changes behind, it tells you how to undo them.
