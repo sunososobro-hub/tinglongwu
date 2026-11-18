@@ -126,9 +126,10 @@ def main(argv: list[str] | None = None) -> int:
     repo, token = os.environ.get("GITHUB_REPOSITORY", "sunososobro-hub/tinglongwu"), os.environ.get("GITHUB_TOKEN", "")
     rel = _api(f"/repos/{repo}/releases/tags/{args.tag}", token)
     prerelease = bool(rel.get("prerelease"))
-    nums = [int(x) for x in re.split(r"[,\s]+", args.issues) if x] or issues_in_range(repo, args.tag, token)
-    if args.issues.strip() and not nums:
+    explicit = [int(x) for x in re.split(r"[,\s]+", args.issues) if x]
+    if args.issues.strip() and not explicit:
         ap.error("--issues has no issue numbers")
+    nums = explicit or issues_in_range(repo, args.tag, token)
     subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/tags/{args.tag}"], check=True, capture_output=True)
     for n in nums:
         try:
