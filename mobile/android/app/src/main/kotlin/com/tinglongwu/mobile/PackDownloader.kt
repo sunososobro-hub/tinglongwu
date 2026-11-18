@@ -65,12 +65,16 @@ class PackDownloader {
                 if (size > 0 && n != size) throw IllegalStateException("size $n, expected $size")
                 val hex = md.digest().joinToString("") { "%02x".format(it) }
                 if (sha.isNotEmpty() && hex != sha) throw IllegalStateException("SHA-256 mismatch")
-                // Replace in one step; the old file is never deleted first (failure keeps it).
-                java.nio.file.Files.move(part.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                // rename(2) on one filesystem replaces atomically and works on API 24; the old file is never deleted first.
+                if (!part.renameTo(dest)) throw IllegalStateException("cannot move download into place")
+                conn?.disconnect(); conn = null
+                busy.set(false)
                 main.post { progress(n, total); result.success(dest.path) }
             } catch (e: Exception) {
                 part.delete()
                 val code = if (e is Cancelled) "CANCELLED" else "DOWNLOAD_FAILED"
+                conn?.disconnect(); conn = null
+                busy.set(false)
                 main.post { result.error(code, e.message ?: e.toString(), null) }
             } finally {
                 conn?.disconnect()
