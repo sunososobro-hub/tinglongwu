@@ -47,6 +47,40 @@ if [ -d "$DIR" ] && [ ! -f "$DIR/scripts/linux_menu.sh" ] && [ ! -d "$DIR/tinglo
   echo "[x] $DIR is not a tinglongWu folder; set TLWU_DIR" >&2; exit 1
 fi
 
+# #1456: remove only what tinglongWu created in the models folder: the entries named in models/manifest.json
+# (key -> dir; opus-X -> opus/X; whisper-cpp-* -> whisper-cpp/), the manifest itself and the Kokoro folder.
+# Foreign files stay; the folder itself is removed only if it is empty afterwards.
+purge_models() {
+  local keys k
+  if [ -f "$MODELS/manifest.json" ]; then
+    # one path per line, relative to the models folder; whisper-cpp entries list only their own files
+    if ! command -v python3 >/dev/null 2>&1 || ! keys="$(python3 -c '
+import json, sys
+m = json.load(open(sys.argv[1]))
+for k, v in m.items():
+    if k.startswith("whisper-cpp-"):
+        for f in ((v or {}).get("files") or {}):
+            print("whisper-cpp/" + f)
+    elif k.startswith("opus-"):
+        print("opus/" + k[5:])
+    else:
+        print(k)
+' "$MODELS/manifest.json" 2>/dev/null)"; then
+      echo "[x] cannot read $MODELS/manifest.json (python3 missing or manifest invalid); kept $MODELS" >&2
+      FAILED=1; return
+    fi
+    while IFS= read -r k; do
+      case "$k" in ""|/*|*..*) continue ;; esac
+      rm_path "$MODELS/$k"
+    done <<< "$keys"
+  fi
+  rm_path "$MODELS/manifest.json"
+  rm_path "$KOKORO_DIR"
+  rmdir "$MODELS/whisper-cpp" "$MODELS/opus" 2>/dev/null
+  if rmdir "$MODELS" 2>/dev/null; then say "removed $MODELS"; else say "kept other files in $MODELS (not tinglongWu's)"; fi
+}
+
+[ -z "$PURGE" ] || { [ ! -d "$MODELS" ] || purge_models; }
 rm_path "$DIR"
 rm_path "$KOKORO_VENV"
 # launcher written by mac_install.sh (only if it is ours)
@@ -64,30 +98,8 @@ for rc in "$HOME/.zprofile" "$HOME/.zshrc"; do
   fi
 done
 
-# #1456: remove only what tinglongWu created in the models folder: the entries named in models/manifest.json
-# (key -> dir; opus-X -> opus/X; whisper-cpp-* -> whisper-cpp/), the manifest itself and the Kokoro folder.
-# Foreign files stay; the folder itself is removed only if it is empty afterwards.
-purge_models() {
-  local keys k
-  if [ -f "$MODELS/manifest.json" ] && command -v python3 >/dev/null 2>&1; then
-    keys="$(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))))' "$MODELS/manifest.json" 2>/dev/null)"
-    while IFS= read -r k; do
-      case "$k" in ""|*/*|*..*) continue ;; esac
-      case "$k" in
-        opus-*) rm_path "$MODELS/opus/${k#opus-}" ;;
-        whisper-cpp-*) rm_path "$MODELS/whisper-cpp" ;;
-        *) rm_path "$MODELS/$k" ;;
-      esac
-    done <<< "$keys"
-  fi
-  rm_path "$MODELS/manifest.json"
-  rm_path "$KOKORO_DIR"
-  rmdir "$MODELS/opus" 2>/dev/null
-  if rmdir "$MODELS" 2>/dev/null; then say "removed $MODELS"; else say "kept other files in $MODELS (not tinglongWu's)"; fi
-}
-
 if [ -d "$MODELS" ]; then
-  if [ -n "$PURGE" ]; then purge_models
+  if [ -n "$PURGE" ]; then :   # already purged before the app folder was removed
   elif [ -z "$YES" ] && ( : </dev/tty ) 2>/dev/null; then
     read -rp "Also delete downloaded models in $MODELS? [y/N] " ans </dev/tty || ans=""
     case "$ans" in y|Y|yes|YES) purge_models ;; *) say "kept $MODELS (use --purge to remove)" ;; esac

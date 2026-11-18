@@ -61,7 +61,11 @@ def test_purge_keeps_foreign_files_in_models(tmp_path):
     h = _home(tmp_path)
     (h / "models" / "whisper-small").mkdir()
     (h / "models" / "whisper-small" / "m.bin").write_text("m")
-    (h / "models" / "manifest.json").write_text('{"whisper-small": {}}')
+    (h / "models" / "whisper-cpp").mkdir()
+    (h / "models" / "whisper-cpp" / "ggml-small.bin").write_text("m")
+    (h / "models" / "whisper-cpp" / "other-tool.bin").write_text("keep")
+    (h / "models" / "manifest.json").write_text(
+        '{"whisper-small": {}, "whisper-cpp-small": {"files": {"ggml-small.bin": "x"}}}')
     (h / "models" / "other-tool").mkdir()
     (h / "models" / "other-tool" / "w.bin").write_text("keep")
     (h / "models" / "notes.txt").write_text("keep")
@@ -72,6 +76,24 @@ def test_purge_keeps_foreign_files_in_models(tmp_path):
     assert not (h / "models" / "manifest.json").exists()
     assert (h / "models" / "other-tool" / "w.bin").read_text() == "keep"
     assert (h / "models" / "notes.txt").read_text() == "keep"
+    assert not (h / "models" / "whisper-cpp" / "ggml-small.bin").exists()
+    assert (h / "models" / "whisper-cpp" / "other-tool.bin").read_text() == "keep"
+
+
+def test_purge_keeps_foreign_file_in_whisper_cpp_and_models_inside_app(tmp_path):
+    h = _home(tmp_path)
+    m = h / "tinglongwu" / "models"  # models folder inside the app folder
+    (m / "whisper-cpp").mkdir(parents=True)
+    (m / "whisper-cpp" / "ggml-small.bin").write_text("m")
+    (m / "whisper-cpp" / "other-tool.bin").write_text("keep")
+    (m / "manifest.json").write_text('{"whisper-cpp-small": {"files": {"ggml-small.bin": "x"}}}')
+    env_models = str(m)
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "uninstall.sh"), "--purge"],
+                       env={**{k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))},
+                            "HOME": str(h), "TLWU_YES": "1", "TLWU_MODELS": env_models},
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert not (m / "whisper-cpp" / "ggml-small.bin").exists()
 
 
 def test_refuses_foreign_folder(tmp_path):
