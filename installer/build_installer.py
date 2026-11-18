@@ -59,6 +59,7 @@ def stage(dst: Path, repo: Path = REPO) -> list[str]:
 
 # #767: the prebuilt core wizard. The exe the shortcuts start, and files of the source layout that must never ship
 CORE_EXE = "tlwu.exe"
+CORE_GUI_EXE = "tlwu-gui.exe"  # #1524: the GUI-subsystem stub the shortcuts and [Run] start (no console / Terminal tab)
 _NOT_IN_CORE = ("install.ps1", "install.bat", "requirements", ".venv/", "installer/run_install.ps1")
 
 
@@ -67,6 +68,8 @@ def stage_core(dst: Path, core_dir: Path, repo: Path = REPO) -> list[str]:
     core_dir = Path(core_dir)
     if not (core_dir / CORE_EXE).is_file():
         raise SystemExit(f"--core-dir {core_dir}: {CORE_EXE} not found at the top of the folder")
+    if not (core_dir / CORE_GUI_EXE).is_file():
+        raise SystemExit(f"--core-dir {core_dir}: {CORE_GUI_EXE} not found at the top of the folder (#1524)")
     if dst.exists():
         shutil.rmtree(dst)
     shutil.copytree(core_dir, dst)
@@ -177,7 +180,7 @@ def default_listen_mb(repo: Path = REPO) -> int:
 def iscc_cmd(iscc: str, stage_dir: Path, icon: Path, out_dir: Path, version: str, core: bool = False) -> list[str]:
     extra = EXTRA_DISK_BYTES_CORE if core else EXTRA_DISK_BYTES
     # #771: the core wizard shows the default-listen download size; the source wizard has no such define
-    core_defs = ["/DCoreLayout=1", f"/DDefaultListenMB={default_listen_mb()}"] if core else []
+    core_defs = ["/DCoreLayout=1", f"/DGuiExe={CORE_GUI_EXE}", f"/DDefaultListenMB={default_listen_mb()}"] if core else []
     return [iscc, f"/DStageDir={stage_dir}", f"/DIconFile={icon}", f"/DOutDir={out_dir}", f"/DAppVersion={version}",
             f"/DExtraDiskBytes={extra}", *core_defs, str(ISS)]
 

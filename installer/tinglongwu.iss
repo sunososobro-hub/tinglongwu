@@ -3,7 +3,7 @@
 ; -> Finish. Start menu + desktop shortcuts with the app icon; uninstall in "Apps / Add or remove programs"
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.
 ; Defines passed by build_installer.py: StageDir, IconFile, OutDir, AppVersion, ExtraDiskBytes; CoreLayout (--core-dir,
-; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu.exe and install.ps1 is not run;
+; #767): the stage is the prebuilt core folder, shortcuts start {app}\tlwu-gui.exe (#1524) and install.ps1 is not run;
 ; DefaultListenMB (#771, core only): download size of `tlwu.exe setup --default-listen --defer-mt` (Whisper only; the app fetches Hy-MT2, #1359), which the core wizard runs
 ; instead (no language page, no pip).
 
@@ -204,8 +204,8 @@ Source: "{#IconFile}"; DestDir: "{app}"; DestName: "tinglongwu.ico"; Flags: igno
 
 [Icons]
 #ifdef CoreLayout
-Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
-Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\{#GuiExe}"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
+Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\{#GuiExe}"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
 #else
 Name: "{autoprograms}\{#AppTitle}"; Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"
 Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\tinglongwu.ico"; Tasks: desktopicon
@@ -214,7 +214,7 @@ Name: "{autoprograms}\{cm:RepairName}"; Filename: "{app}\install.bat"; WorkingDi
 
 [Run]
 #ifdef CoreLayout
-Filename: "{app}\tlwu.exe"; WorkingDir: "{app}"; Description: "{cm:RunStart}"; Flags: postinstall nowait skipifsilent skipifdoesntexist
+Filename: "{app}\{#GuiExe}"; WorkingDir: "{app}"; Description: "{cm:RunStart}"; Flags: postinstall nowait skipifsilent skipifdoesntexist
 #else
 Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; Description: "{cm:RunStart}"; Flags: postinstall nowait skipifsilent skipifdoesntexist
 Filename: "{app}\install.log"; Description: "{cm:RunLog}"; Flags: postinstall shellexec skipifsilent unchecked skipifdoesntexist

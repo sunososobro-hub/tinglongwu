@@ -35,6 +35,7 @@ LAUNCHER_DIR = REPO / "packaging" / "launcher"
 STUBS_DIR = REPO / "packaging" / "stubs"  # av: PyAV's wheel bundles GPL FFmpeg codecs, so a stub ships instead
 APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 EXE_NAME = "tlwu.exe"
+GUI_EXE_NAME = "tlwu-gui.exe"  # #1524: GUI-subsystem stub the shortcuts start; it runs tlwu.exe without a console window
 MANIFEST_NAME = "runtime-layer.json"  # at the top of the layer: key, Python version, pyc magic
 # The runtime layer is rebuilt when one of these changes (repo-relative; a folder = every file in it). The two
 # workflows hash the same list for their cache key (tests/test_windows_layers_923.py keeps them equal).
@@ -258,15 +259,17 @@ def _vcvars() -> Path | None:
     return bat if bat and bat.is_file() else None
 
 
-def _launcher_builds(out: Path, work: Path, rc: Path, src: Path) -> list[tuple[str, list[list[str]]]]:
-    """(tool name, commands) for every C toolchain found on this machine, preferred first."""
+def _launcher_builds(out: Path, work: Path, rc: Path, src: Path, gui: bool = False) -> list[tuple[str, list[list[str]]]]:
+    """(tool name, commands) for every C toolchain found on this machine, preferred first. gui=True builds the
+    GUI-subsystem stub (#1524) instead of the console launcher."""
     builds = []
     gcc = _gcc()
     if gcc:
         res = work / "tlwu.res.o"
         builds.append((Path(gcc[0]).name, [
             [gcc[1], str(rc), "-O", "coff", "-o", str(res)],
-            [gcc[0], "-O2", "-s", "-Wall", "-municode", "-o", str(out), str(src), str(res), "-luser32"]]))
+            [gcc[0], "-O2", "-s", "-Wall", "-municode", *(["-mwindows"] if gui else []), "-o", str(out), str(src),
+             str(res), "-luser32"]]))
     bat = _vcvars() if sys.platform == "win32" else None
     if bat:
         res = work / "tlwu.res"
@@ -275,7 +278,7 @@ def _launcher_builds(out: Path, work: Path, rc: Path, src: Path) -> list[tuple[s
                           f'call "{bat}" >nul || exit /b 1\r\n'
                           f'rc /nologo /fo "{res}" "{rc}" || exit /b 1\r\n'
                           f'cl /nologo /O2 /MT /W3 /Fo"{work}\\\\" /Fe"{out}" "{src}" "{res}" '
-                          "/link /SUBSYSTEM:CONSOLE /MANIFEST:NO user32.lib || exit /b 1\r\n", "utf-8")
+                          f"/link /SUBSYSTEM:{'WINDOWS' if gui else 'CONSOLE'} /MANIFEST:NO user32.lib || exit /b 1\r\n", "utf-8")
         builds.append(("msvc", [["cmd", "/c", str(script)]]))
     return builds
 
@@ -311,14 +314,16 @@ def copy_mingw_copying(tool: str, dst: Path, gcc: str | None = None) -> bool:
     return True
 
 
-def build_launcher(out: Path, work: Path, run=subprocess.run) -> str:
+def build_launcher(out: Path, work: Path, run=subprocess.run, gui: bool = False) -> str:
     """Compile packaging/launcher/tlwu_launcher.c (+ icon, version resource, manifest) to `out` with the first
-    toolchain that works (MinGW-w64 gcc, then MSVC). Returns the tool's name."""
+    toolchain that works (MinGW-w64 gcc, then MSVC). Returns the tool's name. gui=True compiles
+    tlwu_gui_stub.c as a WINDOWS-subsystem exe (tlwu-gui.exe, #1524)."""
     work.mkdir(parents=True, exist_ok=True)
     rc = work / "tlwu.rc"
     rc.write_text(_rc_text(APP_ICON, LAUNCHER_DIR / "tlwu.manifest"), "utf-8")
     errors = []
-    for tool, cmds in _launcher_builds(out, work, rc, LAUNCHER_DIR / "tlwu_launcher.c"):
+    src = LAUNCHER_DIR / ("tlwu_gui_stub.c" if gui else "tlwu_launcher.c")
+    for tool, cmds in _launcher_builds(out, work, rc, src, gui=gui):
         out.unlink(missing_ok=True)
         for cmd in cmds:
             r = run(cmd, capture_output=True, text=True)
@@ -329,7 +334,7 @@ def build_launcher(out: Path, work: Path, run=subprocess.run) -> str:
             if out.is_file():
                 return tool
             errors.append(f"{tool}: no {out.name} written")
-    raise SystemExit("runtime layer: tlwu.exe was not built. Needs MinGW-w64 (gcc + windres on PATH) or the Visual "
+    raise SystemExit(f"runtime layer: {out.name} was not built. Needs MinGW-w64 (gcc + windres on PATH) or the Visual "
                      "Studio Build Tools (C++ x64).\n" + "\n".join(errors))
 
 

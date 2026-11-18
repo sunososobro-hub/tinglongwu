@@ -19,6 +19,7 @@ def _core(tmp_path: Path) -> Path:
     d = tmp_path / "dist_tlwu"
     (d / "llama_cpp" / "lib").mkdir(parents=True)
     (d / "tlwu.exe").write_bytes(b"MZ")
+    (d / "tlwu-gui.exe").write_bytes(b"MZ")
     (d / "python312.dll").write_bytes(b"x")
     (d / "llama_cpp" / "lib" / "llama.dll").write_bytes(b"x")
     return d
@@ -41,19 +42,21 @@ def test_core_dir_stages_exactly_the_core_files_plus_license(tmp_path, monkeypat
     out, cmd = _dry_run(tmp_path, monkeypatch, capsys, "--core-dir", str(_core(tmp_path)))
     stage = out / "stage"
     files = sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file())
-    assert files == ["LICENSE", "llama_cpp/lib/llama.dll", "python312.dll", "tlwu.exe"]
+    assert files == ["LICENSE", "llama_cpp/lib/llama.dll", "python312.dll", "tlwu-gui.exe", "tlwu.exe"]
     assert (out / "tinglongwu.ico").read_bytes() == bi.APP_ICON.read_bytes()
     for bad in ("install.ps1", "install.bat", "requirements.txt", ".venv", "installer/run_install.ps1"):
         assert not (stage / bad).exists(), bad
     assert "/DCoreLayout=1" in cmd
 
 
-def test_core_wizard_shortcuts_and_run_start_tlwu_exe(tmp_path, monkeypatch, capsys):
+def test_core_wizard_shortcuts_and_run_start_the_gui_exe(tmp_path, monkeypatch, capsys):
+    """#1524: shortcuts and [Run] start the GUI-subsystem tlwu-gui.exe, never the console tlwu.exe (Win11 Terminal tab)."""
     _, cmd = _dry_run(tmp_path, monkeypatch, capsys, "--core-dir", str(_core(tmp_path)))
-    iss = bi.effective_iss(cmd)
+    assert f"/DGuiExe={bi.CORE_GUI_EXE}" in cmd and bi.CORE_GUI_EXE == "tlwu-gui.exe"
+    iss = bi.effective_iss(cmd).replace("{#GuiExe}", bi.CORE_GUI_EXE)
     icons, run = _section(iss, "Icons"), _section(iss, "Run")
-    assert icons and all('Filename: "{app}\\tlwu.exe"' in ln for ln in icons)
-    assert run and all('Filename: "{app}\\tlwu.exe"' in ln for ln in run)
+    assert icons and all('Filename: "{app}\\tlwu-gui.exe"' in ln for ln in icons)
+    assert run and all('Filename: "{app}\\tlwu-gui.exe"' in ln for ln in run)
     assert "{cm:RepairName}" not in "\n".join(icons)
     assert not any(".venv" in ln or "install.bat" in ln for ln in icons + run)
     # install.ps1 is never started (#771: the core wizard runs tlwu.exe setup instead, see the test below)
@@ -138,3 +141,10 @@ def test_preprocess_branches_and_nesting():
     assert bi.preprocess(text, {"X", "Y"}).split() == ["a", "b", "d", "f"]
     with pytest.raises(ValueError):
         bi.preprocess("#ifdef X\na\n", set())
+
+
+def test_core_dir_without_gui_exe_fails(tmp_path):
+    d = _core(tmp_path)
+    (d / "tlwu-gui.exe").unlink()
+    with pytest.raises(SystemExit, match="tlwu-gui.exe not found"):
+        bi.main(["--dry-run", "--out", str(tmp_path / "o"), "--core-dir", str(d)])

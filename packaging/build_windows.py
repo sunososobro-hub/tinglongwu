@@ -109,6 +109,21 @@ def pe_machine(data: bytes) -> int | None:
     return struct.unpack_from("<H", data, pe + 4)[0] if data[pe:pe + 4] == b"PE\0\0" else None
 
 
+PE_SUBSYSTEM_WINDOWS_GUI = 2
+PE_SUBSYSTEM_WINDOWS_CUI = 3
+OPTIONAL_HEADER_SUBSYSTEM_OFFSET = 68  # IMAGE_OPTIONAL_HEADER.Subsystem (same offset in PE32 and PE32+)
+FILE_HEADER_SIZE = 20
+
+
+def pe_subsystem(data: bytes) -> int | None:
+    """IMAGE_OPTIONAL_HEADER.Subsystem (2 = WINDOWS GUI, 3 = console), None if not a PE file (#1524)."""
+    if pe_machine(data) is None:
+        return None
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    off = pe + 4 + FILE_HEADER_SIZE + OPTIONAL_HEADER_SUBSYSTEM_OFFSET
+    return struct.unpack_from("<H", data, off)[0] if len(data) >= off + 2 else None
+
+
 def has_nvidia_driver() -> bool:
     """nvcuda.dll (installed by the NVIDIA display driver) is present: a CUDA llama.dll is expected to load here."""
     return (Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "nvcuda.dll").is_file()
@@ -559,6 +574,13 @@ def build_runtime(layer: Path, lite: bool, allow_cpu_only: bool) -> dict:
     if pe_machine((new / EXE_NAME).read_bytes()) != 0x8664:
         raise SystemExit(f"runtime layer: {tool} did not build an x64 {EXE_NAME}")
     print("launcher:", tool)
+    gui_tool = rt.build_launcher(new / rt.GUI_EXE_NAME, BUILD / "launcher_gui", gui=True)  # #1524
+    for exe, want in ((EXE_NAME, PE_SUBSYSTEM_WINDOWS_CUI), (rt.GUI_EXE_NAME, PE_SUBSYSTEM_WINDOWS_GUI)):
+        got = pe_subsystem((new / exe).read_bytes())
+        if got != want:
+            raise SystemExit(f"runtime layer: {exe} has PE subsystem {got}, expected {want} (#1524: the shortcut "
+                             f"target must be a GUI exe, tlwu.exe a console exe)")
+    print("gui launcher:", gui_tool)
     if tool != "msvc" and not rt.copy_mingw_copying(tool, new):
         print(f"WARNING: no MinGW-w64 COPYING file found for {tool}; licenses/{rt.MINGW_COPYING_NAME} not shipped")
     man = rt.write_manifest(new, cuda_src is None, tool)
