@@ -14,6 +14,7 @@ PASS/FAIL line per check and exits 0 only when every check passed.
     python scripts/ci_e2e.py modes --listen-wav W --speak-wav Z #8  listen / speak / meeting on audio files
     python scripts/ci_e2e.py monitor-live ...                   #192/#186 speak mode on a PulseAudio "Monitor of"
     python scripts/ci_e2e.py overlay-stack                      #322 bar above a fullscreen window (X11 + WM)
+    python scripts/ci_e2e.py late-fragment --lang en|ru ...     #1395 "sentence, ~1 s pause, last word" -> one line
 """
 from __future__ import annotations
 
@@ -493,6 +494,111 @@ def cmd_monitor_live(a) -> int:
     return finish()
 
 
+# ---------------------------------------------------------------- #1395 late fragment joins the previous line
+# Made-up sentences (generic software talk): the head stops one word short, the last word follows after a pause.
+LATE = {"en": ("Now I will show you the settings for the new", "version.", "settings", "version"),
+        "ru": ("Сейчас я покажу вам настройки для новой", "версии.", "настройк", "верси")}
+LATE_PAUSE_S = 1.0  # the owner's field report: "say a sentence, pause ~1 s, say its last word"
+EN_CODE = (  # Kokoro venv's python: argv = model dir, out wav, text
+    "import sys, soundfile as sf\n"
+    "from kokoro_onnx import Kokoro\n"
+    "d = sys.argv[1]\n"
+    "k = Kokoro(d + '/kokoro-v1.0.int8.onnx', d + '/voices-v1.0.bin')\n"
+    "a, sr = k.create(sys.argv[3], voice='af_heart', speed=1.0, lang='en-us')\n"
+    "sf.write(sys.argv[2], a, sr)\n")
+_WORDS = re.compile(r"\w+", re.UNICODE)
+
+
+def _to16k(path: Path):
+    import numpy as np
+    import soundfile as sf
+    from math import gcd
+
+    from scipy.signal import resample_poly
+
+    x, sr = sf.read(str(path), dtype="float32")
+    if x.ndim > 1:
+        x = x.mean(axis=1)
+    if sr != 16000:
+        g = gcd(sr, 16000)
+        x = resample_poly(x, 16000 // g, sr // g).astype(np.float32)
+    return x
+
+
+def _say(lang: str, text: str, out: Path, models: str | None):
+    """One phrase as float32 mono 16 kHz: en with Kokoro (job venv), ru with Vosk-TTS (tlwu-setup --vosk-tts-ru)."""
+    if lang == "en":
+        py, model = os.environ.get("TLWU_KOKORO_PYTHON", ""), os.environ.get("TLWU_KOKORO_MODEL", "")
+        if not (py and model):
+            sys.exit("TLWU_KOKORO_PYTHON / TLWU_KOKORO_MODEL must point at the Kokoro venv and model")
+        subprocess.run([py, "-c", EN_CODE, model, str(out), text], check=True, **NOWIN)
+    else:
+        from vosk_tts import Model, Synth
+
+        mdir = Path(models or os.environ.get("TLWU_MODELS", "models")) / "vosk-model-tts-ru-0.7-multi"
+        Synth(Model(model_path=str(mdir))).synth(text, str(out), speaker_id=0)
+    return _to16k(out)
+
+
+def late_clip(lang: str, out: Path, models: str | None) -> Path:
+    """'<sentence without its last word>' + LATE_PAUSE_S silence + '<last word>.' + 2 s tail silence, 16 kHz."""
+    import numpy as np
+    import soundfile as sf
+
+    head, last = LATE[lang][:2]
+    a = _say(lang, head, out.with_name("head.wav"), models)
+    b = _say(lang, last, out.with_name("last.wav"), models)
+    z = lambda s: np.zeros(int(s * 16000), np.float32)  # noqa: E731
+    sf.write(str(out), np.concatenate([z(0.5), a, z(LATE_PAUSE_S), b, z(2.0)]), 16000)
+    return out
+
+
+def check_late_jsonl(recs: list[dict], lang: str) -> list[tuple[str, bool, str]]:
+    """#1395 Acceptance on a --save JSONL: no one-word line, and the merged line (head + last word) once."""
+    head_key, tail_key = LATE[lang][2:]
+    lines = [r for r in recs if "src" in r and r.get("src", "").strip()]
+    one = [r["src"] for r in lines if len(_WORDS.findall(r["src"])) <= 1]
+    merged = [r for r in lines if head_key in r["src"].lower() and tail_key in r["src"].lower()]
+    srcs = [r["src"] for r in lines]
+    return [(f"{lang}: no one-word line in --save (#1395)", bool(lines) and not one, f"lines={srcs} one-word={one}"),
+            (f"{lang}: sentence + late last word saved as one line, once (#1395)", len(merged) == 1, f"lines={srcs}"),
+            (f"{lang}: the merged line is translated (#1395)", bool(merged) and bool(merged[0].get("dst")),
+             repr(merged[0].get("dst")) if merged else "no merged line")]
+
+
+def cmd_late_fragment(a) -> int:
+    """Live listen mode (loopback = monitor of the default sink, PulseAudio null sink on the runner) with --save;
+    the synthetic clip is played into the sink with paplay; Ctrl+C; then the JSONL is checked (check_late_jsonl)."""
+    with tempfile.TemporaryDirectory(prefix="tlwu-late-") as td:
+        wav, save = late_clip(a.lang, Path(td) / "late.wav", a.models_dir), Path(td) / "late.jsonl"
+        md = ["--models-dir", a.models_dir] if a.models_dir else []
+        cmd = [PY, "-m", "tinglongwu", "--lang", a.lang, "--to", "zh", "--preset", "meeting", "--device", "cpu",
+               "--save", str(save), *md]
+        p = subprocess.Popen(cmd, cwd=str(ROOT), env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             start_new_session=True)
+        buf: list[str] = []
+        ready = _wait_ready(p, re.compile(r"^\* ready - listening"), 600, buf)
+        check(f"{a.lang}: listen mode on the sink monitor is ready", ready, tail("\n".join(buf), 5))
+        if ready:
+            subprocess.run(["paplay", f"--device={a.sink}", str(wav)], check=False, timeout=120)
+            t0 = time.monotonic()  # the merged line is re-translated after the tail: give MT time on the CPU
+            while time.monotonic() - t0 < a.wait:
+                time.sleep(1)
+            os.killpg(p.pid, signal.SIGINT)
+        try:
+            p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            p.kill()
+        recs = []
+        if save.exists():
+            recs = [json.loads(x) for x in save.read_text(encoding="utf-8").splitlines() if x.strip()]
+        for name, ok, detail in check_late_jsonl(recs, a.lang):
+            check(name, ok, detail)
+        if any(not ok for _, ok, _ in results):
+            print(tail("\n".join(buf), 30))
+    return finish()
+
+
 # ---------------------------------------------------------------- #322 overlay above a fullscreen window
 FS_APP = ("import tkinter as t; r=t.Tk(); r.title('tlwu-e2e-fullscreen'); r.configure(bg='black'); "
           "r.attributes('-fullscreen', True); r.after(60000, r.destroy); r.mainloop()")
@@ -682,10 +788,15 @@ def main(argv=None) -> int:
     p.add_argument("--repeat", type=int, default=2)
     p.add_argument("--min-lines", type=int, default=3)
     sub.add_parser("overlay-stack")
+    p = sub.add_parser("late-fragment")
+    p.add_argument("--lang", choices=sorted(LATE), required=True)
+    p.add_argument("--sink", default="e2e_speaker")
+    p.add_argument("--models-dir")
+    p.add_argument("--wait", type=float, default=45.0, help="seconds after playback before Ctrl+C")
     a = ap.parse_args(argv)
     return {"zh-wav": cmd_zh_wav, "ctrlc": cmd_ctrlc, "gpu-old": cmd_gpu_old, "selftest": cmd_selftest,
             "doctor": cmd_doctor, "speak-ru": cmd_speak_ru, "modes": cmd_modes, "monitor-live": cmd_monitor_live,
-            "overlay-stack": cmd_overlay_stack}[a.cmd](a)
+            "overlay-stack": cmd_overlay_stack, "late-fragment": cmd_late_fragment}[a.cmd](a)
 
 
 if __name__ == "__main__":

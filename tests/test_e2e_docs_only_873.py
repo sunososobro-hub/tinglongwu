@@ -84,8 +84,9 @@ def test_every_step_after_the_decision_is_gated_and_nothing_removed(job):
 
 def test_no_test_step_was_dropped():
     names = {j: [s.get("name", "") for s in v["steps"]] for j, v in _jobs().items()}
-    # linux 19 -> 21 (#1481): + "Restore apt .deb cache" / "Save apt .deb cache"; no test step removed.
-    for j, n in {"linux": 21, "windows": 14, "macos": 11}.items():
+    # linux 19 -> 21 (#1481): + "Restore apt .deb cache" / "Save apt .deb cache"; 21 -> 22 (#1395): + late-fragment
+    # step; no test step removed.
+    for j, n in {"linux": 22, "windows": 14, "macos": 11}.items():
         assert len(names[j]) == n
     assert any("#7 firewall_test" in x for x in names["linux"]) and any("#7 firewall_test" in x for x in names["windows"])
 
