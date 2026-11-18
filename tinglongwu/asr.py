@@ -118,6 +118,16 @@ class Recognizer(ABC):
         """#1252: audio the last transcribe() left undecoded (time budget cut), or None. Default: never cut."""
         return None
 
+    def warm_up(self) -> None:
+        """#1247: one throw-away decode before a live session starts. Default: nothing to warm."""
+
+
+# #1247 / #894: the first decode of a freshly loaded model pays one-off setup (CUDA kernels, cuBLAS / cuDNN handles,
+# allocator pools). hw-tests (RTX 3050, small): the self-test's "speech model on GPU" stage took 5.7 s where loading
+# alone takes 1.1-3.7 s, and two of the three failing #894 runs had their longest gap at the start of the clip
+# (10-21 s, 21-37 s). Live sessions pay it before "ready" instead of on the first subtitle.
+WARMUP_S = 1.0
+
 
 def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int, int | None]:
     """#780: (beam, cpu_threads) for a CPU model loaded after a CUDA load failure. Values already given (the CPU
@@ -186,6 +196,17 @@ class FasterWhisperRecognizer(Recognizer):
         self._last = ""  # previous good output -> initial_prompt for the next segment
         self.live = bool(live)  # #251: capped retries, token cap and a per-sentence time budget
         self.glossary = glossary  # topic terms -> Whisper hotwords; number normalization
+
+    def warm_up(self) -> None:
+        """#1247: decode WARMUP_S of near-silence once with the live decode settings, so the first real segment does
+        not carry the model's one-off setup cost. No state changes (prompt, locked language, cut tail)."""
+        audio = (np.random.default_rng(0).standard_normal(int(WARMUP_S * SAMPLE_RATE)) * 1e-3).astype(np.float32)
+        segs, _info = self.model.transcribe(
+            audio, language=getattr(self, "lang", None) or "en", task="transcribe", beam_size=getattr(self, "beam", 5),
+            vad_filter=False, condition_on_previous_text=False, temperature=0.0,
+            without_timestamps=bool(getattr(self, "fast", False)), max_new_tokens=MIN_NEW_TOKENS)
+        for _ in segs:  # faster-whisper decodes lazily
+            pass
 
     def _lang_for(self, audio: np.ndarray, reuse: bool = False) -> str | None:
         """Language to decode with: the fixed/locked one, or (candidate mode) the most probable candidate."""

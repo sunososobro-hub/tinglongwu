@@ -671,6 +671,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
                     transcript_only=bool(a.transcript_only))  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
     dev = asr.device  # may have fallen back to cpu
     asr.live = asr_live(dev, a.file, getattr(a, "paced", False))  # #251 / #1264
+    warm_live_asr(asr, a.file, getattr(a, "paced", False), warn)  # #1247: before "ready", not on the first line
     cpu_max_wait(a, dev)
     translator = None
     if not a.transcript_only:
@@ -880,6 +881,25 @@ def asr_live(dev: str, file, paced: bool) -> bool:
     time, live clock), so a replay drops / cuts sentences exactly where live capture would; an unpaced file runs
     faster than real time and keeps full decoding."""
     return dev == "cpu" and (not file or bool(paced))
+
+
+def warm_live_asr(asr, file, paced: bool, warn=None) -> bool:
+    """#1247 / #894: live listening (mic / loopback, or a --paced file) decodes once before the ready line, so the
+    model's first-call setup (seconds on a GPU) does not hold back the first subtitles. An unpaced file has no live
+    clock to protect. A failed warm-up is reported and the session goes on: the real decode reports a real error.
+    Returns True when the warm-up ran."""
+    if file and not paced:
+        return False
+    warm = getattr(asr, "warm_up", None)
+    if not callable(warm):
+        return False
+    try:
+        warm()
+    except Exception as e:  # noqa: BLE001 - warming is an optimisation, never a reason to stop listening
+        if warn is not None:
+            warn(f"tlwu: speech model warm-up failed ({e})")
+        return False
+    return True
 
 
 def latency_recorder(path, log):

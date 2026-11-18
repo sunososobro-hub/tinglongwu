@@ -116,6 +116,23 @@ def diagnose_mic(meta: dict, file_rows: list[dict], mic_rows: list[dict], offset
     return "; ".join(parts)
 
 
+def gap_context(offsets: list[float], srcs: list[str], a: float, b: float, n: int = 2) -> str:
+    """#1247: the saved lines just before and after the longest gap [a, b] (clip seconds), as "time: text" pairs,
+    so the job log shows what the subtitles did there (the hw-live-checks artifact is not readable everywhere)."""
+    rows = sorted(zip(offsets, srcs))
+    before = [r for r in rows if r[0] <= a][-n:]
+    after = [r for r in rows if r[0] >= b][:n]
+    def fmt(r):
+        return f"{r[0]:.1f}s {r[1][:60]!r}"
+    return "before: " + "; ".join(fmt(r) for r in before) + " | after: " + "; ".join(fmt(r) for r in after)
+
+
+def tlwu_notes(log_lines: list[str], limit: int = 20) -> list[str]:
+    """#1247: the live run's own `tlwu:` status lines (speech model, warm-up, asr cut/drop, model switch, catch-up),
+    first `limit` of them, for the job log."""
+    return [ln.rstrip() for ln in log_lines if ln.startswith("tlwu:")][:limit]
+
+
 def clip_lines(spans: list[list[float]], refs: list[str], rec: list[dict], lang: str = "en") -> list[dict]:
     """#1247: per clip of the joined recording, which saved lines' audio ([start, end] in --record segments.jsonl)
     overlaps it and how many of its words (>= 4 letters) those lines hold. A clip with no line at all was never
@@ -437,6 +454,11 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
                         len(mic_rows))
     diag = diagnose_mic(meta, file_rows, mic_rows, offsets)
     print(f"diagnose: {diag}", flush=True)  # #1247: kept out of the PASS/FAIL line (step summary stays one line)
+    if mic_rows:
+        print("diagnose: around the gap: " + gap_context(offsets, [r.get("src", "") for r in mic_rows],
+                                                         *gap_span(offsets, *meta["speech"])), flush=True)
+    for ln in tlwu_notes(ch.lines):
+        print(f"diagnose: live {ln}", flush=True)
     (out / "mic_report.json").write_text(json.dumps(
         {"diagnose": diag, "mic_offsets_s": [round(x, 1) for x in offsets], "spans": meta.get("spans"),
          "file_src": [r.get("src", "") for r in file_rows], "mic_src": [r.get("src", "") for r in mic_rows]},
