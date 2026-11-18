@@ -41,7 +41,10 @@ def best_mapping_accuracy(true, pred) -> float:
 
 
 def evaluate(items, labeler, clock=None):
-    """items: [(true_label, float32 mono 16 kHz seg)] in order. Returns dict(accuracy, p50_s, n, skipped)."""
+    """items: [(true_label, float32 mono 16 kHz seg)] in order. Returns dict(accuracy, p50_s, n, skipped, speakers,
+    labels, labels_raw). #1256: labels = distinct labels a user sees at the end (a label merged into an older one by
+    the clusterer counts as that one; accuracy is scored on these too); labels_raw = distinct labels ever handed out;
+    speakers = distinct true speakers among the scored sentences."""
     true, pred, times, skipped = [], [], [], 0
     for lab, seg in items:
         if len(seg) / SR < MIN_SECONDS:
@@ -51,15 +54,30 @@ def evaluate(items, labeler, clock=None):
         true.append(lab)
         pred.append(name)
         times.append(dt)
-    return {"accuracy": round(best_mapping_accuracy(true, pred), 2),
+    clusterer = getattr(labeler, "clusterer", None)
+    seen = [clusterer.kept(p) if clusterer is not None else p for p in pred]
+    from tinglongwu.speakers import UNKNOWN
+
+    return {"accuracy": round(best_mapping_accuracy(true, seen), 2),
             "p50_s": round(statistics.median(times), 4) if times else 0.0,
-            "n": len(true), "skipped": skipped}
+            "n": len(true), "skipped": skipped, "speakers": len(set(true)),
+            "labels": len({p for p in seen if p and p != UNKNOWN}),
+            "labels_raw": len({p for p in pred if p and p != UNKNOWN})}
 
 
 def format_report(r: dict) -> str:
-    return (f"sentences >= {MIN_SECONDS:g}s: {r['n']} (skipped shorter: {r['skipped']})\n"
-            f"accuracy x100: {r['accuracy']:.2f}  (target >= {TARGET_ACC:.2f})\n"
-            f"spk p50 s: {r['p50_s']:.4f}  (target <= {TARGET_P50:.2f})")
+    out = (f"sentences >= {MIN_SECONDS:g}s: {r['n']} (skipped shorter: {r['skipped']})\n"
+           f"accuracy x100: {r['accuracy']:.2f}  (target >= {TARGET_ACC:.2f})\n"
+           f"spk p50 s: {r['p50_s']:.4f}  (target <= {TARGET_P50:.2f})")
+    if "labels" in r:
+        out += (f"\nspeakers: {r['speakers']}  labels: {r['labels']} (handed out before merges: {r['labels_raw']})  "
+                f"ratio: {label_ratio(r):.2f}")
+    return out
+
+
+def label_ratio(r: dict) -> float:
+    """#1256: labels a user sees per real speaker (0 when no speaker was scored)."""
+    return r["labels"] / r["speakers"] if r.get("speakers") else 0.0
 
 
 def write_png(path, r: dict) -> None:
@@ -140,6 +158,8 @@ def main(argv=None) -> int:
     ap.add_argument("--transcript", help="score a --save JSONL with speaker corrections instead (#384)")
     ap.add_argument("--model-dir", default="models", help="models dir holding speaker/ (tlwu-setup --speaker-model)")
     ap.add_argument("--png", default="diarization_eval.png")
+    ap.add_argument("--max-label-ratio", type=float, default=0.0,
+                    help="#1256: exit 1 when labels / real speakers is above this (0 = report only)")
     a = ap.parse_args(argv)
     if a.transcript:
         r = score_transcript(a.transcript)
@@ -154,6 +174,13 @@ def main(argv=None) -> int:
     print(format_report(r))
     write_png(a.png, r)
     print(f"chart: {a.png}")
+    if a.max_label_ratio and (not r["speakers"] or label_ratio(r) > a.max_label_ratio):
+        print(f"FAIL: {r['labels']} labels for {r['speakers']} speakers ({label_ratio(r):.2f}x > "
+              f"{a.max_label_ratio:g}x, #1256)")
+        return 1
+    if a.max_label_ratio:
+        print(f"PASS: {r['labels']} labels for {r['speakers']} speakers ({label_ratio(r):.2f}x <= "
+              f"{a.max_label_ratio:g}x, #1256)")
     return 0
 
 
