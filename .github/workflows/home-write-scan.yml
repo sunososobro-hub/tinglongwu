@@ -1,0 +1,59 @@
+name: home-write-scan
+# #1451 / rules section 18: daily static scan (no AI) for tracked code that changes a contributor's machine
+# outside the repo (global git config, core.hooksPath, shell profiles). Opens or updates ONE issue on a finding.
+on:
+  schedule:
+    - cron: "41 20 * * *"   # 04:41 Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: home-write-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dev
+      - name: Scan tracked files
+        id: scan
+        run: |
+          set +e
+          python3 scripts/home_write_scan.py | tee "$RUNNER_TEMP/scan.txt"
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          { echo '### home-write scan'; echo '```'; cat "$RUNNER_TEMP/scan.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Open or update the finding issue
+        if: steps.scan.outputs.rc != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE='[bug] home-write scan finding'
+          {
+            echo "Found by the daily home-write scan (rules section 18). Run: $RUN_URL"
+            echo
+            echo "Goal: no tracked code writes to a contributor's global git config, hooksPath or shell profiles."
+            echo "Acceptance: \`python scripts/home_write_scan.py\` prints \`0 findings\`."
+            echo "Verify: \`python scripts/home_write_scan.py\`"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/scan.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          N=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number,title \
+                --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
+          if [ -n "$N" ]; then
+            gh issue comment "$N" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md" \
+              --label bug --label P1 --label area:ci --label mode:shared --label src:ai
+          fi
+      - name: Fail the run on a finding
+        if: steps.scan.outputs.rc != '0'
+        run: exit 1
