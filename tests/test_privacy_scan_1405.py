@@ -39,6 +39,7 @@ class FakeGH:
         return self.raw
 
     def paginate(self, path):
+        path = path.split("?")[0]
         if path.endswith("/files"):
             return iter(self.files)
         if path.endswith("/issues/comments"):
@@ -423,3 +424,29 @@ def test_status_goes_on_the_scanned_head_and_a_moved_head_gets_none():
     gh2 = FakeGH(files=[{"filename": "a.py", "status": "added", "patch": "@@ -0,0 +1 @@\n+ok\n"}])
     assert ps.cmd_pr(gh2, 7, rx=ps.Combined(), report_status="privacy-scan") == 0
     assert [c for c in gh2.calls if c[0] == "status"] == [("status", "abc1234567", "success", "privacy-scan")]
+
+
+# ---- recent-comment scan (#1498) ---------------------------------------------
+def test_recent_scan_hides_hits_and_labels(rx, capsys):
+    gh = FakeGH(comments=[{"body": "zorblat", "html_url": "c1", "node_id": "N1", "issue_url": "https://api/x/issues/3"},
+                          {"body": "fine", "html_url": "c2", "node_id": "N2", "issue_url": "https://api/x/issues/4"}],
+                review_comments=[{"body": "qux frim", "html_url": "c3", "node_id": "N3", "pull_request_url": "https://api/x/pulls/8"}])
+    counts = ps.scan_recent(gh, rx, "2026-11-18T00:00:00Z")
+    assert counts == {"comments": 3, "hidden": 2}
+    assert ("minimize", "N1") in gh.calls and ("minimize", "N3") in gh.calls and ("minimize", "N2") not in gh.calls
+    assert ("label", 3) in gh.calls and ("label", 8) in gh.calls
+    out = capsys.readouterr().out
+    assert "zorblat" not in out.lower() and "qux" not in out.lower()
+
+
+def test_recent_scan_passes_since_to_the_api(rx):
+    seen = []
+
+    class G(FakeGH):
+        def paginate(self, path):
+            seen.append(path)
+            return iter(())
+
+    ps.scan_recent(G(), rx, "2026-11-18T01:02:03Z")
+    assert all(p.endswith("?since=2026-11-18T01:02:03Z") for p in seen) and len(seen) == 2
+

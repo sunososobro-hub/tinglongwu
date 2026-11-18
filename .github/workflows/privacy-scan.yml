@@ -12,6 +12,8 @@ on:
     types: [created, edited]
   pull_request_review_comment:   # fork PRs get no secrets for this event: their review comments are not checked
     types: [created, edited]
+  schedule:
+    - cron: "7,37 * * * *"   # #1498: owner/agent comments start no per-event job; this run scans them (last 45 min)
   workflow_dispatch:
     inputs:
       sweep:
@@ -50,7 +52,12 @@ jobs:
         run: python scripts/privacy_scan.py event --name pull_request_target --path "$GITHUB_EVENT_PATH"
 
   privacy-event:
-    if: github.event_name == 'issues' || github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment'
+    # #1498: comments by the owner / agent account start no runner job (the scheduled `privacy-recent` run covers them);
+    # outside contributors' comments keep the instant hide. Issue bodies keep their per-event scan.
+    if: >-
+      github.event_name == 'issues' ||
+      ((github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+       github.event.comment.user.login != 'sunososobro-hub')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -67,6 +74,24 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
         run: python scripts/privacy_scan.py event --name "$EVENT" --path "$GITHUB_EVENT_PATH"
+
+  privacy-recent:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.sweep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Scan comments created or edited in the last 45 minutes
+        env:
+          TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/privacy_scan.py recent --minutes 45
 
   privacy-sweep:
     if: github.event_name == 'workflow_dispatch' && inputs.sweep

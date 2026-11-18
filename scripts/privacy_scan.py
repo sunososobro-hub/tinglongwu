@@ -27,6 +27,7 @@ match replaced by asterisks. Stdlib only; talks to the GitHub REST/GraphQL API w
 from __future__ import annotations
 
 import argparse
+import datetime
 import http.client
 import json
 import os
@@ -369,6 +370,27 @@ def sweep(gh, rx, root: Path) -> dict:
     return counts
 
 
+# ---------------------------------------------------------------- scheduled scan of recent comments (#1498)
+def scan_recent(gh, rx, since: str) -> dict:
+    """Hide hits among comments created/edited since [since] (ISO 8601). Owner / agent comments start no
+    per-event runner job (#1498); this scheduled run covers them. Prints links only, never matched text."""
+    counts = {"comments": 0, "hidden": 0}
+    for path in (f"/repos/{gh.repo}/issues/comments", f"/repos/{gh.repo}/pulls/comments"):
+        for c in gh.paginate(f"{path}?since={since}"):
+            counts["comments"] += 1
+            if not rx.search(c.get("body") or ""):
+                continue
+            url = c.get("issue_url") or c.get("pull_request_url") or ""
+            number = url.rstrip("/").split("/")[-1]
+            if number.isdigit():
+                gh.add_label(int(number))
+            gh.minimize(c["node_id"])  # raises (job red) unless GitHub confirms the comment is hidden
+            counts["hidden"] += 1
+            print("privacy-scan: hidden comment", c.get("html_url", ""))
+    print("privacy-scan recent: " + " ".join(f"{k}={v}" for k, v in counts.items()))
+    return counts
+
+
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -386,12 +408,18 @@ def main(argv=None) -> int:
     e.add_argument("--name", default=os.environ.get("GITHUB_EVENT_NAME", ""))
     e.add_argument("--path", default=os.environ.get("GITHUB_EVENT_PATH", ""))
     sub.add_parser("sweep")
+    r = sub.add_parser("recent")
+    r.add_argument("--minutes", type=int, default=45, help="look back this far (schedule is every 30 min)")
     a = ap.parse_args(argv)
     gh = GitHub(a.repo)
     if a.cmd == "pr":
         return cmd_pr(gh, a.pr, a.fallback_check, report_status=a.report_status)
     if a.cmd == "event":
         handle_event(gh, a.name, json.loads(Path(a.path).read_text("utf-8")))
+        return 0
+    if a.cmd == "recent":
+        since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=a.minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        scan_recent(gh, matcher(), since)
         return 0
     sweep(gh, matcher(), sd.ROOT)
     return 0
