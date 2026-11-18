@@ -471,3 +471,16 @@ def test_recent_scan_continues_after_failures_then_fails(rx):
         ps.scan_recent(gh, rx, "2026-11-18T00:00:00Z")
     assert ("minimize", "N1") in gh.calls and ("minimize", "N3") in gh.calls  # label failure still hides; scan went on
     assert "label c1" in str(e.value) and "hide c2" in str(e.value) and "zorblat" not in str(e.value).lower()
+
+
+def test_recent_scan_attempts_second_feed_when_first_pagination_fails(rx):
+    class G(FakeGH):
+        def paginate(self, path):
+            if path.split("?")[0].endswith("/issues/comments"):
+                raise RuntimeError("timeout")
+            return super().paginate(path)
+
+    gh = G(review_comments=[{"body": "qux frim", "html_url": "c3", "node_id": "N3", "pull_request_url": "https://api/x/pulls/8"}])
+    with pytest.raises(RuntimeError, match="feed"):
+        ps.scan_recent(gh, rx, "2026-11-18T00:00:00Z")
+    assert ("minimize", "N3") in gh.calls

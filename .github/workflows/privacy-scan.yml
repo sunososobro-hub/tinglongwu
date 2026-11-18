@@ -13,7 +13,7 @@ on:
   pull_request_review_comment:   # fork PRs get no secrets for this event: their review comments are not checked
     types: [created, edited]
   schedule:
-    - cron: "7,37 * * * *"   # #1498: owner/agent comments start no per-event job; this run scans them (last 45 min)
+    - cron: "7,37 * * * *"   # #1498: owner/agent comments start no per-event job; this run scans them (last 90 min)
   workflow_dispatch:
     inputs:
       sweep:
@@ -87,11 +87,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Scan comments created or edited in the last 45 minutes
+      - name: Scan comments created or edited in the last 90 minutes (one dropped scheduled run is still covered)
         env:
           TLWU_DENYLIST_TEXT: ${{ secrets.TLWU_DENYLIST }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/privacy_scan.py recent --minutes 45
+        run: python scripts/privacy_scan.py recent --minutes 90
 
   privacy-sweep:
     if: github.event_name == 'workflow_dispatch' && inputs.sweep

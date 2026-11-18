@@ -378,24 +378,27 @@ def scan_recent(gh, rx, since: str) -> dict:
     counts = {"comments": 0, "hidden": 0}
     failures: list[str] = []
     for path in (f"/repos/{gh.repo}/issues/comments", f"/repos/{gh.repo}/pulls/comments"):
-        for c in gh.paginate(f"{path}?since={since}"):
-            counts["comments"] += 1
-            if not rx.search(c.get("body") or ""):
-                continue
-            url = c.get("issue_url") or c.get("pull_request_url") or ""
-            number = url.rstrip("/").split("/")[-1]
-            if number.isdigit():
+        try:
+            for c in gh.paginate(f"{path}?since={since}"):
+                counts["comments"] += 1
+                if not rx.search(c.get("body") or ""):
+                    continue
+                url = c.get("issue_url") or c.get("pull_request_url") or ""
+                number = url.rstrip("/").split("/")[-1]
+                if number.isdigit():
+                    try:
+                        gh.add_label(int(number))  # first, so the item is flagged even if hiding fails
+                    except Exception:  # noqa: BLE001 - still hide the comment, fail the job at the end
+                        failures.append(f"label {c.get('html_url', '')}")
                 try:
-                    gh.add_label(int(number))  # first, so the item is flagged even if hiding fails
-                except Exception:  # noqa: BLE001 - still hide the comment, fail the job at the end
-                    failures.append(f"label {c.get('html_url', '')}")
-            try:
-                gh.minimize(c["node_id"])
-            except Exception:  # noqa: BLE001 - keep scanning; reported below
-                failures.append(f"hide {c.get('html_url', '')}")
-                continue
-            counts["hidden"] += 1
-            print("privacy-scan: hidden comment", c.get("html_url", ""))
+                    gh.minimize(c["node_id"])
+                except Exception:  # noqa: BLE001 - keep scanning; reported below
+                    failures.append(f"hide {c.get('html_url', '')}")
+                    continue
+                counts["hidden"] += 1
+                print("privacy-scan: hidden comment", c.get("html_url", ""))
+        except Exception:  # noqa: BLE001 - a failed page must not skip the other feed
+            failures.append(f"feed {path.rsplit('/', 2)[-2]}/{path.rsplit('/', 1)[-1]}")
     print("privacy-scan recent: " + " ".join(f"{k}={v}" for k, v in counts.items()))
     if failures:
         raise RuntimeError("privacy-scan recent: failed: " + "; ".join(failures))
@@ -420,7 +423,7 @@ def main(argv=None) -> int:
     e.add_argument("--path", default=os.environ.get("GITHUB_EVENT_PATH", ""))
     sub.add_parser("sweep")
     r = sub.add_parser("recent")
-    r.add_argument("--minutes", type=int, default=45, help="look back this far (schedule is every 30 min)")
+    r.add_argument("--minutes", type=int, default=90, help="look back this far (schedule is every 30 min; 90 survives one dropped run)")
     a = ap.parse_args(argv)
     gh = GitHub(a.repo)
     if a.cmd == "pr":
