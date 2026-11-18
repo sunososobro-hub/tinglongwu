@@ -60,9 +60,21 @@ def test_local_session_leaves_contributor_global_config_alone(setup):
     assert not (home / ".tlwu-git-hooks").exists()
 
 
-def test_cloud_session_sets_identity_in_repo_only(setup):
+UPSTREAM = "https://github.com/sunososobro-hub/tinglongwu.git"
+FORK = "https://github.com/someone/tinglongwu.git"
+
+
+def _snapshot(home: Path) -> dict:
+    return {str(p.relative_to(home)): (p.read_bytes() if p.is_file() else None)
+            for p in sorted(home.rglob("*"))}
+
+
+@pytest.mark.parametrize("origin", [UPSTREAM, "git@github.com:sunososobro-hub/tinglongwu.git",
+                                    "https://github.com/sunososobro-hub/tinglongwu/"])
+def test_cloud_session_sets_identity_in_upstream_repo_only(setup, origin):
     home, repo = setup
     env = _env(home, remote=True)
+    _git(env, "remote", "add", "origin", origin, cwd=repo)
     assert _run_hook(env, repo).returncode == 0
     assert _git(env, "config", "--local", "user.name", cwd=repo) == OWNER_NAME
     assert _git(env, "config", "--local", "user.email", cwd=repo) == OWNER_EMAIL
@@ -70,35 +82,70 @@ def test_cloud_session_sets_identity_in_repo_only(setup):
     assert _git(env, "config", "--global", "--get", "core.hooksPath") == ""
 
 
-def test_local_session_undoes_old_hook_damage(setup):
+@pytest.mark.parametrize("origin", [FORK, "https://github.com/x/sunososobro-hub-tinglongwu.git", None])
+def test_cloud_session_on_a_fork_or_without_origin_writes_nothing(setup, origin):
     home, repo = setup
-    env = _env(home, remote=False)
+    env = _env(home, remote=True)
+    if origin:
+        _git(env, "remote", "add", "origin", origin, cwd=repo)
+    before = _snapshot(home)
+    assert _run_hook(env, repo).returncode == 0
+    assert _git(env, "config", "--local", "--get", "user.email", cwd=repo) == ""
+    assert _git(env, "config", "--local", "--get", "user.name", cwd=repo) == ""
+    assert _snapshot(home) == before
+
+
+def _leftover(home: Path, env: dict, hooks_value: str | None, owner_identity: bool) -> None:
     old = home / ".tlwu-git-hooks"
     old.mkdir()
     (old / "commit-msg").write_text("#!/bin/sh\n")
-    _git(env, "config", "--global", "user.name", OWNER_NAME)
-    _git(env, "config", "--global", "user.email", OWNER_EMAIL)
-    _git(env, "config", "--global", "core.hooksPath", str(old))
+    if owner_identity:
+        _git(env, "config", "--global", "user.name", OWNER_NAME)
+        _git(env, "config", "--global", "user.email", OWNER_EMAIL)
+    else:
+        _git(env, "config", "--global", "user.name", "Contributor")
+        _git(env, "config", "--global", "user.email", "c@example.com")
+    if hooks_value is not None:
+        _git(env, "config", "--global", "core.hooksPath", hooks_value)
+
+
+@pytest.mark.parametrize("hooks_value", ["{home}/.tlwu-git-hooks", "{home}/.tlwu-git-hooks/",
+                                         "C:/Users/x/.tlwu-git-hooks", "C:\\Users\\x\\.tlwu-git-hooks"])
+def test_local_session_detects_old_hookspath_and_changes_nothing(setup, hooks_value):
+    home, repo = setup
+    env = _env(home, remote=False)
+    _leftover(home, env, hooks_value.format(home=home), owner_identity=False)
+    before = _snapshot(home)
     r = _run_hook(env, repo)
     assert r.returncode == 0
     assert "#1309" in r.stdout
-    assert _git(env, "config", "--global", "--get", "core.hooksPath") == ""
-    assert _git(env, "config", "--global", "--get", "user.email") == ""
-    assert _git(env, "config", "--global", "--get", "user.name") == ""
-    assert not old.exists()
+    assert "git config --global --unset core.hooksPath" in r.stdout
+    assert "rm -rf ~/.tlwu-git-hooks" in r.stdout
+    assert _snapshot(home) == before
+    assert _git(env, "config", "--local", "--get", "user.email", cwd=repo) == ""
 
 
-def test_local_cleanup_keeps_contributor_identity_when_only_hookspath_was_set(setup):
+def test_local_session_detects_identity_only_leftover(setup):
     home, repo = setup
     env = _env(home, remote=False)
-    old = home / ".tlwu-git-hooks"
-    old.mkdir()
-    _git(env, "config", "--global", "user.name", "Contributor")
+    _leftover(home, env, None, owner_identity=True)
+    before = _snapshot(home)
+    r = _run_hook(env, repo)
+    assert r.returncode == 0
+    assert "#1309" in r.stdout and "user.email" in r.stdout
+    assert "--unset core.hooksPath" not in r.stdout
+    assert _snapshot(home) == before
+
+
+def test_local_session_with_unrelated_hookspath_is_silent(setup):
+    home, repo = setup
+    env = _env(home, remote=False)
+    _git(env, "config", "--global", "core.hooksPath", str(home / "my-hooks"))
     _git(env, "config", "--global", "user.email", "c@example.com")
-    _git(env, "config", "--global", "core.hooksPath", str(old))
-    assert _run_hook(env, repo).returncode == 0
-    assert _git(env, "config", "--global", "--get", "core.hooksPath") == ""
-    assert _git(env, "config", "--global", "user.email") == "c@example.com"
+    before = _snapshot(home)
+    r = _run_hook(env, repo)
+    assert r.returncode == 0 and r.stdout == ""
+    assert _snapshot(home) == before
 
 
 def test_env_never_touches_callers_xdg_git_config(setup, tmp_path, monkeypatch):
