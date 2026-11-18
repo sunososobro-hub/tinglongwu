@@ -3,7 +3,7 @@
 
 Usage:
   python scripts/check_mobile_packs.py                 # asks `gh release view mobile-latest`
-  python scripts/check_mobile_packs.py --assets-json F # F: `gh release view --json assets` output
+  python scripts/check_mobile_packs.py --assets-json F # F: `gh release view mobile-latest --json assets` output
                                                        #    or a JSON list of asset names
 Exit 0 when every expected zip is listed, 1 (naming each missing file) otherwise.
 """
@@ -33,12 +33,14 @@ def main(argv=None) -> int:
     ap.add_argument("--assets-json")
     ap.add_argument("--tag", default="mobile-latest")
     a = ap.parse_args(argv)
+    if not a.tag.strip():
+        ap.error("--tag must not be empty")
     if a.assets_json:
         with open(a.assets_json, encoding="utf-8") as f:
             data = json.load(f)
     else:
         out = subprocess.run(["gh", "release", "view", a.tag, "--json", "assets"],
-                             check=True, capture_output=True, text=True).stdout
+                             check=True, stdout=subprocess.PIPE, text=True).stdout
         data = json.loads(out)
     gone = missing(asset_names(data))
     for g in gone:
