@@ -80,6 +80,8 @@ def test_pending_line_echo_dropped_line_leaves_no_stuck_row(monkeypatch):
     q, st = queue.Queue(), core.SubtitleState(5)
     sink = core.QueueSink(q)
     sink.write_source("en", "my own voice")
+    _feed(st, sink, q)
+    assert st.lines() == [("my own voice" + P, True)]  # the row exists before the echo drops it
     sink.write(Result("en", "my own voice", None, "我自己的聲音"))
     _feed(st, sink, q)
     assert st.lines() == [] and st.pending == []
@@ -123,7 +125,7 @@ def test_pending_line_pipeline_shows_source_before_mt_and_logs_src_shown_ms():
     _feed(st, None, q)
     assert st.lines() == [("這是一行", False)]
     assert len(recs) == 1 and recs[0]["src_shown_ms"] is not None and 0 <= recs[0]["src_shown_ms"] <= 100
-    assert recs[0]["total"] - recs[0]["t_source_shown"] >= 0.15  # the source was up before the translation
+    assert recs[0]["total"] - recs[0]["t_source_shown"] >= 0.15  # handoff timing: source handed to the sink before the translation
 
 
 def test_livelag_reports_src_and_mt_shown():
@@ -156,6 +158,8 @@ def test_pending_line_overlay_prefixed_echo_is_dropped(monkeypatch):
     q, st = queue.Queue(), core.SubtitleState(5)
     sink = overlay.OverlaySink(Inner(), q, prefix="◀ ")
     sink.write_source("en", "my own voice")
+    _feed(st, sink, q)
+    assert st.lines() == [("my own voice" + P, True)]  # the row exists before the echo drops it
     sink.write(Result("en", "my own voice", None, "我自己的聲音"))
     _feed(st, sink, q)
     assert st.lines() == [] and st.pending == []
