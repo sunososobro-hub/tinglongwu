@@ -1362,6 +1362,7 @@ class App:
         # (built as slot 15, then moved beside Check setup: a new settings row made Advanced too tall for 1366x768)
         self.v_gpu_use = self._combo(15, "gui_gpu_use", "gpu_use", ("auto", "off"), "gpu_use")  # raw auto/off, named per UI language
         self.v_gpu_use.trace_add("write", lambda *_: self._asr_hint())  # Off -> the CPU tier's speech model
+        self._asr_hint()  # the first hint already follows a saved Off
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
