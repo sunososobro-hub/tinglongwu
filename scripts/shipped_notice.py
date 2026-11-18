@@ -127,13 +127,26 @@ def unannounced_tags(releases: list[dict], limit: int = 10) -> list[str]:
     return [r["tag_name"] for r in reversed(rels)]
 
 
-def issues_in_range(repo: str, tag: str, token: str, prev: str | None = None) -> list[int]:
-    """Issues referenced by PRs squashed into the commits between the previous tag and `tag`."""
-    if prev is None:
+_AUTO = object()  # `prev` omitted: discover the previous tag with git; an explicit None means "no predecessor"
+
+
+def _have_tag(tag: str) -> bool:
+    return subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/tags/{tag}"], capture_output=True).returncode == 0
+
+
+def issues_in_range(repo: str, tag: str, token: str, prev: str | None | object = _AUTO) -> list[int]:
+    """Issues referenced by PRs squashed into the commits between the previous tag and `tag`.
+
+    `prev` omitted: the nearest earlier tag (git describe). `prev=None`: no predecessor, scan the whole history.
+    A `prev` tag missing from this checkout also falls back to the whole history instead of aborting.
+    """
+    if prev is _AUTO:
         try:
             prev = _git("describe", "--tags", "--abbrev=0", f"{tag}^").strip()
         except subprocess.CalledProcessError:
             prev = None
+    if prev is not None and not _have_tag(prev):
+        prev = None
     rng = f"{prev}..{tag}" if prev else tag
     found: list[int] = []
     for subject in _git("log", "--format=%s", rng).splitlines():
@@ -184,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     by_tag = {r["tag_name"]: r for r in releases}
     tags = unannounced_tags(releases) if args.all else [args.tag]
     for tag in tags:
-        if subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/tags/{tag}"], capture_output=True).returncode:
+        if not _have_tag(tag):
             if not args.all:
                 sys.exit(f"tag {tag} not in this checkout")
             continue
