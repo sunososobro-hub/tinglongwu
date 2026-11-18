@@ -33,7 +33,7 @@ RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "r
                     "hotfix.yml")
 PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
                    "tinglongwu/__init__.py", "pyproject.toml", "tinglongwu/offline.py", "scripts/download_models.py",
-                   "scripts/make_model_pins.py"}
+                   "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
 PROTECTED_PREFIX = (".claude/", "packaging/", "installer/")
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
@@ -85,7 +85,10 @@ def opus_pass_after(notes: list[dict], head_at: datetime, sha: str) -> datetime 
     date can be set freely, so the time alone never binds a PASS to a later push; an unbound PASS is left to the AI
     mergers (fail closed)."""
     def bound(n):
-        return n.get("commit_id") == sha or (len(sha) >= 7 and sha[:7] in (n.get("body") or ""))
+        if n.get("commit_id") == sha:
+            return True
+        names = re.findall(r"\b[0-9a-f]{7,40}\b", n.get("body") or "")  # every SHA the comment names, compared whole
+        return bool(sha) and any(sha.startswith(x) for x in names)
     times = [_ts(n["at"]) for n in notes
              if n.get("author") in ALLOWED_REVIEWERS and PASS_RE.search(n.get("body") or "") and _ts(n["at"]) > head_at
              and bound(n)]
@@ -226,8 +229,9 @@ def gather(num: int, rn) -> tuple:
                 raise  # a transient error is a collection error, not "no issue"
             issue = None
     again = _gh(f"repos/{REPO}/pulls/{num}")
-    if (again["head"]["sha"], again["base"]["ref"], again["state"]) != (sha, pr["base"]["ref"], pr["state"]):
-        raise RuntimeError("head, base or state moved while reading")
+    if (again["head"]["sha"], again["base"]["ref"], again["state"], again.get("body")) != \
+            (sha, pr["base"]["ref"], pr["state"], pr.get("body")):
+        raise RuntimeError("head, base, state or body moved while reading")
     wn = None
     if any(f["filename"] == rn.WHATS_NEW_FILE for f in files):
         wn = subprocess.run(["gh", "api", f"repos/{REPO}/contents/{rn.WHATS_NEW_FILE}?ref={sha}", "-H",
@@ -245,8 +249,8 @@ def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = ()) 
     labels = {lb["name"] for lb in pr.get("labels", [])}
     if action == "merge":
         now = _gh(f"repos/{REPO}/pulls/{num}")  # last look right before the write: the merge API cannot bind the base
-        if now["base"]["ref"] != "dev" or now["head"]["sha"] != pr["head"]["sha"]:
-            raise RuntimeError("base or head changed before merge; not merged")
+        if (now["base"]["ref"], now["head"]["sha"], now.get("body")) != ("dev", pr["head"]["sha"], pr.get("body")):
+            raise RuntimeError("base, head or body changed before merge; not merged")
         subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
                         "-f", f"sha={pr['head']['sha']}"], check=True)
     elif action in ("needs-opus", "needs-ai"):

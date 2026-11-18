@@ -3,8 +3,9 @@ name: merge-gate
 # pull_request_target / workflow_run check out the base branch, and the script reads the PR through the API only.
 # Merges need the MERGE_GATE_TOKEN secret (a PAT or App token), so the squash push to dev still triggers ci and
 # release-pr (a merge by GITHUB_TOKEN fires no push event). Without it the gate is a dry run (log only).
-# Keep MERGE_GATE_TOKEN in the `merge-gate` environment with a deployment branch policy of `dev` only, so a run of
-# an edited copy of this file from another branch never gets it. schedule / workflow_run / workflow_dispatch start
+# Keep MERGE_GATE_TOKEN in the `merge-gate` environment with a deployment branch policy of `dev` and `main` only
+# (schedule / workflow_run run on main, pull_request_target on dev), so a run of an edited copy of this file from
+# another branch never gets it; the token itself must not be able to bypass main's branch rules. schedule / workflow_run / workflow_dispatch start
 # only once this file is on the default branch (main, next release); until then pull_request_target alone runs it.
 on:
   pull_request_target:

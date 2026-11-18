@@ -104,6 +104,7 @@ def test_protected_paths():
                  ".github/workflows/auto-release.yml", "pyproject.toml", "requirements-dev.txt",
                  "scripts/ci_offline.sh", "tinglongwu/offline.py", "packaging/x.spec", "tinglongwu/__init__.py"):
         assert is_protected(path), path
+    assert is_protected("scripts/merge_gate.py") and is_protected(".github/workflows/merge-gate.yml")
     for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "tinglongwu/foo.py",
                  ".github/ISSUE_TEMPLATE/bug.yml"):
         assert not is_protected(path), path
@@ -122,6 +123,8 @@ def test_protected_needs_opus_until_newer_pass():
     assert run(files=files, notes=new)[0] == "merge"
     review = [{"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(5), "commit_id": SHA}]
     assert run(files=files, notes=review)[0] == "merge"
+    lookalike = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA[:7]}ffff", "at": at(5)}]
+    assert run(files=files, notes=lookalike)[0] == "needs-opus"  # names another SHA with the same prefix
     stale = [{"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(5), "commit_id": "0" * 40}]
     assert run(files=files, notes=stale)[0] == "needs-opus"
 
