@@ -64,6 +64,13 @@ def test_whole_mode_clause_release_falls_back_to_the_wall_clock():
     assert m._last[3] is None  # its audio end is unknown: not the newest segment's 11.0
 
 
+def test_sentence_and_clause_in_one_release_clause_has_no_audio_end():
+    m = SentenceMerger(min_words=3, max_words=6, whole=True)
+    out = m.add("We should open the settings. We should save the changes, vers", "en", 0.0, span=(0.0, 11.0))
+    assert _texts(out) == [("We should open the settings.", None), ("We should save the changes,", None)]
+    assert m._last[3] is None  # the clause (last released) has no audio end, the sentence did not take the marker
+
+
 def test_without_spans_the_wall_clock_window_is_unchanged():
     m = _m()
     m.add(HEAD, "en", 0.0)
