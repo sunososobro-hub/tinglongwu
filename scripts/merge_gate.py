@@ -2,7 +2,8 @@
 
 The fixed-rule part of R-merge / S-merge: for every open PR into `dev` it decides one of
 
-  merge       all rule gates pass, no protected / g4 path (or an Opus PASS newer than the head, or an exempt patch
+  merge       all rule gates pass, no protected / g4 path (or an Opus PASS newer than the head, a PASS on an older
+              head with no protected change since (#1580), or an exempt patch
               bump) and no unresolved review thread: squash-merge with the checked head SHA;
   needs-opus  a protected / g4 path (section 14) or a head that is not fix/N (section 2) without an Opus PASS:
               add the `needs-opus` label for the Opus review queue;
@@ -108,14 +109,40 @@ def opus_pass_after(notes: list[dict], head_at: datetime, sha: str) -> datetime 
     return max(times) if times else None
 
 
+def approved_sha(n: dict) -> str:
+    """The SHA an `Opus review: PASS` approves: the review's commit, else the first SHA on the PASS line."""
+    if n.get("commit_id"):
+        return n["commit_id"]
+    line = next((x for x in (n.get("body") or "").splitlines() if PASS_RE.match(x)), "")
+    first = re.search(r"\b[0-9a-f]{7,40}\b", line)
+    return first.group(0) if first else ""
+
+
+def carried_pass(notes: list[dict], carry) -> datetime | None:
+    """#1580: newest allowed-author PASS on an OLDER head that still holds: `carry(sha)` says that SHA is an ancestor
+    of the PR head and no protected / g4 path changed between it and the head, so the protected content Opus approved
+    is exactly what would merge. A later push that only touches ordinary files then needs no second Opus review."""
+    if carry is None:
+        return None
+    times = []
+    for n in notes:
+        if n.get("author") in ALLOWED_REVIEWERS and PASS_RE.search(n.get("body") or ""):
+            sha = approved_sha(n)
+            if sha and carry(sha):
+                times.append(_ts(n["at"]))
+    return max(times) if times else None
+
+
 def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None, notes: list[dict],
-             unresolved_threads: int, head_at: datetime, bump=None, legacy_freeze: bool = False) -> tuple[str, str]:
+             unresolved_threads: int, head_at: datetime, bump=None, legacy_freeze: bool = False,
+             carry=None) -> tuple[str, str]:
     """Pure decision for one PR. Returns (action, reason).
 
     pr: GET pulls/N (base.ref, head.ref, head.repo.full_name, draft, mergeable_state, changed_files, body, labels).
     checks: check runs on the head commit. issue: GET issues/<linked> or None. notes: PR comments and reviews as
     {author, body, at}. head_at: committer date of the head commit. bump: callable(files) -> (exempt, reason),
-    release_notes.bump_exempt. legacy_freeze: a legacy dev -> main release PR is open (section 14 Transition)."""
+    release_notes.bump_exempt. legacy_freeze: a legacy dev -> main release PR is open (section 14 Transition).
+    carry: callable(sha) -> bool for #1580 (see carried_pass); None = only a PASS bound to the head counts."""
     head = pr["head"]["ref"]
     body = pr.get("body") or ""
     if pr.get("state", "open") != "open":
@@ -135,7 +162,7 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
     if legacy_freeze and "release-fix" not in body:
         return "hold", "legacy release freeze: body lacks release-fix"
 
-    pass_at = opus_pass_after(notes, head_at, pr["head"].get("sha", ""))
+    pass_at = opus_pass_after(notes, head_at, pr["head"].get("sha", "")) or carried_pass(notes, carry)
     for n in notes:
         if STOP_RE.search(n.get("body") or "") and not (pass_at and pass_at > _ts(n["at"])):
             if n.get("author", "").endswith("[bot]"):
@@ -256,7 +283,28 @@ def gather(num: int, rn) -> tuple:
     if any(f["filename"] == rn.WHATS_NEW_FILE for f in files):
         wn = subprocess.run(["gh", "api", f"repos/{REPO}/contents/{rn.WHATS_NEW_FILE}?ref={sha}", "-H",
                              "Accept: application/vnd.github.raw"], check=True, capture_output=True, text=True).stdout
-    return pr, files, checks, issue, notes, _unresolved(num), head_at, (lambda fs: rn.bump_exempt(fs, wn))
+    return (pr, files, checks, issue, notes, _unresolved(num), head_at, (lambda fs: rn.bump_exempt(fs, wn)),
+            (lambda s: pass_carries(s, sha)))
+
+
+COMPARE_FILE_CAP = 300  # GET compare lists at most 300 files; a longer diff cannot be checked (fail closed)
+
+
+def pass_carries(pass_sha: str, head_sha: str) -> bool:
+    """#1580: True when `pass_sha` is an ancestor of `head_sha` and no protected / g4 path changed in between."""
+    if not re.fullmatch(r"[0-9a-f]{7,40}", pass_sha or "") or not head_sha:
+        return False
+    try:
+        cmp = _gh(f"repos/{REPO}/compare/{pass_sha}...{head_sha}")
+    except subprocess.CalledProcessError:
+        return False  # unknown SHA or API error: no carry (fail closed)
+    if cmp.get("status") not in ("ahead", "identical") or cmp.get("behind_by", 1) != 0:
+        return False
+    files = cmp.get("files") or []
+    if len(files) >= COMPARE_FILE_CAP:
+        return False
+    return not any(is_protected(f.get("filename", "")) or is_protected(f.get("previous_filename") or "")
+                   for f in files)
 
 
 def legacy_freeze() -> bool:
@@ -297,8 +345,8 @@ def main(argv=None) -> int:
     rc = 0
     for num in nums:
         try:
-            pr, files, checks, issue, notes, threads, head_at, bump = gather(num, rn)
-            action, reason = evaluate(pr, files, checks, issue, notes, threads, head_at, bump, freeze)
+            pr, files, checks, issue, notes, threads, head_at, bump, carry = gather(num, rn)
+            action, reason = evaluate(pr, files, checks, issue, notes, threads, head_at, bump, freeze, carry)
             print(f"#{num} {action}: {reason}")
             if a.apply:
                 apply(num, pr, action, reason, notes)
