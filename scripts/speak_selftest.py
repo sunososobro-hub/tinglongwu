@@ -148,6 +148,9 @@ def _child(a) -> int:
         def __init__(self, *_a, **_k):
             pass
 
+        def close(self):
+            pass
+
         def frames(self):
             blk = SAMPLE_RATE // 2
             t0 = time.monotonic()

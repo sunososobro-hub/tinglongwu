@@ -254,7 +254,7 @@ def _stop_live(stop, box, tts, player, previewer, source=None):
     interpreter exits (Linux: hang after 'peak VRAM' / SIGABRT)."""
     def cleanup() -> None:
         stop.set()
-        if source is not None:
+        if source is not None and getattr(source, "close", None) is not None:
             try:
                 source.close()
             except Exception:  # noqa: BLE001
