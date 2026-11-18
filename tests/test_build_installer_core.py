@@ -80,11 +80,11 @@ def test_core_wizard_runs_default_listen_setup_hidden_with_no_pip_or_language_pa
     assert "echo !errorlevel! >\"' + DoneFile" in params  # the wizard's exit code follows setup's
     assert "SW_HIDE" in run and "ewNoWait" in run
     assert not re.search(r"pip(\.exe)?\s+install|-m\s+pip", code, re.I)
-    # no language page / packs in the core wizard; the CPU and auto-update tasks stay
+    # no language page / packs in the core wizard; only the auto-update task stays (#1531)
     for gone in ("LangPage", "--packs", "-Packs", "SelectedPacks", "PACK_", "ShouldSkipPage", "10-40", "DownloadMB"):
         assert gone not in code, gone
     tasks = "\n".join(_section(iss, "Tasks"))
-    assert 'Name: "cpu"' in tasks and 'Name: "autoupdate"' in tasks
+    assert 'Name: "cpu"' not in tasks and 'Name: "autoupdate"' in tasks  # #1531: no force-CPU task
     # the finish page no longer talks about install.ps1 or a repair shortcut that the core wizard does not have
     assert "install.ps1" not in code.split("procedure CurPageChanged", 1)[1].split("\nend;\n", 1)[0]
 

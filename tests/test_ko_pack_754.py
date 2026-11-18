@@ -61,7 +61,7 @@ def test_gpu_option_follows_the_language_options():
     labels, codes, _ = _wizard()
     gpu = len(codes)
     assert "GPU" in labels[gpu] and _consts()["OPT_GPU"] == gpu
-    assert "LangPage.Values[OPT_GPU] := HasNvidiaDriver" in ISS and "(not LangPage.Values[OPT_GPU])" in ISS
+    assert "LangPage.Values[OPT_GPU] := HasNvidiaDriver" in ISS and "Gpu := LangPage.Values[OPT_GPU];" in ISS  # #1531: no force-CPU task
 
 
 def test_cli_installers_pick_ko_on_korean_locale():
