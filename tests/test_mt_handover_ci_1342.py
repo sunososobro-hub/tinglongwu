@@ -25,13 +25,19 @@ from pathlib import Path
 a = sys.argv[1:]
 save, mdir = Path(a[a.index("--save") + 1]), Path(a[a.index("--models-dir") + 1])
 mode = os.environ.get("FAKE_MODE", "ok")
+n_tr = 0
 with open(save, "a", encoding="utf-8") as f:
     for i in range(400):
         landed = (mdir / "landed").exists()
-        tr = mode == "early" or (mode == "ok" and landed)
+        tr = mode == "early" or (mode in ("ok", "crash", "flap") and landed)
+        if mode == "flap" and n_tr >= 1:
+            tr = False  # translated once, then back to source
+        n_tr += tr
         f.write(json.dumps({"t": i, "src": "This is a test.", "dst": "這是一個測試。" if tr else ""},
                            ensure_ascii=False) + "\n")
         f.flush()
+        if mode == "crash" and tr:
+            sys.exit(3)
         time.sleep(0.2)
 '''
 
@@ -75,10 +81,11 @@ def _run(tmp_path, monkeypatch, mode, timeout=20):
     mdir = tmp_path / "models"
     mdir.mkdir()
     monkeypatch.setenv("FAKE_MODE", mode)
-    land = f'"{sys.executable}" -c "import pathlib; pathlib.Path(r\'{mdir / "landed"}\').touch()"'
+    # the checker appends `--models-dir M`: argv[2] is the models dir (no path inside the -c program)
+    land = f'"{sys.executable}" -c "import pathlib, sys; pathlib.Path(sys.argv[2], \'landed\').touch()"'
     out = tmp_path / "h.json"
     rc = h.main(["--models-dir", str(mdir), "--land-cmd", land, "--tlwu", f'"{sys.executable}" "{fake}"',
-                 "--timeout", str(timeout), "--log", str(tmp_path / "h.log"), "--out", str(out)])
+                 "--timeout", str(timeout), "--settle", "2", "--log", str(tmp_path / "h.log"), "--out", str(out)])
     return rc, json.loads(out.read_text("utf-8"))
 
 
@@ -111,3 +118,36 @@ def test_hold_takes_a_cached_model_away_and_lands_it_back(tmp_path):
     assert not hymt_complete(tmp_path)
     assert "whisper" in json.loads((tmp_path / "manifest.json").read_text("utf-8"))
     assert hold.land() == 0 and hymt_complete(tmp_path) and gguf.read_bytes() == b"gguf"
+
+
+def test_run_crash_right_after_a_translated_line_fails(tmp_path, monkeypatch):
+    rc, r = _run(tmp_path, monkeypatch, "crash", timeout=10)
+    assert rc == 1 and any("exited with code 3" in p for p in r["problems"]), r
+
+
+def test_run_fall_back_to_source_after_translating_fails(tmp_path, monkeypatch):
+    rc, r = _run(tmp_path, monkeypatch, "flap", timeout=15)
+    assert rc == 1 and any("not one-way" in p for p in r["problems"]), r
+
+
+def test_missing_clip_leaves_a_cached_model_in_place(tmp_path):
+    from tinglongwu.hymt import HYMT_SIZES, hymt_path
+    from tinglongwu.mt_pending import hymt_complete
+
+    gguf = hymt_path(tmp_path, "1.8b")
+    gguf.parent.mkdir(parents=True, exist_ok=True)
+    gguf.write_bytes(b"gguf")
+    (tmp_path / "manifest.json").write_text(json.dumps({HYMT_SIZES["1.8b"][0]: "sha"}), "utf-8")
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        h.main(["--models-dir", str(tmp_path), "--clip", str(tmp_path / "nope.wav"), "--timeout", "5",
+                "--log", str(tmp_path / "h.log"), "--out", str(tmp_path / "h.json")])
+    assert hymt_complete(tmp_path)
+
+
+def test_read_jsonl_skips_a_half_written_row(tmp_path):
+    p = tmp_path / "l.jsonl"
+    full = json.dumps(TR, ensure_ascii=False).encode() + b"\n"
+    p.write_bytes(full + json.dumps(TR, ensure_ascii=False).encode()[:-3])  # cut inside a UTF-8 character
+    assert h.read_jsonl(p) == [TR]

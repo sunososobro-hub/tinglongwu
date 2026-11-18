@@ -201,7 +201,7 @@ jobs:
         run: |
           unset TLWU_SKIP_MODELS
           python scripts/mt_handover_ci.py --models-dir "$TLWU_MODELS" \
-            --land-cmd "tlwu-setup --default-listen --models-dir $TLWU_MODELS" \
+            --land-cmd "tlwu-setup --default-listen" \
             --timeout 1200 --log "$RUNNER_TEMP/mt_handover.log" --out "$RUNNER_TEMP/mt_handover.json" \
             --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

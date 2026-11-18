@@ -16,7 +16,9 @@ PASS when: lines written before the landing started are source text only (no tra
 (CJK, for --to zh) line comes after it, no line after the first translated one falls back to source text, and every
 line has its source text (nothing lost at the hand-over). The verdict is printed and written to --out as JSON.
 
-    python scripts/mt_handover_ci.py --models-dir M --land-cmd "tlwu-setup --default-listen --models-dir M" --out h.json
+    python scripts/mt_handover_ci.py --models-dir M --land-cmd "tlwu-setup --default-listen" --out h.json
+
+`--land-cmd` gets `--models-dir M` appended as a separate, properly quoted argument.
 """
 from __future__ import annotations
 
@@ -28,7 +30,6 @@ import shlex
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import wave
 from pathlib import Path
@@ -87,16 +88,18 @@ def long_clip(src: Path, dst: Path, seconds: float, gap: float = 1.0) -> float:
 
 
 def read_jsonl(path: Path) -> list[dict]:
+    """The complete rows of a JSONL file another process is still appending to (a trailing partial row is left
+    for the next read, so a half-written UTF-8 character never breaks the decode)."""
     out: list[dict] = []
     try:
-        lines = path.read_text("utf-8").splitlines()
+        data = path.read_bytes()
     except OSError:
         return out
-    for line in lines:
+    for line in data[: data.rfind(b"\n") + 1].decode("utf-8", errors="replace").splitlines():
         try:
             out.append(json.loads(line))
         except ValueError:
-            pass  # a line still being written
+            pass
     return out
 
 
@@ -107,8 +110,15 @@ def with_args(command: str, args: list[str]):
     return [*shlex.split(command), *args]
 
 
+def _write_json(path: Path, doc: dict) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(doc, indent=1), "utf-8")
+    os.replace(tmp, path)  # atomic: the manifest is never half-written
+
+
 class Hold:
-    """Hy-MT2 already on disk: move it aside now, put it back as the landing."""
+    """Hy-MT2 already on disk: move it aside now, put it back as the landing. `land()` is idempotent and resumes
+    from whatever state an interrupted move left, so the cached models dir always ends up complete."""
 
     def __init__(self, mdir: Path):
         sys.path.insert(0, str(ROOT))
@@ -119,12 +129,27 @@ class Hold:
         self.mf = mdir / "manifest.json"
         self.man = json.loads(self.mf.read_text("utf-8"))
         os.replace(self.gguf, self.held)
-        self.mf.write_text(json.dumps({k: v for k, v in self.man.items() if k != self.key}, indent=1), "utf-8")
+        try:
+            _write_json(self.mf, {k: v for k, v in self.man.items() if k != self.key})
+        except BaseException:
+            self.land()
+            raise
 
     def land(self) -> int:
-        os.replace(self.held, self.gguf)
-        self.mf.write_text(json.dumps(self.man, indent=1), "utf-8")
+        if self.held.exists():
+            os.replace(self.held, self.gguf)
+        _write_json(self.mf, self.man)
         return 0
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
 
 
 def run(a) -> dict:
@@ -132,65 +157,78 @@ def run(a) -> dict:
     from tinglongwu.mt_pending import hymt_complete
 
     mdir = Path(a.models_dir)
-    hold = Hold(mdir) if hymt_complete(mdir) else None
-    if hold is None and not a.land_cmd:
+    cached = hymt_complete(mdir)
+    if not cached and not a.land_cmd:
         raise SystemExit("Hy-MT2 is not installed and no --land-cmd downloads it")
-    work = Path(tempfile.mkdtemp(prefix="tlwu-handover-"))
-    clip = work / "clip.wav"
-    clip_s = long_clip(Path(a.clip), clip, a.timeout + 60)
-    save, log = work / "lines.jsonl", Path(a.log)
-    rest = ["--file", str(clip), "--paced", "--mt-pending", "--lang", "en", "--to", a.to, "--no-splash", "--no-adapt",
-            "--save", str(save), "--models-dir", str(mdir)]
-    cmd = with_args(a.tlwu, rest) if a.tlwu else [sys.executable, "-m", "tinglongwu", *rest]
-    print("run:", cmd, flush=True)
-    t0 = time.monotonic()
-    landing: dict = {"mode": "hold" if hold else "download"}
-    with open(log, "w", encoding="utf-8", errors="replace") as lf:
-        proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
+    with tempfile.TemporaryDirectory(prefix="tlwu-handover-") as tmp:
+        work = Path(tmp)
+        clip = work / "clip.wav"
+        clip_s = long_clip(Path(a.clip), clip, a.timeout + 60)  # before the hold: a bad --clip leaves the cache alone
+        save, log = work / "lines.jsonl", Path(a.log)
+        rest = ["--file", str(clip), "--paced", "--mt-pending", "--lang", "en", "--to", a.to, "--no-splash",
+                "--no-adapt", "--save", str(save), "--models-dir", str(mdir)]
+        cmd = with_args(a.tlwu, rest) if a.tlwu else [sys.executable, "-m", "tinglongwu", *rest]
+        print("run:", cmd, flush=True)
+        t0 = time.monotonic()
+        deadline = t0 + a.timeout
+        landing: dict = {"mode": "hold" if cached else "download"}
+        hold = None
+        proc = lander = None
         n_before = None
-        lander: threading.Thread | None = None
-
-        def do_land():
-            s = time.monotonic()
-            if hold is not None:
-                rc = hold.land()
-            else:
-                rc = subprocess.call(with_args(a.land_cmd, []))
-            landing.update(rc=rc, seconds=round(time.monotonic() - s, 1), done_at=round(time.monotonic() - t0, 1))
-
+        stop_asked = False
         try:
-            while time.monotonic() - t0 < a.timeout and proc.poll() is None:
-                recs = read_jsonl(save)
-                if lander is None and any((r.get("src") or "").strip() for r in recs):
-                    n_before = len(recs)
-                    landing["started_at"] = round(time.monotonic() - t0, 1)
-                    print(f"first source line after {landing['started_at']} s: landing Hy-MT2 ({landing['mode']})",
-                          flush=True)
-                    lander = threading.Thread(target=do_land, daemon=True)
-                    lander.start()
-                if n_before is not None and any(is_translated(r, a.to) for r in recs[n_before:]):
-                    break
-                time.sleep(1.0)
+            hold = Hold(mdir) if cached else None
+            with open(log, "w", encoding="utf-8", errors="replace") as lf:
+                proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
+                settle_until = None
+                while time.monotonic() < deadline and proc.poll() is None:
+                    recs = read_jsonl(save)
+                    if lander is None and n_before is None and any((r.get("src") or "").strip() for r in recs):
+                        n_before = len(recs)
+                        landing["started_at"] = round(time.monotonic() - t0, 1)
+                        print(f"first source line after {landing['started_at']} s: landing Hy-MT2 "
+                              f"({landing['mode']})", flush=True)
+                        if hold is not None:
+                            landing.update(rc=hold.land(), seconds=0.0, done_at=landing["started_at"])
+                        else:
+                            land_t = time.monotonic()
+                            try:
+                                lander = subprocess.Popen(with_args(a.land_cmd, ["--models-dir", str(mdir)]))
+                            except OSError as e:
+                                landing.update(rc=None, error=f"landing command did not start: {e}")
+                                lander = False  # never retried
+                    if lander is not None and "rc" not in landing and lander.poll() is not None:
+                        landing.update(rc=lander.returncode, seconds=round(time.monotonic() - land_t, 1),
+                                       done_at=round(time.monotonic() - t0, 1))
+                    if settle_until is None and n_before is not None \
+                            and any(is_translated(r, a.to) for r in recs[n_before:]):
+                        settle_until = time.monotonic() + a.settle  # keep listening: no fall-back to source
+                    if settle_until is not None and time.monotonic() >= settle_until and "rc" in landing:
+                        break
+                    time.sleep(1.0)
+                stop_asked = proc.poll() is None  # still running: the checker ends it; else tlwu exited on its own
         finally:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(30)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-            if lander is not None:
-                lander.join(a.timeout)
-            if hold is not None and "rc" not in landing:
+            if proc is not None:
+                exited_early = proc.poll() is not None and not stop_asked
+                _stop(proc)
+            if lander:
+                if "rc" not in landing:
+                    landing["timed_out"] = lander.poll() is None
+                _stop(lander)
+                landing.setdefault("rc", lander.returncode)
+            if hold is not None:
                 hold.land()  # never leave the cached models dir without its model
-    recs = read_jsonl(save)
+        recs = read_jsonl(save)
     problems = judge(recs, n_before, a.to)
-    if landing.get("rc") not in (None, 0):
-        problems.append(f"landing command exit {landing['rc']}")
+    if n_before is not None and landing.get("rc") != 0:
+        problems.append(f"landing did not finish cleanly: {landing}")
+    if proc is not None and exited_early and proc.returncode != 0:
+        problems.append(f"tlwu exited with code {proc.returncode} before the check ended")
     first_tr = next((r for r in recs[n_before or 0:] if is_translated(r, a.to)), None)
     return {"verdict": "FAIL" if problems else "PASS", "problems": problems, "lines": len(recs),
             "source_lines_before_landing": n_before, "landing": landing, "clip_seconds": round(clip_s, 1),
             "first_source": recs[0] if recs else None, "first_translated": first_tr,
-            "elapsed_seconds": round(time.monotonic() - t0, 1), "exit": proc.returncode}
+            "elapsed_seconds": round(time.monotonic() - t0, 1), "exit": proc.returncode if proc else None}
 
 
 def main(argv=None) -> int:
@@ -201,6 +239,8 @@ def main(argv=None) -> int:
     ap.add_argument("--clip", default=str(CLIP))
     ap.add_argument("--to", default="zh")
     ap.add_argument("--timeout", type=float, default=900.0, help="seconds for the whole session (default 900)")
+    ap.add_argument("--settle", type=float, default=30.0,
+                    help="seconds to keep listening after the first translated line (a fall-back to source fails)")
     ap.add_argument("--log", default="mt_handover.log")
     ap.add_argument("--out", default="mt_handover.json")
     ap.add_argument("--summary", default=None, help="append a markdown block here (GITHUB_STEP_SUMMARY)")
