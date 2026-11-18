@@ -928,8 +928,9 @@ class App:
         self.scene_combo.pack(side="left")
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
         # #1544: what the video scene listens to, in plain words, one click to switch (was only under 調整)
-        self.btn_source = ttk.Button(scene_row, command=self._source_toggled)
-        self._source_sync()
+        self.source_row = ttk.Frame(b)  # its own row: next to the scene dropdown it pushed the bar past its max width
+        self.btn_source = ttk.Button(self.source_row, command=self._source_toggled)
+        self.btn_source.pack(side="left")
         self.toggle_row = row1 = ttk.Frame(b)
         self.v_mic = tk.BooleanVar(value=True)
         self.btn_mic = ttk.Checkbutton(row1, variable=self.v_mic, style="Toolbutton", command=self._mic_toggled)
@@ -969,11 +970,14 @@ class App:
         if wide:
             self.scene_row.grid(row=0, column=0, columnspan=1, sticky="w", pady=0, padx=(0, 24))
             self.toggle_row.grid(row=0, column=1, columnspan=1, sticky="w", pady=0)
-            self.action_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=(8, 0))
+            self.source_row.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+            self.action_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(8, 0))
         else:
             self.scene_row.grid(row=0, column=0, columnspan=2, sticky="we", pady=(0, 6), padx=0)
             self.toggle_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=0)
-            self.action_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(8, 0))
+            self.source_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+            self.action_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        self._source_sync()  # #1544: the grid() above would show the row again in the meeting scene
 
     @staticmethod
     def _scene_labels():
@@ -989,11 +993,11 @@ class App:
         """#1544: show / hide the source toggle for the saved scene and refresh its words."""
         key = source_label_key(self._live_source_settings())
         if key is None:
-            self.btn_source.pack_forget()
+            self.source_row.grid_remove()
             return
         self.btn_source.configure(text=t(key))
-        if not self.btn_source.winfo_manager():
-            self.btn_source.pack(side="left", padx=(8, 0))
+        if self.source_row.grid_info() == {} and self.bar_wide is not None:
+            self.source_row.grid()
 
     def _source_toggled(self):
         """#1544: one click switches PC sound <-> microphone (applies at the next Start)."""
