@@ -38,6 +38,8 @@ with open(save, "a", encoding="utf-8") as f:
         f.flush()
         if mode == "crash" and tr:
             sys.exit(3)
+        if mode == "flap" and tr:
+            time.sleep(2.5)  # the checker polls (1 s) and sees this translated row alone before the fall-back
         time.sleep(0.2)
 '''
 
@@ -151,3 +153,38 @@ def test_read_jsonl_skips_a_half_written_row(tmp_path):
     full = json.dumps(TR, ensure_ascii=False).encode() + b"\n"
     p.write_bytes(full + json.dumps(TR, ensure_ascii=False).encode()[:-3])  # cut inside a UTF-8 character
     assert h.read_jsonl(p) == [TR]
+
+
+def test_run_deadline_inside_the_settle_window_fails(tmp_path, monkeypatch):
+    fake = tmp_path / "fake_tlwu.py"
+    fake.write_text(FAKE, "utf-8")
+    mdir = tmp_path / "models"
+    mdir.mkdir()
+    monkeypatch.setenv("FAKE_MODE", "ok")
+    land = f'"{sys.executable}" -c "import pathlib, sys; pathlib.Path(sys.argv[2], \'landed\').touch()"'
+    out = tmp_path / "h.json"
+    rc = h.main(["--models-dir", str(mdir), "--land-cmd", land, "--tlwu", f'"{sys.executable}" "{fake}"',
+                 "--timeout", "6", "--settle", "60", "--log", str(tmp_path / "h.log"), "--out", str(out)])
+    r = json.loads(out.read_text("utf-8"))
+    assert rc == 1 and any("watched only part" in p for p in r["problems"]), r
+
+
+def test_run_landing_failure_ends_the_check_early(tmp_path, monkeypatch):
+    fake = tmp_path / "fake_tlwu.py"
+    fake.write_text(FAKE, "utf-8")
+    mdir = tmp_path / "models"
+    mdir.mkdir()
+    monkeypatch.setenv("FAKE_MODE", "ok")
+    out = tmp_path / "h.json"
+    rc = h.main(["--models-dir", str(mdir), "--land-cmd", f'"{sys.executable}" -c "raise SystemExit(1)"',
+                 "--tlwu", f'"{sys.executable}" "{fake}"', "--timeout", "60", "--log", str(tmp_path / "h.log"),
+                 "--out", str(out)])
+    r = json.loads(out.read_text("utf-8"))
+    assert rc == 1 and r["elapsed_seconds"] < 20 and any("landing did not finish" in p for p in r["problems"]), r
+
+
+def test_read_jsonl_keeps_a_row_with_u2028(tmp_path):
+    p = tmp_path / "l.jsonl"
+    row = {"src": "a\u2028b", "dst": ""}
+    p.write_text(json.dumps(row, ensure_ascii=False) + "\n", "utf-8")
+    assert h.read_jsonl(p) == [row]

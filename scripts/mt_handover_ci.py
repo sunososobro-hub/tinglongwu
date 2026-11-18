@@ -10,11 +10,12 @@ Run by .github/workflows/install-clean.yml (job `mt-handover`, windows-latest) a
   2. the Hy-MT2 download is HELD until the first source-text line is written, then `--land-cmd` runs (the GUI's
      download child is `tlwu-setup --default-listen`, #1358). If Hy-MT2 is already complete (a cached models dir),
      it is held aside instead (GGUF renamed, manifest entry removed) and put back as the "landing";
-  3. the session keeps running; the check ends at the first translated line after the landing, or at --timeout.
+  3. the session keeps running for --settle s after the first translated line (a fall-back to source fails), then
+     the check ends; --timeout bounds the whole session.
 
 PASS when: lines written before the landing started are source text only (no translation), at least one translated
 (CJK, for --to zh) line comes after it, no line after the first translated one falls back to source text, and every
-line has its source text (nothing lost at the hand-over). The verdict is printed and written to --out as JSON.
+SAVED line has its source text. (Speech lost before tlwu writes a line leaves no row, so it is not detected here.) The verdict is printed and written to --out as JSON.
 
     python scripts/mt_handover_ci.py --models-dir M --land-cmd "tlwu-setup --default-listen" --out h.json
 
@@ -95,9 +96,11 @@ def read_jsonl(path: Path) -> list[dict]:
         data = path.read_bytes()
     except OSError:
         return out
-    for line in data[: data.rfind(b"\n") + 1].decode("utf-8", errors="replace").splitlines():
+    for raw in data[: data.rfind(b"\n") + 1].split(b"\n"):  # LF only: U+2028 inside a subtitle is not a row end
+        if not raw.strip():
+            continue
         try:
-            out.append(json.loads(line))
+            out.append(json.loads(raw.decode("utf-8", errors="replace")))
         except ValueError:
             pass
     return out
@@ -181,6 +184,7 @@ def run(a) -> dict:
             with open(log, "w", encoding="utf-8", errors="replace") as lf:
                 proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
                 settle_until = None
+                settled = False
                 while time.monotonic() < deadline and proc.poll() is None:
                     recs = read_jsonl(save)
                     if lander is None and n_before is None and any((r.get("src") or "").strip() for r in recs):
@@ -203,25 +207,33 @@ def run(a) -> dict:
                     if settle_until is None and n_before is not None \
                             and any(is_translated(r, a.to) for r in recs[n_before:]):
                         settle_until = time.monotonic() + a.settle  # keep listening: no fall-back to source
+                    if "rc" in landing and landing["rc"] != 0:
+                        break  # landing failed: this run cannot pass, report it now
                     if settle_until is not None and time.monotonic() >= settle_until and "rc" in landing:
+                        settled = True
                         break
                     time.sleep(1.0)
                 stop_asked = proc.poll() is None  # still running: the checker ends it; else tlwu exited on its own
         finally:
-            if proc is not None:
-                exited_early = proc.poll() is not None and not stop_asked
-                _stop(proc)
-            if lander:
-                if "rc" not in landing:
-                    landing["timed_out"] = lander.poll() is None
-                _stop(lander)
-                landing.setdefault("rc", lander.returncode)
-            if hold is not None:
-                hold.land()  # never leave the cached models dir without its model
+            try:
+                if proc is not None:
+                    exited_early = proc.poll() is not None and not stop_asked
+                    _stop(proc)
+                if lander:
+                    if "rc" not in landing:
+                        landing["timed_out"] = lander.poll() is None
+                    _stop(lander)
+                    landing.setdefault("rc", lander.returncode)
+            finally:
+                if hold is not None:
+                    hold.land()  # never leave the cached models dir without its model, even if a stop failed
         recs = read_jsonl(save)
     problems = judge(recs, n_before, a.to)
     if n_before is not None and landing.get("rc") != 0:
         problems.append(f"landing did not finish cleanly: {landing}")
+    if settle_until is not None and not settled:
+        problems.append(f"watched only part of the {a.settle:g} s after the first translated line (deadline or "
+                        "tlwu exit): a fall-back to source text could be missed")
     if proc is not None and exited_early and proc.returncode != 0:
         problems.append(f"tlwu exited with code {proc.returncode} before the check ended")
     first_tr = next((r for r in recs[n_before or 0:] if is_translated(r, a.to)), None)
