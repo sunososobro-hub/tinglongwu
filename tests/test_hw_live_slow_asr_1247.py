@@ -84,7 +84,10 @@ def test_parse_gpu_apps_keeps_names_not_paths():
 
 
 def test_gpu_apps_without_nvidia_smi_is_empty(monkeypatch):
-    monkeypatch.setenv("PATH", "")
+    def missing_tool(*args, **kwargs):  # PATH="" is not enough on Windows: System32 is searched first
+        raise FileNotFoundError("nvidia-smi")
+
+    monkeypatch.setattr(hl.subprocess, "run", missing_tool)
     assert hl.gpu_apps() == []
 
 

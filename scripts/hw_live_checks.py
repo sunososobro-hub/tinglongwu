@@ -548,8 +548,8 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
             if not ready:
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             t0 = played_at(play_child(wav, CABLE_IN))
+            gpu_during = gpu_apps()  # end of play, before the tail wait; live tlwu still running: it is one of these
             time.sleep(TAIL_S)
-            gpu_during = gpu_apps()  # live tlwu still running: it is one of these
         finally:
             # verify_offline has no SIGTERM handler: ask it to stop (it then ends the tlwu --mic it started) before
             # any terminate, so no orphan tlwu process is left on a ready timeout or exception (#1203 review).
