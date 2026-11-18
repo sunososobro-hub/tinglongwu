@@ -138,7 +138,10 @@ def run_state(runs: list[dict]) -> tuple[str | None, datetime | None]:
 
 
 def _test_run(sha: str) -> tuple[str | None, datetime | None]:
-    runs = (_gh(f"repos/{REPO}/commits/{sha}/check-runs?check_name=test&per_page=100") or {}).get("check_runs", [])
+    # filter=all: every attempt (reruns share the SHA); the default `latest` would hide the first failure
+    pages = _gh(f"repos/{REPO}/commits/{sha}/check-runs?check_name=test&filter=all&per_page=100",
+                "--paginate", "--slurp") or []
+    runs = [run for page in pages for run in (page.get("check_runs", []) if isinstance(page, dict) else [])]
     return run_state(runs)
 
 
@@ -191,6 +194,8 @@ def scan(now: datetime) -> list[str]:
     open_heads = {pr["head"]["ref"] for pr in prs if (pr["head"].get("repo") or {}).get("full_name") == REPO}
     for pr in prs:
         full = _gh(f"repos/{REPO}/pulls/{pr['number']}")  # one revision: sha, labels and mergeable_state together
+        if full.get("state") != "open" or full["base"]["ref"] != "dev":
+            continue  # out of scope already: no retry
         if full.get("mergeable_state") in (None, "unknown"):
             time.sleep(3)  # GitHub computes mergeability lazily; ask once more before calling it unknown
             full = _gh(f"repos/{REPO}/pulls/{pr['number']}")
