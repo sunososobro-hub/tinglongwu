@@ -67,3 +67,27 @@ def test_linked_issue_prefers_head_branch():
     assert ledger.linked_issue("fix/12-r2", None) == 12
     assert ledger.linked_issue("hotfix/v1.2.3", "Closes #7") == 7
     assert ledger.linked_issue("docs/x", "none") is None
+
+
+def test_final_usage_only_last_line():
+    assert ledger.final_usage("example: tlwu-usage: model=x minutes=99\nsome prose") is None
+    assert ledger.final_usage("Closes #1\n\ntlwu-usage: model=sonnet tool_calls=3 minutes=12\n") == 12
+
+
+def test_collect_counts_only_producer_comments_and_7d_infra_denominator(monkeypatch):
+    from datetime import datetime, timedelta, UTC
+    now = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+    iso = lambda d: (now - d).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    pr = {"merged_at": iso(timedelta(days=3)), "head": {"ref": "fix/9"},
+          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=1 minutes=20"}
+    comments = [{"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(days=3)), "body": "tlwu-usage: kind=qa minutes=30"},
+                {"user": {"login": "outsider"}, "created_at": iso(timedelta(hours=1)), "body": "tlwu-usage: minutes=500"},
+                {"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(hours=1)), "body": "tlwu-usage: kind=qa minutes=10"}]
+
+    def fake_list(path):
+        return [pr] if "/pulls" in path else comments if "/issues/61/" in path else []
+    monkeypatch.setattr(ledger, "_gh_list", fake_list)
+    monkeypatch.setattr(ledger, "_gh", lambda path, *a: {"labels": [{"name": "infra"}, {"name": "maint"}]})
+    by_type, untyped, infra_min, total7 = ledger.collect(now)
+    assert by_type == {"QA": 10} and untyped == 0  # the 3-day-old PR/comment are outside the 48 h table
+    assert infra_min == 20 and total7 == 20 + 30 + 10  # 7-day denominator includes producer QA minutes, not the outsider's

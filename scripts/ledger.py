@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, UTC
 
 REPO = "sunososobro-hub/tinglongwu"
 LOG_ISSUE = 61
+PRODUCER = "sunososobro-hub"
 THROTTLE_ISSUE = 574
 DEFAULT_MIX = {"bug": 28, "enhancement": 50, "eval": 11, "documentation": 5, "maint": 6}
 TYPES = list(DEFAULT_MIX)
@@ -100,8 +101,19 @@ def _ts(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
+def final_usage(body: str | None) -> int | None:
+    """Minutes from the LAST non-empty line of a PR body only (rules section 10: it is the last line)."""
+    lines = [l for l in (body or "").splitlines() if l.strip()]
+    return usage_minutes(lines[-1]) if lines else None
+
+
 def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
-    """(minutes by type over 48 h incl. QA/ideas, untyped minutes, infra minutes 7 d, total minutes 7 d)."""
+    """(minutes by type over 48 h incl. QA/ideas, untyped minutes, infra minutes 7 d, total minutes 7 d incl. QA/ideas).
+
+    Every input is bounded by [window start, now]. Usage comments count only from PRODUCER (the owner account the
+    routines post as, rules section 14), so an outside commenter cannot skew shares. A failed label lookup raises
+    (the job fails and nothing is posted) instead of being counted as "no labels".
+    """
     since7 = now - timedelta(days=7)
     since48 = now - timedelta(hours=48)
     by_type: dict[str, int] = {}
@@ -110,19 +122,16 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
     pulls = _gh_list(f"repos/{REPO}/pulls?state=closed&base=dev&sort=updated&direction=desc&per_page=100")
     for pr in pulls:
         merged = pr.get("merged_at")
-        if not merged or _ts(merged) < since7:
+        if not merged or not (since7 <= _ts(merged) <= now):
             continue
-        mins = usage_minutes(pr.get("body"))
+        mins = final_usage(pr.get("body"))
         if not mins:
             continue
         n = linked_issue(pr["head"]["ref"], pr.get("body"))
         labels: set[str] = set()
         if n is not None:
             if n not in labels_cache:
-                try:
-                    labels_cache[n] = {l["name"] for l in _gh(f"repos/{REPO}/issues/{n}")["labels"]}
-                except subprocess.CalledProcessError:
-                    labels_cache[n] = set()
+                labels_cache[n] = {l["name"] for l in _gh(f"repos/{REPO}/issues/{n}")["labels"]}
             labels = labels_cache[n]
         total7 += mins
         if "infra" in labels:
@@ -133,16 +142,25 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
                 by_type[typ] = by_type.get(typ, 0) + mins
             else:
                 untyped += mins
-    for c in _gh_list(f"repos/{REPO}/issues/{LOG_ISSUE}/comments?since={since48:%Y-%m-%dT%H:%M:%SZ}&per_page=100"):
+
+    def add_comment(kind: str, c: dict) -> None:
+        nonlocal total7
         m = usage_minutes(c.get("body"))
-        if m and _ts(c["created_at"]) >= since48 and "Ledger (48 h" not in (c.get("body") or ""):
-            by_type["QA"] = by_type.get("QA", 0) + m
-    for i in _gh_list(f"repos/{REPO}/issues?state=all&since={since48:%Y-%m-%dT%H:%M:%SZ}&per_page=100"):
+        if not m or (c.get("user") or {}).get("login") != PRODUCER or "Ledger (48 h" in (c.get("body") or ""):
+            return
+        t = _ts(c["created_at"])
+        if not (since7 <= t <= now):
+            return
+        total7 += m
+        if t >= since48:
+            by_type[kind] = by_type.get(kind, 0) + m
+
+    for c in _gh_list(f"repos/{REPO}/issues/{LOG_ISSUE}/comments?since={since7:%Y-%m-%dT%H:%M:%SZ}&per_page=100"):
+        add_comment("QA", c)
+    for i in _gh_list(f"repos/{REPO}/issues?state=all&since={since7:%Y-%m-%dT%H:%M:%SZ}&per_page=100"):
         if i["title"].startswith("[idea]") and "pull_request" not in i:
             for c in _gh_list(f"repos/{REPO}/issues/{i['number']}/comments?per_page=100"):
-                m = usage_minutes(c.get("body"))
-                if m and _ts(c["created_at"]) >= since48:
-                    by_type["ideas"] = by_type.get("ideas", 0) + m
+                add_comment("ideas", c)
     return by_type, untyped, infra_min, total7
 
 
@@ -158,8 +176,7 @@ def main() -> int:
     if args.dry_run:
         print(text)
         return 0
-    subprocess.run(["gh", "api", f"repos/{REPO}/issues/{LOG_ISSUE}/comments", "-f", f"body={text}"],
-                   check=True, capture_output=True)
+    subprocess.run(["gh", "api", f"repos/{REPO}/issues/{LOG_ISSUE}/comments", "-f", f"body={text}"], check=True)
     return 0
 
 
