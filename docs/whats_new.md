@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.11
+- While listening, the line you heard now shows up right away in its place, and its translation fills in a moment later.
+- The listen window shows which audio source it is using and tells you when the microphone hears only silence.
+- Faster PCs: the app now offers a one-click GPU speed-up pack, and Windows shortcuts no longer open an extra Terminal tab.
+
 ## v0.4.10
 - Live listening now warms up speech recognition before it says "ready", so the first subtitles of a session no longer arrive late.
 - Two-way mode on phones is less sensitive: quiet, short background speech no longer turns into chat bubbles.

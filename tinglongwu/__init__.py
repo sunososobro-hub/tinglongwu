@@ -5,4 +5,4 @@ from . import offline as _offline
 _offline.apply_env()
 _offline.install_guard()
 
-__version__ = "0.4.10"
+__version__ = "0.4.11"
