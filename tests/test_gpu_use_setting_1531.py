@@ -1,6 +1,5 @@
 """#1531: "Use GPU: Auto / Off" under Adjust > Advanced is the only CPU/GPU control."""
 from tinglongwu.gui import core
-from tinglongwu.i18n import t
 
 
 def test_default_is_auto_and_passes_no_device():
@@ -22,6 +21,10 @@ def test_off_needs_restart_and_roundtrips(tmp_path):
 
 
 def test_labels_exist_in_every_ui_language():
+    from tinglongwu.i18n import MESSAGES
+
     for lang in ("en", "ru", "zh-TW", "ja"):
-        for k in ("gui_gpu_use", "gui_gpu_auto", "gui_gpu_off"):
-            assert t(k, lang=lang) != k
+        assert MESSAGES[lang].get("gui_gpu_use", "").strip()
+        assert set(core._CHOICES["gpu_use"][lang]) == {"auto", "off"}
+        assert all(v.strip() for v in core._CHOICES["gpu_use"][lang].values())
+        assert core.choice_label("gpu_use", "off", lang) == core._CHOICES["gpu_use"][lang]["off"]

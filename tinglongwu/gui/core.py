@@ -520,6 +520,8 @@ _CHOICES = {
                "ru": {"meeting": "Встреча (целые фразы)", "chat": "Чат (быстрее)"},
                "zh-TW": {"meeting": "會議（完整句子）", "chat": "聊天（較快）"},
                "ja": {"meeting": "会議（文単位）", "chat": "チャット（速め）"}},
+    "gpu_use": {"en": {"auto": "Auto", "off": "Off"}, "ru": {"auto": "Авто", "off": "Выкл."},
+                "zh-TW": {"auto": "自動", "off": "關閉"}, "ja": {"auto": "自動", "off": "オフ"}},  # #1531
     "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}, "ja": {"auto": "自動"}},
 }
 

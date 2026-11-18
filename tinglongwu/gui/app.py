@@ -632,7 +632,7 @@ class App:
         self.lbl_restart = ttk.Label(self.body, wraplength=300, justify="left", foreground="#b45309")
         self.btn_restart = ttk.Button(self.body, command=self._restart_now)
         for name in ("v_lang", "v_target", "v_engine", "v_quality", "v_model", "v_preset", "v_gloss", "v_source",
-                     "v_voice", "v_voice_dev"):
+                     "v_voice", "v_voice_dev", "v_gpu_use"):
             if hasattr(self, name):
                 getattr(self, name).trace_add("write", lambda *_: self._restart_check())
         self.run_pair = None  # #1020: (my language, other side's language) the running session started with
@@ -698,7 +698,7 @@ class App:
         """#983: current raw values of the start-time settings (same getters at start and later, so they compare)."""
         names = dict(lang="v_lang", target="v_target", engine="v_engine", quality="v_quality", model="v_model",
                      preset="v_preset", glossary="v_gloss", source="v_source", voice="v_voice",
-                     voice_device="v_voice_dev", send_mode="v_send_mode")
+                     voice_device="v_voice_dev", send_mode="v_send_mode", gpu_use="v_gpu_use")
         return {k: getattr(self, v).get() for k, v in names.items() if hasattr(self, v)}
 
     def _restart_check(self):
@@ -889,6 +889,11 @@ class App:
                 self.combos[key].configure(state=state)
         self._asr_hint()
 
+    def _gpu_allowed(self) -> bool:
+        """#1531: False while "Use GPU" is Off (the variable does not exist yet while the panel is being built)."""
+        v = getattr(self, "v_gpu_use", None)
+        return v is None or v.get() != "off"
+
     def _speech_model(self, level: str) -> str | None:
         """#1385: the speech model a Start with this Quality uses (core.quality_speech_model); None when the
         hardware probe fails (the hint is left out, the Start behaves as before)."""
@@ -899,6 +904,7 @@ class App:
 
                 self.speech_hw = (resolve_device("auto", warn=lambda m: None) == "cuda", probe())
             cuda, hw = self.speech_hw
+            cuda = cuda and self._gpu_allowed()  # Use GPU: Off -> the CLI runs --device cpu, so the CPU tier decides
             return quality_speech_model(level, cuda, hw, manual_model=model_from_label(self.v_model.get()))
         except Exception:  # noqa: BLE001 - a failed probe must not break the settings panel
             return None
@@ -909,7 +915,7 @@ class App:
         if lbl is None:
             return
         m = self._speech_model(self.v_quality.get())
-        lbl.configure(text="" if m is None else quality_hint(m, bool(self.speech_hw and self.speech_hw[0]),
+        lbl.configure(text="" if m is None else quality_hint(m, bool(self.speech_hw and self.speech_hw[0] and self._gpu_allowed()),
                                                                 is_downloaded(m)))
 
     def _make_main(self):
@@ -1353,11 +1359,8 @@ class App:
         self._put(ttk.Combobox(f, textvariable=self.v_mic_dev, values=[self.mic_default] + mics,
                                state="readonly", width=18), 13, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #1531: "Use GPU: Auto / Off" is the only CPU/GPU control (the installer no longer asks)
-        self._label(14, "gui_gpu_use")
-        self.gpu_labels = {"auto": t("gui_gpu_auto"), "off": t("gui_gpu_off")}
-        self.v_gpu_use = tk.StringVar(value=self.gpu_labels.get(s.get("gpu_use"), self.gpu_labels["auto"]))
-        self._put(ttk.Combobox(f, textvariable=self.v_gpu_use, values=list(self.gpu_labels.values()),
-                               state="readonly", width=18), 14, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
+        self.v_gpu_use = self._combo(14, "gui_gpu_use", "gpu_use", ("auto", "off"), "gpu_use")  # raw auto/off, named per UI language
+        self.v_gpu_use.trace_add("write", lambda *_: self._asr_hint())  # Off -> the CPU tier's speech model
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
@@ -2507,7 +2510,7 @@ class App:
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
                  listen_device="" if self.v_listen_dev.get() == self.listen_default else self.v_listen_dev.get(),
                  mic_device="" if self.v_mic_dev.get() == self.mic_default else self.v_mic_dev.get(),
-                 gpu_use="off" if self.v_gpu_use.get() == self.gpu_labels["off"] else "auto",
+                 gpu_use=self.v_gpu_use.get(),
                  voice=self.v_voice.get(), send_mode=self.v_send_mode.get(),
                  voice_device="" if self.v_voice_dev.get() == self.voice_default else self.v_voice_dev.get())
         save_settings(s)
