@@ -620,9 +620,9 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
         # gui_cpu_mode text is not appended again (the status line carries it with the per-line MT ms)
         notice(" ".join(t("gpu_fallback", why=why).split()))
     elif notice is not None and dev == "cpu":
-        from .i18n import t
+        from .gui.core import cpu_mode_text
 
-        notice(t("gui_cpu_mode"))  # #780: --device cpu / no GPU asked for: still say CPU mode
+        notice(cpu_mode_text())  # #780: --device cpu / no GPU asked for: still say CPU mode (#1525: GPU-aware wording)
     glossary = None
     if a.glossary:
         from .glossary import load as load_glossary

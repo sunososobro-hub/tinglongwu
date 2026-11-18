@@ -19,6 +19,7 @@ from pathlib import Path
 from . import resume, selfupdate
 
 PACK_DIR_NAME = "gpu-pack"  # == tinglongwu.gpu_pack.PACK_NAME
+VERSION_FILE = "pack_version.txt"  # == tinglongwu.gui.gpu_offer.VERSION_FILE
 ASSET = "tinglongwu-gpu-pack.zip"
 MANIFEST_ASSET = ASSET + ".manifest.json"
 NO_PACK_NOTE = "gpu pack: this release has no GPU pack (tinglongwu-gpu-pack.zip); skipped, the CPU path stays in use."
@@ -113,6 +114,10 @@ def run(dest: Path, version: str | None, get=selfupdate._get, fetch=resume.fetch
             install_zip(fetch(rel["zip_url"], work / ASSET, str(man["sha256"]).lower()), man, dest)
         finally:
             shutil.rmtree(work, ignore_errors=True)
+        try:  # #1525: the app shows "Installed vX.Y.Z" in Settings > Add-ons (tinglongwu.gui.gpu_offer.VERSION_FILE)
+            (dest / VERSION_FILE).write_text(rel["version"] + "\n", encoding="utf-8")
+        except OSError:
+            pass
         out(f"gpu pack {rel['version']}: installed in {dest}")
         return 0
     except (ValueError, PackError, OSError) as e:

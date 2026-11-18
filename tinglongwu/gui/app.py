@@ -433,6 +433,7 @@ class App:
         self._build_quick()
         self._build_bar()
         self._build_update_line()
+        self._build_gpu_offer()  # #1525: one-click GPU speed-up pack offer (NVIDIA only)
         self.build_menubar()
         self.overlay = Overlay(self.root, self)
         self._sync_bar()  # #1042: the bar is not on screen before Start
@@ -1342,6 +1343,94 @@ class App:
         self.upd_no = ttk.Button(u, command=self._update_later, style="Bar.TButton", width=0)
         self.upd_yes = ttk.Button(u, command=self._update_yes, style="Bar.TButton", width=0)
         self.upd_apply_when_ready = False
+
+    # -- #1525: GPU speed-up pack offer ---------------------------------------------------------------
+    def _build_gpu_offer(self):
+        """One non-blocking line: "NVIDIA GPU found - install speed-up pack? [Install] [Not now] [Don't ask again]".
+        Hidden unless gpu_offer.should_offer; nvidia-smi runs on a thread, never on the Tk thread."""
+        from . import gpu_offer
+
+        self.gpu_busy = False
+        self.gpu_lines: list[str] = []
+        g = self.gpu_frame = ttk.Frame(self.root, padding=(4, 0, 4, 2))
+        self.v_gpu = tk.StringVar()
+        ttk.Label(g, textvariable=self.v_gpu, wraplength=UPDATE_LINE_WRAP_PX).pack(side="left")
+        self.gpu_bar = ttk.Progressbar(g, mode="indeterminate", length=80)
+        self.gpu_btns = [ttk.Button(g, text=t(k), command=c, style="Bar.TButton", width=0) for k, c in
+                         (("gpu_offer_never", self._gpu_never), ("gpu_offer_later", self._gpu_hide),
+                          ("gpu_offer_install", self._gpu_install))]
+        if not gpu_offer.offline() and not gpu_offer.cpu_mode():
+            threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_detect())), daemon=True).start()
+
+    @staticmethod
+    def _gpu_detect() -> str:
+        from . import gpu_offer
+
+        try:
+            return gpu_offer.detect()
+        except Exception:  # noqa: BLE001 - no probe: no banner
+            return gpu_offer.UNAVAILABLE
+
+    def _gpu_show(self, text: str, buttons: bool, busy: bool = False):
+        self.v_gpu.set(text)
+        for b in self.gpu_btns:
+            b.pack_forget()
+        if buttons:
+            for b in self.gpu_btns:
+                b.pack(side="right", padx=(4, 0))
+        if busy:
+            self.gpu_bar.pack(side="right", padx=(4, 0))
+            self.gpu_bar.start(15)
+        else:
+            self.gpu_bar.stop()
+            self.gpu_bar.pack_forget()
+        if not self.gpu_frame.winfo_ismapped():
+            self.gpu_frame.pack(fill="x")
+
+    def _gpu_hide(self):
+        self.gpu_bar.stop()
+        self.gpu_frame.pack_forget()
+
+    def _gpu_offer_show(self):
+        from . import gpu_offer
+
+        self._gpu_show(t("gpu_offer_banner", size=gpu_offer.GPU_PACK_SIZE), buttons=True)
+
+    def _gpu_never(self):
+        from . import gpu_offer
+
+        self.settings[gpu_offer.DISMISS_KEY] = True
+        save_settings(self.settings)
+        self._gpu_hide()
+
+    def _gpu_install(self):
+        from . import gpu_offer
+        from .core import run_pack_download
+
+        if self.gpu_busy or gpu_offer.offline():
+            return
+        self.gpu_busy, self.gpu_lines = True, []
+        self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
+        put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
+        threading.Thread(target=run_pack_download, args=("gpu-pack", put),
+                         kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
+
+    def _gpu_event(self, ev):
+        from . import gpu_offer
+
+        kind = ev[0]
+        if kind == "gpu_state":
+            if gpu_offer.should_offer(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
+                                      gpu_offer.offline()):
+                self._gpu_offer_show()
+        elif kind == "gpu_pack_line":
+            self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
+        elif kind == "gpu_pack_done":
+            self.gpu_busy = False
+            if gpu_offer.install_ok(ev[2], self.gpu_lines):
+                self._gpu_show(t("gpu_offer_ok"), buttons=False)
+            else:
+                self._gpu_show(t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
 
     def _upd_show(self, key: str, buttons: tuple[str, str] | None = None, **kw):
         self.upd_msg = (key, kw, buttons)
@@ -2595,6 +2684,10 @@ class App:
                 elif kind == "notice" and ev[1] == SILENT_CLEAR:  # listened sound is back
                     self.v_notice.set(strip_silent_hint(self.v_notice.get()))
                 elif kind == "notice":
+                    from . import gpu_offer
+
+                    if gpu_offer.is_missing_pack_notice(ev[1]) and not gpu_offer.offline() and not self.gpu_busy:
+                        self._gpu_offer_show()  # #1525: the "GPU pack missing" line gets its [Install] button
                     if ev[1] not in self.v_notice.get():  # the repeated silent hint must not clobber other lines
                         self.v_notice.set(ev[1])
                         self._dedupe_notice()  # #1241
@@ -2602,6 +2695,8 @@ class App:
                         self._show_panel()
                 elif kind == "topics":  # #611
                     self.render_topics(show=bool(self.topic_panel.entries()))
+                elif kind.startswith("gpu_"):  # #1525
+                    self._gpu_event(ev)
                 elif kind == "pack_line":
                     self._dl_event(ev)
                     self._status_text(ev[1])

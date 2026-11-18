@@ -26,8 +26,27 @@ def worker_cmd(bundled: bool, mdir: Path, args: list[str]) -> list[str]:
 
 
 def wants_gpu_pack(tier: tiers.Tier, gpu) -> bool:
-    """#966: nvidia-smi reported a usable NVIDIA GPU and the user did not pick CPU mode -> install the GPU pack."""
+    """#966: nvidia-smi reported a usable NVIDIA GPU and the user did not pick CPU mode -> offer the GPU pack (#1525: the
+    wizard asks first, gpu_pack_choice)."""
     return gpu is not None and tier.name != "cpu"
+
+
+GPU_PACK_ASK = ("偵測到 NVIDIA 顯示卡。要現在下載 GPU 加速包嗎？\n\n大小約 1.5 GB，只需下載一次；"
+                "依網路速度約需 3–15 分鐘。裝好後翻譯會快很多。\n\n選「否」＝稍後再說：之後可在主畫面上方的提示，"
+                "或「設定 > 附加元件」一鍵安裝。")
+GPU_PACK_LATER = "已略過 GPU 加速包（目前用 CPU）；之後可在主畫面或「設定 > 附加元件」一鍵安裝。"
+
+
+def gpu_pack_choice(tier: tiers.Tier, gpu, ask) -> bool:
+    """#1525 (owner 2026-11-18 "用詢問的 因為下載要很久"): the wizard never starts the 1.5 GB GPU pack by itself.
+    Only an eligible machine (wants_gpu_pack) is asked, and only an explicit yes (ask() is True) starts the worker;
+    no answer / closed dialog / error = Later (the in-app banner and Settings > Add-ons offer it again)."""
+    if not wants_gpu_pack(tier, gpu):
+        return False
+    try:
+        return ask() is True
+    except Exception:  # noqa: BLE001 - a broken dialog never starts a download
+        return False
 
 
 def gpu_pack_cmd(bundled: bool, mdir: Path) -> list[str]:
@@ -173,14 +192,16 @@ class SetupWindow:
         if rc == 0 and tiers.models_ready(self.mdir):
             self.bar["value"] = 100
             self.ok = True
-            if wants_gpu_pack(self.tier, self.gpu):
+            asked = wants_gpu_pack(self.tier, self.gpu)
+            if gpu_pack_choice(self.tier, self.gpu, self._ask_gpu_pack):
                 self.phase = "gpupack"
                 self.v_status.set("安裝 GPU 加速包（NVIDIA，需連網一次）…")
                 threading.Thread(target=self._run, args=(gpu_pack_cmd(self.bundled, self.mdir),), daemon=True).start()
                 self.root.after(500, self.poll)
                 return
             self.phase = "selftest"
-            self.v_status.set("下載完成，自我測試中（載入模型並翻譯一句測試句）…")
+            self.pack_note = GPU_PACK_LATER if asked else ""
+            self.v_status.set(self.pack_note + "下載完成，自我測試中（載入模型並翻譯一句測試句）…")
             cmd = selftest_cmd(self.bundled, self.mdir, self.tier)
             threading.Thread(target=self._run, args=(cmd,), daemon=True).start()
             self.root.after(500, self.poll)
@@ -189,6 +210,9 @@ class SetupWindow:
         self.btn.configure(state="normal", text="重試")
         self.v_status.set("下載失敗（請確認網路連線後按「重試」，已下載的部分不會重來）。")
         messagebox.showerror("下載失敗", (tail.strip() or f"結束碼 {rc}")[-400:])
+
+    def _ask_gpu_pack(self):
+        return messagebox.askyesno("GPU 加速包", GPU_PACK_ASK, parent=self.root)
 
     def cancel(self):
         if self.proc is not None and self.proc.poll() is None:

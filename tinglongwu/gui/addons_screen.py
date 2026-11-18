@@ -9,13 +9,19 @@ from tkinter import filedialog, messagebox, ttk
 
 from ..i18n import t
 from ..models import models_dir
-from . import addons
+from . import addons, gpu_offer
 from .core import download_cmd, run_pack_download
 
 
+GPU_ROW = "gpu-pack"  # pack name of the GPU row's download events (not a language pack)
+
+
 class AddonsScreen:
-    def __init__(self, master, gpu_present: bool = False, mdir=None, run=run_pack_download, import_zip=None):
+    def __init__(self, master, gpu_present: bool = False, mdir=None, run=run_pack_download, import_zip=None,
+                 gpu_state=None):
         self.mdir, self.gpu, self.run, self.q = mdir or models_dir(), gpu_present, run, queue.Queue()
+        self.gpu_state = gpu_state or self._gpu_state  # #1525: GPU speed-up pack row
+        self.gpu_lines: list[str] = []
         self.import_zip = import_zip or self._import_zip
         self.busy = False
         self.win = w = tk.Toplevel(master)
@@ -40,6 +46,7 @@ class AddonsScreen:
         except Exception:  # noqa: BLE001 - unreadable models folder: plain message, no traceback
             rows = []
             self.msg.set(t("addons_offline"))
+        self._gpu_row()
         for r in rows:
             f = ttk.Frame(self.body)
             f.pack(fill="x", pady=3)
@@ -50,6 +57,39 @@ class AddonsScreen:
                 ttk.Button(f, text=t("addons_remove"), command=lambda n=r["name"]: self.remove(n)).pack(side="right")
             else:
                 ttk.Button(f, text=t("addons_add"), command=lambda n=r["name"]: self.add(n)).pack(side="right")
+
+    @staticmethod
+    def _gpu_state() -> tuple[str, str | None]:
+        from ..gpu_pack import pack_dir
+
+        try:
+            state = gpu_offer.detect()
+        except Exception:  # noqa: BLE001 - no probe: show the row as not available, never a traceback
+            state = gpu_offer.UNAVAILABLE
+        return state, gpu_offer.installed_version(pack_dir())
+
+    def _gpu_row(self):
+        """#1525: "GPU speed-up pack (NVIDIA, 1.5 GB)" with Install / Installed vX.Y.Z / Not available (no NVIDIA)."""
+        state, ver = self.gpu_state()
+        f = ttk.Frame(self.body)
+        f.pack(fill="x", pady=3)
+        ttk.Label(f, text=t("gpu_pack_row_name", size=gpu_offer.GPU_PACK_SIZE)).pack(side="top", anchor="w")
+        ttk.Label(f, text=gpu_offer.row_text(state, ver), wraplength=300).pack(side="left", fill="x", expand=True)
+        if state in (gpu_offer.MISSING, gpu_offer.OLD):
+            ttk.Button(f, text=t("gpu_offer_install"), command=self.add_gpu).pack(side="right")
+        self.gpu_row_state = state
+
+    def add_gpu(self):
+        if self.busy:
+            return
+        if gpu_offer.offline():
+            self.msg.set(t("addons_offline"))
+            return
+        self.busy = True
+        self.gpu_lines = []
+        self.msg.set(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE))
+        threading.Thread(target=self.run, args=(GPU_ROW, self.q.put),
+                         kwargs={"mdir": self.mdir, "cmd": gpu_offer.gpu_pack_cmd(self.mdir)}, daemon=True).start()
 
     def add(self, pack: str):
         if self.busy:
@@ -95,6 +135,12 @@ class AddonsScreen:
                 ev = self.q.get_nowait()
                 if ev[0] == "pack_line":
                     self.msg.set(ev[1])
+                    self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
+                elif ev[0] == "pack_done" and ev[1] == GPU_ROW:  # #1525
+                    self.busy = False
+                    self.msg.set(t("gpu_offer_ok") if gpu_offer.install_ok(ev[2], self.gpu_lines) else
+                                 t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)))
+                    self.refresh()
                 elif ev[0] == "pack_done":
                     self.busy = False
                     self.msg.set(t("addons_pack_ok", pack=ev[1]) if ev[2] == 0 else
