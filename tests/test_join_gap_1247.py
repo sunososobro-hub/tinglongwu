@@ -1,8 +1,6 @@
 """#1247 / #894: while live ASR catches up on a backlog, one joined ASR call is one stretch with no new subtitle.
 hw-tests run 44248844590 (dev bd2fd71): 28 s joins on the CPU runner left 11.6 s without a subtitle (#894 limit 10 s).
 The join is now sized from the measured ASR cost so each call stays near pipeline.ASR_JOIN_CALL_S."""
-import numpy as np
-
 from tinglongwu import pipeline
 from tinglongwu.asr import Transcript
 from tinglongwu.pipeline import join_cap, run
