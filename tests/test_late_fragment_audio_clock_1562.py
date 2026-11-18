@@ -56,6 +56,14 @@ def test_empty_segment_does_not_move_the_released_line_end():
     assert _texts(m.flush()) == [("Version.", None)]
 
 
+def test_whole_mode_clause_release_falls_back_to_the_wall_clock():
+    m = SentenceMerger(min_words=3, max_wait=1.0, whole=True)
+    assert m.add("We should open the settings, of the", "en", 0.0, span=(0.0, 2.0)) == []
+    assert m.add("new", "en", 0.2, span=(10.0, 11.0)) == []
+    assert _texts(m.due(1.0)) == [("We should open the settings,", None)]  # the clause; "of the new" stays
+    assert m._last[3] is None  # its audio end is unknown: not the newest segment's 11.0
+
+
 def test_without_spans_the_wall_clock_window_is_unchanged():
     m = _m()
     m.add(HEAD, "en", 0.0)

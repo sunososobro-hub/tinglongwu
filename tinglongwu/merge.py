@@ -152,6 +152,7 @@ class SentenceMerger:
         # ASR results also holds ASR / queue delay (a 1 s pause read as 9 s on a slow CPU runner).
         self._a_seg: tuple[float, float] | None = None  # of the newest segment whose text was buffered
         self._a_new: tuple[float, float] | None = None  # of the segment add() is pushing now
+        self._a_clause = False  # #1562: a whole-mode clause release: its own audio end is unknown (wall clock)
         self._a_since: float | None = None
         # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
         # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
@@ -247,7 +248,10 @@ class SentenceMerger:
             if self._amendable(u.text, u.lang, arrived, a_arrived):
                 prev = self._last[0]
                 u = Unit(_tail_join(prev, u.text), u.lang, u.forced, u.tag, u.first, replaces=prev, part=u.text)
-            self._last = (u.text, u.lang, now, self._a_seg[1] if self._a_seg else None)
+            # a clause cut from the buffer ends somewhere before the newest segment's end: no audio end, so the next
+            # fragment is judged on the wall clock as before #1562
+            self._last = (u.text, u.lang, now, self._a_seg[1] if self._a_seg and not self._a_clause else None)
+            self._a_clause = False
             out.append(u)
         return out
 
@@ -356,6 +360,7 @@ class SentenceMerger:
                     self._rebase(len(self.buf) - len(rest))
                     self.buf, self.since = rest, (now if rest else None)
                     self._a_since = (self._a_seg[0] if self._a_seg else None) if rest else None
+                    self._a_clause = True
                     return [Unit(head, self.lang, True, tag, first)]
             return [self._take(forced=True)]
         return []
