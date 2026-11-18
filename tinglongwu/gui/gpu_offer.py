@@ -6,6 +6,7 @@ No tkinter and no network here: `pack_state` / `should_offer` decide, `gpu_pack_
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -16,6 +17,7 @@ GPU_PACK_SIZE = "1.5 GB"
 
 UNAVAILABLE, MISSING, OLD, INSTALLED = "unavailable", "missing", "old", "installed"
 NO_PACK_PREFIX = "gpu pack: this release has no GPU pack"  # == tinglongwu_setup.gpu_pack.NO_PACK_NOTE's start
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[.+-][0-9A-Za-z.+-]*)?$")  # 0.4.10, 0.4.10.dev3, 0.4.10+g1a2b
 INSTALLING = threading.Event()  # one GPU-pack install at a time across the banner and every Add-ons window
 
 
@@ -24,9 +26,10 @@ def installed_version(pack: Path | None) -> str | None:
     if pack is None:
         return None
     try:
-        return (Path(pack) / VERSION_FILE).read_text(encoding="utf-8").strip() or None
+        ver = (Path(pack) / VERSION_FILE).read_text(encoding="utf-8").strip()
     except (OSError, ValueError):  # ValueError: UnicodeDecodeError of a garbled marker = unknown
         return None
+    return ver if VERSION_RE.match(ver) else None
 
 
 def pack_state(gpu_present: bool, pack: Path | None, usable: bool = True) -> str:
@@ -54,9 +57,28 @@ def cpu_mode(env=None) -> bool:
     return (os.environ if env is None else env).get("CUDA_VISIBLE_DEVICES", "").strip() == "-1"
 
 
-def detect(gpu_info=None, pack_dir=None, usable=None) -> str:
+def supported(platform: str | None = None) -> bool:
+    """The release's GPU pack is a Windows DLL archive (#613 / #966): never offer it on Linux or macOS."""
+    return (platform or sys.platform) == "win32"
+
+
+def run_install(run, put, **kw) -> int:
+    """Worker thread: run the `--gpu-pack` child and release INSTALLING when it really stopped (also on failure, and
+    when the window that started it was closed meanwhile)."""
+    try:
+        return run(GPU_ROW_NAME, put, **kw)
+    finally:
+        INSTALLING.clear()
+
+
+GPU_ROW_NAME = "gpu-pack"
+
+
+def detect(gpu_info=None, pack_dir=None, usable=None, platform: str | None = None) -> str:
     """pack_state for this machine. nvidia-smi (hwprobe.gpu_info) decides "NVIDIA GPU present", not CTranslate2: the
     whole point is the case where CUDA does not load because the pack is missing (#1525 field test)."""
+    if not supported(platform):
+        return UNAVAILABLE
     if gpu_info is None:
         from ..hwprobe import gpu_info
     if pack_dir is None:
@@ -78,6 +100,8 @@ def _pack_usable(pack: Path, platform: str | None = None) -> bool:
             return False
     if not (Path(pack) / "llama.dll").is_file():
         return True
+    if not all((Path(pack) / n).is_file() for n in ("ggml.dll", "ggml-cuda.dll")):  # = device.pack_llama_dir
+        return False
     try:
         from ..device import PACK_LLAMA_VERSION_FILE
         from ..llamacheck import LLAMA_VERSION

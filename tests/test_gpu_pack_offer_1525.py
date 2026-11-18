@@ -44,9 +44,9 @@ def test_gpu_pack_offer_env_flags():
 
 def test_gpu_pack_offer_detect_uses_nvidia_smi_not_cuda(tmp_path):
     """The field-test case: nvidia-smi sees the RTX 3050 but CUDA cannot load (no pack) -> missing, so offered."""
-    assert G.detect(gpu_info=lambda: ("NVIDIA GeForce RTX 3050", 6144), pack_dir=lambda: None) == G.MISSING
-    assert G.detect(gpu_info=lambda: (None, None), pack_dir=lambda: None) == G.UNAVAILABLE
-    assert G.detect(gpu_info=lambda: ("RTX", 1), pack_dir=lambda: tmp_path, usable=lambda p: False) == G.OLD
+    assert G.detect(gpu_info=lambda: ("NVIDIA GeForce RTX 3050", 6144), pack_dir=lambda: None, platform="win32") == G.MISSING
+    assert G.detect(gpu_info=lambda: (None, None), pack_dir=lambda: None, platform="win32") == G.UNAVAILABLE
+    assert G.detect(gpu_info=lambda: ("RTX", 1), pack_dir=lambda: tmp_path, usable=lambda p: False, platform="win32") == G.OLD
 
 
 def test_gpu_pack_offer_installed_version(tmp_path):
@@ -185,3 +185,60 @@ def test_gpu_pack_offer_cpu_text_never_blocks_when_asked(monkeypatch):
     monkeypatch.setattr(core, "_NVIDIA_SEEN", [])
     monkeypatch.setattr("tinglongwu.hwprobe.gpu_info", lambda *a, **k: pytest.fail("nvidia-smi on the Tk thread"))
     assert core.cpu_mode_text(block=False) == t("gui_cpu_mode")
+
+
+def test_gpu_pack_offer_windows_only():
+    """The release pack is a Windows DLL archive: Linux / macOS with an NVIDIA GPU get no offer."""
+    rtx = lambda: ("RTX", 1)  # noqa: E731
+    assert G.detect(gpu_info=rtx, pack_dir=lambda: None, platform="linux") == G.UNAVAILABLE
+    assert G.detect(gpu_info=rtx, pack_dir=lambda: None, platform="darwin") == G.UNAVAILABLE
+
+
+def test_gpu_pack_offer_flag_released_when_worker_stops():
+    G.INSTALLING.set()
+    assert G.run_install(lambda name, put, **kw: 1, lambda ev: None) == 1
+    assert not G.INSTALLING.is_set()
+    G.INSTALLING.set()
+    with pytest.raises(RuntimeError):
+        G.run_install(lambda name, put, **kw: (_ for _ in ()).throw(RuntimeError()), lambda ev: None)
+    assert not G.INSTALLING.is_set()
+
+
+def test_gpu_pack_offer_version_marker_validated(tmp_path):
+    for good in ("0.4.10", "0.4.10.dev3", "1.2.3+g1a2b"):
+        (tmp_path / G.VERSION_FILE).write_text(good, encoding="utf-8")
+        assert G.installed_version(tmp_path) == good
+    (tmp_path / G.VERSION_FILE).write_text("not-a-version", encoding="utf-8")
+    assert G.installed_version(tmp_path) is None
+
+
+def test_gpu_pack_offer_llama_build_needs_ggml_cuda(tmp_path):
+    for n in ("cublas64_12.dll", "cudnn64_9.dll", "llama.dll", "ggml.dll"):
+        (tmp_path / n).write_bytes(b"x")
+    assert not G._pack_usable(tmp_path, platform="win32")  # no ggml-cuda.dll = device.pack_llama_dir refuses it
+
+
+def test_gpu_pack_offer_locked_pack_keeps_old_one(tmp_path, monkeypatch):
+    import hashlib
+    import zipfile
+
+    from tinglongwu_setup import gpu_pack as sp
+
+    z = tmp_path / "p.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("cublas64_12.dll", b"new")
+    man = {"size": z.stat().st_size, "sha256": hashlib.sha256(z.read_bytes()).hexdigest()}
+    dest = tmp_path / "gpu-pack"
+    dest.mkdir()
+    (dest / "cublas64_12.dll").write_bytes(b"old")
+    real = Path.rename
+
+    def locked(self, target):
+        if self == dest:
+            raise PermissionError("in use")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", locked)
+    with pytest.raises(sp.PackError, match="close tlwu"):
+        sp.install_zip(z, man, dest, "0.4.10")
+    assert (dest / "cublas64_12.dll").read_bytes() == b"old"

@@ -1417,11 +1417,17 @@ class App:
 
         if self.gpu_busy or gpu_offer.INSTALLING.is_set() or gpu_offer.offline():
             return
+        from ..gpu_pack import pack_dir
+
+        pack = pack_dir()
+        if pack is not None and gpu_offer._pack_usable(pack):  # installed meanwhile (e.g. from Settings > Add-ons)
+            self._gpu_show(t("gpu_offer_ok"), buttons=False)
+            return
         gpu_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
         self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
-        threading.Thread(target=run_pack_download, args=("gpu-pack", put),
+        threading.Thread(target=gpu_offer.run_install, args=(run_pack_download, put),
                          kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
 
     def _gpu_event(self, ev):
@@ -1436,7 +1442,6 @@ class App:
             self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
         elif kind == "gpu_pack_done":
             self.gpu_busy = False
-            gpu_offer.INSTALLING.clear()
             if gpu_offer.install_ok(ev[2], self.gpu_lines):
                 self._gpu_show(t("gpu_offer_ok"), buttons=False)
             else:

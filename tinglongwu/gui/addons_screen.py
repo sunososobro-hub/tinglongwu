@@ -13,7 +13,7 @@ from . import addons, gpu_offer
 from .core import download_cmd, run_pack_download
 
 
-GPU_ROW = "gpu-pack"  # pack name of the GPU row's download events (not a language pack)
+GPU_ROW = gpu_offer.GPU_ROW_NAME  # pack name of the GPU row's download events (not a language pack)
 
 
 class AddonsScreen:
@@ -32,12 +32,12 @@ class AddonsScreen:
         ttk.Label(w, textvariable=self.msg, wraplength=460, padding=(10, 0, 10, 8)).pack(fill="x")
         bar = ttk.Frame(w, padding=(10, 0, 10, 10))
         bar.pack(fill="x")
-        ttk.Button(bar, text=t("addons_retry"), command=self.refresh).pack(side="left")
+        ttk.Button(bar, text=t("addons_retry"), command=self.retry).pack(side="left")
         ttk.Button(bar, text=t("addons_pick_zip"), command=self.pick_zip).pack(side="left", padx=6)
         ttk.Button(bar, text=t("addons_close"), command=w.destroy).pack(side="right")
         self.refresh()
         if gpu_state is None:  # nvidia-smi can take seconds: never on the Tk thread
-            threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_state())), daemon=True).start()
+            self._probe_gpu()
         self.win.after(200, self._poll)
 
     def refresh(self):
@@ -59,6 +59,15 @@ class AddonsScreen:
                 ttk.Button(f, text=t("addons_remove"), command=lambda n=r["name"]: self.remove(n)).pack(side="right")
             else:
                 ttk.Button(f, text=t("addons_add"), command=lambda n=r["name"]: self.add(n)).pack(side="right")
+
+    def _probe_gpu(self):
+        threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_state())), daemon=True).start()
+
+    def retry(self):
+        """Retry also probes the GPU again (a first nvidia-smi timeout must not stick until the window reopens)."""
+        self.gpu_cached = None
+        self._probe_gpu()
+        self.refresh()
 
     @staticmethod
     def _gpu_state() -> tuple[str, str | None]:
@@ -100,7 +109,7 @@ class AddonsScreen:
         self.busy = True
         self.gpu_lines = []
         self.msg.set(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE))
-        threading.Thread(target=self.run, args=(GPU_ROW, self.q.put),
+        threading.Thread(target=gpu_offer.run_install, args=(self.run, self.q.put),
                          kwargs={"mdir": self.mdir, "cmd": gpu_offer.gpu_pack_cmd(self.mdir)}, daemon=True).start()
 
     def add(self, pack: str):
@@ -153,7 +162,6 @@ class AddonsScreen:
                     self.refresh()
                 elif ev[0] == "pack_done" and ev[1] == GPU_ROW:  # #1525
                     self.busy = False
-                    gpu_offer.INSTALLING.clear()
                     self.gpu_cached = self._gpu_state()  # the pack folder changed: re-read it
                     self.msg.set(t("gpu_offer_ok") if gpu_offer.install_ok(ev[2], self.gpu_lines) else
                                  t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)))

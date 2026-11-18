@@ -71,7 +71,11 @@ def install_zip(archive: Path, man: dict, dest: Path, version: str | None = None
         backup = None
         if dest.exists():  # keep the old pack until the new one is in place
             backup = Path(tempfile.mkdtemp(prefix=".gpu-pack-old-", dir=dest.parent)) / "pack"
-            dest.rename(backup)
+            try:
+                dest.rename(backup)
+            except OSError as e:  # Windows: the running app still has the pack's DLLs loaded (#1525)
+                shutil.rmtree(backup.parent, ignore_errors=True)
+                raise PackError(f"{dest} is in use; close tlwu and try again ({e.__class__.__name__})") from e
         try:
             tmp.rename(dest)
         except OSError:
