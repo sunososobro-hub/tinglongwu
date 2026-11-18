@@ -51,7 +51,14 @@ def hooks_path_value_is_local(value: str) -> bool:
 def strip_comment(line: str) -> str:
     """Drop an unquoted shell comment (`#` at line start or after whitespace); `#` inside quotes stays."""
     quote = ""
+    skip = False  # previous char was an unquoted/double-quoted backslash: this char is escaped
     for i, ch in enumerate(line):
+        if skip:
+            skip = False
+            continue
+        if ch == "\\" and quote != "'":
+            skip = True
+            continue
         if quote:
             if ch == quote:
                 quote = ""

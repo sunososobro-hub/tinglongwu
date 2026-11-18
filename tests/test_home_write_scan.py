@@ -125,3 +125,8 @@ def test_dotdot_prefix_name_is_repo_local():
 def test_quoted_hash_is_not_a_comment():
     assert "hooks-path" in _rules('git -C "repo #1" config core.hooksPath /tmp/hooks\n')
     assert _rules('echo "a # b"\n') == set()
+
+
+def test_escaped_quote_does_not_close_string():
+    assert "hooks-path" in _rules("printf '%s\\n' \"a \\\" # b\"; git config core.hooksPath /tmp/hooks\n")
+    assert _rules("echo 'it'\"'\"'s # fine'\n") == set()
