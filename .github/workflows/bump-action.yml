@@ -1,0 +1,31 @@
+name: bump-action
+# #1472: patch bump PR on the release cadence (rules section 14), 11:05 and 17:05 Asia/Taipei = 03:05 and 09:05 UTC.
+# Opened with the repo token; set secret TLWU_BUMP_TOKEN (PAT) if `test` must run on the bump PR (a PR opened by
+# GITHUB_TOKEN does not trigger workflows).
+on:
+  schedule:
+    - cron: "5 3,9 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "open the bump (false = dry run)"
+        default: "false"
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+  checks: read
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: dev
+          token: ${{ secrets.TLWU_BUMP_TOKEN || secrets.GITHUB_TOKEN }}
+      - run: git fetch --tags origin main dev
+      - run: python scripts/bump_action.py ${{ github.event_name == 'schedule' && '--apply' || (inputs.apply == 'true' && '--apply' || '') }}
+        env:
+          GH_TOKEN: ${{ secrets.TLWU_BUMP_TOKEN || secrets.GITHUB_TOKEN }}
