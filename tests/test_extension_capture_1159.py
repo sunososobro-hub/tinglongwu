@@ -193,6 +193,14 @@ def test_tone_seconds_measures_tone_at_sample_resolution():
                 holey[j] = 0.0
     got = tone_seconds(pcm(holey))
     assert got < 0.9 * CLIP_S and got == pytest.approx(2.505, abs=0.03), got
+    # the MON_GAP boundary: an 8-sample silent run (on a positive peak, no extra crossing) is cut, a 7-sample one kept
+    base = sine(TONE_HZ, 2.0)
+    peak = round(MON_RATE / TONE_HZ / 4) + 20 * round(MON_RATE / TONE_HZ)
+    full = tone_seconds(pcm(base))
+    for run, lost in ((MON_GAP, MON_GAP), (MON_GAP - 1, 0)):
+        cut = list(base)
+        cut[peak - run // 2: peak - run // 2 + run] = [0.0] * run
+        assert tone_seconds(pcm(cut)) == pytest.approx(full - lost / MON_RATE, abs=0.5 / MON_RATE), run
     # the weakest counted tone keeps its full length (its near-zero runs are shorter than MON_GAP)
     assert tone_seconds(pcm(sine(TONE_HZ, 2.0, a=0.06))) == pytest.approx(2.0, abs=0.01)
 
@@ -227,7 +235,11 @@ class _MonitorRecorder:
             self.first.set()
 
     def close(self) -> str:
-        """Terminate and reap parec, finish the reader; idempotent. Returns parec's stderr."""
+        """Terminate and reap parec, finish the reader; idempotent. Returns parec's stderr. If parec had already
+        exited on its own (before this first close), `self.died` holds its exit status and stderr."""
+        if not hasattr(self, "died"):
+            code = self.proc.poll()
+            self.died = None if code is None else code
         if self.proc.poll() is None:
             self.proc.terminate()
             try:
@@ -236,7 +248,11 @@ class _MonitorRecorder:
                 self.proc.kill()
                 self.proc.wait(timeout=5)
         self.thread.join(timeout=5)
-        return self.proc.stderr.read().decode(errors="replace") if self.proc.stderr else ""
+        if not hasattr(self, "err"):
+            self.err = self.proc.stderr.read().decode(errors="replace") if self.proc.stderr else ""
+        if self.died is not None and not isinstance(self.died, tuple):
+            self.died = (self.died, self.err)
+        return self.err
 
     def data(self) -> bytes:
         return b"".join(self.chunks)
@@ -326,6 +342,8 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
             time.sleep(0.5)  # the last frames are still in the worklet / message queue
             if mon:
                 mon.close()
+                if mon.died is not None:  # the recorder stopped by itself: not a verdict on what the tab played
+                    pytest.fail(f"parec exited early with status {mon.died[0]}: {mon.died[1]}")
                 heard = mon.data()
             st = sw.evaluate("() => tlwu.captureStats()")
             stopped = sw.evaluate("() => tlwu.stopCapture()")
