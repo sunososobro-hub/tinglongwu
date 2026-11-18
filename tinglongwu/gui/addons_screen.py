@@ -61,7 +61,8 @@ class AddonsScreen:
                 ttk.Button(f, text=t("addons_add"), command=lambda n=r["name"]: self.add(n)).pack(side="right")
 
     def _probe_gpu(self):
-        threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_state())), daemon=True).start()
+        self.gpu_gen = gen = getattr(self, "gpu_gen", 0) + 1  # a late, older probe must not overwrite a newer one
+        threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_state(), gen)), daemon=True).start()
 
     def retry(self):
         """Retry also probes the GPU again (a first nvidia-smi timeout must not stick until the window reopens)."""
@@ -109,8 +110,13 @@ class AddonsScreen:
         self.busy = True
         self.gpu_lines = []
         self.msg.set(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE))
-        threading.Thread(target=gpu_offer.run_install, args=(self.run, self.q.put),
-                         kwargs={"mdir": self.mdir, "cmd": gpu_offer.gpu_pack_cmd(self.mdir)}, daemon=True).start()
+        try:
+            threading.Thread(target=gpu_offer.run_install, args=(self.run, self.q.put),
+                             kwargs={"mdir": self.mdir, "cmd": gpu_offer.gpu_pack_cmd(self.mdir)}, daemon=True).start()
+        except RuntimeError:  # no thread: release the lock, keep the Install button usable
+            gpu_offer.INSTALLING.clear()
+            self.busy = False
+            self.refresh()
 
     def add(self, pack: str):
         if self.busy:
@@ -158,10 +164,12 @@ class AddonsScreen:
                     self.msg.set(ev[1])
                     self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
                 elif ev[0] == "gpu_state":
-                    self.gpu_cached = ev[1]
-                    self.refresh()
+                    if len(ev) < 3 or ev[2] == self.gpu_gen:
+                        self.gpu_cached = ev[1]
+                        self.refresh()
                 elif ev[0] == "pack_done" and ev[1] == GPU_ROW:  # #1525
                     self.busy = False
+                    self.gpu_gen = getattr(self, "gpu_gen", 0) + 1  # drop probes started before the install ended
                     self.gpu_cached = self._gpu_state()  # the pack folder changed: re-read it
                     self.msg.set(t("gpu_offer_ok") if gpu_offer.install_ok(ev[2], self.gpu_lines) else
                                  t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)))

@@ -943,6 +943,7 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
     import subprocess
 
     popen = popen or subprocess.Popen
+    p = None
     try:
         p = popen(cmd or pack_download_cmd(pack, mdir, bundled), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                   env=download_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -957,6 +958,12 @@ def run_pack_download(pack: str, put, mdir=None, popen=None, bundled: bool | Non
     except Exception as e:  # noqa: BLE001
         put(("pack_line", f"{type(e).__name__}: {e}"[:90]))
         rc = -1
+        if p is not None:  # #1525: never return while the child may still write (callers release their lock here)
+            try:
+                p.kill()
+                p.wait(timeout=30)
+            except Exception:  # noqa: BLE001
+                _diag.swallowed(__name__)
     put(("pack_done", pack, rc))
     return rc
 

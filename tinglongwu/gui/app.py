@@ -1420,15 +1420,21 @@ class App:
         from ..gpu_pack import pack_dir
 
         pack = pack_dir()
-        if pack is not None and gpu_offer._pack_usable(pack):  # installed meanwhile (e.g. from Settings > Add-ons)
+        if (pack is not None and not getattr(self, "gpu_runtime_failed", False)
+                and gpu_offer._pack_usable(pack)):  # installed meanwhile (e.g. Add-ons); not after a CUDA load failure
             self._gpu_show(t("gpu_offer_ok"), buttons=False)
             return
         gpu_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
         self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
-        threading.Thread(target=gpu_offer.run_install, args=(run_pack_download, put),
-                         kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
+        try:
+            threading.Thread(target=gpu_offer.run_install, args=(run_pack_download, put),
+                             kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
+        except RuntimeError:  # no thread: release the lock and offer Install again
+            gpu_offer.INSTALLING.clear()
+            self.gpu_busy = False
+            self._gpu_offer_show()
 
     def _gpu_event(self, ev):
         from . import gpu_offer
@@ -2701,6 +2707,8 @@ class App:
                 elif kind == "notice":
                     from . import gpu_offer
 
+                    if gpu_offer.is_missing_pack_notice(ev[1]):
+                        self.gpu_runtime_failed = True  # the runtime could not load CUDA: Install must really repair
                     if (gpu_offer.is_missing_pack_notice(ev[1]) and not gpu_offer.offline() and not self.gpu_busy
                             and not self.settings.get(gpu_offer.DISMISS_KEY)):
                         self._gpu_offer_show()  # #1525: the "GPU pack missing" line gets its [Install] button

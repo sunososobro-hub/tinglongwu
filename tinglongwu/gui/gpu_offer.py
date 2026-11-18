@@ -86,7 +86,7 @@ def detect(gpu_info=None, pack_dir=None, usable=None, platform: str | None = Non
     name, _ = gpu_info()
     pack = pack_dir()
     if usable is None:
-        usable = _pack_usable
+        usable = lambda p: _pack_usable(p, platform)  # noqa: E731 - same platform as the support check
     return pack_state(name is not None, pack, usable(pack) if pack is not None else True)
 
 

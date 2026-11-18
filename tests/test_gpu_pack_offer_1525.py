@@ -213,9 +213,15 @@ def test_gpu_pack_offer_version_marker_validated(tmp_path):
 
 
 def test_gpu_pack_offer_llama_build_needs_ggml_cuda(tmp_path):
+    from tinglongwu.device import PACK_LLAMA_VERSION_FILE
+    from tinglongwu.llamacheck import LLAMA_VERSION
+
     for n in ("cublas64_12.dll", "cudnn64_9.dll", "llama.dll", "ggml.dll"):
         (tmp_path / n).write_bytes(b"x")
+    (tmp_path / PACK_LLAMA_VERSION_FILE).write_text(LLAMA_VERSION, encoding="utf-8")
     assert not G._pack_usable(tmp_path, platform="win32")  # no ggml-cuda.dll = device.pack_llama_dir refuses it
+    (tmp_path / "ggml-cuda.dll").write_bytes(b"x")
+    assert G._pack_usable(tmp_path, platform="win32")
 
 
 def test_gpu_pack_offer_locked_pack_keeps_old_one(tmp_path, monkeypatch):
@@ -239,6 +245,33 @@ def test_gpu_pack_offer_locked_pack_keeps_old_one(tmp_path, monkeypatch):
         return real(self, target)
 
     monkeypatch.setattr(Path, "rename", locked)
-    with pytest.raises(sp.PackError, match="close tlwu"):
+    with pytest.raises(sp.PackError, match="^pack in use: close tlwu"):
         sp.install_zip(z, man, dest, "0.4.10")
     assert (dest / "cublas64_12.dll").read_bytes() == b"old"
+
+
+def test_gpu_pack_offer_detect_checks_dlls_for_requested_platform(tmp_path):
+    (tmp_path / "cublas64_12.dll").write_bytes(b"x")  # no cuDNN
+    assert G.detect(gpu_info=lambda: ("RTX", 1), pack_dir=lambda: tmp_path, platform="win32") == G.OLD
+
+
+def test_gpu_pack_offer_pack_download_waits_for_child_on_error():
+    from tinglongwu.gui.core import run_pack_download
+
+    class P:
+        killed = waited = False
+
+        @property
+        def stdout(self):
+            raise OSError("pipe broke")
+
+        def kill(self):
+            P.killed = True
+
+        def wait(self, timeout=None):
+            P.waited = True
+            return -9
+
+    events = []
+    assert run_pack_download("gpu-pack", events.append, popen=lambda *a, **k: P(), cmd=["x"]) == -1
+    assert P.killed and P.waited and events[-1] == ("pack_done", "gpu-pack", -1)
