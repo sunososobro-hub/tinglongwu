@@ -1,0 +1,22 @@
+name: board-scan
+# #1471: rule-only board scan; posts `[board HH:MM] ok|act: ...` on #61 so the AI patrol only wakes when needed.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+  checks: read
+concurrency:
+  group: board-scan
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/board_scan.py --post
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
