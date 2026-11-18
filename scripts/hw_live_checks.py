@@ -438,6 +438,8 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
                out / "mic_live.log") as ch:
         try:
             if not ch.wait_for(READY_MARK):
+                for ln in tlwu_notes(ch.lines):  # #1247: what the live run said before it never got ready
+                    print(f"diagnose: live {ln}", flush=True)
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             t0 = played_at(play_child(wav, CABLE_IN))
             time.sleep(TAIL_S)

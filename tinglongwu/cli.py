@@ -671,7 +671,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
                     transcript_only=bool(a.transcript_only))  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
     dev = asr.device  # may have fallen back to cpu
     asr.live = asr_live(dev, a.file, getattr(a, "paced", False))  # #251 / #1264
-    warm_live_asr(asr, a.file, getattr(a, "paced", False), warn)  # #1247: before "ready", not on the first line
+    if stop is None or not stop.is_set():  # a session cancelled while loading does not wait for a warm-up decode
+        warm_live_asr(asr, a.file, getattr(a, "paced", False), warn)  # #1247: before "ready", not on the first line
     cpu_max_wait(a, dev)
     translator = None
     if not a.transcript_only:

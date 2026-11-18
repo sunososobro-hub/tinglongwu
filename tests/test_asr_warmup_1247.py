@@ -25,6 +25,8 @@ class FakeModel:
         def gen():
             pulled.append(True)
             yield SimpleNamespace(text=" hm", no_speech_prob=0.9, avg_logprob=-2.0, end=1.0)
+            yield SimpleNamespace(text="", no_speech_prob=0.9, avg_logprob=-2.0, end=1.0)
+            pulled.append("done")
 
         self.pulled = pulled
         return gen(), SimpleNamespace(language="en")
@@ -45,7 +47,7 @@ def test_warm_up_runs_one_full_decode_without_touching_state():
     assert audio.dtype == np.float32 and len(audio) == int(asr_mod.WARMUP_S * asr_mod.SAMPLE_RATE)
     assert float(np.sqrt(np.mean(audio ** 2))) < 0.01  # near-silence, never shown
     assert kw["beam_size"] == 3 and kw["language"] == "en"  # same beam as live decoding; auto skips detection
-    assert r.model.pulled  # the lazy generator was consumed (the decode really ran)
+    assert r.model.pulled[-1:] == ["done"]  # the lazy generator was exhausted (the whole decode really ran)
     assert r._last == "earlier line" and r._tail is None and r.lang is None
 
 
