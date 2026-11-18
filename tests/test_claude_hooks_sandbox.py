@@ -169,10 +169,19 @@ def test_settings_guard_flags_unlisted_keys_and_hooks(tmp_path, extra):
     assert settings_problems(bad)
 
 
+def _git_env() -> dict:
+    # No inherited GIT_* (GIT_DIR, GIT_INDEX_FILE, ...) may point git at another repo or index.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
 def tracked_agent_config(root: Path) -> list[str]:
     """Committed files that would configure a contributor's Claude Code beyond settings.json hooks."""
-    files = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True,
-                           check=True).stdout.splitlines()
+    # -z: unquoted, NUL-separated paths (a quoted "dir\t/.mcp.json" must not slip through).
+    out = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, text=True,
+                         env=_git_env(), check=True).stdout
+    files = [f for f in out.split("\0") if f]
     return [f for f in files if Path(f).name == ".mcp.json" or f == ".claude/settings.local.json"]
 
 
@@ -181,13 +190,16 @@ def test_no_committed_mcp_json():
     assert tracked_agent_config(ROOT) == []
 
 
-def test_mcp_json_guard_catches_a_committed_file(tmp_path):
+@pytest.mark.parametrize("rel", [".mcp.json", "odd\tdir/.mcp.json"])
+def test_mcp_json_guard_catches_a_committed_file(tmp_path, rel):
     _require_tools()
-    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1"}
+    env = _git_env()
     subprocess.run(["git", "init", "-q", str(tmp_path)], env=env, check=True)
-    (tmp_path / ".mcp.json").write_text("{}", encoding="utf-8")
-    subprocess.run(["git", "-C", str(tmp_path), "add", ".mcp.json"], env=env, check=True)
-    assert tracked_agent_config(tmp_path) == [".mcp.json"]
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{}", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "--", rel], env=env, check=True)
+    assert tracked_agent_config(tmp_path) == [rel]
 
 
 def test_missing_bash_fails_instead_of_skipping(monkeypatch):
