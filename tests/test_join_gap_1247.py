@@ -1,6 +1,8 @@
 """#1247 / #894: while live ASR catches up on a backlog, one joined ASR call is one stretch with no new subtitle.
 hw-tests run 44248844590 (dev bd2fd71): 28 s joins on the CPU runner left 11.6 s without a subtitle (#894 limit 10 s).
 The join is now sized from the measured ASR cost so each call stays near pipeline.ASR_JOIN_CALL_S."""
+import pytest
+
 from tinglongwu import pipeline
 from tinglongwu.asr import Transcript
 from tinglongwu.pipeline import join_cap, run
@@ -63,43 +65,55 @@ def test_old_policy_left_more_than_10_s(monkeypatch):
     assert gap > MAX_GAP_S and max(sizes) > 20.0, (gap, sizes)
 
 
-def test_join_cap_upper_bound_from_newest_call():
-    # 3 s cost 3 s, nothing longer seen: cost <= rate * seconds -> 6 s fits ASR_JOIN_CALL_S
-    assert join_cap([(3.0, 3.0)]) == 6.0
+def _cost(fixed, rate, a):
+    return fixed + rate * a
 
 
-def test_join_cap_one_spike_does_not_unlock_28_s():
-    # a 40 s spike on a 3 s call, then a 6 s call in 4.1 s: the fit says length is free, growth stays at 2 x 6 s
-    assert join_cap([(3.0, 40.0), (6.0, 4.1)]) == 12.0
+def test_join_cap_no_fit_bounds_cost_by_the_newest_call():
+    # one length only: a join k x the newest call costs <= k x its cost, so the cap keeps that under ASR_JOIN_HARD_S
+    assert join_cap([(3.0, 3.0)]) == 3.0 * pipeline.ASR_JOIN_HARD_S / 3.0
+    assert join_cap([(3.0, 40.0)]) < 3.0  # a 40 s spike: one segment next
 
 
 def test_join_cap_follows_the_fitted_cost():
-    hist = [(a, FIX + PER_S * a) for a in (3.0, 6.0, 9.0, 3.0)]
+    hist = [(a, _cost(FIX, PER_S, a)) for a in (3.0, 6.0, 9.0, 3.0)]
     cap = join_cap(hist)
-    assert FIX + PER_S * cap <= pipeline.ASR_JOIN_CALL_S + 1e-6, cap
-    assert cap >= 6.0, cap
+    assert abs(_cost(FIX, PER_S, cap) - pipeline.ASR_JOIN_CALL_S) < 1e-6, cap
 
 
-def test_join_cap_fit_limits_the_newest_call_estimate():
-    # fit 2 + 0.5 s/s: 8 s takes 6 s; the newest 12 s call took 8 s (over), so the cap is the fit's 8 s, not 9 s
-    assert abs(join_cap([(3.0, 3.5), (12.0, 8.0)]) - 8.0) < 1e-9
+def test_join_cap_fit_limits_a_looser_newest_call_estimate():
+    # fit ~2 + 0.5 s/s: 8 s takes 6 s; the newest 6 s call in 5 s alone would allow more
+    assert abs(join_cap([(3.0, 3.5), (12.0, 8.0), (6.0, 5.0)]) - 8.0) < 0.3
 
 
-def test_join_cap_over_budget_call_suspends_older_growth():
-    # 12 s in 5 s, then 3 s in 9 s (CPU got slower): no growth from the 12 s call, the fit (rate < 0) says nothing
-    assert join_cap([(12.0, 5.0), (3.0, 9.0)]) < 3.0
-
-
-def test_join_cap_keeps_progressing_when_one_segment_is_over_target():
-    # 6 s fixed + 0.1 s/s: a single 3 s segment takes 6.3 s; joins still grow, bounded by 1.5 x the fixed cost
-    cap = join_cap([(3.0, 6.3), (6.0, 6.6)])
-    assert cap > 6.0 and 6.0 + 0.1 * cap <= pipeline.ASR_JOIN_OVER * 6.0 + 1e-6, cap
-    assert join_cap([(3.0, 6.3)]) == 6.0  # one length only: explore one longer join
+def test_join_cap_after_a_slowdown_trusts_the_newest_call():
+    # fit 3 s in 3 s / 12 s in 7.5 s, then a 3 s call took 13 s: one segment next, not the fit's 9 s
+    assert join_cap([(3.0, 3.0), (12.0, 7.5), (3.0, 3.0), (3.0, 13.0)]) < 3.0
 
 
 def test_join_cap_short_tail_does_not_reopen_28_s():
     # a budget-cut join decoded 9 s in 20 s, then its 0.6 s tail in 0.64 s
-    assert join_cap([(3.0, 3.1), (9.0, 20.0), (0.6, 0.64)]) <= 6.0
+    assert join_cap([(3.0, 3.1), (9.0, 20.0), (0.6, 0.64)]) <= 9.0
+
+
+def _drains_and_bounded(fixed, rate, seg=3.0):
+    hist = [(seg, _cost(fixed, rate, seg)), (2 * seg, _cost(fixed, rate, 2 * seg))]
+    cap = join_cap(hist)
+    join = seg * int(cap // seg)  # what catch_up() can take from 3 s segments
+    return cap, join, _cost(fixed, rate, join)
+
+
+@pytest.mark.parametrize("fixed,rate", [(3.0, 0.6), (6.0, 0.1), (4.8, 0.16), (2.0, 0.35)])
+def test_join_cap_drains_with_calls_under_the_hard_limit(fixed, rate):
+    cap, join, cost = _drains_and_bounded(fixed, rate)
+    assert cost <= pipeline.ASR_JOIN_HARD_S + 1e-6, (cap, join, cost)
+    assert cost < join, (cap, join, cost)  # the backlog shrinks
+
+
+def test_join_cap_gap_wins_when_no_join_drains_under_the_limit():
+    # 7.6 + 0.15 s/s: draining needs calls over 9 s, so the call stays <= ASR_JOIN_HARD_S
+    cap, join, cost = _drains_and_bounded(7.6, 0.15)
+    assert _cost(7.6, 0.15, cap) <= pipeline.ASR_JOIN_HARD_S + 1e-6, cap
 
 
 def test_join_cap_without_history_is_the_old_bound():

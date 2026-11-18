@@ -63,31 +63,30 @@ ASR_JOIN_MAX_S = 28.0
 # leaves 4 s of the 10 s for the segment cut and writing. ASR_JOIN_MAX_S stays the upper bound.
 ASR_JOIN_CALL_S = 6.0
 ASR_COST_N = 8
-ASR_JOIN_GROW = 2.0
-ASR_JOIN_OVER = 1.5  # #1247: target when one call's fixed cost alone is over ASR_JOIN_CALL_S
+ASR_JOIN_HARD_S = 9.0  # #1247: never plan a call longer than this (#894's 10 s gap minus ~1 s to cut and write)
+ASR_JOIN_DRAIN = 1.5   # #1247: a slow CPU joins 1.5 x the break-even length (cost = audio) so the backlog shrinks
 MT_STALE_S = 5.0
 MT_HOLD_POLL = 0.05
 DUP_WINDOW = 10.0  # seconds: an identical final line this soon after the same one is dropped (Whisper repeats on silence)
 
 
 def join_cap(history) -> float:
-    """#1247: seconds of audio one catch-up join may hold so that its ASR call is predicted to take at most the
-    target (ASR_JOIN_CALL_S). history: recent (audio seconds decoded, ASR seconds) of live calls, oldest first.
-    - fit: a least-squares line cost = fixed + rate * seconds when the calls span >= 1 s and the rate is positive
-      (without calls over 2 x ASR_JOIN_CALL_S when the rest span >= 1 s: a CPU spike would bend the line).
-      When the fixed cost alone makes the target unreachable, the target becomes ASR_JOIN_OVER x fixed, so a slow
-      CPU still joins (catch-up keeps progressing) and each call stays bounded.
-    - newest call within the target: its rate with no fixed cost is an upper bound for longer joins.
-    - growth: ASR_JOIN_GROW x the longest call within the target since the newest call over it (an over-budget call
-      suspends growth from older calls).
-    The largest of these, never above the fit's limit nor ASR_JOIN_MAX_S. Nothing within the target and no fit: one
-    join of ASR_JOIN_GROW x the newest length when every call had that length (so the next call measures a second
-    length), else the newest rate scaled down. No history: ASR_JOIN_MAX_S (#1369). The caller keeps one segment."""
+    """#1247: seconds of audio one catch-up join may hold. history: recent (audio seconds decoded, ASR seconds) of
+    live calls, oldest first. Cost is modelled as fixed + rate * seconds (Whisper pads every call to a 30 s window).
+    - fit: least squares over the recent calls (without calls over 2 x ASR_JOIN_CALL_S when the rest span >= 1 s: a
+      CPU spike would bend the line); used when the calls span >= 1 s and the rate is positive. The cap is the join
+      whose predicted cost is the target: ASR_JOIN_CALL_S, raised when a join of that cost cannot drain the backlog
+      (cost >= audio) to the cost of ASR_JOIN_DRAIN x the break-even length, never above ASR_JOIN_HARD_S. When even
+      ASR_JOIN_HARD_S cannot drain it the subtitle gap wins (#894) and the backlog grows.
+    - newest call slower than the fit predicts (x1.2), or no fit: with cost affine and fixed >= 0, a join k times the
+      newest call costs at most k times its cost, so the cap is the newest length x ASR_JOIN_HARD_S / its cost (below
+      one segment when the newest call alone took longer: the caller then keeps one segment).
+    No history: ASR_JOIN_MAX_S (#1369). Never above ASR_JOIN_MAX_S."""
     pts = [(a, c) for a, c in history if a > 0 and c >= 0]
     if not pts:
         return ASR_JOIN_MAX_S
-    lens = np.array([a for a, _ in pts], dtype=float)
-    # fit without calls over 2 x ASR_JOIN_CALL_S (a CPU spike bends the line) when the rest span >= 1 s
+    a_new, c_new = pts[-1]
+    newest = ASR_JOIN_MAX_S if c_new <= 0 else a_new * ASR_JOIN_HARD_S / c_new
     calm = [(a, c) for a, c in pts if c <= 2 * ASR_JOIN_CALL_S]
     fpts = calm if len(calm) > 1 and max(a for a, _ in calm) - min(a for a, _ in calm) >= 1.0 else pts
     fit = None
@@ -95,26 +94,19 @@ def join_cap(history) -> float:
         rate, fixed = np.polyfit([a for a, _ in fpts], [c for _, c in fpts], 1)
         if rate > 0:
             fit = (max(0.0, float(fixed)), float(rate))
-    target = ASR_JOIN_CALL_S if fit is None else max(ASR_JOIN_CALL_S, ASR_JOIN_OVER * fit[0])
-    a_new, c_new = pts[-1]
-    cands = []
-    if c_new <= 0:
-        cands.append(ASR_JOIN_MAX_S)
-    elif c_new <= target:
-        cands.append(target * a_new / c_new)
-    last_over = max((i for i, (_, c) in enumerate(pts) if c > target), default=-1)
-    ok = [a for a, c in pts[last_over + 1:] if c <= target]
-    if ok:
-        cands.append(ASR_JOIN_GROW * max(ok))
-    if fit is not None:
-        limit = (target - fit[0]) / fit[1]
-        cap = min(max(cands), limit) if cands else limit
-    elif cands:
-        cap = max(cands)
-    elif lens.max() - lens.min() < 1.0:
-        cap = ASR_JOIN_GROW * a_new
+    if fit is None:
+        cap = newest
     else:
-        cap = target * a_new / c_new
+        fixed, rate = fit
+        target = ASR_JOIN_CALL_S
+        if rate < 1.0:
+            drain = fixed + rate * ASR_JOIN_DRAIN * fixed / (1.0 - rate)  # cost of a join that clearly drains
+            target = min(ASR_JOIN_HARD_S, max(target, drain))
+        else:
+            target = ASR_JOIN_HARD_S  # no join size drains: keep the gap bounded
+        cap = (target - fixed) / rate
+        if c_new > 1.2 * (fixed + rate * a_new):  # slowed down since the fit: trust the newest call
+            cap = min(cap, newest)
     return float(min(ASR_JOIN_MAX_S, max(0.0, cap)))
 
 
