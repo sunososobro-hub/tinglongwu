@@ -70,7 +70,7 @@ def test_linked_issue_prefers_head_branch():
 
 
 def test_final_usage_only_last_line():
-    assert ledger.final_usage("example: tlwu-usage: model=x minutes=99\nsome prose") is None
+    assert ledger.final_usage("tlwu-usage: model=x minutes=99\nsome prose") is None
     assert ledger.final_usage("Closes #1\n\ntlwu-usage: model=sonnet tool_calls=3 minutes=12\n") == 12
 
 
@@ -91,3 +91,22 @@ def test_collect_counts_only_producer_comments_and_7d_infra_denominator(monkeypa
     by_type, untyped, infra_min, total7 = ledger.collect(now)
     assert by_type == {"QA": 10} and untyped == 0  # the 3-day-old PR/comment are outside the 48 h table
     assert infra_min == 20 and total7 == 20 + 30 + 10  # 7-day denominator includes producer QA minutes, not the outsider's
+
+
+def test_usage_rejects_partial_minutes_value():
+    assert ledger.usage_minutes("tlwu-usage: model=x minutes=12.5") is None
+    assert ledger.usage_minutes("tlwu-usage: model=x minutes=12") == 12
+
+
+def test_deleted_linked_issue_keeps_minutes_in_total(monkeypatch):
+    from datetime import datetime, timedelta, UTC
+    now = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+    pr = {"merged_at": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"), "head": {"ref": "fix/9"},
+          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=1 minutes=20"}
+    monkeypatch.setattr(ledger, "_gh_list", lambda path: [pr] if "/pulls" in path else [])
+
+    def gone(path, *a):
+        raise subprocess.CalledProcessError(1, "gh", stderr="gh: Not Found (HTTP 404)")
+    monkeypatch.setattr(ledger, "_gh", gone)
+    by_type, untyped, infra_min, total7 = ledger.collect(now)
+    assert untyped == 20 and total7 == 20 and infra_min == 0

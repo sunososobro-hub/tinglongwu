@@ -18,7 +18,7 @@ THROTTLE_ISSUE = 574
 DEFAULT_MIX = {"bug": 28, "enhancement": 50, "eval": 11, "documentation": 5, "maint": 6}
 TYPES = list(DEFAULT_MIX)
 INFO_TARGETS = {"QA": 15, "ideas": 5}
-USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=(\d+)", re.M)
+USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=(\d+)(?![\d.])", re.M)
 LINK_RE = re.compile(r"(?:Closes|Refs) #(\d+)")
 HEAD_RE = re.compile(r"^(?:fix|feat)/(\d+)(?:-r\d+)?$")
 
@@ -119,6 +119,7 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
     by_type: dict[str, int] = {}
     untyped = infra_min = total7 = 0
     labels_cache: dict[int, set[str]] = {}
+    incomplete: set[int] = set()
     pulls = _gh_list(f"repos/{REPO}/pulls?state=closed&base=dev&sort=updated&direction=desc&per_page=100")
     for pr in pulls:
         merged = pr.get("merged_at")
@@ -131,7 +132,13 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
         labels: set[str] = set()
         if n is not None:
             if n not in labels_cache:
-                labels_cache[n] = {l["name"] for l in _gh(f"repos/{REPO}/issues/{n}")["labels"]}
+                try:
+                    labels_cache[n] = {l["name"] for l in _gh(f"repos/{REPO}/issues/{n}")["labels"]}
+                except subprocess.CalledProcessError as e:
+                    if "404" not in (e.stderr or ""):
+                        raise  # transient failure: fail the run, publish nothing wrong
+                    labels_cache[n] = set()  # linked issue deleted: keep the minutes, no classification
+                    incomplete.add(n)
             labels = labels_cache[n]
         total7 += mins
         if "infra" in labels:
