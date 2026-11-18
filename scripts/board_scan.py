@@ -71,18 +71,19 @@ def needs_triage(labels: set[str]) -> bool:
 def dev_red_since(history: list[tuple[datetime, str | None]]) -> datetime | None:
     """Start of the current red streak of the `test` check on dev.
 
-    `history` is (commit time, test conclusion) newest first. Commits whose `test` has not finished
-    (None) are skipped. Returns None when the newest finished `test` is green.
+    `history` is (time the commit's `test` turned red, or commit time; test conclusion) in commit order,
+    newest first. Commit order decides which commits are in the streak (it ends at the newest finished
+    green); the earliest failure time inside it is the start (runs can finish out of order). Commits
+    whose `test` has not finished (None) are skipped. None when the newest finished `test` is green.
     """
-    since = None
+    times = []
     for when, concl in history:
         if concl is None:
             continue
-        if concl in RED:
-            since = when
-        else:
+        if concl not in RED:
             break
-    return since
+        times.append(when)
+    return min(times) if times else None
 
 
 def dev_red_too_long(now: datetime, history: list[tuple[datetime, str | None]]) -> bool:
@@ -111,14 +112,34 @@ def _gh_list(path: str) -> list:
     return [item for page in pages for item in (page if isinstance(page, list) else [page])]
 
 
-def _test_run(sha: str) -> tuple[str | None, datetime | None]:
-    """(conclusion, completed_at) of the newest `test` check run on a commit; (None, None) when missing or running."""
-    runs = (_gh(f"repos/{REPO}/commits/{sha}/check-runs?check_name=test&per_page=100") or {}).get("check_runs", [])
-    runs = sorted(runs, key=lambda r: r.get("started_at") or "", reverse=True)
-    if not runs or runs[0].get("status") != "completed":
+def run_state(runs: list[dict]) -> tuple[str | None, datetime | None]:
+    """(conclusion, red since) from all `test` check runs on one commit (reruns share the SHA).
+
+    The conclusion is the newest run's; (None, None) while it is missing or running. When it is red,
+    `red since` is the first red completion after the newest green attempt, so a failed rerun does not
+    restart the streak.
+    """
+    runs = sorted(runs, key=lambda r: r.get("started_at") or "")
+    if not runs or runs[-1].get("status") != "completed":
         return None, None
-    done = runs[0].get("completed_at")
-    return runs[0].get("conclusion"), (_ts(done) if done else None)
+    concl = runs[-1].get("conclusion")
+    if concl not in RED:
+        return concl, None
+    since = None
+    for r in runs:
+        if r.get("status") != "completed":
+            continue
+        if r.get("conclusion") in RED:
+            if since is None and r.get("completed_at"):
+                since = _ts(r["completed_at"])
+        else:
+            since = None  # a green attempt ends any earlier red
+    return concl, since
+
+
+def _test_run(sha: str) -> tuple[str | None, datetime | None]:
+    runs = (_gh(f"repos/{REPO}/commits/{sha}/check-runs?check_name=test&per_page=100") or {}).get("check_runs", [])
+    return run_state(runs)
 
 
 def _test_conclusion(sha: str) -> str | None:
@@ -170,11 +191,11 @@ def scan(now: datetime) -> list[str]:
     open_heads = {pr["head"]["ref"] for pr in prs if (pr["head"].get("repo") or {}).get("full_name") == REPO}
     for pr in prs:
         full = _gh(f"repos/{REPO}/pulls/{pr['number']}")  # one revision: sha, labels and mergeable_state together
-        if full.get("state") != "open" or full["base"]["ref"] != "dev":
-            continue  # closed or retargeted since the list request
         if full.get("mergeable_state") in (None, "unknown"):
             time.sleep(3)  # GitHub computes mergeability lazily; ask once more before calling it unknown
             full = _gh(f"repos/{REPO}/pulls/{pr['number']}")
+        if full.get("state") != "open" or full["base"]["ref"] != "dev":
+            continue  # closed or retargeted since the list request (checked on the response we use)
         sha = full["head"]["sha"]
         head_at = _ts(_gh(f"repos/{REPO}/commits/{sha}")["commit"]["committer"]["date"])
         labels = {lb["name"] for lb in full["labels"]}

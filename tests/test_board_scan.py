@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from board_scan import (board_line, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
+from board_scan import (board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
                         pr_needs_action)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
@@ -100,3 +100,32 @@ def test_pr_mergeable_unknown_is_not_ok():
 def test_dev_red_timed_by_failing_run_not_commit():
     # commit from 3 h ago whose test only finished red 5 min ago: red for 5 min, not 3 h
     assert not dev_red_too_long(NOW, [(ago(5), "failure"), (ago(200), "success")])
+
+
+def _run(started, completed, concl, status="completed"):
+    return {"started_at": started.isoformat(), "completed_at": completed.isoformat(), "conclusion": concl,
+            "status": status}
+
+
+def test_state_uses_run_time_not_commit_date():
+    # a commit made hours ago whose only test run failed 5 min ago: red since 5 min ago
+    assert run_state([_run(ago(15), ago(5), "failure")]) == ("failure", ago(5))
+
+
+def test_state_failed_rerun_keeps_first_failure():
+    runs = [_run(ago(160), ago(150), "failure"), _run(ago(15), ago(5), "failure")]
+    assert run_state(runs) == ("failure", ago(150))
+
+
+def test_state_green_attempt_ends_red():
+    runs = [_run(ago(300), ago(290), "failure"), _run(ago(200), ago(190), "success"),
+            _run(ago(15), ago(5), "failure")]
+    assert run_state(runs) == ("failure", ago(5))
+    assert run_state(runs[:2]) == ("success", None)
+    assert run_state([_run(ago(2), ago(1), None, "in_progress")]) == (None, None)
+
+
+def test_dev_red_since_earliest_failure_in_streak():
+    # tip failed at -150, parent finished red later at -5, older commit green: streak is 150 min
+    hist = [(ago(150), "failure"), (ago(5), "failure"), (ago(400), "success"), (ago(500), "failure")]
+    assert dev_red_since(hist) == ago(150)
