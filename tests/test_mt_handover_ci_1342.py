@@ -29,7 +29,7 @@ n_tr = 0
 with open(save, "a", encoding="utf-8") as f:
     for i in range(400):
         landed = (mdir / "landed").exists()
-        tr = mode == "early" or (mode in ("ok", "crash", "flap") and landed)
+        tr = mode == "early" or (mode in ("ok", "crash", "flap", "quit") and landed)
         if mode == "flap" and n_tr >= 1:
             tr = False  # translated once, then back to source
         n_tr += tr
@@ -38,6 +38,8 @@ with open(save, "a", encoding="utf-8") as f:
         f.flush()
         if mode == "crash" and tr:
             sys.exit(3)
+        if mode == "quit" and tr:
+            sys.exit(0)  # a clean exit right after the first translated line, inside the settle window
         if mode == "flap" and tr:
             time.sleep(2.5)  # the checker polls (1 s) and sees this translated row alone before the fall-back
         time.sleep(0.2)
@@ -188,3 +190,8 @@ def test_read_jsonl_keeps_a_row_with_u2028(tmp_path):
     row = {"src": "a\u2028b", "dst": ""}
     p.write_text(json.dumps(row, ensure_ascii=False) + "\n", "utf-8")
     assert h.read_jsonl(p) == [row]
+
+
+def test_run_clean_exit_inside_the_settle_window_fails(tmp_path, monkeypatch):
+    rc, r = _run(tmp_path, monkeypatch, "quit", timeout=15)
+    assert rc == 1 and any("watched only part" in p for p in r["problems"]), r
