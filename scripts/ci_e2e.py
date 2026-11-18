@@ -566,11 +566,13 @@ def late_clip(lang: str, out: Path, models: str | None) -> Path:
 
 def check_late_jsonl(recs: list[dict], lang: str) -> list[tuple[str, bool, str]]:
     """#1395 Acceptance on a --save JSONL: no one-word line, and the merged line (head + last word) once."""
-    head_key, tail_key = LATE[lang][2:]
+    head_key = LATE[lang][2]
     lines = [r for r in recs if "src" in r and r.get("src", "").strip()]
     one = [r["src"] for r in lines if len(_WORDS.findall(r["src"])) <= 1]
-    tail_re = re.compile(r"\b" + tail_key + r"\w*", re.UNICODE)  # whole word from its start ("conversion" is not it)
-    merged = [r for r in lines if head_key in r["src"].lower() and tail_re.search(r["src"].lower())]
+    # the late word joined the line = the line has more words than the head. Not matched by spelling: Whisper on a
+    # lone synthetic word may mishear it (CI run: Vosk "версии" -> "иерсия"), which is ASR, not #1395 merging.
+    n_head = len(_WORDS.findall(LATE[lang][0]))
+    merged = [r for r in lines if head_key in r["src"].lower() and len(_WORDS.findall(r["src"])) > n_head]
     srcs = [r["src"] for r in lines]
     # the clip is one sentence: the file must hold exactly that one line (a head line left next to the merged one,
     # i.e. an amend that appended instead of replacing, fails here)
