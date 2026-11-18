@@ -1,5 +1,5 @@
 """#1470: decision function of the orphan-claim sweep (rules section 6)."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import sys
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from orphan_sweep import is_orphan, timeout_minutes
 
-NOW = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
 
 def mins(n):

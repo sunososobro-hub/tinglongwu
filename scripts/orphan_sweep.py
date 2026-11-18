@@ -12,7 +12,7 @@ import argparse
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 REPO = "sunososobro-hub/tinglongwu"
 TIMEOUT_MIN = {"model:sonnet": 20, "model:opus": 45}
@@ -67,7 +67,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     issues = _gh(f"repos/{REPO}/issues?state=open&labels=status:doing&per_page=100") or []
     for it in issues:
         if "pull_request" in it:
