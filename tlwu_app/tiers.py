@@ -186,3 +186,15 @@ def progress_fraction(done_bytes: int, tier: Tier) -> float:
 def default_models_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), ".local", "share")
     return Path(base) / "tinglongwu" / "models"
+
+
+def auto_device(gpu: Gpu | None, selftest_ok: bool | None, reason: str = "", user_off: bool = False) -> tuple[str, str]:
+    """#1531: (device, one plain line) with no CPU/GPU question for the user. `selftest_ok` = result of the one GPU
+    self-test run (None = not run). user_off = "Use GPU: Off" under Adjust > Advanced. Any GPU failure -> cpu + reason."""
+    if user_off:
+        return "cpu", ""
+    if gpu is None or driver_too_old(gpu):
+        return "cpu", ""
+    if selftest_ok is False:
+        return "cpu", f"GPU 無法使用，已改用 CPU：{reason or '自我測試失敗'}"
+    return "cuda", ""

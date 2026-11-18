@@ -55,7 +55,6 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 ; #1002: every text the wizard shows comes from here, one language per page (no "English / 中文" pairs);
 ; %1, %2, %3 are filled in by FmtMessage; source-only / core-only texts sit in the #ifndef / #ifdef CoreLayout blocks
 english.TaskDesktop=Desktop shortcuts
-english.TaskCpu=Force the CPU path (no NVIDIA GPU use)
 english.TaskAutoUpdate=Update automatically (checks GitHub once a day)
 english.RunStart=Start {#AppTitle}
 english.RunLog=Show install.log
@@ -64,7 +63,6 @@ english.Elapsed=elapsed %1
 english.StillWorking=still working, slow network?
 english.KeepModels=Keep the downloaded models (several GB) for a later reinstall?
 chinesetrad.TaskDesktop=建立桌面捷徑
-chinesetrad.TaskCpu=強制使用 CPU（不使用 NVIDIA 顯示卡）
 chinesetrad.TaskAutoUpdate=自動更新（每天檢查 GitHub 一次）
 chinesetrad.RunStart=啟動 {#AppTitle}
 chinesetrad.RunLog=顯示 install.log
@@ -73,7 +71,6 @@ chinesetrad.Elapsed=已用時間 %1
 chinesetrad.StillWorking=仍在進行，網路是否太慢？
 chinesetrad.KeepModels=保留已下載的模型（數 GB），以便日後重新安裝？
 chinesesimp.TaskDesktop=创建桌面快捷方式
-chinesesimp.TaskCpu=强制使用 CPU（不使用 NVIDIA 显卡）
 chinesesimp.TaskAutoUpdate=自动更新（每天检查 GitHub 一次）
 chinesesimp.RunStart=启动 {#AppTitle}
 chinesesimp.RunLog=显示 install.log
@@ -82,7 +79,6 @@ chinesesimp.Elapsed=已用时间 %1
 chinesesimp.StillWorking=仍在进行，网络是否太慢？
 chinesesimp.KeepModels=保留已下载的模型（数 GB），以便日后重新安装？
 japanese.TaskDesktop=デスクトップにショートカットを作成
-japanese.TaskCpu=CPU 経路を強制する（NVIDIA GPU を使用しない）
 japanese.TaskAutoUpdate=自動更新する（1 日 1 回 GitHub を確認）
 japanese.RunStart={#AppTitle} を起動
 japanese.RunLog=install.log を表示
@@ -91,7 +87,6 @@ japanese.Elapsed=経過時間 %1
 japanese.StillWorking=処理中です。ネットワークが遅いかもしれません。
 japanese.KeepModels=ダウンロード済みのモデル（数 GB）を再インストール用に残しますか？
 russian.TaskDesktop=Ярлыки на рабочем столе
-russian.TaskCpu=Только процессор (не использовать GPU NVIDIA)
 russian.TaskAutoUpdate=Обновлять автоматически (проверка GitHub раз в день)
 russian.RunStart=Запустить {#AppTitle}
 russian.RunLog=Показать install.log
@@ -195,7 +190,6 @@ russian.FailCore=Модели по умолчанию не загрузилис�
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:TaskDesktop}"
-Name: "cpu"; Description: "{cm:TaskCpu}"; Flags: unchecked
 Name: "autoupdate"; Description: "{cm:TaskAutoUpdate}"
 
 [Files]
@@ -259,7 +253,6 @@ var
   ProgressPage: TOutputProgressWizardPage;
   InstallRC: Integer;
   KeepModels: Boolean;
-  CpuTaskPreset: Boolean;
 #ifndef CoreLayout
   LangPage: TInputOptionWizardPage;
 #endif
@@ -273,19 +266,6 @@ begin
   if not Result then
     Result := Exec(ExpandConstant('{cmd}'), '/C nvidia-smi >NUL 2>&1', '', SW_HIDE, ewWaitUntilTerminated, RC) and (RC = 0);
   Log('NVIDIA driver detected: ' + IntToStr(Ord(Result)));
-end;
-
-{ #600: no NVIDIA driver -> pre-tick "Force the CPU path"; the box stays visible as an advanced override }
-procedure PresetCpuTask;
-var
-  I: Integer;
-begin
-  if CpuTaskPreset then exit;
-  CpuTaskPreset := True;
-  if HasNvidiaDriver then exit;
-  for I := 0 to WizardForm.TasksList.Items.Count - 1 do
-    if WizardForm.TasksList.ItemCaption[I] = CustomMessage('TaskCpu') then
-      WizardForm.TasksList.Checked[I] := True;
 end;
 
 #ifndef CoreLayout
@@ -464,7 +444,8 @@ begin
 #else
   Exe := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
   Params := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\installer\run_install.ps1') + '"';
-  Gpu := not (WizardIsTaskSelected('cpu') or (not LangPage.Values[OPT_GPU]));
+  { #1531: no force-CPU task; the app falls back to CPU by itself when the GPU self-test fails }
+  Gpu := LangPage.Values[OPT_GPU];
   if not Gpu then Params := Params + ' -Cpu';
   Params := Params + ' -Packs ' + SelectedPacks;
   { #1002: install.ps1 -Lang also rewrites ui_lang, so a silent self-update passes none and keeps the user's choice }
@@ -597,7 +578,6 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurPageID = wpSelectTasks then PresetCpuTask;
 #ifdef CoreLayout
   if (CurPageID = wpFinished) and (InstallRC <> 0) then
     { a [Code] line must not start with '[': ISCC reads it as a section tag }
