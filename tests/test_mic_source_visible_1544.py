@@ -71,3 +71,9 @@ def test_mic_source_fires_on_silent_after_10s_of_zeros(monkeypatch, capsys):
     assert events and events[0] == ("silent", ["Test Mic"])
     assert events[-1] == ("sound",)
     assert "listen source = mic, device = Test Mic" in capsys.readouterr().err
+
+
+def test_listen_silent_mic_says_stop_first():
+    for lang in MESSAGES:
+        assert MESSAGES[lang]["listen_silent_mic"]
+    assert "Stop" in t("listen_silent_mic", names="x")

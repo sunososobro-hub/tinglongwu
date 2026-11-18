@@ -191,6 +191,9 @@ class SoundcardSource(AudioSource):
         self._stop = threading.Event()
         self.on_reopen = None  # #710: called with the new device name after a reopen (voice cable guard)
 
+    def _opened(self, mic) -> None:
+        """Called once each time a recorder opened successfully (start, reopen, default switch). #1544 hook."""
+
     def _pick_microphone(self, sc):  # overridden per platform
         raise NotImplementedError
 
@@ -216,6 +219,7 @@ class SoundcardSource(AudioSource):
             try:
                 mic = self._pick_microphone(sc) if failures == 0 else self._repick(sc)
                 with _recorder(mic) as rec:
+                    self._opened(mic)
                     if failures:
                         print(f"tlwu: audio device changed, reopened {getattr(mic, 'name', mic)}",
                               file=sys.stderr, flush=True)

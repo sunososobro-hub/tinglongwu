@@ -979,9 +979,15 @@ class App:
     def _scene_labels():
         return [t("gui_scene_" + sc) for sc in SCENES]
 
+    def _live_source_settings(self) -> dict:
+        """#1544: the settings with the Source as the Advanced box currently shows it (v_source is the live value;
+        collect() copies it back into settings at Start, so the button and the box must read / write the same one)."""
+        v = getattr(self, "v_source", None)
+        return dict(self.settings, source=v.get()) if v is not None else self.settings
+
     def _source_sync(self):
         """#1544: show / hide the source toggle for the saved scene and refresh its words."""
-        key = source_label_key(self.settings)
+        key = source_label_key(self._live_source_settings())
         if key is None:
             self.btn_source.pack_forget()
             return
@@ -991,7 +997,10 @@ class App:
 
     def _source_toggled(self):
         """#1544: one click switches PC sound <-> microphone (applies at the next Start)."""
-        self.settings["source"] = toggled_source(self.settings)
+        new = toggled_source(self._live_source_settings())
+        self.settings["source"] = new
+        if getattr(self, "v_source", None) is not None:
+            self.v_source.set(new)  # the Advanced box follows; Start reads this value (collect)
         save_settings(self.settings)
         self._source_sync()
 
@@ -1279,6 +1288,7 @@ class App:
         self.v_quality.trace_add("write", lambda *_: self._quality_changed())
         self._quality_changed()
         self.v_source = self._combo(4, "gui_source", "source", SOURCES, "source")
+        self.v_source.trace_add("write", lambda *_: self._source_sync())  # #1544: the video button follows the box
         self._build_send_mode(g_mine).pack(anchor="w", fill="x")
         self.v_preset = self._combo(5, "gui_mode", "preset", PRESETS, "preset")
         self._label(6, "gui_glossary")

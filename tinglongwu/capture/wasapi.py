@@ -157,6 +157,7 @@ class WasapiLoopbackSource(SoundcardSource):
         suppress_capture_warnings()
         workers: dict[str, tuple[queue.Queue, threading.Event, str]] = {}
         last_refresh = -REFRESH_S
+        first_scan = True
         try:
             with com_initialized():
                 while not self._stop.is_set():
@@ -175,10 +176,11 @@ class WasapiLoopbackSource(SoundcardSource):
                                 workers[k] = (q, ev, name)
                                 threading.Thread(target=self._worker, args=(sc, k, q, ev), daemon=True).start()
                         names = [v[2] for v in workers.values()]
-                        if names != self.listening:  # #1544: the app log says which outputs a session listens to
+                        if first_scan or names != self.listening:  # #1544: the app log says which outputs are listened to
                             print(f"tlwu: listen source = system sound, devices = {' / '.join(names) or '-'}",
                                   file=sys.stderr, flush=True)
                         self.listening = names
+                        first_scan = False
                     blocks = []
                     for q, _ev, _n in list(workers.values()):
                         try:

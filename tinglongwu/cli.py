@@ -726,7 +726,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     if stop is not None and stop.is_set():
         return
     source = select_backend(a.file, a.mic, a.device)
-    if notice is not None and hasattr(source, "on_silent"):  # #1070: ~10 s of no sound: say what is listened to
+    if notice is not None and hasattr(source, "on_silent") and getattr(a, "mic_mute", None) is None:
+        # #1070: ~10 s of no sound: say what is listened to. #1544: not on the GUI speak leg (it shares the notice line)
         from .i18n import t as _t_silent
 
         _silent_key = getattr(source, "silent_key", "listen_silent")  # #1544: the mic has its own wording

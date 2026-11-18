@@ -25,16 +25,20 @@ class MicSource(SoundcardSource):
             mic = find_by_name(sc, self.device, include_loopback=mon)
         else:
             mic = sc.default_microphone()
+        return mic
+
+    def _opened(self, mic) -> None:
         name = getattr(mic, "name", None)
         if name:
             self.listening = [name]
-        # #1544: one line per (re)open, so the app log says which input a session listens to
+        self._watch = SilenceWatch()  # silence counts contiguous audio of the input that is open now
+        # #1544: one line per successful (re)open, so the app log says which input a session listens to
         print(f"tlwu: listen source = mic, device = {name or '?'}", file=sys.stderr, flush=True)
-        return mic
 
     def frames(self):
-        watch = SilenceWatch()
+        self._watch = SilenceWatch()
         for blk in super().frames():
+            watch = self._watch
             was_fired = watch._fired
             if self.on_silent is not None and watch.update(float(np.abs(blk).max()) if len(blk) else 0.0):
                 try:
