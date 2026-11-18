@@ -450,3 +450,24 @@ def test_recent_scan_passes_since_to_the_api(rx):
     ps.scan_recent(G(), rx, "2026-11-18T01:02:03Z")
     assert all(p.endswith("?since=2026-11-18T01:02:03Z") for p in seen) and len(seen) == 2
 
+
+
+def test_recent_scan_continues_after_failures_then_fails(rx):
+    class G(FakeGH):
+        def add_label(self, n):
+            if n == 3:
+                raise RuntimeError("label boom")
+            super().add_label(n)
+
+        def minimize(self, node_id):
+            if node_id == "N2":
+                raise RuntimeError("gone")
+            super().minimize(node_id)
+
+    gh = G(comments=[{"body": "zorblat", "html_url": "c1", "node_id": "N1", "issue_url": "https://api/x/issues/3"},
+                     {"body": "zorblat", "html_url": "c2", "node_id": "N2", "issue_url": "https://api/x/issues/4"}],
+           review_comments=[{"body": "qux frim", "html_url": "c3", "node_id": "N3", "pull_request_url": "https://api/x/pulls/8"}])
+    with pytest.raises(RuntimeError) as e:
+        ps.scan_recent(gh, rx, "2026-11-18T00:00:00Z")
+    assert ("minimize", "N1") in gh.calls and ("minimize", "N3") in gh.calls  # label failure still hides; scan went on
+    assert "label c1" in str(e.value) and "hide c2" in str(e.value) and "zorblat" not in str(e.value).lower()

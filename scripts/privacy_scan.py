@@ -373,8 +373,10 @@ def sweep(gh, rx, root: Path) -> dict:
 # ---------------------------------------------------------------- scheduled scan of recent comments (#1498)
 def scan_recent(gh, rx, since: str) -> dict:
     """Hide hits among comments created/edited since [since] (ISO 8601). Owner / agent comments start no
-    per-event runner job (#1498); this scheduled run covers them. Prints links only, never matched text."""
+    per-event runner job (#1498); this scheduled run covers them. Prints links only, never matched text.
+    One failing comment never stops the scan; the job fails at the end if any hit stayed visible or unlabelled."""
     counts = {"comments": 0, "hidden": 0}
+    failures: list[str] = []
     for path in (f"/repos/{gh.repo}/issues/comments", f"/repos/{gh.repo}/pulls/comments"):
         for c in gh.paginate(f"{path}?since={since}"):
             counts["comments"] += 1
@@ -383,11 +385,20 @@ def scan_recent(gh, rx, since: str) -> dict:
             url = c.get("issue_url") or c.get("pull_request_url") or ""
             number = url.rstrip("/").split("/")[-1]
             if number.isdigit():
-                gh.add_label(int(number))
-            gh.minimize(c["node_id"])  # raises (job red) unless GitHub confirms the comment is hidden
+                try:
+                    gh.add_label(int(number))  # first, so the item is flagged even if hiding fails
+                except Exception:  # noqa: BLE001 - still hide the comment, fail the job at the end
+                    failures.append(f"label {c.get('html_url', '')}")
+            try:
+                gh.minimize(c["node_id"])
+            except Exception:  # noqa: BLE001 - keep scanning; reported below
+                failures.append(f"hide {c.get('html_url', '')}")
+                continue
             counts["hidden"] += 1
             print("privacy-scan: hidden comment", c.get("html_url", ""))
     print("privacy-scan recent: " + " ".join(f"{k}={v}" for k, v in counts.items()))
+    if failures:
+        raise RuntimeError("privacy-scan recent: failed: " + "; ".join(failures))
     return counts
 
 
