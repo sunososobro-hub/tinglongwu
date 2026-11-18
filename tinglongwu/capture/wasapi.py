@@ -174,7 +174,11 @@ class WasapiLoopbackSource(SoundcardSource):
                                 q, ev = queue.Queue(maxsize=20), threading.Event()
                                 workers[k] = (q, ev, name)
                                 threading.Thread(target=self._worker, args=(sc, k, q, ev), daemon=True).start()
-                        self.listening = [v[2] for v in workers.values()]
+                        names = [v[2] for v in workers.values()]
+                        if names != self.listening:  # #1544: the app log says which outputs a session listens to
+                            print(f"tlwu: listen source = system sound, devices = {' / '.join(names) or '-'}",
+                                  file=sys.stderr, flush=True)
+                        self.listening = names
                     blocks = []
                     for q, _ev, _n in list(workers.values()):
                         try:

@@ -253,6 +253,19 @@ def watch_settings(s: dict) -> dict:
     return run
 
 
+def source_label_key(s: dict) -> str | None:
+    """#1544: i18n key of the plain-words source line shown next to 情境 in the video scene (None in the meeting scene,
+    whose listen leg is always the PC sound). The saved Source can be "mic" (#894), so it is never hidden in 調整."""
+    if scene_of(s) != "video":
+        return None
+    return "gui_src_mic" if s.get("source") == "mic" else "gui_src_system"
+
+
+def toggled_source(s: dict) -> str:
+    """#1544: the Source the one-click toggle switches to (system sound <-> microphone). `s` is not changed."""
+    return "system" if s.get("source") == "mic" else "mic"
+
+
 def scene_runs(s: dict) -> tuple[str, dict, dict | None]:
     """(mode, listen run, speak run or None) for the saved scene; raises SameLanguageError like both_settings."""
     if scene_mode(s) == WATCH_MODE:
@@ -1183,7 +1196,7 @@ def strip_silent_hint(text: str) -> str:
     notice lines stay. Called when listen-side audio or an other-side bubble arrives."""
     from ..i18n import MESSAGES
 
-    heads = {m["listen_silent"].split("{names}")[0] for m in MESSAGES.values() if "listen_silent" in m}
+    heads = {m[k].split("{names}")[0] for m in MESSAGES.values() for k in ("listen_silent", "listen_silent_mic") if k in m}
     keep = [ln for ln in (text or "").split(chr(10)) if not any(ln.startswith(h) for h in heads)]
     return chr(10).join(keep).strip()
 

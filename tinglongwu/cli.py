@@ -729,7 +729,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     if notice is not None and hasattr(source, "on_silent"):  # #1070: ~10 s of no sound: say what is listened to
         from .i18n import t as _t_silent
 
-        source.on_silent = lambda names: notice(_t_silent("listen_silent", names=" / ".join(names) or "?"))
+        _silent_key = getattr(source, "silent_key", "listen_silent")  # #1544: the mic has its own wording
+        source.on_silent = lambda names: notice(_t_silent(_silent_key, names=" / ".join(names) or "?"))
         if hasattr(source, "on_sound"):  # the hint must not outlive the silence (0.3.8)
             from .i18n import SILENT_CLEAR
 
