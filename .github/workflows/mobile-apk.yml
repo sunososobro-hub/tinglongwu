@@ -69,6 +69,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - run: python3 ../scripts/check_mobile_network.py --mobile-dir .   # #1567: network APIs only in the pack downloader
       - run: flutter analyze
       - run: flutter test
       - name: Release key from secrets (optional; falls back to debug signing)
@@ -108,7 +109,7 @@ jobs:
           TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build appbundle --release --target-platform android-arm64 --build-number ${{ github.run_number }}
-      - name: Check the AAB (packs present + fast-follow + sizes, no INTERNET, base under 200 MB, target API >= 36)
+      - name: Check the AAB (packs present + fast-follow + sizes, INTERNET only, base under 200 MB, target API >= 36)
         run: |
           AAB=build/app/outputs/bundle/release/app-release.aab
           ls -l "$AAB"
@@ -126,8 +127,10 @@ jobs:
             TOTAL=$((TOTAL + N))
           done
           [ "$TOTAL" -le $((4 << 30)) ] || { echo "packs over Play's 4 GB fast-follow total"; exit 1; }
-          # proto manifest keeps permission names as plain UTF-8 strings
-          if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "android.permission.INTERNET"; then echo "AAB requests INTERNET"; exit 1; fi
+          # proto manifest keeps permission names as plain UTF-8 strings; INTERNET is the only network permission (#1567)
+          unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/base.xml"
+          grep -aq "android.permission.INTERNET" "$RUNNER_TEMP/base.xml" || { echo "AAB lacks INTERNET (pack download)"; exit 1; }
+          if grep -aqE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
           BASE=$(unzip -Zl "$AAB" | awk '$NF ~ /^base\// {s += $6} END {print s+0}')
           echo "base module compressed bytes: $BASE"
           [ "$BASE" -lt $((200 << 20)) ] || { echo "base module over 200 MB"; exit 1; }
@@ -136,12 +139,13 @@ jobs:
           echo "targetSdk $TSDK"
           [ "${TSDK:-0}" -ge 36 ] || { echo "Google Play needs targetSdk >= 36"; exit 1; }
           mkdir -p "$RUNNER_TEMP/aab" && mv "$AAB" "$RUNNER_TEMP/aab/tinglongwu-mobile.aab"
-      - name: Check the APK (no INTERNET permission, signer)
+      - name: Check the APK (INTERNET is the only network permission, signer)
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/aapt" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
-          if grep -q "android.permission.INTERNET" "$RUNNER_TEMP/perms.txt"; then echo "APK requests INTERNET"; exit 1; fi
+          grep -q "android.permission.INTERNET" "$RUNNER_TEMP/perms.txt" || { echo "APK lacks INTERNET (pack download)"; exit 1; }
+          if grep -qE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
           "$BT/apksigner" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
           rm -f "$RUNNER_TEMP/release.jks"
           mkdir -p "$RUNNER_TEMP/out"
