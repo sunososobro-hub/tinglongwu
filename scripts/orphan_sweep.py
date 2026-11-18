@@ -43,9 +43,15 @@ def _gh(path: str, *args: str) -> object:
     return json.loads(out) if out.strip() else None
 
 
+def _gh_list(path: str) -> list:
+    """Every page of a collection, flattened (`--paginate --slurp` wraps the pages in one JSON array)."""
+    pages = _gh(path, "--paginate", "--slurp") or []
+    return [item for page in pages for item in (page if isinstance(page, list) else [page])]
+
+
 def _claim_time(num: int) -> datetime | None:
     """When `status:doing` was last added (issue events), newest first."""
-    events = _gh(f"repos/{REPO}/issues/{num}/events?per_page=100") or []
+    events = _gh_list(f"repos/{REPO}/issues/{num}/events?per_page=100")
     times = [_ts(e["created_at"]) for e in events
              if e.get("event") == "labeled" and e.get("label", {}).get("name") == "status:doing"]
     return max(times) if times else None
@@ -53,14 +59,17 @@ def _claim_time(num: int) -> datetime | None:
 
 def _open_pr(num: int) -> tuple[bool, datetime | None]:
     """(has open PR, newest head commit time) for the PR whose body mentions #num or head is fix/num*."""
-    for pr in _gh(f"repos/{REPO}/pulls?state=open&per_page=100") or []:
+    found, newest = False, None
+    for pr in _gh_list(f"repos/{REPO}/pulls?state=open&per_page=100"):
         body = pr.get("body") or ""
         head = pr["head"]["ref"]
         if re.match(rf"fix/{num}(-r\d+)?$", head) or re.search(rf"(?:Closes|Refs) #{num}\b", body):
-            commits = _gh(f"repos/{REPO}/pulls/{pr['number']}/commits?per_page=100") or []
+            commits = _gh_list(f"repos/{REPO}/pulls/{pr['number']}/commits?per_page=100")
             last = max((_ts(c["commit"]["committer"]["date"]) for c in commits), default=None)
-            return True, last
-    return False, None
+            found = True
+            if last is not None and (newest is None or last > newest):
+                newest = last
+    return found, newest
 
 
 def main() -> int:
@@ -68,7 +77,7 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
     now = datetime.now(UTC)
-    issues = _gh(f"repos/{REPO}/issues?state=open&labels=status:doing&per_page=100") or []
+    issues = _gh_list(f"repos/{REPO}/issues?state=open&labels=status:doing&per_page=100")
     for it in issues:
         if "pull_request" in it:
             continue
@@ -81,9 +90,12 @@ def main() -> int:
             continue
         print(f"orphan #{it['number']} (claimed {claimed.isoformat()})")
         if args.apply:
-            new = sorted((labels - {"status:doing"}) | {"status:todo"})
-            _gh(f"repos/{REPO}/issues/{it['number']}", "-X", "PATCH", *sum(
-                (["-f", f"labels[]={n}"] for n in new), []))
+            # re-check right before writing: skip if the claim changed meanwhile, and only touch the status labels
+            now_labels = {lb["name"] for lb in _gh(f"repos/{REPO}/issues/{it['number']}")["labels"]}
+            if "status:doing" not in now_labels or _claim_time(it["number"]) != claimed:
+                continue
+            _gh(f"repos/{REPO}/issues/{it['number']}/labels/status:doing", "-X", "DELETE")
+            _gh(f"repos/{REPO}/issues/{it['number']}/labels", "-X", "POST", "-f", "labels[]=status:todo")
             _gh(f"repos/{REPO}/issues/{it['number']}/comments", "-X", "POST", "-f",
                 "body=Orphan claim released (no PR / new commit within the timeout).")
     return 0
