@@ -7,8 +7,9 @@ recognizer hook's counters from the offscreen document. CI runs it in the `test`
 
 Cloud check of "the tab stays audible" (#1159 cloud-verify, replaces the owner test): with
 TLWU_PULSE_MONITOR=<PulseAudio source> (the monitor of the null sink that stands in for the speakers, set by the
-`extension-capture` workflow) the test also records that monitor with `parec` while the tab plays and asserts the
-440 Hz tone reached the speakers for >= 90 % of the clip; it also checks the action badge reads ON while capturing and
+`extension-capture` workflow) the test also records that monitor with `parec` while the tab plays after capture has
+started, and asserts the 440 Hz tone reached the speakers for >= 90 % of the clip. It does not record across the
+moment capture starts on an already-playing tab; it also checks the action badge reads ON while capturing and
 is cleared on stop.
 
 Test-only Chromium switch: `--allowlisted-extension-id` stands in for the action click (Chrome only grants
@@ -130,41 +131,62 @@ def test_downsampler_keeps_count_and_pitch_for_every_input_rate(tmp_path):
 
 # --- what reaches the speakers (PulseAudio null-sink monitor) -----------------------------------------------------
 
-MON_RATE, MON_BLOCK = 16000, 1600  # 100 ms analysis blocks
+MON_RATE = 16000
+MON_WIN, MON_HOP = 1600, 160  # 100 ms pitch windows, slid in 10 ms steps
+MON_GAP = 32  # a 2 ms run of near-zero samples is a dropout (a 440 Hz half period is 18 samples at 16 kHz)
 
 
 def tone_seconds(pcm: bytes, rate: int = MON_RATE, hz: float = TONE_HZ, min_peak: float = 0.05) -> float:
-    """Seconds of a recording (s16le mono) that carry the test tone: 100 ms blocks whose peak is above `min_peak`
-    (full scale 1.0) and whose zero-crossing rate is within 10 % of 2 * hz."""
-    n = len(pcm) // 2
-    xs = struct.unpack(f"<{n}h", pcm[: 2 * n])
-    good = 0
-    for i in range(0, n - MON_BLOCK + 1, MON_BLOCK):
-        blk = xs[i:i + MON_BLOCK]
-        if max(abs(v) for v in blk) / 32768.0 < min_peak:
+    """Seconds of a recording (s16le mono) that carry the test tone, at sample resolution.
+
+    A sample counts when it lies in a 100 ms window (any 10 ms offset) whose peak is >= `min_peak` (full scale 1.0)
+    and whose zero-crossing rate is within 10 % of 2 * hz, and it is not part of a >= 2 ms run of samples below
+    min_peak / 5 (a dropout inside the tone)."""
+    import numpy as np
+    x = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype="<i2").astype(np.float32) / 32768.0
+    n = len(x)
+    covered = np.zeros(n, dtype=bool)
+    sign = x >= 0
+    flips = np.concatenate(([0], np.cumsum(sign[1:] != sign[:-1])))  # flips[j] = zero crossings in x[0..j]
+    for i in range(0, n - MON_WIN + 1, MON_HOP):
+        if np.max(np.abs(x[i:i + MON_WIN])) < min_peak:
             continue
-        zc = sum(1 for a, b in zip(blk, blk[1:]) if (a >= 0) != (b >= 0))
-        if abs(zc * rate / MON_BLOCK - 2 * hz) <= 0.1 * 2 * hz:
-            good += 1
-    return good * MON_BLOCK / rate
+        zc = flips[i + MON_WIN - 1] - flips[i]
+        if abs(zc * rate / MON_WIN - 2 * hz) <= 0.1 * 2 * hz:
+            covered[i:i + MON_WIN] = True
+    quiet = np.abs(x) < min_peak / 5
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], quiet.astype(np.int8), [0]))))
+    for start, end in zip(edges[::2], edges[1::2]):
+        if end - start >= MON_GAP:
+            covered[start:end] = False
+    return float(np.count_nonzero(covered)) / rate
 
 
-def test_tone_seconds_counts_only_tone_blocks():
+def test_tone_seconds_measures_tone_at_sample_resolution():
     def pcm(sig):
         return b"".join(struct.pack("<h", int(32767 * v)) for v in sig)
-    tone = [0.3 * math.sin(2 * math.pi * TONE_HZ * i / MON_RATE) for i in range(2 * MON_RATE)]
-    other = [0.3 * math.sin(2 * math.pi * 1000 * i / MON_RATE) for i in range(MON_RATE)]
-    quiet = [0.01 * v for v in tone[:MON_RATE]]
-    assert tone_seconds(pcm(tone)) == pytest.approx(2.0, abs=0.11)
-    assert tone_seconds(pcm(other)) == 0.0  # wrong pitch
-    assert tone_seconds(pcm(quiet)) == 0.0  # below the level of an audible tab
-    assert tone_seconds(pcm([0.0] * MON_RATE + tone + other)) == pytest.approx(2.0, abs=0.11)
+
+    def sine(f, secs, a=0.3, phase=0):
+        return [a * math.sin(2 * math.pi * f * (i + phase) / MON_RATE) for i in range(int(secs * MON_RATE))]
+    tone = sine(TONE_HZ, 2.0)
+    assert tone_seconds(pcm(tone)) == pytest.approx(2.0, abs=0.01)
+    assert tone_seconds(pcm(sine(1000, 1.0))) == 0.0  # wrong pitch
+    assert tone_seconds(pcm([0.01 * v for v in tone[:MON_RATE]])) == 0.0  # below the level of an audible tab
+    assert tone_seconds(pcm([0.0] * MON_RATE + tone + sine(1000, 1.0))) == pytest.approx(2.0, abs=0.06)
+    # a continuous tone that starts mid-window is measured whole
+    assert tone_seconds(pcm([0.0] * 800 + sine(TONE_HZ, 2.7))) == pytest.approx(2.7, abs=0.01)
+    # 27 x (92 ms tone + 8 ms dropout) is 2.484 s of tone, below the 2.7 s (90 % of 3 s) bar
+    chopped = []
+    for k in range(27):
+        chopped += sine(TONE_HZ, 0.092, phase=k * 1600) + [0.0] * 128
+    got = tone_seconds(pcm(chopped))
+    assert got == pytest.approx(2.484, abs=0.02) and got < 0.9 * CLIP_S
 
 
 class _MonitorRecorder:
     """parec on the null-sink monitor: what a user would hear from the speakers."""
 
-    def __init__(self, source: str):
+    def __init__(self, source: str, ready_timeout: float = 10.0):
         parec = shutil.which("parec")
         if not parec:
             pytest.fail(f"TLWU_PULSE_MONITOR={source} but parec is not installed")
@@ -172,27 +194,37 @@ class _MonitorRecorder:
                                       "--channels=1", "--latency-msec=50"], stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
         self.chunks: list[bytes] = []
+        self.first = threading.Event()
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.thread.start()
+        # the record stream is live only once PCM arrives: never start playback before that
+        if not self.first.wait(ready_timeout):
+            err = self.close()
+            pytest.fail(f"parec on {source} delivered no audio within {ready_timeout} s: {err}")
 
     def _read(self):
         while True:
-            b = self.proc.stdout.read(3200)
+            b = self.proc.stdout.read(320)
             if not b:
+                self.first.set()
                 return
             self.chunks.append(b)
+            self.first.set()
 
-    def stop(self) -> bytes:
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+    def close(self) -> str:
+        """Terminate and reap parec, finish the reader; idempotent. Returns parec's stderr."""
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait(timeout=5)
         self.thread.join(timeout=5)
-        err = self.proc.stderr.read().decode(errors="replace")
-        data = b"".join(self.chunks)
-        assert data, f"parec recorded nothing: {err}"
-        return data
+        return self.proc.stderr.read().decode(errors="replace") if self.proc.stderr else ""
+
+    def data(self) -> bytes:
+        return b"".join(self.chunks)
 
 
 # --- end to end in Chromium ---------------------------------------------------------------------------------------
@@ -247,6 +279,7 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
     shutil.copytree(EXT, ext)  # a fixed path -> a known extension id for the allowlist switch
     with sync_playwright() as p:
         ctx, sw = _launch(p, tmp_path / "profile", ext.resolve())
+        mon = None
         try:
             page = ctx.new_page()
             page.goto(tone_page)
@@ -268,6 +301,7 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
                 return await chrome.action.getBadgeText({tabId: t.id});
             }""")
             mon = _MonitorRecorder(PULSE_MONITOR) if PULSE_MONITOR else None
+            heard = None
             page.click("#play")  # a real click: the default autoplay policy, as for a user
             t0 = time.monotonic()
             page.wait_for_function("document.getElementById('a').ended", timeout=20000)
@@ -275,7 +309,9 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
             page_state = page.evaluate("(() => { const a = document.getElementById('a');"
                                        " return {t: a.currentTime, d: a.duration, muted: a.muted}; })()")
             time.sleep(0.5)  # the last frames are still in the worklet / message queue
-            heard = mon.stop() if mon else None
+            if mon:
+                mon.close()
+                heard = mon.data()
             st = sw.evaluate("() => tlwu.captureStats()")
             stopped = sw.evaluate("() => tlwu.stopCapture()")
             after = sw.evaluate("() => tlwu.captureStats()")
@@ -284,6 +320,8 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
                 return await chrome.action.getBadgeText({tabId: t.id});
             }""")
         finally:
+            if mon:
+                mon.close()  # also when playback failed: never leave parec running
             ctx.close()
     rec = st["recognizer"]
     expected = int(CLIP_S * RATE)
@@ -304,6 +342,7 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
     assert stopped["ok"] is True and after["capturing"] is False, after
     assert badge_on == "ON" and badge_off == "", (badge_on, badge_off)
     if heard is not None:
+        assert heard, "parec recorded nothing"
         # the captured tab is still audible on the real output device: the tone reached the speakers' sink
         secs = tone_seconds(heard)
         assert secs >= 0.9 * CLIP_S, (secs, len(heard) / 2 / MON_RATE)

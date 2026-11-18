@@ -1,9 +1,10 @@
 name: extension-capture
 # #1159 cloud-verify (replaces the owner test of "the tab stays audible"): the unpacked MV3 extension in
 # extension/capture runs in Playwright's Chromium under Xvfb with a real PulseAudio server whose null sink stands in for
-# the speakers. tests/test_extension_capture_1159.py captures a tab playing a known 440 Hz WAV and asserts >= 90 % of
-# the clip's 16 kHz samples reach the offscreen recognizer hook, the null-sink monitor (parec) hears the tone for
-# >= 90 % of the clip while the tab is captured, and the action badge reads ON while capturing and clears on stop.
+# the speakers. tests/test_extension_capture_1159.py starts capture, then plays a known 440 Hz WAV in the tab and
+# asserts >= 90 % of the clip's 16 kHz samples reach the offscreen recognizer hook, the null-sink monitor (parec) hears
+# the tone for >= 90 % of the clip played after capture started (it does not record across the capture start on an
+# already-playing tab), and the action badge reads ON while capturing and clears on stop.
 # The `ci` `test` job runs the same test without PulseAudio; this job adds the speaker check. Not a merge gate.
 on:
   pull_request:
@@ -12,12 +13,16 @@ on:
       - .github/workflows/extension-capture.yml
       - extension/capture/**
       - tests/test_extension_capture_1159.py
+      - tests/conftest.py
+      - pyproject.toml
   push:
     branches: [dev]
     paths:
       - .github/workflows/extension-capture.yml
       - extension/capture/**
       - tests/test_extension_capture_1159.py
+      - tests/conftest.py
+      - pyproject.toml
   workflow_dispatch:
 
 permissions:
@@ -55,7 +60,12 @@ jobs:
       - name: Install tlwu (tests/conftest.py imports it) + Playwright Chromium
         run: |
           pip install -e ".[dev]" "pytest-timeout==2.3.1" "playwright==1.63.0"
-          python -m playwright install --with-deps chromium
+          python -m playwright install chromium
+      - name: Chromium system libraries (apt, retried)
+        timeout-minutes: 10
+        run: |
+          for i in 1 2 3; do python -m playwright install-deps chromium && exit 0; sleep 15; done
+          exit 1
       - name: PulseAudio with a null sink (speakers) whose monitor is what the user hears
         run: |
           pulseaudio -D --exit-idle-time=-1
