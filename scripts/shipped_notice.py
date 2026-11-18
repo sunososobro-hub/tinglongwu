@@ -45,8 +45,10 @@ def shipped_kinds(comments: list[str]) -> set[str]:
 def is_ancestor(commit: str, tag: str, cwd: str | None = None) -> bool:
     """True when `commit` is reachable from `tag` (git merge-base --is-ancestor)."""
     have = subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=cwd, capture_output=True)
-    if have.returncode != 0:  # commit not in this checkout: cannot be proven contained in the tag
+    if have.returncode in (1, 128):  # commit not in this checkout: cannot be proven contained in the tag
         return False
+    if have.returncode != 0:  # signal or other probe failure: do not report it as "missing"
+        raise RuntimeError(f"git cat-file failed ({have.returncode}): {have.stderr.decode(errors='replace').strip()}")
     r = subprocess.run(["git", "merge-base", "--is-ancestor", commit, tag], cwd=cwd,
                        capture_output=True, text=True)
     if r.returncode in (0, 1):  # git reserves 1 for a valid "not an ancestor"
