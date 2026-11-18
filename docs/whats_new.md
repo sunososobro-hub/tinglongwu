@@ -10,6 +10,10 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.8
+- Uninstalling with --purge now removes only tinglongWu's own model files; other apps' files in the same models folder are kept.
+- For people working on the source code: opening it with Claude Code no longer writes anything to your computer's settings; if an older version left changes behind, it tells you how to undo them.
+
 ## v0.4.7
 - Russian meetings: more word forms of common tech terms (past, future, reflexive and plural forms) now get the right translation.
 - For people working on the source code: opening it with Claude Code no longer changes your computer-wide git settings, and it undoes what an earlier version changed.
