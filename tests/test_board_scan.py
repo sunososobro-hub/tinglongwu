@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from board_scan import (board_line, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
+from board_scan import (board_line, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
                         pr_needs_action)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
@@ -81,3 +81,11 @@ def test_dev_pending_tip_uses_last_finished():
 def test_board_line():
     assert board_line(NOW, []) == "[board 17:00] ok"
     assert board_line(NOW, ["PR #5 dirty", "triage #9"]) == "[board 17:00] act: PR #5 dirty; triage #9"
+
+
+def test_zombie_issue_labels():
+    assert zombie_issue_labels({"state": "open", "labels": []}) == set()
+    assert zombie_issue_labels({"state": "open", "labels": [{"name": "P2"}]}) == {"P2"}
+    assert zombie_issue_labels({"state": "closed", "labels": []}) is None
+    assert zombie_issue_labels({"state": "open", "labels": [], "pull_request": {}}) is None  # #N is a PR
+    assert zombie_issue_labels(None) is None

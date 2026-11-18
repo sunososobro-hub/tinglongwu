@@ -117,18 +117,53 @@ def _test_conclusion(sha: str) -> str | None:
     return runs[0].get("conclusion")
 
 
+def zombie_issue_labels(issue: dict | None) -> set[str] | None:
+    """Labels of issue #N for the zombie rule; None when #N is missing, closed or is a pull request."""
+    if not issue or issue.get("state") != "open" or "pull_request" in issue:
+        return None
+    return {lb["name"] for lb in issue.get("labels", [])}
+
+
+def _issue_or_none(num: str) -> dict | None:
+    """Issue record, None only on a confirmed 404; any other failure aborts the scan (no false `ok`)."""
+    proc = subprocess.run(["gh", "api", f"repos/{REPO}/issues/{num}"], capture_output=True, text=True)
+    if proc.returncode == 0:
+        return json.loads(proc.stdout)
+    if "HTTP 404" in proc.stderr or "HTTP 410" in proc.stderr:
+        return None
+    raise subprocess.CalledProcessError(proc.returncode, proc.args, proc.stdout, proc.stderr)
+
+
+def _dev_red_too_long(now: datetime) -> bool:
+    """Walk dev commits newest first (pages of 100) until the red streak ends or is proven > 2 h."""
+    history: list[tuple[datetime, str | None]] = []
+    page = 1
+    while True:
+        commits = _gh(f"repos/{REPO}/commits?sha=dev&per_page=100&page={page}") or []
+        for c in commits:
+            history.append((_ts(c["commit"]["committer"]["date"]), _test_conclusion(c["sha"])))
+            when, concl = history[-1]
+            if concl is not None and concl not in RED:
+                return dev_red_too_long(now, history)
+            if dev_red_too_long(now, history):
+                return True
+        if len(commits) < 100:
+            return dev_red_too_long(now, history)
+        page += 1
+
+
 def scan(now: datetime) -> list[str]:
     items: list[str] = []
+    owner = REPO.split("/")[0]
     prs = _gh_list(f"repos/{REPO}/pulls?state=open&base=dev&per_page=100")
-    open_heads = {pr["head"]["ref"] for pr in prs}
+    # only same-repo heads shadow a local branch; a fork's fix/12 says nothing about ours
+    open_heads = {pr["head"]["ref"] for pr in prs if (pr["head"].get("repo") or {}).get("full_name") == REPO}
     for pr in prs:
-        if pr.get("draft"):
-            continue
-        full = _gh(f"repos/{REPO}/pulls/{pr['number']}")
-        head = _gh(f"repos/{REPO}/commits/{pr['head']['sha']}")
-        head_at = _ts(head["commit"]["committer"]["date"])
-        labels = {lb["name"] for lb in pr["labels"]}
-        why = pr_needs_action(now, head_at, _test_conclusion(pr["head"]["sha"]), full.get("mergeable_state"), labels)
+        full = _gh(f"repos/{REPO}/pulls/{pr['number']}")  # one revision: sha, labels and mergeable_state together
+        sha = full["head"]["sha"]
+        head_at = _ts(_gh(f"repos/{REPO}/commits/{sha}")["commit"]["committer"]["date"])
+        labels = {lb["name"] for lb in full["labels"]}
+        why = pr_needs_action(now, head_at, _test_conclusion(sha), full.get("mergeable_state"), labels)
         if why:
             items.append(f"PR #{pr['number']} {why}")
     for br in _gh_list(f"repos/{REPO}/branches?per_page=100"):
@@ -138,23 +173,16 @@ def scan(now: datetime) -> list[str]:
         ahead = _gh(f"repos/{REPO}/compare/dev...{br['name']}")["ahead_by"]
         if ahead > 0:
             continue
-        try:
-            issue = _gh(f"repos/{REPO}/issues/{m.group(1)}")
-        except subprocess.CalledProcessError:
-            issue = None
-        issue_labels = ({lb["name"] for lb in issue["labels"]}
-                        if issue and issue.get("state") == "open" else None)
+        issue_labels = zombie_issue_labels(_issue_or_none(m.group(1)))
         if issue_labels is None or "status:doing" in issue_labels:
             continue
-        had_pr = bool(_gh(f"repos/{REPO}/pulls?state=all&head={REPO.split('/')[0]}:{br['name']}&per_page=1"))
+        had_pr = bool(_gh(f"repos/{REPO}/pulls?state=all&head={owner}:{br['name']}&per_page=1"))
         if is_zombie_branch(br["name"], ahead, had_pr, issue_labels):
             items.append(f"zombie {br['name']}")
     for it in _gh_list(f"repos/{REPO}/issues?state=open&labels=needs-triage&per_page=100"):
         if "pull_request" not in it:
             items.append(f"triage #{it['number']}")
-    commits = _gh(f"repos/{REPO}/commits?sha=dev&per_page=20") or []
-    history = [(_ts(c["commit"]["committer"]["date"]), _test_conclusion(c["sha"])) for c in commits]
-    if dev_red_too_long(now, history):
+    if _dev_red_too_long(now):
         items.append("dev test red > 2 h")
     return items
 
