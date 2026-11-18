@@ -7,10 +7,7 @@ name: vc-runtime-clean
 #             message naming the runtime, before the model download (step 5).
 # Models are skipped (TLWU_SKIP_MODELS). scripts/vc_runtime_check.py judges each run (tests/test_vc_runtime_check_705.py).
 on:
-  pull_request:
-    branches: [dev]
-    paths: ['install.*', 'scripts/install_helpers.ps1', 'scripts/python_bootstrap.ps1', 'scripts/vc_runtime_check.py',
-            'requirements-llama-cpu.txt', '.github/scripts/vc705_container.ps1', '.github/workflows/vc-runtime-clean.yml']
+  # #1547: no pull_request run (windows-2022 runner); dev push and manual runs cover it
   push:
     branches: [dev]
     paths: ['install.*', 'scripts/install_helpers.ps1', 'scripts/python_bootstrap.ps1', 'scripts/vc_runtime_check.py',

@@ -4,8 +4,9 @@ on:
   push:
     branches: [main, dev]
     paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
+  # #1547: PRs into dev start no Windows/macOS runner job (only `ci` test gates dev, section 17); dev push, release snapshot dispatch and manual runs cover it
   pull_request:
-    branches: [main, dev]
+    branches: [main]
     paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
   workflow_dispatch:
     inputs:

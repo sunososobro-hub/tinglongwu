@@ -9,9 +9,7 @@ on:
   push:
     branches: [dev, 'release/v*']   # #1016: the release snapshot must have a green speak-smoke
     paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
-  pull_request:
-    branches: [dev]
-    paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
+  # #1547: no pull_request run (Windows/macOS runners); dev push, snapshot dispatch and schedule cover it
   workflow_dispatch:
     inputs:
       tag:

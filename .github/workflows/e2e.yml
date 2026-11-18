@@ -192,6 +192,7 @@ jobs:
         run: python scripts/ci_e2e.py overlay-stack
 
   windows:
+    if: github.event_name != 'pull_request'   # #1547
     runs-on: windows-latest
     timeout-minutes: 50
     defaults:
@@ -272,6 +273,7 @@ jobs:
             --compute cpu --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL"
 
   macos:
+    if: github.event_name != 'pull_request'   # #1547
     runs-on: macos-latest
     timeout-minutes: 45
     steps:

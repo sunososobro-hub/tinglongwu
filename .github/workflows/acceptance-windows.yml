@@ -5,8 +5,9 @@ name: acceptance-windows
 on:
   push:
     branches: [main, dev]
+  # #1547: PRs into dev start no Windows/macOS runner job (only `ci` test gates dev, section 17); dev push, release snapshot dispatch and manual runs cover it
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

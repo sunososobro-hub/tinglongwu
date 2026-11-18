@@ -10,7 +10,7 @@ on:
   push:
     branches: [dev]
   pull_request:  # always reports (so it can be a required check); build steps run only for packaging-relevant diffs (#341)
-    branches: [dev, main]
+    branches: [main]   # #1547: not PRs into dev (dev push run is the release gate input)
   workflow_dispatch:
 
 permissions:
