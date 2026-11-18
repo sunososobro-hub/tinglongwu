@@ -133,14 +133,16 @@ def test_downsampler_keeps_count_and_pitch_for_every_input_rate(tmp_path):
 
 MON_RATE = 16000
 MON_WIN, MON_HOP = 1600, 160  # 100 ms pitch windows, slid in 10 ms steps
-MON_GAP = 32  # a 2 ms run of near-zero samples is a dropout (a 440 Hz half period is 18 samples at 16 kHz)
+# a 0.5 ms run of near-zero samples is a dropout: a clean 440 Hz tone at the weakest counted level (min_peak) stays
+# below min_peak / 5 for ~2.3 samples around each zero crossing, louder tones for less
+MON_GAP = 8
 
 
 def tone_seconds(pcm: bytes, rate: int = MON_RATE, hz: float = TONE_HZ, min_peak: float = 0.05) -> float:
     """Seconds of a recording (s16le mono) that carry the test tone, at sample resolution.
 
     A sample counts when it lies in a 100 ms window (any 10 ms offset) whose peak is >= `min_peak` (full scale 1.0)
-    and whose zero-crossing rate is within 10 % of 2 * hz, and it is not part of a >= 2 ms run of samples below
+    and whose zero-crossing rate is within 10 % of 2 * hz, and it is not part of a >= 0.5 ms run of samples below
     min_peak / 5 (a dropout inside the tone)."""
     import numpy as np
     x = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype="<i2").astype(np.float32) / 32768.0
@@ -181,6 +183,18 @@ def test_tone_seconds_measures_tone_at_sample_resolution():
         chopped += sine(TONE_HZ, 0.092, phase=k * 1600) + [0.0] * 128
     got = tone_seconds(pcm(chopped))
     assert got == pytest.approx(2.484, abs=0.02) and got < 0.9 * CLIP_S
+    # 11 x 1.5 ms dropouts per 100 ms, centred on rising zero crossings (crossing count unchanged): 2.505 s of 3 s
+    holey = sine(TONE_HZ, 3.0)
+    period = MON_RATE / TONE_HZ
+    for k in range(int(3.0 * TONE_HZ)):
+        if k % 4 == 0:
+            c = round(k * period)
+            for j in range(max(0, c - 12), min(len(holey), c + 12)):
+                holey[j] = 0.0
+    got = tone_seconds(pcm(holey))
+    assert got < 0.9 * CLIP_S and got == pytest.approx(2.505, abs=0.03), got
+    # the weakest counted tone keeps its full length (its near-zero runs are shorter than MON_GAP)
+    assert tone_seconds(pcm(sine(TONE_HZ, 2.0, a=0.06))) == pytest.approx(2.0, abs=0.01)
 
 
 class _MonitorRecorder:
@@ -198,7 +212,8 @@ class _MonitorRecorder:
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.thread.start()
         # the record stream is live only once PCM arrives: never start playback before that
-        if not self.first.wait(ready_timeout):
+        # EOF also sets the event (parec exited): ready only when a PCM chunk really arrived
+        if not self.first.wait(ready_timeout) or not self.chunks:
             err = self.close()
             pytest.fail(f"parec on {source} delivered no audio within {ready_timeout} s: {err}")
 
