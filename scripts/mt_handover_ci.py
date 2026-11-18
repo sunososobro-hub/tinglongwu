@@ -190,6 +190,7 @@ def run(a) -> dict:
                     recs = read_jsonl(save)
                     if lander is None and n_before is None and any((r.get("src") or "").strip() for r in recs):
                         n_before = len(recs)
+                        before_rows = [dict(r) for r in recs]  # #1395 may rewrite the last row in place later
                         landing["started_at"] = round(time.monotonic() - t0, 1)
                         print(f"first source line after {landing['started_at']} s: landing Hy-MT2 "
                               f"({landing['mode']})", flush=True)
@@ -213,11 +214,14 @@ def run(a) -> dict:
                         break  # landing failed: this run cannot pass, report it now
                     if settle_until is not None and time.monotonic() >= settle_until and "rc" in landing:
                         # tlwu must still be running at the boundary and have translated more lines in the window
+                        recs = read_jsonl(save)  # fresh snapshot at the boundary
                         more = sum(is_translated(r, a.to) for r in recs[n_before:]) > n_first_tr
                         settled = proc.poll() is None and more
                         break
                     time.sleep(1.0)
                 stop_asked = proc.poll() is None  # still running: the checker ends it; else tlwu exited on its own
+                if lander and "rc" not in landing and lander.poll() is None:  # observed before anything is stopped
+                    landing["pending_at_end"] = True
         finally:
             try:
                 try:
@@ -237,8 +241,15 @@ def run(a) -> dict:
                 if hold is not None:
                     hold.land()  # never leave the cached models dir without its model, even if a stop failed
         recs = read_jsonl(save)
+    if n_before:
+        # a pre-landing source row that a late fragment rewrote in place (#1395) after the landing counts as
+        # post-landing output, not as a translation before the model landed
+        changed = [i for i, old in enumerate(before_rows)
+                   if i < len(recs) and not is_translated(old, a.to) and is_translated(recs[i], a.to)]
+        if changed:
+            n_before = min(changed)
     problems = judge(recs, n_before, a.to)
-    if n_before is not None and landing.get("rc") != 0:
+    if n_before is not None and (landing.get("rc") != 0 or landing.get("pending_at_end")):
         problems.append(f"landing did not finish cleanly: {landing}")
     saw_translation = n_before is not None and any(is_translated(r, a.to) for r in recs[n_before:])
     if saw_translation and not settled:  # also when tlwu exited before a poll even saw the translated line

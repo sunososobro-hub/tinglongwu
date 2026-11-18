@@ -197,4 +197,4 @@ def test_read_jsonl_keeps_a_row_with_u2028(tmp_path):
 
 def test_run_clean_exit_inside_the_settle_window_fails(tmp_path, monkeypatch):
     rc, r = _run(tmp_path, monkeypatch, "quit", timeout=15)
-    assert rc == 1 and any("did not watch a full" in p for p in r["problems"]), r
+    assert rc == 1 and r["exit"] == 0 and any("did not watch a full" in p for p in r["problems"]), r
