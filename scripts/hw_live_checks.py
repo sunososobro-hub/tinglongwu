@@ -585,8 +585,8 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             with GpuSampler() as sampler:  # during play: an app that starts and exits mid-clip is still seen
                 t0 = played_at(play_child(wav, CABLE_IN))
+                gpu_during = gpu_apps()  # end of play, before the sampler join and the tail wait; tlwu is one of these
             gpu_seen = sampler.seen
-            gpu_during = gpu_apps()  # end of play, before the tail wait; live tlwu still running: it is one of these
             time.sleep(TAIL_S)
         finally:
             # verify_offline has no SIGTERM handler: ask it to stop (it then ends the tlwu --mic it started) before
