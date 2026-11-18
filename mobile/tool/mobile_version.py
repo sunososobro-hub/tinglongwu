@@ -51,7 +51,7 @@ def notes_section(text, version):
     try:
         start = next(i for i, ln in enumerate(lines) if ln.strip() == head)
     except StopIteration:
-        raise ValueError("no '%s' section" % head)
+        raise ValueError("no '%s' section" % head) from None
     body = []
     for ln in lines[start + 1:]:
         if ln.startswith("## "):
