@@ -63,3 +63,20 @@ def test_duplicate_merged_line_fails():
 def test_empty_save_fails():
     assert not any(ok for _, ok, _ in ci.check_late_jsonl([], "ru"))
 
+
+
+def test_head_line_left_next_to_merged_line_fails():
+    """An amend that appended instead of replacing: head line + merged line -> must fail."""
+    recs = [{"src": "Now I will show you the settings for the new.", "dst": "現在我給你看新的設定。"},
+            {"src": "Now I will show you the settings for the new version.", "dst": "現在我給你看新版本的設定。"}]
+    res = {name: ok for name, ok, _ in ci.check_late_jsonl(recs, "en")}
+    assert not res["en: sentence + late last word saved as one line, once (#1395)"]
+
+
+def test_mt_status_text_is_not_a_translation():
+    src = "Сейчас я покажу вам настройки для новой версии."
+    for dst in ("[не переведено]", "[no ru -> zh translation model installed: run tlwu-setup]", "", src):
+        res = {name: ok for name, ok, _ in ci.check_late_jsonl([{"src": src, "dst": dst}], "ru")}
+        assert not res["ru: the merged line is translated (#1395)"], dst
+    res = {name: ok for name, ok, _ in ci.check_late_jsonl([{"src": src, "dst": "現在我給您看新版本的設定。"}], "ru")}
+    assert all(res.values())

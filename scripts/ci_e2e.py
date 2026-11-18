@@ -507,6 +507,14 @@ EN_CODE = (  # Kokoro venv's python: argv = model dir, out wav, text
     "a, sr = k.create(sys.argv[3], voice='af_heart', speed=1.0, lang='en-us')\n"
     "sf.write(sys.argv[2], a, sr)\n")
 _WORDS = re.compile(r"\w+", re.UNICODE)
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _mt_ok(dst: str) -> bool:
+    """A real zh translation: has Han characters and is not a pipeline MT status ("[not translated]",
+    "[no ru -> zh translation model installed ...]": every such i18n string is one bracketed line)."""
+    d = (dst or "").strip()
+    return bool(_CJK_RE.search(d)) and not (d.startswith(("[", "［")) and d.endswith(("]", "］")))
 
 
 def _to16k(path: Path):
@@ -535,7 +543,10 @@ def _say(lang: str, text: str, out: Path, models: str | None):
     else:
         from vosk_tts import Model, Synth
 
-        mdir = Path(models or os.environ.get("TLWU_MODELS", "models")) / "vosk-model-tts-ru-0.7-multi"
+        sys.path.insert(0, str(ROOT))
+        from tinglongwu.models import VOSK_TTS_RU_DIR, models_dir
+
+        mdir = models_dir(models) / VOSK_TTS_RU_DIR  # same default as tlwu-setup / the listener (TLWU_MODELS honoured)
         Synth(Model(model_path=str(mdir))).synth(text, str(out), speaker_id=0)
     return _to16k(out)
 
@@ -560,9 +571,12 @@ def check_late_jsonl(recs: list[dict], lang: str) -> list[tuple[str, bool, str]]
     one = [r["src"] for r in lines if len(_WORDS.findall(r["src"])) <= 1]
     merged = [r for r in lines if head_key in r["src"].lower() and tail_key in r["src"].lower()]
     srcs = [r["src"] for r in lines]
+    # the clip is one sentence: the file must hold exactly that one line (a head line left next to the merged one,
+    # i.e. an amend that appended instead of replacing, fails here)
     return [(f"{lang}: no one-word line in --save (#1395)", bool(lines) and not one, f"lines={srcs} one-word={one}"),
-            (f"{lang}: sentence + late last word saved as one line, once (#1395)", len(merged) == 1, f"lines={srcs}"),
-            (f"{lang}: the merged line is translated (#1395)", bool(merged) and bool(merged[0].get("dst")),
+            (f"{lang}: sentence + late last word saved as one line, once (#1395)", len(lines) == 1 and len(merged) == 1,
+             f"lines={srcs}"),
+            (f"{lang}: the merged line is translated (#1395)", bool(merged) and _mt_ok(merged[0].get("dst", "")),
              repr(merged[0].get("dst")) if merged else "no merged line")]
 
 
@@ -577,18 +591,27 @@ def cmd_late_fragment(a) -> int:
         p = subprocess.Popen(cmd, cwd=str(ROOT), env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              start_new_session=True)
         buf: list[str] = []
-        ready = _wait_ready(p, re.compile(r"^\* ready - listening"), 600, buf)
-        check(f"{a.lang}: listen mode on the sink monitor is ready", ready, tail("\n".join(buf), 5))
-        if ready:
-            subprocess.run(["paplay", f"--device={a.sink}", str(wav)], check=False, timeout=120)
-            t0 = time.monotonic()  # the merged line is re-translated after the tail: give MT time on the CPU
-            while time.monotonic() - t0 < a.wait:
-                time.sleep(1)
-            os.killpg(p.pid, signal.SIGINT)
+        rc, hung = None, False
         try:
-            p.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            p.kill()
+            ready = _wait_ready(p, re.compile(r"^\* ready - listening"), 600, buf)
+            check(f"{a.lang}: listen mode on the sink monitor is ready", ready, tail("\n".join(buf), 5))
+            if ready:
+                subprocess.run(["paplay", f"--device={a.sink}", str(wav)], check=False, timeout=120)
+                time.sleep(a.wait)  # the merged line is re-translated after the tail: give MT time on the CPU
+        finally:  # also when paplay fails / times out: never leave the listener (own session) running
+            if p.poll() is None:
+                os.killpg(p.pid, signal.SIGINT)
+                try:
+                    rc = p.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    hung = True
+                    os.killpg(p.pid, signal.SIGKILL)
+                    p.wait(timeout=10)
+            else:
+                rc = p.returncode
+        out = "\n".join(buf)
+        check(f"{a.lang}: listener stops cleanly on Ctrl+C", rc in CLEAN_RC and not hung and "Traceback" not in out,
+              f"rc={rc}, hung={hung}")
         recs = []
         if save.exists():
             recs = [json.loads(x) for x in save.read_text(encoding="utf-8").splitlines() if x.strip()]
