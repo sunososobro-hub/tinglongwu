@@ -91,6 +91,21 @@ def test_gpu_apps_without_nvidia_smi_is_empty(monkeypatch):
     assert hl.gpu_apps() == []
 
 
+def test_gpu_sampler_keeps_an_app_that_came_and_went_during_play():
+    """A GPU app present only in the middle samples is still reported once, by name, after stop()."""
+    snaps = iter([["python.exe 1500 MiB"], ["python.exe 1500 MiB", "game.exe 2200 MiB"], ["python.exe 1600 MiB"]])
+
+    def probe():
+        return next(snaps, ["python.exe 1600 MiB"])
+
+    with hl.GpuSampler(every=0.01, probe=probe) as s:
+        deadline = time.monotonic() + 5
+        while len(s.seen) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert s.seen == ["python.exe", "game.exe"]
+    assert not s._t.is_alive()
+
+
 def test_live_mic_accepts_debug_latency_with_latency_jsonl(tmp_path):
     """The flags the check now passes to the live run parse together (no parser error)."""
     from tinglongwu.cli import parse_args

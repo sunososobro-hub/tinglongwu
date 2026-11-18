@@ -212,6 +212,41 @@ def parse_gpu_apps(text: str) -> list[str]:
     return out
 
 
+GPU_SAMPLE_S = 5.0  # #1247: how often GpuSampler polls nvidia-smi while the clip plays
+
+
+class GpuSampler:
+    """#1247: polls gpu_apps() every `every` s on a thread until stop(); `seen` holds each process name observed
+    (memory dropped, first-seen order), so a GPU app that starts and exits during play is still reported."""
+
+    def __init__(self, every: float = GPU_SAMPLE_S, probe=None):
+        self.every, self.probe, self.seen = every, probe or gpu_apps, []
+        self._stop = threading.Event()
+        self._t = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self) -> None:
+        while True:
+            for app in self.probe():
+                name = app.rsplit(" ", 2)[0] if app.endswith("MiB") else app
+                if name not in self.seen:
+                    self.seen.append(name)
+            if self._stop.wait(self.every):
+                return
+
+    def __enter__(self) -> GpuSampler:
+        self._t.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+    def stop(self) -> list[str]:
+        self._stop.set()
+        if self._t.is_alive():
+            self._t.join(timeout=30)
+        return self.seen
+
+
 def tlwu_notes(log_lines: list[str], limit: int = 20) -> list[str]:
     """#1247: the live run's own `tlwu:` status lines (speech model, warm-up, asr cut/drop, model switch, catch-up),
     first `limit` of them, for the job log."""
@@ -537,6 +572,7 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     subprocess.run([sys.executable, "-m", "tinglongwu", "--file", str(wav), "--save", str(fj), *common], check=True,
                    stdout=subprocess.DEVNULL)
     gpu_during: list[str] = []
+    gpu_seen: list[str] = []
     gpu_before = gpu_apps()  # #1247: who else is on the GPU (the runner is the owner's desktop)
     with Child([sys.executable, str(ROOT / "scripts" / "verify_offline.py"), "--mic", "--seconds", "3600",
                 "--stop-file", str(stop), "--", "--capture-device", CABLE_OUT, "--save", str(mj),
@@ -547,7 +583,9 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
             ready = ch.wait_for(READY_MARK)
             if not ready:
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
-            t0 = played_at(play_child(wav, CABLE_IN))
+            with GpuSampler() as sampler:  # during play: an app that starts and exits mid-clip is still seen
+                t0 = played_at(play_child(wav, CABLE_IN))
+            gpu_seen = sampler.seen
             gpu_during = gpu_apps()  # end of play, before the tail wait; live tlwu still running: it is one of these
             time.sleep(TAIL_S)
         finally:
@@ -577,7 +615,8 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     slow = slow_asr_calls(ch.lines)
     print(f"diagnose: slow asr calls (>= {SLOW_ASR_S:g} s): {len(slow)}" + (": " + "; ".join(slow[:8]) if slow else ""),
           flush=True)
-    print(f"diagnose: gpu apps before: {', '.join(gpu_before) or 'none'} | at the end of play: "
+    print(f"diagnose: gpu apps before: {', '.join(gpu_before) or 'none'} | seen during play (every "
+          f"{GPU_SAMPLE_S:g} s): {', '.join(gpu_seen) or 'none'} | at the end of play: "
           f"{', '.join(gpu_during) or 'none'}", flush=True)
     for ln in tlwu_notes(ch.lines):
         print(f"diagnose: live {ln}", flush=True)
