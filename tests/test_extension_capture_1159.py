@@ -129,6 +129,38 @@ def test_downsampler_keeps_count_and_pitch_for_every_input_rate(tmp_path):
     assert out["mono"] == [0.5, 0.5]
 
 
+# --- #1523: start() waits for the AudioContext clock (node, offscreen.js's own waitForRendering) --------------------
+
+_NODE_WAIT = r"""
+globalThis.chrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
+const { waitForRendering } = await import(%s);
+const frozen = { currentTime: 0.023 };
+const late = { currentTime: 0.023 };
+const a = await waitForRendering(frozen, 200);
+const pending = waitForRendering(late, 2000);
+setTimeout(() => { late.currentTime = 0.2; }, 150);
+const b = await pending;
+console.log(JSON.stringify({ a, b }));
+"""
+
+
+def test_wait_for_rendering_reports_clock_move_and_timeout(tmp_path):
+    node = shutil.which("node")
+    if not node:
+        _need("node is not installed")
+    ext = tmp_path / "ext"
+    shutil.copytree(EXT, ext)
+    (ext / "package.json").write_text('{"type": "module"}', encoding="utf-8")
+    script = ext / "check.mjs"
+    script.write_text(_NODE_WAIT % json.dumps((ext / "offscreen.js").as_uri()), encoding="utf-8")
+    r = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    # a frozen clock: gives up at the limit and says so; a clock that starts at ~150 ms: returns soon after
+    assert out["a"]["moved"] is False and 190 <= out["a"]["ms"] < 600, out
+    assert out["b"]["moved"] is True and 140 <= out["b"]["ms"] < 600, out
+
+
 # --- what reaches the speakers (PulseAudio null-sink monitor) -----------------------------------------------------
 
 MON_RATE = 16000
