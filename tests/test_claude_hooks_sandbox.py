@@ -3,7 +3,13 @@
 Every hook command is run the way Claude Code runs it on a contributor's own
 machine (CLAUDE_CODE_REMOTE unset) with a temp HOME that already holds the
 contributor's own git identity. Afterwards every file under that HOME must be
-byte-identical and no file may have been created or removed.
+byte-identical and no file may have been created or removed. The same holds for a cloud
+session (CLAUDE_CODE_REMOTE=true) in a clone of a fork.
+
+The checked-in agent config is also kept small: `.claude/settings.json` may only hold
+allow-listed hook commands (no env, permissions, mcpServers, enabledPlugins, ...), and no
+`.mcp.json` is committed. Missing bash or git fails the run instead of skipping it, so the
+sandbox can never pass by not running.
 """
 from __future__ import annotations
 
@@ -19,8 +25,19 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / ".claude" / "settings.json"
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None or shutil.which("git") is None,
-                                reason="needs bash and git")
+# Top-level keys .claude/settings.json may have, and the exact hook commands it may run. A new
+# hook or key is a reviewed change to this list (.claude/ and this guard are Opus-reviewed paths).
+ALLOWED_SETTINGS_KEYS = frozenset({"$schema", "hooks"})
+ALLOWED_HOOK_COMMANDS = frozenset({
+    ("SessionStart", 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/git_identity.sh"'),
+})
+FORK_URL = "https://github.com/someone-else/tinglongwu.git"
+
+
+def _require_tools() -> None:
+    # #1443 F9: fail, never skip, when the sandbox cannot run the hooks.
+    missing = [t for t in ("bash", "git") if shutil.which(t) is None]
+    assert not missing, f"hook sandbox needs {missing} on PATH; install it rather than skipping this test"
 
 
 def _hook_commands(settings: Path) -> list[tuple[str, str]]:
@@ -48,8 +65,9 @@ def _snapshot(home: Path) -> dict[str, str]:
     return snap
 
 
-def _sandbox(tmp_path: Path) -> tuple[Path, Path, dict]:
+def _sandbox(tmp_path: Path, remote: bool = False, origin: str | None = None) -> tuple[Path, Path, dict]:
     """A contributor HOME with their own identity, and a clone-like project dir."""
+    _require_tools()
     home = tmp_path / "home"
     (home / ".config" / "git").mkdir(parents=True)
     (home / ".gitconfig").write_text(
@@ -65,13 +83,18 @@ def _sandbox(tmp_path: Path) -> tuple[Path, Path, dict]:
            if not k.startswith("GIT_") and k not in ("CLAUDE_CODE_REMOTE", "XDG_CONFIG_HOME")}
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                GIT_CONFIG_NOSYSTEM="1", CLAUDE_PROJECT_DIR=str(project))
+    if remote:
+        env["CLAUDE_CODE_REMOTE"] = "true"
     subprocess.run(["git", "init", "-q", str(project)], env=env, check=True)
+    if origin:
+        subprocess.run(["git", "-C", str(project), "remote", "add", "origin", origin], env=env, check=True)
     return home, project, env
 
 
-def run_hooks_and_diff_home(tmp_path: Path, settings: Path | None = None) -> dict[str, tuple]:
+def run_hooks_and_diff_home(tmp_path: Path, settings: Path | None = None, remote: bool = False,
+                            origin: str | None = None) -> dict[str, tuple]:
     """Run every hook command once; return {path: (before, after)} for each change under HOME."""
-    home, project, env = _sandbox(tmp_path)
+    home, project, env = _sandbox(tmp_path, remote=remote, origin=origin)
     commands = _hook_commands(settings or project / ".claude" / "settings.json")
     before = _snapshot(home)
     for _event, command in commands:
@@ -99,3 +122,75 @@ def test_sandbox_catches_a_hook_that_writes_global_git_config(tmp_path):
         {"type": "command", "command": "git config --global user.name owner"}]}]}}), encoding="utf-8")
     changed = run_hooks_and_diff_home(tmp_path, settings=project_settings)
     assert ".gitconfig" in changed
+
+
+def test_hooks_never_change_home_in_a_cloud_session_on_a_fork(tmp_path):
+    # #1443 F9: CLAUDE_CODE_REMOTE=true in a fork clone must not touch HOME either.
+    changed = run_hooks_and_diff_home(tmp_path, remote=True, origin=FORK_URL)
+    assert changed == {}, f"hooks changed files under HOME in a fork cloud session: {sorted(changed)}"
+
+
+def test_sandbox_catches_a_global_write_in_a_cloud_session(tmp_path):
+    bad = tmp_path / "bad_remote.json"
+    bad.write_text(json.dumps({"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command":
+        '[ "$CLAUDE_CODE_REMOTE" = true ] && git config --global user.email x@x'}]}]}}), encoding="utf-8")
+    changed = run_hooks_and_diff_home(tmp_path, settings=bad, remote=True, origin=FORK_URL)
+    assert ".gitconfig" in changed
+
+
+def settings_problems(settings: Path) -> list[str]:
+    """Everything in a settings.json outside ALLOWED_SETTINGS_KEYS / ALLOWED_HOOK_COMMANDS."""
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    out = [f"key {k!r} is not allowed" for k in sorted(set(data) - ALLOWED_SETTINGS_KEYS)]
+    for event, groups in (data.get("hooks") or {}).items():
+        for group in groups or []:
+            for hook in group.get("hooks") or []:
+                if (event, hook.get("command")) not in ALLOWED_HOOK_COMMANDS or hook.get("type") != "command":
+                    out.append(f"hook {event}: {hook!r} is not allow-listed")
+    return out
+
+
+def test_settings_only_hold_allow_listed_hooks():
+    assert settings_problems(SETTINGS) == []
+
+
+@pytest.mark.parametrize("extra", [
+    {"env": {"GIT_AUTHOR_EMAIL": "x@x"}},
+    {"permissions": {"allow": ["Bash(*)"]}},
+    {"mcpServers": {"x": {"command": "x"}}},
+    {"enabledPlugins": {"x@y": True}},
+    {"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}},
+])
+def test_settings_guard_flags_unlisted_keys_and_hooks(tmp_path, extra):
+    data = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    data.update(extra)
+    bad = tmp_path / "settings.json"
+    bad.write_text(json.dumps(data), encoding="utf-8")
+    assert settings_problems(bad)
+
+
+def tracked_agent_config(root: Path) -> list[str]:
+    """Committed files that would configure a contributor's Claude Code beyond settings.json hooks."""
+    files = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True,
+                           check=True).stdout.splitlines()
+    return [f for f in files if Path(f).name == ".mcp.json" or f == ".claude/settings.local.json"]
+
+
+def test_no_committed_mcp_json():
+    _require_tools()
+    assert tracked_agent_config(ROOT) == []
+
+
+def test_mcp_json_guard_catches_a_committed_file(tmp_path):
+    _require_tools()
+    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1"}
+    subprocess.run(["git", "init", "-q", str(tmp_path)], env=env, check=True)
+    (tmp_path / ".mcp.json").write_text("{}", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", ".mcp.json"], env=env, check=True)
+    assert tracked_agent_config(tmp_path) == [".mcp.json"]
+
+
+def test_missing_bash_fails_instead_of_skipping(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: None if name == "bash" else "/usr/bin/" + name)
+    with pytest.raises(AssertionError, match="bash"):
+        _require_tools()

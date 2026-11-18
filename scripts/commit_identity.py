@@ -6,6 +6,7 @@ commits (the JSON list from `GET repos/{repo}/pulls/{n}/commits`) and fails when
 `Co-authored-by:` email is outside ALLOWED_EMAILS / ALLOWED_DOMAINS, the PR author's own GitHub noreply email
 (so fork contributors keep working) and, #1443 / #1309, any email GitHub links to the PR author's account (a commit
 whose top-level `author.login` / `committer.login` is the PR author), so a contributor commits with their own identity.
+The owner's own commits are matched the same way by account (OWNER_LOGINS), so no personal email is listed here.
 
 Usage: python scripts/commit_identity.py commits.json --author-login LOGIN --author-id ID [--expected-count N]
 Exit 0 = every identity is known, 1 = unknown identities (each printed with its commit) or an incomplete commit list
@@ -22,12 +23,14 @@ from pathlib import Path
 ALLOWED_EMAILS = frozenset({
     "243713070+sunososobro-hub@users.noreply.github.com",  # owner noreply (what the cloud routines commit as)
     "sunososobro-hub@users.noreply.github.com",  # owner noreply, legacy form without the id
-    "sunososobro@gmail.com",  # owner
     "41898282+github-actions[bot]@users.noreply.github.com",  # github-actions[bot]
     "noreply@github.com",  # `GitHub` committer of web-flow merges and squash commits
 })
-ALLOWED_DOMAINS = ("@anthropic.com",)
-API_LIMIT = 250  # GET pulls/{n}/commits lists at most 250 commits, whatever the pagination  # Claude Code sessions (noreply@anthropic.com)
+ALLOWED_DOMAINS = ("@anthropic.com",)  # Claude Code sessions (noreply@anthropic.com)
+# #1443: commits GitHub links to these accounts pass whatever (verified) email they use, e.g. the owner's web-flow
+# squash merges on dev that hotfix / sync back-merge PRs carry. Matched by login, so the email stays out of this file.
+OWNER_LOGINS = frozenset({"sunososobro-hub"})
+API_LIMIT = 250  # GET pulls/{n}/commits lists at most 250 commits, whatever the pagination
 CO_AUTHOR = re.compile(r"^co-authored-by:.*<([^<>]*)>\s*$", re.IGNORECASE | re.MULTILINE)
 
 
@@ -42,16 +45,18 @@ def author_noreply(login: str, user_id: str) -> set[str]:
 
 
 def author_emails(commits: list, login: str) -> set[str]:
-    """#1443: emails GitHub resolved to the PR author's account on these commits (GitHub only links verified emails)."""
-    if not login:
-        return set()
+    """#1443: emails GitHub resolved to the PR author's or an OWNER_LOGINS account on these commits.
+
+    GitHub only links verified emails, so a linked email really belongs to that account.
+    """
+    logins = {x.lower() for x in OWNER_LOGINS} | ({login.lower()} if login else set())
     out = set()
     for c in commits:
         info = c.get("commit") or {}
         for role in ("author", "committer"):
             account = c.get(role) or {}
             email = ((info.get(role) or {}).get("email") or "").strip().lower()
-            if email and str(account.get("login") or "").lower() == login.lower():
+            if email and str(account.get("login") or "").lower() in logins:
                 out.add(email)
     return out
 
@@ -77,6 +82,13 @@ def problems(commits: list, login: str = "", user_id: str = "") -> list[str]:
             if not allowed(email, extra):
                 out.append(f"{sha} Co-authored-by <{email}>")
     return out
+
+
+FIX_HINT = (
+    "Set your own identity in this repo: `git config user.name \"Your Name\"` and "
+    "`git config user.email ID+login@users.noreply.github.com` (your own GitHub noreply email, shown at "
+    "https://github.com/settings/emails), or an email verified on your GitHub account; then rewrite these commits, "
+    "e.g. `git rebase --exec \"git commit --amend --no-edit --reset-author\" origin/dev`, and force-push.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -105,8 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     for line in bad:
         print(f"FAIL: unknown git identity: {line}")
     if bad:
-        print("Set `git config user.name sunososobro-hub` and `git config user.email "
-              "243713070+sunososobro-hub@users.noreply.github.com` (rules section 2), then rewrite these commits.")
+        print(FIX_HINT)
         return 1
     print(f"commit identity: {len(commits)} commit(s), all identities known")
     return 0
