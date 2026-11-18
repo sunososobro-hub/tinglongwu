@@ -117,13 +117,22 @@ def _spin():
         pass
 
 
+# eval.yml names engines the way tlwu_eval does (hymt2-cpu); the tinglongwu CLI only takes its own names (#1517).
+# --device cpu is always passed, so hymt runs on the CPU.
+CLI_ENGINE = {"hymt2": "hymt", "hymt2-cpu": "hymt", "hymt2-7b": "hymt7b"}
+
+
+def cli_engine(name: str) -> str:
+    return CLI_ENGINE.get(name, name)
+
+
 def run(a) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         jsonl = Path(tmp) / "records.jsonl"
         cmd = [sys.executable, "-m", "tinglongwu", "--file", str(Path(a.audio).resolve()), "--to", a.to,
                "--device", "cpu", "--paced", "--latency-jsonl", str(jsonl)]
         if a.engine:
-            cmd += ["--engine", a.engine]
+            cmd += ["--engine", cli_engine(a.engine)]
         if a.model:
             cmd += ["--model", a.model]
         if a.models_dir:

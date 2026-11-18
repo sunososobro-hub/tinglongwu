@@ -102,3 +102,14 @@ def test_build_makes_a_3_min_clip_with_music(tmp_path):
     out = ll.build(data, tmp_path / "clip.wav")
     audio, sr = sf.read(str(out))
     assert sr == SAMPLE_RATE and len(audio) == int(ll.CLIP_S * SAMPLE_RATE)
+
+
+def test_eval_engine_names_are_accepted_by_the_cli_1517():
+    """#1517: eval.yml passes `--engine hymt2-cpu`; the tinglongwu CLI must accept the mapped name (exit 2 before)."""
+    from tinglongwu import cli
+    from tinglongwu.engines import ENGINES
+
+    for name in ("hymt2", "hymt2-cpu", "hymt2-7b", "auto"):
+        assert ll.cli_engine(name) in ENGINES
+        args = cli.parse_args(["--file", "x.wav", "--engine", ll.cli_engine(name)])
+        assert args.engine == ll.cli_engine(name)
