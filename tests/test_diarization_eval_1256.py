@@ -276,6 +276,9 @@ def test_sweep_finds_settings_that_undo_the_split_and_dump_round_trips(tmp_path,
     assert ed.main(["--sweep-from", str(npz)]) == 0
     out = capsys.readouterr().out
     assert "(shipped defaults)" in out and f"sweep over {len(rows)} sentences" in out
+    per_merge = out.split("best per merge_threshold")[1].strip().splitlines()[1:]
+    assert len(per_merge) == len(ed.SWEEP_STEPS)
+    assert [float(ln.split()[2]) for ln in per_merge] == sorted(ed.SWEEP_STEPS)
 
 
 def test_embed_rows_skips_short_sentences():

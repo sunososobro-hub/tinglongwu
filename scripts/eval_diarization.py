@@ -119,8 +119,12 @@ def format_sweep(rows, results, top: int = 15) -> str:
     lines = [f"sweep over {len(rows)} sentences (#1256)", head,
              f"{cur.threshold:.2f} {cur.short_threshold:.2f} {cur.merge_threshold:.2f} | {d['labels']} {d['ratio']:.2f} "
              f"{d['accuracy']:.2f}  (shipped defaults)"]
-    lines += [f"{r['threshold']:.2f} {r['short_threshold']:.2f} {r['merge_threshold']:.2f} | {r['labels']} "
-              f"{r['ratio']:.2f} {r['accuracy']:.2f}" for r in results[:top]]
+    row = lambda r: (f"{r['threshold']:.2f} {r['short_threshold']:.2f} {r['merge_threshold']:.2f} | {r['labels']} "  # noqa: E731
+                     f"{r['ratio']:.2f} {r['accuracy']:.2f}")
+    lines += [row(r) for r in results[:top]]
+    lines.append("best per merge_threshold (where merging stops helping):")
+    for m in sorted({r["merge_threshold"] for r in results}):
+        lines.append(row(next(r for r in results if r["merge_threshold"] == m)))  # results are sorted best first
     return "\n".join(lines)
 
 
