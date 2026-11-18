@@ -11,6 +11,6 @@ void main() {
     expect(isAllowedPackUrl('https://example.com/tlwu-voice-en.zip'), isFalse);
     expect(isAllowedPackUrl('https://github.com/other/repo/releases/download/x/a.zip'), isFalse);
     expect(isAllowedPackUrl('http://github.com/sunososobro-hub/tinglongwu/releases/download/x/a.zip'), isFalse);
-    expect(isAllowedPackUrl('${packReleasePrefix}../../x'), isFalse);
+    expect(isAllowedPackUrl('$packReleasePrefix../../x'), isFalse);
   });
 }
