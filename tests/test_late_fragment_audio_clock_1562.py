@@ -47,6 +47,15 @@ def test_long_audio_pause_stays_separate_even_when_asr_is_quick():
     assert _texts(m.flush()) == [("Version.", None)]
 
 
+def test_empty_segment_does_not_move_the_released_line_end():
+    m = _m(max_wait=1.0)
+    assert m.add("Now I will show you the settings", "en", 0.0, span=(0.0, 2.0)) == []
+    assert m.add("", "en", 0.5, span=(10.0, 11.0)) == []  # no text: not part of the buffered line
+    assert _texts(m.due(1.0)) == [("Now I will show you the settings", None)]
+    assert m.add("Version.", "en", 1.5, span=(12.0, 13.0)) == []  # 10 s after the line in the audio: own line
+    assert _texts(m.flush()) == [("Version.", None)]
+
+
 def test_without_spans_the_wall_clock_window_is_unchanged():
     m = _m()
     m.add(HEAD, "en", 0.0)

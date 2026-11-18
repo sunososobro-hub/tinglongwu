@@ -150,7 +150,8 @@ class SentenceMerger:
         # #1562: audio-clock (start, end) of the newest pushed segment and the audio start of the oldest buffered
         # text. The late-fragment window is measured on audio when the caller gives spans: the wall clock between two
         # ASR results also holds ASR / queue delay (a 1 s pause read as 9 s on a slow CPU runner).
-        self._a_seg: tuple[float, float] | None = None
+        self._a_seg: tuple[float, float] | None = None  # of the newest segment whose text was buffered
+        self._a_new: tuple[float, float] | None = None  # of the segment add() is pushing now
         self._a_since: float | None = None
         # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
         # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
@@ -184,8 +185,8 @@ class SentenceMerger:
         span (#1562): the segment's (start, end) on the audio clock; when given, "within amend_window" is the audio
         pause between the line's end and the fragment's start, not the wall time between their ASR results."""
         since, a_since = self.since, self._a_since
-        self._a_seg = (float(span[0]), float(span[1])) if span is not None else None
-        a_arr = (self._a_seg[0] if self._a_seg else None) if since is None else a_since
+        self._a_new = (float(span[0]), float(span[1])) if span is not None else None
+        a_arr = (self._a_new[0] if self._a_new else None) if since is None else a_since
         out = self._post(self._add(text, lang, now, forced_cut, pause, tag), now, now if since is None else since,
                          a_arr)
         arrived = now if self.since is None else self.since
@@ -267,6 +268,7 @@ class SentenceMerger:
         self._cut = forced_cut
         if not text:
             return out + self._due(now)
+        self._a_seg = self._a_new  # #1562: only a segment that adds text moves the buffered text's audio end
         self._tail = (self._tail + text.split())[-10:]
         self.tag = tag
         if not self.buf:
