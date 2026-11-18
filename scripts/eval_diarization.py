@@ -65,6 +65,80 @@ def evaluate(items, labeler, clock=None):
             "labels_raw": len({p for p in pred if p and p != UNKNOWN})}
 
 
+def embed_rows(items, embed, min_seconds: float = MIN_SECONDS):
+    """#1256: [(true_label, seconds, embedding list)] for the scored sentences (>= min_seconds), in conversation order,
+    so clusterer settings can be replayed (sweep) without the model."""
+    rows = []
+    for lab, seg in items:
+        secs = len(seg) / SR
+        if secs >= min_seconds:
+            rows.append((lab, secs, [float(x) for x in embed(seg)]))
+    return rows
+
+
+def replay(rows, clusterer) -> dict:
+    """#1256: feed embedding rows through one SpeakerClusterer; labels / ratio / accuracy as evaluate() scores them."""
+    from tinglongwu.speakers import UNKNOWN
+
+    true, pred = [], []
+    for lab, secs, emb in rows:
+        true.append(lab)
+        pred.append(clusterer.assign(emb, secs))
+    seen = [clusterer.kept(p) for p in pred]
+    r = {"accuracy": round(best_mapping_accuracy(true, seen), 2), "speakers": len(set(true)),
+         "labels": len({p for p in seen if p and p != UNKNOWN})}
+    r["ratio"] = round(label_ratio(r), 2)
+    return r
+
+
+SWEEP_STEPS = (0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8)
+
+
+def sweep(rows, steps=SWEEP_STEPS, max_ratio: float = 1.5) -> list[dict]:
+    """#1256: replay rows for every (threshold, short_threshold <= threshold, merge_threshold) on the grid. Sorted best
+    first: ratio <= max_ratio, then accuracy, then fewer labels."""
+    from tinglongwu.speakers import SpeakerClusterer
+
+    out = []
+    for t in steps:
+        for s in (x for x in steps if x <= t):
+            for m in steps:
+                r = replay(rows, SpeakerClusterer(threshold=t, short_threshold=s, merge_threshold=m))
+                out.append({"threshold": t, "short_threshold": s, "merge_threshold": m, **r})
+    out.sort(key=lambda r: (r["ratio"] > max_ratio, -r["accuracy"], r["labels"], -r["threshold"]))
+    return out
+
+
+def format_sweep(rows, results, top: int = 15) -> str:
+    """The shipped defaults' row, then the best `top` grid rows."""
+    from tinglongwu.speakers import SpeakerClusterer
+
+    cur = SpeakerClusterer()
+    d = replay(rows, SpeakerClusterer())
+    head = "threshold short merge | labels ratio accuracy"
+    lines = [f"sweep over {len(rows)} sentences (#1256)", head,
+             f"{cur.threshold:.2f} {cur.short_threshold:.2f} {cur.merge_threshold:.2f} | {d['labels']} {d['ratio']:.2f} "
+             f"{d['accuracy']:.2f}  (shipped defaults)"]
+    lines += [f"{r['threshold']:.2f} {r['short_threshold']:.2f} {r['merge_threshold']:.2f} | {r['labels']} "
+              f"{r['ratio']:.2f} {r['accuracy']:.2f}" for r in results[:top]]
+    return "\n".join(lines)
+
+
+def save_rows(path, rows) -> None:
+    import numpy as np
+
+    np.savez_compressed(path, labels=np.array([r[0] for r in rows]), seconds=np.array([r[1] for r in rows]),
+                        embeddings=np.array([r[2] for r in rows], dtype=np.float32))
+
+
+def load_rows(path):
+    import numpy as np
+
+    z = np.load(path)
+    return [(str(lab), float(secs), [float(x) for x in emb])
+            for lab, secs, emb in zip(z["labels"], z["seconds"], z["embeddings"])]
+
+
 def format_report(r: dict) -> str:
     out = (f"sentences >= {MIN_SECONDS:g}s: {r['n']} (skipped shorter: {r['skipped']})\n"
            f"accuracy x100: {r['accuracy']:.2f}  (target >= {TARGET_ACC:.2f})\n"
@@ -161,6 +235,12 @@ def main(argv=None) -> int:
     ap.add_argument("--max-label-ratio", type=float, default=0.0,
                     help="#1256, audio mode only: exit 1 when labels / real speakers is above this, or when no "
                          "label was produced (0 = report only)")
+    ap.add_argument("--dump-embeddings", metavar="NPZ",
+                    help="#1256, audio mode: save the scored sentences' labels, seconds and embeddings (no audio)")
+    ap.add_argument("--sweep", action="store_true",
+                    help="#1256, audio mode: also replay the embeddings over a clusterer threshold grid and print it")
+    ap.add_argument("--sweep-from", metavar="NPZ", help="#1256: print the threshold grid for a --dump-embeddings file "
+                    "(no model needed)")
     ap.add_argument("--min-speakers", type=int, default=0,
                     help="#1256, with --max-label-ratio: also fail when fewer real speakers were scored")
     a = ap.parse_args(argv)
@@ -170,6 +250,10 @@ def main(argv=None) -> int:
         ap.error("--max-label-ratio must be a finite number >= 0")
     if a.transcript and a.max_label_ratio:
         ap.error("--max-label-ratio applies to AUDIO_DIR mode, not --transcript")
+    if a.sweep_from:
+        rows = load_rows(a.sweep_from)
+        print(format_sweep(rows, sweep(rows, max_ratio=a.max_label_ratio or 1.5)))
+        return 0
     if a.transcript:
         r = score_transcript(a.transcript)
         print(f"lines with a speaker: {r['n']} (corrected by the user: {r['corrected']})\n"
@@ -179,10 +263,19 @@ def main(argv=None) -> int:
         ap.error("AUDIO_DIR and LABELS.csv are required without --transcript")
     from tinglongwu.speaker_embed import make_labeler
 
-    r = evaluate(load_items(a.audio_dir, a.labels_csv), make_labeler(a.model_dir))
+    items = load_items(a.audio_dir, a.labels_csv)
+    labeler = make_labeler(a.model_dir)
+    r = evaluate(items, labeler)
     print(format_report(r))
     write_png(a.png, r)
     print(f"chart: {a.png}")
+    if a.dump_embeddings or a.sweep:
+        rows = embed_rows(items, labeler.embed)
+        if a.dump_embeddings:
+            save_rows(a.dump_embeddings, rows)
+            print(f"embeddings: {a.dump_embeddings}")
+        if a.sweep:
+            print(format_sweep(rows, sweep(rows, max_ratio=a.max_label_ratio or 1.5)))
     if a.max_label_ratio:
         why = None
         if r["speakers"] < max(1, a.min_speakers):
