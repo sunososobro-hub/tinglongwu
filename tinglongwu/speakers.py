@@ -12,10 +12,15 @@ UNKNOWN = "?"
 LABEL_PREFIX = "說話者"
 # #1256 numbers, measured with the shipped CAM++ model on 240 VCTK-voice sentences from 12 speakers (PR for #1256):
 # 1-2 s sentences sit at cosine p10 0.73 to their own speaker but up to 0.64 to another speaker; from 2 s on, own >= 0.83.
-# Speaker centroids reach at most 0.633 to each other, so 0.7 merges only clusters closer than any two real speakers.
+# Speaker centroids reach at most 0.633 to each other, so a merge threshold above that merges only clusters closer
+# than any two real speakers.
+# #1256 CI sweep (eval-diarization run 44338020129, CAM++ on 8 LibriSpeech test-clean readers, 100 sentences of 1-8 s):
+# threshold/short/merge 0.60/0.50/0.70 -> 15 labels (1.88x), accuracy 93.00; 0.60/0.40/0.65 -> 9 labels (1.12x), 99.00;
+# merge <= 0.50 -> 8 labels, 100.00 but below the 0.633 VCTK cross-speaker ceiling. 0.40/0.65 is the best setting
+# that keeps merge above that ceiling.
 SHORT_SECONDS = 2.0
-SHORT_THRESHOLD = 0.5
-MERGE_THRESHOLD = 0.7
+SHORT_THRESHOLD = 0.4
+MERGE_THRESHOLD = 0.65
 
 
 def cosine(a: Sequence[float], b: Sequence[float]) -> float:
