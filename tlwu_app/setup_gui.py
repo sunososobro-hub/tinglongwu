@@ -120,6 +120,8 @@ class SetupWindow:
         self.bar.pack(pady=(10, 2))
         self.v_status = tk.StringVar(value="按「開始下載」。可隨時取消，之後會從中斷處繼續。")
         ttk.Label(f, textvariable=self.v_status, wraplength=420).pack(anchor="w")
+        self.v_note = tk.StringVar()  # #1525: "GPU pack later" note, kept apart from the progress line
+        ttk.Label(f, textvariable=self.v_note, wraplength=420, foreground="#1a4d8f").pack(anchor="w")
         row = ttk.Frame(f)
         row.pack(fill="x", pady=(10, 0))
         self.btn = ttk.Button(row, text="開始下載", command=self.start)
@@ -201,7 +203,8 @@ class SetupWindow:
                 return
             self.phase = "selftest"
             self.pack_note = GPU_PACK_LATER if asked else ""
-            self.v_status.set(self.pack_note + "下載完成，自我測試中（載入模型並翻譯一句測試句）…")
+            self.v_note.set(self.pack_note)
+            self.v_status.set("下載完成，自我測試中（載入模型並翻譯一句測試句）…")
             cmd = selftest_cmd(self.bundled, self.mdir, self.tier)
             threading.Thread(target=self._run, args=(cmd,), daemon=True).start()
             self.root.after(500, self.poll)

@@ -591,10 +591,13 @@ def mt_path_text(path: tuple[str, int] | None) -> str:
 _NVIDIA_SEEN: list[bool] = []  # cache: nvidia-smi runs at most once per process
 
 
-def nvidia_seen(gpu_info=None) -> bool:
-    """#1525: nvidia-smi reports an NVIDIA GPU (cached). CPU mode on such a machine must not say "no NVIDIA GPU"."""
+def nvidia_seen(gpu_info=None, block: bool = True) -> bool:
+    """#1525: nvidia-smi reports an NVIDIA GPU (cached). CPU mode on such a machine must not say "no NVIDIA GPU".
+    block=False (Tk thread): never runs nvidia-smi; an unknown result reads as False (the GUI probes at start-up)."""
     if gpu_info is not None:
         return gpu_info()[0] is not None
+    if not _NVIDIA_SEEN and not block:
+        return False
     if not _NVIDIA_SEEN:
         from ..hwprobe import gpu_info as probe
 
@@ -605,22 +608,23 @@ def nvidia_seen(gpu_info=None) -> bool:
     return _NVIDIA_SEEN[0]
 
 
-def cpu_mode_text(gpu_seen: bool | None = None) -> str:
+def cpu_mode_text(gpu_seen: bool | None = None, block: bool = True) -> str:
     """The "CPU mode" text: "no NVIDIA GPU" only when nvidia-smi found none, else "NVIDIA GPU found but not used"."""
     from ..i18n import t
 
-    return t("gui_cpu_mode_gpu_unused" if (nvidia_seen() if gpu_seen is None else gpu_seen) else "gui_cpu_mode")
+    return t("gui_cpu_mode_gpu_unused" if (nvidia_seen(block=block) if gpu_seen is None else gpu_seen)
+             else "gui_cpu_mode")
 
 
 def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None,
-                  path: tuple[str, int] | None = None) -> str | None:
+                  path: tuple[str, int] | None = None, block: bool = True) -> str | None:
     """#780: status text "CPU mode" (+ per-line MT ms) when running on the CPU, else None.
     path (#1198): (backend, threads) of the MT model, shown after the ms so the user sees CPU vs Vulkan."""
     from ..i18n import t
 
     if device != "cpu":
         return None
-    base = cpu_mode_text()
+    base = cpu_mode_text(block=block)
     if mt_ms is None:
         return base
     where = mt_path_text(path)

@@ -97,21 +97,21 @@ def test_gpu_pack_offer_cpu_mode_text_does_not_deny_a_found_gpu():
     assert core.drop_cpu_mode_notice(core.cpu_mode_text(gpu_seen=True), status) == ""
 
 
-def test_gpu_pack_offer_i18n_all_languages():
+def test_gpu_pack_offer_i18n_all_languages(monkeypatch):
     from tinglongwu import i18n
 
+    monkeypatch.setattr(i18n, "_override", i18n._override)  # restored on teardown, even when an assert fails
     keys = ["gpu_offer_banner", "gpu_offer_install", "gpu_offer_later", "gpu_offer_never", "gpu_offer_running",
             "gpu_offer_ok", "gpu_offer_fail", "gpu_pack_row_name", "gpu_pack_row_installed", "gpu_pack_row_unavailable",
             "gpu_pack_row_missing", "gpu_pack_row_old", "gui_cpu_mode_gpu_unused"]
     en = {}
     for lang in ("en", "ru", "zh-TW", "ja"):
-        i18n.set_ui_lang(lang)
+        i18n.set_ui_lang(lang, persist=False)
         for k in keys:
             if lang == "en":
                 en[k] = t(k, size="1.5 GB", ver="", reason="r")
             else:
                 assert t(k, size="1.5 GB", ver="", reason="r") != en[k] or k == "gpu_pack_row_name", (lang, k)
-    i18n.set_ui_lang("en")
 
 
 # ---- setup wizard asks, never auto-installs ------------------------------------------------------------------------
@@ -131,12 +131,57 @@ def test_gpu_pack_offer_wizard_asks_first():
     assert sg.gpu_pack_choice(tiers.choose_tier(gpu, True), gpu, lambda: pytest.fail("asked in CPU mode")) is False
 
 
-def test_gpu_pack_offer_setup_writes_version_marker(tmp_path, monkeypatch):
+def test_gpu_pack_offer_setup_writes_version_marker(tmp_path):
+    """The marker is written inside the staged pack before the swap (a failed write keeps the old pack)."""
+    import hashlib
+    import zipfile
+
     from tinglongwu_setup import gpu_pack as sp
 
-    monkeypatch.setattr(sp, "release_assets", lambda v, get: {"version": "0.4.10", "zip_url": "z", "manifest_url": "m"})
-    monkeypatch.setattr(sp, "install_zip", lambda a, man, dest: dest.mkdir(parents=True) or dest)
-    get = lambda url, timeout=None: json.dumps({"size": 1, "sha256": "ab"}).encode()  # noqa: E731
+    z = tmp_path / "p.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("cublas64_12.dll", b"x")
+    man = {"size": z.stat().st_size, "sha256": hashlib.sha256(z.read_bytes()).hexdigest()}
     dest = tmp_path / "gpu-pack"
-    assert sp.run(dest, "0.4.10", get=get, fetch=lambda u, p, h: p, out=lambda *_: None, env={}) == 0
-    assert G.installed_version(dest) == "0.4.10"
+    get = lambda url, timeout=None: (json.dumps(man).encode() if url == "m" else  # noqa: E731
+                                     json.dumps({"tag_name": "v0.4.10", "assets": [
+                                         {"name": sp.ASSET, "browser_download_url": "z"},
+                                         {"name": sp.MANIFEST_ASSET, "browser_download_url": "m"}]}).encode())
+    assert sp.run(dest, "0.4.10", get=get, fetch=lambda u, p, h: z, out=lambda *_: None, env={}) == 0
+    assert G.installed_version(dest) == "0.4.10" and (dest / "cublas64_12.dll").is_file()
+
+
+def test_gpu_pack_offer_garbled_marker_is_unknown(tmp_path):
+    (tmp_path / G.VERSION_FILE).write_bytes(b"\xff\xfe\xfa")
+    assert G.installed_version(tmp_path) is None
+
+
+def test_gpu_pack_offer_incomplete_windows_pack_is_old(tmp_path):
+    (tmp_path / "cublas64_12.dll").write_bytes(b"x")
+    assert not G._pack_usable(tmp_path, platform="win32")  # no cuDNN
+    (tmp_path / "cudnn64_9.dll").write_bytes(b"x")
+    assert G._pack_usable(tmp_path, platform="win32")
+
+
+def test_gpu_pack_offer_no_pack_note_matched_by_prefix_only():
+    from tinglongwu_setup.gpu_pack import NO_PACK_NOTE
+
+    assert NO_PACK_NOTE.startswith(G.NO_PACK_PREFIX)
+    assert not G.install_ok(0, [NO_PACK_NOTE[:90]])
+    assert G.install_ok(0, ["gpu pack 0.4.10: installed in C:/no GPU pack here/gpu-pack"])
+
+
+def test_gpu_pack_offer_notice_matched_in_any_language(monkeypatch):
+    from tinglongwu import i18n
+    from tinglongwu.device import gpu_pack_message
+
+    monkeypatch.setattr(i18n, "_override", i18n._override)
+    en = gpu_pack_message(["cublas64_12.dll"], bundled=True)
+    i18n.set_ui_lang("ja", persist=False)  # queued in English, read after a switch to Japanese
+    assert G.is_missing_pack_notice(en)
+
+
+def test_gpu_pack_offer_cpu_text_never_blocks_when_asked(monkeypatch):
+    monkeypatch.setattr(core, "_NVIDIA_SEEN", [])
+    monkeypatch.setattr("tinglongwu.hwprobe.gpu_info", lambda *a, **k: pytest.fail("nvidia-smi on the Tk thread"))
+    assert core.cpu_mode_text(block=False) == t("gui_cpu_mode")

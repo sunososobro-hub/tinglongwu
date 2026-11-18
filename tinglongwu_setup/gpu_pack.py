@@ -50,7 +50,7 @@ def release_assets(version: str, get=selfupdate._get) -> dict | None:
     return {"version": tag.lstrip("v"), "zip_url": assets.get(ASSET), "manifest_url": assets.get(MANIFEST_ASSET)}
 
 
-def install_zip(archive: Path, man: dict, dest: Path) -> Path:
+def install_zip(archive: Path, man: dict, dest: Path, version: str | None = None) -> Path:
     """Verify size + SHA256 against `man`, unpack into `dest` (replacing an older pack). A bad archive leaves `dest` alone."""
     if archive.stat().st_size != man["size"]:
         raise PackError(f"{archive.name}: size {archive.stat().st_size} != manifest {man['size']}")
@@ -66,6 +66,8 @@ def install_zip(archive: Path, man: dict, dest: Path) -> Path:
                 if not (root / n).resolve().is_relative_to(root):
                     raise PackError(f"unsafe path in pack: {n}")
             z.extractall(tmp)
+        if version:  # #1525: the version marker goes in before the swap; a failed write keeps the old pack
+            (tmp / VERSION_FILE).write_text(version + "\n", encoding="utf-8")
         backup = None
         if dest.exists():  # keep the old pack until the new one is in place
             backup = Path(tempfile.mkdtemp(prefix=".gpu-pack-old-", dir=dest.parent)) / "pack"
@@ -111,13 +113,9 @@ def run(dest: Path, version: str | None, get=selfupdate._get, fetch=resume.fetch
         dest.parent.mkdir(parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix=".gpu-pack-dl-", dir=dest.parent))
         try:
-            install_zip(fetch(rel["zip_url"], work / ASSET, str(man["sha256"]).lower()), man, dest)
+            install_zip(fetch(rel["zip_url"], work / ASSET, str(man["sha256"]).lower()), man, dest, rel["version"])
         finally:
             shutil.rmtree(work, ignore_errors=True)
-        try:  # #1525: the app shows "Installed vX.Y.Z" in Settings > Add-ons (tinglongwu.gui.gpu_offer.VERSION_FILE)
-            (dest / VERSION_FILE).write_text(rel["version"] + "\n", encoding="utf-8")
-        except OSError:
-            pass
         out(f"gpu pack {rel['version']}: installed in {dest}")
         return 0
     except (ValueError, PackError, OSError) as e:

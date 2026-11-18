@@ -20,8 +20,8 @@ class AddonsScreen:
     def __init__(self, master, gpu_present: bool = False, mdir=None, run=run_pack_download, import_zip=None,
                  gpu_state=None):
         self.mdir, self.gpu, self.run, self.q = mdir or models_dir(), gpu_present, run, queue.Queue()
-        self.gpu_state = gpu_state or self._gpu_state  # #1525: GPU speed-up pack row
         self.gpu_lines: list[str] = []
+        self.gpu_cached = gpu_state() if gpu_state else None  # #1525: (state, version); None = probe still running
         self.import_zip = import_zip or self._import_zip
         self.busy = False
         self.win = w = tk.Toplevel(master)
@@ -36,6 +36,8 @@ class AddonsScreen:
         ttk.Button(bar, text=t("addons_pick_zip"), command=self.pick_zip).pack(side="left", padx=6)
         ttk.Button(bar, text=t("addons_close"), command=w.destroy).pack(side="right")
         self.refresh()
+        if gpu_state is None:  # nvidia-smi can take seconds: never on the Tk thread
+            threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_state())), daemon=True).start()
         self.win.after(200, self._poll)
 
     def refresh(self):
@@ -70,7 +72,9 @@ class AddonsScreen:
 
     def _gpu_row(self):
         """#1525: "GPU speed-up pack (NVIDIA, 1.5 GB)" with Install / Installed vX.Y.Z / Not available (no NVIDIA)."""
-        state, ver = self.gpu_state()
+        if self.gpu_cached is None:
+            return  # drawn once the background probe answers
+        state, ver = self.gpu_cached
         f = ttk.Frame(self.body)
         f.pack(fill="x", pady=3)
         ttk.Label(f, text=t("gpu_pack_row_name", size=gpu_offer.GPU_PACK_SIZE)).pack(side="top", anchor="w")
@@ -80,11 +84,19 @@ class AddonsScreen:
         self.gpu_row_state = state
 
     def add_gpu(self):
-        if self.busy:
+        if self.busy or gpu_offer.INSTALLING.is_set():
             return
         if gpu_offer.offline():
             self.msg.set(t("addons_offline"))
             return
+        from ..gpu_pack import pack_dir
+
+        pack = pack_dir()
+        if pack is not None and gpu_offer._pack_usable(pack):  # installed meanwhile (e.g. from the banner)
+            self.gpu_cached = (gpu_offer.INSTALLED, gpu_offer.installed_version(pack))
+            self.refresh()
+            return
+        gpu_offer.INSTALLING.set()
         self.busy = True
         self.gpu_lines = []
         self.msg.set(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE))
@@ -136,8 +148,13 @@ class AddonsScreen:
                 if ev[0] == "pack_line":
                     self.msg.set(ev[1])
                     self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
+                elif ev[0] == "gpu_state":
+                    self.gpu_cached = ev[1]
+                    self.refresh()
                 elif ev[0] == "pack_done" and ev[1] == GPU_ROW:  # #1525
                     self.busy = False
+                    gpu_offer.INSTALLING.clear()
+                    self.gpu_cached = self._gpu_state()  # the pack folder changed: re-read it
                     self.msg.set(t("gpu_offer_ok") if gpu_offer.install_ok(ev[2], self.gpu_lines) else
                                  t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)))
                     self.refresh()

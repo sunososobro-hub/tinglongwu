@@ -1356,11 +1356,19 @@ class App:
         self.v_gpu = tk.StringVar()
         ttk.Label(g, textvariable=self.v_gpu, wraplength=UPDATE_LINE_WRAP_PX).pack(side="left")
         self.gpu_bar = ttk.Progressbar(g, mode="indeterminate", length=80)
-        self.gpu_btns = [ttk.Button(g, text=t(k), command=c, style="Bar.TButton", width=0) for k, c in
+        self.gpu_btns = [self._tx(ttk.Button(g, command=c, style="Bar.TButton", width=0), k) for k, c in
                          (("gpu_offer_never", self._gpu_never), ("gpu_offer_later", self._gpu_hide),
                           ("gpu_offer_install", self._gpu_install))]
-        if not gpu_offer.offline() and not gpu_offer.cpu_mode():
-            threading.Thread(target=lambda: self.q.put(("gpu_state", self._gpu_detect())), daemon=True).start()
+        probe = not gpu_offer.offline() and not gpu_offer.cpu_mode()
+
+        def work():  # nvidia-smi once, off the Tk thread; also fills the CPU-mode wording cache (core.nvidia_seen)
+            from .core import nvidia_seen
+
+            nvidia_seen()
+            if probe:
+                self.q.put(("gpu_state", self._gpu_detect()))
+
+        threading.Thread(target=work, daemon=True).start()
 
     @staticmethod
     def _gpu_detect() -> str:
@@ -1407,8 +1415,9 @@ class App:
         from . import gpu_offer
         from .core import run_pack_download
 
-        if self.gpu_busy or gpu_offer.offline():
+        if self.gpu_busy or gpu_offer.INSTALLING.is_set() or gpu_offer.offline():
             return
+        gpu_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
         self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
@@ -1420,13 +1429,14 @@ class App:
 
         kind = ev[0]
         if kind == "gpu_state":
-            if gpu_offer.should_offer(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
+            if not self.gpu_busy and gpu_offer.should_offer(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
                                       gpu_offer.offline()):
                 self._gpu_offer_show()
         elif kind == "gpu_pack_line":
             self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
         elif kind == "gpu_pack_done":
             self.gpu_busy = False
+            gpu_offer.INSTALLING.clear()
             if gpu_offer.install_ok(ev[2], self.gpu_lines):
                 self._gpu_show(t("gpu_offer_ok"), buttons=False)
             else:
@@ -2675,7 +2685,7 @@ class App:
                     from .core import cpu_mode_line
 
                     if self.load_t0 is None and not self.errored:
-                        text = cpu_mode_line("cpu", ev[1], path=ev[2] if len(ev) > 2 else None) or ""
+                        text = cpu_mode_line("cpu", ev[1], path=ev[2] if len(ev) > 2 else None, block=False) or ""
                         wait = self._wait_line()  # #1253: a held-translation / backlog note stays visible
                         if wait and text and getattr(self, "_pre_backlog", None) is not None:
                             self._pre_backlog = text  # shown again (alone) once nothing waits any more
@@ -2686,7 +2696,8 @@ class App:
                 elif kind == "notice":
                     from . import gpu_offer
 
-                    if gpu_offer.is_missing_pack_notice(ev[1]) and not gpu_offer.offline() and not self.gpu_busy:
+                    if (gpu_offer.is_missing_pack_notice(ev[1]) and not gpu_offer.offline() and not self.gpu_busy
+                            and not self.settings.get(gpu_offer.DISMISS_KEY)):
                         self._gpu_offer_show()  # #1525: the "GPU pack missing" line gets its [Install] button
                     if ev[1] not in self.v_notice.get():  # the repeated silent hint must not clobber other lines
                         self.v_notice.set(ev[1])

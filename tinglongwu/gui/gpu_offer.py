@@ -6,6 +6,8 @@ No tkinter and no network here: `pack_state` / `should_offer` decide, `gpu_pack_
 from __future__ import annotations
 
 import os
+import sys
+import threading
 from pathlib import Path
 
 DISMISS_KEY = "gpu_pack_never_ask"  # settings key: the user pressed "Don't ask again"
@@ -13,6 +15,8 @@ VERSION_FILE = "pack_version.txt"  # written by tinglongwu_setup.gpu_pack.run af
 GPU_PACK_SIZE = "1.5 GB"
 
 UNAVAILABLE, MISSING, OLD, INSTALLED = "unavailable", "missing", "old", "installed"
+NO_PACK_PREFIX = "gpu pack: this release has no GPU pack"  # == tinglongwu_setup.gpu_pack.NO_PACK_NOTE's start
+INSTALLING = threading.Event()  # one GPU-pack install at a time across the banner and every Add-ons window
 
 
 def installed_version(pack: Path | None) -> str | None:
@@ -21,7 +25,7 @@ def installed_version(pack: Path | None) -> str | None:
         return None
     try:
         return (Path(pack) / VERSION_FILE).read_text(encoding="utf-8").strip() or None
-    except OSError:
+    except (OSError, ValueError):  # ValueError: UnicodeDecodeError of a garbled marker = unknown
         return None
 
 
@@ -64,8 +68,14 @@ def detect(gpu_info=None, pack_dir=None, usable=None) -> str:
     return pack_state(name is not None, pack, usable(pack) if pack is not None else True)
 
 
-def _pack_usable(pack: Path) -> bool:
-    """False when the pack ships a CUDA llama build that this app refuses (llama-cpp-python version mismatch, #881)."""
+def _pack_usable(pack: Path, platform: str | None = None) -> bool:
+    """False when the pack lacks a CUDA runtime library the app needs (device._LIBS: cuBLAS + cuDNN, Windows pack) or
+    ships a CUDA llama build that this app refuses (llama-cpp-python version mismatch, #881)."""
+    if (platform or sys.platform) == "win32":
+        from ..device import _LIBS
+
+        if not all((Path(pack) / n).is_file() for n in _LIBS["win32"]):
+            return False
     if not (Path(pack) / "llama.dll").is_file():
         return True
     try:
@@ -90,13 +100,13 @@ def gpu_pack_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
 
 def install_ok(rc: int, lines: list[str]) -> bool:
     """The worker exits 0 also when the release has no GPU pack (one note, #966): that is not "installed"."""
-    return rc == 0 and not any("no GPU pack" in ln for ln in lines)
+    return rc == 0 and not any(ln.startswith(NO_PACK_PREFIX) for ln in lines)
 
 
 def fail_reason(lines: list[str]) -> str:
     """One reason line from the worker output: its last `gpu pack: FAIL ...` line, else its last line."""
     for ln in reversed(lines):
-        if "no GPU pack" in ln:
+        if ln.startswith(NO_PACK_PREFIX):
             return "this release has no GPU pack"
         if "FAIL" in ln:
             return ln.split("FAIL", 1)[1].strip(" :")[:160]
@@ -118,7 +128,12 @@ def row_text(state: str, version: str | None) -> str:
 
 def is_missing_pack_notice(text: str) -> bool:
     """The worker's "GPU pack not installed ({libs} missing) ..." notice (device.gpu_pack_message), in any UI language."""
-    from ..i18n import t
+    from ..i18n import MESSAGES
 
-    head = t("gpu_pack_missing", libs="\0").split("\0")[0].strip().removeprefix("tlwu: ")
-    return bool(text) and bool(head) and head in text
+    if not text:
+        return False
+    for table in MESSAGES.values():  # every language: a notice queued before a UI-language switch still matches
+        head = table.get("gpu_pack_missing", "").split("{libs}")[0].strip().removeprefix("tlwu: ")
+        if head and head in text:
+            return True
+    return False
