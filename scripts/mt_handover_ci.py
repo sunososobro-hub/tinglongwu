@@ -231,7 +231,8 @@ def run(a) -> dict:
     problems = judge(recs, n_before, a.to)
     if n_before is not None and landing.get("rc") != 0:
         problems.append(f"landing did not finish cleanly: {landing}")
-    if settle_until is not None and not settled:
+    saw_translation = n_before is not None and any(is_translated(r, a.to) for r in recs[n_before:])
+    if saw_translation and not settled:  # also when tlwu exited before a poll even saw the translated line
         problems.append(f"watched only part of the {a.settle:g} s after the first translated line (deadline or "
                         "tlwu exit): a fall-back to source text could be missed")
     if proc is not None and exited_early and proc.returncode != 0:
