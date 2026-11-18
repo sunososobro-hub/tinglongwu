@@ -35,6 +35,11 @@ class OverlaySink(QueueSink):
     def write(self, r: Result) -> None:
         self.inner.write(r)
         if self.prefix:
+            from .reverse.echoguard import shared
+
+            if shared().check(r.original, r.target if r.src != r.tgt else ""):  # #1070/#1532: same rule as QueueSink
+                self.q.put(("drop", r.original))
+                return
             ev = ("final", r.original, self.prefix + (r.target if r.src != r.tgt and r.target else r.original))
             self.q.put(ev if r.replaces is None else ("amend", r.replaces) + ev[1:])  # #1395
         else:

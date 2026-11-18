@@ -3,6 +3,7 @@ import importlib.util
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -116,19 +117,45 @@ def test_pending_line_pipeline_shows_source_before_mt_and_logs_src_shown_ms():
     assert mt.started.wait(5.0)
     _feed(st, None, q)
     assert st.lines() == [("this is one line" + P, True)]  # on screen while MT still runs
+    time.sleep(0.2)  # MT takes a while: the translation comes clearly after the source
     mt.go.set()
     th.join(5.0)
     _feed(st, None, q)
     assert st.lines() == [("這是一行", False)]
     assert len(recs) == 1 and recs[0]["src_shown_ms"] is not None and 0 <= recs[0]["src_shown_ms"] <= 100
-    assert recs[0]["t_source_shown"] < recs[0]["total"]  # the source was up before the translation
+    assert recs[0]["total"] - recs[0]["t_source_shown"] >= 0.15  # the source was up before the translation
 
 
 def test_livelag_reports_src_and_mt_shown():
-    recs = [{"at": 10.0 + i, "total": 3.0, "t_source_shown": 0.5 + i * 0.1} for i in range(3)]
+    recs = [{"at": 10.0 + i, "total": 2.0 + i, "t_source_shown": 0.5 + i * 0.1} for i in range(3)]
     recs.append({"at": 20.0, "total": 9.0, "t_source_shown": 0.4, "mt_skipped": True})  # untranslated: no mt lag
     res = livelag.score(recs, clip_s=60.0)
     assert res["src_shown_s"] == 0.55 and res["mt_shown_s"] == 3.0
     txt = livelag.report(res)
     assert "source 0.55 s" in txt and "translation 3.0 s" in txt
     assert livelag.shown_lags([{"at": 1.0, "total": 2.0}]) == (None, 2.0)  # a sink that shows no source
+    assert "source unavailable" in livelag.report(livelag.score([{"at": 1.0, "total": 2.0}], clip_s=60.0))
+
+
+def test_pending_line_overlay_prefixed_echo_is_dropped(monkeypatch):
+    from tinglongwu import overlay
+    from tinglongwu.reverse import echoguard
+
+    class Echo:
+        def check(self, *a):
+            return True
+
+    class Inner:
+        def write_source(self, *a, **k):
+            pass
+
+        def write(self, r):
+            pass
+
+    monkeypatch.setattr(echoguard, "shared", lambda: Echo())
+    q, st = queue.Queue(), core.SubtitleState(5)
+    sink = overlay.OverlaySink(Inner(), q, prefix="◀ ")
+    sink.write_source("en", "my own voice")
+    sink.write(Result("en", "my own voice", None, "我自己的聲音"))
+    _feed(st, sink, q)
+    assert st.lines() == [] and st.pending == []

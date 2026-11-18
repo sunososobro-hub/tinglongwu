@@ -131,7 +131,8 @@ def _record(item, t_shown: float) -> dict:
     return {"vad": r(cut - eos), "asr": r(asr_done - cut), "merge": r(released - asr_done),
             "mt": r(t_shown - released), "total": r(t_shown - eos),
             "t_source_shown": None if item[7] is None else r(item[7] - eos),
-            # #1532: ASR result -> source line handed to a sink that shows it (target <= 100 ms), None otherwise
+            # #1532: ASR result -> source line handed to a sink that shows it (target <= 100 ms), None otherwise.
+            # Handoff time: the GUI draws it on its next poll (POLL_MS = 50), which this field does not include.
             "src_shown_ms": None if item[7] is None else round(max(0.0, item[7] - asr_done) * 1000),
             "lang": lang, "text": text}
 

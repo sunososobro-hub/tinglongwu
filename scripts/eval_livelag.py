@@ -97,7 +97,9 @@ def report(res: dict) -> str:
     keys = [k for k in res if k.startswith("lag_")]
     head = ", ".join(f"{k[4:-2]} s: {res[k]} s" for k in keys)
     verdict = "PASS" if res["pass"] else "FAIL: " + "; ".join(res["fails"])
-    shown = f"; median shown after end of speech: source {res.get('src_shown_s')} s, translation {res.get('mt_shown_s')} s"
+    fmt = lambda v: "unavailable" if v is None else f"{v} s"  # noqa: E731
+    shown = (f"; median shown after end of speech: source {fmt(res.get('src_shown_s'))}, "
+             f"translation {fmt(res.get('mt_shown_s'))}")
     return (f"Live lag on a busy CPU (#1369): {head}{shown}; {res['lines']} lines, {res['skipped']} shown untranslated "
             f"to catch up; music-only lines: {len(res['music_lines'])}. {verdict}")
 
