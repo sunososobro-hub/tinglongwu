@@ -50,7 +50,7 @@ def test_latency_summary_and_reader(tmp_path):
     p.write_text("\n".join(json.dumps(r) for r in LAT) + "\nnot json\n", "utf-8")
     rows = hl.read_latency(p)
     assert rows == LAT
-    assert hl.latency_summary(rows) == "4 lines, speech end -> shown median 2.5 s, max 9.0 s; ASR max 6.5 s"
+    assert hl.latency_summary(rows) == "4 lines, speech end -> shown median 2.2 s, max 9.0 s; ASR max 6.5 s"
     assert hl.latency_summary([]) == "no latency records"
     assert hl.read_latency(tmp_path / "missing.jsonl") == []
 
@@ -62,3 +62,18 @@ def test_live_mic_accepts_latency_jsonl(tmp_path):
     a = parse_args(["--mic", "--capture-device", "CABLE Output", "--latency-jsonl", str(tmp_path / "l.jsonl"),
                     "--lang", "en", "--transcript-only"])
     assert a.latency_jsonl == str(tmp_path / "l.jsonl") and a.mic
+
+
+def test_match_latency_leaves_repeated_text_unmatched():
+    srcs = ["Yes.", "other line.", "Yes."]
+    lat = [{"text": "other line.", "total": 1.0}, {"text": "Yes.", "total": 2.0}]
+    assert hl.match_latency(srcs, lat) == [None, lat[0], None]
+
+
+def test_latency_context_shows_unknown_stage_times():
+    rec = {"text": "a.", "total": 2.0, "vad": None, "asr": "x"}
+    assert hl.latency_context([5.0], ["a."], [rec], 5.0, 9.0, n=1) == ["shown 5.0s speech end 3.0s vad ? asr ? 'a.'"]
+
+
+def test_read_latency_unreadable_path_is_empty(tmp_path):
+    assert hl.read_latency(tmp_path) == []  # a directory: read_text raises OSError

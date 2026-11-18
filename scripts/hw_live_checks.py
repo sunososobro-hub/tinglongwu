@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import statistics
 import subprocess
 import sys
 import threading
@@ -130,15 +131,19 @@ def gap_context(offsets: list[float], srcs: list[str], a: float, b: float, n: in
 def match_latency(srcs: list[str], lat_rows: list[dict]) -> list[dict | None]:
     """#1247: the --latency-jsonl record of each saved line (None when there is none). The live run writes one record
     per final line in the same order as --save; when the counts differ, each line takes the next unused record with
-    the same text."""
+    the same text (only text that occurs once on both sides)."""
     if len(lat_rows) == len(srcs) and all(r.get("text") == s for r, s in zip(lat_rows, srcs)):
         return list(lat_rows)
-    out, i = [], 0
-    for s in srcs:
-        j = next((k for k in range(i, len(lat_rows)) if lat_rows[k].get("text") == s), None)
-        out.append(None if j is None else lat_rows[j])
-        i = i if j is None else j + 1
-    return out
+    # a text said more than once (e.g. "Yes.") cannot tell its records apart: those lines stay unmatched
+    from collections import Counter
+
+    n_src, n_lat = Counter(srcs), Counter(r.get("text") for r in lat_rows)
+    by_text = {r.get("text"): r for r in lat_rows if n_lat[r.get("text")] == 1}
+    return [by_text.get(s) if n_src[s] == 1 else None for s in srcs]
+
+
+def _secs(v) -> str:
+    return f"{v:.1f}s" if isinstance(v, (int, float)) and not isinstance(v, bool) else "?"
 
 
 def latency_context(offsets: list[float], srcs: list[str], lat: list[dict | None], a: float, b: float,
@@ -154,8 +159,8 @@ def latency_context(offsets: list[float], srcs: list[str], lat: list[dict | None
         if rec is None or not isinstance(rec.get("total"), (int, float)):
             out.append(f"shown {off:.1f}s (no latency record) {src[:120]!r}")
             continue
-        out.append(f"shown {off:.1f}s speech end {off - rec['total']:.1f}s vad {rec.get('vad', 0):.1f}s "
-                   f"asr {rec.get('asr', 0):.1f}s {src[:120]!r}")
+        out.append(f"shown {off:.1f}s speech end {off - rec['total']:.1f}s vad {_secs(rec.get('vad'))} "
+                   f"asr {_secs(rec.get('asr'))} {src[:120]!r}")
     return out
 
 
@@ -165,7 +170,7 @@ def latency_summary(lat_rows: list[dict]) -> str:
     asr = [r["asr"] for r in lat_rows if isinstance(r.get("asr"), (int, float))]
     if not tot:
         return "no latency records"
-    return (f"{len(tot)} lines, speech end -> shown median {tot[len(tot) // 2]:.1f} s, max {tot[-1]:.1f} s; "
+    return (f"{len(tot)} lines, speech end -> shown median {statistics.median(tot):.1f} s, max {tot[-1]:.1f} s; "
             f"ASR max {max(asr) if asr else 0:.1f} s")
 
 
@@ -305,11 +310,12 @@ def read_jsonl(path) -> list[dict]:
 
 def read_latency(path) -> list[dict]:
     """#1247: the --latency-jsonl records (one per final line); [] when the file is missing or unreadable."""
-    p = Path(path)
-    if not p.is_file():
+    try:
+        text = Path(path).read_text("utf-8", errors="replace")
+    except OSError:  # missing or unreadable: the diagnostics never cost the check its verdict
         return []
     out = []
-    for x in p.read_text("utf-8", errors="replace").splitlines():
+    for x in text.splitlines():
         try:
             r = json.loads(x)
         except ValueError:
