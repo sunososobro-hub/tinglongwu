@@ -237,10 +237,10 @@ class _MonitorRecorder:
     def close(self) -> str:
         """Terminate and reap parec, finish the reader; idempotent. Returns parec's stderr. If parec had already
         exited on its own (before this first close), `self.died` holds its exit status and stderr."""
-        if not hasattr(self, "died"):
-            code = self.proc.poll()
-            self.died = None if code is None else code
-        if self.proc.poll() is None:
+        if hasattr(self, "err"):
+            return self.err
+        code = self.proc.poll()  # one status read decides both the diagnosis and the shutdown
+        if code is None:
             self.proc.terminate()
             try:
                 self.proc.wait(timeout=5)
@@ -248,10 +248,8 @@ class _MonitorRecorder:
                 self.proc.kill()
                 self.proc.wait(timeout=5)
         self.thread.join(timeout=5)
-        if not hasattr(self, "err"):
-            self.err = self.proc.stderr.read().decode(errors="replace") if self.proc.stderr else ""
-        if self.died is not None and not isinstance(self.died, tuple):
-            self.died = (self.died, self.err)
+        self.err = self.proc.stderr.read().decode(errors="replace") if self.proc.stderr else ""
+        self.died = None if code is None else (code, self.err)
         return self.err
 
     def data(self) -> bytes:
