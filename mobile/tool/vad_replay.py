@@ -2,7 +2,7 @@
 
 Runs the same Silero VAD the phone uses (sherpa-onnx VoiceActivityDetector,
 silero_vad.onnx from the mobile model pack) on synthetic but reproducible
-clips and prints how many VAD segments (= finals = bubbles) each clip makes
+clips and prints how many VAD segments each clip makes (ungated: one bubble per segment)
 for a given threshold / min-speech pair. No network: every input is a local
 path.
 
@@ -275,7 +275,9 @@ def main():
             save_clips(a.clips, clips)
     pairs = [(a.threshold, a.min_speech)] + [tuple(map(float, c.split(":"))) for c in a.compare]
     names = list(clips)
-    print("threshold min_speech | " + " | ".join(f"{n} bubbles(kept/total)" for n in names))
+    unit = "VAD segments (estimate, --gate on)" if a.gate else "bubbles"
+    print(f"counts: {unit}")
+    print("threshold min_speech | " + " | ".join(f"{n} {'segments' if a.gate else 'bubbles'}(kept/total)" for n in names))
     for th, ms in pairs:
         row = report(a.vad, clips, th, ms, a.gate)
         cells = [f"{row[n][0]} ({row[n][1]}/{row[n][2]})" if row[n][2] else f"{row[n][0]}" for n in names]

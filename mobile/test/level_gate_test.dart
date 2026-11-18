@@ -40,7 +40,10 @@ void main() {
   test('reference expires after the window', () {
     final g = LevelGate();
     expect(g.shouldDrop(levelDb: -12, durSec: 2, nowSec: 0), isFalse);
-    // still the reference at the window edge (a dropped segment leaves the history intact)
+    // a dropped segment leaves the history intact: a second probe is dropped too
+    expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: 10), isTrue);
+    expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: 20), isTrue);
+    // still the reference at the window edge
     expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: LevelGate.refWindowSec), isTrue);
     final later = LevelGate.refWindowSec + 1;
     expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: later), isFalse);
