@@ -1,0 +1,113 @@
+"""#1342: the CI hand-over check (scripts/mt_handover_ci.py) - source lines while Hy-MT2 is missing, translated lines
+after it lands, same session. Runs the checker against fake tlwu sessions (real processes, real JSONL), not source."""
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import wave
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location("mt_handover_ci", ROOT / "scripts" / "mt_handover_ci.py")
+h = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(h)
+
+SRC = {"src": "This is a test.", "dst": ""}
+TR = {"src": "This is a test.", "dst": "這是一個測試。"}
+
+# A stand-in for `tlwu --mt-pending --save PATH --models-dir M`: one line every 0.2 s; translated once M/landed exists
+# (the hand-over without a restart). FAKE_MODE=never: never translates (a build that needs a restart).
+# FAKE_MODE=early: translates from the start (the model was not really missing).
+FAKE = r'''
+import json, os, sys, time
+from pathlib import Path
+a = sys.argv[1:]
+save, mdir = Path(a[a.index("--save") + 1]), Path(a[a.index("--models-dir") + 1])
+mode = os.environ.get("FAKE_MODE", "ok")
+with open(save, "a", encoding="utf-8") as f:
+    for i in range(400):
+        landed = (mdir / "landed").exists()
+        tr = mode == "early" or (mode == "ok" and landed)
+        f.write(json.dumps({"t": i, "src": "This is a test.", "dst": "這是一個測試。" if tr else ""},
+                           ensure_ascii=False) + "\n")
+        f.flush()
+        time.sleep(0.2)
+'''
+
+
+def test_judge_handover_passes():
+    assert h.judge([SRC, SRC, SRC, TR, TR], 2) == []
+
+
+def test_judge_no_source_line_first_fails():
+    assert any("no source-text line" in p for p in h.judge([TR, TR], 0))
+    assert any("no source-text line" in p for p in h.judge([], None))
+
+
+def test_judge_needs_restart_fails():
+    assert any("no translated line after" in p for p in h.judge([SRC, SRC, SRC], 1))
+
+
+def test_judge_translated_before_landing_fails():
+    assert any("before Hy-MT2 landed" in p for p in h.judge([TR, SRC, TR], 2))
+
+
+def test_judge_falls_back_to_source_fails():
+    assert any("not one-way" in p for p in h.judge([SRC, TR, SRC], 1))
+
+
+def test_judge_lost_source_fails():
+    assert any("without source text" in p for p in h.judge([SRC, {"src": "", "dst": "這"}], 1))
+
+
+def test_long_clip_repeats_to_length(tmp_path):
+    out = tmp_path / "long.wav"
+    n = h.long_clip(h.CLIP, out, 30)
+    with wave.open(str(out)) as w:
+        dur = w.getnframes() / w.getframerate()
+    assert dur >= 30 and abs(dur - n) < 0.01
+
+
+def _run(tmp_path, monkeypatch, mode, timeout=20):
+    fake = tmp_path / "fake_tlwu.py"
+    fake.write_text(FAKE, "utf-8")
+    mdir = tmp_path / "models"
+    mdir.mkdir()
+    monkeypatch.setenv("FAKE_MODE", mode)
+    land = f'"{sys.executable}" -c "import pathlib; pathlib.Path(r\'{mdir / "landed"}\').touch()"'
+    out = tmp_path / "h.json"
+    rc = h.main(["--models-dir", str(mdir), "--land-cmd", land, "--tlwu", f'"{sys.executable}" "{fake}"',
+                 "--timeout", str(timeout), "--log", str(tmp_path / "h.log"), "--out", str(out)])
+    return rc, json.loads(out.read_text("utf-8"))
+
+
+def test_run_handover_in_one_session_passes(tmp_path, monkeypatch):
+    rc, r = _run(tmp_path, monkeypatch, "ok")
+    assert rc == 0 and r["verdict"] == "PASS", r
+    assert r["source_lines_before_landing"] >= 1 and r["landing"]["rc"] == 0 and r["first_translated"]
+
+
+def test_run_session_that_needs_a_restart_fails(tmp_path, monkeypatch):
+    rc, r = _run(tmp_path, monkeypatch, "never", timeout=6)
+    assert rc == 1 and any("no translated line after" in p for p in r["problems"])
+
+
+def test_run_model_not_really_missing_fails(tmp_path, monkeypatch):
+    rc, r = _run(tmp_path, monkeypatch, "early", timeout=6)
+    assert rc == 1 and any("before Hy-MT2 landed" in p for p in r["problems"])
+
+
+def test_hold_takes_a_cached_model_away_and_lands_it_back(tmp_path):
+    from tinglongwu.hymt import HYMT_SIZES, hymt_path
+    from tinglongwu.mt_pending import hymt_complete
+
+    gguf = hymt_path(tmp_path, "1.8b")
+    gguf.parent.mkdir(parents=True, exist_ok=True)
+    gguf.write_bytes(b"gguf")
+    (tmp_path / "manifest.json").write_text(json.dumps({HYMT_SIZES["1.8b"][0]: "sha", "whisper": "x"}), "utf-8")
+    assert hymt_complete(tmp_path)
+    hold = h.Hold(tmp_path)
+    assert not hymt_complete(tmp_path)
+    assert "whisper" in json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    assert hold.land() == 0 and hymt_complete(tmp_path) and gguf.read_bytes() == b"gguf"
