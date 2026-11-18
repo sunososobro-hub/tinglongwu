@@ -95,8 +95,32 @@ def test_fetch_falls_back_to_next_mirror_and_caps_download():
             raise OSError("mirror down")
         return Reader(data)
     assert list(dc.fetch_speakers(1, per_speaker=2, fetch=fetch, urls=("bad", "good"))) == ["11"]
+    r = Reader(data)
     with pytest.raises(dc.DownloadError):
-        dc.fetch_speakers(1, per_speaker=2, fetch=lambda u: Reader(data), urls=("good",), max_bytes=100)
+        dc.fetch_speakers(1, per_speaker=2, fetch=lambda u: r, urls=("good",), max_bytes=100)
+    assert r.read_bytes == 100  # nothing is read past the cap
+
+
+def test_fetch_tries_next_mirror_on_short_or_broken_body():
+    import http.client
+
+    full = tar_gz(libri("11", 2) + libri("22", 2))
+    short = tar_gz(libri("11", 2))
+
+    class Broken(Reader):
+        def read(self, n=-1):
+            if self.read_bytes:
+                raise http.client.IncompleteRead(b"")
+            return super().read(min(n, 50))
+    seen = []
+
+    def fetch(url):
+        seen.append(url)
+        return {"short": Reader(short), "broken": Broken(full), "good": Reader(full)}[url]
+    got = dc.fetch_speakers(2, per_speaker=2, fetch=fetch, urls=("short", "broken", "good"))
+    assert sorted(got) == ["11", "22"] and seen == ["short", "broken", "good"]
+    with pytest.raises(dc.DownloadError):
+        dc.fetch_speakers(2, per_speaker=2, fetch=lambda u: Reader(short), urls=("short",))
 
 
 def test_cut_covers_audio_with_piece_bands():
@@ -175,6 +199,27 @@ def test_cli_fails_when_labels_exceed_ratio(tmp_path, monkeypatch, capsys):
     assert run_cli(tmp_path, monkeypatch, tags, 1.5) == 0
     out = capsys.readouterr().out
     assert "PASS: 3 labels for 2 speakers" in out and "speakers: 2  labels: 3" in out
+
+
+def test_cli_fails_when_no_label_is_produced(tmp_path, monkeypatch, capsys):
+    import tinglongwu.speaker_embed as se
+
+    class Unknown:
+        def label(self, seg):
+            return "?", 0.0
+    run_cli(tmp_path, monkeypatch, [("a", 0)], 0)
+    monkeypatch.setattr(se, "make_labeler", lambda mdir: Unknown())
+    assert ed.main([str(tmp_path), str(tmp_path / "l.csv"), "--png", str(tmp_path / "c.png"),
+                    "--max-label-ratio", "1.5"]) == 1
+    assert "FAIL: 0 labels for 1 speakers" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("args", [["--max-label-ratio", "nan"], ["--max-label-ratio", "-1"],
+                                  ["--transcript", "x.jsonl", "--max-label-ratio", "1.5"]])
+def test_cli_rejects_bad_ratio_use(args):
+    with pytest.raises(SystemExit) as e:
+        ed.main(["d", "l.csv", *args] if args[0] != "--transcript" else args)
+    assert e.value.code == 2
 
 
 def test_cli_without_ratio_only_reports(tmp_path, monkeypatch, capsys):

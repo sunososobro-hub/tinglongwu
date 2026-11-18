@@ -15,6 +15,9 @@ on:
       - scripts/bench/diarization_clip.py
       - tinglongwu/speakers.py
       - tinglongwu/speaker_embed.py
+      - requirements-speaker.txt
+      - tinglongwu_setup/manifest.json
+      - tinglongwu_setup/downloader.py
   workflow_dispatch:
 
 permissions:
@@ -71,7 +74,7 @@ jobs:
         run: |
           set -o pipefail
           python scripts/eval_diarization.py clip clip/labels.csv --model-dir "$TLWU_MODELS" \
-            --png clip/diarization_eval.png --max-label-ratio 1.5 | tee report.txt
+            --png diarization_eval.png --max-label-ratio 1.5 | tee report.txt
       - name: Summary
         if: always()
         run: |
@@ -86,5 +89,5 @@ jobs:
           path: |
             report.txt
             clip/labels.csv
-            clip/diarization_eval.png
+            diarization_eval.png
           if-no-files-found: warn

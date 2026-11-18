@@ -4,7 +4,7 @@
 The owner's field test (#1256) gave one person a new label after a short pause. This builds a public stand-in: the
 first --speakers readers of LibriSpeech test-clean (CC-BY 4.0, openslr.org/12; the speaker id is in every file
 path) are streamed (only the start of the archive is read), and their utterances are cut into ASR-sized pieces of
-1-8 s (a third of them 1-2 s, like the short replies after a pause) and laid out as turns of a meeting: one speaker
+1-8 s (up to 8.6 s when a short tail joins; a third of them 1-2 s, like the short replies after a pause) and laid out as turns of a meeting: one speaker
 talks for 1-3 pieces, then another one. Output: OUT/cNNNN.wav (16 kHz mono) and OUT/labels.csv ("file,speaker" in
 conversation order), the input of scripts/eval_diarization.py. Fixed --seed: the same archive gives the same clip.
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import http.client
 import io
 import random
 import sys
@@ -50,12 +51,13 @@ class _Counted(io.RawIOBase):
         return True
 
     def readinto(self, b):
-        data = self.raw.read(len(b))
+        left = self.budget["max"] - self.budget["used"]
+        if left <= 0:
+            raise DownloadError(f"download passed {self.budget['max'] >> 20} MB")
+        data = self.raw.read(min(len(b), left))  # never read past the cap
         n = len(data)
         b[:n] = data
         self.budget["used"] += n
-        if self.budget["used"] > self.budget["max"]:
-            raise DownloadError(f"download passed {self.budget['max'] >> 20} MB")
         return n
 
 
@@ -102,8 +104,10 @@ def fetch_speakers(n_speakers: int, per_speaker: int = UTTS_PER_SPEAKER, fetch=h
             with fetch(url) as r:
                 got = stream_speakers(io.BufferedReader(_Counted(r, budget)), n_speakers, per_speaker)
             print(f"{url}: {len(got)} speakers, {budget['used'] >> 20} MB read", file=sys.stderr)
-            return got
-        except (OSError, tarfile.TarError, DownloadError) as e:
+            if len(got) >= n_speakers:
+                return got
+            err = DownloadError(f"only {len(got)} speakers, asked for {n_speakers}")
+        except (OSError, http.client.HTTPException, tarfile.TarError, DownloadError) as e:
             err = e
             print(f"{url}: {e}", file=sys.stderr)
     raise DownloadError(f"no LibriSpeech mirror worked: {err}")
@@ -179,8 +183,6 @@ def write_clip(out: Path, items) -> Path:
 
 def build(out: Path, n_speakers: int, seed: int = 1256, fetch=http_open, urls=URLS) -> dict:
     raw = fetch_speakers(n_speakers, fetch=fetch, urls=urls)
-    if len(raw) < n_speakers:
-        raise DownloadError(f"only {len(raw)} speakers in the archive, asked for {n_speakers}")
     utts = {s: [decode(b) for b in v] for s, v in raw.items()}
     items = conversation(utts, random.Random(seed))
     write_clip(Path(out), items)

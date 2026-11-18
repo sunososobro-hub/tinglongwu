@@ -159,8 +159,15 @@ def main(argv=None) -> int:
     ap.add_argument("--model-dir", default="models", help="models dir holding speaker/ (tlwu-setup --speaker-model)")
     ap.add_argument("--png", default="diarization_eval.png")
     ap.add_argument("--max-label-ratio", type=float, default=0.0,
-                    help="#1256: exit 1 when labels / real speakers is above this (0 = report only)")
+                    help="#1256, audio mode only: exit 1 when labels / real speakers is above this, or when no "
+                         "label was produced (0 = report only)")
     a = ap.parse_args(argv)
+    import math
+
+    if not math.isfinite(a.max_label_ratio) or a.max_label_ratio < 0:
+        ap.error("--max-label-ratio must be a finite number >= 0")
+    if a.transcript and a.max_label_ratio:
+        ap.error("--max-label-ratio applies to AUDIO_DIR mode, not --transcript")
     if a.transcript:
         r = score_transcript(a.transcript)
         print(f"lines with a speaker: {r['n']} (corrected by the user: {r['corrected']})\n"
@@ -174,7 +181,7 @@ def main(argv=None) -> int:
     print(format_report(r))
     write_png(a.png, r)
     print(f"chart: {a.png}")
-    if a.max_label_ratio and (not r["speakers"] or label_ratio(r) > a.max_label_ratio):
+    if a.max_label_ratio and (not r["speakers"] or not r["labels"] or label_ratio(r) > a.max_label_ratio):
         print(f"FAIL: {r['labels']} labels for {r['speakers']} speakers ({label_ratio(r):.2f}x > "
               f"{a.max_label_ratio:g}x, #1256)")
         return 1
