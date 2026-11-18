@@ -1,5 +1,4 @@
 """#1469: ledger share/deficit math, mix parsing, zero-total case, and the CLI dry-run (stubbed gh)."""
-import json
 import os
 import stat
 import subprocess
