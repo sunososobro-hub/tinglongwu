@@ -125,6 +125,8 @@ def test_protected_needs_opus_until_newer_pass():
     assert run(files=files, notes=review)[0] == "merge"
     other_line = [{"author": "sunososobro-hub", "body": f"Opus review: PASS 0123abc\nhead is {SHA[:7]}", "at": at(5)}]
     assert run(files=files, notes=other_line)[0] == "needs-opus"  # the SHA must sit on the PASS line
+    later_ref = [{"author": "sunososobro-hub", "body": f"Opus review: PASS at 0123abc (head: {SHA[:7]})", "at": at(5)}]
+    assert run(files=files, notes=later_ref)[0] == "needs-opus"  # only the first SHA on the line is the approval
     lookalike = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA[:7]}ffff", "at": at(5)}]
     assert run(files=files, notes=lookalike)[0] == "needs-opus"  # names another SHA with the same prefix
     stale = [{"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(5), "commit_id": "0" * 40}]
