@@ -57,6 +57,23 @@ def test_purge_removes_models(tmp_path):
     assert not (h / "models").exists()
 
 
+def test_purge_keeps_foreign_files_in_models(tmp_path):
+    h = _home(tmp_path)
+    (h / "models" / "whisper-small").mkdir()
+    (h / "models" / "whisper-small" / "m.bin").write_text("m")
+    (h / "models" / "manifest.json").write_text('{"whisper-small": {}}')
+    (h / "models" / "other-tool").mkdir()
+    (h / "models" / "other-tool" / "w.bin").write_text("keep")
+    (h / "models" / "notes.txt").write_text("keep")
+    r = _run(["bash", str(ROOT / "scripts" / "uninstall.sh"), "--purge"], h)
+    assert r.returncode == 0, r.stderr
+    assert not (h / "models" / "whisper-small").exists()
+    assert not (h / "models" / "kokoro").exists()
+    assert not (h / "models" / "manifest.json").exists()
+    assert (h / "models" / "other-tool" / "w.bin").read_text() == "keep"
+    assert (h / "models" / "notes.txt").read_text() == "keep"
+
+
 def test_refuses_foreign_folder(tmp_path):
     h = _home(tmp_path)
     (h / "tinglongwu" / ".git").rmdir()

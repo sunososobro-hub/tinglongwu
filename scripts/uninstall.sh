@@ -64,11 +64,33 @@ for rc in "$HOME/.zprofile" "$HOME/.zshrc"; do
   fi
 done
 
+# #1456: remove only what tinglongWu created in the models folder: the entries named in models/manifest.json
+# (key -> dir; opus-X -> opus/X; whisper-cpp-* -> whisper-cpp/), the manifest itself and the Kokoro folder.
+# Foreign files stay; the folder itself is removed only if it is empty afterwards.
+purge_models() {
+  local keys k
+  if [ -f "$MODELS/manifest.json" ] && command -v python3 >/dev/null 2>&1; then
+    keys="$(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))))' "$MODELS/manifest.json" 2>/dev/null)"
+    while IFS= read -r k; do
+      case "$k" in ""|*/*|*..*) continue ;; esac
+      case "$k" in
+        opus-*) rm_path "$MODELS/opus/${k#opus-}" ;;
+        whisper-cpp-*) rm_path "$MODELS/whisper-cpp" ;;
+        *) rm_path "$MODELS/$k" ;;
+      esac
+    done <<< "$keys"
+  fi
+  rm_path "$MODELS/manifest.json"
+  rm_path "$KOKORO_DIR"
+  rmdir "$MODELS/opus" 2>/dev/null
+  if rmdir "$MODELS" 2>/dev/null; then say "removed $MODELS"; else say "kept other files in $MODELS (not tinglongWu's)"; fi
+}
+
 if [ -d "$MODELS" ]; then
-  if [ -n "$PURGE" ]; then rm_path "$MODELS"
+  if [ -n "$PURGE" ]; then purge_models
   elif [ -z "$YES" ] && ( : </dev/tty ) 2>/dev/null; then
     read -rp "Also delete downloaded models in $MODELS? [y/N] " ans </dev/tty || ans=""
-    case "$ans" in y|Y|yes|YES) rm_path "$MODELS" ;; *) say "kept $MODELS (use --purge to remove)" ;; esac
+    case "$ans" in y|Y|yes|YES) purge_models ;; *) say "kept $MODELS (use --purge to remove)" ;; esac
   else say "kept $MODELS (use --purge to remove)"; fi
 fi
 if [ "$(uname -s)" = "Darwin" ]; then
