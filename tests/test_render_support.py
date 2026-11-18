@@ -124,3 +124,17 @@ def test_language_priority_tiers_match_the_support_table():
         assert f"({code})" in labels
     tier2_rows = [r for r in src["language"]["rows"] if any(f"({c})" in r["label"] for c in pr["tier2"])]
     assert all(set(r["cells"]) == {"⚪"} for r in tier2_rows)  # no light without a real run
+
+
+def test_readme_row_is_compact_and_keeps_every_person():
+    # #1458: a 5th contributor pushed README.md past its 6 KB budget with the full table; the README now gets a
+    # compact avatar row (name + emoji in the tooltip) while the release notes keep the full table.
+    m = _mod()
+    src, people = m.load()
+    row = m.readme_contributors(src, people, "en")
+    for p in people:
+        emoji = " ".join(src["contributors"]["emoji"][t] for t in p["contributions"])
+        assert f'<a href="https://github.com/{p["login"]}" title="{p["login"]} {emoji}">' in row
+        assert f"https://github.com/{p['login']}.png?size=60" in row
+    assert "<table>" not in row and "<table>" in m.contributors(src, people, "en")
+    assert len(row) < len(m.contributors(src, people, "en"))

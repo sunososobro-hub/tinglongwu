@@ -75,9 +75,23 @@ def block(src: dict, people: list[dict], loc: str) -> str:
     return "\n".join(lines)
 
 
+def readme_contributors(src: dict, people: list[dict], loc: str) -> str:
+    """Compact avatar row for the README (#1458): one linked avatar per person, name and emoji in the tooltip.
+    The full table (name + emoji under each avatar) stays in the release notes; the README has a 6 KB budget."""
+    c = src["contributors"]
+    links = []
+    for p in people:
+        login = p["login"]
+        emoji = " ".join(c["emoji"][t] for t in p["contributions"])  # KeyError = a type with no emoji in support.json
+        links.append(f'<a href="https://github.com/{login}" title="{login} {emoji}">'
+                     f'<img src="https://github.com/{login}.png?size=60" width="48" alt="{login}"></a>')
+    return (f'<p><b>{c["heading"][loc].format(n=len(people))}</b></p><p>{" ".join(links)}</p>'
+            f'<p><sub>{c["ai"][loc]}</sub><br><sub>{c["legend"][loc]}</sub></p>')
+
+
 def readme_block(src: dict, people: list[dict], loc: str) -> str:
     """The README's contributors row, markers included (one line, so the README stays short)."""
-    return C_START + contributors(src, people, loc) + C_END
+    return C_START + readme_contributors(src, people, loc) + C_END
 
 
 def replace_block(text: str, new: str, name: str = "", pat: re.Pattern = BLOCK) -> str:
