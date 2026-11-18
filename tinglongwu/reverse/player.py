@@ -43,6 +43,12 @@ PLAY_BLOCK_S = 0.1  # #427: a piece is written in blocks this long, so abort() i
 ABORT_JOIN_S = 2.0  # after abort(): wait for the playback thread (one PLAY_BLOCK_S block + closing the stream)
 
 
+def output_blocksize(platform: str | None = None) -> int | None:
+    """#1555: CoreAudio caps the block at the device's frames-per-slice limit (512 on every tested Mac output), so
+    on macOS let soundcard use the device's own buffer size; Windows and Linux keep 1024."""
+    return None if (platform or sys.platform) == "darwin" else 1024
+
+
 class Player:
     """Plays 24 kHz mono float chunks on the chosen output device (resampled to `out_sr`) from a worker thread."""
 
@@ -85,7 +91,7 @@ class Player:
             self.t.start()
 
     def _run(self, spk):
-        with spk.player(samplerate=self.out_sr, channels=self.ch, blocksize=1024) as p:
+        with spk.player(samplerate=self.out_sr, channels=self.ch, blocksize=output_blocksize()) as p:
             while True:
                 item = self.q.get()
                 if item is None or self._abort.is_set():
