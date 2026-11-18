@@ -90,8 +90,9 @@ jobs:
           TLWU_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # versionName = X.Y.Z-dev.<run> (#1534): shown in Settings > About, so a tester can tell builds apart
         # build number = run number, so every preview has a higher versionCode and installs as an update
-        run: flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }}
+        run: flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }} --build-name "$(python3 -I tool/mobile_version.py dev ${{ github.run_number }})"
       - name: Cache the models for the Play asset packs (keyed by the manifest)
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
@@ -107,7 +108,7 @@ jobs:
           TLWU_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build appbundle --release --target-platform android-arm64 --build-number ${{ github.run_number }}
+        run: flutter build appbundle --release --target-platform android-arm64 --build-number ${{ github.run_number }} --build-name "$(python3 -I tool/mobile_version.py dev ${{ github.run_number }})"
       - name: Check the AAB (packs present + fast-follow + sizes, no INTERNET, base under 200 MB, target API >= 36)
         run: |
           AAB=build/app/outputs/bundle/release/app-release.aab
