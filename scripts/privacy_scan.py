@@ -418,7 +418,7 @@ def main(argv=None) -> int:
         handle_event(gh, a.name, json.loads(Path(a.path).read_text("utf-8")))
         return 0
     if a.cmd == "recent":
-        since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=a.minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        since = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=a.minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
         scan_recent(gh, matcher(), since)
         return 0
     sweep(gh, matcher(), sd.ROOT)
