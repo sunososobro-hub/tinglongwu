@@ -138,7 +138,7 @@ jobs:
           # the release PR (dev -> main) always runs; a docs fast-lane PR to main (rules section 11) uses the filter
           if [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" = "dev" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only HEAD^1 HEAD > changed.txt
-          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$|requirements[^/]*\.txt$|pyproject\.toml$)' changed.txt; then
+          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|scripts/eval_livelag\.py$|\.github/workflows/eval[^/]*\.yml$|requirements[^/]*\.txt$|pyproject\.toml$)' changed.txt; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -221,6 +221,18 @@ jobs:
           cat lowend.md
           { echo "## low-end CPU gate (#750)"; echo; cat lowend.md; } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+      - name: Live lag with one busy core (#1369; 3 min English clip in real time, lag <= 8 s at 60 s, growth <= 2 s)
+        if: ${{ !cancelled() && steps.paths.outputs.run == 'true' }}
+        # Listen mode while another app keeps a core busy. The clip is the smoke-set English clips looped to 3 min
+        # with 8 s of synthetic music at 90 s (no music-only line may be shown).
+        run: |
+          python scripts/eval_livelag.py build --data eval_data/smoke --out livelag.wav
+          set +e
+          python scripts/eval_livelag.py run --audio livelag.wav --engine hymt2-cpu --model "$WHISPER" \
+            --models-dir "$TLWU_MODELS" --busy 1 --out livelag.json | tee livelag.md
+          rc=${PIPESTATUS[0]}
+          { echo "## live lag on a busy CPU (#1369)"; echo; cat livelag.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && steps.paths.outputs.run == 'true'
         with:
@@ -230,4 +242,5 @@ jobs:
             base.json
             lowend.md
             lowend_latency.jsonl
+            livelag.json
           if-no-files-found: warn

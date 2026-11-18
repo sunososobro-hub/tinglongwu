@@ -179,6 +179,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     called each time it grows.
     """
     tgt0 = tgt
+    t_run0 = time.monotonic()  # #1369: on_record "at" is seconds since run() started (the live audio position)
     # #1263: live capture is never held back by ASR. A bounded queue blocked the capture reader while ASR lagged and
     # the device then dropped audio with no trace; segments wait here instead (raw 16 kHz float32: 64 KB per second).
     # Offline files (audio_clock) keep the bound: they are read faster than real time and lose nothing by waiting.
@@ -391,11 +392,13 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 else:
                     emit(*item[:4], who=item[8], replaces=item[10])
                 if on_record is not None and item[6] is not None:
-                    rec = _record(item, time.monotonic())
+                    t_shown = time.monotonic()
+                    rec = _record(item, t_shown)
                     d = getattr(draft, "last_first_draft", None) if draft is not None else None
                     rec["draft"] = None if d is None else round(d, 3)  # #511: seconds to the first draft, null = none
                     rec["mt_hold"] = round(held, 3)  # #1253: part of "mt" spent waiting for ASR to catch up
                     rec["mt_skipped"] = skip  # #1369: written untranslated to catch up
+                    rec["at"] = round(t_shown - t_run0, 3)  # #1369: when it was shown, s since start
                     on_record(rec)
                 if on_work is not None and not skip:  # no MT ran: a 0 ms line would skew the per-line MT time
                     on_work(item[4], time.monotonic() - t_emit, item[5])
