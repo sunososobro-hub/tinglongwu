@@ -272,7 +272,11 @@ def test_sweep_finds_settings_that_undo_the_split_and_dump_round_trips(tmp_path,
     npz = tmp_path / "emb.npz"
     ed.save_rows(npz, rows)
     back = ed.load_rows(npz)
-    assert [(r[0], r[1]) for r in back] == [(r[0], r[1]) for r in rows]
+    assert back == rows  # labels, seconds and the exact float64 vectors
+    assert ed.replay(back, SpeakerClusterer()) == ed.replay(rows, SpeakerClusterer())
+    bare = tmp_path / "emb"
+    ed.save_rows(bare, rows)
+    assert ed.load_rows(bare) == rows  # the path given is the path written (no .npz appended)
     assert ed.main(["--sweep-from", str(npz)]) == 0
     out = capsys.readouterr().out
     assert "(shipped defaults)" in out and f"sweep over {len(rows)} sentences" in out
@@ -285,3 +289,18 @@ def test_embed_rows_skips_short_sentences():
     items = [("A", np.zeros(int(SR * 0.5), dtype=np.float32)), ("B", np.zeros(int(SR * 1.5), dtype=np.float32))]
     rows = ed.embed_rows(items, lambda seg: [1.0, 0.0])
     assert rows == [("B", 1.5, [1.0, 0.0])]
+
+
+def test_sweep_ranks_rounded_and_empty_ratios_as_failing():
+    rows = [(f"S{i % 101}", 3.0, [float(x) for x in np.eye(160)[i]]) for i in range(152)]  # 101 speakers, 152 voices
+    r = ed.replay(rows, SpeakerClusterer())
+    assert r["labels"] == 152 and r["speakers"] == 101 and r["ratio"] > 1.5  # 1.505 is not rounded down to pass
+    zero = [("A", 3.0, [0.0, 0.0]), ("B", 3.0, [0.0, 0.0])]
+    res = ed.sweep(zero, steps=(0.5,))
+    assert res[0]["labels"] == 0
+    assert "no setting on the grid" in ed.format_sweep(zero, res)
+
+
+def test_sweep_from_and_transcript_are_rejected_together(tmp_path):
+    with pytest.raises(SystemExit):
+        ed.main(["--sweep-from", str(tmp_path / "x.npz"), "--transcript", str(tmp_path / "t.jsonl")])

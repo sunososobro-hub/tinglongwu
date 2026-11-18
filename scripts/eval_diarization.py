@@ -87,7 +87,7 @@ def replay(rows, clusterer) -> dict:
     seen = [clusterer.kept(p) for p in pred]
     r = {"accuracy": round(best_mapping_accuracy(true, seen), 2), "speakers": len(set(true)),
          "labels": len({p for p in seen if p and p != UNKNOWN})}
-    r["ratio"] = round(label_ratio(r), 2)
+    r["ratio"] = label_ratio(r)  # unrounded: the sweep cap must agree with the audio gate; rounded only when printed
     return r
 
 
@@ -105,11 +105,11 @@ def sweep(rows, steps=SWEEP_STEPS, max_ratio: float = 1.5) -> list[dict]:
             for m in steps:
                 r = replay(rows, SpeakerClusterer(threshold=t, short_threshold=s, merge_threshold=m))
                 out.append({"threshold": t, "short_threshold": s, "merge_threshold": m, **r})
-    out.sort(key=lambda r: (r["ratio"] > max_ratio, -r["accuracy"], r["labels"], -r["threshold"]))
+    out.sort(key=lambda r: (not r["labels"] or r["ratio"] > max_ratio, -r["accuracy"], r["labels"], -r["threshold"]))
     return out
 
 
-def format_sweep(rows, results, top: int = 15) -> str:
+def format_sweep(rows, results, top: int = 15, max_ratio: float = 1.5) -> str:
     """The shipped defaults' row, then the best `top` grid rows."""
     from tinglongwu.speakers import SpeakerClusterer
 
@@ -121,6 +121,8 @@ def format_sweep(rows, results, top: int = 15) -> str:
              f"{d['accuracy']:.2f}  (shipped defaults)"]
     row = lambda r: (f"{r['threshold']:.2f} {r['short_threshold']:.2f} {r['merge_threshold']:.2f} | {r['labels']} "  # noqa: E731
                      f"{r['ratio']:.2f} {r['accuracy']:.2f}")
+    if not any(r["labels"] and r["ratio"] <= max_ratio for r in results):
+        lines.append(f"no setting on the grid gives 1..{max_ratio:g}x labels per speaker")
     lines += [row(r) for r in results[:top]]
     lines.append("best per merge_threshold (where merging stops helping):")
     for m in sorted({r["merge_threshold"] for r in results}):
@@ -131,8 +133,9 @@ def format_sweep(rows, results, top: int = 15) -> str:
 def save_rows(path, rows) -> None:
     import numpy as np
 
-    np.savez_compressed(path, labels=np.array([r[0] for r in rows]), seconds=np.array([r[1] for r in rows]),
-                        embeddings=np.array([r[2] for r in rows], dtype=np.float32))
+    with open(path, "wb") as f:  # a file object: numpy would append .npz to a bare path the CLI then reports wrongly
+        np.savez_compressed(f, labels=np.array([r[0] for r in rows]), seconds=np.array([r[1] for r in rows]),
+                            embeddings=np.array([r[2] for r in rows], dtype=np.float64))  # float64: replays decide alike
 
 
 def load_rows(path):
@@ -252,11 +255,13 @@ def main(argv=None) -> int:
 
     if not math.isfinite(a.max_label_ratio) or a.max_label_ratio < 0:
         ap.error("--max-label-ratio must be a finite number >= 0")
+    if a.transcript and a.sweep_from:
+        ap.error("--sweep-from and --transcript are separate modes")
     if a.transcript and a.max_label_ratio:
         ap.error("--max-label-ratio applies to AUDIO_DIR mode, not --transcript")
     if a.sweep_from:
         rows = load_rows(a.sweep_from)
-        print(format_sweep(rows, sweep(rows, max_ratio=a.max_label_ratio or 1.5)))
+        print(format_sweep(rows, sweep(rows, max_ratio=a.max_label_ratio or 1.5), max_ratio=a.max_label_ratio or 1.5))
         return 0
     if a.transcript:
         r = score_transcript(a.transcript)
@@ -279,7 +284,7 @@ def main(argv=None) -> int:
             save_rows(a.dump_embeddings, rows)
             print(f"embeddings: {a.dump_embeddings}")
         if a.sweep:
-            print(format_sweep(rows, sweep(rows, max_ratio=a.max_label_ratio or 1.5)))
+            print(format_sweep(rows, sweep(rows, max_ratio=a.max_label_ratio or 1.5), max_ratio=a.max_label_ratio or 1.5))
     if a.max_label_ratio:
         why = None
         if r["speakers"] < max(1, a.min_speakers):
