@@ -31,7 +31,23 @@ async function start(streamId) {
   session = { stream, ctx, playbackPeak: 0, inputRate: ctx.sampleRate };
   speaker.port.onmessage = (e) => { if (session) session.playbackPeak = e.data.peak; };
   if (ctx.state !== "running") await ctx.resume();
-  return { ok: true, inputRate: ctx.sampleRate, contextState: ctx.state };
+  const warmupMs = await waitForRendering(ctx);
+  return { ok: true, inputRate: ctx.sampleRate, contextState: ctx.state, warmupMs };
+}
+
+// #1523: `state === "running"` is not enough. When the output device is asleep (a PulseAudio sink suspended after
+// 5 s idle) the context clock stays frozen for ~1.5-1.8 s while the device resumes, and tab audio that arrives in
+// that window is dropped by the MediaStreamSource. Reply (and let the service worker show ON) only once the clock
+// moves, so audio the tab plays after ON reaches the recognizer and the speakers from its first quantum.
+export const RENDER_WAIT_MS = 3000;
+
+export async function waitForRendering(ctx, limitMs = RENDER_WAIT_MS) {
+  const t0 = performance.now();
+  const start = ctx.currentTime;
+  while (ctx.currentTime <= start + 0.02 && performance.now() - t0 < limitMs) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return Math.round(performance.now() - t0);
 }
 
 async function stop() {

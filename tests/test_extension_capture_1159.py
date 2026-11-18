@@ -299,7 +299,18 @@ def _launch(p, user_dir: Path, ext: Path):
     return ctx, sw
 
 
-def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone_page):
+# #1523: with a PulseAudio server the tab's FIRST output stream starts under capture (no warm-up play) and every case
+# runs PULSE_RUNS times, so the extension-capture job itself is the "5 of 5 runs" check. "monitor" runs record the
+# speakers with parec; "cold" runs record nothing: a parec started before the play resumes the audio output first and
+# hid the loss (old code: 8 of 8 cold runs got ~21.6k of 48k voiced samples, 13 of 13 monitor runs >= 99 %).
+PULSE_RUNS = 5 if PULSE_MONITOR else 1
+CASES = [("monitor" if PULSE_MONITOR else "plain", i) for i in range(PULSE_RUNS)]
+if PULSE_MONITOR:
+    CASES += [("cold", i) for i in range(PULSE_RUNS)]
+
+
+@pytest.mark.parametrize("mode,run", CASES)
+def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone_page, mode, run):
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -313,13 +324,6 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
             page = ctx.new_page()
             page.goto(tone_page)
             page.wait_for_function("document.getElementById('a').readyState >= 4")
-            if PULSE_MONITOR:
-                # a meeting tab is already audible when the user clicks the action. On a real PulseAudio sink the
-                # tab's very first output stream opened under capture loses 0.4-1.6 s (82 %, 46 % voiced in 2 of 5
-                # local runs); one plain play first makes it 5 of 5 >= 99 %. That first-stream loss has its own issue.
-                page.click("#play")
-                page.wait_for_function("document.getElementById('a').ended", timeout=20000)
-                page.evaluate("document.getElementById('a').currentTime = 0")
             started = sw.evaluate("""async () => {
                 const [t] = await chrome.tabs.query({active: true, lastFocusedWindow: true});
                 return await tlwu.startCapture(t.id);
@@ -329,7 +333,7 @@ def test_tab_capture_streams_16k_frames_and_keeps_the_tab_audible(tmp_path, tone
                 const [t] = await chrome.tabs.query({active: true, lastFocusedWindow: true});
                 return await chrome.action.getBadgeText({tabId: t.id});
             }""")
-            mon = _MonitorRecorder(PULSE_MONITOR) if PULSE_MONITOR else None
+            mon = _MonitorRecorder(PULSE_MONITOR) if mode == "monitor" else None
             heard = None
             page.click("#play")  # a real click: the default autoplay policy, as for a user
             t0 = time.monotonic()
