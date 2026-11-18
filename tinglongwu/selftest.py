@@ -285,7 +285,7 @@ def write_log(res: Result, path=None) -> Path | None:
 def _force_utf8(stream) -> None:
     if hasattr(stream, "reconfigure"):
         try:
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding="utf-8", errors=getattr(stream, "errors", None) or "strict")
         except Exception:  # noqa: BLE001 - a closed / odd stream must not stop the self-test
             pass
 
