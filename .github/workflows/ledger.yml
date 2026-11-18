@@ -1,0 +1,17 @@
+name: ledger
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/ledger.py
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
