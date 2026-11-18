@@ -44,6 +44,9 @@ def test_apt_cache_restored_before_and_saved_after_the_install():
     r, s = steps[restore[-1]]["with"], steps[save[0]]["with"]
     assert r["path"] == s["path"] and r["key"] == s["key"]
     assert steps[inst].get("timeout-minutes", 0) >= 15
+    # the key rotates weekly (a newer package version gets a new entry); the prefix restore-key still finds the last one
+    assert "steps.changes.outputs.aptweek" in r["key"] and r["key"].startswith(r["restore-keys"])
+    assert "aptweek=" in steps[_index(steps, lambda x: x.get("id") == "changes")]["run"]
 
 
 def _run_step(tmp_path, apt_body: str):
@@ -74,7 +77,8 @@ def test_install_step_points_apt_at_the_cached_folder(tmp_path):
     assert out.returncode == 0, out.stderr
     assert installs
     assert f"Dir::Cache::Archives={cached}" in installs[0]
-    assert (cached / "partial").is_dir()
+    # apt turns partial/ into _apt:root 0700; the cache save runs without sudo, so the step removes it on success
+    assert cached.is_dir() and not (cached / "partial").exists()
     assert "slow.example" in mirrors.read_text()  # a working mirror is left alone
 
 
