@@ -80,9 +80,15 @@ def new_items(selected: list[dict], already: set[int]) -> list[dict]:
     return out
 
 
+def plain_title(title: str) -> str:
+    """Render an outside title as literal text: no mentions, no Markdown links or HTML."""
+    t = re.sub(r"([\\`*_{}\[\]()<>#+!|~])", r"\\\1", title)
+    return t.replace("@", "@\u200b")
+
+
 def format_comment(items: list[dict]) -> str:
     lines = [f"{MARK} @{OWNER} outside items with no human reply:", ""]
-    lines += [f"#{i['number']} {i['title'].replace('@', '@\u200b')} | {i['author']} | {i['hours']} h | {i['url']}" for i in items]
+    lines += [f"#{i['number']} {plain_title(i['title'])} | {i['author']} | {i['hours']} h | {i['url']}" for i in items]
     return "\n".join(lines)
 
 

@@ -57,3 +57,8 @@ def test_null_user_and_title_mentions():
     assert n.new_items([{"number": 1}, {"number": 1}], set()) == [{"number": 1}]
     c = n.format_comment([{"number": 7, "title": "hi @bob", "author": "a", "hours": 50, "url": "u"}])
     assert "@bob" not in c
+
+
+def test_title_markdown_is_literal():
+    t = n.plain_title("[click](http://evil) <b>x</b>")
+    assert "](" not in t and "<b>" not in t
