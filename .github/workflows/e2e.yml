@@ -53,17 +53,35 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      # #1481: the runner's Ubuntu mirror sometimes serves ~50 kB/s and the step hit its timeout (release v0.4.8 blocked).
+      # Keep the downloaded .deb files in an actions/cache entry so only a cold cache needs the mirror's speed.
+      - name: Restore apt .deb cache
+        if: steps.changes.outputs.build == 'true'
+        id: aptcache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/tlwu-apt-debs
+          key: apt-e2e-ubuntu-24.04-v1-${{ hashFiles('.github/workflows/e2e.yml') }}
+          restore-keys: apt-e2e-ubuntu-24.04-v1-
       - name: System packages (audio server, virtual display, window manager)
         if: steps.changes.outputs.build == 'true'
-        timeout-minutes: 8
+        timeout-minutes: 15
         run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          DEBS="$HOME/.cache/tlwu-apt-debs"
+          mkdir -p "$DEBS/partial"
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Dir::Cache::Archives=$DEBS -o APT::Keep-Downloaded-Packages=true"
           for i in 1 2 3; do
             sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends \
               libsndfile1 libpulse0 pulseaudio pulseaudio-utils xvfb openbox xdotool x11-utils && exit 0
             sleep 15
           done
           exit 1
+      - name: Save apt .deb cache
+        if: steps.changes.outputs.build == 'true' && steps.aptcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/tlwu-apt-debs
+          key: apt-e2e-ubuntu-24.04-v1-${{ hashFiles('.github/workflows/e2e.yml') }}
       - name: Install tlwu + Hy-MT2 CPU engine
         if: steps.changes.outputs.build == 'true'
         run: |
