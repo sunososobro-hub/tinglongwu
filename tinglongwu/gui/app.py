@@ -1411,7 +1411,12 @@ class App:
             self._upd_show("gui_upd_available", ("gui_upd_now", "gui_upd_later"), ver=ver)
 
     def _update_yes(self):
-        if self.upd_exe:
+        if self.upd_msg and self.upd_msg[0] == "gui_upd_fail_check":
+            import webbrowser
+
+            webbrowser.open(autoupdate.DOWNLOAD_URL)
+            self._update_later()
+        elif self.upd_exe:
             self._apply_update()
         elif self.upd_ver and not self.upd_busy:
             self._download_update(silent=False)
@@ -1432,6 +1437,10 @@ class App:
             self.upd_busy = False
             if ev[1]:
                 self._status_text(t("gui_upd_none", ver=__version__))
+        elif kind == "upd_fail_check":  # #1526: a failed manual check must not read as "latest"
+            self.upd_busy = False
+            self.upd_ver = None
+            self._upd_show("gui_upd_fail_check", ("gui_upd_open_page", "gui_upd_later"), why=ev[1])
         elif kind == "upd_progress":
             if self.upd_msg and self.upd_msg[0] == "gui_upd_downloading":
                 self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=ev[1])

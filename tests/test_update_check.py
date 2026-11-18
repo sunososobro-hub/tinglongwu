@@ -174,11 +174,12 @@ def test_wizard_install_detection(tmp_path):
 
 
 class FakeProc:
-    def __init__(self, lines):
+    def __init__(self, lines, rc=0):
         self.stdout = [(l + "\n").encode() for l in lines]
+        self.rc = rc
 
     def wait(self):
-        return 0
+        return self.rc
 
 
 def test_run_check_and_download_events(monkeypatch):
@@ -201,6 +202,37 @@ def test_run_check_and_download_events(monkeypatch):
     au.run_download(seen.append, Path("d"), popen=popen(["FAIL ValueError: SHA256 mismatch"]))
     assert seen == [("upd_found", "0.3.4", True), ("upd_none", False), ("upd_progress", 10), ("upd_progress", 99),
                     ("upd_ready", "C:\\t\\s.exe"), ("upd_fail", "ValueError: SHA256 mismatch")]
+
+
+def _check(monkeypatch, lines, manual=True, rc=0, boom=None):
+    from tinglongwu.gui import autoupdate as au
+
+    monkeypatch.delenv("TLWU_OFFLINE", raising=False)
+    seen = []
+
+    def popen(cmd, **kw):
+        if boom:
+            raise boom
+        return FakeProc(lines, rc)
+
+    au.run_check("0.3.3", seen.append, manual, popen=popen, cfg={})
+    return seen
+
+
+def test_1526_failed_manual_check_is_not_latest(monkeypatch):
+    assert _check(monkeypatch, ["NONE"]) == [("upd_none", True)]
+    assert _check(monkeypatch, ["SKIP rate-limit"]) == [("upd_fail_check", "rate-limit")]
+    assert _check(monkeypatch, ["SKIP " + "x" * 200])[0][1] == "x" * 120
+    assert _check(monkeypatch, [], rc=1) == [("upd_fail_check", "exit 1")]
+    assert _check(monkeypatch, [], boom=TimeoutError("timed out")) == [("upd_fail_check", "TimeoutError: timed out")]
+    assert _check(monkeypatch, ["SKIP timeout"], manual=False) == [("upd_none", False)]  # automatic: silent
+
+
+def test_1526_i18n_key_in_every_gui_language():
+    from tinglongwu import i18n
+
+    for lang, table in i18n.MESSAGES.items():
+        assert "{why}" in table["gui_upd_fail_check"] and table["gui_upd_open_page"], lang
 
 
 def test_gui_side_offline_starts_no_child(monkeypatch):

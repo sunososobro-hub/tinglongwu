@@ -35,6 +35,7 @@ LAST_KEY = "update_last_check"  # unix seconds of the last automatic check (also
 UPDATE_PROMPT_MIN_INTERVAL_S = 24 * 3600  # #779: at most one update line per day, however many releases ship
 PROMPT_KEY = "update_last_prompt"  # unix seconds of the last update line shown by an automatic check
 PENDING_KEY = "update_pending"  # "<version>|<installer path>": downloaded + verified, applied at the next launch
+DOWNLOAD_URL = "https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe"  # #1526
 MODULE = "tinglongwu_setup.selfupdate"
 BUNDLED_FLAG = "--run-selfupdate"  # tlwu_app.main routes this to tinglongwu_setup.selfupdate.main (#768)
 
@@ -214,32 +215,49 @@ def _child_env(env=None) -> dict:
     return out
 
 
-def _lines(cmd, popen):
+def _lines(cmd, popen, status: dict | None = None):
     p = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=_child_env(),
               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     for raw in p.stdout:
         line = (raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw).strip()
         if line:
             yield line
-    p.wait()
+    rc = p.wait()
+    if status is not None:
+        status["rc"] = rc
 
 
 def run_check(current: str, put, manual: bool, popen=None, cfg: dict | None = None) -> str | None:
-    """Worker thread. put(("upd_found", ver, manual)) or put(("upd_none", manual)). Errors are silent unless manual
-    (then they read as "no update found"). Returns the new version or None. Only the automatic check with
+    """Worker thread. put(("upd_found", ver, manual)), put(("upd_none", manual)) only for an explicit NONE line, or
+    (#1526) put(("upd_fail_check", reason)) when a manual check failed (SKIP / non-zero exit / timeout / exception);
+    a failed automatic check stays silent (put(("upd_none", False))) and logs the reason. Returns the new version or None. Only the automatic check with
     auto_update=1 is counted (#806); a manual "Check for updates" click goes straight to GitHub and is never counted."""
     if offline():
         put(("upd_none", manual))
         return None
-    ver = None
+    ver, none, why = None, False, ""
     try:
         count = not manual and auto_on(userdirs.read_config() if cfg is None else cfg)
-        for line in _lines(check_cmd(current, count=count), popen or subprocess.Popen):
+        for line in _lines(check_cmd(current, count=count), popen or subprocess.Popen, status=(st := {})):
             ver = parse_check(line) or ver
-    except Exception:  # noqa: BLE001
-        ver = None
-    put(("upd_found", ver, manual) if ver else ("upd_none", manual))
-    return ver
+            if line == "NONE":
+                none = True
+            elif line.startswith("SKIP"):
+                why = line[4:].strip()[:120] or "unknown"
+        if not ver and not none and not why and st.get("rc"):
+            why = f"exit {st['rc']}"
+    except Exception as e:  # noqa: BLE001
+        ver, why = None, f"{type(e).__name__}: {e}"[:120]
+    if ver:
+        put(("upd_found", ver, manual))
+        return ver
+    if none and not why:
+        put(("upd_none", manual))
+        return None
+    why = why or "no answer"
+    _log(f"update check failed: {why}")
+    put(("upd_fail_check", why) if manual else ("upd_none", False))
+    return None
 
 
 def _plan(popen, root: Path | None = None) -> tuple[str, int] | None:
