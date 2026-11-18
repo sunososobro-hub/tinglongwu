@@ -65,14 +65,18 @@ jobs:
           restore-keys: apt-e2e-ubuntu-24.04-v1-
       - name: System packages (audio server, virtual display, window manager)
         if: steps.changes.outputs.build == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 18
         run: |
           DEBS="$HOME/.cache/tlwu-apt-debs"
+          MIRRORS="${TLWU_APT_MIRRORS:-/etc/apt/apt-mirrors.txt}"
           mkdir -p "$DEBS/partial"
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Dir::Cache::Archives=$DEBS -o APT::Keep-Downloaded-Packages=true"
           for i in 1 2 3; do
-            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends \
+            # each try is capped so a crawling mirror leaves time for the next one; finished .debs stay in $DEBS
+            timeout 270 sudo apt-get $APT update && timeout 270 sudo apt-get $APT install -y --no-install-recommends \
               libsndfile1 libpulse0 pulseaudio pulseaudio-utils xvfb openbox xdotool x11-utils && exit 0
+            echo "apt try $i failed or was too slow: switching the runner's mirror list (#1481)"
+            printf 'http://azure.archive.ubuntu.com/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n' | sudo tee "$MIRRORS" >/dev/null
             sleep 15
           done
           exit 1

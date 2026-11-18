@@ -46,8 +46,7 @@ def test_apt_cache_restored_before_and_saved_after_the_install():
     assert steps[inst].get("timeout-minutes", 0) >= 15
 
 
-@pytest.mark.skipif(BASH is None, reason="bash is needed to run the step")
-def test_install_step_points_apt_at_the_cached_folder(tmp_path):
+def _run_step(tmp_path, apt_body: str):
     steps, inst, restore, _ = _cache_steps()
     assert restore, "no actions/cache/restore step before the apt install"
     home = tmp_path / "home"
@@ -56,15 +55,35 @@ def test_install_step_points_apt_at_the_cached_folder(tmp_path):
     bin_ = tmp_path / "bin"
     bin_.mkdir()
     log = tmp_path / "apt.log"
-    for name, body in {"sudo": 'exec "$@"\n', "apt-get": f'echo "$@" >> "{log}"\n', "sleep": "exit 0\n"}.items():
+    mirrors = tmp_path / "apt-mirrors.txt"
+    mirrors.write_text("http://slow.example/ubuntu/\n")
+    for name, body in {"sudo": 'exec "$@"\n', "apt-get": f'echo "$@" >> "{log}"\n' + apt_body, "sleep": "exit 0\n"}.items():
         f = bin_ / name
         f.write_text("#!/bin/sh\n" + body)
         f.chmod(f.stat().st_mode | stat.S_IEXEC)
-    env = {"HOME": str(home), "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}"}
+    env = {"HOME": str(home), "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "TLWU_APT_MIRRORS": str(mirrors)}
     out = subprocess.run([BASH, "-e", "-o", "pipefail", "-c", steps[inst]["run"]], env=env,
                          capture_output=True, text=True, timeout=30)
+    installs = [line for line in log.read_text().splitlines() if " install " in f" {line} "] if log.exists() else []
+    return out, installs, cached, mirrors
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is needed to run the step")
+def test_install_step_points_apt_at_the_cached_folder(tmp_path):
+    out, installs, cached, mirrors = _run_step(tmp_path, "exit 0\n")
     assert out.returncode == 0, out.stderr
-    install = [line for line in log.read_text().splitlines() if " install " in f" {line} "]
-    assert install, log.read_text()
-    assert f"Dir::Cache::Archives={cached}" in install[0]
+    assert installs
+    assert f"Dir::Cache::Archives={cached}" in installs[0]
     assert (cached / "partial").is_dir()
+    assert "slow.example" in mirrors.read_text()  # a working mirror is left alone
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is needed to run the step")
+def test_a_failed_try_switches_to_another_mirror_and_retries(tmp_path):
+    flag = tmp_path / "failed_once"
+    body = f'case " $* " in *" install "*) [ -e "{flag}" ] && exit 0; : > "{flag}"; exit 100;; esac\nexit 0\n'
+    out, installs, cached, mirrors = _run_step(tmp_path, body)
+    assert out.returncode == 0, out.stderr
+    assert len(installs) == 2
+    text = mirrors.read_text()
+    assert "slow.example" not in text and "archive.ubuntu.com" in text
