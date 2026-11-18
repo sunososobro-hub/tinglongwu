@@ -64,34 +64,58 @@ ASR_JOIN_MAX_S = 28.0
 ASR_JOIN_CALL_S = 6.0
 ASR_COST_N = 8
 ASR_JOIN_GROW = 2.0
+ASR_JOIN_OVER = 1.5  # #1247: target when one call's fixed cost alone is over ASR_JOIN_CALL_S
 MT_STALE_S = 5.0
 MT_HOLD_POLL = 0.05
 DUP_WINDOW = 10.0  # seconds: an identical final line this soon after the same one is dropped (Whisper repeats on silence)
 
 
 def join_cap(history) -> float:
-    """#1247: seconds of audio one catch-up join may hold so that its ASR call is predicted to take at most
-    ASR_JOIN_CALL_S. history: recent (audio seconds, ASR seconds) of live calls, oldest first.
-    The cap is the larger of
-    - the newest call's rate with no fixed cost (an upper bound on cost when cost = fixed + rate * seconds), and
-    - growth: twice the longest recent call that took <= ASR_JOIN_CALL_S, but not past the least-squares line
-      cost = fixed + rate * seconds of the recent calls (when they span >= 1 s and the rate is positive). Growth
-      lets the join size find Whisper's fixed cost (a short call is mostly fixed cost); one slow call (a CPU spike)
-      cannot make the fit think length is free, because growth is bounded by what was seen to fit.
-    No history: ASR_JOIN_MAX_S (#1369 behaviour). Never above ASR_JOIN_MAX_S; the caller always keeps one segment."""
+    """#1247: seconds of audio one catch-up join may hold so that its ASR call is predicted to take at most the
+    target (ASR_JOIN_CALL_S). history: recent (audio seconds decoded, ASR seconds) of live calls, oldest first.
+    - fit: a least-squares line cost = fixed + rate * seconds when the calls span >= 1 s and the rate is positive
+      (without calls over 2 x ASR_JOIN_CALL_S when the rest span >= 1 s: a CPU spike would bend the line).
+      When the fixed cost alone makes the target unreachable, the target becomes ASR_JOIN_OVER x fixed, so a slow
+      CPU still joins (catch-up keeps progressing) and each call stays bounded.
+    - newest call within the target: its rate with no fixed cost is an upper bound for longer joins.
+    - growth: ASR_JOIN_GROW x the longest call within the target since the newest call over it (an over-budget call
+      suspends growth from older calls).
+    The largest of these, never above the fit's limit nor ASR_JOIN_MAX_S. Nothing within the target and no fit: one
+    join of ASR_JOIN_GROW x the newest length when every call had that length (so the next call measures a second
+    length), else the newest rate scaled down. No history: ASR_JOIN_MAX_S (#1369). The caller keeps one segment."""
     pts = [(a, c) for a, c in history if a > 0 and c >= 0]
     if not pts:
         return ASR_JOIN_MAX_S
-    a_new, c_new = pts[-1]
-    bound = ASR_JOIN_CALL_S * a_new / c_new if c_new > 0 else ASR_JOIN_MAX_S
-    ok = [a for a, c in pts if c <= ASR_JOIN_CALL_S]
-    grow = ASR_JOIN_GROW * max(ok) if ok else 0.0
     lens = np.array([a for a, _ in pts], dtype=float)
-    if grow and lens.max() - lens.min() >= 1.0:
-        rate, fixed = np.polyfit(lens, np.array([c for _, c in pts], dtype=float), 1)
+    # fit without calls over 2 x ASR_JOIN_CALL_S (a CPU spike bends the line) when the rest span >= 1 s
+    calm = [(a, c) for a, c in pts if c <= 2 * ASR_JOIN_CALL_S]
+    fpts = calm if len(calm) > 1 and max(a for a, _ in calm) - min(a for a, _ in calm) >= 1.0 else pts
+    fit = None
+    if max(a for a, _ in fpts) - min(a for a, _ in fpts) >= 1.0:
+        rate, fixed = np.polyfit([a for a, _ in fpts], [c for _, c in fpts], 1)
         if rate > 0:
-            grow = min(grow, (ASR_JOIN_CALL_S - max(0.0, float(fixed))) / float(rate))
-    return float(min(ASR_JOIN_MAX_S, max(bound, grow, 0.0)))
+            fit = (max(0.0, float(fixed)), float(rate))
+    target = ASR_JOIN_CALL_S if fit is None else max(ASR_JOIN_CALL_S, ASR_JOIN_OVER * fit[0])
+    a_new, c_new = pts[-1]
+    cands = []
+    if c_new <= 0:
+        cands.append(ASR_JOIN_MAX_S)
+    elif c_new <= target:
+        cands.append(target * a_new / c_new)
+    last_over = max((i for i, (_, c) in enumerate(pts) if c > target), default=-1)
+    ok = [a for a, c in pts[last_over + 1:] if c <= target]
+    if ok:
+        cands.append(ASR_JOIN_GROW * max(ok))
+    if fit is not None:
+        limit = (target - fit[0]) / fit[1]
+        cap = min(max(cands), limit) if cands else limit
+    elif cands:
+        cap = max(cands)
+    elif lens.max() - lens.min() < 1.0:
+        cap = ASR_JOIN_GROW * a_new
+    else:
+        cap = target * a_new / c_new
+    return float(min(ASR_JOIN_MAX_S, max(0.0, cap)))
 
 
 def _dup_key(text: str) -> str:
@@ -533,8 +557,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
             last_asr[0] = time.monotonic() - t0
             marks = (t_eos, t_cut, t0 + last_asr[0])
             last_len[0] = len(seg) / SAMPLE_RATE
-            if not audio_clock and not (tail is not None and len(tail)):  # #1247: a budget-cut call is no sample
-                asr_costs.append((last_len[0], last_asr[0]))
+            if not audio_clock:  # #1247: a budget-cut call counts with the audio it decoded (its tail comes next)
+                cut = len(tail) / SAMPLE_RATE if tail is not None and len(tail) else 0.0
+                asr_costs.append((last_len[0] - cut, last_asr[0]))
                 del asr_costs[:-ASR_COST_N]
             say(f"latency: asr {last_asr[0] * 1000:.0f} ms for {len(seg) / SAMPLE_RATE:.1f} s of audio"
                 f" ({mtq.qsize()} line(s) waiting for MT)")

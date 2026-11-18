@@ -5,12 +5,18 @@ from tinglongwu import pipeline
 from tinglongwu.asr import Transcript
 from tinglongwu.pipeline import join_cap, run
 
-from test_catchup_1369 import SR, Clip, Cpu, OneSeg, Shown, SlowASR, VirtualClock, _heard, _idx_of, _text
+from test_catchup_1369 import SR, Clip, Cpu, OneSeg, Shown, SlowASR, VirtualClock, _heard, _text, _val
 
 FIX, PER_S = 2.0, 0.35  # 3 s -> 3.05 s (slower than real time), 28 s -> 11.8 s (the runner's 11.6 s gap)
 STALL_S = 40.0          # one slow first call (model warm-up / CPU spike) builds a backlog like the runner's
 CLIP_S, SEG_S = 240.0, 3.0
 MAX_GAP_S = 10.0        # #894 Acceptance (1)
+
+
+def _ids_in_order(audio):
+    """Segment indices in sample order, one per run (a reversed or repeated segment stays visible)."""
+    ids = [int(round((v - _val(0)) * 10000)) for v in audio[::SR // 10]]
+    return [i for k, i in enumerate(ids) if k == 0 or i != ids[k - 1]]
 
 
 class RunnerASR(SlowASR):
@@ -21,7 +27,7 @@ class RunnerASR(SlowASR):
     def transcribe(self, audio):
         self.clock.sleep(STALL_S if not self.sizes else FIX + PER_S * len(audio) / SR)
         self.sizes.append(len(audio) / SR)
-        return Transcript(_text(_idx_of(audio)), "en")
+        return Transcript(_text(_ids_in_order(audio)), "en")
 
 
 def _simulate(monkeypatch):
@@ -72,6 +78,28 @@ def test_join_cap_follows_the_fitted_cost():
     cap = join_cap(hist)
     assert FIX + PER_S * cap <= pipeline.ASR_JOIN_CALL_S + 1e-6, cap
     assert cap >= 6.0, cap
+
+
+def test_join_cap_fit_limits_the_newest_call_estimate():
+    # fit 2 + 0.5 s/s: 8 s takes 6 s; the newest 12 s call took 8 s (over), so the cap is the fit's 8 s, not 9 s
+    assert abs(join_cap([(3.0, 3.5), (12.0, 8.0)]) - 8.0) < 1e-9
+
+
+def test_join_cap_over_budget_call_suspends_older_growth():
+    # 12 s in 5 s, then 3 s in 9 s (CPU got slower): no growth from the 12 s call, the fit (rate < 0) says nothing
+    assert join_cap([(12.0, 5.0), (3.0, 9.0)]) < 3.0
+
+
+def test_join_cap_keeps_progressing_when_one_segment_is_over_target():
+    # 6 s fixed + 0.1 s/s: a single 3 s segment takes 6.3 s; joins still grow, bounded by 1.5 x the fixed cost
+    cap = join_cap([(3.0, 6.3), (6.0, 6.6)])
+    assert cap > 6.0 and 6.0 + 0.1 * cap <= pipeline.ASR_JOIN_OVER * 6.0 + 1e-6, cap
+    assert join_cap([(3.0, 6.3)]) == 6.0  # one length only: explore one longer join
+
+
+def test_join_cap_short_tail_does_not_reopen_28_s():
+    # a budget-cut join decoded 9 s in 20 s, then its 0.6 s tail in 0.64 s
+    assert join_cap([(3.0, 3.1), (9.0, 20.0), (0.6, 0.64)]) <= 6.0
 
 
 def test_join_cap_without_history_is_the_old_bound():
