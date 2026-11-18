@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -41,9 +42,9 @@ SKIP_SUFFIXES = (".md", ".png", ".jpg", ".ico", ".zip", ".whl", ".onnx", ".bin")
 
 def hooks_path_value_is_local(value: str) -> bool:
     v = value.strip("\"'")
-    if not v or v.startswith(("/", "~", "$", "%", "..", "\\")) or re.match(r"[A-Za-z]:", v):
+    if not v or v.startswith(("/", "~", "$", "%", "\\")) or re.match(r"[A-Za-z]:", v):
         return False
-    return True
+    return not posixpath.normpath(v).startswith("..")  # a relative path that climbs out of the repo is not local
 
 
 def scan_text(path: str, text: str) -> list[dict]:
@@ -53,10 +54,13 @@ def scan_text(path: str, text: str) -> list[dict]:
         if stripped.startswith("#") and not stripped.startswith("#!"):
             continue
         allowed_file = path in ALLOW_FILES
-        if allowed_file and re.match(r"echo\b", stripped) and not re.search(r">", stripped):
-            continue  # a printed message, not a write
+        if allowed_file and re.match(r"echo\b", stripped):
+            bare = re.sub(r'"[^"]*"|\'[^\']*\'', "", stripped)  # drop quoted message text
+            if not re.search(r"&&|\|\||;|\||>", bare):
+                continue  # a lone printed message, not a write
         hit = set()
         for seg in SEGMENT_SPLIT.split(line):
+            seg = re.sub(r"\s+#.*$", "", seg)  # trailing shell comment
             if READ_ONLY.search(seg):
                 continue
             if allowed_file and UNDO.search(seg):

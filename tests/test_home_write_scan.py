@@ -90,6 +90,27 @@ def test_json_mode_stdout_is_only_json():
 
 def test_ignores_inherited_git_index_file(tmp_path):
     import os
-    env = dict(os.environ, GIT_INDEX_FILE=str(tmp_path / "other-index"))
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "home_write_scan.py")], capture_output=True, text=True, env=env)
-    assert r.returncode == 0 and r.stdout.strip().endswith("0 findings")
+    repo = tmp_path / "r"
+    repo.mkdir()
+    (repo / "x.sh").write_text("git config --global user.name x\n")
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    for cmd in (["init", "-q"], ["add", "x.sh"]):
+        subprocess.run(["git", "-C", str(repo)] + cmd, check=True, env=clean)
+    env = dict(clean, GIT_INDEX_FILE=str(tmp_path / "other-index"))
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "home_write_scan.py"), "--root", str(repo)],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 1 and "x.sh:1" in r.stdout
+
+
+def test_hooks_path_climbing_out_of_repo_flagged():
+    assert "hooks-path" in _rules("git config core.hooksPath ../../hooks\n")
+    assert _rules("git config core.hooksPath .githooks/sub\n") == set()
+
+
+def test_echo_exemption_does_not_hide_chained_write():
+    assert "git-config-global" in _rules('echo hi && git config --global user.name x\n', ".claude/hooks/git_identity.sh")
+    assert _rules('echo "run: a && git config --global user.name x"\n', ".claude/hooks/git_identity.sh") == set()
+
+
+def test_trailing_comment_after_cp_destination():
+    assert "shell-profile-write" in _rules('cp ./b "$HOME/.gitconfig"  # backup\n')
