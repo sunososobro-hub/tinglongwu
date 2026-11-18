@@ -227,6 +227,20 @@ jobs:
         with:
           name: flores-6x6-table
           path: table.md
+      - name: Quality picture (#1520)
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+          sys.path.insert(0, "scripts/bench")
+          import matrix_lights
+          s = matrix_lights.load_summaries("arts")
+          pathlib.Path("matrix.json").write_text(json.dumps({"run": __import__("os").environ["GITHUB_RUN_ID"], "summaries": s}), "utf-8")
+          PY
+          python3 scripts/bench/quality_svg.py matrix.json scripts/bench/data/google_refs.json > quality.svg
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flores-6x6-quality-svg
+          path: quality.svg
       - name: 20 lowest-COMET sentences per direction (#1346)
         run: |
           python3 scripts/bench/flores_cpu.py --worst arts 20 worst.json
