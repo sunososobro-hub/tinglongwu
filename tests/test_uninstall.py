@@ -118,6 +118,19 @@ def test_purge_unreadable_manifest_keeps_models_and_fails(tmp_path):
     assert (h / "models" / "whisper-small").exists()
 
 
+def test_purge_refuses_kokoro_dir_outside_models(tmp_path):
+    h = _home(tmp_path)
+    (h / "models" / "other-tool").mkdir()
+    (h / "models" / "other-tool" / "w.bin").write_text("keep")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))}
+    env.update(HOME=str(h), TLWU_YES="1", KOKORO_DIR=str(h))  # would delete $HOME if unchecked
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "uninstall.sh"), "--purge"], env=env,
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0
+    assert (h / "models" / "other-tool" / "w.bin").read_text() == "keep"
+    assert (h / ".local" / "bin" / "other-tool").exists()
+
+
 def test_refuses_foreign_folder(tmp_path):
     h = _home(tmp_path)
     (h / "tinglongwu" / ".git").rmdir()

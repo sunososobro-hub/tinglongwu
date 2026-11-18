@@ -74,8 +74,16 @@ for k, v in m.items():
       rm_path "$MODELS/$k"
     done <<< "$keys"
   fi
-  rm_path "$MODELS/manifest.json"
-  rm_path "$KOKORO_DIR"
+  # Kokoro folder: only when it is a safe target strictly inside the models folder (KOKORO_DIR is overridable)
+  local kd mc
+  if [ -d "$KOKORO_DIR" ] && safe_target "$KOKORO_DIR"; then
+    kd="$(cd "$KOKORO_DIR" && pwd -P)"; mc="$(cd "$MODELS" && pwd -P)"
+    case "$kd/" in "$mc/"?*) rm_path "$KOKORO_DIR" ;; *) echo "[x] refusing to remove KOKORO_DIR '$KOKORO_DIR' (not inside $MODELS)" >&2; FAILED=1 ;; esac
+  elif [ -e "$KOKORO_DIR" ]; then
+    echo "[x] refusing to remove KOKORO_DIR '$KOKORO_DIR'" >&2; FAILED=1
+  fi
+  # keep the manifest for a retry when any deletion above failed
+  [ -n "$FAILED" ] || rm_path "$MODELS/manifest.json"
   rmdir "$MODELS/whisper-cpp" "$MODELS/opus" 2>/dev/null
   if rmdir "$MODELS" 2>/dev/null; then say "removed $MODELS"; else say "kept other files in $MODELS (not tinglongWu's)"; fi
 }
