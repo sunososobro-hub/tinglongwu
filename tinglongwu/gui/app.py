@@ -49,7 +49,7 @@ SPAN = 7  # grid columns a full-width row spans
 LABEL_WRAP_PX = 190
 ADV_PAD_X = 20  # #939: left + right padding of the Advanced card (its settings grid gets the rest of the width)
 SHORT_SCREEN_PX = 900
-UPDATE_ROW = 15  # #756: grid row of the Check setup / Report / update controls; below the last setting slot (13, #894)
+UPDATE_ROW = 14  # #756: grid row of the Check setup / Report / update controls; below the last setting slot (13, #894)
 PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
 HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 notice is for the other settings
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
@@ -1359,7 +1359,8 @@ class App:
         self._put(ttk.Combobox(f, textvariable=self.v_mic_dev, values=[self.mic_default] + mics,
                                state="readonly", width=18), 13, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #1531: "Use GPU: Auto / Off" is the only CPU/GPU control (the installer no longer asks)
-        self.v_gpu_use = self._combo(14, "gui_gpu_use", "gpu_use", ("auto", "off"), "gpu_use")  # raw auto/off, named per UI language
+        # (built as slot 15, then moved beside Check setup: a new settings row made Advanced too tall for 1366x768)
+        self.v_gpu_use = self._combo(15, "gui_gpu_use", "gpu_use", ("auto", "off"), "gpu_use")  # raw auto/off, named per UI language
         self.v_gpu_use.trace_add("write", lambda *_: self._asr_hint())  # Off -> the CPU tier's speech model
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
@@ -1370,6 +1371,8 @@ class App:
         act.grid(row=UPDATE_ROW, column=0, columnspan=SPAN, sticky="we", pady=(6, 0))
         act.columnconfigure(0, weight=1)
         self._tx(ttk.Button(act, command=self.check_setup), "gui_check_setup").grid(row=0, column=0, sticky="we")
+        for col, (w, _d) in enumerate(self.slot_widgets.pop(15), start=1):  # label, then the Auto / Off box
+            w.grid(in_=act, row=0, column=col, columnspan=1, sticky="e", padx=(10, 0), pady=0)
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
         self.status_box = sb = ttk.Frame(self.status_holder, padding=(0, 2, 0, 0))  # status/notice: main window (#1028)
