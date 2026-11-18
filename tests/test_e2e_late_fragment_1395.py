@@ -80,3 +80,12 @@ def test_mt_status_text_is_not_a_translation():
         assert not res["ru: the merged line is translated (#1395)"], dst
     res = {name: ok for name, ok, _ in ci.check_late_jsonl([{"src": src, "dst": "現在我給您看新版本的設定。"}], "ru")}
     assert all(res.values())
+
+
+def test_tail_word_must_be_a_whole_word():
+    bad = {"src": "Now I will show you the settings for the new conversion.", "dst": "現在我給你看新轉換的設定。"}
+    res = {name: ok for name, ok, _ in ci.check_late_jsonl([bad], "en")}
+    assert not res["en: sentence + late last word saved as one line, once (#1395)"]
+    for lang, src in (("en", "Now I will show you the settings for the new version."),
+                      ("ru", "Сейчас я покажу вам настройки для новой версии.")):
+        assert all(ok for _, ok, _ in ci.check_late_jsonl([{"src": src, "dst": "新版本的設定。"}], lang))

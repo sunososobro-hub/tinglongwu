@@ -569,7 +569,8 @@ def check_late_jsonl(recs: list[dict], lang: str) -> list[tuple[str, bool, str]]
     head_key, tail_key = LATE[lang][2:]
     lines = [r for r in recs if "src" in r and r.get("src", "").strip()]
     one = [r["src"] for r in lines if len(_WORDS.findall(r["src"])) <= 1]
-    merged = [r for r in lines if head_key in r["src"].lower() and tail_key in r["src"].lower()]
+    tail_re = re.compile(r"\b" + tail_key + r"\w*", re.UNICODE)  # whole word from its start ("conversion" is not it)
+    merged = [r for r in lines if head_key in r["src"].lower() and tail_re.search(r["src"].lower())]
     srcs = [r["src"] for r in lines]
     # the clip is one sentence: the file must hold exactly that one line (a head line left next to the merged one,
     # i.e. an amend that appended instead of replacing, fails here)
@@ -615,6 +616,7 @@ def cmd_late_fragment(a) -> int:
                     p.wait(timeout=10)
             else:
                 rc = p.returncode
+        time.sleep(1)  # let the output reader take the last lines (shutdown tracebacks) before buf is checked
         out = "\n".join(buf)
         check(f"{a.lang}: listener stops cleanly on Ctrl+C", rc in CLEAN_RC and not hung and "Traceback" not in out,
               f"rc={rc}, hung={hung}")
