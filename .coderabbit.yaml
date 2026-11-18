@@ -7,6 +7,8 @@ reviews:
   poem: false
   auto_review:
     enabled: true
+    # #1579: review once, when the PR opens. Re-reviewing every fix push ran up to 5 rounds per PR (#1546).
+    auto_incremental_review: false
     drafts: false
     base_branches:
       - dev
