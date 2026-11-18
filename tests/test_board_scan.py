@@ -89,3 +89,14 @@ def test_zombie_issue_labels():
     assert zombie_issue_labels({"state": "closed", "labels": []}) is None
     assert zombie_issue_labels({"state": "open", "labels": [], "pull_request": {}}) is None  # #N is a PR
     assert zombie_issue_labels(None) is None
+
+
+def test_pr_mergeable_unknown_is_not_ok():
+    assert pr_needs_action(NOW, ago(40), "success", "unknown", set()) == "mergeable unknown"
+    assert pr_needs_action(NOW, ago(40), "success", None, set()) == "mergeable unknown"
+    assert pr_needs_action(NOW, ago(10), "success", "unknown", set()) is None  # recent: not waiting yet
+
+
+def test_dev_red_timed_by_failing_run_not_commit():
+    # commit from 3 h ago whose test only finished red 5 min ago: red for 5 min, not 3 h
+    assert not dev_red_too_long(NOW, [(ago(5), "failure"), (ago(200), "success")])

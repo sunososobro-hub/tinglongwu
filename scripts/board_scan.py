@@ -20,6 +20,7 @@ import argparse
 import json
 import re
 import subprocess
+import time
 from datetime import UTC, datetime, timedelta, timezone
 
 REPO = "sunososobro-hub/tinglongwu"
@@ -44,6 +45,8 @@ def pr_needs_action(now: datetime, head_commit_at: datetime, test_conclusion: st
         return "test red"
     if mergeable_state == "dirty":
         return "dirty"
+    if mergeable_state in (None, "unknown"):
+        return "mergeable unknown"  # never report ok while GitHub has not decided
     return None
 
 
@@ -108,13 +111,18 @@ def _gh_list(path: str) -> list:
     return [item for page in pages for item in (page if isinstance(page, list) else [page])]
 
 
-def _test_conclusion(sha: str) -> str | None:
-    """Conclusion of the newest `test` check run on a commit; None when missing or not completed."""
+def _test_run(sha: str) -> tuple[str | None, datetime | None]:
+    """(conclusion, completed_at) of the newest `test` check run on a commit; (None, None) when missing or running."""
     runs = (_gh(f"repos/{REPO}/commits/{sha}/check-runs?check_name=test&per_page=100") or {}).get("check_runs", [])
     runs = sorted(runs, key=lambda r: r.get("started_at") or "", reverse=True)
     if not runs or runs[0].get("status") != "completed":
-        return None
-    return runs[0].get("conclusion")
+        return None, None
+    done = runs[0].get("completed_at")
+    return runs[0].get("conclusion"), (_ts(done) if done else None)
+
+
+def _test_conclusion(sha: str) -> str | None:
+    return _test_run(sha)[0]
 
 
 def zombie_issue_labels(issue: dict | None) -> set[str] | None:
@@ -135,18 +143,20 @@ def _issue_or_none(num: str) -> dict | None:
 
 
 def _dev_red_too_long(now: datetime) -> bool:
-    """Walk dev commits newest first (pages of 100) until the red streak ends or is proven > 2 h."""
+    """Walk dev commits newest first (pages of 100) until the red streak ends, then judge the whole streak.
+
+    A red commit is timed by when its `test` run finished red, not by its commit date, so an old commit
+    that only just failed does not count as hours of red.
+    """
     history: list[tuple[datetime, str | None]] = []
     page = 1
     while True:
         commits = _gh(f"repos/{REPO}/commits?sha=dev&per_page=100&page={page}") or []
         for c in commits:
-            history.append((_ts(c["commit"]["committer"]["date"]), _test_conclusion(c["sha"])))
-            when, concl = history[-1]
+            concl, done = _test_run(c["sha"])
+            history.append((done or _ts(c["commit"]["committer"]["date"]), concl))
             if concl is not None and concl not in RED:
                 return dev_red_too_long(now, history)
-            if dev_red_too_long(now, history):
-                return True
         if len(commits) < 100:
             return dev_red_too_long(now, history)
         page += 1
@@ -160,6 +170,11 @@ def scan(now: datetime) -> list[str]:
     open_heads = {pr["head"]["ref"] for pr in prs if (pr["head"].get("repo") or {}).get("full_name") == REPO}
     for pr in prs:
         full = _gh(f"repos/{REPO}/pulls/{pr['number']}")  # one revision: sha, labels and mergeable_state together
+        if full.get("state") != "open" or full["base"]["ref"] != "dev":
+            continue  # closed or retargeted since the list request
+        if full.get("mergeable_state") in (None, "unknown"):
+            time.sleep(3)  # GitHub computes mergeability lazily; ask once more before calling it unknown
+            full = _gh(f"repos/{REPO}/pulls/{pr['number']}")
         sha = full["head"]["sha"]
         head_at = _ts(_gh(f"repos/{REPO}/commits/{sha}")["commit"]["committer"]["date"])
         labels = {lb["name"] for lb in full["labels"]}
