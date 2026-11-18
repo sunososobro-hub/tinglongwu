@@ -29,6 +29,15 @@ class FakePanel:
     def winfo_height(self):
         return 682
 
+    def state(self):
+        return "withdrawn"
+
+    def deiconify(self):
+        pass
+
+    def lift(self):
+        pass
+
     def minsize(self, w, h):
         self.mins = (w, h)
 
@@ -45,6 +54,7 @@ class FakeFrm:
 
 
 class FakeApp:
+    toggle_adjust = App.toggle_adjust
     _adv_width_changed = App._adv_width_changed
     _apply_panel_geometry = App._apply_panel_geometry
 
@@ -79,3 +89,11 @@ def test_width_changes_still_switch_columns_after_measuring():
     assert app.setting_cols == 1
     app._adv_width_changed(900)
     assert app.setting_cols == 2
+
+
+def test_toggle_adjust_opening_flush_is_guarded_too():
+    app = FakeApp()
+    app.setting_cols = 1  # panel last left in one column; the opening flush delivers a stale Configure
+    app.toggle_adjust()
+    assert app.regrids == [2]  # only the measuring re-grid (1 is already set, then 2); no reaction to Configure
+    assert app.panel.geo == "758x682"

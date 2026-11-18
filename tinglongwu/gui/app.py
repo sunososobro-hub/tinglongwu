@@ -1214,16 +1214,17 @@ class App:
             self.panel.withdraw()
         else:
             self.panel.deiconify()
-            self.panel.update_idletasks()
-            self._apply_panel_geometry()
+            self._apply_panel_geometry(flush=True)  # #1556: the opening flush runs under the measuring guard too
             self.panel.lift()
 
-    def _apply_panel_geometry(self):
+    def _apply_panel_geometry(self, flush=False):
         """#939: minsize = the one-column width x the two-column height; restore the remembered size / position
         (never below minsize). The settings grid shows two columns whenever the window is wide enough."""
         p, s = self.panel, self.settings
         self._measuring_panel = True  # #1556: ignore <Configure> events caused by the measuring re-grids below
         try:
+            if flush:
+                p.update_idletasks()
             self._set_setting_cols(1)
             p.update_idletasks()
             mw = p.winfo_reqwidth()
