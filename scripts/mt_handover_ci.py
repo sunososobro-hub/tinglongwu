@@ -216,14 +216,16 @@ def run(a) -> dict:
                 stop_asked = proc.poll() is None  # still running: the checker ends it; else tlwu exited on its own
         finally:
             try:
-                if proc is not None:
-                    exited_early = proc.poll() is not None and not stop_asked
-                    _stop(proc)
-                if lander:
-                    if "rc" not in landing:
-                        landing["timed_out"] = lander.poll() is None
-                    _stop(lander)
-                    landing.setdefault("rc", lander.returncode)
+                try:
+                    if proc is not None:
+                        exited_early = proc.poll() is not None and not stop_asked
+                        _stop(proc)
+                finally:
+                    if lander:  # stop the download even if stopping tlwu failed
+                        if "rc" not in landing:
+                            landing["timed_out"] = lander.poll() is None
+                        _stop(lander)
+                        landing.setdefault("rc", lander.returncode)
             finally:
                 if hold is not None:
                     hold.land()  # never leave the cached models dir without its model, even if a stop failed
