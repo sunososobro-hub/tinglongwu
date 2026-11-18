@@ -51,3 +51,19 @@ def test_cli_dry_run_with_stub_gh(tmp_path):
                          capture_output=True, text=True, env=env, check=True).stdout
     assert "| bug | 0 | 0.0% | 28% | +28.0 |" in out
     assert "mix invalid, default used" in out and "infra: 0 / 0 = 0.0% (cap 10%)" in out
+
+
+def test_mix_unicode_digit_and_huge_value_fall_back():
+    assert ledger.parse_mix("a\nb\nmix: bug \u00b2, enhancement 50, eval 11, documentation 5, maint 6") == (ledger.DEFAULT_MIX, False)
+    assert ledger.parse_mix("a\nb\nmix: bug " + "9" * 5000 + ", enhancement 50") == (ledger.DEFAULT_MIX, False)
+
+
+def test_usage_minutes_ignores_absurd_value():
+    assert ledger.usage_minutes("tlwu-usage: model=x minutes=" + "9" * 5000) is None
+
+
+def test_linked_issue_prefers_head_branch():
+    assert ledger.linked_issue("fix/1469", "Refs #5\nCloses #1469") == 1469
+    assert ledger.linked_issue("fix/12-r2", None) == 12
+    assert ledger.linked_issue("hotfix/v1.2.3", "Closes #7") == 7
+    assert ledger.linked_issue("docs/x", "none") is None

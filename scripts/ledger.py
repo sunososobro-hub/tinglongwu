@@ -19,6 +19,13 @@ TYPES = list(DEFAULT_MIX)
 INFO_TARGETS = {"QA": 15, "ideas": 5}
 USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=(\d+)", re.M)
 LINK_RE = re.compile(r"(?:Closes|Refs) #(\d+)")
+HEAD_RE = re.compile(r"^(?:fix|feat)/(\d+)(?:-r\d+)?$")
+
+
+def linked_issue(head: str, body: str | None) -> int | None:
+    """Issue a PR belongs to: the number in its head branch (rules section 2), else the first Closes/Refs in the body."""
+    m = HEAD_RE.match(head or "") or LINK_RE.search(body or "")
+    return int(m.group(1)) if m else None
 
 
 def parse_mix(body: str | None) -> tuple[dict[str, int], bool]:
@@ -32,7 +39,10 @@ def parse_mix(body: str | None) -> tuple[dict[str, int], bool]:
                 kv = part.split()
                 if len(kv) != 2 or not kv[1].isdigit() or kv[0] in mix:
                     return dict(DEFAULT_MIX), False
-                mix[kv[0]] = int(kv[1])
+                try:
+                    mix[kv[0]] = int(kv[1])
+                except ValueError:  # e.g. "²".isdigit() is True but int() rejects it; absurdly long digit strings too
+                    return dict(DEFAULT_MIX), False
             if set(mix) == set(TYPES) and sum(mix.values()) == 100:
                 return {t: mix[t] for t in TYPES}, True
     return dict(DEFAULT_MIX), False
@@ -41,7 +51,9 @@ def parse_mix(body: str | None) -> tuple[dict[str, int], bool]:
 def usage_minutes(text: str | None) -> int | None:
     """Minutes from the LAST `tlwu-usage:` line of a body; None when there is none."""
     found = USAGE_RE.findall(text or "")
-    return int(found[-1]) if found else None
+    if not found or len(found[-1]) > 6:  # bound the field: one absurd value must not stop the hourly report
+        return None
+    return int(found[-1])
 
 
 def build_rows(minutes: dict[str, int], mix: dict[str, int]) -> list[dict]:
@@ -103,10 +115,9 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
         mins = usage_minutes(pr.get("body"))
         if not mins:
             continue
-        link = LINK_RE.search(pr.get("body") or "")
+        n = linked_issue(pr["head"]["ref"], pr.get("body"))
         labels: set[str] = set()
-        if link:
-            n = int(link.group(1))
+        if n is not None:
             if n not in labels_cache:
                 try:
                     labels_cache[n] = {l["name"] for l in _gh(f"repos/{REPO}/issues/{n}")["labels"]}
