@@ -130,7 +130,7 @@ jobs:
           # proto manifest keeps permission names as plain UTF-8 strings; INTERNET is the only network permission (#1567)
           unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/base.xml"
           grep -aqE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/base.xml" || { echo "AAB lacks INTERNET (pack download)"; exit 1; }
-          if grep -aqE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
+          if grep -aoE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
           BASE=$(unzip -Zl "$AAB" | awk '$NF ~ /^base\// {s += $6} END {print s+0}')
           echo "base module compressed bytes: $BASE"
           [ "$BASE" -lt $((200 << 20)) ] || { echo "base module over 200 MB"; exit 1; }

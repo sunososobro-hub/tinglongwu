@@ -74,3 +74,8 @@ def test_socket_connect_and_exact_internet_name(tmp_path):
     assert r.returncode == 1 and "does not declare INTERNET" in r.stdout
     multi = MANIFEST_OK.replace("</manifest>", '<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/></manifest>')
     assert run(make(tmp_path, manifest=multi)).returncode == 1
+
+
+def test_removed_network_permission_is_ok(tmp_path):
+    ok = MANIFEST_OK.replace("</manifest>", '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove"/></manifest>')
+    assert run(make(tmp_path, manifest=ok)).returncode == 0

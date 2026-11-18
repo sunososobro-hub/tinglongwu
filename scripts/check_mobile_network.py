@@ -41,7 +41,7 @@ def manifest_problems(text: str) -> list[str]:
         if "tools:node" in p:
             out.append("AndroidManifest.xml removes INTERNET (tools:node)")
     for name in OTHER_NETWORK_PERMISSIONS:
-        if any(f"android.permission.{name}" in p for p in perms):
+        if any(f"android.permission.{name}" in p and 'tools:node="remove"' not in p for p in perms):
             out.append(f"AndroidManifest.xml requests {name}; INTERNET must be the only network permission")
     return out
 
