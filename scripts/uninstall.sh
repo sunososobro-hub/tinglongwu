@@ -80,7 +80,18 @@ for k, v in m.items():
   if rmdir "$MODELS" 2>/dev/null; then say "removed $MODELS"; else say "kept other files in $MODELS (not tinglongWu's)"; fi
 }
 
-[ -z "$PURGE" ] || { [ ! -d "$MODELS" ] || purge_models; }
+if [ -n "$PURGE" ] && [ -d "$MODELS" ]; then
+  purge_models
+  # foreign files left in a models folder that lives inside a folder we are about to remove: refuse, never delete them
+  if [ -d "$MODELS" ]; then
+    m="$(cd "$MODELS" && pwd -P)"
+    for t in "$DIR" "$KOKORO_VENV"; do
+      [ -d "$t" ] || continue
+      c="$(cd "$t" && pwd -P)"
+      case "$m/" in "$c/"*) echo "[x] $MODELS still holds files that are not tinglongWu's and is inside $t; move them or the folder first" >&2; exit 1 ;; esac
+    done
+  fi
+fi
 rm_path "$DIR"
 rm_path "$KOKORO_VENV"
 # launcher written by mac_install.sh (only if it is ours)
