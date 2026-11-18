@@ -49,7 +49,7 @@ SPAN = 7  # grid columns a full-width row spans
 LABEL_WRAP_PX = 190
 ADV_PAD_X = 20  # #939: left + right padding of the Advanced card (its settings grid gets the rest of the width)
 SHORT_SCREEN_PX = 900
-UPDATE_ROW = 14  # #756: grid row of the Check setup / Report / update controls; below the last setting slot (13, #894)
+UPDATE_ROW = 15  # #756: grid row of the Check setup / Report / update controls; below the last setting slot (13, #894)
 PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
 HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 notice is for the other settings
 UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
@@ -1352,6 +1352,12 @@ class App:
         self.v_mic_dev = tk.StringVar(value=mshown or self.mic_default)
         self._put(ttk.Combobox(f, textvariable=self.v_mic_dev, values=[self.mic_default] + mics,
                                state="readonly", width=18), 13, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
+        # #1531: "Use GPU: Auto / Off" is the only CPU/GPU control (the installer no longer asks)
+        self._label(14, "gui_gpu_use")
+        self.gpu_labels = {"auto": t("gui_gpu_auto"), "off": t("gui_gpu_off")}
+        self.v_gpu_use = tk.StringVar(value=self.gpu_labels.get(s.get("gpu_use"), self.gpu_labels["auto"]))
+        self._put(ttk.Combobox(f, textvariable=self.v_gpu_use, values=list(self.gpu_labels.values()),
+                               state="readonly", width=18), 14, 1, columnspan=2, sticky="we", pady=1, padx=(6, 0))
         # #738: subtitle lines / font size, UI language, dark theme, updates, report, about live in the menu bar
         self.v_lines = self._num_var(ROWS_MIN, ROWS_MAX, s["overlay_lines"], lambda n: self.overlay.set_rows(n))
         self.v_font = self._num_var(FONT_MIN, FONT_MAX, s["font_size"], lambda n: self.overlay.set_font(n))
@@ -2501,6 +2507,7 @@ class App:
                  live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
                  listen_device="" if self.v_listen_dev.get() == self.listen_default else self.v_listen_dev.get(),
                  mic_device="" if self.v_mic_dev.get() == self.mic_default else self.v_mic_dev.get(),
+                 gpu_use="off" if self.v_gpu_use.get() == self.gpu_labels["off"] else "auto",
                  voice=self.v_voice.get(), send_mode=self.v_send_mode.get(),
                  voice_device="" if self.v_voice_dev.get() == self.voice_default else self.v_voice_dev.get())
         save_settings(s)
