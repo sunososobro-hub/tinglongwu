@@ -4,7 +4,7 @@
 The owner's field test (#1256) gave one person a new label after a short pause. This builds a public stand-in: the
 first --speakers readers of LibriSpeech test-clean (CC-BY 4.0, openslr.org/12; the speaker id is in every file
 path) are streamed (only the start of the archive is read), and their utterances are cut into ASR-sized pieces of
-1-8 s (up to 8.6 s when a short tail joins; a third of them 1-2 s, like the short replies after a pause) and laid out as turns of a meeting: one speaker
+1-8 s (up to 8.6 s when a short tail joins; an utterance under 1 s stays one piece, which the eval skips like tlwu does; a third of them 1-2 s, like the short replies after a pause) and laid out as turns of a meeting: one speaker
 talks for 1-3 pieces, then another one. Output: OUT/cNNNN.wav (16 kHz mono) and OUT/labels.csv ("file,speaker" in
 conversation order), the input of scripts/eval_diarization.py. Fixed --seed: the same archive gives the same clip.
 
