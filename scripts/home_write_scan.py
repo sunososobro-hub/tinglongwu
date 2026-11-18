@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Scan tracked files for code that changes a contributor's machine outside the repo (#1451, rules section 18).
 
-Flags, in tracked files: `git config --global/--system`, `core.hooksPath` set to something other than a
-repo-local value, and writes to shell profiles / `.gitconfig`. Undoing what this repo wrote earlier (the #1309
+Flags, in tracked files: `git config --global/--system`, `core.hooksPath` set to a value that is not repo-local
+(repo-local = a relative path; absolute, `~`, `$VAR` and `..` paths are flagged), and writes to shell profiles / `.gitconfig`. Undoing what this repo wrote earlier (the #1309
 cleanup) is allowlisted. Static text scan, no AI, no network.
 
 Usage: python scripts/home_write_scan.py [--root DIR] [--json]   (prints "N findings"; exit 1 when N > 0)
@@ -11,26 +11,39 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-# (rule name, regex applied per line)
+HOME = r"(~|\$HOME|\$\{HOME\}|%USERPROFILE%)/\.(bashrc|zshrc|profile|bash_profile|zprofile|gitconfig)\b"
+# (rule name, regex applied per command segment). Git-level options (-C dir, -c k=v) may sit before `config`.
 RULES = [
-    ("git-config-global", re.compile(r"git\s+config\b[^\n#]*--(global|system)\b")),
-    ("hooks-path", re.compile(r"git\s+config\b[^\n#]*\bcore\.hooksPath\b|\bgit\s+-c\s+core\.hooksPath=")),
+    ("git-config-global", re.compile(r"\bgit\b[^\n#]*\bconfig\b[^\n#]*--(global|system)\b")),
     ("shell-profile-write",
-     re.compile(r"(>>?|\btee\b(\s+-a)?|\bsed\s+-i\b[^\n]*|\bcp\b[^\n]*|\bmv\b[^\n]*)\s*[\"']?(~|\$HOME|\$\{HOME\}|%USERPROFILE%)/\.(bashrc|zshrc|profile|bash_profile|zprofile|gitconfig)\b")),
+     re.compile(r"(>>?|\btee\b(\s+-a)?)\s*[\"']?" + HOME
+                + r"|\bsed\s+-i\b[^\n]*[\"']?" + HOME
+                + r"|\b(cp|mv|install|ln)\b[^\n]*\s[\"']?" + HOME + r"[\"']?\s*$")),
 ]
-# A line that only removes a setting is the allowlisted #1309 cleanup.
-UNDO = re.compile(r"--unset\b|--remove-section\b|--unset-all\b|\brm\s+-rf?\b|^\s*echo\b")
+# core.hooksPath is judged by the assigned value (see hooks_path_value): repo-local = a relative path.
+HOOKS_PATH = re.compile(r"\bcore\.hooksPath(?:=|\s+)(\S+)")
+# A segment that only removes a setting is the allowlisted #1309 cleanup.
+UNDO = re.compile(r"--unset\b|--remove-section\b|--unset-all\b|\brm\s+-rf?\b")
 READ_ONLY = re.compile(r"--get(-all|-regexp)?\b|--list\b|\s-l\b")  # reading config changes nothing
-ALLOW_FILES = {".claude/hooks/git_identity.sh"}  # the #1309 cleanup; only its undo lines are skipped
+ALLOW_FILES = {".claude/hooks/git_identity.sh"}  # the #1309 cleanup; only its undo / message lines are skipped
+SEGMENT_SPLIT = re.compile(r"&&|\|\||;|\|")
 # Not scanned: the scanner, its tests, docs and rules that describe these patterns.
 SKIP_PREFIXES = ("tests/", "docs/", ".agent/")
 SKIP_FILES = {"scripts/home_write_scan.py"}
 SKIP_SUFFIXES = (".md", ".png", ".jpg", ".ico", ".zip", ".whl", ".onnx", ".bin")
+
+
+def hooks_path_value_is_local(value: str) -> bool:
+    v = value.strip("\"'")
+    if not v or v.startswith(("/", "~", "$", "%", "..", "\\")) or re.match(r"[A-Za-z]:", v):
+        return False
+    return True
 
 
 def scan_text(path: str, text: str) -> list[dict]:
@@ -39,15 +52,24 @@ def scan_text(path: str, text: str) -> list[dict]:
         stripped = line.strip()
         if stripped.startswith("#") and not stripped.startswith("#!"):
             continue
-        for name, rx in RULES:
-            if rx.search(line):
-                if READ_ONLY.search(line):
-                    continue
-                if path in ALLOW_FILES and UNDO.search(line):
-                    continue
-                if name == "hooks-path" and re.search(r"--local\b|--worktree\b", line):
-                    continue
-                out.append({"file": path, "line": no, "rule": name, "text": stripped[:160]})
+        allowed_file = path in ALLOW_FILES
+        if allowed_file and re.match(r"echo\b", stripped) and not re.search(r">", stripped):
+            continue  # a printed message, not a write
+        hit = set()
+        for seg in SEGMENT_SPLIT.split(line):
+            if READ_ONLY.search(seg):
+                continue
+            if allowed_file and UNDO.search(seg):
+                continue
+            for name, rx in RULES:
+                if rx.search(seg):
+                    hit.add(name)
+            if re.search(r"\bgit\b", seg):
+                m = HOOKS_PATH.search(seg)
+                if m and not hooks_path_value_is_local(m.group(1)):
+                    hit.add("hooks-path")
+        for name in sorted(hit):
+            out.append({"file": path, "line": no, "rule": name, "text": stripped[:160]})
     return out
 
 
@@ -61,7 +83,9 @@ def scan_files(files: dict[str, str]) -> list[dict]:
 
 
 def scan_repo(root: Path) -> list[dict]:
-    names = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, check=True).stdout
+    # drop repository-location overrides (GIT_INDEX_FILE, GIT_DIR, ...) so -C is honoured
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    names = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, check=True, env=env).stdout
     files = {}
     for n in names.decode().split("\0"):
         p = root / n
@@ -85,7 +109,7 @@ def main(argv=None) -> int:
     else:
         for f in found:
             print(f"{f['file']}:{f['line']} [{f['rule']}] {f['text']}")
-    print(f"{len(found)} findings")
+    print(f"{len(found)} findings", file=sys.stderr if a.json else sys.stdout)
     return 1 if found else 0
 
 

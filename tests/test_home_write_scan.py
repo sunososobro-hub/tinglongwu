@@ -52,3 +52,44 @@ def test_current_repo_has_zero_findings():
 def test_cli_prints_zero_findings():
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "home_write_scan.py")], capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip().endswith("0 findings")
+
+
+def _rules(text, path="scripts/z.sh"):
+    return {f["rule"] for f in hws.scan_files({path: text})}
+
+
+def test_git_level_options_before_config():
+    assert "git-config-global" in _rules("git -C . config --global user.name x\n")
+
+
+def test_read_exemption_is_per_command():
+    assert "git-config-global" in _rules("git config --global --get user.name || git config --global user.name x\n")
+    assert _rules("git config --global --get user.name\n") == set()
+
+
+def test_cp_flags_destination_only():
+    assert _rules('cp "$HOME/.gitconfig" ./backup\n') == set()
+    assert "shell-profile-write" in _rules('cp ./backup "$HOME/.gitconfig"\n')
+
+
+def test_hooks_path_judged_by_value():
+    assert "hooks-path" in _rules("git config --local core.hooksPath /tmp/hooks\n")
+    assert _rules("git config core.hooksPath .githooks\n") == set()
+    assert "hooks-path" in _rules("git -c core.hooksPath=/tmp/h commit\n")
+
+
+def test_echo_redirect_to_profile_flagged_even_in_allowlisted_file():
+    assert "shell-profile-write" in _rules("echo x >> ~/.bashrc\n", ".claude/hooks/git_identity.sh")
+
+
+def test_json_mode_stdout_is_only_json():
+    import json
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "home_write_scan.py"), "--json"], capture_output=True, text=True)
+    assert json.loads(r.stdout) == []
+
+
+def test_ignores_inherited_git_index_file(tmp_path):
+    import os
+    env = dict(os.environ, GIT_INDEX_FILE=str(tmp_path / "other-index"))
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "home_write_scan.py")], capture_output=True, text=True, env=env)
+    assert r.returncode == 0 and r.stdout.strip().endswith("0 findings")
