@@ -225,8 +225,11 @@ class GpuSampler:
         self._t = threading.Thread(target=self._run, daemon=True)
 
     def _run(self) -> None:
-        while True:
-            for app in self.probe():
+        while not self._stop.is_set():
+            apps = self.probe()
+            if self._stop.is_set():  # play ended while this poll ran: its result is not "during play"
+                return
+            for app in apps:
                 name = app.rsplit(" ", 2)[0] if app.endswith("MiB") else app
                 if name not in self.seen:
                     self.seen.append(name)
@@ -239,6 +242,10 @@ class GpuSampler:
 
     def __exit__(self, *exc) -> None:
         self.stop()
+
+    def signal(self) -> None:
+        """Play ended: no new poll starts and an in-flight one is discarded (stop() still joins the thread)."""
+        self._stop.set()
 
     def stop(self) -> list[str]:
         self._stop.set()
@@ -585,6 +592,7 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             with GpuSampler() as sampler:  # during play: an app that starts and exits mid-clip is still seen
                 t0 = played_at(play_child(wav, CABLE_IN))
+                sampler.signal()  # play is over: "seen during play" stops here
                 gpu_during = gpu_apps()  # end of play, before the sampler join and the tail wait; tlwu is one of these
             gpu_seen = sampler.seen
             time.sleep(TAIL_S)

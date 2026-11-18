@@ -106,6 +106,25 @@ def test_gpu_sampler_keeps_an_app_that_came_and_went_during_play():
     assert not s._t.is_alive()
 
 
+def test_gpu_sampler_drops_a_poll_that_ends_after_play():
+    """A poll still running when play ends (signal()) is not reported as seen during play."""
+    import threading
+
+    started, release = threading.Event(), threading.Event()
+
+    def probe():
+        started.set()
+        release.wait(5)
+        return ["late.exe 100 MiB"]
+
+    s = hl.GpuSampler(every=0.01, probe=probe)
+    with s:
+        assert started.wait(5)
+        s.signal()
+        release.set()
+    assert s.seen == []
+
+
 def test_live_mic_accepts_debug_latency_with_latency_jsonl(tmp_path):
     """The flags the check now passes to the live run parse together (no parser error)."""
     from tinglongwu.cli import parse_args
