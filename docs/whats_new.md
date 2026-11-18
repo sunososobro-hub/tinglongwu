@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.4.10
+- Live listening now warms up speech recognition before it says "ready", so the first subtitles of a session no longer arrive late.
+- Two-way mode on phones is less sensitive: quiet, short background speech no longer turns into chat bubbles.
+- Downloading the Whisper speech model now works behind company proxies that block Hugging Face's file listing.
+
 ## v0.4.9
 - Long talks: subtitles keep up better, with no stretch of more than 10 seconds without a subtitle while speech is still being processed.
 - Phone two-way mode: short filler-only sounds (like "um") no longer show up as lines, while short yes-words such as ага, угу, ええ and 어 are kept.
