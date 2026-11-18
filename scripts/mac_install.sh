@@ -124,6 +124,24 @@ done
 PYBREW="$(brew --prefix python@3.12 2>/dev/null)/bin/python3.12"
 [ -x "$PYBREW" ] || die "找不到 ${PYBREW}（python@3.12 安裝不完整）。可試：brew reinstall python@3.12"
 GITBIN="$(command -v git)" || die "找不到 git。"
+# #1557: Homebrew ships Tkinter as a separate formula (python-tk@X.Y). Without it tlwu-gui cannot start, while the
+# terminal menu (tlwu-menu) works. Never stops the install.
+if "$PYBREW" -c 'import tkinter' >/dev/null 2>&1; then
+  info "Tkinter 已可用"
+else
+  TKBASE="$("$PYBREW" -c 'import sys; print(sys.base_prefix)' 2>/dev/null)"
+  BREWPFX="$(brew --prefix 2>/dev/null)"
+  case "$TKBASE" in
+    "$BREWPFX"/*)
+      if [ -n "$BREWPFX" ]; then
+        info "安裝 python-tk@3.12（tlwu-gui 需要 Tkinter）..."
+        brew install python-tk@3.12 || warn "brew install python-tk@3.12 失敗。"
+      fi ;;
+  esac
+  if "$PYBREW" -c 'import tkinter' >/dev/null 2>&1; then info "Tkinter 已可用"
+  else warn "這個 Python 沒有 Tkinter，tlwu-gui（圖形介面）無法使用；終端機選單 tlwu-menu 不受影響。可試：brew install python-tk@3.12"
+  fi
+fi
 info "python: $PYBREW ($("$PYBREW" --version 2>&1))"
 
 say "3/8 安裝 BlackHole 虛擬音效裝置（2ch 用來聽、16ch 當你的虛擬麥克風）"

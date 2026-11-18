@@ -32,6 +32,11 @@ COMMON_STUBS = {
 PYSTUB = r'''echo "py $0 $*" >> "$LOG"
 case "$1" in
   --version) echo "Python 3.12.7" ;;
+  -c)
+    case "$2" in
+      *"import tkinter"*) [ "${FAKE_TK:-1}" = 1 ] || [ -e "$BREWSTATE/python-tk@3.12" ] || exit 1 ;;
+      *base_prefix*) echo "${FAKE_BASE:-$STUBS/brewpy/Cellar/python}" ;;
+    esac ;;
   -m)
     case "$2" in
       venv) mkdir -p "$3/bin"; cp "$STUBS/pystub" "$3/bin/python"; cp "$STUBS/tlwu-setup" "$3/bin/tlwu-setup" ;;
@@ -322,3 +327,27 @@ def test_mac_install_kokoro_default_pins_reject_unverified_files(mac):
     r, _ = mac(TLWU_BRANCH="main", KOKORO_ONNX_SHA256=None, KOKORO_VOICES_SHA256=None)
     assert r.returncode != 0
     assert not (mac.home / "models" / "kokoro" / "kokoro-v1.0.int8.onnx").exists()
+
+
+def test_mac_install_installs_python_tk_once_for_homebrew_python(mac):
+    """#1557: Homebrew Python without Tkinter -> brew install python-tk@3.12 once; a re-run does not repeat it."""
+    r, calls = mac(TLWU_BRANCH="main", FAKE_TK="0")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls.count("brew install python-tk@3.12") == 1
+    assert "沒有 Tkinter" not in r.stderr
+    r2, calls2 = mac(TLWU_BRANCH="main", FAKE_TK="0")
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+    assert "python-tk" not in calls2
+
+
+def test_mac_install_non_homebrew_python_without_tk_only_warns(mac):
+    r, calls = mac(TLWU_BRANCH="main", FAKE_TK="0", FAKE_BASE="/opt/elsewhere/python")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "python-tk" not in calls
+    assert "tlwu-gui" in r.stderr and "tlwu-menu" in r.stderr
+
+
+def test_mac_install_with_tkinter_installs_nothing_extra(mac):
+    r, calls = mac(TLWU_BRANCH="main")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "python-tk" not in calls
