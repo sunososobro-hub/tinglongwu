@@ -74,7 +74,7 @@ def bullets(titles: list[str]) -> list[str]:
         t = re.sub(r"^(?:fix|feat)\s*#\d+\s*:\s*", "", t, flags=re.I)
         t = re.sub(r"\s*#\d+\b", "", t).strip(" -:")
         # Markdown / list markers would make bump_exempt reject the bullet; a leading digit that is title text stays
-        t = re.sub(r"^(?:(?:[#>*+=<\-]|\d+[.)](?=\s|$))\s*)*", "", t)
+        t = re.sub(r"^(?:(?:[#>*+=<\-]|[0-9]+[.)](?=\s|$))\s*)*", "", t)
         if not t or _SKIP_TITLE.search(t) or "TODO" in t:
             continue
         line = "- " + t[0].upper() + t[1:].rstrip(".") + "."

@@ -92,9 +92,16 @@ def test_markdown_marker_titles_give_accepted_bullets_and_comment_after_heading_
     assert out == ["- Improve subtitle timing.", "- Faster start.", "- Fix crash."]
     assert b.bullets(["> CI: update runner image"]) == [b.FALLBACK_BULLET]
     assert b.bullets(["2FA support for sign-in", "1.5x faster start"]) == ["- 2FA support for sign-in.", "- 1.5x faster start."]
+    assert b.bullets(["\u0662. Improve timing"]) == ["- \u0662. Improve timing."]
     fenced = "# N\n\n```\n## v9.9.9\n```\n\n## v0.4.8\n- old\n"
-    assert b.bump_files('__version__ = "0.4.8"\n', fenced, "0.4.9", out)[1].index("## v0.4.9") > fenced.index("```", 10)
+    assert b.bump_files('__version__ = "0.4.8"\n', fenced, "0.4.9", out)[1].index("## v0.4.9") < b.bump_files('__version__ = "0.4.8"\n', fenced, "0.4.9", out)[1].index("## v0.4.8")
     wn = "# What's new\n\n<!-- ex:\n## v1.2.3\n- x\n-->\n\n## v0.4.8\n- old\n\n<!-- later comment -->\n"
     _, new_wn = b.bump_files('__version__ = "0.4.8"\n', wn, "0.4.9", out)
     assert new_wn.index("## v0.4.9") < new_wn.index("## v0.4.8")
     assert all(x.startswith("- ") and x[2] not in "#>*+=<-" and not x[2].isdigit() for x in out)
+
+
+def test_new_section_goes_after_fence_and_before_old_release():
+    fenced = "# N\n\n```\n## v9.9.9\n```\n\n## v0.4.8\n- old\n"
+    new = b.bump_files('__version__ = "0.4.8"\n', fenced, "0.4.9", ["- x."])[1]
+    assert fenced.index("```", 10) < new.index("## v0.4.9") < new.index("## v0.4.8")
