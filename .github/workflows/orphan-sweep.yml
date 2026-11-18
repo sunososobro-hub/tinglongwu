@@ -1,0 +1,17 @@
+name: orphan-sweep
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/orphan_sweep.py --apply
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
