@@ -6,6 +6,9 @@ on:
 permissions:
   issues: write
   contents: read
+concurrency:
+  group: no-reply-alert
+  cancel-in-progress: false
 jobs:
   alert:
     runs-on: ubuntu-latest

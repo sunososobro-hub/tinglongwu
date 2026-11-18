@@ -49,3 +49,11 @@ def test_dedup_and_format():
     sel = [{"number": 7}, {"number": 8}]
     assert n.new_items(sel, {7}) == [{"number": 8}]
     assert f"@{n.OWNER}" in old and "#7 T | a | 50 h | u" in old
+
+
+def test_null_user_and_title_mentions():
+    assert n.has_human_reply("a", [{"user": None}, human("bob")])
+    assert not n.has_human_reply("a", [{"user": None}])
+    assert n.new_items([{"number": 1}, {"number": 1}], set()) == [{"number": 1}]
+    c = n.format_comment([{"number": 7, "title": "hi @bob", "author": "a", "hours": 50, "url": "u"}])
+    assert "@bob" not in c

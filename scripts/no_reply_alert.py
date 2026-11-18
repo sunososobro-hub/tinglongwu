@@ -35,7 +35,7 @@ def hours_since(iso: str, now: datetime) -> float:
 
 def has_human_reply(author: str, replies: list[dict]) -> bool:
     """replies: comments / reviews / review comments, each with a `user` dict."""
-    return any(r.get("user", {}).get("login") != author and not is_bot(r.get("user")) for r in replies)
+    return any((r.get("user") or {}).get("login") != author and not is_bot(r.get("user")) for r in replies)
 
 
 def threshold_hours(is_pr: bool, author_has_merged_pr: bool) -> int:
@@ -71,12 +71,18 @@ def alerted_numbers(comment_bodies: list[str]) -> set[int]:
 
 
 def new_items(selected: list[dict], already: set[int]) -> list[dict]:
-    return [s for s in selected if s["number"] not in already]
+    seen = set(already)
+    out = []
+    for s in selected:
+        if s["number"] not in seen:
+            seen.add(s["number"])
+            out.append(s)
+    return out
 
 
 def format_comment(items: list[dict]) -> str:
     lines = [f"{MARK} @{OWNER} outside items with no human reply:", ""]
-    lines += [f"#{i['number']} {i['title']} | {i['author']} | {i['hours']} h | {i['url']}" for i in items]
+    lines += [f"#{i['number']} {i['title'].replace('@', '@\u200b')} | {i['author']} | {i['hours']} h | {i['url']}" for i in items]
     return "\n".join(lines)
 
 
@@ -103,7 +109,7 @@ def main() -> int:
     a = ap.parse_args()
     now = datetime.now(UTC)
     items = _pages(f"repos/{a.repo}/issues?state=open")
-    merged = {p["user"]["login"] for p in _pages(f"repos/{a.repo}/pulls?state=closed") if p.get("merged_at")}
+    merged = {p["user"]["login"] for p in _pages(f"repos/{a.repo}/pulls?state=closed") if p.get("merged_at") and p.get("user")}
 
     def replies_of(it):
         n = it["number"]
@@ -114,16 +120,21 @@ def main() -> int:
 
     sel = select_items(items, now, replies_of, merged)
     bodies = [c["body"] for c in _pages(f"repos/{a.repo}/issues/{LOG_ISSUE}/comments")
-              if c.get("user", {}).get("login") in (OWNER, "github-actions[bot]")]
+              if (c.get("user") or {}).get("login") in (OWNER, "github-actions[bot]")]
     fresh = new_items(sel, alerted_numbers(bodies))
     if not fresh:
         print("no new items")
         return 0
     text = format_comment(fresh)
-    print(text)
-    if a.post:
-        subprocess.run(["gh", "api", f"repos/{a.repo}/issues/{LOG_ISSUE}/comments", "-f", f"body={text}"],
-                       check=True, capture_output=True)
+    if not a.post:
+        print(text)
+        return 0
+    print(f"posting {len(fresh)} item(s)")  # titles stay out of runner command output
+    p = subprocess.run(["gh", "api", f"repos/{a.repo}/issues/{LOG_ISSUE}/comments", "--input", "-"],
+                       input=json.dumps({"body": text}), capture_output=True, text=True, check=False)
+    if p.returncode:
+        print(f"gh post failed: {p.stderr.strip()[:300]}")
+        return p.returncode
     return 0
 
 
