@@ -40,3 +40,11 @@ def test_decide_prerelease_vs_final_and_dedup():
 def test_shipped_kinds_parses_existing_comments():
     got = sn.shipped_kinds(["hello", "Shipped in v0.4.7 (pre-release)", "Shipped in v0.4.8"])
     assert got == {"pre", "final"}
+
+
+def test_is_ancestor_reports_git_errors(tmp_path):
+    import pytest
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "a")
+    with pytest.raises(RuntimeError):
+        sn.is_ancestor("HEAD", "no-such-tag", cwd=str(tmp_path))

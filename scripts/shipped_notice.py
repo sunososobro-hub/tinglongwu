@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 API = "https://api.github.com"
@@ -45,7 +46,9 @@ def is_ancestor(commit: str, tag: str, cwd: str | None = None) -> bool:
     """True when `commit` is reachable from `tag` (git merge-base --is-ancestor)."""
     r = subprocess.run(["git", "merge-base", "--is-ancestor", commit, tag], cwd=cwd,
                        capture_output=True, text=True)
-    return r.returncode == 0
+    if r.returncode in (0, 1):  # git reserves 1 for a valid "not an ancestor"
+        return r.returncode == 0
+    raise RuntimeError(f"git merge-base failed ({r.returncode}): {r.stderr.strip()}")
 
 
 def decide(tag: str, prerelease: bool, contained: bool, existing: set[str]) -> str | None:
@@ -88,7 +91,8 @@ def fix_commits(repo: str, issue: int, token: str) -> list[str]:
         if ev.get("event") == "closed" and ev.get("commit_id"):
             commits.append(ev["commit_id"])
         src = (ev.get("source") or {}).get("issue") or {}
-        if ev.get("event") == "cross-referenced" and src.get("pull_request"):
+        if ev.get("event") == "cross-referenced" and src.get("pull_request") \
+                and (src.get("repository") or {}).get("full_name", repo) == repo:
             pr = _api(f"/repos/{repo}/pulls/{src['number']}", token)
             if pr.get("merged") and pr["base"]["ref"] == "dev" and issue in issues_from_body(pr.get("body")):
                 commits.append(pr["merge_commit_sha"])
@@ -120,8 +124,17 @@ def main(argv: list[str] | None = None) -> int:
     rel = _api(f"/repos/{repo}/releases/tags/{args.tag}", token)
     prerelease = bool(rel.get("prerelease"))
     nums = [int(x) for x in re.split(r"[,\s]+", args.issues) if x] or issues_in_range(repo, args.tag, token)
+    if args.issues.strip() and not nums:
+        ap.error("--issues has no issue numbers")
+    subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/tags/{args.tag}"], check=True, capture_output=True)
     for n in nums:
-        issue = _api(f"/repos/{repo}/issues/{n}", token)
+        try:
+            issue = _api(f"/repos/{repo}/issues/{n}", token)
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                print(f"#{n}: not found, skipped")
+                continue
+            raise
         if issue.get("state") != "closed" or issue.get("pull_request"):
             continue
         contained = any(is_ancestor(c, args.tag) for c in fix_commits(repo, n, token))
