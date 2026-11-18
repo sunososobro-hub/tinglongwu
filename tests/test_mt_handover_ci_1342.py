@@ -79,7 +79,7 @@ def test_long_clip_repeats_to_length(tmp_path):
     assert dur >= 30 and abs(dur - n) < 0.01
 
 
-def _run(tmp_path, monkeypatch, mode, timeout=20):
+def _run(tmp_path, monkeypatch, mode, timeout=20, settle=2):
     fake = tmp_path / "fake_tlwu.py"
     fake.write_text(FAKE, "utf-8")
     mdir = tmp_path / "models"
@@ -89,7 +89,7 @@ def _run(tmp_path, monkeypatch, mode, timeout=20):
     land = f'"{sys.executable}" -c "import pathlib, sys; pathlib.Path(sys.argv[2], \'landed\').touch()"'
     out = tmp_path / "h.json"
     rc = h.main(["--models-dir", str(mdir), "--land-cmd", land, "--tlwu", f'"{sys.executable}" "{fake}"',
-                 "--timeout", str(timeout), "--settle", "2", "--log", str(tmp_path / "h.log"), "--out", str(out)])
+                 "--timeout", str(timeout), "--settle", str(settle), "--log", str(tmp_path / "h.log"), "--out", str(out)])
     return rc, json.loads(out.read_text("utf-8"))
 
 
@@ -130,7 +130,9 @@ def test_run_crash_right_after_a_translated_line_fails(tmp_path, monkeypatch):
 
 
 def test_run_fall_back_to_source_after_translating_fails(tmp_path, monkeypatch):
-    rc, r = _run(tmp_path, monkeypatch, "flap", timeout=15)
+    # settle 10 s: the fallback (about 2.7 s after the translated row) always falls inside the window, and the
+    # 2.5 s pause spans at least two 1 s polls, so a poll sees the translated row alone first
+    rc, r = _run(tmp_path, monkeypatch, "flap", timeout=30, settle=10)
     assert rc == 1 and any("not one-way" in p for p in r["problems"]), r
 
 
