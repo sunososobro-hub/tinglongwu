@@ -8,7 +8,7 @@ void main() {
     }
   });
   test('short real answers and longer text are kept', () {
-    for (final t in ['нет', 'yes', '好', 'да нет', 'да', 'うん', '응', 'ну да ладно', 'um I think so', 'はい', '네']) {
+    for (final t in ['нет', 'yes', '好', 'да нет', 'да', 'うん', '응', 'ну да ладно', 'um I think so', 'はい', '네', 'ага', 'Угу.', 'ええ', '어']) {
       expect(FillerFilter.shouldDrop(t), isFalse, reason: t);
     }
   });

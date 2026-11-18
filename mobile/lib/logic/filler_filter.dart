@@ -10,10 +10,10 @@ class FillerFilter {
   static const maxFillerWords = 2;
 
   /// Filler / interjection words, lowercase, no punctuation. Real answers (yes / no / ok) are
-  /// deliberately absent.
+  /// deliberately absent (ru ага/угу, ja ええ, ko 어 are affirmative answers too, #1484).
   static const fillers = <String>{
     // ru
-    'и', 'а', 'ну', 'вот', 'там', 'э', 'эм', 'ээ', 'мм', 'ммм', 'ага', 'угу', 'так', 'ой',
+    'и', 'а', 'ну', 'вот', 'там', 'э', 'эм', 'ээ', 'мм', 'ммм', 'так', 'ой',
     'ах', 'ох', 'ёмаё',
     // en
     'uh', 'um', 'umm', 'uhh', 'er', 'erm', 'hm', 'hmm', 'mm', 'mmm', 'ah', 'oh', 'huh', 'so',
@@ -21,9 +21,9 @@ class FillerFilter {
     // zh
     '嗯', '嗯嗯', '啊', '呃', '哦', '噢', '唉', '喔', '哈', '呀', '哎', '那個', '這個', '就是',
     // ja
-    'えっと', 'あの', 'ええ', 'えー', 'あー', 'うーん', 'まあ', 'ん', 'はあ',
+    'えっと', 'あの', 'えー', 'あー', 'うーん', 'まあ', 'ん', 'はあ',
     // ko
-    '음', '어', '아', '그', '저', '흠', '뭐',
+    '음', '아', '그', '저', '흠', '뭐',
   };
 
   static final _strip = RegExp(r'[\p{P}\p{S}]+', unicode: true);
