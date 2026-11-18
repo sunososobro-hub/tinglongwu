@@ -40,6 +40,9 @@ _STANDALONE = frozenset({
     "да", "нет", "спасибо", "хорошо", "ладно", "конечно", "понятно", "ага", "угу", "привет", "пока", "итак", "точно",
     "отлично", "верно", "правильно", "согласен", "согласна", "пожалуйста", "здравствуйте", "ясно", "так", "ну",
 })
+# #1562: a late fragment led by one of these words continues the previous sentence even when Whisper capitalised it
+# after the pause ("... для новой." + "И версии." -> one line); compared in _norm form
+_CONT_LEAD = frozenset({"and", "or", "и", "или"})
 _Q_END = re.compile(r"[?!？！][\"'»”)\]]*\s*$")
 
 
@@ -113,7 +116,7 @@ def _tail_join(prev: str, frag: str) -> str:
     if p.endswith(".") and not p.endswith("..") and not _CJK.search(frag[:1]):
         p = p[:-1].rstrip()
         w = frag.split(" ", 1)[0]
-        if len(w) > 1 and w[:1].isupper() and not w[1:2].isupper():
+        if w != "I" and w[:1].isupper() and not w[1:2].isupper():  # #1562: one-letter "И" / "A" too
             frag = frag[:1].lower() + frag[1:]
     return _join(p, frag)
 
@@ -142,7 +145,13 @@ class SentenceMerger:
         self.min_words = min_words
         # #1395: seconds after a released line in which a fragment is joined to it (needs min_words > 0); 0 = off
         self.amend_window = amend_window
-        self._last: tuple[str, str, float] | None = None  # (text, lang, release time) of the newest released line
+        # (text, lang, release time, audio end or None) of the newest released line
+        self._last: tuple[str, str, float, float | None] | None = None
+        # #1562: audio-clock (start, end) of the newest pushed segment and the audio start of the oldest buffered
+        # text. The late-fragment window is measured on audio when the caller gives spans: the wall clock between two
+        # ASR results also holds ASR / queue delay (a 1 s pause read as 9 s on a slow CPU runner).
+        self._a_seg: tuple[float, float] | None = None
+        self._a_since: float | None = None
         # whole (#273, live drafts on): the draft covers the wait, so a timeout / cap release ends at the last clause
         # boundary (, ; :) and keeps the rest buffered instead of cutting mid-clause
         self.whole = whole
@@ -169,34 +178,40 @@ class SentenceMerger:
         return " ".join(text.split()[drop_new:])
 
     def add(self, text: str, lang: str, now: float, forced_cut: bool = False, pause: float = 0.0,
-            tag: object = None) -> list[Unit]:
+            tag: object = None, span: tuple[float, float] | None = None) -> list[Unit]:
         """Push one ASR segment; returns the units released now (see _add). #1395: a finished fragment that arrives
-        within amend_window of the previous released line is joined to it at once (a unit with `replaces` set)."""
-        since = self.since
-        out = self._post(self._add(text, lang, now, forced_cut, pause, tag), now, now if since is None else since)
+        within amend_window of the previous released line is joined to it at once (a unit with `replaces` set).
+        span (#1562): the segment's (start, end) on the audio clock; when given, "within amend_window" is the audio
+        pause between the line's end and the fragment's start, not the wall time between their ASR results."""
+        since, a_since = self.since, self._a_since
+        self._a_seg = (float(span[0]), float(span[1])) if span is not None else None
+        a_arr = (self._a_seg[0] if self._a_seg else None) if since is None else a_since
+        out = self._post(self._add(text, lang, now, forced_cut, pause, tag), now, now if since is None else since,
+                         a_arr)
         arrived = now if self.since is None else self.since
         if self.buf and self.min_words > 0 and _is_end(self.buf) and self._is_fragment(self.buf) \
-                and self._amendable(self.buf, self.lang, arrived):
-            out += self._post([self._take(forced=False)], now, arrived)
+                and self._amendable(self.buf, self.lang, arrived, self._a_since):
+            a_arr = self._a_since
+            out += self._post([self._take(forced=False)], now, arrived, a_arr)
         return out
 
     def due(self, now: float) -> list[Unit]:
         """Release the buffer when it is too old or too long (see _due); #1395 late fragments join the last line."""
-        since = self.since
-        return self._post(self._due(now), now, now if since is None else since)
+        since, a_since = self.since, self._a_since
+        return self._post(self._due(now), now, now if since is None else since, a_since)
 
     def quiet(self, seconds: float, now: float) -> list[Unit]:
         """#716 silence after the newest segment (see _quiet); #1395 late fragments join the last line."""
-        since = self.since
-        return self._post(self._quiet(seconds, now), now, now if since is None else since)
+        since, a_since = self.since, self._a_since
+        return self._post(self._quiet(seconds, now), now, now if since is None else since, a_since)
 
     def flush(self) -> list[Unit]:
         """End of input: release what is buffered; #1395 a late fragment still joins the previous line (its arrival
         time is known)."""
-        since = self.since
+        since, a_since = self.since, self._a_since
         out = [self._take(forced=True)] if self.buf else []
         if out and since is not None:
-            out = self._post(out, since, since)
+            out = self._post(out, since, since, a_since)
         self._last = None
         return out
 
@@ -209,24 +224,29 @@ class SentenceMerger:
         words = _WORD.findall(frag)
         if len(words) == 1 and _norm(words[0]) in _STANDALONE:
             return True
+        if words and _norm(words[0]) in _CONT_LEAD:  # #1562: "And ..." / "И ..." continues the sentence
+            return False
         return _is_end(prev) and frag.lstrip("\"'«“„([")[:1].isupper() and len(words) >= 2
 
-    def _amendable(self, text: str, lang: str, arrived: float) -> bool:
+    def _amendable(self, text: str, lang: str, arrived: float, a_arrived: float | None = None) -> bool:
         if self.min_words <= 0 or self.amend_window <= 0 or self._last is None or not text.strip():
             return False
-        prev, plang, t = self._last
-        return (lang == plang and 0.0 <= arrived - t <= self.amend_window and self._is_fragment(text)
-                and not self._separate(prev, text.strip()))
+        prev, plang, t, a_end = self._last
+        if a_arrived is not None and a_end is not None:  # #1562: the pause in the audio, not the ASR wall time
+            near = a_arrived - a_end <= self.amend_window
+        else:
+            near = 0.0 <= arrived - t <= self.amend_window
+        return lang == plang and near and self._is_fragment(text) and not self._separate(prev, text.strip())
 
-    def _post(self, units: list[Unit], now: float, arrived: float) -> list[Unit]:
+    def _post(self, units: list[Unit], now: float, arrived: float, a_arrived: float | None = None) -> list[Unit]:
         """#1395: turn a late fragment into "previous line + fragment" (replaces = the previous line's text) and
-        remember the newest released line."""
+        remember the newest released line (#1562: with the audio end of the newest pushed segment, if known)."""
         out = []
         for u in units:
-            if self._amendable(u.text, u.lang, arrived):
+            if self._amendable(u.text, u.lang, arrived, a_arrived):
                 prev = self._last[0]
                 u = Unit(_tail_join(prev, u.text), u.lang, u.forced, u.tag, u.first, replaces=prev, part=u.text)
-            self._last = (u.text, u.lang, now)
+            self._last = (u.text, u.lang, now, self._a_seg[1] if self._a_seg else None)
             out.append(u)
         return out
 
@@ -251,6 +271,7 @@ class SentenceMerger:
         self.tag = tag
         if not self.buf:
             self.since = now
+            self._a_since = self._a_seg[0] if self._a_seg else None
         self.lang = lang
         self.buf = f"{self.buf} {text}".strip() if not _CJK.search(text[:1]) else self.buf + text
         self._marks.append((len(self.buf) - len(text), tag))
@@ -271,9 +292,10 @@ class SentenceMerger:
         self._rebase(len(self.buf) - len(rest))
         self.buf = rest
         if not rest:
-            self.since = None
+            self.since = self._a_since = None
         elif sents:
             self.since = now  # remainder starts a fresh wait
+            self._a_since = self._a_seg[0] if self._a_seg else None
         send = self.pause_send if self.pause_send is not None else \
             lang_patches.setting(lang, "MERGE_PAUSE_SEND", PAUSE_SEND)
         if rest and not forced_cut and pause >= send \
@@ -331,6 +353,7 @@ class SentenceMerger:
                     tag, first = self._tag_before(len(head)), self._first()
                     self._rebase(len(self.buf) - len(rest))
                     self.buf, self.since = rest, (now if rest else None)
+                    self._a_since = (self._a_seg[0] if self._a_seg else None) if rest else None
                     return [Unit(head, self.lang, True, tag, first)]
             return [self._take(forced=True)]
         return []
@@ -352,6 +375,6 @@ class SentenceMerger:
 
     def _take(self, forced: bool) -> Unit:
         u = Unit(self.buf.strip(), self.lang, forced, self.tag, self._first())
-        self.buf, self.since = "", None
+        self.buf, self.since, self._a_since = "", None, None
         self._marks = []
         return u
