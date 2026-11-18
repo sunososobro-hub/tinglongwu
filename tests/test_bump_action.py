@@ -104,4 +104,5 @@ def test_markdown_marker_titles_give_accepted_bullets_and_comment_after_heading_
 def test_new_section_goes_after_fence_and_before_old_release():
     fenced = "# N\n\n```\n## v9.9.9\n```\n\n## v0.4.8\n- old\n"
     new = b.bump_files('__version__ = "0.4.8"\n', fenced, "0.4.9", ["- x."])[1]
-    assert fenced.index("```", 10) < new.index("## v0.4.9") < new.index("## v0.4.8")
+    close = new.index("```", new.index("```") + 3)
+    assert close < new.index("## v0.4.9") < new.index("## v0.4.8")
