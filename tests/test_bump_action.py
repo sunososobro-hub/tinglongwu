@@ -85,3 +85,11 @@ def test_pr_body_has_required_lines():
     body = b.pr_body(7, "0.4.9", "why", ["- x."])
     assert "Owner comments:" in body and "Refs #7" in body
     assert body.splitlines()[-1].startswith("tlwu-usage:") and json.dumps(body)
+
+
+def test_markdown_marker_titles_give_accepted_bullets_and_comment_after_heading_is_ok():
+    out = b.bullets(["> Improve subtitle timing", "# Faster start", "1. Fix crash"])
+    wn = "# What's new\n\n<!-- ex:\n## v1.2.3\n- x\n-->\n\n## v0.4.8\n- old\n\n<!-- later comment -->\n"
+    _, new_wn = b.bump_files('__version__ = "0.4.8"\n', wn, "0.4.9", out)
+    assert new_wn.index("## v0.4.9") < new_wn.index("## v0.4.8")
+    assert all(x.startswith("- ") and x[2] not in "#>*+=<-" and not x[2].isdigit() for x in out)

@@ -75,6 +75,9 @@ def bullets(titles: list[str]) -> list[str]:
         t = re.sub(r"\s*#\d+\b", "", t).strip(" -:")
         if not t or _SKIP_TITLE.search(t) or "TODO" in t:
             continue
+        t = re.sub(r"^[#>*+=<\-\d.)\s]+", "", t)  # a Markdown marker would make bump_exempt reject the bullet
+        if not t:
+            continue
         line = "- " + t[0].upper() + t[1:].rstrip(".") + "."
         if line not in out:
             out.append(line)
@@ -90,9 +93,10 @@ def bump_files(init_text: str, whats_new_text: str, new_version: str, bullet_lin
     if n != 1:
         raise SystemExit("no __version__ line to bump")
     section = f"## v{new_version}\n" + "\n".join(bullet_lines) + "\n\n"
-    after = whats_new_text.rfind("-->") + 3 if "-->" in whats_new_text else 0  # skip the example inside the comment
-    m = re.search(r"^## v\d", whats_new_text[after:], re.M)
-    at = after + m.start() if m else len(whats_new_text)
+    # first version heading outside HTML comments (the file's example heading sits inside one)
+    visible = re.sub(r"<!--.*?-->", lambda c: " " * len(c.group(0)), whats_new_text, flags=re.S)
+    m = re.search(r"^## v\d", visible, re.M)
+    at = m.start() if m else len(whats_new_text)
     prefix = whats_new_text[:at] if whats_new_text[:at].endswith("\n\n") else whats_new_text[:at].rstrip("\n") + "\n\n"
     return new_init, prefix + section + whats_new_text[at:]
 
@@ -120,22 +124,24 @@ def _ts(s: str) -> datetime:
 
 def gather(now: datetime) -> dict:
     tags = set(_git("tag").split())
-    version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
-    tip = _git("rev-parse", "origin/dev")
+    tip = _git("rev-parse", "origin/dev")  # one dev commit for version, checks, history and the bump base
+    version = app_version(_git("show", f"{tip}:tinglongwu/__init__.py"))
     cmp_ = _gh("api", f"repos/{REPO}/compare/main...dev")
     checks = _gh("api", f"repos/{REPO}/commits/{tip}/check-runs?per_page=100")["check_runs"]
     test = [c for c in checks if c["name"] == "test"]
-    pulls = _gh("api", f"repos/{REPO}/pulls?state=open&per_page=100")
+    pulls = _gh("api", f"repos/{REPO}/pulls?state=open&base=dev&per_page=100", "--paginate", "--slurp")
+    pulls = [x for page in pulls for x in page]
     bump_open = any(p["title"].startswith("release: bump __version__") for p in pulls)
     backmerge = any(p["head"]["ref"].startswith("hotfix/") for p in pulls)
-    hot = _gh("api", f"repos/{REPO}/actions/workflows/hotfix.yml/runs?status=in_progress&per_page=1")
+    hot = sum(_gh("api", f"repos/{REPO}/actions/workflows/hotfix.yml/runs?status={st}&per_page=1")["total_count"]
+              for st in ("queued", "waiting", "in_progress"))
     last = _gh("api", "-X", "GET", f"repos/{REPO}/pulls", "-f", "state=closed", "-f", "per_page=100")
     bumps = [_ts(p["merged_at"]) for p in last if p.get("merged_at") and p["title"].startswith("release: bump")]
     body = _gh("api", f"repos/{REPO}/issues/574")["body"]
     return dict(now=now, version=version, tags=tags, ahead=cmp_["ahead_by"],
                 test_green=bool(test) and test[0]["conclusion"] == "success", open_bump_pr=bump_open,
-                hotfix_active=hot["total_count"] > 0, hotfix_backmerge_open=backmerge,
-                last_bump_at=max(bumps, default=None), p01_fix_since_release=_p01_since(version),
+                hotfix_active=hot > 0, hotfix_backmerge_open=backmerge,
+                last_bump_at=max(bumps, default=None), p01_fix_since_release=f"v{version}" in tags and _p01_since(version),
                 throttle=throttle_level(body))
 
 
@@ -154,6 +160,8 @@ def _p01_since(version: str) -> bool:
 
 
 def apply(version: str, reason: str) -> None:
+    if _git("status", "--porcelain", "--untracked-files=no"):
+        raise SystemExit("worktree has tracked changes; refusing to open a bump")
     new = next_patch(version)
     titles = _git("log", f"v{version}..origin/dev", "--format=%s").splitlines()
     lines = bullets(titles)
@@ -171,7 +179,8 @@ def apply(version: str, reason: str) -> None:
     wn_p.write_text(wn, "utf-8")
     _git("config", "user.name", "sunososobro-hub")
     _git("config", "user.email", "243713070+sunososobro-hub@users.noreply.github.com")
-    _git("commit", "-am", f"release: bump __version__ to {new}")
+    _git("add", "tinglongwu/__init__.py", WHATS_NEW_FILE)
+    _git("commit", "-m", f"release: bump __version__ to {new}")
     _git("push", "-u", "origin", branch)
     _gh("api", f"repos/{REPO}/pulls", "-X", "POST", "-f", f"title=release: bump __version__ to {new}",
         "-f", f"head={branch}", "-f", "base=dev", "-f", f"body={pr_body(issue, new, reason, lines)}")
