@@ -438,8 +438,6 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
                out / "mic_live.log") as ch:
         try:
             if not ch.wait_for(READY_MARK):
-                for ln in tlwu_notes(ch.lines):  # #1247: what the live run said before it never got ready
-                    print(f"diagnose: live {ln}", flush=True)
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             t0 = played_at(play_child(wav, CABLE_IN))
             time.sleep(TAIL_S)
@@ -448,6 +446,9 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
             # any terminate, so no orphan tlwu process is left on a ready timeout or exception (#1203 review).
             stop.write_text("stop")
             ch.finish(60)
+            if not any(READY_MARK in ln for ln in ch.lines):  # #1247: what the live run said before it never got
+                for ln in tlwu_notes(ch.lines):  # ready (after finish(), so lines read while it ended are in)
+                    print(f"diagnose: live {ln}", flush=True)
         offline_ok = any(ln.startswith("PASS") for ln in ch.lines)
     file_rows, mic_rows = read_jsonl(fj), read_jsonl(mj)
     offsets = wall_offsets(mic_rows, t0)
