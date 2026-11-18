@@ -132,6 +132,23 @@ def test_never_started_action_required_run_neither_passes_nor_blocks_1104():
     assert plan([pr()], runs=GREEN + runs[-len(GREEN):])["publish"] == "true"
 
 
+def test_release_pr_duplicate_pull_request_run_is_no_evidence_1540():
+    """v0.4.10: opening the release PR fired a second windows-build run on the snapshot commit; still queued, it was
+    the newest run and blocked a gate the dev push run had already passed."""
+    push_ok = {"id": 1, "name": "windows-build", "event": "push", "head_branch": "dev", "status": "completed",
+               "conclusion": "success", "html_url": "https://x/wb/1"}
+    dup = {"id": 2, "name": "windows-build", "event": "pull_request", "head_branch": "release/v0.4.10",
+           "status": "queued", "conclusion": None, "html_url": "https://x/wb/2"}
+    assert rn.check_problems([push_ok, dup], ["windows-build"]) == []
+    assert rn.check_problems([dup], ["windows-build"]) == ["windows-build: no run on this commit"]
+    red = dict(push_ok, conclusion="failure")
+    assert rn.check_problems([red, dict(dup, status="completed", conclusion="success")], ["windows-build"]) == [
+        "windows-build: completed/failure https://x/wb/1"]  # a green duplicate never hides a red real run
+    other_pr = dict(dup, head_branch="fix/1540")
+    assert rn.check_problems([push_ok, other_pr], ["windows-build"]) == [
+        "windows-build: queued/None https://x/wb/2"]  # only release/ heads are ignored
+
+
 def test_release_pr_run_flipped_to_zero_job_failure_after_merge_is_no_evidence_1139():
     """v0.4.0: the release PR's action_required pull_request runs became completed/failure with 0 jobs when
     auto-release merged it, and release.yml plan then refused the green head."""

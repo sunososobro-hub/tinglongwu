@@ -24,6 +24,9 @@ concurrency:
 
 jobs:
   build:
+    # #1540: no duplicate run on the release PR (release/vX.Y.Z -> main); the snapshot commit already has its
+    # dev push / release-pr.yml dispatch run, which is what the release gate reads
+    if: ${{ !startsWith(github.head_ref, 'release/') }}
     runs-on: windows-latest
     timeout-minutes: 30
     outputs:

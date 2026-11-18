@@ -185,6 +185,9 @@ def _counts(run: dict, jobs_of=None) -> bool:
         return False
     if _never_started(run, jobs_of):  # #1139: the same run after the PR merged
         return False
+    if run.get("event") == "pull_request" and str(run.get("head_branch") or "").startswith("release/"):
+        return False  # #1540: the release PR's own pull_request run re-tests the snapshot commit; the dev push and
+        # release-pr.yml dispatch runs on that same commit are the evidence, so a queued duplicate never blocks
     return not (run.get("name") == "install-clean" and run.get("event") == "pull_request")
 
 
