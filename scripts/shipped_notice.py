@@ -104,13 +104,37 @@ def fix_commits(repo: str, issue: int, token: str) -> list[str]:
     return list(dict.fromkeys(c for c in commits if c))
 
 
-def issues_in_range(repo: str, tag: str, token: str) -> list[int]:
+def previous_tag(releases: list[dict], tag: str) -> str | None:
+    """Tag whose range starts the scan for `tag`. `releases` is newest first (GitHub order, drafts dropped).
+
+    A pre-release scans from the release just before it. A final release scans from the previous FINAL release,
+    so fixes that first shipped in an in-between pre-release are seen again and get their "Shipped in vX.Y.Z" note.
+    """
+    rels = [r for r in releases if not r.get("draft")]
+    for i, r in enumerate(rels):
+        if r["tag_name"] != tag:
+            continue
+        older = rels[i + 1:]
+        if not r.get("prerelease"):
+            older = [o for o in older if not o.get("prerelease")]
+        return older[0]["tag_name"] if older else None
+    return None
+
+
+def unannounced_tags(releases: list[dict], limit: int = 10) -> list[str]:
+    """The newest `limit` published releases (pre-releases included), oldest first, so notes post in order."""
+    rels = [r for r in releases if not r.get("draft")][:limit]
+    return [r["tag_name"] for r in reversed(rels)]
+
+
+def issues_in_range(repo: str, tag: str, token: str, prev: str | None = None) -> list[int]:
     """Issues referenced by PRs squashed into the commits between the previous tag and `tag`."""
-    try:
-        prev = _git("describe", "--tags", "--abbrev=0", f"{tag}^").strip()
-        rng = f"{prev}..{tag}"
-    except subprocess.CalledProcessError:
-        rng = tag
+    if prev is None:
+        try:
+            prev = _git("describe", "--tags", "--abbrev=0", f"{tag}^").strip()
+        except subprocess.CalledProcessError:
+            prev = None
+    rng = f"{prev}..{tag}" if prev else tag
     found: list[int] = []
     for subject in _git("log", "--format=%s", rng).splitlines():
         m = PR_IN_SUBJECT_RE.search(subject)
@@ -119,20 +143,7 @@ def issues_in_range(repo: str, tag: str, token: str) -> list[int]:
     return list(dict.fromkeys(found))
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--tag", required=True)
-    ap.add_argument("--issues", default="", help="comma list to backfill; default: issues in the tag's range")
-    ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args(argv)
-    repo, token = os.environ.get("GITHUB_REPOSITORY", "sunososobro-hub/tinglongwu"), os.environ.get("GITHUB_TOKEN", "")
-    rel = _api(f"/repos/{repo}/releases/tags/{args.tag}", token)
-    prerelease = bool(rel.get("prerelease"))
-    explicit = [int(x) for x in re.split(r"[,\s]+", args.issues) if x]
-    if args.issues.strip() and not explicit:
-        ap.error("--issues has no issue numbers")
-    nums = explicit or issues_in_range(repo, args.tag, token)
-    subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/tags/{args.tag}"], check=True, capture_output=True)
+def notify_tag(repo: str, token: str, tag: str, prerelease: bool, nums: list[int], dry_run: bool) -> None:
     for n in nums:
         try:
             issue = _api(f"/repos/{repo}/issues/{n}", token)
@@ -143,14 +154,43 @@ def main(argv: list[str] | None = None) -> int:
             raise
         if issue.get("state") != "closed" or issue.get("pull_request"):
             continue
-        contained = any(is_ancestor(c, args.tag) for c in fix_commits(repo, n, token))
+        contained = any(is_ancestor(c, tag) for c in fix_commits(repo, n, token))
         existing = shipped_kinds([c["body"] for c in _paged(f"/repos/{repo}/issues/{n}/comments", token)
                                   if c["user"]["login"] == "github-actions[bot]"])
-        text = decide(args.tag, prerelease, contained, existing)
+        text = decide(tag, prerelease, contained, existing)
         if text:
             print(f"#{n}: {text}")
-            if not args.dry_run:
+            if not dry_run:
                 _api(f"/repos/{repo}/issues/{n}/comments", token, "POST", {"body": text})
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tag", default="", help="release tag to check; omit with --all")
+    ap.add_argument("--all", action="store_true",
+                    help="scan the newest releases (pre-releases included), oldest first; de-dup makes it safe to repeat")
+    ap.add_argument("--issues", default="", help="comma list to backfill; default: issues in the tag's range")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args(argv)
+    if bool(args.tag) == args.all:
+        ap.error("give exactly one of --tag or --all")
+    repo, token = os.environ.get("GITHUB_REPOSITORY", "sunososobro-hub/tinglongwu"), os.environ.get("GITHUB_TOKEN", "")
+    explicit = [int(x) for x in re.split(r"[,\s]+", args.issues) if x]
+    if args.issues.strip() and not explicit:
+        ap.error("--issues has no issue numbers")
+    if args.all and explicit:
+        ap.error("--issues needs --tag")
+    releases = _api(f"/repos/{repo}/releases?per_page=100", token)
+    by_tag = {r["tag_name"]: r for r in releases}
+    tags = unannounced_tags(releases) if args.all else [args.tag]
+    for tag in tags:
+        if subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/tags/{tag}"], capture_output=True).returncode:
+            if not args.all:
+                sys.exit(f"tag {tag} not in this checkout")
+            continue
+        rel = by_tag.get(tag) or _api(f"/repos/{repo}/releases/tags/{tag}", token)
+        nums = explicit or issues_in_range(repo, tag, token, previous_tag(releases, tag))
+        notify_tag(repo, token, tag, bool(rel.get("prerelease")), nums, args.dry_run)
     return 0
 
 

@@ -65,3 +65,32 @@ def test_workflow_runs_on_schedule_and_dispatch_without_issues():
     on = wf.get("on", wf.get(True))
     assert on["schedule"][0]["cron"]
     assert on["workflow_dispatch"]["inputs"]["issues"]["required"] is False
+
+
+RELS = [  # GitHub order: newest first
+    {"tag_name": "v0.4.10", "prerelease": False},
+    {"tag_name": "v0.4.10-rc1", "prerelease": True},
+    {"tag_name": "v0.4.9", "prerelease": False},
+    {"tag_name": "v0.4.9-rc1", "prerelease": True},
+    {"tag_name": "v0.4.8-draft", "prerelease": False, "draft": True},
+]
+
+
+def test_previous_tag_final_skips_prereleases_so_their_fixes_get_a_final_note():
+    assert sn.previous_tag(RELS, "v0.4.10") == "v0.4.9"
+    assert sn.previous_tag(RELS, "v0.4.10-rc1") == "v0.4.9"
+    assert sn.previous_tag(RELS, "v0.4.9-rc1") is None
+    assert sn.previous_tag(RELS, "v9") is None
+
+
+def test_unannounced_tags_includes_prereleases_oldest_first_and_drops_drafts():
+    assert sn.unannounced_tags(RELS) == ["v0.4.9-rc1", "v0.4.9", "v0.4.10-rc1", "v0.4.10"]
+    assert sn.unannounced_tags(RELS, limit=2) == ["v0.4.10-rc1", "v0.4.10"]
+
+
+def test_cli_needs_exactly_one_of_tag_or_all():
+    import pytest
+    with pytest.raises(SystemExit):
+        sn.main([])
+    with pytest.raises(SystemExit):
+        sn.main(["--tag", "v1", "--all"])

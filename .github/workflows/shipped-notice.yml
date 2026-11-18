@@ -45,12 +45,8 @@ jobs:
         run: |
           tag="${EVENT_TAG:-$INPUT_TAG}"
           if [ -z "$tag" ]; then
-            tag=$(python -I - <<'PY'
-          import json, os, urllib.request
-          r = urllib.request.Request("https://api.github.com/repos/" + os.environ["GH_REPO"] + "/releases/latest",
-                                     headers={"Authorization": "Bearer " + os.environ["GITHUB_TOKEN"]})
-          print(json.load(urllib.request.urlopen(r))["tag_name"])
-          PY
-            )
+            # schedule / bare dispatch: scan the newest releases, pre-releases included (de-dup makes repeats safe)
+            python -I scripts/shipped_notice.py --all
+          else
+            python -I scripts/shipped_notice.py --tag "$tag" --issues "$INPUT_ISSUES"
           fi
-          python -I scripts/shipped_notice.py --tag "$tag" --issues "$INPUT_ISSUES"
