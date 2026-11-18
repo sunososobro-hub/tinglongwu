@@ -1,5 +1,12 @@
 # Benchmarks
 
+![How well does tinglongWu translate? A 6x6 grid of faces per language direction, a comparison with Google Translate, and the wait per sentence.](assets/quality.svg)
+
+Most directions read well (17 good, 8 fine, 5 weak out of 30), Russian as the source is the weakest, and real-meeting quality and speed on your own PC are not measured yet.
+
+<details>
+<summary>Numbers (COMET / chrF tables, speed, settings)</summary>
+
 Translation quality and speed, measured with `scripts/bench/` (dev tool, not part of the product).
 
 - Hardware: RTX 3050 8 GB. Data: FLORES-200 devtest (1012 sentences, Russian -> Traditional Chinese, gold source text; the 50-sentence rows use the first 50 sentences). Metrics: chrF (sacrebleu) and COMET (Unbabel/wmt22-comet-da). Latency excludes model load. "Previous engine" rows are historical: the Qwen3-4B / Qwen2.5-7B / Qwen3-8B LLMs (Q4_K_M GGUF, 2048 context) that tlwu used before Hy-MT2; they were removed (#276, #283, #308) and the bench can no longer run them (m2m is gone from the bench too).
@@ -301,3 +308,5 @@ What this shows:
 - Timings move with the runner CPU (gemma-3-1b: 40-82 s per 5-minute topic across three runs of the same code), so compare the s / topic columns within ~2x, not to the second. The synthetic subtitle probe (SHA-256 work standing in for ASR/MT, not the real pipeline) stays within +2% for every model; the real ASR/MT path was not measured here.
 
 Reproduce: dispatch `topic-bakeoff` (input `candidates`, empty = all), or locally `python scripts/topic_bakeoff.py --fetch qwen3-4b-2507 --dir cand` then `python scripts/topic_bakeoff.py --model qwen3-4b-2507=cand/qwen3-4b-2507/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --out r.json`; the per-segment notes are in the job log.
+
+</details>
