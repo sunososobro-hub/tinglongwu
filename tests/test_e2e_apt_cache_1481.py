@@ -60,7 +60,10 @@ def _run_step(tmp_path, apt_body: str):
     log = tmp_path / "apt.log"
     mirrors = tmp_path / "apt-mirrors.txt"
     mirrors.write_text("http://slow.example/ubuntu/\n")
-    for name, body in {"sudo": 'exec "$@"\n', "apt-get": f'echo "$@" >> "{log}"\n' + apt_body, "sleep": "exit 0\n"}.items():
+    # like real apt, the fake leaves a root-only lock file in the archives folder
+    lock = f'case " $* " in *" install "*) touch "{cached}/lock";; esac\n'
+    for name, body in {"sudo": 'exec "$@"\n', "apt-get": f'echo "$@" >> "{log}"\n' + lock + apt_body,
+                       "sleep": "exit 0\n"}.items():
         f = bin_ / name
         f.write_text("#!/bin/sh\n" + body)
         f.chmod(f.stat().st_mode | stat.S_IEXEC)
@@ -71,23 +74,25 @@ def _run_step(tmp_path, apt_body: str):
     return out, installs, cached, mirrors
 
 
-@pytest.mark.skipif(BASH is None, reason="bash is needed to run the step")
+@pytest.mark.skipif(BASH is None or shutil.which("timeout") is None, reason="bash and timeout are needed to run the step")
 def test_install_step_points_apt_at_the_cached_folder(tmp_path):
     out, installs, cached, mirrors = _run_step(tmp_path, "exit 0\n")
     assert out.returncode == 0, out.stderr
-    assert installs
-    assert f"Dir::Cache::Archives={cached}" in installs[0]
-    # apt turns partial/ into _apt:root 0700; the cache save runs without sudo, so the step removes it on success
-    assert cached.is_dir() and not (cached / "partial").exists()
+    # download into the cached folder (time-capped), then install from it (never killed mid-dpkg)
+    assert len(installs) == 2 and "--download-only" in installs[0] and "--download-only" not in installs[1]
+    assert all(f"Dir::Cache::Archives={cached}" in line for line in installs)
+    # apt leaves partial/ (_apt 0700) and lock (root 0640); the cache save runs without sudo, so the step removes both
+    assert cached.is_dir() and not (cached / "partial").exists() and not (cached / "lock").exists()
     assert "slow.example" in mirrors.read_text()  # a working mirror is left alone
 
 
-@pytest.mark.skipif(BASH is None, reason="bash is needed to run the step")
+@pytest.mark.skipif(BASH is None or shutil.which("timeout") is None, reason="bash and timeout are needed to run the step")
 def test_a_failed_try_switches_to_another_mirror_and_retries(tmp_path):
     flag = tmp_path / "failed_once"
-    body = f'case " $* " in *" install "*) [ -e "{flag}" ] && exit 0; : > "{flag}"; exit 100;; esac\nexit 0\n'
+    body = f'case " $* " in *" --download-only "*) [ -e "{flag}" ] && exit 0; : > "{flag}"; exit 100;; esac\nexit 0\n'
     out, installs, cached, mirrors = _run_step(tmp_path, body)
     assert out.returncode == 0, out.stderr
-    assert len(installs) == 2
+    downloads = [line for line in installs if "--download-only" in line]
+    assert len(downloads) == 2 and len(installs) == 3  # failed download, retried download, one real install
     text = mirrors.read_text()
     assert "slow.example" not in text and "archive.ubuntu.com" in text

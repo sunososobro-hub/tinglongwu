@@ -66,17 +66,22 @@ jobs:
           restore-keys: apt-e2e-ubuntu-24.04-v1-
       - name: System packages (audio server, virtual display, window manager)
         if: steps.changes.outputs.build == 'true'
-        timeout-minutes: 18
+        timeout-minutes: 20
         run: |
           DEBS="$HOME/.cache/tlwu-apt-debs"
           MIRRORS="${TLWU_APT_MIRRORS:-/etc/apt/apt-mirrors.txt}"
+          PKGS="libsndfile1 libpulse0 pulseaudio pulseaudio-utils xvfb openbox xdotool x11-utils"
           mkdir -p "$DEBS/partial"
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Dir::Cache::Archives=$DEBS -o APT::Keep-Downloaded-Packages=true"
+          # Only the network part is time-capped (update <= 90 s + download <= 240 s per try, 3 tries + sleeps = 1035 s), so a
+          # crawling mirror leaves time for the next one and a timeout never interrupts dpkg; finished .debs stay in $DEBS.
           for i in 1 2 3; do
-            # each try is capped so a crawling mirror leaves time for the next one; finished .debs stay in $DEBS
-            timeout 270 sudo apt-get $APT update && timeout 270 sudo apt-get $APT install -y --no-install-recommends \
-              libsndfile1 libpulse0 pulseaudio pulseaudio-utils xvfb openbox xdotool x11-utils \
-              && { sudo rm -rf "$DEBS/partial"; exit 0; }  # apt leaves partial/ as _apt 0700: the cache save (no sudo) could not read it
+            if timeout 90 sudo apt-get $APT update && timeout 240 sudo apt-get $APT install -y --no-install-recommends --download-only $PKGS; then
+              sudo apt-get $APT install -y --no-install-recommends $PKGS
+              # apt leaves partial/ (_apt 0700) and lock (root 0640): the cache save runs without sudo and could not read them
+              sudo rm -rf "$DEBS/partial" "$DEBS/lock"
+              exit 0
+            fi
             echo "apt try $i failed or was too slow: switching the runner's mirror list (#1481)"
             printf 'http://azure.archive.ubuntu.com/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n' | sudo tee "$MIRRORS" >/dev/null
             sleep 15
