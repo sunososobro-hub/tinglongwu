@@ -40,6 +40,11 @@ HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)
 USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=\d+\s*$")
 STOP_ISSUE_LABELS = {"status:frozen", "status:proposal", "needs-owner"}
+# Section 14: a protected path merges only when its linked issue was opened by the owner or a collaborator; a PASS
+# never overrides it. github-actions[bot] is this repo's own workflows (e.g. bump-action.yml's bump issues): only
+# code already on a branch of this repo can post as it, so it counts as a collaborator.
+TRUSTED_ASSOC = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+TRUSTED_ISSUE_BOTS = frozenset({"github-actions[bot]"})
 PASS_RE = re.compile(r"^\s*Opus review: (?:PASS|APPROVE)\b", re.M)
 REJECT_RE = re.compile(r"(?:AI review: FAIL|Opus review: CHANGES)")
 STOP_RE = re.compile(r"(?<!non-)(?<!not )\b(?:needs owner|blocking)\b", re.I)
@@ -59,6 +64,13 @@ def is_protected(path: str) -> bool:
         name = path.rsplit("/", 1)[-1]
         return name in RELEASE_CRITICAL or name.startswith("auto-release")
     return False
+
+
+def trusted_issue(issue: dict) -> bool:
+    """Linked issue opened by the owner / a collaborator (author_association) or by this repo's own workflows."""
+    if issue.get("author_association") in TRUSTED_ASSOC:
+        return True
+    return (issue.get("user") or {}).get("login") in TRUSTED_ISSUE_BOTS
 
 
 def _ts(s: str) -> datetime:
@@ -129,6 +141,11 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
             if n.get("author", "").endswith("[bot]"):
                 continue  # review bots' wording is not an owner stop; their threads count below
             return "hold", "unresolved needs owner / blocking"
+    plabels = {lb["name"] for lb in pr.get("labels", [])}
+    if "needs-owner" in plabels:
+        return "hold", "PR has needs-owner"  # section 3 / 14 hard stop; a PASS does not lift an owner question
+    if NEEDS_OPUS in plabels and not pass_at:
+        return "hold", "PR has needs-opus and no Opus PASS on its head"  # e.g. section 3 "failed twice"
     rejects = [_ts(n["at"]) for n in notes if REJECT_RE.search(n.get("body") or "")]
     if rejects and max(rejects) > head_at:
         return "hold", "FAIL / CHANGES not answered by a newer commit"
@@ -150,6 +167,8 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         return "wait", f"file list has {len(files)} files, PR reports {pr.get('changed_files')}"
     protected = sorted(f["filename"] for f in files
                        if is_protected(f["filename"]) or is_protected(f.get("previous_filename") or ""))
+    if protected and not trusted_issue(issue):
+        return "hold", f"protected path but issue #{n} was not opened by a collaborator (section 14)"
     if protected:
         exempt = bump is not None and bump(files)[0]
         if not exempt and not pass_at:

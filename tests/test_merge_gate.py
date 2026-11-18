@@ -25,7 +25,8 @@ def pr(**kw):
 
 
 FILES = [{"filename": "tinglongwu/foo.py", "status": "modified"}]
-ISSUE = {"number": 100, "labels": [{"name": "status:review"}]}
+ISSUE = {"number": 100, "labels": [{"name": "status:review"}], "author_association": "OWNER",
+         "user": {"login": "sunososobro-hub"}}
 
 
 def run(p=None, files=FILES, checks=TEST_OK, issue=ISSUE, notes=(), threads=0, bump=None, freeze=False):
@@ -170,3 +171,27 @@ def test_legacy_freeze_needs_release_fix():
 def test_hotfix_backmerge_goes_to_ai():
     p = pr(head={"ref": "hotfix/v0.4.9", "repo": {"full_name": "sunososobro-hub/tinglongwu"}, "sha": "abc"})
     assert run(p=p)[0] == "needs-ai"
+
+
+def test_pr_labels_hold():  # Opus CHANGES on aa3fcb3: an AI merger's needs-opus / needs-owner on the PR is a stop
+    assert run(p=pr(labels=[{"name": "needs-owner"}]))[0] == "hold"
+    passed = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA[:7]}", "at": at(5)}]
+    assert run(p=pr(labels=[{"name": "needs-owner"}]), notes=passed)[0] == "hold"
+    assert run(p=pr(labels=[{"name": "needs-opus"}]))[0] == "hold"
+    assert run(p=pr(labels=[{"name": "needs-opus"}]), notes=passed)[0] == "merge"
+    assert run(p=pr(labels=[{"name": "needs-review-ai"}]))[0] == "merge"
+
+
+def test_protected_path_needs_collaborator_issue_even_with_pass():  # section 14
+    files = [{"filename": "scripts/release_notes.py", "status": "modified"}]
+    passed = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA[:7]}", "at": at(5)}]
+    outside = {**ISSUE, "author_association": "NONE", "user": {"login": "rando"}}
+    assert run(files=files, issue=outside, notes=passed)[0] == "hold"
+    assert run(files=files, issue={**outside, "author_association": "CONTRIBUTOR"}, notes=passed)[0] == "hold"
+    for assoc in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert run(files=files, issue={**outside, "author_association": assoc}, notes=passed)[0] == "merge", assoc
+    bump_issue = {**outside, "user": {"login": "github-actions[bot]"}}
+    init = [{"filename": "tinglongwu/__init__.py", "status": "modified"}]
+    assert run(files=init, issue=bump_issue, bump=lambda fs: (True, "version line only"))[0] == "merge"
+    assert run(files=init, issue=outside, bump=lambda fs: (True, "version line only"))[0] == "hold"
+    assert run(issue=outside)[0] == "merge"  # non-protected code from an outside issue follows the normal gates
