@@ -114,3 +114,14 @@ def test_echo_exemption_does_not_hide_chained_write():
 
 def test_trailing_comment_after_cp_destination():
     assert "shell-profile-write" in _rules('cp ./b "$HOME/.gitconfig"  # backup\n')
+
+
+def test_dotdot_prefix_name_is_repo_local():
+    assert _rules("git config core.hooksPath ..githooks\n") == set()
+    assert "hooks-path" in _rules("git config core.hooksPath ../../hooks\n")
+    assert "hooks-path" in _rules("git config core.hooksPath ./../outside-hooks\n")
+
+
+def test_quoted_hash_is_not_a_comment():
+    assert "hooks-path" in _rules('git -C "repo #1" config core.hooksPath /tmp/hooks\n')
+    assert _rules('echo "a # b"\n') == set()

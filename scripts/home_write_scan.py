@@ -44,7 +44,22 @@ def hooks_path_value_is_local(value: str) -> bool:
     v = value.strip("\"'")
     if not v or v.startswith(("/", "~", "$", "%", "\\")) or re.match(r"[A-Za-z]:", v):
         return False
-    return not posixpath.normpath(v).startswith("..")  # a relative path that climbs out of the repo is not local
+    n = posixpath.normpath(v)
+    return not (n == ".." or n.startswith("../"))  # a relative path that climbs out of the repo is not local
+
+
+def strip_comment(line: str) -> str:
+    """Drop an unquoted shell comment (`#` at line start or after whitespace); `#` inside quotes stays."""
+    quote = ""
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1].isspace()):
+            return line[:i].rstrip()
+    return line
 
 
 def scan_text(path: str, text: str) -> list[dict]:
@@ -59,8 +74,7 @@ def scan_text(path: str, text: str) -> list[dict]:
             if not re.search(r"&&|\|\||;|\||>", bare):
                 continue  # a lone printed message, not a write
         hit = set()
-        for seg in SEGMENT_SPLIT.split(line):
-            seg = re.sub(r"\s+#.*$", "", seg)  # trailing shell comment
+        for seg in SEGMENT_SPLIT.split(strip_comment(line)):
             if READ_ONLY.search(seg):
                 continue
             if allowed_file and UNDO.search(seg):
