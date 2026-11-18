@@ -1,8 +1,6 @@
 """#1524: the shortcuts start tlwu-gui.exe (WINDOWS subsystem, no console / Windows Terminal tab); tlwu.exe stays CONSOLE."""
-import importlib.util
 import shutil
 import struct
-import subprocess
 import sys
 from pathlib import Path
 
