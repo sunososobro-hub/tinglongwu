@@ -123,6 +123,7 @@ def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | 
         print(f"pinned {key} ({len(files)} files)")
 
 
+MANUAL_INSTALL_DOC = "https://github.com/sunososobro-hub/tinglongwu#manual-model-install"
 WHISPER_REPOS = {"large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"}  # MIT; others: Systran
 
 
@@ -144,10 +145,17 @@ def resolve_hf(man: dict, key: str, repo: str) -> tuple[str, str, dict | None]:
 def get_whisper(man, mdir, size):
     key, dest = f"whisper-{size}", mdir / f"whisper-{size}"
     if not (dest.exists() and key in man):
-        from huggingface_hub import snapshot_download
-
         repo, rev, pf = resolve_hf(man, key, whisper_repo(size))
-        snapshot_download(repo, revision=rev, local_dir=str(dest))
+        if pf:  # #1499: pinned files come from /resolve/<rev>/<file>; no HF /api/ tree listing (blocked by proxies)
+            try:
+                hf_get(repo, rev, list(pf), dest, pf)
+            except OSError as e:  # URLError / HTTPError / socket errors are OSError subclasses
+                sys.exit(f"Download failed: {e}. Host: huggingface.co (files at https://huggingface.co/{repo}/resolve/"
+                         f"{rev}/). If your network blocks it, place the files by hand: {MANUAL_INSTALL_DOC}")
+        else:
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(repo, revision=rev, local_dir=str(dest))
         src = {"repo": repo, "revision": rev}
     else:
         src = man[key]
