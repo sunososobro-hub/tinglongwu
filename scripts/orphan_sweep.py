@@ -92,6 +92,7 @@ def main() -> int:
         if args.apply:
             # re-check right before writing: skip if the claim changed meanwhile, and only touch the status labels
             now_labels = {lb["name"] for lb in _gh(f"repos/{REPO}/issues/{it['number']}")["labels"]}
+            has_pr, head_at = _open_pr(it["number"])  # a commit pushed since the scan keeps the claim
             if not is_orphan(now_labels, claimed, now, has_pr, head_at) or _claim_time(it["number"]) != claimed:
                 continue
             _gh(f"repos/{REPO}/issues/{it['number']}/labels", "-X", "POST", "-f", "labels[]=status:todo")
