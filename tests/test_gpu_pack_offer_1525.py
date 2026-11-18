@@ -239,13 +239,22 @@ def test_gpu_pack_offer_locked_pack_keeps_old_one(tmp_path, monkeypatch):
     (dest / "cublas64_12.dll").write_bytes(b"old")
     real = Path.rename
 
+    err = {}
+
     def locked(self, target):
         if self == dest:
-            raise PermissionError("in use")
+            e = PermissionError(13, "denied")
+            e.winerror = err.get("w")
+            raise e
         return real(self, target)
 
     monkeypatch.setattr(Path, "rename", locked)
+    err["w"] = 32  # ERROR_SHARING_VIOLATION: a loaded DLL
     with pytest.raises(sp.PackError, match="^pack in use: close tlwu"):
+        sp.install_zip(z, man, dest, "0.4.10")
+    assert (dest / "cublas64_12.dll").read_bytes() == b"old"
+    err["w"] = 5  # ERROR_ACCESS_DENIED: closing tlwu would not help -> the OS error as is
+    with pytest.raises(PermissionError):
         sp.install_zip(z, man, dest, "0.4.10")
     assert (dest / "cublas64_12.dll").read_bytes() == b"old"
 
@@ -258,20 +267,23 @@ def test_gpu_pack_offer_detect_checks_dlls_for_requested_platform(tmp_path):
 def test_gpu_pack_offer_pack_download_waits_for_child_on_error():
     from tinglongwu.gui.core import run_pack_download
 
-    class P:
-        killed = waited = False
+    order = []
 
+    class P:
         @property
         def stdout(self):
             raise OSError("pipe broke")
 
         def kill(self):
-            P.killed = True
+            order.append("kill")
 
         def wait(self, timeout=None):
-            P.waited = True
-            return -9
+            order.append("wait")
+            return 0
 
-    events = []
-    assert run_pack_download("gpu-pack", events.append, popen=lambda *a, **k: P(), cmd=["x"]) == -1
-    assert P.killed and P.waited and events[-1] == ("pack_done", "gpu-pack", -1)
+    def put(ev):
+        order.append(ev[0])
+
+    assert run_pack_download("gpu-pack", put, popen=lambda *a, **k: P(), cmd=["x"]) == -1
+    assert "kill" not in order  # never killed mid-swap: the child finishes on its own
+    assert order.index("wait") < order.index("pack_done")

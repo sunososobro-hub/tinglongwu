@@ -33,6 +33,14 @@ except ImportError:  # pragma: no cover
 
 POLL_MS = 50
 UPDATE_CHECK_DELAY_MS = 5000
+def _mtime(p):
+    """#1525: identity of the installed GPU pack folder (a replacement gets a new mtime); None when absent."""
+    try:
+        return p.stat().st_mtime_ns if p is not None else None
+    except OSError:
+        return None
+
+
 UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
 # #886: Advanced settings sit in two label + control columns (grid columns 0-2 and 4-6, 3 is a gap), so the panel
 # with Advanced open fits a 1366x768 screen; long labels wrap instead of widening the panel
@@ -1420,7 +1428,8 @@ class App:
         from ..gpu_pack import pack_dir
 
         pack = pack_dir()
-        if (pack is not None and not getattr(self, "gpu_runtime_failed", False)
+        failed_at = getattr(self, "gpu_runtime_failed_mtime", None)  # pack replaced since the failure -> trust it
+        if (pack is not None and (not getattr(self, "gpu_runtime_failed", False) or failed_at != _mtime(pack))
                 and gpu_offer._pack_usable(pack)):  # installed meanwhile (e.g. Add-ons); not after a CUDA load failure
             self._gpu_show(t("gpu_offer_ok"), buttons=False)
             return
@@ -1449,6 +1458,7 @@ class App:
         elif kind == "gpu_pack_done":
             self.gpu_busy = False
             if gpu_offer.install_ok(ev[2], self.gpu_lines):
+                self.gpu_runtime_failed = False  # a fresh pack replaced the one that failed to load
                 self._gpu_show(t("gpu_offer_ok"), buttons=False)
             else:
                 self._gpu_show(t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
@@ -2709,6 +2719,9 @@ class App:
 
                     if gpu_offer.is_missing_pack_notice(ev[1]):
                         self.gpu_runtime_failed = True  # the runtime could not load CUDA: Install must really repair
+                        from ..gpu_pack import pack_dir
+
+                        self.gpu_runtime_failed_mtime = _mtime(pack_dir())
                     if (gpu_offer.is_missing_pack_notice(ev[1]) and not gpu_offer.offline() and not self.gpu_busy
                             and not self.settings.get(gpu_offer.DISMISS_KEY)):
                         self._gpu_offer_show()  # #1525: the "GPU pack missing" line gets its [Install] button

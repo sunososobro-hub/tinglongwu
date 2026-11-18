@@ -19,6 +19,7 @@ from pathlib import Path
 from . import resume, selfupdate
 
 PACK_DIR_NAME = "gpu-pack"  # == tinglongwu.gpu_pack.PACK_NAME
+SHARING_ERRORS = (32, 33)  # Windows ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION
 VERSION_FILE = "pack_version.txt"  # == tinglongwu.gui.gpu_offer.VERSION_FILE
 ASSET = "tinglongwu-gpu-pack.zip"
 MANIFEST_ASSET = ASSET + ".manifest.json"
@@ -75,7 +76,7 @@ def install_zip(archive: Path, man: dict, dest: Path, version: str | None = None
                 dest.rename(backup)
             except OSError as e:
                 shutil.rmtree(backup.parent, ignore_errors=True)
-                if isinstance(e, PermissionError):  # Windows sharing violation: the app still has the DLLs loaded
+                if getattr(e, "winerror", None) in SHARING_ERRORS:  # the running app still has the DLLs loaded
                     raise PackError(f"pack in use: close tlwu and try again ({dest})") from e
                 raise
         try:

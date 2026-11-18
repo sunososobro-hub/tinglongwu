@@ -113,9 +113,10 @@ class AddonsScreen:
         try:
             threading.Thread(target=gpu_offer.run_install, args=(self.run, self.q.put),
                              kwargs={"mdir": self.mdir, "cmd": gpu_offer.gpu_pack_cmd(self.mdir)}, daemon=True).start()
-        except RuntimeError:  # no thread: release the lock, keep the Install button usable
+        except RuntimeError as e:  # no thread: release the lock, keep the Install button usable
             gpu_offer.INSTALLING.clear()
             self.busy = False
+            self.msg.set(t("gpu_offer_fail", reason=type(e).__name__))
             self.refresh()
 
     def add(self, pack: str):
