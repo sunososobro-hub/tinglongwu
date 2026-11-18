@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib.util
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -76,3 +78,47 @@ def test_clips_json_has_per_clip_spans_and_refs(tmp_path):
     assert len(mic["spans"]) == len(mic["refs"]) == len(mic["clips"]) == 31
     assert mic["spans"][0] == [0.0, 9.0] and mic["spans"][1] == [10.0, 19.0]
     assert mic["refs"][20] == "en text 0" and " ".join(mic["refs"]) == mic["ref"]
+
+
+def _saved_rows(tmp_path, start: float, line_epochs: list[float]) -> list[dict]:
+    """Lines written by the real --save sink (JsonlSaveSink) at the given epochs; its clock opened at `start`."""
+    import datetime
+    import json
+
+    from tinglongwu.sink import JsonlSaveSink, Result, Sink
+
+    class Quiet(Sink):
+        def write(self, r):
+            pass
+
+    now = {"e": start}
+    sink = JsonlSaveSink(Quiet(), tmp_path / "mic.jsonl", clock=lambda: now["e"],
+                         now=lambda: datetime.datetime.fromtimestamp(now["e"]).astimezone())
+    for i, e in enumerate(line_epochs):
+        now["e"] = e
+        sink.write(Result(src="en", original=f"line {i}", pivot=None, target="", tgt="en"))
+    sink.f.close()
+    return [json.loads(x) for x in (tmp_path / "mic.jsonl").read_text("utf-8").splitlines()]
+
+
+def test_wall_offsets_use_precise_t_not_whole_second_wall(tmp_path):
+    # #1247 run 44217068671: "longest gap 11.0 s (limit 10)" from whole-second "wall" stamps. Here the real gap is
+    # 10.1 s (line at 10.76 s, next at 20.86 s); the whole-second stamps alone read it as 11 s.
+    t0 = 1_794_966_355.228  # playback start
+    start = t0 - 30.37      # the save file opened while tlwu loaded
+    lines = [t0 + x for x in (3.4, 10.76, 20.86, 27.6, 33.2)]
+    rows = _saved_rows(tmp_path, start, lines)
+    whole = [hl.datetime.datetime.fromisoformat(r["wall"]).timestamp() - t0 for r in rows]
+    assert hl.max_gap(whole, 0.0, 30.0) == pytest.approx(11.0)  # the old reading: FAIL against the 10 s limit
+    offs = hl.wall_offsets(rows, t0)
+    assert offs == [pytest.approx(x, abs=0.5) for x in (3.4, 10.76, 20.86, 27.6, 33.2)]
+    assert hl.max_gap(offs, 0.0, 30.0) == pytest.approx(10.1, abs=0.02)  # gaps come from "t": exact
+
+
+def test_wall_offsets_fall_back_to_wall_without_t():
+    import datetime
+
+    t0 = 1_794_966_355.0
+    rows = [{"wall": datetime.datetime.fromtimestamp(t0 + 7).astimezone().isoformat(timespec="seconds")},
+            {"wall": datetime.datetime.fromtimestamp(t0 + 9).astimezone().isoformat(timespec="seconds"), "t": 2.0}]
+    assert hl.wall_offsets(rows, t0) == [pytest.approx(7.0), pytest.approx(9.0)]

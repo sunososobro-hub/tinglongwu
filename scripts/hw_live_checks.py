@@ -170,8 +170,22 @@ def clip_table(rows: list[dict]) -> str:
 
 
 def wall_offsets(rows: list[dict], t0: float) -> list[float]:
-    """Seconds after epoch t0 at which each saved line (--save "wall", ISO 8601) was written."""
-    return [datetime.datetime.fromisoformat(r["wall"]).timestamp() - t0 for r in rows if r.get("wall")]
+    """Seconds after epoch t0 at which each saved line (--save "wall", ISO 8601) was written.
+
+    #1247: "wall" has whole-second resolution (sink.JsonlSaveSink), so a gap between two lines read from it is off by
+    up to 1 s; next to a 10 s limit that turned a 10.1 s gap into "11.0 s". Every line also has "t" (seconds since
+    the save file was opened, 0.01 s resolution). floor(start + t) == wall for every line bounds the epoch `start` of
+    that clock to [max(wall - t), min(wall - t) + 1); its midpoint plus "t" gives each line's time to within half
+    the width of that interval. Rows without a numeric "t", or bounds that do not overlap, fall back to "wall"."""
+    walls = [(datetime.datetime.fromisoformat(r["wall"]).timestamp(), r.get("t")) for r in rows if r.get("wall")]
+    ts = [t for _, t in walls if isinstance(t, (int, float)) and not isinstance(t, bool)]
+    if walls and len(ts) == len(walls):
+        lo = max(w - t for w, t in walls)
+        hi = min(w - t for w, t in walls) + 1.0
+        if lo < hi:
+            start = (lo + hi) / 2
+            return [start + t - t0 for _, t in walls]
+    return [w - t0 for w, _ in walls]
 
 
 def check_mic(file_wer: float, mic_wer: float, gap: float, n_lines: int) -> tuple[bool, str]:
