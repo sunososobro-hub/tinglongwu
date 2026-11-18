@@ -103,7 +103,7 @@ def test_gui_shows_heard_source_dim_until_final():
         evs.append(q.get())
         st.apply(evs[-1])
         if evs[-1][0] == "source" and evs[-1][1] == "a":
-            assert st.lines() == [("a", True)]
-    assert st.lines() == [("A", False), ("b", True)]  # b still waits for MT
+            assert st.lines() == [("a" + core.PENDING_MARK, True)]  # #1532: dim source + mark
+    assert st.lines() == [("A", False), ("b" + core.PENDING_MARK, True)]  # b still waits for MT
     st.apply(("final", "b", "B"))
     assert st.lines() == [("A", False), ("B", False)]

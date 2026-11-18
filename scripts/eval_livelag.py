@@ -54,6 +54,22 @@ def lag(records: list[dict], at_s: float) -> float | None:
     return sum(ages) / len(ages)
 
 
+def _median(xs: list[float]) -> float | None:
+    xs = sorted(xs)
+    if not xs:
+        return None
+    m = len(xs) // 2
+    return xs[m] if len(xs) % 2 else (xs[m - 1] + xs[m]) / 2
+
+
+def shown_lags(records: list[dict]) -> tuple[float | None, float | None]:
+    """#1532: median seconds from end of speech to the source line on screen (`t_source_shown`) and to its
+    translation (`total`, translated lines only). None when no record has it (a sink that shows no source)."""
+    src = [r["t_source_shown"] for r in records if r.get("t_source_shown") is not None]
+    mt = [r["total"] for r in records if not r.get("mt_skipped") and r.get("total") is not None]
+    return _median(src), _median(mt)
+
+
 def score(records: list[dict], clip_s: float = CLIP_S) -> dict:
     from tinglongwu.hallucination import is_music_tag
 
@@ -70,7 +86,9 @@ def score(records: list[dict], clip_s: float = CLIP_S) -> dict:
     if music:
         fails.append(f"{len(music)} music-only line(s) shown")
     r = lambda v: None if v is None else round(v, 2)  # noqa: E731
-    return {"lag_60_s": r(l60), f"lag_{clip_s:.0f}_s": r(lend), "lines": len(records),
+    src_s, mt_s = shown_lags(records)
+    return {"lag_60_s": r(l60), f"lag_{clip_s:.0f}_s": r(lend), "src_shown_s": r(src_s), "mt_shown_s": r(mt_s),
+            "lines": len(records),
             "skipped": sum(1 for x in records if x.get("mt_skipped")), "music_lines": music,
             "pass": not fails, "fails": fails}
 
@@ -79,7 +97,8 @@ def report(res: dict) -> str:
     keys = [k for k in res if k.startswith("lag_")]
     head = ", ".join(f"{k[4:-2]} s: {res[k]} s" for k in keys)
     verdict = "PASS" if res["pass"] else "FAIL: " + "; ".join(res["fails"])
-    return (f"Live lag on a busy CPU (#1369): {head}; {res['lines']} lines, {res['skipped']} shown untranslated "
+    shown = f"; median shown after end of speech: source {res.get('src_shown_s')} s, translation {res.get('mt_shown_s')} s"
+    return (f"Live lag on a busy CPU (#1369): {head}{shown}; {res['lines']} lines, {res['skipped']} shown untranslated "
             f"to catch up; music-only lines: {len(res['music_lines'])}. {verdict}")
 
 

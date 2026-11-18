@@ -130,7 +130,10 @@ def _record(item, t_shown: float) -> dict:
     r = lambda v: round(v, 3)  # noqa: E731
     return {"vad": r(cut - eos), "asr": r(asr_done - cut), "merge": r(released - asr_done),
             "mt": r(t_shown - released), "total": r(t_shown - eos),
-            "t_source_shown": None if item[7] is None else r(item[7] - eos), "lang": lang, "text": text}
+            "t_source_shown": None if item[7] is None else r(item[7] - eos),
+            # #1532: ASR result -> source line handed to a sink that shows it (target <= 100 ms), None otherwise
+            "src_shown_ms": None if item[7] is None else round(max(0.0, item[7] - asr_done) * 1000),
+            "lang": lang, "text": text}
 
 
 def sink_shows_source(sink) -> bool:

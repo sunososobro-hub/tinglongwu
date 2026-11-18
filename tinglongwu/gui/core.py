@@ -1094,6 +1094,7 @@ class QueueSink(Sink):
         from ..reverse.echoguard import shared
 
         if shared().check(r.original, r.target if r.src != r.tgt else ""):  # #1070: our own voice coming back
+            self.q.put(("drop", r.original))  # #1532: its pending row (if shown) goes away instead of waiting forever
             return
         ev = ("final", r.original, r.target if r.src != r.tgt and r.target else r.original)
         if r.replaces is not None:  # #1395: the previous line + a late fragment, shown in that line's place
@@ -1201,16 +1202,28 @@ def speaker_text(book, label, fmt):
     return shown
 
 
+PENDING_MARK = " …"  # #1532: a heard line whose translation is still running: dim source text + this mark
+
+
 class SubtitleState:
-    """What the overlay shows: last `max_lines` lines; a draft is replaced in place by the final."""
+    """What the overlay shows: last `max_lines` lines; a draft is replaced in place by the final.
+
+    #1532: a "source" event (ASR has the text, MT still running) adds the line at once, in its place, as a pending
+    row (dim source + PENDING_MARK); its "final" fills that same row in place, so no other line moves and a
+    translation that comes back out of order still lands on its own line."""
 
     def __init__(self, max_lines: int = 2):
         self.max_lines = max_lines
-        self.finals: list[tuple[str, str]] = []  # (src, target), oldest first
+        # (src, target), oldest first; target None = pending (#1532: shown as dim source until its final arrives)
+        self.finals: list[tuple[str, str | None]] = []
         self.draft: tuple[str, str] | None = None
         self.whos: list[str | None] = []  # 0.3.8: speaker token of each final (aligned with finals; None = none)
-        self.pending: list[str] = []  # #53: sources heard, translation still running (newest one is the draft)
         self.paused = False  # frozen display: events still update the state (nothing is lost) but nothing is redrawn
+
+    @property
+    def pending(self) -> list[str]:
+        """#53/#1532: sources heard whose translation is still running, oldest first."""
+        return [src for src, tgt in self.finals if tgt is None]
 
     def apply(self, ev: tuple) -> bool:
         """Apply an event; True if the display should be redrawn."""
@@ -1218,31 +1231,41 @@ class SubtitleState:
             return not self.paused
         return False
 
+    def _append(self, src: str, tgt: str | None, who: str | None) -> None:
+        self.finals.append((src, tgt))
+        self.whos.append(who)
+        del self.finals[:-self.max_lines], self.whos[:-self.max_lines]
+
     def _apply(self, ev: tuple) -> bool:
         kind = ev[0]
         if kind == "draft":
             self.draft = (ev[1], ev[2])
         elif kind == "source":
-            self.pending.append(ev[1])
-            self.draft = ("", ev[1])  # same shape as a source-only live draft: the source text, dim
+            self._append(ev[1], None, None)
         elif kind == "final":
-            if self.pending and self.pending[0] == ev[1]:
-                self.pending.pop(0)
-            self.draft = ("", self.pending[-1]) if self.pending else None
-            self.finals.append((ev[1], ev[2]))
-            self.whos.append(ev[3] if len(ev) > 3 else None)
-            del self.finals[:-self.max_lines], self.whos[:-self.max_lines]
+            self.draft = None  # a live draft is replaced by its final
+            who = ev[3] if len(ev) > 3 else None
+            i = next((k for k, (src, tgt) in enumerate(self.finals) if tgt is None and src == ev[1]), None)
+            if i is None:  # never announced (or scrolled out): an ordinary new line
+                self._append(ev[1], ev[2], who)
+            else:  # #1532: the pending row becomes the final in place
+                self.finals[i] = (ev[1], ev[2])
+                self.whos[i] = who
         elif kind == "amend":  # #1395 ("amend", replaced src, src, target[, speaker]): newest final with that src
-            i = next((k for k in range(len(self.finals) - 1, -1, -1) if self.finals[k][0] == ev[1]), None)
+            i = next((k for k in range(len(self.finals) - 1, -1, -1)
+                      if self.finals[k][0] == ev[1] and self.finals[k][1] is not None), None)
             if i is None:  # scrolled out (or never shown): an ordinary final line
                 return self._apply(("final",) + ev[2:])
             self.finals[i] = (ev[2], ev[3])
             if len(ev) > 4:
                 self.whos[i] = ev[4]
+        elif kind == "drop":  # #1532: a heard line that will get no final (echo of our own voice): remove its row
+            i = next((k for k, (src, tgt) in enumerate(self.finals) if tgt is None and src == ev[1]), None)
+            if i is None:
+                return False
+            del self.finals[i], self.whos[i]
         elif kind == "final_side":  # #1001: a speak-leg line next to a listen session: the draft row stays
-            self.finals.append((ev[1], ev[2]))
-            self.whos.append(None)
-            del self.finals[:-self.max_lines], self.whos[:-self.max_lines]
+            self._append(ev[1], ev[2], None)
         elif kind == "clear":
             if self.draft is None:
                 return False
@@ -1252,8 +1275,8 @@ class SubtitleState:
         return True
 
     def lines(self) -> list[tuple[str, bool]]:
-        """[(target_text, is_draft)] oldest first, at most max_lines."""
-        rows = [(t, False) for _, t in self.finals]
+        """[(target_text, is_draft)] oldest first, at most max_lines; a pending row is (source + mark, True)."""
+        rows = [(src + PENDING_MARK, True) if tgt is None else (tgt, False) for src, tgt in self.finals]
         if self.draft:
             rows.append((self.draft[1], True))
         return rows[-self.max_lines:]
@@ -1269,8 +1292,9 @@ class SubtitleState:
         return self.finals[-1][0] if self.finals else ""
 
     def history(self) -> list[tuple[str, str, bool]]:
-        """[(src, target_text, is_draft)] for the scroll-back: every kept final, then the draft (if any)."""
-        rows = [(src, t, False) for src, t in self.finals]
+        """[(src, target_text, is_draft)] for the scroll-back: every kept line, then the draft (if any).
+        A pending row (#1532) is ("", source + mark, True): its text is the source, so no second source line."""
+        rows = [("", src + PENDING_MARK, True) if tgt is None else (src, tgt, False) for src, tgt in self.finals]
         if self.draft:
             rows.append((self.draft[0], self.draft[1], True))
         return rows
