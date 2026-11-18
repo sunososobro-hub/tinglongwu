@@ -3,8 +3,9 @@
 A placeholder identity such as `x <x@x>` gets linked by GitHub to whichever stranger owns that email, and a squash
 merge copies it into `Co-authored-by:`, so the stranger shows up as a repo contributor. This check reads the PR's
 commits (the JSON list from `GET repos/{repo}/pulls/{n}/commits`) and fails when any author, committer or
-`Co-authored-by:` email is outside ALLOWED_EMAILS / ALLOWED_DOMAINS or the PR author's own GitHub noreply email
-(so fork contributors keep working).
+`Co-authored-by:` email is outside ALLOWED_EMAILS / ALLOWED_DOMAINS, the PR author's own GitHub noreply email
+(so fork contributors keep working) and, #1443 / #1309, any email GitHub links to the PR author's account (a commit
+whose top-level `author.login` / `committer.login` is the PR author), so a contributor commits with their own identity.
 
 Usage: python scripts/commit_identity.py commits.json --author-login LOGIN --author-id ID [--expected-count N]
 Exit 0 = every identity is known, 1 = unknown identities (each printed with its commit) or an incomplete commit list
@@ -40,6 +41,21 @@ def author_noreply(login: str, user_id: str) -> set[str]:
     return out
 
 
+def author_emails(commits: list, login: str) -> set[str]:
+    """#1443: emails GitHub resolved to the PR author's account on these commits (GitHub only links verified emails)."""
+    if not login:
+        return set()
+    out = set()
+    for c in commits:
+        info = c.get("commit") or {}
+        for role in ("author", "committer"):
+            account = c.get(role) or {}
+            email = ((info.get(role) or {}).get("email") or "").strip().lower()
+            if email and str(account.get("login") or "").lower() == login.lower():
+                out.add(email)
+    return out
+
+
 def allowed(email: str, extra: set[str]) -> bool:
     e = email.strip().lower()
     return e in ALLOWED_EMAILS or e in extra or (e.endswith(ALLOWED_DOMAINS) and e.count("@") == 1)
@@ -47,7 +63,7 @@ def allowed(email: str, extra: set[str]) -> bool:
 
 def problems(commits: list, login: str = "", user_id: str = "") -> list[str]:
     """One line per unknown identity: `<short sha> <role> <name> <email>`."""
-    extra = author_noreply(login, user_id)
+    extra = author_noreply(login, user_id) | author_emails(commits, login)
     out = []
     for c in commits:
         sha = str(c.get("sha", "?"))[:7]
