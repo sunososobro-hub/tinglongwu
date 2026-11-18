@@ -71,3 +71,11 @@ Each release also lists `SHA256SUMS.txt`; to check a script before running it, d
 Windows ZIP install (`install.bat`) and the menu keys, Mac details, source install, GPU are described above. The Windows release zip is unsigned and not reproducible: [read this first](#releases-read-before-trusting-a-binary).
 
 **Linux/macOS menu, speak mode:** each translated sentence is sent directly (no confirm question). To confirm each sentence first, run `bash scripts/linux_menu.sh --confirm` (macOS: `tlwu-menu --confirm`), or set `TLWU_CONFIRM=1`. The menu asks only what it must: output choice (and device), plus the optional transcript-save question in meeting mode.
+
+## Manual model install
+
+If your network blocks huggingface.co (corporate proxy or URL filter), download the files of the pinned revision by hand and put them in `%LOCALAPPDATA%\tinglongwu\models\whisper-<size>\` (e.g. `whisper-small`). The repo and revision are in `tinglongwu_setup/manifest.json` under `whisper-<size>`; the URL of each file is `https://huggingface.co/<repo>/resolve/<revision>/<file>`. Download every file listed there (`config.json`, `model.bin`, `tokenizer.json`, `vocabulary.txt` and the small `.gitattributes` / `README.md`), delete any leftover `*.part` files there, then run `tlwu-setup --whisper <size>`: it needs no network when every file is present, checks each file against the committed SHA256 and registers the model (`tlwu-setup --verify` only checks models that are already registered). `model.bin` is served from the Hugging Face CDN host; if that host is blocked too, only manual placement works.
+
+### 手動安裝模型（繁體中文）
+
+若網路擋住 huggingface.co（公司 Proxy 或網址過濾），可手動下載固定版本的檔案，放到 `%LOCALAPPDATA%\tinglongwu\models\whisper-<size>\`（例如 `whisper-small`）。repo 與版本在 `tinglongwu_setup/manifest.json` 的 `whisper-<size>`；每個檔案網址為 `https://huggingface.co/<repo>/resolve/<revision>/<file>`。請下載清單內全部檔案（`config.json`、`model.bin`、`tokenizer.json`、`vocabulary.txt`，以及很小的 `.gitattributes` / `README.md`），並刪除該資料夾內殘留的 `*.part` 檔，再執行 `tlwu-setup --whisper <size>`：檔案齊全時不需要網路，會逐檔比對內建的 SHA256 並登錄模型（`tlwu-setup --verify` 只檢查已登錄的模型）。`model.bin` 會轉到 Hugging Face 的 CDN 主機；若該主機也被擋，只能手動放置。

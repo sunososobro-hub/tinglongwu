@@ -123,7 +123,7 @@ def pin_or_verify(man: dict, key: str, d: Path, source: dict, pin_files: dict | 
         print(f"pinned {key} ({len(files)} files)")
 
 
-MANUAL_INSTALL_DOC = "https://github.com/sunososobro-hub/tinglongwu#manual-model-install"
+MANUAL_INSTALL_DOC = "https://github.com/sunososobro-hub/tinglongwu/blob/dev/docs/install.md#manual-model-install"
 WHISPER_REPOS = {"large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"}  # MIT; others: Systran
 
 

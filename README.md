@@ -38,10 +38,6 @@ SmartScreen warns because the installer is unsigned until #601 lands; Edge hides
 
 Setup downloads speech and translation models once; optional packs (extra languages, speak mode, GPU) also need internet once. After that translation, audio and subtitles never use the network. Auto-update (default on in the Windows installer; the `git` update in PRIVACY.md is off by default) sends no ID; untick it in setup or set `TLWU_OFFLINE=1` for zero network requests.
 
-## Manual model install
-
-If your network blocks huggingface.co (corporate proxy or URL filter), download the files of the pinned revision by hand and put them in `%LOCALAPPDATA%\tinglongwu\models\whisper-<size>\` (e.g. `whisper-small`). The repo and revision are in `tinglongwu_setup/manifest.json` under `whisper-<size>`; the URL of each file is `https://huggingface.co/<repo>/resolve/<revision>/<file>`. Download every file listed there (`config.json`, `model.bin`, `tokenizer.json`, `vocabulary.txt` and the small `.gitattributes` / `README.md`), delete any leftover `*.part` files there, then run `tlwu-setup --whisper <size>`: it needs no network when every file is present, checks each file against the committed SHA256 and registers the model (`tlwu-setup --verify` only checks models that are already registered). `model.bin` is served from the Hugging Face CDN host; if that host is blocked too, only manual placement works.
-
 ## Languages and requirements
 
 More languages on the way ([language plan](docs/VISION.md)). [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md)
