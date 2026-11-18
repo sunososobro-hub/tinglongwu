@@ -55,3 +55,13 @@ def test_is_ancestor_missing_commit_is_not_contained(tmp_path):
     _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "a")
     _git(tmp_path, "tag", "v0.1.0")
     assert sn.is_ancestor("0" * 40, "v0.1.0", cwd=str(tmp_path)) is False
+
+
+def test_workflow_runs_on_schedule_and_dispatch_without_issues():
+    import pathlib
+    import yaml
+
+    wf = yaml.safe_load(pathlib.Path(".github/workflows/shipped-notice.yml").read_text())
+    on = wf.get("on", wf.get(True))
+    assert on["schedule"][0]["cron"]
+    assert on["workflow_dispatch"]["inputs"]["issues"]["required"] is False

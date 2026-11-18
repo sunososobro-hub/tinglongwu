@@ -3,11 +3,14 @@ name: shipped-notice
 on:
   release:
     types: [published]
+  schedule:
+    # Daily catch-up: events created by GITHUB_TOKEN (release.yml publish) start no `release` run (#1504).
+    - cron: "41 3 * * *"
   workflow_dispatch:
     inputs:
       issues:
-        description: "Issue numbers to backfill (comma list)"
-        required: true
+        description: "Issue numbers to backfill (comma list; empty = issues in the tag's range)"
+        required: false
       tag:
         description: "Release tag to check against (default: latest release)"
         required: false
