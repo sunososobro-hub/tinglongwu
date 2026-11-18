@@ -38,7 +38,7 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 ## 手動安裝模型
 
-若網路擋住 huggingface.co（公司 Proxy 或網址過濾），可手動下載固定版本的檔案，放到 `%LOCALAPPDATA%\tinglongwu\models\whisper-<size>\`（例如 `whisper-small`）。repo 與版本在 `tinglongwu_setup/manifest.json` 的 `whisper-<size>`；每個檔案網址為 `https://huggingface.co/<repo>/resolve/<revision>/<file>`。請下載清單內全部檔案（`config.json`、`model.bin`、`tokenizer.json`、`vocabulary.txt`，以及很小的 `.gitattributes` / `README.md`），再執行 `tlwu-setup --verify` 檢查 SHA256。`model.bin` 會轉到 Hugging Face 的 CDN 主機；若該主機也被擋，只能手動放置。
+若網路擋住 huggingface.co（公司 Proxy 或網址過濾），可手動下載固定版本的檔案，放到 `%LOCALAPPDATA%\tinglongwu\models\whisper-<size>\`（例如 `whisper-small`）。repo 與版本在 `tinglongwu_setup/manifest.json` 的 `whisper-<size>`；每個檔案網址為 `https://huggingface.co/<repo>/resolve/<revision>/<file>`。請下載清單內全部檔案（`config.json`、`model.bin`、`tokenizer.json`、`vocabulary.txt`，以及很小的 `.gitattributes` / `README.md`），並刪除該資料夾內殘留的 `*.part` 檔，再執行 `tlwu-setup --whisper <size>`：檔案齊全時不需要網路，會逐檔比對內建的 SHA256 並登錄模型（`tlwu-setup --verify` 只檢查已登錄的模型）。`model.bin` 會轉到 Hugging Face 的 CDN 主機；若該主機也被擋，只能手動放置。
 
 ## 語言與電腦需求
 
