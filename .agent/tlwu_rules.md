@@ -47,7 +47,7 @@ Every tlwu agent (cloud routines W-hard, R-merge, R-hard, S-easy, S-merge, S-har
 - S-easy: take up to 4 items per run. S-merge: merge every ready PR in one run.
 - Concurrency ceiling across all agents: `status:doing` ≤ 10. This replaces the `>= 6` / opus `>= 4` stop numbers in routine prompts.
 - Opus review queue (#742): R-hard and S-hard each review up to 4 `needs-opus` items per run (oldest label first), not 1. R-hard also runs on a schedule, not only when dispatched.
-- Orphan claims (#742): every worker slot (A, B, C) and S-hard runs the timeout sweep first. A `status:doing` issue with no open PR (or, for a fix on an open PR per section 2, no new commit on its head) is put back to `status:todo` after **20 minutes** for `model:sonnet` and 45 minutes for `model:opus` (doing->PR p90 is 27 min).
+- Orphan claims (#742, #1470): the `orphan-sweep` Action (`.github/workflows/orphan-sweep.yml`, every 15 min, `scripts/orphan_sweep.py`) runs the timeout sweep; worker slots (A, B, C) and S-hard no longer run it. A `status:doing` issue with no open PR (or, for a fix on an open PR per section 2, no new commit on its head) is put back to `status:todo` after **20 minutes** for `model:sonnet` and 45 minutes for `model:opus` (doing->PR p90 is 27 min).
 
 ## 7. Merge conflicts: resolve in place (added for #566)
 - When a PR is `dirty` (mergeable_state), the merger/reviewer first merges `origin/dev` into the PR branch (or `update_pull_request_branch`), resolves conflicts keeping both sides' intent, re-runs the tests, and pushes. Do not close + redo first.
