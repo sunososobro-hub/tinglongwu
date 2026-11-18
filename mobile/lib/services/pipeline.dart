@@ -8,6 +8,7 @@ import 'package:record/record.dart';
 import '../logic/context_budget.dart';
 import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
+import '../logic/filler_filter.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/history.dart';
 import '../logic/lang_pack.dart';
@@ -952,6 +953,11 @@ class Pipeline extends ChangeNotifier {
       trimFinished<Subtitle>(subtitles, keepSubtitles, (s) => s.zh != null);
 
   void _onFinal(AsrFinal f) {
+    // Two-way mode: background words / fillers make no bubble and no LLM call (#1479).
+    if (_activeConversation.enabled && FillerFilter.shouldDrop(f.text)) {
+      _log.i('ASR final dropped (filler) lang=${f.lang}');
+      return;
+    }
     final now = _clock.elapsedMilliseconds;
     // VAD emits the segment after minSilence of trailing silence + decode.
     final speechEnd = f.forced
