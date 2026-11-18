@@ -484,3 +484,13 @@ def test_recent_scan_attempts_second_feed_when_first_pagination_fails(rx):
     with pytest.raises(RuntimeError, match="feed"):
         ps.scan_recent(gh, rx, "2026-11-18T00:00:00Z")
     assert ("minimize", "N3") in gh.calls
+
+
+def test_recent_scan_covers_comments_of_every_author_1551(rx):
+    """#1551: comments no longer start per-event runs, so the schedule must hide hits from owner, bot and outsider alike."""
+    users = ["sunososobro-hub", "coderabbitai[bot]", "stranger"]
+    gh = FakeGH(comments=[{"body": "zorblat", "html_url": f"c{i}", "node_id": f"N{i}", "user": {"login": u},
+                           "issue_url": f"https://api/x/issues/{i + 10}"} for i, u in enumerate(users)])
+    counts = ps.scan_recent(gh, rx, "2026-11-18T00:00:00Z")
+    assert counts == {"comments": 3, "hidden": 3}
+    assert all(("minimize", f"N{i}") in gh.calls for i in range(3))
