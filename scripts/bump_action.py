@@ -73,10 +73,9 @@ def bullets(titles: list[str]) -> list[str]:
         t = re.sub(r"\s*\(#\d+\)\s*$", "", t.strip())
         t = re.sub(r"^(?:fix|feat)\s*#\d+\s*:\s*", "", t, flags=re.I)
         t = re.sub(r"\s*#\d+\b", "", t).strip(" -:")
+        # Markdown / list markers would make bump_exempt reject the bullet; a leading digit that is title text stays
+        t = re.sub(r"^(?:(?:[#>*+=<\-]|\d+[.)](?=\s|$))\s*)*", "", t)
         if not t or _SKIP_TITLE.search(t) or "TODO" in t:
-            continue
-        t = re.sub(r"^[#>*+=<\-\d.)\s]+", "", t)  # a Markdown marker would make bump_exempt reject the bullet
-        if not t:
             continue
         line = "- " + t[0].upper() + t[1:].rstrip(".") + "."
         if line not in out:
@@ -94,7 +93,9 @@ def bump_files(init_text: str, whats_new_text: str, new_version: str, bullet_lin
         raise SystemExit("no __version__ line to bump")
     section = f"## v{new_version}\n" + "\n".join(bullet_lines) + "\n\n"
     # first version heading outside HTML comments (the file's example heading sits inside one)
-    visible = re.sub(r"<!--.*?-->", lambda c: " " * len(c.group(0)), whats_new_text, flags=re.S)
+    blank = lambda c: re.sub(r"[^\n]", " ", c.group(0))  # keep offsets and line starts
+    visible = re.sub(r"<!--.*?-->", blank, whats_new_text, flags=re.S)
+    visible = re.sub(r"^ {0,3}(```|~~~).*?^ {0,3}\1[^\n]*$", blank, visible, flags=re.S | re.M)
     m = re.search(r"^## v\d", visible, re.M)
     at = m.start() if m else len(whats_new_text)
     prefix = whats_new_text[:at] if whats_new_text[:at].endswith("\n\n") else whats_new_text[:at].rstrip("\n") + "\n\n"
@@ -126,7 +127,7 @@ def gather(now: datetime) -> dict:
     tags = set(_git("tag").split())
     tip = _git("rev-parse", "origin/dev")  # one dev commit for version, checks, history and the bump base
     version = app_version(_git("show", f"{tip}:tinglongwu/__init__.py"))
-    cmp_ = _gh("api", f"repos/{REPO}/compare/main...dev")
+    cmp_ = _gh("api", f"repos/{REPO}/compare/main...{tip}")
     checks = _gh("api", f"repos/{REPO}/commits/{tip}/check-runs?per_page=100")["check_runs"]
     test = [c for c in checks if c["name"] == "test"]
     pulls = _gh("api", f"repos/{REPO}/pulls?state=open&base=dev&per_page=100", "--paginate", "--slurp")
