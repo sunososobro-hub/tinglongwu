@@ -956,6 +956,7 @@ class Pipeline extends ChangeNotifier {
     // Two-way mode: background words / fillers make no bubble and no LLM call (#1479).
     if (_activeConversation.enabled && FillerFilter.shouldDrop(f.text)) {
       _log.i('ASR final dropped (filler) lang=${f.lang}');
+      notifyListeners();
       return;
     }
     final now = _clock.elapsedMilliseconds;
