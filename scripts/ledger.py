@@ -1,5 +1,8 @@
 """#1469: hourly ledger (rules section 10) + 7-day infra line (section 13), posted on #61 by a scheduled Action.
 
+#1581: review-fix minutes after a PR opens (`tlwu-usage: ... minutes=N phase=fix` comments on the PR) are added to
+the PR's type and shown on their own line, so the cost of review rounds is visible.
+
 Usage: python scripts/ledger.py [--dry-run]   (needs `gh` with GH_TOKEN; --dry-run prints instead of posting)
 """
 from __future__ import annotations
@@ -171,6 +174,72 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
     return by_type, untyped, infra_min, total7
 
 
+FIX_RE = re.compile(r"^tlwu-usage:.*\bphase=fix\b.*$", re.M)
+PR_URL_RE = re.compile(r"/pull/(\d+)$")
+
+
+def fix_minutes(body: str | None) -> int | None:
+    """#1581: minutes of the LAST `tlwu-usage: ... phase=fix` line of a PR comment; None when there is none."""
+    found = FIX_RE.findall(body or "")
+    return usage_minutes(found[-1]) if found else None
+
+
+def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int, int, int]:
+    """#1581: review-fix minutes from producer `phase=fix` usage comments on PRs (any state), by comment time.
+
+    Returns (minutes by type over 48 h, untyped 48 h, infra minutes 7 d, total minutes 7 d, fix minutes 48 h).
+    One repo-wide comments listing per run (no per-PR calls), then one lookup per distinct PR and issue.
+    """
+    since7, since48 = now - timedelta(days=7), now - timedelta(hours=48)
+    by_type: dict[str, int] = {}
+    untyped = infra_min = total7 = fix48 = 0
+    issue_of: dict[int, int | None] = {}
+    labels_cache: dict[int, set[str]] = {}
+
+    def issue_for(num: int) -> int | None:
+        if num not in issue_of:
+            pr = _gh(f"repos/{REPO}/pulls/{num}")
+            issue_of[num] = linked_issue(pr["head"]["ref"], pr.get("body"))
+        return issue_of[num]
+
+    pr_issue = pr_issue or issue_for
+    for c in _gh_list(f"repos/{REPO}/issues/comments?since={since7:%Y-%m-%dT%H:%M:%SZ}&per_page=100"):
+        if (c.get("user") or {}).get("login") != PRODUCER:
+            continue
+        m = PR_URL_RE.search(c.get("html_url", "").split("#")[0])
+        mins = fix_minutes(c.get("body"))
+        t = _ts(c["created_at"])
+        if not m or not mins or not (since7 <= t <= now):
+            continue
+        n = pr_issue(int(m.group(1)))
+        labels: set[str] = set()
+        if n is not None:
+            if n not in labels_cache:
+                try:
+                    labels_cache[n] = {l["name"] for l in _gh(f"repos/{REPO}/issues/{n}")["labels"]}
+                except subprocess.CalledProcessError as e:
+                    if "404" not in (e.stderr or ""):
+                        raise
+                    labels_cache[n] = set()
+            labels = labels_cache[n]
+        total7 += mins
+        if "infra" in labels:
+            infra_min += mins
+        if t >= since48:
+            fix48 += mins
+            typ = next((x for x in TYPES if x in labels), None)
+            if typ:
+                by_type[typ] = by_type.get(typ, 0) + mins
+            else:
+                untyped += mins
+    return by_type, untyped, infra_min, total7, fix48
+
+
+def fix_line(fix48: int, total48: int) -> str:
+    share = round(100 * fix48 / total48, 1) if total48 else 0.0
+    return f"open->merge fix minutes (48 h): {fix48} ({share}% of total)"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -178,8 +247,14 @@ def main() -> int:
     now = datetime.now(UTC)
     mix, ok = parse_mix(_gh(f"repos/{REPO}/issues/{THROTTLE_ISSUE}")["body"])
     by_type, untyped, infra_min, total7 = collect(now)
+    f_type, f_untyped, f_infra, f_total7, fix48 = collect_fix(now)
+    for t, m in f_type.items():
+        by_type[t] = by_type.get(t, 0) + m
+    untyped, infra_min, total7 = untyped + f_untyped, infra_min + f_infra, total7 + f_total7
     rows = build_rows(by_type, mix)
-    text = render(rows, infra_line(infra_min, total7), sum(r["minutes"] for r in rows), untyped, ok, now)
+    total = sum(r["minutes"] for r in rows)
+    infra = infra_line(infra_min, total7) + "\n" + fix_line(fix48, total + untyped)
+    text = render(rows, infra, total, untyped, ok, now)
     if args.dry_run:
         print(text)
         return 0

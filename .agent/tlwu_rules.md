@@ -111,6 +111,7 @@ Routine prompts (slot A/B/C, W-*, S-hard) may still say "pick the most-behind le
 
 ### Usage line
 - Every PR body must keep `tlwu-usage: ... minutes=N` as its last line; it is the ledger input. PRs without it count as 0 minutes.
+- Review-fix minutes (#1581): a run that pushes a fix to an already-open PR (CodeRabbit round, red `test`, conflict, FAIL / CHANGES) ends by posting a PR comment whose last line is `tlwu-usage: model=<m> minutes=N phase=fix` (wall time of that run's work on the PR). The `ledger` Action adds these to the PR's type and shows `open->merge fix minutes (48 h)` on #61. The PR body's own line stays claim -> PR open.
 
 ## 11. Docs fast lane to main (owner 2026-11-13)
 Owner: "Important things can't wait for a release." Docs-only changes may go to `main` without a release.

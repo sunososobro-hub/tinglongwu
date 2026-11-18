@@ -110,3 +110,35 @@ def test_deleted_linked_issue_keeps_minutes_in_total(monkeypatch):
     monkeypatch.setattr(ledger, "_gh", gone)
     by_type, untyped, infra_min, total7 = ledger.collect(now)
     assert untyped == 20 and total7 == 20 and infra_min == 0
+
+
+def test_fix_minutes_only_phase_fix_lines():  # #1581
+    assert ledger.fix_minutes("x\ntlwu-usage: model=sonnet minutes=7 phase=fix") == 7
+    assert ledger.fix_minutes("tlwu-usage: model=sonnet minutes=7") is None
+    assert ledger.fix_minutes("tlwu-usage: minutes=3 phase=fix\ntlwu-usage: minutes=9 phase=fix") == 9
+
+
+def test_collect_fix_counts_producer_fix_comments_on_prs(monkeypatch):  # #1581
+    from datetime import datetime, timedelta, UTC
+    now = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+    iso = lambda d: (now - d).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    url = "https://github.com/sunososobro-hub/tinglongwu/pull/{}#issuecomment-1".format
+    comments = [
+        {"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(hours=2)), "html_url": url(50),
+         "body": "CodeRabbit round fixed\ntlwu-usage: model=sonnet minutes=15 phase=fix"},
+        {"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(days=3)), "html_url": url(50),
+         "body": "tlwu-usage: model=sonnet minutes=5 phase=fix"},
+        {"user": {"login": "outsider"}, "created_at": iso(timedelta(hours=1)), "html_url": url(50),
+         "body": "tlwu-usage: minutes=999 phase=fix"},
+        {"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(hours=1)),
+         "html_url": "https://github.com/sunososobro-hub/tinglongwu/issues/61#issuecomment-2",
+         "body": "tlwu-usage: kind=qa minutes=30 phase=fix"},  # not a PR: QA path owns #61
+        {"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(hours=1)), "html_url": url(51),
+         "body": "tlwu-usage: model=sonnet minutes=40"},  # no phase=fix
+    ]
+    monkeypatch.setattr(ledger, "_gh_list", lambda path: comments if "/issues/comments" in path else [])
+    monkeypatch.setattr(ledger, "_gh", lambda path, *a: {"labels": [{"name": "bug"}, {"name": "infra"}]})
+    by_type, untyped, infra_min, total7, fix48 = ledger.collect_fix(now, pr_issue=lambda n: 9)
+    assert by_type == {"bug": 15} and untyped == 0 and fix48 == 15
+    assert total7 == 20 and infra_min == 20
+    assert ledger.fix_line(15, 60) == "open->merge fix minutes (48 h): 15 (25.0% of total)"
