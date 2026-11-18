@@ -9,6 +9,7 @@ import '../logic/context_budget.dart';
 import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/filler_filter.dart';
+import '../logic/level_gate.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/history.dart';
 import '../logic/lang_pack.dart';
@@ -952,10 +953,24 @@ class Pipeline extends ChangeNotifier {
   void _trimSubtitles() =>
       trimFinished<Subtitle>(subtitles, keepSubtitles, (s) => s.zh != null);
 
+  final LevelGate _levelGate = LevelGate();
+
   void _onFinal(AsrFinal f) {
     // Two-way mode: background words / fillers make no bubble and no LLM call (#1479).
     if (_activeConversation.enabled && FillerFilter.shouldDrop(f.text)) {
       _log.i('ASR final dropped (filler) lang=${f.lang}');
+      notifyListeners();
+      return;
+    }
+    // Two-way mode: a short segment far quieter than the people talking is background (#1479).
+    final lvl = f.levelDb;
+    if (_activeConversation.enabled &&
+        lvl != null &&
+        _levelGate.shouldDrop(
+            levelDb: lvl,
+            durSec: f.audioMs / 1000,
+            nowSec: _clock.elapsedMilliseconds / 1000)) {
+      _log.i('ASR final dropped (quiet background) lang=${f.lang} level=${lvl.toStringAsFixed(1)}dBFS');
       notifyListeners();
       return;
     }

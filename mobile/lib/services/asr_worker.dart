@@ -8,6 +8,7 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 import '../logic/device_probe.dart';
 import '../logic/draft_gate.dart';
 import '../logic/lang_pack.dart';
+import '../logic/level_gate.dart';
 import '../logic/prompt.dart';
 import '../logic/segmenter.dart';
 import 'isolate_stop.dart';
@@ -58,6 +59,7 @@ class AsrFinal extends AsrEvent {
       this.seg = -1,
       this.decodeMs = 0,
       this.audioMs = 0,
+      this.levelDb,
       this.lang = 'en'});
   final String text;
 
@@ -73,6 +75,9 @@ class AsrFinal extends AsrEvent {
   /// Wall time of the offline decode, and the audio length it covered.
   final int decodeMs;
   final int audioMs;
+
+  /// RMS level (dBFS) of the segment audio, for the two-way loudness gate (#1479); null = unknown.
+  final double? levelDb;
 }
 
 /// The extra-language recognizer (Russian, 對話翻譯) finished loading, or could not
@@ -342,6 +347,7 @@ class AsrWorker {
             seg: seg,
             decodeMs: ms,
             audioMs: samples.length * 1000 ~/ 16000,
+            levelDb: seg >= 0 ? LevelGate.rmsDb(samples) : null,
             lang: lang));
         // After the final went out, so the subtitle path never waits for this.
         if (spk != null && seg >= 0) {

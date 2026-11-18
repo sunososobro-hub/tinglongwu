@@ -218,10 +218,35 @@ def kept(spans, segs) -> int:
     return k
 
 
-def report(vad_model, clips, threshold, min_speech):
+# Same constants as LevelGate in mobile/lib/logic/level_gate.dart (#1479).
+GATE_MAX_SHORT = 1.5
+GATE_FLOOR_DB = -34.0
+GATE_REL_DB = 10.0
+GATE_REF_COUNT = 8
+GATE_REF_WINDOW = 30.0
+
+
+def level_gate(x: np.ndarray, segs):
+    """Drop short quiet segments exactly like LevelGate.shouldDrop; returns the kept segments."""
+    hist, out = [], []
+    for s, e in segs:
+        rms = _db(x[s:e].astype(np.float64))
+        t = s / SR
+        hist = [h for h in hist if t - h[0] <= GATE_REF_WINDOW][-(GATE_REF_COUNT - 1) :]
+        ref = max((h[1] for h in hist), default=-999.0)
+        drop = (e - s) / SR <= GATE_MAX_SHORT and (rms < GATE_FLOOR_DB or rms < ref - GATE_REL_DB)
+        if not drop:
+            out.append((s, e))
+            hist.append((t, rms))
+    return out
+
+
+def report(vad_model, clips, threshold, min_speech, gate=False):
     row = {}
     for name, (x, spans) in clips.items():
         segs = run_vad(vad_model, x, threshold, min_speech)
+        if gate:
+            segs = level_gate(x, segs)
         row[name] = (len(segs), kept(spans, segs), len(spans))
     return row
 
@@ -235,6 +260,7 @@ def main():
     ap.add_argument("--clips", help="dir: load clips saved by an earlier run, or save them there")
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--min-speech", type=float, default=0.25)
+    ap.add_argument("--gate", action="store_true", help="apply the loudness gate (LevelGate) after the VAD")
     ap.add_argument("--compare", nargs="*", default=[], help="extra threshold:min_speech pairs")
     a = ap.parse_args()
 
@@ -247,7 +273,7 @@ def main():
     names = list(clips)
     print("threshold min_speech | " + " | ".join(f"{n} bubbles(kept/total)" for n in names))
     for th, ms in pairs:
-        row = report(a.vad, clips, th, ms)
+        row = report(a.vad, clips, th, ms, a.gate)
         cells = [f"{row[n][0]} ({row[n][1]}/{row[n][2]})" if row[n][2] else f"{row[n][0]}" for n in names]
         print(f"{th:.2f} {ms:.2f} | " + " | ".join(cells))
 
