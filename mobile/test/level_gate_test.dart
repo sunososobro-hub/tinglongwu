@@ -40,7 +40,18 @@ void main() {
   test('reference expires after the window', () {
     final g = LevelGate();
     expect(g.shouldDrop(levelDb: -12, durSec: 2, nowSec: 0), isFalse);
+    // still the reference at the window edge (a dropped segment leaves the history intact)
+    expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: LevelGate.refWindowSec), isTrue);
     final later = LevelGate.refWindowSec + 1;
     expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: later), isFalse);
+  });
+
+  test('the loud reference survives seven later kept segments (eight kept entries)', () {
+    final g = LevelGate();
+    expect(g.shouldDrop(levelDb: -12, durSec: 2, nowSec: 0), isFalse);
+    for (var i = 1; i <= 7; i++) {
+      expect(g.shouldDrop(levelDb: -22, durSec: 2, nowSec: i.toDouble()), isFalse);
+    }
+    expect(g.shouldDrop(levelDb: -25, durSec: 0.6, nowSec: 9), isTrue); // 13 dB under -12
   });
 }

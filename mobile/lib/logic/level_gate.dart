@@ -47,15 +47,17 @@ class LevelGate {
   /// True when the segment should be dropped. [nowSec] is any monotonic clock in seconds.
   bool shouldDrop({required double levelDb, required double durSec, required double nowSec}) {
     _kept.removeWhere((e) => nowSec - e.$1 > refWindowSec);
-    while (_kept.length >= refCount) {
-      _kept.removeAt(0);
-    }
     var ref = -999.0;
     for (final e in _kept) {
       if (e.$2 > ref) ref = e.$2;
     }
     final drop = durSec <= maxShortSec && (levelDb < floorDb || levelDb < ref - relativeDb);
-    if (!drop) _kept.add((nowSec, levelDb));
+    if (!drop) {
+      _kept.add((nowSec, levelDb));
+      while (_kept.length > refCount) {
+        _kept.removeAt(0);
+      }
+    }
     return drop;
   }
 }

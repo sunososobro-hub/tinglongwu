@@ -227,12 +227,16 @@ GATE_REF_WINDOW = 30.0
 
 
 def level_gate(x: np.ndarray, segs):
-    """Drop short quiet segments exactly like LevelGate.shouldDrop; returns the kept segments."""
+    """Drop short quiet segments like LevelGate.shouldDrop; returns the kept segments.
+
+    An estimate, not app parity: it works on VAD segments (the app gates ASR finals, so a rejected
+    segment never sets the reference there) and uses segment start times (the app uses final-arrival time).
+    """
     hist, out = [], []
     for s, e in segs:
         rms = _db(x[s:e].astype(np.float64))
         t = s / SR
-        hist = [h for h in hist if t - h[0] <= GATE_REF_WINDOW][-(GATE_REF_COUNT - 1) :]
+        hist = [h for h in hist if t - h[0] <= GATE_REF_WINDOW][-GATE_REF_COUNT:]
         ref = max((h[1] for h in hist), default=-999.0)
         drop = (e - s) / SR <= GATE_MAX_SHORT and (rms < GATE_FLOOR_DB or rms < ref - GATE_REL_DB)
         if not drop:
