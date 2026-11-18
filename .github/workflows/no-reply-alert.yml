@@ -1,0 +1,16 @@
+name: no-reply-alert
+on:
+  schedule:
+    - cron: "0 0,3,6,9,12,15 * * *"  # every 3 h, 08-23 Asia/Taipei
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/no_reply_alert.py --post
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
