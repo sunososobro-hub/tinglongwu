@@ -71,6 +71,14 @@ for k, v in m.items():
     fi
     while IFS= read -r k; do
       case "$k" in ""|/*|*..*) continue ;; esac
+      # never delete through a symlink: a linked component could point at another tool's folder
+      local p="$MODELS" c rest="$k" linked=""
+      while [ -n "$rest" ]; do
+        c="${rest%%/*}"; p="$p/$c"
+        [ -L "$p" ] && { linked=1; break; }
+        case "$rest" in */*) rest="${rest#*/}" ;; *) rest="" ;; esac
+      done
+      if [ -n "$linked" ]; then echo "[x] refusing to remove '$MODELS/$k' (symlink in path)" >&2; FAILED=1; continue; fi
       rm_path "$MODELS/$k"
     done <<< "$keys"
   fi

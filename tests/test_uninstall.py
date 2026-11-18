@@ -131,6 +131,32 @@ def test_purge_refuses_kokoro_dir_outside_models(tmp_path):
     assert (h / ".local" / "bin" / "other-tool").exists()
 
 
+def test_purge_refuses_manifest_entry_through_symlink(tmp_path):
+    h = _home(tmp_path)
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "ggml-small.bin").write_text("keep")
+    (h / "models" / "whisper-cpp").symlink_to(shared)
+    (h / "models" / "manifest.json").write_text('{"whisper-cpp-small": {"files": {"ggml-small.bin": "x"}}}')
+    r = _run(["bash", str(ROOT / "scripts" / "uninstall.sh"), "--purge"], h)
+    assert r.returncode != 0
+    assert (shared / "ggml-small.bin").read_text() == "keep"
+    assert (h / "models" / "manifest.json").exists()
+
+
+def test_purge_refuses_kokoro_dir_in_ordinary_outside_dir(tmp_path):
+    h = _home(tmp_path)
+    out = h / "shared-models"
+    out.mkdir()
+    (out / "sentinel").write_text("keep")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TLWU_", "KOKORO_"))}
+    env.update(HOME=str(h), TLWU_YES="1", KOKORO_DIR=str(out))
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "uninstall.sh"), "--purge"], env=env,
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0
+    assert (out / "sentinel").read_text() == "keep"
+
+
 def test_refuses_foreign_folder(tmp_path):
     h = _home(tmp_path)
     (h / "tinglongwu" / ".git").rmdir()
