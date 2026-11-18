@@ -59,5 +59,10 @@ void main() {
     test('VAD cap is short', () {
       expect(AsrConfig.vadMaxSpeech, lessThanOrEqualTo(6.0));
     });
+    test('VAD keeps short real answers (#1479 replay)', () {
+      // "Да." / "Нет." last 0.3-0.5 s; a longer min speech drops them before ASR.
+      expect(AsrConfig.vadMinSpeech, lessThanOrEqualTo(0.3));
+      expect(AsrConfig.vadThreshold, inInclusiveRange(0.3, 0.6));
+    });
   });
 }

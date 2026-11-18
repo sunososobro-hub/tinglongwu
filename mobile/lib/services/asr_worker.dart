@@ -109,8 +109,17 @@ class AsrConfig {
   /// long pauses, so the VAD hard cap [vadMaxSpeech] decides the subtitle rate: 6 s keeps one
   /// subtitle to roughly one sentence and updates at least every ~6 s (was 10 s + 3-4 sentences).
   static const vadMinSilence = 0.35;
-  static const vadMinSpeech = 0.25;
   static const vadMaxSpeech = 6.0;
+
+  /// Silero VAD speech probability threshold and shortest kept segment (s).
+  /// Kept at 0.5 / 0.25 s on purpose (#1479): `mobile/tool/vad_replay.py` shows that
+  /// raising them does not separate background fillers from real short answers. At
+  /// 0.6 / 0.5 s background filler bubbles drop 30 -> 6 but 3 of 6 foreground answers
+  /// ("Да.", "Нет.", "Yes.", ~0.3-0.5 s) are lost too; Silero ignores loudness, so a
+  /// quiet "да" in the room scores like a close "да". Fillers are handled after ASR
+  /// by `logic/filler_filter.dart` instead. Re-run the replay before changing these.
+  static const vadThreshold = 0.5;
+  static const vadMinSpeech = 0.25;
 }
 
 /// Runs sherpa-onnx offline ASR in a background isolate.
@@ -365,7 +374,7 @@ class AsrWorker {
         config: sherpa.VadModelConfig(
           sileroVad: sherpa.SileroVadModelConfig(
             model: cfg.vadModel,
-            threshold: 0.5,
+            threshold: AsrConfig.vadThreshold,
             minSilenceDuration: AsrConfig.vadMinSilence,
             minSpeechDuration: AsrConfig.vadMinSpeech,
             maxSpeechDuration: AsrConfig.vadMaxSpeech,
