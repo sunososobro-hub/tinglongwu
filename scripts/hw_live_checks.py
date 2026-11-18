@@ -680,8 +680,8 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     ok, msg = check_mic(_wer(file_rows, meta["ref"]), _wer(mic_rows, meta["ref"]) if mic_rows else 1.0, gap,
                         len(mic_rows), wall_gap=span[1] - span[0])
     diag = diagnose_mic(meta, file_rows, mic_rows, offsets, quiet)
-    print(f"diagnose: pauses >= {QUIET_MIN_S:g} s not counted in the gap: {len(quiet)}, "
-          f"{sum(b - a for a, b in quiet):.1f} s; in the longest gap: {_overlap(*span, quiet):.1f} s", flush=True)
+    print(f"diagnose: pauses >= {QUIET_MIN_S:g} s detected: {len(quiet)}, {sum(b - a for a, b in quiet):.1f} s; "
+          f"excluded from the longest gap: {_overlap(*span, quiet):.1f} s", flush=True)
     print(f"diagnose: {diag}", flush=True)  # #1247: kept out of the PASS/FAIL line (step summary stays one line)
     if mic_rows:
         print("diagnose: around the gap: " + gap_context(offsets, [r.get("src", "") for r in mic_rows],
