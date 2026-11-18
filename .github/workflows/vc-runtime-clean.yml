@@ -1,0 +1,59 @@
+name: vc-runtime-clean
+# #705: a Windows with NO Microsoft Visual C++ 2015-2022 runtime (fresh Windows 11 often has none; llama.dll then
+# fails with "Could not find module"). GitHub's Windows runners have the runtime, so install.bat runs inside a
+# windows/servercore container, which has neither the runtime nor Python.
+#   installs: install.bat must install the runtime in step 4 and `tlwu-setup --check-llama` must pass.
+#   blocked:  aka.ms is unreachable (forced failure): install.bat must stop at step 4 with a non-zero exit and a
+#             message naming the runtime, before the model download (step 5).
+# Models are skipped (TLWU_SKIP_MODELS). scripts/vc_runtime_check.py judges each run (tests/test_vc_runtime_check_705.py).
+on:
+  pull_request:
+    branches: [dev]
+    paths: ['install.*', 'scripts/install_helpers.ps1', 'scripts/python_bootstrap.ps1', 'scripts/vc_runtime_check.py',
+            'requirements-llama-cpu.txt', '.github/scripts/vc705_container.ps1', '.github/workflows/vc-runtime-clean.yml']
+  push:
+    branches: [dev]
+    paths: ['install.*', 'scripts/install_helpers.ps1', 'scripts/python_bootstrap.ps1', 'scripts/vc_runtime_check.py',
+            'requirements-llama-cpu.txt', '.github/scripts/vc705_container.ps1', '.github/workflows/vc-runtime-clean.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vc-runtime-clean-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [installs, blocked]
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: "#705 install.bat in a servercore container without the VC++ runtime (${{ matrix.mode }})"
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\out" | Out-Null
+          docker pull mcr.microsoft.com/windows/servercore:ltsc2022
+          if ($LASTEXITCODE -ne 0) { throw "docker pull failed" }
+          docker run --rm --isolation=process -v "${env:GITHUB_WORKSPACE}:C:\src:ro" -v "$env:RUNNER_TEMP\out:C:\out" `
+            mcr.microsoft.com/windows/servercore:ltsc2022 `
+            powershell -NoProfile -ExecutionPolicy Bypass -File C:\src\.github\scripts\vc705_container.ps1 -Mode ${{ matrix.mode }}
+          if ($LASTEXITCODE -ne 0) { throw "container run failed (exit $LASTEXITCODE)" }
+      - name: Judge the run
+        shell: powershell
+        run: |
+          python scripts/vc_runtime_check.py --mode ${{ matrix.mode }} --result "$env:RUNNER_TEMP\out\result.txt" --log "$env:RUNNER_TEMP\out\install.log"
+          if ($LASTEXITCODE -ne 0) { throw "FAIL #705 (${{ matrix.mode }})" }
+      - name: Keep the install log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vc-runtime-clean-${{ matrix.mode }}
+          path: ${{ runner.temp }}/out
