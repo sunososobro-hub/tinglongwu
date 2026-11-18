@@ -3,12 +3,13 @@ name: merge-gate
 # pull_request_target / workflow_run check out the base branch, and the script reads the PR through the API only.
 # Merges need the MERGE_GATE_TOKEN secret (a PAT or App token), so the squash push to dev still triggers ci and
 # release-pr (a merge by GITHUB_TOKEN fires no push event). Without it the gate is a dry run (log only).
+# Keep MERGE_GATE_TOKEN in the `merge-gate` environment with a deployment branch policy of `dev` only, so a run of
+# an edited copy of this file from another branch never gets it. schedule / workflow_run / workflow_dispatch start
+# only once this file is on the default branch (main, next release); until then pull_request_target alone runs it.
 on:
   pull_request_target:
     branches: [dev]
     types: [opened, synchronize, reopened, edited, labeled, ready_for_review]
-  pull_request_review:
-    types: [submitted]
   workflow_run:
     workflows: [ci]
     types: [completed]
@@ -23,13 +24,14 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
-concurrency:
-  group: merge-gate
+concurrency:  # one group per PR, so a run for another PR never replaces a pending one
+  group: merge-gate-${{ inputs.pr || github.event.pull_request.number || 'all' }}
   cancel-in-progress: false
 jobs:
   gate:
     if: github.repository == 'sunososobro-hub/tinglongwu'
     runs-on: ubuntu-latest
+    environment: merge-gate
     steps:
       - uses: actions/checkout@v4
         with:

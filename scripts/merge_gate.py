@@ -79,10 +79,16 @@ def linked_issue(body: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def opus_pass_after(notes: list[dict], head_at: datetime) -> datetime | None:
-    """Newest `Opus review: PASS` by an allowed author posted after the head commit (section 14)."""
+def opus_pass_after(notes: list[dict], head_at: datetime, sha: str) -> datetime | None:
+    """Newest `Opus review: PASS` by an allowed author posted after the head commit (section 14) and bound to the
+    head SHA: a review submitted on that commit (`commit_id`) or a comment naming its first 7+ characters. A committer
+    date can be set freely, so the time alone never binds a PASS to a later push; an unbound PASS is left to the AI
+    mergers (fail closed)."""
+    def bound(n):
+        return n.get("commit_id") == sha or (len(sha) >= 7 and sha[:7] in (n.get("body") or ""))
     times = [_ts(n["at"]) for n in notes
-             if n.get("author") in ALLOWED_REVIEWERS and PASS_RE.search(n.get("body") or "") and _ts(n["at"]) > head_at]
+             if n.get("author") in ALLOWED_REVIEWERS and PASS_RE.search(n.get("body") or "") and _ts(n["at"]) > head_at
+             and bound(n)]
     return max(times) if times else None
 
 
@@ -96,6 +102,8 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
     release_notes.bump_exempt. legacy_freeze: a legacy dev -> main release PR is open (section 14 Transition)."""
     head = pr["head"]["ref"]
     body = pr.get("body") or ""
+    if pr.get("state", "open") != "open":
+        return "skip", "not open"
     if pr["base"]["ref"] != "dev":
         return "skip", "base is not dev"
     if pr.get("draft"):
@@ -111,7 +119,7 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
     if legacy_freeze and "release-fix" not in body:
         return "hold", "legacy release freeze: body lacks release-fix"
 
-    pass_at = opus_pass_after(notes, head_at)
+    pass_at = opus_pass_after(notes, head_at, pr["head"].get("sha", ""))
     for n in notes:
         if STOP_RE.search(n.get("body") or "") and not (pass_at and pass_at > _ts(n["at"])):
             if n.get("author", "").endswith("[bot]"):
@@ -181,11 +189,18 @@ def _release_notes():
 
 def _unresolved(num: int) -> int:
     owner, name = REPO.split("/")
-    q = ("query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p)"
-         "{reviewThreads(first:100){nodes{isResolved isOutdated}}}}}")
-    data = _gh("graphql", "-f", f"query={q}", "-f", f"o={owner}", "-f", f"n={name}", "-F", f"p={num}")
-    nodes = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
-    return sum(1 for t in nodes if not t["isResolved"] and not t["isOutdated"])
+    q = ("query($o:String!,$n:String!,$p:Int!,$c:String){repository(owner:$o,name:$n){pullRequest(number:$p)"
+         "{reviewThreads(first:100,after:$c){nodes{isResolved isOutdated} pageInfo{hasNextPage endCursor}}}}}")
+    count, cursor = 0, None
+    while True:
+        args = ["-f", f"query={q}", "-f", f"o={owner}", "-f", f"n={name}", "-F", f"p={num}"]
+        if cursor:
+            args += ["-f", f"c={cursor}"]
+        conn = _gh("graphql", *args)["data"]["repository"]["pullRequest"]["reviewThreads"]
+        count += sum(1 for t in conn["nodes"] if not t["isResolved"] and not t["isOutdated"])
+        if not conn["pageInfo"]["hasNextPage"]:
+            return count
+        cursor = conn["pageInfo"]["endCursor"]
 
 
 def gather(num: int, rn) -> tuple:
@@ -197,7 +212,7 @@ def gather(num: int, rn) -> tuple:
     head_at = _ts(_gh(f"repos/{REPO}/commits/{sha}")["commit"]["committer"]["date"])
     notes = [{"author": c["user"]["login"], "body": c.get("body"), "at": c["created_at"]}
              for c in _gh_list(f"repos/{REPO}/issues/{num}/comments?per_page=100")]
-    notes += [{"author": r["user"]["login"], "body": r.get("body"), "at": r["submitted_at"]}
+    notes += [{"author": r["user"]["login"], "body": r.get("body"), "at": r["submitted_at"], "commit_id": r.get("commit_id")}
               for r in _gh_list(f"repos/{REPO}/pulls/{num}/reviews?per_page=100") if r.get("submitted_at")]
     n = linked_issue(pr.get("body"))
     m = HEAD_RE.match(pr["head"]["ref"])
@@ -206,10 +221,13 @@ def gather(num: int, rn) -> tuple:
     if n:
         try:
             issue = _gh(f"repos/{REPO}/issues/{n}")
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            if "404" not in (e.stderr or "") and "Not Found" not in (e.stderr or ""):
+                raise  # a transient error is a collection error, not "no issue"
             issue = None
-    if _gh(f"repos/{REPO}/pulls/{num}")["head"]["sha"] != sha:
-        raise RuntimeError("head moved while reading")
+    again = _gh(f"repos/{REPO}/pulls/{num}")
+    if (again["head"]["sha"], again["base"]["ref"], again["state"]) != (sha, pr["base"]["ref"], pr["state"]):
+        raise RuntimeError("head, base or state moved while reading")
     wn = None
     if any(f["filename"] == rn.WHATS_NEW_FILE for f in files):
         wn = subprocess.run(["gh", "api", f"repos/{REPO}/contents/{rn.WHATS_NEW_FILE}?ref={sha}", "-H",
@@ -219,19 +237,25 @@ def gather(num: int, rn) -> tuple:
 
 def legacy_freeze() -> bool:
     pulls = _gh_list(f"repos/{REPO}/pulls?state=open&base=main&per_page=100")
-    return any(p["head"]["ref"] == "dev" and p["title"].startswith("release:") for p in pulls)
+    return any(p["head"]["ref"] == "dev" and (p["head"].get("repo") or {}).get("full_name") == REPO
+               and p["title"].startswith("release:") for p in pulls)
 
 
-def apply(num: int, pr: dict, action: str, reason: str) -> None:
+def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = ()) -> None:
     labels = {lb["name"] for lb in pr.get("labels", [])}
     if action == "merge":
+        now = _gh(f"repos/{REPO}/pulls/{num}")  # last look right before the write: the merge API cannot bind the base
+        if now["base"]["ref"] != "dev" or now["head"]["sha"] != pr["head"]["sha"]:
+            raise RuntimeError("base or head changed before merge; not merged")
         subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
                         "-f", f"sha={pr['head']['sha']}"], check=True)
     elif action in ("needs-opus", "needs-ai"):
         label = NEEDS_OPUS if action == "needs-opus" else NEEDS_AI
+        marker = f"merge-gate: {label}:"
         if label not in labels:
             subprocess.run(["gh", "api", "-X", "POST", f"repos/{REPO}/issues/{num}/labels", "-f", f"labels[]={label}"],
                            check=True, capture_output=True)
+        if not any((n.get("body") or "").startswith(marker) for n in notes):  # retried on its own if it failed
             subprocess.run(["gh", "api", "-X", "POST", f"repos/{REPO}/issues/{num}/comments", "-f",
                             f"body=merge-gate: {label}: {reason}"], check=True, capture_output=True)
 
@@ -251,7 +275,7 @@ def main(argv=None) -> int:
             action, reason = evaluate(pr, files, checks, issue, notes, threads, head_at, bump, freeze)
             print(f"#{num} {action}: {reason}")
             if a.apply:
-                apply(num, pr, action, reason)
+                apply(num, pr, action, reason, notes)
         except Exception as e:  # one bad PR never stops the rest
             print(f"#{num} error: {e}", file=sys.stderr)
             rc = 1

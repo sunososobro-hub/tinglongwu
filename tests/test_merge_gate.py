@@ -8,6 +8,7 @@ from merge_gate import evaluate, is_protected, usage_ok, linked_issue  # noqa: E
 
 HEAD_AT = datetime(2026, 11, 18, 10, 0, tzinfo=UTC)
 BODY = "fix things\n\nCloses #100\n\nOwner comments: none\n\ntlwu-usage: model=sonnet minutes=12"
+SHA = "4942427abcdef0123456789"
 TEST_OK = [{"name": "test", "status": "completed", "conclusion": "success"}]
 
 
@@ -17,7 +18,7 @@ def at(minutes):
 
 def pr(**kw):
     p = {"base": {"ref": "dev"}, "head": {"ref": "fix/100", "repo": {"full_name": "sunososobro-hub/tinglongwu"},
-                                          "sha": "abc"},
+                                          "sha": SHA},
          "draft": False, "mergeable_state": "clean", "changed_files": 1, "body": BODY, "labels": []}
     p.update(kw)
     return p
@@ -80,6 +81,18 @@ def test_usage_line_survives_coderabbit_block():
     assert usage_ok(body) and linked_issue(body) == 100
 
 
+def test_metadata_only_inside_bot_block_does_not_count():
+    body = "x\n<!-- This is an auto-generated comment: summary by coderabbit.ai -->\nCloses #100\n" \
+           "tlwu-usage: m minutes=3\n<!-- end of auto-generated comment: summary by coderabbit.ai -->"
+    assert linked_issue(body) is None and not usage_ok(body)
+
+
+def test_closed_pr_skipped():
+    assert run(p=pr(state="closed"))[0] == "skip"
+    p = pr(state="closed", head={"ref": "hotfix/v0.4.9", "repo": {"full_name": "sunososobro-hub/tinglongwu"}, "sha": SHA})
+    assert run(p=p)[0] == "skip"
+
+
 def test_issue_hard_stops():
     for lab in ("status:frozen", "status:proposal", "needs-owner"):
         assert run(issue={"labels": [{"name": lab}]})[0] == "hold", lab
@@ -103,8 +116,14 @@ def test_protected_needs_opus_until_newer_pass():
     assert run(files=files, notes=old)[0] == "needs-opus"
     other = [{"author": "rando", "body": "Opus review: PASS", "at": at(5)}]
     assert run(files=files, notes=other)[0] == "needs-opus"
-    new = [{"author": "sunososobro-hub", "body": "Opus review: PASS — ok", "at": at(5)}]
+    unbound = [{"author": "sunososobro-hub", "body": "Opus review: PASS — ok", "at": at(5)}]
+    assert run(files=files, notes=unbound)[0] == "needs-opus"  # time alone never binds a PASS to the head
+    new = [{"author": "sunososobro-hub", "body": f"Opus review: PASS at {SHA[:7]}", "at": at(5)}]
     assert run(files=files, notes=new)[0] == "merge"
+    review = [{"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(5), "commit_id": SHA}]
+    assert run(files=files, notes=review)[0] == "merge"
+    stale = [{"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(5), "commit_id": "0" * 40}]
+    assert run(files=files, notes=stale)[0] == "needs-opus"
 
 
 def test_exempt_bump_merges_without_opus():
@@ -116,7 +135,7 @@ def test_exempt_bump_merges_without_opus():
 def test_needs_owner_comment_holds_until_later_pass():
     stop = {"author": "sunososobro-hub", "body": "needs owner: which way?", "at": at(1)}
     assert run(notes=[stop])[0] == "hold"
-    ok = {"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(2)}
+    ok = {"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA[:7]}", "at": at(2)}
     assert run(notes=[stop, ok])[0] == "merge"
 
 
