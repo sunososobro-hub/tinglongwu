@@ -171,7 +171,7 @@ def latency_summary(lat_rows: list[dict]) -> str:
     if not tot:
         return "no latency records"
     return (f"{len(tot)} lines, speech end -> shown median {statistics.median(tot):.1f} s, max {tot[-1]:.1f} s; "
-            f"ASR max {max(asr) if asr else 0:.1f} s")
+            f"ASR max {f'{max(asr):.1f} s' if asr else '?'}")
 
 
 def tlwu_notes(log_lines: list[str], limit: int = 20) -> list[str]:
@@ -315,7 +315,7 @@ def read_latency(path) -> list[dict]:
     except OSError:  # missing or unreadable: the diagnostics never cost the check its verdict
         return []
     out = []
-    for x in text.splitlines():
+    for x in text.split("\n"):  # not splitlines(): a U+2028 inside a JSON string is not a record end
         try:
             r = json.loads(x)
         except ValueError:

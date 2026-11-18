@@ -77,3 +77,11 @@ def test_latency_context_shows_unknown_stage_times():
 
 def test_read_latency_unreadable_path_is_empty(tmp_path):
     assert hl.read_latency(tmp_path) == []  # a directory: read_text raises OSError
+
+
+def test_latency_summary_unknown_asr_and_u2028_record(tmp_path):
+    assert hl.latency_summary([{"total": 2.0, "asr": None}]) == \
+        "1 lines, speech end -> shown median 2.0 s, max 2.0 s; ASR max ?"
+    p = tmp_path / "lat.jsonl"
+    p.write_text(json.dumps({"text": "a\u2028b", "total": 1.0}, ensure_ascii=False) + "\n", "utf-8")
+    assert hl.read_latency(p) == [{"text": "a\u2028b", "total": 1.0}]
