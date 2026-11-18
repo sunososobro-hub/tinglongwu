@@ -282,11 +282,20 @@ def write_log(res: Result, path=None) -> Path | None:
         return None
 
 
+def _force_utf8(stream) -> None:
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:  # noqa: BLE001 - a closed / odd stream must not stop the self-test
+            pass
+
+
 def main_from_args(a, out=None) -> int:
     """`tlwu --selftest`: a = parsed CLI args."""
     from .models import models_dir
 
     out = out or sys.stdout
+    _force_utf8(out)  # #1519: a cp950 / cp1252 console turned the Chinese translation line into mojibake
     print("tlwu self-test: loading the models and translating one test sentence (offline)...", file=out, flush=True)
     def make_mt(mdir, name, zh_variant, device):  # #356: --ollama-model / --ollama-url apply to the self-test too
         return _default_mt(mdir, name, zh_variant, device, getattr(a, "ollama_model", None),

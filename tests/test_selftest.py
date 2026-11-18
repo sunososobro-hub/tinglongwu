@@ -178,3 +178,22 @@ def test_avx2_true_or_unknown_leaves_the_selftest_unchanged(tmp_path):
     for flag in (True, None):
         res, _ = run(tmp_path, has_avx2=lambda f=flag: f)
         assert res.ok and "AVX2" not in res.text()
+
+
+def test_main_from_args_prints_readable_chinese_on_cp950_stream(monkeypatch, tmp_path):
+    """#1519: the self-test print path on a cp950 TextIOWrapper must emit UTF-8 that decodes to the original text."""
+    import io
+
+    from tinglongwu import models, selftest
+
+    text = "你好，這是翻譯系統的測試。"
+    res = selftest.Result()
+    res.steps.append(selftest.Step("Translate", True, 0.1, text))
+    monkeypatch.setattr(models, "models_dir", lambda d: tmp_path)
+    monkeypatch.setattr(selftest, "run_selftest", lambda *a, **k: res)
+    monkeypatch.setattr(selftest, "write_log", lambda r: None)
+    raw = io.BytesIO()
+    out = io.TextIOWrapper(raw, encoding="cp950", write_through=True)
+    a = SimpleNamespace(models_dir=None, model=None, engine="auto", compute="auto", zh_variant="tw")
+    selftest.main_from_args(a, out=out)
+    assert text in raw.getvalue().decode("utf-8")
