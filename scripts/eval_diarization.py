@@ -161,6 +161,8 @@ def main(argv=None) -> int:
     ap.add_argument("--max-label-ratio", type=float, default=0.0,
                     help="#1256, audio mode only: exit 1 when labels / real speakers is above this, or when no "
                          "label was produced (0 = report only)")
+    ap.add_argument("--min-speakers", type=int, default=0,
+                    help="#1256, with --max-label-ratio: also fail when fewer real speakers were scored")
     a = ap.parse_args(argv)
     import math
 
@@ -181,11 +183,17 @@ def main(argv=None) -> int:
     print(format_report(r))
     write_png(a.png, r)
     print(f"chart: {a.png}")
-    if a.max_label_ratio and (not r["speakers"] or not r["labels"] or label_ratio(r) > a.max_label_ratio):
-        print(f"FAIL: {r['labels']} labels for {r['speakers']} speakers ({label_ratio(r):.2f}x > "
-              f"{a.max_label_ratio:g}x, #1256)")
-        return 1
     if a.max_label_ratio:
+        why = None
+        if r["speakers"] < max(1, a.min_speakers):
+            why = f"only {r['speakers']} speakers scored, need {max(1, a.min_speakers)}"
+        elif not r["labels"]:
+            why = "no speaker label produced"
+        elif label_ratio(r) > a.max_label_ratio:
+            why = f"{label_ratio(r):.2f}x > {a.max_label_ratio:g}x"
+        if why:
+            print(f"FAIL: {r['labels']} labels for {r['speakers']} speakers ({why}, #1256)")
+            return 1
         print(f"PASS: {r['labels']} labels for {r['speakers']} speakers ({label_ratio(r):.2f}x <= "
               f"{a.max_label_ratio:g}x, #1256)")
     return 0

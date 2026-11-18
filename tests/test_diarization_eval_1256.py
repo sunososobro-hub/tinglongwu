@@ -211,7 +211,16 @@ def test_cli_fails_when_no_label_is_produced(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(se, "make_labeler", lambda mdir: Unknown())
     assert ed.main([str(tmp_path), str(tmp_path / "l.csv"), "--png", str(tmp_path / "c.png"),
                     "--max-label-ratio", "1.5"]) == 1
-    assert "FAIL: 0 labels for 1 speakers" in capsys.readouterr().out
+    assert "FAIL: 0 labels for 1 speakers (no speaker label produced" in capsys.readouterr().out
+
+
+def test_cli_fails_when_too_few_speakers_scored(tmp_path, monkeypatch, capsys):
+    tags = [("a", 0), ("b", 1)]
+    run_cli(tmp_path, monkeypatch, tags, 1.5)
+    capsys.readouterr()
+    assert ed.main([str(tmp_path), str(tmp_path / "l.csv"), "--png", str(tmp_path / "c.png"),
+                    "--max-label-ratio", "1.5", "--min-speakers", "3"]) == 1
+    assert "FAIL: 2 labels for 2 speakers (only 2 speakers scored, need 3" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("args", [["--max-label-ratio", "nan"], ["--max-label-ratio", "-1"],

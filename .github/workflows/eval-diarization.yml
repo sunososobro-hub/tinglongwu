@@ -74,7 +74,7 @@ jobs:
         run: |
           set -o pipefail
           python scripts/eval_diarization.py clip clip/labels.csv --model-dir "$TLWU_MODELS" \
-            --png diarization_eval.png --max-label-ratio 1.5 | tee report.txt
+            --png diarization_eval.png --max-label-ratio 1.5 --min-speakers 8 | tee report.txt
       - name: Summary
         if: always()
         run: |
