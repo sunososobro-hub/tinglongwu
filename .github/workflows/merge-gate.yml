@@ -1,0 +1,47 @@
+name: merge-gate
+# #1473: rule-only merge gate for PRs into dev (scripts/merge_gate.py). Never checks out or runs PR code:
+# pull_request_target / workflow_run check out the base branch, and the script reads the PR through the API only.
+# Merges need the MERGE_GATE_TOKEN secret (a PAT or App token), so the squash push to dev still triggers ci and
+# release-pr (a merge by GITHUB_TOKEN fires no push event). Without it the gate is a dry run (log only).
+on:
+  pull_request_target:
+    branches: [dev]
+    types: [opened, synchronize, reopened, edited, labeled, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  schedule:
+    - cron: "11,41 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "only this PR number (empty = every open PR into dev)"
+        required: false
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+concurrency:
+  group: merge-gate
+  cancel-in-progress: false
+jobs:
+  gate:
+    if: github.repository == 'sunososobro-hub/tinglongwu'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: gate
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_GATE_TOKEN || secrets.GITHUB_TOKEN }}
+          HAS_TOKEN: ${{ secrets.MERGE_GATE_TOKEN != '' }}
+          ONLY_PR: ${{ inputs.pr || github.event.pull_request.number || '' }}
+        run: |
+          args=()
+          if [ -n "$ONLY_PR" ]; then args+=(--pr "$ONLY_PR"); fi
+          if [ "$HAS_TOKEN" = "true" ]; then args+=(--apply); else echo "MERGE_GATE_TOKEN not set: dry run"; fi
+          python scripts/merge_gate.py "${args[@]}"
