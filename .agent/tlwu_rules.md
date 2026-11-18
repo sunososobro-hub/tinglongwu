@@ -82,7 +82,7 @@ This section supersedes the "Mix enforcement" bullet in section 5 and the 7-day 
 
 ### Ledger (S-hard, hourly)
 - Sum the `tlwu-usage: ... minutes=N` last line of PRs merged to dev in the last 48 h, grouped by the linked issue's type label. Post a new comment on the pinned `[health] pipeline check log` issue (#61; create and pin it if missing) with a table: `type | minutes | share | target | deficit` where deficit = target - share (percentage points).
-- Targets: bug 25, enhancement 45, eval 10, documentation 5, maint 5. QA 15 and ideas 5 run on fixed schedules (section 5) and are also logged in the table.
+- Targets (owner 2026-11-18): line 3 of the throttle issue #574, `mix: bug 28, enhancement 50, eval 11, documentation 5, maint 6`; the owner edits it there, no rules change needed. Valid only when it names exactly these five types with whole numbers that sum to 100; missing or invalid -> use the default `bug 28, enhancement 50, eval 11, documentation 5, maint 6` and say `mix invalid, default used` in the ledger comment. QA 15 and ideas 5 are not in the mix: they run on fixed schedules (section 5) and are logged in the table for information only (their shares are over the same total).
 - QA and ideas rows use the section 5 inputs over the same 48 h window: QA = `tlwu-usage` comments on #61 created in the last 48 h; ideas = `tlwu-usage` comments on `[idea]` issues created in the last 48 h. Shares are over the total of all rows (merged PRs + QA + ideas). Pickers do not pick QA or ideas; those rows are informational. If the 48 h total is 0, post the table with share 0 and deficit = target for every row (the picker then takes bug/enhancement first, ties broken by the order of the targets list).
 
 ### Picker (every worker)
