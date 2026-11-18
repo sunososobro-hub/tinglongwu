@@ -583,9 +583,13 @@ def check_late_jsonl(recs: list[dict], lang: str) -> list[tuple[str, bool, str]]
 def cmd_late_fragment(a) -> int:
     """Live listen mode (loopback = monitor of the default sink, PulseAudio null sink on the runner) with --save;
     the synthetic clip is played into the sink with paplay; Ctrl+C; then the JSONL is checked (check_late_jsonl)."""
+    sys.path.insert(0, str(ROOT))
+    from tinglongwu.models import models_dir
+
+    models = str(models_dir(a.models_dir).resolve())  # one absolute dir for synthesis and the listener (cwd=ROOT)
     with tempfile.TemporaryDirectory(prefix="tlwu-late-") as td:
-        wav, save = late_clip(a.lang, Path(td) / "late.wav", a.models_dir), Path(td) / "late.jsonl"
-        md = ["--models-dir", a.models_dir] if a.models_dir else []
+        wav, save = late_clip(a.lang, Path(td) / "late.wav", models), Path(td) / "late.jsonl"
+        md = ["--models-dir", models]
         cmd = [PY, "-m", "tinglongwu", "--lang", a.lang, "--to", "zh", "--preset", "meeting", "--device", "cpu",
                "--save", str(save), *md]
         p = subprocess.Popen(cmd, cwd=str(ROOT), env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -596,8 +600,10 @@ def cmd_late_fragment(a) -> int:
             ready = _wait_ready(p, re.compile(r"^\* ready - listening"), 600, buf)
             check(f"{a.lang}: listen mode on the sink monitor is ready", ready, tail("\n".join(buf), 5))
             if ready:
-                subprocess.run(["paplay", f"--device={a.sink}", str(wav)], check=False, timeout=120)
-                time.sleep(a.wait)  # the merged line is re-translated after the tail: give MT time on the CPU
+                time.sleep(2.0)  # the ready line comes just before the capture thread opens the monitor stream
+                pl = subprocess.run(["paplay", f"--device={a.sink}", str(wav)], check=False, timeout=120)
+                if check(f"{a.lang}: clip played into sink {a.sink}", pl.returncode == 0, f"paplay rc={pl.returncode}"):
+                    time.sleep(a.wait)  # the merged line is re-translated after the tail: give MT time on the CPU
         finally:  # also when paplay fails / times out: never leave the listener (own session) running
             if p.poll() is None:
                 os.killpg(p.pid, signal.SIGINT)
