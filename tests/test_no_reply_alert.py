@@ -60,5 +60,10 @@ def test_null_user_and_title_mentions():
 
 
 def test_title_markdown_is_literal():
-    t = n.plain_title("[click](http://evil) <b>x</b>")
-    assert "](" not in t and "<b>" not in t
+    for raw in ("[click](http://evil) <b>x</b>", "See www.example.com", "Expected &lt;tag&gt; @bob", "a`b"):
+        t = n.plain_title(raw)
+        assert t.startswith("`") and t.endswith("`") and t.count("`") == 2
+        assert t[1:-1] == raw.replace("`", "'")
+    c = n.format_comment([{"number": 7, "title": "See www.example.com", "author": "a", "hours": 50, "url": "https://x/7"}])
+    assert "#7 `See www.example.com` | a | 50 h | https://x/7" in c
+    assert n.alerted_numbers([c]) == {7}

@@ -81,9 +81,8 @@ def new_items(selected: list[dict], already: set[int]) -> list[dict]:
 
 
 def plain_title(title: str) -> str:
-    """Render an outside title as literal text: no mentions, no Markdown links or HTML."""
-    t = re.sub(r"([\\`*_{}\[\]()<>#+!|~])", r"\\\1", title)
-    return t.replace("@", "@\u200b")
+    """Render an outside title as a literal code span: no mentions, links, autolinks, entities or HTML."""
+    return "`" + " ".join(title.replace("`", "'").split()) + "`"
 
 
 def format_comment(items: list[dict]) -> str:
