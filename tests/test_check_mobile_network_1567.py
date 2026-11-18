@@ -29,7 +29,8 @@ def run(m):
 
 def test_downloader_only_passes(tmp_path):
     m = make(tmp_path, files={
-        "android/app/src/main/kotlin/PackDownloader.kt": "val c = URL(u).openConnection() as HttpURLConnection",
+        "android/app/src/main/kotlin/com/tinglongwu/mobile/PackDownloader.kt": "val c = URL(u).openConnection() as HttpURLConnection",
+        "lib/services/pack_downloader.dart": "final c = HttpClient();",
         "lib/ui/screen.dart": "import 'dart:io';\nvoid f() {}",
     })
     r = run(m)
@@ -58,3 +59,18 @@ def test_other_network_permission_fails(tmp_path):
     extra = MANIFEST_OK.replace("</manifest>", '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/></manifest>')
     r = run(make(tmp_path, manifest=extra))
     assert r.returncode == 1 and "ACCESS_NETWORK_STATE" in r.stdout
+
+
+def test_same_basename_elsewhere_is_not_exempt(tmp_path):
+    r = run(make(tmp_path, files={"lib/analytics/pack_downloader.dart": "final c = HttpClient();"}))
+    assert r.returncode == 1 and "analytics/pack_downloader.dart:1" in r.stdout
+
+
+def test_socket_connect_and_exact_internet_name(tmp_path):
+    r = run(make(tmp_path, files={"lib/x.dart": "await Socket.connect('h', 443);"}))
+    assert r.returncode == 1 and "x.dart:1" in r.stdout
+    extra = MANIFEST_OK.replace('"android.permission.INTERNET"', '"android.permission.INTERNET_EXTRA"')
+    r = run(make(tmp_path, manifest=extra))
+    assert r.returncode == 1 and "does not declare INTERNET" in r.stdout
+    multi = MANIFEST_OK.replace("</manifest>", '<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/></manifest>')
+    assert run(make(tmp_path, manifest=multi)).returncode == 1

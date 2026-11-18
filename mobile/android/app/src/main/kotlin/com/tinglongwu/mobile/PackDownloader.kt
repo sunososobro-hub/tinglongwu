@@ -18,6 +18,7 @@ import java.security.MessageDigest
 class PackDownloader {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var cancelled = false
+    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun cancel() { cancelled = true }
 
@@ -28,14 +29,17 @@ class PackDownloader {
         val size = (call.argument<Number>("size") ?: -1).toLong()
         val sha = (call.argument<String>("sha256") ?: "").lowercase()
         if (!allowedStart(url)) { result.error("BAD_URL", "not a release asset of this repo: $url", null); return }
+        // One download at a time: a second start must not clear the first one's cancel flag or share its .part file.
+        if (!busy.compareAndSet(false, true)) { result.error("BUSY", "a download is already running", null); return }
         cancelled = false
         Thread {
             val part = File(dest.path + ".part")
+            var conn: HttpURLConnection? = null
             try {
                 dest.parentFile?.mkdirs()
-                var conn = open(url)
+                conn = open(url)
                 var hops = 0
-                while (conn.responseCode in 301..308) {
+                while (conn!!.responseCode in 301..308) {
                     val next = URL(URL(conn.url.toString()), conn.getHeaderField("Location") ?: throw IllegalStateException("redirect without Location")).toString()
                     conn.disconnect()
                     if (++hops > MAX_HOPS || !allowedRedirect(next)) throw IllegalStateException("redirect not allowed: $next")
@@ -58,17 +62,19 @@ class PackDownloader {
                         }
                     }
                 }
-                conn.disconnect()
                 if (size > 0 && n != size) throw IllegalStateException("size $n, expected $size")
                 val hex = md.digest().joinToString("") { "%02x".format(it) }
                 if (sha.isNotEmpty() && hex != sha) throw IllegalStateException("SHA-256 mismatch")
-                if (dest.exists()) dest.delete()
-                if (!part.renameTo(dest)) throw IllegalStateException("cannot move download into place")
+                // Replace in one step; the old file is never deleted first (failure keeps it).
+                java.nio.file.Files.move(part.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                 main.post { progress(n, total); result.success(dest.path) }
             } catch (e: Exception) {
                 part.delete()
                 val code = if (e is Cancelled) "CANCELLED" else "DOWNLOAD_FAILED"
                 main.post { result.error(code, e.message ?: e.toString(), null) }
+            } finally {
+                conn?.disconnect()
+                busy.set(false)
             }
         }.start()
     }
@@ -91,8 +97,9 @@ class PackDownloader {
 
         /** GitHub serves release assets from a CDN host after redirecting; https only. */
         fun allowedRedirect(u: String): Boolean {
-            if (!u.startsWith("https://")) return false
-            val host = u.removePrefix("https://").substringBefore('/').substringBefore(':')
+            val parsed = try { URL(u) } catch (e: Exception) { return false }
+            if (parsed.protocol != "https" || parsed.userInfo != null) return false
+            val host = parsed.host
             return host == "github.com" || host.endsWith(".githubusercontent.com")
         }
     }

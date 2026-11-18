@@ -15,14 +15,17 @@ import re
 import sys
 from pathlib import Path
 
-ALLOWED_FILES = {"PackDownloader.kt", "pack_downloader.dart"}
+ALLOWED_FILES = {
+    "android/app/src/main/kotlin/com/tinglongwu/mobile/PackDownloader.kt",
+    "lib/services/pack_downloader.dart",
+}
 OTHER_NETWORK_PERMISSIONS = (
     "ACCESS_NETWORK_STATE", "CHANGE_NETWORK_STATE", "ACCESS_WIFI_STATE",
-    "CHANGE_WIFI_STATE", "NEARBY_WIFI_DEVICES",
+    "CHANGE_WIFI_STATE", "NEARBY_WIFI_DEVICES", "CHANGE_WIFI_MULTICAST_STATE",
 )
 NETWORK_API = re.compile(
     r"HttpURLConnection|HttpsURLConnection|java\.net\.(?:Socket|URL\b|URLConnection)|"
-    r"okhttp3?|android\.net\.http|HttpClient|java\.nio\.channels\.SocketChannel|\bSocket\(|"
+    r"okhttp3?|android\.net\.http|HttpClient|java\.nio\.channels\.SocketChannel|\bSocket(?:\.connect|\.startConnect)?\(|"
     r"WebView|package:http/|package:dio/|dart:html|WebSocket|RawSocket|\bURLSession\b"
 )
 SOURCE_EXT = {".dart", ".kt", ".java", ".swift"}
@@ -31,7 +34,7 @@ SOURCE_EXT = {".dart", ".kt", ".java", ".swift"}
 def manifest_problems(text: str) -> list[str]:
     out = []
     perms = re.findall(r"<uses-permission[^>]*>", text)
-    internet = [p for p in perms if "android.permission.INTERNET" in p]
+    internet = [p for p in perms if re.search(r'"android\.permission\.INTERNET"', p)]
     if not internet:
         out.append("AndroidManifest.xml does not declare INTERNET")
     for p in internet:
@@ -47,7 +50,7 @@ def source_problems(files: dict[str, str]) -> list[str]:
     """files: relative path -> text. Flags network API use outside the downloader files."""
     out = []
     for path, text in sorted(files.items()):
-        if Path(path).name in ALLOWED_FILES:
+        if path.replace("\\", "/") in ALLOWED_FILES:
             continue
         for n, line in enumerate(text.splitlines(), 1):
             if NETWORK_API.search(line):
