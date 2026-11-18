@@ -87,7 +87,8 @@ def opus_pass_after(notes: list[dict], head_at: datetime, sha: str) -> datetime 
     def bound(n):
         if n.get("commit_id") == sha:
             return True
-        names = re.findall(r"\b[0-9a-f]{7,40}\b", n.get("body") or "")  # every SHA the comment names, compared whole
+        line = next((x for x in (n.get("body") or "").splitlines() if PASS_RE.match(x)), "")
+        names = re.findall(r"\b[0-9a-f]{7,40}\b", line)  # SHAs on the PASS line itself, each compared whole
         return bool(sha) and any(sha.startswith(x) for x in names)
     times = [_ts(n["at"]) for n in notes
              if n.get("author") in ALLOWED_REVIEWERS and PASS_RE.search(n.get("body") or "") and _ts(n["at"]) > head_at
@@ -251,6 +252,8 @@ def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = ()) 
         now = _gh(f"repos/{REPO}/pulls/{num}")  # last look right before the write: the merge API cannot bind the base
         if (now["base"]["ref"], now["head"]["sha"], now.get("body")) != ("dev", pr["head"]["sha"], pr.get("body")):
             raise RuntimeError("base, head or body changed before merge; not merged")
+        if legacy_freeze() and "release-fix" not in (pr.get("body") or ""):
+            raise RuntimeError("legacy release freeze started; not merged")
         subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
                         "-f", f"sha={pr['head']['sha']}"], check=True)
     elif action in ("needs-opus", "needs-ai"):
