@@ -5,7 +5,7 @@ The capture test loads the extension in Playwright's Chromium, plays a 3 s 440 H
 recognizer hook's counters from the offscreen document. CI runs it in the `test` job with TLWU_REQUIRE_EXTENSION=1
 (a skip there is a failure); elsewhere it skips when Playwright / Chromium / node are missing.
 
-Cloud check of "the tab stays audible" (#1159 cloud-verify, replaces the owner test): with
+Cloud check of playback after capture starts (#1159 cloud-verify, chosen by the owner over a hand test): with
 TLWU_PULSE_MONITOR=<PulseAudio source> (the monitor of the null sink that stands in for the speakers, set by the
 `extension-capture` workflow) the test also records that monitor with `parec` while the tab plays after capture has
 started, and asserts the 440 Hz tone reached the speakers for >= 90 % of the clip. It does not record across the
@@ -195,7 +195,7 @@ def test_tone_seconds_measures_tone_at_sample_resolution():
     assert got < 0.9 * CLIP_S and got == pytest.approx(2.505, abs=0.03), got
     # the MON_GAP boundary: an 8-sample silent run (on a positive peak, no extra crossing) is cut, a 7-sample one kept
     base = sine(TONE_HZ, 2.0)
-    peak = round(MON_RATE / TONE_HZ / 4) + 20 * round(MON_RATE / TONE_HZ)
+    peak = round(20.25 * MON_RATE / TONE_HZ)  # a positive sine peak, away from any zero crossing
     full = tone_seconds(pcm(base))
     for run, lost in ((MON_GAP, MON_GAP), (MON_GAP - 1, 0)):
         cut = list(base)

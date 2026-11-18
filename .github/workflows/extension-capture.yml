@@ -1,5 +1,6 @@
 name: extension-capture
-# #1159 cloud-verify (replaces the owner test of "the tab stays audible"): the unpacked MV3 extension in
+# #1159 cloud-verify (the owner chose this job over a hand test; it covers playback after capture starts, not the
+# capture start on an already-playing tab): the unpacked MV3 extension in
 # extension/capture runs in Playwright's Chromium under Xvfb with a real PulseAudio server whose null sink stands in for
 # the speakers. tests/test_extension_capture_1159.py starts capture, then plays a known 440 Hz WAV in the tab and
 # asserts >= 90 % of the clip's 16 kHz samples reach the offscreen recognizer hook, the null-sink monitor (parec) hears
