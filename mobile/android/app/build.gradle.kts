@@ -41,8 +41,13 @@ android {
         }
     }
 
-    // Model packs for Google Play (fast-follow, downloaded by the Play Store, so no INTERNET here).
-    assetPacks += listOf(":models_asr", ":models_llm")
+    // Model packs for Google Play (fast-follow, downloaded by the Play Store). #1169: only when CI sets
+    // TLWU_PLAY_PACKS=1 (repo variable PLAY_MODEL_PACKS=true). The internal track gets a new build on every dev push and
+    // Play re-sent the whole ~1.3 GB pack with each of them although the pack bytes were identical; without the packs
+    // an update is the app alone (models are imported once and stay in the app folder).
+    if (System.getenv("TLWU_PLAY_PACKS") == "1") {
+        assetPacks += listOf(":models_asr", ":models_llm")
+    }
 
     // #1169: keep the model files STORED (not deflated) in the pack APKs. AGP turns noCompress into the
     // bundle's uncompressedGlob. Deflated multi-GB files give Play's delta patching nothing to chunk against
