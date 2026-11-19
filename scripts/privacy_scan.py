@@ -222,6 +222,17 @@ def matcher() -> Combined:
 
 
 # ---------------------------------------------------------------- PR diff
+def _pure_rename(f: dict) -> bool:
+    """#1653: a rename whose content is byte-identical (git similarity 100%) adds no line, so there is nothing
+    new to scan. Strict on purpose: the API must say `renamed`, name the old path, and report exactly 0
+    additions / deletions / changes as ints. A missing count, a CRLF or any other edit (> 0 changes) and a
+    `copied` / `added` file still go through the full scan. A mode-only change keeps the content identical."""
+    if f.get("status") != "renamed" or not f.get("previous_filename"):
+        return False
+    counts = [f.get(k) for k in ("additions", "deletions", "changes")]
+    return all(type(c) is int and c == 0 for c in counts)
+
+
 def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "") -> list[str]:
     """Hits in the ADDED lines of a PR's `pulls/N/files` list (removed lines never count)."""
     hits: list[str] = []
@@ -229,8 +240,8 @@ def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "") -> list[st
         name, status = f.get("filename", "?"), f.get("status", "")
         if rx.search(name) and status != "removed":
             hits.append(f"{rx.sub(name)}:0: (file name)")
-        if status == "removed":
-            continue
+        if status == "removed" or _pure_rename(f):
+            continue  # the file name itself was checked above
         patch = f.get("patch")
         if patch is not None:
             lines = list(sd.added_lines(patch))
