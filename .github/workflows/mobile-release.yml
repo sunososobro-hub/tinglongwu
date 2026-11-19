@@ -1,0 +1,33 @@
+name: mobile-release
+# Mobile release lane (#1534), part 2: DRY RUN ONLY. Prints which internal build, versionName and notes
+# would be promoted to Play production. It never calls the Play API; promotion and the staged rollout
+# are a later part. Kill switch: repo variable MOBILE_AUTO_RELEASE must be 'true' for the plan to pass.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - name: Plan (dry run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MOBILE_AUTO_RELEASE: ${{ vars.MOBILE_AUTO_RELEASE }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/workflows/mobile-apk.yml/runs?branch=dev&status=completed&per_page=30" > "$RUNNER_TEMP/runs.json"
+          cd mobile
+          set +e
+          python3 -I tool/mobile_release_plan.py "$RUNNER_TEMP/runs.json" --auto "${MOBILE_AUTO_RELEASE:-false}"
+          rc=$?
+          [ "$rc" -le 1 ] || exit "$rc"
+          echo "dry run only: nothing was promoted (exit $rc: 0 = would promote, 1 = blocked)"
