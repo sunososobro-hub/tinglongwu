@@ -65,3 +65,24 @@ def test_cli_failing_flutter_test_skips():
 
 def test_cli_bad_branch_is_error():
     assert run_cli("--branch", "dev").returncode == 3
+
+
+def test_cli_out_file_acts_only_when_green_and_not_dry_run(tmp_path):
+    def outputs(*extra, test="success"):
+        out = tmp_path / ("o%d.txt" % len(list(tmp_path.iterdir())))
+        run_cli("--branch", "release/v0.4.11", "--analyze", "success", "--test", test,
+                "--aab", "success", "--out", str(out), *extra)
+        return dict(l.split("=", 1) for l in out.read_text().splitlines())
+
+    live = outputs()
+    assert (live["act"], live["tag"], live["track"], live["status"]) == ("true", "mobile-v0.4.11", "production", "draft")
+    assert outputs("--dry-run")["act"] == "false"
+    red = outputs(test="failure")
+    assert (red["act"], red["tag"], red["track"]) == ("false", "", "")
+    assert "skipped (not verified)" in red["release_note"]
+
+
+def test_mobile_release_workflow_is_valid_yaml_with_lane_job():
+    yaml = pytest.importorskip("yaml")
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "mobile-release.yml").read_text())
+    assert "lane" in wf["jobs"] and wf["jobs"]["lane"]["permissions"]["contents"] == "write"
