@@ -29,6 +29,7 @@ from pathlib import Path
 REPO = "sunososobro-hub/tinglongwu"
 ALLOWED_REVIEWERS = frozenset({"sunososobro-hub"})  # section 14 "Allowed review authors"
 NEEDS_OPUS, NEEDS_AI = "needs-opus", "needs-review-ai"
+MOBILE_CHECK = "mobile-apk"  # #1618: workflow name; its job is a generic `build`, so gather() reads the workflow run
 
 RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
                     "hotfix.yml")
@@ -217,6 +218,13 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         return "wait", "test not finished"
     if any(c.get("conclusion") != "success" for c in test):
         return "hold", "test is red"
+    if any(f["filename"].startswith("mobile/") or (f.get("previous_filename") or "").startswith("mobile/")
+           for f in files):  # #1618: a phone PR also needs the mobile-apk workflow (flutter analyze + test)
+        mob = [c for c in checks if c.get("name") == MOBILE_CHECK]
+        if not mob or any(c.get("status") != "completed" for c in mob):
+            return "wait", f"{MOBILE_CHECK} not finished"
+        if any(c.get("conclusion") != "success" for c in mob):
+            return "hold", f"{MOBILE_CHECK} is red"
     state = pr.get("mergeable_state")
     if state == "dirty":
         return "needs-ai", "merge conflict: resolve in place (section 7)"
@@ -268,6 +276,10 @@ def gather(num: int, rn) -> tuple:
     files = _gh_list(f"repos/{REPO}/pulls/{num}/files?per_page=100")
     checks = [c for p in (_gh(f"repos/{REPO}/commits/{sha}/check-runs?per_page=100", "--paginate", "--slurp") or [])
               for c in p.get("check_runs", [])]
+    runs = (_gh(f"repos/{REPO}/actions/runs?head_sha={sha}&per_page=100") or {}).get("workflow_runs", [])
+    mob = [r for r in runs if r.get("name") == MOBILE_CHECK]  # newest first
+    if mob:
+        checks.append({"name": MOBILE_CHECK, "status": mob[0]["status"], "conclusion": mob[0]["conclusion"]})
     head_at = _ts(_gh(f"repos/{REPO}/commits/{sha}")["commit"]["committer"]["date"])
     notes = [{"author": c["user"]["login"], "body": c.get("body"), "at": c["created_at"]}
              for c in _gh_list(f"repos/{REPO}/issues/{num}/comments?per_page=100")]

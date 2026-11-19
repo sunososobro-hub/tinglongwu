@@ -249,3 +249,19 @@ def test_pass_carries_checks_compare(monkeypatch):  # #1580: I/O helper, fail cl
     fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": f"f{i}.py"} for i in range(300)]})
     assert not mg.pass_carries(full, head)
     assert not mg.pass_carries("not-a-sha", head)
+
+
+MOBILE_FILES = [{"filename": "mobile/lib/main.dart", "status": "modified"}]
+
+
+def test_mobile_pr_needs_mobile_apk_green():  # #1618
+    ok = {"name": "mobile-apk", "status": "completed", "conclusion": "success"}
+    assert run(files=MOBILE_FILES, checks=TEST_OK + [ok])[0] == "merge"
+    assert run(files=MOBILE_FILES, checks=TEST_OK + [{**ok, "conclusion": "failure"}]) == ("hold", "mobile-apk is red")
+    assert run(files=MOBILE_FILES, checks=TEST_OK + [{**ok, "status": "in_progress", "conclusion": None}])[0] == "wait"
+    assert run(files=MOBILE_FILES, checks=TEST_OK)[0] == "wait"  # no mobile-apk run yet: check once, skip
+
+
+def test_non_mobile_pr_ignores_mobile_apk():  # #1618
+    red = {"name": "mobile-apk", "status": "completed", "conclusion": "failure"}
+    assert run(checks=TEST_OK + [red])[0] == "merge"
