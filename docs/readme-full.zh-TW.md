@@ -2,7 +2,7 @@
 
 # tinglongWu — 台語「聽攏有」(thiann lóng ū)：「我全都聽懂了」。即時語音翻譯，執行期離線、可驗證（安裝與下載模型需要網路；行程內防護只是縱深防禦，不是證明，見「隱私模型」）。
 
-[English](../README.md) | [繁體中文](../README.zh-TW.md) | [简体中文](../README.zh-CN.md)
+[English](../README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-TW](ARCHITECTURE.zh-TW.md) · [zh-CN](ARCHITECTURE.zh-CN.md)
 
@@ -375,7 +375,7 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 - **第三方元件。** 模型、函式庫與驅動程式各自適用其授權，由你從上游來源自行安裝；本 repo 不再散布它們（唯一提交的第三方二進位檔是 `mobile/` 內自行建置的 llama.cpp Android AAR（MIT）；Windows exe 內含的執行期函式庫列於其 `licenses/THIRD_PARTY_NOTICES.txt`）。見[授權與來源](#授權與來源)。
 - **無從屬關係。** 與 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴、騰訊（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方皆無關聯，亦未獲其背書。所有商標歸各自所有人。
 - **網路防護。** 網路防護是盡力而為，不保證沒有任何資料離開你的機器。
-- **安全。** 見 [SECURITY.md](../SECURITY.md)。
-- **隱私。** 見 [PRIVACY.zh-TW.md](../PRIVACY.zh-TW.md)（[English](../PRIVACY.md)）。
+- **安全。** 見 [SECURITY.md](../.github/SECURITY.md)。
+- **隱私。** 見 [PRIVACY.zh-TW.md](PRIVACY_POLICY.zh-TW.md)（[English](PRIVACY_POLICY.md)）。
 
 MIT 授權，見 [LICENSE](../LICENSE)。(c) 2026 Alonso。

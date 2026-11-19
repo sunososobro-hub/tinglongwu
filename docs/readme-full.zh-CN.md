@@ -2,7 +2,7 @@
 
 # tinglongWu — 台语“听拢有”(thiann lóng ū)：“我全都听懂了”。实时语音翻译，运行时离线、可验证（安装与下载模型需要网络；进程内防护只是纵深防御，不是证明，见“隐私模型”）。
 
-[English](../README.md) | [繁體中文](../README.zh-TW.md) | [简体中文](../README.zh-CN.md)
+[English](../README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-TW](ARCHITECTURE.zh-TW.md) · [zh-CN](ARCHITECTURE.zh-CN.md)
 
@@ -357,6 +357,6 @@ python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu
 - **第三方组件。** 模型、库和驱动程序各自适用其许可证，由你从上游来源自行安装；本 repo 不再分发它们（唯一提交的第三方二进制文件是 `mobile/` 内自行构建的 llama.cpp Android AAR（MIT）；Windows exe 内含的运行时库列于其 `licenses/THIRD_PARTY_NOTICES.txt`）。见[许可证与来源](#许可证与来源)。
 - **无从属关系。** 与 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴、腾讯（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方均无关联，亦未获其背书。所有商标归各自所有人。
 - **网络防护。** 网络防护是尽力而为，不保证没有任何数据离开你的机器。
-- **安全。** 见 [SECURITY.md](../SECURITY.md)。
+- **安全。** 见 [SECURITY.md](../.github/SECURITY.md)。
 
 MIT 许可，见 [LICENSE](../LICENSE)。(c) 2026 Alonso。

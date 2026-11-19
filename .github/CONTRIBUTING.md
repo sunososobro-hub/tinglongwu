@@ -92,7 +92,7 @@ These are the only hard rules, so this is exactly the bar. Everything else is ne
 - **No new cloud dependency in the default path.** A cloud option may exist only if it is opt-in and off by default.
 - **Runs on modest hardware:** GPUs with 4-8 GB of VRAM, plus a CPU-only path.
 - **English in code, UI strings, comments, and docs** (translated docs live in their own `*.zh-TW.md` / `*.zh-CN.md` files).
-- **MIT-compatible dependencies only.** Add new ones to [docs/licenses.md](../docs/licenses.md) / [THIRD_PARTY.md](../THIRD_PARTY.md) with their license.
+- **MIT-compatible dependencies only.** Add new ones to [docs/licenses.md](../docs/licenses.md) / [THIRD_PARTY.md](../docs/THIRD_PARTY.md) with their license.
 - **Never copy code from copyleft projects (GPL / AGPL).** Ideas are fine; code is not. When in doubt, ask.
 
 ## Pull requests and credit
@@ -158,7 +158,7 @@ Maintainers (and the AI helpers) use these on issues; you never have to set them
 
 ## Security and conduct
 
-Report security problems privately, see [SECURITY.md](../SECURITY.md). Be kind (see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)): assume good intent, and keep feedback about the code, not the person.
+Report security problems privately, see [SECURITY.md](SECURITY.md). Be kind (see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)): assume good intent, and keep feedback about the code, not the person.
 
 By contributing you agree your work is released under the [MIT License](../LICENSE).
 

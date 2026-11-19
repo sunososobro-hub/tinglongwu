@@ -30,7 +30,7 @@ RETRANS_MAX_WAIT = 6.0
 def parse_args(argv=None):
     p = argparse.ArgumentParser(prog="tinglongwu", description="Offline real-time speech translator.")
     p.add_argument("--version", action="version",
-                   version=f"tinglongwu {__version__}; third-party model licenses: THIRD_PARTY_NOTICES.md")
+                   version=f"tinglongwu {__version__}; third-party model licenses: docs/THIRD_PARTY_NOTICES.md")
     p.add_argument("--file", help="translate an audio file instead of live system audio")
     p.add_argument("--mic", action="store_true", help="capture the microphone instead of loopback")
     p.add_argument("--capture-device", dest="device", help="capture device name substring")

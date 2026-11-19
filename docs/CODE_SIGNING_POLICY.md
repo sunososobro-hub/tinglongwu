@@ -20,4 +20,4 @@ Status: the SignPath Foundation application has been submitted. Windows releases
 4. The signed binaries are attached to the GitHub release.
 
 ## Privacy
-See [PRIVACY.md](../PRIVACY.md). Setup downloads models once; after that translation, audio and subtitles never use the network. The optional auto-update checks GitHub releases and sends no ID; PRIVACY.md lists every network request and how to turn it off.
+See [PRIVACY.md](PRIVACY_POLICY.md). Setup downloads models once; after that translation, audio and subtitles never use the network. The optional auto-update checks GitHub releases and sends no ID; PRIVACY.md lists every network request and how to turn it off.

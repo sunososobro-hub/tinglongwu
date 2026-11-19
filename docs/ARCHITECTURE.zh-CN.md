@@ -1,6 +1,6 @@
 # 架构
 
-[English](ARCHITECTURE.md) | [繁體中文](ARCHITECTURE.zh-TW.md) | [简体中文](ARCHITECTURE.zh-CN.md) | [README](../README.zh-CN.md)
+[English](ARCHITECTURE.md) | [繁體中文](ARCHITECTURE.zh-TW.md) | [简体中文](ARCHITECTURE.zh-CN.md) | [README](README.zh-CN.md)
 
 ## 0. 安装／使用分离
 

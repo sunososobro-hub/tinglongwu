@@ -8,7 +8,7 @@ flowchart LR
 
 Report privately first; there is no bug bounty and no guaranteed response time.
 
-<p align="center"><img src="assets/docs/security-report.svg" alt="Send: version or commit, OS, steps to reproduce. Never: exploit details in public, recordings with other people's data." width="720"></p>
+<p align="center"><img src="../assets/docs/security-report.svg" alt="Send: version or commit, OS, steps to reproduce. Never: exploit details in public, recordings with other people's data." width="720"></p>
 
 Scope: the code in this repository; third-party models and libraries go to their upstream projects.
 

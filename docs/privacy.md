@@ -1,6 +1,6 @@
 # Privacy model and install / use split
 
-Moved from the README (#166). See also [PRIVACY.md](../PRIVACY.md) and [SECURITY.md](../SECURITY.md).
+Moved from the README (#166). See also [PRIVACY.md](PRIVACY_POLICY.md) and [SECURITY.md](../.github/SECURITY.md).
 
 ## Install / use split (read this first)
 

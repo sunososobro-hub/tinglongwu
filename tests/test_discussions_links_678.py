@@ -13,7 +13,7 @@ def _links(md: str):
 
 
 def test_readmes_link_discussions():
-    for name in ("README.md", "README.zh-TW.md", "README.zh-CN.md"):
+    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md"):
         text = (ROOT / name).read_text(encoding="utf-8")
         assert URL in _links(text), name
 

@@ -1,7 +1,7 @@
 # Third-party notices: models and voices downloaded at runtime
 
 tinglongWu does not ship any model. `tlwu-setup` downloads the models below from their upstream sources.
-Each model stays under its own license. Library licenses are in [docs/licenses.md](docs/licenses.md);
+Each model stays under its own license. Library licenses are in [docs/licenses.md](licenses.md);
 speaker-diarization components are in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 | Model | Source | License | Copyright |

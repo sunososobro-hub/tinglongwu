@@ -28,7 +28,7 @@ OUT = REPO / "dist" / "installer"
 # what the installed app needs at run time and for install.ps1 / update.bat / the menus
 STAGE_PREFIXES = ("tinglongwu/", "tinglongwu_setup/", "tlwu_app/", "scripts/", "release/installer/run_install.ps1",
                   "install.ps1", "install.bat", "update.bat", "pyproject.toml", "requirements", "LICENSE",
-                  "README", "PRIVACY", "SECURITY.md")
+                  "README", "docs/README.zh-", "docs/PRIVACY_POLICY", ".github/SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 # the one app icon (#270, #127): the wizard, its shortcuts, the uninstall entry, install.ps1 shortcuts and tlwu.exe
 APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
@@ -42,7 +42,11 @@ def app_version(repo: Path = REPO) -> str:
 
 # #1653: repo path -> path in the installed app; the wizard runs {app}\installer\run_install.ps1, whose
 # $Root is its parent folder, so the installed layout keeps installer/ at the top
-SHIP_AS = {"release/installer/run_install.ps1": "installer/run_install.ps1"}
+SHIP_AS = {"release/installer/run_install.ps1": "installer/run_install.ps1",
+           # #1667: root docs moved into docs/ and .github/; the installed app keeps the old names
+           "docs/README.zh-CN.md": "README.zh-CN.md", "docs/README.zh-TW.md": "README.zh-TW.md",
+           "docs/PRIVACY_POLICY.md": "PRIVACY.md", "docs/PRIVACY_POLICY.zh-TW.md": "PRIVACY.zh-TW.md",
+           ".github/SECURITY.md": "SECURITY.md"}
 
 
 def staged_files(repo: Path = REPO) -> list[str]:

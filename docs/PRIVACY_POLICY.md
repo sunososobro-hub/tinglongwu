@@ -1,8 +1,8 @@
 # Privacy statement
 
-[繁體中文](PRIVACY.zh-TW.md)
+[繁體中文](PRIVACY_POLICY.zh-TW.md)
 
-<p align="center"><img src="assets/docs/privacy-split.en.svg" alt="Stays on your PC: audio, transcripts, settings, models. Network only when you act: setup downloads, installers, update check, report buttons. No telemetry." width="720"></p>
+<p align="center"><img src="../assets/docs/privacy-split.en.svg" alt="Stays on your PC: audio, transcripts, settings, models. Network only when you act: setup downloads, installers, update check, report buttons. No telemetry." width="720"></p>
 
 Your voice and text never leave your PC; the network is used only for the steps you start yourself.
 
@@ -59,6 +59,6 @@ Paid versions: checkout (email, license key, card data) is handled entirely by t
 - Your OS may write crash dumps or a pagefile that can contain memory contents; tlwu cannot control this.
 
 ## Contact
-Privacy questions: open an issue at https://github.com/sunososobro-hub/tinglongwu/issues, or report sensitive matters privately as described in [SECURITY.md](SECURITY.md).
+Privacy questions: open an issue at https://github.com/sunososobro-hub/tinglongwu/issues, or report sensitive matters privately as described in [SECURITY.md](../.github/SECURITY.md).
 
 </details>
