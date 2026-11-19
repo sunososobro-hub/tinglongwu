@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """#1158 (Chrome extension part 1, parent #711): browser-size ASR + MT candidates, measured in headless Chromium.
 
-Dev tool, NOT part of the offline runtime. It serves extension/spike/ (transformers.js + ONNX Runtime Web from
+Dev tool, NOT part of the offline runtime. It serves web/extension/spike/ (transformers.js + ONNX Runtime Web from
 node_modules, WASM backend = CPU only), loads each candidate model in the page, runs the CI smoke clips
 (eval/ci_smoke.json -> eval_data/smoke, the same 20 FLEURS clips as the eval gate) through ASR then MT and
 times both inside the page. The extension will run the same way in its offscreen document.
 
-  cd extension/spike && npm ci && cd -
+  cd web/extension/spike && npm ci && cd -
   python scripts/bench/extension_spike.py --data eval_data/smoke --asr whisper-base --out spike-base.json
   python scripts/bench/extension_spike.py --merge spike-*.json --md spike.md --json spike.json
 
@@ -29,7 +29,7 @@ import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SPIKE_DIR = ROOT / "extension" / "spike"
+SPIKE_DIR = ROOT / "web" / "extension" / "spike"
 sys.path.insert(0, str(ROOT))
 from tlwu_eval import scoring  # noqa: E402  (pure Python, no deps)
 

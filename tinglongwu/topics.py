@@ -67,7 +67,10 @@ def build_prompt(lines: list[Line], lang: str | None = None) -> str:
     """lang: the user's language code (#1379); None keeps the #609 wording (same language as the transcript)."""
     body = "\n".join(f"[{ln.side}] {ln.text}" for ln in lines)
     name = lang_name(lang)
-    where = f"Write in {name}" if name else "Write in the same language as the transcript"
+    # #1642: the transcript is the speakers' original words (ASR), not the translation; the notes still go out in
+    # the user's language, so a bad translation no longer spoils them
+    where = (f"The transcript is the original speech, possibly in a foreign language. Write in {name}" if name
+             else "Write in the same language as the transcript")
     return ("Summarize this part of a meeting transcript. [me] is the user, [them] is the other side.\n"
             f"{where}, in exactly this format:\n"
             "TITLE: <short topic title>\n- <key point>\n(3 to 5 key points)\n"
@@ -172,7 +175,7 @@ class TopicNotes:
     def __init__(self, path, summarize: Callable[[str], str], segmenter=None,
                  lower_priority: Callable[[], bool] = lower_thread_priority, log=None,
                  on_topic: Callable[[Topic], None] | None = None, lang: str | None = None):
-        self.path = Path(path)
+        self.path, self.lang = Path(path), lang
         self.on_topic = on_topic  # #611: the GUI side panel listens here (called on the worker thread)
         self.segmenter = segmenter or PauseSegmenter()
         self.topics: list[Topic] = []
@@ -180,9 +183,10 @@ class TopicNotes:
         self.worker = TopicSummarizer(summarize, self._done, lower_priority=lower_priority, log=log, lang=lang)
 
     def on_line(self, rec: dict) -> None:
-        # the user's language: the translation of the other side; #1379: the user's own words (side "me") are already
-        # in it, their translation is for the other side
-        first = ("src", "dst") if rec.get("side") == "me" else ("dst", "src")
+        # #1642: with a known user language the prompt asks for notes in it, so both sides feed the original words
+        # (src, the ASR text); the translation (dst) only when a record has no src. Without one (#609/#1379 wording,
+        # "same language as the transcript") the other side keeps feeding its translation, the user's own words src.
+        first = ("src", "dst") if rec.get("side") == "me" or lang_name(self.lang) else ("dst", "src")
         text = (rec.get(first[0]) or rec.get(first[1]) or "").strip()
         if not text or "fix" in rec:
             return
