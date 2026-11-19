@@ -84,7 +84,7 @@ def speech_stats(clips, floor, transcribe):
 
 
 def table(rows) -> str:
-    out = ["| set | floor (dBFS) | lines shown | words recovered | false lines/min |", "|---|---|---|---|---|"]
+    out = ["| set | floor (dBFS) | lines shown | words emitted | false lines/min |", "|---|---|---|---|---|"]
     for name, floor, lines, words, fpm in rows:
         out.append(f"| {name} | {20 * np.log10(floor):.0f} | {lines} | {words if words is not None else '-'} | "
                    f"{f'{fpm:.2f}' if fpm is not None else '-'} |")
@@ -94,6 +94,8 @@ def table(rows) -> str:
 def speech_clips(root: Path, n: int):
     import soundfile as sf
     paths = sorted((root / "fleurs_ru" / "audio").rglob("*.wav"))[:n]
+    if not paths:
+        raise SystemExit(f"no FLEURS wav files under {root / 'fleurs_ru' / 'audio'}")
     clips = []
     for i, p in enumerate(paths):
         x, sr = sf.read(str(p), dtype="float32")
@@ -113,7 +115,10 @@ def main(argv=None) -> int:
     from tinglongwu.asr import FasterWhisperRecognizer
     from tinglongwu.device import resolve_device
     from tinglongwu.models import models_dir
-    asr = FasterWhisperRecognizer(models_dir(None), a.model, "auto", resolve_device(a.device))
+    dev = resolve_device(a.device)
+
+    def fresh():  # the recognizer keeps state between calls (prompt, language): new one per set and floor
+        return FasterWhisperRecognizer(models_dir(None), a.model, "auto", dev)
     sets = {
         "(a) quiet speech": ("speech", speech_clips(Path(a.data), a.n)),
         "(b) room noise / fan hum": ("fp", [synth(k, d, seed=i) for i, (k, d) in enumerate(
@@ -125,10 +130,10 @@ def main(argv=None) -> int:
         minutes = sum(len(c) for c in clips) / SR / 60
         for floor in FLOORS:
             if kind == "speech":
-                l, w = speech_stats(clips, floor, asr.transcribe)
+                l, w = speech_stats(clips, floor, fresh().transcribe)
                 rows.append((name, floor, l, w, None))
             else:
-                f = count_false_lines(clips, floor, asr.transcribe)
+                f = count_false_lines(clips, floor, fresh().transcribe)
                 rows.append((name, floor, f, None, f / minutes))
     text = table(rows)
     print(text)

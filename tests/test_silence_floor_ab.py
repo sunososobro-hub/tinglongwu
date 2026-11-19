@@ -41,3 +41,9 @@ def test_hallucination_filter_lines_not_counted_and_speech_stats():
     assert ab.speech_stats([c, c], 1e-4, lambda x: T("one two three")) == (2, 6)
     assert ab.speech_stats([c], 1e-1, lambda x: T("one")) == (0, 0)
     assert "false lines/min" in ab.table([("x", 1e-4, 1, None, 0.5)])
+
+
+def test_empty_speech_dir_is_an_error(tmp_path):
+    import pytest
+    with pytest.raises(SystemExit):
+        ab.speech_clips(tmp_path, 5)
