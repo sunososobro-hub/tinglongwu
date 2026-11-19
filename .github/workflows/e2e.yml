@@ -156,8 +156,10 @@ jobs:
         # tests/test_whisper_tails_1562.py in `test`. This step still prints the 6 checks for en and ru.
         continue-on-error: true
         run: |
-          python scripts/ci_e2e.py late-fragment --lang en --models-dir "$TLWU_MODELS"
-          python scripts/ci_e2e.py late-fragment --lang ru --models-dir "$TLWU_MODELS"
+          rc=0  # both languages always run and print their checks
+          python scripts/ci_e2e.py late-fragment --lang en --models-dir "$TLWU_MODELS" || rc=1
+          python scripts/ci_e2e.py late-fragment --lang ru --models-dir "$TLWU_MODELS" || rc=1
+          exit $rc
       - name: "#258 scripts/linux_offline_run.sh for real (sudo unshare + setpriv): no network, still translates"
         if: ${{ !cancelled() && steps.changes.outputs.build == 'true' }}
         run: |
