@@ -58,6 +58,25 @@
         "bug",
         "ideas"
       ]
+    },
+    {
+      "login": "lewis0731",
+      "name": "lewis0731",
+      "avatar_url": "https://github.com/lewis0731.png",
+      "profile": "https://github.com/lewis0731",
+      "contributions": [
+        "bug",
+        "ideas"
+      ]
+    },
+    {
+      "login": "chengchihchen3-art",
+      "name": "chengchihchen3-art",
+      "avatar_url": "https://github.com/chengchihchen3-art.png",
+      "profile": "https://github.com/chengchihchen3-art",
+      "contributions": [
+        "bug"
+      ]
     }
   ]
 }
