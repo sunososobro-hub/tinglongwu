@@ -1061,7 +1061,7 @@ class Pipeline extends ChangeNotifier {
               side: _historyMode == HistoryMode.conversation
                   ? (job.route.speaker == Speaker.me ? 0 : 1)
                   : null);
-          if (job.route.speak && conversation.enabled) {
+          if (job.route.speak && conversation.enabled && r.zh.isNotEmpty) {
             _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs));
           }
           final tag = tgt != 'zh'

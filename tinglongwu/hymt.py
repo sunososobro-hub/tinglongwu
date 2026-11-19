@@ -95,11 +95,48 @@ _ECHO_ZH_CTX = re.compile(r"^\s*参考上面的信息[，,]\s*把下面的文本
 _ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)[。：:]\s*")
 
 
+# #1615: the same instruction rendered in the TARGET language (phone field test, auto -> ru: "Примите во внимание,
+# что следует выводить только переведенный результат, без каких-либо дополнительных комментариев"). A leading sentence
+# (up to . : ! ? or a line break) is an echo only when it holds all five parts of the instruction in one language:
+# only / translat- / result|text / without / explanation|comment. Kept in sync with mobile `PromptBuilder.stripEcho`.
+ECHO_WORDS = (
+    ("только", "перев", "результат|текст", "без", "коммент|объясн|пояснен"),  # ru
+    (r"\bnur\b", "übersetz", "ergebnis|text", r"\bohne\b|\bkeine", "erklär|erläuter|kommentar"),  # de
+    ("uniquement|seulement|ne .{0,40}que", "tradu", "résultat|texte", r"\bsans\b|aucun", "explication|commentaire"),  # fr
+    ("solo|sólo|únicamente|solamente", "traduc", "resultado|texto", r"\bsin\b|ningún|ninguna",
+     "explicaci|comentario"),  # es
+    ("solo|soltanto|unicamente|solamente", "tradu", "risultato|testo", "senza|nessun", "spiegazion|comment"),  # it
+    ("apenas|somente", "tradu", "resultado|texto", r"\bsem\b|nenhum", "explicaç|explicac|comentário"),  # pt
+    ("のみ|だけ", "翻訳", "結果|テキスト|訳文", "説明|解説", "不要|せず|しない|なし|ないで"),  # ja
+    ("만", "번역", "결과|텍스트", "설명", "없이|말고|하지"),  # ko
+    ("chỉ", "dịch", "kết quả|văn bản", "không", "giải thích"),  # vi
+    ("hanya", "terjemah", "hasil|teks", "tanpa", "penjelasan"),  # id
+    ("เท่านั้น", "แปล", "ผล|ข้อความ", "ไม่", "อธิบาย"),  # th
+)
+_ECHO_WORDS_RX = tuple(tuple(re.compile(p) for p in row) for row in ECHO_WORDS)
+# a sentence end, or a ":" that may close a lead-in ("Обратите внимание: ...") or the echo itself
+_ECHO_END = re.compile(r"[.:!?。：！？]+\s*|\n\s*|\Z")
+
+
+def _strip_translated_echo(out: str) -> str:
+    s = out.lstrip()
+    low = s.lower()
+    for m in _ECHO_END.finditer(s):
+        if m.start() > 240:
+            break
+        if m.start() and any(all(rx.search(low[:m.start()]) for rx in row) for row in _ECHO_WORDS_RX):
+            return s[m.end():]
+        if m.group().strip(" \t:："):  # a real sentence end (or a line break): the echo is one sentence
+            break
+    return out
+
+
 def strip_echo(out: str) -> str:
-    """Drop the card instruction line when the model repeats it before (or instead of) the translation."""
+    """Drop the card instruction line when the model repeats it before (or instead of) the translation,
+    in English, Chinese or (#1615) translated into the target language."""
     for rx in (_ECHO_EN, _ECHO_ZH, _ECHO_ZH_CTX):
         out = rx.sub("", out, count=1)
-    return out.strip()
+    return _strip_translated_echo(out).strip()
 
 
 def zh_script_guard(src_text: str, out: str, max_words: int = 4) -> str:

@@ -122,8 +122,9 @@ class Translator implements LineTranslator {
         if (shouldStop != null && shouldStop()) break;
         buf.write(utf8.add(e.bytes));
         // One sentence in, one line out: stop at the first line break after some text, so the
-        // model cannot continue with a second paragraph of its own.
-        if (buf.toString().trimLeft().contains('\n')) break;
+        // model cannot continue with a second paragraph of its own. A line that is only the echoed
+        // card instruction does not count (#1615): the translation may follow it.
+        if (PromptBuilder.lineDone(buf.toString())) break;
       } else if (e is DoneEvent) {
         nCtx = e.committedPosition;
       }
