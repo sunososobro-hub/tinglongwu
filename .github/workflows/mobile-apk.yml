@@ -361,3 +361,9 @@ jobs:
           python3 -I mobile/tool/make_packs.py mark "$RUNNER_TEMP/body.md" $STALE
           gh release edit "$TAG" --notes-file "$RUNNER_TEMP/body.md"
           gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'
+      - name: Check the optional packs are on mobile-latest (#1510)
+        if: steps.apk.outputs.stale != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 -I scripts/check_mobile_packs.py
