@@ -83,7 +83,7 @@ def check_no_pending_release(api) -> None:
         if len(prs) < PER_PAGE:
             break
         page += 1
-    content = api(f"contents/tinglongwu/__init__.py?ref={BRANCH}").get("content", "")
+    content = api(f"contents/src/core/tinglongwu/__init__.py?ref={BRANCH}").get("content", "")
     m = VERSION_RE.search(base64.b64decode(content).decode("utf-8", "replace"))
     if not m:
         raise PlanError(f"cannot read __version__ from src/core/tinglongwu/__init__.py on {BRANCH}")
