@@ -6,6 +6,15 @@
 # Skip with TLWU_NO_UPDATE=1. Only acts on a git checkout; local edits that block a fast-forward just produce a warning.
 # Portable to macOS bash 3.2 (no `timeout`, no arrays needed).
 
+# #1596: a release checkout (detached at a tag, no upstream branch) follows its OS's last-good marker tag (mac-ok on
+# macOS, linux-ok on Linux), so a release that failed that platform's checks is never pulled; no marker -> origin/main.
+tlwu_update_target() {
+  local mk=""
+  case "$(uname -s 2>/dev/null)" in Darwin) mk=mac-ok ;; Linux) mk=linux-ok ;; esac
+  if [ -n "$mk" ] && git rev-parse -q --verify "refs/tags/$mk^{commit}" >/dev/null 2>&1; then echo "refs/tags/$mk"
+  else echo origin/main; fi
+}
+
 tlwu_auto_update() {
   TLWU_UPDATED=""; TLWU_UPDATE_RESULT=skipped
   if [ "${TLWU_OFFLINE:-}" = "1" ]; then TLWU_UPDATE_RESULT=forced_off; return 0; fi   # offline mode: no git fetch at all
@@ -15,14 +24,15 @@ tlwu_auto_update() {
   local old up rc pid wd
   old="$(git rev-parse HEAD 2>/dev/null)" || return 0
   # fetch with a watchdog (offline / slow network must not stall the menu)
-  GIT_TERMINAL_PROMPT=0 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=5 fetch --quiet origin >/dev/null 2>&1 &
+  # --force --tags: the per-platform marker tags (#1596) move from release to release
+  GIT_TERMINAL_PROMPT=0 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=5 fetch --quiet --force --tags origin >/dev/null 2>&1 &
   pid=$!
   ( sleep 6; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
   wd=$!
   rc=0; wait "$pid" 2>/dev/null || rc=$?
   kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null || true   # (the menu runs under set -e)
   if [ "$rc" -ne 0 ]; then m M_UPD_SKIP_NET; return 0; fi
-  up="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || up="origin/main"
+  up="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || up="$(tlwu_update_target)"
   if [ "$(git rev-parse "$up" 2>/dev/null)" = "$old" ]; then TLWU_UPDATE_RESULT=uptodate; return 0; fi
   if git merge-base --is-ancestor "$up" HEAD 2>/dev/null; then TLWU_UPDATE_RESULT=uptodate; return 0; fi   # we are ahead / equal
   if ! git merge --ff-only --quiet "$up" >/dev/null 2>&1; then m M_UPD_SKIP_DIVERGED; return 0; fi
