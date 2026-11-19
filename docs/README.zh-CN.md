@@ -53,6 +53,6 @@ Windows 会显示 SmartScreen 警告（安装程序尚未签名，#601 完成前
 
 MIT 授权，见 [LICENSE](../LICENSE)。(c) 2026 Alonso.
 
-<p align="center"><img src="../assets/mascot/tinglong@2x.png" alt="听龙 / TingLong，专心听的龙" width="120"><br><sub>听龙 / TingLong，专心听的龙</sub></p>
+<p align="center"><img src="../assets/mascot/tinglong%402x.png" alt="听龙 / TingLong，专心听的龙" width="120"><br><sub>听龙 / TingLong，专心听的龙</sub></p>
 
 </details>

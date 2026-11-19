@@ -53,6 +53,6 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 MIT 授權，見 [LICENSE](../LICENSE)。[程式碼簽章政策](CODE_SIGNING_POLICY.md)（SignPath Foundation）。(c) 2026 Alonso.
 
-<p align="center"><img src="../assets/mascot/tinglong@2x.png" alt="聽龍 / TingLong，專心聽的龍" width="120"><br><sub>聽龍 / TingLong，專心聽的龍</sub></p>
+<p align="center"><img src="../assets/mascot/tinglong%402x.png" alt="聽龍 / TingLong，專心聽的龍" width="120"><br><sub>聽龍 / TingLong，專心聽的龍</sub></p>
 
 </details>
