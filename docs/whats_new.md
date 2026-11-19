@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.0
+- New "Use GPU: Auto / Off" setting under Advanced: the app picks GPU or CPU by itself, and if the GPU check fails on first start it switches to CPU and tells you in one line.
+- A last word said after a short pause now joins its sentence instead of showing up as a line of its own.
+- Phones: language packs can now be downloaded with one tap inside the app.
+
 ## v0.4.11
 - While listening, the line you heard now shows up right away in its place, and its translation fills in a moment later.
 - The listen window shows which audio source it is using and tells you when the microphone hears only silence.
