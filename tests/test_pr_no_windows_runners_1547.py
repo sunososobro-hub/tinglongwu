@@ -7,6 +7,8 @@ import yaml
 
 WF = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 EXPENSIVE = ("windows", "macos")
+# Label set of the owner's self-hosted mobile build runner (#1621).
+SELF_HOSTED_MOBILE = '["self-hosted","windows","tlwu-mobile"]'
 
 
 def _on(doc):
@@ -50,7 +52,10 @@ def test_pr_to_dev_starts_no_windows_or_macos_job(path):
         return
     for name, job in doc.get("jobs", {}).items():
         text = _runs_on_text(job) + _matrix_text(job)
-        if not any(k in text for k in EXPENSIVE):
+        # #1621: the owner's home runner (self-hosted, label tlwu-mobile) costs no
+        # GitHub minutes; only GitHub-hosted Windows/macOS runners are expensive.
+        hosted = text.replace(SELF_HOSTED_MOBILE, "")
+        if not any(k in hosted for k in EXPENSIVE):
             continue
         cond = str(job.get("if", ""))
         assert "github.event_name != 'pull_request'" in cond, f"{path.name}:{name} runs on {text} for PRs into dev"
@@ -61,3 +66,10 @@ def test_pr_event_forms():
     assert _pr_event({"on": ["push", "pull_request"]}) == (True, None)
     assert _pr_event({"on": {"push": None}}) == (False, None)
     assert _pr_event({"on": {"pull_request": {"branches": ["main"]}}}) == (True, ["main"])
+
+
+def test_self_hosted_mobile_runner_is_not_expensive_but_hosted_windows_is():
+    job = {"runs-on": "${{ fromjson(vars.x == 'tlwu-mobile' && '[\"self-hosted\",\"windows\",\"tlwu-mobile\"]' || '[\"ubuntu-24.04\"]') }}"}
+    text = _runs_on_text(job).replace(SELF_HOSTED_MOBILE, "")
+    assert not any(k in text for k in EXPENSIVE)
+    assert any(k in _runs_on_text({"runs-on": "windows-latest"}) for k in EXPENSIVE)
