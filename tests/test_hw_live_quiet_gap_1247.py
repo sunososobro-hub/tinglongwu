@@ -64,7 +64,7 @@ def test_subtitles_stopping_during_continuous_speech_still_fail():
     gap = hl.max_gap([5.0, 17.0, 29.0], 0.0, 30.0, quiet)
     assert gap == pytest.approx(12.0)
     ok, msg = hl.check_mic(0.1, 0.1, gap, 3)
-    assert not ok and "gap without a subtitle 12.0 s" in msg
+    assert ok and "longest gap 12.0 s (report only" in msg  # #1247: the gap is reported, not a gate
 
 
 def test_short_pauses_inside_speech_still_count():
@@ -94,3 +94,19 @@ def test_gap_span_picks_the_longest_speech_gap_not_the_longest_wall_gap():
     # wall: [0, 14] = 14 s but only 7 s of speech; [14, 25] = 11 s, all speech
     assert hl.gap_span([14.0], 0.0, 25.0, quiet) == (14.0, 25.0)
     assert hl.gap_span([14.0], 0.0, 25.0) == (0.0, 14.0)
+
+
+def test_gap_history_reports_median_and_max_of_the_last_10(tmp_path):
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("not json\n", "utf-8")  # a broken line is skipped
+    for g in [43.0, 11.2, 11.1, 8.1, 9.0, 7.5, 6.0, 12.0, 9.5, 8.8, 10.4]:
+        line = hl.gap_history(hist, g, note="sha")
+    # last 10: 11.2 11.1 8.1 9.0 7.5 6.0 12.0 9.5 8.8 10.4 -> median 9.25, max 12.0 (the 43 s run is out of the window)
+    assert line == "subtitle gap, last 10 runs: median 9.2 s, max 12.0 s (report only)"
+    assert hl.gap_history(tmp_path / "new" / "h.jsonl", 3.0) == \
+        "subtitle gap, last 1 runs: median 3.0 s, max 3.0 s (report only)"
+
+
+def test_wer_and_no_line_still_fail_the_mic_check():
+    assert not hl.check_mic(0.1, 0.2, 3.0, 40)[0]  # WER 2x file
+    assert not hl.check_mic(0.1, 0.1, 3.0, 0)[0]  # no line from the microphone
