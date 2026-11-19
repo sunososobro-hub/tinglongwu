@@ -124,12 +124,21 @@ def carried_pass(notes: list[dict], carry) -> datetime | None:
     is exactly what would merge. A later push that only touches ordinary files then needs no second Opus review."""
     if carry is None:
         return None
+    # Only a full 40-character SHA carries: a short one could be redirected by a same-named branch or tag, or a
+    # commit with the same prefix. A PASS older than any later FAIL / CHANGES / needs owner / blocking never carries.
+    stops = [_ts(n["at"]) for n in notes
+             if REJECT_RE.search(n.get("body") or "")
+             or (STOP_RE.search(n.get("body") or "") and not n.get("author", "").endswith("[bot]"))]
+    last_stop = max(stops) if stops else None
     times = []
     for n in notes:
         if n.get("author") in ALLOWED_REVIEWERS and PASS_RE.search(n.get("body") or ""):
             sha = approved_sha(n)
-            if sha and carry(sha):
-                times.append(_ts(n["at"]))
+            at = _ts(n["at"])
+            if last_stop and at <= last_stop:
+                continue
+            if re.fullmatch(r"[0-9a-f]{40}", sha) and carry(sha):
+                times.append(at)
     return max(times) if times else None
 
 
@@ -292,12 +301,14 @@ COMPARE_FILE_CAP = 300  # GET compare lists at most 300 files; a longer diff can
 
 def pass_carries(pass_sha: str, head_sha: str) -> bool:
     """#1580: True when `pass_sha` is an ancestor of `head_sha` and no protected / g4 path changed in between."""
-    if not re.fullmatch(r"[0-9a-f]{7,40}", pass_sha or "") or not head_sha:
+    if not re.fullmatch(r"[0-9a-f]{40}", pass_sha or "") or not head_sha:
         return False
     try:
         cmp = _gh(f"repos/{REPO}/compare/{pass_sha}...{head_sha}")
     except subprocess.CalledProcessError:
         return False  # unknown SHA or API error: no carry (fail closed)
+    if (cmp.get("base_commit") or {}).get("sha") != pass_sha:
+        return False  # the compare base must be exactly the approved commit
     if cmp.get("status") not in ("ahead", "identical") or cmp.get("behind_by", 1) != 0:
         return False
     files = cmp.get("files") or []

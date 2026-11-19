@@ -200,7 +200,7 @@ def test_protected_path_needs_collaborator_issue_even_with_pass():  # section 14
 def test_pass_on_older_head_carries_when_no_protected_change():  # #1580
     files = [{"filename": ".github/workflows/e2e.yml", "status": "modified"},
              {"filename": "scripts/ci_e2e.py", "status": "modified"}]
-    older = "96493d2a26210c7f"
+    older = "96493d2a26210c7fbd9be77ea4d75dd4f11fe794"
     note = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {older} - ok", "at": at(-30)}]
     assert run(files=files, notes=note)[0] == "needs-opus"  # no carry callable: old behaviour
     assert run(files=files, notes=note, carry=lambda s: older.startswith(s))[0] == "merge"
@@ -211,6 +211,20 @@ def test_pass_on_older_head_carries_when_no_protected_change():  # #1580
     assert run(files=files, notes=rando, carry=lambda s: True)[0] == "needs-opus"
     no_sha = [{"author": "sunososobro-hub", "body": "Opus review: PASS looks fine", "at": at(-30)}]
     assert run(files=files, notes=no_sha, carry=lambda s: True)[0] == "needs-opus"
+    short = [{"author": "sunososobro-hub", "body": "Opus review: PASS 96493d2 - ok", "at": at(-30)}]
+    assert run(files=files, notes=short, carry=lambda s: True)[0] == "needs-opus"  # short SHA never carries
+
+
+def test_carried_pass_loses_to_later_changes():  # #1580 review: PASS on A, CHANGES on A, test-only push
+    files = [{"filename": ".github/workflows/e2e.yml", "status": "modified"}]
+    older = "96493d2a26210c7fbd9be77ea4d75dd4f11fe794"
+    notes = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {older}", "at": at(-30)},
+             {"author": "sunososobro-hub", "body": "Opus review: CHANGES - protected code wrong", "at": at(-20)}]
+    assert run(files=files, notes=notes, carry=lambda s: True)[0] == "needs-opus"
+    stop = [notes[0], {"author": "sunososobro-hub", "body": "this is blocking", "at": at(-20)}]
+    assert run(files=files, notes=stop, carry=lambda s: True)[0] != "merge"
+    again = notes + [{"author": "sunososobro-hub", "body": f"Opus review: PASS {older}", "at": at(-10)}]
+    assert run(files=files, notes=again, carry=lambda s: True)[0] == "merge"  # a PASS after the CHANGES carries
 
 
 def test_pass_carries_checks_compare(monkeypatch):  # #1580: I/O helper, fail closed
@@ -218,14 +232,20 @@ def test_pass_carries_checks_compare(monkeypatch):  # #1580: I/O helper, fail cl
     head = "b" * 40
     def fake(cmp):
         monkeypatch.setattr(mg, "_gh", lambda path, *a: cmp)
-    fake({"status": "ahead", "behind_by": 0, "files": [{"filename": "scripts/ci_e2e.py"}]})
-    assert mg.pass_carries("96493d2", head)
-    fake({"status": "ahead", "behind_by": 0, "files": [{"filename": ".github/workflows/e2e.yml"}]})
-    assert not mg.pass_carries("96493d2", head)
-    fake({"status": "ahead", "behind_by": 0, "files": [{"filename": "x.py", "previous_filename": ".claude/hook.sh"}]})
-    assert not mg.pass_carries("96493d2", head)
-    fake({"status": "diverged", "behind_by": 2, "files": []})
-    assert not mg.pass_carries("96493d2", head)
-    fake({"status": "ahead", "behind_by": 0, "files": [{"filename": f"f{i}.py"} for i in range(300)]})
-    assert not mg.pass_carries("96493d2", head)
+    full = "96493d2a26210c7fbd9be77ea4d75dd4f11fe794"
+    base = {"base_commit": {"sha": full}}
+    fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": "scripts/ci_e2e.py"}]})
+    assert mg.pass_carries(full, head)
+    assert not mg.pass_carries("96493d2", head)  # short SHA: could resolve to a branch or tag
+    fake({"base_commit": {"sha": "c" * 40}, "status": "ahead", "behind_by": 0, "files": []})
+    assert not mg.pass_carries(full, head)  # compare base is not the approved commit
+    fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": ".github/workflows/e2e.yml"}]})
+    assert not mg.pass_carries(full, head)
+    fake({**base, "status": "ahead", "behind_by": 0,
+          "files": [{"filename": "x.py", "previous_filename": ".claude/hook.sh"}]})
+    assert not mg.pass_carries(full, head)
+    fake({**base, "status": "diverged", "behind_by": 2, "files": []})
+    assert not mg.pass_carries(full, head)
+    fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": f"f{i}.py"} for i in range(300)]})
+    assert not mg.pass_carries(full, head)
     assert not mg.pass_carries("not-a-sha", head)
