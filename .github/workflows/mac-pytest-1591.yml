@@ -14,5 +14,5 @@ jobs:
         with:
           python-version: "3.14"
       - run: python -c "import tkinter, sys; print(sys.version, 'Tk', tkinter.TkVersion)"
-      - run: pip install pytest pytest-timeout
+      - run: pip install pytest pytest-timeout numpy
       - run: python -m pytest -q -rs tests/test_gui_density_886.py tests/test_tk9_mac_skip_1591.py
