@@ -1944,7 +1944,7 @@ class App:
         tx.delete("1.0", "end")
         if not hist:
             ph = self.placeholder()
-            tx.insert("end", ph[0][0] if ph else t("gui_chat_empty"), "hint")
+            tx.insert("end", ph[0][0] if ph else self._empty_hint(), "hint")
         for i, (src, text, is_draft) in enumerate(hist):
             mine = text.startswith(SPEAK_MARK) or src.startswith(SPEAK_MARK)  # #1001: speak-leg lines are mine
             side = "me" if mine else "other"
@@ -1969,14 +1969,21 @@ class App:
                     tx.tag_bind(tag, "<Leave>", lambda _e: tx.configure(cursor=""))
             else:
                 tx.insert("end", head + "\n", f"{side}_head")
-            self._insert_bubble(side, text, is_draft, i)
-            if show_src and src and src != text:
+            if show_src and src and src != text:  # #1605: source small first, translation large under it
                 tx.insert("end", src + "\n", (f"{side}_src", f"row{i}"))
+            self._insert_bubble(side, text, is_draft, i)
         tx.configure(state="disabled")
         if follow:
             self._log_to_end()
         else:
             tx.yview(top)
+
+    def _empty_hint(self) -> str:
+        """#1605: the empty subtitle area names the current source and target language."""
+        from .. import langs
+
+        src, dst = self._home_pair()
+        return t("gui_chat_hint", src=langs.plain_label(src, ui_lang()), dst=choice_label("target", dst))
 
     def _speaker_label(self, row: int):
         """0.3.8: (raw label, text to show) of history row `row`, or None (no speaker ID / not ready / mine)."""
