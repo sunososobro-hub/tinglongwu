@@ -130,17 +130,41 @@ def test_prompt_asks_for_the_users_language():
     assert "Write in Japanese," in topics.build_prompt(lines, "ja")
     assert "same language as the transcript" in topics.build_prompt(lines)  # bake-off prompt unchanged
     assert "same language as the transcript" in topics.build_prompt(lines, "xx")
+    # #1642: with a user language the prompt says the transcript is the original speech
+    assert "transcript is the original speech" in topics.build_prompt(lines, "zh-tw")
+    assert "original speech" not in topics.build_prompt(lines)
 
 
-def test_notes_use_the_users_own_words_and_the_translation_of_the_other_side(tmp_path):
+def test_notes_feed_the_original_words_of_both_sides_1642(tmp_path):
     saver = JsonlSaveSink(None, tmp_path / "t.jsonl")
     seen = []
     notes = topics.attach(saver, "unused.gguf", summarize=lambda p: seen.append(p) or SUMMARY, lang="zh-tw")
     saver.record(Result("ru", "privet", None, "你好", tgt="zh"))
     saver.record(Result("zh", "早安", None, "dobroe utro", tgt="ru", side="me"))
     notes.close(timeout=10)
-    assert "[them] 你好" in seen[0] and "[me] 早安" in seen[0] and "dobroe utro" not in seen[0]
+    assert "[them] privet" in seen[0] and "[me] 早安" in seen[0]
+    assert "你好" not in seen[0] and "dobroe utro" not in seen[0]
     assert "Write in Traditional Chinese" in seen[0]
+
+
+def test_notes_fall_back_to_the_translation_without_an_original_1642(tmp_path):
+    seen = []
+    notes = topics.TopicNotes(tmp_path / "m.topics.md", lambda p: seen.append(p) or SUMMARY, lang="zh-tw",
+                              lower_priority=lambda: True)
+    notes.on_line({"t": 0.0, "side": "them", "dst": "你好"})
+    notes.on_line({"t": 1.0, "side": "me", "src": "", "dst": "早安"})
+    notes.close(timeout=10)
+    assert "[them] 你好" in seen[0] and "[me] 早安" in seen[0]
+
+
+def test_notes_without_a_language_keep_the_translation_of_the_other_side(tmp_path):
+    seen = []
+    notes = topics.TopicNotes(tmp_path / "m.topics.md", lambda p: seen.append(p) or SUMMARY,
+                              lower_priority=lambda: True)
+    notes.on_line({"t": 0.0, "side": "them", "src": "privet", "dst": "你好"})
+    notes.on_line({"t": 1.0, "side": "me", "src": "早安", "dst": "dobroe utro"})
+    notes.close(timeout=10)
+    assert "[them] 你好" in seen[0] and "[me] 早安" in seen[0] and "privet" not in seen[0]
 
 
 def test_cli_notes_language_is_the_target_language():
