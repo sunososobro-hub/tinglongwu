@@ -125,7 +125,7 @@ def test_gpu_pack_without_nvidia_licenses_exits(tmp_path):
 def test_release_yml_nvrtc_pin_matches_gpu_pack_nvrtc():
     import re
 
-    text = (SRC.parent.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    text = (SRC.parents[2] / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     pin = re.search(r"nvidia-cuda-nvrtc-cu12==(\d+)\.(\d+)\.", text)
     assert pin, "release.yml no longer pins nvidia-cuda-nvrtc-cu12"
     m = _mod()
