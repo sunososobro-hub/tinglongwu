@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ZH_SENTENCES = ("今天天氣很好，我們去公園散步吧。", "請問會議幾點開始？", "這個問題我們明天再討論。")
-CLIP_EN = ROOT / "tinglongwu" / "data" / "selftest_en.wav"
+CLIP_EN = ROOT / "src" / "core" / "tinglongwu" / "data" / "selftest_en.wav"
 WIN = sys.platform == "win32"
 PY = sys.executable
 # unbuffered: readiness is detected from the child's output as it happens; faulthandler: native crash -> stack

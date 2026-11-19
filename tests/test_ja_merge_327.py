@@ -89,7 +89,7 @@ def test_kana_labelled_zh_counts_as_japanese():
 
 
 def test_core_merge_has_no_language_branch():
-    # #390: the ja pause threshold lives in tinglongwu/lang/ja/, not as `lang == "ja"` in merge.py
+    # #390: the ja pause threshold lives in src/core/tinglongwu/lang/ja/, not as `lang == "ja"` in merge.py
     src = (ROOT / "tinglongwu" / "merge.py").read_text("utf-8")
     assert not re.search(r"""lang\s*(==|!=|in)\s*[\(\["']""", src)
     assert '"ja"' not in src and "'ja'" not in src

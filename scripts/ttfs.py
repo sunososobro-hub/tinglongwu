@@ -180,7 +180,7 @@ def time_first_subtitle(cmd, timeout=FIRST_SUBTITLE_TIMEOUT_S, out_lines=None, s
 
 def _version():
     try:
-        with open(os.path.join(ROOT, "tinglongwu", "__init__.py"), encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "src", "core", "tinglongwu", "__init__.py"), encoding="utf-8") as f:
             m = re.search(r'__version__\s*=\s*["\']([^"\']+)', f.read())
         return m.group(1) if m else "unknown"
     except OSError:

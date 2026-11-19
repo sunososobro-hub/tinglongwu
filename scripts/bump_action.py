@@ -174,7 +174,7 @@ def apply(version: str, reason: str) -> None:
                 "-f", "labels[]=model:sonnet", "-f", "labels[]=ok-to-work")["number"]
     branch = f"fix/{issue}"
     _git("checkout", "-B", branch, "origin/dev")
-    init_p, wn_p = ROOT / "tinglongwu" / "__init__.py", ROOT / WHATS_NEW_FILE
+    init_p, wn_p = ROOT / "src" / "core" / "tinglongwu" / "__init__.py", ROOT / WHATS_NEW_FILE
     init, wn = bump_files(init_p.read_text("utf-8"), wn_p.read_text("utf-8"), new, lines)
     init_p.write_text(init, "utf-8")
     wn_p.write_text(wn, "utf-8")

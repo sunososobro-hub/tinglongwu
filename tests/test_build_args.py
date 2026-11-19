@@ -21,7 +21,7 @@ def test_runtime_layer_ships_whole_packages_with_their_data(tmp_path):
     site, dst = tmp_path / "site", tmp_path / "layer"
     for rel in ("filelock/__init__.py", "filelock/_soft.py", "sv_ttk/__init__.py", "sv_ttk/theme/dark.tcl",
                 "sv_ttk-2.6.1.dist-info/METADATA", "pip/__init__.py", "pip-26.3.dist-info/METADATA",
-                "tinglongwu/__init__.py", "numpy/tests/test_x.py", "numpy/testing/__init__.py", "x.pth",
+                "src/core/tinglongwu/__init__.py", "numpy/tests/test_x.py", "numpy/testing/__init__.py", "x.pth",
                 "bin/llama-common.dll", "lib/cmake/llama/llama-config.cmake", "include/llama.h",
                 "soundcard/mediafoundation.py.h"):
         f = site / rel
@@ -47,4 +47,4 @@ def test_voice_modules_and_worker_sources_are_packaged(tmp_path):
     for rel in mod.WORKER_SOURCES:
         assert (tmp_path / rel).read_bytes() == (ROOT / rel).read_bytes()
     # every tinglongwu module the worker / offline guard imports at module level or in _emit is shipped
-    assert {"tinglongwu/offline.py", "tinglongwu/i18n.py", "tinglongwu/userdirs.py"} <= set(mod.WORKER_SOURCES)
+    assert {"src/system/tinglongwu/offline.py", "src/system/tinglongwu/i18n.py", "src/system/tinglongwu/userdirs.py"} <= set(mod.WORKER_SOURCES)

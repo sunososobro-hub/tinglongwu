@@ -4,7 +4,7 @@ from tinglongwu import paths
 
 def test_app_root_is_repo_root_in_source_mode():
     assert (paths.APP_ROOT / "pyproject.toml").is_file()
-    assert (paths.APP_ROOT / "tinglongwu" / "__init__.py").is_file()
+    assert (paths.APP_ROOT / "src" / "core" / "tinglongwu" / "__init__.py").is_file()
 
 
 def test_data_dir_exists():

@@ -52,7 +52,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _pack_manifest():  # by path: importing the tinglongwu package would install its offline guard in this script
     import importlib.util
-    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "tinglongwu" / "pack_manifest.py")
+    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "src" / "system" / "tinglongwu" / "pack_manifest.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -904,7 +904,7 @@ def main(argv=None) -> int:
                                          text_at)
         print(f"bump-exempt: {'yes' if ok else 'no'} ({why})" + (f" at {sha}" if sha else ""))
         return 0 if ok else 1
-    version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
+    version = app_version((ROOT / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8"))
     rep = repo()
     if a.cmd == "plan":
         event, ref_name, sha, ref_type = (os.environ.get(k, "") for k in
