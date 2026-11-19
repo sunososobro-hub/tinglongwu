@@ -421,7 +421,7 @@ def gap_history(path: Path, gap: float, note: str = "", n: int = GAP_HISTORY_N) 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"gap": round(float(gap), 1), "note": note,
-                            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}) + "\n")
+                            "at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")}) + "\n")
     gaps = []
     for ln in path.read_text("utf-8").splitlines():
         try:
@@ -724,9 +724,12 @@ def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> t
         {"diagnose": diag, "mic_offsets_s": [round(x, 1) for x in offsets], "spans": meta.get("spans"),
          "file_src": [r.get("src", "") for r in file_rows], "mic_src": [r.get("src", "") for r in mic_rows]},
         ensure_ascii=False, indent=1), "utf-8")
-    if gap_hist:
-        print(f"report: {gap_history(Path(gap_hist), gap, note=os.environ.get('GITHUB_SHA', '')[:12])}",
-              flush=True)
+    if gap_hist and mic_rows and offline_ok:  # a broken run (no line, early exit) would skew the median / max
+        try:
+            print(f"report: {gap_history(Path(gap_hist), gap, note=os.environ.get('GITHUB_SHA', '')[:12])}",
+                  flush=True)
+        except OSError as e:  # report only: a locked or unwritable history never fails the check
+            print(f"report: gap history unavailable ({type(e).__name__})", flush=True)
     if not offline_ok:
         ok, msg = False, msg + "; verify_offline did not PASS (network connection or early exit)"
     return ok, msg

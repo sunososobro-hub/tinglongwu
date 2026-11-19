@@ -155,7 +155,7 @@ jobs:
             --gap-history "$HW_CACHE/gap_894_history.jsonl" > "$RUNNER_TEMP/check_894.txt" || rc=$?
           cat "$RUNNER_TEMP/check_894.txt"
           { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_894.txt")";
-            grep -E '^report: ' "$RUNNER_TEMP/check_894.txt" | sed 's/^report: /- /'; } >> "$GITHUB_STEP_SUMMARY"
+            { grep -E '^report: ' "$RUNNER_TEMP/check_894.txt" || true; } | sed 's/^report: /- /'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
       - name: "#4 meeting mode: mic = clip A (CABLE), system audio = clip B (speakers): >= 90% lines labelled right"
