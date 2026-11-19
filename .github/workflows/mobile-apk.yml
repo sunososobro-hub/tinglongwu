@@ -214,13 +214,16 @@ jobs:
           path: ${{ runner.temp }}/aab/
           retention-days: 7
           compression-level: 0
+      - name: AAB path for the Play upload (forward slashes; the glob in the upload action fails on Windows backslashes)
+        if: steps.plan.outputs.upload == 'true'
+        run: echo "AAB_PATH=$(cygpath -m "$RUNNER_TEMP/aab/tinglongwu-mobile.aab" 2>/dev/null || echo "$RUNNER_TEMP/aab/tinglongwu-mobile.aab")" >> "$GITHUB_ENV"
       - name: Upload to Google Play (internal track)
         if: steps.plan.outputs.upload == 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SA_JSON }}
           packageName: com.tinglongwu.mobile
-          releaseFiles: ${{ runner.temp }}/aab/tinglongwu-mobile.aab
+          releaseFiles: ${{ env.AAB_PATH }}
           track: internal
           # "draft" until the app has had its first release in Play Console; then set the repo
           # variable PLAY_RELEASE_STATUS=completed so internal testers get builds automatically.
