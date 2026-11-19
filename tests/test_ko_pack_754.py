@@ -13,7 +13,7 @@ from tlwu_eval.runner import load_manifest
 from test_make_ci_smoke import REV, FakeHub, _tsv, _wav, mcs  # shared fake FLEURS hub
 
 ROOT = Path(__file__).resolve().parents[1]
-ISS = (ROOT / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
+ISS = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
 
 
 def _wizard() -> tuple[list[str], list[str], dict[int, int]]:

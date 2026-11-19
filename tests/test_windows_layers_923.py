@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "packaging"))
+sys.path.insert(0, str(REPO / "release" / "packaging"))
 import build_windows as bw  # noqa: E402
 import runtime_layer as rt  # noqa: E402
 
@@ -25,8 +25,8 @@ def _repo_copy(tmp_path: Path) -> Path:
     files = rt.key_files(REPO)
     names = {f.relative_to(REPO).as_posix() for f in files}
     # every file of the launcher and the stubs is in the key on every Python (3.12's glob("dir/**") gives none)
-    assert {"packaging/launcher/tlwu_launcher.c", "packaging/launcher/tlwu.rc.in", "packaging/launcher/tlwu.manifest",
-            "packaging/stubs/av/__init__.py", "packaging/runtime_layer.py", "requirements.txt"} <= names
+    assert {"release/packaging/launcher/tlwu_launcher.c", "release/packaging/launcher/tlwu.rc.in", "release/packaging/launcher/tlwu.manifest",
+            "release/packaging/stubs/av/__init__.py", "release/packaging/runtime_layer.py", "requirements.txt"} <= names
     for f in files:
         dst = repo / f.relative_to(REPO)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -44,8 +44,8 @@ def test_runtime_key_follows_requirements_and_packaging_but_not_app_code(tmp_pat
     (repo / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico").write_bytes(b"another icon")  # compiled into tlwu.exe
     assert rt.key(True, repo) != base
     shutil.copy2(rt.APP_ICON, repo / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico")
-    for rel in ("requirements.txt", "requirements-llama-cpu.txt", "packaging/runtime_layer.py",
-                "packaging/build_windows.py", "packaging/launcher/tlwu_launcher.c", "packaging/stubs/av/__init__.py"):
+    for rel in ("requirements.txt", "requirements-llama-cpu.txt", "release/packaging/runtime_layer.py",
+                "release/packaging/build_windows.py", "release/packaging/launcher/tlwu_launcher.c", "release/packaging/stubs/av/__init__.py"):
         f = repo / rel
         old = f.read_bytes()
         f.write_bytes(old + b"\n# changed\n")
@@ -103,7 +103,7 @@ def test_ensure_runtime_reuses_rebuilds_or_stops(tmp_path, monkeypatch):
     monkeypatch.setattr(rt, "make_pack_venv", lambda venv: venv_py)
     calls = []
     bw.ensure_runtime(layer, True, False, run=calls.append)
-    assert calls == [[str(venv_py), str(REPO / "packaging" / "build_windows.py"), "--runtime-only",
+    assert calls == [[str(venv_py), str(REPO / "release" / "packaging" / "build_windows.py"), "--runtime-only",
                       "--rebuild-runtime", "--lite"]]
 
 
@@ -165,8 +165,8 @@ def test_an_upgrade_never_runs_the_previous_versions_bytecode(tmp_path):
         f = old_repo / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.exists() or f.write_text("")
-    (old_repo / "packaging").mkdir()
-    (old_repo / "packaging" / bw.USAGE_TEXT).write_text("x", "utf-8")
+    (old_repo / "release" / "packaging").mkdir(parents=True)
+    (old_repo / "release" / "packaging" / bw.USAGE_TEXT).write_text("x", "utf-8")
     app.mkdir()
     bw.build_app_layer(app, rt.pyc_magic(), repo=old_repo)
     old_tree = tmp_path / "installed"
@@ -321,7 +321,7 @@ def test_windows_build_runs_for_app_changes_and_skips_the_venv_on_a_cache_hit():
     filt = next(str(s["run"]) for s in steps if s.get("id") == "changes")
     pattern = re.search(r"grep -Eq '([^']+)'", filt).group(1)
     for changed in ("tinglongwu/cli.py", "tinglongwu/gui/app.py", "tlwu_app/main.py", "tinglongwu_setup/cli.py",
-                    "packaging/build_windows.py", "requirements.txt"):
+                    "release/packaging/build_windows.py", "requirements.txt"):
         assert re.search(pattern, changed), changed
     for skipped in ("docs/install.md", "README.md", "tests/test_cli.py"):
         assert not re.search(pattern, skipped), skipped
@@ -335,10 +335,10 @@ def test_windows_build_runs_for_app_changes_and_skips_the_venv_on_a_cache_hit():
 
 
 def test_no_python_compiler_in_the_build():
-    for f in ("packaging/build_windows.py", "packaging/runtime_layer.py"):
+    for f in ("release/packaging/build_windows.py", "release/packaging/runtime_layer.py"):
         code = (REPO / f).read_text("utf-8")
         assert '"-m", "nuitka"' not in code and "run_nuitka" not in code, f
-    assert not (REPO / "packaging" / "tlwu_entry.py").exists()
+    assert not (REPO / "release" / "packaging" / "tlwu_entry.py").exists()
     assert bw.APP_PACKAGES == rt.APP_PACKAGES
 
 

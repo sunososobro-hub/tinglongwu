@@ -30,7 +30,7 @@ def test_old_driver_is_cpu():
 
 def test_installer_has_no_force_cpu_task():
     """Run the script through the task parser: no [Tasks] entry named cpu, no TaskCpu message."""
-    text = (Path(__file__).resolve().parent.parent / "installer" / "tinglongwu.iss").read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parent.parent / "release" / "installer" / "tinglongwu.iss").read_text(encoding="utf-8")
     tasks, in_tasks = [], False
     for line in text.splitlines():
         if line.startswith("["):

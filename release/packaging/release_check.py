@@ -1,6 +1,6 @@
 r"""Release gate for the CI-built Windows zip (#414): test what users download, not the build folder.
 
-    python packaging\release_check.py <tinglongwu-win64.zip> --work DIR [--report report.md]
+    python release\packaging\release_check.py <tinglongwu-win64.zip> --work DIR [--report report.md]
 
 1. size < 2 GiB (GitHub Release per-asset limit); SHA256 written next to the zip as <zip>.sha256
 2. unzip, then scripts/check_dist_dlls.py on the unpacked app (every DLL dependent resolves, CUDA too; #398)
@@ -25,7 +25,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
 MAX_ASSET = 2 * 1024**3
 # argv after `tlwu.exe` (models dir appended); tests parse them with the real setup / cli parsers
 SETUP_ARGS = ["setup", "--whisper", "tiny", "--hymt"]

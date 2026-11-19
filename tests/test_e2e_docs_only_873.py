@@ -59,7 +59,7 @@ def test_docs_only_pr_skips(tmp_path, job, changed):
 
 @needs_tools
 @pytest.mark.parametrize("changed", [["tinglongwu/core.py"], ["tests/test_x.py"], ["scripts/ci_e2e.py"], ["requirements.txt"],
-                                     ["pyproject.toml"], ["packaging/x.spec"], [".github/workflows/e2e.yml"],
+                                     ["pyproject.toml"], ["release/packaging/x.spec"], [".github/workflows/e2e.yml"],
                                      ["README.md", "tinglongwu/core.py"], ["tinglongwu/data/glossary.json"]])
 def test_code_touching_pr_runs_in_full(tmp_path, changed):
     assert _decide(tmp_path, changed) == "true"

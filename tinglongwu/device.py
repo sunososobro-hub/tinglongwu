@@ -100,7 +100,7 @@ def use_llama_cpu_build(load=ctypes.CDLL) -> bool:
     return True
 
 
-PACK_LLAMA_VERSION_FILE = "llama_version.txt"  # written by packaging/build_windows.py::build_gpu_pack_only (#881)
+PACK_LLAMA_VERSION_FILE = "llama_version.txt"  # written by release/packaging/build_windows.py::build_gpu_pack_only (#881)
 
 
 def pack_llama_dir(pack: Path | None = None, app_lib: Path | None = None) -> Path | None:

@@ -1,5 +1,5 @@
 """#414: one-click release helpers: scripts/release_notes.py (version, publish plan + owner gates, notes, thanks)
-and packaging/release_check.py (zip checks, llama CPU-instruction gate)."""
+and release/packaging/release_check.py (zip checks, llama CPU-instruction gate)."""
 import importlib.util
 import subprocess
 import sys
@@ -18,7 +18,7 @@ def load(name, path):
 
 
 rn = load("release_notes", "scripts/release_notes.py")
-rc = load("release_check", "packaging/release_check.py")
+rc = load("release_check", "release/packaging/release_check.py")
 REPO = "sunososobro-hub/tinglongwu"
 SHA, HEAD = "a" * 40, "b" * 40
 TAGS = {"v0.2.0": "1" * 40, "v0.3.0-beta.2": "2" * 40, "v0.3.0": "3" * 40, "v0.3.1": "4" * 40, "junk": "5" * 40}
@@ -413,13 +413,14 @@ def _release_yml_notes_argv(values: dict) -> list[str]:
 
 def test_release_workflow_notes_list_every_pack_size(tmp_path, monkeypatch):
     pm = load("tlwu_pack_manifest_722", "tinglongwu/pack_manifest.py")
-    man = pm.load_manifest(ROOT / "packaging" / "packs.json")  # the checked-in manifest validates
+    man = pm.load_manifest(ROOT / "release" / "packaging" / "packs.json")  # the checked-in manifest validates
     (tmp_path / "base.md").write_text("## What's new\n- TODO: x\n", "utf-8")
     (tmp_path / "release-check.md").write_text("size OK\n", "utf-8")
     argv = _release_yml_notes_argv({"TAG": "v0.3.9", "PR": "", "HW_RUN": "", "HEAD": "", "PLATFORMS": "", "DIST": str(tmp_path)})
     assert "--packs-manifest" in argv
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "packaging").symlink_to(ROOT / "packaging")  # release.yml runs from the repo root
+    (tmp_path / "release").mkdir(exist_ok=True)
+    (tmp_path / "release" / "packaging").symlink_to(ROOT / "release" / "packaging")  # release.yml runs from the repo root
     monkeypatch.setattr(rn, "repo", lambda: "o/r")
     monkeypatch.setattr(rn, "history", lambda rep, tag, tip="HEAD": (None, [], {}))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
@@ -434,7 +435,7 @@ def test_pack_manifest_matches_the_committed_pins():
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "make_pack_manifest.py"), "--check"],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
-    man = load("tlwu_pack_manifest_722b", "tinglongwu/pack_manifest.py").load_manifest(ROOT / "packaging" / "packs.json")
+    man = load("tlwu_pack_manifest_722b", "tinglongwu/pack_manifest.py").load_manifest(ROOT / "release" / "packaging" / "packs.json")
     assert {"ja", "ko", "speak"} <= set(man["packs"])
     assert man["packs"]["ja"]["size"] == 1133080448  # mobile/assets/models_manifest.json, same SHA-256 as the pin
 

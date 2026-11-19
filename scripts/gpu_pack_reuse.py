@@ -2,7 +2,7 @@
 
 Usage: python scripts/gpu_pack_reuse.py --repo OWNER/NAME --tag vX.Y.Z --out DIR
 Looks at the latest published release's tinglongwu-gpu-pack.zip.manifest.json. When its `wheels_key` equals this
-checkout's (packaging/build_windows.gpu_pack_wheels_key), downloads the zip, checks size + sha256 against that manifest,
+checkout's (release/packaging/build_windows.gpu_pack_wheels_key), downloads the zip, checks size + sha256 against that manifest,
 writes the zip and a manifest whose url names `--tag` into DIR, and prints `reused=true`. Anything else (no previous
 release, no / invalid manifest, other key, bad download) prints `reused=false` and `reason=<why>`: the caller builds.
 Both forms also print `summary=gpu pack: reused from vX.Y.Z` or `summary=gpu pack: built (<reason>)`.
@@ -17,7 +17,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"  # = packaging/build_windows.py GPU_PACK_ASSET
+GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"  # = release/packaging/build_windows.py GPU_PACK_ASSET
 MANIFEST_ASSET = GPU_PACK_ASSET + ".manifest.json"
 GPU_PACK_REUSE_BUDGET_MIN = 3  # the reuse step (two small requests + one download + sha256) must fit in this
 TIMEOUT_S = 60
@@ -72,11 +72,11 @@ def main(argv: list[str] | None = None, get=_http_get) -> int:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--key", help="wheels_key; default: packaging/build_windows.gpu_pack_wheels_key()")
+    ap.add_argument("--key", help="wheels_key; default: release/packaging/build_windows.gpu_pack_wheels_key()")
     a = ap.parse_args(argv)
     key = a.key
     if key is None:
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging"))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "release" / "packaging"))
         import build_windows  # noqa: PLC0415
 
         key = build_windows.gpu_pack_wheels_key()

@@ -1,9 +1,9 @@
 r"""Build the standalone Windows folder app (tlwu.exe) in two layers and zip it (#923).
 
-    python packaging\build_windows.py --lite            CPU-only core (CI, releases): makes its own packaging venv
-    <pack-venv>\Scripts\python.exe packaging\build_windows.py [--allow-cpu-only]    CUDA variant (pack machine)
+    python release\packaging\build_windows.py --lite            CPU-only core (CI, releases): makes its own packaging venv
+    <pack-venv>\Scripts\python.exe release\packaging\build_windows.py [--allow-cpu-only]    CUDA variant (pack machine)
 
-Runtime layer (packaging/runtime_layer.py): tlwu.exe launcher + Python + every third-party package (.pyc) + llama.cpp
+Runtime layer (release/packaging/runtime_layer.py): tlwu.exe launcher + Python + every third-party package (.pyc) + llama.cpp
 DLLs + VC++ runtime + licenses, kept in <build root>/runtime/tlwu. It is rebuilt only when runtime_layer.key() changes
 (requirements*.txt or the packaging code); CI restores it from a cache. Building it needs a packaging venv =
 requirements.txt (without av / psutil) + a llama-cpp-python wheel: --lite makes that venv itself (CPU wheel) when this
@@ -11,7 +11,7 @@ interpreter is not one; the CUDA variant must be started from a pack-venv that h
 App layer: tinglongwu/, tlwu_app/, tinglongwu_setup/ as .py + .pyc, repacked on every run (seconds).
 No compiler runs over Python code, so a one-line app change builds in about a minute instead of a Nuitka recompile.
 
-PyAV is replaced by packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
+PyAV is replaced by release/packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
 CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements-gpu.txt), found in TLWU_CUDA_SRC, the
 pack-venv or the project .venv (read only). None found -> the build stops (--lite / --allow-cpu-only: CPU-only); never a
 package whose CUDA llama.dll cannot load (#398). A CPU llama.cpp build (the llama-cpp-python CPU wheel, downloaded
@@ -37,10 +37,10 @@ import time
 import zipfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build"
-RUNTIME = EVAL / "runtime" / "tlwu"  # the runtime layer (packaging/runtime_layer.py); CI caches EVAL/runtime
+RUNTIME = EVAL / "runtime" / "tlwu"  # the runtime layer (release/packaging/runtime_layer.py); CI caches EVAL/runtime
 PACK_VENV = BUILD / "pack-venv"      # made by --lite when this interpreter is not a packaging venv
 APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 
@@ -169,7 +169,7 @@ Native components and their licenses
 - Python runtime (python3*.dll, python3*.zip = the standard library, DLLs/*.pyd): Python Software Foundation
   License, full text (with the licenses of the software CPython incorporates) in LICENSE-Python.txt.
   https://docs.python.org/3/license.html
-- tlwu.exe (the launcher, packaging/launcher in the source): MIT like the rest of tinglongWu. When built with
+- tlwu.exe (the launcher, release/packaging/launcher in the source): MIT like the rest of tinglongWu. When built with
   MinGW-w64 it links the MinGW-w64 runtime (public domain / Zope Public License 2.1 parts, redistributable without
   further conditions on the binary), text in COPYING.MinGW-w64-runtime.txt. https://www.mingw-w64.org/
 - Tcl/Tk (DLLs/tcl86t.dll, DLLs/tk86t.dll, tcl/): Tcl/Tk license (BSD-style).
@@ -504,7 +504,7 @@ VERSION_PART_MAX = 0xFFFF  # each of the four version parts is one 16-bit word
 
 
 def _runtime_layer():
-    """packaging/runtime_layer.py as a module (this file is run as a script and imported by path in tests)."""
+    """release/packaging/runtime_layer.py as a module (this file is run as a script and imported by path in tests)."""
     here = str(Path(__file__).resolve().parent)
     if here not in sys.path:
         sys.path.insert(0, here)
@@ -654,7 +654,7 @@ def build_app_layer(app: Path, pyc_magic: str | None = None, repo: Path | None =
     missing = [rel for rel in WORKER_SOURCES if not (app / rel).is_file()]
     if missing:
         raise SystemExit(f"app layer: TTS worker sources missing: {', '.join(missing)} (#464)")
-    shutil.copy2(repo / "packaging" / USAGE_TEXT, app / USAGE_TEXT)
+    shutil.copy2(repo / "release" / "packaging" / USAGE_TEXT, app / USAGE_TEXT)
     (app / APP_MANIFEST).write_text(json.dumps({"version": read_version(), "packages": list(APP_PACKAGES)}) + "\n",
                                     "utf-8")
     return list(APP_PACKAGES)

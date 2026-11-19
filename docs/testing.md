@@ -1,6 +1,6 @@
 # Tests
 
-Moved from the README (#342). See also [CONTRIBUTING.md](../CONTRIBUTING.md#running-tests).
+Moved from the README (#342). See also [CONTRIBUTING.md](../.github/CONTRIBUTING.md#running-tests).
 
 `pip install -e ".[dev]" && python -m pytest` (no models or network needed).
 

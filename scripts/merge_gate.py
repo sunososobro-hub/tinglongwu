@@ -36,7 +36,7 @@ RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "r
 PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
                    "tinglongwu/__init__.py", "pyproject.toml", "tinglongwu/offline.py", "scripts/download_models.py",
                    "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
-PROTECTED_PREFIX = (".claude/", "packaging/", "installer/")
+PROTECTED_PREFIX = (".claude/", "release/packaging/", "release/installer/")
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)

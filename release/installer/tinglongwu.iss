@@ -1,4 +1,4 @@
-﻿; tinglongWu Windows installer wizard (Inno Setup 6, per-user, no admin). Build: python installer\build_installer.py
+﻿; tinglongWu Windows installer wizard (Inno Setup 6, per-user, no admin). Build: python release\installer\build_installer.py
 ; Next -> Installing (install.ps1 runs hidden, its [n/7] steps drive the progress bar, output in install.log)
 ; -> Finish. Start menu + desktop shortcuts with the app icon; uninstall in "Apps / Add or remove programs"
 ; asks whether to keep the downloaded models. No elevation beyond -ExecutionPolicy Bypass for install.ps1.

@@ -46,7 +46,7 @@ def test_install_table_is_at_the_top_of_the_readme():
 
 def test_release_workflow_attaches_the_fixed_name_wizard():
     wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
-    iss = (ROOT / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
+    iss = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
     # the job looks for the wizard by the name the .iss gives it, with the version taken from the tag
     assert "OutputBaseFilename=tinglongwu-setup-{#AppVersion}" in iss
     assert 'exe="tinglongwu-setup-${TAG#v}.exe"' in wf

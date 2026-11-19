@@ -58,10 +58,17 @@ FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Fo
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru", "日本語": "ja"}
 STATUS_WRAP_MIN_PX = 200  # #1241: status / notice wrap at the panel width, never narrower than this
 BAR_WIDE_PX = 1200  # #1241: from this bar width the 情境 dropdown and the toggles share one row
+BAR_ONE_ROW_PX = 1200  # the whole bottom bar (情境, toggles, Adjust / Freeze / Start) on one row from this width
 MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-style main window
 # chat bubbles (#1028): other side on the left, me on the right; (bubble background, text) per theme
-BUBBLE = {"dark": {"bg": "#14182e", "other": ("#2b3250", "#f2f4ff"), "me": ("#3f5fe0", "#ffffff"), "sub": "#9aa3c7", "head": "#9aa3c7"},
-          "light": {"bg": "#ffffff", "other": ("#e6e9f5", "#1d2447"), "me": ("#cfe0ff", "#10224d"), "sub": "#5b6390", "head": "#5b6390"}}
+# #1644: "latest" = the newest finished line from the other side (brighter, so the eye lands on it first)
+BUBBLE = {"dark": {"bg": "#151824", "other": ("#1c2030", "#e3e6ee"), "me": ("#3f5fe0", "#ffffff"),
+                   "latest": ("#2a3560", "#ffffff"), "sub": "#8d95a8", "head": "#8d95a8"},
+          "light": {"bg": "#ffffff", "other": ("#e6e9f5", "#1d2447"), "me": ("#cfe0ff", "#10224d"),
+                    "latest": ("#cdd6ff", "#10224d"), "sub": "#5b6390", "head": "#5b6390"}}
+# #1644: notes (重點整理) window per theme: time range muted, bullets in the notes accent (violet)
+NOTES = {"dark": {"bg": "#151824", "fg": "#e3e6ee", "title": "#ffffff", "when": "#8d95a8", "mark": "#b79cff"},
+         "light": {"bg": "#ffffff", "fg": "#1d2447", "title": "#10224d", "when": "#5b6390", "mark": "#6b4fd8"}}
 FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
 # settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
@@ -232,10 +239,11 @@ class Overlay:
     def set_font(self, n: int):
         n = clamp_font(n)
         self.app.settings["font_size"] = n
-        self.font = tkfont.Font(family=FONT_FAMILY, size=n, weight="bold")
+        fam = self.app.settings.get("font_family") or FONT_FAMILY  # user-picked system font, else the default
+        self.font = tkfont.Font(family=fam, size=n, weight="bold")
         for tag in ("final", "draft"):
             self.text.tag_configure(tag, font=self.font)
-        self.text.tag_configure("src", font=(FONT_FAMILY, max(9, n * 2 // 3)))
+        self.text.tag_configure("src", font=(fam, max(9, n * 2 // 3)))
         self.set_rows(self.rows)
         size_var = getattr(self.app, "v_font", None)
         if size_var is not None and size_var.get() != str(n):
@@ -392,6 +400,114 @@ class Tour:
         self.visible = False
 
 
+_NVML = {}
+
+
+def _nvml_gpu_percent():
+    """GPU 0 busy % via the driver's own nvml library (ctypes, no subprocess, no extra package); None when absent."""
+    import ctypes
+    if "h" not in _NVML:
+        _NVML["h"] = None
+        try:
+            lib = ctypes.CDLL("nvml.dll" if os.name == "nt" else "libnvidia-ml.so.1")
+            if lib.nvmlInit_v2() == 0:
+                dev = ctypes.c_void_p()
+                if lib.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(dev)) == 0:
+                    _NVML["h"] = (lib, dev)
+        except Exception:  # noqa: BLE001
+            pass
+    if not _NVML["h"]:
+        return None
+    lib, dev = _NVML["h"]
+
+    class _Util(ctypes.Structure):
+        _fields_ = [("gpu", ctypes.c_uint), ("memory", ctypes.c_uint)]
+
+    u = _Util()
+    if lib.nvmlDeviceGetUtilizationRates(dev, ctypes.byref(u)) != 0:
+        return None
+    return int(u.gpu)
+
+
+DOCK_W = 320  # width the window grows by when the meeting-notes pane docks on the right
+
+
+class _DockPane(ttk.Frame):
+    """The meeting-notes pane, docked to the right of the subtitle log (was a floating Toplevel). It keeps the
+    withdraw/deiconify surface of the old window so callers and tests stay the same."""
+
+    def __init__(self, app, holder, before):
+        super().__init__(holder, width=DOCK_W)
+        self._app, self._before, self._grew = app, before, 0
+        grip = tk.Frame(self, width=3, cursor="sb_h_double_arrow", bg="#555555")  # drag the left edge to resize
+        grip.pack(side="left", fill="y")
+        grip.bind("<B1-Motion>", self._drag)
+        grip.bind("<Enter>", lambda e: grip.configure(bg="#2e86de"))  # a thin line that lights up under the mouse
+        grip.bind("<Leave>", lambda e: grip.configure(bg="#555555"))
+        self.bind("<Configure>", self._rewrap, add="+")
+
+    def _drag(self, e):
+        w = max(220, min(self.winfo_width() - (e.x_root - self.winfo_rootx()), self.master.winfo_width() - 160))
+        self.configure(width=w)
+
+    def _rewrap(self, e):
+        for name in ("topics_lang", "topics_hint"):
+            lb = getattr(self._app, name, None)
+            if lb is not None:
+                try:
+                    lb.configure(wraplength=max(120, e.width - 40))
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def deiconify(self):
+        if not self.winfo_manager():
+            self.pack(side="right", fill="y", padx=(6, 0), before=self._before)
+            self.pack_propagate(False)
+            root = self._app.root
+            try:
+                root.update_idletasks()
+                if root.winfo_width() < 800 and root.winfo_screenwidth() > root.winfo_width() + DOCK_W + 40:
+                    self._grew = DOCK_W
+                    root.geometry(f"{root.winfo_width() + DOCK_W}x{root.winfo_height()}")
+            except Exception:  # noqa: BLE001
+                self._grew = 0
+
+    def withdraw(self):
+        self.pack_forget()
+        root = self._app.root
+        if self._grew:
+            try:
+                root.geometry(f"{max(MAIN_MIN_W, root.winfo_width() - self._grew)}x{root.winfo_height()}")
+            except Exception:  # noqa: BLE001
+                pass
+            self._grew = 0
+
+
+def _system_cpu_percent(app):
+    """Busy share of all CPUs since the previous call, in percent, or None (not Windows / first call / error)."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    idle, kern, user = wintypes.FILETIME(), wintypes.FILETIME(), wintypes.FILETIME()
+    if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)):
+        return None
+
+    def n(ft):
+        return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+
+    cur = (n(idle), n(kern) + n(user))  # kernel time already includes idle time
+    prev, app._cpu_prev = app._cpu_prev, cur
+    if prev is None:
+        return None
+    d_total = cur[1] - prev[1]
+    d_idle = cur[0] - prev[0]
+    if d_total <= 0:
+        return None
+    return max(0, min(100, round(100 * (d_total - d_idle) / d_total)))
+
+
 class App:
     def __init__(self):
         self.settings = load_settings()
@@ -516,10 +632,22 @@ class App:
             st.configure(style, padding=(4, 1))
         st.configure("Adv.Toolbutton", anchor="w", padding=(8, 2))
         st.configure("Start.Accent.TButton", font=(FONT_FAMILY, 13, "bold"), padding=(14, 8))  # #1028: the big Start
-        if getattr(self, "log_text", None) is not None:
-            self._chat_tags()
+        self._retint()
+        if sv_ttk is not None and not getattr(self, "_retint_bound", False):
+            # #1644: sv_ttk recolours every tk widget on <<ThemeChanged>> (tk_setPalette), after this method has
+            # returned, and that wiped the chat / notes background; paint ours again once it is done
+            self._retint_bound = True
+            self.root.bind("<<ThemeChanged>>",
+                           lambda e: self.root.after_idle(self._retint) if e.widget is self.root else None, add="+")
         if getattr(self, "side", None) is not None:
             self._draw_sidebar()
+
+    def _retint(self):
+        """Our own colours on the plain tk.Text widgets (chat log, notes window) for the current theme."""
+        if getattr(self, "log_text", None) is not None:
+            self._chat_tags()
+        if getattr(self, "topics_win", None) is not None and self.topics_win.winfo_exists():
+            self._notes_tags()
 
     # -- settings-panel sidebar (logo + nav), drawn on one canvas so it adds no interactive widgets ------------------
     def _build_sidebar(self, p):
@@ -609,6 +737,7 @@ class App:
         self._pair_changed()
         self.overlay.build_menu()
         self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
+        self.log_menu.entryconfigure(1, label=t("gui_log_copy"))
         self.build_menubar()
         self._upd_relabel()
         self._draw_sidebar()
@@ -981,10 +1110,16 @@ class App:
         """#1241: >= BAR_WIDE_PX the 情境 row and the toggles share one row (a wide window had them stacked at the
         left with the right side empty); narrower, they stack. The action row (Adjust / Freeze / Start) spans both."""
         wide = int(width) >= BAR_WIDE_PX
-        if wide == self.bar_wide:
+        one_row = int(width) >= BAR_ONE_ROW_PX  # wide enough: scene, toggles and Adjust / Freeze / Start on ONE row
+        if (wide, one_row) == self.bar_wide:
             return
-        self.bar_wide = wide
-        if wide:
+        self.bar_wide = (wide, one_row)
+        if one_row:
+            self.scene_row.grid(row=0, column=0, columnspan=1, sticky="w", pady=0, padx=(0, 24))
+            self.toggle_row.grid(row=0, column=1, columnspan=1, sticky="w", pady=0)
+            self.action_row.grid(row=0, column=2, columnspan=1, sticky="e", pady=0)
+            self.source_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        elif wide:
             self.scene_row.grid(row=0, column=0, columnspan=1, sticky="w", pady=0, padx=(0, 24))
             self.toggle_row.grid(row=0, column=1, columnspan=1, sticky="w", pady=0)
             self.source_row.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
@@ -1686,7 +1821,7 @@ class App:
         sm.add_command(label=t("gui_menu_usage"), command=self.ask_usage)  # #680
         sm.add_checkbutton(label=t("gui_topics_switch"), variable=self._topics_var(),  # #1379: the one switch
                            command=self._topics_toggled)
-        sm.add_command(label=t("gui_topics_menu"), command=lambda: self.render_topics(show=True))  # #611
+        sm.add_command(label=t("gui_topics_menu"), command=self._topics_toggle)  # #611
         sm.configure(postcommand=self._sync_topics_var)  # #1379: the check mark follows the GPU default
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
@@ -1842,6 +1977,40 @@ class App:
         if hasattr(self, "btn"):
             self.btn.configure(state="normal" if enabled or self._quick_phase() == "running" else "disabled")
 
+    def _font_picked(self, _e=None):
+        """Use the chosen system font for the subtitle log and the floating bar (saved)."""
+        name = self.v_family.get()
+        self.settings["font_family"] = "" if name == self._font_default else name
+        save_settings(self.settings)
+        self._chat_tags()
+        try:
+            self.overlay.set_font(self.settings["font_size"])
+        except Exception:  # noqa: BLE001
+            pass
+        self.render_log()
+
+    def _cpu_poll(self):
+        """Whole-PC CPU load next to the log (Windows: GetSystemTimes; other systems: hidden). Never raises."""
+        try:
+            pct = _system_cpu_percent(self)
+            if getattr(self, "_gpu_ok", None) is None:
+                try:
+                    from .core import _gpu_usable
+                    self._gpu_ok = bool(_gpu_usable())
+                except Exception:  # noqa: BLE001
+                    self._gpu_ok = False
+            on_gpu = self._gpu_ok and self.settings.get("gpu_use") != "off"
+            mode = t("gui_mode_gpu" if on_gpu else "gui_mode_cpu")
+            gp = _nvml_gpu_percent() if self._gpu_ok else None
+            if pct is not None:
+                txt = mode + "  " + t("gui_cpu", p=pct) + ("" if gp is None else "  GPU %d%%" % gp)
+                self.lbl_cpu.configure(text=txt, foreground="#c0392b" if max(pct, gp or 0) >= 85 else "")
+            elif not self.lbl_cpu.cget("text"):
+                self.lbl_cpu.configure(text=mode)
+            self.root.after(2000, self._cpu_poll)
+        except Exception:
+            pass
+
     def _build_log(self, f):
         """The conversation in the main window (#1028): chat bubbles, other side on the left, me on the right, the
         original text small under each bubble; scrolling history, newest at the bottom (#72)."""
@@ -1850,8 +2019,37 @@ class App:
         bar.pack(side="top", fill="x")
         ttk.Button(bar, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
         ttk.Button(bar, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
+        try:  # every font the system has; "" = the program's default
+            fams = sorted({f for f in tkfont.families(self.root) if not f.startswith("@")}, key=str.lower)
+        except Exception:  # noqa: BLE001
+            fams = []
+        self._font_default = t("gui_font_default")
+        self.v_family = tk.StringVar(value=self.settings.get("font_family") or self._font_default)
+        fcb = ttk.Combobox(bar, textvariable=self.v_family, values=[self._font_default] + fams, width=14, state="readonly")
+        fcb.pack(side="right", padx=(0, 6))
+        fcb.bind("<<ComboboxSelected>>", self._font_picked)
+
+        def _font_refresh(cb=fcb):  # re-read the system list each time the dropdown opens (new installs show up)
+            try:
+                fl = sorted({x for x in tkfont.families(self.root) if not x.startswith("@")}, key=str.lower)
+                cb.configure(values=[self._font_default] + fl)
+            except Exception:  # noqa: BLE001
+                pass
+        fcb.configure(postcommand=_font_refresh)
+        # main-screen shortcuts: the things you need mid-meeting (they used to sit under Adjust > Advanced); their own
+        # row under the font row, so the main window keeps its #1028 width in every UI language
+        bar2 = ttk.Frame(f)
+        bar2.pack(side="top", fill="x", pady=(2, 0))
+        ttk.Checkbutton(bar2, text=t("gui_save"), variable=self.v_save).pack(side="left")
+        ttk.Button(bar2, text=t("gui_copy_all"), command=lambda: self._log_copy(True)).pack(side="left", padx=(6, 0))
+        ttk.Button(bar2, text=t("gui_topics_menu"), command=self._topics_toggle).pack(side="left", padx=(6, 0))
+        self.lbl_cpu = ttk.Label(bar2, text="", font="TkSmallCaptionFont")  # smaller: Linux fonts run wider (#1632)
+        self.lbl_cpu.pack(side="left", padx=(6, 0))
+        self._cpu_prev = None
+        self._cpu_poll()
         box = tk.Frame(f)
         box.pack(side="top", fill="both", expand=True)
+        self._log_holder, self._log_box = box, box
         sb = ttk.Scrollbar(box, orient="vertical")
         self.log_text = tx = tk.Text(box, bd=0, highlightthickness=0, wrap="word", padx=4, pady=6, cursor="arrow",
                                      takefocus=0, yscrollcommand=sb.set, width=1, height=1)
@@ -1861,7 +2059,12 @@ class App:
         tx.configure(state="disabled")
         self.log_menu = tk.Menu(tx, tearoff=0)
         self.log_menu.add_command(label=t("gui_menu_wrong_line"), command=self.report_wrong_line)
+        self.log_menu.add_command(label=t("gui_menu_copy"), command=self._log_copy)
         tx.bind("<Button-3>", self._log_context)
+        # the log is a disabled Text that never takes focus -> Ctrl+C had nothing to act on; take focus on click
+        tx.bind("<Button-1>", lambda e: tx.focus_set(), add="+")
+        tx.bind("<Control-c>", lambda e: (self._log_copy(), "break")[1])
+        tx.bind("<Control-a>", lambda e: (tx.tag_add("sel", "1.0", "end-1c"), "break")[1])
         tx.bind("<Configure>", self._log_resized)
         tx.bind("<Control-MouseWheel>", lambda e: self.bump_log_font(2 if e.delta > 0 else -2))
         tx.bind("<Control-Button-4>", lambda e: self.bump_log_font(2))
@@ -1894,6 +2097,7 @@ class App:
         tx = self.log_text
         tx.configure(bg=pal["bg"])
         small = max(8, n * 2 // 3)
+        fam = self.settings.get("font_family") or FONT_FAMILY  # user-picked system font, else the default
         # #1052: a bubble is at most ~75 % of the window and hugs its text: the background sits on the text only
         # (the line break is outside the bubble tag), margins push it to its side
         try:
@@ -1905,13 +2109,32 @@ class App:
             bg, fg = pal[side]
             base = dict(lmargin1=lm, lmargin2=lm, rmargin=rm, justify=just)
             tx.tag_configure(f"{side}_base", **base)
-            tx.tag_configure(f"{side}_head", foreground=pal["head"], font=(FONT_FAMILY, small, "bold"), spacing1=8, **base)
-            tx.tag_configure(f"{side}_final", background=bg, foreground=fg, font=(FONT_FAMILY, n), spacing1=2,
+            tx.tag_configure(f"{side}_head", foreground=pal["head"], font=(fam, small, "bold"), spacing1=8, **base)
+            tx.tag_configure(f"{side}_final", background=bg, foreground=fg, font=(fam, n), spacing1=2,
                              spacing3=2, **base)
-            tx.tag_configure(f"{side}_draft", background=bg, foreground=pal["sub"], font=(FONT_FAMILY, n), spacing1=2,
+            tx.tag_configure(f"{side}_draft", background=bg, foreground=pal["sub"], font=(fam, n), spacing1=2,
                              spacing3=2, **base)
-            tx.tag_configure(f"{side}_src", foreground=pal["sub"], font=(FONT_FAMILY, small), **base)
-        tx.tag_configure("hint", foreground=pal["sub"], font=(FONT_FAMILY, small + 2), justify="center", spacing1=40)
+            tx.tag_configure(f"{side}_src", foreground=pal["sub"], font=(fam, small), **base)
+        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, small + 2), justify="center", spacing1=40)
+        lbg, lfg = pal["latest"]  # #1644: laid over other_final on the newest line, so it must win
+        tx.tag_configure("other_latest", background=lbg, foreground=lfg)
+        tx.tag_raise("other_latest")
+        self._topics_font(fam, n, small)
+
+    def _topics_font(self, fam=None, n=None, small=None):
+        """The key-points pane follows the subtitle font and size (family picker, log size)."""
+        tt = getattr(self, "topics_text", None)
+        try:
+            if tt is None or not tt.winfo_exists():
+                return
+            n = n or self.settings["log_font_size"]
+            fam = fam or self.settings.get("font_family") or FONT_FAMILY
+            small = small or max(8, n * 2 // 3)
+            tt.configure(font=(fam, n))
+            tt.tag_configure("title", font=(fam, n + 1, "bold"))
+            tt.tag_configure("when", font=(fam, small))
+        except Exception:  # noqa: BLE001 - cosmetic
+            pass
 
     def bump_log_font(self, d: int):
         follow = self._log_at_end()
@@ -1945,6 +2168,8 @@ class App:
         if not hist:
             ph = self.placeholder()
             tx.insert("end", ph[0][0] if ph else self._empty_hint(), "hint")
+        newest = max((i for i, (s, x, d) in enumerate(hist)  # #1644: newest finished line of the other side
+                      if not d and not (x.startswith(SPEAK_MARK) or s.startswith(SPEAK_MARK))), default=-1)
         for i, (src, text, is_draft) in enumerate(hist):
             mine = text.startswith(SPEAK_MARK) or src.startswith(SPEAK_MARK)  # #1001: speak-leg lines are mine
             side = "me" if mine else "other"
@@ -1961,7 +2186,7 @@ class App:
                 tx.insert("end", shown, (f"{side}_head", tag))
                 tx.insert("end", "\n", f"{side}_head")
                 tx.tag_configure(av, background=color, foreground=SPK_AVATAR_FG)
-                tx.tag_configure(tag, underline=True, foreground=color)
+                tx.tag_configure(tag, foreground=color)  # #1644: no underline; the hand cursor marks the link
                 if tag not in self._spk_tags_bound:  # bind once per tag: every bind leaks a Tcl command
                     self._spk_tags_bound.add(tag)
                     tx.tag_bind(tag, "<Button-1>", lambda _e, r=raw: self._rename_speaker(r))
@@ -1971,7 +2196,7 @@ class App:
                 tx.insert("end", head + "\n", f"{side}_head")
             if show_src and src and src != text:  # #1605: source small first, translation large under it
                 tx.insert("end", src + "\n", (f"{side}_src", f"row{i}"))
-            self._insert_bubble(side, text, is_draft, i)
+            self._insert_bubble(side, text, is_draft, i, latest=i == newest)
         tx.configure(state="disabled")
         if follow:
             self._log_to_end()
@@ -2076,7 +2301,7 @@ class App:
 
         threading.Thread(target=attach, daemon=True, name="tlwu-speaker-attach").start()
 
-    def _insert_bubble(self, side: str, text: str, is_draft: bool, row: int):
+    def _insert_bubble(self, side: str, text: str, is_draft: bool, row: int, latest: bool = False):
         """#1070: a bubble hugs its text (max ~75 % of the window). Tk paints the margin area with the background of the
         line's first character, so the text is wrapped here and every line starts with a plain spacer (no
         background) that carries the margin; the background tag covers only the words."""
@@ -2099,9 +2324,10 @@ class App:
         mtag = f"{side}_m{margin}"
         tx.tag_configure(mtag, lmargin1=margin, lmargin2=margin, rmargin=0, justify="left")
         fin = f"{side}_draft" if is_draft else f"{side}_final"
+        words = (fin, "other_latest", f"row{row}") if latest else (fin, f"row{row}")
         for ln in lines:
             tx.insert("end", " ", (mtag, f"row{row}"))
-            tx.insert("end", f" {ln} ", (fin, f"row{row}"))
+            tx.insert("end", f" {ln} ", words)
             tx.insert("end", chr(10), (mtag, f"row{row}"))
 
     def _sync_bar(self):
@@ -2330,6 +2556,17 @@ class App:
         if sd is not None and ok:  # #739: the first Start goes on by itself
             self.toggle(getattr(self, "pack_retry", None))
 
+    def _topics_copy(self):
+        """Copy the selected meeting-notes text, or all of it when nothing is selected."""
+        tx = self.topics_text
+        try:
+            txt = tx.get("sel.first", "sel.last")
+        except tk.TclError:
+            txt = tx.get("1.0", "end-1c")
+        if txt:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(txt)
+
     def render_topics(self, show: bool = False):
         """#611: the topic notes side window: one block per finished topic (title, time, key points, actions), plus
         the on/off switch and the GGUF model picker. Created on first use; redrawn from self.topic_panel."""
@@ -2337,25 +2574,31 @@ class App:
         if w is None or not w.winfo_exists():
             if not show:
                 return
-            w = self.topics_win = tk.Toplevel(self.root)
-            w.title(t("gui_topics_title"))
-            w.geometry("360x480")
-            w.protocol("WM_DELETE_WINDOW", w.withdraw)
+            holder = self._log_holder
+            inner = [c for c in holder.winfo_children() if isinstance(c, tk.Text) or isinstance(c, ttk.Scrollbar)]
+            w = self.topics_win = _DockPane(self, holder, before=inner[0] if inner else None)
+            ttk.Label(w, text=t("gui_topics_title"), font=("TkDefaultFont", 11, "bold")).pack(side="top", anchor="w", padx=8, pady=(4, 0))
             bar = ttk.Frame(w)
             bar.pack(side="top", fill="x", padx=8, pady=6)
             self._sync_topics_var()
             ttk.Checkbutton(bar, text=t("gui_topics_switch"), variable=self._topics_var(),
                             command=self._topics_toggled).pack(side="left")
-            ttk.Button(bar, text=t("gui_topics_model"), command=self.pick_topics_model).pack(side="right")
+            ttk.Button(bar, text="✕", width=3, command=self._topics_close).pack(side="right")
+            ttk.Button(bar, text=t("gui_topics_model"), command=self.pick_topics_model).pack(side="right", padx=(0, 6))
+            ttk.Button(bar, text=t("gui_log_copy"), command=self._topics_copy).pack(side="right", padx=(0, 6))
             self.topics_cancel = ttk.Button(bar, text=t("gui_topics_cancel"), command=self._cancel_topics_download)
-            self.topics_lang = ttk.Label(w, wraplength=340, justify="left")  # #1379: which language the notes use
+            self.topics_lang = ttk.Label(w, wraplength=DOCK_W - 30, justify="left")  # #1379: which language the notes use
             self.topics_lang.pack(side="top", fill="x", padx=8)
-            self.topics_hint = ttk.Label(w, wraplength=340, justify="left", foreground="#7f8c8d")
+            self.topics_hint = ttk.Label(w, wraplength=DOCK_W - 30, justify="left", foreground="#7f8c8d")
             self.topics_hint.pack(side="top", fill="x", padx=8)
+            self.topics_busy = ttk.Label(w, foreground="#2e86de")  # the model can take a minute: show it is working
+            self.topics_busy.pack(side="top", fill="x", padx=8)
             self.topics_text = tk.Text(w, wrap="word", height=20, borderwidth=0, padx=8, pady=6)
-            self.topics_text.tag_configure("title", font=("TkDefaultFont", 12, "bold"))
-            self.topics_text.tag_configure("when", foreground="#7f8c8d")
             self.topics_text.pack(side="top", fill="both", expand=True)
+            self._topics_font()
+            self.topics_text.bind("<Button-1>", lambda e: self.topics_text.focus_set(), add="+")
+            self.topics_text.bind("<Control-c>", lambda e: (self._topics_copy(), "break")[1])
+        self._notes_tags()
         from ..langs import name as lang_name
         from .core import TOPICS_MB, _gpu_usable
         from .topics_panel import panel_hint
@@ -2373,18 +2616,71 @@ class App:
         tx = self.topics_text
         tx.configure(state="normal")
         tx.delete("1.0", "end")
-        for e in entries:
-            tx.insert("end", e["title"] + "\n", "title")
-            tx.insert("end", e["when"] + "\n", "when")
+        opened = self.__dict__.setdefault("_topics_open", set())
+        tx.tag_configure("bullet", lmargin1=8, lmargin2=22)  # hanging indent: the dot and its text share a line
+        for i, e in enumerate(entries):
+            tx.insert("end", ("\u25be " if i in opened else "\u25b8 ") + e["title"], ("title", f"t{i}"))
+            tx.insert("end", "  " + e["when"] + "\n", "when")
             for b in e["bullets"]:
-                tx.insert("end", f"\u2022 {b}\n")
-            for a in e["actions"]:
-                tx.insert("end", f"\u2192 {a}\n")
-            tx.insert("end", "\n")
+                tx.insert("end", "\u2022", ("mark", "bullet", f"b{i}"))
+                tx.insert("end", f" {b}\n", ("bullet", f"b{i}"))
+            tx.tag_configure(f"b{i}", elide=i not in opened)  # collapsed: titles only; click a title to read its points
+            tx.tag_bind(f"t{i}", "<Button-1>", lambda _e, i=i: self._topic_toggle(i))
+            tx.tag_bind(f"t{i}", "<Enter>", lambda _e: tx.configure(cursor="hand2"))
+            tx.tag_bind(f"t{i}", "<Leave>", lambda _e: tx.configure(cursor=""))
         tx.configure(state="disabled")
-        if show:
+        self._topics_busy_tick()
+        if show and not self._topics_closed:
             w.deiconify()
             w.lift()
+
+    _topics_busy_job = None
+
+    def _topic_toggle(self, i: int):
+        """Click a topic title: show / hide its key points (the set of open topics is kept across redraws)."""
+        self.__dict__.setdefault("_topics_open", set()).symmetric_difference_update({i})
+        self.render_topics()
+
+    def _topics_busy_tick(self):
+        """Label 'Summarizing... N s' while the model runs a topic; refreshes every second, leaves the text alone."""
+        if self._topics_busy_job is not None:
+            try:
+                self.root.after_cancel(self._topics_busy_job)
+            except Exception:  # noqa: BLE001
+                pass
+            self._topics_busy_job = None
+        w = self.topics_win
+        if w is None or not w.winfo_exists():
+            return
+        secs = self.topic_panel.busy_for()
+        self.topics_busy.configure(text="" if secs is None else t("gui_topics_busy", s=int(secs)))
+        if secs is not None:
+            self._topics_busy_job = self.root.after(1000, self._topics_busy_tick)
+
+    _topics_closed = False
+
+    def _topics_close(self):
+        self._topics_closed = True
+        if self.topics_win is not None:
+            self.topics_win.withdraw()
+
+    def _topics_toggle(self):
+        """The toolbar button: show the pane, or hide it when it is already there."""
+        w = self.topics_win
+        if w is not None and w.winfo_exists() and w.winfo_manager():
+            self._topics_close()
+        else:
+            self._topics_closed = False
+            self.render_topics(show=True)
+
+    def _notes_tags(self):
+        """#1644: the notes text follows the app theme; time range muted, bullet marks in the notes accent."""
+        pal = NOTES["light" if self.settings.get("theme") == "light" else "dark"]
+        tx = self.topics_text
+        tx.configure(bg=pal["bg"], fg=pal["fg"], insertbackground=pal["fg"])
+        tx.tag_configure("title", foreground=pal["title"])
+        tx.tag_configure("when", foreground=pal["when"])
+        tx.tag_configure("mark", foreground=pal["mark"])
 
     def _topics_var(self):
         """#1379: one BooleanVar for the Settings menu switch and the panel's switch."""
@@ -2607,7 +2903,10 @@ class App:
         self.errored = False
         self.listening = True
         self.speak_run = speak_run  # #1001: read by _work (both legs) before the worker posts "stopped"
+        self.__dict__["_topics_open"] = set()  # topic numbers restart with the run
         self.topic_panel.clear()  # #611: the panel shows this run's topics only (the .topics.md file keeps them)
+        if topics_on(self.settings) and topics_model_path(self.settings) and not self._topics_closed:
+            self.render_topics(show=True)  # notes are on: the pane is there from the start of the meeting
         self.worker = threading.Thread(target=self._work, args=(run, self.stop_ev), daemon=True)
         self.worker.start()
         self.run_snapshot = self._start_values()  # #983
@@ -2688,7 +2987,7 @@ class App:
                         backlog_line=lambda n: q.put(("backlog", n, leg)),  # #1259
                         mt_wait_line=lambda n: q.put(("mtwait", n, leg)),  # #1253; per leg, both legs may hold
                         labeler_factory=self._make_labeler if sink_cls is None and s.get("source") == "system" else None,
-                        on_topic=self.topic_panel.add if sink_cls is None else None)  # #611
+                        on_topic=self.topic_panel if sink_cls is None else None)  # #611
         except (Exception, SystemExit) as e:  # noqa: BLE001  # #1351: a CLI SystemExit must not stop the GUI silently
             print(f"tlwu: {type(e).__name__}: {e}", file=sys.stderr, flush=True)  # raw text for the log
             q.put(("error", gui_error_text(e)))  # #885: localized, no CLI flags
@@ -2902,8 +3201,20 @@ class App:
             m = re.fullmatch(r"row(\d+)", name)
             if m and int(m.group(1)) < len(rows):
                 self._log_row = rows[int(m.group(1))]
-        if self._log_row is not None and not self._log_row[2]:
-            self.log_menu.tk_popup(event.x_root, event.y_root)
+        can_report = self._log_row is not None and not self._log_row[2]
+        self.log_menu.entryconfigure(0, state="normal" if can_report else "disabled")
+        self.log_menu.tk_popup(event.x_root, event.y_root)
+
+    def _log_copy(self):
+        """Copy the selected log text (or the whole log if nothing is selected) to the clipboard."""
+        tx = self.log_text
+        try:
+            txt = tx.get("sel.first", "sel.last")
+        except tk.TclError:
+            txt = tx.get("1.0", "end-1c")
+        if txt:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(txt)
 
     def report_wrong_line(self):
         row = getattr(self, "_log_row", None)

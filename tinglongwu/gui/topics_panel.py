@@ -6,6 +6,7 @@ No Tk here, so it is testable headless: the widget only redraws from `TopicPanel
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 
 from ..topics import Topic, _mmss
@@ -30,6 +31,21 @@ class TopicPanel:
         self._lock = threading.Lock()
         self._topics: list[Topic] = []
         self.on_change = on_change
+        self._busy_since: float | None = None
+
+    def __call__(self, topic: Topic) -> None:  # TopicNotes(on_topic=panel): add() plus the state() hook below
+        self.add(topic)
+
+    def state(self, busy: bool) -> None:
+        """Summarizer thread: a topic started (True) or ended (False). The model can take a minute; the panel shows it."""
+        self._busy_since = time.monotonic() if busy else None
+        if self.on_change is not None:
+            self.on_change()
+
+    def busy_for(self) -> float | None:
+        """Seconds the current topic has been summarizing; None when idle."""
+        since = self._busy_since
+        return None if since is None else time.monotonic() - since
 
     def add(self, topic: Topic) -> None:
         with self._lock:

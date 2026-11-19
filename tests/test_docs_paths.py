@@ -23,10 +23,10 @@ def test_privacy_statements_exist_and_readmes_link_them():
 
 def test_code_of_conduct_exists_and_contributing_links_resolve():  # #591
     import re
-    coc = (ROOT / "CODE_OF_CONDUCT.md").read_text("utf-8")
+    coc = (ROOT / ".github" / "CODE_OF_CONDUCT.md").read_text("utf-8")
     assert "Contributor Covenant" in coc and "version 2.1" in coc
-    contributing = (ROOT / "CONTRIBUTING.md").read_text("utf-8")
+    contributing = (ROOT / ".github" / "CONTRIBUTING.md").read_text("utf-8")
     assert "CODE_OF_CONDUCT.md" in re.findall(r"\]\(([^)#]+)\)", contributing)
     # the contact path named in the CoC must point at a real file
     for target in re.findall(r"\]\(([^)#:]+\.md)\)", coc):
-        assert (ROOT / target).is_file(), target
+        assert (ROOT / ".github" / target).resolve().is_file(), target

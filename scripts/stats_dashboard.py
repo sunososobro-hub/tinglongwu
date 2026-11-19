@@ -281,7 +281,7 @@ def _platform(labels):
 
 # #662: path -> dimension rules, used only when the linked issue has no label for that dimension.
 _MODE_RULES = (("speak", ("tts", "reverse", "speak")), ("listen", ("asr", "segment")))
-_OS_RULES = (("windows", ("installer/", ".iss", "capture/wasapi")),
+_OS_RULES = (("windows", ("release/installer/", "installer/run_install.ps1", ".iss", "capture/wasapi")),
              ("mac", ("mac_install.sh", "capture/macos")),
              ("linux", ("install.sh", "capture/pulse")))
 _LANG_RE = re.compile(r"(?:flores|eval)[^/]*?[_/-](zh|en|ja|ko|ru|hi|yue|vi|th|id|es|de|fr|it|pt)(?:[_.-]|$)")

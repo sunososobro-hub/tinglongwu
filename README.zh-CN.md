@@ -42,7 +42,7 @@ Windows 会显示 SmartScreen 警告（安装程序尚未签名，#601 完成前
 
 ## 想帮忙？
 
-- 📘 [怎么参与](CONTRIBUTING.md)：欢迎提 PR，默认答案是 yes
+- 📘 [怎么参与](.github/CONTRIBUTING.md)：欢迎提 PR，默认答案是 yes
 - 🟢 [新手友好的题目](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
 - 🐞 [用你自己的 AI 报告问题](docs/report-with-ai.zh-TW.md)：不用 GitHub 账号，复制一段提示贴给 ChatGPT / Claude / Gemini（繁体页面）
 - 💬 [讨论区](https://github.com/sunososobro-hub/tinglongwu/discussions)：提问题、分享你怎么用、提点子（不用会写代码）

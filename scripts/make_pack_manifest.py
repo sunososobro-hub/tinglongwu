@@ -1,8 +1,8 @@
-"""Build packaging/packs.json (#722): the #615 optional-pack manifest the release notes read (release.yml passes it to
+"""Build release/packaging/packs.json (#722): the #615 optional-pack manifest the release notes read (release.yml passes it to
 `scripts/release_notes.py notes --packs-manifest`). Offline: every number comes from a committed, measured pin.
 
-  python scripts/make_pack_manifest.py            rewrite packaging/packs.json
-  python scripts/make_pack_manifest.py --check    exit 1 when packaging/packs.json differs from what the pins give
+  python scripts/make_pack_manifest.py            rewrite release/packaging/packs.json
+  python scripts/make_pack_manifest.py --check    exit 1 when release/packaging/packs.json differs from what the pins give
 
 Sources (no estimates):
   - Hy-MT2-1.8B GGUF (the ja / ko packs, tinglongwu_setup.packs.PACKS): SHA-256 + HF revision from
@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "packaging" / "packs.json"
+OUT = ROOT / "release" / "packaging" / "packs.json"
 sys.path.insert(0, str(ROOT))
 
 from tinglongwu_setup import downloader, packs  # noqa: E402  (setup package: no network guard, no network here)

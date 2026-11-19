@@ -1,4 +1,4 @@
-﻿# Called by the installer wizard (installer\tinglongwu.iss): runs install.ps1 hidden, logs everything to
+﻿# Called by the installer wizard (release\installer\tinglongwu.iss): runs install.ps1 hidden, logs everything to
 # install.log (the wizard reads the "[n/7]" step lines from it for its progress bar) and always writes the exit
 # code to install.done, which tells the wizard that install.ps1 has finished.
 param([switch]$Cpu, [string]$Packs = '', [string]$Lang = '')

@@ -27,6 +27,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_topics_downloading": "Downloading the notes model (about {mb} MB, once). Works offline afterwards.",  # #1379
         "gui_topics_cancel": "Cancel download",  # #1379
         "gui_topics_empty": "Each finished topic shows up here during the meeting.",  # #611
+        "gui_topics_busy": "Summarizing the latest topic... {s} s",
         "rec_label": "● Recording",
         "rec_consent": "Recording is on: audio is saved on this computer only ({path}). Get the other side's consent before recording their voice.",
         "guard_blocked": "\U0001F6E1 tlwu blocked an outgoing connection: {host}:{port} ({pkg}). "
@@ -228,6 +229,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_menu_less_opaque": "More transparent",
         "gui_menu_wrong": "Wrong translation (report last line)",
         "gui_menu_wrong_line": "Wrong translation (this line)",
+        "gui_log_copy": "Copy",
+        "gui_font_default": "System font",
+        "gui_mode_gpu": "GPU mode",
+        "gui_mode_cpu": "CPU mode",
+        "gui_copy_all": "Copy all",
+        "gui_cpu": "CPU {p}%",
         "gui_wrong_title": "Wrong translation",
         "gui_wrong_usage": "Also include: {text} (what you mainly use TingLong for)",
         "gui_wrong_ask": "This text will be pre-filled in a GitHub issue form (nothing is sent by the app; you can edit it there):\n\n{text}",
@@ -292,6 +299,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_topics_downloading": "Загрузка модели заметок (около {mb} МБ, один раз). Потом работает офлайн.",  # #1379
         "gui_topics_cancel": "Отменить загрузку",  # #1379
         "gui_topics_empty": "Каждая завершённая тема появится здесь во время встречи.",  # #611
+        "gui_topics_busy": "Подводим итог последней темы... {s} с",
         "rec_label": "● Запись",
         "rec_consent": "Запись включена: звук сохраняется только на этом компьютере ({path}). Перед записью голоса собеседника получите его согласие.",
         "guard_blocked": "\U0001F6E1 tlwu заблокировал исходящее соединение: {host}:{port} ({pkg}). "
@@ -493,6 +501,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_menu_less_opaque": "Более прозрачно",
         "gui_menu_wrong": "Неверный перевод (сообщить о последней строке)",
         "gui_menu_wrong_line": "Неверный перевод (эта строка)",
+        "gui_log_copy": "Копировать",
+        "gui_font_default": "Системный шрифт",
+        "gui_mode_gpu": "Режим GPU",
+        "gui_mode_cpu": "Режим CPU",
+        "gui_copy_all": "Копировать всё",
+        "gui_cpu": "CPU {p}%",
         "gui_wrong_title": "Неверный перевод",
         "gui_wrong_usage": "Также добавить: {text} (для чего вы используете TingLong)",
         "gui_wrong_ask": "Этот текст будет подставлен в форму issue на GitHub (приложение ничего не отправляет; там его можно изменить):\n\n{text}",
@@ -547,16 +561,17 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_open_url": "Откройте этот адрес: {url}",
     },
     "zh-TW": {
-        "gui_topics_menu": "主題筆記...",  # #611
-        "gui_topics_title": "主題筆記",  # #611
+        "gui_topics_menu": "重點整理...",  # #611
+        "gui_topics_title": "重點整理",  # #611
         "gui_topics_model": "模型 (.gguf)...",  # #611
-        "gui_topics_no_model": "開啟「會議重點」即可下載重點模型，或自選一個 GGUF 模型。",  # #611
-        "gui_topics_switch": "會議重點",  # #1379
+        "gui_topics_no_model": "開啟「重點整理」即可下載重點模型，或自選一個 GGUF 模型。",  # #611
+        "gui_topics_switch": "重點整理",  # #1379
         "gui_topics_lang": "重點以你閱讀的語言撰寫：{lang}。",  # #1379
-        "gui_topics_cpu_off": "沒有偵測到 GPU：這台電腦預設不開會議重點。用 CPU 整理一段 5 分鐘的主題約需 4 分鐘，重點會在會議結束後才出來。可以接受的話再開啟。",  # #1379
+        "gui_topics_cpu_off": "沒有偵測到 GPU：這台電腦預設不開重點整理。用 CPU 整理一段 5 分鐘的主題約需 4 分鐘，重點會在會議結束後才出來。可以接受的話再開啟。",  # #1379
         "gui_topics_downloading": "正在下載重點模型（約 {mb} MB，只需一次）。之後可離線使用。",  # #1379
         "gui_topics_cancel": "取消下載",  # #1379
         "gui_topics_empty": "會議中每講完一個主題，就會出現在這裡。",  # #611
+        "gui_topics_busy": "正在整理最新一段重點… 已 {s} 秒",
         "rec_label": "● 錄音中",
         "rec_consent": "錄音已開啟：聲音只存在這台電腦（{path}）。錄下對方的聲音前，請先取得對方同意。",
         "guard_blocked": "\U0001F6E1 已擋下 tlwu 對外連線：{host}:{port}（{pkg}）。"
@@ -758,6 +773,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_menu_less_opaque": "較透明",
         "gui_menu_wrong": "翻錯了（回報最後一行）",
         "gui_menu_wrong_line": "翻錯了（回報這一行）",
+        "gui_log_copy": "複製",
+        "gui_font_default": "系統預設字體",
+        "gui_mode_gpu": "GPU 模式",
+        "gui_mode_cpu": "CPU 模式",
+        "gui_copy_all": "複製全部",
+        "gui_cpu": "CPU {p}%",
         "gui_wrong_title": "翻錯了",
         "gui_wrong_usage": "同時附上：{text}（你主要用聽瓏做什麼）",
         "gui_wrong_ask": "以下文字會預先填入 GitHub 的回報表單（程式本身不會傳送任何資料，你可以在網頁上修改）：\n\n{text}",
@@ -822,6 +843,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_topics_downloading": "メモ用モデルをダウンロード中（約 {mb} MB、初回のみ）。その後はオフラインで使えます。",  # #1379
         "gui_topics_cancel": "ダウンロードを中止",  # #1379
         "gui_topics_empty": "会議中、話し終えたトピックがここに表示されます。",  # #611
+        "gui_topics_busy": "最新のトピックを要約中... {s} 秒",
         "rec_label": "● 録音中",
         "rec_consent": "録音中です。音声はこのコンピューターにだけ保存されます（{path}）。相手の声を録音する前に同意を得てください。",
         "guard_blocked": "\U0001F6E1 tlwu が外部への接続をブロックしました: {host}:{port} ({pkg})。"
@@ -1023,6 +1045,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_menu_less_opaque": "より透明に",
         "gui_menu_wrong": "誤訳を報告（最後の行）",
         "gui_menu_wrong_line": "誤訳を報告（この行）",
+        "gui_log_copy": "コピー",
+        "gui_font_default": "システム既定のフォント",
+        "gui_mode_gpu": "GPU モード",
+        "gui_mode_cpu": "CPU モード",
+        "gui_copy_all": "すべてコピー",
+        "gui_cpu": "CPU 使用 {p}%",
         "gui_wrong_title": "誤訳",
         "gui_wrong_usage": "次も含める: {text}（TingLong の主な使い道）",
         "gui_wrong_ask": "このテキストが GitHub の issue フォームに入力されます（アプリからは何も送信されません。そこで編集できます）:\n\n{text}",

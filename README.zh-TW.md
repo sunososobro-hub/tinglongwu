@@ -42,7 +42,7 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 ## 想幫忙？
 
-- 📘 [怎麼參與](CONTRIBUTING.md)：歡迎發 PR，預設答案是 yes
+- 📘 [怎麼參與](.github/CONTRIBUTING.md)：歡迎發 PR，預設答案是 yes
 - 🟢 [新手友善的題目](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
 - 🐞 [用你自己的 AI 回報問題](docs/report-with-ai.zh-TW.md)：不用 GitHub 帳號，複製一段提示貼給 ChatGPT / Claude / Gemini
 - 💬 [討論區](https://github.com/sunososobro-hub/tinglongwu/discussions)：問問題、分享你怎麼用、提點子（不用會寫程式）
@@ -51,7 +51,7 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 <!-- CONTRIBUTORS:START --><p><b>感謝 5 位朋友一起打造</b></p><p><a href="https://github.com/sunososobro-hub" title="sunososobro-hub 💻 📖 🚧"><img src="https://github.com/sunososobro-hub.png?size=60" width="48" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728" title="cook1e0728 💻"><img src="https://github.com/cook1e0728.png?size=60" width="48" alt="cook1e0728"></a> <a href="https://github.com/psgo555" title="psgo555 🐛"><img src="https://github.com/psgo555.png?size=60" width="48" alt="psgo555"></a> <a href="https://github.com/jchodev" title="jchodev 💻 🤔"><img src="https://github.com/jchodev.png?size=60" width="48" alt="jchodev"></a> <a href="https://github.com/Jerry-Tseng" title="Jerry-Tseng 🐛 🤔"><img src="https://github.com/Jerry-Tseng.png?size=60" width="48" alt="Jerry-Tseng"></a></p><p><sub>AI 幫手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（程式碼審查）</sub><br><sub>💻 程式 · 🐛 回報問題 · 📖 文件 · 🤔 點子 · 🚧 維護 · 🤖 AI 工具（不算在人數內）</sub></p><!-- CONTRIBUTORS:END -->
 
-MIT 授權，見 [LICENSE](LICENSE)。(c) 2026 Alonso.
+MIT 授權，見 [LICENSE](LICENSE)。[程式碼簽章政策](docs/CODE_SIGNING_POLICY.md)（SignPath Foundation）。(c) 2026 Alonso.
 
 <p align="center"><img src="assets/mascot/tinglong@2x.png" alt="聽龍 / TingLong，專心聽的龍" width="120"><br><sub>聽龍 / TingLong，專心聽的龍</sub></p>
 

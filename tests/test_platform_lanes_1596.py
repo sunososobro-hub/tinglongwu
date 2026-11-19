@@ -174,7 +174,8 @@ def test_release_workflow_notes_step_lists_platforms(tmp_path, monkeypatch):
     argv = _release_yml_notes_argv({"TAG": "v0.3.2", "PR": "", "HW_RUN": "", "HEAD": "", "DIST": str(tmp_path),
                                     "PLATFORMS": "mac=skip linux=ok"})
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "packaging").symlink_to(ROOT / "packaging")
+    (tmp_path / "release").mkdir(exist_ok=True)
+    (tmp_path / "release" / "packaging").symlink_to(ROOT / "release" / "packaging")
     monkeypatch.setattr(rn, "repo", lambda: "o/r")
     monkeypatch.setattr(rn, "history", lambda rep, tag, tip="HEAD": (None, [], {}))
     monkeypatch.setattr(rn, "git_tags", lambda: {"v0.3.0": "3" * 40, "v0.3.1": "4" * 40})

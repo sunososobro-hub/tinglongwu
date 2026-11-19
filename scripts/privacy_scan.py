@@ -222,15 +222,39 @@ def matcher() -> Combined:
 
 
 # ---------------------------------------------------------------- PR diff
-def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "") -> list[str]:
+def _pure_rename(f: dict, gh=None, base_sha: str = "") -> bool:
+    """#1653: a rename whose content is byte-identical (git similarity 100%) adds no line, so there is nothing
+    new to scan. Strict on purpose: the API must say `renamed`, name the old path, and report exactly 0
+    additions / deletions / changes as ints. A missing count, a CRLF or any other edit (> 0 changes) and a
+    `copied` / `added` file still go through the full scan. A mode-only change keeps the content identical.
+    The counts alone are not proof: GitHub reports 0 / 0 / 0 and no patch for a file it treats as binary (e.g. a
+    `.gitattributes` `binary` / `-diff` added in the PR). So the head blob sha (`sha`) must also equal the blob
+    sha of `previous_filename` on the base commit. No base sha, a mismatch or any API error -> scan (fail closed)."""
+    if f.get("status") != "renamed" or not f.get("previous_filename"):
+        return False
+    counts = [f.get(k) for k in ("additions", "deletions", "changes")]
+    if not all(type(c) is int and c == 0 for c in counts):
+        return False
+    head_blob = f.get("sha")
+    if not (isinstance(head_blob, str) and head_blob and gh is not None and base_sha):
+        return False
+    try:
+        old = gh.get(f"/repos/{gh.repo}/contents/{urllib.parse.quote(f['previous_filename'], safe='/')}"
+                     f"?ref={urllib.parse.quote(base_sha, safe='')}")
+    except Exception:  # noqa: BLE001 - any failure means "not proven identical": scan it
+        return False
+    return isinstance(old, dict) and old.get("type", "file") == "file" and old.get("sha") == head_blob
+
+
+def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "", base_sha: str = "") -> list[str]:
     """Hits in the ADDED lines of a PR's `pulls/N/files` list (removed lines never count)."""
     hits: list[str] = []
     for f in files:
         name, status = f.get("filename", "?"), f.get("status", "")
         if rx.search(name) and status != "removed":
             hits.append(f"{rx.sub(name)}:0: (file name)")
-        if status == "removed":
-            continue
+        if status == "removed" or _pure_rename(f, gh, base_sha):
+            continue  # the file name itself was checked above
         patch = f.get("patch")
         if patch is not None:
             lines = list(sd.added_lines(patch))
@@ -283,12 +307,13 @@ def cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None, report_statu
 def _cmd_pr(gh, pr: int, fallback_check: str | None = None, rx=None) -> tuple[int, str]:
     """(exit code, scanned head sha). The sha is empty when the head moved during the scan (nothing to publish)."""
     rx = rx if rx is not None else matcher()
-    sha = gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"]
+    info = gh.get(f"/repos/{gh.repo}/pulls/{pr}")
+    sha, base_sha = info["head"]["sha"], (info.get("base") or {}).get("sha", "")
     files = list(gh.paginate(f"/repos/{gh.repo}/pulls/{pr}/files"))
     if gh.get(f"/repos/{gh.repo}/pulls/{pr}")["head"]["sha"] != sha:
         print("privacy-scan: the PR head moved during the scan; the run for the new head decides", file=sys.stderr)
         return 1, ""
-    hits = scan_pr_files(files, rx, gh, sha)
+    hits = scan_pr_files(files, rx, gh, sha, base_sha)
     for h in hits:
         print(h)
     if hits:

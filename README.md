@@ -44,7 +44,7 @@ More languages on the way ([language plan](docs/VISION.md)). [Full docs: require
 
 ## Want to help?
 
-- 📘 [How to contribute](CONTRIBUTING.md): PRs are welcome, the default answer is yes
+- 📘 [How to contribute](.github/CONTRIBUTING.md): PRs are welcome, the default answer is yes
 - 🟢 [Good first issues](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
 - 💬 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions): ask, show your setup, share an idea (no GitHub skills needed)
 - 🧭 [Vision: what we build and what we never do](docs/VISION.md)
@@ -52,7 +52,7 @@ More languages on the way ([language plan](docs/VISION.md)). [Full docs: require
 
 <!-- CONTRIBUTORS:START --><p><b>Built with help from 5 people</b></p><p><a href="https://github.com/sunososobro-hub" title="sunososobro-hub 💻 📖 🚧"><img src="https://github.com/sunososobro-hub.png?size=60" width="48" alt="sunososobro-hub"></a> <a href="https://github.com/cook1e0728" title="cook1e0728 💻"><img src="https://github.com/cook1e0728.png?size=60" width="48" alt="cook1e0728"></a> <a href="https://github.com/psgo555" title="psgo555 🐛"><img src="https://github.com/psgo555.png?size=60" width="48" alt="psgo555"></a> <a href="https://github.com/jchodev" title="jchodev 💻 🤔"><img src="https://github.com/jchodev.png?size=60" width="48" alt="jchodev"></a> <a href="https://github.com/Jerry-Tseng" title="Jerry-Tseng 🐛 🤔"><img src="https://github.com/Jerry-Tseng.png?size=60" width="48" alt="Jerry-Tseng"></a></p><p><sub>AI helpers: 🤖 <a href="https://www.anthropic.com/claude">Claude</a> (Anthropic) · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a> (code review)</sub><br><sub>💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)</sub></p><!-- CONTRIBUTORS:END -->
 
-MIT License. See [LICENSE](LICENSE). (c) 2026 Alonso.
+MIT License. See [LICENSE](LICENSE). [Code signing policy](docs/CODE_SIGNING_POLICY.md) (SignPath Foundation). (c) 2026 Alonso.
 
 <p align="center"><img src="assets/mascot/tinglong@2x.png" alt="聽龍 / TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong, the listening dragon</sub></p>
 

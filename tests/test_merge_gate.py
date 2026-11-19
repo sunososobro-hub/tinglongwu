@@ -103,7 +103,7 @@ def test_issue_hard_stops():
 def test_protected_paths():
     for path in (".agent/tlwu_rules.md", ".claude/settings.json", ".github/workflows/ci.yml",
                  ".github/workflows/auto-release.yml", "pyproject.toml", "requirements-dev.txt",
-                 "scripts/ci_offline.sh", "tinglongwu/offline.py", "packaging/x.spec", "tinglongwu/__init__.py"):
+                 "scripts/ci_offline.sh", "tinglongwu/offline.py", "release/packaging/x.spec", "tinglongwu/__init__.py"):
         assert is_protected(path), path
     assert is_protected("scripts/merge_gate.py") and is_protected(".github/workflows/merge-gate.yml")
     for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "tinglongwu/foo.py",

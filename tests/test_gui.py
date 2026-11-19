@@ -812,3 +812,16 @@ def test_hymt7b_missing_model_message_1351(tmp_path, monkeypatch):
     (tmp_path / "hymt2-7b" / "Hy-MT2-7B-Q4_K_M.gguf").write_bytes(b"x")
     assert core.engine_model_missing(s, tmp_path) is None  # installed: starts as usual
     assert core.gui_error_text(SystemExit("tlwu: run `tlwu-setup --hymt7b`")) == i18n.t("gui_error_generic")
+
+
+def test_shortcut_row_with_widest_cpu_text_keeps_main_window_narrow(gui_app):
+    """#1632: save / copy / topics / CPU readout sit on their own row; with the widest readout the window stays narrow."""
+    from tinglongwu.i18n import t
+
+    a = gui_app
+    for ui in ("English", "Русский", "繁體中文", "日本語"):
+        a.v_ui_lang.set(ui)
+        a.switch_lang()
+        a.lbl_cpu.configure(text=t("gui_mode_gpu") + "  " + t("gui_cpu", p=100) + "  GPU 100%")
+        a.root.update_idletasks()
+        assert a.root.winfo_reqwidth() <= MAIN_BAR_MAX_W + 40, ui

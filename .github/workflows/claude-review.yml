@@ -50,7 +50,7 @@ jobs:
             1. Correctness bugs: logic errors, broken edge cases, crashes, wrong behavior,
                missing/incorrect tests for changed behavior.
             2. Packaging / release risks: pyproject.toml, requirements*.txt, lock files,
-               installer/, packaging/, install scripts, release workflows, version bumps,
+               release/installer/, release/packaging/, install scripts, release workflows, version bumps,
                anything that could break install or a release build.
             3. Repo gates:
                a. The PR body contains `Closes #N` or `Refs #N` (N a number). Missing => gate fails.

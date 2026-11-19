@@ -3,7 +3,7 @@
 On a fresh Windows (no Python, no VC++ redistributable, no CUDA) the usual failure is a native library that
 cannot load: a missing DLL shows up as ImportError/OSError when the module is imported. This imports every
 native module the exe ships, prints one OK/FAIL line each and exits 1 if a required one fails, so a
-Windows Sandbox run (packaging/clean_machine_check.py) can check the exe without anyone clicking through it.
+Windows Sandbox run (release/packaging/clean_machine_check.py) can check the exe without anyone clicking through it.
 
 Pure-Python packages that load submodules lazily (module-level __getattr__) are checked too (#310): Nuitka cannot
 see those imports, and the first-run download failed with `No module named 'filelock._soft'` only when

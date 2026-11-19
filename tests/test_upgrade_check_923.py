@@ -217,3 +217,17 @@ def test_upgrade_job_runs_both_update_paths_without_python_utf8_env():
     assert unzipped < app < full
     for i in (app, full):
         assert "exit $LASTEXITCODE" in runs[i] and "continue-on-error" not in up["steps"][i]
+
+
+def test_app_update_fails_when_the_helper_recorded_a_swap_error_even_if_the_version_matches(tmp_path, monkeypatch, capsys):
+    core = _core(tmp_path / "new")
+
+    def apply_with_error(app_zip, app, run=None):
+        _fake_apply(app_zip, app)  # app-layer.json ends up new (e.g. same-version baseline) ...
+        uc.apply_error_path(app).write_text("boom: access denied", "utf-8")  # ... but the helper caught an error
+
+    monkeypatch.setattr(uc, "run_apply", apply_with_error)
+    monkeypatch.setattr(uc.subprocess, "run", _runner())
+    rc = uc.main(["app-update", "--old-zip", str(_old_zip(tmp_path)), "--core-dir", str(core), "--dir", str(tmp_path / "w")])
+    out = capsys.readouterr().out
+    assert rc == 1 and "swap error: boom: access denied" in out

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _bi():
-    spec = importlib.util.spec_from_file_location("build_installer_772", ROOT / "installer" / "build_installer.py")
+    spec = importlib.util.spec_from_file_location("build_installer_772", ROOT / "release" / "installer" / "build_installer.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

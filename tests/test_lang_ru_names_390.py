@@ -90,7 +90,7 @@ def test_core_has_no_russian_branch_for_this_feature():
 
 def test_exe_build_bundles_the_dictionary_and_smoke_checks_it():
     import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "release" / "packaging"))
     import build_windows
     from tlwu_app import smoke
 
@@ -150,7 +150,7 @@ def test_same_language_and_hook_errors_leave_the_text_alone(monkeypatch):
 
 def test_exe_notices_state_the_dictionary_data_license(tmp_path):
     import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "release" / "packaging"))
     import build_windows
 
     build_windows.write_licenses(tmp_path, None)

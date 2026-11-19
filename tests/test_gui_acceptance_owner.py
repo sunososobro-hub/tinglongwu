@@ -126,7 +126,7 @@ def test_1379_meeting_notes_switch_on_shows_topics_and_language(make_app, tmp_pa
     a.root.update()
     assert a.topics_win.winfo_viewable()
     text = a.topics_text.get("1.0", "end")
-    assert "Q3 budget" in text and "Cut travel by 10%" in text and "me: send the revised budget" in text
+    assert "Q3 budget" in text and "Cut travel by 10%" in text and "me: send the revised budget" not in text  # action lines hidden (6552784)
     assert "Traditional Chinese" in a.topics_lang.cget("text")
     _shot(a, "1379_notes_on")
 
