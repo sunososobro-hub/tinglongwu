@@ -142,7 +142,7 @@ def test_launch_apply_detached(tmp_path):
 
 # -- installer: models and config survive ------------------------------------------------------------------------
 def test_installer_keeps_models_and_respects_choice_on_silent_update():
-    iss = (ROOT / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
+    iss = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
     assert '[InstallDelete]' not in iss  # an (update) install never deletes models\ or the config
     assert 'Name: "autoupdate"' in iss
     task = next(l for l in iss.splitlines() if l.startswith('Name: "autoupdate"'))

@@ -34,9 +34,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EXE_NAME = "tlwu.exe"
 ZIP_TOP = "tlwu"  # top folder of the core zip
-# written by packaging/build_windows.py and runtime_layer.py at the top of every layered core (#923)
+# written by release/packaging/build_windows.py and runtime_layer.py at the top of every layered core (#923)
 NEW_CORE_MARKERS = ("app-layer.json", "runtime-layer.json")
-INSTALL_DONE = "install.done"  # the wizard's model step writes its exit code here (installer/tinglongwu.iss)
+INSTALL_DONE = "install.done"  # the wizard's model step writes its exit code here (release/installer/tinglongwu.iss)
 INSTALL_LOG = "install.log"
 READY_LINE = "READY default-listen"  # `tlwu.exe setup --default-listen` prints it last, when the default models are in (#948)
 SMOKE_TIMEOUT_S = 600
@@ -65,7 +65,7 @@ def leftovers(old_names: set[str], new_names: set[str]) -> list[str]:
 def smoke_problem(rc: int, out: str) -> str:
     """'' when `tlwu.exe --smoke` passed (the same verdict as the release check), else the reason."""
     # loaded by path: scripts/release_check.py has the same module name
-    spec = importlib.util.spec_from_file_location("packaging_release_check", REPO / "packaging" / "release_check.py")
+    spec = importlib.util.spec_from_file_location("packaging_release_check", REPO / "release" / "packaging" / "release_check.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     ok, detail = mod.smoke_verdict(rc, out)
@@ -174,7 +174,7 @@ def fake_release_get(app_zip: Path, manifest: dict, version: str = "9.9.9"):
 
 def make_app_layer(core: Path, out: Path) -> tuple[Path, dict]:
     """Zip + manifest of the app layer of an unzipped core folder (the same code the release uses, #945)."""
-    bw = _load("packaging_build_windows", REPO / "packaging" / "build_windows.py")
+    bw = _load("packaging_build_windows", REPO / "release" / "packaging" / "build_windows.py")
     man_path = bw.make_app_layer_zip(core, out)
     return out / bw.APP_LAYER_ASSET, json.loads(man_path.read_text("utf-8"))
 

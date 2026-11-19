@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "release" / "packaging"))
 import clean_machine_check as cmc  # noqa: E402
 
 READY = "READY default-listen seconds=95.0 download_mb=1100"

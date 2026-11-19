@@ -134,7 +134,7 @@ Every PR gets an AI review plus a maintainer review. The AI review is a first pa
 ### Review flow
 
 1. **CodeRabbit** comments first: a quick first pass on style and obvious issues.
-2. **Claude review** ([`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml)) is the merge gate. On PRs into `dev` or `main` (not drafts) it posts one comment covering correctness bugs, packaging/release risks, repo gates, and duplicate or conflicting changes, ending with `VERDICT: MERGE` or `VERDICT: FIX-FIRST`. It reruns on every push.
+2. **Claude review** ([`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml)) is the merge gate. On PRs into `dev` or `main` (not drafts) it posts one comment covering correctness bugs, release/packaging/release risks, repo gates, and duplicate or conflicting changes, ending with `VERDICT: MERGE` or `VERDICT: FIX-FIRST`. It reruns on every push.
    - Repo gates: the PR body must contain `Closes #N` or `Refs #N`, and a change to `pyproject.toml` needs the `needs-opus` label.
    - PRs from forks skip this job, because forks never get repository secrets. A maintainer runs the review for them.
 3. A maintainer merges after a `VERDICT: MERGE` (or after resolving the FIX-FIRST items).

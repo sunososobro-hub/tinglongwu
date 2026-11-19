@@ -8,7 +8,7 @@ import pytest
 
 from tinglongwu import gpu_pack
 
-SRC = Path(__file__).resolve().parent.parent / "packaging" / "build_windows.py"
+SRC = Path(__file__).resolve().parent.parent / "release" / "packaging" / "build_windows.py"
 
 
 def _mod():

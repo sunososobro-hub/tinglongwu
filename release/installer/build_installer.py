@@ -1,11 +1,11 @@
 r"""Build the Windows installer wizard (tinglongwu-setup-<version>.exe) with Inno Setup 6 (#125, part 1).
 
-    python installer\build_installer.py            stage files + icon, then compile with ISCC.exe
-    python installer\build_installer.py --dry-run  stage files + icon and print the ISCC command only
-    python installer\build_installer.py --core-dir dist\tlwu   wizard for the prebuilt core (tlwu.exe, #767)
+    python release\installer\build_installer.py            stage files + icon, then compile with ISCC.exe
+    python release\installer\build_installer.py --dry-run  stage files + icon and print the ISCC command only
+    python release\installer\build_installer.py --core-dir dist\tlwu   wizard for the prebuilt core (tlwu.exe, #767)
 
 Stdlib only (runs from any Python 3.10+, also on Linux for the tests). The wizard ships the git-tracked app files
-(no tests, no .venv, no models) with the app icon tinglongwu/gui/assets/tinglongwu.ico, then runs install.ps1 through installer\run_install.ps1 and shows its steps.
+(no tests, no .venv, no models) with the app icon tinglongwu/gui/assets/tinglongwu.ico, then runs install.ps1 through release\installer\run_install.ps1 and shows its steps.
 With --core-dir DIR the wizard instead ships the prebuilt core folder DIR (tlwu.exe at the top) + LICENSE and
 its shortcuts start {app}\tlwu.exe; no install.ps1, no Python, no pip (the .iss `CoreLayout` define).
 ISCC.exe is found via %ISCC%, PATH, or the default Inno Setup 6 folders. Inno Setup is free (see LICENSE-InnoSetup.txt).
@@ -22,11 +22,11 @@ import sys
 import zlib
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-ISS = REPO / "installer" / "tinglongwu.iss"
+REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
+ISS = REPO / "release" / "installer" / "tinglongwu.iss"
 OUT = REPO / "dist" / "installer"
 # what the installed app needs at run time and for install.ps1 / update.bat / the menus
-STAGE_PREFIXES = ("tinglongwu/", "tinglongwu_setup/", "tlwu_app/", "scripts/", "installer/run_install.ps1",
+STAGE_PREFIXES = ("tinglongwu/", "tinglongwu_setup/", "tlwu_app/", "scripts/", "release/installer/run_install.ps1",
                   "install.ps1", "install.bat", "update.bat", "pyproject.toml", "requirements", "LICENSE",
                   "README", "PRIVACY", "SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
@@ -40,6 +40,11 @@ def app_version(repo: Path = REPO) -> str:
     return m.group(1) if m else "0.0.0"
 
 
+# #1653: repo path -> path in the installed app; the wizard runs {app}\installer\run_install.ps1, whose
+# $Root is its parent folder, so the installed layout keeps installer/ at the top
+SHIP_AS = {"release/installer/run_install.ps1": "installer/run_install.ps1"}
+
+
 def staged_files(repo: Path = REPO) -> list[str]:
     """Git-tracked files the installer ships (posix paths relative to the repo)."""
     out = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=True).stdout
@@ -51,10 +56,11 @@ def stage(dst: Path, repo: Path = REPO) -> list[str]:
     if dst.exists():
         shutil.rmtree(dst)
     files = staged_files(repo)
-    for n in files:
-        (dst / n).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(repo / n, dst / n)
-    return files
+    shipped = [SHIP_AS.get(n, n) for n in files]
+    for n, s in zip(files, shipped):
+        (dst / s).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo / n, dst / s)
+    return shipped
 
 
 # #767: the prebuilt core wizard. The exe the shortcuts start, and files of the source layout that must never ship

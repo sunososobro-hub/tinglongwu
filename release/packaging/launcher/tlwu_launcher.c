@@ -1,6 +1,6 @@
 /* tlwu.exe: starts the app with the Python runtime that sits next to it (#923).
  *
- * Layout (packaging/runtime_layer.py):  tlwu.exe  python3XY.dll  python3XY._pth  python3XY.zip  DLLs\  <packages>\
+ * Layout (release/packaging/runtime_layer.py):  tlwu.exe  python3XY.dll  python3XY._pth  python3XY.zip  DLLs\  <packages>\
  * The exe loads python3XY.dll from its own folder and calls Py_Main with `-I -c <BOOT> <user args>`, so
  * `tlwu.exe --smoke` behaves like `python -c BOOT --smoke`. sys.executable is this exe (Python takes it from the
  * process image), BOOT also puts it into sys.argv[0]: the app re-runs itself through both.

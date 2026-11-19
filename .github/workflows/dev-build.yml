@@ -74,14 +74,14 @@ jobs:
           set -euo pipefail
           gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n "tinglongwu-win64-${GITHUB_SHA::7}" -D "$W/new"
           ls -l "$W/new"
-      - name: Build the setup wizard from that core (installer/build_installer.py --core-dir)
+      - name: Build the setup wizard from that core (release/installer/build_installer.py --core-dir)
         if: steps.wait.outputs.run != ''
         shell: pwsh
         run: |
           python scripts\upgrade_check.py unzip --zip "$env:W\new\tinglongwu-win64.zip" --dir "$env:W\core"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-          python installer\build_installer.py --core-dir "$env:W\core\tlwu"
+          python release\installer\build_installer.py --core-dir "$env:W\core\tlwu"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $exe = Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1
           if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }

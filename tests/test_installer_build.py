@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location("build_installer", ROOT / "installer" / "build_installer.py")
+_spec = importlib.util.spec_from_file_location("build_installer", ROOT / "release" / "installer" / "build_installer.py")
 bi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bi)
 
@@ -37,7 +37,7 @@ def test_stage_ships_app_and_install_scripts_not_tests(tmp_path):
     for f in files:
         assert not f.startswith(("tests/", ".github/", "mobile/", "docs/", "tlwu_eval/", "models/", ".venv/")), f
     # the .iss is a build input, not shipped
-    assert "installer/tinglongwu.iss" not in files
+    assert "release/installer/tinglongwu.iss" not in files
 
 
 def _ico_entries(data: bytes) -> list[tuple[int, bytes]]:
@@ -111,7 +111,7 @@ def test_app_version_is_package_version():
 
 
 def test_script_runs_standalone(tmp_path):
-    r = subprocess.run([sys.executable, str(ROOT / "installer" / "build_installer.py"), "--help"],
+    r = subprocess.run([sys.executable, str(ROOT / "release" / "installer" / "build_installer.py"), "--help"],
                        capture_output=True, text=True)
     assert r.returncode == 0 and "--dry-run" in r.stdout
 
@@ -126,10 +126,10 @@ def test_wizard_tlwu_exe_and_gui_share_one_app_icon(tmp_path):
     # without the asset the wizard still gets a (drawn) icon instead of failing the build
     assert bi.wizard_icon(tmp_path / "d.ico", src=tmp_path / "missing.ico").read_bytes()[:4] == b"\0\0\1\0"
 
-    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "packaging" / "build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "release" / "packaging" / "build_windows.py")
     bw = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bw)
-    sys.path.insert(0, str(ROOT / "packaging"))
+    sys.path.insert(0, str(ROOT / "release" / "packaging"))
     import runtime_layer  # #923: tlwu.exe gets its icon from the launcher's resource script
 
     assert bw.APP_ICON.resolve() == runtime_layer.APP_ICON.resolve() == asset.resolve()

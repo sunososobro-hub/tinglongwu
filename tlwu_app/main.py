@@ -21,7 +21,7 @@ from pathlib import Path
 from . import tiers
 
 
-LAUNCHER_EXE = "tlwu.exe"  # packaging/launcher/tlwu_launcher.c: sys.executable is this exe in the core layout (#923)
+LAUNCHER_EXE = "tlwu.exe"  # release/packaging/launcher/tlwu_launcher.c: sys.executable is this exe in the core layout (#923)
 
 
 def is_bundled() -> bool:

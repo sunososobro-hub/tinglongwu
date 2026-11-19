@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location("build_installer", ROOT / "installer" / "build_installer.py")
+_spec = importlib.util.spec_from_file_location("build_installer", ROOT / "release" / "installer" / "build_installer.py")
 bi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bi)
 

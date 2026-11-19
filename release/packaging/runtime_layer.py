@@ -2,7 +2,7 @@ r"""Runtime layer of the Windows core (#923): Python + every third-party package
 
 The core folder (dist/tlwu, what the zip and the setup wizard ship) is two layers:
 
-  runtime layer  tlwu.exe (packaging/launcher), python3XY.dll, python3XY._pth, python3XY.zip (standard library),
+  runtime layer  tlwu.exe (release/packaging/launcher), python3XY.dll, python3XY._pth, python3XY.zip (standard library),
                  DLLs/, tcl/, every third-party package of the packaging venv as .pyc, llama.cpp DLLs, VC++ runtime,
                  licenses/. Built by build() below. It depends only on the files in KEY_FILES (requirements*.txt and
                  the packaging code), so CI keeps it in a cache and rebuilds it only when key() changes.
@@ -30,17 +30,17 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-LAUNCHER_DIR = REPO / "packaging" / "launcher"
-STUBS_DIR = REPO / "packaging" / "stubs"  # av: PyAV's wheel bundles GPL FFmpeg codecs, so a stub ships instead
+REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
+LAUNCHER_DIR = REPO / "release" / "packaging" / "launcher"
+STUBS_DIR = REPO / "release" / "packaging" / "stubs"  # av: PyAV's wheel bundles GPL FFmpeg codecs, so a stub ships instead
 APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 EXE_NAME = "tlwu.exe"
 GUI_EXE_NAME = "tlwu-gui.exe"  # #1524: GUI-subsystem stub the shortcuts start; it runs tlwu.exe without a console window
 MANIFEST_NAME = "runtime-layer.json"  # at the top of the layer: key, Python version, pyc magic
 # The runtime layer is rebuilt when one of these changes (repo-relative; a folder = every file in it). The two
 # workflows hash the same list for their cache key (tests/test_windows_layers_923.py keeps them equal).
-KEY_GLOBS = ("requirements*.txt", "packaging/build_windows.py", "packaging/runtime_layer.py",
-             "packaging/launcher/**", "packaging/stubs/**", "tinglongwu/gui/assets/tinglongwu.ico")
+KEY_GLOBS = ("requirements*.txt", "release/packaging/build_windows.py", "release/packaging/runtime_layer.py",
+             "release/packaging/launcher/**", "release/packaging/stubs/**", "tinglongwu/gui/assets/tinglongwu.ico")
 # Packages of the packaging venv that are build tools, not part of the app
 NOT_SHIPPED = {"pip", "setuptools", "pkg_resources", "_distutils_hack", "wheel", "nuitka", "ordered_set",
                "zstandard", "av", "psutil",  # names as _dist_name() gives them
@@ -315,7 +315,7 @@ def copy_mingw_copying(tool: str, dst: Path, gcc: str | None = None) -> bool:
 
 
 def build_launcher(out: Path, work: Path, run=subprocess.run, gui: bool = False) -> str:
-    """Compile packaging/launcher/tlwu_launcher.c (+ icon, version resource, manifest) to `out` with the first
+    """Compile release/packaging/launcher/tlwu_launcher.c (+ icon, version resource, manifest) to `out` with the first
     toolchain that works (MinGW-w64 gcc, then MSVC). Returns the tool's name. gui=True compiles
     tlwu_gui_stub.c as a WINDOWS-subsystem exe (tlwu-gui.exe, #1524)."""
     work.mkdir(parents=True, exist_ok=True)

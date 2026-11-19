@@ -3,7 +3,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "packaging" / "build_windows.py"
+SRC = Path(__file__).resolve().parent.parent / "release" / "packaging" / "build_windows.py"
 sys.path.insert(0, str(SRC.parent))
 import runtime_layer  # noqa: E402
 

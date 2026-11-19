@@ -68,7 +68,7 @@ def test_r1_exactly_limit_passes_one_over_fails():
 
 # r2 paths
 @pytest.mark.parametrize("name", ["pyproject.toml", "requirements.txt", ".github/workflows/ci.yml",
-                                  ".claude/settings.json", "scripts/install.sh", "packaging/build_windows.py",
+                                  ".claude/settings.json", "scripts/install.sh", "release/packaging/build_windows.py",
                                   "LICENSE", "SECURITY.md", "models/x.bin", "tinglongwu/offline.py",
                                   "tinglongwu/models.py", "tinglongwu/ollama.py", "tests/test_no_network_code.py", "tests/conftest.py", "tinglongwu/data/tech-dev.txt"])
 def test_r2_protected_or_outside_paths_fail(name):

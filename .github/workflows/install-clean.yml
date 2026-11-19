@@ -8,7 +8,7 @@ name: install-clean
 on:
   push:
     branches: [dev, 'release/v*']   # #1016: the release snapshot must have a green speak-smoke
-    paths: ['scripts/**', 'install.*', 'installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
+    paths: ['scripts/**', 'install.*', 'release/installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
   # #1547: no pull_request run (Windows/macOS runners); dev push, snapshot dispatch and schedule cover it
   workflow_dispatch:
     inputs:
@@ -76,7 +76,7 @@ jobs:
         shell: powershell
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-          python installer\build_installer.py
+          python release\installer\build_installer.py
           if ($LASTEXITCODE -ne 0) { throw "build failed" }
           Get-ChildItem dist\installer\*.exe
       - name: "#69 #67 no Python on this PC, run the wizard silently, then use and uninstall the app"
@@ -275,7 +275,7 @@ jobs:
         uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.TLWU_BUILD_ROOT }}\runtime
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'packaging/build_windows.py', 'packaging/runtime_layer.py', 'packaging/launcher/**', 'packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Setup exe (this commit's core + wizard, or the release named by `tag`)
         shell: pwsh
         env:
@@ -288,10 +288,10 @@ jobs:
             gh release download $env:TLWU_TAG --repo $env:GITHUB_REPOSITORY --pattern 'tinglongwu-setup.exe' --dir $out
             if ($LASTEXITCODE) { throw "FAIL: no tinglongwu-setup.exe in $env:TLWU_TAG" }
           } else {
-            python packaging\build_windows.py --lite
+            python release\packaging\build_windows.py --lite
             if ($LASTEXITCODE) { throw "FAIL: core build" }
             if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-            python installer\build_installer.py --core-dir "$env:TLWU_BUILD_ROOT\dist\tlwu"
+            python release\installer\build_installer.py --core-dir "$env:TLWU_BUILD_ROOT\dist\tlwu"
             if ($LASTEXITCODE) { throw "FAIL: wizard build" }
             Copy-Item (Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1).FullName "$out\tinglongwu-setup.exe"
           }

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "packaging"))
+sys.path.insert(0, str(ROOT / "release" / "packaging"))
 import build_windows  # noqa: E402
 
 from tlwu_app import smoke, tiers  # noqa: E402

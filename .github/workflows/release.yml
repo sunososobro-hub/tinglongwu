@@ -8,7 +8,7 @@ name: release
 #                       Other pushes: nothing.
 #   windows           : build tinglongwu-win64.zip, the slim core (#762: build_windows.py --core, CPU llama, no
 #                       cuda_libs/), then scripts/release_check.py (core budget: <= 300 MB, no CUDA files) and
-#                       packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
+#                       release/packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
 #                       instructions (no AVX-512), --smoke, --selftest; render the release notes; report the
 #                       job time against scripts/release_check.py CORE_JOB_BUDGET_MIN (a warning, never a failure)
 #   vulkan-pack       : parallel to windows (#800): compile llama-cpp-python with GGML_VULKAN=on (same pin as the CPU build),
@@ -135,11 +135,11 @@ jobs:
           # packages + tlwu.exe). A run reads caches of its own branch and of the default branch (main), so a release
           # on main restores the layer of the previous release. build_windows.py compares the restored layer's recorded
           # key with runtime_layer.key() and rebuilds it on a mismatch; the release checks below then test the zip.
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'packaging/build_windows.py', 'packaging/runtime_layer.py', 'packaging/launcher/**', 'packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |
-          python packaging\build_windows.py --core
+          python release\packaging\build_windows.py --core
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Core zip budget (scripts/release_check.py, MAX_CORE_MB, no CUDA files)
         shell: pwsh
@@ -156,7 +156,7 @@ jobs:
       - name: Release checks on the zip (size, check_dist_dlls, llama CPU instructions, --smoke, --selftest)
         shell: pwsh
         run: |
-          python packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
+          python release\packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       # saved only after the release checks passed: a layer that fails them is never kept for the next release
       - name: Runtime layer cache (save the rebuilt layer, releases on main only; dry runs on other branches save nothing, #888)
@@ -180,11 +180,11 @@ jobs:
           set -euo pipefail
           # Download, support/contributors block and What's new from the single source (docs/support.json)
           python scripts/render_support.py --notes "$TAG" > base.md
-          # #722: packaging/packs.json (scripts/make_pack_manifest.py) adds the optional-pack size table
+          # #722: release/packaging/packs.json (scripts/make_pack_manifest.py) adds the optional-pack size table
           # python opens the D:\ paths in DIST and appends the notes to the job summary
           python scripts/release_notes.py notes --version "$TAG" --base base.md --pr "$PR" \
             --verification "$DIST/release-check.md" --hw-run "$HW_RUN" --head "$HEAD" \
-            --packs-manifest packaging/packs.json --platforms "$PLATFORMS" --out "$DIST/notes.md"
+            --packs-manifest release/packaging/packs.json --platforms "$PLATFORMS" --out "$DIST/notes.md"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-win64
@@ -263,7 +263,7 @@ jobs:
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
           $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/tinglongwu-gpu-pack.zip"
-          & $env:GPU_PY packaging\build_windows.py --gpu-pack-only --out "$env:GPU_OUT" --url $url
+          & $env:GPU_PY release\packaging\build_windows.py --gpu-pack-only --out "$env:GPU_OUT" --url $url
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: GPU pack check (manifest size + sha256, CUDA DLLs, same tag as the core zip; size in the summary)
         shell: pwsh
@@ -736,14 +736,14 @@ jobs:
         shell: powershell
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-          python installer\build_installer.py --core-dir "$env:RUNNER_TEMP\core\tlwu"
+          python release\installer\build_installer.py --core-dir "$env:RUNNER_TEMP\core\tlwu"
           if ($LASTEXITCODE -ne 0) { throw "build failed" }
-      - name: Wizard size against WIZARD_MAX_MB (installer/build_installer.py; a warning, not a gate)
+      - name: Wizard size against WIZARD_MAX_MB (release/installer/build_installer.py; a warning, not a gate)
         shell: powershell
         run: |
           $exe = Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1
           if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }
-          python installer\build_installer.py --size-report $exe.FullName
+          python release\installer\build_installer.py --size-report $exe.FullName
           if ($LASTEXITCODE -ne 0) { throw "size report failed" }
       - name: Name tinglongwu-setup.exe and add both wizard names to the release's SHA256SUMS.txt (publish only)
         if: needs.plan.outputs.publish == 'true'

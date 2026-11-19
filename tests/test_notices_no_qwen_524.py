@@ -2,7 +2,7 @@
 import importlib.util
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "packaging" / "build_windows.py"
+SRC = Path(__file__).resolve().parent.parent / "release" / "packaging" / "build_windows.py"
 
 
 def _load():

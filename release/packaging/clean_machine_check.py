@@ -2,15 +2,15 @@ r"""Does the packaged tlwu.exe run on a clean Windows machine (no Python, no VC+
 
 Two checks, both without the owner's hands:
 
-  python packaging\clean_machine_check.py deps  <dist\tlwu>   static: every DLL that an .exe/.dll/.pyd in the folder
+  python release\packaging\clean_machine_check.py deps  <dist\tlwu>   static: every DLL that an .exe/.dll/.pyd in the folder
                                                               imports must be shipped in the folder or be part of
                                                               Windows itself; runs anywhere (also on Linux CI).
-  python packaging\clean_machine_check.py sandbox <dist\tlwu> [--out DIR] [--run] [--timeout 600]
+  python release\packaging\clean_machine_check.py sandbox <dist\tlwu> [--out DIR] [--run] [--timeout 600]
                                                               live: writes a Windows Sandbox config (fresh Windows,
                                                               networking off, folder read-only) that runs
                                                               `tlwu.exe --smoke` at logon; --run starts it and waits.
 
-  python packaging\clean_machine_check.py setup-time <setup.exe> [--out DIR] [--run] [--timeout 1800]
+  python release\packaging\clean_machine_check.py setup-time <setup.exe> [--out DIR] [--run] [--timeout 1800]
                                                               live (#769): Windows Sandbox (networking ON) runs the wizard
                                                               silently, writes setup_time.json; the judge gates setup time
                                                               minus download time, pip lines and readiness.

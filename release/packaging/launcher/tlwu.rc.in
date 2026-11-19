@@ -1,4 +1,4 @@
-// Resource script of tlwu.exe; @ICON@ / @MANIFEST@ are filled in by packaging/runtime_layer.py.
+// Resource script of tlwu.exe; @ICON@ / @MANIFEST@ are filled in by release/packaging/runtime_layer.py.
 // FILEVERSION / PRODUCTVERSION stay 0: build_windows.py writes the app version into the built exe (app layer).
 1 ICON "@ICON@"
 1 24 "@MANIFEST@"
