@@ -81,9 +81,17 @@ def pip_install(repo, pip=_pip, say=print) -> bool:
     say("  packages up to date / 套件已更新")
     return True
 
+def _repo_root() -> Path:
+    """Repo root in a source checkout (nearest parent holding pyproject.toml), else the frozen app dir."""
+    here = Path(__file__).resolve().parent
+    for d in here.parents:
+        if (d / "pyproject.toml").is_file():
+            return d
+    return here.parent
+
 
 def main(repo=None, run=_run, pip=_pip, launch=_launch, exe=None, say=print) -> int:
-    repo = Path(repo or Path(__file__).resolve().parent.parent)
+    repo = Path(repo or _repo_root())
     say("[1/3] git pull (dev) / 取得最新程式")
     if not git_update(repo, run, say):
         return 1

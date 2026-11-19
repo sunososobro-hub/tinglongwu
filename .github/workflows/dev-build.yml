@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' tinglongwu/__init__.py)
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/core/tinglongwu/__init__.py)
           subject=$(git log -1 --pretty=%s)
           {
             echo "**Development build, untested. Not a release.** Built from \`dev\` at \`${GITHUB_SHA::7}\` (code version $version)."

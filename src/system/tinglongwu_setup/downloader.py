@@ -27,7 +27,17 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # repo root  # repo root
+
+def _repo_root() -> Path:
+    """Repo root in a source checkout (nearest parent holding pyproject.toml), else the frozen app dir."""
+    here = Path(__file__).resolve().parent
+    for d in here.parents:
+        if (d / "pyproject.toml").is_file():
+            return d
+    return here.parent
+
+
+ROOT = _repo_root()  # repo root (source) / app dir (frozen)
 PINS_FILE = Path(__file__).with_name("manifest.json")
 ARGOS_INDEX = "https://raw.githubusercontent.com/argosopentech/argospm-index/main/index.json"
 MB = 1024 * 1024

@@ -755,7 +755,7 @@ jobs:
           set -euo pipefail
           cd dist/installer
           exe="tinglongwu-setup-${TAG#v}.exe"   # named after tinglongwu.__version__, which must match the tag
-          [ -f "$exe" ] || { echo "expected $exe (set __version__ in tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
+          [ -f "$exe" ] || { echo "expected $exe (set __version__ in src/core/tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
           cp "$exe" tinglongwu-setup.exe
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O all.txt
           grep -v ' tinglongwu-setup' all.txt > SHA256SUMS.txt || true   # a re-run replaces the wizard lines

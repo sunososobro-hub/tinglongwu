@@ -47,6 +47,14 @@ def hide_own_console() -> None:
     except Exception:  # noqa: BLE001
         pass
 
+def _repo_root() -> Path:
+    """Repo root in a source checkout (nearest parent holding pyproject.toml), else the frozen app dir."""
+    here = Path(__file__).resolve().parent
+    for d in here.parents:
+        if (d / "pyproject.toml").is_file():
+            return d
+    return here.parent
+
 
 def prepare_env(bundled: bool, cpu: bool) -> Path:
     """Env set-up before any model library is imported. Returns the models dir."""
@@ -55,7 +63,7 @@ def prepare_env(bundled: bool, cpu: bool) -> Path:
         os.environ.setdefault("TLWU_MODELS", str(tiers.default_models_dir()))
     if cpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # ctranslate2 then reports 0 CUDA devices
-    return Path(os.environ.get("TLWU_MODELS") or Path(__file__).resolve().parent.parent / "models")
+    return Path(os.environ.get("TLWU_MODELS") or _repo_root() / "models")
 
 
 def split_cpu(argv: list[str]) -> tuple[list[str], bool]:

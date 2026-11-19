@@ -34,7 +34,7 @@ MOBILE_CHECK = "mobile-apk"  # #1618: workflow name; its job is a generic `build
 RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
                     "hotfix.yml")
 PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
-                   "tinglongwu/__init__.py", "pyproject.toml", "tinglongwu/offline.py", "scripts/download_models.py",
+                   "src/core/tinglongwu/__init__.py", "pyproject.toml", "src/system/tinglongwu/offline.py", "scripts/download_models.py",
                    "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
 PROTECTED_PREFIX = (".claude/", "release/packaging/", "release/installer/")
 
@@ -210,8 +210,8 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         exempt = bump is not None and bump(files)[0]
         if not exempt and not pass_at:
             return "needs-opus", "protected / g4 path: " + ", ".join(protected[:5])
-    if any(f["filename"] == "tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
-        return "needs-opus", "touches tinglongwu/__init__.py"
+    if any(f["filename"] == "src/core/tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
+        return "needs-opus", "touches src/core/tinglongwu/__init__.py"
 
     test = [c for c in checks if c.get("name") == "test"]
     if not test or any(c.get("status") != "completed" for c in test):

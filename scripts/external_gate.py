@@ -41,15 +41,15 @@ from pathlib import Path
 REPO = "sunososobro-hub/tinglongwu"
 MAX_CHANGED_LINES = 50  # number from #352 rule 1
 MERGE_METHODS = ("rebase", "merge")  # keeps the contributor as commit author; squash is never used
-ALLOWED_GLOBS = ("tinglongwu/*.py", "tests/*.py")  # fnmatch "*" also crosses "/", so subpackages match
+ALLOWED_GLOBS = ("src/*/tinglongwu/*.py", "tests/*.py")  # fnmatch "*" also crosses "/", so subpackages match
 # Inside the allowed folders but still owner-only: network guard / offline mode, model download + pins,
 # install hints, and the test harness itself (a conftest change can skip or neutralise any test).
 PROTECTED_FILES = frozenset({
-    "tinglongwu/offline.py",
-    "tinglongwu/netreport.py",
-    "tinglongwu/models.py",
-    "tinglongwu/llamacheck.py",
-    "tinglongwu/ollama.py",  # the one network client (loopback-only guard in _endpoint)
+    "src/system/tinglongwu/offline.py",
+    "src/flow/tinglongwu/netreport.py",
+    "src/core/tinglongwu/models.py",
+    "src/system/tinglongwu/llamacheck.py",
+    "src/core/tinglongwu/ollama.py",  # the one network client (loopback-only guard in _endpoint)
     "tests/test_no_network_code.py",  # its ALLOWED list whitelists network imports
     "tests/conftest.py",
 })

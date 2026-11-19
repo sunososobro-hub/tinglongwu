@@ -21,7 +21,10 @@ from pathlib import Path
 # Same offline guard as the main process (the worker venv has no tinglongwu installed; load it from this checkout).
 # `tinglongwu/__init__` only imports tinglongwu.offline (stdlib), so no extra packages are needed.
 try:
-    sys.path.append(str(Path(__file__).resolve().parents[2]))
+    _here = Path(__file__).resolve()
+    # source: <repo>/src/flow/tinglongwu/reverse -> <repo>/src/core holds tinglongwu/__init__; frozen: flat tinglongwu/
+    sys.path.append(str(next((d for d in (_here.parents[3] / "core", _here.parents[2])
+                              if (d / "tinglongwu" / "__init__.py").is_file()), _here.parents[2])))
     from tinglongwu import offline as _offline  # noqa: E402
 
     _offline.apply_env()

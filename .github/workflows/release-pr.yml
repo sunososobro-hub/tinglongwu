@@ -81,7 +81,7 @@ jobs:
           # an older commit may carry an older __version__: acting on it could close the current release PR.
           # Only that case is stale. An older commit with the SAME __version__ as the dev tip goes on (#1225):
           # on a busy dev the tip moves every few minutes and the snapshot was never cut.
-          ver() { git show "$1:tinglongwu/__init__.py" | sed -n 's/^__version__ = "\(.*\)"/\1/p'; }
+          ver() { git show "$1:src/core/tinglongwu/__init__.py" | sed -n 's/^__version__ = "\(.*\)"/\1/p'; }
           if [ -n "$RUN_SHA" ] && [ "$(git rev-parse origin/dev)" != "$RUN_SHA" ] \
              && [ "$(ver "$RUN_SHA")" != "$(ver origin/dev)" ]; then
             echo "stale: $RUN_SHA has __version__ $(ver "$RUN_SHA"), dev tip has $(ver origin/dev)" | tee -a "$GITHUB_STEP_SUMMARY"

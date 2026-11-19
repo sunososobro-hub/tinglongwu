@@ -26,12 +26,12 @@ REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
 ISS = REPO / "release" / "installer" / "tinglongwu.iss"
 OUT = REPO / "dist" / "installer"
 # what the installed app needs at run time and for install.ps1 / update.bat / the menus
-STAGE_PREFIXES = ("tinglongwu/", "tinglongwu_setup/", "tlwu_app/", "scripts/", "release/installer/run_install.ps1",
+STAGE_PREFIXES = ("src/", "scripts/", "release/installer/run_install.ps1",
                   "install.ps1", "install.bat", "update.bat", "pyproject.toml", "requirements", "LICENSE",
                   "README", "docs/README.zh-", "docs/PRIVACY_POLICY", ".github/SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 # the one app icon (#270, #127): the wizard, its shortcuts, the uninstall entry, install.ps1 shortcuts and tlwu.exe
-APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
+APP_ICON = REPO / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
 
 
 def app_version(repo: Path = REPO) -> str:
