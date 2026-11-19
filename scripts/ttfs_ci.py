@@ -126,7 +126,7 @@ def setup_time_report(directory, install_seconds, out_path):
     """#773: the wizard run on this clean VM judged like `clean_machine_check.py setup-time`. Writes setup_time.json
     (setup_seconds, download_seconds, download_mb, pip_lines, ready) next to ttfs.json and returns summary text."""
     import json
-    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "packaging"))
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "release", "packaging"))
     import clean_machine_check as cmc
     log_path = os.path.join(directory, "install.log")
     try:
