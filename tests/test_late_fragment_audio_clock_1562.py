@@ -131,3 +131,22 @@ def test_live_run_joins_a_tail_whose_asr_result_came_late(tmp_path):
         tgt="zh", merger=SentenceMerger(min_words=3, amend_window=0.3), audio_clock=False)
     assert [(r.original, r.replaces) for r in out.rows][-1] == (
         "Now I will show you the settings for the new version.", HEAD)
+
+
+RU_HEAD = "Сейчас я покажу вам настройки для новой."
+
+
+def test_garbled_hyphenated_ru_tail_joins_the_previous_line():
+    # e2e run 44399363350 (dev e1d1ced): Whisper heard "и версии" as "Идер-си." 1 s after the line; one hyphenated
+    # word, not a capitalised 2-word clause
+    m = _m()
+    m.add(RU_HEAD, "ru", 0.0, span=(0.5, 3.6))
+    out = m.add("Идер-си.", "ru", 9.0, span=(4.6, 5.3))
+    assert _texts(out) == [("Сейчас я покажу вам настройки для новой идер-си.", RU_HEAD)]
+
+
+def test_capitalised_two_word_clause_still_stays_separate():
+    m = _m()
+    m.add(RU_HEAD, "ru", 0.0, span=(0.5, 3.6))
+    assert m.add("Вот так.", "ru", 0.5, span=(4.6, 5.3)) == []
+    assert _texts(m.flush()) == [("Вот так.", None)]

@@ -23,6 +23,7 @@ _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 _TRAIL_ELLIPSIS = re.compile(r"\s*(?:\.{2,}|…)+\s*$")
 PAUSE_SEND = 0.8  # seconds of VAD silence after a segment that means "the speaker stopped": send what we have
 _WORD = re.compile(r"\w+", re.UNICODE)
+_HYPH_WORD = re.compile(r"\w+(?:[-\u2010\u2011]\w+)*", re.UNICODE)  # #1562: "Кто-то" = one word
 # #273 clause boundary for a timeout release in whole-sentence mode: after , ; : (Latin, then a space) or CJK ，；：、
 _CLAUSE = re.compile(r"(?<=[,;:])\s+|(?<=[，；：、])\s*")
 MIN_FINAL_UNITS = 4  # #288: a pause / timeout does not release a buffer shorter than this (a head, not a sentence)
@@ -223,7 +224,9 @@ class SentenceMerger:
         after a finished sentence."""
         if _Q_END.search(frag) or _Q_END.search(prev):
             return True
-        words = _WORD.findall(frag)
+        # #1562: a hyphenated word is one word here ("Кто-то." / Whisper's garbled "Идер-си." for "И версии"), so a
+        # one-word late tail is not taken for a capitalised clause of its own
+        words = _HYPH_WORD.findall(frag)
         if len(words) == 1 and _norm(words[0]) in _STANDALONE:
             return True
         if words and _norm(words[0]) in _CONT_LEAD:  # #1562: "And ..." / "И ..." continues the sentence
