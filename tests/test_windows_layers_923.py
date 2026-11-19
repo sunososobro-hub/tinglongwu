@@ -165,7 +165,7 @@ def test_an_upgrade_never_runs_the_previous_versions_bytecode(tmp_path):
         f = old_repo / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.exists() or f.write_text("")
-    (old_repo / "release" / "packaging").mkdir()
+    (old_repo / "release" / "packaging").mkdir(parents=True)
     (old_repo / "release" / "packaging" / bw.USAGE_TEXT).write_text("x", "utf-8")
     app.mkdir()
     bw.build_app_layer(app, rt.pyc_magic(), repo=old_repo)

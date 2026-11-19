@@ -229,8 +229,8 @@ def scan_pr_files(files: list[dict], rx, gh=None, head_sha: str = "") -> list[st
         name, status = f.get("filename", "?"), f.get("status", "")
         if rx.search(name) and status != "removed":
             hits.append(f"{rx.sub(name)}:0: (file name)")
-        if status == "removed":
-            continue
+        if status == "removed" or (status == "renamed" and not f.get("changes")):
+            continue  # a pure rename (#1653 moved vendored files) adds no lines; it has no patch either
         patch = f.get("patch")
         if patch is not None:
             lines = list(sd.added_lines(patch))

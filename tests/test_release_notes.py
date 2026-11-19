@@ -419,6 +419,7 @@ def test_release_workflow_notes_list_every_pack_size(tmp_path, monkeypatch):
     argv = _release_yml_notes_argv({"TAG": "v0.3.9", "PR": "", "HW_RUN": "", "HEAD": "", "PLATFORMS": "", "DIST": str(tmp_path)})
     assert "--packs-manifest" in argv
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "release").mkdir(exist_ok=True)
     (tmp_path / "release" / "packaging").symlink_to(ROOT / "release" / "packaging")  # release.yml runs from the repo root
     monkeypatch.setattr(rn, "repo", lambda: "o/r")
     monkeypatch.setattr(rn, "history", lambda rep, tag, tip="HEAD": (None, [], {}))
