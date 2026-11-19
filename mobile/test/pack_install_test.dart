@@ -253,6 +253,8 @@ void main() {
       return ImportReport()..imported.add('lang-ru/file.bin');
     };
     final result = await open(t, fake, [_asrRu, _voiceRu]);
+    // The two cards now push the import button below the fold of the list.
+    await t.scrollUntilVisible(find.byKey(const Key('importDownloaded')), 200);
     await t.tap(find.byKey(const Key('importDownloaded')));
     await t.pumpAndSettle();
     expect(find.text('已安裝'), findsOneWidget);
