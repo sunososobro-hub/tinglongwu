@@ -36,8 +36,12 @@ class PromptBuilder {
 
   /// Desktop `hymt.build_prompt(text, src, tgt)` (no glossary terms): the
   /// Chinese card template when Chinese is on either side, else the English one.
-  static String userMessage(String text, {String src = 'ru', String tgt = 'zh'}) {
-    if (src == 'zh' || src == 'yue' || tgt == 'zh') {
+  ///
+  /// [alt] (#1616) picks the other card template (English when Chinese is on a side, else Chinese):
+  /// the retry when the first answer came back in the wrong script (greedy decoding would repeat it).
+  static String userMessage(String text, {String src = 'ru', String tgt = 'zh', bool alt = false}) {
+    final zhCard = src == 'zh' || src == 'yue' || tgt == 'zh';
+    if (zhCard != alt) {
       return '将以下文本翻译成${zhNames[tgt] ?? tgt}，'
           '注意只需要输出翻译后的结果，不要额外解释：\n\n$text';
     }
@@ -48,8 +52,8 @@ class PromptBuilder {
 
   /// Full raw prompt for llama.cpp (tokenize with parseSpecial, no addSpecial):
   /// the GGUF chat template with one user message and add_generation_prompt.
-  static String build(String text, {String src = 'ru', String tgt = 'zh'}) =>
-      '$bos$userTag${userMessage(text, src: src, tgt: tgt)}$assistantTag';
+  static String build(String text, {String src = 'ru', String tgt = 'zh', bool alt = false}) =>
+      '$bos$userTag${userMessage(text, src: src, tgt: tgt, alt: alt)}$assistantTag';
 
   /// Desktop `engines.max_tokens_for`: output budget proportional to input.
   static int maxTokensFor(String text) {

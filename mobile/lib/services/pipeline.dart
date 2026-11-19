@@ -1068,7 +1068,7 @@ class Pipeline extends ChangeNotifier {
               ? '${job.lang}->$tgt${job.route.speak ? " speak" : ""}'
               : (r.check.isTraditional ? 'zh-Hant' : 'NOT-TRAD ${r.check}');
           _log.i('${tgt.toUpperCase()} [$tag'
-              '] ${AppLog.text(r.zh)} | '
+              '${r.scriptCheck.isEmpty ? '' : ' script=${r.scriptCheck}'}] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '
               'ttft=${r.firstTokenMs}ms tok=${r.tokens} '
               'tps=${r.tokensPerSecond.toStringAsFixed(1)} n_ctx=${r.nCtx} '
