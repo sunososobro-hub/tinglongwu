@@ -44,7 +44,7 @@ More languages on the way ([language plan](docs/VISION.md)). [Full docs: require
 
 ## Want to help?
 
-- 📘 [How to contribute](CONTRIBUTING.md): PRs are welcome, the default answer is yes
+- 📘 [How to contribute](.github/CONTRIBUTING.md): PRs are welcome, the default answer is yes
 - 🟢 [Good first issues](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
 - 💬 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions): ask, show your setup, share an idea (no GitHub skills needed)
 - 🧭 [Vision: what we build and what we never do](docs/VISION.md)

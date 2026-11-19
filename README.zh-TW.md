@@ -42,7 +42,7 @@ Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前
 
 ## 想幫忙？
 
-- 📘 [怎麼參與](CONTRIBUTING.md)：歡迎發 PR，預設答案是 yes
+- 📘 [怎麼參與](.github/CONTRIBUTING.md)：歡迎發 PR，預設答案是 yes
 - 🟢 [新手友善的題目](https://github.com/sunososobro-hub/tinglongwu/labels/good%20first%20issue)
 - 🐞 [用你自己的 AI 回報問題](docs/report-with-ai.zh-TW.md)：不用 GitHub 帳號，複製一段提示貼給 ChatGPT / Claude / Gemini
 - 💬 [討論區](https://github.com/sunososobro-hub/tinglongwu/discussions)：問問題、分享你怎麼用、提點子（不用會寫程式）
