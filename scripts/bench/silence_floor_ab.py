@@ -92,10 +92,10 @@ def table(rows) -> str:
 
 
 def speech_clips(root: Path, n: int):
-    import soundfile as sf
     paths = sorted((root / "fleurs_ru" / "audio").rglob("*.wav"))[:n]
     if not paths:
         raise SystemExit(f"no FLEURS wav files under {root / 'fleurs_ru' / 'audio'}")
+    import soundfile as sf
     clips = []
     for i, p in enumerate(paths):
         x, sr = sf.read(str(p), dtype="float32")
