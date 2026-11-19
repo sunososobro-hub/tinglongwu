@@ -188,6 +188,11 @@ def default_models_dir() -> Path:
     return Path(base) / "tinglongwu" / "models"
 
 
+def gpu_fallback_line(reason: str = "") -> str:
+    """#1531: the one plain line shown when the GPU could not be used and the CPU takes over."""
+    return f"GPU 無法使用，已改用 CPU：{reason or '自我測試失敗'}"
+
+
 def auto_device(gpu: Gpu | None, selftest_ok: bool | None, reason: str = "", user_off: bool = False) -> tuple[str, str]:
     """#1531: (device, one plain line) with no CPU/GPU question for the user. `selftest_ok` = result of the one GPU
     self-test run (None = not run). user_off = "Use GPU: Off" under Adjust > Advanced. Any GPU failure -> cpu + reason."""
@@ -196,5 +201,5 @@ def auto_device(gpu: Gpu | None, selftest_ok: bool | None, reason: str = "", use
     if gpu is None or driver_too_old(gpu):
         return "cpu", ""
     if selftest_ok is False:
-        return "cpu", f"GPU 無法使用，已改用 CPU：{reason or '自我測試失敗'}"
+        return "cpu", gpu_fallback_line(reason)
     return "cuda", ""
