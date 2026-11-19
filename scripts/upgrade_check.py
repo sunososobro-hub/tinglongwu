@@ -224,6 +224,12 @@ def run_apply(app_zip: Path, app: Path, run=None) -> None:
                             timeout=600, check=True)
 
 
+def apply_log(app: Path) -> str:
+    """The helper's own reason for a rolled-back swap (selfupdate.APPLY_APP_LOG, #1652), '' when it wrote none."""
+    f = app / _selfupdate().APPLY_APP_LOG
+    return f" ({' '.join(f.read_text('utf-8-sig', errors='replace').split())[:2000]})" if f.is_file() else ""
+
+
 def _old_install(old_zip: Path, core: Path, dest: Path) -> Path:
     app = unzip(old_zip, dest)
     new_rt = core / "runtime-layer.json"
@@ -246,7 +252,8 @@ def cmd_app_update(old_zip: Path, core: Path, dest: Path) -> int:
     run_apply(app_zip, app)
     new_ver = json.loads((core / "app-layer.json").read_text("utf-8"))
     got = json.loads((app / "app-layer.json").read_text("utf-8")) if (app / "app-layer.json").is_file() else {}
-    prob = ("" if got == new_ver else "app-layer.json is not the new one after --apply-app") or run_smoke(app)
+    prob = ("" if got == new_ver else "app-layer.json is not the new one after --apply-app" + apply_log(app)) \
+        or run_smoke(app)
     if prob:
         print("app-update: FAIL:", prob)
         return 1

@@ -61,6 +61,8 @@ APP_MANIFEST_NAME = APP_ZIP_NAME + ".manifest.json"  # {name, size, sha256, url,
 RUNTIME_MANIFEST = "runtime-layer.json"  # in the install dir: {key, lite, ...}
 APP_ITEMS = ("tinglongwu", "tlwu_app", "tinglongwu_setup", "app-layer.json", "tlwu.exe")  # swapped by --apply-app
 STAGING_DIR = ".update-staging"
+APPLY_APP_LOG = "tlwu-apply-update.log"  # why the last --apply-app swap was rolled back (#1652); removed on success
+ZIP_ASSEMBLY = "System.IO.Compression.FileSystem, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
 CHECK_TIMEOUT_S = 6
 SUMS_TIMEOUT_S = 30
 WAIT_GUI_EXIT_S = 120  # the helper gives the GUI this long to close before installing anyway
@@ -370,21 +372,26 @@ def apply_script(exe: Path, app_dir: Path, pid: int, sha: str | None = None) -> 
 
 def apply_app_script(zip_path: Path, app_dir: Path, pid: int, sha: str | None = None) -> str:
     """PowerShell for the app-layer swap (#946): wait for the GUI, extract to <app>\\.update-staging, rename the
-    current items to *.old, move the staged ones in, start tlwu.exe. Any error: put the *.old set back and start the
-    old GUI (the user is never left without the app). *.old is deleted by the next successful start."""
+    current items to *.old, move the staged ones in, start tlwu.exe. Any error: put the *.old set back, write the
+    error to <app>\\APPLY_APP_LOG and start the old GUI (the user is never left without the app). *.old is deleted by
+    the next successful start."""
     items = ", ".join(_ps_quote(i) for i in APP_ITEMS)
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
         f"$app = {_ps_quote(app_dir)}",
         f"$zip = {_ps_quote(zip_path)}",
         f"$stage = Join-Path $app {_ps_quote(STAGING_DIR)}",
+        f"$log = Join-Path $app {_ps_quote(APPLY_APP_LOG)}",
         f"$items = @({items})",
         "$moved = @()",
         f"Wait-Process -Id {int(pid)} -Timeout {WAIT_GUI_EXIT_S} -ErrorAction SilentlyContinue",
         "try {",
         *(["  " + _ps_hash_guard("$zip", sha)] if sha else []),
         "  if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }",
-        "  Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force",
+        # #1652: .NET ZipFile, not Expand-Archive: a powershell.exe started from pwsh 7 (or with a changed
+        # PSModulePath) can load an Archive module that does not run on 5.1, the try then failed silently
+        f"  [void][System.Reflection.Assembly]::Load({_ps_quote(ZIP_ASSEMBLY)})",
+        "  [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $stage)",
         "  foreach ($i in $items) { if (-not (Test-Path -LiteralPath (Join-Path $stage $i))) { throw \"missing $i\" } }",
         "  foreach ($i in $items) {",
         "    $cur = Join-Path $app $i; $old = $cur + '.old'",
@@ -394,7 +401,11 @@ def apply_app_script(zip_path: Path, app_dir: Path, pid: int, sha: str | None = 
         "    Move-Item -LiteralPath (Join-Path $stage $i) -Destination $cur",
         "  }",
         "  Remove-Item -LiteralPath $stage -Recurse -Force",
+        "  if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }",
         "} catch {",
+        "  $err = 'apply-app failed: ' + ($_ | Out-String)",
+        "  Write-Output $err",
+        "  try { Set-Content -LiteralPath $log -Value $err -Encoding UTF8 } catch { }",
         "  foreach ($i in $moved) {",
         "    $cur = Join-Path $app $i; $old = $cur + '.old'",
         "    if (Test-Path -LiteralPath $old) {",

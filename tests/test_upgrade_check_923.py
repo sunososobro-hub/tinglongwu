@@ -176,7 +176,7 @@ def test_plan_says_app_for_the_same_runtime_key_and_full_for_a_mismatch(tmp_path
 
 def test_apply_text_is_the_real_helper_without_the_gui_start(tmp_path):
     text = uc.apply_text(tmp_path / "a.zip", tmp_path / "app", 123)
-    assert "Expand-Archive" in text and "Rename-Item" in text and "$exe = Join-Path" in text
+    assert "ExtractToDirectory" in text and "Rename-Item" in text and "$exe = Join-Path" in text
     assert "Start-Process" not in text
 
 
