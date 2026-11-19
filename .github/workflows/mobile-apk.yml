@@ -7,6 +7,14 @@ name: mobile-apk
 # The same job also builds the Google Play AAB: the models ride in two fast-follow Play Asset Delivery
 # packs (tool/fill_asset_packs.py) that Play downloads right after install. On dev pushes the AAB is kept as an artifact and, when the
 # PLAY_SA_JSON secret and the release key exist, uploaded to the Play internal track.
+# #1621 phone preview: same-repo PRs touching mobile/** also upload to the internal track (fork PRs never do).
+# Runner: set the repo variable MOBILE_RUNNER=tlwu-mobile to build on the owner's home Windows runner
+# [self-hosted, windows, tlwu-mobile] (warm Gradle/pub/Flutter/NDK/AAR caches on its persistent disk; Git Bash steps).
+# The label can sit on the same machine as the hw runner (tlwu-hw): the two jobs then just queue one after the other.
+# Unset (or any other value) = ubuntu-24.04, unchanged. Fork PRs always use ubuntu-24.04 (never the home machine).
+# Limitation: GitHub cannot fall back after a queue timeout, so if the home runner is off, clear MOBILE_RUNNER.
+# Windows prerequisites on that machine: Flutter, Android SDK (%LOCALAPPDATA%\Android\Sdk, or ANDROID_HOME), Git for
+# Windows (bash, awk, sha256sum, base64) + `unzip`, Python (`python`; a python3 shim is added per job).
 on:
   push:
     branches: [dev]
@@ -27,7 +35,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && '["self-hosted","windows","tlwu-mobile"]' || '["ubuntu-24.04"]') }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -38,7 +46,27 @@ jobs:
         shell: bash   # -eo pipefail: a failing aapt/apksigner in a pipe fails the step
         working-directory: mobile
     steps:
+      - name: Start clock
+        run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Windows runner prep (SDK location, tool check, python3 shim)
+        if: runner.os == 'Windows'
+        run: |
+          SDK="${ANDROID_HOME:-$(cygpath -u "$LOCALAPPDATA")/Android/Sdk}"
+          [ -d "$SDK" ] || { echo "Android SDK not found at $SDK (set ANDROID_HOME on the runner)"; exit 1; }
+          echo "ANDROID_HOME=$(cygpath -m "$SDK")" >> "$GITHUB_ENV"
+          for t in unzip awk sha256sum base64 python; do command -v "$t" > /dev/null || { echo "missing tool on the runner: $t"; exit 1; }; done
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/bin/python3"
+          cygpath -m "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Decide Play upload (dev push or same-repo PR; never fork PRs)
+        id: plan
+        run: python3 -I ../scripts/mobile_upload_plan.py "$EVENT" "$REF" "$REPO" "$HEAD_REPO" "$HAS_PLAY" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -46,8 +74,14 @@ jobs:
       - name: Android SDK packages (pinned NDK + cmake for the llama.cpp AAR)
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+          [ -e "$SDKM" ] || SDKM="$SDKM.bat"
+          # idempotent on a persistent disk: skip when both are already installed
+          if [ -d "$ANDROID_HOME/ndk/$NDK_VERSION" ] && [ -d "$ANDROID_HOME/cmake/$CMAKE_VERSION" ]; then
+            echo "NDK $NDK_VERSION + cmake $CMAKE_VERSION already installed"
+          else
+            yes | "$SDKM" --licenses > /dev/null || true
+            "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+          fi
       - name: Cache the self-built llama.cpp AAR
         id: aar
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -147,7 +181,8 @@ jobs:
           "$BT/aapt" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
           grep -qE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/perms.txt" || { echo "APK lacks INTERNET (pack download)"; exit 1; }
           if grep -qE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
-          "$BT/apksigner" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
+          SIGNER="$BT/apksigner"; [ -e "$SIGNER" ] || SIGNER="$BT/apksigner.bat"
+          "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
           rm -f "$RUNNER_TEMP/release.jks"
           mkdir -p "$RUNNER_TEMP/out"
           cp "$APK" "$RUNNER_TEMP/out/$APK_NAME"
@@ -167,7 +202,7 @@ jobs:
           retention-days: 7
           compression-level: 0
       - name: Upload to Google Play (internal track)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' && env.HAS_PLAY == 'true'
+        if: steps.plan.outputs.upload == 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SA_JSON }}
@@ -177,6 +212,11 @@ jobs:
           # "draft" until the app has had its first release in Play Console; then set the repo
           # variable PLAY_RELEASE_STATUS=completed so internal testers get builds automatically.
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+      - name: Build minutes (#1621)
+        if: always()
+        run: |
+          M=$(( ($(date +%s) - BUILD_START) / 60 ))
+          echo "### mobile build: ${M} min on runner \`${{ runner.name }}\` (${{ runner.environment }}), upload=${{ steps.plan.outputs.upload }}, versionCode=${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     needs: build
