@@ -11,12 +11,17 @@ class PlayPacks {
   /// True when Play can deliver the model packs to this install.
   static Future<bool> available() async {
     try {
-      final m = await _ch.invokeMapMethod<String, dynamic>('playStatus');
-      return m?['available'] == true;
+      return packsAvailable(await _ch.invokeMapMethod<String, dynamic>('playStatus'));
     } catch (_) {
       return false; // e.g. an old build without the channel method
     }
   }
+
+  /// #1169: a build without model packs (the default for the Play internal track) can still answer
+  /// `available: true` from Play, with 0 bytes to fetch. That is no download: the manual import / in-app
+  /// download of the models zip has to be offered instead of waiting for packs that never come.
+  static bool packsAvailable(Map<String, dynamic>? status) =>
+      status?['available'] == true && ((status?['totalBytes'] as num?) ?? 0) > 0;
 
   static Future<void> cancel() => _ch.invokeMethod('playCancel');
 

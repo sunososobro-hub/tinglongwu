@@ -70,7 +70,7 @@ def test_paginated_slurp_shape_and_bad_input(tmp_path):
     assert subprocess.run([sys.executable, str(SCRIPT), str(bad)], capture_output=True).returncode == 2
 
 
-@pytest.mark.parametrize("listed,expected,code", [(3, 3, 0), (2, 3, 1), (250, 250, 1), (250, 300, 1), (3, None, 0)])
+@pytest.mark.parametrize("listed,expected,code", [(3, 3, 0), (2, 3, 1), (250, 250, 1), (250, 300, 1), (3, None, 0), (4, 3, 0), (250, 249, 1)])
 def test_incomplete_or_capped_commit_list_fails(tmp_path, listed, expected, code):
     commits = [commit(f"{i:040x}", OWNER) for i in range(listed)]
     args = [] if expected is None else ["--expected-count", str(expected)]

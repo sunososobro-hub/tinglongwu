@@ -23,6 +23,7 @@ import io.flutter.plugin.common.MethodChannel
 // activity-result launcher.
 class MainActivity : FlutterFragmentActivity() {
     private val importer by lazy { ModelImporter(this) }
+    private val downloader by lazy { PackDownloader() }
     private val playConfirm: ActivityResultLauncher<IntentSenderRequest> =
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
             play.onConfirmResult(r.resultCode == RESULT_OK)
@@ -129,6 +130,11 @@ class MainActivity : FlutterFragmentActivity() {
                         ch.invokeMethod("importProgress", mapOf("done" to done, "total" to total))
                     }
                     "cancelImport" -> { importer.cancel(); result.success(null) }
+                    // One-tap pack download (#1567): the only code that uses the network.
+                    "downloadPack" -> downloader.download(call, result) { done, total ->
+                        ch.invokeMethod("downloadProgress", mapOf("done" to done, "total" to total))
+                    }
+                    "cancelDownload" -> { downloader.cancel(); result.success(null) }
                     // Models from Google Play fast-follow asset packs (only when installed from Play).
                     "playLocations" -> result.success(play.locations())
                     "playStatus" -> play.status(result)

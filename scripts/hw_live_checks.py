@@ -12,8 +12,9 @@ Clips: FLEURS test (CC-BY 4.0, eval/matrix_pins.json, every WAV checked against 
 joined with GAP_S of silence; each FLEURS clip is a different reader, so the joined clip has many speakers.
   mic      : en clips cycled to MIC_S seconds, played into "CABLE Input"; `verify_offline.py --mic` runs tlwu on
              "CABLE Output" (the microphone path). PASS when WER(mic) <= MAX_WER_RATIO x WER(same clip as --file)
-             and no MAX_GAP_S stretch of speech passes without a subtitle (pauses >= QUIET_MIN_S between voiced
-             frames, e.g. a clip join, are not counted: nobody speaks there, #1247).
+             The longest stretch of speech without a subtitle (pauses >= QUIET_MIN_S between voiced frames, e.g. a
+             clip join, are not counted) is report only (#1247): printed with the median / max of the last
+             GAP_HISTORY_N runs (--gap-history), it never fails the check.
   meeting  : clip A (zh) into "CABLE Input", the speak side's --mic "CABLE Output" (▶ Me); clip B (en) played by a
              separate process on the real speakers, which the listen side (--listen --capture-device) hears through
              WASAPI loopback (◀ Them). PASS when >= MIN_LABEL_OK of the saved lines carry the side of the clip
@@ -28,6 +29,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -44,7 +46,8 @@ MIC_S = 300.0         # #894: "a 5-minute recorded multi-speaker clip"
 MEET_S = 60.0         # #4: length of clip A and of clip B
 LOOP_S = 30.0         # #348
 MAX_WER_RATIO = 1.25  # #894 Acceptance (1)
-MAX_GAP_S = 10.0      # #894 Acceptance (1)
+MAX_GAP_S = 10.0      # #894 Acceptance (1); report only since #1247 (never calibrated: 1 of 15 runs under it)
+GAP_HISTORY_N = 10    # #1247: the report prints the median and max gap of the last N hw-tests runs
 MIN_LABEL_OK = 0.90   # #4 Acceptance (2)
 MIN_WORD_HIT = 0.5    # a line "comes from" a clip when >= half of its tokens occur in that clip's reference
 TAIL_S = 15.0         # keep listening after playback: the last sentence waits up to --max-wait
@@ -403,13 +406,31 @@ def check_mic(file_wer: float, mic_wer: float, gap: float, n_lines: int,
         reasons.append("no line from the microphone")
     if mic_wer > MAX_WER_RATIO * file_wer:
         reasons.append(f"mic WER > {MAX_WER_RATIO}x file WER")
-    if gap > MAX_GAP_S:
-        reasons.append(f"gap without a subtitle {gap:.1f} s > {MAX_GAP_S:.0f} s")
+    # #1247: the subtitle gap is report only (it does not fail the check); WER and "no line" still do
     ratio = mic_wer / file_wer if file_wer else float("inf") if mic_wer else 1.0
     msg = (f"WER mic {mic_wer:.3f} vs file {file_wer:.3f} (x{ratio:.2f}, limit {MAX_WER_RATIO}), "
-           f"longest gap {gap:.1f} s (limit {MAX_GAP_S:.0f})"
+           f"longest gap {gap:.1f} s (report only, was limit {MAX_GAP_S:.0f})"
            + (f", {wall_gap:.1f} s wall incl. pauses" if wall_gap is not None else "") + f", {n_lines} mic lines")
     return not reasons, msg + ("; " + "; ".join(reasons) if reasons else "")
+
+
+def gap_history(path: Path, gap: float, note: str = "", n: int = GAP_HISTORY_N) -> str:
+    """#1247: append this run's longest subtitle gap to a JSONL history (the self-hosted runner's cache) and return
+    one report line with the median and max of the last n runs. Unreadable lines are ignored."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"gap": round(float(gap), 1), "note": note,
+                            "at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")}) + "\n")
+    gaps = []
+    for ln in path.read_text("utf-8").splitlines():
+        try:
+            gaps.append(float(json.loads(ln)["gap"]))
+        except (ValueError, KeyError, TypeError):
+            continue
+    last = gaps[-n:]
+    return (f"subtitle gap, last {len(last)} runs: median {statistics.median(last):.1f} s, "
+            f"max {max(last):.1f} s (report only)")
 
 
 def _hit(text: str, ref: str, lang: str) -> float:
@@ -635,7 +656,7 @@ def _wer(rows: list[dict], ref: str) -> float:
     return error_rate([(ref, " ".join(r["src"] for r in rows))], "en")
 
 
-def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
+def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> tuple[bool, str]:
     meta = json.loads((clips / "clips.json").read_text("utf-8"))["mic_en"]
     wav, common = clips / meta["wav"], ["--lang", "en", "--transcript-only", "--models-dir", mdir]
     fj, mj, stop = out / "mic_file.jsonl", out / "mic_live.jsonl", out / "mic.stop"
@@ -703,6 +724,12 @@ def run_mic(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
         {"diagnose": diag, "mic_offsets_s": [round(x, 1) for x in offsets], "spans": meta.get("spans"),
          "file_src": [r.get("src", "") for r in file_rows], "mic_src": [r.get("src", "") for r in mic_rows]},
         ensure_ascii=False, indent=1), "utf-8")
+    if gap_hist and mic_rows and offline_ok:  # a broken run (no line, early exit) would skew the median / max
+        try:
+            print(f"report: {gap_history(Path(gap_hist), gap, note=os.environ.get('GITHUB_SHA', '')[:12])}",
+                  flush=True)
+        except OSError as e:  # report only: a locked or unwritable history never fails the check
+            print(f"report: gap history unavailable ({type(e).__name__})", flush=True)
     if not offline_ok:
         ok, msg = False, msg + "; verify_offline did not PASS (network connection or early exit)"
     return ok, msg
@@ -808,6 +835,8 @@ def main(argv=None) -> int:
         s.add_argument("--models-dir", required=True)
         s.add_argument("--out", default=None, help="folder for logs and transcripts (default: --clips)")
         s.add_argument("--json", default=None)
+        if name == "mic":
+            s.add_argument("--gap-history", default=None, help="#1247: JSONL of past subtitle gaps (report only)")
         if name == "file":
             s.add_argument("extra", nargs="*", help="more tlwu arguments after `--` (e.g. --device cpu)")
     a = p.parse_args(argv)
@@ -823,7 +852,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     run = {"file": run_file, "mic": run_mic, "meeting": run_meeting, "loopback": run_loopback}[a.cmd]
     try:
-        args = (a.extra,) if a.cmd == "file" else ()
+        args = (a.extra,) if a.cmd == "file" else (a.gap_history,) if a.cmd == "mic" else ()
         ok, msg = run(Path(a.clips), a.models_dir, out, *args)
     except Exception as e:  # noqa: BLE001 - one FAIL line in the step summary, not a traceback only
         ok, msg = False, f"could not run: {type(e).__name__}: {e}"

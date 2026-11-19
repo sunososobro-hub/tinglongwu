@@ -1061,14 +1061,14 @@ class Pipeline extends ChangeNotifier {
               side: _historyMode == HistoryMode.conversation
                   ? (job.route.speaker == Speaker.me ? 0 : 1)
                   : null);
-          if (job.route.speak && conversation.enabled) {
+          if (job.route.speak && conversation.enabled && r.zh.isNotEmpty) {
             _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs));
           }
           final tag = tgt != 'zh'
               ? '${job.lang}->$tgt${job.route.speak ? " speak" : ""}'
               : (r.check.isTraditional ? 'zh-Hant' : 'NOT-TRAD ${r.check}');
           _log.i('${tgt.toUpperCase()} [$tag'
-              '] ${AppLog.text(r.zh)} | '
+              '${r.scriptCheck.isEmpty ? '' : ' script=${r.scriptCheck}'}] ${AppLog.text(r.zh)} | '
               'lat=${lastLatencyMs}ms afterFinal=${lastAfterFinalMs}ms '
               'ttft=${r.firstTokenMs}ms tok=${r.tokens} '
               'tps=${r.tokensPerSecond.toStringAsFixed(1)} n_ctx=${r.nCtx} '

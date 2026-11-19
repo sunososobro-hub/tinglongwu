@@ -5,8 +5,14 @@ reviews:
   request_changes_workflow: false
   high_level_summary: true
   poem: false
+  # #1587: docs are agreed with the owner before they are written; no bot review on README / docs Markdown.
+  path_filters:
+    - "!README*.md"
+    - "!docs/**/*.md"
   auto_review:
     enabled: true
+    # #1579: review once, when the PR opens. Re-reviewing every fix push ran up to 5 rounds per PR (#1546).
+    auto_incremental_review: false
     drafts: false
     base_branches:
       - dev

@@ -4,7 +4,7 @@
                          ask GitHub for the latest release (6 s, any failure = "SKIP <why>"); prints one line:
                          "UPDATE X.Y.Z" when it is newer than CURRENT, "NONE" otherwise. Always exit code 0.
                          --count (only the once-a-day automatic check, #806) asks the anonymous counter Worker
-                         (cloudflare/update-counter) instead: it returns the same GitHub answer and adds 1 to a count
+                         (web/cloudflare/update-counter) instead: it returns the same GitHub answer and adds 1 to a count
                          keyed only by (date, app version, OS). Worker unreachable -> GitHub API exactly as without it.
   --download DIR         download tinglongwu-setup.exe of the latest release into DIR (resumable, see resume.fetch),
                          verify it against the release's SHA256SUMS.txt; prints "PROGRESS n" lines then
@@ -65,7 +65,7 @@ CHECK_TIMEOUT_S = 6
 SUMS_TIMEOUT_S = 30
 WAIT_GUI_EXIT_S = 120  # the helper gives the GUI this long to close before installing anyway
 INSTALLER_ARGS = ("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-")  # /SILENT: progress window, no questions
-# #806 counter Worker base URL, set once the Worker is deployed (cloudflare/update-counter/README.md). Empty = no
+# #806 counter Worker base URL, set once the Worker is deployed (web/cloudflare/update-counter/README.md). Empty = no
 # counter, every check goes straight to GitHub. TLWU_UPDATE_COUNTER overrides it (tests, staging).
 COUNTER_BASE = ""
 COUNTER_TIMEOUT_S = 4  # short, so a dead Worker still leaves time for the GitHub fallback

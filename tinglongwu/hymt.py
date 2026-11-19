@@ -88,18 +88,56 @@ def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | N
 _ECHO_EN = re.compile(r"^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s+noted\s+that|you\s+should)[,:]?\s*"
                       r"(?=[^.:\n]*\boutput\b)"
                       r"[^.:\n]{0,40}?\bonly\b[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b"
-                      r"[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*[.:]\s*", re.I)
+                      r"[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*(?:[.:]|(?=\n)|$)\s*", re.I)
 # the contextual form's instruction (build_prompt with `context`, #1258 eval only)
 _ECHO_ZH_CTX = re.compile(r"^\s*参考上面的信息[，,]\s*把下面的文本翻译成[^，,：:\n]{1,12}[，,]\s*注意不需要翻译上文[，,]\s*"
                           r"也不要额外解释[。：:]\s*")
-_ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)[。：:]\s*")
+_ECHO_ZH = re.compile(r"^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)(?:[。：:]|(?=\n)|$)\s*")
 
 
-def strip_echo(out: str) -> str:
-    """Drop the card instruction line when the model repeats it before (or instead of) the translation."""
+# #1615: the same instruction rendered in the TARGET language (phone field test, auto -> ru: "Примите во внимание,
+# что следует выводить только переведенный результат, без каких-либо дополнительных комментариев"). A leading sentence
+# (up to . : ! ? or a line break) is an echo only when it holds all five parts of the instruction in one language:
+# only / translat- / result|text / without / explanation|comment. Kept in sync with mobile `PromptBuilder.stripEcho`.
+ECHO_WORDS = (
+    ("только", "переведённ|переведенн|перевод(?!чи)", "результат|текст", "без", "коммент|объясн|пояснен"),  # ru
+    (r"\bnur\b", "übersetz", "ergebnis|text", r"\bohne\b|\bkeine", "erklär|erläuter|kommentar"),  # de
+    ("uniquement|seulement|ne .{0,40}que", "tradu", "résultat|texte", r"\bsans\b|aucun", "explication|commentaire"),  # fr
+    ("solo|sólo|únicamente|solamente", "traduc", "resultado|texto", r"\bsin\b|ningún|ninguna",
+     "explicaci|comentario"),  # es
+    ("solo|soltanto|unicamente|solamente", "tradu", "risultato|testo", "senza|nessun", "spiegazion|comment"),  # it
+    ("apenas|somente", "tradu", "resultado|texto", r"\bsem\b|nenhum", "explicaç|explicac|comentário"),  # pt
+    ("のみ|だけ", "翻訳", "結果|テキスト|訳文", "説明|解説", "不要|せず|しない|なし|ないで"),  # ja
+    ("만", "번역", "결과|텍스트", "설명", "없이|말고|하지"),  # ko
+    ("chỉ", "dịch", "kết quả|văn bản", "không", "giải thích"),  # vi
+    ("hanya", "terjemah", "hasil|teks", "tanpa", "penjelasan"),  # id
+    ("เท่านั้น", "แปล", "ผล|ข้อความ", "ไม่", "อธิบาย"),  # th
+)
+_ECHO_WORDS_RX = tuple(tuple(re.compile(p) for p in row) for row in ECHO_WORDS)
+# a sentence end, or a ":" that may close a lead-in ("Обратите внимание: ...") or the echo itself
+_ECHO_END = re.compile(r"[.:!?。：！？]+\s*|\n\s*|\Z")
+
+
+def _strip_translated_echo(out: str) -> str:
+    s = out.lstrip()
+    low = s.lower()
+    for m in _ECHO_END.finditer(s):
+        if m.start() > 240:
+            break
+        if m.start() and any(all(rx.search(low[:m.start()]) for rx in row) for row in _ECHO_WORDS_RX):
+            return s[m.end():]
+        if m.group().strip(" \t:："):  # a real sentence end (or a line break): the echo is one sentence
+            break
+    return out
+
+
+def strip_echo(out: str, translated: bool = True) -> str:
+    """Drop the card instruction line when the model repeats it before (or instead of) the translation,
+    in English, Chinese or (#1615, `translated`) translated into the target language. Run it on the raw
+    model text: clean_output joins lines, and an unpunctuated echo would then run into the translation."""
     for rx in (_ECHO_EN, _ECHO_ZH, _ECHO_ZH_CTX):
         out = rx.sub("", out, count=1)
-    return out.strip()
+    return (_strip_translated_echo(out) if translated else out).strip()
 
 
 def zh_script_guard(src_text: str, out: str, max_words: int = 4) -> str:
@@ -172,7 +210,8 @@ class HyMtTranslator(Translator):
         r = self.llm.create_chat_completion(
             [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx), context)}],
             max_tokens=max_tokens_for(text), **sampling())
-        out = strip_echo(strip_unk(clean_output(r["choices"][0]["message"]["content"] or "")))
+        raw = strip_echo(r["choices"][0]["message"]["content"] or "")  # before clean_output joins the lines (#1615)
+        out = strip_echo(strip_unk(clean_output(raw)), translated=False)
         if tgt == "zh":
             out = zh_convert(out, self.zh_variant)
             if self.glossary:

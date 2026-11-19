@@ -29,11 +29,11 @@ ISSUE = {"number": 100, "labels": [{"name": "status:review"}], "author_associati
          "user": {"login": "sunososobro-hub"}}
 
 
-def run(p=None, files=FILES, checks=TEST_OK, issue=ISSUE, notes=(), threads=0, bump=None, freeze=False):
+def run(p=None, files=FILES, checks=TEST_OK, issue=ISSUE, notes=(), threads=0, bump=None, freeze=False, carry=None):
     p = p or pr()
     if files is not FILES:
         p = {**p, "changed_files": len(files)}
-    return evaluate(p, files, checks, issue, list(notes), threads, HEAD_AT, bump, freeze)
+    return evaluate(p, files, checks, issue, list(notes), threads, HEAD_AT, bump, freeze, carry)
 
 
 def test_clean_pr_merges():
@@ -195,3 +195,73 @@ def test_protected_path_needs_collaborator_issue_even_with_pass():  # section 14
     assert run(files=init, issue=bump_issue, bump=lambda fs: (True, "version line only"))[0] == "merge"
     assert run(files=init, issue=outside, bump=lambda fs: (True, "version line only"))[0] == "hold"
     assert run(issue=outside)[0] == "merge"  # non-protected code from an outside issue follows the normal gates
+
+
+def test_pass_on_older_head_carries_when_no_protected_change():  # #1580
+    files = [{"filename": ".github/workflows/e2e.yml", "status": "modified"},
+             {"filename": "scripts/ci_e2e.py", "status": "modified"}]
+    older = "96493d2a26210c7fbd9be77ea4d75dd4f11fe794"
+    note = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {older} - ok", "at": at(-30)}]
+    assert run(files=files, notes=note)[0] == "needs-opus"  # no carry callable: old behaviour
+    assert run(files=files, notes=note, carry=lambda s: older.startswith(s))[0] == "merge"
+    assert run(files=files, notes=note, carry=lambda s: False)[0] == "needs-opus"  # protected changed since
+    review = [{"author": "sunososobro-hub", "body": "Opus review: PASS", "at": at(-30), "commit_id": older}]
+    assert run(files=files, notes=review, carry=lambda s: s == older)[0] == "merge"
+    rando = [{"author": "rando", "body": f"Opus review: PASS {older}", "at": at(-30)}]
+    assert run(files=files, notes=rando, carry=lambda s: True)[0] == "needs-opus"
+    no_sha = [{"author": "sunososobro-hub", "body": "Opus review: PASS looks fine", "at": at(-30)}]
+    assert run(files=files, notes=no_sha, carry=lambda s: True)[0] == "needs-opus"
+    short = [{"author": "sunososobro-hub", "body": "Opus review: PASS 96493d2 - ok", "at": at(-30)}]
+    assert run(files=files, notes=short, carry=lambda s: True)[0] == "needs-opus"  # short SHA never carries
+
+
+def test_carried_pass_loses_to_later_changes():  # #1580 review: PASS on A, CHANGES on A, test-only push
+    files = [{"filename": ".github/workflows/e2e.yml", "status": "modified"}]
+    older = "96493d2a26210c7fbd9be77ea4d75dd4f11fe794"
+    notes = [{"author": "sunososobro-hub", "body": f"Opus review: PASS {older}", "at": at(-30)},
+             {"author": "sunososobro-hub", "body": "Opus review: CHANGES - protected code wrong", "at": at(-20)}]
+    assert run(files=files, notes=notes, carry=lambda s: True)[0] == "needs-opus"
+    stop = [notes[0], {"author": "sunososobro-hub", "body": "this is blocking", "at": at(-20)}]
+    assert run(files=files, notes=stop, carry=lambda s: True)[0] != "merge"
+    again = notes + [{"author": "sunososobro-hub", "body": f"Opus review: PASS {older}", "at": at(-10)}]
+    assert run(files=files, notes=again, carry=lambda s: True)[0] == "merge"  # a PASS after the CHANGES carries
+
+
+def test_pass_carries_checks_compare(monkeypatch):  # #1580: I/O helper, fail closed
+    import merge_gate as mg
+    head = "b" * 40
+    def fake(cmp):
+        monkeypatch.setattr(mg, "_gh", lambda path, *a: cmp)
+    full = "96493d2a26210c7fbd9be77ea4d75dd4f11fe794"
+    base = {"base_commit": {"sha": full}}
+    fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": "scripts/ci_e2e.py"}]})
+    assert mg.pass_carries(full, head)
+    assert not mg.pass_carries("96493d2", head)  # short SHA: could resolve to a branch or tag
+    fake({"base_commit": {"sha": "c" * 40}, "status": "ahead", "behind_by": 0, "files": []})
+    assert not mg.pass_carries(full, head)  # compare base is not the approved commit
+    fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": ".github/workflows/e2e.yml"}]})
+    assert not mg.pass_carries(full, head)
+    fake({**base, "status": "ahead", "behind_by": 0,
+          "files": [{"filename": "x.py", "previous_filename": ".claude/hook.sh"}]})
+    assert not mg.pass_carries(full, head)
+    fake({**base, "status": "diverged", "behind_by": 2, "files": []})
+    assert not mg.pass_carries(full, head)
+    fake({**base, "status": "ahead", "behind_by": 0, "files": [{"filename": f"f{i}.py"} for i in range(300)]})
+    assert not mg.pass_carries(full, head)
+    assert not mg.pass_carries("not-a-sha", head)
+
+
+MOBILE_FILES = [{"filename": "mobile/lib/main.dart", "status": "modified"}]
+
+
+def test_mobile_pr_needs_mobile_apk_green():  # #1618
+    ok = {"name": "mobile-apk", "status": "completed", "conclusion": "success"}
+    assert run(files=MOBILE_FILES, checks=TEST_OK + [ok])[0] == "merge"
+    assert run(files=MOBILE_FILES, checks=TEST_OK + [{**ok, "conclusion": "failure"}]) == ("hold", "mobile-apk is red")
+    assert run(files=MOBILE_FILES, checks=TEST_OK + [{**ok, "status": "in_progress", "conclusion": None}])[0] == "wait"
+    assert run(files=MOBILE_FILES, checks=TEST_OK)[0] == "wait"  # no mobile-apk run yet: check once, skip
+
+
+def test_non_mobile_pr_ignores_mobile_apk():  # #1618
+    red = {"name": "mobile-apk", "status": "completed", "conclusion": "failure"}
+    assert run(checks=TEST_OK + [red])[0] == "merge"

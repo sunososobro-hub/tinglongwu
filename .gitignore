@@ -53,4 +53,4 @@ tlwu-talk.ps1
 
 # FLEURS eval sets rebuilt by scripts/bench/make_ci_smoke.py (#569, #602); never committed
 eval_data/
-extension/spike/node_modules/
+web/extension/spike/node_modules/

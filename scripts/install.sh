@@ -3,8 +3,8 @@
 #
 #   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh | bash
 #
-# The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
-# version it was released with. Run straight from the repo (unreleased) it falls back to main.
+# It installs the tag linux-ok (#1596): the newest release whose Linux checks passed (a release that failed them leaves
+# Linux on its last good version). No linux-ok tag on the server yet -> main. --dry-run prints the ref and exits.
 # What it does: git clone (or update) ~/tinglongwu at that tag, create .venv, pip install -e .
 # It asks y/N before any system-level step (apt, needs sudo; default = no). It also installs the Kokoro English voice
 # (scripts/linux_kokoro.sh: ~120 MB, SHA256-checked); TLWU_SKIP_MODELS=1 skips that.
@@ -16,10 +16,23 @@
 # TLWU_YES=1.
 set -u
 
+MARKER="linux-ok"   # #1596: moved by release.yml only when the Linux jobs passed on that release
 REF_EMBEDDED="__TLWU_REF__"
-case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED=main ;; esac   # placeholder not substituted = unreleased
+case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED="$MARKER" ;; esac   # release.yml embeds the same marker
 REF="${TLWU_REF:-$REF_EMBEDDED}"
 REPO_URL="${TLWU_REPO:-https://github.com/sunososobro-hub/tinglongwu.git}"
+# the marker does not exist until the first release with per-platform lanes: fall back to main. Called only once git
+# is there (on a fresh Mac /usr/bin/git is a shim that pops up the Xcode tools dialog).
+resolve_ref() {
+  # only "no such ref" (exit 2) falls back to main; a network error keeps the marker (the clone then fails loudly)
+  [ "$REF" = "$MARKER" ] || return 0
+  local rc=0
+  GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$MARKER" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 2 ]; then REF=main; fi
+}
+for a in "$@"; do
+  if [ "$a" = "--dry-run" ]; then resolve_ref; echo "ref: $REF"; exit 0; fi
+done
 DIR="${TLWU_DIR:-$HOME/tinglongwu}"
 YES="${TLWU_YES:-}"
 for a in "$@"; do [ "$a" = "--yes" ] && YES=1; done
@@ -198,6 +211,7 @@ main() {
     die "$(printf "$(t badpy)" "$(python3 --version 2>&1)")"
   fi
 
+  resolve_ref
   if [ -d "$DIR/.git" ]; then
     # --force: tags that were rewritten upstream must not block an update (#370)
     if ! FETCH_ERR=$(git -C "$DIR" fetch --quiet --force --tags origin 2>&1); then

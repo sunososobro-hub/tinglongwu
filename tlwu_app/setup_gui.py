@@ -70,6 +70,12 @@ def selftest_cmd(bundled: bool, mdir: Path, tier: tiers.Tier) -> list[str]:
     return cmd + (["--device", "cpu"] if tier.name == "cpu" else [])
 
 
+def gpu_fallback_note(tail: str) -> str:
+    """#1531: the self-test's one "GPU 無法使用，已改用 CPU：<reason>" line from its output, "" when absent."""
+    key = tiers.gpu_fallback_line("").split("：")[0]
+    return next((ln.strip() for ln in tail.splitlines() if ln.strip().startswith(key)), "")
+
+
 def selftest_verdict(rc: int, tail: str) -> tuple[str, str | None]:
     """(status line, warning text or None) for the self-test child's exit code. Never blocks starting the app."""
     if rc == 0:
@@ -179,6 +185,9 @@ class SetupWindow:
         if self.phase == "selftest":
             status, warning = selftest_verdict(rc, tail)
             self.v_status.set(status)
+            note = gpu_fallback_note(tail)
+            if note:
+                self.v_note.set(note)
             if warning:
                 messagebox.showwarning("自我測試失敗", warning)
             self.root.after(600, self.root.destroy)

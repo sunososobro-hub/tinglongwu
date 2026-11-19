@@ -67,3 +67,65 @@ def test_contextual_instruction_echo_is_removed():
     instr = build_prompt("x", "ru", "zh", context="prev").split("\n")[1]  # the instruction line the model may repeat
     assert strip_echo(f"{instr}\n大坝很高。") == "大坝很高。"
     assert strip_echo("参考上面的信息很有用。") == "参考上面的信息很有用。"
+
+
+# #1615: the instruction echoed in the TARGET language (phone field test 2026-11-19, auto -> ru)
+RU_ECHO = ("Примите во внимание, что следует выводить только переведенный результат, "
+           "без каких-либо дополнительных комментариев")
+
+
+@pytest.mark.parametrize("echo", [
+    RU_ECHO,
+    RU_ECHO + ".",
+    "Обратите внимание: выводите только переведённый текст без объяснений.",
+    "Bitte nur das übersetzte Ergebnis ohne zusätzliche Erklärungen ausgeben.",
+    "Notez qu'il faut uniquement afficher le résultat traduit, sans aucune explication.",
+    "Tenga en cuenta que solo debe mostrar el resultado traducido sin ninguna explicación adicional.",
+    "翻訳結果のみを出力し、追加の説明は不要です。",
+    "추가 설명 없이 번역된 결과만 출력하세요.",
+])
+def test_target_language_echo_only_becomes_empty(echo):
+    assert strip_echo(echo) == ""
+
+
+@pytest.mark.parametrize("echo,sep", [(RU_ECHO, ": "), (RU_ECHO, ".\n"), (RU_ECHO + ".", " ")])
+def test_target_language_echo_then_translation_keeps_translation(echo, sep):
+    assert strip_echo(f"{echo}{sep}Давайте поделимся.") == "Давайте поделимся."
+
+
+def test_target_language_echo_through_translator(tmp_path):
+    # desktop clean_output joins lines; the echo still goes and the translation stays
+    assert translate(tmp_path, f"{RU_ECHO}:\n\nВода переливается через дамбу.", src="en", tgt="ru") == \
+        "Вода переливается через дамбу."
+    assert translate(tmp_path, RU_ECHO, src="en", tgt="ru") == ""
+
+
+@pytest.mark.parametrize("text", [
+    "Здравствуйте.",
+    "Давайте поделимся только результатом, без лишних слов.",  # no translat- part
+    "Переводчик ждёт результат без комментариев. Только завтра.",  # parts split across sentences
+    "Je ne parle que français, sans traduction.",  # no result/text, no explanation
+    "Solo el texto traducido llegó, sin firma.",  # no explanation/comment part
+    "この翻訳だけで十分です。",
+    "번역만 하면 됩니다.",
+])
+def test_target_language_real_translations_are_unchanged(text):
+    assert strip_echo(text) == text
+
+
+def test_unpunctuated_echo_then_translation_keeps_translation(tmp_path):
+    # CodeRabbit on #1619: clean_output joins the lines, so the echo is stripped from the raw text first
+    out = translate(tmp_path, f"{RU_ECHO}\n\nВода переливается через дамбу.", src="en", tgt="ru")
+    assert out == "Вода переливается через дамбу."
+    en = translate(tmp_path, f"{NOTE[:-1]}\nWater is spilling over the levee.")
+    assert en == "Water is spilling over the levee."
+
+
+def test_unpunctuated_echo_only_becomes_empty():
+    assert strip_echo(NOTE[:-1]) == ""
+    assert strip_echo("注意只需要输出翻译后的结果，不要额外解释") == ""
+
+
+def test_russian_sentence_about_a_translator_is_kept():
+    text = "Только переводчик получил результат без комментариев."
+    assert strip_echo(text) == text

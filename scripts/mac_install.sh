@@ -3,8 +3,8 @@
 #
 #   curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh | bash
 #
-# The release workflow replaces the ref placeholder below with the release tag, so this script installs exactly the
-# version it was released with. Run straight from the repo (unreleased) it falls back to main.
+# It installs the tag mac-ok (#1596): the newest release whose macOS checks passed (a release that failed them leaves
+# macOS on its last good version). No mac-ok tag on the server yet -> main. --dry-run prints the ref and exits.
 #
 # What it does (nothing outside your home folder except Homebrew packages):
 #   1. checks Homebrew (does NOT install Homebrew silently: prints the official command and stops if missing)
@@ -14,7 +14,7 @@
 #   5. downloads the speech/translation models (English listening, zh<->en speaking)
 #   6. installs the `tlwu-menu` command in ~/.local/bin
 # The installer never asks about auto-update: the menu (tlwu-menu) asks once on its first run and stores the answer.
-# Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default: the release tag, or main), TLWU_REPO.
+# Override: TLWU_DIR (default ~/tinglongwu), TLWU_BRANCH (default: mac-ok, or main), TLWU_REPO.
 # CI-only switches (used by .github/workflows/install-test.yml; leave unset for a normal install):
 #   TLWU_SKIP_BLACKHOLE=1  skip the BlackHole cask install (needs sudo/GUI approval)
 #   TLWU_SKIP_MODELS=1     skip the Kokoro voice and the model downloads (steps 5 and 6)
@@ -23,9 +23,22 @@
 set -u
 
 REPO_URL="${TLWU_REPO:-https://github.com/sunososobro-hub/tinglongwu.git}"
+MARKER="mac-ok"   # #1596: moved by release.yml only when the macOS jobs passed on that release
 REF_EMBEDDED="__TLWU_REF__"
-case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED=main ;; esac   # placeholder not substituted = unreleased
+case "$REF_EMBEDDED" in __TLWU_*) REF_EMBEDDED="$MARKER" ;; esac   # release.yml embeds the same marker
 BRANCH="${TLWU_BRANCH:-$REF_EMBEDDED}"
+# the marker does not exist until the first release with per-platform lanes: fall back to main. Called only once git
+# is there (on a fresh Mac /usr/bin/git is a shim that pops up the Xcode tools dialog).
+resolve_ref() {
+  # only "no such ref" (exit 2) falls back to main; a network error keeps the marker (the clone then fails loudly)
+  [ "$BRANCH" = "$MARKER" ] || return 0
+  local rc=0
+  GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$MARKER" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 2 ]; then BRANCH=main; fi
+}
+for a in "$@"; do
+  if [ "$a" = "--dry-run" ]; then resolve_ref; echo "ref: $BRANCH"; exit 0; fi
+done
 DIR="${TLWU_DIR:-$HOME/tinglongwu}"
 KOKORO_VENV="$HOME/tts-kokoro"
 KOKORO_DIR="$HOME/models/kokoro"
@@ -161,6 +174,7 @@ done
 
 # ---------------------------------------------------------------- 4. repo + venv
 say "4/8 下載 tinglongWu 並建立環境（${DIR}）"
+resolve_ref
 if [ -d "$DIR/.git" ]; then
   info "已存在，更新中..."
   if ! FETCH_ERR=$(git -C "$DIR" fetch --quiet --force --tags origin 2>&1); then

@@ -416,7 +416,7 @@ def test_release_workflow_notes_list_every_pack_size(tmp_path, monkeypatch):
     man = pm.load_manifest(ROOT / "packaging" / "packs.json")  # the checked-in manifest validates
     (tmp_path / "base.md").write_text("## What's new\n- TODO: x\n", "utf-8")
     (tmp_path / "release-check.md").write_text("size OK\n", "utf-8")
-    argv = _release_yml_notes_argv({"TAG": "v0.3.9", "PR": "", "HW_RUN": "", "HEAD": "", "DIST": str(tmp_path)})
+    argv = _release_yml_notes_argv({"TAG": "v0.3.9", "PR": "", "HW_RUN": "", "HEAD": "", "PLATFORMS": "", "DIST": str(tmp_path)})
     assert "--packs-manifest" in argv
     monkeypatch.chdir(tmp_path)
     (tmp_path / "packaging").symlink_to(ROOT / "packaging")  # release.yml runs from the repo root

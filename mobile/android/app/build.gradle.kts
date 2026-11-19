@@ -27,6 +27,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // App label; the debug build overrides it so both apps are told apart on the launcher (#1600).
+        manifestPlaceholders["appLabel"] = "聽龍"
         // ROG Phone 6 is arm64 only; drop sherpa's armv7/x86 libs.
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -39,8 +41,13 @@ android {
         }
     }
 
-    // Model packs for Google Play (fast-follow, downloaded by the Play Store, so no INTERNET here).
-    assetPacks += listOf(":models_asr", ":models_llm")
+    // Model packs for Google Play (fast-follow, downloaded by the Play Store). #1169: only when CI sets
+    // TLWU_PLAY_PACKS=1 (repo variable PLAY_MODEL_PACKS=true). The internal track gets a new build on every dev push and
+    // Play re-sent the whole ~1.3 GB pack with each of them although the pack bytes were identical; without the packs
+    // an update is the app alone (models are imported once and stay in the app folder).
+    if (System.getenv("TLWU_PLAY_PACKS") == "1") {
+        assetPacks += listOf(":models_asr", ":models_llm")
+    }
 
     // #1169: keep the model files STORED (not deflated) in the pack APKs. AGP turns noCompress into the
     // bundle's uncompressedGlob. Deflated multi-GB files give Play's delta patching nothing to chunk against
@@ -65,6 +72,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // #1600: a USB debug build installs next to the Play build (different signing key, so the same
+            // applicationId would force an uninstall that also deletes the downloaded models and packs).
+            // Only the id changes; namespace (Kotlin package) stays com.tinglongwu.mobile.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appLabel"] = "聽龍 (dev)"
+        }
         release {
             signingConfig = signingConfigs.getByName(if (tlwuKeystore != null) "tlwuRelease" else "debug")
             // Room/WorkManager keep rules for R8 (#1023).

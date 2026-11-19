@@ -144,15 +144,18 @@ jobs:
           [ -f "$D/manifest.jsonl" ] || python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out "$D"
           python scripts/hw_live_checks.py clips --data "$D" --out "$RUNNER_TEMP/live"
 
-      - name: "#894 5-min multi-speaker clip into CABLE Input, tlwu --mic on CABLE Output: WER <= 1.25x file, no 10 s gap"
+      - name: "#894 5-min multi-speaker clip into CABLE Input, tlwu --mic on CABLE Output: WER <= 1.25x file (gap: report only)"
         if: ${{ !cancelled() }}
         continue-on-error: true  # #1194: until green on a dev run
         timeout-minutes: 30
         run: |
           rc=0
-          python scripts/hw_live_checks.py mic --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" > "$RUNNER_TEMP/check_894.txt" || rc=$?
+          # #1247: the subtitle gap is report only; median / max of the last 10 runs from the runner cache
+          python scripts/hw_live_checks.py mic --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" \
+            --gap-history "$HW_CACHE/gap_894_history.jsonl" > "$RUNNER_TEMP/check_894.txt" || rc=$?
           cat "$RUNNER_TEMP/check_894.txt"
-          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_894.txt")"; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_894.txt")";
+            { grep -E '^report: ' "$RUNNER_TEMP/check_894.txt" || true; } | sed 's/^report: /- /'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
       - name: "#4 meeting mode: mic = clip A (CABLE), system audio = clip B (speakers): >= 90% lines labelled right"

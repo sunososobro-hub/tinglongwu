@@ -7,11 +7,19 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-    <!-- Fully offline app: strip INTERNET even if a plugin or the debug/profile
-         manifest declares it. -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
+    <!-- Offline app: translation, ASR and TTS never touch the network. INTERNET is only for the
+         user-tapped pack download (PackDownloader.kt, this repo's release assets only, #1567);
+         scripts/check_mobile_network.py keeps network APIs out of every other file. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- INTERNET is the only network permission: strip the others even if a plugin adds them. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" tools:node="remove"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" tools:node="remove"/>
     <application
-        android:label="聽龍"
+        android:label="${appLabel}"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"

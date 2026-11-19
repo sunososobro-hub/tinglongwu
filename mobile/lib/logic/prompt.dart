@@ -36,8 +36,12 @@ class PromptBuilder {
 
   /// Desktop `hymt.build_prompt(text, src, tgt)` (no glossary terms): the
   /// Chinese card template when Chinese is on either side, else the English one.
-  static String userMessage(String text, {String src = 'ru', String tgt = 'zh'}) {
-    if (src == 'zh' || src == 'yue' || tgt == 'zh') {
+  ///
+  /// [alt] (#1616) picks the other card template (English when Chinese is on a side, else Chinese):
+  /// the retry when the first answer came back in the wrong script (greedy decoding would repeat it).
+  static String userMessage(String text, {String src = 'ru', String tgt = 'zh', bool alt = false}) {
+    final zhCard = src == 'zh' || src == 'yue' || tgt == 'zh';
+    if (zhCard != alt) {
       return '将以下文本翻译成${zhNames[tgt] ?? tgt}，'
           '注意只需要输出翻译后的结果，不要额外解释：\n\n$text';
     }
@@ -48,8 +52,8 @@ class PromptBuilder {
 
   /// Full raw prompt for llama.cpp (tokenize with parseSpecial, no addSpecial):
   /// the GGUF chat template with one user message and add_generation_prompt.
-  static String build(String text, {String src = 'ru', String tgt = 'zh'}) =>
-      '$bos$userTag${userMessage(text, src: src, tgt: tgt)}$assistantTag';
+  static String build(String text, {String src = 'ru', String tgt = 'zh', bool alt = false}) =>
+      '$bos$userTag${userMessage(text, src: src, tgt: tgt, alt: alt)}$assistantTag';
 
   /// Desktop `engines.max_tokens_for`: output budget proportional to input.
   static int maxTokensFor(String text) {
@@ -74,10 +78,76 @@ class PromptBuilder {
     caseSensitive: false,
   );
 
-  /// Strips template tokens (`<｜...｜>`), labels and wrapping quotes from raw
-  /// model output; keeps only the first non-empty line.
+  // Desktop `hymt._ECHO_EN` / `_ECHO_ZH` (#1351): the card instruction repeated in English / Chinese.
+  static final RegExp _echoEn = RegExp(
+    r'^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s+noted\s+that|you\s+should)[,:]?\s*'
+    r'(?=[^.:\n]*\boutput\b)'
+    r'[^.:\n]{0,40}?\bonly\b[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b'
+    r'[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*(?:[.:]|(?=\n)|$)\s*',
+    caseSensitive: false,
+  );
+  static final RegExp _echoZh =
+      RegExp(r'^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)(?:[。：:]|(?=\n)|$)\s*');
+
+  /// Desktop `hymt.ECHO_WORDS` (#1615): the instruction translated into the target language. A leading
+  /// sentence is an echo only when it holds all five parts in one language:
+  /// only / translat- / result|text / without / explanation|comment.
+  static const echoWords = <List<String>>[
+    ['только', 'переведённ|переведенн|перевод(?!чи)', 'результат|текст', 'без', 'коммент|объясн|пояснен'], // ru
+    [r'\bnur\b', 'übersetz', 'ergebnis|text', r'\bohne\b|\bkeine', 'erklär|erläuter|kommentar'], // de
+    ['uniquement|seulement|ne .{0,40}que', 'tradu', 'résultat|texte', r'\bsans\b|aucun', 'explication|commentaire'], // fr
+    ['solo|sólo|únicamente|solamente', 'traduc', 'resultado|texto', r'\bsin\b|ningún|ninguna', 'explicaci|comentario'], // es
+    ['solo|soltanto|unicamente|solamente', 'tradu', 'risultato|testo', 'senza|nessun', 'spiegazion|comment'], // it
+    ['apenas|somente', 'tradu', 'resultado|texto', r'\bsem\b|nenhum', 'explicaç|explicac|comentário'], // pt
+    ['のみ|だけ', '翻訳', '結果|テキスト|訳文', '説明|解説', '不要|せず|しない|なし|ないで'], // ja
+    ['만', '번역', '결과|텍스트', '설명', '없이|말고|하지'], // ko
+    ['chỉ', 'dịch', 'kết quả|văn bản', 'không', 'giải thích'], // vi
+    ['hanya', 'terjemah', 'hasil|teks', 'tanpa', 'penjelasan'], // id
+    ['เท่านั้น', 'แปล', 'ผล|ข้อความ', 'ไม่', 'อธิบาย'], // th
+  ];
+  static final List<List<RegExp>> _echoWordsRx =
+      [for (final row in echoWords) [for (final p in row) RegExp(p, unicode: true)]];
+  static final RegExp _echoEnd = RegExp(r'[.:!?。：！？]+\s*|\n\s*|$');
+
+  static String _stripTranslatedEcho(String out) {
+    final s = out.trimLeft();
+    final low = s.toLowerCase();
+    for (final m in _echoEnd.allMatches(s)) {
+      if (m.start > 240) break;
+      if (m.start > 0) {
+        final head = low.substring(0, m.start);
+        if (_echoWordsRx.any((row) => row.every((rx) => rx.hasMatch(head)))) {
+          return s.substring(m.end);
+        }
+      }
+      // A real sentence end or line break: the echo is one sentence ("Note:" lead-ins go on).
+      if (m.group(0)!.replaceAll(RegExp(r'[ \t:：]'), '').isNotEmpty) break;
+      if (m.end >= s.length) break;
+    }
+    return out;
+  }
+
+  /// Desktop `hymt.strip_echo`: drops the card instruction when the model repeats it before (or
+  /// instead of) the translation, in English, Chinese or the target language (#1615). An echo-only
+  /// output becomes empty, so the line is shown untranslated.
+  static String stripEcho(String out) {
+    out = out.replaceFirst(_echoEn, '').replaceFirst(_echoZh, '');
+    return _stripTranslatedEcho(out).trim();
+  }
+
+  /// True once the streamed output holds a finished line that is not just the echoed instruction
+  /// (#1615): the translator stops there. An echo line alone does not stop it, so a translation the
+  /// model writes after the echo is still read.
+  static bool lineDone(String streamed) {
+    final s = streamed.trimLeft();
+    final nl = s.lastIndexOf('\n');
+    return nl > 0 && clean(s.substring(0, nl)).isNotEmpty;
+  }
+
+  /// Strips template tokens (`<｜...｜>`), the echoed card instruction, labels and wrapping quotes
+  /// from raw model output; keeps only the first non-empty line.
   static String clean(String raw) {
-    var t = raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), '').trim();
+    var t = stripEcho(raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), '').trim());
     final lines = t.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty);
     if (lines.isEmpty) return '';
     t = lines.first.replaceFirst(_label, '');

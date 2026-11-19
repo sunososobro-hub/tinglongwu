@@ -10,7 +10,7 @@ The owner's own commits are matched the same way by account (OWNER_LOGINS), so n
 
 Usage: python scripts/commit_identity.py commits.json --author-login LOGIN --author-id ID [--expected-count N]
 Exit 0 = every identity is known, 1 = unknown identities (each printed with its commit) or an incomplete commit list
-(the commits API returns at most 250, so a PR with >= 250 commits cannot be checked and fails), 2 = unreadable input.
+(fewer commits listed than the PR has; more is fine, #1578: a newer push; the commits API returns at most 250, so a PR with >= 250 commits cannot be checked and fails), 2 = unreadable input.
 """
 from __future__ import annotations
 
@@ -109,7 +109,10 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(commits, list):
         print("commit identity: expected a JSON list of commits")
         return 2
-    if a.expected_count is not None and (a.expected_count >= API_LIMIT or len(commits) != a.expected_count):
+    # #1578: a push that lands while CI runs makes the API list MORE commits than the event's count. That list is
+    # still complete (it covers every commit of the checked head and the newer ones), so only a SHORTER list fails.
+    if a.expected_count is not None and (max(a.expected_count, len(commits)) >= API_LIMIT
+                                         or len(commits) < a.expected_count):
         print(f"FAIL: commit identity: the PR has {a.expected_count} commit(s) but {len(commits)} were listed "
               f"(the API lists at most {API_LIMIT}); split or squash the PR so every commit can be checked.")
         return 1

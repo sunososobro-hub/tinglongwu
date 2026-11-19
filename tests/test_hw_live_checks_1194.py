@@ -57,12 +57,17 @@ def test_check_mic_passes_within_1_25x_and_10_s():
 
 @pytest.mark.parametrize("file_wer,mic_wer,gap,n,why", [
     (0.10, 0.13, 3.0, 40, "mic WER > 1.25x file WER"),
-    (0.10, 0.10, 10.5, 40, "gap without a subtitle 10.5 s > 10 s"),
     (0.10, 1.0, 300.0, 0, "no line from the microphone"),
 ])
 def test_check_mic_fails(file_wer, mic_wer, gap, n, why):
     ok, msg = hl.check_mic(file_wer, mic_wer, gap, n)
     assert not ok and why in msg
+
+
+def test_check_mic_gap_is_report_only():
+    # #1247: a long subtitle gap is printed but no longer fails the check
+    ok, msg = hl.check_mic(0.10, 0.10, 10.5, 40)
+    assert ok and "longest gap 10.5 s (report only" in msg
 
 
 def test_origin_by_reference_tokens():

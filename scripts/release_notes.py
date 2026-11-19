@@ -86,6 +86,14 @@ REQUIRED_CHECKS = ("ci", "e2e", "windows-build", "hw-tests", "audio-routing",
 WHATS_NEW = "## What's new"
 WHATS_NEW_FILE = "docs/whats_new.md"
 THROTTLE_RE = re.compile(r"^\s*level:\s*(\d+)\b", re.I)
+# #1596 per-platform lanes (owner 2026-11-19): after the shared gate (ci `test` + offline suite) each platform passes only
+# its own jobs. The release (tag, Windows exe, Windows auto-update) waits for shared + Windows; macOS and Linux ship by
+# moving their marker tag to the release tag when their own jobs passed on it, else they stay on their last good version.
+PLATFORM_SPLIT = ("e2e", "install-clean")    # the required workflows that have per-OS jobs
+MARKERS = {"mac": "mac-ok", "linux": "linux-ok"}   # installs and auto-update on that OS follow this tag
+PLATFORM_NAMES = {"windows": "Windows", "mac": "macOS", "linux": "Linux"}
+_PLATFORM_TOKENS = {"mac": {"mac", "macos", "darwin"}, "linux": {"linux", "ubuntu"}}
+JOB_PASS = ("success", "skipped", "neutral")
 
 
 def app_version(init_text: str) -> str:
@@ -191,10 +199,89 @@ def _counts(run: dict, jobs_of=None) -> bool:
     return not (run.get("name") == "install-clean" and run.get("event") == "pull_request")
 
 
+def job_platform(name: str) -> str:
+    """#1596: the platform of a job by its name (e2e `macos` / `linux`, install-clean `ttfs (macos, macos-latest)`);
+    every other job (install-bat, speak-smoke, `windows`, ...) is Windows."""
+    tokens = set(re.split(r"[^a-z0-9]+", (name or "").lower()))
+    return next((p for p, t in _PLATFORM_TOKENS.items() if tokens & t), "windows")
+
+
+def _only_platform_jobs_failed(run: dict, jobs_of) -> bool:
+    """#1596: a completed e2e / install-clean run whose failed jobs are all macOS / Linux jobs does not block the
+    release (Windows ships); those platforms are reported by platform_status instead."""
+    if jobs_of is None or run.get("name") not in PLATFORM_SPLIT or run.get("status") != "completed":
+        return False
+    jobs = jobs_of(run.get("id")) or []
+    bad = [j for j in jobs if j.get("status", "completed") != "completed" or j.get("conclusion") not in JOB_PASS]
+    return bool(bad) and all(job_platform(j.get("name", "")) in MARKERS for j in bad)
+
+
+def platform_status(runs: list[dict], jobs_of) -> dict[str, bool]:
+    """#1596: {mac: verified?, linux: verified?} on a commit. Verified = the newest counted run of every PLATFORM_SPLIT
+    workflow completed, and that platform has at least one job there and every one of them concluded `success` (a
+    skipped job is not verified)."""
+    seen, good = dict.fromkeys(MARKERS, 0), dict.fromkeys(MARKERS, True)
+    for name in PLATFORM_SPLIT:
+        mine = [r for r in runs if r.get("name") == name and _counts(r, jobs_of)]
+        r = max(mine, key=lambda r: r.get("id", 0)) if mine else {}
+        if r.get("status") != "completed":
+            return dict.fromkeys(MARKERS, False)
+        for j in jobs_of(r.get("id")) or []:
+            p = job_platform(j.get("name", ""))
+            if p in MARKERS:
+                seen[p] += 1
+                good[p] = good[p] and j.get("conclusion") == "success"
+    return {p: good[p] and seen[p] > 0 for p in MARKERS}
+
+
+def platforms_line(status: dict[str, bool]) -> str:
+    """plan output `platforms=mac=ok linux=skip` (read back by parse_platforms)."""
+    return " ".join(f"{p}={'ok' if status.get(p) else 'skip'}" for p in MARKERS)
+
+
+def parse_platforms(text: str) -> dict[str, bool]:
+    pairs = dict(x.split("=", 1) for x in (text or "").split() if "=" in x)
+    return {p: pairs.get(p) == "ok" for p in MARKERS}
+
+
+def platform_plan(tag: str, status: dict[str, bool], marker_shas: dict[str, str | None],
+                  tags: dict[str, str]) -> dict[str, dict]:
+    """#1596: per platform {ship, version, move_to}. A verified platform ships `tag` (its marker moves there). Otherwise
+    it stays on the release its marker points at; a marker that does not exist yet is created at the previous release
+    (the version that platform was on before per-platform lanes), never at `tag`."""
+    plain = {t: s for t, s in tags.items() if TAG_RE.match(t) and TAG_RE.match(t).group(4) is None and t != tag}
+    before = [t for t in plain if parse_tag(tag) is None or parse_tag(t) < parse_tag(tag)]
+    prev = latest_tag(before)
+    out = {"windows": {"ship": True, "version": tag, "move_to": ""}}
+    for p, marker in MARKERS.items():
+        if status.get(p):
+            out[p] = {"ship": True, "version": tag, "move_to": tag}
+            continue
+        sha = marker_shas.get(marker)
+        if sha:
+            at = latest_tag([t for t, s in plain.items() if s == sha])
+            out[p] = {"ship": False, "version": at or "", "move_to": ""}
+        else:
+            out[p] = {"ship": False, "version": prev or "", "move_to": prev or ""}
+    return out
+
+
+def platforms_md(plan_: dict[str, dict]) -> str:
+    lines = ["### Platforms", ""]
+    for p in ("windows", *MARKERS):
+        d = plan_[p]
+        state = (f"shipped {d['version']}" if d["ship"] else
+                 f"skipped (not verified), stays on {d['version']}" if d["version"] else
+                 "skipped (not verified), no earlier verified version")
+        lines.append(f"- {PLATFORM_NAMES[p]}: {state}")
+    return "\n".join(lines) + "\n"
+
+
 def check_problems(runs: list[dict], required=REQUIRED_CHECKS, jobs_of=None) -> list[str]:
     """Owner gate: the newest run of each required workflow on the commit must have succeeded. A never-started
     `action_required` run (release PR pull_request runs, #1104) is skipped, so it neither passes nor blocks; with
-    `jobs_of`, so is that run once GitHub has flipped it to a zero-job failure (#1139)."""
+    `jobs_of`, so is that run once GitHub has flipped it to a zero-job failure (#1139). #1596: with `jobs_of`, an
+    e2e / install-clean run that failed only in macOS / Linux jobs passes (those platforms skip this release)."""
     out = []
     for name in required:
         mine = [r for r in runs if r.get("name") == name and _counts(r, jobs_of)]
@@ -203,6 +290,8 @@ def check_problems(runs: list[dict], required=REQUIRED_CHECKS, jobs_of=None) -> 
             continue
         r = max(mine, key=lambda r: r.get("id", 0))
         if r.get("status") != "completed" or r.get("conclusion") != "success":
+            if _only_platform_jobs_failed(r, jobs_of):
+                continue
             out.append(f"{name}: {r.get('status')}/{r.get('conclusion')} {r.get('html_url', '')}".rstrip())
     return out
 
@@ -228,7 +317,8 @@ def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str]
     """publish = tag + Release; build = build and check the Windows zip; head = released dev commit.
     #589: workflow_dispatch on main with publish=true (sent by auto-release.yml after it merged the release PR) is
     treated like the push to main; every other dispatch is a dry run."""
-    out = {"publish": "false", "build": "false", "tag": "", "pr": "", "head": "", "hw_run": "", "reason": ""}
+    out = {"publish": "false", "build": "false", "tag": "", "pr": "", "head": "", "hw_run": "", "platforms": "",
+           "reason": ""}
     if event == "workflow_dispatch":
         if not (publish_input and ref_type == "branch" and ref_name == "main"):
             why = " (publish=true is honoured only on main)" if publish_input else ""
@@ -271,7 +361,7 @@ def plan(event: str, ref_name: str, sha: str, version: str, tags: dict[str, str]
         raise SystemExit(f"release PR #{pr['number']}: required checks not green on {head[:12]}: " + "; ".join(bad))
     hw = None if deferred else max((r for r in runs if r.get("name") == "hw-tests"), key=lambda r: r.get("id", 0))
     out.update(publish="true", build="true", tag=tag, pr=str(pr["number"]), head=head,
-               hw_run=hw.get("html_url", "") if hw else "",
+               hw_run=hw.get("html_url", "") if hw else "", platforms=platforms_line(platform_status(runs, jobs_of)),
                reason=f"release PR #{pr['number']} merged" + (f" ({hw_mod.DEFERRED_LINE}, #848)" if deferred else ""))
     if deferred:
         out["hw_deferred"] = "true"
@@ -594,7 +684,8 @@ def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict
     lines += [WHATS_NEW, new, "", changes_md(since, changes),
               thanks_md(thanks), "---",
               f"This PR releases `{tag}` (= `tinglongwu.__version__`). `auto-release.yml` merges it once "
-              f"{', '.join(REQUIRED_CHECKS)} are green on its head commit and `{WHATS_NEW_FILE}` has a `## {tag}` "
+              f"{', '.join(REQUIRED_CHECKS)} are green on its head commit (#1596: failed macOS / Linux jobs do not "
+              f"block; that platform stays on its last good version) and `{WHATS_NEW_FILE}` has a `## {tag}` "
               "section (What's new above comes from there); the `release` workflow then checks the same gates, "
               "builds the Windows zip on windows-latest, runs check_dist_dlls, the llama CPU-instruction check, "
               "`--smoke` and `--selftest`, tags `main` and publishes the GitHub Release with the setup wizard.", "",
@@ -623,7 +714,7 @@ def gpu_line(hw_run: str, head: str, hw_deferred: bool = False) -> str:
 
 def release_notes(base: str, pr_text: str, since: str | None, verification: str, hw_run: str, head: str,
                   changes: list[dict], thanks: dict, pack_manifest: dict | None = None, whats_new_text: str = "",
-                  tag: str = "", hw_deferred: bool = False) -> str:
+                  tag: str = "", hw_deferred: bool = False, platforms: dict | None = None) -> str:
     """render_support.py --notes output with What's new filled in, plus the Windows checks, changes and thanks.
     What's new: docs/whats_new.md `## <tag>`, else the release PR's edited section; else the TODO line stays, so
     windows-installer keeps the release a draft (#589: the no-TODO gate)."""
@@ -634,7 +725,8 @@ def release_notes(base: str, pr_text: str, since: str | None, verification: str,
     win = ["### Windows package (tinglongwu-win64.zip)", "", verification.strip() or "(not built)", "",
            gpu_line(hw_run, head, hw_deferred)]
     packs = [_pack_manifest().sizes_md(pack_manifest), ""] if pack_manifest else []  # #615: every optional pack with its size
-    return "\n".join([base.rstrip(), "", *win, "", *packs, changes_md(since, changes), thanks_md(thanks)])
+    plat = [platforms_md(platforms), ""] if platforms else []  # #1596: shipped / skipped per platform
+    return "\n".join([base.rstrip(), "", *plat, *win, "", *packs, changes_md(since, changes), thanks_md(thanks)])
 
 
 # ---------------------------------------------------------------- gh / git I/O
@@ -655,6 +747,20 @@ def git_tags() -> dict[str, str]:
         name, obj, peeled = (line.split() + [""])[:3]
         tags[name] = peeled or obj  # annotated tags: the commit they point at
     return tags
+
+
+def marker_shas() -> dict[str, str | None]:
+    """#1596: {mac-ok: commit or None, ...} from the local tags (fetch --force --tags first)."""
+    out = {}
+    for m in MARKERS.values():
+        r = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{m}^{{commit}}"], cwd=ROOT,
+                           capture_output=True, text=True)
+        out[m] = r.stdout.strip() if r.returncode == 0 else None
+    return out
+
+
+def local_platform_plan(tag: str, platforms: str) -> dict[str, dict]:
+    return platform_plan(tag, parse_platforms(platforms), marker_shas(), git_tags())
 
 
 def git_show(sha: str, path: str) -> str | None:
@@ -727,6 +833,9 @@ def main(argv=None) -> int:
     sub.add_parser("plan")
     sub.add_parser("snapshot")
     sub.add_parser("auto")
+    mk = sub.add_parser("markers", help="#1596: `<marker> <tag>` lines for the marker tags to move (release.yml)")
+    mk.add_argument("--version", required=True)
+    mk.add_argument("--platforms", default="", help="plan's platforms output, e.g. 'mac=ok linux=skip'")
     bc = sub.add_parser("bump-check", help="#1267: may this bump PR merge without an Opus PASS?")
     bc.add_argument("--pr", required=True)
     bc.add_argument("--files", default="", help="JSON of pulls/N/files (default: fetched with gh)")
@@ -739,7 +848,13 @@ def main(argv=None) -> int:
     n.add_argument("--hw-run", default="")
     n.add_argument("--head", default="")
     n.add_argument("--packs-manifest", default="", help="pack manifest JSON (tinglongwu/pack_manifest.py)")
+    n.add_argument("--platforms", default="", help="#1596: plan's platforms output; empty = no Platforms section")
     a = ap.parse_args(argv)
+    if a.cmd == "markers":
+        for p, d in local_platform_plan(a.version, a.platforms).items():
+            if d["move_to"] and p in MARKERS:
+                print(f"{MARKERS[p]} {d['move_to']}")
+        return 0
     if a.cmd == "bump-check":
         if a.files:
             ok, why = bump_exempt(json.loads(read(a.files)), read(a.whats_new) if a.whats_new else None)
@@ -812,7 +927,8 @@ def main(argv=None) -> int:
     text = release_notes(read(a.base), pr_text, since, read(a.verification), a.hw_run, a.head, changes, thanks,
                          _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None,
                          wn.read_text("utf-8") if wn.exists() else "", a.version,
-                         os.environ.get("HW_DEFERRED", "") == "true")  # #848: release.yml passes plan's hw_deferred
+                         os.environ.get("HW_DEFERRED", "") == "true",  # #848: release.yml passes plan's hw_deferred
+                         local_platform_plan(a.version, a.platforms) if a.platforms else None)
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

@@ -49,12 +49,20 @@ class Result:
     mt_backend: str = ""  # "cuda" | "vulkan" | "cpu" (#746)
 
     @property
+    def gpu_fallback(self) -> str:
+        """#1531: "" unless a GPU failure sent this run to the CPU; else the one plain line with the first failure's reason."""
+        if not self.downgraded:
+            return ""
+        why = next((s.detail for s in self.steps if not s.ok and s.detail), "")
+        return f"GPU 無法使用，已改用 CPU：{why[:160] or '自我測試失敗'}"
+
+    @property
     def seconds(self) -> float:
         return sum(s.seconds for s in self.steps)
 
     def text(self) -> str:
         head = ("self-test PASSED" + (" after downgrade" if self.downgraded else "")) if self.ok else "self-test FAILED"
-        return "\n".join([s.line() for s in self.steps] + [
+        return "\n".join([s.line() for s in self.steps] + ([self.gpu_fallback] if self.gpu_fallback else []) + [
             f"{head}: device={self.device} speech model={self.model} translation={self.engine} "
             + (f"mt: {self.mt_backend} " if self.mt_backend else "") + f"(total {self.seconds:.1f} s)"])
 
@@ -268,6 +276,7 @@ def apply_to_gui(res: Result, requested_model: str | None = None, path=None) -> 
         s["model"] = res.model
     if res.device == "cpu" and (fresh or res.downgraded):
         s["live_draft"] = False
+    s["gpu_fallback"] = res.gpu_fallback  # #1531: the CPU fallback is saved with its reason ("" = GPU fine / no GPU)
     return core.save_settings(s, path)
 
 

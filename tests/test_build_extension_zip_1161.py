@@ -41,7 +41,7 @@ def test_cli_writes_zip(tmp_path):
     assert r.returncode == 0, r.stderr
     assert list(tmp_path.glob("tlwu-extension-*.zip"))
     # the checked-in manifest is untouched
-    assert "(dev)" in json.loads((ROOT / "extension" / "capture" / "manifest.json").read_text("utf-8"))["name"]
+    assert "(dev)" in json.loads((ROOT / "web" / "extension" / "capture" / "manifest.json").read_text("utf-8"))["name"]
 
 
 def test_out_dir_inside_extension_is_rejected(tmp_path):
