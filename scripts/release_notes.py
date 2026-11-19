@@ -685,7 +685,7 @@ def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict
               thanks_md(thanks), "---",
               f"This PR releases `{tag}` (= `tinglongwu.__version__`). `auto-release.yml` merges it once "
               f"{', '.join(REQUIRED_CHECKS)} are green on its head commit (#1596: failed macOS / Linux jobs do not "
-              "block; that platform stays on its last good version) and `{WHATS_NEW_FILE}` has a `## {tag}` "
+              f"block; that platform stays on its last good version) and `{WHATS_NEW_FILE}` has a `## {tag}` "
               "section (What's new above comes from there); the `release` workflow then checks the same gates, "
               "builds the Windows zip on windows-latest, runs check_dist_dlls, the llama CPU-instruction check, "
               "`--smoke` and `--selftest`, tags `main` and publishes the GitHub Release with the setup wizard.", "",

@@ -30,9 +30,11 @@ BRANCH="${TLWU_BRANCH:-$REF_EMBEDDED}"
 # the marker does not exist until the first release with per-platform lanes: fall back to main. Called only once git
 # is there (on a fresh Mac /usr/bin/git is a shim that pops up the Xcode tools dialog).
 resolve_ref() {
-  if [ "$BRANCH" = "$MARKER" ] && ! GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$MARKER" >/dev/null 2>&1; then
-    BRANCH=main
-  fi
+  # only "no such ref" (exit 2) falls back to main; a network error keeps the marker (the clone then fails loudly)
+  [ "$BRANCH" = "$MARKER" ] || return 0
+  local rc=0
+  GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$MARKER" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 2 ]; then BRANCH=main; fi
 }
 for a in "$@"; do
   if [ "$a" = "--dry-run" ]; then resolve_ref; echo "ref: $BRANCH"; exit 0; fi

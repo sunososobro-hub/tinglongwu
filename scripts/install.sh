@@ -24,9 +24,11 @@ REPO_URL="${TLWU_REPO:-https://github.com/sunososobro-hub/tinglongwu.git}"
 # the marker does not exist until the first release with per-platform lanes: fall back to main. Called only once git
 # is there (on a fresh Mac /usr/bin/git is a shim that pops up the Xcode tools dialog).
 resolve_ref() {
-  if [ "$REF" = "$MARKER" ] && ! GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$MARKER" >/dev/null 2>&1; then
-    REF=main
-  fi
+  # only "no such ref" (exit 2) falls back to main; a network error keeps the marker (the clone then fails loudly)
+  [ "$REF" = "$MARKER" ] || return 0
+  local rc=0
+  GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$MARKER" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 2 ]; then REF=main; fi
 }
 for a in "$@"; do
   if [ "$a" = "--dry-run" ]; then resolve_ref; echo "ref: $REF"; exit 0; fi

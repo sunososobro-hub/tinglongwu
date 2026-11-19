@@ -600,8 +600,9 @@ jobs:
           sed -i "s/__TLWU_REF__/$TAG/g" dist/install.ps1
           sed -i "s/__TLWU_REF__/linux-ok/g" dist/install.sh
           sed -i "s/__TLWU_REF__/mac-ok/g" dist/mac_install.sh
-          ! grep -q "__TLWU_REF__" dist/install.sh dist/mac_install.sh dist/install.ps1   # nothing may keep the placeholder
-          grep -q '"linux-ok"' dist/install.sh && grep -q '"mac-ok"' dist/mac_install.sh
+          if grep -q "__TLWU_REF__" dist/install.sh dist/mac_install.sh dist/install.ps1; then exit 1; fi   # nothing may keep the placeholder
+          grep -q '"linux-ok"' dist/install.sh
+          grep -q '"mac-ok"' dist/mac_install.sh
           bash -n dist/install.sh
           bash -n dist/mac_install.sh
           cd dist
