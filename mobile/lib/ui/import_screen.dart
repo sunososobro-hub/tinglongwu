@@ -106,7 +106,7 @@ class _ImportScreenState extends State<ImportScreen> {
         const Text('從 Google Play 下載 / Download from Google Play', style: _h),
         const SizedBox(height: 6),
         const Text('安裝後 Play 商店會自動下載模型（約 1.4 GB，建議用 Wi-Fi）；沒下載完可以按這裡繼續。'
-            '檔案直接在 Play 放的位置使用，不另外複製。本 app 仍然沒有網路權限。', style: _t),
+            '檔案直接在 Play 放的位置使用，不另外複製。翻譯與辨識仍完全離線，只有你按下語音包下載時才連網。', style: _t),
         const SizedBox(height: 12),
         if (!_busy)
           FilledButton.icon(

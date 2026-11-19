@@ -52,9 +52,9 @@ class DevicePackInstaller implements PackInstaller {
 String packTitle(VoicePack p) =>
     '${TargetLanguage.options[p.lang] ?? p.lang} ${p.isAsr ? '辨識包' : '朗讀語音包'}';
 
-/// 「下載語音包」 (#1279): only the packs the chosen 對方語言 is missing. The app has no INTERNET
-/// permission, so the phone's browser downloads each zip (one tap per pack, never automatic) and
-/// one more tap imports them through the usual size + SHA-256 check. Pops with `true` when
+/// 「下載語音包」 (#1279): only the packs the chosen 對方語言 is missing. INTERNET is used only for
+/// these user-tapped downloads (one tap per pack, never automatic; #1567), or the zip can be
+/// imported by hand, both through the usual size + SHA-256 check. Pops with `true` when
 /// something was imported; closes by itself once every listed pack is installed.
 class PackInstallScreen extends StatefulWidget {
   const PackInstallScreen({super.key, required this.modelsDir, required this.packs, this.installer});
