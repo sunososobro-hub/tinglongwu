@@ -27,7 +27,7 @@ jobs:
           gh api "repos/${{ github.repository }}/actions/workflows/mobile-apk.yml/runs?branch=dev&status=completed&per_page=30" > "$RUNNER_TEMP/runs.json"
           cd mobile
           set +e
-          python3 -I tool/mobile_release_plan.py "$RUNNER_TEMP/runs.json" --auto "${MOBILE_AUTO_RELEASE:-false}"
+          python3 -I tool/mobile_release_plan.py "$RUNNER_TEMP/runs.json" --auto "${MOBILE_AUTO_RELEASE:-false}" --head-sha "$(git rev-parse HEAD)"
           rc=$?
-          [ "$rc" -le 1 ] || exit "$rc"
+          [ "$rc" -le 1 ] || { echo "planner error (exit $rc)"; exit "$rc"; }
           echo "dry run only: nothing was promoted (exit $rc: 0 = would promote, 1 = blocked)"

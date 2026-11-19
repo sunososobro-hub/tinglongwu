@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Mobile release-lane promotion plan (#1534), dry-run only.
 
-    python3 -I tool/mobile_release_plan.py <runs.json> [--auto true|false] [--pubspec P] [--whats-new W]
+    python3 -I tool/mobile_release_plan.py <runs.json> [--auto true|false] [--pubspec P] [--whats-new W] [--head-sha SHA]
 
 runs.json = the JSON of `GET /repos/<R>/actions/workflows/mobile-apk.yml/runs?branch=dev`.
 Prints the plan as JSON (build run, sha, versionName, notes, blockers). Exit 0 when every gate
-passes (would promote), 1 when a gate blocks, 2 on bad usage. It never talks to Play.
+passes (would promote), 1 when a gate blocks (a plan was printed), 2 on bad usage,
+3 on an execution error (missing file, bad JSON). --head-sha = the checked-out commit; the plan blocks
+when it differs from the selected run's head_sha (release files must come from the built commit). It never talks to Play.
 """
 import json
 import os
@@ -25,7 +27,7 @@ def newest_green_build(runs):
     return max(ok, key=lambda r: r.get("run_number", 0))
 
 
-def build_plan(runs, pubspec_text, whats_new_text, auto_enabled):
+def build_plan(runs, pubspec_text, whats_new_text, auto_enabled, head_sha=None):
     """Return a dict with `blockers` (empty = would promote)."""
     blockers = []
     if not auto_enabled:
@@ -37,6 +39,9 @@ def build_plan(runs, pubspec_text, whats_new_text, auto_enabled):
     if run is not None:
         plan["build_run"] = run.get("run_number")
         plan["sha"] = run.get("head_sha")
+        if head_sha is not None and head_sha != plan["sha"]:
+            blockers.append("checked-out commit %s is not the selected build's commit %s"
+                            % (head_sha[:12], str(plan["sha"])[:12]))
     try:
         plan["versionName"] = mv.version_name(pubspec_text)
         plan["notes"] = mv.notes_section(whats_new_text, plan["versionName"])
@@ -57,7 +62,7 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     runs_path = args[0]
-    auto, pubspec, notes = False, mv.PUBSPEC, mv.WHATS_NEW
+    auto, pubspec, notes, head = False, mv.PUBSPEC, mv.WHATS_NEW, None
     it = iter(args[1:])
     try:
         for a in it:
@@ -67,17 +72,19 @@ def main(argv):
                 pubspec = next(it)
             elif a == "--whats-new":
                 notes = next(it)
+            elif a == "--head-sha":
+                head = next(it)
             else:
                 raise StopIteration
         data = json.loads(_read(runs_path))
         runs = data.get("workflow_runs", []) if isinstance(data, dict) else data
-        plan = build_plan(runs, _read(pubspec), _read(notes), auto)
+        plan = build_plan(runs, _read(pubspec), _read(notes), auto, head)
     except StopIteration:
         print(__doc__, file=sys.stderr)
         return 2
     except (OSError, ValueError) as e:
         print("error: %s" % e, file=sys.stderr)
-        return 1
+        return 3
     print(json.dumps(plan, indent=2, ensure_ascii=False))
     return 1 if plan["blockers"] else 0
 

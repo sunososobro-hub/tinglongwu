@@ -58,3 +58,15 @@ def test_cli_exit_codes(tmp_path):
     assert json.loads(ok.stdout)["versionName"] == "1.0.1"
     off = subprocess.run(base, capture_output=True, text=True, cwd=TOOL)
     assert off.returncode == 1
+
+
+def test_head_sha_mismatch_blocks_and_match_passes():
+    assert rp.build_plan([run(5)], PUBSPEC, NOTES, True, head_sha="sha5")["blockers"] == []
+    plan = rp.build_plan([run(5)], PUBSPEC, NOTES, True, head_sha="other")
+    assert any("not the selected build" in b for b in plan["blockers"])
+
+
+def test_cli_missing_file_is_error_not_blocked(tmp_path):
+    r = subprocess.run([sys.executable, "-I", str(TOOL / "mobile_release_plan.py"), str(tmp_path / "nope.json")],
+                       capture_output=True, text=True, cwd=TOOL)
+    assert r.returncode == 3
