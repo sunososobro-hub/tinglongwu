@@ -13,10 +13,11 @@ import mobile_lane as ml  # noqa: E402
 GREEN = {"analyze": "success", "test": "success", "aab": "success"}
 
 
-def test_green_snapshot_tags_and_targets_alpha():
+def test_green_snapshot_tags_and_targets_production_draft():
     d = ml.decide("release/v0.4.11", GREEN)
-    assert (d["tag"], d["track"], d["version"]) == ("mobile-v0.4.11", "alpha", "0.4.11")
-    assert d["release_note"] == "shipped mobile-v0.4.11 to internal testing"
+    assert (d["tag"], d["track"], d["version"]) == ("mobile-v0.4.11", "production", "0.4.11")
+    assert d["status"] == "draft"
+    assert d["release_note"] == "mobile 0.4.11 drafted for production"
 
 
 @pytest.mark.parametrize("gate", ml.GATES)
@@ -30,8 +31,10 @@ def test_missing_gate_result_counts_as_red():
     assert ml.decide("release/v1.0.0", {"analyze": "success"})["tag"] is None
 
 
-def test_never_targets_production():
-    assert ml.decide("release/v1.0.0", GREEN)["track"] != "production"
+def test_production_is_only_ever_a_draft():
+    d = ml.decide("release/v1.0.0", GREEN)
+    assert (d["track"], d["status"]) == ("production", "draft")
+    assert ml.decide("release/v1.0.0", dict(GREEN, test="failure"))["status"] is None
 
 
 @pytest.mark.parametrize("bad", ["dev", "release/v1.0", "release/v1.0.0-rc1", "hotfix/v1.0.1", "", None])
@@ -45,11 +48,11 @@ def run_cli(*args):
                           capture_output=True, text=True)
 
 
-def test_cli_green_dry_run_logs_track_alpha():
+def test_cli_green_dry_run_logs_track_production_draft():
     r = run_cli("--branch", "release/v0.4.11", "--analyze", "success", "--test", "success",
                 "--aab", "success", "--dry-run")
     assert r.returncode == 0, r.stderr
-    assert "track=alpha" in r.stdout
+    assert "track=production status=draft" in r.stdout
     assert json.loads(r.stdout.splitlines()[0])["dry_run"] is True
 
 

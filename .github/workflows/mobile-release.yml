@@ -3,7 +3,7 @@ name: mobile-release
 # would be promoted to Play production. It never calls the Play API; promotion and the staged rollout
 # are a later part. Kill switch: repo variable MOBILE_AUTO_RELEASE must be 'true' for the plan to pass.
 # Part 3 (#1598): `lane` job = the mobile good tag. On a release/vX.Y.Z snapshot it runs flutter analyze +
-# flutter test, then scripts/mobile_lane.py decides tag `mobile-vX.Y.Z` + Play track `alpha`. Independent of the
+# flutter test, then scripts/mobile_lane.py decides tag `mobile-vX.Y.Z` + Play track `production` (status draft). Independent of the
 # desktop lanes (nothing here is a required check of vX.Y.Z). Production is never automatic. The AAB build/upload
 # step is the next part: until it exists the aab gate is reported as `not-built`, so no tag is created and nothing
 # is uploaded (decision is printed only).
@@ -85,4 +85,4 @@ jobs:
             --aab not-built --last-tag "$last" $flag
           rc=$?
           [ "$rc" -le 1 ] || exit "$rc"
-          echo "AAB build + alpha upload + tag come with the next part; nothing was tagged or uploaded."
+          echo "AAB build + production draft upload + tag come with the next part; nothing was tagged or uploaded."

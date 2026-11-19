@@ -7,8 +7,8 @@ independent: this script never looks at, and never blocks, `vX.Y.Z`.
 
     python3 -I scripts/mobile_lane.py --branch release/v0.4.11 --analyze success --test success \
         --aab success [--dry-run]
-prints one JSON object; exit 0 = tag + alpha upload, 1 = skipped (not verified).
-Production is never a target: the owner promotes by hand in Play Console.
+prints one JSON object; exit 0 = tag + production *draft* upload, 1 = skipped (not verified).
+Only status `draft` is ever used: the owner presses "start rollout" in Play Console.
 """
 import argparse
 import json
@@ -17,7 +17,8 @@ import sys
 
 _BRANCH = re.compile(r"^release/v(\d+\.\d+\.\d+)$")
 GATES = ("analyze", "test", "aab")
-TRACK = "alpha"
+TRACK = "production"
+STATUS = "draft"  # never "completed"
 
 
 def parse_version(branch):
@@ -36,8 +37,9 @@ def decide(branch, results, last_tag=None):
         "version": version,
         "tag": "mobile-v%s" % version if ok else None,
         "track": TRACK if ok else None,
+        "status": STATUS if ok else None,
         "failed_gates": failed,
-        "release_note": ("shipped mobile-v%s to internal testing" % version) if ok else
+        "release_note": ("mobile %s drafted for production" % version) if ok else
         ("skipped (not verified), stays on %s" % (last_tag or "the previous mobile-v* tag")),
     }
 
@@ -58,7 +60,7 @@ def main(argv=None):
     d["dry_run"] = a.dry_run
     print(json.dumps(d, sort_keys=True))
     if d["track"]:
-        print("track=%s tag=%s" % (d["track"], d["tag"]))
+        print("track=%s status=%s tag=%s" % (d["track"], d["status"], d["tag"]))
     return 0 if d["tag"] else 1
 
 
