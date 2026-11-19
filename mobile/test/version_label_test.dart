@@ -17,4 +17,17 @@ void main() {
     expect(find.text('v1.0.0'), findsOneWidget);
     expect(find.textContaining('85'), findsNothing);
   });
+
+  testWidgets('shows the internal dev label X.Y.Z-dev.<run> (#1534)', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: VersionLabel(
+          loader: () async => PackageInfo(
+              appName: 'x', packageName: 'x', version: '1.0.0-dev.155', buildNumber: '155'),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('v1.0.0-dev.155'), findsOneWidget);
+  });
 }
