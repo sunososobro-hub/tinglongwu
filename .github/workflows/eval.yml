@@ -221,7 +221,7 @@ jobs:
           cat lowend.md
           { echo "## low-end CPU gate (#750)"; echo; cat lowend.md; } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
-      - name: Live lag with one busy core (#1369; 3 min English clip in real time, lag <= 8 s at 60 s, growth <= 2 s)
+      - name: Live lag with one busy core (#1369; 3 min English clip in real time, lag <= 8 s at 60 s, growth <= 3 s)
         if: ${{ !cancelled() && steps.paths.outputs.run == 'true' }}
         # Listen mode while another app keeps a core busy. The clip is the smoke-set English clips looped to 3 min
         # with 8 s of synthetic music at 90 s (no music-only line may be shown).
