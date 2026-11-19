@@ -54,6 +54,6 @@ More languages on the way ([language plan](docs/VISION.md)). [Full docs: require
 
 MIT License. See [LICENSE](LICENSE). [Code signing policy](docs/CODE_SIGNING_POLICY.md) (SignPath Foundation). (c) 2026 Alonso.
 
-<p align="center"><img src="assets/mascot/tinglong@2x.png" alt="TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong, the listening dragon</sub></p>
+<p align="center"><img src="assets/mascot/tinglong%402x.png" alt="TingLong, the listening dragon" width="120"><br><sub>聽龍 / TingLong, the listening dragon</sub></p>
 
 </details>
