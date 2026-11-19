@@ -32,4 +32,4 @@ def test_suggestion_form_points_to_discussions():
 
 
 def test_contributing_mentions_discussions():
-    assert URL in _links((ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8"))
+    assert URL in _links((ROOT / ".github" / "CONTRIBUTING.md").read_text(encoding="utf-8"))
