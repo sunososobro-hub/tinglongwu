@@ -50,7 +50,7 @@ class MissingModelsScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       color: Colors.redAccent)),
               const SizedBox(height: 16),
-              const Text('此 App 完全離線，不會自己下載模型。用手機瀏覽器下載模型包後，按下方按鈕匯入：',
+              const Text('翻譯、辨識、朗讀都在手機上離線執行；只有你按下下載時才會連網取得語音包。也可用瀏覽器下載模型包後，按下方按鈕匯入：',
                   style: TextStyle(fontSize: 18, color: Colors.white)),
               const SizedBox(height: 12),
               FilledButton.icon(

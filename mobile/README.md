@@ -1,7 +1,7 @@
 # tinglongWu mobile (聽攏有) - offline zh/en/ja/ko/yue -> zh-Hant live subtitles (prototype v0)
 
 Mic -> sherpa-onnx (SenseVoice-small ASR (zh/en/ja/ko/yue auto-detect) + Silero VAD) -> Hy-MT2-1.8B Q4_K_M via llama.cpp (same translator and prompt as desktop) -> full-screen subtitles.
-No INTERNET permission and no built-in downloader: you download the models with the phone's browser and import them in the app (or side-load them with adb).
+Translation, ASR and TTS run fully offline. INTERNET is used only for user-tapped pack downloads from this repo's release assets (size + SHA-256 checked); you can still import the models zip by hand (or side-load with adb).
 
 ## Phone only (no computer)
 1. On the phone, open https://github.com/sunososobro-hub/tinglongwu/releases/tag/mobile-latest and download `tinglongwu-mobile-arm64.apk`.
@@ -87,8 +87,8 @@ Keep `tlwu-release.jks` and the password backed up offline; losing them means us
 The `mobile-apk` workflow also builds `app-release.aab` for Google Play. The models do not fit in the
 200 MB base, so they ride in two **fast-follow** Play Asset Delivery packs: `models_asr` (SenseVoice +
 Silero VAD, ~240 MB) and `models_llm` (Hy-MT2 GGUF, ~1.13 GB). Play downloads them right after install,
-so a Play user never imports anything; the Play Store does the download, so the app still has no
-INTERNET permission. CI fills the packs from the same official sources as the models zip
+so a Play user never imports anything; the Play Store does that download. The app's own INTERNET
+permission is only for user-tapped pack downloads. CI fills the packs from the same official sources as the models zip
 (`tool/fill_asset_packs.py`, size + SHA-256 checked against the manifest; in git the pack folders are
 empty) and checks the AAB: both packs fast-follow, each <= 1.5 GB, together <= 4 GB.
 
