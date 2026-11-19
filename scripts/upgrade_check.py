@@ -211,7 +211,24 @@ def apply_text(app_zip: Path, app: Path, pid: int) -> str:
     GUI: the job runs the smoke itself afterwards and must not leave a GUI process behind."""
     lines = _selfupdate().apply_app_script(app_zip, app, pid).splitlines()
     keep = [ln for ln in lines if not ln.startswith("if (Test-Path -LiteralPath $exe) { Start-Process")]
+    # the helper swallows a swap error (rolls back, starts the old GUI): record it so a FAIL says why (#1660)
+    i = keep.index("} catch {")
+    keep.insert(i + 1, f"  Set-Content -LiteralPath {_selfupdate()._ps_quote(apply_error_path(app))} -Encoding UTF8 "
+                       "-Value ($_ | Out-String)")
     return "\n".join(keep) + "\n"
+
+
+def apply_error_path(app: Path) -> Path:
+    return app.parent / "tlwu-apply-update.err"
+
+
+def apply_failure(app: Path) -> str:
+    """The swap error the last run_apply recorded, plus which app items / *.old / staging the folder holds now."""
+    err = apply_error_path(app)
+    why = err.read_text("utf-8-sig", "replace").strip() if err.is_file() else ""
+    names = sorted(os.listdir(app)) if app.is_dir() else []
+    held = [n for n in names if n in _selfupdate().APP_ITEMS or n.endswith(".old") or n.startswith(".update")]
+    return f"\n  swap error: {why or '(none recorded)'}\n  {app} holds: {', '.join(held)}"
 
 
 def run_apply(app_zip: Path, app: Path, run=None) -> None:
@@ -219,6 +236,7 @@ def run_apply(app_zip: Path, app: Path, run=None) -> None:
     done = subprocess.Popen([sys.executable, "-c", "pass"])
     done.wait()
     script = app.parent / "tlwu-apply-update.ps1"
+    apply_error_path(app).unlink(missing_ok=True)
     script.write_text(apply_text(app_zip, app, done.pid), "utf-8-sig")
     (run or subprocess.run)(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
                             timeout=600, check=True)
@@ -246,7 +264,8 @@ def cmd_app_update(old_zip: Path, core: Path, dest: Path) -> int:
     run_apply(app_zip, app)
     new_ver = json.loads((core / "app-layer.json").read_text("utf-8"))
     got = json.loads((app / "app-layer.json").read_text("utf-8")) if (app / "app-layer.json").is_file() else {}
-    prob = ("" if got == new_ver else "app-layer.json is not the new one after --apply-app") or run_smoke(app)
+    prob = ("" if got == new_ver else f"app-layer.json is not the new one after --apply-app (have {got}, want "
+            f"{new_ver}){apply_failure(app)}") or run_smoke(app)
     if prob:
         print("app-update: FAIL:", prob)
         return 1
