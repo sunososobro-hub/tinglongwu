@@ -62,7 +62,10 @@ class DevicePackInstaller implements PackInstaller {
 
   @override
   Future<void> cancel() async {
-    await PackDownloader.cancel();
+    // No download to cancel (or no native handler, e.g. iOS): still cancel a running import.
+    try {
+      await PackDownloader.cancel();
+    } catch (_) {}
     await ModelImporter.cancel();
   }
 
@@ -172,6 +175,14 @@ class _PackInstallScreenState extends State<PackInstallScreen> {
         } else {
           _openError = '下載失敗：${e.message ?? e.code}。可以改用瀏覽器下載。';
         }
+      });
+      return;
+    } catch (e) {
+      // e.g. no native handler (iOS) or an unreadable file: never leave the screen stuck busy.
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _openError = '下載失敗：$e。可以改用瀏覽器下載。';
       });
       return;
     }

@@ -78,6 +78,14 @@ class _Fake implements PackInstaller {
   Future<Set<String>> present() async => {...installed};
 }
 
+class _Throwing extends _Fake {
+  @override
+  Future<PickedDoc> download(VoicePack p,
+      {required void Function(int done, int total) onProgress}) async {
+    throw const FileSystemException('cannot read the zip');
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -160,6 +168,16 @@ void main() {
     await t.pumpAndSettle();
     expect(fake.opened, ['https://example.invalid/tlwu-voice-en.zip']);
     expect(find.textContaining('已交給瀏覽器下載'), findsOneWidget);
+  });
+
+  testWidgets('an unexpected download error does not leave the screen busy', (t) async {
+    final broken = _Throwing();
+    await open(t, broken, [_voiceEn]);
+    await t.tap(find.byKey(const Key('download:voice-en')));
+    await t.pumpAndSettle();
+    expect(find.textContaining('下載失敗'), findsOneWidget);
+    expect(find.byKey(const Key('cancelImport')), findsNothing);
+    expect(t.widget<OutlinedButton>(find.byKey(const Key('download:voice-en'))).onPressed, isNotNull);
   });
 
   testWidgets('no browser: the URL is shown to copy', (t) async {
