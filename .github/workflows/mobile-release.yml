@@ -114,8 +114,9 @@ jobs:
           TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           # versionCode must beat every earlier Play upload; dev builds use mobile-apk's run number, so offset ours
-          BUILD_NUMBER: ${{ 2000000 + github.run_number }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
+          BUILD_NUMBER=$((2000000 + RUN_NUMBER))
           flutter build appbundle --release --target-platform android-arm64 --build-number "$BUILD_NUMBER" --build-name "$(python3 -I tool/mobile_version.py name)"
           mkdir -p "$RUNNER_TEMP/aab" && cp build/app/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/aab/tinglongwu-mobile.aab"
       - name: Decide the mobile lane
@@ -142,6 +143,7 @@ jobs:
           git tag "${{ steps.decide.outputs.tag }}" "$GITHUB_SHA"
           git push origin "refs/tags/${{ steps.decide.outputs.tag }}"
       - name: Upload to Google Play (production, DRAFT only)
+        id: upload
         if: steps.decide.outputs.act == 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
@@ -152,5 +154,14 @@ jobs:
           status: ${{ steps.decide.outputs.status }}
       - name: Summary
         if: always()
+        env:
+          NOTE: ${{ steps.decide.outputs.release_note }}
+          ACT: ${{ steps.decide.outputs.act }}
+          UPLOAD: ${{ steps.upload.outcome }}
+          TRACK: ${{ steps.decide.outputs.track }}
+          STATUS: ${{ steps.decide.outputs.status }}
         run: |
-          echo "mobile lane: ${{ steps.decide.outputs.release_note }} (track=${{ steps.decide.outputs.track }} status=${{ steps.decide.outputs.status }})" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ACT" != "true" ]; then r="$NOTE (no tag, no upload: red gate or dry run)"
+          elif [ "$UPLOAD" = "success" ]; then r="$NOTE (track=$TRACK status=$STATUS uploaded)"
+          else r="upload $UPLOAD: nothing drafted on Play"; fi
+          echo "mobile lane: $r" >> "$GITHUB_STEP_SUMMARY"
