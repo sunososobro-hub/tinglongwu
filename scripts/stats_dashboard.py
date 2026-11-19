@@ -1060,7 +1060,7 @@ if(I&&I.days&&I.days.length){const last=I.total[I.total.length-1];
  line($('c_inst'),{x:I.days.map(d=>d.slice(5).replace('-','/')),s:[{c:'var(--s3)',v:I.total}],area:1,h:160,label:'Active installs per day'});
  const vm=Math.max(1,...I.versions.map(v=>v.week_avg));
  bars($('b_inst'),I.versions.slice(0,6).map(v=>({n:v.version+' '+v.os,v:v.week_avg,l:v.week_avg.toFixed(1)+'/day',c:'var(--s3)',t:v.version+' '+v.os+': last day '+v.last_day+', 7-day avg '+v.week_avg.toFixed(1)})),vm)}
-else none($('inst'),'Install counter not available yet (cloudflare/update-counter).');
+else none($('inst'),'Install counter not available yet (web/cloudflare/update-counter).');
 const LV=D.lang_verdicts;
 if(LV&&LV.rows&&LV.rows.length){const f2=(v,s)=>v==null?'n/a':(s&&v>0?'+':'')+v.toFixed(2);
  bars($('langv'),LV.rows.map(r=>({n:r.language,v:r.mt||0,l:r.verdict,c:r.verdict==='PASS'?'var(--good)':'var(--bad)',t:r.language+': chrF '+f2(r.mt)+' ('+f2(r.d_mt,1)+'), ASR '+f2(r.asr)+'% ('+f2(r.d_asr,1)+') · '+LV.date+(LV.previous_date?' vs '+LV.previous_date:'')})),100)}

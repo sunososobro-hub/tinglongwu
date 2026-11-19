@@ -1,4 +1,4 @@
-"""#1159 (Chrome extension part 2, parent #711): the unpacked MV3 extension in extension/capture captures a tab's
+"""#1159 (Chrome extension part 2, parent #711): the unpacked MV3 extension in web/extension/capture captures a tab's
 audio with chrome.tabCapture, keeps the tab audible and hands 16 kHz mono frames to the recognizer hook.
 
 The capture test loads the extension in Playwright's Chromium, plays a 3 s 440 Hz WAV in a local page and reads the
@@ -34,7 +34,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-EXT = ROOT / "extension" / "capture"
+EXT = ROOT / "web" / "extension" / "capture"
 REQUIRE = os.environ.get("TLWU_REQUIRE_EXTENSION") == "1"
 PULSE_MONITOR = os.environ.get("TLWU_PULSE_MONITOR", "")
 CLIP_S, TONE_HZ, CLIP_RATE = 3.0, 440.0, 48000

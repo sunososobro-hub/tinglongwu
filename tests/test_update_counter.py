@@ -141,6 +141,6 @@ def test_readme_privacy_line():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_worker_node_tests():
-    r = subprocess.run(["node", "--test"], cwd=ROOT / "cloudflare" / "update-counter", capture_output=True,
+    r = subprocess.run(["node", "--test"], cwd=ROOT / "web" / "cloudflare" / "update-counter", capture_output=True,
                        text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
