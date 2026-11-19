@@ -266,6 +266,30 @@ def platform_plan(tag: str, status: dict[str, bool], marker_shas: dict[str, str 
     return out
 
 
+MOBILE_TAG_RE = re.compile(r"^mobile-v(\d+)\.(\d+)\.(\d+)$")
+
+
+def mobile_state(tag: str, mobile_tags: list[str]) -> dict:
+    """#1598: the mobile lane line for release `tag` (vX.Y.Z). `mobile-vX.Y.Z` exists = the mobile gate was green and
+    the AAB went to Play production as a draft; otherwise mobile stays on the newest earlier `mobile-v*` tag."""
+    ver = tag.lstrip("v")
+    if f"mobile-v{ver}" in mobile_tags:
+        return {"ship": True, "version": ver}
+    def key(t):
+        return tuple(int(x) for x in MOBILE_TAG_RE.match(t).groups())
+    older = [t for t in mobile_tags if MOBILE_TAG_RE.match(t) and key(t) < key(f"mobile-v{ver}")] \
+        if re.fullmatch(r"\d+\.\d+\.\d+", ver) else []
+    return {"ship": False, "version": max(older, key=key) if older else ""}
+
+
+def mobile_md(d: dict) -> str:
+    if d["ship"]:
+        return f"- Mobile: mobile {d['version']} drafted for production"
+    if d["version"]:
+        return f"- Mobile: skipped (not verified), stays on {d['version']}"
+    return "- Mobile: skipped (not verified), no earlier mobile release"
+
+
 def platforms_md(plan_: dict[str, dict]) -> str:
     lines = ["### Platforms", ""]
     for p in ("windows", *MARKERS):
@@ -274,6 +298,8 @@ def platforms_md(plan_: dict[str, dict]) -> str:
                  f"skipped (not verified), stays on {d['version']}" if d["version"] else
                  "skipped (not verified), no earlier verified version")
         lines.append(f"- {PLATFORM_NAMES[p]}: {state}")
+    if "mobile" in plan_:
+        lines.append(mobile_md(plan_["mobile"]))
     return "\n".join(lines) + "\n"
 
 
@@ -759,6 +785,12 @@ def marker_shas() -> dict[str, str | None]:
     return out
 
 
+def mobile_tags() -> list[str]:
+    r = subprocess.run(["git", "for-each-ref", "--format=%(refname:short)", "refs/tags/mobile-v*"], cwd=ROOT,
+                       capture_output=True, text=True)
+    return r.stdout.split() if r.returncode == 0 else []
+
+
 def local_platform_plan(tag: str, platforms: str) -> dict[str, dict]:
     return platform_plan(tag, parse_platforms(platforms), marker_shas(), git_tags())
 
@@ -928,7 +960,9 @@ def main(argv=None) -> int:
                          _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None,
                          wn.read_text("utf-8") if wn.exists() else "", a.version,
                          os.environ.get("HW_DEFERRED", "") == "true",  # #848: release.yml passes plan's hw_deferred
-                         local_platform_plan(a.version, a.platforms) if a.platforms else None)
+                         ({**local_platform_plan(a.version, a.platforms),
+                           "mobile": mobile_state(a.version, mobile_tags())}  # #1598
+                          if a.platforms else None))
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

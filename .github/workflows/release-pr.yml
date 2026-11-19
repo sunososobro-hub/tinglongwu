@@ -168,6 +168,12 @@ jobs:
             gh workflow run "$w.yml" --ref "$BRANCH"
             echo "dispatched $w on $BRANCH" >> "$GITHUB_STEP_SUMMARY"
           done
+      - name: Run the mobile gate on the snapshot ref (#1598; a token-made branch starts no push run)
+        if: needs.plan.outputs.pr == 'true'
+        continue-on-error: true   # independent lane: a failed dispatch never blocks the desktop release PR
+        run: |
+          gh workflow run mobile-release.yml --ref "$BRANCH" -f dry_run=false
+          echo "dispatched mobile-release on $BRANCH" >> "$GITHUB_STEP_SUMMARY"
       - name: Open the release PR
         if: needs.plan.outputs.pr == 'true'
         env:
