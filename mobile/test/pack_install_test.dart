@@ -252,9 +252,10 @@ void main() {
       fake.installed.add('lang-ru/file.bin');
       return ImportReport()..imported.add('lang-ru/file.bin');
     };
+    // Two cards now push the import button below the fold of a default-size list: use a tall view.
+    await t.binding.setSurfaceSize(const Size(800, 2400));
+    addTearDown(() => t.binding.setSurfaceSize(null));
     final result = await open(t, fake, [_asrRu, _voiceRu]);
-    // The two cards now push the import button below the fold of the list.
-    await t.scrollUntilVisible(find.byKey(const Key('importDownloaded')), 200);
     await t.tap(find.byKey(const Key('importDownloaded')));
     await t.pumpAndSettle();
     expect(find.text('已安裝'), findsOneWidget);
