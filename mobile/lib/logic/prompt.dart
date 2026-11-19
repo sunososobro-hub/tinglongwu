@@ -79,17 +79,17 @@ class PromptBuilder {
     r'^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s+noted\s+that|you\s+should)[,:]?\s*'
     r'(?=[^.:\n]*\boutput\b)'
     r'[^.:\n]{0,40}?\bonly\b[^.:\n]{0,40}?\btranslated\s+(?:result|text)\b'
-    r'[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*[.:]\s*',
+    r'[^.:\n]{0,40}?\b(?:without|no)\b[^.:\n]{0,40}?\bexplanations?\s*(?:[.:]|(?=\n)|$)\s*',
     caseSensitive: false,
   );
   static final RegExp _echoZh =
-      RegExp(r'^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)[。：:]\s*');
+      RegExp(r'^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)(?:[。：:]|(?=\n)|$)\s*');
 
   /// Desktop `hymt.ECHO_WORDS` (#1615): the instruction translated into the target language. A leading
   /// sentence is an echo only when it holds all five parts in one language:
   /// only / translat- / result|text / without / explanation|comment.
   static const echoWords = <List<String>>[
-    ['только', 'перев', 'результат|текст', 'без', 'коммент|объясн|пояснен'], // ru
+    ['только', 'переведённ|переведенн|перевод(?!чи)', 'результат|текст', 'без', 'коммент|объясн|пояснен'], // ru
     [r'\bnur\b', 'übersetz', 'ergebnis|text', r'\bohne\b|\bkeine', 'erklär|erläuter|kommentar'], // de
     ['uniquement|seulement|ne .{0,40}que', 'tradu', 'résultat|texte', r'\bsans\b|aucun', 'explication|commentaire'], // fr
     ['solo|sólo|únicamente|solamente', 'traduc', 'resultado|texto', r'\bsin\b|ningún|ninguna', 'explicaci|comentario'], // es

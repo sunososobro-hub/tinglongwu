@@ -111,3 +111,21 @@ def test_target_language_echo_through_translator(tmp_path):
 ])
 def test_target_language_real_translations_are_unchanged(text):
     assert strip_echo(text) == text
+
+
+def test_unpunctuated_echo_then_translation_keeps_translation(tmp_path):
+    # CodeRabbit on #1619: clean_output joins the lines, so the echo is stripped from the raw text first
+    out = translate(tmp_path, f"{RU_ECHO}\n\nВода переливается через дамбу.", src="en", tgt="ru")
+    assert out == "Вода переливается через дамбу."
+    en = translate(tmp_path, f"{NOTE[:-1]}\nWater is spilling over the levee.")
+    assert en == "Water is spilling over the levee."
+
+
+def test_unpunctuated_echo_only_becomes_empty():
+    assert strip_echo(NOTE[:-1]) == ""
+    assert strip_echo("注意只需要输出翻译后的结果，不要额外解释") == ""
+
+
+def test_russian_sentence_about_a_translator_is_kept():
+    text = "Только переводчик получил результат без комментариев."
+    assert strip_echo(text) == text

@@ -21,6 +21,8 @@ void main() {
       '翻訳結果のみを出力し、追加の説明は不要です。',
       '추가 설명 없이 번역된 결과만 출력하세요.',
       '<｜hy_Assistant｜>$ruEcho',
+      enEcho.substring(0, enEcho.length - 1), // no final ":" (CodeRabbit on #1619)
+      zhEcho.substring(0, zhEcho.length - 1),
     ]) {
       test(echo, () => expect(PromptBuilder.clean(echo), ''));
     }
@@ -51,6 +53,7 @@ void main() {
       'この翻訳だけで十分です。',
       '번역만 하면 됩니다.',
       '注意安全，不要靠近大壩。',
+      'Только переводчик получил результат без комментариев.', // a translator, not the instruction
     ]) {
       test(t, () => expect(PromptBuilder.clean(t), t));
     }
@@ -60,6 +63,7 @@ void main() {
     test('an echo line alone does not stop generation', () {
       expect(PromptBuilder.lineDone('$ruEcho.\n'), isFalse);
       expect(PromptBuilder.lineDone('$enEcho\n\n'), isFalse);
+      expect(PromptBuilder.lineDone('${enEcho.substring(0, enEcho.length - 1)}\n'), isFalse);
     });
     test('a translation line after the echo stops it', () {
       expect(PromptBuilder.lineDone('$ruEcho.\nДавайте поделимся.\n'), isTrue);
