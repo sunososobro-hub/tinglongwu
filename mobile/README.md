@@ -119,6 +119,10 @@ Every model allows redistribution (SenseVoice FunASR model license, Silero VAD M
     bash tool/fetch_models.sh <DIR>      # -> <DIR>/models, <DIR>/licenses
     python3 -I tool/make_models_zip.py <DIR>/models <DIR>/licenses tlwu-mobile-models.zip
 
+## USB debug build next to the Play build (#1600)
+
+`flutter run` / `flutter build apk --debug` installs as `com.tinglongwu.mobile.dev` with the label "聽龍 (dev)", so it sits beside the Play app (`com.tinglongwu.mobile`) without an uninstall. Release builds keep `com.tinglongwu.mobile`. The dev app has its own models folder, so import or download models once there.
+
 ## Install + side-load with adb (PowerShell, phone on USB debugging)
     $pkg = 'com.tinglongwu.mobile'
     $dst = "/sdcard/Android/data/$pkg/files/models"

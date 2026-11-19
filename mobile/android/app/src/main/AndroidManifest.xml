@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" tools:node="remove"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" tools:node="remove"/>
     <application
-        android:label="聽龍"
+        android:label="${appLabel}"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"

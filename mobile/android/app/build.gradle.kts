@@ -27,6 +27,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // App label; the debug build overrides it so both apps are told apart on the launcher (#1600).
+        manifestPlaceholders["appLabel"] = "聽龍"
         // ROG Phone 6 is arm64 only; drop sherpa's armv7/x86 libs.
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -65,6 +67,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // #1600: a USB debug build installs next to the Play build (different signing key, so the same
+            // applicationId would force an uninstall that also deletes the downloaded models and packs).
+            // Only the id changes; namespace (Kotlin package) stays com.tinglongwu.mobile.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appLabel"] = "聽龍 (dev)"
+        }
         release {
             signingConfig = signingConfigs.getByName(if (tlwuKeystore != null) "tlwuRelease" else "debug")
             // Room/WorkManager keep rules for R8 (#1023).
