@@ -264,8 +264,11 @@ def cmd_app_update(old_zip: Path, core: Path, dest: Path) -> int:
     run_apply(app_zip, app)
     new_ver = json.loads((core / "app-layer.json").read_text("utf-8"))
     got = json.loads((app / "app-layer.json").read_text("utf-8")) if (app / "app-layer.json").is_file() else {}
-    prob = ("" if got == new_ver else f"app-layer.json is not the new one after --apply-app (have {got}, want "
-            f"{new_ver}){apply_failure(app)}") or run_smoke(app)
+    if apply_error_path(app).is_file():  # a swallowed swap error is a failure even when app-layer.json looks new (#1660)
+        prob = f"the --apply-app helper hit a swap error and rolled back{apply_failure(app)}"
+    else:
+        prob = ("" if got == new_ver else f"app-layer.json is not the new one after --apply-app (have {got}, want "
+                f"{new_ver}){apply_failure(app)}") or run_smoke(app)
     if prob:
         print("app-update: FAIL:", prob)
         return 1
