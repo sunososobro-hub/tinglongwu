@@ -28,6 +28,7 @@ def test_all_gates_pass():
     assert plan["blockers"] == []
     assert (plan["build_run"], plan["sha"], plan["versionName"]) == (5, "sha5", "1.0.1")
     assert "Russian" in plan["notes"]
+    assert plan["aabBuildName"] == "1.0.1-dev.5"  # notes still keyed on the base version
 
 
 def test_kill_switch_blocks():

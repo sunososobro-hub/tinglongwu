@@ -35,7 +35,7 @@ def build_plan(runs, pubspec_text, whats_new_text, auto_enabled, head_sha=None):
     run = newest_green_build(runs or [])
     if run is None:
         blockers.append("no green mobile-apk push run on dev")
-    plan = {"build_run": None, "sha": None, "versionName": None, "notes": None}
+    plan = {"build_run": None, "sha": None, "versionName": None, "aabBuildName": None, "notes": None}
     if run is not None:
         plan["build_run"] = run.get("run_number")
         plan["sha"] = run.get("head_sha")
@@ -45,6 +45,8 @@ def build_plan(runs, pubspec_text, whats_new_text, auto_enabled, head_sha=None):
     try:
         plan["versionName"] = mv.version_name(pubspec_text)
         plan["notes"] = mv.notes_section(whats_new_text, plan["versionName"])
+        if plan["build_run"] is not None:  # the AAB mobile-apk built carries this name (-dev.<run>)
+            plan["aabBuildName"] = mv.dev_name(plan["versionName"], plan["build_run"])
     except ValueError as e:
         blockers.append(str(e))
     plan["blockers"] = blockers
