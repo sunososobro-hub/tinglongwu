@@ -10,6 +10,10 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.1
+- Phones: when a translation comes back in the wrong writing system, the app now retries it automatically instead of showing the garbled line.
+- The phone app now shows the same version number as the desktop app.
+
 ## v0.5.0
 - New "Use GPU: Auto / Off" setting under Advanced: the app picks GPU or CPU by itself, and if the GPU check fails on first start it switches to CPU and tells you in one line.
 - A last word said after a short pause now joins its sentence instead of showing up as a line of its own.
