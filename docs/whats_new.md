@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.2
+- Upgrading the app now works reliably: the update no longer fails halfway when swapping the app files, and old program folders are cleaned up.
+- If the GPU speech model fails while listening, the app falls back to CPU instead of stopping.
+- Linux: the installer adds a desktop shortcut and ends on the app window.
+
 ## v0.5.1
 - Phones: when a translation comes back in the wrong writing system, the app now retries it automatically instead of showing the garbled line.
 - The phone app now shows the same version number as the desktop app.
