@@ -229,6 +229,8 @@ main() {
     git clone --quiet --branch "$REF" "$REPO_URL" "$DIR" || die "git clone failed (network, or unknown version $REF)"
   fi
   cd "$DIR" || die "cannot enter $DIR"
+  # #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here
+  if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
 
   [ -x .venv/bin/python ] || "$PY" -m venv .venv || die "venv creation failed"
   say "$(t pip)"

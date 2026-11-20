@@ -37,6 +37,8 @@ tlwu_auto_update() {
   if git merge-base --is-ancestor "$up" HEAD 2>/dev/null; then TLWU_UPDATE_RESULT=uptodate; return 0; fi   # we are ahead / equal
   if ! git merge --ff-only --quiet "$up" >/dev/null 2>&1; then m M_UPD_SKIP_DIVERGED; return 0; fi
   TLWU_UPDATED=1; TLWU_UPDATE_RESULT=updated
+  # #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here
+  if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
   if git diff --name-only "$old" HEAD 2>/dev/null | grep -Eq '^(pyproject\.toml|requirements[^/]*\.txt)$'; then
     # never pip install unasked: print the command; run it only on an explicit y from a terminal (non-interactive = no)
     local ans=""
