@@ -135,7 +135,7 @@ jobs:
           # packages + tlwu.exe). A run reads caches of its own branch and of the default branch (main), so a release
           # on main restores the layer of the previous release. build_windows.py compares the restored layer's recorded
           # key with runtime_layer.key() and rebuilds it on a mismatch; the release checks below then test the zip.
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |

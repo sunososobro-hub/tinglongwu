@@ -68,7 +68,7 @@ jobs:
           path: |
             ~/tlwu-models
             eval_data/smoke
-          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
+          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
       - name: Models
         run: tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
       - name: Smoke clips
