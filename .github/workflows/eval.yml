@@ -48,7 +48,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only HEAD^1 HEAD > changed.txt
           cat changed.txt
-          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)' changed.txt; then
+          if grep -qE '^(tinglongwu/|src/[^/]+/tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)' changed.txt; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -138,7 +138,7 @@ jobs:
           # the release PR (dev -> main) always runs; a docs fast-lane PR to main (rules section 11) uses the filter
           if [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" = "dev" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only HEAD^1 HEAD > changed.txt
-          if grep -qE '^(tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|scripts/eval_livelag\.py$|\.github/workflows/eval[^/]*\.yml$|requirements[^/]*\.txt$|pyproject\.toml$)' changed.txt; then
+          if grep -qE '^(tinglongwu/|src/[^/]+/tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$|scripts/bench/make_ci_smoke\.py$|scripts/eval_livelag\.py$|\.github/workflows/eval[^/]*\.yml$|requirements[^/]*\.txt$|pyproject\.toml$)' changed.txt; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

@@ -30,6 +30,11 @@ REPO = "sunososobro-hub/tinglongwu"
 ALLOWED_REVIEWERS = frozenset({"sunososobro-hub"})  # section 14 "Allowed review authors"
 NEEDS_OPUS, NEEDS_AI = "needs-opus", "needs-review-ai"
 MOBILE_CHECK = "mobile-apk"  # #1618: workflow name; its job is a generic `build`, so gather() reads the workflow run
+EVAL_CHECK = "mini-eval"  # #1687: eval.yml job (check run) name; needed only when a file matches EVAL_PATH_RE
+# #1687: keep in step with eval.yml's "Does this PR touch translation / ASR / eval code?" filter. Root `tinglongwu/`
+# (until #1671 lands) and the post-#1671 layout src/{core,ui,flow,system}/tinglongwu/.
+EVAL_PATH_RE = re.compile(r"^(?:tinglongwu/|src/[^/]+/tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$"
+                          r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
 RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
                     "hotfix.yml")
@@ -218,13 +223,21 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         return "wait", "test not finished"
     if any(c.get("conclusion") != "success" for c in test):
         return "hold", "test is red"
+    # Section 17 (#1687): only these extra checks gate a dev PR; every other check run never blocks and is not waited for.
+    extra = []
     if any(f["filename"].startswith("mobile/") or (f.get("previous_filename") or "").startswith("mobile/")
            for f in files):  # #1618: a phone PR also needs the mobile-apk workflow (flutter analyze + test)
-        mob = [c for c in checks if c.get("name") == MOBILE_CHECK]
-        if not mob or any(c.get("status") != "completed" for c in mob):
-            return "wait", f"{MOBILE_CHECK} not finished"
-        if any(c.get("conclusion") != "success" for c in mob):
-            return "hold", f"{MOBILE_CHECK} is red"
+        extra.append(MOBILE_CHECK)
+    if any(EVAL_PATH_RE.match(f["filename"]) or EVAL_PATH_RE.match(f.get("previous_filename") or "")
+           for f in files) and not (bump and bump(files)[0]):  # #1687: ASR / MT / eval PR also needs the
+        # CPU mini-eval; a bump-check patch bump (only `__version__`) still merges on `test` alone (section 14)
+        extra.append(EVAL_CHECK)
+    for name in extra:
+        got = [c for c in checks if c.get("name") == name]
+        if not got or any(c.get("status") != "completed" for c in got):
+            return "wait", f"{name} not finished"
+        if any(c.get("conclusion") != "success" for c in got):
+            return "hold", f"{name} is red"
     state = pr.get("mergeable_state")
     if state == "dirty":
         return "needs-ai", "merge conflict: resolve in place (section 7)"

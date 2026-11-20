@@ -24,7 +24,7 @@ def pr(**kw):
     return p
 
 
-FILES = [{"filename": "tinglongwu/foo.py", "status": "modified"}]
+FILES = [{"filename": "scripts/foo.py", "status": "modified"}]
 ISSUE = {"number": 100, "labels": [{"name": "status:review"}], "author_association": "OWNER",
          "user": {"login": "sunososobro-hub"}}
 
@@ -265,3 +265,35 @@ def test_mobile_pr_needs_mobile_apk_green():  # #1618
 def test_non_mobile_pr_ignores_mobile_apk():  # #1618
     red = {"name": "mobile-apk", "status": "completed", "conclusion": "failure"}
     assert run(checks=TEST_OK + [red])[0] == "merge"
+
+
+EVAL_OK = {"name": "mini-eval", "status": "completed", "conclusion": "success"}
+
+
+def test_asr_mt_eval_pr_needs_mini_eval_green():  # #1687
+    for path in ("tinglongwu/asr.py", "src/core/tinglongwu/mt.py", "src/flow/tinglongwu/x.py", "eval/baseline.json",
+                 "tlwu_eval/run.py", ".github/workflows/eval.yml"):
+        files = [{"filename": path, "status": "modified"}]
+        assert run(files=files, checks=TEST_OK + [EVAL_OK])[0] == "merge", path
+        assert run(files=files, checks=TEST_OK + [{**EVAL_OK, "conclusion": "failure"}]) == ("hold", "mini-eval is red")
+        assert run(files=files, checks=TEST_OK + [{**EVAL_OK, "status": "queued", "conclusion": None}])[0] == "wait"
+        assert run(files=files, checks=TEST_OK)[0] == "wait", path  # no mini-eval yet: check once, skip
+    moved = [{"filename": "docs/x.md", "previous_filename": "tinglongwu/x.md", "status": "renamed"}]
+    assert run(files=moved, checks=TEST_OK)[0] == "wait"
+
+
+def test_non_eval_pr_ignores_eval_and_other_checks():  # #1687: e2e, low-end-cpu, eval-terms, CodeRabbit never block
+    others = [{"name": n, "status": s, "conclusion": c} for n, s, c in (
+        ("mini-eval", "completed", "failure"), ("low-end-cpu", "in_progress", None), ("eval-terms", "completed",
+         "failure"), ("e2e (ubuntu-latest)", "queued", None), ("CodeRabbit", "in_progress", None))]
+    assert run(checks=TEST_OK + others)[0] == "merge"
+    files = [{"filename": "src/core/tinglongwu/asr.py", "status": "modified"}]
+    assert run(files=files, checks=TEST_OK + [EVAL_OK] + others[1:])[0] == "merge"
+
+
+def test_eval_path_re_matches_eval_yml_filter():  # #1687: the gate and the workflow must agree on which PRs run it
+    import pathlib
+    import merge_gate as mg
+    wf = (pathlib.Path(__file__).resolve().parents[1] / ".github/workflows/eval.yml").read_text(encoding="utf-8")
+    assert "src/[^/]+/tinglongwu/" in wf.split("mini-eval:", 1)[1].split("low-end-cpu", 1)[0]
+    assert not mg.EVAL_PATH_RE.match("mobile/lib/main.dart") and not mg.EVAL_PATH_RE.match("docs/x.md")
