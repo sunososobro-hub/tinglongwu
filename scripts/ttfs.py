@@ -21,7 +21,7 @@ import time
 from datetime import datetime, UTC
 
 TTFS_BUDGET_S = 180
-TTFS_CLIP = "tinglongwu/data/selftest_en.wav"
+TTFS_CLIP = "src/core/tinglongwu/data/selftest_en.wav"
 BASELINE_MBPS = 50
 FIRST_SUBTITLE_TIMEOUT_S = 600
 TAIL_LINES = 40  # #1060: lines of each step's output printed when no subtitle arrives
