@@ -1,11 +1,14 @@
 """#1677: install.sh ends on the GUI (desktop + TTY) or prints the commands; linux_menu has item G."""
 import os
-import pty
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+if sys.platform == "win32":
+    pytest.skip("tests Linux shell scripts (pty is Unix-only)", allow_module_level=True)
+import pty  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 INSTALL = ROOT / "scripts" / "install.sh"
@@ -45,7 +48,6 @@ def test_display_but_not_interactive_does_not_launch(tmp_path):
     assert r.returncode == 0 and "GUI-STARTED" not in r.stdout
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="needs a pty")
 def test_display_and_tty_launches_gui(tmp_path):
     _stub(tmp_path)
     env = _env(tmp_path, D=str(tmp_path), WAYLAND_DISPLAY="wayland-0")
@@ -66,3 +68,13 @@ def test_menu_has_gui_item():
         r = subprocess.run(["bash", "-c", f'. "{ROOT}/scripts/i18n/{lang}.sh"; printf %s "$M_OPT_GUI"'],
                            capture_output=True, text=True)
         assert "G)" in r.stdout
+
+
+def test_printed_commands_are_shell_safe_with_spaces(tmp_path):
+    d = tmp_path / "tlwu demo"
+    _stub(d)
+    r = subprocess.run(["bash", "-c", CODE], env=_env(d, D=str(d)),
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    assert r.returncode == 0
+    assert "tlwu\\ demo/.venv/bin/tlwu-gui" in r.stdout
+    assert "bash " + str(d).replace(" ", "\\ ") + "/scripts/linux_menu.sh" in r.stdout

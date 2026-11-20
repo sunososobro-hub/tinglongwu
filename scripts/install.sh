@@ -169,7 +169,7 @@ update_branch() {
 # #1677: the window version (GUI) comes first; start it when a desktop is there and a person is at the keyboard, else print both commands.
 finish_gui() {
   local gui="$DIR/.venv/bin/tlwu-gui"
-  printf '\n    %s\n    bash %s/scripts/linux_menu.sh\n\n' "$gui" "$DIR"
+  printf '\n    %q\n    bash %q\n\n' "$gui" "$DIR/scripts/linux_menu.sh"
   if { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; } && [ -t 0 ] && [ -x "$gui" ]; then exec "$gui"; fi
   return 0
 }
