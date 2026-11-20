@@ -18,9 +18,9 @@ REPO = "sunososobro-hub/tinglongwu"
 LOG_ISSUE = 61
 PRODUCER = "sunososobro-hub"
 THROTTLE_ISSUE = 574
-DEFAULT_MIX = {"bug": 28, "enhancement": 50, "eval": 11, "documentation": 5, "maint": 6}
+DEFAULT_MIX = {"bug": 28, "enhancement": 40, "infra": 10, "eval": 11, "documentation": 5, "maint": 6}
 TYPES = list(DEFAULT_MIX)
-INFO_TARGETS = {"QA": 15, "ideas": 5}
+INFO_TARGETS = {"QA": 10, "ideas": 5}
 USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=(\d+)(?![\d.])", re.M)
 LINK_RE = re.compile(r"(?:Closes|Refs) #(\d+)")
 HEAD_RE = re.compile(r"^(?:fix|feat)/(\d+)(?:-r\d+)?$")

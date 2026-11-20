@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_share_and_deficit():
     rows = {r["type"]: r for r in ledger.build_rows({"bug": 25, "enhancement": 75}, ledger.DEFAULT_MIX)}
     assert rows["bug"]["share"] == 25.0 and rows["bug"]["deficit"] == 3.0
-    assert rows["enhancement"]["share"] == 75.0 and rows["enhancement"]["deficit"] == -25.0
-    assert rows["QA"]["deficit"] == 15.0
+    assert rows["enhancement"]["share"] == 75.0 and rows["enhancement"]["deficit"] == -35.0
+    assert rows["QA"]["deficit"] == 10.0
 
 
 def test_zero_total_share_zero_deficit_is_target():
@@ -29,8 +29,8 @@ def test_infra_line():
 
 
 def test_mix_parse_valid_and_invalid():
-    body = "level: 2\nfocus: x\nmix: bug 30, enhancement 40, eval 10, documentation 10, maint 10"
-    assert ledger.parse_mix(body) == ({"bug": 30, "enhancement": 40, "eval": 10, "documentation": 10, "maint": 10}, True)
+    body = "level: 2\nfocus: x\nmix: bug 30, enhancement 30, infra 10, eval 10, documentation 10, maint 10"
+    assert ledger.parse_mix(body) == ({"bug": 30, "enhancement": 30, "infra": 10, "eval": 10, "documentation": 10, "maint": 10}, True)
     for bad in ["level: 2", "a\nb\nmix: bug 50, enhancement 60", "a\nb\nmix: bug 28, enhancement 50, eval 11, documentation 5, maint 5",
                 "a\nb\nmix: bug x, enhancement 50, eval 11, documentation 5, maint 6"]:
         assert ledger.parse_mix(bad) == (ledger.DEFAULT_MIX, False)
