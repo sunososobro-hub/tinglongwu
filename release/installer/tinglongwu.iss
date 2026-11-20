@@ -214,6 +214,13 @@ Filename: "{app}\.venv\Scripts\tlwu-gui.exe"; WorkingDir: "{app}"; Description: 
 Filename: "{app}\install.log"; Description: "{cm:RunLog}"; Flags: postinstall shellexec skipifsilent unchecked skipifdoesntexist
 #endif
 
+[InstallDelete]
+; #1664: pre-move root packages (or their __pycache__) shadow src/ as namespace packages; the stage ships src/
+Type: filesandordirs; Name: "{app}\tinglongwu"
+Type: filesandordirs; Name: "{app}\tinglongwu_setup"
+Type: filesandordirs; Name: "{app}\tlwu_app"
+Type: filesandordirs; Name: "{app}\tlwu_eval"
+
 [UninstallDelete]
 ; talk-mode shortcuts are made in code only when tlwu-talk.ps1 exists (#124)
 Type: files; Name: "{autoprograms}\{#TalkTitle}.lnk"
