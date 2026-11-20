@@ -48,7 +48,7 @@ def test_runtime_key_follows_requirements_and_packaging_but_not_app_code(tmp_pat
     for rel in ("requirements.txt", "requirements-llama-cpu.txt", "release/packaging/runtime_layer.py",
                 "release/packaging/build_windows.py", "release/packaging/launcher/tlwu_launcher.c", "release/packaging/stubs/av/__init__.py"):
         f = repo / rel
-        old = f.read_bytes()
+        old = f.read_bytes().replace(b"\r\n", b"\n")  # LF baseline on an autocrlf checkout
         f.write_bytes(old + b"\n# changed\n")
         assert rt.key(True, repo) != base, rel
         f.write_bytes(old.replace(b"\n", b"\r\n"))  # a CRLF checkout is the same layer
