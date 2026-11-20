@@ -43,7 +43,7 @@ def test_mac_launcher_written_once_and_uninstalled(tmp_path):
     assert sorted(p.name for p in apps.iterdir()) == ["tinglongWu.app"]
     exe = apps / "tinglongWu.app" / "Contents" / "MacOS" / "tinglongwu"
     assert os.access(exe, os.X_OK)
-    assert f'exec "{d}/.venv/bin/tlwu-gui"' in exe.read_text()
+    assert f"exec {d}/.venv/bin/tlwu-gui " in exe.read_text()
     assert (apps / "tinglongWu.app" / "Contents" / "Info.plist").is_file()
     r = subprocess.run(["bash", str(d / "scripts" / "uninstall.sh")], env=_env(h), stdin=subprocess.DEVNULL,
                        capture_output=True, text=True, timeout=60)
