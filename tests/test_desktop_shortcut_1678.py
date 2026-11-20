@@ -40,7 +40,7 @@ def test_desktop_shortcut_written_once_and_uninstalled(tmp_path):
     assert files == ["tinglongwu.desktop"]
     text = (apps / "tinglongwu.desktop").read_text()
     assert f"Exec={d}/.venv/bin/tlwu-gui\n" in text
-    assert f"Icon={d}/tinglongwu/gui/assets/tinglongwu.png\n" in text
+    assert f"Icon={d}/src/ui/tinglongwu/gui/assets/tinglongwu.png\n" in text
     assert "Terminal=false\n" in text
     r = subprocess.run(["bash", str(d / "scripts" / "uninstall.sh")], env=_env(h), stdin=subprocess.DEVNULL,
                        capture_output=True, text=True, timeout=60)

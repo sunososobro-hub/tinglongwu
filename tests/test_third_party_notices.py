@@ -11,7 +11,7 @@ NOTICES = (ROOT / "docs" / "THIRD_PARTY_NOTICES.md").read_text("utf-8")
 
 
 def _downloaded_ids():
-    man = json.loads((ROOT / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))
+    man = json.loads((ROOT / "src" / "system" / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))
     ids = [v["repo"] for v in man["models"].values()]
     ids += list(man["argos"])
     ids += [dl.PIPER_REPO, dl.VOSK_TTS_RU, *dl.KOKORO_FILES, "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"]

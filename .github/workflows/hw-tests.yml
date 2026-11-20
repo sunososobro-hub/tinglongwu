@@ -106,7 +106,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python -c "from tinglongwu.device import resolve_device as r; d = r('auto', warn=print); print('device=' + d); assert d == 'cuda', d"
-          python -m tinglongwu --file tinglongwu/data/selftest_en.wav --to zh --device auto --models-dir "$TLWU_MODELS"
+          python -m tinglongwu --file src/core/tinglongwu/data/selftest_en.wav --to zh --device auto --models-dir "$TLWU_MODELS"
 
       - name: "#6 #805 #207 #311-4 speak_selftest through VB-CABLE (en), records CABLE Output"
         if: ${{ !cancelled() }}

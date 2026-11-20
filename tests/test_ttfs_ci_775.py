@@ -66,7 +66,7 @@ def test_windows_commands_934():
     assert install.startswith(r'start /wait "" "C:\dl\tinglongwu-setup.exe" /VERYSILENT')
     assert r'/DIR="C:\t\tlwu"' in install and "TLWU_SKIP_MODELS" not in install
     assert setup.startswith(r'type "C:\t\tlwu\install.log" & ')
-    args = r'--file "C:\t\tlwu\tinglongwu\data\selftest_en.wav" --device cpu'
+    args = r'--file "C:\t\tlwu\src\core\tinglongwu\data\selftest_en.wav" --device cpu'
     # #1060: the wizard's core layout has {app}\tlwu.exe (no .venv): try it first, the venv exe only as fallback
     assert tlwu == (r'if exist "C:\t\tlwu\tlwu.exe" ("C:\t\tlwu\tlwu.exe" ' + args + r') else '
                     r'("C:\t\tlwu\.venv\Scripts\tlwu.exe" ' + args + ')')

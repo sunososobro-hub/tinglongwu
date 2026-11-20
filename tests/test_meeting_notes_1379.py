@@ -39,7 +39,7 @@ def test_default_model_counts_only_when_pinned_and_on_disk(tmp_path):
 def test_pin_names_the_same_key_and_file(tmp_path):
     from pathlib import Path
 
-    pins = json.loads((Path(core.__file__).parents[2] / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))
+    pins = json.loads((Path(core.__file__).parents[3] / "system" / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))
     assert core.TOPICS_FILE in pins["models"][core.TOPICS_KEY]["files"]
     from tinglongwu_setup import downloader
 

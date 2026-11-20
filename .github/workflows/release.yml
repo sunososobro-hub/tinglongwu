@@ -135,7 +135,7 @@ jobs:
           # packages + tlwu.exe). A run reads caches of its own branch and of the default branch (main), so a release
           # on main restores the layer of the previous release. build_windows.py compares the restored layer's recorded
           # key with runtime_layer.key() and rebuilds it on a mismatch; the release checks below then test the zip.
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |
@@ -755,7 +755,7 @@ jobs:
           set -euo pipefail
           cd dist/installer
           exe="tinglongwu-setup-${TAG#v}.exe"   # named after tinglongwu.__version__, which must match the tag
-          [ -f "$exe" ] || { echo "expected $exe (set __version__ in tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
+          [ -f "$exe" ] || { echo "expected $exe (set __version__ in src/core/tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
           cp "$exe" tinglongwu-setup.exe
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O all.txt
           grep -v ' tinglongwu-setup' all.txt > SHA256SUMS.txt || true   # a re-run replaces the wizard lines

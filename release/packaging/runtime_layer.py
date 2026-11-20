@@ -33,14 +33,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
 LAUNCHER_DIR = REPO / "release" / "packaging" / "launcher"
 STUBS_DIR = REPO / "release" / "packaging" / "stubs"  # av: PyAV's wheel bundles GPL FFmpeg codecs, so a stub ships instead
-APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
+APP_ICON = REPO / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 EXE_NAME = "tlwu.exe"
 GUI_EXE_NAME = "tlwu-gui.exe"  # #1524: GUI-subsystem stub the shortcuts start; it runs tlwu.exe without a console window
 MANIFEST_NAME = "runtime-layer.json"  # at the top of the layer: key, Python version, pyc magic
 # The runtime layer is rebuilt when one of these changes (repo-relative; a folder = every file in it). The two
 # workflows hash the same list for their cache key (tests/test_windows_layers_923.py keeps them equal).
 KEY_GLOBS = ("requirements*.txt", "release/packaging/build_windows.py", "release/packaging/runtime_layer.py",
-             "release/packaging/launcher/**", "release/packaging/stubs/**", "tinglongwu/gui/assets/tinglongwu.ico")
+             "release/packaging/launcher/**", "release/packaging/stubs/**",
+             "src/ui/tinglongwu/gui/assets/tinglongwu.ico")
 # Packages of the packaging venv that are build tools, not part of the app
 NOT_SHIPPED = {"pip", "setuptools", "pkg_resources", "_distutils_hack", "wheel", "nuitka", "ordered_set",
                "zstandard", "av", "psutil",  # names as _dist_name() gives them

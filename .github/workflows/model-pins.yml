@@ -1,5 +1,5 @@
 name: model-pins
-# #1401: refresh committed model pins (tinglongwu_setup/manifest.json) on a GitHub-hosted runner, because the
+# #1401: refresh committed model pins (src/system/tinglongwu_setup/manifest.json) on a GitHub-hosted runner, because the
 # cloud agent sandbox cannot reach huggingface.co (403). Runs `scripts/make_model_pins.py --only <prefix>` (default
 # `whisper-cpp-`: the whisper.cpp ggml models for the Vulkan ASR) and prints the manifest diff to the log and the
 # step summary; the refreshed manifest is uploaded as the `model-pins` artifact. It never pushes: a maintainer
@@ -36,12 +36,12 @@ jobs:
         run: python scripts/make_model_pins.py --only "$ONLY"
       - name: diff
         run: |
-          git --no-pager diff --stat tinglongwu_setup/manifest.json
-          git --no-pager diff tinglongwu_setup/manifest.json | tee pins.diff
+          git --no-pager diff --stat src/system/tinglongwu_setup/manifest.json
+          git --no-pager diff src/system/tinglongwu_setup/manifest.json | tee pins.diff
           { echo '### model pins diff'; echo '```diff'; cat pins.diff; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: model-pins
           path: |
-            tinglongwu_setup/manifest.json
+            src/system/tinglongwu_setup/manifest.json
             pins.diff

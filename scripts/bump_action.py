@@ -86,7 +86,7 @@ def bullets(titles: list[str]) -> list[str]:
 
 
 def bump_files(init_text: str, whats_new_text: str, new_version: str, bullet_lines: list[str]) -> tuple[str, str]:
-    """New text of tinglongwu/__init__.py (only the version line changes) and docs/whats_new.md (one section added
+    """New text of src/core/tinglongwu/__init__.py (only the version line changes) and docs/whats_new.md (one section added
     above the newest one, below the intro and the example comment)."""
     new_init, n = re.subn(r'^(__version__\s*=\s*")[^"]+(")', rf"\g<1>{new_version}\2", init_text, count=1, flags=re.M)
     if n != 1:
@@ -126,7 +126,7 @@ def _ts(s: str) -> datetime:
 def gather(now: datetime) -> dict:
     tags = set(_git("tag").split())
     tip = _git("rev-parse", "origin/dev")  # one dev commit for version, checks, history and the bump base
-    version = app_version(_git("show", f"{tip}:tinglongwu/__init__.py"))
+    version = app_version(_git("show", f"{tip}:src/core/tinglongwu/__init__.py"))
     cmp_ = _gh("api", f"repos/{REPO}/compare/main...{tip}")
     checks = _gh("api", f"repos/{REPO}/commits/{tip}/check-runs?per_page=100")["check_runs"]
     test = [c for c in checks if c["name"] == "test"]
@@ -174,13 +174,13 @@ def apply(version: str, reason: str) -> None:
                 "-f", "labels[]=model:sonnet", "-f", "labels[]=ok-to-work")["number"]
     branch = f"fix/{issue}"
     _git("checkout", "-B", branch, "origin/dev")
-    init_p, wn_p = ROOT / "tinglongwu" / "__init__.py", ROOT / WHATS_NEW_FILE
+    init_p, wn_p = ROOT / "src" / "core" / "tinglongwu" / "__init__.py", ROOT / WHATS_NEW_FILE
     init, wn = bump_files(init_p.read_text("utf-8"), wn_p.read_text("utf-8"), new, lines)
     init_p.write_text(init, "utf-8")
     wn_p.write_text(wn, "utf-8")
     _git("config", "user.name", "sunososobro-hub")
     _git("config", "user.email", "243713070+sunososobro-hub@users.noreply.github.com")
-    _git("add", "tinglongwu/__init__.py", WHATS_NEW_FILE)
+    _git("add", "src/core/tinglongwu/__init__.py", WHATS_NEW_FILE)
     _git("commit", "-m", f"release: bump __version__ to {new}")
     _git("push", "-u", "origin", branch)
     _gh("api", f"repos/{REPO}/pulls", "-X", "POST", "-f", f"title=release: bump __version__ to {new}",

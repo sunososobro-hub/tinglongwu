@@ -27,7 +27,17 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # repo root  # repo root
+
+def _repo_root() -> Path:
+    """Repo root in a source checkout (nearest parent holding pyproject.toml), else the frozen app dir."""
+    here = Path(__file__).resolve().parent
+    for d in here.parents:
+        if (d / "pyproject.toml").is_file():
+            return d
+    return here.parent
+
+
+ROOT = _repo_root()  # repo root (source) / app dir (frozen)
 PINS_FILE = Path(__file__).with_name("manifest.json")
 ARGOS_INDEX = "https://raw.githubusercontent.com/argosopentech/argospm-index/main/index.json"
 MB = 1024 * 1024
@@ -476,7 +486,7 @@ SPEAKER_BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-
 # 3D-Speaker models (Apache-2.0, https://github.com/modelscope/3D-Speaker). Size + SHA256 measured in #220.
 SPEAKER_FILES = {
     "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx":
-        (28281164, "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"),
+        (28281165, "53cab20ba8f2eb2f6e2d89ecc18e88ef3222169b61b4419cbc13666744a4574b"),
 }
 SPEAKER_FALLBACK = {  # only if the CAM++ license check fails; not downloaded by default
     "3dspeaker_speech_eres2net_base_200k_sv_zh-cn_16k-common.onnx":

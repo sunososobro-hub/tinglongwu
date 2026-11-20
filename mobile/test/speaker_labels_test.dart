@@ -36,8 +36,8 @@ void main() {
           packsJson: File('assets/voice_packs.json').readAsStringSync());
       final e = m.speakerModel!;
       expect(e.basename, '3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx');
-      expect(e.size, 28281164);
-      expect(e.sha256, 'aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2');
+      expect(e.size, 28281165);
+      expect(e.sha256, '53cab20ba8f2eb2f6e2d89ecc18e88ef3222169b61b4419cbc13666744a4574b');
       expect(m.files.any((f) => f.path == e.path), isFalse); // not in the base models
       expect(m.missingRequired({}).contains(e.path), isFalse); // never required
       expect(m.speakerModelInstalled({}), isFalse);

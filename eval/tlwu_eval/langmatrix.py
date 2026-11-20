@@ -21,7 +21,8 @@ from pathlib import Path
 
 from tlwu_eval import gate
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = next((d for d in Path(__file__).resolve().parents if (d / "pyproject.toml").is_file()),
+            Path(__file__).resolve().parents[1])
 CONFIG = ROOT / "eval" / "languages.json"
 BASELINE = ROOT / "eval" / "baseline.json"
 PAIR_RE = re.compile(r"^[a-z]{2,3}->[a-z]{2,3}$")

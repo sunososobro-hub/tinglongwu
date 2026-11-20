@@ -11,7 +11,7 @@ from pathlib import Path
 WHEEL_BYTES = {"cp310": 2174131, "cp311": 2173799, "cp312": 2178304, "cp313": 2179778}
 WHEEL_DEFAULT = 2200000
 CORE_BYTES = 16663244
-MODEL_BYTES = 28281164
+MODEL_BYTES = 28281165
 MODEL_NAME = "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"  # keep in sync with speaker_embed
 SPEAKER_DIR = "speaker"
 

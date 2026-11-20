@@ -28,7 +28,7 @@ def _f(name, patch="+x = 1\n", status="modified", add=1, dele=0, **kw):
 
 
 def _ok_files():
-    return [_f("tinglongwu/fmt.py", "@@ -1 +1 @@\n-a = 1\n+a = 2\n", add=1, dele=1),
+    return [_f("src/flow/tinglongwu/fmt.py", "@@ -1 +1 @@\n-a = 1\n+a = 2\n", add=1, dele=1),
             _f("tests/test_fmt_x.py", "+def test_a():\n+    assert True\n", status="added", add=2)]
 
 
@@ -69,20 +69,20 @@ def test_r1_exactly_limit_passes_one_over_fails():
 # r2 paths
 @pytest.mark.parametrize("name", ["pyproject.toml", "requirements.txt", ".github/workflows/ci.yml",
                                   ".claude/settings.json", "scripts/install.sh", "release/packaging/build_windows.py",
-                                  "LICENSE", "SECURITY.md", "models/x.bin", "tinglongwu/offline.py",
-                                  "tinglongwu/models.py", "tinglongwu/ollama.py", "tests/test_no_network_code.py", "tests/conftest.py", "tinglongwu/data/tech-dev.txt"])
+                                  "LICENSE", "SECURITY.md", "models/x.bin", "src/system/tinglongwu/offline.py",
+                                  "src/core/tinglongwu/models.py", "src/core/tinglongwu/ollama.py", "tests/test_no_network_code.py", "tests/conftest.py", "src/core/tinglongwu/data/tech-dev.txt"])
 def test_r2_protected_or_outside_paths_fail(name):
     files = _ok_files() + [_f(name)]
     assert _lane(files)["failed"] == ["r2_paths"]
 
 
 def test_r2_subpackage_source_passes():
-    files = _ok_files() + [_f("tinglongwu/reverse/logic.py")]
+    files = _ok_files() + [_f("src/flow/tinglongwu/reverse/logic.py")]
     assert _lane(files)["lane"] == "auto-merge"
 
 
 def test_r2_rename_from_protected_file_fails():
-    files = _ok_files() + [_f("tinglongwu/offline2.py", status="renamed", previous_filename="tinglongwu/offline.py")]
+    files = _ok_files() + [_f("src/flow/tinglongwu/offline2.py", status="renamed", previous_filename="src/system/tinglongwu/offline.py")]
     assert _lane(files)["failed"] == ["r2_paths"]
 
 
@@ -100,7 +100,7 @@ def test_r3_each_denylisted_primitive_fails(word):
 
 
 def test_r3_synthetic_import_requests_is_owner_lane():
-    files = _ok_files() + [_f("tinglongwu/fmt.py", "+import requests\n")]
+    files = _ok_files() + [_f("src/flow/tinglongwu/fmt.py", "+import requests\n")]
     r = _lane(files)
     assert r["lane"] == "owner" and r["failed"] == ["r3_denylist"] and "requests" in r["reasons"]["r3_denylist"]
 
@@ -162,13 +162,13 @@ def _fake_gh(pages, pr_extra=None):
 
 def test_fetch_pr_reads_every_page():
     page1 = [_f(f"tests/test_r{i}.py", patch=None, status="renamed", add=0) for i in range(100)]
-    page2 = [_f("tinglongwu/zz.txt")]
+    page2 = [_f("src/core/tinglongwu/zz.txt")]
     gh, calls = _fake_gh([page1, page2])
     files, runs, pr = eg.fetch_pr(7, gh=gh)
     assert len(files) == 101 and len(runs) == 2
     assert all(p for path, p in calls if "/pulls/7" not in path or "files" in path)
     r = eg.evaluate(files, runs, "PASS", pr)
-    assert r["lane"] == "owner" and "tinglongwu/zz.txt" in r["reasons"]["r2_paths"]
+    assert r["lane"] == "owner" and "src/core/tinglongwu/zz.txt" in r["reasons"]["r2_paths"]
 
 
 def test_truncated_file_list_fails_closed():
@@ -262,25 +262,25 @@ def test_r3_multiline_or_aliased_eval_exec_compile_fail(patch):
 @pytest.mark.parametrize("body", ["import subprocess\n", "from asyncio import open_connection\n",
                                   "import os\nos.system('')\n", "    import ctypes\n"])
 def test_r2_editing_a_file_that_already_runs_processes_fails(_empty_base_checkout, body):
-    (_empty_base_checkout / "tinglongwu").mkdir()
-    (_empty_base_checkout / "tinglongwu" / "fm.py").write_text(body + "cmd = ['tool', 'respond']\n")
-    files = _ok_files() + [_f("tinglongwu/fm.py", "@@ -2 +2 @@\n-cmd = ['tool', 'respond']\n+cmd = ['sh', '-c', x]\n",
+    (_empty_base_checkout / "src" / "core" / "tinglongwu").mkdir(parents=True)
+    (_empty_base_checkout / "src" / "core" / "tinglongwu" / "fm.py").write_text(body + "cmd = ['tool', 'respond']\n")
+    files = _ok_files() + [_f("src/core/tinglongwu/fm.py", "@@ -2 +2 @@\n-cmd = ['tool', 'respond']\n+cmd = ['sh', '-c', x]\n",
                               add=1, dele=1)]
     r = _lane(files)
     assert r["failed"] == ["r2_paths"] and "already runs processes" in r["reasons"]["r2_paths"]
 
 
 def test_r2_plain_existing_file_passes(_empty_base_checkout):
-    (_empty_base_checkout / "tinglongwu").mkdir()
-    (_empty_base_checkout / "tinglongwu" / "fmt.py").write_text("def f():\n    return 1\n")
+    (_empty_base_checkout / "src" / "flow" / "tinglongwu").mkdir(parents=True)
+    (_empty_base_checkout / "src" / "flow" / "tinglongwu" / "fmt.py").write_text("def f():\n    return 1\n")
     assert _lane(_ok_files())["lane"] == "auto-merge"
 
 
 def test_real_repo_process_modules_are_owner_only():
     real = Path(__file__).resolve().parent.parent
-    assert eg.runs_processes_or_network(real, "tinglongwu/fm.py")
-    assert eg.runs_processes_or_network(real, "tinglongwu/device.py")
-    assert not eg.runs_processes_or_network(real, "tinglongwu/capture/wasapi.py")  # #108 still auto-merges
+    assert eg.runs_processes_or_network(real, "src/core/tinglongwu/fm.py")
+    assert eg.runs_processes_or_network(real, "src/system/tinglongwu/device.py")
+    assert not eg.runs_processes_or_network(real, "src/system/tinglongwu/capture/wasapi.py")  # #108 still auto-merges
 
 
 @pytest.mark.parametrize("line", ["r, w = asyncio.run(asyncio.open_connection('h', 80))", "import ssl",
@@ -306,6 +306,6 @@ def test_r3_windows_process_launch_fails(line):
 
 
 def test_r2_existing_file_using_startfile_is_owner_only(_empty_base_checkout):
-    (_empty_base_checkout / "tinglongwu").mkdir()
-    (_empty_base_checkout / "tinglongwu" / "fmt.py").write_text("import os\nos.startfile(p)\n")
+    (_empty_base_checkout / "src" / "flow" / "tinglongwu").mkdir(parents=True)
+    (_empty_base_checkout / "src" / "flow" / "tinglongwu" / "fmt.py").write_text("import os\nos.startfile(p)\n")
     assert _lane(_ok_files())["failed"] == ["r2_paths"]

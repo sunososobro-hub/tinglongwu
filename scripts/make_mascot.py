@@ -269,13 +269,13 @@ def main() -> None:
         to_image(full, 400 * scale).save(out / f"tinglong{suf}.png", optimize=True)
         to_image(head, 128 * scale, HEAD_BOX).save(out / f"tinglong-head{suf}.png", optimize=True)
     icon_big = to_image(head, 256, HEAD_BOX, ss=4)
-    ga = ROOT / "tinglongwu" / "gui" / "assets"
+    ga = ROOT / "src" / "ui" / "tinglongwu" / "gui" / "assets"
     write_ico(ga / "tinglongwu.ico", icon_big, (16, 24, 32, 48, 64, 128, 256))
     icon_big.save(ga / "tinglongwu.png", optimize=True)
     (ga / "tinglongwu.svg").write_text(to_svg(head, HEAD_BOX, (256, 256)), "utf-8")
     write_ico(ROOT / "docs" / "favicon.ico", icon_big, (16, 32, 48))
     (ROOT / "docs" / "favicon.svg").write_text(to_svg(head, HEAD_BOX, (64, 64)), "utf-8")
-    data = ROOT / "tinglongwu" / "data" / "splash_frames.json.gz"
+    data = ROOT / "src" / "core" / "tinglongwu" / "data" / "splash_frames.json.gz"
     raw = json.dumps(splash_frames(), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     with open(data, "wb") as fh, gzip.GzipFile(fileobj=fh, mode="wb", mtime=0) as gz:
         gz.write(raw)

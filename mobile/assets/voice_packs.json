@@ -2,8 +2,8 @@
   "version": 1,
   "speaker": {
     "path": "speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
-    "size": 28281164,
-    "sha256": "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2",
+    "size": 28281165,
+    "sha256": "53cab20ba8f2eb2f6e2d89ecc18e88ef3222169b61b4419cbc13666744a4574b",
     "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
     "note": "Optional 說話者 N labels (進階功能): 3D-Speaker CAM++ speaker-embedding model, about 28 MB, same file as desktop. Licence: Apache-2.0 (3D-Speaker)."
   },

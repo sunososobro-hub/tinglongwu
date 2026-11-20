@@ -1,0 +1,351 @@
+# scenario: tech
+# security: generic engineering terms, written for tinglongwu (no third-party glossary copied). en/ru/ja/ko/zh-TW/zh-CN.
+id	en	ru	ja	ko	zh-TW	zh-CN
+sec.encryption	encryption	шифрование | шифрования | шифрованием	暗号化	암호화	加密	加密
+sec.decryption	decryption	расшифрование | расшифровка | дешифрование | расшифровки	復号 | 復号化	복호화	解密	解密
+sec.cipher	cipher	шифр | шифра | шифры	暗号方式 | サイファー	암호 알고리즘 | 사이퍼	加密演算法	加密算法
+sec.ciphertext	ciphertext	шифротекст | шифртекст | зашифрованный текст	暗号文	암호문	密文	密文
+sec.plaintext	plaintext	открытый текст | плейнтекст	平文	평문	明文	明文
+sec.cryptography	cryptography	криптография | криптографии | крипта	暗号技術 | 暗号学 | クリプトグラフィ	암호학 | 암호 기술	密碼學	密码学
+sec.crypto_hash	cryptographic hash function	криптографическая хеш-функция	暗号学的ハッシュ関数	암호학적 해시 함수	密碼雜湊函式	密码哈希函数 | 密码散列函数
+sec.hash_function	hash function	хеш-функция | хэш-функция | хеш-функции	ハッシュ関数	해시 함수	雜湊函式	哈希函数 | 散列函数
+sec.hash_value	hash value | hash digest	хеш | хэш | хеш-сумма | хеша | хеши	ハッシュ値	해시값 | 해시 값	雜湊值	哈希值 | 散列值
+sec.hash_collision	hash collision	коллизия хеша | коллизия хеш-функции	ハッシュ衝突 | ハッシュの衝突	해시 충돌	雜湊碰撞	哈希碰撞 | 哈希冲突
+sec.salt	salt value | password salt	соль пароля | криптографическая соль	ソルト	솔트	鹽值	盐值
+sec.nonce	nonce	нонс | одноразовое число | нонса	ナンス	논스	一次性隨機數 | Nonce 值	一次性随机数 | Nonce 值
+sec.iv	initialization vector	вектор инициализации | вектора инициализации	初期化ベクトル	초기화 벡터	初始化向量	初始化向量 | 初始向量
+sec.symmetric_enc	symmetric encryption	симметричное шифрование	共通鍵暗号 | 対称暗号 | 共通鍵暗号方式	대칭키 암호화 | 대칭 암호화	對稱式加密 | 對稱加密	对称加密
+sec.asymmetric_enc	asymmetric encryption | public-key encryption	асимметричное шифрование | шифрование с открытым ключом	公開鍵暗号 | 非対称暗号 | 公開鍵暗号方式	비대칭키 암호화 | 공개키 암호화	非對稱式加密 | 非對稱加密 | 公開金鑰加密	非对称加密 | 公钥加密
+sec.public_key	public key	открытый ключ | публичный ключ | паблик ключ | открытого ключа	公開鍵	공개키 | 공개 키	公開金鑰 | 公鑰	公钥
+sec.private_key	private key	закрытый ключ | приватный ключ | секретный ключ | закрытого ключа | приватника	秘密鍵 | プライベートキー	개인키 | 개인 키	私密金鑰 | 私鑰	私钥
+sec.symmetric_key	symmetric key | shared secret key	симметричный ключ | общий секретный ключ	共通鍵	대칭키 | 비밀키	對稱金鑰 | 共享金鑰	对称密钥 | 共享密钥
+sec.key_pair	key pair	ключевая пара | пара ключей | ключевой пары	鍵ペア | キーペア	키 쌍	金鑰對	密钥对
+sec.key_exchange	key exchange	обмен ключами | обмена ключами	鍵交換	키 교환	金鑰交換	密钥交换
+sec.kdf	key derivation function	функция формирования ключа | функция вывода ключа | KDF	鍵導出関数	키 유도 함수	金鑰衍生函式	密钥派生函数
+sec.key_rotation	key rotation	ротация ключей | смена ключей | ротации ключей	鍵のローテーション | 鍵更新 | キーローテーション	키 교체 | 키 순환	金鑰輪替	密钥轮换
+sec.key_management	key management	управление ключами | управления ключами	鍵管理	키 관리	金鑰管理	密钥管理
+sec.key_length	key length | key size	длина ключа | длины ключа	鍵長	키 길이	金鑰長度	密钥长度
+sec.session_key	session key	сеансовый ключ | сессионный ключ | ключ сеанса	セッション鍵 | セッションキー	세션 키	工作階段金鑰 | 會話金鑰	会话密钥
+sec.master_key	master key	мастер-ключ | главный ключ | мастер ключ	マスター鍵 | マスターキー	마스터 키	主金鑰	主密钥
+sec.psk	pre-shared key	предварительно согласованный ключ | общий ключ PSK | PSK-ключ	事前共有鍵	사전 공유 키	預先共用金鑰	预共享密钥
+sec.block_cipher	block cipher	блочный шифр | блочного шифра	ブロック暗号	블록 암호	區塊加密 | 分組加密演算法	分组密码 | 块密码
+sec.stream_cipher	stream cipher	поточный шифр | потоковый шифр	ストリーム暗号	스트림 암호	串流加密	流密码 | 序列密码
+sec.cipher_suite	cipher suite	набор шифров | шифронабор	暗号スイート	암호 스위트 | 암호 모음	加密套件	加密套件 | 密码套件
+sec.mode_of_operation	block cipher mode of operation	режим работы блочного шифра | режим шифрования	暗号利用モード	블록 암호 운용 방식	分組密碼工作模式	分组密码工作模式
+sec.cbc	cipher block chaining	режим сцепления блоков | CBC режим	暗号ブロック連鎖モード | CBCモード	암호 블록 체인 방식 | CBC 모드	密碼區塊鏈結模式 | CBC 模式	密码分组链接模式 | CBC 模式
+sec.gcm	Galois/counter mode	режим счётчика с аутентификацией Галуа | GCM режим	ガロアカウンタモード | GCMモード	갈루아 카운터 모드 | GCM 모드	伽羅瓦計數器模式 | GCM 模式	伽罗瓦计数器模式 | GCM 模式
+sec.aead	authenticated encryption	аутентифицированное шифрование	認証付き暗号	인증 암호화	認證加密	认证加密
+sec.mac	message authentication code	код аутентификации сообщения | имитовставка	メッセージ認証コード	메시지 인증 코드	訊息鑑別碼 | 訊息驗證碼	消息认证码
+sec.digital_signature	digital signature	цифровая подпись | электронная подпись | ЭЦП | цифровой подписи	デジタル署名 | 電子署名	디지털 서명 | 전자 서명	數位簽章	数字签名
+sec.sig_verify	signature verification	проверка подписи | проверки подписи	署名検証	서명 검증	簽章驗證	签名验证
+sec.ecc	elliptic curve cryptography	криптография на эллиптических кривых | эллиптическая криптография	楕円曲線暗号	타원 곡선 암호	橢圓曲線密碼學	椭圆曲线密码学
+sec.dh	Diffie-Hellman key exchange	протокол Диффи-Хеллмана | обмен ключами Диффи-Хеллмана	ディフィー・ヘルマン鍵共有	디피-헬먼 키 교환	迪菲-赫爾曼金鑰交換	迪菲-赫尔曼密钥交换
+sec.pfs	perfect forward secrecy | forward secrecy	совершенная прямая секретность | прямая секретность	前方秘匿性 | 完全前方秘匿性	완전 순방향 비밀성 | 전방 보안성	完全前向保密 | 前向保密	完美前向保密 | 前向安全性
+sec.e2ee	end-to-end encryption	сквозное шифрование | оконечное шифрование	エンドツーエンド暗号化	종단 간 암호화	端對端加密	端到端加密
+sec.enc_at_rest	encryption at rest	шифрование данных при хранении | шифрование хранимых данных	保存データの暗号化 | 保管時の暗号化	저장 데이터 암호화	靜態資料加密	静态数据加密
+sec.enc_in_transit	encryption in transit	шифрование при передаче | шифрование передаваемых данных	通信経路の暗号化 | 転送中の暗号化	전송 중 암호화	傳輸中資料加密	传输中数据加密
+sec.fde	full disk encryption	полнодисковое шифрование | шифрование всего диска	フルディスク暗号化 | ディスク全体の暗号化	전체 디스크 암호화	全磁碟加密	全盘加密
+sec.pqc	post-quantum cryptography	постквантовая криптография	耐量子計算機暗号 | ポスト量子暗号	양자 내성 암호 | 포스트 양자 암호	後量子密碼學	后量子密码学 | 抗量子密码
+sec.csprng	cryptographically secure random number generator	криптографически стойкий генератор случайных чисел	暗号論的擬似乱数生成器	암호학적으로 안전한 난수 생성기	密碼學安全亂數產生器	密码学安全随机数生成器
+sec.prng	pseudorandom number generator	генератор псевдослучайных чисел | ГПСЧ	擬似乱数生成器	의사 난수 생성기	偽亂數產生器	伪随机数生成器
+sec.otp	one-time password	одноразовый пароль | OTP-код | одноразового пароля	ワンタイムパスワード	일회용 비밀번호 | OTP	一次性密碼 | 動態密碼	一次性密码 | 动态口令
+sec.totp	time-based one-time password	одноразовый пароль на основе времени | TOTP	時間ベースのワンタイムパスワード | TOTP	시간 기반 일회용 비밀번호 | TOTP	時間型一次性密碼 | TOTP	基于时间的一次性密码 | TOTP
+sec.key_stretching	key stretching	усиление ключа | растяжение ключа	鍵ストレッチング | ストレッチング	키 스트레칭	金鑰延伸	密钥拉伸
+sec.pw_hashing	password hashing	хеширование паролей | хэширование паролей	パスワードハッシュ化	비밀번호 해싱	密碼雜湊	密码哈希 | 密码散列
+sec.zkp	zero-knowledge proof	доказательство с нулевым разглашением	ゼロ知識証明	영지식 증명	零知識證明	零知识证明
+sec.hsm	hardware security module	аппаратный модуль безопасности | HSM	ハードウェアセキュリティモジュール | HSM	하드웨어 보안 모듈 | HSM	硬體安全模組	硬件安全模块
+sec.tpm	trusted platform module	доверенный платформенный модуль | TPM-модуль | модуль TPM	トラステッドプラットフォームモジュール | TPM	신뢰 플랫폼 모듈 | TPM	信賴平台模組	可信平台模块
+sec.secure_element	secure element	защищённый элемент | защищенный элемент | секьюр элемент	セキュアエレメント	보안 요소 | 시큐어 엘리먼트	安全元件	安全元件 | 安全芯片
+sec.secure_enclave	secure enclave	защищённый анклав | защищенный анклав	セキュアエンクレーブ	보안 엔클레이브	安全隔離區	安全飞地 | 安全隔区
+sec.tee	trusted execution environment	доверенная среда исполнения | TEE	信頼できる実行環境 | TEE	신뢰 실행 환경 | TEE	可信任執行環境	可信执行环境
+sec.secure_boot	secure boot	безопасная загрузка | защищённая загрузка | секьюр бут	セキュアブート	보안 부팅 | 시큐어 부트	安全開機	安全启动
+sec.chain_of_trust	chain of trust	цепочка доверия | цепочки доверия	信頼の連鎖 | トラストチェーン	신뢰 체인	信任鏈	信任链
+sec.root_of_trust	root of trust	корень доверия | корня доверия	信頼の基点 | ルートオブトラスト	신뢰 루트	信任根	信任根 | 可信根
+sec.code_signing	code signing	подписание кода | подпись кода	コード署名	코드 서명	程式碼簽署	代码签名
+sec.fw_signing	firmware signing	подпись прошивки | подписание прошивки	ファームウェア署名	펌웨어 서명	韌體簽署	固件签名
+sec.checksum	checksum	контрольная сумма | контрольной суммы | чексумма	チェックサム	체크섬	校驗和 | 檢查碼	校验和
+sec.integrity_check	integrity check	проверка целостности | контроль целостности	完全性チェック | 整合性チェック	무결성 검사	完整性檢查	完整性检查 | 完整性校验
+sec.message_digest	message digest	дайджест сообщения	メッセージダイジェスト	메시지 다이제스트	訊息摘要	消息摘要
+sec.certificate	digital certificate | public key certificate	цифровой сертификат | сертификат | сертификата | сертификаты | серт	デジタル証明書 | 電子証明書 | 証明書	디지털 인증서 | 인증서	數位憑證 | 憑證	数字证书 | 证书
+sec.ca	certificate authority	удостоверяющий центр | центр сертификации | УЦ	認証局	인증 기관	憑證機構 | 憑證授權中心	证书颁发机构 | 证书机构 | CA 机构
+sec.root_cert	root certificate	корневой сертификат | корневого сертификата	ルート証明書	루트 인증서	根憑證	根证书
+sec.intermediate_cert	intermediate certificate	промежуточный сертификат	中間証明書	중간 인증서	中繼憑證 | 中間憑證	中间证书
+sec.self_signed	self-signed certificate	самоподписанный сертификат | самоподписной сертификат	自己署名証明書 | オレオレ証明書	자체 서명 인증서	自簽憑證	自签名证书 | 自签证书
+sec.cert_chain	certificate chain	цепочка сертификатов	証明書チェーン	인증서 체인	憑證鏈	证书链
+sec.csr	certificate signing request	запрос на подпись сертификата | CSR	証明書署名要求 | CSR	인증서 서명 요청 | CSR	憑證簽署要求	证书签名请求
+sec.crl	certificate revocation list	список отозванных сертификатов | СОС	証明書失効リスト	인증서 폐기 목록	憑證撤銷清單	证书吊销列表
+sec.cert_revocation	certificate revocation	отзыв сертификата | отзыва сертификата	証明書の失効	인증서 폐기	憑證撤銷	证书吊销
+sec.ocsp	Online Certificate Status Protocol | OCSP	протокол OCSP | онлайн-проверка статуса сертификата	OCSP | オンライン証明書状態プロトコル	온라인 인증서 상태 프로토콜 | OCSP	線上憑證狀態協定 | OCSP	在线证书状态协议 | OCSP
+sec.cert_pinning	certificate pinning	привязка сертификата | пиннинг сертификата	証明書ピンニング	인증서 고정 | 인증서 피닝	憑證綁定 | 憑證釘選	证书固定 | 证书锁定
+sec.cert_expiry	certificate expiration	истечение срока действия сертификата | просроченный сертификат	証明書の有効期限切れ	인증서 만료	憑證過期	证书过期
+sec.pki	public key infrastructure	инфраструктура открытых ключей | ИОК | PKI	公開鍵基盤 | PKI	공개키 기반 구조 | PKI	公開金鑰基礎建設	公钥基础设施
+sec.trust_store	trust store	хранилище доверенных сертификатов	トラストストア | 信頼済み証明書ストア	신뢰 저장소	信任存放區	信任库 | 信任存储
+sec.keystore	keystore	хранилище ключей | кейстор	キーストア | 鍵ストア	키 저장소 | 키스토어	金鑰儲存區	密钥库
+sec.cert_fingerprint	certificate fingerprint | key fingerprint	отпечаток сертификата | отпечаток ключа	証明書のフィンガープリント | 鍵の指紋	인증서 지문 | 키 지문	憑證指紋 | 金鑰指紋	证书指纹 | 密钥指纹
+sec.tls	Transport Layer Security | TLS	протокол TLS | TLS	TLS | トランスポート層セキュリティ	전송 계층 보안 | TLS	傳輸層安全性協定 | TLS	传输层安全协议 | TLS
+sec.tls_handshake	TLS handshake	рукопожатие TLS | TLS-хендшейк | хендшейк	TLSハンドシェイク	TLS 핸드셰이크	TLS 交握	TLS 握手
+sec.mtls	mutual TLS	взаимная аутентификация TLS | mTLS	相互TLS認証 | mTLS	상호 TLS 인증 | mTLS	雙向 TLS 驗證 | mTLS	双向 TLS 认证 | mTLS
+sec.ssh	Secure Shell | SSH	протокол SSH | SSH | эсэсэйч	SSH	SSH | 시큐어 셸	SSH 安全殼層	SSH 安全外壳协议
+sec.ssh_key	SSH key	SSH-ключ | ключ SSH | ссш ключ	SSH鍵 | SSHキー	SSH 키	SSH 金鑰	SSH 密钥
+sec.vpn	virtual private network | VPN	виртуальная частная сеть | VPN | впн	仮想プライベートネットワーク | VPN	가상 사설망 | VPN	虛擬私人網路 | VPN	虚拟专用网络 | VPN
+sec.vpn_tunnel	VPN tunnel	VPN-туннель | туннель VPN	VPNトンネル	VPN 터널	VPN 通道	VPN 隧道
+sec.authentication	authentication	аутентификация | аутентификации | аутентификацией	認証	인증	身分驗證 | 驗證	身份认证 | 身份验证 | 认证
+sec.authorization	authorization	авторизация | авторизации	認可 | 権限付与	인가 | 권한 부여	授權	授权
+sec.2fa	two-factor authentication	двухфакторная аутентификация | 2FA | двухфакторка	二要素認証 | 2段階認証	2단계 인증 | 이중 인증	雙重驗證 | 雙因素驗證 | 兩步驟驗證	双因素认证 | 两步验证 | 双重认证
+sec.mfa	multi-factor authentication	многофакторная аутентификация | MFA	多要素認証	다중 인증 | 다단계 인증 | 다중 요소 인증	多因素驗證 | 多重要素驗證	多因素认证 | 多重身份验证
+sec.sso	single sign-on	единый вход | технология единого входа | SSO	シングルサインオン	통합 인증 | 싱글 사인온	單一登入	单点登录
+sec.idp	identity provider	поставщик удостоверений | провайдер идентификации | IdP	IDプロバイダー | アイデンティティプロバイダー	ID 공급자 | 아이디 제공자	身分識別提供者	身份提供者 | 身份提供商
+sec.access_token	access token	токен доступа | access-токен | токена доступа	アクセストークン	액세스 토큰 | 접근 토큰	存取權杖	访问令牌
+sec.refresh_token	refresh token	токен обновления | refresh-токен	リフレッシュトークン	리프레시 토큰 | 갱신 토큰	更新權杖	刷新令牌
+sec.bearer_token	bearer token	токен на предъявителя | bearer-токен	ベアラートークン	베어러 토큰	持有人權杖	持有者令牌
+sec.jwt	JSON Web Token | JWT	JWT-токен | JWT | джейдаблюти	JWT | JSONウェブトークン	JWT | JSON 웹 토큰	JSON Web 權杖 | JWT	JSON Web 令牌 | JWT
+sec.session_timeout	session timeout	тайм-аут сеанса | таймаут сессии | истечение сессии	セッションタイムアウト	세션 타임아웃 | 세션 만료	工作階段逾時	会话超时
+sec.session_fixation	session fixation	фиксация сессии | фиксация сеанса	セッション固定攻撃	세션 고정 공격	工作階段固定攻擊	会话固定攻击
+sec.session_hijacking	session hijacking	перехват сессии | угон сессии | перехват сеанса	セッションハイジャック	세션 하이재킹 | 세션 탈취	工作階段劫持	会话劫持
+sec.credentials	credentials | login credentials	учётные данные | учетные данные | креды | кредлы	認証情報 | クレデンシャル	자격 증명	登入憑據 | 認證資訊	登录凭据 | 凭据 | 凭证信息
+sec.credential_stuffing	credential stuffing	подстановка учётных данных | атака с подстановкой учетных данных	リスト型攻撃 | クレデンシャルスタッフィング	크리덴셜 스터핑 | 계정 정보 대입 공격	撞庫攻擊 | 帳密填充攻擊	撞库攻击 | 凭证填充攻击
+sec.pw_policy	password policy	парольная политика | политика паролей	パスワードポリシー	비밀번호 정책 | 암호 정책	密碼原則 | 密碼政策	密码策略
+sec.pw_manager	password manager	менеджер паролей | менеджера паролей	パスワードマネージャー	비밀번호 관리자	密碼管理工具 | 密碼管理器	密码管理器
+sec.passphrase	passphrase	парольная фраза | кодовая фраза	パスフレーズ	패스프레이즈 | 암호 문구	密碼片語	口令短语 | 密码短语
+sec.passkey	passkey	ключ доступа passkey | пасскей	パスキー	패스키	密碼金鑰	通行密钥
+sec.biometric_auth	biometric authentication	биометрическая аутентификация	生体認証 | バイオメトリクス認証	생체 인증	生物辨識驗證	生物识别认证 | 生物特征认证
+sec.fingerprint_auth	fingerprint authentication	аутентификация по отпечатку пальца | вход по отпечатку	指紋認証	지문 인증	指紋辨識 | 指紋驗證	指纹识别 | 指纹认证
+sec.security_key	hardware security key	аппаратный ключ безопасности | токен безопасности	ハードウェアセキュリティキー | 物理セキュリティキー	하드웨어 보안 키 | 보안 키	實體安全金鑰 | 硬體安全金鑰	硬件安全密钥 | 物理安全密钥
+sec.authenticator_app	authenticator app	приложение-аутентификатор | аутентификатор	認証アプリ	인증 앱 | OTP 앱	驗證器應用程式 | 驗證 App	身份验证器应用 | 验证器 App
+sec.challenge_response	challenge-response authentication	аутентификация запрос-ответ | запрос-ответ	チャレンジレスポンス認証	챌린지-응답 인증	挑戰-回應驗證 | 挑戰回應	挑战-应答认证 | 质询-响应认证
+sec.mutual_auth	mutual authentication	взаимная аутентификация	相互認証	상호 인증	雙向驗證 | 相互驗證	双向认证 | 相互认证
+sec.captcha	CAPTCHA	капча | CAPTCHA | капчи	CAPTCHA | キャプチャ | 画像認証	캡차 | CAPTCHA	驗證碼 CAPTCHA | 圖形驗證碼	图形验证码 | 人机验证
+sec.account_lockout	account lockout	блокировка учётной записи | блокировка аккаунта | блокировка учетной записи	アカウントロックアウト | アカウントロック	계정 잠금	帳號鎖定	账户锁定 | 账号锁定
+sec.pw_reset	password reset	сброс пароля | сброса пароля	パスワードリセット	비밀번호 재설정	密碼重設	密码重置
+sec.privileged_account	privileged account	привилегированная учётная запись | привилегированный аккаунт	特権アカウント	특권 계정 | 권한 있는 계정	特權帳號	特权账户 | 特权账号
+sec.service_account	service account	служебная учётная запись | сервисный аккаунт | сервисная учетка	サービスアカウント	서비스 계정	服務帳號	服务账户 | 服务账号
+sec.iam	identity and access management | IAM	управление идентификацией и доступом | IAM	アイデンティティ・アクセス管理 | ID管理 | IAM	신원 및 접근 관리 | IAM	身分與存取管理 | IAM	身份和访问管理 | IAM
+sec.kerberos	Kerberos	Kerberos | протокол Kerberos | керберос	Kerberos | ケルベロス認証	케르베로스 | Kerberos	Kerberos 驗證協定	Kerberos 认证协议
+sec.radius	RADIUS	протокол RADIUS | RADIUS | радиус-сервер	RADIUS | RADIUS認証	RADIUS | RADIUS 인증	RADIUS 驗證	RADIUS 认证
+sec.radius_server	RADIUS server	RADIUS-сервер | сервер RADIUS	RADIUSサーバ | RADIUSサーバー	RADIUS 서버	RADIUS 伺服器	RADIUS 服务器
+sec.dot1x	802.1X	802.1X | стандарт 802.1X	802.1X | IEEE 802.1X認証	802.1X | 802.1X 인증	802.1X 驗證	802.1X 认证
+sec.eap	Extensible Authentication Protocol | EAP	протокол EAP | расширяемый протокол аутентификации	EAP | 拡張認証プロトコル	확장 인증 프로토콜 | EAP	可延伸驗證協定 | EAP	可扩展认证协议 | EAP
+sec.sae	Simultaneous Authentication of Equals | SAE	одновременная аутентификация равных | SAE	SAE | 同等性同時認証	SAE | 동등 개체 동시 인증	對等同時驗證 | SAE	对等实体同时验证 | SAE
+sec.owe	Opportunistic Wireless Encryption | OWE	оппортунистическое беспроводное шифрование | OWE	OWE | 拡張オープン	기회적 무선 암호화 | OWE	機會性無線加密 | OWE	机会性无线加密 | OWE
+sec.pmf	protected management frames	защищённые кадры управления | защита кадров управления | PMF	管理フレーム保護 | PMF	관리 프레임 보호 | PMF	受保護的管理訊框 | PMF	受保护管理帧 | 管理帧保护
+sec.four_way_hs	four-way handshake	четырёхстороннее рукопожатие | четырехэтапное рукопожатие | 4-way handshake	4ウェイハンドシェイク | 4方向ハンドシェイク	4방향 핸드셰이크 | 4-way 핸드셰이크	四向交握	四次握手
+sec.captive_portal	captive portal	страница авторизации | captive portal | портал авторизации	キャプティブポータル	캡티브 포털 | 종속 포털	強制登入頁面 | 認證入口網頁	强制门户 | 认证门户
+sec.mac_filtering	MAC address filtering	фильтрация по MAC-адресам | фильтр MAC-адресов	MACアドレスフィルタリング	MAC 주소 필터링	MAC 位址過濾	MAC 地址过滤
+sec.client_isolation	client isolation | AP isolation	изоляция клиентов | изоляция клиентов точки доступа	クライアント分離 | プライバシーセパレーター	클라이언트 격리 | AP 격리	用戶端隔離	客户端隔离 | AP 隔离
+sec.failed_login	failed login attempt	неудачная попытка входа | неудачная попытка авторизации	ログイン失敗 | ログイン試行の失敗	로그인 실패	登入失敗	登录失败
+sec.access_control	access control	управление доступом | контроль доступа | разграничение доступа	アクセス制御	접근 제어 | 액세스 제어	存取控制	访问控制
+sec.acl	access control list	список управления доступом | ACL | список контроля доступа	アクセス制御リスト | ACL	접근 제어 목록 | ACL	存取控制清單	访问控制列表
+sec.rbac	role-based access control	ролевое управление доступом | RBAC	ロールベースアクセス制御	역할 기반 접근 제어	角色型存取控制	基于角色的访问控制
+sec.least_privilege	principle of least privilege	принцип наименьших привилегий | принцип минимальных привилегий	最小権限の原則	최소 권한 원칙	最小權限原則	最小权限原则
+sec.priv_escalation	privilege escalation	повышение привилегий | эскалация привилегий | повышения привилегий	権限昇格 | 特権昇格	권한 상승	權限提升 | 提權	权限提升 | 提权
+sec.priv_separation	privilege separation	разделение привилегий	特権分離	권한 분리	權限分離	权限分离
+sec.zero_trust	zero trust	нулевое доверие | модель нулевого доверия | zero trust	ゼロトラスト	제로 트러스트	零信任	零信任 | 零信任架构
+sec.file_permissions	file permissions	права доступа к файлам | права на файл | пермишены	ファイルパーミッション | ファイルのアクセス権	파일 권한	檔案權限	文件权限
+sec.root_access	root access | root privileges	root-доступ | права суперпользователя | рут-права | рут	root権限 | ルート権限	루트 권한 | 루트 접근	root 權限 | 最高權限	root 权限 | 超级用户权限
+sec.admin_privileges	administrator privileges	права администратора | админские права	管理者権限	관리자 권한	管理員權限	管理员权限
+sec.sandbox	sandbox | sandboxing	песочница | песочницы | изоляция в песочнице	サンドボックス	샌드박스	沙箱 | 沙盒	沙箱 | 沙盒
+sec.process_isolation	process isolation	изоляция процессов	プロセス分離	프로세스 격리	處理程序隔離 | 行程隔離	进程隔离
+sec.allowlist	allowlist | whitelist	белый список | список разрешённых | вайтлист	許可リスト | ホワイトリスト	허용 목록 | 화이트리스트	允許清單 | 白名單	允许列表 | 白名单
+sec.denylist	denylist | blacklist	чёрный список | черный список | блэклист	拒否リスト | ブラックリスト	차단 목록 | 블랙리스트	封鎖清單 | 黑名單	拒绝列表 | 黑名单
+sec.access_review	access review	пересмотр прав доступа | ревизия доступа	アクセス権レビュー | 権限の棚卸し	접근 권한 검토	存取權限審查	访问权限审查
+sec.audit_log	audit log	журнал аудита | журнал безопасности | аудит-лог	監査ログ	감사 로그	稽核日誌	审计日志
+sec.audit_trail	audit trail	контрольный след | след аудита	監査証跡	감사 추적	稽核軌跡	审计跟踪 | 审计追踪
+sec.vulnerability	vulnerability | security vulnerability	уязвимость | уязвимости | уязвимостей | дыра в безопасности	脆弱性 | セキュリティホール	취약점 | 보안 취약점	漏洞 | 安全漏洞 | 弱點	漏洞 | 安全漏洞
+sec.zero_day	zero-day vulnerability	уязвимость нулевого дня | зиродей | 0-day	ゼロデイ脆弱性	제로데이 취약점	零時差漏洞 | 零日漏洞	零日漏洞 | 0day 漏洞
+sec.zero_day_exploit	zero-day exploit	эксплойт нулевого дня | эксплоит нулевого дня	ゼロデイエクスプロイト	제로데이 익스플로잇	零時差攻擊 | 零日攻擊	零日攻击 | 零日漏洞利用
+sec.exploit	exploit	эксплойт | эксплоит | эксплойта | сплоит	エクスプロイト	익스플로잇	漏洞利用程式 | 攻擊程式	漏洞利用 | 漏洞利用程序
+sec.poc_exploit	proof-of-concept exploit	PoC-эксплойт | демонстрационный эксплойт	PoCコード | 概念実証コード	개념 증명 코드 | PoC 코드	概念驗證程式碼 | PoC	概念验证代码 | PoC
+sec.buffer_overflow	buffer overflow	переполнение буфера | переполнения буфера	バッファオーバーフロー	버퍼 오버플로 | 버퍼 오버플로우	緩衝區溢位	缓冲区溢出
+sec.stack_overflow_vuln	stack buffer overflow	переполнение буфера в стеке | переполнение стека	スタックバッファオーバーフロー | スタックオーバーフロー	스택 버퍼 오버플로	堆疊緩衝區溢位 | 堆疊溢位	栈缓冲区溢出 | 栈溢出
+sec.heap_overflow	heap overflow	переполнение кучи | переполнения кучи	ヒープオーバーフロー	힙 오버플로	堆積溢位	堆溢出
+sec.integer_overflow	integer overflow	целочисленное переполнение | переполнение целого	整数オーバーフロー	정수 오버플로	整數溢位	整数溢出
+sec.uaf	use-after-free	использование после освобождения | use-after-free | UAF	解放後使用 | ユーズアフターフリー	해제 후 사용 | UAF	釋放後使用 | UAF	释放后使用 | UAF
+sec.double_free	double free	двойное освобождение | double free	二重解放 | ダブルフリー	이중 해제	重複釋放	双重释放 | 二次释放
+sec.null_deref	null pointer dereference	разыменование нулевого указателя	NULLポインタ参照 | ヌルポインタ参照	널 포인터 역참조	空指標解參考	空指针解引用
+sec.race_condition	race condition	состояние гонки	競合状態 | レースコンディション	경쟁 상태 | 레이스 컨디션	競爭條件 | 競態條件	竞态条件 | 竞争条件
+sec.toctou	time-of-check to time-of-use | TOCTOU	уязвимость TOCTOU | гонка между проверкой и использованием	TOCTOU | 検査時と使用時の競合	TOCTOU | 검사 시점과 사용 시점 경쟁	檢查與使用時間差 | TOCTOU	检查时间与使用时间 | TOCTOU
+sec.memory_corruption	memory corruption	повреждение памяти | порча памяти	メモリ破壊	메모리 손상 | 메모리 커럽션	記憶體損毀	内存损坏 | 内存破坏
+sec.oob_read	out-of-bounds read	чтение за границами буфера | чтение за пределами буфера	境界外読み取り	경계 밖 읽기 | 범위 외 읽기	越界讀取	越界读取 | 越界读
+sec.oob_write	out-of-bounds write	запись за границами буфера | запись за пределами буфера	境界外書き込み	경계 밖 쓰기 | 범위 외 쓰기	越界寫入	越界写入 | 越界写
+sec.sqli	SQL injection	SQL-инъекция | SQL-инъекции | скуля	SQLインジェクション	SQL 인젝션 | SQL 삽입	SQL 注入 | SQL 隱碼攻擊	SQL 注入
+sec.cmd_injection	command injection	внедрение команд | инъекция команд	コマンドインジェクション	명령어 삽입 | 커맨드 인젝션	命令注入 | 指令注入	命令注入
+sec.code_injection	code injection	внедрение кода | инъекция кода	コードインジェクション	코드 삽입 | 코드 인젝션	程式碼注入	代码注入
+sec.xss	cross-site scripting | XSS	межсайтовый скриптинг | XSS | XSS-атака	クロスサイトスクリプティング | XSS	크로스 사이트 스크립팅 | XSS	跨網站指令碼攻擊 | 跨站腳本攻擊 | XSS	跨站脚本攻击 | XSS
+sec.csrf	cross-site request forgery | CSRF	межсайтовая подделка запроса | CSRF	クロスサイトリクエストフォージェリ | CSRF	크로스 사이트 요청 위조 | CSRF	跨網站請求偽造 | 跨站請求偽造 | CSRF	跨站请求伪造 | CSRF
+sec.ssrf	server-side request forgery | SSRF	подделка запроса на стороне сервера | SSRF	サーバーサイドリクエストフォージェリ | SSRF	서버 측 요청 위조 | SSRF	伺服器端請求偽造 | SSRF	服务器端请求伪造 | SSRF
+sec.path_traversal	path traversal | directory traversal	обход каталогов | обход пути	ディレクトリトラバーサル | パストラバーサル	경로 탐색 | 디렉터리 트래버설	路徑遍歷 | 目錄遍歷	路径遍历 | 目录遍历
+sec.deserialization	insecure deserialization	небезопасная десериализация	安全でないデシリアライゼーション	안전하지 않은 역직렬화	不安全的反序列化	不安全的反序列化 | 反序列化漏洞
+sec.rce	remote code execution | RCE	удалённое выполнение кода | удаленное выполнение кода | RCE	リモートコード実行	원격 코드 실행	遠端程式碼執行	远程代码执行
+sec.ace	arbitrary code execution	выполнение произвольного кода	任意コード実行	임의 코드 실행	任意程式碼執行	任意代码执行
+sec.dos	denial of service | DoS attack	отказ в обслуживании | DoS-атака | ДоС	サービス妨害攻撃 | DoS攻撃	서비스 거부 공격 | 도스 공격	阻斷服務攻擊 | DoS 攻擊	拒绝服务攻击 | DoS 攻击
+sec.ddos	distributed denial of service | DDoS attack	распределённая атака типа отказ в обслуживании | DDoS-атака | ддос	分散型サービス妨害攻撃 | DDoS攻撃	분산 서비스 거부 공격 | 디도스	分散式阻斷服務攻擊 | DDoS 攻擊	分布式拒绝服务攻击 | DDoS 攻击
+sec.info_disclosure	information disclosure	раскрытие информации | утечка информации	情報漏えい | 情報開示の脆弱性	정보 노출	資訊洩漏	信息泄露
+sec.misconfiguration	security misconfiguration	небезопасная конфигурация | ошибка конфигурации безопасности	セキュリティ設定ミス	보안 설정 오류 | 보안 구성 오류	安全設定錯誤	安全配置错误
+sec.hardcoded_creds	hardcoded credentials	жёстко заданные учётные данные | захардкоженный пароль	ハードコードされた認証情報	하드코딩된 자격 증명	寫死的登入憑據 | 硬編碼憑據	硬编码凭据 | 硬编码密码
+sec.default_password	default password	пароль по умолчанию | дефолтный пароль	デフォルトパスワード | 初期パスワード	기본 비밀번호 | 초기 비밀번호	預設密碼	默认密码 | 初始密码
+sec.backdoor	backdoor	бэкдор | бекдор | бэкдора	バックドア	백도어	後門	后门
+sec.attack_surface	attack surface	поверхность атаки | поверхности атаки	攻撃対象領域 | アタックサーフェス	공격 표면	攻擊面	攻击面
+sec.attack_vector	attack vector	вектор атаки | вектора атаки	攻撃ベクトル | 攻撃経路	공격 벡터	攻擊向量 | 攻擊途徑	攻击向量 | 攻击途径
+sec.threat_model	threat model | threat modeling	модель угроз | моделирование угроз	脅威モデル | 脅威モデリング	위협 모델 | 위협 모델링	威脅模型 | 威脅建模	威胁模型 | 威胁建模
+sec.cvss	CVSS score	оценка CVSS | балл CVSS	CVSSスコア	CVSS 점수	CVSS 分數	CVSS 评分
+sec.vuln_scan	vulnerability scanning	сканирование уязвимостей | сканер уязвимостей	脆弱性スキャン | 脆弱性診断	취약점 스캔 | 취약점 점검	弱點掃描 | 漏洞掃描	漏洞扫描
+sec.pentest	penetration testing | pentest	тестирование на проникновение | пентест | пентеста	ペネトレーションテスト | 侵入テスト	침투 테스트 | 모의 해킹	滲透測試	渗透测试
+sec.security_patch	security patch	патч безопасности | исправление безопасности | заплатка	セキュリティパッチ	보안 패치	安全性修補程式 | 安全修補	安全补丁
+sec.security_update	security update	обновление безопасности | обновления безопасности	セキュリティアップデート | セキュリティ更新	보안 업데이트	安全性更新	安全更新
+sec.responsible_disclosure	responsible disclosure | coordinated disclosure	ответственное раскрытие | координированное раскрытие уязвимостей	責任ある開示 | 協調的開示	책임 있는 공개 | 조율된 공개	負責任揭露 | 協同揭露	负责任披露 | 协调披露
+sec.bug_bounty	bug bounty program	программа поиска уязвимостей за вознаграждение | баг-баунти | багбаунти	バグバウンティ | 脆弱性報奨金制度	버그 바운티 | 버그 현상금	漏洞獎勵計畫 | 抓漏獎金	漏洞赏金计划 | 漏洞悬赏
+sec.security_advisory	security advisory | security bulletin	бюллетень безопасности | уведомление об уязвимости	セキュリティアドバイザリ | セキュリティ勧告	보안 권고 | 보안 공지	安全性公告 | 資安公告	安全公告 | 安全通告
+sec.side_channel	side-channel attack	атака по сторонним каналам | атака по побочным каналам	サイドチャネル攻撃	부채널 공격	旁路攻擊 | 側通道攻擊	侧信道攻击 | 旁路攻击
+sec.timing_attack	timing attack	атака по времени | тайминг-атака	タイミング攻撃	타이밍 공격	時序攻擊	时序攻击 | 计时攻击
+sec.fault_injection	fault injection attack | glitching	атака внедрением сбоев | глитч-атака	フォールト注入攻撃 | グリッチ攻撃	오류 주입 공격 | 글리치 공격	故障注入攻擊 | 錯誤注入攻擊	故障注入攻击 | 错误注入攻击
+sec.fuzzing	fuzzing | fuzz testing	фаззинг | фаззинг-тестирование | фаззер	ファジング	퍼징 | 퍼즈 테스트	模糊測試	模糊测试
+sec.sast	static application security testing | static analysis	статический анализ кода | статический анализ безопасности	静的解析 | 静的アプリケーションセキュリティテスト	정적 분석 | 정적 애플리케이션 보안 테스트	靜態分析 | 靜態應用程式安全測試	静态分析 | 静态应用安全测试
+sec.dast	dynamic application security testing | dynamic analysis	динамический анализ | динамическое тестирование безопасности	動的解析 | 動的アプリケーションセキュリティテスト	동적 분석 | 동적 애플리케이션 보안 테스트	動態分析 | 動態應用程式安全測試	动态分析 | 动态应用安全测试
+sec.code_audit	security code audit	аудит безопасности кода | аудит кода	ソースコード監査 | コード監査	소스 코드 보안 감사 | 코드 감사	原始碼安全稽核 | 程式碼稽核	代码安全审计 | 代码审计
+sec.security_review	security review	ревью безопасности | проверка безопасности	セキュリティレビュー	보안 검토 | 보안 리뷰	安全性審查 | 資安審查	安全审查 | 安全评审
+sec.aslr	address space layout randomization | ASLR	рандомизация адресного пространства | ASLR	アドレス空間配置のランダム化 | ASLR	주소 공간 배치 난수화 | ASLR	位址空間配置隨機化 | ASLR	地址空间布局随机化 | ASLR
+sec.dep	data execution prevention | non-executable memory	предотвращение выполнения данных | неисполняемая память	データ実行防止 | 実行不可メモリ	데이터 실행 방지 | 실행 불가 메모리	資料執行防止 | 不可執行記憶體	数据执行保护 | 不可执行内存
+sec.stack_canary	stack canary | stack protector	канарейка стека | стековая канарейка | защита стека	スタックカナリア | スタック保護	스택 카나리 | 스택 보호	堆疊保護值 | 堆疊金絲雀	栈金丝雀 | 栈保护
+sec.cfi	control-flow integrity	целостность потока управления	制御フロー完全性	제어 흐름 무결성	控制流程完整性	控制流完整性
+sec.memory_safety	memory safety	безопасность памяти | безопасная работа с памятью	メモリ安全性	메모리 안전성	記憶體安全	内存安全
+sec.input_validation	input validation	проверка входных данных | валидация ввода | валидация входных данных	入力値検証 | 入力検証	입력값 검증 | 입력 검증	輸入驗證	输入验证 | 输入校验
+sec.input_sanitization	input sanitization	санитизация входных данных | очистка ввода	入力のサニタイズ | サニタイジング	입력값 정제 | 입력 필터링	輸入淨化 | 輸入過濾	输入净化 | 输入过滤
+sec.output_encoding	output encoding | output escaping	экранирование вывода | кодирование вывода	出力エスケープ | 出力エンコーディング	출력 인코딩 | 출력 이스케이프	輸出編碼 | 輸出跳脫	输出编码 | 输出转义
+sec.bounds_check	bounds checking	проверка границ | проверка границ буфера	境界チェック	경계 검사	邊界檢查	边界检查
+sec.malware	malware	вредоносное ПО | вредоносная программа | малварь | вредонос	マルウェア	악성코드 | 멀웨어 | 악성 소프트웨어	惡意軟體 | 惡意程式	恶意软件 | 恶意程序
+sec.ransomware	ransomware	программа-вымогатель | вымогатель | шифровальщик | рансомварь	ランサムウェア	랜섬웨어	勒索軟體 | 勒索病毒	勒索软件 | 勒索病毒
+sec.spyware	spyware	шпионское ПО | шпионская программа | шпион	スパイウェア	스파이웨어	間諜軟體	间谍软件
+sec.trojan	Trojan horse | Trojan	троян | троянская программа | трояна | трояны	トロイの木馬 | トロイ	트로이 목마	木馬程式 | 特洛伊木馬	木马 | 特洛伊木马
+sec.worm	computer worm	сетевой червь | компьютерный червь	ワーム | コンピュータワーム	웜 | 컴퓨터 웜	電腦蠕蟲 | 蠕蟲病毒	计算机蠕虫 | 蠕虫病毒
+sec.computer_virus	computer virus	компьютерный вирус	コンピュータウイルス	컴퓨터 바이러스	電腦病毒	计算机病毒 | 电脑病毒
+sec.rootkit	rootkit	руткит | руткита	ルートキット	루트킷	Rootkit | 隱匿程式	Rootkit | 内核级后门
+sec.keylogger	keylogger	кейлоггер | клавиатурный шпион	キーロガー	키로거	鍵盤側錄程式 | 鍵盤記錄器	键盘记录器
+sec.botnet	botnet	ботнет | бот-сеть | ботнета	ボットネット	봇넷	殭屍網路	僵尸网络
+sec.c2	command and control server | C2 server	командный сервер | C&C-сервер | сервер управления ботнетом	C2サーバ | 指令サーバ	명령 제어 서버 | C2 서버	中繼站 | C2 伺服器	命令与控制服务器 | C2 服务器
+sec.phishing	phishing	фишинг | фишинга | фишинговая атака	フィッシング | フィッシング詐欺	피싱	網路釣魚 | 釣魚攻擊	网络钓鱼 | 钓鱼攻击
+sec.spear_phishing	spear phishing	целевой фишинг | спир-фишинг	スピアフィッシング | 標的型攻撃メール	스피어 피싱	魚叉式網路釣魚	鱼叉式网络钓鱼
+sec.social_engineering	social engineering	социальная инженерия | социнженерия	ソーシャルエンジニアリング	사회 공학 | 소셜 엔지니어링	社交工程	社会工程学 | 社工
+sec.mitm	man-in-the-middle attack | MITM	атака посредника | атака «человек посередине» | MITM-атака	中間者攻撃	중간자 공격	中間人攻擊	中间人攻击
+sec.replay_attack	replay attack	атака повторного воспроизведения | атака повтором | replay-атака	リプレイ攻撃 | 反射攻撃	재전송 공격 | 리플레이 공격	重放攻擊 | 重送攻擊	重放攻击
+sec.ip_spoofing	IP spoofing	подмена IP-адреса | IP-спуфинг	IPスプーフィング | IPアドレス詐称	IP 스푸핑	IP 偽造 | IP 欺騙	IP 欺骗 | IP 地址伪造
+sec.dns_spoofing	DNS spoofing	подмена DNS | DNS-спуфинг	DNSスプーフィング	DNS 스푸핑	DNS 欺騙	DNS 欺骗
+sec.arp_spoofing	ARP spoofing	ARP-спуфинг | подмена ARP	ARPスプーフィング	ARP 스푸핑	ARP 欺騙	ARP 欺骗
+sec.mac_spoofing	MAC spoofing	подмена MAC-адреса | MAC-спуфинг	MACアドレス偽装 | MACスプーフィング	MAC 스푸핑 | MAC 주소 위장	MAC 位址偽造 | MAC 欺騙	MAC 地址伪造 | MAC 欺骗
+sec.dns_poisoning	DNS cache poisoning	отравление кэша DNS	DNSキャッシュポイズニング	DNS 캐시 포이즈닝	DNS 快取汙染 | DNS 快取下毒	DNS 缓存投毒 | DNS 污染
+sec.clickjacking	clickjacking	кликджекинг	クリックジャッキング	클릭재킹	點擊劫持	点击劫持
+sec.supply_chain_attack	supply chain attack	атака на цепочку поставок	サプライチェーン攻撃	공급망 공격	供應鏈攻擊	供应链攻击
+sec.apt	advanced persistent threat | APT	целевая устойчивая угроза | APT-группировка | APT	高度標的型攻撃 | APT	지능형 지속 위협 | APT	進階持續性威脅 | APT	高级持续性威胁 | APT
+sec.insider_threat	insider threat	внутренняя угроза | инсайдерская угроза | инсайдер	内部脅威 | 内部不正	내부자 위협	內部威脅	内部威胁
+sec.lateral_movement	lateral movement	горизонтальное перемещение | латеральное перемещение	横展開 | ラテラルムーブメント	측면 이동 | 내부 확산	橫向移動	横向移动
+sec.exfiltration	data exfiltration	эксфильтрация данных | кража данных	データ窃取 | データの持ち出し	데이터 유출 | 데이터 탈취	資料外洩 | 資料竊取	数据窃取 | 数据外泄
+sec.data_breach	data breach	утечка данных | взлом с утечкой данных	データ侵害 | 情報漏洩事故	정보 유출 사고 | 데이터 침해	資料外洩事件 | 個資外洩	数据泄露 | 数据泄露事件
+sec.credential_theft	credential theft	кража учётных данных | кража учетных данных	認証情報の窃取	자격 증명 탈취 | 계정 탈취	帳密竊取 | 盜帳號	凭证窃取 | 盗号
+sec.pw_cracking	password cracking	взлом паролей | подбор паролей	パスワードクラッキング | パスワード解析	비밀번호 크래킹	密碼破解	密码破解
+sec.brute_force	brute-force attack	атака полным перебором | брутфорс | перебор паролей	総当たり攻撃 | ブルートフォース攻撃	무차별 대입 공격 | 브루트 포스	暴力破解 | 暴力攻擊	暴力破解 | 暴力攻击 | 穷举攻击
+sec.dictionary_attack	dictionary attack	словарная атака | атака по словарю	辞書攻撃	사전 공격	字典攻擊	字典攻击
+sec.rainbow_table	rainbow table	радужная таблица | радужные таблицы	レインボーテーブル	레인보 테이블 | 레인보우 테이블	彩虹表	彩虹表 | 彩虹表攻击
+sec.sniffing	packet sniffing	перехват пакетов | сниффинг | снифер | сниффер	パケットスニッフィング | パケット盗聴	패킷 스니핑	封包竊聽 | 封包嗅探	数据包嗅探 | 网络嗅探
+sec.eavesdropping	eavesdropping attack	прослушивание трафика | перехват трафика	盗聴攻撃	도청 공격	竊聽攻擊	窃听攻击
+sec.deauth	deauthentication attack	атака деаутентификации | деаутентификация | деаут	認証解除攻撃 | ディオースアタック	인증 해제 공격 | 디오스 공격	解除驗證攻擊 | Deauth 攻擊	取消认证攻击 | 解除认证攻击
+sec.evil_twin	evil twin access point	поддельная точка доступа «злой двойник» | evil twin	なりすましアクセスポイント | イービルツイン	이블 트윈 | 가짜 AP	邪惡雙胞胎 AP | 偽冒熱點	邪恶双胞胎热点 | 钓鱼热点
+sec.rogue_ap	rogue access point	несанкционированная точка доступа | поддельная точка доступа	不正アクセスポイント	비인가 AP | 불법 AP	非法存取點 | 惡意 AP	非法接入点 | 恶意 AP
+sec.jamming	jamming attack | RF jamming	атака подавлением | радиоподавление | глушилка	ジャミング攻撃 | 電波妨害	재밍 공격 | 전파 방해	干擾攻擊 | 無線電干擾	干扰攻击 | 射频干扰
+sec.downgrade_attack	downgrade attack	атака понижения версии | даунгрейд-атака	ダウングレード攻撃	다운그레이드 공격	降級攻擊	降级攻击
+sec.reverse_engineering	reverse engineering	обратная разработка | реверс-инжиниринг | реверс	リバースエンジニアリング	리버스 엔지니어링 | 역공학	逆向工程	逆向工程 | 逆向分析
+sec.tamper_detection	tamper detection | anti-tamper	обнаружение вскрытия | защита от вскрытия	改ざん検知 | 耐タンパー性	변조 탐지 | 위변조 방지	竄改偵測 | 防竄改	篡改检测 | 防篡改
+sec.payload	malicious payload	вредоносная нагрузка | полезная нагрузка эксплойта | пейлоад	悪意のあるペイロード	악성 페이로드	惡意酬載	恶意载荷 | 恶意负载
+sec.shellcode	shellcode	шелл-код | шеллкод	シェルコード	셸코드	Shellcode | 殼層程式碼	Shellcode | 外壳代码
+sec.firewall	firewall	межсетевой экран | брандмауэр | файрвол | фаервол	ファイアウォール	방화벽	防火牆	防火墙
+sec.waf	web application firewall | WAF	межсетевой экран веб-приложений | WAF	Webアプリケーションファイアウォール | WAF	웹 방화벽 | WAF	網頁應用程式防火牆 | WAF	Web 应用防火墙 | WAF
+sec.ids	intrusion detection system | IDS	система обнаружения вторжений | СОВ | IDS	侵入検知システム | IDS	침입 탐지 시스템 | IDS	入侵偵測系統	入侵检测系统
+sec.ips	intrusion prevention system | IPS	система предотвращения вторжений | IPS	侵入防止システム | IPS	침입 방지 시스템 | IPS	入侵防禦系統	入侵防御系统
+sec.segmentation	network segmentation	сегментация сети	ネットワークセグメンテーション | ネットワーク分離	네트워크 분리 | 망 분리	網路區隔 | 網路分段	网络分段 | 网络隔离
+sec.dmz	demilitarized zone | DMZ	демилитаризованная зона | DMZ	非武装地帯 | DMZ	비무장지대 | DMZ	非軍事區 | DMZ	隔离区 | 非军事区 | DMZ
+sec.port_scan	port scanning	сканирование портов | скан портов	ポートスキャン	포트 스캔	連接埠掃描 | 埠掃描	端口扫描
+sec.open_port	open port	открытый порт | открытые порты	開放ポート | オープンポート	열린 포트 | 개방 포트	開放連接埠	开放端口
+sec.packet_filtering	packet filtering	фильтрация пакетов	パケットフィルタリング	패킷 필터링	封包過濾	包过滤 | 数据包过滤
+sec.stateful_inspection	stateful packet inspection	анализ пакетов с учётом состояния | stateful-инспекция	ステートフルパケットインスペクション	상태 기반 패킷 검사	狀態式封包檢查	状态检测
+sec.dpi	deep packet inspection | DPI	глубокая инспекция пакетов | DPI	ディープパケットインスペクション | DPI	심층 패킷 분석 | DPI	深度封包檢測 | DPI	深度包检测 | DPI
+sec.nac	network access control	контроль сетевого доступа | NAC	ネットワークアクセス制御 | 検疫ネットワーク	네트워크 접근 제어 | NAC	網路存取控制	网络准入控制 | 网络访问控制
+sec.proxy_server	proxy server	прокси-сервер | прокси | прокси-сервера	プロキシサーバ | プロキシサーバー	프록시 서버	代理伺服器 | Proxy 伺服器	代理服务器
+sec.reverse_proxy	reverse proxy	обратный прокси | реверс-прокси	リバースプロキシ	리버스 프록시 | 역방향 프록시	反向代理	反向代理 | 反向代理服务器
+sec.honeypot	honeypot	ханипот | ловушка для атакующих	ハニーポット	허니팟	誘捕系統 | 蜜罐	蜜罐 | 蜜罐系统
+sec.siem	security information and event management | SIEM	система управления событиями безопасности | SIEM	SIEM | セキュリティ情報イベント管理	보안 정보 및 이벤트 관리 | SIEM	資安事件管理系統 | SIEM	安全信息和事件管理 | SIEM
+sec.soc	security operations center | SOC	центр мониторинга безопасности | SOC	セキュリティオペレーションセンター | SOC	보안 관제 센터 | SOC	資安監控中心 | SOC	安全运营中心 | SOC
+sec.edr	endpoint detection and response | EDR	обнаружение и реагирование на конечных точках | EDR	EDR | エンドポイント検知・対応	엔드포인트 탐지 및 대응 | EDR	端點偵測與回應 | EDR	终端检测与响应 | EDR
+sec.antivirus	antivirus software	антивирус | антивирусное ПО | антивирусная программа	ウイルス対策ソフト | アンチウイルス	백신 프로그램 | 안티바이러스	防毒軟體	杀毒软件 | 防病毒软件
+sec.rate_limiting	rate limiting	ограничение частоты запросов | рейт-лимит | рейтлимит	レート制限	속도 제한 | 요청 수 제한	速率限制 | 流量限制	限流 | 速率限制
+sec.anomaly_detection	anomaly detection	обнаружение аномалий	異常検知	이상 탐지	異常偵測	异常检测
+sec.signature_detection	signature-based detection	сигнатурное обнаружение | обнаружение по сигнатурам	シグネチャベース検知 | パターンマッチング検知	시그니처 기반 탐지	特徵碼偵測	基于特征码的检测 | 特征检测
+sec.false_positive	false positive	ложное срабатывание | ложноположительный результат | фолс позитив	誤検知 | フォールスポジティブ	오탐 | 오탐지	誤判 | 誤報	误报
+sec.false_negative	false negative	пропуск угрозы | ложноотрицательный результат	検知漏れ | フォールスネガティブ	미탐 | 미탐지	漏判 | 漏報	漏报
+sec.incident_response	incident response	реагирование на инциденты | реагирование на инциденты безопасности	インシデント対応 | インシデントレスポンス	침해 사고 대응 | 사고 대응	事件應變 | 資安事件應變	应急响应 | 事件响应
+sec.forensics	digital forensics	компьютерная криминалистика | цифровая криминалистика | форензика	デジタルフォレンジック | フォレンジック	디지털 포렌식 | 포렌식	數位鑑識	数字取证 | 电子取证
+sec.security_incident	security incident	инцидент безопасности | инцидента безопасности	セキュリティインシデント	보안 사고 | 침해 사고	資安事件 | 安全事件	安全事件 | 安全事故
+sec.ioc	indicator of compromise | IoC	индикатор компрометации | IoC	侵害指標 | IoC	침해 지표 | IoC	入侵指標 | IoC	失陷指标 | 入侵指标 | IoC
+sec.threat_intel	threat intelligence	разведка угроз | киберразведка | данные об угрозах	脅威インテリジェンス	위협 인텔리전스	威脅情資	威胁情报
+sec.security_baseline	security baseline	базовый уровень безопасности | базовая конфигурация безопасности	セキュリティベースライン	보안 기준선 | 보안 베이스라인	安全基準 | 資安基準	安全基线
+sec.hardening	system hardening | security hardening	усиление защиты | харденинг | укрепление безопасности системы	ハードニング | システムの堅牢化	시스템 하드닝 | 보안 강화	系統強化 | 安全強化	系统加固 | 安全加固
+sec.compromise	system compromise | compromised host	компрометация | скомпрометированный узел | компрометации	システム侵害 | 侵害されたホスト	시스템 침해 | 감염된 호스트	系統遭入侵 | 受駭主機	系统失陷 | 失陷主机 | 肉鸡
+sec.privacy	data privacy	конфиденциальность данных | приватность | неприкосновенность частной жизни	データプライバシー | プライバシー保護	데이터 프라이버시 | 개인정보 보호	資料隱私 | 隱私保護	数据隐私 | 隐私保护
+sec.personal_data	personal data	персональные данные | персданные | ПДн	個人データ | 個人情報	개인정보 | 개인 데이터	個人資料 | 個資	个人数据 | 个人信息
+sec.pii	personally identifiable information | PII	персонально идентифицируемая информация | PII	個人を特定できる情報 | 個人識別情報	개인 식별 정보 | PII	個人可識別資訊	个人身份信息 | 可识别个人身份的信息
+sec.data_protection	data protection	защита данных | защита персональных данных	データ保護	데이터 보호	資料保護 | 個資保護	数据保护 | 个人信息保护
+sec.anonymization	anonymization	анонимизация | обезличивание | анонимизации	匿名化	익명화 | 익명 처리	匿名化 | 去識別化處理	匿名化 | 匿名化处理
+sec.pseudonymization	pseudonymization	псевдонимизация	仮名化	가명화 | 가명 처리	假名化	假名化
+sec.de_identification	de-identification	деидентификация | обезличивание данных	非識別化 | 匿名加工	비식별화 | 비식별 조치	去識別化	去标识化
+sec.data_minimization	data minimization	минимизация данных	データ最小化	데이터 최소화 | 최소 수집 원칙	資料最小化	数据最小化
+sec.user_consent	user consent | consent management	согласие пользователя | согласие на обработку данных	ユーザー同意 | 同意管理	사용자 동의 | 동의 관리	使用者同意 | 同意管理	用户同意 | 同意管理
+sec.privacy_policy	privacy policy	политика конфиденциальности	プライバシーポリシー	개인정보 처리방침 | 개인정보 보호정책	隱私權政策	隐私政策
+sec.data_retention	data retention policy	политика хранения данных | срок хранения данных	データ保持ポリシー | データ保存期間	데이터 보존 정책 | 보존 기간	資料保留政策 | 資料保存期限	数据保留策略 | 数据保存期限
+sec.data_masking	data masking	маскирование данных | маскировка данных	データマスキング	데이터 마스킹	資料遮罩 | 資料去敏	数据脱敏 | 数据遮蔽
+sec.compliance	security compliance | regulatory compliance	соответствие требованиям безопасности | комплаенс | соответствие нормативным требованиям	セキュリティコンプライアンス | 法令遵守	보안 컴플라이언스 | 규정 준수	安全合規 | 法規遵循	安全合规 | 合规性
+sec.security_audit	security audit	аудит безопасности | аудита безопасности	セキュリティ監査	보안 감사	資安稽核 | 安全稽核	安全审计
+sec.risk_assessment	risk assessment	оценка рисков | анализ рисков	リスク評価 | リスクアセスメント	위험 평가 | 리스크 평가	風險評估	风险评估
+sec.security_policy	security policy	политика безопасности | политика информационной безопасности	セキュリティポリシー	보안 정책	資安政策 | 安全政策	安全策略 | 安全政策
+sec.infosec	information security | infosec	информационная безопасность | ИБ | инфобез	情報セキュリティ	정보 보안	資訊安全 | 資安	信息安全 | 信安
+sec.cybersecurity	cybersecurity	кибербезопасность | кибербез	サイバーセキュリティ	사이버 보안	網路安全 | 網路資安	网络安全 | 网安
+sec.confidentiality	confidentiality	конфиденциальность | конфиденциальности	機密性	기밀성	機密性	机密性 | 保密性
+sec.data_integrity	data integrity	целостность данных | целостности данных	データ完全性 | データの整合性	데이터 무결성	資料完整性	数据完整性
+sec.non_repudiation	non-repudiation	неотказуемость | невозможность отказа от авторства	否認防止	부인 방지	不可否認性	不可否认性 | 抗抵赖性
+sec.defense_in_depth	defense in depth	эшелонированная защита | многоуровневая защита	多層防御 | 深層防護	심층 방어 | 다층 방어	縱深防禦	纵深防御
+sec.secure_coding	secure coding	безопасное программирование | безопасная разработка	セキュアコーディング	시큐어 코딩	安全程式設計 | 安全編碼	安全编码 | 安全编程
+sec.secret_management	secrets management	управление секретами | хранилище секретов	シークレット管理 | 機密情報管理	시크릿 관리 | 비밀 정보 관리	機密管理 | 金鑰與密碼管理	密钥管理系统 | 机密管理
+sec.secret_leak	leaked secret | exposed API key	утечка секрета | утёкший ключ API	シークレット漏えい | APIキー漏えい	시크릿 유출 | API 키 노출	機密外洩 | API 金鑰外洩	机密泄露 | API 密钥泄露
+sec.api_key	API key	API-ключ | ключ API | апи ключ	APIキー	API 키	API 金鑰	API 密钥
+sec.access_key	access key	ключ доступа | ключа доступа	アクセスキー	액세스 키	存取金鑰	访问密钥
+sec.credential_rotation	credential rotation	ротация учётных данных | смена паролей	認証情報のローテーション	자격 증명 교체	憑據輪替 | 密碼輪替	凭据轮换 | 密码轮换
+sec.security_token	security token | hardware token	аппаратный токен	セキュリティトークン | ハードウェアトークン	보안 토큰 | 하드웨어 토큰	安全權杖 | 硬體權杖	安全令牌 | 硬件令牌
+sec.smart_card	smart card	смарт-карта | смарт-карты	スマートカード | ICカード	스마트카드 | IC 카드	智慧卡 | IC 卡	智能卡 | IC 卡
+sec.physical_security	physical security	физическая безопасность | физическая защита	物理セキュリティ	물리 보안	實體安全	物理安全
+sec.air_gap	air gap | air-gapped network	воздушный зазор | физически изолированная сеть	エアギャップ | 物理的に隔離されたネットワーク	에어 갭 | 망 분리 환경	實體隔離 | 氣隙隔離	物理隔离 | 网闸隔离
+sec.secure_channel	secure channel	защищённый канал | защищенный канал | безопасный канал	セキュアチャネル | 安全な通信路	보안 채널 | 안전한 채널	安全通道	安全通道 | 安全信道
+sec.encrypted_traffic	encrypted traffic	зашифрованный трафик	暗号化された通信 | 暗号化トラフィック	암호화된 트래픽	加密流量	加密流量
+sec.key_compromise	key compromise	компрометация ключа | утечка ключа	鍵の危殆化 | 鍵漏えい	키 유출 | 키 손상	金鑰洩漏 | 金鑰遭破解	密钥泄露 | 密钥失陷
+sec.weak_cipher	weak cipher | deprecated algorithm	слабый шифр | устаревший алгоритм шифрования	脆弱な暗号 | 非推奨アルゴリズム	취약한 암호 | 사용 중단된 알고리즘	弱加密演算法 | 已淘汰演算法	弱加密算法 | 已弃用算法
+sec.key_generation	key generation	генерация ключей | генерация ключа	鍵生成	키 생성	金鑰產生	密钥生成
+sec.gtk	group temporal key | group key	групповой временный ключ | групповой ключ | GTK	グループ一時鍵 | GTK	그룹 임시 키 | GTK	群組暫時金鑰 | GTK	组临时密钥 | GTK
+sec.ptk	pairwise transient key | PTK	попарный временный ключ | PTK	ペアワイズ一時鍵 | PTK	쌍별 임시 키 | PTK	成對暫時金鑰 | PTK	成对临时密钥 | PTK
+sec.pmk	pairwise master key | PMK	попарный мастер-ключ | PMK	ペアワイズマスター鍵 | PMK	쌍별 마스터 키 | PMK	成對主金鑰 | PMK	成对主密钥 | PMK
+sec.pmk_caching	PMK caching | PMKID	кэширование PMK | PMKID	PMKキャッシュ | PMKID	PMK 캐싱 | PMKID	PMK 快取 | PMKID	PMK 缓存 | PMKID
+sec.group_rekey	group rekeying	смена группового ключа | обновление группового ключа	グループ鍵更新 | グループキー更新	그룹 키 갱신	群組金鑰更新	组密钥更新
+sec.wps	Wi-Fi Protected Setup | WPS	WPS | защищённая настройка Wi-Fi	WPS	WPS	WPS 安全設定	WPS 快速安全设置
+sec.accounting	RADIUS accounting	учёт RADIUS | RADIUS-аккаунтинг | аккаунтинг	RADIUSアカウンティング	RADIUS 어카운팅	RADIUS 計費	RADIUS 计费
+sec.supplicant	supplicant	супликант | запрашивающая сторона	サプリカント	서플리컨트 | 인증 요청자	請求者 | Supplicant	请求方 | Supplicant
+sec.authenticator	802.1X authenticator	аутентификатор 802.1X	オーセンティケータ	인증자	驗證者 | Authenticator	认证方 | Authenticator
+sec.security_header	HTTP security headers	заголовки безопасности HTTP	HTTPセキュリティヘッダー	HTTP 보안 헤더	HTTP 安全標頭	HTTP 安全头
+sec.csp	content security policy | CSP	политика безопасности контента | CSP	コンテンツセキュリティポリシー | CSP	콘텐츠 보안 정책 | CSP	內容安全政策 | CSP	内容安全策略 | CSP
+sec.hsts	HTTP Strict Transport Security | HSTS	HSTS | строгая транспортная безопасность HTTP	HSTS	HSTS	HTTP 嚴格傳輸安全 | HSTS	HTTP 严格传输安全 | HSTS
+sec.cors	cross-origin resource sharing | CORS	совместное использование ресурсов между источниками | CORS	オリジン間リソース共有 | CORS	교차 출처 리소스 공유 | CORS	跨來源資源共用 | CORS	跨域资源共享 | CORS
+sec.auth_bypass	authentication bypass	обход аутентификации | обхода аутентификации	認証回避 | 認証バイパス	인증 우회	繞過驗證 | 驗證繞過	认证绕过 | 绕过认证
+sec.security_bug	security bug | security flaw	ошибка безопасности | брешь в защите	セキュリティ上の欠陥 | セキュリティバグ	보안 결함 | 보안 버그	安全缺陷 | 資安漏洞	安全缺陷 | 安全 bug
+sec.mitigation	security mitigation | mitigation measure	меры по снижению риска | митигация | защитные меры	緩和策 | 軽減策	완화 조치 | 보안 완화	緩解措施	缓解措施
+sec.attack_chain	attack chain | kill chain	цепочка атаки | цепочка кибератаки	攻撃チェーン | キルチェーン	공격 체인 | 킬 체인	攻擊鏈 | 網路攻擊鏈	攻击链 | 杀伤链
+sec.threat_actor	threat actor	злоумышленник | субъект угрозы | атакующий	脅威アクター | 攻撃者	위협 행위자 | 공격자	威脅行為者 | 攻擊者	威胁行为者 | 攻击者
+sec.cyberattack	cyberattack	кибератака | кибератаки	サイバー攻撃	사이버 공격	網路攻擊 | 資安攻擊	网络攻击
+sec.hacking	hacking | computer intrusion	взлом | взлома | хакерская атака	ハッキング | 不正侵入	해킹 | 침입	駭客入侵 | 入侵	黑客入侵 | 入侵
+sec.unauthorized_access	unauthorized access	несанкционированный доступ | НСД	不正アクセス	무단 접근 | 비인가 접근	未經授權存取 | 非法存取	未授权访问 | 非法访问
+sec.bootloader_unlock	bootloader unlocking	разблокировка загрузчика	ブートローダーのアンロック	부트로더 잠금 해제	開機載入程式解鎖 | Bootloader 解鎖	引导加载程序解锁 | Bootloader 解锁
+sec.debug_port	exposed debug port | JTAG access	открытый отладочный порт | доступ через JTAG	デバッグポートの露出 | JTAGアクセス	노출된 디버그 포트 | JTAG 접근	外露除錯埠 | JTAG 存取	暴露的调试端口 | JTAG 访问
+sec.fw_rollback	firmware rollback protection | anti-rollback	защита от отката прошивки	ファームウェアのロールバック防止	펌웨어 롤백 방지	韌體防回滾 | 防止韌體降版	固件防回滚 | 防降级保护
+sec.attestation	remote attestation	удалённая аттестация | удаленная аттестация	リモートアテステーション | リモート構成証明	원격 증명	遠端證明	远程证明 | 远程认证

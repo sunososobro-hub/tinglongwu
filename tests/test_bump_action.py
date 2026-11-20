@@ -63,7 +63,7 @@ def test_bullets_strip_numbers_and_skip_infra():
 
 
 def test_generated_files_pass_bump_exempt():
-    init = Path(b.ROOT / "tinglongwu" / "__init__.py").read_text("utf-8")
+    init = Path(b.ROOT / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8")
     wn = Path(b.ROOT / b.WHATS_NEW_FILE).read_text("utf-8")
     ver = b.app_version(init)
     new = b.next_patch(ver)
@@ -73,7 +73,7 @@ def test_generated_files_pass_bump_exempt():
     def patch(old, cur):
         return "\n".join(list(difflib.unified_diff(old.split("\n"), cur.split("\n"), lineterm="", n=0))[2:])
 
-    files = [{"filename": "tinglongwu/__init__.py", "status": "modified", "patch": patch(init, new_init)},
+    files = [{"filename": "src/core/tinglongwu/__init__.py", "status": "modified", "patch": patch(init, new_init)},
              {"filename": b.WHATS_NEW_FILE, "status": "modified", "patch": patch(wn, new_wn)}]
     ok, why = bump_exempt(files, new_wn)
     assert ok, why

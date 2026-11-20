@@ -36,7 +36,7 @@ import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CLIP = ROOT / "tinglongwu" / "data" / "selftest_en.wav"
+CLIP = ROOT / "src" / "core" / "tinglongwu" / "data" / "selftest_en.wav"
 CJK = re.compile(r"[㐀-鿿豈-﫿]")
 
 

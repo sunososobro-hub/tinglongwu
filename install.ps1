@@ -70,6 +70,13 @@ if ($Lang -and -not $DryRun) {
     [string[]]$keep = @(if (Test-Path -LiteralPath $cfg) { Get-Content -LiteralPath $cfg | Where-Object { $_ -and $_ -notmatch '^ui_lang=' } })
     Set-Content -LiteralPath $cfg -Value ($keep + "ui_lang=$ui") -Encoding ascii
 }
+# #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here
+if (Test-Path (Join-Path $Root 'src\core\tinglongwu\__init__.py')) {
+    foreach ($old in 'tinglongwu', 'tinglongwu_setup', 'tlwu_app', 'tlwu_eval') {
+        $p = Join-Path $Root $old
+        if (Test-Path -LiteralPath $p) { if ($DryRun) { Info "[dry-run] remove old $p" } else { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue } }
+    }
+}
 Info "Whole install: about 10-65 min depending on your PC and connection (exact estimate after step 2). 全程約 10-65 分鐘，第 2 步後顯示準確預估。"
 
 # ---------------------------------------------------------------- 1. Python
@@ -274,7 +281,7 @@ function Make-Shortcut($name, $target, $arguments) {
         $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
         $s.TargetPath = $target; $s.Arguments = $arguments; $s.WorkingDirectory = $Root
         $s.Description = "$name - offline speech translator"
-        $ico = Join-Path $Root 'tinglongwu\gui\assets\tinglongwu.ico'
+        $ico = Join-Path $Root 'src\ui\tinglongwu\gui\assets\tinglongwu.ico'
         if (Test-Path $ico) { $s.IconLocation = $ico }
         $s.Save()
         Ok "Shortcut: $lnk"; [void]$Installed.Add("Desktop shortcut '$name'")

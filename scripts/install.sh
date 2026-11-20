@@ -171,7 +171,7 @@ install_desktop_shortcut() {
   local d="$HOME/.local/share/applications" f
   f="$d/tinglongwu.desktop"
   mkdir -p "$d" || return 0
-  printf '[Desktop Entry]\nType=Application\nName=tinglongWu\nComment=Offline voice translator\nExec=%s/.venv/bin/tlwu-gui\nIcon=%s/tinglongwu/gui/assets/tinglongwu.png\nTerminal=false\nCategories=AudioVideo;Audio;\n' "$DIR" "$DIR" > "$f.tmp" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"
+  printf '[Desktop Entry]\nType=Application\nName=tinglongWu\nComment=Offline voice translator\nExec=%s/.venv/bin/tlwu-gui\nIcon=%s/src/ui/tinglongwu/gui/assets/tinglongwu.png\nTerminal=false\nCategories=AudioVideo;Audio;\n' "$DIR" "$DIR" > "$f.tmp" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"
 }
 
 # #1677: the window version (GUI) comes first; start it when a desktop is there and a person is at the keyboard, else print both commands.
@@ -245,6 +245,8 @@ main() {
     git clone --quiet --branch "$REF" "$REPO_URL" "$DIR" || die "git clone failed (network, or unknown version $REF)"
   fi
   cd "$DIR" || die "cannot enter $DIR"
+  # #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here
+  if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
 
   [ -x .venv/bin/python ] || "$PY" -m venv .venv || die "venv creation failed"
   say "$(t pip)"
