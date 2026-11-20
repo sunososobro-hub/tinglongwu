@@ -105,6 +105,7 @@ while :; do
   m M_OPT_LISTEN "$N"
   m M_OPT_LANG
   m M_OPT_UPDATE
+  m M_OPT_GUI
   m M_OPT_AUTOUPD "$AU"
   m M_OPT_UILANG "$(mp M_LANGNAME)"
   read -rp "> " pick || exit 0
@@ -112,6 +113,7 @@ while :; do
     ""|1) mode=2; BOTH=1 ;;
     2) mode=2; BOTH=0 ;;
     3) mode=1; BOTH=0 ;;
+    g|G) if command -v tlwu-gui >/dev/null 2>&1; then exec tlwu-gui; else echo "tlwu-gui not found: re-run the installer."; fi; continue ;;   # #1679
     u|U) tlwu_manual_update || true; continue ;;
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
