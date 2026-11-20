@@ -42,6 +42,7 @@ env:
   TLWU_HYMT_TEMP: "0"  # greedy decoding: repeatable chrF run to run (same as eval.yml)
   PYTHONUTF8: "1"
   WHISPER: small
+  PYTHONPATH: eval  # #1664: tlwu_eval lives in eval/; matrix + weekly jobs run it without pip install
 
 jobs:
   # #642: the cloud sandboxes cannot reach huggingface.co, so pin files are made here and committed from the log/artifact.

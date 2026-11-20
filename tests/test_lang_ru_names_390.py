@@ -2,7 +2,6 @@
 import re
 from pathlib import Path
 
-from tinglongwu import lang as lang_patches
 from tinglongwu.lang import ru
 from tinglongwu.translate import Translation, Translator, translate_checked
 

@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src" / "system"))  # #1664: tinglongwu_setup lives in src/system/
 from tinglongwu_setup import downloader as dl  # noqa: E402
 
 WHISPER = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
