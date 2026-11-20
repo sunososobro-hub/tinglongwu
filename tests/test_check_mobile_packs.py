@@ -50,3 +50,13 @@ def test_empty_tag_rejected():
     r = subprocess.run([sys.executable, str(SCRIPT), "--tag", ""],
                        capture_output=True, text=True)
     assert r.returncode == 2
+
+
+def test_mobile_apk_publish_job_runs_the_check_last():
+    import yaml
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "mobile-apk.yml").read_text(encoding="utf-8"))
+    steps = wf["jobs"]["publish"]["steps"]
+    idx = [i for i, s in enumerate(steps) if "check_mobile_packs.py" in s.get("run", "")]
+    assert idx, "publish job has no check_mobile_packs step"
+    assert idx[0] == len(steps) - 1
+    assert steps[idx[0]]["env"]["GH_TOKEN"]

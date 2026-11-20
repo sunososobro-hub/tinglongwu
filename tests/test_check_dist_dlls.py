@@ -17,7 +17,7 @@ from test_clean_machine import make_pe  # noqa: E402
 spec = importlib.util.spec_from_file_location("check_dist_dlls", ROOT / "scripts" / "check_dist_dlls.py")
 cdd = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cdd)
-spec = importlib.util.spec_from_file_location("build_windows", ROOT / "packaging" / "build_windows.py")
+spec = importlib.util.spec_from_file_location("build_windows", ROOT / "release" / "packaging" / "build_windows.py")
 bw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bw)
 

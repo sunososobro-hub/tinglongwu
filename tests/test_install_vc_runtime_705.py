@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 HELPERS = ROOT / "scripts" / "install_helpers.ps1"
 INSTALL = (ROOT / "install.ps1").read_text("utf-8-sig")
-ISS = (ROOT / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
+ISS = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
 PWSH = shutil.which("pwsh")
 needs_pwsh = pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 

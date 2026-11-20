@@ -1,6 +1,6 @@
 """#1160 (Chrome extension part 3, parent #711): the subtitle overlay on the captured tab.
 
-Loads extension/capture in Playwright's Chromium (a copy whose content-script match also covers the local test page),
+Loads web/extension/capture in Playwright's Chromium (a copy whose content-script match also covers the local test page),
 starts capture, injects 3 fake recognizer results through the offscreen document -> service worker -> content script
 path, and checks: each translated line shows up in order within 500 ms, the overlay survives a page scroll, and it is
 removed when capture stops. Skips when Playwright / Chromium are missing, unless TLWU_REQUIRE_EXTENSION=1 (then fails).

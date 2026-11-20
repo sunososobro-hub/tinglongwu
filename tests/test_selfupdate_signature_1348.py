@@ -170,7 +170,7 @@ def test_apply_cli_passes_hash_to_helper(tmp_path, key, monkeypatch, capsys):
     script = su.apply_script(p, tmp_path, 1, seen["sha"])
     assert script.index("Get-FileHash") < script.index("Start-Process -FilePath")
     zscript = su.apply_app_script(tmp_path / "a.zip", tmp_path, 1, "ab" * 32)
-    assert zscript.index("Get-FileHash") < zscript.index("Expand-Archive")
+    assert zscript.index("Get-FileHash") < zscript.index("ExtractToDirectory")
 
 
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="needs PowerShell")

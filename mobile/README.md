@@ -84,8 +84,9 @@ Without secrets each CI run signs the APK with a throwaway debug key (a signing 
 Keep `tlwu-release.jks` and the password backed up offline; losing them means users must uninstall to update. Switching from the debug key to the release key also needs one uninstall + reinstall (and a re-import of models).
 
 ## Google Play (AAB + model asset packs)
-The `mobile-apk` workflow also builds `app-release.aab` for Google Play. The models do not fit in the
-200 MB base, so they ride in two **fast-follow** Play Asset Delivery packs: `models_asr` (SenseVoice +
+The `mobile-apk` workflow also builds `app-release.aab` for Google Play. **The model packs below are opt-in (#1169):** dev pushes go to the internal track hourly, and Play re-sent the whole ~1.3 GB pack with every update although the pack bytes were identical (#1329), so by default the AAB has no packs and an update is the app alone (the models, imported once with **Import models**, stay in the app folder). Set the repo variable `PLAY_MODEL_PACKS=true` to build the AAB with the packs again (Gradle reads `TLWU_PLAY_PACKS=1`); going from a build with packs to one without removes the Play packs, so import the models zip once.
+The models do not fit in the
+200 MB base, so with that variable they ride in two **fast-follow** Play Asset Delivery packs: `models_asr` (SenseVoice +
 Silero VAD, ~240 MB) and `models_llm` (Hy-MT2 GGUF, ~1.13 GB). Play downloads them right after install,
 so a Play user never imports anything; the Play Store does that download. The app's own INTERNET
 permission is only for user-tapped pack downloads. CI fills the packs from the same official sources as the models zip

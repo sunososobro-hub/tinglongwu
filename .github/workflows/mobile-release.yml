@@ -5,8 +5,7 @@ name: mobile-release
 # Part 3 (#1598): `lane` job = the mobile good tag. On a release/vX.Y.Z snapshot it runs flutter analyze +
 # flutter test, then scripts/mobile_lane.py decides tag `mobile-vX.Y.Z` + Play track `production` (status draft). Independent of the
 # desktop lanes (nothing here is a required check of vX.Y.Z). Production is never automatic. The AAB build/upload
-# step is the next part: until it exists the aab gate is reported as `not-built`, so no tag is created and nothing
-# is uploaded (decision is printed only).
+# step is part 4 (below): signed AAB build gate, then tag + Play production DRAFT upload when every gate is green.
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +21,11 @@ on:
 permissions:
   contents: read
   actions: read
+
+env:
+  NDK_VERSION: "28.2.13676358"
+  CMAKE_VERSION: "3.22.1"
+  LLAMA_COMMIT: afeebe103bd99cda8f5dfaefcabadf890db7fda7
 
 jobs:
   plan:
@@ -57,18 +61,64 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK packages (pinned NDK + cmake for the llama.cpp AAR)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+      - name: Cache the self-built llama.cpp AAR
+        id: aar
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/aar-cache
+          key: llama-aar-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh') }}
+      - name: Build llama.cpp AAR from source (cache miss only)
+        if: steps.aar.outputs.cache-hit != 'true'
+        run: |
+          TLWU_BUILD_ROOT="$RUNNER_TEMP/llama" bash tool/build_llama_android.sh
+          mkdir -p ~/aar-cache && cp native/llama-cpp-dart-selfbuilt.aar ~/aar-cache/
+      - name: Use the CI-built AAR (not the committed binary)
+        run: cp ~/aar-cache/llama-cpp-dart-selfbuilt.aar native/llama-cpp-dart-selfbuilt.aar
       - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
         with:
           flutter-version: "3.47.6"
           channel: stable
           cache: true
       - run: flutter pub get
+      - run: python3 ../scripts/check_mobile_network.py --mobile-dir .   # #1567
       - id: analyze
         continue-on-error: true
         run: flutter analyze
       - id: test
         continue-on-error: true
         run: flutter test
+      - name: Release key from secrets
+        id: key
+        continue-on-error: true
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          [ -n "$KS_B64" ] || { echo "ANDROID_KEYSTORE_B64 missing: no signed AAB, the aab gate stays red"; exit 1; }
+          printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "TLWU_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Build signed release AAB (gate "aab")
+        id: aab
+        if: steps.key.outcome == 'success'
+        continue-on-error: true
+        env:
+          TLWU_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # versionCode must beat every earlier Play upload; dev builds use mobile-apk's run number, so offset ours
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          BUILD_NUMBER=$((2000000 + RUN_NUMBER))
+          flutter build appbundle --release --target-platform android-arm64 --build-number "$BUILD_NUMBER" --build-name "$(python3 -I tool/mobile_version.py name)"
+          mkdir -p "$RUNNER_TEMP/aab" && cp build/app/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/aab/tinglongwu-mobile.aab"
       - name: Decide the mobile lane
         id: decide
         env:
@@ -76,13 +126,42 @@ jobs:
           DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
           ANALYZE: ${{ steps.analyze.outcome }}
           TEST: ${{ steps.test.outcome }}
+          AAB: ${{ steps.aab.outcome }}
         run: |
           [[ "$BRANCH" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::bad branch"; exit 1; }
           last="$(git tag --list 'mobile-v*' --sort=-v:refname | head -1)"
           flag=""; [ "$DRY" = "true" ] && flag="--dry-run"
           set +e
           python3 -I ../scripts/mobile_lane.py --branch "$BRANCH" --analyze "$ANALYZE" --test "$TEST" \
-            --aab not-built --last-tag "$last" $flag
+            --aab "${AAB:-skipped}" --last-tag "$last" $flag --out "$GITHUB_OUTPUT"
           rc=$?
           [ "$rc" -le 1 ] || exit "$rc"
-          echo "AAB build + production draft upload + tag come with the next part; nothing was tagged or uploaded."
+          exit 0
+      - name: Tag mobile-vX.Y.Z at the snapshot head
+        if: steps.decide.outputs.act == 'true'
+        run: |
+          git tag "${{ steps.decide.outputs.tag }}" "$GITHUB_SHA"
+          git push origin "refs/tags/${{ steps.decide.outputs.tag }}"
+      - name: Upload to Google Play (production, DRAFT only)
+        id: upload
+        if: steps.decide.outputs.act == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SA_JSON }}
+          packageName: com.tinglongwu.mobile
+          releaseFiles: ${{ runner.temp }}/aab/tinglongwu-mobile.aab
+          track: ${{ steps.decide.outputs.track }}
+          status: ${{ steps.decide.outputs.status }}
+      - name: Summary
+        if: always()
+        env:
+          NOTE: ${{ steps.decide.outputs.release_note }}
+          ACT: ${{ steps.decide.outputs.act }}
+          UPLOAD: ${{ steps.upload.outcome }}
+          TRACK: ${{ steps.decide.outputs.track }}
+          STATUS: ${{ steps.decide.outputs.status }}
+        run: |
+          if [ "$ACT" != "true" ]; then r="$NOTE (no tag, no upload: red gate or dry run)"
+          elif [ "$UPLOAD" = "success" ]; then r="$NOTE (track=$TRACK status=$STATUS uploaded)"
+          else r="upload $UPLOAD: nothing drafted on Play"; fi
+          echo "mobile lane: $r" >> "$GITHUB_STEP_SUMMARY"

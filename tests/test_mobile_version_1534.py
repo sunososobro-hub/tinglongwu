@@ -69,3 +69,24 @@ def test_cli_exit_codes(tmp_path):
     assert r.returncode == 1
     real = subprocess.run([sys.executable, "-I", str(SCRIPT), "name"], capture_output=True, text=True)
     assert real.returncode == 0 and real.stdout.strip().count(".") == 2
+
+
+def test_default_version_follows_desktop_dunder_version(tmp_path):
+    """#1598: no path argument -> versionName is tinglongwu.__version__, not pubspec.yaml."""
+    import re
+    init = (ROOT / "src" / "core" / "tinglongwu" / "__init__.py").read_text(encoding="utf-8")
+    want = re.search(r'^__version__\s*=\s*"([^"]+)"', init, re.M).group(1)
+    r = subprocess.run([sys.executable, "-I", str(SCRIPT), "name"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == want
+    r = subprocess.run([sys.executable, "-I", str(SCRIPT), "dev", "12"], capture_output=True, text=True)
+    assert r.stdout.strip() == want + "-dev.12"
+    fake = tmp_path / "__init__.py"
+    fake.write_text('"""x"""\n__version__ = "0.9.4"\n')
+    r = subprocess.run([sys.executable, "-I", str(SCRIPT), "next", str(fake)], capture_output=True, text=True)
+    assert r.stdout.strip() == "0.9.5"
+
+
+def test_desktop_version_rejects_garbage():
+    assert mv.desktop_version('__version__ = "0.4.11"\n') == "0.4.11"
+    with pytest.raises(ValueError):
+        mv.desktop_version('__version__ = "dev"\n')

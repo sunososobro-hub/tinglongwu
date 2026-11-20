@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Mobile release-lane helpers (#1534): versionName, internal build label, release notes.
 
-    python3 -I tool/mobile_version.py name   [pubspec.yaml]            -> X.Y.Z (versionName)
-    python3 -I tool/mobile_version.py dev    <run_number> [pubspec]    -> X.Y.Z-dev.<run>
-    python3 -I tool/mobile_version.py next   [pubspec]                 -> X.Y.(Z+1)
+    python3 -I tool/mobile_version.py name   [init.py|pubspec]  -> X.Y.Z (versionName = desktop __version__)
+    python3 -I tool/mobile_version.py dev    <run_number> [init.py|pubspec] -> X.Y.Z-dev.<run>
+    python3 -I tool/mobile_version.py next   [init.py|pubspec]         -> X.Y.(Z+1)
     python3 -I tool/mobile_version.py notes  <X.Y.Z> [whats_new.md]    -> body of "## mobile X.Y.Z"
                                                                          (exit 1 if missing/empty/TODO)
 """
@@ -13,6 +13,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBSPEC = os.path.join(os.path.dirname(HERE), "pubspec.yaml")
+# #1598: mobile versionName follows the desktop __version__ (same X.Y.Z as the release snapshot).
+DESKTOP_INIT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "src", "core", "tinglongwu", "__init__.py")
 WHATS_NEW = os.path.join(os.path.dirname(os.path.dirname(HERE)), "docs", "whats_new.md")
 _VER = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
@@ -23,6 +25,21 @@ def version_name(pubspec_text):
     if not m or not _VER.match(m.group(1)):
         raise ValueError("pubspec.yaml has no X.Y.Z version")
     return m.group(1)
+
+
+def desktop_version(init_text):
+    """The `__version__ = "X.Y.Z"` value of tinglongwu/__init__.py."""
+    m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', init_text, re.M)
+    if not m or not _VER.match(m.group(1)):
+        raise ValueError("no X.Y.Z __version__ found")
+    return m.group(1)
+
+
+def base_version(text):
+    """Base X.Y.Z from either tinglongwu/__init__.py (default, #1598) or a pubspec.yaml text."""
+    if re.search(r"^__version__\s*=", text, re.M):
+        return desktop_version(text)
+    return version_name(text)
 
 
 def dev_name(base, run_number):
@@ -74,11 +91,11 @@ def main(argv):
     try:
         cmd = argv[1]
         if cmd == "name":
-            print(version_name(_read(argv[2] if len(argv) > 2 else PUBSPEC)))
+            print(base_version(_read(argv[2] if len(argv) > 2 else DESKTOP_INIT)))
         elif cmd == "dev":
-            print(dev_name(version_name(_read(argv[3] if len(argv) > 3 else PUBSPEC)), argv[2]))
+            print(dev_name(base_version(_read(argv[3] if len(argv) > 3 else DESKTOP_INIT)), argv[2]))
         elif cmd == "next":
-            print(next_patch(version_name(_read(argv[2] if len(argv) > 2 else PUBSPEC))))
+            print(next_patch(base_version(_read(argv[2] if len(argv) > 2 else DESKTOP_INIT))))
         elif cmd == "notes":
             print(notes_section(_read(argv[3] if len(argv) > 3 else WHATS_NEW), argv[2]))
         else:

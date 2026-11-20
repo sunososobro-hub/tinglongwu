@@ -7,6 +7,14 @@ name: mobile-apk
 # The same job also builds the Google Play AAB: the models ride in two fast-follow Play Asset Delivery
 # packs (tool/fill_asset_packs.py) that Play downloads right after install. On dev pushes the AAB is kept as an artifact and, when the
 # PLAY_SA_JSON secret and the release key exist, uploaded to the Play internal track.
+# #1621 phone preview: same-repo PRs touching mobile/** also upload to the internal track (fork PRs never do).
+# Runner: set the repo variable MOBILE_RUNNER=tlwu-mobile to build on the owner's home Windows runner
+# [self-hosted, windows, tlwu-mobile] (warm Gradle/pub/Flutter/NDK/AAR caches on its persistent disk; Git Bash steps).
+# The label can sit on the same machine as the hw runner (tlwu-hw): the two jobs then just queue one after the other.
+# Unset (or any other value) = ubuntu-24.04, unchanged. Fork PRs always use ubuntu-24.04 (never the home machine).
+# Limitation: GitHub cannot fall back after a queue timeout, so if the home runner is off, clear MOBILE_RUNNER.
+# Windows prerequisites on that machine: Flutter, Android SDK (%LOCALAPPDATA%\Android\Sdk, or ANDROID_HOME), Git for
+# Windows (bash, awk, sha256sum, base64) + `unzip`, Python (`python`; a python3 shim is added per job).
 on:
   push:
     branches: [dev]
@@ -27,18 +35,44 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && '["self-hosted","windows","tlwu-mobile"]' || '["ubuntu-24.04"]') }}
     timeout-minutes: 90
     permissions:
       contents: read
     env:
       HAS_PLAY: ${{ secrets.PLAY_SA_JSON != '' && secrets.ANDROID_KEYSTORE_B64 != '' }}
+      # #1169: the model packs ride in the AAB only when the repo variable PLAY_MODEL_PACKS is 'true'. Every dev push
+      # goes to the Play internal track, and Play re-sent the whole ~1.3 GB pack on those hourly updates even though
+      # the pack bytes were identical (#1329); without the packs an update is the app alone and the models, imported
+      # once, stay in the app's own folder. Gradle reads TLWU_PLAY_PACKS (mobile/android/app/build.gradle.kts).
+      TLWU_PLAY_PACKS: ${{ vars.PLAY_MODEL_PACKS == 'true' && '1' || '0' }}
     defaults:
       run:
         shell: bash   # -eo pipefail: a failing aapt/apksigner in a pipe fails the step
         working-directory: mobile
     steps:
+      - name: Start clock
+        working-directory: .   # mobile/ does not exist before checkout
+        run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Windows runner prep (SDK location, tool check, python3 shim)
+        if: runner.os == 'Windows'
+        run: |
+          SDK="${ANDROID_HOME:-$(cygpath -u "$LOCALAPPDATA")/Android/Sdk}"
+          [ -d "$SDK" ] || { echo "Android SDK not found at $SDK (set ANDROID_HOME on the runner)"; exit 1; }
+          echo "ANDROID_HOME=$(cygpath -m "$SDK")" >> "$GITHUB_ENV"
+          for t in unzip awk sha256sum base64 python; do command -v "$t" > /dev/null || { echo "missing tool on the runner: $t"; exit 1; }; done
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/bin/python3"
+          cygpath -m "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Decide Play upload (dev push or same-repo PR; never fork PRs)
+        id: plan
+        run: python3 -I ../scripts/mobile_upload_plan.py "$EVENT" "$REF" "$REPO" "$HEAD_REPO" "$HAS_PLAY" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -46,8 +80,14 @@ jobs:
       - name: Android SDK packages (pinned NDK + cmake for the llama.cpp AAR)
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+          [ -e "$SDKM" ] || SDKM="$SDKM.bat"
+          # idempotent on a persistent disk: skip when both are already installed
+          if [ -d "$ANDROID_HOME/ndk/$NDK_VERSION" ] && [ -d "$ANDROID_HOME/cmake/$CMAKE_VERSION" ]; then
+            echo "NDK $NDK_VERSION + cmake $CMAKE_VERSION already installed"
+          else
+            yes | "$SDKM" --licenses > /dev/null || true
+            "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+          fi
       - name: Cache the self-built llama.cpp AAR
         id: aar
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -95,11 +135,13 @@ jobs:
         # build number = run number, so every preview has a higher versionCode and installs as an update
         run: flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }} --build-name "$(python3 -I tool/mobile_version.py dev ${{ github.run_number }})"
       - name: Cache the models for the Play asset packs (keyed by the manifest)
+        if: env.TLWU_PLAY_PACKS == '1'
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/models-cache
           key: play-models-${{ hashFiles('mobile/assets/models_manifest.json', 'mobile/tool/fetch_models.sh') }}
       - name: Fill the Play asset packs (official sources, checked against the manifest)
+        if: env.TLWU_PLAY_PACKS == '1'
         run: |
           if [ ! -d ~/models-cache/models ]; then bash tool/fetch_models.sh ~/models-cache; fi
           python3 -I tool/fill_asset_packs.py ~/models-cache/models
@@ -110,24 +152,29 @@ jobs:
           TLWU_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TLWU_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build appbundle --release --target-platform android-arm64 --build-number ${{ github.run_number }} --build-name "$(python3 -I tool/mobile_version.py dev ${{ github.run_number }})"
-      - name: Check the AAB (packs present + fast-follow + sizes, INTERNET only, base under 200 MB, target API >= 36)
+      - name: Check the AAB (packs present + fast-follow + sizes only when PLAY_MODEL_PACKS=true; INTERNET only, base under 200 MB, target API >= 36)
         run: |
           AAB=build/app/outputs/bundle/release/app-release.aab
           ls -l "$AAB"
-          unzip -l "$AAB" | grep -E " (models_asr|models_llm)/assets/" | tee "$RUNNER_TEMP/packs.txt"
-          TOTAL=0
-          for p in models_asr models_llm; do
-            grep -q " $p/assets/" "$RUNNER_TEMP/packs.txt" || { echo "pack $p missing"; exit 1; }
-            # proto manifest keeps the delivery element name (fast-follow / on-demand / install-time) as a string
-            unzip -p "$AAB" "$p/manifest/AndroidManifest.xml" > "$RUNNER_TEMP/$p.xml"
-            grep -aq "fast-follow" "$RUNNER_TEMP/$p.xml" || { echo "pack $p is not fast-follow"; exit 1; }
-            if grep -aqE "on-demand|install-time" "$RUNNER_TEMP/$p.xml"; then echo "pack $p has another delivery type"; exit 1; fi
-            N=$(awk -v p="$p/assets/" 'index($4, p) == 1 {s += $1} END {print s+0}' "$RUNNER_TEMP/packs.txt")
-            echo "$p: $N bytes"
-            [ "$N" -le $((1536 << 20)) ] || { echo "pack $p over Play's 1.5 GB per-pack limit"; exit 1; }
-            TOTAL=$((TOTAL + N))
-          done
-          [ "$TOTAL" -le $((4 << 30)) ] || { echo "packs over Play's 4 GB fast-follow total"; exit 1; }
+          if [ "$TLWU_PLAY_PACKS" = 1 ]; then
+            unzip -l "$AAB" | grep -E " (models_asr|models_llm)/assets/" | tee "$RUNNER_TEMP/packs.txt"
+            TOTAL=0
+            for p in models_asr models_llm; do
+              grep -q " $p/assets/" "$RUNNER_TEMP/packs.txt" || { echo "pack $p missing"; exit 1; }
+              # proto manifest keeps the delivery element name (fast-follow / on-demand / install-time) as a string
+              unzip -p "$AAB" "$p/manifest/AndroidManifest.xml" > "$RUNNER_TEMP/$p.xml"
+              grep -aq "fast-follow" "$RUNNER_TEMP/$p.xml" || { echo "pack $p is not fast-follow"; exit 1; }
+              if grep -aqE "on-demand|install-time" "$RUNNER_TEMP/$p.xml"; then echo "pack $p has another delivery type"; exit 1; fi
+              N=$(awk -v p="$p/assets/" 'index($4, p) == 1 {s += $1} END {print s+0}' "$RUNNER_TEMP/packs.txt")
+              echo "$p: $N bytes"
+              [ "$N" -le $((1536 << 20)) ] || { echo "pack $p over Play's 1.5 GB per-pack limit"; exit 1; }
+              TOTAL=$((TOTAL + N))
+            done
+            [ "$TOTAL" -le $((4 << 30)) ] || { echo "packs over Play's 4 GB fast-follow total"; exit 1; }
+          else
+            # #1169: no model packs in this AAB (default); a pack here would put the 1.3 GB back into every update
+            if unzip -l "$AAB" | grep -qE " (models_asr|models_llm)/"; then echo "AAB has model packs but PLAY_MODEL_PACKS is not true"; exit 1; fi
+          fi
           # proto manifest keeps permission names as plain UTF-8 strings; INTERNET is the only network permission (#1567)
           unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/base.xml"
           grep -aqE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/base.xml" || { echo "AAB lacks INTERNET (pack download)"; exit 1; }
@@ -147,7 +194,8 @@ jobs:
           "$BT/aapt" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
           grep -qE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/perms.txt" || { echo "APK lacks INTERNET (pack download)"; exit 1; }
           if grep -qE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
-          "$BT/apksigner" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
+          SIGNER="$BT/apksigner"; [ -e "$SIGNER" ] || SIGNER="$BT/apksigner.bat"
+          "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
           rm -f "$RUNNER_TEMP/release.jks"
           mkdir -p "$RUNNER_TEMP/out"
           cp "$APK" "$RUNNER_TEMP/out/$APK_NAME"
@@ -166,17 +214,25 @@ jobs:
           path: ${{ runner.temp }}/aab/
           retention-days: 7
           compression-level: 0
+      - name: AAB path for the Play upload (forward slashes; the glob in the upload action fails on Windows backslashes)
+        if: steps.plan.outputs.upload == 'true'
+        run: echo "AAB_PATH=$(cygpath -m "$RUNNER_TEMP/aab/tinglongwu-mobile.aab" 2>/dev/null || echo "$RUNNER_TEMP/aab/tinglongwu-mobile.aab")" >> "$GITHUB_ENV"
       - name: Upload to Google Play (internal track)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' && env.HAS_PLAY == 'true'
+        if: steps.plan.outputs.upload == 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SA_JSON }}
           packageName: com.tinglongwu.mobile
-          releaseFiles: ${{ runner.temp }}/aab/tinglongwu-mobile.aab
+          releaseFiles: ${{ env.AAB_PATH }}
           track: internal
           # "draft" until the app has had its first release in Play Console; then set the repo
           # variable PLAY_RELEASE_STATUS=completed so internal testers get builds automatically.
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+      - name: Build minutes (#1621)
+        if: always()
+        run: |
+          M=$(( ($(date +%s) - BUILD_START) / 60 ))
+          echo "### mobile build: ${M} min on runner \`${{ runner.name }}\` (${{ runner.environment }}), upload=${{ steps.plan.outputs.upload }}, versionCode=${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     needs: build
@@ -320,3 +376,9 @@ jobs:
           python3 -I mobile/tool/make_packs.py mark "$RUNNER_TEMP/body.md" $STALE
           gh release edit "$TAG" --notes-file "$RUNNER_TEMP/body.md"
           gh release view "$TAG" --json assets --jq '.assets[] | .name + " " + (.size|tostring)'
+      - name: Check the optional packs are on mobile-latest (#1510)
+        if: steps.apk.outputs.stale != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 -I scripts/check_mobile_packs.py

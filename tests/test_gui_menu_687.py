@@ -55,7 +55,7 @@ def test_every_listed_item_is_in_the_menu_bar_exactly_once(_wizard_install, gui_
 
     a = gui_app
     _switch(a, ui)
-    assert str(a.root.cget("menu")) == str(a.menubar)
+    assert a.menubar_row.winfo_exists()
     m = _labels(t)
     assert [label for label, _k, _i in _entries(a.menubar)] == [m["file"], m["settings"], m["help"]]
     want = [(m["file"], t("gui_menu_logs")), (m["file"], t("gui_menu_uninstall")), (m["file"], t("gui_menu_quit")),

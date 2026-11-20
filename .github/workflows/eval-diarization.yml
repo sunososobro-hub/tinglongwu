@@ -13,11 +13,11 @@ on:
       - .github/workflows/eval-diarization.yml
       - scripts/eval_diarization.py
       - scripts/bench/diarization_clip.py
-      - tinglongwu/speakers.py
-      - tinglongwu/speaker_embed.py
+      - src/core/tinglongwu/speakers.py
+      - src/core/tinglongwu/speaker_embed.py
       - requirements-speaker.txt
-      - tinglongwu_setup/manifest.json
-      - tinglongwu_setup/downloader.py
+      - src/system/tinglongwu_setup/manifest.json
+      - src/system/tinglongwu_setup/downloader.py
   workflow_dispatch:
 
 permissions:
@@ -63,7 +63,7 @@ jobs:
           path: |
             ~/tlwu-models/speaker
             clip
-          key: eval-diarization-v1-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'scripts/bench/diarization_clip.py') }}
+          key: eval-diarization-v1-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'scripts/bench/diarization_clip.py') }}
       - name: Speaker model (CAM++)
         run: tlwu-setup --speaker-model --models-dir "$TLWU_MODELS"
       - name: Annotated conversation (8 LibriSpeech speakers)

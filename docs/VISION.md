@@ -40,4 +40,4 @@ AI review checks every PR against this list and blocks a PR that crosses it.
 | 🧬 | Remember a voiceprint without consent |
 | 📡 | Send usage data home |
 
-Anything that stays inside these lines is welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md) and the [roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html).
+Anything that stays inside these lines is welcome. See [CONTRIBUTING.md](../.github/CONTRIBUTING.md) and the [roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html).

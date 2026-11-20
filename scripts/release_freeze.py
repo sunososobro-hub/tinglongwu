@@ -66,7 +66,7 @@ def main(argv=None) -> int:
     c.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "sunososobro-hub/tinglongwu"))
     a = ap.parse_args(argv)
     r = a.repo
-    init = _gh(f"repos/{r}/contents/tinglongwu/__init__.py?ref=dev")
+    init = _gh(f"repos/{r}/contents/src/core/tinglongwu/__init__.py?ref=dev")
     text = base64.b64decode(init["content"]).decode() if isinstance(init, dict) else ""
     m = VERSION_RE.search(text)
     if not m:

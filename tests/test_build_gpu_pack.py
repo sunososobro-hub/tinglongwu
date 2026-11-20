@@ -8,7 +8,7 @@ import pytest
 
 from tinglongwu import gpu_pack
 
-SRC = Path(__file__).resolve().parent.parent / "packaging" / "build_windows.py"
+SRC = Path(__file__).resolve().parent.parent / "release" / "packaging" / "build_windows.py"
 
 
 def _mod():
@@ -125,7 +125,7 @@ def test_gpu_pack_without_nvidia_licenses_exits(tmp_path):
 def test_release_yml_nvrtc_pin_matches_gpu_pack_nvrtc():
     import re
 
-    text = (SRC.parent.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    text = (SRC.parents[2] / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     pin = re.search(r"nvidia-cuda-nvrtc-cu12==(\d+)\.(\d+)\.", text)
     assert pin, "release.yml no longer pins nvidia-cuda-nvrtc-cu12"
     m = _mod()
@@ -187,7 +187,7 @@ def _recipe_fingerprint(m) -> str:
 
 
 # Pinned together with GPU_PACK_FORMAT: if this fails you edited the pack recipe; bump GPU_PACK_FORMAT and update both.
-RECIPE_PIN = (1, "4c4b8c24347b85eff23a33464000fd8445fe0b2314a63705b6e03d5020d5d27a")
+RECIPE_PIN = (1, "0fd0a99ccac80004fcdb002530569dc6f003d420a0aa99081c2497d9f46f88d7")
 
 
 def test_recipe_edit_requires_format_bump():

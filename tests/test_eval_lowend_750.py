@@ -152,7 +152,7 @@ def test_workflow_runs_on_code_prs_and_always_on_the_release_pr(tmp_path):
     job = yaml.safe_load((ROOT / ".github/workflows/eval.yml").read_text("utf-8"))["jobs"]["low-end-cpu"]
     gate_step = next(s for s in job["steps"] if s.get("name", "").startswith("Gate vs dev"))
     assert "--lowend-base-report base.json" in gate_step["run"]
-    assert _decide(tmp_path / "a", ["tinglongwu/asr.py"]) == "true"
+    assert _decide(tmp_path / "a", ["src/core/tinglongwu/asr.py"]) == "true"
     assert _decide(tmp_path / "b", ["docs/x.md"]) == "false"
     assert _decide(tmp_path / "c", ["docs/x.md"], base_ref="main", head_ref="dev") == "true"  # release PR
     assert _decide(tmp_path / "d", ["docs/x.md"], base_ref="main", head_ref="docs/fastlane-1") == "false"

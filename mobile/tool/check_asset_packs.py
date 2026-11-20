@@ -126,7 +126,8 @@ def build(numbers):
     outs = []
     for n in numbers:
         subprocess.run(["flutter", "build", "appbundle", "--release", "--target-platform", "android-arm64",
-                        "--build-number", str(n)], cwd=MOBILE, check=True, shell=(os.name == "nt"))
+                        "--build-number", str(n)], cwd=MOBILE, check=True, shell=(os.name == "nt"),
+                       env={**os.environ, "TLWU_PLAY_PACKS": "1"})  # #1169: the packs are opt-in in Gradle
         dst = os.path.join(MOBILE, "build", f"check-{n}.aab")
         shutil.copyfile(AAB, dst)
         outs.append(dst)

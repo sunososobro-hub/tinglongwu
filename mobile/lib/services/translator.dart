@@ -6,6 +6,7 @@ import '../logic/context_budget.dart';
 import '../logic/passthrough.dart';
 import '../logic/prompt.dart';
 import '../logic/s2tw.dart';
+import '../logic/target_script.dart';
 import '../logic/utf8_stream.dart';
 import '../logic/zh_quotes.dart';
 import '../logic/zh_check.dart';
@@ -19,7 +20,11 @@ class Translation {
     required this.firstTokenMs,
     required this.genMs,
     required this.nCtx,
+    this.scriptCheck = '',
   });
+
+  /// #1616 target-script check: '' = fine, 'retry' = fixed by the other template, 'dropped'.
+  final String scriptCheck;
 
   final String zh;
   final ZhCheck check;
@@ -98,40 +103,55 @@ class Translator implements LineTranslator {
         nCtx: 0,
       );
     }
-    final prompt = PromptBuilder.build(ru.trim(), src: src, tgt: tgt);
-    await _session.clear();
-    final buf = StringBuffer();
-    // Own byte-level decoder: pieces are raw bytes and can split a character (see Utf8Stream).
-    final utf8 = Utf8Stream();
     var tokens = 0;
     var firstMs = 0;
     var nCtx = 0;
-    await for (final e in _session.generate(
-      prompt: prompt,
-      addSpecial: false,
-      parseSpecial: true,
-      sampler: const SamplerParams(greedy: true),
-      // Faithfulness: output budget tied to the input length (a longer answer is invented text),
-      // clamped so prompt + output stay inside nCtx (#533).
-      maxTokens: ContextBudget.maxTokensFor(ru, src: src, tgt: tgt),
-    )) {
-      if (e is TokenEvent) {
-        if (tokens == 0) firstMs = sw.elapsedMilliseconds;
-        tokens++;
-        // A draft translation (#1065) yields to the next final line: stop at the next token.
-        if (shouldStop != null && shouldStop()) break;
-        buf.write(utf8.add(e.bytes));
-        // One sentence in, one line out: stop at the first line break after some text, so the
-        // model cannot continue with a second paragraph of its own. A line that is only the echoed
-        // card instruction does not count (#1615): the translation may follow it.
-        if (PromptBuilder.lineDone(buf.toString())) break;
-      } else if (e is DoneEvent) {
-        nCtx = e.committedPosition;
+    var stopped = false;
+    // One generation with the card template ([alt] = the other one, #1616), cleaned.
+    Future<String> run(bool alt) async {
+      final prompt = PromptBuilder.build(ru.trim(), src: src, tgt: tgt, alt: alt);
+      await _session.clear();
+      final buf = StringBuffer();
+      // Own byte-level decoder: pieces are raw bytes and can split a character (see Utf8Stream).
+      final utf8 = Utf8Stream();
+      await for (final e in _session.generate(
+        prompt: prompt,
+        addSpecial: false,
+        parseSpecial: true,
+        sampler: const SamplerParams(greedy: true),
+        // Faithfulness: output budget tied to the input length (a longer answer is invented text),
+        // clamped so prompt + output stay inside nCtx (#533).
+        maxTokens: ContextBudget.maxTokensFor(ru, src: src, tgt: tgt),
+      )) {
+        if (e is TokenEvent) {
+          if (tokens == 0) firstMs = sw.elapsedMilliseconds;
+          tokens++;
+          // A draft translation (#1065) yields to the next final line: stop at the next token.
+          if (shouldStop != null && shouldStop()) {
+            stopped = true;
+            break;
+          }
+          buf.write(utf8.add(e.bytes));
+          // One sentence in, one line out: stop at the first line break after some text, so the
+          // model cannot continue with a second paragraph of its own. A line that is only the
+          // echoed card instruction does not count (#1615): the translation may follow it.
+          if (PromptBuilder.lineDone(buf.toString())) break;
+        } else if (e is DoneEvent) {
+          nCtx = e.committedPosition;
+        }
       }
+      buf.write(utf8.close());
+      return sanitizeOutput(PromptBuilder.clean(buf.toString()));
     }
-    buf.write(utf8.close());
+
+    // #1616: an answer in the wrong script (English for a Russian target) is retried once with
+    // the other card template, then dropped. A stopped draft is never retried.
+    final checked = await translateInScript(ru, tgt, (alt) async {
+      if (alt && stopped) return '';
+      return run(alt);
+    });
+    final cleaned = checked.text;
     // Same as desktop hymt: the card prompt asks for 中文, so convert to zh-Hant (Taiwan) afterwards.
-    final cleaned = sanitizeOutput(PromptBuilder.clean(buf.toString()));
     final text = tgt == 'zh' ? toTwQuotes(toTraditionalTw(cleaned)) : cleaned;
     return Translation(
       zh: text,
@@ -141,6 +161,7 @@ class Translator implements LineTranslator {
       firstTokenMs: firstMs,
       genMs: sw.elapsedMilliseconds - firstMs,
       nCtx: nCtx,
+      scriptCheck: checked.note,
     );
   }
 

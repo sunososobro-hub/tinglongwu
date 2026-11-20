@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPO_URL = "https://github.com/sunososobro-hub/tinglongwu"
 START, END = "<!-- SUPPORT:START -->", "<!-- SUPPORT:END -->"
-READMES = {"en": "README.md", "zh-TW": "README.zh-TW.md", "zh-CN": "README.zh-CN.md"}
+READMES = {"en": "README.md", "zh-TW": "docs/README.zh-TW.md", "zh-CN": "docs/README.zh-CN.md"}
 BLOCK = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)
 C_START, C_END = "<!-- CONTRIBUTORS:START -->", "<!-- CONTRIBUTORS:END -->"
 C_BLOCK = re.compile(re.escape(C_START) + r".*?" + re.escape(C_END), re.S)
