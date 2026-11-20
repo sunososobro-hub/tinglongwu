@@ -124,9 +124,9 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="tlwu-setup", add_help=False, description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-h", "--help", action="store_true")
-    p.add_argument("--deps", action="store_true", help="pip install -r requirements.txt")
+    p.add_argument("--deps", action="store_true", help="pip install -r requirements/requirements.txt")
     p.add_argument("--gpu", action="store_true",
-                   help="pip install requirements-gpu.txt (nvidia-cublas-cu12, nvidia-cudnn-cu12)")
+                   help="pip install requirements/requirements-gpu.txt (nvidia-cublas-cu12, nvidia-cudnn-cu12)")
     p.add_argument("--check-llama", action="store_true",
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
     p.add_argument("--selftest", action="store_true",
@@ -153,7 +153,7 @@ def main(argv=None) -> int:
     p.add_argument("--talk-whisper", default="small")
     p.add_argument("--talk-compute", default="auto", choices=["auto", "cpu", "cuda"])
     p.add_argument("--talk-mt", default="auto", choices=["auto", "hymt"])  # #331: no OPUS
-    p.add_argument("--requirements", default=str(ROOT / "requirements.txt"))
+    p.add_argument("--requirements", default=str(ROOT / "requirements/requirements.txt"))
     p.add_argument("--bundle", metavar="OUT.zip")
     p.add_argument("--from-bundle", metavar="BUNDLE.zip")
     p.add_argument("--models-dir", default=str(downloader.default_models_dir()))
@@ -215,7 +215,7 @@ def main(argv=None) -> int:
     if a.deps:
         _pip("install", "-r", a.requirements)
     if a.gpu:
-        _pip("install", "-r", str(ROOT / "requirements-gpu.txt"))
+        _pip("install", "-r", str(ROOT / "requirements/requirements-gpu.txt"))
     if a.ask_lang:
         langs = ""
         if not (os.environ.get("TLWU_PACKS") or os.environ.get("TLWU_YES") == "1"):

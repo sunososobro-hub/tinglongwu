@@ -1,8 +1,8 @@
 """Generate mobile/lib/logic/s2tw_data.dart from the OpenCC dictionaries (Apache-2.0).
 
 The dictionaries are read from the `opencc-python-reimplemented` package that desktop already pins
-(requirements.txt), so the phone converts with the same data as desktop `translate.zh_convert(..., "tw")`
-(OpenCC s2twp). Run from the repo root after `pip install -r requirements.txt`:
+(requirements/requirements.txt), so the phone converts with the same data as desktop `translate.zh_convert(..., "tw")`
+(OpenCC s2twp). Run from the repo root after `pip install -r requirements/requirements.txt`:
 
     python mobile/tool/gen_s2tw_data.py
 

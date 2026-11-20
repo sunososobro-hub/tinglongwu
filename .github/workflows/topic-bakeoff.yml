@@ -68,7 +68,7 @@ jobs:
       - name: Install tlwu + llama.cpp CPU engine
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
           pip install psutil==7.2.2
       - name: Candidate GGUF (bench only, before tinglongwu's network guard)
         run: python scripts/topic_bakeoff.py --fetch "${{ matrix.name }}" --dir cand

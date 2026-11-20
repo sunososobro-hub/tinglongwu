@@ -115,7 +115,7 @@ say()  { printf '\n==> %s\n' "$*"; }
 die()  { printf '\n[x] %s\n' "$*" >&2; exit 1; }
 find_py() {
   PY=""
-  # only 3.12: requirements.txt pins numpy 2.5.4 / scipy 1.18.1, which publish wheels for Python >= 3.12 only (#138)
+  # only 3.12: requirements/requirements.txt pins numpy 2.5.4 / scipy 1.18.1, which publish wheels for Python >= 3.12 only (#138)
   for c in python3.12 python3; do
     if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)' 2>/dev/null; then PY="$c"; break; fi
   done
@@ -141,7 +141,7 @@ install_llama() {
   say "$(t llama)"
   # shellcheck source=tlwu_common.sh
   . "$DIR/scripts/tlwu_common.sh"
-  tlwu_install_llama .venv/bin/python requirements-llama-cpu.txt || { printf '\n[!] %s\n' "$(t nollama)" >&2; return 1; }
+  tlwu_install_llama .venv/bin/python requirements/requirements-llama-cpu.txt || { printf '\n[!] %s\n' "$(t nollama)" >&2; return 1; }
 }
 
 # After fetch+checkout of $REF in $DIR: fast-forward a branch ref; a tag stays as is.

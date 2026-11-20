@@ -24,8 +24,9 @@ def repos(tmp_path):
     git(tmp_path, "clone", "-q", str(origin), str(up))
     git(up, "checkout", "-q", "-b", "dev")
     commit(up, "a.txt", "1")
-    (up / "requirements.txt").write_text("")
-    commit(up, "requirements.txt", "")
+    (up / "requirements").mkdir()
+    (up / "requirements/requirements.txt").write_text("")
+    commit(up, "requirements/requirements.txt", "")
     git(up, "push", "-q", "origin", "dev")
     git(tmp_path, "clone", "-q", "-b", "dev", str(origin), str(me))
     commit(up, "b.txt", "new")
@@ -56,7 +57,7 @@ def test_behind_origin_pulls_installs_and_starts_gui(repos):
     assert r.run(me, exe) == 0
     assert (me / "b.txt").read_text() == "new"
     assert git(me, "rev-parse", "HEAD") == git(up, "rev-parse", "HEAD")
-    assert r.pip == [["install", "-r", "requirements.txt"], ["install", "-e", ".", "--no-deps"]]
+    assert r.pip == [["install", "-r", "requirements/requirements.txt"], ["install", "-e", ".", "--no-deps"]]
     assert r.launched == [exe]
     assert any(line.startswith("  updated ") for line in r.lines)
 

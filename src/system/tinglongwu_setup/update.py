@@ -2,7 +2,7 @@
 
   [1/3] git: fast-forward the `dev` branch to origin/dev (stops on local changes, another branch, or a dev that has
         commits origin/dev does not have)
-  [2/3] pip: same pinned install as install.ps1 step 3 (`requirements.txt`, then `-e . --no-deps`), so new
+  [2/3] pip: same pinned install as install.ps1 step 3 (`requirements/requirements.txt`, then `-e . --no-deps`), so new
         dependencies such as sv-ttk arrive
   [3/3] start tlwu-gui from the same venv
 
@@ -94,8 +94,8 @@ def remove_legacy_dirs(repo, say=print) -> list[str]:
 
 
 def pip_install(repo, pip=_pip, say=print) -> bool:
-    req = Path(repo) / "requirements.txt"
-    steps = ([["install", "-r", "requirements.txt"]] if req.is_file() else []) + [["install", "-e", ".", "--no-deps"]]
+    req = Path(repo) / "requirements/requirements.txt"
+    steps = ([["install", "-r", "requirements/requirements.txt"]] if req.is_file() else []) + [["install", "-e", ".", "--no-deps"]]
     for args in steps:
         if pip(args, repo):
             say(f"  pip {' '.join(args)} failed / 套件安裝失敗（請確認網路後重跑 update.bat）")

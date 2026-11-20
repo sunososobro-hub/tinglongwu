@@ -8,7 +8,7 @@ name: install-clean
 on:
   push:
     branches: [dev, 'release/v*']   # #1016: the release snapshot must have a green speak-smoke
-    paths: ['scripts/**', 'install.*', 'release/installer/**', 'pyproject.toml', 'requirements*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
+    paths: ['scripts/**', 'install.*', 'release/installer/**', 'pyproject.toml', 'requirements/*.txt', '.github/scripts/**', '.github/workflows/install-clean.yml']
   # #1547: no pull_request run (Windows/macOS runners); dev push, snapshot dispatch and schedule cover it
   workflow_dispatch:
     inputs:
@@ -187,7 +187,7 @@ jobs:
         shell: bash
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
           echo "TLWU_MODELS=$(cygpath -m "$RUNNER_TEMP/tlwu-models")" >> "$GITHUB_ENV"
       - name: "#1359 what the wizard fetches: Whisper only"
         shell: bash
@@ -275,7 +275,7 @@ jobs:
         uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.TLWU_BUILD_ROOT }}\runtime
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements/*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Setup exe (this commit's core + wizard, or the release named by `tag`)
         shell: pwsh
         env:

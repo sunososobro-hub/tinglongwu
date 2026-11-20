@@ -60,7 +60,7 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
       - name: Paths
         run: |
           echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"

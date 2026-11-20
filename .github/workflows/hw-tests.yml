@@ -80,8 +80,8 @@ jobs:
           if [ ! -x "$HW_CACHE/venv/Scripts/python.exe" ]; then py -3.12 -m venv "$HW_CACHE/venv"; fi
           echo "$(cygpath -w "$HW_CACHE/venv/Scripts")" >> "$GITHUB_PATH"
           "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -e ".[dev]"
-          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -r requirements-gpu.txt
-          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -r requirements-llama-cuda.txt --only-binary=:all: || echo "::warning::llama-cpp CUDA wheel not installed; --device cuda MT falls back"
+          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -r requirements/requirements-gpu.txt
+          "$HW_CACHE/venv/Scripts/python.exe" -m pip install -q -r requirements/requirements-llama-cuda.txt --only-binary=:all: || echo "::warning::llama-cpp CUDA wheel not installed; --device cuda MT falls back"
           echo "TLWU_MODELS=$HW_CACHE/models" >> "$GITHUB_ENV"
 
       - name: Models (smoke set) + Kokoro voice venv + Russian voice
@@ -230,7 +230,7 @@ jobs:
           "$FP" -m pip install -q -e .
           "$FP" -m tinglongwu_setup --gpu
           # Hy-MT2 runtime: not in pyproject, so a fresh venv lacks it like a user's (same command as the kept venv)
-          "$FP" -m pip install -q -r requirements-llama-cuda.txt --only-binary=:all: || echo "::warning::llama-cpp CUDA wheel not installed in the fresh venv"
+          "$FP" -m pip install -q -r requirements/requirements-llama-cuda.txt --only-binary=:all: || echo "::warning::llama-cpp CUDA wheel not installed in the fresh venv"
           "$FP" -m tinglongwu_setup --whisper small --hymt --allow-unpinned --models-dir "$D/models"
           "$FP" -m tinglongwu_setup --talk --talk-venv "$D/tts-kokoro" --talk-launcher "$D/tlwu-talk.ps1" --models-dir "$D/models"
           "$FP" -m tinglongwu doctor --to en --models-dir "$D/models" > "$D/doctor.txt" 2>&1 || true

@@ -135,7 +135,7 @@ jobs:
           # packages + tlwu.exe). A run reads caches of its own branch and of the default branch (main), so a release
           # on main restores the layer of the previous release. build_windows.py compares the restored layer's recorded
           # key with runtime_layer.key() and rebuilds it on a mismatch; the release checks below then test the zip.
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements/*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |
@@ -242,7 +242,7 @@ jobs:
           $reused = ($lines | Where-Object { $_ -like 'reused=*' }) -replace '^reused=', ''
           "reused=$reused" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           ($lines | Where-Object { $_ -like 'summary=*' }) -replace '^summary=', '' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-      - name: GPU pack venv (CUDA llama-cpp-python, CUDA 12 wheels incl. nvrtc; no requirements.txt, no Nuitka)
+      - name: GPU pack venv (CUDA llama-cpp-python, CUDA 12 wheels incl. nvrtc; no requirements/requirements.txt, no Nuitka)
         if: steps.reuse.outputs.reused != 'true'
         shell: pwsh
         run: |
@@ -250,10 +250,10 @@ jobs:
           $py = "$env:RUNNER_TEMP\gpu-venv\Scripts\python.exe"
           & $py -m pip install --upgrade pip
           if ($LASTEXITCODE) { exit 1 }
-          & $py -m pip install -r requirements-llama-cuda.txt --only-binary=:all:
+          & $py -m pip install -r requirements/requirements-llama-cuda.txt --only-binary=:all:
           if ($LASTEXITCODE) { exit 1 }
           # cuda_nvrtc: cuDNN runtime-compiled engines (build_windows.CUDA_WHEELS needs its bin folder)
-          & $py -m pip install -r requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
+          & $py -m pip install -r requirements/requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
           if ($LASTEXITCODE) { exit 1 }
           "GPU_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Build the GPU pack (build_windows.py --gpu-pack-only; the manifest url names this release's tag)
@@ -357,11 +357,11 @@ jobs:
           cmake --install "$src\build" --prefix $prefix
           if ($LASTEXITCODE) { exit 1 }
           "CMAKE_PREFIX_PATH=$prefix" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
+      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements/requirements-llama-cpu.txt)
         if: steps.pin.outputs.skip != 'true'
         shell: pwsh
         run: |
-          $pin = (Select-String -Path requirements-llama-cpu.txt -Pattern '^llama-cpp-python==(.+)$').Matches[0].Groups[1].Value.Trim()
+          $pin = (Select-String -Path requirements/requirements-llama-cpu.txt -Pattern '^llama-cpp-python==(.+)$').Matches[0].Groups[1].Value.Trim()
           $env:CMAKE_ARGS = "-DGGML_VULKAN=on -DGGML_NATIVE=off"   # AVX2 baseline, not the runner's CPU (no AVX-512, #74)
           $env:FORCE_CMAKE = "1"
           python -m pip install --upgrade pip
@@ -419,9 +419,9 @@ jobs:
           sudo apt-get update -qq
           # spirv-headers: ggml-vulkan's find_package(SPIRV-Headers CONFIG REQUIRED) (#1195)
           sudo apt-get install -y -qq libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
-      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
+      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements/requirements-llama-cpu.txt)
         run: |
-          pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements-llama-cpu.txt)
+          pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements/requirements-llama-cpu.txt)
           [ -n "$pin" ] || { echo "no llama-cpp-python pin"; exit 1; }
           python -m pip install --upgrade pip
           CMAKE_ARGS="-DGGML_VULKAN=on -DGGML_NATIVE=off" FORCE_CMAKE=1 \
@@ -517,7 +517,7 @@ jobs:
       - name: Build whisper.cpp (pinned commit) with GGML_VULKAN=on into tlwu-whisper
         shell: bash
         run: |
-          python -m pip install -q "numpy==$(sed -n 's/^numpy==\([^ #;]*\).*/\1/p' requirements.lock.txt | head -1)"
+          python -m pip install -q "numpy==$(sed -n 's/^numpy==\([^ #;]*\).*/\1/p' requirements/requirements.lock.txt | head -1)"
           python scripts/build_whisper_vulkan.py --out "$RUNNER_TEMP/whisper-out"
       - name: Smoke - transcribe 1 s through the app's ctypes loader on Mesa lavapipe (Linux)
         if: runner.os == 'Linux'

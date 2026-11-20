@@ -202,7 +202,7 @@ jobs:
         with:
           path: ${{ runner.temp }}\tlwu-build\runtime
           # the key of the hotfix tree's files (= the base release's layer unless the fix touches them)
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('hotfix/requirements*.txt', 'hotfix/release/packaging/build_windows.py', 'hotfix/release/packaging/runtime_layer.py', 'hotfix/release/packaging/launcher/**', 'hotfix/release/packaging/stubs/**', 'hotfix/packaging/build_windows.py', 'hotfix/packaging/runtime_layer.py', 'hotfix/packaging/launcher/**', 'hotfix/packaging/stubs/**', 'hotfix/tinglongwu/gui/assets/tinglongwu.ico', 'hotfix/src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('hotfix/requirements/*.txt', 'hotfix/release/packaging/build_windows.py', 'hotfix/release/packaging/runtime_layer.py', 'hotfix/release/packaging/launcher/**', 'hotfix/release/packaging/stubs/**', 'hotfix/packaging/build_windows.py', 'hotfix/packaging/runtime_layer.py', 'hotfix/packaging/launcher/**', 'hotfix/packaging/stubs/**', 'hotfix/tinglongwu/gui/assets/tinglongwu.ico', 'hotfix/src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the core zip once (the hotfix tree's build_windows.py --core, as release.yml)
         id: build
         shell: pwsh

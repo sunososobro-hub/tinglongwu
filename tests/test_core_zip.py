@@ -83,16 +83,16 @@ def test_release_windows_job_builds_core_from_the_cpu_llama_venv(tmp_path):
     builds = [r for r in runs if "build_windows.py" in r]
     assert len(builds) == 1 and "build_windows.py --core" in builds[0] and "--allow-cpu-only" not in text
     # #923: the packaging venv is made by the build script (runtime_layer.make_pack_venv), only when the runtime
-    # layer is rebuilt: requirements.txt without av / psutil + the CPU llama wheel, binary only
+    # layer is rebuilt: requirements/requirements.txt without av / psutil + the CPU llama wheel, binary only
     calls = []
     runtime_layer.make_pack_venv(tmp_path / "venv", run=calls.append)
     installs = [c[c.index("install") + 1:] for c in calls if "install" in c]
-    assert ["-r", str(REPO / "requirements-llama-cpu.txt"), "--only-binary=:all:"] in installs
+    assert ["-r", str(REPO / "requirements/requirements-llama-cpu.txt"), "--only-binary=:all:"] in installs
     reqs = (tmp_path / "req-pack.txt").read_text(encoding="utf-8")
     assert ["-r", str(tmp_path / "req-pack.txt")] in installs and reqs == runtime_layer.pack_requirements()
     assert "faster-whisper==" in reqs and "\nav==" not in "\n" + reqs and "psutil==" not in reqs
     assert not any("nuitka" in " ".join(c).lower() for c in calls)
-    for gone in ("requirements-llama-cuda.txt", "requirements-gpu.txt", "nvrtc", "cudart64_12.dll", "cuda_libs",
+    for gone in ("requirements/requirements-llama-cuda.txt", "requirements/requirements-gpu.txt", "nvrtc", "cudart64_12.dll", "cuda_libs",
                  "pip install", "nuitka"):
         assert gone not in text, gone
 
@@ -267,7 +267,7 @@ def test_release_gpu_pack_job_runs_beside_windows():
     assert "--gpu-pack-only --out" in runs[build] and "/releases/download/$env:TAG/" + release_check.GPU_PACK_ASSET \
         in runs[build]
     assert "nuitka" not in text.lower()  # no Nuitka: the pack is only the CUDA DLLs
-    assert "requirements-gpu.txt" in text and "requirements-llama-cuda.txt --only-binary=:all:" in text
+    assert "requirements/requirements-gpu.txt" in text and "requirements/requirements-llama-cuda.txt --only-binary=:all:" in text
     check = next(i for i, r in enumerate(runs) if "release_check.py --gpu-pack" in r)
     upload = next(i for i, s in enumerate(gpu["steps"]) if "upload-artifact" in str(s.get("uses", "")))
     assert build < check < upload and "--tag $env:TAG" in runs[check] and "exit $LASTEXITCODE" in runs[check]

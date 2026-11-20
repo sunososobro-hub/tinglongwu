@@ -220,7 +220,7 @@ else
 . "$DIR/scripts/tlwu_common.sh"
 LLAMA_LOG="${TMPDIR:-/tmp}/tlwu_llama_install.$$.log"
 info "背景安裝翻譯引擎 Hy-MT2（llama-cpp-python；沒有現成安裝檔時要編譯幾分鐘；同時下載語音與模型）..."
-tlwu_install_llama_bg .venv/bin/python requirements-llama-cpu.txt "$LLAMA_LOG"
+tlwu_install_llama_bg .venv/bin/python requirements/requirements-llama-cpu.txt "$LLAMA_LOG"
 if [ ! -x "$KOKORO_VENV/bin/python" ]; then
   "$PYBREW" -m venv "$KOKORO_VENV" || die "建立 $KOKORO_VENV 失敗。"
 fi

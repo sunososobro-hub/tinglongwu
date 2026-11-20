@@ -61,7 +61,7 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine + pyarrow
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
           pip install pyarrow==18.1.0
       - name: Paths
         run: |

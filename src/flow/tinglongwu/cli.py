@@ -181,7 +181,7 @@ def parse_args(argv=None):
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")
     p.add_argument("--speakers", action="store_true",
-                   help="label each sentence Speaker N in the log (local sherpa-onnx; needs requirements-speaker.txt "
+                   help="label each sentence Speaker N in the log (local sherpa-onnx; needs requirements/requirements-speaker.txt "
                         "and tlwu-setup --speaker-model). Off by default")
     p.add_argument("--force", action="store_true",
                    help="run even on a CPU without AVX2 (below the minimum spec, see README)")
@@ -337,7 +337,7 @@ def make_translator(engine: str, mdir, zh_variant: str, dev: str, say=print, cho
                 raise SystemExit(f"tlwu: Hy-MT2 failed to load: this CPU lacks AVX2 (below the minimum spec, see "
                                  f"README, System requirements); {str(e)[:120]}") from e
             raise SystemExit(f"tlwu: Hy-MT2 failed to load on {dev}: {str(e)[:200]}. Repair it with "
-                             f"`tlwu-setup {flag}` (and `pip install -r requirements-llama-cpu.txt` on a CPU-only "
+                             f"`tlwu-setup {flag}` (and `pip install -r requirements/requirements-llama-cpu.txt` on a CPU-only "
                              "PC).") from e
         from .hymt import active_path
 

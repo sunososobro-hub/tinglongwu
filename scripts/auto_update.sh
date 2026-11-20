@@ -44,7 +44,7 @@ tlwu_auto_update() {
   if ! git merge --ff-only --quiet "$up" >/dev/null 2>&1; then m M_UPD_SKIP_DIVERGED; return 0; fi
   TLWU_UPDATED=1; TLWU_UPDATE_RESULT=updated
   tlwu_rm_stale_roots   # src/ just arrived with this pull
-  if git diff --name-only "$old" HEAD 2>/dev/null | grep -Eq '^(pyproject\.toml|requirements[^/]*\.txt)$'; then
+  if git diff --name-only "$old" HEAD 2>/dev/null | grep -Eq '^(pyproject\.toml|requirements/[^/]*\.txt)$'; then
     # never pip install unasked: print the command; run it only on an explicit y from a terminal (non-interactive = no)
     local ans=""
     if [ -t 0 ]; then read -rp "$(mp M_UPD_PKG_ASK)" ans || ans=""; fi

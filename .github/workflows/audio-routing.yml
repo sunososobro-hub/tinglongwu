@@ -116,7 +116,7 @@ jobs:
         shell: bash
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
 
       - name: "#849 device listing + signal check: tone into CABLE Input is captured on CABLE Output"
         if: steps.changes.outputs.build == 'true'

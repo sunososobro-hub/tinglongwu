@@ -4,7 +4,7 @@ name: llama-wheel-mac
 # GitHub Apple Silicon runner, checks the wheel in a clean venv and publishes it with SHA256SUMS.txt on the
 # pre-release `wheels-llama-cpp-python-<version>`. `tlwu_install_llama` (scripts/tlwu_common.sh) takes it from there
 # and still builds from source when it is missing or does not verify.
-#   - The version is the pin in requirements-llama-cpu.txt, read through scripts/tlwu_common.sh (the installer reads
+#   - The version is the pin in requirements/requirements-llama-cpu.txt, read through scripts/tlwu_common.sh (the installer reads
 #     the same functions); the tag prefix and the checksum file name live there too.
 #   - A pre-release with a non-`v` tag: never `latest`, not a version release, ignored by the release lane
 #     (scripts/release_notes.py reads `v*` tags only).
@@ -13,7 +13,7 @@ name: llama-wheel-mac
 # Nothing waits for this workflow: no merge or release depends on it.
 on:
   push:
-    paths: ['requirements-llama-cpu.txt', '.github/workflows/llama-wheel-mac.yml']
+    paths: ['requirements/requirements-llama-cpu.txt', '.github/workflows/llama-wheel-mac.yml']
   workflow_dispatch:
     inputs:
       force:
@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REQ: requirements-llama-cpu.txt
+  REQ: requirements/requirements-llama-cpu.txt
   # Wheel tag macosx_11_0_arm64 (as the upstream wheel): installs on macOS 11+, not only on the runner's macOS.
   MACOSX_DEPLOYMENT_TARGET: "11.0"
   # The installer's source build uses llama.cpp's defaults (Metal on, CPU flags of the machine it runs on). A wheel
@@ -156,7 +156,7 @@ jobs:
           {
             echo "Prebuilt \`llama-cpp-python\` wheel for the macOS (Apple Silicon) installer. **Not an app release.**"
             echo
-            echo "Built from the PyPI sdist of the version pinned in \`requirements-llama-cpu.txt\` by \`llama-wheel-mac.yml\`:"
+            echo "Built from the PyPI sdist of the version pinned in \`requirements/requirements-llama-cpu.txt\` by \`llama-wheel-mac.yml\`:"
             echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (commit \`${GITHUB_SHA::7}\`)."
             echo "\`MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET\`, \`CMAKE_ARGS=$WHEEL_CMAKE_ARGS\` (Metal on, CPU baseline Apple M1)."
             echo "\`mac_install.sh\` downloads the wheel, checks it against \`SHA256SUMS.txt\` and builds from source when that fails."

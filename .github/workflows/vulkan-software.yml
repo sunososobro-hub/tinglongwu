@@ -45,11 +45,11 @@ jobs:
       - name: Install tlwu + the CPU llama.cpp build
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
       - name: Build the Vulkan pack (same pin as the CPU build)
         timeout-minutes: 20
         run: |
-          pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements-llama-cpu.txt)
+          pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements/requirements-llama-cpu.txt)
           [ -n "$pin" ] || { echo "no llama-cpp-python pin"; exit 1; }
           CMAKE_ARGS="-DGGML_VULKAN=on -DGGML_NATIVE=off" FORCE_CMAKE=1 \
             python -m pip install "llama-cpp-python==$pin" --no-binary llama-cpp-python --no-cache-dir --target "$RUNNER_TEMP/vk-site"

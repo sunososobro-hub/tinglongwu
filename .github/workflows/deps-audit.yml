@@ -16,7 +16,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pip-audit
       - name: pip-audit (a found CVE is not a job failure)
-        run: pip-audit --require-hashes -r requirements.lock.txt -f json -o audit.json || true
+        run: pip-audit --require-hashes -r requirements/requirements.lock.txt -f json -o audit.json || true
       - run: python scripts/deps_audit.py audit.json --apply
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

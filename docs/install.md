@@ -18,14 +18,14 @@ The Windows release zip is **unsigned** and built by the `release` workflow (a s
 
 Python 3.12 (the pinned numpy/scipy need >= 3.12; tested 3.12).
 ```
-tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # exact pins
+tlwu-setup --deps  # or: pip install -r requirements/requirements.txt && pip install -e . --no-deps    # exact pins
 ```
 
-Hash-verified install (recommended): `requirements.lock.txt` lists every dependency (including transitive ones) with all PyPI SHA256 hashes, so pip refuses any tampered or substituted file:
+Hash-verified install (recommended): `requirements/requirements.lock.txt` lists every dependency (including transitive ones) with all PyPI SHA256 hashes, so pip refuses any tampered or substituted file:
 ```
-pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+pip install --require-hashes -r requirements/requirements.lock.txt && pip install -e . --no-deps
 ```
-`requirements.txt` (plain `==` pins, no hashes) keeps working. Regenerate the lock with `python scripts/make_lock.py` (`httpx2`/`httpcore2` are not typosquats: they are the Pydantic-maintained httpx fork that `huggingface_hub` 2.x depends on).
+`requirements/requirements.txt` (plain `==` pins, no hashes) keeps working. Regenerate the lock with `python scripts/make_lock.py` (`httpx2`/`httpcore2` are not typosquats: they are the Pydantic-maintained httpx fork that `huggingface_hub` 2.x depends on).
 
 Updating a Windows dev checkout (git clone on the `dev` branch): double-click **`update.bat`**: it fast-forwards `dev`, reinstalls the pinned packages and starts the GUI (stops with a message on local changes or another branch).
 
@@ -51,7 +51,7 @@ For Windows 10/11 with an NVIDIA GPU (works without one, just slower). If Python
 
 **Using the menu.** The shortcut opens a menu: `1` Meeting (listen + speak into Meet/Zoom, wear a headset; set the meeting microphone to *CABLE Output*), `2` Speak only (Chinese -> English/Russian/Japanese voice), `3` Listen only (foreign speech -> Chinese subtitles), `L` change the other side's language, `G` graphical interface, `U` update now, `A` toggle auto-update at start, `I` menu language. Press the key and Enter; every model download asks y/N first.
 
-To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. Hy-MT2 on the GPU uses `requirements-llama-cuda.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the CPU llama-cpp wheel.
+To remove: delete the folder and the shortcut. `install.ps1 -DryRun` only shows what would be done. Hy-MT2 on the GPU uses `requirements/requirements-llama-cuda.txt` (CUDA build of llama-cpp-python); if no matching wheel exists the installer falls back to the CPU llama-cpp wheel.
 
 ## Mac one-line install
 

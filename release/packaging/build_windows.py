@@ -5,14 +5,14 @@ r"""Build the standalone Windows folder app (tlwu.exe) in two layers and zip it 
 
 Runtime layer (release/packaging/runtime_layer.py): tlwu.exe launcher + Python + every third-party package (.pyc) + llama.cpp
 DLLs + VC++ runtime + licenses, kept in <build root>/runtime/tlwu. It is rebuilt only when runtime_layer.key() changes
-(requirements*.txt or the packaging code); CI restores it from a cache. Building it needs a packaging venv =
-requirements.txt (without av / psutil) + a llama-cpp-python wheel: --lite makes that venv itself (CPU wheel) when this
-interpreter is not one; the CUDA variant must be started from a pack-venv that has requirements-llama-cuda.txt.
+(requirements/*.txt or the packaging code); CI restores it from a cache. Building it needs a packaging venv =
+requirements/requirements.txt (without av / psutil) + a llama-cpp-python wheel: --lite makes that venv itself (CPU wheel) when this
+interpreter is not one; the CUDA variant must be started from a pack-venv that has requirements/requirements-llama-cuda.txt.
 App layer: tinglongwu/, tlwu_app/, tinglongwu_setup/ as .py + .pyc, repacked on every run (seconds).
 No compiler runs over Python code, so a one-line app change builds in about a minute instead of a Nuitka recompile.
 
 PyAV is replaced by release/packaging/stubs/av because its wheel bundles GPL FFmpeg codecs (libx264/libx265).
-CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements-gpu.txt), found in TLWU_CUDA_SRC, the
+CUDA runtime DLLs are copied from the nvidia-*-cu12 wheels (requirements/requirements-gpu.txt), found in TLWU_CUDA_SRC, the
 pack-venv or the project .venv (read only). None found -> the build stops (--lite / --allow-cpu-only: CPU-only); never a
 package whose CUDA llama.dll cannot load (#398). A CPU llama.cpp build (the llama-cpp-python CPU wheel, downloaded
 once) goes to llama_cpp/lib_cpu/: the app uses it when the CUDA llama.dll cannot load (no NVIDIA GPU / driver).
@@ -83,7 +83,7 @@ LLAMA_CUDA_NEEDS = ("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
 GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"
 GPU_PACK_LLAMA_DLL = "ggml-cuda.dll"  # from the pack-venv's llama_cpp/lib (CUDA build of llama-cpp-python)
 GPU_PACK_NVRTC = "nvrtc64_120_0.dll+nvrtc-builtins64_129.dll"  # the nvrtc version CUDA_WHEELS ships (not pinned in requirements)
-GPU_PACK_KEY_FILES = ("requirements-gpu.txt", "requirements-llama-cuda.txt")  # their sha256 + GPU_PACK_NVRTC = wheels_key
+GPU_PACK_KEY_FILES = ("requirements/requirements-gpu.txt", "requirements/requirements-llama-cuda.txt")  # their sha256 + GPU_PACK_NVRTC = wheels_key
 # nvidia-*-cu12 wheels whose licenses/ ship with any package that redistributes their DLLs (full zip, GPU pack)
 NVIDIA_LICENSE_WHEELS = ("cublas", "cudnn", "cuda_runtime", "cuda_nvrtc")
 GPU_PACK_LICENSE_DIR = "licenses"  # zip folder for license texts; DLLs stay at the root (gpu_pack.pack_dir)
@@ -357,7 +357,7 @@ def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: 
 
     src = cuda_src or find_cuda_src()
     if src is None:
-        raise SystemExit("gpu pack: no CUDA 12 wheels (requirements-gpu.txt) found; set TLWU_CUDA_SRC=<site-packages>")
+        raise SystemExit("gpu pack: no CUDA 12 wheels (requirements/requirements-gpu.txt) found; set TLWU_CUDA_SRC=<site-packages>")
     if llama_lib is None:
         import importlib.util
 
@@ -365,7 +365,7 @@ def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: 
         llama_lib = Path(spec.origin).parent / "lib" if spec and spec.origin else None
     ggml = llama_lib / GPU_PACK_LLAMA_DLL if llama_lib else None
     if ggml is None or not ggml.is_file():
-        raise SystemExit(f"gpu pack: {GPU_PACK_LLAMA_DLL} not found in {llama_lib} (install requirements-llama-cuda.txt)")
+        raise SystemExit(f"gpu pack: {GPU_PACK_LLAMA_DLL} not found in {llama_lib} (install requirements/requirements-llama-cuda.txt)")
     llama_version = llama_version or llama_wheel_version(llama_lib)
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -381,7 +381,7 @@ def build_gpu_pack_only(out_dir: Path, cuda_src: Path | None = None, llama_lib: 
             raise SystemExit(f"gpu pack: no NVIDIA license files (nvidia_*_cu12-*/licenses/*) found in {src}")
         llama_lic = llama_license or llama_license_file()
         if llama_lic is None or not Path(llama_lic).is_file():
-            raise SystemExit("gpu pack: llama-cpp-python LICENSE not found (install requirements-llama-cuda.txt)")
+            raise SystemExit("gpu pack: llama-cpp-python LICENSE not found (install requirements/requirements-llama-cuda.txt)")
         shutil.copy2(llama_lic, lic / f"LICENSE-llama.cpp-{Path(llama_lic).name}")
         (lic / "THIRD_PARTY_NOTICES.txt").write_text(NVIDIA_NOTE, "utf-8")
         # #881: device.pack_llama_dir() uses the pack's llama build only when this equals llamacheck.LLAMA_VERSION
@@ -567,7 +567,7 @@ def build_runtime(layer: Path, lite: bool, allow_cpu_only: bool) -> dict:
     if cuda_src is None and not lite:
         msg = ("no CUDA 12 DLLs (nvidia-cublas/cuda-runtime/cudnn/cuda-nvrtc -cu12 wheels) in "
                f"{', '.join(map(str, CUDA_SRC_CANDIDATES))} (#398). For the GPU package: pip install -r "
-               "requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
+               "requirements/requirements-gpu.txt into the pack-venv, or set TLWU_CUDA_SRC=<site-packages>")
         if not allow_cpu_only:
             raise SystemExit(f"{msg}; or pass --lite / --allow-cpu-only for a CPU-only package")
         print(f"WARNING: {msg}; building a CPU-only package (--allow-cpu-only)")
@@ -615,8 +615,8 @@ def ensure_runtime(layer: Path, lite: bool, allow_cpu_only: bool, reuse_only: bo
     if rt.has_app_deps():
         return build_runtime(layer, lite, allow_cpu_only)
     if not lite:
-        raise SystemExit("the CUDA variant needs a packaging venv (requirements.txt without av / psutil + "
-                         "requirements-llama-cuda.txt): start this script with its python, or pass --lite")
+        raise SystemExit("the CUDA variant needs a packaging venv (requirements/requirements.txt without av / psutil + "
+                         "requirements/requirements-llama-cuda.txt): start this script with its python, or pass --lite")
     py = rt.make_pack_venv(PACK_VENV)
     run([str(py), str(Path(__file__).resolve()), "--runtime-only", "--rebuild-runtime", "--lite"])
     return rt.read_manifest(layer)

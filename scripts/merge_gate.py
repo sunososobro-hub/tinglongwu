@@ -65,7 +65,7 @@ def is_protected(path: str) -> bool:
         return False
     if path in PROTECTED_EXACT or path.startswith(PROTECTED_PREFIX):
         return True
-    if re.fullmatch(r"requirements[^/]*\.txt", path) or re.fullmatch(r"scripts/[^/]*offline[^/]*", path):
+    if re.fullmatch(r"requirements/[^/]*\.txt", path) or re.fullmatch(r"scripts/[^/]*offline[^/]*", path):
         return True
     if path.startswith(".github/workflows/"):
         name = path.rsplit("/", 1)[-1]

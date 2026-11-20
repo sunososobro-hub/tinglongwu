@@ -524,7 +524,7 @@ def get_speaker_model(man, mdir, opener=_open, files=None):
 
 
 # Packaged build: no pip, so the pinned sherpa-onnx + sherpa-onnx-core win_amd64 wheels are unzipped into
-# models/speaker/pylib (the app adds it to sys.path before importing sherpa_onnx). Same pins as requirements-speaker.txt.
+# models/speaker/pylib (the app adds it to sys.path before importing sherpa_onnx). Same pins as requirements/requirements-speaker.txt.
 _PYPI = "https://files.pythonhosted.org/packages/"
 SPEAKER_CORE_WHEEL = ("sherpa_onnx_core-2.0.1-py3-none-win_amd64.whl", 16663244,
                       "08890e9ea23ed2f59f81d5840c63b6b5cc8674d0f6e48d9069126a848aa0e022",

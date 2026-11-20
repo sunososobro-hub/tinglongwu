@@ -4,7 +4,7 @@ The core folder (dist/tlwu, what the zip and the setup wizard ship) is two layer
 
   runtime layer  tlwu.exe (release/packaging/launcher), python3XY.dll, python3XY._pth, python3XY.zip (standard library),
                  DLLs/, tcl/, every third-party package of the packaging venv as .pyc, llama.cpp DLLs, VC++ runtime,
-                 licenses/. Built by build() below. It depends only on the files in KEY_FILES (requirements*.txt and
+                 licenses/. Built by build() below. It depends only on the files in KEY_FILES (requirements/*.txt and
                  the packaging code), so CI keeps it in a cache and rebuilds it only when key() changes.
   app layer      tinglongwu/, tlwu_app/, tinglongwu_setup/ as .py + .pyc. Repacked on every build by
                  build_windows.py (seconds).
@@ -39,7 +39,7 @@ GUI_EXE_NAME = "tlwu-gui.exe"  # #1524: GUI-subsystem stub the shortcuts start; 
 MANIFEST_NAME = "runtime-layer.json"  # at the top of the layer: key, Python version, pyc magic
 # The runtime layer is rebuilt when one of these changes (repo-relative; a folder = every file in it). The two
 # workflows hash the same list for their cache key (tests/test_windows_layers_923.py keeps them equal).
-KEY_GLOBS = ("requirements*.txt", "release/packaging/build_windows.py", "release/packaging/runtime_layer.py",
+KEY_GLOBS = ("requirements/*.txt", "release/packaging/build_windows.py", "release/packaging/runtime_layer.py",
              "release/packaging/launcher/**", "release/packaging/stubs/**",
              "src/ui/tinglongwu/gui/assets/tinglongwu.ico")
 # Packages of the packaging venv that are build tools, not part of the app
@@ -60,7 +60,7 @@ TCL_SKIP = ("demos", "*.lib", "*.sh", "include", "pkgconfig", "dde*", "reg*", "n
 DLLS_SKIP = ("_msi.pyd", "_test*.pyd", "_ctypes_test.pyd", "xxlimited*.pyd")
 PYTHON_LICENSE = "LICENSE.txt"  # in the base Python; shipped as licenses/LICENSE-Python.txt
 PTH_LINES = ("{zip}", "DLLs", ".")  # sys.path of tlwu.exe, relative to the folder; no `import site`
-REQ_NOT_PACKED = ("av", "psutil")   # requirements.txt lines left out of the packaging venv (GPL codecs / dev only)
+REQ_NOT_PACKED = ("av", "psutil")   # requirements/requirements.txt lines left out of the packaging venv (GPL codecs / dev only)
 
 
 def key_files(repo: Path = REPO) -> list[Path]:
@@ -100,7 +100,7 @@ def stale_reason(layer: Path, lite: bool, repo: Path = REPO) -> str:
     if not man or not (layer / EXE_NAME).is_file():
         return f"no runtime layer in {layer}"
     if man.get("key") != key(lite, repo):  # the key holds this interpreter's Python minor version
-        return "requirements*.txt, the packaging code or the Python version changed"
+        return "requirements/*.txt, the packaging code or the Python version changed"
     if man.get("pyc_magic") != pyc_magic():
         return "the runtime layer was built by a Python with another .pyc format"
     return ""
@@ -347,8 +347,8 @@ def has_app_deps() -> bool:
 
 
 def pack_requirements(repo: Path = REPO) -> str:
-    """requirements.txt without the REQ_NOT_PACKED pins."""
-    lines = (repo / "requirements.txt").read_text("utf-8").splitlines()
+    """requirements/requirements.txt without the REQ_NOT_PACKED pins."""
+    lines = (repo / "requirements/requirements.txt").read_text("utf-8").splitlines()
     return "".join(ln + "\n" for ln in lines if ln.split("==")[0].strip().lower() not in REQ_NOT_PACKED)
 
 
@@ -357,7 +357,7 @@ def venv_python(venv: Path) -> Path:
 
 
 def make_pack_venv(venv: Path, repo: Path = REPO, run=subprocess.check_call) -> Path:
-    """The CPU packaging venv: requirements.txt without av / psutil + the CPU llama-cpp-python wheel (binary only)."""
+    """The CPU packaging venv: requirements/requirements.txt without av / psutil + the CPU llama-cpp-python wheel (binary only)."""
     if venv.exists():
         shutil.rmtree(venv)
     run([sys.executable, "-m", "venv", str(venv)])
@@ -366,7 +366,7 @@ def make_pack_venv(venv: Path, repo: Path = REPO, run=subprocess.check_call) -> 
     req.write_text(pack_requirements(repo), "utf-8")
     run([py, "-m", "pip", "install", "--upgrade", "pip"])
     run([py, "-m", "pip", "install", "-r", str(req)])
-    run([py, "-m", "pip", "install", "-r", str(repo / "requirements-llama-cpu.txt"), "--only-binary=:all:"])
+    run([py, "-m", "pip", "install", "-r", str(repo / "requirements/requirements-llama-cpu.txt"), "--only-binary=:all:"])
     return Path(py)
 
 

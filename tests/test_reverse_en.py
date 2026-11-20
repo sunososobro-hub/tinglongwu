@@ -132,7 +132,7 @@ def test_main_process_never_imports_kokoro():
     for f in (p for d in (root / "src").glob("*/tinglongwu") for p in d.rglob("*.py")):
         if f != WORKER:
             assert "import kokoro" not in f.read_text("utf-8") and "from kokoro" not in f.read_text("utf-8"), f
-    for name in ("requirements.txt", "requirements-gpu.txt", "requirements-llama-cuda.txt", "pyproject.toml"):
+    for name in ("requirements/requirements.txt", "requirements/requirements-gpu.txt", "requirements/requirements-llama-cuda.txt", "pyproject.toml"):
         assert "kokoro" not in (root / name).read_text("utf-8").lower(), name
 
 

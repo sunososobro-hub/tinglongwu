@@ -11,7 +11,7 @@ on:
   push:
     branches: [dev]
     paths: ['install.*', 'scripts/install_helpers.ps1', 'scripts/python_bootstrap.ps1', 'scripts/vc_runtime_check.py',
-            'requirements-llama-cpu.txt', '.github/scripts/vc705_container.ps1', '.github/workflows/vc-runtime-clean.yml']
+            'requirements/requirements-llama-cpu.txt', '.github/scripts/vc705_container.ps1', '.github/workflows/vc-runtime-clean.yml']
   workflow_dispatch:
 
 permissions:

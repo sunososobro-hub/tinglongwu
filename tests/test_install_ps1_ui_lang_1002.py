@@ -21,7 +21,7 @@ needs_pwsh = pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 
 
 def _ui_lang_block() -> str:
-    text = (ROOT / "install.ps1").read_text("utf-8-sig")
+    text = (ROOT / "scripts" / "install.ps1").read_text("utf-8-sig")
     m = re.search(r"^if \(\$Lang -and -not \$DryRun\) \{\n.*?^\}\n", text, re.S | re.M)
     assert m, "ui_lang block not found in install.ps1"
     return m.group(0)

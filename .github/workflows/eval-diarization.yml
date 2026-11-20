@@ -15,7 +15,7 @@ on:
       - scripts/bench/diarization_clip.py
       - src/core/tinglongwu/speakers.py
       - src/core/tinglongwu/speaker_embed.py
-      - requirements-speaker.txt
+      - requirements/requirements-speaker.txt
       - src/system/tinglongwu_setup/manifest.json
       - src/system/tinglongwu_setup/downloader.py
   workflow_dispatch:
@@ -55,7 +55,7 @@ jobs:
       - name: Install tlwu + speaker labels
         run: |
           pip install -e .
-          pip install --require-hashes -r requirements-speaker.txt --only-binary=:all:
+          pip install --require-hashes -r requirements/requirements-speaker.txt --only-binary=:all:
       - name: Paths
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3

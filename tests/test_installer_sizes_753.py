@@ -19,7 +19,7 @@ _bi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_bi)
 # the source-layout wizard (no CoreLayout define): the core wizard (#771) has no language page or size table
 ISS = _bi.preprocess((ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig"), set())
-INSTALL_PS1 = (ROOT / "install.ps1").read_text("utf-8-sig")
+INSTALL_PS1 = (ROOT / "scripts" / "install.ps1").read_text("utf-8-sig")
 
 
 def consts() -> dict[str, int]:

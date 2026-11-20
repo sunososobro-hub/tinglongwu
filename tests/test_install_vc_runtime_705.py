@@ -15,7 +15,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 HELPERS = ROOT / "scripts" / "install_helpers.ps1"
-INSTALL = (ROOT / "install.ps1").read_text("utf-8-sig")
+INSTALL = (ROOT / "scripts" / "install.ps1").read_text("utf-8-sig")
 ISS = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
 PWSH = shutil.which("pwsh")
 needs_pwsh = pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
@@ -120,7 +120,7 @@ def _step4() -> str:
 def test_step_4_installs_the_runtime_before_the_first_llama_wheel():
     s4 = _step4()
     check = s4.index("Get-TlwuMissingVcDlls")
-    assert check < s4.index("requirements-llama-cuda.txt") and check < s4.index("requirements-llama-cpu.txt")
+    assert check < s4.index("requirements/requirements-llama-cuda.txt") and check < s4.index("requirements/requirements-llama-cpu.txt")
     assert "Install-TlwuVcRuntime" in s4 and "[dry-run]" in s4  # -DryRun prints the plan, downloads nothing
 
 

@@ -147,7 +147,7 @@ tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary
 
 **選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
 
-移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
+移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements/requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
 ### 安裝／使用分離（請先閱讀）
 
@@ -175,14 +175,14 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 
 Python 3.12（釘選的 numpy/scipy 需要 >= 3.12；以 3.12 測試）。
 ```
-tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # 精確鎖版
+tlwu-setup --deps  # or: pip install -r requirements/requirements.txt && pip install -e . --no-deps    # 精確鎖版
 ```
 
-帶雜湊驗證的安裝（建議）：`requirements.lock.txt` 列出所有依賴（含間接依賴）及 PyPI 公布的全部 SHA256，pip 會拒絕被竄改或替換的檔案：
+帶雜湊驗證的安裝（建議）：`requirements/requirements.lock.txt` 列出所有依賴（含間接依賴）及 PyPI 公布的全部 SHA256，pip 會拒絕被竄改或替換的檔案：
 ```
-pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+pip install --require-hashes -r requirements/requirements.lock.txt && pip install -e . --no-deps
 ```
-`requirements.txt`（只有 `==` 鎖版、無雜湊）仍可使用。以 `python scripts/make_lock.py` 重新產生 lock。（`httpx2`/`httpcore2` 不是仿冒套件：它們是 Pydantic 維護的 httpx 分支，`huggingface_hub` 2.x 依賴它們。）
+`requirements/requirements.txt`（只有 `==` 鎖版、無雜湊）仍可使用。以 `python scripts/make_lock.py` 重新產生 lock。（`httpx2`/`httpcore2` 不是仿冒套件：它們是 Pydantic 維護的 httpx 分支，`huggingface_hub` 2.x 依賴它們。）
 
 更新 Windows 開發版（在 `dev` 分支上 git clone 的資料夾）：雙擊 **`update.bat`**，會快轉更新 `dev`、重裝鎖版套件並啟動圖形介面（有本機修改或不在 `dev` 分支時會顯示原因並停止）。
 

@@ -71,7 +71,7 @@ def stage(dst: Path, repo: Path = REPO) -> list[str]:
 # #767: the prebuilt core wizard. The exe the shortcuts start, and files of the source layout that must never ship
 CORE_EXE = "tlwu.exe"
 CORE_GUI_EXE = "tlwu-gui.exe"  # #1524: the GUI-subsystem stub the shortcuts and [Run] start (no console / Terminal tab)
-_NOT_IN_CORE = ("install.ps1", "install.bat", "requirements", ".venv/", "installer/run_install.ps1")
+_NOT_IN_CORE = ("install.ps1", "scripts/install.ps1", "install.bat", "requirements", ".venv/", "installer/run_install.ps1")
 
 
 def stage_core(dst: Path, core_dir: Path, repo: Path = REPO) -> list[str]:

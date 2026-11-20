@@ -33,7 +33,7 @@ class SherpaEmbedder:
             import sherpa_onnx
         except ImportError as e:
             raise RuntimeError("--speakers needs sherpa-onnx: pip install --require-hashes -r "
-                               "requirements-speaker.txt") from e
+                               "requirements/requirements-speaker.txt") from e
         cfg = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(path), num_threads=num_threads, provider="cpu")
         self._ex = sherpa_onnx.SpeakerEmbeddingExtractor(cfg)
 

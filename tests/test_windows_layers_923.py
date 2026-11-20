@@ -26,7 +26,7 @@ def _repo_copy(tmp_path: Path) -> Path:
     names = {f.relative_to(REPO).as_posix() for f in files}
     # every file of the launcher and the stubs is in the key on every Python (3.12's glob("dir/**") gives none)
     assert {"release/packaging/launcher/tlwu_launcher.c", "release/packaging/launcher/tlwu.rc.in", "release/packaging/launcher/tlwu.manifest",
-            "release/packaging/stubs/av/__init__.py", "release/packaging/runtime_layer.py", "requirements.txt"} <= names
+            "release/packaging/stubs/av/__init__.py", "release/packaging/runtime_layer.py", "requirements/requirements.txt"} <= names
     for f in files:
         dst = repo / f.relative_to(REPO)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -45,7 +45,7 @@ def test_runtime_key_follows_requirements_and_packaging_but_not_app_code(tmp_pat
     (repo / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico").write_bytes(b"another icon")  # compiled into tlwu.exe
     assert rt.key(True, repo) != base
     shutil.copy2(rt.APP_ICON, repo / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico")
-    for rel in ("requirements.txt", "requirements-llama-cpu.txt", "release/packaging/runtime_layer.py",
+    for rel in ("requirements/requirements.txt", "requirements/requirements-llama-cpu.txt", "release/packaging/runtime_layer.py",
                 "release/packaging/build_windows.py", "release/packaging/launcher/tlwu_launcher.c", "release/packaging/stubs/av/__init__.py"):
         f = repo / rel
         old = f.read_bytes().replace(b"\r\n", b"\n")  # LF baseline on an autocrlf checkout
@@ -322,7 +322,7 @@ def test_windows_build_runs_for_app_changes_and_skips_the_venv_on_a_cache_hit():
     filt = next(str(s["run"]) for s in steps if s.get("id") == "changes")
     pattern = re.search(r"grep -Eq '([^']+)'", filt).group(1)
     for changed in ("src/core/tinglongwu/cli.py", "src/ui/tinglongwu/gui/app.py", "src/ui/tlwu_app/main.py", "src/system/tinglongwu_setup/cli.py",
-                    "release/packaging/build_windows.py", "requirements.txt"):
+                    "release/packaging/build_windows.py", "requirements/requirements.txt"):
         assert re.search(pattern, changed), changed
     for skipped in ("docs/install.md", "README.md", "tests/test_cli.py"):
         assert not re.search(pattern, skipped), skipped
