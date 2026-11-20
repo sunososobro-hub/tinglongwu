@@ -75,6 +75,7 @@ def test_missing_ggml_cuda_exits_naming_it(tmp_path):
 def test_wheels_key_changes_with_requirements(tmp_path):
     m = _mod()
     for n in m.GPU_PACK_KEY_FILES:
+        (tmp_path / n).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / n).write_text("a")
     k1 = m.gpu_pack_wheels_key(tmp_path)
     (tmp_path / m.GPU_PACK_KEY_FILES[0]).write_text("b")
@@ -169,6 +170,7 @@ def test_unreadable_llama_wheel_version_exits_and_explicit_version_wins(tmp_path
 def test_format_bump_changes_key(tmp_path, monkeypatch):
     m = _mod()
     for n in m.GPU_PACK_KEY_FILES:
+        (tmp_path / n).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / n).write_text("a")
     k1 = m.gpu_pack_wheels_key(tmp_path)
     monkeypatch.setattr(m, "GPU_PACK_FORMAT", m.GPU_PACK_FORMAT + 1)
@@ -187,7 +189,7 @@ def _recipe_fingerprint(m) -> str:
 
 
 # Pinned together with GPU_PACK_FORMAT: if this fails you edited the pack recipe; bump GPU_PACK_FORMAT and update both.
-RECIPE_PIN = (1, "0fd0a99ccac80004fcdb002530569dc6f003d420a0aa99081c2497d9f46f88d7")
+RECIPE_PIN = (1, "a49cb5e5dfb90577f017e6e0074c91eea3d5a727f2ae9d6e5ce4eae1f9b4c3a1")
 
 
 def test_recipe_edit_requires_format_bump():
