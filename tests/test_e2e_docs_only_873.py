@@ -1,4 +1,4 @@
-"""#873: e2e.yml skips its heavy steps on docs-only PRs (jobs still report success); stats-dashboard has no push trigger.
+"""#873: e2e.yml skips its heavy steps on docs-only PRs (jobs still report success); stats-dashboard pushes only on dev (#1713).
 
 The decide step is the workflow's own bash, executed against a throwaway git repo whose `origin/dev` is the base."""
 from __future__ import annotations
@@ -97,6 +97,11 @@ def test_e2e_still_triggers_on_push_pr_and_dispatch():
     assert on["pull_request"]["branches"] == ["dev"] and "paths" not in on["pull_request"]
 
 
-def test_stats_dashboard_has_no_push_trigger_but_keeps_schedule_and_dispatch():
-    on = yaml.safe_load(STATS.read_text(encoding="utf-8"))[True]
-    assert "push" not in on and "schedule" in on and "workflow_dispatch" in on
+def test_stats_dashboard_push_only_on_dev_and_keeps_schedule_and_dispatch():
+    # #873 wanted no push runs on arbitrary branches/PRs; #1713 deliberately allows push on dev only,
+    # with a concurrency group (cancel-in-progress) so bursts of merges collapse into one run.
+    wf = yaml.safe_load(STATS.read_text(encoding="utf-8"))
+    on = wf[True]
+    assert on["push"]["branches"] == ["dev"] and set(on["push"]) <= {"branches", "paths", "paths-ignore"}
+    assert "schedule" in on and "workflow_dispatch" in on
+    assert wf["concurrency"]["cancel-in-progress"] is True
