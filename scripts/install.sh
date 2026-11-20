@@ -174,6 +174,14 @@ install_desktop_shortcut() {
   printf '[Desktop Entry]\nType=Application\nName=tinglongWu\nComment=Offline voice translator\nExec=%s/.venv/bin/tlwu-gui\nIcon=%s/tinglongwu/gui/assets/tinglongwu.png\nTerminal=false\nCategories=AudioVideo;Audio;\n' "$DIR" "$DIR" > "$f.tmp" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"
 }
 
+# #1677: the window version (GUI) comes first; start it when a desktop is there and a person is at the keyboard, else print both commands.
+finish_gui() {
+  local gui="$DIR/.venv/bin/tlwu-gui"
+  printf '\n    %q\n    bash %q\n\n' "$gui" "$DIR/scripts/linux_menu.sh"
+  if { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; } && [ -t 0 ] && [ -x "$gui" ]; then exec "$gui"; fi
+  return 0
+}
+
 main() {
   # keep the keyboard for prompts even under `curl | bash` (not needed, and not wanted, when unattended)
   if [ -z "$YES" ] && ( : </dev/tty ) 2>/dev/null; then exec </dev/tty; fi
@@ -256,8 +264,8 @@ main() {
   if [ -z "${TLWU_SKIP_MODELS:-}" ] && { [ -n "$YES" ] || [ -t 0 ]; }; then prefetch_models; FETCHED=1; fi
 
   say "$(t done)"
-  printf '\n    bash %s/scripts/linux_menu.sh\n\n' "$DIR"
   if [ -n "$FETCHED" ]; then t ready; else t models; fi
+  finish_gui
   exit 0
 }
 [ -n "${TLWU_SOURCE_ONLY:-}" ] || main "$@"
