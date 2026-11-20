@@ -18,4 +18,4 @@ English: [glossary-with-ai.md](glossary-with-ai.md)
 
 ## 分享
 
-好的詞表能幫到同行。內建的領域檔放在 `tinglongwu/data/terms/`，多語格式見 [glossary-domains.md](glossary-domains.md)，歡迎開 PR，或貼到 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions)。
+好的詞表能幫到同行。內建的領域檔放在 `src/core/tinglongwu/data/terms/`，歡迎開 PR 加一個檔案（格式見 CONTRIBUTING.md），或貼到 [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions)。

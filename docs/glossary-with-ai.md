@@ -57,4 +57,4 @@ Windows %APPDATA%\tinglongwu\glossary\  ·  macOS ~/Library/Application Support/
 
 ## Share it
 
-A good list helps everyone in your field. Built-in domain files live in `tinglongwu/data/terms/`; see [glossary-domains.md](glossary-domains.md) for the multi-language format and open a PR, or post your list in [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions).
+A good list helps everyone in your field. Built-in domain files live in `src/core/tinglongwu/data/terms/`: open a PR adding a file there (format in CONTRIBUTING.md), or post your list in [Discussions](https://github.com/sunososobro-hub/tinglongwu/discussions).
