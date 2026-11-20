@@ -27,6 +27,8 @@ DEFAULTS = {
     "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
     "scene": "video",  # 0.3.8: the 情境 row: "meeting" (listen + speak) or "video" (listen only); last choice kept
     "speaker_id": False,  # 0.3.8: 標示說話者; off = sherpa-onnx and the speaker model are never loaded
+    "notes_float": False,  # #1705: meeting notes popped out into their own floating window (False = side panel)
+    "notes_x": None, "notes_y": None, "notes_w": None, "notes_h": None,  # #1705: that window's place and size
     "topics": None,  # #611: topic notes side panel; None = default (on with CUDA, off on CPU-only), True/False = chosen
     "topics_model": "",  # #611: local GGUF for --topics; "" = the downloaded #1378 default (TOPICS_KEY), if installed
     "gpu_use": "auto",  # #1531: Adjust > Advanced "Use GPU": auto (GPU when it works, else CPU) / off (always CPU)

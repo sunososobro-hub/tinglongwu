@@ -24,6 +24,50 @@ def topics_default(has_cuda: bool, cpu_rows: list[dict] | None = None) -> bool:
     return any(r.get("subtitle_p50_delta_pct", float("inf")) <= CPU_MAX_P50_DELTA_PCT for r in cpu_rows or [])
 
 
+NOTES_MIN_W, NOTES_MIN_H = 260, 200  # #1705: smallest floating notes window
+NOTES_DEFAULT_W, NOTES_DEFAULT_H = 380, 520
+NOTES_EDGE_MARGIN = 40  # default: right edge of the screen, this far in
+NOTES_DEFAULT_Y = 80
+NOTES_OFF_LEFT_TOP = -50  # same slack as the subtitle bar's _place_initial: a window this far off-screen is reset
+NOTES_OFF_RIGHT = 50
+NOTES_OFF_BOTTOM = 20
+
+
+def notes_float_on(settings: dict) -> bool:
+    """#1705: True when the notes live in their own floating window instead of the side panel."""
+    return settings.get("notes_float") is True
+
+
+def _int_or_none(v) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def notes_geometry(settings: dict, screen_w: int, screen_h: int) -> str:
+    """#1705: Tk geometry string `WxH+X+Y` for the floating notes window from the saved size / place. Size is kept
+    within [NOTES_MIN_*, screen]; a missing or off-screen place falls back to the right edge of the screen."""
+    w = _int_or_none(settings.get("notes_w")) or NOTES_DEFAULT_W
+    h = _int_or_none(settings.get("notes_h")) or NOTES_DEFAULT_H
+    w = max(NOTES_MIN_W, min(w, max(NOTES_MIN_W, screen_w)))
+    h = max(NOTES_MIN_H, min(h, max(NOTES_MIN_H, screen_h)))
+    x, y = _int_or_none(settings.get("notes_x")), _int_or_none(settings.get("notes_y"))
+    if (x is None or y is None or not (NOTES_OFF_LEFT_TOP <= x < screen_w - NOTES_OFF_RIGHT)
+            or not (NOTES_OFF_LEFT_TOP <= y < screen_h - NOTES_OFF_BOTTOM)):
+        x, y = max(0, screen_w - w - NOTES_EDGE_MARGIN), NOTES_DEFAULT_Y
+    return f"{w}x{h}+{x}+{y}"
+
+
+def remember_notes_geometry(settings: dict, w: int, h: int, x: int, y: int) -> bool:
+    """#1705: store the floating window's size and place; a not-yet-mapped window (tiny size) is ignored.
+    Returns True when the settings changed."""
+    if w < NOTES_MIN_W or h < NOTES_MIN_H:
+        return False
+    new = {"notes_w": int(w), "notes_h": int(h), "notes_x": int(x), "notes_y": int(y)}
+    if all(settings.get(k) == v for k, v in new.items()):
+        return False
+    settings.update(new)
+    return True
+
+
 class TopicPanel:
     """Thread-safe list of finished topics for the side panel."""
 

@@ -24,6 +24,7 @@ from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, 
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload, quality_hint, quality_speech_model,
                    save_settings, settings_to_argv, topics_on, topics_model_path, voice_outputs, listen_outputs, mic_inputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
 from . import autoupdate, pack_on_demand
+from .topics_panel import notes_float_on
 from .. import __version__, userdirs
 
 try:  # optional theme; the GUI works without it
@@ -505,6 +506,45 @@ class _DockPane(ttk.Frame):
             except Exception:  # noqa: BLE001
                 pass
             self._grew = 0
+
+
+class _FloatPane(tk.Toplevel):
+    """#1705: the meeting-notes pane popped out into its own always-on-top, draggable, resizable window (like the
+    subtitle bar). Same withdraw/deiconify surface as _DockPane; the content is rebuilt from the TopicPanel model,
+    so there is no second data path. Closing the window docks the notes back into the side panel."""
+
+    def __init__(self, app):
+        from .topics_panel import NOTES_MIN_H, NOTES_MIN_W, notes_geometry
+
+        super().__init__(app.root)
+        self._app = app
+        self.withdraw()
+        self.title(t("gui_topics_title"))
+        self.attributes("-topmost", True)
+        self.resizable(True, True)
+        self.minsize(NOTES_MIN_W, NOTES_MIN_H)
+        self.geometry(notes_geometry(app.settings, self.winfo_screenwidth(), self.winfo_screenheight()))
+        self.protocol("WM_DELETE_WINDOW", app._notes_dock)
+        self.bind("<Configure>", self._configure, add="+")
+        set_titlebar_dark(self, app.settings.get("theme") != "light")
+
+    def _configure(self, e):
+        if e.widget is not self:
+            return
+        from .topics_panel import remember_notes_geometry
+
+        remember_notes_geometry(self._app.settings, self.winfo_width(), self.winfo_height(),
+                                self.winfo_x(), self.winfo_y())
+        for name in ("topics_lang", "topics_hint"):
+            lb = getattr(self._app, name, None)
+            if lb is not None:
+                try:
+                    lb.configure(wraplength=max(120, e.width - 40))
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def winfo_manager(self):  # callers ask "is the pane shown?" (_topics_toggle)
+        return "wm" if self.state() == "normal" else ""
 
 
 def _system_cpu_percent(app):
@@ -1914,6 +1954,8 @@ class App:
         sm.add_checkbutton(label=t("gui_topics_switch"), variable=self._topics_var(),  # #1379: the one switch
                            command=self._topics_toggled)
         sm.add_command(label=t("gui_topics_menu"), command=self._topics_toggle)  # #611
+        self.v_notes_float = tk.BooleanVar(master=self.root, value=notes_float_on(self.settings))  # #1705
+        sm.add_checkbutton(label=t("gui_topics_float"), variable=self.v_notes_float, command=self._notes_float_toggled)
         sm.configure(postcommand=self._sync_topics_var)  # #1379: the check mark follows the GPU default
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
@@ -2697,12 +2739,17 @@ class App:
         """#611: the topic notes side window: one block per finished topic (title, time, key points, actions), plus
         the on/off switch and the GGUF model picker. Created on first use; redrawn from self.topic_panel."""
         w = self.topics_win
+        if w is not None and w.winfo_exists() and isinstance(w, _FloatPane) != notes_float_on(self.settings):
+            w.withdraw()  # #1705: the mode changed: rebuild the pane in the other host (the model is the same)
+            w.destroy()
+            w = self.topics_win = None
         if w is None or not w.winfo_exists():
             if not show:
                 return
             holder = self._log_holder
             inner = [c for c in holder.winfo_children() if isinstance(c, tk.Text) or isinstance(c, ttk.Scrollbar)]
-            w = self.topics_win = _DockPane(self, holder, before=inner[0] if inner else None)
+            w = self.topics_win = (_FloatPane(self) if notes_float_on(self.settings)
+                                   else _DockPane(self, holder, before=inner[0] if inner else None))
             ttk.Label(w, text=t("gui_topics_title"), font=("TkDefaultFont", 11, "bold")).pack(side="top", anchor="w", padx=8, pady=(4, 0))
             bar = ttk.Frame(w)
             bar.pack(side="top", fill="x", padx=8, pady=6)
@@ -2710,6 +2757,9 @@ class App:
             ttk.Checkbutton(bar, text=t("gui_topics_switch"), variable=self._topics_var(),
                             command=self._topics_toggled).pack(side="left")
             ttk.Button(bar, text="✕", width=3, command=self._topics_close).pack(side="right")
+            float_now = notes_float_on(self.settings)  # #1705: pop out into a floating window / dock back
+            ttk.Button(bar, text=t("gui_topics_dock" if float_now else "gui_topics_popout"),
+                       command=self._notes_dock if float_now else self._notes_popout).pack(side="right", padx=(0, 6))
             ttk.Button(bar, text=t("gui_topics_model"), command=self.pick_topics_model).pack(side="right", padx=(0, 6))
             ttk.Button(bar, text=t("gui_log_copy"), command=self._topics_copy).pack(side="right", padx=(0, 6))
             self.topics_cancel = ttk.Button(bar, text=t("gui_topics_cancel"), command=self._cancel_topics_download)
@@ -2784,6 +2834,24 @@ class App:
             self._topics_busy_job = self.root.after(1000, self._topics_busy_tick)
 
     _topics_closed = False
+
+    def _set_notes_float(self, on: bool):
+        """#1705: move the notes between the side panel and the floating window; the choice is saved."""
+        self.settings["notes_float"] = bool(on)
+        save_settings(self.settings)
+        if getattr(self, "v_notes_float", None) is not None:
+            self.v_notes_float.set(bool(on))
+        self._topics_closed = False
+        self.render_topics(show=True)
+
+    def _notes_popout(self):
+        self._set_notes_float(True)
+
+    def _notes_dock(self):
+        self._set_notes_float(False)
+
+    def _notes_float_toggled(self):
+        self._set_notes_float(bool(self.v_notes_float.get()))
 
     def _topics_close(self):
         self._topics_closed = True
