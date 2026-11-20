@@ -26,7 +26,8 @@ REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
 ISS = REPO / "release" / "installer" / "tinglongwu.iss"
 OUT = REPO / "dist" / "installer"
 # what the installed app needs at run time and for install.ps1 / update.bat / the menus
-STAGE_PREFIXES = ("src/", "scripts/", "release/installer/run_install.ps1",
+# eval/tlwu_eval/: pyproject packages it (#1664), so `pip install -e .` fails without it; the eval data stays out
+STAGE_PREFIXES = ("src/", "scripts/", "eval/tlwu_eval/", "release/installer/run_install.ps1",
                   "install.ps1", "install.bat", "update.bat", "pyproject.toml", "requirements", "LICENSE",
                   "README", "docs/README.zh-", "docs/PRIVACY_POLICY", ".github/SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)

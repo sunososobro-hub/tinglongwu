@@ -38,8 +38,8 @@ def repo(tmp_path):
     _git(work, "config", "user.email", "t@t")
     shas = []
     for i, v in enumerate(["0.4.1", "0.4.2", "0.4.2"]):
-        (work / "tinglongwu").mkdir(exist_ok=True)
-        (work / "tinglongwu" / "__init__.py").write_text(f'__version__ = "{v}"\n')
+        (work / "src" / "core" / "tinglongwu").mkdir(parents=True, exist_ok=True)
+        (work / "src" / "core" / "tinglongwu" / "__init__.py").write_text(f'__version__ = "{v}"\n')
         (work / "f.txt").write_text(str(i))
         _git(work, "add", "-A")
         _git(work, "commit", "-qm", v)

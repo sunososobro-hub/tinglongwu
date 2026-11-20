@@ -477,7 +477,7 @@ def test_snapshot_head_reads_the_newest_run_so_dispatched_runs_replace_cancelled
 
 @pytest.mark.parametrize("kw, why", [
     ({"in_dev": False}, "is not a dev commit"),
-    ({"show": lambda s, p: None}, "cannot read tinglongwu/__init__.py"),
+    ({"show": lambda s, p: None}, "cannot read src/core/tinglongwu/__init__.py"),
     ({"show": snap_show(init='__version__ = "0.3.1"\n')}, "is v0.3.1 but dev's __version__ is v0.3.2"),
     ({"show": snap_show(wn="## v0.3.1\n- Old\n")}, "no filled `## v0.3.2` section"),
     ({"runs": [r for r in GREEN if r["name"] != "audio-routing"]}, "audio-routing: no run"),

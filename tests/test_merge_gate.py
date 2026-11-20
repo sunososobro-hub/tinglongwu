@@ -24,7 +24,7 @@ def pr(**kw):
     return p
 
 
-FILES = [{"filename": "tinglongwu/foo.py", "status": "modified"}]
+FILES = [{"filename": "src/core/tinglongwu/foo.py", "status": "modified"}]
 ISSUE = {"number": 100, "labels": [{"name": "status:review"}], "author_association": "OWNER",
          "user": {"login": "sunososobro-hub"}}
 
@@ -103,10 +103,10 @@ def test_issue_hard_stops():
 def test_protected_paths():
     for path in (".agent/tlwu_rules.md", ".claude/settings.json", ".github/workflows/ci.yml",
                  ".github/workflows/auto-release.yml", "pyproject.toml", "requirements-dev.txt",
-                 "scripts/ci_offline.sh", "tinglongwu/offline.py", "release/packaging/x.spec", "tinglongwu/__init__.py"):
+                 "scripts/ci_offline.sh", "src/system/tinglongwu/offline.py", "release/packaging/x.spec", "src/core/tinglongwu/__init__.py"):
         assert is_protected(path), path
     assert is_protected("scripts/merge_gate.py") and is_protected(".github/workflows/merge-gate.yml")
-    for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "tinglongwu/foo.py",
+    for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "src/core/tinglongwu/foo.py",
                  ".github/ISSUE_TEMPLATE/bug.yml"):
         assert not is_protected(path), path
 
@@ -135,7 +135,7 @@ def test_protected_needs_opus_until_newer_pass():
 
 
 def test_exempt_bump_merges_without_opus():
-    files = [{"filename": "tinglongwu/__init__.py", "status": "modified"}]
+    files = [{"filename": "src/core/tinglongwu/__init__.py", "status": "modified"}]
     assert run(files=files, bump=lambda fs: (True, "version line only"))[0] == "merge"
     assert run(files=files, bump=lambda fs: (False, "no"))[0] == "needs-opus"
 
@@ -191,7 +191,7 @@ def test_protected_path_needs_collaborator_issue_even_with_pass():  # section 14
     for assoc in ("OWNER", "MEMBER", "COLLABORATOR"):
         assert run(files=files, issue={**outside, "author_association": assoc}, notes=passed)[0] == "merge", assoc
     bump_issue = {**outside, "user": {"login": "github-actions[bot]"}}
-    init = [{"filename": "tinglongwu/__init__.py", "status": "modified"}]
+    init = [{"filename": "src/core/tinglongwu/__init__.py", "status": "modified"}]
     assert run(files=init, issue=bump_issue, bump=lambda fs: (True, "version line only"))[0] == "merge"
     assert run(files=init, issue=outside, bump=lambda fs: (True, "version line only"))[0] == "hold"
     assert run(issue=outside)[0] == "merge"  # non-protected code from an outside issue follows the normal gates
