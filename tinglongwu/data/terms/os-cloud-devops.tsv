@@ -1,0 +1,381 @@
+# scenario: tech
+# os-cloud-devops: generic engineering terms, written for tinglongwu (no third-party glossary copied). en/ru/ja/ko/zh-TW/zh-CN.
+id	en	ru	ja	ko	zh-TW	zh-CN
+ops.operating_system	operating system | OS	операционная система | операционной системы | ОС	オペレーティングシステム | OS	운영체제 | 운영 체제	作業系統	操作系统
+ops.kernel	kernel | OS kernel	ядро ОС | ядра ОС | ядро системы	カーネル	커널	內核 | 系統核心	内核
+ops.kernel_module	kernel module	модуль ядра | модули ядра	カーネルモジュール	커널 모듈	核心模組	内核模块
+ops.kernel_space	kernel space	пространство ядра	カーネル空間	커널 공간	核心空間	内核空间
+ops.user_space	user space | userspace	пространство пользователя | юзерспейс	ユーザー空間	사용자 공간	使用者空間	用户空间
+ops.system_call	system call | syscall	системный вызов | системные вызовы | сисколл	システムコール	시스템 콜 | 시스템 호출	系統呼叫	系统调用
+ops.interrupt_request	interrupt request | IRQ	запрос на прерывание | прерывание | прерывания	割り込み要求 | 割り込み	인터럽트 요청 | 인터럽트	中斷請求 | 硬體中斷	中断请求 | 硬件中断
+ops.interrupt_handler	interrupt handler	обработчик прерываний	割り込みハンドラ	인터럽트 핸들러	中斷處理常式	中断处理程序
+ops.device_driver	device driver	драйвер устройства | драйвер | драйвера | драйверы	デバイスドライバ | デバイスドライバー	디바이스 드라이버 | 장치 드라이버	裝置驅動程式 | 驅動程式	设备驱动程序 | 驱动程序
+ops.bootloader	bootloader | boot loader	загрузчик ОС | бутлоадер	ブートローダ | ブートローダー	부트로더	開機載入程式	引导加载程序 | 引导程序
+ops.boot_process	boot process | boot sequence	процесс загрузки системы	ブートプロセス	부팅 과정	開機流程	启动过程
+ops.init_system	init system	система инициализации	initシステム	init 시스템	init 系統	init 系统
+ops.daemon	daemon	демон | демоны | демона	デーモン	데몬	常駐程式 | 守護程序	守护进程
+ops.service_unit	service unit	юнит сервиса | сервисный юнит	サービスユニット	서비스 유닛	服務單元	服务单元
+ops.runlevel	runlevel	уровень запуска	ランレベル	런레벨	執行等級	运行级别
+ops.kernel_panic	kernel panic	паника ядра | кернел паник	カーネルパニック	커널 패닉	核心恐慌	内核恐慌
+ops.core_dump	core dump	дамп памяти | кордамп	コアダンプ	코어 덤프	核心傾印	核心转储
+ops.page_fault	page fault	страничное прерывание | пейдж фолт	ページフォールト	페이지 폴트	分頁錯誤	缺页异常 | 缺页中断
+ops.virtual_memory	virtual memory	виртуальная память | виртуальной памяти	仮想メモリ	가상 메모리	虛擬記憶體	虚拟内存
+ops.physical_memory	physical memory	физическая память | физической памяти	物理メモリ	물리 메모리	實體記憶體	物理内存
+ops.memory_page	memory page	страница памяти | страницы памяти	メモリページ	메모리 페이지	記憶體分頁	内存页
+ops.page_table	page table	таблица страниц	ページテーブル	페이지 테이블	分頁表	页表
+ops.swap_space	swap space | swap	своп | подкачка | файл подкачки	スワップ領域 | スワップ	스왑 공간 | 스왑	置換空間 | swap 空間	交换空间 | 交换分区
+ops.memory_leak	memory leak	утечка памяти | утечки памяти	メモリリーク	메모리 누수	記憶體洩漏	内存泄漏
+ops.oom_killer	OOM killer | out-of-memory killer	OOM-киллер | оом киллер	OOMキラー	OOM 킬러	OOM Killer 機制	OOM Killer 机制
+ops.out_of_memory	out of memory | OOM	нехватка памяти | кончилась память	メモリ不足	메모리 부족	記憶體不足	内存不足
+ops.page_cache	page cache	страничный кэш	ページキャッシュ	페이지 캐시	分頁快取	页缓存
+ops.memory_mapped_file	memory-mapped file | mmap	отображение файла в память | ммап	メモリマップトファイル	메모리 맵 파일	記憶體映射檔案	内存映射文件
+ops.shared_memory	shared memory	разделяемая память | общая память	共有メモリ	공유 메모리	共享記憶體	共享内存
+ops.huge_pages	huge pages	большие страницы | хьюдж пейджи	ヒュージページ	휴지 페이지 | 대용량 페이지	大分頁	大页
+ops.numa	NUMA	NUMA | NUMA-архитектура	NUMA	NUMA	NUMA	NUMA
+ops.process_id	process ID | PID	идентификатор процесса | пид	プロセスID | PID	프로세스 ID | PID	行程識別碼 | PID	进程 ID | PID
+ops.parent_process	parent process	родительский процесс	親プロセス	부모 프로세스	父行程	父进程
+ops.child_process	child process	дочерний процесс | дочерние процессы	子プロセス	자식 프로세스	子行程	子进程
+ops.zombie_process	zombie process	зомби-процесс | зомби процесс	ゾンビプロセス	좀비 프로세스	殭屍行程	僵尸进程
+ops.orphan_process	orphan process	процесс-сирота | осиротевший процесс	孤児プロセス	고아 프로세스	孤兒行程	孤儿进程
+ops.process_scheduler	process scheduler | CPU scheduler	планировщик процессов	プロセススケジューラ	프로세스 스케줄러	行程排程器	进程调度器
+ops.context_switch	context switch	переключение контекста	コンテキストスイッチ	컨텍스트 스위치 | 문맥 교환	上下文切換 | 內容切換	上下文切换
+ops.preemption	preemption	вытеснение	プリエンプション	선점	搶占 | 先佔	抢占
+ops.process_priority	process priority | nice value	приоритет процесса	プロセス優先度	프로세스 우선순위	行程優先權	进程优先级
+ops.graceful_shutdown	graceful shutdown	корректное завершение | мягкое завершение	グレースフルシャットダウン	정상 종료 | 그레이스풀 셧다운	優雅關閉	优雅关闭 | 平滑关闭
+ops.deadlock	deadlock	взаимоблокировка | дедлок | дедлоки	デッドロック	데드락 | 교착 상태	死結	死锁
+ops.race_condition	race condition	состояние гонки	競合状態 | レースコンディション	경쟁 상태 | 레이스 컨디션	競爭條件 | 競態條件	竞态条件 | 竞争条件
+ops.mutex	mutex	мьютекс | мьютексы | мьютекса	ミューテックス	뮤텍스	互斥鎖 | mutex	互斥锁 | 互斥量
+ops.semaphore	semaphore	семафор | семафоры	セマフォ	세마포어	信號量	信号量
+ops.spinlock	spinlock	спинлок | спин-блокировка	スピンロック	스핀락	自旋鎖	自旋锁
+ops.load_average	load average	средняя нагрузка | лоад аверейдж	ロードアベレージ	로드 애버리지 | 평균 부하	平均負載	平均负载
+ops.cpu_usage	CPU usage | CPU utilization	загрузка процессора | загрузка ЦП	CPU使用率	CPU 사용률	CPU 使用率	CPU 使用率
+ops.cpu_core	CPU core	ядро процессора | ядра процессора	CPUコア	CPU 코어	CPU 核心	CPU 核心
+ops.cpu_affinity	CPU affinity	привязка к процессору | аффинити	CPUアフィニティ	CPU 친화도 | CPU 어피니티	CPU 親和性	CPU 亲和性
+ops.cgroup	control group | cgroup	контрольная группа | сигруппа	コントロールグループ | cgroup	컨트롤 그룹 | cgroup	控制群組 | cgroup	控制组 | cgroup
+ops.kernel_namespace	kernel namespace	пространство имён ядра	カーネル名前空間	커널 네임스페이스	核心命名空間	内核命名空间
+ops.file_descriptor	file descriptor	файловый дескриптор | дескриптор файла | дескрипторы	ファイルディスクリプタ	파일 디스크립터	檔案描述符	文件描述符
+ops.ipc	inter-process communication | IPC	межпроцессное взаимодействие | IPC	プロセス間通信	프로세스 간 통신	行程間通訊	进程间通信
+ops.domain_socket	domain socket	доменный сокет	ドメインソケット	도메인 소켓	網域通訊端	域套接字
+ops.superuser	root user | superuser	суперпользователь | рут | рута	ルートユーザー | スーパーユーザー	루트 사용자 | 슈퍼유저	超級使用者 | root 使用者	超级用户 | root 用户
+ops.privilege_escalation	privilege escalation	повышение привилегий | эскалация привилегий	権限昇格	권한 상승	權限提升	权限提升
+ops.file_permissions	file permissions	права доступа к файлу | права на файл	ファイルパーミッション | ファイル権限	파일 권한	檔案權限	文件权限
+ops.environment_variable	environment variable	переменная окружения | переменные окружения | энв	環境変数	환경 변수	環境變數	环境变量
+ops.command_shell	command shell	командная оболочка | шелл	シェル	셸 | 쉘	命令列殼層 | shell	命令行 shell | shell
+ops.shell_script	shell script	шелл-скрипт | шелл скрипт	シェルスクリプト	셸 스크립트	shell 指令碼 | shell 腳本	shell 脚本
+ops.cron_job	cron job | scheduled job	задание крона | крон | кронджоба	cronジョブ | 定期ジョブ	크론 작업	排程工作	定时任务
+ops.command_line	command line | CLI	командная строка | командной строке	コマンドライン	명령줄 | 커맨드 라인	命令列	命令行
+ops.terminal_emulator	terminal emulator	эмулятор терминала	ターミナルエミュレータ	터미널 에뮬레이터	終端機模擬器	终端模拟器
+ops.package_manager	package manager	пакетный менеджер | менеджер пакетов	パッケージマネージャ | パッケージマネージャー	패키지 관리자 | 패키지 매니저	套件管理員 | 套件管理器	包管理器 | 软件包管理器
+ops.os_distribution	OS distribution | distro	дистрибутив | дистр | дистрибутива	ディストリビューション | ディストロ	배포판	發行版	发行版
+ops.kernel_parameter	kernel parameter | sysctl	параметр ядра	カーネルパラメータ	커널 파라미터	核心參數	内核参数
+ops.firmware	firmware	прошивка | прошивки | фирмварь	ファームウェア	펌웨어	韌體	固件
+ops.rtos	real-time operating system | RTOS	операционная система реального времени | ОСРВ	リアルタイムOS	실시간 운영체제	即時作業系統	实时操作系统
+ops.file_system	file system | filesystem	файловая система | файловой системы | ФС	ファイルシステム	파일 시스템	檔案系統	文件系统
+ops.mount_point	mount point	точка монтирования	マウントポイント	마운트 포인트	掛載點	挂载点
+ops.filesystem_mount	filesystem mount	монтирование | примонтировать | смонтировать	マウント	마운트	掛載	挂载
+ops.inode	inode	инод | айнод | иноды	iノード | inode	아이노드	索引節點 | inode	索引节点 | inode
+ops.symbolic_link	symbolic link | symlink	символическая ссылка | симлинк	シンボリックリンク	심볼릭 링크	符號連結	符号链接 | 软链接
+ops.hard_link	hard link	жёсткая ссылка | хардлинк	ハードリンク	하드 링크	硬連結	硬链接
+ops.disk_partition	disk partition	раздел диска | разделы диска	ディスクパーティション	디스크 파티션	磁碟分割區	磁盘分区
+ops.journaling_fs	journaling file system	журналируемая файловая система	ジャーナリングファイルシステム	저널링 파일 시스템	日誌式檔案系統	日志文件系统
+ops.block_device	block device	блочное устройство	ブロックデバイス	블록 장치	區塊裝置	块设备
+ops.raid_array	RAID array	RAID-массив | рейд	RAIDアレイ	RAID 어레이	RAID 陣列	RAID 阵列
+ops.logical_volume	logical volume	логический том	論理ボリューム	논리 볼륨	邏輯卷冊	逻辑卷
+ops.disk_quota	disk quota	дисковая квота	ディスククォータ	디스크 할당량	磁碟配額	磁盘配额
+ops.disk_io	disk I/O	дисковый ввод-вывод	ディスクI/O	디스크 I/O	磁碟 I/O	磁盘 I/O
+ops.iops	IOPS	IOPS | иопсы	IOPS	IOPS	IOPS	IOPS
+ops.ssd	solid-state drive | SSD	твердотельный накопитель | SSD-диск | ссд	SSD	SSD	固態硬碟	固态硬盘
+ops.block_storage	block storage	блочное хранилище	ブロックストレージ	블록 스토리지	區塊儲存	块存储
+ops.object_storage	object storage	объектное хранилище	オブジェクトストレージ	오브젝트 스토리지 | 객체 스토리지	物件儲存	对象存储
+ops.nas	network-attached storage | NAS	сетевое хранилище	ネットワークストレージ	네트워크 스토리지	網路儲存	网络存储
+ops.san	storage area network | SAN	сеть хранения данных	ストレージエリアネットワーク	스토리지 영역 네트워크	儲存區域網路	存储区域网络
+ops.storage_bucket	storage bucket	бакет | бакеты | бакета	バケット	버킷	儲存貯體 | bucket	存储桶
+ops.snapshot	snapshot	снапшот | снапшоты | снимок состояния	スナップショット	스냅숏 | 스냅샷	快照	快照
+ops.backup	backup	резервная копия | бэкап | бэкапы | бэкапа	バックアップ	백업	備份	备份
+ops.incremental_backup	incremental backup	инкрементальная резервная копия | инкрементальный бэкап	増分バックアップ	증분 백업	增量備份	增量备份
+ops.disaster_recovery	disaster recovery | DR	аварийное восстановление | восстановление после сбоя	ディザスタリカバリ | 災害復旧	재해 복구	災難復原	灾难恢复 | 容灾
+ops.disk_encryption	disk encryption | full-disk encryption	шифрование диска	ディスク暗号化	디스크 암호화	磁碟加密	磁盘加密
+ops.free_disk_space	free disk space	свободное место на диске	ディスク空き容量	디스크 여유 공간	磁碟可用空間	磁盘可用空间
+ops.temp_directory	temporary directory | temp directory	временный каталог | временная папка	一時ディレクトリ	임시 디렉터리	暫存目錄	临时目录
+ops.home_directory	home directory	домашний каталог | домашняя директория	ホームディレクトリ	홈 디렉터리	家目錄 | 主目錄	主目录 | 家目录
+ops.absolute_path	absolute path	абсолютный путь	絶対パス	절대 경로	絕對路徑	绝对路径
+ops.server	server	сервер | сервера | серверы | серверов	サーバー | サーバ	서버	伺服器	服务器
+ops.bare_metal	bare-metal server | bare metal	физический сервер | бареметал	ベアメタルサーバー	베어메탈 서버	裸機伺服器	裸金属服务器
+ops.dedicated_server	dedicated server	выделенный сервер | дедик	専用サーバー	전용 서버	專用伺服器	独立服务器
+ops.server_rack	server rack	серверная стойка	サーバーラック	서버 랙	伺服器機櫃	服务器机柜
+ops.data_center	data center | datacenter	дата-центр | центр обработки данных | ЦОД	データセンター	데이터 센터	資料中心	数据中心
+ops.web_server	web server	веб-сервер	Webサーバー	웹 서버	網頁伺服器	Web 服务器
+ops.reverse_proxy	reverse proxy	обратный прокси | реверс-прокси	リバースプロキシ	리버스 프록시	反向代理	反向代理
+ops.proxy_server	proxy server	прокси-сервер | прокси	プロキシサーバー	프록시 서버	代理伺服器	代理服务器
+ops.load_balancer	load balancer	балансировщик нагрузки | балансер | балансировщик	ロードバランサー | ロードバランサ	로드 밸런서	負載平衡器	负载均衡器
+ops.load_balancing	load balancing	балансировка нагрузки	負荷分散 | ロードバランシング	부하 분산 | 로드 밸런싱	負載平衡	负载均衡
+ops.health_check	health check	проверка работоспособности | хелсчек | хелс-чек	ヘルスチェック	헬스 체크	服務健康檢查	服务健康检查
+ops.dns_record	DNS record	DNS-запись | ДНС-запись	DNSレコード	DNS 레코드	DNS 記錄	DNS 记录
+ops.domain_name	domain name	доменное имя | домен	ドメイン名	도메인 이름	網域名稱	域名
+ops.ip_address	IP address	IP-адрес | айпи | айпишник	IPアドレス	IP 주소	IP 位址	IP 地址
+ops.static_ip	static IP address	статический IP-адрес | статический айпи	固定IPアドレス	고정 IP	固定 IP	静态 IP
+ops.port_number	port number | network port	номер порта | сетевой порт	ポート番号	포트 번호	連接埠	端口
+ops.firewall	firewall	межсетевой экран | файрвол | фаервол | брандмауэр	ファイアウォール	방화벽	防火牆	防火墙
+ops.vpn	VPN	VPN | впн	VPN	VPN	VPN	VPN
+ops.ssh	SSH	SSH | ссш	SSH	SSH	SSH	SSH
+ops.ssh_key	SSH key	SSH-ключ | ссш-ключ	SSH鍵	SSH 키	SSH 金鑰	SSH 密钥
+ops.tls_certificate	TLS certificate | SSL certificate	TLS-сертификат | SSL-сертификат	TLS証明書 | SSL証明書	TLS 인증서 | SSL 인증서	TLS 憑證 | SSL 憑證	TLS 证书 | SSL 证书
+ops.certificate_expiration	certificate expiration	истечение срока сертификата	証明書の有効期限切れ	인증서 만료	憑證過期	证书过期
+ops.nat	NAT	NAT | нат	NAT	NAT	NAT	NAT
+ops.network_latency	network latency	сетевая задержка | задержка сети | латенси	ネットワーク遅延	네트워크 지연	網路延遲	网络延迟
+ops.network_bandwidth	network bandwidth	пропускная способность сети	ネットワーク帯域幅	네트워크 대역폭	網路頻寬	网络带宽
+ops.packet_loss	packet loss	потеря пакетов	パケットロス	패킷 손실	封包遺失	丢包
+ops.cdn	content delivery network | CDN	сеть доставки контента | CDN	コンテンツデリバリネットワーク | CDN	콘텐츠 전송 네트워크 | CDN	內容傳遞網路 | CDN	内容分发网络 | CDN
+ops.api_gateway	API gateway	API-шлюз | апи-гейтвей	APIゲートウェイ	API 게이트웨이	API 閘道	API 网关
+ops.rate_limiting	rate limiting	ограничение частоты запросов | рейт-лимит | рейт лимитинг	レート制限	속도 제한 | 레이트 리미팅	速率限制	限流 | 速率限制
+ops.keepalive	keep-alive	keep-alive | кипалайв	キープアライブ	킵얼라이브	保持連線	保持连接
+ops.timeout	timeout	таймаут | тайм-аут | таймауты	タイムアウト	타임아웃 | 시간 초과	逾時	超时
+ops.service_discovery	service discovery	обнаружение сервисов | сервис-дискавери	サービスディスカバリ	서비스 디스커버리	服務探索	服务发现
+ops.service_mesh	service mesh	сервисная сетка | сервис-меш	サービスメッシュ	서비스 메시	服務網格	服务网格
+ops.sidecar_container	sidecar container | sidecar	сайдкар | сайдкар-контейнер	サイドカーコンテナ	사이드카 컨테이너	sidecar 容器	sidecar 容器
+ops.microservices	microservices | microservice architecture	микросервисы | микросервисная архитектура | микросервис	マイクロサービス	마이크로서비스	微服務	微服务
+ops.monolith	monolithic application | monolith	монолит | монолитное приложение	モノリス	모놀리스	單體式應用程式	单体应用
+ops.high_availability	high availability | HA	высокая доступность	高可用性	고가용성	高可用性	高可用 | 高可用性
+ops.fault_tolerance	fault tolerance	отказоустойчивость	フォールトトレランス | 耐障害性	내결함성	容錯	容错
+ops.failover	failover	отработка отказа | фейловер | переключение на резерв	フェイルオーバー	장애 조치 | 페일오버	容錯移轉	故障转移
+ops.single_point_of_failure	single point of failure | SPOF	единая точка отказа	単一障害点	단일 장애점	單點故障	单点故障
+ops.uptime	uptime	аптайм | время безотказной работы	稼働時間 | アップタイム	가동 시간 | 업타임	正常運作時間	正常运行时间
+ops.downtime	downtime	даунтайм | время простоя	ダウンタイム	다운타임 | 중단 시간	停機時間	停机时间
+ops.service_outage	service outage | outage	сбой сервиса | падение сервиса	サービス障害	서비스 장애	服務中斷	服务中断
+ops.production_incident	production incident	инцидент на проде | продовый инцидент	本番障害	프로덕션 장애	正式環境事故	生产事故 | 线上故障
+ops.postmortem	postmortem | incident review	постмортем | разбор инцидента	ポストモーテム	포스트모템	事後檢討	复盘 | 事后分析
+ops.on_call	on-call rotation | on-call	онколл | дежурство по инцидентам	オンコール	온콜	on-call 值班	on-call 值班
+ops.sla	service level agreement | SLA	соглашение об уровне сервиса | SLA	サービスレベル契約 | SLA	서비스 수준 협약 | SLA	服務水準協議 | SLA	服务级别协议 | SLA
+ops.slo	service level objective | SLO	целевой уровень сервиса | SLO	サービスレベル目標 | SLO	서비스 수준 목표 | SLO	服務水準目標 | SLO	服务级别目标 | SLO
+ops.sli	service level indicator | SLI	показатель уровня сервиса | SLI	サービスレベル指標 | SLI	서비스 수준 지표 | SLI	服務水準指標 | SLI	服务级别指标 | SLI
+ops.error_budget	error budget	бюджет ошибок	エラーバジェット	오류 예산 | 에러 버짓	錯誤預算	错误预算
+ops.sre	site reliability engineering | SRE	инженерия надёжности сайта | SRE	サイト信頼性エンジニアリング | SRE	사이트 신뢰성 엔지니어링 | SRE	網站可靠性工程 | SRE	站点可靠性工程 | SRE
+ops.virtual_machine	virtual machine | VM	виртуальная машина | виртуалка | ВМ | виртуалки	仮想マシン | VM	가상 머신 | VM	虛擬機器 | VM	虚拟机 | VM
+ops.hypervisor	hypervisor	гипервизор	ハイパーバイザー | ハイパーバイザ	하이퍼바이저	虛擬機器監控程式 | Hypervisor	虚拟机监控程序 | Hypervisor
+ops.virtualization	virtualization	виртуализация | виртуализации	仮想化	가상화	虛擬化	虚拟化
+ops.paravirtualization	paravirtualization	паравиртуализация	準仮想化	반가상화	半虛擬化	半虚拟化
+ops.hardware_virtualization	hardware-assisted virtualization	аппаратная виртуализация	ハードウェア支援仮想化	하드웨어 지원 가상화	硬體輔助虛擬化	硬件辅助虚拟化
+ops.guest_os	guest operating system | guest OS	гостевая ОС | гостевая операционная система	ゲストOS	게스트 OS	客體作業系統 | Guest OS	客户机操作系统 | Guest OS
+ops.host_machine	host machine | host OS	хост-машина | хостовая система	ホストマシン | ホストOS	호스트 머신	宿主機 | 主機作業系統	宿主机
+ops.live_migration	live migration	живая миграция | лайв-миграция	ライブマイグレーション	라이브 마이그레이션	即時遷移	热迁移 | 在线迁移
+ops.vcpu	virtual CPU | vCPU	виртуальный процессор	仮想CPU | vCPU	가상 CPU | vCPU	虛擬 CPU | vCPU	虚拟 CPU | vCPU
+ops.resource_overcommit	resource overcommit	оверкоммит | переподписка ресурсов	オーバーコミット	오버커밋	資源超額配置	资源超分 | 超额分配
+ops.vm_template	VM template	шаблон виртуальной машины	VMテンプレート	VM 템플릿	VM 範本	虚拟机模板
+ops.device_passthrough	device passthrough	проброс устройства | проброс	デバイスパススルー	장치 패스스루	裝置直通	设备直通
+ops.vdi	virtual desktop infrastructure | VDI	инфраструктура виртуальных рабочих столов | VDI	仮想デスクトップ基盤 | VDI	가상 데스크톱 인프라 | VDI	虛擬桌面基礎架構 | VDI	虚拟桌面基础架构 | VDI
+ops.virtual_network	virtual network	виртуальная сеть	仮想ネットワーク	가상 네트워크	虛擬網路	虚拟网络
+ops.virtual_switch	virtual switch	виртуальный коммутатор | виртуальный свитч	仮想スイッチ	가상 스위치	虛擬交換器	虚拟交换机
+ops.virtual_disk	virtual disk	виртуальный диск	仮想ディスク	가상 디스크	虛擬磁碟	虚拟磁盘
+ops.container	container	контейнер | контейнеры | контейнера | контейнеров	コンテナ | コンテナー	컨테이너	容器	容器
+ops.containerization	containerization	контейнеризация	コンテナ化	컨테이너화	容器化	容器化
+ops.container_image	container image	образ контейнера | образы контейнеров	コンテナイメージ	컨테이너 이미지	容器映像檔	容器镜像
+ops.container_registry	container registry | image registry	реестр образов | регистри	コンテナレジストリ	컨테이너 레지스트리	容器映像登錄庫 | 映像倉庫	镜像仓库
+ops.image_layer	image layer	слой образа | слои образа	イメージレイヤー	이미지 레이어	映像檔分層	镜像层
+ops.image_tag	image tag	тег образа	イメージタグ	이미지 태그	映像檔標籤	镜像标签
+ops.container_runtime	container runtime	среда выполнения контейнеров | рантайм контейнеров	コンテナランタイム	컨테이너 런타임	容器執行環境	容器运行时
+ops.container_orchestration	container orchestration	оркестрация контейнеров | оркестрация	コンテナオーケストレーション	컨테이너 오케스트레이션	容器編排	容器编排
+ops.orchestrator	orchestrator	оркестратор	オーケストレーター	오케스트레이터	編排器	编排器
+ops.cluster	cluster	кластер | кластера | кластеры | кластере	クラスタ | クラスター	클러스터	叢集	集群
+ops.cluster_node	cluster node | worker node	узел кластера | нода | ноды | воркер-нода	クラスタノード | ワーカーノード	클러스터 노드 | 워커 노드	叢集節點 | 工作節點	集群节点 | 工作节点
+ops.control_plane	control plane	плоскость управления | контрол-плейн	コントロールプレーン	컨트롤 플레인	控制平面	控制平面
+ops.data_plane	data plane	плоскость данных	データプレーン	데이터 플레인	資料平面	数据平面
+ops.horizontal_scaling	horizontal scaling | scale out	горизонтальное масштабирование	水平スケーリング | スケールアウト	수평 확장 | 스케일 아웃	水平擴展	水平扩展 | 横向扩展
+ops.vertical_scaling	vertical scaling | scale up	вертикальное масштабирование	垂直スケーリング | スケールアップ	수직 확장 | 스케일 업	垂直擴展	垂直扩展 | 纵向扩展
+ops.autoscaling	autoscaling | auto scaling	автомасштабирование | автоскейлинг	オートスケーリング | 自動スケーリング	오토스케일링 | 자동 확장	自動擴展	自动扩缩容 | 自动伸缩
+ops.rolling_update	rolling update	поэтапное обновление | роллинг-апдейт	ローリングアップデート	롤링 업데이트	滾動更新	滚动更新
+ops.blue_green_deployment	blue-green deployment	сине-зелёное развёртывание | блю-грин деплой	ブルーグリーンデプロイ	블루-그린 배포	藍綠部署	蓝绿部署
+ops.canary_release	canary release | canary deployment	канареечный релиз | канареечное развёртывание	カナリアリリース	카나리 배포	金絲雀發布 | 金絲雀部署	金丝雀发布 | 灰度发布
+ops.liveness_probe	liveness probe	проба живучести | liveness-проба	ライブネスプローブ	활성 프로브 | liveness 프로브	存活探測	存活探针
+ops.readiness_probe	readiness probe	проба готовности | readiness-проба	レディネスプローブ	준비 상태 프로브	就緒探測	就绪探针
+ops.persistent_volume	persistent volume	постоянный том | персистентный том	永続ボリューム	영구 볼륨	永久性磁碟區	持久卷
+ops.ingress_controller	ingress controller	ингресс-контроллер | ингресс	イングレスコントローラー	인그레스 컨트롤러	Ingress 控制器	Ingress 控制器
+ops.deployment_manifest	deployment manifest	манифест развёртывания | манифест деплоя	デプロイマニフェスト	배포 매니페스트	部署資訊清單	部署清单
+ops.cluster_namespace	cluster namespace	неймспейс | пространство имён кластера	クラスタ名前空間	클러스터 네임스페이스	叢集命名空間	集群命名空间
+ops.stateful_service	stateful service	сервис с состоянием | stateful-сервис	ステートフルサービス	상태 저장 서비스	有狀態服務	有状态服务
+ops.stateless_service	stateless service	сервис без состояния | stateless-сервис	ステートレスサービス	무상태 서비스	無狀態服務	无状态服务
+ops.resource_limits	resource limits	лимиты ресурсов | ограничения ресурсов	リソース制限	리소스 제한	資源限制	资源限制
+ops.resource_quota	resource quota	квота ресурсов	リソースクォータ	리소스 할당량	資源配額	资源配额
+ops.crash_loop	crash loop | restart loop	цикл перезапусков | крашлуп	クラッシュループ	크래시 루프	崩潰重啟迴圈	崩溃重启循环
+ops.container_escape	container escape	побег из контейнера	コンテナエスケープ	컨테이너 탈출	容器逃逸	容器逃逸
+ops.multi_stage_build	multi-stage build	многоэтапная сборка	マルチステージビルド	멀티 스테이지 빌드	多階段建置	多阶段构建
+ops.base_image	base image	базовый образ	ベースイメージ	베이스 이미지	基礎映像檔	基础镜像
+ops.serverless	serverless	бессерверные вычисления | серверлесс	サーバーレス	서버리스	無伺服器	无服务器 | Serverless
+ops.faas	function as a service | FaaS	функция как услуга | FaaS	FaaS	서비스형 함수 | FaaS	函式即服務 | FaaS	函数即服务 | FaaS
+ops.cold_start	cold start	холодный старт	コールドスタート	콜드 스타트	冷啟動	冷启动
+ops.cloud_computing	cloud computing	облачные вычисления	クラウドコンピューティング	클라우드 컴퓨팅	雲端運算	云计算
+ops.public_cloud	public cloud	публичное облако	パブリッククラウド	퍼블릭 클라우드	公有雲	公有云
+ops.private_cloud	private cloud	частное облако | приватное облако	プライベートクラウド	프라이빗 클라우드	私有雲	私有云
+ops.hybrid_cloud	hybrid cloud	гибридное облако	ハイブリッドクラウド	하이브리드 클라우드	混合雲	混合云
+ops.multi_cloud	multi-cloud	мультиоблако | мультиклауд	マルチクラウド	멀티 클라우드	多雲架構	多云架构
+ops.on_premises	on-premises | on-prem	локальная инфраструктура | он-прем | онпрем	オンプレミス | オンプレ	온프레미스	地端 | 本地部署	本地部署 | 私有化部署
+ops.iaas	infrastructure as a service | IaaS	инфраструктура как услуга | IaaS	IaaS	서비스형 인프라 | IaaS	基礎架構即服務 | IaaS	基础设施即服务 | IaaS
+ops.paas	platform as a service | PaaS	платформа как услуга | PaaS	PaaS	서비스형 플랫폼 | PaaS	平台即服務 | PaaS	平台即服务 | PaaS
+ops.saas	software as a service | SaaS	программное обеспечение как услуга | SaaS	SaaS	서비스형 소프트웨어 | SaaS	軟體即服務 | SaaS	软件即服务 | SaaS
+ops.cloud_region	cloud region	облачный регион	リージョン	리전	雲端區域	云区域
+ops.availability_zone	availability zone | AZ	зона доступности	アベイラビリティゾーン	가용 영역	可用區域	可用区
+ops.cloud_instance	cloud instance | compute instance	облачный инстанс | инстанс | инстансы	インスタンス	인스턴스	雲端執行個體 | 執行個體	云实例 | 实例
+ops.instance_type	instance type	тип инстанса	インスタンスタイプ	인스턴스 유형	執行個體類型	实例类型
+ops.spot_instance	spot instance	спот-инстанс | прерываемый инстанс	スポットインスタンス	스팟 인스턴스	競價型執行個體 | Spot 執行個體	抢占式实例 | 竞价实例
+ops.reserved_instance	reserved instance	зарезервированный инстанс	リザーブドインスタンス	예약 인스턴스	預留執行個體	预留实例
+ops.machine_image	machine image	образ машины | образ виртуальной машины	マシンイメージ	머신 이미지	機器映像	机器镜像
+ops.vpc	virtual private cloud | VPC	виртуальное частное облако | VPC	仮想プライベートクラウド | VPC	가상 사설 클라우드 | VPC	虛擬私有雲 | VPC	虚拟私有云 | VPC | 专有网络
+ops.subnet	subnet	подсеть | подсети	サブネット	서브넷	子網路	子网
+ops.security_group	security group	группа безопасности | секьюрити-группа	セキュリティグループ	보안 그룹	安全性群組	安全组
+ops.iam	identity and access management | IAM	управление идентификацией и доступом | IAM	ID・アクセス管理 | IAM	자격 증명 및 액세스 관리 | IAM	身分與存取管理 | IAM	身份和访问管理 | IAM
+ops.iam_role	IAM role | service role	IAM-роль | роль IAM	IAMロール	IAM 역할	IAM 角色	IAM 角色
+ops.service_account	service account	сервисный аккаунт | сервисная учётная запись	サービスアカウント	서비스 계정	服務帳戶	服务账号 | 服务账户
+ops.least_privilege	principle of least privilege | least privilege	принцип минимальных привилегий	最小権限の原則	최소 권한 원칙	最小權限原則	最小权限原则
+ops.access_key	access key	ключ доступа | ключи доступа	アクセスキー	액세스 키	存取金鑰	访问密钥
+ops.secrets_management	secrets management | secret store	управление секретами | хранилище секретов	シークレット管理	시크릿 관리 | 비밀 관리	機密管理	机密管理 | Secret 管理
+ops.kms	key management service | KMS	служба управления ключами | KMS	鍵管理サービス | KMS	키 관리 서비스 | KMS	金鑰管理服務 | KMS	密钥管理服务 | KMS
+ops.storage_class	storage class | storage tier	класс хранения	ストレージクラス	스토리지 클래스	儲存類別	存储类别
+ops.cold_storage	cold storage | archive storage	холодное хранилище	コールドストレージ	콜드 스토리지	冷儲存	冷存储
+ops.egress_traffic	egress traffic	исходящий трафик | эгресс	エグレストラフィック | 下り通信	송신 트래픽 | 이그레스 트래픽	輸出流量	出站流量 | 出口流量
+ops.ingress_traffic	ingress traffic	входящий трафик	イングレストラフィック	수신 트래픽	輸入流量	入站流量
+ops.vendor_lock_in	vendor lock-in	привязка к поставщику | вендор-лок	ベンダーロックイン	벤더 종속 | 벤더 락인	供應商鎖定	供应商锁定 | 厂商锁定
+ops.cloud_migration	cloud migration	миграция в облако | переезд в облако	クラウド移行	클라우드 마이그레이션	雲端遷移 | 上雲	云迁移 | 上云
+ops.lift_and_shift	lift and shift	перенос как есть | lift-and-shift	リフト&シフト	리프트 앤 시프트	直接遷移	直接迁移
+ops.pay_as_you_go	pay-as-you-go | on-demand pricing	оплата по факту использования | pay-as-you-go	従量課金	사용량 기반 과금 | 종량 과금	隨用隨付 | 按用量計費	按量付费
+ops.cloud_cost_optimization	cloud cost optimization | FinOps	оптимизация облачных затрат | FinOps	クラウドコスト最適化	클라우드 비용 최적화	雲端成本最佳化	云成本优化
+ops.multi_tenancy	multi-tenancy	мультитенантность | мультиарендность	マルチテナント	멀티 테넌시	多租戶	多租户
+ops.edge_computing	edge computing	периферийные вычисления | эдж-вычисления	エッジコンピューティング	엣지 컴퓨팅	邊緣運算	边缘计算
+ops.managed_service	managed service	управляемый сервис | managed-сервис	マネージドサービス	관리형 서비스	託管服務 | 代管服務	托管服务
+ops.management_console	management console | cloud console	консоль управления | облачная консоль	管理コンソール | クラウドコンソール	관리 콘솔	管理主控台	管理控制台
+ops.infrastructure_as_code	infrastructure as code | IaC	инфраструктура как код | IaC	コードとしてのインフラ | IaC	코드형 인프라 | IaC	基礎架構即程式碼 | IaC	基础设施即代码 | IaC
+ops.configuration_management	configuration management	управление конфигурациями	構成管理	구성 관리	組態管理	配置管理
+ops.configuration_drift	configuration drift	дрейф конфигурации	構成ドリフト	구성 드리프트	組態漂移	配置漂移
+ops.immutable_infrastructure	immutable infrastructure	неизменяемая инфраструктура	イミュータブルインフラ	불변 인프라	不可變基礎架構	不可变基础设施
+ops.provisioning	provisioning	провижининг | выделение ресурсов	プロビジョニング	프로비저닝	佈建 | 資源佈建	资源配置 | 预配
+ops.state_file	state file	файл состояния	ステートファイル	상태 파일	狀態檔案	状态文件
+ops.devops	DevOps	DevOps | девопс | девопсы	DevOps	데브옵스 | DevOps	DevOps	DevOps
+ops.devops_engineer	DevOps engineer	девопс-инженер | девопсер	DevOpsエンジニア	데브옵스 엔지니어	DevOps 工程師	DevOps 工程师
+ops.continuous_integration	continuous integration | CI	непрерывная интеграция | CI	継続的インテグレーション | CI	지속적 통합 | CI	持續整合 | CI	持续集成 | CI
+ops.continuous_delivery	continuous delivery	непрерывная поставка	継続的デリバリー	지속적 전달	持續交付	持续交付
+ops.continuous_deployment	continuous deployment	непрерывное развёртывание	継続的デプロイ | 継続的デプロイメント	지속적 배포	持續部署	持续部署
+ops.ci_cd_pipeline	CI/CD pipeline | build pipeline	CI/CD-пайплайн | пайплайн | пайплайны | конвейер сборки	CI/CDパイプライン | パイプライン	CI/CD 파이프라인 | 파이프라인	CI/CD 管線 | 管線	CI/CD 流水线 | 流水线
+ops.build_agent	build agent | CI runner	агент сборки | раннер	ビルドエージェント | CIランナー	빌드 에이전트 | CI 러너	建置代理程式 | CI Runner	构建代理 | CI Runner
+ops.build_artifact	build artifact	артефакт сборки | артефакты сборки	ビルド成果物 | ビルドアーティファクト	빌드 산출물 | 빌드 아티팩트	建置產出物	构建产物
+ops.deployment	deployment	развёртывание | деплой | деплоя | задеплоить	デプロイ | デプロイメント	배포 | 디플로이	部署	部署
+ops.rollback	rollback	откат | откатить | роллбэк	ロールバック	롤백	回滾 | 復原	回滚
+ops.software_release	software release	релиз | релизы | релиза	リリース	릴리스	版本發布	版本发布
+ops.hotfix	hotfix	хотфикс | хотфиксы | срочное исправление	ホットフィックス	핫픽스	緊急修補 | hotfix	热修复 | hotfix
+ops.feature_flag	feature flag | feature toggle	фича-флаг | флаг функциональности	フィーチャーフラグ	기능 플래그 | 피처 플래그	功能旗標	功能开关 | 特性开关
+ops.staging_environment	staging environment | staging	стейджинг | промежуточная среда | стейдж	ステージング環境 | ステージング	스테이징 환경	預備環境 | staging 環境	预发布环境 | 预发环境
+ops.production_environment	production environment | prod	продакшн | прод | продакшен | на проде	本番環境	프로덕션 환경 | 운영 환경	正式環境 | 生產環境	生产环境 | 线上环境
+ops.development_environment	development environment	среда разработки | дев-окружение	開発環境	개발 환경	開發環境	开发环境
+ops.test_environment	test environment	тестовая среда | тестовое окружение | тестовый стенд	テスト環境	테스트 환경	測試環境	测试环境
+ops.artifact_repository	artifact repository	репозиторий артефактов	アーティファクトリポジトリ	아티팩트 저장소	產出物儲存庫	制品库 | 制品仓库
+ops.version_pinning	version pinning	фиксация версий | пиннинг версий	バージョン固定	버전 고정	版本鎖定	版本锁定
+ops.semantic_versioning	semantic versioning | semver	семантическое версионирование | семвер	セマンティックバージョニング	시맨틱 버저닝	語意化版本	语义化版本
+ops.build_cache	build cache	кэш сборки	ビルドキャッシュ	빌드 캐시	建置快取	构建缓存
+ops.flaky_test	flaky test	нестабильный тест | флаки-тест | мигающий тест	不安定なテスト | フレーキーテスト	불안정한 테스트 | 플래키 테스트	不穩定測試	不稳定测试
+ops.smoke_test	smoke test	смоук-тест | дымовой тест	スモークテスト	스모크 테스트	冒煙測試	冒烟测试
+ops.change_management	change management	управление изменениями	変更管理	변경 관리	變更管理	变更管理
+ops.maintenance_window	maintenance window	окно обслуживания | техническое окно | техокно	メンテナンスウィンドウ	유지 보수 기간 | 점검 시간	維護時段	维护窗口
+ops.runbook	runbook	ранбук | регламент действий	ランブック | 運用手順書	런북	維運手冊 | 操作手冊	运维手册 | 操作手册
+ops.toil	toil	рутинная ручная работа | тойл	トイル	반복 수작업 | 토일	重複性手動作業	重复性手工劳动 | 琐事
+ops.operations_team	operations team | ops	команда эксплуатации | опсы	運用チーム	운영팀	維運團隊	运维团队
+ops.system_administrator	system administrator | sysadmin	системный администратор | сисадмин | админ	システム管理者 | シスアド	시스템 관리자	系統管理員	系统管理员
+ops.self_hosted	self-hosted	самостоятельный хостинг | селфхост | на своих серверах	セルフホスト	셀프 호스팅	自行架設 | 自架	自托管 | 自建
+ops.hosting	hosting	хостинг | хостинга	ホスティング	호스팅	主機代管	托管
+ops.colocation	colocation	колокейшн | размещение оборудования	コロケーション	코로케이션	主機共置	服务器托管
+ops.monitoring	monitoring	мониторинг | мониторинга	モニタリング | 監視	모니터링	監控	监控
+ops.observability	observability	наблюдаемость | обзервабилити	オブザーバビリティ | 可観測性	관측 가능성 | 옵저버빌리티	可觀測性	可观测性
+ops.metrics	metrics	метрики | метрика | метрик	メトリクス	메트릭	監控指標 | metrics	监控指标 | metrics
+ops.time_series_database	time-series database | TSDB	база данных временных рядов | TSDB	時系列データベース	시계열 데이터베이스	時間序列資料庫	时序数据库
+ops.monitoring_dashboard	monitoring dashboard | dashboard	дашборд | панель мониторинга | дашборды	ダッシュボード	대시보드	儀表板	仪表盘
+ops.alerting	alerting | alert rule	алертинг | алерт | алерты	アラート	경보 | 얼럿	告警	告警
+ops.alert_fatigue	alert fatigue	усталость от алертов	アラート疲れ	경보 피로	告警疲勞	告警疲劳
+ops.log_file	log file | logs	лог | логи | логов | лог-файл	ログ | ログファイル	로그 | 로그 파일	日誌 | 日誌檔	日志 | 日志文件
+ops.log_level	log level	уровень логирования	ログレベル	로그 레벨	日誌等級	日志级别
+ops.logging	logging	логирование | логгирование	ロギング | ログ出力	로깅	日誌記錄	日志记录
+ops.structured_logging	structured logging	структурированное логирование	構造化ログ	구조화된 로깅	結構化日誌	结构化日志
+ops.log_rotation	log rotation	ротация логов	ログローテーション	로그 로테이션 | 로그 순환	日誌輪替	日志轮转
+ops.log_aggregation	log aggregation | centralized logging	агрегация логов | централизованный сбор логов	ログ集約	로그 집계	日誌彙整	日志聚合
+ops.stack_trace	stack trace | traceback	стектрейс | трассировка стека	スタックトレース	스택 트레이스	堆疊追蹤	堆栈跟踪
+ops.distributed_tracing	distributed tracing	распределённая трассировка | трейсинг	分散トレーシング	분산 추적	分散式追蹤	分布式追踪 | 链路追踪
+ops.trace_span	trace span	спан трассировки | спаны	トレーススパン	트레이스 스팬	追蹤區段 | Span	追踪跨度 | Span
+ops.apm	application performance monitoring | APM	мониторинг производительности приложений | APM	アプリケーションパフォーマンス監視 | APM	애플리케이션 성능 모니터링 | APM	應用程式效能監控 | APM	应用性能监控 | APM
+ops.synthetic_monitoring	synthetic monitoring	синтетический мониторинг	合成監視	합성 모니터링	合成監控	拨测 | 合成监控
+ops.heartbeat	heartbeat signal | heartbeat	хартбит | heartbeat-сигнал	ハートビート	하트비트	心跳訊號	心跳检测
+ops.anomaly_detection	anomaly detection	обнаружение аномалий	異常検知	이상 탐지	異常偵測	异常检测
+ops.tail_latency	tail latency | p99 latency	хвостовая задержка | задержка p99	テールレイテンシ	테일 레이턴시 | 꼬리 지연	尾端延遲	尾延迟
+ops.audit_log	audit log	журнал аудита | аудит-лог	監査ログ	감사 로그	稽核日誌	审计日志
+ops.root_cause_analysis	root cause analysis | RCA	анализ первопричин | поиск первопричины	根本原因分析	근본 원인 분석	根本原因分析	根因分析
+ops.mttr	mean time to recovery | MTTR	среднее время восстановления | MTTR	平均復旧時間 | MTTR	평균 복구 시간 | MTTR	平均復原時間 | MTTR	平均恢复时间 | MTTR
+ops.mtbf	mean time between failures | MTBF	среднее время между отказами | наработка на отказ	平均故障間隔 | MTBF	평균 고장 간격 | MTBF	平均故障間隔 | MTBF	平均故障间隔 | MTBF
+ops.capacity_planning	capacity planning	планирование мощностей | капасити-планирование	キャパシティプランニング | 容量計画	용량 계획	容量規劃	容量规划
+ops.performance_bottleneck	performance bottleneck	узкое место | боттлнек	ボトルネック	병목 | 병목 현상	效能瓶頸 | 瓶頸	性能瓶颈 | 瓶颈
+ops.profiling	performance profiling | profiler	профилирование | профайлер | профилировщик	プロファイリング	프로파일링	效能剖析	性能分析 | 性能剖析
+ops.flame_graph	flame graph	флейм-граф | флеймграф	フレームグラフ	플레임 그래프	火焰圖	火焰图
+ops.load_testing	load testing	нагрузочное тестирование | нагрузочный тест	負荷テスト	부하 테스트	負載測試	负载测试 | 压测
+ops.stress_testing	stress testing	стресс-тестирование	ストレステスト	스트레스 테스트	壓力測試	压力测试
+ops.chaos_engineering	chaos engineering	хаос-инжиниринг	カオスエンジニアリング	카오스 엔지니어링	混沌工程	混沌工程
+ops.metrics_scraping	metrics scraping | metrics collection	сбор метрик | скрейпинг метрик	メトリクス収集	메트릭 수집	指標收集	指标采集
+ops.data_retention	data retention period | log retention	срок хранения данных | срок хранения логов	データ保持期間 | 保持期間	보존 기간	資料保留期 | 保留期限	数据保留期 | 保留期
+ops.database	database | DB	база данных | базы данных | БД | базу данных	データベース | DB	데이터베이스 | DB	資料庫	数据库
+ops.dbms	database management system | DBMS	система управления базами данных | СУБД	データベース管理システム | DBMS	데이터베이스 관리 시스템 | DBMS	資料庫管理系統	数据库管理系统
+ops.relational_database	relational database	реляционная база данных | реляционная БД	リレーショナルデータベース | RDB	관계형 데이터베이스	關聯式資料庫	关系型数据库
+ops.nosql_database	NoSQL database | NoSQL	NoSQL-база | нереляционная база данных	NoSQLデータベース	NoSQL 데이터베이스	NoSQL 資料庫	NoSQL 数据库
+ops.key_value_store	key-value store	хранилище ключ-значение | key-value хранилище	キーバリューストア	키-값 저장소	鍵值儲存	键值存储
+ops.document_database	document database	документная база данных | документо-ориентированная БД	ドキュメントデータベース	문서 데이터베이스	文件資料庫	文档数据库
+ops.graph_database	graph database	графовая база данных	グラフデータベース	그래프 데이터베이스	圖形資料庫	图数据库
+ops.in_memory_database	in-memory database	резидентная база данных | in-memory БД	インメモリデータベース	인메모리 데이터베이스	記憶體內資料庫	内存数据库
+ops.sql	SQL	SQL | эскуэль | сиквел	SQL	SQL	SQL	SQL
+ops.sql_query	SQL query | database query	SQL-запрос | запрос к базе | запросы к БД	SQLクエリ | クエリ	SQL 쿼리 | 쿼리	SQL 查詢 | 資料庫查詢	SQL 查询 | 数据库查询
+ops.database_table	database table	таблица базы данных	データベーステーブル	데이터베이스 테이블	資料表	数据表
+ops.database_schema	database schema	схема базы данных | схема БД	データベーススキーマ	데이터베이스 스키마	資料庫結構描述 | 資料庫 schema	数据库模式 | 数据库 schema
+ops.schema_migration	schema migration | database migration	миграция схемы | миграция БД	スキーマ移行 | マイグレーション	스키마 마이그레이션	結構描述遷移 | 資料庫遷移	数据库迁移 | Schema 迁移
+ops.primary_key	primary key	первичный ключ	主キー	기본 키	主鍵	主键
+ops.foreign_key	foreign key	внешний ключ	外部キー	외래 키	外鍵	外键
+ops.database_index	database index	индекс базы данных | индексы БД	インデックス	인덱스	資料庫索引 | 索引	数据库索引 | 索引
+ops.table_join	table join | SQL join	соединение таблиц | джойн	テーブル結合 | JOIN	테이블 조인 | 조인	資料表聯結 | JOIN	表连接 | JOIN
+ops.database_transaction	database transaction	транзакция | транзакции | транзакцию	トランザクション	트랜잭션	資料庫交易	数据库事务 | 事务
+ops.acid	ACID properties | ACID	свойства ACID | ACID	ACID特性	ACID 속성	ACID 特性	ACID 特性
+ops.isolation_level	isolation level	уровень изоляции	分離レベル | 隔離レベル	격리 수준	隔離等級	隔离级别
+ops.stored_procedure	stored procedure	хранимая процедура	ストアドプロシージャ	저장 프로시저	預存程序	存储过程
+ops.database_trigger	database trigger	триггер базы данных | триггер	データベーストリガー	데이터베이스 트리거	資料庫觸發程序	数据库触发器
+ops.database_view	database view	представление базы данных	データベースビュー	데이터베이스 뷰	資料庫檢視	数据库视图
+ops.normalization	database normalization	нормализация базы данных	データベース正規化 | 正規化	정규화	資料庫正規化	数据库规范化
+ops.denormalization	denormalization	денормализация	非正規化	비정규화	反正規化	反规范化
+ops.replication	database replication | replication	репликация | репликации	レプリケーション	레플리케이션 | 데이터베이스 복제	資料庫複寫 | 複寫	数据库复制
+ops.read_replica	read replica	реплика для чтения | read-реплика	リードレプリカ	읽기 전용 복제본 | 리드 레플리카	唯讀複本	只读副本
+ops.primary_database	primary database | primary node	основная база | мастер-нода	プライマリDB | プライマリ	주 데이터베이스 | 프라이머리	主資料庫	主库 | 主数据库
+ops.sharding	sharding | database sharding	шардирование | шардинг | шард | шарды	シャーディング	샤딩	分片	分片
+ops.table_partitioning	table partitioning	партиционирование таблиц | партиционирование	テーブルパーティショニング	테이블 파티셔닝	資料表分割	表分区
+ops.connection_pool	connection pool	пул соединений | пул коннектов	コネクションプール	커넥션 풀 | 연결 풀	連線池	连接池
+ops.orm	object-relational mapping | ORM	объектно-реляционное отображение | ORM	オブジェクト関係マッピング | ORM	객체 관계 매핑 | ORM	物件關聯對映 | ORM	对象关系映射 | ORM
+ops.query_optimizer	query optimizer	оптимизатор запросов	クエリオプティマイザ	쿼리 옵티마이저 | 쿼리 최적화기	查詢最佳化工具	查询优化器
+ops.query_plan	query execution plan | query plan	план выполнения запроса	クエリ実行計画 | クエリプラン	쿼리 실행 계획 | 쿼리 플랜	查詢執行計畫 | 查詢計畫	查询执行计划 | 查询计划
+ops.slow_query	slow query	медленный запрос | медленные запросы	スロークエリ	슬로 쿼리 | 느린 쿼리	慢查詢	慢查询
+ops.full_table_scan	full table scan	полное сканирование таблицы | фулскан	フルテーブルスキャン	전체 테이블 스캔	全資料表掃描	全表扫描
+ops.row_lock	row-level lock	блокировка строки | построчная блокировка	行ロック	행 수준 잠금	列層級鎖定	行级锁
+ops.table_lock	table lock	блокировка таблицы	テーブルロック	테이블 잠금	資料表鎖定	表锁
+ops.mvcc	multiversion concurrency control | MVCC	многоверсионное управление конкурентным доступом | MVCC	多版本同時実行制御 | MVCC	다중 버전 동시성 제어 | MVCC	多版本並行控制 | MVCC	多版本并发控制 | MVCC
+ops.write_ahead_log	write-ahead log | WAL	журнал предзаписи | WAL	先行書き込みログ | WAL	미리 쓰기 로그 | WAL	預寫式日誌 | WAL	预写式日志 | WAL
+ops.data_warehouse	data warehouse	хранилище данных | DWH	データウェアハウス | DWH	데이터 웨어하우스	資料倉儲	数据仓库
+ops.data_lake	data lake	озеро данных | дата-лейк	データレイク	데이터 레이크	資料湖	数据湖
+ops.etl	ETL pipeline | ETL	ETL-процесс | ETL	ETLパイプライン | ETL	ETL 파이프라인 | ETL	ETL 流程 | ETL	ETL 流程 | ETL
+ops.oltp	online transaction processing | OLTP	OLTP | обработка транзакций в реальном времени	オンライントランザクション処理 | OLTP	온라인 트랜잭션 처리 | OLTP	線上交易處理 | OLTP	联机事务处理 | OLTP
+ops.olap	online analytical processing | OLAP	OLAP | аналитическая обработка в реальном времени	オンライン分析処理 | OLAP	온라인 분석 처리 | OLAP	線上分析處理 | OLAP	联机分析处理 | OLAP
+ops.columnar_database	columnar database | column store	колоночная база данных | колоночная СУБД	列指向データベース | カラムナデータベース	컬럼형 데이터베이스	欄式資料庫	列式数据库
+ops.caching_layer	caching layer | cache server	слой кэширования | кэш-сервер	キャッシュ層 | キャッシュサーバー	캐시 계층 | 캐시 서버	快取層 | 快取伺服器	缓存层 | 缓存服务器
+ops.cache_hit_ratio	cache hit ratio | cache hit rate	коэффициент попадания в кэш | хитрейт кэша	キャッシュヒット率	캐시 적중률	快取命中率	缓存命中率
+ops.cache_invalidation	cache invalidation	инвалидация кэша | сброс кэша	キャッシュ無効化	캐시 무효화	快取失效	缓存失效
+ops.message_queue	message queue | MQ	очередь сообщений	メッセージキュー	메시지 큐	訊息佇列	消息队列
+ops.message_broker	message broker	брокер сообщений	メッセージブローカー	메시지 브로커	訊息代理	消息代理 | 消息中间件
+ops.pub_sub	publish-subscribe | pub/sub	издатель-подписчик | паб-саб	パブリッシュ/サブスクライブ | Pub/Sub	발행-구독 | Pub/Sub	發布/訂閱 | Pub/Sub	发布/订阅 | Pub/Sub
+ops.dead_letter_queue	dead-letter queue | DLQ	очередь недоставленных сообщений | DLQ	デッドレターキュー	데드 레터 큐	無效信件佇列	死信队列
+ops.event_streaming	event streaming	потоковая передача событий | стриминг событий	イベントストリーミング	이벤트 스트리밍	事件串流	事件流
+ops.consumer_lag	consumer lag	лаг консьюмера | отставание потребителя	コンシューマーラグ	컨슈머 랙	消費者延遲	消费者延迟 | 消费积压
+ops.idempotency	idempotency	идемпотентность	冪等性	멱등성	冪等性	幂等性
+ops.eventual_consistency	eventual consistency	согласованность в конечном счёте | итоговая согласованность	結果整合性	최종 일관성	最終一致性	最终一致性
+ops.strong_consistency	strong consistency	строгая согласованность	強整合性	강한 일관성	強一致性	强一致性
+ops.cap_theorem	CAP theorem	теорема CAP	CAP定理	CAP 정리	CAP 定理	CAP 定理
+ops.consensus_algorithm	consensus algorithm	алгоритм консенсуса	合意アルゴリズム | コンセンサスアルゴリズム	합의 알고리즘	共識演算法	共识算法
+ops.leader_election	leader election	выбор лидера | выборы лидера	リーダー選出	리더 선출	領導者選舉	领导者选举 | 选主
+ops.split_brain	split-brain	сплит-брейн | разделение кластера	スプリットブレイン	스플릿 브레인	腦裂	脑裂
+ops.database_dump	database dump	дамп базы данных | дамп базы | дамп БД	データベースダンプ	데이터베이스 덤프	資料庫傾印	数据库转储 | 数据库导出
+ops.point_in_time_recovery	point-in-time recovery | PITR	восстановление на момент времени	ポイントインタイムリカバリ	특정 시점 복구	時間點復原	时间点恢复
+ops.connection_string	connection string	строка подключения	接続文字列	연결 문자열	連線字串	连接字符串
+ops.database_administrator	database administrator | DBA	администратор баз данных | DBA	データベース管理者 | DBA	데이터베이스 관리자 | DBA	資料庫管理員 | DBA	数据库管理员 | DBA
