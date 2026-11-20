@@ -166,6 +166,14 @@ update_branch() {
   printf "$(t at)\n" "$(git -C "$DIR" rev-parse --short HEAD)"
 }
 
+# #1678: app-menu shortcut (one fixed file, rewritten on every run; scripts/uninstall.sh removes it)
+install_desktop_shortcut() {
+  local d="$HOME/.local/share/applications" f
+  f="$d/tinglongwu.desktop"
+  mkdir -p "$d" || return 0
+  printf '[Desktop Entry]\nType=Application\nName=tinglongWu\nComment=Offline voice translator\nExec=%s/.venv/bin/tlwu-gui\nIcon=%s/tinglongwu/gui/assets/tinglongwu.png\nTerminal=false\nCategories=AudioVideo;Audio;\n' "$DIR" "$DIR" > "$f.tmp" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"
+}
+
 main() {
   # keep the keyboard for prompts even under `curl | bash` (not needed, and not wanted, when unattended)
   if [ -z "$YES" ] && ( : </dev/tty ) 2>/dev/null; then exec </dev/tty; fi
@@ -236,6 +244,7 @@ main() {
   .venv/bin/python -m pip install -e . || die "pip install failed (network?). Re-run this command to resume."
   # an older .venv may come from another Python than $PY: check the interpreter tlwu-gui really runs (#328)
   .venv/bin/python -c 'import tkinter' 2>/dev/null || printf '\n[!] %s\n' "$(t notk)" >&2
+  install_desktop_shortcut || true
   install_llama || true   # warned above; the rest of the install still works (transcript, menu)
 
   if [ -z "${TLWU_SKIP_MODELS:-}" ]; then
