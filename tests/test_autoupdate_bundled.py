@@ -49,7 +49,7 @@ def test_bundled_cmds_rerun_tlwu_exe(bundled, tmp_path):
 
 def test_source_cmds_keep_python_m(source):
     assert autoupdate.check_cmd("0.3.2", python="py") == ["py", "-m", "tinglongwu_setup.selfupdate", "--check", "0.3.2"]
-    assert autoupdate.app_root() == Path(autoupdate.__file__).resolve().parents[2]
+    assert autoupdate.app_root() == Path(autoupdate.__file__).resolve().parents[4]
 
 
 def test_bundled_app_root_is_the_exe_folder_and_counts_as_wizard_install(bundled):

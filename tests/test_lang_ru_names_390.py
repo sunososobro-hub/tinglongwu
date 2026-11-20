@@ -82,9 +82,10 @@ def test_without_pymorphy_the_text_passes_through(monkeypatch):
 
 
 def test_core_has_no_russian_branch_for_this_feature():
-    core = Path(lang_patches.__file__).resolve().parent.parent
+    import tinglongwu  # #1664: the package's modules are split over the layer dirs on tinglongwu.__path__
+    dirs = [Path(d) for d in tinglongwu.__path__]
     for name in ("translate.py", "pipeline.py", "stream.py", "hymt.py"):
-        text = (core / name).read_text("utf-8")
+        text = next(d / name for d in dirs if (d / name).is_file()).read_text("utf-8")
         assert not re.search(r"""(src|lang)\s*==\s*["']ru["']""", text), name
 
 

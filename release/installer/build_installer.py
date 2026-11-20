@@ -31,7 +31,7 @@ STAGE_PREFIXES = ("src/", "scripts/", "release/installer/run_install.ps1",
                   "README", "docs/README.zh-", "docs/PRIVACY_POLICY", ".github/SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 # the one app icon (#270, #127): the wizard, its shortcuts, the uninstall entry, install.ps1 shortcuts and tlwu.exe
-APP_ICON = REPO / "src" / "ui" / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
+APP_ICON = REPO / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
 
 
 def app_version(repo: Path = REPO) -> str:
