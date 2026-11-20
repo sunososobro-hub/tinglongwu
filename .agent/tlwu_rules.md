@@ -138,7 +138,7 @@ Owner: "聽 說 雙向是一個維度，平台是一個維度，語言是一個"
 Owner: "我衝到最後會拉不回來". Work on the pipeline itself must stay small next to work users can feel.
 - `infra` label: any issue whose result only the owner or the agents see. That covers the stats page and Sankey, ledger and throttle tooling, these rules, routine prompts, health logs and agent workflows. Release, CI and eval infrastructure that protects users (quality gates, installers, crash fixes) is NOT `infra`. The type label (section 10) stays as it is; `infra` is added on top.
 - Cap: `infra` issues may use at most 10% of `tlwu-usage` minutes over the last 7 days (same inputs as the section 10 ledger). The `ledger` Action's comment on #61 (section 10) adds one line, `infra: <minutes> / <total> = <share>% (cap 10%)`.
-- Over the cap: pickers skip `infra` items (P0 still allowed) until the share drops below 10%. S-hard does not open new `infra` issues while over the cap.
+- Over the cap: pickers skip `infra` items (P0 and `src:owner` still allowed) until the share drops below 10%. S-hard does not open new `infra` issues while over the cap.
 - User test for new issues: every new `enhancement` or `infra` issue states in its Why line which real user (or user report or Discussion link) it helps. With no answer it is opened as P3.
 - Triage (section 10 / 12) adds `infra` when it applies.
 
