@@ -60,3 +60,29 @@ def test_uninstall_keeps_foreign_app_bundle(tmp_path):
                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert exe.exists()
+
+
+def test_install_refuses_to_replace_foreign_bundle(tmp_path):
+    h, d = _home(tmp_path)
+    exe = h / "Applications" / "tinglongWu.app" / "Contents" / "MacOS" / "tinglongwu"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/bash\necho mine\n")
+    code = 'TLWU_SOURCE_ONLY=1 source "$S"; DIR="$D"; install_app_launcher'
+    r = subprocess.run(["bash", "-c", code], env={**_env(h), "S": str(ROOT / "scripts" / "mac_install.sh"), "D": str(d)},
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0
+    assert "echo mine" in exe.read_text()
+
+
+def test_launcher_path_with_dollar_is_literal(tmp_path):
+    h, d = _home(tmp_path)
+    d = h / "tlwu$variant"
+    d.mkdir()
+    _install_launcher(h, d)
+    exe = h / "Applications" / "tinglongWu.app" / "Contents" / "MacOS" / "tinglongwu"
+    gui = d / ".venv" / "bin" / "tlwu-gui"
+    gui.parent.mkdir(parents=True)
+    gui.write_text("#!/bin/bash\necho ran-gui\n")
+    gui.chmod(0o755)
+    r = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+    assert r.stdout.strip() == "ran-gui"
