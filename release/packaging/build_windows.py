@@ -38,6 +38,10 @@ import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
+# src/ layer layout (#1664): tinglongwu (gpu_pack, llamacheck) is imported from src/core; its __init__ adds the
+# other layer dirs. Set here, not in the pack-recipe functions, so the GPU pack recipe fingerprint is unchanged.
+if str(REPO / "src" / "core") not in sys.path:
+    sys.path.insert(0, str(REPO / "src" / "core"))
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build"
 RUNTIME = EVAL / "runtime" / "tlwu"  # the runtime layer (release/packaging/runtime_layer.py); CI caches EVAL/runtime

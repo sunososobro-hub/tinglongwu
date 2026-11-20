@@ -149,7 +149,7 @@ def _load(name: str, path: Path):
 
 
 def _selfupdate():
-    sys.path.insert(0, str(REPO))  # tinglongwu_setup is a package at the repo root
+    sys.path.insert(0, str(REPO / "src" / "system"))  # tinglongwu_setup lives in src/system (#1664)
     import tinglongwu_setup.selfupdate as su  # noqa: PLC0415
     return su
 
