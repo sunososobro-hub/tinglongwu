@@ -40,7 +40,7 @@ Setup downloads speech and translation models once; optional packs (extra langua
 
 ## Languages and requirements
 
-More languages on the way ([language plan](docs/VISION.md)). [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md)
+More languages on the way ([language plan](docs/VISION.md)). [Full docs: requirements, privacy, FAQ](https://sunososobro-hub.github.io/tinglongwu/docs.html) · [Platform support](docs/support.md) · [Language pairs](docs/languages.md) · [Report with your AI](docs/report-with-ai.md) · [Glossary with your AI](docs/glossary-with-ai.md)
 
 ## Want to help?
 
