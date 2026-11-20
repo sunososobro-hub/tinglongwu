@@ -178,7 +178,7 @@ def test_cli_flag_installs_into_vulkan_pack_next_to_the_app(tmp_path, monkeypatc
     monkeypatch.delenv("TLWU_VULKAN_PACK", raising=False)
     monkeypatch.delenv("TLWU_OFFLINE", raising=False)
     monkeypatch.setattr(vulkan_pack, "run", lambda dest, version: seen.append((dest, version)) or 0)
-    assert cli.main(["--vulkan-pack"]) == 0  # source checkout: the version is read from tinglongwu/__init__.py
+    assert cli.main(["--vulkan-pack"]) == 0  # source checkout: the version is read from src/core/tinglongwu/__init__.py
     import tinglongwu
 
     assert seen == [(cli.ROOT / "vulkan-pack", tinglongwu.__version__)]
@@ -288,6 +288,7 @@ def test_vulkan_init_failure_with_the_pack_path_set_ends_on_cpu_with_a_loaded_mo
 
     fake = types.ModuleType("llama_cpp")
     fake.Llama = FakeLlama
+    fake.__file__ = str(tmp_path / "llama_cpp" / "__init__.py")
 
     def import_llama():
         lib_paths.append(os.environ.get("LLAMA_CPP_LIB_PATH"))

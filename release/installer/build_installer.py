@@ -26,17 +26,18 @@ REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
 ISS = REPO / "release" / "installer" / "tinglongwu.iss"
 OUT = REPO / "dist" / "installer"
 # what the installed app needs at run time and for install.ps1 / update.bat / the menus
-STAGE_PREFIXES = ("tinglongwu/", "tinglongwu_setup/", "tlwu_app/", "scripts/", "release/installer/run_install.ps1",
+# eval/tlwu_eval/: pyproject packages it (#1664), so `pip install -e .` fails without it; the eval data stays out
+STAGE_PREFIXES = ("src/", "scripts/", "eval/tlwu_eval/", "release/installer/run_install.ps1",
                   "install.ps1", "install.bat", "update.bat", "pyproject.toml", "requirements", "LICENSE",
                   "README", "docs/README.zh-", "docs/PRIVACY_POLICY", ".github/SECURITY.md")
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 # the one app icon (#270, #127): the wizard, its shortcuts, the uninstall entry, install.ps1 shortcuts and tlwu.exe
-APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
+APP_ICON = REPO / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"
 
 
 def app_version(repo: Path = REPO) -> str:
     # tinglongwu.__version__ is the single source of truth (#462); read as text, no import
-    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (repo / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (repo / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
     return m.group(1) if m else "0.0.0"
 
 
@@ -181,7 +182,7 @@ EXTRA_DISK_BYTES_CORE = 2 * 1024**3
 def default_listen_mb(repo: Path = REPO) -> int:
     """#771 / #1359: DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB (the wizard runs `setup --default-listen --defer-mt`) from tinglongwu_setup/defaults.py (the one named constant), read as text so the
     build script stays stdlib-only and never imports the package."""
-    m = re.search(r"^DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB\s*=\s*(\d+)", (repo / "tinglongwu_setup" / "defaults.py").read_text("utf-8"), re.M)
+    m = re.search(r"^DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB\s*=\s*(\d+)", (repo / "src" / "system" / "tinglongwu_setup" / "defaults.py").read_text("utf-8"), re.M)
     if not m:
         raise SystemExit("tinglongwu_setup/defaults.py: DEFAULT_LISTEN_DEFER_MT_DOWNLOAD_MB not found")
     return int(m.group(1))

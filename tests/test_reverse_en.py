@@ -128,8 +128,8 @@ def test_kokoro_command_line_and_env(monkeypatch):
 
 def test_main_process_never_imports_kokoro():
     """kokoro-onnx bundles GPL espeak: only the worker (own venv) may import it; never a dependency here."""
-    root = WORKER.parents[2]
-    for f in (root / "tinglongwu").rglob("*.py"):
+    root = WORKER.parents[4]  # src/flow/tinglongwu/reverse/tts_worker.py (#1664)
+    for f in (p for d in (root / "src").glob("*/tinglongwu") for p in d.rglob("*.py")):
         if f != WORKER:
             assert "import kokoro" not in f.read_text("utf-8") and "from kokoro" not in f.read_text("utf-8"), f
     for name in ("requirements.txt", "requirements-gpu.txt", "requirements-llama-cuda.txt", "pyproject.toml"):

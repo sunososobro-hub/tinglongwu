@@ -13,9 +13,9 @@ on:
       - scripts/bench/term_eval.py
       - scripts/bench/acronym_eval.py
       - eval/matrix_pins.json
-      - tinglongwu/glossary.py
-      - tinglongwu/data/hotwords-ru.txt
-      - tinglongwu/data/tech-ru.txt
+      - src/core/tinglongwu/glossary.py
+      - src/core/tinglongwu/data/hotwords-ru.txt
+      - src/core/tinglongwu/data/tech-ru.txt
       - scripts/bench/slang_eval.py
   workflow_dispatch:
     inputs:
@@ -68,7 +68,7 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
-          key: eval-terms-models-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: eval-terms-models-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - name: Models (Hy-MT2 1.8B + Whisper + Piper ru voice)
         run: tlwu-setup --hymt --whisper "$WHISPER" --piper-ru dmitri --models-dir "$TLWU_MODELS"
       - name: Speak the set (Piper, own venv)

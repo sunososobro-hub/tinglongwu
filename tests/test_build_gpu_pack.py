@@ -187,7 +187,7 @@ def _recipe_fingerprint(m) -> str:
 
 
 # Pinned together with GPU_PACK_FORMAT: if this fails you edited the pack recipe; bump GPU_PACK_FORMAT and update both.
-RECIPE_PIN = (1, "4c4b8c24347b85eff23a33464000fd8445fe0b2314a63705b6e03d5020d5d27a")
+RECIPE_PIN = (1, "0fd0a99ccac80004fcdb002530569dc6f003d420a0aa99081c2497d9f46f88d7")
 
 
 def test_recipe_edit_requires_format_bump():

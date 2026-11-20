@@ -37,7 +37,7 @@ class _Api:
 @pytest.fixture
 def pins_file(tmp_path, monkeypatch):
     f = tmp_path / "manifest.json"
-    f.write_text((ROOT / "tinglongwu_setup" / "manifest.json").read_text("utf-8"), "utf-8", newline="\n")
+    f.write_text((ROOT / "src" / "system" / "tinglongwu_setup" / "manifest.json").read_text("utf-8"), "utf-8", newline="\n")
     monkeypatch.setattr(dl, "PINS_FILE", f)
     return f
 

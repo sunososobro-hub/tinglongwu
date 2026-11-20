@@ -84,13 +84,13 @@ def test_kana_labelled_zh_counts_as_japanese():
     m = SentenceMerger(max_wait=MEETING_WAIT)
     text = "安全に泳ぐことができます"
     assert texts(m.add(text, script_lang(text, "zh"), 0, pause=0.6)) == [text]
-    src = (ROOT / "tinglongwu" / "pipeline.py").read_text("utf-8")
+    src = (ROOT / "src" / "flow" / "tinglongwu" / "pipeline.py").read_text("utf-8")
     assert "merger.add(t.text, script_lang(t.text, t.lang)" in src
 
 
 def test_core_merge_has_no_language_branch():
-    # #390: the ja pause threshold lives in tinglongwu/lang/ja/, not as `lang == "ja"` in merge.py
-    src = (ROOT / "tinglongwu" / "merge.py").read_text("utf-8")
+    # #390: the ja pause threshold lives in src/core/tinglongwu/lang/ja/, not as `lang == "ja"` in merge.py
+    src = (ROOT / "src" / "core" / "tinglongwu" / "merge.py").read_text("utf-8")
     assert not re.search(r"""lang\s*(==|!=|in)\s*[\(\["']""", src)
     assert '"ja"' not in src and "'ja'" not in src
     assert lang_patches.setting("ja-JP", "MERGE_PAUSE_SEND", PAUSE_SEND) < PAUSE_SEND

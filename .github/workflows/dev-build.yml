@@ -4,7 +4,7 @@ name: dev-build
 # (tlwu.exe --smoke), build the setup wizard from it and publish both to ONE rolling pre-release `dev-latest`:
 #   https://github.com/<repo>/releases/tag/dev-latest
 #   tinglongwu-setup-dev.exe  (fixed name, fixed URL)   tinglongwu-win64-dev.zip
-# It is a pre-release, so it is never `latest`: the auto-update (tinglongwu_setup/selfupdate.py reads
+# It is a pre-release, so it is never `latest`: the auto-update (src/system/tinglongwu_setup/selfupdate.py reads
 # releases/latest) never offers it to users. No release gate runs here; the gates stay on dev -> main.
 # Nothing waits for this workflow and no merge or release depends on it.
 on:
@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' tinglongwu/__init__.py)
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/core/tinglongwu/__init__.py)
           subject=$(git log -1 --pretty=%s)
           {
             echo "**Development build, untested. Not a release.** Built from \`dev\` at \`${GITHUB_SHA::7}\` (code version $version)."
