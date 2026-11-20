@@ -2,6 +2,7 @@
 all offline: every request is a fake."""
 import io
 import json
+import re
 import urllib.error
 from pathlib import Path
 
@@ -143,7 +144,20 @@ def test_launch_apply_detached(tmp_path):
 # -- installer: models and config survive ------------------------------------------------------------------------
 def test_installer_keeps_models_and_respects_choice_on_silent_update():
     iss = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
-    assert '[InstallDelete]' not in iss  # an (update) install never deletes models\ or the config
+    # An (update) install never deletes models\ or the config. The only allowed [InstallDelete] entries are the
+    # pre-move root package folders (#1664), each exactly {app}\<name>: no wildcard, no subpath, no other root.
+    stale = {"tinglongwu", "tinglongwu_setup", "tlwu_app", "tlwu_eval"}
+    entry = re.compile(r'Type:\s*filesandordirs;\s*Name:\s*"\{app\}\\([A-Za-z_]+)"')
+    section = None
+    for raw in iss.splitlines():
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            section = line.lower()
+            continue
+        if section != "[installdelete]" or not line or line.startswith(";"):
+            continue
+        m = entry.fullmatch(line)
+        assert m and m.group(1) in stale, f"[InstallDelete] entry may touch user data: {line!r}"
     assert 'Name: "autoupdate"' in iss
     task = next(l for l in iss.splitlines() if l.startswith('Name: "autoupdate"'))
     assert "unchecked" not in task  # opt-in box is ticked by default
