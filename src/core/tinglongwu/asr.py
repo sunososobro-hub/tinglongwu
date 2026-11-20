@@ -118,6 +118,29 @@ class Recognizer(ABC):
         """#1252: audio the last transcribe() left undecoded (time budget cut), or None. Default: never cut."""
         return None
 
+    def _gpu_to_cpu(self, e: Exception) -> None:
+        """#1681: the GPU model loaded but failed to decode (cuBLAS / cuDNN missing, OOM, fp16 on an old card).
+        Rebuild on CPU (same settings as the load-time fallback) and say so in one plain line."""
+        from faster_whisper import WhisperModel
+
+        reason = (str(e).strip().splitlines() or [type(e).__name__])[0][:160]
+        print(f"tlwu: GPU 無法使用，已改用 CPU：{reason}", file=sys.stderr, flush=True)
+        beam_cpu, threads_cpu = cpu_fallback_settings(self._beam_arg, self._threads_arg)
+        if thread_budget.both():
+            kw = {"cpu_threads": thread_budget.current()["asr"]}
+        else:
+            kw = {"cpu_threads": threads_cpu} if threads_cpu else {}
+        self.model = WhisperModel(str(self._path), device="cpu", compute_type="int8", **kw)
+        self.device = "cpu"
+        self.fast, self.beam = False, beam_cpu
+
+    def _on_gpu_error(self, e: Exception) -> bool:
+        """True when a CUDA decode error was handled by switching to CPU (the caller retries once)."""
+        if getattr(self, "device", "cpu") != "cuda" or not isinstance(e, RuntimeError):
+            return False
+        self._gpu_to_cpu(e)  # a failure here (CPU load) propagates: the caller shows the error state
+        return True
+
     def warm_up(self) -> None:
         """#1247: one throw-away decode before a live session starts. Default: nothing to warm."""
 
@@ -152,10 +175,12 @@ class FasterWhisperRecognizer(Recognizer):
                  fast: bool = False, live: bool = False, beam: int | None = None,
                  threads: int | None = None):
         threads_arg = threads
+        self._beam_arg, self._threads_arg = beam, threads_arg
         path = require(models_dir / f"whisper-{size}", f"Whisper model '{size}'",
                        f"--whisper {size}")
         from faster_whisper import WhisperModel
 
+        self._path = path
         self.device = resolve_device(device)
         # #186 fast: live CPU speak mode. Greedy decode, no timestamp tokens, all physical cores. CUDA never uses it.
         self.fast = bool(fast) and self.device == "cpu"
@@ -230,6 +255,14 @@ class FasterWhisperRecognizer(Recognizer):
 
     def partial(self, audio: np.ndarray) -> Transcript | None:
         """Streaming draft: greedy, no prompt, does not touch _last / the locked language."""
+        try:
+            return self._partial(audio)
+        except RuntimeError as e:
+            if not self._on_gpu_error(e):
+                raise
+            return self._partial(audio)
+
+    def _partial(self, audio: np.ndarray) -> Transcript | None:
         lang = self._lang_for(audio, reuse=True)
         segs, info = self.model.transcribe(
             audio, language=lang, task="transcribe", beam_size=1, vad_filter=False,
@@ -300,6 +333,14 @@ class FasterWhisperRecognizer(Recognizer):
         return tail
 
     def transcribe(self, audio: np.ndarray) -> Transcript | None:
+        try:
+            return self._transcribe_live(audio)
+        except RuntimeError as e:
+            if not self._on_gpu_error(e):
+                raise
+            return self._transcribe_live(audio)  # retry the segment once on CPU; a second failure propagates
+
+    def _transcribe_live(self, audio: np.ndarray) -> Transcript | None:
         if not getattr(self, "live", False):
             return self._transcribe(audio, None)
         started = self._now()
