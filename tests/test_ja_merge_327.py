@@ -84,7 +84,7 @@ def test_kana_labelled_zh_counts_as_japanese():
     m = SentenceMerger(max_wait=MEETING_WAIT)
     text = "安全に泳ぐことができます"
     assert texts(m.add(text, script_lang(text, "zh"), 0, pause=0.6)) == [text]
-    src = (ROOT / "src" / "core" / "tinglongwu" / "pipeline.py").read_text("utf-8")
+    src = (ROOT / "src" / "flow" / "tinglongwu" / "pipeline.py").read_text("utf-8")
     assert "merger.add(t.text, script_lang(t.text, t.lang)" in src
 
 
