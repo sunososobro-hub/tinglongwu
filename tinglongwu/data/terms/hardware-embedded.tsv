@@ -1,0 +1,368 @@
+# scenario: tech
+# hardware-embedded: generic engineering terms, written for tinglongwu (no third-party glossary copied). en/ru/ja/ko/zh-TW/zh-CN.
+id	en	ru	ja	ko	zh-TW	zh-CN
+hw.integrated_circuit	integrated circuit | IC | integrated circuits	интегральная схема | интегральные схемы | интегральной схемы | микросхема | микросхемы | микросхему | микросхеме	集積回路 | IC	집적 회로 | 집적회로	積體電路 | IC	集成电路
+hw.soc	system on chip | SoC | system on a chip | SoCs	система на кристалле | системы на кристалле | SoC	システムオンチップ | SoC	시스템 온 칩 | SoC	系統單晶片 | SoC	片上系统 | 系统级芯片 | SoC
+hw.microcontroller	microcontroller | MCU | microcontrollers	микроконтроллер | микроконтроллеры | микроконтроллера | микроконтроллере | микроконтроллером | MCU	マイクロコントローラ | マイコン | MCU	마이크로컨트롤러 | MCU	微控制器 | 單晶片 | MCU	微控制器 | 单片机 | MCU
+hw.microprocessor	microprocessor | microprocessors	микропроцессор | микропроцессоры | микропроцессора	マイクロプロセッサ	마이크로프로세서	微處理器	微处理器
+hw.cpu_core	CPU core | CPU cores | processor core	процессорное ядро | ядро процессора | ядра процессора	CPUコア | プロセッサコア	CPU 코어 | 프로세서 코어	CPU 核心 | 處理器核心	CPU 内核 | 处理器内核
+hw.multicore	multi-core processor | multicore processor	многоядерный процессор | многоядерного процессора	マルチコアプロセッサ	멀티코어 프로세서	多核心處理器	多核处理器
+hw.asic	ASIC | application-specific integrated circuit | ASICs	специализированная микросхема | ASIC	特定用途向け集積回路 | ASIC	주문형 반도체 | ASIC	特殊應用積體電路 | ASIC	专用集成电路 | ASIC
+hw.fpga	FPGA | field-programmable gate array | FPGAs	ПЛИС | FPGA | программируемая логическая интегральная схема	FPGA | フィールドプログラマブルゲートアレイ	FPGA | 필드 프로그래머블 게이트 어레이	現場可程式化邏輯閘陣列 | FPGA	现场可编程门阵列 | FPGA
+hw.cpld	CPLD | complex programmable logic device	CPLD | сложное программируемое логическое устройство	CPLD | 複合プログラマブルロジックデバイス	CPLD | 복합 프로그래머블 논리 소자	CPLD | 複雜可程式邏輯裝置	CPLD | 复杂可编程逻辑器件
+hw.dsp	digital signal processor | DSP | DSPs	цифровой сигнальный процессор | сигнальный процессор | DSP	デジタルシグナルプロセッサ | DSP	디지털 신호 처리기 | DSP	數位訊號處理器 | DSP	数字信号处理器 | DSP
+hw.npu	neural processing unit | NPU	нейропроцессор | нейронный процессор | NPU	ニューラルプロセッシングユニット | NPU	신경망 처리 장치 | NPU	神經網路處理器 | NPU	神经网络处理器 | NPU
+hw.coprocessor	coprocessor | co-processor	сопроцессор | сопроцессора	コプロセッサ	코프로세서 | 보조 프로세서	協同處理器 | 協處理器	协处理器
+hw.hw_accelerator	hardware accelerator | hardware acceleration	аппаратный ускоритель | аппаратное ускорение	ハードウェアアクセラレータ | ハードウェアアクセラレーション	하드웨어 가속기 | 하드웨어 가속	硬體加速器 | 硬體加速	硬件加速器 | 硬件加速
+hw.crypto_engine	crypto engine | cryptographic accelerator	криптографический движок | криптоускоритель	暗号エンジン | 暗号アクセラレータ	암호화 엔진 | 암호 가속기	加密引擎 | 加密加速器	加密引擎 | 加密加速器
+hw.die	silicon die | chip die | dies	кристалл микросхемы | кристалл чипа	シリコンダイ | ベアダイ	실리콘 다이 | 베어 다이	晶粒 | 裸晶	裸片 | 晶粒
+hw.wafer	silicon wafer | wafers	кремниевая пластина | кремниевой пластины | пластина кремния	ウェハ | ウェーハ | シリコンウェハ	웨이퍼 | 실리콘 웨이퍼	晶圓 | 矽晶圓	晶圆 | 硅晶圆
+hw.chipset	chipset | chipsets	чипсет | чипсеты | чипсета | набор микросхем	チップセット	칩셋	晶片組	芯片组
+hw.semiconductor	semiconductor | semiconductors	полупроводник | полупроводники | полупроводниковый	半導体	반도체	半導體	半导体
+hw.transistor	transistor | transistors	транзистор | транзисторы | транзистора | транзисторов	トランジスタ	트랜지스터	電晶體	晶体管
+hw.mosfet	MOSFET | MOSFETs	МОП-транзистор | полевой транзистор | MOSFET	MOSFET | 金属酸化膜半導体電界効果トランジスタ	MOSFET | 모스펫	金氧半場效電晶體 | MOSFET	金属氧化物半导体场效应晶体管 | MOSFET
+hw.process_node	process node | process technology | technology node	техпроцесс | техпроцесса | технологический процесс | технологическая норма	プロセスノード | 製造プロセス	공정 노드 | 미세 공정	製程節點 | 製程	工艺节点 | 制程
+hw.lithography	photolithography | lithography	литография | фотолитография | литографии	リソグラフィ | フォトリソグラフィ	리소그래피 | 포토리소그래피	微影 | 光刻	光刻 | 光刻工艺
+hw.tape_out	tape-out | tapeout	тейпаут | тейп-аут | передача в производство	テープアウト	테이프아웃	投片 | tape-out	流片
+hw.silicon_revision	silicon revision | chip revision | stepping	ревизия кристалла | ревизия чипа | степпинг	シリコンリビジョン | ステッピング	실리콘 리비전 | 스테핑	晶片版本 | 晶片改版	芯片版本 | 步进版本
+hw.errata	errata sheet | silicon errata | chip errata	эррата | список ошибок микросхемы	エラッタ | エラッタシート	에라타 | 정오표	勘誤表 | 晶片勘誤	勘误表 | 芯片勘误
+hw.datasheet	datasheet | data sheet | datasheets	даташит | даташиты | даташита | даташите | техническое описание	データシート	데이터시트 | 데이터 시트	規格書 | 資料手冊 | datasheet	数据手册 | 规格书
+hw.reference_design	reference design | reference schematic	референсный дизайн | референс-дизайн | эталонная схема	リファレンスデザイン | 参照設計	레퍼런스 디자인 | 참조 설계	參考設計	参考设计
+hw.ip_core	IP core | semiconductor IP | IP block	IP-ядро | IP-блок | сложно-функциональный блок	IPコア | IPブロック	IP 코어 | IP 블록	矽智財 | IP 核	IP 核 | 知识产权核
+hw.rtl	register-transfer level | RTL code | RTL design	уровень регистровых передач | RTL-код | RTL-описание	レジスタ転送レベル | RTLコード	레지스터 전송 수준 | RTL 코드	暫存器傳輸級 | RTL 程式碼	寄存器传输级 | RTL 代码
+hw.netlist	netlist | netlists	нетлист | список соединений | список цепей	ネットリスト	넷리스트	網表 | 接線表	网表
+hw.logic_synthesis	logic synthesis | RTL synthesis	логический синтез | синтез логики	論理合成	논리 합성	邏輯合成	逻辑综合
+hw.timing_closure	timing closure | timing analysis | static timing analysis	временной анализ | закрытие тайминга | статический временной анализ	タイミングクロージャ | タイミング解析 | 静的タイミング解析	타이밍 클로저 | 타이밍 분석 | 정적 타이밍 분석	時序收斂 | 時序分析 | 靜態時序分析	时序收敛 | 时序分析 | 静态时序分析
+hw.clock_domain	clock domain | clock domains	тактовый домен | домен тактирования | тактовые домены	クロックドメイン	클럭 도메인	時脈域 | 時鐘域	时钟域
+hw.clock_domain_crossing	clock domain crossing | CDC path	пересечение тактовых доменов | переход между тактовыми доменами	クロックドメインクロッシング | クロック乗せ換え	클럭 도메인 크로싱	跨時脈域 | 跨時鐘域	跨时钟域
+hw.metastability	metastability | metastable state	метастабильность | метастабильное состояние	メタステーブル | 準安定状態	준안정성 | 준안정 상태	亞穩態	亚稳态
+hw.flip_flop	flip-flop | flip-flops | D flip-flop	D-триггер | RS-триггер | флип-флоп | триггерная схема	フリップフロップ | Dフリップフロップ	플립플롭 | D 플립플롭	正反器 | D 型正反器	触发器 | D 触发器
+hw.logic_gate	logic gate | logic gates	логический вентиль | логический элемент | логические вентили	論理ゲート	논리 게이트	邏輯閘	逻辑门
+hw.state_machine	finite state machine | state machine | FSM	конечный автомат | машина состояний | конечного автомата	有限状態機械 | ステートマシン | 状態遷移機械	유한 상태 기계 | 상태 머신	有限狀態機 | 狀態機	有限状态机 | 状态机
+hw.cache_memory	cache memory | CPU cache | L1 cache | L2 cache | L3 cache	кэш-память | кеш процессора | кэш процессора | кэш L2	キャッシュメモリ | L2キャッシュ	캐시 메모리 | L2 캐시	快取記憶體 | 快取 | L2 快取	高速缓存 | 缓存 | 二级缓存
+hw.cache_coherence	cache coherence | cache coherency	когерентность кэша | когерентность кешей	キャッシュコヒーレンシ | キャッシュ一貫性	캐시 일관성 | 캐시 코히어런스	快取一致性	缓存一致性
+hw.cache_flush	cache flush | cache invalidation | flush the cache	сброс кэша | инвалидация кэша | очистка кэша	キャッシュフラッシュ | キャッシュ無効化	캐시 플러시 | 캐시 무효화	快取清除 | 快取失效 | 刷新快取	缓存刷新 | 缓存失效 | 刷缓存
+hw.write_back	write-back cache | write-back	кэш с обратной записью | обратная запись	ライトバック	라이트백 | 후기입	回寫 | 回寫快取	回写 | 写回缓存
+hw.mmu	memory management unit | MMU	блок управления памятью | диспетчер памяти | MMU	メモリ管理ユニット | MMU	메모리 관리 장치 | MMU	記憶體管理單元 | MMU	内存管理单元 | MMU
+hw.tlb	translation lookaside buffer | TLB	буфер ассоциативной трансляции | TLB	変換索引バッファ | TLB	변환 색인 버퍼 | TLB	轉譯後備緩衝區 | TLB	转译后备缓冲器 | 快表 | TLB
+hw.interrupt_controller	interrupt controller | interrupt controllers	контроллер прерываний | контроллера прерываний	割り込みコントローラ	인터럽트 컨트롤러	中斷控制器	中断控制器
+hw.dma	direct memory access | DMA	прямой доступ к памяти | ПДП | DMA	ダイレクトメモリアクセス | DMA	직접 메모리 접근 | DMA	直接記憶體存取 | DMA	直接内存访问 | 直接存储器访问 | DMA
+hw.dma_controller	DMA controller | DMA engine | DMA channel	контроллер DMA | DMA-контроллер | канал DMA	DMAコントローラ | DMAチャネル	DMA 컨트롤러 | DMA 채널	DMA 控制器 | DMA 通道	DMA 控制器 | DMA 通道
+hw.dma_buffer	DMA buffer | DMA descriptor	DMA-буфер | буфер DMA | дескриптор DMA	DMAバッファ | DMAディスクリプタ	DMA 버퍼 | DMA 디스크립터	DMA 緩衝區 | DMA 描述符	DMA 缓冲区 | DMA 描述符
+hw.bus_master	bus master | bus mastering	ведущее устройство шины | мастер шины	バスマスタ	버스 마스터	匯流排主控 | 匯流排主控端	总线主控 | 总线主设备
+hw.endianness	endianness | byte order	порядок байтов | порядок следования байтов | эндианность	エンディアン | バイトオーダー	엔디언 | 바이트 순서	位元組順序 | 端序 | 位元組序	字节序 | 端序
+hw.big_endian	big-endian | big endian	big-endian | прямой порядок байтов | от старшего к младшему	ビッグエンディアン	빅 엔디언 | 빅엔디언	大端序 | 大端	大端序 | 大端模式
+hw.little_endian	little-endian | little endian	little-endian | обратный порядок байтов | от младшего к старшему	リトルエンディアン	리틀 엔디언 | 리틀엔디언	小端序 | 小端	小端序 | 小端模式
+hw.memory_alignment	memory alignment | data alignment | unaligned access	выравнивание памяти | выравнивание данных | невыровненный доступ	メモリアライメント | アライメント | 非アライメントアクセス	메모리 정렬 | 데이터 정렬 | 비정렬 접근	記憶體對齊 | 資料對齊 | 未對齊存取	内存对齐 | 数据对齐 | 非对齐访问
+hw.isa	instruction set architecture | instruction set	архитектура набора команд | система команд | набор инструкций	命令セットアーキテクチャ | 命令セット	명령어 집합 구조 | 명령어 세트	指令集架構 | 指令集	指令集架构 | 指令集
+hw.risc	RISC | reduced instruction set computer	RISC | RISC-архитектура | компьютер с сокращённым набором команд	RISC | 縮小命令セットコンピュータ	RISC | 축소 명령어 집합 컴퓨터	精簡指令集 | RISC	精简指令集 | RISC
+hw.cisc	CISC | complex instruction set computer	CISC | CISC-архитектура | компьютер со сложным набором команд	CISC | 複合命令セットコンピュータ	CISC | 복합 명령어 집합 컴퓨터	複雜指令集 | CISC	复杂指令集 | CISC
+hw.fpu	floating-point unit | FPU	блок операций с плавающей точкой | FPU | математический сопроцессор	浮動小数点演算ユニット | FPU	부동소수점 장치 | FPU	浮點運算單元 | FPU	浮点运算单元 | 浮点单元 | FPU
+hw.simd	SIMD | single instruction multiple data | vector instructions	SIMD | векторные инструкции | векторные команды	SIMD | ベクトル命令	SIMD | 벡터 명령어	SIMD | 單指令多資料 | 向量指令	SIMD | 单指令多数据 | 向量指令
+hw.fixed_point	fixed-point arithmetic | fixed-point	арифметика с фиксированной точкой | фиксированная точка	固定小数点 | 固定小数点演算	고정소수점 | 고정소수점 연산	定點數 | 定點運算	定点数 | 定点运算
+hw.secure_boot	secure boot | verified boot	безопасная загрузка | доверенная загрузка | защищённая загрузка	セキュアブート	보안 부팅 | 시큐어 부트	安全開機 | 安全啟動	安全启动
+hw.tee	trusted execution environment | secure world	доверенная среда исполнения | доверенная среда выполнения	信頼できる実行環境 | セキュアワールド	신뢰 실행 환경 | 보안 월드	可信執行環境 | 安全世界	可信执行环境 | 安全世界
+hw.hw_rng	hardware random number generator | true random number generator | TRNG	аппаратный генератор случайных чисел | ГСЧ | TRNG	ハードウェア乱数生成器 | 真性乱数生成器	하드웨어 난수 생성기 | 진난수 생성기	硬體亂數產生器 | 真亂數產生器	硬件随机数发生器 | 真随机数发生器
+hw.efuse	eFuse | electronic fuse | fuse bits	eFuse | электронный предохранитель | фьюзы | фьюз-биты	eFuse | 電子ヒューズ | ヒューズビット	eFuse | 전자 퓨즈 | 퓨즈 비트	電子熔絲 | eFuse | 熔絲位元	电子熔丝 | eFuse | 熔丝位
+hw.otp_memory	one-time programmable memory | OTP memory	однократно программируемая память | OTP-память	ワンタイムプログラマブルメモリ | OTPメモリ	일회성 프로그래머블 메모리 | OTP 메모리	一次性可程式記憶體 | OTP 記憶體	一次性可编程存储器 | OTP 存储器
+hw.hardware_register	hardware register | control register | status register	регистр | регистры | регистра | регистров | регистре | управляющий регистр | регистр состояния	ハードウェアレジスタ | 制御レジスタ | ステータスレジスタ	하드웨어 레지스터 | 제어 레지스터 | 상태 레지스터	硬體暫存器 | 控制暫存器 | 狀態暫存器	硬件寄存器 | 控制寄存器 | 状态寄存器
+hw.register_map	register map | register layout	карта регистров | регистровая карта	レジスタマップ	레지스터 맵	暫存器對應表 | 暫存器映射	寄存器映射 | 寄存器表
+hw.bitmask	bitmask | bit mask	битовая маска | битовой маски	ビットマスク	비트마스크 | 비트 마스크	位元遮罩	位掩码 | 掩码
+hw.bit_field	bit field | bitfield	битовое поле | битовые поля	ビットフィールド	비트 필드	位元欄位	位域 | 位字段
+hw.ram	random-access memory | RAM	оперативная память | оперативка | оперативной памяти | ОЗУ | RAM	ランダムアクセスメモリ | RAM	랜덤 액세스 메모리 | RAM	隨機存取記憶體 | RAM	随机存取存储器 | 运行内存 | RAM
+hw.dram	DRAM | dynamic RAM	динамическая память | DRAM	DRAM | ダイナミックRAM	DRAM | 디램	動態隨機存取記憶體 | DRAM	动态随机存取存储器 | DRAM
+hw.sram	SRAM | static RAM	статическая память | SRAM	SRAM | スタティックRAM	SRAM | 에스램	靜態隨機存取記憶體 | SRAM	静态随机存取存储器 | SRAM
+hw.ddr	DDR SDRAM | DDR memory | DDR4 | DDR5	память DDR | DDR-память | DDR4 | DDR5	DDRメモリ | DDR4 | DDR5	DDR 메모리 | DDR4 | DDR5	DDR 記憶體 | DDR4 | DDR5	DDR 内存 | DDR4 | DDR5
+hw.lpddr	LPDDR | low-power DDR | LPDDR4 | LPDDR5	LPDDR | энергоэффективная память DDR | LPDDR4 | LPDDR5	LPDDR | 低消費電力DDR | LPDDR4 | LPDDR5	LPDDR | 저전력 DDR | LPDDR4 | LPDDR5	LPDDR | 低功耗 DDR | LPDDR4 | LPDDR5	LPDDR | 低功耗 DDR 内存 | LPDDR4 | LPDDR5
+hw.rom	read-only memory | ROM | mask ROM	постоянная память | ПЗУ | ROM	読み出し専用メモリ | ROM | マスクROM	읽기 전용 메모리 | ROM | 마스크 롬	唯讀記憶體 | ROM	只读存储器 | ROM | 掩膜 ROM
+hw.eeprom	EEPROM | electrically erasable programmable read-only memory	EEPROM | электрически стираемое ППЗУ | ЭСППЗУ	EEPROM | 電気的消去可能ROM	EEPROM | 이이피롬	EEPROM | 電子抹除式唯讀記憶體	EEPROM | 电可擦除只读存储器
+hw.flash_memory	flash memory | flash chip | flash storage	флеш-память | флэш-память | флеш-памяти	フラッシュメモリ	플래시 메모리	快閃記憶體 | Flash	闪存 | 闪存芯片 | Flash
+hw.nor_flash	NOR flash | SPI NOR flash | serial NOR	NOR-флеш | NOR-память | NOR flash	NORフラッシュ | NOR型フラッシュ	NOR 플래시	NOR 快閃記憶體 | NOR Flash	NOR 闪存 | NOR Flash
+hw.nand_flash	NAND flash | NAND | SPI NAND	NAND-флеш | NAND-память | NAND	NANDフラッシュ | NAND型フラッシュ | NAND	NAND 플래시 | 낸드 플래시 | NAND	NAND 快閃記憶體 | NAND Flash | NAND	NAND 闪存 | NAND Flash | NAND
+hw.emmc	eMMC | embedded MultiMediaCard	eMMC | eMMC-память | встроенная память eMMC	eMMC	eMMC | 임베디드 멀티미디어 카드	eMMC | 嵌入式多媒體卡	eMMC | 嵌入式多媒体卡
+hw.ssd	solid-state drive | SSD | SSDs	твердотельный накопитель | SSD | SSD-диск	ソリッドステートドライブ | SSD	솔리드 스테이트 드라이브 | SSD	固態硬碟 | SSD	固态硬盘 | SSD
+hw.memory_controller	memory controller | DRAM controller	контроллер памяти | контроллера памяти	メモリコントローラ	메모리 컨트롤러	記憶體控制器	内存控制器 | 存储控制器
+hw.memory_map	memory map | memory layout	карта памяти | распределение памяти	メモリマップ | メモリレイアウト	메모리 맵 | 메모리 레이아웃	記憶體映射表 | 記憶體配置圖	内存映射表 | 内存布局
+hw.address_space	address space | address range	адресное пространство | адресного пространства | диапазон адресов	アドレス空間 | アドレス範囲	주소 공간 | 주소 범위	位址空間 | 位址範圍	地址空间 | 地址范围
+hw.physical_address	physical address | physical addresses	физический адрес | физические адреса | физического адреса	物理アドレス	물리 주소	實體位址	物理地址
+hw.virtual_address	virtual address | virtual memory	виртуальный адрес | виртуальная память | виртуальной памяти	仮想アドレス | 仮想メモリ	가상 주소 | 가상 메모리	虛擬位址 | 虛擬記憶體	虚拟地址 | 虚拟内存
+hw.mmio	memory-mapped I/O | MMIO	ввод-вывод через отображение в память | MMIO	メモリマップドI/O | MMIO	메모리 맵 입출력 | MMIO	記憶體映射輸入輸出 | MMIO	内存映射 I/O | MMIO
+hw.page_table	page table | page tables	таблица страниц | таблицы страниц	ページテーブル	페이지 테이블	分頁表 | 頁表	页表
+hw.memory_barrier	memory barrier | memory fence	барьер памяти | барьеры памяти	メモリバリア | メモリフェンス	메모리 배리어 | 메모리 펜스	記憶體屏障	内存屏障
+hw.memory_bandwidth	memory bandwidth	пропускная способность памяти	メモリ帯域幅 | メモリ帯域	메모리 대역폭	記憶體頻寬	内存带宽
+hw.memory_footprint	memory footprint | RAM usage | flash usage	объём занимаемой памяти | потребление памяти	メモリフットプリント | メモリ使用量	메모리 사용량 | 메모리 풋프린트	記憶體占用 | 記憶體用量	内存占用 | 内存使用量
+hw.memory_pool	memory pool | buffer pool	пул памяти | пул буферов	メモリプール | バッファプール	메모리 풀 | 버퍼 풀	記憶體池 | 緩衝池	内存池 | 缓冲池
+hw.bad_block	bad block | bad blocks | bad block management	битый блок | плохой блок | бэд-блок | бэд-блоки	不良ブロック | バッドブロック	배드 블록 | 불량 블록	壞區塊 | 壞塊	坏块 | 坏块管理
+hw.wear_leveling	wear leveling	выравнивание износа | балансировка износа	ウェアレベリング	웨어 레벨링 | 마모 평준화	磨損平均	磨损均衡
+hw.ecc	error-correcting code | ECC | ECC memory	код коррекции ошибок | ECC | ECC-память	誤り訂正符号 | ECC | ECCメモリ	오류 정정 부호 | ECC | ECC 메모리	錯誤更正碼 | ECC | ECC 記憶體	纠错码 | ECC | ECC 内存
+hw.bit_flip	bit flip | single-event upset | soft error	переворот бита | сбой бита | инверсия бита | мягкая ошибка	ビット反転 | ソフトエラー	비트 플립 | 비트 반전 | 소프트 에러	位元翻轉 | 軟錯誤	位翻转 | 软错误
+hw.dram_refresh	DRAM refresh | refresh cycle | memory training	регенерация памяти | цикл регенерации | тренировка памяти	リフレッシュサイクル | メモリトレーニング	리프레시 사이클 | 메모리 트레이닝	刷新週期 | 記憶體訓練	刷新周期 | 内存训练
+hw.partition_table	partition table | flash partition | partition layout	таблица разделов | раздел флеш-памяти | разметка разделов	パーティションテーブル | パーティション構成	파티션 테이블 | 파티션 구성	分割表 | 分區表 | 分割區配置	分区表 | 分区布局
+hw.firmware	firmware | firmwares	прошивка | прошивки | прошивку | прошивкой | прошивке | фирмварь | фирмвара	ファームウェア | ファーム	펌웨어	韌體	固件 | 固件程序
+hw.flash_firmware	flash the firmware | firmware flashing | reflash	прошить | прошивать | перепрошить | перепрошивка | прошили | прошьём	ファームウェアを書き込む | ファームウェア書き込み | 焼き込み	펌웨어를 굽다 | 펌웨어 굽기 | 펌웨어 플래싱	燒錄韌體 | 刷韌體	烧录固件 | 刷固件 | 刷机
+hw.firmware_update	firmware update | firmware upgrade	обновление прошивки | обновить прошивку | апдейт прошивки	ファームウェア更新 | ファームウェアアップデート	펌웨어 업데이트 | 펌웨어 업그레이드	韌體更新 | 韌體升級	固件更新 | 固件升级
+hw.ota_update	over-the-air update | OTA update | OTA	обновление по воздуху | OTA-обновление | OTA	OTAアップデート | 無線アップデート	OTA 업데이트 | 무선 업데이트	OTA 更新 | 空中下載更新	OTA 升级 | 空中升级
+hw.firmware_image	firmware image | firmware binary | firmware file	образ прошивки | файл прошивки | бинарник прошивки	ファームウェアイメージ | ファームウェアバイナリ	펌웨어 이미지 | 펌웨어 바이너리	韌體映像檔 | 韌體檔案	固件镜像 | 固件文件
+hw.golden_image	golden image | factory image	эталонный образ | заводской образ	ゴールデンイメージ | 工場出荷イメージ	골든 이미지 | 공장 이미지	黃金映像檔 | 原廠映像檔	黄金镜像 | 出厂镜像
+hw.firmware_signing	firmware signing | signed firmware | code signing	подпись прошивки | подписанная прошивка | подпись кода	ファームウェア署名 | 署名付きファームウェア | コード署名	펌웨어 서명 | 서명된 펌웨어 | 코드 서명	韌體簽章 | 簽章韌體 | 程式碼簽章	固件签名 | 签名固件 | 代码签名
+hw.dual_bank	dual-bank firmware | A/B partitions | dual image	двухбанковая прошивка | A/B-разделы | двойной образ	デュアルバンク | A/Bパーティション | デュアルイメージ	듀얼 뱅크 | A/B 파티션 | 듀얼 이미지	雙分區韌體 | A/B 分區 | 雙映像檔	双分区固件 | A/B 分区 | 双镜像
+hw.firmware_rollback	firmware rollback | downgrade the firmware	откат прошивки | откатить прошивку | даунгрейд прошивки	ファームウェアのロールバック | ファームウェアダウングレード	펌웨어 롤백 | 펌웨어 다운그레이드	韌體回滾 | 韌體降版	固件回滚 | 固件降级
+hw.bootloader	bootloader | boot loader | bootloaders	загрузчик | загрузчика | загрузчике | загрузчиком | бутлоадер | бутлоадера	ブートローダ | ブートローダー	부트로더	開機載入程式 | bootloader | 開機程式	引导加载程序 | 引导程序 | bootloader
+hw.boot_rom	boot ROM | mask boot ROM | first-stage bootloader	загрузочное ПЗУ | boot ROM | первичный загрузчик	ブートROM | 一次ブートローダ	부트 ROM | 1차 부트로더	開機 ROM | 第一階段開機程式	启动 ROM | 一级引导程序
+hw.boot_sequence	boot sequence | boot process | boot flow	последовательность загрузки | процесс загрузки | порядок загрузки	ブートシーケンス | 起動シーケンス | ブートフロー	부팅 순서 | 부팅 과정 | 부트 시퀀스	開機流程 | 開機順序	启动流程 | 启动顺序 | 引导流程
+hw.boot_log	boot log | boot messages	лог загрузки | загрузочный лог | бут-лог	ブートログ | 起動ログ	부팅 로그 | 부트 로그	開機日誌 | 開機 log	启动日志 | 开机日志
+hw.cold_boot	cold boot | power cycle | power cycling	холодная загрузка | холодный старт | передёрнуть питание | пересброс питания	コールドブート | 電源再投入 | パワーサイクル	콜드 부트 | 전원 재투입 | 파워 사이클	冷開機 | 斷電重開 | 電源循環	冷启动 | 断电重启 | 上下电
+hw.warm_reset	warm reset | soft reset | warm boot	мягкая перезагрузка | горячая перезагрузка | программный сброс	ウォームリセット | ソフトリセット | ウォームブート	웜 리셋 | 소프트 리셋 | 웜 부트	暖重置 | 軟重置 | 暖開機	热复位 | 软复位 | 热启动
+hw.hard_reset	hardware reset | reset pin | reset line	аппаратный сброс | вывод сброса | линия сброса	ハードウェアリセット | リセットピン | リセット信号	하드웨어 리셋 | 리셋 핀 | 리셋 신호	硬體重置 | 重置腳位 | 重置訊號	硬件复位 | 复位引脚 | 复位信号
+hw.reset_vector	reset vector | startup code | startup file	вектор сброса | стартовый код | код инициализации	リセットベクタ | スタートアップコード	리셋 벡터 | 스타트업 코드	重置向量 | 啟動程式碼	复位向量 | 启动代码
+hw.vector_table	interrupt vector table | exception vector table | vector table	таблица векторов прерываний | таблица векторов	割り込みベクタテーブル | 例外ベクタテーブル	인터럽트 벡터 테이블 | 예외 벡터 테이블	中斷向量表 | 例外向量表	中断向量表 | 异常向量表
+hw.watchdog	watchdog timer | watchdog | hardware watchdog | WDT	сторожевой таймер | вотчдог | вочдог | watchdog	ウォッチドッグタイマ | ウォッチドッグ | WDT	워치독 타이머 | 워치독 | WDT	看門狗計時器 | 看門狗 | WDT	看门狗定时器 | 看门狗 | WDT
+hw.bricked	bricked device | bricked | brick the device	окирпичить | окирпичился | кирпич после прошивки | превратить в кирпич	文鎮化 | ブリック化	벽돌이 되다 | 벽돌화	變磚 | 刷成磚	变砖 | 刷成砖
+hw.recovery_mode	recovery mode | rescue mode | recovery partition	режим восстановления | раздел восстановления | рекавери	リカバリモード | レスキューモード | リカバリパーティション	복구 모드 | 리커버리 모드 | 복구 파티션	救援模式 | 恢復模式 | 復原分區	恢复模式 | 救援模式 | 恢复分区
+hw.factory_reset	factory reset | reset to factory defaults | factory defaults	сброс к заводским настройкам | заводские настройки | сброс до заводских	工場出荷時リセット | 工場出荷状態	공장 초기화	恢復原廠設定 | 原廠設定	恢复出厂设置 | 出厂设置
+hw.device_tree	device tree | DTS | DTB | device tree blob	дерево устройств | device tree | DTS | DTB	デバイスツリー | DTS | DTB	디바이스 트리 | DTS | DTB	裝置樹 | DTS | DTB	设备树 | DTS | DTB
+hw.bsp	board support package | BSP	пакет поддержки платы | BSP	ボードサポートパッケージ | BSP	보드 지원 패키지 | BSP	板級支援套件 | BSP	板级支持包 | BSP
+hw.device_driver	device driver | kernel driver | drivers for the chip	драйвер | драйвера | драйверы | драйверов | драйвере | драйвером	デバイスドライバ | ドライバ | カーネルドライバ	디바이스 드라이버 | 드라이버 | 커널 드라이버	驅動程式 | 裝置驅動程式 | 核心驅動	驱动程序 | 设备驱动 | 内核驱动
+hw.kernel_module	kernel module | loadable kernel module | kmod	модуль ядра | модули ядра | загружаемый модуль ядра	カーネルモジュール | ローダブルモジュール	커널 모듈 | 적재 가능 모듈	核心模組 | 可載入模組	内核模块 | 可加载模块
+hw.kernel_space	kernel space | kernel mode	пространство ядра | режим ядра	カーネル空間 | カーネルモード	커널 공간 | 커널 모드	核心空間 | 核心模式	内核空间 | 内核态
+hw.user_space	user space | user mode | userland	пространство пользователя | пользовательское пространство | юзерспейс | режим пользователя	ユーザ空間 | ユーザー空間 | ユーザーモード	사용자 공간 | 유저 스페이스 | 사용자 모드	使用者空間 | 使用者模式	用户空间 | 用户态
+hw.kernel_panic	kernel panic | kernel oops | kernel crash	паника ядра | кернел паник | падение ядра	カーネルパニック | カーネルクラッシュ	커널 패닉 | 커널 크래시	核心恐慌 | kernel panic | 核心當機	内核崩溃 | 内核恐慌 | kernel panic
+hw.hard_fault	hard fault | bus fault | data abort | prefetch abort	аппаратное исключение | hard fault | исключение шины	ハードフォルト | バスフォルト | データアボート	하드 폴트 | 버스 폴트 | 데이터 어보트	硬體錯誤例外 | 匯流排錯誤 | 資料中止	硬件错误异常 | 总线错误 | 数据中止
+hw.core_dump	core dump | crash dump	дамп ядра | дамп памяти при падении | крэш-дамп	コアダンプ | クラッシュダンプ	코어 덤프 | 크래시 덤프	核心傾印 | core dump | 當機傾印	核心转储 | 崩溃转储 | core dump
+hw.memory_dump	memory dump | register dump | hex dump	дамп памяти | дамп регистров | хекс-дамп	メモリダンプ | レジスタダンプ | 16進ダンプ	메모리 덤프 | 레지스터 덤프 | 헥스 덤프	記憶體傾印 | 暫存器傾印 | 十六進位傾印	内存转储 | 寄存器转储 | 十六进制转储
+hw.stack_trace	stack trace | backtrace | call trace	трассировка стека | стектрейс | бэктрейс	スタックトレース | バックトレース | コールトレース	스택 트레이스 | 백트레이스 | 콜 트레이스	堆疊追蹤 | 呼叫追蹤	栈回溯 | 堆栈跟踪 | 调用栈回溯
+hw.rtos	real-time operating system | RTOS	операционная система реального времени | ОСРВ | RTOS	リアルタイムOS | リアルタイムオペレーティングシステム | RTOS	실시간 운영체제 | RTOS	即時作業系統 | RTOS	实时操作系统 | RTOS
+hw.bare_metal	bare-metal | bare metal firmware | no OS	bare-metal | без ОС | на голом железе	ベアメタル | OSなし	베어메탈 | OS 없이	裸機 | 裸機程式	裸机 | 裸机程序
+hw.embedded_system	embedded system | embedded systems | embedded device	встраиваемая система | встроенная система | встраиваемые системы | встраиваемое устройство | эмбеддед	組み込みシステム | 組込みシステム | 組み込み機器	임베디드 시스템 | 임베디드 기기 | 내장형 시스템	嵌入式系統 | 嵌入式裝置	嵌入式系统 | 嵌入式设备
+hw.hardware_slang	real hardware | target hardware | hardware side	железо | железа | железку | железке | железки | на железе	実機 | ハード側	실기기 | 하드웨어 쪽	實機 | 硬體端	真机 | 硬件端
+hw.interrupt	hardware interrupt | interrupt request | IRQ | interrupts	прерывание | прерывания | прерываний | прерыванию | аппаратное прерывание | IRQ	割り込み | ハードウェア割り込み | 割り込み要求 | IRQ	인터럽트 | 하드웨어 인터럽트 | 인터럽트 요청 | IRQ	硬體中斷 | 中斷請求 | IRQ	硬件中断 | 中断请求 | IRQ
+hw.isr	interrupt service routine | interrupt handler | ISR	обработчик прерывания | обработчик прерываний | ISR	割り込みハンドラ | 割り込みサービスルーチン | ISR	인터럽트 핸들러 | 인터럽트 서비스 루틴 | ISR	中斷處理常式 | 中斷服務常式 | ISR	中断处理函数 | 中断服务程序 | ISR
+hw.interrupt_latency	interrupt latency | interrupt response time	задержка прерывания | время реакции на прерывание | латентность прерываний	割り込みレイテンシ | 割り込み応答時間	인터럽트 지연 | 인터럽트 응답 시간	中斷延遲 | 中斷回應時間	中断延迟 | 中断响应时间
+hw.interrupt_storm	interrupt storm | IRQ storm	шторм прерываний | лавина прерываний	割り込みストーム | 割り込み嵐	인터럽트 폭주 | 인터럽트 스톰	中斷風暴	中断风暴
+hw.software_interrupt	software interrupt | softirq | bottom half	программное прерывание | софтирк | нижняя половина обработчика	ソフトウェア割り込み | ボトムハーフ	소프트웨어 인터럽트 | 보텀 하프	軟體中斷 | 中斷下半部	软中断 | 中断下半部
+hw.polling	polling mode | busy polling | busy-wait	режим опроса | поллинг | активное ожидание	ポーリング | ビジーウェイト	폴링 | 바쁜 대기	輪詢 | 忙碌等待	轮询 | 忙等待
+hw.context_switch	context switch | context switching	переключение контекста | смена контекста	コンテキストスイッチ | コンテキスト切り替え	컨텍스트 스위치 | 문맥 교환	上下文切換 | 情境切換	上下文切换
+hw.mutex	mutex | mutexes | mutual exclusion lock	мьютекс | мьютексы | мьютекса | мьютексом	ミューテックス | 排他ロック	뮤텍스 | 상호 배제 락	互斥鎖 | mutex	互斥锁 | 互斥量 | mutex
+hw.spinlock	spinlock | spin lock | spinlocks	спинлок | спин-блокировка | спинлока | спинлоки	スピンロック	스핀락 | 스핀 락	自旋鎖 | spinlock	自旋锁 | spinlock
+hw.semaphore	semaphore | semaphores	семафор | семафоры | семафора	セマフォ	세마포어	信號量 | semaphore	信号量 | semaphore
+hw.deadlock	deadlock | deadlocks	взаимная блокировка | дедлок | дедлоки | дедлока | взаимоблокировка	デッドロック	교착 상태 | 데드락	死結 | 死鎖 | deadlock	死锁 | deadlock
+hw.race_condition	race condition | data race | race conditions	состояние гонки | гонка данных | рейс-кондишн	競合状態 | レースコンディション | データ競合	경쟁 상태 | 레이스 컨디션 | 데이터 레이스	競爭條件 | 競態條件 | 資料競爭	竞态条件 | 竞争条件 | 数据竞争
+hw.critical_section	critical section | critical sections	критическая секция | критический участок | критической секции	クリティカルセクション	임계 구역 | 크리티컬 섹션	臨界區 | 臨界區段	临界区
+hw.priority_inversion	priority inversion	инверсия приоритетов	優先度逆転	우선순위 역전	優先權反轉 | 優先級反轉	优先级反转
+hw.ring_buffer	ring buffer | circular buffer | ring buffers	кольцевой буфер | циклический буфер | кольцевого буфера	リングバッファ | 循環バッファ	링 버퍼 | 원형 버퍼	環形緩衝區 | 環狀緩衝區	环形缓冲区 | 循环缓冲区
+hw.fifo_buffer	FIFO buffer | hardware FIFO | TX FIFO | RX FIFO	буфер FIFO | FIFO-буфер | аппаратный FIFO	FIFOバッファ | ハードウェアFIFO	FIFO 버퍼 | 하드웨어 FIFO	FIFO 緩衝區 | 硬體 FIFO	FIFO 缓冲区 | 硬件 FIFO
+hw.descriptor_ring	descriptor ring | descriptor ring buffer | TX ring | RX ring	кольцо дескрипторов | кольцевой буфер дескрипторов	ディスクリプタリング	디스크립터 링	描述符環 | 描述符環形緩衝區	描述符环 | 描述符环形队列
+hw.zero_copy	zero-copy | zero copy	нулевое копирование | zero-copy | без копирования	ゼロコピー	제로 카피 | 무복사	零複製	零拷贝
+hw.hardware_offload	hardware offload | offload engine | checksum offload	аппаратная разгрузка | аппаратный оффлоад | оффлоад	ハードウェアオフロード | オフロードエンジン | チェックサムオフロード	하드웨어 오프로드 | 오프로드 엔진 | 체크섬 오프로드	硬體卸載 | 卸載引擎 | 校驗和卸載	硬件卸载 | 卸载引擎 | 校验和卸载
+hw.hardware_queue	hardware queue | TX queue | RX queue | queue stall	аппаратная очередь | очередь передачи | очередь приёма	ハードウェアキュー | 送信キュー | 受信キュー	하드웨어 큐 | 송신 큐 | 수신 큐	硬體佇列 | 傳送佇列 | 接收佇列	硬件队列 | 发送队列 | 接收队列
+hw.ioctl	ioctl | ioctl call	ioctl | вызов ioctl | айоктл	ioctl | ioctl呼び出し	ioctl | ioctl 호출	ioctl | ioctl 呼叫	ioctl | ioctl 调用
+hw.device_file	device file | device node | character device | block device	файл устройства | символьное устройство | блочное устройство	デバイスファイル | キャラクタデバイス | ブロックデバイス	디바이스 파일 | 문자 디바이스 | 블록 디바이스	裝置檔案 | 字元裝置 | 區塊裝置	设备文件 | 字符设备 | 块设备
+hw.hal	hardware abstraction layer | HAL layer	уровень аппаратных абстракций | слой абстракции оборудования | HAL-слой	ハードウェア抽象化レイヤ | HAL層	하드웨어 추상화 계층 | HAL 계층	硬體抽象層 | HAL 層	硬件抽象层 | HAL 层
+hw.privilege_level	privilege level | exception level | privileged mode	уровень привилегий | привилегированный режим | уровень исключений	特権レベル | 例外レベル | 特権モード	권한 수준 | 예외 레벨 | 특권 모드	特權等級 | 例外等級 | 特權模式	特权级 | 异常等级 | 特权模式
+hw.toolchain	toolchain | cross toolchain | toolchains	тулчейн | тулчейна | набор инструментов сборки | кросс-тулчейн	ツールチェーン | クロスツールチェーン	툴체인 | 크로스 툴체인	工具鏈 | 交叉工具鏈	工具链 | 交叉工具链
+hw.cross_compile	cross-compilation | cross-compile | cross compiler	кросс-компиляция | кросс-компилятор | кросскомпиляция | кросс-компилировать	クロスコンパイル | クロスコンパイラ	크로스 컴파일 | 크로스 컴파일러	交叉編譯 | 交叉編譯器	交叉编译 | 交叉编译器
+hw.linker_script	linker script | linker scripts | scatter file	скрипт компоновщика | скрипт линкера | линкер-скрипт	リンカスクリプト	링커 스크립트	連結器腳本 | 連結腳本	链接脚本 | 链接器脚本
+hw.binary_file	binary file | .bin file | raw binary	бинарный файл | бинарник | бинарь | бинарника	バイナリファイル | バイナリ	바이너리 파일 | 바이너리	二進位檔 | 二進位檔案	二进制文件
+hw.hex_file	hex file | S-record file	hex-файл | файл в формате HEX | хекс-файл	HEXファイル	HEX 파일 | 헥스 파일	HEX 檔	HEX 文件
+hw.checksum	checksum | checksums	контрольная сумма | контрольные суммы | контрольной суммы | чексумма	チェックサム	체크섬	校驗和 | 檢查碼	校验和
+hw.crc	cyclic redundancy check | CRC | CRC32	циклический избыточный код | CRC | CRC-сумма | CRC32	巡回冗長検査 | CRC | CRC32	순환 중복 검사 | CRC | CRC32	循環冗餘檢查 | CRC | CRC32	循环冗余校验 | CRC | CRC32
+hw.code_size	code size | binary size | flash footprint	размер кода | размер бинарника | размер образа	コードサイズ | バイナリサイズ	코드 크기 | 바이너리 크기	程式碼大小 | 二進位大小	代码大小 | 二进制大小
+hw.bit_banging	bit-banging | bit banging | software SPI	бит-бэнгинг | программная эмуляция интерфейса | ногодрыг | ногодрыгом	ビットバンギング | ソフトウェアSPI	비트 뱅잉 | 소프트웨어 SPI	GPIO 模擬 | bit-banging | 軟體模擬 SPI	IO 模拟 | bit-banging | 软件模拟 SPI
+hw.debounce	debouncing | switch debounce | key debounce	подавление дребезга | антидребезг | дребезг контактов	チャタリング除去 | デバウンス | チャタリング	디바운싱 | 채터링 제거 | 채터링	去彈跳 | 消除彈跳 | 按鍵彈跳	消抖 | 按键消抖 | 抖动消除
+hw.clock_gating	clock gating	гейтинг тактового сигнала | отключение тактирования | клок-гейтинг	クロックゲーティング	클럭 게이팅	時脈閘控	时钟门控
+hw.power_gating	power gating | power domain	отключение питания блоков | пауэр-гейтинг | домен питания	パワーゲーティング | 電源ドメイン	파워 게이팅 | 전원 도메인	電源閘控 | 電源域	电源门控 | 电源域
+hw.dvfs	dynamic voltage and frequency scaling | DVFS | CPU frequency scaling	динамическое масштабирование напряжения и частоты | DVFS | масштабирование частоты процессора	動的電圧周波数制御 | DVFS | CPU周波数スケーリング	동적 전압 주파수 조절 | DVFS | CPU 주파수 스케일링	動態電壓頻率調整 | DVFS | CPU 調頻	动态电压频率调整 | DVFS | CPU 调频
+hw.data_bus	data bus | system bus | bus interface	шина данных | системная шина | шины данных | интерфейс шины	データバス | システムバス | バスインタフェース	데이터 버스 | 시스템 버스 | 버스 인터페이스	資料匯流排 | 系統匯流排 | 匯流排介面	数据总线 | 系统总线 | 总线接口
+hw.address_bus	address bus	шина адреса | адресная шина	アドレスバス	주소 버스 | 어드레스 버스	位址匯流排	地址总线
+hw.bus_arbitration	bus arbitration | bus arbiter | bus contention	арбитраж шины | арбитр шины | конфликт на шине	バス調停 | バスアービタ | バス競合	버스 중재 | 버스 아비터 | 버스 경합	匯流排仲裁 | 匯流排仲裁器 | 匯流排競爭	总线仲裁 | 总线仲裁器 | 总线竞争
+hw.bus_width	bus width | 32-bit bus | 64-bit bus	разрядность шины | ширина шины | 32-битная шина	バス幅 | 32ビットバス	버스 폭 | 32비트 버스	匯流排寬度 | 32 位元匯流排	总线宽度 | 32 位总线
+hw.i2c	I2C | I²C | IIC | I2C bus	I2C | шина I2C | ай-ту-си | и-квадрат-це	I2C | I²C | I2Cバス	I2C | I²C | I2C 버스	I2C | I²C | I2C 匯流排	I2C | I²C | I2C 总线
+hw.smbus	SMBus | system management bus	SMBus | шина управления системой	SMBus | システムマネジメントバス	SMBus | 시스템 관리 버스	SMBus | 系統管理匯流排	SMBus | 系统管理总线
+hw.spi	SPI | serial peripheral interface | SPI bus | QSPI | quad SPI	SPI | шина SPI | последовательный периферийный интерфейс | QSPI	SPI | シリアルペリフェラルインタフェース | QSPI	SPI | 직렬 주변장치 인터페이스 | QSPI	SPI | 序列周邊介面 | QSPI	SPI | 串行外设接口 | QSPI
+hw.chip_select	chip select | CS pin | slave select	выбор кристалла | сигнал выбора микросхемы | чип-селект	チップセレクト | CS信号	칩 셀렉트 | CS 신호	晶片選擇 | CS 腳位 | 片選	片选 | 片选信号 | CS 引脚
+hw.uart	UART | universal asynchronous receiver-transmitter | UARTs	UART | универсальный асинхронный приёмопередатчик | юарт | уарт	UART | 汎用非同期送受信機	UART | 범용 비동기 송수신기	UART | 通用非同步收發器	UART | 通用异步收发器 | 串口芯片
+hw.serial_port	serial port | COM port | serial interface	последовательный порт | COM-порт | ком-порт | серийный порт	シリアルポート | COMポート | シリアルインタフェース	시리얼 포트 | 직렬 포트 | COM 포트	序列埠 | COM 埠 | 串列埠	串口 | 串行端口 | COM 口
+hw.serial_console	serial console | debug console | debug UART	последовательная консоль | отладочная консоль | консоль по UART | отладочный UART	シリアルコンソール | デバッグコンソール | デバッグUART	시리얼 콘솔 | 디버그 콘솔 | 디버그 UART	序列控制台 | 除錯主控台 | 除錯 UART	串口控制台 | 调试控制台 | 调试串口
+hw.baud_rate	baud rate | baudrate	скорость передачи в бодах | бодрейт | скорость порта | бод	ボーレート	보레이트 | 전송 속도	鮑率 | baud rate	波特率
+hw.parity_bit	parity bit | start bit | stop bit	бит чётности | стартовый бит | стоповый бит | стоп-бит	パリティビット | スタートビット | ストップビット	패리티 비트 | 시작 비트 | 정지 비트	同位元 | 起始位元 | 停止位元	奇偶校验位 | 起始位 | 停止位
+hw.flow_control	hardware flow control | RTS/CTS | flow control	аппаратное управление потоком | управление потоком | RTS/CTS	ハードウェアフロー制御 | フロー制御 | RTS/CTS	하드웨어 흐름 제어 | 흐름 제어 | RTS/CTS	硬體流量控制 | 流量控制 | RTS/CTS	硬件流控 | 流量控制 | RTS/CTS
+hw.can_bus	CAN bus | controller area network | CAN FD	шина CAN | CAN-шина | CAN FD	CANバス | コントローラエリアネットワーク | CAN FD	CAN 버스 | 컨트롤러 영역 네트워크 | CAN FD	CAN 匯流排 | 控制器區域網路 | CAN FD	CAN 总线 | 控制器局域网 | CAN FD
+hw.i2s	I2S | I²S | inter-IC sound	I2S | шина I2S | аудиоинтерфейс I2S	I2S | I²S | I2Sインタフェース	I2S | I²S | I2S 인터페이스	I2S | I²S | I2S 介面	I2S | I²S | I2S 接口
+hw.usb	USB | universal serial bus | USB port	USB | юсб | порт USB | USB-порт | универсальная последовательная шина	USB | USBポート | ユニバーサルシリアルバス	USB | USB 포트 | 범용 직렬 버스	USB | USB 埠 | 通用序列匯流排	USB | USB 接口 | 通用串行总线
+hw.usb_otg	USB OTG | USB on-the-go | USB host mode | USB device mode	USB OTG | режим USB-хоста | режим USB-устройства	USB OTG | USBホストモード | USBデバイスモード	USB OTG | USB 호스트 모드 | USB 디바이스 모드	USB OTG | USB 主機模式 | USB 裝置模式	USB OTG | USB 主机模式 | USB 设备模式
+hw.usb_enumeration	USB enumeration | device enumeration | USB descriptor	перечисление USB | энумерация устройства | дескриптор USB	USBエニュメレーション | デバイス列挙 | USBディスクリプタ	USB 열거 | 장치 열거 | USB 디스크립터	USB 列舉 | 裝置列舉 | USB 描述元	USB 枚举 | 设备枚举 | USB 描述符
+hw.usb_endpoint	USB endpoint | bulk endpoint | interrupt endpoint	конечная точка USB | эндпоинт USB | bulk-эндпоинт	USBエンドポイント | バルクエンドポイント	USB 엔드포인트 | 벌크 엔드포인트	USB 端點 | 批量端點	USB 端点 | 批量端点
+hw.pcie	PCI Express | PCIe | PCI-E	PCI Express | PCIe | шина PCIe	PCI Express | PCIe	PCI 익스프레스 | PCIe	PCIe | PCI Express 匯流排	PCIe | PCI Express 总线
+hw.pcie_lane	PCIe lane | x1 lane | x4 link | lane count	линия PCIe | линии PCIe | ширина линка	PCIeレーン | レーン数	PCIe 레인 | 레인 수	PCIe 通道 | 通道數	PCIe 通道 | lane 数
+hw.link_training	link training | link negotiation	тренировка линка | поднятие линка | линк поднялся | линк упал	リンクトレーニング | リンクアップ | リンクダウン	링크 트레이닝 | 링크 업 | 링크 다운	鏈路訓練 | link up | link down	链路训练 | link up | link down
+hw.hot_plug	hot plug | hot swap | hot-pluggable	горячее подключение | горячая замена | хот-плаг	ホットプラグ | ホットスワップ | 活線挿抜	핫플러그 | 핫스왑 | 활선 교체	熱插拔 | 熱抽換	热插拔 | 热交换
+hw.sdio	SDIO | SD card interface | SD host controller	SDIO | интерфейс SD | контроллер SD	SDIO | SDカードインタフェース | SDホストコントローラ	SDIO | SD 카드 인터페이스 | SD 호스트 컨트롤러	SDIO | SD 卡介面 | SD 主機控制器	SDIO | SD 卡接口 | SD 主机控制器
+hw.ethernet_phy	Ethernet PHY | PHY chip | physical layer transceiver | PHYs	PHY | физический уровень | микросхема PHY | PHY-чип	PHY | PHYチップ | 物理層トランシーバ	PHY | PHY 칩 | 물리 계층 트랜시버	PHY | PHY 晶片 | 實體層收發器	PHY | PHY 芯片 | 物理层收发器
+hw.mac_layer	MAC layer | Ethernet MAC | MAC controller | media access control	уровень MAC | MAC-контроллер | Ethernet MAC | управление доступом к среде	MAC層 | MACコントローラ | イーサネットMAC	MAC 계층 | MAC 컨트롤러 | 이더넷 MAC	MAC 層 | MAC 控制器 | 媒體存取控制	MAC 层 | MAC 控制器 | 媒体访问控制
+hw.mdio	MDIO | MDC/MDIO | management data input/output	MDIO | шина MDIO | интерфейс управления PHY	MDIO | MDC/MDIO	MDIO | MDC/MDIO	MDIO | MDC/MDIO | 管理資料輸入輸出	MDIO | MDC/MDIO | 管理数据输入输出
+hw.mii	media-independent interface | MII | RGMII | SGMII | RMII	MII | RGMII | SGMII | RMII | независимый от среды интерфейс	MII | RGMII | SGMII | RMII | メディア独立インタフェース	MII | RGMII | SGMII | RMII | 매체 독립 인터페이스	MII | RGMII | SGMII | RMII | 媒體獨立介面	MII | RGMII | SGMII | RMII | 介质无关接口
+hw.serdes	SerDes | serializer/deserializer | high-speed serial link	SerDes | сериализатор-десериализатор | высокоскоростной последовательный канал	SerDes | シリアライザ/デシリアライザ | 高速シリアルリンク	SerDes | 직렬화기/역직렬화기 | 고속 직렬 링크	SerDes | 串化器/解串器 | 高速序列鏈路	SerDes | 串行器/解串器 | 高速串行链路
+hw.nic	network interface card | NIC | network adapter | network controller	сетевая карта | сетевой адаптер | сетевой контроллер | сетевуха | NIC	ネットワークインタフェースカード | NIC | ネットワークアダプタ	네트워크 인터페이스 카드 | NIC | 랜카드 | 네트워크 어댑터	網路介面卡 | 網卡 | NIC	网络接口卡 | 网卡 | NIC
+hw.poe	Power over Ethernet | PoE | PoE+	PoE | питание по Ethernet | питание по витой паре | PoE+	PoE | イーサネット給電 | PoE+	PoE | 이더넷 전원 공급 | PoE+	PoE | 乙太網路供電 | PoE+	PoE | 以太网供电 | PoE+
+hw.gpio	GPIO | general-purpose input/output | GPIO pin | GPIOs	GPIO | пин GPIO | вывод общего назначения | ножка GPIO | джипиайо	GPIO | 汎用入出力 | GPIOピン	GPIO | 범용 입출력 | GPIO 핀	GPIO | 通用輸入輸出 | GPIO 腳位	GPIO | 通用输入输出 | GPIO 引脚
+hw.pin_mux	pin multiplexing | pinmux | pin muxing | alternate function	мультиплексирование выводов | пинмукс | альтернативная функция вывода	ピンマルチプレクス | ピンマックス | 端子機能切替	핀 멀티플렉싱 | 핀먹스 | 대체 기능	腳位多工 | pinmux | 腳位複用	引脚复用 | 管脚复用 | pinmux
+hw.pin_assignment	pin assignment | pinout | pin map	распиновка | распиновки | цоколёвка | назначение выводов	ピンアサイン | ピン配置	핀 배치 | 핀아웃 | 핀 할당	腳位定義 | 腳位配置 | pinout	引脚定义 | 管脚分配 | 引脚图
+hw.pull_up	pull-up resistor | internal pull-up	подтягивающий резистор | подтяжка к питанию | пулл-ап	プルアップ抵抗 | プルアップ | 内部プルアップ	풀업 저항 | 풀업 | 내부 풀업	上拉電阻	上拉电阻
+hw.pull_down	pull-down resistor	стягивающий резистор | подтяжка к земле | пулл-даун	プルダウン抵抗	풀다운 저항	下拉電阻	下拉电阻
+hw.open_drain	open-drain | open-collector | open drain output	открытый сток | открытый коллектор | выход с открытым стоком	オープンドレイン | オープンコレクタ	오픈 드레인 | 오픈 컬렉터	開汲極 | 開集極	开漏 | 开集电极 | 开漏输出
+hw.push_pull	push-pull output | push-pull	двухтактный выход | пуш-пул	プッシュプル | プッシュプル出力	푸시풀 | 푸시풀 출력	推挽 | 推挽輸出	推挽 | 推挽输出
+hw.tri_state	tri-state | high impedance | Hi-Z	третье состояние | высокоимпедансное состояние | Z-состояние	トライステート | ハイインピーダンス | Hi-Z	트라이스테이트 | 하이 임피던스 | Hi-Z	三態 | 高阻抗 | Hi-Z	三态 | 高阻态 | Hi-Z
+hw.adc	analog-to-digital converter | ADC | ADCs	аналого-цифровой преобразователь | АЦП | ADC	アナログデジタル変換器 | A/D変換器 | ADC	아날로그-디지털 변환기 | ADC	類比數位轉換器 | ADC	模数转换器 | ADC
+hw.dac	digital-to-analog converter | DAC | DACs	цифро-аналоговый преобразователь | ЦАП | DAC	デジタルアナログ変換器 | D/A変換器 | DAC	디지털-아날로그 변환기 | DAC	數位類比轉換器 | DAC	数模转换器 | DAC
+hw.pwm	pulse-width modulation | PWM | PWM signal	широтно-импульсная модуляция | ШИМ | ШИМ-сигнал | PWM	パルス幅変調 | PWM | PWM信号	펄스 폭 변조 | PWM | PWM 신호	脈波寬度調變 | PWM | PWM 訊號	脉宽调制 | PWM | PWM 信号
+hw.duty_cycle	duty cycle	скважность | коэффициент заполнения | дьюти	デューティ比 | デューティサイクル	듀티 사이클 | 듀티비	占空比 | duty cycle	占空比
+hw.jtag	JTAG | JTAG interface | JTAG port	JTAG | интерфейс JTAG | джитаг | джей-таг	JTAG | JTAGインタフェース	JTAG | JTAG 인터페이스	JTAG | JTAG 介面	JTAG | JTAG 接口
+hw.swd	SWD | serial wire debug	SWD | отладочный интерфейс SWD	SWD | シリアルワイヤデバッグ	SWD | 시리얼 와이어 디버그	SWD | 序列線除錯	SWD | 串行线调试
+hw.boundary_scan	boundary scan | boundary-scan test	граничное сканирование | периферийное сканирование	バウンダリスキャン	바운더리 스캔 | 경계 스캔	邊界掃描	边界扫描
+hw.transceiver	transceiver | transceivers | RF transceiver	приёмопередатчик | трансивер | приёмопередатчики | трансивера	トランシーバ | 送受信機 | RFトランシーバ	트랜시버 | 송수신기 | RF 트랜시버	收發器 | RF 收發器	收发器 | 射频收发器
+hw.rf_front_end	RF front end | front-end module | FEM	радиочастотный тракт | фронтенд радиотракта | модуль FEM	RFフロントエンド | フロントエンドモジュール | FEM	RF 프런트엔드 | 프런트엔드 모듈 | FEM	射頻前端 | 前端模組 | FEM	射频前端 | 前端模块 | FEM
+hw.baseband	baseband | baseband processor | baseband chip	базовая полоса | baseband | модемный процессор | процессор базовой полосы	ベースバンド | ベースバンドプロセッサ	베이스밴드 | 베이스밴드 프로세서	基頻 | 基頻處理器	基带 | 基带处理器
+hw.radio_frequency	radio frequency | RF | RF circuit	радиочастота | радиочастотный | ВЧ-тракт | RF	無線周波数 | RF | 高周波回路	무선 주파수 | RF | 고주파 회로	射頻 | RF | 射頻電路	射频 | RF | 射频电路
+hw.antenna	antenna | antennas | antenna gain	антенна | антенны | антенну | коэффициент усиления антенны	アンテナ | アンテナ利得	안테나 | 안테나 이득	天線 | 天線增益	天线 | 天线增益
+hw.power_amplifier	power amplifier | RF power amplifier	усилитель мощности | ВЧ-усилитель	パワーアンプ | 電力増幅器	전력 증폭기 | 파워 앰프	功率放大器 | 功放	功率放大器 | 功放
+hw.lna	low-noise amplifier | LNA	малошумящий усилитель | МШУ | LNA	低雑音増幅器 | LNA	저잡음 증폭기 | LNA	低雜訊放大器 | LNA	低噪声放大器 | LNA
+hw.clock_signal	clock signal | system clock | clock source	тактовый сигнал | тактирование | системная частота | источник тактирования | клок	クロック信号 | システムクロック | クロックソース	클럭 신호 | 시스템 클럭 | 클럭 소스	時脈訊號 | 系統時脈 | 時脈來源	时钟信号 | 系统时钟 | 时钟源
+hw.clock_frequency	clock frequency | clock speed | core clock	тактовая частота | частота ядра | тактовой частоты	クロック周波数 | 動作周波数 | コアクロック	클럭 주파수 | 동작 주파수 | 코어 클럭	時脈頻率 | 工作頻率 | 核心時脈	时钟频率 | 主频 | 工作频率
+hw.clock_tree	clock tree | clock distribution	дерево тактирования | распределение тактового сигнала	クロックツリー | クロック分配	클럭 트리 | 클럭 분배	時脈樹 | 時脈分配	时钟树 | 时钟分配
+hw.reference_clock	reference clock | ref clock | REFCLK	опорная частота | опорный тактовый сигнал | референсный клок	リファレンスクロック | 基準クロック	기준 클럭 | 레퍼런스 클럭	參考時脈 | 參考時鐘	参考时钟
+hw.clock_divider	clock divider | prescaler | frequency divider	делитель частоты | предделитель | прескалер	クロック分周器 | プリスケーラ | 分周器	클럭 분주기 | 프리스케일러 | 분주기	時脈除頻器 | 預除頻器 | 除頻器	时钟分频器 | 预分频器 | 分频器
+hw.crystal_oscillator	crystal oscillator | quartz crystal | XTAL | TCXO	кварцевый генератор | кварцевый резонатор | кварц | кварца | TCXO	水晶発振器 | 水晶振動子 | TCXO	크리스털 발진기 | 수정 발진기 | 수정 진동자 | TCXO	石英振盪器 | 晶體振盪器 | 晶振 | TCXO	晶体振荡器 | 晶振 | 石英晶体 | TCXO
+hw.oscillator	oscillator | RC oscillator | internal oscillator	осциллятор | RC-генератор | внутренний генератор | тактовый генератор	発振器 | RC発振器 | 内部発振器	발진기 | RC 발진기 | 내부 발진기	振盪器 | RC 振盪器 | 內部振盪器	振荡器 | RC 振荡器 | 内部振荡器
+hw.pll	phase-locked loop | PLL | PLLs	фазовая автоподстройка частоты | ФАПЧ | PLL	位相同期回路 | PLL	위상 고정 루프 | PLL	鎖相迴路 | PLL	锁相环 | PLL
+hw.rtc	real-time clock | RTC | RTC battery	часы реального времени | RTC | батарейка RTC	リアルタイムクロック | RTC | RTC電池	실시간 클럭 | RTC | RTC 배터리	即時時脈 | RTC | RTC 電池	实时时钟 | RTC | RTC 电池
+hw.jitter	clock jitter | jitter | phase noise	джиттер | дрожание фазы | фазовый шум | джиттера	ジッタ | クロックジッタ | 位相雑音	지터 | 클럭 지터 | 위상 잡음	時脈抖動 | 相位雜訊 | jitter	时钟抖动 | 相位噪声 | jitter
+hw.clock_skew	clock skew | signal skew	перекос тактового сигнала | фазовый сдвиг клока | скью	クロックスキュー | スキュー	클럭 스큐 | 스큐	時脈偏移 | skew	时钟偏斜 | 时钟偏移 | skew
+hw.rise_time	rise time | fall time | edge rate	время нарастания | время спада | фронт сигнала	立ち上がり時間 | 立ち下がり時間	상승 시간 | 하강 시간	上升時間 | 下降時間	上升时间 | 下降时间
+hw.signal_integrity	signal integrity | SI analysis	целостность сигнала | целостность сигналов	シグナルインテグリティ | 信号品質	신호 무결성 | 시그널 인테그리티	訊號完整性	信号完整性
+hw.power_integrity	power integrity | PI analysis | power distribution network | PDN	целостность питания | сеть распределения питания | PDN	パワーインテグリティ | 電源分配ネットワーク | PDN	전원 무결성 | 전원 분배망 | PDN	電源完整性 | 電源分配網路 | PDN	电源完整性 | 电源分配网络 | PDN
+hw.crosstalk	crosstalk | cross-talk	перекрёстные помехи | перекрёстная наводка | кросстолк	クロストーク	크로스토크 | 누화	串擾 | 串音	串扰
+hw.impedance_matching	impedance matching | impedance control | controlled impedance	согласование импеданса | волновое сопротивление | контроль импеданса	インピーダンス整合 | インピーダンスマッチング | インピーダンス制御	임피던스 정합 | 임피던스 매칭 | 임피던스 제어	阻抗匹配 | 阻抗控制	阻抗匹配 | 阻抗控制
+hw.termination_resistor	termination resistor | line termination | series termination	терминирующий резистор | согласующий резистор | терминатор линии	終端抵抗 | 終端処理	종단 저항 | 터미네이션	終端電阻 | 終端匹配	端接电阻 | 终端电阻 | 端接
+hw.differential_pair	differential pair | differential signaling | LVDS	дифференциальная пара | дифференциальный сигнал | дифпара | LVDS	差動ペア | 差動信号 | LVDS	차동 쌍 | 차동 신호 | LVDS	差動對 | 差動訊號 | LVDS	差分对 | 差分信号 | LVDS
+hw.single_ended	single-ended signal | single-ended	несимметричный сигнал | однопроводный сигнал	シングルエンド | シングルエンド信号	싱글엔드 | 싱글엔드 신호	單端 | 單端訊號	单端 | 单端信号
+hw.eye_diagram	eye diagram | eye pattern | eye opening	глазковая диаграмма | глаз-диаграмма | раскрыв глаза	アイダイアグラム | アイパターン | アイ開口	아이 다이어그램 | 아이 패턴	眼圖 | 眼圖張開度	眼图 | 眼图张开度
+hw.logic_level	logic level | 3.3 V logic | level shifter | voltage translator	логический уровень | логические уровни | преобразователь уровней | конвертер уровней	ロジックレベル | レベルシフタ | レベル変換	로직 레벨 | 레벨 시프터 | 레벨 변환	邏輯準位 | 準位轉換器 | 電位轉換	逻辑电平 | 电平转换器 | 电平转换
+hw.power_supply_unit	power supply unit | PSU | power adapter	блок питания | блока питания | блоке питания | БП | адаптер питания	電源ユニット | 電源アダプタ | PSU	전원 공급 장치 | 파워 서플라이 | 전원 어댑터	電源供應器 | 電源變壓器 | PSU	电源适配器 | 电源模块 | PSU
+hw.power_rail	power rail | supply rail | voltage rail | power rails	шина питания | линия питания | шины питания | рельса питания	電源レール | 電源ライン	전원 레일 | 전원 라인	電源軌 | 電源 rail	电源轨 | 电源 rail
+hw.voltage_regulator	voltage regulator | VRM	стабилизатор напряжения | регулятор напряжения | стабилизатора | VRM	電圧レギュレータ | レギュレータ | VRM	전압 레귤레이터 | 레귤레이터 | VRM	穩壓器 | 電壓調節器 | VRM	稳压器 | 电压调节器 | VRM
+hw.ldo	low-dropout regulator | LDO | LDO regulator	линейный стабилизатор | LDO | LDO-стабилизатор	低ドロップアウトレギュレータ | LDO | LDOレギュレータ	저손실 레귤레이터 | LDO | LDO 레귤레이터	低壓差穩壓器 | LDO	低压差线性稳压器 | LDO
+hw.dc_dc	DC-DC converter | DC/DC converter | switching regulator	DC-DC-преобразователь | DC/DC-преобразователь | импульсный стабилизатор | импульсный преобразователь	DC-DCコンバータ | スイッチングレギュレータ	DC-DC 컨버터 | 스위칭 레귤레이터	DC-DC 轉換器 | 交換式穩壓器	DC-DC 转换器 | 开关稳压器
+hw.buck_converter	buck converter | step-down converter	понижающий преобразователь | бак-конвертер | понижайка	降圧コンバータ | バックコンバータ	벅 컨버터 | 강압 컨버터	降壓轉換器 | Buck 轉換器	降压转换器 | Buck 电路
+hw.boost_converter	boost converter | step-up converter	повышающий преобразователь | буст-конвертер | повышайка	昇圧コンバータ | ブーストコンバータ	부스트 컨버터 | 승압 컨버터	升壓轉換器 | Boost 轉換器	升压转换器 | Boost 电路
+hw.pmic	power management IC | PMIC	микросхема управления питанием | контроллер питания | PMIC	電源管理IC | PMIC	전원 관리 IC | PMIC	電源管理晶片 | 電源管理 IC | PMIC	电源管理芯片 | 电源管理 IC | PMIC
+hw.power_sequencing	power sequencing | power-up sequence | power-on sequence	последовательность включения питания | порядок подачи питания | секвенсор питания	電源シーケンス | パワーオンシーケンス | 電源投入順序	전원 시퀀싱 | 전원 인가 순서	電源時序 | 上電順序	电源时序 | 上电时序 | 上电顺序
+hw.power_on_reset	power-on reset | POR	сброс при включении питания | POR	パワーオンリセット | POR	파워온 리셋 | POR	上電重置 | POR	上电复位 | POR
+hw.brown_out	brown-out | brownout | brown-out detection | brown-out reset	просадка питания | детектор просадки питания | сброс по просадке | брауншаут	ブラウンアウト | 低電圧検出 | ブラウンアウトリセット	브라운아웃 | 저전압 감지 | 브라운아웃 리셋	欠壓 | 欠壓偵測 | 欠壓重置	欠压 | 欠压检测 | 掉电复位
+hw.voltage_drop	voltage drop | IR drop | supply droop	падение напряжения | просадка напряжения | просадка	電圧降下 | IRドロップ	전압 강하 | IR 드롭	壓降 | 電壓降 | IR drop	压降 | 电压降 | IR drop
+hw.ripple	voltage ripple | ripple noise | power supply ripple	пульсации напряжения | пульсации питания | пульсация	リップル | リップルノイズ | 電源リップル	리플 노이즈 | 전원 리플	漣波 | 電源漣波 | 紋波	纹波 | 电源纹波 | 纹波噪声
+hw.quiescent_current	quiescent current | standby current | sleep current	ток покоя | ток в режиме ожидания | ток утечки в сне	静止電流 | 待機電流 | スリープ電流	대기 전류 | 정지 전류 | 슬립 전류	靜態電流 | 待機電流 | 休眠電流	静态电流 | 待机电流 | 休眠电流
+hw.leakage_current	leakage current	ток утечки | токи утечки	リーク電流 | 漏れ電流	누설 전류	漏電流	漏电流
+hw.inrush_current	inrush current | surge current	пусковой ток | бросок тока | ток включения	突入電流 | ラッシュ電流	돌입 전류 | 인러시 전류	湧浪電流 | 突波電流	浪涌电流 | 冲击电流
+hw.overcurrent_protection	overcurrent protection | OCP | current limit	защита от перегрузки по току | токовая защита | ограничение тока	過電流保護 | 電流制限	과전류 보호 | 전류 제한	過電流保護 | 限流	过流保护 | 限流
+hw.overvoltage_protection	overvoltage protection | OVP	защита от перенапряжения | OVP	過電圧保護 | OVP	과전압 보호 | OVP	過電壓保護 | OVP	过压保护 | OVP
+hw.reverse_polarity	reverse polarity protection | reverse voltage protection	защита от переполюсовки | защита от обратной полярности | переполюсовка	逆接保護 | 逆極性保護	역극성 보호 | 역전압 보호	反接保護 | 逆極性保護	防反接保护 | 反接保护
+hw.thermal_shutdown	thermal shutdown | overtemperature protection | OTP shutdown	тепловая защита | отключение по перегреву | защита от перегрева	サーマルシャットダウン | 過熱保護	열 차단 | 과열 보호	過熱關機 | 過溫保護	过热关断 | 过温保护
+hw.thermal_throttling	thermal throttling | CPU throttling	тепловой троттлинг | троттлинг | тротлинг | снижение частоты от перегрева	サーマルスロットリング | スロットリング	서멀 스로틀링 | 스로틀링	過熱降頻 | 降頻	过热降频 | 降频
+hw.tdp	thermal design power | TDP	расчётная тепловая мощность | тепловыделение | TDP	熱設計電力 | TDP	열 설계 전력 | TDP	熱設計功耗 | TDP	热设计功耗 | TDP
+hw.heat_sink	heat sink | heatsink | thermal pad | thermal paste	радиатор охлаждения | теплоотвод | термопрокладка | термопаста	ヒートシンク | 放熱板 | サーマルパッド | 熱伝導グリス	히트싱크 | 방열판 | 서멀 패드 | 서멀 그리스	散熱片 | 散熱墊 | 散熱膏 | 導熱膏	散热片 | 散热器 | 导热垫 | 导热硅脂
+hw.thermal_design	thermal design | thermal simulation | junction temperature	тепловой расчёт | тепловое моделирование | температура перехода | температура кристалла	熱設計 | 熱シミュレーション | ジャンクション温度	열 설계 | 열 시뮬레이션 | 접합 온도	散熱設計 | 熱模擬 | 接面溫度	散热设计 | 热仿真 | 结温
+hw.power_consumption	power consumption | power draw | power budget	энергопотребление | потребляемая мощность | бюджет мощности | потребление тока	消費電力 | 電力バジェット	소비 전력 | 전력 소모 | 전력 예산	功耗 | 耗電量 | 功耗預算	功耗 | 耗电量 | 功耗预算
+hw.low_power_mode	low-power mode | sleep mode | deep sleep | standby mode	режим низкого энергопотребления | спящий режим | глубокий сон | режим ожидания	低消費電力モード | スリープモード | ディープスリープ | スタンバイモード	저전력 모드 | 슬립 모드 | 딥 슬립 | 대기 모드	低功耗模式 | 休眠模式 | 深度睡眠 | 待機模式	低功耗模式 | 休眠模式 | 深度睡眠 | 待机模式
+hw.wake_up_source	wake-up source | wakeup interrupt | wake on LAN	источник пробуждения | прерывание пробуждения | Wake-on-LAN	ウェイクアップ要因 | ウェイクアップ割り込み | Wake on LAN	웨이크업 소스 | 웨이크업 인터럽트 | Wake on LAN	喚醒來源 | 喚醒中斷 | 網路喚醒	唤醒源 | 唤醒中断 | 网络唤醒
+hw.battery_management	battery management system | BMS | battery charger IC | battery fuel gauge	система управления батареей | BMS | контроллер заряда | датчик уровня заряда	バッテリマネジメントシステム | BMS | 充電IC | 残量計	배터리 관리 시스템 | BMS | 충전 IC | 배터리 잔량계	電池管理系統 | BMS | 充電 IC | 電量計	电池管理系统 | BMS | 充电芯片 | 电量计
+hw.supercapacitor	supercapacitor | supercap | ultracapacitor	суперконденсатор | ионистор	スーパーキャパシタ | 電気二重層コンデンサ	슈퍼커패시터 | 울트라커패시터	超級電容 | 超電容	超级电容 | 超级电容器
+hw.esd	electrostatic discharge | ESD | ESD protection	электростатический разряд | ESD | защита от ESD | защита от статики	静電気放電 | ESD | ESD保護	정전기 방전 | ESD | ESD 보호	靜電放電 | ESD | ESD 防護	静电放电 | ESD | ESD 防护
+hw.tvs_diode	TVS diode | transient voltage suppressor | surge protector	TVS-диод | супрессор | защитный диод	TVSダイオード | サージ保護素子	TVS 다이오드 | 서지 보호 소자	TVS 二極體 | 突波保護元件	TVS 二极管 | 浪涌保护器件
+hw.decoupling_capacitor	decoupling capacitor | bypass capacitor | decoupling caps	развязывающий конденсатор | блокировочный конденсатор | развязка по питанию	デカップリングコンデンサ | パスコン | バイパスコンデンサ	디커플링 커패시터 | 바이패스 커패시터	去耦電容 | 旁路電容	去耦电容 | 旁路电容
+hw.ground_plane	ground plane | GND plane | ground pour	земляной полигон | слой земли | полигон земли	グランドプレーン | GNDプレーン | ベタグランド	그라운드 플레인 | GND 플레인 | 접지면	接地層 | 地平面	地平面 | 接地层 | 铺铜
+hw.ground_loop	ground loop | ground bounce	земляная петля | контур заземления | дребезг земли	グランドループ | グランドバウンス	그라운드 루프 | 접지 루프 | 그라운드 바운스	接地迴路 | 地彈	地环路 | 接地环路 | 地弹
+hw.emi	electromagnetic interference | EMI	электромагнитные помехи | ЭМП | EMI	電磁干渉 | EMI	전자파 간섭 | EMI	電磁干擾 | EMI	电磁干扰 | EMI
+hw.emc	electromagnetic compatibility | EMC | EMC test	электромагнитная совместимость | ЭМС | EMC | испытания на ЭМС	電磁両立性 | EMC | EMC試験	전자파 적합성 | EMC | EMC 시험	電磁相容性 | EMC | EMC 測試	电磁兼容 | EMC | EMC 测试
+hw.shielding_can	shielding can | RF shield | EMI shield	экранирующая крышка | экранирующий кожух | ВЧ-экран	シールドケース | シールド缶 | RFシールド	쉴드 캔 | 차폐 캔 | RF 쉴드	屏蔽罩 | 屏蔽蓋 | RF 屏蔽	屏蔽罩 | 屏蔽盖 | 射频屏蔽
+hw.ferrite_bead	ferrite bead | ferrite core | common-mode choke	ферритовая бусина | ферритовое кольцо | ферритовый фильтр | синфазный дроссель	フェライトビーズ | フェライトコア | コモンモードチョーク	페라이트 비드 | 페라이트 코어 | 공통 모드 초크	鐵氧體磁珠 | 磁珠 | 共模扼流圈	磁珠 | 铁氧体磁珠 | 共模电感
+hw.pcb	printed circuit board | PCB | PCBA | PCBs	печатная плата | печатной платы | печатную плату	プリント基板 | 基板 | PCB | PCBA	인쇄 회로 기판 | PCB | PCBA | 기판	印刷電路板 | PCB | PCBA | 電路板	印制电路板 | 印刷电路板 | PCB | PCBA | 电路板
+hw.pcb_layout	PCB layout | board layout | routing the board	разводка платы | трассировка платы | топология платы | развести плату	基板レイアウト | パターン設計 | 配線設計	PCB 레이아웃 | 기판 배치 | 배선 설계	PCB 布局 | 佈線 | layout	PCB 布局 | 布线 | layout
+hw.schematic	schematic | schematics | circuit diagram | schematic diagram	принципиальная схема | электрическая схема | схемотехника | схемник	回路図 | 回路図面 | スケマティック	회로도 | 스키매틱	電路圖 | 線路圖 | 原理圖	原理图 | 电路图
+hw.bom	bill of materials | BOM | BOM cost	перечень элементов | BOM | БОМ	部品表 | BOM | BOMコスト	자재 명세서 | BOM | BOM 원가	物料清單 | BOM | BOM 成本	物料清单 | BOM | BOM 成本
+hw.gerber	Gerber files | Gerber | fabrication files	гербер-файлы | гербер | герберы | файлы для производства	ガーバーデータ | ガーバーファイル | 製造データ	거버 파일 | 거버 | 제조 데이터	Gerber 檔 | 光繪檔 | 製造檔案	Gerber 文件 | 光绘文件 | 生产文件
+hw.footprint	component footprint | land pattern | PCB footprint	посадочное место | футпринт | посадочное место компонента	フットプリント | ランドパターン	풋프린트 | 랜드 패턴	元件封裝 | 焊墊圖形 | footprint	焊盘图形 | footprint
+hw.via	PCB via | through via | blind via | buried via	переходное отверстие | переходные отверстия | виа | слепое отверстие	ビアホール | スルーホールビア | ブラインドビア | ベリードビア	비아홀 | 블라인드 비아 | 베리드 비아	導通孔 | 過孔 | 盲孔 | 埋孔	过孔 | 盲孔 | 埋孔 | 导通孔
+hw.pcb_trace	PCB trace | copper trace | trace width	дорожка на плате | проводник на плате | ширина дорожки	配線パターン | 銅配線 | パターン幅	PCB 트레이스 | 동박 배선 | 트레이스 폭	走線 | 銅箔走線 | 線寬	走线 | 铜箔走线 | 线宽
+hw.solder_pad	solder pad	контактная площадка	はんだパッド	솔더 패드	焊墊 | 焊盤	焊盘 | 焊垫
+hw.silkscreen	silkscreen | silk screen | legend layer	шелкография | маркировка на плате	シルク印刷 | シルクスクリーン	실크 스크린 | 실크 인쇄	絲印 | 網印	丝印 | 丝印层
+hw.solder_mask	solder mask | solder resist	паяльная маска | маска платы	ソルダーレジスト | ソルダマスク	솔더 마스크 | 솔더 레지스트	防焊層 | 防焊漆 | 綠漆	阻焊层 | 阻焊 | 绿油
+hw.pcb_stackup	PCB stack-up | layer stack-up | multilayer board | 4-layer board	стек слоёв | структура слоёв | многослойная плата | четырёхслойная плата	層構成 | 多層基板 | 4層基板	적층 구조 | 다층 기판 | 4층 기판	疊構 | 層疊結構 | 多層板 | 四層板	叠层 | 层叠结构 | 多层板 | 四层板
+hw.copper_pour	copper pour | copper fill	заливка медью | медный полигон	ベタパターン | ベタ塗り | 銅ベタ	동박 채우기 | 카퍼 푸어	覆銅 | 敷銅	覆铜 | 敷铜
+hw.solder	solder | soldering | soldering iron | solder paste	пайка | паять | паяльник | припой | паяльная паста | припаять | пропаять	はんだ付け | はんだ | はんだごて | ソルダペースト | クリームはんだ	납땜 | 땜납 | 납땜 인두 | 솔더 페이스트	焊接 | 焊錫 | 烙鐵 | 錫膏	焊接 | 焊锡 | 烙铁 | 锡膏
+hw.reflow	reflow soldering | reflow oven | reflow profile	пайка оплавлением | печь оплавления | термопрофиль	リフローはんだ付け | リフロー炉 | リフロープロファイル	리플로우 납땜 | 리플로우 오븐 | 리플로우 프로파일	回焊 | 回焊爐 | 回焊曲線	回流焊 | 回流炉 | 炉温曲线
+hw.wave_soldering	wave soldering | selective soldering	пайка волной | селективная пайка	フローはんだ付け | 噴流はんだ | 選択はんだ付け	웨이브 납땜 | 선택적 납땜	波焊 | 選擇性焊接	波峰焊 | 选择性波峰焊
+hw.solder_joint	solder joint | cold solder joint | solder bridge | tombstoning	паяное соединение | непропай | холодная пайка | перемычка припоя | эффект надгробия	はんだ接合部 | はんだ不良 | はんだブリッジ | ツームストーン	납땜 접합부 | 냉납 | 솔더 브리지 | 툼스톤	焊點 | 冷焊 | 錫橋 | 立碑	焊点 | 虚焊 | 连锡 | 立碑
+hw.rework	board rework | rework station | hot air rework | reballing	доработка платы | паяльная станция | термофен | реболлинг	リワーク | リワークステーション | ホットエアー | リボール	리워크 | 리워크 스테이션 | 리볼링	返修 | 返修台 | 熱風槍 | 植球	返修 | 返修台 | 热风枪 | 植球
+hw.through_hole	through-hole technology | THT | through-hole component	выводной монтаж | монтаж в отверстия | выводной компонент | THT	スルーホール実装 | THT | リード部品	스루홀 실장 | THT | 리드 부품	通孔插件 | DIP 元件	通孔插装 | 直插元件
+hw.smt	surface-mount technology | SMT | surface-mount device | SMD	поверхностный монтаж | SMD-компонент | SMD | SMT	表面実装 | SMT | 表面実装部品 | SMD	표면 실장 기술 | SMT | 표면 실장 부품 | SMD	表面黏著技術 | SMT | 表面黏著元件 | SMD	表面贴装技术 | SMT | 贴片元件 | SMD
+hw.bga	ball grid array | BGA	BGA | корпус BGA | шариковые выводы	BGA | ボールグリッドアレイ	BGA | 볼 그리드 어레이	BGA | 球柵陣列封裝	BGA | 球栅阵列封装
+hw.qfn	QFN | QFP | chip package | IC package	QFN | QFP | корпус микросхемы | корпусировка	QFN | QFP | ICパッケージ | 半導体パッケージ	QFN | QFP | IC 패키지 | 반도체 패키지	QFN | QFP | IC 封裝 | 晶片封裝	QFN | QFP | IC 封装 | 芯片封装
+hw.resistor	resistor | resistors | resistance value	резистор | резисторы | резистора | резисторов | сопротивление резистора	抵抗器 | 抵抗値	저항기 | 저항값	電阻 | 電阻器 | 電阻值	电阻 | 电阻器 | 阻值
+hw.capacitor	capacitor | capacitors | electrolytic capacitor | ceramic capacitor | MLCC	конденсатор | конденсаторы | конденсатора | кондёр | кондер | керамический конденсатор	コンデンサ | キャパシタ | 電解コンデンサ | 積層セラミックコンデンサ | MLCC	커패시터 | 콘덴서 | 전해 커패시터 | 적층 세라믹 커패시터 | MLCC	電容 | 電容器 | 電解電容 | 積層陶瓷電容 | MLCC	电容 | 电容器 | 电解电容 | 贴片陶瓷电容 | MLCC
+hw.inductor	inductor | inductors | power inductor	индуктивность | катушка индуктивности | дроссель | дросселя | индуктор	インダクタ | コイル | パワーインダクタ | チョークコイル	인덕터 | 파워 인덕터 | 초크 코일	電感 | 電感器 | 功率電感 | 扼流圈	电感 | 电感器 | 功率电感 | 扼流圈
+hw.diode	diode | diodes | Schottky diode | Zener diode | rectifier	диод | диоды | диода | диод Шоттки | стабилитрон | выпрямитель	ダイオード | ショットキーダイオード | ツェナーダイオード | 整流器	다이오드 | 쇼트키 다이오드 | 제너 다이오드 | 정류기	二極體 | 蕭特基二極體 | 齊納二極體 | 整流器	二极管 | 肖特基二极管 | 稳压二极管 | 整流器
+hw.led	LED | light-emitting diode | status LED | LEDs	светодиод | светодиоды | светодиода | LED | индикаторный светодиод	LED | 発光ダイオード | ステータスLED	LED | 발광 다이오드 | 상태 LED	LED | 發光二極體 | 狀態燈	LED | 发光二极管 | 状态灯 | 指示灯
+hw.optocoupler	optocoupler | opto-isolator | galvanic isolation	оптопара | оптрон | гальваническая развязка	フォトカプラ | 光絶縁 | ガルバニック絶縁	포토커플러 | 광 절연 | 갈바닉 절연	光耦合器 | 光耦 | 電氣隔離	光耦 | 光电耦合器 | 电气隔离
+hw.relay	electromechanical relay | solid-state relay | relay module	электромагнитное реле | твердотельное реле | реле | модуль реле	電磁リレー | ソリッドステートリレー	전자 릴레이 | 솔리드 스테이트 릴레이	繼電器 | 固態繼電器	继电器 | 固态继电器
+hw.op_amp	operational amplifier | op-amp | op amp | comparator	операционный усилитель | ОУ | операционник | компаратор	オペアンプ | 演算増幅器 | コンパレータ	연산 증폭기 | 옵앰프 | 비교기	運算放大器 | 運放 | 比較器	运算放大器 | 运放 | 比较器
+hw.passive_components	passive components | passives | active components	пассивные компоненты | пассивка | рассыпуха | активные компоненты	受動部品 | 能動部品	수동 부품 | 능동 부품	被動元件 | 主動元件	无源器件 | 有源器件 | 被动元件
+hw.connector	board connector | board-to-board connector | FPC connector | pin header	разъём | разъёмы | разъёма | штыревой разъём | FPC-разъём	コネクタ | 基板間コネクタ | FPCコネクタ | ピンヘッダ	커넥터 | 보드 투 보드 커넥터 | FPC 커넥터 | 핀 헤더	連接器 | 板對板連接器 | FPC 連接器 | 排針	连接器 | 板对板连接器 | FPC 连接器 | 排针
+hw.jumper	jumper wire | zero-ohm resistor	перемычка | джампер | перемычки | резистор нулевого сопротивления	ジャンパ線 | ゼロオーム抵抗	점퍼선 | 제로 옴 저항	跳線 | 跳線帽 | 零歐姆電阻	跳线 | 跳线帽 | 零欧电阻
+hw.test_point	test point | test pad	контрольная точка | тестовая точка | тестпоинт | тестовая площадка	テストポイント | テストパッド	테스트 포인트 | 테스트 패드	測試點 | 測試墊	测试点 | 测试焊盘
+hw.dev_board	development board | dev board | evaluation board | EVB | eval kit	отладочная плата | плата разработчика | оценочная плата | дев-борд | девборд	開発ボード | 評価ボード | 評価キット | EVB	개발 보드 | 평가 보드 | EVB | 평가 키트	開發板 | 評估板 | EVB	开发板 | 评估板 | EVB
+hw.carrier_board	carrier board | daughter board | module board | system on module | SoM	несущая плата | дочерняя плата | вычислительный модуль | SoM	キャリアボード | ドーターボード | SoM	캐리어 보드 | 도터 보드 | SoM	載板 | 子板 | 核心板 | SoM	底板 | 子板 | 核心板 | SoM
+hw.mainboard	mainboard | motherboard | main board	материнская плата | материнка | системная плата	マザーボード | メインボード	메인보드 | 마더보드	主機板 | 主板	主板 | 主机板
+hw.backplane	backplane | midplane	объединительная плата | бэкплейн | кросс-плата	バックプレーン | ミッドプレーン	백플레인 | 미드플레인	背板	背板
+hw.oscilloscope	oscilloscope | scope capture | oscilloscopes	осциллограф | осциллографа | осциллографом | осциллограмма | осцилл	オシロスコープ | オシロ | 波形キャプチャ	오실로스코프 | 오실로 | 파형 캡처	示波器 | 示波器波形	示波器 | 示波器波形
+hw.logic_analyzer	logic analyzer | logic analyser	логический анализатор | логического анализатора | логанализатор	ロジックアナライザ | ロジアナ	로직 분석기 | 로직 애널라이저	邏輯分析儀	逻辑分析仪
+hw.multimeter	multimeter | digital multimeter | DMM	мультиметр | мультиметра | тестер | цифровой мультиметр	マルチメータ | テスター | デジタルマルチメータ	멀티미터 | 디지털 멀티미터 | 테스터기	三用電表 | 萬用電表	万用表 | 数字万用表
+hw.protocol_analyzer	protocol analyzer | bus analyzer | USB analyzer	анализатор протоколов | анализатор шины | USB-анализатор	プロトコルアナライザ | バスアナライザ	프로토콜 분석기 | 버스 분석기	協定分析儀 | 匯流排分析儀	协议分析仪 | 总线分析仪
+hw.spectrum_analyzer	spectrum analyzer | network analyzer | VNA	анализатор спектра | анализатор цепей | векторный анализатор цепей | VNA	スペクトラムアナライザ | スペアナ | ネットワークアナライザ | VNA	스펙트럼 분석기 | 네트워크 분석기 | VNA	頻譜分析儀 | 網路分析儀 | VNA	频谱分析仪 | 网络分析仪 | 矢网 | VNA
+hw.signal_generator	signal generator | function generator | waveform generator	генератор сигналов | функциональный генератор | генератор сигналов произвольной формы	信号発生器 | ファンクションジェネレータ | 任意波形発生器	신호 발생기 | 함수 발생기 | 파형 발생기	訊號產生器 | 函數產生器 | 波形產生器	信号发生器 | 函数发生器 | 波形发生器
+hw.bench_power_supply	bench power supply | lab power supply | electronic load	лабораторный блок питания | лабораторник | электронная нагрузка	安定化電源 | 実験用電源 | 電子負荷	벤치 파워 서플라이 | 실험용 전원 | 전자 부하	實驗室電源 | 直流電源供應器 | 電子負載	直流稳压电源 | 实验室电源 | 电子负载
+hw.current_probe	current probe | differential probe | scope probe	токовый щуп | дифференциальный щуп | щуп осциллографа | пробник	電流プローブ | 差動プローブ | オシロプローブ	전류 프로브 | 차동 프로브 | 오실로 프로브	電流探棒 | 差動探棒 | 示波器探棒	电流探头 | 差分探头 | 示波器探头
+hw.hw_debugger	hardware debugger | debug probe | JTAG debugger | in-circuit debugger	аппаратный отладчик | отладочный адаптер | JTAG-отладчик | программатор-отладчик	ハードウェアデバッガ | デバッグプローブ | JTAGデバッガ	하드웨어 디버거 | 디버그 프로브 | JTAG 디버거	硬體除錯器 | 除錯探針 | JTAG 除錯器	硬件调试器 | 调试探针 | 仿真器 | JTAG 调试器
+hw.programmer	device programmer | chip programmer | flash programmer	программатор | программатора | программатором	ROMライタ | フラッシュライタ | 書き込み器	롬 라이터 | 플래시 라이터 | 프로그래머 장치	燒錄器 | 燒錄機	烧录器 | 编程器
+hw.ice	in-circuit emulator | hardware emulator	внутрисхемный эмулятор | аппаратный эмулятор	インサーキットエミュレータ | ICE | ハードウェアエミュレータ	인서킷 에뮬레이터 | ICE | 하드웨어 에뮬레이터	線上模擬器 | ICE | 硬體模擬器	在线仿真器 | ICE | 硬件仿真器
+hw.hw_breakpoint	hardware breakpoint | watchpoint | data breakpoint	аппаратная точка останова | точка наблюдения | вотчпоинт | брейкпоинт	ハードウェアブレークポイント | ウォッチポイント | データブレークポイント	하드웨어 중단점 | 워치포인트 | 데이터 브레이크포인트	硬體中斷點 | 監看點 | 資料中斷點	硬件断点 | 观察点 | 数据断点
+hw.trace_port	trace port | instruction trace | trace buffer	порт трассировки | трассировка инструкций | буфер трассировки	トレースポート | 命令トレース | トレースバッファ	트레이스 포트 | 명령어 트레이스 | 트레이스 버퍼	追蹤埠 | 指令追蹤 | 追蹤緩衝區	跟踪端口 | 指令跟踪 | 跟踪缓冲区
+hw.board_bring_up	board bring-up | bring-up | hardware bring-up	запуск платы | поднятие платы | бринг-ап | оживление платы	ボード立ち上げ | ブリングアップ | 初期立ち上げ	보드 브링업 | 브링업 | 초기 구동	板子 bring-up | 上板驗證 | 初次點亮	板级 bring-up | 点板 | 首次点亮
+hw.hardware_revision	hardware revision | board revision | PCB revision | rev A | rev B	ревизия платы | аппаратная ревизия | ревизия железа | ревизия PCB	ハードウェアリビジョン | 基板リビジョン | 基板版数	하드웨어 리비전 | 보드 리비전 | 기판 버전	硬體版本 | 板子版本 | PCB 版本	硬件版本 | 板卡版本 | PCB 版本
+hw.loopback_test	loopback test | external loopback | internal loopback	тест с петлёй | петлевой тест | лупбэк	ループバックテスト | 外部ループバック | 内部ループバック	루프백 테스트 | 외부 루프백 | 내부 루프백	迴路測試 | 外部迴路 | loopback 測試	回环测试 | 外部回环 | 内部回环
+hw.stress_test	stress test | soak test | long-run test	стресс-тест | нагрузочное тестирование | длительный прогон | стресс-тесты	ストレステスト | 負荷試験 | 長時間試験	스트레스 테스트 | 부하 시험 | 장시간 시험	壓力測試 | 長時間測試 | 拷機	压力测试 | 长时间测试 | 拷机
+hw.burn_in	burn-in test | burn-in | aging test	прогон на отказ | термотренировка | электротермотренировка | прожиг	バーンイン | バーンイン試験 | エージング試験	번인 테스트 | 번인 | 에이징 테스트	燒機 | 老化測試 | burn-in	老化测试 | 烧机 | burn-in
+hw.thermal_chamber	thermal chamber | climate chamber | temperature cycling | thermal shock	термокамера | климатическая камера | термоциклирование | термоудар	恒温槽 | 環境試験機 | 温度サイクル試験 | 熱衝撃試験	항온항습 챔버 | 온도 챔버 | 온도 사이클 시험 | 열충격 시험	恆溫箱 | 溫箱 | 溫度循環測試 | 冷熱衝擊	温箱 | 高低温箱 | 温度循环测试 | 冷热冲击
+hw.failure_analysis	failure analysis | FA report | root cause analysis	анализ отказов | анализ причин отказа | анализ первопричины | разбор отказа	故障解析 | 不良解析 | 根本原因分析	고장 분석 | 불량 분석 | 근본 원인 분석	失效分析 | 不良分析 | 根因分析	失效分析 | 故障分析 | 根因分析
+hw.golden_sample	golden sample | golden unit | reference unit	эталонный образец | эталонное устройство | голден-сэмпл	ゴールデンサンプル | 基準サンプル | 限度見本	골든 샘플 | 기준 샘플	黃金樣品 | 標準樣品 | golden sample	金样 | 标准样品 | golden sample
+hw.prototype	hardware prototype | engineering sample | ES sample | proto board	прототип | прототипы | прототипа | инженерный образец | опытный образец	試作品 | 試作基板 | エンジニアリングサンプル | ESサンプル	시제품 | 프로토타입 | 엔지니어링 샘플 | ES 샘플	原型機 | 工程樣品 | 工程樣機 | ES 樣品	原型机 | 工程样品 | 工程样机 | ES 样品
+hw.evt_dvt_pvt	EVT | DVT | PVT | engineering validation test | design validation test | production validation test	EVT | DVT | PVT | этап инженерной валидации | этап проверки конструкции	EVT | DVT | PVT | 設計検証試験 | 量産検証	EVT | DVT | PVT | 설계 검증 시험 | 양산 검증	EVT | DVT | PVT | 工程驗證 | 設計驗證 | 量產驗證	EVT | DVT | PVT | 工程验证 | 设计验证 | 量产验证
+hw.mass_production	mass production | volume production | pilot run	массовое производство | серийное производство | пилотная партия | опытная партия	量産 | 量産品 | 試作ロット | パイロットラン	양산 | 대량 생산 | 시험 생산 | 파일럿 런	量產 | 試產 | 小量試產	量产 | 试产 | 小批量试产
+hw.production_line	production line | SMT line | assembly line | station test	производственная линия | линия SMT | линия поверхностного монтажа | сборочная линия	生産ライン | SMTライン | 組立ライン	생산 라인 | SMT 라인 | 조립 라인	產線 | SMT 產線 | 組裝線 | 站點測試	产线 | SMT 产线 | 组装线 | 工站测试
+hw.yield_rate	production yield | yield rate | first-pass yield | FPY	выход годных | процент выхода годных | выход годных изделий	歩留まり | 歩留り | 直行率	수율 | 직행률 | 1차 수율	良率 | 直通率 | 一次良率	良率 | 直通率 | 一次良率
+hw.defect_rate	defect rate | failure rate | DPPM | field failure	процент брака | уровень брака | отказы в эксплуатации	不良率 | 故障率 | DPPM | 市場不良	불량률 | 고장률 | DPPM | 필드 불량	不良率 | 故障率 | DPPM | 客退	不良率 | 故障率 | DPPM | 客退
+hw.mtbf	mean time between failures | MTBF | reliability test	наработка на отказ | среднее время наработки на отказ | MTBF | испытания на надёжность	平均故障間隔 | MTBF | 信頼性試験	평균 고장 간격 | MTBF | 신뢰성 시험	平均故障間隔 | MTBF | 可靠度測試 | 信賴性測試	平均故障间隔时间 | MTBF | 可靠性测试
+hw.dfm	design for manufacturing | DFM | DFM review	технологичность конструкции | DFM | проверка технологичности	製造性設計 | DFM | DFMレビュー	제조 용이성 설계 | DFM | DFM 검토	可製造性設計 | DFM | DFM 審查	可制造性设计 | DFM | DFM 评审
+hw.design_for_test	design for testability | DFT logic | scan chain | built-in self-test | BIST	контролепригодность | проектирование для тестируемости | цепочка сканирования | встроенный самоконтроль | BIST	テスト容易化設計 | スキャンチェーン | 組み込み自己テスト | BIST	테스트 용이성 설계 | 스캔 체인 | 내장 자체 테스트 | BIST	可測試性設計 | 掃描鏈 | 內建自我測試 | BIST	可测试性设计 | 扫描链 | 内建自测试 | BIST
+hw.ict	in-circuit test | ICT fixture | bed of nails | test fixture	внутрисхемное тестирование | тестовая оснастка | ложе из гвоздей | игольчатый адаптер	インサーキットテスト | ICT治具 | 剣山治具 | テスト治具	인서킷 테스트 | ICT 지그 | 테스트 지그	ICT 測試 | 在線測試 | 針床 | 測試治具	ICT 测试 | 在线测试 | 针床 | 测试治具
+hw.functional_test	functional test | FCT | final test | end-of-line test	функциональный тест | функциональное тестирование | выходной контроль | финальный тест	機能試験 | ファンクションテスト | FCT | 最終検査	기능 시험 | 기능 테스트 | FCT | 최종 검사	功能測試 | FCT | 成品測試	功能测试 | FCT | 成品测试 | 终测
+hw.ate	automatic test equipment | ATE system	автоматизированное испытательное оборудование | тестер ATE | автоматический тестер	自動試験装置 | ATE装置	자동 시험 장비 | ATE 장비	自動測試設備 | ATE 機台	自动测试设备 | ATE 机台
+hw.aoi	automated optical inspection | AOI | X-ray inspection | AXI	автоматическая оптическая инспекция | АОИ | AOI | рентгеновский контроль	自動光学検査 | AOI | X線検査	자동 광학 검사 | AOI | X선 검사	自動光學檢測 | AOI | X 光檢測	自动光学检测 | AOI | X 光检测
+hw.calibration	calibration | RF calibration | calibration data	калибровка | калибровки | калибровку | калибровочные данные	キャリブレーション | 校正データ | 較正	캘리브레이션 | 보정 데이터 | 교정 작업	校準 | 校準資料	校准 | 校准数据 | 标定
+hw.production_programming	production programming | factory programming | serial number provisioning	программирование на производстве | заводская прошивка | прошивка серийного номера	量産書き込み | 工場書き込み | シリアル番号書き込み	양산 기록 | 공장 프로그래밍 | 시리얼 번호 기록	量產燒錄 | 產線燒錄 | 序號燒錄	量产烧录 | 产线烧录 | 序列号烧录
+hw.rma	return merchandise authorization | RMA | RMA unit	RMA | возврат по гарантии | гарантийный возврат | RMA-устройство	RMA | 返品承認 | 返却品	RMA | 반품 승인 | 반품 기기	RMA | 退貨授權 | 退貨品	RMA | 退货授权 | 返修品
+hw.certification_test	certification test | compliance test | regulatory certification | conformance test	сертификационные испытания | сертификация | проверка соответствия | тест на соответствие	認証試験 | 適合性試験 | 認証取得	인증 시험 | 적합성 시험 | 인증 획득	認證測試 | 法規認證 | 一致性測試	认证测试 | 法规认证 | 一致性测试
+hw.oem_odm	OEM | ODM | original design manufacturer | contract manufacturer | EMS provider	OEM | ODM | контрактный производитель | контрактное производство	OEM | ODM | 受託製造 | EMS	OEM | ODM | 위탁 생산 | EMS	OEM | ODM | 代工 | 代工廠	OEM | ODM | 代工 | 代工厂
+hw.end_of_life	end of life | EOL notice | last-time buy | second source	снятие с производства | EOL | последняя закупка | альтернативный поставщик | второй источник	生産終了 | EOL | 最終購入 | セカンドソース	단종 | EOL | 최종 구매 | 세컨드 소스	停產 | EOL | 最後採購 | 第二供應來源	停产 | EOL | 最后采购 | 第二供应商
+hw.conformal_coating	conformal coating	влагозащитное покрытие | лакировка платы | заливка компаундом	防湿コーティング | コンフォーマルコーティング | ポッティング	컨포멀 코팅 | 방습 코팅	三防漆 | 披覆 | 灌膠	三防漆 | 涂覆 | 灌胶
+hw.component_tolerance	component tolerance | derating	допуск номинала | допуск компонента | дерейтинг | снижение номинальных параметров	許容差 | 部品公差 | ディレーティング	허용 오차 | 부품 공차 | 디레이팅	元件公差 | 容差 | 降額	元件公差 | 容差 | 降额
+hw.engineering_change	engineering change order | ECN | engineering change notice	извещение об изменении | инженерное изменение | ECN	設計変更通知 | ECN | 設計変更	설계 변경 | ECN | 설계 변경 통지	工程變更 | ECN | 設變	工程变更 | ECN | 设计变更

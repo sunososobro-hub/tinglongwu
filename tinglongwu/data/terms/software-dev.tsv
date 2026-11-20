@@ -1,0 +1,355 @@
+# scenario: tech
+# software-dev: generic engineering terms, written for tinglongwu (no third-party glossary copied). en/ru/ja/ko/zh-TW/zh-CN.
+id	en	ru	ja	ko	zh-TW	zh-CN
+sw.version_control	version control | source control	система контроля версий | контроль версий | СКВ	バージョン管理	버전 관리	版本控制	版本控制
+sw.repository	repository | repo | repos	репозиторий | репозитория | репозитории | репозиторию | репо	リポジトリ | レポジトリ	저장소 | 리포지토리	儲存庫 | 版本庫	仓库 | 代码仓库
+sw.code_commit	code commit | commits	коммит | коммиты | коммита | коммитом | коммитов | закоммитить | закоммитил | коммитить	コミット	커밋	程式碼提交 | commit	代码提交 | commit
+sw.commit_message	commit message	сообщение коммита | коммит-сообщение | описание коммита	コミットメッセージ	커밋 메시지	commit 訊息 | 提交訊息	提交信息 | 提交消息
+sw.commit_hash	commit hash | commit SHA	хеш коммита | хэш коммита	コミットハッシュ	커밋 해시	commit 雜湊 | 提交雜湊	提交哈希
+sw.code_branch	repository branch | code branch	бранч | бранча | бранчи | ветка в репозитории	作業ブランチ	브랜치	程式碼分支	代码分支
+sw.feature_branch	feature branch	фича-ветка | фичеветка | фиче-ветка | ветка фичи	フィーチャーブランチ	기능 브랜치 | 피처 브랜치	功能分支	功能分支 | 特性分支
+sw.main_branch	main branch | master branch	основная ветка | главная ветка | мастер-ветка	メインブランチ | マスターブランチ	메인 브랜치 | 마스터 브랜치	主分支	主分支 | 主干分支
+sw.release_branch	release branch	релизная ветка | релиз-ветка	リリースブランチ	릴리스 브랜치	發布分支 | release 分支	发布分支 | release 分支
+sw.create_branch	create a branch	создать ветку | отвести ветку | ответвиться	ブランチを切る | ブランチ作成	브랜치를 따다 | 브랜치 생성	開分支 | 切分支	拉分支 | 创建分支
+sw.merge_request	merge request	мерж-реквест | мердж-реквест | мерж реквест | запрос на слияние	マージリクエスト	머지 리퀘스트 | 병합 요청	合併請求 | merge request	合并请求
+sw.pull_request	pull request	пулл-реквест | пул-реквест | пулреквест | пулл-реквеста | пулл-реквесты	プルリクエスト | プルリク	풀 리퀘스트 | 풀리퀘	拉取請求 | pull request	拉取请求 | pull request
+sw.merge	merge branches | branch merge	слияние веток | мерж | мердж | смержить | замержить | смерджить | мержить | мерджить	マージ	머지 | 브랜치 병합	合併分支	合并分支
+sw.squash_merge	squash merge | squash and merge	сквош-мерж	スカッシュマージ	스쿼시 머지	squash merge | 壓縮合併	压缩合并 | squash merge
+sw.merge_conflict	merge conflict | merge conflicts	конфликт слияния | мерж-конфликт | конфликты слияния	マージコンフリクト | コンフリクト	머지 충돌 | 병합 충돌	合併衝突	合并冲突
+sw.rebase	rebase | rebasing	ребейз | ребейзить | сделать ребейз | перебазирование	リベース	리베이스	rebase | 變基	变基 | rebase
+sw.cherry_pick	cherry-pick a commit | cherry-pick	черри-пик | черрипик | черри-пикнуть	チェリーピック	체리픽	cherry-pick | 揀選提交	拣选 | cherry-pick
+sw.stash	stash changes	стэш | стеш | застэшить | застешить	スタッシュ | 変更の退避	스태시	暫存變更 | stash	储藏更改 | stash
+sw.revert_commit	revert a commit	откатить коммит | реверт | ревертнуть | реверт коммита	コミットをリバート | リバート	리버트 | 커밋 되돌리기	還原提交 | revert	回退提交 | revert
+sw.commit_history	commit history	история коммитов	コミット履歴	커밋 히스토리 | 커밋 이력	提交歷史 | commit 紀錄	提交历史 | 提交记录
+sw.version_tag	version tag | release tag	тег версии | тег релиза | тэг релиза	バージョンタグ | リリースタグ	버전 태그 | 릴리스 태그	版本標籤 | 發布標籤	版本标签 | 发布标签
+sw.fork_repo	fork a repository | repository fork	форк | форкнуть | форка | форкать | форки	リポジトリをフォーク	저장소 포크	fork 儲存庫 | 分叉	fork 仓库 | 分叉仓库
+sw.push	push changes | push to remote	запушить | пушнуть | пуш | пушить | запушил	プッシュする	푸시하다	推送變更 | push	推送代码 | 推送更改
+sw.force_push	force push	форс-пуш | форспуш | запушить с форсом	フォースプッシュ | 強制プッシュ	포스 푸시 | 강제 푸시	強制推送 | force push	强制推送 | force push
+sw.diff	diff | code diff	дифф | диф | диффа	差分 | diff	코드 디프 | diff	程式碼差異 | diff	代码差异 | diff
+sw.patch_file	software patch | patch file	патч | патча | патчи | патчем | патчить	パッチ	패치	修補檔 | patch	补丁 | patch
+sw.monorepo	monorepo	монорепозиторий | монорепо | монорепа	モノレポ	모노레포	單一儲存庫 | monorepo	单体仓库 | monorepo
+sw.submodule	submodule	сабмодуль | субмодуль | сабмодули	サブモジュール	서브모듈	子模組	子模块
+sw.upstream	upstream repository | upstream	апстрим | апстрима | вышестоящий репозиторий	アップストリーム	업스트림	上游儲存庫 | upstream	上游仓库 | upstream
+sw.bisect	bisect | bisecting	бисект | бисектить	バイセクト	바이섹트	bisect | 二分定位	二分定位 | bisect
+sw.backport	backport	бэкпорт | бэкпортировать | бэкпортнуть	バックポート	백포트	backport | 向後移植	向后移植 | backport
+sw.code_freeze	code freeze	фриз кода | заморозка кода | код-фриз | кодфриз	コードフリーズ	코드 프리즈	程式碼凍結	代码冻结
+sw.ci	continuous integration | CI	непрерывная интеграция | CI	継続的インテグレーション | CI	지속적 통합 | CI	持續整合 | CI	持续集成 | CI
+sw.cd_delivery	continuous delivery	непрерывная доставка	継続的デリバリー	지속적 전달 | 지속적 제공	持續交付	持续交付
+sw.cd_deployment	continuous deployment	непрерывное развёртывание | непрерывный деплой	継続的デプロイ | 継続的デプロイメント	지속적 배포	持續部署	持续部署
+sw.cicd	CI/CD	CI/CD	CI/CD	CI/CD	CI/CD	CI/CD
+sw.pipeline	CI pipeline | build pipeline	пайплайн | пайплайна | пайплайны | пайплайне | пайплайном | конвейер сборки	CIパイプライン | ビルドパイプライン	CI 파이프라인 | 빌드 파이프라인	CI 管線 | 建置管線	CI 流水线 | 构建流水线 | 流水线
+sw.ci_job	CI job | build job	джоба | джобу | джобы | джоб | джобой	CIジョブ	CI 잡	CI 作業 | CI job	CI 任务 | CI job
+sw.ci_workflow	CI workflow	воркфлоу | воркфлоу CI	CIワークフロー	CI 워크플로	CI 工作流程	CI 工作流
+sw.runner	CI runner | build agent	раннер | раннера | раннеры | билд-агент	CIランナー | ビルドエージェント	CI 러너 | 빌드 에이전트	CI 執行器 | runner	CI 运行器 | runner
+sw.green_build	green build | passing build	зелёная сборка | зелёный билд | позеленел	ビルド成功	빌드 성공 | 그린 빌드	建置通過	构建通过
+sw.broken_build	broken build | failing build | red build	красная сборка | сломанная сборка | упавший билд | билд упал	ビルド失敗 | ビルドが壊れた	빌드 실패 | 빌드 깨짐	建置失敗 | build 掛了	构建失败 | 构建挂了
+sw.build_cache	build cache	кэш сборки | кеш сборки	ビルドキャッシュ	빌드 캐시	建置快取	构建缓存
+sw.build_artifact	build artifact | build artifacts	артефакт сборки | артефакты сборки | артефакты	ビルド成果物 | アーティファクト	빌드 산출물 | 아티팩트	建置產物 | artifact	构建产物 | 制品
+sw.nightly_build	nightly build	ночная сборка | найтли | ночной билд	ナイトリービルド	나이틀리 빌드 | 야간 빌드	每日建置 | nightly build	每日构建 | 夜间构建 | nightly
+sw.env_var	environment variable | env var	переменная окружения | переменная среды | переменные окружения | переменной окружения	環境変数	환경 변수	環境變數	环境变量
+sw.devops	DevOps	девопс | девопса | девопсы | девопсом | DevOps	DevOps	데브옵스	DevOps	DevOps
+sw.unit_test	unit test | unit tests	юнит-тест | юнит-тесты | юнит тест | модульный тест | юнит-тестов	単体テスト | ユニットテスト	단위 테스트 | 유닛 테스트	單元測試	单元测试
+sw.integration_test	integration test	интеграционный тест | интеграционные тесты | интеграционка	結合テスト | 統合テスト | インテグレーションテスト	통합 테스트	整合測試	集成测试
+sw.e2e_test	end-to-end test | e2e test	сквозной тест | e2e-тест | е2е тест | энд-ту-энд	E2Eテスト | エンドツーエンドテスト	E2E 테스트 | 엔드투엔드 테스트	端對端測試 | E2E 測試	端到端测试 | E2E 测试
+sw.regression_test	regression test | regression testing	регрессионный тест | регрессионное тестирование | регресс	回帰テスト | リグレッションテスト	회귀 테스트	回歸測試	回归测试
+sw.smoke_test	smoke test	смоук-тест | смок-тест | дымовой тест	スモークテスト	스모크 테스트	冒煙測試	冒烟测试
+sw.load_test	load test | load testing	нагрузочное тестирование | нагрузочный тест	負荷テスト	부하 테스트	負載測試	负载测试
+sw.perf_test	performance test	тест производительности | перф-тест | перформанс-тест	性能テスト | パフォーマンステスト	성능 테스트	效能測試	性能测试
+sw.acceptance_test	acceptance test | UAT	приёмочный тест | приёмочное тестирование | UAT	受け入れテスト	인수 테스트	驗收測試	验收测试
+sw.automated_test	automated test | test automation	автотест | автотесты | автотестов | автоматизация тестирования	自動テスト | テスト自動化	자동화 테스트 | 테스트 자동화	自動化測試	自动化测试
+sw.test_case	test case	тест-кейс | тесткейс | тест-кейсы | тестовый сценарий	テストケース	테스트 케이스	測試案例	测试用例
+sw.test_suite	test suite	набор тестов | тестовый набор | тест-сьют	テストスイート	테스트 스위트	測試套件	测试套件
+sw.test_plan	test plan	тест-план | план тестирования	テスト計画	테스트 계획	測試計畫	测试计划
+sw.test_coverage	test coverage | code coverage	покрытие тестами | покрытие кода	テストカバレッジ | コードカバレッジ	테스트 커버리지 | 코드 커버리지	測試覆蓋率 | 程式碼覆蓋率	测试覆盖率 | 代码覆盖率
+sw.mock	mock object | mocking	мок | моки | мока | замокать | мокать	モック	목 객체 | 모킹	模擬物件 | mock	模拟对象 | mock
+sw.stub	test stub	стаб | стабы | тестовая заглушка	スタブ	스텁	測試樁 | stub	测试桩 | 桩代码
+sw.assertion	test assertion | assertion failure	ассерт | ассерты | ассерта	アサーション	어서션 | 단언문	斷言	断言
+sw.test_runner	test runner	тест-раннер | запускалка тестов	テストランナー	테스트 러너	測試執行器	测试运行器
+sw.tdd	test-driven development | TDD	разработка через тестирование | TDD	テスト駆動開発 | TDD	테스트 주도 개발 | TDD	測試驅動開發 | TDD	测试驱动开发 | TDD
+sw.fuzzing	fuzzing | fuzz testing	фаззинг | фазз-тестирование	ファジング	퍼징	模糊測試 | fuzzing	模糊测试
+sw.static_analysis	static analysis	статический анализ | статанализ	静的解析	정적 분석	靜態分析	静态分析
+sw.linter	linter	линтер | линтера | линтеры | линтить	リンター	린터	程式碼檢查工具 | linter	代码检查工具 | linter
+sw.test_env	test environment	тестовое окружение | тестовая среда | тестовый стенд	テスト環境	테스트 환경	測試環境	测试环境
+sw.staging	staging environment	стейджинг | стейдж | препрод | стейджа	ステージング環境 | ステージング	스테이징 환경 | 스테이징	預備環境 | staging	预发布环境 | 预发环境 | staging
+sw.production	production environment | prod	прод | прода | проде | продакшн | продакшен | продакшена	本番環境 | プロダクション環境	운영 환경 | 프로덕션	正式環境 | 生產環境	生产环境 | 线上环境
+sw.dev_env	development environment	окружение для разработки | дев-окружение	開発環境	개발 환경	開發環境	开发环境
+sw.env_setup	dev environment setup | environment setup	сетап | засетапить | настроить окружение	環境構築	환경 구축 | 환경 세팅	環境建置 | 架環境	环境搭建 | 搭环境
+sw.repro	reproduce the bug | repro steps	воспроизвести баг | шаги воспроизведения | репро	再現手順 | バグを再現	재현 단계 | 버그 재현	重現步驟 | 重現 bug	复现步骤 | 复现 bug
+sw.qa	quality assurance | QA	обеспечение качества | QA | куа	品質保証 | QA	품질 보증 | QA	品質保證 | QA	质量保证 | QA
+sw.qa_engineer	QA engineer | tester	тестировщик | тестировщика | тестировщики | куаэшник | мануальщик	QAエンジニア	QA 엔지니어 | 테스터	測試工程師	测试工程师
+sw.edge_case	edge case | corner case	граничный случай | краевой случай | корнер-кейс	エッジケース | コーナーケース	엣지 케이스 | 코너 케이스	邊界情況 | edge case	边界情况 | 边缘情况
+sw.benchmark	performance benchmark | benchmark	бенчмарк | бенчмарка | бенчмарки	ベンチマーク	벤치마크	基準測試 | benchmark	基准测试 | 跑分
+sw.bug_report	bug report	баг-репорт | багрепорт | отчёт об ошибке	バグレポート | 不具合報告	버그 리포트	錯誤回報 | bug report	缺陷报告 | bug 报告
+sw.test_report	test report	отчёт о тестировании | тест-репорт	テストレポート | テスト結果報告	테스트 리포트 | 테스트 보고서	測試報告	测试报告
+sw.test_failure	test failure | failing test	упавший тест | тест упал | падающий тест	テスト失敗	테스트 실패	測試失敗	测试失败
+sw.skipped_test	skipped test	пропущенный тест | скипнутый тест | скипнуть	スキップされたテスト	스킵된 테스트	略過的測試 | skipped test	跳过的测试
+sw.flaky_test	flaky test	флаки-тест | флакающий тест | нестабильный тест | моргающий тест	フレーキーテスト | 不安定なテスト	플레이키 테스트 | 불안정한 테스트	不穩定測試 | flaky test	不稳定测试 | flaky 测试
+sw.hil	hardware-in-the-loop | HIL	HIL-тестирование | тестирование на железе	HILテスト | ハードウェアインザループ	HIL 테스트	硬體迴路測試 | HIL	硬件在环测试 | HIL
+sw.emulator	emulator	эмулятор | эмулятора | эмуляторе	エミュレータ | エミュレーター	에뮬레이터	模擬器	模拟器
+sw.dut	device under test | DUT	тестируемое устройство | DUT	被試験デバイス | DUT	테스트 대상 장치 | DUT	待測裝置 | DUT	被测设备 | DUT
+sw.code_review	code review	код-ревью | ревью | ревьюшка | ревью кода | кодревью	コードレビュー	코드 리뷰	程式碼審查 | code review	代码审查 | 代码评审
+sw.code_reviewer	code reviewer	ревьюер | ревьювер | ревьюера | ревьюеры	レビュアー | レビューア	리뷰어	審查者 | reviewer	评审人 | reviewer
+sw.approve_pr	approve a pull request | PR approval	апрув | апрувнуть | заапрувить | аппрув | апрувы	Approve | アプルーブ	어프루브 | PR 승인	approve | PR 核准	approve | PR 批准
+sw.request_changes	request changes	запросить изменения | реквест ченджес	変更をリクエスト | 修正依頼	변경 요청	要求修改	要求修改
+sw.review_comment	review comment	комментарий ревью | коммент на ревью | замечание на ревью	レビューコメント	리뷰 코멘트	審查意見 | review comment	评审意见 | review 意见
+sw.lgtm	LGTM | looks good to me	LGTM | лгтм	LGTM	LGTM	LGTM	LGTM
+sw.pair_programming	pair programming	парное программирование | пейрпрограмминг	ペアプログラミング | ペアプロ	페어 프로그래밍	結對程式設計 | 結對編程	结对编程
+sw.code_owner	code owner	код-оунер | владелец кода	コードオーナー	코드 오너	程式碼負責人 | code owner	代码负责人 | code owner
+sw.style_guide	coding style guide | coding style	стайлгайд | гайдлайн по стилю | стиль кода	コーディング規約 | スタイルガイド	코딩 스타일 가이드	程式碼風格指南 | coding style	代码风格指南 | 编码规范
+sw.code_quality	code quality	качество кода	コード品質	코드 품질	程式碼品質	代码质量
+sw.naming_convention	naming convention	соглашение об именовании | нейминг	命名規則	명명 규칙 | 네이밍 컨벤션	命名規則	命名规范
+sw.software_build	software build | build process	сборка | билд | билда | билды | собрать проект | сбилдить	ビルド	빌드	建置 | build	构建
+sw.compile	compile the code | code compilation	компиляция | компилировать | скомпилировать | компилить	コンパイル	컴파일	編譯	编译
+sw.compiler	compiler	компилятор | компилятора | компилятором	コンパイラ | コンパイラー	컴파일러	編譯器	编译器
+sw.compile_error	compile error | compilation error	ошибка компиляции | не компилится | не собирается	コンパイルエラー	컴파일 에러 | 컴파일 오류	編譯錯誤	编译错误
+sw.compiler_warning	compiler warning	ворнинг | ворнинги | предупреждение компилятора	コンパイラ警告 | ワーニング	컴파일러 경고 | 워닝	編譯器警告 | warning	编译器警告 | warning
+sw.linker	linker	линкер | компоновщик	リンカ | リンカー	링커	連結器 | linker	链接器
+sw.link_error	linker error | undefined reference	ошибка линковки | не линкуется	リンクエラー	링크 에러	連結錯誤	链接错误
+sw.build_system	build system	система сборки	ビルドシステム	빌드 시스템	建置系統	构建系统
+sw.build_script	build script	скрипт сборки | билд-скрипт	ビルドスクリプト	빌드 스크립트	建置腳本	构建脚本
+sw.incremental_build	incremental build	инкрементальная сборка	インクリメンタルビルド | 差分ビルド	증분 빌드	增量建置	增量构建
+sw.clean_build	clean build	чистая сборка	クリーンビルド	클린 빌드	乾淨建置 | clean build	全量构建 | 干净构建
+sw.cross_compile	cross-compilation | cross-compile	кросс-компиляция | кросскомпиляция	クロスコンパイル	크로스 컴파일	交叉編譯	交叉编译
+sw.toolchain	toolchain	тулчейн | тулчейна | тулчейны	ツールチェーン	툴체인	工具鏈	工具链
+sw.build_flag	build flag | compile flag	флаг сборки | флаг компиляции	ビルドフラグ | コンパイルオプション	빌드 플래그 | 컴파일 옵션	建置旗標 | 編譯選項	构建参数 | 编译选项
+sw.debug_build	debug build	отладочная сборка | дебажная сборка | дебаг-сборка	デバッグビルド	디버그 빌드	除錯版建置 | debug build	调试版本 | debug 版
+sw.release_build	release build	релизная сборка | релизный билд	リリースビルド	릴리스 빌드	正式版建置 | release build	发布版本 | release 版
+sw.macro	preprocessor macro | macro definition	макрос | макроса | макросы	マクロ	매크로	巨集	宏定义
+sw.header_file	header file	заголовочный файл | хедер | хедеры | хидер	ヘッダファイル | ヘッダーファイル	헤더 파일	標頭檔	头文件
+sw.source_code	source code	исходный код | исходники | исходников | сорцы | сорсы	ソースコード	소스 코드	原始碼	源代码 | 源码
+sw.codebase	codebase | code base	кодовая база | кодбаза	コードベース	코드베이스	程式碼庫 | codebase	代码库
+sw.dependencies	software dependencies | dependency	зависимости проекта | зависимость пакета	依存関係 | 依存パッケージ	의존성	相依性 | 相依套件	依赖项 | 依赖包
+sw.package_manager	package manager	пакетный менеджер | менеджер пакетов	パッケージマネージャー	패키지 매니저 | 패키지 관리자	套件管理器	包管理器
+sw.lockfile	lock file | lockfile	лок-файл | локфайл	ロックファイル	락 파일	鎖定檔 | lock file	锁文件 | lock 文件
+sw.version_pin	version pinning | pinned version	пиннинг версий | зафиксировать версию | запинить версию	バージョン固定	버전 고정	版本鎖定 | 釘選版本	版本锁定 | 锁版本
+sw.binary_file	binary file | executable binary	бинарник | бинарь | бинарника | бинарники	バイナリ | バイナリファイル	바이너리	二進位檔	二进制文件 | 二进制
+sw.executable	executable | executable file	исполняемый файл | экзешник | экзешника	実行ファイル	실행 파일	執行檔	可执行文件
+sw.shared_lib	shared library | dynamic library	динамическая библиотека | разделяемая библиотека	共有ライブラリ | 動的ライブラリ	공유 라이브러리 | 동적 라이브러리	共用程式庫 | 動態函式庫	共享库 | 动态库
+sw.static_lib	static library	статическая библиотека	静的ライブラリ	정적 라이브러리	靜態函式庫	静态库
+sw.third_party_lib	third-party library	либа | либы | либу | либой | сторонняя библиотека	外部ライブラリ | サードパーティライブラリ	서드파티 라이브러리 | 외부 라이브러리	第三方函式庫 | 第三方套件	第三方库
+sw.sdk	SDK | software development kit	SDK	SDK | ソフトウェア開発キット	SDK | 소프트웨어 개발 키트	SDK | 軟體開發套件	SDK | 软件开发工具包
+sw.ide	IDE | integrated development environment	IDE | среда разработки | интегрированная среда разработки	IDE | 統合開発環境	IDE | 통합 개발 환경	IDE | 整合開發環境	IDE | 集成开发环境
+sw.software_framework	software framework	фреймворк | фреймворка | фреймворки	ソフトウェアフレームワーク | Webフレームワーク	소프트웨어 프레임워크 | 웹 프레임워크	軟體框架 | framework	软件框架 | 开发框架
+sw.plugin	plugin | plug-in	плагин | плагина | плагины	プラグイン	플러그인	外掛程式 | plugin	插件
+sw.release_notes	release notes	релиз-ноутс | заметки о выпуске | примечания к релизу	リリースノート	릴리스 노트	版本說明 | 發布說明 | release note	发布说明 | 版本说明 | 发行说明
+sw.changelog	changelog | change log	чейнджлог | ченджлог | список изменений	変更履歴 | チェンジログ	변경 로그 | 체인지로그	變更日誌 | changelog	变更日志 | 更新日志
+sw.software_release	software release | version release	релиз | релиза | релизы | релизе | релизом | зарелизить | релизнуть	ソフトウェアリリース | リリース作業	릴리스 | 릴리즈	版本發布 | 發版	版本发布 | 发版
+sw.release_candidate	release candidate	релиз-кандидат | RC	リリース候補 | RC	릴리스 후보 | RC	候選版本 | RC	候选版本 | RC
+sw.hotfix	hotfix	хотфикс | хотфикса | хотфиксы | хотфиксом | хот-фикс	ホットフィックス | 緊急修正	핫픽스 | 긴급 수정	緊急修補 | hotfix	热修复 | hotfix
+sw.patch_release	patch release	патч-релиз | патчевый релиз	パッチリリース	패치 릴리스	修補版本 | patch 版	补丁版本
+sw.minor_version	minor version	минорная версия | минорка	マイナーバージョン	마이너 버전	次版本 | minor 版本	次版本号 | 小版本
+sw.major_version	major version	мажорная версия | мажорка	メジャーバージョン	메이저 버전	主版本 | major 版本	主版本号 | 大版本
+sw.semver	semantic versioning | semver	семантическое версионирование | семвер	セマンティックバージョニング	시맨틱 버저닝 | 유의적 버전	語意化版本 | semver	语义化版本 | semver
+sw.version_bump	version bump | bump the version	поднять версию | бамп версии | бампнуть версию | апнуть версию	バージョンを上げる | バージョンアップ	버전 올리기 | 버전 범프	升版 | 版本號遞增	升版本号 | 版本号升级
+sw.version_number	version number	номер версии	バージョン番号	버전 번호	版本號	版本号
+sw.deployment	deployment | deploy	деплой | деплоя | деплои | задеплоить | деплоить | развёртывание	デプロイ | デプロイメント	배포 | 디플로이	部署	部署
+sw.staged_rollout	staged rollout | gradual rollout	выкатка | выкатить | раскатить | раскатка | поэтапная выкатка	段階的ロールアウト | ロールアウト	단계적 롤아웃 | 롤아웃	分階段推出 | rollout	分阶段发布
+sw.rollback	rollback | roll back	откатить релиз | откат релиза | роллбэк | откатиться	ロールバック | 切り戻し	롤백	回滾 | 復原版本	回滚
+sw.canary	canary release | canary deployment	канареечный релиз | канареечное развёртывание	カナリアリリース	카나리 배포	金絲雀發布 | 金絲雀部署	金丝雀发布 | 灰度发布
+sw.feature_flag	feature flag | feature toggle	фича-флаг | фичефлаг | фича-флаги | фича-тогл	フィーチャーフラグ	기능 플래그 | 피처 플래그	功能開關 | feature flag	功能开关 | 特性开关
+sw.installer	installer	инсталлятор | установщик | инсталлер	インストーラー | インストーラ	설치 프로그램 | 인스톨러	安裝程式	安装程序 | 安装包
+sw.auto_update	auto-update | automatic update	автообновление | автоапдейт	自動更新 | 自動アップデート	자동 업데이트	自動更新	自动更新
+sw.deprecation	deprecation | deprecated	депрекейт | депрекейтнуть | задепрекейтить | deprecated	非推奨	디프리케이트 | 사용 중단 예정	已棄用 | deprecated	已弃用 | 废弃接口
+sw.breaking_change	breaking change	ломающее изменение | брейкинг чейндж | несовместимое изменение	破壊的変更	호환성을 깨는 변경 | 브레이킹 체인지	破壞性變更 | breaking change	破坏性变更 | 不兼容变更
+sw.backward_compat	backward compatibility	обратная совместимость	後方互換性	하위 호환성	向下相容 | 向後相容	向后兼容
+sw.data_migration	data migration | schema migration	миграция базы | миграции БД | накатить миграцию	マイグレーション | データ移行	마이그레이션	資料遷移 | migration	数据迁移
+sw.variable	variable	переменная | переменной | переменные | переменную	変数	변수	變數	变量
+sw.named_constant	named constant | constant value	константа | константы | константу	定数	상수	常數	常量
+sw.magic_number	magic number	магическое число | мэджик намбер	マジックナンバー	매직 넘버	魔術數字 | magic number	魔法数字 | 魔数
+sw.function_call	function call	вызов функции	関数呼び出し	함수 호출	函式呼叫	函数调用
+sw.return_value	return value	возвращаемое значение	戻り値 | 返り値	반환값 | 리턴값	回傳值	返回值
+sw.function_argument	function argument | function parameter	аргумент функции | параметр функции	関数の引数 | 引数	함수 인자 | 매개변수	函式參數 | 引數	函数参数 | 实参
+sw.callback	callback function | callback	колбэк | коллбэк | колбэка | колбэки | обратный вызов	コールバック関数	콜백 함수 | 콜백	回呼函式 | callback	回调函数 | 回调
+sw.lambda	lambda function	лямбда | лямбды | лямбда-функция	ラムダ式	람다 함수 | 람다	lambda 函式 | 匿名函式	lambda 函数 | 匿名函数
+sw.closure	closure	клоужер | замыкание функции	クロージャ	클로저	閉包	闭包
+sw.recursion	recursion	рекурсия | рекурсии	再帰	재귀	遞迴	递归
+sw.infinite_loop	infinite loop	бесконечный цикл	無限ループ	무한 루프	無窮迴圈	死循环 | 无限循环
+sw.data_type	data type	тип данных | типы данных	データ型	자료형 | 데이터 타입	資料型別	数据类型
+sw.integer_overflow	integer overflow	переполнение целого | целочисленное переполнение	整数オーバーフロー	정수 오버플로	整數溢位	整数溢出
+sw.string_type	string type | string variable	строковый тип | стринг | стринга	文字列型 | 文字列	문자열	字串	字符串
+sw.boolean	boolean	булево значение | булеан | булевый	ブール値 | 真偽値	불리언 | 불 값	布林值	布尔值
+sw.null_check	null check	проверка на null | проверка на нулл	nullチェック	null 체크	null 檢查	判空 | null 检查
+sw.enum	enumeration | enum	енам | энам | енум	列挙型 | enum	열거형 | enum	列舉 | enum	枚举 | enum
+sw.struct	struct	стракт | структура данных C	構造体	구조체	結構體 | struct	结构体
+sw.type_cast	type casting | type conversion	приведение типов | каст | кастить | скастовать	型変換	형 변환	型別轉換 | 強制轉型	类型转换 | 强制类型转换
+sw.generics	generics | generic type	дженерики | дженерик | обобщённый тип	ジェネリクス	제네릭	泛型	泛型
+sw.out_of_bounds	out-of-bounds access	выход за границы массива | выход за пределы буфера	範囲外アクセス | 配列外参照	범위 초과 접근	越界存取	越界访问
+sw.buffer_overflow	buffer overflow	переполнение буфера	バッファオーバーフロー	버퍼 오버플로	緩衝區溢位	缓冲区溢出
+sw.hash_map	hash map | hash table	хеш-таблица | хэш-таблица | хешмап	ハッシュマップ | ハッシュテーブル	해시맵 | 해시 테이블	雜湊表 | hash map	哈希表 | 散列表
+sw.hash_function	hash function	хеш-функция | хэш-функция	ハッシュ関数	해시 함수	雜湊函數	哈希函数
+sw.call_stack	call stack	стек вызовов | колл-стек	コールスタック	콜 스택	呼叫堆疊	调用栈
+sw.stack_trace	stack trace	стектрейс | стек-трейс | трассировка стека	スタックトレース	스택 트레이스	堆疊追蹤 | stack trace	堆栈跟踪
+sw.stack_overflow	stack overflow	переполнение стека	スタックオーバーフロー	스택 오버플로	堆疊溢位	栈溢出
+sw.binary_search	binary search	бинарный поиск | двоичный поиск	二分探索	이진 탐색	二分搜尋	二分查找
+sw.algorithm	algorithm	алгоритм | алгоритма | алгоритмы	アルゴリズム	알고리즘	演算法	算法
+sw.data_structure	data structure	структура данных | структуры данных	データ構造	자료 구조	資料結構	数据结构
+sw.time_complexity	time complexity | big O	временная сложность | сложность алгоритма | O-большое	時間計算量 | 計算量	시간 복잡도	時間複雜度	时间复杂度
+sw.state_machine	state machine | finite state machine	конечный автомат | стейт-машина | машина состояний	ステートマシン | 状態機械	상태 머신	狀態機	状态机
+sw.pointer	memory pointer | pointer variable	указатель | указателя | указатели | поинтер	ポインタ | ポインター	포인터	指標	指针
+sw.null_pointer	null pointer | null pointer dereference	нулевой указатель | разыменование нулевого указателя | нулл-поинтер	ヌルポインタ | ぬるぽ	널 포인터	空指標	空指针
+sw.dangling_pointer	dangling pointer	висячий указатель	ダングリングポインタ	댕글링 포인터 | 허상 포인터	懸置指標 | dangling pointer	悬空指针 | 野指针
+sw.smart_pointer	smart pointer	умный указатель | смарт-поинтер	スマートポインタ	스마트 포인터	智慧指標	智能指针
+sw.segfault	segmentation fault | segfault	сегфолт | сегфолта | ошибка сегментации	セグメンテーション違反 | セグフォ	세그멘테이션 폴트 | 세그폴트	分段錯誤 | segfault	段错误
+sw.memory_leak	memory leak	утечка памяти | течёт память	メモリリーク	메모리 누수	記憶體洩漏	内存泄漏
+sw.memory_corruption	memory corruption	повреждение памяти | порча памяти	メモリ破壊	메모리 손상	記憶體損毀 | memory corruption	内存损坏 | 踩内存
+sw.use_after_free	use-after-free | UAF	использование после освобождения | UAF | юз-афтер-фри	解放後使用 | UAF	해제 후 사용 | UAF	釋放後使用 | UAF	释放后使用 | UAF
+sw.double_free	double free	двойное освобождение | дабл фри	二重解放	이중 해제	重複釋放 | double free	重复释放 | double free
+sw.undefined_behavior	undefined behavior	неопределённое поведение | UB	未定義動作	정의되지 않은 동작	未定義行為	未定义行为
+sw.garbage_collection	garbage collection | GC	сборка мусора | сборщик мусора | GC	ガベージコレクション | GC	가비지 컬렉션 | GC	垃圾回收 | GC	垃圾回收 | GC
+sw.heap_memory	heap memory	хип | динамическая память | куча памяти	ヒープ | ヒープ領域	힙 메모리 | 힙	堆積記憶體 | heap	堆内存
+sw.memory_allocation	memory allocation	выделение памяти | аллокация | аллоцировать	メモリ確保 | メモリ割り当て	메모리 할당	記憶體配置	内存分配
+sw.hexadecimal	hexadecimal | hex	шестнадцатеричный | хекс | в хексе	16進数 | 十六進数	16진수	十六進位	十六进制
+sw.endianness	endianness | byte order	порядок байтов | эндианность	エンディアン | バイトオーダー	엔디언 | 바이트 순서	位元組順序 | endianness	字节序
+sw.character_encoding	character encoding	кодировка | кодировки	文字コード | 文字エンコーディング	문자 인코딩	字元編碼	字符编码
+sw.oop	object-oriented programming | OOP	объектно-ориентированное программирование | ООП	オブジェクト指向プログラミング | オブジェクト指向	객체 지향 프로그래밍	物件導向程式設計 | 物件導向	面向对象编程 | 面向对象
+sw.class_instance	object instance | class instance	экземпляр класса | инстанс | инстанса	インスタンス	인스턴스	實例	实例
+sw.class_inheritance	class inheritance	наследование классов	クラスの継承	클래스 상속	類別繼承	类继承
+sw.polymorphism	polymorphism	полиморфизм	ポリモーフィズム | 多態性	다형성	多型	多态
+sw.constructor	class constructor | constructor	конструктор класса	コンストラクタ	생성자	建構子 | 建構函式	构造函数
+sw.namespace	namespace	пространство имён | неймспейс	名前空間	네임스페이스	命名空間	命名空间
+sw.design_pattern	design pattern	паттерн проектирования | шаблон проектирования | паттерны проектирования	デザインパターン	디자인 패턴	設計模式	设计模式
+sw.singleton	singleton	синглтон | синглтона	シングルトン	싱글턴 | 싱글톤	單例 | singleton	单例
+sw.dependency_injection	dependency injection	внедрение зависимостей | DI	依存性注入 | DI	의존성 주입 | DI	依賴注入 | DI	依赖注入 | DI
+sw.wrapper	wrapper function | wrapper class	враппер | функция-обёртка	ラッパー関数	래퍼 함수	包裝函式 | wrapper	包装函数 | 封装函数
+sw.middleware	middleware	мидлварь | миддлвар | промежуточное ПО	ミドルウェア	미들웨어	中介軟體	中间件
+sw.over_engineering	over-engineering	оверинжиниринг | переусложнение	オーバーエンジニアリング | 過剰設計	오버 엔지니어링 | 과잉 설계	過度設計 | over-engineering	过度设计
+sw.async	asynchronous | async	асинхронный | асинхронно | асинк | асинхронщина	非同期	비동기	非同步	异步
+sw.concurrency	concurrency	конкурентность | конкурентный доступ	並行処理 | 並行性	동시성	並行 | 並行處理	并发
+sw.multithreading	multithreading	многопоточность | многопоточка	マルチスレッド	멀티스레드 | 멀티스레딩	多執行緒	多线程
+sw.thread_pool	thread pool	пул потоков | тредпул	スレッドプール	스레드 풀	執行緒池	线程池
+sw.race_condition	race condition	состояние гонки | рейс-кондишн	競合状態 | レースコンディション	경쟁 상태 | 레이스 컨디션	競爭條件 | race condition	竞态条件 | 竞争条件
+sw.deadlock	deadlock	дедлок | дедлока | взаимная блокировка	デッドロック	데드락 | 교착 상태	死結 | deadlock	死锁
+sw.mutex	mutex	мьютекс | мьютекса | мьютексы	ミューテックス	뮤텍스	互斥鎖 | mutex	互斥锁 | mutex
+sw.spinlock	spinlock	спинлок	スピンロック	스핀락	自旋鎖	自旋锁
+sw.semaphore	semaphore	семафор | семафора	セマフォ	세마포어	信號量 | semaphore	信号量
+sw.atomic_op	atomic operation	атомарная операция | атомик	アトミック操作	원자적 연산	原子操作	原子操作
+sw.critical_section	critical section	критическая секция	クリティカルセクション	임계 구역	臨界區	临界区
+sw.context_switch	context switch	переключение контекста	コンテキストスイッチ	컨텍스트 스위치 | 문맥 교환	上下文切換	上下文切换
+sw.task_scheduler	task scheduler	планировщик задач | шедулер | шедулера	タスクスケジューラ | スケジューラ	작업 스케줄러 | 스케줄러	任務排程器 | 排程器	任务调度器 | 调度器
+sw.event_loop	event loop	цикл событий | ивент-луп	イベントループ	이벤트 루프	事件迴圈	事件循环
+sw.event_handler	event handler	обработчик событий | хендлер | хэндлер	イベントハンドラ	이벤트 핸들러	事件處理常式 | event handler	事件处理器 | 事件处理函数
+sw.interrupt_handler	interrupt handler	обработчик прерывания | обработчик прерываний	割り込みハンドラ	인터럽트 핸들러	中斷處理程式	中断处理程序
+sw.busy_wait	busy waiting | busy-wait	активное ожидание | бизи-вейт	ビジーウェイト	바쁜 대기 | 비지 웨이트	忙碌等待 | busy wait	忙等待
+sw.polling	polling loop | status polling	поллинг | поллить	ポーリング	폴링	輪詢 | polling	轮询
+sw.exception_handling	exception handling	обработка исключений | эксепшн | эксепшены	例外処理	예외 처리	例外處理	异常处理
+sw.error_handling	error handling	обработка ошибок	エラー処理 | エラーハンドリング	오류 처리 | 에러 핸들링	錯誤處理	错误处理
+sw.app_crash	app crash | software crash	краш | крэш | крашится | крашнулось	クラッシュ	크래시	當機 | 閃退 | crash	崩溃 | 闪退
+sw.crash_dump	crash dump | core dump	дамп памяти | кордамп | крэш-дамп | дамп	クラッシュダンプ | コアダンプ	크래시 덤프 | 코어 덤프	當機傾印 | core dump	崩溃转储 | core dump
+sw.system_hang	system hang | software hang	зависание | зависон | повисло	ハングアップ	시스템 행 | 행업	系統卡死 | hang 住	系统卡死 | 卡死
+sw.debugging	debugging	отладка | дебаг | дебажить | отлаживать | подебажить	デバッグ	디버깅 | 디버그	除錯 | 偵錯 | debug	调试 | debug
+sw.debugger	debugger	отладчик | дебаггер	デバッガ | デバッガー	디버거	除錯器	调试器
+sw.breakpoint	breakpoint	брейкпоинт | точка останова | бряк | бряку	ブレークポイント	중단점 | 브레이크포인트	中斷點	断点
+sw.logging	logging | log output	логирование | логи | логов | лог | логах | залогировать	ロギング | ログ出力 | ログ	로깅 | 로그	日誌 | log	日志 | log
+sw.log_file	log file	лог-файл | файл логов	ログファイル	로그 파일	日誌檔 | log 檔	日志文件 | log 文件
+sw.log_level	log level	уровень логирования	ログレベル	로그 레벨	日誌層級 | log level	日志级别
+sw.tracing	distributed tracing | tracing	трейсинг | трассировка	分散トレーシング | トレーシング	트레이싱	分散式追蹤 | tracing	链路追踪
+sw.profiling	code profiling | profiler	профилирование | профайлер | профилировщик	プロファイリング | プロファイラ	프로파일링 | 프로파일러	效能分析 | profiling	性能分析 | profiling
+sw.bottleneck	performance bottleneck	узкое место | ботлнек	ボトルネック	병목	效能瓶頸	性能瓶颈
+sw.latency	latency	латентность | лейтенси	レイテンシ	지연 시간 | 레이턴시	延遲時間 | latency	时延 | latency
+sw.throughput	throughput	пропускная способность	スループット	처리량 | 스루풋	吞吐量	吞吐量
+sw.cpu_usage	CPU usage	загрузка процессора | загрузка CPU | нагрузка на проц	CPU使用率	CPU 사용률	CPU 使用率	CPU 占用率 | CPU 使用率
+sw.performance_regression	performance regression	регрессия производительности | деградация производительности	性能劣化 | パフォーマンス劣化	성능 저하 | 성능 회귀	效能衰退 | 效能退化	性能回退 | 性能下降
+sw.cache	cache	кэш | кеш | кэша | кешировать | закэшировать	キャッシュメモリ | キャッシュする	캐싱 | 캐시 메모리	快取 | cache	缓存
+sw.serialization	serialization	сериализация | сериализовать	シリアライズ | シリアライゼーション	직렬화	序列化	序列化
+sw.config_file	configuration file | config	конфиг | конфига | конфиги | конфигом | конфигурационный файл	設定ファイル | コンフィグ	설정 파일 | 컨피그	設定檔 | config	配置文件 | 配置
+sw.default_value	default value	значение по умолчанию | дефолтное значение | по дефолту	デフォルト値 | 既定値	기본값 | 디폴트 값	預設值	默认值
+sw.hardcode	hardcode | hard-coded	хардкод | захардкодить | захардкожено | хардкодить	ハードコード | ベタ書き	하드코딩	寫死 | hardcode	硬编码 | 写死
+sw.refactoring	refactoring | refactor	рефакторинг | рефакторить | отрефакторить | рефактор	リファクタリング	리팩토링 | 리팩터링	重構	重构
+sw.tech_debt	technical debt | tech debt	технический долг | техдолг | техдолга	技術的負債	기술 부채	技術債	技术债 | 技术债务
+sw.legacy_code	legacy code	легаси | легаси-код | легаси код	レガシーコード	레거시 코드	舊有程式碼 | legacy code	遗留代码 | 祖传代码
+sw.spaghetti_code	spaghetti code	спагетти-код	スパゲッティコード	스파게티 코드	義大利麵程式碼 | 麵條程式碼	意大利面条代码 | 面条代码
+sw.bad_code	bad code | shitty code	говнокод | говнокода | говнокодить	クソコード	똥코드	爛 code | 垃圾程式碼	屎山代码 | 垃圾代码
+sw.dead_code	dead code	мёртвый код	デッドコード	데드 코드	無用程式碼 | dead code	死代码
+sw.boilerplate	boilerplate code	бойлерплейт | шаблонный код	ボイラープレート	보일러플레이트	樣板程式碼 | boilerplate	样板代码
+sw.code_smell	code smell	код с душком | запах кода	コードの臭い | コードスメル	코드 스멜	程式碼異味 | code smell	代码异味 | 代码坏味道
+sw.workaround	workaround | temporary hack	костыль | костыли | костыля | костылём | костылить | воркэраунд	回避策 | ワークアラウンド	우회 방법 | 워크어라운드	暫時解法 | workaround	临时方案 | workaround | 绕过方案
+sw.code_comment	code comment	комментарий в коде | комментарии в коде	コードコメント	코드 주석 | 주석	程式碼註解 | 註解	代码注释 | 注释
+sw.comment_out	comment out	закомментировать | закомментить	コメントアウト	주석 처리	註解掉	注释掉
+sw.documentation	technical documentation | docs	документация | дока | доки | доку	技術ドキュメント | ドキュメント	기술 문서 | 문서화	技術文件 | 說明文件	技术文档 | 文档
+sw.code_snippet	code snippet	сниппет | кусок кода | фрагмент кода	コードスニペット	코드 스니펫	程式碼片段	代码片段
+sw.regex	regular expression | regex	регулярное выражение | регулярка | регулярки | регэксп	正規表現	정규 표현식 | 정규식	正規表示式 | regex	正则表达式 | 正则
+sw.shell_script	shell script	шелл-скрипт | скрипт оболочки	シェルスクリプト	셸 스크립트	Shell 腳本 | shell script	Shell 脚本 | shell script
+sw.cli	command-line interface | CLI	интерфейс командной строки | CLI	コマンドラインインターフェース | CLI	명령줄 인터페이스 | CLI	命令列介面 | CLI	命令行界面 | CLI
+sw.gui	graphical user interface | GUI	графический интерфейс | GUI | гуй | гуи	グラフィカルユーザーインターフェース | GUI	그래픽 사용자 인터페이스 | GUI	圖形使用者介面 | GUI	图形用户界面 | GUI
+sw.exit_code	exit code | return code	код возврата | код выхода | экзит-код	終了コード	종료 코드	結束代碼 | exit code	退出码 | 返回码
+sw.stdout	standard output | stdout	стандартный вывод | stdout	標準出力	표준 출력	標準輸出	标准输出
+sw.syntax_error	syntax error	синтаксическая ошибка	構文エラー | シンタックスエラー	구문 오류	程式語法錯誤 | syntax error	代码语法错误 | syntax error
+sw.runtime	runtime	рантайм | время выполнения | рантайма	ランタイム | 実行時	런타임	執行階段 | runtime	运行时
+sw.runtime_error	runtime error	ошибка времени выполнения | рантайм-ошибка	実行時エラー | ランタイムエラー	런타임 에러 | 런타임 오류	執行階段錯誤 | runtime error	运行时错误
+sw.api	API | application programming interface	API | апи	API	API	API | 應用程式介面	API | 应用程序接口
+sw.api_endpoint	API endpoint | endpoint	эндпоинт | эндпоинта | эндпоинты	エンドポイント	엔드포인트	端點 | endpoint	端点 | 接口地址
+sw.http_request	HTTP request	HTTP-запрос | хттп-запрос	HTTPリクエスト	HTTP 요청	HTTP 請求	HTTP 请求
+sw.status_code	status code | HTTP status code	код ответа | статус-код	ステータスコード	상태 코드	狀態碼	状态码
+sw.timeout	timeout | request timeout	таймаут | таймаута | таймауты | по таймауту	タイムアウト	타임아웃 | 시간 초과	逾時 | timeout	超时
+sw.retry	retry logic | retry	ретрай | ретраи | ретраить | повторная попытка	リトライ | 再試行	재시도	重試	重试
+sw.rate_limit	rate limiting | rate limit	рейт-лимит | ограничение частоты запросов | лимит запросов	レート制限	속도 제한 | 레이트 리밋	速率限制 | rate limit	限流 | 速率限制
+sw.websocket	WebSocket	вебсокет | вебсокета | вебсокеты	WebSocket | ウェブソケット	웹소켓	WebSocket	WebSocket
+sw.daemon	daemon | background service	демон | демона | демоны	デーモン	데몬	守護行程 | daemon	守护进程 | daemon
+sw.os	operating system | OS	операционная система | ОС	オペレーティングシステム | OS	운영 체제 | OS	作業系統 | OS	操作系统 | OS
+sw.os_kernel	OS kernel | kernel	кернел | ядро ОС	カーネル	커널	作業系統核心 | kernel	内核
+sw.kernel_panic	kernel panic	паника ядра | кернел паник	カーネルパニック	커널 패닉	核心恐慌 | kernel panic	内核崩溃 | kernel panic
+sw.device_driver	device driver	драйвер | драйвера | драйвер устройства	デバイスドライバ	디바이스 드라이버	驅動程式 | driver	驱动程序 | 驱动
+sw.firmware	firmware	прошивка | прошивки | прошивку | прошить | перепрошить | фирмварь	ファームウェア	펌웨어	韌體	固件
+sw.hardware	hardware	железо | железа | железке | железка	ハードウェア	하드웨어	硬體	硬件
+sw.embedded	embedded system | embedded software	встраиваемая система | встроенное ПО | эмбеддед | эмбедед	組み込みシステム | 組込み	임베디드 시스템 | 임베디드	嵌入式系統	嵌入式系统
+sw.bootloader	bootloader	бутлоадер | загрузчик ОС	ブートローダー	부트로더	開機載入程式 | bootloader	引导加载程序 | bootloader
+sw.watchdog	watchdog timer	вочдог | сторожевой таймер	ウォッチドッグタイマー	워치독 타이머	看門狗計時器 | watchdog	看门狗定时器 | watchdog
+sw.virtual_machine	virtual machine | VM	виртуальная машина | виртуалка | виртуалки	仮想マシン | VM	가상 머신 | VM	虛擬機 | VM	虚拟机 | VM
+sw.cross_platform	cross-platform	кроссплатформенный | кроссплатформа	クロスプラットフォーム	크로스 플랫폼	跨平台	跨平台
+sw.porting	porting | port the code	портирование | портировать | спортировать	ポーティング | ソフトウェア移植	포팅	程式移植 | porting	代码移植
+sw.localization	localization | l10n	локализация	ローカライズ | ローカリゼーション	현지화 | 로컬라이제이션	在地化 | 本地化	本地化
+sw.database	database	база данных | БД | базы данных	データベース | DB	데이터베이스 | DB	資料庫 | DB	数据库 | DB
+sw.sql_query	SQL query | database query	SQL-запрос | запрос к базе	SQLクエリ | クエリ	SQL 쿼리 | 쿼리	SQL 查詢	SQL 查询
+sw.microservices	microservices | microservice	микросервис | микросервисы | микросервисная архитектура	マイクロサービス	마이크로서비스	微服務	微服务
+sw.monolith	monolithic architecture	монолитная архитектура | монолитное приложение	モノリス | モノリシックアーキテクチャ	모놀리식 아키텍처 | 모놀리스	單體架構	单体架构
+sw.software_architecture	software architecture	архитектура ПО | архитектура приложения	ソフトウェアアーキテクチャ	소프트웨어 아키텍처	軟體架構	软件架构
+sw.load_balancer	load balancer	балансировщик нагрузки | балансер | балансировщик	ロードバランサー	로드 밸런서	負載平衡器	负载均衡器
+sw.scalability	scalability	масштабируемость	スケーラビリティ | 拡張性	확장성	可擴展性 | 擴充性	可扩展性
+sw.high_availability	high availability	высокая доступность | HA	高可用性	고가용성	高可用性	高可用
+sw.high_load	high-load system	хайлоад | высоконагруженная система	高負荷システム	고부하 시스템	高負載系統	高负载系统 | 高并发系统
+sw.monitoring	system monitoring	мониторинг | мониторинга	システム監視 | モニタリング	시스템 모니터링 | 모니터링	系統監控 | 監控	系统监控 | 监控
+sw.alerting	alerting | alert rule	алертинг | алерт | алерты | алерта	アラート通知 | アラート	알림 규칙 | 얼럿	告警 | 警報規則	告警 | 报警
+sw.on_call	on-call duty | on-call	он-колл | дежурство по инцидентам	オンコール	온콜	on-call | 待命值班	oncall | 待命值班
+sw.incident	production incident | service outage	инцидент на проде | авария на проде	本番障害 | システム障害	서비스 장애 | 시스템 장애	線上事故 | 服務中斷	线上故障 | 线上事故
+sw.postmortem	incident postmortem | blameless postmortem	постмортем | разбор инцидента	ポストモーテム | 障害振り返り	포스트모템 | 장애 회고	事後檢討 | postmortem	事故复盘
+sw.root_cause	root cause analysis | RCA	анализ первопричины | рут кос | RCA	根本原因分析 | RCA	근본 원인 분석 | RCA	根因分析 | RCA	根因分析 | RCA
+sw.timestamp	timestamp	таймстамп | временная метка | метка времени	タイムスタンプ	타임스탬프	時間戳記	时间戳
+sw.checksum	checksum	контрольная сумма | чексумма	チェックサム	체크섬	校驗和 | checksum	校验和
+sw.authentication	authentication	аутентификация	認証	인증	身分驗證 | 認證	身份验证 | 认证
+sw.encryption	encryption	шифрование	暗号化	암호화	加密	加密
+sw.vulnerability	security vulnerability	уязвимость | уязвимости | уязвимостей	脆弱性	취약점	安全漏洞 | 弱點	安全漏洞 | 漏洞
+sw.software_bug	software bug	баг | бага | баги | багов | багом | баге	バグ | 不具合	버그	bug | 程式錯誤 | 臭蟲	bug | 缺陷 | 程序缺陷
+sw.bug_fix	bug fix | bugfix	багфикс | исправление бага | пофиксить | фиксить | пофиксил	バグ修正 | バグフィックス	버그 수정 | 버그 픽스	修正錯誤 | bug fix | 修 bug	修复缺陷 | bug 修复 | 修 bug
+sw.blocker	blocker bug | blocker	блокер | блокера | блокеры	ブロッカー	블로커	阻斷性問題 | blocker	阻塞性问题 | blocker
+sw.bug_triage	bug triage | issue triage	триаж | триаж багов | разбор багов	バグトリアージ	버그 트리아지	bug 分類 | triage	缺陷分级 | bug 分诊
+sw.new_feature	new feature	фича | фичи | фичу | фичей | фичами	新機能 | フィーチャー	신규 기능 | 피처	新功能 | feature	新功能 | 新特性
+sw.issue_ticket	issue ticket | bug ticket	тикет | тикета | тикеты | таск | таска | таску | таски | ишью	課題チケット | イシュー	이슈 티켓 | 이슈	工單 | issue	工单 | issue
+sw.issue_tracker	issue tracker | bug tracker	баг-трекер | багтрекер | трекер задач	課題管理システム | バグトラッカー	이슈 트래커 | 버그 트래커	問題追蹤系統 | issue tracker	问题跟踪系统 | 缺陷管理系统
+sw.backlog	product backlog | backlog	бэклог | бэклога | бэклоге	バックログ	백로그	待辦清單 | backlog	待办列表 | backlog
+sw.sprint	agile sprint | sprint	спринт | спринта | спринте | спринты	スプリント	스프린트	衝刺週期 | sprint	迭代周期 | sprint
+sw.sprint_planning	sprint planning	планирование спринта	スプリント計画	스프린트 계획	衝刺規劃 | sprint planning	冲刺计划 | sprint 规划
+sw.daily_standup	daily standup | stand-up meeting	дейли | дейлик | ежедневный стендап	デイリースタンドアップ	데일리 스탠드업 | 데일리 스크럼	每日站立會議 | standup	每日站会 | 站会
+sw.retrospective	sprint retrospective | retrospective	ретроспектива | ретроспективу	レトロスペクティブ | スプリント振り返り	회고 미팅 | 레트로스펙티브	回顧會議 | retro	回顾会议 | 回顾会
+sw.user_story	user story	юзер-стори | юзерстори | пользовательская история	ユーザーストーリー	사용자 스토리 | 유저 스토리	使用者故事 | user story	用户故事
+sw.task_estimate	effort estimate | task estimate	эстимейт | эстимейты | оценка задачи	工数見積もり	작업 추정 | 공수 산정	工時估算 | estimate	工作量估算 | 估时
+sw.scrum	scrum	скрам | скрама	スクラム	스크럼	Scrum	Scrum
+sw.agile	agile development	аджайл | эджайл | гибкая разработка	アジャイル開発 | アジャイル	애자일 개발 | 애자일	敏捷開發	敏捷开发
+sw.mvp	minimum viable product	минимально жизнеспособный продукт | MVP-версия	実用最小限の製品 | MVP	최소 기능 제품	最小可行產品	最小可行产品
+sw.requirements	software requirements | requirements spec	требования к ПО | функциональные требования	要件定義 | 要求仕様	요구사항 명세 | 요구사항 정의	需求規格 | 需求文件	需求规格 | 需求文档
+sw.tech_spec	technical specification | spec	техническое задание | ТЗ | техзадание | спека | спецификация	仕様書 | 技術仕様	기술 명세서	技術規格書 | spec	技术规格书 | 技术规范
+sw.poc	proof of concept | PoC	пруф-оф-концепт | PoC	概念実証 | PoC	개념 증명 | PoC	概念驗證 | PoC	概念验证 | PoC
+sw.roadmap	product roadmap	роадмап | роудмап | дорожная карта продукта	ロードマップ	로드맵	產品路線圖 | roadmap	产品路线图 | roadmap
+sw.open_source	open source | open-source software	открытый исходный код | опенсорс | опенсорса	オープンソース | OSS	오픈 소스	開源 | 開放原始碼	开源
+sw.contributor	open-source contributor | contributor	контрибьютор | контрибьютора | контрибьюторы | контрибьютить | законтрибьютить	コントリビューター	컨트리뷰터 | 기여자	貢獻者 | contributor	贡献者
+sw.maintainer	maintainer	мейнтейнер | мейнтейнера | майнтейнер	メンテナ | メンテナー	메인테이너	維護者 | maintainer	维护者 | maintainer
+sw.programmer	programmer | coder	программист | программиста | программисты | прогер | программер | кодер	プログラマー | プログラマ	프로그래머	程式設計師 | 寫程式的	程序员 | 码农
+sw.software_developer	software developer	разработчик | разраб | разрабы | разработчика	ソフトウェア開発者 | 開発者	소프트웨어 개발자 | 개발자	軟體開發者 | 開發者	软件开发者 | 开发者 | 开发人员
+sw.coding	coding | write code	кодить | покодить | накодить | кодинг | писать код	コーディング | コードを書く	코딩	寫程式 | coding	写代码 | 敲代码
+sw.junior_dev	junior developer	джун | джуна | джуны | джуниор	ジュニアエンジニア	주니어 개발자	初階工程師 | junior	初级工程师
+sw.senior_dev	senior developer	сеньор | синьор | сеньор-разработчик	シニアエンジニア	시니어 개발자	資深工程師 | senior	高级工程师
+sw.tech_lead	tech lead | team lead	тимлид | тимлида | техлид	テックリード | チームリード	테크 리드 | 팀 리드	技術主管 | tech lead	技术负责人 | tech lead
+sw.frontend	frontend | front-end	фронтенд | фронтенда | фронтендер	フロントエンド	프론트엔드	前端	前端
+sw.backend	backend | back-end	бэкенд | бэк | бэкенда | бэкендер	バックエンド	백엔드	後端	后端
+sw.fullstack	full-stack developer	фулстек | фуллстек-разработчик	フルスタックエンジニア	풀스택 개발자	全端工程師	全栈工程师
+sw.sysadmin	system administrator | sysadmin	сисадмин | системный администратор | админ	システム管理者 | シスアド	시스템 관리자	系統管理員	系统管理员
+sw.product_manager	product manager	продакт | продакт-менеджер | продакта	プロダクトマネージャー | PdM	프로덕트 매니저	產品經理	产品经理
