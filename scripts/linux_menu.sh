@@ -107,6 +107,7 @@ while :; do
   m M_OPT_UPDATE
   m M_OPT_AUTOUPD "$AU"
   m M_OPT_UILANG "$(mp M_LANGNAME)"
+  m M_OPT_GUI
   read -rp "> " pick || exit 0
   case "$pick" in
     ""|1) mode=2; BOTH=1 ;;
@@ -115,6 +116,7 @@ while :; do
     u|U) tlwu_manual_update || true; continue ;;
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
+    g|G) exec tlwu-gui ;;   # #1677: the window version
     l|L) python -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
          read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"
          # #237: only a real language code may reach tlwu/tlwu-setup (a menu digit like "3" used to become "3->en")
