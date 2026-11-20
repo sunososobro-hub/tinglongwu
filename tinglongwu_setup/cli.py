@@ -215,7 +215,14 @@ def main(argv=None) -> int:
     if a.gpu:
         _pip("install", "-r", str(ROOT / "requirements-gpu.txt"))
     if a.ask_lang:
-        langs = packs.choose_langs()
+        langs = ""
+        if not (os.environ.get("TLWU_PACKS") or os.environ.get("TLWU_YES") == "1"):
+            langs = packs.saved_langs(mdir)  # #1673: an update run never re-asks
+            if langs:
+                print(f"Languages: {langs} (from previous setup)")
+        if not langs:
+            langs = packs.choose_langs()
+            packs.save_langs(mdir, langs)
         print(f"language packs: {langs} (download: {packs.total_size_mb(langs)} MB)")
         rest = [*rest, "--packs", langs]
     if rest or not (a.deps or a.bundle or a.gpu):

@@ -118,6 +118,28 @@ def locale_default(env=None) -> str:
     return code if code in TIER1 else "en"
 
 
+SAVED_FILE = "chosen_langs.json"
+
+
+def saved_langs(mdir: Path) -> str:
+    """#1673: the language packs chosen in an earlier setup run ("" if none / unreadable / no longer valid)."""
+    try:
+        langs = json.loads((mdir / SAVED_FILE).read_text("utf-8")).get("langs", [])
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if not isinstance(langs, list) or not langs or any(l not in PACKS for l in langs):
+        return ""
+    return ",".join(langs)
+
+
+def save_langs(mdir: Path, langs: str) -> None:
+    try:
+        mdir.mkdir(parents=True, exist_ok=True)
+        (mdir / SAVED_FILE).write_text(json.dumps({"langs": [x for x in langs.split(",") if x]}), "utf-8")
+    except OSError:
+        pass  # best effort: the next run just asks again
+
+
 def choose_langs(env=None, ask=None) -> str:
     """#671: comma list of packs to install. TLWU_PACKS or TLWU_YES=1 skip the question (YES -> locale default);
     otherwise one prompt in the UI language; empty / EOF / no valid answer -> the locale default."""
