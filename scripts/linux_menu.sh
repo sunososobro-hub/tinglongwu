@@ -6,6 +6,8 @@
 # Network is used only for install/setup and update (git); TLWU_NO_UPDATE=1 forces updates off. Everything else is offline.
 set -e
 cd "$(dirname "$0")/.."
+# #1664: drop pre-move root package folders before any python -m (they shadow src/); only once src/ exists
+if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
 . .venv/bin/activate
 IS_MAC=0; [ "$(uname -s)" = "Darwin" ] && IS_MAC=1
 

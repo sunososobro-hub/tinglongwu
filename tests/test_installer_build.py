@@ -30,12 +30,16 @@ needs_git = pytest.mark.skipif(not _git_ok(), reason="needs a git checkout")
 def test_stage_ships_app_and_install_scripts_not_tests(tmp_path):
     files = bi.stage(tmp_path / "stage")
     must = ["install.ps1", "install.bat", "pyproject.toml", "requirements.txt", "requirements-llama-cuda.txt",
-            "LICENSE", "README.md", "tinglongwu/__init__.py", "tinglongwu_setup/cli.py", "tlwu_app/main.py",
+            "LICENSE", "README.md", "src/core/tinglongwu/__init__.py", "src/system/tinglongwu_setup/cli.py",
+            "src/ui/tlwu_app/main.py", "src/flow/tinglongwu/cli.py", "src/ui/tinglongwu/gui/__init__.py",
+            "src/system/tinglongwu/offline.py", "eval/tlwu_eval/__init__.py",
             "installer/run_install.ps1"]
     for m in must:
         assert m in files and (tmp_path / "stage" / m).is_file(), m
     for f in files:
-        assert not f.startswith(("tests/", ".github/", "mobile/", "docs/", "tlwu_eval/", "models/", ".venv/")), f
+        assert not f.startswith(("tests/", ".github/", "mobile/", "docs/", "models/", ".venv/")), f
+        # #1664: pyproject packages eval/tlwu_eval, so it ships; the rest of eval/ (data, baselines) does not
+        assert not f.startswith("eval/") or f.startswith("eval/tlwu_eval/"), f
     # the .iss is a build input, not shipped
     assert "release/installer/tinglongwu.iss" not in files
 

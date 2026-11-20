@@ -21,7 +21,7 @@ def make_api(*, pr_merged=True, base="dev", labels=("bug", "P1"), compare="ahead
              latest="v0.3.5", body="Fix it.\n\nCloses #77", merged_prs=True, dev_version="0.3.5",
              open_prs=()):
     def api(path):
-        if path.startswith("contents/tinglongwu/__init__.py"):
+        if path.startswith("contents/src/core/tinglongwu/__init__.py"):
             text = f'"""x"""\n__version__ = "{dev_version}"\n'
             return {"content": base64.b64encode(text.encode()).decode()}
         if path.startswith("pulls?"):

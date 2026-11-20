@@ -105,12 +105,14 @@ OFFLINE_SAFE = {"-h", "--help", "--selftest", "--check-llama", "--verify", "--fr
 
 def source_version(root: Path) -> str | None:
     """tinglongwu.__version__ of a source checkout, read as text: setup never imports tinglongwu (its offline guard)."""
-    f = Path(root) / "tinglongwu" / "__init__.py"
-    try:
-        m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', f.read_text("utf-8", "replace"), re.M)
-    except OSError:
-        return None
-    return m.group(1) if m else None
+    for f in (Path(root) / "src" / "core" / "tinglongwu" / "__init__.py",  # source checkout (#1664 src/ layout)
+              Path(root) / "tinglongwu" / "__init__.py"):  # flat app dir
+        try:
+            m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', f.read_text("utf-8", "replace"), re.M)
+        except OSError:
+            continue
+        return m.group(1) if m else None
+    return None
 
 
 def offline_refused(args: list[str]) -> bool:

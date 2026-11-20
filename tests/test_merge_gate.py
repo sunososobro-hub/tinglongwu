@@ -103,10 +103,10 @@ def test_issue_hard_stops():
 def test_protected_paths():
     for path in (".agent/tlwu_rules.md", ".claude/settings.json", ".github/workflows/ci.yml",
                  ".github/workflows/auto-release.yml", "pyproject.toml", "requirements-dev.txt",
-                 "scripts/ci_offline.sh", "tinglongwu/offline.py", "release/packaging/x.spec", "tinglongwu/__init__.py"):
+                 "scripts/ci_offline.sh", "src/system/tinglongwu/offline.py", "release/packaging/x.spec", "src/core/tinglongwu/__init__.py"):
         assert is_protected(path), path
     assert is_protected("scripts/merge_gate.py") and is_protected(".github/workflows/merge-gate.yml")
-    for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "tinglongwu/foo.py",
+    for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "src/core/tinglongwu/foo.py",
                  ".github/ISSUE_TEMPLATE/bug.yml"):
         assert not is_protected(path), path
 
@@ -135,7 +135,7 @@ def test_protected_needs_opus_until_newer_pass():
 
 
 def test_exempt_bump_merges_without_opus():
-    files = [{"filename": "tinglongwu/__init__.py", "status": "modified"}]
+    files = [{"filename": "src/core/tinglongwu/__init__.py", "status": "modified"}]
     assert run(files=files, bump=lambda fs: (True, "version line only"))[0] == "merge"
     assert run(files=files, bump=lambda fs: (False, "no"))[0] == "needs-opus"
 
@@ -191,7 +191,7 @@ def test_protected_path_needs_collaborator_issue_even_with_pass():  # section 14
     for assoc in ("OWNER", "MEMBER", "COLLABORATOR"):
         assert run(files=files, issue={**outside, "author_association": assoc}, notes=passed)[0] == "merge", assoc
     bump_issue = {**outside, "user": {"login": "github-actions[bot]"}}
-    init = [{"filename": "tinglongwu/__init__.py", "status": "modified"}]
+    init = [{"filename": "src/core/tinglongwu/__init__.py", "status": "modified"}]
     assert run(files=init, issue=bump_issue, bump=lambda fs: (True, "version line only"))[0] == "merge"
     assert run(files=init, issue=outside, bump=lambda fs: (True, "version line only"))[0] == "hold"
     assert run(issue=outside)[0] == "merge"  # non-protected code from an outside issue follows the normal gates
@@ -271,14 +271,14 @@ EVAL_OK = {"name": "mini-eval", "status": "completed", "conclusion": "success"}
 
 
 def test_asr_mt_eval_pr_needs_mini_eval_green():  # #1687
-    for path in ("tinglongwu/asr.py", "src/core/tinglongwu/mt.py", "src/flow/tinglongwu/x.py", "eval/baseline.json",
-                 "tlwu_eval/run.py", ".github/workflows/eval.yml"):
+    for path in ("src/ui/tinglongwu/asr.py", "src/core/tinglongwu/mt.py", "src/flow/tinglongwu/x.py", "eval/baseline.json",
+                 "eval/tlwu_eval/run.py", "src/system/tinglongwu_setup/manifest.json", ".github/workflows/eval.yml"):
         files = [{"filename": path, "status": "modified"}]
         assert run(files=files, checks=TEST_OK + [EVAL_OK])[0] == "merge", path
         assert run(files=files, checks=TEST_OK + [{**EVAL_OK, "conclusion": "failure"}]) == ("hold", "mini-eval is red")
         assert run(files=files, checks=TEST_OK + [{**EVAL_OK, "status": "queued", "conclusion": None}])[0] == "wait"
         assert run(files=files, checks=TEST_OK)[0] == "wait", path  # no mini-eval yet: check once, skip
-    moved = [{"filename": "docs/x.md", "previous_filename": "tinglongwu/x.md", "status": "renamed"}]
+    moved = [{"filename": "docs/x.md", "previous_filename": "src/core/tinglongwu/x.md", "status": "renamed"}]
     assert run(files=moved, checks=TEST_OK)[0] == "wait"
 
 

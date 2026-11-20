@@ -22,7 +22,7 @@ NON_RUNTIME = {"README.md"}
 
 
 def repo_version(root: Path = ROOT) -> str:
-    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (root / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (root / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
     if not m:
         raise SystemExit("cannot read __version__")
     return m.group(1)

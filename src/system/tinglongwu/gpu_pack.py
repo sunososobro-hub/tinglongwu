@@ -90,10 +90,15 @@ def install_pack(archive: Path, man: dict, dest: Path) -> Path:
     return dest
 
 
+def _app_root() -> Path:
+    from .paths import APP_ROOT  # repo root (source) or {app} (frozen); path resolution only, pack format unchanged
+    return APP_ROOT
+
+
 def pack_dir(base: Path | None = None) -> Path | None:
     """The installed GPU pack folder (has at least one DLL / .so), else None. Env TLWU_GPU_PACK overrides the place."""
     d = base or (Path(os.environ["TLWU_GPU_PACK"]) if os.environ.get("TLWU_GPU_PACK")
-                 else Path(__file__).resolve().parent.parent / PACK_NAME)
+                 else _app_root() / PACK_NAME)
     try:
         if d.is_dir() and (any(d.glob("*.dll")) or any(d.glob("*.so*"))):
             return d.resolve()

@@ -10,7 +10,7 @@ rn = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rn)
 
 # real pulls/1250/files patch (bump 0.4.2 -> 0.4.3)
-INIT = {"filename": "tinglongwu/__init__.py", "status": "modified",
+INIT = {"filename": "src/core/tinglongwu/__init__.py", "status": "modified",
         "patch": '@@ -5,4 +5,4 @@\n _offline.apply_env()\n _offline.install_guard()\n \n-__version__ = "0.4.2"\n'
                  '+__version__ = "0.4.3"'}
 

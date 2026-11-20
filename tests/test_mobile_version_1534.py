@@ -74,7 +74,7 @@ def test_cli_exit_codes(tmp_path):
 def test_default_version_follows_desktop_dunder_version(tmp_path):
     """#1598: no path argument -> versionName is tinglongwu.__version__, not pubspec.yaml."""
     import re
-    init = (ROOT / "tinglongwu" / "__init__.py").read_text(encoding="utf-8")
+    init = (ROOT / "src" / "core" / "tinglongwu" / "__init__.py").read_text(encoding="utf-8")
     want = re.search(r'^__version__\s*=\s*"([^"]+)"', init, re.M).group(1)
     r = subprocess.run([sys.executable, "-I", str(SCRIPT), "name"], capture_output=True, text=True)
     assert r.returncode == 0 and r.stdout.strip() == want

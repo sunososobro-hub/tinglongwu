@@ -8,6 +8,10 @@
 #   model: https://alphacephei.com/vosk/models/vosk-model-tts-ru-0.7-multi.zip -> $HOME\vosk-model-tts-ru-0.7-multi
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
+# #1664: pre-move root package folders shadow src\ packages; remove them before any python -m (only once src\ exists)
+if (Test-Path "src\core\tinglongwu\__init__.py") {
+  foreach ($d in "tinglongwu", "tinglongwu_setup", "tlwu_app", "tlwu_eval") { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }
+}
 $env:PYTHONUTF8 = "1"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $py = ".\.venv\Scripts\python.exe"

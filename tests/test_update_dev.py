@@ -121,3 +121,18 @@ def test_missing_gui_exe(repos, tmp_path):
 def test_gui_exe_sits_next_to_python(tmp_path):
     p = update.gui_exe(tmp_path / "Scripts" / "python.exe")
     assert p.parent == tmp_path / "Scripts" and p.name.startswith("tlwu-gui")
+
+
+def test_remove_legacy_dirs_only_when_src_layout_present(tmp_path):
+    """#1664: leftover root packages shadow src/ as namespace packages; delete them only next to src/core."""
+    for name in update.LEGACY_ROOT_DIRS:
+        (tmp_path / name / "__pycache__").mkdir(parents=True)
+    (tmp_path / "keep").mkdir()
+    assert update.remove_legacy_dirs(tmp_path, say=lambda *_: None) == []   # no src/ yet: touch nothing
+    assert all((tmp_path / n).is_dir() for n in update.LEGACY_ROOT_DIRS)
+    pkg = tmp_path / "src" / "core" / "tinglongwu"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    assert update.remove_legacy_dirs(tmp_path, say=lambda *_: None) == list(update.LEGACY_ROOT_DIRS)
+    assert not any((tmp_path / n).exists() for n in update.LEGACY_ROOT_DIRS)
+    assert (tmp_path / "keep").is_dir() and (pkg / "__init__.py").is_file()

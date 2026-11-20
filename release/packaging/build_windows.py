@@ -38,18 +38,22 @@ import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]  # release/<dir>/this.py (#1653)
+# src/ layer layout (#1664): tinglongwu (gpu_pack, llamacheck) is imported from src/core; its __init__ adds the
+# other layer dirs. Set here, not in the pack-recipe functions, so the GPU pack recipe fingerprint is unchanged.
+if str(REPO / "src" / "core") not in sys.path:
+    sys.path.insert(0, str(REPO / "src" / "core"))
 EVAL = Path(os.environ.get("TLWU_BUILD_ROOT", str(Path.home() / "tlwu-eval")))
 BUILD = EVAL / "build"
 RUNTIME = EVAL / "runtime" / "tlwu"  # the runtime layer (release/packaging/runtime_layer.py); CI caches EVAL/runtime
 PACK_VENV = BUILD / "pack-venv"      # made by --lite when this interpreter is not a packaging venv
-APP_ICON = REPO / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
+APP_ICON = REPO / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico"  # same icon as the wizard and shortcuts (#127)
 
 
 def read_version() -> str:
     """tinglongwu.__version__ is the single source of truth (read as text: no import, so no offline guard side effects)."""
     import re
 
-    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (REPO / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (REPO / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
     if not m:
         raise SystemExit("tinglongwu/__init__.py has no __version__")
     return m.group(1)
@@ -494,6 +498,13 @@ def make_zip(app: Path, out: Path) -> None:
 WORKER_SOURCES = ("tinglongwu/__init__.py", "tinglongwu/offline.py", "tinglongwu/i18n.py", "tinglongwu/userdirs.py",
                   "tinglongwu/reverse/tts_worker.py")  # i18n/userdirs: offline._emit (blocked-connection log)
 APP_PACKAGES = ("tinglongwu", "tlwu_app", "tinglongwu_setup")  # = runtime_layer.APP_PACKAGES (tested)
+# Where each app package lives in the repo (src/ layer layout, #1664). tinglongwu is split over four layer dirs and
+# merged into one tinglongwu/ in the app layer (core first; its __init__ skips layer dirs that do not exist).
+APP_PACKAGE_SOURCES = {
+    "tinglongwu": ("src/core/tinglongwu", "src/ui/tinglongwu", "src/flow/tinglongwu", "src/system/tinglongwu"),
+    "tlwu_app": ("src/ui/tlwu_app",),
+    "tinglongwu_setup": ("src/system/tinglongwu_setup",),
+}
 APP_MANIFEST = "app-layer.json"  # at the top of the folder: app version of the app layer
 USAGE_TEXT = "使用說明.txt"
 EXE_NAME = "tlwu.exe"
@@ -647,7 +658,10 @@ def build_app_layer(app: Path, pyc_magic: str | None = None, repo: Path | None =
         dst = app / pkg
         if dst.exists():
             shutil.rmtree(dst)
-        shutil.copytree(repo / pkg, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        for src in APP_PACKAGE_SOURCES[pkg]:
+            if (repo / src).is_dir():
+                shutil.copytree(repo / src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                                dirs_exist_ok=True)
         if not compileall.compile_dir(
                 str(dst), quiet=1, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH):
             raise SystemExit(f"app layer: {pkg} has a file that does not compile")

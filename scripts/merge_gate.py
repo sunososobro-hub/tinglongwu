@@ -31,15 +31,15 @@ ALLOWED_REVIEWERS = frozenset({"sunososobro-hub"})  # section 14 "Allowed review
 NEEDS_OPUS, NEEDS_AI = "needs-opus", "needs-review-ai"
 MOBILE_CHECK = "mobile-apk"  # #1618: workflow name; its job is a generic `build`, so gather() reads the workflow run
 EVAL_CHECK = "mini-eval"  # #1687: eval.yml job (check run) name; needed only when a file matches EVAL_PATH_RE
-# #1687: keep in step with eval.yml's "Does this PR touch translation / ASR / eval code?" filter. Root `tinglongwu/`
-# (until #1671 lands) and the post-#1671 layout src/{core,ui,flow,system}/tinglongwu/.
-EVAL_PATH_RE = re.compile(r"^(?:tinglongwu/|src/[^/]+/tinglongwu/|tlwu_eval/|eval/|tinglongwu_setup/manifest\.json$"
+# #1687: keep in step with eval.yml's "Does this PR touch translation / ASR / eval code?" filter. Post-#1671
+# layout: src/{core,ui,flow,system}/tinglongwu/, eval/ (incl. eval/tlwu_eval/), src/system/tinglongwu_setup/.
+EVAL_PATH_RE = re.compile(r"^(?:src/[^/]+/tinglongwu/|eval/|src/system/tinglongwu_setup/manifest\.json$"
                           r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
 RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
                     "hotfix.yml")
 PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
-                   "tinglongwu/__init__.py", "pyproject.toml", "tinglongwu/offline.py", "scripts/download_models.py",
+                   "src/core/tinglongwu/__init__.py", "pyproject.toml", "src/system/tinglongwu/offline.py", "scripts/download_models.py",
                    "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
 PROTECTED_PREFIX = (".claude/", "release/packaging/", "release/installer/")
 
@@ -215,8 +215,8 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         exempt = bump is not None and bump(files)[0]
         if not exempt and not pass_at:
             return "needs-opus", "protected / g4 path: " + ", ".join(protected[:5])
-    if any(f["filename"] == "tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
-        return "needs-opus", "touches tinglongwu/__init__.py"
+    if any(f["filename"] == "src/core/tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
+        return "needs-opus", "touches src/core/tinglongwu/__init__.py"
 
     test = [c for c in checks if c.get("name") == "test"]
     if not test or any(c.get("status") != "completed" for c in test):

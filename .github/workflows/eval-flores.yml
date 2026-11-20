@@ -146,7 +146,7 @@ jobs:
             ~/tlwu-models
             ~/bench/flores200_dataset
             ~/.cache/huggingface
-          key: eval-flores-v2-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: eval-flores-v2-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - name: Hy-MT2 1.8B + FLORES-200
         run: |
           tlwu-setup --hymt --models-dir "$TLWU_MODELS"

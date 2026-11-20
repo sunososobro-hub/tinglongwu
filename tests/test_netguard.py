@@ -137,7 +137,7 @@ def test_duplicate_block_logged_once():
 
 def test_worker_subprocess_inherits_guard(tmp_path):
     """tts_worker.py's header installs the guard (same code path as the real worker, minus the TTS libraries)."""
-    src = (ROOT / "tinglongwu" / "reverse" / "tts_worker.py").read_text("utf-8")
+    src = (ROOT / "src" / "flow" / "tinglongwu" / "reverse" / "tts_worker.py").read_text("utf-8")
     head = src.split("_OUT = os.fdopen")[0]
     script = tmp_path / "w.py"
     # keep the worker's guard header verbatim, repoint __file__-relative root at the checkout
@@ -158,7 +158,7 @@ except OSError as e:
 
 
 def test_tts_client_sets_worker_mode():
-    assert '"TLWU_MODE": "worker"' in (ROOT / "tinglongwu" / "reverse" / "tts_client.py").read_text("utf-8")
+    assert '"TLWU_MODE": "worker"' in (ROOT / "src" / "flow" / "tinglongwu" / "reverse" / "tts_client.py").read_text("utf-8")
 
 
 def _fake(host, n=1, stack=40, **kw):

@@ -26,7 +26,6 @@ import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 OFFLINE_ENV = {
     "HF_HUB_OFFLINE": "1",
@@ -94,7 +93,7 @@ def _version_info() -> tuple[str, str]:
     if _sha is None:
         _sha = ""
         try:
-            root = Path(__file__).resolve().parent.parent
+            from .paths import APP_ROOT as root
             if (root / ".git").exists():
                 _sha = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"], capture_output=True,
                                       text=True, timeout=2, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()

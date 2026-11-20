@@ -33,7 +33,7 @@ from tinglongwu_setup import downloader, packs  # noqa: E402  (setup package: no
 
 
 def _pack_manifest():  # by path: importing the tinglongwu package would install its offline guard in this script
-    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "tinglongwu" / "pack_manifest.py")
+    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "src" / "system" / "tinglongwu" / "pack_manifest.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -45,7 +45,7 @@ def content_id(files: dict[str, str]) -> str:
 
 
 def hymt_entry(root: Path = ROOT) -> dict:
-    pin = json.loads((root / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))["models"][downloader.HYMT_DIR]
+    pin = json.loads((root / "src" / "system" / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))["models"][downloader.HYMT_DIR]
     repo, name = downloader.HYMT_GGUF
     sha = pin["files"][name]
     mobile = json.loads((root / "mobile" / "assets" / "models_manifest.json").read_text("utf-8"))
@@ -64,7 +64,7 @@ def kokoro_entry() -> dict:
 
 def ru_entry(root: Path = ROOT) -> dict:
     """ru pack = Hy-MT2 GGUF + both Piper dmitri files: size = sum of bytes, sha256 = content id of the 3 files."""
-    man = json.loads((root / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))["models"]
+    man = json.loads((root / "src" / "system" / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))["models"]
     hymt, voice = hymt_entry(root), man[packs.PIPER_RU_DEFAULT]
     files = {downloader.HYMT_GGUF[1]: hymt["sha256"], **voice["files"]}
     size = hymt["size"] + sum(downloader.PIPER_RU_DMITRI_SIZES[n] for n in voice["files"])

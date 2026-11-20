@@ -12,6 +12,7 @@ Network: `git fetch` and pip only (this is a setup tool, like tlwu-setup; the ru
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -71,6 +72,27 @@ def git_update(repo, run=_run, say=print) -> bool:
     return True
 
 
+# #1664: the packages moved to src/; a leftover root folder (even just __pycache__) is a namespace package that
+# shadows src/ for `python -m tinglongwu` run from the repo root, so it goes, but only once src/ is really there.
+LEGACY_ROOT_DIRS = ("tinglongwu", "tinglongwu_setup", "tlwu_app", "tlwu_eval")
+
+
+def remove_legacy_dirs(repo, say=print) -> list[str]:
+    repo = Path(repo)
+    if not (repo / "src" / "core" / "tinglongwu" / "__init__.py").is_file():
+        return []
+    gone = []
+    for name in LEGACY_ROOT_DIRS:
+        d = repo / name
+        if d.is_dir() and not d.is_symlink():
+            shutil.rmtree(d, ignore_errors=True)
+            if not d.exists():
+                gone.append(name)
+    if gone:
+        say(f"  removed old folders / 已移除舊資料夾: {', '.join(gone)}")
+    return gone
+
+
 def pip_install(repo, pip=_pip, say=print) -> bool:
     req = Path(repo) / "requirements.txt"
     steps = ([["install", "-r", "requirements.txt"]] if req.is_file() else []) + [["install", "-e", ".", "--no-deps"]]
@@ -81,12 +103,21 @@ def pip_install(repo, pip=_pip, say=print) -> bool:
     say("  packages up to date / 套件已更新")
     return True
 
+def _repo_root() -> Path:
+    """Repo root in a source checkout (nearest parent holding pyproject.toml), else the frozen app dir."""
+    here = Path(__file__).resolve().parent
+    for d in here.parents:
+        if (d / "pyproject.toml").is_file():
+            return d
+    return here.parent
+
 
 def main(repo=None, run=_run, pip=_pip, launch=_launch, exe=None, say=print) -> int:
-    repo = Path(repo or Path(__file__).resolve().parent.parent)
+    repo = Path(repo or _repo_root())
     say("[1/3] git pull (dev) / 取得最新程式")
     if not git_update(repo, run, say):
         return 1
+    remove_legacy_dirs(repo, say)
     say("[2/3] pip install / 安裝套件")
     if not pip_install(repo, pip, say):
         return 1

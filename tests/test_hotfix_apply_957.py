@@ -31,7 +31,7 @@ def repo(tmp_path):
     r = tmp_path / "r"
     r.mkdir()
     git(r, "init", "-q", "-b", "dev")
-    write(r, "tinglongwu/__init__.py", '"""x"""\n__version__ = "0.3.5"\n')
+    write(r, "src/core/tinglongwu/__init__.py", '"""x"""\n__version__ = "0.3.5"\n')
     write(r, "app.py", "bug = True\n")
     write(r, "release/packaging/runtime_layer.py", "KEY = 1\n")
     git(r, "add", "-A")
@@ -52,7 +52,7 @@ def test_apply_ships_only_the_fix_with_the_new_version(repo):
     res = hp.apply(fix, "v0.3.6", cwd=str(r))
     assert (r / "app.py").read_text() == "bug = False\n"
     assert not (r / "feature.py").exists()  # dev's other changes stay out
-    assert '__version__ = "0.3.6"' in (r / "tinglongwu/__init__.py").read_text()
+    assert '__version__ = "0.3.6"' in (r / "src/core/tinglongwu/__init__.py").read_text()
     assert git(r, "rev-list", "--count", "v0.3.5..HEAD") == "2"
     assert res == {"head": git(r, "rev-parse", "HEAD"), "tree": git(r, "rev-parse", "HEAD^{tree}")}
     assert f"cherry picked from commit {fix}" in git(r, "log", "-1", "--format=%B", "HEAD~1")

@@ -7,7 +7,13 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-PKG = Path(__file__).resolve().parents[1] / "tinglongwu"
+# #1664: the package is split over src/{system,core,flow,ui}/tinglongwu (core extends __path__)
+PKGS = sorted((Path(__file__).resolve().parents[1] / "src").glob("*/tinglongwu"))
+assert len(PKGS) == 4, PKGS
+
+
+def _rel(mod_file: Path) -> Path:
+    return next(mod_file.relative_to(p) for p in PKGS if mod_file.is_relative_to(p))
 
 # face_to_face: listed as flow (#1664 left it open); after this step it imports only langs
 LAYERS = {
@@ -33,7 +39,7 @@ ALLOWED = {
 
 
 def _top(mod_file: Path) -> str:
-    rel = mod_file.relative_to(PKG).with_suffix("")
+    rel = _rel(mod_file).with_suffix("")
     return rel.parts[0]
 
 
@@ -46,7 +52,7 @@ def _targets(mod_file: Path, node) -> list[str]:
         if mod == "tinglongwu":
             return [a.name for a in node.names]
         return [mod.split(".")[1]] if mod.startswith("tinglongwu.") else []
-    pkg = list(mod_file.relative_to(PKG).parent.parts)
+    pkg = list(_rel(mod_file).parent.parts)
     up = pkg[: len(pkg) - (node.level - 1)] if node.level - 1 <= len(pkg) else None
     if up is None:
         return []
@@ -56,7 +62,7 @@ def _targets(mod_file: Path, node) -> list[str]:
 
 def upward_imports() -> set[tuple[str, str]]:
     found = set()
-    for f in PKG.rglob("*.py"):
+    for f in (f for p in PKGS for f in p.rglob("*.py")):
         src = _top(f)
         if src not in LAYER_OF:
             continue
@@ -88,3 +94,9 @@ def test_moved_names_still_import_from_old_paths():
     assert core.lang_base is langs.lang_base and core.SameLanguageError is langs.SameLanguageError
     assert engines.free_vram_mib is device.free_vram_mib
     assert vmic.pick_win_cable is vbcable.pick_win_cable and vmic.WIN_CABLE == vbcable.WIN_CABLE
+
+
+def test_no_tinglongwu_dir_at_repo_root():
+    # a root tinglongwu/ (no __init__.py) is picked up as a namespace package from the cwd and shadows the
+    # src/*/tinglongwu split: "cannot import name 'cli' from 'tinglongwu' (unknown location)". New files go under src/.
+    assert not (Path(__file__).resolve().parents[1] / "tinglongwu").exists()
