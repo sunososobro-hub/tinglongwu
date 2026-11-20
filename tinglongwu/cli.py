@@ -137,6 +137,10 @@ def parse_args(argv=None):
                         "and step back up after a stable period; one stderr line per switch)")
     p.add_argument("--builtin-glossary", action="store_true",
                    help="also load the built-in tech/dev glossary (your --glossary entries win)")
+    p.add_argument("--term-scenario", default="", metavar="NAME",
+                   help="#1689: with --builtin-glossary, also use the built-in term files (data/terms/*.tsv) of this "
+                        "scenario, e.g. tech, for the --lang -> --to pair (default: only files marked for "
+                        "every scenario)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -642,6 +646,12 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
         from .glossary import load_builtin, merge
 
         glossary = merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
+        if not getattr(a, "face_to_face", None):  # #1689: the pair's domain terms; earlier entries (user, built-in) win
+            from .glossary import load_builtin_pair, scenario_domains
+
+            doms = scenario_domains(getattr(a, "term_scenario", None))
+            glossary = merge(glossary, load_builtin_pair(getattr(a, "lang", None), getattr(a, "to", None), doms,
+                                                          getattr(a, "zh_variant", None)))
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     from .glossary import with_default_hotwords
 
