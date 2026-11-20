@@ -94,3 +94,9 @@ def test_moved_names_still_import_from_old_paths():
     assert core.lang_base is langs.lang_base and core.SameLanguageError is langs.SameLanguageError
     assert engines.free_vram_mib is device.free_vram_mib
     assert vmic.pick_win_cable is vbcable.pick_win_cable and vmic.WIN_CABLE == vbcable.WIN_CABLE
+
+
+def test_no_tinglongwu_dir_at_repo_root():
+    # a root tinglongwu/ (no __init__.py) is picked up as a namespace package from the cwd and shadows the
+    # src/*/tinglongwu split: "cannot import name 'cli' from 'tinglongwu' (unknown location)". New files go under src/.
+    assert not (Path(__file__).resolve().parents[1] / "tinglongwu").exists()
