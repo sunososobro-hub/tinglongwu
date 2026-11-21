@@ -83,10 +83,10 @@ def check_no_pending_release(api) -> None:
         if len(prs) < PER_PAGE:
             break
         page += 1
-    content = api(f"contents/tinglongwu/__init__.py?ref={BRANCH}").get("content", "")
+    content = api(f"contents/src/core/tinglongwu/__init__.py?ref={BRANCH}").get("content", "")
     m = VERSION_RE.search(base64.b64decode(content).decode("utf-8", "replace"))
     if not m:
-        raise PlanError(f"cannot read __version__ from tinglongwu/__init__.py on {BRANCH}")
+        raise PlanError(f"cannot read __version__ from src/core/tinglongwu/__init__.py on {BRANCH}")
     version = m[1]
     if not _tag_exists(f"v{version}", api):
         raise PlanError(f"{BRANCH} __version__ {version} is bumped but not released; wait for that release")
@@ -134,9 +134,10 @@ def plan(fix: str, api) -> dict:
 # who the hotfix commits are by (local commits only; the runner has no git identity, #944)
 GIT_IDENTITY = ("-c", "user.name=github-actions[bot]",
                 "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com")
-INIT_PY = "tinglongwu/__init__.py"
+INIT_PY = "src/core/tinglongwu/__init__.py"
 # #923 layered core: the upgrade overlay and wizard checks need its runtime-layer.json, which older bases never build
-LAYERED_MARKER = "packaging/runtime_layer.py"
+LAYERED_MARKER = "release/packaging/runtime_layer.py"
+OLD_LAYERED_MARKER = "packaging/runtime_layer.py"  # bases tagged before #1653 moved it
 
 
 def _git(*args: str, cwd: str = ".", check: bool = True) -> str:
@@ -154,7 +155,7 @@ def apply(fix: str, tag: str, cwd: str = ".") -> dict:
     base = _git("rev-parse", "HEAD", cwd=cwd)
     if _git("status", "--porcelain", "--untracked-files=no", cwd=cwd):
         raise PlanError("the worktree has uncommitted changes; commit or stash them before apply")
-    if not os.path.isfile(os.path.join(cwd, LAYERED_MARKER)):
+    if not any(os.path.isfile(os.path.join(cwd, m)) for m in (LAYERED_MARKER, OLD_LAYERED_MARKER)):
         raise PlanError(f"base {base[:7]} predates the layered core (#923, no {LAYERED_MARKER}): "
                         "hotfixes start from the first release that has it")
     parents = _git("rev-list", "--parents", "-n", "1", sha, cwd=cwd).split()[1:]

@@ -135,7 +135,7 @@ def test_embedded_requirements_equal_file():
 
     from tinglongwu.speaker_reqs import REQUIREMENTS
 
-    f = Path(__file__).resolve().parents[1] / "requirements-speaker.txt"
+    f = Path(__file__).resolve().parents[1] / "requirements/requirements-speaker.txt"
     assert REQUIREMENTS == f.read_text("utf-8")
     assert sp.requirements_file().read_text("utf-8") == REQUIREMENTS
 

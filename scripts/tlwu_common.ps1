@@ -141,7 +141,7 @@ function Update-Tlwu([string]$py) {
         git merge --ff-only --quiet $up 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host (T 'UPD_SKIP_DIVERGED'); return "skipped" }
         $changed = (git diff --name-only $old HEAD 2>$null) -join "`n"
-        if ($changed -match "(?m)^(pyproject\.toml|requirements[^/]*\.txt)$") {
+        if ($changed -match "(?m)^(pyproject\.toml|requirements/[^/]*\.txt)$") {
             # #254: never pip install unasked; only an explicit y from a console (redirected input = no)
             $ans = if ([Console]::IsInputRedirected) { "" } else { Read-Host (T 'UPD_PKG_ASK') }
             if ($ans -match '^(y|yes)$') {

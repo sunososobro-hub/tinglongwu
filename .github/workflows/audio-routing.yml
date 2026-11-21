@@ -1,7 +1,7 @@
 name: audio-routing
 # #849 (owner 2026-11-14): the audio-routing part of hw-tests runs on a GitHub-hosted windows-latest runner, so it
 # no longer depends on the owner's home PC. The runner has no sound card: VB-CABLE (official zip, pinned SHA-256,
-# the same package tinglongwu/vbcable.py points at) is the virtual audio device; the Windows audio service is started
+# the same package src/system/tinglongwu/vbcable.py points at) is the virtual audio device; the Windows audio service is started
 # first. Steps: device listing, a signal check (a 440 Hz tone played into "CABLE Input" must be captured on "CABLE
 # Output" with RMS above SILENCE_RMS_THRESHOLD, scripts/cable_loopback_check.py), and speak_selftest through
 # VB-CABLE (the same check as hw-tests.yml "#6 #207 #311-4", CPU models from the e2e cache).
@@ -116,7 +116,7 @@ jobs:
         shell: bash
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
 
       - name: "#849 device listing + signal check: tone into CABLE Input is captured on CABLE Output"
         if: steps.changes.outputs.build == 'true'
@@ -144,7 +144,7 @@ jobs:
         if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         with:
           path: ~/tlwu-models
-          key: e2e-models-v3-windows-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}   # same set as e2e.yml
+          key: e2e-models-v3-windows-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}   # same set as e2e.yml
       - name: Models (smoke set) + Kokoro voice venv + Russian voice
         if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
         shell: bash

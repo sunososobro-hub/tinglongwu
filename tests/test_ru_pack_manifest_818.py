@@ -1,4 +1,4 @@
-"""#818: the ru pack (Hy-MT2 + Piper dmitri) is listed in packaging/packs.json with a summed size."""
+"""#818: the ru pack (Hy-MT2 + Piper dmitri) is listed in release/packaging/packs.json with a summed size."""
 import importlib.util
 import json
 from pathlib import Path
@@ -22,6 +22,6 @@ def test_ru_entry_size_is_hymt_plus_both_piper_files():
 
 def test_checked_in_packs_json_lists_ru_and_is_current():
     m = _load()
-    committed = json.loads((ROOT / "packaging" / "packs.json").read_text("utf-8"))
+    committed = json.loads((ROOT / "release" / "packaging" / "packs.json").read_text("utf-8"))
     assert committed["packs"]["ru"]["size"] == m.ru_entry()["size"]
     assert m.main(["--check"]) == 0

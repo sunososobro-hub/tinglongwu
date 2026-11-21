@@ -1,7 +1,7 @@
 """#570: eval.yml runs the CPU mini-eval + gate only for PRs that touch translation / ASR / eval paths.
 
 The path filter is the workflow's own bash step, executed here against a throwaway git repo (no grep of the YAML
-text for the behaviour): a docs-only change must skip, a change under tinglongwu/ must run."""
+text for the behaviour): a docs-only change must skip, a change under src/*/tinglongwu/ must run."""
 from __future__ import annotations
 
 import re
@@ -60,7 +60,8 @@ needs_tools = pytest.mark.skipif(GIT is None or BASH is None, reason="git and ba
 
 @needs_tools
 @pytest.mark.parametrize("changed", [["README.md"], ["docs/testing.md", "CONTRIBUTING.md"], ["mobile/x.kt"],
-                                     [".github/workflows/ci.yml"], ["tinglongwu_setup/cli.py"]])
+                                     [".github/workflows/ci.yml"], ["src/system/tinglongwu_setup/cli.py"],
+                                     ["src/ui/tlwu_app/main.py"]])
 def test_docs_and_unrelated_prs_skip_the_eval(tmp_path, changed):
     run, summary = _paths_decision(tmp_path, changed)
     assert run == "false"
@@ -68,9 +69,10 @@ def test_docs_and_unrelated_prs_skip_the_eval(tmp_path, changed):
 
 
 @needs_tools
-@pytest.mark.parametrize("changed", [["tinglongwu/translate/hymt.py"], ["tinglongwu/data/glossary.json"],
-                                     ["tlwu_eval/gate.py"], ["eval/baseline.json"], ["tinglongwu_setup/manifest.json"],
-                                     [".github/workflows/eval.yml"], ["README.md", "tinglongwu/merge.py"]])
+@pytest.mark.parametrize("changed", [["src/core/tinglongwu/translate/hymt.py"], ["src/core/tinglongwu/data/glossary.json"],
+                                     ["src/flow/tinglongwu/selftest.py"], ["eval/tlwu_eval/gate.py"],
+                                     ["eval/baseline.json"], ["src/system/tinglongwu_setup/manifest.json"],
+                                     [".github/workflows/eval.yml"], ["README.md", "src/core/tinglongwu/merge.py"]])
 def test_translation_asr_eval_prs_run_the_eval(tmp_path, changed):
     assert _paths_decision(tmp_path, changed)[0] == "true"
 

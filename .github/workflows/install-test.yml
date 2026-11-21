@@ -3,11 +3,11 @@ name: install-test
 on:
   push:
     branches: [main, dev]
-    paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
+    paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements/*.txt', '.github/workflows/install-test.yml']
   # #1547: PRs into dev start no Windows/macOS runner job (only `ci` test gates dev, section 17); dev push, release snapshot dispatch and manual runs cover it
   pull_request:
     branches: [main]
-    paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements*.txt', '.github/workflows/install-test.yml']
+    paths: ['scripts/**', 'install.*', 'pyproject.toml', 'requirements/*.txt', '.github/workflows/install-test.yml']
   workflow_dispatch:
     inputs:
       release_tag:
@@ -61,7 +61,7 @@ jobs:
           VENV="$RUNNER_TEMP/tlwu/.venv/bin"
           "$VENV/tlwu-setup" --whisper tiny --hymt --pair en-zh --allow-unpinned --models-dir "$RUNNER_TEMP/models" </dev/null
           # install.sh does not install the Hy-MT2 CPU engine (llama-cpp-python); same pin e2e.yml uses
-          "$VENV/pip" install -r requirements-llama-cpu.txt --only-binary=:all:
+          "$VENV/pip" install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
           START=$(date +%s)
           "$VENV/tlwu-setup" --selftest --model tiny --engine hymt --device cpu --models-dir "$RUNNER_TEMP/models"
           SECS=$(( $(date +%s) - START ))

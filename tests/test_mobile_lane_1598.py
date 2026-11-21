@@ -86,3 +86,14 @@ def test_mobile_release_workflow_is_valid_yaml_with_lane_job():
     yaml = pytest.importorskip("yaml")
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "mobile-release.yml").read_text())
     assert "lane" in wf["jobs"] and wf["jobs"]["lane"]["permissions"]["contents"] == "write"
+
+
+def test_release_notes_mobile_line():
+    import release_notes as rn
+    tags = ["mobile-v0.4.10", "mobile-v0.5.0"]
+    assert rn.mobile_md(rn.mobile_state("v0.5.0", tags)) == "- Mobile: mobile 0.5.0 drafted for production"
+    assert rn.mobile_md(rn.mobile_state("v0.5.1", tags)) == "- Mobile: skipped (not verified), stays on mobile-v0.5.0"
+    assert rn.mobile_md(rn.mobile_state("v0.4.9", tags)) == "- Mobile: skipped (not verified), no earlier mobile release"
+    plan = {p: {"ship": True, "version": "v0.5.1", "move_to": ""} for p in ("windows", *rn.MARKERS)}
+    plan["mobile"] = rn.mobile_state("v0.5.1", tags)
+    assert "- Mobile: skipped (not verified), stays on mobile-v0.5.0" in rn.platforms_md(plan)

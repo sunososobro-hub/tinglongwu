@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-SW = Path(__file__).resolve().parent.parent / "extension" / "capture" / "sw.js"
+SW = Path(__file__).resolve().parent.parent / "web" / "extension" / "capture" / "sw.js"
 
 JS = r"""
 import { pathToFileURL } from "node:url";

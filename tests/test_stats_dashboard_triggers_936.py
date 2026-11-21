@@ -25,7 +25,18 @@ def test_runs_after_release_only_on_main_1144():
     assert wr["branches"] == ["main"]
 
 
-def test_concurrency_serialises_runs():
+def test_runs_on_dev_push_1713():
+    on, _ = _on()
+    assert on["push"]["branches"] == ["dev"]
+    assert "workflow_dispatch" in on
+    assert doc_perms() == {"contents": "write"}
+
+
+def doc_perms():
+    return _on()[1]["permissions"]
+
+
+def test_concurrency_collapses_runs():
     _, doc = _on()
     assert doc["concurrency"]["group"] == "stats-dashboard"
-    assert doc["concurrency"]["cancel-in-progress"] is False
+    assert doc["concurrency"]["cancel-in-progress"] is True

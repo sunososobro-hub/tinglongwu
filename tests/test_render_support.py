@@ -43,7 +43,7 @@ def test_every_contributor_and_type_is_rendered():
 def test_check_detects_a_stale_readme(tmp_path):
     m = _mod()
     (tmp_path / "docs").mkdir(exist_ok=True)
-    for name in ("README.md", "README.zh-TW.md", "README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
+    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
         (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
     (tmp_path / "docs").mkdir(exist_ok=True)
     src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))
@@ -91,7 +91,7 @@ def test_roadmap_grid_is_generated_from_support_json():
 
 def test_roadmap_check_detects_a_stale_grid(tmp_path):
     m = _mod()
-    for name in ("README.md", "README.zh-TW.md", "README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
+    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
         (tmp_path / name).parent.mkdir(exist_ok=True)
         (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
     src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))

@@ -37,7 +37,7 @@ def test_oversize_exits_nonzero_and_prints_size(tmp_path):
 
 
 def test_build_script_accepts_core_flag():
-    src = (REPO / "packaging" / "build_windows.py")
+    src = (REPO / "release" / "packaging" / "build_windows.py")
     r = subprocess.run([sys.executable, str(src), "--help"], capture_output=True, text=True)
     assert "--core" in r.stdout
 
@@ -75,7 +75,7 @@ def _runtime_cache(steps):
 
 
 def test_release_windows_job_builds_core_from_the_cpu_llama_venv(tmp_path):
-    sys.path.insert(0, str(REPO / "packaging"))
+    sys.path.insert(0, str(REPO / "release" / "packaging"))
     import runtime_layer
 
     runs = [str(s.get("run", "")) for s in _release_windows_steps()]
@@ -83,16 +83,16 @@ def test_release_windows_job_builds_core_from_the_cpu_llama_venv(tmp_path):
     builds = [r for r in runs if "build_windows.py" in r]
     assert len(builds) == 1 and "build_windows.py --core" in builds[0] and "--allow-cpu-only" not in text
     # #923: the packaging venv is made by the build script (runtime_layer.make_pack_venv), only when the runtime
-    # layer is rebuilt: requirements.txt without av / psutil + the CPU llama wheel, binary only
+    # layer is rebuilt: requirements/requirements.txt without av / psutil + the CPU llama wheel, binary only
     calls = []
     runtime_layer.make_pack_venv(tmp_path / "venv", run=calls.append)
     installs = [c[c.index("install") + 1:] for c in calls if "install" in c]
-    assert ["-r", str(REPO / "requirements-llama-cpu.txt"), "--only-binary=:all:"] in installs
+    assert ["-r", str(REPO / "requirements/requirements-llama-cpu.txt"), "--only-binary=:all:"] in installs
     reqs = (tmp_path / "req-pack.txt").read_text(encoding="utf-8")
     assert ["-r", str(tmp_path / "req-pack.txt")] in installs and reqs == runtime_layer.pack_requirements()
     assert "faster-whisper==" in reqs and "\nav==" not in "\n" + reqs and "psutil==" not in reqs
     assert not any("nuitka" in " ".join(c).lower() for c in calls)
-    for gone in ("requirements-llama-cuda.txt", "requirements-gpu.txt", "nvrtc", "cudart64_12.dll", "cuda_libs",
+    for gone in ("requirements/requirements-llama-cuda.txt", "requirements/requirements-gpu.txt", "nvrtc", "cudart64_12.dll", "cuda_libs",
                  "pip install", "nuitka"):
         assert gone not in text, gone
 
@@ -102,7 +102,7 @@ def test_release_windows_job_gates_core_budget_before_the_packaging_check():
     runs = [str(s.get("run", "")) for s in steps]
     build = next(i for i, r in enumerate(runs) if "build_windows.py" in r)
     core = next(i for i, r in enumerate(runs) if "scripts\\release_check.py" in r and "tinglongwu-win64.zip" in r)
-    pack = next(i for i, r in enumerate(runs) if "packaging\\release_check.py" in r)
+    pack = next(i for i, r in enumerate(runs) if "release\\packaging\\release_check.py" in r)
     upload = next(i for i, s in enumerate(steps) if "upload-artifact" in str(s.get("uses", "")))
     assert build < core < pack < upload
     for i in (core, pack):  # a failed check stops the job: no `if`, no continue-on-error, exit code passed on
@@ -113,7 +113,7 @@ def test_release_windows_job_gates_core_budget_before_the_packaging_check():
 
 def test_release_runtime_cache_key_is_the_windows_build_key():
     """#923: one cache family for the runtime layer; its key hashes exactly runtime_layer.KEY_GLOBS."""
-    sys.path.insert(0, str(REPO / "packaging"))
+    sys.path.insert(0, str(REPO / "release" / "packaging"))
     import runtime_layer
 
     rel, rel_save = _runtime_cache(_release_windows_steps())
@@ -210,7 +210,7 @@ def test_gpu_pack_asset_name_and_needs_match_build_windows():
 
     from tinglongwu import gpu_pack
 
-    spec = importlib.util.spec_from_file_location("build_windows", REPO / "packaging" / "build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows", REPO / "release" / "packaging" / "build_windows.py")
     bw = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bw)
     assert release_check.GPU_PACK_ASSET == bw.GPU_PACK_ASSET
@@ -267,7 +267,7 @@ def test_release_gpu_pack_job_runs_beside_windows():
     assert "--gpu-pack-only --out" in runs[build] and "/releases/download/$env:TAG/" + release_check.GPU_PACK_ASSET \
         in runs[build]
     assert "nuitka" not in text.lower()  # no Nuitka: the pack is only the CUDA DLLs
-    assert "requirements-gpu.txt" in text and "requirements-llama-cuda.txt --only-binary=:all:" in text
+    assert "requirements/requirements-gpu.txt" in text and "requirements/requirements-llama-cuda.txt --only-binary=:all:" in text
     check = next(i for i, r in enumerate(runs) if "release_check.py --gpu-pack" in r)
     upload = next(i for i, s in enumerate(gpu["steps"]) if "upload-artifact" in str(s.get("uses", "")))
     assert build < check < upload and "--tag $env:TAG" in runs[check] and "exit $LASTEXITCODE" in runs[check]

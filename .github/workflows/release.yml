@@ -8,7 +8,7 @@ name: release
 #                       Other pushes: nothing.
 #   windows           : build tinglongwu-win64.zip, the slim core (#762: build_windows.py --core, CPU llama, no
 #                       cuda_libs/), then scripts/release_check.py (core budget: <= 300 MB, no CUDA files) and
-#                       packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
+#                       release/packaging/release_check.py on the zip: < 2 GiB, check_dist_dlls, llama CPU
 #                       instructions (no AVX-512), --smoke, --selftest; render the release notes; report the
 #                       job time against scripts/release_check.py CORE_JOB_BUDGET_MIN (a warning, never a failure)
 #   vulkan-pack       : parallel to windows (#800): compile llama-cpp-python with GGML_VULKAN=on (same pin as the CPU build),
@@ -135,11 +135,11 @@ jobs:
           # packages + tlwu.exe). A run reads caches of its own branch and of the default branch (main), so a release
           # on main restores the layer of the previous release. build_windows.py compares the restored layer's recorded
           # key with runtime_layer.key() and rebuilds it on a mismatch; the release checks below then test the zip.
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements*.txt', 'packaging/build_windows.py', 'packaging/runtime_layer.py', 'packaging/launcher/**', 'packaging/stubs/**', 'tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('requirements/*.txt', 'release/packaging/build_windows.py', 'release/packaging/runtime_layer.py', 'release/packaging/launcher/**', 'release/packaging/stubs/**', 'src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the slim core zip (--core, CPU llama, no cuda_libs/; GPU libraries ship apart, see issue 740)
         shell: pwsh
         run: |
-          python packaging\build_windows.py --core
+          python release\packaging\build_windows.py --core
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Core zip budget (scripts/release_check.py, MAX_CORE_MB, no CUDA files)
         shell: pwsh
@@ -156,7 +156,7 @@ jobs:
       - name: Release checks on the zip (size, check_dist_dlls, llama CPU instructions, --smoke, --selftest)
         shell: pwsh
         run: |
-          python packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
+          python release\packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       # saved only after the release checks passed: a layer that fails them is never kept for the next release
       - name: Runtime layer cache (save the rebuilt layer, releases on main only; dry runs on other branches save nothing, #888)
@@ -180,11 +180,11 @@ jobs:
           set -euo pipefail
           # Download, support/contributors block and What's new from the single source (docs/support.json)
           python scripts/render_support.py --notes "$TAG" > base.md
-          # #722: packaging/packs.json (scripts/make_pack_manifest.py) adds the optional-pack size table
+          # #722: release/packaging/packs.json (scripts/make_pack_manifest.py) adds the optional-pack size table
           # python opens the D:\ paths in DIST and appends the notes to the job summary
           python scripts/release_notes.py notes --version "$TAG" --base base.md --pr "$PR" \
             --verification "$DIST/release-check.md" --hw-run "$HW_RUN" --head "$HEAD" \
-            --packs-manifest packaging/packs.json --platforms "$PLATFORMS" --out "$DIST/notes.md"
+            --packs-manifest release/packaging/packs.json --platforms "$PLATFORMS" --out "$DIST/notes.md"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-win64
@@ -242,7 +242,7 @@ jobs:
           $reused = ($lines | Where-Object { $_ -like 'reused=*' }) -replace '^reused=', ''
           "reused=$reused" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           ($lines | Where-Object { $_ -like 'summary=*' }) -replace '^summary=', '' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-      - name: GPU pack venv (CUDA llama-cpp-python, CUDA 12 wheels incl. nvrtc; no requirements.txt, no Nuitka)
+      - name: GPU pack venv (CUDA llama-cpp-python, CUDA 12 wheels incl. nvrtc; no requirements/requirements.txt, no Nuitka)
         if: steps.reuse.outputs.reused != 'true'
         shell: pwsh
         run: |
@@ -250,10 +250,10 @@ jobs:
           $py = "$env:RUNNER_TEMP\gpu-venv\Scripts\python.exe"
           & $py -m pip install --upgrade pip
           if ($LASTEXITCODE) { exit 1 }
-          & $py -m pip install -r requirements-llama-cuda.txt --only-binary=:all:
+          & $py -m pip install -r requirements/requirements-llama-cuda.txt --only-binary=:all:
           if ($LASTEXITCODE) { exit 1 }
           # cuda_nvrtc: cuDNN runtime-compiled engines (build_windows.CUDA_WHEELS needs its bin folder)
-          & $py -m pip install -r requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
+          & $py -m pip install -r requirements/requirements-gpu.txt nvidia-cuda-nvrtc-cu12==12.9.86
           if ($LASTEXITCODE) { exit 1 }
           "GPU_PY=$py" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Build the GPU pack (build_windows.py --gpu-pack-only; the manifest url names this release's tag)
@@ -263,7 +263,7 @@ jobs:
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
           $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/tinglongwu-gpu-pack.zip"
-          & $env:GPU_PY packaging\build_windows.py --gpu-pack-only --out "$env:GPU_OUT" --url $url
+          & $env:GPU_PY release\packaging\build_windows.py --gpu-pack-only --out "$env:GPU_OUT" --url $url
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: GPU pack check (manifest size + sha256, CUDA DLLs, same tag as the core zip; size in the summary)
         shell: pwsh
@@ -357,11 +357,11 @@ jobs:
           cmake --install "$src\build" --prefix $prefix
           if ($LASTEXITCODE) { exit 1 }
           "CMAKE_PREFIX_PATH=$prefix" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
+      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements/requirements-llama-cpu.txt)
         if: steps.pin.outputs.skip != 'true'
         shell: pwsh
         run: |
-          $pin = (Select-String -Path requirements-llama-cpu.txt -Pattern '^llama-cpp-python==(.+)$').Matches[0].Groups[1].Value.Trim()
+          $pin = (Select-String -Path requirements/requirements-llama-cpu.txt -Pattern '^llama-cpp-python==(.+)$').Matches[0].Groups[1].Value.Trim()
           $env:CMAKE_ARGS = "-DGGML_VULKAN=on -DGGML_NATIVE=off"   # AVX2 baseline, not the runner's CPU (no AVX-512, #74)
           $env:FORCE_CMAKE = "1"
           python -m pip install --upgrade pip
@@ -419,9 +419,9 @@ jobs:
           sudo apt-get update -qq
           # spirv-headers: ggml-vulkan's find_package(SPIRV-Headers CONFIG REQUIRED) (#1195)
           sudo apt-get install -y -qq libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
-      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements-llama-cpu.txt)
+      - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements/requirements-llama-cpu.txt)
         run: |
-          pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements-llama-cpu.txt)
+          pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements/requirements-llama-cpu.txt)
           [ -n "$pin" ] || { echo "no llama-cpp-python pin"; exit 1; }
           python -m pip install --upgrade pip
           CMAKE_ARGS="-DGGML_VULKAN=on -DGGML_NATIVE=off" FORCE_CMAKE=1 \
@@ -517,7 +517,7 @@ jobs:
       - name: Build whisper.cpp (pinned commit) with GGML_VULKAN=on into tlwu-whisper
         shell: bash
         run: |
-          python -m pip install -q "numpy==$(sed -n 's/^numpy==\([^ #;]*\).*/\1/p' requirements.lock.txt | head -1)"
+          python -m pip install -q "numpy==$(sed -n 's/^numpy==\([^ #;]*\).*/\1/p' requirements/requirements.lock.txt | head -1)"
           python scripts/build_whisper_vulkan.py --out "$RUNNER_TEMP/whisper-out"
       - name: Smoke - transcribe 1 s through the app's ctypes loader on Mesa lavapipe (Linux)
         if: runner.os == 'Linux'
@@ -736,14 +736,14 @@ jobs:
         shell: powershell
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-          python installer\build_installer.py --core-dir "$env:RUNNER_TEMP\core\tlwu"
+          python release\installer\build_installer.py --core-dir "$env:RUNNER_TEMP\core\tlwu"
           if ($LASTEXITCODE -ne 0) { throw "build failed" }
-      - name: Wizard size against WIZARD_MAX_MB (installer/build_installer.py; a warning, not a gate)
+      - name: Wizard size against WIZARD_MAX_MB (release/installer/build_installer.py; a warning, not a gate)
         shell: powershell
         run: |
           $exe = Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1
           if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }
-          python installer\build_installer.py --size-report $exe.FullName
+          python release\installer\build_installer.py --size-report $exe.FullName
           if ($LASTEXITCODE -ne 0) { throw "size report failed" }
       - name: Name tinglongwu-setup.exe and add both wizard names to the release's SHA256SUMS.txt (publish only)
         if: needs.plan.outputs.publish == 'true'
@@ -755,7 +755,7 @@ jobs:
           set -euo pipefail
           cd dist/installer
           exe="tinglongwu-setup-${TAG#v}.exe"   # named after tinglongwu.__version__, which must match the tag
-          [ -f "$exe" ] || { echo "expected $exe (set __version__ in tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
+          [ -f "$exe" ] || { echo "expected $exe (set __version__ in src/core/tinglongwu/__init__.py to ${TAG#v}); got: $(ls)"; exit 1; }
           cp "$exe" tinglongwu-setup.exe
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O all.txt
           grep -v ' tinglongwu-setup' all.txt > SHA256SUMS.txt || true   # a re-run replaces the wizard lines

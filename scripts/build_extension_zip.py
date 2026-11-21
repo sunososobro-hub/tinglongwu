@@ -4,7 +4,7 @@ Usage: python scripts/build_extension_zip.py [--out-dir dist]   (writes dist/tlw
 
 The zip root is the extension itself (manifest.json at the top). Only runtime files are packed (no README, tests or
 spike); the manifest inside the zip carries the repo version (`tinglongwu.__version__`) and no "(dev)" name suffix.
-The checked-in extension/capture/manifest.json is not modified.
+The checked-in web/extension/capture/manifest.json is not modified.
 """
 import argparse
 import json
@@ -14,15 +14,15 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXT_DIR = ROOT / "extension" / "capture"
+EXT_DIR = ROOT / "web" / "extension" / "capture"
 # Chrome Web Store package limit: 2 GB (https://developer.chrome.com/docs/webstore/publish).
 MAX_ZIP_BYTES = 2 * 1024**3
-# Files in extension/capture/ that are docs, not runtime.
+# Files in web/extension/capture/ that are docs, not runtime.
 NON_RUNTIME = {"README.md"}
 
 
 def repo_version(root: Path = ROOT) -> str:
-    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (root / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', (root / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8"), re.M)
     if not m:
         raise SystemExit("cannot read __version__")
     return m.group(1)

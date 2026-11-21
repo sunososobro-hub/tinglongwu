@@ -8,7 +8,7 @@ import pytest
 
 from tinglongwu import gpu_pack
 
-SRC = Path(__file__).resolve().parent.parent / "packaging" / "build_windows.py"
+SRC = Path(__file__).resolve().parent.parent / "release" / "packaging" / "build_windows.py"
 
 
 def _mod():
@@ -75,6 +75,7 @@ def test_missing_ggml_cuda_exits_naming_it(tmp_path):
 def test_wheels_key_changes_with_requirements(tmp_path):
     m = _mod()
     for n in m.GPU_PACK_KEY_FILES:
+        (tmp_path / n).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / n).write_text("a")
     k1 = m.gpu_pack_wheels_key(tmp_path)
     (tmp_path / m.GPU_PACK_KEY_FILES[0]).write_text("b")
@@ -125,7 +126,7 @@ def test_gpu_pack_without_nvidia_licenses_exits(tmp_path):
 def test_release_yml_nvrtc_pin_matches_gpu_pack_nvrtc():
     import re
 
-    text = (SRC.parent.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    text = (SRC.parents[2] / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     pin = re.search(r"nvidia-cuda-nvrtc-cu12==(\d+)\.(\d+)\.", text)
     assert pin, "release.yml no longer pins nvidia-cuda-nvrtc-cu12"
     m = _mod()
@@ -169,6 +170,7 @@ def test_unreadable_llama_wheel_version_exits_and_explicit_version_wins(tmp_path
 def test_format_bump_changes_key(tmp_path, monkeypatch):
     m = _mod()
     for n in m.GPU_PACK_KEY_FILES:
+        (tmp_path / n).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / n).write_text("a")
     k1 = m.gpu_pack_wheels_key(tmp_path)
     monkeypatch.setattr(m, "GPU_PACK_FORMAT", m.GPU_PACK_FORMAT + 1)
@@ -187,7 +189,7 @@ def _recipe_fingerprint(m) -> str:
 
 
 # Pinned together with GPU_PACK_FORMAT: if this fails you edited the pack recipe; bump GPU_PACK_FORMAT and update both.
-RECIPE_PIN = (1, "4c4b8c24347b85eff23a33464000fd8445fe0b2314a63705b6e03d5020d5d27a")
+RECIPE_PIN = (1, "a49cb5e5dfb90577f017e6e0074c91eea3d5a727f2ae9d6e5ce4eae1f9b4c3a1")
 
 
 def test_recipe_edit_requires_format_bump():

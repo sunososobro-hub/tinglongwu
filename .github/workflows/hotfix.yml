@@ -9,7 +9,7 @@ name: hotfix
 #              every job builds and tests the same commit (its sha is checked).
 #   test     : the ci `test` suite (normal + network-disabled) on that commit
 #   windows  : build_windows.py --core once (runtime layer from the shared cache, app layer repacked; the same call as
-#              release.yml), scripts/release_check.py core budget, packaging/release_check.py (check_dist_dlls, llama CPU
+#              release.yml), scripts/release_check.py core budget, release/packaging/release_check.py (check_dist_dlls, llama CPU
 #              instructions, tlwu.exe --smoke, --selftest), the upgrade overlay on the base release + GUI launch,
 #              the wizard built from that core and installed silently fresh and over the base release
 #              (+ the app-layer zip check); the windows job records the sha256 of every tested file (`sums` output)
@@ -170,7 +170,7 @@ jobs:
         run: |
           echo "TLWU_BUILD_ROOT=$RUNNER_TEMP\\tlwu-build" >> "$GITHUB_ENV"
           echo "W=$RUNNER_TEMP\\upgrade" >> "$GITHUB_ENV"
-      # the checks (scripts/*_check.py, packaging/release_check.py, win_smoke.ps1) come from the dispatched ref, since an
+      # the checks (scripts/*_check.py, release/packaging/release_check.py, win_smoke.ps1) come from the dispatched ref, since an
       # older base tag may lack them (v0.3.5 has no upgrade_check.py); what ships (and its build script) is ./hotfix
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -202,13 +202,15 @@ jobs:
         with:
           path: ${{ runner.temp }}\tlwu-build\runtime
           # the key of the hotfix tree's files (= the base release's layer unless the fix touches them)
-          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('hotfix/requirements*.txt', 'hotfix/packaging/build_windows.py', 'hotfix/packaging/runtime_layer.py', 'hotfix/packaging/launcher/**', 'hotfix/packaging/stubs/**', 'hotfix/tinglongwu/gui/assets/tinglongwu.ico') }}
+          key: tlwu-runtime-${{ runner.os }}-py312-lite-${{ hashFiles('hotfix/requirements/*.txt', 'hotfix/release/packaging/build_windows.py', 'hotfix/release/packaging/runtime_layer.py', 'hotfix/release/packaging/launcher/**', 'hotfix/release/packaging/stubs/**', 'hotfix/packaging/build_windows.py', 'hotfix/packaging/runtime_layer.py', 'hotfix/packaging/launcher/**', 'hotfix/packaging/stubs/**', 'hotfix/tinglongwu/gui/assets/tinglongwu.ico', 'hotfix/src/ui/tinglongwu/gui/assets/tinglongwu.ico') }}
       - name: Build the core zip once (the hotfix tree's build_windows.py --core, as release.yml)
         id: build
         shell: pwsh
         working-directory: hotfix
         run: |
-          python packaging\build_windows.py --core
+          # #1653: base tags from before the move keep packaging/ at the root
+          $pk = if (Test-Path release\packaging\build_windows.py) { 'release\packaging' } else { 'packaging' }
+          python $pk\build_windows.py --core
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Core zip budget (scripts/release_check.py)
         id: budget
@@ -228,7 +230,7 @@ jobs:
         id: smoke
         shell: pwsh
         run: |
-          python packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
+          python release\packaging\release_check.py "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --work "$env:RUNNER_TEMP\rc" --report "$env:TLWU_BUILD_ROOT\dist\release-check.md"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Baseline = core zip of the base release (checked against its SHA256SUMS.txt)
         shell: bash
@@ -252,14 +254,15 @@ jobs:
         run: |
           .\scripts\win_smoke.ps1 -AppDir "$env:W\overlay\tlwu" -LogDir "$env:W\logs\overlay" -GuiSeconds 10
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Build the wizard from that core (the hotfix tree's installer/build_installer.py --core-dir)
+      - name: Build the wizard from that core (the hotfix tree's release/installer/build_installer.py --core-dir)
         shell: pwsh
         working-directory: hotfix
         run: |
           python ..\scripts\upgrade_check.py unzip --zip "$env:TLWU_BUILD_ROOT\dist\tinglongwu-win64.zip" --dir "$env:W\core"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-          python installer\build_installer.py --core-dir "$env:W\core\tlwu"
+          $bi = if (Test-Path release\installer\build_installer.py) { 'release\installer' } else { 'installer' }  # #1653
+          python $bi\build_installer.py --core-dir "$env:W\core\tlwu"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $exe = Get-ChildItem dist\installer\tinglongwu-setup-*.exe | Select-Object -First 1
           if (-not $exe) { throw "no tinglongwu-setup-*.exe in dist\installer" }

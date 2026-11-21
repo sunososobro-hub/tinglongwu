@@ -6,6 +6,8 @@
 # Network is used only for install/setup and update (git); TLWU_NO_UPDATE=1 forces updates off. Everything else is offline.
 set -e
 cd "$(dirname "$0")/.."
+# #1664: drop pre-move root package folders before any python -m (they shadow src/); only once src/ exists
+if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
 . .venv/bin/activate
 IS_MAC=0; [ "$(uname -s)" = "Darwin" ] && IS_MAC=1
 
@@ -105,16 +107,20 @@ while :; do
   m M_OPT_LISTEN "$N"
   m M_OPT_LANG
   m M_OPT_UPDATE
+  m M_OPT_GUI
   m M_OPT_AUTOUPD "$AU"
   m M_OPT_UILANG "$(mp M_LANGNAME)"
+  m M_OPT_GUI
   read -rp "> " pick || exit 0
   case "$pick" in
     ""|1) mode=2; BOTH=1 ;;
     2) mode=2; BOTH=0 ;;
     3) mode=1; BOTH=0 ;;
+    g|G) if command -v tlwu-gui >/dev/null 2>&1; then exec tlwu-gui; else echo "tlwu-gui not found: re-run the installer."; fi; continue ;;   # #1679
     u|U) tlwu_manual_update || true; continue ;;
     a|A) tlwu_toggle_autoupdate; continue ;;
     i|I) tlwu_pick_ui_lang; continue ;;
+    g|G) exec tlwu-gui ;;   # #1677: the window version
     l|L) python -m tinglongwu.langs   # ja/en/ru first, the rest marked experimental (#58)
          read -rp "$(mp M_ASK_LANG)" L; L="${L:-auto}"
          # #237: only a real language code may reach tlwu/tlwu-setup (a menu digit like "3" used to become "3->en")

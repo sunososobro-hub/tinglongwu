@@ -23,7 +23,7 @@ Invoke-Expression $fn.Extent.Text
 
 @pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 def test_step_lines_match_wizard_format_and_total():
-    out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", SCRIPT % (ROOT / "install.ps1")],
+    out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", SCRIPT % (ROOT / "scripts" / "install.ps1")],
                          capture_output=True, text=True, encoding="utf-8", timeout=120).stdout
     steps = [re.match(r"\[(\d+)/(\d+)\]", ln) for ln in out.splitlines() if ln.startswith("[")]
     assert [int(m.group(1)) for m in steps] == list(range(1, 9))

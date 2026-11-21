@@ -15,8 +15,14 @@ tlwu_update_target() {
   else echo origin/main; fi
 }
 
+# #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here.
+tlwu_rm_stale_roots() {
+  if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
+}
+
 tlwu_auto_update() {
   TLWU_UPDATED=""; TLWU_UPDATE_RESULT=skipped
+  tlwu_rm_stale_roots   # also on uptodate/skipped/offline paths: a checkout already past the move still has them
   if [ "${TLWU_OFFLINE:-}" = "1" ]; then TLWU_UPDATE_RESULT=forced_off; return 0; fi   # offline mode: no git fetch at all
   if [ "${TLWU_NO_UPDATE:-}" = "1" ]; then TLWU_UPDATE_RESULT=forced_off; return 0; fi
   command -v git >/dev/null 2>&1 || { TLWU_UPDATE_RESULT=nogit; return 0; }
@@ -37,7 +43,8 @@ tlwu_auto_update() {
   if git merge-base --is-ancestor "$up" HEAD 2>/dev/null; then TLWU_UPDATE_RESULT=uptodate; return 0; fi   # we are ahead / equal
   if ! git merge --ff-only --quiet "$up" >/dev/null 2>&1; then m M_UPD_SKIP_DIVERGED; return 0; fi
   TLWU_UPDATED=1; TLWU_UPDATE_RESULT=updated
-  if git diff --name-only "$old" HEAD 2>/dev/null | grep -Eq '^(pyproject\.toml|requirements[^/]*\.txt)$'; then
+  tlwu_rm_stale_roots   # src/ just arrived with this pull
+  if git diff --name-only "$old" HEAD 2>/dev/null | grep -Eq '^(pyproject\.toml|requirements/[^/]*\.txt)$'; then
     # never pip install unasked: print the command; run it only on an explicit y from a terminal (non-interactive = no)
     local ans=""
     if [ -t 0 ]; then read -rp "$(mp M_UPD_PKG_ASK)" ans || ans=""; fi

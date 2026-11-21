@@ -129,7 +129,7 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine + sacrebleu
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
           pip install sacrebleu==2.6.0
       - name: COMET venv (unbabel-comet pins numpy<2, so it cannot share the tlwu env)
         run: |
@@ -146,7 +146,7 @@ jobs:
             ~/tlwu-models
             ~/bench/flores200_dataset
             ~/.cache/huggingface
-          key: eval-flores-v2-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: eval-flores-v2-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - name: Hy-MT2 1.8B + FLORES-200
         run: |
           tlwu-setup --hymt --models-dir "$TLWU_MODELS"

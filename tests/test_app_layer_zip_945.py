@@ -13,7 +13,7 @@ import release_check  # noqa: E402
 
 
 def _bw():
-    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "packaging" / "build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "release" / "packaging" / "build_windows.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m

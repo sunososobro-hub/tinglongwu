@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "packaging"))
+sys.path.insert(0, str(REPO / "release" / "packaging"))
 import build_windows as bw  # noqa: E402
 import runtime_layer as rt  # noqa: E402
 
@@ -25,29 +25,30 @@ def _repo_copy(tmp_path: Path) -> Path:
     files = rt.key_files(REPO)
     names = {f.relative_to(REPO).as_posix() for f in files}
     # every file of the launcher and the stubs is in the key on every Python (3.12's glob("dir/**") gives none)
-    assert {"packaging/launcher/tlwu_launcher.c", "packaging/launcher/tlwu.rc.in", "packaging/launcher/tlwu.manifest",
-            "packaging/stubs/av/__init__.py", "packaging/runtime_layer.py", "requirements.txt"} <= names
+    assert {"release/packaging/launcher/tlwu_launcher.c", "release/packaging/launcher/tlwu.rc.in", "release/packaging/launcher/tlwu.manifest",
+            "release/packaging/stubs/av/__init__.py", "release/packaging/runtime_layer.py", "requirements/requirements.txt"} <= names
     for f in files:
         dst = repo / f.relative_to(REPO)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, dst)
-    (repo / "tinglongwu" / "cli.py").write_text("x = 1\n")
+    (repo / "src" / "core" / "tinglongwu").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "core" / "tinglongwu" / "cli.py").write_text("x = 1\n")
     return repo
 
 
 def test_runtime_key_follows_requirements_and_packaging_but_not_app_code(tmp_path):
     repo = _repo_copy(tmp_path)
     base = rt.key(True, repo)
-    (repo / "tinglongwu" / "cli.py").write_text("x = 2\n")  # the acceptance case: a one-line app change
+    (repo / "src" / "core" / "tinglongwu" / "cli.py").write_text("x = 2\n")  # the acceptance case: a one-line app change
     assert rt.key(True, repo) == base
     assert rt.key(False, repo) != base and rt.key(True, repo, (3, 99)) != base  # variant, Python minor
-    (repo / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico").write_bytes(b"another icon")  # compiled into tlwu.exe
+    (repo / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico").write_bytes(b"another icon")  # compiled into tlwu.exe
     assert rt.key(True, repo) != base
-    shutil.copy2(rt.APP_ICON, repo / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico")
-    for rel in ("requirements.txt", "requirements-llama-cpu.txt", "packaging/runtime_layer.py",
-                "packaging/build_windows.py", "packaging/launcher/tlwu_launcher.c", "packaging/stubs/av/__init__.py"):
+    shutil.copy2(rt.APP_ICON, repo / "src" / "ui" / "tinglongwu" / "gui" / "assets" / "tinglongwu.ico")
+    for rel in ("requirements/requirements.txt", "requirements/requirements-llama-cpu.txt", "release/packaging/runtime_layer.py",
+                "release/packaging/build_windows.py", "release/packaging/launcher/tlwu_launcher.c", "release/packaging/stubs/av/__init__.py"):
         f = repo / rel
-        old = f.read_bytes()
+        old = f.read_bytes().replace(b"\r\n", b"\n")  # LF baseline on an autocrlf checkout
         f.write_bytes(old + b"\n# changed\n")
         assert rt.key(True, repo) != base, rel
         f.write_bytes(old.replace(b"\n", b"\r\n"))  # a CRLF checkout is the same layer
@@ -103,7 +104,7 @@ def test_ensure_runtime_reuses_rebuilds_or_stops(tmp_path, monkeypatch):
     monkeypatch.setattr(rt, "make_pack_venv", lambda venv: venv_py)
     calls = []
     bw.ensure_runtime(layer, True, False, run=calls.append)
-    assert calls == [[str(venv_py), str(REPO / "packaging" / "build_windows.py"), "--runtime-only",
+    assert calls == [[str(venv_py), str(REPO / "release" / "packaging" / "build_windows.py"), "--runtime-only",
                       "--rebuild-runtime", "--lite"]]
 
 
@@ -131,9 +132,9 @@ def test_app_layer_is_source_plus_unchecked_hash_pyc(tmp_path):
     assert bw.build_app_layer(app, rt.pyc_magic()) == list(bw.APP_PACKAGES)
     assert not (app / "tinglongwu" / "removed_module.py").exists()
     for pkg in bw.APP_PACKAGES:
-        srcs = sorted(p.relative_to(REPO) for p in (REPO / pkg).rglob("*") if p.is_file()
-                      and "__pycache__" not in p.parts)
-        assert all((app / s).read_bytes() == (REPO / s).read_bytes() for s in srcs), pkg
+        srcs = sorted((d, p.relative_to(d)) for d in (REPO / x for x in bw.APP_PACKAGE_SOURCES[pkg])
+                      for p in d.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+        assert all((app / pkg / s).read_bytes() == (d / s).read_bytes() for d, s in srcs), pkg
     tag = sys.implementation.cache_tag
     pyc = app / "tlwu_app" / "__pycache__" / f"main.{tag}.pyc"
     head = pyc.read_bytes()[:8]
@@ -157,16 +158,16 @@ def test_an_upgrade_never_runs_the_previous_versions_bytecode(tmp_path):
     app = tmp_path / "tlwu"
     old_repo = tmp_path / "old"
     for pkg in bw.APP_PACKAGES:
-        (old_repo / pkg).mkdir(parents=True)
-        (old_repo / pkg / "__init__.py").write_text("")
-    (old_repo / "tinglongwu" / "__init__.py").write_text('__version__ = "0.0.1"\n')
-    (old_repo / "tlwu_app" / "main.py").write_text("WHO = 'old'\n")
+        (old_repo / bw.APP_PACKAGE_SOURCES[pkg][0]).mkdir(parents=True)
+        (old_repo / bw.APP_PACKAGE_SOURCES[pkg][0] / "__init__.py").write_text("")
+    (old_repo / "src" / "core" / "tinglongwu" / "__init__.py").write_text('__version__ = "0.0.1"\n')
+    (old_repo / "src" / "ui" / "tlwu_app" / "main.py").write_text("WHO = 'old'\n")
     for rel in bw.WORKER_SOURCES:
-        f = old_repo / rel
+        f = old_repo / "src" / "core" / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.exists() or f.write_text("")
-    (old_repo / "packaging").mkdir()
-    (old_repo / "packaging" / bw.USAGE_TEXT).write_text("x", "utf-8")
+    (old_repo / "release" / "packaging").mkdir(parents=True)
+    (old_repo / "release" / "packaging" / bw.USAGE_TEXT).write_text("x", "utf-8")
     app.mkdir()
     bw.build_app_layer(app, rt.pyc_magic(), repo=old_repo)
     old_tree = tmp_path / "installed"
@@ -259,7 +260,7 @@ def test_launcher_keeps_the_stream_settings_the_app_gives_its_children(tmp_path)
     assert 'env_set(L"PYTHONUTF8", value) && wcscmp(value, L"1") == 0' in c and 'L"utf8"' in c
     for src in ("tinglongwu/gui/core.py", "tinglongwu/gui/autoupdate.py", "tinglongwu/vbcable.py",
                 "tlwu_app/setup_gui.py"):  # the callers this exists for
-        assert 'PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8"' in (REPO / src).read_text("utf-8"), src
+        assert 'PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8"' in next(REPO.glob(f"src/*/{src}")).read_text("utf-8"), src
     # run the real BOOT in an isolated Python whose stdout would otherwise be ASCII-only
     pkg = tmp_path / "tlwu_app"
     pkg.mkdir()
@@ -320,8 +321,8 @@ def test_windows_build_runs_for_app_changes_and_skips_the_venv_on_a_cache_hit():
     steps = wf["jobs"]["build"]["steps"]
     filt = next(str(s["run"]) for s in steps if s.get("id") == "changes")
     pattern = re.search(r"grep -Eq '([^']+)'", filt).group(1)
-    for changed in ("tinglongwu/cli.py", "tinglongwu/gui/app.py", "tlwu_app/main.py", "tinglongwu_setup/cli.py",
-                    "packaging/build_windows.py", "requirements.txt"):
+    for changed in ("src/core/tinglongwu/cli.py", "src/ui/tinglongwu/gui/app.py", "src/ui/tlwu_app/main.py", "src/system/tinglongwu_setup/cli.py",
+                    "release/packaging/build_windows.py", "requirements/requirements.txt"):
         assert re.search(pattern, changed), changed
     for skipped in ("docs/install.md", "README.md", "tests/test_cli.py"):
         assert not re.search(pattern, skipped), skipped
@@ -335,10 +336,10 @@ def test_windows_build_runs_for_app_changes_and_skips_the_venv_on_a_cache_hit():
 
 
 def test_no_python_compiler_in_the_build():
-    for f in ("packaging/build_windows.py", "packaging/runtime_layer.py"):
+    for f in ("release/packaging/build_windows.py", "release/packaging/runtime_layer.py"):
         code = (REPO / f).read_text("utf-8")
         assert '"-m", "nuitka"' not in code and "run_nuitka" not in code, f
-    assert not (REPO / "packaging" / "tlwu_entry.py").exists()
+    assert not (REPO / "release" / "packaging" / "tlwu_entry.py").exists()
     assert bw.APP_PACKAGES == rt.APP_PACKAGES
 
 

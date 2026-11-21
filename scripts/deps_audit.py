@@ -28,10 +28,10 @@ def build_body(vulns: list[tuple[str, str, str, str]]) -> str:
     rows = "\n".join(f"- {n} {ver}: {vid} (fix: {fix})" for n, ver, vid, fix in vulns)
     return (
         "Found by the weekly dependency audit Action.\n\n"
-        "Goal: no known-vulnerable pins in requirements.lock.txt.\n"
-        "Acceptance: `pip-audit -r requirements.lock.txt` reports no vulnerabilities.\n"
-        "Out of scope: packages not pinned in requirements.lock.txt.\n"
-        "Verify: `pip-audit --require-hashes -r requirements.lock.txt`\n\n" + rows + "\n"
+        "Goal: no known-vulnerable pins in requirements/requirements.lock.txt.\n"
+        "Acceptance: `pip-audit -r requirements/requirements.lock.txt` reports no vulnerabilities.\n"
+        "Out of scope: packages not pinned in requirements/requirements.lock.txt.\n"
+        "Verify: `pip-audit --require-hashes -r requirements/requirements.lock.txt`\n\n" + rows + "\n"
     )
 
 

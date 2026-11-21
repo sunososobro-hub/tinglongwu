@@ -15,8 +15,8 @@ pytestmark = pytest.mark.skipif(PWSH is None, reason="needs PowerShell (runs in 
 
 
 def test_install_log_is_bomfree_complete_and_not_held_open(tmp_path):
-    (tmp_path / "installer").mkdir()
-    shutil.copy(ROOT / "installer" / "run_install.ps1", tmp_path / "installer" / "run_install.ps1")
+    (tmp_path / "installer").mkdir()  # the installed layout ({app}\installer)
+    shutil.copy(ROOT / "release" / "installer" / "run_install.ps1", tmp_path / "installer" / "run_install.ps1")
     # stub install.ps1: prints step lines, then appends to install.log itself while still "running" -
     # that append only works if run_install.ps1 is not holding the file open exclusively
     (tmp_path / "install.ps1").write_text(
@@ -40,8 +40,8 @@ def test_install_log_is_bomfree_complete_and_not_held_open(tmp_path):
 @pytest.mark.skipif(sys.platform != "win32", reason="FileShare.Read only blocks a concurrent append on Windows (advisory locks on Unix)")
 def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
     """The wizard reads install.log share-read; an append during that read must be retried, not abort install.ps1."""
-    (tmp_path / "installer").mkdir()
-    shutil.copy(ROOT / "installer" / "run_install.ps1", tmp_path / "installer" / "run_install.ps1")
+    (tmp_path / "installer").mkdir()  # the installed layout ({app}\installer)
+    shutil.copy(ROOT / "release" / "installer" / "run_install.ps1", tmp_path / "installer" / "run_install.ps1")
     (tmp_path / "install.ps1").write_text(
         "param([switch]$SkipShortcut,[switch]$FromSetup,[switch]$Cpu)\n"
         "Write-Host '[1/8] one'\n"

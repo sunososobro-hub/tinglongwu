@@ -7,7 +7,7 @@ def test_setup_gpu_flag(monkeypatch, tmp_path):
     pips = []
     monkeypatch.setattr(scli, "_pip", lambda *a: pips.append(a))
     assert scli.main(["--gpu", "--models-dir", str(tmp_path)]) == 0
-    assert pips and pips[0][0] == "install" and pips[0][-1].endswith("requirements-gpu.txt")
+    assert pips and pips[0][0] == "install" and pips[0][-1].endswith("requirements/requirements-gpu.txt")
 
 
 def test_removed_m2m_engine_and_flag_are_rejected(tmp_path):

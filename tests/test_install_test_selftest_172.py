@@ -18,7 +18,7 @@ def test_linux_job_runs_cpu_selftest_after_real_download():
     run = steps[idx[0]]["run"]
     assert "--device cpu" in run and "-lt 60" in run
     assert "--whisper tiny" in run and "--hymt" in run
-    assert "requirements-llama-cpu.txt" in run and run.index("requirements-llama-cpu.txt") < run.index("--selftest")
+    assert "requirements/requirements-llama-cpu.txt" in run and run.index("requirements/requirements-llama-cpu.txt") < run.index("--selftest")
     assert run.index("--whisper tiny") < run.index("--selftest")
     names = [s.get("name", "") for s in steps]
     assert idx[0] < next(i for i, n in enumerate(names) if n.startswith("Uninstall"))

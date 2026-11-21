@@ -9,6 +9,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
+for _layer in ("system", "ui", "core"):  # src/ layer layout (#1664); core last-inserted = first on the path
+    sys.path.insert(0, str(ROOT / "src" / _layer))
 
 
 @pytest.fixture(autouse=True)

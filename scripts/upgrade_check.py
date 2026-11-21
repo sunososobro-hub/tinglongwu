@@ -34,9 +34,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EXE_NAME = "tlwu.exe"
 ZIP_TOP = "tlwu"  # top folder of the core zip
-# written by packaging/build_windows.py and runtime_layer.py at the top of every layered core (#923)
+# written by release/packaging/build_windows.py and runtime_layer.py at the top of every layered core (#923)
 NEW_CORE_MARKERS = ("app-layer.json", "runtime-layer.json")
-INSTALL_DONE = "install.done"  # the wizard's model step writes its exit code here (installer/tinglongwu.iss)
+INSTALL_DONE = "install.done"  # the wizard's model step writes its exit code here (release/installer/tinglongwu.iss)
 INSTALL_LOG = "install.log"
 READY_LINE = "READY default-listen"  # `tlwu.exe setup --default-listen` prints it last, when the default models are in (#948)
 SMOKE_TIMEOUT_S = 600
@@ -65,7 +65,7 @@ def leftovers(old_names: set[str], new_names: set[str]) -> list[str]:
 def smoke_problem(rc: int, out: str) -> str:
     """'' when `tlwu.exe --smoke` passed (the same verdict as the release check), else the reason."""
     # loaded by path: scripts/release_check.py has the same module name
-    spec = importlib.util.spec_from_file_location("packaging_release_check", REPO / "packaging" / "release_check.py")
+    spec = importlib.util.spec_from_file_location("packaging_release_check", REPO / "release" / "packaging" / "release_check.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     ok, detail = mod.smoke_verdict(rc, out)
@@ -149,7 +149,7 @@ def _load(name: str, path: Path):
 
 
 def _selfupdate():
-    sys.path.insert(0, str(REPO))  # tinglongwu_setup is a package at the repo root
+    sys.path.insert(0, str(REPO / "src" / "system"))  # tinglongwu_setup lives in src/system (#1664)
     import tinglongwu_setup.selfupdate as su  # noqa: PLC0415
     return su
 
@@ -174,7 +174,7 @@ def fake_release_get(app_zip: Path, manifest: dict, version: str = "9.9.9"):
 
 def make_app_layer(core: Path, out: Path) -> tuple[Path, dict]:
     """Zip + manifest of the app layer of an unzipped core folder (the same code the release uses, #945)."""
-    bw = _load("packaging_build_windows", REPO / "packaging" / "build_windows.py")
+    bw = _load("packaging_build_windows", REPO / "release" / "packaging" / "build_windows.py")
     man_path = bw.make_app_layer_zip(core, out)
     return out / bw.APP_LAYER_ASSET, json.loads(man_path.read_text("utf-8"))
 
@@ -211,7 +211,24 @@ def apply_text(app_zip: Path, app: Path, pid: int) -> str:
     GUI: the job runs the smoke itself afterwards and must not leave a GUI process behind."""
     lines = _selfupdate().apply_app_script(app_zip, app, pid).splitlines()
     keep = [ln for ln in lines if not ln.startswith("if (Test-Path -LiteralPath $exe) { Start-Process")]
+    # the helper swallows a swap error (rolls back, starts the old GUI): record it so a FAIL says why (#1660)
+    i = keep.index("} catch {")
+    keep.insert(i + 1, f"  Set-Content -LiteralPath {_selfupdate()._ps_quote(apply_error_path(app))} -Encoding UTF8 "
+                       "-Value ($_ | Out-String)")
     return "\n".join(keep) + "\n"
+
+
+def apply_error_path(app: Path) -> Path:
+    return app.parent / "tlwu-apply-update.err"
+
+
+def apply_failure(app: Path) -> str:
+    """The swap error the last run_apply recorded, plus which app items / *.old / staging the folder holds now."""
+    err = apply_error_path(app)
+    why = err.read_text("utf-8-sig", "replace").strip() if err.is_file() else ""
+    names = sorted(os.listdir(app)) if app.is_dir() else []
+    held = [n for n in names if n in _selfupdate().APP_ITEMS or n.endswith(".old") or n.startswith(".update")]
+    return f"\n  swap error: {why or '(none recorded)'}\n  {app} holds: {', '.join(held)}"
 
 
 def run_apply(app_zip: Path, app: Path, run=None) -> None:
@@ -219,9 +236,16 @@ def run_apply(app_zip: Path, app: Path, run=None) -> None:
     done = subprocess.Popen([sys.executable, "-c", "pass"])
     done.wait()
     script = app.parent / "tlwu-apply-update.ps1"
+    apply_error_path(app).unlink(missing_ok=True)
     script.write_text(apply_text(app_zip, app, done.pid), "utf-8-sig")
     (run or subprocess.run)(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
                             timeout=600, check=True)
+
+
+def apply_log(app: Path) -> str:
+    """The helper's own reason for a rolled-back swap (selfupdate.APPLY_APP_LOG, #1652), '' when it wrote none."""
+    f = app / _selfupdate().APPLY_APP_LOG
+    return f" ({' '.join(f.read_text('utf-8-sig', errors='replace').split())[:2000]})" if f.is_file() else ""
 
 
 def _old_install(old_zip: Path, core: Path, dest: Path) -> Path:
@@ -246,7 +270,11 @@ def cmd_app_update(old_zip: Path, core: Path, dest: Path) -> int:
     run_apply(app_zip, app)
     new_ver = json.loads((core / "app-layer.json").read_text("utf-8"))
     got = json.loads((app / "app-layer.json").read_text("utf-8")) if (app / "app-layer.json").is_file() else {}
-    prob = ("" if got == new_ver else "app-layer.json is not the new one after --apply-app") or run_smoke(app)
+    if apply_error_path(app).is_file():  # a swallowed swap error is a failure even when app-layer.json looks new (#1660)
+        prob = f"the --apply-app helper hit a swap error and rolled back{apply_failure(app)}{apply_log(app)}"
+    else:
+        prob = ("" if got == new_ver else f"app-layer.json is not the new one after --apply-app (have {got}, want "
+                f"{new_ver}){apply_failure(app)}{apply_log(app)}") or run_smoke(app)
     if prob:
         print("app-update: FAIL:", prob)
         return 1

@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_share_and_deficit():
     rows = {r["type"]: r for r in ledger.build_rows({"bug": 25, "enhancement": 75}, ledger.DEFAULT_MIX)}
     assert rows["bug"]["share"] == 25.0 and rows["bug"]["deficit"] == 3.0
-    assert rows["enhancement"]["share"] == 75.0 and rows["enhancement"]["deficit"] == -25.0
-    assert rows["QA"]["deficit"] == 15.0
+    assert rows["enhancement"]["share"] == 75.0 and rows["enhancement"]["deficit"] == -35.0
+    assert rows["QA"]["deficit"] == 10.0
 
 
 def test_zero_total_share_zero_deficit_is_target():
@@ -29,8 +29,8 @@ def test_infra_line():
 
 
 def test_mix_parse_valid_and_invalid():
-    body = "level: 2\nfocus: x\nmix: bug 30, enhancement 40, eval 10, documentation 10, maint 10"
-    assert ledger.parse_mix(body) == ({"bug": 30, "enhancement": 40, "eval": 10, "documentation": 10, "maint": 10}, True)
+    body = "level: 2\nfocus: x\nmix: bug 30, enhancement 30, infra 10, eval 10, documentation 10, maint 10"
+    assert ledger.parse_mix(body) == ({"bug": 30, "enhancement": 30, "infra": 10, "eval": 10, "documentation": 10, "maint": 10}, True)
     for bad in ["level: 2", "a\nb\nmix: bug 50, enhancement 60", "a\nb\nmix: bug 28, enhancement 50, eval 11, documentation 5, maint 5",
                 "a\nb\nmix: bug x, enhancement 50, eval 11, documentation 5, maint 6"]:
         assert ledger.parse_mix(bad) == (ledger.DEFAULT_MIX, False)
@@ -139,6 +139,43 @@ def test_collect_fix_counts_producer_fix_comments_on_prs(monkeypatch):  # #1581
     monkeypatch.setattr(ledger, "_gh_list", lambda path: comments if "/issues/comments" in path else [])
     monkeypatch.setattr(ledger, "_gh", lambda path, *a: {"labels": [{"name": "bug"}, {"name": "infra"}]})
     by_type, untyped, infra_min, total7, fix48 = ledger.collect_fix(now, pr_issue=lambda n: 9)
-    assert by_type == {"bug": 15} and untyped == 0 and fix48 == 15
+    assert by_type == {"infra": 15} and untyped == 0 and fix48 == 15  # infra wins over the type label
     assert total7 == 20 and infra_min == 20
     assert ledger.fix_line(15, 60) == "open->merge fix minutes (48 h): 15 (25.0% of total)"
+
+
+def test_pick_type_infra_wins_over_type_label():
+    assert ledger.pick_type({"bug", "infra"}) == "infra"
+    assert ledger.pick_type({"enhancement", "infra", "P2"}) == "infra"
+    assert ledger.pick_type({"maint"}) == "maint" and ledger.pick_type({"P1"}) is None
+
+
+def test_collect_infra_issue_lands_in_infra_row(monkeypatch):
+    from datetime import datetime, timedelta, UTC
+    now = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+    pr = {"merged_at": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"), "head": {"ref": "fix/9"},
+          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=1 minutes=20"}
+    monkeypatch.setattr(ledger, "_gh_list", lambda path: [pr] if "/pulls" in path else [])
+    monkeypatch.setattr(ledger, "_gh", lambda path, *a: {"labels": [{"name": "bug"}, {"name": "infra"}]})
+    by_type, untyped, infra_min, total7 = ledger.collect(now)
+    assert by_type == {"infra": 20} and infra_min == 20
+    rows = {r["type"]: r for r in ledger.build_rows(by_type, ledger.DEFAULT_MIX)}
+    assert rows["infra"]["share"] == 100.0 and rows["bug"]["minutes"] == 0
+
+
+def test_src_owner_exempt_from_mix_and_infra_cap(monkeypatch):  # owner 2026-11-20
+    from datetime import datetime, timedelta, UTC
+    now = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+    iso = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    prs = [{"merged_at": iso, "head": {"ref": "fix/9"}, "body": "Closes #9\ntlwu-usage: minutes=50"},
+           {"merged_at": iso, "head": {"ref": "fix/8"}, "body": "Closes #8\ntlwu-usage: minutes=10"}]
+    labels = {9: ["src:owner", "infra", "enhancement"], 8: ["bug"]}
+    monkeypatch.setattr(ledger, "_gh_list", lambda path: prs if "/pulls" in path else [])
+    monkeypatch.setattr(ledger, "_gh",
+                        lambda path, *a: {"labels": [{"name": x} for x in labels[int(path.rsplit("/", 1)[1])]]})
+    by_type, untyped, infra_min, total7 = ledger.collect(now)
+    assert by_type == {"bug": 10, ledger.OWNER_KEY: 50} and infra_min == 0 and total7 == 10
+    rows = {r["type"]: r for r in ledger.build_rows(by_type, ledger.DEFAULT_MIX)}
+    assert rows["bug"]["share"] == 100.0 and ledger.OWNER_KEY not in rows
+    assert sum(r["minutes"] for r in rows.values()) == 10
+    assert ledger.owner_line(50) == "owner-requested (src:owner, exempt from mix): 50 min (48 h)"

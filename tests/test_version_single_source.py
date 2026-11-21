@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _build_windows():
-    spec = importlib.util.spec_from_file_location("build_windows_462", ROOT / "packaging" / "build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows_462", ROOT / "release" / "packaging" / "build_windows.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

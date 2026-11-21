@@ -56,3 +56,50 @@ def test_ask_lang_prints_size_of_the_selected_packs(monkeypatch, tmp_path, capsy
 def test_korean_source_needs_its_pack_on_demand():
     from tinglongwu.gui import pack_on_demand as pod
     assert pod.PACK_OF["ko"] == "ko" and pod.PACKS["ko"] == packs.PACKS["ko"]
+
+
+def _clean_env(monkeypatch):
+    for k in ("TLWU_PACKS", "TLWU_YES", "TLWU_OFFLINE"):
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_saved_choice_is_reused_without_prompt_1673(monkeypatch, tmp_path, capsys):
+    _clean_env(monkeypatch)
+    answers = iter(["ja ru"])
+    monkeypatch.setattr("builtins.input", lambda q: next(answers))
+    got = []
+    monkeypatch.setattr(downloader, "main", lambda argv: got.append(argv) or 0)
+    assert cli.main(["--ask-lang", "--models-dir", str(tmp_path)]) == 0  # first install asks
+    assert got[0][got[0].index("--packs") + 1] == "ja,ru"
+
+    def boom(_):
+        raise EOFError  # stdin closed: must not even be asked
+    monkeypatch.setattr("builtins.input", boom)
+    capsys.readouterr()
+    assert cli.main(["--ask-lang", "--models-dir", str(tmp_path)]) == 0
+    assert got[1][got[1].index("--packs") + 1] == "ja,ru"
+    assert "Languages: ja,ru (from previous setup)" in capsys.readouterr().out
+
+
+def test_no_saved_choice_still_prompts_1673(monkeypatch, tmp_path):
+    _clean_env(monkeypatch)
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda q: asked.append(q) or "ko")
+    monkeypatch.setattr(downloader, "main", lambda argv: 0)
+    assert cli.main(["--ask-lang", "--models-dir", str(tmp_path)]) == 0
+    assert len(asked) == 1 and packs.saved_langs(tmp_path) == "ko"
+
+
+def test_env_override_beats_saved_choice_1673(monkeypatch, tmp_path):
+    _clean_env(monkeypatch)
+    packs.save_langs(tmp_path, "ja")
+    monkeypatch.setenv("TLWU_PACKS", "ru")
+    got = []
+    monkeypatch.setattr(downloader, "main", lambda argv: got.append(argv) or 0)
+    assert cli.main(["--ask-lang", "--models-dir", str(tmp_path)]) == 0
+    assert got[0][got[0].index("--packs") + 1] == "ru"
+
+
+def test_corrupt_saved_choice_asks_again_1673(tmp_path):
+    (tmp_path / packs.SAVED_FILE).write_text("{not json", "utf-8")
+    assert packs.saved_langs(tmp_path) == ""

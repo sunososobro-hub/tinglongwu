@@ -27,12 +27,12 @@ def test_language_pair_table_matches_support_json():
 
 def test_single_dev_install_path_and_coc():
     assert not (ROOT / "requirements-dev.txt").exists()
-    for p in ("docs/testing.md", "docs/readme-full.zh-CN.md", "docs/readme-full.zh-TW.md", "CONTRIBUTING.md"):
+    for p in ("docs/testing.md", "docs/readme-full.zh-CN.md", "docs/readme-full.zh-TW.md", ".github/CONTRIBUTING.md"):
         assert "requirements-dev" not in _read(p).replace("old `requirements-dev.txt` is gone", "") , p
-    c = _read("CONTRIBUTING.md")
+    c = _read(".github/CONTRIBUTING.md")
     assert "mobile/README.md" in c and "CODE_OF_CONDUCT.md" in c and "`needs-opus`" in c
     assert c.count("default answer is yes") == 1
-    assert (ROOT / "CODE_OF_CONDUCT.md").exists() and (ROOT / "docs/history-rewrite.md").exists()
+    assert (ROOT / ".github/CODE_OF_CONDUCT.md").exists() and (ROOT / "docs/history-rewrite.md").exists()
 
 
 def test_docs_page_leads_with_visuals(tmp_path, monkeypatch):
