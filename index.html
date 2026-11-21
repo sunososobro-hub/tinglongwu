@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TingLong dashboard</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
+<style>
+/* chart-first stats page (#1213): status tiles, donuts, lines, gauges; text second */
+:root{color-scheme:light dark;
+--bg:light-dark(#f4f6f9,#111418);--card:light-dark(#ffffff,#1a1e24);--ink:light-dark(#11161d,#eef1f4);--mut:light-dark(#5b6470,#a3acb7);
+--line:light-dark(#e3e7ec,#2a3038);
+--s1:light-dark(#2a78d6,#3987e5);--s2:light-dark(#eb6834,#d95926);--s3:light-dark(#1baf7a,#199e70);--s4:light-dark(#eda100,#c98500);
+--s5:light-dark(#e87ba4,#d55181);--s6:light-dark(#008300,#0ca30c);--s7:light-dark(#6250d6,#9085e9);--s8:light-dark(#8a919b,#6f7783);
+--good:light-dark(#12804a,#3fbf7f);--bad:light-dark(#cf2f2f,#f06262);--warn:light-dark(#b86e00,#e9a23b)}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:clip}
+.w{max-width:1240px;margin:0 auto;padding:20px max(4vw,14px) 48px}
+h1{font-size:30px;line-height:1.1;margin:0;font-weight:800}
+h2{font-size:22px;margin:36px 0 12px;font-weight:800}
+h3{font-size:16px;margin:0 0 8px;font-weight:700}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px}
+.mut,.n{color:var(--mut);font-size:13px}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;margin-top:16px}
+.card{background:var(--card);border-radius:16px;padding:18px;border:1px solid var(--line)}
+.big{font-size:44px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.big small{font-size:16px;font-weight:700;margin-left:4px}
+.lamp{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:14px}
+.lamp i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:14px}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.fig{position:relative;width:100%}
+.fig svg{display:block;width:100%}
+.dn{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.dn .ring{flex:0 0 180px;max-width:180px}
+.lg{flex:1 1 150px;display:flex;flex-direction:column;gap:5px;font-size:14px}
+.lg div{display:flex;align-items:center;gap:8px}
+.lg i{width:11px;height:11px;border-radius:3px;flex:none}
+.lg b{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
+.klg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;margin-top:6px}
+.klg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.bar{display:grid;grid-template-columns:110px minmax(0,1fr) 64px;align-items:center;gap:8px;margin:7px 0;font-size:14px}
+.bar>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .tr{position:relative;height:14px;background:var(--line);border-radius:7px}
+.bar .tr>div{height:100%;border-radius:7px}
+.bar .tk{position:absolute;top:-4px;width:3px;height:22px;background:var(--ink);border-radius:2px}
+.bar span:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips span{background:var(--line);border-radius:999px;padding:3px 10px;font-size:13px;font-weight:500}
+.ms{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;text-align:center;font-size:13px}
+select{font:inherit;font-size:15px;padding:6px 10px;min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+select:focus-visible,a:focus-visible{outline:3px solid var(--s1);outline-offset:2px}
+a{color:var(--s1)}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--card);font-size:13px;padding:6px 10px;border-radius:8px;opacity:0;transition:opacity .1s;z-index:9;white-space:nowrap}
+svg text{fill:var(--mut);font:12px system-ui,sans-serif}
+@media(max-width:520px){.big{font-size:38px}h1{font-size:24px}.dn .ring{flex-basis:150px}}
+</style>
+</head>
+<body>
+<div class="w">
+  <div class="top">
+    <h1>TingLong dashboard</h1>
+    <span class="mut" id="upd"></span>
+  </div>
+  <p style="margin:6px 0 0"><a href="roadmap.html">Roadmap</a> · <a href="docs.html">Docs</a> · <a id="repo" href="#">GitHub</a></p>
+
+  <div class="hero">
+    <div class="card"><h3>PRs merged today</h3><div class="big" id="h_pr"></div><div class="fig" id="sp_pr" style="height:56px;margin-top:10px"></div><div class="mut" id="h_pr2"></div></div>
+    <div class="card"><h3>Install to first subtitle</h3><div id="h_ins" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px"></div><div class="mut">Needle past the top = over the 180 s budget</div></div>
+    <div class="card"><h3>One release run</h3><div class="big" id="h_rel"></div><div class="fig" id="sp_rel" style="height:56px;margin-top:10px"></div><div class="mut" id="h_rel2"></div></div>
+    <div class="card"><h3>Stars</h3><div class="big" id="h_star"></div><div class="fig" id="sp_star" style="height:56px;margin-top:10px"></div><div class="mut" id="h_star2"></div></div>
+  </div>
+
+  <h2 id="output">Output</h2>
+  <div class="g2">
+    <div class="card"><h3>Work finished per day</h3><div class="fig" id="c_thru"></div><div class="klg"><span><i style="background:var(--s1)"></i>PRs merged</span><span><i style="background:var(--s2)"></i>issues closed</span><span><i style="background:var(--s3)"></i>commits</span></div></div>
+    <div class="card"><h3>Time from opened to done</h3><div id="b_speed"></div><div class="mut" style="margin-top:8px">Median, last 7 days (hover for 24 h and all time)</div></div>
+  </div>
+
+  <h2 id="next">What's next</h2>
+  <div class="card"><h3>Milestone progress</h3><div class="ms" id="ms"></div></div>
+  <div style="height:14px"></div>
+  <div class="g2">
+    <div class="card"><h3>Open issues over time</h3><div class="fig" id="c_open"></div></div>
+    <div class="card"><h3>Open issues by <select id="dim" aria-label="Group by"></select></h3><div class="dn"><div class="ring" id="d_grp"></div><div class="lg" id="l_grp"></div></div><div class="n" id="lnote"></div></div>
+  </div>
+
+  <h2 id="install">Install</h2>
+  <div class="card"><h3>Install to first subtitle (seconds, excl. model download, last clean installs)</h3><div class="fig" id="c_ttfs"></div><div class="klg" id="k_ttfs"></div></div>
+  <div style="height:14px"></div>
+  <div class="g2">
+    <div class="card"><h3>Active installs</h3><div id="inst"></div></div>
+    <div class="card"><h3>Per-language quality (weekly)</h3><div id="langv"></div><div class="n">CPU mini-eval per pair: bar = MT chrF, colour = gate verdict; hover for ASR error rate and change vs last week.</div></div>
+  </div>
+
+  <h2 id="effort">Where the effort goes</h2>
+  <div class="g3">
+    <div class="card"><h3>By mode</h3><div class="dn"><div class="ring" id="d_mode"></div><div class="lg" id="l_mode"></div></div></div>
+    <div class="card"><h3>By platform</h3><div class="dn"><div class="ring" id="d_plat"></div><div class="lg" id="l_plat"></div></div></div>
+    <div class="card"><h3>Type mix vs target (black tick)</h3><div id="b_type"></div></div>
+  </div>
+  <div class="n" id="flow_note" style="margin-top:6px"></div>
+  <div class="g3" style="margin-top:14px">
+    <div class="card"><h3>Quota minutes per day</h3><div class="fig" id="c_quota"></div></div>
+    <div class="card"><h3>PRs merged per 100 quota minutes</h3><div class="fig" id="c_per100"></div></div>
+    <div class="card"><h3>Faucet</h3><div id="faucet"></div></div>
+  </div>
+
+  <h2 id="releases">Releases</h2>
+  <div class="g2">
+    <div class="card"><h3>release.yml run (minutes)</h3><div class="fig" id="c_run"></div></div>
+    <div class="card"><h3>Release PR open to published (hours)</h3><div class="fig" id="c_prt"></div></div>
+  </div>
+
+  <h2 id="popularity">Popularity</h2>
+  <div class="g2">
+    <div class="card"><h3>Stars and forks</h3><div class="fig" id="c_star"></div><div class="klg"><span><i style="background:var(--s4)"></i>stars</span><span><i style="background:var(--s7)"></i>forks</span></div></div>
+    <div class="card"><h3>Downloads <span class="mut" id="dl_tot"></span></h3><div class="fig" id="c_dl"></div><div id="b_dl"></div></div>
+  </div>
+</div>
+<div id="tip" role="tooltip"></div>
+<script id="d" type="application/json">{"flow":{"total":1045.0,"paths":[["infrastructure ci","all","all",221.0],["infrastructure docs","all","all",26.0],["infrastructure docs","windows","all",45.0],["infrastructure gui","mac","all",9.0],["infrastructure install","linux","all",20.0],["infrastructure install","mac","all",2.0],["infrastructure mobile","mobile","all",14.0],["infrastructure release","all","all",8.0],["listen","all","all",203.0],["listen","windows","all",10.0],["speak","all","all",60.0],["speak","mobile","all",240.0],["two-way","all","all",17.0],["unlabelled","all","all",100.0],["unlabelled","windows","all",70.0]],"modes":[{"name":"speak","quota":300.0,"share":28.708133971291865},{"name":"infrastructure ci","quota":221.0,"share":21.148325358851675},{"name":"listen","quota":213.0,"share":20.382775119617225},{"name":"unlabelled","quota":170.0,"share":16.267942583732058},{"name":"infrastructure docs","quota":71.0,"share":6.794258373205742},{"name":"infrastructure install","quota":22.0,"share":2.1052631578947367},{"name":"two-way","quota":17.0,"share":1.6267942583732058},{"name":"infrastructure mobile","quota":14.0,"share":1.3397129186602872},{"name":"infrastructure gui","quota":9.0,"share":0.861244019138756},{"name":"infrastructure release","quota":8.0,"share":0.7655502392344498}],"platforms":[{"name":"all","quota":635.0,"share":60.76555023923445},{"name":"mobile","quota":254.0,"share":24.30622009569378},{"name":"windows","quota":125.0,"share":11.961722488038278},{"name":"linux","quota":20.0,"share":1.9138755980861244},{"name":"mac","quota":11.0,"share":1.0526315789473684}],"langs":[{"name":"all","quota":1045.0,"share":100.0}],"inferred":{"mode":28.708133971291865,"os":33.97129186602871,"lang":0.0},"unclassified":16.267942583732058,"type_mix":[{"type":"bug","quota":235.0,"share":22.48803827751196,"target":30,"delta":-7.511961722488039},{"type":"enhancement","quota":244.0,"share":23.349282296650717,"target":30,"delta":-6.650717703349283},{"type":"eval","quota":9.0,"share":0.861244019138756,"target":10,"delta":-9.138755980861244},{"type":"documentation","quota":26.0,"share":2.488038277511962,"target":5,"delta":-2.511961722488038},{"type":"maint","quota":76.0,"share":7.2727272727272725,"target":5,"delta":2.2727272727272725},{"type":"other","quota":455.0,"share":43.54066985645933,"target":0,"delta":43.54066985645933}],"side":[{"type":"QA","target":15},{"type":"ideas","target":5}],"backfill":{"days":14,"total":17139.0,"inferred":{"mode":1.7503938386136881,"os":6.20806348094988,"lang":0.16337009160394422},"unclassified":2.2113308827819593}},"faucet":{"level":1,"focus":["listen","ru"]},"quota_trend":{"days":["2026-11-08","2026-11-09","2026-11-10","2026-11-11","2026-11-12","2026-11-13","2026-11-14","2026-11-15","2026-11-16","2026-11-17","2026-11-18","2026-11-19","2026-11-20","2026-11-21"],"quota":[0.0,0.0,541.0,1276.0,1161.0,3962.0,2982.0,1649.0,1684.0,1664.0,560.0,993.0,633.0,34.0],"merged":[0,0,25,84,65,101,118,123,117,66,62,66,25,2],"per100":[null,null,4.62,6.58,5.6,2.55,3.96,7.46,6.95,3.97,11.07,6.65,3.95,5.88],"marker":"2026-11-14","marker_pr":743},"ttfs":{"darwin":[{"version":"0.5.1","date":"2026-11-19","seconds":-57.7,"sha":"e647eaa6c31f8caec09b2491e434a9dad3faefe7"},{"version":"0.5.1","date":"2026-11-19","seconds":-100.3,"sha":"db76f0cea1ca9b34c03e206c9b1d797c12a1dd08"},{"version":"0.5.1","date":"2026-11-19","seconds":-69.0,"sha":"77ab1705fe96f99341ab4130a46cc3755091535a"},{"version":"0.5.1","date":"2026-11-19","seconds":-69.9,"sha":"2d7dae8dec765d4f83c4a55372ac89a96e6430fa"},{"version":"0.5.1","date":"2026-11-19","seconds":-153.5,"sha":"fa8169c4366c3222455941b8c12648385bf91cd4"},{"version":"0.5.1","date":"2026-11-19","seconds":-82.7,"sha":"c09c3dd848d1cd3c0e492b306c31e1bd5304fa4d"},{"version":"0.5.1","date":"2026-11-19","seconds":-94.9,"sha":"0f986c3b1afdb32a4f9ed45e6691405b6f5b3bd2"},{"version":"0.5.1","date":"2026-11-20","seconds":-81.4,"sha":"5095c0af3f9ec971ef969307e58a889d214f2e48"},{"version":"0.5.1","date":"2026-11-20","seconds":-95.0,"sha":"19297f28c227fe9ae21e8f63ce9328734ae8b483"},{"version":"0.5.2","date":"2026-11-21","seconds":-114.2,"sha":"82760a3a2581c13993c63280f7026469e2bd141a"}],"linux":[{"version":"0.5.1","date":"2026-11-19","seconds":-226.2,"sha":"e647eaa6c31f8caec09b2491e434a9dad3faefe7"},{"version":"0.5.1","date":"2026-11-19","seconds":-227.7,"sha":"db76f0cea1ca9b34c03e206c9b1d797c12a1dd08"},{"version":"0.5.1","date":"2026-11-19","seconds":-209.5,"sha":"77ab1705fe96f99341ab4130a46cc3755091535a"},{"version":"0.5.1","date":"2026-11-19","seconds":-220.0,"sha":"2d7dae8dec765d4f83c4a55372ac89a96e6430fa"},{"version":"0.5.1","date":"2026-11-19","seconds":-216.6,"sha":"fa8169c4366c3222455941b8c12648385bf91cd4"},{"version":"0.5.1","date":"2026-11-19","seconds":-221.0,"sha":"c09c3dd848d1cd3c0e492b306c31e1bd5304fa4d"},{"version":"0.5.1","date":"2026-11-19","seconds":-219.1,"sha":"0f986c3b1afdb32a4f9ed45e6691405b6f5b3bd2"},{"version":"0.5.1","date":"2026-11-20","seconds":-214.9,"sha":"5095c0af3f9ec971ef969307e58a889d214f2e48"},{"version":"0.5.1","date":"2026-11-20","seconds":-221.9,"sha":"19297f28c227fe9ae21e8f63ce9328734ae8b483"},{"version":"0.5.2","date":"2026-11-21","seconds":-208.0,"sha":"82760a3a2581c13993c63280f7026469e2bd141a"}],"win32":[{"version":"0.5.1","date":"2026-11-19","seconds":-210.1,"sha":"e647eaa6c31f8caec09b2491e434a9dad3faefe7"},{"version":"0.5.1","date":"2026-11-19","seconds":-208.6,"sha":"db76f0cea1ca9b34c03e206c9b1d797c12a1dd08"},{"version":"0.5.1","date":"2026-11-19","seconds":-207.9,"sha":"77ab1705fe96f99341ab4130a46cc3755091535a"},{"version":"0.5.1","date":"2026-11-19","seconds":-213.7,"sha":"2d7dae8dec765d4f83c4a55372ac89a96e6430fa"},{"version":"0.5.1","date":"2026-11-19","seconds":-208.5,"sha":"fa8169c4366c3222455941b8c12648385bf91cd4"},{"version":"0.5.1","date":"2026-11-19","seconds":-210.7,"sha":"c09c3dd848d1cd3c0e492b306c31e1bd5304fa4d"},{"version":"0.5.1","date":"2026-11-19","seconds":-208.3,"sha":"0f986c3b1afdb32a4f9ed45e6691405b6f5b3bd2"},{"version":"0.5.1","date":"2026-11-20","seconds":-209.8,"sha":"5095c0af3f9ec971ef969307e58a889d214f2e48"},{"version":"0.5.1","date":"2026-11-20","seconds":-211.7,"sha":"19297f28c227fe9ae21e8f63ce9328734ae8b483"},{"version":"0.5.2","date":"2026-11-21","seconds":-211.6,"sha":"82760a3a2581c13993c63280f7026469e2bd141a"}]},"lang_verdicts":{"date":"2026-11-16","previous_date":null,"rows":[{"language":"en->zh","asr":7.88,"mt":32.47,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"ja->zh","asr":15.11,"mt":17.75,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"ko->zh","asr":25.76,"mt":24.17,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"ru->zh","asr":13.69,"mt":25.62,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"hi->zh","asr":52.06,"mt":10.13,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"vi->zh","asr":21.11,"mt":19.06,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"th->zh","asr":22.62,"mt":12.48,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"id->zh","asr":15.5,"mt":22.08,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"es->zh","asr":5.01,"mt":23.16,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"de->zh","asr":9.0,"mt":25.75,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"fr->zh","asr":15.75,"mt":24.19,"verdict":"PASS","d_asr":null,"d_mt":null},{"language":"zh->en","asr":24.96,"mt":48.28,"verdict":"PASS","d_asr":null,"d_mt":null}]},"release_times":[{"tag":"dev-latest","published_at":"2026-11-21T02:49:28Z","run_min":null,"pr":null,"pr_min":null},{"tag":"v0.5.0","published_at":"2026-11-19T06:51:22Z","run_min":15.9,"pr":1626,"pr_min":34.6},{"tag":"v0.4.11","published_at":"2026-11-18T19:13:34Z","run_min":21.0,"pr":1564,"pr_min":40.6},{"tag":"v0.4.10","published_at":"2026-11-18T15:25:48Z","run_min":41.7,"pr":1528,"pr_min":117.3},{"tag":"v0.4.9","published_at":"2026-11-18T11:28:33Z","run_min":24.4,"pr":1502,"pr_min":47.9},{"tag":"v0.4.8","published_at":"2026-11-18T06:09:01Z","run_min":15.8,"pr":1467,"pr_min":110.2},{"tag":"v0.4.7","published_at":"2026-11-18T01:07:01Z","run_min":18.2,"pr":1450,"pr_min":41.9},{"tag":"v0.4.6","published_at":"2026-11-17T11:30:55Z","run_min":18.9,"pr":1398,"pr_min":69.0},{"tag":"v0.4.5","published_at":"2026-11-17T05:38:21Z","run_min":34.1,"pr":1371,"pr_min":56.8},{"tag":"wheels-llama-cpp-python-0.3.36","published_at":"2026-11-17T03:43:52Z","run_min":null,"pr":null,"pr_min":null}],"downloads":{"total":5301,"releases":[{"tag":"demo-first-run-20261114","downloads":0},{"tag":"dev-latest","downloads":3,"published_at":"2026-11-21T02:49:28Z"},{"tag":"v0.5.0","downloads":249,"published_at":"2026-11-19T06:51:22Z"},{"tag":"mobile-latest","downloads":207,"published_at":"2026-11-13T06:17:27Z"},{"tag":"v0.4.11","downloads":150,"published_at":"2026-11-18T19:13:34Z"},{"tag":"v0.4.10","downloads":113,"published_at":"2026-11-18T15:25:48Z"},{"tag":"v0.4.9","downloads":167,"published_at":"2026-11-18T11:28:33Z"},{"tag":"v0.4.8","downloads":175,"published_at":"2026-11-18T06:09:01Z"},{"tag":"v0.4.7","downloads":156,"published_at":"2026-11-18T01:07:01Z"},{"tag":"v0.4.6","downloads":258,"published_at":"2026-11-17T11:30:55Z"},{"tag":"v0.4.5","downloads":200,"published_at":"2026-11-17T05:38:21Z"},{"tag":"wheels-llama-cpp-python-0.3.36","downloads":199,"published_at":"2026-11-17T03:43:52Z"},{"tag":"v0.4.4","downloads":256,"published_at":"2026-11-16T18:06:55Z"},{"tag":"v0.4.3","downloads":248,"published_at":"2026-11-16T10:56:57Z"},{"tag":"v0.4.1","downloads":266,"published_at":"2026-11-16T04:36:46Z"},{"tag":"v0.4.0","downloads":192,"published_at":"2026-11-15T23:44:44Z"},{"tag":"v0.3.8","downloads":176,"published_at":"2026-11-15T16:33:26Z"},{"tag":"v0.3.7","downloads":231,"published_at":"2026-11-15T11:25:33Z"},{"tag":"v0.3.6","downloads":331,"published_at":"2026-11-15T05:09:34Z"},{"tag":"v0.3.5","downloads":250,"published_at":"2026-11-15T00:19:00Z"},{"tag":"v0.3.4","downloads":259,"published_at":"2026-11-14T10:16:22Z"},{"tag":"v0.3.3","downloads":164,"published_at":"2026-11-14T05:25:34Z"},{"tag":"v0.3.2","downloads":267,"published_at":"2026-11-13T15:06:36Z"},{"tag":"v0.3.1","downloads":246,"published_at":"2026-11-13T01:40:15Z"},{"tag":"v0.3.0","downloads":82,"published_at":"2026-11-12T22:58:18Z"},{"tag":"v0.3.0-beta.2","downloads":99,"published_at":"2026-11-10T15:38:49Z"},{"tag":"v0.3.0-beta.1","downloads":99,"published_at":"2026-11-10T13:21:16Z"},{"tag":"v0.2.0","downloads":174,"published_at":"2026-11-10T05:54:41Z"},{"tag":"v0.1.0","downloads":84,"published_at":"2026-11-09T23:32:03Z"}],"series":[null,null,null,null,null,1017,1868,2679,3333,4208,4735,5131,5301]},"repo":"sunososobro-hub/tinglongwu","branch":"dev","created":"2026-11-09T15:03:25Z","updated":"2026-11-21T10:44:05Z","days":["2026-11-09","2026-11-10","2026-11-11","2026-11-12","2026-11-13","2026-11-14","2026-11-15","2026-11-16","2026-11-17","2026-11-18","2026-11-19","2026-11-20","2026-11-21"],"commits":[11,89,80,78,127,115,134,117,65,77,74,19,2],"stars":[0,29,38,52,97,152,155,158,162,165,165,167,167],"forks":[0,13,15,17,22,24,24,25,26,26,26,27,27],"open_issues":[0,58,75,69,57,72,64,50,61,63,73,85,86],"totals":{"stars":167,"forks":27,"open":86,"commits":988},"groups":{"status":{"done":[0,22,12,28,14,0,0,1,1,0,0,0,0],"needs-test":[0,18,34,5,2,1,1,0,0,0,6,6,6],"doing":[0,1,1,0,0,0,2,0,1,0,0,0,0],"review":[0,10,16,20,4,14,22,15,25,16,7,8,8],"(none)":[0,1,2,1,4,3,5,8,7,4,7,11,11],"todo":[0,3,5,7,13,13,8,4,9,16,25,32,33],"frozen":[0,5,6,6,5,6,6,6,6,6,6,6,6],"blocked":[0,1,2,5,17,34,17,15,11,20,22,22,22],"proposal":[0,0,0,1,0,2,3,1,1,1,1,1,1]},"priority":{"P2":[0,30,31,38,29,36,29,19,23,24,35,40,41],"P1":[0,22,33,22,17,25,25,22,27,22,18,20,20],"P0":[0,4,5,3,2,2,2,1,0,5,1,1,1],"(none)":[0,1,1,3,2,2,2,2,2,2,6,11,11],"P3":[0,1,5,4,7,7,6,6,8,9,12,12,12],"P4":[0,0,0,0,0,0,0,0,1,1,1,1,1]},"area":{"docs":[0,2,2,4,6,4,2,2,2,3,5,5,5],"tts":[0,2,9,5,2,2,2,2,2,2,2,2,2],"mt":[0,7,12,8,4,5,4,5,7,2,2,4,4],"install":[0,20,22,10,8,9,6,3,5,3,2,4,4],"(none)":[0,10,8,7,2,3,3,2,2,2,6,10,10],"asr":[0,5,9,2,3,4,5,3,3,2,2,2,2],"ci":[0,5,6,18,16,16,14,15,17,19,16,18,18],"gui":[0,7,12,10,4,8,10,1,3,6,13,14,14],"i18n":[0,4,3,2,3,3,2,2,2,2,2,2,2],"cli":[0,6,9,10,3,0,0,0,0,0,0,0,0],"audio":[0,4,9,5,3,6,5,3,3,2,2,2,2],"mobile":[0,1,1,1,7,12,12,13,13,17,19,19,19],"netguard":[0,1,3,0,0,0,0,0,0,0,0,0,0],"speak":[0,0,5,6,2,1,0,0,0,1,0,0,0],"eval":[0,0,0,8,9,11,8,4,5,4,4,4,5],"translate":[0,0,0,0,0,0,0,1,1,1,2,2,2],"packaging":[0,0,0,0,0,0,0,0,0,1,0,0,0],"release":[0,0,0,0,0,0,0,0,0,0,0,1,1]},"os":{"(none)":[0,35,45,53,52,66,52,42,50,53,65,74,75],"windows":[0,21,23,9,5,6,9,5,7,6,5,6,6],"linux":[0,1,7,7,0,0,0,0,0,0,0,2,2],"mac":[0,1,1,0,0,0,3,3,4,4,3,5,5]},"src":{"owner":[0,44,60,44,34,43,39,30,36,40,53,65,65],"ai":[0,14,15,17,19,25,20,16,18,17,16,16,17],"(none)":[0,0,0,7,3,2,3,2,3,1,1,1,1],"user":[0,0,0,3,1,2,2,3,5,6,4,4,4]},"model":{"sonnet":[0,9,18,17,23,44,34,22,26,34,46,56,57],"opus":[0,46,54,44,29,22,24,22,28,24,22,24,24],"(none)":[0,3,3,8,5,6,6,6,7,5,5,5,5]},"mode":{"shared":[0,35,37,32,28,31,25,21,24,31,32,37,37],"speak":[0,8,17,13,5,6,10,3,3,3,2,2,2],"listen":[0,13,17,21,16,30,24,21,29,21,25,27,28],"two-way":[0,2,4,3,5,4,4,5,5,8,10,11,11],"(none)":[0,0,0,0,3,1,1,0,0,0,4,8,8]},"lang":{"(none)":[0,48,65,63,51,67,59,46,53,55,66,77,78],"en":[0,4,3,0,3,3,2,2,3,3,2,2,2],"zh":[0,5,6,1,2,2,2,2,2,3,3,3,3],"ru":[0,3,5,2,2,2,2,2,5,5,5,6,6],"ja":[0,3,0,1,2,1,1,1,1,1,1,1,1],"vi":[0,0,0,2,2,0,0,0,0,0,0,0,0],"pt":[0,0,0,2,0,0,0,0,0,0,0,0,0],"it":[0,0,0,2,0,0,0,0,0,0,0,0,0],"th":[0,0,0,2,2,0,0,0,0,0,0,0,0],"id":[0,0,0,2,2,0,0,0,0,0,0,0,0],"ko":[0,0,0,0,3,1,1,1,1,1,1,1,1],"es":[0,0,0,0,2,0,0,0,0,0,0,0,0],"fr":[0,0,0,0,2,0,0,0,0,0,0,0,0],"de":[0,0,0,0,2,0,0,0,0,0,0,0,0],"hi":[0,0,0,0,1,1,2,1,1,1,1,1,1],"yue":[0,0,0,0,1,1,1,1,1,1,1,1,1]},"milestone":{"(none)":[0,37,47,10,16,25,35,30,43,34,47,59,60],"v0.4":[0,7,9,24,5,11,3,1,0,0,0,0,0],"v0.5":[0,3,4,5,12,11,8,4,4,0,0,0,0],"v0.3.2":[0,1,1,13,0,0,0,0,0,0,0,0,0],"v0.3.3":[0,1,2,2,3,0,0,0,0,0,0,0,0],"Later":[0,9,12,15,15,15,13,10,10,13,13,13,13],"mobile 0.2":[0,0,0,0,6,7,5,5,4,8,7,7,7],"v0.3.5":[0,0,0,0,0,3,0,0,0,0,0,0,0],"v0.6":[0,0,0,0,0,0,0,0,0,8,6,6,6]}},"label_history_from_events":true,"milestones":[{"title":"v0.3.2","open":0,"closed":15},{"title":"v0.4","open":0,"closed":58},{"title":"Later","open":13,"closed":12},{"title":"mobile 0.2","open":7,"closed":7},{"title":"v0.3.3","open":0,"closed":5},{"title":"v0.5","open":0,"closed":23},{"title":"v0.3.4","open":0,"closed":2},{"title":"v0.3.5","open":0,"closed":22},{"title":"v0.3.6","open":0,"closed":1},{"title":"v0.3.7","open":0,"closed":0},{"title":"v0.6","open":6,"closed":4}],"prs_merged":[0,44,78,75,101,110,130,112,63,72,48,19,2],"issues_closed":[0,35,51,77,91,106,92,85,37,53,26,12,1],"hero":{"day_n":13,"prs":{"today":2,"h24":3,"total":854},"issues":{"today":1,"h24":1,"total":666},"commits":{"today":2,"h24":3,"total":988}},"speed":{"issue_all":4.14,"issue_7d":3.17,"issue_24h":1.16,"pr_all":0.47,"pr_7d":0.49,"pr_24h":4.96},"installs":null,"ttfs_budget_s":180}</script>
+<script>
+{
+const D=JSON.parse(document.getElementById('d').textContent);
+const $=id=>document.getElementById(id);
+const S=['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=n=>n==null?'n/a':Math.round(n).toLocaleString('en-US');
+const med=a=>{const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length?(s.length%2?s[m]:(s[m-1]+s[m])/2):null};
+const nm=k=>k==='(none)'?'unlabelled':String(k).replace(/^infrastructure /,'');
+const none=(el,t)=>{el.innerHTML='<p class="n">'+esc(t)+'</p>'};
+const days=(D.days||[]).map(d=>d.slice(5).replace('-','/'));
+
+/* tooltip */
+const tip=$('tip');
+document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-t]');
+ if(!t){tip.style.opacity=0;return}
+ tip.textContent=t.getAttribute('data-t');tip.style.opacity=1;
+ tip.style.left=Math.max(4,Math.min(e.clientX+14,innerWidth-tip.offsetWidth-8))+'px';tip.style.top=(e.clientY-36)+'px'});
+
+/* donut */
+function donut(el,lg,items,center,sub){
+ const tot=items.reduce((a,b)=>a+b.v,0)||1,r=70,C=2*Math.PI*r;let acc=0,g='';
+ items.forEach((it,i)=>{const len=C*it.v/tot,gap=items.length>1?2:0,c=it.c||S[i];
+  if(len>0)g+=`<circle cx="100" cy="100" r="${r}" fill="none" stroke="${c}" stroke-width="28" stroke-dasharray="${Math.max(len-gap,0.5)} ${C}" stroke-dashoffset="${-acc}" transform="rotate(-90 100 100)" data-t="${esc(it.n)}: ${fmt(it.v)} (${Math.round(100*it.v/tot)}%)"></circle>`;acc+=len});
+ el.innerHTML=`<svg viewBox="0 0 200 200" role="img" aria-label="${esc(center+' '+sub)}">${g}<text x="100" y="100" text-anchor="middle" style="font-size:30px;font-weight:800;fill:var(--ink)">${esc(center)}</text><text x="100" y="124" text-anchor="middle" style="font-size:13px">${esc(sub)}</text></svg>`;
+ lg.innerHTML=items.map((it,i)=>`<div><i style="background:${it.c||S[i]}"></i>${esc(it.n)}<b>${Math.round(100*it.v/tot)}%</b></div>`).join('')}
+function fold(arr,k){const s=[...arr].sort((a,b)=>b.v-a.v);if(s.length<=k)return s;const h=s.slice(0,k-1);h.push({n:'other',v:s.slice(k-1).reduce((a,b)=>a+b.v,0),c:'var(--s8)'});return h}
+
+/* line chart: o = {x, s:[{n,c,v}], h, area, budget, cap, mark, markL, f, tx, label} */
+function nice(m){const p=10**Math.floor(Math.log10(m||1)),f=m/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p}
+function line(el,o){
+ if(!o.s.some(s=>s.v.some(v=>v!=null))){if(!o.h||o.h>=100)none(el,'No data yet.');return}
+ const draw=()=>{const H=o.h||220,mini=H<100,W=el.clientWidth||600,L=mini?4:42,R=mini?4:14,T=mini?6:16,B=mini?6:28,n=o.x.length,sm=W<520;
+  let mx=0;o.s.forEach(s=>s.v.forEach(v=>{if(v!=null)mx=Math.max(mx,v)}));if(o.budget)mx=Math.max(mx,o.budget*1.2);
+  mx=o.cap?Math.min(nice(mx),o.cap):nice(mx);
+  const X=i=>L+(W-L-R)*(n<2?.5:i/(n-1)),Y=v=>T+(H-T-B)*(1-Math.min(v,mx)/mx);let g='';
+  if(!mini){for(let k=0;k<=2;k++){const v=mx*k/2,y=Y(v);g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--line)"></line><text x="${L-6}" y="${y+4}" text-anchor="end">${fmt(v)}</text>`}
+   const st=Math.max(1,Math.ceil(n/(sm?4:7)));for(let i=0;i<n;i+=st)g+=`<text x="${X(i)}" y="${H-8}" text-anchor="${i===0?'start':i>=n-1?'end':'middle'}">${esc(o.x[i])}</text>`}
+  if(o.mark!=null&&o.mark>=0){const x=X(o.mark);g+=`<line class="marker" x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" stroke="var(--mut)" stroke-dasharray="4 4"></line><text x="${x+4}" y="${T+10}">${esc(o.markL)}</text>`}
+  if(o.budget){const y=Y(o.budget);g+=`<line class="budget" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 5"></line>`}
+  o.s.forEach(s=>{const pts=s.v.map((v,i)=>v==null?null:[X(i),Y(v),v,i]).filter(Boolean);if(!pts.length)return;
+   const d=pts.map((p,j)=>(j?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');
+   if(o.area)g+=`<path d="${d}L${pts[pts.length-1][0]} ${Y(0)}L${pts[0][0]} ${Y(0)}Z" fill="${s.c}" opacity=".14"></path>`;
+   g+=`<path d="${d}" fill="none" stroke="${s.c}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>`;
+   if(!mini)pts.forEach(p=>{const over=p[2]>mx,lab=o.f?o.f(p[2]):fmt(p[2]);
+    g+=`<circle cx="${p[0]}" cy="${p[1]}" r="${over?6:4}" fill="${s.c}" stroke="var(--card)" stroke-width="2"></circle><circle cx="${p[0]}" cy="${p[1]}" r="12" fill="transparent" data-t="${esc((s.n?s.n+' · ':'')+(o.tx?o.tx[p[3]]:o.x[p[3]]))}: ${esc(lab)}"></circle>`;
+    if(over)g+=`<text x="${p[0]+9}" y="${p[1]+4}" style="fill:var(--ink);font-weight:700">↑ ${esc(lab)}</text>`});
+   else{const p=pts[pts.length-1];g+=`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${s.c}"></circle>`}});
+  el.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label||'')}">${g}</svg>`};
+ draw();if(window.ResizeObserver)new ResizeObserver(draw).observe(el)}
+
+/* gauge: 0..360 s, top = 180 s budget */
+function gauge(sec,lbl){if(sec==null)return `<div style="text-align:center" class="n">${esc(lbl)}<br>no data</div>`;
+ const f=Math.min(sec/360,1),a=Math.PI*(1-f),x=50+40*Math.cos(a),y=50-40*Math.sin(a),ok=sec<=180,c=ok?'var(--good)':'var(--bad)';
+ return `<div style="text-align:center" data-t="${esc(lbl)}: median ${Math.round(sec)} s"><svg viewBox="0 0 100 62" role="img" aria-label="${esc(lbl)} ${Math.round(sec)} s"><path d="M10 50A40 40 0 0 1 90 50" fill="none" stroke="var(--line)" stroke-width="10" stroke-linecap="round"></path><path d="M10 50A40 40 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" fill="none" stroke="${c}" stroke-width="10" stroke-linecap="round"></path><line x1="50" y1="4" x2="50" y2="16" stroke="var(--ink)" stroke-width="2"></line></svg><div style="font-weight:800;font-size:20px;line-height:1">${Math.round(sec)}<small style="font-size:12px"> s</small></div><div class="lamp" style="font-size:13px;margin-top:2px"><i style="background:${c};width:9px;height:9px"></i>${esc(lbl)}${ok?'':' !'}</div></div>`}
+
+/* bars */
+function bars(el,rows,max){el.innerHTML=rows.map(r=>`<div class="bar" data-t="${esc(r.t||r.n)}"><span>${esc(r.n)}</span><div class="tr"><div style="width:${Math.min(100,100*r.v/(max||1))}%;background:${r.c||'var(--s1)'}"></div>${r.tk!=null?`<i class="tk" style="left:calc(${Math.min(100,100*r.tk/(max||1))}% - 1px)"></i>`:''}</div><span>${esc(r.l)}</span></div>`).join('')}
+
+/* header + hero */
+const H0=D.hero||{prs:{},issues:{},commits:{}};
+$('upd').textContent=(D.repo||'')+' · '+(D.branch||'')+(H0.day_n?' · day '+H0.day_n:'')+(D.updated?' · updated '+D.updated.slice(0,16).replace('T',' ')+' UTC':'');
+if(D.repo)$('repo').href='https://github.com/'+encodeURI(D.repo);
+$('h_pr').innerHTML=fmt(H0.prs.today||0)+'<small>PRs</small>';
+$('h_pr2').textContent='last 24 h: '+fmt(H0.prs.h24||0)+' PRs, '+fmt(H0.issues.h24||0)+' issues closed'+(H0.prs.h24?' · one PR every '+Math.round(1440/H0.prs.h24)+' min':'');
+line($('sp_pr'),{x:days,s:[{c:'var(--s1)',v:D.prs_merged||[]}],h:56,area:1});
+const OSN={win32:'Windows',windows:'Windows',linux:'Linux',darwin:'macOS',mac:'macOS',macos:'macOS'},OSC={Windows:'var(--s1)',Linux:'var(--s3)',macOS:'var(--s2)'},ORD=['Windows','Linux','macOS'];
+const TT=Object.keys(D.ttfs||{}).map(k=>({k,n:OSN[k]||k,rows:D.ttfs[k]||[]})).sort((a,b)=>{const r=n=>{const i=ORD.indexOf(n);return i<0?9:i};return r(a.n)-r(b.n)});
+$('h_ins').innerHTML=TT.length?TT.map(o=>gauge(med(o.rows.map(r=>r.seconds)),o.n)).join(''):'<div class="n" style="grid-column:1/-1">No install runs yet.</div>';
+const rel=(D.release_times||[]).filter(r=>r.run_min!=null).reverse();
+if(rel.length){$('h_rel').innerHTML=Math.round(rel[rel.length-1].run_min)+'<small>min</small>';
+ $('h_rel2').textContent=rel[rel.length-1].tag+' · slowest of the last '+rel.length+': '+Math.round(Math.max(...rel.map(r=>r.run_min)))+' min';
+ line($('sp_rel'),{x:rel.map(r=>r.tag),s:[{c:'var(--s3)',v:rel.map(r=>r.run_min)}],h:56,area:1})}
+else $('h_rel').innerHTML='<small>no releases yet</small>';
+const T0=D.totals||{};
+$('h_star').innerHTML=fmt(T0.stars||0)+'<small>stars</small>';
+$('h_star2').textContent='forks '+fmt(T0.forks||0)+((D.downloads||{}).total!=null?' · downloads '+fmt(D.downloads.total):'');
+line($('sp_star'),{x:days,s:[{c:'var(--s4)',v:D.stars||[]}],h:56,area:1});
+
+/* Output */
+line($('c_thru'),{x:days,s:[{n:'PRs merged',c:'var(--s1)',v:D.prs_merged||[]},{n:'issues closed',c:'var(--s2)',v:D.issues_closed||[]},{n:'commits',c:'var(--s3)',v:D.commits||[]}],label:'Work finished per day'});
+const fh=h=>h==null?'n/a':h<1?Math.round(h*60)+' min':h<48?h.toFixed(1)+' h':(h/24).toFixed(1)+' days';
+const Sp=D.speed||{},smx=Math.max(Sp.issue_7d||0,Sp.pr_7d||0)||1;
+bars($('b_speed'),[['issue','Issue opened to closed','var(--s2)'],['pr','PR opened to merged','var(--s1)']].map(([k,l,c])=>({n:k==='pr'?'PR':'issue',v:Sp[k+'_7d']||0,l:fh(Sp[k+'_7d']),c,t:l+': 7 days '+fh(Sp[k+'_7d'])+' · 24 h '+fh(Sp[k+'_24h'])+' · all time '+fh(Sp[k+'_all'])})),smx);
+
+/* What's next */
+const mr=p=>{const r=30,C=2*Math.PI*r,c=p>=100?'var(--good)':'var(--s1)';return `<svg viewBox="0 0 80 80" width="80" height="80" style="display:block;margin:0 auto"><circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"></circle><circle cx="40" cy="40" r="${r}" fill="none" stroke="${c}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C*p/100} ${C}" transform="rotate(-90 40 40)"></circle><text x="40" y="45" text-anchor="middle" style="font-size:16px;font-weight:800;fill:var(--ink)">${p}%</text></svg>`};
+const MS=(D.milestones||[]).filter(m=>m.open+m.closed>0).sort((a,b)=>(a.closed/(a.open+a.closed))-(b.closed/(b.open+b.closed)));
+$('ms').innerHTML=MS.map(m=>{const p=Math.round(100*m.closed/(m.open+m.closed));
+ return `<div data-t="${esc(m.title)}: ${m.closed} closed, ${m.open} open">${mr(p)}<b>${esc(m.title)}</b><div class="mut">${m.open} open</div></div>`}).join('')||'<p class="n">No milestones.</p>';
+line($('c_open'),{x:days,s:[{c:'var(--s2)',v:D.open_issues||[]}],area:1,label:'Open issues'});
+const dim=$('dim'),G=D.groups||{};
+Object.keys(G).forEach(g=>dim.add(new Option(g==='priority'?'priority (P0-P4)':g,g)));
+const showG=()=>{const o=G[dim.value]||{},n=(D.days||[]).length;
+ const it=Object.keys(o).map(k=>({n:nm(k),v:o[k][n-1]||0})).filter(x=>x.v>0);
+ $('lnote').textContent=D.label_history_from_events===false?'Label events unavailable: current labels only.':'';
+ if(!it.length){none($('d_grp'),'No open issues.');$('l_grp').innerHTML='';return}
+ donut($('d_grp'),$('l_grp'),fold(it,7),fmt(T0.open!=null?T0.open:it.reduce((a,b)=>a+b.v,0)),'open')};
+dim.onchange=showG;if(G.status)dim.value='status';showG();
+
+/* Install */
+line($('c_ttfs'),(()=>{const n=Math.max(0,...TT.map(o=>o.rows.length)),first=TT.find(o=>o.rows.length);
+ return {x:Array.from({length:n},(_,i)=>'run '+(i+1)),tx:Array.from({length:n},(_,i)=>{const r=TT.map(o=>o.rows[i]).find(Boolean);return r?'v'+r.version+' '+r.date.slice(5):''}),
+ s:TT.map(o=>({n:o.n,c:OSC[o.n]||'var(--s7)',v:o.rows.map(r=>r.seconds)})),budget:first?(D.ttfs_budget_s||180):0,cap:400,h:260,f:v=>Math.round(v)+' s',label:'Install to first subtitle'}})());
+$('k_ttfs').innerHTML=TT.map(o=>`<span><i style="background:${OSC[o.n]||'var(--s7)'}"></i>${esc(o.n)}</span>`).join('')+(TT.length?'<span><i style="background:var(--bad)"></i>180 s budget</span>':'');
+const I=D.installs;
+if(I&&I.days&&I.days.length){const last=I.total[I.total.length-1];
+ $('inst').innerHTML=`<div class="big">${fmt(last)}<small>yesterday</small></div><div class="fig" id="c_inst" style="margin-top:8px"></div><div id="b_inst"></div><div class="n">Anonymous update checks (date, version, OS only; at most once a day per install), so checks per day ~ active installs.</div>`;
+ line($('c_inst'),{x:I.days.map(d=>d.slice(5).replace('-','/')),s:[{c:'var(--s3)',v:I.total}],area:1,h:160,label:'Active installs per day'});
+ const vm=Math.max(1,...I.versions.map(v=>v.week_avg));
+ bars($('b_inst'),I.versions.slice(0,6).map(v=>({n:v.version+' '+v.os,v:v.week_avg,l:v.week_avg.toFixed(1)+'/day',c:'var(--s3)',t:v.version+' '+v.os+': last day '+v.last_day+', 7-day avg '+v.week_avg.toFixed(1)})),vm)}
+else none($('inst'),'Install counter not available yet (web/cloudflare/update-counter).');
+const LV=D.lang_verdicts;
+if(LV&&LV.rows&&LV.rows.length){const f2=(v,s)=>v==null?'n/a':(s&&v>0?'+':'')+v.toFixed(2);
+ bars($('langv'),LV.rows.map(r=>({n:r.language,v:r.mt||0,l:r.verdict,c:r.verdict==='PASS'?'var(--good)':'var(--bad)',t:r.language+': chrF '+f2(r.mt)+' ('+f2(r.d_mt,1)+'), ASR '+f2(r.asr)+'% ('+f2(r.d_asr,1)+') · '+LV.date+(LV.previous_date?' vs '+LV.previous_date:'')})),100)}
+else none($('langv'),'no data yet');
+
+/* Where the effort goes */
+const F=D.flow||{total:0,modes:[],platforms:[],type_mix:[]};
+if(F.total>0){
+ donut($('d_mode'),$('l_mode'),fold(F.modes.map(m=>({n:nm(m.name),v:m.quota})),7),fmt(F.total),'quota min');
+ donut($('d_plat'),$('l_plat'),fold(F.platforms.map(m=>({n:m.name==='all'?'all platforms':m.name,v:m.quota})),5),fmt(F.total),'quota min');
+ bars($('b_type'),F.type_mix.map(t=>({n:t.type,v:t.share,tk:t.target,l:Math.round(t.share)+'%',c:Math.abs(t.delta)>5?'var(--warn)':'var(--s1)',t:t.type+': '+t.share.toFixed(1)+'% of quota, target '+t.target+'%'})),50);
+ const inf=F.inferred||{};$('flow_note').textContent='Quota minutes = minutes x model weight (opus = 2x sonnet), PRs merged in the last 48 h. Inferred from changed files: platform '+Math.round(inf.os||0)+'%, language '+Math.round(inf.lang||0)+'%.';
+}else{['d_mode','d_plat','b_type'].forEach(id=>none($(id),'No quota minutes in the last 48 h.'))}
+const BF=F.backfill;
+if(BF&&BF.total>0){const bi=BF.inferred||{};$('flow_note').textContent+=(F.total>0?' ':'')+'Last '+BF.days+' days: '+fmt(BF.total)+' quota min; inferred mode '+Math.round(bi.mode||0)+'%, platform '+Math.round(bi.os||0)+'%, language '+Math.round(bi.lang||0)+'%; unclassified mode '+Math.round(BF.unclassified||0)+'%.'}
+const Q=D.quota_trend;
+if(Q&&Q.days){const qs=Math.max(0,Q.quota.findIndex(v=>v>0)-1),qd=Q.days.slice(qs).map(d=>d.slice(5).replace('-','/')),mk=Q.days.slice(qs).indexOf(Q.marker);
+ line($('c_quota'),{x:qd,s:[{c:'var(--s1)',v:Q.quota.slice(qs)}],area:1,mark:mk,markL:Q.marker_pr?'#'+Q.marker_pr:'',label:'Quota minutes per day'});
+ line($('c_per100'),{x:qd,s:[{c:'var(--s2)',v:Q.per100.slice(qs)}],mark:mk,markL:Q.marker_pr?'#'+Q.marker_pr:'',f:v=>v.toFixed(1),label:'PRs per 100 quota minutes'})}
+else{none($('c_quota'),'No data yet.');none($('c_per100'),'No data yet.')}
+const FZ=D.faucet;
+$('faucet').innerHTML=FZ?`<div class="big">${fmt(FZ.level)}<small>level</small></div><h3 style="margin-top:14px">Current focus</h3><div class="chips">${(FZ.focus||[]).map(f=>`<span>${esc(f)}</span>`).join('')||'<span>none</span>'}</div>`:'<p class="n">Faucet level unavailable.</p>';
+
+/* Releases */
+line($('c_run'),{x:rel.map(r=>r.tag),s:[{c:'var(--s3)',v:rel.map(r=>r.run_min)}],area:1,f:v=>Math.round(v)+' min',label:'release.yml run minutes'});
+line($('c_prt'),{x:rel.map(r=>r.tag),s:[{c:'var(--s7)',v:rel.map(r=>r.pr_min==null?null:r.pr_min/60)}],area:1,f:v=>v.toFixed(1)+' h',label:'Release PR open to published'});
+
+/* Popularity */
+line($('c_star'),{x:days,s:[{n:'stars',c:'var(--s4)',v:D.stars||[]},{n:'forks',c:'var(--s7)',v:D.forks||[]}],label:'Stars and forks'});
+const DL=D.downloads||{releases:[],series:[]};
+$('dl_tot').textContent=DL.total==null?'':'total '+fmt(DL.total);
+if((DL.series||[]).some(v=>v!=null))line($('c_dl'),{x:days,s:[{c:'var(--s3)',v:DL.series}],area:1,h:140,label:'Downloads over time'});
+const dl=(DL.releases||[]).filter(r=>r.downloads>0).sort((a,b)=>b.downloads-a.downloads).slice(0,10);
+if(dl.length)bars($('b_dl'),dl.map(r=>({n:r.tag,v:r.downloads,l:fmt(r.downloads),c:'var(--s3)',t:r.tag+': '+fmt(r.downloads)+' downloads'})),Math.max(...dl.map(r=>r.downloads)));
+else none($('b_dl'),'No release downloads yet.');
+}
+</script>
+</body>
+</html>
