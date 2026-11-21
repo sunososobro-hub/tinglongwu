@@ -1,0 +1,65 @@
+# scenario: tech
+# Built-in term table "legacy-tech" (#1689): the concepts of the older tech-dev.txt / tech-ru.txt lists, in every
+# language. Format and rules: docs/glossary-domains.md. Check: python scripts/terms_check.py
+id	en	ru	ja	ko	zh-TW	zh-CN
+legacy.commit	commit	коммит | коммиты	コミット	커밋	*提交	*提交
+legacy.merge	merge	мердж | смержить | смерджить	マージ	병합 | 머지	*合併	*合并
+legacy.build	build	билд | собрать билд	ビルド	빌드	建置	构建
+legacy.release	release	релиз	リリース	릴리스	*發佈	*发布
+legacy.repository	repository | repo	репозиторий | репо	リポジトリ	저장소 | 리포지토리	儲存庫	代码仓库 | *仓库
+legacy.pull_request	pull request	пулл-реквест | пулреквест	プルリクエスト	풀 리퀘스트	合併請求	拉取请求
+legacy.rebase	rebase	перебазирование	リベース	리베이스	變基	变基
+legacy.compiler	compiler	компилятор	コンパイラ	컴파일러	編譯器	编译器
+legacy.compile	compile	скомпилировать	コンパイル	컴파일	*編譯	*编译
+legacy.linker	linker	линкер	リンカ	링커	連結器	链接器
+legacy.debugger	debugger	отладчик	デバッガ	디버거	偵錯器	调试器
+legacy.breakpoint	breakpoint	точка останова	ブレークポイント	중단점 | 브레이크포인트	中斷點	断点
+legacy.stack_trace	stack trace	трассировка стека	スタックトレース	스택 트레이스	堆疊追蹤	堆栈跟踪
+legacy.backtrace	backtrace	бэктрейс	バックトレース	백트레이스	回溯追蹤	回溯
+legacy.segfault	segfault	сегфолт	セグフォルト	세그폴트	記憶體區段錯誤	段错误
+legacy.memory_leak	memory leak	утечка памяти	メモリリーク	메모리 누수	記憶體洩漏	内存泄漏
+legacy.mutex	mutex	мьютекс	ミューテックス	뮤텍스	互斥鎖	互斥锁
+legacy.deadlock	deadlock	взаимная блокировка	デッドロック	교착 상태 | 데드락	死結	死锁
+legacy.race_condition	race condition	состояние гонки	競合状態 | レースコンディション	경쟁 상태	競爭條件	竞争条件
+legacy.callback	callback	колбэк	コールバック	콜백	回呼	回调
+legacy.middleware	middleware	*промежуточное ПО	ミドルウェア	미들웨어	中介軟體	中间件
+legacy.endpoint	endpoint	эндпоинт	エンドポイント	엔드포인트	端點	端点
+legacy.payload	payload	полезная нагрузка	ペイロード	페이로드	酬載	有效载荷
+legacy.latency	latency	*задержка	レイテンシ	*지연 | 레이턴시	*延遲	*延迟
+legacy.throughput	throughput	пропускная способность	スループット	처리량	吞吐量	吞吐量
+legacy.bandwidth	bandwidth	полоса пропускания	帯域幅	대역폭	頻寬	带宽
+legacy.deployment	deployment	деплой | задеплоить	デプロイ	배포	部署	部署
+legacy.dependency	dependency	зависимость | зависимости	依存関係	의존성	相依套件	依赖项
+legacy.runtime	runtime	среда выполнения	ランタイム	런타임	執行環境	运行时
+legacy.daemon	daemon	*демон	デーモン	데몬	常駐程式	守护进程
+legacy.header	header	заголовочный файл	ヘッダファイル	헤더 파일	標頭檔	头文件
+legacy.toolchain	toolchain	тулчейн	ツールチェーン	툴체인	工具鏈	工具链
+legacy.kernel	kernel	*ядро	カーネル	커널	*核心	*内核
+legacy.production	*production	прод | проде | продакшн | продакшен	本番環境	운영 환경 | 프로덕션	正式環境	生产环境
+legacy.bug	*bug	баг | бага | багу | баги | багов	バグ	버그	程式錯誤	程序缺陷 | *缺陷
+legacy.feature	*feature	фича | фичу | фичи | фичей	*機能	*기능	*功能	*功能
+legacy.branch	*branch	ветка	ブランチ	브랜치 | *분기	*分支	*分支
+legacy.upload	*upload	залить | залили | залью | зальём | зальют | зальёт | залей | залейте	*アップロード	*업로드	*上傳	*上传
+legacy.code_review	code review	ревью	コードレビュー	코드 리뷰	程式碼審查	代码审查
+legacy.rollback	rollback	откатить | откат	ロールバック	롤백	回滾	回滚
+legacy.hotfix	hotfix	хотфикс	ホットフィックス	핫픽스	緊急修復	紧急修复
+legacy.fix	*fix	фикс | пофиксить	*修正	*수정	*修復	*修复
+legacy.debugging	debugging	дебаг | отладка	デバッグ	디버깅	偵錯	调试
+legacy.logs	*logs	логи | лог | лога	ログ	*로그	日誌	日志
+legacy.config	config file | config	конфиг	設定ファイル	설정 파일	設定檔	配置文件
+legacy.ticket	*ticket	тикет	チケット	티켓	工單	工单
+legacy.backlog	backlog	бэклог	バックログ	백로그	待辦清單	待办列表
+legacy.sprint	*sprint	спринт	スプリント	스프린트	*衝刺	*冲刺
+legacy.staging	staging environment | staging	стейджинг	ステージング環境	스테이징 환경	預備環境	预发布环境
+legacy.tests	*tests	тесты	*テスト	*테스트	*測試	*测试
+legacy.autotests	automated tests	автотесты	自動テスト	자동화 테스트	自動化測試	自动化测试
+legacy.crutch	*hack | *workaround	костыль	*その場しのぎの回避策	*임시방편	暫時性的權宜做法	临时变通做法
+legacy.legacy	legacy code	легаси	レガシーコード	레거시 코드	舊有程式碼	遗留代码
+legacy.refactoring	refactoring	рефакторинг	リファクタリング	리팩터링	重構	重构
+legacy.server	*server	сервер	*サーバー	*서버	伺服器	服务器
+legacy.backend	backend	бэкенд	バックエンド	백엔드	後端	后端
+legacy.frontend	frontend	фронтенд	フロントエンド	프론트엔드	前端	前端
+legacy.firmware	firmware	прошивка	ファームウェア	펌웨어	韌體	固件
+legacy.hardware	*hardware	железо	*ハードウェア	*하드웨어	硬體	硬件
+legacy.bootloader	bootloader	загрузчик	ブートローダ	부트로더	開機載入程式	引导加载程序
+legacy.driver	driver	драйвер	ドライバ	드라이버	驅動程式	驱动程序

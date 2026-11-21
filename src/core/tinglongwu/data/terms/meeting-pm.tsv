@@ -60,7 +60,7 @@ pm.swimlane	swimlane | swim lane	дорожка | свимлейн | дорож�
 pm.wip_limit	WIP limit | work in progress limit	лимит WIP | WIP-лимит | лимит незавершённой работы	WIP制限 | 仕掛かり制限	WIP 제한 | 진행 중 작업 제한	在製品限制 | WIP 上限	在制品限制 | WIP 限制
 pm.definition_of_done	definition of done | DoD	критерии готовности | определение готовности | DoD	完了の定義 | DoD	완료 정의 | 완료 기준	完成的定義 | 完成標準	完成的定义 | 完成标准
 pm.definition_of_ready	definition of ready | DoR	критерии готовности к работе | определение готовности к взятию | DoR	準備完了の定義 | DoR	준비 완료 정의 | 착수 기준	就緒的定義 | 準備就緒標準	就绪的定义 | 准入标准
-pm.acceptance_criteria	acceptance criteria | AC	критерии приёмки | критериям приёмки | критерии приемки | акцептанс-критерии	受け入れ基準 | 受入条件	인수 기준 | 수락 기준	驗收標準 | 驗收條件	验收标准 | 验收条件
+pm.acceptance_criteria	acceptance criteria | AC	критерии приёмки | критериям приёмки | акцептанс-критерии	受け入れ基準 | 受入条件	인수 기준 | 수락 기준	驗收標準 | 驗收條件	验收标准 | 验收条件
 pm.increment	product increment | increment	инкремент | инкремента | инкременте | приращение продукта	インクリメント | プロダクトインクリメント	증분 | 제품 증분	產品增量 | 增量	产品增量 | 增量交付
 pm.scrum	Scrum | scrum process	скрам | скрама | скраме | скрам-процесс	スクラム	스크럼	Scrum 敏捷 | 敏捷 Scrum	Scrum 框架 | 敏捷 Scrum
 pm.agile	agile | agile methodology	эджайл | аджайл | гибкая методология | гибкие методологии | по эджайлу	アジャイル | アジャイル開発	애자일 | 애자일 방법론	敏捷開發 | 敏捷	敏捷开发 | 敏捷
@@ -105,10 +105,10 @@ pm.must_have	must-have | must have	маст-хэв | обязательное | 
 pm.prioritize	prioritize | prioritization	приоритизировать | приоритезировать | приоритизация | приоритезация | расставить приоритеты | заприоритизировать	優先順位付け | 優先度を決める	우선순위 지정 | 우선순위를 정하다	排定優先順序 | 優先順序排序	排优先级 | 确定优先级
 pm.deprioritize	deprioritize | deprioritise	понизить приоритет | депроиритизировать | отложить на потом | снять приоритет	優先度を下げる | 後回し	우선순위 하향 | 후순위로 미루다	降低優先順序 | 延後處理	降低优先级 | 往后放
 pm.urgent	urgent | ASAP | as soon as possible	срочно | асап | ASAP | горящая задача | как можно скорее	至急 | 大至急 | 早急に | ASAP	긴급 | 급함 | 최대한 빨리 | ASAP	緊急 | 盡快	紧急 | 尽快
-pm.severity	severity | severity level	серьёзность | серьезность | северити | степень критичности	重大度 | 深刻度 | 重要度	심각도 | 중요도	嚴重度 | 嚴重程度	严重程度 | 严重级别
+pm.severity	severity | severity level	серьёзность | северити | степень критичности	重大度 | 深刻度 | 重要度	심각도 | 중요도	嚴重度 | 嚴重程度	严重程度 | 严重级别
 pm.deadline	deadline | deadlines	дедлайн | дедлайна | дедлайне | дедлайну | дедлайны | дедлайнов | дедлайном | крайний срок | срок | сроки	締め切り | 締切 | デッドライン | 納期	마감 | 마감일 | 데드라인	截止日期 | 期限 | 死線	截止日期 | 截止时间 | 交付期限
 pm.due_date	due date | due by	срок сдачи | срок выполнения | дата сдачи | к сроку	期日 | 期限日	기한 | 만기일	到期日 | 交付日	到期日 | 交付日
-pm.hard_deadline	hard deadline | firm deadline	жёсткий дедлайн | жесткий дедлайн | жёсткие сроки	厳守の締め切り | 絶対期限	확정 마감 | 절대 마감일	硬性截止日 | 不可延期限	硬性截止日期 | 死期限
+pm.hard_deadline	hard deadline | firm deadline	жёсткий дедлайн | жёсткие сроки	厳守の締め切り | 絶対期限	확정 마감 | 절대 마감일	硬性截止日 | 不可延期限	硬性截止日期 | 死期限
 pm.miss_deadline	miss the deadline | missed deadline | slip	сорвать дедлайн | сорвали сроки | не успеть к дедлайну | профакапить дедлайн | съехать по срокам	締め切りに間に合わない | 納期遅れ | 遅延	마감을 놓치다 | 일정 지연	錯過截止日 | 延誤 | 進度落後	错过截止日期 | 延期交付 | 进度落后
 pm.push_deadline	push the deadline | extend the deadline | postpone	сдвинуть дедлайн | сдвинуть сроки | перенести дедлайн | продлить срок | подвинуть сроки	締め切り延長 | 期限延長 | 後ろ倒し	마감 연장 | 일정 연기	延後截止日 | 展延期限	推迟截止日期 | 延期
 pm.pull_in	pull in the date | bring forward | pull forward	сдвинуть раньше | подвинуть на раньше | ускорить сроки	前倒し	일정 앞당기기 | 앞당기다	提前 | 時程提前	提前 | 工期提前
@@ -121,7 +121,7 @@ pm.t_shirt_sizing	T-shirt sizing | t-shirt size	оценка в размерах
 pm.man_hours	man-hours | person-hours | working hours	человеко-часы | человеко-часов | человекочасы | чел-часы | трудозатраты	工数 | 人時	공수 | 인시	工時 | 人時	工时 | 人时
 pm.man_days	man-days | person-days	человеко-дни | человеко-дней | человекодни | чел-дни	人日	인일 | 맨데이	人天 | 人日	人天 | 人日
 pm.man_months	man-months | person-months	человеко-месяцы | человеко-месяцев | чел-месяцы	人月	인월 | 맨먼스	人月	人月数 | 人月
-pm.effort	effort | level of effort	трудоёмкость | трудоемкость | трудоёмкости | объём усилий | затраты сил	作業工数 | 作業量 | 労力	작업량 | 노력 수준	工作量 | 投入程度	工作量 | 投入量
+pm.effort	effort | level of effort	трудоёмкость | трудоёмкости | объём усилий | затраты сил	作業工数 | 作業量 | 労力	작업량 | 노력 수준	工作量 | 投入程度	工作量 | 投入量
 pm.workload	workload | load	загрузка | загрузку | нагрузка | нагрузку | загруженность	業務量 | 負荷 | ワークロード	업무량 | 업무 부담	工作負荷 | 工作負擔	工作负荷 | 工作负担
 pm.capacity	team capacity | capacity planning	капасити | ёмкость команды | доступные ресурсы команды | планирование загрузки	キャパシティ | チームのキャパ | 稼働余力	캐파 | 가용 인력 | 팀 역량	團隊產能 | 可用人力	团队产能 | 可用人力
 pm.overtime	overtime | working overtime	переработка | переработки | овертайм | сверхурочные | сверхурочно	残業 | 時間外労働	야근 | 초과 근무	加班 | 超時工作	加班加点 | 超时工作
@@ -160,7 +160,7 @@ pm.edge_case	edge case | corner case	краевой случай | эдж-кей
 pm.user_journey	user journey | customer journey | user flow	путь пользователя | юзер-джорни | пользовательский сценарий | флоу	ユーザージャーニー | カスタマージャーニー | ユーザーフロー	사용자 여정 | 고객 여정 | 사용자 흐름	使用者旅程 | 使用者流程	用户旅程 | 用户流程
 pm.wireframe	wireframe | wireframes	вайрфрейм | вайрфреймы | вайрфрейма | каркас интерфейса	ワイヤーフレーム	와이어프레임	線框圖	线框图
 pm.mockup	mockup | mock-up	макет | макета | макете | макеты | мокап | мокапы	モックアップ | デザインカンプ	목업 | 시안	模型稿 | 設計稿	设计稿 | 样稿
-pm.acceptance_testing	acceptance testing | user acceptance testing | UAT	приёмочное тестирование | приемочное тестирование | приёмка | UAT	受け入れテスト | UAT	인수 테스트 | 사용자 인수 테스트 | UAT	驗收測試 | 使用者驗收測試	验收测试 | 用户验收测试
+pm.acceptance_testing	acceptance testing | user acceptance testing | UAT	приёмочное тестирование | приёмка | UAT	受け入れテスト | UAT	인수 테스트 | 사용자 인수 테스트 | UAT	驗收測試 | 使用者驗收測試	验收测试 | 用户验收测试
 pm.sla	SLA | service level agreement	SLA | эсэлэй | соглашение об уровне сервиса	SLA | サービスレベル合意	SLA | 서비스 수준 협약	服務水準協議	服务等级协议
 pm.kpi	KPI | key performance indicator | KPIs	KPI | кейпиай | ключевой показатель | ключевые показатели эффективности	KPI | 重要業績評価指標	KPI | 핵심 성과 지표	關鍵績效指標	关键绩效指标
 pm.okr	OKR | objectives and key results | OKRs	OKR | окээр | цели и ключевые результаты	OKR | 目標と主要な成果	OKR | 목표 및 핵심 결과	目標與關鍵成果	目标与关键成果
@@ -190,11 +190,11 @@ pm.program_manager	program manager | technical program manager | TPM	прогр�
 pm.delivery_manager	delivery manager	деливери-менеджер | деливери | менеджер по поставке	デリバリーマネージャー	딜리버리 매니저	交付經理	交付经理
 pm.department_head	head of department | department head	руководитель отдела | начальник отдела | хед | хеда | хэд отдела	部長 | 部門長	부서장 | 본부장	部門主管 | 處長	部门负责人 | 部门主管
 pm.line_manager	line manager | direct manager | reporting line	непосредственный руководитель | линейный руководитель | руковод | начальник	直属の上司 | 上長	직속 상사 | 직속 관리자	直屬主管	直属领导 | 直接上级
-pm.direct_report	direct report | direct reports	прямой подчинённый | подчинённые | подчиненные | в подчинении	直属の部下 | 部下	직속 부하 | 팀원	直屬部屬 | 下屬	直接下属 | 下属
+pm.direct_report	direct report | direct reports	прямой подчинённый | подчинённые | в подчинении	直属の部下 | 部下	직속 부하 | 팀원	直屬部屬 | 下屬	直接下属 | 下属
 pm.architect	software architect | system architect	архитектор | архитектора | архитектору | системный архитектор	アーキテクト | システムアーキテクト	아키텍트 | 시스템 아키텍트	架構師 | 系統架構師	架构师 | 系统架构师
 pm.qa_engineer	QA engineer | tester | test engineer	тестировщик | тестировщика | тестировщики | QA-инженер | кьюэй | куашник	QAエンジニア | テスター | テストエンジニア	QA 엔지니어 | 테스터 | 테스트 엔지니어	測試工程師 | 品保工程師	测试工程师 | 质量保障工程师
 pm.developer	developer | dev | engineer	разработчик | разработчика | разработчики | разраб | разрабы | девелопер	開発者 | デベロッパー | エンジニア	개발자 | 엔지니어	開發人員 | 工程師	开发人员 | 研发人员
-pm.intern	intern | internship	стажёр | стажер | стажёра | стажировка | интерн	インターン | 実習生	인턴 | 인턴십	實習生	实习生
+pm.intern	intern | internship	стажёр | стажёра | стажировка | интерн	インターン | 実習生	인턴 | 인턴십	實習生	实习生
 pm.cross_functional_team	cross-functional team	кросс-функциональная команда | кроссфункциональная команда | кросс-функциональной команды	クロスファンクショナルチーム | 部門横断チーム	크로스펑셔널 팀 | 다기능 팀	跨職能團隊	跨职能团队
 pm.squad	squad | feature team	сквад | скводе | фича-тим | фичатим	スクワッド | フィーチャーチーム	스쿼드 | 피처 팀	小隊 | 功能團隊	小队 | 功能团队
 pm.dev_team	development team | dev team	команда разработки | дев-тим | девтим | команде разработки	開発チーム	개발팀	開發團隊 | 研發團隊	开发团队 | 研发团队
@@ -217,7 +217,7 @@ pm.quick_win	quick win | low-hanging fruit	быстрая победа | кви�
 pm.deep_dive	deep dive | deep-dive session	дип-дайв | глубокий разбор | детальный разбор | погрузиться	深掘り | ディープダイブ	심층 분석 | 딥다이브	深入探討 | 深度剖析	深入探讨 | 深度剖析
 pm.sanity_check	sanity check	санити-чек | проверка на адекватность | быстрая проверка | саничек	サニティチェック | 簡易確認	새니티 체크 | 기본 점검	基本檢查 | 合理性檢查	基本检查 | 合理性检查
 pm.double_check	double-check | double check	перепроверить | перепроверю | перепроверь | дабл-чек	ダブルチェック | 再確認	재확인 | 더블 체크	再三確認 | 雙重確認	再次确认 | 二次确认
-pm.research	research spike | spike | investigation	ресёрч | ресерч | ресёрча | спайк | исследование | ресёрчить | изучить вопрос	調査 | スパイク | 技術調査	리서치 | 스파이크 | 기술 조사	技術調研 | 研究任務	技术调研 | 预研
+pm.research	research spike | spike | investigation	ресёрч | ресёрча | спайк | исследование | ресёрчить | изучить вопрос	調査 | スパイク | 技術調査	리서치 | 스파이크 | 기술 조사	技術調研 | 研究任務	技术调研 | 预研
 pm.demo	demo | live demo	демо | демка | демку | демки | демонстрация | показать демо	デモ | 実演	데모 | 시연	示範 | 展示 | Demo 展示	演示 | 展示 | Demo 演示
 pm.presentation	presentation | slides | slide deck	презентация | презентации | презентацию | презу | преза | слайды	プレゼン | プレゼンテーション | 資料 | スライド	발표 | 프레젠테이션 | 발표 자료 | 슬라이드	簡報 | 投影片	演示文稿 | 幻灯片 | PPT
 pm.whiteboard	whiteboard session | whiteboarding	порисовать на доске | вайтборд	ホワイトボード | ホワイトボードセッション	화이트보드 | 화이트보드 세션	白板討論 | 白板	白板讨论 | 白板
@@ -286,7 +286,7 @@ pm.junior	junior developer | junior	джун | джуна | джуну | джу�
 pm.middle	mid-level developer | mid-level	мидл | мидла | мидлу | мидлы | разработчик среднего уровня	中堅エンジニア | ミドル	미들 | 중급 개발자	中階工程師	中级工程师 | 中级开发
 pm.senior	senior developer | senior engineer	сеньор | сеньора | синьор | синьора | сеньоры | старший разработчик	シニア | シニアエンジニア	시니어 | 시니어 개발자	資深工程師	高级工程师 | 资深工程师
 pm.headcount_freeze	hiring freeze	заморозка найма | мораторий на найм	採用凍結	채용 동결	凍結招募 | 停止招聘	冻结招聘 | 招聘冻结
-pm.remote_work	remote work | work from home | WFH	удалёнка | удаленка | на удалёнке | удалённая работа | удаленно | ремоут	リモートワーク | 在宅勤務 | テレワーク	재택근무 | 원격 근무 | 리모트	遠端工作 | 在家工作	远程办公 | 居家办公
+pm.remote_work	remote work | work from home | WFH	удалёнка | на удалёнке | удалённая работа | удаленно | ремоут	リモートワーク | 在宅勤務 | テレワーク	재택근무 | 원격 근무 | 리모트	遠端工作 | 在家工作	远程办公 | 居家办公
 pm.hybrid_work	hybrid work | hybrid schedule	гибрид | гибридный формат | гибридный график	ハイブリッド勤務	하이브리드 근무	混合辦公	混合办公
 pm.office_day	office day | in the office	день в офисе | в офисе | офисный день	出社日 | 出社	출근일 | 사무실 출근	進辦公室 | 進公司日	到岗日 | 坐班
 pm.business_trip	business trip | onsite visit	командировка | командировки | командировку | в командировке	出張	출장	出差	出差 | 差旅
@@ -358,7 +358,7 @@ pm.churn	churn | churn rate	отток | оттока | отток пользо�
 pm.retention	retention | user retention	удержание | ретеншн | ретеншен | удержания	リテンション | 継続率	리텐션 | 유지율	留存率 | 使用者留存	留存率 | 用户留存
 pm.conversion	conversion rate | conversion	конверсия | конверсии | конверсию | конверт	コンバージョン | 転換率 | CVR	전환율 | 컨버전	轉換率	转化率
 pm.dashboard	dashboard | project dashboard	дашборд | дашборда | дашборде | дашборды | панель мониторинга	ダッシュボード	대시보드	儀表板 | 儀表盤	仪表板 | 看板大屏 | 仪表盘
-pm.report	written report | status report	отчёт | отчет | отчёта | отчёту | репорт | статус-репорт	レポート | 報告書	보고서 | 리포트	報告 | 狀態報告	报告 | 状态报告
+pm.report	written report | status report	отчёт | отчёта | отчёту | репорт | статус-репорт	レポート | 報告書	보고서 | 리포트	報告 | 狀態報告	报告 | 状态报告
 pm.slide_review	read-out | readout	ридаут | итоговый доклад | подведение итогов	報告会 | 成果報告	결과 보고 | 리드아웃	成果報告會 | 結果簡報	成果汇报 | 结果汇报
 pm.exec_summary	executive summary | TL;DR | tldr	краткое резюме | выжимка | тлдр | коротко о главном	エグゼクティブサマリー | 要約 | 要点	핵심 요약 | 요약본	執行摘要 | 重點摘要	执行摘要 | 要点摘要
 pm.leadership	leadership | management | upper management	руководство | менеджмент | высшее руководство | топ-менеджмент	経営陣 | 上層部 | マネジメント層	경영진 | 윗선 | 관리자층	管理層 | 高層	管理层 | 高层

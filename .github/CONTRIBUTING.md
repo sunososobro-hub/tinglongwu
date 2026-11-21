@@ -65,6 +65,13 @@ as an artifact (`pins_<set>.json`); commit it under the `pins` path its lines in
 
 Thanks for stopping by. You do not need to be an expert to help, and we would rather get a rough PR we can work on together than no PR at all.
 
+### Add a term domain
+
+Built-in term tables (how a field's terms are said in each language) are one file per domain in
+`tinglongwu/data/terms/`. To add a domain, add one `<domain>.tsv` file and check it with
+`python scripts/terms_check.py tinglongwu/data/terms/<domain>.tsv`. Format and rules:
+[docs/glossary-domains.md](../docs/glossary-domains.md).
+
 ## What we value
 
 - Small PRs: typo fixes, clearer docs, better error messages.
