@@ -297,3 +297,41 @@ def test_eval_path_re_matches_eval_yml_filter():  # #1687: the gate and the work
     wf = (pathlib.Path(__file__).resolve().parents[1] / ".github/workflows/eval.yml").read_text(encoding="utf-8")
     assert "src/[^/]+/tinglongwu/" in wf.split("mini-eval:", 1)[1].split("low-end-cpu", 1)[0]
     assert not mg.EVAL_PATH_RE.match("mobile/lib/main.dart") and not mg.EVAL_PATH_RE.match("docs/x.md")
+
+
+# Owner 2026-11-20 merge lanes: internal = owner-authored PR + linked issue labelled src:owner
+OWNER_PR = {"user": {"login": "sunososobro-hub"}}
+OWNER_ISSUE = {**ISSUE, "labels": [{"name": "status:review"}, {"name": "src:owner"}]}
+DOCS = [{"filename": "docs/guide.md", "status": "modified"}, {"filename": "README.md", "status": "modified"}]
+
+
+def test_lane1_internal_docs_only_needs_no_test():
+    assert run(pr(**OWNER_PR), files=DOCS, checks=[], issue=OWNER_ISSUE)[0] == "merge"
+    assert run(pr(**OWNER_PR), files=DOCS, checks=[], issue=ISSUE)[0] == "wait"  # no src:owner: test still needed
+    assert run(pr(), files=DOCS, checks=[], issue=OWNER_ISSUE)[0] == "wait"  # not owner-authored
+    mixed = DOCS + [{"filename": "scripts/foo.py", "status": "modified"}]
+    assert run(pr(**OWNER_PR), files=mixed, checks=[], issue=OWNER_ISSUE)[0] == "wait"  # code: lane 2, test needed
+    rules = [{"filename": ".agent/tlwu_rules.md", "status": "modified"}]
+    assert run(pr(**OWNER_PR), files=rules, checks=[], issue=OWNER_ISSUE)[0] == "wait"  # .agent/ is never lane 1
+
+
+def test_lane2_internal_code_needs_no_opus_even_protected():
+    for path in ("scripts/release_notes.py", "src/core/tinglongwu/__init__.py", ".agent/tlwu_rules.md"):
+        files = [{"filename": path, "status": "modified"}]
+        ok = TEST_OK + [{"name": "mini-eval", "status": "completed", "conclusion": "success"}]
+        assert run(pr(**OWNER_PR), files=files, checks=ok, issue=OWNER_ISSUE)[0] == "merge", path
+        assert run(pr(**OWNER_PR), files=files, checks=[], issue=OWNER_ISSUE)[0] == "wait", path  # test still required
+        red = [{**TEST_OK[0], "conclusion": "failure"}]
+        assert run(pr(**OWNER_PR), files=files, checks=red, issue=OWNER_ISSUE)[0] == "hold", path
+    assert run(pr(**OWNER_PR, labels=[{"name": "needs-opus"}]), issue=OWNER_ISSUE)[0] == "merge"
+    assert run(pr(**OWNER_PR, labels=[{"name": "needs-owner"}]), issue=OWNER_ISSUE)[0] == "hold"
+    assert run(pr(**OWNER_PR), files=MOBILE_FILES, issue=OWNER_ISSUE)[0] == "wait"  # mobile-apk still required
+
+
+def test_lane3_external_and_ai_issues_stay_strict():
+    files = [{"filename": "scripts/release_notes.py", "status": "modified"}]
+    ai_issue = {**ISSUE, "labels": [{"name": "src:ai"}]}
+    assert run(pr(**OWNER_PR), files=files, issue=ai_issue)[0] == "needs-opus"
+    assert run(pr(**OWNER_PR), files=DOCS, checks=[], issue=ai_issue)[0] == "wait"
+    assert run(pr(user={"login": "rando"}), files=files, issue=OWNER_ISSUE)[0] == "needs-opus"
+    assert run(pr(user={"login": "rando"}), files=DOCS, checks=[], issue=OWNER_ISSUE)[0] == "wait"

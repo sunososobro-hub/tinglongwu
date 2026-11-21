@@ -22,6 +22,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BODY: ${{ github.event.pull_request.body }}
+          HEAD: ${{ github.head_ref }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "dev" ]; then
             # run the BASE branch's classifier, never the PR's own copy (a PR could otherwise edit it to call itself docs);
@@ -30,6 +33,16 @@ jobs:
                && git show FETCH_HEAD:scripts/ci_scope.py > "$RUNNER_TEMP/ci_scope.py" \
                && gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt" \
                && python "$RUNNER_TEMP/ci_scope.py" "$RUNNER_TEMP/files.txt" --tests-dir tests > "$RUNNER_TEMP/scope.txt"; then
+              # Lane 1 (owner 2026-11-20): an owner-authored docs-only PR (*.md / docs/** only) whose linked issue
+              # (Closes/Refs #N, else fix/N) has src:owner needs no tests: `test` reports success right after the scans.
+              if grep -qx 'scope=docs' "$RUNNER_TEMP/scope.txt" && [ "$AUTHOR" = "sunososobro-hub" ] \
+                 && ! grep -qvE '(\.md$|^docs/)' "$RUNNER_TEMP/files.txt"; then
+                N=$(python -c 'import os,re;m=re.search(r"\b(?:Closes|Refs)\s+#(\d+)\b",os.environ.get("BODY",""),re.I) or re.match(r"(?:fix|feat)/(\d+)",os.environ.get("HEAD",""));print(m.group(1) if m else "")')
+                if [ -n "$N" ] && gh api "repos/$GITHUB_REPOSITORY/issues/$N" --jq '.labels[].name' | grep -qx 'src:owner'; then
+                  echo "lane 1: internal docs-only PR (#$N has src:owner), no tests"
+                  printf 'scope=docs\ntests=\n' > "$RUNNER_TEMP/scope.txt"
+                fi
+              fi
               tee -a "$GITHUB_OUTPUT" < "$RUNNER_TEMP/scope.txt"
             else
               printf 'scope=full\ntests=\n' | tee -a "$GITHUB_OUTPUT"
