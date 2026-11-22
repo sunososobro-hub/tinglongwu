@@ -79,7 +79,7 @@ def test_pack_dir_on_search_path_when_present(tmp_path, monkeypatch):
 
 
 def test_build_script_writes_manifest(tmp_path):
-    spec = importlib.util.spec_from_file_location("build_windows", Path(__file__).parent.parent / "packaging/build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows", Path(__file__).parent.parent / "release/packaging/build_windows.py")
     bw = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bw)
     (tmp_path / "cuda_libs").mkdir()
@@ -120,7 +120,7 @@ def test_relative_env_pack_dir_is_absolute(tmp_path, monkeypatch):
 
 
 def test_build_script_rejects_empty_cuda_libs(tmp_path):
-    spec = importlib.util.spec_from_file_location("build_windows", Path(__file__).parent.parent / "packaging/build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows", Path(__file__).parent.parent / "release/packaging/build_windows.py")
     bw = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bw)
     (tmp_path / "cuda_libs").mkdir()

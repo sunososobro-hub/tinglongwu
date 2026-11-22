@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "installer"))
+sys.path.insert(0, str(ROOT / "release" / "installer"))
 import build_installer  # noqa: E402
 
 from tinglongwu import i18n  # noqa: E402
 
-RAW = (ROOT / "installer" / "tinglongwu.iss").read_text(encoding="utf-8-sig")
+RAW = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text(encoding="utf-8-sig")
 LAYOUTS = {"source": set(), "core": {"CoreLayout", "DefaultListenMB"}}
 CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯＀-￯]")
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
@@ -68,7 +68,7 @@ def test_problems_are_reported(tmp_path):
 
 def test_vendored_chinese_messages_files_are_chinese():
     for name, lang_id in (("ChineseTraditional", "$0404"), ("ChineseSimplified", "$0804")):
-        isl = (ROOT / "installer" / "Languages" / f"{name}.isl").read_text("utf-8-sig")
+        isl = (ROOT / "release" / "installer" / "Languages" / f"{name}.isl").read_text("utf-8-sig")
         assert f"LanguageID={lang_id}" in isl
         assert CJK.search(isl.split("[Messages]", 1)[1])
 
@@ -108,7 +108,7 @@ def test_wizard_language_becomes_the_app_language():
     ui = {lang: i18n.normalize(code) for lang, code in codes.items()}
     assert ui == {"english": "en", "chinesetrad": "zh-TW", "chinesesimp": "zh-TW", "japanese": "ja", "russian": "ru"}
     # run_install.ps1 passes -Lang on only when it matches this pattern
-    pattern = re.search(r"\$Lang -match '([^']+)'", (ROOT / "installer" / "run_install.ps1").read_text("utf-8-sig"))
+    pattern = re.search(r"\$Lang -match '([^']+)'", (ROOT / "release" / "installer" / "run_install.ps1").read_text("utf-8-sig"))
     assert all(re.fullmatch(pattern.group(1), c) for c in codes.values())
 
 

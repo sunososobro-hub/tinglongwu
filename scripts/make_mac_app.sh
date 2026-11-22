@@ -13,7 +13,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST_DIR="${1:-$HOME/Applications}"
 APP="$DEST_DIR/TingLongWu.app"
 
-[ -x "$REPO/.venv/bin/python" ] || { echo "No $REPO/.venv found. Create it first (python3 -m venv .venv && pip install -r requirements.txt && pip install -e . --no-deps)." >&2; exit 1; }
+[ -x "$REPO/.venv/bin/python" ] || { echo "No $REPO/.venv found. Create it first (python3 -m venv .venv && pip install -r requirements/requirements.txt && pip install -e . --no-deps)." >&2; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"

@@ -56,7 +56,7 @@ def test_over_budget_still_exit_0():
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     assert (m.TTFS_BUDGET_S, m.BASELINE_MBPS, m.FIRST_SUBTITLE_TIMEOUT_S) == (180, 50, 600)
-    assert m.TTFS_CLIP == "tinglongwu/data/selftest_en.wav"
+    assert m.TTFS_CLIP == "src/core/tinglongwu/data/selftest_en.wav"
     assert os.path.exists(os.path.join(ROOT, m.TTFS_CLIP))
     assert m.parse_download_bytes("no sizes here") == 0
 

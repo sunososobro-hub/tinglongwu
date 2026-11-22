@@ -25,5 +25,5 @@ def test_detector_flags_char_literal_line():
 
 
 def test_installer_script_has_no_bad_directive_lines():
-    iss = Path(__file__).resolve().parent.parent / "installer" / "tinglongwu.iss"
+    iss = Path(__file__).resolve().parent.parent / "release" / "installer" / "tinglongwu.iss"
     assert bad_directive_lines(iss.read_text(encoding="utf-8")) == []

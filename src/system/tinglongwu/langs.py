@@ -1,0 +1,148 @@
+"""Source-language list shared by the GUI and the menus (#58).
+
+Owner decision 2026-11-10: the focus languages are ja, en, ru (zh is the base). They are listed first everywhere;
+every other language stays selectable but is labeled "experimental". Nothing is removed or downloaded here.
+
+The menus print `python -m tinglongwu.langs` when you press L, so the bash menu (Linux + macOS tlwu-menu), the
+Windows menu and the GUI dropdown all show the same order and labels in the UI language (TLWU_UI_LANG).
+"""
+from __future__ import annotations
+
+import sys
+
+from .i18n import ui_lang
+
+FOCUS = ("ja", "en", "ru")
+BASE = "zh"
+EXPERIMENTAL = ("ko", "de", "fr", "es", "it", "pt", "vi", "th", "id", "hi")
+SOURCE_LANGS = ["auto", *FOCUS, BASE, *EXPERIMENTAL]
+
+_NAMES = {
+    "en": {"ja": "Japanese", "en": "English", "ru": "Russian", "zh": "Chinese", "ko": "Korean", "de": "German",
+           "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese", "vi": "Vietnamese", "th": "Thai",
+           "id": "Indonesian", "hi": "Hindi"},
+    "ru": {"ja": "японский", "en": "английский", "ru": "русский", "zh": "китайский", "ko": "корейский",
+           "de": "немецкий", "fr": "французский", "es": "испанский", "it": "итальянский", "pt": "португальский",
+           "vi": "вьетнамский", "th": "тайский", "id": "индонезийский", "hi": "хинди"},
+    "zh-TW": {"ja": "日文", "en": "英文", "ru": "俄文", "zh": "中文", "ko": "韓文", "de": "德文", "fr": "法文",
+              "es": "西文", "it": "義大利文", "pt": "葡萄牙文", "vi": "越南文", "th": "泰文", "id": "印尼文", "hi": "印地文"},
+    "ja": {"ja": "日本語", "en": "英語", "ru": "ロシア語", "zh": "中国語", "ko": "韓国語", "de": "ドイツ語",
+           "fr": "フランス語", "es": "スペイン語", "it": "イタリア語", "pt": "ポルトガル語", "vi": "ベトナム語",
+           "th": "タイ語", "id": "インドネシア語", "hi": "ヒンディー語"},
+}
+_TEXT = {
+    "en": {"exp": "experimental", "focus": "Languages: auto = Japanese/English/Russian (follows the speaker)",
+           "exp_head": "Experimental (listen only, less tested):",
+           "speak": "Meeting / speak-only support auto, ja, en, ru."},
+    "ru": {"exp": "экспериментальный", "focus": "Языки: auto — японский/английский/русский (по говорящему)",
+           "exp_head": "Экспериментальные (только слушать, мало проверены):",
+           "speak": "Встреча и «только говорить» поддерживают auto, ja, en, ru."},
+    "zh-TW": {"exp": "實驗性", "focus": "語言：auto 自動（日/英/俄，跟著說話的人）",
+              "exp_head": "實驗性（只能聽、測試較少）：",
+              "speak": "開會／純說只支援 auto、ja、en、ru。"},
+    "ja": {"exp": "試験的", "focus": "言語: auto = 日本語/英語/ロシア語（話す人に合わせる）",
+           "exp_head": "試験的（聞くのみ、テスト少なめ）:",
+           "speak": "会議／話すのみ は auto、ja、en、ru に対応。"},
+}
+
+
+def _ui(lang: str | None) -> str:
+    lang = lang or ui_lang()
+    return lang if lang in _TEXT else "en"
+
+
+def is_valid(code: str) -> bool:
+    """True only for a real source-language code (auto, ja, en, ru, zh, ...); never for menu digits like "3"."""
+    return code in SOURCE_LANGS
+
+
+def is_experimental(code: str) -> bool:
+    return code in EXPERIMENTAL
+
+
+_AUTO = {"en": "Auto", "ru": "Авто", "zh-TW": "自動", "ja": "自動"}
+_TARGET_NAMES = {"en": {"zh-tw": "Traditional Chinese", "zh-cn": "Simplified Chinese"},
+                 "ru": {"zh-tw": "традиционный китайский", "zh-cn": "упрощённый китайский"},
+                 "zh-TW": {"zh-tw": "繁體中文", "zh-cn": "简体中文"},
+                 "ja": {"zh-tw": "繁体字中国語", "zh-cn": "簡体字中国語"}}
+
+
+def name(code: str, lang: str | None = None) -> str:
+    ui = _ui(lang)
+    return _TARGET_NAMES[ui].get(code) or _NAMES[ui].get(code, code)
+
+
+def plain_label(code: str, lang: str | None = None) -> str:
+    """Name for a bar / dropdown without the experimental mark; "auto" is localized (#884)."""
+    ui = _ui(lang)
+    return _AUTO[ui] if code == "auto" else name(code, ui)
+
+
+def label(code: str, lang: str | None = None) -> str:
+    """GUI dropdown entry (#884): the language name in the UI language, plus "(experimental)" for non-focus
+    languages. Never the raw code (the stored setting keeps the code)."""
+    ui = _ui(lang)
+    n = plain_label(code, ui)
+    return f"{n} ({_TEXT[ui]['exp']})" if is_experimental(code) else n
+
+
+def labels(lang: str | None = None) -> list[str]:
+    return [label(c, lang) for c in SOURCE_LANGS]
+
+
+def from_label(text: str) -> str:
+    """Language code from a dropdown entry in any UI language (also accepts a plain code)."""
+    text = (text or "").strip()
+    for ui in _TEXT:
+        for c in SOURCE_LANGS:
+            if text == label(c, ui):
+                return c
+    return text.split(" ", 1)[0] or "auto"
+
+
+def display_name(code: str, lang: str | None = None) -> str:
+    """Menu header name: "Korean (experimental)" for non-focus languages, plain name otherwise."""
+    ui = _ui(lang)
+    n = name(code, ui)
+    return f"{n} ({_TEXT[ui]['exp']})" if is_experimental(code) else n
+
+
+def menu_help(lang: str | None = None) -> str:
+    """What the menus print for L: focus languages first, then the experimental ones, each marked."""
+    ui = _ui(lang)
+    tx = _TEXT[ui]
+    sep = "、" if ui in ("zh-TW", "ja") else ", "
+    focus = sep.join(f"{c} {name(c, ui)}" for c in FOCUS)
+    exp = sep.join(f"{c} {name(c, ui)}" for c in EXPERIMENTAL)
+    return f"{tx['focus']}\n  {focus}\n{tx['exp_head']}\n  {exp}\n{tx['speak']}"
+
+class SameLanguageError(ValueError):
+    """#981: My language and Other side language are the same language: nothing to translate, no session starts.
+    `key` is the i18n key of the one-line message the GUI shows instead of starting."""
+
+    key = "gui_same_lang"
+
+
+def lang_base(code: str | None) -> str:
+    """Language without the script variant: zh-tw / zh-cn -> zh; anything else unchanged ("" for None)."""
+    return "zh" if code in ("zh", "zh-tw", "zh-cn") else (code or "")
+
+
+def main(argv=None) -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # Windows console (menu sets PYTHONUTF8 too)
+    except (AttributeError, ValueError):
+        pass
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["--name"] and len(argv) == 2:  # menu header: python -m tinglongwu.langs --name ko
+        print(display_name(argv[1]))
+    elif argv[:1] == ["--check"] and len(argv) == 2:  # menu: exit 0 only for a valid source-language code
+        return 0 if is_valid(argv[1]) else 1
+    else:
+        print(menu_help())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

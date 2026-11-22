@@ -1,0 +1,394 @@
+"""ASR interface + faster-whisper (CTranslate2; CPU int8 or GPU float16) implementation."""
+from __future__ import annotations
+
+import math
+import os
+import sys
+import time
+import zlib
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+from . import threads as thread_budget
+from .device import asr_compute_type, cpu_threads, resolve_device
+from .hallucination import is_hallucination
+from .langfollow import SPEAK_LANGS, clear_lang, pick_candidate, script_lang, write_lang
+from .models import require
+from .repeat import filter_hallucination, has_loop
+
+def _usable_cpus() -> int:
+    """#1264: the CPUs this process may use (affinity), see threads.cpu_count."""
+    from .threads import cpu_count
+
+    return cpu_count()
+
+
+@dataclass
+class Transcript:
+    text: str
+    lang: str
+    no_speech: float = 0.0  # Whisper no_speech_prob (max over kept pieces); feeds the hallucination filter
+    avg_logprob: float = 0.0  # Whisper avg_logprob (mean over kept pieces; 0.0 = unknown); speak-side gate (#249)
+
+
+def _logprob(segs) -> float:
+    lp = [s.avg_logprob for s in segs if getattr(s, "avg_logprob", None) is not None]
+    return sum(lp) / len(lp) if lp else 0.0
+
+
+PROMPT_MAX_CHARS = 100  # previous text handed to Whisper as initial_prompt
+
+
+def is_garbage(text: str, prev: str = "") -> bool:
+    """Output that must not be fed back as context: empty, a repeat of the last output, or a loop."""
+    t = " ".join(text.split())
+    if not t:
+        return True
+    if prev and t == " ".join(prev.split()):
+        return True
+    raw = t.encode("utf-8")
+    return len(raw) >= 40 and len(raw) / len(zlib.compress(raw)) > 2.4  # repetition loop
+
+
+# #251 worst-case limits for live decoding (speak side, CPU listen side). File runs keep the full fallback.
+SAMPLE_RATE = 16000
+FILE_TEMPS = (0.0, 0.2, 0.4)        # normal pass: temperature fallback
+RETRY_TEMPS = (0.3, 0.5, 0.7)       # after a detected loop
+LIVE_TEMP_PASSES = 1                # TLWU_ASR_TEMP_PASSES: live passes per decode (1..3)
+TOKENS_PER_S = 12                   # TLWU_ASR_TOKENS_PER_S: max_new_tokens per second of audio (live)
+MIN_NEW_TOKENS = 24                 # floor for very short segments
+MAX_NEW_TOKENS = 220                # Whisper context is 448 tokens; leaves room for the <=100-char prompt
+BUDGET_FACTOR = 3.0                 # TLWU_ASR_BUDGET_FACTOR: per-sentence budget = factor x audio length
+BUDGET_MIN_S = 4.0                  # TLWU_ASR_BUDGET_MIN: ... but never below this
+
+
+def _env(name: str, default: float) -> float:
+    try:
+        v = float(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return v if v > 0 else default
+
+
+def live_temps(base: tuple) -> tuple:
+    """The first N temperatures of `base` (N = TLWU_ASR_TEMP_PASSES, default 1, clamped to 1..len)."""
+    n = int(_env("TLWU_ASR_TEMP_PASSES", LIVE_TEMP_PASSES))
+    return tuple(base[:max(1, min(n, len(base)))])
+
+
+def token_cap(seconds: float) -> int:
+    """max_new_tokens for a live segment: TOKENS_PER_S per second, within [MIN_NEW_TOKENS, MAX_NEW_TOKENS]."""
+    return min(MAX_NEW_TOKENS, max(MIN_NEW_TOKENS, math.ceil(seconds * _env("TLWU_ASR_TOKENS_PER_S", TOKENS_PER_S))))
+
+
+def time_budget(seconds: float) -> float:
+    """Seconds one live sentence may spend in ASR before decoding stops (the decoded part is kept, #1252)."""
+    return max(_env("TLWU_ASR_BUDGET_MIN", BUDGET_MIN_S), _env("TLWU_ASR_BUDGET_FACTOR", BUDGET_FACTOR) * seconds)
+
+
+TAIL_MIN_S = 0.5  # #1252: a cut tail shorter than this is not re-decoded (Whisper returns nothing for < 0.5 s)
+
+
+class OverBudget(Exception):
+    """A live decode ran past its time budget (#251). Carries what was decoded before it stopped (#1252)."""
+
+    def __init__(self, segs=(), info=None):
+        super().__init__("over budget")
+        self.segs, self.info = list(segs), info
+
+
+def make_prompt(prev: str, max_chars: int = PROMPT_MAX_CHARS) -> str | None:
+    t = " ".join(prev.split())
+    return t[-max_chars:] if t else None
+
+
+class Recognizer(ABC):
+    @abstractmethod
+    def transcribe(self, audio: np.ndarray) -> Transcript | None:
+        """float32 mono 16 kHz -> Transcript, or None if no speech."""
+
+    def partial(self, audio: np.ndarray) -> Transcript | None:
+        """Cheap draft pass for --stream (no state changes). Default: the normal path."""
+        return self.transcribe(audio)
+
+    def pop_tail(self) -> np.ndarray | None:
+        """#1252: audio the last transcribe() left undecoded (time budget cut), or None. Default: never cut."""
+        return None
+
+    def _gpu_to_cpu(self, e: Exception) -> None:
+        """#1681: the GPU model loaded but failed to decode (cuBLAS / cuDNN missing, OOM, fp16 on an old card).
+        Rebuild on CPU (same settings as the load-time fallback) and say so in one plain line."""
+        from faster_whisper import WhisperModel
+
+        reason = (str(e).strip().splitlines() or [type(e).__name__])[0][:160]
+        print(f"tlwu: GPU 無法使用，已改用 CPU：{reason}", file=sys.stderr, flush=True)
+        beam_cpu, threads_cpu = cpu_fallback_settings(self._beam_arg, self._threads_arg)
+        if thread_budget.both():
+            kw = {"cpu_threads": thread_budget.current()["asr"]}
+        else:
+            kw = {"cpu_threads": threads_cpu} if threads_cpu else {}
+        self.model = WhisperModel(str(self._path), device="cpu", compute_type="int8", **kw)
+        self.device = "cpu"
+        self.fast, self.beam = False, beam_cpu
+
+    def _on_gpu_error(self, e: Exception) -> bool:
+        """True when a CUDA decode error was handled by switching to CPU (the caller retries once)."""
+        if getattr(self, "device", "cpu") != "cuda" or not isinstance(e, RuntimeError):
+            return False
+        self._gpu_to_cpu(e)  # a failure here (CPU load) propagates: the caller shows the error state
+        return True
+
+    def warm_up(self) -> None:
+        """#1247: one throw-away decode before a live session starts. Default: nothing to warm."""
+
+
+# #1247 / #894: the first decode of a freshly loaded model pays one-off setup (CUDA kernels, cuBLAS / cuDNN handles,
+# allocator pools). hw-tests (RTX 3050, small): the self-test's "speech model on GPU" stage took 5.7 s where loading
+# alone takes 1.1-3.7 s, and two of the three failing #894 runs had their longest gap at the start of the clip
+# (10-21 s, 21-37 s). Live sessions pay it before "ready" instead of on the first subtitle.
+WARMUP_S = 1.0
+
+
+def cpu_fallback_settings(beam, threads, cores=None, ram_mib=None) -> tuple[int, int | None]:
+    """#780: (beam, cpu_threads) for a CPU model loaded after a CUDA load failure. Values already given (the CPU
+    policy ran) win; otherwise the hwprobe.cpu_mode_settings policy; TLWU_CPU_THREADS overrides the thread count."""
+    from .hwprobe import cpu_mode_settings, ram_mib as _ram
+
+    if not beam or not threads:
+        mib = ram_mib if ram_mib is not None else _ram()
+        st = cpu_mode_settings(cores or _usable_cpus(), mib / 1024 if mib else 16.0)
+        beam, threads = beam or st.beam, threads or st.threads
+    env = (os.environ.get("TLWU_CPU_THREADS") or "").strip()
+    if env.isdigit() and int(env) > 0:
+        threads = int(env)
+    return beam, threads
+
+
+class FasterWhisperRecognizer(Recognizer):
+    NO_SPEECH = 0.6
+
+    def __init__(self, models_dir: Path, size: str = "small", lang: str = "auto",
+                 device: str = "auto", glossary=None, candidates=None, lang_file=None,
+                 fast: bool = False, live: bool = False, beam: int | None = None,
+                 threads: int | None = None):
+        threads_arg = threads
+        self._beam_arg, self._threads_arg = beam, threads_arg
+        path = require(models_dir / f"whisper-{size}", f"Whisper model '{size}'",
+                       f"--whisper {size}")
+        from faster_whisper import WhisperModel
+
+        self._path = path
+        self.device = resolve_device(device)
+        # #186 fast: live CPU speak mode. Greedy decode, no timestamp tokens, all physical cores. CUDA never uses it.
+        self.fast = bool(fast) and self.device == "cpu"
+        self.beam = 1 if self.fast else 5
+        cpu_mode = self.device == "cpu" and not self.fast  # #780: CPU-mode auto settings (explicit args only)
+        if cpu_mode and beam:
+            self.beam = beam
+        threads = {}
+        if cpu_mode and threads_arg and not thread_budget.both():
+            threads = {"cpu_threads": threads_arg}
+        elif self.device == "cpu" and thread_budget.both():  # #250 listen+speak: this process's share of the budget
+            threads = {"cpu_threads": thread_budget.current()["asr"]}
+        elif self.fast:
+            threads = {"cpu_threads": cpu_threads()}
+        try:
+            self.model = WhisperModel(str(path), device=self.device,
+                                      compute_type=asr_compute_type(self.device), **threads)
+        except RuntimeError as e:  # e.g. CUDA out of memory / driver problem at load time
+            if self.device != "cuda":
+                raise
+            print(f"tlwu: GPU load failed ({e}); falling back to CPU.", file=sys.stderr)
+            self.device = "cpu"
+            beam_cpu, threads_cpu = cpu_fallback_settings(beam, threads_arg)  # #780: CPU-mode settings after a fallback
+            if thread_budget.both():  # listen+speak: this process's share of the shared budget, as on the normal CPU path
+                kw = {"cpu_threads": thread_budget.current()["asr"]}
+            else:
+                kw = {"cpu_threads": threads_cpu} if threads_cpu else {}
+            self.model = WhisperModel(str(path), device="cpu", compute_type="int8", **kw)
+            self.fast, self.beam = False, beam_cpu
+        self.lang = None if lang == "auto" else lang  # auto: lock after first speech
+        self.auto = lang == "auto"
+        # auto + candidates: re-detect every segment, restricted to the candidate set (never locks)
+        self.candidates = tuple(candidates) if (candidates and lang == "auto") else None
+        self.lang_file = lang_file if self.candidates else None  # last detected en/ru for `reverse.proto --to follow`
+        self._cur = None  # language of the latest segment (candidate mode)
+        if self.lang_file:
+            clear_lang(self.lang_file)  # no stale language from an earlier session
+        self._last = ""  # previous good output -> initial_prompt for the next segment
+        self.live = bool(live)  # #251: capped retries, token cap and a per-sentence time budget
+        self.glossary = glossary  # topic terms -> Whisper hotwords; number normalization
+
+    def warm_up(self) -> None:
+        """#1247: decode WARMUP_S of near-silence once with the live decode settings, so the first real segment does
+        not carry the model's one-off setup cost. No state changes (prompt, locked language, cut tail)."""
+        audio = (np.random.default_rng(0).standard_normal(int(WARMUP_S * SAMPLE_RATE)) * 1e-3).astype(np.float32)
+        segs, _info = self.model.transcribe(
+            audio, language=getattr(self, "lang", None) or "en", task="transcribe", beam_size=getattr(self, "beam", 5),
+            vad_filter=False, condition_on_previous_text=False, temperature=0.0,
+            without_timestamps=bool(getattr(self, "fast", False)), max_new_tokens=MIN_NEW_TOKENS)
+        for _ in segs:  # faster-whisper decodes lazily
+            pass
+
+    def _lang_for(self, audio: np.ndarray, reuse: bool = False) -> str | None:
+        """Language to decode with: the fixed/locked one, or (candidate mode) the most probable candidate."""
+        cands = getattr(self, "candidates", None)
+        if not cands:
+            return self.lang
+        if reuse and getattr(self, "_cur", None):
+            return self._cur
+        _lang, _p, probs = self.model.detect_language(audio)
+        return pick_candidate(probs, cands, fallback=_lang if _lang in cands else cands[0],
+                              current=getattr(self, "_cur", None), seconds=len(audio) / 16000.0)
+
+    def _post(self, text: str) -> str:
+        text = filter_hallucination(text)  # one copy of any looped phrase; drop what is still a loop
+        g = getattr(self, "glossary", None)
+        return g.normalize_numbers(text) if g else text
+
+    def _hot(self):
+        g = getattr(self, "glossary", None)
+        return g.hotwords() if g else None
+
+    def partial(self, audio: np.ndarray) -> Transcript | None:
+        """Streaming draft: greedy, no prompt, does not touch _last / the locked language."""
+        try:
+            return self._partial(audio)
+        except RuntimeError as e:
+            if not self._on_gpu_error(e):
+                raise
+            return self._partial(audio)
+
+    def _partial(self, audio: np.ndarray) -> Transcript | None:
+        lang = self._lang_for(audio, reuse=True)
+        segs, info = self.model.transcribe(
+            audio, language=lang, task="transcribe", beam_size=1, vad_filter=False,
+            condition_on_previous_text=False, no_speech_threshold=self.NO_SPEECH,
+            log_prob_threshold=-1.0, compression_ratio_threshold=2.4, temperature=0.0,
+            hotwords=self._hot())
+        kept = [s for s in segs if s.text.strip()
+                and not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0)]
+        text = self._post(" ".join(s.text.strip() for s in kept))
+        return Transcript(text, script_lang(text, lang or info.language),
+                          max(s.no_speech_prob for s in kept), _logprob(kept)) if text else None
+
+    def _decode(self, audio: np.ndarray, retry: bool = False, lang: str | None = None, deadline=None):
+        lang = self.lang if lang is None else lang
+        # Normal pass: temperature fallback (0 -> 0.2 -> 0.4) so faster-whisper's own compression-ratio /
+        # logprob checks can re-decode a stuck window (a single temperature has no fallback: loop leaks).
+        # Retry pass after a detected loop: no previous-text prompt (that is what feeds loops), hotter
+        # sampling, mild repetition penalty.
+        # Live (#251): only the first temperature(s), max_new_tokens scaled to the audio length.
+        live = getattr(self, "live", False)
+        temps = RETRY_TEMPS if retry else FILE_TEMPS
+        kw = (dict(temperature=temps, repetition_penalty=1.1, initial_prompt=None) if retry
+              else dict(temperature=temps, initial_prompt=make_prompt(self._last)))
+        if live:
+            kw.update(temperature=live_temps(temps), max_new_tokens=token_cap(len(audio) / SAMPLE_RATE))
+        gen, info = self.model.transcribe(
+            audio, language=lang, task="transcribe", beam_size=getattr(self, "beam", 5), vad_filter=False,
+            condition_on_previous_text=False, no_speech_threshold=self.NO_SPEECH,
+            log_prob_threshold=-1.0, compression_ratio_threshold=2.4, hotwords=self._hot(),
+            without_timestamps=bool(getattr(self, "fast", False)), **kw)
+        segs = []
+        for s in gen:  # faster-whisper decodes lazily: stop pulling once the sentence is over budget
+            if not (s.no_speech_prob > self.NO_SPEECH and s.avg_logprob < -1.0):
+                segs.append(s)  # #1252: a yielded segment is already decoded; keep it even past the deadline
+            if deadline is not None and self._now() > deadline:
+                raise OverBudget(segs, info)  # stop before the next window; the caller keeps `segs`
+        # #1252: no deadline check here - the decode already finished, so dropping its text saves no CPU
+        return segs, info, " ".join(s.text.strip() for s in segs if s.text.strip())
+
+    def _now(self) -> float:
+        return getattr(self, "clock", time.monotonic)()
+
+    def _drop(self, budget: float, started: float) -> None:
+        self.dropped = getattr(self, "dropped", 0) + 1
+        self._last = ""
+        print(f"tlwu: asr: dropped a sentence over its time budget ({self._now() - started:.1f} s > "
+              f"{budget:.1f} s; {self.dropped} dropped so far)", file=sys.stderr, flush=True)
+
+    def _cut(self, budget: float, started: float, segs, audio: np.ndarray) -> None:
+        """#1252: the decode stopped past its budget; the segments decoded so far are kept. The undecoded tail
+        (after the last kept segment's end) is held for pop_tail(), so the caller can transcribe it next."""
+        self.cut = getattr(self, "cut", 0) + 1
+        total = len(audio) / SAMPLE_RATE
+        ends = [e for e in (getattr(s, "end", None) for s in segs) if isinstance(e, (int, float))]
+        end = min(max(ends), total) if ends else None
+        kept = f"kept {end:.1f} of {total:.1f} s" if end is not None else f"kept part of {total:.1f} s"
+        tail = audio[int(end * SAMPLE_RATE):] if end is not None else audio[:0]
+        # a tail as long as the input made no progress (re-queueing it could loop forever): not queued again
+        self._tail = tail if TAIL_MIN_S * SAMPLE_RATE <= len(tail) < len(audio) else None
+        more = f"; {len(tail) / SAMPLE_RATE:.1f} s queued again" if self._tail is not None else ""
+        print(f"tlwu: asr: cut a sentence at its time budget ({self._now() - started:.1f} s > {budget:.1f} s; "
+              f"{kept}{more}; {self.cut} cut so far)", file=sys.stderr, flush=True)
+
+    def pop_tail(self) -> np.ndarray | None:
+        """#1252: the audio a budget cut left undecoded in the last transcribe() (None if nothing was cut).
+        Cleared on read; the pipeline transcribes it as the next segment, so cut speech is not lost."""
+        tail, self._tail = getattr(self, "_tail", None), None
+        return tail
+
+    def transcribe(self, audio: np.ndarray) -> Transcript | None:
+        try:
+            return self._transcribe_live(audio)
+        except RuntimeError as e:
+            if not self._on_gpu_error(e):
+                raise
+            return self._transcribe_live(audio)  # retry the segment once on CPU; a second failure propagates
+
+    def _transcribe_live(self, audio: np.ndarray) -> Transcript | None:
+        if not getattr(self, "live", False):
+            return self._transcribe(audio, None)
+        started = self._now()
+        budget = time_budget(len(audio) / SAMPLE_RATE)
+        self._tail = None
+        try:
+            tr = self._transcribe(audio, started + budget)
+        except OverBudget:  # nothing was decoded in time: drop this sentence, the caller moves on
+            self._drop(budget, started)
+            return None
+        if getattr(self, "_was_cut", None) is not None:
+            self._cut(budget, started, self._was_cut, audio)
+        return tr
+
+    def _transcribe(self, audio: np.ndarray, deadline) -> Transcript | None:
+        lang = self._lang_for(audio)
+        self._was_cut = None
+        try:
+            segs, info, text = self._decode(audio, lang=lang, deadline=deadline)
+        except OverBudget as e:  # #1252: stopped mid-decode; keep the segments decoded so far
+            segs, info = e.segs, e.info
+            text = " ".join(s.text.strip() for s in segs if s.text.strip())
+            if not text:
+                raise
+            self._was_cut = segs
+        over = deadline is not None and self._now() > deadline  # #1252: over budget only skips the retry
+        if text and has_loop(text) and not over:  # decoder got stuck: re-decode once without context, then collapse
+            try:
+                segs2, info2, text2 = self._decode(audio, retry=True, lang=lang, deadline=deadline)
+            except OverBudget:  # #1252: the retry ran out of time; keep the finished first pass
+                segs2, info2, text2 = segs, info, ""
+            if text2 and not has_loop(text2):
+                segs, info, text = segs2, info2, text2
+        looped = bool(text) and has_loop(text)  # still looped after the retry: collapsed below, no prompt
+        text = self._post(text)
+        if not text:
+            self._last = ""
+            return None
+        # context only when this output looks sane; a repeat/loop drops the prompt so it cannot propagate
+        self._last = "" if looped or is_garbage(text, self._last) or is_hallucination(text) else text
+        if getattr(self, "candidates", None):
+            lang = script_lang(text, lang)  # kana in a "zh" segment: it is Japanese (#86)
+            self._cur = lang
+            if lang in SPEAK_LANGS and getattr(self, "lang_file", None):
+                write_lang(self.lang_file, lang)  # zh segments leave the speak target alone
+            return Transcript(text, lang, max(s.no_speech_prob for s in segs), _logprob(segs))
+        if self.lang is None:
+            self.lang = script_lang(text, info.language)
+        elif getattr(self, "auto", False) and script_lang(text, self.lang) != self.lang:
+            self.lang = "ja"  # auto locked onto zh by a kanji-only first line; kana shows it is Japanese (#86)
+        return Transcript(text, script_lang(text, self.lang), max(s.no_speech_prob for s in segs), _logprob(segs))

@@ -24,8 +24,9 @@ def repos(tmp_path):
     git(tmp_path, "clone", "-q", str(origin), str(up))
     git(up, "checkout", "-q", "-b", "dev")
     commit(up, "a.txt", "1")
-    (up / "requirements.txt").write_text("")
-    commit(up, "requirements.txt", "")
+    (up / "requirements").mkdir()
+    (up / "requirements/requirements.txt").write_text("")
+    commit(up, "requirements/requirements.txt", "")
     git(up, "push", "-q", "origin", "dev")
     git(tmp_path, "clone", "-q", "-b", "dev", str(origin), str(me))
     commit(up, "b.txt", "new")
@@ -56,7 +57,7 @@ def test_behind_origin_pulls_installs_and_starts_gui(repos):
     assert r.run(me, exe) == 0
     assert (me / "b.txt").read_text() == "new"
     assert git(me, "rev-parse", "HEAD") == git(up, "rev-parse", "HEAD")
-    assert r.pip == [["install", "-r", "requirements.txt"], ["install", "-e", ".", "--no-deps"]]
+    assert r.pip == [["install", "-r", "requirements/requirements.txt"], ["install", "-e", ".", "--no-deps"]]
     assert r.launched == [exe]
     assert any(line.startswith("  updated ") for line in r.lines)
 
@@ -121,3 +122,18 @@ def test_missing_gui_exe(repos, tmp_path):
 def test_gui_exe_sits_next_to_python(tmp_path):
     p = update.gui_exe(tmp_path / "Scripts" / "python.exe")
     assert p.parent == tmp_path / "Scripts" and p.name.startswith("tlwu-gui")
+
+
+def test_remove_legacy_dirs_only_when_src_layout_present(tmp_path):
+    """#1664: leftover root packages shadow src/ as namespace packages; delete them only next to src/core."""
+    for name in update.LEGACY_ROOT_DIRS:
+        (tmp_path / name / "__pycache__").mkdir(parents=True)
+    (tmp_path / "keep").mkdir()
+    assert update.remove_legacy_dirs(tmp_path, say=lambda *_: None) == []   # no src/ yet: touch nothing
+    assert all((tmp_path / n).is_dir() for n in update.LEGACY_ROOT_DIRS)
+    pkg = tmp_path / "src" / "core" / "tinglongwu"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    assert update.remove_legacy_dirs(tmp_path, say=lambda *_: None) == list(update.LEGACY_ROOT_DIRS)
+    assert not any((tmp_path / n).exists() for n in update.LEGACY_ROOT_DIRS)
+    assert (tmp_path / "keep").is_dir() and (pkg / "__init__.py").is_file()

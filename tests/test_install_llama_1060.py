@@ -24,9 +24,10 @@ exit "${PIP_RC:-0}"
 def _run(tmp_path, **env):
     d = tmp_path / "app"
     (d / "scripts").mkdir(parents=True)
+    (d / "requirements").mkdir()
     (d / ".venv" / "bin").mkdir(parents=True)
     shutil.copy(ROOT / "scripts" / "tlwu_common.sh", d / "scripts" / "tlwu_common.sh")
-    shutil.copy(ROOT / "requirements-llama-cpu.txt", d / "requirements-llama-cpu.txt")
+    shutil.copy(ROOT / "requirements/requirements-llama-cpu.txt", d / "requirements/requirements-llama-cpu.txt")
     py = d / ".venv" / "bin" / "python"
     py.write_text(FAKE_PY)
     py.chmod(0o755)
@@ -42,7 +43,7 @@ def _run(tmp_path, **env):
 def test_missing_llama_is_installed_from_the_cpu_requirements(tmp_path):
     r, calls = _run(tmp_path)
     assert r.returncode == 0, r.stderr
-    assert "-m pip install -r requirements-llama-cpu.txt" in calls
+    assert "-m pip install -r requirements/requirements-llama-cpu.txt" in calls
     assert "Hy-MT2" in r.stdout
 
 

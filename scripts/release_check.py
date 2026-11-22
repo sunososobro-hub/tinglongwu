@@ -29,7 +29,7 @@ RELEASE_BUDGET_MIN = 20  # #764/#740: release wall time (first job start -> rele
 BYTES_PER_MB = 1 << 20
 SECONDS_PER_MIN = 60
 MAX_ASSET_BYTES = 2 << 30  # GitHub's per-asset limit (2 GiB)
-GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"  # = packaging/build_windows.py GPU_PACK_ASSET (#763)
+GPU_PACK_ASSET = "tinglongwu-gpu-pack.zip"  # = release/packaging/build_windows.py GPU_PACK_ASSET (#763)
 GPU_PACK_MANIFEST_SUFFIX = ".manifest.json"  # build_windows.make_gpu_pack writes <zip>.manifest.json
 GPU_PACK_MANIFEST_KEYS = ("name", "size", "sha256", "url")  # = tinglongwu.gpu_pack.MANIFEST_KEYS
 # ggml-cuda.dll and what it imports (build_windows.LLAMA_CUDA_NEEDS): without them the pack cannot run llama on CUDA
@@ -39,7 +39,7 @@ GPU_PACK_NEEDS = ("ggml-cuda.dll", "cudart64_12.dll", "cublas64_12.dll", "cublas
 GPU_PACK_ASR_NEEDS = ("cudnn64_9.dll",)
 # the pack redistributes NVIDIA CUDA/cuDNN DLLs: their license texts must ship in it (build_windows.build_gpu_pack_only)
 GPU_PACK_LICENSE_PREFIX = "licenses/NVIDIA-"
-APP_LAYER_ASSET = "tinglongwu-app-layer.zip"  # = packaging/build_windows.py APP_LAYER_ASSET (#945)
+APP_LAYER_ASSET = "tinglongwu-app-layer.zip"  # = release/packaging/build_windows.py APP_LAYER_ASSET (#945)
 APP_LAYER_MANIFEST_KEYS = ("name", "version", "size", "sha256", "runtime_key", "lite")
 MAX_APP_LAYER_MB = 15
 APP_LAYER_TOP = ("tinglongwu/", "tlwu_app/", "tinglongwu_setup/")  # = build_windows.APP_PACKAGES

@@ -14,7 +14,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBSPEC = os.path.join(os.path.dirname(HERE), "pubspec.yaml")
 # #1598: mobile versionName follows the desktop __version__ (same X.Y.Z as the release snapshot).
-DESKTOP_INIT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "tinglongwu", "__init__.py")
+DESKTOP_INIT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "src", "core", "tinglongwu", "__init__.py")
 WHATS_NEW = os.path.join(os.path.dirname(os.path.dirname(HERE)), "docs", "whats_new.md")
 _VER = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 

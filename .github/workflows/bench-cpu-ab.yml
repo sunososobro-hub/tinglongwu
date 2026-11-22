@@ -60,7 +60,7 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
       - name: Paths
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -68,7 +68,7 @@ jobs:
           path: |
             ~/tlwu-models
             eval_data/smoke
-          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
+          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
       - name: Models
         run: tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
       - name: Smoke clips
@@ -191,7 +191,7 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
       - name: Paths
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -199,7 +199,7 @@ jobs:
           path: |
             ~/tlwu-models
             eval_data/smoke
-          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
+          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
       - name: Models
         run: tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
       - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -298,8 +298,8 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine + speaker labels
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
-          pip install --require-hashes -r requirements-speaker.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
+          pip install --require-hashes -r requirements/requirements-speaker.txt --only-binary=:all:
       - name: Paths
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -307,7 +307,7 @@ jobs:
           path: |
             ~/tlwu-models
             eval_data/smoke
-          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
+          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
       - name: Models
         run: |
           tlwu-setup --hymt --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
@@ -425,7 +425,7 @@ jobs:
           path: |
             ~/tlwu-models
             eval_data/smoke
-          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
+          key: eval-gate-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'eval/ci_smoke.json', 'scripts/bench/make_ci_smoke.py') }}
       - name: Models
         run: tlwu-setup --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
       - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3

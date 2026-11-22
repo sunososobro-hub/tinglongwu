@@ -40,7 +40,7 @@ PLATFORMS = {
               "required": ("libllama.so", "libggml-vulkan.so")},
 }
 BYTES_PER_MB = 1 << 20
-PIN_FILE = "requirements-llama-cpu.txt"  # the CPU and CUDA builds use the same llama-cpp-python pin
+PIN_FILE = "requirements/requirements-llama-cpu.txt"  # the CPU and CUDA builds use the same llama-cpp-python pin
 
 
 def llama_pin(repo: Path = ROOT) -> str:

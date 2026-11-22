@@ -1,0 +1,397 @@
+# scenario: tech
+# networking: generic engineering terms, written for tinglongwu (no third-party glossary copied). en/ru/ja/ko/zh-TW/zh-CN.
+id	en	ru	ja	ko	zh-TW	zh-CN
+net.ip_address	IP address | IP addresses	IP-адрес | IP-адреса | айпишник | айпи	IPアドレス	IP 주소	IP 位址	IP 地址
+net.subnet	subnet | subnets	подсеть | подсети | подсетью	サブネット	서브넷	子網路	子网
+net.subnet_mask	subnet mask | netmask	маска подсети | маска сети	サブネットマスク	서브넷 마스크	子網路遮罩	子网掩码
+net.cidr	CIDR | CIDR notation	CIDR | бесклассовая адресация	CIDR | CIDR表記	CIDR | CIDR 표기법	CIDR | CIDR 表示法	CIDR | CIDR 表示法
+net.prefix_length	prefix length	длина префикса	プレフィックス長	프리픽스 길이 | 접두사 길이	前綴長度	前缀长度
+net.default_gateway	default gateway	шлюз по умолчанию | дефолтный шлюз	デフォルトゲートウェイ	기본 게이트웨이	預設閘道	默认网关
+net.gateway	network gateway | gateway	шлюз | шлюза | шлюзы | гейтвей	ゲートウェイ	게이트웨이	閘道 | 閘道器	网关
+net.broadcast_address	broadcast address	широковещательный адрес	ブロードキャストアドレス	브로드캐스트 주소	廣播位址	广播地址
+net.broadcast	broadcast traffic | broadcast packet	широковещательная рассылка | бродкаст | броадкаст	ブロードキャスト	브로드캐스트	廣播封包 | 廣播流量	广播报文 | 广播流量
+net.multicast	multicast	мультикаст | многоадресная рассылка	マルチキャスト	멀티캐스트	多播 | 群播	组播 | 多播
+net.unicast	unicast	юникаст | одноадресная передача	ユニキャスト	유니캐스트	單播	单播
+net.anycast	anycast	эникаст | anycast	エニーキャスト	애니캐스트	任播	任播 | 泛播
+net.mac_address	MAC address | MAC addresses	MAC-адрес | MAC-адреса | мак-адрес | мак-адреса	MACアドレス	MAC 주소	MAC 位址	MAC 地址
+net.private_ip	private IP address | private address	частный IP-адрес | приватный адрес | серый IP	プライベートIPアドレス	사설 IP 주소 | 사설 IP	私有 IP 位址 | 私有 IP	私有 IP 地址 | 内网 IP
+net.public_ip	public IP address | public IP	публичный IP-адрес | белый IP | внешний IP	グローバルIPアドレス | パブリックIPアドレス	공인 IP 주소 | 공인 IP	公有 IP 位址 | 公網 IP	公网 IP | 公有 IP 地址
+net.static_ip	static IP address | static IP	статический IP | статический адрес	固定IPアドレス | 静的IPアドレス	고정 IP | 고정 IP 주소	固定 IP	静态 IP | 固定 IP
+net.dynamic_ip	dynamic IP address | dynamic IP	динамический IP | динамический адрес	動的IPアドレス	유동 IP | 동적 IP	動態 IP	动态 IP
+net.loopback	loopback address | loopback interface	петлевой адрес | лупбэк | loopback-интерфейс	ループバックアドレス | ループバックインターフェース	루프백 주소 | 루프백 인터페이스	迴路位址 | 回送位址	环回地址 | 环回接口
+net.link_local	link-local address	локальный адрес канала | link-local адрес	リンクローカルアドレス	링크 로컬 주소	鏈路本地位址	链路本地地址
+net.dual_stack	dual stack | dual-stack	двойной стек | dual stack	デュアルスタック	듀얼 스택	雙堆疊	双栈
+net.slaac	SLAAC | stateless address autoconfiguration	SLAAC | автоконфигурация адреса	SLAAC | ステートレスアドレス自動設定	SLAAC | 상태 비저장 주소 자동 구성	SLAAC | 無狀態位址自動設定	SLAAC | 无状态地址自动配置
+net.neighbor_discovery	Neighbor Discovery | NDP	протокол обнаружения соседей | NDP	近隣探索 | NDP	이웃 탐색 | NDP	鄰居探索 | NDP	邻居发现 | NDP
+net.router_advertisement	router advertisement | RA message	объявление маршрутизатора | RA-сообщение	ルーター広告 | RAメッセージ	라우터 광고 | RA 메시지	路由器通告 | RA 訊息	路由器通告 | RA 报文
+net.arp	ARP | Address Resolution Protocol	ARP | протокол ARP	ARP | アドレス解決プロトコル	ARP | 주소 결정 프로토콜	ARP | 位址解析協定	ARP | 地址解析协议
+net.arp_table	ARP table | ARP cache	ARP-таблица | таблица ARP | ARP-кэш	ARPテーブル | ARPキャッシュ	ARP 테이블 | ARP 캐시	ARP 表 | ARP 快取	ARP 表 | ARP 缓存
+net.gratuitous_arp	gratuitous ARP | GARP	самопроизвольный ARP | gratuitous ARP	Gratuitous ARP | GARP	Gratuitous ARP | GARP	免費 ARP | GARP	免费 ARP | GARP
+net.ttl	TTL | time to live	TTL | время жизни пакета	TTL | 生存時間	TTL | 패킷 수명	TTL | 存活時間	TTL | 生存时间
+net.mtu	MTU | maximum transmission unit	MTU | максимальный размер пакета	MTU | 最大転送単位	MTU | 최대 전송 단위	MTU | 最大傳輸單元	MTU | 最大传输单元
+net.mss	MSS | maximum segment size	MSS | максимальный размер сегмента	MSS | 最大セグメントサイズ	MSS | 최대 세그먼트 크기	MSS | 最大區段大小	MSS | 最大报文段长度
+net.fragmentation	IP fragmentation | packet fragmentation	фрагментация пакетов | IP-фрагментация | фрагментация	IPフラグメンテーション | フラグメンテーション | パケット断片化	IP 단편화 | 패킷 단편화 | 프래그먼테이션	IP 分段 | 封包分段	IP 分片 | 分片
+net.path_mtu_discovery	path MTU discovery | PMTUD	определение MTU пути | PMTUD	経路MTU探索 | PMTUD	경로 MTU 탐색 | PMTUD	路徑 MTU 探索 | PMTUD	路径 MTU 发现 | PMTUD
+net.ping	ping test | ICMP echo	пинг | пинга | пинги | пинговать | пингануть	ping | ピング | 疎通確認	핑 | 핑 테스트	ping 測試 | ICMP 回應	ping 测试 | ICMP 回显
+net.traceroute	traceroute | tracert	трассировка маршрута | трассировка | трейсроут	トレースルート | 経路追跡	트레이스라우트 | 경로 추적	路由追蹤 | traceroute	路由跟踪 | traceroute
+net.latency	network latency | latency	латентность | сетевая задержка | задержка сети	レイテンシ | ネットワーク遅延	지연 시간 | 레이턴시 | 네트워크 지연	網路延遲 | 延遲時間	网络延迟 | 时延
+net.jitter	jitter | network jitter	джиттер | джиттера | дрожание задержки	ジッタ | ジッター	지터	延遲抖動 | 網路抖動	时延抖动 | 网络抖动
+net.packet_loss	packet loss	потеря пакетов | потери пакетов	パケットロス | パケット損失	패킷 손실 | 패킷 로스	封包遺失 | 封包遺失率	丢包 | 数据包丢失 | 丢包率
+net.packet	network packet | IP packet | packets	сетевой пакет | сетевые пакеты | IP-пакет | IP-пакеты	パケット | IPパケット	패킷 | IP 패킷	封包 | IP 封包	数据包 | 报文 | IP 包
+net.throughput	throughput | network throughput	пропускная способность | производительность сети	スループット	처리량 | 스루풋	吞吐量 | 傳輸量	吞吐量
+net.bandwidth	bandwidth | network bandwidth	полоса пропускания | ширина полосы | бэндвидс	帯域幅 | 帯域	대역폭	頻寬	带宽
+net.round_trip_time	round-trip time | RTT	время приёма-передачи | время кругового пути | RTT	ラウンドトリップタイム | 往復遅延時間 | RTT	왕복 시간 | RTT	來回時間 | 往返時間 | RTT	往返时间 | 往返时延 | RTT
+net.tcp	TCP | Transmission Control Protocol	TCP | протокол TCP	TCP	TCP	TCP | 傳輸控制協定	TCP | 传输控制协议
+net.udp	UDP | User Datagram Protocol	UDP | протокол UDP	UDP	UDP	UDP | 使用者資料包協定	UDP | 用户数据报协议
+net.three_way_handshake	three-way handshake | TCP handshake	тройное рукопожатие | трёхэтапное рукопожатие | TCP-рукопожатие	3ウェイハンドシェイク | スリーウェイハンドシェイク	3방향 핸드셰이크 | 쓰리웨이 핸드셰이크	三向交握 | 三次交握	三次握手 | TCP 握手
+net.syn	SYN packet | SYN	SYN | SYN-пакет	SYNパケット | SYN	SYN 패킷 | SYN	SYN 封包 | SYN	SYN 包 | SYN
+net.ack	ACK | TCP acknowledgment	ACK | ACK-пакет | подтверждение TCP	ACK | 確認応答	ACK | 확인 응답	ACK | 確認回應	ACK | 确认应答
+net.fin	FIN packet | FIN	FIN-пакет | FIN	FINパケット | FIN	FIN 패킷 | FIN	FIN 封包 | FIN	FIN 包 | FIN
+net.rst	TCP reset | RST packet	RST-пакет | сброс TCP-соединения	RSTパケット | TCPリセット	RST 패킷 | TCP 리셋	RST 封包 | TCP 重置	RST 包 | TCP 重置
+net.sequence_number	TCP sequence number | sequence number	порядковый номер TCP | номер последовательности	シーケンス番号	시퀀스 번호	TCP 序列號	TCP 序列号
+net.tcp_window	TCP window | receive window	окно TCP | TCP-окно | окно приёма	TCPウィンドウ | 受信ウィンドウ	TCP 윈도우 | 수신 윈도우	TCP 視窗 | 接收視窗	TCP 窗口 | 接收窗口
+net.window_scaling	window scaling | TCP window scaling	масштабирование окна | масштабирование окна TCP	ウィンドウスケーリング	윈도우 스케일링	視窗縮放	窗口缩放
+net.congestion_control	congestion control	управление перегрузкой | контроль перегрузки	輻輳制御	혼잡 제어	壅塞控制	拥塞控制
+net.congestion	network congestion	перегрузка сети | сетевая перегрузка	ネットワーク輻輳 | 輻輳	네트워크 혼잡	網路壅塞	网络拥塞
+net.slow_start	slow start | TCP slow start	медленный старт	スロースタート	슬로 스타트	慢啟動	慢启动
+net.retransmission	retransmission | packet retransmission	ретрансмиссия | повторная передача | ретрансмит | ретрансмиты	再送 | 再送信	재전송	重傳	重传
+net.connection_timeout	connection timeout	тайм-аут соединения | таймаут соединения	接続タイムアウト	연결 타임아웃	連線逾時	连接超时
+net.keepalive	keepalive | keep-alive	keepalive | кипалайв	キープアライブ	킵얼라이브	保持連線 | keepalive	保活 | keepalive
+net.socket	network socket | TCP socket	сокет | сокета | сокеты	ソケット | ネットワークソケット	소켓 | 네트워크 소켓	通訊端 | socket	套接字 | socket
+net.port_number	port number | TCP port | UDP port	номер порта | TCP-порт | UDP-порт	ポート番号 | TCPポート | UDPポート	포트 번호 | TCP 포트 | UDP 포트	連接埠 | 埠號 | 通訊埠	端口号 | 端口
+net.well_known_port	well-known port	общеизвестный порт | стандартный порт	ウェルノウンポート	잘 알려진 포트 | 웰노운 포트	知名連接埠	知名端口 | 公认端口
+net.ephemeral_port	ephemeral port	эфемерный порт | динамический порт	エフェメラルポート	임시 포트	臨時連接埠	临时端口
+net.port_forwarding	port forwarding	проброс портов | проброс порта | переадресация портов | пробросить порт	ポートフォワーディング | ポート転送	포트 포워딩	連接埠轉發 | 通訊埠轉送	端口转发 | 端口映射
+net.port_scan	port scan | port scanning	сканирование портов	ポートスキャン	포트 스캔	連接埠掃描	端口扫描
+net.datagram	datagram	датаграмма | дейтаграмма	データグラム	데이터그램	資料包 | 資料元	数据报
+net.segment	TCP segment	TCP-сегмент | сегмент TCP	TCPセグメント	TCP 세그먼트	TCP 區段	TCP 报文段 | TCP 段
+net.payload	payload | packet payload	полезная нагрузка | пейлоад	ペイロード	페이로드	酬載 | 負載資料	有效载荷 | 载荷
+net.header	packet header | IP header	заголовок пакета | IP-заголовок	パケットヘッダ | IPヘッダ	패킷 헤더 | IP 헤더	封包標頭 | IP 標頭	包头 | IP 头部 | 报文头
+net.checksum	checksum	контрольная сумма | чексумма	チェックサム	체크섬	檢查碼 | 校驗和	校验和
+net.flow_control	flow control	управление потоком	フロー制御	흐름 제어	流量控制	流量控制
+net.head_of_line	head-of-line blocking	блокировка начала очереди | HOL-блокировка	ヘッドオブラインブロッキング | HOLブロッキング	HOL 블로킹 | 헤드 오브 라인 블로킹	隊頭阻塞 | 線頭阻塞	队头阻塞
+net.tcp_ip_stack	TCP/IP stack | network stack	стек TCP/IP | сетевой стек	TCP/IPスタック | ネットワークスタック | プロトコルスタック	TCP/IP 스택 | 네트워크 스택	TCP/IP 堆疊 | 網路堆疊 | 網路協定堆疊	TCP/IP 协议栈 | 网络协议栈 | 协议栈
+net.osi_model	OSI model	модель OSI | сетевая модель OSI	OSI参照モデル | OSIモデル	OSI 7계층 | OSI 모델	OSI 模型 | OSI 七層	OSI 模型 | OSI 七层模型
+net.layer1	physical layer | Layer 1 | L1	физический уровень | L1	物理層 | レイヤ1	물리 계층 | 레이어 1	實體層	物理层
+net.layer2	data link layer | Layer 2 | L2	канальный уровень | уровень L2 | L2	データリンク層 | レイヤ2 | L2	데이터 링크 계층 | 레이어 2 | L2	資料連結層 | L2	数据链路层 | 二层网络 | L2
+net.layer3	network layer | Layer 3 | L3	сетевой уровень | уровень L3 | L3	ネットワーク層 | レイヤ3 | L3	네트워크 계층 | 레이어 3 | L3	網路層 | L3	网络层 | 三层网络 | L3
+net.transport_layer	transport layer | Layer 4 | L4	транспортный уровень | L4	トランスポート層 | レイヤ4 | L4	전송 계층 | L4	傳輸層 | L4	传输层 | L4
+net.application_layer	application layer | Layer 7 | L7	прикладной уровень | L7	アプリケーション層 | レイヤ7 | L7	응용 계층 | 애플리케이션 계층 | L7	應用層 | L7	应用层 | L7
+net.encapsulation	encapsulation | packet encapsulation	инкапсуляция	カプセル化	캡슐화	封裝	封装
+net.decapsulation	decapsulation	декапсуляция	デカプセル化 | カプセル化解除	역캡슐화	解封裝	解封装
+net.router	router | routers	маршрутизатор | маршрутизатора | маршрутизаторы | роутер | роутера | роутеры	ルーター | ルータ	라우터	路由器	路由器
+net.routing	IP routing | routing	маршрутизация | роутинг	ルーティング | 経路制御	라우팅	路由 | 路由選擇	路由选择 | 路由
+net.routing_table	routing table | route table	таблица маршрутизации | таблица маршрутов	ルーティングテーブル | 経路表	라우팅 테이블	路由表	路由表
+net.static_route	static route | static routing	статический маршрут | статическая маршрутизация	スタティックルート | 静的ルーティング	정적 라우트 | 스태틱 라우트 | 정적 라우팅	靜態路由	静态路由
+net.default_route	default route	маршрут по умолчанию | дефолтный маршрут	デフォルトルート	기본 경로 | 디폴트 라우트	預設路由	默认路由
+net.dynamic_routing	dynamic routing	динамическая маршрутизация	動的ルーティング | ダイナミックルーティング	동적 라우팅	動態路由	动态路由
+net.routing_protocol	routing protocol	протокол маршрутизации	ルーティングプロトコル	라우팅 프로토콜	路由協定	路由协议
+net.next_hop	next hop	следующий хоп | следующий переход	ネクストホップ	넥스트 홉 | 다음 홉	下一跳	下一跳
+net.hop_count	hop count | network hop	хоп | хопа | хопы | количество хопов	ホップ数 | ホップ	홉 수 | 홉	跳數 | 躍點	跳数
+net.route_metric	route metric | routing metric	метрика маршрута	メトリック | ルートメトリック	메트릭 | 라우트 메트릭	路由度量 | 路由成本	路由度量 | 路由开销
+net.longest_prefix	longest prefix match	совпадение по самому длинному префиксу | longest prefix match	最長一致 | ロンゲストマッチ	최장 일치 | 롱기스트 매치	最長前綴匹配	最长前缀匹配
+net.bgp	BGP | Border Gateway Protocol	BGP | протокол BGP	BGP	BGP	BGP | 邊界閘道協定	BGP | 边界网关协议
+net.rip	RIP protocol | Routing Information Protocol	протокол RIP	RIPプロトコル	RIP 프로토콜	RIP 協定 | 路由資訊協定	RIP 协议 | 路由信息协议
+net.autonomous_system	autonomous system | AS number | ASN	автономная система | номер AS	自律システム | AS番号	자율 시스템 | AS 번호	自治系統 | AS 號碼	自治系统 | AS 号
+net.peering	BGP peering | peering	пиринг | пиринга | BGP-пиринг	ピアリング	피어링	對等互連 | Peering	对等互联 | Peering
+net.route_summarization	route summarization | route aggregation	суммирование маршрутов | агрегация маршрутов	経路集約 | ルート集約	경로 요약 | 라우트 요약	路由彙總 | 路由匯總	路由汇总 | 路由聚合
+net.routing_loop	routing loop	петля маршрутизации	ルーティングループ	라우팅 루프	路由迴圈	路由环路
+net.convergence	routing convergence | network convergence	сходимость маршрутизации | сходимость сети	ルーティングの収束 | コンバージェンス	라우팅 수렴 | 컨버전스	路由收斂	路由收敛
+net.ecmp	ECMP | equal-cost multipath	ECMP | равноценная многопутевая маршрутизация	ECMP | 等コストマルチパス	ECMP | 등가 다중 경로	ECMP | 等價多路徑	ECMP | 等价多路径
+net.policy_routing	policy-based routing | PBR	маршрутизация на основе политик | PBR	ポリシーベースルーティング | PBR	정책 기반 라우팅 | PBR	策略路由 | 原則式路由 | PBR	策略路由 | PBR
+net.mpls	MPLS | label switching	MPLS | коммутация по меткам	MPLS | ラベルスイッチング	MPLS | 레이블 스위칭	MPLS | 標籤交換	MPLS | 标签交换
+net.blackhole_route	blackhole route | null route	блэкхол | маршрут в никуда | null-маршрут	ブラックホールルート | ヌルルート	블랙홀 라우트 | 널 라우트	黑洞路由	黑洞路由
+net.asymmetric_routing	asymmetric routing	асимметричная маршрутизация	非対称ルーティング	비대칭 라우팅	非對稱路由	非对称路由
+net.forwarding	packet forwarding | IP forwarding	пересылка пакетов | форвардинг | форвардинга	パケット転送 | フォワーディング	패킷 포워딩 | 포워딩	封包轉送 | 封包轉發	报文转发 | 数据包转发
+net.forwarding_table	forwarding table | FIB	таблица пересылки | FIB	転送テーブル | FIB	포워딩 테이블 | FIB	轉發表 | FIB	转发表 | FIB
+net.control_plane	control plane	плоскость управления | control plane	コントロールプレーン | 制御プレーン	컨트롤 플레인 | 제어 평면	控制平面	控制平面
+net.data_plane	data plane | forwarding plane	плоскость данных | data plane	データプレーン	데이터 플레인	資料平面 | 數據平面	数据平面 | 转发平面
+net.failover	failover | network redundancy	резервирование сети | отказоустойчивость сети | фейловер	フェイルオーバー | 冗長化	페일오버 | 이중화	容錯移轉 | 網路備援	故障切换 | 网络冗余
+net.multi_wan	multi-WAN | dual WAN | WAN failover	мульти-WAN | резервный канал | два провайдера	マルチWAN | デュアルWAN	멀티 WAN | 듀얼 WAN	多 WAN | 雙 WAN	多 WAN | 双 WAN
+net.wan	WAN | wide area network	WAN | территориально распределённая сеть	WAN | 広域網	WAN | 광역 통신망	WAN | 廣域網路	WAN | 广域网
+net.lan	LAN | local area network	LAN | локальная сеть | локалка | локальной сети	LAN | ローカルエリアネットワーク	LAN | 근거리 통신망 | 랜	LAN | 區域網路	LAN | 局域网
+net.wan_port	WAN port	WAN-порт	WANポート	WAN 포트	WAN 埠 | WAN 連接埠	WAN 口 | WAN 端口
+net.lan_port	LAN port	LAN-порт	LANポート	LAN 포트	LAN 埠 | LAN 連接埠	LAN 口 | LAN 端口
+net.uplink	uplink | uplink port	аплинк | аплинка | восходящий канал	アップリンク	업링크	上行鏈路 | 上聯埠	上行链路 | 上联口
+net.downlink	downlink	даунлинк | нисходящий канал	ダウンリンク	다운링크	下行鏈路	下行链路
+net.intranet	intranet	интранет | внутренняя сеть	イントラネット	인트라넷	內部網路 | 內網	内网 | 企业内网
+net.backbone	backbone network | network backbone	магистральная сеть | бэкбон | опорная сеть	バックボーンネットワーク | 基幹網	백본 네트워크 | 백본	骨幹網路	骨干网
+net.isp	ISP | internet service provider	интернет-провайдер | интернет-провайдера | ISP	ISP | インターネットサービスプロバイダ | プロバイダ	ISP | 인터넷 서비스 제공업체	ISP | 網路服務供應商	ISP | 互联网服务提供商
+net.last_mile	last mile | last-mile access	последняя миля	ラストワンマイル	라스트 마일	最後一哩	最后一公里
+net.topology	network topology	топология сети | сетевая топология	ネットワークトポロジ | トポロジー	네트워크 토폴로지 | 토폴로지	網路拓撲	网络拓扑
+net.network_segment	network segment	сегмент сети	ネットワークセグメント	네트워크 세그먼트 | 네트워크 대역	網段	网段
+net.network_segmentation	network segmentation	сегментация сети	ネットワークセグメンテーション | ネットワーク分割	네트워크 분할 | 네트워크 세분화	網路分段 | 網段切割	网络分段 | 网段划分
+net.network_switch	network switch | Ethernet switch	коммутатор | коммутатора | коммутаторы | свитч | свитча | свич	スイッチングハブ | L2スイッチ | ネットワークスイッチ	스위칭 허브 | 네트워크 스위치 | L2 스위치	交換器 | 網路交換器	交换机 | 网络交换机
+net.managed_switch	managed switch	управляемый коммутатор	マネージドスイッチ | インテリジェントスイッチ	관리형 스위치 | 매니지드 스위치	網管型交換器	网管交换机 | 网管型交换机
+net.unmanaged_switch	unmanaged switch	неуправляемый коммутатор	アンマネージドスイッチ	비관리형 스위치	非網管型交換器 | 傻瓜交換器	非网管交换机 | 傻瓜交换机
+net.l3_switch	Layer 3 switch | multilayer switch | L3 switch	коммутатор третьего уровня | L3-коммутатор	L3スイッチ | レイヤ3スイッチ	L3 스위치 | 레이어 3 스위치	L3 交換器 | 三層交換器	三层交换机 | L3 交换机
+net.switching	packet switching | Ethernet switching	коммутация | коммутация пакетов	スイッチング | パケット交換	패킷 스위칭 | 패킷 교환	封包交換	分组交换 | 包交换
+net.mac_table	MAC address table | MAC table | CAM table	таблица MAC-адресов | MAC-таблица | CAM-таблица	MACアドレステーブル | MACテーブル	MAC 주소 테이블 | MAC 테이블	MAC 位址表 | MAC 表	MAC 地址表 | MAC 表
+net.mac_learning	MAC learning | MAC address learning	изучение MAC-адресов | MAC learning	MACアドレス学習	MAC 주소 학습	MAC 位址學習	MAC 地址学习
+net.flooding	unknown unicast flooding | packet flooding	лавинная рассылка | флудинг кадров	フラッディング	플러딩	泛洪	泛洪
+net.collision_domain	collision domain	домен коллизий	コリジョンドメイン | 衝突ドメイン	충돌 도메인 | 콜리전 도메인	碰撞網域 | 碰撞域	冲突域 | 碰撞域
+net.broadcast_domain	broadcast domain	широковещательный домен | домен широковещания	ブロードキャストドメイン	브로드캐스트 도메인	廣播網域 | 廣播域	广播域
+net.broadcast_storm	broadcast storm	широковещательный шторм | бродкаст-шторм	ブロードキャストストーム	브로드캐스트 스톰	廣播風暴	广播风暴
+net.switching_loop	switching loop | L2 loop | network loop	петля в сети | кольцо в сети | L2-петля	L2ループ | ネットワークループ	네트워크 루프 | L2 루프	網路迴圈 | 二層環路	二层环路 | 网络环路
+net.loop_detection	loop detection	обнаружение петель	ループ検出	루프 감지	迴圈偵測	环路检测
+net.stp	STP | Spanning Tree Protocol | spanning tree	STP | протокол связующего дерева | спаннинг-три	STP | スパニングツリー	STP | 스패닝 트리	STP | 擴展樹協定 | 生成樹	STP | 生成树协议 | 生成树
+net.root_bridge	root bridge	корневой мост	ルートブリッジ	루트 브리지	根橋接器 | 根橋	根桥
+net.network_bridge	network bridge | bridging	сетевой мост | бриджинг	ネットワークブリッジ | ブリッジ接続	네트워크 브리지	網路橋接 | 橋接器	网桥 | 桥接
+net.bridge_mode	bridge mode	режим моста | бридж-режим	ブリッジモード	브리지 모드	橋接模式	桥接模式
+net.router_mode	router mode | gateway mode	режим маршрутизатора | режим роутера	ルーターモード	라우터 모드 | 공유기 모드	路由模式	路由模式
+net.link_aggregation	link aggregation | LAG | port channel	агрегация каналов | агрегирование портов | LAG	リンクアグリゲーション | LAG	링크 어그리게이션 | 링크 집적 | LAG	鏈路聚合 | LAG	链路聚合 | 端口聚合 | LAG
+net.port_mirroring	port mirroring | SPAN port	зеркалирование портов | зеркалирование трафика	ポートミラーリング	포트 미러링	連接埠鏡像 | 埠鏡像	端口镜像
+net.switch_port	switch port	порт коммутатора	スイッチポート	스위치 포트	交換器埠 | 交換器連接埠	交换机端口
+net.access_port	access port | untagged port	access-порт | нетегированный порт	アクセスポート | タグなしポート	액세스 포트 | 언태그 포트	Access 埠 | 未標記埠	Access 口 | 接入端口
+net.trunk_port	trunk port | VLAN trunk | trunk link	транк | транка | транки | транковый порт	トランクポート | タグVLANポート	트렁크 포트	Trunk 埠 | 主幹埠	Trunk 口 | 干道端口 | 中继端口
+net.vlan	VLAN | virtual LAN | VLANs	VLAN | виртуальная локальная сеть | влан | вланы | влана	VLAN | 仮想LAN	VLAN | 가상 랜	VLAN | 虛擬區域網路	VLAN | 虚拟局域网
+net.vlan_tag	VLAN tag | 802.1Q tag | tagged frame	тег VLAN | тег 802.1Q | тегированный кадр	VLANタグ | 802.1Qタグ	VLAN 태그 | 802.1Q 태그	VLAN 標記 | VLAN 標籤 | 802.1Q 標籤	VLAN 标签 | VLAN 标记 | 802.1Q 标签
+net.vlan_id	VLAN ID | VID	идентификатор VLAN | номер VLAN | VLAN ID	VLAN ID | VID	VLAN ID	VLAN ID | VLAN 編號	VLAN ID | VLAN 号
+net.native_vlan	native VLAN | untagged VLAN	нативный VLAN | native VLAN | нетегированный VLAN	ネイティブVLAN	네이티브 VLAN	原生 VLAN	本征 VLAN | Native VLAN
+net.inter_vlan_routing	inter-VLAN routing	маршрутизация между VLAN	VLAN間ルーティング	VLAN 간 라우팅	VLAN 間路由	VLAN 间路由
+net.vlan_hopping	VLAN hopping	VLAN hopping | VLAN-хоппинг	VLANホッピング	VLAN 호핑	VLAN 跳躍攻擊 | VLAN 跳躍	VLAN 跳跃攻击
+net.port_isolation	port isolation	изоляция портов	ポートアイソレーション | ポート分離	포트 격리	連接埠隔離	端口隔离
+net.virtual_interface	virtual interface | VLAN interface | SVI	виртуальный интерфейс | VLAN-интерфейс | SVI	仮想インターフェース | VLANインターフェース | SVI	가상 인터페이스 | VLAN 인터페이스 | SVI	虛擬介面 | VLAN 介面 | SVI	虚拟接口 | VLAN 接口 | SVI
+net.ethernet	Ethernet	Ethernet | Ethernet-сеть | эзернет | езернет	イーサネット	이더넷	乙太網路	以太网
+net.ethernet_frame	Ethernet frame | L2 frame	кадр Ethernet | Ethernet-кадр | кадры Ethernet	イーサネットフレーム	이더넷 프레임	乙太網路訊框 | 訊框	以太网帧 | 数据帧
+net.jumbo_frame	jumbo frame | jumbo frames	джамбо-фрейм | jumbo-кадр | jumbo frame	ジャンボフレーム	점보 프레임	巨型訊框 | Jumbo Frame	巨型帧 | 巨帧
+net.crc_error	CRC error | CRC errors	ошибка CRC | ошибки CRC | CRC-ошибки	CRCエラー	CRC 오류 | CRC 에러	CRC 錯誤	CRC 错误
+net.full_duplex	full duplex | full-duplex	полный дуплекс | full duplex	全二重 | フルデュプレックス	전이중 | 풀 듀플렉스	全雙工	全双工
+net.half_duplex	half duplex | half-duplex	полудуплекс	半二重	반이중	半雙工	半双工
+net.duplex_mismatch	duplex mismatch	несовпадение дуплекса | рассогласование дуплекса	デュプレックスミスマッチ | 二重モード不一致	듀플렉스 불일치	雙工不匹配	双工不匹配
+net.autonegotiation	auto-negotiation | autonegotiation	автосогласование | автонеготиация	オートネゴシエーション	자동 협상 | 오토 네고시에이션	自動協商	自协商 | 自动协商
+net.link_speed	link speed	скорость линка | скорость соединения	リンク速度	링크 속도	連線速率 | 鏈路速率	链路速率 | 连接速率
+net.link_up	link up	линк поднялся | link up	リンクアップ	링크 업	鏈路建立 | Link up	链路 up | Link up
+net.link_down	link down | link loss	линк упал | падение линка	リンクダウン	링크 다운	鏈路中斷 | Link down	链路 down | Link down
+net.link_flapping	link flapping | port flapping	флаппинг линка | моргание линка | флапает	リンクフラップ | フラッピング	링크 플래핑 | 플래핑	鏈路抖動 | 埠震盪	链路震荡 | 端口震荡 | 链路闪断
+net.nic	network interface card | NIC | network adapter	сетевая карта | сетевой адаптер | сетевуха | NIC	ネットワークカード | ネットワークアダプタ | NIC	네트워크 카드 | 랜카드 | NIC	網路卡 | 網卡 | 網路介面卡	网卡 | 网络适配器
+net.network_interface	network interface	сетевой интерфейс | сетевого интерфейса	ネットワークインターフェース	네트워크 인터페이스	網路介面	网络接口
+net.phy	PHY | PHY chip	PHY | PHY-чип	PHY | PHYチップ	PHY | PHY 칩	PHY | PHY 晶片	PHY | PHY 芯片
+net.mac_layer	MAC layer | MAC sublayer	MAC-уровень | подуровень MAC	MAC層 | MACサブレイヤ	MAC 계층	MAC 層	MAC 层
+net.sfp	SFP module | SFP | optical transceiver	SFP-модуль | SFP | оптический трансивер	SFPモジュール | 光トランシーバ	SFP 모듈 | 광 트랜시버	SFP 模組 | 光收發模組	SFP 模块 | 光模块
+net.fiber	optical fiber | fiber optic cable	оптоволокно | оптоволоконный кабель | оптический кабель	光ファイバ | 光ファイバー	광섬유 | 광케이블	光纖	光纤
+net.twisted_pair	twisted pair | Ethernet cable | patch cord	витая пара | патч-корд | патчкорд	ツイストペアケーブル | LANケーブル | パッチケーブル	트위스트 페어 | 랜선 | 패치 코드	雙絞線 | 網路線	双绞线 | 网线
+net.rj45	RJ45 | RJ45 connector	RJ45 | разъём RJ45	RJ45 | RJ45コネクタ	RJ45 | RJ45 커넥터	RJ45 | RJ45 接頭	RJ45 | 水晶头
+net.poe	PoE | Power over Ethernet	PoE | питание по Ethernet	PoE | イーサネット給電	PoE | 이더넷 전원 공급	PoE | 乙太網路供電	PoE | 以太网供电
+net.gigabit_ethernet	Gigabit Ethernet | 10 GbE | multi-gig	гигабитный Ethernet | гигабитка | гигабит	ギガビットイーサネット | 10GbE | マルチギガ	기가비트 이더넷 | 10GbE | 멀티기가	Gigabit 乙太網路 | 10GbE | Multi-Gig	千兆以太网 | 万兆以太网 | 2.5G 网口
+net.mbps	Mbps | megabits per second | Gbps	Мбит/с | мегабит в секунду | Гбит/с	Mbps | メガビット毎秒 | Gbps	Mbps | 메가비트 | Gbps	Mbps | Gbps	Mbps | 兆比特每秒 | Gbps
+net.pps	packets per second | PPS	пакетов в секунду | PPS	パケット毎秒 | PPS	초당 패킷 수 | PPS	每秒封包數 | PPS	每秒包数 | PPS
+net.port_security	port security	безопасность порта | port security	ポートセキュリティ	포트 보안	連接埠安全性	端口安全
+net.storm_control	storm control	контроль штормов | подавление штормов	ストームコントロール	스톰 컨트롤	風暴控制 | 廣播風暴控制	风暴控制 | 风暴抑制
+net.igmp_snooping	IGMP snooping	IGMP snooping | IGMP-снупинг	IGMPスヌーピング	IGMP 스누핑	IGMP 窺探 | IGMP snooping	IGMP 侦听 | IGMP snooping
+net.line_rate	line rate | wire speed	скорость линии | wire speed	ワイヤスピード | ラインレート	와이어 스피드 | 라인 레이트	線速	线速
+net.hardware_offload	hardware offload | hardware NAT	аппаратный оффлоад | оффлоад | аппаратный NAT	ハードウェアオフロード | ハードウェアNAT	하드웨어 오프로드 | 하드웨어 NAT	硬體卸載 | 硬體 NAT	硬件卸载 | 硬件 NAT
+net.wake_on_lan	Wake-on-LAN | WoL | magic packet	Wake-on-LAN | WoL | магический пакет	Wake-on-LAN | WoL | マジックパケット	Wake-on-LAN | WoL | 매직 패킷	網路喚醒 | WoL	网络唤醒 | WoL
+net.mac_randomization	MAC randomization | random MAC address	случайный MAC-адрес | рандомизация MAC	ランダムMACアドレス | MACアドレスのランダム化	MAC 주소 랜덤화 | 무작위 MAC	隨機 MAC 位址	随机 MAC 地址
+net.dns	DNS | Domain Name System	DNS | система доменных имён | днс	DNS | ドメインネームシステム	DNS | 도메인 네임 시스템	DNS | 網域名稱系統	DNS | 域名系统
+net.dns_server	DNS server	DNS-сервер | днс-сервер	DNSサーバー | DNSサーバ	DNS 서버	DNS 伺服器	DNS 服务器
+net.domain_name	domain name	доменное имя | домен | домена | домены	ドメイン名	도메인 이름 | 도메인 네임	網域名稱 | 網域	域名
+net.hostname	hostname | host name	имя хоста | хостнейм	ホスト名	호스트 이름 | 호스트명	主機名稱	主机名
+net.fqdn	FQDN | fully qualified domain name	FQDN | полное доменное имя	FQDN | 完全修飾ドメイン名	FQDN | 정규화된 도메인 이름	FQDN | 完整網域名稱	FQDN | 完全限定域名
+net.subdomain	subdomain	поддомен | субдомен	サブドメイン	하위 도메인 | 서브도메인	子網域	子域名
+net.tld	top-level domain | TLD	домен верхнего уровня | TLD	トップレベルドメイン | TLD	최상위 도메인 | TLD	頂級網域 | TLD	顶级域名 | TLD
+net.dns_resolver	DNS resolver | recursive resolver	DNS-резолвер | резолвер | рекурсивный резолвер	DNSリゾルバ | フルリゾルバ	DNS 리졸버	DNS 解析器 | 遞迴解析器	DNS 解析器 | 递归解析器
+net.name_resolution	name resolution | DNS resolution	разрешение имён | резолвинг	名前解決	이름 해석 | 도메인 해석	名稱解析 | DNS 解析	域名解析 | DNS 解析
+net.authoritative_dns	authoritative name server | authoritative DNS	авторитетный DNS-сервер | авторитативный сервер	権威DNSサーバー | 権威サーバー	권한 있는 네임 서버 | 권한 DNS	權威名稱伺服器 | 權威 DNS	权威域名服务器 | 权威 DNS
+net.dns_record	DNS record | resource record	DNS-запись | ресурсная запись	DNSレコード | リソースレコード	DNS 레코드	DNS 記錄	DNS 记录 | 资源记录
+net.a_record	A record | AAAA record	A-запись | AAAA-запись	Aレコード | AAAAレコード	A 레코드 | AAAA 레코드	A 記錄 | AAAA 記錄	A 记录 | AAAA 记录
+net.cname	CNAME record | CNAME | canonical name	CNAME-запись | CNAME	CNAMEレコード | CNAME	CNAME 레코드 | CNAME	CNAME 記錄 | 別名記錄	CNAME 记录 | 别名记录
+net.mx_record	MX record	MX-запись	MXレコード	MX 레코드	MX 記錄	MX 记录
+net.ptr_record	PTR record | reverse DNS	PTR-запись | обратный DNS | обратная зона	PTRレコード | 逆引き	PTR 레코드 | 역방향 DNS	PTR 記錄 | 反向 DNS	PTR 记录 | 反向解析
+net.dns_zone	DNS zone | zone file	DNS-зона | зона DNS | файл зоны	DNSゾーン | ゾーンファイル	DNS 영역 | 존 파일	DNS 區域 | 區域檔	DNS 区域 | 区域文件
+net.dns_cache	DNS cache	DNS-кэш | кэш DNS	DNSキャッシュ	DNS 캐시	DNS 快取	DNS 缓存
+net.dns_lookup	DNS lookup | DNS query	DNS-запрос | DNS-лукап	DNS問い合わせ | DNSクエリ | DNSルックアップ	DNS 조회 | DNS 쿼리	DNS 查詢	DNS 查询
+net.mdns	mDNS | multicast DNS	mDNS | многоадресный DNS	mDNS | マルチキャストDNS	mDNS | 멀티캐스트 DNS	mDNS | 多播 DNS	mDNS | 组播 DNS
+net.dns_hijacking	DNS hijacking	перехват DNS | подмена DNS	DNSハイジャック	DNS 하이재킹	DNS 劫持	DNS 劫持
+net.dns_spoofing	DNS spoofing | DNS cache poisoning	DNS-спуфинг | отравление DNS-кэша	DNSスプーフィング | DNSキャッシュポイズニング	DNS 스푸핑 | DNS 캐시 포이즈닝	DNS 欺騙 | DNS 快取汙染	DNS 欺骗 | DNS 缓存投毒 | DNS 污染
+net.ddns	dynamic DNS | DDNS	динамический DNS | DDNS	ダイナミックDNS | DDNS	동적 DNS | DDNS	動態 DNS | DDNS	动态 DNS | DDNS
+net.dns_forwarder	DNS forwarder | DNS relay | DNS proxy	DNS-форвардер | DNS-ретранслятор | DNS-прокси	DNSフォワーダ | DNSプロキシ	DNS 포워더 | DNS 프록시	DNS 轉送器 | DNS 代理	DNS 转发器 | DNS 代理
+net.hosts_file	hosts file	файл hosts	hostsファイル	hosts 파일	hosts 檔案	hosts 文件
+net.dhcp	DHCP | Dynamic Host Configuration Protocol	DHCP | протокол DHCP	DHCP	DHCP	DHCP | 動態主機設定協定	DHCP | 动态主机配置协议
+net.dhcp_server	DHCP server	DHCP-сервер | сервер DHCP	DHCPサーバー | DHCPサーバ	DHCP 서버	DHCP 伺服器	DHCP 服务器
+net.dhcp_client	DHCP client	DHCP-клиент	DHCPクライアント	DHCP 클라이언트	DHCP 用戶端	DHCP 客户端
+net.dhcp_lease	DHCP lease | lease time	аренда DHCP | аренда адреса | время аренды	DHCPリース | リース期間	DHCP 임대 | 임대 시간	DHCP 租約 | 租約時間	DHCP 租约 | 租期
+net.dhcp_pool	DHCP pool | address pool	пул адресов | DHCP-пул | пул DHCP	アドレスプール | DHCPプール	주소 풀 | DHCP 풀	位址池 | DHCP 位址池	地址池 | DHCP 地址池
+net.dhcp_reservation	DHCP reservation | static lease | static DHCP	резервирование адреса | статическая аренда | привязка IP к MAC	DHCP予約 | 固定割り当て	DHCP 예약 | 고정 할당	DHCP 保留 | 靜態租約	DHCP 保留 | 静态分配 | IP 与 MAC 绑定
+net.dhcp_relay	DHCP relay | DHCP helper	DHCP-релей | ретранслятор DHCP | DHCP relay	DHCPリレー	DHCP 릴레이	DHCP 中繼	DHCP 中继
+net.dhcp_option	DHCP option | DHCP options	опция DHCP | опции DHCP	DHCPオプション	DHCP 옵션	DHCP 選項	DHCP 选项
+net.dhcp_snooping	DHCP snooping	DHCP snooping | DHCP-снупинг	DHCPスヌーピング	DHCP 스누핑	DHCP 窺探 | DHCP snooping	DHCP 侦听 | DHCP snooping
+net.rogue_dhcp	rogue DHCP server	чужой DHCP-сервер | левый DHCP | несанкционированный DHCP-сервер	不正DHCPサーバー	불법 DHCP 서버	非法 DHCP 伺服器 | 惡意 DHCP	私设 DHCP 服务器 | 非法 DHCP
+net.prefix_delegation	prefix delegation | DHCPv6-PD	делегирование префикса | DHCPv6-PD	プレフィックス委任 | DHCPv6-PD	프리픽스 위임 | DHCPv6-PD	前綴委派 | DHCPv6-PD	前缀委派 | 前缀代理 | DHCPv6-PD
+net.ip_conflict	IP address conflict | duplicate IP	конфликт IP-адресов | дубликат IP	IPアドレスの競合 | IP重複	IP 주소 충돌 | IP 충돌	IP 位址衝突 | IP 衝突	IP 地址冲突 | IP 冲突
+net.nat	NAT | network address translation	NAT | трансляция сетевых адресов | нат | ната	NAT | ネットワークアドレス変換	NAT | 네트워크 주소 변환	NAT | 網路位址轉譯	NAT | 网络地址转换
+net.snat	source NAT | SNAT	SNAT | NAT источника	送信元NAT | SNAT	소스 NAT | SNAT	來源 NAT | SNAT	源 NAT | SNAT
+net.dnat	destination NAT | DNAT	DNAT | NAT назначения	宛先NAT | DNAT	목적지 NAT | DNAT	目的 NAT | DNAT	目的 NAT | DNAT
+net.pat	PAT | NAT overload | IP masquerading	PAT | маскарадинг | NAT-маскарадинг	IPマスカレード | NAPT | PAT	PAT | IP 마스커레이드	PAT | IP 偽裝	PAT | IP 伪装
+net.cgnat	carrier-grade NAT | CGNAT | CGN	CGNAT | провайдерский NAT | NAT провайдера	キャリアグレードNAT | CGNAT	캐리어급 NAT | CGNAT	電信級 NAT | CGNAT	运营商级 NAT | CGNAT
+net.double_nat	double NAT	двойной NAT	二重NAT | ダブルNAT	이중 NAT	雙重 NAT	双重 NAT
+net.nat_traversal	NAT traversal | NAT-T	обход NAT | NAT-T	NATトラバーサル | NAT越え	NAT 트래버설 | NAT 통과	NAT 穿越 | NAT-T	NAT 穿越 | NAT 穿透
+net.hole_punching	UDP hole punching | hole punching	UDP hole punching | пробивание NAT	UDPホールパンチング | ホールパンチング	UDP 홀 펀칭 | 홀 펀칭	UDP 打洞	UDP 打洞
+net.nat_table	NAT table | connection tracking | conntrack	таблица NAT | conntrack | трекинг соединений	NATテーブル | コネクショントラッキング	NAT 테이블 | 연결 추적	NAT 表 | 連線追蹤	NAT 表 | 连接跟踪
+net.nat_type	NAT type | full cone NAT | symmetric NAT	тип NAT | симметричный NAT	NATタイプ | フルコーンNAT | シンメトリックNAT	NAT 유형 | 풀콘 NAT | 대칭형 NAT	NAT 類型 | 全錐型 NAT | 對稱型 NAT	NAT 类型 | 全锥型 NAT | 对称型 NAT
+net.stun_turn	STUN server | TURN server	STUN-сервер | TURN-сервер	STUNサーバー | TURNサーバー	STUN 서버 | TURN 서버	STUN 伺服器 | TURN 伺服器	STUN 服务器 | TURN 服务器
+net.hairpin_nat	NAT loopback | hairpin NAT | NAT reflection	NAT loopback | NAT hairpin | петлевой NAT	NATループバック | ヘアピンNAT	NAT 루프백 | 헤어핀 NAT	NAT 迴流 | NAT loopback	NAT 回流 | NAT 环回
+net.vpn	VPN | virtual private network	VPN | впн | виртуальная частная сеть	VPN | 仮想プライベートネットワーク	VPN | 가상 사설망	VPN | 虛擬私人網路	VPN | 虚拟专用网络
+net.vpn_tunnel	VPN tunnel | tunneling	VPN-туннель | туннелирование	VPNトンネル | トンネリング	VPN 터널 | 터널링	VPN 通道 | VPN 隧道 | 穿隧	VPN 隧道 | 隧道技术
+net.site_to_site	site-to-site VPN	VPN типа сайт-сайт | site-to-site VPN | межсайтовый VPN	サイト間VPN | 拠点間VPN	사이트 간 VPN	站對站 VPN	站点到站点 VPN | 站点间 VPN
+net.remote_access_vpn	remote access VPN | client VPN	VPN удалённого доступа | клиентский VPN	リモートアクセスVPN	원격 접속 VPN	遠端存取 VPN	远程访问 VPN
+net.security_association	security association | IPsec SA	ассоциация безопасности | IPsec SA	セキュリティアソシエーション | IPsec SA	보안 연관 | IPsec SA	安全關聯 | IPsec SA	安全联盟 | IPsec SA
+net.pre_shared_key	pre-shared key | PSK	общий ключ | предварительно согласованный ключ | PSK	事前共有鍵 | PSK	사전 공유 키 | PSK	預先共用金鑰 | PSK	预共享密钥 | PSK
+net.gre	GRE tunnel	GRE-туннель	GREトンネル	GRE 터널	GRE 通道	GRE 隧道
+net.split_tunneling	split tunneling	раздельное туннелирование | сплит-туннелинг	スプリットトンネリング	스플릿 터널링	分割通道	分离隧道
+net.full_tunnel	full tunnel | full-tunnel VPN	полный туннель | весь трафик через VPN	フルトンネル	풀 터널	全通道	全隧道
+net.overlay_network	overlay network	оверлейная сеть | overlay-сеть	オーバーレイネットワーク	오버레이 네트워크	覆疊網路 | 疊加網路	覆盖网络 | 叠加网络 | Overlay 网络
+net.underlay_network	underlay network	андерлей | underlay-сеть	アンダーレイネットワーク	언더레이 네트워크	底層網路 | Underlay 網路	底层网络 | Underlay 网络
+net.sdn	SDN | software-defined networking	SDN | программно-определяемая сеть	SDN | ソフトウェア定義ネットワーク	SDN | 소프트웨어 정의 네트워크	SDN | 軟體定義網路	SDN | 软件定义网络
+net.zero_trust	zero trust network | zero trust	нулевое доверие | zero trust	ゼロトラスト	제로 트러스트	零信任	零信任
+net.qos	QoS	QoS | приоритизация трафика	QoS | 優先制御	QoS	QoS	QoS
+net.traffic_shaping	traffic shaping	шейпинг | шейпинг трафика | шейпер	トラフィックシェーピング | シェーピング	트래픽 셰이핑 | 셰이핑	流量整形	流量整形
+net.traffic_policing	traffic policing | rate limiting	полисинг | полисер | ограничение полосы	ポリシング | 帯域制限	폴리싱 | 대역폭 제한	流量監管 | 頻寬限制	流量监管 | 带宽限制
+net.cos	802.1p priority | CoS	CoS | приоритет 802.1p	CoS | 802.1p優先度	CoS | 802.1p 우선순위	CoS | 802.1p 優先權	CoS | 802.1p 优先级
+net.priority_queue	priority queuing | strict priority	приоритетная очередь | строгий приоритет	優先キュー | 完全優先度制御	우선순위 큐 | 엄격 우선순위	優先佇列 | 嚴格優先權	优先级队列 | 严格优先级
+net.bufferbloat	bufferbloat	буферблоат | раздувание буферов	バッファブロート	버퍼블로트	緩衝區膨脹 | Bufferbloat	缓冲区膨胀 | Bufferbloat
+net.burst	traffic burst | burst size	всплеск трафика | размер всплеска | бёрст	バースト | バーストサイズ	버스트 | 버스트 크기	突發流量 | 突發大小	突发流量 | 突发尺寸
+net.traffic_classification	traffic classification	классификация трафика	トラフィック分類	트래픽 분류	流量分類	流量分类
+net.dpi	deep packet inspection	глубокая инспекция пакетов | DPI-анализ	ディープパケットインスペクション	심층 패킷 검사	深度封包檢測	深度包检测
+net.network_traffic	network traffic	сетевой трафик | трафик | трафика	ネットワークトラフィック | トラフィック	네트워크 트래픽 | 트래픽	網路流量	网络流量
+net.packet_drop	packet drop | dropped packets	дропы | дроп пакетов | отброшенные пакеты	パケット破棄 | パケットドロップ	패킷 드롭	丟包 | 封包丟棄	报文丢弃 | 丢弃报文
+net.bit_error_rate	bit error rate | BER | packet error rate	коэффициент битовых ошибок | BER | доля ошибочных пакетов	ビット誤り率 | BER | パケット誤り率	비트 오류율 | BER | 패킷 오류율	位元錯誤率 | BER | 封包錯誤率	误码率 | BER | 误包率
+net.firewall	firewall	файрвол | фаервол | брандмауэр | межсетевой экран	ファイアウォール	방화벽	防火牆	防火墙
+net.stateful_firewall	stateful firewall | stateful inspection	файрвол с отслеживанием состояния | stateful-инспекция	ステートフルファイアウォール | ステートフルインスペクション	상태 기반 방화벽 | 스테이트풀 인스펙션	狀態式防火牆 | 狀態檢測	状态防火墙 | 状态检测
+net.acl	access control list | ACL	ACL | список контроля доступа | аксесс-лист	ACL | アクセス制御リスト	ACL | 접근 제어 목록	ACL | 存取控制清單	ACL | 访问控制列表
+net.packet_filter	packet filtering | packet filter	фильтрация пакетов	パケットフィルタリング	패킷 필터링	封包過濾	包过滤 | 报文过滤
+net.dmz	DMZ host | DMZ zone	DMZ-хост | зона DMZ	DMZホスト	DMZ 호스트	DMZ 主機	DMZ 主机
+net.ids	intrusion detection system | IDS	система обнаружения вторжений | IDS	侵入検知システム | IDS	침입 탐지 시스템 | IDS	入侵偵測系統 | IDS	入侵检测系统 | IDS
+net.ips	intrusion prevention system	система предотвращения вторжений	侵入防止システム	침입 방지 시스템	入侵防禦系統	入侵防御系统
+net.ddos	DDoS attack | DDoS | denial of service	DDoS-атака | DDoS | ддос | дудос	DDoS攻撃 | DDoS	DDoS 공격 | 디도스	DDoS 攻擊 | 分散式阻斷服務攻擊	DDoS 攻击 | 分布式拒绝服务攻击
+net.syn_flood	SYN flood	SYN-флуд	SYNフラッド攻撃 | SYNフラッド	SYN 플러드	SYN 洪水攻擊 | SYN Flood	SYN 洪水攻击 | SYN Flood
+net.spoofing	IP spoofing | MAC spoofing	IP-спуфинг | подмена IP | подмена MAC	IPスプーフィング | MACスプーフィング	IP 스푸핑 | MAC 스푸핑	IP 偽造 | MAC 偽造	IP 欺骗 | MAC 欺骗
+net.mitm	man-in-the-middle attack | MITM	атака «человек посередине» | MITM | атака посредника	中間者攻撃 | MITM	중간자 공격 | MITM	中間人攻擊 | MITM	中间人攻击 | MITM
+net.arp_spoofing	ARP spoofing | ARP poisoning	ARP-спуфинг | отравление ARP-кэша	ARPスプーフィング | ARPポイズニング	ARP 스푸핑	ARP 欺騙 | ARP 汙染	ARP 欺骗 | ARP 投毒
+net.mac_flooding	MAC flooding attack	MAC-флуд | переполнение MAC-таблицы	MACフラッディング	MAC 플러딩	MAC 洪泛攻擊	MAC 泛洪攻击
+net.proxy_server	proxy server | web proxy	прокси | прокси-сервер	プロキシサーバー | プロキシ	프록시 서버 | 프록시	代理伺服器 | Proxy 伺服器	代理服务器
+net.reverse_proxy	reverse proxy	обратный прокси | реверс-прокси	リバースプロキシ	리버스 프록시	反向代理	反向代理
+net.load_balancer	load balancer | load balancing	балансировщик нагрузки | балансировка нагрузки | балансер	ロードバランサー | 負荷分散	로드 밸런서 | 부하 분산	負載平衡器 | 負載平衡	负载均衡器 | 负载均衡
+net.nac	network access control | NAC	контроль сетевого доступа | NAC	ネットワークアクセス制御 | NAC	네트워크 접근 제어 | NAC	網路存取控制 | NAC	网络准入控制 | NAC
+net.radius_server	RADIUS server	RADIUS-сервер | радиус-сервер	RADIUSサーバー	RADIUS 서버	RADIUS 伺服器	RADIUS 服务器
+net.radius_accounting	RADIUS accounting	RADIUS-аккаунтинг | учёт RADIUS	RADIUSアカウンティング	RADIUS 어카운팅	RADIUS 計費 | RADIUS 帳務	RADIUS 计费
+net.dot1x	802.1X | port-based authentication	802.1X | аутентификация 802.1X	IEEE 802.1X | 802.1X認証	802.1X 인증	802.1X 認證	802.1X 认证
+net.captive_portal	captive portal	captive portal | портал авторизации | страница авторизации	キャプティブポータル	캡티브 포털 | 종속 포털	強制入口網頁 | Captive Portal	强制门户 | Portal 认证
+net.mac_filtering	MAC filtering | MAC address filter	фильтрация по MAC | MAC-фильтр	MACアドレスフィルタリング	MAC 필터링	MAC 位址過濾	MAC 地址过滤
+net.cdn	CDN | content delivery network	CDN | сеть доставки контента	CDN | コンテンツデリバリーネットワーク	CDN | 콘텐츠 전송 네트워크	CDN | 內容傳遞網路	CDN | 内容分发网络
+net.ntp	NTP | network time protocol	NTP | протокол NTP	NTP | 時刻同期	NTP | 시간 동기화	NTP | 網路時間協定	NTP | 网络时间协议
+net.packet_capture	packet capture | pcap | packet sniffer	захват пакетов | дамп трафика | сниффер | снять дамп	パケットキャプチャ | スニファ	패킷 캡처 | 스니퍼	封包擷取 | 封包側錄 | 抓封包	抓包 | 数据包捕获 | 嗅探器
+net.promiscuous_mode	promiscuous mode	неразборчивый режим | promiscuous mode	プロミスキャスモード	프로미스큐어스 모드 | 무차별 모드	混雜模式	混杂模式
+net.speed_test	speed test | internet speed test	спидтест | замер скорости интернета	速度測定 | スピードテスト	속도 측정 | 인터넷 속도 테스트	網速測試	网速测试
+net.cable_modem	cable modem | modem	модем | кабельный модем | модема	モデム | ケーブルモデム	모뎀 | 케이블 모뎀	數據機 | 纜線數據機	调制解调器 | 有线调制解调器
+net.ont	ONT | optical network terminal | fiber modem	оптический терминал | ONT | GPON-терминал	ONU | 光回線終端装置 | ONT	광 단말 | ONT	光纖數據機 | ONT	光猫 | ONT | 光网络终端
+net.home_router	home router | Wi-Fi router | wireless router	домашний роутер | Wi-Fi роутер | вайфай-роутер	無線LANルーター | Wi-Fiルーター | 家庭用ルーター	공유기 | 무선 공유기 | 와이파이 공유기	無線路由器 | Wi-Fi 分享器 | 分享器	无线路由器 | Wi-Fi 路由器 | 家用路由器
+net.base_station	cellular base station | eNodeB | gNodeB	базовая станция | eNodeB | gNodeB	基地局 | eNodeB | gNodeB	기지국 | eNodeB | gNodeB	基地台 | 基站	基站 | eNodeB | gNodeB
+net.wifi	Wi-Fi | WiFi | wireless LAN | WLAN	Wi-Fi | вайфай | вай-фай | беспроводная сеть | WLAN	Wi-Fi | 無線LAN | ワイファイ | WLAN	와이파이 | Wi-Fi | 무선 랜 | WLAN	Wi-Fi | 無線網路 | WLAN	Wi-Fi | 无线网络 | WLAN | 无线局域网
+net.access_point	access point | wireless access point	точка доступа | точки доступа | точку доступа | AP	アクセスポイント | 無線AP | AP	액세스 포인트 | 무선 AP | AP	無線基地台 | 存取點 | AP	无线接入点 | 接入点 | AP
+net.sta	STA | wireless client | wireless station	STA | беспроводной клиент | беспроводные клиенты	STA | 無線クライアント | 無線端末	STA | 무선 클라이언트 | 무선 단말	STA | 無線用戶端 | 無線終端	STA | 无线终端 | 无线客户端
+net.ssid	SSID | network name | Wi-Fi name	SSID | имя сети | имя вайфая	SSID | ネットワーク名	SSID | 네트워크 이름 | 와이파이 이름	SSID | 網路名稱 | Wi-Fi 名稱	SSID | 网络名称 | Wi-Fi 名称
+net.hidden_ssid	hidden SSID | hidden network	скрытый SSID | скрытая сеть	ステルスSSID | 非公開SSID	숨겨진 SSID | 숨김 SSID	隱藏 SSID	隐藏 SSID
+net.bss	BSS | basic service set	BSS | базовый набор услуг	BSS | 基本サービスセット	BSS | 기본 서비스 세트	BSS | 基本服務集	BSS | 基本服务集
+net.ess	ESS | extended service set	ESS | расширенный набор услуг	ESS | 拡張サービスセット	ESS | 확장 서비스 세트	ESS | 擴展服務集	ESS | 扩展服务集
+net.beacon	beacon frame | beacon interval	бикон | бикона | биконы | маячковый кадр | интервал биконов	ビーコン | ビーコン間隔	비컨 | 비컨 간격	信標 | 信標間隔 | Beacon	信标 | 信标间隔 | Beacon 帧
+net.probe_request	probe request | probe response	probe request | probe-запрос | пробный запрос	プローブ要求 | プローブリクエスト	프로브 요청 | 프로브 리퀘스트	探測請求 | Probe Request	探测请求 | Probe Request
+net.association	Wi-Fi association | association request	ассоциация с точкой доступа | ассоциироваться	アソシエーション | アソシエーション要求	어소시에이션 | 어소시에이션 요청	Wi-Fi 關聯 | 關聯請求	Wi-Fi 关联 | 关联请求
+net.deauthentication	deauthentication | deauth	деаутентификация | деаут | деавторизация	認証解除 | ディーオース	인증 해제 | 디어스	解除認證 | Deauth	解除认证 | 去认证 | Deauth
+net.disassociation	disassociation	разрыв ассоциации | disassoc	アソシエーション解除	디스어소시에이션	解除關聯	解除关联 | 去关联
+net.roaming	Wi-Fi roaming | client roaming	бесшовный роуминг | Wi-Fi роуминг | роуминг между точками	Wi-Fiローミング | 無線ローミング	와이파이 로밍 | 무선 로밍	無線漫遊 | Wi-Fi 漫遊	无线漫游 | Wi-Fi 漫游
+net.fast_roaming	fast roaming | fast BSS transition | 802.11r	быстрый роуминг | 802.11r | FT-роуминг	高速ローミング | 802.11r	빠른 로밍 | 고속 로밍 | 802.11r	快速漫遊 | 802.11r	快速漫游 | 802.11r
+net.neighbor_report	802.11k | neighbor report	802.11k | отчёт о соседях	802.11k | ネイバーレポート	802.11k | 이웃 보고서	802.11k | 鄰近報告	802.11k | 邻居报告
+net.band_steering	band steering	бэнд стиринг | band steering | управление диапазонами	バンドステアリング	밴드 스티어링	頻段導向 | 頻段引導	频段引导 | 双频优选
+net.client_steering	client steering | load steering	стиринг клиентов	クライアントステアリング	클라이언트 스티어링	用戶端導向	客户端引导
+net.sticky_client	sticky client	липкий клиент | залипающий клиент | sticky client	スティッキークライアント	스티키 클라이언트	黏滯用戶端 | Sticky Client	粘滞客户端 | Sticky Client
+net.roaming_threshold	roaming threshold | RSSI threshold	порог роуминга | порог RSSI	ローミングしきい値 | RSSIしきい値	로밍 임계값 | RSSI 임계값	漫遊門檻 | RSSI 門檻	漫游阈值 | RSSI 阈值
+net.kick_off	low-RSSI disconnect | client kick-off	отключение клиента по низкому сигналу | kick-off клиента	低RSSI切断	저신호 클라이언트 강제 해제	弱訊號剔除 | 低訊號踢除	弱信号剔除 | 低 RSSI 踢出
+net.mesh	mesh network | Wi-Fi mesh | mesh system	меш-сеть | меш | mesh-система	メッシュWi-Fi | メッシュネットワーク	메시 네트워크 | 메시 와이파이	Mesh 網路 | 網狀網路	Mesh 网络 | 网状网络
+net.backhaul	backhaul | wireless backhaul	бэкхол | бэкхола | транспортный канал	バックホール	백홀	回傳鏈路 | Backhaul	回传链路 | Backhaul
+net.fronthaul	fronthaul	фронтхол	フロントホール	프론트홀	前傳 | Fronthaul	前传 | Fronthaul
+net.repeater	Wi-Fi repeater | range extender | Wi-Fi extender	репитер | повторитель | усилитель Wi-Fi | ретранслятор	中継器 | 無線中継機	리피터 | 와이파이 증폭기 | 무선 확장기	中繼器 | 訊號延伸器 | Wi-Fi 延伸器	中继器 | 信号扩展器 | 无线扩展器
+net.client_mode	client mode | station mode	режим клиента | клиентский режим	クライアントモード | 子機モード	클라이언트 모드	用戶端模式	客户端模式
+net.wireless_bridge	wireless bridge | point-to-point wireless link	беспроводной мост | радиомост	無線ブリッジ	무선 브리지	無線橋接	无线网桥
+net.ap_isolation	AP isolation | wireless client isolation	изоляция беспроводных клиентов | AP isolation	APアイソレーション | プライバシーセパレータ	AP 격리 | 무선 클라이언트 격리	AP 隔離 | 無線用戶端隔離	AP 隔离 | 无线客户端隔离
+net.wifi_channel	Wi-Fi channel | wireless channel	канал Wi-Fi | радиоканал | беспроводной канал	無線チャネル | Wi-Fiチャネル	무선 채널 | 와이파이 채널	無線頻道 | Wi-Fi 頻道	无线信道 | 信道
+net.channel_width	channel width | channel bandwidth	ширина канала	チャネル幅	채널 폭 | 채널 대역폭	頻道寬度	信道带宽 | 信道宽度
+net.channel_bonding	channel bonding	объединение каналов | бондинг каналов	チャネルボンディング	채널 본딩	頻道綁定 | 通道綁定	信道绑定
+net.channel_utilization	channel utilization | channel load	загрузка канала | утилизация эфира	チャネル使用率	채널 사용률	頻道使用率 | 頻道利用率	信道利用率 | 信道占用率
+net.co_channel	co-channel interference	соканальная помеха | интерференция на одном канале	同一チャネル干渉	동일 채널 간섭	同頻干擾	同频干扰
+net.adjacent_channel	adjacent-channel interference	помеха от соседнего канала | межканальная помеха	隣接チャネル干渉	인접 채널 간섭	鄰頻干擾	邻频干扰
+net.rf_interference	RF interference | radio interference	радиопомехи | помехи в эфире	電波干渉 | 無線干渉	전파 간섭 | 무선 간섭	無線干擾 | 射頻干擾	无线干扰 | 射频干扰
+net.auto_channel	automatic channel selection | auto channel	автовыбор канала | автоматический выбор канала	自動チャネル選択 | オートチャネル	자동 채널 선택	自動選擇頻道 | 自動頻道	自动信道选择 | 自动选信道
+net.wifi_scan	channel scan | active scan | passive scan	сканирование сетей | активное сканирование | пассивное сканирование	チャネルスキャン | アクティブスキャン | パッシブスキャン	채널 스캔 | 액티브 스캔 | 패시브 스캔	頻道掃描 | 主動掃描 | 被動掃描	信道扫描 | 主动扫描 | 被动扫描
+net.site_survey	site survey | Wi-Fi site survey	радиообследование | сайт-сервей	サイトサーベイ | 電波調査	사이트 서베이 | 무선 환경 조사	場地勘測 | 無線環境勘查	现场勘测 | 无线勘测
+net.dfs	dynamic frequency selection | DFS channel	DFS-канал | динамический выбор частоты	DFSチャネル | 動的周波数選択	DFS 채널 | 동적 주파수 선택	DFS 頻道 | 動態頻率選擇	DFS 信道 | 动态频率选择
+net.radar_detection	radar detection | radar event	обнаружение радара | радарное событие	レーダー検出 | レーダー検知	레이더 감지	雷達偵測	雷达检测
+net.cac	channel availability check	проверка доступности канала | CAC-период	チャネル可用性チェック | CAC期間	채널 가용성 검사	頻道可用性檢查	信道可用性检查
+net.tpc	transmit power control | TPC	управление мощностью передачи | TPC	送信電力制御 | TPC	송신 전력 제어 | TPC	傳輸功率控制 | TPC	发射功率控制 | TPC
+net.tx_power	transmit power | Tx power	мощность передатчика | мощность передачи	送信出力 | 送信電力	송신 출력 | 송신 전력	發射功率 | 傳輸功率	发射功率
+net.eirp	EIRP | equivalent isotropic radiated power	ЭИИМ | EIRP	EIRP | 等価等方放射電力	EIRP | 등가 등방성 복사 전력	EIRP | 等效全向輻射功率	EIRP | 等效全向辐射功率
+net.regulatory_domain	regulatory domain	регуляторный домен | регион Wi-Fi	規制ドメイン | 電波法の地域設定	규제 도메인	法規區域 | 法規網域	管制域 | 法规区域
+net.frequency_band	frequency band | 2.4 GHz band | 5 GHz band | 6 GHz band	частотный диапазон | диапазон 2,4 ГГц | диапазон 5 ГГц | диапазон 6 ГГц	周波数帯 | 2.4GHz帯 | 5GHz帯 | 6GHz帯	주파수 대역 | 2.4GHz 대역 | 5GHz 대역 | 6GHz 대역	頻段 | 2.4GHz 頻段 | 5GHz 頻段 | 6GHz 頻段	频段 | 2.4GHz 频段 | 5GHz 频段 | 6GHz 频段
+net.dual_band	dual-band | tri-band	двухдиапазонный | трёхдиапазонный	デュアルバンド | トライバンド	듀얼 밴드 | 트라이 밴드	雙頻 | 三頻	双频 | 三频
+net.ism_band	ISM band	ISM-диапазон | диапазон ISM	ISMバンド	ISM 대역	ISM 頻段	ISM 频段
+net.rssi	RSSI | signal strength	RSSI | уровень сигнала | сила сигнала	RSSI | 受信信号強度 | 電波強度	RSSI | 신호 세기 | 수신 신호 강도	RSSI | 訊號強度	RSSI | 信号强度
+net.snr	SNR | signal-to-noise ratio	SNR | отношение сигнал/шум | соотношение сигнал-шум	SN比 | SNR | 信号対雑音比	SNR | 신호 대 잡음비	SNR | 訊噪比	SNR | 信噪比
+net.noise_floor	noise floor	шумовой порог | noise floor	ノイズフロア	노이즈 플로어	底噪 | 雜訊底限	底噪 | 噪声底
+net.mcs	MCS | MCS index | modulation and coding scheme	MCS | индекс MCS | схема модуляции и кодирования	MCS | MCSインデックス | 変調符号化方式	MCS | MCS 인덱스	MCS | MCS 索引 | 調變編碼方案	MCS | MCS 索引 | 调制编码方案
+net.phy_rate	PHY rate | data rate	канальная скорость | PHY-скорость	PHYレート | 物理レート	PHY 속도 | 물리 속도	PHY 速率 | 實體速率	PHY 速率 | 物理速率 | 协商速率
+net.rate_adaptation	rate adaptation | rate control	адаптация скорости | рейт-контроль	レート適応 | レート制御	전송률 적응 | 레이트 제어	速率自適應 | 速率調整	速率自适应 | 速率控制
+net.qam	QAM modulation | QAM | 1024-QAM | 4096-QAM	QAM-модуляция | QAM | 1024-QAM | 4096-QAM	QAM変調 | QAM | 1024-QAM | 4096-QAM	QAM 변조 | QAM | 1024-QAM | 4096-QAM	QAM 調變 | QAM | 1024-QAM | 4096-QAM	QAM 调制 | QAM | 1024-QAM | 4096-QAM
+net.resource_unit	resource unit	ресурсный блок | ресурсная единица	リソースユニット	리소스 유닛	資源單元	资源单元
+net.spatial_stream	spatial stream | spatial streams | NSS	пространственный поток | пространственные потоки | NSS	空間ストリーム | NSS	공간 스트림 | NSS	空間串流 | NSS	空间流 | NSS
+net.beamforming	beamforming	бимформинг | формирование луча	ビームフォーミング	빔포밍	波束成形 | 波束賦形	波束成形 | 波束赋形
+net.sounding	channel sounding | NDP sounding	зондирование канала	チャネルサウンディング	채널 사운딩	頻道探測 | 通道探測	信道探测
+net.csi	channel state information	информация о состоянии канала | CSI-данные	チャネル状態情報	채널 상태 정보	通道狀態資訊	信道状态信息
+net.guard_interval	guard interval | short guard interval	защитный интервал | короткий защитный интервал	ガードインターバル	가드 인터벌 | 보호 구간	保護間隔	保护间隔
+net.bss_coloring	BSS coloring | BSS color	BSS coloring | окраска BSS | цвет BSS	BSSカラーリング	BSS 컬러링	BSS 著色	BSS 着色
+net.twt	target wake time | TWT	TWT | целевое время пробуждения	TWT | ターゲットウェイクタイム	TWT | 목표 기상 시간	TWT | 目標喚醒時間	TWT | 目标唤醒时间
+net.power_save	802.11 power save | PS-Poll | U-APSD	PS-Poll | U-APSD | энергосбережение 802.11	PS-Poll | U-APSD | 802.11省電力	PS-Poll | U-APSD | 802.11 절전	PS-Poll | U-APSD | 802.11 省電	PS-Poll | U-APSD | 802.11 节能
+net.dtim	DTIM | DTIM interval	DTIM | интервал DTIM	DTIM | DTIM間隔	DTIM | DTIM 간격	DTIM | DTIM 間隔	DTIM | DTIM 间隔
+net.rts_cts	RTS/CTS | RTS threshold	RTS/CTS | порог RTS	RTS/CTS | RTSしきい値	RTS/CTS | RTS 임계값	RTS/CTS | RTS 門檻	RTS/CTS | RTS 阈值
+net.cca	clear channel assessment | CCA threshold	оценка занятости канала | порог CCA	CCA | クリアチャネルアセスメント	CCA | 클리어 채널 평가	CCA | 空閒頻道評估	CCA | 空闲信道评估
+net.hidden_node	hidden node problem | hidden node	проблема скрытого узла | скрытый узел	隠れ端末問題 | 隠れ端末	히든 노드 문제 | 숨겨진 노드	隱藏節點問題 | 隱藏節點	隐藏节点问题 | 隐藏节点
+net.access_category	access category | WMM access category	категория доступа | категория доступа WMM	アクセスカテゴリ	액세스 카테고리	存取類別	访问类别 | 接入类别
+net.backoff	random backoff | backoff timer	случайная задержка доступа | бэкофф	ランダムバックオフ | バックオフ	랜덤 백오프 | 백오프	隨機退避	随机退避
+net.airtime_fairness	airtime fairness	airtime fairness | справедливое распределение эфира	エアタイムフェアネス	에어타임 공정성	空中時間公平性	空口时间公平 | 空口公平性
+net.ampdu	A-MPDU | frame aggregation	A-MPDU | агрегация кадров	A-MPDU | フレームアグリゲーション	A-MPDU | 프레임 집적	A-MPDU | 訊框聚合	A-MPDU | 帧聚合
+net.block_ack	Block Ack	блочное подтверждение | Block Ack	ブロックACK	블록 ACK	區塊確認 | Block Ack	块确认 | Block Ack
+net.retry_rate	retry rate | retransmission rate	процент повторов | доля ретрансмиссий	リトライ率 | 再送率	재전송률	重傳率	重传率
+net.mlo	MLO | multi-link operation	MLO | многоканальная работа	MLO | マルチリンクオペレーション	MLO | 멀티 링크 동작	MLO | 多鏈路操作	MLO | 多链路操作
+net.mld	MLD | multi-link device	MLD | многоканальное устройство	MLD | マルチリンクデバイス	MLD | 멀티 링크 디바이스	MLD | 多鏈路裝置	MLD | 多链路设备
+net.management_frame	management frame | control frame	кадр управления | управляющий кадр	管理フレーム | 制御フレーム	관리 프레임 | 제어 프레임	管理訊框 | 控制訊框	管理帧 | 控制帧
+net.wpa2	WPA2 | WPA2-Personal | WPA-PSK	WPA2 | WPA2-Personal | WPA-PSK	WPA2 | WPA2パーソナル | WPA-PSK	WPA2 | WPA2 개인 | WPA-PSK	WPA2 | WPA2 個人版 | WPA-PSK	WPA2 | WPA2 个人版 | WPA-PSK
+net.wpa_enterprise	WPA2-Enterprise | WPA Enterprise	WPA2-Enterprise | корпоративный WPA	WPA2エンタープライズ | WPAエンタープライズ	WPA2 엔터프라이즈	WPA2 企業級 | WPA 企業版	WPA2 企业级 | WPA 企业版
+net.four_way_handshake	4-way handshake | four-way handshake | EAPOL	четырёхэтапное рукопожатие | 4-way handshake | EAPOL	4ウェイハンドシェイク | EAPOL	4방향 핸드셰이크 | EAPOL	四向交握 | EAPOL	四次握手 | EAPOL
+net.ptk_gtk	PTK | GTK | group key	PTK | GTK | групповой ключ	PTK | GTK | グループ鍵	PTK | GTK | 그룹 키	PTK | GTK | 群組金鑰	PTK | GTK | 组密钥
+net.pmf	PMF | protected management frames | 802.11w	PMF | защищённые управляющие кадры | 802.11w	PMF | 管理フレーム保護 | 802.11w	PMF | 관리 프레임 보호 | 802.11w	PMF | 受保護管理訊框 | 802.11w	PMF | 受保护管理帧 | 802.11w
+net.wps	WPS | WPS button	WPS | кнопка WPS	WPS | WPSボタン	WPS | WPS 버튼	WPS | WPS 按鈕	WPS | WPS 按钮
+net.wifi_password	Wi-Fi password | passphrase | network key	пароль от Wi-Fi | пароль от вайфая | ключ сети	Wi-Fiパスワード | ネットワークキー	와이파이 비밀번호 | 네트워크 키	Wi-Fi 密碼 | 網路金鑰	Wi-Fi 密码 | 网络密钥
+net.open_network	open network | open Wi-Fi	открытая сеть | открытый Wi-Fi	オープンネットワーク | 暗号化なしWi-Fi	개방형 네트워크 | 오픈 와이파이	開放式網路 | 公開 Wi-Fi	开放网络 | 开放 Wi-Fi
+net.guest_network	guest network | guest Wi-Fi	гостевая сеть | гостевой Wi-Fi	ゲストネットワーク | ゲストWi-Fi	게스트 네트워크 | 게스트 와이파이	訪客網路 | 訪客 Wi-Fi	访客网络 | 访客 Wi-Fi
+net.hotspot	Wi-Fi hotspot | mobile hotspot | tethering	хотспот | раздача Wi-Fi | раздать интернет | режим модема	Wi-Fiスポット | テザリング | モバイルホットスポット	핫스팟 | 테더링 | 모바일 핫스팟	行動熱點 | 網路共用	移动热点 | 网络共享
+net.p2p	peer-to-peer | P2P	одноранговая сеть | P2P | пиринговая сеть	ピアツーピア | P2P	피어 투 피어 | P2P	點對點 | P2P	点对点 | P2P
+net.ad_hoc	ad hoc network | IBSS	ad-hoc сеть | IBSS	アドホックネットワーク | アドホックモード	애드혹 네트워크 | IBSS	隨意網路 | Ad-hoc 網路	自组网 | Ad-hoc 网络
+net.monitor_mode	monitor mode	режим мониторинга | monitor mode	モニターモード	모니터 모드	監聽模式	监听模式
+net.wifi_coverage	Wi-Fi coverage | wireless coverage	покрытие Wi-Fi | покрытие сети	Wi-Fiカバレッジ | 電波カバー範囲	와이파이 커버리지 | 무선 커버리지	Wi-Fi 覆蓋 | 訊號覆蓋	Wi-Fi 覆盖 | 信号覆盖
+net.dead_spot	Wi-Fi dead spot | coverage hole	зона без сигнала | дыра в покрытии	電波の死角 | デッドスポット	음영 지역 | 와이파이 음영	訊號死角	信号死角 | 信号盲区
+net.antenna	antenna | antennas	антенна | антенны | антенну	アンテナ	안테나	天線	天线
+net.antenna_gain	antenna gain | dBi	усиление антенны | коэффициент усиления антенны | dBi	アンテナ利得 | dBi	안테나 이득 | dBi	天線增益 | dBi	天线增益 | dBi
+net.omni_antenna	omnidirectional antenna	всенаправленная антенна | круговая антенна	無指向性アンテナ	무지향성 안테나 | 전방향 안테나	全向天線	全向天线
+net.directional_antenna	directional antenna | panel antenna	направленная антенна | панельная антенна	指向性アンテナ	지향성 안테나	定向天線	定向天线
+net.radiation_pattern	radiation pattern | antenna pattern	диаграмма направленности	放射パターン | 指向特性	방사 패턴	輻射場型 | 天線場型	辐射方向图 | 天线方向图
+net.polarization	antenna polarization	поляризация антенны	偏波 | アンテナ偏波	안테나 편파	天線極化	天线极化
+net.path_loss	path loss | free-space path loss	потери на трассе | затухание в свободном пространстве	伝搬損失 | 自由空間損失	경로 손실 | 자유 공간 손실	路徑損耗 | 自由空間損耗	路径损耗 | 自由空间损耗
+net.attenuation	signal attenuation	затухание сигнала | аттенюация	信号減衰	신호 감쇠	訊號衰減	信号衰减
+net.attenuator	attenuator | RF attenuator	аттенюатор	アッテネータ | 減衰器	감쇠기	衰減器	衰减器
+net.multipath	multipath | multipath fading	многолучевость | многолучевое распространение	マルチパス | マルチパスフェージング	다중 경로 | 다중 경로 페이딩	多路徑 | 多路徑衰落	多径 | 多径衰落
+net.fading	signal fading	замирание сигнала | фединг	フェージング	페이딩	訊號衰落	信号衰落
+net.rf	RF | radio frequency	радиочастота | РЧ | RF	無線周波数 | RF	무선 주파수 | RF	射頻 | RF	射频 | RF
+net.radio_module	Wi-Fi radio | radio module	радиомодуль | радиочасть	無線モジュール | 無線部	무선 모듈	射頻模組 | 無線射頻模組	射频模块 | 无线射频模块
+net.spectrum	radio spectrum | RF spectrum	радиочастотный спектр	電波スペクトラム	무선 스펙트럼	無線頻譜	无线频谱
+net.spectrum_analyzer	spectrum analyzer	анализатор спектра	スペクトラムアナライザ	스펙트럼 분석기	頻譜分析儀	频谱分析仪
+net.rx_sensitivity	receiver sensitivity | Rx sensitivity	чувствительность приёмника	受信感度	수신 감도	接收靈敏度	接收灵敏度
+net.rf_calibration	RF calibration	калибровка радиочасти | RF-калибровка	RFキャリブレーション | RF校正	RF 캘리브레이션 | RF 보정	RF 校準	RF 校准

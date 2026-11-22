@@ -1,0 +1,335 @@
+﻿# tinglongWu one-click installer (Windows PowerShell 5.1). Safe to re-run: finished steps are skipped.
+#   install.bat                     normal install
+#   install.ps1 -DryRun             detect only, print every command, install nothing
+#   -SkipModels  -SkipShortcut      skip steps 5-6 / 7   -Cpu  force the CPU path
+#   -FromSetup                      run by the setup wizard (the summary points to Windows Settings > Apps to uninstall)
+param([switch]$DryRun, [switch]$SkipModels, [switch]$SkipShortcut, [switch]$Cpu, [switch]$FromSetup, [string]$Lang = '')
+
+$ErrorActionPreference = 'Continue'
+# CI-only: TLWU_SKIP_MODELS=1 / TLWU_SKIP_SHORTCUT=1 behave like -SkipModels / -SkipShortcut (used by .github/workflows/install-test.yml)
+if ($env:TLWU_SKIP_MODELS) { $SkipModels = [switch]$true }
+if ($env:TLWU_SKIP_SHORTCUT) { $SkipShortcut = [switch]$true }
+$Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)   # #1712: this file lives in scripts\
+Set-Location $Root
+$Venv = Join-Path $Root '.venv'
+$VPy  = Join-Path $Venv 'Scripts\python.exe'
+$VPyW = Join-Path $Venv 'Scripts\pythonw.exe'
+$VGui = Join-Path $Venv 'Scripts\tlwu-gui.exe'
+$VSet = Join-Path $Venv 'Scripts\tlwu-setup.exe'
+$Installed = New-Object System.Collections.ArrayList
+$Warnings  = New-Object System.Collections.ArrayList
+$LlamaChk  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[0])'   # loads, fits this CPU (#74), has GPU offload
+
+$LlamaWhy  = 'from tinglongwu.llamacheck import self_check as s; print(s(gpu=True)[1])'
+$LlamaChkCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[0])'   # CPU build for Japanese (#126)
+$LlamaWhyCpu = 'from tinglongwu.llamacheck import self_check as s; print(s()[1])'
+# GPU tier threshold == tinglongwu.hwprobe.GPU_MIN_VRAM_MIB (owner #63: Whisper turbo 1600 + Hy-MT2 1500 MiB + headroom).
+# Hy-MT2 is the only translation LLM (#276, #308).
+$GpuMinMB  = 4096
+. (Join-Path (Join-Path $Root 'scripts') 'install_helpers.ps1')   # time estimates + Invoke-TlwuNative (#87)
+$Gpu = $false; $ModelGB = 0; $HyCpu = $false
+# #1002: -Lang zh-TW|zh-CN -> Chinese only, anything else (en, ja, ru) -> English only.
+# Empty -Lang keeps the exact old bilingual text: $both when given (en-first lines), else "中文 / English".
+function Loc($zh, $en, $both = $null) {
+    if (-not $Lang) { if ($null -ne $both) { return $both } return "$zh / $en" }
+    if ($Lang -like 'zh*') { return $zh }
+    return $en
+}
+function Step($n, $zh, $en) {
+    Write-Host ""; Write-Host "[$n/8] $(Loc $zh $en)" -ForegroundColor Cyan
+    Write-Host "      $(Format-TlwuEstimate (Get-TlwuStepEstimate $n $Gpu $ModelGB))" -ForegroundColor DarkCyan
+}
+function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
+function Info($m) { Write-Host "      $m" }
+function Warn($m) { Write-Host "  !!  $m" -ForegroundColor Yellow; [void]$Warnings.Add($m) }
+function Die($zh, $en) {
+    Write-Host ""; if ($Lang) { Write-Host "  XX  $(Loc $zh $en)" -ForegroundColor Red } else { Write-Host "  XX  $zh" -ForegroundColor Red; Write-Host "      $en" -ForegroundColor Red }
+    exit 1
+}
+# Run a native command; in -DryRun only print it. Returns $true on exit code 0.
+function Run($exe, [string[]]$a) {
+    $line = "$exe " + ($a -join ' ')
+    if ($DryRun) { Write-Host "  [dry-run] $line" -ForegroundColor DarkGray; return $true }
+    Write-Host "  > $line" -ForegroundColor DarkGray
+    return ((Invoke-TlwuNative $exe $a) -eq 0)   # output goes to the console, never into this return value (#87)
+}
+function Capture($exe, [string[]]$a) {   # stdout of a native command, '' on failure
+    try { $o = & $exe @a 2>$null; if ($LASTEXITCODE -eq 0) { return (($o | Out-String).Trim()) } } catch { }
+    return ''
+}
+
+Write-Host "=== 聽攏有 tinglongWu installer ===" -ForegroundColor White
+if ($DryRun) { Write-Host "*** DRY RUN: nothing will be installed or downloaded / 試跑模式：不會安裝或下載任何東西 ***" -ForegroundColor Yellow }
+Info "$(Loc '資料夾' 'Folder' 'Folder / 資料夾'): $Root"
+# #1002: the language picked on the first wizard page becomes the app UI language (read by tinglongwu.i18n at first launch)
+if ($Lang -and -not $DryRun) {
+    $cfgDir = if ($env:TLWU_CONFIG_DIR) { $env:TLWU_CONFIG_DIR } else { Join-Path $env:APPDATA 'tinglongwu' }
+    $ui = if ($Lang -like 'zh*') { 'zh-TW' } elseif ($Lang -like 'ja*') { 'ja' } elseif ($Lang -like 'ru*') { 'ru' } else { 'en' }
+    New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
+    $cfg = Join-Path $cfgDir 'config'
+    [string[]]$keep = @(if (Test-Path -LiteralPath $cfg) { Get-Content -LiteralPath $cfg | Where-Object { $_ -and $_ -notmatch '^ui_lang=' } })
+    Set-Content -LiteralPath $cfg -Value ($keep + "ui_lang=$ui") -Encoding ascii
+}
+# #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here
+if (Test-Path (Join-Path $Root 'src\core\tinglongwu\__init__.py')) {
+    foreach ($old in 'tinglongwu', 'tinglongwu_setup', 'tlwu_app', 'tlwu_eval') {
+        $p = Join-Path $Root $old
+        if (Test-Path -LiteralPath $p) { if ($DryRun) { Info "[dry-run] remove old $p" } else { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue } }
+    }
+}
+Info "Whole install: about 10-65 min depending on your PC and connection (exact estimate after step 2). 全程約 10-65 分鐘，第 2 步後顯示準確預估。"
+
+# ---------------------------------------------------------------- 1. Python
+Step 1 '檢查 Python 3.12' 'Check Python 3.12'
+. (Join-Path $Root 'scripts\python_bootstrap.ps1')
+# only 3.12: the pinned numpy 2.5.4 / scipy 1.18.1 have no wheels for 3.10/3.11 (#138)
+function FindPy {
+    $p = Capture 'py' @('-3.12', '-c', 'import sys;print(sys.executable)')
+    if ($p -and (Test-Path $p)) { return $p }
+    $p = Capture 'python' @('-c', 'import sys;print(sys.executable if sys.version_info[:2]==(3,12) else "")')
+    if ($p -and (Test-Path $p)) { return $p }
+    return $null
+}
+$Py = FindPy
+if (-not $Py) {
+    # fresh Windows (#67): install Python ourselves, per-user, no admin (pinned python.org installer, SHA256-checked; winget as fallback)
+    Info "找不到 Python 3.12，自動安裝 Python 3.12（僅目前使用者，不需系統管理員）"
+    Info "Python 3.12 not found: installing Python 3.12 for this user (no admin needed)"
+    $Py = Install-TlwuPython -DryRun:$DryRun
+    if (-not $Py -and -not $DryRun) {   # installed somewhere else (e.g. winget): pick up the new user PATH and look again
+        $env:Path = "$([Environment]::GetEnvironmentVariable('Path', 'User'));$env:Path"
+        $Py = FindPy
+    }
+    if ($Py) { if (-not $DryRun) { [void]$Installed.Add('Python 3.12 (per-user)') } }
+    else {
+        Write-Host ""
+        Write-Host "  自動安裝 Python 失敗 / Could not install Python automatically." -ForegroundColor Red
+        Write-Host "  請到 https://www.python.org/downloads/windows/ 下載 Python 3.12，"
+        Write-Host "  安裝時務必勾選 'Add python.exe to PATH'，裝好後再按一次 install.bat。"
+        Write-Host "  Download Python 3.12 from python.org, TICK 'Add python.exe to PATH', then run install.bat again."
+        exit 1
+    }
+}
+Ok "Python: $Py  ($(Capture $Py @('--version')))"
+
+# ---------------------------------------------------------------- 2. GPU
+Step 2 '偵測 NVIDIA 顯示卡' 'Detect NVIDIA GPU'
+$Gpu = $false; $HyCpu = $false; $FreeMB = 0; $TotalMB = 0; $GpuName = ''; $DriverOld = $false
+$smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+if ($smi -and -not $Cpu) {
+    $g = Get-TlwuGpu (Capture 'nvidia-smi' @('--query-gpu=name,memory.total,memory.free,driver_version', '--format=csv,noheader,nounits'))
+    if ($g -and $g.DriverOld) {   # #95: CUDA 12 cannot run on it -> CPU tier now, not a surprise "switched to CPU" later
+        $DriverOld = $true
+        Warn ("NVIDIA driver {0} on {1} is too old for CUDA 12 (needs {2}+): CPU path. Update the driver to use the GPU, then re-run install.bat: {3}" -f $g.Driver, $g.Name, $TlwuMinDriver, $TlwuDriverUrl)
+        Warn ("NVIDIA 驅動程式 {0} 太舊（CUDA 12 需要 {1} 以上），先走 CPU 路線。更新驅動程式後重跑 install.bat 即可使用 GPU：{2}" -f $g.Driver, $TlwuMinDriver, $TlwuDriverUrl)
+    } elseif ($g) { $GpuName = $g.Name; $TotalMB = $g.TotalMB; $FreeMB = $g.FreeMB; $Gpu = $true }
+}
+if ($Cpu) { Info "-Cpu given: forcing CPU path / 已指定 -Cpu，走 CPU 路線" }
+if ($Gpu) {
+    Ok ("GPU: {0}, {1} MB total, {2} MB free" -f $GpuName, $TotalMB, $FreeMB)
+    # plan by TOTAL VRAM (free VRAM is noisy at install time; the runtime --engine auto re-checks free VRAM at start-up)
+    if ($TotalMB -ge $GpuMinMB) { $Whisper = 'large-v3-turbo'; $MtFlag = '--hymt'; $MtTxt = 'Hy-MT2 1.8B (~1.1 GB)'; $SizeGB = '~3 GB'; $ModelGB = 3 }
+    else { $Whisper = 'small'; $MtFlag = $null; $HyCpu = $true; $MtTxt = "Hy-MT2 1.8B on the CPU (~1.1 GB; under $GpuMinMB MB VRAM)"; $SizeGB = '~2 GB'; $ModelGB = 2 }
+    Info "Tier chosen by total VRAM ($TotalMB MB; $FreeMB MB free now; the Hy-MT2 tier needs $GpuMinMB MB). 依顯示卡總容量選擇（Hy-MT2 需約 4 GB）。"
+    Info "Tip: close GPU-heavy apps (games, browsers with video, other tlwu) before the first run. 首次執行前請關閉佔用 GPU 的程式。"
+    Ok "GPU path / GPU 路線: whisper=$Whisper, translation=$MtTxt"
+} else {
+    if (-not $Cpu -and -not $DriverOld) { Warn "No NVIDIA GPU / nvidia-smi not found: CPU path (slower). 找不到 NVIDIA 顯示卡，走 CPU 路線。" }
+    # #276/#301: Hy-MT2 is the only default engine, also on the CPU (CPU llama-cpp-python build + the GGUF)
+    $Whisper = 'small'; $MtFlag = $null; $HyCpu = $true; $MtTxt = 'Hy-MT2 1.8B on the CPU (~1.1 GB)'; $SizeGB = '~2 GB'; $ModelGB = 2
+    $RamMB = Get-TlwuRamMB
+    if (-not (Test-TlwuCpuJapanese $RamMB)) {
+        Warn "Only ${RamMB} MB RAM: the Hy-MT2 translator needs about 4 GB, translation may be very slow or fail on this PC. 記憶體不足 4 GB：翻譯可能很慢或無法執行。"
+    }
+    Ok "CPU path / CPU 路線: whisper=$Whisper, translation=$MtTxt"
+}
+if ($SkipModels) { $ModelGB = 0 }
+Info "Expected model download / 預計下載模型: $SizeGB (plus ~3 GB of Python packages / 另有約 3 GB 套件)"
+Write-Host "  Whole install / 全部安裝: $(Format-TlwuEstimate (Get-TlwuTotalEstimate $Gpu $ModelGB))" -ForegroundColor White
+
+# ---------------------------------------------------------------- 3. venv + packages
+Step 3 '建立 .venv 並安裝套件' 'Create .venv and install packages'
+if (Test-Path $VPy) { Ok ".venv already exists / .venv 已存在，沿用" }
+else {
+    if (-not (Run $Py @('-m', 'venv', $Venv))) { Die '建立 .venv 失敗' 'venv creation failed' }
+    [void]$Installed.Add('.venv')
+}
+if (-not $DryRun -and -not (Test-Path $VPy)) { Die '.venv 不完整' '.venv is incomplete; delete the .venv folder and re-run' }
+$ok = Run $VPy @('-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel')
+if ($ok) { $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements/requirements.txt') }
+if ($ok) { $ok = Run $VPy @('-m', 'pip', 'install', '-e', '.', '--no-deps') }
+if (-not $ok) { Die 'pip 安裝失敗（請確認網路連線後重跑）' 'pip install failed (check your internet connection, then re-run install.bat)' }
+if (-not $DryRun -and -not (Test-Path $VSet)) { Die '找不到 tlwu-setup.exe' 'entry points were not created' }
+[void]$Installed.Add('Python packages + tlwu / tlwu-gui / tlwu-setup')
+Ok "Packages installed / 套件完成"
+
+# ---------------------------------------------------------------- 4. GPU libs + llama-cpp
+Step 4 'GPU 函式庫與 Hy-MT2 翻譯引擎' 'GPU libraries and Hy-MT2 translation engine'
+$Engine = 'hymt'
+# #705: a fresh Windows 11 may have no Microsoft Visual C++ 2015-2022 runtime, and llama.dll cannot load without it
+$VcMissing = @(Get-TlwuMissingVcDlls)
+if ($VcMissing.Count -gt 0) {
+    Info "Microsoft Visual C++ runtime is missing ($($VcMissing -join ', ')); the translation engine needs it. Installing it now: Windows asks for permission once, please answer Yes. 缺少 Microsoft Visual C++ 執行階段（翻譯引擎需要它），現在安裝；Windows 會詢問一次權限，請按「是」。"
+    if ($DryRun) { Write-Host "  [dry-run] download $TlwuVcRedistUrl, require a valid Microsoft Corporation signature, run it /install /quiet /norestart" -ForegroundColor DarkGray }
+    elseif (Install-TlwuVcRuntime) { Ok "Microsoft Visual C++ runtime installed / 已安裝"; [void]$Installed.Add('Microsoft Visual C++ 2015-2022 runtime') }
+    else { Warn "Could not install the Microsoft Visual C++ runtime ($TlwuVcRedistUrl). 無法安裝 Microsoft Visual C++ 執行階段。" }
+}
+if ($Gpu) {
+    if (Run $VSet @('--gpu')) { [void]$Installed.Add('CUDA 12 libs (cuBLAS, cuDNN)') }
+    else { Warn "tlwu-setup --gpu failed; Whisper will run on CPU. 失敗，將用 CPU 跑語音辨識。" }
+    if (-not $DryRun) {   # #95: nvidia-smi said GPU; ask CTranslate2 itself (what tlwu will actually use)
+        $n = Capture $VPy @('-c', 'import ctranslate2; print(ctranslate2.get_cuda_device_count())')
+        if ($n -eq '0') { Warn "nvidia-smi sees $GpuName but CTranslate2 sees no CUDA device: tlwu will run on the CPU. Run '.venv\Scripts\tlwu.exe --probe' for the reason; updating the NVIDIA driver usually fixes it ($TlwuDriverUrl). 顯示卡偵測到了但 CUDA 無法使用，執行時會改用 CPU；通常更新 NVIDIA 驅動程式即可。" }
+        elseif ($n) { Ok "CTranslate2 sees $n CUDA device(s) / CUDA 可用" }
+    }
+    if ($MtFlag) {
+        $have = $false
+        if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True') }
+        if ($have) { Ok "llama-cpp-python (GPU) already works / 已可用"; $Engine = 'hymt2' }
+        else {
+            $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements/requirements-llama-cuda.txt', '--only-binary=:all:')
+            if ($ok -and -not $DryRun) {
+                $ok = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True')
+                if (-not $ok) {   # same version already installed from another index (e.g. an AVX-512 build, #74): replace it
+                    [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements/requirements-llama-cuda.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
+                    $ok = ((Capture $VPy @('-c', $LlamaChk)) -eq 'True')
+                }
+                if (-not $ok) { Warn "llama-cpp-python installed but failed the self-check: $(Capture $VPy @('-c', $LlamaWhy))" }
+            }
+            if ($ok) { $Engine = 'hymt2'; [void]$Installed.Add('llama-cpp-python (CUDA wheel)') }
+            else {
+                Warn "No usable prebuilt llama-cpp-python CUDA wheel for this PC: Hy-MT2 runs on the CPU instead. 找不到合適的預編譯 wheel，Hy-MT2 改用 CPU 執行。"
+                $MtFlag = $null; $HyCpu = $true
+            }
+            if ($DryRun) { $Engine = 'hymt2 (if the wheel installs)' }
+        }
+    } else { Info "Under $GpuMinMB MB VRAM: Hy-MT2 runs on the CPU / 顯存不足 4 GB，Hy-MT2 改用 CPU 執行" }
+}
+if ($HyCpu) {   # #126/#301: CPU build of llama-cpp-python for Hy-MT2 (no GPU, small GPU, or no CUDA wheel)
+    Info "Hy-MT2 on the CPU: translation engine (llama-cpp-python, CPU build) / 安裝 CPU 版翻譯引擎"
+    $have = $false
+    if (-not $DryRun) { $have = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True') }
+    if ($have) { Ok "llama-cpp-python already works / 已可用"; $Engine = 'hymt2' }
+    else {
+        $ok = Run $VPy @('-m', 'pip', 'install', '-r', 'requirements/requirements-llama-cpu.txt', '--only-binary=:all:')
+        if ($ok -and -not $DryRun) {
+            $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
+            if (-not $ok) {   # same version from another index (e.g. an AVX-512 CUDA build, #74): replace it
+                [void](Run $VPy @('-m', 'pip', 'install', '-r', 'requirements/requirements-llama-cpu.txt', '--only-binary=:all:', '--force-reinstall', '--no-deps'))
+                $ok = ((Capture $VPy @('-c', $LlamaChkCpu)) -eq 'True')
+            }
+            if (-not $ok) {   # never leave a build behind that would crash tlwu on this CPU
+                Warn "llama-cpp-python failed the self-check: $(Capture $VPy @('-c', $LlamaWhyCpu))"
+                [void](Run $VPy @('-m', 'pip', 'uninstall', '-y', 'llama-cpp-python'))
+            }
+        }
+        if ($ok) { $Engine = 'hymt2'; [void]$Installed.Add('llama-cpp-python (CPU build)') }
+        else {
+            $HyCpu = $false
+            Warn "No usable llama-cpp-python CPU build: tlwu cannot translate until it is fixed (run '.venv\Scripts\tlwu-setup.exe --check-llama', or re-run install.bat). 翻譯引擎安裝失敗，請重跑 install.bat。"
+        }
+        if ($DryRun) { $Engine = 'hymt2 (if the wheel installs)' }
+    }
+}
+
+# #705: without the VC++ runtime the engine cannot load; stop here instead of downloading 2 GB of models for a tlwu
+# that cannot translate. The last log lines are what the setup wizard shows on its finish page.
+if ($VcMissing.Count -gt 0 -and -not $DryRun -and $Engine -ne 'hymt2') {
+    Die "缺少 Microsoft Visual C++ 執行階段，翻譯引擎無法載入，安裝已停止（尚未下載模型）。請先安裝 $TlwuVcRedistUrl ，再從開始選單執行「重新安裝」。" "The Microsoft Visual C++ 2015-2022 runtime is missing and could not be installed, so the translation engine cannot load. Stopped before the model download. Install it from $TlwuVcRedistUrl, then run the repair install."
+}
+
+# ---------------------------------------------------------------- 5. models
+Step 5 '下載模型（最花時間，會顯示下載百分比）' 'Download models (the slow part; shows percent done)'
+if ($SkipModels) { Info "-SkipModels: skipped / 略過" }
+else {
+    Info "Downloading $SizeGB. Already downloaded files are skipped. 已下載的會自動跳過。"
+    # #178: core + language packs. Default zh+en; ja / ru are offered (with size) the first time they are picked.
+    $Packs = if ($env:TLWU_PACKS) { $env:TLWU_PACKS } else { 'zh,en' }
+    $ok = Run $VSet @('--whisper', $Whisper, '--packs', $Packs, '--allow-unpinned')
+    if ($ok) { [void]$Installed.Add("Whisper '$Whisper' + language packs $Packs") }
+    else { Die '模型下載失敗（請確認網路後重跑）' 'model download failed (check internet, then re-run install.bat; finished parts are kept)' }
+    if ($MtFlag -or $HyCpu) {   # #301: every path gets Hy-MT2, the only default engine (#276)
+        if (Run $VSet @('--hymt')) { [void]$Installed.Add("Hy-MT2 translation model ($MtTxt)") }
+        else { Warn "Hy-MT2 download failed: tlwu cannot translate until you re-run install.bat (finished parts are kept). Hy-MT2 下載失敗，請重跑 install.bat。"; $Engine = 'none' }
+    }
+}
+
+# ---------------------------------------------------------------- 6. talk mode
+Step 6 '說話模式（中文說、Kokoro 念英文給 Meet）' 'Talk mode (you speak Chinese, Kokoro speaks English into Meet)'
+$TalkPs1 = Join-Path $Root 'tlwu-talk.ps1'
+if ($SkipModels) { Info "-SkipModels: skipped / 略過" }
+else {
+    # Kokoro venv (~\tts-kokoro, own venv: it bundles GPL espeak) + SHA256-pinned model + smoke wav + tlwu-talk.ps1;
+    # finished parts are skipped on a re-run, a hash mismatch stops this step with the reason printed above.
+    $tc = if ($Gpu) { 'cuda' } else { 'cpu' }
+    $tm = 'auto'   # #331: Hy-MT2 is the only speak-mode engine
+    if (Run $VSet @('--talk', '--talk-whisper', $Whisper, '--talk-compute', $tc, '--talk-mt', $tm)) {
+        [void]$Installed.Add('Talk mode: Kokoro voice (~\tts-kokoro, models\kokoro, SHA256 verified) + tlwu-talk.ps1')
+    } else { Warn "Talk mode setup failed (see above); listening still works. Re-run install.bat to retry. 說話模式安裝失敗，重跑 install.bat 即可。" }
+}
+$Cable = $false
+try { $Cable = [bool](Get-CimInstance Win32_SoundDevice -ErrorAction Stop | Where-Object { $_.Name -match 'VB-Audio' }) } catch { }
+if ($Cable) { Ok "VB-CABLE found / 已偵測到 VB-CABLE" }
+else { Warn "VB-CABLE not found: talk mode needs it (free: https://vb-audio.com/Cable/), then Meet microphone = 'CABLE Output'. 說話模式需要 VB-CABLE。" }
+
+# ---------------------------------------------------------------- 7. shortcuts
+Step 7 '建立桌面捷徑' 'Create desktop shortcuts'
+function Make-Shortcut($name, $target, $arguments) {
+    $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) "$name.lnk"
+    if ($DryRun) { Write-Host "  [dry-run] shortcut: $lnk -> $target $arguments (start in $Root)" -ForegroundColor DarkGray; return }
+    try {
+        $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+        $s.TargetPath = $target; $s.Arguments = $arguments; $s.WorkingDirectory = $Root
+        $s.Description = "$name - offline speech translator"
+        $ico = Join-Path $Root 'src\ui\tinglongwu\gui\assets\tinglongwu.ico'
+        if (Test-Path $ico) { $s.IconLocation = $ico }
+        $s.Save()
+        Ok "Shortcut: $lnk"; [void]$Installed.Add("Desktop shortcut '$name'")
+    } catch { Warn "Could not create the shortcut $lnk ($_). Start it from $target $arguments instead." }
+}
+if ($SkipShortcut) { Info "-SkipShortcut: skipped / 略過" }
+else {
+    if (Test-Path $VGui) { Make-Shortcut '聽攏有 tinglongWu' $VGui '' } else { Make-Shortcut '聽攏有 tinglongWu' $VPyW '-m tinglongwu.gui' }
+    # One icon: speaking is built into the main app, so the old separate talk-mode shortcut is gone (and removed
+    # from earlier installs). tlwu-talk.ps1 stays for command-line use.
+    $OldTalk = Join-Path ([Environment]::GetFolderPath('Desktop')) '聽攏有 說話模式.lnk'
+    if (Test-Path $OldTalk) {
+        if ($DryRun) { Write-Host "  [dry-run] remove old shortcut $OldTalk" -ForegroundColor DarkGray }
+        else { try { Remove-Item $OldTalk -Force -ErrorAction Stop; Info "Removed the old talk-mode shortcut / 已移除舊的說話模式捷徑" } catch { } }
+    }
+}
+
+# ---------------------------------------------------------------- 8. self-test + summary
+Step 8 '自我測試與完成' 'Self-test and summary'
+# #99: load the installed models and translate one test sentence (tlwu --selftest, offline); a failure only warns.
+$SelfTest = 'skipped'
+if ($SkipModels) { Info "-SkipModels: self-test skipped / 未下載模型，略過自我測試" }
+else {
+    $StEngine = 'hymt'
+    $StArgs = @('--model', $Whisper, '--engine', $StEngine)
+    if (-not $Gpu) { $StArgs += @('--device', 'cpu') }
+    if ($DryRun) { Write-Host "  [dry-run] $VSet --selftest $($StArgs -join ' ')" -ForegroundColor DarkGray }
+    else {
+        Info "Self-test: loading the models and translating one test sentence (offline) / 自我測試：載入模型並翻譯一句測試句"
+        $SelfTest = Invoke-TlwuSelftest $VSet $StArgs
+        if ($SelfTest -eq 'ok') { Ok "Self-test passed / 自我測試通過" }
+        elseif ($SelfTest -eq 'failed') {
+            Warn "Install finished but the self-test failed, see install.log (Report a problem attaches it); nothing was deleted. 安裝完成但自我測試失敗，詳見 install.log，已安裝的檔案都保留。"
+        } else { Info "This version has no self-test yet: skipped / 此版本尚無自我測試，略過" }
+    }
+}
+Write-Host ""
+Write-Host "  $(Loc '已安裝' 'Installed' 'Installed / 已安裝'):" -ForegroundColor White
+foreach ($i in $Installed) { Write-Host "    - $i" }
+Write-Host "  $(Loc '翻譯引擎' 'Translation engine' 'Translation engine / 翻譯引擎'): $Engine" -ForegroundColor White
+Write-Host "  $(Loc '自我測試' 'Self-test' 'Self-test / 自我測試'): $SelfTest" -ForegroundColor White
+if ($Warnings.Count -gt 0) {
+    Write-Host "  $(Loc '注意' 'Warnings' 'Warnings / 注意'):" -ForegroundColor Yellow
+    foreach ($w in $Warnings) { Write-Host "    - $w" -ForegroundColor Yellow }
+}
+Write-Host ""
+Write-Host "  Launch / 啟動: double-click the desktop shortcut '聽攏有 tinglongWu' (or $VGui)" -ForegroundColor White
+Write-Host "  Talk mode / 說話模式: in the same app, press 'I speak' (Meet microphone = CABLE Output)" -ForegroundColor White
+foreach ($l in (Get-TlwuUninstallHint $Root ([bool]$FromSetup))) { Write-Host $l }
+if ($DryRun) { Write-Host ""; Write-Host "  (dry run finished, nothing was changed / 試跑結束，未做任何更動)" -ForegroundColor Yellow }
+exit 0

@@ -7,6 +7,8 @@ on:
     workflows: ["release"]
     types: [completed]
     branches: [main]
+  push:
+    branches: [dev]   # every PR merge to dev; push runs use dev's copy of this file (#1713)
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,7 @@ permissions:
 
 concurrency:
   group: stats-dashboard
-  cancel-in-progress: false
+  cancel-in-progress: true   # bursts of dev merges collapse into one run (#1713); publish is a single force-push
 
 jobs:
   build:

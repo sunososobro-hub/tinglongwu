@@ -7,11 +7,11 @@ from tinglongwu import cli
 from tinglongwu_setup import downloader as dl
 
 ROOT = Path(__file__).resolve().parent.parent
-NOTICES = (ROOT / "THIRD_PARTY_NOTICES.md").read_text("utf-8")
+NOTICES = (ROOT / "docs" / "THIRD_PARTY_NOTICES.md").read_text("utf-8")
 
 
 def _downloaded_ids():
-    man = json.loads((ROOT / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))
+    man = json.loads((ROOT / "src" / "system" / "tinglongwu_setup" / "manifest.json").read_text("utf-8"))
     ids = [v["repo"] for v in man["models"].values()]
     ids += list(man["argos"])
     ids += [dl.PIPER_REPO, dl.VOSK_TTS_RU, *dl.KOKORO_FILES, "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"]
@@ -30,11 +30,11 @@ def test_vosk_marked_unknown_and_opt_in():
 
 
 def test_readme_links_notices():
-    assert "(../THIRD_PARTY_NOTICES.md)" in (ROOT / "docs" / "details.md").read_text("utf-8")
+    assert "(THIRD_PARTY_NOTICES.md)" in (ROOT / "docs" / "details.md").read_text("utf-8")
 
 
 def test_version_flag_points_to_notices(capsys):
     with pytest.raises(SystemExit) as e:
         cli.parse_args(["--version"])
     assert e.value.code == 0
-    assert "THIRD_PARTY_NOTICES.md" in capsys.readouterr().out
+    assert "docs/THIRD_PARTY_NOTICES.md" in capsys.readouterr().out

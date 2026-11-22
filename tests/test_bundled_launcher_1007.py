@@ -1,4 +1,4 @@
-"""#1007: in the core layout (packaging/launcher/tlwu_launcher.c) sys.executable is tlwu.exe, but the launcher's
+"""#1007: in the core layout (release/packaging/launcher/tlwu_launcher.c) sys.executable is tlwu.exe, but the launcher's
 TLWU_BUNDLED=1 does not reach os.environ. The in-app voice install then ran `tlwu.exe -m tinglongwu_setup --talk`,
 which tinglongwu.cli rejects (install-clean speak-smoke, dev 75895e9: "unrecognized arguments: -m tinglongwu_setup")."""
 import sys

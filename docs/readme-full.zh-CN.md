@@ -2,7 +2,7 @@
 
 # tinglongWu — 台语“听拢有”(thiann lóng ū)：“我全都听懂了”。实时语音翻译，运行时离线、可验证（安装与下载模型需要网络；进程内防护只是纵深防御，不是证明，见“隐私模型”）。
 
-[English](../README.md) | [繁體中文](../README.zh-TW.md) | [简体中文](../README.zh-CN.md)
+[English](../README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-TW](ARCHITECTURE.zh-TW.md) · [zh-CN](ARCHITECTURE.zh-CN.md)
 
@@ -136,7 +136,7 @@ tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary
 
 **菜单用法。** 快捷方式会打开菜单：`1` 会议（听 + 说进 Meet/Zoom，请戴耳机；会议麦克风选 *CABLE Output*）、`2` 只说（中文 -> 英／俄／日语音）、`3` 只听（外语 -> 中文字幕）、`L` 更换对方语言、`G` 图形界面、`U` 立即更新、`A` 切换启动时自动更新、`I` 菜单语言。按键后按 Enter；每次下载模型前都会先问 y/N。
 
-卸载：删除文件夹和桌面快捷方式即可。`install.ps1 -DryRun` 只显示将执行的操作、不安装。Hy-MT2 在 GPU 上使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若没有合适的预编译 wheel，安装程序会自动改用 OPUS 引擎。
+卸载：删除文件夹和桌面快捷方式即可。`install.ps1 -DryRun` 只显示将执行的操作、不安装。Hy-MT2 在 GPU 上使用 `requirements/requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若没有合适的预编译 wheel，安装程序会自动改用 OPUS 引擎。
 
 ### 安装／使用分离（请先阅读）
 
@@ -164,14 +164,14 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在离线电脑上安装�
 
 Python 3.12（锁定的 numpy/scipy 需要 >= 3.12；以 3.12 测试）。
 ```
-tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # 精确锁定版本
+tlwu-setup --deps  # or: pip install -r requirements/requirements.txt && pip install -e . --no-deps    # 精确锁定版本
 ```
 
-带哈希校验的安装（推荐）：`requirements.lock.txt` 列出所有依赖（含间接依赖）及 PyPI 公布的全部 SHA256，pip 会拒绝被篡改或替换的文件：
+带哈希校验的安装（推荐）：`requirements/requirements.lock.txt` 列出所有依赖（含间接依赖）及 PyPI 公布的全部 SHA256，pip 会拒绝被篡改或替换的文件：
 ```
-pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+pip install --require-hashes -r requirements/requirements.lock.txt && pip install -e . --no-deps
 ```
-`requirements.txt`（只有 `==` 锁版、无哈希）仍可使用。用 `python scripts/make_lock.py` 重新生成 lock。（`httpx2`/`httpcore2` 不是仿冒包：它们是 Pydantic 维护的 httpx 分支，`huggingface_hub` 2.x 依赖它们。）
+`requirements/requirements.txt`（只有 `==` 锁版、无哈希）仍可使用。用 `python scripts/make_lock.py` 重新生成 lock。（`httpx2`/`httpcore2` 不是仿冒包：它们是 Pydantic 维护的 httpx 分支，`huggingface_hub` 2.x 依赖它们。）
 - **Windows**：无需额外安装（WASAPI 采集默认扬声器）。
 - **Linux**：PipeWire（含 pipewire-pulse）或 PulseAudio。默认采集默认输出的 monitor；用 `pactl list sources short` 查看，用 `--capture-device <子串>` 指定。
 - **macOS**：安装 [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)，在“音频 MIDI 设置”中创建多输出设备（扬声器＋BlackHole）并设为输出。tlwu 会采集名称包含 `BlackHole` 的设备。ScreenCaptureKit 为未来选项。
@@ -357,6 +357,6 @@ python -m tinglongwu.reverse.proto --mic "<麦克风名称子串>" --compute cpu
 - **第三方组件。** 模型、库和驱动程序各自适用其许可证，由你从上游来源自行安装；本 repo 不再分发它们（唯一提交的第三方二进制文件是 `mobile/` 内自行构建的 llama.cpp Android AAR（MIT）；Windows exe 内含的运行时库列于其 `licenses/THIRD_PARTY_NOTICES.txt`）。见[许可证与来源](#许可证与来源)。
 - **无从属关系。** 与 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴、腾讯（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方均无关联，亦未获其背书。所有商标归各自所有人。
 - **网络防护。** 网络防护是尽力而为，不保证没有任何数据离开你的机器。
-- **安全。** 见 [SECURITY.md](../SECURITY.md)。
+- **安全。** 见 [SECURITY.md](../.github/SECURITY.md)。
 
 MIT 许可，见 [LICENSE](../LICENSE)。(c) 2026 Alonso。

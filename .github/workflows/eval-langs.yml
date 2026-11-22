@@ -2,10 +2,10 @@ name: eval-langs
 # #642 (#619 part 2): per-language cloud eval. One job per pair listed in eval/languages.json (the matrix is built from
 # that file by `python -m tlwu_eval.langmatrix matrix`); each job runs the CPU mini-eval on that pair's pinned FLEURS
 # clips (Whisper small + Hy-MT2 1.8B Q4 on llama.cpp CPU, like eval.yml) and gates it against its
-# eval/baseline.json "matrix" entry: chrF - margin and MT median budget (tlwu_eval/gate.py). A pair whose pin file is
+# eval/baseline.json "matrix" entry: chrF - margin and MT median budget (eval/tlwu_eval/gate.py). A pair whose pin file is
 # missing is listed as unpinned in the summary and not run. Add a language = one line in eval/languages.json.
 # Runs on PRs that touch the matrix config / gate / pins and on manual dispatch.
-# #643 (#619 part 4): weekly schedule on dev. `weekly` gates every pair report (tlwu_eval/weekly.py), `publish` writes
+# #643 (#619 part 4): weekly schedule on dev. `weekly` gates every pair report (eval/tlwu_eval/weekly.py), `publish` writes
 # langs/YYYY-MM-DD.json to the eval-results branch (the stats page renders the latest two), `alert` comments on #61
 # when any pair FAILs. A dispatch with publish=true does the same (manual check of the weekly path).
 #   weekly  : contents read  - verdict JSON + alert text
@@ -14,7 +14,7 @@ name: eval-langs
 on:
   pull_request:
     branches: [dev]
-    paths: ['eval/languages.json', 'eval/baseline.json', 'eval/*pins*.json', 'eval/ci_smoke.json', 'tlwu_eval/**',
+    paths: ['eval/languages.json', 'eval/baseline.json', 'eval/*pins*.json', 'eval/ci_smoke.json', 'eval/tlwu_eval/**',
             'scripts/bench/make_ci_smoke.py', '.github/workflows/eval-langs.yml']
   schedule:
     - cron: "17 20 * * 0"   # Monday 04:17 Asia/Taipei, after eval-nightly
@@ -42,6 +42,7 @@ env:
   TLWU_HYMT_TEMP: "0"  # greedy decoding: repeatable chrF run to run (same as eval.yml)
   PYTHONUTF8: "1"
   WHISPER: small
+  PYTHONPATH: eval  # #1664: tlwu_eval lives in eval/; matrix + weekly jobs run it without pip install
 
 jobs:
   # #642: the cloud sandboxes cannot reach huggingface.co, so pin files are made here and committed from the log/artifact.
@@ -120,13 +121,13 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
       - name: Paths
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
-          key: eval-langs-models-v1-${{ env.WHISPER }}-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: eval-langs-models-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ matrix.data }}

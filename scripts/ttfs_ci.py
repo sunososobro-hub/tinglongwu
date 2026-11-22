@@ -52,9 +52,14 @@ def windows_commands(directory, setup_exe):
     venv_setup = bs.join([d, ".venv", "Scripts", "tlwu-setup.exe"])
     fetch = 'if exist "%s" ("%s" setup --default-listen) else ("%s" --default-listen)' % (core, core, venv_setup)
     setup = 'type "%s" & %s' % (bs.join([d, "install.log"]), fetch)
-    clip = bs.join([d] + ttfs.TTFS_CLIP.split("/"))
-    args = '--file "%s" --device cpu' % clip
-    tlwu = 'if exist "%s" ("%s" %s) else ("%s" %s)' % (core, core, args, venv, args)
+    # The wizard's prebuilt app layer flattens the src/ layers (#923): {app}\tinglongwu\data\selftest_en.wav. Only a
+    # source-layout install (.venv) keeps the repo path src\core\tinglongwu\data. Using the repo path for the core
+    # exe made soundfile miss the clip and fall to the stubbed PyAV (#1664 moved the clip; ttfs (windows) went red).
+    clip_core = bs.join([d, "tinglongwu", "data", ttfs.TTFS_CLIP.split("/")[-1]])
+    clip_src = bs.join([d] + ttfs.TTFS_CLIP.split("/"))
+    args_core = '--file "%s" --device cpu' % clip_core
+    args_src = '--file "%s" --device cpu' % clip_src
+    tlwu = 'if exist "%s" ("%s" %s) else ("%s" %s)' % (core, core, args_core, venv, args_src)
     return install, setup, tlwu
 
 
@@ -126,7 +131,7 @@ def setup_time_report(directory, install_seconds, out_path):
     """#773: the wizard run on this clean VM judged like `clean_machine_check.py setup-time`. Writes setup_time.json
     (setup_seconds, download_seconds, download_mb, pip_lines, ready) next to ttfs.json and returns summary text."""
     import json
-    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "packaging"))
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "release", "packaging"))
     import clean_machine_check as cmc
     log_path = os.path.join(directory, "install.log")
     try:

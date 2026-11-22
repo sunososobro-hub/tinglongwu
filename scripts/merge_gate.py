@@ -30,13 +30,18 @@ REPO = "sunososobro-hub/tinglongwu"
 ALLOWED_REVIEWERS = frozenset({"sunososobro-hub"})  # section 14 "Allowed review authors"
 NEEDS_OPUS, NEEDS_AI = "needs-opus", "needs-review-ai"
 MOBILE_CHECK = "mobile-apk"  # #1618: workflow name; its job is a generic `build`, so gather() reads the workflow run
+EVAL_CHECK = "mini-eval"  # #1687: eval.yml job (check run) name; needed only when a file matches EVAL_PATH_RE
+# #1687: keep in step with eval.yml's "Does this PR touch translation / ASR / eval code?" filter. Post-#1671
+# layout: src/{core,ui,flow,system}/tinglongwu/, eval/ (incl. eval/tlwu_eval/), src/system/tinglongwu_setup/.
+EVAL_PATH_RE = re.compile(r"^(?:src/[^/]+/tinglongwu/|eval/|src/system/tinglongwu_setup/manifest\.json$"
+                          r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
 RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
                     "hotfix.yml")
 PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
-                   "tinglongwu/__init__.py", "pyproject.toml", "tinglongwu/offline.py", "scripts/download_models.py",
+                   "src/core/tinglongwu/__init__.py", "pyproject.toml", "src/system/tinglongwu/offline.py", "scripts/download_models.py",
                    "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
-PROTECTED_PREFIX = (".claude/", "packaging/", "installer/")
+PROTECTED_PREFIX = (".claude/", "release/packaging/", "release/installer/")
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)
@@ -60,7 +65,7 @@ def is_protected(path: str) -> bool:
         return False
     if path in PROTECTED_EXACT or path.startswith(PROTECTED_PREFIX):
         return True
-    if re.fullmatch(r"requirements[^/]*\.txt", path) or re.fullmatch(r"scripts/[^/]*offline[^/]*", path):
+    if re.fullmatch(r"requirements/[^/]*\.txt", path) or re.fullmatch(r"scripts/[^/]*offline[^/]*", path):
         return True
     if path.startswith(".github/workflows/"):
         name = path.rsplit("/", 1)[-1]
@@ -210,21 +215,29 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         exempt = bump is not None and bump(files)[0]
         if not exempt and not pass_at:
             return "needs-opus", "protected / g4 path: " + ", ".join(protected[:5])
-    if any(f["filename"] == "tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
-        return "needs-opus", "touches tinglongwu/__init__.py"
+    if any(f["filename"] == "src/core/tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
+        return "needs-opus", "touches src/core/tinglongwu/__init__.py"
 
     test = [c for c in checks if c.get("name") == "test"]
     if not test or any(c.get("status") != "completed" for c in test):
         return "wait", "test not finished"
     if any(c.get("conclusion") != "success" for c in test):
         return "hold", "test is red"
+    # Section 17 (#1687): only these extra checks gate a dev PR; every other check run never blocks and is not waited for.
+    extra = []
     if any(f["filename"].startswith("mobile/") or (f.get("previous_filename") or "").startswith("mobile/")
            for f in files):  # #1618: a phone PR also needs the mobile-apk workflow (flutter analyze + test)
-        mob = [c for c in checks if c.get("name") == MOBILE_CHECK]
-        if not mob or any(c.get("status") != "completed" for c in mob):
-            return "wait", f"{MOBILE_CHECK} not finished"
-        if any(c.get("conclusion") != "success" for c in mob):
-            return "hold", f"{MOBILE_CHECK} is red"
+        extra.append(MOBILE_CHECK)
+    if any(EVAL_PATH_RE.match(f["filename"]) or EVAL_PATH_RE.match(f.get("previous_filename") or "")
+           for f in files) and not (bump and bump(files)[0]):  # #1687: ASR / MT / eval PR also needs the
+        # CPU mini-eval; a bump-check patch bump (only `__version__`) still merges on `test` alone (section 14)
+        extra.append(EVAL_CHECK)
+    for name in extra:
+        got = [c for c in checks if c.get("name") == name]
+        if not got or any(c.get("status") != "completed" for c in got):
+            return "wait", f"{name} not finished"
+        if any(c.get("conclusion") != "success" for c in got):
+            return "hold", f"{name} is red"
     state = pr.get("mergeable_state")
     if state == "dirty":
         return "needs-ai", "merge conflict: resolve in place (section 7)"

@@ -7,7 +7,7 @@ def test_both_windows_resizable_with_menu(small_screen_app):  # noqa: F811
     a = small_screen_app()
     assert a.root.resizable() == (True, True)
     assert a.panel.resizable() == (True, True)
-    assert a.panel.cget("menu")
+    assert a.panel_menubar_row.winfo_exists()
     assert a.panel.winfo_reqheight() <= 600
 
 

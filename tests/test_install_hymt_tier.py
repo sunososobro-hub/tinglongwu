@@ -37,7 +37,7 @@ def dry_run(tmp_path: Path, total_mb: int | None, *extra: str) -> str:
     env["TLWU_TEST_RAM_MB"] = "2048"  # low RAM: Hy-MT2 is still installed, with a warning (#301)
     env.update(PATH=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1",
                POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "install.ps1"), "-DryRun", *extra],
+    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "scripts" / "install.ps1"), "-DryRun", *extra],
                        capture_output=True, text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
     assert r.returncode == 0, r.stdout + r.stderr
     return r.stdout
@@ -54,7 +54,7 @@ def test_gpu_tier_downloads_hymt_not_qwen(tmp_path, total):
     assert any(c.rstrip().endswith("--hymt") for c in calls), calls
     assert not any("--qwen" in c for c in calls), calls  # the old LLM download flag is gone (#308)
     assert any("--whisper large-v3-turbo" in c for c in calls), calls
-    assert "requirements-llama-cuda.txt" in out  # llama-cpp-python CUDA wheel: Hy-MT2 runs on llama.cpp
+    assert "requirements/requirements-llama-cuda.txt" in out  # llama-cpp-python CUDA wheel: Hy-MT2 runs on llama.cpp
     assert "~3 GB" in out and "~10 GB" not in out
     assert "Translation engine / 翻譯引擎: hymt2" in out
 
@@ -67,7 +67,7 @@ def test_below_threshold_or_no_gpu_runs_hymt_on_the_cpu(tmp_path, total):
     assert any(c.rstrip().endswith("--hymt") for c in calls), calls
     assert not any("--qwen" in c for c in calls), calls
     assert any("--whisper small" in c for c in calls), calls
-    assert "requirements-llama-cuda.txt" not in out and "requirements-llama-cpu.txt" in out
+    assert "requirements/requirements-llama-cuda.txt" not in out and "requirements/requirements-llama-cpu.txt" in out
     assert "Translation engine / 翻譯引擎: hymt2" in out
     assert "OPUS engine" not in out
 

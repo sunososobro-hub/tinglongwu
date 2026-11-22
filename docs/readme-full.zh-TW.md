@@ -2,7 +2,7 @@
 
 # tinglongWu — 台語「聽攏有」(thiann lóng ū)：「我全都聽懂了」。即時語音翻譯，執行期離線、可驗證（安裝與下載模型需要網路；行程內防護只是縱深防禦，不是證明，見「隱私模型」）。
 
-[English](../README.md) | [繁體中文](../README.zh-TW.md) | [简体中文](../README.zh-CN.md)
+[English](../README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 Architecture / 架構 / 架构: [docs/ARCHITECTURE.md](ARCHITECTURE.md) · [zh-TW](ARCHITECTURE.zh-TW.md) · [zh-CN](ARCHITECTURE.zh-CN.md)
 
@@ -147,7 +147,7 @@ tlwu --lang ru --model large-v3-turbo --stream --glossary docs/examples/glossary
 
 **選單用法。** 捷徑會開啟選單：`1` 會議（聽 + 說進 Meet/Zoom，請戴耳機；會議麥克風選 *CABLE Output*）、`2` 只說（中文 -> 英／俄／日語音）、`3` 只聽（外語 -> 中文字幕）、`L` 更換對方語言、`G` 圖形介面、`U` 立即更新、`A` 切換啟動時自動更新、`I` 選單語言。按鍵後按 Enter；每次下載模型前都會先問 y/N。
 
-移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
+移除：刪除資料夾與桌面捷徑即可。`install.ps1 -DryRun` 只顯示會做什麼、不安裝。Hy-MT2 在 GPU 上使用 `requirements/requirements-llama-cuda.txt`（CUDA 版 llama-cpp-python）；若沒有合適的預編譯 wheel，安裝程式會自動改用 OPUS 引擎。
 
 ### 安裝／使用分離（請先閱讀）
 
@@ -175,14 +175,14 @@ tlwu-setup --from-bundle tlwu-bundle.zip            # 在離線電腦上安裝�
 
 Python 3.12（釘選的 numpy/scipy 需要 >= 3.12；以 3.12 測試）。
 ```
-tlwu-setup --deps  # or: pip install -r requirements.txt && pip install -e . --no-deps    # 精確鎖版
+tlwu-setup --deps  # or: pip install -r requirements/requirements.txt && pip install -e . --no-deps    # 精確鎖版
 ```
 
-帶雜湊驗證的安裝（建議）：`requirements.lock.txt` 列出所有依賴（含間接依賴）及 PyPI 公布的全部 SHA256，pip 會拒絕被竄改或替換的檔案：
+帶雜湊驗證的安裝（建議）：`requirements/requirements.lock.txt` 列出所有依賴（含間接依賴）及 PyPI 公布的全部 SHA256，pip 會拒絕被竄改或替換的檔案：
 ```
-pip install --require-hashes -r requirements.lock.txt && pip install -e . --no-deps
+pip install --require-hashes -r requirements/requirements.lock.txt && pip install -e . --no-deps
 ```
-`requirements.txt`（只有 `==` 鎖版、無雜湊）仍可使用。以 `python scripts/make_lock.py` 重新產生 lock。（`httpx2`/`httpcore2` 不是仿冒套件：它們是 Pydantic 維護的 httpx 分支，`huggingface_hub` 2.x 依賴它們。）
+`requirements/requirements.txt`（只有 `==` 鎖版、無雜湊）仍可使用。以 `python scripts/make_lock.py` 重新產生 lock。（`httpx2`/`httpcore2` 不是仿冒套件：它們是 Pydantic 維護的 httpx 分支，`huggingface_hub` 2.x 依賴它們。）
 
 更新 Windows 開發版（在 `dev` 分支上 git clone 的資料夾）：雙擊 **`update.bat`**，會快轉更新 `dev`、重裝鎖版套件並啟動圖形介面（有本機修改或不在 `dev` 分支時會顯示原因並停止）。
 
@@ -375,7 +375,7 @@ python -m tinglongwu.reverse.proto --mic "<麥克風名稱子字串>" --compute 
 - **第三方元件。** 模型、函式庫與驅動程式各自適用其授權，由你從上游來源自行安裝；本 repo 不再散布它們（唯一提交的第三方二進位檔是 `mobile/` 內自行建置的 llama.cpp Android AAR（MIT）；Windows exe 內含的執行期函式庫列於其 `licenses/THIRD_PARTY_NOTICES.txt`）。見[授權與來源](#授權與來源)。
 - **無從屬關係。** 與 Google、Microsoft、Apple、Zoom、Meet、阿里巴巴、騰訊（Hunyuan／Hy-MT2）、Meta、OpenAI、NVIDIA、VB-Audio、Existential Audio 或文中提到的其他第三方皆無關聯，亦未獲其背書。所有商標歸各自所有人。
 - **網路防護。** 網路防護是盡力而為，不保證沒有任何資料離開你的機器。
-- **安全。** 見 [SECURITY.md](../SECURITY.md)。
-- **隱私。** 見 [PRIVACY.zh-TW.md](../PRIVACY.zh-TW.md)（[English](../PRIVACY.md)）。
+- **安全。** 見 [SECURITY.md](../.github/SECURITY.md)。
+- **隱私。** 見 [PRIVACY.zh-TW.md](PRIVACY_POLICY.zh-TW.md)（[English](PRIVACY_POLICY.md)）。
 
 MIT 授權，見 [LICENSE](../LICENSE)。(c) 2026 Alonso。

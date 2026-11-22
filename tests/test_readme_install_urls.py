@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LATEST = "https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/"
 RAW_MAIN = "https://raw.githubusercontent.com/sunososobro-hub/tinglongwu/main/scripts/"
 ASSETS = {"tinglongwu-setup.exe", "mac_install.sh", "install.sh"}
-DOCS = ("README.md", "README.zh-CN.md", "README.zh-TW.md", "docs/details.md", "docs/install.md",
-        "docs/readme-full.zh-TW.md", "docs/readme-full.zh-CN.md", "PRIVACY.md", "PRIVACY.zh-TW.md")
+DOCS = ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md", "docs/details.md", "docs/install.md",
+        "docs/readme-full.zh-TW.md", "docs/readme-full.zh-CN.md", "docs/PRIVACY_POLICY.md", "docs/PRIVACY_POLICY.zh-TW.md")
 
 
 def _urls(name):
@@ -19,7 +19,7 @@ def _urls(name):
 
 
 def test_readmes_install_from_latest_release_assets():
-    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+    for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md"):
         got = {u[len(LATEST):] for u in _urls(name) if u.startswith(LATEST)}
         assert ASSETS <= got, name
 
@@ -37,7 +37,7 @@ def test_no_doc_installs_from_raw_main():
 
 def test_install_table_is_at_the_top_of_the_readme():
     # owner 2026-11-13: value prop + demo first, then the download section as the first "##" section
-    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+    for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         first = s.index("\n## ")
         # #1343: the top button itself links the direct installer, so look for the table link after the first section
@@ -46,7 +46,7 @@ def test_install_table_is_at_the_top_of_the_readme():
 
 def test_release_workflow_attaches_the_fixed_name_wizard():
     wf = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
-    iss = (ROOT / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
+    iss = (ROOT / "release" / "installer" / "tinglongwu.iss").read_text("utf-8-sig")
     # the job looks for the wizard by the name the .iss gives it, with the version taken from the tag
     assert "OutputBaseFilename=tinglongwu-setup-{#AppVersion}" in iss
     assert 'exe="tinglongwu-setup-${TAG#v}.exe"' in wf
@@ -61,7 +61,7 @@ def test_release_is_a_draft_until_the_wizard_is_attached():
 
 
 def test_install_rows_are_windows_macos_linux():
-    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+    for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         assert s.index(LATEST + "tinglongwu-setup.exe") < s.index(LATEST + "mac_install.sh") < s.index(LATEST + "install.sh"), name
 
@@ -69,7 +69,7 @@ def test_install_rows_are_windows_macos_linux():
 def test_contributor_avatars_under_install_and_no_support_tables():
     import json
     logins = [c["login"] for c in json.loads((ROOT / ".all-contributorsrc").read_text("utf-8"))["contributors"]]
-    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+    for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         assert s.count("https://github.com/" + logins[0] + ".png?size=60") == 1, name  # contributors appear once
         assert s.index(LATEST) < s.index("docs.html") < s.index(logins[0] + ".png"), name  # users first, contributors near the end
@@ -81,12 +81,12 @@ def test_contributor_avatars_under_install_and_no_support_tables():
 
 def test_no_flag_emoji_in_readmes():  # flags map languages to countries
     import re
-    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md", "docs/RELEASING.md"):
+    for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md", "docs/RELEASING.md"):
         assert not re.search("[\U0001F1E6-\U0001F1FF]", (ROOT / name).read_text("utf-8")), name
 
 
 def test_top_button_downloads_the_installer_directly_1344():
-    for name in ("README.md", "README.zh-CN.md", "README.zh-TW.md"):
+    for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
         button = next(x for x in s.splitlines() if "assets/readme/download." in x)
         assert LATEST + "tinglongwu-setup.exe" in button, name

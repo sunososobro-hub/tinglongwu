@@ -31,7 +31,7 @@ def test_explicit_flag_is_the_only_trigger(monkeypatch, tmp_path):
 
 
 def test_installers_never_mention_the_model():
-    for f in ("install.ps1", "install.bat", "scripts/mac_install.sh"):
+    for f in ("scripts/install.ps1", "install.bat", "scripts/mac_install.sh"):
         txt = (ROOT / f).read_text("utf-8")
         for line in txt.splitlines():
             if ".venv/bin/tlwu-setup" in line or "tlwu-setup.exe" in line or "$VSet" in line:

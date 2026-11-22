@@ -115,7 +115,7 @@ say()  { printf '\n==> %s\n' "$*"; }
 die()  { printf '\n[x] %s\n' "$*" >&2; exit 1; }
 find_py() {
   PY=""
-  # only 3.12: requirements.txt pins numpy 2.5.4 / scipy 1.18.1, which publish wheels for Python >= 3.12 only (#138)
+  # only 3.12: requirements/requirements.txt pins numpy 2.5.4 / scipy 1.18.1, which publish wheels for Python >= 3.12 only (#138)
   for c in python3.12 python3; do
     if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)' 2>/dev/null; then PY="$c"; break; fi
   done
@@ -141,7 +141,7 @@ install_llama() {
   say "$(t llama)"
   # shellcheck source=tlwu_common.sh
   . "$DIR/scripts/tlwu_common.sh"
-  tlwu_install_llama .venv/bin/python requirements-llama-cpu.txt || { printf '\n[!] %s\n' "$(t nollama)" >&2; return 1; }
+  tlwu_install_llama .venv/bin/python requirements/requirements-llama-cpu.txt || { printf '\n[!] %s\n' "$(t nollama)" >&2; return 1; }
 }
 
 # After fetch+checkout of $REF in $DIR: fast-forward a branch ref; a tag stays as is.
@@ -164,6 +164,22 @@ update_branch() {
   fi
   # shellcheck disable=SC2059
   printf "$(t at)\n" "$(git -C "$DIR" rev-parse --short HEAD)"
+}
+
+# #1678: app-menu shortcut (one fixed file, rewritten on every run; scripts/uninstall.sh removes it)
+install_desktop_shortcut() {
+  local d="$HOME/.local/share/applications" f
+  f="$d/tinglongwu.desktop"
+  mkdir -p "$d" || return 0
+  printf '[Desktop Entry]\nType=Application\nName=tinglongWu\nComment=Offline voice translator\nExec=%s/.venv/bin/tlwu-gui\nIcon=%s/src/ui/tinglongwu/gui/assets/tinglongwu.png\nTerminal=false\nCategories=AudioVideo;Audio;\n' "$DIR" "$DIR" > "$f.tmp" && mv -f "$f.tmp" "$f" || rm -f "$f.tmp"
+}
+
+# #1677: the window version (GUI) comes first; start it when a desktop is there and a person is at the keyboard, else print both commands.
+finish_gui() {
+  local gui="$DIR/.venv/bin/tlwu-gui"
+  printf '\n    %q\n    bash %q\n\n' "$gui" "$DIR/scripts/linux_menu.sh"
+  if { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; } && [ -t 0 ] && [ -x "$gui" ]; then exec "$gui"; fi
+  return 0
 }
 
 main() {
@@ -229,6 +245,8 @@ main() {
     git clone --quiet --branch "$REF" "$REPO_URL" "$DIR" || die "git clone failed (network, or unknown version $REF)"
   fi
   cd "$DIR" || die "cannot enter $DIR"
+  # #1664: pre-move root packages (even just __pycache__) shadow src/ as namespace packages; only once src/ is here
+  if [ -f src/core/tinglongwu/__init__.py ]; then rm -rf tinglongwu tinglongwu_setup tlwu_app tlwu_eval; fi
 
   [ -x .venv/bin/python ] || "$PY" -m venv .venv || die "venv creation failed"
   say "$(t pip)"
@@ -236,6 +254,7 @@ main() {
   .venv/bin/python -m pip install -e . || die "pip install failed (network?). Re-run this command to resume."
   # an older .venv may come from another Python than $PY: check the interpreter tlwu-gui really runs (#328)
   .venv/bin/python -c 'import tkinter' 2>/dev/null || printf '\n[!] %s\n' "$(t notk)" >&2
+  install_desktop_shortcut || true
   install_llama || true   # warned above; the rest of the install still works (transcript, menu)
 
   if [ -z "${TLWU_SKIP_MODELS:-}" ]; then
@@ -247,8 +266,8 @@ main() {
   if [ -z "${TLWU_SKIP_MODELS:-}" ] && { [ -n "$YES" ] || [ -t 0 ]; }; then prefetch_models; FETCHED=1; fi
 
   say "$(t done)"
-  printf '\n    bash %s/scripts/linux_menu.sh\n\n' "$DIR"
   if [ -n "$FETCHED" ]; then t ready; else t models; fi
+  finish_gui
   exit 0
 }
 [ -n "${TLWU_SOURCE_ONLY:-}" ] || main "$@"

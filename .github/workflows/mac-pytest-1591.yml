@@ -1,0 +1,18 @@
+name: mac-pytest-1591
+# Manual check for #1591: real-Tk tests on macOS + Python 3.14 must skip with a reason, never die by a signal.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac-gui-tests:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -c "import tkinter, sys; print(sys.version, 'Tk', tkinter.TkVersion)"
+      - run: pip install pytest pytest-timeout numpy
+      - run: python -m pytest -q -rs tests/test_gui_density_886.py tests/test_tk9_mac_skip_1591.py

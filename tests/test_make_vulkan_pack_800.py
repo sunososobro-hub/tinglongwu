@@ -66,7 +66,7 @@ def test_manifest_carries_the_llama_pin_of_the_cpu_and_cuda_builds(tmp_path):
     zpath = m.build(_lib(tmp_path), tmp_path / "out", "0.3.5")
     man = json.loads(zipfile.ZipFile(zpath).read(m.MANIFEST_NAME))
     pins = set()
-    for req in ("requirements-llama-cpu.txt", "requirements-llama-cuda.txt"):
+    for req in ("requirements/requirements-llama-cpu.txt", "requirements/requirements-llama-cuda.txt"):
         for line in (REPO / req).read_text().splitlines():
             if line.startswith("llama-cpp-python=="):
                 pins.add(line.split("==")[1].strip())

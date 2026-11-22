@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location("build_installer", ROOT / "installer" / "build_installer.py")
+_spec = importlib.util.spec_from_file_location("build_installer", ROOT / "release" / "installer" / "build_installer.py")
 bi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bi)
 
@@ -44,7 +44,7 @@ def test_core_dir_stages_exactly_the_core_files_plus_license(tmp_path, monkeypat
     files = sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file())
     assert files == ["LICENSE", "llama_cpp/lib/llama.dll", "python312.dll", "tlwu-gui.exe", "tlwu.exe"]
     assert (out / "tinglongwu.ico").read_bytes() == bi.APP_ICON.read_bytes()
-    for bad in ("install.ps1", "install.bat", "requirements.txt", ".venv", "installer/run_install.ps1"):
+    for bad in ("install.ps1", "install.bat", "requirements/requirements.txt", ".venv", "installer/run_install.ps1"):
         assert not (stage / bad).exists(), bad
     assert "/DCoreLayout=1" in cmd
 

@@ -249,10 +249,8 @@ def test_run_session_notice_when_gpu_unusable(monkeypatch, tmp_path):
 def test_bundled_cuda_dir_registered(monkeypatch, tmp_path):
     from tinglongwu import device
 
-    fake = tmp_path / "pkg" / "tinglongwu"
-    fake.mkdir(parents=True)
-    (tmp_path / "pkg" / "cuda_libs").mkdir()
-    monkeypatch.setattr(device, "__file__", str(fake / "device.py"))
+    (tmp_path / "pkg" / "cuda_libs").mkdir(parents=True)
+    monkeypatch.setattr(device, "APP_ROOT", tmp_path / "pkg")  # #1664: app root comes from tinglongwu.paths
     assert device._bundled_dirs() == [tmp_path / "pkg" / "cuda_libs"]
 
 

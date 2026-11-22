@@ -18,7 +18,7 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "packaging"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "release" / "packaging"))
 from clean_machine_check import DRIVER_DLLS, PE_SUFFIXES, SYSTEM_DLLS, pe_imports  # noqa: E402
 
 RUNTIME_DIRS = ("cuda_libs", "llama_cpp/lib", "llama_cpp/lib_cpu")  # os.add_dll_directory'd by the app

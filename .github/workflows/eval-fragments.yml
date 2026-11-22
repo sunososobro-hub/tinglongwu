@@ -1,7 +1,7 @@
 name: eval-fragments
 # #1258: Hy-MT2-1.8B (Q4_K_M, llama.cpp, CPU) on eval/fragment_cases.jsonl (cut-off ASR lines, idioms, split numbers,
 # finished controls): chrF + invented-content rate for the line alone, with the previous line as context, and with
-# cut-off lines marked "…". tlwu_eval/fragments.py has the rules. Runs on GitHub-hosted CPU runners because the cloud
+# cut-off lines marked "…". eval/tlwu_eval/fragments.py has the rules. Runs on GitHub-hosted CPU runners because the cloud
 # agent sandbox cannot reach the model hosts. The step summary has the table; the JSON report is an artifact.
 # Only runs when this workflow, the set, the eval code or the Hy-MT2 prompt code changes, or by hand.
 on:
@@ -10,8 +10,8 @@ on:
     paths:
       - .github/workflows/eval-fragments.yml
       - eval/fragment_cases.jsonl
-      - tlwu_eval/fragments.py
-      - tinglongwu/hymt.py
+      - eval/tlwu_eval/fragments.py
+      - src/core/tinglongwu/hymt.py
   workflow_dispatch:
 
 permissions:
@@ -41,13 +41,13 @@ jobs:
       - name: Install tlwu + Hy-MT2 CPU engine
         run: |
           pip install -e .
-          pip install -r requirements-llama-cpu.txt --only-binary=:all:
+          pip install -r requirements/requirements-llama-cpu.txt --only-binary=:all:
       - name: Paths
         run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/tlwu-models
-          key: eval-fragments-models-v1-${{ hashFiles('tinglongwu_setup/manifest.json', 'tinglongwu_setup/downloader.py') }}
+          key: eval-fragments-models-v1-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - name: Model (Hy-MT2 1.8B)
         run: tlwu-setup --hymt --models-dir "$TLWU_MODELS"
       - name: Baseline / context / mark (CPU)

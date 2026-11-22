@@ -9,6 +9,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
+for _layer in ("system", "ui", "core"):  # src/ layer layout (#1664); core last-inserted = first on the path
+    sys.path.insert(0, str(ROOT / "src" / _layer))
 
 
 @pytest.fixture(autouse=True)
@@ -111,6 +113,35 @@ def _no_modal_dialogs(monkeypatch):
     yield
     if seen:
         pytest.fail(f"unexpected modal dialog(s) in a test (would block a real display): {seen}")
+
+
+def real_tk_unsafe(platform, tk_version):
+    """#1591: on macOS with Tk >= 9.0 (python 3.14 + Tk 9.1, Apple silicon) creating a real Tk root segfaults the whole
+    pytest run. Root cause named here: Tk 9's Cocoa backend aborts when the root is created by the test setup."""
+    return platform == "darwin" and float(tk_version) >= 9.0
+
+
+def install_tk_guard(monkeypatch, platform=None):
+    """Make Tk() / Toplevel() skip the test on macOS + Tk 9 (#1591). Returns True when the guard was installed."""
+    try:
+        import tkinter as tk
+    except ImportError:
+        return False
+    if not real_tk_unsafe(platform or sys.platform, tk.TkVersion):
+        return False
+
+    def refuse(self, *a, **kw):
+        pytest.skip(f"real Tk root is unsafe on macOS with Tk {tk.TkVersion} (segfault, #1591)")
+
+    monkeypatch.setattr(tk.Tk, "__init__", refuse)
+    monkeypatch.setattr(tk.Toplevel, "__init__", refuse)
+    return True
+
+
+@pytest.fixture(autouse=True)
+def _skip_real_tk_on_mac_tk9(monkeypatch):
+    """Skip (with a reason) any test that builds a real Tk / Toplevel on macOS + Tk 9, instead of crashing the run (#1591)."""
+    install_tk_guard(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

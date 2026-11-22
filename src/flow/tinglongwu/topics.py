@@ -1,0 +1,277 @@
+"""#609 (part 2 of #595): offline per-topic meeting notes.
+
+Final transcript lines (both sides, from the --save writer) are grouped into topics; each closed topic is
+summarized by a local GGUF instruct model in ONE background worker thread at the lowest thread priority, so the
+ASR/MT threads only pay for a list append and a queue.put. If the worker falls behind, topics wait in the queue and
+are finished after the meeting (close() drains it). Notes go to `<transcript>.topics.md` next to the --save file.
+
+Off unless `--topics MODEL.gguf` is given (needs --save). The model is picked by the #595 part 3 bake-off; the
+GUI side panel and defaults are part 4. Topics are cut by the #608 TopicSegmenter (pause rules; embeddings opt-in).
+"""
+from __future__ import annotations
+
+import os
+import queue
+import re
+import sys
+import threading
+from dataclasses import dataclass, field
+from pathlib import Path
+from collections.abc import Callable
+
+from .topic_segmenter import MAX_S, MIN_S, PAUSE_S, TopicSegmenter
+
+MAX_BULLETS = 5
+SUMMARY_TOKENS = 220  # #595: ~120 output tokens of notes, with headroom for the labels
+
+def _usable_cpus() -> int:
+    """#1264: the CPUs this process may use (affinity), see threads.cpu_count."""
+    from .threads import cpu_count
+
+    return cpu_count()
+
+
+@dataclass
+class Line:
+    t: float
+    side: str  # "me" / "them"
+    text: str
+
+
+@dataclass
+class Topic:
+    title: str
+    bullets: list[str] = field(default_factory=list)
+    actions: list[tuple[str, str]] = field(default_factory=list)  # (who = me/them, action)
+    start: float = 0.0
+    end: float = 0.0
+
+
+def PauseSegmenter(pause_s: float = PAUSE_S, min_s: float = MIN_S, max_s: float = MAX_S) -> TopicSegmenter:
+    """Pause/min/max rules only (no embedding): the #608 segmenter without an `embed` function."""
+    return TopicSegmenter(pause_s, min_s, max_s)
+
+
+# #1379: the notes are written in the language the user reads (the translation target); English names for the prompt.
+LANG_NAMES = {"zh-tw": "Traditional Chinese", "zh-cn": "Simplified Chinese", "zh": "Chinese", "en": "English",
+              "ja": "Japanese", "ko": "Korean", "ru": "Russian", "es": "Spanish", "fr": "French", "de": "German",
+              "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "hi": "Hindi", "yue": "Cantonese"}
+
+
+def lang_name(code: str | None) -> str | None:
+    """'zh-tw' -> 'Traditional Chinese'; unknown or empty -> None (the prompt then keeps the transcript's language)."""
+    return LANG_NAMES.get((code or "").lower()) or LANG_NAMES.get((code or "").lower().split("-")[0])
+
+
+def build_prompt(lines: list[Line], lang: str | None = None) -> str:
+    """lang: the user's language code (#1379); None keeps the #609 wording (same language as the transcript)."""
+    body = "\n".join(f"[{ln.side}] {ln.text}" for ln in lines)
+    name = lang_name(lang)
+    # #1642: the transcript is the speakers' original words (ASR), not the translation; the notes still go out in
+    # the user's language, so a bad translation no longer spoils them
+    where = (f"The transcript is the original speech, possibly in a foreign language. Write in {name}" if name
+             else "Write in the same language as the transcript")
+    return ("Summarize this part of a meeting transcript. [me] is the user, [them] is the other side.\n"
+            f"{where}, in exactly this format:\n"
+            "TITLE: <short topic title>\n- <key point>\n(3 to 5 key points)\n"
+            "ACTION me: <what the user must do>\nACTION them: <what the other side must do>\n"
+            "(only actions that were really agreed; none is fine)\n\nTranscript:\n" + body)
+
+
+_ACTION = re.compile(r"^\s*(?:[-*]\s*)?ACTION\s*\(?\s*(me|them)\s*\)?\s*[:：]\s*(.+)$", re.I)
+_TITLE = re.compile(r"^\s*TITLE\s*[:：]\s*(.+)$", re.I)
+_BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.+)$")
+
+
+_NO_ACTION = re.compile(r"^[\s\-–—.。]*(無|无|沒有|没有|なし|無し|none|n/?a|nothing|no actions?|нет)[\s.。]*$", re.I)
+
+
+def parse_summary(text: str, start: float = 0.0, end: float = 0.0) -> Topic:
+    """Model output -> Topic; tolerant of extra blank lines, numbering and missing parts.
+    An ACTION line that only says "none" is dropped (the prompt allows "none is fine"; the panel showed `→ me: 無`)."""
+    title, bullets, actions = "", [], []
+    for raw in (text or "").splitlines():
+        if m := _ACTION.match(raw):
+            if not _NO_ACTION.match(m.group(2)):
+                actions.append((m.group(1).lower(), m.group(2).strip()))
+        elif m := _TITLE.match(raw):
+            title = title or m.group(1).strip()
+        elif m := _BULLET.match(raw):
+            bullets.append(m.group(1).strip())
+    if not title:
+        title = bullets.pop(0) if bullets else "Topic"
+    return Topic(title, bullets[:MAX_BULLETS], actions, start, end)
+
+
+def _mmss(s: float) -> str:
+    s = max(0, int(s))
+    return f"{s // 60:02d}:{s % 60:02d}"
+
+
+def render_markdown(topics: list[Topic]) -> str:
+    out = ["# Meeting topics", ""]
+    for i, tp in enumerate(topics, 1):
+        out.append(f"## {i}. {tp.title} ({_mmss(tp.start)}-{_mmss(tp.end)})")
+        out += [f"- {b}" for b in tp.bullets]
+        if tp.actions:
+            out += ["", "Action items:"] + [f"- [ ] ({who}) {what}" for who, what in tp.actions]
+        out.append("")
+    return "\n".join(out)
+
+
+def lower_thread_priority() -> bool:
+    """Lowest scheduling priority for the CALLING thread (Linux: nice 19 on the thread id; Windows:
+    THREAD_PRIORITY_IDLE). False where it is not supported (macOS) or refused."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            k32 = ctypes.windll.kernel32
+            return bool(k32.SetThreadPriority(k32.GetCurrentThread(), -15))  # THREAD_PRIORITY_IDLE
+        if sys.platform.startswith("linux"):
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 19)  # Linux: per-thread nice
+            return True
+    except (OSError, AttributeError):
+        pass
+    return False
+
+
+class TopicSummarizer:
+    """One daemon worker: summarize(prompt) -> text for each submitted topic, in order, at the lowest priority.
+    submit() never waits for the model; close() lets the queue drain (the after-the-meeting backlog)."""
+
+    def __init__(self, summarize: Callable[[str], str], on_topic: Callable[[Topic], None],
+                 lower_priority: Callable[[], bool] = lower_thread_priority, log=None, lang: str | None = None,
+                 on_state: Callable[[bool], None] | None = None):
+        self.summarize, self.on_topic, self._lower, self.lang = summarize, on_topic, lower_priority, lang
+        self.on_state = on_state  # busy True while the model runs a topic, False after (the GUI shows "summarizing")
+        self.log = log or (lambda m: print(m, file=sys.stderr, flush=True))
+        self.q: queue.Queue = queue.Queue()
+        self.lowered: bool | None = None
+        self.thread = threading.Thread(target=self._body, name="tlwu-topics", daemon=True)
+        self.thread.start()
+
+    def submit(self, lines: list[Line]) -> None:
+        if lines:
+            self.q.put(list(lines))
+
+    def pending(self) -> int:
+        return self.q.qsize()
+
+    def _body(self) -> None:
+        self.lowered = self._lower()
+        while True:
+            lines = self.q.get()
+            if lines is None:
+                return
+            self._state(True)
+            try:
+                text = self.summarize(build_prompt(lines, self.lang))
+                self.on_topic(parse_summary(text, lines[0].t, lines[-1].t))
+            except Exception as e:  # noqa: BLE001 - notes are a side feature: never stop the meeting over them
+                self.log(f"tlwu: topic summary failed: {e}")
+            finally:
+                self._state(False)
+
+    def _state(self, busy: bool) -> None:
+        if self.on_state is not None:
+            try:
+                self.on_state(busy)
+            except Exception:  # noqa: BLE001 - a broken indicator must not stop the notes
+                pass
+
+    def close(self, timeout: float | None = None) -> None:
+        self.q.put(None)
+        self.thread.join(timeout)
+
+
+class TopicNotes:
+    """Feeds saved transcript records (JsonlSaveSink.on_line) into a segmenter and the summarizer; rewrites the
+    Markdown file after every finished topic. on_line runs on the ASR/MT threads: it only appends and enqueues."""
+
+    def __init__(self, path, summarize: Callable[[str], str], segmenter=None,
+                 lower_priority: Callable[[], bool] = lower_thread_priority, log=None,
+                 on_topic: Callable[[Topic], None] | None = None, lang: str | None = None):
+        self.path, self.lang = Path(path), lang
+        self.on_topic = on_topic  # #611: the GUI side panel listens here (called on the worker thread)
+        self.segmenter = segmenter or PauseSegmenter()
+        self.topics: list[Topic] = []
+        self._lock = threading.Lock()  # both sides call on_line (listen thread + speak thread)
+        self.worker = TopicSummarizer(summarize, self._done, lower_priority=lower_priority, log=log, lang=lang,
+                                      on_state=getattr(on_topic, "state", None))  # the GUI panel has .state(busy)
+
+    def on_line(self, rec: dict) -> None:
+        # #1642: with a known user language the prompt asks for notes in it, so both sides feed the original words
+        # (src, the ASR text); the translation (dst) only when a record has no src. Without one (#609/#1379 wording,
+        # "same language as the transcript") the other side keeps feeding its translation, the user's own words src.
+        first = ("src", "dst") if rec.get("side") == "me" or lang_name(self.lang) else ("dst", "src")
+        text = (rec.get(first[0]) or rec.get(first[1]) or "").strip()
+        if not text or "fix" in rec:
+            return
+        with self._lock:
+            closed = self.segmenter.add(Line(float(rec.get("t", 0.0)), rec.get("side", "them"), text))
+        for seg in closed:
+            self.worker.submit(seg)
+
+    def _done(self, topic: Topic) -> None:  # worker thread
+        self.topics.append(topic)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(render_markdown(self.topics), encoding="utf-8")
+        if self.on_topic is not None:
+            try:
+                self.on_topic(topic)
+            except Exception as e:  # noqa: BLE001 - a broken panel must not stop the notes
+                print(f"tlwu: topic panel failed: {e}", file=sys.stderr, flush=True)
+
+    def close(self, timeout: float | None = None) -> None:
+        """Meeting over: summarize the open topic too and wait for the backlog."""
+        with self._lock:
+            rest = self.segmenter.flush()
+        for seg in rest:
+            self.worker.submit(seg)
+        left = self.worker.pending()
+        if left:
+            print(f"tlwu: finishing {left} topic summar{'y' if left == 1 else 'ies'} ...", file=sys.stderr, flush=True)
+        self.worker.close(timeout)
+
+
+def notes_path(save_path) -> Path:
+    p = Path(save_path)
+    return p.with_name(p.stem + ".topics.md")
+
+
+def llama_summarizer(model_path, threads: int | None = None, loader=None) -> Callable[[str], str]:
+    """A summarize(prompt) on a local GGUF via llama.cpp, loaded lazily on the worker thread (CPU, few threads so
+    ASR/MT keep their cores). Separate from the translation model: a different file."""
+    state: dict = {}
+    n = threads or max(1, _usable_cpus() // 4)
+
+    def _load():
+        if loader is not None:
+            return loader(model_path)
+        from . import llamacheck
+
+        llamacheck.import_llama()
+        from llama_cpp import Llama
+
+        return Llama(model_path=str(model_path), n_gpu_layers=0, n_ctx=4096, n_threads=n, n_threads_batch=n,
+                     verbose=False)
+
+    def summarize(prompt: str) -> str:
+        if "llm" not in state:
+            state["llm"] = _load()
+        r = state["llm"].create_chat_completion([{"role": "user", "content": prompt}], max_tokens=SUMMARY_TOKENS,
+                                                temperature=0.0)
+        return r["choices"][0]["message"]["content"] or ""
+
+    return summarize
+
+
+def attach(saver, model_path, summarize: Callable[[str], str] | None = None,
+           on_topic: Callable[[Topic], None] | None = None, lang: str | None = None) -> TopicNotes:
+    """Hook topic notes onto a JsonlSaveSink (both sides in meeting mode go through its record()).
+    lang: the user's language code (#1379), the notes are written in it."""
+    notes = TopicNotes(notes_path(saver.path), summarize or llama_summarizer(model_path), on_topic=on_topic, lang=lang)
+    saver.on_line = notes.on_line
+    print(f"tlwu: topic notes -> {os.path.abspath(notes.path)}", file=sys.stderr)
+    return notes

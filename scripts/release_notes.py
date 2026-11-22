@@ -27,7 +27,7 @@ by the workflow token fires no `push`), which `plan` treats like the push of the
 What's new comes from docs/whats_new.md (`## vX.Y.Z` section, written by the bump PR); a release PR body edit is the
 fallback for a hand merge. Without either the notes keep `- TODO:` and windows-installer leaves the release a draft.
 
-Version: tinglongwu/__init__.py `__version__` is the single source (#462; the setup wizard is named after it), so
+Version: src/core/tinglongwu/__init__.py `__version__` is the single source (#462; the setup wizard is named after it), so
 the release PR title is `release: v<__version__>` and a merged release PR whose title names another version (or
 none) publishes nothing. If that tag already exists, the PR body says to bump `__version__` on dev first.
 Publish gates (owner, #414): only a merged dev -> main `release:` PR; ci, e2e, windows-build and hw-tests green on
@@ -52,7 +52,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _pack_manifest():  # by path: importing the tinglongwu package would install its offline guard in this script
     import importlib.util
-    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "tinglongwu" / "pack_manifest.py")
+    spec = importlib.util.spec_from_file_location("tlwu_pack_manifest", ROOT / "src" / "system" / "tinglongwu" / "pack_manifest.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -99,7 +99,7 @@ JOB_PASS = ("success", "skipped", "neutral")
 def app_version(init_text: str) -> str:
     m = re.search(r'^__version__\s*=\s*"([^"]+)"', init_text, re.M)
     if not m:
-        raise SystemExit("no __version__ in tinglongwu/__init__.py")
+        raise SystemExit("no __version__ in src/core/tinglongwu/__init__.py")
     return m.group(1)
 
 
@@ -266,6 +266,30 @@ def platform_plan(tag: str, status: dict[str, bool], marker_shas: dict[str, str 
     return out
 
 
+MOBILE_TAG_RE = re.compile(r"^mobile-v(\d+)\.(\d+)\.(\d+)$")
+
+
+def mobile_state(tag: str, mobile_tags: list[str]) -> dict:
+    """#1598: the mobile lane line for release `tag` (vX.Y.Z). `mobile-vX.Y.Z` exists = the mobile gate was green and
+    the AAB went to Play production as a draft; otherwise mobile stays on the newest earlier `mobile-v*` tag."""
+    ver = tag.lstrip("v")
+    if f"mobile-v{ver}" in mobile_tags:
+        return {"ship": True, "version": ver}
+    def key(t):
+        return tuple(int(x) for x in MOBILE_TAG_RE.match(t).groups())
+    older = [t for t in mobile_tags if MOBILE_TAG_RE.match(t) and key(t) < key(f"mobile-v{ver}")] \
+        if re.fullmatch(r"\d+\.\d+\.\d+", ver) else []
+    return {"ship": False, "version": max(older, key=key) if older else ""}
+
+
+def mobile_md(d: dict) -> str:
+    if d["ship"]:
+        return f"- Mobile: mobile {d['version']} drafted for production"
+    if d["version"]:
+        return f"- Mobile: skipped (not verified), stays on {d['version']}"
+    return "- Mobile: skipped (not verified), no earlier mobile release"
+
+
 def platforms_md(plan_: dict[str, dict]) -> str:
     lines = ["### Platforms", ""]
     for p in ("windows", *MARKERS):
@@ -274,6 +298,8 @@ def platforms_md(plan_: dict[str, dict]) -> str:
                  f"skipped (not verified), stays on {d['version']}" if d["version"] else
                  "skipped (not verified), no earlier verified version")
         lines.append(f"- {PLATFORM_NAMES[p]}: {state}")
+    if "mobile" in plan_:
+        lines.append(mobile_md(plan_["mobile"]))
     return "\n".join(lines) + "\n"
 
 
@@ -441,23 +467,23 @@ def _patch_lines(patch: str) -> tuple[list[str], list[str]]:
 
 
 def bump_exempt(files: list[dict], whats_new_text: str | None = None) -> tuple[bool, str]:
-    """#1267: a bump PR skips Opus only when its diff is the `__version__` patch bump in tinglongwu/__init__.py plus,
+    """#1267: a bump PR skips Opus only when its diff is the `__version__` patch bump in src/core/tinglongwu/__init__.py plus,
     optionally, one new filled `## vX.Y.Z` section (same version) added to docs/whats_new.md and nothing else.
     `files` is the `pulls/N/files` list (filename, status, patch); `whats_new_text` is docs/whats_new.md at the PR head
     (needed when the PR touches it: the section must be the one the release reads, not hidden in a comment).
     Returns (exempt, reason)."""
     by = {f.get("filename"): f for f in files}
-    other = sorted(set(by) - {"tinglongwu/__init__.py", WHATS_NEW_FILE})
+    other = sorted(set(by) - {"src/core/tinglongwu/__init__.py", WHATS_NEW_FILE})
     if other:
         return False, f"other files: {', '.join(other)}"
-    init = by.get("tinglongwu/__init__.py")
+    init = by.get("src/core/tinglongwu/__init__.py")
     if not init or init.get("status") != "modified":
         return False, "no __version__ change"
     removed, added = (_patch_lines(init.get("patch", "")))
     old = [VERSION_LINE_RE.match(x) for x in removed]
     new = [VERSION_LINE_RE.match(x) for x in added]
     if len(removed) != 1 or len(added) != 1 or not old[0] or not new[0]:
-        return False, "tinglongwu/__init__.py changes more than the __version__ line"
+        return False, "src/core/tinglongwu/__init__.py changes more than the __version__ line"
     o, n = tuple(map(int, old[0].groups())), tuple(map(int, new[0].groups()))
     if n != (o[0], o[1], o[2] + 1):
         return False, f"not a patch bump: {'.'.join(map(str, o))} -> {'.'.join(map(str, n))}"
@@ -536,11 +562,11 @@ def open_release_pr(pulls: list[dict], repo: str) -> dict | None:
 
 def release_commit(tag: str, commits: list[str], show) -> str | None:
     """#1012: the first of `commits` (the bump commit, then the later dev commits, oldest first) whose
-    tinglongwu/__init__.py says `tag` AND whose docs/whats_new.md has a filled `## tag` section; None if none has yet.
+    src/core/tinglongwu/__init__.py says `tag` AND whose docs/whats_new.md has a filled `## tag` section; None if none has yet.
     A bump PR without notes (v0.3.6: #970, notes in #988) must not be snapshotted before its notes land, or auto_plan
     (which reads whats_new at the snapshot head) would stall for good."""
     for sha in commits:
-        init = show(sha, "tinglongwu/__init__.py")
+        init = show(sha, "src/core/tinglongwu/__init__.py")
         if init is None or f"v{app_version(init)}" != tag:
             continue
         if whats_new_section(show(sha, WHATS_NEW_FILE) or "", tag) is not None:
@@ -635,9 +661,9 @@ def auto_plan(enabled: str, throttle: str | None, run_sha: str, version: str, ta
     if is_snapshot(pr):
         if not in_dev(head):
             return stop(f"snapshot {pr['head']['ref']} head {head[:12]} is not a dev commit")
-        init = show(head, "tinglongwu/__init__.py")
+        init = show(head, "src/core/tinglongwu/__init__.py")
         if init is None:
-            return stop(f"cannot read tinglongwu/__init__.py at the snapshot head {head[:12]}")
+            return stop(f"cannot read src/core/tinglongwu/__init__.py at the snapshot head {head[:12]}")
         snap_version = app_version(init)
         if snap_version != version:  # bump reverted or superseded on dev: never release the old snapshot
             return stop(f"snapshot {pr['head']['ref']} is v{snap_version} but dev's __version__ is v{version}; "
@@ -679,7 +705,7 @@ def pr_body(version: str, tags: list[str], since: str | None, changes: list[dict
     lines = []
     if tag in tags:
         lines += [f"> **Not releasable yet:** tag `{tag}` already exists. Bump `__version__` in "
-                  "`tinglongwu/__init__.py` on dev; this PR then updates itself.", ""]
+                  "`src/core/tinglongwu/__init__.py` on dev; this PR then updates itself.", ""]
     new = whats_new_section(whats_new_text, tag) or whats_new(existing) or todo_whats_new(tag)
     lines += [WHATS_NEW, new, "", changes_md(since, changes),
               thanks_md(thanks), "---",
@@ -759,6 +785,12 @@ def marker_shas() -> dict[str, str | None]:
     return out
 
 
+def mobile_tags() -> list[str]:
+    r = subprocess.run(["git", "for-each-ref", "--format=%(refname:short)", "refs/tags/mobile-v*"], cwd=ROOT,
+                       capture_output=True, text=True)
+    return r.stdout.split() if r.returncode == 0 else []
+
+
 def local_platform_plan(tag: str, platforms: str) -> dict[str, dict]:
     return platform_plan(tag, parse_platforms(platforms), marker_shas(), git_tags())
 
@@ -804,7 +836,7 @@ def git_ls_remote_heads(pattern: str) -> dict[str, str]:
 
 def snapshot_cli(version: str, rep: str) -> int:
     """#976 release-pr.yml: print the snapshot_plan for HEAD (a dev commit; origin/main fetched) as GITHUB_OUTPUT lines."""
-    bump = git("log", "-1", "--format=%H", "-G", r"^__version__\s*=", "HEAD", "--", "tinglongwu/__init__.py").strip()
+    bump = git("log", "-1", "--format=%H", "-G", r"^__version__\s*=", "HEAD", "--", "src/core/tinglongwu/__init__.py").strip()
     bump = bump or git("rev-parse", "HEAD").strip()
     ahead = int(git("rev-list", "--count", f"origin/main..{bump}").strip() or 0)
     later = git("rev-list", "--reverse", "--first-parent", f"{bump}..HEAD").split()
@@ -872,7 +904,7 @@ def main(argv=None) -> int:
                                          text_at)
         print(f"bump-exempt: {'yes' if ok else 'no'} ({why})" + (f" at {sha}" if sha else ""))
         return 0 if ok else 1
-    version = app_version((ROOT / "tinglongwu" / "__init__.py").read_text("utf-8"))
+    version = app_version((ROOT / "src" / "core" / "tinglongwu" / "__init__.py").read_text("utf-8"))
     rep = repo()
     if a.cmd == "plan":
         event, ref_name, sha, ref_type = (os.environ.get(k, "") for k in
@@ -928,7 +960,9 @@ def main(argv=None) -> int:
                          _pack_manifest().load_manifest(a.packs_manifest) if a.packs_manifest else None,
                          wn.read_text("utf-8") if wn.exists() else "", a.version,
                          os.environ.get("HW_DEFERRED", "") == "true",  # #848: release.yml passes plan's hw_deferred
-                         local_platform_plan(a.version, a.platforms) if a.platforms else None)
+                         ({**local_platform_plan(a.version, a.platforms),
+                           "mobile": mobile_state(a.version, mobile_tags())}  # #1598
+                          if a.platforms else None))
     Path(a.out).write_text(text, "utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:

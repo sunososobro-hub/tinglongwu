@@ -136,7 +136,7 @@ def test_install_dry_run_shows_the_selftest_as_last_step():
 # ---------------------------------------------------------------- exe: package data + first-run window
 
 def test_exe_build_ships_tinglongwu_package_data(tmp_path):
-    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "packaging" / "build_windows.py")
+    spec = importlib.util.spec_from_file_location("build_windows", ROOT / "release" / "packaging" / "build_windows.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.build_app_layer(tmp_path)  # #923: the app layer is a copy of the package folders, data files included

@@ -66,7 +66,7 @@ def _header(label):
         log_text=tx, state=SimpleNamespace(history=lambda: [("src", "hi", False)]), settings={},
         spk_colors=SpeakerColors(), spk_book=SpeakerBook(), _spk_tags_bound=set(),
         _log_at_end=lambda: False, _log_to_end=lambda: None, placeholder=lambda: None,
-        _speaker_label=lambda _i: label, _insert_bubble=lambda *a: None, _rename_speaker=lambda r: None)
+        _speaker_label=lambda _i: label, _insert_bubble=lambda *a, **k: None, _rename_speaker=lambda r: None)
     App.render_log(app)
     return "".join(tx.out).split("\n")[0]
 

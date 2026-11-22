@@ -18,9 +18,11 @@ REPO = "sunososobro-hub/tinglongwu"
 LOG_ISSUE = 61
 PRODUCER = "sunososobro-hub"
 THROTTLE_ISSUE = 574
-DEFAULT_MIX = {"bug": 28, "enhancement": 50, "eval": 11, "documentation": 5, "maint": 6}
+DEFAULT_MIX = {"bug": 28, "enhancement": 40, "infra": 10, "eval": 11, "documentation": 5, "maint": 6}
 TYPES = list(DEFAULT_MIX)
-INFO_TARGETS = {"QA": 15, "ideas": 5}
+INFO_TARGETS = {"QA": 10, "ideas": 5}
+OWNER_LABEL = "src:owner"  # owner 2026-11-20: owner-requested work is exempt from the mix and the infra cap
+OWNER_KEY = "owner"  # by_type key for exempt minutes; not a target, so build_rows never counts it
 USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=(\d+)(?![\d.])", re.M)
 LINK_RE = re.compile(r"(?:Closes|Refs) #(\d+)")
 HEAD_RE = re.compile(r"^(?:fix|feat)/(\d+)(?:-r\d+)?$")
@@ -71,6 +73,17 @@ def build_rows(minutes: dict[str, int], mix: dict[str, int]) -> list[dict]:
         rows.append({"type": t, "minutes": mins, "share": share, "target": target,
                      "deficit": round(target - share, 1)})
     return rows
+
+
+def pick_type(labels: set[str]) -> str | None:
+    """Mix bucket of an issue: `infra` wins (infra issues also carry a type label, section 13), else the first TYPES hit."""
+    if "infra" in labels:
+        return "infra"
+    return next((t for t in TYPES if t in labels), None)
+
+
+def owner_line(owner48: int) -> str:
+    return f"owner-requested (src:owner, exempt from mix): {owner48} min (48 h)"
 
 
 def infra_line(infra_min: int, total_min: int) -> str:
@@ -143,11 +156,15 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
                     labels_cache[n] = set()  # linked issue deleted: keep the minutes, no classification
                     incomplete.add(n)
             labels = labels_cache[n]
+        if OWNER_LABEL in labels:
+            if _ts(merged) >= since48:
+                by_type[OWNER_KEY] = by_type.get(OWNER_KEY, 0) + mins
+            continue
         total7 += mins
         if "infra" in labels:
             infra_min += mins
         if _ts(merged) >= since48:
-            typ = next((t for t in TYPES if t in labels), None)
+            typ = pick_type(labels)
             if typ:
                 by_type[typ] = by_type.get(typ, 0) + mins
             else:
@@ -222,12 +239,16 @@ def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int,
                         raise
                     labels_cache[n] = set()
             labels = labels_cache[n]
+        if OWNER_LABEL in labels:
+            if t >= since48:
+                by_type[OWNER_KEY] = by_type.get(OWNER_KEY, 0) + mins
+            continue
         total7 += mins
         if "infra" in labels:
             infra_min += mins
         if t >= since48:
             fix48 += mins
-            typ = next((x for x in TYPES if x in labels), None)
+            typ = pick_type(labels)
             if typ:
                 by_type[typ] = by_type.get(typ, 0) + mins
             else:
@@ -254,6 +275,7 @@ def main() -> int:
     rows = build_rows(by_type, mix)
     total = sum(r["minutes"] for r in rows)
     infra = infra_line(infra_min, total7) + "\n" + fix_line(fix48, total + untyped)
+    infra += "\n" + owner_line(by_type.get(OWNER_KEY, 0))
     text = render(rows, infra, total, untyped, ok, now)
     if args.dry_run:
         print(text)
