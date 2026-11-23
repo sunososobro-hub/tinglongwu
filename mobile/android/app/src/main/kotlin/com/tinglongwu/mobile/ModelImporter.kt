@@ -20,7 +20,7 @@ import java.util.zip.ZipInputStream
 
 /**
  * Copies model files the user picks with the system file picker (ACTION_OPEN_DOCUMENT) into a
- * staging dir, streaming and hashing on the way. Needs no storage and no INTERNET permission.
+ * staging dir, streaming and hashing on the way. Needs no storage permission and no network use.
  * Which names are accepted and whether size/SHA-256 match is decided in Dart (model_manifest.dart);
  * this side only copies the names Dart asks for, to the target paths Dart gives.
  */

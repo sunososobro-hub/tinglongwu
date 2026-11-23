@@ -106,6 +106,7 @@ class Entry:
     mt_hint: bool = True  # False for the default hotwords (#1397): Whisper hint only, never in the MT prompt
     ru_noun: bool = False  # #1425: built-in Russian entries match their own noun case forms only
     whole_short: bool = False  # #1396: stems of <= SHORT_LATIN chars match whole words only (прод must not fire on продолжение)
+    substr: bool = False  # #1689: ja / ko / zh sources (no spaces between words) match as substrings of the text
 
     @property
     def main(self) -> str:
@@ -118,6 +119,11 @@ class Entry:
         return word == stem or (len(word) == len(stem) + 1 and word.startswith(stem))
 
     def matches(self, words: list[str]) -> bool:
+        if self.substr:
+            text = " ".join(words)
+            # same tokens as the text (PR #1695 review): "ニューラル・ネットワーク" must match "ニューラル ネットワーク"
+            return any(key and key in text for key in (" ".join(_norm(w) for w in _WORD.findall(src))
+                                                      for src in self.sources))
         for src in self.sources:
             src_words = _WORD.findall(src)
             stems = [_stem(w) for w in src_words]
@@ -315,3 +321,103 @@ def merge(user: Glossary | None, base: Glossary) -> Glossary:
     taken = {_norm(s) for e in user.entries for s in e.sources}
     kept = [e for e in base.entries if not any(_norm(s) in taken for s in e.sources)]
     return Glossary(list(user.entries) + kept)
+
+
+
+# #1689: built-in multilingual term tables, one file per domain: data/terms/<domain>.tsv (docs/glossary-domains.md).
+# Adding a domain = adding one file; the loader finds it and its `# scenario:` line says when it is on. Language
+# columns come from each file's header, so a new language column needs no code change.
+TERMS_DIR = DATA_DIR / "terms"
+TERM_LANGS = ("en", "ru", "ja", "ko", "zh-TW", "zh-CN")  # the columns of the shipped files (a file may add more)
+ALWAYS_SCENARIO = "*"  # a file whose scenario list has "*" is on for every scenario
+_NO_SPACE_LANGS = ("ja", "ko", "zh", "th", "lo", "km", "my")  # sources matched as substrings of the text
+
+
+def term_lang(code: str | None, zh_variant: str | None = None) -> str | None:
+    """A CLI language code -> a term-table column name (zh -> zh-TW / zh-CN by `zh_variant`, else the base code)."""
+    c = (code or "").strip().lower().replace("_", "-")
+    if not c or c == "auto":
+        return None
+    if c in ("zh-tw", "zh-hant", "zh-hk"):
+        return "zh-TW"
+    if c in ("zh-cn", "zh-hans", "zh-sg"):
+        return "zh-CN"
+    if c == "zh":
+        return "zh-CN" if (zh_variant or "tw").lower() == "cn" else "zh-TW"
+    return c.split("-")[0]
+
+
+@dataclass
+class TermTable:
+    domain: str
+    scenarios: list[str]
+    header: list[str]
+    rows: list[dict]
+
+    @property
+    def langs(self) -> list[str]:
+        return [h for h in self.header if h and h != "id"]
+
+
+def read_terms(text: str, domain: str = "") -> TermTable:
+    """A term file: line 1 `# scenario: <key>[, <key>]`, other `#` lines are comments, the first other line is the
+    TAB-separated header (`id` then language columns), then one row per concept."""
+    scen, head, rows = [], None, []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            key, _, val = line[1:].partition(":")
+            if key.strip().lower() == "scenario" and head is None:
+                scen = [v.strip().lower() for v in val.split(",") if v.strip()]
+            continue
+        cells = [c.strip() for c in raw.rstrip("\r\n").split("\t")]
+        if head is None:
+            head = cells
+            continue
+        rows.append(dict(zip(head, cells + [""] * (len(head) - len(cells)))))
+    return TermTable(domain, scen, head or [], rows)
+
+
+def term_tables(folder=None) -> list[TermTable]:
+    d = Path(folder) if folder else TERMS_DIR
+    return [read_terms(f.read_text(encoding="utf-8-sig"), f.stem) for f in sorted(d.glob("*.tsv"))]
+
+
+def scenario_domains(scenario: str | None, folder=None) -> list[str]:
+    """Domains on for `scenario`: the files naming it (or "*") in their `# scenario:` line."""
+    want = {(scenario or "").strip().lower(), ALWAYS_SCENARIO} - {""}
+    return [t.domain for t in term_tables(folder) if want & set(t.scenarios)]
+
+
+def spellings(cell: str, source: bool = False) -> list[str]:
+    """` | `-separated spellings of a cell (first = main). A leading `*` marks a target-only spelling (a word with a
+    common everyday sense, e.g. zh 提交): dropped on the source side, kept without the `*` as a target."""
+    out = [s.strip() for s in (cell or "").split("|") if s.strip()]
+    return [s for s in out if not s.startswith("*")] if source else [s.lstrip("*").strip() for s in out]
+
+
+def load_builtin_pair(src: str | None, tgt: str | None, domains, zh_variant: str | None = None,
+                      folder=None) -> Glossary:
+    """Entries `src term = tgt term` from the term files of `domains`. `src` "auto" / None takes every other
+    language column as a source. Russian sources match their own case forms (#1425 rules); ja / ko / zh sources
+    match as substrings and need 2+ characters; never Whisper hotwords. No domains, or a target column no file
+    has -> empty Glossary."""
+    t = term_lang(tgt, zh_variant)
+    doms = set(domains or ())
+    if t is None or not doms:
+        return Glossary()
+    s = term_lang(src, zh_variant)
+    out: list[Entry] = []
+    for tb in (tb for tb in term_tables(folder) if tb.domain in doms and t in tb.langs):
+        cols = [c for c in tb.langs if c != t and (s is None or c == s)]
+        for col in cols:
+            cjk = col.split("-")[0] in _NO_SPACE_LANGS
+            for r in tb.rows:
+                srcs = [w for w in spellings(r.get(col, ""), source=True) if not cjk or len(w) >= 2]
+                tgts = spellings(r.get(t, ""))
+                if srcs and tgts:
+                    out.append(Entry(srcs, tgts[0], asr_hint=False, ru_noun=col == "ru", whole_short=col == "ru",
+                                     substr=cjk))
+    return Glossary(out)

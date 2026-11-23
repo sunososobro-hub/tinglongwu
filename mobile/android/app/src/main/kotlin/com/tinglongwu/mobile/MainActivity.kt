@@ -124,7 +124,7 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                         result.success(mapOf("tempC" to temp, "level" to level, "thermal" to thermal))
                     }
-                    // Model import (Storage Access Framework: no storage or INTERNET permission).
+                    // Model import (Storage Access Framework: no storage permission, no network use).
                     "pickDocuments" -> importer.pick(result, call.argument<Boolean>("downloads") == true)
                     "importDocument" -> importer.import(call, result) { done, total ->
                         ch.invokeMethod("importProgress", mapOf("done" to done, "total" to total))

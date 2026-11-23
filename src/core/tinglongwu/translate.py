@@ -18,14 +18,27 @@ class Translator(ABC):
         """Quick translation for --stream drafts; must not change translator state. Default: translate()."""
         return self.translate(text, src, tgt)
 
-def translate_checked(translator: Translator, text: str, src: str, tgt: str, draft: bool = False) -> Translation | None:
+def takes_context(translator) -> bool:
+    """#1750 --mt-context: does this engine (or the engine a wrapper forwards to) accept translate(..., context=)?"""
+    try:
+        return bool(getattr(translator, "takes_context", False))
+    except Exception:  # noqa: BLE001 - a wrapper whose engine is not loaded yet
+        return False
+
+
+def translate_checked(translator: Translator, text: str, src: str, tgt: str, draft: bool = False,
+                      context: str | None = None) -> Translation | None:
     """translate()/draft() that never lets Japanese through untranslated (#86): kana in a non-Japanese target
     means the engine echoed (part of) the source. One retry (Hy-MT2 samples, so a second try usually works);
-    None when it still leaks. Drafts are not retried (the next draft comes in a moment anyway)."""
+    None when it still leaks. Drafts are not retried (the next draft comes in a moment anyway).
+    context (#1750 --mt-context): previous source sentence, passed only to an engine that takes it (else ignored)."""
     from . import lang as lang_patches
     from .langfollow import has_kana
 
     call = translator.draft if draft else translator.translate
+    if context and not draft and takes_context(translator):
+        base_call = call
+        call = lambda t, s, g: base_call(t, s, g, context=context)  # noqa: E731
     if src != tgt:
         text = lang_patches.pre_mt(src, text)  # #390: per-language source fixes (tinglongwu/lang/<src>/)
     for _ in range(1 if draft else 2):

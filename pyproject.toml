@@ -54,7 +54,7 @@ tlwu_eval = "eval/tlwu_eval"
 [tool.setuptools.package-data]
 tinglongwu_setup = ["manifest.json"]
 "tinglongwu.gui" = ["assets/*.ico", "assets/*.png", "assets/*.svg"]
-tinglongwu = ["data/*.txt", "data/*.wav", "data/*.gz"]
+tinglongwu = ["data/*.txt", "data/*.wav", "data/*.gz", "data/terms/*.tsv"]
 
 [tool.ruff]
 target-version = "py312"

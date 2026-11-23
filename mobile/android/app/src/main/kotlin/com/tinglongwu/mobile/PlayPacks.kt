@@ -13,7 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /**
  * Models through Google Play Asset Delivery (fast-follow packs `models_asr`, `models_llm`). Play
- * downloads them right after install, so the app still has no INTERNET permission. The app reads
+ * downloads them right after install, so these Play downloads use no app network code. The app reads
  * the model files in place from [locations] (no copy). [fetch] only joins or restarts a download
  * that is not finished yet. A side-loaded APK has no packs: [locations] is empty, `available` is
  * false, and the manual zip import stays the way in.

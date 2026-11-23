@@ -26,6 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+for _layer in ("system", "ui", "core"):  # src/ layer layout (#1664), as tests/conftest.py; core ends first (#1739)
+    sys.path.insert(0, str(ROOT / "src" / _layer))
 
 PACK_NAME = "tlwu-vulkan-pack-{version}.zip"
 MANIFEST_NAME = "vulkan-pack.json"

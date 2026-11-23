@@ -88,6 +88,10 @@ def parse_args(argv=None):
                    help="when the Hy-MT2 model is not installed yet (still downloading, e.g. the app's first run), "
                         "start with source-language lines and translate from the line after the model lands, "
                         "without a restart (#1357). Without it tlwu stops and prints the setup command")
+    p.add_argument("--mt-context", action="store_true",
+                   help="give the translator the previous finished sentence of the same speaker and language as "
+                        "context (not after a pause of 4 s or more). Off by default: fewer wrong word senses in "
+                        "the #1394 eval, about +0.2 s MT time per line on CPU (#1750)")
     p.add_argument("--no-merge", action="store_true",
                    help="translate every VAD segment separately (default: merge into sentences first)")
     p.add_argument("--max-wait", type=float, default=None,
@@ -137,6 +141,10 @@ def parse_args(argv=None):
                         "and step back up after a stable period; one stderr line per switch)")
     p.add_argument("--builtin-glossary", action="store_true",
                    help="also load the built-in tech/dev glossary (your --glossary entries win)")
+    p.add_argument("--term-scenario", default="", metavar="NAME",
+                   help="#1689: with --builtin-glossary, also use the built-in term files (data/terms/*.tsv) of this "
+                        "scenario, e.g. tech, for the --lang -> --to pair (default: only files marked for "
+                        "every scenario)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -639,9 +647,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
             raise RuntimeError(f"cannot read --glossary: {e}") from e
         print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
     if getattr(a, "builtin_glossary", False):
-        from .glossary import load_builtin, merge
-
-        glossary = merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
+        glossary = merge_builtin_terms(glossary, a)
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     from .glossary import with_default_hotwords
 
@@ -832,7 +838,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
             on_backlog=backlog_line or (lambda n: print(backlog_text(n) or "tlwu: ASR caught up", file=sys.stderr, flush=True)),
             on_mt_wait=mt_wait_line or (lambda n: print(f"tlwu: {mt_wait_text(n) or 'MT resumed'}", file=sys.stderr, flush=True)),
             on_catchup=lambda n: (notice or (lambda m: print(f"tlwu: {m}", file=sys.stderr, flush=True)))(
-                _t("catchup_note", lines=n)))  # #1369
+                _t("catchup_note", lines=n)),  # #1369
+            mt_context=bool(getattr(a, "mt_context", False)))  # #1750
     except KeyboardInterrupt:
         interrupted = True
         raise
@@ -909,6 +916,21 @@ def warm_live_asr(asr, file, paced: bool, warn=None) -> bool:
             warn(f"tlwu: speech model warm-up failed ({e})")
         return False
     return True
+
+
+def merge_builtin_terms(glossary, a):
+    """#1689: user entries first, then the pair's domain terms, then the built-in tech list; earlier entries win on a
+    shared source. The pair table must come before tech-dev.txt: that list's targets are Chinese, so for en -> ru it
+    would replace every shared term's Russian target with Chinese. Face-to-face keeps the built-in list only."""
+    from .glossary import load_builtin, merge
+
+    if not getattr(a, "face_to_face", None):
+        from .glossary import load_builtin_pair, scenario_domains
+
+        doms = scenario_domains(getattr(a, "term_scenario", None))
+        glossary = merge(glossary, load_builtin_pair(getattr(a, "lang", None), getattr(a, "to", None), doms,
+                                                      getattr(a, "zh_variant", None)))
+    return merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
 
 
 def latency_recorder(path, log):

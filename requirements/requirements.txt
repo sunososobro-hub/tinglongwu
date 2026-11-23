@@ -26,7 +26,7 @@ pymorphy3==2.0.6
 PyYAML==6.0.3
 scipy==1.18.1
 sentencepiece==0.2.3
-setuptools==80.9.0 ; python_version >= '3.12'
+setuptools==84.1.0 ; python_version >= '3.12'
 soundcard==0.4.6
 soundfile==0.14.0
 sv-ttk==2.6.1

@@ -51,10 +51,17 @@ jobs:
         shell: bash   # -eo pipefail: a failing aapt/apksigner in a pipe fails the step
         working-directory: mobile
     steps:
-      - name: Start clock
-        working-directory: .   # mobile/ does not exist before checkout
-        run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # #1738: on the home runner plain `bash` resolved to the WSL stub (WindowsApps\bash.EXE) and the first
+      # bash step exited 1. Put Git for Windows' bin dir on GITHUB_PATH (searched before the system PATH) first.
+      - name: Use Git Bash, not the WSL stub (Windows runner)
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: cmd
+        run: python -I scripts\windows_git_bash.py
+      - name: Start clock
+        working-directory: .
+        run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Windows runner prep (SDK location, tool check, python3 shim)
         if: runner.os == 'Windows'
         run: |
@@ -231,7 +238,7 @@ jobs:
       - name: Build minutes (#1621)
         if: always()
         run: |
-          M=$(( ($(date +%s) - BUILD_START) / 60 ))
+          M=$(( ($(date +%s) - ${BUILD_START:-$(date +%s)}) / 60 ))
           echo "### mobile build: ${M} min on runner \`${{ runner.name }}\` (${{ runner.environment }}), upload=${{ steps.plan.outputs.upload }}, versionCode=${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
   publish:
