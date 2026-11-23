@@ -22,7 +22,9 @@ def format_report(rep: dict) -> str:
         tts = "TTS skipped (not installed)" if s["tts"] is None else f"TTS {s['tts']:.1f}s RTF {lg['tts_rtf']} {st['tts']}"
         lines.append(f"{lg['pair']}: load {s['load']:.1f}s | ASR {s['asr']:.1f}s RTF {lg['asr_rtf']} {st['asr']} | "
                      f"MT {s['mt']:.1f}s median {lg['mt_median_s']}s {st['mt']} | {tts} | "
-                     f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}% chrF {lg['chrf']}"
+                     f"{lg['elapsed_s']:.0f}s {st['time']} | {unit} {100 * lg['error_rate']:.1f}%"
+                     + ("" if lg.get("cer") is None else f" CER {100 * lg['cer']:.1f}%")
+                     + f" chrF {lg['chrf']}"
                      + ("" if lg.get("kana_rate") is None else f" | kana {lg['kana_rate']:.2f} {st['kana']}")
                      + ("" if st.get("vram") == "SKIP" else f" | VRAM {lg['peak_vram_mib']} MiB (budget "
                         f"{lg['vram_budget_mib']}) {st['vram']}"))

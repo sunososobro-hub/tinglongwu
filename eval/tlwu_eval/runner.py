@@ -184,6 +184,9 @@ def run_lang(rows, src, tgt, eng: Engines, mt, clock, peaks, label=None, vram_bu
         "kana_rate": kana,
         "peak_vram_mib": lang_vram.value and round(lang_vram.value), "vram_budget_mib": vram_budget,
         "error_rate": round(scoring.error_rate([(c["ref_text"], c["asr"]) for c in clips], src), 4),
+        # #1731: character error rate next to the WER for word-scored languages where spacing skews WER (ko)
+        "cer": (round(scoring.error_rate([(c["ref_text"], c["asr"]) for c in clips], src, chars=True), 4)
+                if src in scoring.CER_ALSO_LANGS else None),
         "chrf": round(scoring.chrf(mt_pairs), 2) if mt_pairs else None,
         "stages": {
             # an empty transcript / translation is a failure whatever the speed

@@ -50,3 +50,13 @@ def test_gate_compares_a_ko_report_against_the_recorded_baseline(chrf, median, r
     (row,) = gate.compare(_report(chrf, median), b)
     assert row["pair"] == "ko->zh"
     assert row["result"] == result
+
+
+def test_ko_baseline_records_the_5_pin_cer_from_per_clip_edits_1731():
+    row = json.loads(BASELINE.read_text("utf-8"))["pairs"]["ko->zh"]
+    pins = [c["id"] for c in json.loads(PINS.read_text("utf-8"))["clips"]]
+    assert sorted(row["cer_clips"]) == sorted(pins)  # one [edits, units] pair per pinned clip
+    edits = sum(e for e, _ in row["cer_clips"].values())
+    units = sum(u for _, u in row["cer_clips"].values())
+    assert row["cer"] == pytest.approx(edits / units, abs=5e-5)
+    assert 0 <= row["cer"] < 1

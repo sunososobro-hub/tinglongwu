@@ -137,6 +137,10 @@ def parse_args(argv=None):
                         "and step back up after a stable period; one stderr line per switch)")
     p.add_argument("--builtin-glossary", action="store_true",
                    help="also load the built-in tech/dev glossary (your --glossary entries win)")
+    p.add_argument("--term-scenario", default="", metavar="NAME",
+                   help="#1689: with --builtin-glossary, also use the built-in term files (data/terms/*.tsv) of this "
+                        "scenario, e.g. tech, for the --lang -> --to pair (default: only files marked for "
+                        "every scenario)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -639,9 +643,7 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
             raise RuntimeError(f"cannot read --glossary: {e}") from e
         print(f"tlwu: glossary = {len(glossary.entries)} entries from {a.glossary}", file=sys.stderr)
     if getattr(a, "builtin_glossary", False):
-        from .glossary import load_builtin, merge
-
-        glossary = merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
+        glossary = merge_builtin_terms(glossary, a)
         print(f"tlwu: glossary (with built-in tech terms) = {len(glossary.entries)} entries", file=sys.stderr)
     from .glossary import with_default_hotwords
 
@@ -946,6 +948,21 @@ def warm_live_mt(translator, pair, file, paced: bool, warn=None) -> bool:
             warn(f"tlwu: translation warm-up failed ({e})")
         return False
     return True
+
+
+def merge_builtin_terms(glossary, a):
+    """#1689: user entries first, then the pair's domain terms, then the built-in tech list; earlier entries win on a
+    shared source. The pair table must come before tech-dev.txt: that list's targets are Chinese, so for en -> ru it
+    would replace every shared term's Russian target with Chinese. Face-to-face keeps the built-in list only."""
+    from .glossary import load_builtin, merge
+
+    if not getattr(a, "face_to_face", None):
+        from .glossary import load_builtin_pair, scenario_domains
+
+        doms = scenario_domains(getattr(a, "term_scenario", None))
+        glossary = merge(glossary, load_builtin_pair(getattr(a, "lang", None), getattr(a, "to", None), doms,
+                                                      getattr(a, "zh_variant", None)))
+    return merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))
 
 
 def latency_recorder(path, log):

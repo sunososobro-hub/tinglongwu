@@ -55,8 +55,8 @@ sec.pw_hashing	password hashing	хеширование паролей | хэши
 sec.zkp	zero-knowledge proof	доказательство с нулевым разглашением	ゼロ知識証明	영지식 증명	零知識證明	零知识证明
 sec.hsm	hardware security module	аппаратный модуль безопасности | HSM	ハードウェアセキュリティモジュール | HSM	하드웨어 보안 모듈 | HSM	硬體安全模組	硬件安全模块
 sec.tpm	trusted platform module	доверенный платформенный модуль | TPM-модуль | модуль TPM	トラステッドプラットフォームモジュール | TPM	신뢰 플랫폼 모듈 | TPM	信賴平台模組	可信平台模块
-sec.secure_element	secure element	защищённый элемент | защищенный элемент | секьюр элемент	セキュアエレメント	보안 요소 | 시큐어 엘리먼트	安全元件	安全元件 | 安全芯片
-sec.secure_enclave	secure enclave	защищённый анклав | защищенный анклав	セキュアエンクレーブ	보안 엔클레이브	安全隔離區	安全飞地 | 安全隔区
+sec.secure_element	secure element	защищённый элемент | секьюр элемент	セキュアエレメント	보안 요소 | 시큐어 엘리먼트	安全元件	安全元件 | 安全芯片
+sec.secure_enclave	secure enclave	защищённый анклав	セキュアエンクレーブ	보안 엔클레이브	安全隔離區	安全飞地 | 安全隔区
 sec.tee	trusted execution environment	доверенная среда исполнения | TEE	信頼できる実行環境 | TEE	신뢰 실행 환경 | TEE	可信任執行環境	可信执行环境
 sec.secure_boot	secure boot	безопасная загрузка | защищённая загрузка | секьюр бут	セキュアブート	보안 부팅 | 시큐어 부트	安全開機	安全启动
 sec.chain_of_trust	chain of trust	цепочка доверия | цепочки доверия	信頼の連鎖 | トラストチェーン	신뢰 체인	信任鏈	信任链
@@ -102,7 +102,7 @@ sec.jwt	JSON Web Token | JWT	JWT-токен | JWT | джейдаблюти	JWT |
 sec.session_timeout	session timeout	тайм-аут сеанса | таймаут сессии | истечение сессии	セッションタイムアウト	세션 타임아웃 | 세션 만료	工作階段逾時	会话超时
 sec.session_fixation	session fixation	фиксация сессии | фиксация сеанса	セッション固定攻撃	세션 고정 공격	工作階段固定攻擊	会话固定攻击
 sec.session_hijacking	session hijacking	перехват сессии | угон сессии | перехват сеанса	セッションハイジャック	세션 하이재킹 | 세션 탈취	工作階段劫持	会话劫持
-sec.credentials	credentials | login credentials	учётные данные | учетные данные | креды | кредлы	認証情報 | クレデンシャル	자격 증명	登入憑據 | 認證資訊	登录凭据 | 凭据 | 凭证信息
+sec.credentials	credentials | login credentials	учётные данные | креды | кредлы	認証情報 | クレデンシャル	자격 증명	登入憑據 | 認證資訊	登录凭据 | 凭据 | 凭证信息
 sec.credential_stuffing	credential stuffing	подстановка учётных данных | атака с подстановкой учетных данных	リスト型攻撃 | クレデンシャルスタッフィング	크리덴셜 스터핑 | 계정 정보 대입 공격	撞庫攻擊 | 帳密填充攻擊	撞库攻击 | 凭证填充攻击
 sec.pw_policy	password policy	парольная политика | политика паролей	パスワードポリシー	비밀번호 정책 | 암호 정책	密碼原則 | 密碼政策	密码策略
 sec.pw_manager	password manager	менеджер паролей | менеджера паролей	パスワードマネージャー	비밀번호 관리자	密碼管理工具 | 密碼管理器	密码管理器
@@ -115,7 +115,7 @@ sec.authenticator_app	authenticator app	приложение-аутентифи�
 sec.challenge_response	challenge-response authentication	аутентификация запрос-ответ | запрос-ответ	チャレンジレスポンス認証	챌린지-응답 인증	挑戰-回應驗證 | 挑戰回應	挑战-应答认证 | 质询-响应认证
 sec.mutual_auth	mutual authentication	взаимная аутентификация	相互認証	상호 인증	雙向驗證 | 相互驗證	双向认证 | 相互认证
 sec.captcha	CAPTCHA	капча | CAPTCHA | капчи	CAPTCHA | キャプチャ | 画像認証	캡차 | CAPTCHA	驗證碼 CAPTCHA | 圖形驗證碼	图形验证码 | 人机验证
-sec.account_lockout	account lockout	блокировка учётной записи | блокировка аккаунта | блокировка учетной записи	アカウントロックアウト | アカウントロック	계정 잠금	帳號鎖定	账户锁定 | 账号锁定
+sec.account_lockout	account lockout	блокировка учётной записи | блокировка аккаунта	アカウントロックアウト | アカウントロック	계정 잠금	帳號鎖定	账户锁定 | 账号锁定
 sec.pw_reset	password reset	сброс пароля | сброса пароля	パスワードリセット	비밀번호 재설정	密碼重設	密码重置
 sec.privileged_account	privileged account	привилегированная учётная запись | привилегированный аккаунт	特権アカウント	특권 계정 | 권한 있는 계정	特權帳號	特权账户 | 特权账号
 sec.service_account	service account	служебная учётная запись | сервисный аккаунт | сервисная учетка	サービスアカウント	서비스 계정	服務帳號	服务账户 | 服务账号
@@ -146,7 +146,7 @@ sec.admin_privileges	administrator privileges	права администрат�
 sec.sandbox	sandbox | sandboxing	песочница | песочницы | изоляция в песочнице	サンドボックス	샌드박스	沙箱 | 沙盒	沙箱 | 沙盒
 sec.process_isolation	process isolation	изоляция процессов	プロセス分離	프로세스 격리	處理程序隔離 | 行程隔離	进程隔离
 sec.allowlist	allowlist | whitelist	белый список | список разрешённых | вайтлист	許可リスト | ホワイトリスト	허용 목록 | 화이트리스트	允許清單 | 白名單	允许列表 | 白名单
-sec.denylist	denylist | blacklist	чёрный список | черный список | блэклист	拒否リスト | ブラックリスト	차단 목록 | 블랙리스트	封鎖清單 | 黑名單	拒绝列表 | 黑名单
+sec.denylist	denylist | blacklist	чёрный список | блэклист	拒否リスト | ブラックリスト	차단 목록 | 블랙리스트	封鎖清單 | 黑名單	拒绝列表 | 黑名单
 sec.access_review	access review	пересмотр прав доступа | ревизия доступа	アクセス権レビュー | 権限の棚卸し	접근 권한 검토	存取權限審查	访问权限审查
 sec.audit_log	audit log	журнал аудита | журнал безопасности | аудит-лог	監査ログ	감사 로그	稽核日誌	审计日志
 sec.audit_trail	audit trail	контрольный след | след аудита	監査証跡	감사 추적	稽核軌跡	审计跟踪 | 审计追踪
@@ -175,7 +175,7 @@ sec.csrf	cross-site request forgery | CSRF	межсайтовая подделк
 sec.ssrf	server-side request forgery | SSRF	подделка запроса на стороне сервера | SSRF	サーバーサイドリクエストフォージェリ | SSRF	서버 측 요청 위조 | SSRF	伺服器端請求偽造 | SSRF	服务器端请求伪造 | SSRF
 sec.path_traversal	path traversal | directory traversal	обход каталогов | обход пути	ディレクトリトラバーサル | パストラバーサル	경로 탐색 | 디렉터리 트래버설	路徑遍歷 | 目錄遍歷	路径遍历 | 目录遍历
 sec.deserialization	insecure deserialization	небезопасная десериализация	安全でないデシリアライゼーション	안전하지 않은 역직렬화	不安全的反序列化	不安全的反序列化 | 反序列化漏洞
-sec.rce	remote code execution | RCE	удалённое выполнение кода | удаленное выполнение кода | RCE	リモートコード実行	원격 코드 실행	遠端程式碼執行	远程代码执行
+sec.rce	remote code execution | RCE	удалённое выполнение кода | RCE	リモートコード実行	원격 코드 실행	遠端程式碼執行	远程代码执行
 sec.ace	arbitrary code execution	выполнение произвольного кода	任意コード実行	임의 코드 실행	任意程式碼執行	任意代码执行
 sec.dos	denial of service | DoS attack	отказ в обслуживании | DoS-атака | ДоС	サービス妨害攻撃 | DoS攻撃	서비스 거부 공격 | 도스 공격	阻斷服務攻擊 | DoS 攻擊	拒绝服务攻击 | DoS 攻击
 sec.ddos	distributed denial of service | DDoS attack	распределённая атака типа отказ в обслуживании | DDoS-атака | ддос	分散型サービス妨害攻撃 | DDoS攻撃	분산 서비스 거부 공격 | 디도스	分散式阻斷服務攻擊 | DDoS 攻擊	分布式拒绝服务攻击 | DDoS 攻击
@@ -239,7 +239,7 @@ sec.insider_threat	insider threat	внутренняя угроза | инсай
 sec.lateral_movement	lateral movement	горизонтальное перемещение | латеральное перемещение	横展開 | ラテラルムーブメント	측면 이동 | 내부 확산	橫向移動	横向移动
 sec.exfiltration	data exfiltration	эксфильтрация данных | кража данных	データ窃取 | データの持ち出し	데이터 유출 | 데이터 탈취	資料外洩 | 資料竊取	数据窃取 | 数据外泄
 sec.data_breach	data breach	утечка данных | взлом с утечкой данных	データ侵害 | 情報漏洩事故	정보 유출 사고 | 데이터 침해	資料外洩事件 | 個資外洩	数据泄露 | 数据泄露事件
-sec.credential_theft	credential theft	кража учётных данных | кража учетных данных	認証情報の窃取	자격 증명 탈취 | 계정 탈취	帳密竊取 | 盜帳號	凭证窃取 | 盗号
+sec.credential_theft	credential theft	кража учётных данных	認証情報の窃取	자격 증명 탈취 | 계정 탈취	帳密竊取 | 盜帳號	凭证窃取 | 盗号
 sec.pw_cracking	password cracking	взлом паролей | подбор паролей	パスワードクラッキング | パスワード解析	비밀번호 크래킹	密碼破解	密码破解
 sec.brute_force	brute-force attack	атака полным перебором | брутфорс | перебор паролей	総当たり攻撃 | ブルートフォース攻撃	무차별 대입 공격 | 브루트 포스	暴力破解 | 暴力攻擊	暴力破解 | 暴力攻击 | 穷举攻击
 sec.dictionary_attack	dictionary attack	словарная атака | атака по словарю	辞書攻撃	사전 공격	字典攻擊	字典攻击
@@ -319,7 +319,7 @@ sec.security_token	security token | hardware token	аппаратный токе
 sec.smart_card	smart card	смарт-карта | смарт-карты	スマートカード | ICカード	스마트카드 | IC 카드	智慧卡 | IC 卡	智能卡 | IC 卡
 sec.physical_security	physical security	физическая безопасность | физическая защита	物理セキュリティ	물리 보안	實體安全	物理安全
 sec.air_gap	air gap | air-gapped network	воздушный зазор | физически изолированная сеть	エアギャップ | 物理的に隔離されたネットワーク	에어 갭 | 망 분리 환경	實體隔離 | 氣隙隔離	物理隔离 | 网闸隔离
-sec.secure_channel	secure channel	защищённый канал | защищенный канал | безопасный канал	セキュアチャネル | 安全な通信路	보안 채널 | 안전한 채널	安全通道	安全通道 | 安全信道
+sec.secure_channel	secure channel	защищённый канал | безопасный канал	セキュアチャネル | 安全な通信路	보안 채널 | 안전한 채널	安全通道	安全通道 | 安全信道
 sec.encrypted_traffic	encrypted traffic	зашифрованный трафик	暗号化された通信 | 暗号化トラフィック	암호화된 트래픽	加密流量	加密流量
 sec.key_compromise	key compromise	компрометация ключа | утечка ключа	鍵の危殆化 | 鍵漏えい	키 유출 | 키 손상	金鑰洩漏 | 金鑰遭破解	密钥泄露 | 密钥失陷
 sec.weak_cipher	weak cipher | deprecated algorithm	слабый шифр | устаревший алгоритм шифрования	脆弱な暗号 | 非推奨アルゴリズム	취약한 암호 | 사용 중단된 알고리즘	弱加密演算法 | 已淘汰演算法	弱加密算法 | 已弃用算法
@@ -348,4 +348,4 @@ sec.unauthorized_access	unauthorized access	несанкционированны
 sec.bootloader_unlock	bootloader unlocking	разблокировка загрузчика	ブートローダーのアンロック	부트로더 잠금 해제	開機載入程式解鎖 | Bootloader 解鎖	引导加载程序解锁 | Bootloader 解锁
 sec.debug_port	exposed debug port | JTAG access	открытый отладочный порт | доступ через JTAG	デバッグポートの露出 | JTAGアクセス	노출된 디버그 포트 | JTAG 접근	外露除錯埠 | JTAG 存取	暴露的调试端口 | JTAG 访问
 sec.fw_rollback	firmware rollback protection | anti-rollback	защита от отката прошивки	ファームウェアのロールバック防止	펌웨어 롤백 방지	韌體防回滾 | 防止韌體降版	固件防回滚 | 防降级保护
-sec.attestation	remote attestation	удалённая аттестация | удаленная аттестация	リモートアテステーション | リモート構成証明	원격 증명	遠端證明	远程证明 | 远程认证
+sec.attestation	remote attestation	удалённая аттестация	リモートアテステーション | リモート構成証明	원격 증명	遠端證明	远程证明 | 远程认证

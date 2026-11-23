@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.4
+- Updating on Windows no longer fails when cleaning up old log files after a good update.
+- Korean speech accuracy is now measured by character error rate, a fairer score for Korean.
+- The README now links the guide for using a glossary with AI translation.
+
 ## v0.5.3
 - Meeting notes can now pop out into their own movable window.
 - Mac: the app gets a Launchpad launcher and a menu item to open the window.

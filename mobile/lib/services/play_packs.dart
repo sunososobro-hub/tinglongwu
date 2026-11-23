@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'model_importer.dart';
 
 /// Models from Google Play Asset Delivery (PlayPacks.kt): two fast-follow packs that Play
-/// downloads right after install, so the app keeps no INTERNET permission. The files are read in
+/// downloads right after install, so those downloads need no app network code. The files are read in
 /// place from the pack folders (ModelPaths), never copied. Only when installed from Play.
 class PlayPacks {
   static const _ch = MethodChannel('tlwu/native');
