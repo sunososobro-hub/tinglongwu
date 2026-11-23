@@ -206,3 +206,13 @@ def test_sign_script_without_key_writes_nothing(tmp_path):
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "sign_sums.py"), "sign", str(f)],
                        env={"PATH": "", "SYSTEMROOT": ""}, capture_output=True, text=True)
     assert r.returncode == 0 and not Path(str(f) + ".sig").exists()
+
+
+def test_sign_script_runs_from_bare_checkout_1724(tmp_path):
+    """#1724: release.yml runs sign_sums.py without pip install; -S drops site-packages like that runner."""
+    r = subprocess.run([sys.executable, "-S", str(ROOT / "scripts" / "sign_sums.py"), "keygen"],
+                       env={"PATH": "", "SYSTEMROOT": ""}, cwd=tmp_path, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    lines = r.stdout.splitlines()
+    assert lines[0].startswith("secret") and lines[1].startswith("public")
+    assert len(lines[1].split()[-1]) == 64

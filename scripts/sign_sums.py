@@ -17,7 +17,7 @@ import secrets
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "system"))  # #1724: tinglongwu_setup lives in src/system (#1664)
 from tinglongwu_setup import ed25519, selfupdate  # noqa: E402
 
 ENV_KEY = "TLWU_SUMS_SIGNING_KEY"
