@@ -105,7 +105,12 @@ def wcpp_factory(a, use_gpu: bool):
     def load(size, lang):
         from tinglongwu.asr_vulkan import WhisperCppBackend
 
-        be = WhisperCppBackend(lib_path(), model_path(size), use_gpu=use_gpu, threads=a.threads)
+        make = lambda: WhisperCppBackend(lib_path(), model_path(size), use_gpu=use_gpu, threads=a.threads)  # noqa: E731
+        if use_gpu:
+            be, log = capture_stderr(make)
+            check_vulkan(log)
+        else:
+            be = make()
         return lambda audio: (be.transcribe(audio, lang) or ("",))[0]
 
     def info(size):
@@ -115,6 +120,41 @@ def wcpp_factory(a, use_gpu: bool):
             lib = None
         return {"lib_mb": _dir_mb([lib]) if lib else None, "model_mb": _dir_mb([model_path(size)])}
     return load, info
+
+
+def capture_stderr(fn):
+    """(fn(), text the native library wrote to fd 2 meanwhile): whisper.cpp logs its backend choice there."""
+    import tempfile
+
+    sys.stderr.flush()
+    saved = os.dup(2)
+    with tempfile.TemporaryFile() as tmp:
+        os.dup2(tmp.fileno(), 2)
+        try:
+            result = fn()
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved, 2)
+            os.close(saved)
+        tmp.seek(0)
+        log = tmp.read().decode("utf-8", "replace")
+    sys.stderr.write(log)
+    return result, log
+
+
+def check_vulkan(log: str) -> None:
+    """wcpp-vulkan must really run on Vulkan: whisper.cpp logs `whisper_backend_init_gpu: using Vulkan0 backend`, or
+    `no GPU found` and silently uses its CPU backend (e.g. a --cpu build). The CPU fallback raises (-> unavailable);
+    a log without either line (stderr not capturable on this platform) is accepted and noted."""
+    low = log.lower()
+    if "no gpu found" in low or ("using " in low and " backend" in low and "vulkan" not in low):
+        raise RuntimeError("whisper.cpp did not use Vulkan (CPU fallback)")
+    if "vulkan" not in low:
+        print("asr-bench: wcpp-vulkan: could not confirm the Vulkan backend from the library log", file=sys.stderr)
+
+
+def _cell_text(s: str) -> str:
+    return " ".join(str(s).split()).replace("|", "\\|")
 
 
 def factories(a) -> dict:
@@ -176,7 +216,7 @@ def markdown(res: dict) -> str:
     for size, by in res["sizes"].items():
         for name, cell in by.items():
             if "unavailable" in cell:
-                lines.append(f"| {size} | {name} | - | unavailable: {cell['unavailable']} | - |")
+                lines.append(f"| {size} | {name} | - | unavailable: {_cell_text(cell['unavailable'])} | - |")
                 continue
             for lang, r in cell.items():
                 lines.append(f"| {size} | {name} | {lang} | {r['metric']} {r['error']:.3f} | {r['rtf']} |")

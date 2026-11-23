@@ -90,3 +90,31 @@ def test_reads_float32_wav_like_the_smoke_clips(tmp_path):
     sf.write(str(tmp_path / "f.wav"), np.full(24000, 0.25, dtype=np.float32), 16000, subtype="FLOAT")
     audio, secs = bench.read_wav(tmp_path / "f.wav")
     assert secs == 1.5 and audio.dtype == np.float32 and abs(float(audio.max()) - 0.25) < 1e-4
+
+
+def test_vulkan_request_that_fell_back_to_cpu_is_rejected():
+    """CodeRabbit (PR #1755): use_gpu=True only asks for a GPU; whisper.cpp logs `no GPU found` and runs on its CPU
+    backend (a --cpu build, no driver). That must not be reported as a Vulkan number."""
+    with pytest.raises(RuntimeError, match="did not use Vulkan"):
+        bench.check_vulkan("whisper_backend_init_gpu: no GPU found\n")
+    with pytest.raises(RuntimeError, match="did not use Vulkan"):
+        bench.check_vulkan("whisper_backend_init_gpu: using CUDA0 backend\n")
+    bench.check_vulkan("ggml_vulkan: Found 1 Vulkan devices:\nwhisper_backend_init_gpu: using Vulkan0 backend\n")
+
+
+def test_capture_stderr_sees_native_fd2_writes():
+    import os
+
+    result, log = bench.capture_stderr(lambda: os.write(2, b"whisper_backend_init_gpu: no GPU found\n") and 7)
+    assert result == 7 and "no GPU found" in log
+
+
+def test_unavailable_error_stays_in_one_table_row(data, tmp_path):
+    def broken(size, lang):
+        raise FileNotFoundError("Whisper model 'small' missing:\n  run tlwu-setup | --whisper small")
+    out = []
+    bench.main(["--data", str(data), "--sizes", "small", "--backends", "fw-cpu,wcpp-cpu", "--models-dir", str(tmp_path)],
+               facs={"fw-cpu": (broken, lambda s: {}), "wcpp-cpu": fake(REFS)}, out=out.append)
+    row = [ln for ln in out[-1].splitlines() if "unavailable" in ln]
+    assert row == ["| small | fw-cpu | - | unavailable: FileNotFoundError: Whisper model 'small' missing: run "
+                   "tlwu-setup \\| --whisper small | - |"]
