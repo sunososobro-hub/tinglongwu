@@ -169,3 +169,12 @@ def test_device_attr_and_ladder_uses_whisper_cpp_sizes(tmp_path):
     kw = cli.vulkan_ladder(_args(), tmp_path, None, None, "vulkan")
     assert kw["installed"] == ["base"] and callable(kw["make_asr"])
     assert cli.vulkan_ladder(_args(), tmp_path, None, None, "cpu") == {}
+
+
+def test_partial_draft_commits_no_language_state(tmp_path):
+    lf = tmp_path / "lang"
+    r, b = _vk(FakeBackend([("hola", "es", 0.0, 0.0)]))
+    assert r.partial(np.zeros(8000, np.float32)).text == "hola" and r.lang is None
+    rc, bc = _vk(FakeBackend([("privet", "ru", 0.0, 0.0)]), candidates=("en", "ru"), lang_file=str(lf))
+    assert rc.partial(np.zeros(8000, np.float32)).lang == "ru"
+    assert rc._cur is None and not lf.exists()

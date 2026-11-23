@@ -145,6 +145,17 @@ class WhisperCppVulkanRecognizer(Recognizer):
         text = filter_hallucination(str(text).strip())
         return self.glossary.normalize_numbers(text) if self.glossary else text
 
+    def partial(self, audio: np.ndarray) -> Transcript | None:
+        """Streaming draft: decodes in the locked / current language and never commits language state (no lock,
+        no _cur, no lang_file), like faster-whisper's partial()."""
+        lang = self.lang or (self._cur if self.candidates else None)
+        r = self._load().transcribe(audio, lang)
+        if not r or not str(r[0]).strip():
+            return None
+        text = self._post(r[0])
+        return Transcript(text=text, lang=script_lang(text, lang or r[1] or ""), no_speech=r[2],
+                          avg_logprob=r[3]) if text else None
+
     def transcribe(self, audio: np.ndarray) -> Transcript | None:
         r = self._load().transcribe(audio, self.lang)
         if not r or not str(r[0]).strip():
