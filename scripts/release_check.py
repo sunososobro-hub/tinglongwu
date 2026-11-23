@@ -7,6 +7,9 @@ Usage: python scripts/release_check.py dist/tinglongwu-win64.zip [--max-mb 300] 
        python scripts/release_check.py --app-layer dist/tinglongwu-app-layer.zip --tag vX.Y.Z
            (#945: the app-layer zip matches its .manifest.json (size, sha256), the version is the tag, no runtime files)
        python scripts/release_check.py --release-start <unix seconds>   (#764: first job start -> release created)
+       python scripts/release_check.py --vulkan-packs dist --notes dist/notes.md --tag vX.Y.Z [--linux-skip-reason TEXT]
+           (#1766: tlwu-vulkan-pack-linux-<v>.zip is in dist, or the notes carry "Linux Vulkan pack skipped: <reason>";
+           --linux-skip-reason appends that line when the pack is missing, so a skip is always explained)
 All forms may be combined. Exit code 0 = ok, 1 = problem(s) (printed), 2 = zip missing.
 Job and release times are reported, never a failure: a slow runner must not block a release (over budget -> a warning).
 --ttfs prints install-start -> first-subtitle time (non-blocking: never changes the exit code).
@@ -45,6 +48,9 @@ MAX_APP_LAYER_MB = 15
 APP_LAYER_TOP = ("tinglongwu/", "tlwu_app/", "tinglongwu_setup/")  # = build_windows.APP_PACKAGES
 APP_LAYER_FILES = ("app-layer.json", "tlwu.exe")  # root files besides the packages and the usage text
 HASH_CHUNK = 1 << 20
+VULKAN_PACK_WIN = "tlwu-vulkan-pack-{v}.zip"  # = scripts/make_vulkan_pack.py asset names (#800, #1198)
+VULKAN_PACK_LINUX = "tlwu-vulkan-pack-linux-{v}.zip"
+LINUX_VULKAN_SKIPPED = "Linux Vulkan pack skipped:"  # #1766: the release-notes line that explains a missing pack
 TTFS_BUDGET_S = 180
 
 
@@ -186,6 +192,27 @@ def app_layer_problems(zip_path: Path, tag: str = "", max_mb: float = MAX_APP_LA
     return problems
 
 
+def vulkan_pack_problems(dist: Path, notes: str, tag: str) -> list[str]:
+    """#1766: a release without the Linux Vulkan pack must say why in its notes (v0.5.4 shipped the Windows pack
+    only, silently). Empty list = the Linux pack is in dist, or the notes have a `Linux Vulkan pack skipped:` line."""
+    v = tag.removeprefix("v")
+    if (dist / VULKAN_PACK_LINUX.format(v=v)).is_file():
+        return []
+    if any(line.lstrip("-* ").startswith(LINUX_VULKAN_SKIPPED) for line in notes.splitlines()):
+        return []
+    win = " (the Windows pack is attached)" if (dist / VULKAN_PACK_WIN.format(v=v)).is_file() else ""
+    return [f"no {VULKAN_PACK_LINUX.format(v=v)}{win} and the notes lack a '{LINUX_VULKAN_SKIPPED} <reason>' line"]
+
+
+def linux_skip_line(dist: Path, tag: str, reason: str) -> str:
+    """The notes line for a missing Linux pack (empty when the pack is there)."""
+    v = tag.removeprefix("v")
+    if (dist / VULKAN_PACK_LINUX.format(v=v)).is_file():
+        return ""
+    return (f"- {LINUX_VULKAN_SKIPPED} {reason.strip() or 'not built'}. Linux keeps the CPU path; "
+            f"`tlwu-setup --vulkan-pack` finds no pack for {v} (the next release retries).")
+
+
 def main(argv: list[str] | None = None, now: float | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("zip", type=Path, nargs="?")
@@ -198,9 +225,17 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
     ap.add_argument("--release-start", type=float,
                     help="unix seconds when the release run's first job started: report the release wall time")
     ap.add_argument("--ttfs", type=Path, default=None, help="ttfs.json: print time to first subtitle (non-blocking)")
+    ap.add_argument("--vulkan-packs", type=Path, help="#1766: the release dist folder: Linux Vulkan pack or a notes line")
+    ap.add_argument("--notes", type=Path, help="with --vulkan-packs: the release notes file (notes.md)")
+    ap.add_argument("--linux-skip-reason", default=None,
+                    help="with --vulkan-packs: append the skipped line with this reason when the Linux pack is missing")
     a = ap.parse_args(argv)
-    if a.zip is None and a.job_start is None and a.gpu_pack is None and a.app_layer is None and a.release_start is None and a.ttfs is None:
-        ap.error("give the zip to check, --job-start, --gpu-pack, --app-layer, --release-start and/or --ttfs")
+    if (a.zip is None and a.job_start is None and a.gpu_pack is None and a.app_layer is None
+            and a.release_start is None and a.ttfs is None and a.vulkan_packs is None):
+        ap.error("give the zip to check, --job-start, --gpu-pack, --app-layer, --release-start, --vulkan-packs "
+                 "and/or --ttfs")
+    if a.vulkan_packs is not None and (a.notes is None or not a.tag):
+        ap.error("--vulkan-packs needs --notes and --tag")
     out: list[str] = []
     problems: list[str] = []
     if a.zip is not None:
@@ -246,6 +281,22 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
                                  "release wall time")
         out.append(line)
         print(line if ok else f"::warning::{line}")
+    if a.vulkan_packs is not None:
+        notes = a.notes.read_text(encoding="utf-8") if a.notes.is_file() else ""
+        if a.linux_skip_reason is not None and vulkan_pack_problems(a.vulkan_packs, notes, a.tag):
+            line = linux_skip_line(a.vulkan_packs, a.tag, a.linux_skip_reason)
+            notes = notes.rstrip("\n") + "\n\n" + line + "\n"
+            a.notes.write_text(notes, encoding="utf-8")
+            print(f"::warning::{line}")
+        vk = vulkan_pack_problems(a.vulkan_packs, notes, a.tag)
+        if not vk:
+            linux = (a.vulkan_packs / VULKAN_PACK_LINUX.format(v=a.tag.removeprefix("v"))).is_file()
+            out.append(f"Linux Vulkan pack: {'attached' if linux else 'skipped (the notes say why)'}")
+            print(out[-1])
+        for p in vk:
+            print("FAIL:", p)
+        out += [f"FAIL: {p}" for p in vk]
+        problems += vk
     for line in ttfs_lines(a.ttfs):
         out.append(line)
         print(line)

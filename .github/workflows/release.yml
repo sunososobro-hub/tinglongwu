@@ -415,10 +415,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Vulkan build tools (Ubuntu archive) + Mesa lavapipe for the smoke check
-        run: |
-          sudo apt-get update -qq
-          # spirv-headers: ggml-vulkan's find_package(SPIRV-Headers CONFIG REQUIRED) (#1195)
-          sudo apt-get install -y -qq libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
+        # #1766: scripts/apt_retry.sh bounds apt (v0.5.4 stalled 20 min in `apt-get update` and lost the pack)
+        # spirv-headers: ggml-vulkan's find_package(SPIRV-Headers CONFIG REQUIRED) (#1195)
+        run: bash scripts/apt_retry.sh libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
       - name: Compile llama-cpp-python with GGML_VULKAN=on (same pin as requirements/requirements-llama-cpu.txt)
         run: |
           pin=$(sed -n 's/^llama-cpp-python==\([^ #]*\).*/\1/p' requirements/requirements-llama-cpu.txt)
@@ -511,9 +510,7 @@ jobs:
           "CMAKE_PREFIX_PATH=$prefix" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Vulkan build tools + Mesa lavapipe (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
+        run: bash scripts/apt_retry.sh libvulkan-dev glslc spirv-headers mesa-vulkan-drivers   # #1766: bounded apt
       - name: Build whisper.cpp (pinned commit) with GGML_VULKAN=on into tlwu-whisper
         shell: bash
         run: |
@@ -582,6 +579,13 @@ jobs:
               echo "::warning::no whisper.cpp Vulkan build for $plat: $f ships without Vulkan ASR"
             fi
           done
+      - name: Linux Vulkan pack attached, or the notes say why it was skipped (#1766; before the Release is created)
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          LINUX_RESULT: ${{ needs.vulkan-pack-linux.result }}
+        run: |
+          python3 scripts/release_check.py --vulkan-packs dist --notes dist/notes.md --tag "$TAG" \
+            --linux-skip-reason "the vulkan-pack-linux job ended '$LINUX_RESULT' (release run $GITHUB_RUN_ID)"
       - name: GPU pack check again after the artifact hop (manifest size + sha256, same tag as the core zip)
         env:
           TAG: ${{ needs.plan.outputs.tag }}
