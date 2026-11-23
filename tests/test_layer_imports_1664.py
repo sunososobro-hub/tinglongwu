@@ -19,9 +19,9 @@ def _rel(mod_file: Path) -> Path:
 LAYERS = {
     "ui": "gui overlay splash menuopts",
     "flow": "face_to_face cli pipeline stream voice record reverse selftest speaksmoke speedprobe doctor report minspec netreport "
-            "mt_pending topics instances sink fmt",
+            "mt_pending topics instances sink fmt backend_probe",
     "core": "asr asr_vulkan translate hymt fm ollama mt_backend engines llm_prompt lang langfollow hallucination "
-            "repeat merge segment glossary adapt models speakers speaker_embed topic_segmenter report_translation data",
+            "repeat merge segment glossary adapt models speakers speaker_embed topic_segmenter report_translation data vulkan_probe",
     "system": "capture device hwprobe threads gpu_pack llamacheck userdirs diag offline vbcable pack_manifest "
               "speaker_pylib speaker_reqs i18n langs settings",
 }

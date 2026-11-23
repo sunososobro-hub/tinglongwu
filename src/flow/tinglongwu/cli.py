@@ -186,6 +186,8 @@ def parse_args(argv=None):
     p.add_argument("--speed", action="store_true",
                    help="with --probe: also run the ~10 s translation speed test (CPU: Hy-MT2 on this CPU); the "
                         "result is remembered until the hardware changes")
+    p.add_argument("--time-backend", choices=("cpu", "vulkan"), default=None,
+                   help=argparse.SUPPRESS)  # #1773: child of the GPU speed check (backend_probe.time_here)
     p.add_argument("--reprobe", action="store_true",
                    help="with --probe --speed: ignore the remembered result and measure again")
     p.add_argument("--speakers", action="store_true",
@@ -382,16 +384,17 @@ def apply_glossary(translator, glossary) -> None:
 
 
 def live_recognizer(a, mdir, dev: str, glossary=None, cands=None, *, select=None, ready=None, vulkan=None,
-                    env=None, say=None):
+                    env=None, say=None, allowed=None):
     """#1759: the live session's speech engine. CUDA (dev "cuda") -> faster-whisper on the GPU, unchanged. No CUDA:
     whisper.cpp on Vulkan when TLWU_DEVICE=vulkan, or on auto when the Vulkan pack has the whisper.cpp build and the
     ggml model for a.model is downloaded; any Vulkan init failure -> faster-whisper on the CPU plus one stderr line
     (asr_vulkan.select_recognizer). --device cpu never uses Vulkan. Prints one "speech model <size> on <backend>"
     line. Returns (recognizer, backend used)."""
-    from . import asr_vulkan, mt_backend
+    from . import asr_vulkan, mt_backend, vulkan_probe
     from .asr import FasterWhisperRecognizer
 
     env = os.environ if env is None else env
+    allowed = allowed or (lambda: vulkan_probe.vulkan_allowed(env))  # #1773: CPU won the speed check
     say = say or (lambda m: print(m, file=sys.stderr, flush=True))
     kw = dict(glossary=glossary, candidates=cands, lang_file=getattr(a, "lang_file", None),
               beam=getattr(a, "cpu_beam", None), threads=getattr(a, "cpu_threads", None))
@@ -401,7 +404,7 @@ def live_recognizer(a, mdir, dev: str, glossary=None, cands=None, *, select=None
         if vulkan is None:
             vulkan = mt_backend.vulkan_available
         ready = ready or asr_vulkan.vulkan_ready
-        use_vk = bool(vulkan()) and (forced or bool(ready(mdir, a.model)))
+        use_vk = bool(vulkan()) and (forced or (bool(ready(mdir, a.model)) and bool(allowed())))
     rec, backend = (select or asr_vulkan.select_recognizer)(
         mdir, a.model, a.lang, cuda=dev == "cuda", vulkan=use_vk, env=env, warn=say,
         cpu_factory=lambda device: FasterWhisperRecognizer(mdir, a.model, a.lang, device, **kw),
@@ -699,6 +702,9 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     if g2 is not glossary:  # #1397: e.g. Russian acronyms as Whisper hotwords
         glossary = g2
         print(f"tlwu: default {a.lang} hotwords on ({glossary.hotwords()})", file=sys.stderr)
+    from .backend_probe import maybe_probe
+
+    maybe_probe(a, mdir, dev)  # #1773: CPU vs Vulkan, cached per version / driver / pack
     prog.stage("speech model")
     cands = None
     f2f_route = None
@@ -1017,8 +1023,16 @@ def main(argv=None) -> int:
         from .selftest import main_from_args
 
         return main_from_args(a)
+    if a.time_backend:  # #1773: one leg of the GPU speed check, run by backend_probe.time_in_child
+        from .backend_probe import time_here
+
+        time_here(a.time_backend, models_dir(a.models_dir), a.model or "small")
+        return 0
     if a.probe:
+        from . import vulkan_probe
         from .hwprobe import describe, probe, recommend
+
+        print(vulkan_probe.summary())  # #1773
 
         hw = probe()
         tier = recommend(hw)
