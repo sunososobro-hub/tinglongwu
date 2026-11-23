@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-from tlwu_eval import gate
+from tlwu_eval import gate, scoring
 
 ROOT = next((d for d in Path(__file__).resolve().parents if (d / "pyproject.toml").is_file()),
             Path(__file__).resolve().parents[1])
@@ -129,6 +129,22 @@ def summary_line(report: dict, pair: str) -> tuple[bool, str]:
     return True, line
 
 
+def clip_cer_lines(report: dict, pair: str) -> list[str]:
+    """#1731: per-clip CER as exact `edits/units` for a pair whose report carries a CER (ko). The eval-langs job log
+    then holds what eval/baseline_ko.json needs: the corpus CER of any clip subset (e.g. the 5 eval/ko_pins.json clips,
+    which are ko_001..ko_005 of eval/matrix_pins.json) is sum(edits) / sum(units). Other pairs print nothing."""
+    lg = next((x for x in report.get("languages", []) if isinstance(x, dict) and x.get("pair") == pair), None)
+    if lg is None or lg.get("cer") is None:
+        return []
+    src = pair.split("->")[0]
+    out = []
+    for c in lg.get("clips") or []:
+        ref = scoring.tokenize(c.get("ref_text") or "", src, chars=True)
+        edits = scoring.edit_distance(ref, scoring.tokenize(c.get("asr") or "", src, chars=True))
+        out.append(f"  {c.get('id')}: CER {edits}/{len(ref)}")
+    return out
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m tlwu_eval.langmatrix", description=__doc__.split("\n")[0])
     p.add_argument("--config", default=str(CONFIG))
@@ -152,8 +168,11 @@ def main(argv=None) -> int:
             doc = pair_baseline(a.pair, gate.validate_baseline(gate.load_json(a.baseline, "baseline")))
             Path(a.out).write_text(json.dumps(doc, indent=2), "utf-8")
             return 0
-        ok, line = summary_line(gate.load_json(a.report, "report"), a.pair)
+        report = gate.load_json(a.report, "report")
+        ok, line = summary_line(report, a.pair)
         print(line)
+        for clip_line in clip_cer_lines(report, a.pair):
+            print(clip_line)
         return 0 if ok else 1
     except (ConfigError, gate.GateError) as e:
         print(f"langmatrix: {e}", file=sys.stderr)

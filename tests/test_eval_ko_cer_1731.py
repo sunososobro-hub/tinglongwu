@@ -54,3 +54,19 @@ def test_other_word_languages_keep_the_wer_only_line(tmp_path, monkeypatch):
     ok, line = langmatrix.summary_line(rep, "en->zh")
     assert ok and "CER" not in line and "3 clips, ASR error rate 0.00%, chrF 100.00" in line
     assert "CER" not in format_report(rep)
+
+
+def test_summary_cli_prints_per_clip_cer_edits_for_ko_only(tmp_path, monkeypatch, capsys):
+    # one clip differs only by spaces (0 edits), so the subset CER a baseline needs is exact from the log lines
+    rep = _run(tmp_path, monkeypatch, "ko->zh", asr_text=KO_SPACING_ONLY)
+    r = tmp_path / "rep.json"
+    r.write_text(json.dumps(rep), "utf-8")
+    capsys.readouterr()  # drop the smoke run's own output
+    assert langmatrix.main(["summary", str(r), "ko->zh"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[1:] == [f"  {c['id']}: CER 0/11" for c in rep["languages"][0]["clips"]]
+    rep["languages"][0]["clips"][0]["asr"] = "고양이가 매트 위에 앉았어"  # one character substituted
+    assert langmatrix.clip_cer_lines(rep, "ko->zh")[0].endswith(": CER 1/11")
+    (tmp_path / "en").mkdir()
+    en = _run(tmp_path / "en", monkeypatch, "en->zh")
+    assert langmatrix.clip_cer_lines(en, "en->zh") == []
