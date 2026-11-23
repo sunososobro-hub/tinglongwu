@@ -1,8 +1,6 @@
 """#1775: GUI one-click Vulkan pack + whisper.cpp model offer (pure logic, fake detect / fake runner)."""
 import sys
 
-import pytest
-
 from tinglongwu.gui import vulkan_offer as vo
 
 
