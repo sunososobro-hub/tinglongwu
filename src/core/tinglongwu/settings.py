@@ -22,6 +22,7 @@ DEFAULTS = {
     "voice": False, "voice_device": "",  # #330: speak each translated line on a separate output (off by default)
     "overlay_alpha": 0.82,  # #333: subtitle bar opacity (right-click > Opacity), kept across restarts
     "gpu_pack_never_ask": False,  # #1525: "Don't ask again" on the GPU speed-up pack banner (gpu_offer.DISMISS_KEY)
+    "vulkan_offer_never_ask": False,  # #1775: "Don't ask again" on the Vulkan pack banner (vulkan_offer.DISMISS_KEY)
     "tour_seen": False,  # #314: the first-launch "3 steps" overlay was closed with "Got it"
     "usage_asked": False,  # #680: the one-time "what do you mainly use it for?" question was answered or skipped
     "usage_use": "",  # #680: the answer (one of USAGE_CHOICES, "" = none); local only, never sent anywhere
