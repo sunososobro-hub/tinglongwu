@@ -373,7 +373,51 @@ def apply_glossary(translator, glossary) -> None:
         translator.glossary = glossary
 
 
-def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, log=None):
+def live_recognizer(a, mdir, dev: str, glossary=None, cands=None, *, select=None, ready=None, vulkan=None,
+                    env=None, say=None):
+    """#1759: the live session's speech engine. CUDA (dev "cuda") -> faster-whisper on the GPU, unchanged. No CUDA:
+    whisper.cpp on Vulkan when TLWU_DEVICE=vulkan, or on auto when the Vulkan pack has the whisper.cpp build and the
+    ggml model for a.model is downloaded; any Vulkan init failure -> faster-whisper on the CPU plus one stderr line
+    (asr_vulkan.select_recognizer). --device cpu never uses Vulkan. Prints one "speech model <size> on <backend>"
+    line. Returns (recognizer, backend used)."""
+    from . import asr_vulkan, mt_backend
+    from .asr import FasterWhisperRecognizer
+
+    env = os.environ if env is None else env
+    say = say or (lambda m: print(m, file=sys.stderr, flush=True))
+    kw = dict(glossary=glossary, candidates=cands, lang_file=getattr(a, "lang_file", None),
+              beam=getattr(a, "cpu_beam", None), threads=getattr(a, "cpu_threads", None))
+    forced = (env.get("TLWU_DEVICE") or "").strip().lower() == "vulkan"
+    use_vk = False
+    if a.compute != "cpu":
+        if vulkan is None:
+            vulkan = mt_backend.vulkan_available
+        ready = ready or asr_vulkan.vulkan_ready
+        use_vk = bool(vulkan()) and (forced or bool(ready(mdir, a.model)))
+    rec, backend = (select or asr_vulkan.select_recognizer)(
+        mdir, a.model, a.lang, cuda=dev == "cuda", vulkan=use_vk, env=env, warn=say,
+        cpu_factory=lambda device: FasterWhisperRecognizer(mdir, a.model, a.lang, device, **kw),
+        vulkan_factory=lambda: asr_vulkan.WhisperCppVulkanRecognizer(mdir, a.model, a.lang, **kw))
+    where = ("vulkan (whisper.cpp)" if backend == "vulkan" else
+             "GPU" if getattr(rec, "device", backend) == "cuda" else "CPU")  # a CUDA load may have fallen back
+    say(f"tlwu: speech model {a.model} on {where}")
+    return rec, backend
+
+
+def vulkan_ladder(a, mdir, glossary, cands, backend: str) -> dict:
+    """#1759: make_adaptive keyword args so a Vulkan session steps down to smaller whisper.cpp models only."""
+    if backend != "vulkan":
+        return {}
+    from . import asr_vulkan
+
+    def make_asr(size):
+        return asr_vulkan.WhisperCppVulkanRecognizer(mdir, size, a.lang, glossary=glossary, candidates=cands,
+                                                     lang_file=getattr(a, "lang_file", None))
+    return {"make_asr": make_asr, "installed": asr_vulkan.installed_sizes(mdir)}
+
+
+def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make_asr=None, log=None,
+                  installed=None):
     """Wrap ASR so the latency controller can swap speech models at run time (#80). The translation engine is
     never swapped: Hy-MT2 is the only one (#471, no OPUS step-down).
     Returns (asr, translator, controller); controller is None when there is nothing to step down to."""
@@ -389,7 +433,8 @@ def make_adaptive(a, asr, translator, mdir, dev, glossary=None, cands=None, make
                                            lang_file=getattr(a, "lang_file", None), live=dev == "cpu",
                                            beam=getattr(a, "cpu_beam", None),
                                            threads=getattr(a, "cpu_threads", None))
-    lower = [(s, lambda s=s: make_asr(s)) for s in smaller_whisper(a.model, whisper_installed(mdir))]
+    have = whisper_installed(mdir) if installed is None else installed  # #1759: whisper.cpp sizes on Vulkan
+    lower = [(s, lambda s=s: make_asr(s)) for s in smaller_whisper(a.model, have)]
     if lower:
         sp = Ladder("speech model", a.model, asr, lower)
         ladders.append(sp)
@@ -586,7 +631,6 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     backlog_line(seconds): #1259, whole seconds ASR is behind the audio (0 = caught up); default: one stderr line per change.
     mt_wait_line(lines): #1253, translations held while ASR catches up (0 = MT resumed); default: one stderr line per change.
     on_topic(topic): #611, with --topics: called on the summarizer thread with each finished topics.Topic (GUI panel)."""
-    from .asr import FasterWhisperRecognizer
     from .device import resolve_device
     from .merge import AMEND_WINDOW, SentenceMerger
     from .pipeline import run
@@ -670,12 +714,11 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
 
         cands = parse_candidates(a.lang_candidates)
         print(f"tlwu: language follows the speaker among {','.join(cands)}", file=sys.stderr)
-    asr = FasterWhisperRecognizer(mdir, a.model, a.lang, dev, glossary=glossary,
-                                  candidates=cands, lang_file=getattr(a, "lang_file", None),
-                                  beam=getattr(a, "cpu_beam", None), threads=getattr(a, "cpu_threads", None))
+    asr, asr_backend = live_recognizer(a, mdir, dev, glossary, cands)  # #1759: cuda > vulkan > cpu
     cpu_fallback_mt(dev, asr.device, asr_threads=getattr(a, "cpu_threads", None),
                     transcript_only=bool(a.transcript_only))  # #1198: a CUDA load that fell back to the CPU gets CPU mode's MT threads
-    dev = asr.device  # may have fallen back to cpu
+    if asr_backend != "vulkan":
+        dev = asr.device  # may have fallen back to cpu (Vulkan ASR keeps the session's device for MT / CPU mode)
     asr.live = asr_live(dev, a.file, getattr(a, "paced", False))  # #251 / #1264
     if stop is None or not stop.is_set():  # a session cancelled while loading does not wait for a warm-up decode
         warm_live_asr(asr, a.file, getattr(a, "paced", False), warn)  # #1247: before "ready", not on the first line
@@ -708,7 +751,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
                     translator.preload(c, a.to)
     ctl = None
     if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
-        asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
+        asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands,
+                                             **vulkan_ladder(a, mdir, glossary, cands, asr_backend))
     rec_dir = getattr(a, "record", None)
     rec = _t("rec_label") if rec_dir is not None else ""
     if sink is None:
