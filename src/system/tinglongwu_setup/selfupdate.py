@@ -401,7 +401,8 @@ def apply_app_script(zip_path: Path, app_dir: Path, pid: int, sha: str | None = 
         "    Move-Item -LiteralPath (Join-Path $stage $i) -Destination $cur",
         "  }",
         "  Remove-Item -LiteralPath $stage -Recurse -Force",
-        "  if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }",
+        # #1656: the swap is done here; a log another process holds must not roll it back
+        "  try { if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force } } catch { }",
         "} catch {",
         "  $err = 'apply-app failed: ' + ($_ | Out-String)",
         "  Write-Output $err",

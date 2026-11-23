@@ -69,7 +69,9 @@ def test_swap_works_when_the_archive_module_is_broken(tmp_path):
     # A module path whose Microsoft.PowerShell.Archive throws on import, like a 5.1 shell given a pwsh 7 PSModulePath.
     mods = tmp_path / "mods" / "Microsoft.PowerShell.Archive"
     mods.mkdir(parents=True)
-    (mods / "Microsoft.PowerShell.Archive.psm1").write_text("throw 'broken Archive module'\n", "utf-8")
+    # defines and exports a throwing Expand-Archive (#1656): the pre-#1654 helper calls it and fails, the ZipFile one never does
+    (mods / "Microsoft.PowerShell.Archive.psm1").write_text(
+        "function Expand-Archive { throw 'broken Archive module' }\nExport-ModuleMember -Function Expand-Archive\n", "utf-8")
     env = {**os.environ, "PSModulePath": str(tmp_path / "mods") + os.pathsep + os.environ.get("PSModulePath", "")}
     app, zp = _install(tmp_path)
     r = _run_helper(tmp_path, app, zp, env)
@@ -87,3 +89,14 @@ def test_bad_zip_rolls_back_and_writes_the_log(tmp_path):
     assert r.returncode == 0, r.stderr
     assert json.loads((app / "app-layer.json").read_text())["version"] == "1.0.0"
     assert "apply-app failed" in (app / su.APPLY_APP_LOG).read_text("utf-8-sig") and "apply-app failed" in r.stdout
+
+
+@pytest.mark.skipif(PWSH is None, reason="needs PowerShell")
+def test_undeletable_log_after_a_good_swap_does_not_roll_back(tmp_path):  # #1656
+    app, zp = _install(tmp_path)
+    log = app / su.APPLY_APP_LOG
+    log.mkdir()  # a non-empty directory cannot be removed with Remove-Item -Force: stands in for a locked log
+    (log / "held").write_text("x", "utf-8")
+    r = _run_helper(tmp_path, app, zp, dict(os.environ))
+    assert r.returncode == 0, r.stderr
+    assert json.loads((app / "app-layer.json").read_text())["version"] == "2.0.0", r.stdout
