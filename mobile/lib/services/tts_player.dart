@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
 /// Plays synthesized speech on the phone speaker (#558): Android AudioTrack in TtsPlayer.kt,
-/// no new plugin and no INTERNET permission. iOS has no native side yet: [play] returns false.
+/// no new plugin and no network use. iOS has no native side yet: [play] returns false.
 class TtsPlayer {
   static const _channel = MethodChannel('tlwu/tts');
 
