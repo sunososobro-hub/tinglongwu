@@ -294,6 +294,7 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None, 
         want, tier_name = "small", None
         say(f"tlwu: hardware probe failed ({str(e)[:120]}); using the default speech model", file=sys.stderr)
     got = pick_whisper(want, mdir, tier_name)
+    picked = got
     if dev != "cuda":
         try:
             from . import asr_vulkan, mt_backend
@@ -308,7 +309,7 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None, 
                     got = alt
         except Exception:  # noqa: BLE001 - never stop a session over the Vulkan lookup
             pass
-    note = "" if got == want else f" ({want} is not downloaded: `tlwu-setup --whisper {want}`)"
+    note = "" if got == want or picked == want else f" ({want} is not downloaded: `tlwu-setup --whisper {want}`)"
     say(f"tlwu: speech model = {got} (quality {level}){note}", file=sys.stderr)
     return got
 
@@ -678,7 +679,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     thread_budget.set_role("listen")  # #250: one `tlwu: threads ...` line before any model loads
     explicit_model = a.model is not None
     if a.model is None:
-        a.model = auto_model(getattr(a, "quality", "auto"), dev, mdir)
+        a.model = auto_model(getattr(a, "quality", "auto"), dev, mdir,
+                             vulkan=(lambda: False) if a.compute == "cpu" else None)
     apply_cpu_mode(a, dev, mdir, explicit_model)
     if notice is not None and dev == "cpu" and a.compute != "cpu":
         from .i18n import t

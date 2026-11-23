@@ -37,3 +37,11 @@ def test_no_vulkan_or_cuda_keeps_faster_whisper_pick(tmp_path, monkeypatch):
     _ready(monkeypatch, m)
     assert cli.auto_model("auto", "cpu", m, say=lambda *a, **k: None, vulkan=lambda: False) == "small"
     assert cli.auto_model("auto", "cuda", m, say=lambda *a, **k: None, vulkan=lambda: True) == "small"
+
+
+def test_no_false_not_downloaded_note_when_fw_wanted_is_installed(tmp_path, monkeypatch):
+    m = _mk(tmp_path, folders=["small"], ggml=["base"])
+    _ready(monkeypatch, m)
+    said = []
+    cli.auto_model("auto", "cpu", m, say=lambda *a, **k: said.append(a[0]), vulkan=lambda: True)
+    assert not any("is not downloaded" in x for x in said)
