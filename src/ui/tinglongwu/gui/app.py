@@ -1907,7 +1907,7 @@ class App:
                 self._upd_show("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), ver=self.upd_ver)
         elif kind == "upd_git_done":  # #1672
             self.upd_busy = False
-            self._upd_show("gui_upd_git_done")
+            self._upd_show("gui_upd_git_deps" if len(ev) > 1 and ev[1] else "gui_upd_git_done")
         elif kind == "upd_fail":
             self.upd_busy = False
             if self.upd_apply_when_ready:  # silent background failures stay silent

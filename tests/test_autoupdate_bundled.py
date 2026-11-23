@@ -157,3 +157,32 @@ def test_git_check_fetch_failure_is_reported(source, monkeypatch, tmp_path):
     events = []
     assert autoupdate.run_git_check(events.append, True, "0.0.0", root=work) is None
     assert events[0][0] == "upd_fail_check"
+
+
+def test_git_apply_reports_dependency_changes(source, monkeypatch, tmp_path):
+    monkeypatch.delenv("TLWU_OFFLINE", raising=False)
+    g, origin, work = _git_repo(tmp_path)
+    (origin / "f").write_text("2")
+    g("commit", "-q", "-am", "plain", cwd=origin)
+    g("tag", "-f", "linux-ok", cwd=origin)
+    assert autoupdate.git_apply(work, platform="linux") is False
+    (origin / "pyproject.toml").write_text("[project]\n")
+    g("add", ".", cwd=origin)
+    g("commit", "-q", "-m", "deps", cwd=origin)
+    g("tag", "-f", "linux-ok", cwd=origin)
+    events = []
+    assert autoupdate.git_check(work, platform="linux") == "update"
+    assert autoupdate.run_git_apply(events.append, root=work) is True
+    assert events == [("upd_git_done", True)]
+
+
+def test_git_check_unresolvable_target_is_an_error(source, monkeypatch, tmp_path):
+    monkeypatch.delenv("TLWU_OFFLINE", raising=False)
+    g, origin, work = _git_repo(tmp_path)
+    subprocess.run(["git", "tag", "-d", "linux-ok"], cwd=work, check=True, capture_output=True)
+    subprocess.run(["git", "update-ref", "-d", "refs/remotes/origin/main"], cwd=work, check=True, capture_output=True)
+    events = []
+    # fetch --tags restores linux-ok, so point the target at a name that cannot resolve
+    monkeypatch.setattr(autoupdate, "git_target", lambda *a, **k: "refs/tags/nope")
+    assert autoupdate.run_git_check(events.append, True, "0.0.0", root=work) is None
+    assert events[0][0] == "upd_fail_check"

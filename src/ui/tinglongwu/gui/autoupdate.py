@@ -97,18 +97,27 @@ def git_check(root: Path | None = None, run=None, platform: str | None = None) -
     tgt = git_target(root, run, platform)
     head = _git(root, ["rev-parse", "HEAD"], run).stdout.strip()
     new = _git(root, ["rev-parse", tgt], run)
-    if new.returncode != 0 or new.stdout.strip() == head:
+    if new.returncode != 0:
+        raise RuntimeError("no update target")
+    if new.stdout.strip() == head:
         return "uptodate"
     if _git(root, ["merge-base", "--is-ancestor", tgt, "HEAD"], run).returncode == 0:
         return "uptodate"  # we are ahead
     return "update"
 
 
-def git_apply(root: Path | None = None, run=None, platform: str | None = None) -> None:
-    """Fast-forward to the target; raises RuntimeError when that is not possible (local edits, diverged)."""
+def git_apply(root: Path | None = None, run=None, platform: str | None = None) -> bool:
+    """Fast-forward to the target; raises RuntimeError when that is not possible (local edits, diverged).
+    Returns True when pyproject.toml or requirements/*.txt changed (the user must run `python -m pip install -e .`;
+    never run unasked, like auto_update.sh)."""
+    import re
+
     root = app_root() if root is None else Path(root)
+    old = _git(root, ["rev-parse", "HEAD"], run).stdout.strip()
     if _git(root, ["merge", "--ff-only", "--quiet", git_target(root, run, platform)], run).returncode != 0:
         raise RuntimeError("diverged")
+    names = _git(root, ["diff", "--name-only", old, "HEAD"], run).stdout.split()
+    return any(re.fullmatch(r"pyproject\.toml|requirements/[^/]*\.txt", n) for n in names)
 
 
 def offline(env=None) -> bool:
@@ -396,9 +405,9 @@ def run_git_check(put, manual: bool, current: str, root: Path | None = None, run
 def run_git_apply(put, root: Path | None = None, run=None) -> bool:
     """#1672 worker thread: put(("upd_git_done",)) or put(("upd_fail", reason))."""
     try:
-        git_apply(root, run)
+        deps = git_apply(root, run)
     except Exception as e:  # noqa: BLE001
         put(("upd_fail", str(e)[:120]))
         return False
-    put(("upd_git_done",))
+    put(("upd_git_done", deps))
     return True
