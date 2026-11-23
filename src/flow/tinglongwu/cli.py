@@ -402,6 +402,11 @@ def live_recognizer(a, mdir, dev: str, glossary=None, cands=None, *, select=None
             vulkan = mt_backend.vulkan_available
         ready = ready or asr_vulkan.vulkan_ready
         use_vk = bool(vulkan()) and (forced or bool(ready(mdir, a.model)))
+        if forced and not use_vk:  # #1774: TLWU_DEVICE=vulkan but no pack / loader: one reason + fix
+            from .vulkan_hint import fallback_line
+
+            say(fallback_line(mt_backend.forced_vulkan_unavailable(
+                mt_backend.vulkan_pack_dir(warn=lambda m: None), env=env) or "no_loader", use="ASR"))
     rec, backend = (select or asr_vulkan.select_recognizer)(
         mdir, a.model, a.lang, cuda=dev == "cuda", vulkan=use_vk, env=env, warn=say,
         cpu_factory=lambda device: FasterWhisperRecognizer(mdir, a.model, a.lang, device, **kw),

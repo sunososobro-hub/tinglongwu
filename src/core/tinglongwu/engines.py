@@ -13,6 +13,7 @@ import weakref
 from pathlib import Path
 
 from .device import free_vram_mib  # noqa: F401 - #1664: lives in device (lower layer)
+from .vulkan_hint import fallback_line
 
 # --engine choice -> engine name. hymt7b (#279), ollama and fm (#356, a local Ollama server / Apple's on-device
 # model) are opt-in only: choose_engine("auto") never returns them. opus was removed (#471): Hy-MT2 is the only
@@ -94,6 +95,9 @@ def load_llama(path: Path, gpu: bool):
 
     pack = mt_backend.vulkan_pack_dir()
     vulkan = mt_backend.vulkan_available()
+    why = mt_backend.forced_vulkan_unavailable(pack)  # #1774: TLWU_DEVICE=vulkan but no pack / loader: say why
+    if why:
+        print(fallback_line(why), file=sys.stderr)
     # One llama.cpp build per process: an already imported library cannot be swapped for the Vulkan one (#746)
     if vulkan and "llama_cpp" in sys.modules and os.environ.get("LLAMA_CPP_LIB_PATH") != str(pack):
         vulkan = False
@@ -108,8 +112,7 @@ def load_llama(path: Path, gpu: bool):
         if backend != "vulkan":
             raise RuntimeError(f"Hy-MT2 needs llama-cpp-python: {e}. "
                                f"To fix: {llamacheck.FIX_HINT}") from e
-        print(f"tlwu: Vulkan llama.cpp build not loadable ({type(e).__name__}: {e}); using CPU for MT.",
-              file=sys.stderr)
+        print(fallback_line("init_failed", error=f"{type(e).__name__}: {e}"), file=sys.stderr)
         if prev_lib is None:  # restore the path in effect before the Vulkan branch, then retry once
             os.environ.pop("LLAMA_CPP_LIB_PATH", None)
         else:
