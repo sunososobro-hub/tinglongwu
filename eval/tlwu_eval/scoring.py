@@ -28,6 +28,9 @@ RESOURCE_FREE_FRACTION, RESOURCE_FULL_FRACTION = 0.5, 1.0
 
 CHAR_LANGS = {"zh", "ja", "th"}  # scored by characters (CER); everything else by words (WER) - spec v2 table
 # (th added for #472: Thai writes no spaces between words, so WER would count a whole sentence as one word)
+# #1731: also report CER next to WER for these word-scored languages. Korean spacing and particle attachment turn one
+# character slip (or only a spacing difference) into a whole wrong word, so WER alone overstates what a listener sees.
+CER_ALSO_LANGS = {"ko"}
 CHRF_ORDER, CHRF_BETA = 6, 2.0  # chrF2 with character 1..6-grams = the sacreBLEU default (Popovic 2015)
 
 
@@ -56,12 +59,13 @@ def _to_simplified(text: str) -> str:
     return _T2S.convert(text) if _T2S else text
 
 
-def tokenize(text: str, lang: str) -> list[str]:
+def tokenize(text: str, lang: str, chars: bool = False) -> list[str]:
+    """Words, or characters (spaces dropped) for CHAR_LANGS or when `chars` is set (#1731: CER of a word language)."""
     text = unicodedata.normalize("NFKC", text).lower()
     if lang == "zh":
         text = _to_simplified(text)
     text = "".join(c for c in text if not unicodedata.category(c).startswith(("P", "S")))
-    return [c for c in text if not c.isspace()] if lang in CHAR_LANGS else text.split()
+    return [c for c in text if not c.isspace()] if chars or lang in CHAR_LANGS else text.split()
 
 
 def edit_distance(ref: list, hyp: list) -> int:
@@ -74,12 +78,13 @@ def edit_distance(ref: list, hyp: list) -> int:
     return prev[-1]
 
 
-def error_rate(pairs, lang: str) -> float:
-    """Corpus WER (CER for zh/ja): total edits / total reference units over (reference, hypothesis) pairs."""
+def error_rate(pairs, lang: str, chars: bool = False) -> float:
+    """Corpus WER (CER for CHAR_LANGS, or for any language with `chars=True`): total edits / total reference units
+    over (reference, hypothesis) pairs."""
     errs = units = 0
     for ref, hyp in pairs:
-        r = tokenize(ref, lang)
-        errs += edit_distance(r, tokenize(hyp, lang))
+        r = tokenize(ref, lang, chars)
+        errs += edit_distance(r, tokenize(hyp, lang, chars))
         units += len(r)
     if not units:
         raise ValueError("no reference text")

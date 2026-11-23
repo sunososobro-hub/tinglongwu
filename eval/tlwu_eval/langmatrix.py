@@ -120,7 +120,10 @@ def summary_line(report: dict, pair: str) -> tuple[bool, str]:
         return False, f"{pair}: FAIL (no clips evaluated)"
     er, chrf = lg.get("error_rate"), lg.get("chrf")
     er_s = "n/a" if er is None else f"{er * 100:.2f}%"
-    line = f"{pair}: {len(lg['clips'])} clips, ASR error rate {er_s}, chrF " + ("n/a" if chrf is None else f"{chrf:.2f}")
+    cer = lg.get("cer")  # #1731: ko also prints CER (WER counts a spacing slip as a whole wrong word)
+    cer_s = "" if cer is None else f", CER {cer * 100:.2f}%"
+    line = (f"{pair}: {len(lg['clips'])} clips, ASR error rate {er_s}{cer_s}, chrF "
+            + ("n/a" if chrf is None else f"{chrf:.2f}"))
     if chrf is None:
         return False, line + f" - FAIL (no ref_{pair.split('->')[1]} reference translations in the clips)"
     return True, line
