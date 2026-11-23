@@ -60,7 +60,9 @@ jobs:
             --kokoro-python "$HOME/tts-kokoro/bin/python" --kokoro-model "$TLWU_MODELS/kokoro" \
             --where "ubuntu-24.04 $(nproc) vCPU, ${GITHUB_SHA::7}, $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --json "$RUNNER_TEMP/speak_ready.json" --md "$RUNNER_TEMP/speak_ready.md"
-          cat "$RUNNER_TEMP/speak_ready.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Report to the step summary
+        if: always()
+        run: if [ -s "$RUNNER_TEMP/speak_ready.md" ]; then cat "$RUNNER_TEMP/speak_ready.md" >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Post the report on #1741
         if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) }}
         continue-on-error: true

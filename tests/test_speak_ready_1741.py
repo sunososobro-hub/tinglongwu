@@ -97,3 +97,22 @@ def test_main_writes_json_and_markdown(tmp_path, monkeypatch):
     assert rc == 0
     assert json.loads((tmp_path / "o.json").read_text(encoding="utf-8"))["runs"] == 2
     assert "speak readiness" in (tmp_path / "o.md").read_text(encoding="utf-8")
+
+
+def _fake_child(tmp_path, monkeypatch, code: str):
+    fake = tmp_path / "child.py"
+    fake.write_text(code, encoding="utf-8")
+    monkeypatch.setattr(sr, "speak_cmd", lambda w, j, r, a: [sys.executable, str(fake)])
+
+
+def test_run_one_timeout_is_an_error_not_an_exception(tmp_path, monkeypatch):
+    _fake_child(tmp_path, monkeypatch, "import time; time.sleep(30)\n")
+    out = sr.run_one(tmp_path / "x.wav", tmp_path, "t", SimpleNamespace(timeout=1))
+    assert out["rc"] != 0 and out["error"] == "timeout after 1s" and out["records"] == []
+
+
+def test_run_one_silent_nonzero_exit_still_reports_an_error(tmp_path, monkeypatch):
+    _fake_child(tmp_path, monkeypatch, "import sys; sys.exit(3)\n")
+    out = sr.run_one(tmp_path / "x.wav", tmp_path, "t", SimpleNamespace(timeout=60))
+    assert out["error"] == "exit code 3"
+    assert sr.summarize([out], _run([], []))["errors"] == ["exit code 3"]

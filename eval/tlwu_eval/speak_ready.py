@@ -125,14 +125,18 @@ def speak_cmd(wav: Path, jsonl: Path, report: Path, a) -> list[str]:
 def run_one(wav: Path, work: Path, tag: str, a) -> dict:
     jsonl, report = work / f"{tag}.jsonl", work / f"{tag}.json"
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "TLWU_NO_UPDATE": "1"}
-    p = subprocess.run(speak_cmd(wav, jsonl, report, a), env=env, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=a.timeout)
+    try:
+        p = subprocess.run(speak_cmd(wav, jsonl, report, a), env=env, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=a.timeout)
+        rc, err = p.returncode, (p.stderr or p.stdout or "")[-400:]
+    except subprocess.TimeoutExpired:  # keep the runs already done: this one counts as an error, the report goes on
+        rc, err = -1, f"timeout after {a.timeout}s"
     recs = [json.loads(x) for x in jsonl.read_text(encoding="utf-8").splitlines() if x.strip()] \
         if jsonl.is_file() else []
     items = json.loads(report.read_text(encoding="utf-8")).get("items", []) if report.is_file() else []
-    out = {"rc": p.returncode, "records": recs, "items": items}
-    if p.returncode:
-        out["error"] = (p.stderr or p.stdout)[-400:]
+    out = {"rc": rc, "records": recs, "items": items}
+    if rc:
+        out["error"] = err or f"exit code {rc}"
     return out
 
 
