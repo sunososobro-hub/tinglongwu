@@ -9,6 +9,7 @@
                                                       talk mode: Kokoro venv (~/tts-kokoro) + pinned model + smoke wav
                                                       + tlwu-talk.ps1 launcher (used by install.ps1)
   tlwu-setup --vulkan-pack [--app-version X.Y.Z]      install release vX.Y.Z's Vulkan llama.cpp pack into vulkan-pack/ (#801)
+  tlwu-setup --check-gpu                              offline: Vulkan devices, pack, model and chosen ASR / MT backend (#1772)
   tlwu-setup --check-llama                            offline: does llama-cpp-python (Hy-MT2) fit this CPU?
   tlwu-setup --selftest [--model M --engine E]        offline: load the models, translate one test sentence (tlwu --selftest)
   tlwu-setup --verify                                 offline integrity check
@@ -99,7 +100,7 @@ def from_bundle(zpath: Path, mdir: Path) -> int:
 
 
 # never touch the network (--pack-prompt only checks while offline: packs.prompt does not download then)
-OFFLINE_SAFE = {"-h", "--help", "--selftest", "--check-llama", "--verify", "--from-bundle", "--list", "--export-pack",
+OFFLINE_SAFE = {"-h", "--help", "--selftest", "--check-llama", "--check-gpu", "--verify", "--from-bundle", "--list", "--export-pack",
                 "--import-pack", "--pack-prompt"}
 
 
@@ -129,6 +130,8 @@ def main(argv=None) -> int:
                    help="pip install requirements/requirements-gpu.txt (nvidia-cublas-cu12, nvidia-cudnn-cu12)")
     p.add_argument("--check-llama", action="store_true",
                    help="check that the installed llama-cpp-python build loads and fits this CPU (no network)")
+    p.add_argument("--check-gpu", action="store_true",
+                   help="offline report: Vulkan devices, pack version vs app, whisper.cpp model, ASR / MT backend (#1772)")
     p.add_argument("--selftest", action="store_true",
                    help="run `tlwu --selftest` (no network); --model/--engine/--device are forwarded")
     p.add_argument("--gpu-pack", action="store_true",
@@ -181,6 +184,10 @@ def main(argv=None) -> int:
     if a.check_llama:  # separate process: setup never imports the offline runtime package
         return subprocess.call([sys.executable, "-m", "tinglongwu.llamacheck"])
     mdir = Path(a.models_dir)
+    if a.check_gpu:
+        from . import gpucheck
+
+        return gpucheck.run(ROOT, mdir, a.app_version or source_version(ROOT))
     if a.talk:
         return talk.main(a, mdir)
     if a.piper_engine:

@@ -132,14 +132,17 @@ def driver_hint(gpu: Gpu, platform: str | None = None) -> str:
             f"Update the driver to use the GPU.")
 
 
-def detection_text(raw: Gpu | None, force_cpu: bool = False, platform: str | None = None) -> str:
-    """First-run setup window line about the GPU (`raw` = probe_gpu())."""
+def detection_text(raw: Gpu | None, force_cpu: bool = False, platform: str | None = None,
+                   vulkan: list[str] | None = None) -> str:
+    """First-run setup window line about the GPU (`raw` = probe_gpu(); `vulkan` = Vulkan GPU names, #1772)."""
     if force_cpu:
         return "已指定 CPU 模式。"
     if raw is not None and driver_too_old(raw, platform):
         return driver_hint(raw, platform)
     if raw is not None:
         return f"偵測到顯示卡：{raw.name}（{raw.total_mb / 1024:.1f} GB 顯存）"
+    if vulkan:
+        return f"偵測到 Vulkan 顯示卡：{', '.join(vulkan)}（沒有 NVIDIA 顯示卡；Vulkan 加速包可在設定 > 附加元件安裝），先使用 CPU 模式。"
     return "沒有偵測到 NVIDIA 顯示卡，將使用 CPU 模式（速度較慢，但一樣能用）。"
 
 

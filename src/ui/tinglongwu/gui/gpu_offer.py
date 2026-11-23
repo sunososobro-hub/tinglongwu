@@ -16,6 +16,7 @@ VERSION_FILE = "pack_version.txt"  # written by tinglongwu_setup.gpu_pack.run af
 GPU_PACK_SIZE = "1.5 GB"
 
 UNAVAILABLE, MISSING, OLD, INSTALLED = "unavailable", "missing", "old", "installed"
+VULKAN = "vulkan"  # #1772: no NVIDIA GPU, but a Vulkan GPU (AMD / Intel iGPU); not offered the CUDA pack
 NO_PACK_PREFIX = "gpu pack: this release has no GPU pack"  # == tinglongwu_setup.gpu_pack.NO_PACK_NOTE's start
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[.+-][0-9A-Za-z.+-]*)?$")  # 0.4.10, 0.4.10.dev3, 0.4.10+g1a2b
 INSTALLING = threading.Event()  # one GPU-pack install at a time across the banner and every Add-ons window
@@ -74,9 +75,53 @@ def run_install(run, put, **kw) -> int:
 GPU_ROW_NAME = "gpu-pack"
 
 
-def detect(gpu_info=None, pack_dir=None, usable=None, platform: str | None = None) -> str:
-    """pack_state for this machine. nvidia-smi (hwprobe.gpu_info) decides "NVIDIA GPU present", not CTranslate2: the
-    whole point is the case where CUDA does not load because the pack is missing (#1525 field test)."""
+_LAST_VULKAN: list[str] = []  # devices of the last detect() that returned VULKAN (the row text names them)
+
+
+def vulkan_pack_ok() -> bool:
+    """The installed Vulkan llama.cpp pack matches this app (mt_backend.vulkan_pack_dir, same rule as the runtime)."""
+    try:
+        from ..mt_backend import vulkan_pack_dir
+
+        return vulkan_pack_dir(warn=lambda *_: None) is not None
+    except Exception:  # noqa: BLE001 - unknown = not ready
+        return False
+
+
+def vulkan_devices(run=None, which=None) -> list[str]:
+    """#1772: names of the Vulkan GPUs (`vulkaninfo --summary`, software rasterizers dropped); [] when none / no tool."""
+    import shutil
+    import subprocess
+
+    exe = (which or shutil.which)("vulkaninfo")
+    if not exe:
+        return []
+    try:
+        p = (run or subprocess.run)([exe, "--summary"], capture_output=True, text=True, timeout=20,
+                                    encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - broken driver = no device
+        return []
+    out: list[str] = []
+    for name in re.findall(r"^\s*deviceName\s*=\s*(.+?)\s*$", p.stdout or "", re.M):
+        if not any(w in name.lower() for w in ("llvmpipe", "swiftshader", "lavapipe", "software")) and name not in out:
+            out.append(name)
+    return out
+
+
+def detect(gpu_info=None, pack_dir=None, usable=None, platform: str | None = None, vulkan=None) -> str:
+    """pack_state for this machine, or VULKAN (#1772) when there is no NVIDIA GPU but a Vulkan one (`vulkan` = device
+    list provider). nvidia-smi (hwprobe.gpu_info) decides "NVIDIA GPU present", not CTranslate2: the whole point is
+    the case where CUDA does not load because the pack is missing (#1525 field test)."""
+    state = _detect_nvidia(gpu_info, pack_dir, usable, platform)
+    if state == UNAVAILABLE and (platform or sys.platform) != "darwin":
+        devs = (vulkan or vulkan_devices)()
+        if devs:
+            _LAST_VULKAN[:] = devs
+            return VULKAN
+    return state
+
+
+def _detect_nvidia(gpu_info=None, pack_dir=None, usable=None, platform: str | None = None) -> str:
     if not supported(platform):
         return UNAVAILABLE
     if gpu_info is None:
@@ -137,9 +182,21 @@ def fail_reason(lines: list[str]) -> str:
     return (lines[-1] if lines else "").strip()[:160]
 
 
-def row_text(state: str, version: str | None) -> str:
+def vulkan_text(devices: list[str], pack_ok: bool | None = None) -> str:
+    """#1772: GUI status line for a Vulkan GPU: names the device and the Vulkan pack state (None = unknown)."""
+    from ..i18n import t
+
+    name = ", ".join(devices) if devices else "?"
+    key = "gpu_vulkan_unknown" if pack_ok is None else ("gpu_vulkan_ready" if pack_ok else "gpu_vulkan_nopack")
+    return t(key, name=name)
+
+
+def row_text(state: str, version: str | None, devices: list[str] | None = None, pack_ok=None) -> str:
     """Status text of the GPU row in Settings > Add-ons (localized)."""
     from ..i18n import t
+
+    if state == VULKAN:
+        return vulkan_text(devices or list(_LAST_VULKAN), (pack_ok or vulkan_pack_ok)())
 
     if state == INSTALLED:
         return t("gpu_pack_row_installed", ver=f" v{version}" if version else "")
