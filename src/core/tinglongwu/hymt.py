@@ -7,6 +7,7 @@ builds the same router with its own no-fallback base (#331).
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -167,6 +168,7 @@ class HyMtTranslator(Translator):
         self._pair: tuple[str, str] | None = None
         self.glossary = None  # tinglongwu.glossary.Glossary (set by the CLI): `~` fixes on the zh output (#174)
         self._zh_words: dict[str, str] = {}
+        self.on_partial = None  # #1771: callback(text) for a finished line's translation so far (see streaming())
 
     def _zh_word(self, w: str) -> str:
         if w not in self._zh_words:
@@ -209,10 +211,14 @@ class HyMtTranslator(Translator):
                 self._pair = (src, tgt)
         else:
             ctx = [a for a, _ in self.history]
-        r = self.llm.create_chat_completion(
-            [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx), context)}],
-            max_tokens=max_tokens_for(text), **sampling())
-        raw = strip_echo(r["choices"][0]["message"]["content"] or "")  # before clean_output joins the lines (#1615)
+        msgs = [{"role": "user", "content": build_prompt(text, src, tgt, self._terms(text, tgt, ctx), context)}]
+        cb = None if draft else self.on_partial
+        if cb is None:
+            r = self.llm.create_chat_completion(msgs, max_tokens=max_tokens_for(text), **sampling())
+            content = r["choices"][0]["message"]["content"] or ""
+        else:  # #1771: the same request, token by token; the finished text below is built exactly as unstreamed
+            content = self._stream(msgs, max_tokens_for(text), tgt, cb)
+        raw = strip_echo(content)  # before clean_output joins the lines (#1615)
         out = strip_echo(strip_unk(clean_output(raw)), translated=False)
         if tgt == "zh":
             out = zh_convert(out, self.zh_variant)
@@ -222,6 +228,79 @@ class HyMtTranslator(Translator):
         if not draft:
             self.history.append((text.strip(), out))
         return Translation(None, out)
+
+    def _stream(self, msgs, max_tokens: int, tgt: str, cb) -> str:
+        """#1771: run the completion streamed; cb(partial) after each token that changes the shown text."""
+        llm = self.llm
+        it = (llm.stream_chat_completion(msgs, max_tokens=max_tokens, **sampling())
+              if hasattr(type(llm), "stream_chat_completion")
+              else llm.create_chat_completion(msgs, max_tokens=max_tokens, stream=True, **sampling()))
+        acc, shown = "", ""
+        try:
+            for ch in it:
+                piece = ((ch.get("choices") or [{}])[0].get("delta") or {}).get("content")
+                if not piece:
+                    continue
+                acc += piece
+                part = partial_text(acc, tgt, self.zh_variant)
+                if part and part != shown:
+                    shown = part
+                    try:
+                        cb(part)
+                    except Exception:  # noqa: BLE001 - a display callback never breaks the translation
+                        pass
+        finally:
+            close = getattr(it, "close", None)
+            if close is not None:
+                close()  # releases SharedLlama's lock even if the loop above raised
+        return acc
+
+
+# #1771: a streamed answer that starts like the card instruction may be an echo (strip_echo drops it only once it is
+# complete), so it is not shown as a partial until strip_echo has removed it; the finished line is unaffected.
+_ECHO_LEADS = ("note", "please note", "it should", "you should", "注意", "只需", "只需要", "参考上面", "将以下")
+
+
+def partial_text(acc: str, tgt: str, zh_variant: str = "tw") -> str:
+    """#1771: what a subtitle shows for the streamed model text `acc` so far ("" = nothing yet). A display hint only:
+    the final line goes through the full translate() clean-up (glossary, script guard, per-language fixes)."""
+    s = strip_echo(acc, translated=False)
+    head = acc.lstrip().lower()[:16]
+    if s == acc.strip() and any(head.startswith(w) or w.startswith(head) for w in _ECHO_LEADS):
+        return ""  # may still be the instruction echo
+    s = strip_unk(clean_output(s)).strip()
+    if s and tgt == "zh":
+        s = zh_convert(s, zh_variant)
+    return s
+
+
+def stream_engine(translator):
+    """#1771: the HyMtTranslator a final line of `translator` would stream from (through a PendingTranslator and a
+    JaRouter), or None (another engine, or Hy-MT2 not loaded / failed)."""
+    t = translator
+    for _ in range(3):
+        if isinstance(t, HyMtTranslator):
+            return t
+        inner = t.__dict__.get("_inner") if hasattr(t, "__dict__") else None  # PendingTranslator (no __getattr__)
+        t = inner if inner is not None else (t.hy if isinstance(t, JaRouter) else None)
+        if t is None:
+            return None
+    return t if isinstance(t, HyMtTranslator) else None
+
+
+@contextlib.contextmanager
+def streaming(translator, cb):
+    """#1771: while inside, finished (non-draft) translations of `translator` call cb(partial text) per token.
+    cb None, or an engine that cannot stream: no-op. Only the MT worker thread uses it (one line at a time)."""
+    hy = stream_engine(translator) if cb is not None else None
+    if hy is None:
+        yield
+        return
+    hy.on_partial = cb
+    try:
+        yield
+    finally:
+        hy.on_partial = None
 
 
 class JaRouter(Translator):

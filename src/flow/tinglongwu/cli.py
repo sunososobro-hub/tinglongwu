@@ -92,6 +92,10 @@ def parse_args(argv=None):
                    help="give the translator the previous finished sentence of the same speaker and language as "
                         "context (not after a pause of 4 s or more). Off by default: fewer wrong word senses in "
                         "the #1394 eval, about +0.2 s MT time per line on CPU (#1750)")
+    p.add_argument("--no-mt-stream", action="store_true",
+                   help="show each translation only when it is finished. Default on a live session: the line "
+                        "fills in as Hy-MT2 writes it (saved transcripts and the voice still get only the finished "
+                        "line); files (not paced) never stream (#1771)")
     p.add_argument("--no-merge", action="store_true",
                    help="translate every VAD segment separately (default: merge into sentences first)")
     p.add_argument("--max-wait", type=float, default=None,
@@ -883,7 +887,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
             on_mt_wait=mt_wait_line or (lambda n: print(f"tlwu: {mt_wait_text(n) or 'MT resumed'}", file=sys.stderr, flush=True)),
             on_catchup=lambda n: (notice or (lambda m: print(f"tlwu: {m}", file=sys.stderr, flush=True)))(
                 _t("catchup_note", lines=n)),  # #1369
-            mt_context=bool(getattr(a, "mt_context", False)))  # #1750
+            mt_context=bool(getattr(a, "mt_context", False)),  # #1750
+            mt_stream=not audio_clock and not getattr(a, "no_mt_stream", False))  # #1771
     except KeyboardInterrupt:
         interrupted = True
         raise

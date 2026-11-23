@@ -117,6 +117,12 @@ class VoiceSink(Sink):
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass_source(self.inner, src, original, speaker)
 
+    def write_partial(self, r: Result) -> None:
+        """#1771: a translation still being written goes to the subtitles only; only write() is ever spoken."""
+        from .sink import forward_partial
+
+        forward_partial(self.inner, r)
+
     def mute(self, reason: str) -> bool:
         """Stop speaking for the rest of the session (subtitles continue); waiting lines are dropped. True the
         first time only."""

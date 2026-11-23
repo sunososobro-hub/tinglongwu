@@ -26,6 +26,13 @@ def pass_source(sink, src: str, original: str, speaker: str | None = None) -> No
     sink.write_source(src, original, **({"speaker": speaker} if speaker else {}))
 
 
+def forward_partial(sink, r: Result) -> None:
+    """#1771: sink.write_partial(r) when the sink shows partial translations; others ignore them."""
+    f = getattr(sink, "write_partial", None)
+    if f is not None:
+        f(r)
+
+
 class Sink(ABC):
     @abstractmethod
     def write(self, r: Result) -> None: ...
@@ -121,6 +128,10 @@ class JsonlSaveSink(Sink):
 
     def write_source(self, src: str, original: str, speaker: str | None = None) -> None:
         pass_source(self.inner, src, original, speaker)
+
+    def write_partial(self, r: Result) -> None:
+        """#1771: a translation still being written: shown by the inner sink only, never saved."""
+        forward_partial(self.inner, r)
 
     def write(self, r: Result) -> None:
         self.inner.write(r)

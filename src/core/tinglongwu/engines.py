@@ -160,6 +160,12 @@ class SharedLlama:
         with self.lock:
             return self.llm.create_chat_completion(*a, **k)
 
+    def stream_chat_completion(self, *a, **k):
+        """#1771: create_chat_completion(stream=True) chunks; the lock is held until the last chunk (llama.cpp
+        decodes lazily while the caller iterates), so the other side never runs inside a streamed answer."""
+        with self.lock:
+            yield from self.llm.create_chat_completion(*a, stream=True, **k)
+
     def __getattr__(self, name):
         return getattr(self.llm, name)
 

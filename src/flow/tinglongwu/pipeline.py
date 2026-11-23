@@ -23,6 +23,7 @@ from .mt_pending import live
 from .segment import Segmenter
 from .sink import Result, Sink, pass_source
 from .speakers import UNKNOWN
+from .hymt import streaming
 from .translate import Translation, Translator, translate_checked
 
 _DONE = object()
@@ -153,7 +154,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         stop_event: threading.Event | None = None, log=None, on_latency=None, speakers=None,
         on_work=None, on_record=None, recorder=None,  # recorder: #239 --record (record.Recorder)
         seg_gate=None, route=None, on_backlog=None, on_mt_wait=None, mt_yield: bool | None = None,
-        on_catchup=None, mt_context: bool = False) -> None:
+        on_catchup=None, mt_context: bool = False, mt_stream: bool = False) -> None:
     """Capture -> segments -> ASR -> (sentence merge) -> translate -> sink.
 
     Translation and output run in their own worker thread (one, so lines stay in order): ASR of the next
@@ -185,6 +186,10 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
     mt_context (#1750, --mt-context): pass the previous finished source sentence of the same speaker and language to
     the translator as context, unless the pause between the two lines is mt_context.CONTEXT_MAX_PAUSE_S or more.
     The context is never shown or saved as part of the line.
+    mt_stream (#1771): stream each finished line's translation token by token; a sink with write_partial(Result)
+    gets the text so far (shown in place of the pending line, never saved or spoken: write() still gets only the
+    finished line). on_record gets "t_target_first_ms": line released to MT -> first translated character (the
+    finished line when nothing streamed), next to "mt" (released -> finished line shown).
     """
     tgt0 = tgt
     t_run0 = time.monotonic()  # #1369: on_record "at" is seconds since run() started (the live audio position)
@@ -291,11 +296,22 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
         say = lambda m: draft._log(m.removeprefix("latency: "))  # noqa: E731 - clears the draft block first
 
     def write(r: Result, ep) -> None:
+        if first_tgt[0] is None:
+            first_tgt[0] = time.monotonic()
         if draft is not None:
             draft.final_written(ep)  # the final line replaces the dim draft
         sink.write(r)
         if recorder is not None:
             recorder.line(clip[0], r)
+
+    first_tgt = [None]  # #1771: monotonic time of this line's first translated character (MT thread only)
+    partial_sink = getattr(sink, "write_partial", None)
+
+    def write_partial(r: Result) -> None:
+        if first_tgt[0] is None:
+            first_tgt[0] = time.monotonic()
+        if partial_sink is not None:
+            partial_sink(r)
 
     def emit(unit_text: str, lang: str, ep, queued: float, who: str | None = None, replaces: str | None = None,
              context: str | None = None) -> None:
@@ -313,7 +329,11 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     replaces = zh_convert(replaces, getattr(mt, "zh_variant", "tw"))
             write(Result(lang, unit_text, None, unit_text, tgt, speaker=who, replaces=replaces), ep)
             return
-        with model_lock():
+        part = None
+        if mt_stream:
+            part = lambda text: write_partial(Result(lang, unit_text, None, text, tgt, speaker=who,  # noqa: E731
+                                                     replaces=replaces))
+        with model_lock(), streaming(mt, part):
             t0 = time.monotonic()
             try:
                 tr = translate_checked(mt, unit_text, lang, tgt, context=context) if context else \
@@ -389,6 +409,7 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                 if stopping():
                     return  # Stop during the hold: start no translation or output after run() returned
                 t_emit = time.monotonic()
+                first_tgt[0] = None
                 clip[0] = item[9]  # #239: audio of this line (only the MT thread reads it)
                 if draft is not None:
                     draft.last_first_draft = None  # #511: final_written() fills it while emit() writes the line
@@ -417,7 +438,9 @@ def run(source: AudioSource, segmenter: Segmenter, asr: Recognizer,
                     rec["draft"] = None if d is None else round(d, 3)  # #511: seconds to the first draft, null = none
                     rec["mt_hold"] = round(held, 3)  # #1253: part of "mt" spent waiting for ASR to catch up
                     rec["mt_skipped"] = skip  # #1369: written untranslated to catch up
-                    rec["at"] = round(t_shown - t_run0, 3)  # #1369: when it was shown, s since start
+                    rec["at"] = round(t_shown - t_run0, 3)
+                    t1 = first_tgt[0] if first_tgt[0] is not None else t_shown
+                    rec["t_target_first_ms"] = round(max(0.0, t1 - item[3]) * 1000)  # #1771  # #1369: when it was shown, s since start
                     on_record(rec)
                 if on_work is not None and not skip:  # no MT ran: a 0 ms line would skew the per-line MT time
                     on_work(item[4], time.monotonic() - t_emit, item[5])
