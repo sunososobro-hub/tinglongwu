@@ -44,9 +44,9 @@ The Korean and tier-2 rows (#656) come from [eval-flores 43535177705](https://gi
 ### Language-pair matrix: en / ru / zh-Hans / zh-Hant / ja / ko (#1305)
 Every direction between the six languages (30 cells, rows = source, columns = target), Hy-MT2-1.8B Q4_K_M on the CPU, greedy, first 200 FLORES-200 devtest sentences per direction (the full 1012 stay for the X -> zh-Hant rows above), same chrF + COMET. Each cell is `COMET / chrF`; "(weak)" marks a cell whose COMET is below the weakest shipped direction (en / ru / ja / ko -> zh-Hant) of the same run. zh-Hans <-> zh-Hant is OpenCC script conversion (`tinglongwu.translate.zh_convert`), not MT, as in the app. Directions the app cannot select today are measured too: the table is the data for deciding what to enable. Run it with `gh workflow run eval-flores.yml --ref dev -f matrix=6x6`; the `table` job writes the table to its step summary and the `flores-6x6-table` artifact.
 
-Results: [eval-flores 44099762645](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44099762645) (`matrix=6x6`, after the #1351 echo fix), commit 8a6c5b2, first 200 sentences per direction, 4 vCPU GitHub runner. Weakest shipped direction in this run: ru -> zh-Hant, COMET 0.870, so "(weak)" = COMET below 0.870 (COMET is stored to 3 decimals; 0.870 itself is not weak).
+Results: [eval-flores 44656926538](https://github.com/sunososobro-hub/tinglongwu/actions/runs/44656926538) (`matrix=6x6`, v0.5.0), commit c2fb2c2, first 200 sentences per direction, 4 vCPU GitHub runner. Weakest shipped direction in this run: ru -> zh-Hant, COMET 0.870, so "(weak)" = COMET below 0.870 (COMET is stored to 3 decimals; 0.870 itself is not weak).
 
-Traffic lights by COMET (rounded to 3 decimals): 🟢 >= 0.880, 🟡 0.870-0.879, 🔴 < 0.870 (0.870 = weakest shipped direction in this run, ru -> zh-Hant). `G` = Google Cloud Translation v2 COMET with the gap to ours (positive = Google ahead); `G -` = no Google number yet. The Google numbers come from different sentence sets (ru -> zh-Hant 1012 sentences, ru -> en and en -> zh-Hant 50) and are listed in `scripts/bench/data/google_refs.json`; ours are the first 200. The table is generated: `python scripts/bench/matrix_lights.py scripts/bench/data/matrix_6x6_44099762645.json` (the `table` job of `eval-flores.yml` prints it for every `matrix=6x6` run). After every published release, `eval-matrix-release.yml` runs the matrix once on the release tag (never a release gate) and opens a `[eval] refresh the 6x6 matrix ...` issue with the new table, so this section is updated by a normal PR. chrF per cell stays in the run's `flores-6x6-table` artifact.
+Traffic lights by COMET (rounded to 3 decimals): 🟢 >= 0.880, 🟡 0.870-0.879, 🔴 < 0.870 (0.870 = weakest shipped direction when #1305 ran, ru -> zh-Hant). `G` = Google Cloud Translation v2 COMET with the gap to ours (positive = Google ahead); `G -` = no Google number yet. The Google numbers come from different sentence sets (ru -> zh-Hant 1012 sentences, ru -> en and en -> zh-Hant 50) and are listed in `scripts/bench/data/google_refs.json`; ours are the first 200. The table is generated: `python scripts/bench/matrix_lights.py scripts/bench/data/matrix_6x6_44656926538.json` (the `table` job of `eval-flores.yml` prints it for every `matrix=6x6` run). After every published release, `eval-matrix-release.yml` runs the matrix once on the release tag (never a release gate) and opens a `[eval] refresh the 6x6 matrix ...` issue with the new table, so this section is updated by a normal PR. chrF per cell stays in the run's `flores-6x6-table` artifact.
 
 | source \ target | en | ru | zh-Hans | zh-Hant | ja | ko |
 |---|---|---|---|---|---|---|
@@ -54,10 +54,10 @@ Traffic lights by COMET (rounded to 3 decimals): 🟢 >= 0.880, 🟡 0.870-0.879
 | **ru** | 🔴 0.861<br>G 0.883 (gap +0.022) |  | 🔴 0.865<br>G - | 🟡 0.870<br>G 0.879 (gap +0.009) | 🟢 0.882<br>G - | 🔴 0.863<br>G - |
 | **zh-Hans** | 🟡 0.874<br>G - | 🟢 0.885<br>G - |  | 🟢 0.920 (script conversion)<br>G - | 🟢 0.906<br>G - | 🟢 0.883<br>G - |
 | **zh-Hant** | 🔴 0.866<br>G - | 🟡 0.870<br>G - | 🟢 0.907 (script conversion)<br>G - |  | 🟢 0.902<br>G - | 🟡 0.879<br>G - |
-| **ja** | 🔴 0.869<br>G - | 🟡 0.871<br>G - | 🟢 0.884<br>G - | 🟢 0.889<br>G - |  | 🟢 0.887<br>G - |
-| **ko** | 🟡 0.877<br>G - | 🟡 0.870<br>G - | 🟡 0.874<br>G - | 🟢 0.882<br>G - | 🟢 0.898<br>G - |  |
+| **ja** | 🔴 0.869<br>G - | 🟡 0.872<br>G - | 🟢 0.884<br>G - | 🟢 0.889<br>G - |  | 🟢 0.887<br>G - |
+| **ko** | 🟡 0.877<br>G - | 🔴 0.869<br>G - | 🟡 0.874<br>G - | 🟢 0.882<br>G - | 🟢 0.898<br>G - |  |
 
-17 green / 8 yellow / 5 red (green >= 0.880, yellow 0.870-0.879, red < 0.870); largest gap to Google: ru -> en +0.022
+17 green / 7 yellow / 6 red (green >= 0.880, yellow 0.870-0.879, red < 0.870); largest gap to Google: ru -> en +0.022
 
 Cells whose COMET changed by >= 0.005 vs the earlier run 43893644257 (before the #1351 echo fix): ru -> en 0.854 -> 0.861, ko -> en 0.868 -> 0.877. All other cells moved by <= 0.001. The `echo` category of `flores_cpu.py --breakdown` is 0 sentences (0%) in all 30 cells of this run.
 
