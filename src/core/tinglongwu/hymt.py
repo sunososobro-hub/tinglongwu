@@ -193,9 +193,11 @@ class HyMtTranslator(Translator):
     def preload(self, src: str = "", tgt: str = "") -> None:
         self._load()
 
+    takes_context = True  # #1750 --mt-context
+
     def translate(self, text: str, src: str, tgt: str, draft: bool = False, context: str | None = None) -> Translation:
         """`draft` (streaming partials): uses the context but never adds to it. `context`: previous source sentence
-        put into the prompt (card's contextual form); only the #1258 eval passes it, the app does not."""
+        put into the prompt (card's contextual form); the #1258 eval and live --mt-context (#1750) pass it."""
         if src == tgt or not text.strip():
             return Translation(None, text)
         text = collapse_repeats(text)
@@ -298,11 +300,15 @@ class JaRouter(Translator):
             self._warn(f"tlwu: Hy-MT2 unavailable for Japanese ({self.hy_error}); using OPUS pivot ja -> en -> zh.")
         self.base.preload(src, tgt)
 
-    def translate(self, text: str, src: str, tgt: str, draft: bool = False) -> Translation:
+    takes_context = True  # #1750: context reaches Hy-MT2 only; the pivot / no-fallback base ignores it
+
+    def translate(self, text: str, src: str, tgt: str, draft: bool = False, context: str | None = None) -> Translation:
         self._guard(src, tgt)
         if self._use_hy(src, tgt):
             try:
-                return self.hy.translate(text, src, tgt, draft=True) if draft else self.hy.translate(text, src, tgt)
+                if draft:
+                    return self.hy.translate(text, src, tgt, draft=True)
+                return self.hy.translate(text, src, tgt, context=context) if context else self.hy.translate(text, src, tgt)
             except Exception as e:  # noqa: BLE001
                 if tgt == "ja":
                     raise

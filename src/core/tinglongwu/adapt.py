@@ -91,8 +91,11 @@ class SwitchableTranslator(Switchable):
         from .models import ModelNotFound
 
         while True:
+            cur = self._ladder.current
+            if k.get("context") and not getattr(cur, "takes_context", False):  # #1750: a lower step without it
+                k = {n: v for n, v in k.items() if n != "context"}
             try:
-                return self._ladder.current.translate(text, src, tgt, *a, **k)
+                return cur.translate(text, src, tgt, *a, **k)
             except ModelNotFound:  # the lower engine lacks this language pair: never lose the line over it
                 if not self._ladder.drop_current():
                     raise

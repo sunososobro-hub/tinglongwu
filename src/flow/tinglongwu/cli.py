@@ -88,6 +88,10 @@ def parse_args(argv=None):
                    help="when the Hy-MT2 model is not installed yet (still downloading, e.g. the app's first run), "
                         "start with source-language lines and translate from the line after the model lands, "
                         "without a restart (#1357). Without it tlwu stops and prints the setup command")
+    p.add_argument("--mt-context", action="store_true",
+                   help="give the translator the previous finished sentence of the same speaker and language as "
+                        "context (not after a pause of 4 s or more). Off by default: fewer wrong word senses in "
+                        "the #1394 eval, about +0.2 s MT time per line on CPU (#1750)")
     p.add_argument("--no-merge", action="store_true",
                    help="translate every VAD segment separately (default: merge into sentences first)")
     p.add_argument("--max-wait", type=float, default=None,
@@ -832,7 +836,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
             on_backlog=backlog_line or (lambda n: print(backlog_text(n) or "tlwu: ASR caught up", file=sys.stderr, flush=True)),
             on_mt_wait=mt_wait_line or (lambda n: print(f"tlwu: {mt_wait_text(n) or 'MT resumed'}", file=sys.stderr, flush=True)),
             on_catchup=lambda n: (notice or (lambda m: print(f"tlwu: {m}", file=sys.stderr, flush=True)))(
-                _t("catchup_note", lines=n)))  # #1369
+                _t("catchup_note", lines=n)),  # #1369
+            mt_context=bool(getattr(a, "mt_context", False)))  # #1750
     except KeyboardInterrupt:
         interrupted = True
         raise

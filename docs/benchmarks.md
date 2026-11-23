@@ -118,6 +118,7 @@ Fixes tried (ru -> zh-Hant / ru -> en, COMET / chrF / median s per sentence, CPU
 
 - Quality: context helps where the issue said it would. On the polysemy lines the wrong-sense rate drops from 21.7% to 8.7% (5 of 23 lines to 2) and chrF rises 3.6; over all 79 lines invented content halves. Finished short lines (`complete`, `number`) lose 3-5 chrF with context (small n: 8 and 6 lines).
 - Speed: +23% median MT time per line (+0.21 s), +31% on the polysemy lines. The context sentence lengthens the prompt the CPU has to read for every line. That is over the issue's 15% bar, so the opt-in setting (`--mt-context` + GUI checkbox) is **not shipped**. The tested pipeline wiring (previous finished line of the same speaker and language, at most one sentence, not across a 4 s pause) is kept on branch `fix/1394` at commit efb1e6c for a later attempt.
+- Shipped as opt-in (#1750, owner decision: ~0.1 s end-to-end on the owner's laptop): `tlwu --mt-context` (default off) uses this wiring; the GUI checkbox is a follow-up.
 - COMET is not scored by this eval (chrF and the invented / wrong-sense rate only).
 - What could bring it under 15%: a shorter context (only the last few words of the previous line), or reusing llama.cpp's prompt cache across lines (the previous line is already in the cache as the last prompt's text, but in another position). Neither is measured.
 
