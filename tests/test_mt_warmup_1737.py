@@ -94,3 +94,22 @@ def test_live_session_warms_mt_once_before_ready(monkeypatch, tmp_path):
 def test_unpaced_file_session_skips_the_mt_warm_up(monkeypatch, tmp_path):
     events, mt = _run_session(monkeypatch, tmp_path, [])
     assert "mt warm" not in events and mt.drafts == []
+
+
+def test_a_failed_warm_up_keeps_the_hy_engine_of_a_ja_router(tmp_path):
+    """CodeRabbit Major on #1751: JaRouter._fallback sets hy = None on a draft() error; a warm-up must not do that."""
+    from tinglongwu.hymt import JaRouter
+
+    class Boom:
+        def draft_calls(self):
+            return 0
+
+        def translate(self, text, src, tgt, draft=False):
+            raise RuntimeError("vulkan device lost")
+
+    boom = Boom()
+    r = JaRouter(None, tmp_path, factory=lambda *a, **k: boom, all_pairs=True, warn=lambda m: None)
+    r.hy = boom  # the model file is absent in tmp_path; install the fake engine directly
+    said = []
+    assert cli.warm_live_mt(r, ("en", "zh"), None, False, said.append) is False
+    assert r.hy is boom and said and "warm-up failed" in said[0]

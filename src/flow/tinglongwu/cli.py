@@ -709,7 +709,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
                 if c != a.to:
                     translator.preload(c, a.to)
         if stop is None or not stop.is_set():  # #1737: the first real line must not pay the MT backend's first call
-            warm_live_mt(translator, mt_warm_pair(a.lang, a.to, cands), a.file, getattr(a, "paced", False), warn)
+            pair = (cands[0], cands[1]) if f2f_route is not None else mt_warm_pair(a.lang, a.to, cands)
+            warm_live_mt(translator, pair, a.file, getattr(a, "paced", False), warn)
     ctl = None
     if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
         asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
@@ -941,9 +942,12 @@ def warm_live_mt(translator, pair, file, paced: bool, warn=None) -> bool:
     if translator is None or (file and not paced):
         return False
     src, tgt = pair
+    hy, hy_error = getattr(translator, "hy", None), getattr(translator, "hy_error", "")
     try:
         translator.draft(MT_WARM_TEXT.get(src, MT_WARM_TEXT_DEFAULT), src, tgt)
     except Exception as e:  # noqa: BLE001 - warming is an optimisation, never a reason to stop listening
+        if hy is not None and getattr(translator, "hy", hy) is None:  # JaRouter._fallback cleared the engine: keep it
+            translator.hy, translator.hy_error = hy, hy_error
         if warn is not None:
             warn(f"tlwu: translation warm-up failed ({e})")
         return False
