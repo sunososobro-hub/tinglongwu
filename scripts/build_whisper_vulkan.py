@@ -19,6 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+for _layer in ("system", "ui", "core"):  # src/ layer layout (#1664), as tests/conftest.py; core ends first (#1739)
+    sys.path.insert(0, str(ROOT / "src" / _layer))
 
 REPO = "https://github.com/ggml-org/whisper.cpp"
 # tag v1.8.7 (lightweight tag -> this commit), `git ls-remote https://github.com/ggml-org/whisper.cpp refs/tags/v1.8.7`
