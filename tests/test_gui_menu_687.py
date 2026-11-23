@@ -151,9 +151,14 @@ def test_uninstall_off_windows_explains_instead_of_opening(gui_app, monkeypatch)
     assert opened == [] and shown == [t("gui_uninstall_other")]
 
 
-def test_no_update_items_on_a_git_checkout(gui_app):  # noqa: F811
+def test_update_items_follow_can_update(gui_app, monkeypatch):  # noqa: F811
+    """#1672: Linux / macOS git checkouts get the update items too; a checkout that cannot update (Windows) does not."""
+    from tinglongwu.gui import autoupdate
     from tinglongwu.i18n import t
 
-    labels = [label for _p, label, *_ in _walk(gui_app.menubar)]
-    assert t("gui_upd_check") not in labels and t("gui_upd_auto") not in labels
-    assert t("gui_report") in labels
+    for ok in (False, True):
+        monkeypatch.setattr(autoupdate, "can_update", lambda ok=ok: ok)
+        gui_app.build_menubar()
+        labels = [label for _p, label, *_ in _walk(gui_app.menubar)]
+        assert (t("gui_upd_check") in labels) is ok and (t("gui_upd_auto") in labels) is ok
+        assert t("gui_report") in labels
