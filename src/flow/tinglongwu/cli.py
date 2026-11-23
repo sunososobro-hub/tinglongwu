@@ -706,6 +706,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
             for c in cands:
                 if c != a.to:
                     translator.preload(c, a.to)
+        if stop is None or not stop.is_set():  # #1737: the first real line must not pay the MT backend's first call
+            warm_live_mt(translator, mt_warm_pair(a.lang, a.to, cands), a.file, getattr(a, "paced", False), warn)
     ctl = None
     if not getattr(a, "no_adapt", False) and not a.file:  # a file runs faster than real time: queue wait is not lag
         asr, translator, ctl = make_adaptive(a, asr, translator, mdir, dev, glossary, cands)
@@ -907,6 +909,41 @@ def warm_live_asr(asr, file, paced: bool, warn=None) -> bool:
     except Exception as e:  # noqa: BLE001 - warming is an optimisation, never a reason to stop listening
         if warn is not None:
             warn(f"tlwu: speech model warm-up failed ({e})")
+        return False
+    return True
+
+
+# #1737: one short line per source language for the MT warm-up; any other language uses MT_WARM_TEXT_DEFAULT.
+MT_WARM_TEXT = {"zh": "你好。", "en": "Hello.", "ja": "こんにちは。", "ko": "안녕하세요.", "ru": "Привет."}
+MT_WARM_TEXT_DEFAULT = "OK."
+
+
+def mt_warm_pair(lang: str, to: str, cands) -> tuple[str, str]:
+    """#1737: the (src, tgt) pair the MT warm-up translates: the fixed source language, else the first candidate
+    that differs from the target, else en (zh when the target is en)."""
+    if lang != "auto" and lang != to:
+        return lang, to
+    for c in cands or ():
+        if c != to:
+            return c, to
+    return ("zh", to) if to == "en" else ("en", to)
+
+
+def warm_live_mt(translator, pair, file, paced: bool, warn=None) -> bool:
+    """#1737: like warm_live_asr for the translation engine. #802: on Vulkan the first Hy-MT2 line took 2141 ms
+    against a p50 of 266 ms (backend first-call setup), so the first subtitle arrived ~2 s late. Live listening
+    translates one short line before the ready line, through draft() (no history, nothing reaches a sink), so the
+    warm-up line is never shown, saved or spoken. Same for every backend (CPU, CUDA, Vulkan) and engine. An unpaced
+    file has no live clock to protect. A failed warm-up is reported and the session goes on. Returns True when it
+    ran."""
+    if translator is None or (file and not paced):
+        return False
+    src, tgt = pair
+    try:
+        translator.draft(MT_WARM_TEXT.get(src, MT_WARM_TEXT_DEFAULT), src, tgt)
+    except Exception as e:  # noqa: BLE001 - warming is an optimisation, never a reason to stop listening
+        if warn is not None:
+            warn(f"tlwu: translation warm-up failed ({e})")
         return False
     return True
 
