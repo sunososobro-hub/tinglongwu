@@ -79,12 +79,14 @@ def test_all_backends_unavailable_exits_1(data, tmp_path):
     assert rc == 1
 
 
-def test_unknown_backend_and_wrong_sample_rate_rejected(tmp_path):
+def test_unknown_backend_rejected():
     with pytest.raises(SystemExit):
         bench.parse_args(["--data", ".", "--backends", "cuda"])
-    _wav(tmp_path / "a.wav", 1.0, rate=44100)
-    with pytest.raises(ValueError, match="16 kHz"):
-        bench.read_wav(tmp_path / "a.wav")
-    _wav(tmp_path / "b.wav", 1.5)
-    audio, secs = bench.read_wav(tmp_path / "b.wav")
-    assert secs == 1.5 and audio.dtype == np.float32
+
+
+def test_reads_float32_wav_like_the_smoke_clips(tmp_path):
+    """The make_ci_smoke.py clips are 32-bit float WAVs (format 3); the first CI run failed on them with wave."""
+    sf = pytest.importorskip("soundfile")
+    sf.write(str(tmp_path / "f.wav"), np.full(24000, 0.25, dtype=np.float32), 16000, subtype="FLOAT")
+    audio, secs = bench.read_wav(tmp_path / "f.wav")
+    assert secs == 1.5 and audio.dtype == np.float32 and abs(float(audio.max()) - 0.25) < 1e-4

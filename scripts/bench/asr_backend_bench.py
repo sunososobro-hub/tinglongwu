@@ -25,7 +25,6 @@ import json
 import os
 import sys
 import time
-import wave
 from pathlib import Path
 
 import numpy as np
@@ -43,12 +42,11 @@ SAMPLE_RATE = 16000
 
 
 def read_wav(path) -> tuple[np.ndarray, float]:
-    """16 kHz mono 16-bit PCM WAV (the smoke clips) -> (float32 audio in [-1, 1], seconds)."""
-    with wave.open(str(path), "rb") as w:
-        if w.getframerate() != SAMPLE_RATE or w.getnchannels() != 1 or w.getsampwidth() != 2:
-            raise ValueError(f"{path}: need 16 kHz mono 16-bit WAV")
-        pcm = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
-    return pcm.astype(np.float32) / 32768.0, len(pcm) / SAMPLE_RATE
+    """(float32 16 kHz mono audio, seconds) through the eval's own reader (tlwu_eval.runner.read_wav, the app's
+    FileSource): the smoke clips are 32-bit float WAVs, which the stdlib wave module cannot open."""
+    from tlwu_eval.runner import read_wav as eval_read
+
+    return eval_read(path)
 
 
 def load_rows(data_dir, langs) -> list[dict]:
