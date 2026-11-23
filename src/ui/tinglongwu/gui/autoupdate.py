@@ -61,6 +61,56 @@ def is_wizard_install(root: Path | None = None, platform: str | None = None) -> 
     return (platform or sys.platform) == "win32" and any(root.glob("unins*.exe"))
 
 
+def is_git_checkout(root: Path | None = None, platform: str | None = None) -> bool:
+    """#1672: a Linux / macOS git checkout (not bundled) updates like scripts/auto_update.sh: fetch, then fast-forward
+    to the platform marker tag (linux-ok / mac-ok), else origin/main. Windows checkouts keep update.bat."""
+    root = app_root() if root is None else Path(root)
+    plat = platform or sys.platform
+    return plat != "win32" and not is_bundled() and (root / ".git").exists()
+
+
+def can_update(root: Path | None = None, platform: str | None = None) -> bool:
+    return is_wizard_install(root, platform) or is_git_checkout(root, platform)
+
+
+def _git(root: Path, args: list[str], run=None, timeout: int = 30):
+    return (run or subprocess.run)(["git", *args], cwd=str(root), capture_output=True, text=True, timeout=timeout,
+                                   env={**_child_env(), "GIT_TERMINAL_PROMPT": "0"})
+
+
+def git_target(root: Path, run=None, platform: str | None = None) -> str:
+    """Same target as tlwu_update_target / auto_update.sh: the upstream branch, else the OS marker tag, else origin/main."""
+    up = _git(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], run)
+    if up.returncode == 0 and up.stdout.strip():
+        return up.stdout.strip()
+    mk = {"darwin": "mac-ok", "linux": "linux-ok"}.get(platform or sys.platform, "")
+    if mk and _git(root, ["rev-parse", "-q", "--verify", f"refs/tags/{mk}^{{commit}}"], run).returncode == 0:
+        return f"refs/tags/{mk}"
+    return "origin/main"
+
+
+def git_check(root: Path | None = None, run=None, platform: str | None = None) -> str:
+    """'update' when the target is ahead of HEAD, 'uptodate' otherwise. Raises RuntimeError when the fetch fails."""
+    root = app_root() if root is None else Path(root)
+    if _git(root, ["fetch", "--quiet", "--force", "--tags", "origin"], run, timeout=20).returncode != 0:
+        raise RuntimeError("fetch failed")
+    tgt = git_target(root, run, platform)
+    head = _git(root, ["rev-parse", "HEAD"], run).stdout.strip()
+    new = _git(root, ["rev-parse", tgt], run)
+    if new.returncode != 0 or new.stdout.strip() == head:
+        return "uptodate"
+    if _git(root, ["merge-base", "--is-ancestor", tgt, "HEAD"], run).returncode == 0:
+        return "uptodate"  # we are ahead
+    return "update"
+
+
+def git_apply(root: Path | None = None, run=None, platform: str | None = None) -> None:
+    """Fast-forward to the target; raises RuntimeError when that is not possible (local edits, diverged)."""
+    root = app_root() if root is None else Path(root)
+    if _git(root, ["merge", "--ff-only", "--quiet", git_target(root, run, platform)], run).returncode != 0:
+        raise RuntimeError("diverged")
+
+
 def offline(env=None) -> bool:
     return (os.environ if env is None else env).get("TLWU_OFFLINE") == "1"
 
@@ -323,3 +373,32 @@ def start_apply(exe: str, pid: int | None = None, popen=None) -> int:
     p = (popen or subprocess.Popen)(apply_cmd(exe, app_root(), pid or os.getpid()), env=_child_env(),
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return p.wait()
+
+
+def run_git_check(put, manual: bool, current: str, root: Path | None = None, run=None) -> str | None:
+    """#1672 worker thread, same events as run_check: upd_found / upd_none / upd_fail_check (manual only)."""
+    if offline():
+        put(("upd_none", manual))
+        return None
+    try:
+        res = git_check(root, run)
+    except Exception as e:  # noqa: BLE001
+        _log(f"git update check failed: {e}")
+        put(("upd_fail_check", str(e)[:120]) if manual else ("upd_none", False))
+        return None
+    if res == "update":
+        put(("upd_found", "latest", manual))
+        return "latest"
+    put(("upd_none", manual))
+    return None
+
+
+def run_git_apply(put, root: Path | None = None, run=None) -> bool:
+    """#1672 worker thread: put(("upd_git_done",)) or put(("upd_fail", reason))."""
+    try:
+        git_apply(root, run)
+    except Exception as e:  # noqa: BLE001
+        put(("upd_fail", str(e)[:120]))
+        return False
+    put(("upd_git_done",))
+    return True

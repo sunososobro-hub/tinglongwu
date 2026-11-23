@@ -1823,9 +1823,9 @@ class App:
         return True
 
     def _auto_update_check(self):
-        if not autoupdate.is_wizard_install():
+        if not autoupdate.can_update():
             return
-        if self._apply_pending_update():
+        if autoupdate.is_wizard_install() and self._apply_pending_update():
             return
         if autoupdate.should_auto_check(userdirs.read_config()):
             autoupdate.mark_checked()
@@ -1840,6 +1840,9 @@ class App:
         self.upd_busy = True
         if manual:
             self.set_status("gui_checking")
+        if autoupdate.is_git_checkout():  # #1672: Linux / git-checkout macOS follow auto_update.sh
+            threading.Thread(target=autoupdate.run_git_check, args=(self.q.put, manual, __version__), daemon=True).start()
+            return
         threading.Thread(target=autoupdate.run_check, args=(__version__, self.q.put, manual), daemon=True).start()
 
     def _update_found(self, ver: str, manual: bool):
@@ -1868,6 +1871,9 @@ class App:
         self.upd_apply_when_ready = not silent  # "Update now" clicked: install as soon as it is verified
         if not silent:
             self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=0)
+        if autoupdate.is_git_checkout():
+            threading.Thread(target=autoupdate.run_git_apply, args=(self.q.put,), daemon=True).start()
+            return
         threading.Thread(target=autoupdate.run_download, args=(self.q.put,), daemon=True).start()
 
     def _update_event(self, ev) -> bool:
@@ -1899,6 +1905,9 @@ class App:
                 self._apply_update()
             else:
                 self._upd_show("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), ver=self.upd_ver)
+        elif kind == "upd_git_done":  # #1672
+            self.upd_busy = False
+            self._upd_show("gui_upd_git_done")
         elif kind == "upd_fail":
             self.upd_busy = False
             if self.upd_apply_when_ready:  # silent background failures stay silent
@@ -1960,7 +1969,7 @@ class App:
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
-        if autoupdate.is_wizard_install():  # #698: git checkouts keep update.bat
+        if autoupdate.can_update():  # #698 installer installs; #1672 Linux / macOS git checkouts
             hm.add_command(label=t("gui_upd_check"), command=lambda: self._check_update(manual=True))
             hm.add_checkbutton(label=t("gui_upd_auto"), variable=self.v_auto_upd,
                                command=lambda: autoupdate.set_auto(self.v_auto_upd.get()))
