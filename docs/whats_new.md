@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.5
+- GUI update check on Linux and git-checkout macOS.
+- Live sessions use the whisper.cpp Vulkan ASR engine on AMD / Intel GPUs.
+- Credit outside reporters lewis0731 and chengchihchen3-art in README.
+
 ## v0.5.4
 - Updating on Windows no longer fails when cleaning up old log files after a good update.
 - Korean speech accuracy is now measured by character error rate, a fairer score for Korean.
