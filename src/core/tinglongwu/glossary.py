@@ -121,7 +121,9 @@ class Entry:
     def matches(self, words: list[str]) -> bool:
         if self.substr:
             text = " ".join(words)
-            return any(_norm(src) in text for src in self.sources)
+            # same tokens as the text (PR #1695 review): "ニューラル・ネットワーク" must match "ニューラル ネットワーク"
+            return any(key and key in text for key in (" ".join(_norm(w) for w in _WORD.findall(src))
+                                                      for src in self.sources))
         for src in self.sources:
             src_words = _WORD.findall(src)
             stems = [_stem(w) for w in src_words]

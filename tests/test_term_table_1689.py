@@ -106,3 +106,41 @@ def test_user_entries_win_over_term_table():
     user = glossary.Glossary(glossary.parse("compiler = 編譯程式"))
     m = glossary.merge(user, load_builtin_pair("en", "zh", ["legacy-tech"]))
     assert [e.target for e in m.entries if "compiler" in e.sources] == ["編譯程式"]
+
+
+def _builtin_terms(user, lang, to, face_to_face=None):
+    from types import SimpleNamespace
+
+    from tinglongwu import cli
+
+    a = SimpleNamespace(lang=lang, to=to, face_to_face=face_to_face, term_scenario="tech", zh_variant=None)
+    return cli.merge_builtin_terms(user, a)
+
+
+def _targets(g, src):
+    return [e.target for e in g.entries if any(s.lower() == src for s in e.sources)]
+
+
+def test_en_to_ru_pair_terms_beat_the_chinese_builtin_list():
+    """Opus CHANGES on PR #1695: tech-dev.txt (en -> zh) was merged before the pair table, so en -> ru got Chinese
+    targets for every shared term. Pair terms now come first; user entries still win over both."""
+    g = _builtin_terms(None, "en", "ru")
+    for src in ("driver", "kernel", "daemon"):
+        tg = _targets(g, src)
+        assert tg and all(t and not any("一" <= c <= "鿿" for c in t) for t in tg), (src, tg)
+    assert _targets(g, "driver")[0] == "драйвер"
+    user = glossary.Glossary(glossary.parse("driver = мой драйвер"))
+    assert _targets(_builtin_terms(user, "en", "ru"), "driver") == ["мой драйвер"]
+
+
+def test_en_to_zh_keeps_chinese_targets_and_face_to_face_keeps_the_builtin_list():
+    zh = _targets(_builtin_terms(None, "en", "zh"), "driver")
+    assert zh and all(any("一" <= c <= "鿿" for c in t) for t in zh)
+    assert _targets(_builtin_terms(None, "en", "zh", face_to_face="en"), "driver") == ["驅動程式"]
+
+
+def test_cjk_substring_source_with_a_middle_dot_matches_its_own_spelling():
+    e = glossary.Entry(["ニューラル・ネットワーク"], "神經網路", substr=True)
+    g = glossary.Glossary([e])
+    assert g.relevant("この ニューラル・ネットワーク は") == [e]
+    assert glossary.Entry(["・"], "x", substr=True).matches(["a"]) is False  # punctuation-only source never matches
