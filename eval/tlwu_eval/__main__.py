@@ -53,11 +53,29 @@ def real_engines(a) -> Engines:
     offline.set_mode("listen")  # the eval never needs the network
     mdir = models_dir(a.models_dir)
     dev = resolve_device(a.device)
-    model = a.model or pick_whisper("small", mdir)
-    model, beam, threads = cpu_mode_asr(a, dev, model)
-    beam, threads = asr_overrides(a, beam, threads)
-    return Engines(load_asr=lambda lang: FasterWhisperRecognizer(mdir, model, lang, dev, beam=beam, threads=threads),
-                   load_mt=lambda: cli.make_translator(a.engine, mdir, "tw", dev))
+    load_asr = gigaam_loader(a, dev)
+    if load_asr is None:
+        model = a.model or pick_whisper("small", mdir)
+        model, beam, threads = cpu_mode_asr(a, dev, model)
+        beam, threads = asr_overrides(a, beam, threads)
+        load_asr = (lambda lang: FasterWhisperRecognizer(mdir, model, lang, dev, beam=beam, threads=threads))
+    return Engines(load_asr=load_asr, load_mt=lambda: cli.make_translator(a.engine, mdir, "tw", dev))
+
+
+def gigaam_loader(a, dev: str, factory=None):
+    """#1747: load_asr(lang) for `--asr gigaam-v3` (CPU only, Russian only), or None for the default Whisper. The
+    model folder is checked against the pins here, before any clip runs; factory is the tests' stub recognizer."""
+    if getattr(a, "asr", "whisper") != "gigaam-v3":
+        return None
+    from . import gigaam
+
+    if dev != "cpu":
+        raise ValueError(f"--asr gigaam-v3 runs on the CPU only (got --device {dev}); pass --device cpu")
+    if not getattr(a, "gigaam_dir", None):
+        raise ValueError(f"--asr gigaam-v3 needs --gigaam-dir: the unpacked {gigaam.ARCHIVE_NAME} folder")
+    gigaam.check_dir(a.gigaam_dir)
+    threads = getattr(a, "asr_threads", None)
+    return lambda lang: gigaam.GigaAMRecognizer(a.gigaam_dir, lang, threads=threads, factory=factory)
 
 
 def cpu_mode_asr(a, dev: str, model: str, cores=None, ram_gb=None):
@@ -217,6 +235,10 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
                    help="#745: Whisper beam size on the CPU (overrides the default 5 and --cpu-mode)")
     p.add_argument("--asr-threads", type=int, default=None, metavar="N",
                    help="#745: Whisper CPU threads (overrides the default and --cpu-mode)")
+    p.add_argument("--asr", choices=["whisper", "gigaam-v3"], default="whisper",
+                   help="#1747: ASR engine to score; gigaam-v3 = GigaAM v3 (sherpa-onnx, CPU, Russian only; eval only)")
+    p.add_argument("--gigaam-dir", default=None, metavar="DIR",
+                   help="with --asr gigaam-v3: the unpacked sherpa-onnx GigaAM v3 folder (files checked by SHA-256)")
     p.add_argument("--text-cases", metavar="FILE.jsonl",
                    help="MT-only chrF over text cases such as eval/user_cases.jsonl, per pair and per case (#827)")
     p.add_argument("--fragment-cases", metavar="FILE.jsonl",
