@@ -71,6 +71,16 @@ End-to-end numbers and method: [latency](latency.md). Benchmarks: [benchmarks](b
 
 [tlwu roadmap](https://sunososobro-hub.github.io/tinglongwu/roadmap.html)
 
+## Contributors
+
+Who helped is shown in the README avatar row (hover an avatar for its emoji).
+
+<!-- CONTRIBUTORS-LEGEND:START -->
+<p><sub>AI helpers: 🤖 <a href="https://www.anthropic.com/claude">Claude</a> (Anthropic) · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a> (code review)</sub><br><sub>💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)</sub></p>
+<p><sub>AI 幫手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（程式碼審查）</sub><br><sub>💻 程式 · 🐛 回報問題 · 📖 文件 · 🤔 點子 · 🚧 維護 · 🤖 AI 工具（不算在人數內）</sub></p>
+<p><sub>AI 帮手：🤖 <a href="https://www.anthropic.com/claude">Claude</a>（Anthropic） · 🤖 <a href="https://www.coderabbit.ai">CodeRabbit</a>（代码审查）</sub><br><sub>💻 代码 · 🐛 报告问题 · 📖 文档 · 🤔 点子 · 🚧 维护 · 🤖 AI 工具（不计入人数）</sub></p>
+<!-- CONTRIBUTORS-LEGEND:END -->
+
 ## Docs
 
 [FAQ](faq.md) · [Privacy](privacy.md) · [Models](models.md) · [Install / GPU](install.md) · [Benchmarks](benchmarks.md) · [Latency](latency.md) · [Licenses](licenses.md) · [Model notices](THIRD_PARTY_NOTICES.md) · [Linux reverse](linux-reverse.md) · [Acceptable use](acceptable-use.md) · [Tests](testing.md) · [Platform support / releases](support.md) · [Disclaimer](disclaimer.md) · [SECURITY](../.github/SECURITY.md) · [PRIVACY](PRIVACY_POLICY.md)

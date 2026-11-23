@@ -71,10 +71,10 @@ def test_contributor_avatars_under_install_and_no_support_tables():
     logins = [c["login"] for c in json.loads((ROOT / ".all-contributorsrc").read_text("utf-8"))["contributors"]]
     for name in ("README.md", "docs/README.zh-CN.md", "docs/README.zh-TW.md"):
         s = (ROOT / name).read_text("utf-8")
-        assert s.count("https://github.com/" + logins[0] + ".png?size=60") == 1, name  # contributors appear once
+        assert s.count("https://github.com/" + logins[0] + ".png?size=48") == 1, name  # contributors appear once
         assert s.index(LATEST) < s.index("docs.html") < s.index(logins[0] + ".png"), name  # users first, contributors near the end
         for login in logins:
-            assert f"https://github.com/{login}.png?size=60" in s, (name, login)
+            assert f"https://github.com/{login}.png?size=48" in s, (name, login)
         assert "SUPPORT:START" not in s and "ALL-CONTRIBUTORS" not in s and "latency.svg" not in s, name
         assert "⚪" not in s, name  # the support tables live on the roadmap page
 

@@ -5,6 +5,7 @@ keep just the contributors row between <!-- CONTRIBUTORS:START --> and <!-- CONT
 shows "what works today" from the same support.json.
 
   python scripts/render_support.py                 rewrite the contributors row in README.md / README.zh-TW.md / README.zh-CN.md,
+                                                   the contributors legend in docs/details.md,
                                                    and the "what works today" dot grid in docs/roadmap.html
   python scripts/render_support.py --check         exit 1 if a README row or the roadmap grid differs from the source (CI)
   python scripts/render_support.py --notes vX.Y.Z  print release notes: Download + block + What's new placeholder
@@ -32,6 +33,10 @@ G_START, G_END = "<!-- ROADMAP-GRID:START -->", "<!-- ROADMAP-GRID:END -->"
 GRID = re.compile(re.escape(G_START) + r".*?" + re.escape(G_END), re.S)
 N_START, N_END = "<!-- ROADMAP-NEXT:START -->", "<!-- ROADMAP-NEXT:END -->"
 NEXT = re.compile(re.escape(N_START) + r".*?" + re.escape(N_END), re.S)
+DETAILS = "docs/details.md"
+DETAILS_ANCHOR = DETAILS + "#contributors"
+L_START, L_END = "<!-- CONTRIBUTORS-LEGEND:START -->", "<!-- CONTRIBUTORS-LEGEND:END -->"
+L_BLOCK = re.compile(re.escape(L_START) + r".*?" + re.escape(L_END), re.S)
 DOT = {"🟢": "ok", "🟡": "ci", "⚪": "no-"}
 
 
@@ -76,22 +81,33 @@ def block(src: dict, people: list[dict], loc: str) -> str:
 
 
 def readme_contributors(src: dict, people: list[dict], loc: str) -> str:
-    """Compact avatar row for the README (#1458): one linked avatar per person, name and emoji in the tooltip.
-    The full table (name + emoji under each avatar) stays in the release notes; the README has a 6 KB budget."""
+    """Compact avatar row for the README (#1458): one linked 48 px avatar per person (name as alt text, emoji in the tooltip).
+    The full table (name + emoji under each avatar) stays in the release notes; the README has a 6 KB budget, so the
+    emoji legend and the AI-helpers line live in docs/details.md (#1638) behind one link."""
     c = src["contributors"]
     links = []
     for p in people:
         login = p["login"]
         emoji = " ".join(c["emoji"][t] for t in p["contributions"])  # KeyError = a type with no emoji in support.json
-        links.append(f'<a href="https://github.com/{login}" title="{login} {emoji}">'
-                     f'<img src="https://github.com/{login}.png?size=60" width="48" alt="{login}"></a>')
+        links.append(f'<a href="https://github.com/{login}" title="{emoji}">'  # the name is the alt text
+                     f'<img src="https://github.com/{login}.png?size=48" alt="{login}"></a>')  # 48 px, no width attr
+    href = DETAILS_ANCHOR if not READMES[loc].startswith("docs/") else DETAILS_ANCHOR.removeprefix("docs/")
     return (f'<p><b>{c["heading"][loc].format(n=len(people))}</b></p><p>{" ".join(links)}</p>'
-            f'<p><sub>{c["ai"][loc]}</sub><br><sub>{c["legend"][loc]}</sub></p>')
+            f'<p><sub><a href="{href}">{c["more"][loc]}</a></sub></p>')
 
 
 def readme_block(src: dict, people: list[dict], loc: str) -> str:
     """The README's contributors row, markers included (one line, so the README stays short)."""
     return C_START + readme_contributors(src, people, loc) + C_END
+
+
+def details_legend(src: dict) -> str:
+    """The emoji legend + AI-helpers lines in docs/details.md (#1638), every language, markers included."""
+    c = src["contributors"]
+    lines = [L_START]
+    for loc in READMES:
+        lines += [f'<p><sub>{c["ai"][loc]}</sub><br><sub>{c["legend"][loc]}</sub></p>']
+    return "\n".join(lines + [L_END])
 
 
 def replace_block(text: str, new: str, name: str = "", pat: re.Pattern = BLOCK) -> str:
@@ -189,6 +205,13 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
             stale.append(name)
             if not a.check:
                 p.write_text(new, "utf-8", newline="\n")
+    dp = root / DETAILS
+    old = dp.read_text("utf-8")
+    new = replace_block(old, details_legend(src), DETAILS, L_BLOCK)
+    if new != old:
+        stale.append(DETAILS)
+        if not a.check:
+            dp.write_text(new, "utf-8", newline="\n")
     rp = root / ROADMAP
     old = rp.read_text("utf-8")
     if len(GRID.findall(old)) != 1:

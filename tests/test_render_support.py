@@ -1,6 +1,7 @@
 """The README support/contributors block and the release notes come from one source (docs/support.json)."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +44,8 @@ def test_every_contributor_and_type_is_rendered():
 def test_check_detects_a_stale_readme(tmp_path):
     m = _mod()
     (tmp_path / "docs").mkdir(exist_ok=True)
-    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
+    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html",
+                 "docs/details.md"):
         (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
     (tmp_path / "docs").mkdir(exist_ok=True)
     src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))
@@ -91,7 +93,8 @@ def test_roadmap_grid_is_generated_from_support_json():
 
 def test_roadmap_check_detects_a_stale_grid(tmp_path):
     m = _mod()
-    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html"):
+    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html",
+                 "docs/details.md"):
         (tmp_path / name).parent.mkdir(exist_ok=True)
         (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
     src = json.loads((ROOT / "docs" / "support.json").read_text("utf-8"))
@@ -134,7 +137,31 @@ def test_readme_row_is_compact_and_keeps_every_person():
     row = m.readme_contributors(src, people, "en")
     for p in people:
         emoji = " ".join(src["contributors"]["emoji"][t] for t in p["contributions"])
-        assert f'<a href="https://github.com/{p["login"]}" title="{p["login"]} {emoji}">' in row
-        assert f"https://github.com/{p['login']}.png?size=60" in row
+        assert f'<a href="https://github.com/{p["login"]}" title="{emoji}">' in row
+        assert f'<img src="https://github.com/{p["login"]}.png?size=48" alt="{p["login"]}">' in row
     assert "<table>" not in row and "<table>" in m.contributors(src, people, "en")
     assert len(row) < len(m.contributors(src, people, "en"))
+
+
+def test_readme_legend_lives_in_details_behind_one_link(tmp_path):
+    # #1638: 7 contributors pushed README.md past 6 KB; the emoji legend + AI-helpers line moved to docs/details.md.
+    m = _mod()
+    src, people = m.load()
+    c = src["contributors"]
+    details = (ROOT / "docs" / "details.md").read_text("utf-8")
+    assert "## Contributors" in details and m.L_BLOCK.search(details).group(0) == m.details_legend(src)
+    for loc, name in m.READMES.items():
+        readme = ROOT / name
+        row = m.C_BLOCK.search(readme.read_text("utf-8")).group(0)
+        assert c["legend"][loc] not in row and c["ai"][loc] not in row
+        assert c["legend"][loc] in details and c["ai"][loc] in details
+        href = re.search(r'<a href="([^"]+#contributors)">', row).group(1)
+        assert (readme.parent / href.split("#")[0]).resolve() == (ROOT / "docs" / "details.md").resolve()
+    for name in ("README.md", "docs/README.zh-TW.md", "docs/README.zh-CN.md", ".all-contributorsrc", "docs/roadmap.html",
+                 "docs/support.json", "docs/details.md"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text((ROOT / name).read_text("utf-8"), "utf-8")
+    d = tmp_path / "docs" / "details.md"
+    d.write_text(d.read_text("utf-8").replace(c["legend"]["en"], "stale"), "utf-8")
+    assert m.main(["--check"], root=tmp_path) == 1
+    assert m.main([], root=tmp_path) == 0 and c["legend"]["en"] in d.read_text("utf-8")

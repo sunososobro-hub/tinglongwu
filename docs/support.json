@@ -63,6 +63,11 @@
       "en": "💻 code · 🐛 bug report · 📖 docs · 🤔 ideas · 🚧 maintenance · 🤖 AI tool (not counted as people)",
       "zh-TW": "💻 程式 · 🐛 回報問題 · 📖 文件 · 🤔 點子 · 🚧 維護 · 🤖 AI 工具（不算在人數內）",
       "zh-CN": "💻 代码 · 🐛 报告问题 · 📖 文档 · 🤔 点子 · 🚧 维护 · 🤖 AI 工具（不计入人数）"
+    },
+    "more": {
+      "en": "Legend and AI helpers",
+      "zh-TW": "圖示說明與 AI 幫手",
+      "zh-CN": "图示说明与 AI 帮手"
     }
   },
   "download": [
