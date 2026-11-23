@@ -61,7 +61,7 @@ def test_no_cuda_with_vulkan_ready_uses_vulkan_and_says_so():
 def test_vulkan_init_failure_is_cpu_with_exactly_one_warning():
     rec, used, msgs = _live(vk_raises=True)
     assert (rec.kind, rec.device, used) == ("fw", "cpu", "cpu")
-    warns = [m for m in msgs if "Vulkan ASR init failed" in m]
+    warns = [m for m in msgs if "Vulkan init failed" in m]
     assert len(warns) == 1 and msgs[-1] == "tlwu: speech model small on CPU"
 
 

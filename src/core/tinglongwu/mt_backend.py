@@ -12,6 +12,7 @@ import os
 import sys
 from pathlib import Path
 from .paths import APP_ROOT
+from .vulkan_hint import fallback_line
 
 BACKENDS = ("cuda", "vulkan", "cpu")
 VULKAN_PACK_NAME = "vulkan-pack"
@@ -35,8 +36,7 @@ def vulkan_pack_dir(base: Path | None = None, warn=None) -> Path | None:
             except OSError:
                 have = ""
             if have != __version__:
-                (warn or print)(f"Vulkan pack is for version {have or 'unknown'}, app is {__version__}: "
-                                "using the CPU build. Re-run `tlwu.exe setup --vulkan-pack`.")
+                (warn or print)(fallback_line("pack_version", have=have, want=__version__))
                 return None
             return d.resolve()
     except OSError:
@@ -51,6 +51,17 @@ def vulkan_device_present(load=ctypes.CDLL) -> bool:
         return True
     except OSError:
         return False
+
+
+def forced_vulkan_unavailable(pack, env=None, present=None) -> str:
+    """#1774: TLWU_DEVICE=vulkan was asked for but cannot run: "no_pack" | "no_loader" (hint kind), else "".
+    Auto mode stays quiet (a machine without a Vulkan pack gets no line on every start). A stale pack already
+    printed its own pack_version line in vulkan_pack_dir()."""
+    if ((os.environ if env is None else env).get("TLWU_DEVICE") or "").strip().lower() != "vulkan":
+        return ""
+    if pack is None:
+        return "" if (APP_ROOT / VULKAN_PACK_NAME).is_dir() or os.environ.get("TLWU_VULKAN_PACK") else "no_pack"
+    return "" if (present or vulkan_device_present)() else "no_loader"
 
 
 def vulkan_available(pack=None, present=None) -> bool:
@@ -75,7 +86,7 @@ def load_with_fallback(path, backend: str, loader, warn=lambda m: print(m, file=
     try:
         return loader(path, "vulkan"), "vulkan"
     except Exception as e:  # noqa: BLE001 - driver / ICD / out of memory
-        warn(f"tlwu: Vulkan init failed ({type(e).__name__}: {e}); using CPU for MT.")
+        warn(fallback_line("init_failed", error=f"{type(e).__name__}: {e}"))
         return loader(path, "cpu"), "cpu"
 
 

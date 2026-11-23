@@ -117,7 +117,7 @@ def test_vulkan_import_failure_restores_env_and_uses_cpu(monkeypatch, tmp_path, 
     engines.load_llama(tmp_path / "m.gguf", gpu=False)
     assert seen == [str(pack), None]
     assert mb.last_backend == "cpu"
-    assert "Vulkan llama.cpp build not loadable" in capsys.readouterr().err
+    assert "Vulkan init failed" in capsys.readouterr().err
 
 
 def _pack(tmp_path, version):

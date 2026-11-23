@@ -18,6 +18,7 @@ from . import mt_backend
 from .asr import SAMPLE_RATE, WARMUP_S, FasterWhisperRecognizer, Recognizer, Transcript
 from .langfollow import SPEAK_LANGS, clear_lang, script_lang, write_lang
 from .repeat import filter_hallucination
+from .vulkan_hint import fallback_line
 
 
 WHISPER_DIR = "whisper"  # vulkan-pack/whisper/: the whisper.cpp build, apart from llama.cpp's own ggml libraries
@@ -223,6 +224,9 @@ def select_recognizer(models_dir, size="small", lang="auto", *, cuda: bool | Non
         try:
             return vulkan_factory(), "vulkan"
         except Exception as e:  # noqa: BLE001 - missing binding, driver / ICD, out of memory
-            warn(f"tlwu: Vulkan ASR init failed ({type(e).__name__}: {e}); using CPU for ASR.")
+            if isinstance(e, FileNotFoundError):  # _load_backend: models/whisper-cpp/ggml-<size>.bin is not there
+                warn(fallback_line("missing_model", use="ASR", size=size))
+            else:
+                warn(fallback_line("init_failed", use="ASR", error=f"{type(e).__name__}: {e}"))
             return cpu_factory("cpu"), "cpu"
     return cpu_factory("cuda" if backend == "cuda" else "cpu"), backend
