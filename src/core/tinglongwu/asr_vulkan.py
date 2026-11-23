@@ -193,6 +193,12 @@ def installed_sizes(models_dir) -> list[str]:
     return [s for s in WHISPER_SIZES if (d / f"ggml-{s}.bin").is_file()]
 
 
+def pack_has_whisper(pack_dir: Path | None = None) -> bool:
+    """#1761: the Vulkan pack carries the whisper.cpp build."""
+    pack = pack_dir if pack_dir is not None else mt_backend.vulkan_pack_dir()
+    return pack is not None and (Path(pack) / WHISPER_DIR / WHISPER_LIB).is_file()
+
+
 def vulkan_ready(models_dir, size: str, pack_dir: Path | None = None) -> bool:
     """#1759: the pack has the whisper.cpp build and the ggml model for `size` is on disk (auto picks Vulkan ASR
     only then, so a machine without them gets no warning on every start)."""

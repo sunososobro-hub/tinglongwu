@@ -278,13 +278,15 @@ def want_model(level: str, dev: str, hw=None, asr_choice=None) -> tuple[str, str
     return want, tier.name
 
 
-def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) -> str:
+def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None, vulkan=None) -> str:
     """Speech model when --model is not given: the hardware tier's model for the quality level (#81), or the
     best downloaded one when that model is not on disk (#96). `dev` is the device really in use: on "cpu" the
     CPU tier applies even if a GPU is present (old driver, --device cpu). On the CPU tier, auto / balanced / fast
     never use a larger model than the remembered speed test found real-time on this PC (#131; `asr_choice(hw)`
-    reads the cache only, never measures). quality is the user asking for the slower model, so it is kept."""
-    from .models import pick_whisper
+    reads the cache only, never measures). quality is the user asking for the slower model, so it is kept.
+    #1761: no CUDA and a usable Vulkan pack with the whisper.cpp build -> sizes that only exist as
+    models/whisper-cpp/ggml-<size>.bin count too (`vulkan()` = Vulkan device + pack with the whisper.cpp build)."""
+    from .models import WHISPER_FALLBACK_BY_TIER, WHISPER_FALLBACK, pick_whisper
 
     try:
         want, tier_name = want_model(level, dev, hw, asr_choice)
@@ -292,6 +294,20 @@ def auto_model(level: str, dev: str, mdir, hw=None, say=print, asr_choice=None) 
         want, tier_name = "small", None
         say(f"tlwu: hardware probe failed ({str(e)[:120]}); using the default speech model", file=sys.stderr)
     got = pick_whisper(want, mdir, tier_name)
+    if dev != "cuda":
+        try:
+            from . import asr_vulkan, mt_backend
+
+            usable = vulkan or (lambda: mt_backend.vulkan_available() and asr_vulkan.pack_has_whisper())
+            if usable() and not asr_vulkan.vulkan_ready(mdir, got):
+                have = asr_vulkan.installed_sizes(mdir)
+                order = WHISPER_FALLBACK_BY_TIER.get(tier_name, WHISPER_FALLBACK)
+                alt = want if want in have else next((s for s in order if s in have), None)
+                if alt and alt != got:
+                    say(f"tlwu: speech model {alt} (whisper.cpp on Vulkan; {got} has no ggml model)", file=sys.stderr)
+                    got = alt
+        except Exception:  # noqa: BLE001 - never stop a session over the Vulkan lookup
+            pass
     note = "" if got == want else f" ({want} is not downloaded: `tlwu-setup --whisper {want}`)"
     say(f"tlwu: speech model = {got} (quality {level}){note}", file=sys.stderr)
     return got
