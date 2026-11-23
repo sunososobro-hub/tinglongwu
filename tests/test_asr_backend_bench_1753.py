@@ -99,6 +99,9 @@ def test_vulkan_request_that_fell_back_to_cpu_is_rejected():
         bench.check_vulkan("whisper_backend_init_gpu: no GPU found\n")
     with pytest.raises(RuntimeError, match="did not use Vulkan"):
         bench.check_vulkan("whisper_backend_init_gpu: using CUDA0 backend\n")
+    with pytest.raises(RuntimeError, match="did not use Vulkan"):  # "using" is logged before init (pinned whisper.cpp)
+        bench.check_vulkan("whisper_backend_init_gpu: using Vulkan0 backend\n"
+                           "whisper_backend_init_gpu: failed to initialize Vulkan0 backend\n")
     bench.check_vulkan("ggml_vulkan: Found 1 Vulkan devices:\nwhisper_backend_init_gpu: using Vulkan0 backend\n")
 
 

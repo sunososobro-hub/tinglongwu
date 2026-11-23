@@ -144,10 +144,10 @@ def capture_stderr(fn):
 
 def check_vulkan(log: str) -> None:
     """wcpp-vulkan must really run on Vulkan: whisper.cpp logs `whisper_backend_init_gpu: using Vulkan0 backend`, or
-    `no GPU found` and silently uses its CPU backend (e.g. a --cpu build). The CPU fallback raises (-> unavailable);
+    `no GPU found` / `failed to initialize Vulkan0 backend` and silently uses its CPU backend (e.g. a --cpu build). The CPU fallback raises (-> unavailable);
     a log without either line (stderr not capturable on this platform) is accepted and noted."""
     low = log.lower()
-    if "no gpu found" in low or ("using " in low and " backend" in low and "vulkan" not in low):
+    if "no gpu found" in low or "failed to initialize" in low or ("using " in low and " backend" in low and "vulkan" not in low):
         raise RuntimeError("whisper.cpp did not use Vulkan (CPU fallback)")
     if "vulkan" not in low:
         print("asr-bench: wcpp-vulkan: could not confirm the Vulkan backend from the library log", file=sys.stderr)
