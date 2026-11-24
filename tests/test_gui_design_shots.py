@@ -66,7 +66,9 @@ def _shot(app, name):
 
     os.makedirs(out, exist_ok=True)
     app.root.update()
-    ImageGrab.grab(xdisplay=None).save(os.path.join(out, name + ".png"))
+    r = app.root
+    box = (r.winfo_rootx(), r.winfo_rooty(), r.winfo_rootx() + r.winfo_width(), r.winfo_rooty() + r.winfo_height())
+    ImageGrab.grab(bbox=box, xdisplay=None).save(os.path.join(out, name + ".png"))  # the window, not the display
 
 
 def _fill_meeting(a):
@@ -100,8 +102,9 @@ def _fill_notes(a, tmp_path):
 
 
 def _clipped(a, width):
-    """Names of bottom-bar / key-points widgets whose right edge is past the window's right edge."""
-    right = a.root.winfo_rootx() + a.root.winfo_width()
+    """Names of bottom-bar / key-points widgets that stick out of the window on any side."""
+    left, top = a.root.winfo_rootx(), a.root.winfo_rooty()
+    right, bottom = left + a.root.winfo_width(), top + a.root.winfo_height()
     bad = []
     holders = [a.bar]
     notes = getattr(a, "topics_win", None)
@@ -111,7 +114,10 @@ def _clipped(a, width):
     while stack:
         w = stack.pop()
         stack.extend(w.winfo_children())
-        if w.winfo_ismapped() and w.winfo_width() > 1 and w.winfo_rootx() + w.winfo_width() > right:
+        if not (w.winfo_ismapped() and w.winfo_width() > 1):
+            continue
+        x, y = w.winfo_rootx(), w.winfo_rooty()
+        if x < left or y < top or x + w.winfo_width() > right or y + w.winfo_height() > bottom:
             bad.append(f"{w.winfo_class()}:{w}")
     return bad
 
