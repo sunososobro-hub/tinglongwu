@@ -37,6 +37,15 @@ on:
         type: choice
         options: [whisper, gigaam-v3]
         default: whisper
+      whisper:
+        description: "#1746: Whisper size to score (report-only unless small: no baseline gate failure, no publish, no alert)"
+        type: choice
+        options: [small, medium, large-v3-turbo]
+        default: small
+      pairs:
+        description: "#1746: comma list of pairs to run, e.g. ru->zh (empty = all pinned pairs)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -49,7 +58,8 @@ env:
   TLWU_NO_UPDATE: "1"
   TLWU_HYMT_TEMP: "0"  # greedy decoding: repeatable chrF run to run (same as eval.yml)
   PYTHONUTF8: "1"
-  WHISPER: small
+  WHISPER: ${{ inputs.whisper || 'small' }}  # #1746: schedule and PR runs stay on small
+  PAIRS: ${{ inputs.pairs }}  # #1746
   PYTHONPATH: eval  # #1664: tlwu_eval lives in eval/; matrix + weekly jobs run it without pip install
   ASR: ${{ inputs.asr || 'whisper' }}  # #1747
   SHERPA_ONNX: "2.0.1"  # #1747: the version the mobile app ran GigaAM v3 on before #563 (mobile/pubspec.yaml)
@@ -96,7 +106,7 @@ jobs:
       - name: Pairs from eval/languages.json
         id: m
         run: |
-          ONLY=""
+          ONLY="$PAIRS"  # #1746: empty = all pairs
           if [ "$ASR" = "gigaam-v3" ]; then ONLY="ru->zh"; fi  # #1747: GigaAM v3 is Russian-only
           python -m tlwu_eval.langmatrix matrix --only "$ONLY" > m.json
           cat m.json
@@ -107,7 +117,7 @@ jobs:
     needs: matrix
     name: ${{ matrix.pair }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ (inputs.whisper || 'small') == 'small' && 30 || 60 }}  # #1746: medium / turbo on CPU
     strategy:
       fail-fast: false  # one red pair never cancels the others
       matrix:
@@ -192,7 +202,7 @@ jobs:
           rc=$?
           cat line.txt gate.md
           { echo "## ${{ matrix.pair }} (ASR: $ASR)"; echo; cat line.txt; echo; cat gate.md; } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$ASR" != "whisper" ]; then exit 0; fi  # #1747: the baseline is Whisper's; a GigaAM run is report-only
+          if [ "$ASR" != "whisper" ] || [ "$WHISPER" != "small" ]; then exit 0; fi  # #1747 / #1746: the baseline is Whisper small's; other engines and sizes are report-only
           if [ "$rc" -ne 0 ]; then exit "$rc"; fi
           exit "$rc_line"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -209,7 +219,7 @@ jobs:
 
   weekly:
     needs: [matrix, pair]
-    if: always() && needs.matrix.result == 'success' && (github.event_name == 'schedule' || (inputs.publish && inputs.asr != 'gigaam-v3'))
+    if: always() && needs.matrix.result == 'success' && (github.event_name == 'schedule' || (inputs.publish && inputs.asr != 'gigaam-v3' && (inputs.whisper || 'small') == 'small'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
