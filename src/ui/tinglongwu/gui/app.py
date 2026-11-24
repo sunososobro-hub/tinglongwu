@@ -624,6 +624,7 @@ class App:
         self._build_bar()
         self._build_update_line()
         self._build_gpu_offer()  # #1525: one-click GPU speed-up pack offer (NVIDIA only)
+        self.v_tech = tk.BooleanVar(master=self.root, value=self.settings["tech_labels"])  # #1806: plain wording by default
         self.build_menubar()
         self.overlay = Overlay(self.root, self)
         self._sync_bar()  # #1042: the bar is not on screen before Start
@@ -1614,8 +1615,6 @@ class App:
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
         self._tx(ttk.Checkbutton(g_rec, variable=self.var_show_src, command=self._src_toggled),
                  "gui_show_src_line").pack(anchor="w")
-        self.v_tech = tk.BooleanVar(value=s["tech_labels"])  # #1806: plain wording by default
-        self._tx(ttk.Checkbutton(g_appear, variable=self.v_tech, command=self._tech_toggled), "gui_tech_labels").pack(anchor="w")
         self.v_live = tk.BooleanVar(value=s["live_draft"])  # #1028: subtitle mode = live draft on / off
         for val, key in ((False, "gui_set_sentence"), (True, "gui_set_live")):
             self._tx(ttk.Radiobutton(g_appear, variable=self.v_live, value=val), key).pack(anchor="w")
@@ -2061,6 +2060,7 @@ class App:
         self.v_notes_float = tk.BooleanVar(master=self.root, value=notes_float_on(self.settings))  # #1705
         sm.add_checkbutton(label=t("gui_topics_float"), variable=self.v_notes_float, command=self._notes_float_toggled)
         sm.configure(postcommand=self._sync_topics_var)  # #1379: the check mark follows the GPU default
+        sm.add_checkbutton(label=t("gui_tech_labels"), variable=self.v_tech, command=self._tech_toggled)  # #1806: in the menu: a panel row made Advanced too tall (#886)
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
