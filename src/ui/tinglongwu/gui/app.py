@@ -1192,7 +1192,7 @@ class App:
         the big Start / Stop at the right."""
         b = self.bar
         b.columnconfigure(1, weight=1)
-        self.scene_row = scene_row = ttk.Frame(b)  # 0.3.8: 情境; #1603: the dropdown itself now lives in the top toolbar
+        self.scene_row = ttk.Frame(b)  # 0.3.8: 情境; #1603: the dropdown itself now lives in the top toolbar
         self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
         # one readonly dropdown: exactly one scene is active at a time; the box shows the UI-language names
         self.scene_combo = ttk.Combobox(self.toolbar, state="readonly", width=11, values=self._scene_labels())
