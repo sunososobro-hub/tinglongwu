@@ -12,7 +12,9 @@ name: mobile-apk
 # [self-hosted, windows, tlwu-mobile] (warm Gradle/pub/Flutter/NDK/AAR caches on its persistent disk; Git Bash steps).
 # The label can sit on the same machine as the hw runner (tlwu-hw): the two jobs then just queue one after the other.
 # Unset (or any other value) = ubuntu-24.04, unchanged. Fork PRs always use ubuntu-24.04 (never the home machine).
-# Limitation: GitHub cannot fall back after a queue timeout, so if the home runner is off, clear MOBILE_RUNNER.
+# #1823: if no runner picks `build` up within 5 min (home PC off or busy), the `runner-fallback` job re-dispatches this
+# workflow on the same branch with runner=ubuntu and cancels the stuck run (scripts/mobile_runner_fallback.py); the
+# new run's summary prints `runner fallback: ubuntu after <n> min`. No need to clear MOBILE_RUNNER by hand.
 # Windows prerequisites on that machine: Flutter, Android SDK (%LOCALAPPDATA%\Android\Sdk, or ANDROID_HOME), Git for
 # Windows (bash, awk, sha256sum, base64) + `unzip`, Python (`python`; a python3 shim is added per job).
 on:
@@ -28,6 +30,19 @@ on:
         description: "#1511: also build a debug APK with x86_64 native libs (emulator tests; artifact mobile-apk-debug-x86_64)"
         type: boolean
         default: false
+      runner:
+        description: "#1823: auto = MOBILE_RUNNER decides; ubuntu = always ubuntu-24.04 (set by the runner fallback)"
+        type: choice
+        options: [auto, ubuntu]
+        default: auto
+      fallback_after:
+        description: "#1823: set by the runner fallback (minutes the home runner was waited for)"
+        type: string
+        default: ""
+      fallback_event:
+        description: "#1823: set by the runner fallback (event of the cancelled run: push / pull_request / workflow_dispatch)"
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -40,7 +55,7 @@ env:
 
 jobs:
   build:
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && '["self-hosted","windows","tlwu-mobile"]' || '["ubuntu-24.04"]') }}
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && inputs.runner != 'ubuntu' && '["self-hosted","windows","tlwu-mobile"]' || '["ubuntu-24.04"]') }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -67,6 +82,12 @@ jobs:
       - name: Start clock
         working-directory: .
         run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Runner fallback note (#1823)
+        if: inputs.fallback_after != ''
+        run: |
+          echo "runner fallback: ubuntu after ${FALLBACK_AFTER} min (home runner did not pick up the build)" | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          FALLBACK_AFTER: ${{ inputs.fallback_after }}
       - name: Windows runner prep (SDK location, tool check, python3 shim)
         if: runner.os == 'Windows'
         run: |
@@ -81,10 +102,11 @@ jobs:
         id: plan
         run: python3 -I ../scripts/mobile_upload_plan.py "$EVENT" "$REF" "$REPO" "$HEAD_REPO" "$HAS_PLAY" >> "$GITHUB_OUTPUT"
         env:
-          EVENT: ${{ github.event_name }}
+          # #1823: a fallback run keeps the cancelled run's event, so a dev push / same-repo PR still uploads.
+          EVENT: ${{ inputs.fallback_event || github.event_name }}
           REF: ${{ github.ref }}
           REPO: ${{ github.repository }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || (inputs.fallback_event == 'pull_request' && github.repository || '') }}
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -266,6 +288,30 @@ jobs:
         run: |
           M=$(( ($(date +%s) - ${BUILD_START:-$(date +%s)}) / 60 ))
           echo "### mobile build: ${M} min on runner \`${{ runner.name }}\` (${{ runner.environment }}), upload=${{ steps.plan.outputs.upload }}, versionCode=${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # #1823: watch the self-hosted build; if no runner takes it within 5 min, re-dispatch on ubuntu and cancel this run.
+  runner-fallback:
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && inputs.runner != 'ubuntu'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write   # read this run's jobs, dispatch mobile-apk.yml, cancel this run
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          sparse-checkout: scripts/mobile_runner_fallback.py
+          sparse-checkout-cone-mode: false
+      - name: Wait for the home runner, else fall back to ubuntu
+        shell: bash   # -eo pipefail: a failed dispatch/cancel fails the step despite tee
+        run: python3 -I scripts/mobile_runner_fallback.py watch | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          REF: ${{ github.head_ref || github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          X86: ${{ inputs.x86_64_debug == true }}
 
   publish:
     needs: build
