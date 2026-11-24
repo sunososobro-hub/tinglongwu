@@ -9,7 +9,8 @@ same head SHA and is newer, so the merge gate (scripts/merge_gate.py reads the n
 If `build` starts in time, nothing happens.
 
     python3 -I scripts/mobile_runner_fallback.py watch
-      env: GH_TOKEN, REPO, RUN_ID, REF (branch name), EVENT (original event), X86 (true/false), WAIT_MIN (default 5)
+      env: GH_TOKEN, REPO, RUN_ID, REF (branch name), EVENT (original event), SOURCE_SHA (github.sha of this run),
+           X86 (true/false), WAIT_MIN (default 5)
 
 Pure functions are unit-tested (tests/test_mobile_runner_fallback_1823.py); network only through `gh api`.
 """
@@ -37,9 +38,11 @@ def picked_up(jobs: list[dict], name: str = BUILD_JOB) -> bool:
     return False
 
 
-def dispatch_body(ref: str, event: str, x86: bool, waited_min: int) -> dict:
+def dispatch_body(ref: str, event: str, x86: bool, waited_min: int, sha: str = "") -> dict:
+    """`ref` only selects the branch to run on; `source_sha` is the revision the cancelled run built (for a PR the
+    merge commit, not the head branch), so the replacement builds and publishes exactly the same tree."""
     return {"ref": ref, "inputs": {"runner": "ubuntu", "fallback_after": str(waited_min),
-                                   "fallback_event": event, "x86_64_debug": bool(x86)}}
+                                   "fallback_event": event, "source_sha": sha, "x86_64_debug": bool(x86)}}
 
 
 def watch(get_jobs, wait_min: float = WAIT_MIN, poll_s: float = POLL_S,
@@ -80,7 +83,7 @@ def main(argv: list[str]) -> int:
         return 0
     print(f"runner fallback: ubuntu after {waited} min (dispatching {WORKFLOW} on {ref}, cancelling run {run_id})")
     _gh(["-X", "POST", f"repos/{repo}/actions/workflows/{WORKFLOW}/dispatches"],
-        dispatch_body(ref, event, x86, waited))
+        dispatch_body(ref, event, x86, waited, os.environ.get("SOURCE_SHA", "")))
     _gh(["-X", "POST", f"repos/{repo}/actions/runs/{run_id}/cancel"])
     return 0
 

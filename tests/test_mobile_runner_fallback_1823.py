@@ -63,9 +63,9 @@ def test_runner_online_stays_self_hosted():
 
 
 def test_dispatch_body_keeps_event_and_forces_ubuntu():
-    b = mrf.dispatch_body("fix/12", "pull_request", True, 5)
-    assert b == {"ref": "fix/12", "inputs": {"runner": "ubuntu", "fallback_after": "5",
-                                             "fallback_event": "pull_request", "x86_64_debug": True}}
+    b = mrf.dispatch_body("fix/12", "pull_request", True, 5, "abc123")
+    assert b == {"ref": "fix/12", "inputs": {"runner": "ubuntu", "fallback_after": "5", "fallback_event": "pull_request",
+                                             "source_sha": "abc123", "x86_64_debug": True}}
 
 
 def _fake_gh(tmp_path, jobs_json):
@@ -83,7 +83,7 @@ def _fake_gh(tmp_path, jobs_json):
 def _run(tmp_path, jobs, wait_min="0"):
     log = _fake_gh(tmp_path, json.dumps({"jobs": jobs}))
     env = dict(os.environ, PATH=f"{tmp_path}{os.pathsep}{os.environ['PATH']}", REPO="o/r", RUN_ID="77",
-               REF="fix/9", EVENT="push", X86="false", WAIT_MIN=wait_min)
+               REF="fix/9", EVENT="pull_request", SOURCE_SHA="merge123", X86="false", WAIT_MIN=wait_min)
     r = subprocess.run([sys.executable, "-I", str(SCRIPT), "watch"], env=env, capture_output=True, text=True)
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     return r, calls
@@ -95,7 +95,9 @@ def test_cli_offline_dispatches_then_cancels(tmp_path):
     assert "runner fallback: ubuntu after 0 min" in r.stdout
     args = [c[0] for c in calls]
     assert args[-2][:3] == ["api", "-X", "POST"] and args[-2][3] == "repos/o/r/actions/workflows/mobile-apk.yml/dispatches"
-    assert json.loads(calls[-2][1])["inputs"]["runner"] == "ubuntu"
+    sent = json.loads(calls[-2][1])
+    assert sent["ref"] == "fix/9" and sent["inputs"]["runner"] == "ubuntu"
+    assert sent["inputs"]["source_sha"] == "merge123"   # CodeRabbit #1842: build the PR merge commit, not the branch tip
     assert args[-1][3] == "repos/o/r/actions/runs/77/cancel"
 
 
@@ -109,7 +111,9 @@ def test_workflow_wiring():
     wf = yaml.safe_load((ROOT / ".github/workflows/mobile-apk.yml").read_text(encoding="utf-8"))
     on = wf.get("on", wf.get(True))
     inputs = on["workflow_dispatch"]["inputs"]
-    assert {"runner", "fallback_after", "fallback_event"} <= set(inputs)
+    assert {"runner", "fallback_after", "fallback_event", "source_sha"} <= set(inputs)
+    checkout = next(s for s in wf["jobs"]["build"]["steps"] if "actions/checkout" in (s.get("uses") or ""))
+    assert checkout["with"]["ref"] == "${{ inputs.source_sha || github.sha }}"
     assert "inputs.runner != 'ubuntu'" in wf["jobs"]["build"]["runs-on"]
     fb = wf["jobs"]["runner-fallback"]
     assert fb["runs-on"] == "ubuntu-24.04" and fb["permissions"]["actions"] == "write"
