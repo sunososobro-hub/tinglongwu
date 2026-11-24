@@ -447,6 +447,81 @@ LABELS = {
         "ru": {"plain": 'Обычная скорость: видеокарта не используется; настроено так, чтобы успевать за речью', "tech": 'Режим CPU (видеокарта NVIDIA найдена, но не используется): настройки для скорости'},
         "zh-TW": {"plain": '一般速度：沒有用到顯示晶片，已自動選擇跟得上說話的設定', "tech": 'CPU 模式（有 NVIDIA 顯示卡但未使用）：已自動選擇偏重速度的設定'},
         "ja": {"plain": '通常の速さ: グラフィックチップは未使用。話に遅れないよう自動で設定', "tech": 'CPU モード（NVIDIA GPU はあるが未使用）: 速度重視の設定'}},
+    "ui.gpu_offer_banner": {
+        'en': {"plain": 'Your computer can go faster. Download the speed-up add-on ({size}, one time)?', "tech": 'NVIDIA GPU found — install speed-up pack ({size}, once)?'},
+        'ru': {"plain": 'Ваш компьютер может работать быстрее. Скачать ускоряющее дополнение ({size}, один раз)?', "tech": 'Найдена видеокарта NVIDIA — установить пакет ускорения ({size}, один раз)?'},
+        'zh-TW': {"plain": '你的電腦可以更快 — 要下載加速套件嗎（約 {size}，只要一次）？', "tech": '偵測到 NVIDIA 顯示卡 — 要安裝 GPU 加速包嗎（{size}，只需一次）？'},
+        'ja': {"plain": 'このパソコンはもっと速くできます。高速化アドオンをダウンロードしますか（約 {size}、1 回のみ）？', "tech": 'NVIDIA GPU が見つかりました — 高速化パックをインストールしますか（{size}、1 回のみ）？'}},
+    "ui.vk_offer_banner": {
+        'en': {"plain": 'Your computer can go faster. Download the speed-up add-on in one click (one time)?', "tech": 'GPU found (Vulkan) — install the GPU speed-up pack and speech model (one click, once)?'},
+        'ru': {"plain": 'Ваш компьютер может работать быстрее. Скачать ускоряющее дополнение в один клик (один раз)?', "tech": 'Найдена видеокарта (Vulkan) — установить пакет ускорения GPU и модель речи (один клик, один раз)?'},
+        'zh-TW': {"plain": '你的電腦可以更快 — 要一鍵下載加速套件嗎（只要一次）？', "tech": '偵測到 GPU（Vulkan）— 要安裝 GPU 加速包與語音模型嗎（一鍵、只需一次）？'},
+        'ja': {"plain": 'このパソコンはもっと速くできます。高速化アドオンをワンクリックでダウンロードしますか（1 回のみ）？', "tech": 'GPU（Vulkan）が見つかりました — GPU 高速化パックと音声モデルをインストールしますか（ワンクリック、1 回のみ）？'}},
+    "ui.vk_offer_running": {
+        'en': {"plain": 'Downloading the speed-up add-on ...', "tech": 'Installing Vulkan GPU pack and speech model ...'},
+        'ru': {"plain": 'Скачиваю ускоряющее дополнение ...', "tech": 'Установка пакета Vulkan GPU и модели речи ...'},
+        'zh-TW': {"plain": '正在下載加速套件 ...', "tech": '正在安裝 Vulkan GPU 加速包與語音模型 ...'},
+        'ja': {"plain": '高速化アドオンをダウンロード中 ...', "tech": 'Vulkan GPU パックと音声モデルをインストール中 ...'}},
+    "ui.vk_offer_ok": {
+        'en': {"plain": 'Speed-up add-on installed. Restart tlwu to use it.', "tech": 'Vulkan GPU pack installed. Restart tlwu to run speech and translation on the GPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение установлено. Перезапустите tlwu, чтобы оно заработало.', "tech": 'Пакет Vulkan GPU установлен. Перезапустите tlwu, чтобы речь и перевод шли на GPU.'},
+        'zh-TW': {"plain": '加速套件已安裝，重新啟動 tlwu 後生效。', "tech": 'Vulkan GPU 加速包已安裝。重新啟動 tlwu 後，語音與翻譯會改用 GPU。'},
+        'ja': {"plain": '高速化アドオンをインストールしました。tlwu を再起動すると有効になります。', "tech": 'Vulkan GPU パックをインストールしました。tlwu を再起動すると音声と翻訳が GPU で動きます。'}},
+    "ui.vk_offer_ok_cpu": {
+        'en': {"plain": 'Speed-up add-on installed. Restart tlwu to use it.', "tech": 'Vulkan GPU pack installed. Restart tlwu to use the GPU; {cpu} stays on the CPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение установлено. Перезапустите tlwu, чтобы оно заработало.', "tech": 'Пакет Vulkan GPU установлен. Перезапустите tlwu; {cpu} останется на CPU.'},
+        'zh-TW': {"plain": '加速套件已安裝，重新啟動 tlwu 後生效。', "tech": 'Vulkan GPU 加速包已安裝。重新啟動 tlwu 後會使用 GPU；{cpu}仍使用 CPU。'},
+        'ja': {"plain": '高速化アドオンをインストールしました。tlwu を再起動すると有効になります。', "tech": 'Vulkan GPU パックをインストールしました。tlwu を再起動すると GPU を使います。{cpu}は CPU のままです。'}},
+    "ui.gpu_offer_ok": {
+        'en': {"plain": 'Speed-up add-on installed. Restart tlwu to use it.', "tech": 'GPU speed-up pack installed. Restart tlwu to apply it.'},
+        'ru': {"plain": 'Ускоряющее дополнение установлено. Перезапустите tlwu, чтобы оно заработало.', "tech": 'Пакет ускорения GPU установлен. Перезапустите tlwu, чтобы применить его.'},
+        'zh-TW': {"plain": '加速套件已安裝，重新啟動 tlwu 後生效。', "tech": 'GPU 加速包已安裝。重新啟動 tlwu 後生效。'},
+        'ja': {"plain": '高速化アドオンをインストールしました。tlwu を再起動すると有効になります。', "tech": 'GPU 高速化パックをインストールしました。tlwu を再起動すると反映されます。'}},
+    "ui.vk_offer_fail": {
+        'en': {"plain": 'The speed-up add-on did not install. Running at normal speed; translation still works.', "tech": 'Vulkan GPU pack not installed ({reason}). Speech and translation stay on the CPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение не установилось. Работает обычная скорость, перевод по-прежнему доступен.', "tech": 'Пакет Vulkan GPU не установлен ({reason}). Речь и перевод остаются на CPU.'},
+        'zh-TW': {"plain": '加速套件沒裝成功，先用一般速度，翻譯照常可用。', "tech": 'Vulkan GPU 加速包未安裝（{reason}）。語音與翻譯仍使用 CPU。'},
+        'ja': {"plain": '高速化アドオンをインストールできませんでした。通常の速さで動作し、翻訳はそのまま使えます。', "tech": 'Vulkan GPU パックをインストールできませんでした（{reason}）。音声と翻訳は CPU のままです。'}},
+    "ui.gpu_offer_fail": {
+        'en': {"plain": 'The speed-up add-on did not install. Running at normal speed; translation still works.', "tech": 'GPU pack not installed ({reason}). Translation stays on the CPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение не установилось. Работает обычная скорость, перевод по-прежнему доступен.', "tech": 'Пакет GPU не установлен ({reason}). Перевод остаётся на CPU.'},
+        'zh-TW': {"plain": '加速套件沒裝成功，先用一般速度，翻譯照常可用。', "tech": 'GPU 加速包沒有安裝成功（{reason}），翻譯繼續使用 CPU。'},
+        'ja': {"plain": '高速化アドオンをインストールできませんでした。通常の速さで動作し、翻訳はそのまま使えます。', "tech": 'GPU パックをインストールできませんでした（{reason}）。翻訳は CPU のままです。'}},
+    "ui.gpu_auto_running": {
+        'en': {"plain": 'Your computer can go faster. Downloading the speed-up add-on in the background ({size}); listening keeps going at normal speed ...', "tech": 'NVIDIA GPU found — downloading the speed-up pack in the background ({size}); listening keeps running on the CPU ...'},
+        'ru': {"plain": 'Ваш компьютер может работать быстрее. Скачиваю ускоряющее дополнение в фоне ({size}); прослушивание идёт в обычном режиме ...', "tech": 'Найдена NVIDIA — пакет ускорения ({size}) скачивается в фоне; прослушивание работает на CPU ...'},
+        'zh-TW': {"plain": '你的電腦可以更快 — 正在背景下載加速套件（約 {size}），聽譯照常以一般速度進行 ...', "tech": '偵測到 NVIDIA 顯示卡 — 正在背景下載 GPU 加速包（{size}），聆聽照常使用 CPU …'},
+        'ja': {"plain": 'このパソコンはもっと速くできます。高速化アドオンをバックグラウンドでダウンロード中（約 {size}）。聞き取りは通常の速さで続きます ...', "tech": 'NVIDIA GPU を検出 — 高速化パック（{size}）をバックグラウンドでダウンロード中。聞き取りは CPU で継続します…'}},
+    "ui.gpu_offer_running": {
+        'en': {"plain": 'Installing the speed-up add-on ({size}) ...', "tech": 'Installing GPU speed-up pack ({size}) ...'},
+        'ru': {"plain": 'Устанавливаю ускоряющее дополнение ({size}) ...', "tech": 'Установка пакета ускорения GPU ({size}) ...'},
+        'zh-TW': {"plain": '正在安裝加速套件（{size}）...', "tech": '正在安裝 GPU 加速包（{size}）…'},
+        'ja': {"plain": '高速化アドオンをインストール中（{size}）...', "tech": 'GPU 高速化パック（{size}）をインストール中…'}},
+    "ui.gpu_pack_row_name": {
+        'en': {"plain": 'Speed-up add-on ({size})', "tech": 'GPU speed-up pack (NVIDIA, {size})'},
+        'ru': {"plain": 'Ускоряющее дополнение ({size})', "tech": 'Пакет ускорения GPU (NVIDIA, {size})'},
+        'zh-TW': {"plain": '加速套件（{size}）', "tech": 'GPU 加速包（NVIDIA，{size}）'},
+        'ja': {"plain": '高速化アドオン（{size}）', "tech": 'GPU 高速化パック（NVIDIA、{size}）'}},
+    "ui.gpu_pack_row_unavailable": {
+        'en': {"plain": 'Not available on this computer', "tech": 'Not available (no NVIDIA GPU)'},
+        'ru': {"plain": 'Недоступно на этом компьютере', "tech": 'Недоступен (нет видеокарты NVIDIA)'},
+        'zh-TW': {"plain": '這台電腦不適用', "tech": '無法使用（沒有 NVIDIA 顯示卡）'},
+        'ja': {"plain": 'このパソコンでは使えません', "tech": '利用不可（NVIDIA GPU なし）'}},
+    "ui.gpu_vulkan_ready": {
+        'en': {"plain": 'Graphics chip: {name} (speed-up add-on installed)', "tech": 'Vulkan GPU: {name} (Vulkan pack installed)'},
+        'ru': {"plain": 'Видеочип: {name} (ускоряющее дополнение установлено)', "tech": 'Видеокарта Vulkan: {name} (пакет Vulkan установлен)'},
+        'zh-TW': {"plain": '顯示晶片：{name}（已安裝加速套件）', "tech": 'Vulkan 顯示卡：{name}（已安裝 Vulkan 加速包）'},
+        'ja': {"plain": 'グラフィックチップ：{name}（高速化アドオン導入済み）', "tech": 'Vulkan GPU：{name}（Vulkan パック導入済み）'}},
+    "ui.gpu_vulkan_nopack": {
+        'en': {"plain": 'Graphics chip: {name} (speed-up add-on not installed or out of date)', "tech": 'Vulkan GPU: {name} (Vulkan pack not installed or out of date)'},
+        'ru': {"plain": 'Видеочип: {name} (ускоряющее дополнение не установлено или устарело)', "tech": 'Видеокарта Vulkan: {name} (пакет Vulkan не установлен или устарел)'},
+        'zh-TW': {"plain": '顯示晶片：{name}（加速套件未安裝或已過期）', "tech": 'Vulkan 顯示卡：{name}（Vulkan 加速包未安裝或已過期）'},
+        'ja': {"plain": 'グラフィックチップ：{name}（高速化アドオン未導入または古い）', "tech": 'Vulkan GPU：{name}（Vulkan パック未導入または古い）'}},
+    "ui.gpu_vulkan_unknown": {
+        'en': {"plain": 'Graphics chip: {name}', "tech": 'Vulkan GPU: {name}'},
+        'ru': {"plain": 'Видеочип: {name}', "tech": 'Видеокарта Vulkan: {name}'},
+        'zh-TW': {"plain": '顯示晶片：{name}', "tech": 'Vulkan 顯示卡：{name}'},
+        'ja': {"plain": 'グラフィックチップ：{name}', "tech": 'Vulkan 対応 GPU：{name}'}},
 }
 _TECH = {"flag": False, "setting": False}
 

@@ -1849,7 +1849,7 @@ class App:
     def _gpu_offer_show(self):
         from . import gpu_offer
 
-        self._gpu_show(t("gpu_offer_banner", size=gpu_offer.GPU_PACK_SIZE), buttons=True)
+        self._gpu_show(core.ui_text("gpu_offer_banner", size=gpu_offer.GPU_PACK_SIZE), buttons=True)
 
     def _gpu_never(self):
         from . import gpu_offer, vulkan_offer
@@ -1868,7 +1868,7 @@ class App:
             return
         vulkan_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
-        self._gpu_show(t("vk_offer_running"), buttons=False, busy=True)
+        self._gpu_show(core.ui_text("vk_offer_running"), buttons=False, busy=True)
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731
         try:
             threading.Thread(target=vulkan_offer.run_install, args=(run_pack_download, put, vulkan_offer.install_cmds()),
@@ -1876,7 +1876,7 @@ class App:
         except RuntimeError:
             vulkan_offer.INSTALLING.clear()
             self.gpu_busy = False
-            self._gpu_show(t("vk_offer_banner"), buttons=True)
+            self._gpu_show(core.ui_text("vk_offer_banner"), buttons=True)
 
     def _gpu_auto_cancel(self):
         """#1736: Cancel on the background-download line: stop the child, remember it, show the one-click offer."""
@@ -1897,18 +1897,18 @@ class App:
         failed_at = getattr(self, "gpu_runtime_failed_mtime", None)  # pack replaced since the failure -> trust it
         if (pack is not None and (not getattr(self, "gpu_runtime_failed", False) or failed_at != _mtime(pack))
                 and gpu_offer._pack_usable(pack)):  # installed meanwhile (e.g. Add-ons); not after a CUDA load failure
-            self._gpu_show(t("gpu_offer_ok"), buttons=False)
+            self._gpu_show(core.ui_text("gpu_offer_ok"), buttons=False)
             return
         gpu_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
         if auto:  # #1736: no click; one line with size + progress + Cancel, listening keeps running on the CPU
             self.gpu_auto = gpu_offer.AutoInstall(run_pack_download, self.settings, lambda: save_settings(self.settings))
-            self._gpu_show(t("gpu_auto_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True, cancel=True)
+            self._gpu_show(core.ui_text("gpu_auto_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True, cancel=True)
             target = self.gpu_auto.run_install
         else:
             self.gpu_auto = None
-            self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
+            self._gpu_show(core.ui_text("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
             target = lambda put, **kw: gpu_offer.run_install(run_pack_download, put, **kw)  # noqa: E731
         try:
             threading.Thread(target=target, args=(put,), kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
@@ -1936,7 +1936,7 @@ class App:
             if not self.gpu_busy and vulkan_offer.should_offer(ev[1], False, bool(self.settings.get(vulkan_offer.DISMISS_KEY)),
                                                                gpu_offer.offline()):
                 self.gpu_vk = True
-                self._gpu_show(t("vk_offer_banner"), buttons=True)
+                self._gpu_show(core.ui_text("vk_offer_banner"), buttons=True)
         elif kind == "gpu_pack_line":
             self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
         elif kind == "gpu_pack_done":
@@ -1948,13 +1948,13 @@ class App:
                 from . import vulkan_offer
 
                 cpu = vulkan_offer.cpu_backends(self.gpu_lines) if ev[2] == 0 else []
-                self._gpu_show(t("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)) if ev[2] != 0
-                               else t("vk_offer_ok_cpu", cpu=" + ".join(cpu)) if cpu else t("vk_offer_ok"), buttons=False)
+                self._gpu_show(core.ui_text("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)) if ev[2] != 0
+                               else core.ui_text("vk_offer_ok_cpu", cpu=" + ".join(cpu)) if cpu else core.ui_text("vk_offer_ok"), buttons=False)
             elif gpu_offer.install_ok(ev[2], self.gpu_lines):
                 self.gpu_runtime_failed = False  # a fresh pack replaced the one that failed to load
-                self._gpu_show(t("gpu_offer_ok"), buttons=False)
+                self._gpu_show(core.ui_text("gpu_offer_ok"), buttons=False)
             else:
-                self._gpu_show(t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
+                self._gpu_show(core.ui_text("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
 
     def _upd_show(self, key: str, buttons: tuple[str, str] | None = None, **kw):
         self.upd_msg = (key, kw, buttons)

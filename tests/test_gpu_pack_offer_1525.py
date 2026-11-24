@@ -54,7 +54,13 @@ def test_gpu_pack_offer_installed_version(tmp_path):
     (tmp_path / G.VERSION_FILE).write_text("0.4.10\n", encoding="utf-8")
     assert G.installed_version(tmp_path) == "0.4.10"
     assert G.row_text(G.INSTALLED, "0.4.10") == t("gpu_pack_row_installed", ver=" v0.4.10")
-    assert G.row_text(G.UNAVAILABLE, None) == t("gpu_pack_row_unavailable")
+    from tinglongwu.gui import core
+
+    core.set_tech_labels(setting=True)  # #1808: plain wording is the default; the tech view keeps the i18n text
+    try:
+        assert G.row_text(G.UNAVAILABLE, None) == t("gpu_pack_row_unavailable")
+    finally:
+        core.set_tech_labels(setting=False)
 
 
 def test_gpu_pack_offer_worker_cmd_and_result():
