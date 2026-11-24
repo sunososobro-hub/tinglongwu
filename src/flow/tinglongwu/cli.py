@@ -150,8 +150,8 @@ def parse_args(argv=None):
                    help="also load the built-in tech/dev glossary (your --glossary entries win)")
     p.add_argument("--term-scenario", default="", metavar="NAME",
                    help="#1689: with --builtin-glossary, also use the built-in term files (data/terms/*.tsv) of this "
-                        "scenario, e.g. tech, for the --lang -> --to pair (default: only files marked for "
-                        "every scenario)")
+                        "scenario, e.g. tech, for the --lang -> --to pair (default: tech for a Russian "
+                        "source (#1799), else only files marked for every scenario; `none` = only the latter)")
     p.add_argument("--glossary", metavar="PATH",
                    help="topic glossary: a UTF-8 .txt file or a folder of .txt files, one entry per line "
                         "`source = target` (`#` comments; a line without `=` is a plain hint term). Source terms "
@@ -1049,9 +1049,9 @@ def merge_builtin_terms(glossary, a):
     from .glossary import load_builtin, merge
 
     if not getattr(a, "face_to_face", None):
-        from .glossary import load_builtin_pair, scenario_domains
+        from .glossary import effective_scenario, load_builtin_pair, scenario_domains
 
-        doms = scenario_domains(getattr(a, "term_scenario", None))
+        doms = scenario_domains(effective_scenario(getattr(a, "term_scenario", None), getattr(a, "lang", None)))
         glossary = merge(glossary, load_builtin_pair(getattr(a, "lang", None), getattr(a, "to", None), doms,
                                                       getattr(a, "zh_variant", None)))
     return merge(glossary, load_builtin("auto" if getattr(a, "face_to_face", None) else getattr(a, "lang", None)))

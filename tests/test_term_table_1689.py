@@ -144,3 +144,20 @@ def test_cjk_substring_source_with_a_middle_dot_matches_its_own_spelling():
     g = glossary.Glossary([e])
     assert g.relevant("この ニューラル・ネットワーク は") == [e]
     assert glossary.Entry(["・"], "x", substr=True).matches(["a"]) is False  # punctuation-only source never matches
+
+
+def test_ru_source_uses_tech_domains_by_default_1799():
+    """#1799: a default ru session loads the tech domain tables; --term-scenario none (or another source) does not."""
+    from types import SimpleNamespace
+
+    from tinglongwu.cli import merge_builtin_terms
+
+    def terms(lang, scenario):
+        a = SimpleNamespace(lang=lang, to="zh", zh_variant=None, face_to_face=False, term_scenario=scenario)
+        return {e.main for e in merge_builtin_terms(None, a).entries}
+
+    default, off = terms("ru", ""), terms("ru", "none")
+    assert terms("ru", "tech") == default and len(default - off) > 1000
+    assert len(terms("en", "")) < len(default)
+    assert glossary.effective_scenario("", "ru") == "tech" and glossary.effective_scenario("none", "ru") == ""
+    assert glossary.effective_scenario("", "en") == "" and glossary.effective_scenario("security", "ru") == "security"

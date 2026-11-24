@@ -385,6 +385,23 @@ def term_tables(folder=None) -> list[TermTable]:
     return [read_terms(f.read_text(encoding="utf-8-sig"), f.stem) for f in sorted(d.glob("*.tsv"))]
 
 
+# #1799: sources whose built-in session loads the `tech` domain tables without --term-scenario (ru: real technical
+# meetings came out in everyday words). `--term-scenario none` turns it off.
+TECH_DEFAULT_LANGS = frozenset({"ru"})
+NO_SCENARIO = "none"
+
+
+def effective_scenario(scenario: str | None, lang: str | None) -> str:
+    """The scenario a session uses: the one asked for; `none` = no scenario at all; else `tech` for a source in
+    TECH_DEFAULT_LANGS (#1799), else "" (only files marked for every scenario)."""
+    s = (scenario or "").strip().lower()
+    if s == NO_SCENARIO:
+        return ""
+    if s:
+        return s
+    return "tech" if (lang or "").split("-")[0].lower() in TECH_DEFAULT_LANGS else ""
+
+
 def scenario_domains(scenario: str | None, folder=None) -> list[str]:
     """Domains on for `scenario`: the files naming it (or "*") in their `# scenario:` line."""
     want = {(scenario or "").strip().lower(), ALWAYS_SCENARIO} - {""}

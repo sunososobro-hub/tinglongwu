@@ -188,6 +188,24 @@ To reproduce (needs the bench venv, the data under `%USERPROFILE%/tlwu-eval`, an
 
 **Google scores higher than every offline engine** in every direction we tested. The offline engines trade some quality for working with no network and no data leaving the machine. Small samples (50 sentences) are indicative only.
 
+### Russian source uses the `tech` term tables by default (#1799)
+Before: a ru session only loaded the legacy list; the ~2,200 `tech` entries (7 files in `data/terms/`) needed `--term-scenario tech`. Now `TECH_DEFAULT_LANGS = {"ru"}` (`glossary.py`) turns `tech` on for a Russian source; `--term-scenario none` turns it off. The GUI always passes `--builtin-glossary`, so it gets the default too (the GUI has no scenario dropdown yet).
+
+Measured here (no MT model in the cloud run, so this is the **source-side** count: glossary entries that fire on the 59 ru lines of `eval/fragment_cases.jsonl`, ru -> zh; script in the PR). MT-level term accuracy (`eval-fragments`, wrong senses) is not measured yet and is the open Acceptance item.
+
+| domain file | entries (ru -> zh) | fragment | idiom | complete | polysemy |
+|---|---|---|---|---|---|
+| hardware-embedded | 365 | 1 | 1 | 0 | 2 |
+| legacy-tech | 57 | 0 | 0 | 1 | 7 |
+| meeting-pm | 385 | 2 | 4 | 1 | 5 |
+| networking | 394 | 2 | 1 | 0 | 1 |
+| os-cloud-devops | 378 | 0 | 0 | 0 | 2 |
+| security | 348 | 0 | 0 | 0 | 0 |
+| software-dev | 352 | 0 | 2 | 0 | 7 |
+| all `tech` | 2279 | 5 | 8 | 2 | 24 |
+
+All 24 polysemy hits are the intended technical sense (ветка -> 分支, прод -> 正式環境, сборка -> 建置, ...). Of the 8 idiom-line hits, 2 are false hits on everyday sentences: `поллитры` (matches `поллить`, `software-dev` / `hardware-embedded` polling entries) and `пошло коту под хвост` (matches `хвосты`, `meeting-pm` `pm.carry_over`). That is within the issue's "not more than 2 everyday lines" bar, but only if MT output confirms it: re-run `eval-fragments` with and without `--term-scenario none` before treating #1799 as closed.
+
 ## Japanese eval set (ja -> zh-TW, #346)
 
 50-60 FLEURS ja_jp test utterances (the builder keeps up to `--n 60` and fails below `--min 50`) (read FLORES sentences) with the human FLORES-200 zho_Hant translation of the same sentence as the zh-TW reference. Licences: FLEURS CC-BY 4.0 (audio, ja transcript), FLORES-200 CC-BY-SA 4.0 (reference); the built folder carries a `LICENSE.txt`. The data is downloaded once and never committed.
