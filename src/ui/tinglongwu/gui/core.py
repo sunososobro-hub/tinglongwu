@@ -404,7 +404,7 @@ LABELS = {
         "zh-TW": {"plain": "我自己選", "tech": "手動"}, "ja": {"plain": "自分で選ぶ", "tech": "手動"}},
     "ui.gui_model": {
         "en": {"plain": 'Listening accuracy (faster / smarter but slower)', "tech": 'Speech model'},
-        "ru": {"plain": 'Точность распознавания речи (быстрее / умнее, но медленнее)', "tech": 'Модель речи'},
+        "ru": {"plain": 'Точность распознавания', "tech": 'Модель речи'},
         "zh-TW": {"plain": '聽的準確度（快一點／聰明但較慢）', "tech": '語音模型'},
         "ja": {"plain": '聞き取りの精度（速い／賢いが遅め）', "tech": '音声モデル'}},
     "ui.gui_quality": {
@@ -419,7 +419,7 @@ LABELS = {
         "ja": {"plain": '翻訳の方法', "tech": 'エンジン'}},
     "ui.gui_gpu_use": {
         "en": {"plain": 'Speed up with the graphics chip (Auto / Off)', "tech": 'Use GPU'},
-        "ru": {"plain": 'Ускорять видеокартой (авто / выкл.)', "tech": 'Использовать GPU'},
+        "ru": {"plain": 'Ускорение видеокартой', "tech": 'Использовать GPU'},
         "zh-TW": {"plain": '用顯示晶片加速（自動／不要）', "tech": '使用 GPU'},
         "ja": {"plain": 'グラフィックチップで高速化（おまかせ／しない）', "tech": 'GPU を使う'}},
     "ui.gui_mt_path_gpu": {
