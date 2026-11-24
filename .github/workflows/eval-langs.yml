@@ -182,6 +182,7 @@ jobs:
           rc=$?
           cat speak_noise.txt
           { echo "## speak noise gate (#968)"; echo; echo '```'; cat speak_noise.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$WHISPER" != "small" ]; then exit 0; fi  # #1746: non-small sizes are report-only, keep going to the mini-eval
           exit "$rc"
       - name: Mini-eval ${{ matrix.pair }} (CPU, ${{ matrix.clips }} clips)
         run: |
@@ -219,7 +220,7 @@ jobs:
 
   weekly:
     needs: [matrix, pair]
-    if: always() && needs.matrix.result == 'success' && (github.event_name == 'schedule' || (inputs.publish && inputs.asr != 'gigaam-v3' && (inputs.whisper || 'small') == 'small'))
+    if: always() && needs.matrix.result == 'success' && (github.event_name == 'schedule' || (inputs.publish && inputs.asr != 'gigaam-v3' && (inputs.whisper || 'small') == 'small' && inputs.pairs == ''))  # #1746: a filtered run is never a full weekly verdict
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
