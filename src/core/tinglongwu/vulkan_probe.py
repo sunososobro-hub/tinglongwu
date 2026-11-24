@@ -31,6 +31,9 @@ class ProbeResult:
     error: str = ""
 
 
+_session: dict = {}  # #1783: this process's decision {"key", "winner"}; one decision for ASR and MT, even if the cache write failed
+
+
 def forced(env=None) -> str:
     """The TLWU_DEVICE override ("" = none)."""
     v = ((os.environ if env is None else env).get("TLWU_DEVICE") or "").strip().lower()
@@ -167,7 +170,10 @@ def vulkan_allowed(env=None, key: dict | None = None, path: Path | None = None) 
     try:
         from .mt_backend import vulkan_pack_dir
 
-        r = load(key if key is not None else cache_key(vulkan_pack_dir(warn=lambda _m: None)), path)
+        key = key if key is not None else cache_key(vulkan_pack_dir(warn=lambda _m: None))
+        if _session.get("key") == key:  # #1783: the decision made in this session wins over the file
+            return _session["winner"] != "cpu"
+        r = load(key, path)
     except Exception:  # noqa: BLE001 - a broken cache never turns Vulkan off
         return True
     return not (r is not None and r.winner == "cpu")
@@ -182,15 +188,19 @@ def ensure(time_backend, key: dict, *, env=None, path: Path | None = None, say=p
         return None
     hit = load(key, path)
     if hit is not None:
+        _session.update(key=dict(key), winner=hit.winner)
         return hit
     times, err = {}, ""
     for b in ("cpu", "vulkan"):
         try:
             times[b] = float(time_backend(b))
         except Exception as e:  # noqa: BLE001 - timeout, crash, a model missing: keep Vulkan (owner rule)
+            if type(e).__name__ == "ProbeStopped":  # #1783: session stopped: no result, nothing cached
+                return None
             err = f"{b}: {type(e).__name__}: {e}"
             break
     r = decide(times.get("cpu"), times.get("vulkan"), err)
+    _session.update(key=dict(key), winner=r.winner)
     save(key, r, path)
     say(r.note)
     return r

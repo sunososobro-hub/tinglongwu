@@ -12,6 +12,13 @@ from tinglongwu import backend_probe, cli, vulkan_probe
 KEY = {"app": "0.5.4", "driver": "d1", "pack": "p1"}
 
 
+@pytest.fixture(autouse=True)
+def _fresh_session_decision():
+    vulkan_probe._session.clear()  # #1783: the per-process decision must not leak between tests
+    yield
+    vulkan_probe._session.clear()
+
+
 def _timer(cpu, vk, calls=None):
     def t(b):
         if calls is not None:
@@ -175,3 +182,52 @@ def test_time_in_child_sets_device_and_reports_failures(tmp_path):
 def test_time_backend_flag_is_parsed():
     a = cli.parse_args(["--time-backend", "cpu", "--model", "small"])
     assert a.time_backend == "cpu" and a.model == "small"
+
+
+def test_mt_fell_back_to_cpu_counts_as_failed_probe_and_keeps_vulkan(tmp_path):  # #1783 (1)
+    rec = types.SimpleNamespace(transcribe=lambda audio: None)
+    tr = types.SimpleNamespace(translate=lambda *a: None)
+
+    def vk_child(b):  # the child asked for vulkan: ASR on vulkan, MT silently on cpu
+        if b == "cpu":
+            return 1.0
+        return backend_probe.time_here("vulkan", ".", "small", make_asr=lambda: (rec, "vulkan"),
+                                       make_mt=lambda: (tr, "cpu"), clip=lambda: [0.0], out=lambda m: None) and 9.0
+
+    path, lines = tmp_path / "p.json", []
+    r = vulkan_probe.ensure(vk_child, KEY, env={}, path=path, say=lines.append)
+    assert r.winner == "vulkan" and "Vulkan did not load for MT" in r.error
+    assert vulkan_probe.vulkan_allowed(env={}, key=KEY, path=path)
+
+
+def test_cache_write_failure_still_uses_cpu_for_asr_and_mt_in_this_session(tmp_path):  # #1783 (2)
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    path = blocker / "p.json"  # parent is a file: save() fails
+    r = vulkan_probe.ensure(_timer(1.0, 2.0), KEY, env={}, path=path, say=lambda m: None)
+    assert r.winner == "cpu" and not path.exists()
+    assert not vulkan_probe.vulkan_allowed(env={}, key=KEY, path=path)  # MT gate (load_llama)
+    seen = {}
+
+    def select(mdir, size, lang, *, vulkan, **kw):
+        seen["vulkan"] = vulkan
+        return types.SimpleNamespace(device="cpu"), "cpu"
+
+    a = types.SimpleNamespace(compute="auto", model="small", lang="ru")
+    cli.live_recognizer(a, tmp_path, "cpu", select=select, ready=lambda *_: True, vulkan=lambda: True, env={},
+                        say=lambda m: None, allowed=lambda: vulkan_probe.vulkan_allowed({}, KEY, path))
+    assert seen["vulkan"] is False  # ASR gate
+
+
+def test_stop_during_probe_kills_child_within_2s_and_caches_nothing(tmp_path, monkeypatch):  # #1783 (3)
+    import sys
+    import threading
+    import time
+
+    monkeypatch.setattr(backend_probe, "child_cmd", lambda *a, **k: [sys.executable, "-c", "import time; time.sleep(60)"])
+    stop = threading.Event()
+    threading.Timer(0.3, stop.set).start()
+    path, t0 = tmp_path / "p.json", time.monotonic()
+    r = vulkan_probe.ensure(lambda b: backend_probe.time_in_child(b, "small", tmp_path, stop=stop), KEY, env={},
+                            path=path, say=lambda m: None)
+    assert r is None and time.monotonic() - t0 < 2.0 and not path.exists()

@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 CHILD_TIMEOUT_S = 240  # model load + first Vulkan shader compile on a slow iGPU; a timeout only means "keep Vulkan"
@@ -35,10 +36,38 @@ def parse_child(stdout: str) -> float:
     raise RuntimeError("no timing from the child: " + (stdout.strip().splitlines() or ["(no output)"])[-1][:120])
 
 
-def time_in_child(backend: str, size: str, mdir, *, run=subprocess.run, timeout: float = CHILD_TIMEOUT_S) -> float:
+class ProbeStopped(RuntimeError):
+    """The session was stopped while a child was being timed (#1783): no result, no cache entry."""
+
+
+def _run_stoppable(cmd, env, stop, timeout, poll: float = 0.2):
+    """Like subprocess.run(capture_output, text) but kills the child within `poll` s once `stop` is set."""
+    p = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         encoding="utf-8", errors="replace")
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            out, err = p.communicate(timeout=poll)
+            return types.SimpleNamespace(returncode=p.returncode, stdout=out, stderr=err)
+        except subprocess.TimeoutExpired:
+            pass
+        if stop is not None and stop.is_set():
+            p.kill()
+            p.communicate()
+            raise ProbeStopped("session stopped during the GPU speed check")
+        if time.monotonic() >= end:
+            p.kill()
+            p.communicate()
+            raise subprocess.TimeoutExpired(cmd, timeout)
+
+
+def time_in_child(backend: str, size: str, mdir, *, run=None, timeout: float = CHILD_TIMEOUT_S, stop=None) -> float:
     env = dict(os.environ, TLWU_DEVICE=backend)
-    p = run(child_cmd(backend, size, mdir), env=env, capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="replace")
+    cmd = child_cmd(backend, size, mdir)
+    if run is not None:
+        p = run(cmd, env=env, capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
+    else:
+        p = _run_stoppable(cmd, env, stop, timeout)
     if p.returncode != 0:
         tail = ((p.stderr or "").strip().splitlines() or [f"exit {p.returncode}"])[-1]
         raise RuntimeError(tail[:160])
@@ -69,8 +98,8 @@ def time_here(backend: str, mdir, size: str, *, make_asr=None, make_mt=None, cli
             return tr, mt_backend.last_backend
     rec, asr_be = make_asr()
     tr, mt_be = make_mt()
-    if backend == "vulkan" and mt_be != "vulkan" and asr_be != "vulkan":
-        raise RuntimeError("Vulkan did not load for ASR or MT")
+    if backend == "vulkan" and mt_be != "vulkan":  # #1783: MT silently on the CPU would time a CPU run as "Vulkan"
+        raise RuntimeError("Vulkan did not load for MT" if asr_be == "vulkan" else "Vulkan did not load for ASR or MT")
     best = None
     for i in range(1 + TIMED_RUNS):
         t0 = clock()
@@ -85,7 +114,7 @@ def time_here(backend: str, mdir, size: str, *, make_asr=None, make_mt=None, cli
     return d
 
 
-def maybe_probe(a, mdir, dev: str, *, env=None, say=None, available=None, timer=None, path=None):
+def maybe_probe(a, mdir, dev: str, *, env=None, say=None, available=None, timer=None, path=None, stop=None):
     """Session start: run (or reuse) the speed check when Vulkan is a candidate: no CUDA, not --device cpu, the
     Vulkan pack usable. Returns the ProbeResult, or None when no check applies."""
     from . import mt_backend, vulkan_probe
@@ -106,4 +135,4 @@ def maybe_probe(a, mdir, dev: str, *, env=None, say=None, available=None, timer=
         return hit
     if not vulkan_probe.forced(env):
         say("tlwu: GPU speed check CPU vs Vulkan (once after install, update or driver change)...")
-    return vulkan_probe.ensure(timer or (lambda b: time_in_child(b, a.model, mdir)), key, env=env, path=path, say=say)
+    return vulkan_probe.ensure(timer or (lambda b: time_in_child(b, a.model, mdir, stop=stop)), key, env=env, path=path, say=say)
