@@ -23,7 +23,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -156,7 +156,7 @@ def main(argv=None) -> int:
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args(argv)
     if a.stale:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for pr in _gh(f"repos/{REPO}/pulls?state=open&base=dev&per_page=100") or []:
             if stale(pr, now):
                 print(f"#{pr['number']} stale: closing")
