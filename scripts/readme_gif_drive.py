@@ -70,8 +70,22 @@ def gif_start(first_line_s: float | None, seconds: float, gif_s: float = 3.0, le
 
 
 def translated(state) -> int:
-    """Rows in the window that already have their translation (a pending row only shows the dim source)."""
-    return sum(1 for _src, tgt in getattr(state, "finals", []) if tgt)
+    """Translated text on screen: finished rows with their translation, plus a live draft or a partial translation
+    of a pending row (live_draft shows those before the final). A pending row alone only shows the dim source."""
+    n = sum(1 for _src, tgt in getattr(state, "finals", []) if tgt)
+    draft = getattr(state, "draft", None)
+    n += 1 if draft and draft[1] else 0
+    return n + sum(1 for v in (getattr(state, "partial", None) or {}).values() if v)
+
+
+def make_gif(video: Path, gif: Path, start: float) -> int:
+    """readme_gif.py make; an ffmpeg failure is a FAIL line and exit 1, never an exception in a Tk callback (that
+    would leave the unattended GUI open instead of returning)."""
+    try:
+        return rg.main(["make", str(video), str(gif), "--max-seconds", "3", "--max-mb", "2", "--start", f"{start:g}"])
+    except (subprocess.CalledProcessError, OSError) as e:
+        print(f"FAIL {gif.name}: {e}", flush=True)
+        return 1
 
 
 def play_script(played: list[Path]) -> list[str]:
@@ -130,16 +144,17 @@ def drive(mode: str, out_dir: Path, seconds: float, zh_wav: Path | None) -> int:
             finish()
 
     def finish():
-        st["play"].kill()
-        start = gif_start(st.get("first"), seconds)
-        print(f"{mode}: recorded {video.name}, {translated(app.state)} translated rows, first at "
-              f"{st.get('first', -1):.1f} s", flush=True)
-        if start is None:
-            print(f"FAIL {mode}: no translated line in {seconds:g} s; no GIF made", flush=True)
-        else:
-            st["rc"] = rg.main(["make", str(video), str(out_dir / gif_name), "--max-seconds", "3", "--max-mb", "2",
-                                "--start", f"{start:g}"])
-        app.quit()
+        try:
+            st["play"].kill()
+            start = gif_start(st.get("first"), seconds)
+            print(f"{mode}: recorded {video.name}, {translated(app.state)} translated rows, first at "
+                  f"{st.get('first', -1):.1f} s", flush=True)
+            if start is None:
+                print(f"FAIL {mode}: no translated line in {seconds:g} s; no GIF made", flush=True)
+            else:
+                st["rc"] = make_gif(video, out_dir / gif_name, start)
+        finally:
+            app.quit()  # whatever happened above, the unattended run ends
 
     app.root.after(POLL_MS, app.poll)  # App.run() without the update check and background model fetch
     app.root.after(1500, lambda: (app.toggle(toggle_arg), poll()))

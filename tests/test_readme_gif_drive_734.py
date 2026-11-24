@@ -69,6 +69,20 @@ def test_translated_counts_only_rows_with_a_translation():
     s.finals = [("hello", "你好"), ("pending", None), ("x", "")]
     assert rd.translated(s) == 1
     assert rd.translated(object()) == 0
+    s.finals = []
+    s.draft = ("hel", "你")  # live draft: translated text on screen before any final
+    assert rd.translated(s) == 1
+    s.draft, s.partial = ("hel", ""), {"pending": "部分"}
+    assert rd.translated(s) == 1
+
+
+def test_make_gif_failure_is_exit_1_not_an_exception(tmp_path, monkeypatch, capsys):
+    def boom(_argv):
+        raise subprocess.CalledProcessError(1, ["ffmpeg"])
+
+    monkeypatch.setattr(rd.rg, "main", boom)
+    assert rd.make_gif(tmp_path / "v.mp4", tmp_path / "mode_listen.gif", 1.0) == 1
+    assert "FAIL mode_listen.gif" in capsys.readouterr().out
 
 
 def test_record_cmd_grabs_the_window_rectangle(tmp_path):
