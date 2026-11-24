@@ -22,3 +22,5 @@ def test_worker_display_one_per_xdist_worker():
     assert worker_display({**on}) is None                                   # not an xdist worker
     assert worker_display({"PYTEST_XDIST_WORKER": "gw1"}) is None            # switch off: keep DISPLAY
     assert worker_display({**on, "PYTEST_XDIST_WORKER": "master"}) is None
+    # a plain pytest child of a test inherits the worker's env but is no xdist worker: keeps its own DISPLAY
+    assert worker_display({**on, "PYTEST_XDIST_WORKER": "gw0"}, worker=False) is None

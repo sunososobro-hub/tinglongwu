@@ -68,18 +68,20 @@ def _restore_sigint():
         signal.signal(signal.SIGINT, prev)
 
 
-def worker_display(env=os.environ) -> str | None:
+def worker_display(env=os.environ, worker: bool = True) -> str | None:
     """#1857: the `test` job runs the suite in parallel pytest-xdist workers. Real-Tk GUI tests used to share one
     Xvfb display in one process; with TLWU_XVFB_PER_WORKER=1 each worker gets its own display (gw0 -> :200,
-    gw1 -> :201, ...) so two workers' windows never take each other's focus or stacking. None = keep DISPLAY."""
+    gw1 -> :201, ...) so two workers' windows never take each other's focus or stacking. None = keep DISPLAY.
+    `worker` = this process is a real xdist worker (config.workerinput): a plain pytest child started by a test
+    inherits PYTEST_XDIST_WORKER but must keep the display its test gave it (or none, test_gui_require_display_113)."""
     w = env.get("PYTEST_XDIST_WORKER", "")
-    if env.get("TLWU_XVFB_PER_WORKER") != "1" or not w.startswith("gw") or not w[2:].isdigit():
+    if not worker or env.get("TLWU_XVFB_PER_WORKER") != "1" or not w.startswith("gw") or not w[2:].isdigit():
         return None
     return f":{200 + int(w[2:])}"
 
 
 def pytest_configure(config):
-    disp = worker_display()
+    disp = worker_display(worker=hasattr(config, "workerinput"))
     if disp is None:
         return
     import subprocess
