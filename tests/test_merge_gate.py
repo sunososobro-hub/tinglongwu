@@ -106,6 +106,7 @@ def test_protected_paths():
                  "scripts/ci_offline.sh", "src/system/tinglongwu/offline.py", "release/packaging/x.spec", "src/core/tinglongwu/__init__.py"):
         assert is_protected(path), path
     assert is_protected("scripts/merge_gate.py") and is_protected(".github/workflows/merge-gate.yml")
+    assert is_protected(".agent/rules_release.md") and is_protected(".agent/rules_patrol.md")  # #1856
     for path in ("tests/test_netguard.py", ".github/workflows/triage.yml", "src/core/tinglongwu/foo.py",
                  ".github/ISSUE_TEMPLATE/bug.yml"):
         assert not is_protected(path), path
