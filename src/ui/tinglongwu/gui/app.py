@@ -827,7 +827,7 @@ class App:
             self.btn.configure(text=t("gui_loading", s=self.load_shown))
         else:
             self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
-        self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
+        self.btn_pause.configure(text=t("gui_resume_s" if self.state.paused else "gui_pause_s"))
         self._mic_label()
         self._adv_toggled()
         self._send_mode_changed()  # #834: the notice follows the UI language
@@ -1193,10 +1193,10 @@ class App:
         self.btn_mic = ttk.Checkbutton(row1, variable=self.v_mic, style="Toolbutton", command=self._mic_toggled)
         self.btn_mic.pack(side="left")
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
-                 "gui_overlay_btn").pack(side="left", padx=(6, 0))
+                 "gui_overlay_s").pack(side="left", padx=(6, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
-        self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk").pack(
+        self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(
             side="left", padx=(10, 0))
         # #1020: "Freeze subtitles" only freezes this list and the floating bar (translation keeps running)
         self.action_row = row2 = ttk.Frame(b)
@@ -1209,7 +1209,7 @@ class App:
         self.dot.pack(side="left", padx=8)
         self.set_dot("idle")
         self._dot_tip(self.dot)
-        self.btn_pause = ttk.Button(row2, text=t("gui_pause"), command=self.toggle_pause)
+        self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause)
         self.btn_pause.pack(side="left")
         self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
                                               style="Start.Accent.TButton", width=14)
@@ -1236,10 +1236,11 @@ class App:
             self.source_row.grid(row=1, column=0, columnspan=1, sticky="w", pady=(4, 0))
             self.action_row.grid(row=1, column=1, columnspan=1, sticky="e", pady=(4, 0))
         else:
+            # #1605: compact labels keep the toggles and Freeze / Start on ONE row inside the 560 px cap
             self.scene_row.grid(row=0, column=0, columnspan=2, sticky="we", pady=(0, 3), padx=0)
-            self.toggle_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=0)
+            self.toggle_row.grid(row=1, column=0, sticky="w", pady=0)
             self.source_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
-            self.action_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(4, 0))
+            self.action_row.grid(row=1, column=1, sticky="e", pady=0)
         self.scene_row.grid_remove()  # #1603: the situation dropdown is in the toolbar
         self._source_sync()  # #1544: the grid() above would show the row again in the meeting scene
 
@@ -3554,7 +3555,7 @@ class App:
         """Freeze/unfreeze the subtitle display (translation keeps running; resume shows the latest lines)."""
         self.state.paused = paused
         self.overlay.var_pause.set(paused)
-        self.btn_pause.configure(text=t("gui_resume" if paused else "gui_pause"))
+        self.btn_pause.configure(text=t("gui_resume_s" if paused else "gui_pause_s"))
         if not paused and self.overlay.visible:
             self.overlay.render(self.state)
         if not paused:
