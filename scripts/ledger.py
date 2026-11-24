@@ -261,6 +261,98 @@ def fix_line(fix48: int, total48: int) -> str:
     return f"open->merge fix minutes (48 h): {fix48} ({share}% of total)"
 
 
+# --- #1676: per-model quality metrics over the last 14 days (owner a1: decide model pairings by data) -------------
+MODEL_DAYS = 14
+INCIDENT_DAYS = 7
+MODEL_RE = re.compile(r"^tlwu-usage:.*\bmodel=([\w.\-]+)", re.M)
+REVIEW_FAIL_RE = re.compile(r"AI review: FAIL|Opus review: CHANGES")
+REVERT_RE = re.compile(r"\brevert", re.I)
+
+
+def pr_model(body: str | None) -> str:
+    """Builder model from the LAST non-empty line of a PR body (`tlwu-usage: model=<m> ...`); `unknown` when absent."""
+    lines = [l for l in (body or "").splitlines() if l.strip()]
+    m = MODEL_RE.search(lines[-1]) if lines else None
+    return m.group(1) if m else "unknown"
+
+
+def has_review_fail(comment_bodies: list[str]) -> bool:
+    return any(REVIEW_FAIL_RE.search(b or "") for b in comment_bodies)
+
+
+def red_rounds(test_conclusions: dict[str, list[str]]) -> int:
+    """Head commits (sha -> conclusions of their `test` check runs) whose `test` concluded failure."""
+    return sum(1 for runs in test_conclusions.values() if "failure" in runs)
+
+
+def is_incident(pr: int, issue: int | None, merged_at: datetime, issues: list[dict], later_prs: list[dict]) -> bool:
+    """Reverted on dev (a later dev PR titled/bodied `revert` that names this PR), or a `bug` issue other than the
+    PR's own, opened within 7 days after the merge, whose body refers to the PR or to its linked issue."""
+    refs = {f"#{pr}"} | ({f"#{issue}"} if issue is not None else set())
+    for o in later_prs:
+        text = f"{o.get('title') or ''}\n{o.get('body') or ''}"
+        if o.get("number") != pr and REVERT_RE.search(o.get("title") or "") and any(
+                re.search(re.escape(r) + r"(?!\d)", text) for r in refs):
+            return True
+    end = merged_at + timedelta(days=INCIDENT_DAYS)
+    for i in issues:
+        if i.get("number") in (issue, pr) or "bug" not in i.get("labels", []):
+            continue
+        if merged_at <= i["created_at"] <= end and any(re.search(re.escape(r) + r"(?!\d)", i.get("body") or "") for r in refs):
+            return True
+    return False
+
+
+def model_rows(prs: list[dict]) -> list[dict]:
+    """prs: dicts with model, review_fail (bool), red (int), incident (bool). One row per model, most PRs first."""
+    by: dict[str, list[dict]] = {}
+    for p in prs:
+        by.setdefault(p["model"], []).append(p)
+    rows = []
+    for model, ps in by.items():
+        n = len(ps)
+        rows.append({"model": model, "prs": n,
+                     "fail_rate": round(100 * sum(1 for p in ps if p["review_fail"]) / n, 1),
+                     "red_avg": round(sum(p["red"] for p in ps) / n, 2),
+                     "incidents": sum(1 for p in ps if p["incident"])})
+    return sorted(rows, key=lambda r: (-r["prs"], r["model"]))
+
+
+def render_models(rows: list[dict]) -> str:
+    out = [f"Quality by builder model ({MODEL_DAYS} d, PRs merged to dev)", "",
+           "| model | PRs merged | review-fail rate | avg CI red rounds | post-merge incidents |", "|---|---|---|---|---|"]
+    out += [f"| {r['model']} | {r['prs']} | {r['fail_rate']}% | {r['red_avg']} | {r['incidents']} |" for r in rows]
+    if not rows:
+        out.append("| (no merged PRs) | 0 | 0.0% | 0.0 | 0 |")
+    return "\n".join(out)
+
+
+def collect_models(now: datetime) -> list[dict]:
+    """Per-PR facts for PRs merged to dev in the last 14 days, one gh call per PR for comments and per head commit."""
+    since = now - timedelta(days=MODEL_DAYS)
+    prs = [p for p in _gh_list(f"repos/{REPO}/pulls?state=closed&base=dev&sort=updated&direction=desc&per_page=100")
+           if p.get("merged_at") and since <= _ts(p["merged_at"]) <= now]
+    issues = [{"number": i["number"], "created_at": _ts(i["created_at"]), "body": i.get("body"),
+               "labels": [l["name"] for l in i["labels"]]}
+              for i in _gh_list(f"repos/{REPO}/issues?state=all&labels=bug&since={since:%Y-%m-%dT%H:%M:%SZ}&per_page=100")
+              if "pull_request" not in i and _ts(i["created_at"]) >= since]
+    out = []
+    for p in prs:
+        n = p["number"]
+        merged = _ts(p["merged_at"])
+        comments = [c.get("body") or "" for c in _gh_list(f"repos/{REPO}/issues/{n}/comments?per_page=100")]
+        conclusions: dict[str, list[str]] = {}
+        for c in _gh_list(f"repos/{REPO}/pulls/{n}/commits?per_page=100"):
+            runs = _gh(f"repos/{REPO}/commits/{c['sha']}/check-runs?check_name=test&per_page=100") or {}
+            conclusions[c["sha"]] = [r.get("conclusion") for r in runs.get("check_runs", [])]
+        later = [{"number": o["number"], "title": o.get("title"), "body": o.get("body")}
+                 for o in prs if o.get("merged_at") and _ts(o["merged_at"]) > merged]
+        out.append({"model": pr_model(p.get("body")), "review_fail": has_review_fail(comments),
+                    "red": red_rounds(conclusions),
+                    "incident": is_incident(n, linked_issue(p["head"]["ref"], p.get("body")), merged, issues, later)})
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -277,6 +369,7 @@ def main() -> int:
     infra = infra_line(infra_min, total7) + "\n" + fix_line(fix48, total + untyped)
     infra += "\n" + owner_line(by_type.get(OWNER_KEY, 0))
     text = render(rows, infra, total, untyped, ok, now)
+    text = text.replace("\n\n_posted by", "\n\n" + render_models(model_rows(collect_models(now))) + "\n\n_posted by", 1)
     if args.dry_run:
         print(text)
         return 0
