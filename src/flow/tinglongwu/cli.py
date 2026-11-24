@@ -732,6 +732,8 @@ def _run_session(a, sink=None, draft_factory=None, stop=None, status=None, notic
     from .backend_probe import maybe_probe
 
     maybe_probe(a, mdir, dev, stop=stop)  # #1773: CPU vs Vulkan, cached per version / driver / pack
+    if stop is not None and stop.is_set():  # #1791: stopped during the speed check: do not load models
+        return
     prog.stage("speech model")
     cands = None
     f2f_route = None

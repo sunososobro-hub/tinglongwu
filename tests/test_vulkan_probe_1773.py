@@ -231,3 +231,88 @@ def test_stop_during_probe_kills_child_within_2s_and_caches_nothing(tmp_path, mo
     r = vulkan_probe.ensure(lambda b: backend_probe.time_in_child(b, "small", tmp_path, stop=stop), KEY, env={},
                             path=path, say=lambda m: None)
     assert r is None and time.monotonic() - t0 < 2.0 and not path.exists()
+
+
+def test_session_decision_wins_even_if_recomputed_key_differs(tmp_path):  # #1791 (a)
+    path = tmp_path / "p.json"
+    vulkan_probe.ensure(_timer(1.0, 2.0), KEY, env={}, path=path, say=lambda m: None)  # CPU wins
+    other = {"app": "0.5.4", "driver": "d2", "pack": "p1"}  # e.g. driver_id changed mid-session
+    assert not vulkan_probe.vulkan_allowed(env={}, key=other, path=path)
+
+
+def test_cache_hit_sets_the_session_decision(tmp_path, monkeypatch):  # #1791 (b)
+    path = tmp_path / "p.json"
+    vulkan_probe.save(KEY, vulkan_probe.decide(1.0, 2.0), path)  # cached: CPU faster
+    monkeypatch.setattr(vulkan_probe, "cache_key", lambda *a, **k: KEY)
+    import tinglongwu.mt_backend as mt
+
+    monkeypatch.setattr(mt, "vulkan_pack_dir", lambda **k: None)
+    a = types.SimpleNamespace(compute="auto", model="small")
+    r = backend_probe.maybe_probe(a, tmp_path, "cpu", env={}, say=lambda m: None, available=lambda: True, path=path)
+    assert r.winner == "cpu"
+    path.unlink()  # the file is gone, the session decision still holds
+    assert not vulkan_probe.vulkan_allowed(env={}, key=KEY, path=path)
+
+
+def test_ctrl_c_kills_and_reaps_the_probe_child(tmp_path, monkeypatch):  # #1791 (c)
+    import sys
+
+    procs = []
+    real = subprocess.Popen
+
+    def spy(*a, **k):
+        p = real(*a, **k)
+        procs.append(p)
+        return p
+
+    class Interrupting:
+        def is_set(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    cmd = [sys.executable, "-c", "import time; time.sleep(60)"]
+    with pytest.raises(KeyboardInterrupt):
+        backend_probe._run_stoppable(cmd, None, Interrupting(), 60, poll=0.1)
+    assert procs[0].poll() is not None  # killed and reaped, not left running
+
+
+def test_stop_landing_as_child_exits_caches_nothing(tmp_path, monkeypatch):  # #1791 (d)
+    import sys
+    import threading
+
+    stop = threading.Event()
+    monkeypatch.setattr(backend_probe, "child_cmd", lambda *a, **k: [
+        sys.executable, "-c",
+        'import json; print("tlwu-time-backend: " + json.dumps({"asr_s": 1.0, "mt_s": 1.0}))'])
+    stop.set()  # already set when the child finishes
+    path = tmp_path / "p.json"
+    r = vulkan_probe.ensure(lambda b: backend_probe.time_in_child(b, "small", tmp_path, stop=stop), KEY, env={},
+                            path=path, say=lambda m: None)
+    assert r is None and not path.exists()
+
+
+def test_run_session_returns_right_after_the_probe_when_stopped(tmp_path, monkeypatch):  # #1791 (e)
+    import threading
+
+    from tinglongwu import minspec
+
+    stop = threading.Event()
+    monkeypatch.setattr(minspec, "check_avx2", lambda force=False: None)
+    monkeypatch.setattr(cli, "models_dir", lambda d: tmp_path)
+    monkeypatch.setattr(cli, "auto_model", lambda *a, **k: "small")
+    monkeypatch.setattr(cli, "apply_cpu_mode", lambda *a, **k: None)
+    monkeypatch.setattr(backend_probe, "maybe_probe", lambda *a, **k: stop.set())
+    reached = []
+
+    class Prog:
+        def __init__(self, *a, **k):
+            pass
+
+        def stage(self, name):
+            reached.append(name)
+
+    monkeypatch.setattr(cli, "LoadProgress", Prog)
+    a = types.SimpleNamespace(compute="cpu", model=None, models_dir=None, glossary=None, builtin_glossary=False,
+                              lang="en", face_to_face=None, quality="auto")
+    cli._run_session(a, stop=stop)
+    assert reached == []  # "speech model" stage never started

@@ -45,20 +45,28 @@ def _run_stoppable(cmd, env, stop, timeout, poll: float = 0.2):
     p = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          encoding="utf-8", errors="replace")
     end = time.monotonic() + timeout
-    while True:
+    try:
+        while True:
+            try:
+                out, err = p.communicate(timeout=poll)
+            except subprocess.TimeoutExpired:
+                out = None
+            if out is not None:
+                if stop is not None and stop.is_set():  # #1791: the stop landed as the child exited: no result
+                    raise ProbeStopped("session stopped during the GPU speed check")
+                return types.SimpleNamespace(returncode=p.returncode, stdout=out, stderr=err)
+            if stop is not None and stop.is_set():
+                raise ProbeStopped("session stopped during the GPU speed check")
+            if time.monotonic() >= end:
+                raise subprocess.TimeoutExpired(cmd, timeout)
+    except BaseException:  # #1791: Ctrl+C, stop or timeout: never leave the child running
+        if p.poll() is None:
+            p.kill()
         try:
-            out, err = p.communicate(timeout=poll)
-            return types.SimpleNamespace(returncode=p.returncode, stdout=out, stderr=err)
-        except subprocess.TimeoutExpired:
+            p.communicate(timeout=5)
+        except Exception:  # noqa: BLE001
             pass
-        if stop is not None and stop.is_set():
-            p.kill()
-            p.communicate()
-            raise ProbeStopped("session stopped during the GPU speed check")
-        if time.monotonic() >= end:
-            p.kill()
-            p.communicate()
-            raise subprocess.TimeoutExpired(cmd, timeout)
+        raise
 
 
 def time_in_child(backend: str, size: str, mdir, *, run=None, timeout: float = CHILD_TIMEOUT_S, stop=None) -> float:
@@ -131,6 +139,7 @@ def maybe_probe(a, mdir, dev: str, *, env=None, say=None, available=None, timer=
         return None
     hit = None if vulkan_probe.forced(env) else vulkan_probe.load(key, path)
     if hit is not None:
+        vulkan_probe.remember(key, hit.winner)  # #1791: a cache hit is this session's decision too
         say(f"{hit.note} (remembered)")
         return hit
     if not vulkan_probe.forced(env):
