@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.6
+- Background download of the GPU pack, and a clearer GPU speed check that names a missing Vulkan driver.
+- Russian speech: better translation using the previous line as context and built-in tech term tables.
+- Fixed a stale draft subtitle line staying on screen after a correction.
+
 ## v0.5.5
 - GUI update check on Linux and git-checkout macOS.
 - Live sessions use the whisper.cpp Vulkan ASR engine on AMD / Intel GPUs.
