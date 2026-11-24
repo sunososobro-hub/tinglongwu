@@ -19,6 +19,7 @@ def gui(tmp_path, monkeypatch):
     (tmp_path / "tinglongwu").mkdir()
     (tmp_path / "tinglongwu" / "gui.json").write_text('{"tour_seen": true}', "utf-8")
     a = app.App()
+    a.root.geometry("460x640")  # the default main window; a clipped widget would be unmapped
     a.root.update()
     yield a
     a.stop_ev.set()
@@ -35,6 +36,7 @@ def test_toolbar_widgets_share_one_parent_row(gui):
     assert all(w.winfo_ismapped() for w in widgets)
     assert len({w.winfo_rooty() for w in widgets}) <= 2  # one row (a few px of centring at most)
     assert a.btn_adjust is a.btn_settings
+    assert a.toolbar.winfo_reqwidth() <= 460  # fits the default 460 px main window in the widest UI language
     assert not a.home_lang.winfo_ismapped() and not a.home_target.winfo_ismapped()
 
 
@@ -58,7 +60,7 @@ def test_badge_says_offline_and_carries_other_statuses(gui):
     assert "Offline" in a.lbl_offline.cget("text") and not a.lbl_status.winfo_ismapped()
     a._status_text("Loading speech model, please wait")
     a.root.update()
-    assert "Loading" in a.lbl_offline.cget("text") and a.lbl_status.winfo_ismapped()
+    assert "Loadin" in a.lbl_offline.cget("text") and a.lbl_status.winfo_ismapped()
     a.set_status("gui_ready")
     a.root.update()
     assert "Offline" in a.lbl_offline.cget("text") and not a.lbl_status.winfo_ismapped()

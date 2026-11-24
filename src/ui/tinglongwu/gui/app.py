@@ -1195,7 +1195,7 @@ class App:
         self.scene_row = ttk.Frame(b)  # 0.3.8: 情境; #1603: the dropdown itself now lives in the top toolbar
         self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
         # one readonly dropdown: exactly one scene is active at a time; the box shows the UI-language names
-        self.scene_combo = ttk.Combobox(self.toolbar, state="readonly", width=8, values=self._scene_labels())
+        self.scene_combo = ttk.Combobox(self.toolbar, state="readonly", width=7, values=self._scene_labels())
         self.scene_combo.set(t("gui_scene_" + self.v_scene.get()))
         self.scene_combo.pack(side="left", padx=(8, 0))
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
@@ -1409,14 +1409,14 @@ class App:
         self.toggle(None)
 
     # -- #1603 one top toolbar ---------------------------------------------------------------
-    BADGE_MAX = 9  # characters of a non-ready status shown in the badge (fixed width; the full text is on the status line)
+    BADGE_MAX = 7  # characters of a non-ready status shown in the badge (fixed width; the full text is on the status line)
 
     def _build_toolbar(self):
         """#1603: one row: language pair + swap, situation (scene_combo, packed in _build_bar), offline badge, A- / A+,
         settings. Replaces the two full-width dropdowns, the A-/A+ row and the "Ready. Fully offline." line."""
         tb = self.toolbar
         ttk.Style(self.root).configure("Pair.TButton", font="TkSmallCaptionFont")  # small: Linux / Russian run wide
-        self.btn_pair = ttk.Button(tb, style="Pair.TButton", width=16, command=self._pair_menu)
+        self.btn_pair = ttk.Button(tb, style="Pair.TButton", width=12, command=self._pair_menu)
         self.btn_pair.pack(side="left")
         self.btn_swap = ttk.Button(tb, text="\u21c4", width=2, name="swap_languages", command=self.swap_languages)
         self.btn_swap.pack(side="left", padx=(2, 0))
@@ -1427,7 +1427,7 @@ class App:
         self.btn_font_up.pack(side="right", padx=(0, 4))
         self.btn_font_down = ttk.Button(tb, text="A-", width=2, command=lambda: self.bump_log_font(-2))
         self.btn_font_down.pack(side="right", padx=(0, 2))
-        self.lbl_offline = ttk.Label(tb, text="", font="TkSmallCaptionFont", width=11, anchor="w")
+        self.lbl_offline = ttk.Label(tb, text="", font="TkSmallCaptionFont", width=9, anchor="w")
         self.lbl_offline.pack(side="right", padx=(0, 8))
         self._tok(self.lbl_offline, "muted")
         for v in (self.v_lang, self.v_target):
