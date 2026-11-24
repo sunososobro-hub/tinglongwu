@@ -93,7 +93,7 @@ def test_mic_toggle_and_bubbles(tmp_path, monkeypatch):
         assert a.mic_off is False and not a.mic_ev.is_set()
         a.v_mic.set(False)
         a._mic_toggled()
-        assert a.mic_off is True and a.mic_ev.is_set() and a.btn_mic.cget("text") == "Microphone off"
+        assert a.mic_off is True and a.mic_ev.is_set() and a.btn_mic.cget("text") == "Mic off"
         a.v_notice.set("no CABLE")  # un-mute must not wipe an unrelated notice
         a.listening = True
         a.v_mic.set(True)

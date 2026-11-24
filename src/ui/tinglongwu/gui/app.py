@@ -1193,11 +1193,11 @@ class App:
         self.btn_mic = ttk.Checkbutton(row1, variable=self.v_mic, style="Toolbutton", command=self._mic_toggled)
         self.btn_mic.pack(side="left")
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
-                 "gui_overlay_s").pack(side="left", padx=(6, 0))
+                 "gui_overlay_s").pack(side="left", padx=(3, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
         self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(
-            side="left", padx=(10, 0))
+            side="left", padx=(5, 0))
         # #1020: "Freeze subtitles" only freezes this list and the floating bar (translation keeps running)
         self.action_row = row2 = ttk.Frame(b)
         self.bar_wide = None
@@ -1206,13 +1206,13 @@ class App:
         self.btn_adjust = self.btn_settings  # #1603: the gear in the top toolbar (built in _build_toolbar)
         self.dot = tk.Canvas(row2, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
-        self.dot.pack(side="left", padx=8)
+        self.dot.pack(side="left", padx=4)
         self.set_dot("idle")
         self._dot_tip(self.dot)
         self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause)
         self.btn_pause.pack(side="left")
         self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
-                                              style="Start.Accent.TButton", width=14)
+                                              style="Start.Accent.TButton", width=8)
         self.btn.pack(side="right")
         self._mic_label()
         self._sync_quick()
@@ -1348,7 +1348,7 @@ class App:
         messagebox.showwarning(t("gui_spk"), msg, parent=self.root)
 
     def _mic_label(self):
-        self.btn_mic.configure(text=t("gui_mic_on" if self.v_mic.get() else "gui_mic_off"))
+        self.btn_mic.configure(text=t("gui_mic_on_s" if self.v_mic.get() else "gui_mic_off_s"))
 
     @property
     def mic_off(self) -> bool:
