@@ -101,3 +101,23 @@ def test_vulkan_devices_parses_vulkaninfo():
     assert gpu_offer.vulkan_devices(run=lambda *a, **k: P(), which=lambda n: "/usr/bin/vulkaninfo") == [
         "AMD Radeon(TM) 780M Graphics"]
     assert gpu_offer.vulkan_devices(which=lambda n: None) == []
+
+
+def test_missing_vulkaninfo_is_not_reported_as_no_device(tmp_path, monkeypatch):
+    """#1782: no `vulkaninfo` on PATH names the missing tool instead of claiming there is no Vulkan device."""
+    lines = []
+    monkeypatch.setattr(gpucheck, "probe_devices", lambda *a, **k: [])
+    gpucheck.run(tmp_path, tmp_path / "models", APP, env={}, platform="linux", out=lines.append, which=lambda n: None)
+    text = "\n".join(lines)
+    assert "vulkaninfo" in text and "probe tool missing" in text
+    assert "no Vulkan device found" not in text
+
+
+def test_first_run_text_shows_vulkan_name_from_probe():
+    class P:
+        stdout = SUMMARY
+
+    names = tiers.vulkan_names(run=lambda *a, **k: P(), which=lambda n: "/usr/bin/vulkaninfo")
+    assert names == ["AMD Radeon(TM) 780M Graphics"]
+    assert "AMD Radeon(TM) 780M Graphics" in tiers.detection_text(None, vulkan=names)
+    assert tiers.vulkan_names(which=lambda n: None) == []

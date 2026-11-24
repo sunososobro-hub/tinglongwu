@@ -114,7 +114,7 @@ class SetupWindow:
         ttk.Label(f, text="歡迎使用聽攏有（離線即時翻譯）", font=("Microsoft JhengHei UI", 13, "bold")).pack(anchor="w")
         ttk.Label(f, text="第一次使用需要下載語音與翻譯模型。下載完成後，翻譯全程不需要網路。",
                   wraplength=420).pack(anchor="w", pady=(4, 8))
-        ttk.Label(f, text=tiers.detection_text(raw, force_cpu), wraplength=420).pack(anchor="w")
+        ttk.Label(f, text=tiers.detection_text(raw, force_cpu, vulkan=None if (force_cpu or raw is not None) else tiers.vulkan_names()), wraplength=420).pack(anchor="w")
         self.v_plan = tk.StringVar()
         ttk.Label(f, textvariable=self.v_plan, wraplength=420, foreground="#1a4d8f").pack(anchor="w", pady=(4, 8))
         self.v_cpu = tk.BooleanVar(value=force_cpu or self.gpu is None)

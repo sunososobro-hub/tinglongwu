@@ -132,6 +132,23 @@ def driver_hint(gpu: Gpu, platform: str | None = None) -> str:
             f"Update the driver to use the GPU.")
 
 
+def vulkan_names(run=None, which=None) -> list[str]:
+    """#1782: Vulkan GPU names from `vulkaninfo --summary` (software rasterizers dropped); [] when none or no tool."""
+    exe = (which or shutil.which)("vulkaninfo")
+    if not exe:
+        return []
+    try:
+        p = (run or subprocess.run)([exe, "--summary"], capture_output=True, text=True, timeout=20,
+                                    encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - broken driver = no device
+        return []
+    out: list[str] = []
+    for name in re.findall(r"^\s*deviceName\s*=\s*(.+?)\s*$", p.stdout or "", re.M):
+        if not any(w in name.lower() for w in ("llvmpipe", "swiftshader", "lavapipe", "software")) and name not in out:
+            out.append(name)
+    return out
+
+
 def detection_text(raw: Gpu | None, force_cpu: bool = False, platform: str | None = None,
                    vulkan: list[str] | None = None) -> str:
     """First-run setup window line about the GPU (`raw` = probe_gpu(); `vulkan` = Vulkan GPU names, #1772)."""

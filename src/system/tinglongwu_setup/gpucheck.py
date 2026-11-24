@@ -67,10 +67,13 @@ def models(models_dir: Path) -> list[str]:
     return sorted(p.name for p in d.glob("ggml-*.bin")) if d.is_dir() else []
 
 
-def choose(devices: list[str], pack: dict, have_models: list[str]) -> dict:
+def choose(devices: list[str], pack: dict, have_models: list[str], probe_missing: bool = False) -> dict:
     """Backend and reason per stage (mirrors the runtime: MT needs devices + a current pack; ASR also needs the pack's
     whisper.cpp library and a ggml model)."""
-    if not devices:
+    if not devices and probe_missing:
+        why_mt = why_asr = ("probe tool missing: vulkaninfo is not installed, so devices could not be checked "
+                            "(install vulkan-tools / vulkaninfo and re-run)")
+    elif not devices:
         why_mt = why_asr = "no Vulkan device found"
     elif pack["state"] == "none":
         why_mt = why_asr = "Vulkan pack not installed: run `tlwu-setup --vulkan-pack`"
@@ -90,9 +93,9 @@ def choose(devices: list[str], pack: dict, have_models: list[str]) -> dict:
 
 
 def report(devices: list[str], pack_path: Path, pack: dict, app_version: str | None, have_models: list[str],
-           models_dir: Path) -> list[str]:
-    pick = choose(devices, pack, have_models)
-    lines = ["Vulkan devices: " + ("; ".join(devices) if devices else "none")]
+           models_dir: Path, probe_missing: bool = False) -> list[str]:
+    pick = choose(devices, pack, have_models, probe_missing)
+    lines = ["Vulkan devices: " + ("; ".join(devices) if devices else "none (vulkaninfo not found)" if probe_missing else "none")]
     ptxt = {"none": "not installed", "ok": f"installed, version {pack['version']} matches the app",
             "stale": f"STALE, version {pack['version'] or 'unknown'} vs app {app_version or 'unknown'}"}[pack["state"]]
     lines.append(f"Vulkan pack: {pack_path} ({ptxt})")
@@ -104,7 +107,7 @@ def report(devices: list[str], pack_path: Path, pack: dict, app_version: str | N
 
 
 def run(root: Path, models_dir: Path, app_version: str | None, env=None, platform: str | None = None,
-        devices: list[str] | None = None, out=print) -> int:
+        devices: list[str] | None = None, out=print, which=shutil.which) -> int:
     """Always exit 0: it is a report, not a gate."""
     import os
 
@@ -112,7 +115,8 @@ def run(root: Path, models_dir: Path, app_version: str | None, env=None, platfor
     platform = platform or sys.platform
     pack_path = Path(env["TLWU_VULKAN_PACK"]) if env.get("TLWU_VULKAN_PACK") else Path(root) / PACK_DIR_NAME
     devs = probe_devices() if devices is None else devices
+    missing = devices is None and not devs and not which("vulkaninfo")
     for ln in report(devs, pack_path, pack_info(pack_path, app_version, platform), app_version, models(models_dir),
-                     models_dir):
+                     models_dir, missing):
         out(ln)
     return 0
