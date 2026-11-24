@@ -23,6 +23,11 @@ on:
     branches: [dev]
     paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
   workflow_dispatch:
+    inputs:
+      x86_64_debug:
+        description: "#1511: also build a debug APK with x86_64 native libs (emulator tests; artifact mobile-apk-debug-x86_64)"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -100,7 +105,7 @@ jobs:
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/aar-cache
-          key: llama-aar-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh') }}
+          key: llama-aar-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh', 'mobile/tool/pack_llama_aar.py') }}
       - name: Build llama.cpp AAR from source (cache miss only)
         if: steps.aar.outputs.cache-hit != 'true'
         run: |
@@ -208,6 +213,10 @@ jobs:
           cp "$APK" "$RUNNER_TEMP/out/$APK_NAME"
           (cd "$RUNNER_TEMP/out" && sha256sum "$APK_NAME" > "$APK_NAME.sha256" && cat "$APK_NAME.sha256")   # build-internal; not uploaded to the release
           echo "$TLWU_SIGNING" > "$RUNNER_TEMP/out/signing.txt"
+      - name: Release APK and AAB ship arm64-v8a only (#1511)
+        run: |
+          python3 -I ../scripts/check_apk_abis.py "$RUNNER_TEMP/out/$APK_NAME" arm64-v8a
+          python3 -I ../scripts/check_apk_abis.py "$RUNNER_TEMP/aab/tinglongwu-mobile.aab" arm64-v8a
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mobile-apk
@@ -235,6 +244,23 @@ jobs:
           # "draft" until the app has had its first release in Play Console; then set the repo
           # variable PLAY_RELEASE_STATUS=completed so internal testers get builds automatically.
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+      # #1511: opt-in emulator debug APK (manual run only). Runs after every release step, so the arm64-only AAR
+      # above is what the release APK/AAB used; this rebuilds the AAR with an x86_64 slice for the debug APK alone.
+      - name: Debug APK with x86_64 (emulator, #1511)
+        if: github.event_name == 'workflow_dispatch' && inputs.x86_64_debug
+        run: |
+          TLWU_BUILD_ROOT="$RUNNER_TEMP/llama" TLWU_LLAMA_ABIS="arm64-v8a x86_64" bash tool/build_llama_android.sh
+          TLWU_X86_64=1 flutter build apk --debug --target-platform android-arm64,android-x64
+          mkdir -p "$RUNNER_TEMP/debug"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$RUNNER_TEMP/debug/tinglongwu-mobile-debug-x86_64.apk"
+          python3 -I ../scripts/check_apk_abis.py "$RUNNER_TEMP/debug/tinglongwu-mobile-debug-x86_64.apk" arm64-v8a,x86_64 | tee -a "$GITHUB_STEP_SUMMARY"
+          unzip -l "$RUNNER_TEMP/debug/tinglongwu-mobile-debug-x86_64.apk" | grep -E " lib/x86_64/.*\.so$" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'workflow_dispatch' && inputs.x86_64_debug
+        with:
+          name: mobile-apk-debug-x86_64
+          path: ${{ runner.temp }}/debug/
+          retention-days: 7
       - name: Build minutes (#1621)
         if: always()
         run: |
