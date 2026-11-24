@@ -113,7 +113,8 @@ def test_transcribe_records_backend_device_and_only_the_asked_languages(tmp_path
 
     res = vp.transcribe("M", str(_manifest(tmp_path)), ("en",), "small", select=select,
                         read=lambda p: (np.zeros(16000, np.float32), 5.0))
-    assert calls == [("M", "small", "en")] and rec.warm == 1
+    assert calls == [(Path("M"), "small", "en")] and rec.warm == 1
+    assert isinstance(calls[0][0], Path)  # the CPU recognizer does models_dir / "whisper-small"
     assert res["backend"] == "vulkan" and res["device_log"] == "vulkan"
     assert [c["hyp"] for c in res["clips"]] == list(REFS.values()) and res["audio_seconds"] == 10.0
     ok, _ = vp.compare_asr(CPU, res)

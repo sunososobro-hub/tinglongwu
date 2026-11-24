@@ -146,7 +146,8 @@ def transcribe(models_dir: str, data_dir: str, langs=("en",), size: str = "small
         lr = [r for r in rows if r["lang"] == lang]
         if not lr:
             continue
-        (rec, backend), log = _capture_fd2(lambda: select(models_dir, size, lang))
+        # Path, not str: FasterWhisperRecognizer joins models_dir / "whisper-<size>" (run 45432917305 TypeError)
+        (rec, backend), log = _capture_fd2(lambda: select(Path(models_dir), size, lang))
         if backend == "vulkan":
             _, warm = _capture_fd2(rec.warm_up)
             log += warm
