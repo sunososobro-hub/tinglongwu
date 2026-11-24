@@ -137,6 +137,20 @@ def test_gui_partial_fills_pending_row_then_final_replaces_it():
     assert s.history() == [("Hallo Welt", "Hello, world.", False)]
 
 
+def test_gui_amend_and_drop_clear_a_stale_streamed_draft_1784():
+    from tinglongwu.gui.core import SubtitleState
+
+    s = SubtitleState(3)
+    s.apply(("final", "prev", "p"))
+    s.apply(("partial", "a", "x"))
+    assert s.lines()[-1] == ("x", True)
+    s.apply(("amend", "prev", "a", "y"))
+    assert s.lines() == [("y", False)]
+    s.apply(("partial", "b", "x"))
+    assert s.apply(("drop", "b")) is True
+    assert s.lines() == [("y", False)]
+
+
 # --- pipeline: live paced clip through run() with the streaming fake (Acceptance 3: t_target_first_ms) ---
 
 def _clip():

@@ -1174,6 +1174,8 @@ class SubtitleState:
                 self.finals[i] = (ev[1], ev[2])
                 self.whos[i] = who
         elif kind == "amend":  # #1395 ("amend", replaced src, src, target[, speaker]): newest final with that src
+            if self.draft is not None and self.draft[0] in (ev[1], ev[2]):
+                self.draft = None  # #1784: a stale streamed partial of this line must not outlive the amend
             i = next((k for k in range(len(self.finals) - 1, -1, -1)
                       if self.finals[k][0] == ev[1] and self.finals[k][1] is not None), None)
             if i is None:  # scrolled out (or never shown): an ordinary final line
@@ -1182,9 +1184,12 @@ class SubtitleState:
             if len(ev) > 4:
                 self.whos[i] = ev[4]
         elif kind == "drop":  # #1532: a heard line that will get no final (echo of our own voice): remove its row
+            stale = self.draft is not None and self.draft[0] == ev[1]
+            if stale:
+                self.draft = None  # #1784: the dropped line's streamed partial goes away too
             i = next((k for k, (src, tgt) in enumerate(self.finals) if tgt is None and src == ev[1]), None)
             if i is None:
-                return False
+                return stale
             del self.finals[i], self.whos[i]
             self.partial.pop(ev[1], None)
         elif kind == "final_side":  # #1001: a speak-leg line next to a listen session: the draft row stays
