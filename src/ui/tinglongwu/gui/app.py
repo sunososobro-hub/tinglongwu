@@ -84,7 +84,7 @@ MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-s
 # #1644: "latest" = the newest finished line from the other side (brighter, so the eye lands on it first)
 # #1662 Linear-style palette: window / transcript backgrounds differ slightly, 1 px separators, muted secondary text,
 # bright primary text and ONE accent (the existing blue); warn / err are the only other colours
-from .theme import (BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
+from .theme import (resolve_theme, BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
                     SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE, FONT_FAMILY, bump, font as tfont, small_size)
 # settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
 SIDE_W = 168
@@ -511,7 +511,7 @@ class _FloatPane(tk.Toplevel):
         self.geometry(notes_geometry(app.settings, self.winfo_screenwidth(), self.winfo_screenheight()))
         self.protocol("WM_DELETE_WINDOW", app._notes_dock)
         self.bind("<Configure>", self._configure, add="+")
-        set_titlebar_dark(self, app.settings.get("theme") != "light")
+        set_titlebar_dark(self, resolve_theme(app.settings.get("theme")) != "light")
 
     def _configure(self, e):
         if e.widget is not self:
@@ -614,7 +614,7 @@ class App:
         self.overlay = Overlay(self.root, self)
         self._sync_bar()  # #1042: the bar is not on screen before Start
         self.tour = Tour(self)
-        self.apply_theme(self.settings.get("theme", "dark"))
+        self.apply_theme(resolve_theme(self.settings.get("theme")), keep_setting=True)  # #1822: auto follows the OS
         if tour_on_start(self.settings):
             self.show_tour()
         try:
@@ -673,7 +673,7 @@ class App:
 
     @property
     def pal(self) -> dict:
-        return PAL["light" if self.settings.get("theme") == "light" else "dark"]
+        return PAL[resolve_theme(self.settings.get("theme"))]
 
     def _tok(self, w, token: str):
         """#1662: a label whose colour is a palette token (re-tinted on every theme change)."""
@@ -694,8 +694,11 @@ class App:
         except tk.TclError:
             _diag.swallowed(__name__)
 
-    def apply_theme(self, name: str):
-        self.settings["theme"] = name = "light" if name == "light" else "dark"
+    def apply_theme(self, name: str, keep_setting: bool = False):
+        name = "light" if name == "light" else "dark"
+        self.theme_name = name
+        if not keep_setting:  # a user toggle forces that theme; startup keeps "auto"
+            self.settings["theme"] = name
         if sv_ttk is not None:
             try:
                 sv_ttk.set_theme(name)
@@ -736,7 +739,7 @@ class App:
             self.panel.configure(bg=pal["win"])
         except (tk.TclError, AttributeError):
             pass
-        dark = self.settings.get("theme") != "light"
+        dark = resolve_theme(self.settings.get("theme")) != "light"
         for name in ("root", "panel", "topics_win"):
             w = getattr(self, name, None)
             try:
@@ -773,7 +776,7 @@ class App:
 
     def _draw_sidebar(self):
         c = self.side
-        pal = SIDE["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = SIDE[resolve_theme(self.settings.get("theme"))]
         c.delete("all")
         h = max(c.winfo_height(), 400)
         top, bot = (tuple(int(col[i:i + 2], 16) for i in (1, 3, 5)) for col in (pal["top"], pal["bottom"]))
@@ -1747,7 +1750,7 @@ class App:
         self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
-            self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
+            self.v_dark = tk.BooleanVar(value=resolve_theme(self.settings.get("theme")) != "light")
         self._build_log(self.chat_holder)
 
     # -- #698 auto-update -------------------------------------------------------------------------
@@ -2441,7 +2444,7 @@ class App:
     def _chat_tags(self, n: int | None = None):
         """Bubble look per theme (#1028): background colour on the text = the bubble; margins push it to a side."""
         n = n or self.settings["log_font_size"]
-        pal = BUBBLE["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = BUBBLE[resolve_theme(self.settings.get("theme"))]
         tx = self.log_text
         tx.configure(bg=pal["bg"])
         small = small_size(n)
@@ -3049,7 +3052,7 @@ class App:
 
     def _notes_tags(self):
         """#1644: the notes text follows the app theme; time range muted, bullet marks in the notes accent."""
-        pal = NOTES["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = NOTES[resolve_theme(self.settings.get("theme"))]
         tx = self.topics_text
         tx.configure(bg=pal["bg"], fg=pal["fg"], insertbackground=pal["fg"])
         tx.tag_configure("title", foreground=pal["title"])

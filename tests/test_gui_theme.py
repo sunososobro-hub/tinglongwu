@@ -104,3 +104,30 @@ def test_subtitle_size_setting_changes_rendered_font_size(monkeypatch):
         gui_app.Overlay.set_font(ov, n)
         assert made[-1]["size"] == n and ov.app.settings["font_size"] == n
         assert tags["src"]["font"][1] == small
+
+
+# ---- #1822: system-following default theme + docs/design.md ----
+
+def test_auto_follows_system_and_forced_wins():
+    dark, light = (lambda: "dark"), (lambda: "light")
+    assert theme.resolve_theme("auto", probe=dark) == "dark"
+    assert theme.resolve_theme("auto", probe=light) == "light"
+    assert theme.resolve_theme(None, probe=light) == "light"
+    assert theme.resolve_theme("dark", probe=light) == "dark"
+    assert theme.resolve_theme("light", probe=dark) == "light"
+
+
+def test_default_setting_is_auto():
+    from tinglongwu.gui import core
+    assert core.DEFAULTS["theme"] == "auto"
+
+
+def test_system_appearance_returns_a_theme_name():
+    assert theme.system_appearance() in ("dark", "light")
+
+
+def test_design_doc_names_every_token():
+    doc = (GUI.parents[3] / "docs" / "design.md").read_text(encoding="utf-8")
+    missing = [n for n in theme.TOKENS["dark"] if f"`{n}`" not in doc]
+    assert not missing, missing
+    assert "docs/design.md" in (GUI.parents[3] / "CLAUDE.md").read_text(encoding="utf-8")

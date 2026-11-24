@@ -1,5 +1,6 @@
 """Colour, type and spacing tokens for the desktop GUI (#1820, #1821). The GUI reads colours only from here (plus the speaker palette in
 core.py); no raw hex anywhere else. Every token exists in both themes with the same names."""
+import functools
 import sys
 
 # semantic tokens per theme: one warning, one error, one muted per theme
@@ -60,3 +61,29 @@ def small_size(n, floor=8):
 def bump(n, d=1):
     """Subtitle size n shifted by d points (emphasis next to the user-chosen size)."""
     return n + d
+
+
+@functools.lru_cache(maxsize=1)  # read once per run: the GUI asks on every redraw
+def system_appearance():
+    """'dark' or 'light' from the OS setting (Windows AppsUseLightTheme, macOS AppleInterfaceStyle); 'dark' when unknown."""
+    try:
+        if sys.platform == "win32":
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as k:
+                return "light" if winreg.QueryValueEx(k, "AppsUseLightTheme")[0] else "dark"
+        if sys.platform == "darwin":
+            import subprocess
+            r = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"], capture_output=True, text=True,
+                               timeout=2)
+            return "dark" if r.stdout.strip().lower() == "dark" else "light"
+    except Exception:  # noqa: BLE001
+        pass
+    return "dark"
+
+
+def resolve_theme(setting, probe=None):
+    """#1822: the theme to draw. 'dark' / 'light' force that theme; anything else ('auto', missing) follows the system."""
+    if setting in ("dark", "light"):
+        return setting
+    return "light" if (probe or system_appearance)() == "light" else "dark"
