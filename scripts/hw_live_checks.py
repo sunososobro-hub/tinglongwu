@@ -6,6 +6,7 @@
     python scripts/hw_live_checks.py file --clips CLIPS --models-dir M [-- ARGS]  #1247 file half of #894, per clip
     python scripts/hw_live_checks.py mic --clips CLIPS --models-dir M       #894 live mic vs file, subtitle gaps
     python scripts/hw_live_checks.py meeting --clips CLIPS --models-dir M   #4 meeting mode: ◀ Them only for system audio
+                                                     [--cable]  #4 on a GitHub-hosted runner (audio-routing.yml)
     python scripts/hw_live_checks.py loopback --clips CLIPS --models-dir M  #348 another process's audio via loopback
 
 Clips: FLEURS test (CC-BY 4.0, eval/matrix_pins.json, every WAV checked against its pinned sha256 by make_ci_smoke)
@@ -55,6 +56,7 @@ READY_TIMEOUT_S = 600.0
 CABLE_IN, CABLE_OUT = "CABLE Input", "CABLE Output"
 READY_MARK = "* ready - listening"   # tinglongwu.cli.READY_LINE (listen side, stderr)
 SPEAK_READY_MARK = "listening... speak"  # tinglongwu.reverse.proto, speak side live
+PACED_MARK = "in real time (--paced)"  # tinglongwu.reverse.proto, speak side replaying a file (#4 --cable)
 
 
 # ---------------------------------------------------------------- pure parts (tested on Linux)
@@ -765,27 +767,69 @@ def run_file(clips: Path, mdir: str, out: Path, extra: list[str] | None = None) 
     return bool(rows), f"WER {wer:.3f}, {len(rows)} lines, clips missed {missed}/{len(per)}"
 
 
+def hosted_patches() -> None:
+    """#4 --cable: the listen side may capture "CABLE Input" (the product refuses it, our own voice goes there; this
+    run has --no-tts, so the cable carries only clip B)."""
+    from tinglongwu.capture import wasapi
+
+    wasapi.is_own_output = lambda name: False
+
+
 def meeting_child(proto_args: list[str]) -> int:
-    """The meeting process with only the feedback guard off: its mic is CABLE Output on purpose (clip A)."""
+    """The meeting process with only the feedback guard off: its mic is CABLE Output on purpose (clip A).
+    `_meeting-child --cable -- ARGS` also lets the listen side capture the cable (hosted runner, hosted_patches)."""
     from tinglongwu.reverse import live, proto
 
     live.check_mic_feedback = lambda *x, **k: None
+    if proto_args[:1] == ["--cable"]:
+        hosted_patches()
+        proto_args = proto_args[1:]
+    if proto_args[:1] == ["--"]:
+        proto_args = proto_args[1:]
     return proto.main(proto_args)
 
 
-def run_meeting(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
-    import soundcard as sc
+def pad_wav(src: Path, dst: Path, pad_s: float) -> Path:
+    """#4 --cable: clip A followed by pad_s of silence. The paced speak side ends the meeting process when its file
+    ends, so the silence keeps the process (and its listen side) running while clip B plays."""
+    import numpy as np
+    import soundfile as sf
 
+    x, sr = sf.read(str(src), dtype="float32", always_2d=True)
+    x = x.mean(axis=1)
+    sf.write(str(dst), np.concatenate([x, np.zeros(int(pad_s * sr), np.float32)]), sr, subtype="PCM_16")
+    return dst
+
+
+def meeting_cmd(a_wav: Path, mdir: str, save: Path, them: str, cable: bool = False) -> list[str]:
+    """The meeting process. Owner PC: clip A comes from the mic "CABLE Output" (▶ Me), `them` = the real speakers.
+    #4 --cable (GitHub-hosted windows-latest, one VB-CABLE, no sound card): every sound played into "CABLE Input"
+    also reaches "CABLE Output", so the mic could not tell A from B; the speak side replays clip A in real time
+    (--input A --paced, the mic path's VAD and pipeline) and the listen side captures "CABLE Input" through WASAPI
+    loopback, where only clip B is played."""
+    me = ["--input", str(a_wav), "--paced"] if cable else ["--mic", CABLE_OUT]
+    return ([sys.executable, str(Path(__file__).resolve()), "_meeting-child"] + (["--cable"] if cable else [])
+            + ["--"] + me + ["--to", "en", "--no-tts", "--no-confirm", "--models-dir", mdir, "--listen",
+                             "--capture-device", them, "--lang", "auto", "--save", str(save), "--models-dir", mdir])
+
+
+def run_meeting(clips: Path, mdir: str, out: Path, cable: bool = False) -> tuple[bool, str]:
     meta = json.loads((clips / "clips.json").read_text("utf-8"))
     sj = out / "meeting.jsonl"
     sj.unlink(missing_ok=True)
-    spk = real_speaker(sc)
-    with Child([sys.executable, str(Path(__file__).resolve()), "_meeting-child", "--", "--mic", CABLE_OUT, "--to", "en",
-                "--no-tts", "--no-confirm", "--models-dir", mdir, "--listen", "--capture-device", spk, "--lang", "auto",
-                "--save", str(sj), "--models-dir", mdir], out / "meeting.log") as ch:
-        if not ch.wait_for(READY_MARK, SPEAK_READY_MARK):
+    if cable:
+        spk = CABLE_IN
+    else:
+        import soundcard as sc
+
+        spk = real_speaker(sc)
+    a_wav = clips / meta["meet_a_zh"]["wav"]
+    # the listen side may get ready after clip A has been replayed: room for both waits, clip B and the tail
+    me_wav = pad_wav(a_wav, out / "meeting_a_padded.wav", READY_TIMEOUT_S + MEET_S + 2 * TAIL_S) if cable else a_wav
+    with Child(meeting_cmd(me_wav, mdir, sj, spk, cable), out / "meeting.log") as ch:
+        if not ch.wait_for(READY_MARK, PACED_MARK if cable else SPEAK_READY_MARK):
             return False, f"meeting mode did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'meeting.log'})"
-        players = [play_child(clips / meta["meet_a_zh"]["wav"], CABLE_IN)]
+        players = [] if cable else [play_child(a_wav, CABLE_IN)]  # --cable: clip A is the speak side's --input
         try:
             players.append(play_child(clips / meta["meet_b_en"]["wav"], spk))
             for pl in players:
@@ -837,6 +881,9 @@ def main(argv=None) -> int:
         s.add_argument("--json", default=None)
         if name == "mic":
             s.add_argument("--gap-history", default=None, help="#1247: JSONL of past subtitle gaps (report only)")
+        if name == "meeting":
+            s.add_argument("--cable", action="store_true",
+                           help="#4: GitHub-hosted runner with one VB-CABLE and no speakers (see meeting_cmd)")
         if name == "file":
             s.add_argument("extra", nargs="*", help="more tlwu arguments after `--` (e.g. --device cpu)")
     a = p.parse_args(argv)
@@ -852,7 +899,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     run = {"file": run_file, "mic": run_mic, "meeting": run_meeting, "loopback": run_loopback}[a.cmd]
     try:
-        args = (a.extra,) if a.cmd == "file" else (a.gap_history,) if a.cmd == "mic" else ()
+        args = ((a.extra,) if a.cmd == "file" else (a.gap_history,) if a.cmd == "mic"
+                else (a.cable,) if a.cmd == "meeting" else ())
         ok, msg = run(Path(a.clips), a.models_dir, out, *args)
     except Exception as e:  # noqa: BLE001 - one FAIL line in the step summary, not a traceback only
         ok, msg = False, f"could not run: {type(e).__name__}: {e}"
