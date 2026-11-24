@@ -50,6 +50,11 @@ STOP_ISSUE_LABELS = {"status:frozen", "status:proposal", "needs-owner"}
 # Section 14: a protected path merges only when its linked issue was opened by the owner or a collaborator; a PASS
 # never overrides it. github-actions[bot] is this repo's own workflows (e.g. bump-action.yml's bump issues): only
 # code already on a branch of this repo can post as it, so it counts as a collaborator.
+# Owner 2026-11-20 merge lanes: a PR is internal when its author is the owner AND its linked issue carries
+# src:owner (every agent PR is authored by the owner's account, so the label decides; src:ai etc. stay external).
+# Lane 1: internal + docs-only -> no `test` needed. Lane 2: internal + code -> no Opus PASS, required checks only.
+# Lane 3: everything else -> all gates as before.
+OWNER_LOGIN, OWNER_LABEL = "sunososobro-hub", "src:owner"
 TRUSTED_ASSOC = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 TRUSTED_ISSUE_BOTS = frozenset({"github-actions[bot]"})
 PASS_RE = re.compile(r"^\s*Opus review: (?:PASS|APPROVE)\b", re.M)
@@ -78,6 +83,22 @@ def trusted_issue(issue: dict) -> bool:
     if issue.get("author_association") in TRUSTED_ASSOC:
         return True
     return (issue.get("user") or {}).get("login") in TRUSTED_ISSUE_BOTS
+
+
+def is_docs_only_path(path: str) -> bool:
+    """Lane 1 docs: *.md or docs/**, never .agent/ / .github/ / .claude/, docs/support.json or a protected path."""
+    if not path or is_protected(path) or path == "docs/support.json":
+        return False
+    if path.startswith((".agent/", ".github/", ".claude/")):
+        return False
+    return path.endswith(".md") or path.startswith("docs/")
+
+
+def is_internal(pr: dict, issue: dict | None) -> bool:
+    """Owner-authored PR whose linked issue has src:owner (owner 2026-11-20, lanes 1 and 2)."""
+    if not issue or (pr.get("user") or {}).get("login") != OWNER_LOGIN:
+        return False
+    return OWNER_LABEL in {lb["name"] for lb in issue.get("labels", [])}
 
 
 def _ts(s: str) -> datetime:
@@ -172,12 +193,13 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         return "skip", "release snapshot"
     if head.startswith("hotfix/"):
         return "needs-ai", "hotfix back-merge: merge commit, AI merger"
-    if not HEAD_RE.match(head):
+    if not HEAD_RE.match(head):  # every lane: section 2 head names
         return "needs-opus", "head is not fix/N; reopen as fix/<issue>"
     if legacy_freeze and "release-fix" not in body:
         return "hold", "legacy release freeze: body lacks release-fix"
 
     pass_at = opus_pass_after(notes, head_at, pr["head"].get("sha", "")) or carried_pass(notes, carry)
+    internal = is_internal(pr, issue)  # lane 2: an internal PR needs no Opus PASS, even on protected paths
     for n in notes:
         if STOP_RE.search(n.get("body") or "") and not (pass_at and pass_at > _ts(n["at"])):
             if n.get("author", "").endswith("[bot]"):
@@ -186,7 +208,7 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
     plabels = {lb["name"] for lb in pr.get("labels", [])}
     if "needs-owner" in plabels:
         return "hold", "PR has needs-owner"  # section 3 / 14 hard stop; a PASS does not lift an owner question
-    if NEEDS_OPUS in plabels and not pass_at:
+    if NEEDS_OPUS in plabels and not pass_at and not internal:
         return "hold", "PR has needs-opus and no Opus PASS on its head"  # e.g. section 3 "failed twice"
     rejects = [_ts(n["at"]) for n in notes if REJECT_RE.search(n.get("body") or "")]
     if rejects and max(rejects) > head_at:
@@ -207,18 +229,25 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
 
     if len(files) != int(pr.get("changed_files", -1)):
         return "wait", f"file list has {len(files)} files, PR reports {pr.get('changed_files')}"
+    # lane 1 (owner 2026-11-20): an internal PR whose every file is docs needs no `test` at all
+    docs_only = internal and bool(files) and all(
+        is_docs_only_path(f["filename"]) and (not f.get("previous_filename") or is_docs_only_path(f["previous_filename"]))
+        for f in files)
     protected = sorted(f["filename"] for f in files
                        if is_protected(f["filename"]) or is_protected(f.get("previous_filename") or ""))
     if protected and not trusted_issue(issue):
         return "hold", f"protected path but issue #{n} was not opened by a collaborator (section 14)"
     if protected:
         exempt = bump is not None and bump(files)[0]
-        if not exempt and not pass_at:
+        if not exempt and not pass_at and not internal:
             return "needs-opus", "protected / g4 path: " + ", ".join(protected[:5])
-    if any(f["filename"] == "src/core/tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) and not pass_at:
+    if any(f["filename"] == "src/core/tinglongwu/__init__.py" for f in files) and not (bump and bump(files)[0]) \
+            and not pass_at and not internal:
         return "needs-opus", "touches src/core/tinglongwu/__init__.py"
 
     test = [c for c in checks if c.get("name") == "test"]
+    if docs_only:
+        test = [{"name": "test", "status": "completed", "conclusion": "success"}]  # lane 1: no test required
     if not test or any(c.get("status") != "completed" for c in test):
         return "wait", "test not finished"
     if any(c.get("conclusion") != "success" for c in test):
