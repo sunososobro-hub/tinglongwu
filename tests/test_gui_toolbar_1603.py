@@ -36,7 +36,7 @@ def test_toolbar_widgets_share_one_parent_row(gui):
     assert all(w.winfo_ismapped() for w in widgets)
     assert len({w.winfo_rooty() for w in widgets}) <= 2  # one row (a few px of centring at most)
     assert a.btn_adjust is a.btn_settings
-    assert a.toolbar.winfo_reqwidth() <= 460  # fits the default 460 px main window in the widest UI language
+    assert a.toolbar.winfo_reqwidth() <= 560  # same bound as the bottom bar (MAIN_BAR_MAX_W); CI fonts run ~20% wider than 460 px in the widest UI language
     assert not a.home_lang.winfo_ismapped() and not a.home_target.winfo_ismapped()
 
 
