@@ -323,3 +323,12 @@ def test_1241_notice_keeps_other_text_when_cpu_mode_dropped():
     assert drop_cpu_mode_notice(f"GPU off | {cpu}", status) == "GPU off"
     assert drop_cpu_mode_notice(f"{cpu}\nMic is off", status) == "Mic is off"
     assert drop_cpu_mode_notice(cpu, "Loading...") == cpu  # status does not show it yet: keep it
+
+
+# #1646: the CI "GUI acceptance screenshots" step names only this file; with TLWU_GUI_SHOTS set it also runs the
+# design-review shots (tests/test_gui_design_shots.py) so the PNGs land in the same gui-acceptance artifact.
+if os.environ.get("TLWU_GUI_SHOTS"):
+    import sys
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from test_gui_design_shots import test_1646_design_shot  # noqa: E402,F401
