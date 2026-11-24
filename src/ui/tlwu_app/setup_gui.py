@@ -14,7 +14,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from . import tiers
+from . import tiers, wording
 
 
 def worker_cmd(bundled: bool, mdir: Path, args: list[str]) -> list[str]:
@@ -31,10 +31,12 @@ def wants_gpu_pack(tier: tiers.Tier, gpu) -> bool:
     return gpu is not None and tier.name != "cpu"
 
 
-GPU_PACK_ASK = ("偵測到 NVIDIA 顯示卡。要現在下載 GPU 加速包嗎？\n\n大小約 1.5 GB，只需下載一次；"
-                "依網路速度約需 3–15 分鐘。裝好後翻譯會快很多。\n\n選「否」＝稍後再說：之後可在主畫面上方的提示，"
-                "或「設定 > 附加元件」一鍵安裝。")
-GPU_PACK_LATER = "已略過 GPU 加速包（目前用 CPU）；之後可在主畫面或「設定 > 附加元件」一鍵安裝。"
+def gpu_pack_ask() -> str:
+    return wording.text("ask.body")
+
+
+def gpu_pack_later() -> str:
+    return wording.text("ask.later")
 
 
 def gpu_pack_choice(tier: tiers.Tier, gpu, ask) -> bool:
@@ -57,10 +59,10 @@ def gpu_pack_cmd(bundled: bool, mdir: Path) -> list[str]:
 def gpu_pack_status(rc: int, tail: str) -> str:
     """Summary line for the wizard: the GPU pack is installed, or why it is not (the CPU path keeps working)."""
     if rc == 0 and "no GPU pack" not in tail:
-        return "GPU 加速包已安裝。"
+        return wording.text("pack.ok")
     if rc == 0:
-        return "這個版本沒有 GPU 加速包，改用 CPU（可稍後在「設定 > 附加元件」安裝）。"
-    return "GPU 加速包沒有安裝成功（需要網路），目前改用 CPU；可稍後在「設定 > 附加元件」再試一次。"
+        return wording.text("pack.none")
+    return wording.text("pack.fail")
 
 
 def selftest_cmd(bundled: bool, mdir: Path, tier: tiers.Tier) -> list[str]:
@@ -119,7 +121,7 @@ class SetupWindow:
         ttk.Label(f, textvariable=self.v_plan, wraplength=420, foreground="#1a4d8f").pack(anchor="w", pady=(4, 8))
         self.v_cpu = tk.BooleanVar(value=force_cpu or self.gpu is None)
         if self.gpu:
-            ttk.Checkbutton(f, text="改用 CPU 模式（下載較少，但翻譯較慢）", variable=self.v_cpu,
+            ttk.Checkbutton(f, text=wording.text("cpu.checkbox"), variable=self.v_cpu,
                             command=self._replan).pack(anchor="w")
         self._replan()
         self.bar = ttk.Progressbar(f, length=420, maximum=100)
@@ -137,7 +139,7 @@ class SetupWindow:
 
     def _replan(self):
         self.tier = tiers.choose_tier(self.gpu, self.v_cpu.get())
-        self.v_plan.set(f"將下載：{self.tier.label_zh}\n預計下載量：{self.tier.size_text}")
+        self.v_plan.set(f"將下載：{self.tier.label}\n預計下載量：{self.tier.size_text}")
 
     # -- download ------------------------------------------------------------------------------
     def start(self):
@@ -187,7 +189,7 @@ class SetupWindow:
             self.v_status.set(status)
             note = gpu_fallback_note(tail)
             if note:
-                self.v_note.set(note)
+                self.v_note.set(wording.fallback_display(note))
             if warning:
                 messagebox.showwarning("自我測試失敗", warning)
             self.root.after(600, self.root.destroy)
@@ -206,12 +208,12 @@ class SetupWindow:
             asked = wants_gpu_pack(self.tier, self.gpu)
             if gpu_pack_choice(self.tier, self.gpu, self._ask_gpu_pack):
                 self.phase = "gpupack"
-                self.v_status.set("安裝 GPU 加速包（NVIDIA，需連網一次）…")
+                self.v_status.set(wording.text("pack.installing"))
                 threading.Thread(target=self._run, args=(gpu_pack_cmd(self.bundled, self.mdir),), daemon=True).start()
                 self.root.after(500, self.poll)
                 return
             self.phase = "selftest"
-            self.pack_note = GPU_PACK_LATER if asked else ""
+            self.pack_note = gpu_pack_later() if asked else ""
             self.v_note.set(self.pack_note)
             self.v_status.set("下載完成，自我測試中（載入模型並翻譯一句測試句）…")
             cmd = selftest_cmd(self.bundled, self.mdir, self.tier)
@@ -224,7 +226,7 @@ class SetupWindow:
         messagebox.showerror("下載失敗", (tail.strip() or f"結束碼 {rc}")[-400:])
 
     def _ask_gpu_pack(self):
-        return messagebox.askyesno("GPU 加速包", GPU_PACK_ASK, parent=self.root)
+        return messagebox.askyesno(wording.text("ask.title"), gpu_pack_ask(), parent=self.root)
 
     def cancel(self):
         if self.proc is not None and self.proc.poll() is None:
