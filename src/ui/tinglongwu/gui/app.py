@@ -1798,7 +1798,9 @@ class App:
                 st = self._gpu_detect()
                 self.q.put(("gpu_state", st))
                 if st == gpu_offer.UNAVAILABLE:  # #1775: no NVIDIA pack to offer -> maybe the Vulkan pack (AMD / Intel)
-                    self.q.put(("gpu_vk_state", self._vk_detect()))
+                    from . import vulkan_offer
+
+                    self.q.put(("gpu_vk_state", vulkan_offer.gate_for_nvidia(self._vk_detect(), nvidia_seen())))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1860,7 +1862,8 @@ class App:
         from . import vulkan_offer
         from .core import run_pack_download
 
-        if self.gpu_busy or vulkan_offer.INSTALLING.is_set():
+        bg = getattr(self, "bg_dl", None)
+        if vulkan_offer.install_blocked(self.gpu_busy, bool(self.downloading), bool(bg is not None and bg.active)):
             return
         vulkan_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
@@ -1941,8 +1944,11 @@ class App:
             if auto is not None and auto.outcome(ev[2], self.gpu_lines) == "cancelled":  # #1736: stays on CPU, offer remains
                 self._gpu_offer_show()
             elif getattr(self, "gpu_vk", False):  # #1775: the Vulkan pack has its own wording (no CUDA restart notice)
-                self._gpu_show(t("vk_offer_ok") if ev[2] == 0 else t("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)),
-                               buttons=False)
+                from . import vulkan_offer
+
+                cpu = vulkan_offer.cpu_backends(self.gpu_lines) if ev[2] == 0 else []
+                self._gpu_show(t("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)) if ev[2] != 0
+                               else t("vk_offer_ok_cpu", cpu=" + ".join(cpu)) if cpu else t("vk_offer_ok"), buttons=False)
             elif gpu_offer.install_ok(ev[2], self.gpu_lines):
                 self.gpu_runtime_failed = False  # a fresh pack replaced the one that failed to load
                 self._gpu_show(t("gpu_offer_ok"), buttons=False)
@@ -3375,7 +3381,9 @@ class App:
 
         try:
             mdir = models_dir()
-            if self.downloading:  # a foreground setup child is running: do not start a second manifest writer
+            from . import vulkan_offer
+
+            if self.downloading or vulkan_offer.defer_bg_defaults():  # a foreground / Vulkan setup child runs: no second manifest writer
                 self.root.after(5000, self._bg_defaults_start)
                 return
             if not hasattr(self, "bg_dl"):

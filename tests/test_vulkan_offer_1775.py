@@ -51,3 +51,19 @@ def test_run_install_order_stop_on_failure_and_probe(tmp_path):
     run2 = lambda name, put, cmd=None: (seen.append(cmd), 1)[1]  # noqa: E731
     assert vo.run_install(run2, out.append, ["a", "b"]) == 1
     assert seen == ["a"] and out == [("pack_done", vo.ROW_NAME, 1)]
+
+
+def test_1780_nvidia_gate_install_blocked_bg_defer_and_cpu_names():
+    assert vo.gate_for_nvidia(vo.MISSING, True) == vo.UNAVAILABLE and vo.gate_for_nvidia(vo.MISSING, False) == vo.MISSING
+    vo.INSTALLING.clear()
+    assert not vo.install_blocked(False, False, False) and not vo.defer_bg_defaults()
+    assert vo.install_blocked(False, True, False) and vo.install_blocked(False, False, True) and vo.install_blocked(True, False, False)
+    vo.INSTALLING.set()
+    try:
+        assert vo.defer_bg_defaults() and vo.install_blocked(False, False, False)
+    finally:
+        vo.INSTALLING.clear()
+    assert vo.cpu_backends(["x", "vulkan probe: ASR vulkan, MT cpu"]) == ["translation"]
+    assert vo.cpu_backends(["vulkan probe: ASR cpu, MT cpu"]) == ["speech", "translation"]
+    assert vo.cpu_backends(["vulkan probe: ASR vulkan, MT vulkan"]) == [] and vo.cpu_backends([]) == []
+    assert vo.cpu_backends(["vulkan probe: skipped (OSError)"]) == ["speech", "translation"]
