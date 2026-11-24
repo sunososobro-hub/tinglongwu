@@ -40,3 +40,17 @@ def test_known_diff_summary(capsys):
     n_prompt = sum(1 for c in PROMPT if c.get("known_diff"))
     with capsys.disabled():
         print(f"\nknown_diff: clean={n_clean} prompt={n_prompt}")
+
+
+SCRIPT = _load("script")
+
+
+def test_script_golden_has_wrong_script_cases():
+    assert sum(1 for c in SCRIPT if c["wrong"]) >= 6 and not any(c.get("known_diff") for c in SCRIPT)
+
+
+@pytest.mark.parametrize("case", SCRIPT, ids=lambda c: f"{c['tgt']}-{c['out'][:12]}")
+def test_script_golden(case):
+    from tinglongwu.target_script import wrong_script
+
+    assert wrong_script(case["src"], case["out"], case["tgt"]) is case["wrong"]
