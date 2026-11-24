@@ -108,3 +108,30 @@ def test_issues_in_range_explicit_none_and_missing_prev_scan_whole_history(tmp_p
     assert sn.issues_in_range("r", "v0.2.0", "t", "v0.1.0") == [2]  # bounded
     assert sn.issues_in_range("r", "v0.2.0", "t", None) == [2, 1]  # explicit None: whole history
     assert sn.issues_in_range("r", "v0.2.0", "t", "v0.0.0-gone") == [2, 1]  # missing ref: no abort
+
+
+def test_issues_in_range_skips_subject_numbers_that_are_not_prs(tmp_path, monkeypatch):
+    """#1504: a `(#N)` in a commit subject can be an issue; /pulls/N then 404s and used to abort the whole run."""
+    import io
+    import urllib.error
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "real pr (#1)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "mentions an issue (#2)")
+    _git(tmp_path, "tag", "v0.1.0")
+    monkeypatch.chdir(tmp_path)
+
+    def fake_api(path, token, *a, **k):
+        n = path.rsplit("/", 1)[1]
+        if n == "2":
+            raise urllib.error.HTTPError(path, 404, "Not Found", {}, io.BytesIO(b""))
+        if n == "3":
+            raise urllib.error.HTTPError(path, 500, "boom", {}, io.BytesIO(b""))
+        return {"body": "Closes #" + n}
+
+    monkeypatch.setattr(sn, "_api", fake_api)
+    assert sn.issues_in_range("r", "v0.1.0", "t", None) == [1]
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "server error (#3)")
+    _git(tmp_path, "tag", "v0.2.0")
+    import pytest
+    with pytest.raises(urllib.error.HTTPError):  # other errors still fail loudly
+        sn.issues_in_range("r", "v0.2.0", "t", "v0.1.0")
