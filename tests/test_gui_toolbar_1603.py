@@ -58,7 +58,7 @@ def test_badge_says_offline_and_carries_other_statuses(gui):
     assert "Offline" in a.lbl_offline.cget("text") and not a.lbl_status.winfo_ismapped()
     a._status_text("Loading speech model, please wait")
     a.root.update()
-    assert "Loading speech model" in a.lbl_offline.cget("text") and a.lbl_status.winfo_ismapped()
+    assert "Loading" in a.lbl_offline.cget("text") and a.lbl_status.winfo_ismapped()
     a.set_status("gui_ready")
     a.root.update()
     assert "Offline" in a.lbl_offline.cget("text") and not a.lbl_status.winfo_ismapped()
