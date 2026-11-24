@@ -1825,7 +1825,7 @@ class App:
         if kind == "gpu_state":
             if not self.gpu_busy and gpu_offer.should_offer(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
                                       gpu_offer.offline()):
-                if gpu_offer.should_autostart(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
+                if gpu_offer.should_autostart(ev[1], gpu_offer.cpu_mode() or not self._gpu_allowed(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
                                               gpu_offer.offline(), bool(self.settings.get(gpu_offer.AUTO_OFF_KEY))):
                     self._gpu_install(auto=True)  # #1736: download by default, the user can cancel
                 else:
