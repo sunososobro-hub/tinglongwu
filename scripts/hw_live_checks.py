@@ -5,6 +5,7 @@
     python scripts/hw_live_checks.py clips --data DATA --out CLIPS
     python scripts/hw_live_checks.py file --clips CLIPS --models-dir M [-- ARGS]  #1247 file half of #894, per clip
     python scripts/hw_live_checks.py mic --clips CLIPS --models-dir M       #894 live mic vs file, subtitle gaps
+                 [--play-device OUT --capture-device MIC]  #894 on a GitHub-hosted ubuntu runner (mic-room.yml)
     python scripts/hw_live_checks.py meeting --clips CLIPS --models-dir M   #4 meeting mode: ◀ Them only for system audio
                                                      [--cable]  #4 on a GitHub-hosted runner (audio-routing.yml)
     python scripts/hw_live_checks.py loopback --clips CLIPS --models-dir M  #348 another process's audio via loopback
@@ -658,7 +659,11 @@ def _wer(rows: list[dict], ref: str) -> float:
     return error_rate([(ref, " ".join(r["src"] for r in rows))], "en")
 
 
-def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> tuple[bool, str]:
+def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None, play_device: str = CABLE_IN,
+            capture_device: str = CABLE_OUT) -> tuple[bool, str]:
+    """#894: play_device is where the clip is played, capture_device the microphone tlwu --mic listens to. Owner PC:
+    "CABLE Input" -> "CABLE Output"; cloud (mic-room.yml): a PulseAudio null sink -> a source remapped from its
+    monitor, so the same check runs on a GitHub-hosted ubuntu runner."""
     meta = json.loads((clips / "clips.json").read_text("utf-8"))["mic_en"]
     wav, common = clips / meta["wav"], ["--lang", "en", "--transcript-only", "--models-dir", mdir]
     fj, mj, stop = out / "mic_file.jsonl", out / "mic_live.jsonl", out / "mic.stop"
@@ -671,7 +676,7 @@ def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> t
     gpu_seen: list[str] = []
     gpu_before = gpu_apps()  # #1247: who else is on the GPU (the runner is the owner's desktop)
     with Child([sys.executable, str(ROOT / "scripts" / "verify_offline.py"), "--mic", "--seconds", "3600",
-                "--stop-file", str(stop), "--", "--capture-device", CABLE_OUT, "--save", str(mj),
+                "--stop-file", str(stop), "--", "--capture-device", capture_device, "--save", str(mj),
                 "--latency-jsonl", str(lj), "--debug-latency", *common],
                out / "mic_live.log") as ch:
         ready = False
@@ -680,7 +685,7 @@ def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> t
             if not ready:
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             with GpuSampler() as sampler:  # during play: an app that starts and exits mid-clip is still seen
-                t0 = played_at(play_child(wav, CABLE_IN))
+                t0 = played_at(play_child(wav, play_device))
                 sampler.signal()  # play is over: "seen during play" stops here
                 gpu_during = gpu_apps()  # end of play, before the sampler join and the tail wait; tlwu is one of these
             gpu_seen = sampler.seen
@@ -856,7 +861,7 @@ def run_loopback(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     return check_loopback(read_jsonl(sj), meta["ref"])
 
 
-WHAT = {"file": "#1247 file baseline of the #894 clip", "mic": "#894 live mic (CABLE) vs file",
+WHAT = {"file": "#1247 file baseline of the #894 clip", "mic": "#894 live mic vs file",
         "meeting": "#4 meeting mode ◀ Them labels",
         "loopback": "#348 other-process audio via WASAPI loopback"}
 
@@ -881,6 +886,8 @@ def main(argv=None) -> int:
         s.add_argument("--json", default=None)
         if name == "mic":
             s.add_argument("--gap-history", default=None, help="#1247: JSONL of past subtitle gaps (report only)")
+            s.add_argument("--play-device", default=CABLE_IN, help="#894: output the clip is played into")
+            s.add_argument("--capture-device", default=CABLE_OUT, help="#894: microphone tlwu --mic listens to")
         if name == "meeting":
             s.add_argument("--cable", action="store_true",
                            help="#4: GitHub-hosted runner with one VB-CABLE and no speakers (see meeting_cmd)")
@@ -899,7 +906,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     run = {"file": run_file, "mic": run_mic, "meeting": run_meeting, "loopback": run_loopback}[a.cmd]
     try:
-        args = ((a.extra,) if a.cmd == "file" else (a.gap_history,) if a.cmd == "mic"
+        args = ((a.extra,) if a.cmd == "file" else (a.gap_history, a.play_device, a.capture_device) if a.cmd == "mic"
                 else (a.cable,) if a.cmd == "meeting" else ())
         ok, msg = run(Path(a.clips), a.models_dir, out, *args)
     except Exception as e:  # noqa: BLE001 - one FAIL line in the step summary, not a traceback only
