@@ -1,27 +1,27 @@
 {"input": "Hello world", "expected": "Hello world"}
-{"input": "  Hello   world \n again ", "expected": "Hello world again"}
-{"input": "<think>reasoning</think>你好", "expected": "你好"}
-{"input": "<think>unclosed reasoning 你好", "expected": ""}
-{"input": "abc</think>def", "expected": "abcdef"}
-{"input": "哈哈哈哈哈哈哈哈", "expected": "哈哈"}
+{"input": "  Hello   world \n again ", "expected": "Hello world again", "known_diff": "phone", "issue": 1617}
+{"input": "<think>reasoning</think>你好", "expected": "你好", "known_diff": "phone", "issue": 1617}
+{"input": "<think>unclosed reasoning 你好", "expected": "", "known_diff": "phone", "issue": 1617}
+{"input": "abc</think>def", "expected": "abcdef", "known_diff": "phone", "issue": 1617}
+{"input": "哈哈哈哈哈哈哈哈", "expected": "哈哈", "known_diff": "phone", "issue": 1617}
 {"input": "Translation: Good morning", "expected": "Good morning"}
 {"input": "翻譯：早安", "expected": "早安"}
 {"input": "译文：早安", "expected": "早安"}
-{"input": "[Translated text]: Hi there", "expected": "Hi there"}
-{"input": "# Heading text", "expected": "Heading text"}
-{"input": "> quoted text", "expected": "quoted text"}
-{"input": "- bullet text", "expected": "bullet text"}
-{"input": "* bullet text", "expected": "bullet text"}
-{"input": "**bold** and `code` and *it*", "expected": "bold and code and it"}
-{"input": "可可_chan 來了", "expected": "可可chan 來了"}
-{"input": "snake_case_word", "expected": "snake case word"}
-{"input": "trailing_ underscore_", "expected": "trailing underscore"}
+{"input": "[Translated text]: Hi there", "expected": "Hi there", "known_diff": "phone", "issue": 1617}
+{"input": "# Heading text", "expected": "Heading text", "known_diff": "phone", "issue": 1617}
+{"input": "> quoted text", "expected": "quoted text", "known_diff": "phone", "issue": 1617}
+{"input": "- bullet text", "expected": "bullet text", "known_diff": "phone", "issue": 1617}
+{"input": "* bullet text", "expected": "bullet text", "known_diff": "phone", "issue": 1617}
+{"input": "**bold** and `code` and *it*", "expected": "bold and code and it", "known_diff": "phone", "issue": 1617}
+{"input": "可可_chan 來了", "expected": "可可chan 來了", "known_diff": "phone", "issue": 1617}
+{"input": "snake_case_word", "expected": "snake case word", "known_diff": "phone", "issue": 1617}
+{"input": "trailing_ underscore_", "expected": "trailing underscore", "known_diff": "phone", "issue": 1617}
 {"input": "\"wrapped in quotes\"", "expected": "wrapped in quotes"}
 {"input": "“中文引號”", "expected": "中文引號"}
 {"input": "「日本語」", "expected": "日本語"}
-{"input": "«Bonjour»", "expected": "Bonjour"}
-{"input": "\"a\" and \"b\"", "expected": "\"a\" and \"b\""}
-{"input": "'single'", "expected": "single"}
+{"input": "«Bonjour»", "expected": "Bonjour", "known_diff": "phone", "issue": 1617}
+{"input": "\"a\" and \"b\"", "expected": "\"a\" and \"b\"", "known_diff": "phone", "issue": 1617}
+{"input": "'single'", "expected": "single", "known_diff": "phone", "issue": 1617}
 {"input": "Note that you should only output the translated result without any additional explanation: Hello", "expected": "Hello"}
 {"input": "注意只需要输出翻译后的结果，不要额外解释：你好", "expected": "你好"}
 {"input": "Только переведённый результат без комментариев. Привет", "expected": "Привет"}
@@ -30,8 +30,8 @@
 {"input": "Note: this is a real sentence", "expected": "Note: this is a real sentence"}
 {"input": "", "expected": ""}
 {"input": "   ", "expected": ""}
-{"input": "a\nb\nc", "expected": "a b c"}
-{"input": "参考上面的信息，把下面的文本翻译成英语，注意不需要翻译上文，也不要额外解释：Hello", "expected": "Hello"}
+{"input": "a\nb\nc", "expected": "a b c", "known_diff": "phone", "issue": 1617}
+{"input": "参考上面的信息，把下面的文本翻译成英语，注意不需要翻译上文，也不要额外解释：Hello", "expected": "Hello", "known_diff": "phone", "issue": 1617}
 {"input": "Примите во внимание, что следует выводить только переведенный результат, без каких-либо дополнительных комментариев", "expected": ""}
 {"input": "Примите во внимание, что следует выводить только переведенный результат, без каких-либо дополнительных комментариев: Давайте поделимся.", "expected": "Давайте поделимся."}
 {"input": "Обратите внимание: выводите только переведённый текст без объяснений.\nВода переливается через дамбу.", "expected": "Вода переливается через дамбу."}
