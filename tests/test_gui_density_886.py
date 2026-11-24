@@ -75,7 +75,7 @@ def test_settings_sit_in_two_columns(small_screen_app):
     assert cols == {1, 5}
     # owner 2026-11-15: the two languages live only at the top (my language / other side's), not under Advanced
     assert not a.combos["lang"].winfo_ismapped() and not a.combos["target"].winfo_ismapped()
-    assert a.home_lang.winfo_ismapped() and a.home_target.winfo_ismapped()
+    assert a.btn_pair.winfo_ismapped()  # #1603
 
 
 def test_empty_send_notice_takes_no_row(small_screen_app):

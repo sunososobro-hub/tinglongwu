@@ -40,7 +40,7 @@ def _texts(a):
 def test_lang_fields_exactly_two_visible_language_fields(app):
     app.panel.deiconify()
     app.root.update()
-    assert app.home_lang.winfo_ismapped() and app.home_target.winfo_ismapped()
+    assert app.btn_pair.winfo_ismapped() and not app.home_lang.winfo_ismapped()  # #1603: one pair button
     # the Advanced 來源語言 / 翻譯成 rows are not on screen (even with Advanced open)
     app.set_advanced(True)
     app.root.update()

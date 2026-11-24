@@ -71,7 +71,7 @@ def _inside(app, w, win):
 @pytest.mark.parametrize("scene", ["meeting", "video"])
 def test_982_every_mode_has_two_language_rows_and_no_advanced_ones(make_app, scene):
     a = make_app(scene=scene, advanced_open=True)
-    assert a.home_target.winfo_ismapped() and a.home_lang.winfo_ismapped()  # My language / Other side language
+    assert a.btn_pair.winfo_ismapped()  # #1603: one pair button  # My language / Other side language
     assert not a.combos["target"].winfo_ismapped() and not a.combos["lang"].winfo_ismapped()  # no Advanced rows
     _shot(a, f"982_{scene}")
 

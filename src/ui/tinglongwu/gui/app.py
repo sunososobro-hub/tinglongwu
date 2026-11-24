@@ -621,6 +621,7 @@ class App:
         self._make_main()
         self._build_controls()
         self._build_quick()
+        self._build_toolbar()
         self._build_bar()
         self._build_update_line()
         self._build_gpu_offer()  # #1525: one-click GPU speed-up pack offer (NVIDIA only)
@@ -857,6 +858,7 @@ class App:
         self.home_lang.configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self._pair_changed()
+        self._toolbar_refresh()
         self.overlay.build_menu()
         self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
         self.log_menu.entryconfigure(1, label=t("gui_log_copy"))
@@ -1174,7 +1176,9 @@ class App:
         """#1028: the main window = language pickers on top, chat bubbles in the middle, status + one big Start and
         the mic / floating-subtitle toggles at the bottom. (Settings are the separate panel, opened with the gear.)"""
         r = self.root
-        self.top_frame = ttk.Frame(r, padding=(12, 6, 12, 2))
+        self.toolbar = ttk.Frame(r, padding=(12, 6, 12, 0))  # #1603: one top row (pair, swap, situation, badge, A-/A+, settings)
+        self.toolbar.pack(side="top", fill="x")
+        self.top_frame = ttk.Frame(r, padding=(12, 0, 12, 2))
         self.top_frame.pack(side="top", fill="x")
         self.bar = ttk.Frame(r, padding=(12, 2, 12, 6))
         self.bar.pack(side="bottom", fill="x")
@@ -1188,13 +1192,12 @@ class App:
         the big Start / Stop at the right."""
         b = self.bar
         b.columnconfigure(1, weight=1)
-        self.scene_row = scene_row = ttk.Frame(b)  # 0.3.8: 情境 - what the one Start starts; fixed while a session runs
-        self._tx(ttk.Label(scene_row), "gui_scene").pack(side="left", padx=(0, 6))
+        self.scene_row = scene_row = ttk.Frame(b)  # 0.3.8: 情境; #1603: the dropdown itself now lives in the top toolbar
         self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
         # one readonly dropdown: exactly one scene is active at a time; the box shows the UI-language names
-        self.scene_combo = ttk.Combobox(scene_row, state="readonly", width=24, values=self._scene_labels())
+        self.scene_combo = ttk.Combobox(self.toolbar, state="readonly", width=11, values=self._scene_labels())
         self.scene_combo.set(t("gui_scene_" + self.v_scene.get()))
-        self.scene_combo.pack(side="left")
+        self.scene_combo.pack(side="left", padx=(8, 0))
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
         # #1544: what the video scene listens to, in plain words, one click to switch (was only under 調整)
         self.source_row = ttk.Frame(b)  # its own row: next to the scene dropdown it pushed the bar past its max width
@@ -1215,8 +1218,7 @@ class App:
         self.bar_wide = None
         self._bar_layout(0)  # narrow until the first <Configure> says otherwise
         b.bind("<Configure>", lambda e: self._bar_layout(e.width), add="+")
-        self.btn_adjust = self._tx(ttk.Button(row2, command=self.toggle_adjust), "gui_adjust")
-        self.btn_adjust.pack(side="left")
+        self.btn_adjust = self.btn_settings  # #1603: the gear in the top toolbar (built in _build_toolbar)
         self.dot = tk.Canvas(row2, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
         self.dot.pack(side="left", padx=8)
@@ -1253,6 +1255,7 @@ class App:
             self.toggle_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=0)
             self.source_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
             self.action_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(4, 0))
+        self.scene_row.grid_remove()  # #1603: the situation dropdown is in the toolbar
         self._source_sync()  # #1544: the grid() above would show the row again in the meeting scene
 
     @staticmethod
@@ -1404,6 +1407,86 @@ class App:
     def _bar_start(self):
         """#1001: the bar's Start = the one Start (listen + speak together); Stop while running."""
         self.toggle(None)
+
+    # -- #1603 one top toolbar ---------------------------------------------------------------
+    BADGE_MAX = 34  # characters of a non-ready status shown in the badge (the full text stays on the status line)
+
+    def _build_toolbar(self):
+        """#1603: one row: language pair + swap, situation (scene_combo, packed in _build_bar), offline badge, A- / A+,
+        settings. Replaces the two full-width dropdowns, the A-/A+ row and the "Ready. Fully offline." line."""
+        tb = self.toolbar
+        self.btn_pair = ttk.Button(tb, command=self._pair_menu)
+        self.btn_pair.pack(side="left")
+        self.btn_swap = ttk.Button(tb, text="\u21c4", width=3, name="swap_languages", command=self.swap_languages)
+        self.btn_swap.pack(side="left", padx=(2, 0))
+        self.btn_swap.accessible_name = "swap languages"
+        self.btn_settings = ttk.Button(tb, text="\u2699", width=3, command=self.toggle_adjust)
+        self.btn_settings.pack(side="right")
+        self.btn_font_up = ttk.Button(tb, text="A+", width=3, command=lambda: self.bump_log_font(2))
+        self.btn_font_up.pack(side="right", padx=(0, 4))
+        self.btn_font_down = ttk.Button(tb, text="A-", width=3, command=lambda: self.bump_log_font(-2))
+        self.btn_font_down.pack(side="right", padx=(0, 2))
+        self.lbl_offline = ttk.Label(tb, text="", font="TkSmallCaptionFont")
+        self.lbl_offline.pack(side="right", padx=(0, 8))
+        self._tok(self.lbl_offline, "muted")
+        for v in (self.v_lang, self.v_target):
+            v.trace_add("write", lambda *_: self._toolbar_refresh())
+        self._toolbar_refresh()
+
+    def _pair_text(self) -> str:
+        from .. import langs
+
+        ui = core._ui()
+        return f"{langs.plain_label(lang_from_label(self.v_lang.get()), ui)} \u2192 {choice_label('target', self.v_target.get(), ui)}"
+
+    def _toolbar_refresh(self):
+        """Pair button text, offline badge text, and the status line (only shown when it says something else)."""
+        if getattr(self, "btn_pair", None) is None:
+            return
+        self.btn_pair.configure(text=self._pair_text())
+        text = self.v_status.get()
+        ready = text == t("gui_ready") or not text
+        first = (text.splitlines() or [""])[0]
+        if ready:
+            badge = t("gui_offline_badge")
+        else:
+            badge = first if len(first) <= self.BADGE_MAX else first[: self.BADGE_MAX - 1] + "\u2026"
+        self.lbl_offline.configure(text="\u25cf " + badge)
+        lbl = getattr(self, "lbl_status", None)
+        if lbl is not None:
+            if ready and lbl.winfo_manager():
+                lbl.pack_forget()
+            elif not ready and not lbl.winfo_manager():
+                lbl.pack(anchor="w", fill="x")
+
+    def _pair_menu(self):
+        """The pair button opens the existing choices: the other side's language and my language."""
+        m = tk.Menu(self.root, tearoff=0)
+        for title_key, var, vals, conv in (("gui_quick_other", self.v_lang, lang_labels(), None),
+                                           ("gui_quick_target", self.v_target, TARGETS, "target")):
+            sub = tk.Menu(m, tearoff=0)
+            for v in vals:
+                shown = choice_label(conv, v) if conv else v
+                sub.add_radiobutton(label=shown, command=lambda var=var, v=v: var.set(v))
+            m.add_cascade(label=t(title_key), menu=sub)
+        self.pair_menu = m
+        x, y = self.btn_pair.winfo_rootx(), self.btn_pair.winfo_rooty() + self.btn_pair.winfo_height()
+        try:
+            m.tk_popup(x, y)
+        finally:
+            m.grab_release()
+
+    def swap_languages(self):
+        """Swap the other side's language with mine. No-op when either is not a language of the other list
+        (Auto, or a target that is not a source language)."""
+        src = lang_from_label(self.v_lang.get())
+        tgt = self.v_target.get()
+        new_src = tgt.split("-")[0]
+        new_tgt = {"zh": "zh-tw"}.get(src, src)
+        if src == "auto" or new_tgt not in TARGETS or lang_label(new_src) not in lang_labels():
+            return
+        self.v_lang.set(lang_label(new_src))
+        self.v_target.set(new_tgt)
 
     def _pair_changed(self):
         """#981: same language on both sides is said at once, under the pickers, before Start is pressed."""
@@ -1661,6 +1744,7 @@ class App:
             w.grid(in_=act, row=0, column=col, columnspan=1, sticky="e", padx=(10, 0), pady=0)
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
+        self.v_status.trace_add("write", lambda *_: self._toolbar_refresh())
         self.status_box = sb = ttk.Frame(self.status_holder, padding=(0, 2, 0, 0))  # status/notice: main window (#1028)
         self.lbl_status = ttk.Label(sb, textvariable=self.v_status, wraplength=MAIN_W - 40, justify="left")
         self.lbl_status.pack(anchor="w", fill="x")
@@ -2199,6 +2283,8 @@ class App:
         self._pair_changed()
         for w in self.frm.grid_slaves(row=0):
             w.grid_remove()
+        for w in q.grid_slaves(row=0) + q.grid_slaves(row=1):  # #1603: the toolbar's pair button replaces these
+            w.grid_remove()
         # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
 
@@ -2277,8 +2363,6 @@ class App:
         bar.pack(side="top", fill="x")
         fb = ttk.Frame(f)
         self.font_box = fb
-        ttk.Button(fb, text="A+", width=3, command=lambda: self.bump_log_font(2)).pack(side="right")
-        ttk.Button(fb, text="A-", width=3, command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
         try:  # every font the system has; "" = the program's default
             fams = sorted({f for f in tkfont.families(self.root) if not f.startswith("@")}, key=str.lower)
         except Exception:  # noqa: BLE001
