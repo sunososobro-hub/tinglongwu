@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "check_mobile_network.py"
 
@@ -55,10 +57,26 @@ def test_missing_or_removed_internet_fails(tmp_path):
     assert r.returncode == 1 and "removes INTERNET" in r.stdout
 
 
-def test_other_network_permission_fails(tmp_path):
+def test_access_network_state_allowed(tmp_path):
+    # #1864: Wi-Fi vs mobile data check for the first-run model download.
     extra = MANIFEST_OK.replace("</manifest>", '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/></manifest>')
     r = run(make(tmp_path, manifest=extra))
-    assert r.returncode == 1 and "ACCESS_NETWORK_STATE" in r.stdout
+    assert r.returncode == 0, r.stdout
+
+
+@pytest.mark.parametrize("perm", ["CHANGE_NETWORK_STATE", "ACCESS_WIFI_STATE", "CHANGE_WIFI_STATE",
+                                  "NEARBY_WIFI_DEVICES", "CHANGE_WIFI_MULTICAST_STATE"])
+def test_other_network_permission_fails(tmp_path, perm):
+    extra = MANIFEST_OK.replace("</manifest>", f'<uses-permission android:name="android.permission.{perm}"/>'
+                                '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/></manifest>')
+    r = run(make(tmp_path, manifest=extra))
+    assert r.returncode == 1 and perm in r.stdout and "ACCESS_NETWORK_STATE requests" not in r.stdout
+
+
+def test_real_manifest_passes():
+    r = subprocess.run([sys.executable, str(SCRIPT), "--mobile-dir", str(ROOT / "mobile")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout
 
 
 def test_same_basename_elsewhere_is_not_exempt(tmp_path):

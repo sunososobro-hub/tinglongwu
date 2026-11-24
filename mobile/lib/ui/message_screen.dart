@@ -30,8 +30,10 @@ class LoadingScreen extends StatelessWidget {
   }
 }
 
-/// First open with the base models missing (#1863): one tap downloads them in the app (size +
-/// SHA-256 of every file checked), then [onDone] starts the listening screen. Importing stays a
+/// First open with the base models missing (#1863): on Wi-Fi the download has already started by
+/// itself (#1864, [BaseModelDownload.autoStart]); on mobile data one tap on
+/// 「用行動數據下載（約 1.3 GB）」 starts it. Size + SHA-256 of every file is checked, then [onDone]
+/// starts the listening screen. Importing stays a
 /// secondary option; the adb / PowerShell / file-path details are folded away.
 class MissingModelsScreen extends StatelessWidget {
   const MissingModelsScreen({
@@ -86,9 +88,18 @@ class MissingModelsScreen extends StatelessWidget {
                   Text(d.error!, style: const TextStyle(fontSize: 18, color: Colors.amberAccent)),
                   const SizedBox(height: 16),
                 ],
+                if (d.onMobileData && d.error == null) ...[
+                  const Text('目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後重開 App 會自動下載。', style: _t),
+                  const SizedBox(height: 12),
+                ],
                 FilledButton.icon(
                   icon: Icon(d.error == null ? Icons.download : Icons.refresh),
-                  label: Text(d.error == null ? '開始下載' : '重試',
+                  label: Text(
+                      d.error != null
+                          ? '重試'
+                          : d.onMobileData
+                              ? '用行動數據下載（約 1.3 GB）'
+                              : '開始下載',
                       style: const TextStyle(fontSize: 20)),
                   onPressed: _start,
                 ),
