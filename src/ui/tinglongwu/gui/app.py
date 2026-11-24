@@ -1689,6 +1689,9 @@ class App:
         self.gpu_btns = [self._tx(ttk.Button(g, command=c, style="Bar.TButton", width=0), k) for k, c in
                          (("gpu_offer_never", self._gpu_never), ("gpu_offer_later", self._gpu_hide),
                           ("gpu_offer_install", self._gpu_install))]
+        self.gpu_auto = None  # #1736: gpu_offer.AutoInstall while the background download runs
+        self.gpu_cancel_btn = self._tx(ttk.Button(g, command=self._gpu_auto_cancel, style="Bar.TButton", width=0),
+                                       "gpu_auto_cancel")
         probe = not gpu_offer.offline() and not gpu_offer.cpu_mode()
 
         def work():  # nvidia-smi once, off the Tk thread; also fills the CPU-mode wording cache (core.nvidia_seen)
@@ -1721,10 +1724,13 @@ class App:
         except Exception:  # noqa: BLE001 - no probe: no banner
             return vulkan_offer.UNAVAILABLE
 
-    def _gpu_show(self, text: str, buttons: bool, busy: bool = False):
+    def _gpu_show(self, text: str, buttons: bool, busy: bool = False, cancel: bool = False):
         self.v_gpu.set(text)
         for b in self.gpu_btns:
             b.pack_forget()
+        self.gpu_cancel_btn.pack_forget()
+        if cancel:
+            self.gpu_cancel_btn.pack(side="right", padx=(4, 0))
         if buttons:
             for b in self.gpu_btns:
                 b.pack(side="right", padx=(4, 0))
@@ -1772,7 +1778,12 @@ class App:
             self.gpu_busy = False
             self._gpu_show(t("vk_offer_banner"), buttons=True)
 
-    def _gpu_install(self):
+    def _gpu_auto_cancel(self):
+        """#1736: Cancel on the background-download line: stop the child, remember it, show the one-click offer."""
+        if self.gpu_auto is not None:
+            self.gpu_auto.cancel()
+
+    def _gpu_install(self, auto: bool = False):
         from . import gpu_offer
         from .core import run_pack_download
 
@@ -1790,14 +1801,21 @@ class App:
             return
         gpu_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
-        self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
+        if auto:  # #1736: no click; one line with size + progress + Cancel, listening keeps running on the CPU
+            self.gpu_auto = gpu_offer.AutoInstall(run_pack_download, self.settings, lambda: save_settings(self.settings))
+            self._gpu_show(t("gpu_auto_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True, cancel=True)
+            target = self.gpu_auto.run_install
+        else:
+            self.gpu_auto = None
+            self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
+            target = lambda put, **kw: gpu_offer.run_install(run_pack_download, put, **kw)  # noqa: E731
         try:
-            threading.Thread(target=gpu_offer.run_install, args=(run_pack_download, put),
-                             kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
+            threading.Thread(target=target, args=(put,), kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
         except RuntimeError:  # no thread: release the lock and offer Install again
             gpu_offer.INSTALLING.clear()
             self.gpu_busy = False
+            self.gpu_auto = None
             self._gpu_offer_show()
 
     def _gpu_event(self, ev):
@@ -1807,7 +1825,11 @@ class App:
         if kind == "gpu_state":
             if not self.gpu_busy and gpu_offer.should_offer(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
                                       gpu_offer.offline()):
-                self._gpu_offer_show()
+                if gpu_offer.should_autostart(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
+                                              gpu_offer.offline(), bool(self.settings.get(gpu_offer.AUTO_OFF_KEY))):
+                    self._gpu_install(auto=True)  # #1736: download by default, the user can cancel
+                else:
+                    self._gpu_offer_show()
         elif kind == "gpu_vk_state":
             from . import vulkan_offer
 
@@ -1819,7 +1841,10 @@ class App:
             self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
         elif kind == "gpu_pack_done":
             self.gpu_busy = False
-            if getattr(self, "gpu_vk", False):  # #1775: the Vulkan pack has its own wording (no CUDA restart notice)
+            auto, self.gpu_auto = self.gpu_auto, None
+            if auto is not None and auto.outcome(ev[2], self.gpu_lines) == "cancelled":  # #1736: stays on CPU, offer remains
+                self._gpu_offer_show()
+            elif getattr(self, "gpu_vk", False):  # #1775: the Vulkan pack has its own wording (no CUDA restart notice)
                 self._gpu_show(t("vk_offer_ok") if ev[2] == 0 else t("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)),
                                buttons=False)
             elif gpu_offer.install_ok(ev[2], self.gpu_lines):

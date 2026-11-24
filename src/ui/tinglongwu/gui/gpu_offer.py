@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 
 DISMISS_KEY = "gpu_pack_never_ask"  # settings key: the user pressed "Don't ask again"
+AUTO_OFF_KEY = "gpu_pack_auto_off"  # #1736: the user cancelled the background download; never auto-start it again
 VERSION_FILE = "pack_version.txt"  # written by tinglongwu_setup.gpu_pack.run after a successful install
 GPU_PACK_SIZE = "1.5 GB"
 
@@ -47,6 +48,54 @@ def should_offer(state: str, cpu_mode: bool, dismissed: bool, offline: bool) -> 
     """Show the start-up banner only for an NVIDIA GPU whose pack is missing or old, when the user did not pick CPU mode,
     did not press "Don't ask again", and the app is not forced offline (TLWU_OFFLINE=1: no banner, no network)."""
     return state in (MISSING, OLD) and not cpu_mode and not dismissed and not offline
+
+
+def should_autostart(state: str, cpu_mode: bool, dismissed: bool, offline: bool, auto_off: bool) -> bool:
+    """#1736: start the pack download in the background without a click: same conditions as the banner, and the user
+    never cancelled an automatic download before (the one-click banner stays for them)."""
+    return should_offer(state, cpu_mode, dismissed, offline) and not auto_off
+
+
+class AutoInstall:
+    """#1736: one background GPU-pack download that the user can cancel. No tkinter: `run` is the downloader
+    (gui.core.run_pack_download), `settings` the settings dict and `save` writes it. Cancel stops the child and
+    remembers it in AUTO_OFF_KEY so the next start does not auto-download again."""
+
+    def __init__(self, run, settings: dict, save):
+        self._run, self.settings, self.save = run, settings, save
+        self.proc = None
+        self.cancelled = False
+
+    def on_start(self, proc) -> None:  # called by the downloader right after the child started
+        self.proc = proc
+        if self.cancelled:
+            self._stop()
+
+    def _stop(self) -> None:
+        try:
+            if self.proc is not None:
+                self.proc.terminate()
+        except Exception:  # noqa: BLE001 - already gone
+            pass
+
+    def cancel(self) -> None:
+        self.cancelled = True
+        self.settings[AUTO_OFF_KEY] = True
+        try:
+            self.save()
+        except Exception:  # noqa: BLE001 - an unwritable settings file must not break the cancel
+            pass
+        self._stop()
+
+    def run_install(self, put, **kw) -> int:
+        """Worker thread body (like module-level run_install, plus the cancel hook)."""
+        return run_install(self._run, put, on_start=self.on_start, **kw)
+
+    def outcome(self, rc: int, lines: list[str]) -> str:
+        """"cancelled" / "ok" / "failed": never an error dialog, the GUI only picks the status line."""
+        if self.cancelled:
+            return "cancelled"
+        return "ok" if install_ok(rc, lines) else "failed"
 
 
 def offline(env=None) -> bool:
