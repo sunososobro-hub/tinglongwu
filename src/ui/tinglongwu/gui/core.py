@@ -1433,7 +1433,7 @@ class SpeakerColors:
 
 
 def speaker_prefix(book, colors, raw, fmt):
-    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", "#e6a23c"), or None without a
+    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", a hex colour), or None without a
     resolved speaker. Same name lookup (speaker_text: renames, "Speaker N" in the UI language) and same palette color
     as the main-window avatar, so the bar needs no extra row: the prefix sits in front of the line's own text."""
     shown = speaker_text(book, raw, fmt) if raw else None

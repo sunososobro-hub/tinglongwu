@@ -84,28 +84,13 @@ MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-s
 # #1644: "latest" = the newest finished line from the other side (brighter, so the eye lands on it first)
 # #1662 Linear-style palette: window / transcript backgrounds differ slightly, 1 px separators, muted secondary text,
 # bright primary text and ONE accent (the existing blue); warn / err are the only other colours
-PAL = {"dark": {"win": "#14161c", "bg": "#0e1015", "sep": "#262a34", "fg": "#e6e8ee", "muted": "#8a90a0",
-                "accent": "#3f5fe0", "warn": "#d29b3c", "err": "#e5534b"},
-       "light": {"win": "#f6f7fa", "bg": "#ffffff", "sep": "#dfe2ea", "fg": "#1d2447", "muted": "#5b6390",
-                 "accent": "#3f5fe0", "warn": "#b35a00", "err": "#c0392b"}}
-BUBBLE = {"dark": {"bg": "#0e1015", "other": ("#1a1d27", "#e6e8ee"), "me": ("#3f5fe0", "#ffffff"),
-                   "latest": ("#2a3560", "#ffffff"), "sub": "#8a90a0", "head": "#8a90a0"},
-          "light": {"bg": "#ffffff", "other": ("#e6e9f5", "#1d2447"), "me": ("#cfe0ff", "#10224d"),
-                    "latest": ("#cdd6ff", "#10224d"), "sub": "#5b6390", "head": "#5b6390"}}
-# #1644: notes (重點整理) window per theme: time range muted, bullets in the notes accent (violet)
-NOTES = {"dark": {"bg": "#0e1015", "fg": "#e6e8ee", "title": "#ffffff", "when": "#8a90a0", "mark": "#b79cff"},
-         "light": {"bg": "#ffffff", "fg": "#1d2447", "title": "#10224d", "when": "#5b6390", "mark": "#6b4fd8"}}
-FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
+from .theme import (BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
+                    SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE)
 FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
 # settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
 SIDE_W = 168
 SIDE_LOGO_PX = 84
-SIDE = {"dark": {"top": "#1d2447", "bottom": "#2c2350", "fg": "#eef0ff", "sub": "#a9b1d6", "pill": "#4a63d8",
-                 "wave": "#3a3f72"},
-        "light": {"top": "#e9eeff", "bottom": "#e3dcfa", "fg": "#1d2447", "sub": "#5b6390", "pill": "#4a63d8",
-                  "wave": "#cfd3f3"}}
-# #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
-DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
+
 
 
 def open_target(target: str) -> None:
@@ -136,7 +121,7 @@ class Overlay:
         self.width = int(w.winfo_screenwidth() * 0.7)
         self.rows = clamp_rows(s.get("overlay_lines", 3))
         # top edge: drag it to change how many rows are visible (the bar keeps its bottom edge)
-        self.grip = tk.Frame(w, height=6, bg="#2a2a2a", cursor="sb_v_double_arrow")
+        self.grip = tk.Frame(w, height=6, bg=BAR_BTN, cursor="sb_v_double_arrow")
         self.grip.pack(fill="x")
         self.box = tk.Frame(w, width=self.width, height=100, bg=BG)
         self.box.pack_propagate(False)
@@ -155,7 +140,7 @@ class Overlay:
         self.hover = tk.Frame(self.box, bg=BG)
         for label, d in (("A-", -2), ("A+", 2)):
             tk.Button(self.hover, text=label, command=lambda d=d: self.bump_font(d), bd=0, padx=6, pady=0,
-                      bg="#2a2a2a", fg=FG_FINAL, activebackground="#3a3a3a", activeforeground=FG_FINAL,
+                      bg=BAR_BTN, fg=FG_FINAL, activebackground=BAR_BTN_ACTIVE, activeforeground=FG_FINAL,
                       takefocus=0, cursor="hand2").pack(side="left", padx=1)
         w.bind("<Enter>", lambda _e: self.show_hover(), add="+")
         w.bind("<Leave>", lambda _e: self.win.after(60, self._leave_check), add="+")
@@ -465,11 +450,11 @@ class _DockPane(ttk.Frame):
     def __init__(self, app, holder, before):
         super().__init__(holder, width=DOCK_W)
         self._app, self._before, self._grew = app, before, 0
-        grip = tk.Frame(self, width=3, cursor="sb_h_double_arrow", bg="#555555")  # drag the left edge to resize
+        grip = tk.Frame(self, width=3, cursor="sb_h_double_arrow", bg=GRIP)  # drag the left edge to resize
         grip.pack(side="left", fill="y")
         grip.bind("<B1-Motion>", self._drag)
-        grip.bind("<Enter>", lambda e: grip.configure(bg="#2e86de"))  # a thin line that lights up under the mouse
-        grip.bind("<Leave>", lambda e: grip.configure(bg="#555555"))
+        grip.bind("<Enter>", lambda e: grip.configure(bg=GRIP_HOVER))  # a thin line that lights up under the mouse
+        grip.bind("<Leave>", lambda e: grip.configure(bg=GRIP))
         self.bind("<Configure>", self._rewrap, add="+")
 
     def _drag(self, e):
@@ -700,7 +685,7 @@ class App:
     def _style_menu(self, m):
         pal = self.pal
         try:
-            m.configure(bg=pal["win"], fg=pal["fg"], activebackground=pal["accent"], activeforeground="#ffffff",
+            m.configure(bg=pal["win"], fg=pal["fg"], activebackground=pal["accent"], activeforeground=SIDE_ACTIVE_FG,
                         selectcolor=pal["fg"], bd=0, relief="flat", activeborderwidth=0)
             end = m.index("end")
             for i in range(0 if end is None else end + 1):
@@ -813,7 +798,7 @@ class App:
             active = cmd is None
             if active:
                 self._round_rect(12, y - 4, SIDE_W - 12, y + 32, 10, fill=pal["pill"], outline="", tags=tag)
-            fg = "#ffffff" if active else pal["fg"]
+            fg = SIDE_ACTIVE_FG if active else pal["fg"]
             c.create_text(30, y + 14, text=glyph, fill=fg, font=(FONT_FAMILY, 12, "bold"), tags=tag)
             c.create_text(52, y + 14, text=t(key), fill=fg, font=(FONT_FAMILY, 11), anchor="w", tags=tag)
             if cmd is not None:
@@ -880,7 +865,7 @@ class App:
         self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
         self._send_mode_changed()
         self.run_snapshot = None  # #983: the start-time values of the running session
-        self.lbl_restart = ttk.Label(self.body, wraplength=300, justify="left", foreground="#b45309")
+        self.lbl_restart = ttk.Label(self.body, wraplength=300, justify="left", foreground=WARNING_LIGHT)
         self._tok(self.lbl_restart, "warn")
         self.btn_restart = ttk.Button(self.body, command=self._restart_now)
         for name in ("v_lang", "v_target", "v_engine", "v_quality", "v_model", "v_preset", "v_gloss", "v_source",
@@ -1668,7 +1653,7 @@ class App:
         self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
         self.start_dl = None
         self.v_notice = tk.StringVar(value="")
-        self.lbl_notice = ttk.Label(sb, textvariable=self.v_notice, wraplength=MAIN_W - 40, foreground="#b35a00",
+        self.lbl_notice = ttk.Label(sb, textvariable=self.v_notice, wraplength=MAIN_W - 40, foreground=WARNING_LIGHT,
                                     justify="left")
         self._tok(self.lbl_notice, "warn")
         self._tok(self.lbl_status, "muted")
