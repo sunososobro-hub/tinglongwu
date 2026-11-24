@@ -360,10 +360,6 @@ _MARK_MISSING = {"en": " (not downloaded)", "ru": " (нужна загрузка
 
 # #884: the dropdowns show names in the UI language; the stored setting keeps the raw value.
 _CHOICES = {
-    "quality": {"en": {"auto": "Auto", "fast": "Fast", "balanced": "Balanced", "quality": "Best quality", "manual": "Manual"},
-                "ru": {"auto": "Авто", "fast": "Быстро", "balanced": "Баланс", "quality": "Лучшее качество", "manual": "Вручную"},
-                "zh-TW": {"auto": "自動", "fast": "快速", "balanced": "平衡", "quality": "最佳品質", "manual": "手動"},
-                "ja": {"auto": "自動", "fast": "高速", "balanced": "バランス", "quality": "最高品質", "manual": "手動"}},
     "source": {"en": {"system": "PC sound", "mic": "Microphone"},
                "ru": {"system": "Звук ПК", "mic": "Микрофон"},
                "zh-TW": {"system": "電腦音效", "mic": "麥克風"},
@@ -376,6 +372,57 @@ _CHOICES = {
                 "zh-TW": {"auto": "自動", "off": "關閉"}, "ja": {"auto": "自動", "off": "オフ"}},  # #1531
     "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}, "ja": {"auto": "自動"}},
 }
+
+
+
+# #1806: one key set, a `plain` and a `tech` text per key and UI language. Plain is the default; the "Show technical
+# details" setting (or --tech-labels) switches every label() to the technical text. Add a key here (all 4 languages,
+# both variants: tests/test_labels_1806.py) instead of a second table, so the two views never drift.
+LABEL_VARIANTS = ("plain", "tech")
+LABELS = {
+    "quality.auto": {
+        "en": {"plain": "Auto", "tech": "Auto"}, "ru": {"plain": "Авто", "tech": "Авто"},
+        "zh-TW": {"plain": "自動", "tech": "自動"}, "ja": {"plain": "おまかせ", "tech": "自動"}},
+    "quality.fast": {
+        "en": {"plain": "Faster", "tech": "Fast"}, "ru": {"plain": "Быстрее", "tech": "Быстро"},
+        "zh-TW": {"plain": "快一點", "tech": "快速"}, "ja": {"plain": "速さ重視", "tech": "高速"}},
+    "quality.balanced": {
+        "en": {"plain": "Just right", "tech": "Balanced"}, "ru": {"plain": "В самый раз", "tech": "Баланс"},
+        "zh-TW": {"plain": "剛剛好", "tech": "平衡"}, "ja": {"plain": "ちょうどよい", "tech": "バランス"}},
+    "quality.quality": {
+        "en": {"plain": "Most accurate, slower", "tech": "Best quality"},
+        "ru": {"plain": "Точнее, но медленнее", "tech": "Лучшее качество"},
+        "zh-TW": {"plain": "最準但較慢", "tech": "最佳品質"}, "ja": {"plain": "いちばん正確（やや遅い）", "tech": "最高品質"}},
+    "quality.manual": {
+        "en": {"plain": "I'll choose", "tech": "Manual"}, "ru": {"plain": "Выберу сам", "tech": "Вручную"},
+        "zh-TW": {"plain": "我自己選", "tech": "手動"}, "ja": {"plain": "自分で選ぶ", "tech": "手動"}},
+}
+_TECH = {"flag": False, "setting": False}
+
+
+def set_tech_labels(setting: bool | None = None, flag: bool | None = None) -> None:
+    """The "Show technical details" setting and the --tech-labels launch flag; either one shows the tech text."""
+    if setting is not None:
+        _TECH["setting"] = bool(setting)
+    if flag is not None:
+        _TECH["flag"] = bool(flag)
+
+
+def tech_labels() -> bool:
+    return _TECH["flag"] or _TECH["setting"]
+
+
+def label(key: str, lang: str | None = None, tech: bool | None = None) -> str:
+    """#1806: the text of a LABELS key in the UI language: plain, or technical when the switch is on."""
+    ui = lang or _ui()
+    return LABELS[key][ui]["tech" if (tech_labels() if tech is None else tech) else "plain"]
+
+
+def label_texts(key: str, lang: str) -> tuple[str, ...]:
+    return tuple(LABELS[key][lang][v] for v in LABEL_VARIANTS)
+
+
+_LABEL_KINDS = ("quality",)  # dropdown kinds whose names live in LABELS (#1806); the rest are still in _CHOICES
 
 
 def _ui() -> str:
@@ -392,6 +439,8 @@ def choice_label(kind: str, value: str, lang: str | None = None) -> str:
     ui = lang or _ui()
     if kind == "target":
         return langs.plain_label(value, ui)
+    if kind in _LABEL_KINDS:
+        return label(f"{kind}.{value}", ui) if f"{kind}.{value}" in LABELS else value
     return _CHOICES[kind][ui].get(value, value)
 
 
@@ -431,6 +480,9 @@ def choice_value(kind: str, label: str, values) -> str:
     for v in values:
         if label == v or any(label == choice_label(kind, v, u) for u in _MARK_MISSING):
             return v
+        if kind in _LABEL_KINDS and f"{kind}.{v}" in LABELS and any(
+                label in label_texts(f"{kind}.{v}", u) for u in _MARK_MISSING):
+            return v  # a saved name from the other view (plain <-> tech) still parses
     return label
 
 

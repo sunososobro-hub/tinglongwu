@@ -35,6 +35,7 @@ DEFAULTS = {
     "topics_model": "",  # #611: local GGUF for --topics; "" = the downloaded #1378 default (TOPICS_KEY), if installed
     "gpu_use": "auto",  # #1531: Adjust > Advanced "Use GPU": auto (GPU when it works, else CPU) / off (always CPU)
     "gpu_fallback": "",  # #1531: reason the first-start self-test fell back to CPU ("" = none); written by selftest.apply_to_gui
+    "tech_labels": False,  # #1806: "Show technical details": off = plain wording, on = the technical names (also --tech-labels)
     "send_mode": "auto",  # #834/#1052: how a speak line is sent (auto = straight away, confirm = show me first); owner default: auto
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES (the CLI keeps all three)
