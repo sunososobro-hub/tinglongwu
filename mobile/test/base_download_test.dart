@@ -64,6 +64,19 @@ class _Fake implements BaseModelSource {
 
 Map<String, _Got> _good() => {for (final f in _manifest.files) f.path: (f.size, f.sha256)};
 
+/// #1864: a fake network probe; counts how often it was asked.
+class _Net implements NetworkProbe {
+  _Net(this.k);
+  final NetKind k;
+  int asked = 0;
+
+  @override
+  Future<NetKind> kind() async {
+    asked++;
+    return k;
+  }
+}
+
 BaseModelDownload _dl(_Fake f) => BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl);
 
 void main() {
@@ -179,5 +192,73 @@ void main() {
     expect(done, 0);
     expect(find.textContaining('檢查不符'), findsOneWidget);
     expect(find.text('重試'), findsOneWidget);
+  });
+
+  // #1864: Wi-Fi starts by itself; mobile data asks first.
+  test('auto start: on Wi-Fi (unmetered) the download starts with no tap', () async {
+    final f = _Fake(_good());
+    final d = _dl(f);
+    final net = _Net(NetKind.unmetered);
+    expect(await d.autoStart(net), isTrue);
+    expect(f.urls, [DeviceBaseModelSource.bundleUrl]);
+    expect(d.state, BaseDlState.done);
+    expect(d.onMobileData, isFalse);
+    expect(await d.autoStart(net), isFalse, reason: 'only the first call does anything');
+    expect(net.asked, 1);
+    expect(f.urls, hasLength(1));
+  });
+
+  for (final k in [NetKind.metered, NetKind.none, NetKind.unknown]) {
+    test('auto start: on ${k.name} nothing is fetched', () async {
+      final f = _Fake(_good());
+      final d = _dl(f);
+      expect(await d.autoStart(_Net(k)), isFalse);
+      expect(f.urls, isEmpty);
+      expect(d.state, BaseDlState.idle);
+      expect(d.net, k);
+      expect(d.onMobileData, k == NetKind.metered);
+    });
+  }
+
+  testWidgets('screen: on mobile data it asks, fetches only after 用行動數據下載', (t) async {
+    final f = _Fake(_good());
+    final d = _dl(f);
+    var done = 0;
+    await t.pumpWidget(MaterialApp(
+        home: MissingModelsScreen(
+            download: d,
+            modelsDir: '/data/models',
+            missingFiles: const [],
+            onImport: () {},
+            onDone: () => done++)));
+    expect(await d.autoStart(_Net(NetKind.metered)), isFalse);
+    await t.pump();
+    expect(f.urls, isEmpty, reason: 'nothing fetched before the tap');
+    expect(find.text('開始下載'), findsNothing);
+    expect(find.text('用行動數據下載（約 1.3 GB）'), findsOneWidget);
+    await t.tap(find.text('用行動數據下載（約 1.3 GB）'));
+    await t.pumpAndSettle();
+    expect(f.urls, [DeviceBaseModelSource.bundleUrl]);
+    expect(done, 1);
+  });
+
+  testWidgets('screen: on Wi-Fi the download is already running, no tap', (t) async {
+    final f = _Fake(_good())..hold = Completer<void>();
+    final d = _dl(f);
+    await t.pumpWidget(MaterialApp(
+        home: MissingModelsScreen(
+            download: d,
+            modelsDir: '/data/models',
+            missingFiles: const [],
+            onImport: () {},
+            onDone: () {})));
+    final started = d.autoStart(_Net(NetKind.unmetered));
+    await t.pump();
+    expect(f.urls, [DeviceBaseModelSource.bundleUrl]);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.textContaining('用行動數據'), findsNothing);
+    f.hold!.complete();
+    await t.pumpAndSettle();
+    expect(await started, isTrue);
   });
 }
