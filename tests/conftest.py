@@ -68,6 +68,60 @@ def _restore_sigint():
         signal.signal(signal.SIGINT, prev)
 
 
+def worker_display(env=os.environ) -> str | None:
+    """#1857: the `test` job runs the suite in parallel pytest-xdist workers. Real-Tk GUI tests used to share one
+    Xvfb display in one process; with TLWU_XVFB_PER_WORKER=1 each worker gets its own display (gw0 -> :200,
+    gw1 -> :201, ...) so two workers' windows never take each other's focus or stacking. None = keep DISPLAY."""
+    w = env.get("PYTEST_XDIST_WORKER", "")
+    if env.get("TLWU_XVFB_PER_WORKER") != "1" or not w.startswith("gw") or not w[2:].isdigit():
+        return None
+    return f":{200 + int(w[2:])}"
+
+
+def pytest_configure(config):
+    disp = worker_display()
+    if disp is None:
+        return
+    import subprocess
+    import time
+
+    p = subprocess.Popen(["Xvfb", disp, "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    sock = Path(f"/tmp/.X11-unix/X{disp[1:]}")
+    for _ in range(100):  # up to 10 s for the display socket
+        if sock.exists() or p.poll() is not None:
+            break
+        time.sleep(0.1)
+    if p.poll() is not None:
+        raise pytest.UsageError(f"Xvfb {disp} did not start (exit {p.returncode})")
+    os.environ["DISPLAY"] = disp
+    config._tlwu_xvfb = p
+
+
+def pytest_unconfigure(config):
+    p = getattr(config, "_tlwu_xvfb", None)
+    if p is not None:
+        p.terminate()
+        p.wait(timeout=10)
+
+
+@pytest.fixture(autouse=True)
+def _restore_offline_env():
+    """#1857: tinglongwu_setup.downloader.main() pops HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE from os.environ (the
+    download child needs the network). Tests that call it leaked that into every later test in the same process, so
+    test_offline.py::test_env_set_on_import passed or failed by test order (it failed once the suite ran in parallel
+    workers). Every test ends with the offline flags it started with."""
+    from tinglongwu.offline import OFFLINE_ENV
+
+    prev = {k: os.environ.get(k) for k in OFFLINE_ENV}
+    yield
+    for k, v in prev.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
 # -- real-Tk GUI tests (#113) ------------------------------------------------------------------------------------
 _TK_SKIP = ("no display", "no tkinter", "could not import 'tkinter'")
 _DIALOGS = {"messagebox": ("showinfo", "showwarning", "showerror", "askyesno", "askokcancel", "askyesnocancel",
