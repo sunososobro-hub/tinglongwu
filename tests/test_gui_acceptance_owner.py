@@ -306,7 +306,7 @@ def test_1241_status_wraps_at_panel_width_and_cpu_mode_once(make_app, monkeypatc
     assert "\n" not in a.v_notice.get()  # the GPU-fallback reason is one line
     same_row = a.scene_row.winfo_rooty() == a.toggle_row.winfo_rooty()
     assert same_row == (a.bar.winfo_width() >= 1200)  # 情境 + toggles share a row only when wide enough
-    assert a.scene_combo.winfo_ismapped() and a.btn_mic.winfo_ismapped()
+    assert a.scene_combo.winfo_ismapped() and not a.btn_mic.winfo_ismapped()  # #1604: video scene hides the mic toggle
     if same_row:  # side by side, not drawn on top of each other
         assert a.scene_row.winfo_rootx() + a.scene_row.winfo_width() <= a.toggle_row.winfo_rootx()
     _shot(a, f"1241_{w}x500")
