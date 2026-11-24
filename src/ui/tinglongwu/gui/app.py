@@ -2030,7 +2030,7 @@ class App:
         if self.upd_msg and self.upd_msg[0] == "gui_upd_fail_check":
             import webbrowser
 
-            webbrowser.open(autoupdate.DOWNLOAD_URL)
+            webbrowser.open(autoupdate.recovery_url())
             self._update_later()
         elif self.upd_exe:
             self._apply_update()
