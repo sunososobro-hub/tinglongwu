@@ -1,5 +1,6 @@
-"""Colour tokens for the desktop GUI (#1820). The GUI reads colours only from here (plus the speaker palette in
+"""Colour, type and spacing tokens for the desktop GUI (#1820, #1821). The GUI reads colours only from here (plus the speaker palette in
 core.py); no raw hex anywhere else. Every token exists in both themes with the same names."""
+import sys
 
 # semantic tokens per theme: one warning, one error, one muted per theme
 TOKENS = {
@@ -37,3 +38,25 @@ SIDE = {"dark": {"top": "#1d2447", "bottom": "#2c2350", "fg": "#eef0ff", "sub": 
                   "wave": "#cfd3f3"}}
 # #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
 DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
+
+# #1821: type scale (points) and spacing scale (px). app.py takes every font size and gap from here; the user's subtitle
+# size setting (settings["font_size"] / ["log_font_size"]) scales the transcript fonts through small_size / bump.
+FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+TYPE = {"caption": 10, "body": 11, "title": 12, "heading": 14, "display": 15}
+SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
+
+
+def font(role, bold=False, family=None):
+    """Tk font tuple for a type-scale role (caption, body, title, heading, display)."""
+    fam = family or FONT_FAMILY
+    return (fam, TYPE[role], "bold") if bold else (fam, TYPE[role])
+
+
+def small_size(n, floor=8):
+    """Secondary text next to subtitle size n (two thirds of it, never below floor)."""
+    return max(floor, n * 2 // 3)
+
+
+def bump(n, d=1):
+    """Subtitle size n shifted by d points (emphasis next to the user-chosen size)."""
+    return n + d

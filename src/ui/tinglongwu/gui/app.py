@@ -85,8 +85,7 @@ MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-s
 # #1662 Linear-style palette: window / transcript backgrounds differ slightly, 1 px separators, muted secondary text,
 # bright primary text and ONE accent (the existing blue); warn / err are the only other colours
 from .theme import (BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
-                    SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE)
-FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+                    SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE, FONT_FAMILY, bump, font as tfont, small_size)
 # settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
 SIDE_W = 168
 SIDE_LOGO_PX = 84
@@ -254,7 +253,7 @@ class Overlay:
         self.font = tkfont.Font(family=fam, size=n, weight="bold")
         for tag in ("final", "draft"):
             self.text.tag_configure(tag, font=self.font)
-        self.text.tag_configure("src", font=(fam, max(9, n * 2 // 3)))
+        self.text.tag_configure("src", font=(fam, small_size(n, 9)))
         self.set_rows(self.rows)
         size_var = getattr(self.app, "v_font", None)
         if size_var is not None and size_var.get() != str(n):
@@ -365,7 +364,7 @@ class Tour:
         w.attributes("-topmost", True)
         self.frm = f = ttk.Frame(w, padding=10, relief="solid", borderwidth=1)
         f.pack()
-        self.title = ttk.Label(f, font=(FONT_FAMILY, 11, "bold"))
+        self.title = ttk.Label(f, font=tfont("body", True))
         self.title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         self.step1 = ttk.Label(f)
         self.step1.grid(row=1, column=0, sticky="w")
@@ -713,7 +712,7 @@ class App:
         st.configure("TLabel", foreground=pal["fg"])
         st.configure("Menu.TMenubutton", padding=(8, 0), background=pal["win"], foreground=pal["fg"])
         st.configure("Card.TFrame", background=pal["win"])
-        st.configure("Start.Accent.TButton", font=(FONT_FAMILY, 13, "bold"), padding=(14, 8))  # #1028: the big Start
+        st.configure("Start.Accent.TButton", font=tfont("title", True), padding=(14, 8))  # #1028: the big Start
         self._retint()
         if sv_ttk is not None and not getattr(self, "_retint_bound", False):
             # #1644: sv_ttk recolours every tk widget on <<ThemeChanged>> (tk_setPalette), after this method has
@@ -791,8 +790,8 @@ class App:
         if self.side_logo is not None:
             c.create_image(SIDE_W // 2, y, image=self.side_logo, anchor="n")
             y += self.side_logo.height() + 6
-        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
-        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=(FONT_FAMILY, 10), anchor="n")
+        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=tfont("display", True), anchor="n")
+        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=tfont("caption"), anchor="n")
         y += 74
         for i, (key, glyph, cmd) in enumerate(self.side_nav):
             tag = f"nav{i}"
@@ -800,8 +799,8 @@ class App:
             if active:
                 self._round_rect(12, y - 4, SIDE_W - 12, y + 32, 10, fill=pal["pill"], outline="", tags=tag)
             fg = SIDE_ACTIVE_FG if active else pal["fg"]
-            c.create_text(30, y + 14, text=glyph, fill=fg, font=(FONT_FAMILY, 12, "bold"), tags=tag)
-            c.create_text(52, y + 14, text=t(key), fill=fg, font=(FONT_FAMILY, 11), anchor="w", tags=tag)
+            c.create_text(30, y + 14, text=glyph, fill=fg, font=tfont("title", True), tags=tag)
+            c.create_text(52, y + 14, text=t(key), fill=fg, font=tfont("body"), anchor="w", tags=tag)
             if cmd is not None:
                 c.tag_bind(tag, "<Button-1>", lambda _e, f=cmd: f())
                 c.tag_bind(tag, "<Enter>", lambda _e: c.configure(cursor="hand2"))
@@ -1622,14 +1621,14 @@ class App:
         self.body = body = ttk.Frame(p, padding=(12, 3, 12, 3))
         body.pack(side="left", fill="both", expand=True)
         short = p.winfo_screenheight() < SHORT_SCREEN_PX  # #886: a 768 px screen has no height to spare
-        self.settings_title = self._tx(ttk.Label(body, font=(FONT_FAMILY, 14, "bold")), "gui_menu_settings")
+        self.settings_title = self._tx(ttk.Label(body, font=tfont("heading", True)), "gui_menu_settings")
         self.settings_title.pack(anchor="w", pady=(0, 2 if short else 4))
         card = "Card.TFrame" if sv_ttk is not None else "TFrame"
 
         def group(title_key):  # #1028: one plain-language group = a bold heading + its choices
             g = ttk.Frame(body, style=card, padding=(10, 3 if short else 5, 10, 3 if short else 5))
             g.pack(fill="x", pady=(0, 3))
-            self._tx(ttk.Label(g, font=(FONT_FAMILY, 11, "bold")), title_key).pack(anchor="w")
+            self._tx(ttk.Label(g, font=tfont("body", True)), title_key).pack(anchor="w")
             return g
 
         g_speed, g_appear = group("gui_set_speed"), group("gui_set_appear")
@@ -2445,7 +2444,7 @@ class App:
         pal = BUBBLE["light" if self.settings.get("theme") == "light" else "dark"]
         tx = self.log_text
         tx.configure(bg=pal["bg"])
-        small = max(8, n * 2 // 3)
+        small = small_size(n)
         fam = self.settings.get("font_family") or FONT_FAMILY  # user-picked system font, else the default
         # #1052: a bubble is at most ~75 % of the window and hugs its text: the background sits on the text only
         # (the line break is outside the bubble tag), margins push it to its side
@@ -2464,7 +2463,7 @@ class App:
             tx.tag_configure(f"{side}_draft", background=bg, foreground=pal["sub"], font=(fam, n), spacing1=2,
                              spacing3=2, **base)
             tx.tag_configure(f"{side}_src", foreground=pal["sub"], font=(fam, small), **base)
-        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, small + 2), justify="center", spacing1=40)
+        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, bump(small, 2)), justify="center", spacing1=40)
         lbg, lfg = pal["latest"]  # #1644: laid over other_final on the newest line, so it must win
         tx.tag_configure("other_latest", background=lbg, foreground=lfg)
         tx.tag_raise("other_latest")
@@ -2478,9 +2477,9 @@ class App:
                 return
             n = n or self.settings["log_font_size"]
             fam = fam or self.settings.get("font_family") or FONT_FAMILY
-            small = small or max(8, n * 2 // 3)
+            small = small or small_size(n)
             tt.configure(font=(fam, n))
-            tt.tag_configure("title", font=(fam, n + 1, "bold"))
+            tt.tag_configure("title", font=(fam, bump(n), "bold"))
             tt.tag_configure("when", font=(fam, small))
         except Exception:  # noqa: BLE001 - cosmetic
             pass
@@ -2931,7 +2930,7 @@ class App:
             inner = [c for c in holder.winfo_children() if isinstance(c, tk.Text) or isinstance(c, ttk.Scrollbar)]
             w = self.topics_win = (_FloatPane(self) if notes_float_on(self.settings)
                                    else _DockPane(self, holder, before=inner[0] if inner else None))
-            ttk.Label(w, text=t("gui_topics_title"), font=("TkDefaultFont", 11, "bold")).pack(side="top", anchor="w", padx=8, pady=(4, 0))
+            ttk.Label(w, text=t("gui_topics_title"), font=tfont("body", True)).pack(side="top", anchor="w", padx=8, pady=(4, 0))
             bar = ttk.Frame(w)
             bar.pack(side="top", fill="x", padx=8, pady=6)
             self._sync_topics_var()
