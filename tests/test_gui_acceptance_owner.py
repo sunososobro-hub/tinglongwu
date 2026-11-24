@@ -302,7 +302,9 @@ def test_1241_status_wraps_at_panel_width_and_cpu_mode_once(make_app, monkeypatc
     for lbl in (a.lbl_status, a.lbl_notice):
         assert int(str(lbl.cget("wraplength"))) >= panel - 20  # wraps at the panel width, not a fixed 420 px
     shown = a.v_status.get() + "\n" + a.v_notice.get()
-    assert shown.count(t("gui_cpu_mode")) == 1
+    from tinglongwu.gui import core as _core  # #1807: the line is shown once, in whichever view is on
+
+    assert sum(shown.count(x) for x in {t("gui_cpu_mode"), *_core.label_texts("ui.gui_cpu_mode", _core._ui())}) == 1
     assert "\n" not in a.v_notice.get()  # the GPU-fallback reason is one line
     same_row = a.scene_row.winfo_rooty() == a.toggle_row.winfo_rooty()
     assert same_row == (a.bar.winfo_width() >= 1200)  # 情境 + toggles share a row only when wide enough
