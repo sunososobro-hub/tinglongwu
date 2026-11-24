@@ -141,7 +141,7 @@ def transcribe(models_dir: str, data_dir: str, langs=("en",), size: str = "small
         from tinglongwu.asr_vulkan import select_recognizer as select
     read = read or eval_read
     rows = [r for r in load_manifest(data_dir) if r["lang"] in langs]
-    out = {"backend": "", "device_log": "", "clips": [], "seconds": 0.0, "audio_seconds": 0.0}
+    out = {"backend": "", "device_log": "", "devices": {}, "clips": [], "seconds": 0.0, "audio_seconds": 0.0}
     for lang in langs:
         lr = [r for r in rows if r["lang"] == lang]
         if not lr:
@@ -153,7 +153,10 @@ def transcribe(models_dir: str, data_dir: str, langs=("en",), size: str = "small
         if out["backend"] and out["backend"] != backend:
             backend = f"{out['backend']}+{backend}"  # mixed across languages: never equals "cpu" or "vulkan"
         out["backend"] = backend
-        out["device_log"] = out["device_log"] or whisper_log_device(log)
+        out["devices"][lang] = whisper_log_device(log)
+        devs = set(out["devices"].values())
+        # every language must have logged a Vulkan device; one CPU / unknown result taints the whole run
+        out["device_log"] = "vulkan" if devs == {"vulkan"} else ("cpu" if "cpu" in devs else "")
         for row in lr:
             audio, dur = read(row["wav"])
             t0 = clock()
@@ -189,10 +192,13 @@ def compare_asr(cpu: dict, vulkan: dict, max_rise: float = MAX_CER_RISE) -> tupl
         problems.append(f"Vulkan run used ASR backend {vulkan.get('backend')!r}, expected 'vulkan' (silent fallback?)")
     elif vulkan.get("device_log") == "cpu":
         problems.append("whisper.cpp logged a CPU fallback (no Vulkan device)")
+    elif vulkan.get("device_log") != "vulkan":
+        problems.append("whisper.cpp log names no Vulkan device (unknown backend)")
     a, b = cpu.get("clips") or [], vulkan.get("clips") or []
     ca = cb = 0.0
-    if not a or [c["id"] for c in a] != [c["id"] for c in b]:
-        problems.append(f"clip lists differ or are empty: cpu={len(a)} vulkan={len(b)}")
+    key = lambda clips: [(c.get("id"), c.get("lang"), c.get("ref")) for c in clips]  # noqa: E731
+    if not a or key(a) != key(b):
+        problems.append(f"clip lists (id, lang, ref) differ or are empty: cpu={len(a)} vulkan={len(b)}")
     else:
         ca, cb = cer(a), cer(b)
         if cb > ca + max_rise + 1e-9:

@@ -39,6 +39,23 @@ def test_whisper_cpp_internal_cpu_fallback_fails():
     assert not ok and "CPU fallback" in md
 
 
+def test_missing_or_unknown_device_log_fails():
+    for log in ("", None):
+        ok, md = vp.compare_asr(CPU, _result("vulkan", list(REFS.values()), log))
+        assert not ok and "no Vulkan device" in md, log
+    no_key = _result("vulkan", list(REFS.values()), "vulkan")
+    del no_key["device_log"]
+    assert not vp.compare_asr(CPU, no_key)[0]
+
+
+def test_same_ids_with_different_references_fail():
+    other = _result("vulkan", ["cat", "dog"], "vulkan")
+    for clip, ref in zip(other["clips"], ("cat", "dog")):
+        clip["ref"] = ref
+    ok, md = vp.compare_asr(CPU, other)
+    assert not ok and "(id, lang, ref)" in md
+
+
 def test_cer_bound_is_plus_0_02():
     # 1 wrong char out of 85 reference chars = 0.0118 -> inside the bound; a garbled clip is far outside
     near = ["the meeting will start at nine tomorrow mornin", REFS["en_002"]]
@@ -120,3 +137,23 @@ def test_cli_compare_asr_exit_codes(tmp_path):
                                       capture_output=True).returncode
     assert run(a, b) == 0
     assert run(a, c) == 1
+
+
+def test_one_language_falling_back_taints_the_run(tmp_path):
+    rows = [{"id": "en_1", "lang": "en", "wav": "a.wav", "ref_text": "hello"},
+            {"id": "ru_1", "lang": "ru", "wav": "b.wav", "ref_text": "привет"}]
+    (tmp_path / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in rows), "utf-8")
+
+    class Rec(_Rec):
+        def __init__(self, line):
+            super().__init__(["x"])
+            self.line = line
+
+        def warm_up(self):
+            os.write(2, self.line)
+
+    recs = {"en": Rec(b"whisper_backend_init_gpu: using Vulkan0 backend\n"),
+            "ru": Rec(b"whisper_backend_init_gpu: no GPU found\n")}
+    res = vp.transcribe("M", str(tmp_path), ("en", "ru"), select=lambda m, s, lang: (recs[lang], "vulkan"),
+                        read=lambda p: (np.zeros(160, np.float32), 1.0))
+    assert res["devices"] == {"en": "vulkan", "ru": "cpu"} and res["device_log"] == "cpu"
