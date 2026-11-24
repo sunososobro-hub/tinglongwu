@@ -89,7 +89,8 @@ def test_gpu_pack_offer_settings_key(tmp_path):
 
 
 # ---- CPU-mode wording (field test: "CPU mode (no NVIDIA GPU)" on an RTX 3050) -------------------------------------
-def test_gpu_pack_offer_cpu_mode_text_does_not_deny_a_found_gpu():
+def test_gpu_pack_offer_cpu_mode_text_does_not_deny_a_found_gpu(monkeypatch):
+    monkeypatch.setattr(core, "_TECH", {"flag": False, "setting": True})  # #1807: technical view = the old text
     assert core.cpu_mode_text(gpu_seen=True) == t("gui_cpu_mode_gpu_unused")
     assert core.cpu_mode_text(gpu_seen=False) == t("gui_cpu_mode")
     assert "no NVIDIA" not in core.cpu_mode_text(gpu_seen=True)
@@ -184,6 +185,7 @@ def test_gpu_pack_offer_notice_matched_in_any_language(monkeypatch):
 def test_gpu_pack_offer_cpu_text_never_blocks_when_asked(monkeypatch):
     monkeypatch.setattr(core, "_NVIDIA_SEEN", [])
     monkeypatch.setattr("tinglongwu.hwprobe.gpu_info", lambda *a, **k: pytest.fail("nvidia-smi on the Tk thread"))
+    monkeypatch.setattr(core, "_TECH", {"flag": False, "setting": True})  # #1807: technical view = the old text
     assert core.cpu_mode_text(block=False) == t("gui_cpu_mode")
 
 

@@ -402,6 +402,51 @@ LABELS = {
     "quality.manual": {
         "en": {"plain": "I'll choose", "tech": "Manual"}, "ru": {"plain": "Выберу сам", "tech": "Вручную"},
         "zh-TW": {"plain": "我自己選", "tech": "手動"}, "ja": {"plain": "自分で選ぶ", "tech": "手動"}},
+    "ui.gui_model": {
+        "en": {"plain": 'Listening accuracy (faster / smarter but slower)', "tech": 'Speech model'},
+        "ru": {"plain": 'Точность распознавания речи (быстрее / умнее, но медленнее)', "tech": 'Модель речи'},
+        "zh-TW": {"plain": '聽的準確度（快一點／聰明但較慢）', "tech": '語音模型'},
+        "ja": {"plain": '聞き取りの精度（速い／賢いが遅め）', "tech": '音声モデル'}},
+    "ui.gui_quality": {
+        "en": {"plain": 'Speed and accuracy', "tech": 'Quality'},
+        "ru": {"plain": 'Скорость и точность', "tech": 'Качество'},
+        "zh-TW": {"plain": '速度與準確度', "tech": '品質'},
+        "ja": {"plain": '速さと正確さ', "tech": '品質'}},
+    "ui.gui_engine": {
+        "en": {"plain": 'How to translate', "tech": 'Engine'},
+        "ru": {"plain": 'Способ перевода', "tech": 'Движок'},
+        "zh-TW": {"plain": '翻譯方式', "tech": '引擎'},
+        "ja": {"plain": '翻訳の方法', "tech": 'エンジン'}},
+    "ui.gui_gpu_use": {
+        "en": {"plain": 'Speed up with the graphics chip (Auto / Off)', "tech": 'Use GPU'},
+        "ru": {"plain": 'Ускорять видеокартой (авто / выкл.)', "tech": 'Использовать GPU'},
+        "zh-TW": {"plain": '用顯示晶片加速（自動／不要）', "tech": '使用 GPU'},
+        "ja": {"plain": 'グラフィックチップで高速化（おまかせ／しない）', "tech": 'GPU を使う'}},
+    "ui.gui_mt_path_gpu": {
+        "en": {"plain": 'Translation is using the graphics chip to go faster', "tech": 'Hy-MT2 on GPU ({api})'},
+        "ru": {"plain": 'Перевод ускоряется видеокартой', "tech": 'Hy-MT2 на GPU ({api})'},
+        "zh-TW": {"plain": '翻譯正在用顯示晶片加速', "tech": 'Hy-MT2 在顯示卡上跑（{api}）'},
+        "ja": {"plain": '翻訳はグラフィックチップで高速化中', "tech": 'Hy-MT2 は GPU（{api}）'}},
+    "ui.gui_mode_gpu": {
+        "en": {"plain": 'Speeding up', "tech": 'GPU mode'},
+        "ru": {"plain": 'Ускорение включено', "tech": 'Режим GPU'},
+        "zh-TW": {"plain": '加速中', "tech": 'GPU 模式'},
+        "ja": {"plain": '高速化中', "tech": 'GPU モード'}},
+    "ui.gui_mode_cpu": {
+        "en": {"plain": 'Normal speed', "tech": 'CPU mode'},
+        "ru": {"plain": 'Обычная скорость', "tech": 'Режим CPU'},
+        "zh-TW": {"plain": '一般速度', "tech": 'CPU 模式'},
+        "ja": {"plain": '通常の速さ', "tech": 'CPU モード'}},
+    "ui.gui_cpu_mode": {
+        "en": {"plain": 'Normal speed: set up to keep up with the talk', "tech": 'CPU mode (no NVIDIA GPU): settings chosen for speed'},
+        "ru": {"plain": 'Обычная скорость: настроено так, чтобы успевать за речью', "tech": 'Режим CPU (нет NVIDIA GPU): настройки для скорости'},
+        "zh-TW": {"plain": '一般速度：已自動選擇跟得上說話的設定', "tech": 'CPU 模式（沒有 NVIDIA 顯示卡）：已自動選擇偏重速度的設定'},
+        "ja": {"plain": '通常の速さ: 話に遅れないよう自動で設定', "tech": 'CPU モード（NVIDIA GPU なし）: 速度重視の設定'}},
+    "ui.gui_cpu_mode_gpu_unused": {
+        "en": {"plain": 'Normal speed: the graphics chip is not used; set up to keep up with the talk', "tech": 'CPU mode (NVIDIA GPU found but not used): settings chosen for speed'},
+        "ru": {"plain": 'Обычная скорость: видеокарта не используется; настроено так, чтобы успевать за речью', "tech": 'Режим CPU (видеокарта NVIDIA найдена, но не используется): настройки для скорости'},
+        "zh-TW": {"plain": '一般速度：沒有用到顯示晶片，已自動選擇跟得上說話的設定', "tech": 'CPU 模式（有 NVIDIA 顯示卡但未使用）：已自動選擇偏重速度的設定'},
+        "ja": {"plain": '通常の速さ: グラフィックチップは未使用。話に遅れないよう自動で設定', "tech": 'CPU モード（NVIDIA GPU はあるが未使用）: 速度重視の設定'}},
 }
 _TECH = {"flag": False, "setting": False}
 
@@ -422,6 +467,16 @@ def label(key: str, lang: str | None = None, tech: bool | None = None) -> str:
     """#1806: the text of a LABELS key in the UI language: plain, or technical when the switch is on."""
     ui = lang or _ui()
     return LABELS[key][ui]["tech" if (tech_labels() if tech is None else tech) else "plain"]
+
+
+def ui_text(key: str, **kw) -> str:
+    """#1807: a settings / status text by its i18n key: plain or tech from LABELS (`ui.<key>`), else plain t(key)."""
+    from ..i18n import t
+
+    if f"ui.{key}" not in LABELS:
+        return t(key, **kw)
+    s = label(f"ui.{key}")
+    return s.format(**kw) if kw else s
 
 
 def label_texts(key: str, lang: str) -> tuple[str, ...]:
@@ -511,7 +566,7 @@ def mt_path_text(path: tuple[str, int] | None) -> str:
     backend, threads = path
     if backend == "cpu":
         return t("gui_mt_path_cpu", n=threads) if threads > 0 else t("gui_mt_path_cpu_plain")
-    return t("gui_mt_path_gpu", api={"vulkan": "Vulkan", "cuda": "CUDA"}.get(backend, backend))
+    return ui_text("gui_mt_path_gpu", api={"vulkan": "Vulkan", "cuda": "CUDA"}.get(backend, backend))
 
 
 _NVIDIA_SEEN: list[bool] = []  # cache: nvidia-smi runs at most once per process
@@ -536,10 +591,8 @@ def nvidia_seen(gpu_info=None, block: bool = True) -> bool:
 
 def cpu_mode_text(gpu_seen: bool | None = None, block: bool = True) -> str:
     """The "CPU mode" text: "no NVIDIA GPU" only when nvidia-smi found none, else "NVIDIA GPU found but not used"."""
-    from ..i18n import t
-
-    return t("gui_cpu_mode_gpu_unused" if (nvidia_seen(block=block) if gpu_seen is None else gpu_seen)
-             else "gui_cpu_mode")
+    return ui_text("gui_cpu_mode_gpu_unused" if (nvidia_seen(block=block) if gpu_seen is None else gpu_seen)
+                   else "gui_cpu_mode")
 
 
 def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None,
@@ -563,6 +616,8 @@ def drop_cpu_mode_notice(notice: str, status: str) -> str:
     from ..i18n import t
 
     cpus = {t("gui_cpu_mode"), t("gui_cpu_mode_gpu_unused")}  # #1525: either wording
+    for k in ("gui_cpu_mode", "gui_cpu_mode_gpu_unused"):  # #1807: and either view (plain / tech)
+        cpus.update(label_texts(f"ui.{k}", _ui()))
     if not notice or not any(c in (status or "") for c in cpus):
         return notice
     keep = []

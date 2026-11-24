@@ -64,3 +64,36 @@ def test_setting_round_trips_and_defaults_off(tmp_path):
     s["tech_labels"] = True
     core.save_settings(s, p)
     assert core.load_settings(p)["tech_labels"] is True
+
+
+def test_settings_and_status_texts_have_plain_and_tech_views_1807():
+    import re
+
+    keys = [k for k in core.LABELS if k.startswith("ui.")]
+    assert len(keys) >= 8
+    banned = re.compile(r"ASR|MT|GPU|Vulkan|CUDA|NVIDIA|pack|tier|beam|RTF|small|large|base|medium")
+    for k in keys:
+        for lang in LANGS:
+            assert not banned.search(core.LABELS[k][lang]["plain"]), (k, lang)
+    core.set_tech_labels(setting=False)
+    assert core.ui_text("gui_quality") == "Speed and accuracy"
+    assert core.ui_text("gui_mode_gpu") == "Speeding up"
+    core.set_tech_labels(setting=True)
+    assert core.ui_text("gui_quality") == "Quality"
+    assert core.ui_text("gui_mode_gpu") == "GPU mode"
+
+
+def test_status_lines_follow_the_switch_and_keep_their_values_1807():
+    core.set_tech_labels(setting=False)
+    assert "Vulkan" not in core.mt_path_text(("vulkan", 0))
+    core.set_tech_labels(setting=True)
+    assert core.mt_path_text(("vulkan", 0)).endswith("(Vulkan)")
+    assert core.cpu_mode_text(gpu_seen=False).startswith("CPU mode")
+
+
+def test_cpu_mode_notice_dedupe_accepts_both_views_1807():
+    core.set_tech_labels(setting=False)
+    plain = core.cpu_mode_text(gpu_seen=False)
+    tech = core.label("ui.gui_cpu_mode", tech=True)
+    assert core.drop_cpu_mode_notice(tech, plain) == ""
+    assert core.drop_cpu_mode_notice("other", plain) == "other"

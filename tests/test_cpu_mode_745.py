@@ -48,6 +48,7 @@ def test_cpu_ram_only_without_cuda():
 @pytest.mark.parametrize("lang,word", [("en", "CPU mode"), ("ru", "CPU"), ("zh-TW", "CPU 模式")])
 def test_cpu_mode_line(monkeypatch, lang, word):
     monkeypatch.setenv("TLWU_UI_LANG", lang)
+    monkeypatch.setattr(core, "_TECH", {"flag": False, "setting": True})
     line = core.cpu_mode_line("cpu", 412.4)
     assert word in line and "412" in line
     assert core.cpu_mode_line("cpu") and "412" not in core.cpu_mode_line("cpu")

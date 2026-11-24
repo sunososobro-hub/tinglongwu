@@ -640,7 +640,7 @@ class App:
     # -- control window -----------------------------------------------------------------------
     def _tx(self, widget, key, option="text"):
         """Label `widget` with t(key) now and on every language switch."""
-        widget.configure(**{option: t(key)})
+        widget.configure(**{option: core.ui_text(key)})  # #1807: plain / tech wording
         self._tr.append((widget, option, key))
         return widget
 
@@ -836,7 +836,7 @@ class App:
 
     def relabel(self):
         for w, opt, key in self._tr:
-            w.configure(**{opt: t(key)})
+            w.configure(**{opt: core.ui_text(key)})
         if self.load_t0 is not None:
             self.btn.configure(text=t("gui_loading", s=self.load_shown))
         else:
@@ -2258,7 +2258,7 @@ class App:
                 except Exception:  # noqa: BLE001
                     self._gpu_ok = False
             on_gpu = self._gpu_ok and self.settings.get("gpu_use") != "off"
-            mode = t("gui_mode_gpu" if on_gpu else "gui_mode_cpu")
+            mode = core.ui_text("gui_mode_gpu" if on_gpu else "gui_mode_cpu")
             gp = _nvml_gpu_percent() if self._gpu_ok else None
             if pct is not None:
                 txt = mode + "  " + t("gui_cpu", p=pct) + ("" if gp is None else "  GPU %d%%" % gp)
@@ -3061,6 +3061,7 @@ class App:
         """#1806: the "Show technical details" switch: only the label texts change, never a stored value."""
         self.settings["tech_labels"] = self.v_tech.get()
         core.set_tech_labels(setting=self.v_tech.get())
+        self.relabel()  # #1807: labels and status lines follow the switch at once
         self._relabel_combos()
 
     def _src_toggled(self):
