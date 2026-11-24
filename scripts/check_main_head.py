@@ -13,7 +13,7 @@ ALLOWED_HEADS = (
     re.compile(r"^release/v\d+\.\d+\.\d+$"),
     re.compile(r"^docs/fastlane-\d+$"),
 )
-RULE = "PRs into main must come from release/vX.Y.Z or docs/fastlane-N (tlwu_rules.md sections 11 and 14)"
+RULE = "PRs into main must come from release/vX.Y.Z or docs/fastlane-N (.agent/rules_release.md sections 11 and 14)"
 
 
 def check(base: str, head: str) -> tuple[bool, str]:
