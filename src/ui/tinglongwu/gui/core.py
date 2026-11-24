@@ -217,6 +217,12 @@ def source_label_key(s: dict) -> str | None:
     return "gui_src_mic" if s.get("source") == "mic" else "gui_src_system"
 
 
+def mic_toggle_visible(s: dict) -> bool:
+    """#1604: the "my microphone on / off" toggle only means something when I speak too (the meeting scene, the speak leg's
+    capture). In the listen-only video scene the situation alone decides the capture source, so the toggle is hidden."""
+    return scene_of(s) == "meeting"
+
+
 def toggled_source(s: dict) -> str:
     """#1544: the Source the one-click toggle switches to (system sound <-> microphone). `s` is not changed."""
     return "system" if s.get("source") == "mic" else "mic"

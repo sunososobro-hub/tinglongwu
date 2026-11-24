@@ -19,7 +19,7 @@ from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from ..i18n import SILENT_CLEAR
 from .core import scene_of as scene_mode_name
-from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, source_label_key, toggled_source, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
+from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, source_label_key, mic_toggle_visible, toggled_source, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload, quality_hint, quality_speech_model,
                    save_settings, settings_to_argv, topics_on, topics_model_path, voice_outputs, listen_outputs, mic_inputs, clamp_alpha, run_pack_download, gui_error_text, load_status_text)
@@ -1218,6 +1218,7 @@ class App:
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
         self.dot.pack(side="left", padx=8)
         self.set_dot("idle")
+        self._dot_tip(self.dot)
         self.btn_pause = ttk.Button(row2, text=t("gui_pause"), command=self.toggle_pause)
         self.btn_pause.pack(side="left")
         self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
@@ -1262,14 +1263,15 @@ class App:
         return dict(self.settings, source=v.get()) if v is not None else self.settings
 
     def _source_sync(self):
-        """#1544: show / hide the source toggle for the saved scene and refresh its words."""
-        key = source_label_key(self._live_source_settings())
-        if key is None:
-            self.source_row.grid_remove()
-            return
-        self.btn_source.configure(text=t(key))
-        if self.source_row.grid_info() == {} and self.bar_wide is not None:
-            self.source_row.grid()
+        """#1604: the situation alone sets the capture source, so the separate source button stays hidden (a saved
+        Source "mic" still applies; it is edited under 調整). The mic toggle is shown for two-way situations only."""
+        self.source_row.grid_remove()
+        if mic_toggle_visible(self.settings):
+            if not self.btn_mic.winfo_manager():
+                first = self.btn_mic.master.pack_slaves()
+                self.btn_mic.pack(side="left", **({"before": first[0]} if first else {}))
+        else:
+            self.btn_mic.pack_forget()
 
     def _source_toggled(self):
         """#1544: one click switches PC sound <-> microphone (applies at the next Start)."""
@@ -1467,6 +1469,27 @@ class App:
     def set_dot(self, name: str):
         self.dot_state = name
         self.dot.itemconfigure(self.dot_oval, fill=DOT[name])
+
+    def _dot_tip(self, w):
+        """#1604: the status dot says what it means on hover (it had no label)."""
+        tip = {"w": None}
+
+        def show(_e=None):
+            hide()
+            x, y = w.winfo_rootx() + 14, w.winfo_rooty() + w.winfo_height() + 4
+            top = tk.Toplevel(w)
+            top.wm_overrideredirect(True)
+            top.wm_geometry(f"+{x}+{y}")
+            ttk.Label(top, text=t("gui_dot_" + self.dot_state), padding=(6, 2), relief="solid").pack()
+            tip["w"] = top
+
+        def hide(_e=None):
+            if tip["w"] is not None:
+                tip["w"].destroy()
+                tip["w"] = None
+
+        w.bind("<Enter>", show)
+        w.bind("<Leave>", hide)
 
     def _show_panel(self):
         """Raise the main window (the status and notice lines live there, #1028)."""
