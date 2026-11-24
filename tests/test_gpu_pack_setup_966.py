@@ -99,6 +99,7 @@ def test_wizard_installs_pack_only_for_nvidia_without_cpu_mode():
 
 def test_wizard_summary_says_installed_or_why_not(monkeypatch):
     monkeypatch.setattr(wording, "tech", lambda: True)  # #1809: these asserts pin the technical wording
+    monkeypatch.setenv("TLWU_UI_LANG", "zh-TW")  # pin the language: the CI machine may report en
     assert "已安裝" in setup_gui.gpu_pack_status(0, "gpu pack 0.3.5: installed in x")
     assert "沒有 GPU 加速包" in setup_gui.gpu_pack_status(0, gpu_pack.NO_PACK_NOTE)
     assert "沒有安裝成功" in setup_gui.gpu_pack_status(1, "gpu pack: FAIL")

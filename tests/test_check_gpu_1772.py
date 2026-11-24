@@ -86,6 +86,7 @@ def test_vulkan_state_is_not_a_cuda_pack_offer():
 
 def test_gui_text_names_igpu_and_pack_state_not_nvidia(monkeypatch):
     monkeypatch.setattr(wording, "tech", lambda: True)  # #1809: these asserts pin the technical wording
+    monkeypatch.setattr(wording, "lang", lambda: "zh-TW")  # pin the setup app language: the CI machine may report en
     ready = gpu_offer.row_text(gpu_offer.VULKAN, None, ["AMD Radeon 780M"], pack_ok=lambda: True)
     assert "AMD Radeon 780M" in ready and "NVIDIA" not in ready and "installed" in ready
     missing = gpu_offer.row_text(gpu_offer.VULKAN, None, ["AMD Radeon 780M"], pack_ok=lambda: False)

@@ -15,7 +15,7 @@ GPU = tiers.Gpu("RTX Test", 8192, 7000, "560.1")
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch):
     monkeypatch.setattr(wording, "tech", lambda: wording._TECH["flag"])  # no saved GUI setting in tests
-    monkeypatch.delenv("TLWU_UI_LANG", raising=False)
+    monkeypatch.setenv("TLWU_UI_LANG", "zh-TW")
     wording.set_tech(False)
     yield
     wording.set_tech(False)
@@ -43,6 +43,9 @@ def test_plain_is_the_default_and_tech_gives_the_old_text():
 
 
 def test_language_is_zh_tw_unless_ui_lang_is_en(monkeypatch):
+    assert wording.lang() == "zh-TW"
+    monkeypatch.delenv("TLWU_UI_LANG")
+    monkeypatch.setattr("tinglongwu.userdirs.read_config", lambda: {})
     assert wording.lang() == "zh-TW"
     monkeypatch.setenv("TLWU_UI_LANG", "en")
     assert wording.lang() == "en"
