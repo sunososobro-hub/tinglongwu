@@ -148,3 +148,15 @@ def test_blocked_pair_is_listed_not_run(tmp_path):
     bad.write_text(json.dumps({"pairs": [{"pair": "hi->zh", "pins": "eval/p.json", "clips": 20, "blocked": " "}]}))
     with pytest.raises(langmatrix.ConfigError):
         langmatrix.load_config(bad)
+
+
+def test_matrix_only_keeps_one_pair_for_the_gigaam_dispatch_1747(capsys):
+    """#1747: eval-langs.yml --asr gigaam-v3 runs only ru->zh; an unknown pair yields no job and exit 1."""
+    assert langmatrix.main(["matrix", "--only", "ru->zh"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert [j["pair"] for j in doc["include"]] == ["ru->zh"]
+    assert doc["include"][0]["clips"] == 20
+    assert langmatrix.main(["matrix", "--only", "xx->zh"]) == 1
+    assert json.loads(capsys.readouterr().out)["include"] == []
+    assert langmatrix.main(["matrix"]) == 0
+    assert len(json.loads(capsys.readouterr().out)["include"]) > 1

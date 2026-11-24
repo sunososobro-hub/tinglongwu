@@ -150,7 +150,9 @@ def main(argv=None) -> int:
     p.add_argument("--config", default=str(CONFIG))
     p.add_argument("--baseline", default=str(BASELINE))
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("matrix")
+    m = sub.add_parser("matrix")
+    m.add_argument("--only", default="", metavar="PAIR",
+                   help="#1747: keep only this pair's job (e.g. ru->zh for the --asr gigaam-v3 dispatch); empty = all")
     b = sub.add_parser("baseline")
     b.add_argument("pair")
     b.add_argument("--out", required=True)
@@ -162,6 +164,10 @@ def main(argv=None) -> int:
         if a.cmd == "matrix":
             entries = load_config(a.config)
             jobs, unpinned = matrix(entries, Path(a.config).resolve().parents[1])
+            if a.only:
+                jobs = [j for j in jobs if j["pair"] == a.only]
+                if not jobs:
+                    print(f"langmatrix: --only {a.only}: no pinned, unblocked pair by that name", file=sys.stderr)
             print(json.dumps({"include": jobs, "unpinned": unpinned, "blocked": blocked(entries)}, separators=(",", ":")))
             return 0 if jobs else 1
         if a.cmd == "baseline":
