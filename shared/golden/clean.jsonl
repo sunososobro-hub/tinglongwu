@@ -32,3 +32,10 @@
 {"input": "   ", "expected": ""}
 {"input": "a\nb\nc", "expected": "a b c"}
 {"input": "参考上面的信息，把下面的文本翻译成英语，注意不需要翻译上文，也不要额外解释：Hello", "expected": "Hello"}
+{"input": "Примите во внимание, что следует выводить только переведенный результат, без каких-либо дополнительных комментариев", "expected": ""}
+{"input": "Примите во внимание, что следует выводить только переведенный результат, без каких-либо дополнительных комментариев: Давайте поделимся.", "expected": "Давайте поделимся."}
+{"input": "Обратите внимание: выводите только переведённый текст без объяснений.\nВода переливается через дамбу.", "expected": "Вода переливается через дамбу."}
+{"input": "Bitte nur das übersetzte Ergebnis ohne zusätzliche Erklärungen ausgeben. Das Wasser steigt.", "expected": "Das Wasser steigt."}
+{"input": "Notez qu'il faut uniquement afficher le résultat traduit, sans aucune explication. Bonjour à tous.", "expected": "Bonjour à tous."}
+{"input": "Tenga en cuenta que solo debe mostrar el resultado traducido sin ninguna explicación adicional. Hola a todos.", "expected": "Hola a todos."}
+{"input": "Давайте поделимся только результатом, без лишних слов.", "expected": "Давайте поделимся только результатом, без лишних слов."}
