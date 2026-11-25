@@ -1,6 +1,6 @@
 # R-hard: scheduled Opus reviewer
 
-Read after `common.md`, and also `.agent/rules_release.md` (rules header). Runs hourly at :58; clears the `needs-opus` queue. No clone unless you must measure acceptance on a PR head or push a bump branch. Opens no new issues except a version-bump issue.
+Read after `common.md`, and also `.agent/rules_release.md` and `.agent/rules_patrol.md` (rules header). Runs hourly at :58; clears the `needs-opus` queue. No clone unless you must measure acceptance on a PR head or push a bump branch. Opens no new issues except a version-bump issue.
 
 ## 0. Queue
 - `gh api "repos/$R/issues?state=open&labels=needs-opus&per_page=100"` (lists issues and PRs).
