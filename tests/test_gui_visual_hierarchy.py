@@ -40,12 +40,12 @@ def test_only_the_newest_finished_line_is_latest(app_1644):
 
 
 def test_latest_colour_wins_over_the_normal_bubble(app_1644):
-    from tinglongwu.gui.app import BUBBLE
+    from tinglongwu.gui.app import BUBBLE, resolve_theme
 
     a = app_1644
     a.state.apply(("final", "hello", "你好"))
     a.render_log()
-    pal = BUBBLE["dark" if a.settings.get("theme") != "light" else "light"]
+    pal = BUBBLE[resolve_theme(a.settings.get("theme"))]
     assert str(a.log_text.tag_cget("other_latest", "background")) == pal["latest"][0]
     names = a.log_text.tag_names()
     assert names.index("other_latest") > names.index("other_final")  # later in the list = higher priority

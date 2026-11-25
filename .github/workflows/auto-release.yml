@@ -1,7 +1,7 @@
 name: auto-release
 # #589 (owner 2026-11-13): when every required check (scripts/release_notes.py REQUIRED_CHECKS: ci, e2e,
 # windows-build, hw-tests, audio-routing) is green on the open `release: vX.Y.Z` PR, merge it and publish, with no
-# human click. Rules: .agent/tlwu_rules.md sections 14 and 17.
+# human click. Rules: .agent/rules_release.md section 14 and .agent/tlwu_rules.md section 17.
 # #976 (two lanes): the PR head is the snapshot branch release/vX.Y.Z (release-pr.yml), a fixed dev commit, so merges
 #   to dev never restart it. This workflow re-evaluates that PR after any required run on dev or on a release/v*
 #   ref completes, after release-pr and every 15 min; the checkout is the dev tip (merged code) and the gate reads

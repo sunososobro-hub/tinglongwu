@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 from tinglongwu_setup import gpu_pack, selfupdate
-from tlwu_app import setup_gui, tiers
+from tlwu_app import setup_gui, tiers, wording
 
 VERSION = "0.3.5"
 ZIP_URL = "https://example.invalid/tinglongwu-gpu-pack.zip"
@@ -97,7 +97,9 @@ def test_wizard_installs_pack_only_for_nvidia_without_cpu_mode():
     assert not setup_gui.wants_gpu_pack(tiers.choose_tier(None, False), None)  # no NVIDIA GPU
 
 
-def test_wizard_summary_says_installed_or_why_not():
+def test_wizard_summary_says_installed_or_why_not(monkeypatch):
+    monkeypatch.setattr(wording, "tech", lambda: True)  # #1809: these asserts pin the technical wording
+    monkeypatch.setenv("TLWU_UI_LANG", "zh-TW")  # pin the language: the CI machine may report en
     assert "已安裝" in setup_gui.gpu_pack_status(0, "gpu pack 0.3.5: installed in x")
     assert "沒有 GPU 加速包" in setup_gui.gpu_pack_status(0, gpu_pack.NO_PACK_NOTE)
     assert "沒有安裝成功" in setup_gui.gpu_pack_status(1, "gpu pack: FAIL")

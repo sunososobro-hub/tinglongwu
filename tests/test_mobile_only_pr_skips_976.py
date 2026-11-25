@@ -100,8 +100,8 @@ def test_every_step_after_the_decision_is_gated(wf, job):
 
 def test_audio_routing_keeps_its_steps_and_cancelled_semantics():
     steps = _steps("audio-routing.yml", "audio-routing")
-    assert len(steps) == 13  # 12 before #976 + the decide step
-    assert sum("!cancelled()" in str(s.get("if", "")) for s in steps) == 6
+    assert len(steps) == 15  # 12 before #976 + the decide step + #4 clips and meeting check
+    assert sum("!cancelled()" in str(s.get("if", "")) for s in steps) == 8
 
 
 def test_acceptance_still_fails_when_the_table_fails():

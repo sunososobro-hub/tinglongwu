@@ -1,0 +1,8 @@
+{"now": "2026-11-25T12:00:00Z", "dev_red": 2, "prs": [
+ {"number": 1, "head": "fix/10", "created_at": "2026-11-24T08:00:00Z", "merged_at": "2026-11-24T10:00:00Z",
+  "files": ["src/a.py", "src/b.py"], "dirty_requeues": 1, "test_minutes": 10, "pushes": ["review", "conflict"]},
+ {"number": 2, "head": "fix/11-r2", "created_at": "2026-11-24T09:00:00Z", "merged_at": "2026-11-24T11:00:00Z",
+  "files": ["src/a.py"], "dirty_requeues": 2, "test_minutes": 20, "pushes": ["red test"]},
+ {"number": 3, "head": "fix/12", "created_at": "2026-11-24T12:00:00Z", "merged_at": "2026-11-24T13:00:00Z",
+  "files": ["src/a.py", "docs/x.md"], "dirty_requeues": 0, "test_minutes": 30, "pushes": []}
+]}

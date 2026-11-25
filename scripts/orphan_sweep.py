@@ -17,6 +17,8 @@ from datetime import datetime, UTC
 REPO = "sunososobro-hub/tinglongwu"
 TIMEOUT_MIN = {"model:sonnet": 20, "model:opus": 45}
 DEFAULT_TIMEOUT_MIN = 20
+EMPTY_CLAIM_BRANCH = re.compile(r"^fix/(\d+)(?:-r\d+)?$")
+EMPTY_CLAIM_GRACE_SEC = 5 * 60
 
 
 def timeout_minutes(labels: set[str]) -> int:
@@ -34,6 +36,18 @@ def is_orphan(labels: set[str], claimed_at: datetime, now: datetime, has_open_pr
     return (now - claimed_at).total_seconds() > timeout_minutes(labels) * 60
 
 
+def is_empty_claim(name: str, ahead_by: int, has_open_pr: bool, issue_labels: set[str] | None,
+                   issue_updated_at: datetime | None, now: datetime) -> bool:
+    """True when a `fix/N` (or `fix/N-rK`) branch is an empty leftover claim safe to delete."""
+    if not EMPTY_CLAIM_BRANCH.match(name) or ahead_by != 0 or has_open_pr:
+        return False
+    if issue_labels is not None and "status:doing" in issue_labels:
+        return False
+    if issue_updated_at is not None and (now - issue_updated_at).total_seconds() <= EMPTY_CLAIM_GRACE_SEC:
+        return False
+    return True
+
+
 def _ts(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
@@ -47,6 +61,16 @@ def _gh_list(path: str) -> list:
     """Every page of a collection, flattened (`--paginate --slurp` wraps the pages in one JSON array)."""
     pages = _gh(path, "--paginate", "--slurp") or []
     return [item for page in pages for item in (page if isinstance(page, list) else [page])]
+
+
+def _issue_or_none(num: str) -> dict | None:
+    """Issue record, None only on a confirmed 404/410; any other failure aborts."""
+    proc = subprocess.run(["gh", "api", f"repos/{REPO}/issues/{num}"], capture_output=True, text=True)
+    if proc.returncode == 0:
+        return json.loads(proc.stdout)
+    if "HTTP 404" in proc.stderr or "HTTP 410" in proc.stderr:
+        return None
+    raise subprocess.CalledProcessError(proc.returncode, proc.args, proc.stdout, proc.stderr)
 
 
 def _claim_time(num: int) -> datetime | None:
@@ -99,7 +123,56 @@ def main() -> int:
             _gh(f"repos/{REPO}/issues/{it['number']}/labels/status:doing", "-X", "DELETE")
             _gh(f"repos/{REPO}/issues/{it['number']}/comments", "-X", "POST", "-f",
                 "body=Orphan claim released (no PR / new commit within the timeout).")
+    _sweep_empty_claims(now, args.apply)
     return 0
+
+
+def _open_heads() -> set[str]:
+    """Head branch names of open PRs from this repo (a fork PR with the same name protects nothing here)."""
+    prs = _gh_list(f"repos/{REPO}/pulls?state=open&per_page=100")
+    return {pr["head"]["ref"] for pr in prs if (pr["head"].get("repo") or {}).get("full_name") == REPO}
+
+
+def _sweep_empty_claims(now: datetime, apply: bool) -> None:
+    """Delete empty `fix/N` (or `fix/N-rK`) branches left behind by released claims."""
+    open_heads = _open_heads()
+    for br in _gh_list(f"repos/{REPO}/branches?per_page=100"):
+        name = br["name"]
+        m = EMPTY_CLAIM_BRANCH.match(name)
+        if not m or name in open_heads:
+            continue
+        try:
+            sha = _empty_claim_sha(name, m.group(1), open_heads, now)
+            if sha is None:
+                continue
+            print(f"empty branch {name}")
+            if not apply:
+                continue
+            # re-check right before deleting (fresh PR list too): a worker may have pushed, claimed or opened a PR
+            if _empty_claim_sha(name, m.group(1), _open_heads(), now) != sha:
+                continue
+            _delete_at(name, sha)
+        except subprocess.CalledProcessError as exc:
+            print(f"warning: skipped {name}: {(exc.stderr or str(exc)).strip()}")
+
+
+def _empty_claim_sha(name: str, num: str, open_heads: set[str], now: datetime) -> str | None:
+    """Head SHA of `name` when it is an empty claim right now (compared with dev at that SHA), else None."""
+    sha = _gh(f"repos/{REPO}/git/ref/heads/{name}")["object"]["sha"]
+    ahead_by = _gh(f"repos/{REPO}/compare/dev...{sha}")["ahead_by"]
+    if ahead_by != 0:
+        return None
+    issue = _issue_or_none(num)
+    labels = {lb["name"] for lb in issue.get("labels", [])} if issue else None
+    updated_at = _ts(issue["updated_at"]) if issue else None
+    return sha if is_empty_claim(name, ahead_by, name in open_heads, labels, updated_at, now) else None
+
+
+def _delete_at(name: str, sha: str, remote: str = "origin", cwd: str | None = None) -> None:
+    """Delete the branch only if it still points at `sha`: git checks the lease atomically on the server side,
+    so a commit pushed after the check makes the delete fail instead of losing that commit."""
+    subprocess.run(["git", "push", remote, f"--force-with-lease=refs/heads/{name}:{sha}", f":refs/heads/{name}"],
+                   check=True, capture_output=True, text=True, cwd=cwd)
 
 
 if __name__ == "__main__":

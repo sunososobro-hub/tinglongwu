@@ -5,6 +5,7 @@ name: audio-routing
 # first. Steps: device listing, a signal check (a 440 Hz tone played into "CABLE Input" must be captured on "CABLE
 # Output" with RMS above SILENCE_RMS_THRESHOLD, scripts/cable_loopback_check.py), and speak_selftest through
 # VB-CABLE (the same check as hw-tests.yml "#6 #207 #311-4", CPU models from the e2e cache).
+# #4: meeting mode labels (owner hand-test replaced 2026-11-18): scripts/hw_live_checks.py meeting --cable.
 # Required for the release PR alongside ci / e2e / windows-build (scripts/release_notes.py REQUIRED_CHECKS).
 on:
   push:
@@ -39,7 +40,7 @@ jobs:
     # dev push / release-pr.yml dispatch run, which is what the release gate reads
     if: ${{ !startsWith(github.head_ref, 'release/') }}
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30  # #4 meeting check adds ~10 min (FLEURS clips + both sides' models + 60 s clip)
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -172,3 +173,25 @@ jobs:
           python scripts/speak_selftest.py --clip "$RUNNER_TEMP/zh.wav" --to ru --models-dir "$TLWU_MODELS" \
             --tts-python "$TLWU_KOKORO_PYTHON" --tts-model "$TLWU_KOKORO_MODEL" --json "$RUNNER_TEMP/speak_ru.json"
           { echo '### speak_selftest ru (windows-latest, VB-CABLE)'; echo '```'; cat "$RUNNER_TEMP/speak_ru.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "#4 FLEURS clips (pinned sha256) for the meeting check"
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
+        continue-on-error: true  # #4: report only until green on a dev run, then a merger drops this line
+        shell: bash
+        run: |
+          python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out "$RUNNER_TEMP/fleurs"
+          python scripts/hw_live_checks.py clips --data "$RUNNER_TEMP/fleurs" --out "$RUNNER_TEMP/live"
+
+      - name: "#4 meeting mode: zh clip A = speak side (paced), en clip B into CABLE Input = listen side (loopback): >= 90% lines labelled right"
+        if: ${{ (!cancelled()) && steps.changes.outputs.build == 'true' }}
+        continue-on-error: true  # #4: report only until green on a dev run, then a merger drops this line
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          rc=0
+          python scripts/hw_live_checks.py meeting --cable --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" \
+            --json "$RUNNER_TEMP/check_4.json" > "$RUNNER_TEMP/check_4.txt" || rc=$?
+          cat "$RUNNER_TEMP/check_4.txt"
+          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_4.txt" || echo "FAIL #4 meeting check printed no result")"; } >> "$GITHUB_STEP_SUMMARY"
+          [ $rc -eq 0 ] || tail -n 40 "$RUNNER_TEMP/live/meeting.log" || true
+          exit $rc

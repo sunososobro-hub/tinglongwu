@@ -233,16 +233,17 @@ def fail_reason(lines: list[str]) -> str:
 
 def vulkan_text(devices: list[str], pack_ok: bool | None = None) -> str:
     """#1772: GUI status line for a Vulkan GPU: names the device and the Vulkan pack state (None = unknown)."""
-    from ..i18n import t
+    from . import core
 
     name = ", ".join(devices) if devices else "?"
     key = "gpu_vulkan_unknown" if pack_ok is None else ("gpu_vulkan_ready" if pack_ok else "gpu_vulkan_nopack")
-    return t(key, name=name)
+    return core.ui_text(key, name=name)  # #1808: plain wording unless "Show technical details" is on
 
 
 def row_text(state: str, version: str | None, devices: list[str] | None = None, pack_ok=None) -> str:
     """Status text of the GPU row in Settings > Add-ons (localized)."""
     from ..i18n import t
+    from . import core
 
     if state == VULKAN:
         return vulkan_text(devices or list(_LAST_VULKAN), (pack_ok or vulkan_pack_ok)())
@@ -250,7 +251,7 @@ def row_text(state: str, version: str | None, devices: list[str] | None = None, 
     if state == INSTALLED:
         return t("gpu_pack_row_installed", ver=f" v{version}" if version else "")
     if state == UNAVAILABLE:
-        return t("gpu_pack_row_unavailable")
+        return core.ui_text("gpu_pack_row_unavailable")
     if state == OLD:
         return t("gpu_pack_row_old", size=GPU_PACK_SIZE)
     return t("gpu_pack_row_missing", size=GPU_PACK_SIZE)

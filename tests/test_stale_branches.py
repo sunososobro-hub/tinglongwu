@@ -122,3 +122,29 @@ def test_1338_compare_404_skips_branch_and_eval_results_kept():
     got = [n for n, _s, _w in sb.plan(gh, R, now=NOW)]
     assert got == ["fix/9"]
     assert "eval-results" in sb.ALWAYS_KEEP
+
+
+def test_1882_claim_only_branch_is_empty_and_old_claim_rounds_are_pruned():
+    """A fix/N branch holding only its empty claim commit counts as empty; claim/N-<sha7> fix-round claims go
+    after the 45 min orphan timeout; a branch with real work is kept."""
+
+    class GhClaims(FakeGitHub):
+        def __call__(self, method, path):
+            if path.startswith("/repos/o/r/compare/dev...fix/"):
+                ref = path.split("...", 1)[1]
+                msgs = {"fix/8": ["claim #8 s1 ab12"], "fix/9": ["claim #9 s1 cd34", "fix #9: real work"]}[ref]
+                return {"ahead_by": len(msgs), "commits": [{"commit": {"message": m}} for m in msgs]}
+            return super().__call__(method, path)
+
+    gh = GhClaims(branches=[("fix/8", "c8"), ("fix/9", "c9"), ("claim/9-abcdef1", "k1"), ("claim/9-1234567", "k2")],
+                  prs=[], dates={"k1": "2026-11-13T11:00:00Z", "k2": "2026-11-13T11:40:00Z"})
+    got = {n: why for n, _, why in sb.plan(gh, R, now=NOW)}
+    assert sorted(got) == ["claim/9-abcdef1", "fix/8"]
+    assert "claim older than 45 min" in got["claim/9-abcdef1"]
+
+
+def test_1882_work_ahead():
+    assert sb.work_ahead({"ahead_by": 0}) == 0
+    assert sb.work_ahead({"ahead_by": 2, "commits": [{"commit": {"message": "claim #1 s n"}},
+                                                     {"commit": {"message": "fix #1: x"}}]}) == 1
+    assert sb.work_ahead({"ahead_by": 1, "commits": [{"commit": {"message": "claimed nothing"}}]}) == 1

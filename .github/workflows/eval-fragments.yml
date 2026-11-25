@@ -50,12 +50,17 @@ jobs:
           key: eval-fragments-models-v1-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - name: Model (Hy-MT2 1.8B)
         run: tlwu-setup --hymt --models-dir "$TLWU_MODELS"
-      - name: Baseline / context / mark (CPU)
+      # #1898: the same set twice, built-in term tables off (`none`) and on (`default` = the app default for the
+      # source language, e.g. tech for ru), so the summary shows what the tables change per kind (polysemy, idiom, ...).
+      - name: Baseline / context / mark, term tables off and on (CPU)
         run: |
           set -o pipefail
           mkdir -p out
-          python -m tlwu_eval --fragment-cases eval/fragment_cases.jsonl --device cpu --models-dir "$TLWU_MODELS" --out out/fragments.json | tee out/report.md
-          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+          for scen in none default; do
+            case "$scen" in none) label="tech off (--term-scenario none)" ;; *) label="tech on (--term-scenario default)" ;; esac
+            python -m tlwu_eval --fragment-cases eval/fragment_cases.jsonl --term-scenario "$scen" --device cpu --models-dir "$TLWU_MODELS" --out "out/fragments_$scen.json" | tee "out/report_$scen.md"
+            { echo "### $label"; echo; cat "out/report_$scen.md"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

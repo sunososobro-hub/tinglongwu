@@ -75,7 +75,7 @@ jobs:
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/aar-cache
-          key: llama-aar-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh') }}
+          key: llama-aar-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh', 'mobile/tool/pack_llama_aar.py') }}
       - name: Build llama.cpp AAR from source (cache miss only)
         if: steps.aar.outputs.cache-hit != 'true'
         run: |

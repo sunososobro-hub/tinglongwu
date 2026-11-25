@@ -37,6 +37,7 @@ UPDATE_PROMPT_MIN_INTERVAL_S = 24 * 3600  # #779: at most one update line per da
 PROMPT_KEY = "update_last_prompt"  # unix seconds of the last update line shown by an automatic check
 PENDING_KEY = "update_pending"  # "<version>|<installer path>": downloaded + verified, applied at the next launch
 DOWNLOAD_URL = "https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe"  # #1526
+RELEASES_URL = "https://github.com/sunososobro-hub/tinglongwu/releases/latest"  # #1764: not the Windows .exe
 MODULE = "tinglongwu_setup.selfupdate"
 BUNDLED_FLAG = "--run-selfupdate"  # tlwu_app.main routes this to tinglongwu_setup.selfupdate.main (#768)
 
@@ -118,6 +119,12 @@ def git_apply(root: Path | None = None, run=None, platform: str | None = None) -
         raise RuntimeError("diverged")
     names = _git(root, ["diff", "--name-only", old, "HEAD"], run).stdout.split()
     return any(re.fullmatch(r"pyproject\.toml|requirements/[^/]*\.txt", n) for n in names)
+
+
+def recovery_url(root: Path | None = None, platform: str | None = None) -> str:
+    """#1764: where the failed-check "open page" button goes: the setup .exe only for a Windows wizard install,
+    the releases page for everyone else (git checkouts on Linux / macOS cannot run the .exe)."""
+    return DOWNLOAD_URL if is_wizard_install(root, platform) else RELEASES_URL
 
 
 def offline(env=None) -> bool:

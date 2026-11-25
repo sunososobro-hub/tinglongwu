@@ -217,6 +217,12 @@ def source_label_key(s: dict) -> str | None:
     return "gui_src_mic" if s.get("source") == "mic" else "gui_src_system"
 
 
+def mic_toggle_visible(s: dict) -> bool:
+    """#1604: the "my microphone on / off" toggle only means something when I speak too (the meeting scene, the speak leg's
+    capture). In the listen-only video scene the situation alone decides the capture source, so the toggle is hidden."""
+    return scene_of(s) == "meeting"
+
+
 def toggled_source(s: dict) -> str:
     """#1544: the Source the one-click toggle switches to (system sound <-> microphone). `s` is not changed."""
     return "system" if s.get("source") == "mic" else "mic"
@@ -360,10 +366,6 @@ _MARK_MISSING = {"en": " (not downloaded)", "ru": " (нужна загрузка
 
 # #884: the dropdowns show names in the UI language; the stored setting keeps the raw value.
 _CHOICES = {
-    "quality": {"en": {"auto": "Auto", "fast": "Fast", "balanced": "Balanced", "quality": "Best quality", "manual": "Manual"},
-                "ru": {"auto": "Авто", "fast": "Быстро", "balanced": "Баланс", "quality": "Лучшее качество", "manual": "Вручную"},
-                "zh-TW": {"auto": "自動", "fast": "快速", "balanced": "平衡", "quality": "最佳品質", "manual": "手動"},
-                "ja": {"auto": "自動", "fast": "高速", "balanced": "バランス", "quality": "最高品質", "manual": "手動"}},
     "source": {"en": {"system": "PC sound", "mic": "Microphone"},
                "ru": {"system": "Звук ПК", "mic": "Микрофон"},
                "zh-TW": {"system": "電腦音效", "mic": "麥克風"},
@@ -376,6 +378,187 @@ _CHOICES = {
                 "zh-TW": {"auto": "自動", "off": "關閉"}, "ja": {"auto": "自動", "off": "オフ"}},  # #1531
     "engine": {"en": {"auto": "Auto"}, "ru": {"auto": "Авто"}, "zh-TW": {"auto": "自動"}, "ja": {"auto": "自動"}},
 }
+
+
+
+# #1806: one key set, a `plain` and a `tech` text per key and UI language. Plain is the default; the "Show technical
+# details" setting (or --tech-labels) switches every label() to the technical text. Add a key here (all 4 languages,
+# both variants: tests/test_labels_1806.py) instead of a second table, so the two views never drift.
+LABEL_VARIANTS = ("plain", "tech")
+LABELS = {
+    "quality.auto": {
+        "en": {"plain": "Auto", "tech": "Auto"}, "ru": {"plain": "Авто", "tech": "Авто"},
+        "zh-TW": {"plain": "自動", "tech": "自動"}, "ja": {"plain": "おまかせ", "tech": "自動"}},
+    "quality.fast": {
+        "en": {"plain": "Faster", "tech": "Fast"}, "ru": {"plain": "Быстрее", "tech": "Быстро"},
+        "zh-TW": {"plain": "快一點", "tech": "快速"}, "ja": {"plain": "速さ重視", "tech": "高速"}},
+    "quality.balanced": {
+        "en": {"plain": "Just right", "tech": "Balanced"}, "ru": {"plain": "В самый раз", "tech": "Баланс"},
+        "zh-TW": {"plain": "剛剛好", "tech": "平衡"}, "ja": {"plain": "ちょうどよい", "tech": "バランス"}},
+    "quality.quality": {
+        "en": {"plain": "Most accurate, slower", "tech": "Best quality"},
+        "ru": {"plain": "Точнее, но медленнее", "tech": "Лучшее качество"},
+        "zh-TW": {"plain": "最準但較慢", "tech": "最佳品質"}, "ja": {"plain": "いちばん正確（やや遅い）", "tech": "最高品質"}},
+    "quality.manual": {
+        "en": {"plain": "I'll choose", "tech": "Manual"}, "ru": {"plain": "Выберу сам", "tech": "Вручную"},
+        "zh-TW": {"plain": "我自己選", "tech": "手動"}, "ja": {"plain": "自分で選ぶ", "tech": "手動"}},
+    "ui.gui_model": {
+        "en": {"plain": 'Listening accuracy (faster / smarter but slower)', "tech": 'Speech model'},
+        "ru": {"plain": 'Точность распознавания', "tech": 'Модель речи'},
+        "zh-TW": {"plain": '聽的準確度（快一點／聰明但較慢）', "tech": '語音模型'},
+        "ja": {"plain": '聞き取りの精度（速い／賢いが遅め）', "tech": '音声モデル'}},
+    "ui.gui_quality": {
+        "en": {"plain": 'Speed and accuracy', "tech": 'Quality'},
+        "ru": {"plain": 'Скорость и точность', "tech": 'Качество'},
+        "zh-TW": {"plain": '速度與準確度', "tech": '品質'},
+        "ja": {"plain": '速さと正確さ', "tech": '品質'}},
+    "ui.gui_engine": {
+        "en": {"plain": 'How to translate', "tech": 'Engine'},
+        "ru": {"plain": 'Способ перевода', "tech": 'Движок'},
+        "zh-TW": {"plain": '翻譯方式', "tech": '引擎'},
+        "ja": {"plain": '翻訳の方法', "tech": 'エンジン'}},
+    "ui.gui_gpu_use": {
+        "en": {"plain": 'Speed up with the graphics chip (Auto / Off)', "tech": 'Use GPU'},
+        "ru": {"plain": 'Ускорение видеокартой', "tech": 'Использовать GPU'},
+        "zh-TW": {"plain": '用顯示晶片加速（自動／不要）', "tech": '使用 GPU'},
+        "ja": {"plain": 'グラフィックチップで高速化（おまかせ／しない）', "tech": 'GPU を使う'}},
+    "ui.gui_mt_path_gpu": {
+        "en": {"plain": 'Translation is using the graphics chip to go faster', "tech": 'Hy-MT2 on GPU ({api})'},
+        "ru": {"plain": 'Перевод ускоряется видеокартой', "tech": 'Hy-MT2 на GPU ({api})'},
+        "zh-TW": {"plain": '翻譯正在用顯示晶片加速', "tech": 'Hy-MT2 在顯示卡上跑（{api}）'},
+        "ja": {"plain": '翻訳はグラフィックチップで高速化中', "tech": 'Hy-MT2 は GPU（{api}）'}},
+    "ui.gui_mode_gpu": {
+        "en": {"plain": 'Speeding up', "tech": 'GPU mode'},
+        "ru": {"plain": 'Ускорение включено', "tech": 'Режим GPU'},
+        "zh-TW": {"plain": '加速中', "tech": 'GPU 模式'},
+        "ja": {"plain": '高速化中', "tech": 'GPU モード'}},
+    "ui.gui_mode_cpu": {
+        "en": {"plain": 'Normal speed', "tech": 'CPU mode'},
+        "ru": {"plain": 'Обычная скорость', "tech": 'Режим CPU'},
+        "zh-TW": {"plain": '一般速度', "tech": 'CPU 模式'},
+        "ja": {"plain": '通常の速さ', "tech": 'CPU モード'}},
+    "ui.gui_cpu_mode": {
+        "en": {"plain": 'Normal speed: set up to keep up with the talk', "tech": 'CPU mode (no NVIDIA GPU): settings chosen for speed'},
+        "ru": {"plain": 'Обычная скорость: настроено так, чтобы успевать за речью', "tech": 'Режим CPU (нет NVIDIA GPU): настройки для скорости'},
+        "zh-TW": {"plain": '一般速度：已自動選擇跟得上說話的設定', "tech": 'CPU 模式（沒有 NVIDIA 顯示卡）：已自動選擇偏重速度的設定'},
+        "ja": {"plain": '通常の速さ: 話に遅れないよう自動で設定', "tech": 'CPU モード（NVIDIA GPU なし）: 速度重視の設定'}},
+    "ui.gui_cpu_mode_gpu_unused": {
+        "en": {"plain": 'Normal speed: the graphics chip is not used; set up to keep up with the talk', "tech": 'CPU mode (NVIDIA GPU found but not used): settings chosen for speed'},
+        "ru": {"plain": 'Обычная скорость: видеокарта не используется; настроено так, чтобы успевать за речью', "tech": 'Режим CPU (видеокарта NVIDIA найдена, но не используется): настройки для скорости'},
+        "zh-TW": {"plain": '一般速度：沒有用到顯示晶片，已自動選擇跟得上說話的設定', "tech": 'CPU 模式（有 NVIDIA 顯示卡但未使用）：已自動選擇偏重速度的設定'},
+        "ja": {"plain": '通常の速さ: グラフィックチップは未使用。話に遅れないよう自動で設定', "tech": 'CPU モード（NVIDIA GPU はあるが未使用）: 速度重視の設定'}},
+    "ui.gpu_offer_banner": {
+        'en': {"plain": 'Your computer can go faster. Download the speed-up add-on ({size}, one time)?', "tech": 'NVIDIA GPU found — install speed-up pack ({size}, once)?'},
+        'ru': {"plain": 'Ваш компьютер может работать быстрее. Скачать ускоряющее дополнение ({size}, один раз)?', "tech": 'Найдена видеокарта NVIDIA — установить пакет ускорения ({size}, один раз)?'},
+        'zh-TW': {"plain": '你的電腦可以更快 — 要下載加速套件嗎（約 {size}，只要一次）？', "tech": '偵測到 NVIDIA 顯示卡 — 要安裝 GPU 加速包嗎（{size}，只需一次）？'},
+        'ja': {"plain": 'このパソコンはもっと速くできます。高速化アドオンをダウンロードしますか（約 {size}、1 回のみ）？', "tech": 'NVIDIA GPU が見つかりました — 高速化パックをインストールしますか（{size}、1 回のみ）？'}},
+    "ui.vk_offer_banner": {
+        'en': {"plain": 'Your computer can go faster. Download the speed-up add-on in one click (one time)?', "tech": 'GPU found (Vulkan) — install the GPU speed-up pack and speech model (one click, once)?'},
+        'ru': {"plain": 'Ваш компьютер может работать быстрее. Скачать ускоряющее дополнение в один клик (один раз)?', "tech": 'Найдена видеокарта (Vulkan) — установить пакет ускорения GPU и модель речи (один клик, один раз)?'},
+        'zh-TW': {"plain": '你的電腦可以更快 — 要一鍵下載加速套件嗎（只要一次）？', "tech": '偵測到 GPU（Vulkan）— 要安裝 GPU 加速包與語音模型嗎（一鍵、只需一次）？'},
+        'ja': {"plain": 'このパソコンはもっと速くできます。高速化アドオンをワンクリックでダウンロードしますか（1 回のみ）？', "tech": 'GPU（Vulkan）が見つかりました — GPU 高速化パックと音声モデルをインストールしますか（ワンクリック、1 回のみ）？'}},
+    "ui.vk_offer_running": {
+        'en': {"plain": 'Downloading the speed-up add-on ...', "tech": 'Installing Vulkan GPU pack and speech model ...'},
+        'ru': {"plain": 'Скачиваю ускоряющее дополнение ...', "tech": 'Установка пакета Vulkan GPU и модели речи ...'},
+        'zh-TW': {"plain": '正在下載加速套件 ...', "tech": '正在安裝 Vulkan GPU 加速包與語音模型 ...'},
+        'ja': {"plain": '高速化アドオンをダウンロード中 ...', "tech": 'Vulkan GPU パックと音声モデルをインストール中 ...'}},
+    "ui.vk_offer_ok": {
+        'en': {"plain": 'Speed-up add-on installed. Restart tlwu to use it.', "tech": 'Vulkan GPU pack installed. Restart tlwu to run speech and translation on the GPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение установлено. Перезапустите tlwu, чтобы оно заработало.', "tech": 'Пакет Vulkan GPU установлен. Перезапустите tlwu, чтобы речь и перевод шли на GPU.'},
+        'zh-TW': {"plain": '加速套件已安裝，重新啟動 tlwu 後生效。', "tech": 'Vulkan GPU 加速包已安裝。重新啟動 tlwu 後，語音與翻譯會改用 GPU。'},
+        'ja': {"plain": '高速化アドオンをインストールしました。tlwu を再起動すると有効になります。', "tech": 'Vulkan GPU パックをインストールしました。tlwu を再起動すると音声と翻訳が GPU で動きます。'}},
+    "ui.vk_offer_ok_cpu": {
+        'en': {"plain": 'Speed-up add-on installed. Restart tlwu to use it.', "tech": 'Vulkan GPU pack installed. Restart tlwu to use the GPU; {cpu} stays on the CPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение установлено. Перезапустите tlwu, чтобы оно заработало.', "tech": 'Пакет Vulkan GPU установлен. Перезапустите tlwu; {cpu} останется на CPU.'},
+        'zh-TW': {"plain": '加速套件已安裝，重新啟動 tlwu 後生效。', "tech": 'Vulkan GPU 加速包已安裝。重新啟動 tlwu 後會使用 GPU；{cpu}仍使用 CPU。'},
+        'ja': {"plain": '高速化アドオンをインストールしました。tlwu を再起動すると有効になります。', "tech": 'Vulkan GPU パックをインストールしました。tlwu を再起動すると GPU を使います。{cpu}は CPU のままです。'}},
+    "ui.gpu_offer_ok": {
+        'en': {"plain": 'Speed-up add-on installed. Restart tlwu to use it.', "tech": 'GPU speed-up pack installed. Restart tlwu to apply it.'},
+        'ru': {"plain": 'Ускоряющее дополнение установлено. Перезапустите tlwu, чтобы оно заработало.', "tech": 'Пакет ускорения GPU установлен. Перезапустите tlwu, чтобы применить его.'},
+        'zh-TW': {"plain": '加速套件已安裝，重新啟動 tlwu 後生效。', "tech": 'GPU 加速包已安裝。重新啟動 tlwu 後生效。'},
+        'ja': {"plain": '高速化アドオンをインストールしました。tlwu を再起動すると有効になります。', "tech": 'GPU 高速化パックをインストールしました。tlwu を再起動すると反映されます。'}},
+    "ui.vk_offer_fail": {
+        'en': {"plain": 'The speed-up add-on did not install. Running at normal speed; translation still works.', "tech": 'Vulkan GPU pack not installed ({reason}). Speech and translation stay on the CPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение не установилось. Работает обычная скорость, перевод по-прежнему доступен.', "tech": 'Пакет Vulkan GPU не установлен ({reason}). Речь и перевод остаются на CPU.'},
+        'zh-TW': {"plain": '加速套件沒裝成功，先用一般速度，翻譯照常可用。', "tech": 'Vulkan GPU 加速包未安裝（{reason}）。語音與翻譯仍使用 CPU。'},
+        'ja': {"plain": '高速化アドオンをインストールできませんでした。通常の速さで動作し、翻訳はそのまま使えます。', "tech": 'Vulkan GPU パックをインストールできませんでした（{reason}）。音声と翻訳は CPU のままです。'}},
+    "ui.gpu_offer_fail": {
+        'en': {"plain": 'The speed-up add-on did not install. Running at normal speed; translation still works.', "tech": 'GPU pack not installed ({reason}). Translation stays on the CPU.'},
+        'ru': {"plain": 'Ускоряющее дополнение не установилось. Работает обычная скорость, перевод по-прежнему доступен.', "tech": 'Пакет GPU не установлен ({reason}). Перевод остаётся на CPU.'},
+        'zh-TW': {"plain": '加速套件沒裝成功，先用一般速度，翻譯照常可用。', "tech": 'GPU 加速包沒有安裝成功（{reason}），翻譯繼續使用 CPU。'},
+        'ja': {"plain": '高速化アドオンをインストールできませんでした。通常の速さで動作し、翻訳はそのまま使えます。', "tech": 'GPU パックをインストールできませんでした（{reason}）。翻訳は CPU のままです。'}},
+    "ui.gpu_auto_running": {
+        'en': {"plain": 'Your computer can go faster. Downloading the speed-up add-on in the background ({size}); listening keeps going at normal speed ...', "tech": 'NVIDIA GPU found — downloading the speed-up pack in the background ({size}); listening keeps running on the CPU ...'},
+        'ru': {"plain": 'Ваш компьютер может работать быстрее. Скачиваю ускоряющее дополнение в фоне ({size}); прослушивание идёт в обычном режиме ...', "tech": 'Найдена NVIDIA — пакет ускорения ({size}) скачивается в фоне; прослушивание работает на CPU ...'},
+        'zh-TW': {"plain": '你的電腦可以更快 — 正在背景下載加速套件（約 {size}），聽譯照常以一般速度進行 ...', "tech": '偵測到 NVIDIA 顯示卡 — 正在背景下載 GPU 加速包（{size}），聆聽照常使用 CPU …'},
+        'ja': {"plain": 'このパソコンはもっと速くできます。高速化アドオンをバックグラウンドでダウンロード中（約 {size}）。聞き取りは通常の速さで続きます ...', "tech": 'NVIDIA GPU を検出 — 高速化パック（{size}）をバックグラウンドでダウンロード中。聞き取りは CPU で継続します…'}},
+    "ui.gpu_offer_running": {
+        'en': {"plain": 'Installing the speed-up add-on ({size}) ...', "tech": 'Installing GPU speed-up pack ({size}) ...'},
+        'ru': {"plain": 'Устанавливаю ускоряющее дополнение ({size}) ...', "tech": 'Установка пакета ускорения GPU ({size}) ...'},
+        'zh-TW': {"plain": '正在安裝加速套件（{size}）...', "tech": '正在安裝 GPU 加速包（{size}）…'},
+        'ja': {"plain": '高速化アドオンをインストール中（{size}）...', "tech": 'GPU 高速化パック（{size}）をインストール中…'}},
+    "ui.gpu_pack_row_name": {
+        'en': {"plain": 'Speed-up add-on ({size})', "tech": 'GPU speed-up pack (NVIDIA, {size})'},
+        'ru': {"plain": 'Ускоряющее дополнение ({size})', "tech": 'Пакет ускорения GPU (NVIDIA, {size})'},
+        'zh-TW': {"plain": '加速套件（{size}）', "tech": 'GPU 加速包（NVIDIA，{size}）'},
+        'ja': {"plain": '高速化アドオン（{size}）', "tech": 'GPU 高速化パック（NVIDIA、{size}）'}},
+    "ui.gpu_pack_row_unavailable": {
+        'en': {"plain": 'Not available on this computer', "tech": 'Not available (no NVIDIA GPU)'},
+        'ru': {"plain": 'Недоступно на этом компьютере', "tech": 'Недоступен (нет видеокарты NVIDIA)'},
+        'zh-TW': {"plain": '這台電腦不適用', "tech": '無法使用（沒有 NVIDIA 顯示卡）'},
+        'ja': {"plain": 'このパソコンでは使えません', "tech": '利用不可（NVIDIA GPU なし）'}},
+    "ui.gpu_vulkan_ready": {
+        'en': {"plain": 'Graphics chip: {name} (speed-up add-on installed)', "tech": 'Vulkan GPU: {name} (Vulkan pack installed)'},
+        'ru': {"plain": 'Видеочип: {name} (ускоряющее дополнение установлено)', "tech": 'Видеокарта Vulkan: {name} (пакет Vulkan установлен)'},
+        'zh-TW': {"plain": '顯示晶片：{name}（已安裝加速套件）', "tech": 'Vulkan 顯示卡：{name}（已安裝 Vulkan 加速包）'},
+        'ja': {"plain": 'グラフィックチップ：{name}（高速化アドオン導入済み）', "tech": 'Vulkan GPU：{name}（Vulkan パック導入済み）'}},
+    "ui.gpu_vulkan_nopack": {
+        'en': {"plain": 'Graphics chip: {name} (speed-up add-on not installed or out of date)', "tech": 'Vulkan GPU: {name} (Vulkan pack not installed or out of date)'},
+        'ru': {"plain": 'Видеочип: {name} (ускоряющее дополнение не установлено или устарело)', "tech": 'Видеокарта Vulkan: {name} (пакет Vulkan не установлен или устарел)'},
+        'zh-TW': {"plain": '顯示晶片：{name}（加速套件未安裝或已過期）', "tech": 'Vulkan 顯示卡：{name}（Vulkan 加速包未安裝或已過期）'},
+        'ja': {"plain": 'グラフィックチップ：{name}（高速化アドオン未導入または古い）', "tech": 'Vulkan GPU：{name}（Vulkan パック未導入または古い）'}},
+    "ui.gpu_vulkan_unknown": {
+        'en': {"plain": 'Graphics chip: {name}', "tech": 'Vulkan GPU: {name}'},
+        'ru': {"plain": 'Видеочип: {name}', "tech": 'Видеокарта Vulkan: {name}'},
+        'zh-TW': {"plain": '顯示晶片：{name}', "tech": 'Vulkan 顯示卡：{name}'},
+        'ja': {"plain": 'グラフィックチップ：{name}', "tech": 'Vulkan 対応 GPU：{name}'}},
+}
+_TECH = {"flag": False, "setting": False}
+
+
+def set_tech_labels(setting: bool | None = None, flag: bool | None = None) -> None:
+    """The "Show technical details" setting and the --tech-labels launch flag; either one shows the tech text."""
+    if setting is not None:
+        _TECH["setting"] = bool(setting)
+    if flag is not None:
+        _TECH["flag"] = bool(flag)
+
+
+def tech_labels() -> bool:
+    return _TECH["flag"] or _TECH["setting"]
+
+
+def label(key: str, lang: str | None = None, tech: bool | None = None) -> str:
+    """#1806: the text of a LABELS key in the UI language: plain, or technical when the switch is on."""
+    ui = lang or _ui()
+    return LABELS[key][ui]["tech" if (tech_labels() if tech is None else tech) else "plain"]
+
+
+def ui_text(key: str, **kw) -> str:
+    """#1807: a settings / status text by its i18n key: plain or tech from LABELS (`ui.<key>`), else plain t(key)."""
+    from ..i18n import t
+
+    if f"ui.{key}" not in LABELS:
+        return t(key, **kw)
+    s = label(f"ui.{key}")
+    return s.format(**kw) if kw else s
+
+
+def label_texts(key: str, lang: str) -> tuple[str, ...]:
+    return tuple(LABELS[key][lang][v] for v in LABEL_VARIANTS)
+
+
+_LABEL_KINDS = ("quality",)  # dropdown kinds whose names live in LABELS (#1806); the rest are still in _CHOICES
 
 
 def _ui() -> str:
@@ -392,6 +575,8 @@ def choice_label(kind: str, value: str, lang: str | None = None) -> str:
     ui = lang or _ui()
     if kind == "target":
         return langs.plain_label(value, ui)
+    if kind in _LABEL_KINDS:
+        return label(f"{kind}.{value}", ui) if f"{kind}.{value}" in LABELS else value
     return _CHOICES[kind][ui].get(value, value)
 
 
@@ -431,6 +616,9 @@ def choice_value(kind: str, label: str, values) -> str:
     for v in values:
         if label == v or any(label == choice_label(kind, v, u) for u in _MARK_MISSING):
             return v
+        if kind in _LABEL_KINDS and f"{kind}.{v}" in LABELS and any(
+                label in label_texts(f"{kind}.{v}", u) for u in _MARK_MISSING):
+            return v  # a saved name from the other view (plain <-> tech) still parses
     return label
 
 
@@ -453,7 +641,7 @@ def mt_path_text(path: tuple[str, int] | None) -> str:
     backend, threads = path
     if backend == "cpu":
         return t("gui_mt_path_cpu", n=threads) if threads > 0 else t("gui_mt_path_cpu_plain")
-    return t("gui_mt_path_gpu", api={"vulkan": "Vulkan", "cuda": "CUDA"}.get(backend, backend))
+    return ui_text("gui_mt_path_gpu", api={"vulkan": "Vulkan", "cuda": "CUDA"}.get(backend, backend))
 
 
 _NVIDIA_SEEN: list[bool] = []  # cache: nvidia-smi runs at most once per process
@@ -478,10 +666,8 @@ def nvidia_seen(gpu_info=None, block: bool = True) -> bool:
 
 def cpu_mode_text(gpu_seen: bool | None = None, block: bool = True) -> str:
     """The "CPU mode" text: "no NVIDIA GPU" only when nvidia-smi found none, else "NVIDIA GPU found but not used"."""
-    from ..i18n import t
-
-    return t("gui_cpu_mode_gpu_unused" if (nvidia_seen(block=block) if gpu_seen is None else gpu_seen)
-             else "gui_cpu_mode")
+    return ui_text("gui_cpu_mode_gpu_unused" if (nvidia_seen(block=block) if gpu_seen is None else gpu_seen)
+                   else "gui_cpu_mode")
 
 
 def cpu_mode_line(device: str, mt_ms: float | None = None, lang: str | None = None,
@@ -505,6 +691,8 @@ def drop_cpu_mode_notice(notice: str, status: str) -> str:
     from ..i18n import t
 
     cpus = {t("gui_cpu_mode"), t("gui_cpu_mode_gpu_unused")}  # #1525: either wording
+    for k in ("gui_cpu_mode", "gui_cpu_mode_gpu_unused"):  # #1807: and either view (plain / tech)
+        cpus.update(label_texts(f"ui.{k}", _ui()))
     if not notice or not any(c in (status or "") for c in cpus):
         return notice
     keep = []
@@ -1320,7 +1508,7 @@ class SpeakerColors:
 
 
 def speaker_prefix(book, colors, raw, fmt):
-    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", "#e6a23c"), or None without a
+    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", a hex colour), or None without a
     resolved speaker. Same name lookup (speaker_text: renames, "Speaker N" in the UI language) and same palette color
     as the main-window avatar, so the bar needs no extra row: the prefix sits in front of the line's own text."""
     shown = speaker_text(book, raw, fmt) if raw else None

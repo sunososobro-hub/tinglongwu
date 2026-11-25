@@ -258,7 +258,7 @@ def test_gui_module_imports_and_language_names():
     from tinglongwu.gui import app
 
     assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru", "ja"}
-    assert core.DEFAULTS["theme"] == "dark"
+    assert core.DEFAULTS["theme"] == "auto"
 
 
 # -- #72: subtitles inside the main window (scrolling log), floating bar optional and off by default ---------

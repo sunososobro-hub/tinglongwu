@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'logic/model_manifest.dart';
+import 'services/base_download.dart';
 import 'services/pipeline.dart';
 import 'ui/download_screen.dart';
 import 'ui/import_screen.dart';
@@ -46,6 +47,9 @@ class Root extends StatefulWidget {
 class _RootState extends State<Root> {
   Pipeline pipeline = Pipeline();
 
+  /// First-run base model download (#1863); kept across rebuilds so progress survives them.
+  BaseModelDownload? _baseDl;
+
   @override
   void initState() {
     super.initState();
@@ -68,19 +72,25 @@ class _RootState extends State<Root> {
     await _pushImporter(PackInstallScreen(modelsDir: dir, packs: packs));
   }
 
-  Future<void> _pushImporter(Widget screen) async {
-    final listening = pipeline.stage == Stage.listening;
-    final imported =
-        await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => screen));
-    if (!mounted || !restartAfterImport(listening: listening, imported: imported)) return;
+  /// The models are in: a fresh pipeline loads them and opens the listening screen.
+  void _restart() {
     final old = pipeline;
     setState(() => pipeline = Pipeline());
     old.dispose();
     pipeline.start();
   }
 
+  Future<void> _pushImporter(Widget screen) async {
+    final listening = pipeline.stage == Stage.listening;
+    final imported =
+        await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => screen));
+    if (!mounted || !restartAfterImport(listening: listening, imported: imported)) return;
+    _restart();
+  }
+
   @override
   void dispose() {
+    _baseDl?.dispose();
     pipeline.dispose();
     super.dispose();
   }
@@ -92,7 +102,16 @@ class _RootState extends State<Root> {
       builder: (context, _) {
         switch (pipeline.stage) {
           case Stage.missingModels:
-            return MissingModelsScreen(pipeline: pipeline, onImport: _openImport);
+            final dir = pipeline.paths!.modelsDir;
+            final dl = _baseDl ??= BaseModelDownload(DeviceBaseModelSource(dir),
+                url: DeviceBaseModelSource.bundleUrl);
+            return MissingModelsScreen(
+                download: dl,
+                modelsDir: dir,
+                missingFiles: pipeline.missingFiles,
+                logPath: pipeline.logPath,
+                onImport: _openImport,
+                onDone: _restart);
           case Stage.error:
             return ErrorScreen(pipeline: pipeline, onImport: _openImport);
           case Stage.downloadingModels:

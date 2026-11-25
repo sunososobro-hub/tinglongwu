@@ -71,7 +71,7 @@ def _inside(app, w, win):
 @pytest.mark.parametrize("scene", ["meeting", "video"])
 def test_982_every_mode_has_two_language_rows_and_no_advanced_ones(make_app, scene):
     a = make_app(scene=scene, advanced_open=True)
-    assert a.home_target.winfo_ismapped() and a.home_lang.winfo_ismapped()  # My language / Other side language
+    assert a.btn_pair.winfo_ismapped()  # #1603: one pair button  # My language / Other side language
     assert not a.combos["target"].winfo_ismapped() and not a.combos["lang"].winfo_ismapped()  # no Advanced rows
     _shot(a, f"982_{scene}")
 
@@ -302,13 +302,12 @@ def test_1241_status_wraps_at_panel_width_and_cpu_mode_once(make_app, monkeypatc
     for lbl in (a.lbl_status, a.lbl_notice):
         assert int(str(lbl.cget("wraplength"))) >= panel - 20  # wraps at the panel width, not a fixed 420 px
     shown = a.v_status.get() + "\n" + a.v_notice.get()
-    assert shown.count(t("gui_cpu_mode")) == 1
+    from tinglongwu.gui import core as _core  # #1807: the line is shown once, in whichever view is on
+
+    assert sum(shown.count(x) for x in {t("gui_cpu_mode"), *_core.label_texts("ui.gui_cpu_mode", _core._ui())}) == 1
     assert "\n" not in a.v_notice.get()  # the GPU-fallback reason is one line
-    same_row = a.scene_row.winfo_rooty() == a.toggle_row.winfo_rooty()
-    assert same_row == (a.bar.winfo_width() >= 1200)  # 情境 + toggles share a row only when wide enough
-    assert a.scene_combo.winfo_ismapped() and a.btn_mic.winfo_ismapped()
-    if same_row:  # side by side, not drawn on top of each other
-        assert a.scene_row.winfo_rootx() + a.scene_row.winfo_width() <= a.toggle_row.winfo_rootx()
+    assert not a.scene_row.winfo_ismapped()  # #1603: the 情境 dropdown sits in the top toolbar, not in the bar
+    assert a.scene_combo.master is a.toolbar and a.scene_combo.winfo_ismapped() and not a.btn_mic.winfo_ismapped()  # #1604: video scene hides the mic toggle
     _shot(a, f"1241_{w}x500")
 
 
@@ -321,3 +320,12 @@ def test_1241_notice_keeps_other_text_when_cpu_mode_dropped():
     assert drop_cpu_mode_notice(f"GPU off | {cpu}", status) == "GPU off"
     assert drop_cpu_mode_notice(f"{cpu}\nMic is off", status) == "Mic is off"
     assert drop_cpu_mode_notice(cpu, "Loading...") == cpu  # status does not show it yet: keep it
+
+
+# #1646: the CI "GUI acceptance screenshots" step names only this file; with TLWU_GUI_SHOTS set it also runs the
+# design-review shots (tests/test_gui_design_shots.py) so the PNGs land in the same gui-acceptance artifact.
+if os.environ.get("TLWU_GUI_SHOTS"):
+    import sys
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from test_gui_design_shots import test_1646_design_shot  # noqa: E402,F401
