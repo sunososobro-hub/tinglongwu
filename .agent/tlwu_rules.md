@@ -54,7 +54,7 @@ Section numbers are shared by three files; "rules section N" means the file that
 - Every routine first reads line 1 of issue #574: `level: N` (unreadable or missing -> 2).
   - 0 off: only merge green PRs; no picking, no new issues.
   - 1 low: only P0/P1 items + merging; only slot A works (B, C, W-hard only for P0/P1).
-  - 2 normal: picker below; slots B and C skip the wake when this week's minutes > 1.10 x W x hours elapsed / 168 (week from Monday 00:00 Asia/Taipei; minutes as in the ledger; W = the previous full week, none -> no brake).
+  - 2 normal: picker below; slots B and C skip the wake when this week's tool calls > 1.10 x W x hours elapsed / 168 (week from Monday 00:00 Asia/Taipei; calls as in the ledger; W = the previous full week in calls, none -> no brake).
   - 3 high: all slots work, up to 4 items per wake, no pace brake.
   - 4 max: as 3, plus S-hard also works items after its sweep.
 - Mergers merge green PRs at every level.
@@ -75,8 +75,9 @@ Section numbers are shared by three files; "rules section N" means the file that
 - Requeue: `board-scan` puts the issue of a PR red, `dirty` or `needs-review-ai` for > 30 min back to `status:todo` (comment `requeue: ...`); a worker fixes it on the same branch (section 2). After 3 requeues: `needs-opus`.
 
 ### Usage line
-- Every PR body ends with `tlwu-usage: ... minutes=N`: measured wall time from claim to PR open, the ledger input (missing = 0).
-- A run that pushes a fix to an open PR (CodeRabbit, red `test`, conflict, FAIL / CHANGES, requeue) ends with a PR comment whose last line is `tlwu-usage: model=<m> minutes=N phase=fix`; the ledger adds it to the PR's type.
+- Every PR body ends with `tlwu-usage: model=<m> tool_calls=<n> minutes=N`: `tool_calls` is the ledger input (missing = falls back to `minutes`); `minutes` (claim to PR open, wall time) is no longer a cost measure, and the ledger drops any value over 600 as bad data.
+- Cap per ticket per run: 50 tool calls (Sonnet and Opus). At 45 the worker stops exploring and wraps up. At 50 (or about 40 min, whichever first) it pushes what exists if tests are green and opens the PR; otherwise it drops unfinished edits, comments one line with what is left, adds `needs-split` + `status:todo` and stops. A fix round on an open PR has its own cap of 20 calls. Hand-off: `routines/worker.md` "Hand-off".
+- A run that pushes a fix to an open PR (CodeRabbit, red `test`, conflict, FAIL / CHANGES, requeue) ends with a PR comment whose last line is `tlwu-usage: model=<m> tool_calls=<n> minutes=N phase=fix`; the ledger adds the calls to the PR's type.
 
 ## 13. Infra cap
 - `infra` marks work only the owner or agents see (pipeline tooling, these rules, dashboards). Over its cap (10% of the last 7 days' minutes, ledger `infra:` line) pickers skip it (section 10). Details: `rules_patrol.md` section 13.
@@ -89,7 +90,7 @@ Section numbers are shared by three files; "rules section N" means the file that
 - Ready: base `dev`, not draft, `clean` (fix `dirty` first, section 7), green, g1-g7 pass, no hard stop.
 - Gates:
   - g1 link: body has `Closes #N` or `Refs #N` for an open or just-closed issue here.
-  - g2 usage: the body's last line is `tlwu-usage: ... minutes=N` (merger repairs g1 / g2 body gaps, section 3).
+  - g2 usage: the body's last line is `tlwu-usage: ... tool_calls=N minutes=N` (merger repairs g1 / g2 body gaps, section 3).
   - g3 base: `dev` (see Base).
   - g4 sensitive paths: protected paths, dependency pins (`pyproject.toml`, `requirements*.txt`), offline / netguard code (`tinglongwu/offline.py`, `scripts/*offline*`), model pins / downloads (`scripts/download_models.py`, `scripts/make_model_pins.py`): Opus PASS before merge. Install / update scripts are not g4 (CI covers them).
   - g5 tests: an added skip / skipif / xfail marker or a deleted test file -> `needs-opus`. Off on dev (section 17). Diff size is never a gate.

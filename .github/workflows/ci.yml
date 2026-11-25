@@ -103,16 +103,20 @@ jobs:
         run: |
           for f in scripts/*.sh scripts/i18n/*.sh; do bash -n "$f"; done
           grep -q "__TLWU_REF__" scripts/install.sh scripts/mac_install.sh scripts/bootstrap_windows.ps1
-      - name: Tests, normal (real-Tk GUI tests run under xvfb; a skip there fails, #113)
+      - name: Tests, normal + network disabled, at the same time (real-Tk GUI tests run under xvfb; a skip there fails, #113)
         # a modal dialog or a stuck Tk loop must fail fast, not hold the runner for hours (#113: PR #736 ran 2 h+)
         if: steps.scope.outputs.scope == 'full'
         timeout-minutes: 20
         # #1857: one pytest-xdist worker per CPU. loadgroup: every real-Tk / display file is in ONE group (one worker, one
         # after another, as before); every other file is its own group (tests/conftest.py xdist_group_for). A crashed
         # worker fails the run at once instead of being replaced (PR #1867 hung to the timeout after a segfault).
-        env:
-          TLWU_REQUIRE_DISPLAY: "1"
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" python -m pytest -q --timeout=120 -n auto --dist loadgroup --max-worker-restart=0
+        # #1857 part 2: both passes run at once (ci_parallel.sh: own TMPDIR each, `[normal]` / `[offline]` prefixes);
+        # the step fails when either pass fails. offline = a new empty network namespace (loopback only) with the
+        # in-process guard (tinglongwu.offline) on, so a library that phones home fails twice over (blocked + no route).
+        run: >-
+          bash scripts/ci_parallel.sh
+          normal 'TLWU_REQUIRE_DISPLAY=1 xvfb-run -a -s "-screen 0 1920x1080x24" python -m pytest -q --timeout=120 -n auto --dist loadgroup --max-worker-restart=0'
+          offline 'bash scripts/ci_offline.sh env TMPDIR="$TMPDIR" python -m pytest -q -p no:cacheprovider -n auto --dist loadgroup --max-worker-restart=0'
       - name: Tests, scoped (#1221; only the tests that name a changed file, plus the site tests for site PRs)
         if: steps.scope.outputs.scope != 'full' && steps.scope.outputs.tests != ''
         timeout-minutes: 10
@@ -137,11 +141,6 @@ jobs:
           name: gui-acceptance
           path: gui-acceptance/*.png
           if-no-files-found: ignore
-      - name: Tests with the network physically disabled (offline suite + everything else)
-        if: steps.scope.outputs.scope == 'full'
-        # new empty network namespace: no interfaces except loopback. The in-process guard (tinglongwu.offline) is on
-        # as well, so a library that phones home fails the test twice over (blocked + no route).
-        run: bash scripts/ci_offline.sh python -m pytest -q -n auto --dist loadgroup --max-worker-restart=0  # #1857: parallel workers
       - name: Chrome extension tab capture (#1159)
         if: steps.scope.outputs.scope == 'full'
         # after the offline suite: Playwright + Chromium are installed only here. A skip is a failure (REQUIRE).

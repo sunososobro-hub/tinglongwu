@@ -62,7 +62,7 @@ def safe_extract(tar_path: Path, dest: Path) -> None:
             tgt = (dest / m.name).resolve()
             if dest not in tgt.parents and tgt != dest or m.issym() or m.islnk() or m.isdev():
                 raise SystemExit(f"unsafe archive member: {m.name}")
-        t.extractall(dest)
+        t.extractall(dest, filter="data")
 
 
 def fleurs_dir(out: Path, code: str) -> Path:
