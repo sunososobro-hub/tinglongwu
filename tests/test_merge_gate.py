@@ -298,3 +298,105 @@ def test_eval_path_re_matches_eval_yml_filter():  # #1687: the gate and the work
     wf = (pathlib.Path(__file__).resolve().parents[1] / ".github/workflows/eval.yml").read_text(encoding="utf-8")
     assert "src/[^/]+/tinglongwu/" in wf.split("mini-eval:", 1)[1].split("low-end-cpu", 1)[0]
     assert not mg.EVAL_PATH_RE.match("mobile/lib/main.dart") and not mg.EVAL_PATH_RE.match("docs/x.md")
+
+
+# #1885: review-bot Minor threads alone do not stop a merge; Critical / Major / unrated / human threads do.
+def _thread(sev=None, author="coderabbitai[bot]", tid="T1", cid=11):
+    mark = (f'**<picture><img src="x.svg" alt=""></picture> {sev}** · **Functional Correctness**\n\n'
+            if sev else "")
+    return {"id": tid, "author": author, "body": f"<!-- coderabbit-ai-generated:v1 -->\n\n{mark}**Fix the thing**\n\ntext",
+            "path": "scripts/foo.py", "url": "https://example/t", "comment_id": cid}
+
+
+def test_minor_bot_threads_merge():
+    for sev in ("Minor", "Trivial", "Nitpick"):
+        action, reason = run(threads=[_thread(sev), _thread("Minor", tid="T2")])
+        assert action == "merge" and "2 Minor review-bot" in reason
+    assert run(threads=[])[0] == "merge"
+    old_style = {**_thread(), "body": "_🟡 Minor_\n\n**Rename x**"}
+    assert run(threads=[old_style])[0] == "merge"
+
+
+def test_major_unrated_or_human_thread_needs_ai():
+    assert run(threads=[_thread("Minor"), _thread("Major", tid="T2")])[0] == "needs-ai"
+    assert run(threads=[_thread("Critical")])[0] == "needs-ai"
+    assert run(threads=[_thread(None)])[0] == "needs-ai"  # no severity marker: fail closed
+    assert run(threads=[_thread("Minor", author="someone")])[0] == "needs-ai"  # a person's thread
+
+
+def test_minor_threads_do_not_skip_other_gates():
+    assert run(threads=[_thread("Minor")], checks=[])[0] == "wait"
+    assert run(p=pr(mergeable_state="dirty"), threads=[_thread("Minor")])[0] == "needs-ai"
+
+
+def test_apply_resolves_and_logs_minor_before_merge(monkeypatch):
+    import merge_gate as mg
+    calls = []
+    p = pr()
+
+    def fake_gh(path, *a):
+        calls.append((path, a))
+        if path == f"repos/{mg.REPO}/pulls/7":
+            return p
+        if path == "search/issues":
+            return {"items": [{"number": 55, "title": mg.MINOR_LOG_TITLE}]}
+        return {}
+
+    ran = []
+    monkeypatch.setattr(mg, "_gh", fake_gh)
+    monkeypatch.setattr(mg, "legacy_freeze", lambda: False)
+    monkeypatch.setattr(mg.subprocess, "run", lambda cmd, **kw: ran.append(cmd))
+    mg.apply(7, p, "merge", "ok", [], [_thread("Minor", cid=11), _thread("Major", tid="T2", cid=12)])
+    paths = [c[0] for c in calls]
+    assert f"repos/{mg.REPO}/issues/55/comments" in paths  # logged on the rolling issue
+    log_body = next(a for path, a in calls if path.endswith("/issues/55/comments"))
+    assert "#7: 1 Minor" in " ".join(log_body) and "Fix the thing" in " ".join(log_body)
+    assert f"repos/{mg.REPO}/pulls/7/comments/11/replies" in paths
+    assert f"repos/{mg.REPO}/pulls/7/comments/12/replies" not in paths  # Major is never auto-resolved
+    resolved = [a for path, a in calls if path == "graphql"]
+    assert len(resolved) == 1 and "t=T1" in resolved[0]
+    assert ran and ran[-1][4].endswith("/pulls/7/merge")  # merged after the resolves
+
+
+def test_apply_creates_log_issue_when_missing(monkeypatch):
+    import merge_gate as mg
+    calls = []
+
+    def fake_gh(path, *a):
+        calls.append((path, a))
+        if path == "search/issues":
+            return {"items": [{"number": 9, "title": "[review] minor findings (old)"}]}
+        if path == f"repos/{mg.REPO}/issues":
+            return {"number": 77}
+        return {}
+
+    monkeypatch.setattr(mg, "_gh", fake_gh)
+    assert mg.minor_log_issue() == 77
+    create = next(a for path, a in calls if path == f"repos/{mg.REPO}/issues")
+    assert f"title={mg.MINOR_LOG_TITLE}" in create and "labels[]=status:proposal" in create
+
+
+def test_graphql_thread_bot_login_and_human_reply():  # #1885 CodeRabbit review: GraphQL drops `[bot]`
+    from merge_gate import thread_info, minor_bot_thread
+    body = _thread("Minor")["body"]
+    bot = {"login": "coderabbitai", "__typename": "Bot"}
+    t = thread_info({"id": "T", "path": "a.py", "comments": {"nodes": [{"databaseId": 1, "body": body, "url": "u",
+                                                                        "author": bot}]}})
+    assert t["author"] == "coderabbitai[bot]" and minor_bot_thread(t)
+    owner = {"login": "sunososobro-hub", "__typename": "User"}
+    t = thread_info({"id": "T", "path": "a.py", "comments": {"nodes": [
+        {"databaseId": 1, "body": body, "url": "u", "author": bot}, {"body": "blocking", "author": owner}]}})
+    assert not minor_bot_thread(t) and run(threads=[t])[0] == "needs-ai"  # a person answered: AI merger decides
+    t = thread_info({"id": "T", "comments": {"nodes": [{"body": body, "author": owner}]}})
+    assert t["author"] == "sunososobro-hub" and not minor_bot_thread(t)
+
+
+def test_inline_blocking_reply_holds_until_later_pass(monkeypatch):  # #1885 CodeRabbit follow-up
+    import merge_gate as mg
+    monkeypatch.setattr(mg, "_gh_list", lambda path: [
+        {"user": {"login": "sunososobro-hub"}, "body": "blocking: keep this", "created_at": at(5)}])
+    notes = mg.inline_notes(7)
+    assert notes == [{"author": "sunososobro-hub", "body": "blocking: keep this", "at": at(5)}]
+    assert run(notes=notes, threads=[_thread("Minor")])[0] == "hold"  # resolved or not, never auto-merged
+    later_pass = {"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA}", "at": at(10)}
+    assert run(notes=notes + [later_pass], threads=[_thread("Minor")])[0] == "merge"
