@@ -8,7 +8,7 @@ Section numbers are shared by three files; "rules section N" means the file that
 Each section's text lives in its own file under `.agent/rules/`, so unrelated rule changes stop editing one shared file. This file plus every file listed below, in this order, is the whole rule set. Change a rule in its section file; a new section is a new `.agent/rules/NN_topic.md` plus one line here.
 - Claude Code loads the files through the `@` imports below (`CLAUDE.md` imports this file).
 - In a clone: `python scripts/rules_text.py` prints the whole text.
-- Over REST, one shell call: `for f in $(gh api "repos/$R/contents/.agent/rules?ref=dev" --jq '.[].name'); do gh api "repos/$R/contents/.agent/rules/$f?ref=dev" -H "Accept: application/vnd.github.raw"; done`
+- Over REST, one shell call (non-zero exit = incomplete rules: retry once, else stop the run): `( set -e; L=$(gh api "repos/$R/contents/.agent/rules?ref=dev" --jq '.[].name'); test -n "$L"; for f in $L; do gh api "repos/$R/contents/.agent/rules/$f?ref=dev" -H "Accept: application/vnd.github.raw" || exit 1; done )`
 
 - @rules/01_who.md — 1. Who does what
 - @rules/02_locking.md — 2. Locking

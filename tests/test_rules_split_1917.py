@@ -53,3 +53,33 @@ def test_cli_prints_the_whole_rule_set():
     out = subprocess.run([sys.executable, str(ROOT / "scripts" / "rules_text.py")],
                          capture_output=True, text=True, check=True).stdout
     assert rt.headings(out) == OLD_HEADINGS and "Allowed review authors" in out
+
+
+def _rest_command():
+    line = next(l for l in rt.INDEX.read_text(encoding="utf-8").splitlines() if l.startswith("- Over REST"))
+    return line.split("`")[1]
+
+
+FAKE_GH = """#!/bin/sh
+# fake gh: listing -> two files; FAIL_ON names the request that fails
+case "$*" in
+  *"$FAIL_ON"*) [ -n "$FAIL_ON" ] && { echo "HTTP 500" >&2; exit 1; } ;;
+esac
+case "$2" in
+  *rules\\?ref=dev) printf '01_a.md\\n02_b.md\\n' ;;
+  *01_a.md*) echo "## 1. A" ;;
+  *02_b.md*) echo "## 2. B" ;;
+esac
+"""
+
+
+@pytest.mark.parametrize("fail_on,ok", [("", True), ("rules?ref", False), ("01_a.md", False), ("02_b.md", False)])
+def test_rest_one_liner_fails_on_any_failed_request(tmp_path, fail_on, ok):
+    gh = tmp_path / "gh"
+    gh.write_text(FAKE_GH)
+    gh.chmod(0o755)
+    env = {"PATH": f"{tmp_path}:/usr/bin:/bin", "R": "o/r", "FAIL_ON": fail_on}
+    r = subprocess.run(["bash", "-c", _rest_command()], capture_output=True, text=True, env=env)
+    assert (r.returncode == 0) is ok, r.stdout + r.stderr
+    if ok:
+        assert rt.headings(r.stdout) == ["1. A", "2. B"]
