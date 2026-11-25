@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -68,43 +69,39 @@ def _restore_sigint():
         signal.signal(signal.SIGINT, prev)
 
 
-def worker_display(env=os.environ, worker: bool = True) -> str | None:
-    """#1857: the `test` job runs the suite in parallel pytest-xdist workers. Real-Tk GUI tests used to share one
-    Xvfb display in one process; with TLWU_XVFB_PER_WORKER=1 each worker gets its own display (gw0 -> :200,
-    gw1 -> :201, ...) so two workers' windows never take each other's focus or stacking. None = keep DISPLAY.
-    `worker` = this process is a real xdist worker (config.workerinput): a plain pytest child started by a test
-    inherits PYTEST_XDIST_WORKER but must keep the display its test gave it (or none, test_gui_require_display_113)."""
-    w = env.get("PYTEST_XDIST_WORKER", "")
-    if not worker or env.get("TLWU_XVFB_PER_WORKER") != "1" or not w.startswith("gw") or not w[2:].isdigit():
-        return None
-    return f":{200 + int(w[2:])}"
+# -- parallel `test` job (#1857) ---------------------------------------------------------------------------------
+# CI runs the suite with `pytest -n auto --dist loadgroup`. Files that build real Tk windows (or start a GUI child on
+# the xvfb display) all go into ONE xdist group, so they run one after another on one worker, as in the old serial run:
+# two workers driving Tk at once made a worker segfault in focus_force (test_send_gate_833, PR #1867).
+# Every other file is its own group (= --dist loadfile), so module fixtures still run once per file.
+REAL_TK_RE = re.compile(r"tkinter|\bTk\(|Toplevel|tinglongwu\.(?:gui|overlay|splash|face_to_face)"
+                        r"|from tinglongwu import [^\n]*\b(?:gui|overlay|splash|face_to_face)\b|DISPLAY|xvfb")
+REAL_TK_GROUP = "real-tk"
+_tk_file_cache: dict = {}
 
 
-def pytest_configure(config):
-    disp = worker_display(worker=hasattr(config, "workerinput"))
-    if disp is None:
+def xdist_group_for(path, text=None) -> str:
+    """The xdist group of a test file: REAL_TK_GROUP when its source touches Tk / the display, else the file itself."""
+    p = Path(path)
+    if text is None:
+        if p not in _tk_file_cache:
+            try:
+                _tk_file_cache[p] = bool(REAL_TK_RE.search(p.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                _tk_file_cache[p] = False
+        hit = _tk_file_cache[p]
+    else:
+        hit = bool(REAL_TK_RE.search(text))
+    return REAL_TK_GROUP if hit else p.name
+
+
+@pytest.hookimpl(tryfirst=True)  # before xdist's own hook, which appends the group to each nodeid
+def pytest_collection_modifyitems(config, items):
+    if not config.pluginmanager.hasplugin("xdist"):
         return
-    import subprocess
-    import time
-
-    p = subprocess.Popen(["Xvfb", disp, "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    sock = Path(f"/tmp/.X11-unix/X{disp[1:]}")
-    for _ in range(100):  # up to 10 s for the display socket
-        if sock.exists() or p.poll() is not None:
-            break
-        time.sleep(0.1)
-    if p.poll() is not None:
-        raise pytest.UsageError(f"Xvfb {disp} did not start (exit {p.returncode})")
-    os.environ["DISPLAY"] = disp
-    config._tlwu_xvfb = p
-
-
-def pytest_unconfigure(config):
-    p = getattr(config, "_tlwu_xvfb", None)
-    if p is not None:
-        p.terminate()
-        p.wait(timeout=10)
+    for item in items:
+        if item.get_closest_marker("xdist_group") is None:
+            item.add_marker(pytest.mark.xdist_group(xdist_group_for(item.path)))
 
 
 @pytest.fixture(autouse=True)
