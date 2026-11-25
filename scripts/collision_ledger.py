@@ -93,15 +93,17 @@ def _gh(path: str, *args: str):
     return json.loads(r.stdout or "null")
 
 
-def _gh_list(path: str, pages: int = 5) -> list:
+def _gh_list(path: str, key: str | None = None, max_pages: int = 100) -> list:
+    """All pages of a REST list; reaching max_pages fails loudly instead of returning a partial list."""
     sep = "&" if "?" in path else "?"
     items: list = []
-    for n in range(1, pages + 1):
-        chunk = _gh(f"{path}{sep}per_page=100&page={n}")
+    for n in range(1, max_pages + 1):
+        data = _gh(f"{path}{sep}per_page=100&page={n}")
+        chunk = data[key] if key else data
         items += chunk
         if len(chunk) < 100:
-            break
-    return items
+            return items
+    raise RuntimeError(f"{path}: more than {max_pages} pages")
 
 
 def classify_push(message: str, red_before: bool) -> str:
@@ -110,10 +112,21 @@ def classify_push(message: str, red_before: bool) -> str:
     return "red test" if red_before else "review"
 
 
-def _test_run(sha: str) -> dict | None:
-    runs = _gh(f"repos/{REPO}/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
-    tests = [r for r in runs if r["name"] == "test" and r.get("completed_at")]
-    return max(tests, key=lambda r: r["completed_at"]) if tests else None
+def test_runs(sha: str) -> list[dict]:
+    """Every completed `test` run of a commit (filter=all keeps reruns, so history is not overwritten)."""
+    runs = _gh_list(f"repos/{REPO}/commits/{sha}/check-runs?filter=all", key="check_runs")
+    return [r for r in runs if r["name"] == "test" and r.get("completed_at")]
+
+
+def red_at(runs: list[dict], cutoff: datetime) -> bool:
+    """Was the newest `test` result completed at or before `cutoff` a failure (a later rerun is ignored)."""
+    known = [r for r in runs if _ts(r["completed_at"]) <= cutoff]
+    return bool(known) and max(known, key=lambda r: r["completed_at"])["conclusion"] == "failure"
+
+
+def dirty_requeues(comments: list[dict], pr: int) -> int:
+    """Requeue comments board_scan writes for this PR: `requeue: PR #N is dirty; ...`."""
+    return sum(1 for c in comments if re.match(rf"requeue: PR #{pr} is dirty\b", c["body"]))
 
 
 def collect(now: datetime) -> dict:
@@ -126,27 +139,26 @@ def collect(now: datetime) -> dict:
         files = [f["filename"] for f in _gh_list(f"repos/{REPO}/pulls/{n}/files")]
         commits = _gh_list(f"repos/{REPO}/pulls/{n}/commits")
         opened = _ts(p["created_at"])
-        pushes, red = [], False
-        for c in commits:
-            if _ts(c["commit"]["committer"]["date"]) <= opened:
-                continue
+        pushes: list[str] = []
+        touch = [c for c in commits if _ts(c["commit"]["committer"]["date"]) > opened]
+        prev = next((c for c in reversed(commits) if c not in touch), None)  # the head the PR opened with
+        for c in touch:
+            when = _ts(c["commit"]["committer"]["date"])
+            red = bool(prev) and red_at(test_runs(prev["sha"]), when)  # result known before this push
             pushes.append(classify_push(c["commit"]["message"], red))
-            run = _test_run(c["sha"])
-            red = bool(run and run["conclusion"] == "failure")
+            prev = c
         m = FIX_HEAD.match(p["head"]["ref"])
         dirty = 0
         if m:
-            cs = _gh_list(f"repos/{REPO}/issues/{m.group(1)}/comments")
-            dirty = sum(1 for c in cs if c["body"].startswith("requeue: dirty"))
-        last = _test_run(p["head"]["sha"])
+            dirty = dirty_requeues(_gh_list(f"repos/{REPO}/issues/{m.group(1)}/comments"), n)
+        runs = test_runs(p["head"]["sha"])
+        last = max(runs, key=lambda r: r["completed_at"]) if runs else None
         minutes = (_ts(last["completed_at"]) - _ts(last["started_at"])).total_seconds() / 60 if last else None
         prs.append({"number": n, "head": p["head"]["ref"], "created_at": p["created_at"],
                     "merged_at": p["merged_at"], "files": files, "dirty_requeues": dirty,
                     "test_minutes": minutes, "pushes": pushes})
-    dev_red = 0
-    for run in _gh(f"repos/{REPO}/actions/workflows/ci.yml/runs?branch=dev&event=push&per_page=100")["workflow_runs"]:
-        if _ts(run["created_at"]) >= since and run["conclusion"] == "failure":
-            dev_red += 1
+    dev_runs = _gh_list(f"repos/{REPO}/actions/workflows/ci.yml/runs?branch=dev&event=push", key="workflow_runs")
+    dev_red = sum(1 for r in dev_runs if _ts(r["created_at"]) >= since and r["conclusion"] == "failure")
     return {"now": now.isoformat(), "dev_red": dev_red, "prs": prs}
 
 
