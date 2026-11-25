@@ -4,6 +4,8 @@ This file overrides any routine prompt wherever they conflict (what to pick, whe
 
 Every tlwu agent (cloud routines W-hard, R-merge, R-hard, S-easy, S-merge, S-hard) reads this file from origin/dev at the start of each run. When it conflicts with the agent's own prompt, THIS FILE WINS. Owner-approved 2026-11-13.
 
+Cloud routine procedures (writes, ad-hoc dispatch, each role's steps) live in `.agent/routines/`: `common.md` plus the role's file. Routine prompts hold only the step-0 gate and pointers (owner 2026-11-25).
+
 Release-lane rules (section 11 docs fast lane; section 14 release PR, version bumps, release snapshot, hotfix lane, AUTO_RELEASE kill switch, per-platform lanes) live in `.agent/rules_release.md`, same section numbers. R-hard, R-merge, S-merge and S-hard read it from origin/dev after this file; workers do not need it.
 
 ## 1. Who does what
