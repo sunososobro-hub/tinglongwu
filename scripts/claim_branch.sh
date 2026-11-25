@@ -33,8 +33,10 @@ if out=$(git push --porcelain --force-with-lease="refs/heads/${branch}:" origin 
   echo "$commit"
   exit 0
 fi
-# --porcelain prints one `!<TAB>...<TAB>[rejected] (reason)` line per refused ref: that is contention.
-if printf '%s\n' "$out" | grep -q $'^!\t'; then
+# Rejected or failed: it is contention only when the branch now exists on origin with another commit. A racing loser
+# gets `[rejected] (stale info)` or `[remote rejected] (failed to update ref)`; a server-side refusal (hook, branch
+# rule) is also `[remote rejected]`, so the reason text cannot decide it. Ask origin instead.
+if tip=$(git ls-remote --exit-code origin "refs/heads/${branch}" 2>/dev/null) && [ "${tip%%[[:space:]]*}" != "$commit" ]; then
   echo "taken: ${branch}" >&2
   exit 1
 fi

@@ -114,6 +114,17 @@ def test_push_failure_is_not_contention(remote, tmp_path):
     assert r.returncode == 3 and "push failed" in r.stderr and "taken" not in r.stderr
 
 
+def test_server_side_refusal_is_not_contention(remote):
+    """A remote that refuses the update (hook / branch rule: `[remote rejected]`) while the branch does not exist
+    is a blocked write (3), not another worker's lock."""
+    bare, (w1, _), tip = remote
+    hook = bare / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho 'refused by rule' >&2\nexit 1\n")
+    hook.chmod(0o755)
+    r = _claim(w1, "fix/7", tip)
+    assert r.returncode == 3 and "refused by rule" in r.stderr and "taken" not in r.stderr
+
+
 def test_usage_error(tmp_path):
     r = subprocess.run(["bash", str(SCRIPT), "fix/7"], cwd=tmp_path, capture_output=True, text=True)
     assert r.returncode == 2 and "usage" in r.stderr
