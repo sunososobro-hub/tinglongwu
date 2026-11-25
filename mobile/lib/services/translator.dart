@@ -112,6 +112,7 @@ class Translator implements LineTranslator {
       final prompt = PromptBuilder.build(ru.trim(), src: src, tgt: tgt, alt: alt);
       await _session.clear();
       final buf = StringBuffer();
+      String? done; // the finished line(s) once the model ended a line (#1818)
       // Own byte-level decoder: pieces are raw bytes and can split a character (see Utf8Stream).
       final utf8 = Utf8Stream();
       await for (final e in _session.generate(
@@ -135,13 +136,13 @@ class Translator implements LineTranslator {
           // One sentence in, one line out: stop at the first line break after some text, so the
           // model cannot continue with a second paragraph of its own. A line that is only the
           // echoed card instruction does not count (#1615): the translation may follow it.
-          if (PromptBuilder.lineDone(buf.toString())) break;
+          if ((done = PromptBuilder.finishedLines(buf.toString())) != null) break;
         } else if (e is DoneEvent) {
           nCtx = e.committedPosition;
         }
       }
       buf.write(utf8.close());
-      return sanitizeOutput(PromptBuilder.clean(buf.toString()));
+      return sanitizeOutput(PromptBuilder.clean(done ?? buf.toString()));
     }
 
     // #1616: an answer in the wrong script (English for a Russian target) is retried once with
