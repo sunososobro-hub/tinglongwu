@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rule-based triage for a newly opened issue (no AI). Rules: .agent/tlwu_rules.md sections 10, 12, 15.
+"""Rule-based triage for a newly opened issue (no AI). Rules: .agent/rules_patrol.md sections 10, 12 and .agent/tlwu_rules.md section 15.
 
 Run by .github/workflows/triage.yml on `issues.opened`. It only fills labels that are missing and can be
 decided by fixed rules. Anything it cannot decide gets `needs-triage` plus one comment listing why; the

@@ -105,9 +105,11 @@ def make(src: Path, out: Path, max_seconds: float, max_bytes: int, start: float 
     return step
 
 
-def record_cmd(out: Path, seconds: float, display: str, size: str, fps: int = 15) -> list[str]:
+def record_cmd(out: Path, seconds: float, display: str, size: str, fps: int = 15,
+               origin: tuple[int, int] = (0, 0)) -> list[str]:
+    """x11grab of a `size` rectangle whose top-left corner is `origin` (#734 part 2: just the app window)."""
     return ["ffmpeg", "-v", "error", "-y", "-f", "x11grab", "-video_size", size, "-framerate", str(fps),
-            "-i", f"{display}+0,0", "-t", f"{seconds:g}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-i", f"{display}+{origin[0]},{origin[1]}", "-t", f"{seconds:g}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
             "-pix_fmt", "yuv420p", str(out)]
 
 

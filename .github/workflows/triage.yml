@@ -1,7 +1,7 @@
 name: triage
 # Rule-based triage on issues.opened, no AI (owner 2026-11-18). Replaces the W-easy event routine: issues
 # opened by AI agents did not wake it, and one AI run per issue cost too much quota.
-# Rules live in scripts/triage_issue.py (.agent/tlwu_rules.md sections 10/12/15). Undecidable -> needs-triage.
+# Rules live in scripts/triage_issue.py (.agent/rules_patrol.md sections 10/12, .agent/tlwu_rules.md section 15). Undecidable -> needs-triage.
 on:
   issues:
     types: [opened]

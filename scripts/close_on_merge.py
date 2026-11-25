@@ -21,9 +21,10 @@ import urllib.parse
 import urllib.request
 
 API = "https://api.github.com"
+REFS_RE = re.compile(r"\b(?:refs?|part of)\s*:?\s+#(\d+)\b", re.I)
+OWNER_TEST = "需實測"
 CLOSE_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.I)
 HEAD_RE = re.compile(r"^(?:fix|feat)/(\d+)(?:-r\d+)?$")
-REFS_RE = re.compile(r"\brefs\s*:?\s+#(\d+)\b", re.I)
 DROP_LABELS = ("status:review", "status:doing", "status:todo", "status:blocked")
 DONE_LABEL = "status:done"
 CLAIM_LABELS = ("status:review", "status:doing")  # what a worker's claim / open PR puts on the issue
@@ -43,8 +44,8 @@ def issue_to_close(body: str | None, head_ref: str | None) -> int | None:
     return n if n in wanted else None
 
 
-def issue_partial(body: str | None, head_ref: str | None) -> int | None:
-    """The issue this PR is partial work for (`Refs #N` matching its head), or None. A closing keyword wins."""
+def issue_to_requeue(body: str | None, head_ref: str | None) -> int | None:
+    """The issue a partial (`Refs #N`) PR leaves open, or None. Closing keywords win over Refs."""
     m = HEAD_RE.match(head_ref or "")
     if not m or issue_to_close(body, head_ref) is not None:
         return None
@@ -84,8 +85,20 @@ def close_issue(repo: str, n: int, pr: int, token: str) -> str:
     return "closed"
 
 
+def _delete_label(repo: str, n: int, lab: str, token: str) -> None:
+    try:
+        _api(f"/repos/{repo}/issues/{n}/labels/{urllib.parse.quote(lab, safe='')}", token, "DELETE")
+    except urllib.error.HTTPError as e:
+        if e.code != 404:  # label vanished in between: fine
+            raise
+
+
 def release_partial(repo: str, n: int, pr: int, token: str) -> str:
-    """Move #n out of `status:review` / `status:doing` after its partial PR merged. Returns what happened."""
+    """Move #n out of `status:review` / `status:doing` after its partial PR merged. Returns what happened.
+
+    Resumable: the destination label and the one PR comment are written BEFORE the claim labels are removed, and the
+    claim labels are the "still to do" marker, so a rerun after a failed call finishes the job without a second comment.
+    """
     issue = _api(f"/repos/{repo}/issues/{n}", token)
     if issue.get("pull_request"):
         return "is-pr"
@@ -94,26 +107,27 @@ def release_partial(repo: str, n: int, pr: int, token: str) -> str:
     names = {lab["name"] for lab in issue.get("labels", [])}
     if not any(lab in names for lab in CLAIM_LABELS):
         return "no-claim"  # not in review / doing (already todo, or moved by hand): leave it alone
-    for lab in CLAIM_LABELS:
-        if lab in names:
-            try:
-                _api(f"/repos/{repo}/issues/{n}/labels/{urllib.parse.quote(lab, safe='')}", token, "DELETE")
-            except urllib.error.HTTPError as e:
-                if e.code != 404:  # label vanished in between: fine
-                    raise
     if any(lab in names for lab in PARKED_LABELS):
-        return "parked"
-    if HANDS_ON_LABEL in names:
-        target = NEEDS_TEST_LABEL
-        note = (f"#{pr} merged into dev (`Refs #{n}`): the code is in. `{NEEDS_TEST_LABEL}`: only the hands-on check "
-                "from the how-to-test comment is left.")
+        target = "parked"
     else:
-        target = TODO_LABEL
-        note = (f"#{pr} merged into dev as partial work (`Refs #{n}`), so this issue is back in `{TODO_LABEL}`. "
-                "Next worker: check each Acceptance line against dev. All met: close this issue with the evidence. "
-                f"Otherwise do the rest on the next free `fix/{n}-rK` (rules sections 2 and 3).")
-    _api(f"/repos/{repo}/issues/{n}/labels", token, "POST", {"labels": [target]})
-    _api(f"/repos/{repo}/issues/{n}/comments", token, "POST", {"body": note})
+        target = NEEDS_TEST_LABEL if HANDS_ON_LABEL in names else TODO_LABEL
+        marker = f"<!-- close-on-merge:partial:{pr} -->"
+        if target not in names:
+            _api(f"/repos/{repo}/issues/{n}/labels", token, "POST", {"labels": [target]})
+        comments = _api(f"/repos/{repo}/issues/{n}/comments?per_page=100", token) or []
+        if not any(marker in (c.get("body") or "") for c in comments):
+            if target == NEEDS_TEST_LABEL:
+                note = (f"#{pr} merged into dev (`Refs #{n}`): the code is in. `{NEEDS_TEST_LABEL}`: only the hands-on "
+                        "check from the how-to-test comment is left.")
+            else:
+                note = (f"#{pr} merged into dev as partial work (`Refs #{n}`), so this issue is back in "
+                        f"`{TODO_LABEL}`. Next worker: check each Acceptance line against dev. All met: close this "
+                        f"issue with the evidence. Otherwise do the rest on the next free `fix/{n}-rK` "
+                        "(rules sections 2 and 3).")
+            _api(f"/repos/{repo}/issues/{n}/comments", token, "POST", {"body": f"{note}\n\n{marker}"})
+    for lab in CLAIM_LABELS:  # last: only now is the release complete
+        if lab in names:
+            _delete_label(repo, n, lab, token)
     return target
 
 
@@ -126,7 +140,7 @@ def main() -> int:
     body, head = pr.get("body"), (pr.get("head") or {}).get("ref")
     n = issue_to_close(body, head)
     if n is None:
-        n = issue_partial(body, head)
+        n = issue_to_requeue(body, head)
         if n is None:
             print(f"PR #{pr['number']}: no Closes / Refs #N matching its head; nothing to do")
             return 0

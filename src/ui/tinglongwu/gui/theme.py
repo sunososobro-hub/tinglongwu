@@ -5,8 +5,8 @@ import sys
 
 # semantic tokens per theme: one warning, one error, one muted per theme
 TOKENS = {
-    "dark": {"bg": "#0e1015", "surface": "#14161c", "separator": "#262a34", "text": "#e6e8ee", "text_muted": "#8a90a0",
-             "accent": "#3f5fe0", "warning": "#d29b3c", "error": "#e5534b", "success": "#2ea043",
+    "dark": {"bg": "#2b303b", "surface": "#343d46", "separator": "#4f5b66", "text": "#dfe1e8", "text_muted": "#a7adba",
+             "accent": "#5a7fa8", "warning": "#dba74a", "error": "#f58a82", "success": "#2ea043",
              "grip": "#555555", "grip_hover": "#2e86de"},
     "light": {"bg": "#ffffff", "surface": "#f6f7fa", "separator": "#dfe2ea", "text": "#1d2447", "text_muted": "#5b6390",
               "accent": "#3f5fe0", "warning": "#a85400", "error": "#c0392b", "success": "#2ea043",
@@ -25,8 +25,8 @@ def _pal(t):
 
 # #1662 Linear-style palette (see TOKENS); PAL keeps the short keys the GUI code uses
 PAL = {k: _pal(v) for k, v in TOKENS.items()}
-BUBBLE = {"dark": {"bg": "#0e1015", "other": ("#1a1d27", "#e6e8ee"), "me": ("#3f5fe0", "#ffffff"),
-                   "latest": ("#2a3560", "#ffffff"), "sub": "#8a90a0", "head": "#8a90a0"},
+BUBBLE = {"dark": {"bg": "#2b303b", "other": ("#3a4450", "#dfe1e8"), "me": ("#5a7fa8", "#ffffff"),
+                   "latest": ("#4f5b66", "#ffffff"), "sub": "#a7adba", "head": "#a7adba"},
           "light": {"bg": "#ffffff", "other": ("#e6e9f5", "#1d2447"), "me": ("#cfe0ff", "#10224d"),
                     "latest": ("#cdd6ff", "#10224d"), "sub": "#5b6390", "head": "#5b6390"}}
 # #1644: notes (重點整理) window per theme: time range muted, bullets in the notes accent (violet)

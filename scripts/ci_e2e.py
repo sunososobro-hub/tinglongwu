@@ -723,6 +723,36 @@ class _Win32:
         return bool(self.u.IsWindowVisible(ov)) and w > 0 and h > 0, f"{w}x{h}"
 
 
+HELPER_WAIT_S = 30  # #1851: cold Windows runners need more than the old 10 s
+
+
+def wait_helper_window(find, proc, timeout_s: float = HELPER_WAIT_S, step: float = 0.1, sleep=time.sleep):
+    """Poll find() until the helper window shows up. Returns (id, ""), or (None, why) where why holds the
+    helper's exit code (or "still running") and the last 20 lines of its stderr (#1851)."""
+    for _ in range(int(timeout_s / step)):
+        win = find()
+        if win:
+            return win, ""
+        sleep(step)
+    code = proc.poll()
+    err = ""
+    if code is None:
+        state = "helper still running"
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+    else:
+        state = f"helper exit code {code}"
+    try:
+        err = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+    except Exception:
+        pass
+    tail = "\n".join(err.splitlines()[-20:])
+    return None, f"{state}; stderr tail: {tail or '(empty)'}"
+
+
 def cmd_overlay_stack(a) -> int:
     import queue
 
@@ -730,15 +760,10 @@ def cmd_overlay_stack(a) -> int:
     from tinglongwu import overlay
 
     ws = _Win32() if WIN else _X11()
-    fs = subprocess.Popen([PY, "-c", FS_APP], **NOWIN)
+    fs = subprocess.Popen([PY, "-c", FS_APP], stderr=subprocess.PIPE, **NOWIN)
     try:
-        fs_id = None
-        for _ in range(100):
-            fs_id = ws.find("tlwu-e2e-fullscreen")
-            if fs_id:
-                break
-            time.sleep(0.1)
-        check("fullscreen window is up", bool(fs_id))
+        fs_id, why = wait_helper_window(lambda: ws.find("tlwu-e2e-fullscreen"), fs)
+        check("fullscreen window is up", bool(fs_id), why)
         if not fs_id:
             return finish()
         time.sleep(1.0)

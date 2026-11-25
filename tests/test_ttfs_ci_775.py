@@ -78,7 +78,7 @@ def test_windows_needs_setup_exe_and_writes_download_mb(tmp_path, monkeypatch):
     import pytest
     m = _load()
     with pytest.raises(SystemExit):
-        m.main(["--os", "windows", "--dir", "C:\d", "--out", str(tmp_path / "o.json")])
+        m.main(["--os", "windows", "--dir", r"C:\d", "--out", str(tmp_path / "o.json")])
 
     def fake_main(argv):
         with open(argv[argv.index("--out") + 1], "w", encoding="utf-8") as f:
@@ -87,7 +87,7 @@ def test_windows_needs_setup_exe_and_writes_download_mb(tmp_path, monkeypatch):
 
     monkeypatch.setattr(m.ttfs, "main", fake_main)
     out = tmp_path / "ttfs.json"
-    assert m.main(["--os", "windows", "--dir", "C:\d", "--setup-exe", "x.exe", "--out", str(out)]) == 0
+    assert m.main(["--os", "windows", "--dir", r"C:\d", "--setup-exe", "x.exe", "--out", str(out)]) == 0
     assert json.loads(out.read_text(encoding="utf-8"))["download_mb"] == 1250.0
 
 
