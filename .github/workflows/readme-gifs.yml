@@ -1,6 +1,6 @@
 name: readme-gifs
 # #734 (owner 2026-11-16): record the README per-mode GIFs on a GitHub-hosted runner, no owner recording.
-# Real GUI (tlwu-gui's App) on Xvfb + openbox, real models (e2e smoke set), a PulseAudio null sink as the
+# The install GIF runs the real scripts/install.sh in an xterm (scripts/readme_gif_install.py). Real GUI (tlwu-gui's App) on Xvfb + openbox, real models (e2e smoke set), a PulseAudio null sink as the
 # speakers whose monitor is also the default microphone, a recorded speech clip played into it, ffmpeg x11grab of
 # the window -> scripts/readme_gif.py caps (<= 3 s, <= 2 MB). The GIFs are uploaded as the `readme-gifs` artifact;
 # a worker reviews them and commits them to assets/demo/ in a fix/734-rK PR. Manual only: nothing runs on push.
@@ -13,6 +13,10 @@ on:
         description: "Also commit the GIFs to assets/demo/ on the dispatched fix/734* branch"
         type: boolean
         default: false
+      gifs:
+        description: "Which GIFs to record: any of listen speak two-way install (install = scripts/install.sh in an xterm)"
+        type: string
+        default: "listen speak two-way install"
 
 permissions:
   contents: read
@@ -42,7 +46,7 @@ jobs:
       - name: System packages (audio server, virtual display, window manager, ffmpeg, CJK font)
         timeout-minutes: 20
         run: |
-          PKGS="libsndfile1 libpulse0 pulseaudio pulseaudio-utils xvfb openbox x11-utils ffmpeg fonts-noto-cjk"
+          PKGS="libsndfile1 libpulse0 python3-venv python3-tk xterm pulseaudio pulseaudio-utils xvfb openbox x11-utils ffmpeg fonts-noto-cjk"
           for i in 1 2 3; do
             sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends $PKGS && exit 0
             echo "apt try $i failed"; sleep 15
@@ -61,6 +65,7 @@ jobs:
           # same key as e2e linux: the smoke set is usually already cached
           key: e2e-models-v4-linux-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py') }}
       - name: Models (smoke set) + Kokoro voice + a Chinese speech clip for speak / two-way
+        if: ${{ inputs.gifs != 'install' }}
         run: |
           tlwu-setup --whisper small --hymt --pair zh-en --pair en-zh --allow-unpinned --models-dir "$TLWU_MODELS"
           tlwu-setup --talk --talk-venv "$HOME/tts-kokoro" --talk-launcher "$RUNNER_TEMP/tlwu-talk.ps1" --models-dir "$TLWU_MODELS"
@@ -83,12 +88,21 @@ jobs:
           for i in $(seq 20); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && break; sleep 0.5; done
           DISPLAY=:99 openbox >/dev/null 2>&1 &
           sleep 1
-      - name: "Record listen / speak / two-way"
+      - name: "Record the chosen GIFs (listen / speak / two-way / install)"
+        env:
+          GIFS: ${{ inputs.gifs }}
         run: |
           set -o pipefail
-          rc=0  # every mode runs; the step fails if any GIF is missing or over its cap
-          for m in listen speak two-way; do
-            python scripts/readme_gif_drive.py "$m" --out-dir "$RUNNER_TEMP/gifs" --zh-wav "$RUNNER_TEMP/zh.wav" || rc=1
+          rc=0  # every chosen GIF runs; the step fails if any GIF is missing or over its cap
+          for m in $GIFS; do
+            case "$m" in
+              listen|speak|two-way)
+                python scripts/readme_gif_drive.py "$m" --out-dir "$RUNNER_TEMP/gifs" --zh-wav "$RUNNER_TEMP/zh.wav" || rc=1 ;;
+              install)
+                # the real scripts/install.sh from this commit in an xterm, sped up to <= 15 s (#734)
+                python scripts/readme_gif_install.py --out-dir "$RUNNER_TEMP/gifs" || rc=1 ;;
+              *) echo "unknown GIF '$m'"; rc=1 ;;
+            esac
           done
           python scripts/readme_gif.py check --dir "$RUNNER_TEMP/gifs" --present-only | tee -a "$GITHUB_STEP_SUMMARY" || rc=1
           exit $rc
@@ -113,13 +127,13 @@ jobs:
         with:
           name: readme-gifs
           path: ${{ runner.temp }}/gifs
-      - name: Commit the mode GIFs to this branch
+      - name: Commit the recorded GIFs to this branch
         run: |
           python scripts/readme_gif.py check --dir "$RUNNER_TEMP/gifs" --present-only
           mkdir -p assets/demo
-          cp "$RUNNER_TEMP"/gifs/mode_*.gif assets/demo/
-          git add assets/demo/mode_*.gif
+          cp "$RUNNER_TEMP"/gifs/*.gif assets/demo/
+          git add assets/demo/*.gif
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -m "#734: mode GIFs recorded by readme-gifs run ${{ github.run_id }}"
+            commit -m "#734: README GIFs recorded by readme-gifs run ${{ github.run_id }}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
