@@ -522,6 +522,71 @@ LABELS = {
         'ru': {"plain": 'Видеочип: {name}', "tech": 'Видеокарта Vulkan: {name}'},
         'zh-TW': {"plain": '顯示晶片：{name}', "tech": 'Vulkan 顯示卡：{name}'},
         'ja': {"plain": 'グラフィックチップ：{name}', "tech": 'Vulkan 対応 GPU：{name}'}},
+    # #1808 part 2: what a language pack is called on screen (plain) vs its pack id (tech). The add-on prompts below
+    # put this name in `{name}`; their tech text keeps the old `{pack}` (the id), so both views get the same kwargs.
+    "pack.zh": {"en": {"plain": "Chinese", "tech": "zh"}, "ru": {"plain": "Китайский", "tech": "zh"},
+                "zh-TW": {"plain": "中文", "tech": "zh"}, "ja": {"plain": "中国語", "tech": "zh"}},
+    "pack.en": {"en": {"plain": "English", "tech": "en"}, "ru": {"plain": "Английский", "tech": "en"},
+                "zh-TW": {"plain": "英文", "tech": "en"}, "ja": {"plain": "英語", "tech": "en"}},
+    "pack.ja": {"en": {"plain": "Japanese", "tech": "ja"}, "ru": {"plain": "Японский", "tech": "ja"},
+                "zh-TW": {"plain": "日文", "tech": "ja"}, "ja": {"plain": "日本語", "tech": "ja"}},
+    "pack.ko": {"en": {"plain": "Korean", "tech": "ko"}, "ru": {"plain": "Корейский", "tech": "ko"},
+                "zh-TW": {"plain": "韓文", "tech": "ko"}, "ja": {"plain": "韓国語", "tech": "ko"}},
+    "pack.ru": {"en": {"plain": "Russian", "tech": "ru"}, "ru": {"plain": "Русский", "tech": "ru"},
+                "zh-TW": {"plain": "俄文", "tech": "ru"}, "ja": {"plain": "ロシア語", "tech": "ru"}},
+    "pack.hymt2": {"en": {"plain": "More languages", "tech": "hymt2"}, "ru": {"plain": "Другие языки", "tech": "hymt2"},
+                   "zh-TW": {"plain": "更多語言", "tech": "hymt2"}, "ja": {"plain": "その他の言語", "tech": "hymt2"}},
+    "ui.addons_downloading": {
+        'en': {"plain": 'Downloading the {name} add-on ...', "tech": 'Downloading {pack} ...'},
+        'ru': {"plain": 'Скачиваю дополнение «{name}» ...', "tech": 'Загрузка {pack} ...'},
+        'zh-TW': {"plain": '正在下載{name}附加元件 ...', "tech": '正在下載 {pack} ...'},
+        'ja': {"plain": '{name}アドオンをダウンロード中 ...', "tech": '{pack} をダウンロード中 ...'}},
+    "ui.addons_pack_ok": {
+        'en': {"plain": '{name} add-on installed.', "tech": '{pack} installed.'},
+        'ru': {"plain": 'Дополнение «{name}» установлено.', "tech": '{pack} установлен.'},
+        'zh-TW': {"plain": '{name}附加元件已安裝。', "tech": '{pack} 已安裝。'},
+        'ja': {"plain": '{name}アドオンをインストールしました。', "tech": '{pack} をインストールしました。'}},
+    "ui.addons_pack_fail": {
+        'en': {"plain": 'The {name} add-on did not download. Check the internet connection, then press Add again.',
+               "tech": '{pack}: download failed. Check the connection, then press Add again.'},
+        'ru': {"plain": 'Дополнение «{name}» не скачалось. Проверьте интернет и нажмите «Добавить» снова.',
+               "tech": '{pack}: загрузка не удалась. Проверьте соединение и нажмите «Добавить» снова.'},
+        'zh-TW': {"plain": '{name}附加元件沒下載成功。請檢查網路連線，再按一次「新增」。',
+                  "tech": '{pack}：下載失敗。請檢查網路連線，再按一次「新增」。'},
+        'ja': {"plain": '{name}アドオンをダウンロードできませんでした。接続を確認してから、もう一度「追加」を押してください。',
+               "tech": '{pack}: ダウンロードに失敗しました。接続を確認してから、もう一度「追加」を押してください。'}},
+    "ui.addons_remove_confirm": {
+        'en': {"plain": 'Remove the {name} add-on? Adding it back needs internet once.',
+               "tech": 'Remove the {pack} pack? Adding it back needs internet once.'},
+        'ru': {"plain": 'Удалить дополнение «{name}»? Чтобы вернуть его, один раз нужен интернет.',
+               "tech": 'Удалить пакет {pack}? Чтобы вернуть его, один раз нужен интернет.'},
+        'zh-TW': {"plain": '要移除{name}附加元件嗎？之後再加回來需要連網一次。',
+                  "tech": '要移除 {pack} 語言包嗎？之後再加回來需要連網一次。'},
+        'ja': {"plain": '{name}アドオンを削除しますか？もう一度追加するにはインターネットが一度必要です。',
+               "tech": '{pack} パックを削除しますか？もう一度追加するにはインターネットが一度必要です。'}},
+    "ui.addons_removed": {
+        'en': {"plain": 'Removed the {name} add-on.', "tech": 'Removed {pack}.'},
+        'ru': {"plain": 'Дополнение «{name}» удалено.', "tech": 'Пакет {pack} удалён.'},
+        'zh-TW': {"plain": '已移除{name}附加元件。', "tech": '已移除 {pack}。'},
+        'ja': {"plain": '{name}アドオンを削除しました。', "tech": '{pack} を削除しました。'}},
+    "ui.addons_still": {
+        'en': {"plain": 'The {name} add-on is still here: another add-on uses the same files, or they could not be deleted.',
+               "tech": '{pack} still installed: its models are shared with another pack or could not be deleted.'},
+        'ru': {"plain": 'Дополнение «{name}» осталось: те же файлы нужны другому дополнению, или их не удалось удалить.',
+               "tech": '{pack} всё ещё установлен: его модели нужны другому пакету или не удалось удалить.'},
+        'zh-TW': {"plain": '{name}附加元件還在：另一個附加元件也用到同樣的檔案，或檔案刪不掉。',
+                  "tech": '{pack} 仍已安裝：其模型與其他語言包共用，或無法刪除。'},
+        'ja': {"plain": '{name}アドオンはまだ残っています: 別のアドオンが同じファイルを使っているか、削除できませんでした。',
+               "tech": '{pack} はまだインストールされています: モデルが別のパックと共有されているか、削除できませんでした。'}},
+    "ui.addons_import_hint": {
+        'en': {"plain": 'Offline? Pick a models zip made on another computer that has tlwu.',
+               "tech": 'Offline? Pick a local models zip (made with: tlwu-setup --export-pack).'},
+        'ru': {"plain": 'Нет интернета? Выберите zip с моделями, сделанный на другом компьютере с tlwu.',
+               "tech": 'Офлайн? Выберите локальный zip с моделями (создан командой: tlwu-setup --export-pack).'},
+        'zh-TW': {"plain": '離線嗎？請選擇在另一台裝有 tlwu 的電腦做好的模型 zip。',
+                  "tech": '離線嗎？請選擇本機模型 zip（以 tlwu-setup --export-pack 製作）。'},
+        'ja': {"plain": 'オフラインですか？tlwu が入った別のパソコンで作ったモデル zip を選んでください。',
+               "tech": 'オフラインですか？手元のモデル zip を選んでください（作成方法: tlwu-setup --export-pack）。'}},
 }
 _TECH = {"flag": False, "setting": False}
 
@@ -552,6 +617,11 @@ def ui_text(key: str, **kw) -> str:
         return t(key, **kw)
     s = label(f"ui.{key}")
     return s.format(**kw) if kw else s
+
+
+def pack_name(pack: str, lang: str | None = None) -> str:
+    """#1808: the on-screen name of a language pack ("Japanese"); a name with no `pack.<id>` entry is shown as is."""
+    return label(f"pack.{pack}", lang) if f"pack.{pack}" in LABELS else pack
 
 
 def label_texts(key: str, lang: str) -> tuple[str, ...]:

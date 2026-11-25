@@ -54,7 +54,7 @@ class AddonsScreen:
             f = ttk.Frame(self.body)
             f.pack(fill="x", pady=3)
             state = t("addons_installed") if r["installed"] else r["note"]
-            ttk.Label(f, text=f"{r['name']}  ({r['size']})", width=16).pack(side="left")
+            ttk.Label(f, text=f"{core.pack_name(r['name'])}  ({r['size']})", width=16).pack(side="left")
             ttk.Label(f, text=state, wraplength=300).pack(side="left", fill="x", expand=True)
             if r["installed"]:
                 ttk.Button(f, text=t("addons_remove"), command=lambda n=r["name"]: self.remove(n)).pack(side="right")
@@ -124,15 +124,15 @@ class AddonsScreen:
         if self.busy:
             return  # one setup child at a time: two would rewrite models/manifest.json from the same snapshot
         self.busy = True
-        self.msg.set(t("addons_downloading", pack=pack))
+        self.msg.set(core.ui_text("addons_downloading", pack=pack, name=core.pack_name(pack)))
         threading.Thread(target=self.run, args=(pack, self.q.put), kwargs={"mdir": self.mdir}, daemon=True).start()
 
     def remove(self, pack: str):
-        if messagebox.askyesno(t("addons_title"), t("addons_remove_confirm", pack=pack), parent=self.win):
+        ask = core.ui_text("addons_remove_confirm", pack=pack, name=core.pack_name(pack))
+        if messagebox.askyesno(t("addons_title"), ask, parent=self.win):
             addons.remove_pack(pack, self.mdir)
             still = any(r["installed"] for r in addons.local_rows(self.mdir) if r["name"] == pack)
-            self.msg.set(t("addons_still", pack=pack)
-                         if still else t("addons_removed", pack=pack))
+            self.msg.set(core.ui_text("addons_still" if still else "addons_removed", pack=pack, name=core.pack_name(pack)))
             self.refresh()
 
     def pick_zip(self):
@@ -145,7 +145,7 @@ class AddonsScreen:
                 try:
                     res = self.import_zip(path)
                 except Exception as e:  # noqa: BLE001 - always report, or busy would stay set
-                    res = t("addons_import_failed", err=type(e).__name__, hint=t("addons_import_hint"))
+                    res = t("addons_import_failed", err=type(e).__name__, hint=core.ui_text("addons_import_hint"))
                 self.q.put(("import_done", res))
 
             threading.Thread(target=work, daemon=True).start()
@@ -156,7 +156,7 @@ class AddonsScreen:
         cmd = download_cmd("small", self.mdir)  # same bundled / source launcher and --models-dir as pack downloads
         rc = subprocess.run([*cmd[:cmd.index("--whisper")], "--import-pack", path, *cmd[cmd.index("--models-dir"):]],
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode
-        return t("addons_import_ok") if rc == 0 else t("addons_import_hint")
+        return t("addons_import_ok") if rc == 0 else core.ui_text("addons_import_hint")
 
     def _poll(self):
         try:
@@ -178,8 +178,8 @@ class AddonsScreen:
                     self.refresh()
                 elif ev[0] == "pack_done":
                     self.busy = False
-                    self.msg.set(t("addons_pack_ok", pack=ev[1]) if ev[2] == 0 else
-                                 t("addons_pack_fail", pack=ev[1]))
+                    self.msg.set(core.ui_text("addons_pack_ok" if ev[2] == 0 else "addons_pack_fail", pack=ev[1],
+                                              name=core.pack_name(ev[1])))
                     self.refresh()
                 elif ev[0] == "import_done":
                     self.busy = False
