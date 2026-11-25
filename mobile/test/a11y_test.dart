@@ -22,7 +22,7 @@ void main() {
     expect(find.bySemanticsLabel('停止聆聽'), findsOneWidget);
     var d = tester.getSemantics(find.bySemanticsLabel('停止聆聽'));
     expect(d.getSemanticsData().hasFlag(SemanticsFlag.isButton), isTrue);
-    tester.semantics.tap(find.bySemanticsLabel('停止聆聽'));
+    tester.semantics.tap(find.semantics.byLabel('停止聆聽'));
     expect(taps, 1);
     set(() => stopped = true);
     await tester.pump();
