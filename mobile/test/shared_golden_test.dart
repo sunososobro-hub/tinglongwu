@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/prompt.dart';
+import 'package:mobile/logic/target_script.dart';
 
 List<Map<String, dynamic>> _load(String name) {
   // `flutter test` runs with mobile/ as the working directory.
@@ -22,6 +23,7 @@ bool _known(Map<String, dynamic> c) => c['known_diff'] == 'phone' && c['issue'] 
 void main() {
   final clean = _load('clean');
   final prompt = _load('prompt');
+  final script = _load('script');
 
   test('golden files are loaded', () {
     expect(clean.length, greaterThanOrEqualTo(20));
@@ -45,6 +47,19 @@ void main() {
       test('#$i ${c['src']}->${c['tgt']} ${jsonEncode(c['text'])}', () {
         final got = PromptBuilder.userMessage(c['text'] as String, src: c['src'] as String, tgt: c['tgt'] as String);
         expect(got, c['expected']);
+      });
+    }
+  });
+
+  group('script (wrongScript, #1819)', () {
+    test('has at least 6 wrong-script cases and no known_diff', () {
+      expect(script.where((c) => c['wrong'] == true).length, greaterThanOrEqualTo(6));
+      expect(script.where((c) => c.containsKey('known_diff')), isEmpty);
+    });
+    for (var i = 0; i < script.length; i++) {
+      final c = script[i];
+      test('#$i ${c['tgt']} ${jsonEncode(c['out'])}', () {
+        expect(wrongScript(c['src'] as String, c['out'] as String, c['tgt'] as String), c['wrong']);
       });
     }
   });

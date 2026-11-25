@@ -23,7 +23,12 @@ on:
     paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
   pull_request:
     branches: [dev]
-    paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
+    # #1815: shared MT data and the desktop MT text logic also run the phone tests (flutter test incl. the shared
+    # golden runner), so a desktop-only MT change that breaks the phone goldens shows up on its PR. PR only: a dev
+    # push of desktop code does not rebuild or republish the phone APK.
+    paths: ["mobile/**", ".github/workflows/mobile-apk.yml", "shared/**",
+            "src/core/tinglongwu/hymt.py", "src/core/tinglongwu/engines.py",
+            "src/core/tinglongwu/translate.py", "src/core/tinglongwu/repeat.py"]
   workflow_dispatch:
     inputs:
       x86_64_debug:

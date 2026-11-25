@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
+import '../services/base_download.dart';
 import '../services/model_paths.dart';
 import '../services/pipeline.dart';
 
@@ -29,71 +30,97 @@ class LoadingScreen extends StatelessWidget {
   }
 }
 
+/// First open with the base models missing (#1863): one tap downloads them in the app (size +
+/// SHA-256 of every file checked), then [onDone] starts the listening screen. Importing stays a
+/// secondary option; the adb / PowerShell / file-path details are folded away.
 class MissingModelsScreen extends StatelessWidget {
-  const MissingModelsScreen({super.key, required this.pipeline, required this.onImport});
-  final Pipeline pipeline;
+  const MissingModelsScreen({
+    super.key,
+    required this.download,
+    required this.modelsDir,
+    required this.missingFiles,
+    required this.onImport,
+    required this.onDone,
+    this.logPath,
+  });
+  final BaseModelDownload download;
+  final String modelsDir;
+  final List<String> missingFiles;
   final VoidCallback onImport;
+  final VoidCallback onDone;
+  final String? logPath;
+
+  static const _t = TextStyle(fontSize: 18, color: Colors.white70, height: 1.4);
+
+  Future<void> _start() async {
+    if (await download.run()) onDone();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final p = pipeline.paths!;
     const mono = TextStyle(fontFamily: 'monospace', fontSize: 14, color: Colors.white);
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: ListView(
-            children: [
-              const Text('找不到模型檔 / Models missing',
-                  style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.redAccent)),
-              const SizedBox(height: 16),
-              const Text('翻譯、辨識、朗讀都在手機上離線執行；只有你按下下載時才會連網取得語音包。也可用瀏覽器下載模型包後，按下方按鈕匯入：',
-                  style: TextStyle(fontSize: 18, color: Colors.white)),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.download_for_offline),
-                label: const Text('匯入模型 / Import models', style: TextStyle(fontSize: 20)),
-                onPressed: onImport,
-              ),
+        child: ListenableBuilder(
+          listenable: download,
+          builder: (context, _) {
+            final d = download;
+            return ListView(padding: const EdgeInsets.all(24), children: [
               const SizedBox(height: 24),
-              if (Platform.isAndroid) ...[
-                const Text('或用電腦 adb 推送到 / Or push with adb to:',
-                    style: TextStyle(fontSize: 18, color: Colors.white)),
+              const Text('第一次使用：下載翻譯需要的檔案',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 12),
+              const Text('約 1.3 GB，建議連 Wi-Fi。只有這次下載會連網；之後翻譯、辨識、朗讀都在手機上離線執行。',
+                  style: _t),
+              const SizedBox(height: 24),
+              if (d.busy) ...[
+                LinearProgressIndicator(value: d.progress, minHeight: 10),
                 const SizedBox(height: 8),
-                SelectableText(p.modelsDir, style: mono),
+                Text(d.state == BaseDlState.checking ? '正在檢查並安裝檔案…' : '下載中… ${d.amount}',
+                    style: const TextStyle(fontSize: 20, color: Colors.white)),
                 const SizedBox(height: 16),
-              ],
-              const Text('缺少的檔案：',
-                  style: TextStyle(fontSize: 18, color: Colors.white)),
-              const SizedBox(height: 8),
-              for (final f in pipeline.missingFiles)
-                SelectableText('• $f', style: mono.copyWith(color: Colors.amber)),
-              if (Platform.isAndroid) ...[
-                const SizedBox(height: 16),
-                const Text('PC 上執行（PowerShell）：',
-                    style: TextStyle(fontSize: 18, color: Colors.white)),
-                const SizedBox(height: 8),
-                SelectableText(
-                  'adb shell mkdir -p ${p.modelsDir}\n'
-                  'adb push models\\mobile\\sensevoice ${p.modelsDir}/\n'
-                  'adb push models\\mobile\\silero_vad.onnx ${p.modelsDir}/\n'
-                  'adb push models\\hymt2-1.8b\\${ModelPaths.llmFile} ${p.modelsDir}/',
-                  style: mono,
+                if (d.state == BaseDlState.downloading)
+                  OutlinedButton(onPressed: d.cancel, child: const Text('取消')),
+              ] else ...[
+                if (d.error != null) ...[
+                  Text(d.error!, style: const TextStyle(fontSize: 18, color: Colors.amberAccent)),
+                  const SizedBox(height: 16),
+                ],
+                FilledButton.icon(
+                  icon: Icon(d.error == null ? Icons.download : Icons.refresh),
+                  label: Text(d.error == null ? '開始下載' : '重試',
+                      style: const TextStyle(fontSize: 20)),
+                  onPressed: _start,
                 ),
-                const SizedBox(height: 16),
-                const Text('推完後完全關閉 App 再重新開啟。',
-                    style: TextStyle(fontSize: 18, color: Colors.white70)),
               ],
-              if (pipeline.logPath != null) ...[
-                const SizedBox(height: 16),
-                SelectableText('log: ${pipeline.logPath}',
-                    style: mono.copyWith(color: Colors.white54)),
-              ],
-            ],
-          ),
+              const SizedBox(height: 24),
+              TextButton(onPressed: d.busy ? null : onImport, child: const Text('改用匯入模型')),
+              ExpansionTile(
+                title: const Text('顯示技術細節', style: TextStyle(color: Colors.white54)),
+                children: [
+                  if (Platform.isAndroid) ...[
+                    const Text('adb 推送到：', style: _t),
+                    SelectableText(modelsDir, style: mono),
+                    const SizedBox(height: 12),
+                    const Text('PC 上執行（PowerShell）：', style: _t),
+                    SelectableText(
+                      'adb shell mkdir -p $modelsDir\n'
+                      'adb push models\\mobile\\sensevoice $modelsDir/\n'
+                      'adb push models\\mobile\\silero_vad.onnx $modelsDir/\n'
+                      'adb push models\\hymt2-1.8b\\${ModelPaths.llmFile} $modelsDir/',
+                      style: mono,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  const Text('缺少的檔案：', style: _t),
+                  for (final f in missingFiles)
+                    SelectableText('• $f', style: mono.copyWith(color: Colors.amber)),
+                  if (logPath != null)
+                    SelectableText('log: $logPath', style: mono.copyWith(color: Colors.white54)),
+                ],
+              ),
+            ]);
+          },
         ),
       ),
     );
