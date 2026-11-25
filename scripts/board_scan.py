@@ -6,7 +6,7 @@ Posts one line on the `[health] pipeline check log` issue (#61) so the AI patrol
 Rules (each is a pure function below, unit-tested in tests/test_board_scan.py):
 - PR waiting: an open PR to `dev` whose newest head commit is older than 30 min and whose `test` check is red,
   whose mergeable_state is `dirty`, or that carries `needs-opus`.
-- Zombie branch: a `fix/N*` branch with 0 commits ahead of `dev`, never the head of any PR, issue #N open and not
+- Zombie branch: a `fix/N*` branch with 0 commits ahead of `dev` (claim commits `claim #N ...` do not count, #1882), never the head of any PR, issue #N open and not
   `status:doing` (leftovers of closed issues are the stale-branch cleanup's job).
 - Triage: open issues labelled `needs-triage`.
 - Dev red: the `test` check on the dev tip has been failing for more than 2 h (oldest failing commit in the
@@ -40,6 +40,7 @@ RED = {"failure", "cancelled", "timed_out"}
 REQUEUE_WHY = {"test red", "dirty", "needs-review-ai", "review Critical/Major"}  # last: #1886 review event
 MAX_REQUEUES = 3
 FIX_BRANCH = re.compile(r"^fix/(\d+)(?:-r\d+)?$")
+CLAIM_MSG = re.compile(r"^claim #\d+ ")  # scripts/claim_branch.sh (#1882): the empty claim commit
 
 
 # ---- rules (pure) -----------------------------------------------------------------------------------------
@@ -75,6 +76,13 @@ def requeue_action(why: str | None, head_ref: str, issue_labels: set[str] | None
     if "needs-opus" in issue_labels or "needs-owner" in issue_labels:
         return None
     return int(m.group(1)), ("escalate" if requeues >= MAX_REQUEUES else "requeue")
+
+
+def work_ahead(cmp: dict) -> int:
+    """Commits of a `compare/dev...<branch>` result that are real work: ahead_by minus the empty claim commits
+    (#1882), so a branch holding only its claim commit counts as empty."""
+    claims = sum(1 for c in cmp.get("commits") or [] if CLAIM_MSG.match(c["commit"]["message"]))
+    return max(0, cmp.get("ahead_by", 0) - claims)
 
 
 def is_zombie_branch(name: str, ahead_by: int, had_pr: bool, issue_labels: set[str] | None) -> bool:
@@ -307,7 +315,7 @@ def scan(now: datetime, apply: bool = False) -> tuple[list[str], int]:
         m = FIX_BRANCH.match(br["name"])
         if not m or br["name"] in open_heads:
             continue
-        ahead = _gh(f"repos/{REPO}/compare/dev...{br['name']}")["ahead_by"]
+        ahead = work_ahead(_gh(f"repos/{REPO}/compare/dev...{br['name']}"))
         if ahead > 0:
             continue
         issue_labels = zombie_issue_labels(_issue_or_none(m.group(1)))
