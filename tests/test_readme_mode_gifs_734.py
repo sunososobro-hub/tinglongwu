@@ -27,3 +27,12 @@ def test_mode_gifs_within_caps():
     assert rg.main(["check", "--dir", str(ROOT / "assets" / "demo"), "--present-only"]) == 0
     for gif in GIFS:
         assert (ROOT / "assets" / "demo" / gif).is_file(), gif
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_install_gif_in_every_readme_with_alt_and_within_cap(name):
+    m = re.search(r'<img src="((?:\.\./)?assets/demo/install_15s\.gif)" alt="([^"]+)"', (ROOT / name).read_text("utf-8"))
+    assert m, name
+    gif = (ROOT / name).parent.joinpath(m.group(1)).resolve()
+    frames, seconds, _w, _h = rg.gif_info(gif)
+    assert frames > 1 and seconds <= 15.0 and gif.stat().st_size <= 5 * rg.MB
