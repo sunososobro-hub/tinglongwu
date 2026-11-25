@@ -11,7 +11,7 @@ Section numbers are shared by three files; "rules section N" means the file that
 
 ## 2. Locking
 - Claim = create branch `fix/N` from dev with `scripts/claim_branch.sh` (#1882: a unique empty claim commit, pushed only if the branch does not exist; `routines/common.md` "Writes"). Rejected = taken: take the next item. A fix round on an open PR (FAIL / CHANGES / requeue) claims `claim/N-<PR head sha7>` the same way. A branch holding only its claim commit counts as empty (board-scan, stale-branches).
-- After claiming add `status:doing` and push work to `fix/N`. When the PR is open, swap `status:doing` -> `status:review` in the same run (this ends the area lock, section 10). Mergers remove `status:review` when the PR merges or closes.
+- After claiming add `status:doing` and push work to `fix/N`. When the PR is open, swap `status:doing` -> `status:review` in the same run. Mergers remove `status:review` when the PR merges or closes.
 - Never start an item that has an open PR whose body says `Closes/Refs #N`, or a live `fix/N*` branch. These are not locks:
   - the open PR of an issue put back to `status:todo` by `AI review: FAIL`, `Opus review: CHANGES` or a `requeue:` comment (sections 3, 10): the next worker adds `status:doing`, pushes the fix to the SAME PR branch and swaps back to `status:review`;
   - a merged `fix/N*` branch: the rest of a partial merge is claimed on the next free `fix/N-rK`;
@@ -38,17 +38,18 @@ Section numbers are shared by three files; "rules section N" means the file that
 
 ## 6. Throughput
 - S-easy takes up to 4 items per run; S-merge merges every ready PR in one run.
-- Concurrency ceiling: `status:doing` <= 10 across all agents.
+- No concurrency ceiling and no area lock (#1887): throttle #574 (section 10) is the only brake.
 - Opus review queue: R-hard (scheduled and dispatched) and S-hard each review up to 4 `needs-opus` items per run, oldest label first.
 - Orphan claims: the `orphan-sweep` Action (every 15 min) puts a `status:doing` issue with no open PR (or no new commit on its open PR since the claim) back to `status:todo` after 20 min (`model:sonnet`) or 45 min (`model:opus`). Agents do not run it.
 
 ## 7. Merge conflicts: resolve in place
 - A `dirty` PR: the merger / reviewer merges `origin/dev` into the PR branch (or `update-branch`), resolves conflicts keeping both sides' intent, re-runs the tests and pushes. Close + redo only when the resolution would touch > 50 lines or change the other PR's behaviour.
 
-## 8. Picker: avoid overlapping files
-- Before claiming, list the files of every open PR (`gh api repos/<R>/pulls/N/files`). Skip an issue whose `area:*` or named files overlap an open PR's files, except P0/P1. The issue's own open PR (section 2) never counts.
+## 8. Overlapping files: the author merges dev
+- No look at other PRs before claiming (#1887, C6 of #1875): workers do not list open PRs' files and do not skip an issue because another open PR touches the same files or area.
+- Instead the author, just before its final test run, runs `git fetch origin dev && git merge --no-edit origin/dev` and resolves any conflict itself while it still holds the context, keeping both sides' intent (`routines/worker.md` Work step 4). A PR that goes `dirty` after that follows section 7.
 
-## 10. Throttle, picker, area lock, usage line
+## 10. Throttle, picker, requeue, usage line
 ### Throttle
 - Every routine first reads line 1 of issue #574: `level: N` (unreadable or missing -> 2).
   - 0 off: only merge green PRs; no picking, no new issues.
@@ -62,17 +63,15 @@ Section numbers are shared by three files; "rules section N" means the file that
 ### Picker (every worker)
 - Eligible: `status:todo` + `ok-to-work`, no `needs-triage`, plus the role file's filters; over the infra cap (section 13) skip `infra` except P0 and `src:owner`.
 - Priority: `area:ci` / release issues are P1 only while the dev `test` check is red or a release PR has been stuck > 6 h, otherwise P2. Bugs from an owner field test (real meeting or device use) are P1.
-- P0/P1 first: no ledger type, no section 8 check, only the area lock (P0 skips that too). Order: lower P, focus match, lowest number.
+- P0/P1 first: no ledger type. Order: lower P, focus match, lowest number.
 - Otherwise read the newest ledger comment on #61 (`rules_patrol.md` section 10) and take the type with the largest deficit; inside it focus matches first, then P0 -> P3, then lowest number. No eligible item -> next-largest deficit, then any type by P and number. Never idle while an eligible item exists. No ledger comment in the last 3 h -> by P, then lowest number.
 - Focus: line 2 of #574 `focus: <values>` (mode / platform / language, e.g. `speak, ja`); missing = none.
 - `src:owner` issues are never held back by the type mix.
-- The release PR to main (title `release: v...`, head `release/vX.Y.Z`) is not an open PR for section 8.
 - At level >= 3 each Sonnet slot keeps claiming until it has opened 4 PRs this wake or nothing is eligible; W-hard and S-hard take up to 2.
 - A wake that ends with < 4 items while eligible items existed lists `skipped: #N(reason)` for up to 5 P1/P2 items in its final line.
 
-### Area lock
-- Skip an issue whose `area:*` already has 2 `status:doing` issues (P0 exempt). Open PRs do not lock an area.
-- Race: after claiming and adding `status:doing`, re-check the area (not for P0). If 2 other non-P0 `status:doing` issues in that area have lower numbers, release: delete the claimed branch, swap back to `status:todo`, take the next item.
+### Requeue
+- No area lock (#1887): an `area:*` label never stops a claim, whatever number of `status:doing` issues share it.
 - Requeue: `board-scan` puts the issue of a PR red, `dirty` or `needs-review-ai` for > 30 min back to `status:todo` (comment `requeue: ...`); a worker fixes it on the same branch (section 2). After 3 requeues: `needs-opus`.
 
 ### Usage line
