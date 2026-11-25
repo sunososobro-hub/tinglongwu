@@ -7,24 +7,13 @@
 /// system text: the card's single-message template.
 library;
 
+import 'mt_spec.g.dart';
+
 class PromptBuilder {
   /// Special tokens of the GGUF chat template (fullwidth bars, U+2581 spaces).
   static const bos = '<｜hy_begin▁of▁sentence｜>';
   static const userTag = '<｜hy_User｜>';
   static const assistantTag = '<｜hy_Assistant｜>';
-
-  /// Same tables as desktop `hymt.ZH_NAMES` / `hymt.EN_NAMES`.
-  static const zhNames = <String, String>{
-    'zh': '中文', 'yue': '粤语', 'ja': '日语', 'en': '英语', 'ru': '俄语', 'ko': '韩语',
-    'de': '德语', 'fr': '法语', 'es': '西班牙语', 'it': '意大利语',
-    'pt': '葡萄牙语', 'vi': '越南语', 'th': '泰语', 'id': '印尼语',
-  };
-  static const enNames = <String, String>{
-    'zh': 'Chinese', 'yue': 'Cantonese', 'ja': 'Japanese', 'en': 'English', 'ru': 'Russian',
-    'ko': 'Korean', 'de': 'German', 'fr': 'French', 'es': 'Spanish',
-    'it': 'Italian', 'pt': 'Portuguese', 'vi': 'Vietnamese', 'th': 'Thai',
-    'id': 'Indonesian',
-  };
 
   /// SenseVoice reports its language as `<|en|>`; returns `zh`/`en`/`ja`/`ko`/`yue`
   /// (anything else, or empty, falls back to `en`).
@@ -34,20 +23,36 @@ class PromptBuilder {
     return ok.contains(c) ? c : 'en';
   }
 
-  /// Desktop `hymt.build_prompt(text, src, tgt)` (no glossary terms): the
-  /// Chinese card template when Chinese is on either side, else the English one.
+  /// Fills `{name}` placeholders in one pass, so a value that holds `{...}` is never substituted again
+  /// (desktop `hymt._fill`).
+  static String _fill(String template, Map<String, String> values) =>
+      template.replaceAllMapped(RegExp(r'\{(\w+)\}'), (m) => values[m[1]!] ?? m[0]!);
+
+  /// Desktop `hymt.build_prompt(text, src, tgt, terms, context)`, all text from `mt_spec.g.dart` (#1896):
+  /// the Chinese card when a Chinese side ([MtSpec.chineseSide]) is on either side, else the English one.
+  /// [terms] (source, translation) pairs are prepended in the card's terminology form; a non-blank
+  /// [context] (previous source sentence) selects the contextual card.
   ///
   /// [alt] (#1616) picks the other card template (English when Chinese is on a side, else Chinese):
   /// the retry when the first answer came back in the wrong script (greedy decoding would repeat it).
-  static String userMessage(String text, {String src = 'ru', String tgt = 'zh', bool alt = false}) {
-    final zhCard = src == 'zh' || src == 'yue' || tgt == 'zh';
-    if (zhCard != alt) {
-      return '将以下文本翻译成${zhNames[tgt] ?? tgt}，'
-          '注意只需要输出翻译后的结果，不要额外解释：\n\n$text';
+  static String userMessage(String text,
+      {String src = 'ru', String tgt = 'zh', bool alt = false, List<(String, String)>? terms, String? context}) {
+    if (terms != null && terms.isNotEmpty) {
+      final ref = terms
+          .map((t) => _fill(MtSpec.termLineTemplate, {'source': t.$1, 'translation': t.$2}))
+          .join('\n');
+      return _fill(MtSpec.termsTemplate, {'terms': ref}) +
+          userMessage(text, src: src, tgt: tgt, alt: alt, context: context);
     }
-    return 'Translate the following text into ${enNames[tgt] ?? tgt}.\n'
-        'Note that you should only output the translated result without any '
-        'additional explanation:\n\n$text';
+    final ctx = context?.trim() ?? '';
+    if (ctx.isNotEmpty) {
+      return _fill(MtSpec.contextTemplate, {'context': ctx, 'target': MtSpec.zhNames[tgt] ?? tgt, 'text': text});
+    }
+    final zhCard = MtSpec.chineseSide.contains(src) || MtSpec.chineseSide.contains(tgt);
+    if (zhCard != alt) {
+      return _fill(MtSpec.zhTemplate, {'target': MtSpec.zhNames[tgt] ?? tgt, 'text': text});
+    }
+    return _fill(MtSpec.enTemplate, {'target': MtSpec.enNames[tgt] ?? tgt, 'text': text});
   }
 
   /// Full raw prompt for llama.cpp (tokenize with parseSpecial, no addSpecial):

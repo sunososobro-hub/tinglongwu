@@ -35,8 +35,8 @@ def test_generator_detects_stale_derived_file(tmp_path, monkeypatch):
 
 def test_generated_dart_carries_the_phone_tables():
     dart = (ROOT / "mobile" / "lib" / "logic" / "mt_spec.g.dart").read_text(encoding="utf-8")
-    assert "'yue': '粤语'" in dart and "'hi'" not in dart  # phone keeps yue, lacks hi until #1816 part 3b
-    assert hymt.ZH_NAMES["hi"] == "印地语" and "yue" not in hymt.ZH_NAMES  # desktop tables unchanged
+    assert "'yue': '粤语'" in dart and "'hi': '印地语'" in dart  # #1896: both sides carry yue and hi
+    assert hymt.ZH_NAMES["hi"] == "印地语" and hymt.ZH_NAMES["yue"] == "粤语"
 
 
 def test_desktop_prompts_come_from_the_spec(monkeypatch):
