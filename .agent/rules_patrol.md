@@ -55,5 +55,5 @@ Read after `.agent/tlwu_rules.md` (same precedence, shared section numbers) by S
 - `test` red on the dev tip for > 2 h is P0: S-hard opens (or bumps) a `[P0] dev red` issue; pickers take it first.
 
 ## 19. Board scan: read the newest [board] line first
-- `board-scan.yml` (every 30 min, `scripts/board_scan.py`) posts one line on #61: `[board HH:MM] ok` or `[board HH:MM] act: <items>`. It scans by rule: PRs waiting > 30 min with red `test` / dirty / `needs-opus`, zombie `fix/N` branches with 0 commits and no PR, `needs-triage` items, dev `test` red > 2 h.
+- `board-scan.yml` (every 30 min, `scripts/board_scan.py`) posts one line on #61: `[board HH:MM] ok` or `[board HH:MM] act: <items>`. It scans by rule: PRs waiting > 30 min with red `test` / dirty / `needs-opus`, zombie `fix/N` branches with 0 commits and no PR, `needs-triage` items, dev `test` red > 2 h, and `supply (<n> todo < 10)` when open `status:todo` + `ok-to-work` issues < 10 (section 5; #1893, so an `ok` line never skips the refill).
 - The patrol (S-hard and any integrator wake) first reads the newest `[board]` comment on #61 by `github-actions[bot]` (other authors are ignored, so a forged line cannot stop the patrol). Under 60 min old and `ok` -> the patrol ends after that one call. Under 60 min old and `act: <items>` -> handle only those items. Missing or >= 60 min old -> run the full patrol.

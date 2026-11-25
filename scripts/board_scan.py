@@ -9,6 +9,8 @@ Rules (each is a pure function below, unit-tested in tests/test_board_scan.py):
 - Zombie branch: a `fix/N*` branch with 0 commits ahead of `dev` (claim commits `claim #N ...` do not count, #1882), never the head of any PR, issue #N open and not
   `status:doing` (leftovers of closed issues are the stale-branch cleanup's job).
 - Triage: open issues labelled `needs-triage`.
+- Supply (#1893): fewer than SUPPLY_MIN open `status:todo` + `ok-to-work` issues -> `supply (<n> todo < 10)`,
+  so the patrol's `ok` shortcut never skips the rules_patrol section 5 refill.
 - Dev red: the `test` check on the dev tip has been failing for more than 2 h (oldest failing commit in the
   current red streak is older than 2 h).
 - Requeue (owner 2026-11-25, no AI babysitter): with --post, a waiting PR that is `test red`, `dirty` or
@@ -39,6 +41,7 @@ DEV_RED_MIN = 120
 RED = {"failure", "cancelled", "timed_out"}
 REQUEUE_WHY = {"test red", "dirty", "needs-review-ai", "review Critical/Major"}  # last: #1886 review event
 MAX_REQUEUES = 3
+SUPPLY_MIN = 10  # rules_patrol section 5: refill when open todo + ok-to-work < 10
 FIX_BRANCH = re.compile(r"^fix/(\d+)(?:-r\d+)?$")
 CLAIM_MSG = re.compile(r"^claim #\d+ ")  # scripts/claim_branch.sh (#1882): the empty claim commit
 
@@ -101,6 +104,11 @@ def is_zombie_branch(name: str, ahead_by: int, had_pr: bool, issue_labels: set[s
 
 def needs_triage(labels: set[str]) -> bool:
     return "needs-triage" in labels
+
+
+def supply_item(todo_count: int) -> str | None:
+    """Board item when the work queue is below the section 5 refill line, else None."""
+    return f"supply ({todo_count} todo < {SUPPLY_MIN})" if todo_count < SUPPLY_MIN else None
 
 
 def dev_red_since(history: list[tuple[datetime, str | None]]) -> datetime | None:
@@ -340,6 +348,10 @@ def scan(now: datetime, apply: bool = False) -> tuple[list[str], int]:
     for it in _gh_list(f"repos/{REPO}/issues?state=open&labels=needs-triage&per_page=100"):
         if "pull_request" not in it:
             items.append(f"triage #{it['number']}")
+    todo = _gh_list(f"repos/{REPO}/issues?state=open&labels=status:todo,ok-to-work&per_page=100")
+    supply = supply_item(sum(1 for it in todo if "pull_request" not in it))
+    if supply:
+        items.append(supply)
     if _dev_red_too_long(now):
         items.append("dev test red > 2 h")
     doubles = _double_claims()
