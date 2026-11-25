@@ -106,3 +106,13 @@ def test_workflow_weekly_no_pr_code():
     steps = wf["jobs"]["ledger"]["steps"]
     assert all("ref" not in (s.get("with") or {}) for s in steps)
     assert [s["run"] for s in steps if "run" in s] == ["python scripts/collision_ledger.py --post"]
+
+
+def test_one_push_of_three_commits_counts_once():
+    def c(sha, msg="fix"):
+        return {"sha": sha, "commit": {"message": msg, "committer": {"date": "2026-11-24T09:00:00Z"}}}
+    touch = [c("a"), c("b"), c("c")]
+    assert len(cl.group_pushes(touch, lambda x: x["sha"] == "c")) == 1
+    assert len(cl.group_pushes(touch, lambda x: True)) == 3
+    assert [len(g) for g in cl.group_pushes(touch, lambda x: x["sha"] == "b")] == [2, 1]
+    assert cl.group_pushes([], lambda x: True) == []
