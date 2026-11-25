@@ -329,9 +329,12 @@ void main() {
     // Only the three VITS files: that is a plain VITS voice, not melo.
     final vitsOnly = TtsVoiceLayout.rel('zh').toSet();
     expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => vitsOnly.contains(p.substring(3)))!.engine, 'vits');
-    // One melo file missing -> melo is not chosen.
+    // One melo file missing -> a half-installed melo voice, not plain VITS (#1967).
     final partial = {...all}..remove('tts-zh/phone.fst');
-    expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => partial.contains(p.substring(3)))!.engine, 'vits');
+    expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => partial.contains(p.substring(3))), isNull);
+    // VITS files plus only a jieba dict file: also a partial melo voice.
+    final dictOnly = {...vitsOnly, 'tts-zh/dict/jieba.dict.utf8'};
+    expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => dictOnly.contains(p.substring(3))), isNull);
   });
 
   test('shipped assets/voice_packs.json has the Russian recognizer pack', () {
