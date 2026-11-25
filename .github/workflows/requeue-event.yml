@@ -44,6 +44,8 @@ jobs:
           REVIEW_PR: ${{ github.event.pull_request.number }}
           REVIEW_ID: ${{ github.event.review.id }}
         run: |
+          # the script comes from dev: until this PR merges, a run from its own branch has nothing to call
+          if [ ! -f scripts/requeue_event.py ]; then echo "requeue_event.py not on dev yet: skip"; exit 0; fi
           case "$EVENT" in
             push) python scripts/requeue_event.py --event push --apply ;;
             workflow_run) python scripts/requeue_event.py --event ci --pr "$RUN_PRS" --sha "$RUN_SHA" --apply ;;
