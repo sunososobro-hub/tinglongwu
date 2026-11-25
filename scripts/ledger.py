@@ -3,6 +3,10 @@
 #1581: review-fix minutes after a PR opens (`tlwu-usage: ... minutes=N phase=fix` comments on the PR) are added to
 the PR's type and shown on their own line, so the cost of review rounds is visible.
 
+#1915: the ledger weighs work by `tool_calls=N` (each call resends the context, so calls track spend), not by wall-clock
+`minutes`. A usage line without `tool_calls` falls back to its `minutes` (legacy / QA lines); any `minutes` over 600 or
+`tool_calls` over 1000 is bad data: dropped and reported on a `warning:` line of the ledger comment.
+
 Usage: python scripts/ledger.py [--dry-run]   (needs `gh` with GH_TOKEN; --dry-run prints instead of posting)
 """
 from __future__ import annotations
@@ -25,6 +29,12 @@ OWNER_LABEL = "src:owner"  # owner 2026-11-20: owner-requested work is exempt fr
 OWNER_KEY = "owner"  # by_type key for exempt minutes; not a target, so build_rows never counts it
 USAGE_RE = re.compile(r"^tlwu-usage:.*\bminutes=(\d+)(?![\d.])", re.M)
 LINK_RE = re.compile(r"(?:Closes|Refs) #(\d+)")
+USAGE_LINE_RE = re.compile(r"^tlwu-usage:.*$", re.M)
+MINUTES_RE = re.compile(r"\bminutes=(\d+)(?![\d.])")
+CALLS_RE = re.compile(r"\btool_calls=(\d+)(?![\d.])")
+MAX_MINUTES, MAX_CALLS = 600, 1000
+DROPPED: list[str] = []  # usage lines dropped as bad data in this run (reported by `warning_line`)
+MODEL_CALLS: dict[str, int] = {}  # calls by builder model over the 48 h window (the `by model:` line)
 HEAD_RE = re.compile(r"^(?:fix|feat)/(\d+)(?:-r\d+)?$")
 
 
@@ -62,8 +72,43 @@ def usage_minutes(text: str | None) -> int | None:
     return int(found[-1])
 
 
+def usage_weight(text: str | None) -> int | None:
+    """#1915: weight of the LAST `tlwu-usage:` line = its tool_calls, else its minutes (legacy). None when there is no
+    usage line; a bad value (minutes > 600, tool_calls > 1000, unparsable minutes) drops the line and is recorded."""
+    lines = USAGE_LINE_RE.findall(text or "")
+    if not lines:
+        return None
+    line = lines[-1]
+    m, c = MINUTES_RE.search(line), CALLS_RE.search(line)
+    bad = ("minutes=" in line and (not m or len(m.group(1)) > 6 or int(m.group(1)) > MAX_MINUTES)) \
+        or ("tool_calls=" in line and (not c or len(c.group(1)) > 6 or int(c.group(1)) > MAX_CALLS))
+    if bad:
+        DROPPED.append(line[:80])
+        return None
+    if c:
+        return int(c.group(1))
+    return int(m.group(1)) if m else None
+
+
+def tally_model(body: str | None, weight: int) -> None:
+    """Add `weight` calls to the builder model named by the body's usage line (`unknown` when absent)."""
+    found = MODEL_RE.findall(body or "")
+    key = found[-1] if found else "unknown"
+    MODEL_CALLS[key] = MODEL_CALLS.get(key, 0) + weight
+
+
+def model_calls_line() -> str:
+    keys = ["sonnet", "opus"] + sorted(k for k in MODEL_CALLS if k not in ("sonnet", "opus"))
+    return "by model: " + " ".join(f"{k} {MODEL_CALLS.get(k, 0)}" for k in keys)
+
+
+def warning_line() -> str:
+    return f"warning: dropped {len(DROPPED)} usage line(s) as bad data (minutes > {MAX_MINUTES} or tool_calls > {MAX_CALLS})" \
+        if DROPPED else ""
+
+
 def build_rows(minutes: dict[str, int], mix: dict[str, int]) -> list[dict]:
-    """Rows type|minutes|share|target|deficit; share over the total of all rows, 0 when the total is 0."""
+    """Rows type|calls (key `minutes`, kept for callers)|share|target|deficit; share over the total of all rows, 0 when the total is 0."""
     targets = {**mix, **INFO_TARGETS}
     total = sum(minutes.get(t, 0) for t in targets)
     rows = []
@@ -83,7 +128,7 @@ def pick_type(labels: set[str]) -> str | None:
 
 
 def owner_line(owner48: int) -> str:
-    return f"owner-requested (src:owner, exempt from mix): {owner48} min (48 h)"
+    return f"owner-requested (src:owner, exempt from mix): {owner48} calls (48 h)"
 
 
 def infra_line(infra_min: int, total_min: int) -> str:
@@ -92,11 +137,11 @@ def infra_line(infra_min: int, total_min: int) -> str:
 
 
 def render(rows: list[dict], infra: str, total: int, untyped: int, mix_ok: bool, now: datetime) -> str:
-    out = [f"Ledger (48 h to {now:%H:%M}Z, PRs merged to dev + QA/idea usage comments, total {total} min; "
-           f"untyped PRs excluded: {untyped} min)"]
+    out = [f"Ledger (48 h to {now:%H:%M}Z, PRs merged to dev + QA/idea usage comments, total {total} calls; "
+           f"untyped PRs excluded: {untyped} calls)"]
     if not mix_ok:
         out.append("mix invalid, default used")
-    out += ["", "| type | minutes | share | target | deficit |", "|---|---|---|---|---|"]
+    out += ["", "| type | calls | share | target | deficit |", "|---|---|---|---|---|"]
     for r in rows:
         out.append(f"| {r['type']} | {r['minutes']} | {r['share']}% | {r['target']}% | {r['deficit']:+.1f} |")
     out += ["", infra, "", "_posted by the ledger Action (#1469)_"]
@@ -118,9 +163,9 @@ def _ts(s: str) -> datetime:
 
 
 def final_usage(body: str | None) -> int | None:
-    """Minutes from the LAST non-empty line of a PR body only (rules section 10: it is the last line)."""
+    """Weight (#1915: tool_calls, else minutes) from the LAST non-empty line of a PR body only (rules section 10)."""
     lines = [l for l in (body or "").splitlines() if l.strip()]
-    return usage_minutes(lines[-1]) if lines else None
+    return usage_weight(lines[-1]) if lines else None
 
 
 def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
@@ -144,6 +189,8 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
         mins = final_usage(pr.get("body"))
         if not mins:
             continue
+        if _ts(merged) >= since48:
+            tally_model(pr.get("body"), mins)
         n = linked_issue(pr["head"]["ref"], pr.get("body"))
         labels: set[str] = set()
         if n is not None:
@@ -172,7 +219,7 @@ def collect(now: datetime) -> tuple[dict[str, int], int, int, int]:
 
     def add_comment(kind: str, c: dict) -> None:
         nonlocal total7
-        m = usage_minutes(c.get("body"))
+        m = usage_weight(c.get("body"))
         if not m or (c.get("user") or {}).get("login") != PRODUCER or "Ledger (48 h" in (c.get("body") or ""):
             return
         t = _ts(c["created_at"])
@@ -198,7 +245,7 @@ PR_URL_RE = re.compile(r"/pull/(\d+)$")
 def fix_minutes(body: str | None) -> int | None:
     """#1581: minutes of the LAST `tlwu-usage: ... phase=fix` line of a PR comment; None when there is none."""
     found = FIX_RE.findall(body or "")
-    return usage_minutes(found[-1]) if found else None
+    return usage_weight(found[-1]) if found else None
 
 
 def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int, int, int]:
@@ -228,6 +275,8 @@ def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int,
         t = _ts(c["created_at"])
         if not m or not mins or not (since7 <= t <= now):
             continue
+        if t >= since48:
+            tally_model(c.get("body"), mins)
         n = pr_issue(int(m.group(1)))
         labels: set[str] = set()
         if n is not None:
@@ -258,7 +307,7 @@ def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int,
 
 def fix_line(fix48: int, total48: int) -> str:
     share = round(100 * fix48 / total48, 1) if total48 else 0.0
-    return f"open->merge fix minutes (48 h): {fix48} ({share}% of total)"
+    return f"open->merge fix calls (48 h): {fix48} ({share}% of total)"
 
 
 # --- #1676: per-model quality metrics over the last 14 days (owner a1: decide model pairings by data) -------------
@@ -358,6 +407,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     now = datetime.now(UTC)
+    DROPPED.clear()
+    MODEL_CALLS.clear()
     mix, ok = parse_mix(_gh(f"repos/{REPO}/issues/{THROTTLE_ISSUE}")["body"])
     by_type, untyped, infra_min, total7 = collect(now)
     f_type, f_untyped, f_infra, f_total7, fix48 = collect_fix(now)
@@ -367,7 +418,9 @@ def main() -> int:
     rows = build_rows(by_type, mix)
     total = sum(r["minutes"] for r in rows)
     infra = infra_line(infra_min, total7) + "\n" + fix_line(fix48, total + untyped)
-    infra += "\n" + owner_line(by_type.get(OWNER_KEY, 0))
+    infra += "\n" + owner_line(by_type.get(OWNER_KEY, 0)) + "\n" + model_calls_line()
+    if DROPPED:
+        infra += "\n" + warning_line()
     text = render(rows, infra, total, untyped, ok, now)
     text = text.replace("\n\n_posted by", "\n\n" + render_models(model_rows(collect_models(now))) + "\n\n_posted by", 1)
     if args.dry_run:
