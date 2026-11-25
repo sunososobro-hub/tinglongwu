@@ -374,3 +374,18 @@ def test_apply_creates_log_issue_when_missing(monkeypatch):
     assert mg.minor_log_issue() == 77
     create = next(a for path, a in calls if path == f"repos/{mg.REPO}/issues")
     assert f"title={mg.MINOR_LOG_TITLE}" in create and "labels[]=status:proposal" in create
+
+
+def test_graphql_thread_bot_login_and_human_reply():  # #1885 CodeRabbit review: GraphQL drops `[bot]`
+    from merge_gate import thread_info, minor_bot_thread
+    body = _thread("Minor")["body"]
+    bot = {"login": "coderabbitai", "__typename": "Bot"}
+    t = thread_info({"id": "T", "path": "a.py", "comments": {"nodes": [{"databaseId": 1, "body": body, "url": "u",
+                                                                        "author": bot}]}})
+    assert t["author"] == "coderabbitai[bot]" and minor_bot_thread(t)
+    owner = {"login": "sunososobro-hub", "__typename": "User"}
+    t = thread_info({"id": "T", "path": "a.py", "comments": {"nodes": [
+        {"databaseId": 1, "body": body, "url": "u", "author": bot}, {"body": "blocking", "author": owner}]}})
+    assert not minor_bot_thread(t) and run(threads=[t])[0] == "needs-ai"  # a person answered: AI merger decides
+    t = thread_info({"id": "T", "comments": {"nodes": [{"body": body, "author": owner}]}})
+    assert t["author"] == "sunososobro-hub" and not minor_bot_thread(t)

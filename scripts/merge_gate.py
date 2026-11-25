@@ -159,8 +159,8 @@ def carried_pass(notes: list[dict], carry) -> datetime | None:
 
 def minor_bot_thread(t: dict) -> bool:
     """#1885: an unresolved thread a review bot opened with a Minor / Trivial / Nitpick / Info marker."""
-    if not (t.get("author") or "").endswith("[bot]"):
-        return False
+    if not (t.get("author") or "").endswith("[bot]") or t.get("human_reply"):
+        return False  # a person's thread, or a person answered in it (e.g. "blocking"): an AI merger decides
     m = SEVERITY_RE.search(t.get("body") or "")
     return bool(m) and m.group(1) in MINOR_SEVERITIES
 
@@ -293,12 +293,28 @@ def _release_notes():
     return mod
 
 
+def _login(author: dict | None) -> str:
+    """GraphQL gives a bot's login without `[bot]` (`coderabbitai`, __typename Bot); REST adds it. Normalize."""
+    a = author or {}
+    login = a.get("login") or ""
+    return f"{login}[bot]" if a.get("__typename") == "Bot" and not login.endswith("[bot]") else login
+
+
+def thread_info(t: dict) -> dict:
+    """One GraphQL review thread -> {id, path, author, body, url, comment_id, human_reply} (#1885)."""
+    comments = (t.get("comments") or {}).get("nodes") or [{}]
+    first = comments[0] or {}
+    human_reply = len(comments) >= 50 or any(not _login(c.get("author")).endswith("[bot]") for c in comments[1:])
+    return {"id": t["id"], "path": t.get("path"), "author": _login(first.get("author")), "body": first.get("body") or "",
+            "url": first.get("url"), "comment_id": first.get("databaseId"), "human_reply": human_reply}
+
+
 def _unresolved(num: int) -> list[dict]:
     """Unresolved, not outdated review threads, each with its first comment (#1885: severity and author)."""
     owner, name = REPO.split("/")
     q = ("query($o:String!,$n:String!,$p:Int!,$c:String){repository(owner:$o,name:$n){pullRequest(number:$p)"
          "{reviewThreads(first:100,after:$c){nodes{id isResolved isOutdated path "
-         "comments(first:1){nodes{databaseId body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}")
+         "comments(first:50){nodes{databaseId body url author{login __typename}}}} pageInfo{hasNextPage endCursor}}}}}")
     out, cursor = [], None
     while True:
         args = ["-f", f"query={q}", "-f", f"o={owner}", "-f", f"n={name}", "-F", f"p={num}"]
@@ -308,9 +324,7 @@ def _unresolved(num: int) -> list[dict]:
         for t in conn["nodes"]:
             if t["isResolved"] or t["isOutdated"]:
                 continue
-            first = ((t.get("comments") or {}).get("nodes") or [{}])[0] or {}
-            out.append({"id": t["id"], "path": t.get("path"), "author": (first.get("author") or {}).get("login", ""),
-                        "body": first.get("body") or "", "url": first.get("url"), "comment_id": first.get("databaseId")})
+            out.append(thread_info(t))
         if not conn["pageInfo"]["hasNextPage"]:
             return out
         cursor = conn["pageInfo"]["endCursor"]
