@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../logic/pack_download.dart';
 import '../services/pipeline.dart';
 import '../services/play_packs.dart';
+import 'a11y.dart';
 
 /// First run of a Play install (#1031): Play is still downloading the fast-follow model packs.
 /// Plain zh-TW, progress bar + MB, Wi-Fi wait, failure + retry. Nothing to import.
@@ -28,15 +29,19 @@ class DownloadScreen extends StatelessWidget {
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
           const SizedBox(height: 24),
           if (!v.retry) ...[
-            LinearProgressIndicator(value: v.progress, minHeight: 10),
+            LinearProgressIndicator(
+                value: v.progress, minHeight: 10, semanticsLabel: PackDownloadView.title),
             const SizedBox(height: 8),
           ],
-          if (v.amount.isNotEmpty)
-            Text(v.amount, style: const TextStyle(fontSize: 20, color: Colors.white)),
-          const SizedBox(height: 16),
-          Text(v.status,
-              style: TextStyle(
-                  fontSize: 20, color: v.retry ? Colors.amberAccent : Colors.white)),
+          LiveRegion(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (v.amount.isNotEmpty)
+              Text(v.amount, style: const TextStyle(fontSize: 20, color: Colors.white)),
+            const SizedBox(height: 16),
+            Text(v.status,
+                style: TextStyle(
+                    fontSize: 20, color: v.retry ? Colors.amberAccent : Colors.white)),
+          ])),
           if (v.hint.isNotEmpty) ...[const SizedBox(height: 8), Text(v.hint, style: _t)],
           const SizedBox(height: 24),
           if (v.retry)

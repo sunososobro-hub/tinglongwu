@@ -5,7 +5,7 @@ The owner asked for the per-mode and install GIFs to be recorded in the cloud (X
 GitHub-hosted runner), not by hand. This is the tool half; the runner job drives the app and calls it.
 
     python scripts/readme_gif.py record OUT.mp4 --seconds 6 [--display :99] [--size 1280x720]
-    python scripts/readme_gif.py make IN.mp4 OUT.gif --max-seconds 3 --max-mb 2 [--start 1.5]
+    python scripts/readme_gif.py make IN.mp4 OUT.gif --max-seconds 3 --max-mb 2 [--start 1.5] [--whole]
     python scripts/readme_gif.py check [--dir assets/demo] [--present-only]
 
 `check` reads the GIF frame delays with the stdlib only (no Pillow) and exits 1 when a GIF is missing or over its
@@ -77,11 +77,14 @@ def check(folder: Path, present_only: bool = False) -> list[tuple[str, bool, str
     return out
 
 
-def gif_cmd(src: Path, out: Path, start: float, seconds: float, fps: int, width: int) -> list[str]:
-    """One ffmpeg call: trim, resample, scale, then palettegen + paletteuse (far smaller than the default palette)."""
-    vf = (f"fps={fps},scale={width}:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];"
+def gif_cmd(src: Path, out: Path, start: float, seconds: float, fps: int, width: int,
+            speed: float = 1.0) -> list[str]:
+    """One ffmpeg call: trim, resample, scale, then palettegen + paletteuse (far smaller than the default palette).
+    `speed` > 1 plays the clip faster (#734 install GIF): `seconds` of GIF then cover `seconds * speed` of input."""
+    fast = f"setpts=PTS/{speed:g}," if speed > 1 else ""
+    vf = (f"{fast}fps={fps},scale={width}:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];"
           "[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle")
-    return ["ffmpeg", "-v", "error", "-y", "-ss", f"{start:g}", "-t", f"{seconds:g}", "-i", str(src),
+    return ["ffmpeg", "-v", "error", "-y", "-ss", f"{start:g}", "-t", f"{seconds * max(speed, 1.0):g}", "-i", str(src),
             "-filter_complex", vf, "-loop", "0", str(out)]
 
 
@@ -93,10 +96,28 @@ def fit(encode, max_bytes: int, ladder=LADDER):
     return None
 
 
-def make(src: Path, out: Path, max_seconds: float, max_bytes: int, start: float = 0.0):
+def speed_for(duration: float, gif_seconds: float) -> float:
+    """How much faster than real time `duration` s of video must play to fit in `gif_seconds` (never slower)."""
+    if gif_seconds <= 0:
+        raise ValueError("gif_seconds must be > 0")
+    return max(1.0, round(duration / gif_seconds + 0.005, 2))
+
+
+def video_seconds(src: Path) -> float:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(src)],
+                         check=True, capture_output=True, text=True).stdout
+    return float(out.strip())
+
+
+def make(src: Path, out: Path, max_seconds: float, max_bytes: int, start: float = 0.0, whole: bool = False):
+    """`whole` (#734 install GIF): speed the clip up so all of it, from `start` to the end, fits in max_seconds."""
+    total = video_seconds(src) - start if whole else 0.0
+
     # 1/fps under the cap: ffmpeg rounds frame delays to centiseconds, never let the sum pass max_seconds
     def encode(fps: int, width: int) -> int:
-        subprocess.run(gif_cmd(src, out, start, max_seconds - 1 / fps, fps, width), check=True)
+        secs = max_seconds - 1 / fps
+        speed = speed_for(total, secs) if whole else 1.0
+        subprocess.run(gif_cmd(src, out, start, secs, fps, width, speed), check=True)
         return out.stat().st_size
 
     step = fit(encode, max_bytes)
@@ -127,6 +148,7 @@ def main(argv=None) -> int:
     p.add_argument("--max-seconds", type=float, required=True)
     p.add_argument("--max-mb", type=float, required=True)
     p.add_argument("--start", type=float, default=0.0)
+    p.add_argument("--whole", action="store_true", help="speed the whole clip up to fit --max-seconds")
     p = sub.add_parser("check")
     p.add_argument("--dir", type=Path, default=ROOT / "assets" / "demo")
     p.add_argument("--present-only", action="store_true", help="skip GIFs that are not there yet")
@@ -137,7 +159,7 @@ def main(argv=None) -> int:
     if a.cmd == "record":
         return subprocess.run(record_cmd(a.out, a.seconds, a.display, a.size)).returncode
     if a.cmd == "make":
-        step = make(a.src, a.out, a.max_seconds, int(a.max_mb * MB), a.start)
+        step = make(a.src, a.out, a.max_seconds, int(a.max_mb * MB), a.start, a.whole)
         if step is None:
             print(f"FAIL {a.out}: over {a.max_mb:g} MB even at {LADDER[-1][0]} fps / {LADDER[-1][1]} px")
             return 1
