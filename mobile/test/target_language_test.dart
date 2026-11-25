@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/logic/mt_spec.g.dart';
 import 'package:mobile/logic/passthrough.dart';
 import 'package:mobile/logic/prompt.dart';
 import 'package:mobile/logic/target_language.dart';
@@ -62,7 +63,7 @@ void main() {
     expect(TargetLanguage.options['ko'], '한국어');
     for (final c in ['ja', 'ko', 'es', 'fr', 'de', 'th', 'vi', 'id']) {
       expect(TargetLanguage.normalize(c), c);
-      expect(PromptBuilder.userMessage('hello', src: 'en', tgt: c), contains(PromptBuilder.enNames[c]!));
+      expect(PromptBuilder.userMessage('hello', src: 'en', tgt: c), contains(MtSpec.enNames[c]!));
     }
     expect(passthrough(' こんにちは ', 'ja', tgt: 'ja'), 'こんにちは');
   });

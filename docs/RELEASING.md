@@ -2,7 +2,7 @@
 
 Branches: `main` is stable (users and auto-update follow it); `dev` is where daily work happens. `main` is protected: changes arrive by pull request with the `test` CI check green.
 
-Releases are automatic (#589, owner decision 2026-11-13; rules: `.agent/tlwu_rules.md` sections 14 and 17). Nobody clicks merge.
+Releases are automatic (#589, owner decision 2026-11-13; rules: `.agent/rules_release.md` section 14 and `.agent/tlwu_rules.md` section 17). Nobody clicks merge.
 
 Two lanes (#976, owner 2026-11-15): `dev` is the fast lane (a PR merges on `test` alone; `dev-build.yml` publishes every dev push as the rolling `dev-latest` pre-release), `main` is the quality lane. A release is cut from a snapshot branch `release/vX.Y.Z` that points at the dev commit of the version bump (or, when the bump had no `## vX.Y.Z` section in `docs/whats_new.md`, the first later dev commit that adds it; until then nothing is cut and the plan says "waiting for whats_new section", #1012), so later merges to `dev` never restart, cancel or freeze it, and every release gate runs on that snapshot.
 

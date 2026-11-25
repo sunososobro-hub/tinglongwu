@@ -1,7 +1,7 @@
 # tinglongWu mobile (聽攏有) - offline zh/en/ja/ko/yue -> zh-Hant live subtitles (prototype v0)
 
 Mic -> sherpa-onnx (SenseVoice-small ASR (zh/en/ja/ko/yue auto-detect) + Silero VAD) -> Hy-MT2-1.8B Q4_K_M via llama.cpp (same translator and prompt as desktop) -> full-screen subtitles.
-Translation, ASR and TTS run fully offline. INTERNET is used only for user-tapped pack downloads from this repo's release assets (size + SHA-256 checked); you can still import the models zip by hand (or side-load with adb).
+Translation, ASR and TTS run fully offline. The app downloads its model files once on first use (and any voice pack you tap) from this repo's `mobile-latest` release assets (size + SHA-256 checked) and is offline otherwise; INTERNET is used for nothing else; you can still import the models zip by hand (or side-load with adb).
 
 ## Phone only (no computer)
 1. On the phone, open https://github.com/sunososobro-hub/tinglongwu/releases/tag/mobile-latest and download `tinglongwu-mobile-arm64.apk`.
