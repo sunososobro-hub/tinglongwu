@@ -40,12 +40,11 @@ EVAL_CHECK = "mini-eval"  # #1687: eval.yml job (check run) name; needed only wh
 EVAL_PATH_RE = re.compile(r"^(?:src/[^/]+/tinglongwu/|eval/|src/system/tinglongwu_setup/manifest\.json$"
                           r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
-RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
-                    "hotfix.yml")
-PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
-                   "src/core/tinglongwu/__init__.py", "pyproject.toml", "src/system/tinglongwu/offline.py", "scripts/download_models.py",
-                   "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
-PROTECTED_PREFIX = (".agent/", ".claude/", "release/packaging/", "release/installer/")  # #1856: every .agent rules file
+# #1918: protected / g4 paths (section 14) live in the per-folder OWNERS files, read by scripts/owners.py from
+# this checkout (dev), never from the PR.
+_spec = importlib.util.spec_from_file_location("tlwu_owners", Path(__file__).with_name("owners.py"))
+owners = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(owners)
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)
@@ -69,17 +68,8 @@ BOT_BLOCK_RE = re.compile(r"<!-- This is an auto-generated comment.*?<!-- end of
 
 
 def is_protected(path: str) -> bool:
-    """Section 14 protected paths plus the g4 sensitive paths; files under tests/ never count (section 3)."""
-    if path.startswith("tests/"):
-        return False
-    if path in PROTECTED_EXACT or path.startswith(PROTECTED_PREFIX):
-        return True
-    if re.fullmatch(r"requirements/[^/]*\.txt", path) or re.fullmatch(r"scripts/[^/]*offline[^/]*", path):
-        return True
-    if path.startswith(".github/workflows/"):
-        name = path.rsplit("/", 1)[-1]
-        return name in RELEASE_CRITICAL or name.startswith("auto-release")
-    return False
+    """Section 14 protected paths plus the g4 sensitive paths, per the OWNERS chain (#1918); tests/ never count."""
+    return owners.is_protected(path)
 
 
 def trusted_issue(issue: dict) -> bool:

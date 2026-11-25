@@ -35,6 +35,8 @@ jobs:
           sparse-checkout: |
             scripts/pr_format.py
             scripts/merge_gate.py
+            scripts/owners.py
+            OWNERS
           sparse-checkout-cone-mode: false
       - name: lint
         env:

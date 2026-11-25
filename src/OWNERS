@@ -1,0 +1,6 @@
+# #1918 folder ownership, read by scripts/owners.py (merge gate, triage). Keys: scripts/owners.py docstring.
+area: none  # src spans every product area: the issue decides
+model: sonnet
+review: bot
+protected: false
+protected_files: [core/tinglongwu/__init__.py, system/tinglongwu/offline.py]

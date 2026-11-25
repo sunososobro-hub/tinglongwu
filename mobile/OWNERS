@@ -1,0 +1,5 @@
+# #1918 folder ownership, read by scripts/owners.py (merge gate, triage). Keys: scripts/owners.py docstring.
+area: area:mobile
+model: sonnet
+review: bot
+protected: false

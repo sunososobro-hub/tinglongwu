@@ -1,0 +1,6 @@
+# #1918 folder ownership, read by scripts/owners.py (merge gate, triage). Keys: scripts/owners.py docstring.
+area: area:ci
+model: opus
+review: bot
+protected: false
+protected_files: [workflows/ci.yml, workflows/e2e.yml, workflows/windows-build.yml, workflows/hw-tests.yml, workflows/release.yml, workflows/release-pr.yml, workflows/hotfix.yml, "workflows/auto-release*", workflows/merge-gate.yml]
