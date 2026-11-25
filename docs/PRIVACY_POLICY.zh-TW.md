@@ -32,7 +32,7 @@ tinglongWu 在你自己的電腦上翻譯語音。本頁說明哪些資料只留
 | 5 | 安裝程式下載原始碼：Windows 安裝精靈 `tinglongwu-setup.exe`（內含原始碼；之後 `install.ps1` 在缺 Python 3.12 時從 python.org 下載並驗證 SHA256，再下載 Python 套件）；Windows `scripts/bootstrap_windows.ps1`（從 GitHub git clone，沒有 git 時下載該版本的 GitHub zip）；Linux `scripts/install.sh`（從 GitHub release `curl \| bash`，再 git clone）；macOS `mac_install.sh`（從 GitHub release `curl \| bash`、git clone、Homebrew） | 你執行時 | 一般 HTTPS 請求 | 不執行 |
 | 6 | 網路防護回報（`tinglongwu/netreport.py`）：用瀏覽器開啟預填好的 GitHub issue | 只有在連線被擋、且你回答 y 時；會先顯示完整文字，由你自己送出 | 版本、commit、OS 字串、host/port/套件/模式/次數、最多 12 筆 `module:function:line`。不含逐字稿、使用者名稱、家目錄路徑、主機名稱 | 回答 N |
 | 6b | 回報問題（GUI 按鈕／`tlwu --report`，`tinglongwu/report.py`）：用瀏覽器開啟預填好的 GitHub issue | 只有你按下時；你在 GitHub 上檢視文字後自己送出 | App 版本、OS、Python、CPU 型號／AVX、核心數、RAM、GPU／VRAM、NVIDIA 驅動、套件版本、目前設定（GUI）或語言對／引擎（CLI）、最近一次安裝自我測試區塊、最多最後 200 行執行日誌（依網址長度裁切）；家目錄路徑與使用者名稱會遮蔽 | 不要按 |
-| 7 | 手機版：點一下下載選用語音／語言包（只從本 repo 的 GitHub release 檔案，INTERNET 不作他用） | 只有你按下載按鈕時 | 下載檔案的請求（GitHub 看得到你的 IP）；沒有 ID、音訊或文字 | 改用手動匯入 zip |
+| 7 | 手機版：第一次使用時下載一次基本模型檔，以及你按下的選用語音／語言包（只從本 repo 的 `mobile-latest` GitHub release 檔案，以 SHA-256 核對，INTERNET 不作他用） | 第一次使用（一次），以及你按下載按鈕時 | 下載檔案的請求（GitHub 看得到你的 IP）；沒有 ID、音訊或文字 | 改用手動匯入 zip |
 | 8 | 僅開發用（不隨附）：`scripts/bench/*`、`scripts/make_lock.py` | - | - | - |
 
 `TLWU_ALLOW_NET=1` 會關閉網路防護，非必要請勿設定。
