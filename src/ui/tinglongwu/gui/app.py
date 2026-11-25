@@ -1448,6 +1448,17 @@ class App:
             elif not ready and not lbl.winfo_manager():
                 lbl.pack(anchor="w", fill="x")
 
+    def _notice_refresh(self):
+        """#1662: the notice line takes a row only while it has text (an empty label kept a dark ~20 px band)."""
+        lbl = getattr(self, "lbl_notice", None)
+        if lbl is None:
+            return
+        if self.v_notice.get().strip():
+            if not lbl.winfo_manager():
+                lbl.pack(anchor="w", fill="x")
+        elif lbl.winfo_manager():
+            lbl.pack_forget()
+
     def _pair_menu(self):
         """The pair button opens the existing choices: the other side's language and my language."""
         m = tk.Menu(self.root, tearoff=0)
@@ -1745,7 +1756,8 @@ class App:
                                     justify="left")
         self._tok(self.lbl_notice, "warn")
         self._tok(self.lbl_status, "muted")
-        self.lbl_notice.pack(anchor="w", fill="x")
+        self.v_notice.trace_add("write", lambda *_: self._notice_refresh())  # #1662: no empty band when there is no notice
+        self._notice_refresh()
         sb.bind("<Configure>", lambda e: self._wrap_status(e.width), add="+")  # #1241
         self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
