@@ -14,6 +14,7 @@ import '../logic/target_language.dart';
 import '../logic/tilt_flip.dart';
 import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
+import 'a11y.dart';
 import 'advanced_screen.dart';
 import 'conversation_sheet.dart';
 import 'history_screen.dart';
@@ -417,12 +418,17 @@ class _Footer extends StatelessWidget {
                   decoration: BoxDecoration(color: st.dot, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 6),
-                Text(st.label, style: const TextStyle(fontSize: 12, color: UiColors.sub)),
+                LiveRegion(
+                    child: Text(st.label,
+                        style: const TextStyle(fontSize: 12, color: UiColors.sub))),
               ]),
             ),
             Tooltip(
-              message: stopped ? '開始聆聽' : '停止聆聽',
-              child: GestureDetector(
+              message: micLabel(stopped: stopped),
+              child: MicSemantics(
+                stopped: stopped,
+                onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
+                child: GestureDetector(
                 key: const Key('micButton'),
                 onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
                 child: Container(
@@ -440,6 +446,7 @@ class _Footer extends StatelessWidget {
                   child: Icon(stopped ? Icons.mic_off : Icons.mic,
                       size: 28, color: Colors.white),
                 ),
+              ),
               ),
             ),
             Expanded(
@@ -601,14 +608,17 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline, [VoidCallback
             children: [
               const Text('字幕顯示', style: TextStyle(fontSize: 18)),
               const SizedBox(height: 8),
-              SegmentedButton<SubtitleMode>(
-                showSelectedIcon: false,
-                segments: [
-                  for (final m in SubtitleMode.values)
-                    ButtonSegment(value: m, label: Text(m.label)),
-                ],
-                selected: {st.mode},
-                onSelectionChanged: (v) => pipeline.setSubtitleMode(v.first),
+              NamedGroup(
+                label: '字幕顯示方式',
+                child: SegmentedButton<SubtitleMode>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final m in SubtitleMode.values)
+                      ButtonSegment(value: m, label: Text(m.label)),
+                  ],
+                  selected: {st.mode},
+                  onSelectionChanged: (v) => pipeline.setSubtitleMode(v.first),
+                ),
               ),
               const SizedBox(height: 4),
               const Text('雙語：原文在上（小字），譯文在下。聽龍畫面和浮動視窗都適用。',
