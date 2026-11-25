@@ -77,7 +77,7 @@ FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Fo
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru", "日本語": "ja"}
 STATUS_WRAP_MIN_PX = 200  # #1241: status / notice wrap at the panel width, never narrower than this
 BAR_WIDE_PX = 1200  # #1241: from this bar width the 情境 dropdown and the toggles share one row
-UI_PAD = (6, 2)  # the ONE place that sets the inner padding (x, y px) of every dropdown / button: smaller = tighter
+UI_PAD = (6, 1)  # the ONE place that sets the inner padding (x, y px) of every dropdown / button: smaller = tighter
 FONT_INLINE_PX = 900  # chat toolbar: languages + toolbar + font controls share ONE row from this width
 BAR_ONE_ROW_PX = 1200  # the whole bottom bar (情境, toggles, Adjust / Freeze / Start) on one row from this width
 MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-style main window
@@ -710,8 +710,10 @@ class App:
         for style in ("Bar.TButton", "Bar.Toolbutton"):
             st.configure(style, padding=(4, 1))
         st.configure("Adv.Toolbutton", anchor="w", padding=(8, 2))
-        for style in ("TCombobox", "TButton", "Toolbutton"):  # UI_PAD: one knob for the whitespace inside widgets
+        for style in ("TButton", "Toolbutton"):  # UI_PAD: one knob for the whitespace inside widgets
             st.configure(style, padding=UI_PAD)
+        # a dropdown's own border is 2 px taller than a button's: take it off the top so both sit on one row line
+        st.configure("TCombobox", padding=(UI_PAD[0], max(0, UI_PAD[1] - 1)))
         if not getattr(self, "_combo_clear_bound", False):  # a readonly dropdown showed its text as a blue selection
             self._combo_clear_bound = True
             for ev in ("<<ComboboxSelected>>", "<FocusIn>"):
@@ -2195,7 +2197,7 @@ class App:
         for w in row.winfo_children():
             w.destroy()
         for i in range(mb.index("end") + 1):  # plain text, no box, no arrow; a soft fill only under the pointer
-            tk.Menubutton(row, text=mb.entrycget(i, "label"), font=(FONT_FAMILY, 10), bd=0, relief="flat",
+            tk.Menubutton(row, text=mb.entrycget(i, "label"), font=tfont("caption"), bd=0, relief="flat",
                           padx=10, pady=5, cursor="hand2", takefocus=1,
                           menu=mb.nametowidget(mb.entrycget(i, "menu"))).pack(side="left")
         self._style_menu(mb)
@@ -2292,7 +2294,7 @@ class App:
         # one line, like a sentence: other side's language -> my language (no field labels; the arrow says it)
         self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=9)
         self.home_lang.grid(row=0, column=0, sticky="w", pady=(0, 2))
-        self._tok(ttk.Label(q, text="→", font=(FONT_FAMILY, 12)), "muted").grid(row=0, column=1, padx=8)
+        self._tok(ttk.Label(q, text="→", font=tfont("title")), "muted").grid(row=0, column=1, padx=8)
         self.home_target = ttk.Combobox(q, textvariable=tgt.cget("textvariable"), values=tgt.cget("values"),
                                         state="readonly", width=9)
         self.home_target.grid(row=0, column=2, sticky="w", pady=(0, 2))

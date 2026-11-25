@@ -6,7 +6,7 @@ import sys
 # semantic tokens per theme: one warning, one error, one muted per theme
 TOKENS = {
     "dark": {"bg": "#2b303b", "surface": "#343d46", "separator": "#4f5b66", "text": "#dfe1e8", "text_muted": "#a7adba",
-             "accent": "#5a7fa8", "warning": "#d29b3c", "error": "#e5534b", "success": "#2ea043",
+             "accent": "#5a7fa8", "warning": "#dba74a", "error": "#f58a82", "success": "#2ea043",
              "grip": "#555555", "grip_hover": "#2e86de"},
     "light": {"bg": "#ffffff", "surface": "#f6f7fa", "separator": "#dfe2ea", "text": "#1d2447", "text_muted": "#5b6390",
               "accent": "#3f5fe0", "warning": "#a85400", "error": "#c0392b", "success": "#2ea043",
