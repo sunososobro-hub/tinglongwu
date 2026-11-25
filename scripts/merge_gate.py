@@ -463,6 +463,17 @@ def resolve_minor(num: int, threads: list[dict]) -> None:
             "-f", f"t={t['id']}")
 
 
+WORKFLOW_HOLD = "changes .github/workflows; merge-gate token lacks workflow scope, an agent merges it"
+
+
+def hold_workflow_scope(num: int, notes=()) -> None:
+    """#1948: a 403 'without workflow scope' is a hold, not an error; the reason is posted once."""
+    print(f"#{num} hold: {WORKFLOW_HOLD}")
+    marker = "merge-gate: hold:"
+    if not any((n.get("body") or "").startswith(marker) for n in notes):
+        _gh(f"repos/{REPO}/issues/{num}/comments", "-X", "POST", "-f", f"body={marker} {WORKFLOW_HOLD}")
+
+
 def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = (), threads=()) -> None:
     labels = {lb["name"] for lb in pr.get("labels", [])}
     if action == "merge":
@@ -473,8 +484,14 @@ def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = (), 
             raise RuntimeError("legacy release freeze started; not merged")
         if not isinstance(threads, int):
             resolve_minor(num, list(threads))
-        subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
-                        "-f", f"sha={pr['head']['sha']}"], check=True)
+        r = subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
+                            "-f", f"sha={pr['head']['sha']}"], capture_output=True, text=True)
+        if r.returncode:
+            err = (r.stderr or "") + (r.stdout or "")
+            if "403" in err and "workflow" in err and "scope" in err:  # #1948: the token cannot write workflow files
+                hold_workflow_scope(num, notes)
+                return
+            raise GhError(r.returncode, r.args, r.stdout, r.stderr)
     elif action in ("needs-opus", "needs-ai"):
         label = NEEDS_OPUS if action == "needs-opus" else NEEDS_AI
         marker = f"merge-gate: {label}:"
