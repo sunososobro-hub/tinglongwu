@@ -1,7 +1,7 @@
 """#1902 (C3 of #1875): weekly collision table for PRs merged to dev in the last 7 days.
 
 Per file: PRs touching / overlapping pairs (both PRs open at the same time) / dirty requeues (top 10).
-Plus: touch-up pushes after the PR opened, split by cause (review, red test, conflict); redo count (`fix/N-rK`
+Plus: touch-up pushes after the PR opened (one push of 3 commits counts 1: CI-run tips, #1906), split by cause (review, red test, conflict); redo count (`fix/N-rK`
 heads); dev-red count (failed `test` runs on dev pushes); `test` p50 minutes on the merged PR heads.
 
 Usage:
@@ -114,6 +114,18 @@ def classify_push(message: str, red_before: bool) -> str:
     return "red test" if red_before else "review"
 
 
+def group_pushes(touch: list[dict], has_run) -> list[list[dict]]:
+    """REST has no push events: a push tip is the commit CI ran on (or the last one); commits before it ride along."""
+    groups: list[list[dict]] = []
+    cur: list[dict] = []
+    for i, c in enumerate(touch):
+        cur.append(c)
+        if has_run(c) or i == len(touch) - 1:
+            groups.append(cur)
+            cur = []
+    return groups
+
+
 def test_runs(sha: str) -> list[dict]:
     """Every completed `test` run of a commit (filter=all keeps reruns, so history is not overwritten)."""
     runs = _gh_list(f"repos/{REPO}/commits/{sha}/check-runs?filter=all", key="check_runs")
@@ -144,11 +156,14 @@ def collect(now: datetime) -> dict:
         pushes: list[str] = []
         touch = [c for c in commits if _ts(c["commit"]["committer"]["date"]) > opened]
         prev = next((c for c in reversed(commits) if c not in touch), None)  # the head the PR opened with
-        for c in touch:
-            when = _ts(c["commit"]["committer"]["date"])
+        runs_of = {c["sha"]: test_runs(c["sha"]) for c in touch}
+        for group in group_pushes(touch, lambda c: bool(runs_of[c["sha"]])):
+            when = _ts(group[-1]["commit"]["committer"]["date"])
             red = bool(prev) and red_at(test_runs(prev["sha"]), when)  # result known before this push
-            pushes.append(classify_push(c["commit"]["message"], red))
-            prev = c
+            pushes.append(classify_push(next((c["commit"]["message"] for c in group
+                                              if c["commit"]["message"].lower().startswith("merge")),
+                                             group[-1]["commit"]["message"]), red))
+            prev = group[-1]
         m = FIX_HEAD.match(p["head"]["ref"])
         dirty = 0
         if m:
