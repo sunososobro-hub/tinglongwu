@@ -33,7 +33,7 @@ TPE = timezone(timedelta(hours=8))
 PR_WAIT_MIN = 30
 DEV_RED_MIN = 120
 RED = {"failure", "cancelled", "timed_out"}
-REQUEUE_WHY = {"test red", "dirty", "needs-review-ai"}
+REQUEUE_WHY = {"test red", "dirty", "needs-review-ai", "review Critical/Major"}  # last: #1886 review event
 MAX_REQUEUES = 3
 FIX_BRANCH = re.compile(r"^fix/(\d+)(?:-r\d+)?$")
 
