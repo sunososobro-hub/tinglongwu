@@ -18,7 +18,7 @@ Every tlwu cloud routine (R-hard, W-hard, S-easy slots, S-split) reads `.agent/t
 - Comments are always one line of English.
 
 ## Writes
-- Branches: git only, `git push origin <sha>:refs/heads/<branch>` (REST `POST git/refs` gets 403 from the proxy). `git ls-remote --exit-code origin refs/heads/<branch>` prints a line, or the push is rejected = already locked: take the next item.
+- Branches (atomic claim, #1882): set the git identity (rules §2) in the clone, then `bash scripts/claim_branch.sh <branch> <base sha> <N> <session id>`. It pushes a unique empty commit `claim #N <session> <nonce>` on `<base sha>` with an empty lease (the branch must not exist), so of two workers exactly one wins. Exit 0 = yours (the branch tip is the claim commit: check it out and build on it); exit 1 = already locked: take the next item. A plain `git push origin <dev sha>:refs/heads/fix/N` is never a lock (a second push of the same sha exits 0, the #1865 double claim); REST `POST git/refs` gets 403 from the proxy. Other branch pushes stay `git push origin <sha>:refs/heads/<branch>`.
 - Everything else: `gh api` REST (do not `env -u GH_TOKEN`):
   - add label: `gh api -X POST repos/$R/issues/N/labels -f 'labels[]=X'`
   - remove label: `gh api -X DELETE repos/$R/issues/N/labels/X`

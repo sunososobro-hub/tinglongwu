@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from board_scan import (board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
-                        pr_needs_action, requeue_action)
+                        pr_needs_action, requeue_action, work_ahead)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
 
@@ -176,3 +176,12 @@ def test_requeue_adds_todo_before_removing_review(monkeypatch):
         pass
     assert calls[0][1][-1] == "labels[]=status:todo"  # todo added first, so the issue never drops out of both queues
     assert not any("needs-opus" in str(a) for _, a in calls)  # 5 stranger comments did not escalate
+
+
+def test_1882_claim_commit_alone_is_an_empty_branch():
+    claim = {"commit": {"message": "claim #12 session_x 0a1b2c3d"}}
+    work = {"commit": {"message": "fix #12: the change"}}
+    assert work_ahead({"ahead_by": 1, "commits": [claim]}) == 0
+    assert is_zombie_branch("fix/12", work_ahead({"ahead_by": 1, "commits": [claim]}), False, {"status:todo"})
+    assert work_ahead({"ahead_by": 2, "commits": [claim, work]}) == 1
+    assert work_ahead({"ahead_by": 0, "commits": []}) == 0

@@ -7,14 +7,14 @@ Read after `common.md`. "Opus worker" = W-hard; "Sonnet worker" = S-easy.
 - Candidates: open issues (anything with a `pull_request` field is skipped) with `status:todo` + `ok-to-work` and none of `needs-owner` / `needs-opus` / `needs-triage` / `status:blocked` / `status:doing` / `status:review` / `status:proposal` / `status:frozen`. Re-read labels and author with `gh api repos/$R/issues/N` before deciding.
   - Opus worker: must have `model:opus` and be opened by the owner. Sonnet worker: must NOT have `model:opus`.
   - `os:windows`, `local-only`, `需實測` are taken as normal (rules §1: Windows code is verified by GitHub Windows CI; 需實測 = finish and open the PR with `Refs #N`, the owner tests after merge).
-- No open PR may point at it (head `fix/N*` or body `Closes/Refs #N`), except the rules §2 FAIL / CHANGES case and a `requeue:` comment (rules §10): then lock nothing new, check out that PR's branch, fix what the newest FAIL / CHANGES / requeue comment names (red `test`, merge `origin/dev` for `dirty`, answer and resolve open review threads), push once, and swap `status:doing` -> `status:review`. A `requeue: partial PR … merged` item has no open PR: check each `Acceptance:` line on dev first; all met -> comment the evidence, label `status:done`, close the issue; otherwise do the rest on the next free `fix/N-rK`.
+- No open PR may point at it (head `fix/N*` or body `Closes/Refs #N`), except the rules §2 FAIL / CHANGES case and a `requeue:` comment (rules §10): then claim the fix round first: `bash scripts/claim_branch.sh claim/N-<PR head sha7> <PR head sha> <N> <session>` (exit 1 = another worker has this round: next item; `stale-branches` deletes `claim/*` after 45 min), check out that PR's branch (not the claim branch), fix what the newest FAIL / CHANGES / requeue comment names (red `test`, merge `origin/dev` for `dirty`, answer and resolve open review threads), push once, and swap `status:doing` -> `status:review`. A `requeue: partial PR … merged` item has no open PR: check each `Acceptance:` line on dev first; all met -> comment the evidence, label `status:done`, close the issue; otherwise do the rest on the next free `fix/N-rK`.
 - Order: Sonnet worker takes the most-behind type per the ledger; within a type P smallest, then number smallest; P0 / P1 always first. Opus worker: P smallest, then number smallest.
 - Concurrency (rules §6): open `status:doing` >= 10 -> take nothing more.
 - How many: Sonnet worker up to 4, one after another. Opus worker 1 (2 when the rules §10 level >= 3).
 - Nothing to take -> Report.
 
 ## Lock and claim
-- `D=$(gh api repos/$R/git/ref/heads/dev --jq .object.sha)`. Branch `B=fix/N`; if it already exists (leftover of a closed PR: do not delete it) use `fix/N-r2`, then `-r3`, up to `-r5`. Lock per common.md "Writes". Locked by someone else -> next item (Opus worker tries at most 3).
+- `D=$(gh api repos/$R/git/ref/heads/dev --jq .object.sha)`. Branch `B=fix/N`; if it already exists (leftover of a closed PR: do not delete it) use `fix/N-r2`, then `-r3`, up to `-r5`. Lock with `scripts/claim_branch.sh $B $D N <session>` per common.md "Writes" (base = dev tip `$D`, or the closed PR's head for a retry, rules §2). Locked by someone else -> next item (Opus worker tries at most 3).
 - Claim: remove `status:todo`, add `status:doing`, comment `doing` (Opus worker: `doing (opus)`).
 
 ## Work

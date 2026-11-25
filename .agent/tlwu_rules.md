@@ -14,7 +14,7 @@ Release-lane rules (section 11 docs fast lane; section 14 release PR, version bu
 - Cloud mergers (R-merge, S-merge, R-hard): merge every ready PR. The hw-tests self-hosted runner and the section 14 release gates are unchanged.
 
 ## 2. Locking (one rule for everyone)
-- Claim = create branch `fix/N` from dev (REST `POST git/refs`, or `create_branch`). "Reference already exists" (422) = someone else has it: take the next item.
+- Claim = create branch `fix/N` from dev with `scripts/claim_branch.sh` (#1882: a unique empty claim commit, pushed only if the branch does not exist; procedure in `.agent/routines/common.md` "Writes"). Rejected = someone else has it: take the next item. A fix round on an open PR (FAIL / CHANGES / requeue) claims `claim/N-<PR head sha7>` the same way. A branch holding only its claim commit counts as empty (board-scan, stale-branches).
 - After claiming: add `status:doing`. Push work to `fix/N` (re-do after a closed PR: `fix/N-r2`, `-r3`). When the PR is open, swap `status:doing` -> `status:review` in the same run (this releases the area lock, section 10). Mergers remove `status:review` when the PR merges or closes.
 - Never start an item that has an open PR whose body says Closes/Refs #N, or a `fix/N*` branch that is still live.
 - Exception (#831): an issue put back to `status:todo` after `AI review: FAIL` or `Opus review: CHANGES` (section 3) keeps its open PR; that PR and its branch are not a lock. The next worker claims by adding `status:doing`, pushes the fix to the SAME PR branch and swaps back to `status:review`. Likewise a merged `fix/N*` branch is not a lock: the rest of a partial merge (section 3) is claimed on the next free `fix/N-rK`.
