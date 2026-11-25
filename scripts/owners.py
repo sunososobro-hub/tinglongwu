@@ -18,7 +18,7 @@ files of its own checkout (dev), never the PR's, so a PR cannot loosen its own g
 from __future__ import annotations
 
 import re
-from functools import lru_cache
+from functools import cache
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,7 +61,7 @@ def _glob_re(pattern: str) -> re.Pattern:
     return re.compile(rx + r"\Z")
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load(root: str, folder: str) -> dict | None:
     f = Path(root, folder, "OWNERS")
     return parse(f.read_text(encoding="utf-8")) if f.is_file() else None
