@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from board_scan import (count_claim_commits, count_doing_claims, is_double_claim, board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
+from board_scan import (supply_item, count_claim_commits, count_doing_claims, is_double_claim, board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
                         pr_needs_action, requeue_action, work_ahead)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
@@ -227,3 +227,31 @@ def test_two_claim_commits_on_one_branch_are_counted():
 def test_claim_commits_of_other_issues_and_work_do_not_count():
     assert count_claim_commits(_cmp("claim #7 s1 ab", "claim #70 s2 cd", "fix #7: claim #7 text"), 7) == 1
     assert count_claim_commits({}, 7) == 0
+
+
+def test_supply_flags_nine_todo_items():  # #1893
+    assert supply_item(9) == "supply (9 todo < 10)"
+    assert supply_item(0) == "supply (0 todo < 10)"
+
+
+def test_supply_ok_at_ten_todo_items():  # #1893
+    assert supply_item(10) is None
+    assert supply_item(25) is None
+
+
+def test_scan_reports_supply_when_queue_low(monkeypatch):  # #1893: an empty board still says act: supply
+    import board_scan
+    todo = [{"number": n} for n in range(9)] + [{"number": 99, "pull_request": {}}]
+
+    def fake_list(path):
+        return todo if "labels=status:todo,ok-to-work" in path else []
+
+    monkeypatch.setattr(board_scan, "_gh_list", fake_list)
+    monkeypatch.setattr(board_scan, "_dev_red_too_long", lambda now: False)
+    monkeypatch.setattr(board_scan, "_double_claims", lambda: [])
+    now = datetime(2026, 11, 25, 4, 0, tzinfo=UTC)
+    items, _ = board_scan.scan(now)
+    assert items == ["supply (9 todo < 10)"]
+    assert board_line(now, items).startswith("[board 12:00] act: supply")
+    todo.append({"number": 100})
+    assert board_scan.scan(now)[0] == []
