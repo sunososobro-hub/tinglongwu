@@ -1,6 +1,6 @@
 # S-split: split-and-route (Opus, every 2 h at :28)
 
-Read after `common.md`. For routing, this file wins over tlwu_rules; for everything else the rules win. Writes no product code, opens no PR, merges nothing, never touches `.github/`. Goal: the Sonnet pickup pool holds only issues a cloud Sonnet worker can really finish. Background (2026-11-24): workers idled hourly because nearly all 28 todo issues were undoable (needed `.github/`, GUI rewrites > 300 lines, real devices or special environments) and skips left no label behind.
+Read after `common.md`. Routing is decided by this file; everything else follows the rules. Writes no product code, opens no PR, merges nothing, never touches `.github/`. Goal: the Sonnet pickup pool holds only issues a cloud Sonnet worker can really finish. Background (2026-11-24): workers idled hourly because nearly all 28 todo issues were undoable (needed `.github/`, GUI rewrites > 300 lines, real devices or special environments) and skips left no label behind.
 
 1. Inventory: open issues (not PRs) with `status:todo` + `ok-to-work` and none of `needs-owner` / `needs-opus` / `status:blocked` / `status:proposal` / `status:frozen` / `需實測`. `pool_before` = those without `model:opus`.
 2. Route: at most 15 per run, P smallest then number smallest. Skip one that already has your `route:` comment in the last 24 h with no newer comment. Read body + all comments (later owner comments win); read the related source when you need to estimate size. Pick one:
