@@ -1,3 +1,4 @@
+import gc
 import os
 import re
 import signal
@@ -93,6 +94,19 @@ def xdist_group_for(path, text=None) -> str:
     else:
         hit = bool(REAL_TK_RE.search(text))
     return REAL_TK_GROUP if hit else p.name
+
+
+@pytest.fixture(autouse=True)
+def _collect_tk_garbage(request):
+    """#1918 CI: free a real-Tk test's leftover tkinter objects (Variable / image cycles) on the main thread.
+
+    Left to the cyclic GC they are finalized in whatever thread allocates next on this xdist worker; there
+    `Variable.__del__` raises "main thread is not in main loop", killing that thread (test_pending_line_1532's
+    pipeline thread) or aborting Tcl (test_readme_gif_drive_734 crashed worker gw0).
+    """
+    yield
+    if "tkinter" in sys.modules and xdist_group_for(request.node.path) == REAL_TK_GROUP:
+        gc.collect()
 
 
 @pytest.hookimpl(tryfirst=True)  # before xdist's own hook, which appends the group to each nodeid

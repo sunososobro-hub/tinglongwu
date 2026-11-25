@@ -38,6 +38,8 @@ def parse(text: str) -> dict:
         key, val = key.strip(), val.strip()
         if not sep or key not in KEYS:
             raise ValueError(f"OWNERS line {n}: unknown key {key!r}")
+        if key in out:
+            raise ValueError(f"OWNERS line {n}: duplicate key {key!r}")
         if val.startswith("[") and val.endswith("]"):
             out[key] = [v.strip().strip("\"'") for v in val[1:-1].split(",") if v.strip()]
         elif val in ("true", "false"):

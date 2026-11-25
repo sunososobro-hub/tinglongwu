@@ -67,7 +67,7 @@ def test_fail_closed(tmp_path):
     _tree(tmp_path, {"a/OWNERS": "protected: true\n"})
     with pytest.raises(FileNotFoundError):
         owners.is_protected("a/x.py", tmp_path)
-    for bad in ("colour: red\n", "model: gpt\n", "review: maybe\n", "protected: yes\n"):
+    for bad in ("protected: true\nprotected: false\n", "colour: red\n", "model: gpt\n", "review: maybe\n", "protected: yes\n"):
         with pytest.raises(ValueError):
             owners.parse(bad)
 
