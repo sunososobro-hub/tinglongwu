@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.7
+- Cleaner main window: one toolbar, a one-row bottom bar and settings in plain words, with technical details behind a switch.
+- The phone downloads its base models by itself instead of showing "Models missing".
+- Clearer GPU / Vulkan offers that skip NVIDIA cards and wait while other downloads run.
+
 ## v0.5.6
 - Background download of the GPU pack, and a clearer GPU speed check that names a missing Vulkan driver.
 - Russian speech: better translation using the previous line as context and built-in tech term tables.
