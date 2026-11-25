@@ -13,6 +13,7 @@ import '../logic/level_gate.dart';
 import '../logic/feature_prefs.dart';
 import '../logic/history.dart';
 import '../logic/lang_pack.dart';
+import '../logic/mic_permission.dart';
 import '../logic/model_manifest.dart';
 import '../logic/pack_status.dart';
 import '../logic/phone_audio.dart';
@@ -125,6 +126,17 @@ class Pipeline extends ChangeNotifier {
 
   final Stopwatch _clock = Stopwatch()..start();
   final AudioRecorder _rec = AudioRecorder();
+
+  /// Shows a short plain line to the user (set by the screen that starts something). #1928
+  void Function(String text)? onNotice;
+
+  /// Microphone permission, asked only when the user starts listening (#1928).
+  late final MicPermission _mic = MicPermission(
+    // `record` 7 has no non-prompting check, so the first ensure() per session always asks.
+    isGranted: () async => false,
+    request: () => _rec.hasPermission(),
+    onRationale: (t) => onNotice?.call(t),
+  );
   AsrWorker? _asr;
   Translator? _tr;
   StreamSubscription<Uint8List>? _micSub;
@@ -445,11 +457,6 @@ class Pipeline extends ChangeNotifier {
       stage = Stage.loadingModels;
       notifyListeners();
 
-      if (!await _rec.hasPermission()) {
-        _fail('Microphone permission denied. Grant it in system settings and restart.');
-        return;
-      }
-
       final p = paths!;
       final t0 = _clock.elapsedMilliseconds;
       _asr = await AsrWorker.spawn(AsrConfig(
@@ -523,7 +530,8 @@ class Pipeline extends ChangeNotifier {
       if (conversation.enabled) _ensureTts();
       _drain(); // anything queued while the LLM was loading (debug wavs)
       if (_disposed) return;
-      await _startMic();
+      // #1928: the microphone (and its permission) opens only when the user taps start.
+      paused = true;
       stage = Stage.listening;
       _syncHistory();
       _log.i('listening');
@@ -567,6 +575,11 @@ class Pipeline extends ChangeNotifier {
         if (v) {
           await _stopMic();
         } else {
+          if (!await _mic.ensure()) {
+            paused = true;
+            onNotice?.call(MicPermission.deniedText);
+            return;
+          }
           await _startMic();
         }
       }
@@ -592,12 +605,18 @@ class Pipeline extends ChangeNotifier {
   /// system rule) and shows the floating overlay. Returns a short user message on failure.
   Future<String?> setSource(AudioSourceKind k) async {
     if (k == source || switchingSource || _asr == null || _disposed) return null;
+    final wasPaused = paused;
     paused = false;
     switchingSource = true;
     notifyListeners();
     try {
       if (k == AudioSourceKind.phone) {
         if (!phoneSupported) return CapturePlatform.current().unsupportedText;
+        // Android's AudioPlaybackCapture also needs RECORD_AUDIO, so ask here, not at app open.
+        if (!await _mic.ensure()) {
+          paused = wasPaused;
+          return MicPermission.deniedText;
+        }
         final pcm = PlaybackCapture.pcm();
         _silence.reset();
         _phoneSub = pcm.listen(_onPhonePcm, onDone: _onPhoneStopped,
