@@ -94,8 +94,9 @@ def usage_weight(text: str | None) -> int | None:
 
 def tally_model(body: str | None, weight: int) -> None:
     """Add `weight` calls to the builder model named by the body's usage line (`unknown` when absent)."""
-    found = MODEL_RE.findall(body or "")
-    key = found[-1] if found else "unknown"
+    lines = USAGE_LINE_RE.findall(body or "")  # same line usage_weight used: the LAST one (#1923)
+    m = MODEL_RE.search(lines[-1]) if lines else None
+    key = m.group(1) if m else "unknown"
     MODEL_CALLS[key] = MODEL_CALLS.get(key, 0) + weight
 
 
@@ -278,7 +279,7 @@ def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int,
         if not m or not mins or not (since7 <= t <= now):
             continue
         if t >= since48:
-            tally_model(c.get("body"), mins)
+            tally_model(FIX_RE.findall(c.get("body") or "")[-1], mins)  # the phase=fix line that gave the weight
         n = pr_issue(int(m.group(1)))
         labels: set[str] = set()
         if n is not None:
