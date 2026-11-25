@@ -6,7 +6,10 @@ Usage: python scripts/stale_branches.py --repo OWNER/NAME [--dry-run] [--keep a,
 A branch is deleted when either
   (a) it has PRs, none of them open, and its tip is still the head of its most recent PR
       (nobody pushed after the PR was closed or merged), or
-  (b) it has no PR, has no commits that are not on dev (ahead_by == 0) and its tip is older than --days.
+  (b) it has no PR, has no commits that are not on dev (ahead_by == 0; empty `claim #N` commits from
+      scripts/claim_branch.sh do not count, #1882) and its tip is older than --days, or
+  (c) it is a fix-round claim branch `claim/N-<sha7>` (#1882) whose tip is older than the orphan timeout
+      (CLAIM_TIMEOUT_MIN, the model:opus value of rules section 6).
 Never deleted: main, dev, gh-pages, --keep names, GitHub-protected branches, `release/v*` release snapshots (#976,
 release-pr.yml owns them), any branch with an open PR,
 and a `fix/N*` lock branch whose issue N is open with `status:doing` (a worker may be about to push).
@@ -22,6 +25,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, UTC
+
+CLAIM_MSG = re.compile(r"^claim #\d+ ")  # scripts/claim_branch.sh (#1882)
+CLAIM_BRANCH = re.compile(r"^claim/\d+-[0-9a-f]{7,40}$")
+CLAIM_TIMEOUT_MIN = 45
 
 ALWAYS_KEEP = ("main", "dev", "gh-pages", "eval-results")  # eval-results: orphan branch (#571, #1338)
 
@@ -58,6 +65,17 @@ def _lock_issue(name: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def work_ahead(cmp: dict) -> int:
+    """ahead_by of a compare result minus the empty claim commits (#1882)."""
+    claims = sum(1 for c in cmp.get("commits") or [] if CLAIM_MSG.match(c["commit"]["message"]))
+    return max(0, cmp.get("ahead_by", 1) - claims)
+
+
+def _tip_time(api, repo: str, sha: str) -> datetime:
+    c = api("GET", "/repos/%s/commits/%s" % (repo, sha))
+    return datetime.fromisoformat(c["commit"]["committer"]["date"].replace("Z", "+00:00"))
+
+
 def plan(api, repo: str, keep=(), days: int = 7, now: datetime | None = None) -> list[tuple[str, str, str]]:
     """[(branch, sha, reason)] of branches to delete. Read-only."""
     now = now or datetime.now(UTC)
@@ -74,6 +92,11 @@ def plan(api, repo: str, keep=(), days: int = 7, now: datetime | None = None) ->
         name, sha = b["name"], b["commit"]["sha"]
         if name in keep or b.get("protected") or name.startswith("release/v"):
             continue  # #976: release/vX.Y.Z snapshots are created and deleted by release-pr.yml only
+        if CLAIM_BRANCH.match(name):
+            when = _tip_time(api, repo, sha)
+            if now - when > timedelta(minutes=CLAIM_TIMEOUT_MIN):
+                out.append((name, sha, "fix-round claim older than %d min" % CLAIM_TIMEOUT_MIN))
+            continue
         n = _lock_issue(name)
         if n is not None:
             issue = api("GET", "/repos/%s/issues/%d" % (repo, n))
@@ -94,10 +117,9 @@ def plan(api, repo: str, keep=(), days: int = 7, now: datetime | None = None) ->
             if e.code == 404:  # no merge base with dev / missing ref (#1338): never prune, never abort
                 continue
             raise
-        if cmp.get("ahead_by", 1) != 0:
+        if work_ahead(cmp) != 0:
             continue
-        c = api("GET", "/repos/%s/commits/%s" % (repo, sha))
-        when = datetime.fromisoformat(c["commit"]["committer"]["date"].replace("Z", "+00:00"))
+        when = _tip_time(api, repo, sha)
         if now - when > timedelta(days=days):
             out.append((name, sha, "no PR, nothing beyond dev, tip %s" % when.date().isoformat()))
     return out
