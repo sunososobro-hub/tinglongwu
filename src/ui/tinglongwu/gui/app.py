@@ -77,7 +77,8 @@ FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Fo
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru", "日本語": "ja"}
 STATUS_WRAP_MIN_PX = 200  # #1241: status / notice wrap at the panel width, never narrower than this
 BAR_WIDE_PX = 1200  # #1241: from this bar width the 情境 dropdown and the toggles share one row
-FONT_INLINE_PX = 500  # chat toolbar: font controls share the row from this width
+UI_PAD = (6, 1)  # the ONE place that sets the inner padding (x, y px) of every dropdown / button: smaller = tighter
+FONT_INLINE_PX = 900  # chat toolbar: languages + toolbar + font controls share ONE row from this width
 BAR_ONE_ROW_PX = 1200  # the whole bottom bar (情境, toggles, Adjust / Freeze / Start) on one row from this width
 MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-style main window
 # chat bubbles (#1028): other side on the left, me on the right; (bubble background, text) per theme
@@ -709,6 +710,14 @@ class App:
         for style in ("Bar.TButton", "Bar.Toolbutton"):
             st.configure(style, padding=(4, 1))
         st.configure("Adv.Toolbutton", anchor="w", padding=(8, 2))
+        for style in ("TButton", "Toolbutton"):  # UI_PAD: one knob for the whitespace inside widgets
+            st.configure(style, padding=UI_PAD)
+        # a dropdown's own border is 2 px taller than a button's: take it off the top so both sit on one row line
+        st.configure("TCombobox", padding=(UI_PAD[0], max(0, UI_PAD[1] - 1)))
+        if not getattr(self, "_combo_clear_bound", False):  # a readonly dropdown showed its text as a blue selection
+            self._combo_clear_bound = True
+            for ev in ("<<ComboboxSelected>>", "<FocusIn>"):
+                self.root.bind_class("TCombobox", ev, lambda e: e.widget.after_idle(e.widget.selection_clear), add="+")
         pal = self.pal  # #1662: one palette; ttk frames / labels take the window colours, secondary text is muted
         for style in ("TFrame", "TLabel", "TCheckbutton", "TRadiobutton", "Toolbutton"):
             st.configure(style, background=pal["win"])
@@ -750,6 +759,9 @@ class App:
         for name in ("menubar", "panel_menubar"):
             if getattr(self, name, None) is not None:
                 self._style_menu(getattr(self, name))
+            row = getattr(self, name + "_row", None)
+            if row is not None and row.winfo_exists():
+                self._style_menu_row(row)
         for name in ("menu_sep", "panel_menubar_sep"):
             w = getattr(self, name, None)
             if w is not None and w.winfo_exists():
@@ -1188,7 +1200,7 @@ class App:
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
         # #1544: what the video scene listens to, in plain words, one click to switch (was only under 調整)
         self.source_row = ttk.Frame(b)  # its own row: next to the scene dropdown it pushed the bar past its max width
-        self.btn_source = ttk.Button(self.source_row, command=self._source_toggled)
+        self.btn_source = ttk.Button(self.source_row, command=self._source_toggled, style="Toolbutton")
         self.btn_source.pack(side="left")
         self.toggle_row = row1 = ttk.Frame(b)
         self.v_mic = tk.BooleanVar(value=True)
@@ -1211,7 +1223,7 @@ class App:
         self.dot.pack(side="left", padx=4)
         self.set_dot("idle")
         self._dot_tip(self.dot)
-        self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause)
+        self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause, style="Toolbutton")
         self.btn_pause.pack(side="left")
         self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
                                               style="Start.Accent.TButton", width=8)
@@ -1411,9 +1423,9 @@ class App:
         self.btn_swap.accessible_name = "swap languages"
         self.btn_settings = ttk.Button(tb, text="\u2699", width=2, command=self.toggle_adjust)
         self.btn_settings.pack(side="right")
-        self.btn_font_up = ttk.Button(tb, text="A+", width=2, command=lambda: self.bump_log_font(2))
+        self.btn_font_up = ttk.Button(tb, text="A+", width=2, style="Toolbutton", command=lambda: self.bump_log_font(2))
         self.btn_font_up.pack(side="right", padx=(0, 4))
-        self.btn_font_down = ttk.Button(tb, text="A-", width=2, command=lambda: self.bump_log_font(-2))
+        self.btn_font_down = ttk.Button(tb, text="A-", width=2, style="Toolbutton", command=lambda: self.bump_log_font(-2))
         self.btn_font_down.pack(side="right", padx=(0, 2))
         self.lbl_offline = ttk.Label(tb, text="", font="TkSmallCaptionFont", width=9, anchor="w")
         self.lbl_offline.pack(side="right", padx=(0, 8))
@@ -2184,11 +2196,24 @@ class App:
             setattr(self, sepname, sep)
         for w in row.winfo_children():
             w.destroy()
-        for i in range(mb.index("end") + 1):
-            ttk.Menubutton(row, text=mb.entrycget(i, "label"), style="Menu.TMenubutton",
-                           menu=mb.nametowidget(mb.entrycget(i, "menu"))).pack(side="left")
+        for i in range(mb.index("end") + 1):  # plain text, no box, no arrow; a soft fill only under the pointer
+            tk.Menubutton(row, text=mb.entrycget(i, "label"), font=tfont("caption"), bd=0, relief="flat",
+                          padx=10, pady=5, cursor="hand2", takefocus=1,
+                          menu=mb.nametowidget(mb.entrycget(i, "menu"))).pack(side="left")
         self._style_menu(mb)
+        self._style_menu_row(row)
         getattr(self, sepname).configure(bg=self.pal["sep"])
+
+    def _style_menu_row(self, row):
+        """Flat text menu bar (File / Settings / Help): window colour, hover fill from the palette."""
+        pal = self.pal
+        try:
+            row.configure(style="TFrame")
+        except tk.TclError:
+            pass
+        for w in row.winfo_children():
+            if isinstance(w, tk.Menubutton):
+                w.configure(bg=pal["win"], fg=pal["fg"], activebackground=pal["sep"], activeforeground=pal["fg"])
 
     def _maybe_ask_usage(self):
         if usage_should_ask(self.settings) and getattr(self, "usage_win", None) is None:
@@ -2266,24 +2291,24 @@ class App:
         # `lang`, same variable as tour step 1); quick_settings() turns them into listen: other -> mine, speak: mine -> other.
         q = self.top_frame
         tgt = self.combos["target"]
-        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        # one line, like a sentence: other side's language -> my language (no field labels; the arrow says it)
+        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=9)
+        self.home_lang.grid(row=0, column=0, sticky="w", pady=(0, 2))
+        self._tok(ttk.Label(q, text="→", font=tfont("title")), "muted").grid(row=0, column=1, padx=8)
         self.home_target = ttk.Combobox(q, textvariable=tgt.cget("textvariable"), values=tgt.cget("values"),
-                                        state="readonly", width=7)
-        self.home_target.grid(row=0, column=1, sticky="w", padx=(4, 8), pady=(0, 2))
-        self._tx(ttk.Label(q), "gui_quick_other").grid(row=1, column=0, sticky="w")  # own row: never wider than the window
-        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=7)
-        self.home_lang.grid(row=1, column=1, sticky="w", padx=(4, 8))
+                                        state="readonly", width=9)
+        self.home_target.grid(row=0, column=2, sticky="w", pady=(0, 2))
         q.columnconfigure(4, weight=1)  # spare width goes to the right, the pickers stay grouped at the left
         self.v_pair = tk.StringVar()  # #981: "same language" is said at once, before Start
         # #982: the inline error (v_pair only carries the state text)
         self.lang_err = self._tok(ttk.Label(q, wraplength=MAIN_W - 40, justify="left"), "err")
-        self.lang_err.grid(row=2, column=0, columnspan=4, sticky="w")
+        self.lang_err.grid(row=1, column=0, columnspan=4, sticky="w")
         self.ru_notice = ttk.Frame(q)  # lasting "Russian voice not downloaded" line + [Download]
         self.ru_notice_lbl = self._tok(ttk.Label(self.ru_notice), "warn")
         self.ru_notice_lbl.pack(side="left")
         self.ru_notice_btn = ttk.Button(self.ru_notice, command=self._ru_voice_ask)
         self.ru_notice_btn.pack(side="left", padx=(8, 0))
-        self.ru_notice.grid(row=3, column=0, columnspan=4, sticky="w")
+        self.ru_notice.grid(row=2, column=0, columnspan=4, sticky="w")
         self.ru_notice.grid_remove()
         for v in (self.v_lang, self.v_target):
             v.trace_add("write", lambda *_: self._pair_changed())
@@ -2366,9 +2391,10 @@ class App:
         """The conversation in the main window (#1028): chat bubbles, other side on the left, me on the right, the
         original text small under each bubble; scrolling history, newest at the bottom (#72)."""
         self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
-        bar = ttk.Frame(f)  # one dense toolbar: save / copy / topics at the left, font + A- A+ at the right
-        bar.pack(side="top", fill="x")
-        fb = ttk.Frame(f)
+        # one row with the language pickers: [other -> mine]  save / copy / topics / load  ...  font + A- A+
+        bar = ttk.Frame(self.top_frame)
+        bar.grid(row=3, column=0, columnspan=6, sticky="w")  # narrow window: its own row (wide: _font_place moves it up)
+        fb = ttk.Frame(self.top_frame)
         self.font_box = fb
         try:  # every font the system has; "" = the program's default
             fams = sorted({f for f in tkfont.families(self.root) if not f.startswith("@")}, key=str.lower)
@@ -2391,9 +2417,9 @@ class App:
         # row under the font row, so the main window keeps its #1028 width in every UI language
         bar2 = bar
         ttk.Checkbutton(bar2, text=t("gui_save"), variable=self.v_save).pack(side="left")
-        ttk.Button(bar2, text=t("gui_copy_all"), command=lambda: self._log_copy(True)).pack(side="left", padx=(6, 0))
-        ttk.Button(bar2, text=t("gui_topics_menu"), command=self._topics_toggle).pack(side="left", padx=(6, 0))
-        self.lbl_cpu = ttk.Label(bar2, text="", font="TkSmallCaptionFont")  # smaller: Linux fonts run wider (#1632)
+        ttk.Button(bar2, text=t("gui_copy_all"), style="Toolbutton", command=lambda: self._log_copy(True)).pack(side="left", padx=(6, 0))
+        ttk.Button(bar2, text=t("gui_topics_menu"), style="Toolbutton", command=self._topics_toggle).pack(side="left", padx=(6, 0))
+        self.lbl_cpu = self._tok(ttk.Label(bar2, text="", font="TkSmallCaptionFont"), "muted")  # smaller: Linux fonts run wider (#1632)
         self.lbl_cpu.pack(side="left", padx=(6, 0))
         self._cpu_prev = None
         self._cpu_poll()
@@ -2406,11 +2432,13 @@ class App:
             if inline == self._font_inline:
                 return
             self._font_inline = inline
-            fb.pack_forget()
-            if inline:
-                fb.pack(in_=bar, side="right")
-            else:
-                fb.pack(in_=f, side="top", anchor="e", before=box)
+            fb.grid_forget()
+            if inline:  # wide: languages, toolbar and font controls share ONE row
+                bar.grid(row=0, column=3, columnspan=1, sticky="w", padx=(16, 0))
+                fb.grid(row=0, column=5, sticky="e")
+            else:  # narrow: the toolbar and the font controls each get their own row under the languages
+                bar.grid(row=3, column=0, columnspan=6, sticky="w", padx=0)
+                fb.grid(row=4, column=0, columnspan=6, sticky="e")
         f.bind("<Configure>", _font_place, add="+")
         self._log_holder, self._log_box = box, box
         sb = ttk.Scrollbar(box, orient="vertical")
