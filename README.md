@@ -11,7 +11,7 @@ flowchart LR
   A["⬇ Download"] --> B["▶ Play a video"] --> C["💬 Subtitles"]
 ```
 
-<p align="center"><img src="assets/readme/modes.en.svg" alt="🎧 Listen: live subtitles · 🗣️ Speak: your voice, translated · 🔁 Two-way: both sides" width="720"></p>
+<p align="center"><img src="assets/readme/modes.en.svg" alt="🎧 Listen: live subtitles · 🗣️ Speak: your voice, translated · 🔁 Two-way: both sides" width="720"><br><img src="assets/demo/mode_listen.gif" alt="🎧 Listen" width="240"> <img src="assets/demo/mode_speak.gif" alt="🗣️ Speak" width="240"> <img src="assets/demo/mode_two_way.gif" alt="🔁 Two-way" width="240"></p>
 
 <p align="center"><img src="assets/readme/facts.en.svg" alt="Languages: zh, en, ja, ko, ru; hi experimental · Windows, Linux, macOS (unverified)" width="720"></p>
 

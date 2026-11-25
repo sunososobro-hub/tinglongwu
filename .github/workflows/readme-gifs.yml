@@ -4,8 +4,15 @@ name: readme-gifs
 # speakers whose monitor is also the default microphone, a recorded speech clip played into it, ffmpeg x11grab of
 # the window -> scripts/readme_gif.py caps (<= 3 s, <= 2 MB). The GIFs are uploaded as the `readme-gifs` artifact;
 # a worker reviews them and commits them to assets/demo/ in a fix/734-rK PR. Manual only: nothing runs on push.
+# Cloud workers cannot download artifacts (the blob host is outside their network allowlist), so a dispatch on a
+# fix/734* branch with commit=true also commits the GIFs to assets/demo/ on that branch, where git fetch reaches them.
 on:
   workflow_dispatch:
+    inputs:
+      commit:
+        description: "Also commit the GIFs to assets/demo/ on the dispatched fix/734* branch"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,3 +99,27 @@ jobs:
           path: ${{ runner.temp }}/gifs/
           if-no-files-found: warn
           retention-days: 14
+
+  commit:
+    needs: record
+    if: ${{ inputs.commit && startsWith(github.ref, 'refs/heads/fix/734') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: readme-gifs
+          path: ${{ runner.temp }}/gifs
+      - name: Commit the mode GIFs to this branch
+        run: |
+          python scripts/readme_gif.py check --dir "$RUNNER_TEMP/gifs" --present-only
+          mkdir -p assets/demo
+          cp "$RUNNER_TEMP"/gifs/mode_*.gif assets/demo/
+          git add assets/demo/mode_*.gif
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "#734: mode GIFs recorded by readme-gifs run ${{ github.run_id }}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
