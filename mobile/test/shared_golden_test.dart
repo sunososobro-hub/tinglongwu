@@ -1,7 +1,7 @@
 // #1832 (part 1b of #1617): the phone's Dart text logic against the shared golden cases in
 // shared/golden/{clean,prompt}.jsonl. Cases tagged `known_diff: phone` (with an issue number) are
 // ones where the phone is known to differ from desktop; they are counted, not asserted. Every other
-// case must match exactly. No file under mobile/lib changes here: fixing a difference is a later part.
+// case must match exactly. #1818 (part 5): every clean case now matches desktop (clean=0 known_diff).
 import 'dart:convert';
 import 'dart:io';
 
@@ -69,6 +69,6 @@ void main() {
     final nPrompt = prompt.where(_known).length;
     // ignore: avoid_print
     print('known_diff: clean=$nClean prompt=$nPrompt');
-    expect(nClean + nPrompt, greaterThan(0));
+    expect(nClean, 0); // #1818: the phone cleans output exactly like desktop clean_output(strip_echo(...))
   });
 }

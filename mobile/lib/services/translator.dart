@@ -141,7 +141,7 @@ class Translator implements LineTranslator {
         }
       }
       buf.write(utf8.close());
-      return sanitizeOutput(PromptBuilder.clean(buf.toString()));
+      return sanitizeOutput(PromptBuilder.clean(PromptBuilder.untilLineDone(buf.toString())));
     }
 
     // #1616: an answer in the wrong script (English for a Russian target) is retried once with

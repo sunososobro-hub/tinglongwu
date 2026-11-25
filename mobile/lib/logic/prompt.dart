@@ -73,8 +73,9 @@ class PromptBuilder {
     return tight < 24 ? 24 : (tight < cap ? tight : cap);
   }
 
+  // Desktop `engines._LABEL` (#1818), plus the phone's old `ZH:` label.
   static final RegExp _label = RegExp(
-    r'^(ZH|翻譯|翻译|譯文|译文|Translation)\s*[:：]\s*',
+    r'^\s*(?:\[?(?:translation|translated text|translate)\]?|ZH|翻譯|翻译|譯文|译文)\s*[:：]\s*',
     caseSensitive: false,
   );
 
@@ -88,6 +89,9 @@ class PromptBuilder {
   );
   static final RegExp _echoZh =
       RegExp(r'^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)(?:[。：:]|(?=\n)|$)\s*');
+  // Desktop `hymt._ECHO_ZH_CTX` (#1818): the contextual card form's instruction.
+  static final RegExp _echoZhCtx = RegExp(r'^\s*参考上面的信息[，,]\s*把下面的文本翻译成[^，,：:\n]{1,12}[，,]\s*'
+      r'注意不需要翻译上文[，,]\s*也不要额外解释[。：:]\s*');
 
   /// Desktop `hymt.ECHO_WORDS` (#1615): the instruction translated into the target language. A leading
   /// sentence is an echo only when it holds all five parts in one language:
@@ -131,7 +135,7 @@ class PromptBuilder {
   /// instead of) the translation, in English, Chinese or the target language (#1615). An echo-only
   /// output becomes empty, so the line is shown untranslated.
   static String stripEcho(String out) {
-    out = out.replaceFirst(_echoEn, '').replaceFirst(_echoZh, '');
+    out = out.replaceFirst(_echoEn, '').replaceFirst(_echoZh, '').replaceFirst(_echoZhCtx, '');
     return _stripTranslatedEcho(out).trim();
   }
 
@@ -144,22 +148,49 @@ class PromptBuilder {
     return nl > 0 && clean(s.substring(0, nl)).isNotEmpty;
   }
 
-  /// Strips template tokens (`<｜...｜>`), the echoed card instruction, labels and wrapping quotes
-  /// from raw model output; keeps only the first non-empty line.
-  static String clean(String raw) {
-    var t = stripEcho(raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), '').trim());
-    final lines = t.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty);
-    if (lines.isEmpty) return '';
-    t = lines.first.replaceFirst(_label, '');
-    const pairs = <String, String>{
-      '"': '"',
-      '“': '”',
-      '「': '」',
-      '『': '』',
-    };
-    if (t.length >= 2 && pairs[t[0]] == t[t.length - 1]) {
+  /// The streamed text the translator keeps (#1818): once [lineDone] stopped generation, only the
+  /// finished lines before the last line break (the rest is the start of a second line); else all of it.
+  static String untilLineDone(String streamed) {
+    final s = streamed.trimLeft();
+    final nl = s.lastIndexOf('\n');
+    return nl > 0 && clean(s.substring(0, nl)).isNotEmpty ? s.substring(0, nl) : streamed;
+  }
+
+  // Desktop `engines.clean_output` (#1818): the same regexes, in the same order.
+  static final RegExp _think = RegExp(r'<think>.*?</think>', dotAll: true);
+  static final RegExp _loop = RegExp(r'(.{2,120}?)\1{2,}', dotAll: true);
+  static final RegExp _ws = RegExp(r'\s+');
+  static final RegExp _markdown = RegExp(r'^(?:#+|>|[-*]\s)\s*');
+  static final RegExp _underscoreInWord = RegExp(r'(?<=[A-Za-z0-9])_+(?=[A-Za-z0-9])');
+  static const _quotePairs = <String, String>{
+    '"': '"',
+    "'": "'",
+    '“': '”',
+    '「': '」',
+    '『': '』',
+    '«': '»',
+  };
+
+  /// Desktop `engines.clean_output`: drops think blocks, collapses repetition loops, joins lines,
+  /// strips labels, markdown and wrapping quotes.
+  static String cleanOutput(String text) {
+    var t = text.replaceAll(_think, '');
+    if (t.contains('<think>')) t = t.split('<think>').first; // unclosed
+    t = t.replaceAll('</think>', '');
+    t = t.replaceAllMapped(_loop, (m) => m[1]!);
+    t = t.split(_ws).where((w) => w.isNotEmpty).join(' ');
+    t = t.replaceFirst(_label, '');
+    t = t.replaceFirst(_markdown, '');
+    t = t.replaceAll('**', '').replaceAll('`', '').replaceAll('*', '');
+    t = t.replaceAll(_underscoreInWord, ' ').replaceAll('_', '');
+    if (t.length >= 2 && _quotePairs[t[0]] == t[t.length - 1] && !t.substring(1, t.length - 1).contains(t[0])) {
       t = t.substring(1, t.length - 1).trim();
     }
-    return t;
+    return t.trim();
   }
+
+  /// Raw model output -> the shown line: template tokens (`<｜...｜>`) out, then desktop
+  /// `clean_output(strip_echo(raw))` (#1818: same result as desktop on every shared golden case).
+  static String clean(String raw) =>
+      cleanOutput(stripEcho(raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), '').trim()));
 }

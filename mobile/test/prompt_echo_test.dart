@@ -59,6 +59,20 @@ void main() {
     }
   });
 
+  group('kept text after the stop (untilLineDone, #1818)', () {
+    test('the start of a second line is dropped', () {
+      expect(PromptBuilder.untilLineDone('Здравствуйте.\nПри'), 'Здравствуйте.');
+      expect(PromptBuilder.clean(PromptBuilder.untilLineDone('$enEcho\nLet us share.\nMore')), 'Let us share.');
+    });
+    test('an echo line alone keeps the whole buffer', () {
+      expect(PromptBuilder.untilLineDone('$enEcho\nLet us'), '$enEcho\nLet us');
+      expect(PromptBuilder.clean(PromptBuilder.untilLineDone('$enEcho\nLet us')), 'Let us');
+    });
+    test('an unfinished line is kept as is', () {
+      expect(PromptBuilder.untilLineDone('Здравствуйте'), 'Здравствуйте');
+    });
+  });
+
   group('streaming stop (lineDone)', () {
     test('an echo line alone does not stop generation', () {
       expect(PromptBuilder.lineDone('$ruEcho.\n'), isFalse);

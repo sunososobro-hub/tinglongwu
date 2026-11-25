@@ -143,7 +143,10 @@ void main() {
       expect(PromptBuilder.clean('译文：你好吗'), '你好吗');
       expect(PromptBuilder.clean('「你好」'), '你好');
       expect(PromptBuilder.clean('"你好"'), '你好');
-      expect(PromptBuilder.clean('第一行\n第二行'), '第一行');
+      // #1818: clean joins lines like desktop clean_output; the translator keeps only the first
+      // finished line (untilLineDone) before cleaning.
+      expect(PromptBuilder.clean('第一行\n第二行'), '第一行 第二行');
+      expect(PromptBuilder.clean(PromptBuilder.untilLineDone('第一行\n第二')), '第一行');
       expect(PromptBuilder.clean('   '), '');
     });
   });
