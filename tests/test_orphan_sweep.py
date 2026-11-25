@@ -1,13 +1,15 @@
 """#1470: decision function of the orphan-claim sweep (rules section 6)."""
 from datetime import datetime, timedelta, UTC
 import subprocess
+
+import pytest
 from unittest.mock import patch
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from orphan_sweep import _sweep_empty_claims, is_empty_claim, is_orphan, timeout_minutes
+from orphan_sweep import _delete_at, _sweep_empty_claims, is_empty_claim, is_orphan, timeout_minutes
 
 NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
@@ -72,111 +74,143 @@ def test_empty_claim_keeps_doing_or_recently_updated_issue():
     assert not is_empty_claim("fix/1854", 0, False, {"status:todo"}, mins(2), NOW)
 
 
-def test_sweep_empty_claims_apply_rechecks_and_continues_on_delete_error(capsys):
-    stale_ts = mins(30).isoformat().replace("+00:00", "Z")
-    branches = [{"name": "dev"}, {"name": "fix/10"}, {"name": "fix/20-r2"}, {"name": "fix/30"}]
-    compare_calls = {"fix/10": 0, "fix/20-r2": 0, "fix/30": 0}
-    deleted = []
+class FakeRepo:
+    """In-memory GitHub for _sweep_empty_claims: refs, ahead counts per SHA, open PRs, issues."""
 
-    def fake_gh_list(path):
+    def __init__(self, refs, ahead=None, prs=None, issue=None):
+        self.refs = dict(refs)                  # branch -> sha
+        self.ahead = dict(ahead or {})          # sha -> commits ahead of dev (default 0)
+        self.prs = list(prs or [])              # open PRs (head dicts)
+        self.issue = issue if issue is not None else {"labels": [], "updated_at": "2026-11-18T11:00:00Z"}
+        self.deleted = []
+        self.on_ref_read = None                 # hook: called with branch name on each ref read
+        self.fail_delete = set()
+
+    def gh_list(self, path):
         if "pulls?" in path:
-            return [{"head": {"ref": "fix/30", "repo": {"full_name": "sunososobro-hub/tinglongwu"}}}]
+            return [{"head": h} for h in self.prs]
         if "branches?" in path:
-            return branches
+            return [{"name": n} for n in self.refs]
         return []
 
-    def fake_gh(path, *args):
+    def gh(self, path, *args):
+        if "/git/ref/heads/" in path:
+            name = path.split("/git/ref/heads/", 1)[1]
+            if self.on_ref_read:
+                self.on_ref_read(name)
+            if name not in self.refs:
+                raise subprocess.CalledProcessError(1, ["gh"], "", "gh: Not Found (HTTP 404)")
+            return {"object": {"sha": self.refs[name]}}
         if "compare/dev..." in path:
-            br = path.split("compare/dev...", 1)[1]
-            compare_calls[br] += 1
-            # fix/20-r2 gains a commit right before delete
-            return {"ahead_by": 1 if br == "fix/20-r2" and compare_calls[br] == 2 else 0}
-        if "git/refs/heads/" in path and args == ("-X", "DELETE"):
-            br = path.split("git/refs/heads/", 1)[1]
-            if br == "fix/10":
-                raise subprocess.CalledProcessError(1, ["gh"], "", "HTTP 422")
-            deleted.append(br)
-            return None
-        return None
+            return {"ahead_by": self.ahead.get(path.split("compare/dev...", 1)[1], 0)}
+        raise AssertionError(f"unexpected gh call {path} {args}")
 
-    with patch("orphan_sweep._gh_list", side_effect=fake_gh_list), \
-         patch("orphan_sweep._gh", side_effect=fake_gh), \
-         patch("orphan_sweep._issue_or_none", return_value={"labels": [], "updated_at": stale_ts}):
-        _sweep_empty_claims(NOW, apply=True)
+    def delete_at(self, name, sha):
+        if name in self.fail_delete or self.refs.get(name) != sha:
+            raise subprocess.CalledProcessError(1, ["git"], "", "! [rejected] (stale info)")
+        del self.refs[name]
+        self.deleted.append(name)
 
-    out = capsys.readouterr().out
-    assert "empty branch fix/10" in out
-    assert "warning: skipped fix/10" in out
-    assert "empty branch fix/20-r2" in out
-    assert "fix/30" not in out
-    assert deleted == []
+    def run(self, apply=True):
+        issue = lambda n: self.issue(n) if callable(self.issue) else self.issue
+        with patch("orphan_sweep._gh_list", side_effect=self.gh_list), \
+             patch("orphan_sweep._gh", side_effect=self.gh), \
+             patch("orphan_sweep._issue_or_none", side_effect=issue), \
+             patch("orphan_sweep._delete_at", side_effect=self.delete_at):
+            _sweep_empty_claims(NOW, apply=apply)
 
 
-def _fake_env(issues, compare=None):
-    """Patches for _sweep_empty_claims: `issues` is a list of issue dicts returned in order."""
-    deleted = []
-
-    def fake_gh_list(path):
-        if "pulls?" in path:
-            # a fork PR with the same head name does not protect our branch
-            return [{"head": {"ref": "fix/40", "repo": {"full_name": "someone/tinglongwu"}}}]
-        if "branches?" in path:
-            return [{"name": "fix/40"}]
-        return []
-
-    def fake_gh(path, *args):
-        if "compare/dev..." in path:
-            if compare is not None:
-                return compare(path)
-            return {"ahead_by": 0}
-        if args == ("-X", "DELETE"):
-            deleted.append(path.split("git/refs/heads/", 1)[1])
-        return None
-
-    it = iter(issues)
-    return deleted, [patch("orphan_sweep._gh_list", side_effect=fake_gh_list),
-                     patch("orphan_sweep._gh", side_effect=fake_gh),
-                     patch("orphan_sweep._issue_or_none", side_effect=lambda n: next(it))]
+OURS = {"repo": {"full_name": "sunososobro-hub/tinglongwu"}}
 
 
-def _run(patches, apply):
-    for p in patches:
-        p.start()
-    try:
-        _sweep_empty_claims(NOW, apply=apply)
-    finally:
-        for p in patches:
-            p.stop()
-
-
-def test_sweep_deletes_empty_branch_even_if_a_fork_pr_uses_the_name(capsys):
-    stale = {"labels": [{"name": "status:todo"}], "updated_at": "2026-11-18T11:00:00Z"}
-    deleted, patches = _fake_env([stale, stale])
-    _run(patches, apply=True)
-    assert deleted == ["fix/40"]
-    assert "empty branch fix/40" in capsys.readouterr().out
+def test_sweep_deletes_only_empty_claims(capsys):
+    repo = FakeRepo({"dev": "d0", "fix/10": "d0", "fix/20-r2": "c1", "fix/30": "d0", "feat/7": "d0"},
+                    ahead={"c1": 1}, prs=[{"ref": "fix/30", **OURS}])
+    repo.run()
+    assert repo.deleted == ["fix/10"]
+    assert "empty branch fix/10" in capsys.readouterr().out
 
 
 def test_sweep_dry_run_prints_but_never_deletes(capsys):
-    stale = {"labels": [], "updated_at": "2026-11-18T11:00:00Z"}
-    deleted, patches = _fake_env([stale])
-    _run(patches, apply=False)
-    assert deleted == []
+    repo = FakeRepo({"fix/40": "d0"})
+    repo.run(apply=False)
+    assert repo.deleted == []
     assert "empty branch fix/40" in capsys.readouterr().out
 
 
-def test_sweep_keeps_branch_claimed_between_scan_and_delete():
-    stale = {"labels": [{"name": "status:todo"}], "updated_at": "2026-11-18T11:00:00Z"}
-    claimed = {"labels": [{"name": "status:doing"}], "updated_at": "2026-11-18T11:59:30Z"}
-    deleted, patches = _fake_env([stale, claimed])
-    _run(patches, apply=True)
-    assert deleted == []
+def test_fork_pr_with_same_head_name_does_not_protect_the_branch():
+    repo = FakeRepo({"fix/40": "d0"}, prs=[{"ref": "fix/40", "repo": {"full_name": "someone/tinglongwu"}}])
+    repo.run()
+    assert repo.deleted == ["fix/40"]
 
 
-def test_sweep_compare_error_skips_branch_without_crashing(capsys):
-    def boom(path):
-        raise subprocess.CalledProcessError(1, ["gh"], "", "gh: Not Found (HTTP 404)")
-    deleted, patches = _fake_env([], compare=boom)
-    _run(patches, apply=True)
-    assert deleted == []
-    assert "warning: skipped fix/40" in capsys.readouterr().out
+def test_commit_pushed_after_the_check_keeps_the_branch(capsys):
+    repo = FakeRepo({"fix/50": "d0"}, ahead={"c9": 1})
+    reads = []
+
+    def push_after_recheck(name):
+        reads.append(name)
+        if len(reads) == 3:              # scan, re-check, then a worker pushes before the delete
+            repo.refs[name] = "c9"
+    repo.on_ref_read = push_after_recheck
+    real_delete = repo.delete_at
+
+    def delete_after_push(name, sha):
+        push_after_recheck(name)
+        real_delete(name, sha)
+    with patch.object(repo, "delete_at", side_effect=delete_after_push):
+        repo.run()
+    assert repo.refs["fix/50"] == "c9" and repo.deleted == []
+    assert "warning: skipped fix/50" in capsys.readouterr().out
+
+
+def test_pr_opened_between_scan_and_delete_keeps_the_branch():
+    repo = FakeRepo({"fix/60": "d0"})
+
+    def open_pr(name):
+        repo.prs.append({"ref": name, **OURS})
+    repo.on_ref_read = open_pr
+    repo.run()
+    assert repo.deleted == []
+
+
+def test_issue_claimed_between_scan_and_delete_keeps_the_branch():
+    states = iter([{"labels": [{"name": "status:todo"}], "updated_at": "2026-11-18T11:00:00Z"},
+                   {"labels": [{"name": "status:doing"}], "updated_at": "2026-11-18T11:59:30Z"}])
+    repo = FakeRepo({"fix/70": "d0"}, issue=lambda n: next(states))
+    repo.run()
+    assert repo.deleted == []
+
+
+def test_api_error_on_one_branch_does_not_stop_the_sweep(capsys):
+    repo = FakeRepo({"fix/80": "d0", "fix/81": "d0"})
+    repo.fail_delete = {"fix/80"}
+    repo.run()
+    assert repo.deleted == ["fix/81"]
+    assert "warning: skipped fix/80" in capsys.readouterr().out
+
+
+def _git(*args, cwd):
+    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_delete_at_is_refused_when_the_branch_moved(tmp_path):
+    """Real git: the lease deletes at the checked SHA and refuses once the branch has moved."""
+    bare, work = tmp_path / "origin.git", tmp_path / "work"
+    _git("init", "-q", "--bare", str(bare), cwd=tmp_path)
+    _git("init", "-q", str(work), cwd=tmp_path)
+    for k, v in (("user.name", "t"), ("user.email", "t@example.com"), ("commit.gpgsign", "false")):
+        _git("config", k, v, cwd=work)
+    _git("commit", "-q", "--allow-empty", "-m", "base", cwd=work)
+    base = _git("rev-parse", "HEAD", cwd=work)
+    _git("remote", "add", "origin", str(bare), cwd=work)
+    _git("push", "-q", "origin", f"{base}:refs/heads/fix/1", f"{base}:refs/heads/fix/2", cwd=work)
+    _git("commit", "-q", "--allow-empty", "-m", "work", cwd=work)
+    moved = _git("rev-parse", "HEAD", cwd=work)
+    _git("push", "-q", "-f", "origin", f"{moved}:refs/heads/fix/2", cwd=work)
+
+    _delete_at("fix/1", base, cwd=str(work))
+    with pytest.raises(subprocess.CalledProcessError):
+        _delete_at("fix/2", base, cwd=str(work))
+    heads = _git("ls-remote", "--heads", "origin", cwd=work)
+    assert "refs/heads/fix/1" not in heads and f"{moved}\trefs/heads/fix/2" in heads
