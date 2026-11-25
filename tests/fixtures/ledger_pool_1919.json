@@ -1,0 +1,33 @@
+{
+  "issues": [
+    {"number": 10, "body": "Goal: x", "labels": [{"name": "status:todo"}, {"name": "ok-to-work"}]},
+    {"number": 11, "body": "Goal: y\nDepends on: #10", "labels": [{"name": "status:blocked"}, {"name": "ok-to-work"}]},
+    {"number": 12, "body": "Goal: z\nafter #10 merges", "labels": [{"name": "status:todo"}, {"name": "ok-to-work"}]},
+    {"number": 13, "body": "Depends on: #99 (merged)", "labels": [{"name": "status:todo"}, {"name": "ok-to-work"}]},
+    {"number": 14, "body": "Goal: has a fix round", "labels": [{"name": "status:todo"}, {"name": "ok-to-work"}]},
+    {"number": 15, "body": "Goal: owner question", "labels": [{"name": "status:todo"}, {"name": "ok-to-work"}, {"name": "needs-owner"}]},
+    {"number": 16, "body": "Why: done after #10 merged, mid-line mention only", "labels": [{"name": "status:todo"}, {"name": "ok-to-work"}]},
+    {"number": 17, "body": "Goal: no ok-to-work", "labels": [{"name": "status:todo"}]},
+    {"number": 20, "body": "Closes #14", "labels": [], "pull_request": {}}
+  ],
+  "open_prs": [
+    {"number": 20, "head": {"ref": "fix/14"}, "body": "Closes #14"}
+  ],
+  "comments": [
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T10:10:57Z", "body": "W-hard: ✅ 收工 PR #1918→#1937"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T09:04:21Z", "body": "W-hard: ✅ 收工 PR #1857→#1930"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T10:19:50Z", "body": "S-easy-A: ✅ 收工 無單"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T09:04:42Z", "body": "S-easy slot A: PR #1922→#1933"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T10:39:14Z", "body": "S-easy slot B: ✅ 收工 無單"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T10:29:57Z", "body": "split-check: pool_before=4 pool_after=4"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T10:01:25Z", "body": "R-hard: ✅ 收工 審 #1930"},
+    {"user": {"login": "sunososobro-hub"}, "created_at": "2026-11-23T10:00:00Z", "body": "slot C: ✅ 收工 (too old)"},
+    {"user": {"login": "someone-else"}, "created_at": "2026-11-25T10:00:00Z", "body": "S-hard: fake report"}
+  ],
+  "recent_prs": [
+    {"number": 30, "user": {"login": "contributor-1"}, "created_at": "2026-11-25T08:00:00Z"},
+    {"number": 31, "user": {"login": "contributor-1"}, "created_at": "2026-11-25T09:00:00Z"},
+    {"number": 32, "user": {"login": "sunososobro-hub"}, "created_at": "2026-11-25T09:00:00Z"},
+    {"number": 33, "user": {"login": "contributor-2"}, "created_at": "2026-11-20T09:00:00Z"}
+  ]
+}

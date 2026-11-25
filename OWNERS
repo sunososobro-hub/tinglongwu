@@ -1,0 +1,6 @@
+# #1918 folder ownership, read by scripts/owners.py (merge gate, triage). Keys: scripts/owners.py docstring.
+area: area:ci
+model: sonnet
+review: bot
+protected: false
+protected_files: [pyproject.toml, "requirements/*.txt", "release/packaging/**", "release/installer/**", ".claude/**"]

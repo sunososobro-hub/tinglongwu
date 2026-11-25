@@ -72,6 +72,9 @@ class MissingModelsScreen extends StatelessWidget {
               const SizedBox(height: 12),
               const Text('約 1.3 GB，建議連 Wi-Fi。只有這次下載會連網；之後翻譯、辨識、朗讀都在手機上離線執行。',
                   style: _t),
+              const SizedBox(height: 8),
+              const Text('這些檔案會存在你的手機裡。之後更新 App 只會下載程式本身，不用再下載一次，所以更新很快。',
+                  key: Key('whySeparateDownload'), style: _t),
               const SizedBox(height: 24),
               if (d.busy) ...[
                 LinearProgressIndicator(value: d.progress, minHeight: 10),

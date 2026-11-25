@@ -32,9 +32,11 @@ jobs:
         with:
           ref: dev
           persist-credentials: false
+          # #1954: this file runs from main, the scripts from dev; take all of scripts/ so a new helper
+          # import on dev cannot break lint before the next release.
           sparse-checkout: |
-            scripts/pr_format.py
-            scripts/merge_gate.py
+            scripts/
+            OWNERS
           sparse-checkout-cone-mode: false
       - name: lint
         env:

@@ -53,6 +53,12 @@ on:
         type: string
         default: ""
 
+# #1920: a new push to a PR cancels that PR's older, still-running mobile-apk run (one group per PR number). Pushes and
+# dispatches get a group of their own (the run id), so a dev or main push run is never cancelled or replaced.
+concurrency:
+  group: mobile-apk-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions: {}
 
 env:

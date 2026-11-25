@@ -345,7 +345,7 @@ def test_apply_resolves_and_logs_minor_before_merge(monkeypatch):
     ran = []
     monkeypatch.setattr(mg, "_gh", fake_gh)
     monkeypatch.setattr(mg, "legacy_freeze", lambda: False)
-    monkeypatch.setattr(mg.subprocess, "run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr(mg.subprocess, "run", lambda cmd, **kw: (ran.append(cmd), mg.subprocess.CompletedProcess(cmd, 0, "", ""))[1])
     mg.apply(7, p, "merge", "ok", [], [_thread("Minor", cid=11), _thread("Major", tid="T2", cid=12)])
     paths = [c[0] for c in calls]
     assert f"repos/{mg.REPO}/issues/55/comments" in paths  # logged on the rolling issue

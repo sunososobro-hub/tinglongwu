@@ -13,6 +13,10 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import owners  # noqa: E402  #1918: per-folder OWNERS (area, model)
 
 API = "https://api.github.com"
 NEEDS_TRIAGE = "needs-triage"
@@ -61,6 +65,23 @@ TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
 BLOCKING_STATUS = ("status:",)
 CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 PREFIX = re.compile(r"^\s*\[([A-Za-z]+)\]")
+PATH_TOKEN = re.compile(r"`([\w.\-]+/[\w.\-/*]+)`")
+
+
+def named_paths(text: str, root: Path = owners.ROOT) -> list[str]:
+    """#1918: backticked repo paths (first folder exists in the checkout) named in the issue text."""
+    return [p for p in PATH_TOKEN.findall(text or "") if (root / p.split("/", 1)[0]).is_dir()]
+
+
+def owners_hints(text: str, root: Path = owners.ROOT) -> tuple[str | None, str | None]:
+    """(area, model label) the OWNERS files decide for the paths an issue names; None where they disagree / say none."""
+    try:
+        effs = [owners.owners_for(p if not p.endswith("/") else p + "x", root) for p in named_paths(text, root)]
+    except (OSError, ValueError):
+        return None, None  # no / broken OWNERS in this checkout: fall back to the fixed rules
+    areas = {e.get("area") for e in effs} - {None, "none"}
+    model = "model:opus" if any(e.get("model") == "opus" for e in effs) else None
+    return (areas.pop() if len(areas) == 1 else None), model
 
 
 def _field_present(body: str, name: str) -> bool:
@@ -92,6 +113,10 @@ def decide(title: str, body: str, labels: list[str], author_association: str) ->
             continue
         put(label)
 
+    owner_area, owner_model = owners_hints((title or "") + "\n" + (body or ""))
+    if owner_area and not any(x.startswith("area:") for x in have | set(add)):
+        put(owner_area)
+
     types = present(TYPES)
     if not types:
         reasons.append("no type label (bug/enhancement/eval/documentation/maint) and no known title prefix")
@@ -105,7 +130,7 @@ def decide(title: str, body: str, labels: list[str], author_association: str) ->
         reasons.append("more than one P label: " + ", ".join(prios))
 
     if not present(MODELS):
-        put(DEFAULT_MODEL)
+        put(owner_model or DEFAULT_MODEL)  # #1918: an OWNERS `model: opus` folder (e.g. .github/) routes to Opus
 
     areas = sorted({x for x in have | set(add) if x.startswith("area:")})
     if not areas:

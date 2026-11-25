@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 DETAILS = ROOT / "docs" / "details.md"  # #347: README keeps charts only; details.md is the text hub, published on Pages
-README_MAX_BYTES = 6 * 1024  # #166 goal reached in part 3 (part 1: 28 KB, part 2: 16 KB, was ~39 KB)
+README_MAX_BYTES = 6 * 1024 + 256  # #166 goal reached in part 3 (part 1: 28 KB, part 2: 16 KB, was ~39 KB); #734: +256 for the 3 mode-GIF img tags (216 bytes measured, zero prose: the #689 test caps prose)
 MOVED = ("licenses", "benchmarks", "linux-reverse", "disclaimer", "install", "models", "privacy", "usage")
 
 

@@ -1,3 +1,4 @@
+import gc
 import os
 import re
 import signal
@@ -95,8 +96,68 @@ def xdist_group_for(path, text=None) -> str:
     return REAL_TK_GROUP if hit else p.name
 
 
+@pytest.fixture(autouse=True)
+def _collect_tk_garbage(request):
+    """#1918 CI: free a real-Tk test's leftover tkinter objects (Variable / image cycles) on the main thread.
+
+    Left to the cyclic GC they are finalized in whatever thread allocates next on this xdist worker; there
+    `Variable.__del__` raises "main thread is not in main loop", killing that thread (test_pending_line_1532's
+    pipeline thread) or aborting Tcl (test_readme_gif_drive_734 crashed worker gw0).
+    """
+    yield
+    if "tkinter" in sys.modules and xdist_group_for(request.node.path) == REAL_TK_GROUP:
+        gc.collect()
+
+
+# -- sharded `test` job (#1857 part 3) ----------------------------------------------------------------------------
+# CI runs the suite ONCE, split over parallel jobs: TLWU_SHARD=<k>/<n> keeps only the test files of shard k (1-based).
+# Whole files go to one shard (module fixtures run once). Files are balanced by
+# their collected test count (largest first, to the shard with the least load): the real-Tk files first, so the
+# serial real-Tk group is split evenly, then the other files even out the total.
+# Every shard collects the same files, so all n shards together run every test exactly once.
+SHARD_ENV = "TLWU_SHARD"
+
+
+def parse_shard(value):
+    """'2/4' -> (2, 4); empty -> None; anything else raises ValueError (a typo must not silently run nothing)."""
+    if not value:
+        return None
+    m = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", value)
+    if not m or not 1 <= int(m.group(1)) <= int(m.group(2)):
+        raise ValueError(f"{SHARD_ENV}={value!r}: expected k/n with 1 <= k <= n")
+    return int(m.group(1)), int(m.group(2))
+
+
+def shard_of_files(counts, n, is_tk=lambda f: False) -> dict:
+    """{file: test count} -> {file: shard 1..n}, deterministic for the same input."""
+    out, load = {}, {k: 0 for k in range(1, n + 1)}
+    for tk in (True, False):  # real-Tk files first (spread over the shards), then the rest fill up the total load
+        for f in sorted((f for f in counts if bool(is_tk(f)) == tk), key=lambda f: (-counts[f], str(f))):
+            k = min(load, key=lambda s: (load[s], s))
+            out[f] = k
+            load[k] += counts[f]
+    return out
+
+
+def _apply_shard(config, items):
+    shard = parse_shard(os.environ.get(SHARD_ENV, ""))
+    if shard is None:
+        return
+    k, n = shard
+    counts: dict = {}
+    for item in items:
+        counts[item.path] = counts.get(item.path, 0) + 1
+    where = shard_of_files(counts, n, is_tk=lambda f: xdist_group_for(f) == REAL_TK_GROUP)
+    keep = [i for i in items if where[i.path] == k]
+    drop = [i for i in items if where[i.path] != k]
+    if drop:
+        config.hook.pytest_deselected(items=drop)
+        items[:] = keep
+
+
 @pytest.hookimpl(tryfirst=True)  # before xdist's own hook, which appends the group to each nodeid
 def pytest_collection_modifyitems(config, items):
+    _apply_shard(config, items)
     if not config.pluginmanager.hasplugin("xdist"):
         return
     for item in items:

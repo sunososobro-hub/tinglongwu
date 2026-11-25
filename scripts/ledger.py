@@ -3,6 +3,8 @@
 #1581: review-fix minutes after a PR opens (`tlwu-usage: ... minutes=N phase=fix` comments on the PR) are added to
 the PR's type and shown on their own line, so the cost of review rounds is visible.
 
+#1919: one `ready=<n> startable=<n> blocked_by_dep=<n> workers_24h=<n> target=<n>` line (ticket supply, read by S-split).
+
 #1915: the ledger weighs work by `tool_calls=N` (each call resends the context, so calls track spend), not by wall-clock
 `minutes`. A usage line without `tool_calls` falls back to its `minutes` (legacy / QA lines); any `minutes` over 600 or
 `tool_calls` over 1000 is bad data: dropped and reported on a `warning:` line of the ledger comment.
@@ -92,8 +94,9 @@ def usage_weight(text: str | None) -> int | None:
 
 def tally_model(body: str | None, weight: int) -> None:
     """Add `weight` calls to the builder model named by the body's usage line (`unknown` when absent)."""
-    found = MODEL_RE.findall(body or "")
-    key = found[-1] if found else "unknown"
+    lines = USAGE_LINE_RE.findall(body or "")  # same line usage_weight used: the LAST one (#1923)
+    m = MODEL_RE.search(lines[-1]) if lines else None
+    key = m.group(1) if m else "unknown"
     MODEL_CALLS[key] = MODEL_CALLS.get(key, 0) + weight
 
 
@@ -276,7 +279,7 @@ def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int,
         if not m or not mins or not (since7 <= t <= now):
             continue
         if t >= since48:
-            tally_model(c.get("body"), mins)
+            tally_model(FIX_RE.findall(c.get("body") or "")[-1], mins)  # the phase=fix line that gave the weight
         n = pr_issue(int(m.group(1)))
         labels: set[str] = set()
         if n is not None:
@@ -314,6 +317,7 @@ def fix_line(fix48: int, total48: int) -> str:
 MODEL_DAYS = 14
 INCIDENT_DAYS = 7
 MODEL_RE = re.compile(r"^tlwu-usage:.*\bmodel=([\w.\-]+)", re.M)
+TOKENS_RE = re.compile(r"^tlwu-usage:.*\btokens_in=(\d+)\b.*\btokens_out=(\d+)\b", re.M)  # #1916
 REVIEW_FAIL_RE = re.compile(r"AI review: FAIL|Opus review: CHANGES")
 REVERT_RE = re.compile(r"\brevert", re.I)
 
@@ -323,6 +327,33 @@ def pr_model(body: str | None) -> str:
     lines = [l for l in (body or "").splitlines() if l.strip()]
     m = MODEL_RE.search(lines[-1]) if lines else None
     return m.group(1) if m else "unknown"
+
+
+def pr_tokens(body: str | None) -> tuple[int, int] | None:
+    """(tokens_in, tokens_out) from the LAST non-empty line of a PR body; None when the fields are missing (#1916)."""
+    lines = [l for l in (body or "").splitlines() if l.strip()]
+    m = TOKENS_RE.search(lines[-1]) if lines else None
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def token_rows(prs: list[dict]) -> list[dict]:
+    """prs: dicts with model and optional tokens (tuple). One row per model that has any; PRs without tokens are ignored."""
+    by: dict[str, list[tuple[int, int]]] = {}
+    for p in prs:
+        if p.get("tokens"):
+            by.setdefault(p["model"], []).append(p["tokens"])
+    return [{"model": m, "prs": len(t), "in_avg": round(sum(x[0] for x in t) / len(t)),
+             "out_avg": round(sum(x[1] for x in t) / len(t))} for m, t in sorted(by.items())]
+
+
+def render_tokens(rows: list[dict]) -> str:
+    """Empty string when no PR carries token fields, so the comment is unchanged until workers start writing them."""
+    if not rows:
+        return ""
+    out = ["Tokens per merged PR by builder model (only PRs whose usage line has tokens_in / tokens_out)", "",
+           "| model | PRs with tokens | avg tokens_in | avg tokens_out |", "|---|---|---|---|"]
+    out += [f"| {r['model']} | {r['prs']} | {r['in_avg']} | {r['out_avg']} |" for r in rows]
+    return "\n".join(out)
 
 
 def has_review_fail(comment_bodies: list[str]) -> bool:
@@ -396,10 +427,84 @@ def collect_models(now: datetime) -> list[dict]:
             conclusions[c["sha"]] = [r.get("conclusion") for r in runs.get("check_runs", [])]
         later = [{"number": o["number"], "title": o.get("title"), "body": o.get("body")}
                  for o in prs if o.get("merged_at") and _ts(o["merged_at"]) > merged]
-        out.append({"model": pr_model(p.get("body")), "review_fail": has_review_fail(comments),
+        out.append({"model": pr_model(p.get("body")), "tokens": pr_tokens(p.get("body")), "review_fail": has_review_fail(comments),
                     "red": red_rounds(conclusions),
                     "incident": is_incident(n, linked_issue(p["head"]["ref"], p.get("body")), merged, issues, later)})
     return out
+
+
+# --- #1919: ticket supply. ready = pickable, startable = pickable and free to begin now, blocked_by_dep = waits on
+# another open issue / PR. S-split reads `target` (2 x workers that ran in the last 24 h) and splits until met.
+POOL_SKIP = {"needs-triage", "needs-owner", "needs-opus", "status:blocked", "status:proposal", "status:frozen",
+             "status:doing", "status:review"}
+DEP_RE = re.compile(r"^\s*(?:depends on|blocked by|after)\b[^\n]*", re.I | re.M)
+NUM_RE = re.compile(r"#(\d+)(?!\d)")
+WORKER_RE = re.compile(r"^\s*(W-hard|S-hard|S-easy(?:[\s-]*(?:slot\s*)?[A-C])?|slot\s*[A-C])\b", re.I)
+WORKERS_HOURS = 24
+
+
+def deps(body: str | None) -> set[int]:
+    """Issue / PR numbers a body says it waits on: lines starting `Depends on:` / `Blocked by:` / `after #M`."""
+    return {int(n) for line in DEP_RE.findall(body or "") for n in NUM_RE.findall(line)}
+
+
+def pool_counts(issues: list[dict], prs: list[dict]) -> dict[str, int]:
+    """issues: open issues (REST shape; PR entries are skipped); prs: open dev PRs. `ready` = status:todo + ok-to-work and
+    no hold label; `startable` = ready with no open linked PR and no open dependency; `blocked_by_dep` = any open issue
+    (ready or status:blocked) whose stated dependency is still open."""
+    real = [i for i in issues if "pull_request" not in i]
+    open_nums = {i["number"] for i in issues} | {p["number"] for p in prs}
+    with_pr = {n for p in prs if (n := linked_issue(p["head"]["ref"], p.get("body"))) is not None}
+    ready = startable = blocked = 0
+    for i in real:
+        labels = {l["name"] for l in i.get("labels", [])}
+        waits = bool((deps(i.get("body")) - {i["number"]}) & open_nums)
+        blocked += waits
+        if {"status:todo", "ok-to-work"} <= labels and not labels & POOL_SKIP:
+            ready += 1
+            startable += not waits and i["number"] not in with_pr
+    return {"ready": ready, "startable": startable, "blocked_by_dep": blocked}
+
+
+def worker_key(text: str | None) -> str | None:
+    """Normalised worker role from a #61 report line (`S-easy slot A:` / `S-easy-A` -> `S-easy A`); None for others."""
+    m = WORKER_RE.match(text or "")
+    if not m:
+        return None
+    s = m.group(1).lower()
+    if s.endswith("hard"):
+        return "W-hard" if s.startswith("w") else "S-hard"
+    slot = re.search(r"[abc]$", s)  # bare `S-easy` is slot A (the :13 slot)
+    return f"S-easy {slot.group(0).upper() if slot else 'A'}"
+
+
+def workers_ran(comments: list[dict], prs: list[dict], now: datetime) -> int:
+    """Distinct workers in the last 24 h: cloud worker roles reporting on #61 (by PRODUCER) plus each other author of
+    a dev PR opened in that window (contributor machines)."""
+    since = now - timedelta(hours=WORKERS_HOURS)
+    roles = {k for c in comments if (c.get("user") or {}).get("login") == PRODUCER
+             and since <= _ts(c["created_at"]) <= now and (k := worker_key(c.get("body")))}
+    people = {(p.get("user") or {}).get("login") for p in prs if since <= _ts(p["created_at"]) <= now}
+    return len(roles) + len(people - {PRODUCER, None})
+
+
+def pool_line(counts: dict[str, int], workers: int) -> str:
+    return (f"ready={counts['ready']} startable={counts['startable']} blocked_by_dep={counts['blocked_by_dep']} "
+            f"workers_24h={workers} target={2 * workers}")
+
+
+def collect_pool(now: datetime) -> str:
+    issues = _gh_list(f"repos/{REPO}/issues?state=open&per_page=100")
+    open_prs = _gh_list(f"repos/{REPO}/pulls?state=open&base=dev&per_page=100")
+    since = now - timedelta(hours=WORKERS_HOURS)
+    recent: list = []
+    for page in range(1, 11):  # newest first; stop at the first page that reaches past the 24 h window
+        batch = _gh(f"repos/{REPO}/pulls?state=all&base=dev&sort=created&direction=desc&per_page=100&page={page}") or []
+        recent += batch
+        if len(batch) < 100 or _ts(batch[-1]["created_at"]) < since:
+            break
+    comments = _gh_list(f"repos/{REPO}/issues/{LOG_ISSUE}/comments?since={since:%Y-%m-%dT%H:%M:%SZ}&per_page=100")
+    return pool_line(pool_counts(issues, open_prs), workers_ran(comments, recent, now))
 
 
 def main() -> int:
@@ -419,10 +524,13 @@ def main() -> int:
     total = sum(r["minutes"] for r in rows)
     infra = infra_line(infra_min, total7) + "\n" + fix_line(fix48, total + untyped)
     infra += "\n" + owner_line(by_type.get(OWNER_KEY, 0)) + "\n" + model_calls_line()
+    infra += "\n" + collect_pool(now)
     if DROPPED:
         infra += "\n" + warning_line()
     text = render(rows, infra, total, untyped, ok, now)
-    text = text.replace("\n\n_posted by", "\n\n" + render_models(model_rows(collect_models(now))) + "\n\n_posted by", 1)
+    models = collect_models(now)
+    tok = render_tokens(token_rows(models))
+    text = text.replace("\n\n_posted by", "\n\n" + render_models(model_rows(models)) + (f"\n\n{tok}" if tok else "") + "\n\n_posted by", 1)
     if args.dry_run:
         print(text)
         return 0

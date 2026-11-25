@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "check_mobile_packs.py"
 ALL = ["tinglongwu-mobile-arm64.apk", "tlwu-mobile-models.zip",
-       "tlwu-voice-en.zip", "tlwu-voice-ru.zip", "tlwu-mobile-lang-ru.zip"]
+       "tlwu-voice-en.zip", "tlwu-voice-ru.zip", "tlwu-voice-zh.zip", "tlwu-mobile-lang-ru.zip"]
 
 
 def run(tmp_path, names):
