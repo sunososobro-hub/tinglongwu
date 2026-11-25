@@ -19,13 +19,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from release_notes import WHATS_NEW_FILE, app_version, throttle_level  # noqa: E402
+from release_notes import REQUIRED_CHECKS, WHATS_NEW_FILE, app_version, throttle_level  # noqa: E402
 
 REPO = "sunososobro-hub/tinglongwu"
 TAIPEI = timezone(timedelta(hours=8))
 SLOT_HOURS = (11, 17)  # first wake after 11:00 / after 17:00 Asia/Taipei (two releases a day, #1274)
 MAX_BULLETS = 3
 FALLBACK_BULLET = "- Fixes and improvements; the full list of changes is in the release notes below."
+RED = {"failure", "timed_out", "cancelled"}
 _SKIP_TITLE = re.compile(r"^(?:release|ci|chore|docs|test|rules|infra|maint)\b|\[(?:ci|infra|release|deps)\]", re.I)
 
 
@@ -44,11 +45,12 @@ def slot_start(now: datetime) -> datetime:
 
 def decide(*, now: datetime, version: str, tags: set[str], ahead: int, test_green: bool, open_bump_pr: bool,
            hotfix_active: bool, hotfix_backmerge_open: bool, last_bump_at: datetime | None,
-           p01_fix_since_release: bool, throttle: int | None) -> tuple[bool, str]:
+           p01_fix_since_release: bool, throttle: int | None,
+           red_snapshot_recovery: bool = False) -> tuple[bool, str]:
     """Rules section 14 cadence: (open a bump?, reason). Every condition must hold; the last is the schedule slot."""
     if throttle is not None and throttle < 1:
         return False, "throttle level 0 (off)"
-    if f"v{version}" not in tags:
+    if f"v{version}" not in tags and not red_snapshot_recovery:  # #1893: recovery bumps past a red untagged snapshot
         return False, f"tag v{version} does not exist (the last bump is not released yet)"
     if ahead < 1:
         return False, "dev is not ahead of main by a merged PR"
@@ -64,6 +66,26 @@ def decide(*, now: datetime, version: str, tags: set[str], ahead: int, test_gree
     if last_bump_at is not None and last_bump_at >= start:
         return False, f"already bumped since {start.isoformat()}"
     return True, f"first wake after {start.astimezone(TAIPEI):%H:%M} Asia/Taipei with no bump since"
+
+
+def snapshot_red(runs: list[dict], required=REQUIRED_CHECKS) -> bool:
+    """#1893: the newest run of some REQUIRED_CHECKS workflow on the snapshot head finished red."""
+    for name in required:
+        mine = [r for r in runs if r.get("name") == name]
+        if mine:
+            r = max(mine, key=lambda r: r.get("id", 0))
+            if r.get("status") == "completed" and r.get("conclusion") in RED:
+                return True
+    return False
+
+
+def last_release_tag(version: str, tags: set[str]) -> str | None:
+    """`v<version>` when tagged, else the newest plain vX.Y.Z tag below it (the last release a recovery bump follows)."""
+    if f"v{version}" in tags:
+        return f"v{version}"
+    key = lambda v: tuple(int(p) for p in v.split("."))
+    older = [t[1:] for t in tags if re.fullmatch(r"v\d+\.\d+\.\d+", t) and key(t[1:]) < key(version)]
+    return f"v{max(older, key=key)}" if older else None
 
 
 def bullets(titles: list[str]) -> list[str]:
@@ -139,32 +161,54 @@ def gather(now: datetime) -> dict:
     last = _gh("api", "-X", "GET", f"repos/{REPO}/pulls", "-f", "state=closed", "-f", "per_page=100")
     bumps = [_ts(p["merged_at"]) for p in last if p.get("merged_at") and p["title"].startswith("release: bump")]
     body = _gh("api", f"repos/{REPO}/issues/574")["body"]
+    since = last_release_tag(version, tags)
+    pulls_main = _gh("api", f"repos/{REPO}/pulls?state=open&base=main&per_page=100")
     return dict(now=now, version=version, tags=tags, ahead=cmp_["ahead_by"],
                 test_green=bool(test) and test[0]["conclusion"] == "success", open_bump_pr=bump_open,
                 hotfix_active=hot > 0, hotfix_backmerge_open=backmerge,
-                last_bump_at=max(bumps, default=None), p01_fix_since_release=f"v{version}" in tags and _p01_since(version),
-                throttle=throttle_level(body))
+                last_bump_at=max(bumps, default=None), p01_fix_since_release=bool(since) and _p01_since(since),
+                throttle=throttle_level(body),
+                red_snapshot_recovery=f"v{version}" not in tags and _red_snapshot_recovery(version, pulls_main))
 
 
-def _p01_since(version: str) -> bool:
-    """A merged PR since the last release tag whose linked issue is a P0/P1 bug."""
-    nums = set(re.findall(r"#(\d+)", _git("log", f"v{version}..origin/dev", "--format=%s")))
+def _bug_fix_since(ref: str, priorities: set[str] | None) -> bool:
+    """A merged PR in ref..origin/dev whose linked issue is a bug (with one of `priorities`, when given)."""
+    nums = set(re.findall(r"#(\d+)", _git("log", f"{ref}..origin/dev", "--format=%s")))
     for n in sorted(nums, key=int)[:50]:
         try:
             it = _gh("api", f"repos/{REPO}/issues/{n}")
         except subprocess.CalledProcessError:
             continue
         names = {lb["name"] for lb in it["labels"]}
-        if "bug" in names and names & {"P0", "P1"}:
+        if "bug" in names and (priorities is None or names & priorities):
             return True
     return False
+
+
+def _p01_since(tag: str) -> bool:
+    """A merged PR since the last release tag whose linked issue is a P0/P1 bug."""
+    return _bug_fix_since(tag, {"P0", "P1"})
+
+
+def _red_snapshot_recovery(version: str, pulls_main: list[dict]) -> bool:
+    """#1893: the open release PR for `version` is red on its snapshot head and a bug fix merged to dev after it."""
+    pr = next((p for p in pulls_main if p["head"]["ref"] == f"release/v{version}"), None)
+    if pr is None:
+        return False
+    sha = pr["head"]["sha"]
+    runs = _gh("api", f"repos/{REPO}/actions/runs?head_sha={sha}&per_page=100")["workflow_runs"]
+    if not snapshot_red(runs):
+        return False
+    _git("fetch", "-q", "origin", sha)
+    return _bug_fix_since(sha, None)
 
 
 def apply(version: str, reason: str) -> None:
     if _git("status", "--porcelain", "--untracked-files=no"):
         raise SystemExit("worktree has tracked changes; refusing to open a bump")
     new = next_patch(version)
-    titles = _git("log", f"v{version}..origin/dev", "--format=%s").splitlines()
+    titles = _git("log", f"{last_release_tag(version, set(_git('tag').split())) or 'origin/main'}..origin/dev",
+                  "--format=%s").splitlines()
     lines = bullets(titles)
     issue = _gh("api", f"repos/{REPO}/issues", "-X", "POST", "-f", f"title=[release] bump __version__ to {new}",
                 "-f", "body=Why: release cadence (rules section 14).\nGoal: patch bump PR for the next release.\n"
@@ -197,7 +241,8 @@ def main() -> int:
     print(f"bump: {'yes' if ok else 'no'} ({reason})")
     if ok:
         new = next_patch(facts["version"])
-        lines = bullets(_git("log", f"v{facts['version']}..origin/dev", "--format=%s").splitlines())
+        since = last_release_tag(facts["version"], facts["tags"]) or "origin/main"
+        lines = bullets(_git("log", f"{since}..origin/dev", "--format=%s").splitlines())
         print(pr_body(0, new, reason, lines).replace("#0", "#<issue>"))
         if args.apply:
             apply(facts["version"], reason)
