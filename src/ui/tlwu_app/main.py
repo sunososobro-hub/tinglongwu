@@ -18,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import tiers
+from . import tiers, wording
 
 
 LAUNCHER_EXE = "tlwu.exe"  # release/packaging/launcher/tlwu_launcher.c: sys.executable is this exe in the core layout (#923)
@@ -169,15 +169,18 @@ def main(argv=None) -> int:
         rest = argv[1:]
         return run_setup_worker(rest if "--models-dir" in rest else rest + ["--models-dir", str(mdir)])
     argv, cpu = split_cpu(argv)
+    if "--tech-labels" in argv:  # #1809: technical wording in the setup window too (the flag stays for the GUI / CLI)
+        wording.set_tech(True)
     mdir = prepare_env(bundled, cpu)
     if argv[:1] == ["speak-smoke"]:  # #974: one GUI speak press without the window (install-clean.yml speak-smoke)
         from tinglongwu.speaksmoke import main as smoke_main
 
         return smoke_main(argv[1:])
-    if not argv or argv in (["--gui"], ["--setup"]):
+    launch = [a for a in argv if a != "--tech-labels"]
+    if not launch or launch in (["--gui"], ["--setup"]):
         if bundled:
             hide_own_console()
-        return run_gui(bundled, mdir, cpu, argv == ["--setup"])
+        return run_gui(bundled, mdir, cpu, launch == ["--setup"])
     if cpu and "--device" not in argv:
         argv += ["--device", "cpu"]
     from tinglongwu.cli import main as cli_main

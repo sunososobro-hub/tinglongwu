@@ -5,7 +5,9 @@
     python scripts/hw_live_checks.py clips --data DATA --out CLIPS
     python scripts/hw_live_checks.py file --clips CLIPS --models-dir M [-- ARGS]  #1247 file half of #894, per clip
     python scripts/hw_live_checks.py mic --clips CLIPS --models-dir M       #894 live mic vs file, subtitle gaps
+                 [--play-device OUT --capture-device MIC]  #894 on a GitHub-hosted ubuntu runner (mic-room.yml)
     python scripts/hw_live_checks.py meeting --clips CLIPS --models-dir M   #4 meeting mode: ◀ Them only for system audio
+                                                     [--cable]  #4 on a GitHub-hosted runner (audio-routing.yml)
     python scripts/hw_live_checks.py loopback --clips CLIPS --models-dir M  #348 another process's audio via loopback
 
 Clips: FLEURS test (CC-BY 4.0, eval/matrix_pins.json, every WAV checked against its pinned sha256 by make_ci_smoke)
@@ -55,6 +57,7 @@ READY_TIMEOUT_S = 600.0
 CABLE_IN, CABLE_OUT = "CABLE Input", "CABLE Output"
 READY_MARK = "* ready - listening"   # tinglongwu.cli.READY_LINE (listen side, stderr)
 SPEAK_READY_MARK = "listening... speak"  # tinglongwu.reverse.proto, speak side live
+PACED_MARK = "in real time (--paced)"  # tinglongwu.reverse.proto, speak side replaying a file (#4 --cable)
 
 
 # ---------------------------------------------------------------- pure parts (tested on Linux)
@@ -656,7 +659,11 @@ def _wer(rows: list[dict], ref: str) -> float:
     return error_rate([(ref, " ".join(r["src"] for r in rows))], "en")
 
 
-def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> tuple[bool, str]:
+def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None, play_device: str = CABLE_IN,
+            capture_device: str = CABLE_OUT) -> tuple[bool, str]:
+    """#894: play_device is where the clip is played, capture_device the microphone tlwu --mic listens to. Owner PC:
+    "CABLE Input" -> "CABLE Output"; cloud (mic-room.yml): a PulseAudio null sink -> a source remapped from its
+    monitor, so the same check runs on a GitHub-hosted ubuntu runner."""
     meta = json.loads((clips / "clips.json").read_text("utf-8"))["mic_en"]
     wav, common = clips / meta["wav"], ["--lang", "en", "--transcript-only", "--models-dir", mdir]
     fj, mj, stop = out / "mic_file.jsonl", out / "mic_live.jsonl", out / "mic.stop"
@@ -669,7 +676,7 @@ def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> t
     gpu_seen: list[str] = []
     gpu_before = gpu_apps()  # #1247: who else is on the GPU (the runner is the owner's desktop)
     with Child([sys.executable, str(ROOT / "scripts" / "verify_offline.py"), "--mic", "--seconds", "3600",
-                "--stop-file", str(stop), "--", "--capture-device", CABLE_OUT, "--save", str(mj),
+                "--stop-file", str(stop), "--", "--capture-device", capture_device, "--save", str(mj),
                 "--latency-jsonl", str(lj), "--debug-latency", *common],
                out / "mic_live.log") as ch:
         ready = False
@@ -678,7 +685,7 @@ def run_mic(clips: Path, mdir: str, out: Path, gap_hist: str | None = None) -> t
             if not ready:
                 return False, f"tlwu --mic did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'mic_live.log'})"
             with GpuSampler() as sampler:  # during play: an app that starts and exits mid-clip is still seen
-                t0 = played_at(play_child(wav, CABLE_IN))
+                t0 = played_at(play_child(wav, play_device))
                 sampler.signal()  # play is over: "seen during play" stops here
                 gpu_during = gpu_apps()  # end of play, before the sampler join and the tail wait; tlwu is one of these
             gpu_seen = sampler.seen
@@ -765,27 +772,69 @@ def run_file(clips: Path, mdir: str, out: Path, extra: list[str] | None = None) 
     return bool(rows), f"WER {wer:.3f}, {len(rows)} lines, clips missed {missed}/{len(per)}"
 
 
+def hosted_patches() -> None:
+    """#4 --cable: the listen side may capture "CABLE Input" (the product refuses it, our own voice goes there; this
+    run has --no-tts, so the cable carries only clip B)."""
+    from tinglongwu.capture import wasapi
+
+    wasapi.is_own_output = lambda name: False
+
+
 def meeting_child(proto_args: list[str]) -> int:
-    """The meeting process with only the feedback guard off: its mic is CABLE Output on purpose (clip A)."""
+    """The meeting process with only the feedback guard off: its mic is CABLE Output on purpose (clip A).
+    `_meeting-child --cable -- ARGS` also lets the listen side capture the cable (hosted runner, hosted_patches)."""
     from tinglongwu.reverse import live, proto
 
     live.check_mic_feedback = lambda *x, **k: None
+    if proto_args[:1] == ["--cable"]:
+        hosted_patches()
+        proto_args = proto_args[1:]
+    if proto_args[:1] == ["--"]:
+        proto_args = proto_args[1:]
     return proto.main(proto_args)
 
 
-def run_meeting(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
-    import soundcard as sc
+def pad_wav(src: Path, dst: Path, pad_s: float) -> Path:
+    """#4 --cable: clip A followed by pad_s of silence. The paced speak side ends the meeting process when its file
+    ends, so the silence keeps the process (and its listen side) running while clip B plays."""
+    import numpy as np
+    import soundfile as sf
 
+    x, sr = sf.read(str(src), dtype="float32", always_2d=True)
+    x = x.mean(axis=1)
+    sf.write(str(dst), np.concatenate([x, np.zeros(int(pad_s * sr), np.float32)]), sr, subtype="PCM_16")
+    return dst
+
+
+def meeting_cmd(a_wav: Path, mdir: str, save: Path, them: str, cable: bool = False) -> list[str]:
+    """The meeting process. Owner PC: clip A comes from the mic "CABLE Output" (▶ Me), `them` = the real speakers.
+    #4 --cable (GitHub-hosted windows-latest, one VB-CABLE, no sound card): every sound played into "CABLE Input"
+    also reaches "CABLE Output", so the mic could not tell A from B; the speak side replays clip A in real time
+    (--input A --paced, the mic path's VAD and pipeline) and the listen side captures "CABLE Input" through WASAPI
+    loopback, where only clip B is played."""
+    me = ["--input", str(a_wav), "--paced"] if cable else ["--mic", CABLE_OUT]
+    return ([sys.executable, str(Path(__file__).resolve()), "_meeting-child"] + (["--cable"] if cable else [])
+            + ["--"] + me + ["--to", "en", "--no-tts", "--no-confirm", "--models-dir", mdir, "--listen",
+                             "--capture-device", them, "--lang", "auto", "--save", str(save), "--models-dir", mdir])
+
+
+def run_meeting(clips: Path, mdir: str, out: Path, cable: bool = False) -> tuple[bool, str]:
     meta = json.loads((clips / "clips.json").read_text("utf-8"))
     sj = out / "meeting.jsonl"
     sj.unlink(missing_ok=True)
-    spk = real_speaker(sc)
-    with Child([sys.executable, str(Path(__file__).resolve()), "_meeting-child", "--", "--mic", CABLE_OUT, "--to", "en",
-                "--no-tts", "--no-confirm", "--models-dir", mdir, "--listen", "--capture-device", spk, "--lang", "auto",
-                "--save", str(sj), "--models-dir", mdir], out / "meeting.log") as ch:
-        if not ch.wait_for(READY_MARK, SPEAK_READY_MARK):
+    if cable:
+        spk = CABLE_IN
+    else:
+        import soundcard as sc
+
+        spk = real_speaker(sc)
+    a_wav = clips / meta["meet_a_zh"]["wav"]
+    # the listen side may get ready after clip A has been replayed: room for both waits, clip B and the tail
+    me_wav = pad_wav(a_wav, out / "meeting_a_padded.wav", READY_TIMEOUT_S + MEET_S + 2 * TAIL_S) if cable else a_wav
+    with Child(meeting_cmd(me_wav, mdir, sj, spk, cable), out / "meeting.log") as ch:
+        if not ch.wait_for(READY_MARK, PACED_MARK if cable else SPEAK_READY_MARK):
             return False, f"meeting mode did not get ready in {READY_TIMEOUT_S:.0f} s (see {out / 'meeting.log'})"
-        players = [play_child(clips / meta["meet_a_zh"]["wav"], CABLE_IN)]
+        players = [] if cable else [play_child(a_wav, CABLE_IN)]  # --cable: clip A is the speak side's --input
         try:
             players.append(play_child(clips / meta["meet_b_en"]["wav"], spk))
             for pl in players:
@@ -812,7 +861,7 @@ def run_loopback(clips: Path, mdir: str, out: Path) -> tuple[bool, str]:
     return check_loopback(read_jsonl(sj), meta["ref"])
 
 
-WHAT = {"file": "#1247 file baseline of the #894 clip", "mic": "#894 live mic (CABLE) vs file",
+WHAT = {"file": "#1247 file baseline of the #894 clip", "mic": "#894 live mic vs file",
         "meeting": "#4 meeting mode ◀ Them labels",
         "loopback": "#348 other-process audio via WASAPI loopback"}
 
@@ -837,6 +886,11 @@ def main(argv=None) -> int:
         s.add_argument("--json", default=None)
         if name == "mic":
             s.add_argument("--gap-history", default=None, help="#1247: JSONL of past subtitle gaps (report only)")
+            s.add_argument("--play-device", default=CABLE_IN, help="#894: output the clip is played into")
+            s.add_argument("--capture-device", default=CABLE_OUT, help="#894: microphone tlwu --mic listens to")
+        if name == "meeting":
+            s.add_argument("--cable", action="store_true",
+                           help="#4: GitHub-hosted runner with one VB-CABLE and no speakers (see meeting_cmd)")
         if name == "file":
             s.add_argument("extra", nargs="*", help="more tlwu arguments after `--` (e.g. --device cpu)")
     a = p.parse_args(argv)
@@ -852,7 +906,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     run = {"file": run_file, "mic": run_mic, "meeting": run_meeting, "loopback": run_loopback}[a.cmd]
     try:
-        args = (a.extra,) if a.cmd == "file" else (a.gap_history,) if a.cmd == "mic" else ()
+        args = ((a.extra,) if a.cmd == "file" else (a.gap_history, a.play_device, a.capture_device) if a.cmd == "mic"
+                else (a.cable,) if a.cmd == "meeting" else ())
         ok, msg = run(Path(a.clips), a.models_dir, out, *args)
     except Exception as e:  # noqa: BLE001 - one FAIL line in the step summary, not a traceback only
         ok, msg = False, f"could not run: {type(e).__name__}: {e}"

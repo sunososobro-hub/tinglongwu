@@ -78,9 +78,9 @@ def test_freeze_button_sits_with_the_subtitle_controls(make_app):
     bar = a.btn_pause.master
     assert bar.winfo_toplevel() is a.root  # #1028: with the mic and floating-subtitle toggles, in the main window
     assert a.btn_mic.winfo_toplevel() is a.root
-    assert a.btn_pause.cget("text") == "Freeze subtitles"
+    assert a.btn_pause.cget("text") == "Freeze"  # #1605: compact label, full text in i18n gui_pause
     a.toggle_pause()
-    assert a.btn_pause.cget("text") == "Resume subtitles"
+    assert a.btn_pause.cget("text") == "Resume"
 
 
 def test_sidebar_title_is_tinglongwu_name(make_app):

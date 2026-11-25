@@ -161,6 +161,8 @@ def parse_args(argv=None):
                         "Explicit flag only; offline")
     p.add_argument("--gui", action="store_true",
                    help="open the graphical interface (floating subtitle bar + small control window)")
+    p.add_argument("--tech-labels", action="store_true", dest="tech_labels",
+                   help="GUI: show the technical names (model, GPU, Vulkan, quality tier) instead of the plain wording")
     p.add_argument("--overlay", action="store_true",
                    help="also show the subtitles in an always-on-top, draggable bar (position and font size are "
                         "remembered in gui.json); off by default")
@@ -1126,7 +1128,7 @@ def main(argv=None) -> int:
     if a.gui:
         from .gui import main as gui_main
 
-        return gui_main()
+        return gui_main(tech_labels=a.tech_labels)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     from . import splash

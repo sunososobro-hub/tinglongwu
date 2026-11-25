@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tlwu_app import tiers
+from tlwu_app import tiers, wording
 
 ROOT = Path(__file__).resolve().parent.parent
 PWSH = shutil.which("pwsh")
@@ -66,6 +66,8 @@ def test_new_driver_keeps_the_gpu_tier(monkeypatch):
 
 
 def test_setup_window_text_tells_how_to_fix(monkeypatch):
+    monkeypatch.setattr(wording, "tech", lambda: True)  # #1809: these asserts pin the technical wording
+    monkeypatch.setenv("TLWU_UI_LANG", "zh-TW")  # pin the language: the CI machine may report en
     run, _ = _fake_smi(monkeypatch, OLD)
     txt = tiers.detection_text(tiers.probe_gpu(run), platform="win32")
     assert "457.49" in txt and "528.33" in txt and "https://www.nvidia.com/Download/index.aspx" in txt

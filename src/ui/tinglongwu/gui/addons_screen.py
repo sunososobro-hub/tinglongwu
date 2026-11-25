@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 from ..i18n import t
 from ..models import models_dir
 from . import addons, gpu_offer
+from . import core
 from .core import download_cmd, run_pack_download
 
 
@@ -87,7 +88,7 @@ class AddonsScreen:
         state, ver = self.gpu_cached
         f = ttk.Frame(self.body)
         f.pack(fill="x", pady=3)
-        ttk.Label(f, text=t("gpu_pack_row_name", size=gpu_offer.GPU_PACK_SIZE)).pack(side="top", anchor="w")
+        ttk.Label(f, text=core.ui_text("gpu_pack_row_name", size=gpu_offer.GPU_PACK_SIZE)).pack(side="top", anchor="w")
         ttk.Label(f, text=gpu_offer.row_text(state, ver), wraplength=300).pack(side="left", fill="x", expand=True)
         if state in (gpu_offer.MISSING, gpu_offer.OLD):
             ttk.Button(f, text=t("gpu_offer_install"), command=self.add_gpu).pack(side="right")
@@ -109,14 +110,14 @@ class AddonsScreen:
         gpu_offer.INSTALLING.set()
         self.busy = True
         self.gpu_lines = []
-        self.msg.set(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE))
+        self.msg.set(core.ui_text("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE))
         try:
             threading.Thread(target=gpu_offer.run_install, args=(self.run, self.q.put),
                              kwargs={"mdir": self.mdir, "cmd": gpu_offer.gpu_pack_cmd(self.mdir)}, daemon=True).start()
         except RuntimeError as e:  # no thread: release the lock, keep the Install button usable
             gpu_offer.INSTALLING.clear()
             self.busy = False
-            self.msg.set(t("gpu_offer_fail", reason=type(e).__name__))
+            self.msg.set(core.ui_text("gpu_offer_fail", reason=type(e).__name__))
             self.refresh()
 
     def add(self, pack: str):
@@ -172,8 +173,8 @@ class AddonsScreen:
                     self.busy = False
                     self.gpu_gen = getattr(self, "gpu_gen", 0) + 1  # drop probes started before the install ended
                     self.gpu_cached = self._gpu_state()  # the pack folder changed: re-read it
-                    self.msg.set(t("gpu_offer_ok") if gpu_offer.install_ok(ev[2], self.gpu_lines) else
-                                 t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)))
+                    self.msg.set(core.ui_text("gpu_offer_ok") if gpu_offer.install_ok(ev[2], self.gpu_lines) else
+                                 core.ui_text("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)))
                     self.refresh()
                 elif ev[0] == "pack_done":
                     self.busy = False

@@ -150,6 +150,21 @@ def text_cases_main(a, engines: Engines | None) -> int:
     return 0
 
 
+def term_glossary(scenario, src, tgt):
+    """#1799: the built-in domain tables the app would load for this pair, exactly as `merge_builtin_terms` does
+    (`scenario` None = the app default, `none` = off, else the named scenario). Cached per (scenario, src, tgt)."""
+    key = (scenario, src, tgt)
+    if key not in _TERMS:
+        from tinglongwu.glossary import effective_scenario, load_builtin_pair, scenario_domains
+
+        doms = scenario_domains(effective_scenario(scenario, src))
+        _TERMS[key] = load_builtin_pair(src, tgt, doms) if scenario is not None else None
+    return _TERMS[key]
+
+
+_TERMS: dict = {}
+
+
 def hymt_translate(a):
     """translate(text, src, tgt, context) -> str with the local Hy-MT2 (no glossary). Every call starts from an
     empty history, so the only context a line gets is the one passed in."""
@@ -158,10 +173,12 @@ def hymt_translate(a):
 
     tr = HyMtTranslator(models_dir(a.models_dir), "tw", a.device if a.device in ("cpu", "cuda") else "cpu")
     tr.preload()
+    scenario = getattr(a, "term_scenario", None)
 
     def translate(text, src, tgt, context):
         tr.history.clear()
         tr._pair = None
+        tr.glossary = term_glossary(scenario, src, tgt)
         return tr.translate(text, src, tgt, context=context).text
 
     return translate
@@ -244,7 +261,12 @@ def main(argv=None, engines: Engines | None = None, totals=None, comet_model=Non
     p.add_argument("--fragment-cases", metavar="FILE.jsonl",
                    help="Hy-MT2 on cut-off lines / idioms / split numbers: chrF + invented-content rate for the "
                         "line alone, with the previous line as context, and with cut-off lines marked (#1258)")
+    p.add_argument("--term-scenario", default=None, metavar="NAME",
+                   help="with --fragment-cases: load the built-in term tables like the app (`default` = the app "
+                        "default for the source language, `none` = off, `tech` = tech). Omitted = no tables (#1799)")
     a = p.parse_args(argv)
+    if a.term_scenario == "default":
+        a.term_scenario = ""
     if a.text_cases:
         return text_cases_main(a, engines)
     if a.fragment_cases:

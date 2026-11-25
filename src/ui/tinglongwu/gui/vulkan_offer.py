@@ -37,6 +37,36 @@ def should_offer(st: str, nvidia: bool, dismissed: bool, offline: bool) -> bool:
     return st in (MISSING, STALE) and not nvidia and not dismissed and not offline
 
 
+def gate_for_nvidia(st: str, nvidia: bool) -> str:
+    """#1780: an NVIDIA machine gets the CUDA offer only; never a Vulkan banner (also on Linux where the CUDA pack is absent)."""
+    return UNAVAILABLE if nvidia else st
+
+
+def install_blocked(gpu_busy: bool, downloading: bool, bg_active: bool) -> bool:
+    """#1780: refuse the Vulkan install while another install or any download (foreground / background) is running."""
+    return bool(gpu_busy or INSTALLING.is_set() or downloading or bg_active)
+
+
+def defer_bg_defaults() -> bool:
+    """#1780: the background default-model download waits while the Vulkan install runs (one manifest writer)."""
+    return INSTALLING.is_set()
+
+
+def cpu_backends(lines: list[str]) -> list[str]:
+    """#1780: names ("speech", "translation") that the final `vulkan probe:` line says stay on the CPU."""
+    for ln in reversed(lines):
+        if ln.startswith("vulkan probe:"):
+            if "skipped" in ln:
+                return ["speech", "translation"]
+            out = []
+            if "ASR cpu" in ln:
+                out.append("speech")
+            if "MT cpu" in ln:
+                out.append("translation")
+            return out
+    return []
+
+
 def detect(mdir=None, size: str = MODEL_SIZE, platform: str | None = None, present=None, pack=None,
            folder=None, ready=None) -> str:
     """state() for this machine. The probes are injectable (tests pass fakes)."""

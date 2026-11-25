@@ -19,6 +19,7 @@ from .icon import apply_icon, icon_path, set_app_id
 from ..langs import from_label as lang_from_label, label as lang_label, labels as lang_labels
 from ..i18n import SILENT_CLEAR
 from .core import scene_of as scene_mode_name
+from . import core
 from .core import (SpeakerColors, SPK_AVATAR_FG, speaker_initial, speaker_text, SCENES, WATCH_MODE, scene_mode, scene_runs, mic_toggle_visible, toggled_source, strip_silent_hint, GUI_SEND_MODES, BOTH_MODE, SPEAK_MARK, SpeakQueueSink, start_button, cpu_ram_gb, choice_label, choice_labels, choice_value, SPEAK_HINT_CABLE, meeting_cable, quick_settings, SameLanguageError, SEND_MODES, send_mode_notice_key, restart_needed, send_gate_line, speak_route, speak_start_view, tour_on_start, USAGE_CHOICES, usage_answer, usage_should_ask, tour_text, ALPHA_STEP, FONT_MAX, FONT_MIN, ROWS_MAX, ROWS_MIN, HISTORY_LINES, PRESETS, QUALITIES, SOURCES, TARGETS, QueueDraftRenderer,
                    QueueSink, SubtitleState, engine_from_label, engine_labels, clamp_font, clamp_rows, follow_newest, load_settings,
                    combo_width, doctor_lang, is_downloaded, label_for_model, model_from_label, model_labels, rows_after_drag, run_download, run_setup_check, missing_start_model, StartDownload, quality_hint, quality_speech_model,
@@ -84,28 +85,12 @@ MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-s
 # #1644: "latest" = the newest finished line from the other side (brighter, so the eye lands on it first)
 # #1662 Linear-style palette: window / transcript backgrounds differ slightly, 1 px separators, muted secondary text,
 # bright primary text and ONE accent (the existing blue); warn / err are the only other colours
-PAL = {"dark": {"win": "#343d46", "bg": "#2b303b", "sep": "#4f5b66", "fg": "#dfe1e8", "muted": "#a7adba",
-                "accent": "#5a7fa8", "warn": "#ebcb8b", "err": "#bf616a"},  # blue-grey dark from the MIT Base16 "Ocean" palette
-       "light": {"win": "#f6f7fa", "bg": "#ffffff", "sep": "#dfe2ea", "fg": "#1d2447", "muted": "#5b6390",
-                 "accent": "#3f5fe0", "warn": "#b35a00", "err": "#c0392b"}}
-BUBBLE = {"dark": {"bg": "#2b303b", "other": ("#3a4450", "#dfe1e8"), "me": ("#5a7fa8", "#ffffff"),
-                   "latest": ("#4f5b66", "#ffffff"), "sub": "#a7adba", "head": "#a7adba"},
-          "light": {"bg": "#ffffff", "other": ("#e6e9f5", "#1d2447"), "me": ("#cfe0ff", "#10224d"),
-                    "latest": ("#cdd6ff", "#10224d"), "sub": "#5b6390", "head": "#5b6390"}}
-# #1644: notes (重點整理) window per theme: time range muted, bullets in the notes accent (violet)
-NOTES = {"dark": {"bg": "#0e1015", "fg": "#e6e8ee", "title": "#ffffff", "when": "#8a90a0", "mark": "#b79cff"},
-         "light": {"bg": "#ffffff", "fg": "#1d2447", "title": "#10224d", "when": "#5b6390", "mark": "#6b4fd8"}}
-FG_FINAL, FG_DRAFT, FG_SRC, BG = "#ffffff", "#8a8a8a", "#b8c4d6", "#101010"
-FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+from .theme import (resolve_theme, BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
+                    SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE, FONT_FAMILY, bump, font as tfont, small_size)
 # settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
 SIDE_W = 168
 SIDE_LOGO_PX = 84
-SIDE = {"dark": {"top": "#1d2447", "bottom": "#2c2350", "fg": "#eef0ff", "sub": "#a9b1d6", "pill": "#4a63d8",
-                 "wave": "#3a3f72"},
-        "light": {"top": "#e9eeff", "bottom": "#e3dcfa", "fg": "#1d2447", "sub": "#5b6390", "pill": "#4a63d8",
-                  "wave": "#cfd3f3"}}
-# #455: control-bar status dot: idle / models loading / listening (fully offline) / stopped on an error
-DOT = {"idle": "#8a8a8a", "loading": "#e0a000", "on": "#2ea043", "error": "#d0453a"}
+
 
 
 def open_target(target: str) -> None:
@@ -136,7 +121,7 @@ class Overlay:
         self.width = int(w.winfo_screenwidth() * 0.7)
         self.rows = clamp_rows(s.get("overlay_lines", 3))
         # top edge: drag it to change how many rows are visible (the bar keeps its bottom edge)
-        self.grip = tk.Frame(w, height=6, bg="#2a2a2a", cursor="sb_v_double_arrow")
+        self.grip = tk.Frame(w, height=6, bg=BAR_BTN, cursor="sb_v_double_arrow")
         self.grip.pack(fill="x")
         self.box = tk.Frame(w, width=self.width, height=100, bg=BG)
         self.box.pack_propagate(False)
@@ -155,7 +140,7 @@ class Overlay:
         self.hover = tk.Frame(self.box, bg=BG)
         for label, d in (("A-", -2), ("A+", 2)):
             tk.Button(self.hover, text=label, command=lambda d=d: self.bump_font(d), bd=0, padx=6, pady=0,
-                      bg="#2a2a2a", fg=FG_FINAL, activebackground="#3a3a3a", activeforeground=FG_FINAL,
+                      bg=BAR_BTN, fg=FG_FINAL, activebackground=BAR_BTN_ACTIVE, activeforeground=FG_FINAL,
                       takefocus=0, cursor="hand2").pack(side="left", padx=1)
         w.bind("<Enter>", lambda _e: self.show_hover(), add="+")
         w.bind("<Leave>", lambda _e: self.win.after(60, self._leave_check), add="+")
@@ -269,7 +254,7 @@ class Overlay:
         self.font = tkfont.Font(family=fam, size=n, weight="bold")
         for tag in ("final", "draft"):
             self.text.tag_configure(tag, font=self.font)
-        self.text.tag_configure("src", font=(fam, max(9, n * 2 // 3)))
+        self.text.tag_configure("src", font=(fam, small_size(n, 9)))
         self.set_rows(self.rows)
         size_var = getattr(self.app, "v_font", None)
         if size_var is not None and size_var.get() != str(n):
@@ -380,7 +365,7 @@ class Tour:
         w.attributes("-topmost", True)
         self.frm = f = ttk.Frame(w, padding=10, relief="solid", borderwidth=1)
         f.pack()
-        self.title = ttk.Label(f, font=(FONT_FAMILY, 11, "bold"))
+        self.title = ttk.Label(f, font=tfont("body", True))
         self.title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         self.step1 = ttk.Label(f)
         self.step1.grid(row=1, column=0, sticky="w")
@@ -465,11 +450,11 @@ class _DockPane(ttk.Frame):
     def __init__(self, app, holder, before):
         super().__init__(holder, width=DOCK_W)
         self._app, self._before, self._grew = app, before, 0
-        grip = tk.Frame(self, width=3, cursor="sb_h_double_arrow", bg="#555555")  # drag the left edge to resize
+        grip = tk.Frame(self, width=3, cursor="sb_h_double_arrow", bg=GRIP)  # drag the left edge to resize
         grip.pack(side="left", fill="y")
         grip.bind("<B1-Motion>", self._drag)
-        grip.bind("<Enter>", lambda e: grip.configure(bg="#2e86de"))  # a thin line that lights up under the mouse
-        grip.bind("<Leave>", lambda e: grip.configure(bg="#555555"))
+        grip.bind("<Enter>", lambda e: grip.configure(bg=GRIP_HOVER))  # a thin line that lights up under the mouse
+        grip.bind("<Leave>", lambda e: grip.configure(bg=GRIP))
         self.bind("<Configure>", self._rewrap, add="+")
 
     def _drag(self, e):
@@ -527,7 +512,7 @@ class _FloatPane(tk.Toplevel):
         self.geometry(notes_geometry(app.settings, self.winfo_screenwidth(), self.winfo_screenheight()))
         self.protocol("WM_DELETE_WINDOW", app._notes_dock)
         self.bind("<Configure>", self._configure, add="+")
-        set_titlebar_dark(self, app.settings.get("theme") != "light")
+        set_titlebar_dark(self, resolve_theme(app.settings.get("theme")) != "light")
 
     def _configure(self, e):
         if e.widget is not self:
@@ -576,6 +561,7 @@ def _system_cpu_percent(app):
 class App:
     def __init__(self):
         self.settings = load_settings()
+        core.set_tech_labels(setting=self.settings["tech_labels"])  # #1806
         self.q: queue.Queue = queue.Queue()
         self.state = SubtitleState(HISTORY_LINES)
         self.listening = False  # a session is running (Start pressed, worker not yet stopped)
@@ -620,14 +606,16 @@ class App:
         self._make_main()
         self._build_controls()
         self._build_quick()
+        self._build_toolbar()
         self._build_bar()
         self._build_update_line()
         self._build_gpu_offer()  # #1525: one-click GPU speed-up pack offer (NVIDIA only)
+        self.v_tech = tk.BooleanVar(master=self.root, value=self.settings["tech_labels"])  # #1806: plain wording by default
         self.build_menubar()
         self.overlay = Overlay(self.root, self)
         self._sync_bar()  # #1042: the bar is not on screen before Start
         self.tour = Tour(self)
-        self.apply_theme(self.settings.get("theme", "dark"))
+        self.apply_theme(resolve_theme(self.settings.get("theme")), keep_setting=True)  # #1822: auto follows the OS
         if tour_on_start(self.settings):
             self.show_tour()
         try:
@@ -638,7 +626,7 @@ class App:
     # -- control window -----------------------------------------------------------------------
     def _tx(self, widget, key, option="text"):
         """Label `widget` with t(key) now and on every language switch."""
-        widget.configure(**{option: t(key)})
+        widget.configure(**{option: core.ui_text(key)})  # #1807: plain / tech wording
         self._tr.append((widget, option, key))
         return widget
 
@@ -686,7 +674,7 @@ class App:
 
     @property
     def pal(self) -> dict:
-        return PAL["light" if self.settings.get("theme") == "light" else "dark"]
+        return PAL[resolve_theme(self.settings.get("theme"))]
 
     def _tok(self, w, token: str):
         """#1662: a label whose colour is a palette token (re-tinted on every theme change)."""
@@ -698,7 +686,7 @@ class App:
     def _style_menu(self, m):
         pal = self.pal
         try:
-            m.configure(bg=pal["win"], fg=pal["fg"], activebackground=pal["accent"], activeforeground="#ffffff",
+            m.configure(bg=pal["win"], fg=pal["fg"], activebackground=pal["accent"], activeforeground=SIDE_ACTIVE_FG,
                         selectcolor=pal["fg"], bd=0, relief="flat", activeborderwidth=0)
             end = m.index("end")
             for i in range(0 if end is None else end + 1):
@@ -707,8 +695,11 @@ class App:
         except tk.TclError:
             _diag.swallowed(__name__)
 
-    def apply_theme(self, name: str):
-        self.settings["theme"] = name = "light" if name == "light" else "dark"
+    def apply_theme(self, name: str, keep_setting: bool = False):
+        name = "light" if name == "light" else "dark"
+        self.theme_name = name
+        if not keep_setting:  # a user toggle forces that theme; startup keeps "auto"
+            self.settings["theme"] = name
         if sv_ttk is not None:
             try:
                 sv_ttk.set_theme(name)
@@ -731,7 +722,7 @@ class App:
         st.configure("TLabel", foreground=pal["fg"])
         st.configure("Menu.TMenubutton", padding=(8, 0), background=pal["win"], foreground=pal["fg"])
         st.configure("Card.TFrame", background=pal["win"])
-        st.configure("Start.Accent.TButton", font=(FONT_FAMILY, 13, "bold"), padding=(14, 8))  # #1028: the big Start
+        st.configure("Start.Accent.TButton", font=tfont("title", True), padding=(14, 8))  # #1028: the big Start
         self._retint()
         if sv_ttk is not None and not getattr(self, "_retint_bound", False):
             # #1644: sv_ttk recolours every tk widget on <<ThemeChanged>> (tk_setPalette), after this method has
@@ -755,7 +746,7 @@ class App:
             self.panel.configure(bg=pal["win"])
         except (tk.TclError, AttributeError):
             pass
-        dark = self.settings.get("theme") != "light"
+        dark = resolve_theme(self.settings.get("theme")) != "light"
         for name in ("root", "panel", "topics_win"):
             w = getattr(self, name, None)
             try:
@@ -795,7 +786,7 @@ class App:
 
     def _draw_sidebar(self):
         c = self.side
-        pal = SIDE["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = SIDE[resolve_theme(self.settings.get("theme"))]
         c.delete("all")
         h = max(c.winfo_height(), 400)
         top, bot = (tuple(int(col[i:i + 2], 16) for i in (1, 3, 5)) for col in (pal["top"], pal["bottom"]))
@@ -812,17 +803,17 @@ class App:
         if self.side_logo is not None:
             c.create_image(SIDE_W // 2, y, image=self.side_logo, anchor="n")
             y += self.side_logo.height() + 6
-        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
-        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=(FONT_FAMILY, 10), anchor="n")
+        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=tfont("display", True), anchor="n")
+        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=tfont("caption"), anchor="n")
         y += 74
         for i, (key, glyph, cmd) in enumerate(self.side_nav):
             tag = f"nav{i}"
             active = cmd is None
             if active:
                 self._round_rect(12, y - 4, SIDE_W - 12, y + 32, 10, fill=pal["pill"], outline="", tags=tag)
-            fg = "#ffffff" if active else pal["fg"]
-            c.create_text(30, y + 14, text=glyph, fill=fg, font=(FONT_FAMILY, 12, "bold"), tags=tag)
-            c.create_text(52, y + 14, text=t(key), fill=fg, font=(FONT_FAMILY, 11), anchor="w", tags=tag)
+            fg = SIDE_ACTIVE_FG if active else pal["fg"]
+            c.create_text(30, y + 14, text=glyph, fill=fg, font=tfont("title", True), tags=tag)
+            c.create_text(52, y + 14, text=t(key), fill=fg, font=tfont("body"), anchor="w", tags=tag)
             if cmd is not None:
                 c.tag_bind(tag, "<Button-1>", lambda _e, f=cmd: f())
                 c.tag_bind(tag, "<Enter>", lambda _e: c.configure(cursor="hand2"))
@@ -843,12 +834,12 @@ class App:
 
     def relabel(self):
         for w, opt, key in self._tr:
-            w.configure(**{opt: t(key)})
+            w.configure(**{opt: core.ui_text(key)})
         if self.load_t0 is not None:
             self.btn.configure(text=t("gui_loading", s=self.load_shown))
         else:
             self.btn.configure(text=t("gui_stop" if self.worker is not None and self.worker.is_alive() else "gui_start"))
-        self.btn_pause.configure(text=t("gui_resume" if self.state.paused else "gui_pause"))
+        self.btn_pause.configure(text=t("gui_resume_s" if self.state.paused else "gui_pause_s"))
         self._mic_label()
         self._adv_toggled()
         self._send_mode_changed()  # #834: the notice follows the UI language
@@ -864,6 +855,7 @@ class App:
         self.home_lang.configure(values=lang_labels())
         self.v_lang.set(lang_label(lang_from_label(self.v_lang.get())))
         self._pair_changed()
+        self._toolbar_refresh()
         self.overlay.build_menu()
         self.log_menu.entryconfigure(0, label=t("gui_menu_wrong_line"))
         self.log_menu.entryconfigure(1, label=t("gui_log_copy"))
@@ -887,7 +879,7 @@ class App:
         self.v_send_mode.trace_add("write", lambda *_: self._send_mode_changed())
         self._send_mode_changed()
         self.run_snapshot = None  # #983: the start-time values of the running session
-        self.lbl_restart = ttk.Label(self.body, wraplength=300, justify="left", foreground="#b45309")
+        self.lbl_restart = ttk.Label(self.body, wraplength=300, justify="left", foreground=WARNING_LIGHT)
         self._tok(self.lbl_restart, "warn")
         self.btn_restart = ttk.Button(self.body, command=self._restart_now)
         for name in ("v_lang", "v_target", "v_engine", "v_quality", "v_model", "v_preset", "v_gloss", "v_source",
@@ -1181,7 +1173,9 @@ class App:
         """#1028: the main window = language pickers on top, chat bubbles in the middle, status + one big Start and
         the mic / floating-subtitle toggles at the bottom. (Settings are the separate panel, opened with the gear.)"""
         r = self.root
-        self.top_frame = ttk.Frame(r, padding=(12, 6, 12, 2))
+        self.toolbar = ttk.Frame(r, padding=(12, 6, 12, 0))  # #1603: one top row (pair, swap, situation, badge, A-/A+, settings)
+        self.toolbar.pack(side="top", fill="x")
+        self.top_frame = ttk.Frame(r, padding=(12, 0, 12, 2))
         self.top_frame.pack(side="top", fill="x")
         self.bar = ttk.Frame(r, padding=(12, 2, 12, 6))
         self.bar.pack(side="bottom", fill="x")
@@ -1195,15 +1189,12 @@ class App:
         the big Start / Stop at the right."""
         b = self.bar
         b.columnconfigure(1, weight=1)
-        self.scene_row = scene_row = ttk.Frame(b)  # 0.3.8: 情境 - what the one Start starts; fixed while a session runs
-        self._tx(ttk.Label(scene_row), "gui_scene").pack(side="left", padx=(0, 6))
+        self.scene_row = ttk.Frame(b)  # 0.3.8: 情境; #1603: the dropdown itself now lives in the top toolbar
         self.v_scene = tk.StringVar(value=scene_mode_name(self.settings))
         # one readonly dropdown: exactly one scene is active at a time; the box shows the UI-language names
-        labs = self._scene_labels()
-        wide = max(sum(2 if ord(ch) > 255 else 1 for ch in x) for x in labs)  # fit the longest name, no empty tail
-        self.scene_combo = ttk.Combobox(scene_row, state="readonly", width=wide + 3, values=labs)
+        self.scene_combo = ttk.Combobox(self.toolbar, state="readonly", width=7, values=self._scene_labels())
         self.scene_combo.set(t("gui_scene_" + self.v_scene.get()))
-        self.scene_combo.pack(side="left")
+        self.scene_combo.pack(side="left", padx=(8, 0))
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
         # #1544: what the video scene listens to, in plain words, one click to switch (was only under 調整)
         self.source_row = ttk.Frame(b)  # its own row: next to the scene dropdown it pushed the bar past its max width
@@ -1214,27 +1205,26 @@ class App:
         self.btn_mic = ttk.Checkbutton(row1, variable=self.v_mic, style="Toolbutton", command=self._mic_toggled)
         self.btn_mic.pack(side="left")
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
-                 "gui_overlay_btn").pack(side="left", padx=(6, 0))
+                 "gui_overlay_s").pack(side="left", padx=(3, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
-        self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk").pack(
-            side="left", padx=(10, 0))
+        self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(
+            side="left", padx=(5, 0))
         # #1020: "Freeze subtitles" only freezes this list and the floating bar (translation keeps running)
         self.action_row = row2 = ttk.Frame(b)
         self.bar_wide = None
         self._bar_layout(0)  # narrow until the first <Configure> says otherwise
         b.bind("<Configure>", lambda e: self._bar_layout(e.width), add="+")
-        self.btn_adjust = self._tx(ttk.Button(row2, command=self.toggle_adjust, style="Toolbutton"), "gui_adjust")
-        self.btn_adjust.pack(side="left")
+        self.btn_adjust = self.btn_settings  # #1603: the gear in the top toolbar (built in _build_toolbar)
         self.dot = tk.Canvas(row2, width=12, height=12, highlightthickness=0, bd=0)
         self.dot_oval = self.dot.create_oval(1, 1, 11, 11, outline="")
-        self.dot.pack(side="left", padx=8)
+        self.dot.pack(side="left", padx=4)
         self.set_dot("idle")
         self._dot_tip(self.dot)
-        self.btn_pause = ttk.Button(row2, text=t("gui_pause"), command=self.toggle_pause, style="Toolbutton")
+        self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause, style="Toolbutton")
         self.btn_pause.pack(side="left")
         self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
-                                              style="Start.Accent.TButton", width=14)
+                                              style="Start.Accent.TButton", width=8)
         self.btn.pack(side="right")
         self._mic_label()
         self._sync_quick()
@@ -1258,10 +1248,12 @@ class App:
             self.source_row.grid(row=1, column=0, columnspan=1, sticky="w", pady=(4, 0))
             self.action_row.grid(row=1, column=1, columnspan=1, sticky="e", pady=(4, 0))
         else:
+            # #1605: compact labels keep the toggles and Freeze / Start on ONE row inside the 560 px cap
             self.scene_row.grid(row=0, column=0, columnspan=2, sticky="we", pady=(0, 3), padx=0)
-            self.toggle_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=0)
+            self.toggle_row.grid(row=1, column=0, sticky="w", pady=0)
             self.source_row.grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
-            self.action_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(4, 0))
+            self.action_row.grid(row=1, column=1, sticky="e", pady=0)
+        self.scene_row.grid_remove()  # #1603: the situation dropdown is in the toolbar
         self._source_sync()  # #1544: the grid() above would show the row again in the meeting scene
 
     @staticmethod
@@ -1368,7 +1360,7 @@ class App:
         messagebox.showwarning(t("gui_spk"), msg, parent=self.root)
 
     def _mic_label(self):
-        self.btn_mic.configure(text=t("gui_mic_on" if self.v_mic.get() else "gui_mic_off"))
+        self.btn_mic.configure(text=t("gui_mic_on_s" if self.v_mic.get() else "gui_mic_off_s"))
 
     @property
     def mic_off(self) -> bool:
@@ -1413,6 +1405,98 @@ class App:
     def _bar_start(self):
         """#1001: the bar's Start = the one Start (listen + speak together); Stop while running."""
         self.toggle(None)
+
+    # -- #1603 one top toolbar ---------------------------------------------------------------
+    BADGE_MAX = 7  # characters of a non-ready status shown in the badge (fixed width; the full text is on the status line)
+
+    def _build_toolbar(self):
+        """#1603: one row: language pair + swap, situation (scene_combo, packed in _build_bar), offline badge, A- / A+,
+        settings. Replaces the two full-width dropdowns, the A-/A+ row and the "Ready. Fully offline." line."""
+        tb = self.toolbar
+        ttk.Style(self.root).configure("Pair.TButton", font="TkSmallCaptionFont")  # small: Linux / Russian run wide
+        self.btn_pair = ttk.Button(tb, style="Pair.TButton", width=12, command=self._pair_menu)
+        self.btn_pair.pack(side="left")
+        self.btn_swap = ttk.Button(tb, text="\u21c4", width=2, name="swap_languages", command=self.swap_languages)
+        self.btn_swap.pack(side="left", padx=(2, 0))
+        self.btn_swap.accessible_name = "swap languages"
+        self.btn_settings = ttk.Button(tb, text="\u2699", width=2, command=self.toggle_adjust)
+        self.btn_settings.pack(side="right")
+        self.btn_font_up = ttk.Button(tb, text="A+", width=2, style="Toolbutton", command=lambda: self.bump_log_font(2))
+        self.btn_font_up.pack(side="right", padx=(0, 4))
+        self.btn_font_down = ttk.Button(tb, text="A-", width=2, style="Toolbutton", command=lambda: self.bump_log_font(-2))
+        self.btn_font_down.pack(side="right", padx=(0, 2))
+        self.lbl_offline = ttk.Label(tb, text="", font="TkSmallCaptionFont", width=9, anchor="w")
+        self.lbl_offline.pack(side="right", padx=(0, 8))
+        self._tok(self.lbl_offline, "muted")
+        for v in (self.v_lang, self.v_target):
+            v.trace_add("write", lambda *_: self._toolbar_refresh())
+        self._toolbar_refresh()
+
+    def _pair_text(self) -> str:
+        from .. import langs
+
+        ui = core._ui()
+        return f"{langs.plain_label(lang_from_label(self.v_lang.get()), ui)} \u2192 {choice_label('target', self.v_target.get(), ui)}"
+
+    def _toolbar_refresh(self):
+        """Pair button text, offline badge text, and the status line (only shown when it says something else)."""
+        if getattr(self, "btn_pair", None) is None:
+            return
+        self.btn_pair.configure(text=self._pair_text())
+        text = self.v_status.get()
+        ready = text == t("gui_ready") or not text
+        first = (text.splitlines() or [""])[0]
+        if ready:
+            badge = t("gui_offline_badge")
+        else:
+            badge = first if len(first) <= self.BADGE_MAX else first[: self.BADGE_MAX - 1] + "\u2026"
+        self.lbl_offline.configure(text="\u25cf " + badge)
+        lbl = getattr(self, "lbl_status", None)
+        if lbl is not None:
+            if ready and lbl.winfo_manager():
+                lbl.pack_forget()
+            elif not ready and not lbl.winfo_manager():
+                lbl.pack(anchor="w", fill="x")
+
+    def _notice_refresh(self):
+        """#1662: the notice line takes a row only while it has text (an empty label kept a dark ~20 px band)."""
+        lbl = getattr(self, "lbl_notice", None)
+        if lbl is None:
+            return
+        if self.v_notice.get().strip():
+            if not lbl.winfo_manager():
+                lbl.pack(anchor="w", fill="x")
+        elif lbl.winfo_manager():
+            lbl.pack_forget()
+
+    def _pair_menu(self):
+        """The pair button opens the existing choices: the other side's language and my language."""
+        m = tk.Menu(self.root, tearoff=0)
+        for title_key, var, vals, conv in (("gui_quick_other", self.v_lang, lang_labels(), None),
+                                           ("gui_quick_target", self.v_target, TARGETS, "target")):
+            sub = tk.Menu(m, tearoff=0)
+            for v in vals:
+                shown = choice_label(conv, v) if conv else v
+                sub.add_radiobutton(label=shown, command=lambda var=var, v=v: var.set(v))
+            m.add_cascade(label=t(title_key), menu=sub)
+        self.pair_menu = m
+        x, y = self.btn_pair.winfo_rootx(), self.btn_pair.winfo_rooty() + self.btn_pair.winfo_height()
+        try:
+            m.tk_popup(x, y)
+        finally:
+            m.grab_release()
+
+    def swap_languages(self):
+        """Swap the other side's language with mine. No-op when either is not a language of the other list
+        (Auto, or a target that is not a source language)."""
+        src = lang_from_label(self.v_lang.get())
+        tgt = self.v_target.get()
+        new_src = tgt.split("-")[0]
+        new_tgt = {"zh": "zh-tw"}.get(src, src)
+        if src == "auto" or new_tgt not in TARGETS or lang_label(new_src) not in lang_labels():
+            return
+        self.v_lang.set(lang_label(new_src))
+        self.v_target.set(new_tgt)
 
     def _pair_changed(self):
         """#981: same language on both sides is said at once, under the pickers, before Start is pressed."""
@@ -1561,14 +1645,14 @@ class App:
         self.body = body = ttk.Frame(p, padding=(12, 3, 12, 3))
         body.pack(side="left", fill="both", expand=True)
         short = p.winfo_screenheight() < SHORT_SCREEN_PX  # #886: a 768 px screen has no height to spare
-        self.settings_title = self._tx(ttk.Label(body, font=(FONT_FAMILY, 14, "bold")), "gui_menu_settings")
+        self.settings_title = self._tx(ttk.Label(body, font=tfont("heading", True)), "gui_menu_settings")
         self.settings_title.pack(anchor="w", pady=(0, 2 if short else 4))
         card = "Card.TFrame" if sv_ttk is not None else "TFrame"
 
         def group(title_key):  # #1028: one plain-language group = a bold heading + its choices
             g = ttk.Frame(body, style=card, padding=(10, 3 if short else 5, 10, 3 if short else 5))
             g.pack(fill="x", pady=(0, 3))
-            self._tx(ttk.Label(g, font=(FONT_FAMILY, 11, "bold")), title_key).pack(anchor="w")
+            self._tx(ttk.Label(g, font=tfont("body", True)), title_key).pack(anchor="w")
             return g
 
         g_speed, g_appear = group("gui_set_speed"), group("gui_set_appear")
@@ -1670,6 +1754,7 @@ class App:
             w.grid(in_=act, row=0, column=col, columnspan=1, sticky="e", padx=(10, 0), pady=0)
         self.v_auto_upd = tk.BooleanVar(value=autoupdate.auto_on(userdirs.read_config()))
         self.v_status = tk.StringVar(value=t("gui_ready"))
+        self.v_status.trace_add("write", lambda *_: self._toolbar_refresh())
         self.status_box = sb = ttk.Frame(self.status_holder, padding=(0, 2, 0, 0))  # status/notice: main window (#1028)
         self.lbl_status = ttk.Label(sb, textvariable=self.v_status, wraplength=MAIN_W - 40, justify="left")
         self.lbl_status.pack(anchor="w", fill="x")
@@ -1677,16 +1762,17 @@ class App:
         self.dl_bar = ttk.Progressbar(sb, variable=self.v_dl_pct, maximum=100, length=300)
         self.start_dl = None
         self.v_notice = tk.StringVar(value="")
-        self.lbl_notice = ttk.Label(sb, textvariable=self.v_notice, wraplength=MAIN_W - 40, foreground="#b35a00",
+        self.lbl_notice = ttk.Label(sb, textvariable=self.v_notice, wraplength=MAIN_W - 40, foreground=WARNING_LIGHT,
                                     justify="left")
         self._tok(self.lbl_notice, "warn")
         self._tok(self.lbl_status, "muted")
-        self.lbl_notice.pack(anchor="w", fill="x")
+        self.v_notice.trace_add("write", lambda *_: self._notice_refresh())  # #1662: no empty band when there is no notice
+        self._notice_refresh()
         sb.bind("<Configure>", lambda e: self._wrap_status(e.width), add="+")  # #1241
         self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
-            self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
+            self.v_dark = tk.BooleanVar(value=resolve_theme(self.settings.get("theme")) != "light")
         self._build_log(self.chat_holder)
 
     # -- #698 auto-update -------------------------------------------------------------------------
@@ -1737,7 +1823,9 @@ class App:
                 st = self._gpu_detect()
                 self.q.put(("gpu_state", st))
                 if st == gpu_offer.UNAVAILABLE:  # #1775: no NVIDIA pack to offer -> maybe the Vulkan pack (AMD / Intel)
-                    self.q.put(("gpu_vk_state", self._vk_detect()))
+                    from . import vulkan_offer
+
+                    self.q.put(("gpu_vk_state", vulkan_offer.gate_for_nvidia(self._vk_detect(), nvidia_seen())))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1785,7 +1873,7 @@ class App:
     def _gpu_offer_show(self):
         from . import gpu_offer
 
-        self._gpu_show(t("gpu_offer_banner", size=gpu_offer.GPU_PACK_SIZE), buttons=True)
+        self._gpu_show(core.ui_text("gpu_offer_banner", size=gpu_offer.GPU_PACK_SIZE), buttons=True)
 
     def _gpu_never(self):
         from . import gpu_offer, vulkan_offer
@@ -1799,11 +1887,12 @@ class App:
         from . import vulkan_offer
         from .core import run_pack_download
 
-        if self.gpu_busy or vulkan_offer.INSTALLING.is_set():
+        bg = getattr(self, "bg_dl", None)
+        if vulkan_offer.install_blocked(self.gpu_busy, bool(self.downloading), bool(bg is not None and bg.active)):
             return
         vulkan_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
-        self._gpu_show(t("vk_offer_running"), buttons=False, busy=True)
+        self._gpu_show(core.ui_text("vk_offer_running"), buttons=False, busy=True)
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731
         try:
             threading.Thread(target=vulkan_offer.run_install, args=(run_pack_download, put, vulkan_offer.install_cmds()),
@@ -1811,7 +1900,7 @@ class App:
         except RuntimeError:
             vulkan_offer.INSTALLING.clear()
             self.gpu_busy = False
-            self._gpu_show(t("vk_offer_banner"), buttons=True)
+            self._gpu_show(core.ui_text("vk_offer_banner"), buttons=True)
 
     def _gpu_auto_cancel(self):
         """#1736: Cancel on the background-download line: stop the child, remember it, show the one-click offer."""
@@ -1832,18 +1921,18 @@ class App:
         failed_at = getattr(self, "gpu_runtime_failed_mtime", None)  # pack replaced since the failure -> trust it
         if (pack is not None and (not getattr(self, "gpu_runtime_failed", False) or failed_at != _mtime(pack))
                 and gpu_offer._pack_usable(pack)):  # installed meanwhile (e.g. Add-ons); not after a CUDA load failure
-            self._gpu_show(t("gpu_offer_ok"), buttons=False)
+            self._gpu_show(core.ui_text("gpu_offer_ok"), buttons=False)
             return
         gpu_offer.INSTALLING.set()
         self.gpu_busy, self.gpu_lines = True, []
         put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
         if auto:  # #1736: no click; one line with size + progress + Cancel, listening keeps running on the CPU
             self.gpu_auto = gpu_offer.AutoInstall(run_pack_download, self.settings, lambda: save_settings(self.settings))
-            self._gpu_show(t("gpu_auto_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True, cancel=True)
+            self._gpu_show(core.ui_text("gpu_auto_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True, cancel=True)
             target = self.gpu_auto.run_install
         else:
             self.gpu_auto = None
-            self._gpu_show(t("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
+            self._gpu_show(core.ui_text("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
             target = lambda put, **kw: gpu_offer.run_install(run_pack_download, put, **kw)  # noqa: E731
         try:
             threading.Thread(target=target, args=(put,), kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
@@ -1871,7 +1960,7 @@ class App:
             if not self.gpu_busy and vulkan_offer.should_offer(ev[1], False, bool(self.settings.get(vulkan_offer.DISMISS_KEY)),
                                                                gpu_offer.offline()):
                 self.gpu_vk = True
-                self._gpu_show(t("vk_offer_banner"), buttons=True)
+                self._gpu_show(core.ui_text("vk_offer_banner"), buttons=True)
         elif kind == "gpu_pack_line":
             self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
         elif kind == "gpu_pack_done":
@@ -1880,13 +1969,16 @@ class App:
             if auto is not None and auto.outcome(ev[2], self.gpu_lines) == "cancelled":  # #1736: stays on CPU, offer remains
                 self._gpu_offer_show()
             elif getattr(self, "gpu_vk", False):  # #1775: the Vulkan pack has its own wording (no CUDA restart notice)
-                self._gpu_show(t("vk_offer_ok") if ev[2] == 0 else t("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)),
-                               buttons=False)
+                from . import vulkan_offer
+
+                cpu = vulkan_offer.cpu_backends(self.gpu_lines) if ev[2] == 0 else []
+                self._gpu_show(core.ui_text("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)) if ev[2] != 0
+                               else core.ui_text("vk_offer_ok_cpu", cpu=" + ".join(cpu)) if cpu else core.ui_text("vk_offer_ok"), buttons=False)
             elif gpu_offer.install_ok(ev[2], self.gpu_lines):
                 self.gpu_runtime_failed = False  # a fresh pack replaced the one that failed to load
-                self._gpu_show(t("gpu_offer_ok"), buttons=False)
+                self._gpu_show(core.ui_text("gpu_offer_ok"), buttons=False)
             else:
-                self._gpu_show(t("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
+                self._gpu_show(core.ui_text("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
 
     def _upd_show(self, key: str, buttons: tuple[str, str] | None = None, **kw):
         self.upd_msg = (key, kw, buttons)
@@ -1962,7 +2054,7 @@ class App:
         if self.upd_msg and self.upd_msg[0] == "gui_upd_fail_check":
             import webbrowser
 
-            webbrowser.open(autoupdate.DOWNLOAD_URL)
+            webbrowser.open(autoupdate.recovery_url())
             self._update_later()
         elif self.upd_exe:
             self._apply_update()
@@ -2069,6 +2161,7 @@ class App:
         self.v_notes_float = tk.BooleanVar(master=self.root, value=notes_float_on(self.settings))  # #1705
         sm.add_checkbutton(label=t("gui_topics_float"), variable=self.v_notes_float, command=self._notes_float_toggled)
         sm.configure(postcommand=self._sync_topics_var)  # #1379: the check mark follows the GPU default
+        sm.add_checkbutton(label=t("gui_tech_labels"), variable=self.v_tech, command=self._tech_toggled)  # #1806: in the menu: a panel row made Advanced too tall (#886)
         mb.add_cascade(label=t("gui_menu_settings"), menu=sm)
         hm = tk.Menu(mb, tearoff=0)
         hm.add_command(label=t("gui_menu_tour"), command=self.show_tour)
@@ -2220,6 +2313,8 @@ class App:
         self._pair_changed()
         for w in self.frm.grid_slaves(row=0):
             w.grid_remove()
+        for w in q.grid_slaves(row=0) + q.grid_slaves(row=1):  # #1603: the toolbar's pair button replaces these
+            w.grid_remove()
         # #314 "How to start (?)" is in the menu bar's Help menu (#738) and in the subtitle bar's right-click menu
         # #1001 (owner 2026-11-15): one Start runs listen + speak together; there is no listen / speak choice
 
@@ -2279,7 +2374,7 @@ class App:
                 except Exception:  # noqa: BLE001
                     self._gpu_ok = False
             on_gpu = self._gpu_ok and self.settings.get("gpu_use") != "off"
-            mode = t("gui_mode_gpu" if on_gpu else "gui_mode_cpu")
+            mode = core.ui_text("gui_mode_gpu" if on_gpu else "gui_mode_cpu")
             gp = _nvml_gpu_percent() if self._gpu_ok else None
             if pct is not None:
                 txt = mode + "  " + t("gui_cpu", p=pct) + ("" if gp is None else "  GPU %d%%" % gp)
@@ -2299,8 +2394,6 @@ class App:
         bar.grid(row=3, column=0, columnspan=6, sticky="w")  # narrow window: its own row (wide: _font_place moves it up)
         fb = ttk.Frame(self.top_frame)
         self.font_box = fb
-        ttk.Button(fb, text="A+", width=3, style="Toolbutton", command=lambda: self.bump_log_font(2)).pack(side="right")
-        ttk.Button(fb, text="A-", width=3, style="Toolbutton", command=lambda: self.bump_log_font(-2)).pack(side="right", padx=(0, 2))
         try:  # every font the system has; "" = the program's default
             fams = sorted({f for f in tkfont.families(self.root) if not f.startswith("@")}, key=str.lower)
         except Exception:  # noqa: BLE001
@@ -2389,10 +2482,10 @@ class App:
     def _chat_tags(self, n: int | None = None):
         """Bubble look per theme (#1028): background colour on the text = the bubble; margins push it to a side."""
         n = n or self.settings["log_font_size"]
-        pal = BUBBLE["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = BUBBLE[resolve_theme(self.settings.get("theme"))]
         tx = self.log_text
         tx.configure(bg=pal["bg"])
-        small = max(8, n * 2 // 3)
+        small = small_size(n)
         fam = self.settings.get("font_family") or FONT_FAMILY  # user-picked system font, else the default
         # #1052: a bubble is at most ~75 % of the window and hugs its text: the background sits on the text only
         # (the line break is outside the bubble tag), margins push it to its side
@@ -2411,7 +2504,7 @@ class App:
             tx.tag_configure(f"{side}_draft", background=bg, foreground=pal["sub"], font=(fam, n), spacing1=2,
                              spacing3=2, **base)
             tx.tag_configure(f"{side}_src", foreground=pal["sub"], font=(fam, small), **base)
-        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, small + 2), justify="center", spacing1=40)
+        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, bump(small, 2)), justify="center", spacing1=40)
         lbg, lfg = pal["latest"]  # #1644: laid over other_final on the newest line, so it must win
         tx.tag_configure("other_latest", background=lbg, foreground=lfg)
         tx.tag_raise("other_latest")
@@ -2425,9 +2518,9 @@ class App:
                 return
             n = n or self.settings["log_font_size"]
             fam = fam or self.settings.get("font_family") or FONT_FAMILY
-            small = small or max(8, n * 2 // 3)
+            small = small or small_size(n)
             tt.configure(font=(fam, n))
-            tt.tag_configure("title", font=(fam, n + 1, "bold"))
+            tt.tag_configure("title", font=(fam, bump(n), "bold"))
             tt.tag_configure("when", font=(fam, small))
         except Exception:  # noqa: BLE001 - cosmetic
             pass
@@ -2878,7 +2971,7 @@ class App:
             inner = [c for c in holder.winfo_children() if isinstance(c, tk.Text) or isinstance(c, ttk.Scrollbar)]
             w = self.topics_win = (_FloatPane(self) if notes_float_on(self.settings)
                                    else _DockPane(self, holder, before=inner[0] if inner else None))
-            ttk.Label(w, text=t("gui_topics_title"), font=("TkDefaultFont", 11, "bold")).pack(side="top", anchor="w", padx=8, pady=(4, 0))
+            ttk.Label(w, text=t("gui_topics_title"), font=tfont("body", True)).pack(side="top", anchor="w", padx=8, pady=(4, 0))
             bar = ttk.Frame(w)
             bar.pack(side="top", fill="x", padx=8, pady=6)
             self._sync_topics_var()
@@ -2997,7 +3090,7 @@ class App:
 
     def _notes_tags(self):
         """#1644: the notes text follows the app theme; time range muted, bullet marks in the notes accent."""
-        pal = NOTES["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = NOTES[resolve_theme(self.settings.get("theme"))]
         tx = self.topics_text
         tx.configure(bg=pal["bg"], fg=pal["fg"], insertbackground=pal["fg"])
         tx.tag_configure("title", foreground=pal["title"])
@@ -3081,6 +3174,13 @@ class App:
             self.v_save_path.set(p)
             self.v_save.set(True)
 
+    def _tech_toggled(self):
+        """#1806: the "Show technical details" switch: only the label texts change, never a stored value."""
+        self.settings["tech_labels"] = self.v_tech.get()
+        core.set_tech_labels(setting=self.v_tech.get())
+        self.relabel()  # #1807: labels and status lines follow the switch at once
+        self._relabel_combos()
+
     def _src_toggled(self):
         self.settings["show_src"] = self.var_show_src.get()
         self.overlay.var_src.set(self.var_show_src.get())
@@ -3136,7 +3236,7 @@ class App:
         s.update(lang=lang_from_label(self.v_lang.get()), target=self.v_target.get(), engine=engine_from_label(self.v_engine.get()), quality=self.v_quality.get(),
                  model=model_from_label(self.v_model.get()), preset=self.v_preset.get(), glossary=self.v_gloss.get().strip(), save=self.v_save.get(),
                  save_path=self.v_save_path.get().strip(), show_src=self.var_show_src.get(),
-                 live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
+                 tech_labels=self.v_tech.get(), live_draft=self.v_live.get(), source=self.v_source.get(), floating_bar=self.v_bar.get(),
                  listen_device="" if self.v_listen_dev.get() == self.listen_default else self.v_listen_dev.get(),
                  mic_device="" if self.v_mic_dev.get() == self.mic_default else self.v_mic_dev.get(),
                  gpu_use=self.v_gpu_use.get(),
@@ -3322,7 +3422,9 @@ class App:
 
         try:
             mdir = models_dir()
-            if self.downloading:  # a foreground setup child is running: do not start a second manifest writer
+            from . import vulkan_offer
+
+            if self.downloading or vulkan_offer.defer_bg_defaults():  # a foreground / Vulkan setup child runs: no second manifest writer
                 self.root.after(5000, self._bg_defaults_start)
                 return
             if not hasattr(self, "bg_dl"):
@@ -3501,7 +3603,7 @@ class App:
         """Freeze/unfreeze the subtitle display (translation keeps running; resume shows the latest lines)."""
         self.state.paused = paused
         self.overlay.var_pause.set(paused)
-        self.btn_pause.configure(text=t("gui_resume" if paused else "gui_pause"))
+        self.btn_pause.configure(text=t("gui_resume_s" if paused else "gui_pause_s"))
         if not paused and self.overlay.visible:
             self.overlay.render(self.state)
         if not paused:

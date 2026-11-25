@@ -23,7 +23,7 @@ def _apt_tk_package() -> str:
     return f"python{sys.version_info[0]}.{sys.version_info[1]}-tk"
 
 
-def main() -> int:
+def main(tech_labels: bool = False) -> int:
     try:
         import tkinter  # noqa: F401 - checked before the GUI module imports it at top level
     except ImportError:
@@ -31,7 +31,10 @@ def main() -> int:
         return 1
 
     from .. import offline
+    from . import core
     from .app import launch
+
+    core.set_tech_labels(flag=tech_labels or "--tech-labels" in sys.argv[1:])  # #1806
 
     offline.set_mode("gui")
 

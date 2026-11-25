@@ -4,6 +4,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// #1511: emulator debug build with x86_64 native libs (opt-in; release APK/AAB stay arm64-v8a only).
+val tlwuX86 = System.getenv("TLWU_X86_64") == "1"
+
 android {
     namespace = "com.tinglongwu.mobile"
     compileSdk = flutter.compileSdkVersion
@@ -30,14 +33,17 @@ android {
         // App label; the debug build overrides it so both apps are told apart on the launcher (#1600).
         manifestPlaceholders["appLabel"] = "聽龍"
         // ROG Phone 6 is arm64 only; drop sherpa's armv7/x86 libs.
+        // #1511: TLWU_X86_64=1 also keeps x86_64 for an emulator debug build (needs the x86_64 AAR slice,
+        // tool/build_llama_android.sh with TLWU_LLAMA_ABIS="arm64-v8a x86_64"). Release never ships it (below).
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += if (tlwuX86) listOf("arm64-v8a", "x86_64") else listOf("arm64-v8a")
         }
     }
 
     packaging {
         jniLibs {
-            excludes += listOf("lib/armeabi-v7a/**", "lib/x86/**", "lib/x86_64/**")
+            excludes += listOf("lib/armeabi-v7a/**", "lib/x86/**")
+            if (!tlwuX86) excludes += "lib/x86_64/**"
         }
     }
 
@@ -85,6 +91,14 @@ android {
             // Room/WorkManager keep rules for R8 (#1023).
             proguardFiles("proguard-rules.pro")
         }
+    }
+}
+
+// #1511: the release variant drops lib/x86_64 even when TLWU_X86_64=1 is set (CI checks the release APK/AAB
+// with scripts/check_apk_abis.py).
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.add("lib/x86_64/**")
     }
 }
 

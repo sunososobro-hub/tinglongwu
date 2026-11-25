@@ -47,3 +47,27 @@ def test_subtitle_layout_line_order_speaker_source_translation(app_1605):
     assert "Other side" in txt  # the side heading comes first, then the small source, then the large translation
     assert txt.index("Other side") < txt.index("hello there") < txt.index("你好")
     assert a.log_text.tag_ranges("other_src") and a.log_text.tag_ranges("other_final")
+
+
+def test_subtitle_layout_bottom_controls_share_one_row(app_1605):
+    from tinglongwu import i18n
+    from tinglongwu.gui.core import SCENES
+
+    a = app_1605
+    a.scene_combo.current(SCENES.index("meeting"))  # two-way: the mic toggle is shown too (widest case)
+    a.scene_combo.event_generate("<<ComboboxSelected>>")
+    for ui in ("English", "Русский", "繁體中文", "日本語"):
+        a.v_ui_lang.set(ui)
+        a.switch_lang()
+        a.root.update()
+        assert a.toggle_row.grid_info()["row"] == a.action_row.grid_info()["row"], ui
+        assert a.bar.winfo_reqwidth() <= 560, (ui, a.bar.winfo_reqwidth())
+    a.v_ui_lang.set("English")
+    a.switch_lang()
+    assert a.btn.cget("text") == i18n.t("gui_start")
+    from tinglongwu.gui.core import BOTH_MODE
+
+    a.listening, a.quick_mode = True, BOTH_MODE  # while running the same button says Stop
+    a._sync_quick()
+    assert a.btn.cget("text") == i18n.t("gui_stop")
+    a.listening = False

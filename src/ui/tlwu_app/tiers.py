@@ -14,6 +14,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import wording
+
 MB = 1024 * 1024
 WHISPER_PREFERENCE = ("large-v3-turbo", "large-v3", "medium", "small", "base", "tiny")
 
@@ -30,6 +32,11 @@ class Tier:
     mt: tuple[str, ...]  # extra downloader flags for the translation model: ("--hymt",) | ()
     label_zh: str
     parts: tuple[str, ...]  # keys of SIZES
+
+    @property
+    def label(self) -> str:
+        """#1809: plain by default, `label_zh` (the technical text) with "Show technical details"."""
+        return wording.text(f"tier.{self.name}")
 
     @property
     def total_bytes(self) -> int:
@@ -126,10 +133,7 @@ def driver_hint(gpu: Gpu, platform: str | None = None) -> str:
     from tinglongwu.device import DRIVER_URL, min_driver
 
     need = ".".join(map(str, min_driver(platform or sys.platform)))
-    return (f"偵測到顯示卡 {gpu.name}，但 NVIDIA 驅動程式 {gpu.driver} 太舊（CUDA 12 需要 {need} 以上），"
-            f"先使用 CPU 模式。更新驅動程式後重新設定即可使用 GPU：{DRIVER_URL}\n"
-            f"NVIDIA driver {gpu.driver} is too old for CUDA 12 (needs {need}+): CPU mode for now. "
-            f"Update the driver to use the GPU.")
+    return wording.text("driver.old", name=gpu.name, driver=gpu.driver, need=need, url=DRIVER_URL)
 
 
 def vulkan_names(run=None, which=None) -> list[str]:
@@ -153,14 +157,14 @@ def detection_text(raw: Gpu | None, force_cpu: bool = False, platform: str | Non
                    vulkan: list[str] | None = None) -> str:
     """First-run setup window line about the GPU (`raw` = probe_gpu(); `vulkan` = Vulkan GPU names, #1772)."""
     if force_cpu:
-        return "已指定 CPU 模式。"
+        return wording.text("detect.force_cpu")
     if raw is not None and driver_too_old(raw, platform):
         return driver_hint(raw, platform)
     if raw is not None:
-        return f"偵測到顯示卡：{raw.name}（{raw.total_mb / 1024:.1f} GB 顯存）"
+        return wording.text("detect.gpu", name=raw.name, gb=f"{raw.total_mb / 1024:.1f}")
     if vulkan:
-        return f"偵測到 Vulkan 顯示卡：{', '.join(vulkan)}（沒有 NVIDIA 顯示卡；Vulkan 加速包可在設定 > 附加元件安裝），先使用 CPU 模式。"
-    return "沒有偵測到 NVIDIA 顯示卡，將使用 CPU 模式（速度較慢，但一樣能用）。"
+        return wording.text("detect.vulkan", names=", ".join(vulkan))
+    return wording.text("detect.none")
 
 
 def choose_tier(gpu: Gpu | None, force_cpu: bool = False) -> Tier:

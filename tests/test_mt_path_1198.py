@@ -46,6 +46,7 @@ def test_cpu_load_reports_cpu_and_its_threads(monkeypatch, tmp_path, no_cpu_chec
 
 
 def test_vulkan_load_reports_vulkan(monkeypatch, tmp_path, no_cpu_check):
+    monkeypatch.setattr("tinglongwu.gui.core._TECH", {"flag": False, "setting": True})  # #1807: technical view names the path
     pack = tmp_path / "vulkan-pack"
     pack.mkdir()
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama_module(lambda **kw: ("gpu-model", kw)))
@@ -102,6 +103,7 @@ def test_other_engines_have_no_path():
     ("ja", "Hy-MT2 は CPU、4 スレッド", "Hy-MT2 は GPU（Vulkan）"),
 ])
 def test_status_line_names_the_path(monkeypatch, lang, cpu, gpu):
+    monkeypatch.setattr("tinglongwu.gui.core._TECH", {"flag": False, "setting": True})  # #1807: technical view names the path
     monkeypatch.setenv("TLWU_UI_LANG", lang)
     line = core.cpu_mode_line("cpu", 2920.4, path=("cpu", 4))
     assert "2920" in line and cpu in line

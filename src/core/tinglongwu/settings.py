@@ -14,7 +14,7 @@ DEFAULTS = {
     "lang": "auto", "target": "zh-tw", "engine": "auto", "model": "small", "glossary": "",
     "save": False, "save_path": "", "show_src": False, "font_size": 28, "live_draft": True,
     "x": None, "y": None, "panel_w": None, "panel_h": None, "panel_x": None, "panel_y": None,  # #939
-    "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "dark",
+    "source": "system", "preset": "meeting", "overlay_lines": 3, "theme": "auto",
     "floating_bar": False, "log_font_size": 14, "font_family": "", "quality": "auto",
     "advanced_open": False,  # #399: the engine dropdown lives under a collapsed Advanced section
     "listen_device": "",  # #1070: "" = listen to every output (not our cable); else one output name (Advanced)
@@ -35,6 +35,7 @@ DEFAULTS = {
     "topics_model": "",  # #611: local GGUF for --topics; "" = the downloaded #1378 default (TOPICS_KEY), if installed
     "gpu_use": "auto",  # #1531: Adjust > Advanced "Use GPU": auto (GPU when it works, else CPU) / off (always CPU)
     "gpu_fallback": "",  # #1531: reason the first-start self-test fell back to CPU ("" = none); written by selftest.apply_to_gui
+    "tech_labels": False,  # #1806: "Show technical details": off = plain wording, on = the technical names (also --tech-labels)
     "send_mode": "auto",  # #834/#1052: how a speak line is sent (auto = straight away, confirm = show me first); owner default: auto
 }
 SEND_MODES = ("confirm", "countdown", "auto")  # same choices as reverse.sendmode.MODES (the CLI keeps all three)
