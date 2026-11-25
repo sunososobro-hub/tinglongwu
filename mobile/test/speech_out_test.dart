@@ -25,7 +25,8 @@ void main() {
     });
 
     test('a VITS voice reports its engine and files', () {
-      final v = TtsVoicePaths.find('en', resolve: (r) => '/m/$r', exists: (_) => true)!;
+      final onDisk = {for (final r in TtsVoiceLayout.rel('en')) '/m/$r'};
+      final v = TtsVoicePaths.find('en', resolve: (r) => '/m/$r', exists: onDisk.contains)!;
       expect(v.engine, TtsVoiceLayout.vits);
       expect(v.files.keys, TtsVoiceLayout.files());
     });
