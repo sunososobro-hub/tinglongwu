@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="bash CI helper 
 
 def _run(*args, tmp_path):
     return subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, timeout=60,
-                          env={"PATH": "/usr/bin:/bin", "RUNNER_TEMP": str(tmp_path)})
+                          env={"PATH": "/usr/bin:/bin", "CI_PARALLEL_TMP": str(tmp_path)})
 
 
 def test_all_pass_exits_zero_and_prefixes_output(tmp_path):
@@ -47,3 +47,11 @@ def test_each_command_gets_its_own_tmpdir(tmp_path):
 
 def test_bad_usage_exits_2(tmp_path):
     assert _run("only-a-label", tmp_path=tmp_path).returncode == 2
+
+
+def test_default_tmpdir_is_short_enough_for_unix_sockets():
+    """PR #1914 run 45564049200: TMPDIR under $RUNNER_TEMP made test_netguard's AF_UNIX path > 108 bytes."""
+    r = subprocess.run(["bash", str(SCRIPT), "offline", 'echo "$TMPDIR"'], capture_output=True, text=True, timeout=60,
+                       env={"PATH": "/usr/bin:/bin", "RUNNER_TEMP": "/home/runner/work/_temp"})
+    d = [ln.split(" ", 1)[1] for ln in r.stdout.splitlines() if ln.startswith("[offline] ")][0]
+    assert d.startswith("/tmp/") and len(d) <= 30, d
