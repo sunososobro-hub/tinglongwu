@@ -1,7 +1,8 @@
 // #1832 (part 1b of #1617): the phone's Dart text logic against the shared golden cases in
 // shared/golden/{clean,prompt}.jsonl. Cases tagged `known_diff: phone` (with an issue number) are
 // ones where the phone is known to differ from desktop; they are counted, not asserted. Every other
-// case must match exactly. No file under mobile/lib changes here: fixing a difference is a later part.
+// case must match exactly. #1896: the prompt cases carry no known_diff any more (glossary, context, yue
+// and hi come from shared/mt_spec.json).
 import 'dart:convert';
 import 'dart:io';
 
@@ -40,12 +41,16 @@ void main() {
     }
   });
 
-  group('prompt (PromptBuilder.userMessage; the phone has no glossary or context)', () {
+  group('prompt (PromptBuilder.userMessage)', () {
     for (var i = 0; i < prompt.length; i++) {
       final c = prompt[i];
       if (_known(c)) continue;
       test('#$i ${c['src']}->${c['tgt']} ${jsonEncode(c['text'])}', () {
-        final got = PromptBuilder.userMessage(c['text'] as String, src: c['src'] as String, tgt: c['tgt'] as String);
+        final terms = c['terms'] == null
+            ? null
+            : [for (final t in c['terms'] as List) ((t as List)[0] as String, t[1] as String)];
+        final got = PromptBuilder.userMessage(c['text'] as String,
+            src: c['src'] as String, tgt: c['tgt'] as String, terms: terms, context: c['context'] as String?);
         expect(got, c['expected']);
       });
     }
@@ -69,6 +74,7 @@ void main() {
     final nPrompt = prompt.where(_known).length;
     // ignore: avoid_print
     print('known_diff: clean=$nClean prompt=$nPrompt');
-    expect(nClean + nPrompt, greaterThan(0));
+    expect(nPrompt, 0); // #1896: every prompt case matches on both runners
+    expect(nClean, greaterThanOrEqualTo(0));
   });
 }
