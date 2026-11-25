@@ -116,3 +116,12 @@ def test_one_push_of_three_commits_counts_once():
     assert len(cl.group_pushes(touch, lambda x: True)) == 3
     assert [len(g) for g in cl.group_pushes(touch, lambda x: x["sha"] == "b")] == [2, 1]
     assert cl.group_pushes([], lambda x: True) == []
+
+
+def test_two_pushes_first_tip_without_completed_test(monkeypatch):
+    def c(sha):
+        return {"sha": sha, "commit": {"message": "fix", "committer": {"date": "2026-11-24T09:00:00Z"}}}
+    monkeypatch.setattr(cl, "_gh_list", lambda path, key=None, max_pages=100:
+                        [{"name": "gate", "status": "in_progress"}] if "commits/a/" in path else [])
+    assert cl.has_any_run("a") is True and cl.has_any_run("b") is False
+    assert len(cl.group_pushes([c("a"), c("b")], lambda x: cl.has_any_run(x["sha"]))) == 2

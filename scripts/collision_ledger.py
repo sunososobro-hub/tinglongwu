@@ -126,6 +126,11 @@ def group_pushes(touch: list[dict], has_run) -> list[list[dict]]:
     return groups
 
 
+def has_any_run(sha: str) -> bool:
+    """Did CI start on this commit at all (any check, any state: a cancelled or running `test` still marks a push tip)."""
+    return bool(_gh_list(f"repos/{REPO}/commits/{sha}/check-runs?filter=all", key="check_runs"))
+
+
 def test_runs(sha: str) -> list[dict]:
     """Every completed `test` run of a commit (filter=all keeps reruns, so history is not overwritten)."""
     runs = _gh_list(f"repos/{REPO}/commits/{sha}/check-runs?filter=all", key="check_runs")
@@ -156,8 +161,8 @@ def collect(now: datetime) -> dict:
         pushes: list[str] = []
         touch = [c for c in commits if _ts(c["commit"]["committer"]["date"]) > opened]
         prev = next((c for c in reversed(commits) if c not in touch), None)  # the head the PR opened with
-        runs_of = {c["sha"]: test_runs(c["sha"]) for c in touch}
-        for group in group_pushes(touch, lambda c: bool(runs_of[c["sha"]])):
+        ran = {c["sha"]: has_any_run(c["sha"]) for c in touch}
+        for group in group_pushes(touch, lambda c: ran[c["sha"]]):
             when = _ts(group[-1]["commit"]["committer"]["date"])
             red = bool(prev) and red_at(test_runs(prev["sha"]), when)  # result known before this push
             pushes.append(classify_push(next((c["commit"]["message"] for c in group
