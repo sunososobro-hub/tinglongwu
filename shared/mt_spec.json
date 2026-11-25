@@ -1,5 +1,5 @@
 {
- "_doc": "Shared MT prompt spec (#1895, parent #1816). Edit this file, then run `python scripts/gen_mt_spec.py`; it rewrites mobile/lib/logic/mt_spec.g.dart and the desktop copy src/core/tinglongwu/data/mt_spec.json. desktop/phone flags keep each side's current language table until #1816 part 3b decides yue / hi.",
+ "_doc": "Shared MT prompt spec (#1895, parent #1816). Edit this file, then run `python scripts/gen_mt_spec.py`; it rewrites mobile/lib/logic/mt_spec.g.dart and the desktop copy src/core/tinglongwu/data/mt_spec.json. #1896 decided yue and hi: both sides carry both languages, and yue counts as a Chinese side (Chinese card).",
  "languages": [
   {
    "code": "zh",
@@ -12,7 +12,7 @@
    "code": "yue",
    "zh": "粤语",
    "en": "Cantonese",
-   "desktop": false,
+   "desktop": true,
    "phone": true
   },
   {
@@ -104,11 +104,12 @@
    "zh": "印地语",
    "en": "Hindi",
    "desktop": true,
-   "phone": false
+   "phone": true
   }
  ],
  "chinese_side": [
-  "zh"
+  "zh",
+  "yue"
  ],
  "templates": {
   "zh": "将以下文本翻译成{target}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}",

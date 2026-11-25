@@ -18,6 +18,7 @@ class MtSpec {
     'vi': '越南语',
     'th': '泰语',
     'id': '印尼语',
+    'hi': '印地语',
   };
   static const enNames = <String, String>{
     'zh': 'Chinese',
@@ -34,9 +35,10 @@ class MtSpec {
     'vi': 'Vietnamese',
     'th': 'Thai',
     'id': 'Indonesian',
+    'hi': 'Hindi',
   };
   /// Languages whose presence on either side selects the Chinese card (desktop rule).
-  static const chineseSide = <String>['zh'];
+  static const chineseSide = <String>['zh', 'yue'];
   static const zhTemplate = '将以下文本翻译成{target}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}';
   static const enTemplate = 'Translate the following text into {target}.\nNote that you should only output the translated result without any additional explanation:\n\n{text}';
   static const contextTemplate = '{context}\n参考上面的信息，把下面的文本翻译成{target}，注意不需要翻译上文，也不要额外解释：\n{text}';
