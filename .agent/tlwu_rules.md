@@ -10,7 +10,7 @@ Section numbers are shared by three files; "rules section N" means the file that
 - Cloud mergers (R-merge, S-merge, R-hard) merge every ready PR (section 14).
 
 ## 2. Locking
-- Claim = create branch `fix/N` from dev (`routines/common.md` "Writes"). Already exists = taken: take the next item.
+- Claim = create branch `fix/N` from dev with `scripts/claim_branch.sh` (#1882: a unique empty claim commit, pushed only if the branch does not exist; `routines/common.md` "Writes"). Rejected = taken: take the next item. A fix round on an open PR (FAIL / CHANGES / requeue) claims `claim/N-<PR head sha7>` the same way. A branch holding only its claim commit counts as empty (board-scan, stale-branches).
 - After claiming add `status:doing` and push work to `fix/N`. When the PR is open, swap `status:doing` -> `status:review` in the same run. Mergers remove `status:review` when the PR merges or closes.
 - Never start an item that has an open PR whose body says `Closes/Refs #N`, or a live `fix/N*` branch. These are not locks:
   - the open PR of an issue put back to `status:todo` by `AI review: FAIL`, `Opus review: CHANGES` or a `requeue:` comment (sections 3, 10): the next worker adds `status:doing`, pushes the fix to the SAME PR branch and swaps back to `status:review`;
