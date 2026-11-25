@@ -11,7 +11,7 @@ flowchart LR
   A["⬇ 下载"] --> B["▶ 播放视频"] --> C["💬 字幕"]
 ```
 
-<p align="center"><img src="../assets/readme/modes.zh-CN.svg" alt="🎧 听：实时字幕 · 🗣️ 说：语音输出 · 🔁 双向：双方互译" width="720"></p>
+<p align="center"><img src="../assets/readme/modes.zh-CN.svg" alt="🎧 听：实时字幕 · 🗣️ 说：语音输出 · 🔁 双向：双方互译" width="720"><br><img src="../assets/demo/mode_listen.gif" alt="🎧 听" width="240"> <img src="../assets/demo/mode_speak.gif" alt="🗣️ 说" width="240"> <img src="../assets/demo/mode_two_way.gif" alt="🔁 双向" width="240"></p>
 
 <p align="center"><img src="../assets/readme/facts.zh-CN.svg" alt="语言：中、英、日、韩、俄；印地语实验 · Windows、Linux、macOS（未验证）" width="720"></p>
 
