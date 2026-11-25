@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -66,6 +67,58 @@ def _restore_sigint():
     yield
     if signal.getsignal(signal.SIGINT) is not prev and prev is not None:
         signal.signal(signal.SIGINT, prev)
+
+
+# -- parallel `test` job (#1857) ---------------------------------------------------------------------------------
+# CI runs the suite with `pytest -n auto --dist loadgroup`. Files that build real Tk windows (or start a GUI child on
+# the xvfb display) all go into ONE xdist group, so they run one after another on one worker, as in the old serial run:
+# two workers driving Tk at once made a worker segfault in focus_force (test_send_gate_833, PR #1867).
+# Every other file is its own group (= --dist loadfile), so module fixtures still run once per file.
+REAL_TK_RE = re.compile(r"tkinter|\bTk\(|Toplevel|tinglongwu\.(?:gui|overlay|splash|face_to_face)"
+                        r"|from tinglongwu import [^\n]*\b(?:gui|overlay|splash|face_to_face)\b|DISPLAY|xvfb")
+REAL_TK_GROUP = "real-tk"
+_tk_file_cache: dict = {}
+
+
+def xdist_group_for(path, text=None) -> str:
+    """The xdist group of a test file: REAL_TK_GROUP when its source touches Tk / the display, else the file itself."""
+    p = Path(path)
+    if text is None:
+        if p not in _tk_file_cache:
+            try:
+                _tk_file_cache[p] = bool(REAL_TK_RE.search(p.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                _tk_file_cache[p] = False
+        hit = _tk_file_cache[p]
+    else:
+        hit = bool(REAL_TK_RE.search(text))
+    return REAL_TK_GROUP if hit else p.name
+
+
+@pytest.hookimpl(tryfirst=True)  # before xdist's own hook, which appends the group to each nodeid
+def pytest_collection_modifyitems(config, items):
+    if not config.pluginmanager.hasplugin("xdist"):
+        return
+    for item in items:
+        if item.get_closest_marker("xdist_group") is None:
+            item.add_marker(pytest.mark.xdist_group(xdist_group_for(item.path)))
+
+
+@pytest.fixture(autouse=True)
+def _restore_offline_env():
+    """#1857: tinglongwu_setup.downloader.main() pops HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE from os.environ (the
+    download child needs the network). Tests that call it leaked that into every later test in the same process, so
+    test_offline.py::test_env_set_on_import passed or failed by test order (it failed once the suite ran in parallel
+    workers). Every test ends with the offline flags it started with."""
+    from tinglongwu.offline import OFFLINE_ENV
+
+    prev = {k: os.environ.get(k) for k in OFFLINE_ENV}
+    yield
+    for k, v in prev.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 # -- real-Tk GUI tests (#113) ------------------------------------------------------------------------------------
