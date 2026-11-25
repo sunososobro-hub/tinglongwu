@@ -65,3 +65,14 @@ def test_close_issue_swaps_labels_and_closes(monkeypatch):
     assert ("DELETE", "/repos/o/r/issues/5/labels/status%3Areview") in methods
     assert ("POST", "/repos/o/r/issues/5/labels") in methods
     assert calls[-1] == ("PATCH", "/repos/o/r/issues/5", {"state": "closed", "state_reason": "completed"})
+
+
+def test_refs_pr_requeues_its_issue():
+    assert com.issue_to_requeue("partial\nRefs #12", "fix/12-r2") == 12
+    assert com.issue_to_requeue("Part of #12", "fix/12") == 12
+
+
+def test_refs_requeue_needs_matching_head_and_no_close():
+    assert com.issue_to_requeue("Refs #12", "fix/13") is None
+    assert com.issue_to_requeue("Refs #12\nCloses #12", "fix/12") is None
+    assert com.issue_to_requeue("Refs #12", "docs/12") is None

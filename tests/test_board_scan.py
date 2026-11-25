@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from board_scan import (board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
-                        pr_needs_action)
+                        pr_needs_action, requeue_action)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
 
@@ -129,3 +129,50 @@ def test_dev_red_since_earliest_failure_in_streak():
     # tip failed at -150, parent finished red later at -5, older commit green: streak is 150 min
     hist = [(ago(150), "failure"), (ago(5), "failure"), (ago(400), "success"), (ago(500), "failure")]
     assert dev_red_since(hist) == ago(150)
+
+
+# requeue (owner 2026-11-25): red / dirty / needs-review-ai PRs go back to workers, not an AI babysitter
+def test_pr_needs_review_ai_is_flagged():
+    assert pr_needs_action(NOW, ago(31), "success", "clean", {"needs-review-ai"}) == "needs-review-ai"
+
+
+def test_requeue_red_pr_issue_in_review():
+    assert requeue_action("test red", "fix/12-r2", {"status:review", "ok-to-work"}, 0) == (12, "requeue")
+    assert requeue_action("needs-review-ai", "fix/7", {"status:review"}, 2) == (7, "requeue")
+
+
+def test_requeue_escalates_after_cap():
+    assert requeue_action("dirty", "fix/12", {"status:review"}, 3) == (12, "escalate")
+
+
+def test_requeue_skips_other_cases():
+    assert requeue_action("needs-opus", "fix/12", {"status:review"}, 0) is None
+    assert requeue_action("test red", "feat/12", {"status:review"}, 0) is None
+    assert requeue_action("test red", "fix/12", {"status:doing"}, 0) is None  # a worker already has it
+    assert requeue_action("test red", "fix/12", None, 0) is None  # issue closed
+    assert requeue_action("test red", "fix/12", {"status:review", "needs-owner"}, 0) is None
+
+
+def test_needs_review_ai_waits_for_test():
+    assert pr_needs_action(NOW, ago(60), None, "clean", {"needs-review-ai"}) is None
+
+
+def test_requeue_adds_todo_before_removing_review(monkeypatch):
+    import board_scan
+    calls = []
+
+    def fake_gh(path, *args):
+        calls.append((path, args))
+        if args[:2] == ("-X", "DELETE"):
+            raise RuntimeError("delete failed")
+
+    monkeypatch.setattr(board_scan, "_gh", fake_gh)
+    monkeypatch.setattr(board_scan, "_issue_or_none", lambda n: {"state": "open", "labels": [{"name": "status:review"}]})
+    monkeypatch.setattr(board_scan, "_gh_list", lambda path: [
+        {"user": {"login": "stranger"}, "body": "requeue: fake"}] * 5)  # untrusted comments do not count
+    try:
+        board_scan._requeue(9, "test red", "fix/12")
+    except RuntimeError:
+        pass
+    assert calls[0][1][-1] == "labels[]=status:todo"  # todo added first, so the issue never drops out of both queues
+    assert not any("needs-opus" in str(a) for _, a in calls)  # 5 stranger comments did not escalate
