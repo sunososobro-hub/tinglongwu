@@ -330,6 +330,12 @@ def _unresolved(num: int) -> list[dict]:
         cursor = conn["pageInfo"]["endCursor"]
 
 
+def inline_notes(num: int) -> list[dict]:
+    """Inline review comments (thread replies included, resolved or not) as notes for the section 3 hold check."""
+    return [{"author": c["user"]["login"], "body": c.get("body"), "at": c["created_at"]}
+            for c in _gh_list(f"repos/{REPO}/pulls/{num}/comments?per_page=100")]
+
+
 def gather(num: int, rn) -> tuple:
     pr = _gh(f"repos/{REPO}/pulls/{num}")
     sha = pr["head"]["sha"]
@@ -345,6 +351,7 @@ def gather(num: int, rn) -> tuple:
              for c in _gh_list(f"repos/{REPO}/issues/{num}/comments?per_page=100")]
     notes += [{"author": r["user"]["login"], "body": r.get("body"), "at": r["submitted_at"], "commit_id": r.get("commit_id")}
               for r in _gh_list(f"repos/{REPO}/pulls/{num}/reviews?per_page=100") if r.get("submitted_at")]
+    notes += inline_notes(num)  # #1885: a "blocking" reply inside a review thread is a hard stop too
     n = linked_issue(pr.get("body"))
     m = HEAD_RE.match(pr["head"]["ref"])
     n = n or (int(m.group(1) or m.group(2)) if m else None)

@@ -389,3 +389,14 @@ def test_graphql_thread_bot_login_and_human_reply():  # #1885 CodeRabbit review:
     assert not minor_bot_thread(t) and run(threads=[t])[0] == "needs-ai"  # a person answered: AI merger decides
     t = thread_info({"id": "T", "comments": {"nodes": [{"body": body, "author": owner}]}})
     assert t["author"] == "sunososobro-hub" and not minor_bot_thread(t)
+
+
+def test_inline_blocking_reply_holds_until_later_pass(monkeypatch):  # #1885 CodeRabbit follow-up
+    import merge_gate as mg
+    monkeypatch.setattr(mg, "_gh_list", lambda path: [
+        {"user": {"login": "sunososobro-hub"}, "body": "blocking: keep this", "created_at": at(5)}])
+    notes = mg.inline_notes(7)
+    assert notes == [{"author": "sunososobro-hub", "body": "blocking: keep this", "at": at(5)}]
+    assert run(notes=notes, threads=[_thread("Minor")])[0] == "hold"  # resolved or not, never auto-merged
+    later_pass = {"author": "sunososobro-hub", "body": f"Opus review: PASS {SHA}", "at": at(10)}
+    assert run(notes=notes + [later_pass], threads=[_thread("Minor")])[0] == "merge"
