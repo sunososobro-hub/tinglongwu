@@ -47,8 +47,8 @@ def pr_needs_action(now: datetime, head_commit_at: datetime, test_conclusion: st
         return None
     if "needs-opus" in labels:
         return "needs-opus"
-    if "needs-review-ai" in labels:
-        return "needs-review-ai"
+    if "needs-review-ai" in labels and test_conclusion is not None:
+        return "needs-review-ai"  # a stale label while `test` still runs is not a reason to requeue
     if test_conclusion in RED:
         return "test red"
     if mergeable_state == "dirty":
@@ -216,7 +216,9 @@ def _requeue(pr_num: int, why: str, head_ref: str) -> str | None:
         return None
     labels = zombie_issue_labels(_issue_or_none(m.group(1)))
     comments = _gh_list(f"repos/{REPO}/issues/{m.group(1)}/comments?per_page=100") if labels is not None else []
-    done = sum(1 for c in comments if (c.get("body") or "").startswith("requeue:"))
+    trusted = {"github-actions[bot]", REPO.split("/")[0]}  # anyone can post a `requeue:` comment
+    done = sum(1 for c in comments
+               if (c.get("user") or {}).get("login") in trusted and (c.get("body") or "").startswith("requeue:"))
     act = requeue_action(why, head_ref, labels, done)
     if not act:
         return None
@@ -227,8 +229,8 @@ def _requeue(pr_num: int, why: str, head_ref: str) -> str | None:
         _gh(f"{base}/comments", "-X", "POST", "-f",
             f"body=needs-opus: PR #{pr_num} still {why} after {done} requeues; Opus please decide")
         return f"escalated #{num}"
+    _gh(f"{base}/labels", "-X", "POST", "-f", "labels[]=status:todo")  # add first: a failure here stays retryable
     _gh(f"{base}/labels/status:review", "-X", "DELETE")
-    _gh(f"{base}/labels", "-X", "POST", "-f", "labels[]=status:todo")
     _gh(f"{base}/comments", "-X", "POST", "-f",
         f"body=requeue: PR #{pr_num} is {why}; next worker fixes it on the same branch")
     return f"requeued #{num}"

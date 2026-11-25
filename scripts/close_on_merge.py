@@ -55,8 +55,8 @@ def requeue_partial(repo: str, n: int, pr: int, token: str) -> str:
     names = {lab["name"] for lab in issue.get("labels", [])}
     if OWNER_TEST in names or "status:review" not in names:
         return "skip"
+    _api(f"/repos/{repo}/issues/{n}/labels", token, "POST", {"labels": ["status:todo"]})  # add first: retryable
     _api(f"/repos/{repo}/issues/{n}/labels/{urllib.parse.quote('status:review', safe='')}", token, "DELETE")
-    _api(f"/repos/{repo}/issues/{n}/labels", token, "POST", {"labels": ["status:todo"]})
     _api(f"/repos/{repo}/issues/{n}/comments", token, "POST",
          {"body": f"requeue: partial PR #{pr} merged into dev; next worker finishes the remaining Acceptance "
                   "or closes this issue if it is all met."})

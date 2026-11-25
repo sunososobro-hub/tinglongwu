@@ -151,3 +151,28 @@ def test_requeue_skips_other_cases():
     assert requeue_action("test red", "fix/12", {"status:doing"}, 0) is None  # a worker already has it
     assert requeue_action("test red", "fix/12", None, 0) is None  # issue closed
     assert requeue_action("test red", "fix/12", {"status:review", "needs-owner"}, 0) is None
+
+
+def test_needs_review_ai_waits_for_test():
+    assert pr_needs_action(NOW, ago(60), None, "clean", {"needs-review-ai"}) is None
+
+
+def test_requeue_adds_todo_before_removing_review(monkeypatch):
+    import board_scan
+    calls = []
+
+    def fake_gh(path, *args):
+        calls.append((path, args))
+        if args[:2] == ("-X", "DELETE"):
+            raise RuntimeError("delete failed")
+
+    monkeypatch.setattr(board_scan, "_gh", fake_gh)
+    monkeypatch.setattr(board_scan, "_issue_or_none", lambda n: {"state": "open", "labels": [{"name": "status:review"}]})
+    monkeypatch.setattr(board_scan, "_gh_list", lambda path: [
+        {"user": {"login": "stranger"}, "body": "requeue: fake"}] * 5)  # untrusted comments do not count
+    try:
+        board_scan._requeue(9, "test red", "fix/12")
+    except RuntimeError:
+        pass
+    assert calls[0][1][-1] == "labels[]=status:todo"  # todo added first, so the issue never drops out of both queues
+    assert not any("needs-opus" in str(a) for _, a in calls)  # 5 stranger comments did not escalate
