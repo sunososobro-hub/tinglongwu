@@ -3,6 +3,8 @@
 #1581: review-fix minutes after a PR opens (`tlwu-usage: ... minutes=N phase=fix` comments on the PR) are added to
 the PR's type and shown on their own line, so the cost of review rounds is visible.
 
+#1919: one `ready=<n> startable=<n> blocked_by_dep=<n> workers_24h=<n> target=<n>` line (ticket supply, read by S-split).
+
 #1915: the ledger weighs work by `tool_calls=N` (each call resends the context, so calls track spend), not by wall-clock
 `minutes`. A usage line without `tool_calls` falls back to its `minutes` (legacy / QA lines); any `minutes` over 600 or
 `tool_calls` over 1000 is bad data: dropped and reported on a `warning:` line of the ledger comment.
@@ -430,6 +432,80 @@ def collect_models(now: datetime) -> list[dict]:
     return out
 
 
+# --- #1919: ticket supply. ready = pickable, startable = pickable and free to begin now, blocked_by_dep = waits on
+# another open issue / PR. S-split reads `target` (2 x workers that ran in the last 24 h) and splits until met.
+POOL_SKIP = {"needs-triage", "needs-owner", "needs-opus", "status:blocked", "status:proposal", "status:frozen",
+             "status:doing", "status:review"}
+DEP_RE = re.compile(r"^\s*(?:depends on|blocked by|after)\b[^\n]*", re.I | re.M)
+NUM_RE = re.compile(r"#(\d+)(?!\d)")
+WORKER_RE = re.compile(r"^\s*(W-hard|S-hard|S-easy(?:[\s-]*(?:slot\s*)?[A-C])?|slot\s*[A-C])\b", re.I)
+WORKERS_HOURS = 24
+
+
+def deps(body: str | None) -> set[int]:
+    """Issue / PR numbers a body says it waits on: lines starting `Depends on:` / `Blocked by:` / `after #M`."""
+    return {int(n) for line in DEP_RE.findall(body or "") for n in NUM_RE.findall(line)}
+
+
+def pool_counts(issues: list[dict], prs: list[dict]) -> dict[str, int]:
+    """issues: open issues (REST shape; PR entries are skipped); prs: open dev PRs. `ready` = status:todo + ok-to-work and
+    no hold label; `startable` = ready with no open linked PR and no open dependency; `blocked_by_dep` = any open issue
+    (ready or status:blocked) whose stated dependency is still open."""
+    real = [i for i in issues if "pull_request" not in i]
+    open_nums = {i["number"] for i in issues} | {p["number"] for p in prs}
+    with_pr = {n for p in prs if (n := linked_issue(p["head"]["ref"], p.get("body"))) is not None}
+    ready = startable = blocked = 0
+    for i in real:
+        labels = {l["name"] for l in i.get("labels", [])}
+        waits = bool((deps(i.get("body")) - {i["number"]}) & open_nums)
+        blocked += waits
+        if {"status:todo", "ok-to-work"} <= labels and not labels & POOL_SKIP:
+            ready += 1
+            startable += not waits and i["number"] not in with_pr
+    return {"ready": ready, "startable": startable, "blocked_by_dep": blocked}
+
+
+def worker_key(text: str | None) -> str | None:
+    """Normalised worker role from a #61 report line (`S-easy slot A:` / `S-easy-A` -> `S-easy A`); None for others."""
+    m = WORKER_RE.match(text or "")
+    if not m:
+        return None
+    s = m.group(1).lower()
+    if s.endswith("hard"):
+        return "W-hard" if s.startswith("w") else "S-hard"
+    slot = re.search(r"[abc]$", s)  # bare `S-easy` is slot A (the :13 slot)
+    return f"S-easy {slot.group(0).upper() if slot else 'A'}"
+
+
+def workers_ran(comments: list[dict], prs: list[dict], now: datetime) -> int:
+    """Distinct workers in the last 24 h: cloud worker roles reporting on #61 (by PRODUCER) plus each other author of
+    a dev PR opened in that window (contributor machines)."""
+    since = now - timedelta(hours=WORKERS_HOURS)
+    roles = {k for c in comments if (c.get("user") or {}).get("login") == PRODUCER
+             and since <= _ts(c["created_at"]) <= now and (k := worker_key(c.get("body")))}
+    people = {(p.get("user") or {}).get("login") for p in prs if since <= _ts(p["created_at"]) <= now}
+    return len(roles) + len(people - {PRODUCER, None})
+
+
+def pool_line(counts: dict[str, int], workers: int) -> str:
+    return (f"ready={counts['ready']} startable={counts['startable']} blocked_by_dep={counts['blocked_by_dep']} "
+            f"workers_24h={workers} target={2 * workers}")
+
+
+def collect_pool(now: datetime) -> str:
+    issues = _gh_list(f"repos/{REPO}/issues?state=open&per_page=100")
+    open_prs = _gh_list(f"repos/{REPO}/pulls?state=open&base=dev&per_page=100")
+    since = now - timedelta(hours=WORKERS_HOURS)
+    recent: list = []
+    for page in range(1, 11):  # newest first; stop at the first page that reaches past the 24 h window
+        batch = _gh(f"repos/{REPO}/pulls?state=all&base=dev&sort=created&direction=desc&per_page=100&page={page}") or []
+        recent += batch
+        if len(batch) < 100 or _ts(batch[-1]["created_at"]) < since:
+            break
+    comments = _gh_list(f"repos/{REPO}/issues/{LOG_ISSUE}/comments?since={since:%Y-%m-%dT%H:%M:%SZ}&per_page=100")
+    return pool_line(pool_counts(issues, open_prs), workers_ran(comments, recent, now))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -447,6 +523,7 @@ def main() -> int:
     total = sum(r["minutes"] for r in rows)
     infra = infra_line(infra_min, total7) + "\n" + fix_line(fix48, total + untyped)
     infra += "\n" + owner_line(by_type.get(OWNER_KEY, 0)) + "\n" + model_calls_line()
+    infra += "\n" + collect_pool(now)
     if DROPPED:
         infra += "\n" + warning_line()
     text = render(rows, infra, total, untyped, ok, now)
