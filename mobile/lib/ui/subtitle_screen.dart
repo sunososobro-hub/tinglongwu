@@ -430,7 +430,13 @@ class _Footer extends StatelessWidget {
                 onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
                 child: GestureDetector(
                 key: const Key('micButton'),
-                onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
+                onTap: pipeline.switchingSource || pipeline.stage != Stage.listening
+                    ? null
+                    : () {
+                        final m = ScaffoldMessenger.of(context);
+                        pipeline.onNotice = (t) => m.showSnackBar(SnackBar(content: Text(t)));
+                        pipeline.setPaused(!stopped);
+                      },
                 child: Container(
                   width: 62,
                   height: 62,
@@ -531,6 +537,7 @@ class _SourceToggle extends StatelessWidget {
       );
       if (go == true) await PlaybackCapture.requestOverlayPermission();
     }
+    pipeline.onNotice = (t) => messenger.showSnackBar(SnackBar(content: Text(t)));
     final msg = await pipeline
         .setSource(toPhone ? AudioSourceKind.phone : AudioSourceKind.mic);
     if (msg != null) messenger.showSnackBar(SnackBar(content: Text(msg)));
