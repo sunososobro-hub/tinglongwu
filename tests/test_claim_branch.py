@@ -125,6 +125,15 @@ def test_server_side_refusal_is_not_contention(remote):
     assert r.returncode == 3 and "refused by rule" in r.stderr and "taken" not in r.stderr
 
 
+def test_denied_push_with_readable_existing_branch_is_not_contention(remote, tmp_path):
+    """Write denied (no per-ref answer) while origin is still readable and the branch exists: a blocked write (3)."""
+    bare, (w1, w2), tip = remote
+    assert _claim(w2, "fix/7", tip).returncode == 0
+    _git(w1, "remote", "set-url", "--push", "origin", str(tmp_path / "no-write.git"))
+    r = _claim(w1, "fix/7", tip)
+    assert r.returncode == 3 and "taken" not in r.stderr
+
+
 def test_usage_error(tmp_path):
     r = subprocess.run(["bash", str(SCRIPT), "fix/7"], cwd=tmp_path, capture_output=True, text=True)
     assert r.returncode == 2 and "usage" in r.stderr

@@ -35,8 +35,10 @@ if out=$(git push --porcelain --force-with-lease="refs/heads/${branch}:" origin 
 fi
 # Rejected or failed: it is contention only when the branch now exists on origin with another commit. A racing loser
 # gets `[rejected] (stale info)` or `[remote rejected] (failed to update ref)`; a server-side refusal (hook, branch
-# rule) is also `[remote rejected]`, so the reason text cannot decide it. Ask origin instead.
-if tip=$(git ls-remote --exit-code origin "refs/heads/${branch}" 2>/dev/null) && [ "${tip%%[[:space:]]*}" != "$commit" ]; then
+# rule) is also `[remote rejected]`, so the reason text cannot decide it. Ask origin instead. A push that never got
+# a per-ref answer (auth denied, network) has no `!` line: always a blocked write, even if the branch exists.
+if printf '%s\n' "$out" | grep -q $'^!\t' &&
+   tip=$(git ls-remote --exit-code origin "refs/heads/${branch}" 2>/dev/null) && [ "${tip%%[[:space:]]*}" != "$commit" ]; then
   echo "taken: ${branch}" >&2
   exit 1
 fi
