@@ -314,6 +314,7 @@ def fix_line(fix48: int, total48: int) -> str:
 MODEL_DAYS = 14
 INCIDENT_DAYS = 7
 MODEL_RE = re.compile(r"^tlwu-usage:.*\bmodel=([\w.\-]+)", re.M)
+TOKENS_RE = re.compile(r"^tlwu-usage:.*\btokens_in=(\d+)\b.*\btokens_out=(\d+)\b", re.M)  # #1916
 REVIEW_FAIL_RE = re.compile(r"AI review: FAIL|Opus review: CHANGES")
 REVERT_RE = re.compile(r"\brevert", re.I)
 
@@ -323,6 +324,33 @@ def pr_model(body: str | None) -> str:
     lines = [l for l in (body or "").splitlines() if l.strip()]
     m = MODEL_RE.search(lines[-1]) if lines else None
     return m.group(1) if m else "unknown"
+
+
+def pr_tokens(body: str | None) -> tuple[int, int] | None:
+    """(tokens_in, tokens_out) from the LAST non-empty line of a PR body; None when the fields are missing (#1916)."""
+    lines = [l for l in (body or "").splitlines() if l.strip()]
+    m = TOKENS_RE.search(lines[-1]) if lines else None
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def token_rows(prs: list[dict]) -> list[dict]:
+    """prs: dicts with model and optional tokens (tuple). One row per model that has any; PRs without tokens are ignored."""
+    by: dict[str, list[tuple[int, int]]] = {}
+    for p in prs:
+        if p.get("tokens"):
+            by.setdefault(p["model"], []).append(p["tokens"])
+    return [{"model": m, "prs": len(t), "in_avg": round(sum(x[0] for x in t) / len(t)),
+             "out_avg": round(sum(x[1] for x in t) / len(t))} for m, t in sorted(by.items())]
+
+
+def render_tokens(rows: list[dict]) -> str:
+    """Empty string when no PR carries token fields, so the comment is unchanged until workers start writing them."""
+    if not rows:
+        return ""
+    out = ["Tokens per merged PR by builder model (only PRs whose usage line has tokens_in / tokens_out)", "",
+           "| model | PRs with tokens | avg tokens_in | avg tokens_out |", "|---|---|---|---|"]
+    out += [f"| {r['model']} | {r['prs']} | {r['in_avg']} | {r['out_avg']} |" for r in rows]
+    return "\n".join(out)
 
 
 def has_review_fail(comment_bodies: list[str]) -> bool:
@@ -396,7 +424,7 @@ def collect_models(now: datetime) -> list[dict]:
             conclusions[c["sha"]] = [r.get("conclusion") for r in runs.get("check_runs", [])]
         later = [{"number": o["number"], "title": o.get("title"), "body": o.get("body")}
                  for o in prs if o.get("merged_at") and _ts(o["merged_at"]) > merged]
-        out.append({"model": pr_model(p.get("body")), "review_fail": has_review_fail(comments),
+        out.append({"model": pr_model(p.get("body")), "tokens": pr_tokens(p.get("body")), "review_fail": has_review_fail(comments),
                     "red": red_rounds(conclusions),
                     "incident": is_incident(n, linked_issue(p["head"]["ref"], p.get("body")), merged, issues, later)})
     return out
@@ -422,7 +450,9 @@ def main() -> int:
     if DROPPED:
         infra += "\n" + warning_line()
     text = render(rows, infra, total, untyped, ok, now)
-    text = text.replace("\n\n_posted by", "\n\n" + render_models(model_rows(collect_models(now))) + "\n\n_posted by", 1)
+    models = collect_models(now)
+    tok = render_tokens(token_rows(models))
+    text = text.replace("\n\n_posted by", "\n\n" + render_models(model_rows(models)) + (f"\n\n{tok}" if tok else "") + "\n\n_posted by", 1)
     if args.dry_run:
         print(text)
         return 0
