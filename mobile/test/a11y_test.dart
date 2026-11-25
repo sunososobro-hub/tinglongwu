@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/ui/a11y.dart';
 import 'package:mobile/ui/subtitle_bubble.dart';
@@ -21,7 +20,7 @@ void main() {
     ));
     expect(find.bySemanticsLabel('停止聆聽'), findsOneWidget);
     var d = tester.getSemantics(find.bySemanticsLabel('停止聆聽'));
-    expect(d.getSemanticsData().hasFlag(SemanticsFlag.isButton), isTrue);
+    expect(d.getSemanticsData().flagsCollection.isButton, isTrue);
     tester.semantics.tap(find.semantics.byLabel('停止聆聽'));
     expect(taps, 1);
     set(() => stopped = true);
@@ -35,8 +34,8 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
         home: MicSemantics(stopped: true, onTap: null, child: SizedBox(width: 62, height: 62))));
     final d = tester.getSemantics(find.bySemanticsLabel('開始聆聽')).getSemanticsData();
-    expect(d.hasFlag(SemanticsFlag.hasEnabledState), isTrue);
-    expect(d.hasFlag(SemanticsFlag.isEnabled), isFalse);
+    expect(d.flagsCollection.hasEnabledState, isTrue);
+    expect(d.flagsCollection.isEnabled, isFalse);
     handle.dispose();
   });
 
