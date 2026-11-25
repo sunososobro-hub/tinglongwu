@@ -9,7 +9,7 @@ Needs DISPLAY (Xvfb + a window manager), xterm, x11-utils (xwininfo), ffmpeg and
 checks (git, curl, python3-venv, python3-tk, libsndfile1, libpulse0), so it asks no apt question. The `readme-gifs`
 workflow sets that up (owner 2026-11-16: record on a GitHub-hosted runner, no owner recording). It is a real run:
 install.sh clones this commit, creates the venv and pip-installs the app; only the model downloads are skipped
-(TLWU_SKIP_MODELS=1), the same as the shown command says.
+(TLWU_SKIP_MODELS=1) and it runs unattended (TLWU_YES=1), as the shown command says.
 """
 from __future__ import annotations
 
@@ -33,15 +33,15 @@ _spec.loader.exec_module(rg)
 GIF_NAME = "install_15s.gif"
 TITLE = "tlwu-install"
 BRANCH = "readme-gif-install"  # throwaway branch install.sh clones, like install-test.yml's ci-install-test
-SHOWN = "TLWU_SKIP_MODELS=1 bash install.sh"  # the command line printed at the prompt = what really runs
+SHOWN = "TLWU_YES=1 TLWU_SKIP_MODELS=1 bash install.sh"  # the command line printed at the prompt = what really runs
 
 
 def shell_line(repo: Path, ref: str, target: Path, hold: float = 3.0) -> str:
-    """What the xterm runs: print the prompt, run install.sh with stdin closed (no tty -> no prompts, no GUI
-    launch at the end; a missing system package makes it decline and fail loudly), keep the last screen `hold`
-    s, then exit with install.sh's code (written to target/../rc so the caller can read it)."""
+    """What the xterm runs: print the prompt, run install.sh unattended (TLWU_YES=1: it does not take the tty
+    back, asks nothing and does not launch the GUI at the end; stdin closed), keep the last screen `hold` s, then
+    exit with install.sh's code (written to target/../rc so the caller can read it)."""
     env = (f"TLWU_REPO={shlex.quote(str(repo))} TLWU_REF={shlex.quote(ref)} TLWU_DIR={shlex.quote(str(target))} "
-           "TLWU_SKIP_MODELS=1 TLWU_NO_UPDATE=1 TLWU_UI_LANG=en")
+           "TLWU_YES=1 TLWU_SKIP_MODELS=1 TLWU_NO_UPDATE=1 TLWU_UI_LANG=en")
     rc_file = shlex.quote(str(target.parent / "rc"))
     script = shlex.quote(str(repo / "scripts" / "install.sh"))
     return (f"printf '$ %s\\n' {shlex.quote(SHOWN)}; sleep 1; {env} bash {script} </dev/null; rc=$?; "
