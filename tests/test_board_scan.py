@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from board_scan import (board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
+from board_scan import (count_doing_claims, is_double_claim, board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
                         pr_needs_action, requeue_action)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
@@ -15,6 +15,9 @@ def ago(m):
 
 
 # PR waiting > 30 min
+TRUSTED = {"github-actions[bot]", "sunososobro-hub"}
+
+
 def test_pr_recent_is_not_flagged():
     assert pr_needs_action(NOW, ago(29), "failure", "dirty", {"needs-opus"}) is None
 
@@ -79,8 +82,34 @@ def test_dev_pending_tip_uses_last_finished():
 
 # output line
 def test_board_line():
-    assert board_line(NOW, []) == "[board 17:00] ok"
-    assert board_line(NOW, ["PR #5 dirty", "triage #9"]) == "[board 17:00] act: PR #5 dirty; triage #9"
+    assert board_line(NOW, []) == "[board 17:00] ok double_claims=0"
+    assert board_line(NOW, ["PR #5 dirty", "triage #9"]) == "[board 17:00] act: PR #5 dirty; triage #9 double_claims=0"
+    assert board_line(NOW, ["double claim #7"], 1) == "[board 17:00] act: double claim #7 double_claims=1"
+
+
+def _c(body, who="sunososobro-hub", at="2026-11-25T01:00:00Z"):
+    return {"body": body, "user": {"login": who}, "created_at": at}
+
+
+def test_single_claim_is_not_double():
+    assert not is_double_claim([_c("doing")], TRUSTED)
+
+
+def test_two_doing_comments_are_a_double_claim():
+    cs = [_c("doing", at="2026-11-25T01:00:00Z"), _c("doing (opus)", at="2026-11-25T01:01:00Z")]
+    assert count_doing_claims(cs, TRUSTED) == 2 and is_double_claim(cs, TRUSTED)
+
+
+def test_requeue_starts_a_new_round():
+    cs = [_c("doing", at="2026-11-25T01:00:00Z"), _c("requeue: PR #3 is dirty; next worker", at="2026-11-25T02:00:00Z"),
+          _c("doing", at="2026-11-25T03:00:00Z")]
+    assert count_doing_claims(cs, TRUSTED) == 1
+
+
+def test_untrusted_and_other_doing_text_ignored():
+    cs = [_c("doing", at="2026-11-25T01:00:00Z"), _c("doing", who="stranger", at="2026-11-25T01:01:00Z"),
+          _c("doing something else", at="2026-11-25T01:02:00Z")]
+    assert count_doing_claims(cs, TRUSTED) == 1
 
 
 def test_zombie_issue_labels():
