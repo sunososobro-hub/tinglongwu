@@ -20,7 +20,7 @@ Read after `.agent/tlwu_rules.md` (same precedence, shared section numbers) by S
 - Nobody works an item on open; P0 waits for the patrol / pickers like everything else.
 
 ### Ledger (`ledger` Action, hourly, `scripts/ledger.py`)
-- Sums the last-line `tlwu-usage: ... minutes=N` of PRs merged to dev in the last 48 h by the linked issue's type label (plus `phase=fix` PR comments, core section 10) and posts on the pinned `[health] pipeline check log` issue #61 a table `type | minutes | share | target | deficit` (deficit = target - share, percentage points), plus the 7-day `infra: <minutes> / <total> = <share>% (cap 10%)` line and `open->merge fix minutes (48 h)`.
+- Sums the last-line `tlwu-usage: ... tool_calls=N` (no `tool_calls` -> `minutes`; `minutes` over 600 = bad data, dropped with a `warning:` line) of PRs merged to dev in the last 48 h by the linked issue's type label (plus `phase=fix` PR comments, core section 10) and posts on the pinned `[health] pipeline check log` issue #61 a table `type | calls | share | target | deficit` (deficit = target - share, percentage points), plus the 7-day `infra: <minutes> / <total> = <share>% (cap 10%)` line and `open->merge fix calls (48 h)` and `by model: sonnet <calls> opus <calls>`.
 - Targets: line 3 of #574, `mix: bug 28, enhancement 40, infra 10, eval 11, documentation 5, maint 6`; valid only with exactly these six types as whole numbers summing to 100, otherwise that default is used and the comment says `mix invalid, default used`.
 - QA (`tlwu-usage` comments on #61) and ideas (`tlwu-usage` comments on `[idea]` issues), created in the same 48 h, are informational rows; shares are over the total of all rows. A 48 h total of 0 gives share 0 and deficit = target for every row (ties broken by the targets order).
 
@@ -36,7 +36,7 @@ Read after `.agent/tlwu_rules.md` (same precedence, shared section numbers) by S
 
 ## 13. Infra cap details
 - `infra` (on top of the type label): any issue whose result only the owner or the agents see: stats page and Sankey, ledger and throttle tooling, these rules, routine prompts, health logs, agent workflows. Release, CI and eval infrastructure that protects users (quality gates, installers, crash fixes) is not `infra`.
-- Cap: `infra` <= 10% of `tlwu-usage` minutes over the last 7 days. Over the cap pickers skip `infra` (core section 10) and S-hard opens no new `infra` issues.
+- Cap: `infra` <= 10% of `tlwu-usage` calls over the last 7 days. Over the cap pickers skip `infra` (core section 10) and S-hard opens no new `infra` issues.
 - Every new `enhancement` or `infra` issue names in its Why line the real user (or user report / Discussion link) it helps; without one it is opened as P3.
 
 ## 14. Outside (fork / non-collaborator) PRs
