@@ -57,3 +57,23 @@ def test_cli_prints_fields_and_fails_quietly(tmp_path):
     bad.write_text("{}\n")
     r = subprocess.run([sys.executable, str(ROOT / "scripts/session_tokens.py"), str(bad)], capture_output=True, text=True)
     assert r.returncode == 1 and r.stdout == ""
+
+
+def test_minus_baseline_reports_only_the_current_ticket(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text(_line("a", 1, 2, 3, 4) + "\n")
+    base = subprocess.run([sys.executable, str(ROOT / "scripts/session_tokens.py"), str(f)], capture_output=True, text=True).stdout.strip()
+    f.write_text(f.read_text() + _line("b", 10, 20, 30, 40) + "\n")
+    r = subprocess.run([sys.executable, str(ROOT / "scripts/session_tokens.py"), "--minus", base, str(f)], capture_output=True, text=True)
+    assert r.stdout.strip() == "tokens_in=40 tokens_out=20 tokens_cache=40"
+
+
+def test_find_transcript_prefers_this_session(tmp_path):
+    d = tmp_path / ".claude" / "projects" / "p"
+    d.mkdir(parents=True)
+    mine, other = d / "me.jsonl", d / "other.jsonl"
+    mine.write_text("{}\n")
+    other.write_text("{}\n")  # written last = newest
+    assert session_tokens.find_transcript("me", tmp_path) == mine
+    assert session_tokens.find_transcript(None, tmp_path) == other
+    assert session_tokens.find_transcript("gone", tmp_path) == other
