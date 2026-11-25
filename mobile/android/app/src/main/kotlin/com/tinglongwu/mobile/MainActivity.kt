@@ -86,7 +86,8 @@ class MainActivity : FlutterFragmentActivity() {
                     PlaybackCaptureService.sink = null
                 }
             })
-        // Conversation mode read-aloud (#558).
+        // Conversation mode read-aloud (#558); one line at a time + ducking (#1953).
+        TtsPlayer.init(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tlwu/tts")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -94,6 +95,8 @@ class MainActivity : FlutterFragmentActivity() {
                         call.argument<FloatArray>("samples") ?: FloatArray(0),
                         call.argument<Int>("sampleRate") ?: 0))
                     "stop" -> { TtsPlayer.stop(); result.success(null) }
+                    "done" -> TtsPlayer.whenDone { result.success(null) }
+                    "headset" -> result.success(TtsPlayer.headset())
                     else -> result.notImplemented()
                 }
             }

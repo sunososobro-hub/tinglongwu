@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
 
@@ -111,7 +112,7 @@ class EchoGuard {
 
 /// One translated line to read aloud.
 class Utterance {
-  const Utterance(this.text, {required this.lang, required this.speechEndMs});
+  const Utterance(this.text, {required this.lang, required this.speechEndMs, this.mtDoneMs = -1});
   final String text;
 
   /// Language of [text] (picks the voice).
@@ -119,6 +120,9 @@ class Utterance {
 
   /// Estimated time the speaker stopped talking (for the end-of-speech -> audio latency).
   final int speechEndMs;
+
+  /// Time the translation was ready (-1: unknown), logged with VAD end and play start (#1953).
+  final int mtDoneMs;
 }
 
 /// Text worth sending to the TTS: trimmed; '' when it has no letter or digit (just punctuation).
@@ -142,7 +146,7 @@ class SpeakQueue {
   bool add(Utterance u) {
     final t = speakableText(u.text);
     if (t.isEmpty) return false;
-    _q.add(Utterance(t, lang: u.lang, speechEndMs: u.speechEndMs));
+    _q.add(Utterance(t, lang: u.lang, speechEndMs: u.speechEndMs, mtDoneMs: u.mtDoneMs));
     while (_q.length > maxPending) {
       _q.removeFirst();
       dropped++;
@@ -154,6 +158,59 @@ class SpeakQueue {
 
   void clear() => _q.clear();
 }
+
+/// Plays one line at a time (#1953): a line starts only after the previous one has finished,
+/// so a long sentence is never cut by the next one and two lines never sound together.
+/// [start] begins playback (true = started); [finished] completes when that line has ended.
+class SerialSpeaker {
+  SerialSpeaker({required this.start, required this.finished});
+  final Future<bool> Function(Float32List samples, int sampleRate) start;
+  final Future<void> Function(int durationMs) finished;
+
+  Future<void> _tail = Future<void>.value();
+  int _gen = 0;
+
+  /// Completes when every line queued so far has ended.
+  Future<void> get done => _tail;
+
+  /// Queues a line; the future says whether it started (false: failed or [stop]ped first).
+  Future<bool> play(Float32List samples, int sampleRate, int durationMs) {
+    final gen = _gen;
+    final prev = _tail;
+    final started = Completer<bool>();
+    final ended = Completer<void>();
+    _tail = ended.future; // set before any await: concurrent calls chain, never overlap
+    unawaited(() async {
+      await prev;
+      var ok = false;
+      if (gen == _gen) {
+        try {
+          ok = await start(samples, sampleRate);
+        } catch (_) {}
+      }
+      started.complete(ok);
+      if (ok) {
+        try {
+          await finished(durationMs);
+        } catch (_) {}
+      }
+      ended.complete();
+    }());
+    return started.future;
+  }
+
+  /// Drops the lines still waiting (the caller stops the one playing).
+  void stop() => _gen++;
+}
+
+/// Earphone-only (#1953, docs/accessibility-listen-speak.md section 3): reading a translation
+/// aloud next to the original is confusing, so by default it is only spoken into a headset.
+/// Face-to-face conversation is the exception: the other person must hear the phone speaker.
+bool earphoneOnlyFor({required bool conversation}) => !conversation;
+
+/// Whether a line may be spoken. [headset] null = unknown (no native check): not held back.
+bool speakAllowed({required bool? headset, required bool earphoneOnly}) =>
+    !earphoneOnly || headset != false;
 
 /// Pill suffix in 對話模式: whether the translation of my lines is read aloud.
 /// [available] = a voice pack for the other person's language exists (false: nothing to install).
