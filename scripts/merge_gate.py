@@ -266,9 +266,19 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
 
 # ---------------------------------------------------------------- I/O (gh only)
 
+class GhError(subprocess.CalledProcessError):
+    """#1947: a failed gh call; str() carries gh's own stderr (still a CalledProcessError for existing handlers)."""
+
+    def __str__(self) -> str:
+        err = (self.stderr or "").strip()
+        return f"Command [gh api {self.cmd[2] if len(self.cmd) > 2 else ''} ...] returned {self.returncode}: {err}"
+
+
 def _gh(path: str, *args: str):
-    out = subprocess.run(["gh", "api", path, *args], check=True, capture_output=True, text=True).stdout
-    return json.loads(out) if out.strip() else None
+    r = subprocess.run(["gh", "api", path, *args], capture_output=True, text=True)
+    if r.returncode:
+        raise GhError(r.returncode, r.args, r.stdout, r.stderr)
+    return json.loads(r.stdout) if r.stdout.strip() else None
 
 
 def _gh_list(path: str) -> list:
@@ -426,14 +436,19 @@ def resolve_minor(num: int, threads: list[dict]) -> None:
     minor = [t for t in threads if minor_bot_thread(t)]
     if not minor:
         return
-    log = minor_log_issue()
-    lines = "\n".join(_finding_line(t) for t in minor)
-    _gh(f"repos/{REPO}/issues/{log}/comments", "-X", "POST", "-f",
-        f"body=#{num}: {len(minor)} Minor review-bot finding(s), resolved by merge-gate, not fixed in the PR.\n{lines}")
+    log = None
+    try:  # #1947: a failed log never blocks the merge
+        log = minor_log_issue()
+        lines = "\n".join(_finding_line(t) for t in minor)
+        _gh(f"repos/{REPO}/issues/{log}/comments", "-X", "POST", "-f",
+            f"body=#{num}: {len(minor)} Minor review-bot finding(s), resolved by merge-gate, not fixed in the PR.\n{lines}")
+    except (subprocess.CalledProcessError, RuntimeError, KeyError) as e:
+        print(f"#{num} warn: minor log failed: {getattr(e, 'stderr', None) or e}", file=sys.stderr)
+    where = f"logged on #{log}." if log else "log failed."
     for t in minor:
         if t.get("comment_id"):
             _gh(f"repos/{REPO}/pulls/{num}/comments/{t['comment_id']}/replies", "-X", "POST", "-f",
-                f"body=merge-gate: Minor finding, not fixed in this PR (rules section 3 one review round); logged on #{log}.")
+                f"body=merge-gate: Minor finding, not fixed in this PR (rules section 3 one review round); {where}")
         _gh("graphql", "-f", "query=mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}",
             "-f", f"t={t['id']}")
 
