@@ -60,7 +60,7 @@ class PackDownloadView {
         ),
       'downloading' => PackDownloadView(
           status: '下載中…',
-          hint: '由 Google Play 下載，本 app 不連網。可以先切到別的 app，下載會繼續。',
+          hint: '由 Google Play 下載，不經過本 app 的網路。可以先切到別的 app，下載會繼續。',
           progress: frac,
           amount: amount,
         ),
