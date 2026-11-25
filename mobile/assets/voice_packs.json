@@ -53,6 +53,29 @@
         {"path": "tts-ru/unicode_indexer.bin", "size": 262144, "sha256": "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30"},
         {"path": "tts-ru/voice.bin", "size": 517168, "sha256": "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8"}
       ]
+    },
+    {
+      "id": "voice-zh",
+      "lang": "zh",
+      "kind": "melo",
+      "name": "tlwu-voice-zh.zip",
+      "url": "https://github.com/sunososobro-hub/tinglongwu/releases/download/mobile-latest/tlwu-voice-zh.zip",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2",
+      "note": "Chinese read-aloud voice (also reads English words inside Chinese text): sherpa-onnx vits-melo-tts-zh_en (MeloTTS, one female voice, 44.1 kHz), about 183 MB, optional, not part of the base download. Licence: MIT (MyShell.ai, LICENSE in the model folder).",
+      "files": [
+        {"path": "tts-zh/model.onnx", "size": 170429550, "sha256": "bf30582eb1b012250a35b1a4a80e7dfbcf8485e7bb9de0d95efbbeef0e4ad86d"},
+        {"path": "tts-zh/tokens.txt", "size": 655, "sha256": "d18664a7e12bd7ea1022ddaf951e534e136815016c5a809d6b64156bffb4369d"},
+        {"path": "tts-zh/lexicon.txt", "size": 6837671, "sha256": "7236884b02435ac5d10cf69b4be40a61b45aa676b5300f0e412f185748fee528"},
+        {"path": "tts-zh/date.fst", "size": 59154, "sha256": "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718"},
+        {"path": "tts-zh/new_heteronym.fst", "size": 21974, "sha256": "ca14b2127e27baa571664e4bb791e143e7425f56a6bc29db08d74f97e6aa4e29"},
+        {"path": "tts-zh/number.fst", "size": 64482, "sha256": "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd"},
+        {"path": "tts-zh/phone.fst", "size": 88630, "sha256": "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7"},
+        {"path": "tts-zh/dict/jieba.dict.utf8", "size": 5071204, "sha256": "3043b77068e09c9904f27cad82f12b6ebe9dbdb5aeff3b25e45ab7f9c1122b55"},
+        {"path": "tts-zh/dict/hmm_model.utf8", "size": 519739, "sha256": "f17790586ac86dd048c8adffed052c4bd2b28ed0682972c1275e59040c0589a7"},
+        {"path": "tts-zh/dict/user.dict.utf8", "size": 49, "sha256": "495bbf49270408a1234690e1e6a97328f30a482a7a72aa769e8a12e8714b0c62"},
+        {"path": "tts-zh/dict/idf.utf8", "size": 5998717, "sha256": "dbd1e03d72b2263cc8d84a4304ed77677eed9e7deaf43a1a5133bbba9733b535"},
+        {"path": "tts-zh/dict/stop_words.utf8", "size": 8974, "sha256": "b788b8a939d2e2fe079abd579ea98f12f9fb84370bfd0dddd81bb9381f7ab42c"}
+      ]
     }
   ]
 }
