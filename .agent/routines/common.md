@@ -18,7 +18,7 @@ Every tlwu cloud routine (R-hard, W-hard, S-easy slots, S-split) reads `.agent/t
 - Comments are always one line of English.
 
 ## Writes
-- Branches: git only (REST `POST git/refs` gets 403 from the proxy). Lock with `git push --force-with-lease=refs/heads/<branch>: origin <sha>:refs/heads/<branch>` (the empty lease means "only if the branch does not exist"). A plain push of the same dev sha to an existing branch succeeds silently, so two workers both "locked" fix/1865 on 2026-11-25. Push rejected, or `git ls-remote --exit-code origin refs/heads/<branch>` already prints a line = locked by someone else: take the next item.
+- Branches: git only (REST `POST git/refs` gets 403 from the proxy). Lock = a unique empty commit on dev pushed with an empty lease, which only succeeds if the branch does not exist yet: `git checkout --detach origin/dev && git commit --allow-empty -m "lock <branch>" && git push --force-with-lease=refs/heads/<branch>: origin HEAD:refs/heads/<branch>`. `[rejected] (stale info)` = locked by someone else: take the next item. (A plain push of the dev sha to an existing branch succeeds silently: two workers both claimed fix/1865 on 2026-11-25.)
 - Everything else: `gh api` REST (do not `env -u GH_TOKEN`):
   - add label: `gh api -X POST repos/$R/issues/N/labels -f 'labels[]=X'`
   - remove label: `gh api -X DELETE repos/$R/issues/N/labels/X`
