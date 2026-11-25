@@ -53,3 +53,16 @@ def test_render_headers_say_calls():
     rows = ledger.build_rows({"bug": 30}, ledger.DEFAULT_MIX)
     text = ledger.render(rows, "infra: 0 / 0 = 0.0% (cap 10%)", 30, 0, True, NOW)
     assert "| type | calls | share | target | deficit |" in text and "total 30 calls" in text
+
+
+def test_tally_model_uses_same_line_as_weight_1923():
+    """#1923: earlier `model=opus` line + final legacy line without model -> counted as `unknown`, not `opus`."""
+    ledger.MODEL_CALLS.clear()
+    body = "tlwu-usage: model=opus tool_calls=9 minutes=5\nnotes\ntlwu-usage: minutes=7"
+    assert ledger.usage_weight(body) == 7
+    ledger.tally_model(body, 7)
+    assert ledger.MODEL_CALLS == {"unknown": 7}
+    ledger.MODEL_CALLS.clear()
+    ledger.tally_model("tlwu-usage: model=sonnet tool_calls=3 minutes=1", 3)
+    assert ledger.MODEL_CALLS == {"sonnet": 3}
+    ledger.MODEL_CALLS.clear()

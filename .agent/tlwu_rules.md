@@ -80,7 +80,7 @@ Section numbers are shared by three files; "rules section N" means the file that
 - A run that pushes a fix to an open PR (CodeRabbit, red `test`, conflict, FAIL / CHANGES, requeue) ends with a PR comment whose last line is `tlwu-usage: model=<m> tool_calls=<n> minutes=N phase=fix`; the ledger adds the calls to the PR's type.
 
 ## 13. Infra cap
-- `infra` marks work only the owner or agents see (pipeline tooling, these rules, dashboards). Over its cap (10% of the last 7 days' minutes, ledger `infra:` line) pickers skip it (section 10). Details: `rules_patrol.md` section 13.
+- `infra` marks work only the owner or agents see (pipeline tooling, these rules, dashboards). Over its cap (10% of the last 7 days' tool calls, ledger `infra:` line) pickers skip it (section 10). Details: `rules_patrol.md` section 13.
 
 ## 14. Merge safety: shared definitions
 ### Definitions
