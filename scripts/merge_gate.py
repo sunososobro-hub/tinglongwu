@@ -41,10 +41,20 @@ EVAL_PATH_RE = re.compile(r"^(?:src/[^/]+/tinglongwu/|eval/|src/system/tinglongw
                           r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
 # #1918: protected / g4 paths (section 14) live in the per-folder OWNERS files, read by scripts/owners.py from
-# this checkout (dev), never from the PR.
-_spec = importlib.util.spec_from_file_location("tlwu_owners", Path(__file__).with_name("owners.py"))
-owners = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(owners)
+# this checkout (dev), never from the PR. Loaded on first use (#1954): pr-format.yml runs from main
+# (pull_request_target) with a sparse checkout of dev that may lack owners.py; it only needs the regexes here.
+# A missing owners.py still fails closed: is_protected() raises.
+_owners = None
+
+
+def _load_owners():
+    global _owners
+    if _owners is None:
+        spec = importlib.util.spec_from_file_location("tlwu_owners", Path(__file__).with_name("owners.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _owners = mod
+    return _owners
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)
@@ -69,7 +79,7 @@ BOT_BLOCK_RE = re.compile(r"<!-- This is an auto-generated comment.*?<!-- end of
 
 def is_protected(path: str) -> bool:
     """Section 14 protected paths plus the g4 sensitive paths, per the OWNERS chain (#1918); tests/ never count."""
-    return owners.is_protected(path)
+    return _load_owners().is_protected(path)
 
 
 def trusted_issue(issue: dict) -> bool:
