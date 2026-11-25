@@ -143,6 +143,13 @@ def count_doing_claims(comments: list[dict], trusted: set[str]) -> int:
     return claims
 
 
+def count_claim_commits(cmp: dict, issue: int) -> int:
+    """Claim commits (`claim #<issue> ...`, scripts/claim_branch.sh, #1882) of a `compare/dev...<branch>` result.
+    A branch is claimed once; two claim commits for the issue on one branch means two workers both took it."""
+    prefix = f"claim #{issue} "
+    return sum(1 for c in cmp.get("commits") or [] if c["commit"]["message"].startswith(prefix))
+
+
 def is_double_claim(comments: list[dict], trusted: set[str]) -> bool:
     return count_doing_claims(comments, trusted) >= 2
 
@@ -281,6 +288,12 @@ def _double_claims() -> list[int]:
             comments = _gh_list(f"repos/{REPO}/issues/{it['number']}/comments?per_page=100")
             if is_double_claim(comments, trusted):
                 found.add(it["number"])
+    for br in _gh_list(f"repos/{REPO}/branches?per_page=100"):
+        m = FIX_BRANCH.match(br["name"])
+        if m and int(m.group(1)) not in found:
+            n = int(m.group(1))
+            if count_claim_commits(_gh(f"repos/{REPO}/compare/dev...{br['name']}"), n) >= 2:
+                found.add(n)
     return sorted(found)
 
 
