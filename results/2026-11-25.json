@@ -1,0 +1,359 @@
+{
+  "mode": "smoke",
+  "pass": false,
+  "total_s": 105.29,
+  "mt_load_s": 1.349,
+  "peak_ram_mib": 2896,
+  "peak_vram_mib": null,
+  "total_ram_mib": 15983,
+  "total_vram_mib": null,
+  "vram_budget_mib": null,
+  "latency_p50_s": 4.691,
+  "latency_p90_s": 6.121,
+  "peak_rss_mib": 2896,
+  "languages": [
+    {
+      "pair": "en->zh",
+      "clips": [
+        {
+          "id": "en_001",
+          "ref_text": "However, due to the slow communication channels, styles in the west could lag behind by 25 to 30 year.",
+          "asr": "However, due to the slow communication channels, styles in the West could lag behind by 25 to 30 years.",
+          "detected": "en",
+          "ref_mt": "然而，由於文化交流遲緩，西方的時尚可能落後 25 到 30 年。",
+          "mt": "然而，由於通訊渠道緩慢，西方的風格可能會落後25到30年。",
+          "latency_s": 4.414
+        },
+        {
+          "id": "en_002",
+          "ref_text": "All nouns, alongside the word Sie for you, always begin with a capital letter, even in the middle of a sentence.",
+          "asr": "All nouns alongside the world's say for you always begin with a capital letter, even in the middle of a sentence.",
+          "detected": "en",
+          "ref_mt": "除去表示您的“Sie”之外的所有名詞都應以大寫字母開頭，即使在句子中間也應如此。",
+          "mt": "世界上所有的名詞在用於指代你時總是以大寫字母開頭，即使在句子中間也是如此。",
+          "latency_s": 4.343
+        },
+        {
+          "id": "en_003",
+          "ref_text": "To the north and within easy reach is the romantic and fascinating town of Sintra and which was made famous to foreigners after a glowing account of its splendours recorded by Lord Byron.",
+          "asr": "To the north, and within easy reach, is a romantic and fascinating town of Cintra and which was made famous to foreigners after a glowing account of its splendor is recorded by Lord Byron.",
+          "detected": "en",
+          "ref_mt": "向北可輕鬆抵達浪漫迷人的辛特拉鎮；它是拜倫勳爵筆下為人稱道的樂土，並因此為外國人所熟知。",
+          "mt": "向北，近在咫尺的是浪漫而迷人的辛特拉鎮。拜倫勳爵對其美景的精彩描述讓這個小鎮為外國人所熟知。",
+          "latency_s": 5.757
+        },
+        {
+          "id": "en_004",
+          "ref_text": "The cabbage juice changes color depending on how acidic or basic (alkaline) the chemical is.",
+          "asr": "The cabbage juice changes color depending on how acidic, basic alkaline the chemical is.",
+          "detected": "en",
+          "ref_mt": "捲心菜汁的顏色將根據化學物質的酸鹼性發生變化。",
+          "mt": "捲心菜汁的顏色會因該物質的酸度、鹼度或鹼性程度而變化。",
+          "latency_s": 3.939
+        },
+        {
+          "id": "en_005",
+          "ref_text": "Many people don't think about them as dinosaurs because they have feathers and can fly.",
+          "asr": "Many people don't think about them as dinosaurs because they have feathers and can fly.",
+          "detected": "en",
+          "ref_mt": "很多人認為它們並非恐龍，因為它們有羽毛，會飛。",
+          "mt": "很多人不認為它們是恐龍，因為它們有羽毛且能飛行。",
+          "latency_s": 3.656
+        }
+      ],
+      "audio_s": 40.86,
+      "elapsed_s": 23.13,
+      "seconds": {
+        "load": 1.007,
+        "asr": 13.923,
+        "mt": 8.185,
+        "tts": null
+      },
+      "asr_rtf": 0.341,
+      "mt_median_s": 1.573,
+      "tts_rtf": null,
+      "kana_rate": 0.0,
+      "peak_vram_mib": null,
+      "vram_budget_mib": null,
+      "error_rate": 0.0777,
+      "cer": null,
+      "chrf": 38.9,
+      "stages": {
+        "asr": "PASS",
+        "mt": "FAIL",
+        "tts": "SKIP",
+        "time": "PASS",
+        "kana": "PASS",
+        "vram": "SKIP"
+      }
+    },
+    {
+      "pair": "ja->zh",
+      "clips": [
+        {
+          "id": "ja_001",
+          "ref_text": "インターネットで「敵対的環境コース」について検索すると、おそらく現地企業の住所が出てくるでしょう。",
+          "asr": "インターネットで適帯的環境コースについて検索すると、おそらく現地企業の重所が出てくるでしょう。",
+          "detected": "ja",
+          "ref_mt": "在網際網路上搜尋“應對敵對環境課程”，也許能找到提供培訓的當地公司的地址。",
+          "mt": "在網際網路上搜尋與適用環境相關的課程時，可能會看到當地企業的相關資訊。",
+          "latency_s": 5.148
+        },
+        {
+          "id": "ja_002",
+          "ref_text": "また、北側に行くなら世界的に有名なマリア像の聖地であるファティマの聖母の聖域（神社）を訪れましょう。",
+          "asr": "また、北側に行くなら、世界的に有名なマリアゾーの聖地であるファティマの聖母の聖域、神社を訪れましょう。",
+          "detected": "ja",
+          "ref_mt": "也可以到北部參觀法蒂瑪聖母院（聖地），它是舉世聞名的聖母瑪麗亞顯現之地。",
+          "mt": "此外，如果前往北方，可以參觀世界著名的瑪麗亞佐聖地——法蒂瑪聖母的聖所與神社。",
+          "latency_s": 6.001
+        },
+        {
+          "id": "ja_003",
+          "ref_text": "バルセロナの公用語はカタルーニャ語とスペイン語です。約半数がカタルーニャ語を好み、大多数がカタルーニャ語を理解し、ほぼ全員がスペイン語を知っています。",
+          "asr": "バルセアの講義用語は、カタルネゴとスペイン語です。 約半数がカタルネゴを好み、大多数がカタルネゴを理解し、ほぼ全員がスペイン語を知っています。",
+          "detected": "ja",
+          "ref_mt": "巴塞羅那的官方語言為加泰羅尼亞語和西班牙語。大約一半的當地人更願意說加泰羅尼亞語，絕大多數人都聽懂加泰羅尼亞語，至於西班牙語，幾乎每個人都能聽懂。",
+          "mt": "巴塞羅那的教學語言是卡塔倫戈語和西班牙語。大約一半的學生喜歡使用卡塔倫戈語，大多數能夠理解卡塔倫戈語，幾乎所有人都掌握西班牙語。",
+          "latency_s": 7.899
+        },
+        {
+          "id": "ja_004",
+          "ref_text": "その長い顎には70本以上の鋭い歯が並び、口蓋には別の歯列があり、つまりここを通ったら逃げ道はないということになります。",
+          "asr": "その長い顎には、70本以上の数という歯が並び、 向外にはウェスの指列があり、つまりここを通ったら握りちゃわないということになります。",
+          "detected": "ja",
+          "ref_mt": "它的長下顎上佈滿了 70 多顆剃刀般鋒利的牙齒，上顎上還有一排。這意味著任何與它相遇的東西都無路可逃。",
+          "mt": "那長長的下巴上排列著70顆以上的牙齒，向外則有一圈痕跡，也就是說，如果經過這裡的話，就別握緊了。",
+          "latency_s": 6.134
+        },
+        {
+          "id": "ja_005",
+          "ref_text": "ロスビー数が小さいほど磁気反転に関して星の活性が低下するわけです。",
+          "asr": "ロスビー数が小さいほど、 時期判定に関して星の活性が低下するわけです。",
+          "detected": "ja",
+          "ref_mt": "羅斯貝數越小，恆星在磁場倒轉方面就越不活躍。",
+          "mt": "洛斯比數值越小，星體的活性在時期判定方面就越低。",
+          "latency_s": 4.523
+        }
+      ],
+      "audio_s": 62.1,
+      "elapsed_s": 30.46,
+      "seconds": {
+        "load": 0.744,
+        "asr": 18.433,
+        "mt": 11.271,
+        "tts": null
+      },
+      "asr_rtf": 0.297,
+      "mt_median_s": 2.302,
+      "tts_rtf": null,
+      "kana_rate": 0.0,
+      "peak_vram_mib": null,
+      "vram_budget_mib": null,
+      "error_rate": 0.156,
+      "cer": null,
+      "chrf": 19.58,
+      "stages": {
+        "asr": "PASS",
+        "mt": "FAIL",
+        "tts": "SKIP",
+        "time": "PASS",
+        "kana": "PASS",
+        "vram": "SKIP"
+      }
+    },
+    {
+      "pair": "ru->zh",
+      "clips": [
+        {
+          "id": "ru_001",
+          "ref_text": "Мадагаскар намного больше других и  является самобытным континентом в том, что касается дикой природы.",
+          "asr": "Мадагаскар намного больше других и является самобытным континентом в том, что касается дикой природы.",
+          "detected": "ru",
+          "ref_mt": "馬達加斯加是目前為止最大的島嶼，對野生動物來說還是一片獨立的大陸。",
+          "mt": "馬達加斯加比其他地區要大得多，在野生自然方面是一個獨特的大陸。",
+          "latency_s": 4.691
+        },
+        {
+          "id": "ru_002",
+          "ref_text": "Во всех научных вопросах, включая психологию, были приняты взгляды Аристотеля.",
+          "asr": "Во всех научных вопросах, включая психологию, были приняты взгляды арестотеля.",
+          "detected": "ru",
+          "ref_mt": "亞里士多德就所有科學領域的問題（包括心理學在內）所發表的觀點都被一一接納。",
+          "mt": "在包括心理學在內的所有科學領域，亞里士多德的觀點都得到了認可。",
+          "latency_s": 4.307
+        },
+        {
+          "id": "ru_003",
+          "ref_text": "В различных местах Рима были установлены большие телевизионные экраны, с помощью которых люди могли наблюдать за церемонией.",
+          "asr": "В различных местах Рима были установлены большие телевизионные экраны, с помощью которых люди могли наблюдать за церемонией.",
+          "detected": "ru",
+          "ref_mt": "羅馬各地安裝了數個大型電視螢幕，供人們觀看儀式。",
+          "mt": "在羅馬的多個地方都安裝了大型電視螢幕，人們可以通過這些螢幕觀看儀式過程。",
+          "latency_s": 5.112
+        },
+        {
+          "id": "ru_004",
+          "ref_text": "В 1990 году он был добавлен в список всемирного наследия, находящегося под угрозой из-за опасности со стороны песков пустыни.",
+          "asr": "В 1990 году он был добавлен в список всемирного наследия, находящегося под угрозой из-за опасности со стороны песков пустыни.",
+          "detected": "ru",
+          "ref_mt": "1990 年，由於沙漠的威脅，它被列入了瀕危世界遺產名錄。",
+          "mt": "1990年，它被列入世界遺產名錄，因沙漠沙丘的威脅而面臨破壞風險。",
+          "latency_s": 5.427
+        },
+        {
+          "id": "ru_005",
+          "ref_text": "Согласно ядерному управлению Японии, на заводе были обнаружены радиоактивный цезий и йод.",
+          "asr": "Согласно ядерному управлению Японии на заводе были обнаружены радиоактивные цези и йод.",
+          "detected": "ru",
+          "ref_mt": "日本原子能機構表示，核電站檢測出了放射性物質銫和碘。",
+          "mt": "根據日本的核管理規定，該工廠發現了放射性銫和碘。",
+          "latency_s": 4.636
+        }
+      ],
+      "audio_s": 45.72,
+      "elapsed_s": 24.82,
+      "seconds": {
+        "load": 0.642,
+        "asr": 15.482,
+        "mt": 8.692,
+        "tts": null
+      },
+      "asr_rtf": 0.339,
+      "mt_median_s": 1.683,
+      "tts_rtf": null,
+      "kana_rate": 0.0,
+      "peak_vram_mib": null,
+      "vram_budget_mib": null,
+      "error_rate": 0.0417,
+      "cer": null,
+      "chrf": 29.58,
+      "stages": {
+        "asr": "PASS",
+        "mt": "FAIL",
+        "tts": "SKIP",
+        "time": "PASS",
+        "kana": "PASS",
+        "vram": "SKIP"
+      }
+    },
+    {
+      "pair": "zh->en",
+      "clips": [
+        {
+          "id": "zh_001",
+          "ref_text": "“这并不是告别。这是一个篇章的结束，也是新篇章的开始。”",
+          "asr": "这并不是告别,这是一个偏僵的结束,也是新偏僵的开始。",
+          "detected": "zh",
+          "ref_mt": "\"This is not going to be goodbye. This is the closing of one chapter and the opening of a new one.\"",
+          "mt": "This is not a farewell; it is a rigid ending, as well as the beginning of a new, rigid phase.",
+          "latency_s": 4.641
+        },
+        {
+          "id": "zh_002",
+          "ref_text": "钙、钾等元素属于金属，银和金等元素当然也是金属。",
+          "asr": "盖甲等元素属于金属,银河金等元素当然也是金属。",
+          "detected": "zh",
+          "ref_mt": "Elements like calcium and potassium are considered metals. Of course, there are also metals like silver and gold.",
+          "mt": "Elements such as Gaia and others are metals; elements like Galaxy Gold are also definitely metals.",
+          "latency_s": 4.271
+        },
+        {
+          "id": "zh_003",
+          "ref_text": "桥下垂直净空 15 米。该项目于 2011 年 8 月完工，但直到 2017 年 3 月才开始通车。",
+          "asr": "桥下垂直进空15米,盖甲贸于2011年8月晚供,但直到2017年3月才开始通车。",
+          "detected": "zh",
+          "ref_mt": "The vertical clearance under the bridge is 15 meters. Construction was completed in August 2011, it didn't open to traffic until March 2017.",
+          "mt": "The bridge extends 15 meters vertically into the air. The cover and trade were provided in the late August of 2011, but it wasn’t until March 2017 that it was opened to traffic.",
+          "latency_s": 6.121
+        },
+        {
+          "id": "zh_004",
+          "ref_text": "科学家们可以得出结论，暗物质对其他暗物质的影响方式与普通物质相同。",
+          "asr": "科学家们可以得出结论,暗物质对其他暗物质的影响方式与普通物质相同。",
+          "detected": "zh",
+          "ref_mt": "The scientists were able to conclude that the dark matter affect other dark matter in the same way regular matter does.",
+          "mt": "Scientists can conclude that the influence of dark matter on other dark matter is the same as that of ordinary matter.",
+          "latency_s": 4.811
+        },
+        {
+          "id": "zh_005",
+          "ref_text": "大多数现代科研望远镜都是巨型设施，位于大气条件优良的偏远地区。",
+          "asr": "大多数现在科研网已经都是巨型设施,位于大体,大体条件,优良的偏远地区。",
+          "detected": "zh",
+          "ref_mt": "Most modern research telescopes are enormous facilities in remote areas with favorable atmospheric conditions.",
+          "mt": "Most of the current research networks are now large-scale facilities, located in relatively remote areas with good conditions.",
+          "latency_s": 4.909
+        }
+      ],
+      "audio_s": 59.16,
+      "elapsed_s": 25.44,
+      "seconds": {
+        "load": 0.678,
+        "asr": 15.792,
+        "mt": 8.96,
+        "tts": null
+      },
+      "asr_rtf": 0.267,
+      "mt_median_s": 1.493,
+      "tts_rtf": null,
+      "kana_rate": null,
+      "peak_vram_mib": null,
+      "vram_budget_mib": null,
+      "error_rate": 0.1418,
+      "cer": null,
+      "chrf": 43.42,
+      "stages": {
+        "asr": "PASS",
+        "mt": "FAIL",
+        "tts": "SKIP",
+        "time": "PASS",
+        "kana": "SKIP",
+        "vram": "SKIP"
+      }
+    }
+  ],
+  "skipped": [],
+  "noise": null,
+  "thresholds": {
+    "asr_rtf_max": 1.0,
+    "mt_median_max_s": 1.0,
+    "tts_rtf_max": 1.0,
+    "lang_budget_s": 120.0,
+    "total_budget_s": 300.0
+  },
+  "score": {
+    "overall": 53.7,
+    "colour": "red",
+    "metrics": {
+      "asr": {
+        "score": 89.6,
+        "weight": 25,
+        "colour": "green"
+      },
+      "mt": {
+        "score": 32.9,
+        "weight": 25,
+        "colour": "red"
+      },
+      "latency": {
+        "score": 0.0,
+        "weight": 20,
+        "colour": "red"
+      },
+      "resources": {
+        "score": 100.0,
+        "weight": 10,
+        "colour": "green"
+      },
+      "lang_id": {
+        "score": 100.0,
+        "weight": 5,
+        "colour": "green"
+      }
+    },
+    "missing": [
+      "hallucination"
+    ]
+  }
+}
