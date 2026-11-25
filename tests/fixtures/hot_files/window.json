@@ -1,0 +1,6 @@
+{"days": 14, "prs": [
+  {"number": 1, "files": ["tinglongwu/app.py", ".agent/tlwu_rules.md", "docs/a.md"], "conflict_files": [["tinglongwu/app.py"], ["tinglongwu/app.py", ".agent/tlwu_rules.md"]]},
+  {"number": 2, "files": ["tinglongwu/app.py", ".agent/tlwu_rules.md"], "conflict_files": []},
+  {"number": 3, "files": ["tinglongwu/app.py", "scripts/x.py", "scripts/x.py"], "conflict_files": [["scripts/x.py"]]},
+  {"number": 4, "files": ["docs/b.md"]}
+]}
