@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from board_scan import (count_doing_claims, is_double_claim, board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
+from board_scan import (count_claim_commits, count_doing_claims, is_double_claim, board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
                         pr_needs_action, requeue_action, work_ahead)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
@@ -214,3 +214,16 @@ def test_1882_claim_commit_alone_is_an_empty_branch():
     assert is_zombie_branch("fix/12", work_ahead({"ahead_by": 1, "commits": [claim]}), False, {"status:todo"})
     assert work_ahead({"ahead_by": 2, "commits": [claim, work]}) == 1
     assert work_ahead({"ahead_by": 0, "commits": []}) == 0
+
+
+def _cmp(*msgs):
+    return {"commits": [{"commit": {"message": m}} for m in msgs]}
+
+
+def test_two_claim_commits_on_one_branch_are_counted():
+    assert count_claim_commits(_cmp("claim #7 s1 ab", "fix: x", "claim #7 s2 cd"), 7) == 2
+
+
+def test_claim_commits_of_other_issues_and_work_do_not_count():
+    assert count_claim_commits(_cmp("claim #7 s1 ab", "claim #70 s2 cd", "fix #7: claim #7 text"), 7) == 1
+    assert count_claim_commits({}, 7) == 0
