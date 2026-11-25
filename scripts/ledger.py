@@ -279,7 +279,7 @@ def collect_fix(now: datetime, pr_issue=None) -> tuple[dict[str, int], int, int,
         if not m or not mins or not (since7 <= t <= now):
             continue
         if t >= since48:
-            tally_model(c.get("body"), mins)
+            tally_model(FIX_RE.findall(c.get("body") or "")[-1], mins)  # the phase=fix line that gave the weight
         n = pr_issue(int(m.group(1)))
         labels: set[str] = set()
         if n is not None:

@@ -66,3 +66,13 @@ def test_tally_model_uses_same_line_as_weight_1923():
     ledger.tally_model("tlwu-usage: model=sonnet tool_calls=3 minutes=1", 3)
     assert ledger.MODEL_CALLS == {"sonnet": 3}
     ledger.MODEL_CALLS.clear()
+
+
+def test_fix_comment_model_from_fix_line_1923():
+    """CodeRabbit on #1939: the model comes from the phase=fix line that gave the weight, not the final line."""
+    body = "tlwu-usage: model=opus tool_calls=7 minutes=2 phase=fix\ntlwu-usage: minutes=3"
+    line = ledger.FIX_RE.findall(body)[-1]
+    ledger.MODEL_CALLS.clear()
+    ledger.tally_model(line, ledger.fix_minutes(body))
+    assert ledger.MODEL_CALLS == {"opus": 7}
+    ledger.MODEL_CALLS.clear()

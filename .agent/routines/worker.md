@@ -28,7 +28,7 @@ Read after `common.md`. "Opus worker" = W-hard; "Sonnet worker" = S-easy.
 
 ## Call cap and hand-off (#1915)
 - Hard cap 50 tool calls per ticket per run (Sonnet and Opus); a fix round on an open PR 20. Count every tool call. At 45 stop exploring and wrap up. At 50, or about 40 min, whichever first: tests green -> push and open the PR; otherwise drop unfinished edits (only tested, pushed work stays), comment one line with what is left, add `needs-split` + `status:todo`, and stop.
-- Before stopping with work left, post or update ONE PR comment starting `handoff:` with: done, next step, decisions and why, dead ends already tried, files the next run must read first. When no PR exists yet, post the `handoff:` note as a comment on the issue instead. State lives on the branch + that comment, never in chat.
+- Before stopping with work left, post or update ONE PR comment starting `handoff:` with: done, next step, decisions and why, dead ends already tried, files the next run must read first. When no PR exists yet, post the `handoff:` note as a comment on the issue instead; any pushed work stays on `fix/N`, and the next worker resumes on that same branch (claim it as `claim/N-<fix/N head sha7>` per rules section 2, like a fix round) rather than starting `fix/N-rK`. State lives on the branch + that comment, never in chat.
 - The next worker (same PR, or `fix/N-rK`, or the issue when no PR exists) reads the `handoff:` comment first and continues; it does not re-research the dead ends.
 - At most 2 hand-offs per issue; a step that fails twice -> `needs-split` + `status:blocked`, no third run. Do not hand off a segment under about 15 min of work (a cold start costs about 60k tokens).
 
