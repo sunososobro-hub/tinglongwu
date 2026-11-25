@@ -7,7 +7,8 @@ heads); dev-red count (failed `test` runs on dev pushes); `test` p50 minutes on 
 Usage:
   python scripts/collision_ledger.py [--post]          live data, GitHub REST only (needs `gh` with GH_TOKEN)
   python scripts/collision_ledger.py --fixture F.json  offline: F holds the already collected input (see FIXTURE)
---post (off by default) adds the table as a comment on the `[health] pipeline check log` issue (#61).
+--post (off by default) adds the table as a comment on the `[health] pipeline check log` issue (#61),
+first line `[collision 7d]` (the weekly `collision-ledger.yml` Action runs it, #1903).
 
 FIXTURE: {"now": iso, "dev_red": int, "prs": [{"number", "head", "created_at", "merged_at", "files": [..],
   "dirty_requeues": int, "test_minutes": float|null, "pushes": ["review"|"red test"|"conflict", ..]}]}
@@ -28,6 +29,7 @@ REPO = "sunososobro-hub/tinglongwu"
 LOG_ISSUE = 61
 DAYS = 7
 TOP = 10
+POST_PREFIX = "[collision 7d]"
 CAUSES = ("review", "red test", "conflict")
 REDO = re.compile(r"^fix/\d+-r\d+$")
 FIX_HEAD = re.compile(r"^fix/(\d+)")
@@ -176,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     print(table)
     if args.post and not args.fixture:
         subprocess.run(["gh", "api", "-X", "POST", f"repos/{REPO}/issues/{LOG_ISSUE}/comments", "-f",
-                        f"body={table}"], check=True, capture_output=True)
+                        f"body={POST_PREFIX}\n{table}"], check=True, capture_output=True)
     return 0
 
 
