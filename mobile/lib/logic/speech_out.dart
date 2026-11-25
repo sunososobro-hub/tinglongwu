@@ -94,6 +94,14 @@ class TtsVoicePaths {
     required String Function(String rel) resolve,
     required bool Function(String path) exists,
   }) {
+    // A folder holding some Melo-only file (rule FST or jieba dict) but not the whole Melo voice is
+    // a half-installed Melo pack: plain VITS would load it without ruleFsts / dictDir (#1967).
+    final vitsNames = TtsVoiceLayout.files(TtsVoiceLayout.vits).toSet();
+    final meloOnly = [
+      for (final r in TtsVoiceLayout.rel(lang, engine: TtsVoiceLayout.melo))
+        if (!vitsNames.contains(r.substring(TtsVoiceLayout.dir(lang).length + 1))) resolve(r)
+    ];
+    if (meloOnly.any(exists) && !meloOnly.every(exists)) return null;
     for (final engine in TtsVoiceLayout.engines) {
       final names = TtsVoiceLayout.files(engine);
       final p = [for (final r in TtsVoiceLayout.rel(lang, engine: engine)) resolve(r)];
