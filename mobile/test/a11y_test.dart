@@ -34,8 +34,8 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
         home: MicSemantics(stopped: true, onTap: null, child: SizedBox(width: 62, height: 62))));
     final d = tester.getSemantics(find.bySemanticsLabel('開始聆聽')).getSemanticsData();
-    expect(d.flagsCollection.hasEnabledState, isTrue);
-    expect(d.flagsCollection.isEnabled, isFalse);
+    expect(d.flagsCollection.isButton, isTrue);
+    expect(d.hasAction(SemanticsAction.tap), isFalse);
     handle.dispose();
   });
 
