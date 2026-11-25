@@ -147,6 +147,9 @@ void main() {
             onImport: () {},
             onDone: () => done++)));
     expect(find.textContaining('Models missing'), findsNothing);
+    // #1927: one plain line on why the models are a separate download.
+    expect(find.text('這些檔案會存在你的手機裡。之後更新 App 只會下載程式本身，不用再下載一次，所以更新很快。'),
+        findsOneWidget);
     expect(find.text('改用匯入模型'), findsOneWidget);
     expect(find.text('顯示技術細節'), findsOneWidget);
     expect(find.textContaining('silero_vad.onnx'), findsNothing, reason: 'folded');
