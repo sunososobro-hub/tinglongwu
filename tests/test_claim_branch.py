@@ -44,9 +44,9 @@ def remote(tmp_path):
     return bare, workers, tip
 
 
-def _claim(worker, branch, base, issue="7", session=None):
+def _claim(worker, branch, base, issue="7", session=None, env=None):
     return subprocess.run(["bash", str(SCRIPT), branch, base, issue, session or worker.name],
-                          cwd=worker, capture_output=True, text=True)
+                          cwd=worker, capture_output=True, text=True, env=env)
 
 
 def test_two_workers_same_tip_exactly_one_claims(remote):
@@ -62,9 +62,13 @@ def test_two_workers_same_tip_exactly_one_claims(remote):
 
 
 def test_same_session_twice_still_one_winner(remote):
-    """Same session name, same second: the random nonce keeps the two claim commits different."""
+    """Same session, same identity, same timestamps: only the random nonce keeps the two claim commits different."""
+    import os
     bare, (w1, w2), tip = remote
-    rs = [_claim(w, "fix/7", tip, session="same") for w in (w1, w2)]
+    env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@example.com", GIT_COMMITTER_NAME="a",
+               GIT_COMMITTER_EMAIL="a@example.com", GIT_AUTHOR_DATE="2026-11-25T00:00:00Z",
+               GIT_COMMITTER_DATE="2026-11-25T00:00:00Z")
+    rs = [_claim(w, "fix/7", tip, session="same", env=env) for w in (w1, w2)]
     assert sorted(r.returncode for r in rs) == [0, 1]
 
 
@@ -99,6 +103,15 @@ def test_fix_round_claim_branch_per_head(remote):
     bare, (w1, w2), tip = remote
     name = f"claim/7-{tip[:7]}"
     assert [_claim(w1, name, tip).returncode, _claim(w2, name, tip).returncode] == [0, 1]
+
+
+def test_push_failure_is_not_contention(remote, tmp_path):
+    """An unreachable origin (auth / network) exits 3 with git's message, not 1 (taken), so the worker reports
+    the blocked write instead of skipping every item."""
+    bare, (w1, _), tip = remote
+    _git(w1, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+    r = _claim(w1, "fix/7", tip)
+    assert r.returncode == 3 and "push failed" in r.stderr and "taken" not in r.stderr
 
 
 def test_usage_error(tmp_path):
