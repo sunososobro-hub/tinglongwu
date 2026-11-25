@@ -16,6 +16,10 @@ Rules (each is a pure function below, unit-tested in tests/test_board_scan.py):
   `requeue:` comment, so the next worker fixes it on the same branch (rules section 2). After
   MAX_REQUEUES such comments the issue gets `needs-opus` instead.
 
+- Double claim (#1883, C2 of #1875): an issue in `status:doing` / `status:review` whose current round holds two or
+  more `doing` comments (a round starts after the newest `requeue:` comment). Counted as `double_claims=<n>` on
+  the board line and listed as `double claim #N`; it is the meter for the atomic claim (C1).
+
 Usage: python scripts/board_scan.py [--post]   (needs `gh` with GH_TOKEN; default prints the line only)
 """
 from __future__ import annotations
@@ -122,9 +126,31 @@ def dev_red_too_long(now: datetime, history: list[tuple[datetime, str | None]]) 
     return since is not None and now - since > timedelta(minutes=DEV_RED_MIN)
 
 
-def board_line(now: datetime, items: list[str]) -> str:
+def count_doing_claims(comments: list[dict], trusted: set[str]) -> int:
+    """Number of `doing` claim comments in the current round (after the newest `requeue:` comment).
+
+    Only trusted authors count; `doing` and `doing (opus)` are claims, `doing something else` is not.
+    """
+    claims = 0
+    for c in sorted(comments, key=lambda c: c.get("created_at") or ""):
+        if (c.get("user") or {}).get("login") not in trusted:
+            continue
+        body = (c.get("body") or "").strip()
+        if body.startswith("requeue:"):
+            claims = 0
+        elif re.fullmatch(r"doing( \(opus\))?", body):
+            claims += 1
+    return claims
+
+
+def is_double_claim(comments: list[dict], trusted: set[str]) -> bool:
+    return count_doing_claims(comments, trusted) >= 2
+
+
+def board_line(now: datetime, items: list[str], double_claims: int = 0) -> str:
     stamp = now.astimezone(TPE).strftime("%H:%M")
-    return f"[board {stamp}] ok" if not items else f"[board {stamp}] act: " + "; ".join(items)
+    line = f"[board {stamp}] ok" if not items else f"[board {stamp}] act: " + "; ".join(items)
+    return f"{line} double_claims={double_claims}"
 
 
 # ---- GitHub I/O -------------------------------------------------------------------------------------------
@@ -244,7 +270,22 @@ def _requeue(pr_num: int, why: str, head_ref: str) -> str | None:
     return f"requeued #{num}"
 
 
-def scan(now: datetime, apply: bool = False) -> list[str]:
+def _double_claims() -> list[int]:
+    """Open issues in status:doing / status:review whose current round has two `doing` comments."""
+    trusted = {"github-actions[bot]", REPO.split("/")[0]}
+    found: set[int] = set()
+    for label in ("status:doing", "status:review"):
+        for it in _gh_list(f"repos/{REPO}/issues?state=open&labels={label}&per_page=100"):
+            if "pull_request" in it or it["number"] in found:
+                continue
+            comments = _gh_list(f"repos/{REPO}/issues/{it['number']}/comments?per_page=100")
+            if is_double_claim(comments, trusted):
+                found.add(it["number"])
+    return sorted(found)
+
+
+def scan(now: datetime, apply: bool = False) -> tuple[list[str], int]:
+    """(board items, number of double claims)."""
     items: list[str] = []
     owner = REPO.split("/")[0]
     prs = _gh_list(f"repos/{REPO}/pulls?state=open&base=dev&per_page=100")
@@ -288,7 +329,9 @@ def scan(now: datetime, apply: bool = False) -> list[str]:
             items.append(f"triage #{it['number']}")
     if _dev_red_too_long(now):
         items.append("dev test red > 2 h")
-    return items
+    doubles = _double_claims()
+    items.extend(f"double claim #{n}" for n in doubles)
+    return items, len(doubles)
 
 
 def main() -> int:
@@ -296,7 +339,8 @@ def main() -> int:
     ap.add_argument("--post", action="store_true", help=f"post the line on #{LOG_ISSUE}")
     args = ap.parse_args()
     now = datetime.now(UTC)
-    line = board_line(now, scan(now, apply=args.post))
+    items, doubles = scan(now, apply=args.post)
+    line = board_line(now, items, doubles)
     print(line)
     if args.post:
         _gh(f"repos/{REPO}/issues/{LOG_ISSUE}/comments", "-X", "POST", "-f", f"body={line}")
