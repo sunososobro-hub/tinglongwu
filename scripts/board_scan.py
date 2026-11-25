@@ -11,6 +11,10 @@ Rules (each is a pure function below, unit-tested in tests/test_board_scan.py):
 - Triage: open issues labelled `needs-triage`.
 - Dev red: the `test` check on the dev tip has been failing for more than 2 h (oldest failing commit in the
   current red streak is older than 2 h).
+- Requeue (owner 2026-11-25, no AI babysitter): with --post, a waiting PR that is `test red`, `dirty` or
+  `needs-review-ai` puts its issue (head `fix/N*`) from `status:review` back to `status:todo` with a
+  `requeue:` comment, so the next worker fixes it on the same branch (rules section 2). After
+  MAX_REQUEUES such comments the issue gets `needs-opus` instead.
 
 Usage: python scripts/board_scan.py [--post]   (needs `gh` with GH_TOKEN; default prints the line only)
 """
@@ -29,6 +33,8 @@ TPE = timezone(timedelta(hours=8))
 PR_WAIT_MIN = 30
 DEV_RED_MIN = 120
 RED = {"failure", "cancelled", "timed_out"}
+REQUEUE_WHY = {"test red", "dirty", "needs-review-ai"}
+MAX_REQUEUES = 3
 FIX_BRANCH = re.compile(r"^fix/(\d+)(?:-r\d+)?$")
 
 
@@ -41,6 +47,8 @@ def pr_needs_action(now: datetime, head_commit_at: datetime, test_conclusion: st
         return None
     if "needs-opus" in labels:
         return "needs-opus"
+    if "needs-review-ai" in labels:
+        return "needs-review-ai"
     if test_conclusion in RED:
         return "test red"
     if mergeable_state == "dirty":
@@ -48,6 +56,21 @@ def pr_needs_action(now: datetime, head_commit_at: datetime, test_conclusion: st
     if mergeable_state in (None, "unknown"):
         return "mergeable unknown"  # never report ok while GitHub has not decided
     return None
+
+
+def requeue_action(why: str | None, head_ref: str, issue_labels: set[str] | None,
+                   requeues: int) -> tuple[int, str] | None:
+    """(issue number, "requeue" | "escalate") for a waiting PR a worker can fix, else None.
+
+    Only same-repo `fix/N*` heads whose open issue #N sits in `status:review` (a worker has not taken it
+    back yet); `requeues` counts earlier `requeue:` comments on #N.
+    """
+    m = FIX_BRANCH.match(head_ref)
+    if why not in REQUEUE_WHY or not m or issue_labels is None or "status:review" not in issue_labels:
+        return None
+    if "needs-opus" in issue_labels or "needs-owner" in issue_labels:
+        return None
+    return int(m.group(1)), ("escalate" if requeues >= MAX_REQUEUES else "requeue")
 
 
 def is_zombie_branch(name: str, ahead_by: int, had_pr: bool, issue_labels: set[str] | None) -> bool:
@@ -186,7 +209,32 @@ def _dev_red_too_long(now: datetime) -> bool:
         page += 1
 
 
-def scan(now: datetime) -> list[str]:
+def _requeue(pr_num: int, why: str, head_ref: str) -> str | None:
+    """Apply requeue_action for one PR; returns a board item or None."""
+    m = FIX_BRANCH.match(head_ref)
+    if not m:
+        return None
+    labels = zombie_issue_labels(_issue_or_none(m.group(1)))
+    comments = _gh_list(f"repos/{REPO}/issues/{m.group(1)}/comments?per_page=100") if labels is not None else []
+    done = sum(1 for c in comments if (c.get("body") or "").startswith("requeue:"))
+    act = requeue_action(why, head_ref, labels, done)
+    if not act:
+        return None
+    num, kind = act
+    base = f"repos/{REPO}/issues/{num}"
+    if kind == "escalate":
+        _gh(f"{base}/labels", "-X", "POST", "-f", "labels[]=needs-opus")
+        _gh(f"{base}/comments", "-X", "POST", "-f",
+            f"body=needs-opus: PR #{pr_num} still {why} after {done} requeues; Opus please decide")
+        return f"escalated #{num}"
+    _gh(f"{base}/labels/status:review", "-X", "DELETE")
+    _gh(f"{base}/labels", "-X", "POST", "-f", "labels[]=status:todo")
+    _gh(f"{base}/comments", "-X", "POST", "-f",
+        f"body=requeue: PR #{pr_num} is {why}; next worker fixes it on the same branch")
+    return f"requeued #{num}"
+
+
+def scan(now: datetime, apply: bool = False) -> list[str]:
     items: list[str] = []
     owner = REPO.split("/")[0]
     prs = _gh_list(f"repos/{REPO}/pulls?state=open&base=dev&per_page=100")
@@ -207,6 +255,11 @@ def scan(now: datetime) -> list[str]:
         why = pr_needs_action(now, head_at, _test_conclusion(sha), full.get("mergeable_state"), labels)
         if why:
             items.append(f"PR #{pr['number']} {why}")
+            same_repo = (full["head"].get("repo") or {}).get("full_name") == REPO
+            if apply and same_repo:
+                done = _requeue(pr["number"], why, full["head"]["ref"])
+                if done:
+                    items.append(done)
     for br in _gh_list(f"repos/{REPO}/branches?per_page=100"):
         m = FIX_BRANCH.match(br["name"])
         if not m or br["name"] in open_heads:
@@ -233,7 +286,7 @@ def main() -> int:
     ap.add_argument("--post", action="store_true", help=f"post the line on #{LOG_ISSUE}")
     args = ap.parse_args()
     now = datetime.now(UTC)
-    line = board_line(now, scan(now))
+    line = board_line(now, scan(now, apply=args.post))
     print(line)
     if args.post:
         _gh(f"repos/{REPO}/issues/{LOG_ISSUE}/comments", "-X", "POST", "-f", f"body={line}")

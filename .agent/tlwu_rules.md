@@ -112,8 +112,9 @@ Routine prompts (slot A/B/C, W-*, S-hard) may still say "pick the most-behind le
 - When a type has < 5 eligible todo items, open new ones only with evidence: failing test or QA spot check, crash log, user report, eval gap, or a merged change lacking docs. Features only from owner-approved proposals (`status:proposal` promoted by the owner). No evidence -> do not open.
 
 ### Area lock
-- Each issue carries exactly one `area:*` label. A worker skips an issue whose area already has a `status:doing` issue (P0 exempt). An open PR in the same area does NOT lock it (#742: open PRs locked 5 areas and left 4 of 22 items claimable); file overlap (section 8) and in-place conflict resolution (section 7) handle the rest.
-- Race: after claiming (section 2) and adding `status:doing`, re-check the area (skip the re-check when the claimed issue is P0). If another non-P0 `status:doing` issue in the same area exists with a lower issue number, release: delete the branch the worker claimed (`fix/N`, or `fix/N-rK` on a retry), swap `status:doing` back to `status:todo`, take the next item.
+- Each issue carries exactly one `area:*` label. A worker skips an issue whose area already has 2 `status:doing` issues (P0 exempt; was 1 until owner 2026-11-25: one lock per area turned `area:mobile` into a single lane). An open PR in the same area does NOT lock it (#742: open PRs locked 5 areas and left 4 of 22 items claimable); file overlap (section 8) and in-place conflict resolution (section 7) handle the rest.
+- Race: after claiming (section 2) and adding `status:doing`, re-check the area (skip the re-check when the claimed issue is P0). If 2 other non-P0 `status:doing` issues in the same area exist with lower issue numbers, release: delete the branch the worker claimed (`fix/N`, or `fix/N-rK` on a retry), swap `status:doing` back to `status:todo`, take the next item.
+- Requeue (owner 2026-11-25): the `board-scan` Action puts the issue of a PR that is red, `dirty` or `needs-review-ai` for > 30 min back to `status:todo` (comment `requeue: ...`); a worker then fixes it on the same branch like a FAIL / CHANGES (section 2). After 3 requeues it adds `needs-opus` instead.
 - Release: the area lock ends when the worker opens its PR and moves the issue to `status:review`.
 
 ### Usage line

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from board_scan import (board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
-                        pr_needs_action)
+                        pr_needs_action, requeue_action)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
 
@@ -129,3 +129,25 @@ def test_dev_red_since_earliest_failure_in_streak():
     # tip failed at -150, parent finished red later at -5, older commit green: streak is 150 min
     hist = [(ago(150), "failure"), (ago(5), "failure"), (ago(400), "success"), (ago(500), "failure")]
     assert dev_red_since(hist) == ago(150)
+
+
+# requeue (owner 2026-11-25): red / dirty / needs-review-ai PRs go back to workers, not an AI babysitter
+def test_pr_needs_review_ai_is_flagged():
+    assert pr_needs_action(NOW, ago(31), "success", "clean", {"needs-review-ai"}) == "needs-review-ai"
+
+
+def test_requeue_red_pr_issue_in_review():
+    assert requeue_action("test red", "fix/12-r2", {"status:review", "ok-to-work"}, 0) == (12, "requeue")
+    assert requeue_action("needs-review-ai", "fix/7", {"status:review"}, 2) == (7, "requeue")
+
+
+def test_requeue_escalates_after_cap():
+    assert requeue_action("dirty", "fix/12", {"status:review"}, 3) == (12, "escalate")
+
+
+def test_requeue_skips_other_cases():
+    assert requeue_action("needs-opus", "fix/12", {"status:review"}, 0) is None
+    assert requeue_action("test red", "feat/12", {"status:review"}, 0) is None
+    assert requeue_action("test red", "fix/12", {"status:doing"}, 0) is None  # a worker already has it
+    assert requeue_action("test red", "fix/12", None, 0) is None  # issue closed
+    assert requeue_action("test red", "fix/12", {"status:review", "needs-owner"}, 0) is None
