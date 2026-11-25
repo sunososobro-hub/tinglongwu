@@ -136,7 +136,7 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "cancelDownload" -> { downloader.cancel(); result.success(null) }
                     // Wi-Fi or mobile data? (#1864, read-only, no connection opened.)
-                    "networkKind" -> result.success(NetworkProbe.kind(this))
+                    "networkFacts" -> result.success(NetworkProbe.facts(this))
                     // Models from Google Play fast-follow asset packs (only when installed from Play).
                     "playLocations" -> result.success(play.locations())
                     "playStatus" -> play.status(result)

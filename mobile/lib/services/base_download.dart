@@ -34,6 +34,17 @@ abstract class NetworkProbe {
   Future<NetKind> kind();
 }
 
+/// Decides the [NetKind] from NetworkProbe.kt's raw facts (#1864). [NetKind.unmetered] needs an
+/// unmetered Wi-Fi or Ethernet transport with no cellular transport: Android can mark 5G cellular
+/// NOT_METERED, and that must still ask before ~1.3 GB of mobile data. Null or malformed -> unknown.
+NetKind netKindFrom(Object? facts) {
+  if (facts is! Map) return NetKind.unknown;
+  bool f(String k) => facts[k] == true;
+  if (!f('internet')) return NetKind.none;
+  if (f('notMetered') && (f('wifi') || f('ethernet')) && !f('cellular')) return NetKind.unmetered;
+  return NetKind.metered;
+}
+
 /// The real one: NetworkProbe.kt (ConnectivityManager, ACCESS_NETWORK_STATE; opens no connection).
 class DeviceNetworkProbe implements NetworkProbe {
   static const _ch = MethodChannel('tlwu/native');
@@ -41,8 +52,7 @@ class DeviceNetworkProbe implements NetworkProbe {
   @override
   Future<NetKind> kind() async {
     try {
-      final k = await _ch.invokeMethod<String>('networkKind');
-      return NetKind.values.firstWhere((v) => v.name == k, orElse: () => NetKind.unknown);
+      return netKindFrom(await _ch.invokeMethod<Object?>('networkFacts'));
     } catch (_) {
       return NetKind.unknown;
     }

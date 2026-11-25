@@ -194,6 +194,23 @@ void main() {
     expect(find.text('重試'), findsOneWidget);
   });
 
+  // #1864 CodeRabbit: only unmetered Wi-Fi / Ethernet counts as unmetered; 5G marked NOT_METERED still asks.
+  group('netKindFrom', () {
+    Map<String, bool> m({bool i = true, bool nm = false, bool w = false, bool e = false, bool c = false}) =>
+        {'internet': i, 'notMetered': nm, 'wifi': w, 'ethernet': e, 'cellular': c};
+    test('unmetered Wi-Fi', () => expect(netKindFrom(m(nm: true, w: true)), NetKind.unmetered));
+    test('unmetered Ethernet', () => expect(netKindFrom(m(nm: true, e: true)), NetKind.unmetered));
+    test('unmetered cellular (5G) still asks', () => expect(netKindFrom(m(nm: true, c: true)), NetKind.metered));
+    test('Wi-Fi + cellular transport asks', () => expect(netKindFrom(m(nm: true, w: true, c: true)), NetKind.metered));
+    test('metered Wi-Fi (hotspot) asks', () => expect(netKindFrom(m(w: true)), NetKind.metered));
+    test('unmetered with no known transport (VPN only) asks', () => expect(netKindFrom(m(nm: true)), NetKind.metered));
+    test('no internet', () => expect(netKindFrom(m(i: false, nm: true, w: true)), NetKind.none));
+    test('null / malformed', () {
+      expect(netKindFrom(null), NetKind.unknown);
+      expect(netKindFrom('unmetered'), NetKind.unknown);
+    });
+  });
+
   // #1864: Wi-Fi starts by itself; mobile data asks first.
   test('auto start: on Wi-Fi (unmetered) the download starts with no tap', () async {
     final f = _Fake(_good());
