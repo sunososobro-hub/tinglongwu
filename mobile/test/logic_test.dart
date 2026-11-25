@@ -136,15 +136,27 @@ void main() {
       expect(PromptBuilder.maxTokensFor('a' * 500), 400);
     });
 
-    test('clean strips template tokens, labels, quotes, extra lines', () {
+    test('clean strips template tokens, labels, quotes; joins lines like desktop (#1818)', () {
       expect(PromptBuilder.clean('你好<\uff5chy_place\u2581holder\u2581no\u25812\uff5c>'),
           '你好');
       expect(PromptBuilder.clean('翻譯：你好嗎'), '你好嗎');
       expect(PromptBuilder.clean('译文：你好吗'), '你好吗');
       expect(PromptBuilder.clean('「你好」'), '你好');
       expect(PromptBuilder.clean('"你好"'), '你好');
-      expect(PromptBuilder.clean('第一行\n第二行'), '第一行');
+      expect(PromptBuilder.clean('第一行\n第二行'), '第一行 第二行');
       expect(PromptBuilder.clean('   '), '');
+    });
+
+    test('the translator reads only the finished first line (#1818)', () {
+      expect(PromptBuilder.finishedLines('第一行\n第二'), '第一行');
+      expect(PromptBuilder.clean(PromptBuilder.finishedLines('第一行\n第二')!), '第一行');
+      expect(PromptBuilder.finishedLines('第一行'), isNull);
+      expect(PromptBuilder.finishedLines('\n\n'), isNull);
+    });
+
+    test('clean drops <unk> like desktop strip_unk (#1818)', () {
+      expect(PromptBuilder.clean('你好 <unk> 世界 。'), '你好 世界。');
+      expect(PromptBuilder.clean('Hello "unk" world'), 'Hello world');
     });
   });
 

@@ -73,11 +73,6 @@ class PromptBuilder {
     return tight < 24 ? 24 : (tight < cap ? tight : cap);
   }
 
-  static final RegExp _label = RegExp(
-    r'^(ZH|翻譯|翻译|譯文|译文|Translation)\s*[:：]\s*',
-    caseSensitive: false,
-  );
-
   // Desktop `hymt._ECHO_EN` / `_ECHO_ZH` (#1351): the card instruction repeated in English / Chinese.
   static final RegExp _echoEn = RegExp(
     r'^\s*(?:(?:please\s+)?note(?:\s+that)?|it\s+should\s+be\s+noted\s+that|you\s+should)[,:]?\s*'
@@ -88,6 +83,9 @@ class PromptBuilder {
   );
   static final RegExp _echoZh =
       RegExp(r'^\s*(?:注意)?[，,：:]?\s*只需要?[输輸]出翻[译譯][^。：:\n]{0,12}?(?:额外|額外)(?:解释|解釋)(?:[。：:]|(?=\n)|$)\s*');
+  // Desktop `hymt._ECHO_ZH_CTX` (#1818): the contextual card instruction.
+  static final RegExp _echoZhCtx = RegExp(r'^\s*参考上面的信息[，,]\s*把下面的文本翻译成[^，,：:\n]{1,12}[，,]\s*'
+      r'注意不需要翻译上文[，,]\s*也不要额外解释[。：:]\s*');
 
   /// Desktop `hymt.ECHO_WORDS` (#1615): the instruction translated into the target language. A leading
   /// sentence is an echo only when it holds all five parts in one language:
@@ -129,37 +127,87 @@ class PromptBuilder {
 
   /// Desktop `hymt.strip_echo`: drops the card instruction when the model repeats it before (or
   /// instead of) the translation, in English, Chinese or the target language (#1615). An echo-only
-  /// output becomes empty, so the line is shown untranslated.
-  static String stripEcho(String out) {
-    out = out.replaceFirst(_echoEn, '').replaceFirst(_echoZh, '');
-    return _stripTranslatedEcho(out).trim();
+  /// output becomes empty, so the line is shown untranslated. [translated] = false skips the
+  /// target-language form (desktop's second pass after cleaning).
+  static String stripEcho(String out, {bool translated = true}) {
+    out = out.replaceFirst(_echoEn, '').replaceFirst(_echoZh, '').replaceFirst(_echoZhCtx, '');
+    return (translated ? _stripTranslatedEcho(out) : out).trim();
   }
 
   /// True once the streamed output holds a finished line that is not just the echoed instruction
   /// (#1615): the translator stops there. An echo line alone does not stop it, so a translation the
   /// model writes after the echo is still read.
-  static bool lineDone(String streamed) {
+  static bool lineDone(String streamed) => finishedLines(streamed) != null;
+
+  /// The streamed text up to its last line break when that part already cleans to some text (the
+  /// [lineDone] stop), else null. The translator cleans only this part, so the token that ended the
+  /// line cannot add the start of a second line (#1818: [clean] joins lines like desktop).
+  static String? finishedLines(String streamed) {
     final s = streamed.trimLeft();
     final nl = s.lastIndexOf('\n');
-    return nl > 0 && clean(s.substring(0, nl)).isNotEmpty;
+    if (nl <= 0) return null;
+    final head = s.substring(0, nl);
+    return clean(head).isNotEmpty ? head : null;
   }
 
-  /// Strips template tokens (`<｜...｜>`), the echoed card instruction, labels and wrapping quotes
-  /// from raw model output; keeps only the first non-empty line.
-  static String clean(String raw) {
-    var t = stripEcho(raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), '').trim());
-    final lines = t.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty);
-    if (lines.isEmpty) return '';
-    t = lines.first.replaceFirst(_label, '');
-    const pairs = <String, String>{
-      '"': '"',
-      '“': '”',
-      '「': '」',
-      '『': '』',
-    };
-    if (t.length >= 2 && pairs[t[0]] == t[t.length - 1]) {
-      t = t.substring(1, t.length - 1).trim();
+  // Desktop `engines.clean_output` and `translate.strip_unk` (#1818), same patterns and order, so the
+  // phone shows what eval-flores scores (scripts/bench/flores_cpu.py uses clean_output).
+  static final RegExp _think = RegExp(r'<think>.*?</think>', dotAll: true);
+  static final RegExp _loop = RegExp(r'(.{2,120}?)\1{2,}', dotAll: true, unicode: true);
+  // Python str.split() whitespace (Dart \s differs on U+001C-001F and U+FEFF).
+  static final RegExp _pyWs =
+      RegExp('[\t\n\u000B\u000C\r\u001C-\u001F \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+');
+  static final RegExp _label = RegExp(
+    r'^\s*(?:\[?(?:translation|translated text|translate)\]?|翻譯|翻译|譯文|译文)\s*[:：]\s*',
+    caseSensitive: false,
+  );
+  static final RegExp _markdown = RegExp(r'^(?:#+|>|[-*]\s)\s*');
+  static final RegExp _underscoreInWord = RegExp(r'(?<=[A-Za-z0-9])_+(?=[A-Za-z0-9])');
+  static const _quotePairs = <String, String>{
+    '"': '"',
+    "'": "'",
+    '“': '”',
+    '「': '」',
+    '『': '』',
+    '«': '»',
+  };
+  static final RegExp _unk = RegExp('<unk>|["\'“”‘’「」『』]unk["\'“”‘’「」『』]', caseSensitive: false);
+
+  /// Desktop `engines.clean_output`: drops `<think>` blocks, collapses a repeated chunk, joins the
+  /// lines, drops a label / markdown lead / emphasis marks / underscores and quotes around the whole
+  /// line.
+  static String cleanOutput(String text) {
+    text = text.replaceAll(_think, '');
+    final open = text.indexOf('<think>');
+    if (open >= 0) text = text.substring(0, open);
+    text = text.replaceAll('</think>', '');
+    text = text.replaceAllMapped(_loop, (m) => m[1]!);
+    text = text.split(_pyWs).where((w) => w.isNotEmpty).join(' ');
+    text = text.replaceFirst(_label, '').replaceFirst(_markdown, '');
+    text = text.replaceAll('**', '').replaceAll('`', '').replaceAll('*', '');
+    text = text.replaceAll(_underscoreInWord, ' ').replaceAll('_', '');
+    if (text.length >= 2 &&
+        _quotePairs[text[0]] == text[text.length - 1] &&
+        !text.substring(1, text.length - 1).contains(text[0])) {
+      text = text.substring(1, text.length - 1).trim();
     }
-    return t;
+    return text.trim();
+  }
+
+  /// Desktop `translate.strip_unk`: a literal `<unk>` or a quoted "unk", and the spaces it leaves.
+  static String stripUnk(String text) {
+    if (!text.toLowerCase().contains('unk')) return text;
+    var out = text.replaceAll(_unk, ' ');
+    out = out.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+    out = out.replaceAllMapped(RegExp(r'\s+([,.;:!?，。！？；：、])'), (m) => m[1]!);
+    return out.trim();
+  }
+
+  /// Desktop `HyMtTranslator.translate` text path (#1818): template tokens (`<｜...｜>`) out, then
+  /// `strip_echo(strip_unk(clean_output(strip_echo(raw))), translated=False)`. Lines are joined like
+  /// desktop; the translator stops reading after the first finished line ([finishedLines]).
+  static String clean(String raw) {
+    final t = stripEcho(raw.replaceAll(RegExp(r'<｜[^｜]*｜>'), ''));
+    return stripEcho(stripUnk(cleanOutput(t)), translated: false);
   }
 }
