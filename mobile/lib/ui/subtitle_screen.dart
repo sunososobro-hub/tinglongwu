@@ -424,7 +424,7 @@ class _Footer extends StatelessWidget {
               message: stopped ? '開始聆聽' : '停止聆聽',
               child: GestureDetector(
                 key: const Key('micButton'),
-                onTap: pipeline.switchingSource
+                onTap: pipeline.switchingSource || pipeline.stage != Stage.listening
                     ? null
                     : () {
                         final m = ScaffoldMessenger.of(context);

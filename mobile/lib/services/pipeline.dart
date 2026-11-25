@@ -561,7 +561,10 @@ class Pipeline extends ChangeNotifier {
   /// Stops or resumes listening without leaving the screen. Mic: closes/reopens the recorder.
   /// Phone audio: the capture stays up, its audio is just dropped.
   Future<void> setPaused(bool v) async {
-    if (v == paused || _pausing || _disposed || _asr == null || switchingSource) return;
+    if (v == paused || _pausing || _disposed || _asr == null || stage != Stage.listening ||
+        switchingSource) {
+      return;
+    }
     _pausing = true;
     paused = v;
     if (v) {
@@ -629,6 +632,7 @@ class Pipeline extends ChangeNotifier {
           await _phoneSub?.cancel();
           _phoneSub = null;
           _log.i('phone audio: consent declined');
+          paused = wasPaused;
           return ok ? null : '已取消看影片翻譯';
         }
         await _stopMic();
