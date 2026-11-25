@@ -31,6 +31,6 @@ Read after `common.md`. "Opus worker" = W-hard; "Sonnet worker" = S-easy.
 - English title prefixed `[bug]` / `[feat]` / `[docs]` / `[test]` / `[idea]` + one `area:*`. First line `Found by AI worker while fixing #N.` Body has `Goal:` (one sentence), `Acceptance:` (measurable: number / behaviour / command output), `Out of scope:`, `Verify:`.
 - Labels: `src:ai`, `ok-to-work`, `P2` / `P3`, `model:sonnet` (`model:opus` only for concurrency / audio routing / translation quality), type. A bug with evidence -> `status:todo`; an idea -> `status:proposal`; not testable on device -> `需實測`. No padding.
 
-## Report (last line)
+## Report (post to #61 per common.md "Reporting")
 - Sonnet worker: `✅ 收工 檔位=<N> PR #N→#M …`; nothing -> `✅ 收工 無單`; takeable but skipped -> `skipped: #N(reason)`.
 - Opus worker: `✅ 收工 #N 略過(reason) | 硬停 #N(reason) | PR #N→#M`.

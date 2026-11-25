@@ -37,3 +37,8 @@ Every tlwu cloud routine (R-hard, W-hard, S-easy slots, S-split) reads `.agent/t
 - No `git stash`; never push to `dev` directly.
 - `needs-triage` issues are never taken.
 - The owner decides only direction / subjective questions (product direction, whether to build a feature, UX taste, naming, pricing, licence, public wording). Every technical question is yours to decide; when unsure, pick the option that moves the item forward.
+
+## Reporting (owner 2026-11-25: "全部寫在 GitHub，回覆就說搞定了，或卡住了")
+- Details go to GitHub, never to the chat: each role's "Report" line is posted as one comment on the `[health] pipeline check log` issue (#61), prefixed with the role name.
+- The final chat message is exactly one line: `✅ 搞定` / `✅ 沒事` (nothing to do) / `🔴 卡住：<one short reason, plain words>`. Nothing else: no process, no item lists.
+- Idle exits at step 0 post nothing to GitHub.

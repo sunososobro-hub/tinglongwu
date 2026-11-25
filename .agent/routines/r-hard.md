@@ -25,5 +25,5 @@ b) Direction / subjective (product direction, whether to build a feature, UX tas
 c) PR changing `.claude/`, `LICENSE`, `SECURITY.md`, permissions or secrets -> `needs-owner` + one line on the risk. `.github/workflows/` and `.agent/` follow rules §3 / §14: an Opus PASS is enough to merge.
 - Unsure -> treat as a) and decide. Never touch the dev->main release PR.
 
-## Report (last line)
+## Report (post to #61 per common.md "Reporting")
 `✅ 收工 審 #N(decision) #M(decision) … bump(opened #PR / not needed / reason)`

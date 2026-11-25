@@ -12,4 +12,4 @@ Read after `common.md`. For routing, this file wins over tlwu_rules; for everyth
    Every case except e) gets one comment `route: <split|opus|needs-test|close|owner> — <reason>`.
 3. Restock: recount `pool_after`. If < 5, open bug / test / eval issues per the rules restock rule (evidence only, duplicates checked, the four-line format, labels as in b) until 5, at most 5. No new features, no padding.
 4. Log one line on #61: `split-check: pool_before=<n> pool_after=<n> split=<n> opus=<n> needtest=<n> owner=<n> closed=<n> added=<n>`.
-5. Report (last line): `✅ 收工 可做單 <before>→<after> 拆#… 轉opus#… 需實測#… 關#… 補#…`
+5. Report (post to #61 per common.md "Reporting"): `✅ 收工 可做單 <before>→<after> 拆#… 轉opus#… 需實測#… 關#… 補#…`
