@@ -603,6 +603,7 @@ class App:
         self.quick_mode: str | None = None  # #294: first-screen button that started this session
         self.run_source = "system"
         self.speak_hint: str | None = None  # #710: speak_route() result for this session
+        self.v_live = tk.BooleanVar(master=self.root, value=self.settings["live_draft"])  # #1922: shared by the toolbar switch and the Adjust radios
         self._make_main()
         self._build_controls()
         self._build_quick()
@@ -1209,9 +1210,8 @@ class App:
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
                  "gui_overlay_s").pack(side="left", padx=(3, 0))
         # #1922: live-draft switch on the main window; the same var drives the Adjust panel radios
-        self.v_live = tk.BooleanVar(value=self.settings["live_draft"])
-        self._tx(ttk.Checkbutton(row1, variable=self.v_live, style="Toolbutton", command=self._live_toggled),
-                 "gui_live_s").pack(side="left", padx=(3, 0))
+        self.chk_live = ttk.Checkbutton(row1, variable=self.v_live, style="Toolbutton", command=self._live_toggled)
+        self._tx(self.chk_live, "gui_live_s").pack(side="left", padx=(3, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
         self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(

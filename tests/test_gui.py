@@ -832,11 +832,9 @@ def test_main_window_live_draft_switch(gui_app):
     a = gui_app
     assert str(a.v_live) in _bound_vars(a.toggle_row)
     start = a.settings["live_draft"]
-    a.v_live.set(not start)
-    a._live_toggled()
+    a.chk_live.invoke()
     assert a.settings["live_draft"] is (not start)
-    a.v_live.set(start)
-    a._live_toggled()
+    a.chk_live.invoke()
     assert a.settings["live_draft"] is start
     a.root.update()
     assert a.toggle_row.winfo_reqwidth() <= 560  # the toggles row keeps the window <= 560 px (#1028)
