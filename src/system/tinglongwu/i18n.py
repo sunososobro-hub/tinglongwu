@@ -391,7 +391,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "gui_pause": "Заморозить субтитры",
         "gui_resume": "Обновлять субтитры",
         "gui_spk_s": "Голоса",
-        "gui_live_s": "Живой",
+        "gui_live_s": "Live",
         "gui_overlay_s": "Поверх",
         "gui_pause_s": "Пауза",
         "gui_resume_s": "Продолжить",

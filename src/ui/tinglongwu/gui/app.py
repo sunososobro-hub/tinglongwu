@@ -1211,7 +1211,7 @@ class App:
                  "gui_overlay_s").pack(side="left", padx=(3, 0))
         # #1922: live-draft switch on the main window; the same var drives the Adjust panel radios
         self.chk_live = ttk.Checkbutton(row1, variable=self.v_live, style="Toolbutton", command=self._live_toggled)
-        self._tx(self.chk_live, "gui_live_s").pack(side="left", padx=(3, 0))
+        self._tx(self.chk_live, "gui_live_s").pack(side="left", padx=(1, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
         self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(
