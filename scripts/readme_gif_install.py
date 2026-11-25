@@ -71,17 +71,30 @@ def even_rect(x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
     return x, y, w - w % 2, h - h % 2
 
 
+MIN_SIDE = 64  # px: xterm's window exists as 1x1 before the window manager maps and sizes it
+
+
+def ready_rect(xwininfo: str) -> tuple[int, int, int, int] | None:
+    """The even capture rect once the window is mapped and sized, else None. Readme-gifs run 45689028196 read the
+    window before it was mapped: 1x1 became 0x0 and ffmpeg x11grab refused `-video_size 0x0`."""
+    if not re.search(r"Map State:\s+IsViewable", xwininfo):
+        return None
+    try:
+        x, y, w, h = even_rect(*window_rect(xwininfo))
+    except ValueError:
+        return None
+    return (x, y, w, h) if min(w, h) >= MIN_SIDE else None
+
+
 def wait_window(timeout: float = 20.0) -> tuple[int, int, int, int]:
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout:
         r = subprocess.run(["xwininfo", "-name", TITLE], capture_output=True, text=True)
-        if r.returncode == 0:
-            try:
-                return even_rect(*window_rect(r.stdout))
-            except ValueError:
-                pass
+        rect = ready_rect(r.stdout) if r.returncode == 0 else None
+        if rect:
+            return rect
         time.sleep(0.1)
-    raise SystemExit(f"FAIL install: no '{TITLE}' window after {timeout:g} s")
+    raise SystemExit(f"FAIL install: no mapped '{TITLE}' window of at least {MIN_SIDE} px after {timeout:g} s")
 
 
 def drive(out_dir: Path, max_wait: float) -> int:

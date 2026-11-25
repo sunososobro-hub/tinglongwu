@@ -95,3 +95,29 @@ def test_window_rect_and_even_rect():
     assert ri.even_rect(-3, 21, 705, 423) == (0, 21, 704, 422)
     with pytest.raises(ValueError):
         ri.window_rect("xwininfo: error")
+
+
+def _xwininfo(w: int, h: int, state: str) -> str:
+    return (XWININFO.replace("Width: 705", f"Width: {w}").replace("Height: 423", f"Height: {h}")
+            + f"  Map State: {state}\n")
+
+
+def test_ready_rect_waits_for_a_mapped_sized_window():
+    assert ri.ready_rect(_xwininfo(1, 1, "IsUnMapped")) is None
+    assert ri.ready_rect(_xwininfo(1, 1, "IsViewable")) is None  # would be the 0x0 ffmpeg refused (run 45689028196)
+    assert ri.ready_rect(_xwininfo(705, 423, "IsUnMapped")) is None
+    assert ri.ready_rect(_xwininfo(705, 423, "IsViewable")) == (1, 21, 704, 422)
+
+
+def test_wait_window_skips_the_unmapped_1x1_window(monkeypatch):
+    outs = iter([_xwininfo(1, 1, "IsUnMapped"), _xwininfo(1, 1, "IsViewable"), _xwininfo(705, 423, "IsViewable")])
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout=next(outs), stderr="")
+
+    monkeypatch.setattr(ri.subprocess, "run", fake_run)
+    monkeypatch.setattr(ri.time, "sleep", lambda s: None)
+    assert ri.wait_window(timeout=5) == (1, 21, 704, 422)
+    assert len(calls) == 3 and calls[0][:2] == ["xwininfo", "-name"]
