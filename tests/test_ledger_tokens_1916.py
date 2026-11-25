@@ -11,7 +11,7 @@ import session_tokens  # noqa: E402
 
 
 def test_pr_tokens_present_and_missing():
-    body = "x\ntlwu-usage: model=sonnet tool_calls=9 minutes=7 tokens_in=1200 tokens_out=300 tokens_cache=5000"
+    body = "x\ntlwu-usage: model=sonnet tool_calls=9 tokens_in=1200 tokens_out=300 tokens_cache=5000 minutes=7"
     assert ledger.pr_tokens(body) == (1200, 300)
     assert ledger.pr_tokens("tlwu-usage: model=sonnet tool_calls=9 minutes=7") is None
     assert ledger.pr_tokens("tokens_in=1 tokens_out=2\nlast line") is None
