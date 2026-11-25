@@ -1208,6 +1208,10 @@ class App:
         self.btn_mic.pack(side="left")
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
                  "gui_overlay_s").pack(side="left", padx=(3, 0))
+        # #1922: live-draft switch on the main window; the same var drives the Adjust panel radios
+        self.v_live = tk.BooleanVar(value=self.settings["live_draft"])
+        self._tx(ttk.Checkbutton(row1, variable=self.v_live, style="Toolbutton", command=self._live_toggled),
+                 "gui_live_s").pack(side="left", padx=(3, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
         self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(
@@ -1710,7 +1714,7 @@ class App:
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
         self._tx(ttk.Checkbutton(g_rec, variable=self.var_show_src, command=self._src_toggled),
                  "gui_show_src_line").pack(anchor="w")
-        self.v_live = tk.BooleanVar(value=s["live_draft"])  # #1028: subtitle mode = live draft on / off
+        # #1028: subtitle mode = live draft on / off (self.v_live is built with the main-window toolbar, #1922)
         for val, key in ((False, "gui_set_sentence"), (True, "gui_set_live")):
             self._tx(ttk.Radiobutton(g_appear, variable=self.v_live, value=val), key).pack(anchor="w")
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
@@ -3182,6 +3186,10 @@ class App:
         core.set_tech_labels(setting=self.v_tech.get())
         self.relabel()  # #1807: labels and status lines follow the switch at once
         self._relabel_combos()
+
+    def _live_toggled(self):
+        """#1922: the main-window live-draft switch; Start reads the var, so settings follow at once."""
+        self.settings["live_draft"] = self.v_live.get()
 
     def _src_toggled(self):
         self.settings["show_src"] = self.var_show_src.get()
