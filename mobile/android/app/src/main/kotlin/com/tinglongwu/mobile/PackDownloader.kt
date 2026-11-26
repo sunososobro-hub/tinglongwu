@@ -1,5 +1,7 @@
 package com.tinglongwu.mobile
 
+import android.content.Context
+import android.net.Network
 import android.os.Handler
 import android.os.Looper
 import io.flutter.plugin.common.MethodCall
@@ -15,7 +17,7 @@ import java.security.MessageDigest
  * cancel, and a size + SHA-256 check before the file is handed back. Unzipping and installing the
  * files stays in the import path (ModelImporter / Dart), which checks every file again.
  */
-class PackDownloader {
+class PackDownloader(private val ctx: Context) {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var cancelled = false
     private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -28,7 +30,15 @@ class PackDownloader {
         val dest = File(call.argument<String>("dest") ?: "")
         val size = (call.argument<Number>("size") ?: -1).toLong()
         val sha = (call.argument<String>("sha256") ?: "").lowercase()
+        // #1879: an automatic (Wi-Fi-only) download binds every connection to the unmetered Network
+        // found now; none up, or it is lost later -> it stops with a zh-TW error, never the default network.
+        val unmeteredOnly = call.argument<Boolean>("unmeteredOnly") == true
         if (!allowedStart(url)) { result.error("BAD_URL", "not a release asset of this repo: $url", null); return }
+        val bound: Network? = if (unmeteredOnly) NetworkProbe.unmeteredNetwork(ctx) else null
+        if (unmeteredOnly && bound == null) {
+            result.error("NETWORK_LOST", "Wi-Fi 已中斷，自動下載已停止（不會改用行動數據）。連上 Wi-Fi 後再試。", null)
+            return
+        }
         // One download at a time: a second start must not clear the first one's cancel flag or share its .part file.
         if (!busy.compareAndSet(false, true)) { result.error("BUSY", "a download is already running", null); return }
         cancelled = false
@@ -37,13 +47,13 @@ class PackDownloader {
             var conn: HttpURLConnection? = null
             try {
                 dest.parentFile?.mkdirs()
-                conn = open(url)
+                conn = open(url, bound)
                 var hops = 0
                 while (conn!!.responseCode in 301..308) {
                     val next = URL(URL(conn.url.toString()), conn.getHeaderField("Location") ?: throw IllegalStateException("redirect without Location")).toString()
                     conn.disconnect()
                     if (++hops > MAX_HOPS || !allowedRedirect(next)) throw IllegalStateException("redirect not allowed: $next")
-                    conn = open(next)
+                    conn = open(next, bound)
                 }
                 if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
                 val total = if (size > 0) size else conn.contentLengthLong
@@ -83,7 +93,8 @@ class PackDownloader {
         }.start()
     }
 
-    private fun open(u: String): HttpURLConnection = (URL(u).openConnection() as HttpURLConnection).apply {
+    private fun open(u: String, net: Network?): HttpURLConnection =
+        ((if (net != null) net.openConnection(URL(u)) else URL(u).openConnection()) as HttpURLConnection).apply {
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 30_000
