@@ -1,0 +1,142 @@
+name: mobile-emulator
+# #1512: two-way conversation mode end to end on an x86_64 Android emulator (KVM, ubuntu-24.04).
+# mobile/integration_test/two_way_test.dart imports the base models zip and the English voice pack from the
+# rolling pre-release mobile-latest (the files a user imports), replays a Mandarin clip as microphone audio and
+# asserts the English TTS produced PCM samples plus a `TTS [en] speakLat=` log line. speakLat is report-only
+# (job summary): rules section 20, no timing limit without 10 baseline runs. Not release-critical, not required.
+# The emulator is started with the SDK's own sdkmanager / avdmanager / emulator (no third-party action).
+on:
+  pull_request:
+    paths: ["mobile/**", ".github/workflows/mobile-emulator.yml"]
+  workflow_dispatch:
+
+# #1920: a new push to a PR cancels that PR's older, still-running run.
+concurrency:
+  group: mobile-emulator-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+env:
+  # Same pins as mobile-apk.yml.
+  FLUTTER_VERSION: "3.47.6"
+  NDK_VERSION: "28.2.13676358"
+  CMAKE_VERSION: "3.22.1"
+  LLAMA_COMMIT: afeebe103bd99cda8f5dfaefcabadf890db7fda7
+  SYS_IMAGE: "system-images;android-34;google_apis;x86_64"
+  PKG: com.tinglongwu.mobile
+  # SenseVoice release tarball (sha as in mobile/tool/fetch_models.sh); only its test_wavs/zh.wav is used.
+  SV_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
+  SV_SHA: 7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e
+
+jobs:
+  two-way:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Android SDK packages (NDK + cmake for the llama.cpp AAR, emulator + x86_64 image)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" emulator platform-tools "$SYS_IMAGE" > /dev/null
+      - name: Cache the self-built llama.cpp AAR with an x86_64 slice
+        id: aar
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/aar-cache
+          key: llama-aar-x86_64-${{ env.LLAMA_COMMIT }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('mobile/tool/build_llama_android.sh', 'mobile/tool/pack_llama_aar.py') }}
+      - name: Build llama.cpp AAR from source (cache miss only)
+        if: steps.aar.outputs.cache-hit != 'true'
+        run: |
+          TLWU_BUILD_ROOT="$RUNNER_TEMP/llama" TLWU_LLAMA_ABIS="arm64-v8a x86_64" bash tool/build_llama_android.sh
+          mkdir -p ~/aar-cache && cp native/llama-cpp-dart-selfbuilt.aar ~/aar-cache/
+      - name: Use the CI-built AAR
+        run: cp ~/aar-cache/llama-cpp-dart-selfbuilt.aar native/llama-cpp-dart-selfbuilt.aar
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Debug APK with x86_64 (#1511)
+        run: TLWU_X86_64=1 flutter build apk --debug --target-platform android-arm64,android-x64
+      - name: Test inputs (models zip + voice-en from mobile-latest, zh clip)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IN="$RUNNER_TEMP/e2e"; mkdir -p "$IN"
+          gh release download mobile-latest -D "$IN" -p tlwu-mobile-models.zip -p tlwu-voice-en.zip
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/sv.tar.bz2" "$SV_URL"
+          echo "$SV_SHA  $RUNNER_TEMP/sv.tar.bz2" | sha256sum -c -
+          tar xjf "$RUNNER_TEMP/sv.tar.bz2" -C "$RUNNER_TEMP" --wildcards '*/test_wavs/zh.wav'
+          ffmpeg -loglevel error -y -i "$RUNNER_TEMP"/sherpa-onnx-sense-voice-*/test_wavs/zh.wav -ar 16000 -ac 1 -c:a pcm_s16le "$IN/zh.wav"
+          ls -l "$IN"
+      - name: Start the emulator
+        run: |
+          set -euo pipefail
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n e2e -k "$SYS_IMAGE" -d pixel_6 --force
+          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\n' >> ~/.android/avd/e2e.avd/config.ini
+          nohup "$ANDROID_HOME/emulator/emulator" -avd e2e -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
+            -camera-back none -camera-front none > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          timeout 600 "$ADB" wait-for-device
+          timeout 600 bash -c "until [ \"\$('$ADB' shell getprop sys.boot_completed | tr -d '\r')\" = 1 ]; do sleep 5; done"
+          "$ADB" shell settings put global window_animation_scale 0
+          "$ADB" shell settings put global transition_animation_scale 0
+          "$ADB" shell settings put global animator_duration_scale 0
+          echo "booted"
+      - name: Install the app and push the test inputs into its files dir
+        run: |
+          set -euo pipefail
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          "$ADB" install -r -t build/app/outputs/flutter-apk/app-debug.apk
+          # One launch so the app itself creates its external files dir (then the pushed files are the app's).
+          "$ADB" shell am start -W -n "$PKG/.MainActivity"
+          sleep 20
+          "$ADB" shell am force-stop "$PKG"
+          D="/sdcard/Android/data/$PKG/files/e2e"
+          "$ADB" shell mkdir -p "$D"
+          "$ADB" push "$RUNNER_TEMP"/e2e/* "$D/"
+          "$ADB" shell ls -l "$D"
+      - name: Integration test (two-way conversation mode)
+        env:
+          TLWU_X86_64: "1"
+        run: |
+          set -o pipefail
+          flutter test integration_test/two_way_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - name: Job summary (speakLat, report only)
+        if: always()
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          {
+            echo "### mobile-emulator: two-way conversation mode (#1512)"
+            LAT=$(grep -o 'TLWU_SPEAKLAT=[^ ]*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | cut -d= -f2)
+            echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
+            grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /'
+            echo; echo '```'
+            "$ADB" shell cat "/sdcard/Android/data/$PKG/files/logs/tlwu.log" 2>/dev/null \
+              | grep -E 'ready in|ASR final|TTS \[|tts:|LLM|start failed|models missing' | tail -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Emulator log on failure
+        if: failure()
+        run: tail -100 "$RUNNER_TEMP/emulator.log" || true
