@@ -218,6 +218,7 @@ jobs:
             MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
             echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
             sed 's/^/- qemu audio: /' "$RUNNER_TEMP/qemu-audio.txt" 2>/dev/null || true
+            sed 's/^/- pulse: /' "${TLWU_PULSE_DIR:-$RUNNER_TEMP/pulse}/source-outputs.txt" 2>/dev/null || true
             grep -iE 'audio|PA context|pulse|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
               | head -15 | sed 's/^/- emulator: /' || true
             grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
