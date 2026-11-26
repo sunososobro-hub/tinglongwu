@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../logic/model_manifest.dart';
+import '../logic/optional_groups.dart';
+import '../logic/optional_groups.dart';
 import '../services/model_importer.dart';
 import '../services/model_paths.dart';
 import '../services/play_packs.dart';
@@ -229,6 +231,15 @@ class _ImportScreenState extends State<ImportScreen> {
       const SizedBox(height: 20),
       const Text('狀態 / Status', style: _h),
       const SizedBox(height: 6),
+      const Text('已安裝套件 / Installed packs', style: _t),
+      for (final p in detectPacks(m, _present))
+        Text('✓ ${p.name}', key: Key('installedPack:${p.id}'), style: _mono.copyWith(color: Colors.greenAccent)),
+      const SizedBox(height: 6),
+      for (final g in m.optionalGroups)
+        for (final f in g.files)
+          Text('${_present.contains(f.path) ? '✓' : '·'} ${f.path} （${g.id}）',
+              style: _mono.copyWith(
+                  color: _present.contains(f.path) ? Colors.greenAccent : Colors.white38)),
       for (final f in m.files)
         Text('${_present.contains(f.path) ? '✓' : '·'} ${f.path}',
             style: _mono.copyWith(
