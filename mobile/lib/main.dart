@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'logic/model_manifest.dart';
 import 'services/base_download.dart';
+import 'services/model_importer.dart';
 import 'services/pipeline.dart';
 import 'ui/download_screen.dart';
 import 'ui/import_screen.dart';
@@ -49,6 +50,11 @@ class _RootState extends State<Root> {
 
   /// First-run base model download (#1863); kept across rebuilds so progress survives them.
   BaseModelDownload? _baseDl;
+  List<VoicePack> _optionalPacks = const [];
+  int _baseBytes = 0;
+
+  /// #1998: true until the manifest has been read, so the first-use button is not offered early.
+  bool _manifestLoading = true;
 
   @override
   void initState() {
@@ -76,9 +82,27 @@ class _RootState extends State<Root> {
   BaseModelDownload _newBaseDl(String dir) {
     final dl =
         BaseModelDownload(DeviceBaseModelSource(dir), url: DeviceBaseModelSource.bundleUrl);
-    dl.autoStart(DeviceNetworkProbe()).then((ok) {
+    // #1972: with optional packs in the manifest the person picks first (one tap on 開始下載), so
+    // the Wi-Fi auto start only runs when there is nothing to pick.
+    () async {
+      try {
+        final m = await ModelImporter.loadManifest();
+        final packs = m.packs;
+        if (packs.isNotEmpty && mounted) {
+          setState(() {
+            _optionalPacks = packs;
+            _baseBytes = m.files.fold(0, (a, f) => a + f.size);
+            _manifestLoading = false;
+          });
+          // #1998: no auto start here, but the screen still needs to know about mobile data.
+          await dl.probeNetwork(DeviceNetworkProbe());
+          return;
+        }
+      } catch (_) {}
+      if (mounted) setState(() => _manifestLoading = false);
+      final ok = await dl.autoStart(DeviceNetworkProbe());
       if (ok && mounted) _restart();
-    });
+    }();
     return dl;
   }
 
@@ -119,6 +143,9 @@ class _RootState extends State<Root> {
                 modelsDir: dir,
                 missingFiles: pipeline.missingFiles,
                 logPath: pipeline.logPath,
+                packs: _optionalPacks,
+                baseBytes: _baseBytes,
+                manifestLoading: _manifestLoading,
                 onImport: _openImport,
                 onDone: _restart);
           case Stage.error:

@@ -288,6 +288,9 @@ class Pipeline extends ChangeNotifier {
   /// End of my speech -> start of the spoken translation, last line (ms).
   int? lastSpeakLatencyMs;
 
+  /// TTS PCM samples handed to the player so far (emulator integration test, #1512).
+  int spokenSamples = 0;
+
   /// The one loaded voice, always the one for the current 對方語言 (#1280).
   final VoiceSlot<TtsWorker> _voices = VoiceSlot<TtsWorker>(dispose: (w) => w.dispose());
   final SpeakQueue _speakQ = SpeakQueue();
@@ -353,7 +356,13 @@ class Pipeline extends ChangeNotifier {
         if (_disposed || !conversation.enabled) break;
         if (!identical(_voices.voiceFor(conversation.foreign), tts)) break; // voice changed
         if (a.samples.isEmpty) continue;
-        if (!await TtsPlayer.play(a.samples, a.sampleRate)) {
+        final headset = await TtsPlayer.headset();
+        if (!speakAllowed(headset: headset, earphoneOnly: earphoneOnlyFor(conversation: true))) {
+          _log.i('tts: no headset, line shown as text only');
+          continue;
+        }
+        spokenSamples += a.samples.length;
+        if (!await TtsPlayer.play(a.samples, a.sampleRate, a.durationMs)) {
           _log.e('tts: playback failed');
           continue;
         }
@@ -362,9 +371,11 @@ class Pipeline extends ChangeNotifier {
         lastSpeakLatencyMs = start - u.speechEndMs;
         speaking = true;
         notifyListeners();
-        _log.i('TTS [${u.lang}] speakLat=${lastSpeakLatencyMs}ms gen=${a.genMs}ms '
-            'audio=${a.durationMs}ms dropped=${_speakQ.dropped}: ${AppLog.text(u.text)}');
-        await Future<void>.delayed(Duration(milliseconds: a.durationMs));
+        // Timeline (#1953): VAD end -> translation done -> play start, same clock.
+        _log.i('TTS [${u.lang}] speakLat=${lastSpeakLatencyMs}ms vadEnd=${u.speechEndMs} '
+            'mtDone=${u.mtDoneMs} playStart=$start gen=${a.genMs}ms audio=${a.durationMs}ms '
+            'headset=$headset dropped=${_speakQ.dropped}: ${AppLog.text(u.text)}');
+        await TtsPlayer.done; // one line at a time: the next starts after this one ends
         speaking = false;
         if (!_disposed) notifyListeners();
       }
@@ -386,6 +397,10 @@ class Pipeline extends ChangeNotifier {
 
   /// Mic audio for the ASR: silence while the phone reads a line aloud (no self-translation).
   void _onMicPcm(Uint8List b) => _asr?.feedPcm16(_echo.filter(b, _clock.elapsedMilliseconds));
+
+  /// Feeds 16 kHz mono PCM16 as if it came from the microphone (integration test, #1512).
+  @visibleForTesting
+  void debugFeedMic(Uint8List pcm16) => _onMicPcm(pcm16);
 
   /// Conversation mode only applies to the microphone (face to face); 看影片翻譯 stays listen-only.
   Conversation get _activeConversation =>
@@ -1085,7 +1100,7 @@ class Pipeline extends ChangeNotifier {
                   ? (job.route.speaker == Speaker.me ? 0 : 1)
                   : null);
           if (job.route.speak && conversation.enabled && r.zh.isNotEmpty) {
-            _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs));
+            _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs, mtDoneMs: now));
           }
           final tag = tgt != 'zh'
               ? '${job.lang}->$tgt${job.route.speak ? " speak" : ""}'

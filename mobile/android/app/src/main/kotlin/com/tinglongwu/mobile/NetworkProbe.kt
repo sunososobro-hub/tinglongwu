@@ -2,6 +2,7 @@ package com.tinglongwu.mobile
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 
 /**
@@ -12,6 +13,25 @@ import android.net.NetworkCapabilities
  * NOT_METERED, so metering alone must not start a 1.3 GB download). Null when it cannot tell.
  */
 object NetworkProbe {
+    /**
+     * #1879: the unmetered Wi-Fi / Ethernet Network (no cellular transport) an automatic download
+     * must stay on; null when none is up. Same rule as Dart's netKindFrom(). Opens no connection.
+     */
+    @Suppress("DEPRECATION")
+    fun unmeteredNetwork(ctx: Context): Network? = try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        cm?.allNetworks?.firstOrNull { n ->
+            val c = cm.getNetworkCapabilities(n)
+            c != null &&
+                c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
+                !c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
+        }
+    } catch (e: SecurityException) {
+        null
+    }
+
     fun facts(ctx: Context): Map<String, Boolean>? = try {
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         if (cm == null) {

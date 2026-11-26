@@ -7,7 +7,7 @@ name: mobile-apk
 # The same job also builds the Google Play AAB: the models ride in two fast-follow Play Asset Delivery
 # packs (tool/fill_asset_packs.py) that Play downloads right after install. On dev pushes the AAB is kept as an artifact and, when the
 # PLAY_SA_JSON secret and the release key exist, uploaded to the Play internal track.
-# #1621 phone preview: same-repo PRs touching mobile/** also upload to the internal track (fork PRs never do).
+# #1969: PR runs (same-repo or fork) build the AAB but never upload it; only a dev push uploads (owner tests after merge).
 # Runner: set the repo variable MOBILE_RUNNER=tlwu-mobile to build on the owner's home Windows runner
 # [self-hosted, windows, tlwu-mobile] (warm Gradle/pub/Flutter/NDK/AAR caches on its persistent disk; Git Bash steps).
 # The label can sit on the same machine as the hw runner (tlwu-hw): the two jobs then just queue one after the other.
@@ -115,11 +115,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/bin/python3"
           cygpath -m "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: Decide Play upload (dev push or same-repo PR; never fork PRs)
+      - name: Decide Play upload (dev push only; never PRs, #1969)
         id: plan
         run: python3 -I ../scripts/mobile_upload_plan.py "$EVENT" "$REF" "$REPO" "$HEAD_REPO" "$HAS_PLAY" >> "$GITHUB_OUTPUT"
         env:
-          # #1823: a fallback run keeps the cancelled run's event, so a dev push / same-repo PR still uploads.
+          # #1823: a fallback run keeps the cancelled run's event, so a dev push still uploads and a PR still does not.
           EVENT: ${{ inputs.fallback_event || github.event_name }}
           REF: ${{ github.ref }}
           REPO: ${{ github.repository }}

@@ -3,7 +3,7 @@
 - Allowed review authors: `sunososobro-hub` only. A PASS from anyone else (forks, bots, other accounts) is ignored whatever it says.
 - Opus PASS: section 3.
 - Green (dev PR): `ci` `test` `success` on the head (no `test` check is never green), the required `gate` and `freeze-guard`, `mobile-apk` `success` when `mobile/**` changed, and `mini-eval` `success` when ASR / MT / eval paths changed (`scripts/merge_gate.py` `EVAL_PATH_RE`; a `bump-check` patch bump is exempt). No other check blocks in any state, and mergers do not wait for it. Release PR green: `rules_release.md` section 14.
-- Ready: base `dev`, not draft, `clean` (fix `dirty` first, section 7), green, g1-g7 pass, no hard stop.
+- Ready: base `dev`, not draft, `mergeable_state` `clean` or `unstable` (`unstable` = only a non-required check is red, #1984; fix `dirty` first, section 7; `behind`, `blocked` and others are not ready), green, g1-g7 pass, no hard stop.
 - Gates:
   - g1 link: body has `Closes #N` or `Refs #N` for an open or just-closed issue here.
   - g2 usage: the body's last line is `tlwu-usage: ... tool_calls=N minutes=N` (merger repairs g1 / g2 body gaps, section 3).
