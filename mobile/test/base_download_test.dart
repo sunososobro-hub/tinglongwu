@@ -241,6 +241,14 @@ void main() {
       expect(await d.run(), isTrue);
       expect(f.packUrls, ['https://example.invalid/asr-ru.zip'], reason: 'voice-en is already installed');
     });
+
+    test('a pack zip that omits a declared file fails run() with a zh-TW error (#1980)', () async {
+      final f = _Fake(_good())..silentlyIncomplete.add('asr-ru');
+      final d = BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl, extraPacks: packs);
+      expect(await d.run(), isFalse);
+      expect(d.state, BaseDlState.failed);
+      expect(d.error, contains('不完整'));
+    });
   });
 
   test('ModelPaths picks the right-size pack copy over a wrong-size local file (#1980)', () {
@@ -252,14 +260,6 @@ void main() {
     File('${root.path}/pack/a.bin').writeAsBytesSync([1, 2, 3, 4, 5]);
     final mp = ModelPaths('${root.path}/files', packDirs: ['${root.path}/pack'], sizes: {'a.bin': 5});
     expect(mp.path('a.bin'), '${root.path}/pack/a.bin');
-
-    test('a pack zip that omits a declared file fails run() with a zh-TW error (#1980)', () async {
-      final f = _Fake(_good())..silentlyIncomplete.add('asr-ru');
-      final d = BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl, extraPacks: packs);
-      expect(await d.run(), isFalse);
-      expect(d.state, BaseDlState.failed);
-      expect(d.error, contains('不完整'));
-    });
   });
 
   testWidgets('screen: 開始下載 -> progress + 取消 -> main screen; details folded', (t) async {

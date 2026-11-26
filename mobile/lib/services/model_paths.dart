@@ -1,10 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 
 import '../logic/lang_pack.dart';
 import '../logic/speech_out.dart';
+import 'model_importer.dart';
 
 /// Where the models live and how to check them.
 ///
@@ -67,12 +67,12 @@ class ModelPaths {
     }
   }
 
+  /// Size of every manifest file: models, optional-pack files and the speaker model (same set as
+  /// ModelImporter.presentFiles, #1980).
   static Future<Map<String, int>> _manifestSizes() async {
     try {
-      final j = jsonDecode(await rootBundle.loadString('assets/models_manifest.json')) as Map;
-      return {
-        for (final f in j['files'] as List) (f as Map)['path'] as String: (f['size'] as num).toInt()
-      };
+      final m = await ModelImporter.loadManifest();
+      return {for (final f in m.allFiles) f.path: f.size};
     } catch (_) {
       return const {};
     }
