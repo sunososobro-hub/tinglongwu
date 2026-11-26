@@ -1,7 +1,10 @@
 package com.tinglongwu.mobile
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Handler
 import android.os.Looper
 import io.flutter.plugin.common.MethodCall
@@ -36,12 +39,24 @@ class PackDownloader(private val ctx: Context) {
         if (!allowedStart(url)) { result.error("BAD_URL", "not a release asset of this repo: $url", null); return }
         val bound: Network? = if (unmeteredOnly) NetworkProbe.unmeteredNetwork(ctx) else null
         if (unmeteredOnly && bound == null) {
-            result.error("NETWORK_LOST", "Wi-Fi 已中斷，自動下載已停止（不會改用行動數據）。連上 Wi-Fi 後再試。", null)
+            result.error("NETWORK_LOST", NETWORK_LOST_MSG, null)
             return
         }
         // One download at a time: a second start must not clear the first one's cancel flag or share its .part file.
         if (!busy.compareAndSet(false, true)) { result.error("BUSY", "a download is already running", null); return }
         cancelled = false
+        @Volatile var netLost = false
+        // #1879: watch the bound network for the whole transfer: gone, or no longer unmetered -> stop.
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val watcher = if (bound != null && cm != null) object : ConnectivityManager.NetworkCallback() {
+            override fun onLost(network: Network) { if (network == bound) netLost = true }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                if (network == bound && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) netLost = true
+            }
+        } else null
+        if (watcher != null) {
+            try { cm!!.registerNetworkCallback(NetworkRequest.Builder().build(), watcher) } catch (e: Exception) { /* bound sockets still never use another network */ }
+        }
         Thread {
             val part = File(dest.path + ".part")
             var conn: HttpURLConnection? = null
@@ -65,6 +80,7 @@ class PackDownloader(private val ctx: Context) {
                     part.outputStream().use { out ->
                         while (true) {
                             if (cancelled) throw Cancelled()
+                            if (netLost) throw NetworkLost()
                             val r = input.read(buf)
                             if (r < 0) break
                             md.update(buf, 0, r); out.write(buf, 0, r); n += r
@@ -82,11 +98,14 @@ class PackDownloader(private val ctx: Context) {
                 main.post { progress(n, total); result.success(dest.path) }
             } catch (e: Exception) {
                 part.delete()
-                val code = if (e is Cancelled) "CANCELLED" else "DOWNLOAD_FAILED"
+                val lost = e is NetworkLost || (bound != null && netLost && e !is Cancelled)
+                val code = if (e is Cancelled) "CANCELLED" else if (lost) "NETWORK_LOST" else "DOWNLOAD_FAILED"
+                val msg = if (lost) NETWORK_LOST_MSG else (e.message ?: e.toString())
                 conn?.disconnect(); conn = null
                 busy.set(false)
-                main.post { result.error(code, e.message ?: e.toString(), null) }
+                main.post { result.error(code, msg, null) }
             } finally {
+                if (watcher != null) try { cm?.unregisterNetworkCallback(watcher) } catch (e: Exception) {}
                 conn?.disconnect()
                 busy.set(false)
             }
@@ -101,8 +120,10 @@ class PackDownloader(private val ctx: Context) {
     }
 
     private class Cancelled : Exception("cancelled")
+    private class NetworkLost : Exception("network lost")
 
     companion object {
+        const val NETWORK_LOST_MSG = "Wi-Fi 已中斷，自動下載已停止（不會改用行動數據）。連上 Wi-Fi 後再試。"
         private const val BUF = 1 shl 18
         private const val PROGRESS_STEP = 2L shl 20
         private const val MAX_HOPS = 5

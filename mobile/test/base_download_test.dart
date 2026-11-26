@@ -402,4 +402,14 @@ void main() {
     expect(d.error, contains('Wi-Fi 已中斷'));
     expect(f.urls.length, 1, reason: 'no retry on another network');
   });
+
+  test('network lost mid-download (after progress): failed with the zh-TW message, no mobile-data retry', () async {
+    final f = _Fake(_good())
+      ..downloadError = PlatformException(code: 'NETWORK_LOST', message: 'Wi-Fi 已中斷，自動下載已停止（不會改用行動數據）。');
+    final d = _dl(f);
+    expect(await d.autoStart(_Net(NetKind.unmetered)), isFalse);
+    expect(d.done, greaterThan(0), reason: 'progress had started');
+    expect(d.error, contains('不會改用行動數據'));
+    expect(f.unmeteredFlags, [true]);
+  });
 }
