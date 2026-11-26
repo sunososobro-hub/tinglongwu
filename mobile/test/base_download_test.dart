@@ -360,6 +360,41 @@ void main() {
     expect(done, 1);
   });
 
+  // #2003: with optional packs the screen never auto-starts, so the hint must not promise a restart download.
+  for (final withPacks in [true, false]) {
+    testWidgets('screen: mobile-data hint ${withPacks ? 'with' : 'without'} optional packs', (t) async {
+      final d = _dl(_Fake(_good()));
+      final packs = withPacks
+          ? [
+              VoicePack.fromJson({
+                'id': 'voice-en',
+                'lang': 'en',
+                'kind': 'vits',
+                'name': 'voice-en.zip',
+                'url': 'https://example.invalid/voice-en.zip',
+                'files': [
+                  {'path': 'tts-en/model.onnx', 'size': 30, 'sha256': 'a' * 64}
+                ],
+              })
+            ]
+          : <VoicePack>[];
+      await t.pumpWidget(MaterialApp(
+          home: MissingModelsScreen(
+              download: d,
+              modelsDir: '/data/models',
+              missingFiles: const [],
+              onImport: () {},
+              onDone: () {},
+              packs: packs,
+              baseBytes: 1000)));
+      expect(await d.autoStart(_Net(NetKind.metered)), isFalse);
+      await t.pump();
+      final hint = t.widget<Text>(find.byKey(const Key('mobileDataHint'))).data!;
+      expect(hint.contains('重開 App 會自動下載'), !withPacks);
+      if (withPacks) expect(hint.contains('用行動數據下載'), isTrue);
+    });
+  }
+
   testWidgets('screen: on Wi-Fi the download is already running, no tap', (t) async {
     final f = _Fake(_good())..hold = Completer<void>();
     final d = _dl(f);
