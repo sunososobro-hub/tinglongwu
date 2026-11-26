@@ -45,13 +45,13 @@ class PackDownloader(private val ctx: Context) {
         // One download at a time: a second start must not clear the first one's cancel flag or share its .part file.
         if (!busy.compareAndSet(false, true)) { result.error("BUSY", "a download is already running", null); return }
         cancelled = false
-        @Volatile var netLost = false
+        val netLost = java.util.concurrent.atomic.AtomicBoolean(false)
         // #1879: watch the bound network for the whole transfer: gone, or no longer unmetered -> stop.
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val watcher = if (bound != null && cm != null) object : ConnectivityManager.NetworkCallback() {
-            override fun onLost(network: Network) { if (network == bound) netLost = true }
+            override fun onLost(network: Network) { if (network == bound) netLost.set(true) }
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                if (network == bound && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) netLost = true
+                if (network == bound && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) netLost.set(true)
             }
         } else null
         if (watcher != null) {
@@ -80,7 +80,7 @@ class PackDownloader(private val ctx: Context) {
                     part.outputStream().use { out ->
                         while (true) {
                             if (cancelled) throw Cancelled()
-                            if (netLost) throw NetworkLost()
+                            if (netLost.get()) throw NetworkLost()
                             val r = input.read(buf)
                             if (r < 0) break
                             md.update(buf, 0, r); out.write(buf, 0, r); n += r
@@ -98,7 +98,7 @@ class PackDownloader(private val ctx: Context) {
                 main.post { progress(n, total); result.success(dest.path) }
             } catch (e: Exception) {
                 part.delete()
-                val lost = e is NetworkLost || (bound != null && netLost && e !is Cancelled)
+                val lost = e is NetworkLost || (bound != null && netLost.get() && e !is Cancelled)
                 val code = if (e is Cancelled) "CANCELLED" else if (lost) "NETWORK_LOST" else "DOWNLOAD_FAILED"
                 val msg = if (lost) NETWORK_LOST_MSG else (e.message ?: e.toString())
                 conn?.disconnect(); conn = null
