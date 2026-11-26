@@ -1,5 +1,5 @@
 """#1369 cloud verify: latency records carry when each line was shown ("at"), and scripts/eval_livelag.py turns
-them into the translated-subtitle lag at 60 s / 180 s with the Acceptance bounds (<= 8 s, growth <= 3 s) and the
+them into the translated-subtitle lag at 60 s / 180 s with the Acceptance bounds (<= 9.5 s, growth <= 4 s, #2008) and the
 music-only check. The real-model run with a busy core is the eval.yml low-end-cpu step."""
 from __future__ import annotations
 
@@ -56,18 +56,25 @@ def test_growing_lag_fails_like_the_field_test():
     assert any("grew" in f for f in res["fails"]), res["fails"]
 
 
-def test_measured_fixed_build_growth_passes_and_more_than_3_s_fails():
+def test_measured_fixed_build_growth_passes_and_the_25_s_drift_fails():
     # #1369: runs 44431043878 / 44436697731 measured lag 7.31 s at 60 s and 9.45 s at 180 s (growth 2.14 s)
     def ramp(total):  # delay rising linearly over the clip; lag at 60 s ~7 s as measured
         return lambda e: 5.5 + total * max(0.0, e - 40.0) / 140.0
     ok = ll.score(_recs(ramp(2.14)))
     assert ok["pass"], ok
     assert 1.5 < ok["lag_180_s"] - ok["lag_60_s"] < 3.0  # ~ the measured 2.14 s (the 20 s window average smooths the ramp)
-    bad = ll.score(_recs(ramp(4.0)))
+    bad = ll.score(_recs(ramp(25.0)))  # the field-test drift (~25 s) must still fail after #2008 widened the limits
     assert not bad["pass"] and any("grew" in f for f in bad["fails"]), bad
 
 
-def test_lag_over_8_s_at_60_fails():
+def test_baseline_noise_8_4_s_at_60_passes_and_limits_follow_the_baseline():
+    # #2008: 15 baseline runs peaked at 8.37 s (lag 60 s) and 3.27 s growth; p95 8.37 / 2.74 + margin
+    assert ll.LAG_AT_60_MAX == 9.5 and ll.GROWTH_MAX == 4.0
+    res = ll.score(_recs(lambda e: 6.8))  # delay 6.8 s + the segment cadence = lag ~8.4 s
+    assert res["pass"] and 8.3 < res["lag_60_s"] < 8.5, res
+
+
+def test_lag_over_9_5_s_at_60_fails():
     res = ll.score(_recs(lambda e: 12.0))
     assert not res["pass"] and any("lag at 60 s" in f for f in res["fails"])
 
