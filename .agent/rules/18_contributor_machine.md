@@ -1,0 +1,4 @@
+## 18. Repo code never changes a contributor's machine
+- Code that runs automatically on someone's machine (`.claude/**` hooks, git hooks, install / update / bootstrap scripts) writes only inside the repo checkout or the app's data folder, never other `$HOME` files (global git config, shell profiles). Exceptions, only for the hand-run installer (`scripts/mac_install.sh`, `install.*`): one PATH line marked `# added by tinglongWu` in `~/.zprofile` / `~/.zshrc`, and `~/.local/share/applications/tinglongwu.desktop` / `~/Applications/tinglongWu.app`, all removed by `scripts/uninstall.sh`; plus undoing what this repo wrote earlier (`.claude/hooks/git_identity.sh`).
+- What CI or an agent needs is set in CI, the repo's `.git/config`, or only when `CLAUDE_CODE_REMOTE=true`.
+- `tests/test_claude_hooks_sandbox.py` runs every `.claude/settings.json` hook with a temp `HOME` and fails on any change under it.
