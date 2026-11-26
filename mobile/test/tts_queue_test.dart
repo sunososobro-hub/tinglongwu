@@ -68,7 +68,7 @@ void main() {
     test('a line that fails to start does not block the next', () async {
       var first = true;
       final f = SerialSpeaker(
-        start: (_, __) async {
+        start: (_, _) async {
           final ok = !first;
           first = false;
           return ok;
