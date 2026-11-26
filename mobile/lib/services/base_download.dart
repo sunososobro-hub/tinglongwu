@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../logic/model_manifest.dart';
 import 'model_importer.dart';
 import 'model_paths.dart';
 import 'pack_downloader.dart';
@@ -17,6 +18,16 @@ abstract class BaseModelSource {
   /// SHA-256 (a file that does not match is not installed and is listed in `problems`).
   Future<ImportReport> install(String path);
 
+  /// Downloads the optional pack [p] (its zip, from this repo's release assets) and returns the
+  /// saved file path. Throws [PlatformException] like [download].
+  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress);
+
+  /// Installs the pack zip at [path] for [p], each file checked against its size and SHA-256.
+  Future<ImportReport> installPack(VoicePack p, String path);
+
+  /// Every file of [p] is already on the phone (a retry skips it).
+  Future<bool> packInstalled(VoicePack p);
+
   /// Required model files still missing after the install.
   Future<List<String>> missing();
 
@@ -29,9 +40,13 @@ enum BaseDlState { idle, downloading, checking, failed, done }
 /// true only when nothing is missing afterwards; a checksum mismatch or a cancel leaves it
 /// [BaseDlState.failed] with a zh-TW [error] and [run] can be called again (重試).
 class BaseModelDownload extends ChangeNotifier {
-  BaseModelDownload(this.src, {required this.url});
+  BaseModelDownload(this.src, {required this.url, this.extraPacks = const []});
   final BaseModelSource src;
   final String url;
+
+  /// Optional packs chosen on the first-use screen (#1971), fetched after the base zip in the same
+  /// run. Empty = the base zip only.
+  final List<VoicePack> extraPacks;
 
   BaseDlState state = BaseDlState.idle;
   int done = 0, total = 0;
@@ -49,17 +64,41 @@ class BaseModelDownload extends ChangeNotifier {
     if (busy) return false;
     _set(BaseDlState.downloading, null);
     done = total = 0;
+    final packBytes = extraPacks.fold<int>(0, (a, p) => a + p.size);
     try {
+      var baseTotal = 0;
       final path = await src.download(url, (d, t) {
+        baseTotal = t;
         done = d;
-        total = t;
+        total = t + packBytes;
         notifyListeners();
       });
+      var offset = baseTotal; // bytes of the items finished before the current one
       _set(BaseDlState.checking, null);
       final r = await src.install(path);
       if (r.cancelled) return _fail('下載已停止。');
       if (r.problems.isNotEmpty) {
         return _fail('檔案檢查不符，沒有安裝：\n${r.problems.join('\n')}');
+      }
+      for (final p in extraPacks) {
+        if (await src.packInstalled(p)) {
+          offset += p.size;
+          done = offset;
+          continue;
+        }
+        _set(BaseDlState.downloading, null);
+        final pp = await src.downloadPack(p, (d, t) {
+          done = offset + d;
+          notifyListeners();
+        });
+        _set(BaseDlState.checking, null);
+        final pr = await src.installPack(p, pp);
+        if (pr.cancelled) return _fail('下載已停止。');
+        if (pr.problems.isNotEmpty) {
+          return _fail('檔案檢查不符，沒有安裝：\n${pr.problems.join('\n')}');
+        }
+        offset += p.size;
+        done = offset;
       }
       final miss = await src.missing();
       if (miss.isNotEmpty) return _fail('下載完成，但還缺少：\n${miss.join('\n')}');
@@ -118,6 +157,32 @@ class DeviceBaseModelSource implements BaseModelSource {
         if (f.existsSync()) f.deleteSync(); // 1.3 GB: never keep the zip once its files are in
       } catch (_) {}
     }
+  }
+
+  @override
+  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress) =>
+      PackDownloader.download(p.url, '$modelsDir/.dl/${p.name}',
+          size: -1, sha256: '', onProgress: onProgress);
+
+  @override
+  Future<ImportReport> installPack(VoicePack p, String path) async {
+    final f = File(path);
+    try {
+      final importer = ModelImporter(await ModelImporter.loadManifest(), modelsDir);
+      return await importer.run([PickedDoc(Uri.file(path).toString(), p.name, f.lengthSync())],
+          onProgress: (_, _, _) {});
+    } finally {
+      try {
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Future<bool> packInstalled(VoicePack p) async {
+    final importer = ModelImporter(await ModelImporter.loadManifest(), modelsDir);
+    final present = importer.presentFiles(packDirs: await ModelPaths.packLocations());
+    return p.files.every((f) => present.contains(f.path));
   }
 
   @override

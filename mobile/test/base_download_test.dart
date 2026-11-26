@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/logic/first_use_plan.dart';
 import 'package:mobile/logic/model_manifest.dart';
 import 'package:mobile/services/base_download.dart';
 import 'package:mobile/services/model_importer.dart';
@@ -53,6 +54,35 @@ class _Fake implements BaseModelSource {
     });
     return r;
   }
+
+  // Optional packs (#1971): the zip of pack p is "/tmp/<id>.zip"; packZip says what it holds.
+  final packZip = <String, _Got>{}; // pack id -> (size, sha256) of its first file
+  final packUrls = <String>[];
+  final packsDone = <String>{}; // ids of installed packs
+
+  @override
+  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress) async {
+    packUrls.add(p.url);
+    onProgress(p.size ~/ 2, p.size);
+    return '/tmp/${p.id}.zip';
+  }
+
+  @override
+  Future<ImportReport> installPack(VoicePack p, String path) async {
+    final r = ImportReport();
+    final got = packZip[p.id] ?? (p.files.first.size, p.files.first.sha256);
+    final e = p.files.first;
+    if (got.$1 == e.size && got.$2 == e.sha256) {
+      packsDone.add(p.id);
+      r.imported.add(e.path);
+    } else {
+      r.problems.add('${e.path}: sha256 mismatch');
+    }
+    return r;
+  }
+
+  @override
+  Future<bool> packInstalled(VoicePack p) async => packsDone.contains(p.id);
 
   @override
   Future<List<String>> missing() async =>
@@ -133,6 +163,69 @@ void main() {
     expect(await d.run(), isFalse, reason: 'a second start while busy does nothing');
     f.hold!.complete();
     expect(await running, isTrue);
+  });
+
+  group('first-use plan (#1971)', () {
+    VoicePack pk(String id, String lang, {String kind = 'vits', int size = 100}) =>
+        VoicePack.fromJson({
+          'id': id,
+          'lang': lang,
+          'kind': kind,
+          'name': '$id.zip',
+          'url': 'https://example.invalid/$id.zip',
+          'files': [
+            {'path': '${kind == 'asr' ? 'asr' : 'tts'}-$lang/model.onnx', 'size': size, 'sha256': 'a' * 64}
+          ],
+        });
+    final packs = [pk('voice-en', 'en', size: 30), pk('asr-ru', 'ru', kind: 'asr', size: 70)];
+    List<String> ids(FirstUsePlan p) => [for (final i in p.items) i.id];
+
+    test('default choice is exactly the base zip', () {
+      final p = firstUsePlan(const FirstUseChoice(), packs, baseBytes: 1000);
+      expect(ids(p), ['base']);
+      expect(p.totalBytes, 1000);
+      // a language alone, without voice / conversation, adds nothing
+      expect(ids(firstUsePlan(const FirstUseChoice(otherLang: 'en'), packs, baseBytes: 1000)), ['base']);
+    });
+
+    test('each choice adds exactly its pack and its bytes', () {
+      final v = firstUsePlan(const FirstUseChoice(voice: true, otherLang: 'en'), packs, baseBytes: 1000);
+      expect(ids(v), ['base', 'voice-en']);
+      expect(v.totalBytes, 1030);
+      final c = firstUsePlan(const FirstUseChoice(conversation: true, otherLang: 'ru'), packs, baseBytes: 1000);
+      expect(ids(c), ['base', 'asr-ru']);
+      expect(c.totalBytes, 1070);
+    });
+
+    test('a language with no pack adds nothing; no duplicates', () {
+      expect(ids(firstUsePlan(const FirstUseChoice(voice: true, conversation: true, otherLang: 'de'), packs, baseBytes: 1)), ['base']);
+      final both = firstUsePlan(const FirstUseChoice(voice: true, conversation: true, otherLang: 'en'),
+          [...packs, pk('voice-en', 'en', size: 30)], baseBytes: 1);
+      expect(ids(both), ['base', 'voice-en']);
+    });
+
+    test('run() downloads the base zip, then each pack; total covers the plan', () async {
+      final f = _Fake(_good());
+      final d = BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl, extraPacks: packs);
+      expect(await d.run(), isTrue);
+      expect(f.urls, [DeviceBaseModelSource.bundleUrl]);
+      expect(f.packUrls, ['https://example.invalid/voice-en.zip', 'https://example.invalid/asr-ru.zip']);
+      expect(d.total, (100 << 20) + 100);
+      expect(d.done, d.total);
+    });
+
+    test('a checksum mismatch in a pack fails the run; 重試 skips installed files', () async {
+      final f = _Fake(_good())..packZip['asr-ru'] = (70, 'f' * 64);
+      final d = BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl, extraPacks: packs);
+      expect(await d.run(), isFalse);
+      expect(d.state, BaseDlState.failed);
+      expect(d.error, contains('檢查不符'));
+      expect(f.packsDone, {'voice-en'});
+      f.packZip.clear();
+      f.packUrls.clear();
+      expect(await d.run(), isTrue);
+      expect(f.packUrls, ['https://example.invalid/asr-ru.zip'], reason: 'voice-en is already installed');
+    });
   });
 
   testWidgets('screen: 開始下載 -> progress + 取消 -> main screen; details folded', (t) async {
