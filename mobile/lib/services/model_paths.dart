@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../logic/lang_pack.dart';
+import '../logic/optional_groups.dart';
 import '../logic/speech_out.dart';
 import 'model_importer.dart';
 
@@ -122,8 +123,10 @@ class ModelPaths {
       TtsVoicePaths.find(lang, resolve: path, exists: (p) => File(p).existsSync());
 
   /// Optional extra-language recognizer for [lang] (#556, Russian); null when not installed.
+  /// Russian is heard by GigaAM when the `lang-ru` group is installed (#1834).
   AsrPackPaths? asrPack(String lang) =>
-      AsrPackPaths.find(lang, resolve: path, exists: (p) => File(p).existsSync());
+      pickExtraAsr(lang,
+          resolve: path, exists: (p) => File(p).existsSync(), goodCopy: hasGoodCopy);
 
   /// Returns the list of missing files (empty = all present).
   List<String> missing() => [
