@@ -82,7 +82,7 @@ class BaseModelDownload extends ChangeNotifier {
 
   /// Optional packs chosen on the first-use screen (#1971), fetched after the base zip in the same
   /// run. Empty = the base zip only.
-  final List<VoicePack> extraPacks;
+  List<VoicePack> extraPacks;
 
   BaseDlState state = BaseDlState.idle;
   int done = 0, total = 0;
