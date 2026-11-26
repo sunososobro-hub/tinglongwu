@@ -24,7 +24,10 @@ env:
   CMAKE_VERSION: "3.22.1"
   LLAMA_COMMIT: afeebe103bd99cda8f5dfaefcabadf890db7fda7
   SYS_IMAGE: "system-images;android-34;google_apis;x86_64"
-  PKG: com.tinglongwu.mobile
+  # The debug APK's id: build.gradle.kts debug applicationIdSuffix ".dev" (#1600). Run 45795806871 pushed the
+  # inputs under the release id and the test found no zip. The Kotlin namespace (activity class) has no suffix.
+  PKG: com.tinglongwu.mobile.dev
+  ACTIVITY: com.tinglongwu.mobile.MainActivity
   # SenseVoice release tarball (sha as in mobile/tool/fetch_models.sh); only its test_wavs/zh.wav is used.
   SV_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
   SV_SHA: 7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e
@@ -131,8 +134,14 @@ jobs:
           set -euo pipefail
           ADB="$ANDROID_HOME/platform-tools/adb"
           "$ADB" install -r -t build/app/outputs/flutter-apk/app-debug.apk
+          # The inputs go under the installed package's dir, so stop here if PKG is not what the APK installed.
+          if ! "$ADB" shell pm path "$PKG" | grep -q '^package:'; then
+            echo "::error::$PKG is not installed; installed tinglongwu ids:"; "$ADB" shell pm list packages | grep -i tinglongwu || true; exit 1
+          fi
           # One launch so the app itself creates its external files dir (then the pushed files are the app's).
-          "$ADB" shell am start -W -n "$PKG/.MainActivity"
+          # `am start` exits 0 on "Error type 3" (no such activity), so check its output.
+          OUT=$("$ADB" shell am start -W -n "$PKG/$ACTIVITY" 2>&1); echo "$OUT"
+          if echo "$OUT" | grep -q '^Error'; then echo "::error::could not launch $PKG/$ACTIVITY"; exit 1; fi
           sleep 20
           "$ADB" shell am force-stop "$PKG"
           D="/sdcard/Android/data/$PKG/files/e2e"

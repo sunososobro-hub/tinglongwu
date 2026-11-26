@@ -24,6 +24,11 @@ def _step(name_prefix: str) -> str:
     return next(s["run"] for s in steps if s.get("name", "").startswith(name_prefix))
 
 
+def _wf_env() -> dict:
+    """The workflow-level env (PKG, ACTIVITY, ...) exactly as Actions passes it to every step."""
+    return {k: str(v) for k, v in yaml.safe_load(WF.read_text(encoding="utf-8"))["env"].items()}
+
+
 def _stub(bin_dir: Path, name: str, body: str) -> None:
     p = bin_dir / name
     p.write_text("#!/bin/bash\n" + body + "\n", encoding="utf-8")
@@ -32,7 +37,7 @@ def _stub(bin_dir: Path, name: str, body: str) -> None:
 
 def _run(script: str, tmp: Path, bin_dir: Path, extra_env: dict | None = None) -> subprocess.CompletedProcess:
     env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp), "RUNNER_TEMP": str(tmp / "rt"),
-           "ANDROID_HOME": str(tmp / "sdk"), "PKG": "com.tinglongwu.mobile",
+           "ANDROID_HOME": str(tmp / "sdk"), **_wf_env(),
            "GITHUB_STEP_SUMMARY": str(tmp / "summary.md"), **(extra_env or {})}
     (tmp / "rt").mkdir(exist_ok=True)
     return subprocess.run([BASH, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
@@ -127,3 +132,51 @@ def test_emulator_step_pins_one_avd_home(tmp_path):
             break
         time.sleep(0.1)
     assert f"AVD_HOME={tmp_path}/.android/avd -avd e2e" in log.read_text(encoding="utf-8")
+
+
+# What the debug APK installs as (mobile/android/app/build.gradle.kts: applicationIdSuffix ".dev", #1600;
+# the Kotlin namespace, hence the activity class, keeps com.tinglongwu.mobile).
+_DEBUG_ID = "com.tinglongwu.mobile.dev"
+_ACTIVITY = "com.tinglongwu.mobile.MainActivity"
+
+
+def _install_step(tmp_path: Path) -> tuple[subprocess.CompletedProcess, str]:
+    """Run the install step against a stub adb that behaves like a device with the debug APK installed:
+    `pm path` knows only the .dev id, `am start` prints "Error type 3" (and exits 0) for any other component."""
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    sdk = tmp_path / "sdk"; (sdk / "platform-tools").mkdir(parents=True)
+    log = tmp_path / "adb.log"
+    _stub(sdk / "platform-tools", "adb", f'''echo "$*" >> "{log}"
+case "$1 $2 $3" in
+  "shell pm path") [ "$4" = "{_DEBUG_ID}" ] && echo "package:/data/app/x/base.apk"; exit 0;;
+  "shell pm list") echo "package:{_DEBUG_ID}"; exit 0;;
+  "shell am start") [ "$6" = "{_DEBUG_ID}/{_ACTIVITY}" ] && echo "Status: ok" || echo "Error type 3"; exit 0;;
+esac
+exit 0''')
+    _stub(bin_dir, "sleep", "exit 0")
+    (tmp_path / "rt/e2e").mkdir(parents=True)
+    (tmp_path / "rt/e2e/zh.wav").write_bytes(b"x")
+    r = _run(_step("Install the app"), tmp_path, bin_dir)
+    return r, log.read_text(encoding="utf-8") if log.exists() else ""
+
+
+def test_install_step_pushes_into_the_debug_apks_dir(tmp_path):
+    """Run 45795806871: inputs were pushed under com.tinglongwu.mobile while the debug APK is ...mobile.dev,
+    so the test saw no zip. The step must launch the debug app and push into its files dir."""
+    r, calls = _install_step(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"am start -W -n {_DEBUG_ID}/{_ACTIVITY}" in calls
+    assert f"push {tmp_path}/rt/e2e/zh.wav /sdcard/Android/data/{_DEBUG_ID}/files/e2e/" in calls
+
+
+def test_install_step_fails_when_pkg_is_not_installed(tmp_path, monkeypatch):
+    """A wrong PKG must stop the step with an error, not push into a dir the app never reads."""
+    real = _wf_env
+
+    def wrong_pkg():
+        return {**real(), "PKG": "com.tinglongwu.mobile"}
+    monkeypatch.setitem(globals(), "_wf_env", wrong_pkg)
+    r, calls = _install_step(tmp_path)
+    assert r.returncode != 0
+    assert "is not installed" in r.stdout + r.stderr
+    assert " push " not in f" {calls}"
