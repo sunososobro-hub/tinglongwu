@@ -288,6 +288,9 @@ class Pipeline extends ChangeNotifier {
   /// End of my speech -> start of the spoken translation, last line (ms).
   int? lastSpeakLatencyMs;
 
+  /// TTS PCM samples handed to the player so far (emulator integration test, #1512).
+  int spokenSamples = 0;
+
   /// The one loaded voice, always the one for the current 對方語言 (#1280).
   final VoiceSlot<TtsWorker> _voices = VoiceSlot<TtsWorker>(dispose: (w) => w.dispose());
   final SpeakQueue _speakQ = SpeakQueue();
@@ -353,6 +356,7 @@ class Pipeline extends ChangeNotifier {
         if (_disposed || !conversation.enabled) break;
         if (!identical(_voices.voiceFor(conversation.foreign), tts)) break; // voice changed
         if (a.samples.isEmpty) continue;
+        spokenSamples += a.samples.length;
         if (!await TtsPlayer.play(a.samples, a.sampleRate)) {
           _log.e('tts: playback failed');
           continue;
@@ -386,6 +390,10 @@ class Pipeline extends ChangeNotifier {
 
   /// Mic audio for the ASR: silence while the phone reads a line aloud (no self-translation).
   void _onMicPcm(Uint8List b) => _asr?.feedPcm16(_echo.filter(b, _clock.elapsedMilliseconds));
+
+  /// Feeds 16 kHz mono PCM16 as if it came from the microphone (integration test, #1512).
+  @visibleForTesting
+  void debugFeedMic(Uint8List pcm16) => _onMicPcm(pcm16);
 
   /// Conversation mode only applies to the microphone (face to face); 看影片翻譯 stays listen-only.
   Conversation get _activeConversation =>
