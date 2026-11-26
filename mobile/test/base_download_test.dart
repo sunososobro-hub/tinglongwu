@@ -412,4 +412,86 @@ void main() {
     expect(d.error, contains('不會改用行動數據'));
     expect(f.unmeteredFlags, [true]);
   });
+
+  // #1972: the first-use choice block; sizes come from the packs given to the screen.
+  group('first-use choices (#1972)', () {
+    VoicePack pk(String id, String lang, {String kind = 'vits', required int size}) =>
+        VoicePack.fromJson({
+          'id': id,
+          'lang': lang,
+          'kind': kind,
+          'name': '$id.zip',
+          'url': 'https://example.invalid/$id.zip',
+          'files': [
+            {'path': '${kind == 'asr' ? 'asr' : 'tts'}-$lang/model.onnx', 'size': size, 'sha256': 'a' * 64}
+          ],
+        });
+    final packs = [
+      pk('voice-en', 'en', size: 118000000),
+      pk('asr-ru', 'ru', kind: 'asr', size: 200000000),
+    ];
+    const base = 1300000000;
+
+    Future<(BaseModelDownload, _Fake)> pump(WidgetTester t) async {
+      final f = _Fake(_good());
+      final d = _dl(f);
+      await t.pumpWidget(MaterialApp(
+          home: MissingModelsScreen(
+              download: d,
+              modelsDir: '/data/models',
+              missingFiles: const [],
+              packs: packs,
+              baseBytes: base,
+              onImport: () {},
+              onDone: () {})));
+      return (d, f);
+    }
+
+    testWidgets('defaults: watch only, base size on the button, languages with a pack listed', (t) async {
+      await pump(t);
+      expect(find.text('看影片／聽別人說（只要字幕）'), findsOneWidget);
+      expect(find.text('對話翻譯（我也要說話）'), findsOneWidget);
+      expect(find.text('朗讀語音（+118 MB）'), findsOneWidget);
+      expect(find.text('開始下載（1.30 GB）'), findsOneWidget);
+      expect(find.byKey(const Key('lang-ru')), findsOneWidget);
+      expect(find.byKey(const Key('lang-en')), findsOneWidget);
+      expect(find.byKey(const Key('lang-ja')), findsNothing, reason: 'no pack for ja');
+    });
+
+    testWidgets('ticking 對話翻譯 + 朗讀語音 + a language adds exactly those packs', (t) async {
+      final (d, f) = await pump(t);
+      await t.tap(find.byKey(const Key('lang-ru')));
+      await t.pump();
+      expect(find.text('開始下載（1.30 GB）'), findsOneWidget, reason: 'language alone adds nothing');
+      await t.tap(find.byKey(const Key('choiceConversation')));
+      await t.pump();
+      expect(find.text('開始下載（1.50 GB）'), findsOneWidget); // + asr-ru 200 MB
+      await t.tap(find.byKey(const Key('choiceVoice')));
+      await t.pump();
+      // No ru voice pack in this manifest: still only the ASR pack.
+      expect(find.text('開始下載（1.50 GB）'), findsOneWidget);
+      await t.tap(find.byKey(const Key('lang-en')));
+      await t.pump();
+      expect(find.text('開始下載（1.42 GB）'), findsOneWidget); // + voice-en 118 MB (en has no ASR pack)
+      await t.tap(find.byKey(const Key('choiceWatch')));
+      await t.pump();
+      expect(find.text('開始下載（1.42 GB）'), findsOneWidget);
+      await t.tap(find.text('開始下載（1.42 GB）'));
+      await t.pumpAndSettle();
+      expect(d.extraPacks.map((p) => p.id), ['voice-en']);
+      expect(f.packUrls, ['https://example.invalid/voice-en.zip']);
+    });
+
+    testWidgets('no packs: the plain screen with today\'s 開始下載', (t) async {
+      await t.pumpWidget(MaterialApp(
+          home: MissingModelsScreen(
+              download: _dl(_Fake(_good())),
+              modelsDir: '/data/models',
+              missingFiles: const [],
+              onImport: () {},
+              onDone: () {})));
+      expect(find.text('開始下載'), findsOneWidget);
+      expect(find.text('看影片／聽別人說（只要字幕）'), findsNothing);
+    });
+  });
 }
