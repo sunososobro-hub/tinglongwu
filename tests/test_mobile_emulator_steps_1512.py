@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -97,3 +98,32 @@ def test_inputs_step_installs_ffmpeg_when_missing(tmp_path):
     i_apt = next(i for i, c in enumerate(calls) if c.startswith("sudo") and "install" in c and "ffmpeg" in c)
     i_ff = next(i for i, c in enumerate(calls) if c.startswith("ffmpeg "))
     assert i_apt < i_ff
+
+
+def test_emulator_step_pins_one_avd_home(tmp_path):
+    """Run 45787449295: avdmanager wrote the AVD under another home than ~/.android/avd and the config.ini
+    append failed. The step must pin ANDROID_AVD_HOME so avdmanager, the config edit and the emulator agree."""
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    sdk = tmp_path / "sdk"
+    log = tmp_path / "calls.log"
+    # Like the runner image: without ANDROID_AVD_HOME the AVD lands under ~/.config/.android/avd.
+    (sdk / "cmdline-tools/latest/bin").mkdir(parents=True)
+    _stub(sdk / "cmdline-tools/latest/bin", "avdmanager",
+          'h="${ANDROID_AVD_HOME:-$HOME/.config/.android/avd}"; n=""; while [ $# -gt 0 ]; do '
+          '[ "$1" = -n ] && n=$2; shift; done; mkdir -p "$h/$n.avd"; echo "hw.lcd.density=420" > "$h/$n.avd/config.ini"')
+    (sdk / "emulator").mkdir()
+    _stub(sdk / "emulator", "emulator", f'echo "emulator AVD_HOME=$ANDROID_AVD_HOME $*" >> "{log}"')
+    (sdk / "platform-tools").mkdir()
+    _stub(sdk / "platform-tools", "adb", '[ "$1 $2" = "shell getprop" ] && echo 1; exit 0')
+    _stub(bin_dir, "timeout", 'shift; exec "$@"')
+    _stub(bin_dir, "sleep", "exit 0")
+    r = _run(_step("Start the emulator"), tmp_path, bin_dir, {"SYS_IMAGE": "system-images;android-34;google_apis;x86_64"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    cfg = tmp_path / ".android/avd/e2e.avd/config.ini"
+    text = cfg.read_text(encoding="utf-8")
+    assert "hw.lcd.density=420" in text and "hw.ramSize=6144" in text
+    for _ in range(50):  # the emulator is started in the background (nohup ... &)
+        if log.exists() and log.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.1)
+    assert f"AVD_HOME={tmp_path}/.android/avd -avd e2e" in log.read_text(encoding="utf-8")
