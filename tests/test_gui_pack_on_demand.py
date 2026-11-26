@@ -5,7 +5,7 @@ import hashlib
 
 import pytest
 
-from tinglongwu.gui import pack_on_demand as pod
+from tinglongwu.gui import core, pack_on_demand as pod
 from tinglongwu_setup import resume
 
 SIZES = {"ja": 1100, "ru": 1160, "zh": 0, "en": 0}
@@ -34,8 +34,13 @@ def test_dialog_shown_and_download_runs_on_yes():
     installed = set()
     ok, asked, dl = _run(installed, True)
     assert ok and dl == ["ja"] and len(asked) == 1
-    assert asked[0][0] == ("This needs the ja pack (about 1100 MB, about 2 min). Needs internet to download once, "
-                           "works offline afterwards.")  # 1100 MB / 10 MB/s fallback = 110 s
+    assert asked[0][0] == ("This needs the Japanese add-on (about 1100 MB, about 2 min). Needs internet to download "
+                           "once, works offline afterwards.")  # 1100 MB / 10 MB/s fallback = 110 s; #1808 plain wording
+    core.set_tech_labels(setting=True)  # #1808: "Show technical details" keeps the old text
+    try:
+        assert pod.dialog_text("en", "ja", 1100).startswith("This needs the ja pack (about 1100 MB")
+    finally:
+        core.set_tech_labels(setting=False)
 
 
 def test_installed_pack_asks_nothing():

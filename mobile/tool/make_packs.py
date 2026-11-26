@@ -40,6 +40,10 @@ Pronouncing Dictionary (BSD-style).""",
 Supertonic 3 (Supertone Inc.), int8 ONNX export by sherpa-onnx, unmodified upstream files.
 Model licence: BigScience OpenRAIL-M, https://huggingface.co/Supertone/supertonic-3/blob/main/LICENSE
 Sample code licence: MIT (LICENSE in this folder).""",
+    "voice-zh": """Chinese read-aloud voice for tinglongwu (also reads English words inside Chinese text).
+sherpa-onnx vits-melo-tts-zh_en (MeloTTS by MyShell.ai, one female voice, 44.1 kHz), unmodified upstream
+files (model, tokens, lexicon, rule FSTs, jieba dictionary).
+Licence: MIT (LICENSE in this folder).""",
     "lang-ru": """Russian speech recognition for tinglongWu 對話翻譯.
 sherpa-onnx zipformer transducer (int8) converted from the Vosk Russian model,
 https://huggingface.co/alphacep/vosk-model-ru, unmodified upstream files.
@@ -80,6 +84,8 @@ def build(pack, workdir, out_dir):
         src = os.path.join(folder, e.get("alias", base))
         if not os.path.exists(src):
             src = os.path.join(folder, base)
+        if not os.path.exists(src):
+            src = os.path.join(folder, "dict", base)  # melo: the jieba files sit in dict/
         size, digest = os.path.getsize(src), sha256(src)
         if size != e["size"] or digest != e["sha256"]:
             sys.exit(f"{pack['id']}: {src}: size/sha256 {size} {digest} do not match the manifest")

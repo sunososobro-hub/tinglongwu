@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'logic/model_manifest.dart';
 import 'services/base_download.dart';
+import 'services/model_importer.dart';
 import 'services/pipeline.dart';
 import 'ui/download_screen.dart';
 import 'ui/import_screen.dart';
@@ -49,6 +50,8 @@ class _RootState extends State<Root> {
 
   /// First-run base model download (#1863); kept across rebuilds so progress survives them.
   BaseModelDownload? _baseDl;
+  List<VoicePack> _optionalPacks = const [];
+  int _baseBytes = 0;
 
   @override
   void initState() {
@@ -70,6 +73,30 @@ class _RootState extends State<Root> {
     final dir = pipeline.paths?.modelsDir;
     if (dir == null) return;
     await _pushImporter(PackInstallScreen(modelsDir: dir, packs: packs));
+  }
+
+  /// #1864: on Wi-Fi the base model download starts by itself; on mobile data the screen asks.
+  BaseModelDownload _newBaseDl(String dir) {
+    final dl =
+        BaseModelDownload(DeviceBaseModelSource(dir), url: DeviceBaseModelSource.bundleUrl);
+    // #1972: with optional packs in the manifest the person picks first (one tap on 開始下載), so
+    // the Wi-Fi auto start only runs when there is nothing to pick.
+    () async {
+      try {
+        final m = await ModelImporter.loadManifest();
+        final packs = m.packs;
+        if (packs.isNotEmpty && mounted) {
+          setState(() {
+            _optionalPacks = packs;
+            _baseBytes = m.files.fold(0, (a, f) => a + f.size);
+          });
+          return;
+        }
+      } catch (_) {}
+      final ok = await dl.autoStart(DeviceNetworkProbe());
+      if (ok && mounted) _restart();
+    }();
+    return dl;
   }
 
   /// The models are in: a fresh pipeline loads them and opens the listening screen.
@@ -103,13 +130,14 @@ class _RootState extends State<Root> {
         switch (pipeline.stage) {
           case Stage.missingModels:
             final dir = pipeline.paths!.modelsDir;
-            final dl = _baseDl ??= BaseModelDownload(DeviceBaseModelSource(dir),
-                url: DeviceBaseModelSource.bundleUrl);
+            final dl = _baseDl ??= _newBaseDl(dir);
             return MissingModelsScreen(
                 download: dl,
                 modelsDir: dir,
                 missingFiles: pipeline.missingFiles,
                 logPath: pipeline.logPath,
+                packs: _optionalPacks,
+                baseBytes: _baseBytes,
                 onImport: _openImport,
                 onDone: _restart);
           case Stage.error:

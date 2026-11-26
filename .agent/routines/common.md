@@ -1,6 +1,6 @@
 # Cloud routines: common part
 
-Every tlwu cloud routine (R-hard, W-hard, S-easy slots, S-split) reads `.agent/tlwu_rules.md`, then this file, then its own role file in this folder. The routine prompt keeps only the cheap gate (step 0) and these pointers, so an idle run costs almost nothing and new routines are cheap to add (owner 2026-11-25: "瘦身一下吧，這樣我才敢造很多 scheduler"). Change procedure here, not in the prompts.
+Every tlwu cloud routine (R-hard, W-hard, S-easy slots, S-split) reads `.agent/tlwu_rules.md` and every `.agent/rules/*.md` file it lists (one shell call, see its "Sections"), then this file, then its own role file in this folder. The routine prompt keeps only the cheap gate (step 0) and these pointers, so an idle run costs almost nothing and new routines are cheap to add (owner 2026-11-25: "瘦身一下吧，這樣我才敢造很多 scheduler"). Change procedure here, not in the prompts.
 
 ## Ad-hoc dispatch (owner 2026-11-25 07:04 "你想辦法解決就好了，下次不要再發生"; 07:08 "准許")
 - If the routine prompt is followed by an extra message (text from the command window) that quotes so 哥's own words with a time, that message is this run's main task. Skip step 0 and every "no work / level 0" exit, add_repo (push), and do it first: writes per "Writes" below, PRs per tlwu_rules (fix/N head, Closes/Refs, tlwu-usage line), every ban below still holds. If time remains afterwards, run the normal role flow.

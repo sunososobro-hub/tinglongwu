@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
 
@@ -7,6 +8,8 @@ import 'dart:typed_data';
 /// Offline voice for one language, one of two sherpa-onnx engines:
 ///  - `vits` (Piper-style VITS, e.g. the English vits-ljs): model.onnx + tokens.txt + lexicon.txt.
 ///    sherpa-onnx 2.x dropped espeak-ng, so the pack must ship `lexicon.txt` (word -> phonemes).
+///  - `melo` (MeloTTS Chinese + English, #1951): a VITS model that also needs the rule FSTs
+///    (numbers, dates, phone numbers) and the jieba dictionary to read Chinese text.
 ///  - `supertonic` (Supertonic 3, 31 languages incl. Russian, works on plain text, no lexicon):
 ///    four int8 onnx parts + tts.json + unicode_indexer.bin + voice.bin.
 ///
@@ -17,12 +20,35 @@ import 'dart:typed_data';
 class TtsVoiceLayout {
   static const vits = 'vits';
   static const supertonic = 'supertonic';
+  static const melo = 'melo';
 
-  /// Engines in the order a folder is probed.
-  static const engines = [vits, supertonic];
+  /// Engines in the order a folder is probed (melo before vits: it holds the three VITS files too).
+  static const engines = [melo, vits, supertonic];
+
+  /// The rule FSTs of a melo voice (comma-joined for sherpa-onnx `ruleFsts`) and its jieba dir.
+  static const meloFsts = ['date.fst', 'new_heteronym.fst', 'number.fst', 'phone.fst'];
+  static const meloDictDir = 'dict';
+  static const meloDictFiles = [
+    'jieba.dict.utf8',
+    'hmm_model.utf8',
+    'user.dict.utf8',
+    'idf.utf8',
+    'stop_words.utf8',
+  ];
 
   static const _files = {
     vits: ['model.onnx', 'tokens.txt', 'lexicon.txt'],
+    melo: [
+      'model.onnx',
+      'tokens.txt',
+      'lexicon.txt',
+      ...meloFsts,
+      'dict/jieba.dict.utf8',
+      'dict/hmm_model.utf8',
+      'dict/user.dict.utf8',
+      'dict/idf.utf8',
+      'dict/stop_words.utf8',
+    ],
     supertonic: [
       'duration_predictor.int8.onnx',
       'text_encoder.int8.onnx',
@@ -69,6 +95,14 @@ class TtsVoicePaths {
     required String Function(String rel) resolve,
     required bool Function(String path) exists,
   }) {
+    // A folder holding some Melo-only file (rule FST or jieba dict) but not the whole Melo voice is
+    // a half-installed Melo pack: plain VITS would load it without ruleFsts / dictDir (#1967).
+    final vitsNames = TtsVoiceLayout.files(TtsVoiceLayout.vits).toSet();
+    final meloOnly = [
+      for (final r in TtsVoiceLayout.rel(lang, engine: TtsVoiceLayout.melo))
+        if (!vitsNames.contains(r.substring(TtsVoiceLayout.dir(lang).length + 1))) resolve(r)
+    ];
+    if (meloOnly.any(exists) && !meloOnly.every(exists)) return null;
     for (final engine in TtsVoiceLayout.engines) {
       final names = TtsVoiceLayout.files(engine);
       final p = [for (final r in TtsVoiceLayout.rel(lang, engine: engine)) resolve(r)];
@@ -111,7 +145,7 @@ class EchoGuard {
 
 /// One translated line to read aloud.
 class Utterance {
-  const Utterance(this.text, {required this.lang, required this.speechEndMs});
+  const Utterance(this.text, {required this.lang, required this.speechEndMs, this.mtDoneMs = -1});
   final String text;
 
   /// Language of [text] (picks the voice).
@@ -119,6 +153,9 @@ class Utterance {
 
   /// Estimated time the speaker stopped talking (for the end-of-speech -> audio latency).
   final int speechEndMs;
+
+  /// Time the translation was ready (-1: unknown), logged with VAD end and play start (#1953).
+  final int mtDoneMs;
 }
 
 /// Text worth sending to the TTS: trimmed; '' when it has no letter or digit (just punctuation).
@@ -142,7 +179,7 @@ class SpeakQueue {
   bool add(Utterance u) {
     final t = speakableText(u.text);
     if (t.isEmpty) return false;
-    _q.add(Utterance(t, lang: u.lang, speechEndMs: u.speechEndMs));
+    _q.add(Utterance(t, lang: u.lang, speechEndMs: u.speechEndMs, mtDoneMs: u.mtDoneMs));
     while (_q.length > maxPending) {
       _q.removeFirst();
       dropped++;
@@ -154,6 +191,59 @@ class SpeakQueue {
 
   void clear() => _q.clear();
 }
+
+/// Plays one line at a time (#1953): a line starts only after the previous one has finished,
+/// so a long sentence is never cut by the next one and two lines never sound together.
+/// [start] begins playback (true = started); [finished] completes when that line has ended.
+class SerialSpeaker {
+  SerialSpeaker({required this.start, required this.finished});
+  final Future<bool> Function(Float32List samples, int sampleRate) start;
+  final Future<void> Function(int durationMs) finished;
+
+  Future<void> _tail = Future<void>.value();
+  int _gen = 0;
+
+  /// Completes when every line queued so far has ended.
+  Future<void> get done => _tail;
+
+  /// Queues a line; the future says whether it started (false: failed or [stop]ped first).
+  Future<bool> play(Float32List samples, int sampleRate, int durationMs) {
+    final gen = _gen;
+    final prev = _tail;
+    final started = Completer<bool>();
+    final ended = Completer<void>();
+    _tail = ended.future; // set before any await: concurrent calls chain, never overlap
+    unawaited(() async {
+      await prev;
+      var ok = false;
+      if (gen == _gen) {
+        try {
+          ok = await start(samples, sampleRate);
+        } catch (_) {}
+      }
+      started.complete(ok);
+      if (ok) {
+        try {
+          await finished(durationMs);
+        } catch (_) {}
+      }
+      ended.complete();
+    }());
+    return started.future;
+  }
+
+  /// Drops the lines still waiting (the caller stops the one playing).
+  void stop() => _gen++;
+}
+
+/// Earphone-only (#1953, docs/accessibility-listen-speak.md section 3): reading a translation
+/// aloud next to the original is confusing, so by default it is only spoken into a headset.
+/// Face-to-face conversation is the exception: the other person must hear the phone speaker.
+bool earphoneOnlyFor({required bool conversation}) => !conversation;
+
+/// Whether a line may be spoken. [headset] null = unknown (no native check): not held back.
+bool speakAllowed({required bool? headset, required bool earphoneOnly}) =>
+    !earphoneOnly || headset != false;
 
 /// Pill suffix in 對話模式: whether the translation of my lines is read aloud.
 /// [available] = a voice pack for the other person's language exists (false: nothing to install).

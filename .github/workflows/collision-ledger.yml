@@ -1,0 +1,27 @@
+name: collision-ledger
+# #1903 (C3b of #1875): weekly rule-only collision table; posts one `[collision 7d]` comment on #61.
+# Reads REST data only; never checks out or runs PR code (checkout is the default ref of this run).
+on:
+  schedule:
+    - cron: "23 1 * * 1"
+  workflow_dispatch:
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+  checks: read
+  actions: read
+concurrency:
+  group: collision-ledger
+  cancel-in-progress: false
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python scripts/collision_ledger.py --post
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

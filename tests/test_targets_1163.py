@@ -41,7 +41,13 @@ def test_same_language_still_rejected():
 @pytest.mark.parametrize("ui", ["en", "ru", "zh-TW"])
 def test_hymt2_target_dialog_names_translator_not_ko(code, ui, tmp_path):  # #1175
     pack, mb = pod.first_missing("en", code, tmp_path)
-    text = pod.dialog_text(ui, pack, mb)
+    text = pod.dialog_text(ui, pack, mb)  # #1808: plain wording names "More languages", never Korean
+    assert core.pack_name("hymt2", ui) in text and "韓" not in text and "орей" not in text and "Korean" not in text
+    core.set_tech_labels(setting=True)
+    try:
+        text = pod.dialog_text(ui, pack, mb)
+    finally:
+        core.set_tech_labels(setting=False)
     assert "hymt2" in text and "ko" not in text.replace("hymt2", "") and "韓" not in text and "корей" not in text
     assert mb == 1100 and pod.PACKS[pod.real_pack(pack)] == ["hymt2-1.8b"] and pod.real_pack(pack) == "ko"  # the same model is still downloaded
 

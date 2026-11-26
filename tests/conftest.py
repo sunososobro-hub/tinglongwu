@@ -1,4 +1,6 @@
+import gc
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -66,6 +68,118 @@ def _restore_sigint():
     yield
     if signal.getsignal(signal.SIGINT) is not prev and prev is not None:
         signal.signal(signal.SIGINT, prev)
+
+
+# -- parallel `test` job (#1857) ---------------------------------------------------------------------------------
+# CI runs the suite with `pytest -n auto --dist loadgroup`. Files that build real Tk windows (or start a GUI child on
+# the xvfb display) all go into ONE xdist group, so they run one after another on one worker, as in the old serial run:
+# two workers driving Tk at once made a worker segfault in focus_force (test_send_gate_833, PR #1867).
+# Every other file is its own group (= --dist loadfile), so module fixtures still run once per file.
+REAL_TK_RE = re.compile(r"tkinter|\bTk\(|Toplevel|tinglongwu\.(?:gui|overlay|splash|face_to_face)"
+                        r"|from tinglongwu import [^\n]*\b(?:gui|overlay|splash|face_to_face)\b|DISPLAY|xvfb")
+REAL_TK_GROUP = "real-tk"
+_tk_file_cache: dict = {}
+
+
+def xdist_group_for(path, text=None) -> str:
+    """The xdist group of a test file: REAL_TK_GROUP when its source touches Tk / the display, else the file itself."""
+    p = Path(path)
+    if text is None:
+        if p not in _tk_file_cache:
+            try:
+                _tk_file_cache[p] = bool(REAL_TK_RE.search(p.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                _tk_file_cache[p] = False
+        hit = _tk_file_cache[p]
+    else:
+        hit = bool(REAL_TK_RE.search(text))
+    return REAL_TK_GROUP if hit else p.name
+
+
+@pytest.fixture(autouse=True)
+def _collect_tk_garbage(request):
+    """#1918 CI: free a real-Tk test's leftover tkinter objects (Variable / image cycles) on the main thread.
+
+    Left to the cyclic GC they are finalized in whatever thread allocates next on this xdist worker; there
+    `Variable.__del__` raises "main thread is not in main loop", killing that thread (test_pending_line_1532's
+    pipeline thread) or aborting Tcl (test_readme_gif_drive_734 crashed worker gw0).
+    """
+    yield
+    if "tkinter" in sys.modules and xdist_group_for(request.node.path) == REAL_TK_GROUP:
+        gc.collect()
+
+
+# -- sharded `test` job (#1857 part 3) ----------------------------------------------------------------------------
+# CI runs the suite ONCE, split over parallel jobs: TLWU_SHARD=<k>/<n> keeps only the test files of shard k (1-based).
+# Whole files go to one shard (module fixtures run once). Files are balanced by
+# their collected test count (largest first, to the shard with the least load): the real-Tk files first, so the
+# serial real-Tk group is split evenly, then the other files even out the total.
+# Every shard collects the same files, so all n shards together run every test exactly once.
+SHARD_ENV = "TLWU_SHARD"
+
+
+def parse_shard(value):
+    """'2/4' -> (2, 4); empty -> None; anything else raises ValueError (a typo must not silently run nothing)."""
+    if not value:
+        return None
+    m = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", value)
+    if not m or not 1 <= int(m.group(1)) <= int(m.group(2)):
+        raise ValueError(f"{SHARD_ENV}={value!r}: expected k/n with 1 <= k <= n")
+    return int(m.group(1)), int(m.group(2))
+
+
+def shard_of_files(counts, n, is_tk=lambda f: False) -> dict:
+    """{file: test count} -> {file: shard 1..n}, deterministic for the same input."""
+    out, load = {}, {k: 0 for k in range(1, n + 1)}
+    for tk in (True, False):  # real-Tk files first (spread over the shards), then the rest fill up the total load
+        for f in sorted((f for f in counts if bool(is_tk(f)) == tk), key=lambda f: (-counts[f], str(f))):
+            k = min(load, key=lambda s: (load[s], s))
+            out[f] = k
+            load[k] += counts[f]
+    return out
+
+
+def _apply_shard(config, items):
+    shard = parse_shard(os.environ.get(SHARD_ENV, ""))
+    if shard is None:
+        return
+    k, n = shard
+    counts: dict = {}
+    for item in items:
+        counts[item.path] = counts.get(item.path, 0) + 1
+    where = shard_of_files(counts, n, is_tk=lambda f: xdist_group_for(f) == REAL_TK_GROUP)
+    keep = [i for i in items if where[i.path] == k]
+    drop = [i for i in items if where[i.path] != k]
+    if drop:
+        config.hook.pytest_deselected(items=drop)
+        items[:] = keep
+
+
+@pytest.hookimpl(tryfirst=True)  # before xdist's own hook, which appends the group to each nodeid
+def pytest_collection_modifyitems(config, items):
+    _apply_shard(config, items)
+    if not config.pluginmanager.hasplugin("xdist"):
+        return
+    for item in items:
+        if item.get_closest_marker("xdist_group") is None:
+            item.add_marker(pytest.mark.xdist_group(xdist_group_for(item.path)))
+
+
+@pytest.fixture(autouse=True)
+def _restore_offline_env():
+    """#1857: tinglongwu_setup.downloader.main() pops HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE from os.environ (the
+    download child needs the network). Tests that call it leaked that into every later test in the same process, so
+    test_offline.py::test_env_set_on_import passed or failed by test order (it failed once the suite ran in parallel
+    workers). Every test ends with the offline flags it started with."""
+    from tinglongwu.offline import OFFLINE_ENV
+
+    prev = {k: os.environ.get(k) for k in OFFLINE_ENV}
+    yield
+    for k, v in prev.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 # -- real-Tk GUI tests (#113) ------------------------------------------------------------------------------------

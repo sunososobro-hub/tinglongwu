@@ -125,3 +125,21 @@ def test_main_dry_run_prints_decision(monkeypatch, capsys):
     assert pr_format.main(["--pr", "7"]) == 0
     assert "#7 close: head" in capsys.readouterr().out
     assert all("-X" not in c for c in calls)  # dry run writes nothing
+
+
+def test_runs_from_main_sparse_checkout_without_owners(tmp_path):
+    """#1954: pr-format.yml runs from main and sparse-checks out only pr_format.py + merge_gate.py of dev."""
+    import shutil
+    import subprocess
+    for name in ("pr_format.py", "merge_gate.py"):
+        shutil.copy(ROOT / "scripts" / name, tmp_path / name)
+    run = subprocess.run([sys.executable, "-I", str(tmp_path / "pr_format.py"), "--help"],
+                         capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0, run.stderr
+    assert "FileNotFoundError" not in run.stderr
+    # The protected-path check still fails closed when owners.py is absent.
+    probe = ("import importlib.util, sys\n"
+             f"s = importlib.util.spec_from_file_location('mg', {str(tmp_path / 'merge_gate.py')!r})\n"
+             "m = importlib.util.module_from_spec(s); s.loader.exec_module(m)\n"
+             "try:\n    m.is_protected('scripts/release_check.py')\nexcept FileNotFoundError:\n    sys.exit(3)\n")
+    assert subprocess.run([sys.executable, "-I", "-c", probe], timeout=60).returncode == 3

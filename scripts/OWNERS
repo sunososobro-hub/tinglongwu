@@ -1,0 +1,6 @@
+# #1918 folder ownership, read by scripts/owners.py (merge gate, triage). Keys: scripts/owners.py docstring.
+area: area:ci
+model: sonnet
+review: bot
+protected: false
+protected_files: [release_notes.py, release_check.py, merge_gate.py, owners.py, download_models.py, make_model_pins.py, "*offline*"]

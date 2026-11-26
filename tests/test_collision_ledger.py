@@ -69,3 +69,50 @@ def test_dirty_requeues_matches_board_scan_text_and_pr():
           {"body": "requeue: PR #5 is test red; next worker fixes it on the same branch"},
           {"body": "requeue: PR #55 is dirty; x"}, {"body": "doing"}]
     assert cl.dirty_requeues(cs, 5) == 1
+
+
+def test_post_comment_starts_with_collision_7d(monkeypatch):
+    """#1903: `--post` sends one comment on #61 whose first line is `[collision 7d]`, then the table."""
+    calls = []
+    monkeypatch.setattr(cl, "collect", lambda now: {"dev_red": 0, "prs": DATA["prs"]})
+    monkeypatch.setattr(cl.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    assert cl.main(["--post"]) == 0
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert cmd[:5] == ["gh", "api", "-X", "POST", "repos/sunososobro-hub/tinglongwu/issues/61/comments"]
+    body = cmd[-1].removeprefix("body=")
+    assert body.splitlines()[0] == "[collision 7d]"
+    assert body.split("\n", 1)[1] == cl.render({"dev_red": 0, "prs": DATA["prs"]})
+
+
+def test_no_post_without_flag(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cl, "collect", lambda now: {"dev_red": 0, "prs": []})
+    monkeypatch.setattr(cl.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    assert cl.main([]) == 0
+    assert calls == []
+
+
+def test_workflow_weekly_no_pr_code():
+    """#1903: weekly cron + dispatch, only issues write, no PR trigger or PR ref checkout."""
+    import pytest
+    yaml = pytest.importorskip("yaml")
+    wf = yaml.safe_load((Path(__file__).resolve().parents[1] / ".github/workflows/collision-ledger.yml")
+                        .read_text(encoding="utf-8"))
+    on = wf.get("on", wf.get(True))
+    assert set(on) == {"schedule", "workflow_dispatch"}
+    assert len(on["schedule"][0]["cron"].split()[4]) == 1  # one weekday -> weekly
+    assert {k for k, v in wf["permissions"].items() if v == "write"} == {"issues"}
+    steps = wf["jobs"]["ledger"]["steps"]
+    assert all("ref" not in (s.get("with") or {}) for s in steps)
+    assert [s["run"] for s in steps if "run" in s] == ["python scripts/collision_ledger.py --post"]
+
+
+def test_one_push_of_three_commits_counts_once():
+    def c(sha, msg="fix"):
+        return {"sha": sha, "commit": {"message": msg, "committer": {"date": "2026-11-24T09:00:00Z"}}}
+    touch = [c("a"), c("b"), c("c")]
+    assert len(cl.group_pushes(touch, lambda x: x["sha"] == "c")) == 1
+    assert len(cl.group_pushes(touch, lambda x: True)) == 3
+    assert [len(g) for g in cl.group_pushes(touch, lambda x: x["sha"] == "b")] == [2, 1]
+    assert cl.group_pushes([], lambda x: True) == []

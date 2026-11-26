@@ -8,6 +8,7 @@ builds the same router with its own no-fallback base (#331).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import sys
@@ -18,6 +19,7 @@ from .engines import clean_output, max_tokens_for
 from .engines import load_llama as _load_llama
 from .engines import shared_llama
 from .llm_prompt import CONTEXT_LINES
+from .paths import DATA_DIR
 from .repeat import collapse_repeats
 from .translate import Translation, Translator, strip_unk, zh_convert
 
@@ -46,12 +48,22 @@ def sampling() -> dict:
 
 # #335: it/pt/vi/th/id are on the Hy-MT2 model card's language list, so they go direct instead of the OPUS pivot.
 # #942: hi (Hindi, 印地语 on the model card) too; #620 measured direct hi->zh with the same 1.8B (run 43521109509).
-ZH_NAMES = {"zh": "中文", "ja": "日语", "en": "英语", "ru": "俄语", "ko": "韩语", "de": "德语", "fr": "法语",
-            "es": "西班牙语", "it": "意大利语", "pt": "葡萄牙语", "vi": "越南语", "th": "泰语", "id": "印尼语",
-            "hi": "印地语"}
-EN_NAMES = {"zh": "Chinese", "ja": "Japanese", "en": "English", "ru": "Russian", "ko": "Korean",
-            "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
-            "vi": "Vietnamese", "th": "Thai", "id": "Indonesian", "hi": "Hindi"}
+def _load_spec() -> dict:
+    """#1895: language names, prompt templates and the Chinese-side rule live in shared/mt_spec.json (the phone's
+    generated Dart reads the same file); the package carries a byte copy (tests/test_mt_spec_1895.py keeps them equal)."""
+    return json.loads((DATA_DIR / "mt_spec.json").read_text(encoding="utf-8"))
+
+
+_SPEC = _load_spec()
+ZH_NAMES = {x["code"]: x["zh"] for x in _SPEC["languages"] if x["desktop"]}
+EN_NAMES = {x["code"]: x["en"] for x in _SPEC["languages"] if x["desktop"]}
+_CHINESE_SIDE = frozenset(_SPEC["chinese_side"])
+_TPL = _SPEC["templates"]
+
+
+def _fill(template: str, **values: str) -> str:
+    """Fill `{name}` placeholders in one pass, so a value that contains `{...}` is never substituted again."""
+    return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], template)
 
 
 def hymt_path(models_dir: Path, size: str = "1.8b") -> Path:
@@ -70,15 +82,13 @@ def build_prompt(text: str, src: str, tgt: str, terms: list[tuple[str, str]] | N
     `terms` (source, translation) pairs are prepended in the card's terminology-reference form; none = unchanged.
     `context` (previous source sentence) uses the card's contextual-translation form (#1258 eval); none = unchanged."""
     if terms:
-        ref = "\n".join(f"{a} 翻译成 {b}" for a, b in terms)
-        return f"参考下面的翻译：\n{ref}\n\n" + build_prompt(text, src, tgt, context=context)
+        ref = "\n".join(_fill(_TPL["term_line"], source=a, translation=b) for a, b in terms)
+        return _fill(_TPL["terms"], terms=ref) + build_prompt(text, src, tgt, context=context)
     if context and context.strip():
-        return (f"{context.strip()}\n参考上面的信息，把下面的文本翻译成{ZH_NAMES.get(tgt, tgt)}，"
-                f"注意不需要翻译上文，也不要额外解释：\n{text}")
-    if "zh" in (src, tgt):
-        return (f"将以下文本翻译成{ZH_NAMES.get(tgt, tgt)}，注意只需要输出翻译后的结果，不要额外解释：\n\n{text}")
-    return (f"Translate the following text into {EN_NAMES.get(tgt, tgt)}.\n"
-            f"Note that you should only output the translated result without any additional explanation:\n\n{text}")
+        return _fill(_TPL["context"], context=context.strip(), target=ZH_NAMES.get(tgt, tgt), text=text)
+    if _CHINESE_SIDE & {src, tgt}:
+        return _fill(_TPL["zh"], target=ZH_NAMES.get(tgt, tgt), text=text)
+    return _fill(_TPL["en"], target=EN_NAMES.get(tgt, tgt), text=text)
 
 
 # #1351: Hy-MT2 sometimes starts its answer with the card prompt's own instruction line (eval-flores run 44013625413,

@@ -10,12 +10,15 @@ class PackDownloader {
 
   /// Downloads [url] to [dest], checking [size] and [sha256]. Returns the file path, or throws
   /// [PlatformException] (code CANCELLED, BAD_URL or DOWNLOAD_FAILED).
+  /// With [unmeteredOnly] (#1879, automatic downloads) every connection stays on the unmetered
+  /// Wi-Fi / Ethernet network; none up or lost -> NETWORK_LOST, never mobile data.
   static Future<String> download(
     String url,
     String dest, {
     required int size,
     required String sha256,
     required void Function(int done, int total) onProgress,
+    bool unmeteredOnly = false,
   }) async {
     if (!isAllowedPackUrl(url)) {
       throw PlatformException(code: 'BAD_URL', message: 'not a release asset of this repo: $url');
@@ -31,8 +34,13 @@ class PackDownloader {
       }
     });
     try {
-      return (await _ch.invokeMethod<String>(
-              'downloadPack', {'url': url, 'dest': dest, 'size': size, 'sha256': sha256})) ??
+      return (await _ch.invokeMethod<String>('downloadPack', {
+            'url': url,
+            'dest': dest,
+            'size': size,
+            'sha256': sha256,
+            if (unmeteredOnly) 'unmeteredOnly': true,
+          })) ??
           dest;
     } finally {
       _active = false;
