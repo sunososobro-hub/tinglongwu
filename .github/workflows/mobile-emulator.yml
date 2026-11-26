@@ -4,6 +4,9 @@ name: mobile-emulator
 # rolling pre-release mobile-latest (the files a user imports), replays a Mandarin clip as microphone audio and
 # asserts the English TTS produced PCM samples plus a `TTS [en] speakLat=` log line. speakLat is report-only
 # (job summary): rules section 20, no timing limit without 10 baseline runs. Not release-critical, not required.
+# #1728: mobile/integration_test/mic_test.dart then records the emulator's real microphone while the host loops
+# the same zh clip into a PulseAudio null sink (mobile/tool/host_mic.sh; -allow-host-audio), and once more with
+# the clip stopped; both RMS values go to the job summary.
 # The emulator is started with the SDK's own sdkmanager / avdmanager / emulator (no third-party action).
 on:
   pull_request:
@@ -108,6 +111,17 @@ jobs:
           tar xjf "$RUNNER_TEMP/sv.tar.bz2" -C "$RUNNER_TEMP" --wildcards '*/test_wavs/zh.wav'
           ffmpeg -loglevel error -y -i "$RUNNER_TEMP"/sherpa-onnx-sense-voice-*/test_wavs/zh.wav -ar 16000 -ac 1 -c:a pcm_s16le "$IN/zh.wav"
           ls -l "$IN"
+      - name: Host audio (PulseAudio null sink as the default source, #1728)
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in 1 2 3; do
+            sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends pulseaudio pulseaudio-utils && { ok=1; break; }
+            echo "apt try $i failed"; sleep 15
+          done
+          [ "$ok" = 1 ]
+          export TLWU_PULSE_DIR="$RUNNER_TEMP/pulse"
+          { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; bash tool/host_mic.sh setup; echo "QEMU_AUDIO_DRV=pa"; } >> "$GITHUB_ENV"
       - name: Start the emulator
         run: |
           set -euo pipefail
@@ -119,9 +133,9 @@ jobs:
           if [ ! -f "$CFG" ]; then
             echo "::error::avdmanager did not create $CFG"; find "$HOME" -name 'e2e.avd' -maxdepth 4 2>/dev/null || true; exit 1
           fi
-          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\n' >> "$CFG"
+          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\nhw.audioInput=yes\n' >> "$CFG"
           nohup "$ANDROID_HOME/emulator/emulator" -avd e2e -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
-            -camera-back none -camera-front none > "$RUNNER_TEMP/emulator.log" 2>&1 &
+            -camera-back none -camera-front none -allow-host-audio > "$RUNNER_TEMP/emulator.log" 2>&1 &
           ADB="$ANDROID_HOME/platform-tools/adb"
           timeout 600 "$ADB" wait-for-device
           timeout 600 bash -c "until [ \"\$('$ADB' shell getprop sys.boot_completed | tr -d '\r')\" = 1 ]; do sleep 5; done"
@@ -130,6 +144,7 @@ jobs:
           "$ADB" shell settings put global animator_duration_scale 0
           echo "booted"
       - name: Install the app and push the test inputs into its files dir
+        id: install
         run: |
           set -euo pipefail
           ADB="$ANDROID_HOME/platform-tools/adb"
@@ -154,6 +169,23 @@ jobs:
         run: |
           set -o pipefail
           flutter test integration_test/two_way_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - name: Integration test (host clip as the emulator microphone, #1728)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          TLWU_X86_64: "1"
+        run: |
+          set -o pipefail
+          export ADB="$ANDROID_HOME/platform-tools/adb" E2E_DIR="/sdcard/Android/data/$PKG/files/e2e"
+          LOG="$RUNNER_TEMP/mic.log"; : > "$LOG"
+          "$ADB" logcat -c || true
+          bash tool/host_mic.sh serve "$LOG" "$RUNNER_TEMP/e2e/zh.wav" &
+          SERVE=$!
+          # `|| rc=$?`: under `bash -e` a failed test would end the step before the host loop is stopped.
+          rc=0
+          flutter test integration_test/mic_test.dart -d emulator-5554 2>&1 | tee "$LOG" || rc=$?
+          kill "$SERVE" 2> /dev/null || true
+          bash tool/host_mic.sh stop
+          exit $rc
       - name: Job summary (speakLat, report only)
         if: always()
         run: |
@@ -163,6 +195,8 @@ jobs:
             # `|| true`: an earlier step may have failed before test.log / the app log exist (run 45765117770).
             LAT=$(grep -o 'TLWU_SPEAKLAT=[^ ]*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | cut -d= -f2 || true)
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
+            MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
+            echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
             grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
             echo; echo '```'
             "$ADB" shell cat "/sdcard/Android/data/$PKG/files/logs/tlwu.log" 2>/dev/null \
