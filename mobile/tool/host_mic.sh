@@ -22,7 +22,7 @@ case "${1:-}" in
     # The default daemon and socket ($XDG_RUNTIME_DIR/pulse/native): run 45861986791 started PulseAudio on a
     # custom socket named by PULSE_SERVER and the emulator's bundled libpulse still failed ("Failed to
     # initialize PA context"), so every client here uses the server it would find with no settings at all.
-    pulseaudio --check 2> /dev/null || pulseaudio -D --exit-idle-time=-1 --log-target=file:"$DIR/pulse.log"
+    pulseaudio --check 2> /dev/null || pulseaudio -D --exit-idle-time=-1 --log-level=info --log-target=file:"$DIR/pulse.log"
     for _ in $(seq 1 50); do pactl info > /dev/null 2>&1 && break; sleep 0.2; done
     pactl list short sinks | grep -q "^[0-9]*[[:space:]]$SINK[[:space:]]" \
       || pactl load-module module-null-sink sink_name="$SINK" rate=48000 channels=2 > /dev/null

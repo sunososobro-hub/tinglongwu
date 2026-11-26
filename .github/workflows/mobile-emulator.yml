@@ -126,7 +126,10 @@ jobs:
           # libpulse defaults, so the server is also named the way QEMU's pa backend reads it (QEMU_PA_*).
           SRV=$(pactl info | sed -n 's/^Server String: //p')
           { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; echo "QEMU_AUDIO_DRV=pa"; echo "QEMU_PA_SERVER=$SRV"
-            echo "QEMU_PA_SOURCE=tlwu_clip.monitor"; echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"; } >> "$GITHUB_ENV"
+            echo "QEMU_PA_SOURCE=tlwu_clip.monitor"; echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            # Diagnosis only (run 45869566186 still "Failed to initialize PA context"): libpulse client debug log
+            # in emulator.log, server side in pulse.log, both in the summary / failure log.
+            echo "PULSE_LOG=4"; } >> "$GITHUB_ENV"
       - name: Start the emulator
         run: |
           set -euo pipefail
@@ -211,4 +214,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Emulator log on failure
         if: failure()
-        run: tail -100 "$RUNNER_TEMP/emulator.log" || true
+        run: |
+          grep -iE 'pulse|audio|PA context|protocol|cookie|connect' "$RUNNER_TEMP/emulator.log" | head -60 || true
+          tail -40 "$RUNNER_TEMP/pulse/pulse.log" || true
+          tail -100 "$RUNNER_TEMP/emulator.log" || true
