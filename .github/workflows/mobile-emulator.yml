@@ -8,6 +8,8 @@ name: mobile-emulator
 # the same zh clip into a PulseAudio null sink (mobile/tool/host_mic.sh; -allow-host-audio), and once more with
 # the clip stopped; both RMS values go to the job summary. The emulator runs windowed on Xvfb (not -no-window):
 # the headless qemu build never opened PulseAudio (run 45872152175).
+# #1729: mobile/integration_test/draft_test.dart replays the zh clip with 顯示原文草稿 off / on and asserts the grey
+# draft comes before the final line and is replaced by it; the on / off latency medians go to the job summary.
 # The emulator is started with the SDK's own sdkmanager / avdmanager / emulator (no third-party action).
 on:
   pull_request:
@@ -206,6 +208,15 @@ jobs:
           kill "$SERVE" 2> /dev/null || true
           bash tool/host_mic.sh stop
           exit $rc
+      - name: Integration test (grey source draft on / off, #1729)
+        # After the mic step, so the host clip loop is stopped. The on/off latency medians are report-only
+        # (rules section 20: no timing limit without 10 baseline runs).
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          TLWU_X86_64: "1"
+        run: |
+          set -o pipefail
+          flutter test integration_test/draft_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/draft.log"
       - name: Job summary (speakLat, report only)
         if: always()
         run: |
@@ -217,6 +228,9 @@ jobs:
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
             MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
             echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
+            DL=$(grep -o 'TLWU_DRAFT_LAT .*' "$RUNNER_TEMP/draft.log" 2>/dev/null | tail -1 | cut -d' ' -f2- || true)
+            echo "- draft (#1729) median final ASR+MT latency, 顯示原文草稿 on vs off (ms, report only): **${DL:-n/a}**"
+            grep -o 'TLWU_DRAFT_ROUND .*' "$RUNNER_TEMP/draft.log" 2>/dev/null | sed 's/^TLWU_DRAFT_ROUND /- draft round: /' || true
             sed 's/^/- qemu audio: /' "$RUNNER_TEMP/qemu-audio.txt" 2>/dev/null || true
             sed 's/^/- pulse: /' "${TLWU_PULSE_DIR:-$RUNNER_TEMP/pulse}/source-outputs.txt" 2>/dev/null || true
             grep -iE 'audio|PA context|pulse|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
