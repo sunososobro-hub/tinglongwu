@@ -184,7 +184,12 @@ class _MissingModelsScreenState extends State<MissingModelsScreen> {
                   const SizedBox(height: 16),
                 ],
                 if (d.onMobileData && d.error == null) ...[
-                  const Text('目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後重開 App 會自動下載。', style: _t),
+                  Text(
+                      _hasChoice
+                          ? '目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後按下方的開始按鈕下載。'
+                          : '目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後重開 App 會自動下載。',
+                      key: const Key('mobileDataHint'),
+                      style: _t),
                   const SizedBox(height: 12),
                 ],
                 FilledButton.icon(
