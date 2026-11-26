@@ -19,6 +19,7 @@ import 'a11y.dart';
 import 'advanced_screen.dart';
 import 'conversation_sheet.dart';
 import 'history_screen.dart';
+import 'notice_snack_bar.dart';
 import 'subtitle_bubble.dart';
 
 /// Palette shared with the desktop app (tinglongwu/gui/app.py), dark values.
@@ -408,7 +409,7 @@ class _Footer extends StatelessWidget {
             ? null
             : () {
                 final m = ScaffoldMessenger.of(context);
-                pipeline.onNotice = (t) => m.showSnackBar(micPermissionSnackBar(t,
+                pipeline.onNotice = (t) => m.showSnackBar(noticeSnackBar(t,
                     onRetry: t == MicPermission.deniedText
                         ? () => pipeline.setPaused(false)
                         : null));
@@ -545,10 +546,10 @@ class _SourceToggle extends StatelessWidget {
       );
       if (go == true) await PlaybackCapture.requestOverlayPermission();
     }
-    pipeline.onNotice = (t) => messenger.showSnackBar(micPermissionSnackBar(t));
+    pipeline.onNotice = (t) => messenger.showSnackBar(noticeSnackBar(t));
     final msg = await pipeline
         .setSource(toPhone ? AudioSourceKind.phone : AudioSourceKind.mic);
-    if (msg != null) messenger.showSnackBar(SnackBar(content: Text(msg)));
+    if (msg != null) messenger.showSnackBar(noticeSnackBar(msg));
   }
 
   @override
