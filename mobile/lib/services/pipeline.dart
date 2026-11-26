@@ -356,8 +356,13 @@ class Pipeline extends ChangeNotifier {
         if (_disposed || !conversation.enabled) break;
         if (!identical(_voices.voiceFor(conversation.foreign), tts)) break; // voice changed
         if (a.samples.isEmpty) continue;
+        final headset = await TtsPlayer.headset();
+        if (!speakAllowed(headset: headset, earphoneOnly: earphoneOnlyFor(conversation: true))) {
+          _log.i('tts: no headset, line shown as text only');
+          continue;
+        }
         spokenSamples += a.samples.length;
-        if (!await TtsPlayer.play(a.samples, a.sampleRate)) {
+        if (!await TtsPlayer.play(a.samples, a.sampleRate, a.durationMs)) {
           _log.e('tts: playback failed');
           continue;
         }
@@ -366,9 +371,11 @@ class Pipeline extends ChangeNotifier {
         lastSpeakLatencyMs = start - u.speechEndMs;
         speaking = true;
         notifyListeners();
-        _log.i('TTS [${u.lang}] speakLat=${lastSpeakLatencyMs}ms gen=${a.genMs}ms '
-            'audio=${a.durationMs}ms dropped=${_speakQ.dropped}: ${AppLog.text(u.text)}');
-        await Future<void>.delayed(Duration(milliseconds: a.durationMs));
+        // Timeline (#1953): VAD end -> translation done -> play start, same clock.
+        _log.i('TTS [${u.lang}] speakLat=${lastSpeakLatencyMs}ms vadEnd=${u.speechEndMs} '
+            'mtDone=${u.mtDoneMs} playStart=$start gen=${a.genMs}ms audio=${a.durationMs}ms '
+            'headset=$headset dropped=${_speakQ.dropped}: ${AppLog.text(u.text)}');
+        await TtsPlayer.done; // one line at a time: the next starts after this one ends
         speaking = false;
         if (!_disposed) notifyListeners();
       }
@@ -1093,7 +1100,7 @@ class Pipeline extends ChangeNotifier {
                   ? (job.route.speaker == Speaker.me ? 0 : 1)
                   : null);
           if (job.route.speak && conversation.enabled && r.zh.isNotEmpty) {
-            _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs));
+            _say(Utterance(r.zh, lang: tgt, speechEndMs: job.speechEndMs, mtDoneMs: now));
           }
           final tag = tgt != 'zh'
               ? '${job.lang}->$tgt${job.route.speak ? " speak" : ""}'
