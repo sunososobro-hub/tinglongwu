@@ -7,6 +7,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/lang_pack.dart';
+import '../logic/mic_permission.dart';
 import '../logic/model_manifest.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speech_out.dart';
@@ -400,6 +401,19 @@ class _Footer extends StatelessWidget {
   Widget build(BuildContext context) {
     final st = listenStateOf(pipeline);
     final stopped = pipeline.paused;
+    // One guarded entry for touch and TalkBack: installs the notice handler (with a retry on the
+    // denied line) before starting, so the permission line always shows (#1963).
+    final VoidCallback? onMicActivate =
+        pipeline.switchingSource || pipeline.stage != Stage.listening
+            ? null
+            : () {
+                final m = ScaffoldMessenger.of(context);
+                pipeline.onNotice = (t) => m.showSnackBar(micPermissionSnackBar(t,
+                    onRetry: t == MicPermission.deniedText
+                        ? () => pipeline.setPaused(false)
+                        : null));
+                pipeline.setPaused(!stopped);
+              };
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: UiColors.line)),
@@ -427,16 +441,10 @@ class _Footer extends StatelessWidget {
               message: micLabel(stopped: stopped),
               child: MicSemantics(
                 stopped: stopped,
-                onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
+                onTap: onMicActivate,
                 child: GestureDetector(
                 key: const Key('micButton'),
-                onTap: pipeline.switchingSource || pipeline.stage != Stage.listening
-                    ? null
-                    : () {
-                        final m = ScaffoldMessenger.of(context);
-                        pipeline.onNotice = (t) => m.showSnackBar(SnackBar(content: Text(t)));
-                        pipeline.setPaused(!stopped);
-                      },
+                onTap: onMicActivate,
                 child: Container(
                   width: 62,
                   height: 62,
@@ -537,7 +545,7 @@ class _SourceToggle extends StatelessWidget {
       );
       if (go == true) await PlaybackCapture.requestOverlayPermission();
     }
-    pipeline.onNotice = (t) => messenger.showSnackBar(SnackBar(content: Text(t)));
+    pipeline.onNotice = (t) => messenger.showSnackBar(micPermissionSnackBar(t));
     final msg = await pipeline
         .setSource(toPhone ? AudioSourceKind.phone : AudioSourceKind.mic);
     if (msg != null) messenger.showSnackBar(SnackBar(content: Text(msg)));

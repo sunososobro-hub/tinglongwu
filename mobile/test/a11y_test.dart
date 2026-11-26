@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/logic/mic_permission.dart';
 import 'package:mobile/ui/a11y.dart';
 import 'package:mobile/ui/subtitle_bubble.dart';
 
@@ -62,6 +63,50 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
         home: NamedGroup(label: '字幕顯示方式', child: Text('中文'))));
     expect(find.bySemanticsLabel(RegExp('字幕顯示方式')), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('mic permission line is a live region and its retry button is spoken',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    var retries = 0;
+    late BuildContext ctx;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Builder(builder: (c) {
+      ctx = c;
+      return const SizedBox();
+    }))));
+    ScaffoldMessenger.of(ctx).showSnackBar(
+        micPermissionSnackBar(MicPermission.deniedText, onRetry: () => retries++));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 750));
+    final live = find.byWidgetPredicate((w) =>
+        w is Semantics &&
+        w.properties.liveRegion == true &&
+        w.properties.label == MicPermission.deniedText);
+    expect(live, findsOneWidget);
+    expect(find.bySemanticsLabel(MicPermission.deniedText), findsOneWidget);
+    final retry = find.bySemanticsLabel(micRetryLabel);
+    expect(retry, findsOneWidget);
+    expect(tester.getSemantics(retry).getSemanticsData().flagsCollection.isButton, isTrue);
+    await tester.tap(find.text(micRetryLabel));
+    expect(retries, 1);
+    handle.dispose();
+  });
+
+  testWidgets('rationale line without retry has no button', (tester) async {
+    final handle = tester.ensureSemantics();
+    late BuildContext ctx;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Builder(builder: (c) {
+      ctx = c;
+      return const SizedBox();
+    }))));
+    ScaffoldMessenger.of(ctx).showSnackBar(micPermissionSnackBar(MicPermission.rationale));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 750));
+    expect(find.bySemanticsLabel(MicPermission.rationale), findsOneWidget);
+    expect(find.bySemanticsLabel(micRetryLabel), findsNothing);
     handle.dispose();
   });
 }
