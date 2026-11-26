@@ -3,6 +3,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/logic/mic_permission.dart';
 import 'package:mobile/ui/a11y.dart';
+import 'package:mobile/ui/notice_snack_bar.dart';
 import 'package:mobile/ui/subtitle_bubble.dart';
 
 void main() {
@@ -91,6 +92,34 @@ void main() {
     expect(tester.getSemantics(retry).getSemanticsData().flagsCollection.isButton, isTrue);
     await tester.tap(find.text(micRetryLabel));
     expect(retries, 1);
+    handle.dispose();
+  });
+
+  testWidgets('denied notice: open-settings action is a spoken button and opens settings',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    var opened = 0;
+    late BuildContext ctx;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Builder(builder: (c) {
+      ctx = c;
+      return const SizedBox();
+    }))));
+    ScaffoldMessenger.of(ctx).showSnackBar(noticeSnackBar(MicPermission.deniedText,
+        onRetry: () {}, openSettings: () async { opened++; return true; }));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 750));
+    final live = find.byWidgetPredicate((w) =>
+        w is Semantics &&
+        w.properties.liveRegion == true &&
+        w.properties.label == MicPermission.deniedText);
+    expect(live, findsOneWidget);
+    final settings = find.bySemanticsLabel('開啟系統設定');
+    expect(settings, findsOneWidget);
+    expect(tester.getSemantics(settings).getSemanticsData().flagsCollection.isButton, isTrue);
+    expect(find.bySemanticsLabel(micRetryLabel), findsOneWidget);
+    await tester.tap(find.text('開啟系統設定'));
+    expect(opened, 1);
     handle.dispose();
   });
 
