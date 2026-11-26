@@ -410,12 +410,12 @@ jobs:
           fi
           echo "<!-- tlwu-run:$RUN -->" >> notes.md
           [ -z "$PACK_MARKS" ] || printf '%s\n' "$PACK_MARKS" >> notes.md
-          # Move (or create) the tag; only refs/tags/mobile-latest is touched.
-          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
-            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null
-          else
-            gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
-          fi
+          # Move (or create) the tag; only refs/tags/mobile-latest is touched. #2018/#1021: GITHUB_TOKEN may not
+          # point a ref at a commit that changes .github/workflows/ (HTTP 403); the tag then stays put and the
+          # APK + notes (commit: $SHA) are still published below. No PAT.
+          TAG_STATE=$(python3 -I scripts/mobile_tag_move.py "$GH_REPO" "$TAG" "$SHA")
+          echo "$TAG_STATE" >> "$GITHUB_OUTPUT"
+          echo "mobile-latest $TAG_STATE (commit $SHA)" >> "$GITHUB_STEP_SUMMARY"
           if gh release view "$TAG" > /dev/null 2>&1; then
             # assets first, then the notes (which carry the run marker), so a failed upload is retried
             gh release upload "$TAG" "out/$APK_NAME" --clobber
