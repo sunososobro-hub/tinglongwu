@@ -122,7 +122,11 @@ jobs:
           [ "$ok" = 1 ]
           export TLWU_PULSE_DIR="$RUNNER_TEMP/pulse"
           bash tool/host_mic.sh setup
-          { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; echo "QEMU_AUDIO_DRV=pa"; } >> "$GITHUB_ENV"
+          # Runs 45861986791 / 45865539644: the emulator still logged "Could not init `pa' audio driver" with
+          # libpulse defaults, so the server is also named the way QEMU's pa backend reads it (QEMU_PA_*).
+          SRV=$(pactl info | sed -n 's/^Server String: //p')
+          { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; echo "QEMU_AUDIO_DRV=pa"; echo "QEMU_PA_SERVER=$SRV"
+            echo "QEMU_PA_SOURCE=tlwu_clip.monitor"; echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"; } >> "$GITHUB_ENV"
       - name: Start the emulator
         run: |
           set -euo pipefail
@@ -136,7 +140,7 @@ jobs:
           fi
           printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\nhw.audioInput=yes\n' >> "$CFG"
           nohup "$ANDROID_HOME/emulator/emulator" -avd e2e -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
-            -camera-back none -camera-front none -allow-host-audio > "$RUNNER_TEMP/emulator.log" 2>&1 &
+            -camera-back none -camera-front none -allow-host-audio -debug audio > "$RUNNER_TEMP/emulator.log" 2>&1 &
           ADB="$ANDROID_HOME/platform-tools/adb"
           timeout 600 "$ADB" wait-for-device
           timeout 600 bash -c "until [ \"\$('$ADB' shell getprop sys.boot_completed | tr -d '\r')\" = 1 ]; do sleep 5; done"
@@ -197,8 +201,8 @@ jobs:
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
             MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
             echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
-            grep -iE 'audio driver|PA context|pulseaudio|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
-              | head -5 | sed 's/^/- emulator: /' || true
+            grep -iE 'audio|PA context|pulse|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
+              | head -15 | sed 's/^/- emulator: /' || true
             grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
             echo; echo '```'
             "$ADB" shell cat "/sdcard/Android/data/$PKG/files/logs/tlwu.log" 2>/dev/null \

@@ -58,6 +58,8 @@ void main() {
 
   testWidgets('emulator mic: host clip is heard, silent control is not', (tester) async {
     final e2e = '${(await ModelPaths.resolve()).filesDir}/e2e';
+    // Run 45865539644: the dir was gone by the time this test ran (PathNotFoundException on mic_ready).
+    Directory(e2e).createSync(recursive: true);
     final go = File('$e2e/mic_go');
     final silent = File('$e2e/mic_silent');
     final ready = File('$e2e/mic_ready');
