@@ -36,6 +36,40 @@ abstract class BaseModelSource {
 
 enum BaseDlState { idle, downloading, checking, failed, done }
 
+/// What kind of network the phone is on (#1864). Only [unmetered] (Wi-Fi) starts the base model
+/// download by itself; [metered] (mobile data) waits for 「用行動數據下載」.
+enum NetKind { unmetered, metered, none, unknown }
+
+/// Asks the phone which [NetKind] it is on; the tests replace it.
+abstract class NetworkProbe {
+  Future<NetKind> kind();
+}
+
+/// Decides the [NetKind] from NetworkProbe.kt's raw facts (#1864). [NetKind.unmetered] needs an
+/// unmetered Wi-Fi or Ethernet transport with no cellular transport: Android can mark 5G cellular
+/// NOT_METERED, and that must still ask before ~1.3 GB of mobile data. Null or malformed -> unknown.
+NetKind netKindFrom(Object? facts) {
+  if (facts is! Map) return NetKind.unknown;
+  bool f(String k) => facts[k] == true;
+  if (!f('internet')) return NetKind.none;
+  if (f('notMetered') && (f('wifi') || f('ethernet')) && !f('cellular')) return NetKind.unmetered;
+  return NetKind.metered;
+}
+
+/// The real one: NetworkProbe.kt (ConnectivityManager, ACCESS_NETWORK_STATE; opens no connection).
+class DeviceNetworkProbe implements NetworkProbe {
+  static const _ch = MethodChannel('tlwu/native');
+
+  @override
+  Future<NetKind> kind() async {
+    try {
+      return netKindFrom(await _ch.invokeMethod<Object?>('networkFacts'));
+    } catch (_) {
+      return NetKind.unknown;
+    }
+  }
+}
+
 /// Download -> check -> install of the base models (SenseVoice, Silero VAD, Hy-MT2). [run] returns
 /// true only when nothing is missing afterwards; a checksum mismatch or a cancel leaves it
 /// [BaseDlState.failed] with a zh-TW [error] and [run] can be called again (重試).
@@ -52,7 +86,32 @@ class BaseModelDownload extends ChangeNotifier {
   int done = 0, total = 0;
   String? error;
 
+  /// The network seen by [autoStart]; null until it has asked.
+  NetKind? net;
+  bool _autoTried = false;
+
   bool get busy => state == BaseDlState.downloading || state == BaseDlState.checking;
+
+  /// On mobile data the start button names the cost (#1864).
+  bool get onMobileData => net == NetKind.metered;
+
+  /// First open (#1864): on an unmetered network (Wi-Fi) the download starts with no tap and this
+  /// returns [run]'s result; on mobile data, no network or an unknown one nothing is fetched and it
+  /// returns false (the screen then waits for a tap). Only the first call does anything.
+  Future<bool> autoStart(NetworkProbe probe) async {
+    if (_autoTried || busy || state == BaseDlState.done) return false;
+    _autoTried = true;
+    NetKind k;
+    try {
+      k = await probe.kind();
+    } catch (_) {
+      k = NetKind.unknown;
+    }
+    net = k;
+    notifyListeners();
+    if (k != NetKind.unmetered) return false;
+    return run();
+  }
 
   /// "123 / 1310 MB", empty while the total is not known.
   String get amount => total > 0 ? '${_mb(done)} / ${_mb(total)} MB' : '';

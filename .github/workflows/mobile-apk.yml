@@ -226,10 +226,10 @@ jobs:
             # #1169: no model packs in this AAB (default); a pack here would put the 1.3 GB back into every update
             if unzip -l "$AAB" | grep -qE " (models_asr|models_llm)/"; then echo "AAB has model packs but PLAY_MODEL_PACKS is not true"; exit 1; fi
           fi
-          # proto manifest keeps permission names as plain UTF-8 strings; INTERNET is the only network permission (#1567)
+          # proto manifest keeps permission names as plain UTF-8 strings; INTERNET plus ACCESS_NETWORK_STATE (Wi-Fi vs mobile data, #1864) are the only network permissions (#1567)
           unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/base.xml"
           grep -aqE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/base.xml" || { echo "AAB lacks INTERNET (pack download)"; exit 1; }
-          if grep -aoE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
+          if grep -aoE "android.permission.(CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
           BASE=$(unzip -Zl "$AAB" | awk '$NF ~ /^base\// {s += $6} END {print s+0}')
           echo "base module compressed bytes: $BASE"
           [ "$BASE" -lt $((200 << 20)) ] || { echo "base module over 200 MB"; exit 1; }
@@ -244,7 +244,7 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/aapt" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
           grep -qE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/perms.txt" || { echo "APK lacks INTERNET (pack download)"; exit 1; }
-          if grep -qE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
+          if grep -qE "android.permission.(CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
           SIGNER="$BT/apksigner"; [ -e "$SIGNER" ] || SIGNER="$BT/apksigner.bat"
           "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
           rm -f "$RUNNER_TEMP/release.jks"
