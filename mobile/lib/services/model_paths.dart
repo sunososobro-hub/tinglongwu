@@ -1,10 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 
 import '../logic/lang_pack.dart';
 import '../logic/speech_out.dart';
+import 'model_importer.dart';
 
 /// Where the models live and how to check them.
 ///
@@ -67,12 +67,12 @@ class ModelPaths {
     }
   }
 
+  /// Size of every manifest file: models, optional-pack files and the speaker model (same set as
+  /// ModelImporter.presentFiles, #1980).
   static Future<Map<String, int>> _manifestSizes() async {
     try {
-      final j = jsonDecode(await rootBundle.loadString('assets/models_manifest.json')) as Map;
-      return {
-        for (final f in j['files'] as List) (f as Map)['path'] as String: (f['size'] as num).toInt()
-      };
+      final m = await ModelImporter.loadManifest();
+      return {for (final f in m.allFiles) f.path: f.size};
     } catch (_) {
       return const {};
     }
@@ -80,18 +80,28 @@ class ModelPaths {
 
   String get modelsDir => '$filesDir/models';
 
-  /// Where the file at [rel] (manifest path) is read from: the models dir when the file is there,
-  /// else a pack folder with a file of the manifest size, else the models dir (= missing).
+  /// Where the file at [rel] (manifest path) is read from: the models dir when the file is there
+  /// (any size, never replaced), else a pack folder with a file of the manifest size, else the models dir (= missing).
   String path(String rel) {
     final local = '$modelsDir/$rel';
     if (File(local).existsSync()) return local;
     for (final d in packDirs) {
       final f = File('$d/$rel');
-      try {
-        if (f.existsSync() && (sizes[rel] == null || f.lengthSync() == sizes[rel])) return f.path;
-      } catch (_) {}
+      if (_sizeOk(f, rel)) return f.path;
     }
     return local;
+  }
+
+  /// The file [path] selects for [rel] exists and has the manifest size (#1980): what an install
+  /// check must ask, so it agrees with the file the app really reads.
+  bool hasGoodCopy(String rel) => _sizeOk(File(path(rel)), rel);
+
+  bool _sizeOk(File f, String rel) {
+    try {
+      return f.existsSync() && (sizes[rel] == null || f.lengthSync() == sizes[rel]);
+    } catch (_) {
+      return false;
+    }
   }
 
   String get vadPath => path(vadFileName);

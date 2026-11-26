@@ -172,6 +172,9 @@ class BaseModelDownload extends ChangeNotifier {
         if (pr.problems.isNotEmpty) {
           return _fail('檔案檢查不符，沒有安裝：\n${pr.problems.join('\n')}');
         }
+        if (!await src.packInstalled(p)) {
+          return _fail('辨識包安裝後仍不完整，請重試：${p.name}');
+        }
         offset += p.size;
         done = offset;
       }
@@ -257,9 +260,9 @@ class DeviceBaseModelSource implements BaseModelSource {
 
   @override
   Future<bool> packInstalled(VoicePack p) async {
-    final importer = ModelImporter(await ModelImporter.loadManifest(), modelsDir);
-    final present = importer.presentFiles(packDirs: await ModelPaths.packLocations());
-    return p.files.every((f) => present.contains(f.path));
+    // Ask ModelPaths, the code that picks the file the app reads, so the answers agree (#1980).
+    final paths = await ModelPaths.resolve();
+    return p.files.every((f) => paths.hasGoodCopy(f.path));
   }
 
   @override
