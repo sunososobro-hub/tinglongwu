@@ -100,19 +100,21 @@ class _MissingModelsScreenState extends State<MissingModelsScreen> {
     final vb = _voiceBytes();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('你想怎麼用？', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+      RadioGroup<bool>(
+        groupValue: _conversation,
+        onChanged: (v) => setState(() => _conversation = v ?? false),
+        child: Column(children: [
       RadioListTile<bool>(
         key: const Key('choiceWatch'),
         value: false,
-        groupValue: _conversation,
-        onChanged: (v) => setState(() => _conversation = v!),
         title: const Text('看影片／聽別人說（只要字幕）'),
       ),
       RadioListTile<bool>(
         key: const Key('choiceConversation'),
         value: true,
-        groupValue: _conversation,
-        onChanged: (v) => setState(() => _conversation = v!),
         title: const Text('對話翻譯（我也要說話）'),
+      ),
+        ]),
       ),
       CheckboxListTile(
         key: const Key('choiceVoice'),
