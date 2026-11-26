@@ -62,11 +62,19 @@ AsrPackPaths? pickExtraAsr(
   String lang, {
   required String Function(String rel) resolve,
   required bool Function(String path) exists,
+  bool Function(String rel)? goodCopy,
 }) {
   if (lang == 'ru') {
     final p = [for (final r in GigaamLayout.rel) resolve(r)];
-    if (p.every(exists)) {
-      return AsrPackPaths(lang: lang, encoder: p[0], decoder: p[1], joiner: p[2], tokens: p[3]);
+    // Same test as the installed-pack check: a truncated GigaAM file must not shadow a good asr-ru pack.
+    if (p.every(exists) && (goodCopy == null || GigaamLayout.rel.every(goodCopy))) {
+      return AsrPackPaths(
+          lang: lang,
+          encoder: p[0],
+          decoder: p[1],
+          joiner: p[2],
+          tokens: p[3],
+          modelType: 'nemo_transducer');
     }
   }
   return AsrPackPaths.find(lang, resolve: resolve, exists: exists);

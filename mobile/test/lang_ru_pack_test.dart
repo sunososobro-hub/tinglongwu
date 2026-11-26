@@ -91,6 +91,13 @@ void main() {
     final g = pickExtraAsr('ru', resolve: resolve, exists: giga.contains)!;
     expect(g.encoder, '/m/gigaam3/encoder.int8.onnx');
     expect(g.joiner, '/m/gigaam3/joiner.onnx');
+    expect(g.modelType, 'nemo_transducer');
+    // A truncated GigaAM file falls back to the good asr-ru pack (transducer).
+    final both = {...giga, ...only.map(resolve)};
+    final fb = pickExtraAsr('ru',
+        resolve: resolve, exists: both.contains, goodCopy: (rel) => !rel.endsWith('joiner.onnx'))!;
+    expect(fb.encoder, '/m/asr-ru/encoder.int8.onnx');
+    expect(fb.modelType, 'transducer');
     // GigaAM incomplete: not used (earlier pack still wins if there).
     final partial = giga.where((p) => !p.endsWith('joiner.onnx')).toSet();
     expect(pickExtraAsr('ru', resolve: resolve, exists: partial.contains), isNull);

@@ -125,7 +125,8 @@ class ModelPaths {
   /// Optional extra-language recognizer for [lang] (#556, Russian); null when not installed.
   /// Russian is heard by GigaAM when the `lang-ru` group is installed (#1834).
   AsrPackPaths? asrPack(String lang) =>
-      pickExtraAsr(lang, resolve: path, exists: (p) => File(p).existsSync());
+      pickExtraAsr(lang,
+          resolve: path, exists: (p) => File(p).existsSync(), goodCopy: hasGoodCopy);
 
   /// Returns the list of missing files (empty = all present).
   List<String> missing() => [
