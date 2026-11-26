@@ -178,7 +178,7 @@ void main() {
           ],
         });
     final packs = [pk('voice-en', 'en', size: 30), pk('asr-ru', 'ru', kind: 'asr', size: 70)];
-    final ids = (FirstUsePlan p) => [for (final i in p.items) i.id];
+    List<String> ids(FirstUsePlan p) => [for (final i in p.items) i.id];
 
     test('default choice is exactly the base zip', () {
       final p = firstUsePlan(const FirstUseChoice(), packs, baseBytes: 1000);
