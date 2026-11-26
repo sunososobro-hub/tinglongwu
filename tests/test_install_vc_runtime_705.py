@@ -24,9 +24,11 @@ MS = "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington
 ALL_DLLS = ["msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll"]
 
 
-def _ps(script: str, timeout: int = 120) -> dict[str, str]:
+def _ps(script: str, timeout: int = 120, tmp: Path | None = None) -> dict[str, str]:
     """Run `script` after dot-sourcing the helpers; returns the `KEY=value` lines it printed."""
     env = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off"}
+    if tmp is not None:  # #1995: [IO.Path]::GetTempPath() reads TMPDIR / TMP, so each call gets its own temp dir
+        env.update(TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp))
     r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", f". '{HELPERS}'\n{script}"],
                        capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=env, cwd=str(ROOT))
     assert r.returncode == 0, r.stderr
@@ -66,7 +68,8 @@ def test_only_a_valid_microsoft_corporation_signature_is_accepted():
                    "NULL": "False"}
 
 
-def _install(fetch: str, sign_status: str = "Valid", sign_subject: str = MS, exit_code: int = 0) -> dict[str, str]:
+def _install(fetch: str, tmp: Path, sign_status: str = "Valid", sign_subject: str = MS,
+             exit_code: int = 0) -> dict[str, str]:
     """Install-TlwuVcRuntime with the download / signature / run stubbed; reports the call log and the result."""
     return _ps(
         "$global:Log = @()\n"
@@ -77,38 +80,39 @@ def _install(fetch: str, sign_status: str = "Valid", sign_subject: str = MS, exi
         "$ok = Install-TlwuVcRuntime -Fetch $fetch -Sign $sign -Exec $exec\n"
         "Write-Host ('RESULT=' + $ok)\n"
         "Write-Host ('LOG=' + ($global:Log -join ' | '))\n"
-        "Write-Host ('LEFTOVER=' + (Test-Path (Join-Path ([IO.Path]::GetTempPath()) 'tlwu_vc_redist.x64.exe')))")
+        "Write-Host ('LEFTOVER=' + (Test-Path (Join-Path ([IO.Path]::GetTempPath()) 'tlwu_vc_redist.x64.exe')))",
+        tmp=tmp)
 
 
 WRITE = "Set-Content -LiteralPath $f -Value 'MZ'"
 
 
 @needs_pwsh
-def test_signed_download_is_run_quiet_without_restart_and_the_file_is_removed():
-    out = _install(WRITE)
+def test_signed_download_is_run_quiet_without_restart_and_the_file_is_removed(tmp_path):
+    out = _install(WRITE, tmp_path)
     assert out["RESULT"] == "True" and out["LEFTOVER"] == "False"
     assert out["LOG"] == "fetch https://aka.ms/vs/17/release/vc_redist.x64.exe | sign | exec /install /quiet /norestart"
 
 
 @needs_pwsh
 @pytest.mark.parametrize("status,subject", [("HashMismatch", MS), ("NotSigned", MS), ("Valid", "CN=Evil, O=Evil, C=US")])
-def test_a_download_without_a_valid_microsoft_signature_is_never_run(status, subject):
-    out = _install(WRITE, sign_status=status, sign_subject=subject)
+def test_a_download_without_a_valid_microsoft_signature_is_never_run(status, subject, tmp_path):
+    out = _install(WRITE, tmp_path, sign_status=status, sign_subject=subject)
     assert out["RESULT"] == "False" and out["LEFTOVER"] == "False"
     assert "exec" not in out["LOG"]
 
 
 @needs_pwsh
 @pytest.mark.parametrize("code,ok", [(0, "True"), (3010, "True"), (1638, "True"), (1603, "False"), (1602, "False")])
-def test_exit_codes_done_reboot_pending_and_newer_installed_count_as_installed(code, ok):
-    assert _install(WRITE, exit_code=code)["RESULT"] == ok
+def test_exit_codes_done_reboot_pending_and_newer_installed_count_as_installed(code, ok, tmp_path):
+    assert _install(WRITE, tmp_path, exit_code=code)["RESULT"] == ok
 
 
 @needs_pwsh
-def test_a_failed_or_empty_download_returns_false_without_signature_check_or_run():
-    out = _install("throw 'no network'")
+def test_a_failed_or_empty_download_returns_false_without_signature_check_or_run(tmp_path):
+    out = _install("throw 'no network'", tmp_path)
     assert out["RESULT"] == "False" and out["LOG"] == "fetch https://aka.ms/vs/17/release/vc_redist.x64.exe"
-    out = _install("")  # the download "succeeds" but writes no file
+    out = _install("", tmp_path)  # the download "succeeds" but writes no file
     assert out["RESULT"] == "False" and "sign" not in out["LOG"] and "exec" not in out["LOG"]
 
 
