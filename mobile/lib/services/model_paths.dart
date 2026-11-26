@@ -81,17 +81,20 @@ class ModelPaths {
   String get modelsDir => '$filesDir/models';
 
   /// Where the file at [rel] (manifest path) is read from: the models dir when the file is there
-  /// with the manifest size,
-  /// else a pack folder with a file of the manifest size, else the models dir (= missing).
+  /// (any size, never replaced), else a pack folder with a file of the manifest size, else the models dir (= missing).
   String path(String rel) {
     final local = '$modelsDir/$rel';
-    if (_sizeOk(File(local), rel)) return local; // same rule as ModelImporter.presentFiles (#1980)
+    if (File(local).existsSync()) return local;
     for (final d in packDirs) {
       final f = File('$d/$rel');
       if (_sizeOk(f, rel)) return f.path;
     }
     return local;
   }
+
+  /// The file [path] selects for [rel] exists and has the manifest size (#1980): what an install
+  /// check must ask, so it agrees with the file the app really reads.
+  bool hasGoodCopy(String rel) => _sizeOk(File(path(rel)), rel);
 
   bool _sizeOk(File f, String rel) {
     try {

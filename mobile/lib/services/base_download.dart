@@ -244,11 +244,7 @@ class DeviceBaseModelSource implements BaseModelSource {
   Future<bool> packInstalled(VoicePack p) async {
     // Ask ModelPaths, the code that picks the file the app reads, so the answers agree (#1980).
     final paths = await ModelPaths.resolve();
-    return p.files.every((f) {
-      final want = paths.sizes[f.path];
-      final file = File(paths.path(f.path));
-      return file.existsSync() && (want == null || file.lengthSync() == f.size);
-    });
+    return p.files.every((f) => paths.hasGoodCopy(f.path));
   }
 
   @override

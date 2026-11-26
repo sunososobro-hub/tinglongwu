@@ -251,15 +251,19 @@ void main() {
     });
   });
 
-  test('ModelPaths picks the right-size pack copy over a wrong-size local file (#1980)', () {
+  test('hasGoodCopy follows the file ModelPaths.path selects (#1980)', () {
     final root = Directory.systemTemp.createTempSync('mp1980');
     addTearDown(() => root.deleteSync(recursive: true));
     Directory('${root.path}/files/models').createSync(recursive: true);
     Directory('${root.path}/pack').createSync();
-    File('${root.path}/files/models/a.bin').writeAsBytesSync([1, 2, 3]);
     File('${root.path}/pack/a.bin').writeAsBytesSync([1, 2, 3, 4, 5]);
     final mp = ModelPaths('${root.path}/files', packDirs: ['${root.path}/pack'], sizes: {'a.bin': 5});
     expect(mp.path('a.bin'), '${root.path}/pack/a.bin');
+    expect(mp.hasGoodCopy('a.bin'), isTrue);
+    // A local file always wins in path() (play_packs_test), so a wrong-size one is "not installed".
+    File('${root.path}/files/models/a.bin').writeAsBytesSync([1, 2, 3]);
+    expect(mp.path('a.bin'), '${root.path}/files/models/a.bin');
+    expect(mp.hasGoodCopy('a.bin'), isFalse);
   });
 
   testWidgets('screen: 開始下載 -> progress + 取消 -> main screen; details folded', (t) async {
