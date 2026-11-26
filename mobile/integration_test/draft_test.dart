@@ -104,17 +104,8 @@ void main() {
     final paths = await ModelPaths.resolve();
     final e2e = '${paths.filesDir}/e2e';
     final imp = ModelImporter(await ModelImporter.loadManifest(), paths.modelsDir);
-    // two_way_test.dart runs first on the same emulator and its import uses up the pushed zips (run 45906708811:
-    // models zip missing here), so import only what is still there; Pipeline.start below fails on missing models.
-    for (final name in ['tlwu-mobile-models.zip', 'tlwu-voice-en.zip']) {
-      final zip = File('$e2e/$name');
-      if (zip.existsSync()) {
-        await importZip(imp, zip);
-      } else {
-        // ignore: avoid_print
-        print('import $name: not in $e2e, using the models already imported');
-      }
-    }
+    await importZip(imp, File('$e2e/tlwu-mobile-models.zip'));
+    await importZip(imp, File('$e2e/tlwu-voice-en.zip'));
 
     // Same route as two_way_test.dart: I speak zh, the other person en (zh is not a language that needs the
     // extra recognizer, so drafts are shown).

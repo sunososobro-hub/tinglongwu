@@ -14,8 +14,19 @@ LOG = (
 def test_step_runs_draft_test_and_keeps_its_exit_code(tmp_path):
     bin_dir = tmp_path / "bin"; bin_dir.mkdir()
     _stub(bin_dir, "flutter", 'echo "args=$*"; echo TLWU_DRAFT_LAT on=1 off=2; exit 3')
+    _stub(bin_dir, "sleep", "exit 0")
+    adb_dir = tmp_path / "sdk" / "platform-tools"; adb_dir.mkdir(parents=True)
+    calls = tmp_path / "adb_calls"
+    _stub(adb_dir, "adb", f'echo "$*" >> "{calls}"')
+    (tmp_path / "rt" / "e2e").mkdir(parents=True)
+    (tmp_path / "rt" / "e2e" / "zh.wav").write_bytes(b"x")
     r = _run(_step("Integration test (grey source draft"), tmp_path, bin_dir)
     assert r.returncode == 3
+    adb = calls.read_text(encoding="utf-8").splitlines()
+    # Run 45906708811: the inputs are pushed again (after a launch) before this test runs.
+    assert adb[0].startswith("install -r -t ")
+    assert any(a.startswith("shell am start") for a in adb)
+    assert adb[-1].startswith("push ") and adb[-1].endswith("/files/e2e/")
     log = (tmp_path / "rt" / "draft.log").read_text(encoding="utf-8")
     assert "args=test integration_test/draft_test.dart -d emulator-5554" in log
     assert "TLWU_DRAFT_LAT on=1 off=2" in log

@@ -215,7 +215,17 @@ jobs:
         env:
           TLWU_X86_64: "1"
         run: |
-          set -o pipefail
+          set -euo pipefail
+          # Run 45906708811: the app's files dir no longer held the pushed zips here (an earlier `flutter test` run
+          # leaves a fresh app behind), so install, launch once and push the inputs again, as the install step does.
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          "$ADB" install -r -t build/app/outputs/flutter-apk/app-debug.apk
+          "$ADB" shell am start -W -n "$PKG/$ACTIVITY"
+          sleep 20
+          "$ADB" shell am force-stop "$PKG"
+          D="/sdcard/Android/data/$PKG/files/e2e"
+          "$ADB" shell mkdir -p "$D"
+          "$ADB" push "$RUNNER_TEMP"/e2e/* "$D/"
           flutter test integration_test/draft_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/draft.log"
       - name: Job summary (speakLat, report only)
         if: always()
