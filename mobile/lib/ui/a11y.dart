@@ -49,3 +49,15 @@ class NamedGroup extends StatelessWidget {
   Widget build(BuildContext context) =>
       Semantics(container: true, label: label, child: child);
 }
+
+/// Spoken label of the retry button on the microphone permission line (#1963).
+const micRetryLabel = '重新授權麥克風';
+
+/// The microphone permission line (#1928 rationale / denied text) as a snack bar TalkBack announces
+/// when it appears (live region). [onRetry] adds a retry button with its own spoken label.
+SnackBar micPermissionSnackBar(String text, {VoidCallback? onRetry}) => SnackBar(
+      content: LiveRegion(label: text, child: ExcludeSemantics(child: Text(text))),
+      action: onRetry == null
+          ? null
+          : SnackBarAction(label: micRetryLabel, onPressed: onRetry),
+    );

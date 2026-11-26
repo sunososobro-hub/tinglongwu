@@ -26,4 +26,12 @@ void main() {
     await show(t, noticeSnackBar(MicPermission.rationale, openSettings: () async => fail('no')));
     expect(find.text('開啟系統設定'), findsNothing);
   });
+
+  testWidgets('denied notice with onRetry shows both retry and settings buttons', (t) async {
+    var retries = 0;
+    await show(t, noticeSnackBar(MicPermission.deniedText, onRetry: () => retries++));
+    expect(find.text('開啟系統設定'), findsOneWidget);
+    await t.tap(find.text('重新授權麥克風'));
+    expect(retries, 1);
+  });
 }
