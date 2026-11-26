@@ -121,7 +121,8 @@ jobs:
           done
           [ "$ok" = 1 ]
           export TLWU_PULSE_DIR="$RUNNER_TEMP/pulse"
-          { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; bash tool/host_mic.sh setup; echo "QEMU_AUDIO_DRV=pa"; } >> "$GITHUB_ENV"
+          bash tool/host_mic.sh setup
+          { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; echo "QEMU_AUDIO_DRV=pa"; } >> "$GITHUB_ENV"
       - name: Start the emulator
         run: |
           set -euo pipefail
@@ -177,8 +178,7 @@ jobs:
           set -o pipefail
           export ADB="$ANDROID_HOME/platform-tools/adb" E2E_DIR="/sdcard/Android/data/$PKG/files/e2e"
           LOG="$RUNNER_TEMP/mic.log"; : > "$LOG"
-          "$ADB" logcat -c || true
-          bash tool/host_mic.sh serve "$LOG" "$RUNNER_TEMP/e2e/zh.wav" &
+          bash tool/host_mic.sh serve "$RUNNER_TEMP/e2e/zh.wav" &
           SERVE=$!
           # `|| rc=$?`: under `bash -e` a failed test would end the step before the host loop is stopped.
           rc=0
@@ -197,6 +197,8 @@ jobs:
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
             MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
             echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
+            grep -iE 'audio driver|PA context|pulseaudio|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
+              | head -5 | sed 's/^/- emulator: /' || true
             grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
             echo; echo '```'
             "$ADB" shell cat "/sdcard/Android/data/$PKG/files/logs/tlwu.log" 2>/dev/null \

@@ -1,8 +1,9 @@
 // #1728: a host audio clip as the Android emulator's microphone (run by .github/workflows/mobile-emulator.yml).
 // The emulator runs with -allow-host-audio and the host's default PulseAudio source is the monitor of a null
-// sink (mobile/tool/host_mic.sh). Handshake with `host_mic.sh serve`, through files in <filesDir>/e2e/:
-//   test prints TLWU_MIC_PHASE=ready      -> host grants RECORD_AUDIO, loops zh.wav into the sink, writes mic_go
-//   test records 3 s (clip), prints TLWU_MIC_PHASE=clip_done -> host stops the clip, writes mic_silent
+// sink (mobile/tool/host_mic.sh). Handshake with `host_mic.sh serve`, through files in <filesDir>/e2e/
+// (not print(): flutter test hands prints to the host only when the test ends, run 45861986791):
+//   test writes mic_ready      -> host grants RECORD_AUDIO, loops zh.wav into the sink, writes mic_go
+//   test records 3 s (clip), writes mic_clip_done -> host stops the clip, writes mic_silent
 //   test records 3 s (silent control)
 // Asserts clip RMS > [kMicSilenceDb] > silent RMS; prints `TLWU_MIC_RMS clip=<dB> silent=<dB>` for the summary.
 import 'dart:async';
@@ -59,17 +60,17 @@ void main() {
     final e2e = '${(await ModelPaths.resolve()).filesDir}/e2e';
     final go = File('$e2e/mic_go');
     final silent = File('$e2e/mic_silent');
-    for (final f in [go, silent]) {
+    final ready = File('$e2e/mic_ready');
+    final clipDone = File('$e2e/mic_clip_done');
+    for (final f in [go, silent, ready, clipDone]) {
       if (f.existsSync()) f.deleteSync();
     }
     final rec = AudioRecorder();
 
-    // ignore: avoid_print
-    print('TLWU_MIC_PHASE=ready');
+    ready.writeAsStringSync('1');
     await waitForFile(go, 'clip playing');
     final clipDb = pcm16RmsDb(await recordPcm(rec));
-    // ignore: avoid_print
-    print('TLWU_MIC_PHASE=clip_done clip=${clipDb.toStringAsFixed(1)}');
+    clipDone.writeAsStringSync('1');
 
     await waitForFile(silent, 'clip stopped');
     final silentDb = pcm16RmsDb(await recordPcm(rec));

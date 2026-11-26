@@ -1,8 +1,8 @@
 """#1728: the emulator microphone step of mobile-emulator.yml and mobile/tool/host_mic.sh `serve`.
 
 Runs the real step script under the shell GitHub uses (`bash -e -o pipefail`), with stub `flutter` / `adb` /
-`paplay` on PATH: the stub test prints the TLWU_MIC_PHASE lines and waits for the files the host writes through
-`adb shell touch`, so the handshake order (grant -> clip -> mic_go -> clip_done -> stop -> mic_silent) is
+`paplay` on PATH: the stub test writes mic_ready / mic_clip_done into the fake device dir and waits for the files
+the host writes through `adb shell touch`, so the handshake order (grant -> clip -> mic_go -> clip_done -> stop -> mic_silent) is
 exercised end to end without an emulator."""
 from __future__ import annotations
 
@@ -48,7 +48,8 @@ def _mic_step(tmp: Path, flutter_body: str) -> tuple[subprocess.CompletedProcess
     calls = tmp / "adb.calls"
     adb_dir = tmp / "sdk" / "platform-tools"; adb_dir.mkdir(parents=True)
     _stub(adb_dir, "adb", f'echo "$*" >> "{calls}"\n'
-                          f'if [ "$1 $2" = "shell touch" ]; then mkdir -p "{dev}$(dirname "$3")"; touch "{dev}$3"; fi')
+                          f'if [ "$1 $2" = "shell touch" ]; then mkdir -p "{dev}$(dirname "$3")"; touch "{dev}$3"; fi\n'
+                          f'if [ "$1 $2" = "shell ls" ]; then ls "{dev}$3"; fi')
     _stub(bin_dir, "paplay", "sleep 0.2")
     _stub(bin_dir, "flutter", flutter_body.replace("@DEV@", str(dev)))
     (tmp / "rt" / "e2e").mkdir(parents=True)
@@ -60,11 +61,11 @@ def _mic_step(tmp: Path, flutter_body: str) -> tuple[subprocess.CompletedProcess
     return r, calls.read_text(encoding="utf-8") if calls.exists() else ""
 
 
-# The stub `flutter test`: the same phase prints as mic_test.dart, waiting for the host's files.
-FAKE_TEST = """D="@DEV@/sdcard/Android/data/$PKG/files/e2e"
+# The stub `flutter test`: the same files as mic_test.dart, and only one print, at the end (as flutter test does).
+FAKE_TEST = """D="@DEV@/sdcard/Android/data/$PKG/files/e2e"; mkdir -p "$D"
 w() { for _ in $(seq 1 100); do [ -f "$D/$1" ] && return 0; sleep 0.1; done; echo "no $1"; exit 7; }
-echo "TLWU_MIC_PHASE=ready"; w mic_go
-echo "TLWU_MIC_PHASE=clip_done clip=-21.3"; w mic_silent
+touch "$D/mic_ready"; w mic_go
+touch "$D/mic_clip_done"; w mic_silent
 echo "TLWU_MIC_RMS clip=-21.3 silent=-120.0 threshold=-60.0"
 """
 
@@ -73,7 +74,7 @@ def test_mic_step_handshake_order(tmp_path):
     r, calls = _mic_step(tmp_path, FAKE_TEST)
     assert r.returncode == 0, r.stdout + r.stderr
     pkg = _wf()["env"]["PKG"]
-    order = [line for line in calls.splitlines() if line.startswith("shell ")]
+    order = [line for line in calls.splitlines() if line.startswith("shell ") and not line.startswith("shell ls")]
     assert order == [f"shell pm grant {pkg} android.permission.RECORD_AUDIO",
                      f"shell touch /sdcard/Android/data/{pkg}/files/e2e/mic_go",
                      f"shell touch /sdcard/Android/data/{pkg}/files/e2e/mic_silent"], calls
@@ -82,7 +83,7 @@ def test_mic_step_handshake_order(tmp_path):
 
 
 def test_mic_step_fails_when_the_test_fails(tmp_path):
-    r, _ = _mic_step(tmp_path, 'echo "TLWU_MIC_PHASE=ready"; exit 3')
+    r, _ = _mic_step(tmp_path, 'exit 3')
     assert r.returncode == 3, r.stdout + r.stderr
 
 
