@@ -6,10 +6,13 @@
 #                                      libpulse finds it) with null sink tlwu_clip, its monitor the default source
 #   host_mic.sh play <wav>             loop <wav> into the sink in the background
 #   host_mic.sh stop                   stop that loop (the source then gives digital silence)
+#   host_mic.sh route                  host mic on in the emulator (`adb emu avd hostmicon`, needs ADB), every
+#                                      PulseAudio record stream moved to the sink's monitor, unmuted at 100 %;
+#                                      what PulseAudio reports is appended to $DIR/source-outputs.txt
 #   host_mic.sh rms [sec]              record [sec] (default 1) s from the default source, print RMS dBFS
 #   host_mic.sh serve <wav>            handshake with mic_test.dart through files in $E2E_DIR on the device
 #                                      (needs ADB, PKG, E2E_DIR in the env): mic_ready -> grant RECORD_AUDIO,
-#                                      play, touch mic_go; mic_clip_done -> stop, touch mic_silent; then exits
+#                                      play, route, touch mic_go, route again; mic_clip_done -> stop, touch mic_silent; then exits
 # Files, not print() lines: `flutter test` hands an integration test's prints to the host only when the test
 # ends (run 45861986791 saw TLWU_MIC_PHASE=ready 3.5 min late), so a printed phase can never be answered.
 set -euo pipefail
@@ -46,6 +49,33 @@ case "${1:-}" in
     fi
     pkill -f "paplay --device=$SINK" 2> /dev/null || true
     ;;
+  route)
+    # Round 3: run 45881839662 (windowed qemu on Xvfb) showed qemu opening a PulseAudio record stream, yet the
+    # guest measured -76.5 dBFS both with the clip playing and without (no digital zeros either), so host audio
+    # never reached it. Each candidate cause is undone here: the emulator's runtime host-mic switch (console
+    # `avd hostmicon`), a stream on another source, a muted / zero-volume stream or monitor. Best effort: a
+    # missing tool never fails the test, and the listing tells the next round which cause it was.
+    out="$DIR/source-outputs.txt"
+    if [ -n "${ADB:-}" ]; then
+      echo "hostmicon: $("$ADB" emu avd hostmicon 2>&1 | tr -d '\r' | tr '\n' ' ')" >> "$out" || true
+    fi
+    pactl set-source-mute "$SINK.monitor" 0 > /dev/null 2>&1 || true
+    pactl set-source-volume "$SINK.monitor" 100% > /dev/null 2>&1 || true
+    ids=$(pactl list short source-outputs 2> /dev/null | awk '{print $1}' || true)
+    for id in $ids; do
+      pactl move-source-output "$id" "$SINK.monitor" > /dev/null 2>&1 || true
+      pactl set-source-output-mute "$id" 0 > /dev/null 2>&1 || true
+      pactl set-source-output-volume "$id" 100% > /dev/null 2>&1 || true
+    done
+    {
+      echo "record streams: $(echo $ids | wc -w)"
+      pactl list source-outputs 2> /dev/null | sed 's/^[[:space:]]*//' \
+        | grep -E '^(Source Output #|Source:|Corked:|Mute:|Volume:|Sample Specification:|application.process.binary)' \
+        | tr '\n' ' ' | sed 's/Source Output #/\nSource Output #/g'
+      echo
+      pactl list short sources 2> /dev/null | awk '{print "source " $1 " " $2 " " $NF}'
+    } >> "$out" 2>&1 || true
+    ;;
   rms)
     sec="${2:-1}"
     raw="$DIR/rms.raw"
@@ -72,9 +102,13 @@ EOF
     wait_file mic_ready
     "$ADB" shell pm grant "$PKG" android.permission.RECORD_AUDIO
     "$0" play "$wav"
+    "$0" route
     sleep 1
     "$ADB" shell touch "$E2E_DIR/mic_go"
     echo "host_mic: clip playing, mic_go sent" >&2
+    # qemu may open its record stream only when the guest starts recording, so route once more after mic_go.
+    sleep 1
+    "$0" route
     wait_file mic_clip_done
     "$0" stop
     sleep 1
@@ -82,6 +116,6 @@ EOF
     echo "host_mic: clip stopped, mic_silent sent" >&2
     ;;
   *)
-    sed -n '2,15p' "$0" >&2; exit 2
+    sed -n '2,17p' "$0" >&2; exit 2
     ;;
 esac

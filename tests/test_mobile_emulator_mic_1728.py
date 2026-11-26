@@ -152,3 +152,67 @@ def test_summary_lists_qemu_audio(tmp_path):
                        cwd=tmp_path, env=_env(tmp_path, bin_dir), capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "- qemu audio: qemu-system-x86_64: libpulse.so.0 => /x" in (tmp_path / "summary.md").read_text("utf-8")
+
+
+def _route(tmp: Path, short_outputs: str) -> tuple[subprocess.CompletedProcess, str, str]:
+    bin_dir = tmp / "bin"; bin_dir.mkdir()
+    pcalls, acalls = tmp / "pactl.calls", tmp / "adb.calls"
+    _stub(bin_dir, "pactl", f'echo "$*" >> "{pcalls}"\n'
+                            f'case "$*" in\n'
+                            f'  "list short source-outputs") printf "{short_outputs}";;\n'
+                            f'  "list source-outputs") printf "Source Output #7\\n\\tSource: 3\\n\\tCorked: no\\n'
+                            f'\\tMute: no\\n\\t\\tapplication.process.binary = \\"qemu-system-x86_64\\"\\n";;\n'
+                            f'  "list short sources") printf "3\\ttlwu_clip.monitor\\tmodule-null-sink.c\\ts16le\\tIDLE\\n";;\n'
+                            f'esac')
+    _stub(bin_dir, "adb", f'echo "$*" >> "{acalls}"; echo OK')
+    env = {**_env(tmp, bin_dir), "ADB": str(bin_dir / "adb")}
+    r = subprocess.run([BASH, str(ROOT / "mobile/tool/host_mic.sh"), "route"], env=env, capture_output=True,
+                       text=True, timeout=30)
+    read = lambda p: p.read_text(encoding="utf-8") if p.exists() else ""
+    return r, read(pcalls), read(acalls)
+
+
+def test_route_turns_host_mic_on_and_moves_qemu_stream_to_the_clip(tmp_path):
+    """Round 3: run 45881839662 had qemu's PulseAudio record stream open but the guest heard -76.5 dBFS with and
+    without the clip, so `route` turns the emulator's host mic on and puts every record stream on the clip's
+    monitor, unmuted at 100 %, and logs what PulseAudio reports for the job summary."""
+    r, pcalls, acalls = _route(tmp_path, "7\\t3\\t12\\tprotocol-native.c\\ts16le 2ch 44100Hz\\n")
+    assert r.returncode == 0, r.stderr
+    assert acalls.splitlines() == ["emu avd hostmicon"]
+    lines = pcalls.splitlines()
+    for want in ("set-source-mute tlwu_clip.monitor 0", "move-source-output 7 tlwu_clip.monitor",
+                 "set-source-output-mute 7 0", "set-source-output-volume 7 100%"):
+        assert want in lines, pcalls
+    out = (tmp_path / "pulse" / "source-outputs.txt").read_text(encoding="utf-8")
+    assert "hostmicon: OK" in out and "record streams: 1" in out
+    assert "Source Output #7 Source: 3" in out and 'qemu-system-x86_64' in out
+    assert "source 3 tlwu_clip.monitor IDLE" in out
+
+
+def test_route_without_streams_or_pactl_never_fails(tmp_path):
+    r, pcalls, _ = _route(tmp_path, "")
+    assert r.returncode == 0, r.stderr
+    assert "move-source-output" not in pcalls
+    assert "record streams: 0" in (tmp_path / "pulse" / "source-outputs.txt").read_text(encoding="utf-8")
+    # No stub pactl and no ADB: the system pactl (if any) finds no server, and route still exits 0.
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TLWU_PULSE_DIR": str(tmp_path / "p2"),
+           "PULSE_SERVER": f"unix:{tmp_path}/no-such-socket"}
+    r2 = subprocess.run([BASH, str(ROOT / "mobile/tool/host_mic.sh"), "route"], env=env, capture_output=True,
+                        text=True, timeout=30)
+    assert r2.returncode == 0, r2.stderr
+
+
+def test_serve_routes_before_and_after_mic_go(tmp_path):
+    r, calls = _mic_step(tmp_path, FAKE_TEST)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls.splitlines().count("emu avd hostmicon") == 2, calls
+
+
+def test_summary_lists_pulse_record_streams(tmp_path):
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    (tmp_path / "rt").mkdir(); (tmp_path / "pulse").mkdir()
+    (tmp_path / "pulse" / "source-outputs.txt").write_text("record streams: 1\n", encoding="utf-8")
+    r = subprocess.run([BASH, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", _step("Job summary")["run"]],
+                       cwd=tmp_path, env=_env(tmp_path, bin_dir), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "- pulse: record streams: 1" in (tmp_path / "summary.md").read_text(encoding="utf-8")
