@@ -26,13 +26,16 @@ class _Fake implements BaseModelSource {
   Map<String, _Got> inZip;
   final installed = <String>{};
   final urls = <String>[];
+  final unmeteredFlags = <bool>[]; // #1879: the flag of each base / pack download
   PlatformException? downloadError;
   Completer<void>? hold;
   int cancels = 0;
 
   @override
-  Future<String> download(String url, void Function(int done, int total) onProgress) async {
+  Future<String> download(String url, void Function(int done, int total) onProgress,
+      {bool unmeteredOnly = false}) async {
     urls.add(url);
+    unmeteredFlags.add(unmeteredOnly);
     onProgress(10 << 20, 100 << 20);
     if (hold != null) await hold!.future;
     if (downloadError != null) throw downloadError!;
@@ -61,8 +64,10 @@ class _Fake implements BaseModelSource {
   final packsDone = <String>{}; // ids of installed packs
 
   @override
-  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress) async {
+  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress,
+      {bool unmeteredOnly = false}) async {
     packUrls.add(p.url);
+    unmeteredFlags.add(unmeteredOnly);
     onProgress(p.size ~/ 2, p.size);
     return '/tmp/${p.id}.zip';
   }
@@ -373,5 +378,38 @@ void main() {
     f.hold!.complete();
     await t.pumpAndSettle();
     expect(await started, isTrue);
+  });
+
+  // #1879: the automatic download is bound to the unmetered network; a tapped one is not.
+  test('auto start asks the native side for an unmetered-only download', () async {
+    final f = _Fake(_good());
+    expect(await _dl(f).autoStart(_Net(NetKind.unmetered)), isTrue);
+    expect(f.unmeteredFlags, [true]);
+  });
+
+  test('tapped download (run) keeps the default network', () async {
+    final f = _Fake(_good());
+    expect(await _dl(f).run(), isTrue);
+    expect(f.unmeteredFlags, [false]);
+  });
+
+  test('bound network lost: the auto download fails with a zh-TW error, nothing else is fetched', () async {
+    final f = _Fake(_good())
+      ..downloadError = PlatformException(code: 'NETWORK_LOST', message: 'Wi-Fi 已中斷，自動下載已停止');
+    final d = _dl(f);
+    expect(await d.autoStart(_Net(NetKind.unmetered)), isFalse);
+    expect(d.state, BaseDlState.failed);
+    expect(d.error, contains('Wi-Fi 已中斷'));
+    expect(f.urls.length, 1, reason: 'no retry on another network');
+  });
+
+  test('network lost mid-download (after progress): failed with the zh-TW message, no mobile-data retry', () async {
+    final f = _Fake(_good())
+      ..downloadError = PlatformException(code: 'NETWORK_LOST', message: 'Wi-Fi 已中斷，自動下載已停止（不會改用行動數據）。');
+    final d = _dl(f);
+    expect(await d.autoStart(_Net(NetKind.unmetered)), isFalse);
+    expect(d.done, greaterThan(0), reason: 'progress had started');
+    expect(d.error, contains('不會改用行動數據'));
+    expect(f.unmeteredFlags, [true]);
   });
 }

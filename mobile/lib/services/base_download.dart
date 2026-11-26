@@ -12,7 +12,8 @@ import 'pack_downloader.dart';
 abstract class BaseModelSource {
   /// Downloads [url] (the manifest's models zip) and returns the saved file path. Throws
   /// [PlatformException] (CANCELLED, BAD_URL, BUSY, DOWNLOAD_FAILED).
-  Future<String> download(String url, void Function(int done, int total) onProgress);
+  Future<String> download(String url, void Function(int done, int total) onProgress,
+      {bool unmeteredOnly = false});
 
   /// Installs every model file of the zip at [path], each checked against the manifest's size and
   /// SHA-256 (a file that does not match is not installed and is listed in `problems`).
@@ -20,7 +21,8 @@ abstract class BaseModelSource {
 
   /// Downloads the optional pack [p] (its zip, from this repo's release assets) and returns the
   /// saved file path. Throws [PlatformException] like [download].
-  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress);
+  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress,
+      {bool unmeteredOnly = false});
 
   /// Installs the pack zip at [path] for [p], each file checked against its size and SHA-256.
   Future<ImportReport> installPack(VoicePack p, String path);
@@ -110,7 +112,7 @@ class BaseModelDownload extends ChangeNotifier {
     net = k;
     notifyListeners();
     if (k != NetKind.unmetered) return false;
-    return run();
+    return run(unmeteredOnly: true);
   }
 
   /// "123 / 1310 MB", empty while the total is not known.
@@ -119,7 +121,8 @@ class BaseModelDownload extends ChangeNotifier {
   /// 0..1, or null for an indeterminate bar.
   double? get progress => total > 0 ? (done / total).clamp(0.0, 1.0) : null;
 
-  Future<bool> run() async {
+  /// [unmeteredOnly] (#1879, set by [autoStart]): every connection stays on the unmetered network.
+  Future<bool> run({bool unmeteredOnly = false}) async {
     if (busy) return false;
     _set(BaseDlState.downloading, null);
     done = total = 0;
@@ -131,7 +134,7 @@ class BaseModelDownload extends ChangeNotifier {
         done = d;
         total = t + packBytes;
         notifyListeners();
-      });
+      }, unmeteredOnly: unmeteredOnly);
       var offset = baseTotal; // bytes of the items finished before the current one
       _set(BaseDlState.checking, null);
       final r = await src.install(path);
@@ -149,7 +152,7 @@ class BaseModelDownload extends ChangeNotifier {
         final pp = await src.downloadPack(p, (d, t) {
           done = offset + d;
           notifyListeners();
-        });
+        }, unmeteredOnly: unmeteredOnly);
         _set(BaseDlState.checking, null);
         final pr = await src.installPack(p, pp);
         if (pr.cancelled) return _fail('下載已停止。');
@@ -200,9 +203,10 @@ class DeviceBaseModelSource implements BaseModelSource {
       'https://github.com/sunososobro-hub/tinglongwu/releases/download/mobile-latest/$zipName';
 
   @override
-  Future<String> download(String url, void Function(int done, int total) onProgress) =>
+  Future<String> download(String url, void Function(int done, int total) onProgress,
+          {bool unmeteredOnly = false}) =>
       PackDownloader.download(url, '$modelsDir/.dl/$zipName',
-          size: -1, sha256: '', onProgress: onProgress);
+          size: -1, sha256: '', onProgress: onProgress, unmeteredOnly: unmeteredOnly);
 
   @override
   Future<ImportReport> install(String path) async {
@@ -219,9 +223,10 @@ class DeviceBaseModelSource implements BaseModelSource {
   }
 
   @override
-  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress) =>
+  Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress,
+          {bool unmeteredOnly = false}) =>
       PackDownloader.download(p.url, '$modelsDir/.dl/${p.name}',
-          size: -1, sha256: '', onProgress: onProgress);
+          size: -1, sha256: '', onProgress: onProgress, unmeteredOnly: unmeteredOnly);
 
   @override
   Future<ImportReport> installPack(VoicePack p, String path) async {

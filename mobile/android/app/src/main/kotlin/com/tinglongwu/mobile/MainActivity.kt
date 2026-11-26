@@ -23,7 +23,7 @@ import io.flutter.plugin.common.MethodChannel
 // activity-result launcher.
 class MainActivity : FlutterFragmentActivity() {
     private val importer by lazy { ModelImporter(this) }
-    private val downloader by lazy { PackDownloader() }
+    private val downloader by lazy { PackDownloader(applicationContext) }
     private val playConfirm: ActivityResultLauncher<IntentSenderRequest> =
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
             play.onConfirmResult(r.resultCode == RESULT_OK)
