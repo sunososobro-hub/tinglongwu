@@ -6,7 +6,8 @@ name: mobile-emulator
 # (job summary): rules section 20, no timing limit without 10 baseline runs. Not release-critical, not required.
 # #1728: mobile/integration_test/mic_test.dart then records the emulator's real microphone while the host loops
 # the same zh clip into a PulseAudio null sink (mobile/tool/host_mic.sh; -allow-host-audio), and once more with
-# the clip stopped; both RMS values go to the job summary.
+# the clip stopped; both RMS values go to the job summary. The emulator runs windowed on Xvfb (not -no-window):
+# the headless qemu build never opened PulseAudio (run 45872152175).
 # The emulator is started with the SDK's own sdkmanager / avdmanager / emulator (no third-party action).
 on:
   pull_request:
@@ -142,7 +143,19 @@ jobs:
             echo "::error::avdmanager did not create $CFG"; find "$HOME" -name 'e2e.avd' -maxdepth 4 2>/dev/null || true; exit 1
           fi
           printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\nhw.audioInput=yes\n' >> "$CFG"
-          nohup "$ANDROID_HOME/emulator/emulator" -avd e2e -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
+          # #1728 round 2: with -no-window the emulator runs qemu-system-x86_64-headless, and run 45872152175 showed
+          # its pa backend failing "Failed to initialize PA context" without ever reaching the PulseAudio server
+          # (pulse.log saw only pactl / paplay). So the windowed qemu build runs instead, on an Xvfb display.
+          # Which qemu binaries link libpulse goes to qemu-audio.txt (job summary) for the next round.
+          EMU="$ANDROID_HOME/emulator"
+          { for q in "$EMU"/qemu/linux-x86_64/qemu-system-x86_64*; do
+              [ -e "$q" ] || continue
+              echo "$(basename "$q"): $(ldd "$q" 2>/dev/null | grep -io 'libpulse[^ ]* => [^ ]*' | tr '\n' ' ')"
+            done
+            echo "emulator lib64 pulse libs: $(ls "$EMU"/lib64 2>/dev/null | grep -i pulse | tr '\n' ' ')"
+          } > "$RUNNER_TEMP/qemu-audio.txt" 2>&1 || true
+          command -v xvfb-run > /dev/null || { sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends xvfb; }
+          nohup xvfb-run -a -s "-screen 0 1280x1024x24" "$EMU/emulator" -avd e2e -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
             -camera-back none -camera-front none -allow-host-audio -debug audio > "$RUNNER_TEMP/emulator.log" 2>&1 &
           ADB="$ANDROID_HOME/platform-tools/adb"
           timeout 600 "$ADB" wait-for-device
@@ -204,6 +217,7 @@ jobs:
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
             MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
             echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
+            sed 's/^/- qemu audio: /' "$RUNNER_TEMP/qemu-audio.txt" 2>/dev/null || true
             grep -iE 'audio|PA context|pulse|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
               | head -15 | sed 's/^/- emulator: /' || true
             grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
