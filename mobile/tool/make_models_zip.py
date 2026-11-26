@@ -7,6 +7,12 @@ the weights do not compress) under tlwu-mobile-models/, plus the upstream licens
     bash tool/fetch_models.sh <DIR>
     python3 -I tool/make_models_zip.py <DIR>/models <DIR>/licenses <OUT.zip>
 
+Optional Russian pack (manifest `optional_groups.lang-ru`, GigaAM v3, folder gigaam3/ in MODELS_DIR):
+
+    python3 -I tool/make_models_zip.py --lang ru <DIR>/models <DIR>/licenses <OUT.zip>
+
+LICENSE_DIR then needs GigaAM-LICENSE.txt. The default zip never contains lang-ru files.
+
 MODELS_DIR has sensevoice/, silero_vad.onnx and Hy-MT2-1.8B-Q4_K_M.gguf (same layout as on the phone).
 LICENSE_DIR has SenseVoice-LICENSE.txt, silero-vad-LICENSE.txt and Hy-MT2-LICENSE.txt.
 """
@@ -41,6 +47,46 @@ def sha256(path):
     return h.hexdigest()
 
 
+RU_PREFIX = "tlwu-mobile-lang-ru/"
+RU_NOTICE = """tinglongWu mobile Russian speech pack
+
+No need to unzip: in the app, open "Import models" and pick this zip.
+All files are unmodified upstream files.
+
+- gigaam3/  GigaAM v3 Russian ASR (salute-developers/GigaAM), RNN-T with punctuation, int8 encoder,
+  sherpa-onnx export. License: MIT, see LICENSES/GigaAM-LICENSE.txt.
+"""
+
+
+def _manifest():
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "..", "assets", "models_manifest.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def main_ru(models, lic, out):
+    """Builds the optional lang-ru zip: only the manifest's lang-ru files + the GigaAM licence."""
+    group = _manifest()["optional_groups"]["lang-ru"]
+    files = group["files"]
+    for e in files:
+        p = os.path.join(models, e["path"])
+        if not os.path.isfile(p):
+            sys.exit(f"{e['path']}: missing in {models}")
+        size, digest = os.path.getsize(p), sha256(p)
+        if size != e["size"] or digest != e["sha256"]:
+            sys.exit(f"{e['path']}: size/sha256 {size} {digest} do not match the manifest")
+        print("ok", e["path"])
+    lic_src = os.path.join(lic, group["license"])
+    if not os.path.isfile(lic_src):
+        sys.exit(f"{group['license']}: missing in {lic}")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
+        z.writestr(RU_PREFIX + "NOTICE.txt", RU_NOTICE)
+        z.write(lic_src, RU_PREFIX + "LICENSES/" + group["license"])
+        for e in files:
+            z.write(os.path.join(models, e["path"]), RU_PREFIX + e["path"])
+    print(out, os.path.getsize(out), sha256(out))
+
+
 def main(models, lic, out):
     here = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(here, "..", "assets", "models_manifest.json"), encoding="utf-8") as f:
@@ -66,6 +112,12 @@ def main(models, lic, out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    args = sys.argv[1:]
+    if args in (["-h"], ["--help"]):
+        print(__doc__)
+    elif len(args) == 5 and args[:2] == ["--lang", "ru"]:
+        main_ru(*args[2:])
+    elif len(args) == 3:
+        main(*args)
+    else:
         sys.exit(__doc__)
-    main(*sys.argv[1:])
